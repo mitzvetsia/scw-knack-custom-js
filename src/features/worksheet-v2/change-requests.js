@@ -39,7 +39,14 @@
     changeHtmlField:   'field_2695',   // pre-built HTML card
     changeJsonField:   'field_2696',   // JSON payload (current/requested/action)
     revisionHtmlField: 'field_2687',   // alt HTML storage (kept in sync)
-    revisionJsonField: 'field_2688'    // alt JSON storage (kept in sync)
+    revisionJsonField: 'field_2688',   // alt JSON storage (kept in sync)
+
+    // Edit → "Approve with Changes" flow. DISABLED 2026-07-29: the Make
+    // automation for the 'approve_with_changes' action isn't programmed yet,
+    // so the sub only gets Approve | Reject (matches v1, where the Edit
+    // button is also hidden — Known Issue #3). Flip to true once the
+    // scenario handles the action.
+    enableApproveWithChanges: false
   };
 
   // Editable fields in the revision edit modal (mirrors v1 EDIT_FIELDS).
@@ -715,55 +722,82 @@
   }
 
   // ── ACTION BUTTONS ───────────────────────────────────────
+  // The click handling is DELEGATED (wireActionButtons), not bound per
+  // button: inject()/cleanup() tear down and rebuild the revision strip on
+  // every observer tick / view re-render, and a directly-bound listener
+  // intermittently landed on a button mid-rebuild — the click was swallowed
+  // ("reject button isn't working"). Same failure mode + same fix as the
+  // card banner (see wireBannerToggle). The changeJson each button needs at
+  // click time is kept in a module map keyed by revision id, refreshed on
+  // every rebuild.
+  var _revJsonById = {};   // revisionId -> { data: changeJson } (live jsonRef)
+
   function buildActionButtons(revisionId, changeJson) {
-    var jsonRef = { data: changeJson };
+    // Reuse the same ref across rebuilds so an Edit-modal save (which
+    // mutates jsonRef.data) survives a strip rebuild.
+    var jsonRef = _revJsonById[revisionId] || (_revJsonById[revisionId] = {});
+    jsonRef.data = changeJson;
+
     var wrap = document.createElement('div');
+    wrap.setAttribute('data-scw-ws-v2-rev-wrap', revisionId);
     var actions = document.createElement('div');
     actions.className = P + '-actions';
 
-    var editBtn = document.createElement('button');
-    editBtn.type = 'button';
-    editBtn.className = P + '-btn ' + P + '-btn--edit';
-    editBtn.textContent = 'Edit';
-
-    var rejectBtn = document.createElement('button');
-    rejectBtn.type = 'button';
-    rejectBtn.className = P + '-btn ' + P + '-btn--reject';
-    rejectBtn.textContent = 'Reject';
-
-    var approveBtn = document.createElement('button');
-    approveBtn.type = 'button';
-    approveBtn.className = P + '-btn ' + P + '-btn--approve';
-    approveBtn.textContent = 'Approve';
+    function mkBtn(act, cls, label) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = P + '-btn ' + P + '-btn--' + cls;
+      b.textContent = label;
+      b.setAttribute('data-scw-ws-v2-rev-act', act);
+      b.setAttribute('data-scw-ws-v2-rev-rid', revisionId);
+      return b;
+    }
 
     // Button order: destructive/negative first, primary last (Edit | Reject | Approve)
-    actions.appendChild(editBtn);
-    actions.appendChild(rejectBtn);
-    actions.appendChild(approveBtn);
+    if (CFG.enableApproveWithChanges) {
+      actions.appendChild(mkBtn('edit', 'edit', 'Edit'));
+    }
+    actions.appendChild(mkBtn('reject',  'reject',  'Reject'));
+    actions.appendChild(mkBtn('approve', 'approve', 'Approve'));
     wrap.appendChild(actions);
-
-    // stopPropagation on every action click: these buttons live inside the
-    // revision strip nested in a worksheet card, and a bubbling click can be
-    // re-handled by the card/banner toggle.
-    approveBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      approveBtn.disabled = editBtn.disabled = rejectBtn.disabled = true;
-      submitRevisionAction(revisionId, 'approve', '', wrap, { outcome: 'accepted' });
-    });
-    editBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      openEditModal(revisionId, jsonRef.data, wrap, jsonRef);
-    });
-    // Reject reason is captured in a body-level modal, NOT an inline panel:
-    // inject()/cleanup() rebuild the revision strip on every observer tick /
-    // view re-render, which wiped an inline panel mid-interaction ("flash then
-    // nothing"). A body-level modal survives container rebuilds.
-    rejectBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      openRejectModal(revisionId, wrap);
-    });
-
     return wrap;
+  }
+
+  // One document-level handler survives every strip rebuild. Capture phase +
+  // stopPropagation: these buttons live inside the revision strip nested in a
+  // worksheet card, and a bubbling click can be re-handled by the card/banner
+  // toggle.
+  function wireActionButtons() {
+    if (document.documentElement.hasAttribute('data-scw-ws-v2-rev-act-bound')) return;
+    document.documentElement.setAttribute('data-scw-ws-v2-rev-act-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest &&
+                e.target.closest('[data-scw-ws-v2-rev-act]');
+      if (!btn || btn.disabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var act = btn.getAttribute('data-scw-ws-v2-rev-act');
+      var rid = btn.getAttribute('data-scw-ws-v2-rev-rid');
+      if (!rid) return;
+      // Resolve the CURRENT wrap from the clicked button (never a stale
+      // closure over a torn-down strip).
+      var wrap = btn.closest('[data-scw-ws-v2-rev-wrap]') || btn.parentElement;
+      var jsonRef = _revJsonById[rid] || (_revJsonById[rid] = { data: null });
+
+      if (act === 'approve') {
+        var siblings = wrap.querySelectorAll('button');
+        for (var i = 0; i < siblings.length; i++) siblings[i].disabled = true;
+        submitRevisionAction(rid, 'approve', '', wrap, { outcome: 'accepted' });
+      } else if (act === 'edit') {
+        if (!CFG.enableApproveWithChanges) return;   // flow disabled (see CFG)
+        openEditModal(rid, jsonRef.data, wrap, jsonRef);
+      } else if (act === 'reject') {
+        // Reject reason is captured in a body-level modal, NOT an inline
+        // panel: strip rebuilds wiped an inline panel mid-interaction
+        // ("flash then nothing"). A body-level modal survives rebuilds.
+        openRejectModal(rid, wrap);
+      }
+    }, true);
   }
 
   function closeRejectModal() {
@@ -1898,6 +1932,7 @@
   function boot() {
     injectStyles();
     wireBannerToggle();
+    wireActionButtons();
     ensureObserver();
     scheduleInject();
   }

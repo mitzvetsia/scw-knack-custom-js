@@ -45,6 +45,19 @@
   // scrollBy(-6526)). Don't chase it; hold the pre-edit scroll and let the
   // precise re-pin below take over once the layout settles (delta shrinks).
   var BIG_UP = 100;
+  // How long we'll actively FIGHT a big/unresolved shift by holding the
+  // pre-edit scrollY (window.scrollTo(0, prevY)). This covers the transient
+  // case the hold exists for — images/photos still decoding, the doc will
+  // grow back shortly. Beyond this window, a big shift that's STILL there
+  // means the anchor row genuinely relocated — e.g. a Connected Devices edit
+  // on the survey/bid worksheet (view_3505) moving a cam/reader to a
+  // different MDF/IDF group via the mirror-connection-sync cascade. That's a
+  // PERMANENT reposition, not a transient reflow, so continuing to force the
+  // stale absolute scrollY back is itself the jump (scroll-spy caught a lone
+  // scrollTo bringing scrollY BACK UP 853px after the page had already
+  // settled shorter). Past HOLD_MS, stop holding and let the page sit
+  // wherever the rebuild naturally left it.
+  var HOLD_MS = 250;
   // Single-flight: a grid that fires SEVERAL renders per edit (e.g. bid-review-v2
   // refetches multiple source views, each triggering a render) would otherwise
   // spawn one settle loop per render — overlapping loops each chase a DIFFERENT
@@ -100,6 +113,8 @@
     function tick(ts) {
       if (userScrolled || myToken !== _runToken) { cleanup(); return; }
       if (startTs == null) startTs = ts || 0;
+      var elapsed = (ts || 0) - startTs;
+      var withinHoldWindow = elapsed < HOLD_MS;
       var corrected = false;
       try {
         var el = anchor
@@ -109,28 +124,29 @@
           // Precise anchor: keep the captured row at its original viewport top —
           // but never CHASE a big downward shift (content added above = a jump).
           var delta = el.getBoundingClientRect().top - anchor.top;
-          if (delta > BIG_DOWN) {
-            // Content added ABOVE (row pushed down) — hold the pre-edit scroll;
-            // let the new content reflow below us instead of chasing the row.
-            if (Math.abs(scrollY() - prevY) > 1) { window.scrollTo(0, prevY); corrected = true; }
-          } else if (delta < -BIG_UP) {
-            // Content removed/shrunk ABOVE (row yanked up) — same: hold the
-            // pre-edit scroll rather than scrolling the page toward the top.
-            if (Math.abs(scrollY() - prevY) > 1) { window.scrollTo(0, prevY); corrected = true; }
+          if (delta > BIG_DOWN || delta < -BIG_UP) {
+            // Big shift either direction — hold the pre-edit scroll rather than
+            // chasing it, but ONLY within HOLD_MS (see its comment above). A
+            // shift that's STILL big past that window means the row genuinely
+            // relocated (not a transient reflow) — stop forcing prevY so the
+            // page can settle wherever the rebuild actually left it.
+            if (withinHoldWindow && Math.abs(scrollY() - prevY) > 1) {
+              window.scrollTo(0, prevY); corrected = true;
+            }
           } else if (Math.abs(delta) > 1) {
             window.scrollBy(0, delta); corrected = true;
           }
-        } else {
+        } else if (withinHoldWindow) {
           // Anchor row not resolvable (no anchor captured, or its row isn't in
           // the rebuilt DOM yet / at all). Don't let the browser clamp to the
           // bottom — hold the pre-rebuild scroll position as a floor until the
-          // row (re)appears, at which point the branch above takes over.
+          // row (re)appears, at which point the branch above takes over. Only
+          // within HOLD_MS — if the row never comes back, it moved for good.
           var curY = scrollY();
           if (Math.abs(curY - prevY) > 1) { window.scrollTo(0, prevY); corrected = true; }
         }
       } catch (e) { /* ignore */ }
       stable = corrected ? 0 : stable + 1;
-      var elapsed = (ts || 0) - startTs;
       if (stable >= STABLE_FRAMES || elapsed > MAX_MS) { cleanup(); return; }
       raf(tick);
     }

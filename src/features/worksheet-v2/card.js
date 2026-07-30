@@ -57,11 +57,36 @@
     return String(v).replace(/<[^>]*>/g, '').trim();
   }
 
+  /** Normalize a money/number string to a plain numeric string, PRESERVING
+   *  the sign across every negative format Knack emits: "-$2,500.00",
+   *  "$-2,500.00", accounting parens "($2,500.00)", and trailing-minus
+   *  "2,500.00-". The old blind strip could leave the minus mid-string
+   *  (e.g. "$-2,500.00" → "-2500.00" was fine, but "2,500.00-" →
+   *  "2500.00-" is INVALID and a type="number" input silently renders an
+   *  invalid value attribute as BLANK — the "Sub Bid appears empty on CO
+   *  Remove lines" bug). Returns '' when nothing numeric is present. */
+  function parseNumStr(s) {
+    s = String(s == null ? '' : s).replace(/<[^>]*>/g, '').trim();
+    if (!s) return '';
+    var neg = /^\(.*\)$/.test(s) || s.indexOf('-') !== -1;
+    var digits = s.replace(/[^0-9.]/g, '');
+    if (!digits) return '';
+    var n = parseFloat(digits);
+    if (!isFinite(n)) return '';
+    return String(neg ? -n : n);
+  }
+
   function readNum(rec, key) {
     var raw = rec[key + '_raw'];
     if (typeof raw === 'number') return String(raw);
-    var s = readField(rec, key);
-    return s.replace(/[^0-9.\-]/g, '');
+    // Knack sometimes ships currency raws as STRINGS — parse those with
+    // the same sign-preserving normalizer instead of falling through to
+    // the (differently-formatted) display value.
+    if (typeof raw === 'string' && raw.trim() !== '') {
+      var p = parseNumStr(raw);
+      if (p !== '') return p;
+    }
+    return parseNumStr(readField(rec, key));
   }
 
   function readBool(rec, key) {
@@ -203,15 +228,36 @@
       'value="' + escapeHtml(value) + '"' + attrsFor(rec, viewKey, fieldKey) + '>';
   }
 
+  /** Editable multi-line read: the stored value VERBATIM — tags, entities
+   *  and all — with only <br> converted to \n so line breaks edit as real
+   *  line breaks. These fields deliberately carry hand-written HTML
+   *  (<b>, lists, …) that the proposal renders, so the editor must expose
+   *  the markup for editing rather than a stripped rendering of it; the
+   *  earlier tag-stripping prefill meant the next blur-save destroyed the
+   *  record's formatting. edit.js converts \n back to <br> on save
+   *  (textareas only), so the round trip is lossless. */
+  function readMultiline(rec, key) {
+    var v = rec[key];
+    if (v == null || v === '') {
+      var raw = rec[key + '_raw'];
+      v = (raw == null || typeof raw === 'object') ? '' : raw;
+    }
+    return String(v).replace(/<br\s*\/?>/gi, '\n').trim();
+  }
+
   /** Multi-line wrapping text field — used for labor description so
    *  the full text is visible without horizontal scroll. Auto-grows
-   *  with content via CSS field-sizing / rows attribute fallback. */
+   *  with content via CSS field-sizing / rows attribute fallback.
+   *  NOTE: the value is re-derived via readMultiline (markup verbatim,
+   *  <br> as line breaks); the caller-passed flattened value is only a
+   *  fallback when the record/field aren't resolvable. */
   function textArea(rec, viewKey, fieldKey, value, label) {
+    var v = (rec && fieldKey) ? readMultiline(rec, fieldKey) : (value || '');
     return '<textarea class="scw-ws-v2-input scw-ws-v2-input--textarea" ' +
       'rows="2" ' +
       'aria-label="' + escapeHtml(label) + '" placeholder="' + escapeHtml(label) + '"' +
       attrsFor(rec, viewKey, fieldKey) + '>' +
-      escapeHtml(value) +
+      escapeHtml(v) +
     '</textarea>';
   }
 
@@ -259,7 +305,7 @@
   }
 
   /** True when the deployment uses the install money model (moneyMode:'install',
-   *  view_3915 — Deploy / Install Line Items). The install object is a DIFFERENT
+   *  view_4093 — Deploy / Install Line Items). The install object is a DIFFERENT
    *  Knack object from the SOW line item and has NO money columns at all (no Sub
    *  Bid / +Hrs / +Mat / Fee / Labor / Ext / Bid). The summary row is just
    *  chevron · label (cam) · product (read-only) · labor-desc fill · warn ·
@@ -524,10 +570,30 @@
         escapeHtml(total) +
       '</div>';
     }
-    return stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid') +
+    if (isLaborOnly(viewKey)) {
+      // Sub CO page: Sub Bid is the sub's ONLY money. +Hrs/+Mat (SCW-side
+      // adders) and Fee (client install price) don't render at all — the
+      // labor grid (.scw-ws-v2-card--labor, styles.js) drops those tracks
+      // entirely so the row closes up instead of holding blank space.
+      return stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid');
+    }
+    // Ops CO worksheet (config equipmentField): Equipment $ stack first —
+    // unit price editable, extended equipment (field_2201) shown beneath —
+    // and a trailing read-only extended-NET total (field_2269) so the
+    // all-in line value is visible while pricing.
+    var eqF = equipmentFieldOf(viewKey);
+    var eq = eqF
+      ? stackCell(rec, viewKey, eqF, readNum(rec, eqF), readField(rec, 'field_2201'), 'Equip $')
+      : '';
+    var net = eqF
+      ? ro(readField(rec, 'field_2269'), 'scw-ws-v2-cell--fee scw-ws-v2-cell--net', 'Extended net total')
+      : '';
+    return eq +
+           stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid') +
            stackCell(rec, viewKey, 'field_1973', readNum(rec, 'field_1973'), readField(rec, 'field_1997'), '+Hrs') +
            stackCell(rec, viewKey, 'field_1974', readNum(rec, 'field_1974'), readField(rec, 'field_2146'), '+Mat') +
-           ro(readField(rec, 'field_2028'), 'scw-ws-v2-cell--fee', 'Install fee');
+           ro(readField(rec, 'field_2028'), 'scw-ws-v2-cell--fee', 'Install fee') +
+           net;
   }
 
   /** Sales-only detail zone — Retail Price (ro), Discount % (editable),
@@ -540,6 +606,28 @@
       detailReadOnly(rec,          'field_2303', 'Applied Discount') +
       detailReadOnly(rec,          'field_2269', 'Total') +
     '</div>';
+  }
+
+  /** True when the view shows LABOR money only (config laborOnly — the sub
+   *  CO page): Fee/+Hrs/+Mat are SCW-side or client-facing numbers, so
+   *  their cells render blank (grid alignment kept) and never carry data. */
+  function isLaborOnly(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.laborOnly);
+    } catch (e) { return false; }
+  }
+
+  /** Equipment money field (config equipmentField — the ops CO worksheet,
+   *  view_4079): an editable unit-equipment-price stack rendered ahead of
+   *  Sub Bid so ops price CO adds in full (equipment + labor). Inert on
+   *  sales/survey/install/laborOnly views — those money models never reach
+   *  the build-SOW stack branch. */
+  function equipmentFieldOf(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return (vc && vc.equipmentField) || null;
+    } catch (e) { return null; }
   }
 
   /** True when the view hides the SOW column entirely (config hideSow). */
@@ -561,10 +649,14 @@
    *  in sales mode, three blank stacks + fee otherwise. */
   function moneyCellsBlank(viewKey) {
     if (isSalesMoney(viewKey)) return empty('scw-ws-v2-cell--sales-total');
-    return empty('scw-ws-v2-cell--stack') +
+    if (isLaborOnly(viewKey))  return empty('scw-ws-v2-cell--stack');
+    var hasEq = !!equipmentFieldOf(viewKey);
+    return (hasEq ? empty('scw-ws-v2-cell--stack') : '') +
            empty('scw-ws-v2-cell--stack') +
            empty('scw-ws-v2-cell--stack') +
-           empty('scw-ws-v2-cell--fee');
+           empty('scw-ws-v2-cell--stack') +
+           empty('scw-ws-v2-cell--fee') +
+           (hasEq ? empty('scw-ws-v2-cell--fee') : '');   /* net track */
   }
 
   /**
@@ -805,7 +897,73 @@
    *  Survey-derived rows render a hidden, non-interactive placeholder
    *  (no data-scw-ws-v2-kebab → the delete handler never matches it),
    *  mirroring v1's hide-delete behavior. */
+  // CO's own SOW id = last 24-hex of the hash (view_4079 is a drill-in child
+  // page whose record IS the CO's SOW; same rule co-adopt.js uses).
+  function coSowIdFromHash() {
+    var segs = (window.location.hash || '').replace(/^#/, '').split('?')[0].split('/');
+    for (var i = segs.length - 1; i >= 0; i--) {
+      if (/^[a-f0-9]{24}$/i.test(segs[i])) return segs[i];
+    }
+    return '';
+  }
+
+  /** Sub CO page authorship (field_2978 SYS_origin, stamped by Make from
+   *  the add-item payload's `origin`): rows the SUB created are theirs to
+   *  delete; everything else — SCW-created, or blank (pre-stamp records /
+   *  column not on the grid yet) — fails safe to NOT deletable.
+   *  Returns true (sub owns it) / false (SCW's) / null (no gate on view). */
+  function subOwnsRecord(rec, viewKey) {
+    var vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey)) || {};
+    if (!vc.subOrigin || !vc.subOrigin.field) return null;
+    var f = vc.subOrigin.field;
+    var raw = rec[f + '_raw'];
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) raw = raw.identifier || '';
+    var val = String(raw != null && raw !== '' ? raw : (rec[f] || ''))
+      .replace(/<[^>]*>/g, '').trim();
+    return new RegExp(vc.subOrigin.own || 'sub', 'i').test(val);
+  }
+
   function kebabCell(rec, viewKey) {
+    // CO worksheet delete guard: an ADOPTED item (field_2154 lists a SOW
+    // other than this CO) is a SHARED record — never delete it, only unlink
+    // it from the CO. A net-new item (CO's SOW only) falls through to the
+    // real trash below.
+    var _vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey)) || {};
+    // Install worksheets (config noDelete): NOTHING is deletable — install
+    // scope only changes through the change-order process. Inert grayed
+    // trash keeps the grid track aligned and tells the user why.
+    if (_vc.noDelete) {
+      return '<span class="scw-ws-v2-cell scw-ws-v2-trash scw-ws-v2-trash--blocked" ' +
+        'aria-hidden="true" ' +
+        'title="Install items can’t be deleted here — all changes go through the change-order process.">' +
+        TRASH_SVG +
+      '</span>';
+    }
+    if (_vc.coDeleteGuard && !isDeleteBlocked(rec, viewKey)) {
+      var coId = coSowIdFromHash();
+      var sowRaw = rec['field_2154_raw'];
+      var shared = false;
+      if (coId && Array.isArray(sowRaw)) {
+        for (var si = 0; si < sowRaw.length; si++) {
+          if (sowRaw[si] && sowRaw[si].id && sowRaw[si].id !== coId) { shared = true; break; }
+        }
+      }
+      // Sub page: an SCW-created CO-only item is ALSO unlink-only — the sub
+      // may take it off the CO but never delete SCW's record.
+      var scwOwned = subOwnsRecord(rec, viewKey) === false;
+      if (shared || scwOwned) {
+        return '<button type="button" class="scw-ws-v2-cell scw-ws-v2-trash scw-ws-v2-unlink" ' +
+          'data-scw-ws-v2-unlink="' + escapeHtml(rec.id) + '" ' +
+          'data-scw-ws-v2-view="' + escapeHtml(viewKey || '') + '" ' +
+          'data-scw-ws-v2-co="' + escapeHtml(coId) + '" ' +
+          'aria-label="Remove from this change order" ' +
+          'title="' + (shared
+            ? 'Remove from this change order (adopted item — stays on its original scope)'
+            : 'Remove from this change order (SCW added this item — it can’t be deleted here)') + '">' +
+          UNLINK_SVG +
+        '</button>';
+      }
+    }
     if (isDeleteBlocked(rec, viewKey)) {
       var msg = DELETE_BLOCK_WHEN_SET[viewKey]
         ? 'Adopted into a SOW — remove it from the SOW, not here.'
@@ -816,10 +974,13 @@
         TRASH_SVG +
       '</span>';
     }
+    var trashTitle = subOwnsRecord(rec, viewKey) === true
+      ? 'Delete line item (you added this item)'
+      : 'Delete line item';
     return '<button type="button" class="scw-ws-v2-cell scw-ws-v2-trash" ' +
       'data-scw-ws-v2-kebab="' + escapeHtml(rec.id) + '" ' +
       'data-scw-ws-v2-view="' + escapeHtml(viewKey || '') + '" ' +
-      'aria-label="Delete line item" title="Delete line item">' +
+      'aria-label="Delete line item" title="' + trashTitle + '">' +
       TRASH_SVG +
     '</button>';
   }
@@ -1073,7 +1234,7 @@
    * styled cell. Click handler in init.js reads the data-* attrs and
    * opens the picker modal.
    */
-  function detailConnection(rec, viewKey, fieldKey, label, warn) {
+  function detailConnection(rec, viewKey, fieldKey, label, warn, readOnly) {
     // Special-case connections that point at ANOTHER LINE ITEM (Parent
     // field_2464, Connected Device field_2197): the line-item object\'s auto
     // identifier degenerates to "<recordId> (<mdfLabel>)" server-side for
@@ -1098,6 +1259,16 @@
       labelHtml = '<span class="scw-ws-v2-detail-warn-ic" ' +
         'title="No connected device — this cam/reader is disconnected">' +
         warnIc + '</span>' + labelHtml;
+    }
+    // readOnly: derived/locked connection — plain readable text per the repo
+    // locked-field convention (no button, no edit affordance, no picker
+    // hook). Same value resolution + warn icon as the editable variant.
+    if (readOnly) {
+      return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn scw-ws-v2-detail-field--ro' +
+          (warn ? ' scw-ws-v2-detail-field--warn' : '') + '">' +
+        '<div class="scw-ws-v2-detail-label">' + labelHtml + '</div>' +
+        '<div class="scw-ws-v2-display">' + escapeHtml(val) + '</div>' +
+      '</div>';
     }
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn' +
         (warn ? ' scw-ws-v2-detail-field--warn' : '') + '">' +
@@ -1774,12 +1945,15 @@
       groups += notesCol;
 
       // Col 3 — Connection & location: MDF/IDF (top) over Connected To.
-      // Connected To (field_2381, single) — editable; cascade writes the
-      // parent's field_2380. Candidates resolved in init.js.
+      // Connected To (field_2381, single) — READ-ONLY display. The canonical
+      // editable side is the NVR/switch's Connected Devices (field_2380);
+      // the mirror cascade derives field_2381 from it, so editing the child
+      // side here would just re-create the two-writer drift (same direction
+      // as CLAUDE.md #12 for the SOW pair).
       groups += sdGroup(
         mdfItem +
         sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',
-          'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn'),
+          'Connected To', hasIssue(rec, 'disconnected'), true), 'scw-ws-v2-sd--conn'),
         'scw-ws-v2-sd-group--conn');
 
       // Col 4 — Mounting & cabling: Mounting Height + Drop Length + Conduit.
@@ -1816,8 +1990,8 @@
     '</div>';
   }
 
-  // ── Install card path (moneyMode:'install', view_3915) ─────────
-  // Mirrors the v1 device-worksheet (view_3915) config. The install object
+  // ── Install card path (moneyMode:'install', view_4093) ─────────
+  // Mirrors the v1 device-worksheet (view_4093) config. The install object
   // (Deploy / Install Line Items) has NO money columns — no Sub Bid/+Hrs/
   // +Mat/Fee/Labor/Ext/Bid — so the money region is fully suppressed. The
   // summary row is just:
@@ -1828,7 +2002,7 @@
   // config-qa-popover.js inject those into the card post-render. We only
   // produce a normal .scw-ws-v2-detail panel they can hook into.
   //
-  // Detail panel per bucket category (mirrors v1 view_3915 detailLayout):
+  // Detail panel per bucket category (mirrors v1 view_4093 detailLayout):
   //   cam:         Connected To (field_2821) + Existing/Exterior/Plenum
   //                chips (field_2807/2805/2806) + Drop Length (field_2804) +
   //                Conduit (field_2803) + Labor Desc (field_2809) +
@@ -1853,7 +2027,7 @@
   }
 
   // Read-only flag chit — rendered ONLY when the boolean is Yes (hidden when
-  // No; v1 view_3915 shows Existing/Exterior/Plenum as show-when-true READ-ONLY
+  // No; v1 view_4093 shows Existing/Exterior/Plenum as show-when-true READ-ONLY
   // chits, never editable). Not interactive (no data-scw-ws-v2-chip hook).
   function installFlagChit(rec, fieldKey, label) {
     if (readBool(rec, fieldKey) !== 'Yes') return '';
@@ -1861,10 +2035,56 @@
       'title="' + escapeHtml(label) + '">' + escapeHtml(label) + '</span>';
   }
 
+  // "Removed by CO" — the install record's removedByCo connection
+  // (field_2967) is populated by Make at CO signature (docs/change-orders.md:
+  // removes flip this connection, never delete). Populated = this item is no
+  // longer in install scope. Returns the CO identifier string, or null when
+  // the item is still active.
+  function installRemovedBy(rec, viewKey) {
+    var key = 'field_2967';
+    try {
+      var F = ns.cfg.fields(viewKey);
+      if (F && F.removedByCo) key = F.removedByCo;
+    } catch (e) {}
+    var raw = rec[key + '_raw'];
+    if (Array.isArray(raw) && raw.length && raw[0]) {
+      return String(raw[0].identifier || '') || 'change order';
+    }
+    return null;
+  }
+
+  // Short "CO ####" label from the removedByCo connection identifier —
+  // handles the shapes the CO numbering produces: "1410", "CO-1410",
+  // "SW1418CO", "60524852230-SW1418CO". Falls back to the (truncated)
+  // identifier text when no number is recognizable.
+  function shortCoLabel(ident) {
+    var s = String(ident || '').replace(/<[^>]*>/g, '').trim();
+    if (!s) return 'CO';
+    var m = s.match(/CO[-\s]?(\d+)/i) ||     // "CO-1410" / "CO 1410"
+            s.match(/(\d{2,})\s*CO\b/i) ||   // "SW1418CO"
+            s.match(/^(\d+)$/) ||            // bare "1410"
+            s.match(/SW\s?(\d+)/i);          // "SW1418" (no CO suffix)
+    if (m) return 'CO ' + m[1];
+    return 'CO ' + (s.length > 14 ? s.slice(0, 14) + '…' : s);
+  }
+
+  // Red "Removed by CO ####" chip for the Flags cell — names the specific
+  // change order. Red is correct here per the repo color convention — this
+  // is a destructive/removed STATE, not a warning (warnings stay amber).
+  function installRemovedChip(rec, viewKey) {
+    var by = installRemovedBy(rec, viewKey);
+    if (by === null) return '';
+    return '<span class="scw-ws-v2-chip scw-ws-v2-chip--ro scw-ws-v2-chip--removed" ' +
+      'title="' + escapeHtml('Removed from install scope by signed change order (' + by + ')') +
+      '">Removed by ' + escapeHtml(shortCoLabel(by)) + '</span>';
+  }
+
   // Flag-chits cell — always emitted (holds its grid track); empty when no
-  // flag is true. Cam rows carry cabling/exterior/plenum.
-  function installFlags(rec, viewKey, F) {
+  // flag is true. Cam rows carry cabling/exterior/plenum. The Removed-by-CO
+  // chip (when present) leads the cell on every category.
+  function installFlags(rec, viewKey, F, extraChips) {
     return '<div class="scw-ws-v2-cell scw-ws-v2-cell--install-flags">' +
+      (extraChips || '') +
       installFlagChit(rec, F.existCabling || 'field_2807', 'Existing') +
       installFlagChit(rec, F.exterior     || 'field_2805', 'Exterior') +
       installFlagChit(rec, F.plenum       || 'field_2806', 'Plenum') +
@@ -1901,9 +2121,18 @@
       productSlot = installProductCell(rec, F);
 
     // Read-only flag chits (Existing/Exterior/Plenum) — cam rows only, shown
-    // only when true. Non-cam keeps an empty track for grid alignment.
-    var flagsSlot = isCam ? installFlags(rec, viewKey, F)
-                          : empty('scw-ws-v2-cell--install-flags');
+    // only when true. Non-cam keeps an empty track for grid alignment, EXCEPT
+    // when the item is removed by a CO — that chip shows on every category.
+    var removedChip = installRemovedChip(rec, viewKey);
+    var flagsSlot;
+    if (isCam) {
+      flagsSlot = installFlags(rec, viewKey, F, removedChip);
+    } else if (removedChip) {
+      flagsSlot = '<div class="scw-ws-v2-cell scw-ws-v2-cell--install-flags">' +
+        removedChip + '</div>';
+    } else {
+      flagsSlot = empty('scw-ws-v2-cell--install-flags');
+    }
 
     // SCW Notes — the ONE editable field in the install header (v1 field_2808
     // directEdit). Everything else on the card is read-only.
@@ -1921,17 +2150,66 @@
     '</div>';
   }
 
+  /** Read-only Mounting Hardware chips for the install worksheet. Same
+   *  authoritative child-side read as detailMountingHardware — each
+   *  accessory's OWN back-pointer names its parent — but resolved through
+   *  the per-view field map (install: field_2853) and stripped of every
+   *  drafting affordance (no stepper, no unlink/delete, no + Add): install
+   *  accessories are signed scope, not drafting. Returns '' when the view
+   *  maps no parent field or nothing points at this record, so the SOW
+   *  paths and accessory-less installs are untouched. */
+  function detailMountingHardwareRO(rec, viewKey) {
+    var F = fieldsFor(viewKey);
+    var parentKey = F.parent;
+    if (!parentKey || !rec || !rec.id) return '';
+    var kids;
+    try { kids = backIndex(viewKey, parentKey)[rec.id] || []; }
+    catch (e) { return ''; }
+    if (!kids.length) return '';
+    var HEX_24 = /^[a-f0-9]{24}(\s|\b|$)/i;
+    var chipsHtml = '';
+    for (var i = 0; i < kids.length; i++) {
+      var aA = kids[i] && (kids[i].attributes || kids[i]);
+      if (!aA || !aA.id) continue;
+      var lbl = '';
+      var cand = [F.productName, F.displayLabel];
+      for (var c = 0; c < cand.length && !lbl; c++) {
+        if (!cand[c]) continue;
+        lbl = (aA[cand[c]] || '').toString().replace(/<[^>]*>/g, '').trim();
+        if (HEX_24.test(lbl)) lbl = '';
+      }
+      if (!lbl) lbl = '(accessory)';
+      var q = parseFloat(readNum(aA, F.qty || 'field_1964'));
+      var qtySuffix = (isFinite(q) && q > 1) ? ' ×' + q : '';
+      chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap">' +
+        '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert" ' +
+          'title="' + escapeHtml(lbl) + '">' +
+          escapeHtml(lbl + qtySuffix) +
+        '</span></span>';
+    }
+    if (!chipsHtml) return '';
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--ro">' +
+      '<div class="scw-ws-v2-detail-label">Mounting Hardware</div>' +
+      '<div class="scw-ws-v2-mh-chips">' + chipsHtml + '</div>' +
+    '</div>';
+  }
+
   function buildDetail_install(rec, viewKey, cat) {
     var F = fieldsFor(viewKey);
 
-    // Install detail = READ-ONLY info (per v1 view_3915). The ONLY editable
-    // items are SCW Notes (header) and Connected Devices (network devices).
+    // Install detail = READ-ONLY info (per v1 view_4093). The editable
+    // items are SCW Notes (header), Connected Devices (network devices),
+    // and MDF / IDF (added 2026-07-23 — ops must be able to relocate an
+    // installed item; the field_2818 GROUPING_FIELD cascade in
+    // mirror-connection-sync regroups the worksheet after the move).
     // Connected To (field_2821) is read-only display (v1: connectedTo readOnly).
     var items = '';
+    items += sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2818',
+      'MDF / IDF'), 'scw-ws-v2-sd--conn');
 
     if (cat === 'cam') {
       // Connected To (field_2821, single → network device) — EDITABLE; the
-      // field_2820↔field_2821 cascade (createMirror VIEW_ID view_3915) keeps
+      // field_2820↔field_2821 cascade (createMirror VIEW_ID view_4093) keeps
       // the NVR/switch's Connected Devices in sync.
       items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2821',
         'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn');
@@ -1939,6 +2217,8 @@
         'scw-ws-v2-sd--num');
       items += sdItem(detailReadOnly(rec, F.conduit || 'field_2803', 'Conduit'),
         'scw-ws-v2-sd--num');
+      var mhCam = detailMountingHardwareRO(rec, viewKey);
+      if (mhCam) items += sdItem(mhCam, 'scw-ws-v2-sd--wide');
       items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
         'scw-ws-v2-sd--wide');
     } else if (cat === 'default') {
@@ -1947,6 +2227,8 @@
       if (readBool(rec, F.mapConn || 'field_2795') === 'Yes') {
         items += sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2820', 'Connected Devices'), 'scw-ws-v2-sd--conn');
       }
+      var mhDef = detailMountingHardwareRO(rec, viewKey);
+      if (mhDef) items += sdItem(mhDef, 'scw-ws-v2-sd--wide');
       items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
         'scw-ws-v2-sd--wide');
     }
@@ -1969,7 +2251,30 @@
     card.classList.add('scw-ws-v2-card--' + cat);
     if (isSalesMoney(sourceViewKey))   card.classList.add('scw-ws-v2-card--sales');
     if (isSurveyMoney(sourceViewKey))  card.classList.add('scw-ws-v2-card--survey');
-    if (isInstallMoney(sourceViewKey)) card.classList.add('scw-ws-v2-card--install');
+    if (isInstallMoney(sourceViewKey)) {
+      card.classList.add('scw-ws-v2-card--install');
+      // Removed-by-CO ghost treatment — the item stays visible (never delete,
+      // per the CO design) but reads as dead scope: struck-through identity,
+      // rose accent. The chip itself renders in the Flags cell.
+      if (installRemovedBy(rec, sourceViewKey) !== null) {
+        card.classList.add('scw-ws-v2-card--removed');
+      }
+    }
+    // laborOnly (sub CO page): the build-SOW card shape with a single money
+    // column — the labor grid drops the +Hrs/+Mat/Fee tracks. The install
+    // removal panel (view_4116) is laborOnly too but already has its own
+    // money-free --install grid, so it doesn't take the labor class.
+    if (isLaborOnly(sourceViewKey) && !isInstallMoney(sourceViewKey)) {
+      card.classList.add('scw-ws-v2-card--labor');
+    }
+    // Ops CO worksheet (config equipmentField): the extra Equipment $ money
+    // stack needs its own grid variant. Only meaningful on the build-SOW
+    // money model — the other models never render the equipment stack.
+    if (equipmentFieldOf(sourceViewKey) &&
+        !isSalesMoney(sourceViewKey) && !isSurveyMoney(sourceViewKey) &&
+        !isInstallMoney(sourceViewKey) && !isLaborOnly(sourceViewKey)) {
+      card.classList.add('scw-ws-v2-card--equip');
+    }
     var bid = bucketIdOf(rec, sourceViewKey);
     if (bid) card.setAttribute('data-scw-ws-v2-bucket', bid);
     // Promoted-bracket marker: the bracket has a parent (field_2464
@@ -1978,6 +2283,18 @@
     // left accent + the inline attached-to chip.
     if (readParentRef(rec)) {
       card.classList.add('scw-ws-v2-card--promoted-bracket');
+    }
+
+    // CO worksheet: visually separate ADD rows from REMOVAL rows by the CO
+    // Action field (field_2965). Removal rows (co-remove.js creates them with
+    // CO Action = Remove) get a rose accent + "REMOVE" badge; everything else
+    // reads as an add. Only on the CO worksheet (coDeleteGuard).
+    var _coVc = (ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey)) || {};
+    var _coRemove = false;
+    if (_coVc.coDeleteGuard) {
+      var coAct = String(readField(rec, 'field_2965') || '').replace(/<[^>]*>/g, '').trim();
+      _coRemove = /remove/i.test(coAct);
+      card.classList.add(_coRemove ? 'scw-ws-v2-card--co-remove' : 'scw-ws-v2-card--co-add');
     }
 
     // SOW connection ids — space-separated for the SOW filter pills.
@@ -2003,7 +2320,7 @@
     var sales   = isSalesMoney(sourceViewKey);
     var survey  = isSurveyMoney(sourceViewKey);
     var install = isInstallMoney(sourceViewKey);
-    // Survey object (view_3505) and install object (view_3915) each take a
+    // Survey object (view_3505) and install object (view_4093) each take a
     // dedicated row/detail path for every bucket category — their keys +
     // money model differ from the SOW object (install has NO money columns).
     if (survey) {
@@ -2045,6 +2362,26 @@
     }
 
     card.innerHTML = attachedCaption + row + det;
+    // CO removal rows: a leading "REMOVE" chip in the DROP/label cell reads as
+    // the row's type flag (in-flow, next to its identity) instead of a badge
+    // floating over the action icons. The rose accent + tint still mark the row.
+    if (_coRemove) {
+      var _labelCell = card.querySelector('.scw-ws-v2-row .scw-ws-v2-cell--label');
+      if (_labelCell) {
+        _labelCell.insertAdjacentHTML('afterbegin',
+          '<span class="scw-ws-v2-co-flag scw-ws-v2-co-flag--remove">REMOVE</span>');
+      }
+    }
+    // Sub CO page: badge the rows the sub created — theirs to delete. SCW
+    // rows carry no badge; their trash is already swapped for unlink.
+    if (subOwnsRecord(rec, sourceViewKey) === true) {
+      var _ownCell = card.querySelector('.scw-ws-v2-row .scw-ws-v2-cell--label');
+      if (_ownCell) {
+        _ownCell.insertAdjacentHTML('afterbegin',
+          '<span class="scw-ws-v2-co-flag scw-ws-v2-co-flag--sub" ' +
+          'title="You added this item — you can edit or delete it.">ADDED BY YOU</span>');
+      }
+    }
     // Sales lock: existing survey-derived items (field_2586 >= 1) are
     // read-only except Product / Custom Disc % / SCW Notes (v1 parity).
     if (isCrLocked(rec, sourceViewKey)) {
@@ -2125,6 +2462,8 @@
     // Survey-link delete block — consumed by bulk delete to drop records
     // that aren't deletable.
     isDeleteBlocked:     isDeleteBlocked,
+    subOwnsRecord:       subOwnsRecord,
+    isLaborOnly:         isLaborOnly,
     // Reciprocal Connected-Devices fingerprint — folded into the render
     // signature so a parent rebuilds when a child's Connected To changes.
     connDevicesSig:      connDevicesSig

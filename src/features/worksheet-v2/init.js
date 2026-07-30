@@ -44,6 +44,10 @@
     var panel = document.createElement('div');
     panel.id = 'scw-ws-v2-' + vcfg.sourceViewKey;
     panel.className = 'scw-ws-v2';
+    // Read-only deployments (e.g. the CO adoption panel view_4088): the
+    // class drives styles.js's edit-affordance lockdown; co-adopt.js adds
+    // the keyboard belt (hard-disables inputs after each render).
+    if (vcfg.readOnly) panel.className += ' scw-ws-v2--readonly';
 
     var banner = document.createElement('div');
     banner.className = 'scw-ws-v2-banner';
@@ -181,13 +185,18 @@
     }
     if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(key);
     // Mode/photos toolbar — mount idempotently above the L1 list.
-    if (ns.toolbar && typeof ns.toolbar.mount === 'function') {
+    // readOnly panels (CO adoption view_4088) skip the toolbar (its CTAs
+    // are all write actions), sort (persists prefs), native filters, and
+    // — critically — bulk below: bulk is a singleton keyed to ONE view, and
+    // a second panel on the same scene would clobber _sourceViewKey so the
+    // bulk modal served the wrong view's fields.
+    if (!vcfg.readOnly && ns.toolbar && typeof ns.toolbar.mount === 'function') {
       ns.toolbar.mount(key);
     }
-    if (ns.sort && typeof ns.sort.mount === 'function') {
+    if (!vcfg.readOnly && ns.sort && typeof ns.sort.mount === 'function') {
       ns.sort.mount(key);
     }
-    if (ns.nativeFilter && typeof ns.nativeFilter.mount === 'function') {
+    if (!vcfg.readOnly && ns.nativeFilter && typeof ns.nativeFilter.mount === 'function') {
       ns.nativeFilter.mount(key);
     }
     var _vcSow = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
@@ -212,7 +221,8 @@
     // bulk.mount('view_3586') on the bid-review scene, clobbering
     // _sourceViewKey to a SALES view so the bulk modal serves SALES fields
     // (Custom Disc %, Label #) on the bid comparison grid.
-    if (ns.bulk && typeof ns.bulk.mount === 'function' &&
+    if (!vcfg.readOnly &&
+        ns.bulk && typeof ns.bulk.mount === 'function' &&
         document.getElementById('scw-ws-v2-' + key)) {
       ns.bulk.mount(key);
     }
@@ -425,10 +435,10 @@
     });
   }
 
-  // Chevron click — toggle the card's detail panel open/closed.
-  // No persistence per card; expand state lives in the DOM only and
-  // resets on re-render. (If "remember which cards were open across
-  // refreshes" becomes a real ask, persist a Set of ids per view.)
+  // Chevron click — toggle the card's detail panel open/closed. Persisted
+  // per record only on the views state.js flags (CARD_PERSIST_VIEWS,
+  // e.g. view_4093/view_4056) — setCardOpen no-ops elsewhere, so this is
+  // safe to call unconditionally.
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-expand-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-expand-bound', '1');
     document.addEventListener('click', function (e) {
@@ -439,6 +449,28 @@
       e.preventDefault();
       e.stopPropagation();
       card.classList.toggle('scw-ws-v2-card--open');
+      var _cont0 = card.closest('.scw-ws-v2');
+      var _vk0 = _cont0 && _cont0.id ? _cont0.id.replace('scw-ws-v2-', '') : '';
+      var _rid0 = card.getAttribute('data-scw-ws-v2-record');
+      if (_vk0 && _rid0 && ns.state && typeof ns.state.setCardOpen === 'function') {
+        ns.state.setCardOpen(_vk0, _rid0, card.classList.contains('scw-ws-v2-card--open'));
+      }
+      // The per-row "missing photos" chit must actually surface the
+      // missing-photo placeholders: force the card open (never toggle
+      // closed) and flip the view's photo strips on — the toolbar
+      // "Show photos" toggle is the master photo switch.
+      if (btn.classList.contains('scw-ws-v2-warn-chit') &&
+          btn.getAttribute('data-issue-type') === 'photos') {
+        card.classList.add('scw-ws-v2-card--open');
+        var _cont = card.closest('.scw-ws-v2');
+        var _vk = _cont && _cont.id ? _cont.id.replace('scw-ws-v2-', '') : '';
+        if (_vk && ns.toolbar && typeof ns.toolbar.showPhotos === 'function') {
+          ns.toolbar.showPhotos(_vk);
+        }
+        if (_vk && _rid0 && ns.state && typeof ns.state.setCardOpen === 'function') {
+          ns.state.setCardOpen(_vk, _rid0, true);
+        }
+      }
     });
   }
 
@@ -986,6 +1018,105 @@
   //      then delete the parent via its native delete link (REST fallback).
   //      No Make webhook.
   // Single popover element reused across cards. Outside click closes.
+  // CO worksheet "Unlink from change order" — adopted (shared) rows detach
+  // from the CO by removing the CO's SOW id from field_2154 (a direct
+  // view-scoped PUT; single field, no cascade). The record itself and its
+  // other SOW connections are untouched.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-unlink-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-unlink-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-unlink]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var rowId  = btn.getAttribute('data-scw-ws-v2-unlink');
+      var viewId = btn.getAttribute('data-scw-ws-v2-view');
+      var coId   = btn.getAttribute('data-scw-ws-v2-co');
+      if (!rowId || !viewId || !coId) return;
+      if (!(window.SCW && typeof SCW.knackAjax === 'function' && typeof SCW.knackRecordUrl === 'function')) return;
+
+      // Current field_2154 ids minus the CO — what stays after unlink.
+      var recs = (ns.data && typeof ns.data.readRecords === 'function') ? ns.data.readRecords(viewId) : [];
+      var rec = null;
+      for (var i = 0; i < recs.length; i++) { if (recs[i] && recs[i].id === rowId) { rec = recs[i]; break; } }
+      function minusCo(r) {
+        var raw = r && r['field_2154_raw'];
+        var out = [];
+        if (Array.isArray(raw)) {
+          for (var j = 0; j < raw.length; j++) {
+            if (raw[j] && raw[j].id && raw[j].id !== coId) out.push(raw[j].id);
+          }
+        }
+        return out;
+      }
+      var remaining = minusCo(rec);
+      // Accessory invariant: an accessory's SOW mirrors its parent's set, so
+      // unlinking a parent detaches its accessories from the CO too —
+      // otherwise they'd strand on the CO with no parent (and the build-page
+      // reconcile sweep would fight whichever way they were left). Accessory
+      // = a loaded CO row whose field_2464 back-pointer names this record.
+      var accJobs = [];
+      for (var a = 0; a < recs.length; a++) {
+        var ar = recs[a];
+        if (!ar || !ar.id || ar.id === rowId) continue;
+        var aRaw = ar['field_2464_raw'];
+        if (Array.isArray(aRaw) && aRaw[0] && aRaw[0].id === rowId) {
+          accJobs.push({ id: ar.id, remaining: minusCo(ar) });
+        }
+      }
+
+      function doUnlink() {
+        var pending = 1 + accJobs.length;
+        function settle() {
+          if (--pending > 0) return;
+          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            ns.data.refetchAndNotify(viewId);
+            setTimeout(function () { ns.data.refetchAndNotify(viewId); }, 1500);
+          }
+        }
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(viewId, rowId),
+          type: 'PUT',
+          data: JSON.stringify({ field_2154: remaining }),
+          success: settle,
+          error: function (xhr) {
+            console.warn('[scw-ws-v2] CO unlink PUT failed for ' + rowId, xhr && xhr.status);
+            alert('Could not remove the item from the change order. Try again.');
+            settle();
+          }
+        });
+        accJobs.forEach(function (job) {
+          SCW.knackAjax({
+            url:  SCW.knackRecordUrl(viewId, job.id),
+            type: 'PUT',
+            data: JSON.stringify({ field_2154: job.remaining }),
+            success: settle,
+            error: function (xhr) {
+              console.warn('[scw-ws-v2] CO unlink PUT failed for accessory ' +
+                job.id, xhr && xhr.status);
+              settle();
+            }
+          });
+        });
+      }
+
+      var body = 'Remove this item from the change order? It was adopted from ' +
+        'survey/bid, so it stays on its original scope — only its link to this ' +
+        'CO is removed.' +
+        (accJobs.length
+          ? ' Its ' + (accJobs.length === 1 ? 'attached accessory comes' :
+              accJobs.length + ' attached accessories come') + ' off the CO with it.'
+          : '');
+      if (ns.confirmModal && typeof ns.confirmModal === 'function') {
+        ns.confirmModal({ title: 'Remove from change order?', body: body,
+          okLabel: 'Remove from CO', cancelLabel: 'Cancel' })
+          .then(function (ok) { if (ok) doUnlink(); });
+      } else if (window.confirm(body)) {
+        doUnlink();
+      }
+    }, true);
+  }
+
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-kebab-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-kebab-bound', '1');
 
@@ -1032,10 +1163,21 @@
             return;
           }
 
+          // Accessory back-pointer resolved per view (CLAUDE.md #15):
+          // SOW objects → field_2464, install (view_4093/4056) → field_2853.
+          // Deleting an install parent must cascade over the INSTALL
+          // relationship — the SOW literal doesn't exist on that object and
+          // would silently orphan the accessory records.
+          var accParentKey = 'field_2464';
+          try {
+            var _dfF = ns.cfg && typeof ns.cfg.fields === 'function' && viewId
+              ? ns.cfg.fields(viewId) : null;
+            if (_dfF && _dfF.parent) accParentKey = _dfF.parent;
+          } catch (e) { /* SOW fallback */ }
           var accIds = [];
           for (var ri = 0; ri < allRecs.length; ri++) {
             var r = allRecs[ri];
-            var raw = r && r['field_2464_raw'];
+            var raw = r && r[accParentKey + '_raw'];
             if (Array.isArray(raw)) {
               for (var rj = 0; rj < raw.length; rj++) {
                 if (raw[rj] && raw[rj].id === rowId) {
@@ -1431,11 +1573,11 @@
         }
       }
 
-      // ── Install object pickers (view_3915) ──────────────────────────
+      // ── Install object pickers (view_4093) ──────────────────────────
       // Connected Devices (field_2820, multi, NVR/switch side) + Connected To
       // (field_2821, single, cam/reader side). Candidates come from the loaded
-      // install records; PUT through view_3915 so mirror-connection-sync's
-      // field_2820↔field_2821 cascade fires (createMirror VIEW_ID view_3915).
+      // install records; PUT through view_4093 so mirror-connection-sync's
+      // field_2820↔field_2821 cascade fires (createMirror VIEW_ID view_4093).
       var _vcfgInstall = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
         ? ns.cfg.viewCfg(viewKey) : null;
       if (_vcfgInstall && _vcfgInstall.moneyMode === 'install') {
@@ -1506,7 +1648,7 @@
             },
             multi: _iIsCD, onSaved: installRefetch,
             // Keep the modal open + locked until the field_2820↔field_2821
-            // reciprocal cascade settles (mirror-connection-sync view_3915/4056).
+            // reciprocal cascade settles (mirror-connection-sync view_4093/4056).
             awaitCascade: true
           });
           return;
@@ -1585,29 +1727,171 @@
       if (fieldKey === 'field_1949' || fieldKey === 'field_2627') {
         var openProductPicker = function () {
           var pmap = (window.SCW && SCW.productMap) || {};
-          var myBucketId = current ? bucketIdOf(current, viewKey) : '';
+          // Bucket membership source. Prefer SCW.productBucketMap
+          // (id → [bucketId,…]) — the SAME validated map the inline-edit
+          // filter (filter-products-by-bucket.js) uses against the line
+          // item's bucket, so its ids are known to line up. productMap's
+          // own .buckets is the fallback for when that global isn't loaded.
+          var bmap = (window.SCW && SCW.productBucketMap) || null;
+          // Resolve THIS row's bucket through the per-view bucket field
+          // (field_2219 on SOW, field_2366 on survey). The local bucketIdOf
+          // defined higher in this handler hardcodes field_2219, so go via
+          // ns.card which honours the view's configured bucket field —
+          // otherwise the survey product picker (field_2627) never filters.
+          var myBucketId = '';
+          if (current) {
+            myBucketId = (ns.card && typeof ns.card.bucketIdOf === 'function')
+              ? ns.card.bucketIdOf(current, viewKey)
+              : bucketIdOf(current);
+          }
+          // A product with no bucket entry in the chosen source is treated
+          // as universal (offered in every bucket) — matching the inline-edit
+          // filter's "no entry → allow" rule.
+          var allowedInBucket = function (pid, p) {
+            if (!myBucketId) return true;
+            // A product belongs to this bucket if EITHER source places it
+            // there — productMap's own .buckets OR SCW.productBucketMap.
+            // Using just one as the sole authority over-filters when that map
+            // is sparse (the "only 3 products show" bug): a product the other
+            // map correctly tags for this bucket gets hidden. Only exclude a
+            // product that IS known to some map but NOT for this bucket; a
+            // product with no bucket data anywhere stays (universal).
+            var known = false, hit = false;
+            if (p && Array.isArray(p.buckets) && p.buckets.length) {
+              known = true;
+              if (p.buckets.indexOf(myBucketId) !== -1) hit = true;
+            }
+            if (!hit && bmap) {
+              var bl = bmap[pid];
+              if (bl && bl.length) {
+                known = true;
+                if (bl.indexOf(myBucketId) !== -1) hit = true;
+              }
+            }
+            return known ? hit : true;
+          };
+          // Fallback catalog for scenes where the SCW.productMap Builder
+          // snippet isn't deployed (e.g. the bid comparison grid, scene_1155
+          // — Known Issue #17). Without it the picker used to silently never
+          // open. Scrape the distinct products actually in use on this view's
+          // loaded records (field_1949 / field_2627 connection values →
+          // id + identifier) so the picker still opens with a usable list.
+          // Degraded (in-use only, not the full catalog) but far better than
+          // a dead click; a no-op wherever productMap is present.
+          var fallbackFromRecords = function () {
+            var connFields = ['field_1949', 'field_2627'];
+            // Derive product → { name, set-of-buckets } from the loaded rows
+            // themselves: every row pairs a product with its OWN bucket, so
+            // we get a product→bucket map straight from the grid — no external
+            // Builder map needed and the ids are guaranteed to line up. This
+            // is what lets the fallback actually FILTER by category on scenes
+            // where neither productMap nor productBucketMap is deployed.
+            var prodBuckets = Object.create(null);
+            for (var ri = 0; ri < records.length; ri++) {
+              var rec = records[ri];
+              if (!rec) continue;
+              var rb = (ns.card && typeof ns.card.bucketIdOf === 'function')
+                ? ns.card.bucketIdOf(rec, viewKey) : '';
+              for (var cf = 0; cf < connFields.length; cf++) {
+                var fraw = rec[connFields[cf] + '_raw'];
+                if (!Array.isArray(fraw)) continue;
+                for (var j = 0; j < fraw.length; j++) {
+                  var v = fraw[j];
+                  if (!v || !v.id) continue;
+                  var pb = prodBuckets[v.id] ||
+                    (prodBuckets[v.id] = { name: '', buckets: Object.create(null) });
+                  if (rb) pb.buckets[rb] = true;
+                  if (!pb.name && v.identifier != null) {
+                    pb.name = String(v.identifier).replace(/<[^>]*>/g, '').trim();
+                  }
+                }
+              }
+            }
+            var out = [];
+            for (var pk in prodBuckets) {
+              if (!Object.prototype.hasOwnProperty.call(prodBuckets, pk)) continue;
+              var e = prodBuckets[pk];
+              // Bucket gate: when this row's bucket is known, keep only
+              // products seen in that bucket on the grid. A product whose
+              // bucket we never observed stays (universal / fail-open).
+              if (myBucketId) {
+                var hasAny = false, inBucket = false;
+                for (var bkk in e.buckets) {
+                  hasAny = true;
+                  if (bkk === myBucketId) { inBucket = true; break; }
+                }
+                if (hasAny && !inBucket) continue;
+              }
+              out.push({ id: pk, name: e.name || pk });
+            }
+            return out;
+          };
+
           var prodCandidates = [];
+          var pmapEmpty = true;
+          var _dbgTotal = 0, _dbgRejBucket = 0;   // diagnostics
           for (var pid in pmap) {
             if (!Object.prototype.hasOwnProperty.call(pmap, pid)) continue;
+            pmapEmpty = false;
+            _dbgTotal++;
             var p = pmap[pid];
             if (!p) continue;
-            // Bucket gate: include only products whose buckets list
-            // contains the line item's bucket. Products with no
-            // buckets at all are still included as a catch-all (rare
-            // but happens for newly-added products).
-            if (myBucketId && Array.isArray(p.buckets) && p.buckets.length > 0
-                && p.buckets.indexOf(myBucketId) === -1) {
-              continue;
-            }
+            if (!allowedInBucket(pid, p)) { _dbgRejBucket++; continue; }
             prodCandidates.push({
               id: pid,
               name: p.name || '(unnamed)'
             });
           }
+          // `degraded` labels the picker "(in-use only)" and drives the
+          // console warning below — set whenever the full catalog wasn't
+          // the source of the candidate list.
+          var degraded = false;
+          if (pmapEmpty) {
+            prodCandidates = fallbackFromRecords();
+            degraded = true;
+            console.warn('[scw-ws-v2] SCW.productMap absent on this scene — ' +
+              'product picker opened with in-use products only ' +
+              '(' + prodCandidates.length + '). Deploy the catalog on this ' +
+              'scene for the full list (Known Issue #17).');
+          } else if (!prodCandidates.length) {
+            // Catalog present but the bucket filter removed everything —
+            // degrade to in-use products rather than a dead empty list.
+            prodCandidates = fallbackFromRecords();
+            degraded = true;
+          }
+          // One-line diagnostic so we can see WHY the list is short: is
+          // productMap itself sparse on this scene, or is the bucket filter
+          // rejecting most of it? Read this in DevTools when the picker opens.
+          try {
+            var _pSample = null, _sk = null;
+            for (_sk in pmap) { if (Object.prototype.hasOwnProperty.call(pmap, _sk)) { _pSample = pmap[_sk]; break; } }
+            console.log('[scw-ws-v2 product-picker]', {
+              viewKey: viewKey,
+              fieldKey: fieldKey,
+              myBucketId: myBucketId,
+              productMapSize: _dbgTotal,
+              productBucketMapSize: bmap ? Object.keys(bmap).length : 0,
+              rejectedByBucket: _dbgRejBucket,
+              shown: prodCandidates.length,
+              sampleEntry: _pSample && { name: _pSample.name, buckets: _pSample.buckets }
+            });
+          } catch (e) { /* ignore */ }
           prodCandidates.sort(function (a, b) {
             return String(a.name).localeCompare(String(b.name), undefined,
               { numeric: true, sensitivity: 'base' });
           });
+
+          if (!prodCandidates.length) {
+            alert('The product catalog hasn’t loaded yet, so there are no ' +
+              'products to choose from. Refresh the page and try again — if it ' +
+              'keeps happening, the product Builder snippet needs attention.');
+            return;
+          }
+          if (degraded) {
+            console.warn('[scw-ws-v2] SCW.productMap unavailable — product picker ' +
+              'is showing only in-use products (' + prodCandidates.length + '). The ' +
+              'Builder product snippet likely failed to load (see Known Issue #17).');
+          }
 
           // Current selection — field_1949 is a single-select
           // connection; read the existing connected id (if any).
@@ -1630,7 +1914,7 @@
             putViewKey:    viewKey,
             recordId:      recordId,
             fieldKey:      fieldKey,
-            label:         'Product',
+            label:         degraded ? 'Product (in-use only)' : 'Product',
             selectedIds:   prodSel,
             candidates:    prodCandidates,
             itemLabel:     function (rec) { return rec.name || rec.id; },
@@ -1641,13 +1925,29 @@
           });
         };
 
-        if (window.SCW && SCW.productMap) {
+        // Always open the picker. When the full catalog (SCW.productMap) is
+        // present, open immediately. When it's still loading, wait briefly
+        // for it but open with the in-use fallback if it doesn't arrive fast
+        // (a never-resolving productMapReady on a scene without the snippet
+        // used to hang the click forever — and a REJECTED promise from a
+        // failed REST fetch must open the fallback too, not hang). When it's
+        // absent entirely, open straight away — openProductPicker() falls
+        // back to in-use products.
+        if (window.SCW && SCW.productMap && Object.keys(SCW.productMap).length) {
           openProductPicker();
         } else if (window.SCW && SCW.productMapReady
                    && typeof SCW.productMapReady.then === 'function') {
-          SCW.productMapReady.then(openProductPicker);
+          var _prodOpened = false;
+          var _openOnce = function () {
+            if (_prodOpened) return;
+            _prodOpened = true;
+            openProductPicker();
+          };
+          var _prodTimer = setTimeout(_openOnce, 1500);
+          var _readyOpen = function () { clearTimeout(_prodTimer); _openOnce(); };
+          SCW.productMapReady.then(_readyOpen, _readyOpen);
         } else {
-          console.warn('[scw-ws-v2] SCW.productMap missing — Builder snippet not loaded?');
+          openProductPicker();
         }
         return;
       }
@@ -1917,11 +2217,13 @@
         return;
       }
 
-      // MDF/IDF picker (field_1946) — candidates come from this view's
-      // configured MDF/IDF locations grid. Single-select. The MODEL_ONLY
-      // cascade in mirror-connection-sync handles accessory re-grouping
-      // when this changes.
-      if (fieldKey === 'field_1946') {
+      // MDF/IDF picker — candidates come from this view's configured
+      // MDF/IDF locations grid. Single-select. The GROUPING_FIELD cascade
+      // in mirror-connection-sync handles accessory re-grouping when this
+      // changes. field_1946 = SOW line items; field_2818 = install line
+      // items (deploy scene, added 2026-07-23 so ops can relocate
+      // installed items — its mdfSourceViewKey is view_3932).
+      if (fieldKey === 'field_1946' || fieldKey === 'field_2818') {
         // Source the candidates from the view's own mdfSourceViewKey
         // (view_3577 on build-SOW, view_3602 on sales view_3586, …) so the
         // picker opens on every deployment — NOT just the build/bid grids.
@@ -1956,7 +2258,7 @@
           sourceViewKey: viewKey,
           putViewKey:    viewKey,
           recordId:      recordId,
-          fieldKey:      'field_1946',
+          fieldKey:      fieldKey,
           label:         'MDF / IDF',
           selectedIds:   sel,
           candidates:    mdfCandidates,
@@ -1987,16 +2289,65 @@
       // (field_1950 on SOW / field_2365 on survey) server-side, so refetch on save.
       if (fieldKey === 'field_2240' || fieldKey === 'field_2361') {
         var dpRaw = (window.SCW && window.SCW.dropPrefixOptions) || [];
-        if (!dpRaw.length) {
-          console.warn('[scw-ws-v2] SCW.dropPrefixOptions missing/empty — Builder snippet not loaded? Drop Prefix picker can\'t open');
-          return;
-        }
         var dpCandidates = [];
-        for (var dpi = 0; dpi < dpRaw.length; dpi++) {
-          var dpr = dpRaw[dpi];
-          if (dpr && dpr.id && dpr.identifier) {
-            dpCandidates.push({ id: dpr.id, identifier: dpr.identifier });
+        // Survey/bid page (field_2361): only offer prefixes flagged
+        // Available for Subcontractors (field_2439 → subVisible on the
+        // catalog entries; see knack-snippets/drop-prefix-options.snippet.js).
+        // Entries WITHOUT the flag (older snippet shape) stay visible —
+        // fail open, never an empty picker because the snippet is stale.
+        var dpSubOnly = fieldKey === 'field_2361';
+        if (dpRaw.length) {
+          for (var dpi = 0; dpi < dpRaw.length; dpi++) {
+            var dpr = dpRaw[dpi];
+            if (dpr && dpr.id && dpr.identifier) {
+              if (dpSubOnly && dpr.subVisible === false) continue;
+              dpCandidates.push({ id: dpr.id, identifier: dpr.identifier });
+            }
           }
+        } else {
+          // No SCW.dropPrefixOptions Builder snippet on this scene (e.g. the
+          // bid comparison grid — Known Issue #11). Rather than hard-bail and
+          // leave a dead click, scrape the prefixes in use on the loaded rows
+          // (field_2240 / field_2361 connection values) so the picker still
+          // opens with a usable (in-use only) list. No-op wherever the catalog
+          // global is present.
+          var dpSeen = Object.create(null);
+          var dpConn = ['field_2240', 'field_2361'];
+          for (var dr = 0; dr < records.length; dr++) {
+            var drec = records[dr];
+            if (!drec) continue;
+            for (var dc = 0; dc < dpConn.length; dc++) {
+              var draw = drec[dpConn[dc] + '_raw'];
+              if (!Array.isArray(draw)) continue;
+              for (var dj = 0; dj < draw.length; dj++) {
+                var dv = draw[dj];
+                if (!dv || !dv.id || dpSeen[dv.id]) continue;
+                dpSeen[dv.id] = true;
+                dpCandidates.push({
+                  id: dv.id,
+                  identifier: (dv.identifier != null
+                    ? String(dv.identifier).replace(/<[^>]*>/g, '').trim()
+                    : dv.id)
+                });
+              }
+            }
+          }
+          // Distinguish the two failure modes for debugging:
+          //   undefined → the Builder snippet never ran or its objects-API
+          //     fetch failed (check Network for /v1/objects/<obj>/records —
+          //     404 = object/field TODOs unfilled, 401/403 = key).
+          //   []        → the snippet ran but produced ZERO usable entries
+          //     (LABEL_FIELD wrong → every record skipped for blank label).
+          var dpGlobal = window.SCW && window.SCW.dropPrefixOptions;
+          console.warn('[scw-ws-v2] Drop Prefix catalog unusable — ' +
+            'SCW.dropPrefixOptions is ' +
+            (dpGlobal === undefined ? 'UNDEFINED (snippet never ran or its ' +
+              'fetch failed — check the Network tab for the objects-API call)'
+              : 'an EMPTY array (snippet ran but every record was skipped — ' +
+                'LABEL_FIELD is probably wrong)') +
+            '. Picker opened with in-use prefixes only (' +
+            dpCandidates.length + '). See knack-snippets/' +
+            'drop-prefix-options.snippet.js (Known Issue #11).');
         }
         dpCandidates.sort(function (a, b) {
           return String(a.identifier).localeCompare(String(b.identifier), undefined,
@@ -2077,16 +2428,66 @@
             return rec.sowId || rec.name || rec.id;
           },
           multi:         true,
-          onSaved:       function () {
-            // PUT went via view_3610, but v2 reads from view_3962 —
-            // whose Backbone model doesn't auto-refresh, and field_2154
-            // isn't in the mirror-connection-sync cascade so the
-            // scw-cascade-idle path never fires. Refetch explicitly.
-            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-              ns.data.refetchAndNotify(viewKey);
-            } else if (ns.data && typeof ns.data.notify === 'function') {
-              ns.data.notify(viewKey);
+          onSaved:       function (newIds) {
+            // Cascade the SOW change to this record's accessory children
+            // (mounting hardware etc. — rows whose accessory back-pointer
+            // names this record). An accessory rides with its parent: the
+            // re-parent flow, CO unlink, and bulk edit all mirror the
+            // parent's field_2154 onto accessories, but this per-row picker
+            // didn't — leaving accessories on a stale/blank SOW, which
+            // silently drops them from every SOW-filtered surface (proposal
+            // grid, PDFs) so they never nest under their parent product.
+            var sowIds = Array.isArray(newIds) ? newIds : (newIds ? [newIds] : []);
+            var accParentKey = 'field_2464';
+            try {
+              var _sF = ns.cfg && typeof ns.cfg.fields === 'function'
+                ? ns.cfg.fields(viewKey) : null;
+              if (_sF && _sF.parent) accParentKey = _sF.parent;
+            } catch (e) { /* SOW fallback */ }
+            var accIds = [];
+            try {
+              var allRecs = (ns.data && typeof ns.data.readRecords === 'function')
+                ? ns.data.readRecords(viewKey) : [];
+              for (var ai = 0; ai < allRecs.length; ai++) {
+                var ar = allRecs[ai];
+                var apRaw = ar && ar[accParentKey + '_raw'];
+                if (Array.isArray(apRaw)) {
+                  for (var aj = 0; aj < apRaw.length; aj++) {
+                    if (apRaw[aj] && apRaw[aj].id === recordId) {
+                      if (accIds.indexOf(ar.id) === -1) accIds.push(ar.id);
+                      break;
+                    }
+                  }
+                }
+              }
+            } catch (e) { /* no cascade — refetch still runs */ }
+
+            var pendingAcc = accIds.length;
+            function refetch() {
+              // PUT went via view_3610, but v2 reads from view_3962 —
+              // whose Backbone model doesn't auto-refresh, and field_2154
+              // isn't in the mirror-connection-sync cascade so the
+              // scw-cascade-idle path never fires. Refetch explicitly.
+              if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+                ns.data.refetchAndNotify(viewKey);
+              } else if (ns.data && typeof ns.data.notify === 'function') {
+                ns.data.notify(viewKey);
+              }
             }
+            if (!pendingAcc) { refetch(); return; }
+            accIds.forEach(function (accId) {
+              SCW.knackAjax({
+                url:  SCW.knackRecordUrl(viewKey, accId),
+                type: 'PUT',
+                data: JSON.stringify({ field_2154: sowIds }),
+                success: function () { if (--pendingAcc === 0) refetch(); },
+                error: function (xhr) {
+                  console.warn('[scw-ws-v2] SOW cascade PUT failed for accessory ' +
+                    accId, xhr && xhr.status);
+                  if (--pendingAcc === 0) refetch();
+                }
+              });
+            });
           }
         });
         return;
@@ -2144,6 +2545,52 @@
       // field_2197 is single-connection (one cam → one NVR).
       var isMulti = (fieldKey !== 'field_2197');
 
+      // ── Cross-SOW organization (bid comparison grid) ────────────────
+      // view_3921 pools SOW line items from EVERY SOW on the project, and
+      // each SOW can carry same-named MDF/IDF locations — the canonical
+      // MDF-only grouping then yields several identical "MDF" headers with
+      // no hint which SOW each belongs to (and lookalike "E-001 · <product>"
+      // items, since drop numbering restarts per SOW). When the candidate
+      // set spans more than one SOW, compose the group as "SW-1001 · MDF"
+      // (SOW read from field_2154) so headers dedupe and groups order
+      // SOW-first. Single-SOW surfaces (build-SOW view_3962, sales
+      // view_3586) detect one SOW and keep the canonical grouping.
+      var groupBy;   // undefined → picker's canonical MDF/IDF default
+      (function () {
+        function sowTag(rec) {
+          var raw = rec && rec['field_2154_raw'];
+          var ids = [], labels = [];
+          if (Array.isArray(raw)) {
+            for (var i = 0; i < raw.length; i++) {
+              if (raw[i] && raw[i].id) {
+                ids.push(raw[i].id);
+                var l = String(raw[i].identifier || '').replace(/<[^>]*>/g, '').trim();
+                if (l) labels.push(l);
+              }
+            }
+          }
+          return { id: ids.join('+'), label: labels.join(' + ') };
+        }
+        var seen = Object.create(null), distinct = 0;
+        for (var i = 0; i < candidates.length; i++) {
+          var k = sowTag(candidates[i]).id;
+          if (!seen[k]) { seen[k] = 1; distinct++; }
+        }
+        if (distinct < 2) return;   // single SOW → canonical grouping
+        var mdfGroup = ns.picker.groupByMdfIdf;
+        groupBy = function (rec) {
+          var m = mdfGroup(rec);
+          var s = sowTag(rec);
+          // No SOW AND no MDF → keep the canonical '__unknown' group so it
+          // sinks to the bottom instead of alphabetizing as "No SOW · …".
+          if (!s.id && m.id === '__unknown') return m;
+          return {
+            id:    (s.id || '__nosow') + '::' + m.id,
+            label: (s.label || 'No SOW') + ' · ' + m.label
+          };
+        };
+      })();
+
       ns.picker.open({
         sourceViewKey: viewKey,
         putViewKey:    putViewKey,
@@ -2152,7 +2599,9 @@
         label:         label,
         selectedIds:   sel,
         candidates:    candidates,
-        // Grouped by MDF/IDF + canonically sorted by the picker default.
+        // Canonical MDF/IDF grouping + sort — except when candidates span
+        // multiple SOWs (bid review), where groups compose "SOW · MDF".
+        groupBy:       groupBy,
         itemLabel:     itemLabel,
         multi:         isMulti,
         // Keep the modal open + locked until the field_1957↔field_2197

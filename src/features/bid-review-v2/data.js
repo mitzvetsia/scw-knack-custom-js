@@ -17,6 +17,14 @@
 
   var subscribers = [];
 
+  // Set true when the NEXT notify is a result of scw-cascade-idle (a
+  // mirror-connection-sync cascade settling — e.g. Connected Devices).
+  // init.js's subscribe callback reads + resets this to decide whether the
+  // render needs the scroll-anchor safety net. Ordinary field edits (view-
+  // render/cell-update/scw-ws-v2-record-saved) leave it false — see the
+  // note at that call site for why those must NOT use the anchor.
+  ns._pendingCascadeAnchor = false;
+
   /** Read records from a single view's Backbone model. */
   function readRecords(viewKey) {
     try {
@@ -93,6 +101,10 @@
     }
     function oneDone() { if (--pending <= 0) finish(); }
     for (var i = 0; i < keys.length; i++) {
+      // Skip views no longer in the DOM — a fetch resolving after the user
+      // navigated to another scene trips Knack's "Scene keys do not match!"
+      // alert (the router processes the response against the wrong scene).
+      if (!document.getElementById(keys[i])) continue;
       var v = Knack.views[keys[i]];
       if (!v || !v.model || typeof v.model.fetch !== 'function') continue;
       var p;
@@ -137,7 +149,16 @@
     // duplicate binding across re-inits.
     if (!document.documentElement.hasAttribute('data-scw-br-v2-cascade-bound')) {
       document.documentElement.setAttribute('data-scw-br-v2-cascade-bound', '1');
-      document.addEventListener('scw-cascade-idle', refetchDebounced);
+      document.addEventListener('scw-cascade-idle', function () {
+        // A cascade (e.g. Connected Devices) can move a child's row into a
+        // DIFFERENT MDF/IDF group, or change the parent's device-list text
+        // enough to change its row height — a real layout shift the plain
+        // keyed-section rebuild has no way to hold scroll position through.
+        // Flag it so the render this triggers gets the anchor correction;
+        // reset by init.js's subscribe callback once it's read.
+        ns._pendingCascadeAnchor = true;
+        refetchDebounced();
+      });
     }
 
     // The expand-panel SOW editor is an embedded worksheet-v2 card that writes
@@ -181,22 +202,93 @@
           (v.model.data.total_records != null ? v.model.data.total_records
             : (v.model.data.pagination_meta && v.model.data.pagination_meta.total_records)));
       } catch (e) { /* ignore */ }
-      var capped = (cap != null && loaded >= cap) ||
-                   (total != null && loaded < total);
+      // Trust the server total when Knack stamped one: loaded < total is
+      // the ONLY real truncation signal. The loaded >= rows_per_page
+      // heuristic is a fallback for when total is unknown — it used to be
+      // OR'd in unconditionally, and misfired whenever a scene re-render
+      // reset rows_per_page to the Builder default (loaded 169 >= cap 100
+      // with ALL 169 records present), warn+repair-refetching every render
+      // until the retry budget burned.
+      var capped = (total != null)
+        ? (loaded < total)
+        : (cap != null && loaded >= cap);
       out.push({ view: k, loaded: loaded, perPage: cap, total: total, truncated: !!capped });
     }
     return out;
   }
 
+  // Self-heal for truncated source views. A truncated view means its
+  // Backbone model holds fewer records than the server has — observed live
+  // 2026-07-22 on view_3921 (loaded 100 of 304) with rows_per_page ALREADY
+  // '1000': change-record-limit.js set the limit, but its refetch got
+  // raced/aborted in the scene's initial render burst, leaving the
+  // collection stuck at the Builder-default page. The damage is not
+  // cosmetic — every unloaded bid record becomes a phantom "Not bid /
+  // Removed" diff row (e.g. "137 not bid, labor Δ +$260k" on a 2-SOW
+  // project). Warning alone leaves the diff wrong for the whole session,
+  // so re-issue the fetch ourselves. Bounded per view so a genuinely
+  // >1000-record view can't refetch-loop forever.
+  var TRUNC_REPAIR_MAX = 2;
+  var _truncRepairTries = {};
+  var _truncRepairInflight = {};
+
+  function repairTruncated(stat) {
+    var k = stat.view;
+    if (_truncRepairInflight[k]) return true;   // already refetching — don't burn a retry
+    var tries = _truncRepairTries[k] || 0;
+    if (tries >= TRUNC_REPAIR_MAX) return false;
+    // Never fire a repair for a view that's no longer in the DOM — the
+    // user navigated away, and a view-scoped fetch resolving against a
+    // different scene trips Knack's "Scene keys do not match!" alert.
+    if (!document.getElementById(k)) return false;
+    var v = Knack.views && Knack.views[k];
+    if (!v || !v.model || typeof v.model.fetch !== 'function') return false;
+    _truncRepairTries[k] = tries + 1;
+    try {
+      var mv = v.model.view;
+      if (mv) {
+        mv.rows_per_page = 1000;
+        if (mv.source) mv.source.limit = 1000;
+      }
+      var p = v.model.fetch();   // completion fires knack-view-render → notifyDebounced → rebuild
+      _truncRepairInflight[k] = true;
+      var clear = function () { _truncRepairInflight[k] = false; };
+      if (p && typeof p.always === 'function') p.always(clear);
+      else setTimeout(clear, 3000);
+      return true;
+    } catch (e) {
+      _truncRepairInflight[k] = false;
+      return false;
+    }
+  }
+
   function warnIfTruncated() {
     var stats = sourceStats();
     for (var i = 0; i < stats.length; i++) {
-      if (stats[i].truncated) {
-        console.warn('[scw-br-v2] SOURCE VIEW TRUNCATED — diff will be wrong ' +
-          '(phantom Removed/Not-surveyed rows):', stats[i],
-          '→ add ' + stats[i].view + ' to change-record-limit.js VIEW_IDS');
-      }
+      if (!stats[i].truncated) continue;
+      var repairing = repairTruncated(stats[i]);
+      console.warn('[scw-br-v2] SOURCE VIEW TRUNCATED — diff will be wrong ' +
+        '(phantom Removed/Not-surveyed rows):', stats[i],
+        repairing
+          ? ('→ refetching ' + stats[i].view + ' now to self-repair (attempt ' +
+             (_truncRepairTries[stats[i].view] || 0) + '/' + TRUNC_REPAIR_MAX + ')')
+          : ('→ self-repair retries exhausted for ' + stats[i].view +
+             '; if it is missing from change-record-limit.js VIEW_IDS add it there, ' +
+             'otherwise the view may genuinely exceed 1000 records'));
     }
+  }
+
+  /** True while a truncation-repair refetch is in flight. render.js uses
+   *  this to SKIP building the grid on known-partial data — rendering the
+   *  diff mid-repair paints phantom Removed/Not-bid sections that collapse
+   *  a moment later (the "giant gaps while it's running" report). Returns
+   *  false once repairs settle (or retries exhaust), so a genuinely
+   *  >1000-record view still renders rather than deadlocking. */
+  function truncationRepairPending() {
+    for (var k in _truncRepairInflight) {
+      if (_truncRepairInflight[k]) return true;
+    }
+    return false;
   }
 
   ns.debugSources = function () {
@@ -213,7 +305,8 @@
     notifyDebounced: notifyDebounced,
     refetchAll:      refetchAll,
     attachListeners: attachListeners,
-    warnIfTruncated: warnIfTruncated
+    warnIfTruncated: warnIfTruncated,
+    truncationRepairPending: truncationRepairPending
   };
 })();
 /*** END BID REVIEW V2 — DATA *************************************************/

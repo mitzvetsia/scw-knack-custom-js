@@ -123,42 +123,76 @@
         label:            'SOW Line Items',
         mdfSourceViewKey: 'view_3577',
         mdfLabelField:    'field_1642',
+        // Location management folded INTO the worksheet (mdf-notes.js) —
+        // same integration as the deploy page: every real-location L1 gets
+        // the edit pencil (designator/##/name panel) + the always-visible
+        // detail band (survey-notes callout, photos strip + add-tile,
+        // inline SCW notes). Reads/PUTs go through the Manage MDFs/IDFs
+        // grid (view_3577), whose standalone accordion section is hidden
+        // by mdf-notes.js static CSS.
+        mdfManage:        { viewKey: 'view_3577', notesField: 'field_1643' },
+        // "+ Add MDF/IDF" toolbar CTA next to "+ Add to SOW" — clicks the
+        // (hidden) view_3436 menu link (#add-mdfidf7), replacing the button
+        // that lived in the now-hidden standalone section.
+        addMdfMenuView:   'view_3436',
         // No field/bucket overrides — uses the defaults above verbatim.
         fields:  {},
         buckets: {}
       }
 
-      // ── Deploy / Install Line Items (view_3915) ─────────────────────
+      // ── Deploy / Install Line Items (view_4093) ─────────────────────
       // DIFFERENT object from the SOW line item — install + QA records on
       // the deploy scene. independentFields:true means this `fields` map is
       // used AS-IS (no SOW fallback), so any omitted logical name resolves
       // undefined and its feature no-ops here (intended for the money
       // columns this object doesn't have). CUTOVER: v2 is now the primary
       // surface on the deploy scene — v1 device-worksheet bails via its
-      // V2_TAKEOVER entry, and styles.js hides the native #view_3915 table +
+      // V2_TAKEOVER entry, and styles.js hides the native #view_4093 table +
       // accordion. The install card path lives in card.js (moneyMode:'install');
       // Camera Config + QA fold in via install-config-subpanel/config-qa-popover
       // (dual-host). Reverse by flipping enabled:false here.
       ,{
         enabled:          true,
-        sourceViewKey:    'view_3915',
-        mountAfterSelector: '#view_3915',
+        sourceViewKey:    'view_4093',
+        mountAfterSelector: '#view_4093',
         label:            'Install Line Items',
         independentFields: true,            // different object — no DEFAULT_FIELDS fallback
         moneyMode:        'install',        // no money columns at all — card.js install path
         // Bulk photo upload context: the "+ Add Photos" toolbar button opens
         // SCW.bulkUpload against the DEPLOYMENT (linkField 'deploymentID' +
         // project/deployment id from the URL), NOT a SOW. See the
-        // 'view_3915_deploy' entry in bulk-upload.js CONFIG.VIEWS. The
+        // 'view_4093_deploy' entry in bulk-upload.js CONFIG.VIEWS. The
         // view_4056 clone below inherits this via the JSON deep-clone.
-        photoUploadView:  'view_3915_deploy',
+        photoUploadView:  'view_4093_deploy',
         hideSow:          true,             // install groups by MDF/IDF, not SOW
         noAddItem:        true,             // can't add to a deployment scope without a
                                             // change order — suppress the "+ Add to SOW"
                                             // toolbar CTA (view_4056 clone inherits this)
-        mdfSourceViewKey: '',               // TODO: empty-L1 seed source (analogue of view_3577)
-        mdfLabelField:    '',               // TODO
+        noDelete:         true,             // NOTHING deletable on the install worksheet —
+                                            // install scope changes ONLY via the CO process.
+                                            // card.js renders an inert trash; bulk.js hides
+                                            // the bulk Delete (view_4056 clone inherits)
+        mdfSourceViewKey: 'view_3932',      // deploy "Manage MDFs/IDFs" grid — seeds
+                                            // empty-location L1 groups (parity with the
+                                            // standalone section this replaces)
+        mdfLabelField:    'field_1642',
+        // Location management folded INTO the worksheet (mdf-notes.js): each
+        // real-location L1 header gets a pencil that edits the location's
+        // notes through view_3932, and the standalone "Manage MDFs / IDFs"
+        // accordion section is hidden once the pencils are live. The
+        // view_4056 sub-portal clone inherits this config but view_3932
+        // isn't on that scene — every consumer guards on the view existing.
+        mdfManage:        { viewKey: 'view_3932', notesField: 'field_1643' },
+        // "+ Add MDF/IDF" toolbar CTA — clicks the (hidden) view_4136 menu
+        // link on the deploy scene. The view_4056 sub-portal clone inherits
+        // this but view_4136 isn't on that scene — toolbar.js guards on the
+        // menu view actually being in the DOM before rendering the button.
+        addMdfMenuView:   'view_4136',
         hideMoneyColumns: true,             // no subBid/fee/hrs/mat/installFee on this object
+        // Accessories (field_2853 child→parent) with a loaded parent always
+        // attach under it (hidden row + read-only chip on the parent card) —
+        // no Require-Sub-Bid promote rule on the install side.
+        accessoriesAlwaysAttach: true,
         fields: {
           // identity / grouping
           product:        'field_2846',     // CORE_product (connection — for picker/edit)
@@ -189,6 +223,10 @@
           accessories:      'field_2852',   // accessories array on the parent
           children:         'field_2852',   // same forward array (no separate mirror here)
           parent:           'field_2853',   // accessory → parent line item
+          // CO removal marker — populated (at signature, by Make) = this item
+          // is removed from install scope. card.js renders the red "Removed by
+          // CO" chip + card ghost; warnings.js skips removed rows.
+          removedByCo:      'field_2967',   // CO_REL_removed by co (→ CO header)
           // photos (shared DOC_photos object — identical keys to SOW)
           photoImage:     'field_771',
           photoType:      'field_2445',
@@ -317,6 +355,16 @@
         moneyMode:         'survey',
         hideSow:           true,            // survey groups by Bid, not SOW
         bulkDuplicate:     true,            // bulk panel "Duplicate" → Make webhook
+        // Survey drafting flow: after a successful bulk EDIT, auto-clear the
+        // row selection. The SOW build + bid comparison pages deliberately
+        // KEEP the selection for chained bulk actions — this page prefers a
+        // clean slate after each pass.
+        bulkClearSelection: true,
+        // Duplicate flow: prompt for the MDF/IDF the duplicated items should
+        // land in (options read from mdfSourceViewKey; "Same as original"
+        // opt-out). Ships targetMdfIdf on the webhook payload AND re-homes
+        // the new records client-side, so it works before Make maps it.
+        duplicatePickMdf:   true,
         // Full cutover: hide the native source view AND its KTL accordion
         // shell entirely (no collapsible header) — JUST the v2 grid. init.js
         // relocates the v2 panel out of the accordion; styles.js hides the
@@ -480,7 +528,62 @@
         mdfLabelField:      'field_1642',
         hideSow:            true,   // CO items group by MDF/IDF; SOW pills are noise here
         hideSourceAccordion: true,  // full cutover — hide the native grid + accordion
-        noAddItem:          true,   // CO add flow (new item / adopt-from-proposal) TBD
+        // Adding items happens through the "+ Add New Items" STRIP on the CO
+        // scene (co-scene-header.js hosts co-add-item-form.js inline): one
+        // bucket-filtered product picker, the DTO view's per-bucket field
+        // rules in JS, and a direct Make webhook creating the SOW line items
+        // connected to THIS CO's SOW. The worksheet toolbar's own add button
+        // is suppressed (redundant with the strip); view_4099/view_4100 are
+        // retired for the CO once this is live.
+        noAddItem:          true,
+        // Per-row delete guard (card.js kebabCell + init.js unlink handler):
+        // an item whose field_2154 lists a SOW OTHER than this CO's SOW was
+        // ADOPTED from survey/bid (a shared record) → offer UNLINK (disconnect
+        // field_2154 from the CO), never delete. An item on the CO's SOW ONLY
+        // was created for this CO → real delete (clean up drafting extras).
+        coDeleteGuard:      true,
+        // Ops price CO adds in FULL here: equipment + labor. Renders an
+        // editable Equipment $ stack (unit price; extended field_2201 shown
+        // beneath) ahead of the Sub Bid stack, with a matching --equip grid
+        // variant. Ops CO worksheet ONLY — the sub portal analogue
+        // (view_4112, laborOnly) never renders SCW-side money, and the
+        // laborOnly gate keeps this flag inert if the entry is ever cloned.
+        // ⚠ Builder dependency: field_1960 must be an inline-editable column
+        // on view_4079 or the view-based PUT silently drops the edit.
+        equipmentField:     'field_1960',
+        fields:  {},
+        buckets: {}
+      }
+
+      // ── CO adoption panel: previously quoted line items (view_4088) ──
+      // Second v2 panel on the CO scene (decision 2026-07-07: show adoptable
+      // items in the full device-worksheet style, NOT a modal picker). Renders
+      // the project's other SOW/proposal line items — quoted but never part of
+      // a greenlit SOW — as READ-ONLY cards with a per-card "+ Add to Change
+      // Order" button (worksheet-v2/co-adopt.js). Clicking connects the item
+      // to the CO by unioning field_2154 (Make webhook — same scenario as
+      // import-unique-items). Cards already connected to this CO hide
+      // automatically.
+      //
+      // readOnly:true (new flag): buildPanel stamps .scw-ws-v2--readonly
+      // (styles.js kills every edit affordance), init.js skips the toolbar /
+      // sort / native-filter / bulk mounts, and co-adopt.js hard-disables
+      // inputs after each render (keyboard belt). SOW pills + search stay —
+      // they're how ops finds items in a long quoted list.
+      ,{
+        enabled:            true,
+        sourceViewKey:      'view_4088',
+        mountAfterSelector: '#view_4088',
+        // If the hidden native grid is ever removed from the scene, mount
+        // after the CO worksheet instead of orphaning the panel.
+        mountAfterFallback: '#view_4079',
+        label:              'Previously Quoted Items — available to add',
+        mdfSourceViewKey:   'view_4084',
+        mdfLabelField:      'field_1642',
+        hideSourceAccordion: true,
+        noAddItem:          true,
+        readOnly:           true,
+        adopt:              { label: 'Add to Change Order' },
         fields:  {},
         buckets: {}
       }
@@ -506,8 +609,8 @@
   };
 
   // ── view_4056 ("WHAT WE'RE INSTALLING") — SAME object + field map as the
-  //    view_3915 install worksheet. Rather than duplicate the ~80-line install
-  //    config (and let the two drift), clone the view_3915 entry verbatim and
+  //    view_4093 install worksheet. Rather than duplicate the ~80-line install
+  //    config (and let the two drift), clone the view_4093 entry verbatim and
   //    swap only the source view key + mount anchor. Any future change to the
   //    install card config then applies to BOTH surfaces automatically. The
   //    install entry is pure data (no functions), so a JSON deep-clone is safe.
@@ -515,13 +618,131 @@
     var views = SCW.worksheetV2.CONFIG.views || [];
     var src = null;
     for (var i = 0; i < views.length; i++) {
-      if (views[i] && views[i].sourceViewKey === 'view_3915') { src = views[i]; break; }
+      if (views[i] && views[i].sourceViewKey === 'view_4093') { src = views[i]; break; }
     }
     if (!src) return;
     var clone = JSON.parse(JSON.stringify(src));
     clone.sourceViewKey      = 'view_4056';
     clone.mountAfterSelector = '#view_4056';
     views.push(clone);
+  })();
+
+  // ── CO REMOVAL panel: project install line items (view_4086) ──────────
+  //    The removal source on the CO drafting scene — SAME install object +
+  //    field map as view_4093, so clone that entry (keeps the two in sync)
+  //    and layer the read-only / removal overrides on top. Renders the
+  //    project's active install line items as READ-ONLY cards with a per-
+  //    card "− Remove" button + multi-select bulk (worksheet-v2/co-remove.js,
+  //    mirror of co-adopt.js). Removing an item does NOT delete the install
+  //    record — it creates a Remove line on the CO (a SOW Line Item with
+  //    CO Action = Remove, Target install item → the install record). The
+  //    install record's own `Removed by CO` flip happens at signature (Make),
+  //    per docs/change-orders.md ("nothing mutates install scope until sig").
+  //
+  //    ⚠️ Write path is Make-side + gated on Builder fields not created yet
+  //    (CO Action, Target install item, Removed by CO). The panel ships with
+  //    the UI + a placeholder MAKE_CO_REMOVE_ITEMS_WEBHOOK; wire the URL +
+  //    fields to go live. Until then the "− Remove" click reports the missing
+  //    webhook (same graceful stub adoption shipped with).
+  (function cloneInstallEntryForView4086() {
+    var views = SCW.worksheetV2.CONFIG.views || [];
+    var src = null;
+    for (var i = 0; i < views.length; i++) {
+      if (views[i] && views[i].sourceViewKey === 'view_4093') { src = views[i]; break; }
+    }
+    if (!src) return;
+    var clone = JSON.parse(JSON.stringify(src));
+    clone.sourceViewKey       = 'view_4086';
+    clone.mountAfterSelector  = '#view_4086';
+    // If the hidden native grid is ever removed, mount after the CO worksheet.
+    clone.mountAfterFallback  = '#view_4079';
+    clone.label               = 'Install Line Items — available to remove';
+    clone.readOnly            = true;   // buildPanel stamps .scw-ws-v2--readonly
+    clone.hideSourceAccordion = true;   // full cutover — hide the native grid
+    clone.noAddItem           = true;
+    // MDF/IDF L1 seeding from the CO scene's locations grid (label field_1642).
+    clone.mdfSourceViewKey    = 'view_4084';
+    clone.mdfLabelField       = 'field_1642';
+    // A read-only removal panel has no photo upload / questionnaire / bulk-edit
+    // surface — drop them so nothing tries to mount an editor here.
+    delete clone.photoUploadView;
+    delete clone.questionnaire;
+    delete clone.bulkFields;
+    // Removal marker (co-remove.js selects views by this flag, mirroring the
+    // `adopt` flag on view_4088).
+    //   targetField    = field_2966 "Target install item" — on the SOW Line
+    //                    Item (the Remove CO-line), single → install record.
+    //                    Make WRITES this when it creates the Remove line; it
+    //                    lives on the SOW-line object, NOT on the install
+    //                    record, so co-remove never reads it (kept here as the
+    //                    Make-contract reference).
+    //   removedByField = field_2967 "Removed by Change Order" — on the INSTALL
+    //                    record, single → SOW (CO header). Flips at signature.
+    //                    co-remove reads THIS to show the "✓ Flagged" pill /
+    //                    treat an item as already removed. (Draft-time "flagged
+    //                    on this unsigned CO" still relies on the optimistic
+    //                    post-fire flip until the field_2966 reciprocal is
+    //                    exposed on view_4086 — see docs/change-orders.md #7.)
+    clone.remove = {
+      label:          'Remove from Change Order',
+      targetField:    'field_2966',
+      removedByField: 'field_2967'
+    };
+    views.push(clone);
+  })();
+
+  // ── SUB PORTAL "Manage Change Order" page (scene_1374) ────────────────
+  //    The sub prices the CO on their own page with the SAME drafting
+  //    experience as the internal CO scene (scene_1362). Every view there is
+  //    a 1:1 analogue of an internal one — same objects, same columns:
+  //      view_4112 ← view_4079  CO worksheet (line items on this CO)
+  //      view_4114 ← view_4084  MDF/IDF locations (L1 seeding)
+  //      view_4116 ← view_4086  project install items (removal source)
+  //      view_4118 ← view_4088  project SOW/proposal items (adoption source)
+  //      view_4121 ← view_4092  CO header form (co-header-card / co-value)
+  //      view_4122 ← view_4109  hidden CO status details (co-sub-lock reads)
+  //    Clone the three v2 entries and swap only the keys. `coViewKey` tells
+  //    co-adopt/co-remove which CO worksheet to refetch after their webhook
+  //    fires (they default to view_4079). Edit-window enforcement is
+  //    co-sub-lock.js — everything on scene_1374 locks unless CO Status is
+  //    Pending Sub Pricing; these panels get the same lock treatment there.
+  (function cloneCoEntriesForSubScene() {
+    var views = SCW.worksheetV2.CONFIG.views || [];
+    function entry(key) {
+      for (var i = 0; i < views.length; i++) {
+        if (views[i] && views[i].sourceViewKey === key) return views[i];
+      }
+      return null;
+    }
+    var MAP = [
+      { from: 'view_4079', to: 'view_4112' },
+      { from: 'view_4088', to: 'view_4118' },
+      { from: 'view_4086', to: 'view_4116' }
+    ];
+    for (var i = 0; i < MAP.length; i++) {
+      var src = entry(MAP[i].from);
+      if (!src) continue;
+      var clone = JSON.parse(JSON.stringify(src));
+      clone.sourceViewKey      = MAP[i].to;
+      clone.mountAfterSelector = '#' + MAP[i].to;
+      clone.mdfSourceViewKey   = 'view_4114';
+      if (clone.mountAfterFallback) clone.mountAfterFallback = '#view_4112';
+      if (clone.adopt || clone.remove) clone.coViewKey = 'view_4112';
+      // LABOR ONLY on the sub's page: Fee (field_2028), +Hrs (field_1973)
+      // and +Mat (field_1974) are SCW-side / client-facing money — the sub
+      // sees and edits Sub Bid alone. Blanks the cells (grid stays aligned),
+      // the column headers, and the bulk-edit field list.
+      clone.laborOnly = true;
+      // Sub authorship gate (the sub's CO worksheet only): SYS_origin
+      // (field_2978, stamped by Make from the add-item payload's `origin`)
+      // decides delete rights — the sub deletes THEIR items; SCW-created
+      // items are remove-from-CO only. Blank/missing (pre-stamp records, or
+      // the column not yet on the grid) fails safe to NOT-deletable.
+      if (MAP[i].to === 'view_4112') {
+        clone.subOrigin = { field: 'field_2978', own: 'sub' };
+      }
+      views.push(clone);
+    }
   })();
 
   // ── Resolver API ──────────────────────────────────────────────────

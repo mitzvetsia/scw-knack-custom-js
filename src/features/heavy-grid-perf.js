@@ -37,7 +37,10 @@
     // V1 transform was disabled to isolate v2 perf), so it never emits
     // scw-worksheet-ready. Masking it here would hide the tbody until the 5s
     // safety timer fires. Let it render plainly.
-    'view_3586',
+    // 'view_3586' — REMOVED: hidden + fully replaced by the v2 worksheet on
+    // the sales build page. device-worksheet no longer owns it, so it never
+    // emits scw-worksheet-ready; masking just re-armed the 5s safety timer
+    // on every render for a table nobody can see.
     // 'view_3610' — REMOVED: hidden + fully replaced by the v2 worksheet
     // (source view_3962). device-worksheet no longer owns it, so it never
     // emits scw-worksheet-ready; masking would hide its tbody until the 5s
@@ -50,7 +53,7 @@
     'view_3617',
     'view_3800',
     'view_3803',
-    'view_3915',
+    'view_4093',
     'view_4056',
     'view_3921',
     'view_3932',
@@ -77,7 +80,9 @@
   // where the layout-isolation win is worth the trade-offs. content-
   // visibility is safe more broadly. Keep the heavyweight rules on the
   // two views that originally needed them.
-  var CONTAIN_VIEWS = ['view_3586', 'view_3610'];
+  // view_3586 removed — its native table is hidden by the v2 cutover, so
+  // containment/content-visibility rules on it were dead weight.
+  var CONTAIN_VIEWS = ['view_3610'];
 
   var perfRules = CONTAIN_VIEWS.map(function (vid) {
     return [

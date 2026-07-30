@@ -4,13 +4,13 @@
   var NS = '.scwDeliverables';
   var PREFIX = 'scw-deliverables';
   var CONFIG = {
-    // The install worksheet (view_3915) is a V2 cutover: the native table is
+    // The install worksheet (view_4093) is a V2 cutover: the native table is
     // hidden and worksheet-v2 renders cards. We mount the deliverables panel
     // INSIDE each v2 install card's detail panel (not the hidden native rows).
-    // view_3915 = Implementation install worksheet; view_4056 = "WHAT WE'RE
+    // view_4093 = Implementation install worksheet; view_4056 = "WHAT WE'RE
     // INSTALLING" (SAME install object/fields). Mount the deliverables panel on
     // both v2 install surfaces.
-    WORKSHEET_VIEWS: ['view_3915', 'view_4056'],
+    WORKSHEET_VIEWS: ['view_4093', 'view_4056'],
     // Fields on the LINE ITEM
     VALUE_FIELD:            'field_2932',   // Paragraph/Rich-Text — stores the JSON answer blob
     LINE_ITEM_SCHEMA_FIELD: 'field_2930',   // Deliverable Schema connection on the line item
@@ -222,7 +222,7 @@
     }).join('');
     return '<div class="' + PREFIX + '-panel" data-record-id="' + esc(recordId) + '">' +
         '<div class="' + PREFIX + '-head">' +
-          '<span class="' + PREFIX + '-title">System Questionnaire</span>' +
+          '<span class="' + PREFIX + '-title">Configuration</span>' +
           '<span class="' + PREFIX + '-status" aria-live="polite"></span>' +
         '</div>' +
         '<div class="' + PREFIX + '-grid">' + body + '</div>' +
@@ -317,7 +317,7 @@
     });
   }
   /* ── mount: fold one editor into each v2 install card's detail panel ──
-   * view_3915 is a V2 cutover — the native table is display:none and
+   * view_4093 is a V2 cutover — the native table is display:none and
    * worksheet-v2 renders cards (.scw-ws-v2-card[data-scw-ws-v2-record]) whose
    * collapsible body is .scw-ws-v2-detail. We mount the deliverables panel
    * there (so it follows the card accordion). worksheet-v2 rebuilds its body
@@ -328,7 +328,7 @@
 
   function v2DetailFor(recordId, viewId) {
     // Scope to the view's own v2 container so a record id present on BOTH
-    // install surfaces (view_3915 + view_4056, same object) resolves to the
+    // install surfaces (view_4093 + view_4056, same object) resolves to the
     // right card instead of whichever appears first in the DOM.
     var root = document.getElementById(v2ContainerId(viewId)) || document;
     var card = root.querySelector(

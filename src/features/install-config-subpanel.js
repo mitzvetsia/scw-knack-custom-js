@@ -1,7 +1,7 @@
 /*****  Install Camera Config Sub-panel  ************************/
 /**
  * On the Implementation page (scene_1311), view_3916 holds IP-camera
- * configs that connect back to install line items (view_3915) via
+ * configs that connect back to install line items (view_4093) via
  * field_2835. This module folds each config into the matching install
  * worksheet card's detail panel and hides the standalone view_3916
  * table so the data lives in one place.
@@ -17,25 +17,25 @@
  *   field_2843  INPUT_client notes
  *
  * Source row connection:
- *   field_2835  INSTALL_line item  (connection to view_3915 record)
+ *   field_2835  INSTALL_line item  (connection to view_4093 record)
  *
  * Merge strategy:
- *   1. Run on knack-view-render.view_3915 (after device-worksheet has
+ *   1. Run on knack-view-render.view_4093 (after device-worksheet has
  *      built the worksheet cards).
  *   2. Run on knack-view-render.view_3916 (after the config grid loads).
  *   3. Re-run at staggered delays (50/250/750/2000 ms) because the two
  *      views can render in either order and device-worksheet may run
  *      post-render passes that rebuild the detail panel.
- *   4. MutationObserver on view_3915 catches any later DOM rebuild.
+ *   4. MutationObserver on view_4093 catches any later DOM rebuild.
  */
 (function () {
   'use strict';
 
-  // view_3915 = Implementation install worksheet; view_4056 = "WHAT WE'RE
+  // view_4093 = Implementation install worksheet; view_4056 = "WHAT WE'RE
   // INSTALLING" (SAME install object/fields). Fold camera configs into the
   // matching card on either surface. Everything no-ops on a scene where the
   // config grid (view_3916) isn't present (buildConfigIndex returns empty).
-  var INSTALL_VIEWS = ['view_3915', 'view_4056'];
+  var INSTALL_VIEWS = ['view_4093', 'view_4056'];
   var CONFIG_VIEW   = 'view_3916';
 
   var CONNECTION_FIELD = 'field_2835';   // → install line item record id
@@ -59,9 +59,9 @@
   var SUBPANEL_CLS  = 'scw-install-config';
   var CSS_ID        = 'scw-install-config-css';
   // V2 worksheet (worksheet-v2) container mounted as a sibling of
-  // #view_3915 — id is "scw-ws-v2-<sourceView>". Cards inside carry
+  // #view_4093 — id is "scw-ws-v2-<sourceView>". Cards inside carry
   // data-scw-ws-v2-record="<recordId>"; the detail panel is
-  // .scw-ws-v2-detail. Today view_3915 still renders V1 cards so this
+  // .scw-ws-v2-detail. Today view_4093 still renders V1 cards so this
   // selector matches nothing; after the cutover flip it matches and the
   // subpanel folds into the V2 detail instead. See CLAUDE.md migration.
   function v2ContainerId(viewId) { return 'scw-ws-v2-' + viewId; }
@@ -74,7 +74,7 @@
     var s = document.createElement('style');
     s.id = CSS_ID;
     // Scope the cabling/exterior/plenum chip restyle to EVERY install surface
-    // (view_3915 + view_4056) — generate the selector list across both.
+    // (view_4093 + view_4056) — generate the selector list across both.
     var _chipFields = ['field_2807', 'field_2805', 'field_2806'];
     function chipSel(sub) {
       var parts = [];
@@ -379,7 +379,7 @@
    */
   function findDetailTarget(recordId) {
     if (!recordId) return null;
-    // V2 first — after the cutover flip view_3915 renders V2 cards.
+    // V2 first — after the cutover flip view_4093 renders V2 cards.
     var v2Card = document.querySelector(
       '.scw-ws-v2-card[data-scw-ws-v2-record="' + recordId + '"]'
     );
@@ -593,7 +593,7 @@
   /**
    * Collect the install line-item record ids currently rendered as cards,
    * from BOTH worksheet structures:
-   *   V1: tr.scw-ws-row[data-scw-view-id="view_3915"]  (id = record id)
+   *   V1: tr.scw-ws-row[data-scw-view-id="view_4093"]  (id = record id)
    *   V2: .scw-ws-v2-card[data-scw-ws-v2-record]       (inside the v2 panel)
    * Today only V1 matches; after the cutover flip only V2 matches. The
    * dedupe keeps merge() correct even during a transient overlap.

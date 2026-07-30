@@ -14,6 +14,7 @@ trap 'rm -f "$TMP_BUNDLE"' EXIT
 cat \
   src/config.js \
   src/util.js \
+  src/features/session-timeout.js \
   src/features/_design-tokens.js \
   src/features/sow-color.js \
   src/features/_render-totals-guard.js \
@@ -44,11 +45,14 @@ cat \
   src/features/ratking/discount-copy-tweaks.js \
   src/features/ratking/hash-bump-record-update.js \
   src/features/ratking/scene-776-stub.js \
+  src/features/modal-form-connection-sync.js \
   src/features/proposal-grid.js \
+  src/features/co-band-mockup.js \
   src/features/view-3341-loading-overlay.js \
   src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \
   src/features/proposal-preview-images.js \
+  src/features/proposal-preview-expiration.js \
   src/features/published-proposal-render.js \
   src/features/secure-proposal-link.js \
   src/features/bid-items-grid.js \
@@ -126,6 +130,7 @@ cat \
   src/features/device-worksheet-sort.js \
   src/features/install-config-subpanel.js \
   src/features/install-as-quoted-panel.js \
+  src/features/deploy-page-nav.js \
   src/features/qa-popover.js \
   src/features/photo-edit-panel.js \
   src/features/config-qa-popover.js \
@@ -146,7 +151,9 @@ cat \
   src/features/revision-accept-reject.js \
   src/features/proposal-type-chip.js \
   src/features/published-quote-info.js \
+  src/features/proposal-expiration-mirror.js \
   src/features/ops-review-pill.js \
+  src/features/pq-expiration-edit.js \
   src/features/sow-grid-cards.js \
   src/features/mdf-idf-cards.js \
   src/features/files-gallery.js \
@@ -193,6 +200,7 @@ cat \
   src/features/worksheet-v2/summary.js \
   src/features/worksheet-v2/picker.js \
   src/features/worksheet-v2/edit.js \
+  src/features/worksheet-v2/mdf-notes.js \
   src/features/worksheet-v2/render.js \
   src/features/worksheet-v2/toolbar.js \
   src/features/worksheet-v2/sort.js \
@@ -204,6 +212,14 @@ cat \
   src/features/worksheet-v2/change-requests.js \
   src/features/worksheet-v2/poll.js \
   src/features/worksheet-v2/init.js \
+  src/features/worksheet-v2/co-adopt.js \
+  src/features/worksheet-v2/co-remove.js \
+  src/features/worksheet-v2/co-add-item-form.js \
+  src/features/worksheet-v2/co-scene-header.js \
+  src/features/worksheet-v2/co-value.js \
+  src/features/worksheet-v2/co-sub-lock.js \
+  src/features/worksheet-v2/co-ops-lock.js \
+  src/features/worksheet-v2/co-review-diff.js \
   src/features/survey-report-photo-lightbox.js \
   src/features/sales-change-request/render-v2.js \
   src/features/deliverables-worksheet.js \
@@ -211,8 +227,13 @@ cat \
   src/features/customer-account-link.js \
   src/features/customer-questionnaire-scene.js \
   src/features/regenerate-kickoff-deck.js \
+  src/features/send-coc-button.js \
+  src/features/co-header-card.js \
+  src/features/co-stage-strip.js \
   src/features/questionnaire-deployment-audit.js \
   src/features/acceptance-card.js \
+  src/features/questionnaire-card.js \
+  src/features/other-files-gallery.js \
   src/features/resend-credentials-btn.js \
   > "$TMP_BUNDLE"
 

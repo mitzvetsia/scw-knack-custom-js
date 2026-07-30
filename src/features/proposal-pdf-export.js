@@ -105,7 +105,12 @@
         // grid scrape — they're appended to the END of the PDF in a
         // dedicated image section instead (see appendImageViews).
         view_3928: true,
-        view_3929: true
+        view_3929: true,
+        // CORE_contacts — hidden grid added for the Issue-CO recipient
+        // picker (ops-stepper.js). Internal data source only; without
+        // this it leaked a bare "CORE_contacts" heading into the
+        // published CO html (observed 2026-07-15).
+        view_4124: true
       },
       // Image-attachment views appended to the END of the PDF (in
       // order). Each entry: { viewId, label }. Site maps render first,
@@ -428,6 +433,63 @@
   // SCRAPER: Grid views (parameterized by keys)
   // ══════════════════════════════════════════════════════════════
 
+  // ── Change Order "What's Changing" manifest ─────────────────────
+  // On a CO's preview, proposal-grid.js injects #scw-co-change-summary
+  // as a <div> ABOVE the grid's <table> (adds / removes / net change).
+  // scrapeGridView only reads the table tbody, so without an explicit
+  // capture the manifest — the customer-facing substance of a CO —
+  // never reaches the published HTML or the e-sign agreement. Scrape
+  // it into structured data here; buildPdfHtml re-renders it with
+  // publish-safe markup (.co-change-summary) and buildSowDocumentElements
+  // emits it as native e-signatures elements. Returns null on base
+  // proposals (no manifest on the page).
+  function scrapeCoChangeSummary(sceneEl) {
+    var root = sceneEl && sceneEl.querySelector('#scw-co-change-summary');
+    if (!root) return null;
+
+    function colItems(colSel) {
+      var out = { items: [], subtotal: '' };
+      var col = root.querySelector(colSel);
+      if (!col) return out;
+      var rows = col.querySelectorAll('table.scw-cos-table tbody tr');
+      for (var i = 0; i < rows.length; i++) {
+        var tds = rows[i].querySelectorAll('td');
+        if (!tds.length) continue;
+        if (rows[i].classList.contains('scw-cos-sub')) {
+          out.subtotal = norm(tds[tds.length - 1].textContent || '');
+          continue;
+        }
+        // First cell = product name + optional .scw-cos-meta span
+        // (designator · location). Strip the meta from a clone so the
+        // product label comes out clean.
+        var labelClone = tds[0].cloneNode(true);
+        var metaEl = labelClone.querySelector('.scw-cos-meta');
+        var meta = '';
+        if (metaEl) { meta = norm(metaEl.textContent); metaEl.remove(); }
+        out.items.push({
+          product: norm(labelClone.textContent),
+          meta:    meta,
+          qty:     tds.length > 2 ? norm(tds[1].textContent) : '',
+          amt:     norm(tds[tds.length - 1].textContent || '')
+        });
+      }
+      return out;
+    }
+
+    var adds     = colItems('.scw-cos-col--add');
+    var removes  = colItems('.scw-cos-col--rm');
+    var netEl    = root.querySelector('.scw-cos-net span:last-child');
+    var descEl   = root.querySelector('.scw-cos-desc');
+    return {
+      desc:           descEl ? norm(descEl.textContent) : '',
+      adds:           adds.items,
+      addSubtotal:    adds.subtotal,
+      removes:        removes.items,
+      removeSubtotal: removes.subtotal,
+      net:            netEl ? norm(netEl.textContent) : ''
+    };
+  }
+
   function scrapeGridView(viewId, keys) {
     var root = document.getElementById(viewId);
     if (!root) return null;
@@ -443,13 +505,56 @@
     var currentL1 = null;
     var currentL2 = null;
     var currentL3 = null;
+    // CO band context (co-band-mockup.js live presentation). While a
+    // banded CO grid is scraped, every bucket created inside a band
+    // carries coBand: 'add'|'rm' so the publish renderer can re-emit
+    // the Added/Removed banding instead of flattening it away.
+    var currentCoBand = null;
 
     for (var i = 0; i < rows.length; i++) {
       var tr = rows[i];
 
       if (tr.id && !tr.classList.contains('kn-table-group') && !tr.classList.contains('scw-level-total-row')) continue;
 
+      // ── CO band rows (banded CO preview only) ───────────────────
+      // Band header ("Items to be Added" / "Items to be Removed") →
+      // marker entry in the bucket stream; per-subsection band subtotal
+      // → the current bucket's footer (replacing the hidden native
+      // mixed-value subtotal); band TOTAL row → marker entry. All three
+      // fall through every other branch on base proposals (the classes
+      // only exist on a banded CO grid).
+      if (tr.classList.contains('scw-co-band')) {
+        currentCoBand = tr.classList.contains('scw-co-band--rm') ? 'rm' : 'add';
+        if (currentL1) {
+          currentL1.buckets.push({
+            level: 2, coBandHeader: true, kind: currentCoBand,
+            label: norm(tr.textContent), products: [], footer: null,
+          });
+        }
+        currentL2 = null;
+        currentL3 = null;
+        continue;
+      }
+      if (tr.classList.contains('scw-co-band-sub')) {
+        var coBandKind = tr.classList.contains('scw-co-band-sub--rm') ? 'rm' : 'add';
+        var coBandLbl  = norm((tr.querySelector('.scw-co-band-sub-label') || {}).textContent || '');
+        var coBandAmt  = norm((tr.querySelector('td.scw-co-band-sub-amt') || {}).textContent || '');
+        if (tr.classList.contains('scw-co-band-sub--section')) {
+          var coBandQty = parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
+          if (currentL2) {
+            currentL2.footer = { label: coBandLbl, qty: coBandQty, cost: coBandAmt, coBand: coBandKind };
+          }
+        } else if (currentL1) {
+          currentL1.buckets.push({
+            level: 2, coBandTotal: true, kind: coBandKind,
+            label: coBandLbl, cost: coBandAmt, products: [], footer: null,
+          });
+        }
+        continue;
+      }
+
       if (tr.classList.contains('kn-group-level-1')) {
+        currentCoBand = null;
         var l1Label = groupLabelText(tr);
         if (tr.style.display === 'none') {
           currentL1 = { level: 1, label: '', promoted: true, buckets: [], footer: null };
@@ -477,9 +582,13 @@
 
         var l2Label = groupLabelText(tr);
         var isPromoted = tr.classList.contains('scw-promoted-l2-as-l1');
+        // A promoted L2 IS the section head — any band context belongs
+        // to the previous section.
+        if (isPromoted) currentCoBand = null;
 
         currentL2 = {
           level: 2, label: l2Label, isPromoted: isPromoted, products: [], footer: null,
+          coBand: currentCoBand || undefined,
         };
 
         if (isPromoted) {
@@ -617,7 +726,21 @@
         var l4HideQtyCost = tr.classList.contains('scw-hide-qty-cost');
 
         var labelCell = tr.querySelector('td:first-child');
-        var l4Label = labelCell ? norm(labelCell.textContent) : '';
+        var l4Label = '';
+        if (labelCell) {
+          // The connected-camera list lives in a .scw-concat-cameras span
+          // inside this cell AND is captured separately below as `cameraList`
+          // (the orange callout). Reading textContent verbatim would bake it
+          // into the blue product label too, so accessory rows (e.g. box /
+          // pole mounts with no rich description, which fall back to the label)
+          // showed the camera numbers TWICE — once blue, once orange. Strip the
+          // camera span from a clone before reading, mirroring the
+          // scw-mounting-product-line path above. Keep ONLY the orange callout.
+          var lblClone = labelCell.cloneNode(true);
+          var lblCamSpans = lblClone.querySelectorAll('.scw-concat-cameras');
+          for (var lcs = 0; lcs < lblCamSpans.length; lcs++) lblCamSpans[lcs].remove();
+          l4Label = norm(lblClone.textContent);
+        }
 
         var descSpan = tr.querySelector('.scw-l4-2019');
         var description = '';
@@ -681,6 +804,11 @@
       }
 
       if (tr.classList.contains('scw-subtotal--level-2')) {
+        // Banded CO grids hide the native subsection subtotal (it mixes
+        // adds + removes into one meaningless number) and replace it with
+        // per-band rows — captured above as the bucket footer. Don't let
+        // the hidden native clobber that.
+        if (tr.classList.contains('scw-co-band-hidden-sub')) continue;
         var l2FooterLabel = norm(tr.getAttribute('data-scw-group-label') || '');
         var l2FooterQty = parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
         var l2FooterCost = norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
@@ -795,8 +923,10 @@
         var lbl = String(line.label);
         // Install-labor subtotal AND the grand total both render "TBD". The
         // grand total sums in install labor, so while the bid is unreleased it
-        // shows "TBD" rather than the equipment-only figure.
-        if (/installation/i.test(lbl) || /grand\s*total/i.test(lbl)) {
+        // shows "TBD" rather than the equipment-only figure. (On a CO the
+        // grand-total line is labeled "Change Order Total".)
+        if (/installation/i.test(lbl) || /grand\s*total/i.test(lbl) ||
+            /change\s*order\s*total/i.test(lbl)) {
           line.value = TBD;
         }
       }
@@ -1240,7 +1370,25 @@
           SCW.debug('[SCW PDF Export]', viewId, '→ empty grid, skipping');
           continue;
         }
-        data = scrapeGridView(viewId, cfg.gridKeys);
+        // The scrape walks the LIVE table and skips display:none rows —
+        // which is also how group-collapse hides rows inside collapsed
+        // MDF/IDF groups. A bid submitted with groups collapsed silently
+        // omitted every row in them from the PDF + payload (observed: a
+        // sub bid $50K under the on-page Grand Total). Reveal collapse-
+        // hidden rows for the synchronous scrape, restore immediately —
+        // nothing paints in between.
+        var restoreCollapsed = null;
+        try {
+          if (window.SCW && SCW.groupCollapse &&
+              typeof SCW.groupCollapse.revealCollapsedForSnapshot === 'function') {
+            restoreCollapsed = SCW.groupCollapse.revealCollapsedForSnapshot(viewId);
+          }
+        } catch (eReveal) { /* scrape proceeds with live visibility */ }
+        try {
+          data = scrapeGridView(viewId, cfg.gridKeys);
+        } finally {
+          if (restoreCollapsed) restoreCollapsed();
+        }
         if (data && cfg.recurringGrids && cfg.recurringGrids.indexOf(viewId) !== -1) {
           data.isRecurring = true;
         }
@@ -1265,6 +1413,12 @@
         break;
       }
     }
+
+    // Change Order manifest (null on base proposals). Rides the payload
+    // so buildPdfHtml + buildSowDocumentElements can emit CO-specific
+    // content, and so Make/e-sign templates can branch on isChangeOrder.
+    result.coChangeSummary = scrapeCoChangeSummary(sceneEl);
+    result.isChangeOrder = !!result.coChangeSummary;
 
     // Image attachments to append at the END of the rendered PDF
     // (site maps, additional photos). buildPdfHtml emits a cover-page
@@ -1327,31 +1481,64 @@
       applyTbdToPublishPayload(result);
     }
 
-    // Inject "Proposal ID" detail row right above SOW ID. Mirrors the
-    // existing SOW ID row visually — same label/value cells in the
-    // detail-table — and lets Make's Replace step swap the token in
-    // post-create. Only fires on proposal payloads since subcontractor
-    // bids don't carry a published-proposal record at all.
+    // Inject "Proposal ID" + "Expiration Date" detail rows right above
+    // SOW ID. Mirror the existing SOW ID row visually — same label/value
+    // cells in the detail-table — and let Make's Replace step swap the
+    // tokens in post-create. Only fires on proposal payloads since
+    // subcontractor bids don't carry a published-proposal record at all.
+    //
+    // Expiration Date is TOKENIZED (not scraped) because the scene's
+    // details view only renders the row when the SOW-side date is
+    // populated at publish — scrapeDetailView drops empty fields, which
+    // is exactly how proposals went out with no expiration anywhere
+    // (customer page + PDF, reported 2026-07-07). The token guarantees
+    // the row exists in every snapshot; Make substitutes the live
+    // proposal expiration (field_2659) at create, and the web surfaces
+    // re-patch it live on every view (published-proposal-render.js +
+    // the proposal-access public snippet) so post-publish date edits
+    // show without re-publishing. If the scene DID render a populated
+    // expiration row, keep it — the live patchers overwrite it anyway.
     if (cfg.payloadType === 'proposal') {
       for (var pi = 0; pi < result.views.length; pi++) {
         var dv = result.views[pi];
         if (dv.type !== 'detail' || !dv.fields || !dv.fields.length) continue;
         var sowIdx = -1;
+        var hasLabeledRow = false;
         for (var fi = 0; fi < dv.fields.length; fi++) {
+          if (!dv.fields[fi].labelNone) hasLabeledRow = true;
           if (/sow\s*id/i.test(dv.fields[fi].label || '')) { sowIdx = fi; break; }
         }
-        if (sowIdx === -1) continue;
-        // Don't double-insert if a previous run already added the row.
-        var alreadyHas = false;
+        // Anchor above SOW ID when that row exists; otherwise append after
+        // the view's labeled rows. Snapshots WITHOUT a SOW ID row are real
+        // (observed live 2026-07-07: a published proposal whose only header
+        // row was "Project Address" — the scraper drops blank fields), and
+        // the old `continue` here silently skipped injection for them.
+        if (sowIdx === -1 && !hasLabeledRow) continue;
+        var anchorIdx = (sowIdx !== -1) ? sowIdx : dv.fields.length;
+        // Don't double-insert if a previous run (or the scene itself)
+        // already carries either row.
+        var hasProposalId = false, hasExpiration = false;
         for (var ai = 0; ai < dv.fields.length; ai++) {
-          if (/proposal\s*id/i.test(dv.fields[ai].label || '')) { alreadyHas = true; break; }
+          var aLbl = dv.fields[ai].label || '';
+          if (/proposal\s*id/i.test(aLbl)) hasProposalId = true;
+          if (/^expir/i.test(aLbl))        hasExpiration = true;
         }
-        if (alreadyHas) break;
-        dv.fields.splice(sowIdx, 0, {
-          label: 'Proposal ID',
-          value: tok('Proposal_ID'),
-          valueHtml: tok('Proposal_ID')
-        });
+        // Splice order matters: Expiration first, then Proposal ID at the
+        // same index → final row order Proposal ID · Expiration Date · SOW ID.
+        if (!hasExpiration) {
+          dv.fields.splice(anchorIdx, 0, {
+            label: 'Expiration Date',
+            value: tok('Expiration_Date'),
+            valueHtml: tok('Expiration_Date')
+          });
+        }
+        if (!hasProposalId) {
+          dv.fields.splice(anchorIdx, 0, {
+            label: 'Proposal ID',
+            value: tok('Proposal_ID'),
+            valueHtml: tok('Proposal_ID')
+          });
+        }
         break;
       }
     }
@@ -1403,15 +1590,68 @@
   }
 
   function renderReportView(view, html) {
+    // Title goes INSIDE the wrap: the e-sign walker skips
+    // .report-table-wrap wholesale (BOM tables are internal), and a
+    // title emitted outside it leaked a bare "BOM" heading into the
+    // agreement with nothing under it.
+    html.push('<div class="report-table-wrap">');
     if (view.title) {
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
     }
-    if (view.tableHtml) {
-      html.push('<div class="report-table-wrap">' + view.tableHtml + '</div>');
-    }
+    if (view.tableHtml) html.push(view.tableHtml);
+    html.push('</div>');
   }
 
-  function renderGridSections(view, html) {
+  // Change Order "What's Changing" block for the published HTML/PDF.
+  // Publish-safe re-render of the on-page #scw-co-change-summary
+  // manifest: stacked Adding / Removing tables + net change, styled by
+  // the .co-change-summary rules in getPdfCss (no flex — PDF engines
+  // handle it inconsistently). buildSowDocumentElements has a matching
+  // emitter keyed on the .co-change-summary class.
+  function renderCoChangeSummary(cs, html) {
+    if (!cs) return;
+    html.push('<div class="co-change-summary">');
+    html.push('<div class="co-cs-title">Change Order &mdash; What&#39;s Changing</div>');
+    // Color-NEUTRAL copy, not the scraped on-page desc — the on-page
+    // sentence references green/red shading, which the e-sign agreement
+    // (and any colorless consumer) can't render.
+    html.push('<div class="co-cs-desc">This change order amends the previously ' +
+      'approved installation scope. Items being added and items being removed ' +
+      '(credited back) are itemized below.</div>');
+
+    function block(cls, heading, items, subLabel, subtotal) {
+      if (!items || !items.length) return;
+      html.push('<div class="co-cs-block ' + cls + '">');
+      html.push('<div class="co-cs-head">' + esc(heading) + '</div>');
+      html.push('<table class="co-cs-table"><tbody>');
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        html.push('<tr><td class="co-cs-item">' + esc(it.product || '(item)') +
+          (it.meta ? '<span class="co-cs-meta">' + esc(it.meta) + '</span>' : '') +
+          '</td><td class="co-cs-qty">' + esc(it.qty) + '</td>' +
+          '<td class="co-cs-amt">' + esc(it.amt) + '</td></tr>');
+      }
+      if (subtotal) {
+        html.push('<tr class="co-cs-sub"><td class="co-cs-item">' + esc(subLabel) +
+          '</td><td class="co-cs-qty"></td><td class="co-cs-amt">' + esc(subtotal) + '</td></tr>');
+      }
+      html.push('</tbody></table>');
+      html.push('</div>');
+    }
+
+    block('co-cs-block--add', 'Adding to install scope (' + cs.adds.length + ')',
+          cs.adds, 'Subtotal — additions', cs.addSubtotal);
+    block('co-cs-block--rm', 'Removing from install scope — credit (' + cs.removes.length + ')',
+          cs.removes, 'Subtotal — credits', cs.removeSubtotal);
+
+    if (cs.net) {
+      html.push('<div class="co-cs-net"><span class="co-cs-net-label">Net change</span>' +
+        '<span class="co-cs-net-value">' + esc(cs.net) + '</span></div>');
+    }
+    html.push('</div>');
+  }
+
+  function renderGridSections(view, html, isChangeOrder) {
     if (view.title) {
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
     }
@@ -1441,10 +1681,27 @@
 
       for (var b = 0; b < section.buckets.length; b++) {
         var bucket = section.buckets[b];
+
+        // CO band markers (banded CO preview scrape) — emit the band
+        // heading / band total as standalone rows between the product
+        // tables, mirroring the on-page Added/Removed presentation.
+        if (bucket.coBandHeader) {
+          html.push('<div class="co-band-hdr co-band-hdr--' + bucket.kind + '">' +
+            esc(bucket.label) + '</div>');
+          continue;
+        }
+        if (bucket.coBandTotal) {
+          html.push('<div class="co-band-total co-band-total--' + bucket.kind + '">' +
+            '<span class="co-band-total-label">' + esc(bucket.label) + '</span>' +
+            '<span class="co-band-total-value">' + esc(bucket.cost) + '</span></div>');
+          continue;
+        }
+
         if (!bucket.products.length && !bucket.footer) continue;
 
+        var coBandCls = bucket.coBand ? ' co-band--' + bucket.coBand : '';
         if (!bucket.isPromoted) {
-          html.push('<div class="l2-header">' + esc(bucket.label) + '</div>');
+          html.push('<div class="l2-header' + coBandCls + '">' + esc(bucket.label) + '</div>');
         }
 
         if (bucket.products.length) {
@@ -1454,7 +1711,7 @@
           // shows "Qty Cost" labels above colspan-3 rows with no
           // values, which reads as a broken table.
           var bucketHideCost = bucket.products.every(function (p) { return p.hideCost; });
-          html.push('<table class="product-table">');
+          html.push('<table class="product-table' + coBandCls + '">');
           if (bucketHideCost) {
             html.push('<thead><tr><th class="col-desc"></th></tr></thead>');
           } else {
@@ -1467,7 +1724,11 @@
             var prodClass = prod.isMountingHardware ? ' class="mounting"' : '';
 
             if (prod.label) {
-              html.push('<tr class="l3-row">');
+              // l3-product marks the true PRODUCT header row (vs synthetic
+              // L3s hosting orphan description rows, which also render as
+              // l3-row) — the PDF CSS bolds it and the e-sign walker bolds
+              // its cells, so products stand out from labor descriptions.
+              html.push('<tr class="l3-row l3-product">');
               html.push('<td' + prodClass + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(prod.label));
               if (prod.connectedDevices && prod.connectedDevices.length) {
                 html.push('<span class="connected-devices">(' + esc(prod.connectedDevices.join(', ')) + ')</span>');
@@ -1484,6 +1745,9 @@
             var l4TdClass = prod.label ? 'l4-desc' : '';
             for (var li = 0; li < prod.lineItems.length; li++) {
               var item = prod.lineItems[li];
+              // (Accessory rollup lines deliberately NOT bolded — only the
+              // true L3 product header row gets the bold treatment, so the
+              // parent product stands out over its children; 2026-07-17.)
               html.push('<tr class="' + l4Class + '">');
               var l4Content = item.description
                 ? item.description
@@ -1508,7 +1772,8 @@
 
           if (bucket.footer) {
             html.push('<tfoot>');
-            html.push('<tr class="l2-footer">');
+            html.push('<tr class="l2-footer' +
+              (bucket.footer.coBand ? ' co-band-sub--' + bucket.footer.coBand : '') + '">');
             // L2 footer hides the qty roll-up (per the on-page grid).
             // The roll-up isn't meaningful across mixed product types
             // in a bucket, and the per-product L3 rows already show
@@ -1539,6 +1804,12 @@
         html.push('<div class="l1-footer-title">' + esc(section.footer.title) + '</div>');
         for (var fl = 0; fl < section.footer.lines.length; fl++) {
           var line = section.footer.lines[fl];
+          // On a CO the per-section "Total" line duplicates the Change
+          // Order Total directly beneath it (single-section COs are the
+          // norm) — drop it. Subtotal/Discount lines, if any, stay.
+          if (isChangeOrder && line.type === 'final' && /^total$/i.test(line.label || '')) {
+            continue;
+          }
           html.push('<div class="l1-footer-line l1-line--' + line.type + ' l1-line--' + labelSlug(line.label) + '">');
           html.push('<span class="l1-footer-label">' + esc(line.label) + '</span>');
           html.push('<span class="l1-footer-value">' + esc(line.value) + '</span>');
@@ -1593,7 +1864,12 @@
     return '<style>' + getPdfCss().replace(/@import[^;]+;/g, '') + '</style>';
   }
 
-  function buildPdfHtml(payload) {
+  // opts.includeCoSummary — emit the CO "What's Changing" manifest block.
+  // Only the e-sign variant wants it (the agreement's headline summary +
+  // net change); the published customer page and PDF present just the
+  // banded CO proposal, where the manifest would duplicate the itemized
+  // Added/Removed bands (user call, 2026-07-17).
+  function buildPdfHtml(payload, opts) {
     if (!payload.views.length) return '';
 
     var html = [];
@@ -1640,16 +1916,29 @@
       }
     }
 
-    // Render project views
+    // Render project views. On a CO's E-SIGN variant, the "What's
+    // Changing" manifest sits immediately above the itemized grid —
+    // same position it holds on the live preview page.
+    var wantCoSummary = !!(opts && opts.includeCoSummary && payload.coChangeSummary);
+    var coSummaryEmitted = false;
     for (var pv = 0; pv < projectViews.length; pv++) {
       var pView = projectViews[pv];
+      if (pView.type === 'grid' && !coSummaryEmitted && wantCoSummary) {
+        renderCoChangeSummary(payload.coChangeSummary, html);
+        coSummaryEmitted = true;
+      }
       if (pView.type === 'detail') {
         renderDetailView(pView, html);
       } else if (pView.type === 'richtext') {
         renderRichTextView(pView, html);
       } else if (pView.type === 'grid') {
-        renderGridSections(pView, html);
+        renderGridSections(pView, html, payload.isChangeOrder);
       }
+    }
+    // A CO whose grid view didn't scrape (e.g. render race) still gets
+    // the manifest — it's the substance of the change order.
+    if (wantCoSummary && !coSummaryEmitted) {
+      renderCoChangeSummary(payload.coChangeSummary, html);
     }
 
     // Project totals
@@ -1676,7 +1965,7 @@
     if (recurringViews.length) {
       html.push('<div class="recurring-section">');
       for (var rv = 0; rv < recurringViews.length; rv++) {
-        renderGridSections(recurringViews[rv], html);
+        renderGridSections(recurringViews[rv], html, payload.isChangeOrder);
       }
       html.push('</div>');
     }
@@ -1839,6 +2128,9 @@
       '.l3-row td:first-child { font-size: 12px; }',
       '.l3-row td.col-qty, .l3-row td.col-cost { font-weight: 600; }',
       '.l3-row td.mounting { padding-left: 40px; font-size: 11px; }',
+      '/* The PRODUCT header row reads BOLD; labor/description rows and',
+      '   accessory rollup lines stay regular. */',
+      '.l3-row.l3-product td { font-weight: 700; }',
       '.connected-devices { display: inline; margin-left: 4px; color: orange; font-weight: 700; font-size: 10px; }',
       '',
       '/* ── L4 Line Item Row ── */',
@@ -1898,7 +2190,9 @@
       '.pt-line--final:last-child .pt-label { font-size: 17px; }',
       '.pt-line--final:last-child .pt-value { font-size: 19px; }',
       '/* Extra padding below Equipment Total and Installation Total */',
-      '.pt-line--equipment-total, .pt-line--installation-total { padding-bottom: 14px; }',
+      '/* (COs label these Equipment Net / Installation Net) */',
+      '.pt-line--equipment-total, .pt-line--installation-total,',
+      '.pt-line--equipment-net, .pt-line--installation-net { padding-bottom: 14px; }',
       '/* Tight cluster: Equipment Subtotal → Line Item Discounts → Equipment Total */',
       '.pt-line--equipment-subtotal, .pt-line--line-item-discounts { padding-top: 0; padding-bottom: 0; }',
       '.pt-line--equipment-subtotal + .pt-line, .pt-line--line-item-discounts + .pt-line { padding-top: 0; }',
@@ -1913,6 +2207,78 @@
       '  margin-bottom: 8px; padding-bottom: 4px;',
       '  border-bottom: 3px solid #07467c;',
       '}',
+      '',
+      '/* ── Change Order — What\'s Changing ── */',
+      '.co-change-summary {',
+      '  margin: 0 0 20px; border: 1px solid #dbe4ee; border-radius: 8px;',
+      '  overflow: hidden; background: #fff; page-break-inside: avoid;',
+      '}',
+      '.co-cs-title {',
+      '  padding: 8px 14px; background: #163C6E; color: #fff;',
+      '  font-size: 13px; font-weight: 800; letter-spacing: 0.05em;',
+      '  text-transform: uppercase;',
+      '}',
+      '.co-cs-desc {',
+      '  padding: 8px 14px; background: #f0f4fa; color: #334155;',
+      '  font-size: 11px; line-height: 1.45; border-bottom: 1px solid #dbe4ee;',
+      '}',
+      '.co-cs-block { padding: 10px 14px; }',
+      '.co-cs-block--add { border-left: 4px solid #059669; }',
+      '.co-cs-block--rm  { border-left: 4px solid #e11d48; background: #fff7f7; }',
+      '.co-cs-head {',
+      '  font-size: 10px; font-weight: 800; letter-spacing: 0.07em;',
+      '  text-transform: uppercase; margin-bottom: 6px;',
+      '}',
+      '.co-cs-block--add .co-cs-head { color: #065f46; }',
+      '.co-cs-block--rm  .co-cs-head { color: #9f1239; }',
+      'table.co-cs-table { width: 100%; border-collapse: collapse; }',
+      'table.co-cs-table td {',
+      '  padding: 4px 6px; font-size: 11px; color: #1e293b;',
+      '  border-bottom: 1px solid #eef2f7; vertical-align: top;',
+      '}',
+      'td.co-cs-qty { width: 42px; text-align: right; color: #64748b; white-space: nowrap; }',
+      'td.co-cs-amt { width: 96px; text-align: right; font-weight: 600; white-space: nowrap; }',
+      '.co-cs-block--rm td.co-cs-amt { color: #be123c; }',
+      '.co-cs-meta { display: block; color: #64748b; font-size: 10px; margin-top: 1px; }',
+      'tr.co-cs-sub td { border-bottom: 0; padding-top: 6px; font-weight: 800; }',
+      '.co-cs-net {',
+      '  text-align: right; padding: 8px 14px; border-top: 1px solid #dbe4ee;',
+      '  background: #f8fafc; font-size: 12px; font-weight: 800; color: #163C6E;',
+      '}',
+      '.co-cs-net-label {',
+      '  font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;',
+      '  color: #64748b; margin-right: 10px; font-weight: 700;',
+      '}',
+      '',
+      '/* ── CO Added/Removed bands — publish re-render. renderGridSections',
+      '      emits .co-band-* from the banded preview scrape; look kept in',
+      '      sync with co-band-mockup.js (V1 + gray rows / red credits). ── */',
+      '.co-band-hdr {',
+      '  font-weight: 800; font-size: 11px; text-transform: uppercase;',
+      '  letter-spacing: 0.06em; padding: 8px 10px; margin: 14px 0 8px;',
+      '  page-break-after: avoid;',
+      '}',
+      '.co-band-hdr--add {',
+      '  background: #ecfdf5; color: #065f46;',
+      '  border-left: 4px solid #059669; border-top: 2px solid #059669;',
+      '}',
+      '.co-band-hdr--rm {',
+      '  background: #f4f7fa; color: #334155; margin-top: 26px;',
+      '  border-left: 4px solid #64748b; border-top: 3px solid #07467c;',
+      '}',
+      'table.product-table.co-band--add tbody td { background: #f0fdf4; }',
+      'table.product-table.co-band--rm tbody td { background: #f8fafc; }',
+      'table.product-table.co-band--rm tbody td.col-cost { color: #be123c; }',
+      '.l2-header.co-band--rm { color: #334155; }',
+      'tr.l2-footer.co-band-sub--rm td:last-child { color: #be123c; }',
+      '.co-band-total {',
+      '  display: flex; justify-content: space-between;',
+      '  font-weight: 800; font-size: 12px; padding: 7px 10px; margin: 2px 0 12px;',
+      '  page-break-inside: avoid;',
+      '}',
+      '.co-band-total--add { background: #dcfce7; color: #065f46; border-top: 2px solid #059669; }',
+      '.co-band-total--rm  { background: #eef2f7; color: #334155; border-top: 2px solid #64748b; }',
+      '.co-band-total--rm .co-band-total-value { color: #be123c; }',
       '',
       '/* ── Report / BOM Table ── */',
       '.report-table-wrap { margin-top: 30px; }',
@@ -2021,13 +2387,32 @@
     return '';
   }
 
+  function fmtSummaryMoney(n) {
+    if (typeof n !== 'number' || !isFinite(n)) return '';
+    return (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
   function extractSummaryFields(payload) {
+    // Primary source: the project-totals lines scraped off the rendered
+    // grid. That scrape can come up empty (observed on CO previews) —
+    // fall back to the exact numbers proposal-grid computed for the same
+    // rows, stashed on SCW.proposalGridTotals at render time. On a CO
+    // these are the NET values (credit rows are negative in the sums),
+    // which is what the published-proposal record should carry.
+    var pg = (window.SCW && window.SCW.proposalGridTotals) || null;
     return {
       sowId:              findDetailField(payload, /sow\s*id/i),
       expirationDate:     findDetailField(payload, /expir/i),
-      equipmentTotal:     findTotalLine(payload, /equipment\s*total/i),
-      installationTotal:  findTotalLine(payload, /installation\s*total/i),
-      grandTotal:         findTotalLine(payload, /grand\s*total/i)
+      // COs label these "Equipment Net" / "Installation Net" — match both.
+      equipmentTotal:     findTotalLine(payload, /equipment\s*(?:total|net)/i)
+                            || (pg ? fmtSummaryMoney(pg.equipmentTotal) : ''),
+      installationTotal:  findTotalLine(payload, /installation\s*(?:total|net)/i)
+                            || (pg ? fmtSummaryMoney(pg.installationTotal) : ''),
+      // On a CO the grand-total line is labeled "Change Order Total" —
+      // match either so the summary field never comes back blank.
+      grandTotal:         findTotalLine(payload, /grand\s*total|change\s*order\s*total/i)
+                            || (pg ? fmtSummaryMoney(pg.grandTotal) : '')
     };
   }
 
@@ -2274,6 +2659,7 @@
     'proposalAccessToken', 'proposalAccessUrl',
     'plaintext', 'plaintextJsonEscaped',
     'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
+    'isChangeOrder', 'coNetChange', 'coChangeSummary',
     'tokens', 'publishAsTbd',
     'subBidBidHtml', 'subBidDiffHtml', 'subBidDiffDocHtml', 'subBidReviewHtml',
     'subBidBasis', 'subBidBasisId', 'subBidBasisSubId',
@@ -3519,7 +3905,16 @@
   // request, the proposal discount is subtracted from the LABOR lump,
   // not from equipment lines (which already reflect their per-line
   // discounts via field_2269).
-  function buildInvoiceItems(jsonSnapshot, sowId, projectTotals) {
+  // isChangeOrder: CO invoices carry SIGNED amounts — Remove lines are
+  // credits (negative qty × positive price under the CO qty-negation
+  // convention), so rows aggregate by their real qty (field_1964) and
+  // extended net (field_2269) instead of 1-per-row positive-only, and a
+  // net-negative labor lump survives instead of clamping to zero. The
+  // base-proposal path is byte-identical to before. A final xeroSafe pass
+  // then re-shapes CO lines for Xero (which rejects qty < 0): the sign
+  // moves into the amounts — credit notes get positive lines, invoices
+  // keep removes as positive-qty / negative-amount lines.
+  function buildInvoiceItems(jsonSnapshot, sowId, projectTotals, isChangeOrder) {
     if (!jsonSnapshot || typeof jsonSnapshot !== 'object') return null;
 
     // Find any line-items array in the snapshot. Heuristic: an array
@@ -3564,6 +3959,16 @@
       var unitAmount = num(row.field_2268_raw);
       var equipmentVal = unitAmount;
       var laborVal = num(row.field_2028_raw);
+      // CO rows: real qty (negative on Remove lines) + extended net amount.
+      // Base rows keep the historical 1-per-row unit-sum behavior.
+      var rowQty = 1;
+      var rowAmt = equipmentVal;
+      if (isChangeOrder) {
+        var coQty = num(row.field_1964_raw);
+        rowQty = coQty || 1;
+        var coExt = num(row.field_2269_raw);
+        rowAmt = coExt !== 0 ? coExt : round2(rowQty * unitAmount);
+      }
       // Bucket sort order from field_2218 if projected on the line-item
       // record; otherwise fall back to bucket name (so the output is at
       // least deterministic). Add field_2218 to view_3896 to get the
@@ -3580,7 +3985,7 @@
       }
 
       if (/^license\b/i.test(bucket)) {
-        if ((sku || name) && equipmentVal > 0) {
+        if ((sku || name) && (isChangeOrder ? rowAmt !== 0 : equipmentVal > 0)) {
           // Aggregation key: bucket + sku + name + unitPrice. Same SKU
           // at different prices (e.g. tiered pricing) yields separate
           // invoice lines so qty × unitPrice always equals lineTotal.
@@ -3592,8 +3997,8 @@
               _sortBucket: bucketSort, _sortLabel: (bucket + '|' + name)
             };
           }
-          recurringBySku[recurringKey].qty += 1;
-          recurringBySku[recurringKey].lineTotal = round2(recurringBySku[recurringKey].lineTotal + equipmentVal);
+          recurringBySku[recurringKey].qty += rowQty;
+          recurringBySku[recurringKey].lineTotal = round2(recurringBySku[recurringKey].lineTotal + rowAmt);
         }
         continue;
       }
@@ -3602,7 +4007,7 @@
         continue;
       }
 
-      if ((sku || name) && equipmentVal > 0) {
+      if ((sku || name) && (isChangeOrder ? rowAmt !== 0 : equipmentVal > 0)) {
         var equipmentKey = bucket + '␟' + sku + '␟' + name + '␟' + unitAmount;
         if (!equipmentBySku[equipmentKey]) {
           equipmentBySku[equipmentKey] = {
@@ -3611,8 +4016,8 @@
             _sortBucket: bucketSort, _sortLabel: (bucket + '|' + name)
           };
         }
-        equipmentBySku[equipmentKey].qty += 1;
-        equipmentBySku[equipmentKey].lineTotal = round2(equipmentBySku[equipmentKey].lineTotal + equipmentVal);
+        equipmentBySku[equipmentKey].qty += rowQty;
+        equipmentBySku[equipmentKey].lineTotal = round2(equipmentBySku[equipmentKey].lineTotal + rowAmt);
       }
 
       laborTotal = round2(laborTotal + laborVal);
@@ -3650,7 +4055,11 @@
       } catch (e) { /* ignore */ }
       return null;
     })();
-    if (modelLaborTotal !== null && modelLaborTotal > 0) {
+    // CO labor can legitimately net NEGATIVE (a removal-heavy CO credits
+    // install labor back) — take any non-zero model sum there. Base
+    // proposals keep the positive-only override.
+    if (modelLaborTotal !== null &&
+        (isChangeOrder ? modelLaborTotal !== 0 : modelLaborTotal > 0)) {
       laborTotal = modelLaborTotal;
     } else if (projectTotals && Array.isArray(projectTotals.lines)) {
       // Secondary fallback: projectTotals "Installation Total" line.
@@ -3658,10 +4067,13 @@
       for (var li = 0; li < projectTotals.lines.length; li++) {
         var ptLine = projectTotals.lines[li];
         if (!ptLine) continue;
-        if (!/^installation\s+total\b/i.test(ptLine.label || '')) continue;
-        var instRaw = (ptLine.value || '').replace(/[^0-9.]/g, '');
+        // COs label this line "Installation Net" — match both, keep the sign.
+        if (!/^installation\s+(?:total|net)\b/i.test(ptLine.label || '')) continue;
+        var instRaw = (ptLine.value || '').replace(/[^0-9.\-]/g, '');
         var instAmt = parseFloat(instRaw);
-        if (!isNaN(instAmt) && instAmt > 0) laborTotal = round2(instAmt);
+        if (!isNaN(instAmt) && (isChangeOrder ? instAmt !== 0 : instAmt > 0)) {
+          laborTotal = round2(instAmt);
+        }
         break;
       }
     }
@@ -3693,7 +4105,9 @@
       }
     }
     var laborAfterDiscount = round2(laborTotal - proposalDiscount);
-    if (laborAfterDiscount < 0) laborAfterDiscount = 0;
+    // Base proposals never invoice negative labor; a CO's negative labor
+    // lump IS the credit — keep the sign.
+    if (laborAfterDiscount < 0 && !isChangeOrder) laborAfterDiscount = 0;
 
     function flatten(map) {
       var out = [];
@@ -3719,20 +4133,78 @@
       return out;
     }
 
+    var equipment = flatten(equipmentBySku);
+    var recurring = flatten(recurringBySku);
+    var labor = (isChangeOrder ? laborAfterDiscount !== 0 : laborAfterDiscount > 0) ? {
+      description: 'Installation services per SOW ' + (sowId || ''),
+      qty: 1,
+      unitPrice: laborAfterDiscount,
+      lineTotal: laborAfterDiscount,
+      // Surface the pre-discount and discount values too so Make can
+      // render either ("Labor $X less proposal discount $Y = $Z") or
+      // just ship the net.
+      laborSubtotal: laborTotal,
+      proposalDiscount: proposalDiscount
+    } : null;
+
+    // Signed grand total across the invoice lines. On a CO this is the
+    // net change; isCredit tells Make to book a Xero CREDIT NOTE (with
+    // the amounts entered NEGATIVE, exactly as they already are here)
+    // instead of an invoice.
+    var invoiceTotal = 0;
+    for (var eq = 0; eq < equipment.length; eq++) invoiceTotal += num(equipment[eq].lineTotal);
+    if (labor) invoiceTotal += num(labor.lineTotal);
+    invoiceTotal = round2(invoiceTotal);
+    var isCredit = !!isChangeOrder && invoiceTotal < 0;
+
+    // ── Xero-safe line normalization (CO only) ──────────────────────────
+    // Xero hard-rejects negative QUANTITIES ("Quantity must not be less
+    // than zero"), so a line's sign must live in its AMOUNTS, never qty:
+    //   • Credit note (isCredit): flip every line's sign — the credit-note
+    //     document IS the negation, so removes book as POSITIVE lines and
+    //     any adds book as negative-amount lines. invoiceTotal keeps the
+    //     signed net (Make branches on isCredit, not on the sign here).
+    //   • Invoice with remove lines (net-positive CO): move the sign from
+    //     qty into unitPrice — qty stays positive and qty × unitPrice
+    //     still equals lineTotal (negative unit amounts are legal in Xero).
+    function xeroSafe(item) {
+      if (!item) return;
+      if (isCredit) {
+        item.unitPrice = round2(-item.unitPrice);
+        item.lineTotal = round2(-item.lineTotal);
+      }
+      if (item.qty < 0) {
+        item.qty = -item.qty;
+        item.unitPrice = round2(-item.unitPrice);
+      }
+      if (item.qty === 0 && item.lineTotal !== 0) {
+        item.qty = 1;
+        item.unitPrice = item.lineTotal;
+      }
+    }
+    function dropEmpty(list) {
+      return list.filter(function (it) {
+        return it && (it.qty !== 0 || it.lineTotal !== 0);
+      });
+    }
+    if (isChangeOrder) {
+      for (var xe = 0; xe < equipment.length; xe++) xeroSafe(equipment[xe]);
+      for (var xr = 0; xr < recurring.length; xr++) xeroSafe(recurring[xr]);
+      xeroSafe(labor);
+      // Fully-cancelled aggregates (add + remove of the same SKU at the
+      // same price) net to qty 0 / $0 — drop them, don't ship empty lines.
+      equipment = dropEmpty(equipment);
+      recurring = dropEmpty(recurring);
+    }
+
     return {
-      equipment: flatten(equipmentBySku),
-      labor: laborAfterDiscount > 0 ? {
-        description: 'Installation services per SOW ' + (sowId || ''),
-        qty: 1,
-        unitPrice: laborAfterDiscount,
-        lineTotal: laborAfterDiscount,
-        // Surface the pre-discount and discount values too so Make can
-        // render either ("Labor $X less proposal discount $Y = $Z") or
-        // just ship the net.
-        laborSubtotal: laborTotal,
-        proposalDiscount: proposalDiscount
-      } : null,
-      recurring: flatten(recurringBySku)
+      equipment: equipment,
+      labor: labor,
+      recurring: recurring,
+      isChangeOrder: !!isChangeOrder,
+      // equipment + labor only — recurring bills separately.
+      invoiceTotal: invoiceTotal,
+      isCredit: isCredit
     };
   }
 
@@ -3798,6 +4270,34 @@
       elements.push({ type: 'text_normal', text: text });
     }
 
+    // Cell text with element boundaries turned into spaces. Reading
+    // textContent directly glues adjacent runs together ("…Cabling to
+    // Network.Install and terminate…") because the source HTML has no
+    // whitespace between a bold heading and the text that follows it.
+    // Strip tags to spaces, then decode entities via a scratch node.
+    function cellText(td) {
+      var scratch = doc.createElement('div');
+      scratch.innerHTML = (td.innerHTML || '').replace(/<[^>]+>/g, ' ');
+      return cleanText(scratch.textContent);
+    }
+
+    // esignatures.com rejects ragged tables ("The table_cells must have
+    // the same number of cells in each row") and has no colspan concept —
+    // a full-width note row (<td colspan=3>, e.g. a bucket assumption
+    // line inside a product table) collapses to a 1-cell row and 400s the
+    // whole contract. Pad every row to the table's widest row with empty
+    // cells before pushing.
+    function padRows(cells) {
+      var max = 0, i;
+      for (i = 0; i < cells.length; i++) {
+        if (cells[i].length > max) max = cells[i].length;
+      }
+      for (i = 0; i < cells.length; i++) {
+        while (cells[i].length < max) cells[i].push({ text: '' });
+      }
+      return cells;
+    }
+
     // .detail-label-none holds the rendered project name + quote name
     // as <h1>/<h2>. Skip the <h1> (project name) — Make injects it
     // dynamically at the top of the agreement instead. Keep the <h2>
@@ -3834,7 +4334,7 @@
           { text: value }
         ]);
       }
-      if (cells.length) elements.push({ type: 'table', table_cells: cells });
+      if (cells.length) elements.push({ type: 'table', table_cells: padRows(cells) });
     }
 
     // .col-qty / .col-cost cells get center alignment per request.
@@ -3845,19 +4345,34 @@
     }
 
     // .l1-section wraps an MDF/IDF/Headend group. Emit the L1 header as
-    // H3, MERGE every .product-table inside the section into ONE
-    // combined table (skipping L2 headers and L2 footers), then emit
-    // each .l1-footer line as its own H3.
+    // H3, then walk the section's children IN ORDER: product-table
+    // bodies merge into one combined table PER SEGMENT (L2 headers and
+    // L2 footers skipped, header row deduped per segment, Qty/Cost
+    // cells centered). On a base proposal there are no segment breaks,
+    // so the whole section is still one merged table. On a banded CO,
+    // each .co-band-hdr / .co-band-total is a segment break emitted as
+    // its own H3 — so the agreement keeps the Items to be Added /
+    // Items to be Removed structure the preview shows (esignatures has
+    // no cell colors; the headings + signed credit amounts carry it).
+    // Finally each .l1-footer line becomes its own H3.
     function emitL1Section(section) {
       var headerEl = section.querySelector('.l1-header');
       if (headerEl) pushHeader(3, cleanText(headerEl.textContent));
 
       var combinedCells = [];
       var emittedHeaderRow = false;
-      var tables = section.querySelectorAll('table.product-table');
-      for (var t = 0; t < tables.length; t++) {
+
+      function flushTable() {
+        if (combinedCells.length) {
+          elements.push({ type: 'table', table_cells: padRows(combinedCells) });
+        }
+        combinedCells = [];
+        emittedHeaderRow = false;
+      }
+
+      function harvestTable(tableEl) {
         if (!emittedHeaderRow) {
-          var headRows = tables[t].querySelectorAll('thead tr');
+          var headRows = tableEl.querySelectorAll('thead tr');
           for (var hr = 0; hr < headRows.length; hr++) {
             var thCells = headRows[hr].querySelectorAll('th');
             if (!thCells.length) continue;
@@ -3874,14 +4389,19 @@
             break;
           }
         }
-        var bodyRows = tables[t].querySelectorAll('tbody tr');
+        var bodyRows = tableEl.querySelectorAll('tbody tr');
         for (var br = 0; br < bodyRows.length; br++) {
           var tdCells = bodyRows[br].querySelectorAll('td');
           if (!tdCells.length) continue;
+          // Only the true PRODUCT header row renders BOLD — labor
+          // descriptions AND accessory/child rollup lines stay regular,
+          // so the parent product stands out over everything beneath it.
+          var isProductRow = bodyRows[br].classList.contains('l3-product');
           var rowCells = [];
           for (var cb = 0; cb < tdCells.length; cb++) {
             var td = tdCells[cb];
-            var rcell = { text: cleanText(td.textContent) };
+            var rcell = { text: cellText(td) };
+            if (isProductRow) rcell.styles = ['bold'];
             var alignB = cellAlignmentForClass(td);
             if (alignB) rcell.alignment = alignB;
             rowCells.push(rcell);
@@ -3890,9 +4410,34 @@
         }
         // <tfoot> (.l2-footer) rows skipped intentionally.
       }
-      if (combinedCells.length) {
-        elements.push({ type: 'table', table_cells: combinedCells });
+
+      for (var ci = 0; ci < section.children.length; ci++) {
+        var child = section.children[ci];
+        var cCls = child.classList;
+        if (cCls && cCls.contains('co-band-hdr')) {
+          flushTable();
+          var bandText = cleanText(child.textContent);
+          if (cCls.contains('co-band-hdr--rm') && !/credit/i.test(bandText)) {
+            bandText += ' (credit)';
+          }
+          pushHeader(3, bandText);
+          continue;
+        }
+        if (cCls && cCls.contains('co-band-total')) {
+          flushTable();
+          var btLbl = child.querySelector('.co-band-total-label');
+          var btVal = child.querySelector('.co-band-total-value');
+          var btText = cleanText(btLbl ? btLbl.textContent : '') + '   ' +
+                       cleanText(btVal ? btVal.textContent : '');
+          pushHeader(3, cleanText(btText));
+          continue;
+        }
+        if (child.tagName && child.tagName.toLowerCase() === 'table' &&
+            cCls && cCls.contains('product-table')) {
+          harvestTable(child);
+        }
       }
+      flushTable();
 
       var footer = section.querySelector('.l1-footer');
       if (footer) {
@@ -3931,7 +4476,65 @@
         tableCells.push([labelCell, valueCell]);
       }
       if (tableCells.length) {
-        elements.push({ type: 'table', table_cells: tableCells });
+        elements.push({ type: 'table', table_cells: padRows(tableCells) });
+      }
+    }
+
+    // .co-change-summary — the Change Order "What's Changing" block
+    // (renderCoChangeSummary). Emits natively: H2 title, intro text,
+    // per-column H3 + 3-col table (item / qty / amount, subtotal row
+    // bold), then the net change as a bold H3 — same shape the L1
+    // footer lines use. This is the substance of a CO agreement; the
+    // merged product tables above may legitimately be sparse on a CO.
+    function emitCoChangeSummary(rootEl) {
+      var titleEl = rootEl.querySelector('.co-cs-title');
+      pushHeader(2, titleEl ? cleanText(titleEl.textContent) : "Change Order — What's Changing");
+      var descEl = rootEl.querySelector('.co-cs-desc');
+      if (descEl) pushNormal(cleanText(descEl.textContent));
+
+      var blocks = rootEl.querySelectorAll('.co-cs-block');
+      for (var b = 0; b < blocks.length; b++) {
+        var headEl = blocks[b].querySelector('.co-cs-head');
+        if (headEl) pushHeader(3, cleanText(headEl.textContent));
+        var rows = blocks[b].querySelectorAll('table.co-cs-table tr');
+        var cells = [[
+          { text: 'Item', styles: ['bold'] },
+          { text: 'Qty', styles: ['bold'], alignment: 'center' },
+          { text: 'Amount', styles: ['bold'], alignment: 'center' }
+        ]];
+        for (var r = 0; r < rows.length; r++) {
+          var isSub = rows[r].className.indexOf('co-cs-sub') >= 0;
+          var itemEl = rows[r].querySelector('td.co-cs-item');
+          var qtyEl  = rows[r].querySelector('td.co-cs-qty');
+          var amtEl  = rows[r].querySelector('td.co-cs-amt');
+          if (!itemEl) continue;
+          // Product name + meta (designator · location) share the first
+          // cell; join with an em-dash so both survive the flatten.
+          var metaEl = itemEl.querySelector('.co-cs-meta');
+          var meta = metaEl ? cleanText(metaEl.textContent) : '';
+          var itemClone = itemEl.cloneNode(true);
+          var metaClone = itemClone.querySelector('.co-cs-meta');
+          if (metaClone) metaClone.parentNode.removeChild(metaClone);
+          var itemText = cleanText(itemClone.textContent) + (meta ? ' — ' + meta : '');
+          var rowStyles = isSub ? ['bold'] : null;
+          var rowOut = [
+            { text: itemText },
+            { text: cleanText(qtyEl ? qtyEl.textContent : ''), alignment: 'center' },
+            { text: cleanText(amtEl ? amtEl.textContent : ''), alignment: 'center' }
+          ];
+          if (rowStyles) {
+            for (var rc = 0; rc < rowOut.length; rc++) rowOut[rc].styles = rowStyles;
+          }
+          cells.push(rowOut);
+        }
+        if (cells.length > 1) {
+          elements.push({ type: 'table', table_cells: padRows(cells) });
+        }
+      }
+
+      var netVal = rootEl.querySelector('.co-cs-net-value');
+      if (netVal) {
+        pushHeader(3, 'Net change   ' + cleanText(netVal.textContent));
       }
     }
 
@@ -3956,7 +4559,7 @@
         }
         cells.push(rowCells);
       }
-      if (cells.length) elements.push({ type: 'table', table_cells: cells });
+      if (cells.length) elements.push({ type: 'table', table_cells: padRows(cells) });
     }
 
     function walkChildren(parent) {
@@ -3988,6 +4591,7 @@
           if (nt) pushNormal(nt);
           continue;
         }
+        if (classes && classes.contains('co-change-summary')) { emitCoChangeSummary(child); continue; }
         if (classes && classes.contains('l1-section')) { emitL1Section(child); continue; }
         if (classes && classes.contains('project-totals')) { emitProjectTotals(child); continue; }
         if (classes && classes.contains('recurring-section')) {
@@ -4192,6 +4796,16 @@
       console.warn('[SCW pdfExport] buildPublishPayload: scrapeAllViews returned 0 views for ' + cfg.sceneId + '. Page may not be fully rendered.');
       return null;
     }
+    // ONE variant everywhere (2026-07-17): the "What's Changing" manifest
+    // is dropped from ALL publish outputs — published page, PDF, e-sign,
+    // plaintext. In the agreement it triple-told the story next to the
+    // banded itemization + Change Order Totals, and its "shaded green /
+    // red" copy referenced colors esignatures can't render. It survives
+    // ON-PAGE only (the ops panel under Issue Change Order). The
+    // structured coChangeSummary/coNetChange payload keys still ride for
+    // Make/e-sign templates, and buildPdfHtml(payload,
+    // { includeCoSummary: true }) remains available if a summary variant
+    // is ever wanted again.
     var htmlStr       = buildPdfHtml(payload);
     var summary       = extractSummaryFields(payload);
     var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
@@ -4233,7 +4847,7 @@
     var accessToken = access.token;
     var accessUrl   = access.url;
 
-    return {
+    var out = {
       recordId:              getPageRecordId() || '',
       hash:                  window.location.hash || '',
       sceneId:               cfg.sceneId,
@@ -4248,6 +4862,16 @@
       installationTotal:     summary.installationTotal,
       grandTotal:            summary.grandTotal,
       expirationDate:        summary.expirationDate,
+      // Change Order publish — true when the preview page carried the
+      // proposal-grid "What's Changing" manifest (#scw-co-change-summary).
+      // coNetChange is the manifest's net-change money string (e.g.
+      // "$1,234.00" / "−$500.00") — the e-sign template should show THIS
+      // (not grandTotal) as the headline amount on a CO agreement.
+      // coChangeSummary is the full structured manifest
+      // { desc, adds[], addSubtotal, removes[], removeSubtotal, net }.
+      isChangeOrder:         payload.isChangeOrder || false,
+      coNetChange:           payload.coChangeSummary ? payload.coChangeSummary.net : '',
+      coChangeSummary:       payload.coChangeSummary || undefined,
       // Tokenized public link, minted client-side at publish time.
       // Make should write these to field_2904 and field_2908 on the
       // proposal record so the public snippet finds them on first
@@ -4342,8 +4966,36 @@
       //   { equipment: [ { sku, description, qty, unitPrice, lineTotal } ],
       //     labor:    { description, qty, unitPrice, lineTotal } | null,
       //     recurring: [ { sku, description, qty, unitPrice, lineTotal } ] }
-      invoiceItems:          buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals),
-      invoiceItemsString:    (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals) || {}); } catch (e) { return '{}'; } })(),
+      invoiceItems:          buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals, payload.isChangeOrder),
+      invoiceItemsString:    (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals, payload.isChangeOrder) || {}); } catch (e) { return '{}'; } })(),
+      // ── Xero routing for COs ─────────────────────────────────────────
+      // A change order whose total is NEGATIVE must be booked as a Xero
+      // CREDIT NOTE. invoiceItems lines are already Xero-safe: qty is
+      // never negative (Xero rejects it) — on a credit note the lines
+      // carry POSITIVE amounts (the document type is the negation), on an
+      // invoice a remove line ships as positive qty × negative unitPrice.
+      // Make maps them verbatim and branches on invoiceIsCredit.
+      // invoiceTotal is the exact numeric grand/CO total (same figure the
+      // grid computed; not the display string).
+      invoiceTotal:          (function () {
+        try {
+          var pgT = window.SCW && window.SCW.proposalGridTotals;
+          if (pgT && typeof pgT.grandTotal === 'number' && isFinite(pgT.grandTotal)) {
+            return Math.round(pgT.grandTotal * 100) / 100;
+          }
+        } catch (e) { /* fall through */ }
+        var gp = parseFloat(String(summary.grandTotal || '').replace(/[^0-9.\-]/g, ''));
+        return isFinite(gp) ? gp : null;
+      })(),
+      invoiceIsCredit:       (function () {
+        if (!payload.isChangeOrder) return false;
+        try {
+          var pgC = window.SCW && window.SCW.proposalGridTotals;
+          if (pgC && typeof pgC.grandTotal === 'number') return pgC.grandTotal < 0;
+        } catch (e) { /* fall through */ }
+        var gc = parseFloat(String(summary.grandTotal || '').replace(/[^0-9.\-]/g, ''));
+        return isFinite(gc) && gc < 0;
+      })(),
       // Token contract — Make's "Tools → Replace" step should run
       // through this list and substitute each {{TOKEN}} occurrence in
       // .html with the post-create record's matching field. Listed on
@@ -4351,6 +5003,45 @@
       // hard-coded copy.
       tokens:                PROPOSAL_TOKENS
     };
+
+    // ── Payload budget: keep the webhook body under Make's 5 MB cap ────
+    // Make's gateway rejects request bodies over 5 MB with a CORS-opaque
+    // 400 BEFORE the scenario runs (confirmed live 2026-07-22: a 5.83 MB
+    // publish → 400, no scenario run, browser saw only "Failed to fetch").
+    // The two heaviest fields by far are `json` (full line-item snapshot,
+    // rendered + _raw twins — 3.06 MB on the failing SOW) and `jsonString`
+    // (raw-only twin, 1.81 MB). Budget is 4.5 MB, NOT 5: the ops/sales
+    // steppers merge another ~150 KB (sowFields, record-id lists) onto
+    // this payload after we return, and ops-stepper hard-blocks at 5 MB.
+    //
+    // Degradation ladder — smaller payloads ship byte-identical, only an
+    // over-budget payload is touched, and every step is flagged on the
+    // payload + console.warn'd so Make (and we) can see what happened:
+    //   1. jsonSlimmed: `json` drops its rendered field_xxx twins
+    //      (stripNonRawFields — same shape jsonString already uses; any
+    //      `.json[].field_xxx_raw` mapping in Make keeps working).
+    //   2. jsonDropped: `json` removed entirely — `jsonString` still
+    //      carries the full raw-only snapshot as a string.
+    var PAYLOAD_BUDGET = 4.5 * 1024 * 1024;
+    try {
+      var totalBytes = JSON.stringify(out).length;
+      if (totalBytes > PAYLOAD_BUDGET) {
+        out.json = stripNonRawFields(jsonSnapshot);
+        out.jsonSlimmed = true;
+        var slimmedBytes = JSON.stringify(out).length;
+        console.warn('[SCW publish] payload ' + totalBytes + 'B over ' + PAYLOAD_BUDGET +
+          'B budget — slimmed json to raw-only fields (now ' + slimmedBytes + 'B)');
+        totalBytes = slimmedBytes;
+      }
+      if (totalBytes > PAYLOAD_BUDGET) {
+        out.json = null;
+        out.jsonDropped = true;
+        console.warn('[SCW publish] still over budget — dropped json entirely ' +
+          '(jsonString keeps the raw-only snapshot; now ' + JSON.stringify(out).length + 'B)');
+      }
+    } catch (eBudget) { /* budgeting is best-effort — never block the payload */ }
+
+    return out;
   }
 
   window.SCW = window.SCW || {};

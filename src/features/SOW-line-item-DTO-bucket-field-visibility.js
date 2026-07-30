@@ -8,7 +8,10 @@
   // ======================
   // view_4002 — Add-to-SOW form on the bid comparison page (scene_1155),
   // opened via view_4001's menu link. Identical DTO fields to view_3329.
-  const VIEW_IDS = ['view_3329', 'view_4002']; // add more views
+  // view_4100 — Add-to-Change-Order form on the CO scene, opened via the CO
+  // worksheet's "+ Add New Item" button (view_4099 menu link). Same SOW
+  // multi-add DTO fields (field_2182 REL_scope of work on every bucket).
+  const VIEW_IDS = ['view_3329', 'view_4002', 'view_4100']; // add more views
   const BUCKET_FIELD_KEY = 'field_2223';
   const EVENT_NS = '.scwBucketRules';
   const CSS_ID = 'scw-bucket-visibility-css';
@@ -104,6 +107,18 @@
     return out;
   }
   const BUCKET_RULES = compileRules(BUCKET_RULES_HUMAN);
+
+  // Per-view ADDITIVE rules — fields shown on top of BUCKET_RULES for one
+  // view only. view_4100 (Add-to-Change-Order): Service items get an
+  // OPTIONAL product picker (field_2195, the broad catalog — it feeds the
+  // unified field_2246 via set_unified_product_field.js like every other
+  // bucket's picker). Optional is free: the field isn't required in the
+  // Builder form (it submits hidden on every other bucket today).
+  const VIEW_RULE_ADDITIONS = {
+    view_4100: {
+      '6977caa7f246edf67b52cbcd': ['field_2195'],   // service → optional product
+    },
+  };
 
   // ============================================================
   // ✅ EARLY CSS: inject immediately so there’s no initial “flash”
@@ -215,6 +230,8 @@
     if (!bucketValue) return;
 
     (BUCKET_RULES[bucketValue] || []).forEach((k) => showField($scope, k));
+    (((VIEW_RULE_ADDITIONS[viewId] || {})[bucketValue]) || [])
+      .forEach((k) => showField($scope, k));
 
     // Assumptions bucket: show field_2210 + rename label when field_2248 includes Custom Assumption
     if (bucketValue === ASSUMPTIONS_BUCKET_ID) {

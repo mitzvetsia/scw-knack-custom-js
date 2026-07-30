@@ -1,10 +1,14 @@
 /*** FEATURE: Acceptance summary card (view_3914) **************************
  *
- * Replaces the raw single-row INSTALL_acceptance table on the deploy scene
- * with a clean card: the proposal as the title, Yes/No flags as status pills,
- * and the document links + the "Create Questionnaire" action rendered as
- * buttons. The native table is hidden (kept in the DOM) and the buttons proxy
- * clicks to its original anchors so Knack's asset/action handlers still fire.
+ * Replaces the raw INSTALL_acceptance table on the deploy scene with clean
+ * cards — ONE PER RECORD (2026-07-17: a project accrues an acceptance per
+ * signed agreement — the base proposal plus each change order — so the old
+ * first-row-only render hid every CO acceptance). Each card: the proposal as
+ * the title, Yes/No flags as status pills, and the document links + the
+ * "Create Questionnaire" action rendered as buttons. The native table is
+ * hidden (kept in the DOM) and the buttons proxy clicks to their own row's
+ * original anchors so Knack's asset/action handlers still fire; the editors
+ * PUT against their own row's record id.
  *
  * Columns:
  *   field_2755  REL proposal (connection link)        → title
@@ -99,6 +103,33 @@
       '.scw-acpt-btn--add { background: #fff; border: 1px dashed #cbd5e1; color: #64748b; }',
       '.scw-acpt-btn--add:hover { background: #f8fafc; border-color: #94a3b8; color: #334155; }',
       '.scw-acpt-group { display: inline-flex; align-items: center; gap: 2px; }',
+      // Compact list mode: ONE card, one row per acceptance record —
+      // title | pills | actions on a single line (wraps on narrow).
+      // Accordion-header rollup badge (signed tally) — sits before the count
+      // pill; margin-left:auto is harmless when the title already flexes.
+      '.scw-acpt-rollup { display: inline-flex; align-items: center;',
+      '  margin-left: auto; margin-right: 8px; padding: 3px 10px;',
+      '  border-radius: 999px; font: 700 11px/1.2 system-ui, sans-serif;',
+      '  border: 1px solid transparent; white-space: nowrap; }',
+      '.scw-acpt-rollup--warn { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
+      '.scw-acpt-rollup--ok   { background: #dcfce7; border-color: #86efac; color: #15803d; }',
+      '.scw-acpt-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;',
+      '  padding: 8px 2px; }',
+      '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #eef2f7; }',
+      // Fixed title column — base SOW numbers (SW1145) are shorter than CO
+      // numbers (SW1418CO), so an auto-width title staggered the pills.
+      '.scw-acpt-row .scw-acpt-title { font-size: 13px; flex: 0 0 320px;',
+      '  overflow-wrap: anywhere; }',
+      '.scw-acpt-row .scw-acpt-status { margin: 0; gap: 6px; }',
+      '.scw-acpt-row .scw-acpt-pill { padding: 3px 9px; font-size: 11px; }',
+      '.scw-acpt-row .scw-acpt-actions { margin-left: auto; gap: 6px; }',
+      '.scw-acpt-row .scw-acpt-btn { padding: 5px 10px; font-size: 11.5px; }',
+      '.scw-acpt-row .scw-acpt-edit { width: 22px; height: 22px; }',
+      // Fixed-width action slots so the agreement / Xero buttons form
+      // straight columns whether a row shows the "+ add" ghost or the
+      // populated link + pencil pair.
+      '.scw-acpt-slot { display: inline-flex; align-items: center; gap: 2px;',
+      '  width: 178px; }',
       // Own mini-modal (link editor / upload progress).
       '.scw-acpt-m-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.55);',
       '  z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 18px; }',
@@ -149,20 +180,14 @@
   // Both PUT through this view with the user's session and refetch so the
   // card rebuilds with the fresh value.
 
-  function acptRecordId() {
-    var viewEl = document.getElementById(VIEW);
-    var row = viewEl && viewEl.querySelector('tbody tr[id]');
-    return row ? row.id : '';
-  }
   function refreshAcptView() {
     try {
       var v = window.Knack && Knack.views && Knack.views[VIEW];
       if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
     } catch (e) { /* best-effort */ }
   }
-  function putAcceptance(fields) {
+  function putAcceptance(recId, fields) {
     return new Promise(function (resolve, reject) {
-      var recId = acptRecordId();
       if (!recId) return reject(new Error('no acceptance record on the page'));
       if (!(window.SCW && typeof SCW.knackAjax === 'function')) {
         return reject(new Error('SCW.knackAjax unavailable'));
@@ -202,7 +227,7 @@
   }
 
   /** Xero invoice link (field_1847, Link field) — URL input modal. */
-  function openXeroEditor(currentUrl) {
+  function openXeroEditor(recId, currentUrl) {
     var body = document.createElement('div');
     body.innerHTML =
       '<input type="url" class="scw-acpt-m__input" placeholder="https://…">' +
@@ -228,7 +253,7 @@
       status.textContent = 'Saving…';
       var fields = {};
       fields[F.xero] = url;   // empty string clears the link
-      putAcceptance(fields).then(function () {
+      putAcceptance(recId, fields).then(function () {
         m.close();
         refreshAcptView();
       }).catch(function (err) { fail((err && err.message) || 'Save failed'); });
@@ -237,7 +262,7 @@
 
   /** Signed agreement (field_2767, File field) — picker → Knack asset
    *  upload with the session token → PUT the asset id. */
-  function openAgreementUpload() {
+  function openAgreementUpload(recId) {
     var input = document.createElement('input');
     input.type = 'file';
     input.accept = '.pdf,.doc,.docx,image/*,application/pdf';
@@ -277,7 +302,7 @@
           status.textContent = 'Saving…';
           var fields = {};
           fields[F.agreement] = assetId;
-          putAcceptance(fields).then(function () {
+          putAcceptance(recId, fields).then(function () {
             m.close();
             refreshAcptView();
           }).catch(function (err) {
@@ -298,14 +323,10 @@
     input.click();
   }
 
-  function render() {
-    var viewEl = document.getElementById(VIEW);
-    if (!viewEl) return;
-    injectCss();
-    var row = viewEl.querySelector('tbody tr[id]');
-    var prior = viewEl.querySelector(':scope > .scw-acpt-card');
-    if (!row) { if (prior) prior.remove(); return; }
-
+  /** One compact list row for one acceptance record. All anchors/editors
+   *  bind to THIS row's record. */
+  function buildCard(row) {
+    var recId   = row.id;
     var propA   = cellAnchor(row, F.proposal, 'a[data-kn="connection-link"]') || cellAnchor(row, F.proposal);
     var propTxt = propA ? propA.textContent.replace(/\s+/g, ' ').trim() : (cellText(row, F.proposal) || 'Proposal');
     var propHref = propA ? (propA.getAttribute('href') || '') : '';
@@ -316,40 +337,47 @@
     var terms   = isYes(cellText(row, F.terms));
     var xeroA   = cellAnchor(row, F.xero);
     var fileA   = cellAnchor(row, F.agreement, 'a.kn-view-asset') || cellAnchor(row, F.agreement);
-    var actionA = row.parentNode &&
-      (row.querySelector('.kn-action-link') || row.querySelector('.kn-table-link a'));
+    var actionA = row.querySelector('.kn-action-link') || row.querySelector('.kn-table-link a');
+
+    // Change-order acceptances (SOW number "SW####CO") have no initial
+    // payment — the CO amount rides the final project invoice — so the
+    // payment pill is noise there. Signature is the only gate.
+    var isCo = /\bSW\d+CO\b/i.test(propTxt);
 
     var html =
-      '<div class="scw-acpt-eyebrow">Acceptance</div>' +
       (propHref
         ? '<a class="scw-acpt-title" href="' + esc(propHref) + '">' + esc(propTxt) + '</a>'
         : '<div class="scw-acpt-title">' + esc(propTxt) + '</div>') +
       '<div class="scw-acpt-status">' +
-        (terms
-          ? pill('Approved for terms', true)
-          : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid)) +
+        (isCo ? '' :
+          (terms
+            ? pill('Approved for terms', true)
+            : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid))) +
         pill(signed ? 'Agreement signed'         : 'Agreement not signed',    signed) +
       '</div>' +
       '<div class="scw-acpt-actions">' +
+        '<span class="scw-acpt-slot">' +
         (fileA
           ? '<span class="scw-acpt-group">' +
               '<a class="scw-acpt-btn scw-acpt-btn--ghost" data-proxy="file" href="javascript:void(0)">' + FILE_SVG + 'Signed agreement</a>' +
               '<button type="button" class="scw-acpt-edit" data-edit-field="' + F.agreement + '" title="Replace signed agreement">' + PENCIL_SVG + '</button>' +
             '</span>'
           : '<button type="button" class="scw-acpt-btn scw-acpt-btn--add" data-edit-field="' + F.agreement + '">' + PLUS_SVG + 'Signed agreement</button>') +
+        '</span>' +
+        '<span class="scw-acpt-slot">' +
         (xeroA
           ? '<span class="scw-acpt-group">' +
               '<a class="scw-acpt-btn scw-acpt-btn--ghost" target="_blank" rel="noopener" href="' + esc(xeroA.getAttribute('href') || '') + '">' + LINK_SVG + 'Xero invoice</a>' +
               '<button type="button" class="scw-acpt-edit" data-edit-field="' + F.xero + '" title="Edit Xero invoice link">' + PENCIL_SVG + '</button>' +
             '</span>'
           : '<button type="button" class="scw-acpt-btn scw-acpt-btn--add" data-edit-field="' + F.xero + '">' + PLUS_SVG + 'Xero invoice link</button>') +
+        '</span>' +
         (actionA ? '<button type="button" class="scw-acpt-btn scw-acpt-btn--primary" data-proxy="action">Create Questionnaire</button>' : '') +
       '</div>';
 
-    var card = prior || document.createElement('div');
-    card.className = 'scw-acpt-card';
+    var card = document.createElement('div');
+    card.className = 'scw-acpt-row';
     card.innerHTML = html;
-    if (!prior) viewEl.appendChild(card);
 
     // Proxy clicks to the original (hidden) anchors so Knack's asset preview +
     // action-rule handlers still run.
@@ -358,17 +386,88 @@
     var actBtn = card.querySelector('[data-proxy="action"]');
     if (actBtn && actionA) actBtn.addEventListener('click', function () { actionA.click(); });
 
-    // Edit / add affordances → the card's own editors (view-based PUT).
+    // Edit / add affordances → the card's own editors (view-based PUT
+    // against THIS row's record id).
     var editBtns = card.querySelectorAll('[data-edit-field]');
     for (var eb = 0; eb < editBtns.length; eb++) {
       editBtns[eb].addEventListener('click', function () {
         var fk = this.getAttribute('data-edit-field');
         if (fk === F.xero) {
-          openXeroEditor(xeroA ? (xeroA.getAttribute('href') || '') : '');
+          openXeroEditor(recId, xeroA ? (xeroA.getAttribute('href') || '') : '');
         } else if (fk === F.agreement) {
-          openAgreementUpload();
+          openAgreementUpload(recId);
         }
       });
+    }
+    return card;
+  }
+
+  function render() {
+    var viewEl = document.getElementById(VIEW);
+    if (!viewEl) return;
+    injectCss();
+
+    // Rebuild from scratch — a project accrues one acceptance per signed
+    // agreement (base proposal + each CO). ONE card, one compact list row
+    // per record in the grid's own order, so a testing pile of 20 doesn't
+    // eat the page.
+    var prior = viewEl.querySelector(':scope > .scw-acpt-card');
+    if (prior) prior.remove();
+
+    var rows = viewEl.querySelectorAll('tbody tr[id]');
+    if (!rows.length) return;
+
+    // Triage sort: rows still needing something (unsigned agreement, or a
+    // base acceptance with neither payment nor terms approval) float to the
+    // top so a 6-12 acceptance pile on a big project self-prioritizes.
+    var entries = [];
+    var signedCount = 0;
+    for (var ri = 0; ri < rows.length; ri++) {
+      var r = rows[ri];
+      var rSigned = isYes(cellText(r, F.signed));
+      var rPaid   = isYes(cellText(r, F.payment));
+      var rTerms  = isYes(cellText(r, F.terms));
+      var rIsCo   = /\bSW\d+CO\b/i.test(cellText(r, F.proposal));
+      var attention = !rSigned || (!rIsCo && !rTerms && !rPaid);
+      if (rSigned) signedCount++;
+      entries.push({ row: r, attention: attention, order: ri });
+    }
+    entries.sort(function (a, b) {
+      if (a.attention !== b.attention) return a.attention ? -1 : 1;
+      return a.order - b.order;   // stable within each tier
+    });
+
+    var card = document.createElement('div');
+    card.className = 'scw-acpt-card';
+    card.innerHTML = '<div class="scw-acpt-eyebrow">Acceptance</div>';
+    for (var ei = 0; ei < entries.length; ei++) {
+      card.appendChild(buildCard(entries[ei].row));
+    }
+    viewEl.appendChild(card);
+
+    // Rollup badge in the accordion header bar: "N awaiting signature"
+    // (amber) or "all signed" (green) — visible without expanding, and the
+    // attention attribute feeds the deploy page nav's amber dot.
+    var pending = rows.length - signedCount;
+    var acc = viewEl.closest('.scw-ktl-accordion');
+    if (acc) {
+      acc.toggleAttribute && acc.toggleAttribute('data-scw-attention', pending > 0);
+      var head = acc.querySelector('.scw-ktl-accordion__header');
+      var countEl = head && head.querySelector('.scw-acc-count');
+      if (head) {
+        var roll = head.querySelector('.scw-acpt-rollup');
+        if (!roll) {
+          roll = document.createElement('span');
+          roll.className = 'scw-acpt-rollup';
+          if (countEl) head.insertBefore(roll, countEl);
+          else head.appendChild(roll);
+        }
+        roll.classList.toggle('scw-acpt-rollup--warn', pending > 0);
+        roll.classList.toggle('scw-acpt-rollup--ok', pending === 0);
+        roll.textContent = pending > 0
+          ? (pending + ' awaiting signature')
+          : 'all signed';
+      }
     }
   }
 

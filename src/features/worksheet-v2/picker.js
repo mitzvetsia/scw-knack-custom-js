@@ -124,7 +124,10 @@
 
   /** Group candidates via opts.groupBy → [{ id, label, items: [...] }, ...].
    *  Default (undefined) = canonical MDF/IDF grouping; `false`/`null` opts out
-   *  to a flat list. */
+   *  to a flat list. groupBy may return an optional numeric `rank` — groups
+   *  order by rank asc FIRST (default 0), then label natural-asc, so a caller
+   *  can float priority groups to the top (e.g. the re-link picker's
+   *  "no bid item yet" partition) without hacking sortable label prefixes. */
   function groupCandidates(candidates, groupBy) {
     if (groupBy === false || groupBy === null) {
       return [{ id: '__all', label: '', items: candidates.slice() }];
@@ -135,7 +138,7 @@
     for (var i = 0; i < candidates.length; i++) {
       var g = groupBy(candidates[i]) || { id: '__unknown', label: 'Unassigned' };
       if (!groups[g.id]) {
-        groups[g.id] = { id: g.id, label: g.label || '', items: [] };
+        groups[g.id] = { id: g.id, label: g.label || '', rank: g.rank || 0, items: [] };
         order.push(g.id);
       }
       groups[g.id].items.push(candidates[i]);
@@ -146,8 +149,10 @@
     if (order.length === 1 && order[0] === '__unknown') {
       return [{ id: '__all', label: '', items: groups['__unknown'].items }];
     }
-    // Sort groups: by label natural-asc; unknowns sink to bottom.
+    // Sort groups: rank asc, then label natural-asc; unknowns sink to bottom.
     order.sort(function (a, b) {
+      var ra = groups[a].rank || 0, rb = groups[b].rank || 0;
+      if (ra !== rb) return ra - rb;
       var la = groups[a].label, lb = groups[b].label;
       if (a === '__unknown' && b !== '__unknown') return 1;
       if (b === '__unknown' && a !== '__unknown') return -1;
@@ -809,6 +814,28 @@
                     var _c = opts.candidates[_ci];
                     if (_c && _c.id) _candName[_c.id] = _c.name;
                   }
+                }
+                // Prefer the PUT response's own _raw identifiers — the
+                // server's REAL connection labels — over the candidate
+                // names. Candidates often carry a shorter label than the
+                // connection identifier (product picker: "Name" vs the
+                // stored "Name - SKU"), and whatever lands here is what
+                // registerPendingWrite re-asserts over every refetch for
+                // its TTL — so a mismatched label makes the card show one
+                // thing now and another after refresh.
+                var _respRec = (resp && resp.record &&
+                  typeof resp.record === 'object' && resp.record.id)
+                  ? resp.record : resp;
+                var _respRaw = _respRec ? _respRec[opts.fieldKey + '_raw'] : null;
+                if (Array.isArray(_respRaw)) {
+                  for (var _rj = 0; _rj < _respRaw.length; _rj++) {
+                    var _rv = _respRaw[_rj];
+                    if (_rv && _rv.id && _rv.identifier != null) {
+                      _candName[_rv.id] = _rv.identifier;
+                    }
+                  }
+                } else if (_respRaw && _respRaw.id && _respRaw.identifier != null) {
+                  _candName[_respRaw.id] = _respRaw.identifier;
                 }
                 var rawObjs = (body[opts.fieldKey] || []).map(function (v) {
                   var id = (v && typeof v === 'object') ? v.id : v;

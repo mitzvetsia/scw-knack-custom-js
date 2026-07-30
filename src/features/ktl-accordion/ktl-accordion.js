@@ -63,7 +63,10 @@
   // is processed. Flip TRUE once KTL's hide/show is OFF GLOBALLY — then every
   // view carrying the `_hsv` keyword (and no KTL button) auto-becomes one of
   // our accordions, no per-view list needed.
-  var ENABLE_KEYWORD_DETECTION = false;
+  // FLIPPED 2026-07-30: KTL is disabled app-wide in Builder. Every `_hsv`
+  // view on every scene is now ours. (The live-KTL-button skip below still
+  // protects against double-wrap if KTL ever comes back.)
+  var ENABLE_KEYWORD_DETECTION = true;
   var HSV_CHECK = 'data-scw-hsv-checked';   // per-view "is this an _hsv view?" memo
 
   // Scenes where KTL is NOT loaded (you gated it out of the Builder loader for
@@ -73,7 +76,7 @@
   // is still present its buttons exist, and the keyword path skips any view
   // that has a button, so this stays dormant until KTL really is gone.
   // MUST stay in sync with the loader gate (same scene keys).
-  var KTL_FREE_SCENES = ['scene_1085', 'scene_1096', 'scene_1116', 'scene_1140', 'scene_1149', 'scene_1155', 'scene_1311'];
+  var KTL_FREE_SCENES = ['scene_1085', 'scene_1096', 'scene_1116', 'scene_1140', 'scene_1149', 'scene_1155', 'scene_1311', 'scene_1362'];
 
   /** The rendered KTL-free scene element on the page, if any (scopes the
    *  keyword scan to just that scene — no document-wide work elsewhere). */
@@ -390,23 +393,42 @@
    *  Fallback: check arrow class.
    */
   function isExpanded(viewKey) {
-    // Check the actual KTL section visibility (source of truth)
+    // ⚠ Perf: NO getComputedStyle on the hot path. Each call forces a
+    // style recalc for the whole invalidated document — profiled at
+    // ~1.6s cumulative during one big-quote page init (2026-07-23),
+    // because syncState interleaves writes between these reads. KTL
+    // toggles sections via INLINE style.display, so read that (free),
+    // then the arrow class KTL itself maintains; computed style only as
+    // a last resort when neither signal exists.
     var section = document.querySelector('.hideShow_' + viewKey + '.ktlHideShowSection');
-    if (section) {
-      var disp = getComputedStyle(section).display;
-      return disp !== 'none';
-    }
-    // Fallback to arrow class
     var arrow = arrowForViewKey(viewKey);
+    if (section) {
+      var inline = section.style.display;
+      if (inline === 'none') return false;
+      if (inline) return true;
+      if (arrow) return arrow.classList.contains('ktlDown');
+      return getComputedStyle(section).display !== 'none';
+    }
     if (!arrow) return true;
     return arrow.classList.contains('ktlDown');
   }
 
-  /** Read the effective background-color from the KTL button. */
+  /** Read the effective background-color from the KTL button.
+   *  Cached per button with a short TTL — profiled at ~2.7s cumulative
+   *  per big-quote page init when every syncState pass re-ran
+   *  getComputedStyle (forced style recalc) on every accordion. The TTL
+   *  still picks up the hsv-override injection within a few seconds. */
+  var _accentCache = (typeof WeakMap === 'function') ? new WeakMap() : null;
+  var ACCENT_TTL_MS = 3000;
   function readAccentColor(btn) {
+    if (_accentCache) {
+      var hit = _accentCache.get(btn);
+      if (hit && (Date.now() - hit.t) < ACCENT_TTL_MS) return hit.v;
+    }
     var raw = getComputedStyle(btn).backgroundColor;
-    if (!raw || raw === 'rgba(0, 0, 0, 0)' || raw === 'transparent') return null;
-    return raw;
+    var v = (!raw || raw === 'rgba(0, 0, 0, 0)' || raw === 'transparent') ? null : raw;
+    if (_accentCache) _accentCache.set(btn, { v: v, t: Date.now() });
+    return v;
   }
 
   /**
@@ -515,34 +537,45 @@
     return header;
   }
 
+  // ⚠ EVERY write in syncState is CHANGE-GUARDED. This function runs from
+  // MutationObserver→rAF callbacks; an unconditional write (even setting
+  // textContent to the SAME string replaces the text node) fires a fresh
+  // mutation, which re-arms the observer, which re-runs this — a
+  // self-sustaining every-frame loop that burned 1.3–2s rAF handlers
+  // forever on busy pages (observed live 2026-07-22, build-SOW scene).
+  function setText(el, s)     { if (el.textContent !== s) el.textContent = s; }
+  function setStyle(el, k, v) { if (el.style[k] !== v) el.style[k] = v; }
+
   function syncState(wrapper, header, viewKey) {
     // Skip expand/collapse sync while applySavedState is active —
     // prevents the MutationObserver from undoing the restored state.
     if (!_restoreActive) {
       var expanded = isExpanded(viewKey);
       wrapper.classList.toggle('is-expanded', expanded);
-      header.setAttribute('aria-expanded', String(expanded));
-
+      var ariaStr = String(expanded);
+      if (header.getAttribute('aria-expanded') !== ariaStr) {
+        header.setAttribute('aria-expanded', ariaStr);
+      }
       var bodyEl = wrapper.querySelector('.scw-ktl-accordion__body');
-      if (bodyEl) bodyEl.style.display = expanded ? '' : 'none';
+      if (bodyEl) setStyle(bodyEl, 'display', expanded ? '' : 'none');
     }
 
     // Count pill (hidden for views listed in HIDE_COUNT)
     var countEl = header.querySelector('.scw-acc-count');
     if (countEl) {
       if (HIDE_COUNT[viewKey]) {
-        countEl.style.display = 'none';
+        setStyle(countEl, 'display', 'none');
       } else {
         var count = computeCount(viewKey);
         if (count !== null) {
-          countEl.textContent = count;
-          countEl.style.display = '';
-          countEl.style.visibility = '';
+          setText(countEl, String(count));
+          setStyle(countEl, 'display', '');
+          setStyle(countEl, 'visibility', '');
         } else {
           // Reserve space so buttons stay aligned across accordions
-          countEl.textContent = '0';
-          countEl.style.display = '';
-          countEl.style.visibility = 'hidden';
+          setText(countEl, '0');
+          setStyle(countEl, 'display', '');
+          setStyle(countEl, 'visibility', 'hidden');
         }
       }
     }
@@ -551,7 +584,7 @@
     var btn = document.getElementById('hideShow_' + viewKey + '_button');
     if (btn) {
       var accent = readAccentColor(btn);
-      if (accent) {
+      if (accent && wrapper.style.getPropertyValue('--scw-accent') !== accent) {
         wrapper.style.setProperty('--scw-accent', accent);
         var rgb = parseRgb(accent);
         if (rgb) wrapper.style.setProperty('--scw-accent-rgb', rgb);
@@ -1039,10 +1072,12 @@
   function updateStandaloneCount(hdr, viewKey) {
     var el = hdr.querySelector('.scw-acc-count');
     if (!el) return;
-    if (HIDE_COUNT[viewKey]) { el.style.display = 'none'; return; }
+    // Change-guarded writes — see the syncState warning: this also runs
+    // from observer→rAF callbacks and must never mutate when idle.
+    if (HIDE_COUNT[viewKey]) { setStyle(el, 'display', 'none'); return; }
     var c = computeCount(viewKey);
-    if (c !== null) { el.textContent = c; el.style.display = ''; el.style.visibility = ''; }
-    else { el.textContent = '0'; el.style.display = ''; el.style.visibility = 'hidden'; }
+    if (c !== null) { setText(el, String(c)); setStyle(el, 'display', ''); setStyle(el, 'visibility', ''); }
+    else { setText(el, '0'); setStyle(el, 'display', ''); setStyle(el, 'visibility', 'hidden'); }
   }
 
   function bindStandaloneHeader(wrap, hdr, viewKey) {
@@ -1201,16 +1236,47 @@
   $(document)
     .off('knack-view-render.any' + EVENT_NS)
     .on('knack-view-render.any' + EVENT_NS, function () {
-      setTimeout(function () {
+      // Trailing debounce — a render storm (initial scene load fires one
+      // event per view, refetches stack more) used to queue one full
+      // enhance() pass PER EVENT; on big quotes those passes are the
+      // expensive part, not the events.
+      if (_enhanceTimer) clearTimeout(_enhanceTimer);
+      _enhanceTimer = setTimeout(function () {
+        _enhanceTimer = 0;
         enhance();
         applySavedState();
       }, 80);
     });
 
   // Global MutationObserver to catch KTL buttons added outside
-  // normal Knack render events (e.g., lazy KTL init).
+  // normal Knack render events (e.g., lazy KTL init). Its ONLY job is
+  // spotting a hideShow_* button appearing — so filter the mutation
+  // records for that before doing anything. The old unfiltered version
+  // ran the FULL enhance() pass on every body mutation, and since
+  // enhance's own writes are mutations too, it self-sustained as an
+  // every-frame loop (1.3–2s rAF violations forever on busy pages).
+  // Scene/view renders are covered by the event bindings above.
+  var _enhanceTimer = 0;
   var globalRaf = 0;
-  var globalObs = new MutationObserver(function () {
+  var globalObs = new MutationObserver(function (muts) {
+    var relevant = false;
+    for (var i = 0; i < muts.length && !relevant; i++) {
+      var added = muts[i].addedNodes;
+      if (!added) continue;
+      for (var j = 0; j < added.length; j++) {
+        var n = added[j];
+        if (!n || n.nodeType !== 1) continue;
+        // typeof guard: on a <form> with a control named "id" (Knack
+        // forms carry hidden name="id" inputs), n.id is that ELEMENT,
+        // not a string — .indexOf on it threw and killed the observer.
+        if ((typeof n.id === 'string' && n.id.indexOf('hideShow_') === 0) ||
+            (n.querySelector && n.querySelector('[id^="hideShow_"]'))) {
+          relevant = true;
+          break;
+        }
+      }
+    }
+    if (!relevant) return;
     if (globalRaf) cancelAnimationFrame(globalRaf);
     globalRaf = requestAnimationFrame(function () {
       globalRaf = 0;

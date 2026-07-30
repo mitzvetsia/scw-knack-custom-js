@@ -57,14 +57,16 @@
           _mdfIdfRecords.length, 'MDF/IDF records');
       }
 
-      var mount = ns.renderMatrix(_state);
-      if (!mount) return;   // wrong scene — renderMatrix refused
-      attachClickHandler(mount);
-
-      // Rehydrate change request drafts from Knack field
+      // Rehydrate change request drafts from Knack BEFORE the mount gate —
+      // with v2 owning the page renderMatrix returns null (v1 grid dead),
+      // but the CR engine still needs its drafts for v2's pending cards.
       if (ns.changeRequests && ns.changeRequests.rehydrate) {
         ns.changeRequests.rehydrate(_state.sowGrids);
       }
+
+      var mount = ns.renderMatrix(_state);
+      if (!mount) return;   // v2 owns the page / wrong scene
+      attachClickHandler(mount);
     }).fail(function (err) {
       console.error('[BidReview] Pipeline failed:', err);
       ns.renderToast('Failed to load comparison data', 'error');
@@ -1149,6 +1151,18 @@
           try { SCW.syncKnackModel(viewKey, recordId, resp, fieldKey, mdy); }
           catch (e) { /* non-fatal */ }
         }
+        // Mirror the expiration onto the SOW record's field_2135 (a DIFFERENT
+        // record). The SOW id is on the enclosing section; the SOW write view
+        // is the same one survey-costs/next-step use (view_3918). Best-effort.
+        if (typeof SCW.mirrorProposalExpToSow === 'function') {
+          var sowId = input.getAttribute('data-sow-id');
+          if (!sowId && input.closest) {
+            var section = input.closest('.scw-bid-review__sow-section[data-sow-id]');
+            sowId = section && section.getAttribute('data-sow-id');
+          }
+          var sowExpView = CFG.surveyCostsWriteView || CFG.nextStepViewKey;
+          if (sowId) SCW.mirrorProposalExpToSow(sowId, mdy, sowExpView);
+        }
         // Refresh the proposal source view so the expired-state badge
         // and any downstream pills update without a full reload.
         try {
@@ -1901,6 +1915,12 @@
     )) return;
 
     setBusy(button, true);
+    // In-process feedback: a persistent spinner toast that ticks as each line
+    // item unlocks, so a wide bid (30+ PUTs over several seconds) reads as
+    // "working" rather than frozen. Replaced by the success/partial toast +
+    // grid refresh once every record has settled.
+    showCopyToast('Reopening ' + pkgName + ' — unlocking ' + itemIds.length +
+      ' item' + (itemIds.length === 1 ? '' : 's') + '…');
 
     // ── Reliability layer (mirrors mirror-connection-sync.js) ──────
     // Knack rate-limits at ~10 req/s; a wide bid (30+ items) bursts past
@@ -1986,13 +2006,26 @@
     // Status flip first (so we always know its outcome), then the
     // line-item unlocks batched through the concurrency-limited queue.
     putWithRetry(pkgView, pkgId, statusField, 'Draft').then(function (statusRes) {
+      var unlockedSoFar = 0;
       var itemTasks = itemIds.map(function (id) {
-        return function () { return putWithRetry(itemView, id, lockField, 'No'); };
+        return function () {
+          return putWithRetry(itemView, id, lockField, 'No').then(function (res) {
+            if (res.ok) unlockedSoFar++;
+            updateCopyToastMessage('Reopening ' + pkgName + ' — unlocked ' +
+              unlockedSoFar + ' of ' + itemIds.length + ' item' +
+              (itemIds.length === 1 ? '' : 's') + '…');
+            return res;
+          });
+        };
       });
       return runBatched(itemTasks, MAX_CONCURRENT).then(function (itemResults) {
         var failedItems = 0;
         for (var r = 0; r < itemResults.length; r++) if (!itemResults[r].ok) failedItems++;
         var unlocked = itemIds.length - failedItems;
+
+        // Drop the in-process toast; the outcome toast + grid refresh below
+        // now reflect the finished state.
+        hideCopyToast();
 
         if (!statusRes.ok && failedItems === itemIds.length) {
           ns.renderToast('Reopen failed — please retry', 'error');
@@ -2084,7 +2117,10 @@
     spinner.className = 'scw-copy-spinner';
     toast.appendChild(spinner);
 
-    toast.appendChild(document.createTextNode(message));
+    var msg = document.createElement('span');
+    msg.className = 'scw-copy-msg';
+    msg.textContent = message;
+    toast.appendChild(msg);
 
     var closeBtn = document.createElement('button');
     closeBtn.className = 'scw-copy-close';
@@ -2097,6 +2133,15 @@
     toast.appendChild(closeBtn);
 
     document.body.appendChild(toast);
+  }
+
+  // Update the persistent toast's message in place (progress ticks) without
+  // tearing it down + rebuilding (which flashes the spinner).
+  function updateCopyToastMessage(message) {
+    var toast = document.getElementById(COPY_TOAST_ID);
+    if (!toast) return;
+    var msg = toast.querySelector('.scw-copy-msg');
+    if (msg) msg.textContent = message;
   }
 
   function hideCopyToast(instant) {
@@ -2456,6 +2501,16 @@
       return;
     }
 
+    // Friction gate: syncing the bid into the SOW wholesale is meant for
+    // the FIRST submission from SVS. On re-submissions it can clobber
+    // SOW-side edits made since, so make the user say so explicitly
+    // before the item-selection modal opens.
+    if (!window.confirm(
+      'Are you sure you want to update the SOW to match this bid?\n\n' +
+      'Typically this should be done on the FIRST submission from SVS \u2014 ' +
+      'NOT on subsequent submissions.'
+    )) return;
+
     var pkgName = findPackageName(grid, pkgId);
 
     confirmCopyToSow({
@@ -2713,6 +2768,44 @@
         bidMdfIdfIds:     [],
         requireSubBid:    cell.requireSubBid,
       };
+      // Designator — prefer the SOW item's ACTUAL prefix/number off the
+      // view_3921 model (field_2240_raw carries the exact record id +
+      // label; field_1951 the number). Fall back to parsing the computed
+      // label ("RA-E-009" → "RA-E-" + 9), which the CR modal resolves to
+      // an id by matching the option list's display text. Keys are set
+      // ONLY when a value is found — an absent key falls back to the
+      // bid's current designator (no change requested).
+      try {
+        var siViewKey = (ns.CONFIG && ns.CONFIG.sowItemsViewKey) || 'view_3921';
+        var siView = window.Knack && Knack.views && Knack.views[siViewKey];
+        var siModels = siView && siView.model && siView.model.data &&
+                       siView.model.data.models;
+        for (var sim = 0; sim < (siModels ? siModels.length : 0); sim++) {
+          var siAttrs = siModels[sim] && siModels[sim].attributes;
+          if (!siAttrs || siAttrs.id !== row.sowItem) continue;
+          var pRaw = siAttrs.field_2240_raw;
+          if (Array.isArray(pRaw) && pRaw.length && pRaw[0] && pRaw[0].id) {
+            modalCell.bidDropPrefix    = pRaw[0].identifier || '';
+            modalCell.bidDropPrefixIds = [pRaw[0].id];
+          }
+          var dnRaw = siAttrs.field_1951_raw != null
+            ? siAttrs.field_1951_raw : siAttrs.field_1951;
+          var dn = parseFloat(String(dnRaw == null ? '' : dnRaw)
+            .replace(/[^0-9.\-]/g, ''));
+          if (isFinite(dn)) modalCell.dropNumber = dn;
+          break;
+        }
+      } catch (e) { /* model not loaded — label parse below covers it */ }
+      if (modalCell.bidDropPrefix == null) {
+        var sowDesigLbl = String(row.sowItemLabel || '').trim();
+        var desigMatch = /^(.*?)(\d+)\s*$/.exec(sowDesigLbl);
+        if (desigMatch && desigMatch[1]) {
+          modalCell.bidDropPrefix = desigMatch[1];
+          if (modalCell.dropNumber == null) {
+            modalCell.dropNumber = parseInt(desigMatch[2], 10);
+          }
+        }
+      }
     }
 
     ns.changeRequests.open({
@@ -2897,6 +2990,176 @@
     } catch (e4) {
       fireWebhook();
     }
+  }
+
+  // ── re-link a bid item to a DIFFERENT SOW line item ───────────────
+  // Bid line items carry their "source of truth" SOW line item on
+  // REL_sow-line-item (field_2404). When a bid item gets criss-crossed —
+  // pointed at the WRONG SOW item — reviewers need to re-point it without
+  // deleting/recreating anything. Opens the worksheet-v2 picker over EVERY
+  // SOW line item loaded on the scene (view_3921 pools all SOWs on the
+  // project, so cross-SOW criss-crosses are fixable too; groups compose
+  // "SW-#### · MDF" exactly like the Connected Devices picker here) and
+  // PUTs the chosen id to field_2404 through the bid source view
+  // (view_3680) — the same write path the duplicate-split clear uses.
+  function handleRelinkBid(button) {
+    var bidId = button.getAttribute('data-bid-record-id');
+    if (!bidId) return;
+
+    var FKsow  = (CFG.fieldKeys && CFG.fieldKeys.relatedSowItem) || 'field_2404';
+    var sowFK  = (CFG.fieldKeys && CFG.fieldKeys.sow) || 'field_2154';
+    var picker = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.picker;
+    if (!picker || typeof picker.open !== 'function') {
+      if (ns.renderToast) ns.renderToast('Re-link unavailable — picker module not loaded', 'error');
+      return;
+    }
+
+    function modelAttrs(viewKey) {
+      var out = [];
+      try {
+        var v = Knack.views && Knack.views[viewKey];
+        var ms = (v && v.model && v.model.data && v.model.data.models) || [];
+        for (var i = 0; i < ms.length; i++) {
+          if (ms[i] && ms[i].attributes && ms[i].attributes.id) out.push(ms[i].attributes);
+        }
+      } catch (e) { /* fall through */ }
+      return out;
+    }
+
+    // The bid record — current field_2404 selection. The field can be
+    // multi-valued (data quirk); re-linking normalizes it to exactly one.
+    var bidRec = null;
+    var bids = modelAttrs(CFG.viewKey);
+    for (var b = 0; b < bids.length; b++) {
+      if (bids[b].id === bidId) { bidRec = bids[b]; break; }
+    }
+    if (!bidRec) {
+      if (ns.renderToast) ns.renderToast('Could not find the bid record to re-link', 'error');
+      return;
+    }
+    var sel = [];
+    var selRaw = bidRec[FKsow + '_raw'];
+    if (Array.isArray(selRaw)) {
+      for (var s = 0; s < selRaw.length; s++) {
+        if (selRaw[s] && selRaw[s].id) sel.push(selRaw[s].id);
+      }
+    } else if (selRaw && selRaw.id) {
+      sel.push(selRaw.id);
+    }
+
+    var candidates = modelAttrs(CFG.sowItemsViewKey);
+    if (!candidates.length) {
+      if (ns.renderToast) ns.renderToast('SOW line items not loaded yet — try again in a moment', 'error');
+      return;
+    }
+
+    // ── "Unclaimed first" partition ─────────────────────────────────
+    // SOW line items that NO bid item points at (via field_2404) are the
+    // likely criss-cross targets — float them to the TOP of the picker,
+    // with the SOW + MDF/IDF called out in the group label. Claims are
+    // scoped to the SAME bid package as the record being re-linked
+    // (sibling packages bid the full scope, so their pointers don't make
+    // an item "taken" for this bid); a record with no package falls back
+    // to page-wide claims. The record being re-linked doesn't claim its
+    // own current target.
+    var FKpkg = (CFG.fieldKeys && CFG.fieldKeys.bidPackage) || 'field_2415';
+    function firstConnId(rec, fk) {
+      var raw = rec && rec[fk + '_raw'];
+      if (Array.isArray(raw)) return (raw[0] && raw[0].id) || null;
+      return (raw && raw.id) || null;
+    }
+    var myPkgId = firstConnId(bidRec, FKpkg);
+    var claimed = {};
+    for (var cb = 0; cb < bids.length; cb++) {
+      var br = bids[cb];
+      if (!br || br.id === bidId) continue;
+      if (myPkgId && firstConnId(br, FKpkg) !== myPkgId) continue;
+      var claimRaw = br[FKsow + '_raw'];
+      if (Array.isArray(claimRaw)) {
+        for (var ci = 0; ci < claimRaw.length; ci++) {
+          if (claimRaw[ci] && claimRaw[ci].id) claimed[claimRaw[ci].id] = true;
+        }
+      } else if (claimRaw && claimRaw.id) {
+        claimed[claimRaw.id] = true;
+      }
+    }
+
+    // "SW-#### · MDF" grouping — same composition as the Connected Devices
+    // picker on this multi-SOW scene (worksheet-v2/init.js view_3921 branch).
+    // Unclaimed items get their own rank:-1 groups (picker orders by rank
+    // first) so they read as a distinct "needs a bid item" band up top.
+    var mdfGroup = picker.groupByMdfIdf;
+    function sowTag(rec) {
+      var raw = rec && rec[sowFK + '_raw'];
+      var ids = [], labels = [];
+      if (Array.isArray(raw)) {
+        for (var i = 0; i < raw.length; i++) {
+          if (raw[i] && raw[i].id) {
+            ids.push(raw[i].id);
+            var l = String(raw[i].identifier || '').replace(/<[^>]*>/g, '').trim();
+            if (l) labels.push(l);
+          }
+        }
+      }
+      return { id: ids.join('+'), label: labels.join(' + ') };
+    }
+    function groupBy(rec) {
+      var m = (typeof mdfGroup === 'function') ? mdfGroup(rec)
+        : { id: '__unknown', label: 'No MDF / IDF' };
+      var t = sowTag(rec);
+      var base = (!t.id && m.id === '__unknown') ? m : {
+        id:    (t.id || '__nosow') + '::' + m.id,
+        label: (t.label || 'No SOW') + ' · ' + m.label
+      };
+      if (!claimed[rec.id]) {
+        return {
+          id:    'unclaimed::' + base.id,
+          label: '⚠ No bid item yet — ' + (base.label || 'No MDF / IDF'),
+          rank:  -1
+        };
+      }
+      return base;
+    }
+
+    // Worksheet-style option label (drop label · product) with the same
+    // degenerate-server-label cleanup the Connected Devices picker uses —
+    // field_1950 can render as "<recordId> (<mdfLabel>)" for rows with no
+    // real drop label; never show a raw record id.
+    function itemLabel(rec) {
+      var lbl  = (rec.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
+      var prod = (rec.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
+      var hexWrap = lbl.match(/^[a-f0-9]{24}\s*\(([^)]+)\)\s*$/i);
+      if (hexWrap) lbl = '';
+      else if (/^[a-f0-9]{24}(\s|\b|$)/i.test(lbl)) lbl = '';
+      if (/^[a-f0-9]{24}(\s|\b|$)/i.test(prod)) prod = '';
+      var loc = hexWrap ? ' (' + hexWrap[1].trim() + ')' : '';
+      if (lbl && prod) return lbl + ' · ' + prod;
+      if (prod) return prod + loc;
+      if (lbl)  return lbl;
+      return hexWrap ? '(unnamed item)' + loc : rec.id;
+    }
+
+    picker.open({
+      sourceViewKey: CFG.viewKey,   // PUT through view_3680 (bid records)
+      recordId:      bidId,
+      fieldKey:      FKsow,
+      label:         'Set source-of-truth SOW line item',
+      selectedIds:   sel,
+      candidates:    candidates,
+      groupBy:       groupBy,
+      itemLabel:     itemLabel,
+      multi:         false,
+      onSaved:       function (ids) {
+        if (ns.renderToast) {
+          ns.renderToast(ids && ids.length
+            ? 'Bid item re-linked to the selected SOW item'
+            : 'Bid item disconnected from its SOW item', 'success');
+        }
+        // Server-truth reload → v1 _state rebuild; the model fetches it
+        // fires re-render v2 too (knack-view-render → notifyDebounced).
+        refreshSilently();
+      }
+    });
   }
 
   // ── disconnect from SOW (per-row, on SOW detail cell) ──────
@@ -3585,6 +3848,7 @@
     if (action === 'cell_add_to_bid')               { handleAddToBid(button); return true; }
     if (action === 'cell_reinstate')                { handleReinstate(button); return true; }
     if (action === 'cell_create_sow_from_bid')      { handleCreateSowFromBid(button); return true; }
+    if (action === 'cell_relink_bid')               { handleRelinkBid(button); return true; }
     if (action === 'cr_submit') {
       var pkgId = button.getAttribute('data-pkg-id');
       if (ns.changeRequests && ns.changeRequests.submitForPackage) {

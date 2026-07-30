@@ -171,6 +171,20 @@
       dropLength:      'field_1965',   // drop length (SOW side)
       conduit:         'field_2035',   // conduit (SOW side)
       notes:           'field_2412',   // survey notes (same field key as bid side)
+      accessories:     'field_2207',   // REL_Accessories — the parent line item's own
+                                       // attached-accessories connection (NOT field_1958,
+                                       // which concatenates product + accessory names
+                                       // with no separator — see transform.js)
+      scwNotes:        'field_1953',   // SCW Notes (same field worksheet-v2 defaults to) —
+                                       // read here so the comparison grid's "has notes"
+                                       // warning chip can show the actual text on hover
+                                       // instead of just a generic label.
+      accessoryParent: 'field_2464',   // REL_accessory of — the CHILD's own back-pointer
+                                       // to its parent line item (worksheet-v2's
+                                       // "child back-pointer is authoritative" convention,
+                                       // CLAUDE.md Known Issue #12). Read here so the
+                                       // copy-to-SOW removal pass can tell an accessory
+                                       // row apart from a standalone one — see actions.js.
     },
 
     // ── Timing ────────────────────────────────────────────────

@@ -747,10 +747,24 @@
     var records = getViewRecords(viewId);
     var container = ensureContainer(viewEl, viewId);
 
+    // Cards render in device-label order (E-01, E-02 … I-01, I-02 …), NOT
+    // the grid's row order — that's creation order, so a device added to
+    // the project later (e.g. I-02 created after I-06 by a scope revision)
+    // otherwise lands at the bottom of its run.
+    function cardLabelOf(rec) {
+      return String(rawVal(rec, CONFIG.LABEL_FIELD) || '')
+        .replace(/<[^>]*>/g, '').trim();
+    }
+    records = records.slice().sort(function (a, b) {
+      return cardLabelOf(a).localeCompare(cardLabelOf(b), undefined,
+        { numeric: true, sensitivity: 'base' });
+    });
+
     // One field-guide panel above the cards (explanations shown once).
     syncFieldGuide(container, collectGuideFields(bySchema, records));
 
     var any = false;
+    var lastCard = null;
     records.forEach(function (rec) {
       var schemaId = firstConnId(rec, CONFIG.LINE_ITEM_SCHEMA_FIELD);
       var fields = schemaId ? bySchema[schemaId] : null;
@@ -760,12 +774,23 @@
         return;
       }
       any = true;
-      if (existing) return;   // keep mounted cards (preserve in-progress answers)
+      if (existing) { lastCard = existing; return; }   // keep mounted cards (preserve in-progress answers)
       var values = readValues(rec);
       var holder = document.createElement('div');
       holder.innerHTML = buildCard(rec, fields, values);
       var card = holder.firstChild;
-      container.appendChild(card);
+      // Insert in label order: after the previous record's card, so a card
+      // mounting on a later pass (data raced in) lands in place, not at
+      // the end. First card goes ahead of any existing card (bulk bar and
+      // other chrome stay above).
+      if (lastCard) {
+        container.insertBefore(card, lastCard.nextSibling);
+      } else {
+        var firstCard = container.querySelector('.' + PREFIX + '-card');
+        if (firstCard) container.insertBefore(card, firstCard);
+        else container.appendChild(card);
+      }
+      lastCard = card;
       wireCard(card, viewId);
     });
 

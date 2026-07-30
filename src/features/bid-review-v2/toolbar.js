@@ -1,10 +1,22 @@
 /*** BID REVIEW V2 — TOOLBAR **************************************************
  *
- * Comparison-grid toolbar. CTA actions only — the expand/collapse-all
- * control now lives per-SOW (in each SOW header, wired in init.js), since
- * it folds the MDF/IDF groups WITHIN one SOW rather than the whole grid.
+ * Comparison-grid toolbar — same button set as worksheet-v2's toolbar
+ * (src/features/worksheet-v2/toolbar.js), EXCEPT the photos show/hide
+ * toggle (photo strips aren't part of this grid's card layout). No
+ * "Summary only" mode either — that view is a per-product money breakout
+ * built for a single-bid worksheet card and has no analog on a grid that
+ * already shows every bid side by side.
  *
+ *   - Expand/Collapse MDF/IDFs : global — every SOW's groups at once.
+ *                                Each SOW still keeps its own per-SOW
+ *                                Expand all/Collapse all button; both stay
+ *                                in sync (init.js toggleAllGroups).
+ *   - Expand/Collapse line items : every row's detail panel, whole grid.
  *   - + Add to SOW  : reuse Knack's "Add to Scope" link
+ *   - + Add MDF/IDF : auto-appears the moment the scene carries a Knack
+ *                     "Add MDF/IDF" menu link (same auto-detect as
+ *                     worksheet-v2's deploy-page button) — no config
+ *                     needed, renders nothing when no such link exists.
  *   - + Add Photos  : SCW.bulkUpload modal (SOW photo context)
  *
  * Reuses worksheet-v2's .scw-ws-v2-toolbar* CSS (injected globally).
@@ -31,13 +43,57 @@
       esc(label) + '</button>';
   }
 
+  // ── Add-MDF/IDF link discovery — same auto-detect as worksheet-v2's
+  // toolbar (findAddMdfMenuLink there). No addMdfMenuView config exists
+  // for scene_1155 yet, so this only ever fires off a real Knack menu
+  // link literally titled "Add MDF/IDF" — fails safe to "no button" when
+  // none is on the scene, same precedent as the deploy-page rollout. ──
+  function findAddMdfMenuLink() {
+    var menus = document.querySelectorAll('.kn-menu.kn-view');
+    for (var m = 0; m < menus.length; m++) {
+      var links = menus[m].querySelectorAll('a[href]');
+      for (var i = 0; i < links.length; i++) {
+        if (/^add\s*mdf\s*\/\s*idf$/i.test((links[i].textContent || '').trim())) {
+          return { link: links[i], menu: menus[m], solo: links.length === 1 };
+        }
+      }
+    }
+    return null;
+  }
+  function addMdfAvailable() {
+    var found = findAddMdfMenuLink();
+    if (!found) return false;
+    if (found.solo) found.menu.style.setProperty('display', 'none', 'important');
+    return true;
+  }
+
   function build() {
+    var mdfAvailable = addMdfAvailable();
     var bar = document.createElement('div');
     bar.className = 'scw-ws-v2-toolbar scw-bid-review-v2__toolbar';
     bar.innerHTML =
+      '<div class="scw-ws-v2-toolbar-group" role="group" aria-label="View">' +
+        // Expand⇄collapse EVERY SOW's MDF/IDF groups at once. Label flips
+        // with the live state (syncLabels below). Each SOW keeps its own
+        // per-SOW Expand all/Collapse all button too — init.js keeps both
+        // in sync (toggleAllGroups updates the per-SOW label as it goes).
+        '<button type="button" class="scw-ws-v2-toolbar-btn" ' +
+          'data-scw-br-v2-tb="groups-toggle" ' +
+          'title="Open or close every SOW’s MDF/IDF groups">' +
+          'Expand MDF/IDFs</button>' +
+        // Expand⇄collapse every line item's detail panel across the whole
+        // grid. Label flips with the live state (syncLabels below). Same
+        // idiom as worksheet-v2's "Expand line items" button.
+        '<button type="button" class="scw-ws-v2-toolbar-btn" ' +
+          'data-scw-br-v2-tb="rows-toggle" ' +
+          'title="Open or close every line item’s detail panel">' +
+          'Expand line items</button>' +
+      '</div>' +
       '<div class="scw-ws-v2-toolbar-spacer"></div>' +
       '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
         btn('add-sow',    '+ Add to SOW', 'Add a new SOW line item', true) +
+        (mdfAvailable ?
+          btn('add-mdf',  '+ Add MDF/IDF', 'Add a new MDF/IDF location', true) : '') +
         btn('add-photos', '+ Add Photos', 'Bulk upload photos to this SOW', true) +
       '</div>';
     return bar;
@@ -78,6 +134,15 @@
     }
     alert('Could not find the "Add to Scope" link on this page. ' +
           'Make sure the Knack details/menu link is enabled on the scene.');
+  }
+
+  // ── + Add MDF/IDF — click through to whatever "Add MDF/IDF" menu
+  // link the scene carries (the same one that made the button render). ──
+  function handleAddMdf() {
+    var found = findAddMdfMenuLink();
+    if (found) { found.link.click(); return; }
+    alert('Could not find the "Add MDF/IDF" link on this page. ' +
+          'Make sure the Knack menu link is enabled on the scene.');
   }
 
   // ── + Add Photos — SCW.bulkUpload modal (project context) ─────
@@ -127,10 +192,49 @@
       if (!t || !bar.contains(t)) return;
       var action = t.getAttribute('data-scw-br-v2-tb');
       if (action === 'add-sow') handleAddSow();
+      else if (action === 'add-mdf') handleAddMdf();
       else if (action === 'add-photos') handleAddPhotos();
+      else if (action === 'rows-toggle') {
+        if (typeof ns.toggleAllRows === 'function') ns.toggleAllRows(syncLabels);
+        syncLabels();
+      } else if (action === 'groups-toggle') {
+        if (typeof ns.toggleAllGroups === 'function') {
+          ns.toggleAllGroups(!!(ns.allGroupsOpen && ns.allGroupsOpen()));
+        }
+        syncLabels();
+      }
     });
+
+    // Float the whole bar (fixed to the top edge) once its natural
+    // position scrolls off-screen — shared worksheet-v2 helper.
+    var wsTb = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.toolbar;
+    if (wsTb && typeof wsTb.attachFloatingBar === 'function') {
+      wsTb.attachFloatingBar(bar, c);
+    }
+
+    syncLabels();
   }
 
-  ns.toolbar = { mount: mount };
+  /** Keep the "Expand/Collapse line items" label in sync with the live grid
+   *  state — any row open ⇒ the next click collapses everything, else it
+   *  expands. Called on mount, after every render, and after each row toggle. */
+  function syncLabels() {
+    var c = getContainer();
+    if (!c) return;
+    var bar = c.querySelector(':scope > .scw-bid-review-v2__toolbar');
+    if (!bar) return;
+    var rowsBtn = bar.querySelector('[data-scw-br-v2-tb="rows-toggle"]');
+    if (rowsBtn) {
+      var open = (typeof ns.anyRowOpen === 'function') && ns.anyRowOpen();
+      rowsBtn.textContent = open ? 'Collapse line items' : 'Expand line items';
+    }
+    var groupsBtn = bar.querySelector('[data-scw-br-v2-tb="groups-toggle"]');
+    if (groupsBtn) {
+      var groupsOpen = (typeof ns.allGroupsOpen === 'function') && ns.allGroupsOpen();
+      groupsBtn.textContent = groupsOpen ? 'Collapse MDF/IDFs' : 'Expand MDF/IDFs';
+    }
+  }
+
+  ns.toolbar = { mount: mount, syncLabels: syncLabels };
 })();
 /*** END BID REVIEW V2 — TOOLBAR **********************************************/

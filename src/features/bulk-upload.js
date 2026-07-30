@@ -121,7 +121,9 @@
         // handler walks contexts in order and uses the first that matches
         // the current URL.
         injectTargets: [
-          { viewId: 'view_3586', beforeText: 'Add to Scope of Work' },
+          // view_3586 target removed — the v1 surface is hidden by the v2
+          // cutover; the sales page opens this modal through worksheet-v2's
+          // toolbar (openBulkPhotoUpload → menuViewId view_3482) instead.
           {
             viewId: 'view_3610',
             beforeText: 'Add to Scope',
@@ -192,7 +194,7 @@
       {
         // ── Deployment bulk photo upload (install worksheets) ──────────
         // Fired by the worksheet-v2 toolbar "+ Add Photos" button on the
-        // install worksheets — view_3915 (internal deploy page) and its
+        // install worksheets — view_4093 (internal deploy page) and its
         // clone view_4056 (subcontractor deployment dashboard). This is NOT
         // a Knack menu-link interception: there's no source menu view, so
         // `menuViewId` is just the lookup key the worksheet-v2 toolbar
@@ -209,7 +211,7 @@
         // route carries:
         //   internal deploy page  → #…/project-dashboard/<proj>/deploy/<proj>
         //   subcontractor portal  → #…/deployment-dashboard/<id>
-        menuViewId:           'view_3915_deploy',
+        menuViewId:           'view_4093_deploy',
         linkText:             'Bulk Add Photos',
         linkField:            'deploymentID',
         hashPattern:          /(?:project-dashboard|deployment-dashboard)\/([a-f0-9]{24})/,
@@ -217,7 +219,42 @@
         // Whichever install grid is on the current scene gets a full
         // re-fetch on modal close so the new photos surface; the absent
         // one is skipped harmlessly.
-        refreshViews:         ['view_3915', 'view_4056'],
+        refreshViews:         ['view_4093', 'view_4056'],
+        reloadOnClose:        false
+      },
+      {
+        // SOW DOCUMENT uploads — replaces the Knack-native add-document
+        // child page on the bid-review comparison grid (its modal form
+        // 400s on submit; see modal-form-connection-sync.js). Synthetic
+        // lookup entry like view_4093_deploy: no menu view renders by
+        // this key, so the INIT bind is inert. Opened programmatically
+        // by the docs panel's "Upload new" button
+        // (bid-review/render.js buildSowDocsBlock).
+        //
+        // ROUTING: Make branches on `uploadKind: 'doc_file'` in the
+        // payload (every file in a doc batch also carries `docType`) —
+        // create a DOC_files record: field_68 = file, field_67 =
+        // docType, field_2143 = recordId (the SOW header id shipped
+        // under linkField 'sowID').
+        menuViewId:           'sow_docs_upload',
+        linkText:             'Upload Documents',
+        linkField:            'sowID',
+        docUpload:            true,
+        docTypeOptions: [
+          'Signed Installation Agreement',
+          'Site Plan',
+          'Signed Certificate of Completion',
+          'Quote',
+          'Purchase Order Terms',
+          'Other',
+          'Scope of Work',
+          'Change Order',
+          'Site Visit Form'
+        ],
+        // view_3926 is the project-docs source grid the bid-review docs
+        // panel scrapes — re-fetching it re-runs the pipeline so the new
+        // doc appears without a manual refresh.
+        refreshViews:         ['view_3926'],
         reloadOnClose:        false
       }
     ]
@@ -440,9 +477,160 @@
     }).catch(function () { return null; });
   }
 
+  // ── HEIC → JPEG CONVERSION ────────────────────────────────────────────
+  // Chrome/Edge/Firefox can't decode HEIC, so iPhone photos either bounced
+  // (oversized) or uploaded as .heic files nothing downstream could render.
+  // Lazy-load a WASM decoder from jsDelivr ONLY when a HEIC is actually
+  // picked — zero cost on ordinary JPEG batches — and convert every HEIC
+  // to JPEG on pick. Decode chain (each step only runs if the previous
+  // failed):
+  //   1. heic2any (small, fast, but bundles an OLD libheif — chokes on
+  //      newer iPhone HEICs, e.g. iOS 17/18 HDR captures)
+  //   2. libheif-js (current libheif build — bigger download, handles the
+  //      formats heic2any can't)
+  //   3. native canvas decode (Safari can read HEIC without any lib)
+  var HEIC2ANY_URL = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+  var LIBHEIF_URL  = 'https://cdn.jsdelivr.net/npm/libheif-js@1.19.8/libheif-wasm/libheif-bundle.js';
+  var _heicLibPromise = null;
+  var _libheifPromise = null;
+
+  function isHeicFile(f) {
+    var t = (f && f.type || '').toLowerCase();
+    if (t === 'image/heic' || t === 'image/heif' ||
+        t === 'image/heic-sequence' || t === 'image/heif-sequence') return true;
+    // File.type is frequently EMPTY for HEIC on Windows — extension is the
+    // reliable signal there.
+    return /\.(heic|heif)$/i.test((f && f.name) || '');
+  }
+
+  function loadHeicLib() {
+    if (window.heic2any) return Promise.resolve(window.heic2any);
+    if (_heicLibPromise) return _heicLibPromise;
+    _heicLibPromise = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = HEIC2ANY_URL;
+      s.onload = function () {
+        if (window.heic2any) resolve(window.heic2any);
+        else reject(new Error('heic2any loaded but global missing'));
+      };
+      s.onerror = function () {
+        _heicLibPromise = null;   // network hiccup — allow retry on next pick
+        reject(new Error('failed to load HEIC decoder'));
+      };
+      document.head.appendChild(s);
+    });
+    return _heicLibPromise;
+  }
+
+  function loadLibheifLib() {
+    if (_libheifPromise) return _libheifPromise;
+    var scriptLoaded = window.libheif
+      ? Promise.resolve(window.libheif)
+      : new Promise(function (resolve, reject) {
+          var s = document.createElement('script');
+          s.src = LIBHEIF_URL;
+          s.onload = function () {
+            if (window.libheif) resolve(window.libheif);
+            else reject(new Error('libheif loaded but global missing'));
+          };
+          s.onerror = function () {
+            reject(new Error('failed to load libheif decoder'));
+          };
+          document.head.appendChild(s);
+        });
+    // libheif-js 1.19.x exposes a FACTORY function — calling it yields the
+    // module object carrying HeifDecoder (synchronously in current builds;
+    // Promise.resolve guards a future thenable). The resolved module is
+    // cached via _libheifPromise so the factory runs once.
+    _libheifPromise = scriptLoaded.then(function (g) {
+      return Promise.resolve(typeof g === 'function' ? g() : g);
+    }).then(function (mod) {
+      if (mod && mod.HeifDecoder) return mod;
+      throw new Error('libheif global has no HeifDecoder');
+    });
+    _libheifPromise.catch(function () {
+      _libheifPromise = null;   // network hiccup — allow retry on next pick
+    });
+    return _libheifPromise;
+  }
+
+  /** Decode a HEIC via libheif-js into a JPEG Blob (rejects on failure). */
+  function convertHeicViaLibheif(f) {
+    return loadLibheifLib().then(function (libheif) {
+      return new Promise(function (resolve, reject) {
+        var r = new FileReader();
+        r.onerror = function () { reject(new Error('read failed')); };
+        r.onload = function () {
+          try {
+            var decoder = new libheif.HeifDecoder();
+            var images  = decoder.decode(new Uint8Array(r.result));
+            if (!images || !images.length) return reject(new Error('libheif: no images'));
+            var image = images[0];   // primary frame (bursts/live photos)
+            var w = image.get_width(), h = image.get_height();
+            if (!w || !h) return reject(new Error('libheif: no dimensions'));
+            var c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            var ctx = c.getContext('2d');
+            var imgData = ctx.createImageData(w, h);
+            image.display(imgData, function (displayData) {
+              try {
+                if (!displayData) return reject(new Error('libheif: display failed'));
+                ctx.putImageData(displayData, 0, 0);
+                c.toBlob(function (b) {
+                  if (b) resolve(b);
+                  else reject(new Error('canvas.toBlob returned null'));
+                }, 'image/jpeg', 0.88);
+              } catch (e2) { reject(e2); }
+            });
+          } catch (e) { reject(e); }
+        };
+        r.readAsArrayBuffer(f);
+      });
+    });
+  }
+
+  /** HEIC/HEIF file → JPEG Blob. WASM decoders first (work in every
+   *  browser); native decode via the canvas ladder as the last fallback
+   *  (Safari can read HEIC without a lib). Resolves null when none work. */
+  function convertHeic(f) {
+    return loadHeicLib().then(function (heic2any) {
+      return heic2any({ blob: f, toType: 'image/jpeg', quality: 0.88 });
+    }).then(function (out) {
+      // Multi-image HEIC (bursts/live photos) yields an array — take the
+      // primary frame.
+      var blob = Array.isArray(out) ? out[0] : out;
+      return blob || null;
+    }).catch(function (err) {
+      console.warn('[bulk-upload] heic2any unavailable/failed — trying libheif-js', err);
+      return convertHeicViaLibheif(f).catch(function (err2) {
+        console.warn('[bulk-upload] libheif-js unavailable/failed — trying native decode', err2);
+        return downscaleImage(f, CONFIG.MAX_FILE_BYTES);
+      });
+    });
+  }
+
   /** Resolve what to queue for a picked file: pass-through when it fits,
    *  auto-resize oversized raster images, null blob → too-big row. */
   function prepareFile(f) {
+    // HEIC always converts — even under the size cap. A sub-cap .heic used
+    // to pass through untouched and then render nowhere downstream
+    // (non-Apple browsers can't display HEIC).
+    if (isHeicFile(f)) {
+      var _tHeic = Date.now();
+      return convertHeic(f).then(function (jpeg) {
+        if (!jpeg) return { blob: null, converted: false, triedResize: true, heicFailed: true };
+        var fit = (jpeg.size <= CONFIG.MAX_FILE_BYTES)
+          ? Promise.resolve(jpeg)
+          : downscaleImage(jpeg, CONFIG.MAX_FILE_BYTES);
+        return fit.then(function (finalBlob) {
+          if (!finalBlob) return { blob: null, converted: false, triedResize: true, heicFailed: true };
+          console.info('[bulk-upload] HEIC converted', f.name,
+            fmtBytes(f.size), '→', fmtBytes(finalBlob.size),
+            '(' + (Date.now() - _tHeic) + 'ms)');
+          return { blob: finalBlob, converted: true, triedResize: true };
+        });
+      });
+    }
     // Full-resolution uploads under the hard cap — a sub-cap file ships
     // exactly as-is. Only genuinely oversized raster images get downscaled,
     // and only enough to clear MAX_FILE_BYTES so they upload at all instead
@@ -544,6 +732,18 @@
       '}',
       M + ' .scw-bu-context-note { margin-top:4px; font-size:12px; line-height:1.45; }',
       M + ' .scw-bu-context-note strong { color:#78350f; }',
+      // Doc mode — batch-wide "type of document" picker.
+      M + ' .scw-bu-doctype { margin-top:10px; }',
+      M + ' .scw-bu-doctype-label {',
+      '  display:block; margin-bottom:4px;',
+      '  font-size:12.5px; font-weight:600; color:#334155;',
+      '}',
+      M + ' .scw-bu-doctype-req { color:#b91c1c; }',
+      M + ' .scw-bu-doctype-select {',
+      '  width:100%; padding:7px 10px;',
+      '  border:1px solid #cbd5e1; border-radius:8px;',
+      '  background:#fff; font-size:13px; color:#0f172a;',
+      '}',
       M + ' .scw-bu-list { margin-top:10px; }',
       M + ' .scw-bu-row {',
       '  display:flex; align-items:center; gap:10px;',
@@ -607,13 +807,23 @@
       mdfIdfID:          'MDF/IDF location'
     };
     var isLineItem  = !!(viewCfg && viewCfg.lineItemUpload);
+    var isDoc       = !!(viewCfg && viewCfg.docUpload);
     var kindLabel   = (viewCfg && LINE_ITEM_KINDS[viewCfg.linkField]) || 'line item';
     var targetLabel = (viewCfg && viewCfg.targetLabel) || '';
 
-    var titleText = isLineItem ? 'Add Photos to This ' +
-      kindLabel.replace(/\b\w/, function (c) { return c.toUpperCase(); }) : 'Bulk Upload Files';
+    var titleText = isDoc ? 'Upload Documents'
+      : isLineItem ? 'Add Photos to This ' +
+        kindLabel.replace(/\b\w/, function (c) { return c.toUpperCase(); }) : 'Bulk Upload Files';
 
-    var contextHtml = isLineItem
+    var contextHtml = isDoc
+      ? '<div class="scw-bu-context">' +
+          '<div class="scw-bu-context-title">Uploading documents to this SOW</div>' +
+          (targetLabel
+            ? '<div class="scw-bu-context-target">' + escapeHtml(targetLabel) + '</div>' : '') +
+          '<div class="scw-bu-context-note">Each file becomes a document connected to ' +
+            '<strong>this SOW</strong>. The type below applies to every file in the batch.</div>' +
+        '</div>'
+      : isLineItem
       ? '<div class="scw-bu-context">' +
           '<div class="scw-bu-context-title">Uploading to this ' + escapeHtml(kindLabel) + '</div>' +
           (targetLabel
@@ -623,7 +833,27 @@
         '</div>'
       : '';
 
-    var infoHtml = isLineItem
+    // Doc mode: required "type of document" picker (choices mirror the
+    // DOC_files field_67 multiple-choice options — override per VIEWS
+    // entry via docTypeOptions). Applies to the whole batch.
+    var docTypeHtml = '';
+    if (isDoc) {
+      var opts = (viewCfg.docTypeOptions || []).map(function (o) {
+        return '<option value="' + escapeHtml(o) + '">' + escapeHtml(o) + '</option>';
+      }).join('');
+      docTypeHtml =
+        '<div class="scw-bu-doctype">' +
+          '<label class="scw-bu-doctype-label">Type of document ' +
+            '<span class="scw-bu-doctype-req">*</span></label>' +
+          '<select class="scw-bu-doctype-select">' +
+            '<option value="">Select…</option>' + opts +
+          '</select>' +
+        '</div>';
+    }
+
+    var infoHtml = isDoc
+      ? ''
+      : isLineItem
       ? '<div class="scw-bu-info"><p>Photos you add here connect directly to this ' +
           escapeHtml(kindLabel) + '.</p></div>'
       : '<div class="scw-bu-info">' +
@@ -643,6 +873,7 @@
         '<div id="' + MODAL_ID + '-body">' +
           '<div class="scw-bu-banner-slot"></div>' +
           contextHtml +
+          docTypeHtml +
           '<div class="scw-bu-drop" tabindex="0">' +
             '<div><strong>Drop files here</strong> or click to choose</div>' +
             '<span class="scw-bu-drop-hint">Any type · max ' +
@@ -936,8 +1167,10 @@
           blob:      blob || f,
           status:    tooBig ? 'too-big' : 'queued',
           error:     tooBig
-            ? ('File exceeds ' + fmtBytes(CONFIG.MAX_FILE_BYTES) + ' limit' +
-               (prep.triedResize ? ' — auto-resize failed (unsupported image format?)' : ''))
+            ? (prep.heicFailed
+              ? 'HEIC photo could not be converted — export it as JPEG and re-add it'
+              : ('File exceeds ' + fmtBytes(CONFIG.MAX_FILE_BYTES) + ' limit' +
+                 (prep.triedResize ? ' — auto-resize failed (unsupported image format?)' : '')))
             : null,
           addedAt:   Date.now(),
           batchId:   _state.batchId,
@@ -1111,6 +1344,21 @@
       alert('Bulk upload webhook is not configured (SCW.CONFIG.MAKE_BULK_UPLOAD_WEBHOOK).');
       return;
     }
+    // Doc mode: the batch-wide "type of document" is required — block the
+    // upload (not the queueing) until one is picked, then stamp it onto
+    // every row so uploadOne ships it per file.
+    if (_state.viewCfg && _state.viewCfg.docUpload) {
+      var typeSel = document.querySelector('#' + MODAL_ID + ' .scw-bu-doctype-select');
+      var docType = typeSel ? typeSel.value : '';
+      if (!docType) {
+        alert('Pick a type of document first — it applies to every file in this batch.');
+        if (typeSel) typeSel.focus();
+        return;
+      }
+      _state.rows.forEach(function (r) {
+        if (r.status !== 'done') { r.docType = docType; r.uploadKind = 'doc_file'; }
+      });
+    }
     // Re-queue any rows the user wants retried
     _state.rows.forEach(function (r) {
       if (r.status === 'failed') { r.status = 'queued'; r.error = null; }
@@ -1186,6 +1434,12 @@
         batchId:     row.batchId,
         triggeredBy: getCurrentUser()
       };
+      // Doc batches (docUpload VIEWS entries) tag every file so Make can
+      // branch: uploadKind 'doc_file' → create a DOC_files record
+      // (field_68 file, field_67 docType, field_2143 ← recordId/sowID)
+      // instead of the photo pipeline.
+      if (row.uploadKind) payload.uploadKind = row.uploadKind;
+      if (row.docType)    payload.docType    = row.docType;
       var bodyStr = JSON.stringify(payload);
       // Client-side hard stop: Make silently drops connections on bodies
       // over ~5 MB. Fail BEFORE sending (this never touches the network) so

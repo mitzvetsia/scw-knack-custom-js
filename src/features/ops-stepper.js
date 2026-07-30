@@ -307,8 +307,57 @@
         primaryMode: 'publish-and-notify'
       },
       includeFullPayload: true
+    },
+    // ── Change-order mode ─────────────────────────────────────
+    // When the SOW on this preview page is a CHANGE ORDER (field_2952 =
+    // "change order"), the base-scope actions above are all inapplicable —
+    // the render loop swaps the whole step set for this single step (see
+    // the coOnly filter in renderInto). "Issue" is the CO's publish verb
+    // (docs/change-orders.md): ONE gesture creates the published proposal
+    // (type=CO, with everything a publish carries — html/json/totals/
+    // token), the esignatures contract + acceptance record, and flips CO
+    // Status to Issued. Make owns all three writes; the payload is the
+    // same full publish shape as publish-final so the scenario reuses the
+    // existing publish plumbing.
+    {
+      id: 'issue-change-order',
+      label: 'Issue Change Order — send to client for signature',
+      tone: 'success',
+      coOnly: true,
+      webhookKey: 'MAKE_CO_ISSUE_WEBHOOK',
+      // Recipient picker — WHO the CO goes to for signature. Options come
+      // from view_4124 (contacts grid added to the preview page). Choosing
+      // a contact reveals editable Name / Email / Phone inputs; the final
+      // values ride on payload.recipient = { id, name, label, email, phone }
+      // and any edits are PUT back to the contact record via view_4124
+      // (inline edit must stay enabled on that view). Required: Issue is
+      // blocked until a contact with an email is picked.
+      recipient: {
+        view:     'view_4124',
+        question: 'Who should this change order go to for signature?',
+        required: true,
+        fields:   { name: 'field_198', phone: 'field_195', email: 'field_196' }
+      },
+      modal: {
+        title:       'Issue Change Order',
+        intro:       'Publishes the change-order document, creates the ' +
+                     'e-signature contract, and sends it to the chosen ' +
+                     'contact. Line items lock once issued.',
+        placeholder: 'e.g. CO-1410: 2 cameras added at dock, 1 removed at cash register',
+        submitLabel: 'Issue Change Order'
+      },
+      includeFullPayload: true
     }
   ];
+
+  // SOW Type (field_2952): "change order" flips the stepper into CO mode —
+  // only coOnly steps render. Fails open: when the field isn't projected
+  // onto view_3861 (readField → ''), the page behaves as base scope, so
+  // nothing changes for existing SOWs. ⚠️ field_2952 must be ADDED to
+  // view_3861 in Builder for CO mode to activate.
+  function isChangeOrder() {
+    return conditionMet({ field: 'field_2952', value: 'change order' });
+  }
 
   // ── Icons ────────────────────────────────────────────────
   // Ops stepper icons. These intentionally diverge from
@@ -461,6 +510,29 @@
       '}' +
       '.scw-ops-modal-error {' +
       '  margin-top: 8px; color: #b91c1c; font-size: 12px;' +
+      '}' +
+      /* Recipient single-select (issue-change-order) */
+      '.scw-ops-modal-recipient {' +
+      '  width: 100%; box-sizing: border-box; margin-top: 6px;' +
+      '  padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;' +
+      '  font-family: inherit; font-size: 13px; background: #fff; color: #1f2937;' +
+      '}' +
+      /* Editable Name / Email / Phone for the chosen recipient */
+      '.scw-ops-modal-rcp-fields { display: none; margin-top: 8px; }' +
+      '.scw-ops-modal-rcp-row {' +
+      '  display: flex; align-items: center; gap: 8px; margin-top: 6px;' +
+      '}' +
+      '.scw-ops-modal-rcp-row label {' +
+      '  flex: 0 0 46px; font-size: 11px; font-weight: 700; color: #6b7280;' +
+      '  text-transform: uppercase; letter-spacing: .03em;' +
+      '}' +
+      '.scw-ops-modal-rcp-row input {' +
+      '  flex: 1; min-width: 0; box-sizing: border-box; padding: 7px 9px;' +
+      '  border: 1px solid #d1d5db; border-radius: 6px;' +
+      '  font-family: inherit; font-size: 13px; background: #fff; color: #1f2937;' +
+      '}' +
+      '.scw-ops-modal-rcp-hint {' +
+      '  font-size: 11px; color: #6b7280; margin-top: 6px;' +
       '}' +
 
       // Submission options (radio group rendered between the textarea
@@ -1020,7 +1092,8 @@
         step.id === 'publish-sow-tbd' ||
         step.id === 'publish-gfe' ||
         step.id === 'publish-final' ||
-        step.id === 'publish-proposal') {
+        step.id === 'publish-proposal' ||
+        step.id === 'issue-change-order') {
 
       // Per-step TBD treatment for the publish html. The three publish
       // variants force their own behavior; everyone else falls back to
@@ -1028,10 +1101,19 @@
       //   publish-sow-tbd → ALWAYS TBD (SOW-only quote, labor pending)
       //   publish-gfe     → NEVER TBD  (Good-Faith Estimate, labor shown)
       //   publish-final   → NEVER TBD  (Final, labor shown)
+      //   issue-change-order → NEVER TBD (CO is fully priced by the sub;
+      //                        the client signs real numbers)
       var tbdMode;
       if (step.id === 'publish-sow-tbd') tbdMode = true;
-      else if (step.id === 'publish-gfe' || step.id === 'publish-final') tbdMode = false;
+      else if (step.id === 'publish-gfe' || step.id === 'publish-final' ||
+               step.id === 'issue-change-order') tbdMode = false;
       else tbdMode = undefined;   // default — read field_2725
+
+      // The CO webhooks all key on changeOrderId — alias the SOW record id
+      // so the Issue scenario reads the same name as send-to-sub / remove.
+      if (step.id === 'issue-change-order') {
+        payload.changeOrderId = payload.sourceRecordId;
+      }
 
       payload.publishAsTbd = (tbdMode === true)
         || (tbdMode === undefined && shouldPublishAsTbd());
@@ -1053,6 +1135,11 @@
             // htmlPdf = small weserv-resized variant for the PDF render.
             'html', 'htmlPdf', 'plaintext', 'plaintextJsonEscaped',
             'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
+            // Change Order publish — isChangeOrder flags the branch,
+            // coNetChange is the headline money string for the CO
+            // agreement (use INSTEAD of grandTotal on COs), and
+            // coChangeSummary is the structured adds/removes manifest.
+            'isChangeOrder', 'coNetChange', 'coChangeSummary',
             'json', 'jsonString',
             'invoiceItems', 'invoiceItemsString',
             // Tokenized public link, minted at publish time by
@@ -1445,6 +1532,220 @@
       };
     }
 
+    // Recipient picker — single-select contact sourced from a grid view on
+    // this scene (opts.recipient = { view, question, required, fields }).
+    // `fields` maps the contact columns ({ name, phone, email } → field
+    // keys). Choosing a contact reveals EDITABLE Name / Email / Phone
+    // inputs prefilled from the record; the (possibly edited) values ride
+    // on payload.recipient AND, when changed, are written back to the
+    // contact record through the same grid view on submit (view-based PUT
+    // with the user's session token — the view must have inline editing
+    // enabled). Works even when the grid is hidden (model + DOM persist).
+    function buildRecipientPicker(config) {
+      if (!config || !config.view) return null;
+      var F = config.fields || { name: 'field_198', phone: 'field_195', email: 'field_196' };
+      var options = [];
+
+      function stripHtml(v) {
+        if (v == null) return '';
+        var d = document.createElement('div');
+        d.innerHTML = String(v);
+        return (d.textContent || '').replace(/\s+/g, ' ').trim();
+      }
+
+      // Prefer the view MODEL — raw values are clean and reveal the real
+      // field shape (a Knack person-name raw is {first,last}; plain text
+      // raw is a string), which the write-back has to match.
+      try {
+        var models = (Knack.views[config.view] &&
+                      Knack.views[config.view].model &&
+                      Knack.views[config.view].model.data &&
+                      Knack.views[config.view].model.data.models) || [];
+        for (var mi = 0; mi < models.length; mi++) {
+          var a = models[mi].attributes || {};
+          if (!a.id) continue;
+          var nameRaw   = a[F.name + '_raw'];
+          var nameIsObj = !!(nameRaw && typeof nameRaw === 'object');
+          var first = nameIsObj ? String(nameRaw.first || '').trim() : '';
+          var last  = nameIsObj ? String(nameRaw.last  || '').trim() : '';
+          var name = nameIsObj
+            ? [nameRaw.title, first, nameRaw.middle, last]
+                .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
+            : stripHtml(nameRaw != null ? nameRaw : a[F.name]);
+          var phoneRaw = a[F.phone + '_raw'];
+          var phone = (phoneRaw && typeof phoneRaw === 'object')
+            ? String(phoneRaw.formatted || phoneRaw.full || '').trim()
+            : stripHtml(phoneRaw != null ? phoneRaw : a[F.phone]);
+          var emailRaw = a[F.email + '_raw'];
+          var email = (emailRaw && typeof emailRaw === 'object')
+            ? String(emailRaw.email || '').trim()
+            : stripHtml(emailRaw != null ? emailRaw : a[F.email]);
+          options.push({
+            id: a.id, name: name, phone: phone, email: email,
+            nameIsObj: nameIsObj, first: first, last: last,
+            nameRawObj: nameIsObj ? nameRaw : null,
+            label: [name, phone, email].filter(Boolean).join(' — ').slice(0, 140) || a.id
+          });
+        }
+      } catch (eModel) { /* fall through to DOM scrape */ }
+
+      // DOM fallback — scrape the rendered rows if the model isn't populated.
+      if (!options.length) {
+        var viewEl = document.getElementById(config.view);
+        var rows = viewEl ? viewEl.querySelectorAll('tbody tr[id]') : [];
+        for (var ri = 0; ri < rows.length; ri++) {
+          var r = rows[ri];
+          if (!/^[a-f0-9]{24}$/i.test(r.id || '')) continue;
+          var cellText = function (fk) {
+            var td = r.querySelector('td.' + fk);
+            return td ? (td.textContent || '').replace(/\s+/g, ' ').trim() : '';
+          };
+          var nm = cellText(F.name), ph2 = cellText(F.phone), em = cellText(F.email);
+          if (!nm && !ph2 && !em) continue;
+          options.push({
+            id: r.id, name: nm, phone: ph2, email: em,
+            nameIsObj: false, first: '', last: '', nameRawObj: null,
+            label: [nm, ph2, em].filter(Boolean).join(' — ').slice(0, 140)
+          });
+        }
+      }
+
+      var wrap = document.createElement('div');
+      wrap.className = 'scw-ops-modal-submission';
+      var q = document.createElement('div');
+      q.className = 'scw-ops-modal-submission__q';
+      q.textContent = config.question || 'Send to';
+      wrap.appendChild(q);
+
+      var sel = document.createElement('select');
+      sel.className = 'scw-ops-modal-recipient';
+      var ph = document.createElement('option');
+      ph.value = '';
+      ph.textContent = options.length
+        ? '— choose a contact —'
+        : 'No contacts found (is ' + config.view + ' on this page?)';
+      sel.appendChild(ph);
+      options.forEach(function (o) {
+        var opt = document.createElement('option');
+        opt.value = o.id;
+        opt.textContent = o.label;
+        sel.appendChild(opt);
+      });
+      wrap.appendChild(sel);
+
+      // Editable contact fields — revealed once a contact is chosen. A
+      // Knack person-name field gets separate First / Last inputs (its
+      // stored shape), a plain-text name field gets a single Name input —
+      // no string-splitting heuristics either way.
+      var fieldsWrap = document.createElement('div');
+      fieldsWrap.className = 'scw-ops-modal-rcp-fields';
+      var inputs = {}, rowEls = {};
+      [['name', 'Name', 'text'], ['first', 'First', 'text'], ['last', 'Last', 'text'],
+       ['email', 'Email', 'email'], ['phone', 'Phone', 'tel']]
+        .forEach(function (def) {
+          var row = document.createElement('div');
+          row.className = 'scw-ops-modal-rcp-row';
+          var lab = document.createElement('label');
+          lab.textContent = def[1];
+          var inp = document.createElement('input');
+          inp.type = def[2];
+          row.appendChild(lab);
+          row.appendChild(inp);
+          fieldsWrap.appendChild(row);
+          inputs[def[0]] = inp;
+          rowEls[def[0]] = row;
+        });
+      var hint = document.createElement('div');
+      hint.className = 'scw-ops-modal-rcp-hint';
+      hint.textContent = 'Edits here update the contact record when you submit.';
+      fieldsWrap.appendChild(hint);
+      wrap.appendChild(fieldsWrap);
+
+      var current = null; // the chosen option (original values for diffing)
+      sel.addEventListener('change', function () {
+        current = null;
+        for (var i = 0; i < options.length; i++) {
+          if (options[i].id === sel.value) { current = options[i]; break; }
+        }
+        if (current) {
+          rowEls.name.style.display  = current.nameIsObj ? 'none' : '';
+          rowEls.first.style.display = current.nameIsObj ? '' : 'none';
+          rowEls.last.style.display  = current.nameIsObj ? '' : 'none';
+          inputs.name.value  = current.name  || '';
+          inputs.first.value = current.first || '';
+          inputs.last.value  = current.last  || '';
+          inputs.email.value = current.email || '';
+          inputs.phone.value = current.phone || '';
+          fieldsWrap.style.display = 'block';
+        } else {
+          fieldsWrap.style.display = 'none';
+        }
+      });
+
+      return {
+        element:  wrap,
+        required: !!config.required,
+        getValue: function () {
+          if (!current) return null;
+          var name = current.nameIsObj
+            ? ((inputs.first.value || '').trim() + ' ' + (inputs.last.value || '').trim()).trim()
+            : (inputs.name.value || '').trim();
+          return {
+            id:    current.id,
+            name:  name,
+            email: (inputs.email.value || '').trim(),
+            phone: (inputs.phone.value || '').trim(),
+            label: current.label
+          };
+        },
+        // Write edited Name/Email/Phone back to the contact record via the
+        // grid view (inline edit must be enabled on it). Fire-and-forget —
+        // the webhook payload already carries the edited values, so a
+        // failed sync never blocks the CO. One record → one PUT, no queue.
+        saveEdits: function () {
+          if (!current || !window.SCW || !SCW.knackAjax) return;
+          var data = {};
+          var em = (inputs.email.value || '').trim();
+          var pn = (inputs.phone.value || '').trim();
+          if (current.nameIsObj) {
+            // Person-name field — separate First/Last inputs write straight
+            // into Knack's {first, last} shape; keep any stored title/middle.
+            var f1 = (inputs.first.value || '').trim();
+            var l1 = (inputs.last.value  || '').trim();
+            if ((f1 !== current.first || l1 !== current.last) && (f1 || l1)) {
+              var nameObj = { first: f1, last: l1 };
+              if (current.nameRawObj && current.nameRawObj.title)  nameObj.title  = current.nameRawObj.title;
+              if (current.nameRawObj && current.nameRawObj.middle) nameObj.middle = current.nameRawObj.middle;
+              data[F.name] = nameObj;
+            }
+          } else {
+            var nm = (inputs.name.value || '').trim();
+            if (nm && nm !== current.name) data[F.name] = nm;
+          }
+          if (em !== current.email) data[F.email] = em;
+          if (pn !== current.phone) data[F.phone] = pn;
+          if (!Object.keys(data).length) return;
+          var rid = current.id;
+          SCW.knackAjax({
+            url: SCW.knackRecordUrl(config.view, rid),
+            type: 'PUT',
+            data: JSON.stringify(data),
+            success: function () {
+              SCW.debug('[scw-ops-stepper] contact record updated:', rid, data);
+            },
+            error: function (xhr) {
+              console.warn('[scw-ops-stepper] contact update failed (' +
+                (xhr && xhr.status) + ') — the webhook payload still ' +
+                'carries the edited values.', rid, data);
+            }
+          });
+        }
+      };
+    }
+
+    var recipientPicker = buildRecipientPicker(opts.recipient);
+    if (recipientPicker) card.appendChild(recipientPicker.element);
+
     // Submission options — also-submit-to-Sales / Second Set / no.
     // Rendered ABOVE the note textarea so the operator picks a submit
     // target first; the textarea then surfaces only when a real
@@ -1544,25 +1845,47 @@
     document.addEventListener('keydown', function esc(e) {
       if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
     });
+    // Required-recipient gate shared by both action buttons.
+    function recipientOrBlock() {
+      var rec = recipientPicker ? recipientPicker.getValue() : null;
+      if (recipientPicker && recipientPicker.required && !rec) {
+        showError('Pick who this should go to first.');
+        return { blocked: true };
+      }
+      if (recipientPicker && recipientPicker.required && rec && !rec.email) {
+        showError("Add an email for this contact — the CO can't go out for signature without one.");
+        return { blocked: true };
+      }
+      // Sync any Name/Email/Phone edits back to the contact record.
+      if (recipientPicker && rec && recipientPicker.saveEdits) recipientPicker.saveEdits();
+      return { blocked: false, recipient: rec };
+    }
+
     submitBtn.addEventListener('click', function () {
       err.style.display = 'none';
+      var gate = recipientOrBlock();
+      if (gate.blocked) return;
       var notes = (ta.value || '').trim();
       onSubmit(notes, {
         setSubmitting: setSubmitting, showError: showError, close: close,
         mode: opts.primaryMode || null,
         submission:    submissionGroup ? submissionGroup.getValue() : null,
-        clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null
+        clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
+        recipient:     gate.recipient || null
       });
     });
     if (secondaryBtn) {
       secondaryBtn.addEventListener('click', function () {
         err.style.display = 'none';
+        var gate = recipientOrBlock();
+        if (gate.blocked) return;
         var notes = (ta.value || '').trim();
         onSubmit(notes, {
           setSubmitting: setSubmitting, showError: showError, close: close,
           mode: opts.secondaryMode || null,
           submission:    submissionGroup ? submissionGroup.getValue() : null,
-          clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null
+          clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
+          recipient:     gate.recipient || null
         });
       });
     }
@@ -1629,6 +1952,15 @@
   // short delay so the user still ends up somewhere sensible.
   //
   // The setTimeout before window.close() is intentional: some browsers
+  // Diagnostic hold — set localStorage.scwOpsStepperHold = '1' in the
+  // console (then reload) to keep the tab AND the notes modal open after a
+  // webhook fires. The normal flow closes the tab on success, which nukes
+  // the DevTools Network capture with it — impossible to see whether the
+  // POST actually reached Make. Delete the key to restore normal behavior.
+  function diagnosticHold() {
+    try { return localStorage.getItem('scwOpsStepperHold') === '1'; } catch (e) { return false; }
+  }
+
   // miss the cross-tab storage-event IPC if the origin tab closes too
   // quickly after setItem. 150ms is plenty for the event to propagate.
   function dismissAfterSuccess() {
@@ -1644,16 +1976,98 @@
   // ── Webhook ──────────────────────────────────────────────
   // POST the payload as JSON. Resolves with {ok, status, data} where
   // `data` is the parsed JSON body (or null if the body isn't JSON).
+  //
+  // Uses $.ajax, not fetch() — every other Make-webhook caller in this
+  // codebase does the same (bid-review/change-requests.js,
+  // sales-change-request/submit.js, worksheet-v2/toolbar.js,
+  // revision-accept-reject.js, etc.) because Make webhooks routinely
+  // respond without CORS headers even though the request landed and the
+  // scenario is running. XHR surfaces that as status 0, which every one
+  // of those callers treats as success. fetch() has no equivalent
+  // tolerance: the same CORS-blocked response makes it reject outright
+  // with an opaque "TypeError: Failed to fetch" and no status — which is
+  // exactly the unhelpful "Failed to fetch" alert Ops was hitting here.
+  // Make's webhook gateway rejects request bodies over 5 MB with a 400
+  // that carries no CORS headers — so from the browser it's status 0 /
+  // "Failed to fetch", NO scenario run appears in Make's history, and
+  // (worst) the status-0 tolerance below would report it as SUCCESS.
+  // Confirmed live 2026-07-22: a 5,832,684-byte publish payload → 400
+  // Bad Request at the gateway. Block over-limit sends up front with a
+  // real error instead of letting them fail unreadably.
+  var MAKE_BODY_LIMIT = 5 * 1024 * 1024;
+
+  // Per-field byte breakdown of a payload, largest first. Logged on every
+  // send (and embedded in the over-limit error) so when a payload is at or
+  // over the cap we can see exactly which fields carry the weight.
+  function payloadFieldSizes(payload) {
+    var sizes = [];
+    try {
+      var keys = Object.keys(payload);
+      for (var i = 0; i < keys.length; i++) {
+        var v = '';
+        try { v = JSON.stringify(payload[keys[i]]) || ''; } catch (e) { /* unserializable */ }
+        sizes.push({ field: keys[i], bytes: v.length });
+      }
+      sizes.sort(function (a, b) { return b.bytes - a.bytes; });
+    } catch (e) { /* diagnostic only — never block the send */ }
+    return sizes;
+  }
+
   function postWebhook(url, payload) {
-    return fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).then(function (resp) {
-      return resp.text().then(function (body) {
-        var data = null;
-        try { data = body ? JSON.parse(body) : null; } catch (e) {}
-        return { ok: resp.ok, status: resp.status, body: body, data: data };
+    var body = JSON.stringify(payload);
+    // Always log the outbound size + result — a publish payload carries the
+    // full proposal HTML/JSON snapshot several times over, and an oversized
+    // body dying mid-upload at the gateway looks identical to a CORS block
+    // from the browser's side (no status, no Make run). The byte count in
+    // the console is what tells those two failure modes apart.
+    console.info('[SCW ops-stepper] POST ' + url + ' payloadBytes=' + body.length);
+    var sizes = payloadFieldSizes(payload);
+    if (console.table) console.table(sizes.slice(0, 15));
+
+    if (body.length > MAKE_BODY_LIMIT) {
+      var top = sizes.slice(0, 3).map(function (s) {
+        return s.field + ' (' + (s.bytes / 1048576).toFixed(2) + ' MB)';
+      }).join(', ');
+      console.error('[SCW ops-stepper] BLOCKED: payload ' + body.length +
+        ' bytes exceeds Make’s 5 MB webhook limit. Field breakdown logged above.');
+      return Promise.resolve({
+        ok: false,
+        status: 413,
+        body: '',
+        data: {
+          error: 'Publish payload is ' + (body.length / 1048576).toFixed(2) +
+            ' MB — over Make’s 5 MB webhook limit, so the gateway would reject it ' +
+            'and nothing would reach the scenario. Largest fields: ' + top +
+            '. Screenshot the console table and report it so we can trim the payload.'
+        }
+      });
+    }
+    return new Promise(function (resolve) {
+      $.ajax({
+        url: url,
+        type: 'POST',
+        contentType: 'application/json',
+        data: body,
+        success: function (respBody, textStatus, xhr) {
+          console.info('[SCW ops-stepper] webhook OK status=' + xhr.status);
+          var data = null;
+          try { data = respBody ? (typeof respBody === 'string' ? JSON.parse(respBody) : respBody) : null; } catch (e) {}
+          resolve({ ok: true, status: xhr.status, body: respBody, data: data });
+        },
+        error: function (xhr) {
+          console.warn('[SCW ops-stepper] webhook ERROR status=' + (xhr ? xhr.status : '?') +
+            ' — status 0 means the browser never got a response (CORS-opaque reply, ' +
+            'blocked request, or connection killed mid-upload)');
+          if (xhr && xhr.status === 0) {
+            resolve({ ok: true, status: 0, body: '', data: { success: true } });
+            return;
+          }
+          var respBody = '';
+          try { respBody = xhr.responseText || ''; } catch (e) { /* ignore */ }
+          var data = null;
+          try { data = respBody ? JSON.parse(respBody) : null; } catch (e) { /* not JSON */ }
+          resolve({ ok: false, status: xhr ? xhr.status : 0, body: respBody, data: data });
+        }
       });
     });
   }
@@ -1686,7 +2100,8 @@
     var isPublishStep = step.id === 'publish-sow-tbd' ||
                         step.id === 'publish-gfe' ||
                         step.id === 'publish-final' ||
-                        step.id === 'publish-proposal';
+                        step.id === 'publish-proposal' ||
+                        step.id === 'issue-change-order';
     if (isPublishStep &&
         window.SCW && SCW.pdfExport && typeof SCW.pdfExport.isPageReady === 'function' &&
         !SCW.pdfExport.isPageReady('scene_1096')) {
@@ -1730,7 +2145,8 @@
     // instead of cluttering step.modal.
     var modalOpts = $.extend({}, step.modal, {
       submission:    step.submission    || null,
-      clickupStatus: step.clickupStatus || null
+      clickupStatus: step.clickupStatus || null,
+      recipient:     step.recipient     || null
     });
     openNotesPromptModal(modalOpts, function (notes, ctx) {
       ctx.setSubmitting(true);
@@ -1749,6 +2165,10 @@
       // (which webhook to fire) and to mode (publish-and-notify, etc.).
       // A step with no submission radio can still force a default
       // (step.forceSubmission) — e.g. mark-ready always submits to Sales.
+      // Chosen CO recipient (issue-change-order) — { id, name, label, email, phone }.
+      // Make resolves the full contact record from the id; label/email are
+      // convenience copies of what the picker showed.
+      if (ctx.recipient)              payload.recipient = ctx.recipient;
       if (ctx.submission)             payload.submission = ctx.submission;
       else if (step.forceSubmission)  payload.submission = step.forceSubmission;
       // ClickUp status update ('gfe-submitted' / 'final-bid-submitted' /
@@ -1779,6 +2199,30 @@
         );
         if (!accepted) {
           throw new Error(webhookErrorMsg(resp, step.label + ' webhook'));
+        }
+        // Issue CO: stash WHO it went to, keyed by the CO record id —
+        // co-stage-strip's Issued note reads this to render "issued to
+        // X — have them check their email". Best-effort (same-browser
+        // only); a Make-written Knack field would make it durable.
+        if (step.id === 'issue-change-order' && ctx.recipient) {
+          try {
+            localStorage.setItem('scw-co-issued-recipient:' + getSourceRecordId(),
+              JSON.stringify({
+                name:  ctx.recipient.name  || '',
+                email: ctx.recipient.email || '',
+                at:    Date.now()
+              }));
+          } catch (eLs) { /* localStorage may be disabled; non-fatal */ }
+        }
+        // Diagnostic hold: leave everything open and surface the raw
+        // result so the Network tab / console stay inspectable.
+        if (diagnosticHold()) {
+          setBtnLoading(btn, false);
+          ctx.setSubmitting(false);
+          ctx.showError('[debug hold] webhook resolved status=' + resp.status +
+            (resp.status === 0 ? ' (status 0 = no readable response — check the Network tab: did the POST row complete, CORS-error, or fail?)' : '') +
+            ' — tab left open because scwOpsStepperHold is set.');
+          return;
         }
         // Close the notes modal before navigating — the redirect is
         // just a hash change, it doesn't tear down body-level overlays.
@@ -1831,9 +2275,18 @@
     title.textContent = 'Ops Actions';
     block.appendChild(title);
 
+    // CO mode: a change order renders ONLY the coOnly step(s); a base SOW
+    // renders only the base steps. One filter instead of per-step
+    // hideWhen edits, so the existing gate conditions stay untouched.
+    var coMode = isChangeOrder();
+
     // Internal sub-bid review panel (diff + why Publish-Final is gated).
-    var subBidPanel = buildSubBidPanel();
-    if (subBidPanel) block.appendChild(subBidPanel);
+    // Not applicable to a CO — its sub pricing is reconciled on the CO
+    // drafting page (co-stage-strip), not via the base-scope bid review.
+    if (!coMode) {
+      var subBidPanel = buildSubBidPanel();
+      if (subBidPanel) block.appendChild(subBidPanel);
+    }
 
     // Render every step in fixed order. Three possible states per step:
     //   hideWhen  matches → skip rendering entirely (step is inapplicable)
@@ -1843,6 +2296,7 @@
     // Completed takes priority over showWhen so a finished step always
     // reads as "done" rather than as locked.
     STEPS.forEach(function (step) {
+      if (coMode !== !!step.coOnly) return;   // CO ↔ base step sets are disjoint
       if (step.hideWhen && conditionMet(step.hideWhen)) return;
 
       var completed = step.completed ? conditionMet(step.completed) : false;

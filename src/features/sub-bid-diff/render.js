@@ -564,6 +564,11 @@
       if (row.offSow) {
         if (!cell) continue;                    // not on the basis package
         var ol = Number(cell.labor) || 0;
+        // Absent vs $0 reads as a MATCH (user rule 2026-07-14): a $0 bid-only
+        // line (Wattbox/UPS placeholders the sub listed but didn't price)
+        // moves no money and isn't a coverage gap — suppress it like any
+        // covered line instead of stacking "Bid only" exceptions.
+        if (moneyEq(ol, 0)) continue;
         laborDelta -= ol; counts.orphan++;
         ex.push({
           tier: 'orphan',
@@ -581,8 +586,14 @@
       // Matched to this SOW. Exclude require-sub-bid = No.
       if (isReqNo(row.requireSubBidSow)) continue;
 
-      var sowFee = (row.sowItemData && Number(row.sowItemData.fee)) ||
-                   Number(row.sowFee) || 0;
+      // Live SOW fee, blank-safe: a blank/zero fee on the LIVE SOW item is a
+      // real $0 — never fall through to row.sowFee (the bid view's related
+      // copy) when sowItemData exists, or a cleared/blank SOW fee resurrects
+      // as the stale copy and flags a phantom "Labor change" against a $0
+      // bid (the blank-vs-$0 bug).
+      var sowFee = row.sowItemData
+        ? (Number(row.sowItemData.fee) || 0)
+        : (Number(row.sowFee) || 0);
       var label  = row.displayLabel ||
                    (row.sowItemData && row.sowItemData.productName) ||
                    row.productName || '(line item)';
@@ -592,6 +603,10 @@
 
       if (!cell) {
         // SOW line that requires a bid but isn't on the basis bid → gap.
+        // Same absent-vs-$0 = match rule as the orphan tier: a SOW line whose
+        // expected labor is $0/blank prices nothing, so the sub not listing
+        // it isn't a gap worth flagging.
+        if (moneyEq(sowFee, 0)) continue;
         laborDelta += sowFee; counts.added++;
         ex.push({ tier: 'added', label: label, product: product,
                   note: 'not on basis bid', sowFee: sowFee, bidLabor: 0, delta: sowFee,
@@ -669,8 +684,11 @@
       for (var nb = 0; nb < rows.length; nb++) {
         var nrow = rows[nb];
         if (!nrow || nrow.offSow || !isReqNo(nrow.requireSubBidSow)) continue;
-        var nfee = (nrow.sowItemData && Number(nrow.sowItemData.fee)) ||
-                   Number(nrow.sowFee) || 0;
+        // Same blank-safe read as the exception scan above: a blank live fee
+        // is $0, not an invitation to fall back to the stale bid-side copy.
+        var nfee = nrow.sowItemData
+          ? (Number(nrow.sowItemData.fee) || 0)
+          : (Number(nrow.sowFee) || 0);
         var ncell = nrow.cellsByPackage && nrow.cellsByPackage[pkgId];
         var nbid  = ncell ? (Number(ncell.labor) || 0) : 0;
         if (moneyEq(nfee, nbid)) continue;      // covered — not part of the gap
@@ -1071,11 +1089,49 @@
 
   /** Inject/refresh a per-SOW diff block inside each v2 SOW section. Deferred
    *  one frame so it runs AFTER v2 rebuilds its section innerHTML on a tick. */
+  // ── comparison-state source ────────────────────────────────────────────
+  // buildState is the ~800-line v2 comparison transform (O(items×sows×pkgs)).
+  // The v2 grid ALREADY runs it for its own render on every data change and
+  // publishes the result as SCW.bidReviewV2.builtState. We inject a per-SOW
+  // diff into those same sections, so we REUSE that exact state instead of
+  // running the transform a second time — one transform per data change, not
+  // two. v2's renderSnapshot runs synchronously on the data notify and we
+  // render rAF-deferred off the same notify, so the published state reflects
+  // the current data by the time we read it.
+  //
+  // Fallback: if v2 hasn't published yet (we booted first) OR a direct Knack
+  // event raced ahead of v2's debounced notify, build our own — memoized so
+  // the load-time retries (150/500/1200ms) and basis/note/collapse
+  // interactions reuse it rather than recomputing. markDirty() (wired to the
+  // real data events in init.js) bumps _dataGen; the retries/display
+  // interactions do NOT, so they reuse the cache and just re-inject.
+  var _dataGen = 0, _builtGen = -1, _builtState = null;
+  function markDirty() { _dataGen++; }
+
+  function currentState(v2t) {
+    // Preferred: reuse the v2 grid's already-built state.
+    var v2ns = window.SCW.bidReviewV2;
+    var pub = v2ns && v2ns.builtState;
+    if (pub && pub.sowGrids && pub.sowGrids.length) {
+      _builtState = pub;          // keep as the fallback cache too
+      return pub;
+    }
+    // Fallback: build our own (memoized). Only commit the cache on a usable
+    // build — a transient empty read (mid-fetch) must not poison it.
+    if (_dataGen === _builtGen && _builtState) return _builtState;
+    var state = v2t.buildState(
+      readView(C.bidViewKey), readView(C.sowItemsViewKey), readView(C.bidPkgViewKey));
+    if (state && state.sowGrids && state.sowGrids.length) {
+      _builtState = state;
+      _builtGen = _dataGen;
+    }
+    return state;
+  }
+
   function render() {
     var v2t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
     if (!v2t || typeof v2t.buildState !== 'function') return;
-    var state = v2t.buildState(
-      readView(C.bidViewKey), readView(C.sowItemsViewKey), readView(C.bidPkgViewKey));
+    var state = currentState(v2t);
     if (!state || !state.sowGrids || !state.sowGrids.length) return;
 
     var byId = Object.create(null);
@@ -1177,6 +1233,6 @@
     });
   }
 
-  ns.render = { render: render, bindOnce: bindOnce, distill: distill };
+  ns.render = { render: render, bindOnce: bindOnce, distill: distill, markDirty: markDirty };
 })();
 /*** END SUB-BID DIFF — RENDER ***********************************************/

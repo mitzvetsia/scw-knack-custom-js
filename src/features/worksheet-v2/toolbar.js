@@ -45,27 +45,46 @@
     try { localStorage.setItem(modeKey(viewKey), mode); }
     catch (e) {}
   }
-  function loadPhotosShown(viewKey) {
-    try { return localStorage.getItem(photosKey(viewKey)) === '1'; }
-    catch (e) { return false; }
+  // Tri-state photos visibility: 'default' (no stored value — strips show
+  // on expanded cards only), 'on' (strips everywhere), 'off' (strips
+  // nowhere, even on expanded cards).
+  function loadPhotosState(viewKey) {
+    try {
+      var v = localStorage.getItem(photosKey(viewKey));
+      if (v === '1') return 'on';
+      if (v === '0') return 'off';
+    } catch (e) {}
+    return 'default';
   }
+  function loadPhotosShown(viewKey) { return loadPhotosState(viewKey) === 'on'; }
   function savePhotosShown(viewKey, shown) {
     try { localStorage.setItem(photosKey(viewKey), shown ? '1' : '0'); }
     catch (e) {}
   }
+  function clearPhotosState(viewKey) {
+    try { localStorage.removeItem(photosKey(viewKey)); } catch (e) {}
+  }
+  /** Is the all-cards photos mode on? Expanded cards ALWAYS show their
+   *  strip (CSS, non-suppressible) — the toggle only governs strips on
+   *  collapsed line items, so its state alone is the truth. */
+  function photosEffectivelyVisible(container, viewKey) {
+    return loadPhotosState(viewKey) === 'on';
+  }
 
   function applyState(container, viewKey) {
     var mode  = loadMode(viewKey);
-    var shown = loadPhotosShown(viewKey);
+    var pState = loadPhotosState(viewKey);
     container.classList.remove(
       'scw-ws-v2-mode-default',
       'scw-ws-v2-mode-summary'
     );
     if (mode === 'summary') container.classList.add('scw-ws-v2-mode-summary');
     else container.classList.add('scw-ws-v2-mode-default');
-    // Mirror v1\'s view_3610 behavior — "Show photos" REVEALS strips on
-    // collapsed cards too (default is: strips show only when expanded).
-    container.classList.toggle('scw-ws-v2-photos-shown', shown);
+    // Tri-state: default = expanded cards reveal their strip (CSS);
+    // ON mirrors v1's "Show photos" (strips on collapsed cards too);
+    // OFF hides strips even on expanded cards.
+    container.classList.toggle('scw-ws-v2-photos-shown',  pState === 'on');
+    container.classList.toggle('scw-ws-v2-photos-hidden', pState === 'off');
 
     var bar = container.querySelector('.scw-ws-v2-toolbar');
     if (!bar) return;
@@ -105,11 +124,60 @@
 
     var photosBtn = bar.querySelector('[data-scw-ws-v2-photos-toggle]');
     if (photosBtn) {
-      photosBtn.classList.toggle('scw-ws-v2-toolbar-btn--active', shown);
-      photosBtn.setAttribute('aria-pressed', shown ? 'true' : 'false');
+      // Label reflects EFFECTIVE visibility, not just the stored toggle:
+      // in default state with expanded cards, strips are showing, so the
+      // honest next action is "Hide photos".
+      var visible = photosEffectivelyVisible(container, viewKey);
+      photosBtn.classList.toggle('scw-ws-v2-toolbar-btn--active', pState === 'on');
+      photosBtn.setAttribute('aria-pressed', visible ? 'true' : 'false');
       var label = photosBtn.querySelector('.scw-ws-v2-photos-btn-label');
-      if (label) label.textContent = shown ? 'Hide photos' : 'Show photos';
+      if (label) label.textContent = visible ? 'Hide photos' : 'Show photos';
     }
+  }
+
+  // ── Add-MDF/IDF link discovery ──────────────────────────────────
+  // Finds a Knack menu link whose text is "Add MDF/IDF" anywhere on the
+  // scene (e.g. view_3436 on build-SOW). Returns {link, menu, solo} or
+  // null. Used both to decide whether to RENDER the toolbar button and to
+  // resolve the click when no addMdfMenuView is configured.
+  function findAddMdfMenuLink() {
+    var menus = document.querySelectorAll('.kn-menu.kn-view');
+    for (var m = 0; m < menus.length; m++) {
+      var links = menus[m].querySelectorAll('a[href]');
+      for (var i = 0; i < links.length; i++) {
+        if (/^add\s*mdf\s*\/\s*idf$/i.test((links[i].textContent || '').trim())) {
+          return { link: links[i], menu: menus[m], solo: links.length === 1 };
+        }
+      }
+    }
+    return null;
+  }
+
+  /** Should the "+ Add MDF/IDF" CTA render for this view config? True when
+   *  the view names an add-menu explicitly, or when it runs the mdfManage
+   *  integration AND the scene carries an Add MDF/IDF menu link (auto-hide
+   *  the single-link source menu — the toolbar button replaces it). */
+  function addMdfAvailable(_vc) {
+    if (!_vc) return false;
+    // Explicit config wins — but only when the named menu view is actually
+    // on the current scene (the view_4056 clone inherits view_4093's config
+    // while its scene carries neither view_4136 nor any add-MDF menu link).
+    if (_vc.addMdfMenuView) {
+      var _mdfMenuEl = document.getElementById(_vc.addMdfMenuView);
+      if (_mdfMenuEl) {
+        // The toolbar button replaces the raw Knack menu — hide the source
+        // (unless something else already absorbed/hid it, e.g. the build-SOW
+        // accordion-menu-inject → hidden view_3577 accordion path).
+        _mdfMenuEl.style.setProperty('display', 'none', 'important');
+        return true;
+      }
+      // configured view absent → fall through to the scene-wide link scan
+    }
+    if (!_vc.mdfManage) return false;
+    var found = findAddMdfMenuLink();
+    if (!found) return false;
+    if (found.solo) found.menu.style.setProperty('display', 'none', 'important');
+    return true;
   }
 
   function build(viewKey) {
@@ -132,8 +200,8 @@
       '</div>' +
       '<div class="scw-ws-v2-toolbar-group">' +
         '<button type="button" class="scw-ws-v2-toolbar-btn"' +
-          ' data-scw-ws-v2-photos-toggle aria-pressed="true"' +
-          ' title="Show or hide attached photos on expanded rows">' +
+          ' data-scw-ws-v2-photos-toggle aria-pressed="false"' +
+          ' title="Show photo strips on collapsed line items too (expanded items always show theirs)">' +
           '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
             'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" ' +
             'stroke-linejoin="round">' +
@@ -141,16 +209,25 @@
             '<circle cx="9" cy="9" r="1.8"></circle>' +
             '<path d="M21 16l-5-5-9 9"></path>' +
           '</svg>' +
-          '<span class="scw-ws-v2-photos-btn-label">Hide photos</span>' +
+          '<span class="scw-ws-v2-photos-btn-label">Show photos</span>' +
         '</button>' +
       '</div>' +
       '<div class="scw-ws-v2-toolbar-spacer"></div>' +
       '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
         // "+ Add to SOW" is suppressed on views flagged noAddItem — the
-        // deploy/install grids (view_3915/view_4056), where you can't add to
+        // deploy/install grids (view_4093/view_4056), where you can't add to
         // the scope without a change order.
         ((_vc && _vc.noAddItem) ? '' :
           actionBtn('add-sow',    addLabel,               'Add a new line item')) +
+        // "+ Add MDF/IDF" — views with an addMdfMenuView (a hidden Knack
+        // menu whose link is the add-location action, e.g. view_3436 on
+        // build-SOW). Replaces the button that lived in the standalone
+        // Manage MDFs/IDFs section now folded into the worksheet. On other
+        // mdfManage worksheets (deploy) the button auto-appears the moment
+        // the scene carries ANY "Add MDF/IDF" menu link — so adding the
+        // Builder menu view lights it up with no code change.
+        (addMdfAvailable(_vc) ?
+          actionBtn('add-mdf',    '+ Add MDF/IDF',        'Add a new MDF/IDF location') : '') +
         actionBtn('add-photos',   '+ Add Photos',         'Bulk upload photos') +
         // "+ Add Accessories" lives in the floating bulk panel (bulk.js)
         // now — it only applies to a row selection, same as Remove.
@@ -269,6 +346,19 @@
   // ── Action handlers ──
   function handleAction(action, viewKey) {
     if (action === 'add-sow') {
+      // Custom add modal (viewCfg.customAddModal) — replaces the native DTO
+      // form entirely. The CO worksheet (view_4079) opts in: it fires a Make
+      // webhook straight from the modal (no DTO staging object), and the modal
+      // reads the CO's SOW id from the hash. Falls through to the menu-link
+      // path only if the modal module isn't loaded.
+      try {
+        var _cVc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+        if (_cVc && _cVc.customAddModal &&
+            ns.coAddForm && typeof ns.coAddForm.open === 'function') {
+          ns.coAddForm.open({ viewKey: viewKey });
+          return;
+        }
+      } catch (e) { /* fall through */ }
       // Scene-specific add path. Preferred: viewCfg.addSowMenuView — a
       // Knack menu view whose first link IS the add-to-SOW action
       // (e.g. view_3450 on the sales page, the same link v1 used).
@@ -327,6 +417,39 @@
       }
       alert('Could not find the "Add to Scope" link on this page. ' +
             'Make sure the Knack details/menu link is enabled on the scene.');
+      return;
+    }
+    if (action === 'add-mdf') {
+      // Same pattern as addSowMenuView: the configured Knack menu view's
+      // link IS the add-location action (e.g. view_3436 → #add-mdfidf7).
+      // Clicking the CSS-hidden anchor still navigates.
+      try {
+        var _mdfVc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+        var _mdfMenuId = _mdfVc && _mdfVc.addMdfMenuView;
+        if (_mdfMenuId) {
+          var _mdfLink = document.querySelector(
+            '#' + _mdfMenuId + ' a.kn-link-page, #' + _mdfMenuId + ' a.kn-link, #' + _mdfMenuId + ' a[href]'
+          );
+          if (_mdfLink) { _mdfLink.click(); return; }
+        }
+      } catch (e) { /* fall through to text scan */ }
+      // No configured menu — use whatever Add MDF/IDF menu link the scene
+      // carries (the same one that made the button render).
+      var _mdfFound = findAddMdfMenuLink();
+      if (_mdfFound) { _mdfFound.link.click(); return; }
+      // Fallback: any live "Add MDF/IDF" link on the page (incl. the
+      // accordion action-bar copy accordion-menu-inject builds).
+      var mdfAnchors = document.querySelectorAll('a.kn-link, .scw-acc-action-btn, .kn-link-page, a');
+      for (var mi = 0; mi < mdfAnchors.length; mi++) {
+        var mTxt = (mdfAnchors[mi].textContent || '').trim();
+        if (/^add mdf\s*\/\s*idf$/i.test(mTxt) &&
+            (mdfAnchors[mi].getAttribute('href') || mdfAnchors[mi].hasAttribute('data-link-href'))) {
+          mdfAnchors[mi].click();
+          return;
+        }
+      }
+      alert('Could not find the "Add MDF/IDF" link on this page. ' +
+            'Make sure the Knack menu link is enabled on the scene.');
       return;
     }
     if (action === 'add-photos') {
@@ -783,6 +906,83 @@
     });
   }
 
+  // ── Floating toolbar ──────────────────────────────────────────────
+  // The toolbar lives at the TOP of the worksheet; on long grids users
+  // had to scroll all the way back up to reach it. Once its natural
+  // position scrolls off the top of the viewport the WHOLE bar goes
+  // position:fixed pinned to the top edge (a same-height placeholder
+  // holds its slot so the grid doesn't jump), and it drops back into
+  // flow when the user scrolls back up — or when the worksheet itself
+  // leaves the screen, so it never orphans over unrelated content.
+  // position:fixed (not sticky) because Knack/KTL wrap views in
+  // overflow containers that silently kill position:sticky.
+  // Shared: bid-review-v2's toolbar reuses this via
+  // ns.toolbar.attachFloatingBar.
+  var _floatSeq = 0;
+  function attachFloatingBar(bar, scopeEl) {
+    if (!bar || bar._scwFloatArmed) return;
+    bar._scwFloatArmed = true;
+
+    var placeholder = document.createElement('div');
+    placeholder.className = 'scw-ws-v2-toolbar-ph';
+    placeholder.style.display = 'none';
+    bar.parentNode.insertBefore(placeholder, bar);
+
+    var evNs = '.scwWsV2Float' + (++_floatSeq);
+    var ticking = false;
+    function detach() {
+      if (placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+      try { $(document).off('knack-scene-render' + evNs); } catch (e) {}
+    }
+    function land() {
+      bar.classList.remove('scw-ws-v2-toolbar--floating');
+      bar.style.left = '';
+      bar.style.width = '';
+      placeholder.style.display = 'none';
+    }
+    function update() {
+      ticking = false;
+      // SPA nav tore the toolbar out → clean up. A fresh mount() on the
+      // next render arms a fresh bar.
+      if (!document.body.contains(bar)) { detach(); return; }
+      var floating = bar.classList.contains('scw-ws-v2-toolbar--floating');
+      // While fixed, the bar's own rect is pinned to the viewport — the
+      // placeholder marks where its natural slot is.
+      var anchorRect = (floating ? placeholder : bar).getBoundingClientRect();
+      var scope = (scopeEl && document.body.contains(scopeEl)) ? scopeEl : bar.parentNode;
+      var scopeRect = (scope || bar).getBoundingClientRect();
+      var shouldFloat = anchorRect.top < 0 && scopeRect.bottom > 120;
+      if (shouldFloat) {
+        if (!floating) {
+          placeholder.style.height = bar.offsetHeight + 'px';
+          placeholder.style.display = 'block';
+          bar.classList.add('scw-ws-v2-toolbar--floating');
+          // Placeholder rect only becomes meaningful once it's visible.
+          anchorRect = placeholder.getBoundingClientRect();
+        }
+        // Match the natural slot's width/left every pass so resizes and
+        // layout shifts under the fixed bar stay in sync.
+        bar.style.left = anchorRect.left + 'px';
+        bar.style.width = anchorRect.width + 'px';
+      } else if (floating) {
+        land();
+      }
+    }
+    function onScroll() {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(update);
+    }
+    // Capture-phase scroll also catches nested scroll containers
+    // (KTL/Knack wrappers); passive keeps it off the input path.
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    try { $(document).on('knack-scene-render' + evNs, onScroll); } catch (e) {}
+    update();
+  }
+
   /** Mount the toolbar inside the v2 container for a given source view.
    *  Idempotent — re-runs on every re-render but only inserts once. */
   function mount(viewKey) {
@@ -804,20 +1004,33 @@
           handleModeClick(requested, viewKey, container);
         } else if (t.hasAttribute('data-scw-ws-v2-rows-toggle')) {
           // Expand/collapse every line item's detail panel. Same pure
-          // class toggle as the per-card chevron (init.js expand handler)
-          // — deliberately does NOT touch ns.state / the MDF/IDF groups,
-          // and no rerender so the group accordion stays exactly as-is.
-          // Cards inside closed groups get the class too: they'll show
-          // expanded when their group is opened later.
+          // class toggle as the per-card chevron (init.js expand handler).
+          // When EXPANDING, also open the MDF/IDF groups first — expanding
+          // line items inside collapsed groups is invisible and read as
+          // "the button doesn't work". Collapsing leaves groups alone.
           var allCards = container.querySelectorAll('.scw-ws-v2-card');
           var openNow  = container.querySelectorAll('.scw-ws-v2-card--open');
           var openAll  = !(allCards.length > 0 && openNow.length === allCards.length);
+          if (openAll && ns.state) {
+            if (loadMode(viewKey) === 'summary') saveMode(viewKey, 'default');
+            ns.state.setAllOpen(viewKey, collectL1Ids(container));
+            rerender(viewKey);
+            allCards = container.querySelectorAll('.scw-ws-v2-card');
+          }
           for (var ci = 0; ci < allCards.length; ci++) {
             allCards[ci].classList.toggle('scw-ws-v2-card--open', openAll);
+            if (ns.state && typeof ns.state.setCardOpen === 'function') {
+              var _rid = allCards[ci].getAttribute('data-scw-ws-v2-record');
+              if (_rid) ns.state.setCardOpen(viewKey, _rid, openAll);
+            }
           }
           applyState(container, viewKey);
         } else if (t.hasAttribute('data-scw-ws-v2-photos-toggle')) {
-          var nextShown = !loadPhotosShown(viewKey);
+          // Toggle on EFFECTIVE visibility: if any strips are showing
+          // (explicit ON, or default state with expanded cards), the
+          // click hides them all; otherwise it shows them all. One click
+          // always does something visible.
+          var nextShown = !photosEffectivelyVisible(container, viewKey);
           savePhotosShown(viewKey, nextShown);
           // Mirror v1: when revealing photos, also expand every L1 so
           // the user sees them right away. Hiding leaves L1 state alone.
@@ -831,13 +1044,30 @@
         }
       });
     }
+    attachFloatingBar(bar, container);
     applyState(container, viewKey);
+  }
+
+  /** Make sure the photo strip on a card the caller just force-opened is
+   *  actually visible. Used by the per-row "missing photos" warn-chit.
+   *  In default state an open card reveals its strip via CSS, so only an
+   *  explicit OFF needs lifting — clear it back to default rather than
+   *  blasting every card's strips open with a global ON. */
+  function showPhotos(viewKey) {
+    if (loadPhotosState(viewKey) !== 'off') return;
+    clearPhotosState(viewKey);
+    var container = document.getElementById('scw-ws-v2-' + viewKey);
+    if (container) applyState(container, viewKey);
   }
 
   ns.toolbar = {
     mount:           mount,
     loadMode:        loadMode,
     loadPhotosShown: loadPhotosShown,
+    loadPhotosState: loadPhotosState,
+    showPhotos:      showPhotos,
+    // Shared floating-toolbar helper — bid-review-v2's toolbar reuses it.
+    attachFloatingBar: attachFloatingBar,
     // Exposed so the floating bulk panel (bulk.js) can open the
     // add-accessory modal — it applies to a row selection, same as the
     // bulk Remove-accessories action, so both live together there.

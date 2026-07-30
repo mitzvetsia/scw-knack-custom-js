@@ -254,7 +254,7 @@
     if (survey) return '#' + survey + '/edit-doc-photo/' + photoRecordId + '/';
     var base = buildSowBasePath();
     if (!base) return '';
-    // Deploy scene (install line items, view_3915) uses edit-doc-photo3;
+    // Deploy scene (install line items, view_4093) uses edit-doc-photo3;
     // sales scope-of-work-details uses edit-doc-photo2; build-SOW uses edit-photo.
     var slug = isDeployBase(base) ? 'edit-doc-photo3'
       : (base.indexOf('scope-of-work-details') !== -1) ? 'edit-doc-photo2'
@@ -304,9 +304,7 @@
 
   // Per-surface DOC_photos grid used for the REST-DELETE fallback when the
   // photo's row isn't in the DOM (paginated grid). view_3584 is the
-  // delete-enabled photos grid on the build-SOW scene. The review-bids
-  // scene's photos grid is unconfirmed — native-link path still works
-  // there when the row is present.
+  // delete-enabled photos grid on the build-SOW scene.
   //
   // view_3505 (subcontractor SURVEY worksheet): survey line-item photos get a
   // delete button. The handler first tries the native kn-link-delete on the
@@ -315,22 +313,53 @@
   // grid named here (Path 2). view_4070 is the delete-enabled DOC_photos grid
   // added to the survey scene for exactly this — it's hidden from view below
   // (it exists only to supply the delete link + REST endpoint).
+  //
+  // view_3921 (review-bids comparison grid): view_4098 is the same kind of
+  // helper — a delete-enabled all-photos DOC_photos grid added to the
+  // review-bids scene purely as delete plumbing (2026-07-13). Hidden below.
   var SURVEY_PHOTO_GRID = 'view_4070';
+  var REVIEW_PHOTO_GRID = 'view_4098';
   var PHOTO_GRID_FALLBACK_VIEWS = {
-    view_3962: 'view_3584', view_3921: '', view_3505: SURVEY_PHOTO_GRID
+    view_3962: 'view_3584', view_3921: REVIEW_PHOTO_GRID, view_3505: SURVEY_PHOTO_GRID
   };
 
-  // Hide the survey-scene DOC_photos helper grid — it's a delete-plumbing view
-  // only (its rows + delete links stay in the DOM so Path 1 can click them, and
-  // Path 2's REST DELETE doesn't need it visible). display:none keeps it out of
-  // the user's way without removing it from the page.
-  (function hideSurveyPhotoGrid() {
-    if (!SURVEY_PHOTO_GRID) return;
-    var ID = 'scw-ws-v2-hide-survey-photo-grid';
+  // ── Photo disconnect (install/deploy surfaces only) ─────────────────
+  // "Disconnect" ≠ delete: it drops THIS line item from the photo's own
+  // field_2849 (DOC_photos → Install Line Item, a multi-connection — a
+  // photo can in principle be linked to more than one line item, so we
+  // read the record's CURRENT field_2849_raw and remove just this line
+  // item's id rather than blanking the whole field), leaving the photo
+  // record and its image untouched. Enabled only where photo-edit-panel.js
+  // already has a same-scene save view wired up (SAVE_VIEWS).
+  var PHOTO_DISCONNECT_VIEWS = { view_4093: 1, view_4056: 1 };
+  var FK_LINE_ITEM_CONN = 'field_2849';   // DOC_photos → connected Install Line Item(s)
+  var FK_PROJECT_CONN   = 'field_675';    // DOC_photos → Project
+
+  /** Project record id from the current deploy-scene hash — on the deploy
+   *  route (#team-calendar/project-dashboard/<projectId>/deploy/<id>/…) the
+   *  project-dashboard id IS the project id (the deploy scene is keyed
+   *  directly off the Project record, confirmed by both ids matching in
+   *  practice). Falls back to any project-dashboard id on other routes. */
+  function getProjectIdFromHash() {
+    var hash = window.location.hash || '';
+    var m = hash.match(/project-dashboard\/([a-f0-9]{24})/);
+    return m ? m[1] : '';
+  }
+
+  // Hide the DOC_photos helper grids — they're delete-plumbing views only
+  // (their rows + delete links stay in the DOM so Path 1 can click them, and
+  // Path 2's REST DELETE doesn't need them visible). display:none keeps them
+  // out of the user's way without removing them from the page.
+  (function hidePhotoHelperGrids() {
+    var grids = [SURVEY_PHOTO_GRID, REVIEW_PHOTO_GRID].filter(Boolean);
+    if (!grids.length) return;
+    var ID = 'scw-ws-v2-hide-photo-helper-grids';
     if (document.getElementById(ID)) return;
     var s = document.createElement('style');
     s.id = ID;
-    s.textContent = '#' + SURVEY_PHOTO_GRID + ' { display: none !important; }';
+    s.textContent = grids.map(function (g) {
+      return '#' + g + ' { display: none !important; }';
+    }).join('\n');
     (document.head || document.documentElement).appendChild(s);
   })();
 
@@ -348,6 +377,19 @@
     return true;
   }
 
+  // Same settling pattern as pendingPhotoDeletes, but keyed by
+  // "<lineItemRecordId>:<photoId>" — a disconnect only drops the photo from
+  // THIS line item's strip (field_2849 may still list other line items), so
+  // suppression must be scoped per-record rather than per-photo.
+  var pendingPhotoDisconnects = Object.create(null);
+  function disconnectKey(recordId, photoId) { return recordId + ':' + photoId; }
+  function isPhotoDisconnectPending(recordId, photoId) {
+    var ts = pendingPhotoDisconnects[disconnectKey(recordId, photoId)];
+    if (!ts) return false;
+    if (Date.now() - ts > 20000) { delete pendingPhotoDisconnects[disconnectKey(recordId, photoId)]; return false; }
+    return true;
+  }
+
   var PHOTO_TRASH_SVG =
     '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
     'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -357,13 +399,26 @@
     '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
     '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>';
 
+  // Reuses the exact "unlink" glyph the app already uses elsewhere for
+  // disconnected cam/reader warnings — same concept, same icon.
+  var PHOTO_UNLINK_SVG =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round">' +
+    '<path d="m18.84 12.25 1.72-1.71a5 5 0 0 0-.12-7.07 5 5 0 0 0-6.95 0l-1.72 1.71"></path>' +
+    '<path d="m5.17 11.75-1.71 1.71a5 5 0 0 0 .12 7.07 5 5 0 0 0 6.95 0l1.71-1.71"></path>' +
+    '<line x1="8" y1="2" x2="8" y2="5"></line>' +
+    '<line x1="2" y1="8" x2="5" y2="8"></line>' +
+    '<line x1="16" y1="19" x2="16" y2="22"></line>' +
+    '<line x1="19" y1="16" x2="22" y2="16"></line></svg>';
+
   // ── Photo QA chit (install surface) ──────────────────────────────
   // Surfaces a photo's QA state on its strip card and opens the photo QA
   // panel (qa-popover.js openForAnchor) on click. Mirrors the chit-state
   // model qa-popover.js uses (computeChitState). Only rendered when the
   // source view exposed QA columns (p.qaPresent) — i.e. the install
-  // worksheet (view_3915). Other surfaces render no chit.
-  var QA_CHIT_VIEWS = { view_3915: 1, view_4056: 1 };
+  // worksheet (view_4093). Other surfaces render no chit.
+  var QA_CHIT_VIEWS = { view_4093: 1, view_4056: 1 };
 
   function qaChitState(p) {
     if (!p.completed) return 'missing';
@@ -466,6 +521,8 @@
       // Mid-delete photo — keep it out of rebuilds until the refetch
       // confirms it's gone (see pendingPhotoDeletes).
       if (p.id && isPhotoDeletePending(p.id)) continue;
+      // Mid-disconnect photo — same settling pattern, scoped to this record.
+      if (p.id && isPhotoDisconnectPending(recordId, p.id)) continue;
       var href = editPhotoHref(p.id);
       var missing = p.required && !p.completed;
       var cls = 'scw-ws-v2-photo-card' +
@@ -542,6 +599,18 @@
             'data-scw-ws-v2-photo-view="' + escapeHtml(sourceViewKey) + '" ' +
             'title="Delete photo">' + PHOTO_TRASH_SVG + '</button>'
         : '';
+      // Install/deploy-only photo disconnect (see PHOTO_DISCONNECT_VIEWS) —
+      // drops this line item from the photo's own connection field, keeps
+      // the photo record + image intact. Amber (not red): unlike delete,
+      // nothing is destroyed.
+      var unlinkBtn = (PHOTO_DISCONNECT_VIEWS[sourceViewKey] && p.id)
+        ? '<button type="button" class="scw-ws-v2-photo-unlink" ' +
+            'data-scw-ws-v2-photo-unlink="' + escapeHtml(p.id) + '" ' +
+            'data-scw-ws-v2-photo-unlink-record="' + escapeHtml(recordId) + '" ' +
+            'data-scw-ws-v2-photo-view="' + escapeHtml(sourceViewKey) + '" ' +
+            'title="Disconnect from this line item (keeps the photo)">' +
+            PHOTO_UNLINK_SVG + '</button>'
+        : '';
       // Photo QA chit — install surface only, only on cards that hold an
       // actual photo, AND only on photos that NEED QA (required). Non-QA
       // photos are not served a QA status (they still open the big-photo
@@ -551,7 +620,7 @@
       html +=
         '<a class="' + cls + '"' + openAttrs + dataAttrs + draggableAttr +
             ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
-          thumb + typeHtml + reqHtml + noteHtml + qaChit + delBtn +
+          thumb + typeHtml + reqHtml + noteHtml + qaChit + delBtn + unlinkBtn +
         '</a>';
     }
 
@@ -834,6 +903,120 @@
     }, true);
   }
 
+  // Delegated photo-disconnect (install/deploy surfaces only — see
+  // PHOTO_DISCONNECT_VIEWS). Reads the photo's CURRENT field_2849_raw (its
+  // list of connected line items) through the same-scene save view
+  // (photo-edit-panel.js SAVE_VIEWS), removes just this line item's id, and
+  // PUTs the rest back — the photo record and image are never touched.
+  // Piggybacks a field_675 (Project connection) repair on the same PUT: if
+  // it doesn't already point at the current page's project, patch it.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-unlink-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-photo-unlink-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest &&
+                e.target.closest('[data-scw-ws-v2-photo-unlink]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var photoId  = btn.getAttribute('data-scw-ws-v2-photo-unlink');
+      var recordId = btn.getAttribute('data-scw-ws-v2-photo-unlink-record') || '';
+      var viewKey  = btn.getAttribute('data-scw-ws-v2-photo-view') || '';
+      if (!photoId || !recordId) return;
+
+      var saveView = (window.SCW && SCW.photoEditPanel &&
+        SCW.photoEditPanel.SAVE_VIEWS && SCW.photoEditPanel.SAVE_VIEWS[viewKey]) || '';
+      if (!saveView || !(window.SCW && typeof SCW.knackAjax === 'function' &&
+          typeof SCW.knackRecordUrl === 'function')) {
+        console.warn('[scw-ws-v2] photo disconnect: no save view configured for ' + viewKey);
+        return;
+      }
+
+      function refetchSoon() {
+        setTimeout(function () {
+          if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
+          if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            ns.data.refetchAndNotify(viewKey);
+          }
+        }, 1500);
+      }
+      function dropCard() {
+        var card = btn.closest('.scw-ws-v2-photo-card');
+        if (card && card.parentNode) card.parentNode.removeChild(card);
+      }
+
+      function doDisconnect() {
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(saveView, photoId),
+          type: 'GET',
+          success: function (resp) {
+            // View-based GET/PUT responses are inconsistent about wrapping
+            // the record in { record: {...} } vs. returning it flat — same
+            // defensive unwrap photo-edit-panel.js's clearFileField uses.
+            var rec = (resp && (resp.record || resp)) || {};
+            var raw = rec[FK_LINE_ITEM_CONN + '_raw'];
+            var ids = [];
+            if (Array.isArray(raw)) {
+              for (var i = 0; i < raw.length; i++) {
+                if (raw[i] && raw[i].id && raw[i].id !== recordId) ids.push(raw[i].id);
+              }
+            }
+            var body = {};
+            body[FK_LINE_ITEM_CONN] = ids;
+
+            // While we're in here — confirm field_675 (Project) points at the
+            // page's actual project; patch it in the same PUT if not.
+            var projectId = getProjectIdFromHash();
+            if (projectId) {
+              var rawProj = rec[FK_PROJECT_CONN + '_raw'];
+              var hasProject = false;
+              if (Array.isArray(rawProj)) {
+                for (var j = 0; j < rawProj.length; j++) {
+                  if (rawProj[j] && rawProj[j].id === projectId) { hasProject = true; break; }
+                }
+              } else if (rawProj && rawProj.id === projectId) {
+                hasProject = true;
+              }
+              if (!hasProject) body[FK_PROJECT_CONN] = [projectId];
+            }
+
+            pendingPhotoDisconnects[disconnectKey(recordId, photoId)] = Date.now();
+            dropCard();
+            SCW.knackAjax({
+              url:  SCW.knackRecordUrl(saveView, photoId),
+              type: 'PUT',
+              data: JSON.stringify(body),
+              success: function () { refetchSoon(); },
+              error: function (xhr) {
+                console.warn('[scw-ws-v2] photo disconnect: PUT failed for ' + photoId,
+                  xhr && xhr.status, xhr && xhr.responseText);
+                delete pendingPhotoDisconnects[disconnectKey(recordId, photoId)];
+                refetchSoon();
+              }
+            });
+          },
+          error: function (xhr) {
+            console.warn('[scw-ws-v2] photo disconnect: GET failed for ' + photoId,
+              xhr && xhr.status, xhr && xhr.responseText);
+          }
+        });
+      }
+
+      if (ns.confirmModal && typeof ns.confirmModal === 'function') {
+        ns.confirmModal({
+          title: 'Disconnect this photo?',
+          body: 'Removes the photo from this line item only — the photo ' +
+                'record and its image are kept, just no longer shown here.',
+          okLabel: 'Disconnect',
+          cancelLabel: 'Cancel'
+        }).then(function (ok) { if (ok) doDisconnect(); });
+      } else if (window.confirm('Disconnect this photo from this line item? ' +
+          'The photo record itself is kept.')) {
+        doDisconnect();
+      }
+    }, true);
+  }
+
   // Shared opener for the photo QA modal (qa-popover.js openForAnchor). Both
   // the QA chit AND the photo thumbnail (install surface) route through here
   // so they open the IDENTICAL modal off the same snapshot.
@@ -1022,23 +1205,65 @@
     return host ? host.getAttribute('data-scw-ws-v2-view') : '';
   }
 
-  function dispatchPhotoMove(detail, viewKey) {
-    function refresh() {
-      if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
-      if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
-        setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 1500);
+  // ── Photo-move refresh coordination ──────────────────────────────────
+  // Each drop fires a webhook and, on completion, wants to refetch + re-render
+  // the worksheet so the moved photo lands. But a re-render REBUILDS the whole
+  // strip DOM — so when the user rapidly drops several photos, the FIRST one's
+  // completion refetch tears down the OTHER drops still in flight (their
+  // in-progress state, confirm overlays, drag markers), making them look broken
+  // and forcing a retry. Fix: count in-flight moves and only refresh once they
+  // ALL settle (and no confirm overlay is open) — a burst of drops produces ONE
+  // refetch at the end, never one mid-others.
+  var _photoMoveInFlight = 0;
+  var _photoMoveRefreshTimer = null;
+  var _photoMoveViewKeys = Object.create(null);
+
+  function schedulePhotoMoveRefresh() {
+    if (_photoMoveInFlight > 0) return;                    // more moves still running
+    if (_photoMoveRefreshTimer) clearTimeout(_photoMoveRefreshTimer);
+    _photoMoveRefreshTimer = setTimeout(function () {
+      _photoMoveRefreshTimer = null;
+      // A new move started, or the user is mid-decision on a confirm overlay
+      // for another drop — defer so the refetch doesn't yank it away.
+      if (_photoMoveInFlight > 0 || document.querySelector('.scw-ws-v2-photo-confirm')) {
+        schedulePhotoMoveRefresh();
+        return;
       }
+      if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
+      var keys = Object.keys(_photoMoveViewKeys);
+      _photoMoveViewKeys = Object.create(null);
+      for (var i = 0; i < keys.length; i++) {
+        if (keys[i] && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+          ns.data.refetchAndNotify(keys[i]);
+        }
+      }
+    }, 1500);
+  }
+
+  function dispatchPhotoMove(detail, viewKey) {
+    if (viewKey) _photoMoveViewKeys[viewKey] = true;
+    _photoMoveInFlight++;
+    var settled = false;
+    function settle() {
+      if (settled) return;
+      settled = true;
+      _photoMoveInFlight = Math.max(0, _photoMoveInFlight - 1);
+      schedulePhotoMoveRefresh();
     }
+    // Safety net: never leave the counter stuck if a webhook / onPhotoDrop
+    // callback goes silent — the refresh would never fire again otherwise.
+    setTimeout(settle, 20000);
+
     if (window.SCW && typeof window.SCW.onPhotoDrop === 'function') {
-      window.SCW.onPhotoDrop(detail, { setPending: function(){}, setSuccess: refresh, setError: function(){} });
+      window.SCW.onPhotoDrop(detail, { setPending: function(){}, setSuccess: settle, setError: settle });
       return;
     }
     var url = (window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.MAKE_PHOTO_MOVE_WEBHOOK) || '';
-    if (!url) { console.warn('[scw-ws-v2] No MAKE_PHOTO_MOVE_WEBHOOK / onPhotoDrop'); return; }
+    if (!url) { console.warn('[scw-ws-v2] No MAKE_PHOTO_MOVE_WEBHOOK / onPhotoDrop'); settle(); return; }
     fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
                  body: JSON.stringify(detail) })
-      .then(function () { refresh(); })
-      .catch(function () { refresh(); });   // Make webhooks often CORS-block the response
+      .then(settle)
+      .catch(settle);   // Make webhooks often CORS-block the response
   }
 
   function confirmMove(targetCard, detail, viewKey) {

@@ -34,8 +34,31 @@
 
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+      return ({ '&':'&amp;', '<':'&lt;', '"':'&quot;', '>':'&gt;', "'":'&#39;' })[c];
     });
+  }
+
+  /** Render Knack rich-text (labor desc / assumption text) PRESERVING its
+   *  formatting. The old stripHtml→escapeHtml path flattened <br>, <b>,
+   *  lists AND raw newlines into one run-on line — the data kept the
+   *  markup, only the display lost it. Keeps the stored markup but
+   *  neutralizes anything active (script/style/iframe, on* handlers,
+   *  javascript: URLs); plain-text newlines become <br> when the value
+   *  carries no block markup of its own. */
+  function richTextHtml(s) {
+    var raw = String(s == null ? '' : s);
+    if (!raw) return '';
+    var cleaned = raw
+      .replace(/<\s*(script|style|iframe|object|embed)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+      .replace(/<\s*(script|style|iframe|object|embed)[^>]*\/?\s*>/gi, '')
+      .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+      .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
+      .replace(/\son\w+\s*=\s*[^\s>]+/gi, '')
+      .replace(/(href|src)\s*=\s*(['"]?)\s*javascript:[^'">\s]*\2/gi, '');
+    if (!/<\s*(br|p|div|li|ul|ol|h[1-6])\b/i.test(cleaned)) {
+      cleaned = cleaned.replace(/\r?\n/g, '<br>');
+    }
+    return cleaned;
   }
 
   // Word-level diff for text fields (product name / labor desc). Returns
@@ -452,21 +475,26 @@
     // counterpart, via the data-scw-sow-field hooks below.
     if (diff && diff.any) td.classList.add('scw-bid-review-v2__sow-cell--has-diff');
     var descTxt = ns.transform.stripHtml(sowItemData.laborDesc || '');
+    // Rich display variant — formatting (<br>/<b>/lists) and line breaks
+    // preserved; the stripped text stays for title tooltips + word diffs.
+    var descRich = richTextHtml(sowItemData.laborDesc || '');
     // Assumptions are free-text only — no product name, no qty/fee numbers.
     if (isAssumption) {
       td.classList.add('scw-bid-review-v2__sow-cell--assumption');
       td.innerHTML = descTxt
         ? '<div class="scw-bid-review-v2__sow-desc" title="' +
-            escapeHtml(descTxt) + '">' + escapeHtml(descTxt) + '</div>'
+            escapeHtml(descTxt) + '">' + descRich + '</div>'
         : '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
       return td;
     }
     var qtyTxt  = sowItemData.qty ? String(sowItemData.qty) : '—';
     var feeTxt  = sowItemData.fee ? fmtMoney(sowItemData.fee) : '—';
-    // SOW-item issue chips (missing photos / disconnected / wrong accessory).
-    // Computed from the SOW item only — never the bid side.
+    // SOW-item issue chips (missing photos / disconnected / wrong accessory /
+    // has SCW notes). Computed from the SOW item only — never the bid side.
+    // The actual note text is passed through so the "notes" chip's hover
+    // shows the note itself instead of just a generic label.
     var warnHtml = (ns.warnings && row && row.sowItem)
-      ? ns.warnings.chipsHtml(row.sowItem) : '';
+      ? ns.warnings.chipsHtml(row.sowItem, sowItemData.scwNotes) : '';
     // Accessory rows get an "attached to <parent>" line so the relationship
     // is explicit even when scrolled away from the parent.
     var attachHtml = (row && row.isAccessory && row.parentLabel)
@@ -474,6 +502,17 @@
           escapeHtml(row.parentLabel) + '">↳ attached to ' +
           '<span class="scw-bid-review-v2__sow-attached-name">' +
             escapeHtml(row.parentLabel) + '</span></div>'
+      : '';
+    // Text-only accessories line (bracket, UPS, etc. attached to this SOW
+    // item) — same info worksheet-v2 shows as chips, but the accessory
+    // RECORDS aren't loaded into this grid's source view (see transform.js),
+    // so there's no chip UI to build — just list the names.
+    var accList = sowItemData.accessories || [];
+    var accessoriesHtml = accList.length
+      ? '<div class="scw-bid-review-v2__sow-accessories" title="' +
+          escapeHtml(accList.join(', ')) + '">' +
+          '<label>Accessories</label>' + escapeHtml(accList.join(', ')) +
+        '</div>'
       : '';
     td.innerHTML =
       warnHtml +
@@ -491,8 +530,9 @@
       '</div>' +
       (descTxt ?
         '<div class="scw-bid-review-v2__sow-desc" data-scw-sow-field="desc" title="' +
-          escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
+          escapeHtml(descTxt) + '">' + descRich +
         '</div>' : '') +
+      accessoriesHtml +
       connLineHtml(sowItemData.connDevice, sowItemData.connTo, { side: 'sow' }) +
       cablingLineHtml(sowItemData, { side: 'sow' }) +
       // SOW MDF/IDF — shown when a bid overrides it (diff.mdfIdf) so the
@@ -590,8 +630,20 @@
           'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action" ' +
           crAttrs('cell_request_change', row.id, pkgId, sowId, bidRecordId) + '>Revise</button>';
     }
+    // Re-link — re-point THIS bid record's source-of-truth SOW line item
+    // (field_2404) at a different SOW item. Only renders when we know the
+    // exact bid record behind the cell (criss-crossed items are per-record;
+    // row identity alone is the SOW item, not the bid).
+    var relink = bidRecordId
+      ? '<button type="button" class="scw-bid-review__cell-action ' +
+          'scw-bid-review__cell-action--relink scw-bid-review-v2__cell-action" ' +
+          crAttrs('cell_relink_bid', row.id, pkgId, sowId, bidRecordId) +
+          ' title="Point this bid item at a different SOW line item (source of truth)"' +
+          '>Re-link</button>'
+      : '';
     return '<div class="scw-bid-review-v2__cell-actions">' +
       revise +
+      relink +
       '<button type="button" class="scw-bid-review__cell-action ' +
         'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
         crAttrs('cell_remove_from_bid', row.id, pkgId, sowId, bidRecordId) + '>Remove</button>' +
@@ -635,6 +687,16 @@
           'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
           'title="Keep both — create a separate SOW line item for this bid item">' +
           '+ New SOW item</button>' +
+        // Duplicates are the prime criss-cross case — the 2nd bid item
+        // usually belongs to a DIFFERENT existing SOW item. Re-link points
+        // THIS dupe record's field_2404 at the one the user picks.
+        '<button type="button" class="scw-bid-review__cell-action ' +
+          'scw-bid-review__cell-action--relink scw-bid-review-v2__cell-action" ' +
+          'data-action="cell_relink_bid" ' +
+          'data-bid-record-id="' + escapeHtml(d.id) + '" ' +
+          'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
+          'title="Point this bid item at a different SOW line item (source of truth)"' +
+          '>Re-link</button>' +
         '<button type="button" class="scw-bid-review__cell-action ' +
           'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
           crAttrs('cell_remove_from_bid', row.id, pkgId, sowId) +
@@ -778,13 +840,15 @@
     }
 
     var descTxt = ns.transform.stripHtml(cell.laborDesc || '');
+    // Rich variant for display; stripped text stays for tooltips + diffs.
+    var descRichBid = richTextHtml(cell.laborDesc || '');
 
     // Assumptions are free-text only — no product name, no qty/rate/ext.
     if (isAssumption) {
       td.classList.add('scw-bid-review-v2__cell--assumption');
       td.innerHTML = descTxt
         ? '<div class="scw-bid-review-v2__cell-desc" title="' +
-            escapeHtml(descTxt) + '">' + escapeHtml(descTxt) + '</div>'
+            escapeHtml(descTxt) + '">' + descRichBid + '</div>'
         : '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
       td.innerHTML += cellActionStack(row, pkgId, sowId, null, cell && cell.id);
       appendPendingCard(td, pendingItem, row, pkg, sowId);
@@ -819,8 +883,10 @@
       (row.sowItemData && row.sowItemData.laborDesc) || row.sowLaborDesc || '');
     var prodInner = (diffs && diffs.product)
       ? markWordDiff(cell.productName, sowProd) : escapeHtml(cell.productName);
+    // Diff mode keeps the stripped word-diff (underline tokens need plain
+    // text); otherwise show the rich formatting the record actually has.
     var descInner = (diffs && diffs.laborDesc)
-      ? markWordDiff(descTxt, sowDesc) : escapeHtml(descTxt);
+      ? markWordDiff(descTxt, sowDesc) : descRichBid;
     // Hover hooks: hovering a differing field highlights its SOW-cell
     // counterpart (init.js wires the mouseover). Only the actually-
     // differing field carries the hook.
@@ -833,10 +899,10 @@
     // no longer matches the SOW line item's authoritative label (field_1950,
     // swapped onto row.displayLabel by the transform). Surface the bid's
     // stale label as a flagged line so the drift is visible instead of the
-    // bid label silently winning the row title.
-    var sowLblN = String(row.displayLabel || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    var bidLblN = String(cell.label || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    var labelDriftHtml = (bidLblN && sowLblN && bidLblN !== sowLblN)
+    // bid label silently winning the row title. Sourced from the SAME
+    // getMismatches designator flag that flips diffs.any, so a designator
+    // change also unlocks the Revise ▾ / Match SOW values menu.
+    var labelDriftHtml = (diffs && diffs.designator)
       ? '<div class="scw-bid-review-v2__cell-conn scw-bid-review-v2__field-diff"' +
           ' data-scw-diff-field="label" title="Bid label: ' +
           escapeHtml(cell.label) + ' — SOW: ' + escapeHtml(row.displayLabel) + '">' +
@@ -979,7 +1045,12 @@
     if (row.offSow)      tr.classList.add('scw-bid-review-v2__row--off-sow');
     if (row.removed)     tr.classList.add('scw-bid-review-v2__row--removed');
     if (row.isAccessory) tr.classList.add('scw-bid-review-v2__row--accessory');
-    if (row.sowItem) tr.classList.add('scw-bid-review-v2__row--expandable');
+    // EVERY data row is expandable — including rows whose bid item points at
+    // NO SOW item (off-SOW / orphaned bids). Those used to be dead rows, which
+    // made the panel-only Re-link button unreachable for exactly the records
+    // that most need re-pointing. The panel mounts the SOW editor only when a
+    // SOW record exists; otherwise it shows the bid cards + a re-link hint.
+    tr.classList.add('scw-bid-review-v2__row--expandable');
     tr.setAttribute('data-row-id', row.id);
     if (row.sowItem) tr.setAttribute('data-sow-item-id', row.sowItem);
     tr.setAttribute('aria-expanded', 'false');
@@ -989,24 +1060,23 @@
     // identified by product name only, in the bid cell columns.
     var labelTd = document.createElement('td');
     labelTd.className = 'scw-bid-review-v2__row-label-cell';
-    // Expand caret — kept as a direct child of the <td> (absolutely
-    // positioned) so the cell stays a table-cell and its background spans
-    // the full row height. The stacked content lives in an inner flex div.
-    var caretHtml = row.sowItem
-      ? '<span class="scw-bid-review-v2__row-caret" aria-hidden="true">' +
-          GROUP_CHEVRON_SVG + '</span>'
-      : '';
-    var labelHtml = '';
+    var caretHtml =
+      '<span class="scw-bid-review-v2__row-caret" aria-hidden="true">' +
+        GROUP_CHEVRON_SVG + '</span>';
     // Bulk-select checkbox — keyed on the SOW line-item id so the shared
     // worksheet-v2 bulk module (mounted on the SOW view) drives selection
     // + the floating edit/delete toolbar. Only for rows backed by a SOW
-    // item (the editable record).
-    if (row.sowItem) {
-      labelHtml +=
-        '<input type="checkbox" class="scw-br-v2-rowselect" ' +
+    // item (the editable record). Checkbox FAR LEFT, caret second
+    // (selection-then-disclosure order) with a clear gap — adjacent
+    // targets caused caret misclicks. Both sit in a normal-flow controls
+    // row ABOVE the label content: absolute-positioning them beside the
+    // text squeezed this narrow column and wrapped labels like "I-038".
+    var selectHtml = row.sowItem
+      ? '<input type="checkbox" class="scw-br-v2-rowselect scw-br-v2-rowselect--row" ' +
         'data-scw-ws-v2-select="' + escapeHtml(row.sowItem) + '" ' +
-        'aria-label="Select line item">';
-    }
+        'aria-label="Select line item">'
+      : '';
+    var labelHtml = '';
     if (isCamReader(row) && row.displayLabel) {
       labelHtml +=
         '<div class="scw-bid-review-v2__row-label">' +
@@ -1035,7 +1105,8 @@
       }
       labelHtml += '</div>';
     }
-    labelTd.innerHTML = caretHtml +
+    labelTd.innerHTML =
+      '<div class="scw-bid-review-v2__row-controls">' + selectHtml + caretHtml + '</div>' +
       '<div class="scw-bid-review-v2__row-label-inner">' + labelHtml + '</div>';
     tr.appendChild(labelTd);
 
@@ -1330,10 +1401,12 @@
     // Photos (field_771) — gallery thumb strip. Each connection-value
     // span carries an <img data-kn-img-gallery> with the full-size URL;
     // surface that as the click-through target (opens full image in a
-    // new tab) and as the thumb src.
+    // new tab) and as the thumb src. The span's id is the connected
+    // DOC_photos record's id — kept so each thumb can carry a delete button
+    // (see mdf-manage.js's delegated [data-scw-mdf-photo-del] handler).
     var photoCell = sourceTr.querySelector(
       'td.field_771, td[data-field-key="field_771"]');
-    var imgUrls = [];
+    var photos = [];
     if (photoCell) {
       var imgSpans = photoCell.querySelectorAll(
         'span[id][data-kn="connection-value"]');
@@ -1342,13 +1415,13 @@
         if (!img) continue;
         var url = img.getAttribute('data-kn-img-gallery') ||
                   img.getAttribute('src') || '';
-        if (url) imgUrls.push(url);
+        if (url) photos.push({ id: (imgSpans[si].id || '').trim(), url: url });
       }
     }
     // Render the Photos section whenever there are photos OR the group has
     // a real location record to attach photos to — the "+ Add" tile keeps
     // upload one click away right where the photos live.
-    if (imgUrls.length || mdfIdfId) {
+    if (photos.length || mdfIdfId) {
       var photoSection = document.createElement('div');
       photoSection.className = 'scw-bid-review-v2__l1-detail-section';
       var pLabel = document.createElement('div');
@@ -1357,17 +1430,32 @@
       photoSection.appendChild(pLabel);
       var photoStrip = document.createElement('div');
       photoStrip.className = 'scw-bid-review-v2__l1-detail-photos';
-      for (var pi = 0; pi < imgUrls.length; pi++) {
+      for (var pi = 0; pi < photos.length; pi++) {
         var a = document.createElement('a');
-        a.href = imgUrls[pi];
+        a.href = photos[pi].url;
         a.target = '_blank';
         a.rel = 'noopener';
         a.className = 'scw-bid-review-v2__l1-detail-photo';
         var thumb = document.createElement('img');
-        thumb.src = imgUrls[pi];
+        thumb.src = photos[pi].url;
         thumb.alt = '';
         thumb.loading = 'lazy';
         a.appendChild(thumb);
+        if (photos[pi].id) {
+          var delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'scw-bid-review-v2__l1-detail-photo-del';
+          delBtn.setAttribute('data-scw-mdf-photo-del', photos[pi].id);
+          delBtn.title = 'Delete photo';
+          delBtn.innerHTML =
+            '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+            'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+            'stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline>' +
+            '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
+            '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
+            '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>';
+          a.appendChild(delBtn);
+        }
         photoStrip.appendChild(a);
       }
       if (mdfIdfId) {
@@ -1770,14 +1858,21 @@
     // details band and actions in the actions band so the SOW column tracks
     // the bid columns' layout.
     var v1 = window.SCW.bidReview;
+    // separateDocs: the documents GALLERY comes back as bar.docs instead of
+    // living inside the details band — the SOW column is too narrow for
+    // preview cards. It mounts below as a full-width row between the SOW
+    // header and the first line-item group.
+    var sowDocsBlock = null;
     if (v1 && typeof v1.buildSowStatusBar === 'function') {
       try {
-        var bar = v1.buildSowStatusBar({ sowId: grid.sowId, sowName: grid.sowName });
+        var bar = v1.buildSowStatusBar({ sowId: grid.sowId, sowName: grid.sowName },
+          { separateDocs: true });
         if (bar) {
           var detSlot = r3.querySelector('.scw-bid-review-v2__head--sow-details');
           var actSlot = r4.querySelector('.scw-bid-review-v2__head--sow-actions');
           if (detSlot && bar.details) detSlot.appendChild(bar.details);
           if (actSlot && bar.actions) actSlot.appendChild(bar.actions);
+          sowDocsBlock = bar.docs || null;
         }
       } catch (err) {
         if (window.console && console.warn) {
@@ -1790,6 +1885,19 @@
     var tbody = document.createElement('tbody');
     // colspan = label + photos + sow + one per bid package
     var colspan = grid.packages.length + 3;
+
+    // Full-width documents gallery band — below the SOW header, above the
+    // line items, so the preview cards get the whole grid width to breathe.
+    if (sowDocsBlock) {
+      var docsTr = document.createElement('tr');
+      docsTr.className = 'scw-bid-review-v2__docs-row';
+      var docsTd = document.createElement('td');
+      docsTd.className = 'scw-bid-review-v2__docs-cell';
+      docsTd.colSpan = colspan;
+      docsTd.appendChild(sowDocsBlock);
+      docsTr.appendChild(docsTd);
+      tbody.appendChild(docsTr);
+    }
     var groups = grid.groups || [{ key: '__all__', level: 0, rows: grid.rows, subgroups: [] }];
     for (var g = 0; g < groups.length; g++) {
       // Per-group guard: a throw in one group must not blank the whole section

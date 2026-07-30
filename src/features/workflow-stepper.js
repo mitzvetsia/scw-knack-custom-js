@@ -1397,6 +1397,13 @@
   // ── Init ─────────────────────────────────────────────────
   function init() {
     injectStyles();
+    // Immediate pass first: applySteps is idempotent and no-ops for any
+    // step whose accordion shell isn't wrapped yet, so when the shells
+    // ARE already up this lands the stepper without the flat delay (the
+    // scene load veil waits for #scw-step-initiate-install before
+    // revealing — see scene-tweaks.js transformsReady). The delayed
+    // pass stays as the catch-up for late accordion wraps.
+    applySteps();
     setTimeout(applySteps, 500);
     setTimeout(bindPlaybookRules, 600);
   }

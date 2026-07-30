@@ -617,11 +617,10 @@
   //                list and written by mirror-connection-sync on save)
   //   IDENTIFIER — human-readable label field for each candidate row
   var VIEW_CONFIGS = {
-    view_3586: {
-      TARGET: 'field_1957', RECIPROCAL: 'field_2197',
-      BUCKET: 'field_2219', GROUPING: 'field_1946',
-      IDENTIFIER: 'field_1950'
-    },
+    // view_3586 removed — hidden + fully replaced by the v2 worksheet,
+    // which has its own picker (worksheet-v2/picker.js) and drives the
+    // mirror cascade directly. The v1 picker only fires on native-table
+    // cell clicks, which can't happen on the hidden table.
     view_3610: {
       TARGET: 'field_1957', RECIPROCAL: 'field_2197',
       BUCKET: 'field_2219', GROUPING: 'field_1946',
@@ -643,15 +642,15 @@
       BUCKET: 'field_2366', GROUPING: 'field_2375',
       IDENTIFIER: 'field_2365'
     },
-    // Deploy / Install line items (view_3915): same picker shape as the
+    // Deploy / Install line items (view_4093): same picker shape as the
     // others, mapped to the install-line-item field set.  Mirrors
     // view_3505's role on the survey side.
-    view_3915: {
+    view_4093: {
       TARGET: 'field_2820', RECIPROCAL: 'field_2821',
       BUCKET: 'field_2822', GROUPING: 'field_2818',
       IDENTIFIER: 'field_2819'
     },
-    // view_4056 ("WHAT WE'RE INSTALLING") — same install object as view_3915.
+    // view_4056 ("WHAT WE'RE INSTALLING") — same install object as view_4093.
     view_4056: {
       TARGET: 'field_2820', RECIPROCAL: 'field_2821',
       BUCKET: 'field_2822', GROUPING: 'field_2818',

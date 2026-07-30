@@ -348,6 +348,47 @@
     return total;
   }
 
+  // Product-label hygiene for customer-facing surfaces:
+  //  1. Strip trailing designator-list parentheticals ("(RA-I-4, RA-I-5,
+  //     RA-I-6)" / "(E-14)") that earlier passes baked into the name —
+  //     they duplicate the per-row meta and the appended orange callout.
+  //  2. Collapse a duplicated trailing SKU token ("…Scout- PMB26B
+  //     PMB26B") — products whose NAME already ends with the SKU get it
+  //     appended again by the name+SKU display formula (field_2208).
+  function cleanProductLabel(s) {
+    let out = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+    const desigList =
+      /\s*\(\s*[A-Za-z]{1,6}-(?:[A-Za-z]{1,6}-)?\d+[A-Za-z]?\s*(?:,\s*[A-Za-z]{1,6}-(?:[A-Za-z]{1,6}-)?\d+[A-Za-z]?\s*)*\)$/;
+    while (desigList.test(out)) out = out.replace(desigList, '').trim();
+    out = out.replace(/(\s\S+)\1$/, '$1');
+    return out;
+  }
+
+  // Sign-exact sum: prefers the Backbone model's numeric `<field>_raw`
+  // and falls back to the cell parse. Needed for CO credit rows — their
+  // NEGATIVE discount cells (e.g. "−$55.00") can parse positive from the
+  // rendered text, which inflated Line Item Discounts and shorted the
+  // Equipment/Grand totals (observed 2026-07-16: $110 = 2 × the credit
+  // row's $55 discount).
+  function sumFieldSigned(ctx, caches, $rows, fieldKey) {
+    const byId = {};
+    try {
+      const v = typeof Knack !== 'undefined' && Knack.views && Knack.views[ctx.viewId];
+      const models = v && v.model && v.model.data && v.model.data.models;
+      if (models) models.forEach((m) => { byId[m.id] = m.attributes || {}; });
+    } catch (e) { /* model unavailable — cell fallback below */ }
+    let total = 0;
+    const rows = $rows.get();
+    for (let i = 0; i < rows.length; i++) {
+      const rec = byId[rows[i].id];
+      const raw = rec ? rec[fieldKey + '_raw'] : undefined;
+      if (typeof raw === 'number' && Number.isFinite(raw)) { total += raw; continue; }
+      const num = getRowNumericValue(caches, rows[i], fieldKey);
+      if (Number.isFinite(num)) total += num;
+    }
+    return total;
+  }
+
   function sumFields(caches, $rows, fieldKeys) {
     const totals = {};
     fieldKeys.forEach((key) => (totals[key] = 0));
@@ -1414,6 +1455,32 @@ ${sel('tr.scw-mounting-labor-line td:first-child')} {
   // FEATURE: Camera list builder
   // ============================================================
 
+  // Cam/reader bucket check off a data row's field_2218 connection span —
+  // shared by both drop-label emitters (cluster product lines + standalone
+  // mounting L3 headers) so only camera/reader lineage ever prints a label.
+  const SCW_CAM_READER_BUCKET_ID = '6481e5ba38f283002898113c';
+  function rowIsCamReaderBucket(rowEl) {
+    if (!rowEl) return false;
+    const span = rowEl.querySelector('td.field_2218 span[data-kn="connection-value"]');
+    const id = span ? String(span.id || span.className || '').trim() : '';
+    return id === SCW_CAM_READER_BUCKET_ID;
+  }
+
+  // For an ACCESSORY row: true unless its field_2464 parent resolves to a
+  // non-cam/reader row. Accessories of NVRs/switches can carry prefix/number
+  // junk COPIED INTO THEIR OWN CELLS at creation (e.g. "I-"/"32" from an
+  // Admiral Pro typed as channel count), so their own cells can't be trusted
+  // as a drop label source. Unresolvable parents fail open (keep the row).
+  function accessoryRowParentIsCamReader(rowEl) {
+    const pSpan = rowEl.querySelector('td.field_2464 span[data-kn="connection-value"]');
+    const pid = pSpan ? String(pSpan.className || '').trim() : '';
+    if (!/^[a-f0-9]{24}$/i.test(pid)) return true;
+    const tbody = rowEl.closest('tbody');
+    const parent = tbody ? tbody.querySelector('tr[id="' + pid + '"]') : null;
+    if (!parent) return true;
+    return rowIsCamReaderBucket(parent);
+  }
+
   function buildCameraListHtml(ctx, caches, $rows) {
     const items = [];
     const rows = $rows.get();
@@ -1554,7 +1621,14 @@ ${sel('tr.scw-mounting-labor-line td:first-child')} {
     if ($groupRow.data('scwConcatL3MountRunId') === runId) return;
     $groupRow.data('scwConcatL3MountRunId', runId);
 
-    const cameraListHtml = buildCameraListHtml(ctx, caches, $rowsToSum);
+    // buildCameraListHtml reads prefix/number off the rows' OWN cells, but
+    // an NVR/switch accessory can carry copied junk there (see
+    // accessoryRowParentIsCamReader) — drop rows whose parent isn't a
+    // cam/reader before building the label.
+    const eligibleRows = $rowsToSum.get().filter(accessoryRowParentIsCamReader);
+    if (!eligibleRows.length) return;
+
+    const cameraListHtml = buildCameraListHtml(ctx, caches, $(eligibleRows));
     if (!cameraListHtml) return;
 
     const $labelCell = $groupRow.children('td').first();
@@ -1624,16 +1698,37 @@ ${sel('tr.scw-mounting-labor-line td:first-child')} {
     const rows = $rowsToSum.get();
     const devices = [];
 
+    // The field_1957 array on an NVR/switch can include devices that belong
+    // to a DIFFERENT SOW on the same project (the connection is per-record,
+    // not per-SOW). This view is filtered to the current SOW, so only show
+    // connected devices whose record is actually a row in this grid. Each
+    // connection span's class is the connected record's 24-hex id; each data
+    // row's <tr> id is its record id — build the row-id set once per tbody.
+    const tbody = $groupRow[0].closest('tbody');
+    let viewRowIds = tbody && tbody._scwConnDevRowIds;
+    if (!viewRowIds || (tbody && tbody._scwConnDevRowIdsRun !== runId)) {
+      viewRowIds = {};
+      if (tbody) {
+        const dataRows = tbody.querySelectorAll('tr[id]');
+        for (let r = 0; r < dataRows.length; r++) {
+          const id = dataRows[r].id;
+          if (/^[0-9a-f]{24}$/i.test(id)) viewRowIds[id] = true;
+        }
+        tbody._scwConnDevRowIds = viewRowIds;
+        tbody._scwConnDevRowIdsRun = runId;
+      }
+    }
+
     for (let i = 0; i < rows.length; i++) {
       const cell = getRowCell(caches, rows[i], 'field_1957');
       if (!cell) continue;
-      // Replace <br> with a delimiter before reading text, so multi-value cells split properly
-      const html = cell.innerHTML || '';
-      const parts = html.replace(/<br\s*\/?>/gi, '|||').split('|||');
-      for (let j = 0; j < parts.length; j++) {
-        const tmp = document.createElement('span');
-        tmp.innerHTML = parts[j];
-        const text = norm(tmp.textContent || '');
+      const spans = cell.querySelectorAll('span[data-kn="connection-value"]');
+      for (let j = 0; j < spans.length; j++) {
+        const recId = (spans[j].className || '').trim();
+        // Skip connections whose record isn't in this view (other SOW).
+        // Fail open when the id doesn't look like a record id.
+        if (/^[0-9a-f]{24}$/i.test(recId) && !viewRowIds[recId]) continue;
+        const text = norm(spans[j].textContent || '');
         if (!text || isBlankish(text)) continue;
         devices.push(text);
       }
@@ -1798,7 +1893,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const laborKey = ctx.keys.labor;         // field_2028
 
     const equipmentSubtotal = sumField(caches, $allDataRows, hardwareKey);
-    const lineItemDiscounts = Math.abs(sumField(caches, $allDataRows, 'field_2303'));
+    // SIGNED sum (no Math.abs): on a CO, a Remove-action credit row carries
+    // a NEGATIVE line discount that must reduce the total discount — abs
+    // (or a sign-mangled cell parse) double-counted it and shorted the
+    // Equipment/Grand totals. Base proposals only have positive discounts,
+    // so this is behavior-preserving there.
+    const lineItemDiscounts = sumFieldSigned(ctx, caches, $allDataRows, 'field_2303');
     const proposalDiscount = Math.abs(readDomFieldValue('2302', 'view_3342'));
     // Client-facing discount reason (field_2291) — shown beneath the
     // Proposal Discount amount only when a discount is actually applied.
@@ -1809,6 +1909,25 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const equipmentTotal = equipmentSubtotal - lineItemDiscounts;
     const installationTotal = sumField(caches, $allDataRows, laborKey);
     const grandTotal = equipmentTotal + installationTotal - proposalDiscount;
+
+    // Publish-payload fallback: proposal-pdf-export scrapes these totals
+    // back OUT of the synthetic rows below, but that scrape can come up
+    // empty (observed on CO previews), which shipped blank equipment /
+    // installation / grand totals to Make. Stash the exact computed
+    // numbers so extractSummaryFields can read them directly. On a CO
+    // these are the NET values — Remove-action credit rows are negative
+    // amounts inside the same sums.
+    window.SCW = window.SCW || {};
+    window.SCW.proposalGridTotals = {
+      viewId: ctx.viewId,
+      equipmentSubtotal: equipmentSubtotal,
+      lineItemDiscounts: lineItemDiscounts,
+      proposalDiscount: proposalDiscount,
+      equipmentTotal: equipmentTotal,
+      installationTotal: installationTotal,
+      grandTotal: grandTotal,
+      at: Date.now()
+    };
 
     const hasAnyDiscount = lineItemDiscounts !== 0 || proposalDiscount !== 0;
 
@@ -1869,7 +1988,17 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     const rows = [];
 
-    rows.push(makeTitleRow('Project Totals'));
+    // A change order's totals aren't "project" totals — they're the CO's
+    // net change. Flip the headline labels when any row carries a CO
+    // Action (field_2965); base proposals keep the classic labels. The
+    // publish pipeline scrapes these labels verbatim, so the published
+    // HTML / PDF / e-sign agreement inherit the flip automatically.
+    const isChangeOrder = $allDataRows.toArray().some((tr) => {
+      const td = tr.querySelector('td.field_2965');
+      return !!td && /add|remove/i.test(td.textContent || '');
+    });
+
+    rows.push(makeTitleRow(isChangeOrder ? 'Change Order Totals' : 'Project Totals'));
 
     if (hasAnyDiscount) {
       rows.push(makeLineRow({
@@ -1891,8 +2020,10 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       }
     }
 
+    // On a CO these figures are NET deltas (adds minus credits), not
+    // totals of anything — label them accordingly.
     rows.push(makeLineRow({
-      label: 'Equipment Total',
+      label: isChangeOrder ? 'Equipment Net' : 'Equipment Total',
       value: formatMoney(equipmentTotal),
       rowType: 'final',
       isLast: false,
@@ -1900,7 +2031,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     }));
 
     rows.push(makeLineRow({
-      label: 'Installation Total',
+      label: isChangeOrder ? 'Installation Net' : 'Installation Total',
       value: formatMoney(installationTotal),
       rowType: 'final',
       isLast: false,
@@ -1922,7 +2053,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     }
 
     rows.push(makeLineRow({
-      label: 'Grand Total',
+      label: isChangeOrder ? 'Change Order Total' : 'Grand Total',
       value: formatMoney(grandTotal),
       rowType: 'final',
       isLast: true,
@@ -2153,14 +2284,30 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           row.classList.contains('scw-mounting-product-line') ||
           row.classList.contains('scw-level-total-row')) continue;
 
-      // Properly grouped (has L3 since the last L1) → remember as a template.
+      // Has its own L3 header since the last L1 — but Knack may still have
+      // suppressed the L2 header above it: Knack only re-emits a group
+      // header when that field's value actually changes, not on every
+      // outer-group (L1) boundary. If this L1's first bucket is the SAME
+      // bucket as the previous L1's last bucket (e.g. two adjacent MDF/IDF
+      // sections both ending/starting on "Camera or Reader"), the L2 header
+      // never renders here even though L3 (a different product name each
+      // time) renders fine. Repair that before treating the row as a
+      // template.
       if (l3SinceL1 && lastL3) {
+        if (!l2SinceL1 && lastL2) {
+          const newL2 = pristineHeaderClone(lastL2);
+          newL2.classList.add('scw-synthetic-l2');
+          lastL3.parentNode.insertBefore(newL2, lastL3);
+          lastL2 = newL2;
+          l2SinceL1 = true;
+        }
         const sig = sigOf(row);
         if (!registry[sig]) registry[sig] = { l2: lastL2, l3: lastL3 };
         continue;
       }
 
-      // Orphan — missing L2 and/or L3. Clone the matching twin group's headers.
+      // Fully orphaned — missing L2 and/or L3 of its own. Clone the
+      // matching twin group's headers.
       const tmpl = registry[sigOf(row)];
       if (!tmpl) continue; // no known twin → leave as-is (can't reconstruct)
 
@@ -2426,24 +2573,46 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if (childRow.parentNode !== tbody) continue;
       if (parentRow.parentNode !== tbody) continue;
 
+      const l3 = findEnclosingL3(parentRow);
+
       // Capture the bracket's CURRENT L3 group header text (its own
       // product name as Knack rendered it — e.g. "Electrical Mounting
       // Bracket") before we move the row out of that group. The
       // post-process pass reads this back via data-scw-product-name.
+      //
+      // Some accessory records carry no product name of their own (blank
+      // field_1958), so Knack renders them with no distinct L3 group —
+      // findEnclosingL3 then walks back past them and lands on whatever
+      // L3 header happens to sit above, which is the PARENT camera's own
+      // group. Stamping that borrowed label produced bogus per-camera
+      // "product" lines in the Mounting Hardware rollup (13 identical
+      // brackets split into a 3-unit line mislabeled with the camera's own
+      // name and a 10-unit line with no label at all, instead of one
+      // 13-unit line). ownL3 === l3 is the precise signal that we found
+      // the PARENT's group, not the bracket's own — skip the stamp so
+      // these fall through to postProcessMountingClusters' shared fallback
+      // label instead of a wrong or inconsistent one.
       const ownL3 = findEnclosingL3(childRow);
-      if (ownL3 && !childRow.getAttribute('data-scw-product-name')) {
+      if (ownL3 && ownL3 !== l3 && !childRow.getAttribute('data-scw-product-name')) {
         const ownLabelCell = ownL3.querySelector('td');
         if (ownLabelCell) {
-          const productName = (ownLabelCell.textContent || '')
-            .replace(/\s+/g, ' ')
-            .trim();
+          // Read from a CLONE with injected decorations stripped. On
+          // safety-net re-runs the L3 header already carries the orange
+          // camera-list <b>(RA-I-4, …)</b> from the previous pass's
+          // concat step — reading it raw BAKED the designator list into
+          // the product name, which then repeated on every surface
+          // (mounting rollup line, What's-Changing manifest, e-sign).
+          const ownClone = ownLabelCell.cloneNode(true);
+          ownClone
+            .querySelectorAll('.scw-concat-cameras, .scw-mounting-parents, .scw-l3-connected-devices')
+            .forEach((el) => el.remove());
+          const productName = cleanProductLabel(ownClone.textContent);
           if (productName) {
             childRow.setAttribute('data-scw-product-name', productName);
           }
         }
       }
 
-      const l3 = findEnclosingL3(parentRow);
       if (!l3) continue;
       if (!groupedByL3.has(l3)) groupedByL3.set(l3, []);
       groupedByL3.get(l3).push({ childRow, parentId });
@@ -2513,11 +2682,15 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     }
   }
 
-  // Walk every L2/L3 group header and, if no data rows live between
+  // Walk every L1/L2/L3 group header and, if no data rows live between
   // it and the next same-or-higher-level header, tag it with a class
   // so CSS can hide it. Runs after relocateAccessoriesToParents.
+  // L1 matters too: when every record in an MDF/IDF group is an accessory
+  // that got relocated under a parent in ANOTHER group (stale field_1946
+  // on the accessory), the whole L1 is left as an orphan header shell.
   function markEmptyGroupHeaders(tbody) {
     const headers = tbody.querySelectorAll(
+      'tr.kn-table-group.kn-group-level-1, ' +
       'tr.kn-table-group.kn-group-level-2, tr.kn-table-group.kn-group-level-3'
     );
     for (let i = 0; i < headers.length; i++) {
@@ -2617,12 +2790,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     // Given an array of bracket rows, build "I-1, I-2, E-3" from their
     // parent rows' prefix + number cells. Mirrors buildCameraListHtml.
+    // Only CAM/READER parents contribute a drop label — an NVR/switch record
+    // carrying stray values in Drop Prefix/# (e.g. 32 typed on an Admiral
+    // Pro as channel count) produced a bogus "(I-32)" tag on its accessories.
     function buildParentLabelList(rows) {
       const items = [];
       for (let i = 0; i < rows.length; i++) {
         const parentId = rows[i].getAttribute('data-scw-parent-id');
         const parent = parentId ? rowById[parentId] : null;
         if (!parent) continue;
+        if (!rowIsCamReaderBucket(parent)) continue;   // cam/reader drops only
         const prefix = readCellText(parent, prefixKey);
         const numRaw = readCellText(parent, numberKey);
         if (!prefix || !numRaw) continue;
@@ -2686,13 +2863,20 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         // read from data-scw-product-name (captured from the bracket's
         // original L3 group header text). Fall back to td.field_1958
         // in case the row exists but wasn't stamped.
-        let productName = r.getAttribute('data-scw-product-name') || '';
+        // cleanProductLabel de-bakes designator lists / doubled SKUs that
+        // rows stamped by OLDER passes may still carry.
+        let productName = cleanProductLabel(r.getAttribute('data-scw-product-name') || '');
         if (!productName) {
           const productCell = r.querySelector('td.field_1958');
-          productName = productCell
-            ? (productCell.textContent || '').replace(/\s+/g, ' ').trim()
-            : '';
+          productName = productCell ? cleanProductLabel(productCell.textContent) : '';
         }
+        // No resolvable product name from either source — a real gap in the
+        // accessory's own data, not something to leave as an empty-string
+        // group key. Rows with no name would otherwise group under '' just
+        // fine on their own, but silently rendering with a blank label reads
+        // as broken. Fall back to the L4 cluster's own label ("Mounting
+        // Hardware") so they still merge into ONE line with a real name.
+        if (!productName) productName = 'Mounting Hardware';
         if (!byProduct[productName]) {
           byProduct[productName] = [];
           productOrder.push(productName);
@@ -2758,7 +2942,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           probe &&
           probe.classList &&
           probe.classList.contains('scw-mounting-product-line') &&
-          probe.getAttribute('data-scw-product') === productName
+          // Compare CLEANED both sides — lines built by older passes may
+          // carry the dirty (list-baked) attribute value.
+          cleanProductLabel(probe.getAttribute('data-scw-product') || '') === productName
         ) {
           line = probe;
         }
@@ -2916,6 +3102,456 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   // ============================================================
+  // CHANGE ORDER — removal treatment + Change Summary manifest
+  // ============================================================
+  // On a CO's proposal, rows with CO Action (field_2965) = Remove are
+  // CREDITS and Add rows are new charges. Two layers, both derived
+  // inside every pipeline run:
+  //
+  //   1. IN-PLACE row treatment — Remove rows tint rose (plus their
+  //      product header when the whole block is removed) with a solid
+  //      "REMOVED FROM INSTALL SCOPE — CREDIT" banner row spanning the
+  //      table above each contiguous removed block; Add rows tint pale
+  //      green. Rows are never MOVED: two earlier attempts (post-pass
+  //      module, in-pipeline re-sectioning) both ended with the removed
+  //      item eaten by downstream machinery (accessory relocation /
+  //      header hiding). Banner rows are synthetic inserts that are
+  //      cleared + re-inserted every pass. Visibility beats layout.
+  //
+  //   2. "WHAT'S CHANGING" manifest ABOVE the grid — the at-a-glance
+  //      layer: Adding / Removing columns with per-item designator +
+  //      location signposts, subtotals, and the net change. Names and
+  //      amounts are read off the grid's own headers/cells so the
+  //      manifest can't disagree with the itemized list. The published
+  //      HTML/PDF inherits it all via the publish payload's DOM scrape.
+  //
+  // Fails safe: no field_2965 values anywhere (base proposals) → no-op.
+
+  const CO_RM = {
+    rowCls:     'scw-co-rm-row',
+    addCls:     'scw-co-add-row',
+    bannerCls:  'scw-co-rm-banner',
+    summaryId:  'scw-co-change-summary',
+    styleId:    'scw-co-rm-css',
+  };
+
+  function coRmInjectCss() {
+    if (document.getElementById(CO_RM.styleId)) return;
+    const viewSel = Object.keys(CONFIG.views)
+      .map((v) => `#${v} .field_2965, #${v} .field_2966`).join(', ');
+    const s = document.createElement('style');
+    s.id = CO_RM.styleId;
+    s.textContent = `
+${viewSel} { display: none !important; }
+tr.${CO_RM.rowCls} td { background: #fff1f2 !important; }
+tr.${CO_RM.rowCls} td:first-child { box-shadow: inset 4px 0 0 #e11d48; }
+tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
+tr.${CO_RM.addCls} td { background: #f0fdf4 !important; }
+tr.${CO_RM.addCls} td:first-child { box-shadow: inset 4px 0 0 #059669; }
+tr.${CO_RM.bannerCls} td {
+  background: #e11d48 !important; color: #fff; padding: 3px 12px;
+  border: 0;
+  font: 700 10px/1.7 system-ui, -apple-system, sans-serif;
+  letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
+}
+#${CO_RM.summaryId} {
+  margin: 0 0 16px; border: 1px solid #dbe4ee; border-radius: 10px;
+  overflow: hidden; background: #fff;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+#${CO_RM.summaryId} .scw-cos-title {
+  padding: 9px 16px 8px; background: #163C6E; color: #fff;
+  font-size: 13px; font-weight: 800; letter-spacing: .05em;
+  text-transform: uppercase;
+  cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 8px;
+}
+#${CO_RM.summaryId} .scw-cos-chevron {
+  margin-left: auto; font-size: 12px; line-height: 1;
+  transition: transform 0.15s ease;
+}
+#${CO_RM.summaryId}.scw-cos-collapsed .scw-cos-chevron { transform: rotate(-90deg); }
+#${CO_RM.summaryId}.scw-cos-collapsed .scw-cos-desc,
+#${CO_RM.summaryId}.scw-cos-collapsed .scw-cos-cols { display: none; }
+/* Docked below the ops-stepper row: ~2/3 of the page wide, so the Add /
+   Remove columns sit comfortably side by side. */
+#${CO_RM.summaryId}.scw-cos--docked {
+  margin: 12px 0 4px; width: 66%; min-width: 560px; max-width: 100%;
+}
+#${CO_RM.summaryId} .scw-cos-desc {
+  padding: 8px 16px; background: #f0f4fa; color: #334155;
+  font-size: 12px; line-height: 1.45; border-bottom: 1px solid #dbe4ee;
+}
+#${CO_RM.summaryId} .scw-cos-desc b { color: #163C6E; }
+#${CO_RM.summaryId} .scw-cos-cols { display: flex; flex-wrap: wrap; }
+#${CO_RM.summaryId} .scw-cos-col { flex: 1 1 320px; min-width: 280px; padding: 12px 16px; }
+#${CO_RM.summaryId} .scw-cos-col--add { box-shadow: inset 4px 0 0 #059669; }
+#${CO_RM.summaryId} .scw-cos-col--rm  { box-shadow: inset 4px 0 0 #e11d48; background: #fff7f7; }
+#${CO_RM.summaryId} .scw-cos-head {
+  font-size: 11px; font-weight: 800; letter-spacing: .07em;
+  text-transform: uppercase; margin-bottom: 8px;
+}
+#${CO_RM.summaryId} .scw-cos-col--add .scw-cos-head { color: #065f46; }
+#${CO_RM.summaryId} .scw-cos-col--rm  .scw-cos-head { color: #9f1239; }
+#${CO_RM.summaryId} table.scw-cos-table { width: 100%; border-collapse: collapse; }
+#${CO_RM.summaryId} table.scw-cos-table td {
+  padding: 4px 6px; font-size: 12.5px; color: #1e293b;
+  border-bottom: 1px solid #eef2f7; vertical-align: top;
+}
+#${CO_RM.summaryId} td.scw-cos-qty { width: 42px; text-align: right; color: #64748b; white-space: nowrap; }
+#${CO_RM.summaryId} td.scw-cos-amt { width: 96px; text-align: right; font-weight: 600; white-space: nowrap; }
+#${CO_RM.summaryId} .scw-cos-col--rm td.scw-cos-amt { color: #be123c; }
+#${CO_RM.summaryId} .scw-cos-lbl { color: #64748b; font-size: 11.5px; }
+#${CO_RM.summaryId} .scw-cos-meta {
+  display: block; color: #64748b; font-size: 11px; margin-top: 1px;
+}
+#${CO_RM.summaryId} tr.scw-cos-sub td {
+  border-bottom: 0; padding-top: 7px;
+  font-weight: 800; font-size: 12.5px;
+}
+#${CO_RM.summaryId} .scw-cos-net {
+  display: flex; justify-content: flex-end; align-items: baseline; gap: 10px;
+  padding: 9px 16px; border-top: 1px solid #dbe4ee; background: #f8fafc;
+  font-size: 13px; font-weight: 800; color: #163C6E;
+}
+#${CO_RM.summaryId} .scw-cos-net-label {
+  font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: #64748b;
+}
+#${CO_RM.summaryId} .scw-cos-desc .scw-cos-g { color: #059669; }
+#${CO_RM.summaryId} .scw-cos-desc .scw-cos-r { color: #e11d48; }`;
+    document.head.appendChild(s);
+  }
+
+  // ── What's-Changing panel: collapsible + docked under the ops stepper ──
+  // The panel is collapsible (title row toggles; chevron + localStorage
+  // persistence) and, when the scene hosts the Ops Actions stepper ("Issue
+  // Change Order"), the panel docks directly beneath it instead of sitting
+  // above the grid. Safe for publishing: view_3345 (the stepper host) is in
+  // the publish scrape's skipViews, and scrapeCoChangeSummary looks the
+  // panel up scene-wide, so it's still captured for the PDF/esign manifest.
+  const CO_SUM_COLLAPSE_KEY = 'scwCoSummaryCollapsed';
+  const CO_SUM_AUTO_COLLAPSE_PX = 300;
+  function coRmMountSummary(summary) {
+    // Dock directly BENEATH the ops stepper ("Issue Change Order") inside
+    // its column — that's otherwise dead space next to the (taller)
+    // published-proposal column, so the panel fills it instead of pushing
+    // the whole page down. Columns stack/flow via their own flex-basis.
+    const stepper = document.querySelector('.scw-ops-stepper');
+    if (stepper) {
+      if (summary.previousElementSibling !== stepper) {
+        stepper.parentNode.insertBefore(summary, stepper.nextSibling);
+      }
+      summary.classList.add('scw-cos--docked');
+    }
+    const title = summary.querySelector('.scw-cos-title');
+    if (title && !title.querySelector('.scw-cos-chevron')) {
+      const ch = document.createElement('span');
+      ch.className = 'scw-cos-chevron';
+      ch.textContent = '▾';
+      title.appendChild(ch);
+    }
+    // Collapse state: an explicit user choice (stored) wins; with no stored
+    // choice, auto-collapse when the expanded panel runs tall (>300px) so a
+    // long CO doesn't bury the page — the header + Net change stay visible.
+    let stored = null;
+    try { stored = window.localStorage.getItem(CO_SUM_COLLAPSE_KEY); }
+    catch (e) { /* ignore */ }
+    if (stored === '1') {
+      summary.classList.add('scw-cos-collapsed');
+    } else if (stored === '0') {
+      summary.classList.remove('scw-cos-collapsed');
+    } else {
+      summary.classList.remove('scw-cos-collapsed');
+      if (summary.offsetHeight > CO_SUM_AUTO_COLLAPSE_PX) {
+        summary.classList.add('scw-cos-collapsed');
+      }
+    }
+  }
+  if (!document.documentElement.hasAttribute('data-scw-cos-collapse')) {
+    document.documentElement.setAttribute('data-scw-cos-collapse', '1');
+    // CAPTURE phase — other document-level capture handlers on these scenes
+    // can stop propagation before a bubble-phase listener would ever fire.
+    document.addEventListener('click', function (e) {
+      const t = e.target && e.target.closest &&
+        e.target.closest('#' + CO_RM.summaryId + ' .scw-cos-title');
+      if (!t) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const summary = t.closest('#' + CO_RM.summaryId);
+      if (!summary) return;
+      const collapsed = !summary.classList.contains('scw-cos-collapsed');
+      summary.classList.toggle('scw-cos-collapsed', collapsed);
+      try { window.localStorage.setItem(CO_SUM_COLLAPSE_KEY, collapsed ? '1' : '0'); }
+      catch (err) { /* ignore */ }
+    }, true);
+  }
+
+  function coRmActionTxt(tr) {
+    const td = tr.querySelector('td.field_2965');
+    return td ? (td.textContent || '').trim() : '';
+  }
+  function coRmIsRemoveTr(tr) { return /remove/i.test(coRmActionTxt(tr)); }
+  function coRmIsAddTr(tr)    { return /add/i.test(coRmActionTxt(tr)); }
+
+  const coRmEsc = (v) => String(v == null ? '' : v)
+    .replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  const coRmMoney = (n) => (n < 0 ? '−' : '') + '$' +
+    Math.abs(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  function sectionCoRemovals(ctx) {
+    const tbody = ctx.$tbody[0];
+    if (!tbody) return;
+    const root = tbody.closest('.kn-view') || document.getElementById(ctx.viewId);
+
+    // Column hiding for field_2965/2966 lives in this CSS — inject
+    // unconditionally so base proposals never show a blank CO Action
+    // column. Tint/banner rules are class-scoped, so harmless on base.
+    coRmInjectCss();
+
+    // Clear banner rows from the previous pass before snapshotting rows.
+    Array.prototype.slice.call(tbody.querySelectorAll('tr.' + CO_RM.bannerCls))
+      .forEach((b) => b.remove());
+
+    // ── Layer 1: IN-PLACE row treatment (no moving — ever) ─────────────
+    const allRows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+    const isDataRow = (tr) => tr.tagName === 'TR' && tr.id && tr.id.indexOf('kn-') !== 0;
+    const groupLevel = (tr) => {
+      if (!tr.classList || !tr.classList.contains('kn-table-group')) return 0;
+      const m = tr.className.match(/kn-group-level-(\d+)/);
+      return m ? parseInt(m[1], 10) : 0;
+    };
+
+    // Rose tint on Remove-action rows, pale green on Add-action rows.
+    // classList.toggle untags recycled <tr>s from previous runs.
+    let anyAction = false;
+    allRows.forEach((tr) => {
+      if (!isDataRow(tr)) return;
+      const isRm  = coRmIsRemoveTr(tr);
+      const isAdd = !isRm && coRmIsAddTr(tr);
+      anyAction = anyAction || isRm || isAdd;
+      tr.classList.toggle(CO_RM.rowCls, isRm);
+      tr.classList.toggle(CO_RM.addCls, isAdd);
+    });
+
+    // Group headers whose ENTIRE block is removed (level ≥2) tint rose so
+    // the removed unit reads as one band with its header. Headers stay in
+    // place. Fully-removed headers also join the banner runs below.
+    const removedHeaders = new Set();
+    for (let i = 0; i < allRows.length; i++) {
+      const lvl = groupLevel(allRows[i]);
+      if (lvl < 2) continue;
+      let j = i + 1;
+      let dataCount = 0, removeCount = 0;
+      while (j < allRows.length) {
+        const l2 = groupLevel(allRows[j]);
+        if (l2 && l2 <= lvl) break;
+        if (isDataRow(allRows[j])) {
+          dataCount++;
+          if (coRmIsRemoveTr(allRows[j])) removeCount++;
+        }
+        j++;
+      }
+      const fullyRemoved = dataCount > 0 && dataCount === removeCount;
+      allRows[i].classList.toggle(CO_RM.rowCls, fullyRemoved);
+      if (fullyRemoved) removedHeaders.add(allRows[i]);
+    }
+
+    // One "Removed from install scope — credit" banner bar spanning the
+    // table ABOVE each contiguous removed block (the fully-removed header
+    // when the whole block goes, otherwise the removed row itself).
+    const table = tbody.closest('table');
+    const colCount = (table && table.querySelectorAll('thead th').length) || 12;
+    const isRemovedish = (el) => removedHeaders.has(el) ||
+      (isDataRow(el) && el.classList.contains(CO_RM.rowCls));
+    let prevRemoved = false;
+    allRows.forEach((el) => {
+      const r = isRemovedish(el);
+      if (r && !prevRemoved) {
+        const btr = document.createElement('tr');
+        btr.className = CO_RM.bannerCls;
+        const btd = document.createElement('td');
+        btd.colSpan = colCount;
+        btd.textContent = 'Removed from install scope — credit';
+        btr.appendChild(btd);
+        el.parentNode.insertBefore(btr, el);
+      }
+      prevRemoved = r;
+    });
+
+    // ── Layer 2: Change Summary manifest above the grid ────────────────
+    // Entries are derived from the GRID rows themselves — product from the
+    // enclosing L3 group header, location from the enclosing L1 header —
+    // so the manifest always names things exactly the way the itemized
+    // list below does. (The view's model doesn't carry the product
+    // connection; the grid's product names only exist as group headers.)
+    // Money is DISCOUNT-NET per line (model-preferred; see `amt` below)
+    // so Net change ties to the Project Total.
+    const modelById = {};
+    try {
+      const v = typeof Knack !== 'undefined' && Knack.views && Knack.views[ctx.viewId];
+      const models = v && v.model && v.model.data && v.model.data.models;
+      if (models) models.forEach((m) => { modelById[m.id] = m.attributes || {}; });
+    } catch (e) { /* model unavailable — designators skipped */ }
+
+    const cleanTxt = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+    const readTxt = (rec, key) =>
+      String(rec[key] == null ? '' : rec[key]).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const connLabel = (rec, key) => {
+      const raw = rec[key + '_raw'];
+      if (Array.isArray(raw) && raw.length && raw[0]) return String(raw[0].identifier || '').trim();
+      return readTxt(rec, key);
+    };
+    const cellNum = (tr, key) => {
+      const td = tr.querySelector('td.' + key);
+      const n = td ? parseFloat(cleanTxt(td.textContent).replace(/[^0-9.\-]/g, '')) : NaN;
+      return isFinite(n) ? n : 0;
+    };
+    // First group header at exactly wantLvl walking up from tr; '' when the
+    // walk passes a shallower header first (no such ancestor).
+    const enclosingGroupLabel = (tr, wantLvl) => {
+      let p = tr.previousElementSibling;
+      while (p) {
+        const l = groupLevel(p);
+        if (l && l <= wantLvl) {
+          if (l !== wantLvl) return '';
+          const td = p.querySelector('td');
+          return td ? cleanTxt(td.textContent) : '';
+        }
+        p = p.previousElementSibling;
+      }
+      return '';
+    };
+
+    const adds = [], removes = [];
+    allRows.forEach((tr) => {
+      if (!isDataRow(tr)) return;
+      const rec = modelById[tr.id] || {};
+      // Relocated accessory rows carry their own product name (set before
+      // the move); everything else reads its enclosing L3 header.
+      // cleanProductLabel strips designator lists baked into the name by
+      // older passes and collapses doubled trailing SKUs.
+      const product = cleanProductLabel(tr.getAttribute('data-scw-product-name') || '') ||
+        cleanProductLabel(enclosingGroupLabel(tr, 3));
+      const prefix = connLabel(rec, ctx.keys.prefix);
+      const number = readTxt(rec, ctx.keys.number);
+      // Line value is the LINE ITEM TOTAL (field_2203 = install fee +
+      // discount-net equipment) so the manifest's Net change equals the
+      // Change Order Total — one number everywhere the customer looks.
+      // The previous labor+field_2269 composition silently dropped the
+      // equipment side on grids whose model doesn't carry field_2269
+      // (view_3341 doesn't) — observed 2026-07-17 as Net change $1,338
+      // (labor only) vs Change Order Total $878. (If a proposal-level
+      // discount is ever applied to a CO, the totals will differ by that
+      // amount — the manifest is per-line and can't carry it.)
+      let amt;
+      if (typeof rec['field_2203_raw'] === 'number') {
+        amt = Number(rec['field_2203_raw']) || 0;
+      } else {
+        amt = cellNum(tr, 'field_2203');
+      }
+      const entry = {
+        product: product,
+        desig: prefix ? prefix + number : '',
+        loc: enclosingGroupLabel(tr, 1),
+        qty: cellNum(tr, ctx.keys.qty) || 1,
+        amt: amt,
+      };
+      if (coRmIsRemoveTr(tr)) removes.push(entry);
+      // Adds: only rows with something to show (skips assumptions text rows).
+      else if (entry.product || entry.amt) adds.push(entry);
+    });
+
+    // Document-wide lookup — once docked under the ops stepper the panel
+    // lives OUTSIDE this view's root; a root-scoped lookup would recreate a
+    // duplicate above the grid on the next pipeline run.
+    let summary = document.getElementById(CO_RM.summaryId);
+    if (!anyAction) {
+      // Base proposal — no CO Action values anywhere. No manifest.
+      if (summary) summary.remove();
+      return;
+    }
+    if (root) {
+      if (!summary) {
+        summary = document.createElement('div');
+        summary.id = CO_RM.summaryId;
+        const table = root.querySelector('table');
+        (table ? table.parentNode : root).insertBefore(summary, table || root.firstChild);
+      }
+      // Merge identical products (same product + location) into one row —
+      // an accessory add otherwise lists the same bracket once per camera,
+      // which reads as a wall of repeated text on the agreement. Qty and
+      // amounts sum; designators join into the meta line.
+      const groupEntries = (list) => {
+        const byKey = new Map();
+        list.forEach((e) => {
+          const key = e.product + '¦' + e.loc;
+          const g = byKey.get(key);
+          if (g) {
+            g.qty += e.qty;
+            g.amt += e.amt;
+            if (e.desig) g.desigs.push(e.desig);
+          } else {
+            byKey.set(key, Object.assign({}, e, { desigs: e.desig ? [e.desig] : [] }));
+          }
+        });
+        return Array.from(byKey.values()).map((g) => {
+          g.desig = g.desigs.join(', ');
+          return g;
+        });
+      };
+      const addsG = groupEntries(adds);
+      const removesG = groupEntries(removes);
+      // Item counts stay the TOTAL number of line items (qty sum), not the
+      // number of merged display rows.
+      const countOf = (list) => list.reduce((t, e) => t + (e.qty || 1), 0);
+
+      // Location in the meta line is only useful when the CO touches more
+      // than one location — otherwise it's the same string on every row.
+      const locSet = new Set(
+        addsG.concat(removesG).map((e) => e.loc).filter(Boolean));
+      const showLoc = locSet.size > 1;
+      const itemRows = (list) => list.map((e) => {
+        const meta = [e.desig, showLoc ? e.loc : ''].filter(Boolean).join(' · ');
+        return `<tr><td>${coRmEsc(e.product || '(item)')}` +
+          (meta ? `<span class="scw-cos-meta">${coRmEsc(meta)}</span>` : '') +
+          `</td><td class="scw-cos-qty">${e.qty}</td>` +
+          `<td class="scw-cos-amt">${coRmEsc(coRmMoney(e.amt))}</td></tr>`;
+      }).join('');
+      const subRow = (label, total) =>
+        `<tr class="scw-cos-sub"><td>${coRmEsc(label)}</td><td></td>` +
+        `<td class="scw-cos-amt">${coRmEsc(coRmMoney(total))}</td></tr>`;
+      const addTotal = addsG.reduce((t, e) => t + e.amt, 0);
+      const rmTotal  = removesG.reduce((t, e) => t + e.amt, 0);
+
+      summary.innerHTML =
+        `<div class="scw-cos-title">Change Order — What's Changing</div>` +
+        `<div class="scw-cos-desc">This change order amends the previously approved ` +
+          `installation scope. In the itemized list below, added items are shaded ` +
+          `<b class="scw-cos-g">green</b>; removed items are shaded ` +
+          `<b class="scw-cos-r">red</b> and credited back.</div>` +
+        `<div class="scw-cos-cols">` +
+          (addsG.length ?
+            `<div class="scw-cos-col scw-cos-col--add">` +
+              `<div class="scw-cos-head">Adding to install scope (${countOf(addsG)})</div>` +
+              `<table class="scw-cos-table"><tbody>${itemRows(addsG)}${subRow('Subtotal — additions', addTotal)}</tbody></table>` +
+            `</div>` : '') +
+          (removesG.length ?
+            `<div class="scw-cos-col scw-cos-col--rm">` +
+              `<div class="scw-cos-head">Removing from install scope — credit (${countOf(removesG)})</div>` +
+              `<table class="scw-cos-table"><tbody>${itemRows(removesG)}${subRow('Subtotal — credits', rmTotal)}</tbody></table>` +
+            `</div>` : '') +
+        `</div>` +
+        `<div class="scw-cos-net"><span class="scw-cos-net-label">Net change</span>` +
+        `<span>${coRmEsc(coRmMoney(addTotal + rmTotal))}</span></div>`;
+
+      // Collapse state + chevron + dock under the ops stepper (innerHTML
+      // rebuild above wiped the chevron; re-mount is idempotent).
+      coRmMountSummary(summary);
+    }
+  }
+
+  // ============================================================
   // MAIN PROCESSOR
   // ============================================================
 
@@ -2953,16 +3589,28 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
     reorderLevel3GroupsBySortField(ctx, $tbody, runId);
 
+    // Rebuild L2/L3 headers Knack suppressed for items identical to a prior
+    // group (so the orphaned data row gets its bucket + product headers back).
+    // MUST run before accessory relocation: relocation anchors each accessory
+    // to its parent's enclosing L3 header, and a parent whose L3 was
+    // Knack-suppressed (same product already seen in an earlier L1 group) has
+    // NO L3 until this pass synthesizes it — relocating first silently skips
+    // those accessories and strands them in the bottom Mounting Hardware
+    // catch-all group.
+    synthesizeMissingAncestorHeaders(ctx);
+
     // Move accessory rows (field_2464 → parent) under their parent
     // device row, before L4 synthesis so synthesized headers respect
     // the new row positions.
     relocateAccessoriesToParents(ctx);
 
-    // Rebuild L2/L3 headers Knack suppressed for items identical to a prior
-    // group (so the orphaned data row gets its bucket + product headers back),
-    // THEN synthesize any missing L4 headers on top.
-    synthesizeMissingAncestorHeaders(ctx);
     synthesizeMissingL4Headers(ctx);
+
+    // CO: in-place rose tint + chips on Remove-action rows, removal badges
+    // on group headers, and the "What's Changing" manifest above the grid.
+    // Never moves a row. Runs after header synthesis so the manifest can
+    // read product names off the L3 headers. No-op on base proposals.
+    sectionCoRemovals(ctx);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
     if (!$firstDataRow.length) return;
@@ -3376,7 +4024,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     $view.find('tr.scw-project-totals').each(function () {
       var $tr = $(this);
       var label = ($tr.find('.scw-l1-labelcell').text() || '').trim().toLowerCase();
-      if (label.indexOf('installation') !== -1 || label.indexOf('grand total') !== -1) {
+      if (label.indexOf('installation') !== -1 || label.indexOf('grand total') !== -1 ||
+          label.indexOf('change order total') !== -1) {
         $tr.find('.scw-l1-valuecell').html('<strong>' + TBD + '</strong>');
       }
     });
@@ -3410,6 +4059,18 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           const ctx = buildCtx(viewId, view);
           if (!ctx) return;
 
+          // CO bands: un-band BEFORE transforming. The pipeline's grouping
+          // walk anchors synthetic rows (mounting clusters, subtotals,
+          // totals) relative to row order — running it on a band-reordered
+          // tbody strands them at the top of the table, disconnected from
+          // their section. co-band-mockup.js re-bands via the applyView
+          // hook at the end of this pass.
+          try {
+            if (window.SCW && window.SCW.coBands && window.SCW.coBands.suspend) {
+              window.SCW.coBands.suspend(viewId);
+            }
+          } catch (coErr) { /* banding is presentational — never block the pipeline */ }
+
           injectCssOnce();
           normalizeField2019ForGrouping(ctx);
 
@@ -3429,6 +4090,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
           // Post-pipeline: replace zeroed labor with TBD labels
           if (masked) applyTBDLabels(ctx);
+
+          // CO bands: re-apply synchronously on the fresh output (no
+          // timer gap for another pass to sneak into). No-op on base
+          // proposals — the module keys off the scw-co-add/rm-row
+          // classes this pipeline just stamped.
+          try {
+            if (window.SCW && window.SCW.coBands && window.SCW.coBands.applyView) {
+              window.SCW.coBands.applyView(viewId);
+            }
+          } catch (coErr2) { /* banding is presentational — never block reveal */ }
 
           // Reveal the grid only once relocation has settled (or there
           // was nothing to relocate). Until then it stays

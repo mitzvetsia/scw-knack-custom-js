@@ -123,6 +123,71 @@ install line items.
    removed install records to `Removed by CO-###` (never delete), create the
    Xero invoice from CO lines, mark CO Accepted, attach signed PDF.
 
+7. **A removal is a Remove CO-line that TARGETS THE INSTALL RECORD; install
+   items never connect to a SOW.** (Decided 2026-07-07.) The concern "install
+   line items don't connect to a SOW, so how does a CO say it removes one?" is
+   answered by the join record, not a new install→SOW link:
+   - The removal is a **new SOW Line Item** (an ordinary CO line, `CO Action =
+     Remove`) carrying THREE links that together answer everything: → CO header
+     via `field_2154` ("which CO"); → the install record via `Target install
+     item` ("what gets un-installed"); and its own carried-over money ("the
+     credit"). The install object stays deployment-connected; the SOW↔install
+     relationship lives entirely on this CO-line + one back-stamp.
+   - **`Target install item` points at the INSTALL record, never the original
+     SOW line.** Removal is physically about un-installing a real thing, and the
+     install record is the on-site source of truth (it can have drifted from
+     what was quoted). Lineage to the original quote is **free**: the install
+     record already stores its originating SOW-line id in **`field_2819`** (used
+     by `install-as-quoted-panel.js`), so Make walks `Target install item →
+     field_2819 → original SOW line` for the quoted price. No second connection.
+   - **Model the install's SOW-side relationships as SEPARATE single-purpose
+     one-to-one fields — NEVER one multi-connection field.** From the install's
+     side: (a) `field_2819` → original SOW line (provenance, already exists);
+     (b) `Removed by Change Order` → CO header (scope flag, NEW). The
+     install→remove-LINE link needs **no new field** — it's the automatic
+     reciprocal of the CO-line's `Target install item`. Reasons not to merge:
+     the roles differ (provenance vs removal), the "blank = active" scope filter
+     REQUIRES the removal link to be its own field (a shared multi-field is
+     never blank), and removal is terminal/single (one CO removes an item — the
+     single-connection also guards against two COs claiming the same item).
+   - **Credit is flexible; default = original price, editable per line.**
+     (Resolves open question 1.) Because a Remove line IS a SOW Line Item on the
+     CO worksheet (view_4079), it already has editable money + inline editing.
+     Make seeds the default credit from `field_2819`'s original price (negated);
+     **sales ops adjusts the amount right on the CO worksheet** and records why
+     in `CO adjustment reason`. No special adjustment surface — it's just
+     editing the line.
+   - **Timing subtlety.** `Removed by Change Order` (header) flips at signature,
+     so it does NOT drive the draft panel's "already flagged" state — that reads
+     the reciprocal of `Target install item` from the CO side (a Remove line
+     already exists targeting this install on this CO). Post-signature, the
+     header flag drives the active-scope filter. (co-remove.js's
+     `remove.targetField` config hook is the seam for the draft-side read once
+     the field exists.)
+
+10. **Invoice anchor: the PROJECT carries its accepted base proposal — stamped
+    at acceptance, never searched (decided 2026-07-17).** Xero invoices tie to
+    a proposal number; a CO's invoice must reference the BASE SOW's accepted
+    proposal so the project tells one story. Do NOT resolve this at CO-signed
+    time with a filtered search (accepted ∧ same project ∧ type = base scope) —
+    that re-runs on every CO and silently mis-links the day a project has two
+    accepted base proposals (phase 2, re-accepted revision). Instead:
+    - **Builder**: on the Installation Project object, add `REL_accepted base
+      proposal` (connection → SOW_published proposals, single) and optionally a
+      text copy of the proposal number for zero-hop reads.
+    - **Make (base acceptance scenario)**: when the base proposal's SIGNED
+      webhook fires, it already holds the exact accepted proposal record —
+      add one Update Record stamping it onto the project. One-time backfill
+      for in-flight projects.
+    - **Make (CO signed scenario)**: read the anchor off the already-fetched
+      project record → Xero reference. No search modules.
+    - Same stamp-at-the-source pattern as the sub chain (bid basis
+      `field_2942` → Proposal → Acceptance → CO auto-assign), applied to the
+      customer-side chain. Optional follow-up: copy the anchor onto each CO at
+      creation ("Invoice anchor" text) so the signed webhook payload is fully
+      self-contained and a wrong link is visible during ops review instead of
+      at invoicing.
+
 ## Lifecycle
 
 ```
@@ -260,19 +325,37 @@ design:
   payment / invoice fields cover the CO (expected: yes).
 - SOW Line Item object: `CO Action` (Add / Remove / Adjustment; **default
   Add** — existing records are Adds with no backfill) + `Target install item`
-  connection (single) → install line item object. One field, action-dependent
-  meaning: on Remove = what gets removed; on Add = what this replaces (swap
-  link driving Make's carry-over copy). Blank on ordinary adds.
+  connection (single) → install line item object (**created: `field_2966`**).
+  One field, action-dependent meaning: on Remove = **the install RECORD** that
+  gets removed (NOT the original SOW line — see decision 7); on Add = what this
+  replaces (swap link driving Make's carry-over copy). Blank on ordinary adds.
+- SOW Line Item object: `CO adjustment reason` (text) — why the removal credit
+  (or adjustment amount) was overridden away from the default. Blank on
+  unadjusted lines; filled by ops when they change the seeded credit. Rides
+  into the client doc + invoice. (See decision 7 / resolved open question 1.)
 - Install line item object: `Removed by Change Order` connection (single) →
-  SOW object; blank = active. Filter view_4056/view_3915 (+ install reports)
-  to "Removed by CO is blank".
+  **SOW object (the CO header)** (**created: `field_2967`**); blank = active.
+  Flips at **signature**, not at draft. Filter view_4056/view_4093 (+ install
+  reports) AND the removal source view_4086 to "Removed by CO is blank". (The
+  draft-time "already flagged" state is read from the CO side — the reciprocal
+  of `Target install item` — NOT this field; see decision 7.) co-remove.js
+  reads `field_2967` as its `remove.removedByField` for the flagged/exclusion
+  signal.
 - App-wide `Type ≠ Change Order` filter audit on every SOW-consuming surface.
 - Confirm how Proposal + Acceptance records get created today (Make vs record
   rules) — that's where the type stamp and the CO apply branch live.
 
 ## Make scenarios (not started)
 
-1. **Send to sub** — notify sub, flip status.
+1. **Send to sub** — notify sub, flip status. The webhook payload
+   (co-stage-strip.js, 2026-07-14) now carries everything this scenario
+   needs: `snapshot` (pricing baseline JSON → store verbatim in
+   `field_2972`), `coNumber`/`coName` (ClickUp task lookup), and
+   `requestHtml`/`requestText` — the fixed record of exactly what was
+   requested (self-contained HTML card + plaintext twin). Scenario
+   responsibilities: store snapshot, flip status, notify sub, AND update
+   both ClickUp tasks (subcontractor's + internal) — status change plus
+   the request record posted as a comment on each.
 2. **Send to client (Issue)** — build the CO agreement (adds table +
    removes/credits table + net change) via the existing esignatures
    `document_elements` builder in `proposal-pdf-export.js` (~line 3645);
@@ -328,27 +411,106 @@ but never got installed (not part of a greenlit SOW).
    read-only card sourcing display data from the target install record.
 2. Make: send-to-client (Issue) + signed-webhook apply. First signable CO,
    ops-only, skipping sub pricing.
-3. **Known Issue #17 migration on sub-reachable scenes** — ⚠️ PREREQUISITE
+3. **Restore-via-CO (re-add a removed install item)** — once a removal CO is
+   signed, the install record's `Removed by Change Order` (`field_2967`) is
+   permanent; you must NEVER un-set it (that silently reverses a signed,
+   invoiced CO). Bringing the item back is a NEW **ADD** change order, not an
+   undo. Mechanics reuse existing wiring, no new concept:
+   - **Entry point**: on the CO worksheet, list ALREADY-REMOVED install items
+     (`field_2967` **is not** blank — the inverse of view_4086's active filter)
+     with a **"Restore via CO"** action. Guard against double-restore: don't
+     offer it for an install item some add-line's `Target install item`
+     (`field_2966`) already targets.
+   - **What it creates**: a normal `CO Action = Add` SOW Line Item on the CO,
+     with **`field_2966` (Target install item) → the removed install item** —
+     i.e. the existing `replaces` link (decision 1's swap carry-over). At
+     signature Make creates a FRESH install item; the old one stays
+     `Removed by CO-1`. Audit trail: removed by CO-1, restored by CO-2.
+   - **Seed from the removed INSTALL item, not the original proposal item** (it
+     reflects actual on-site config/QA/photo state; the original base SOW line
+     is already consumed and adopting it in place would multi-parent it). If the
+     install object doesn't physically carry every SOW-line spec field, fall
+     back to seeding from `field_2819` → original SOW line and just attach
+     `field_2966` for the removed-item link. **Open: audit which spec fields
+     live on the install object vs. the SOW-line object to confirm which seed
+     source is sufficient.**
+   - **Money self-balances**: CO-1 credited (default original price via
+     `field_2966 → field_2819 → original SOW line`); CO-2 re-charges the same
+     way → net zero unless adjusted with notes (flexible credit policy).
+4. **Known Issue #17 migration on sub-reachable scenes** — ⚠️ PREREQUISITE
    before any worksheet-v2 surface is served to subcontractor logins: the
    `window.SCW.productBucketMap` Builder snippet ships the full-access REST
    key to the browser. Same check for `dropPrefixOptions` (also carries the
    role-filter TODO #11).
-4. Sub-facing CO view + status-window locking + sub-originated entry point.
-5. view_4056 chips ("Pending CO-###") + toolbar/card entry points ("New
+5. Sub-originated entry point (deferred). **The sub-facing CO page +
+   status-window locking shipped 2026-07-14**: scene_1374 ("Manage Change
+   Order" under the sub portal's deployment dashboard) — view_4121 CO
+   header form, view_4112 CO line items grid, view_4114 MDF/IDF cards,
+   view_4116 install grid, view_4118 v2 source grid, view_4122 status
+   details. `worksheet-v2/co-sub-lock.js` locks the ENTIRE scene (cell
+   edits, delete/edit/add link columns, header form, MDF cards, photo
+   affordances, capture-phase click/submit belt) with a lock banner
+   whenever CO Status (field_2953, read off view_4122) doesn't match
+   /sub pricing/i — blank/unknown fails safe to locked. Applies to
+   everyone on the scene; ops manage from the internal drafting scene.
+   **Full drafting deployment shipped 2026-07-14 (same day)**: scene_1374's
+   views are 1:1 analogues of the internal CO scene and now run the SAME
+   code — worksheet-v2 CO worksheet on view_4112 (config clone of the
+   view_4079 entry, incl. its own `createMirror` field_1957↔2197 cascade
+   instance), adopt panel on view_4118, remove panel on view_4116
+   (`coViewKey: 'view_4112'` steers their post-webhook refetch), MDF L1
+   seeding from view_4114, co-header-card + co-value strip on view_4121,
+   and the co-scene-header add/adopt/remove strips block. co-sub-lock now
+   also flips the v2 worksheet to `.scw-ws-v2--readonly` and hides the
+   strips block + adopt/remove panels while locked. Deliberately NOT
+   deployed to the sub scene: co-stage-strip (its verbs — Send to Sub /
+   Send back / Preview & Issue — are ops actions). Still missing: the
+   sub's own hand-back verb ("Submit pricing to SCW" → flips status to
+   Ops Review) — the sub currently has no button to end their window.
+6. view_4056 chips ("Pending CO-###") + toolbar/card entry points ("New
    Change Order" in the suppressed toolbar slot — worksheet-v2/toolbar.js:151
    `noAddItem` comment anticipates this; "Remove via CO" on the card menu).
-6. Invoice wiring + adjustment lines + credit policy.
+7. Invoice wiring + adjustment lines + credit policy.
 
 ## Open questions
 
-1. **Removal credit policy** — credit at original price, other amount, or $0 +
-   demob fee? Decides what money fields a Remove line carries and how the
-   client doc renders credits.
+1. ~~**Removal credit policy** — credit at original price, other amount, or $0 +
+   demob fee?~~ **RESOLVED 2026-07-07 (decision 7): flexible, default = original
+   price.** Make seeds the Remove line's credit from `field_2819`'s original
+   price (negated); ops can override the amount right on the CO worksheet
+   (view_4079) and records the why in `CO adjustment reason`. No fixed policy —
+   the Remove line is an editable SOW Line Item, so any of original / override /
+   $0-plus-demob is just what ops types.
 2. **One open Draft CO per deployment?** Needed as the target for the
    "Remove via CO" gesture from view_4056. Recommended: yes.
-3. **Proposal→install conversion trigger** — confirm what invokes it today and
+3. **Remove-flow accessory cascade (flagged 2026-07-14).** Removing a parent
+   install item (camera/NVR with mounting hardware) creates ONLY that item's
+   Remove line — its accessory/child install items are silently left active,
+   so the CO under-credits and the install scope keeps orphaned mounts.
+   Direction:
+   - **UI**: the Remove gesture (single + bulk — both funnel through
+     `co-remove.js fireRemove`) detects the target's accessory children and
+     prompts "Also remove N child/accessory items?" Accepted ids join the SAME
+     `installItemIds` array in the webhook payload — no payload shape change;
+     Make already loops it, creating one Remove line per id with its own
+     `field_2966` target + seeded credit.
+   - **Detection source (audit needed)**: does the install object carry its own
+     accessory back-pointer (a `field_2464` analogue)? If not, derive children
+     via `field_2819` → original SOW line → its accessory children
+     (`field_2464` reciprocals) → THEIR install records' `field_2819` matches.
+   - **Sync on the created Remove lines — recommend NOT mirroring.** Do NOT
+     recreate parent/child (`field_2464`) or connected-device
+     (`field_1957`/`field_2197`) links between the new Remove lines. They're
+     credit lines, not buildable scope — mirroring re-imports the cascade
+     fragility of CLAUDE.md Known Issue #12 for zero benefit. Group them
+     visually via `field_2966` → install lineage instead. (If a later surface
+     genuinely needs the structure, add it then.)
+   - Same gap applies to **connected devices**: removing an NVR leaves its
+     cameras' install items active but headless — the prompt should probably
+     ALSO offer connected children, or at minimum warn.
+4. **Proposal→install conversion trigger** — confirm what invokes it today and
    that it can scope to a CO's items.
-4. **CO numbering** (CO-001 per deployment vs global) — display label on
+5. **CO numbering** (CO-001 per deployment vs global) — display label on
    documents, statuses, and chips.
-5. **Awarded-sub auto-assign mechanic** (Project connection stamped at apply
+6. **Awarded-sub auto-assign mechanic** (Project connection stamped at apply
    vs filtered dropdown) — see Sub assignment chain.

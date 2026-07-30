@@ -538,23 +538,38 @@
   }
 
   function rowsUntilNextRelevantGroup($headerRow) {
+    // Plain sibling walk collected into an array and wrapped in $() ONCE.
+    // The previous version did $rows.add($tr) per row — .add() re-runs
+    // uniqueSort on a freshly built jQuery object every iteration, making
+    // this O(n²) per header, and it runs once per header per render.
     const isLevel2 = $headerRow.hasClass('kn-group-level-2');
-    let $rows = $();
-
-    $headerRow.nextAll('tr').each(function () {
-      const $tr = $(this);
-
+    const out = [];
+    let el = $headerRow[0] ? $headerRow[0].nextElementSibling : null;
+    while (el) {
+      const cl = el.classList;
       if (isLevel2) {
-        if ($tr.hasClass('kn-table-group')) return false;
-        $rows = $rows.add($tr);
-        return;
+        if (cl && cl.contains('kn-table-group')) break;
+      } else if (cl && cl.contains('kn-group-level-1')) {
+        break;
       }
+      out.push(el);
+      el = el.nextElementSibling;
+    }
+    return $(out);
+  }
 
-      if ($tr.hasClass('kn-group-level-1')) return false;
-      $rows = $rows.add($tr);
-    });
-
-    return $rows;
+  // Show/hide a row set WITHOUT jQuery's .show()/.hide()/.toggle().
+  // jQuery's visibility machinery runs a per-element hidden check that
+  // reads offsetWidth/offsetHeight — a forced layout per row, interleaved
+  // with the display writes re-invalidating layout, i.e. O(rows × full
+  // relayout). A DevTools trace on the bid-review comparison page
+  // (2026-07-22) attributed 13.7s of a 29.7s capture to exactly that
+  // check ($.expr.filters.hidden) under this module's toggles. A raw
+  // display write reads nothing, so the browser coalesces the whole
+  // batch into one layout.
+  function setRowsShown($rows, show) {
+    const v = show ? '' : 'none';
+    for (let i = 0; i < $rows.length; i++) $rows[i].style.display = v;
   }
 
   function restoreLevel2StatesUnderLevel1($level1Header) {
@@ -563,7 +578,7 @@
       .each(function () {
         const $l2 = $(this);
         const collapsed = $l2.hasClass('scw-collapsed');
-        rowsUntilNextRelevantGroup($l2).toggle(!collapsed);
+        setRowsShown(rowsUntilNextRelevantGroup($l2), !collapsed);
       });
   }
 
@@ -578,7 +593,7 @@
         $l2.addClass('scw-collapsed');
 
         // hide its detail rows (even though L1 is hiding everything, this keeps it consistent)
-        rowsUntilNextRelevantGroup($l2).hide();
+        setRowsShown(rowsUntilNextRelevantGroup($l2), false);
 
         // persist
         const key = buildKey($l2, 2);
@@ -593,11 +608,11 @@
     // Chevron rotation is handled entirely by CSS (rotate -90deg when .scw-collapsed)
 
     if (isLevel2) {
-      rowsUntilNextRelevantGroup($header).toggle(!collapsed);
+      setRowsShown(rowsUntilNextRelevantGroup($header), !collapsed);
       return;
     }
 
-    rowsUntilNextRelevantGroup($header).toggle(!collapsed);
+    setRowsShown(rowsUntilNextRelevantGroup($header), !collapsed);
 
     if (!collapsed) restoreLevel2StatesUnderLevel1($header);
   }
@@ -605,18 +620,50 @@
   // ======================
   // SCENE DETECTION
   // ======================
+  // Memoized per URL hash. The old fallback ($('[id*="scene_"]')
+  // .filter(':visible')) scanned the whole DOM and forced a style
+  // recalc per matched element on EVERY call — and this runs inside
+  // the document-level click delegate, scene/view render handlers and
+  // the mutation observers. A 30-min trace on the installationservices
+  // app (body id without scene_) showed 41s of main-thread time in
+  // this one function. Same-hash calls now hit the cache; the cold
+  // path asks Knack's router before ever touching the DOM.
+  var _sceneIdCache = { hash: null, id: null };
+
   function getCurrentSceneId() {
+    var hash = window.location.href;
+    if (_sceneIdCache.hash === hash && _sceneIdCache.id) return _sceneIdCache.id;
+
+    var id = null;
+
     const bodyId = $('body').attr('id');
     if (bodyId && bodyId.includes('scene_')) {
       const m = bodyId.match(/scene_\d+/);
-      if (m) return m[0];
+      if (m) id = m[0];
     }
-    const $fallback = $('[id*="scene_"]').filter(':visible').first();
-    if ($fallback.length) {
-      const m = ($fallback.attr('id') || '').match(/scene_\d+/);
-      if (m) return m[0];
+
+    if (!id) {
+      // Scoped, jQuery-free fallback: scene containers only (a page has
+      // 1-2, vs the old any-element [id*="scene_"] scan), and a single
+      // offsetParent visibility probe instead of jQuery :visible. Kept
+      // AHEAD of the router so modal pages keep resolving to the parent
+      // scene like the old code did (first visible container wins) —
+      // storage keys depend on that.
+      var els = document.querySelectorAll('.kn-scene[id*="scene_"], [id^="kn-scene_"]');
+      for (var i = 0; i < els.length; i++) {
+        if (els[i].offsetParent === null) continue;
+        var m2 = (els[i].id || '').match(/scene_\d+/);
+        if (m2) { id = m2[0]; break; }
+      }
     }
-    return null;
+
+    if (!id && window.Knack && Knack.router && Knack.router.current_scene_key) {
+      const m = String(Knack.router.current_scene_key).match(/^scene_\d+$/);
+      if (m) id = m[0];
+    }
+
+    _sceneIdCache = { hash: hash, id: id };
+    return id;
   }
 
   var DISABLED_SCENES = { scene_828: true, scene_833: true, scene_873: true };
@@ -953,7 +1000,34 @@
     suppress: function (val) { _suppressAutoEnhance = !!val; },
     /** True if an enhance pass ran within the coalesce window — lets the
      *  post-edit coordinator skip its own redundant enhance() call. */
-    recentlyEnhanced: recentlyEnhanced
+    recentlyEnhanced: recentlyEnhanced,
+    /** Temporarily reveal every row hidden under a COLLAPSED L1/L2 group
+     *  in the given view, so DOM scrapers (proposal-pdf-export's bid /
+     *  proposal snapshot) capture the FULL grid regardless of the user's
+     *  accordion state. Only rows whose inline display is 'none' beneath
+     *  a .scw-collapsed header are touched; the returned restore() puts
+     *  display:none back on exactly those rows. Call restore()
+     *  synchronously after scraping and nothing ever paints. */
+    revealCollapsedForSnapshot: function (viewId) {
+      var undo = [];
+      try {
+        $('#' + viewId)
+          .find('tr.kn-table-group.scw-group-header.scw-collapsed')
+          .each(function () {
+            rowsUntilNextRelevantGroup($(this)).each(function () {
+              if (this.style.display === 'none') {
+                undo.push(this);
+                this.style.display = '';
+              }
+            });
+          });
+      } catch (e) { /* never break the caller's scrape */ }
+      return function restore() {
+        for (var i = 0; i < undo.length; i++) {
+          try { undo[i].style.display = 'none'; } catch (e) { /* ignore */ }
+        }
+      };
+    }
   };
 })();
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/

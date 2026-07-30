@@ -78,15 +78,80 @@
   //                 the connected SOW, which in turn pulls field_2728
   //                 from the project. If > 0, hides the Site Survey
   //                 button. Treated as 0 if not exposed.)
+  //   field_2952  SOW Type (via SOW connection)     → change-order gate
+  //                (FLAG_SOW: base scope / change order — the durable
+  //                 CO signal; see isChangeOrderProposal)
+  //   field_2656  SOW name | proposal name          → change-order gate
+  //                (heuristic fallback: a name carrying the SW####CO
+  //                 suffix marks the proposal as a change order.
+  //                 Not detected if not exposed.)
+  //   field_1089  install agreement contact         → CO e-sign banner
+  //                (names WHO the signature request went to; banner
+  //                 falls back to generic copy if not exposed/blank)
   //
   // Source view IDs on the public scene:
   //   view_3953  "I'm Ready for a Site Survey"
   //   view_3956  "Accept Proposal"
   var CR_COUNT_FIELD = 'field_2907';
+
+  // ── Change-order detection (proposal record only) ──────────────────
+  // A change-order proposal is accepted via the ISSUED E-SIGN AGREEMENT
+  // (esignatures.com email), never the Accept Proposal flow — accepting
+  // would fire the base-scope acceptance pipeline. This public page has
+  // NO SOW view, so detection must come off the proposal record itself:
+  //   1. CO_TYPE_FIELD — the SOW's Type field (field_2952, FLAG_SOW:
+  //      base scope / change order), exposed on view_3952 through the
+  //      SOW connection (added 2026-07-16). Connected columns arrive in
+  //      the record under a DOTTED key (e.g. 'field_2666.field_2952'),
+  //      so the reader scans for both the plain and dotted forms. The
+  //      durable signal: "change order" → CO, "base scope" → not a CO.
+  //   2. Heuristic fallback (only when the type is unreadable) — a name
+  //      field carries the CO suffix (…SW1410CO…), per the CO numbering
+  //      convention. field_2656 (SOW name | proposal name) is the one
+  //      that reliably carries it; field_2665/field_2663 kept for
+  //      older records.
+  // Neither signal present → NOT a CO (base proposals keep the button).
+  var CO_TYPE_FIELD    = 'field_2952'; // SOW Type via the SOW connection
+  var CO_NAME_FIELDS   = ['field_2656', 'field_2665', 'field_2663'];
+  var CO_CONTACT_FIELD = 'field_1089'; // install agreement contact (signer)
+
+  // Read CO_TYPE_FIELD off the record, accepting the plain key or any
+  // connected-field dotted key ('field_XXXX.field_2952'), raw or display,
+  // string or array (FLAG_SOW raw can be an array of choices).
+  function readSowTypeValue(attrs) {
+    var keys = [CO_TYPE_FIELD + '_raw', CO_TYPE_FIELD];
+    for (var k in attrs) {
+      if (!attrs.hasOwnProperty(k)) continue;
+      if (k.indexOf('.' + CO_TYPE_FIELD) !== -1) keys.push(k);
+    }
+    for (var i = 0; i < keys.length; i++) {
+      var v = attrs[keys[i]];
+      if (v == null || v === '') continue;
+      if (Object.prototype.toString.call(v) === '[object Array]') v = v.join(' ');
+      var t = String(v).replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim();
+      if (t) return t;
+    }
+    return '';
+  }
+
+  function isChangeOrderProposal(attrs) {
+    if (!attrs) return false;
+    var t = readSowTypeValue(attrs).toLowerCase();
+    if (t) return t.indexOf('change order') !== -1;
+    for (var i = 0; i < CO_NAME_FIELDS.length; i++) {
+      var v = attrs[CO_NAME_FIELDS[i]];
+      if (v != null && /SW\d+CO\b/i.test(String(v).replace(/<[^>]*>/g, ''))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   var CTA_CONFIGS = [
     {
       viewId: 'view_3953',   // I'm Ready for a Site Survey
       gate: function (attrs) {
+        if (isChangeOrderProposal(attrs)) return false;
         if (readCrCount(attrs) > 0) return false;
         return isYes(attrs.field_2746) || isYes(attrs.field_2746_raw)
             || isYes(attrs.field_2748) || isYes(attrs.field_2748_raw);
@@ -102,15 +167,43 @@
       // child page to it and the connected Add form auto-fills the connection.
       appendRecordId: true,
       gate: function (attrs) {
+        if (isChangeOrderProposal(attrs)) return false;   // e-sign only
         return isYes(attrs.field_2747) || isYes(attrs.field_2747_raw);
       }
     }
   ];
 
-  // Customer-facing fallback. Intentionally vague.
-  var FALLBACK_MESSAGE =
-    'This proposal link is no longer active or could not be found. ' +
-    'Please contact your SCW representative.';
+  // Customer-facing messages.
+  //
+  // GENERIC is intentionally vague and used for every "we can't even
+  // confirm this is a real proposal" path — bad/blank token, zero
+  // matches, multiple matches, archived/unknown status, render error.
+  // Never reveal to an INVALID token that a proposal exists.
+  //
+  // SUPERSEDED / EXPIRED are precise, and safe to show ONLY because
+  // they're reached exclusively when EXACTLY ONE record matched the
+  // token — i.e. the visitor already holds a valid link to a real
+  // proposal. We're just telling a legitimate holder why their (real)
+  // proposal isn't viewable. (For EXPIRED the specific date is spliced
+  // in at render time — see evaluateGates.)
+  var MESSAGES = {
+    generic: {
+      title: 'Proposal Unavailable',
+      body:  'This proposal link is no longer active or could not be found. ' +
+             'Please contact your SCW representative.'
+    },
+    superseded: {
+      title: 'Proposal Superseded',
+      body:  'A newer version of this proposal has been issued, so this link ' +
+             'is no longer active. Please contact your SCW representative for ' +
+             'the current proposal.'
+    },
+    expired: {
+      title: 'Proposal Expired',
+      body:  'This proposal has expired. Please contact your SCW ' +
+             'representative for an updated quote.'
+    }
+  };
 
   // -----------------------------------------------------------------------
   // Implementation. Shouldn't need editing below this line.
@@ -249,11 +342,13 @@
       '<div class="scw-pa-loading">Loading your proposal&hellip;</div>';
   }
 
-  function renderFallback() {
+  // msg = { title, body }; defaults to the generic (existence-safe) copy.
+  function renderFallback(msg) {
+    msg = msg || MESSAGES.generic;
     removeIframe();
     ensureFallbackNode().innerHTML =
-      '<div class="scw-pa-title">Proposal Unavailable</div>' +
-      '<div>' + escapeHtml(FALLBACK_MESSAGE) + '</div>';
+      '<div class="scw-pa-title">' + escapeHtml(msg.title) + '</div>' +
+      '<div>' + escapeHtml(msg.body) + '</div>';
   }
 
   function removeFallback() {
@@ -311,22 +406,44 @@
   }
 
   // ---- Gate checks -----------------------------------------------------
-  function passesGates(attrs) {
+  // Returns { ok: true } when the proposal is viewable, else
+  // { ok: false, message: {title, body} } describing WHY. This runs only
+  // after EXACTLY ONE token-matched record is in hand, so precise
+  // superseded / expired reasons are safe to surface (the visitor holds a
+  // valid link). Any AMBIGUOUS non-viewable status (archived, blank,
+  // unknown) and a missing/invalid expiration stay GENERIC.
+  function evaluateGates(attrs) {
+    // Status gate.
     if (STATUS_FIELD && STATUS_ALLOWED && STATUS_ALLOWED.length) {
-      if (!statusMatches(attrs, STATUS_FIELD, STATUS_ALLOWED)) return false;
+      if (!statusMatches(attrs, STATUS_FIELD, STATUS_ALLOWED)) {
+        if (statusMatches(attrs, STATUS_FIELD, ['Superseded'])) {
+          return { ok: false, message: MESSAGES.superseded };
+        }
+        return { ok: false, message: MESSAGES.generic };
+      }
     }
+    // Expiration gate.
     if (EXPIRATION_FIELD) {
       var raw = attrs[EXPIRATION_FIELD + '_raw'];
       var dateStr =
         (raw && (raw.iso_timestamp || raw.date || raw.date_formatted)) ||
         attrs[EXPIRATION_FIELD];
-      if (!dateStr) return false;
+      if (!dateStr) return { ok: false, message: MESSAGES.generic };
       var expiry = new Date(dateStr);
-      if (isNaN(expiry.getTime())) return false;
+      if (isNaN(expiry.getTime())) return { ok: false, message: MESSAGES.generic };
       var today = new Date(); today.setHours(0, 0, 0, 0);
-      if (expiry < today) return false;
+      if (expiry < today) {
+        // Splice the actual expiration date into the message when we can
+        // read it; otherwise fall back to the date-less copy.
+        var shown = readLiveExpirationDate(attrs);
+        var body = shown
+          ? 'This proposal expired on ' + shown + '. Please contact your ' +
+            'SCW representative for an updated quote.'
+          : MESSAGES.expired.body;
+        return { ok: false, message: { title: MESSAGES.expired.title, body: body } };
+      }
     }
-    return true;
+    return { ok: true };
   }
 
   function isYes(v) {
@@ -474,6 +591,53 @@
     // same scene; render-order isn't guaranteed).
     setTimeout(function () { injectCtaIntoIframe(iframe, attrs, resize); }, 350);
     setTimeout(function () { injectCtaIntoIframe(iframe, attrs, resize); }, 1200);
+
+    // Change-order proposals: the Accept CTA is suppressed (e-sign only),
+    // so point the customer at the signing path instead.
+    setTimeout(function () { injectCoNoticeBanner(iframe, attrs); }, 350);
+    setTimeout(function () { injectCoNoticeBanner(iframe, attrs); }, 1200);
+  }
+
+  // ---- Change-order e-sign notice ---------------------------------------
+  // Mirrors src/features/published-proposal-render.js injectCoNoticeBanner.
+  // Names the signer when the install agreement contact (field_1089) is
+  // exposed on the lookup view and populated.
+  function injectCoNoticeBanner(iframe, attrs) {
+    if (!iframe || !isChangeOrderProposal(attrs)) return;
+    var doc;
+    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
+    catch (e) { return; }
+    if (!doc || !doc.body) return;
+    if (doc.body.querySelector('.scw-co-esign-banner')) return;  // idempotent
+
+    var contact = '';
+    if (CO_CONTACT_FIELD && attrs) {
+      var cRaw = attrs[CO_CONTACT_FIELD + '_raw'];
+      contact = String(cRaw != null && typeof cRaw !== 'object'
+          ? cRaw : (attrs[CO_CONTACT_FIELD] || ''))
+        .replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    }
+    var body = contact
+      ? 'The signature request was sent by email to <b>' + escapeHtml(contact) +
+        '</b> — check that inbox for a message from SCW to review and sign ' +
+        'this change order.'
+      : 'The signature request was sent by email — check your inbox for a ' +
+        'message from SCW to review and sign this change order.';
+
+    var banner = doc.createElement('div');
+    banner.className = 'scw-co-esign-banner';
+    banner.style.cssText =
+      'margin: 0 0 18px 0; padding: 14px 18px;' +
+      'background: #eff6ff; border: 1px solid #bfdbfe;' +
+      'border-radius: 8px; color: #1e40af;' +
+      'font: 600 14px/1.45 system-ui, -apple-system, sans-serif;' +
+      'text-align: left;';
+    banner.innerHTML =
+      '<div style="font-size:15px; font-weight:800; margin-bottom:4px;">' +
+        'This change order is signed electronically' +
+      '</div>' +
+      '<div style="font-weight:500;">' + body + '</div>';
+    doc.body.insertBefore(banner, doc.body.firstChild);
   }
 
   // ---- Live expiration date patch (field_2659 → snapshot row) ---------
@@ -510,13 +674,48 @@
     for (var i = 0; i < labels.length; i++) {
       var labelText = (labels[i].textContent || '').trim().toLowerCase();
       // Match "Expiration Date" / "Expires" — anything starting with "expir".
+      // Overwriting also cleans up an un-replaced _Expiration_Date_ token
+      // if Make's Replace step ever misses it.
       if (!/^expir/.test(labelText)) continue;
       var valueCell = labels[i].nextElementSibling;
       if (valueCell && valueCell.classList && valueCell.classList.contains('detail-value')) {
         valueCell.textContent = live;
         valueCell.setAttribute('data-scw-live-exp', '1');
       }
-      break;
+      return;
+    }
+
+    // No expiration row in the snapshot at all — proposals published while
+    // the SOW-side date was blank (the payload scraper drops empty detail
+    // fields; the token row only ships on NEW publishes). Insert the row so
+    // the live field_2659 value still reaches the customer: right after the
+    // Proposal ID row when present, else at the top of the first
+    // detail-table. Mirrors published-proposal-render.js.
+    var table = doc.body.querySelector('table.detail-table');
+    if (!table) return;
+    var tr = doc.createElement('tr');
+    var labelTd = doc.createElement('td');
+    labelTd.className = 'detail-label';
+    labelTd.textContent = 'Expiration Date';
+    var valueTd = doc.createElement('td');
+    valueTd.className = 'detail-value';
+    valueTd.setAttribute('data-scw-live-exp', '1');
+    valueTd.textContent = live;
+    tr.appendChild(labelTd);
+    tr.appendChild(valueTd);
+
+    var anchorRow = null;
+    for (var p = 0; p < labels.length; p++) {
+      if (/^proposal\s*id/i.test((labels[p].textContent || '').trim())) {
+        anchorRow = labels[p].parentNode;
+        break;
+      }
+    }
+    if (anchorRow && anchorRow.parentNode) {
+      anchorRow.parentNode.insertBefore(tr, anchorRow.nextSibling);
+    } else {
+      var tbody = table.tBodies[0] || table;
+      tbody.insertBefore(tr, tbody.firstChild);
     }
   }
 
@@ -646,7 +845,8 @@
     }
 
     var attrs = records[0];
-    if (!passesGates(attrs)) { renderFallback(); state.pending = false; return; }
+    var gate = evaluateGates(attrs);
+    if (!gate.ok) { renderFallback(gate.message); state.pending = false; return; }
     if (OTP_REQUIRED) { renderFallback(); state.pending = false; return; }
 
     try { renderProposal(attrs); }

@@ -32,15 +32,25 @@
   // Re-inject on every source-view tick. Bind the source-view render events
   // directly (so we catch v2's render even if we subscribed after its first
   // data notify) AND subscribe to the v2 data layer when present.
+  // A DATA-change tick: mark the buildState memo dirty, then render. Only the
+  // real data signals (v2 notify + Knack view-render / cell-update) call this;
+  // the timed load retries call scheduleRender() alone, so they reuse the
+  // cached state and just inject into any late-appearing sections instead of
+  // recomputing the ~800-line transform each time (the slow-load fix).
+  function dirtyRender() {
+    if (ns.render && typeof ns.render.markDirty === 'function') ns.render.markDirty();
+    scheduleRender();
+  }
+
   function wireData() {
     var v2 = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.data;
-    if (v2 && typeof v2.subscribe === 'function') v2.subscribe(scheduleRender);
+    if (v2 && typeof v2.subscribe === 'function') v2.subscribe(dirtyRender);
     var keys = [C.bidViewKey, C.sowItemsViewKey, C.bidPkgViewKey];
     var nsEvt = C.eventNs;
     keys.forEach(function (k) {
       $(document)
-        .off('knack-view-render.' + k + nsEvt).on('knack-view-render.' + k + nsEvt, scheduleRender)
-        .off('knack-cell-update.' + k + nsEvt).on('knack-cell-update.' + k + nsEvt, scheduleRender);
+        .off('knack-view-render.' + k + nsEvt).on('knack-view-render.' + k + nsEvt, dirtyRender)
+        .off('knack-cell-update.' + k + nsEvt).on('knack-cell-update.' + k + nsEvt, dirtyRender);
     });
   }
 

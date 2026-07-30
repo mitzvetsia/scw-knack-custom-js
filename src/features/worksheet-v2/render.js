@@ -88,19 +88,31 @@
 
   // Flat, in-order list of record ids the tree would render — used to detect
   // whether an edit changed the visible STRUCTURE (group membership / sort /
-  // filter) vs. just a record's own fields. Same order the cards appear in.
-  function flatTreeIds(tree) {
+  // filter) vs. just a record's own fields. Same order the cards appear in
+  // — including the install worksheet's removed-by-CO partition (removed
+  // cards render LAST in their L1, inside the collapsible section), so the
+  // in-place fast path isn't permanently defeated on groups with removals.
+  function flatTreeIds(tree, sourceViewKey) {
     var out = [];
+    var partitionRemoved = false;
+    try {
+      var _vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      partitionRemoved = !!(_vc && _vc.moneyMode === 'install');
+    } catch (e) { /* default */ }
     for (var i = 0; i < tree.length; i++) {
       var l1 = tree[i];
+      var removedTail = [];
       for (var j = 0; j < l1.l2.length; j++) {
         var l2 = l1.l2[j];
         if (l2.id === '__empty_l2') continue;
         for (var k = 0; k < l2.records.length; k++) {
           var r = l2.records[k];
-          if (r && r.id) out.push(r.id);
+          if (!r || !r.id) continue;
+          if (partitionRemoved && removedByCoRef(r, sourceViewKey)) removedTail.push(r.id);
+          else out.push(r.id);
         }
       }
+      for (var t = 0; t < removedTail.length; t++) out.push(removedTail[t]);
     }
     return out;
   }
@@ -114,7 +126,7 @@
    */
   function tryInPlaceUpdate(body, tree, dirtyIds, sourceViewKey, openIds) {
     var domCards = body.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
-    var treeIds  = flatTreeIds(tree);
+    var treeIds  = flatTreeIds(tree, sourceViewKey);
     if (domCards.length !== treeIds.length) return false;
 
     var byId = Object.create(null);
@@ -249,8 +261,11 @@
     if (el && el.textContent !== text) el.textContent = text;
   }
 
-  function patchDerivedCells(container, records) {
+  function patchDerivedCells(container, records, sourceViewKey) {
     if (!records || !records.length) return;
+    // laborOnly views render the fee cell BLANK — never repopulate it here.
+    var laborOnly = !!(ns.card && ns.card.isLaborOnly &&
+      ns.card.isLaborOnly(sourceViewKey));
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
       if (!rec || !rec.id) continue;
@@ -261,7 +276,9 @@
       if (!card) continue;
 
       setCellText(card, '.scw-ws-v2-cell--label', readDerived(rec, 'field_1950'));
-      setCellText(card, '.scw-ws-v2-cell--fee',   readDerived(rec, 'field_2028'));
+      if (!laborOnly) {
+        setCellText(card, '.scw-ws-v2-cell--fee', readDerived(rec, 'field_2028'));
+      }
 
       for (var inField in STACK_TOTALS) {
         var input = card.querySelector('[data-scw-ws-v2-field="' + inField + '"]');
@@ -334,6 +351,63 @@
     return sub;
   }
 
+  // ── Removed-by-CO grouping (install worksheet) ────────────────────
+  // Removed install items cluster in a collapsible red section at the
+  // BOTTOM of their MDF/IDF group instead of sitting inline with active
+  // scope. Open/closed state survives rebuilds in memory, keyed by L1 id
+  // (default collapsed — dead scope shouldn't dominate the group).
+  var _removedSecOpen = {};
+
+  function removedByCoRef(rec, sourceViewKey) {
+    var key = 'field_2967';
+    try {
+      var f = ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(sourceViewKey);
+      if (f && f.removedByCo) key = f.removedByCo;
+    } catch (e) { /* default */ }
+    var raw = rec && rec[key + '_raw'];
+    return (Array.isArray(raw) && raw.length && raw[0]) ? raw[0] : null;
+  }
+
+  function buildRemovedSection(recs, sourceViewKey, cardFn, l1Id) {
+    var open = !!_removedSecOpen[l1Id];
+    var sec = document.createElement('div');
+    sec.className = 'scw-ws-v2-removedsec' + (open ? ' scw-ws-v2-removedsec--open' : '');
+    var head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'scw-ws-v2-removedsec-head';
+    head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    head.innerHTML =
+      '<span class="scw-ws-v2-removedsec-caret" aria-hidden="true">' +
+        '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
+        'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<polyline points="9 6 15 12 9 18"></polyline></svg></span>' +
+      '<span>Removed by CO</span>' +
+      '<span class="scw-ws-v2-removedsec-count">' + recs.length + '</span>';
+    sec.appendChild(head);
+    var secBody = document.createElement('div');
+    secBody.className = 'scw-ws-v2-removedsec-body';
+    for (var r = 0; r < recs.length; r++) {
+      try {
+        secBody.appendChild(
+          cardFn ? cardFn(recs[r], sourceViewKey)
+                 : ns.card.buildCard(recs[r], sourceViewKey));
+      } catch (remErr) {
+        console.warn('[scw-ws-v2] buildCard threw for removed record', {
+          recordId: recs[r] && recs[r].id, viewKey: sourceViewKey, error: remErr
+        });
+      }
+    }
+    sec.appendChild(secBody);
+    head.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var nowOpen = sec.classList.toggle('scw-ws-v2-removedsec--open');
+      head.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+      _removedSecOpen[l1Id] = nowOpen;
+    });
+    return sec;
+  }
+
   function buildL1Block(l1, sourceViewKey, cardFn) {
     var block = document.createElement('section');
     block.className = 'scw-ws-v2-l1' +
@@ -352,11 +426,32 @@
     sel.setAttribute('data-scw-ws-v2-l1-select', l1.id);
     sel.setAttribute('aria-label', 'Select all in group');
     headWrap.appendChild(sel);
-    headWrap.appendChild(buildL1Header(l1, sourceViewKey));
+    var headEl = buildL1Header(l1, sourceViewKey);
+    headWrap.appendChild(headEl);
+    // Optional MDF/IDF edit pencil (config mdfManage — deploy integration).
+    // Lives in the wrap BEFORE the head <button> (icon chip between the
+    // checkbox and the title — nested buttons are invalid and in-place
+    // updates swap the head node while the wrap persists).
+    if (ns.mdfNotes && typeof ns.mdfNotes.headerControl === 'function') {
+      try {
+        var mdfBtn = ns.mdfNotes.headerControl(l1, sourceViewKey);
+        if (mdfBtn) headWrap.insertBefore(mdfBtn, headEl);
+      } catch (eMdf) { /* optional module — never break the header */ }
+    }
     block.appendChild(headWrap);
 
     var body = document.createElement('div');
     body.className = 'scw-ws-v2-l1-body';
+
+    // Optional MDF/IDF detail band (survey-notes callout + photos + SCW
+    // notes — config mdfManage, deploy integration). Top of the body,
+    // mirroring the comparison page's L1 treatment.
+    if (ns.mdfNotes && typeof ns.mdfNotes.detailBand === 'function') {
+      try {
+        var mdfBand = ns.mdfNotes.detailBand(l1, sourceViewKey);
+        if (mdfBand) body.appendChild(mdfBand);
+      } catch (eBand) { /* optional module — never break the body */ }
+    }
 
     // Sales money model? (moneyMode:'sales') — drives the summary money
     // column (Total vs Sub Bid) and the column-header labels below.
@@ -407,10 +502,21 @@
       // headers line up with their columns. Cam-row-shaped (with
       // "Drop" slot) since the cam template is the superset.
       var hdr = document.createElement('div');
+      var laborMoney = !salesMoney && !surveyMoney && !installMoney &&
+        !!(ns.card && ns.card.isLaborOnly && ns.card.isLaborOnly(sourceViewKey));
+      var _vcHdr = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
+                   ns.cfg.viewCfg(sourceViewKey);
+      var hdrHideSow = !!(_vcHdr && _vcHdr.hideSow);
+      // Ops CO worksheet: Equipment $ stack ahead of Sub Bid (config
+      // equipmentField — only meaningful on the build-SOW money model).
+      var equipMoney = !!(_vcHdr && _vcHdr.equipmentField) &&
+        !salesMoney && !surveyMoney && !installMoney && !laborMoney;
       hdr.className = 'scw-ws-v2-col-header' +
         (salesMoney  ? ' scw-ws-v2-col-header--sales'  : '') +
         (surveyMoney ? ' scw-ws-v2-col-header--survey' : '') +
-        (installMoney ? ' scw-ws-v2-col-header--install' : '');
+        (installMoney ? ' scw-ws-v2-col-header--install' : '') +
+        (laborMoney  ? ' scw-ws-v2-col-header--labor' : '') +
+        (equipMoney  ? ' scw-ws-v2-col-header--equip' : '');
       if (installMoney) {
         // Install 7-track header (matches the install row grid): chevron ·
         // Label · Product · Flags · SCW Notes · warn · trash. No money columns.
@@ -450,12 +556,27 @@
           '<span>Qty</span>' +
           (salesMoney
             ? '<span class="scw-ws-v2-col-header-total">Total</span>'
-            : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>') +
+            // laborOnly (sub CO page): +Hrs/+Mat/Fee tracks don't exist in
+            // the labor grid — only Sub Bid, plus SOW where the view shows
+            // it (the adopt panel does; the CO worksheet hides it).
+            : (laborMoney
+              ? '<span>Sub Bid</span>' + (hdrHideSow ? '' : '<span>SOW</span>')
+              // equipMoney (ops CO worksheet): Equipment $ ahead of the labor
+              // stacks; the CO view hides SOW so its track doesn't exist in
+              // the --equip grid.
+              : (equipMoney
+                ? '<span>Equip $</span><span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span>' +
+                  '<span title="Extended net total">Net</span>' +
+                  (hdrHideSow ? '' : '<span>SOW</span>')
+                : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>'))) +
           '<span></span>' + /* warning slot */
           (salesMoney ? '<span>CR</span>' : '<span></span>');   /* trash / CR slot */
       }
       body.appendChild(hdr);
 
+      // Install worksheet: removed-by-CO items pull OUT of the normal flow
+      // and cluster in a collapsible section at the bottom of the group.
+      var removedRecs = [];
       for (var i = 0; i < l1.l2.length; i++) {
         var l2 = l1.l2[i];
         // Empty seed L1 — skip the L2 header so we just show the
@@ -466,6 +587,10 @@
         // is the only grouping; bucket-level sub-heads were noise.
         if (l2.id !== '__flat') body.appendChild(buildL2Header(l2));
         for (var j = 0; j < l2.records.length; j++) {
+          if (installMoney && removedByCoRef(l2.records[j], sourceViewKey)) {
+            removedRecs.push(l2.records[j]);
+            continue;
+          }
           // Per-card try/catch — one malformed record shouldn't take
           // down the entire panel. Failed cards render an inline
           // placeholder + log to console so the issue is debuggable
@@ -488,24 +613,29 @@
           }
         }
       }
+      if (removedRecs.length) {
+        body.appendChild(buildRemovedSection(removedRecs, sourceViewKey, cardFn, l1.id));
+      }
     }
 
     block.appendChild(body);
     return block;
   }
 
-  // Views whose line-item cards default to OPEN (expanded) on first render —
-  // the field-facing install worksheets, where you're filling in each
-  // device's detail, not scanning a list. Later re-renders preserve whatever
-  // the user has since collapsed (via the openIds DOM snapshot). Other v2
-  // worksheets keep the default-collapsed behavior.
+  // Views whose line-item cards remember PER-RECORD open state across page
+  // loads (see state.js CARD_PERSIST_VIEWS) — the field-facing install
+  // worksheets. A page nobody has touched — or a record nobody has opened —
+  // defaults COLLAPSED (photo strips stay hidden, per the CSS rule that only
+  // reveals strips on open cards); a record the user previously opened
+  // reopens automatically when they return. Later re-renders in the same
+  // session preserve whatever's currently open/closed in the DOM. Other v2
+  // worksheets keep the plain DOM-only (non-persisted) expand state.
   //
   // NOTE: the survey/bid worksheet (view_3505) is intentionally NOT here —
   // its line-item cards default COLLAPSED while its MDF/IDF groups default
   // OPEN (see state.js GROUPS_DEFAULT_OPEN), so techs scan locations first
   // and expand individual devices on demand.
-  var CARDS_DEFAULT_OPEN = { view_3915: 1, view_4056: 1 };
-  var _cardsSeeded = Object.create(null);   // sourceViewKey → true once defaulted-open
+  var _cardsSeeded = Object.create(null);   // sourceViewKey → true once persisted state applied
 
   function renderView(sourceViewKey, records) {
     var container = document.getElementById('scw-ws-v2-' + sourceViewKey);
@@ -531,7 +661,7 @@
       // place so the committed value's recomputed label / fee / totals
       // show immediately.
       pending[sourceViewKey] = records;
-      patchDerivedCells(container, records);
+      patchDerivedCells(container, records, sourceViewKey);
       return;
     }
     delete pending[sourceViewKey];
@@ -604,7 +734,16 @@
       // Per-view field map so L1 (MDF/IDF) / L2 (bucket) / sort resolve for
       // non-SOW objects (survey view_3505 groups by field_2375 / field_2366).
       fields: (ns.cfg && typeof ns.cfg.fields === 'function')
-        ? ns.cfg.fields(sourceViewKey) : null
+        ? ns.cfg.fields(sourceViewKey) : null,
+      // Install worksheet: accessories with a loaded parent ALWAYS
+      // attach/hide (no Require-Sub-Bid promote rule — no money there).
+      accessoriesAlwaysAttach: (function () {
+        try {
+          var _vcA = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
+                     ns.cfg.viewCfg(sourceViewKey);
+          return !!(_vcA && _vcA.accessoriesAlwaysAttach);
+        } catch (e) { return false; }
+      })()
     });
     if (_PF) _pfG = SCW._now() - _ag;
     if (ns.state && typeof ns.state.applyOpenState === 'function') {
@@ -624,14 +763,17 @@
       var rid = openNodes[oi].getAttribute('data-scw-ws-v2-record');
       if (rid) openIds[rid] = true;
     }
-    // Default-open views: on the FIRST render that actually has records, seed
-    // every card into the open set so they all start expanded. The per-view
-    // flag means later re-renders fall back to the DOM snapshot above, so a
-    // card the user has since collapsed stays collapsed.
-    if (CARDS_DEFAULT_OPEN[sourceViewKey] && !_cardsSeeded[sourceViewKey] && records.length) {
+    // Persist-open views: on the FIRST render that actually has records,
+    // merge in whatever the user left open on a PREVIOUS visit (localStorage)
+    // instead of forcing every card open. A record nobody has ever opened —
+    // or a first-ever visitor — stays collapsed. The per-view seeded flag
+    // means later re-renders fall back to the DOM snapshot above, so a card
+    // the user opens/closes this session isn't fought by a stale reload.
+    if (!_cardsSeeded[sourceViewKey] && records.length) {
       _cardsSeeded[sourceViewKey] = true;
-      for (var _so = 0; _so < records.length; _so++) {
-        if (records[_so] && records[_so].id) openIds[records[_so].id] = true;
+      if (ns.state && typeof ns.state.loadOpenCardIds === 'function') {
+        var _persistedOpen = ns.state.loadOpenCardIds(sourceViewKey);
+        for (var _pid in _persistedOpen) openIds[_pid] = true;
       }
     }
 

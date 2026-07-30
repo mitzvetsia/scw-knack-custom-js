@@ -53,6 +53,23 @@
     '  color: #64748b; font-size: 12px;',
     '  font-variant-numeric: tabular-nums;',
     '}',
+    /* ── Partial-data mode: rows stream in, AGGREGATES hide ─────
+       While a truncation-repair refetch is in flight (render.js sets
+       --partial on the container) the diff totals are computed from
+       incomplete data and read as alarming nonsense ("137 not bid,
+       labor Δ +$260k"). Hide the sub-bid diff strip and the SOW-header
+       warning chips until the data is complete; the count line carries
+       the explicit loading notice. Amber = warning per repo convention. */
+    '.scw-bid-review-v2--partial .scw-sbd-inline { display: none !important; }',
+    '.scw-bid-review-v2--partial .scw-bid-review-v2__warn-chips,',
+    '.scw-bid-review-v2--partial .scw-bid-review-v2__warn-chip--sum { display: none !important; }',
+    '.scw-bid-review-v2--partial .scw-bid-review-v2-count {',
+    '  color: #b45309; font-weight: 700;',
+    '  animation: scw-br-v2-loading-pulse 1.2s ease-in-out infinite;',
+    '}',
+    '@keyframes scw-br-v2-loading-pulse {',
+    '  0%, 100% { opacity: 1; } 50% { opacity: 0.45; }',
+    '}',
     '.scw-bid-review-v2-body {',
     '  padding: 16px;',
     '  background: #fff;',
@@ -225,19 +242,24 @@
     '  letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 2px;',
     '}',
     '.scw-bid-review-v2__head-name-value { font-size: 13px; font-weight: 700; color: #0f172a; }',
-    /* Doc-type label ("Site plan") to the RIGHT of the filename in the v2',
-       SOW header — keeps the filename left edge clean. v2-scoped so v1 is',
-       untouched. */
-    '.scw-bid-review-v2__head--sow .scw-bid-review__docs-item {',
-    '  display: flex; align-items: baseline; gap: 8px;',
+    /* Documents GALLERY band (2026-07-16) — the docs block no longer lives
+       in the (narrow) SOW head column: buildSowSection asks v1's
+       buildSowStatusBar for it separately (separateDocs) and mounts it in
+       this full-width row between the SOW header and the first line-item
+       group, so the preview cards get the whole grid width. */
+    '.scw-bid-review-v2__docs-cell {',
+    '  padding: 10px 16px 12px;',
+    '  background: #f8fafc;',
+    '  border-bottom: 1px solid #e2e8f0;',
     '}',
-    '.scw-bid-review-v2__head--sow .scw-bid-review__docs-body { order: 1; flex: 1 1 auto; min-width: 0; }',
-    '.scw-bid-review-v2__head--sow .scw-bid-review__docs-type {',
-    '  order: 2; margin-left: auto; flex: 0 0 auto;',
+    /* The block carries v1 margins tuned for the head column — the band
+       cell's own padding provides the breathing room instead. */
+    '.scw-bid-review-v2__docs-cell .scw-bid-review__docs--sow {',
+    '  margin: 0;',
     '}',
-    '.scw-bid-review-v2__head--sow .scw-bid-review__docs-unlink-btn,',
-    '.scw-bid-review-v2__head--sow .scw-bid-review__docs-link-btn {',
-    '  order: 3; flex: 0 0 auto;',
+    /* Wider canvas → slightly larger cards than the v1 default. */
+    '.scw-bid-review-v2__docs-cell .scw-bid-review__docs-list {',
+    '  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));',
     '}',
     '.scw-bid-review-v2__head-title {',
     '  font-size: 13px; font-weight: 800; letter-spacing: 0.04em;',
@@ -367,23 +389,38 @@
     '.scw-bid-review-v2__cell-cr-card {',
     '  margin-top: 8px; cursor: pointer;',
     '}',
-    /* Diff highlighting — whole cell flagged + per-field amber pill (v1 parity). */
+    /* Diff highlighting — whole cell flagged + per-field pill (v1 parity).
+       Two-tone (2026-07-14): MONEY diffs (Sub Bid / Ext fee + Qty) keep the
+       amber pill so pricing deltas stay the loudest signal; every OTHER
+       field diff (product / desc / conn / MDF / label / cabling) reads
+       LAVENDER. The bid-side pills always carry data-scw-diff-field, so the
+       money override keys off that attribute.
+       Existing Cabling joins the amber set (2026-07-15) — it drives cost
+       like money does (not-existing = a pull), so its mismatch shouldn't
+       read as a soft lavender spec diff. A DROPPED existing chip (--off)
+       keeps its red struck text on the amber pill — only the background
+       comes from this rule. */
     '.scw-bid-review-v2__cell--mismatch {',
     '  background: #fff7ed; box-shadow: inset 3px 0 0 #fb923c;',
     '}',
     '.scw-bid-review-v2__field-diff {',
-    '  background: #fed7aa; border-radius: 3px; padding: 0 4px;',
+    '  background: #ddd6fe; border-radius: 3px; padding: 0 4px;',
     '  box-decoration-break: clone; -webkit-box-decoration-break: clone;',
+    '}',
+    '.scw-bid-review-v2__field-diff[data-scw-diff-field="qty"],',
+    '.scw-bid-review-v2__field-diff[data-scw-diff-field="fee"],',
+    '.scw-bid-review-v2__field-diff[data-scw-diff-field="existing"] {',
+    '  background: #fed7aa;',
     '}',
     /* Word-level diff on text fields (product / labor desc): underline ONLY
        the words that differ from the SOW value, instead of the whole-field
-       amber pill. Amber to match the diff theme. */
+       pill. Lavender — text diffs are non-money (see the rule above). */
     '.scw-bid-review-v2__tok-diff {',
     '  text-decoration: underline;',
-    '  text-decoration-color: #ea580c;',
+    '  text-decoration-color: #7c3aed;',
     '  text-decoration-thickness: 2px;',
     '  text-underline-offset: 2px;',
-    '  background: #ffedd5;',
+    '  background: #ede9fe;',
     '  border-radius: 2px;',
     '}',
     /* Cabling attribute strip (conduit / drop / plenum / exterior / existing)
@@ -599,6 +636,14 @@
     '  letter-spacing: 0.04em; color: #295f91;',
     '  margin-bottom: 8px; padding-bottom: 6px;',
     '  border-bottom: 1px solid #e2e8f0;',
+    '  display: flex; align-items: center; gap: 8px;',
+    '}',
+    /* Re-link only shows when the row is OPEN: hidden in the grid row's
+       cell action stack, relocated into the bid card's label strip
+       (top-right) when the expand panel builds. */
+    '.scw-bid-review-v2__row .scw-bid-review__cell-action--relink { display: none; }',
+    '.scw-bid-review-v2__bid-card-label .scw-bid-review__cell-action--relink {',
+    '  margin-left: auto; letter-spacing: 0.02em; text-transform: none;',
     '}',
     /* ── Narrow-editor reflow (scoped to the panel) ─────────────
        The worksheet-v2 summary row is a fixed ~930px 12-column grid that
@@ -774,6 +819,9 @@
     '.scw-bid-review-v2__warn-chip[data-issue-type="bracket"] {',
     '  color: #b45309; background: #fffbeb; border-color: #fcd34d;',
     '}',
+    '.scw-bid-review-v2__warn-chip[data-issue-type="notes"] {',
+    '  color: #0e7490; background: #ecfeff; border-color: #a5f3fc;',
+    '}',
     /* Aggregate (summary) chips in the MDF/IDF group header — icon + count
        + label, auto-width pill. Sits between the title and the row count.
        CRITICAL: the base __warn-chips rule above is an absolutely-positioned
@@ -798,11 +846,18 @@
        clean gap so nothing is crammed together. */
     '.scw-bid-review-v2__row-label-cell {',
     '  position: relative;',
-    '  padding: 16px 14px 16px 30px !important;',
+    '  padding: 12px 14px 16px !important;',
     '  background: #f8fafc;',
     '  border-right: 1px solid #e2e8f0;',
     '  font-variant-numeric: tabular-nums;',
     '  vertical-align: top;',
+    '}',
+    /* Controls row above the content: checkbox far left, caret second,
+       clearly gapped (caret misclicks when they were adjacent). Normal
+       flow — absolute-positioning these beside the text squeezed this
+       narrow column and wrapped labels like "I-038". */
+    '.scw-bid-review-v2__row-controls {',
+    '  display: flex; align-items: center; gap: 12px; margin-bottom: 8px;',
     '}',
     /* Inner wrapper carries the flex stack; the <td> stays a table-cell so
        its background spans the full row height (e.g. when there are no
@@ -821,7 +876,7 @@
     '  transition: transform 150ms ease, background 150ms ease, color 150ms ease;',
     '}',
     '.scw-bid-review-v2__row-caret {',
-    '  position: absolute; left: 6px; top: 13px;',
+    '  flex: 0 0 auto;',
     '  transform: rotate(-90deg);', /* point right when closed */
     '}',
     '.scw-bid-review-v2__row--expandable:hover .scw-bid-review-v2__row-caret {',
@@ -967,6 +1022,16 @@
     '  font-weight: 600;',
     '}',
     '.scw-bid-review-v2__sow-desc-wrap { margin-top: 4px; }',
+    /* Attached accessories line (text-only) under a SOW item's numbers. */
+    '.scw-bid-review-v2__sow-accessories {',
+    '  margin-top: 6px; font-size: 11.5px; line-height: 1.4;',
+    '  color: #475569; overflow-wrap: anywhere; word-break: break-word;',
+    '}',
+    '.scw-bid-review-v2__sow-accessories label {',
+    '  display: inline-block; margin-right: 5px;',
+    '  color: #64748b; font-size: 10px; font-weight: 700;',
+    '  text-transform: uppercase; letter-spacing: .03em;',
+    '}',
     /* ── Bid cells (read-only) ─────────────────────────────── */
     '.scw-bid-review-v2__cell {',
     '  padding: 20px 22px !important;',
@@ -1112,7 +1177,7 @@
     '  display: flex; flex-wrap: wrap; gap: 8px;',
     '}',
     '.scw-bid-review-v2__l1-detail-photo {',
-    '  display: block; flex: 0 0 auto; border-radius: 6px;',
+    '  display: block; position: relative; flex: 0 0 auto; border-radius: 6px;',
     '  border: 1px solid #ddd; background: #fff;',
     '  box-shadow: 0 1px 4px rgba(0,0,0,.08);',
     '  transition: transform 120ms ease, box-shadow 120ms ease;',
@@ -1121,6 +1186,23 @@
     '.scw-bid-review-v2__l1-detail-photo:hover {',
     '  transform: scale(1.03); box-shadow: 0 3px 12px rgba(0,0,0,.15);',
     '}',
+    /* Delete overlay — small trash chip, top-right of the thumb, revealed
+       on hover (same treatment as worksheet-v2's line-item photo delete). */
+    '.scw-bid-review-v2__l1-detail-photo-del {',
+    '  position: absolute; top: 3px; right: 3px; z-index: 3;',
+    '  display: inline-flex; align-items: center; justify-content: center;',
+    '  width: 20px; height: 20px; padding: 0;',
+    '  border: 0; border-radius: 50%;',
+    '  background: rgba(255,255,255,0.92); color: #64748b;',
+    '  box-shadow: 0 1px 3px rgba(2,6,23,0.35);',
+    '  cursor: pointer; opacity: 0;',
+    '  transition: opacity 100ms ease, background 100ms ease, color 100ms ease;',
+    '}',
+    '.scw-bid-review-v2__l1-detail-photo:hover .scw-bid-review-v2__l1-detail-photo-del {',
+    '  opacity: 1;',
+    '}',
+    '.scw-bid-review-v2__l1-detail-photo-del:hover { background: #fee2e2; color: #b91c1c; }',
+    '.scw-bid-review-v2__l1-detail-photo-del svg { display: block; }',
     /* Override Knack default ".kn-content img { max-width: 100% }". */
     '.scw-bid-review-v2__l1-detail-photo img,',
     '.kn-content .scw-bid-review-v2__l1-detail-photo img {',

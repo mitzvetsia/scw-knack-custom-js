@@ -52,8 +52,16 @@
   // Mounting Brackets" L1. Reading the forward link instead of the
   // back-link sidesteps any case where field_2464 hasn't caught up to
   // a recent field_1958 edit.
+  // Accessory field keys are ALSO resolved per pass (the install object
+  // uses field_2853 child→parent / field_2852 forward — CLAUDE.md #15).
+  // These literals are the SOW defaults/fallbacks.
   var ACCESSORY_PARENT_FIELD     = 'field_2464';
-  var ACCESSORY_FORWARD_FIELD    = 'field_1958';
+  var ACC_CHILDREN_FIELD         = 'field_2207';
+  // When true (config accessoriesAlwaysAttach — the install worksheet),
+  // any record with a loaded parent attaches/hides regardless of the
+  // Require-Sub-Bid promote rule: install accessories are signed scope
+  // with no money to adjust, so there's nothing to promote a row for.
+  var ACC_ALWAYS_ATTACH          = false;
   var MOUNTING_HARDWARE_BUCKET   = '594a94536877675816984cb9';
   var SYNTHETIC_ORPHAN_BRACKETS_LABEL = 'Orphaned Accessories';
 
@@ -69,7 +77,7 @@
    *  true; any other value — Yes, empty, missing — leaves the bracket
    *  visible as its own line item so the user can adjust sub bid /
    *  hours / materials on it directly. */
-  var REQUIRE_SUBBID_FIELD = 'field_2479';
+  var REQUIRE_SUBBID_FIELD = 'field_2479';   // resolved per pass (install: field_2796)
   function isRequireSubBidNoOrFalse(rec) {
     var raw = rec && rec[REQUIRE_SUBBID_FIELD + '_raw'];
     if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
@@ -90,7 +98,8 @@
       // No bucket check — any record (any bucket) is "attached and
       // hidden" when it has a parent AND its Require Sub Bid flag is
       // explicitly No/false. Otherwise it shows as its own line item.
-      if (!isRequireSubBidNoOrFalse(rec)) continue;
+      // ACC_ALWAYS_ATTACH (install) skips the promote rule entirely.
+      if (!ACC_ALWAYS_ATTACH && !isRequireSubBidNoOrFalse(rec)) continue;
       var raw = rec[ACCESSORY_PARENT_FIELD + '_raw'];
       if (!Array.isArray(raw)) continue;
       for (var k = 0; k < raw.length; k++) {
@@ -189,6 +198,11 @@
     FIELD_BUCKET  = F.bucket    || 'field_2219';
     FIELD_SORT    = F.sortOrder || 'field_2218';
     FIELD_LABEL   = F.labelAlt  || F.displayLabel || 'field_2365';
+    // Accessory relationship per object (install: field_2853/2852/2796).
+    ACCESSORY_PARENT_FIELD = F.parent        || 'field_2464';
+    ACC_CHILDREN_FIELD     = F.children      || 'field_2207';
+    REQUIRE_SUBBID_FIELD   = F.requireSubBid || 'field_2479';
+    ACC_ALWAYS_ATTACH      = !!opts.accessoriesAlwaysAttach;
     GF = F;
     // First pass: bucket into L1 → L2 maps
     var l1Map = Object.create(null);
@@ -259,7 +273,7 @@
         // way — leave the record as a promoted bracket. No false
         // positives.
         if (promotedParent) {
-          var childArr = promotedParent.field_2207_raw;
+          var childArr = promotedParent[ACC_CHILDREN_FIELD + '_raw'];
           if (Array.isArray(childArr)) {
             var listed = false;
             for (var ci = 0; ci < childArr.length; ci++) {

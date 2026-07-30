@@ -183,6 +183,46 @@
   }
   ns.applyGroupCollapse = applyGroupCollapse;
 
+  /** Are every SOW's MDF/IDF groups currently open? Mirrors worksheet-v2's
+   *  "honest label" rule — the toolbar button always says what the NEXT
+   *  click will do. No groups on the page ⇒ treated as "not all open" so
+   *  the button defaults to "Expand". */
+  function allGroupsOpen() {
+    var heads = document.querySelectorAll('.scw-bid-review-v2__group-header');
+    if (!heads.length) return false;
+    for (var i = 0; i < heads.length; i++) {
+      if (heads[i].classList.contains('scw-bid-review-v2__group-header--collapsed')) return false;
+    }
+    return true;
+  }
+  ns.allGroupsOpen = allGroupsOpen;
+
+  /** Global "Expand/Collapse MDF/IDFs" — same walk as the per-SOW toggle
+   *  (data-scw-br-v2-sow-groups) but applied to EVERY SOW section, and it
+   *  keeps each SOW's own toggle button label in sync so the two controls
+   *  never disagree. Used by the top toolbar's groups-toggle button. */
+  function toggleAllGroups(collapse) {
+    var sections = document.querySelectorAll('.scw-bid-review-v2__sow');
+    for (var i = 0; i < sections.length; i++) {
+      var section = sections[i];
+      var sowId = section.getAttribute('data-sow-id') || '';
+      var subs = section.querySelectorAll('.scw-bid-review-v2__subgroup-header');
+      for (var sb = 0; sb < subs.length; sb++) {
+        subs[sb].classList.toggle('scw-bid-review-v2__subgroup-header--collapsed', collapse);
+        subs[sb].setAttribute('aria-expanded', collapse ? 'false' : 'true');
+        rememberSub(sowId, subs[sb].getAttribute('data-subgroup-key') || '', collapse);
+      }
+      var heads = section.querySelectorAll('.scw-bid-review-v2__group-header');
+      for (var h = 0; h < heads.length; h++) {
+        setL1Collapsed(heads[h], collapse);
+        rememberL1(sowId, heads[h].getAttribute('data-l1-id') || '', collapse);
+      }
+      var sowToggle = section.querySelector('[data-scw-br-v2-sow-groups]');
+      if (sowToggle) sowToggle.textContent = collapse ? 'Expand all' : 'Collapse all';
+    }
+  }
+  ns.toggleAllGroups = toggleAllGroups;
+
   function wireGroupCollapse() {
     if (document.documentElement.hasAttribute('data-scw-br-v2-collapse-bound')) return;
     document.documentElement.setAttribute('data-scw-br-v2-collapse-bound', '1');
@@ -512,21 +552,25 @@
       next.parentNode.removeChild(next);
       row.setAttribute('aria-expanded', 'false');
       row.classList.remove('scw-bid-review-v2__row--open');
-      var closedId = row.getAttribute('data-sow-item-id');
+      var closedId = row.getAttribute('data-sow-item-id') ||
+                     row.getAttribute('data-row-id');
       if (closedId && ns.state) ns.state.setRowExpanded(closedId, false);
+      syncToolbarRowLabel();
       return;
     }
+    // Rows whose bid item points at NO SOW item still open (that's where
+    // the Re-link button lives) — the panel just skips the SOW editor.
     var sowItemId = row.getAttribute('data-sow-item-id');
-    if (!sowItemId) return;
-    var sowRec = lookupSowRecord(sowItemId);
-    if (!sowRec) {
+    var stateKey  = sowItemId || row.getAttribute('data-row-id');
+    if (!stateKey) return;
+    var sowRec = sowItemId ? lookupSowRecord(sowItemId) : null;
+    if (sowItemId && !sowRec) {
       console.warn('[scw-br-v2] SOW item not found in model:', sowItemId);
-      return;
     }
 
     var expand = document.createElement('tr');
     expand.className = 'scw-bid-review-v2__expand-row';
-    expand.setAttribute('data-expand-for', sowItemId);
+    expand.setAttribute('data-expand-for', stateKey);
     var td = document.createElement('td');
     td.colSpan = row.children.length;
     td.className = 'scw-bid-review-v2__expand-cell';
@@ -561,9 +605,15 @@
     row.setAttribute('aria-expanded', 'true');
     // Remember this row is open so a post-edit/-delete grid rebuild can
     // re-open it (render.js → reopenExpandedRows) instead of collapsing it.
-    if (ns.state) ns.state.setRowExpanded(sowItemId, true);
+    if (ns.state) ns.state.setRowExpanded(stateKey, true);
 
-    mountWorksheetV2Card(cardCol, sowRec);
+    if (sowRec) {
+      mountWorksheetV2Card(cardCol, sowRec);
+    }
+    // No SOW record → leave the editor column empty. The old "use Re-link"
+    // instruction read as a to-do in contexts where re-linking is NOT the
+    // right move (e.g. the Removed — no longer on any SOW or bid section,
+    // where the disconnect is intentional).
 
     // Auto-mount the photo viewer when the row has photos, so expanding
     // (by clicking the SOW cell, the row, or a thumb) always surfaces
@@ -575,6 +625,15 @@
       var urls = scrape(sowItemId || null, rowId || null);
       if (urls && urls.length) openWithPhoto(row, urls, 0);
     }
+    syncToolbarRowLabel();
+  }
+
+  // Keep the toolbar "Expand/Collapse line items" label honest after any
+  // single-row toggle (clicking a row, closing a panel via its × button).
+  function syncToolbarRowLabel() {
+    if (ns.toolbar && typeof ns.toolbar.syncLabels === 'function') {
+      try { ns.toolbar.syncLabels(); } catch (e) { /* fail soft */ }
+    }
   }
 
   // Compact header for the expand panel, built from the (now-hidden)
@@ -585,20 +644,10 @@
     header.className = 'scw-bid-review-v2__panel-header';
     header.setAttribute('title', 'Click to close');
 
-    // Open caret — kept on the LEFT so it doesn't jump position vs. the
-    // closed grid-row caret. Points down (open); the whole header bar is
-    // the click target to close.
-    var caret = document.createElement('span');
-    caret.className = 'scw-bid-review-v2__panel-caret';
-    caret.setAttribute('aria-hidden', 'true');
-    caret.innerHTML =
-      '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" ' +
-      'stroke="currentColor" stroke-width="3" stroke-linecap="round" ' +
-      'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
-    header.appendChild(caret);
-
-    // Bulk-select checkbox — the grid-row checkbox is hidden while the row
-    // is expanded, so surface one here keyed on the same SOW item id.
+    // Bulk-select checkbox FIRST (far left) — the grid-row checkbox is
+    // hidden while the row is expanded, so surface one here keyed on the
+    // same SOW item id. Selection-then-disclosure order matches the grid
+    // rows (checkbox leftmost, caret second).
     var sowItemId = rowTr.getAttribute('data-sow-item-id');
     if (sowItemId) {
       var cb = document.createElement('input');
@@ -608,6 +657,18 @@
       cb.setAttribute('aria-label', 'Select line item');
       header.appendChild(cb);
     }
+
+    // Open caret — second from left, mirroring the closed grid-row layout
+    // so neither control jumps position when a row expands. Points down
+    // (open); the whole header bar is the click target to close.
+    var caret = document.createElement('span');
+    caret.className = 'scw-bid-review-v2__panel-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    caret.innerHTML =
+      '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" ' +
+      'stroke="currentColor" stroke-width="3" stroke-linecap="round" ' +
+      'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+    header.appendChild(caret);
 
     var title = document.createElement('div');
     title.className = 'scw-bid-review-v2__panel-title';
@@ -660,6 +721,14 @@
       // row keeps its cells intact for re-renders.
       var clone = cells[i].cloneNode(true);
       while (clone.firstChild) body.appendChild(clone.firstChild);
+      // Re-link lives in the OPEN panel only (CSS hides it in the grid
+      // row): relocate the primary cell's pill from the cloned action
+      // stack up into the card's label strip, top-right. Dupe blocks
+      // keep theirs in place (nested inside the dupe, so the :scope
+      // direct-child selector skips them).
+      var relinkBtn = body.querySelector(
+        ':scope > .scw-bid-review-v2__cell-actions .scw-bid-review__cell-action--relink');
+      if (relinkBtn) lbl.appendChild(relinkBtn);
       card.appendChild(body);
       col.appendChild(card);
     }
@@ -785,10 +854,11 @@
     if (!ns.state || typeof ns.state.isRowExpanded !== 'function') return;
     var root = scope || (ns.CONFIG && document.getElementById(ns.CONFIG.mountId));
     if (!root) return;
-    var rows = root.querySelectorAll('.scw-bid-review-v2__row[data-sow-item-id]');
+    var rows = root.querySelectorAll('.scw-bid-review-v2__row--expandable');
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
-      var rid = row.getAttribute('data-sow-item-id');
+      var rid = row.getAttribute('data-sow-item-id') ||
+                row.getAttribute('data-row-id');
       if (!rid || !ns.state.isRowExpanded(rid)) continue;
       // Skip rows hidden by a collapsed MDF/IDF group — don't surface a
       // detached panel; the state stays set so it re-opens if the group opens.
@@ -801,6 +871,85 @@
     }
   }
   ns.reopenExpandedRows = reopenExpandedRows;
+
+  // ── Expand / collapse EVERY line-item row (toolbar "Expand line items") ──
+  // Unlike the worksheet-v2 card toggle (a cheap CSS class flip on cards that
+  // are already in the DOM), each bid-review row lazily MOUNTS a full
+  // worksheet-v2 editor + photo viewer the first time it opens. Expanding the
+  // whole grid at once could therefore mount dozens of heavy panels on one
+  // frame and freeze the tab — so expand is chunked across animation frames.
+  // Collapse just tears down existing panels, so it runs synchronously.
+  function expandableRows() {
+    var root = ns.CONFIG && document.getElementById(ns.CONFIG.mountId);
+    if (!root) return [];
+    return Array.prototype.slice.call(
+      root.querySelectorAll('.scw-bid-review-v2__row--expandable')
+    );
+  }
+
+  function rowIsOpen(row) {
+    if (!row) return false;
+    if (row.getAttribute('aria-expanded') === 'true') return true;
+    var nx = row.nextElementSibling;
+    return !!(nx && nx.classList &&
+      nx.classList.contains('scw-bid-review-v2__expand-row'));
+  }
+
+  function anyRowOpen() {
+    var rows = expandableRows();
+    for (var i = 0; i < rows.length; i++) {
+      if (rowIsOpen(rows[i])) return true;
+    }
+    return false;
+  }
+  ns.anyRowOpen = anyRowOpen;
+
+  var _toggleAllBusy = false;
+  function toggleAllRows(done) {
+    if (_toggleAllBusy) return;
+    var rows = expandableRows();
+    var wantOpen = !anyRowOpen();
+
+    if (!wantOpen) {
+      // Collapse every open panel — cheap, synchronous.
+      for (var i = 0; i < rows.length; i++) {
+        if (rowIsOpen(rows[i])) toggleRowExpand(rows[i]);
+      }
+      if (typeof done === 'function') done();
+      return;
+    }
+
+    // Expand only rows visible right now — skip those hidden inside a
+    // collapsed MDF/IDF group (their expanded state stays default and they
+    // open when the group is opened). Chunk the heavy panel mounts across
+    // frames so the main thread stays responsive on big comparisons.
+    var pending = [];
+    for (var j = 0; j < rows.length; j++) {
+      if (rows[j].offsetParent === null) continue;
+      if (rowIsOpen(rows[j])) continue;
+      pending.push(rows[j]);
+    }
+    if (!pending.length) { if (typeof done === 'function') done(); return; }
+
+    _toggleAllBusy = true;
+    var CHUNK = 4, idx = 0;
+    var raf = window.requestAnimationFrame ||
+      function (fn) { return window.setTimeout(fn, 16); };
+    function step() {
+      var end = Math.min(idx + CHUNK, pending.length);
+      for (; idx < end; idx++) {
+        // A concurrent event may have opened/removed the row — re-check.
+        if (pending[idx].isConnected !== false && !rowIsOpen(pending[idx])) {
+          toggleRowExpand(pending[idx]);
+        }
+      }
+      if (typeof done === 'function') { try { done(); } catch (e) {} }
+      if (idx < pending.length) raf(step);
+      else _toggleAllBusy = false;
+    }
+    step();
+  }
+  ns.toggleAllRows = toggleAllRows;
 
   // Find the full Backbone-style attributes hash for a SOW item id.
   // Prefer the live model so we always see the freshest values; fall
@@ -876,8 +1025,22 @@
     }
     relocateSowField(card);
     removeSurveyNotes(card);
+    removeNotesWarnChip(card);
     lineBreakConnectedDevices(card);
     makeScwNotesTextarea(card);
+  }
+
+  // The "has SCW notes" chip is a callout for the collapsed grid row, where
+  // the note text isn't visible anywhere else. Once expanded, the SCW Notes
+  // field is directly visible (and editable) in the detail zone below — the
+  // chip is redundant there. The other issue types (photos / disconnected /
+  // wrong accessory) stay, since their underlying data still isn't all
+  // visible at a glance in the expanded card.
+  function removeNotesWarnChip(card) {
+    var chits = card.querySelectorAll('.scw-ws-v2-warn-chit[data-issue-type="notes"]');
+    for (var i = 0; i < chits.length; i++) {
+      chits[i].parentNode.removeChild(chits[i]);
+    }
   }
 
   // Connected Devices (field_1957) is multi-value; show each on its own
@@ -990,16 +1153,38 @@
     hookV1Rerender();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {
-        // NOTE: do NOT wrap this in SCW.v2ScrollAnchor.around. On this grid the
-        // anchor's window.scrollBy correction runs away: editing field_2150 in
-        // an expanded row's embedded worksheet-v2 card rebuilds the panel, the
-        // SOW section below it shifts, and the anchor scrollBy's DOWN by the
-        // delta — repeatedly — scrolling the page to the bottom in several
-        // jumps (confirmed via scroll-spy: scrollBy with no scrollTo trace).
-        // bid-review-v2's renderSnapshot already keyed-reuses unchanged
-        // sections + defers while focused, so a plain rebuild stays put.
-        ns.render.renderSnapshot(snapshot);
-        mountBulk();
+        function doRender() {
+          ns.render.renderSnapshot(snapshot);
+          mountBulk();
+        }
+        // NOTE: do NOT wrap ORDINARY field-edit renders in
+        // SCW.v2ScrollAnchor.around. On this grid the anchor's
+        // window.scrollBy correction runs away: editing field_2150 in an
+        // expanded row's embedded worksheet-v2 card rebuilds the panel,
+        // the SOW section below it shifts, and the anchor scrollBy's DOWN
+        // by the delta — repeatedly — scrolling the page to the bottom in
+        // several jumps (confirmed via scroll-spy: scrollBy with no
+        // scrollTo trace). bid-review-v2's renderSnapshot already
+        // keyed-reuses unchanged sections + defers while focused, so a
+        // plain rebuild stays put for those.
+        //
+        // EXCEPTION: a cascade settling (data.js's scw-cascade-idle
+        // listener, e.g. Connected Devices) sets _pendingCascadeAnchor.
+        // That kind of edit can genuinely move a child's row into a
+        // different MDF/IDF group or change the parent's device-list
+        // line count — a real height change the keyed rebuild has no way
+        // to hold scroll position through — so THAT render (and only
+        // that one, thanks to notifyDebounced already coalescing the
+        // cascade's refetch burst into a single call) gets the anchor.
+        var useAnchor = !!ns._pendingCascadeAnchor;
+        ns._pendingCascadeAnchor = false;
+        if (useAnchor && window.SCW && SCW.v2ScrollAnchor &&
+            typeof SCW.v2ScrollAnchor.around === 'function') {
+          SCW.v2ScrollAnchor.around(
+            '.scw-bid-review-v2__row[data-row-id]', 'data-row-id', doRender);
+        } else {
+          doRender();
+        }
       });
     }
 

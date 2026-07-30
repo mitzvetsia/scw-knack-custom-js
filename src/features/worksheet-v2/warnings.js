@@ -16,6 +16,13 @@
  *                  warning flag (field_2244) is Yes. Walks the source-
  *                  view\'s model once per analyze() to map parents to
  *                  flagged accessory ids.
+ *   notes        — record\'s SCW Notes field (logical `scwNotes`, e.g.
+ *                  field_1953 on the SOW object) is non-blank. Purely
+ *                  informational (not a data-quality problem like the
+ *                  other three) but flagged the same way so it can\'t be
+ *                  scrolled past — reused as-is by bid-review-v2\'s
+ *                  warnings.js, so this single check covers both the
+ *                  build-SOW worksheet and the bid comparison grid.
  *
  * Public API:
  *   ns.warnings.analyze(records, viewKey)  — run once per render,
@@ -30,11 +37,12 @@
   var ns = window.SCW && window.SCW.worksheetV2;
   if (!ns) return;
 
-  var TYPES  = ['photos', 'disconnected', 'bracket'];
+  var TYPES  = ['photos', 'disconnected', 'bracket', 'notes'];
   var LABELS = {
     photos:       'missing photos',
     disconnected: 'disconnected',
-    bracket:      'wrong accessory'
+    bracket:      'wrong accessory',
+    notes:        'has SCW notes'
   };
 
   // Per-issue-type inline SVG. Picked to match v1\'s vocabulary —
@@ -75,7 +83,16 @@
       'stroke-linejoin="round">' +
       '<path d="M12 2 22 12 12 22 2 12Z"/>' +
       '<line x1="12" y1="8" x2="12" y2="13"/>' +
-      '<line x1="12" y1="16.5" x2="12.01" y2="16.5"/></svg>'
+      '<line x1="12" y1="16.5" x2="12.01" y2="16.5"/></svg>',
+    // Speech bubble (Lucide "message-square") — "there\'s a note here, go
+    // read it" rather than a data-quality alarm; the distinct 4th chip
+    // colour (teal, see styles.js) keeps it visually apart from the three
+    // actual problem types.
+    notes:
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+      'stroke-linejoin="round">' +
+      '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
   };
 
   // Per-view cache of the last analyze() result. analyze() is cheap
@@ -239,6 +256,19 @@
     return true;
   }
 
+  /** SCW Notes (logical `scwNotes`) is non-blank. Plain-text/textarea field —
+   *  read the record directly (no DOM scrape needed, unlike photos). */
+  function hasScwNotesText(rec) {
+    var key = F().scwNotes;
+    if (!key || !rec) return false;
+    var raw = rec[key + '_raw'];
+    var v = (raw != null && typeof raw !== 'object') ? raw : rec[key];
+    if (v == null) return false;
+    var txt = String(v).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ').trim();
+    return !!txt;
+  }
+
   function isExplicitNoVal(raw, str) {
     if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
     if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
@@ -328,13 +358,26 @@
     lastAccMismatch = bracket.byAccessory;
     var bracketParents = bracket.byParent;
 
+    // Removed-by-CO records (install views map removedByCo → field_2967) are
+    // dead scope — nagging about missing photos / disconnections on an item
+    // that will never be installed is noise. Views without the mapping
+    // (SOW/survey) resolve no key and skip nothing.
+    var removedKey = F().removedByCo || null;
+    function isRemovedByCo(rec) {
+      if (!removedKey) return false;
+      var raw = rec[removedKey + '_raw'];
+      return Array.isArray(raw) && raw.length > 0;
+    }
+
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
       if (!rec || !rec.id) continue;
+      if (isRemovedByCo(rec)) continue;
       var issues = [];
       if (hasPhotoWarning(rec, viewKey))           issues.push('photos');
       if (isDisconnected(rec))                     issues.push('disconnected');
       if (bracketParents[rec.id])                  issues.push('bracket');
+      if (hasScwNotesText(rec))                    issues.push('notes');
       if (issues.length) byRecord[rec.id] = issues;
     }
 

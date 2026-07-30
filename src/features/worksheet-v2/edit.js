@@ -177,6 +177,16 @@
     var prevValue = input._scwWsV2Prev != null ? input._scwWsV2Prev : (input.defaultValue || '');
     if (newValue === prevValue) return; // no-op — value didn't actually change
 
+    // Textareas edit HTML-carrying fields with <br>s presented as real
+    // line breaks (card.js readMultiline). Serialize the newlines back to
+    // <br> for the save so breaks persist in the stored markup — a bare \n
+    // collapses to a space when Knack renders the field's HTML. The no-op
+    // compare above runs on the EDITOR form; _scwWsV2Prev is stamped from
+    // input.value in performSave for the same reason.
+    if (input.tagName === 'TEXTAREA') {
+      newValue = newValue.replace(/\r?\n/g, '<br>');
+    }
+
     // Config-driven $0/blank confirm (e.g. survey sub-bid Labor). Gate BEFORE
     // saving: on cancel revert the input; on confirm fall through to save.
     var zSpec = confirmZeroSpec(viewKey);
@@ -207,8 +217,11 @@
 
     // Stamp the new value as the new "previous" right away — protects
     // against a Knack re-render coming in with a stale model value and
-    // overwriting the cell while the PUT is still in flight.
-    input._scwWsV2Prev = newValue;
+    // overwriting the cell while the PUT is still in flight. Use the
+    // EDITOR-form value (input.value — textareas show \n where the saved
+    // markup has <br>) so the next commit's no-op compare matches what
+    // the user actually sees in the control.
+    input._scwWsV2Prev = input.value;
 
     input.classList.remove(ERR_CLS);
     input.classList.add(SAV_CLS);

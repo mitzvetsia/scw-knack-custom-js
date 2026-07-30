@@ -386,7 +386,7 @@ Populated by this Builder snippet (one-time fetch on app boot):
 ```js
 (function () {
   var APP_ID  = Knack.application_id;
-  var API_KEY = 'f8371b90-524d-11e7-abaf-870b3d262aa2';
+  var API_KEY = '###';   // TBD — fill from Builder → Settings → API & Code; never commit the value
   var PRODUCT_OBJECT = 'object_8';
   var BUCKET_FIELD   = 'field_133';   // proposal bucket on the Products object
   var STATUS_FIELD   = 'field_956';   // Status (filter to "Enabled")
@@ -438,8 +438,10 @@ Notes:
   need names (e.g. a v2 product picker) must source those separately
   — typically from a hidden Knack view that exposes name + id, with
   the bucket map used purely to FILTER candidates.
-- The API key in the snippet is the live one. Treat the snippet
-  contents as a secret; don't paste it into public PRs/issues.
+- **API keys are NEVER committed to this repo** — snippet copies here
+  (and in knack-snippets/) carry a `###`/TBD placeholder. Fill the real
+  key in from Builder → Settings → API & Code at paste time only, and
+  keep it out of PRs/issues/chat.
 
 ## Change Orders (design locked 2026-07-03 — full reference: docs/change-orders.md)
 
@@ -523,7 +525,7 @@ land in the published PDF. This is a deliberate, user-approved tradeoff —
 - Comment headers use banner-style delimiters: `/*** FEATURE NAME ***/`
 - Config objects at the top of each file — keep logic generic, keep config specific
 - **Button ordering**: destructive/negative action first, positive/primary action last. Examples: Edit | Cancel, Reject | Accept, Cancel | Submit. The primary action is always the rightmost button.
-- **Read-only / locked fields**: when programmatically making a field non-editable, keep it fully readable — no reduced opacity, no graying out. Instead, set `pointer-events: none`, `readOnly = true`, and give the input a **white background** (`background: #fff`) to visually distinguish it from editable inputs (which have a light-gray background). The field should look normal but clearly not interactive.
+- **Read-only / locked fields** (convention updated 2026-07-15): when programmatically making a field non-editable, keep it fully readable — no reduced opacity, no graying out — but **strip ALL input chrome so it reads as plain text**: `pointer-events: none`, `readOnly = true`, `background: transparent`, `border-color: transparent`, `box-shadow: none` (selects also get `appearance: none` and an explicit text color so UA disabled-graying doesn't apply). A white input box on a locked field makes readers think they should be able to edit it — never leave the box visible. Reference implementations: `worksheet-v2/styles.js` `.scw-ws-v2--readonly` / `.scw-ws-v2-card--locked` blocks, `co-sub-lock.js` / `co-ops-lock.js` header-form + MDF rules.
 
 ## Context Hygiene (Read This First)
 
@@ -672,7 +674,16 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Why deferred**: each piece is small but the dependency chain (save view setup → modal scaffold → upload pipeline) deserves a focused pass instead of being squeezed alongside other worksheet work.
 
 ### 11. Drop Prefix snippet — role-based visibility filtering
-- **Status**: deferred — current Builder snippet (`window.SCW.dropPrefixOptions`) returns every Drop Prefix record regardless of who's viewing the page. Used by worksheet-v2's bulk-edit picker for `field_2240`.
+- **Status (updated 2026-07-14)**: the Builder copy of the snippet was lost/overwritten;
+  reconstructed + enhanced as **`knack-snippets/drop-prefix-options.snippet.js`** (now the
+  version-controlled source of truth — fill in the two TODO constants, Drop Prefix object
+  key + label field key, then paste into Builder). Catalog entries now carry
+  `subVisible` (`field_2439`) and `salesVisible` (`field_2440`) booleans.
+- **Shipped**: the survey/bid page Prefix picker (`field_2361`, worksheet-v2/init.js)
+  hides entries with `subVisible === false`; entries without the flag fail open. The
+  internal pickers (`field_2240`) and the ops-side CR-modal prefix list stay unfiltered.
+- **Still deferred**: the sales-page filter (`salesVisible`) — needs the sales scene-id
+  mapping (below).
 - **What's needed**: when we build the sales and subcontractor pages we'll want the picker to honor two existing visibility flags on the Drop Prefix object:
   - `field_2440` — **Sales-visible** (Yes/No). Filter out records where this is No when the loader runs inside a sales scene.
   - `field_2439` — **Subcontractor-visible** (Yes/No). Filter out records where this is No when the loader runs inside a subcontractor scene.
@@ -713,7 +724,7 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Watch out**: only flag buckets where a default accessory is meaningful (cam/reader primarily); services/assumptions/accessory rows themselves must be exempt. And a product with default accessory config but the user *deliberately* removed the mount may need an opt-out, or the warning becomes noise — consider counting it only when the row has NEVER had an accessory vs. has one deleted (probably not distinguishable client-side; accept the noise or keep it informational-severity).
 
 ### 15. worksheet-v2 pipeline is NOT config-driven yet — generalize all field reads through `cfg.fields()` (HIGH PRIORITY)
-- **Why this exists**: the v2 worksheet config (`worksheet-v2/config.js`) advertises a clean logical-name → `field_XXXX` resolver (`SCW.worksheetV2.cfg.fields(viewKey)`) and a `DEFAULT_FIELDS` map, implying a new deployment is "just a config entry." **It isn't.** The pipeline modules overwhelmingly read **hardcoded SOW literals** instead of resolving through `cfg.fields()` — ~320 `field_XXXX` references across the module (`card.js` ~87, `init.js` ~71, `bulk.js` ~69, `groups.js` ~13, `warnings.js`/`picker.js`/`summary.js` ~9 each, …). `DEFAULT_FIELDS` is effectively documentation; the code ignores it. This is why `view_3915` (install) is `enabled:false` ("render-side money-column suppression + QA surface not ported") and why the survey worksheet (`view_3505`, added 2026-06-16) had to take the **Hybrid** path (survey-specific card branch + `moneyMode:'survey'`) instead of a pure config entry.
+- **Why this exists**: the v2 worksheet config (`worksheet-v2/config.js`) advertises a clean logical-name → `field_XXXX` resolver (`SCW.worksheetV2.cfg.fields(viewKey)`) and a `DEFAULT_FIELDS` map, implying a new deployment is "just a config entry." **It isn't.** The pipeline modules overwhelmingly read **hardcoded SOW literals** instead of resolving through `cfg.fields()` — ~320 `field_XXXX` references across the module (`card.js` ~87, `init.js` ~71, `bulk.js` ~69, `groups.js` ~13, `warnings.js`/`picker.js`/`summary.js` ~9 each, …). `DEFAULT_FIELDS` is effectively documentation; the code ignores it. This is why `view_4093` (install) is `enabled:false` ("render-side money-column suppression + QA surface not ported") and why the survey worksheet (`view_3505`, added 2026-06-16) had to take the **Hybrid** path (survey-specific card branch + `moneyMode:'survey'`) instead of a pure config entry.
 - **The real goal (decided 2026-06-16, deferred)**: route **every** per-record field read in the pipeline through `var F = ns.cfg.fields(viewKey)` so `buildCard` and friends become genuinely object-agnostic. Then a new object (survey, install, future sales/sub pages) is a config entry only — no card fork, no `moneyMode` per-object branch sprawl.
 - **Why it's behavior-preserving (low risk if done right)**: `DEFAULT_FIELDS` already maps each logical name to the EXACT literal the code uses today, so swapping `readField(rec, 'field_1949')` → `readField(rec, F.product)` resolves to the same key for the 3 live deployments (build-SOW `view_3962`, sales `view_3586`, bid-review `view_3921`). Verify each swap by `git diff` of the built bundle being inert for those views.
 - **Scope / order**: start with `card.js` (the single `buildCard` seam — biggest payoff), then the per-record readers in `warnings.js` / `photos.js` / `edit.js` / `bulk.js` / `groups.js` / `summary.js` / `sort.js`. `bucketIdOf`/`bucketCategoryOf` need an optional `viewKey` param (default `field_2219`) so the bucket field resolves per-object (survey = `field_2366`). Money model: replace the `moneyMode:'sales'`/`'survey'` branches with a config-described money column set once reads are generic.
@@ -725,11 +736,82 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **What's needed (future)**: when the survey object gains the accessory relationship (+ a mirror-sync analogue for `field_2380`↔`field_2381`), map it into the same worksheet-v2 logical slots (`connectedDevices`/`connectedDevice`/`accessories`/`parent`/`children`). At that point it becomes config-only IF Known Issue #15 (full generalization) has landed; otherwise it needs the same Hybrid accessory-UI port the SOW card already has.
 - **Watch out**: don't assume writing one survey connection side updates the other — there's no cascade today, so they can drift exactly like the SOW pair did before `mirror-connection-sync.js`. Building the cascade should follow the canonical-side direction decided for the SOW pair (Known Issue #12), not re-create the bidirectional-ambiguity fragility.
 
+### 18. Pre-bundle flash on gated scenes — raw scene paints before the bundle's CSS exists
+- **Symptom (scene_1116, likely all NO_KTL_SCENES)**: on load the raw Knack views paint for ~a second, THEN the scene-load veil/spinner appears, then the styled reveal. All in-bundle veil work (scene-tweaks.js `scw-scene-ready` gating, 2026-07-07) only helps AFTER the bundle executes — the first paint races the bundle download and wins.
+- **Root cause**: `knack-snippets/ktl-loader-gate.snippet.js` calls `callback()` immediately on gated scenes, letting Knack render while `dist/knack-bundle.js` is still downloading in parallel (loaded separately by the Builder JS). Until the bundle lands, none of its injected CSS (veil, v1 cutover hides, hide-data-source views) exists.
+- **Fix direction (Builder-side)**: in the gate snippet's `skip` branch, load the CDN bundle FIRST (LazyLoad is already available there), then call `callback()`. SHA-pinned jsDelivr is immutable + browser-cached, so warm cost is small. Needs a guard so the Builder JS's existing bundle loader doesn't double-load. Update the snippet file in `knack-snippets/` and re-paste into Builder.
+- **Status**: parked 2026-07-07 mid-testing ("we'll come back to this") after the in-bundle reveal gating (quiet-window + transform markers incl. `#scw-step-initiate-install`) fixed the post-veil flashes.
+
+### 19. Delete the dead v1 bid-review GRID code (decided 2026-07-14: v1 grid is dead and gone)
+- **Runtime state (done 2026-07-14)**: with `bid-review-v2/config.js` `replaceV1: true`, v1's
+  `renderMatrix` / `showLoading` short-circuit (`v2OwnsPage()` in `bid-review/render.js`) —
+  the v1 matrix is never BUILT, not just hidden. CR-draft rehydration was moved ahead of
+  the mount gate in `bid-review/init.js` `runPipeline` so v2's pending cards still hydrate.
+- **What remains (the actual deletion)**: physically remove the v1 grid DOM builders and
+  their v1-grid-only event wiring — `render.js` (`buildDataRow`, `buildSowDetailCell`,
+  `buildDataCell`, `buildSowSection`, toolbar/accordion machinery, `getMismatches`) and the
+  init.js handlers that only serve v1 grid DOM (accordion clicks, expand rows / wsTr
+  moving, `attachClickHandler` paths). ~thousands of lines across `render.js` (2.8k) and
+  `init.js` (4.3k).
+- **⚠️ v1 is NOT a dead directory — v2 uses it as a library.** Confirmed call surface v2
+  depends on (must survive the deletion): `SCW.bidReview.changeRequests` (the entire CR
+  modal/payload/draft engine), the action dispatchers (`dispatchCRAction`,
+  `dispatchHeaderAction` — every v2 Revise/Remove/Add/Reinstate button routes through v1
+  handlers that resolve rows from v1 `_state`), the data pipeline (`loadRawData`,
+  `buildState`, `_state`), `buildSowStatusBar` (rendered INSIDE v2's SOW headers),
+  `scrapeRowPhotoUrls`, `addBulkChangeRequest`, `rerender`/`refreshSilently`,
+  `refreshHeaderTotals`, `resetDocsIndex`, `renderToast`, `sowFriendlyName`, and
+  `CONFIG` (field keys — also read by worksheet-v2/change-requests.js and
+  bid-revision-inject.js, incl. `revisionResponseWebhook`). `sales-revision-column.js`
+  listens for `scw-bid-review-rendered` (v1-grid-only; no-ops now).
+- **How to do it**: work function-by-function in `render.js`/`init.js`, grepping each for
+  external references before deleting; keep everything in the list above. Also strip
+  v1-grid-only CSS from `bid-review/styles.js` EXCEPT the classes v2 reuses
+  (`.scw-bid-review__cell-action*`, overflow menu, status-bar, toast styles).
+
+### 20. Proposal grid: full model-driven rebuild (DEFERRED 2026-07-14 — insane amount of work)
+- **The question**: rebuild the proposal grid from `Knack.views[x].model` data into our own DOM (like worksheet-v2 does) instead of layering ~3.5k lines of transforms on Knack's grid render (`proposal-grid.js` reorders, synthesized L2/L3/L4 headers, accessory relocation, subtotal/discount/total rows, label rewrites, TBD masking, CO tint/banner/manifest, 5 safety-net re-runs).
+- **Decision**: deferred. The pipeline encodes years of pricing-presentation behavior with no tests; a rebuild risks regressing the PUBLISHED PROPOSAL/PDF pipeline (`buildPublishPayload` scrapes this DOM). Revisit only if the layered approach becomes untenable (e.g. another render-race class of bugs like the CO row-moving failures). If attempted: worksheet-v2's model→DOM architecture is the sibling to copy; the publish payload contract is the compatibility bar.
+
+### 21. Collapse buildInvoiceItems' base/CO branch after one reconciliation check
+- **What forked (2026-07-17)**: `buildInvoiceItems` (proposal-pdf-export.js) grew an
+  `isChangeOrder` param. The CO path aggregates rows by REAL qty
+  (`field_1964_raw`, negative on Remove lines) × extended net (`field_2269_raw`),
+  keeps signed amounts, and lets the labor lump go negative; the base path was
+  kept byte-identical to its legacy behavior — 1-per-row counting, unit-price
+  sums (`field_2268_raw` once per row), positive-only gates.
+- **Why collapse it**: the CO math is simply the more correct math, and the base
+  path has a LATENT UNDERCOUNT for any line with qty > 1 (it adds the unit price
+  once per row regardless of qty). Two aggregation paths = two things to
+  maintain; the goal is one.
+- **The gate (do this before collapsing)**: publish one real BASE proposal and
+  reconcile `invoiceItems` — equipment lineTotals should sum to the proposal's
+  Equipment Total and labor to Installation Total (and spot-check a qty>1 line:
+  under the unified math its lineTotal becomes qty × unit, which the legacy path
+  under-reported). If a live Xero invoice was built off the under-reported
+  number, expect the unified output to be HIGHER on qty>1 proposals — that's the
+  fix, not a regression, but confirm finance expects it before flipping.
+- **The collapse**: make the CO math unconditional (qty from `field_1964_raw`
+  default 1, amount from `field_2269_raw` fallback qty×unit), keep the
+  positive-only include gate for base (`> 0`) OR drop it too if reconciliation
+  shows no legitimate negative rows on base proposals; delete the
+  `isChangeOrder` conditionals except the credit flags (`isCredit` stays CO-only
+  by definition). The jsdom suite (scratchpad test-co-publish.js §3d) has the
+  base-regression assertion to update.
+
 ### 17. Builder snippets ship the live Knack REST API key client-side — migrate to view-based reads (HIGH PRIORITY / SECURITY)
 - **The hole**: the out-of-bundle Builder snippets that populate `window.SCW.*` globals (`productBucketMap`, and the newer `deliverablesFields` for the questionnaires) authenticate with the app's **REST API key** in client-side JS. That key is delivered to and used in the **browser** — Knack Builder "JavaScript" is NOT server-side — so anyone who can load the page can read it (DevTools → Network → any `api.knack.com` request → `X-Knack-REST-API-Key` header, in plaintext). A Knack REST key is **not role-scoped**: it grants full read/write to every object, bypassing view/role permissions. This is bad on internal pages and **much worse on customer-facing pages** (e.g. the customer questionnaire `view_4031`), where customers could extract it and read/write all app data.
 - **Confirmed 2026-06-19**: the `deliverablesFields` key was exposed in chat + lives in client JS. Key must be **rotated** in Knack (Settings → API & Code → reset) and every consumer updated (rotation is app-wide: all Builder snippets + any Make scenarios/integrations on the old key break until updated).
 - **The fix (no Make, no key)**: replace each REST-API-key snippet with a **view-based read**. A Knack **view** loads with the logged-in user's **session token** (the cookie), not the API key — the exact MODEL_ONLY pattern the rest of the bundle uses. Add a **hidden, unconnected "all records" grid** of the source object to each scene that needs it, then read `Knack.views[viewKey].model` in the bundle. No key ever ships.
   - **Knack mechanic** (the snag that triggered this TODO): a grid does NOT need a connection to the page's object — the connection only filters to the page record. For global config data (schema defs, product→bucket map) add an **all-records / no-connection** grid. If the Add-Grid flow only offers connected sources, fallback is a **throwaway connection field** on the source object → the page object (never populated) to satisfy Knack, then set the grid's filter to show all.
-- **Scope (why it's a TODO, not a quick fix)**: this must be done on **every scene** each global is consumed on — `deliverablesFields` → deploy scene (`view_3915` internal worksheet) + customer questionnaire scene (`view_4031`); `productBucketMap` → all worksheet-v2 scenes + bid-review + the v2 product picker + `filter-products-by-bucket.js` + `bulk-add-mounting-box.js`. Each needs its own hidden grid view.
+- **Scope (why it's a TODO, not a quick fix)**: this must be done on **every scene** each global is consumed on — `deliverablesFields` → deploy scene (`view_4093` internal worksheet) + customer questionnaire scene (`view_4031`); `productBucketMap` → all worksheet-v2 scenes + bid-review + the v2 product picker + `filter-products-by-bucket.js` + `bulk-add-mounting-box.js`. Each needs its own hidden grid view.
 - **Bundle side is ready for it**: `deliverables-worksheet.js` / `customer-questionnaire.js` `loadSchemaFields()` reads raw Knack records (`field_XXXX`/`_raw`) — a view model returns the identical shape, so swapping `window.SCW.deliverablesFields` → `getViewRecords(SCHEMA_DEF_VIEW)` is a one-line source change per feature (the scaffold originally had `SCHEMA_DEF_VIEW` for exactly this). Add a per-feature `SCHEMA_DEF_VIEW` config + hide the grid, then delete the key snippet.
 - **Interim**: rotate the key, keep the snippet running on the new (still-exposed) key until the hidden views are added scene-by-scene, then retire the snippet. Don't add NEW client-side-key snippets in the meantime.
+
+### 18. SOW acceptance write-back — FLAG_accepted is never set and SYS_accepted date is auto-filled
+- **Found 2026-07-19** during the quote-value trends analysis (data exports, not bundle code). Two related record-keeping holes on the SOW header object:
+  - **`FLAG_accepted` is never written.** All 275 SOWs in the export read "No" — including the 15 SOWs that verifiably went through acceptance (they have install-acceptance records with invoice dates, several with signed agreements). Acceptance truth lives ONLY in the install-acceptance table; anything that filters/reports on the SOW flag silently sees zero accepted SOWs. Correcting this in the analysis moved 2026 accepted totals up ~11% ($1.19M → $1.32M).
+  - **`SYS_accepted date` equals `SYS_create date` on 240 of 241 SOWs** that have it (field default "today" stamped at record creation, sample rows show create = accepted = default-expiration). It cannot measure quote→accept cycle time; the analysis had to proxy via the acceptance record's Invoice Date (which itself once predated the SOW create date by 26 days in a CO sequence).
+- **Fix shape (small)**: acceptance flows through the accept-SOW DTO / Make scenario — add a write-back at the moment the install-acceptance record is created (or on the e-signature SIGNED webhook, matching the CO design where signature is the gate): PUT the parent SOW's `FLAG_accepted = Yes` and stamp the REAL date into `SYS_accepted date` (or a new dedicated date field if the auto-fill default must stay). One step fixes both holes.
+- **Follow-up audit**: after the write-back lands, sweep everything that currently READS `FLAG_accepted` (views, filters, Make scenarios, bundle features) — those consumers have only ever seen "No", so their behavior/reporting has been silently understated and may need re-checking once the flag starts flipping.
+- **Related nice-to-have**: keep project `REL_company` mandatory (98% populated today) — it is what makes client-level analysis (and the full "Testies" test-project sweep) possible; the legacy quote-era Contact field is only 22% populated and the legacy Company field is empty (3/7,617).

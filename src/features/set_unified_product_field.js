@@ -8,7 +8,11 @@
   const EVENT_NS = ".scwUnifiedProducts";
   const CONFIG = {
     SCENES: [], // e.g. ['scene_123'] or leave [] for all scenes
-    VIEWS: ["view_3329","view_3544","view_3451","view_3619","view_3627","view_3748"],
+    // view_4002 (Add-to-SOW, bid comparison page) + view_4100 (Add-to-
+    // Change-Order) run the same DTO product pickers, so their parent
+    // fields must funnel into unified field_2246 too — incl. the Service
+    // bucket's optional product (field_2195) on view_4100.
+    VIEWS: ["view_3329","view_3544","view_3451","view_3619","view_3627","view_3748","view_4002","view_4100"],
 
     // parent product fields
     // field_2913 = Materials bucket product field (mirrors other-equipment

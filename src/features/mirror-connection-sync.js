@@ -92,16 +92,41 @@
   //   2. A loud toast + a beforeunload prompt while count > 0 so the
   //      user notices and (hopefully) pauses before navigating.
   //
+  // Layer 2 applies ONLY to user-initiated cascades. Background repairs
+  // (the accessory-SOW reconcile sweep, which fires on page render) pass
+  // silent=true to cascadeBegin/cascadeEnd: they still count toward
+  // _cascadeInFlight so isCascadeInFlight() and the scw-cascade-idle
+  // broadcast stay correct, but they never show the toast or arm the
+  // unload prompt — "Saving changes" appearing on page load with zero
+  // user action was a reported bug.
+  //
   // The connection-picker has its own stage gate that keeps the modal
   // open until everything settles. But native inline edits and form
   // submits don't go through the picker, so the cascade fires-and-
   // forgets with no UI feedback at all without this tracker.
   // ======================================================================
 
-  var _cascadeInFlight   = 0;
+  var _cascadeInFlight   = 0;   // ALL in-flight cascade PUTs — drives
+                                // isCascadeInFlight() + the scw-cascade-idle
+                                // broadcast, so sweeps/refetches still gate
+                                // correctly on silent writes.
+  var _cascadeLoud       = 0;   // user-initiated subset — the ONLY writes
+                                // that show the toast + beforeunload prompt.
+                                // Background reconcile-sweep repairs are
+                                // silent: they're keepalive + idempotent and
+                                // simply re-run on the next load, so there's
+                                // nothing for the user to wait on ("Saving
+                                // changes" appearing on page load with zero
+                                // user action was the bug).
   var _cascadeToastEl    = null;
   var _cascadeUnloadBound = false;
   var CASCADE_TOAST_CSS_ID = 'scw-cascade-toast-css';
+
+  // Accessory-SOW reconcile sweep dedupe — SHARED across all mirror
+  // instances (each instance aliases this as its sowSweepWritten). Keyed
+  // accessoryId → serialized parent SOW set last written, so two instances
+  // sweeping the same accessory grid can't double-fire the same repair.
+  var _sowSweepWritten = {};
 
   function injectCascadeToastStyles() {
     if (document.getElementById(CASCADE_TOAST_CSS_ID)) return;
@@ -156,7 +181,7 @@
   }
 
   function cascadeUnloadHandler(e) {
-    if (_cascadeInFlight <= 0) return;
+    if (_cascadeLoud <= 0) return;
     // Modern browsers ignore the custom string but still show a generic
     // "Are you sure you want to leave?" prompt as long as we set
     // returnValue. The actual writes are protected by keepalive:true on
@@ -315,9 +340,11 @@
     window.removeEventListener('beforeunload', cascadeUnloadHandler);
   }
 
-  function cascadeBegin() {
+  function cascadeBegin(silent) {
     _cascadeInFlight++;
-    if (_cascadeInFlight === 1) {
+    if (silent) return;
+    _cascadeLoud++;
+    if (_cascadeLoud === 1) {
       showCascadeToast();
       bindCascadeUnloadGuard();
     }
@@ -327,10 +354,21 @@
   // Resolved + cleared when _cascadeInFlight hits 0.
   var _idleSubscribers = [];
 
-  function cascadeEnd() {
+  function cascadeEnd(silent) {
+    if (!silent) {
+      _cascadeLoud--;
+      if (_cascadeLoud <= 0) {
+        _cascadeLoud = 0;
+        hideCascadeToast();
+        unbindCascadeUnloadGuard();
+      }
+    }
     _cascadeInFlight--;
     if (_cascadeInFlight <= 0) {
       _cascadeInFlight = 0;
+      // Belt-and-braces: no writes of any kind left, so the loud UI must
+      // be gone even if a loud/silent pairing was ever mismatched.
+      _cascadeLoud = 0;
       hideCascadeToast();
       unbindCascadeUnloadGuard();
 
@@ -1902,6 +1940,16 @@
     }
     return out;
   }
+  /** Is a record's (possibly empty) SOW set AUTHORITATIVE? True when the
+   *  record demonstrably projects SOW_FIELD — _raw is a real array (even
+   *  []) or the display key is present (empty connections sometimes ship
+   *  with no _raw at all). False = the view doesn't project the field, so
+   *  an empty read proves nothing and must not drive a clear. */
+  function sowSetKnown(attrs) {
+    if (!attrs) return false;
+    if (Array.isArray(attrs[SOW_FIELD + '_raw'])) return true;
+    return typeof attrs[SOW_FIELD] === 'string';
+  }
   function primeSowCache() {
     if (!SOW_FIELD) return;
     var records = getModelRecords();
@@ -1917,8 +1965,12 @@
 
   /** PUT SOW_FIELD = sowIds on an accessory record (lives on
    *  ACCESSORIES_VIEW_ID, not VIEW_ID). Best-effort, mirrors
-   *  fireAccessoryPut. */
-  function fireAccessorySowPut(accessoryId, sowIds, onDone) {
+   *  fireAccessoryPut.
+   *  `silent` = background reconcile-sweep repair: still tracked in
+   *  _cascadeInFlight (idle event / sweep re-entry guard) but no toast
+   *  and no beforeunload prompt — the write is keepalive + idempotent
+   *  and re-runs on the next load if it's lost. */
+  function fireAccessorySowPut(accessoryId, sowIds, onDone, silent) {
     if (!ACCESSORIES_VIEW_ID || !accessoryId) {
       if (typeof onDone === 'function') onDone();
       return;
@@ -1929,13 +1981,14 @@
     }
     var body = {};
     body[SOW_FIELD] = sowIds || [];
-    log('  PUT(accessory SOW) → ' + accessoryId + ' SOW=' + JSON.stringify(sowIds));
-    cascadeBegin();
+    log('  PUT(accessory SOW) → ' + accessoryId + ' SOW=' + JSON.stringify(sowIds) +
+        (silent ? ' [silent sweep repair]' : ''));
+    cascadeBegin(silent);
     knackPutKeepalive(
       window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
       body,
       function (err) {
-        cascadeEnd();
+        cascadeEnd(silent);
         if (err) console.warn(LOG_PREFIX, 'accessory SOW PUT failed ' + accessoryId, err);
         else log('  PUT(accessory SOW) ok ' + accessoryId);
         if (typeof onDone === 'function') onDone(err);
@@ -1961,10 +2014,23 @@
         lastSowSeen[record.id] = curr;
 
         var parentSowIds = sowIdsFromAttrs(record);
-        // Parent SOW cleared entirely → leave children alone (don't orphan
-        // everything on an accidental clear), mirroring the MDF-clear guard.
+        // Parent SOW cleared entirely: accessories must FOLLOW the parent
+        // off the SOW ("an accessory's SOW mirrors its parent's exact
+        // set" — an empty set is a valid set; leaving them behind is the
+        // orphaned-accessory bug). Connected DEVICES stay untouched on a
+        // clear — removing an NVR from a SOW must not pull its cameras
+        // off it. Skip only when the empty read isn't authoritative.
         if (!parentSowIds.length) {
-          log('sow-cascade: parent ' + record.id + ' SOW cleared — leaving children alone');
+          if (!sowSetKnown(record)) {
+            log('sow-cascade: parent ' + record.id + ' SOW read is unverifiable — leaving children alone');
+            return;
+          }
+          var accIdsClr = findAccessoryIdsForParent(record.id);
+          for (var ac = 0; ac < accIdsClr.length; ac++) {
+            fireAccessorySowPut(accIdsClr[ac], []);
+          }
+          log('sow-cascade: parent ' + record.id + ' SOW cleared — ' +
+              accIdsClr.length + ' accessory(ies) cleared with it');
           return;
         }
         var parentSowSet = {};
@@ -2032,19 +2098,32 @@
   // loaded in this view's model. Mismatch → repair PUT through the capped
   // queue. Guards: never touches an accessory whose parent isn't loaded
   // (both records' field_2154_raw are complete per record, so a loaded
-  // pair is always safely comparable regardless of view scoping); leaves
-  // children alone when the parent's SOW set is empty (same
-  // accidental-clear guard as the cascade); remembers what it wrote so a
+  // pair is always safely comparable regardless of view scoping); an
+  // EMPTY parent set is honored (accessory follows the parent off the
+  // SOW) when the read is authoritative — sowSetKnown — else skipped;
+  // remembers what it wrote so a
   // stale local model can't re-fire the same PUT; skips entirely while a
   // cascade is in flight.
   var sowSweepTimer   = null;
-  var sowSweepWritten = {};   // accessoryId → serialized parent set last written
+  // accessoryId → serialized parent set last written. SHARED across every
+  // mirror instance (module-scoped, see _sowSweepWritten) — scenes where two
+  // instances watch the SAME accessory grid (build-SOW: view_3610 + view_3962
+  // both sweep view_3888) were each firing their own duplicate repair PUT +
+  // console.warn per mismatched accessory. The repair target is identical
+  // from any instance (same fields, same parent set), so one shared guard
+  // dedupes them.
+  var sowSweepWritten = _sowSweepWritten;
   function accessorySowSweep() {
     if (!SOW_FIELD || !ACCESSORIES_VIEW_ID || !ACCESSORIES_PARENT_FIELD) return;
     try {
       if (window.SCW && SCW.mirrorConn &&
           typeof SCW.mirrorConn.isCascadeInFlight === 'function' &&
-          SCW.mirrorConn.isCascadeInFlight()) return;
+          SCW.mirrorConn.isCascadeInFlight()) {
+        // Don't silently drop this render's sweep — re-arm so it runs once
+        // the cascade settles (each re-arm replaces the timer; no stacking).
+        scheduleAccessorySowSweep();
+        return;
+      }
       var av = window.Knack && Knack.views && Knack.views[ACCESSORIES_VIEW_ID];
       var ms = av && av.model && av.model.data && av.model.data.models;
       if (!ms || !ms.length) return;
@@ -2058,15 +2137,30 @@
         var parentAttrs = getModelAttrs(parentId);
         if (!parentAttrs) continue;              // parent not loaded here — can't judge
         var parentSet = serializeSow(parentAttrs);
-        if (!parentSet) continue;                // parent SOW empty → leave alone
+        // Empty parent set is AUTHORITATIVE when the record demonstrably
+        // projects SOW_FIELD — the accessory follows the parent OFF the
+        // SOW (self-heals orphans left by Make-side removals, bid
+        // reconcile, edits from other scenes). Skip only when the empty
+        // read is unverifiable (field not projected on this view).
+        if (!parentSet && !sowSetKnown(parentAttrs)) continue;
         var accSet = serializeSow(attrs);
+        // The ACCESSORY's empty read must be verifiable too. If the
+        // accessory view doesn't project SOW_FIELD, EVERY accessory reads
+        // [] here, false-mismatches its parent, and fires a no-op repair
+        // PUT on every page load (confirmed live on view_3888: accessories
+        // with field_2154 populated in the DB warned "SOWs []" each render
+        // because the grid lacks the column). Unverifiable empty → skip;
+        // genuinely-empty reads (field projected, raw = []) still repair.
+        if (!accSet && !sowSetKnown(attrs)) continue;
         if (accSet === parentSet) { delete sowSweepWritten[attrs.id]; continue; }
         if (sowSweepWritten[attrs.id] === parentSet) continue;  // repair already sent
         sowSweepWritten[attrs.id] = parentSet;
         console.warn(LOG_PREFIX, 'accessory-SOW reconcile: accessory ' + attrs.id +
           ' SOWs [' + accSet + '] ≠ parent ' + parentId + ' [' + parentSet +
           '] — re-aligning to the parent\'s set');
-        fireAccessorySowPut(attrs.id, sowIdsFromAttrs(parentAttrs));
+        // silent=true: background repair on page render, NOT a user save —
+        // must not raise the "Saving changes — please don't leave" toast.
+        fireAccessorySowPut(attrs.id, sowIdsFromAttrs(parentAttrs), null, true);
         repaired++;
       }
       if (repaired) log('accessory-SOW sweep: ' + repaired + ' repair PUT(s) queued');
@@ -2196,6 +2290,17 @@
     CONNECTIONS_FIELD: 'field_2381',
     GROUPING_FIELD:    'field_2375',
     LABEL_FIELD:       'field_2365',   // survey line-item display label
+    // view_3505 is now driven by worksheet-v2 (custom card UI, no v1
+    // .scw-ws-row triplets to scrape) — same cutover every other v2 surface
+    // registered below already accounts for (view_3586, view_3610, …). This
+    // instance was never flipped when the survey page moved to v2: without
+    // MODEL_ONLY, findRowsPointingTo() scrapes for `tr.scw-ws-row td.field_2381`,
+    // which no longer exists on this page, so it always sees ZERO currently-
+    // connected children. Confirmed symptom: adding a device to Connected
+    // Devices updates the parent's own display immediately (that's just the
+    // edited record's local state), but the child never picks up its
+    // reciprocal field_2381 / never shows as connected on its own card.
+    MODEL_ONLY:        true,
     PUBLIC_API_NAME:   'silentRegroupView3505'
   });
 
@@ -2274,11 +2379,17 @@
 
   // view_3921 (SOW Line Items source for the bid-review comparison
   // grid). Same SOW Line Items object as view_3586/3610, same field
-  // keys, same regroup semantics. The bid-review feature edits
-  // field_1957 through worksheet cards moved out of #view_3921 into
-  // #bid-review-matrix; the connection-picker calls
-  // silentRegroupView3921 on save so the reciprocal + grouping cascade
-  // still fires.
+  // keys, same regroup semantics.
+  //
+  // MODEL_ONLY since the bid-review v2 cutover (replaceV1): v1's
+  // device-worksheet transform bails on view_3921 when v2 owns the page
+  // (device-worksheet.js brV2OwnsView), so there are NO .scw-ws-row rows
+  // to scrape — DOM-mode findRowsPointingTo always saw ZERO current
+  // children, the remove diff came back empty, and de-selecting a
+  // Connected Device never cleared the child's field_2197 (the card then
+  // re-derived the old connection from the stale back-pointer: "unselect
+  // the last device and it never updates"). The Backbone model is the
+  // right source here — it's what bid-review-v2's data layer reads.
   //
   // Mounting brackets on the comparison-grid scene live on view_3927
   // (a hidden source view added so cascadeAccessoryMdf can read each
@@ -2293,34 +2404,43 @@
     ACCESSORIES_PARENT_FIELD: 'field_2464',
     SOW_FIELD:                'field_2154',
     LABEL_FIELD:              'field_1950',   // SOW line-item display label
+    MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView3921'
   });
 
-  // view_3915 (INSTALL line items on the Implementation page).
+  // view_4093 (INSTALL line items on the Implementation page).
   // Same regroup semantics as the SOW/Survey worksheets, just bound
   // to the install-line-item field map:
   //   TRIGGER_FIELD     = field_2820  (REL_networking device → connection device)
   //   CONNECTIONS_FIELD = field_2821  (REL_connected device → network device)
   //   GROUPING_FIELD    = field_2818  (REL_OPS_MDF-IDF — the L1 group key)
-  // No accessory cascade wired yet — add ACCESSORIES_* if/when mounting
-  // hardware on the install side needs its MDF cascaded from the parent.
+  // Accessory cascade (added 2026-07-23, with the editable install MDF):
+  // accessories are ordinary rows in this same view's model (field_2853
+  // child→parent back-connection, view_4079-style self-reference), so a
+  // relocated camera drags its mounting hardware's MDF along.
   createMirror({
-    VIEW_ID:           'view_3915',
+    VIEW_ID:           'view_4093',
     TRIGGER_FIELD:     'field_2820',
     CONNECTIONS_FIELD: 'field_2821',
     GROUPING_FIELD:    'field_2818',
+    ACCESSORIES_FIELD:        'field_2852',
+    ACCESSORIES_VIEW_ID:      'view_4093',
+    ACCESSORIES_PARENT_FIELD: 'field_2853',
     LABEL_FIELD:       'field_2802',   // install line-item display label
     PUBLIC_API_NAME:   'silentRegroupView3915'
   });
 
   // view_4056 ("WHAT WE'RE INSTALLING") — SAME install object + field map as
-  // view_3915, so it needs its own mirror instance to fire the field_2820↔2821
+  // view_4093, so it needs its own mirror instance to fire the field_2820↔2821
   // cascade when Connected Devices/To are edited through that view's pickers.
   createMirror({
     VIEW_ID:           'view_4056',
     TRIGGER_FIELD:     'field_2820',
     CONNECTIONS_FIELD: 'field_2821',
     GROUPING_FIELD:    'field_2818',
+    ACCESSORIES_FIELD:        'field_2852',
+    ACCESSORIES_VIEW_ID:      'view_4056',
+    ACCESSORIES_PARENT_FIELD: 'field_2853',
     LABEL_FIELD:       'field_2802',   // install line-item display label
     PUBLIC_API_NAME:   'silentRegroupView4056'
   });
@@ -2339,9 +2459,33 @@
     CONNECTIONS_FIELD:   'field_2197',
     GROUPING_FIELD:      'field_1946',
     SOW_FIELD:           'field_2154',
+    // Accessory config so the accessory-SOW reconcile sweep also runs on
+    // the internal CO drafting page. Unlike the build/bid scenes there's no
+    // separate hidden accessory grid here — accessories on the CO are
+    // ordinary line items in THIS view's model, so the accessory view IS
+    // the worksheet view. Repair PUTs go through view_4079 (field_2154 is
+    // already written through it by the unlink flow).
+    ACCESSORIES_FIELD:        'field_1958',
+    ACCESSORIES_VIEW_ID:      'view_4079',
+    ACCESSORIES_PARENT_FIELD: 'field_2464',
     LABEL_FIELD:         'field_1950',
     MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView4079'
+  });
+
+  // view_4112 (sub portal "Manage Change Order" scene_1374 — the 1:1
+  // analogue of view_4079; same SOW Line Items object rendered by
+  // worksheet-v2). The sub edits connections during the Sub Pricing window,
+  // so the field_1957 ↔ field_2197 cascade must fire here too.
+  createMirror({
+    VIEW_ID:             'view_4112',
+    TRIGGER_FIELD:       'field_1957',
+    CONNECTIONS_FIELD:   'field_2197',
+    GROUPING_FIELD:      'field_1946',
+    SOW_FIELD:           'field_2154',
+    LABEL_FIELD:         'field_1950',
+    MODEL_ONLY:          true,
+    PUBLIC_API_NAME:     'silentRegroupView4112'
   });
 
   // Backward-compat alias for any lingering DevTools snippets that

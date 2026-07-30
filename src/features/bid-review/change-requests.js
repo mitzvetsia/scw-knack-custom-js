@@ -36,6 +36,12 @@
   // idsKey: cell property holding the raw connection IDs (for pre-fill)
   var FIELD_DEFS = [
     { key: 'productName',     label: 'Product',            type: 'text', displayOnly: true },
+    // Designator (drop prefix + cam/reader #) — a CR can request a
+    // designator change, and the revision card must show it from → to.
+    // The computed label (e.g. "E-003") recalculates server-side from
+    // these two once Make applies them. Cam/reader rows only (cabling).
+    { key: 'bidDropPrefix',   label: 'Prefix',             type: 'connection', connection: 'field_2361', idsKey: 'bidDropPrefixIds', single: true, visKey: 'cabling' },
+    { key: 'dropNumber',      label: 'Cam/Reader #',       type: 'number',  visKey: 'cabling' },
     { key: 'qty',             label: 'Qty',                type: 'number',  visKey: 'qty' },
     { key: 'rate',            label: 'Rate ($)',           type: 'number',  currency: true },
     { key: 'laborDesc',       label: 'Labor Description',  type: 'text',    multiline: true },
@@ -334,6 +340,53 @@
     return null;
   }
 
+  // Drop Prefix catalog for the CR modal's Prefix radio list — same source
+  // priority as the worksheet-v2 Prefix picker (init.js field_2240/2361):
+  // the window.SCW.dropPrefixOptions Builder snippet when deployed, else
+  // the union of prefixes in use on BOTH sides — bid records (field_2361,
+  // via the grid cells) AND SOW line items (field_2240_raw, straight off
+  // the view_3921 model). The SOW side matters: a match-SOW prefill can
+  // name a prefix (e.g. "RA-E-") that no bid record uses yet.
+  function buildDropPrefixOptions(params) {
+    var out = [], seen = {};
+    function push(id, label) {
+      if (id && label && !seen[id]) { seen[id] = 1; out.push({ id: id, identifier: label }); }
+    }
+    var cat = (window.SCW && window.SCW.dropPrefixOptions) || [];
+    for (var i = 0; i < cat.length; i++) {
+      var r = cat[i];
+      if (r) push(r.id, r.identifier);
+    }
+    if (out.length) return out;
+    // Bid-side in-use prefixes (field_2361, scraped onto the grid cells).
+    var rows = (params && params.gridRows) || [];
+    for (var ri = 0; ri < rows.length; ri++) {
+      var cells = (rows[ri] && rows[ri].cellsByPackage) || {};
+      var pks = Object.keys(cells);
+      for (var pi = 0; pi < pks.length; pi++) {
+        var cell = cells[pks[pi]] || {};
+        var ids = cell.bidDropPrefixIds || [];
+        if (ids.length) push(ids[0], cell.bidDropPrefix);
+      }
+    }
+    // SOW-side in-use prefixes (field_2240_raw on the view_3921 model).
+    try {
+      var v = window.Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      for (var mi = 0; mi < (models ? models.length : 0); mi++) {
+        var raw = models[mi] && models[mi].attributes &&
+                  models[mi].attributes.field_2240_raw;
+        if (Array.isArray(raw) && raw.length && raw[0]) {
+          push(raw[0].id, raw[0].identifier);
+        }
+      }
+    } catch (e) { /* SOW view not loaded — bid-side list still usable */ }
+    out.sort(function (a, b) {
+      return String(a.identifier).localeCompare(String(b.identifier));
+    });
+    return out;
+  }
+
   function openChangeModal(params) {
     injectCrStyles();
     closeModal();
@@ -356,6 +409,13 @@
       if (FIELD_DEFS[ci].type === 'connection') {
         connRecords[FIELD_DEFS[ci].key] = opts[FIELD_DEFS[ci].key] || [];
       }
+    }
+    // Drop Prefix options aren't derivable from grid rows like the other
+    // connections — source the catalog global (Builder snippet), falling
+    // back to the prefixes in use on the loaded rows when the snippet
+    // isn't deployed on this scene (Known Issue #11).
+    if (!connRecords.bidDropPrefix || !connRecords.bidDropPrefix.length) {
+      connRecords.bidDropPrefix = buildDropPrefixOptions(params);
     }
 
     if (CFG.debug) {
@@ -416,6 +476,11 @@
       var prefill = (existing && hasValue(existing.requested[fd.key]))
         ? existing.requested[fd.key]
         : cell[fd.key];
+      // When the prefill cell doesn't carry this key AT ALL (sourceFromSow
+      // builds a SOW-shaped cell without designator keys), fall back to the
+      // bid value — an empty input would otherwise diff as a phantom
+      // "change to blank/0" on submit.
+      if (!hasValue(prefill) && !(fd.key in cell)) prefill = bidCell[fd.key];
 
       var inp;
       if (fd.displayOnly) {
@@ -436,7 +501,25 @@
         var hasLockedIds = Object.keys(lockedIdSet).length > 0;
 
         var recs = connRecords[fd.key] || [];
+        // Prefill id precedence:
+        //   1. ids on the prefill cell itself
+        //   2. ids RESOLVED from the prefill cell's display text (the
+        //      sourceFromSow cell carries the SOW's designator/MDF as a
+        //      label with no ids) — must beat the bid fallback, or the
+        //      radios preselect the BID's value instead of the SOW's
+        //   3. the bid cell's ids (key absent on the prefill cell —
+        //      without this, submitting as-is would request CLEARING it)
         var currentIds = cell[fd.idsKey] || [];
+        if (!currentIds.length && hasValue(cell[fd.key])) {
+          var wantLbl = String(cell[fd.key]).trim().toLowerCase();
+          for (var wl = 0; wl < recs.length; wl++) {
+            if (String(recs[wl].identifier || '').trim().toLowerCase() === wantLbl) {
+              currentIds = [recs[wl].id];
+              break;
+            }
+          }
+        }
+        if (!currentIds.length) currentIds = bidCell[fd.idsKey] || [];
         var prefillIds = (existing && existing.requested[fd.key + 'Ids']) || currentIds;
 
         if (fd.single) {
@@ -1601,6 +1684,14 @@
         }
       }
 
+      // Drop designator identity — Make needs the prefix CONNECTION ID
+      // (field_2361 on the bid record) and the drop number (field_2362),
+      // not just the computed display label, to write designator changes.
+      // Sourced from the bid cell, so present on revise/remove/reinstate
+      // items (adds have no bid record yet — Make assigns on creation).
+      if (hasValue(cell.dropPrefix)) entry.dropPrefixId = cell.dropPrefix;
+      if (hasValue(cell.dropNumber)) entry.dropNumber   = cell.dropNumber;
+
       // 3. For ADD items: SOW record values (what the SOW line item has)
       if (itemActionType(it) === 'add') {
         var c = it.current || {};
@@ -2014,8 +2105,26 @@
     // Rebuild the comparison grid after Make finishes processing.
     // Runs regardless of success/error since Make may have already
     // received the data even if CORS blocks the response.
-    if (ns.refresh) {
-      setTimeout(function () { ns.refresh(); }, 3000);
+    //
+    // Make writes one Knack record PER item and is ITSELF throttled by
+    // Knack's ~10 req/s limit, so a submit of N items takes progressively
+    // longer to fully land (a 20-item removal observed 18/20 refreshed,
+    // the last 2 still "pending" — the tail writes hadn't committed when a
+    // single 3s refresh fired). A one-shot refresh races that tail. Instead
+    // refetch on a backoff schedule so each tick re-reads server-fresh data
+    // and catches whatever Make has committed by then — the later ticks mop
+    // up the slow tail without the user hand-refreshing. Refresh BOTH v1
+    // (ns.refresh) and the displayed v2 grid (refetchAll) each tick.
+    var refreshBoth = function () {
+      try { if (ns.refresh) ns.refresh(); } catch (e) { /* ignore */ }
+      try {
+        var v2 = window.SCW && SCW.bidReviewV2 && SCW.bidReviewV2.data;
+        if (v2 && typeof v2.refetchAll === 'function') v2.refetchAll();
+      } catch (e2) { /* ignore */ }
+    };
+    var REFRESH_SCHEDULE_MS = [3000, 7000, 13000, 22000, 35000];
+    for (var rs = 0; rs < REFRESH_SCHEDULE_MS.length; rs++) {
+      setTimeout(refreshBoth, REFRESH_SCHEDULE_MS[rs]);
     }
 
     return deferred.promise();

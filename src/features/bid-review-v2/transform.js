@@ -87,6 +87,17 @@
     if (c.length) return stripHtml(c[0].identifier || '');
     return stripHtml(rec[key] || '');
   }
+  // Every connected identifier (not just the first) — used for multi-value
+  // connections like accessories, where each attached record's label matters.
+  function connectionLabels(rec, key) {
+    var c = connectionAll(rec, key);
+    var out = [];
+    for (var i = 0; i < c.length; i++) {
+      var lbl = stripHtml((c[i] && c[i].identifier) || '');
+      if (lbl) out.push(lbl);
+    }
+    return out;
+  }
 
   // ── field_2404 is MULTI-VALUED ───────────────────────────────
   // A bid line item's "related SOW line item" connection (field_2404,
@@ -225,6 +236,51 @@
       return (a.displayLabel || '').localeCompare(b.displayLabel || '');
     });
     return rows;
+  }
+
+  // ── Phantom duplicate-row collapse ─────────────────────────────
+  // A single SOW line item MUST render as exactly one row per SOW grid.
+  // Stale/duplicated hidden-view data (view_3921 SOW membership + MDF
+  // lagging behind the authoritative build-SOW state, view_3680 leftover
+  // bid records) can otherwise surface the same SOW item twice in one
+  // grid — e.g. an on-sow matched row in its real IDF group AND a phantom
+  // off-sow twin in a stale MDF group, with the same bid records dupe-
+  // stacked in both. Collapse by SOW-item id, keeping the most
+  // authoritative row.
+  //
+  // rowSowRank: how authoritative a row is AS the representation of its
+  // SOW line item — on-sow matched (3) beats off-sow matched (2) beats a
+  // "removed" row (1) beats a bid-only / other-SOW row (0).
+  function rowSowRank(row) {
+    if (row.removed) return 1;
+    if (row.otherBidItem) return 0;
+    return row.offSow ? 2 : 3;
+  }
+  // dedupeRowsBySowItem: drop rows whose SOW line item is already
+  // represented by a kept row. `seen` (sowItem id → {list, idx, rank}) is
+  // shared across successive calls so weaker/later lists yield to
+  // stronger/earlier ones. With `replace` true a higher-ranked row
+  // displaces an earlier weaker one IN PLACE (so on-sow wins over an
+  // off-sow twin regardless of encounter order). Rows with no SOW item
+  // (true bid-only) never collide and are always kept.
+  function dedupeRowsBySowItem(list, seen, replace) {
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var row = list[i], sid = row && row.sowItem;
+      if (!sid) { if (row) out.push(row); continue; }
+      var prev = seen[sid];
+      if (!prev) {
+        out.push(row);
+        seen[sid] = { list: out, idx: out.length - 1, rank: rowSowRank(row) };
+        continue;
+      }
+      if (replace) {
+        var rk = rowSowRank(row);
+        if (rk > prev.rank) { prev.list[prev.idx] = row; prev.rank = rk; }
+      }
+      // else: SOW item already rendered — drop this duplicate row.
+    }
+    return out;
   }
 
   function buildRow(meta, cellRecords, sowItemId) {
@@ -766,6 +822,16 @@
         laborDesc:   rawHtml(s, SFK.laborDesc),
         displayLabel: raw(s, SFK.displayLabel),
         surveyNotes: raw(s, SFK.notes),
+        scwNotes:    raw(s, SFK.scwNotes),
+        // Attached accessories (field_2207, "REL_Accessories" — the parent's
+        // OWN forward connection, not the per-accessory field_2464 back-
+        // pointer worksheet-v2 prefers). Accessory RECORDS are filtered out
+        // of view_3921 entirely (see warnings.js), so there's no child-side
+        // list to scan here — this text field is the only signal available
+        // on this grid. field_1958 ("stored product name") is NOT usable for
+        // this — it concatenates product + accessory names with no
+        // separator (see the productName comment above).
+        accessories: connectionLabels(s, SFK.accessories),
         mdfIdf:      connectionLabel(s, SFK.mdfIdf),
         mdfIdfId:    connectionId(s, SFK.mdfIdf),
         proposalBucket: connectionLabel(s, SFK.proposalBucket),
@@ -913,6 +979,13 @@
       if (connectionAll(obrec, FK.bidPackage).length) continue; // still on a bid
       if (connectionAll(obrec, FK.sow).length) continue;        // still on a SOW
       var obsi = connectionId(obrec, FK.relatedSowItem);
+      // If this orphan's related SOW line item is STILL priced on a bid via a
+      // SIBLING bid record, the item isn't removed — this record is just a
+      // stale leftover (the item was re-surveyed / re-connected onto a new bid
+      // record while this one kept its cleared connections). Mirrors Source A's
+      // bidItemIds guard so a live-on-bid item never surfaces a false
+      // "Removed from bid" row.
+      if (obsi && bidItemIds[obsi]) continue;
       var okey = obsi || ('rec::' + obrec.id);
       if (removedSeen[okey] || (obsi && removedSeen[obsi])) continue;
       removedSeen[okey] = true;
@@ -1196,6 +1269,18 @@
           bidOnlyRows.push(orr);
         }
       }
+      // Collapse phantom duplicate SOW-item rows within THIS grid (see
+      // rowSowRank/dedupeRowsBySowItem). Order = authority: matched rows
+      // first (on-sow beats an off-sow twin via `replace`), then removed,
+      // then the "other" blocks — each later list only keeps rows whose
+      // SOW item wasn't already rendered. `removedRows` is shared across
+      // all grids, so filter a per-grid COPY, never the original.
+      var _seenSowItem = Object.create(null);
+      rows                = dedupeRowsBySowItem(rows, _seenSowItem, true);
+      var removedRowsGrid = dedupeRowsBySowItem(removedRows, _seenSowItem, false);
+      otherSowRows        = dedupeRowsBySowItem(otherSowRows, _seenSowItem, false);
+      bidOnlyRows         = dedupeRowsBySowItem(bidOnlyRows, _seenSowItem, false);
+
       var otherRows = otherSowRows.concat(bidOnlyRows);
 
       // Rows used for totals/grid include the "other" items; rendering
@@ -1264,7 +1349,7 @@
       // pile pinned to the top.
       var groups = groupRows(
         bidOnlyRows.length ? displayRows.concat(bidOnlyRows) : displayRows,
-        removedRows
+        removedRowsGrid
       );
       // "Belong to another SOW" stays at the BOTTOM.
       if (otherSowRows.length) {
@@ -1409,14 +1494,29 @@
     // Cabling diffs anchor on the BID carrying a value (incl. 0), so a bid that
     // simply didn't capture conduit/drop (blank) doesn't flag every row against
     // a spec that has one. Booleans flag on any true≠false delta.
+    // Designator drift — the bid record's copy of the display label
+    // (field_2365, cell.label) vs the SOW line item's authoritative label
+    // (field_1950, swapped onto row.displayLabel by buildState). Both
+    // sides must carry a label — a missing one is data lag, not a change.
+    var sowLblD = norm(row.displayLabel), bidLblD = norm(cell.label);
+
     var m = {
+      designator: (sowLblD && bidLblD) ? sowLblD !== bidLblD : false,
       product:    productDiff,
       laborDesc:  wseq(sowDesc) !== wseq(cell.laborDesc),
       // Anchor qty on the SOW side carrying a value (mirrors the conn anchors)
       // so a blank-spec line item doesn't flag every bid that priced qty 1.
       qty:        (Number(sd.qty) || 0) > 0
                     ? ((Number(sd.qty) || 0) !== (Number(cell.qty) || 0)) : false,
-      fee:        Math.abs((Number(row.sowFee) || 0) - (Number(cell.labor) || 0)) > 0.001,
+      // Fee basis: the LIVE SOW item's fee — what the SOW column actually
+      // displays — when the row has one (same "flag matches display" fix the
+      // labor-desc basis got). row.sowFee is the BID record's related copy;
+      // comparing against it let a blank/$0 live fee flag a phantom diff
+      // against a $0 bid whenever the copy was stale. Blank reads as a real
+      // $0 on both sides. Rows with no live SOW item keep the copy basis.
+      fee:        Math.abs((row.sowItemData ? (Number(sd.fee) || 0)
+                                            : (Number(row.sowFee) || 0))
+                    - (Number(cell.labor) || 0)) > 0.001,
       conduit:    bConduit != null ? (bConduit !== (cnum(sd.conduit) || 0)) : false,
       dropLength: bDrop != null ? (bDrop !== (cnum(sd.dropLength) || 0)) : false,
       plenum:     !!sd.plenum !== !!cell.plenum,
@@ -1426,9 +1526,9 @@
       connTo:     connToDiff,
       mdfIdf:     mdfDiff
     };
-    m.any = m.product || m.laborDesc || m.qty || m.fee || m.conduit ||
-            m.dropLength || m.plenum || m.exterior || m.existing ||
-            m.connDevice || m.connTo || m.mdfIdf;
+    m.any = m.designator || m.product || m.laborDesc || m.qty || m.fee ||
+            m.conduit || m.dropLength || m.plenum || m.exterior ||
+            m.existing || m.connDevice || m.connTo || m.mdfIdf;
     return m;
   }
 

@@ -12,8 +12,8 @@
     'view_3962',
     // All WORKSHEET_CONFIG views from device-worksheet.js
     'view_3313', 'view_3450', 'view_3505', 'view_3512', 'view_3575',
-    'view_3596', 'view_3997', 'view_3602', 'view_3608', 'view_3800', 'view_3915',
-    // "WHAT WE'RE INSTALLING" worksheet (same install object as view_3915)
+    'view_3596', 'view_3997', 'view_3602', 'view_3608', 'view_3800', 'view_4093',
+    // "WHAT WE'RE INSTALLING" worksheet (same install object as view_4093)
     'view_4056',
     // bid-review-v2 SOURCE views. v2 reads these straight off their
     // on-scene Backbone models (Knack.views[k].model.data.models), so a
@@ -22,10 +22,28 @@
     // "Removed / Not surveyed". v1 loads its own copy via API, but that
     // doesn't bump these on-scene models, so force them here.
     'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818',
+    // review-bids DOC_photos delete-plumbing grid (worksheet-v2/photos.js
+    // Path 1 clicks kn-link-delete rows in it — full page = every photo's
+    // row present in the DOM; the grid itself is hidden by photos.js)
+    'view_4098',
+    // Deploy scene As-Quoted plumbing: view_4072 = hidden grid of the OG
+    // proposed line items (install-as-quoted-panel reads it whole off the
+    // model — a page cap silently drops the LAST-created records, i.e.
+    // change-order items, and their install cards lose the As Quoted
+    // panel); view_3914 = acceptance grid feeding origin/quote chips.
+    'view_4072', 'view_3914',
+    // Customer questionnaire scene (scene_1347): view_4031 = install line
+    // items the cards render from; view_4075 = hidden DOC_photos grid the
+    // photo strips scrape (was 100/page — projects past 100 photos lost
+    // strips silently).
+    'view_4031', 'view_4075',
     // Change Order scene: CO line items (v2 source), MDF/IDF locations,
     // project install items (removal source), project SOW/proposal items
     // (adoption source). All read whole via the Backbone model.
-    'view_4079', 'view_4084', 'view_4086', 'view_4088'
+    'view_4079', 'view_4084', 'view_4086', 'view_4088',
+    // Sub portal Manage Change Order page (scene_1374) — 1:1 analogues of
+    // the four CO scene views above, same full-model rationale.
+    'view_4112', 'view_4114', 'view_4116', 'view_4118'
   ];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
@@ -44,15 +62,23 @@
     'view_3962',
     // change-record-limit.js — device-worksheet views
     'view_3313', 'view_3450', 'view_3505', 'view_3512', 'view_3575',
-    'view_3596', 'view_3997', 'view_3602', 'view_3608', 'view_3800', 'view_3915',
-    // "WHAT WE'RE INSTALLING" worksheet (same install object as view_3915)
+    'view_3596', 'view_3997', 'view_3602', 'view_3608', 'view_3800', 'view_4093',
+    // "WHAT WE'RE INSTALLING" worksheet (same install object as view_4093)
     'view_4056',
     // import-unique-items-btn.js
     'view_3913',
     // bid-review source/compare views (now also in VIEW_IDS above)
     'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818',
+    // review-bids DOC_photos delete-plumbing grid (see VIEW_IDS above)
+    'view_4098',
+    // Deploy-scene As-Quoted source grids (see VIEW_IDS above)
+    'view_4072', 'view_3914',
+    // Customer questionnaire scene grids (see VIEW_IDS above)
+    'view_4031', 'view_4075',
     // Change Order scene views (see VIEW_IDS above)
-    'view_4079', 'view_4084', 'view_4086', 'view_4088'
+    'view_4079', 'view_4084', 'view_4086', 'view_4088',
+    // Sub portal Manage Change Order views (see VIEW_IDS above)
+    'view_4112', 'view_4114', 'view_4116', 'view_4118'
   ];
 
   (function injectHidePaginationCss() {
@@ -66,6 +92,30 @@
     s.textContent = sel + ' { display: none !important; }';
     document.head.appendChild(s);
   })();
+
+  // Pre-fetch limit push — on ANY view render, sweep every listed view and
+  // stamp rows_per_page=1000 on models that haven't fetched yet. Knack
+  // renders a scene's views serially, so by the time the FIRST view fires
+  // its render event, later views' models usually exist but haven't built
+  // their fetch request — stamping them now means their FIRST fetch loads
+  // the full page. Without this, every listed view loads twice on scene
+  // entry (Builder-default page size first, then our 1000/page refetch) —
+  // double network, double render, and the partial first load is what
+  // bid-review-v2's truncation repair exists to mop up. The per-view
+  // handlers below remain as the safety net for models that appear late.
+  $(document)
+    .off('knack-view-render.any' + EVENT_NS)
+    .on('knack-view-render.any' + EVENT_NS, function () {
+      if (typeof Knack === 'undefined' || !Knack.views) return;
+      for (var i = 0; i < VIEW_IDS.length; i++) {
+        var v = Knack.views[VIEW_IDS[i]];
+        var mv = v && v.model && v.model.view;
+        if (!mv) continue;
+        if (mv.rows_per_page === LIMIT_NUM || mv.rows_per_page === LIMIT_VALUE) continue;
+        mv.rows_per_page = LIMIT_NUM;
+        if (mv.source) mv.source.limit = LIMIT_NUM;
+      }
+    });
 
   VIEW_IDS.forEach((VIEW_ID) => {
     $(document)

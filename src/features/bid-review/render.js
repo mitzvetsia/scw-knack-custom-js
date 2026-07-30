@@ -1916,6 +1916,20 @@
     var view = document.getElementById(CFG.docFilesViewKey);
     if (!view) { _docsIndexCache = idx; return idx; }
 
+    // Model map — field_68_raw carries { url, filename }: the DIRECT
+    // asset URL, usable as an <img> src for gallery previews. (The DOM
+    // anchor's href is an in-app #kn-asset route — useless for <img>.)
+    var byId = {};
+    try {
+      var kv = typeof Knack !== 'undefined' && Knack.views && Knack.views[CFG.docFilesViewKey];
+      var models = kv && kv.model && kv.model.data && kv.model.data.models;
+      if (models) {
+        for (var mi = 0; mi < models.length; mi++) {
+          byId[models[mi].id] = models[mi].attributes || {};
+        }
+      }
+    } catch (e) { /* model unavailable — cards fall back to file tiles */ }
+
     var rows = view.querySelectorAll('tbody tr[id]');
     for (var i = 0; i < rows.length; i++) {
       var tr = rows[i];
@@ -1944,14 +1958,21 @@
       var fileA = tr.querySelector('td.field_68 a.kn-view-asset, td.field_68 a');
       if (!fileA) continue;
 
+      var attrs = byId[tr.id] || null;
+      var mraw = attrs && attrs.field_68_raw;
+      if (Array.isArray(mraw)) mraw = mraw[0];
+      var directUrl = (mraw && typeof mraw === 'object' &&
+                       (mraw.url || mraw.thumb_url)) || '';
+
       var doc = {
-        id:       tr.id,
-        docType:  readRowFieldText(tr, 'field_67'),
-        notes:    readRowFieldText(tr, 'field_588'),
-        fileName: (fileA.textContent || '').trim() || 'Document',
-        fileUrl:  fileA.getAttribute('href') || '',
-        sowIds:   sowIds,
-        bidIds:   bidIds
+        id:        tr.id,
+        docType:   readRowFieldText(tr, 'field_67'),
+        notes:     readRowFieldText(tr, 'field_588'),
+        fileName:  (fileA.textContent || '').trim() || 'Document',
+        fileUrl:   fileA.getAttribute('href') || '',
+        directUrl: directUrl,
+        sowIds:    sowIds,
+        bidIds:    bidIds
       };
 
       idx.all.push(doc);
@@ -1989,18 +2010,53 @@
     return c;
   }
 
+  function docExt(name) {
+    var m = /\.([a-z0-9]+)\s*$/i.exec(String(name || ''));
+    return m ? m[1].toLowerCase() : '';
+  }
+
+  // GALLERY CARD (2026-07-16, replaces the two-line text row): thumbnail
+  // preview on top — a real <img> for image files (direct asset URL from
+  // the model, see buildDocsIndex), a PDF/file tile otherwise — with the
+  // type chip + filename + notes beneath. The Link/Unlink pill is still
+  // appended by the caller and CSS-positioned over the thumbnail's top-
+  // right corner, so the linked/available grouping + actions carry over
+  // unchanged.
   function buildDocsItem(d) {
     var row = el('div', 'scw-bid-review__docs-item');
     // data-doc-type drives the filter-chip show/hide. Untyped docs
     // get a sentinel so "All" still matches but specific-type filters
     // hide them.
     row.setAttribute('data-doc-type', d.docType || '__none__');
-    if (d.docType) row.appendChild(el('span', 'scw-bid-review__docs-type', d.docType));
 
-    // Body wraps filename + notes vertically so the filename is the
-    // visual anchor and metadata (notes) sits as a muted sub-line.
-    // Two-line layout makes lists of docs scannable — the eye lands
-    // on bold filenames at a consistent left edge.
+    var ext = docExt(d.fileName);
+    var isImg = !!d.directUrl && /^(png|jpe?g|gif|webp|bmp|avif)$/.test(ext);
+
+    var thumb = document.createElement('a');
+    thumb.className = 'scw-bid-review__docs-thumb' +
+      (isImg ? '' : ' scw-bid-review__docs-thumb--icon' +
+        (ext === 'pdf' ? ' scw-bid-review__docs-thumb--pdf' : ''));
+    thumb.href = d.directUrl || d.fileUrl;
+    thumb.target = '_blank';
+    thumb.rel = 'noopener';
+    thumb.title = d.fileName + (d.notes ? ' — ' + d.notes : '');
+    if (isImg) {
+      var img = document.createElement('img');
+      img.loading = 'lazy';
+      img.src = d.directUrl;
+      img.alt = d.fileName;
+      thumb.appendChild(img);
+    } else {
+      thumb.innerHTML =
+        '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+        '<polyline points="14 2 14 8 20 8"/></svg>' +
+        '<span class="scw-bid-review__docs-ext">' +
+        (ext ? ext.toUpperCase().replace(/[^A-Z0-9]/g, '') : 'FILE') + '</span>';
+    }
+    row.appendChild(thumb);
+
     var body = el('div', 'scw-bid-review__docs-body');
     var a = document.createElement('a');
     a.href = d.fileUrl;
@@ -2010,11 +2066,14 @@
     a.className = 'scw-bid-review__docs-link';
     a.textContent = d.fileName;
     body.appendChild(a);
+    var subBits = el('span', 'scw-bid-review__docs-sub');
+    if (d.docType) subBits.appendChild(el('span', 'scw-bid-review__docs-type', d.docType));
     if (d.notes) {
       var nEl = el('span', 'scw-bid-review__docs-notes', d.notes);
       nEl.title = d.notes;
-      body.appendChild(nEl);
+      subBits.appendChild(nEl);
     }
+    if (d.docType || d.notes) body.appendChild(subBits);
     row.appendChild(body);
     return row;
   }
@@ -2056,12 +2115,37 @@
     // as centered relative to the left/right-aligned metric rows).
     var header = el('div', 'scw-bid-review__docs-header');
     header.appendChild(el('span', 'scw-bid-review__docs-label', 'Documents'));
-    if (addUrl) {
-      var addBtn = document.createElement('a');
-      addBtn.href = addUrl;
+    if (sowId) {
+      // Upload goes through the bulk-upload modal in doc mode (the
+      // 'sow_docs_upload' VIEWS entry: doc-type picker + payload tagged
+      // uploadKind 'doc_file' / linkField 'sowID') — NOT Knack's native
+      // add-document child page, whose modal form 400s on submit. The
+      // child-page addUrl is kept only as a fallback when bulk-upload
+      // isn't loaded.
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
       addBtn.className = 'scw-bid-review__docs-add';
       addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
       addBtn.appendChild(document.createTextNode(' Upload new'));
+      addBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var bu = window.SCW && window.SCW.bulkUpload;
+        var docsCfg = null;
+        if (bu && bu.config && Array.isArray(bu.config.VIEWS)) {
+          for (var di = 0; di < bu.config.VIEWS.length; di++) {
+            if (bu.config.VIEWS[di] && bu.config.VIEWS[di].docUpload) {
+              docsCfg = bu.config.VIEWS[di];
+              break;
+            }
+          }
+        }
+        if (bu && typeof bu.open === 'function' && docsCfg) {
+          bu.open(docsCfg, sowId);
+        } else if (addUrl) {
+          window.location.hash = addUrl;
+        }
+      });
       header.appendChild(addBtn);
     }
     wrap.appendChild(header);
@@ -2173,7 +2257,11 @@
   // (badges/name in r2, action buttons in r3).
   //   details: published proposal block + Survey Costs / Margin metrics
   //   actions: margin-low warning button stack + Preview Proposal pill
-  function buildSowStatusBar(sowGrid) {
+  // opts.separateDocs: return the documents gallery as `docs` instead of
+  // embedding it in `details` — v2 mounts it as a FULL-WIDTH band between
+  // the SOW header and the line items (the head's SOW column is too
+  // narrow for a card gallery). Default (v1 path) keeps it inline.
+  function buildSowStatusBar(sowGrid, opts) {
     var sowId = sowGrid.sowId;
     var tr = findNextStepRow(sowId);
     var ops = (window.SCW && SCW.opsReview) ? SCW.opsReview : null;
@@ -2235,35 +2323,38 @@
           nameDiv.appendChild(pdfA);
         }
 
-        // Inline edit on the proposal expiration date. CFG.proposalSourceView
-        // (view_3920) has inline-edit enabled on field_2659, so PUT through
-        // that view via the same dispatch pattern as SOW Name / Survey
-        // Costs (data-action handled in init.js).
+        // Inline edit on the proposal expiration date — pencil-edit
+        // affordance handled by pq-expiration-edit.js (scene_1155 entry),
+        // NOT a live auto-saving <input type="date">. The old always-live
+        // input PUT on every `change`, and the native date input fires
+        // `change` for each intermediate segment while typing (year "0002",
+        // "0020", …) — so it fired garbage saves mid-keystroke and the
+        // follow-on refetches re-rendered the header under the open
+        // calendar picker. The pencil opens an explicit Save/Cancel editor
+        // (with +30/60/90-day presets) that commits exactly once.
         var expEl       = proposalBlock.querySelector('.scw-pq-exp');
         var proposalRid = proposalBlock.getAttribute('data-proposal-record-id');
         if (expEl && proposalRid) {
-          // Pull the MM/DD/YYYY out of the rendered "Expires: 06/26/2026"
-          // (proposalBlock owns the formatting; we just convert to ISO for
-          // the input's value attribute).
-          var rawExp = (expEl.textContent || '').replace(/^[^0-9]*/, '').trim();
-          var isoExp = '';
-          var mExp   = rawExp.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-          if (mExp) {
-            isoExp = mExp[3] + '-' + ('0' + mExp[1]).slice(-2) + '-' + ('0' + mExp[2]).slice(-2);
-          }
-
-          expEl.textContent = '';
-          expEl.appendChild(document.createTextNode('Expires: '));
-          var expInput = document.createElement('input');
-          expInput.type = 'date';
-          expInput.className = 'scw-bid-review__pq-exp-input';
-          expInput.value = isoExp;
-          expInput.setAttribute('data-action',     'proposal_exp_update');
-          expInput.setAttribute('data-record-id',  proposalRid);
-          expInput.setAttribute('data-field',      'field_2659');
-          expInput.setAttribute('data-view',       CFG.proposalSourceView);
-          expInput.setAttribute('aria-label',      'Edit proposal expiration date');
-          expEl.appendChild(expInput);
+          // The SOW record id — pq-expiration-edit reads it off the block to
+          // mirror field_2659 onto the SOW's field_2135 (a DIFFERENT record).
+          proposalBlock.setAttribute('data-sow-record-id', sowId || '');
+          // Build the pencil here (instead of waiting for that module's
+          // knack-view-render decorate pass) so it exists the moment the v2
+          // grid rebuilds this header; the attribute stops decorate() from
+          // adding a duplicate.
+          expEl.setAttribute('data-scw-exp-editable', '1');
+          var expBtn = document.createElement('button');
+          expBtn.type = 'button';
+          expBtn.className = 'scw-pq-exp-edit-btn';
+          expBtn.title = 'Edit expiration date';
+          expBtn.setAttribute('aria-label', 'Edit proposal expiration date');
+          expBtn.innerHTML =
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M12 20h9"></path>' +
+            '<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>' +
+            '</svg>';
+          expEl.appendChild(expBtn);
         }
 
         details.appendChild(proposalBlock);
@@ -2291,7 +2382,11 @@
       addDocUrl = base + '/add-document-review-bid/' + sowId + '/';
     }
     var sowDocsBlock = buildSowDocsBlock(sowId, addDocUrl, docsIdx);
-    if (sowDocsBlock) details.appendChild(sowDocsBlock);
+    var docsOut = null;
+    if (sowDocsBlock) {
+      if (opts && opts.separateDocs) docsOut = sowDocsBlock;
+      else details.appendChild(sowDocsBlock);
+    }
 
     // 3. Survey Costs (editable input) + Margin (read-only display).
     var metrics = el('div', 'scw-bid-review__sow-metrics');
@@ -2390,7 +2485,7 @@
       }
     }
 
-    return { details: details, actions: actions };
+    return { details: details, actions: actions, docs: docsOut };
   }
 
   function buildSowSection(sowGrid) {
@@ -2703,8 +2798,8 @@
   // Public so v2 can build the SOW column header (name / proposal / docs /
   // survey costs / margin / margin-low warning / preview pill) from v1's
   // exact renderer. Takes any object with { sowId, sowName }.
-  ns.buildSowStatusBar = function (sowGridLike) {
-    return buildSowStatusBar(sowGridLike);
+  ns.buildSowStatusBar = function (sowGridLike, opts) {
+    return buildSowStatusBar(sowGridLike, opts);
   };
 
   // Public so v2 can surface the editable SOW Name (field_2126, the friendly
@@ -2722,7 +2817,19 @@
   // PUT + view_3926 refetch wouldn't surface fresh docs in the v2 header.
   ns.resetDocsIndex = function () { resetDocsIndex(); };
 
+  // True when bid-review-v2 owns the page — v1's grid is DEAD (never
+  // rendered); v1 runs as a pure library (state pipeline, CR engine,
+  // action handlers, status bar, toasts) that v2 calls into.
+  function v2OwnsPage() {
+    var v2cfg = window.SCW && SCW.bidReviewV2 && SCW.bidReviewV2.CONFIG;
+    return !!(v2cfg && v2cfg.enabled !== false && v2cfg.replaceV1);
+  }
+
   ns.renderMatrix = function renderMatrix(state) {
+    // v2 owns the page → don't build the (hidden) v1 matrix at all. The
+    // full deletion of the v1 grid DOM builders is tracked as a cleanup;
+    // this gate is what makes them unreachable.
+    if (v2OwnsPage()) return null;
     var mount = getOrCreateMount();
     if (!mount) return null;   // wrong scene — scene gate refused
 
@@ -2784,6 +2891,7 @@
   // ── public: showLoading ─────────────────────────────────────
 
   ns.showLoading = function showLoading() {
+    if (v2OwnsPage()) return;   // v1 grid dead — v2 paints its own states
     var mount = getOrCreateMount();
     if (!mount) return;   // wrong scene
     mount.innerHTML = '';

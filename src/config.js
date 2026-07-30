@@ -88,6 +88,118 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Response body: { success: true,  imported: <count>, message?: "..." }
   //             or:  { success: false, error: "<message>" }
   MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK: "https://hook.us1.make.com/zqqc0kg10fsxmrwmr78hb9g4qqs9dutw",
+  // Change-order adoption (worksheet-v2/co-adopt.js) — RETIRED 2026-07-23.
+  // Adoption no longer goes through Make: it's a plain field_2154 union
+  // (add the CO's SOW id to the line item's multi-SOW connection), done
+  // client-side via view-scoped PUTs — the exact inverse of the CO
+  // worksheet's unlink. The old MAKE_CO_ADOPT_ITEMS_WEBHOOK pointed at the
+  // import-unique-items scenario, which never matched the adopt payload
+  // and ACKed 200 without writing anything ("adds but doesn't add").
+  // Change-order removal (worksheet-v2/co-remove.js): flag active project
+  // install line items for removal on a CO. Unlike adoption, removal CREATES
+  // records — one Remove line per install item (a SOW Line Item with
+  // CO Action = Remove, Target install item → the install record, connected
+  // to the CO via field_2154). The install record's own `Removed by CO` flip
+  // defers to signature. Expected:
+  //   Request body:  { changeOrderId: <CO SOW id>, installItemIds: [<install rec ids>],
+  //                    removal: true, triggeredBy: {...} }
+  //   Response body: { success: true, created?: <count>, message?: "..." }
+  //             or:  { success: false, error: "<message>" }
+  // Single-item and bulk removal fire the SAME payload shape (co-remove.js
+  // fireRemove builds it once): installItemIds is ALWAYS an array (one id or
+  // many), so Make can parse one way regardless of how many were selected.
+  MAKE_CO_REMOVE_ITEMS_WEBHOOK: "https://hook.us1.make.com/yw3x0othv8k4guke6qx91iyo3q5hgnyy",
+  // Change-order ADD item (worksheet-v2/co-add-item-form.js): the custom
+  // "Add line item(s)" modal fires this INSTEAD of the native DTO form. Make
+  // creates SOW Line Item records DIRECTLY from the payload (no DTO staging
+  // object) and connects them to the CO's SOW (field_2154 = coSowId). One
+  // item per (product × MDF/IDF); qty/prefix/startNumber drive label
+  // numbering the same way the old DTO scenario did. Expected:
+  //   Request body: {
+  //     coSowId, bucketId, bucketName,
+  //     productIds: [...], accessoryIds: [...],
+  //     mdfIds: [...],                 // [] when the bucket has no MDF field
+  //     qty, prefix, startNumber,      // startNumber/prefix: cameras only
+  //     existingCabling, exterior, plenum,   // cameras only (bool)
+  //     serviceCost, description, notes,
+  //     triggeredBy: { id, name, email },
+  //     origin: 'sub'|'ops',           // STRUCTURAL initiator: which page fired
+  //                                    // the add — 'sub' = sub portal Manage CO
+  //                                    // page (scene_1374/view_4112), 'ops' =
+  //                                    // internal build-CO (scene_1362/view_4079).
+  //                                    // Derived from the hosting deployment,
+  //                                    // never from the user's email. Make
+  //                                    // stamps authorship (Added-by-sub flag)
+  //                                    // from this.
+  //     originPage, originView, originScene   // human/debug context for origin
+  //   }
+  //   Response: 2xx = accepted (body optional; only {success:false}|{error} fails)
+  MAKE_CO_ADD_ITEMS_WEBHOOK: "https://hook.us1.make.com/ae51ped3yu5m671mx3yvxqyk5r14wp9o",
+  // Change-order sub-pricing loop (co-stage-strip.js). One scenario, the
+  // payload's `mode` branches it:
+  //   mode:'send'     → store payload.snapshot verbatim in the CO header's
+  //                     `CO Sub Pricing Snapshot` field, set CO Status =
+  //                     "Pending Sub Pricing", notify the sub (resolve off
+  //                     the CO's bid-basis connection).
+  //   mode:'nudge'    → re-send the notification only. No writes.
+  //   mode:'sendback' → same writes as 'send' (fresh snapshot = the new
+  //                     baseline ops just reviewed) + payload.note in the
+  //                     notification.
+  //   mode:'sub-submit' → the SUB hands their priced CO back: set CO Status
+  //                     = "Ops Review", notify SCW ops (not the sub),
+  //                     update both ClickUp task statuses, and post
+  //                     payload.requestText (or requestHtml) as the "what
+  //                     the sub submitted" comment on each task — that CU
+  //                     comment IS the submittal record / tamper defense.
+  //                     ⚠️ Do NOT write payload.snapshot to field_2972
+  //                     (decided 2026-07-15): the field stays the SCW→sub
+  //                     SEND baseline so the Ops-Review "what changed" diff
+  //                     has something to compare the live lines against.
+  //                     (The payload still carries snapshot = the submitted
+  //                     values, in case a dedicated submittal field is
+  //                     added later.)
+  //   mode:'recall'   → NOTIFY-ONLY: tell the sub their pricing window
+  //                     closed + update both ClickUp task statuses. The
+  //                     status write (CO Status = "Draft") happens
+  //                     CLIENT-SIDE before this fires — co-stage-strip.js
+  //                     PUTs field_2953 through view_4092 (the field is on
+  //                     that form, hidden). ⚠️ The Make recall branch must
+  //                     NOT touch CO Status — a branch that wrote it back
+  //                     overwrote the client PUT and made recall look
+  //                     broken (2026-07-15). No snapshot write — any
+  //                     pricing the sub already entered stays on the lines.
+  //   ClickUp (send + sendback): update BOTH tasks' statuses — the
+  //   subcontractor's task and our internal one — and post
+  //   payload.requestText (or requestHtml where the surface renders HTML)
+  //   as a comment on each, so the fixed record of exactly what was
+  //   requested rides the tasks, not just Knack.
+  //   Request body:  { changeOrderId, mode, snapshot?, note?, triggeredBy,
+  //                    coNumber, coName,         // CU task lookup / naming
+  //                    requestHtml, requestText  // fixed what-was-sent record:
+  //                  }                           // self-contained HTML card
+  //                                              // (inline styles — store as the
+  //                                              // durable artifact) + plaintext
+  //                                              // twin (for CU comments)
+  //     snapshot = { sentAt, sentBy, lines: { <lineId>: { label, prefixId,
+  //                  prefix, number, action, subBid, hrs, mat, fee, equip } } }
+  //     (prefixId = Drop Prefix connection record id (field_2240);
+  //      prefix/number = display text + drop # (field_1951);
+  //      label = the computed drop label, e.g. "E-010")
+  //   Response body: { success: true } or { success: false, error: "..." }
+  MAKE_CO_SEND_TO_SUB_WEBHOOK: "https://hook.us1.make.com/vj5dai5w3k84m9xrd9f296wlqnr8oo4q",
+  // Issue Change Order — fired by ops-stepper.js's CO-mode step
+  // ('issue-change-order') on the proposal PREVIEW page (scene_1096), which
+  // renders instead of the base publish steps when SOW Type (field_2952) =
+  // "change order". ONE gesture, three Make-side writes (docs/change-orders.md
+  // "Issue" verb): create the published proposal (type=CO), create the
+  // esignatures contract + acceptance record (type=CO), set CO Status =
+  // Issued. Payload = the SAME full publish shape as publish-final
+  // (sourceRecordId, stepId:'issue-change-order', notes, sowFields,
+  // sowLineItemIds, html/htmlPdf/json/totals/proposalAccessToken/Url, …)
+  // plus changeOrderId (alias of sourceRecordId, matching the other CO
+  // webhooks). ⚠️ Requires field_2952 on view_3861 for CO mode to activate.
+  //   Response body: { success: true } or { success: false, error: "..." }
+  MAKE_CO_ISSUE_WEBHOOK: "https://hook.us1.make.com/fwpbnldo3fkrywggxwu18qsh6ghgrg7w",
   // Fires on the "Request Alternative Proposal" stepper action. Expects:
   //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
   //   Response body: { success: true, message?: "..." }

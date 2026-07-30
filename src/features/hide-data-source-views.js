@@ -111,6 +111,20 @@
     // customer questionnaire scene; customer-questionnaire.js reads its
     // model to inject photo strips into the questionnaire cards.
     'view_4075',
+    // 'view_4099' — Add-item menu link on the Change Order scene. The CO
+    // worksheet's "+ Add New Item" toolbar button clicks this view's
+    // (hidden) link programmatically (worksheet-v2 addSowMenuView on the
+    // view_4079 entry) — same mechanism as view_4001 on review-bids. The
+    // link opens a copy of the Add-to-SOW form targeted at the CO.
+    'view_4099',
+    // 'view_4109' — CO record details (CO Status + Sub Pricing Snapshot)
+    // on the CO drafting scene. co-stage-strip.js reads status/snapshot
+    // from its model and polls it while the CO is Pending Sub Pricing.
+    'view_4109',
+    // 'view_4122' — CO record details on the sub portal Manage Change
+    // Order page (scene_1374). co-sub-lock.js reads CO Status from its
+    // model to decide the page-wide edit window.
+    'view_4122',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the

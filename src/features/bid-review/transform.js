@@ -320,7 +320,16 @@
           price:           num(rec, FK.price),
           productDesc:     raw(rec, FK.productDesc),
           dropPrefix:      connectionId(rec, FK.dropPrefix),
-          dropNumber:      raw(rec, FK.dropNumber),
+          // Numeric (not raw display text) — the CR modal diffs this as a
+          // number field, and "10" !== 10 read as a phantom change.
+          dropNumber:      num(rec, FK.dropNumber),
+          // Designator as a first-class CR field (FIELD_DEFS bidDropPrefix):
+          // label + ids alongside the payload-only id above.
+          bidDropPrefix:    connectionLabel(rec, FK.dropPrefix),
+          bidDropPrefixIds: connectionIdsAll(rec, FK.dropPrefix),
+          // Bid-side computed label (field_2365) — compared against the SOW
+          // item's label (sowItemLabel) for designator mismatch detection.
+          bidDisplayLabel:  raw(rec, FK.displayLabel),
           limitQtyOne:     bool(rec, FK.limitQtyOne),
           mapConnections:  bool(rec, FK.bidMapConn),
           bidMdfIdf:        connectionLabel(rec, FK.mdfIdf),
@@ -816,6 +825,14 @@
           connDevice:      connectionLabelsAll(siRec, SFK.connDevice),
           connDeviceIds:   connectionIdsAll(siRec, SFK.connDevice),
           mapConn:         raw(siRec, SFK.mapConn),
+          // The CHILD's own back-pointer to its parent (field_2464) —
+          // blank for a standalone line item, the parent's SOW-item id for
+          // an accessory/mounting-hardware row. See actions.js's
+          // buildCopyToSowPayload for why this matters: a child shouldn't
+          // be flagged for removal just because it has no bid cell of its
+          // own (bids price the parent, not each accessory) — only when
+          // its PARENT is also being removed.
+          accessoryParentId: connectionId(siRec, SFK.accessoryParent),
         };
       }
       if (CFG.debug) {
@@ -1007,6 +1024,7 @@
           r2.sowConnDevice    = siData.connDevice;
           r2.sowConnDeviceIds = siData.connDeviceIds;
           r2.sowMapConn       = siData.mapConn;
+          r2.accessoryParentId = siData.accessoryParentId || '';
         }
       }
 
@@ -1052,6 +1070,7 @@
         var orr = otherRows[orw];
         if (orr.sowItem && sowItemLookup[orr.sowItem]) {
           orr.sowItemLabel = sowItemLookup[orr.sowItem].label || '';
+          orr.accessoryParentId = sowItemLookup[orr.sowItem].accessoryParentId || '';
         }
         // Not on this SOW — reuse the offSow treatment (cut-out SOW cell,
         // excluded from SOW totals, still counted in the bid column total).

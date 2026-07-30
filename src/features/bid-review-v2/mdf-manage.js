@@ -18,10 +18,18 @@
  * view_3822 (the MDF/IDF records view on scene_1155) often exposes only
  * the computed display name (field_1642, "TYPE: ## : name") — not the
  * individual type/##/name columns — so prefill parses the display name
- * when the dedicated fields come back empty. Saves PUT through view_3822
- * with the user's session and send ONLY the fields the user changed
- * (never a blank prefill), then update the header title in place and
- * quietly refetch view_3822 so the model agrees.
+ * when the dedicated fields come back empty.
+ *
+ * Saving: each field COMMITS ON BLUR / Enter (selects on change) like
+ * every other inline field — no Save button. PUTs go through view_3822
+ * with the user's session and send ONLY the field(s) the user changed
+ * (never a blank prefill). On success the header title updates in place
+ * AND the renamed location's connection identifiers are patched across
+ * every loaded view model on the scene: the comparison grid groups by
+ * the LINE ITEMS' field_1946 identifier (snapshotted at load), so
+ * without the patch the next grid rebuild resurrected the old name —
+ * which read as "the rename didn't take". No refetch is fired (the old
+ * post-save refetch was what triggered that reverting rebuild).
  *
  * ⚠ Builder dependency: view_3822 must accept edits on field_1641 /
  * field_2458 / field_1943 / field_1643 (inline editing on those columns)
@@ -99,6 +107,73 @@
     if (!rec) return '';
     var raw = rec[fk + '_raw'];
     return stripTags(raw != null ? raw : rec[fk]);
+  }
+
+  /** After a rename, rewrite the location's connection identifier in EVERY
+   *  loaded view model on the scene. The comparison grid groups by the line
+   *  items' field_1946 identifier (transform.js connectionLabel), which
+   *  snapshots the display name at load — left stale, the next grid rebuild
+   *  resurrects the old name and the rename looks like it "didn't take".
+   *  Patches `_raw` identifiers plus the rendered HTML connection copy
+   *  (<span class="<recId>">label</span>). Best-effort by design. */
+  function patchConnectionIdentifiers(recId, newLabel) {
+    if (!recId || !newLabel) return;
+    var own = Object.prototype.hasOwnProperty;
+    var spanRe = new RegExp(
+      '(<span[^>]*class="[^"]*' + recId + '[^"]*"[^>]*>)[^<]*(</span>)', 'g');
+    var htmlLabel = esc(newLabel).replace(/\$/g, '$$$$');
+    try {
+      var views = (window.Knack && Knack.views) || {};
+      for (var vk in views) {
+        if (!own.call(views, vk)) continue;
+        var v = views[vk];
+        var models = v && v.model && v.model.data && v.model.data.models;
+        if (!models || !models.length) continue;
+        for (var i = 0; i < models.length; i++) {
+          var attrs = models[i] && (models[i].attributes || models[i]);
+          if (!attrs) continue;
+          for (var key in attrs) {
+            if (!own.call(attrs, key)) continue;
+            var val = attrs[key];
+            if (/_raw$/.test(key)) {
+              if (Array.isArray(val)) {
+                for (var r = 0; r < val.length; r++) {
+                  if (val[r] && val[r].id === recId) val[r].identifier = newLabel;
+                }
+              } else if (val && val.id === recId && val.identifier != null) {
+                val.identifier = newLabel;
+              }
+            } else if (typeof val === 'string' && val.indexOf(recId) !== -1) {
+              attrs[key] = val.replace(spanRe, '$1' + htmlLabel + '$2');
+            }
+          }
+        }
+      }
+    } catch (e) { /* best-effort — a manual refresh still shows the rename */ }
+  }
+
+  /** Patch the hidden source view's table DOM after a save. The L1 detail
+   *  band (photos/SCW Notes) and the survey-notes callout re-SCRAPE that
+   *  DOM on every grid rebuild (readSourceFieldText / findMdfIdfSourceRow)
+   *  — the model sync alone leaves those scrapes stale. Writes the saved
+   *  fields plus the recomposed display name into the row's cells. */
+  function patchSourceViewDom(recId, fields, newLabel) {
+    var own = Object.prototype.hasOwnProperty;
+    try {
+      var viewEl = document.getElementById(mdfViewKey());
+      var tr = viewEl && viewEl.querySelector('tbody tr[id="' + recId + '"]');
+      if (!tr) return;
+      var map = {};
+      for (var fk in fields) { if (own.call(fields, fk)) map[fk] = fields[fk]; }
+      map[F.displayName] = newLabel;
+      for (var k in map) {
+        if (!own.call(map, k)) continue;
+        var td = tr.querySelector('td.' + k);
+        if (!td) continue;
+        var span = td.querySelector('span');
+        (span || td).textContent = map[k];
+      }
+    } catch (e) { /* best-effort */ }
   }
 
   /** Designator <option> markup: HEADEND/IDF always offered, plus any other
@@ -199,9 +274,7 @@
       '.' + P + '-status.is-err { color: #be123c; }',
       '.' + P + '-btn { padding: 7px 14px; border-radius: 6px; cursor: pointer;',
       '  font: 600 12.5px/1.2 system-ui, sans-serif; border: 1px solid transparent; }',
-      '.' + P + '-btn--cancel { background: #fff; color: #475569; border-color: #cbd5e1; }',
-      '.' + P + '-btn--save { background: #0f4c75; color: #fff; }',
-      '.' + P + '-btn--save:disabled { background: #cbd5e1; cursor: not-allowed; }'
+      '.' + P + '-btn--close { background: #fff; color: #475569; border-color: #cbd5e1; }'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -211,6 +284,17 @@
       'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
       '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>' +
       '<circle cx="12" cy="13" r="4"/></svg>';
+
+  // Delete-enabled DOC_photos grid on this scene, used ONLY as a REST-DELETE
+  // endpoint (view-scoped PUT/DELETE, same trick every other save in this
+  // file uses). This is the SAME "all-photos" helper grid worksheet-v2/
+  // photos.js already added to review-bids for line-item photo deletion
+  // (view_4098, added 2026-07-13) — DOC_photos is one shared object across
+  // line items AND MDF/IDF locations (different connection field per
+  // parent), so no separate Builder view should be needed here. If deletes
+  // 404/403, the object differs after all and a dedicated helper grid for
+  // MDF/IDF location photos needs to be added and pointed at below.
+  var MDF_PHOTO_DELETE_GRID = 'view_4098';
 
   /** Open the identity-aware bulk photo uploader against an MDF/IDF
    *  location record (linkField mdfIdfID). Shared by the manage panel's
@@ -318,8 +402,7 @@
           '<button type="button" class="' + P + '-photos">' + CAMERA_SVG +
             '<span>Add photos</span></button>' +
           '<span class="' + P + '-status"></span>' +
-          '<button type="button" class="' + P + '-btn ' + P + '-btn--cancel">Cancel</button>' +
-          '<button type="button" class="' + P + '-btn ' + P + '-btn--save" disabled>Save</button>' +
+          '<button type="button" class="' + P + '-btn ' + P + '-btn--close">Close</button>' +
         '</div>' +
       '</div>';
     tr.appendChild(td);
@@ -337,94 +420,139 @@
       el.style.display = 'none';
     }
     hideDup(headerTr.querySelector('.scw-bid-review-v2__grp-title'));
+    var notesSection = null;
     var sib = tr.nextElementSibling;
     while (sib && !sib.classList.contains('scw-bid-review-v2__group-header')) {
       if (sib.classList.contains('scw-bid-review-v2__l1-detail-row')) {
         var dSecs = sib.querySelectorAll('.scw-bid-review-v2__l1-detail-section');
         for (var ds = 0; ds < dSecs.length; ds++) {
           var dLbl = dSecs[ds].querySelector('.scw-bid-review-v2__l1-detail-label');
-          if (dLbl && /^scw notes$/i.test((dLbl.textContent || '').trim())) hideDup(dSecs[ds]);
+          if (dLbl && /^scw notes$/i.test((dLbl.textContent || '').trim())) {
+            notesSection = dSecs[ds];
+            hideDup(dSecs[ds]);
+          }
         }
         break;
       }
       sib = sib.nextElementSibling;
     }
 
-    var saveBtn = td.querySelector('.' + P + '-btn--save');
-    var status  = td.querySelector('.' + P + '-status');
-    var inputs  = td.querySelectorAll('[data-fk]');
-    function markDirty() { saveBtn.disabled = false; }
-    for (var i = 0; i < inputs.length; i++) {
-      inputs[i].addEventListener('input', markDirty);
-      inputs[i].addEventListener('change', markDirty);   // selects fire change
+    // Keep the (currently hidden) SCW Notes callout in step with a notes
+    // save, so closing the panel restores the NEW text, not the old. An
+    // emptied callout stays hidden — closePanels skips restoring it.
+    function updateNotesCallout(text) {
+      if (!notesSection) return;
+      var t = notesSection.querySelector('.scw-bid-review-v2__l1-detail-text');
+      if (t) t.textContent = text;
+      if (!String(text).trim()) notesSection.removeAttribute('data-scw-mdf-dup-hidden');
     }
-    // Live badge/panel retint when the designator flips HEADEND ↔ IDF —
-    // and enforce the numbering rule: HEADENDs never carry a ##, only IDFs.
-    // Flipping to HEADEND hides + clears the ## (the diff-only save then
-    // clears field_2458 in Knack); flipping back restores the original.
-    var typeSel = td.querySelector('.' + P + '-badge__type-sel');
-    var numIn   = td.querySelector('.' + P + '-badge__num-in');
-    typeSel.addEventListener('change', function () {
-      var head  = /headend|mdf/i.test(typeSel.value);
-      var panel = td.querySelector('.' + P + '-panel');
-      var badge = td.querySelector('.' + P + '-badge');
-      panel.classList.toggle(P + '-panel--head', head);
-      badge.classList.toggle(P + '-badge--head', head);
-      numIn.hidden = head;
-      numIn.value  = head ? '' : (numIn.value || initial[F.num] || '');
-    });
-    td.querySelector('.' + P + '-btn--cancel').addEventListener('click', closePanels);
 
-    // Add photos — same identity-aware bulk uploader the line-item photo
-    // pills use, but the record shipped is THIS MDF/IDF location, labeled
-    // mdfIdfID. (Make's router needs an mdfIdfID branch to land these.)
-    td.querySelector('.' + P + '-photos').addEventListener('click', function () {
-      openMdfBulkUpload(rec.id, gearLabelOf(rec));
-    });
+    var status = td.querySelector('.' + P + '-status');
+    var inputs = td.querySelectorAll('[data-fk]');
 
-    saveBtn.addEventListener('click', function () {
-      // Diff-only PUT: never send an unchanged field. Critical because the
-      // prefill can be a parsed fallback (or blank when the view hides a
-      // column) — blindly PUTting every input could wipe real values.
-      var fields = {};
-      var changed = 0;
-      for (var k = 0; k < inputs.length; k++) {
-        var fk = inputs[k].getAttribute('data-fk');
-        var v  = inputs[k].value.trim();
-        if (v !== (initial[fk] || '')) { fields[fk] = v; changed++; }
+    // Last value the server has per field — the diff base for each commit.
+    // Starts at the prefill; advances on every successful PUT.
+    var saved = {};
+    for (var sk in initial) {
+      if (Object.prototype.hasOwnProperty.call(initial, sk)) saved[sk] = initial[sk];
+    }
+
+    var statusTimer = 0;
+    function setStatus(msg, isErr, sticky) {
+      status.classList.toggle('is-err', !!isErr);
+      status.textContent = msg || '';
+      if (statusTimer) { clearTimeout(statusTimer); statusTimer = 0; }
+      if (msg && !sticky) {
+        statusTimer = setTimeout(function () { status.textContent = ''; }, 1800);
       }
-      if (!changed) { closePanels(); return; }
-      saveBtn.disabled = true;
-      status.classList.remove('is-err');
-      status.textContent = 'Saving…';
+    }
+
+    // Display label after a save — composed LOCALLY from the saved values.
+    // Never read it back from the PUT response: Knack returns field_1642
+    // stale there (computed lazily, or maintained by form record rules a
+    // REST PUT doesn't trigger), and trusting it re-titled the header with
+    // the OLD name — the "reverts when I close the panel" bug.
+    function composeLabel() {
+      return ((saved[F.type] || '') + ': ' + (saved[F.num] || '') + ' : ' +
+        (saved[F.name] || '')).replace(/:\s*:/g, ':').trim();
+    }
+
+    // If the server's display name disagrees with the composed label,
+    // write field_1642 explicitly (silent best-effort). When field_1642 is
+    // rule-maintained rather than a live formula, nothing else ever
+    // updates it after a REST PUT — connection identifiers everywhere
+    // (and every future page load) would keep the old name. If Knack
+    // rejects the write (live formula → read-only), that's fine: the
+    // formula will recompute server-side on its own.
+    function maybeSyncDisplayName(resp, newLabel) {
+      var r = (resp && resp.record && resp.record.id) ? resp.record : resp;
+      var srvLabel = r ? stripTags(r[F.displayName + '_raw'] != null
+        ? r[F.displayName + '_raw'] : r[F.displayName]) : '';
+      if (!srvLabel || srvLabel === newLabel) return;
+      var body = {};
+      body[F.displayName] = newLabel;
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(mdfViewKey(), rec.id),
+        type: 'PUT',
+        data: JSON.stringify(body),
+        success: function (resp2) {
+          try {
+            if (typeof SCW.syncKnackModel === 'function') {
+              SCW.syncKnackModel(mdfViewKey(), rec.id, resp2, F.displayName, newLabel);
+            }
+          } catch (e) { /* best-effort */ }
+        },
+        error: function (xhr) {
+          console.info('[scw-brv2-mdf] field_1642 sync write rejected (' +
+            (xhr && xhr.status) + ') — likely a live formula field; ' +
+            'server will recompute it itself.');
+        }
+      });
+    }
+
+    // Shared commit: diff-only PUT of the given {field: value} map. On
+    // success, sync view_3822's model in place, retitle the header, and
+    // patch the location's connection identifiers across every loaded
+    // model (see patchConnectionIdentifiers). NO refetch — the old
+    // post-save refetch triggered a grid rebuild whose stale line-item
+    // identifiers reverted the rename on screen.
+    var saving = false;
+    function commitFields(fields) {
+      var fks = [];
+      for (var fk0 in fields) {
+        if (Object.prototype.hasOwnProperty.call(fields, fk0)) fks.push(fk0);
+      }
+      if (!fks.length || saving) return;
+      saving = true;
+      setStatus('Saving…', false, true);
       SCW.knackAjax({
         url:  SCW.knackRecordUrl(mdfViewKey(), rec.id),
         type: 'PUT',
         data: JSON.stringify(fields),
-        success: function () {
-          status.textContent = 'Saved ✓';
-          // In-place header refresh: rebuild the "TYPE: ## : name" display
-          // label from the saved values (unchanged fields keep their old
-          // value), collapsing the blank-## double colon like card.js does.
-          var own = Object.prototype.hasOwnProperty;
-          var newType = own.call(fields, F.type) ? fields[F.type] : type;
-          var newNum  = own.call(fields, F.num)  ? fields[F.num]  : num;
-          var newName = own.call(fields, F.name) ? fields[F.name] : name;
-          var title = headerTr.querySelector('.scw-bid-review-v2__grp-title');
-          if (title) {
-            title.textContent =
-              (newType + ': ' + newNum + ' : ' + newName).replace(/:\s*:/g, ':');
+        success: function (resp) {
+          saving = false;
+          for (var k2 = 0; k2 < fks.length; k2++) {
+            saved[fks[k2]] = fields[fks[k2]];
+            try {
+              if (typeof SCW.syncKnackModel === 'function') {
+                SCW.syncKnackModel(mdfViewKey(), rec.id, resp, fks[k2], fields[fks[k2]]);
+              }
+            } catch (e) { /* best-effort */ }
           }
-          // Quiet model sync so the next rebuild reads fresh values.
-          try {
-            var v = window.Knack && Knack.views && Knack.views[mdfViewKey()];
-            if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
-          } catch (e) { /* best-effort */ }
-          setTimeout(closePanels, 700);
+          var newLabel = composeLabel();
+          var title = headerTr.querySelector('.scw-bid-review-v2__grp-title');
+          if (title) title.textContent = newLabel;
+          gear.setAttribute('data-scw-mdf-label', newLabel);
+          patchConnectionIdentifiers(rec.id, newLabel);
+          patchSourceViewDom(rec.id, fields, newLabel);
+          maybeSyncDisplayName(resp, newLabel);
+          if (Object.prototype.hasOwnProperty.call(fields, F.notes)) {
+            updateNotesCallout(fields[F.notes]);
+          }
+          setStatus('Saved ✓');
         },
         error: function (xhr) {
-          saveBtn.disabled = false;
-          status.classList.add('is-err');
+          saving = false;
           // Surface Knack's actual rejection reason — the generic "are these
           // fields editable?" guess sent users hunting the wrong Builder
           // setting. Knack 400s carry {"errors":[{"message":…}]} naming the
@@ -498,9 +626,66 @@
             msg += ' — view schema looks editable from here; see console ' +
               '([scw-brv2-mdf]) for the sent fields + view schema snapshot.';
           }
-          status.textContent = msg;
+          setStatus(msg, true, true);
         }
       });
+    }
+
+    function commitEl(el) {
+      var fk = el.getAttribute('data-fk');
+      if (!fk) return;
+      var v = el.value.trim();
+      if (v === (saved[fk] || '')) return;
+      var one = {};
+      one[fk] = v;
+      commitFields(one);
+    }
+
+    // Commit-on-blur / Enter, like every other inline field. Escape reverts
+    // to the last saved value (blur then finds no diff → no PUT).
+    var typeSel = td.querySelector('.' + P + '-badge__type-sel');
+    var numIn   = td.querySelector('.' + P + '-badge__num-in');
+    for (var i = 0; i < inputs.length; i++) {
+      (function (el) {
+        if (el.tagName === 'SELECT') return;   // designator handled below
+        el.addEventListener('blur', function () { commitEl(el); });
+        el.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter' && el.tagName !== 'TEXTAREA') {
+            ev.preventDefault();
+            el.blur();
+          } else if (ev.key === 'Escape') {
+            el.value = saved[el.getAttribute('data-fk')] || '';
+            el.blur();
+          }
+        });
+      })(inputs[i]);
+    }
+
+    // Designator flip HEADEND ↔ IDF: live badge/panel retint, enforce the
+    // numbering rule (HEADENDs never carry a ## — only IDFs), and commit
+    // immediately — type plus the ## change it implies ride one PUT.
+    typeSel.addEventListener('change', function () {
+      var head  = /headend|mdf/i.test(typeSel.value);
+      var panel = td.querySelector('.' + P + '-panel');
+      var badge = td.querySelector('.' + P + '-badge');
+      panel.classList.toggle(P + '-panel--head', head);
+      badge.classList.toggle(P + '-badge--head', head);
+      numIn.hidden = head;
+      numIn.value  = head ? '' : (numIn.value || initial[F.num] || '');
+      var fields = {};
+      if (typeSel.value.trim() !== (saved[F.type] || '')) fields[F.type] = typeSel.value.trim();
+      var numV = numIn.value.trim();
+      if (numV !== (saved[F.num] || '')) fields[F.num] = numV;
+      commitFields(fields);
+    });
+    // mousedown → blur fires first, so a pending edit commits before close.
+    td.querySelector('.' + P + '-btn--close').addEventListener('click', closePanels);
+
+    // Add photos — same identity-aware bulk uploader the line-item photo
+    // pills use, but the record shipped is THIS MDF/IDF location, labeled
+    // mdfIdfID. (Make's router needs an mdfIdfID branch to land these.)
+    td.querySelector('.' + P + '-photos').addEventListener('click', function () {
+      openMdfBulkUpload(rec.id, gearLabelOf(rec));
     });
   }
 
@@ -524,7 +709,69 @@
         openMdfBulkUpload(add.getAttribute('data-scw-mdf-addphoto'),
                           add.getAttribute('data-mdf-label') || '');
       }
+      // CAPTURE phase so the thumb's own click-through (opens the full
+      // image in a new tab) never fires when the delete button is hit.
+      var del = e.target && e.target.closest &&
+                e.target.closest('[data-scw-mdf-photo-del]');
+      if (del) {
+        e.preventDefault();
+        e.stopPropagation();
+        deleteMdfPhoto(del);
+      }
     }, true);
+  }
+
+  /** Delete an MDF/IDF location photo (DOC_photos record) via a REST DELETE
+   *  through MDF_PHOTO_DELETE_GRID, then quietly refetch the MDF/IDF
+   *  locations view so the L1 photos strip rebuilds without it. Confirms
+   *  first — this permanently removes the photo and can't be undone. */
+  function deleteMdfPhoto(btn) {
+    var photoId = btn.getAttribute('data-scw-mdf-photo-del');
+    if (!photoId) return;
+
+    function doDelete() {
+      var a = btn.closest('.scw-bid-review-v2__l1-detail-photo');
+      if (a && a.parentNode) a.parentNode.removeChild(a);   // optimistic
+      if (!(window.SCW && typeof SCW.knackAjax === 'function' &&
+            typeof SCW.knackRecordUrl === 'function')) return;
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(MDF_PHOTO_DELETE_GRID, photoId),
+        type: 'DELETE',
+        success: function () {
+          try {
+            var v = window.Knack && Knack.views && Knack.views[mdfViewKey()];
+            if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+          } catch (e) { /* best-effort */ }
+        },
+        error: function (xhr) {
+          console.warn('[scw-brv2-mdf] photo delete failed via ' +
+            MDF_PHOTO_DELETE_GRID + ' for ' + photoId,
+            xhr && xhr.status, xhr && xhr.responseText);
+          alert('Couldn’t delete that photo (status ' + (xhr && xhr.status) +
+            '). It may belong to a different object than ' + MDF_PHOTO_DELETE_GRID +
+            ' — check the console for details.');
+          // Refetch either way — if the delete silently landed server-side
+          // despite the error, the strip should still catch up.
+          try {
+            var v2 = window.Knack && Knack.views && Knack.views[mdfViewKey()];
+            if (v2 && v2.model && typeof v2.model.fetch === 'function') v2.model.fetch();
+          } catch (e2) { /* best-effort */ }
+        }
+      });
+    }
+
+    var wsv2 = window.SCW && SCW.worksheetV2;
+    if (wsv2 && typeof wsv2.confirmModal === 'function') {
+      wsv2.confirmModal({
+        title: 'Delete this photo?',
+        body: 'This permanently removes the photo from this MDF/IDF location and ' +
+              'can’t be undone.',
+        okLabel: 'Delete photo',
+        cancelLabel: 'Cancel'
+      }).then(function (ok) { if (ok) doDelete(); });
+    } else if (window.confirm('Delete this photo? This can’t be undone.')) {
+      doDelete();
+    }
   }
 
   // Tile/gear styles must exist at render time, not first-panel-open time.

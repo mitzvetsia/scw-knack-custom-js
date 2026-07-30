@@ -69,6 +69,17 @@
       { key: 'field_1946', label: 'MDF/IDF',            type: 'connection' },
     ],
 
+    // ── Auto-revert gate (field_2725) ──────────────────────
+    // On submit, FLAG_released-to-sales is only flipped back to No when
+    // the INSTALL TOTAL actually drifted from the most recent PUBLISHED
+    // proposal — a notes/expiration-only change request keeps the release.
+    // See submit.js installTotalChanged().
+    pubInstallField:  'field_2668',  // published proposal's stored install total
+    pubInstallView:   'view_3814',   // Proposals grid on scene_1116 (Current tab, newest first)
+    installFeeField:  'field_2028',  // per-row install fee (summed over worksheetView)
+    sowInstallField:  'field_2161',  // SOW Installation Total rollup (fallback read)
+    sowDetailViews:   ['view_3418', 'view_3827'],  // SOW detail views carrying field_2161
+
     // ── Timing ─────────────────────────────────────────────
     uiDelay:          500,     // ms after view render before injecting UI
     toastDuration:    3000,    // ms before toast auto-dismiss

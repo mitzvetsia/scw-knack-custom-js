@@ -88,8 +88,32 @@
     }
     // Loud console warning if any source view is page-capped — the diff
     // silently produces phantom Removed/Not-surveyed rows on partial data.
+    // warnIfTruncated also KICKS OFF the self-repair refetches. While one
+    // is in flight the grid still renders (records stream in as they
+    // load), but the container gets --partial, whose CSS hides every
+    // AGGREGATE built from incomplete data — the sub-bid diff strip
+    // (labor Δ / not-bid counts) and the SOW-header warning chips — since
+    // those read as alarming nonsense mid-load ("137 not bid, +$260k").
+    // The count line becomes an explicit loading notice. The repair's
+    // fetch completion fires knack-view-render → notifyDebounced, so a
+    // full-data render always follows and clears the flag; if retries
+    // exhaust (a genuinely >1000-record view), pending goes false and
+    // the best available data renders rather than deadlocking.
     if (ns.data && typeof ns.data.warnIfTruncated === 'function') ns.data.warnIfTruncated();
+    var partial = !!(ns.data && typeof ns.data.truncationRepairPending === 'function' &&
+                     ns.data.truncationRepairPending());
+    container.classList.toggle('scw-bid-review-v2--partial', partial);
     var state = ns.transform.buildState(bidRecords, sowItems, bidPackages);
+
+    // Publish the freshly-built comparison state so co-located consumers
+    // (sub-bid-diff, which injects a per-SOW diff into these same sections)
+    // can REUSE it instead of running the ~800-line transform a second time.
+    // Set before the early-returns below so a consumer always sees the latest
+    // build. renderSnapshot runs synchronously on the data notify, and
+    // sub-bid-diff renders rAF-deferred off the same notify, so by the time it
+    // reads this the value reflects the current data.
+    ns.builtState = state;
+    ns.builtStateGen = (ns.builtStateGen || 0) + 1;
 
     // Analyze SOW-item issues once per render (missing photos, disconnected
     // cam/reader, wrong accessory). Computed from the SOW items only — bid
@@ -100,9 +124,13 @@
     }
 
     if (count) {
-      count.textContent = state.sowGrids.length + ' SOW' +
-        (state.sowGrids.length === 1 ? '' : 's') + ' / ' +
-        bidRecords.length + ' bid record' + (bidRecords.length === 1 ? '' : 's');
+      count.textContent = partial
+        ? ('Loading full bid data… ' + bidRecords.length +
+           ' record' + (bidRecords.length === 1 ? '' : 's') +
+           ' so far — totals hidden until complete')
+        : (state.sowGrids.length + ' SOW' +
+           (state.sowGrids.length === 1 ? '' : 's') + ' / ' +
+           bidRecords.length + ' bid record' + (bidRecords.length === 1 ? '' : 's'));
     }
 
     if (state.isEmpty) {
@@ -186,6 +214,9 @@
 
     // Ensure the toolbar is present (idempotent — survives body rebuilds).
     if (ns.toolbar && typeof ns.toolbar.mount === 'function') ns.toolbar.mount();
+    // Re-sync the "Expand/Collapse line items" label — reopenExpandedRows may
+    // have just re-opened panels, so the button must reflect the new state.
+    if (ns.toolbar && typeof ns.toolbar.syncLabels === 'function') ns.toolbar.syncLabels();
 
     // Top-level search bar (idempotent) + re-apply the active query to the
     // freshly-rebuilt rows so a filter survives edits / refetches.
@@ -198,6 +229,13 @@
   // Resume deferred render when focus leaves the panel. Plain rebuild — NOT
   // anchored: SCW.v2ScrollAnchor's scrollBy runs away on this grid (see
   // init.js), scrolling to the bottom. Keyed section reuse keeps it stable.
+  // init.js's subscribe callback DOES wrap the cascade-triggered render in
+  // the anchor (Connected Devices moving a row between MDF/IDF groups) —
+  // but only when that render fires immediately. If it instead gets queued
+  // here (user still focused in the panel when the cascade settles) it
+  // flushes as a plain rebuild like any other deferred render — a known,
+  // accepted gap rather than a bug; the common case is focus has already
+  // left the panel (the picker modal closed) by the time the cascade idles.
   document.addEventListener('focusout', function () {
     setTimeout(function () {
       if (!_pendingSnapshot) return;

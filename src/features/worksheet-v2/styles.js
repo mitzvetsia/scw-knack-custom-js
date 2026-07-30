@@ -280,7 +280,77 @@
     '  border-color: transparent !important;',
     '}',
     '.scw-ws-v2-cell--labor-na .scw-ws-v2-currency-glyph { color: #cbd5e1 !important; }',
-    /* Install money model (moneyMode:"install", view_3915). No money cells at
+    /* Labor-only money model (config laborOnly — the sub CO page, view_4112).
+       Same shape as the build-SOW grid but with a single money column: the
+       +Hrs / +Mat / Fee tracks are REMOVED (card.js renders no cells for
+       them), so product/description reclaim the space instead of the row
+       carrying dead blanks. No SOW track either — the CO worksheet hides SOW
+       (the adopt panel view_4118 shows it, but co-adopt.js restructures those
+       rows onto its own attribute-guarded template with a sow track).
+       Doubled header class for the same specificity reason as sales above. */
+    '.scw-ws-v2-card--labor .scw-ws-v2-row--default,',
+    '.scw-ws-v2-card--labor .scw-ws-v2-row--cam,',
+    '.scw-ws-v2-card--labor .scw-ws-v2-row--services,',
+    '.scw-ws-v2-card--labor .scw-ws-v2-row--assumptions,',
+    '.scw-ws-v2-col-header.scw-ws-v2-col-header--labor {',
+    '  grid-template-columns:',
+    '    20px                  /* chevron */',
+    '    88px                  /* label / drop */',
+    '    minmax(180px, 1.5fr)  /* product */',
+    '    minmax(200px, 2fr)    /* labor desc (wider — reclaimed money space) */',
+    '    72px                  /* qty / chips */',
+    '    88px                  /* subBid (roomier than the build-SOW 78px) */',
+    '    28px                  /* warning */',
+    '    28px                  /* kebab */ !important;',
+    '}',
+    /* Labor assumptions: the desc spans product → subBid (base rule spans
+       3/10 against the 12-track grid, which overflows this 8-track one). */
+    '.scw-ws-v2-card--labor .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--labor-desc {',
+    '  grid-column: 3 / 7 !important;',
+    '}',
+    /* Equipment money model (config equipmentField — ops CO worksheet,
+       view_4079). The build-SOW stacks PLUS an Equipment $ stack ahead of
+       Sub Bid, MINUS the SOW track (the CO view is hideSow, so the row
+       never renders a sow cell — a 13-track grid would leave everything
+       misaligned by one). Doubled header class for the same specificity
+       reason noted on the sales rule above. */
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--default,',
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--cam,',
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--services,',
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--assumptions,',
+    '.scw-ws-v2-col-header.scw-ws-v2-col-header--equip {',
+    '  grid-template-columns:',
+    '    20px                  /* chevron */',
+    '    88px                  /* label / drop */',
+    '    minmax(150px, 1.3fr)  /* product */',
+    '    minmax(150px, 1.4fr)  /* labor desc */',
+    '    72px                  /* qty / chips */',
+    '    78px                  /* Equip $ */',
+    '    78px                  /* subBid */',
+    '    64px                  /* +Hrs */',
+    '    64px                  /* +Mat */',
+    '    72px                  /* fee */',
+    '    78px                  /* extended net (RO) */',
+    '    28px                  /* warning */',
+    '    28px                  /* kebab */ !important;',
+    '}',
+    '.scw-ws-v2-cell--net {',
+    '  font-weight: 600 !important; color: #0f172a !important;',
+    '}',
+    /* Equip assumptions: the base rule spans desc 3/10 (tuned to the
+       12-track SOW grid, where sow/warn/kebab then autoplace at 10-12).
+       This grid has no sow track but adds equip + net, so respan the desc
+       through the net track and pin warn/kebab to line up with the rows. */
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--labor-desc {',
+    '  grid-column: 3 / 12 !important;',
+    '}',
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--warn {',
+    '  grid-column: 12 / 13 !important;',
+    '}',
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--assumptions > .scw-ws-v2-trash {',
+    '  grid-column: 13 / 14 !important;',
+    '}',
+    /* Install money model (moneyMode:"install", view_4093). No money cells at
        all — header is chevron · label · product · flag chits (RO, show-when-
        true) · SCW Notes (editable) · warn · trash. 7-track grid (replaces the
        inherited SOW grid that was leaving phantom money columns). */
@@ -291,7 +361,7 @@
     '.scw-ws-v2-col-header.scw-ws-v2-col-header--install {',
     '  grid-template-columns:',
     '    20px                  /* chevron */',
-    '    64px                  /* label / drop */',
+    '    88px                  /* label / drop — RA-E-1xx labels need the room */',
     '    minmax(150px, 1.2fr)  /* product */',
     '    minmax(0px, auto)     /* flag chits (RO, only-if-true) */',
     '    minmax(200px, 2fr)    /* SCW Notes (editable) */',
@@ -299,8 +369,26 @@
     '    28px                  /* trash */ !important;',
     '}',
     '.scw-ws-v2-cell--install-flags {',
-    '  display: flex !important; flex-wrap: wrap; gap: 3px;',
+    '  display: flex !important; flex-wrap: wrap; gap: 4px;',
     '  align-items: center !important;',
+    '}',
+    /* Flags read as quiet status badges, not buttons: same chip language
+       as the origin badge (small, outlined, sentence case). The row
+       already carries the loud signals (rose tint, strikethrough, left
+       border) — the chip just names the state. Scoped here so the
+       interactive yes/no chips in detail panels keep their filled look. */
+    '.scw-ws-v2-cell--install-flags .scw-ws-v2-chip {',
+    '  padding: 1px 8px !important; border-radius: 999px !important;',
+    '  font: 600 10px/1.6 system-ui, sans-serif !important;',
+    '  letter-spacing: .02em !important; text-transform: none !important;',
+    '}',
+    '.scw-ws-v2-cell--install-flags .scw-ws-v2-chip--yes {',
+    '  background: #f0fdf4 !important; color: #15803d !important;',
+    '  border-color: #bbf7d0 !important;',
+    '}',
+    '.scw-ws-v2-cell--install-flags .scw-ws-v2-chip--removed {',
+    '  background: #fef2f2 !important; color: #b91c1c !important;',
+    '  border-color: #fecaca !important;',
     '}',
     '.scw-ws-v2-chip--ro { cursor: default !important; }',
     '.scw-ws-v2-card--install .scw-ws-v2-cell--product.scw-ws-v2-cell--ro {',
@@ -630,6 +718,36 @@
     '.scw-ws-v2-card--promoted-bracket {',
     '  box-shadow: inset 3px 0 0 #94a3b8 !important;',
     '  background: #f8fafc !important;',
+    '}',
+    // CO worksheet: ADD vs REMOVE separation (field_2965). Adds read from the
+    // green left accent alone (no per-row badge — that was noise on a mostly-
+    // adds CO). Removals — the exception worth flagging — get a rose accent +
+    // faint tint + a single compact "REMOVE" badge.
+    '.scw-ws-v2-card--co-add {',
+    '  box-shadow: inset 4px 0 0 #16a34a !important;',
+    '}',
+    '.scw-ws-v2-card--co-remove {',
+    '  box-shadow: inset 4px 0 0 #e11d48 !important;',
+    '  background: #fff5f6 !important;',
+    '}',
+    // "REMOVE" flag in the DROP/label cell — stacked ABOVE the label on its
+    // own line (inline beside it truncated the drop label in the narrow
+    // column: "REMOVE E-…").
+    '.scw-ws-v2-co-flag--remove {',
+    '  display: block; width: -moz-fit-content; width: fit-content;',
+    '  margin: 0 0 3px 0;',
+    '  font: 700 8.5px/1 system-ui, -apple-system, sans-serif; letter-spacing: .06em;',
+    '  padding: 2px 6px; border-radius: 4px; color: #9f1239; background: #ffe4e6;',
+    '}',
+    // "ADDED BY YOU" flag (sub CO page, field_2978 SYS_origin = sub): marks
+    // the rows the sub created — the ones they can delete. Indigo so it
+    // can't be confused with the rose REMOVE flag or the amber warnings.
+    '.scw-ws-v2-co-flag--sub {',
+    '  display: block; width: -moz-fit-content; width: fit-content;',
+    '  margin: 0 0 3px 0;',
+    '  font: 700 8.5px/1 system-ui, -apple-system, sans-serif; letter-spacing: .06em;',
+    '  padding: 2px 6px; border-radius: 4px; color: #3730a3; background: #e0e7ff;',
+    '  white-space: nowrap;',
     '}',
     '.scw-ws-v2-card--promoted-bracket .scw-ws-v2-cell--product .scw-ws-v2-product-name {',
     '  font-style: italic !important;',
@@ -1105,6 +1223,47 @@
     '  border-color: #fca5a5 !important;',
     '}',
 
+    /* ── REMOVED-BY-CO (install worksheet) ────────────────────
+       field_2967 populated = the item was removed from install scope by a
+       signed change order. Red is the removed/destructive STATE color
+       (warnings stay amber per the repo convention). The record is never
+       deleted — it must stay visible but read as dead scope. */
+    '.scw-ws-v2-chip--removed {',
+    '  background: #dc2626 !important;',
+    '  color: #fff !important;',
+    '  border-color: #b91c1c !important;',
+    '  cursor: default !important;',
+    '}',
+    /* Collapsible "Removed by CO" cluster at the bottom of each install
+       MDF/IDF group (render.js buildRemovedSection). Red family = removed
+       state, consistent with the card ghost treatment below. */
+    '.scw-ws-v2-removedsec { margin: 10px 8px 8px; border: 1px solid #fecaca;',
+    '  border-radius: 8px; background: #fff; overflow: hidden; }',
+    '.scw-ws-v2-removedsec-head { display: flex; align-items: center; gap: 8px;',
+    '  width: 100%; padding: 8px 12px; background: #fef2f2; border: 0;',
+    '  cursor: pointer; text-align: left;',
+    '  font: 700 11px/1.2 system-ui, sans-serif; color: #991b1b;',
+    '  text-transform: uppercase; letter-spacing: .05em; }',
+    '.scw-ws-v2-removedsec-head:hover { background: #fee2e2; }',
+    '.scw-ws-v2-removedsec-caret { display: inline-flex; flex: 0 0 auto;',
+    '  color: #b91c1c; transition: transform 120ms ease; }',
+    '.scw-ws-v2-removedsec--open .scw-ws-v2-removedsec-caret { transform: rotate(90deg); }',
+    '.scw-ws-v2-removedsec-count { margin-left: auto; flex: 0 0 auto;',
+    '  background: #dc2626; color: #fff; border-radius: 999px; padding: 1px 8px;',
+    '  font: 700 10px/1.6 system-ui, sans-serif; }',
+    '.scw-ws-v2-removedsec-body { display: none; }',
+    '.scw-ws-v2-removedsec--open .scw-ws-v2-removedsec-body { display: block; }',
+    '.scw-ws-v2-card--removed { border-left: 3px solid #dc2626 !important; }',
+    '.scw-ws-v2-card--removed .scw-ws-v2-row { background: #fef2f2 !important; }',
+    /* Strike the identity (label / product / assumption text) — content stays
+       fully readable, just visibly cancelled. */
+    '.scw-ws-v2-card--removed .scw-ws-v2-cell--label,',
+    '.scw-ws-v2-card--removed .scw-ws-v2-product-name,',
+    '.scw-ws-v2-card--removed .scw-ws-v2-cell--install-descro {',
+    '  text-decoration: line-through !important;',
+    '  color: #991b1b !important;',
+    '}',
+
     /* ── Detail panel (expand body under each card) ──────────── */
     '.scw-ws-v2-detail {',
     '  display: none !important;',
@@ -1125,9 +1284,7 @@
     '.scw-ws-v2-card--open:nth-child(even),',
     '.scw-ws-v2-card--open:nth-child(even):hover {',
     '  background: #fff !important;',
-    '  margin: 8px 6px !important;',
-    '  border: 1px solid #e2e8f0 !important;',   /* neutral gray, no blue accent */
-    '  border-radius: 10px !important;',
+    '  margin: 0 0 8px 0 !important;',   /* full-width open cards, gap below only */
     '  box-shadow: 0 1px 2px rgba(15,23,42,0.05) !important;',   /* softer — less busy */
     '}',
     /* Round the tinted body (detail / photos = the card\'s last child) to the
@@ -1520,15 +1677,15 @@
        rules + the view_3586 entry in device-worksheet\'s V2 kill-switch. */
     '.scw-ktl-accordion:has(#view_3586) { display: none !important; }',
     '#view_3586 { display: none !important; }',
-    /* Same cutover for the deploy/install page: hide v1\'s view_3915 table +
+    /* Same cutover for the deploy/install page: hide v1\'s view_4093 table +
        accordion shell now that v2 is primary there. Camera Config + QA fold
        into the v2 cards via install-config-subpanel/config-qa-popover. Reverse
-       by removing these two rules + the view_3915 entry in device-worksheet\'s
+       by removing these two rules + the view_4093 entry in device-worksheet\'s
        V2 kill-switch + flipping the config entry enabled:false. */
-    '.scw-ktl-accordion:has(#view_3915) { display: none !important; }',
-    '#view_3915 { display: none !important; }',
+    '.scw-ktl-accordion:has(#view_4093) { display: none !important; }',
+    '#view_4093 { display: none !important; }',
     /* "WHAT WE'RE INSTALLING" (view_4056) — same install object/cutover as
-       view_3915. Hide its native table + accordion shell; v2 renders the cards. */
+       view_4093. Hide its native table + accordion shell; v2 renders the cards. */
     '.scw-ktl-accordion:has(#view_4056) { display: none !important; }',
     '#view_4056 { display: none !important; }',
     /* Same cutover for the survey/bid page: v2 is primary on view_3505 now.
@@ -1555,6 +1712,113 @@
     '#view_4086 { display: none !important; }',
     '.scw-ktl-accordion:has(#view_4088) { display: none !important; }',
     '#view_4088 { display: none !important; }',
+    /* Sub portal "Manage Change Order" page (scene_1374) — 1:1 analogues of
+       the CO scene views above: view_4112 (CO worksheet source), view_4114
+       (MDF/IDF locations), view_4116 (removal source), view_4118 (adoption
+       source). Same full cutover: models keep loading, native areas hide. */
+    '.scw-ktl-accordion:has(#view_4112) { display: none !important; }',
+    '#view_4112 { display: none !important; }',
+    '.scw-ktl-accordion:has(#view_4114) { display: none !important; }',
+    '#view_4114 { display: none !important; }',
+    '.scw-ktl-accordion:has(#view_4116) { display: none !important; }',
+    '#view_4116 { display: none !important; }',
+    '.scw-ktl-accordion:has(#view_4118) { display: none !important; }',
+    '#view_4118 { display: none !important; }',
+
+    /* ── Read-only panels (viewCfg.readOnly — e.g. the CO adoption panel
+       view_4088) ─────────────────────────────────────────────────────────
+       Every edit affordance is disabled but the cards stay fully readable
+       (repo locked-field convention: white inputs, no graying). Mouse path
+       killed here; co-adopt.js hard-disables the inputs after each render
+       so keyboard tab-and-type can\'t commit either. The card expand
+       chevron and the adopt button stay live. */
+    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check),',
+    '.scw-ws-v2--readonly .scw-ws-v2-card textarea,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card select,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-conn],',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-chip],',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-radiochip],',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-option],',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-bool] {',
+    '  pointer-events: none !important;',
+    '}',
+    /* Inputs READ as plain text — no edit chrome at all (border/background
+       gone, placeholders blanked), values stay fully readable. */
+    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check),',
+    '.scw-ws-v2--readonly .scw-ws-v2-card textarea {',
+    '  background: transparent !important;',
+    '  border-color: transparent !important;',
+    '  box-shadow: none !important;',
+    '  resize: none !important;',
+    '}',
+    '.scw-ws-v2--readonly .scw-ws-v2-card input::placeholder,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card textarea::placeholder {',
+    '  color: transparent !important;',
+    '}',
+    /* Selects flatten too — no box, no dropdown arrow, and no UA graying
+       when the lock disables them (values stay fully readable). */
+    '.scw-ws-v2--readonly .scw-ws-v2-card select {',
+    '  background: transparent !important;',
+    '  border-color: transparent !important;',
+    '  box-shadow: none !important;',
+    '  appearance: none !important; -webkit-appearance: none !important;',
+    '  color: var(--scw-text-default, #1f2937) !important;',
+    '  opacity: 1 !important;',
+    '}',
+    /* Detail panel reads read-only too: connection picker buttons
+       (Prefix, MDF/IDF, Connected Device, product) flatten to plain
+       values — no box, no pencil icon. Warn variants keep their label
+       coloring; only the edit chrome goes. */
+    '.scw-ws-v2--readonly .scw-ws-v2-conn-btn {',
+    '  background: transparent !important;',
+    '  border-color: transparent !important;',
+    '  box-shadow: none !important;',
+    '  cursor: default !important;',
+    '}',
+    '.scw-ws-v2--readonly .scw-ws-v2-conn-btn-edit { display: none !important; }',
+    /* Summary-row product picker (a button, not an input) flattens too —
+       its base rule paints a white box + border with !important, so match
+       its compound specificity (and the card-hover retint) from later in
+       the sheet. Without this the product reads as an editable box on an
+       otherwise-locked row. */
+    '.scw-ws-v2--readonly .scw-ws-v2-cell.scw-ws-v2-cell--product,',
+    '.scw-ws-v2--readonly .scw-ws-v2-cell--editable-conn.scw-ws-v2-cell--product,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card:hover .scw-ws-v2-cell--product {',
+    '  background: transparent !important;',
+    '  border-color: transparent !important;',
+    '  box-shadow: none !important;',
+    '  cursor: default !important;',
+    '}',
+    /* No adding photos and no editing child (mounting hardware) records
+       from the adoption panel: hide the photo add tiles and the
+       accessory add/qty-stepper controls. The chips themselves stay —
+       they are read info — with the qty badge inert. */
+    '.scw-ws-v2--readonly .scw-ws-v2-photo-add,',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-add,',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-addrow,',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-stepper { display: none !important; }',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-qty {',
+    '  pointer-events: none !important;',
+    '  background: transparent !important;',
+    '  border-color: transparent !important;',
+    '}',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-chip { pointer-events: none !important; }',
+    /* Write-action affordances have no read value — remove them outright:
+       the delete/trash cell (BOTH variants — the blocked placeholder has no
+       kebab attr, and per-row cell counts must stay uniform for the adopt
+       panel's grid template), add-accessory, mounting-hardware actions, and
+       the bulk-select checkbox (bulk never mounts on readOnly panels). */
+    '.scw-ws-v2--readonly .scw-ws-v2-trash,',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-kebab],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-add-accessory],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-mh-del],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-mh-unlink],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-mh-uparent],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-mh-parent],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-acc-step],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-select] {',
+    '  display: none !important;',
+    '}',
 
     '.scw-ws-v2-mh-step {',
     '  width: 16px !important; height: 18px !important;',
@@ -1605,6 +1869,13 @@
     '.scw-ws-v2-card:hover .scw-ws-v2-trash { color: #94a3b8 !important; }',
     '.scw-ws-v2-trash:hover, .scw-ws-v2-kebab:hover {',
     '  background: #fee2e2 !important; color: #b91c1c !important;',
+    '}',
+    /* Unlink (adopted CO rows) is NOT destructive — override the trash red
+       hover with a neutral blue, and lift its resting color so the broken-
+       chain glyph reads clearly instead of near-invisible gray. */
+    '.scw-ws-v2-card:hover .scw-ws-v2-unlink { color: #64748b !important; }',
+    '.scw-ws-v2-unlink:hover {',
+    '  background: #e0f2fe !important; color: #0369a1 !important;',
     '}',
     /* Survey-derived rows: delete is blocked (v1 parity). Hide the trash but
        keep its box so the grid column stays aligned, and make it inert. */
@@ -1789,6 +2060,31 @@
     '  left: 2px !important; top: 5px !important;',
     '  width: 7px !important; height: 2px !important;',
     '  background: #fff !important;',
+    '}',
+
+    /* Floating toolbar — once the bar\'s natural slot scrolls off the
+       top, toolbar.js attachFloatingBar pins the WHOLE bar to the top
+       edge (position:fixed; left/width synced to the slot inline) and
+       a same-height placeholder keeps the grid from jumping. Fixed,
+       not sticky: Knack/KTL overflow wrappers silently kill sticky. */
+    '.scw-ws-v2-toolbar--floating {',
+    '  position: fixed !important;',
+    '  top: 0 !important;',
+    '  z-index: 9997 !important;',
+    '  margin: 0 !important;',
+    '  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14) !important;',
+    '  border-bottom: 1px solid #cbd5e1 !important;',
+    '}',
+
+    /* While a Knack modal is open (child-page modal or confirm dialog),
+       hide the floating bar — it sits ABOVE Knack\'s modal layer and
+       would paint over the dialog (e.g. the add-document page on the
+       bid-review scene). Knack removes modal nodes from the DOM on
+       close, so :has() re-shows the bar automatically. */
+    'body:has([id^="kn-modal-bg"]) .scw-ws-v2-toolbar--floating,',
+    'body:has([id^="kn-page-modal"]) .scw-ws-v2-toolbar--floating,',
+    'body:has(.kn-modal-bg) .scw-ws-v2-toolbar--floating {',
+    '  visibility: hidden !important;',
     '}',
 
     /* Floating toolbar — bottom-center, slides in when ≥1 selected */
@@ -2112,9 +2408,13 @@
     '}',
 
     /* ── PHOTOS ────────────────────────────────────────────────
-       Hidden by default; revealed only when the card is expanded
-       (matches the detail panel\'s show-on-open behavior). Sizing
-       mirrors v1\'s inline-photo-row.js — ~200px-tall thumbnails. */
+       Visibility (see MODE OVERRIDES for the state rules):
+         default / OFF  → strips show on EXPANDED cards only (long-
+                          standing worksheet UX). An expanded line item
+                          ALWAYS shows its strip — the global toggle
+                          never suppresses it.
+         photos-shown   → strips on every card (toolbar toggle ON)
+       Sizing mirrors v1\'s inline-photo-row.js — ~200px-tall thumbnails. */
     '.scw-ws-v2-photos {',
     '  display: none !important;',
     '  padding: 2px 14px 14px 44px !important;',
@@ -2124,7 +2424,6 @@
        sub-boxes. padding-left matches .scw-ws-v2-detail (44px) so content aligns
        to the same gutter as the header/detail above it. */
     '}',
-    '.scw-ws-v2-card--open .scw-ws-v2-photos { display: block !important; }',
     '.scw-ws-v2-photos-strip {',
     '  display: flex !important;',
     '  flex-wrap: wrap !important;',
@@ -2298,6 +2597,26 @@
     '.scw-ws-v2-photo-card:hover .scw-ws-v2-photo-del { opacity: 1; }',
     '.scw-ws-v2-photo-del:hover { background: #fee2e2; color: #b91c1c; }',
     '.scw-ws-v2-photo-del svg { display: block; }',
+
+    /* ── Photo disconnect (install/deploy surfaces only — see photos.js
+       PHOTO_DISCONNECT_VIEWS). Top-left so it never collides with delete
+       (top-right) if a view ever enables both. Amber, not red — unlike
+       delete this doesn't destroy anything, matches the repo\'s warning-
+       icon color convention (CLAUDE.md: red is reserved for destructive
+       actions). ── */
+    '.scw-ws-v2-photo-unlink {',
+    '  position: absolute; top: 3px; left: 3px; z-index: 3;',
+    '  display: inline-flex; align-items: center; justify-content: center;',
+    '  width: 20px; height: 20px; padding: 0;',
+    '  border: 0; border-radius: 50%;',
+    '  background: rgba(255,255,255,0.92); color: #64748b;',
+    '  box-shadow: 0 1px 3px rgba(2,6,23,0.35);',
+    '  cursor: pointer; opacity: 0;',
+    '  transition: opacity 100ms ease, background 100ms ease, color 100ms ease;',
+    '}',
+    '.scw-ws-v2-photo-card:hover .scw-ws-v2-photo-unlink { opacity: 1; }',
+    '.scw-ws-v2-photo-unlink:hover { background: #fef3c7; color: #b45309; }',
+    '.scw-ws-v2-photo-unlink svg { display: block; }',
 
     /* ── Photo drag-to-fill-required-slot (v1 parity) ────────── */
     '.scw-ws-v2-photo-card { position: relative !important; }',
@@ -2737,12 +3056,15 @@
     '.scw-ws-v2-mode-summary .scw-ws-v2-l2-head {',
     '  display: none !important;',
     '}',
-    /* Photos toggle (v1-parity): default is hidden when card collapsed,
-       shown when expanded. "Show photos" reveals the strip on every
-       card regardless of expand state. Selector specificity (3 classes)
-       beats the default `.scw-ws-v2-photos` (1) rule + ties the
-       `.scw-ws-v2-card--open` (2) reveal — declaration order then wins
-       since this rule is declared AFTER the defaults above. */
+    /* Photos: an EXPANDED card always reveals its strip — the long-
+       standing worksheet UX field users expect ("photos not loading"
+       reports came from dropping this), and the global toggle never
+       suppresses it. Explicit ON (photos-shown): strips on every card,
+       v1 "Show photos" parity — the toggle only governs strips on
+       COLLAPSED line items. */
+    '.scw-ws-v2-card--open .scw-ws-v2-photos {',
+    '  display: block !important;',
+    '}',
     '.scw-ws-v2-photos-shown .scw-ws-v2-card .scw-ws-v2-photos {',
     '  display: block !important;',
     '}',
@@ -2751,6 +3073,15 @@
        expanded-card path still reveals the strip (rule above), so the
        user can attach the first photo from inside the card. */
     '.scw-ws-v2-photos-shown .scw-ws-v2-card:not(.scw-ws-v2-card--open) .scw-ws-v2-photos--add-only {',
+    '  display: none !important;',
+    '}',
+    /* Explicit OFF (photos-hidden): the "an open card always reveals its
+       strip" rule above is meant for strips with actual photos to look
+       at — an add-only strip has nothing to reveal, just an Add button,
+       so "Hide photos" should suppress it even on an expanded card.
+       3-class selector outranks the 2-class rule above regardless of
+       source order, so this wins without needing !important tricks. */
+    '.scw-ws-v2-photos-hidden .scw-ws-v2-card--open .scw-ws-v2-photos--add-only {',
     '  display: none !important;',
     '}',
 
@@ -2872,6 +3203,11 @@
     '.scw-ws-v2-warn-chip[data-issue-type="bracket"] {',
     '  color: #b45309 !important; background: #fffbeb !important;',
     '  border-color: #fcd34d !important;',
+    '}',
+    '.scw-ws-v2-warn-chit[data-issue-type="notes"],',
+    '.scw-ws-v2-warn-chip[data-issue-type="notes"] {',
+    '  color: #0e7490 !important; background: #ecfeff !important;',
+    '  border-color: #a5f3fc !important;',
     '}',
     /* Card-flash animation triggered when a warning chip is clicked
        — amber pulse on the matching cards so the user sees them at
