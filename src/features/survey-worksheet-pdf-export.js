@@ -3299,12 +3299,12 @@
       // Column width hints — sum to ~100%. Y/N cols share width; the
       // notes column gets the remainder for write-in space.
       '.cr-col-label   { width: 6%; }',
-      '.cr-col-product { width: 23%; }',
+      '.cr-col-product { width: 22%; }',
       '.cr-col-mount   { width: 11%; }',
       '.cr-col-yn      { width: 6%; }',
       '.cr-col-height  { width: 11%; }',
       '.cr-col-drop    { width: 5%; }',
-      '.cr-col-photos  { width: 9%; }',
+      '.cr-col-photos  { width: 10%; }',
       '.cr-col-notes   { width: 12%; }',
       '.cr-cell-id { font-weight: 600; }',
       // Product — the user wanted it bigger; left-aligned reads better
@@ -3334,6 +3334,12 @@
       '}',
       '.ws-req-photo .ws-box { font-size: 8px; margin-right: 1px; }',
       '.cr-cell-photos { text-align: left; line-height: 1.35; padding: 2px 3px; }',
+      '/* Long photo-type labels (e.g. "Proposed Mounting Location") must */',
+      '/* wrap inside the column instead of spilling into Notes.          */',
+      '.cr-cell-photos .ws-req-photo {',
+      '  display: inline; white-space: normal;',
+      '  word-break: break-word; overflow-wrap: anywhere;',
+      '}',
       '.ws-equip-photos { font-size: 8px; color: #374151; line-height: 1.3; margin-top: 1px; }',
       '.ws-req-photos {',
       '  margin-top: 3px; padding-top: 2px;',
