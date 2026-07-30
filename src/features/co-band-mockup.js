@@ -32,7 +32,7 @@
 (function () {
   'use strict';
 
-  var VIEWS = ['view_3301', 'view_3341', 'view_3371'];
+  var VIEWS = ['view_3341', 'view_3371'];
   var STORE_KEY = 'scwCoBandMockupMode';   // 'off' | 'v1' | 'v2'
   var STYLE_ID  = 'scw-co-band-mockup-css';
   var TOGGLE_ID = 'scw-co-band-mockup-toggle';

@@ -79,7 +79,6 @@
   // Views to SKIP — group-collapse will NOT enhance these views.
   // Proposal grids manage their own grouping UI via proposal-grid.js.
   const SKIP_VIEWS = new Set([
-    'view_3301',
     'view_3341',
     'view_3371',
     'view_3550',

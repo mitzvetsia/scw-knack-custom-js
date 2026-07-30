@@ -1038,7 +1038,7 @@
 
   // The data view's model must actually carry the fields the tree is built
   // from — a Builder duplicate can silently drop grouping columns (removing
-  // a grouping can remove its column) and view_3301 never had field_2464.
+  // a grouping can remove its column) and view_3341 never had field_2464.
   // Rendering off an incomplete model produces a degenerate grid (single
   // blank section, accessories duplicated as their own products), so refuse
   // to render and surface the exact missing columns instead.
@@ -1207,7 +1207,7 @@
     // derived grouping fields match what Knack actually groups by.
     dumpV1Groups: function (viewKey) {
       try {
-        var mv = Knack.views[viewKey || 'view_3301'].model.view;
+        var mv = Knack.views[viewKey || 'view_3341'].model.view;
         var cols = (mv.columns || []).map(function (c) {
           return { field: c.field && c.field.key, grouping: !!c.grouping, group_sort: c.group_sort || null, header: c.header };
         });

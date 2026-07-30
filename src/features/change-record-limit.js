@@ -7,7 +7,7 @@
   // makes the worksheet operate on the complete dataset.
   const VIEW_IDS = [
     // Misc views forced full-page
-    'view_3301', 'view_3341', 'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
+    'view_3341', 'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
     // worksheet-v2 source view (mirrors view_3610 — same cap rationale)
     'view_3962',
     // All WORKSHEET_CONFIG views from device-worksheet.js
@@ -44,7 +44,7 @@
     // Sub portal Manage Change Order page (scene_1374) — 1:1 analogues of
     // the four CO scene views above, same full-model rationale.
     'view_4112', 'view_4114', 'view_4116', 'view_4118',
-    // proposal-grid-v2 flat data view (duplicate of view_3301, no
+    // proposal-grid-v2 flat data view (duplicate of view_3341, no
     // groupings) — v2 renders the whole grid off this model.
     'view_4140'
   ];
@@ -60,7 +60,7 @@
   // forcing full pages.
   const FORCED_FULL_PAGE_VIEWS = [
     // change-record-limit.js — misc views
-    'view_3301', 'view_3341', 'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
+    'view_3341', 'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
     // worksheet-v2 source view
     'view_3962',
     // change-record-limit.js — device-worksheet views

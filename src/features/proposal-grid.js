@@ -25,22 +25,8 @@
 
   const CONFIG = {
     views: {
-      view_3301: {
-        showProjectTotals: true,
-        keys: {
-          qty: 'field_1964',
-          labor: 'field_2028',
-          hardware: 'field_2201',
-          cost: 'field_2203',
-          discount: 'field_2267',
-          field2019: 'field_2019',
-          prefix: 'field_2240',
-          number: 'field_1951',
-          l2Sort: 'field_2218',
-          l2Selector: 'field_2228',
-          l3BlankLabelField: 'field_2208',
-        },
-      },
+      // view_3301 removed 2026-07-30 — stale predecessor of view_3341,
+      // no longer exists in Builder.
       view_3341: {
         showProjectTotals: true,
         keys: {
