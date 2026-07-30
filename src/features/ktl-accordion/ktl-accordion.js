@@ -63,7 +63,10 @@
   // is processed. Flip TRUE once KTL's hide/show is OFF GLOBALLY — then every
   // view carrying the `_hsv` keyword (and no KTL button) auto-becomes one of
   // our accordions, no per-view list needed.
-  var ENABLE_KEYWORD_DETECTION = false;
+  // FLIPPED 2026-07-30: KTL is disabled app-wide in Builder. Every `_hsv`
+  // view on every scene is now ours. (The live-KTL-button skip below still
+  // protects against double-wrap if KTL ever comes back.)
+  var ENABLE_KEYWORD_DETECTION = true;
   var HSV_CHECK = 'data-scw-hsv-checked';   // per-view "is this an _hsv view?" memo
 
   // Scenes where KTL is NOT loaded (you gated it out of the Builder loader for
