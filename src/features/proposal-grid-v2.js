@@ -360,7 +360,7 @@
   // sorted, deduped, range-collapsed form: consecutive runs of 3+ within a
   // prefix become "I-068–I-071". Labels with no trailing number pass
   // through untouched (appended at the end).
-  function compressLabels(labels) {
+  function compressLabelsArr(labels) {
     var seen = Object.create(null), parsed = [], plain = [], i;
     for (i = 0; i < labels.length; i++) {
       var lbl = norm(labels[i]);
@@ -382,8 +382,9 @@
       else for (var j = runStart; j <= i; j++) out.push(parsed[j].lbl);
       runStart = -1;
     }
-    return out.concat(plain).join(', ');
+    return out.concat(plain);
   }
+  function compressLabels(labels) { return compressLabelsArr(labels).join(', '); }
   function designatorList(recs) {
     var F = CONFIG.fields, labels = [];
     for (var i = 0; i < recs.length; i++) {
@@ -580,7 +581,7 @@
               });
               var pl = designatorList(parentRecs);
               pushRow('scw-pg2-mount', [
-                { html: esc(name) + (pl ? '<span class="scw-pg2-l4-conn"><b>' + esc(pl) + '</b></span>' : '') },
+                { html: esc(name) + (pl ? '<span class="scw-pg2-l4-conn">' + esc(pl) + '</span>' : '') },
                 { html: String(Math.round(gQty)) },
                 { html: esc(money(gHardware)) }
               ]);
@@ -712,6 +713,231 @@
         .forEach(function (td) { td.innerHTML = ''; });
     }
     return el;
+  }
+
+  // ── publish/PDF data (proposal-pdf-export delegation) ─────────────
+  // Builds the EXACT intermediate structure proposal-pdf-export's
+  // scrapeGridView() derives from the v1 DOM — sections → buckets →
+  // products → lineItems (+ footers, projectTotals) — straight from the
+  // flat model, no DOM involved. Values are UNMASKED real numbers;
+  // applyTbdToPublishPayload masks them downstream exactly as it does
+  // for the v1 scrape. Returns null when v2 can't own the publish for
+  // this view (not configured, model not ready, missing columns, or a
+  // CO — banded CO publish isn't ported yet; the v1 scrape handles it).
+  function pubMoney(n) {
+    var v = Number(n || 0);
+    // ASCII minus — downstream summary parsers strip non-[0-9.-] chars,
+    // so a typographic minus would silently drop the sign.
+    return (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function buildPublishData(v1ViewId) {
+    if (!CONFIG.enabled) return null;
+    var vcfg = CONFIG.views[v1ViewId];
+    if (!vcfg || !vcfg.dataViewKey) return null;
+    var records = readRecords(vcfg.dataViewKey);
+    if (!records || !records.length) return null;
+    if (missingColumns(records).length) return null;
+    for (var ci = 0; ci < records.length; ci++) {
+      if (coActionOf(records[ci])) return null;
+    }
+
+    var F = CONFIG.fields;
+    var tree = buildTree(records);
+    var sections = [];
+
+    function connDevicesOf(recs) {
+      var names = [];
+      recs.forEach(function (it) {
+        var raw = it[F.connectedDevices + '_raw'];
+        if (!Array.isArray(raw)) return;
+        raw.forEach(function (c) {
+          if (!c || !c.id || !tree.byId[c.id]) return;
+          var t = norm(stripHtml(c.identifier));
+          if (t && !isBlankish(t)) names.push(t);
+        });
+      });
+      return compressLabelsArr(names);
+    }
+
+    function l1FooterData(title, recs) {
+      var subtotal = sumRecs(recs, F.hardware) + sumRecs(recs, F.labor);
+      if (Math.abs(subtotal) < 0.01) return null;
+      var discount = Math.abs(sumRecs(recs, F.lineDiscount));
+      var hasDiscount = discount > 0.004;
+      var lines = [];
+      if (hasDiscount) {
+        lines.push({ type: 'sub', label: 'Subtotal', value: pubMoney(subtotal) });
+        lines.push({ type: 'disc', label: 'Discount', value: '-' + pubMoney(discount) });
+        lines.push({ type: 'final', label: 'Total', value: pubMoney(subtotal - discount) });
+      } else {
+        lines.push({ type: 'final', label: 'Total', value: pubMoney(subtotal) });
+      }
+      return { title: title, hasDiscount: hasDiscount, lines: lines };
+    }
+
+    tree.l1s.forEach(function (l1g) {
+      var promoted = isBlankish(l1g.label);
+      var l1Recs = [];
+      l1g.bucketOrder.forEach(function (bk) {
+        var b = l1g.buckets[bk];
+        b.productOrder.forEach(function (pk) {
+          b.products[pk].items.forEach(function (it) {
+            l1Recs.push(it);
+            (tree.accByParent[it.id] || []).forEach(function (a) { l1Recs.push(a); });
+          });
+        });
+      });
+      var rule = findRenameRule(l1Recs);
+      var section = null;
+      if (!promoted) {
+        section = { level: 1, label: l1g.label, promoted: false, buckets: [], footer: null };
+        sections.push(section);
+      }
+
+      l1g.bucketOrder.forEach(function (bk) {
+        var bucket = l1g.buckets[bk];
+        var kind = bucketKind(bucket);
+        var displayLabel = bucket.label;
+        if (rule && rule.renames[displayLabel]) displayLabel = rule.renames[displayLabel];
+        if (promoted && kind === 'assumptions') displayLabel = 'General Project Assumptions';
+        var context = contextOf(displayLabel, bucket);
+        var hideL3 = kind === 'services' || kind === 'assumptions';
+        var isMounting = norm(displayLabel).toLowerCase() === CONFIG.mountingHardwareLabel;
+
+        var bucketParentRecs = [], bucketAllRecs = [];
+        bucket.productOrder.forEach(function (pk) {
+          bucket.products[pk].items.forEach(function (it) {
+            bucketParentRecs.push(it);
+            bucketAllRecs.push(it);
+            (tree.accByParent[it.id] || []).forEach(function (a) { bucketAllRecs.push(a); });
+          });
+        });
+        if (!bucketParentRecs.length) return;
+
+        var sec = section;
+        if (promoted) {
+          sec = { level: 1, label: displayLabel, promoted: true, buckets: [], footer: null };
+          sections.push(sec);
+        }
+        var b2 = { level: 2, label: displayLabel, isPromoted: promoted, products: [], footer: null };
+        sec.buckets.push(b2);
+
+        // hideL3 buckets (services/assumptions) collect ALL their line
+        // items under ONE label-less product with qty/cost suppressed —
+        // mirrors the v1 scraper's synthetic-L3 behavior.
+        var synth = null;
+
+        bucket.productOrder.forEach(function (pk) {
+          var product = bucket.products[pk];
+          var accessories = [];
+          product.items.forEach(function (it) {
+            (tree.accByParent[it.id] || []).forEach(function (a) { accessories.push(a); });
+          });
+
+          var prod = null;
+          if (!hideL3 && !isBlankish(product.label)) {
+            prod = {
+              level: 3, label: product.label,
+              qty: Math.round(sumRecs(product.items, F.qty)),
+              cost: pubMoney(sumRecs(product.items, F.hardware)),
+              rate: '', hideCost: false,
+              connectedDevices: connDevicesOf(product.items),
+              isMountingHardware: isMounting, lineItems: [],
+            };
+            b2.products.push(prod);
+          }
+
+          product.l4Order.forEach(function (dk) {
+            var l4 = product.l4s[dk];
+            var text = norm(stripHtml(l4.html));
+            if (isBlankish(text)) return;
+            var item = {
+              level: 4, label: text, description: l4.html,
+              qty: Math.round(sumRecs(l4.items, F.qty)),
+              cost: pubMoney(sumRecs(l4.items, F.labor)),
+              cameraList: context === 'drop' ? designatorList(l4.items) : '',
+            };
+            if (prod) prod.lineItems.push(item);
+            else {
+              if (!synth) {
+                synth = { level: 3, label: '', qty: 0, cost: '', rate: '', hideCost: true,
+                          connectedDevices: [], isMountingHardware: false, lineItems: [] };
+                b2.products.push(synth);
+              }
+              synth.lineItems.push(item);
+            }
+          });
+
+          if (prod && accessories.length) {
+            var byProduct = Object.create(null), order = [];
+            accessories.forEach(function (a) {
+              var nm = cleanProductLabel(readText(a, F.accessoryProduct)) ||
+                       cleanProductLabel(readText(a, F.product)) || 'Mounting Hardware';
+              if (!byProduct[nm]) { byProduct[nm] = []; order.push(nm); }
+              byProduct[nm].push(a);
+            });
+            order.forEach(function (nm) {
+              var grp = byProduct[nm];
+              var parentRecs = [];
+              grp.forEach(function (a) {
+                var pc = connFirst(a, F.accessoryParent);
+                var parent = pc && tree.byId[pc.id];
+                if (parent && isCamReaderRec(parent)) parentRecs.push(parent);
+              });
+              prod.lineItems.push({
+                level: 4, label: nm, description: '',
+                qty: Math.round(sumRecs(grp, F.qty)),
+                cost: pubMoney(sumRecs(grp, F.hardware)),
+                cameraList: designatorList(parentRecs),
+                // Relocated EQUIPMENT accessory — must NOT be TBD-masked.
+                isEquipment: true,
+              });
+              var gLabor = sumRecs(grp, F.labor);
+              if (gLabor > 0) {
+                var desc = '';
+                for (var gi = 0; gi < grp.length; gi++) {
+                  if (readNum(grp[gi], F.labor) > 0) { desc = readText(grp[gi], F.installDesc); if (desc) break; }
+                }
+                if (desc) prod.lineItems.push({ level: 4, label: desc, description: '', qty: '', cost: pubMoney(gLabor), cameraList: '' });
+              }
+            });
+          }
+        });
+
+        if (kind !== 'assumptions') {
+          b2.footer = {
+            label: displayLabel,
+            qty: context === 'drop' ? Math.round(sumRecs(bucketParentRecs, F.qty)) : 0,
+            cost: pubMoney(sumRecs(bucketAllRecs, F.hardware) + sumRecs(bucketAllRecs, F.labor)),
+          };
+          if (promoted) sec.footer = l1FooterData(displayLabel, bucketAllRecs);
+        }
+      });
+
+      if (!promoted && section) section.footer = l1FooterData(l1g.label, l1Recs);
+    });
+
+    var projectTotals = null;
+    if (vcfg.showProjectTotals !== false) {
+      var equipmentSubtotal = sumRecs(tree.allRecords, F.hardware);
+      var lineItemDiscounts = sumRecs(tree.allRecords, F.lineDiscount);
+      var proposalDiscount = Math.abs(readDetailNum('2302'));
+      var equipmentTotal = equipmentSubtotal - lineItemDiscounts;
+      var installationTotal = sumRecs(tree.allRecords, F.labor);
+      var grandTotal = equipmentTotal + installationTotal - proposalDiscount;
+      projectTotals = { title: 'Project Totals', lines: [] };
+      if (lineItemDiscounts !== 0 || proposalDiscount !== 0) {
+        projectTotals.lines.push({ type: 'sub', label: 'Equipment Subtotal', value: pubMoney(equipmentSubtotal) });
+        if (lineItemDiscounts !== 0) projectTotals.lines.push({ type: 'disc', label: 'Line Item Discounts', value: '-' + pubMoney(Math.abs(lineItemDiscounts)) });
+      }
+      projectTotals.lines.push({ type: 'final', label: 'Equipment Total', value: pubMoney(equipmentTotal) });
+      projectTotals.lines.push({ type: 'final', label: 'Installation Total', value: pubMoney(installationTotal) });
+      if (proposalDiscount !== 0) projectTotals.lines.push({ type: 'disc', label: 'Proposal Discount', value: '-' + pubMoney(proposalDiscount) });
+      projectTotals.lines.push({ type: 'final', label: 'Grand Total', value: pubMoney(grandTotal) });
+    }
+
+    return { sections: sections, projectTotals: projectTotals };
   }
 
   // ── styles ────────────────────────────────────────────────────────
@@ -974,6 +1200,9 @@
   window.SCW.proposalGridV2 = {
     CONFIG: CONFIG,
     run: run,
+    // proposal-pdf-export delegates its grid scrape here when v2 owns
+    // the view — see scrapeGridView() in proposal-pdf-export.js.
+    buildPublishData: buildPublishData,
     // Dump the v1 view's Builder grouping config — used to verify the
     // derived grouping fields match what Knack actually groups by.
     dumpV1Groups: function (viewKey) {

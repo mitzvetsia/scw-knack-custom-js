@@ -491,6 +491,28 @@
   }
 
   function scrapeGridView(viewId, keys) {
+    // proposal-grid-v2 (model-driven rebuild): when v2 owns this view it
+    // builds the same intermediate structure straight from the Backbone
+    // model — no DOM scrape, no dependency on v1's transformed rows.
+    // Returns null (→ fall through to the v1 DOM scrape) when v2 isn't
+    // active for the view, the model isn't ready, or the grid is a CO
+    // (banded CO publish isn't ported to v2 yet).
+    try {
+      var pgV2 = window.SCW && window.SCW.proposalGridV2;
+      if (pgV2 && typeof pgV2.buildPublishData === 'function') {
+        var v2data = pgV2.buildPublishData(viewId);
+        if (v2data) {
+          console.log('[scw-pdf] grid payload for ' + viewId + ' built from proposal-grid-v2 model (no DOM scrape)');
+          return {
+            viewId: viewId, type: 'grid', title: getViewTitle(viewId),
+            sections: v2data.sections, projectTotals: v2data.projectTotals
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('[scw-pdf] proposal-grid-v2 publish source failed — falling back to DOM scrape', e);
+    }
+
     var root = document.getElementById(viewId);
     if (!root) return null;
 
