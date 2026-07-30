@@ -39,6 +39,11 @@
     // true  → v1's table is hidden (still running for publish) and v2 is
     //         the only visible grid.
     replaceV1: false,
+    // true → v2 renders the CO "What's Changing" manifest
+    // (#scw-co-change-summary). Keep FALSE while proposal-grid.js (v1) is
+    // in the bundle — v1 renders and owns the manifest until it's deleted
+    // (the publish pipeline scrapes the element scene-wide either way).
+    ownCoManifest: false,
     debug: false,
 
     views: {
@@ -212,6 +217,47 @@
     if (/remove/.test(t)) return 'remove';
     if (/add/.test(t)) return 'add';
     return '';
+  }
+  // Band money ("$-2,069.00") — the exact format co-band-mockup rendered,
+  // preserved so scraped/published band rows keep their historical shape.
+  function bandMoney(n) {
+    return '$' + (n < 0 ? '-' : '') + Math.abs(n || 0).toLocaleString('en-US',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  // Split a product unit into per-band slices for the CO presentation.
+  // Parent rows band by their own action; each accessory follows the band
+  // of ITS parent record (a removed camera drags its mount into the
+  // Removed band even when the mount row's own action is blank). This is
+  // sharper than co-band-mockup's whole-unit fail-safe: a same-product
+  // swap (remove old + add new) shows in BOTH bands with correct sums.
+  function coProductSlices(product, accessories) {
+    function bandOfRec(r) { return coActionOf(r) === 'remove' ? 'rm' : 'add'; }
+    var parentBandById = Object.create(null);
+    product.items.forEach(function (it) { parentBandById[it.id] = bandOfRec(it); });
+    var out = [];
+    ['add', 'rm'].forEach(function (band) {
+      var items = product.items.filter(function (it) { return bandOfRec(it) === band; });
+      if (!items.length) return;
+      var l4Order = [], l4s = Object.create(null);
+      product.l4Order.forEach(function (dk) {
+        var l4 = product.l4s[dk];
+        var sub = l4.items.filter(function (it) { return bandOfRec(it) === band; });
+        if (!sub.length) return;
+        l4Order.push(dk);
+        l4s[dk] = { key: l4.key, html: l4.html, items: sub };
+      });
+      var accs = accessories.filter(function (a) {
+        var pc = connFirst(a, CONFIG.fields.accessoryParent);
+        var pb = pc && parentBandById[pc.id];
+        return (pb || bandOfRec(a)) === band;
+      });
+      out.push({
+        band: band,
+        product: { key: product.key, label: product.label, items: items, l4Order: l4Order, l4s: l4s },
+        accessories: accs
+      });
+    });
+    return out;
   }
 
   function buildTree(records) {
@@ -427,8 +473,174 @@
     }
     function laborSum(recs) { return masked ? 0 : sumRecs(recs, F.labor); }
 
-    function pushRow(cls, cells, coState) {
-      rows.push({ cls: cls, cells: cells, co: coState || '' });
+    function pushRow(cls, cells) {
+      rows.push({ cls: cls, cells: cells });
+    }
+
+    // ── shared emitters (base + banded-CO paths) ────────────────────
+    function emitBucketHeaderRow(bctx, promoted, showQtyCost) {
+      pushRow(
+        'scw-pg2-l2' + (promoted ? ' scw-pg2-l2--promoted' : '') +
+          (bctx.kind !== 'default' ? ' scw-pg2-l2--' + bctx.kind : ''),
+        promoted
+          ? [{ html: esc(bctx.displayLabel), cls: 'scw-pg2-l1-label' },
+             { html: showQtyCost ? '<strong>Qty</strong>' : '' },
+             { html: showQtyCost ? '<strong>Cost</strong>' : '' }]
+          : [{ html: esc(bctx.displayLabel) }, { html: '' }, { html: '' }]
+      );
+    }
+
+    function emitProductBlock(product, accessories, bctx, tint, first) {
+      var tintCls = tint ? ' scw-pg2-co-' + tint : '';
+
+      // L3 product line — qty/cost of PARENT devices only.
+      if (!bctx.hideL3 && !isBlankish(product.label)) {
+        var pQty = sumRecs(product.items, F.qty);
+        var pHardware = sumRecs(product.items, F.hardware);
+        pushRow('scw-pg2-l3' + (first ? ' scw-pg2-l3--first' : '') + tintCls, [
+          { html: esc(product.label) },
+          { html: '<strong>' + Math.round(pQty) + '</strong>' },
+          { html: '<strong>' + amountHtml(pHardware, false) + '</strong>' }
+        ]);
+      }
+
+      // L4 install-description lines — qty + labor.
+      product.l4Order.forEach(function (dk) {
+        var l4 = product.l4s[dk];
+        var hasLabel = !isBlankish(norm(stripHtml(l4.html)));
+        if (!hasLabel) return;   // blank L4 header → hidden (v1 parity)
+        var l4Qty = sumRecs(l4.items, F.qty);
+        var l4Labor = sumRecs(l4.items, F.labor);
+        var camHtml = '';
+        if (bctx.context === 'drop') {
+          var list = designatorList(l4.items);
+          // Same tight labeled callout as Connected devices.
+          if (list) camHtml = '<span class="scw-pg2-l4-conn"><b>Applies to:</b> ' + esc(list) + '</span>';
+        }
+        // Connected devices (labeled) — beneath the labor description.
+        // Only names that resolve to records in THIS view.
+        var connNames = [];
+        l4.items.forEach(function (it) {
+          var raw = it[F.connectedDevices + '_raw'];
+          if (!Array.isArray(raw)) return;
+          raw.forEach(function (c) {
+            if (!c || !c.id || !tree.byId[c.id]) return;
+            var t = norm(stripHtml(c.identifier));
+            if (t && !isBlankish(t)) connNames.push(t);
+          });
+        });
+        var connHtml = connNames.length
+          ? '<span class="scw-pg2-l4-conn"><b>Connected devices:</b> ' + esc(compressLabels(connNames)) + '</span>'
+          : '';
+        pushRow('scw-pg2-l4' + (bctx.hideQtyCost ? ' scw-pg2-hide-qtycost' : '') + tintCls, [
+          { html: '<span class="scw-pg2-l4-desc">' + l4.html + '</span>' + camHtml + connHtml },
+          { html: bctx.hideQtyCost ? '' : '<strong>' + Math.round(l4Qty) + '</strong>' },
+          { html: bctx.hideQtyCost ? '' : '<strong>' + (masked ? tbd() : esc(money(l4Labor))) + '</strong>' }
+        ]);
+      });
+
+      // Mounting-hardware cluster beneath the product: one line per
+      // accessory product (equipment price), + labor sub-line when the
+      // accessory carries install labor.
+      if (accessories.length) {
+        var byProduct = Object.create(null), order = [];
+        accessories.forEach(function (a) {
+          var name = cleanProductLabel(readText(a, F.accessoryProduct)) ||
+                     cleanProductLabel(readText(a, F.product)) || 'Mounting Hardware';
+          if (!byProduct[name]) { byProduct[name] = []; order.push(name); }
+          byProduct[name].push(a);
+        });
+        order.forEach(function (name) {
+          var grp = byProduct[name];
+          var gQty = sumRecs(grp, F.qty);
+          var gHardware = sumRecs(grp, F.hardware);
+          var gLabor = sumRecs(grp, F.labor);
+          // Parent designators — cam/reader parents only (v1 parity).
+          var parentRecs = [];
+          grp.forEach(function (a) {
+            var pc = connFirst(a, F.accessoryParent);
+            var parent = pc && tree.byId[pc.id];
+            if (parent && isCamReaderRec(parent)) parentRecs.push(parent);
+          });
+          var pl = designatorList(parentRecs);
+          pushRow('scw-pg2-mount' + tintCls, [
+            { html: esc(name) + (pl ? '<span class="scw-pg2-l4-conn">' + esc(pl) + '</span>' : '') },
+            { html: String(Math.round(gQty)) },
+            { html: esc(money(gHardware)) }
+          ]);
+          if (gLabor > 0) {
+            var desc = '';
+            for (var gi = 0; gi < grp.length; gi++) {
+              if (readNum(grp[gi], F.labor) > 0) {
+                desc = readText(grp[gi], F.installDesc);
+                if (desc) break;
+              }
+            }
+            if (desc) {
+              pushRow('scw-pg2-mount-labor' + tintCls, [
+                { html: esc(desc) },
+                { html: '' },
+                { html: masked ? tbd() : esc(money(gLabor)) }
+              ]);
+            }
+          }
+        });
+      }
+    }
+
+    // L2 footer — total = hardware + labor for the whole bucket
+    // (accessories included); qty shown only for the drop bucket.
+    function emitBucketFooter(bctx) {
+      var bHardware = sumRecs(bctx.allRecs, F.hardware);
+      var bLabor = laborSum(bctx.allRecs);
+      var bQty = sumRecs(bctx.parentRecs, F.qty);
+      pushRow('scw-pg2-l2foot' + (bctx.hideQtyCost ? ' scw-pg2-hide-qtycost' : ''), [
+        { html: '<strong>' + esc(bctx.displayLabel) + '</strong>', cls: 'scw-pg2-l2foot-label' },
+        { html: bctx.context === 'drop' ? '<strong>' + Math.round(bQty) + '</strong>' : '' },
+        { html: '<strong>' + (masked && bLabor === 0 && bHardware === 0 ? tbd() : esc(money(bHardware + bLabor))) + '</strong>' }
+      ]);
+    }
+
+    // Banded CO: an "Items to be Added" band then an "Items to be
+    // Removed" band per section — mirrors the live v1 + co-band-mockup
+    // presentation. Band money sums the LINE TOTAL (F.cost), the same
+    // figure co-band-mockup's costMap used.
+    function emitBands(bctxList, sectionPromoted) {
+      ['add', 'rm'].forEach(function (band) {
+        var inBand = [];
+        bctxList.forEach(function (bctx) {
+          var prs = bctx.prods.filter(function (pr) { return pr.band === band; });
+          if (prs.length) inBand.push({ bctx: bctx, prs: prs });
+        });
+        if (!inBand.length) return;
+        var bandLabel = band === 'add' ? 'Items to be Added' : 'Items to be Removed';
+        pushRow('scw-pg2-band scw-pg2-band--' + band, [
+          { html: esc(bandLabel) }, { html: '' }, { html: '' }
+        ]);
+        var bandQty = 0, bandCost = 0;
+        inBand.forEach(function (e) {
+          if (!sectionPromoted) emitBucketHeaderRow(e.bctx, false, false);
+          var q = 0, c = 0;
+          e.prs.forEach(function (pr, pi) {
+            emitProductBlock(pr.product, pr.accessories, e.bctx, band, pi === 0);
+            pr.product.items.concat(pr.accessories).forEach(function (r) {
+              q += readNum(r, F.qty);
+              c += readNum(r, F.cost);
+            });
+          });
+          bandQty += q; bandCost += c;
+          pushRow('scw-pg2-band-sub scw-pg2-band-sub--' + band, [
+            { html: '<strong>' + esc(e.bctx.displayLabel) + '</strong>', cls: 'scw-pg2-l2foot-label' },
+            { html: '<strong>' + Math.round(q) + '</strong>' },
+            { html: '<strong>' + esc(bandMoney(c)) + '</strong>' }
+          ]);
+        });
+        pushRow('scw-pg2-band-total scw-pg2-band-total--' + band, [
+          { html: '<strong>' + esc(bandLabel + ' — subtotal') + '</strong>', cls: 'scw-pg2-l2foot-label' },
+          { html: '<strong>' + Math.round(bandQty) + '</strong>' },
+          { html: '<strong>' + esc(bandMoney(bandCost)) + '</strong>' }
+        ]);
+      });
     }
 
     tree.l1s.forEach(function (l1g) {
@@ -447,188 +659,89 @@
         });
       });
       var rule = findRenameRule(l1Recs);
-      var l1Hardware = sumRecs(l1Recs, F.hardware);
-      var l1Labor = laborSum(l1Recs);
-      var l1Subtotal = l1Hardware + l1Labor;
+      var l1Subtotal = sumRecs(l1Recs, F.hardware) + laborSum(l1Recs);
       if (Math.abs(l1Subtotal) >= 0.01) anyNonZeroL1 = true;
+      var showHdr = Math.abs(l1Subtotal) >= 0.01;
 
-      if (!promoted) {
-        pushRow('scw-pg2-l1', [
-          { html: esc(l1g.label), cls: 'scw-pg2-l1-label' },
-          { html: Math.abs(l1Subtotal) >= 0.01 ? '<strong>Qty</strong>' : '' },
-          { html: Math.abs(l1Subtotal) >= 0.01 ? '<strong>Cost</strong>' : '' }
-        ]);
-      }
-
+      // Per-bucket context + product units (accessories attached).
+      var bctxs = [];
       l1g.bucketOrder.forEach(function (bk) {
         var bucket = l1g.buckets[bk];
         var kind = bucketKind(bucket);
         var displayLabel = bucket.label;
         if (rule && rule.renames[displayLabel]) displayLabel = rule.renames[displayLabel];
         if (promoted && kind === 'assumptions') displayLabel = 'General Project Assumptions';
-        var context = contextOf(displayLabel, bucket);
-        // Services hide the product-name headers but KEEP qty/cost and the
-        // subtotal (matches v1's live rendering of "Other Services");
-        // assumptions hide all of it.
-        var hideL3 = kind === 'services' || kind === 'assumptions';
-        var hideQtyCost = kind === 'assumptions';
-
-        // Bucket records (parents only; accessories render in clusters).
-        var bucketParentRecs = [], bucketAllRecs = [];
+        var bctx = {
+          kind: kind,
+          displayLabel: displayLabel,
+          context: contextOf(displayLabel, bucket),
+          // Services hide the product-name headers but KEEP qty/cost and
+          // the subtotal (matches v1's live rendering of "Other Services");
+          // assumptions hide all of it.
+          hideL3: kind === 'services' || kind === 'assumptions',
+          hideQtyCost: kind === 'assumptions',
+          prods: [], parentRecs: [], allRecs: []
+        };
         bucket.productOrder.forEach(function (pk) {
-          bucket.products[pk].items.forEach(function (it) {
-            bucketParentRecs.push(it);
-            bucketAllRecs.push(it);
-            (tree.accByParent[it.id] || []).forEach(function (a) { bucketAllRecs.push(a); });
-          });
-        });
-        if (!bucketParentRecs.length) return;
-
-        pushRow(
-          'scw-pg2-l2' + (promoted ? ' scw-pg2-l2--promoted' : '') +
-            (kind !== 'default' ? ' scw-pg2-l2--' + kind : ''),
-          promoted
-            ? [{ html: esc(displayLabel), cls: 'scw-pg2-l1-label' },
-               { html: Math.abs(l1Subtotal) >= 0.01 ? '<strong>Qty</strong>' : '' },
-               { html: Math.abs(l1Subtotal) >= 0.01 ? '<strong>Cost</strong>' : '' }]
-            : [{ html: esc(displayLabel) }, { html: '' }, { html: '' }]
-        );
-
-        bucket.productOrder.forEach(function (pk, pi) {
           var product = bucket.products[pk];
           var accessories = [];
           product.items.forEach(function (it) {
-            (tree.accByParent[it.id] || []).forEach(function (a) { accessories.push(a); });
+            bctx.parentRecs.push(it);
+            bctx.allRecs.push(it);
+            (tree.accByParent[it.id] || []).forEach(function (a) {
+              accessories.push(a);
+              bctx.allRecs.push(a);
+            });
           });
-
-          var coStates = product.items.map(coActionOf);
-          var allRemove = coStates.length > 0 && coStates.every(function (s) { return s === 'remove'; });
-          var allAdd = coStates.length > 0 && coStates.every(function (s) { return s === 'add'; });
-
-          // L3 product line — qty/cost of PARENT devices only.
-          if (!hideL3 && !isBlankish(product.label)) {
-            var pQty = sumRecs(product.items, F.qty);
-            var pHardware = sumRecs(product.items, F.hardware);
-            pushRow('scw-pg2-l3' + (pi === 0 ? ' scw-pg2-l3--first' : ''), [
-              { html: esc(product.label) },
-              { html: '<strong>' + Math.round(pQty) + '</strong>' },
-              { html: '<strong>' + amountHtml(pHardware, false) + '</strong>' }
-            ], allRemove ? 'remove' : (allAdd ? 'add' : ''));
-          }
-
-          // L4 install-description lines — qty + labor.
-          product.l4Order.forEach(function (dk) {
-            var l4 = product.l4s[dk];
-            var hasLabel = !isBlankish(norm(stripHtml(l4.html)));
-            if (!hasLabel && hideL3) {
-              // Assumptions/services rows with no desc — nothing to show.
-              return;
-            }
-            var l4CoStates = l4.items.map(coActionOf);
-            var l4Remove = l4CoStates.length > 0 && l4CoStates.every(function (s) { return s === 'remove'; });
-            var l4Add = l4CoStates.length > 0 && l4CoStates.every(function (s) { return s === 'add'; });
-            if (!hasLabel) return;   // blank L4 header → hidden (v1 parity)
-            var l4Qty = sumRecs(l4.items, F.qty);
-            var l4Labor = sumRecs(l4.items, F.labor);
-            var camHtml = '';
-            if (context === 'drop') {
-              var list = designatorList(l4.items);
-              // Same tight labeled callout as Connected devices.
-              if (list) camHtml = '<span class="scw-pg2-l4-conn"><b>Applies to:</b> ' + esc(list) + '</span>';
-            }
-            // Connected devices (orange, labeled) — beneath the labor
-            // description. Only names that resolve to records in THIS view
-            // (other-SOW connections are dropped).
-            var connNames = [];
-            l4.items.forEach(function (it) {
-              var raw = it[F.connectedDevices + '_raw'];
-              if (!Array.isArray(raw)) return;
-              raw.forEach(function (c) {
-                if (!c || !c.id || !tree.byId[c.id]) return;
-                var t = norm(stripHtml(c.identifier));
-                if (t && !isBlankish(t)) connNames.push(t);
-              });
+          if (isCO) {
+            coProductSlices(product, accessories).forEach(function (sl) {
+              bctx.prods.push({ product: sl.product, accessories: sl.accessories, band: sl.band });
             });
-            var connHtml = connNames.length
-              ? '<span class="scw-pg2-l4-conn"><b>Connected devices:</b> ' + esc(compressLabels(connNames)) + '</span>'
-              : '';
-            pushRow('scw-pg2-l4' + (hideQtyCost ? ' scw-pg2-hide-qtycost' : ''), [
-              { html: '<span class="scw-pg2-l4-desc">' + l4.html + '</span>' + camHtml + connHtml },
-              { html: hideQtyCost ? '' : '<strong>' + Math.round(l4Qty) + '</strong>' },
-              { html: hideQtyCost ? '' : '<strong>' + (masked ? tbd() : esc(money(l4Labor))) + '</strong>' }
-            ], l4Remove ? 'remove' : (l4Add ? 'add' : ''));
-          });
-
-          // Mounting-hardware cluster beneath the product: one line per
-          // accessory product (equipment price), + labor sub-line when the
-          // accessory carries install labor.
-          if (accessories.length) {
-            var byProduct = Object.create(null), order = [];
-            accessories.forEach(function (a) {
-              var name = cleanProductLabel(readText(a, F.accessoryProduct)) ||
-                         cleanProductLabel(readText(a, F.product)) || 'Mounting Hardware';
-              if (!byProduct[name]) { byProduct[name] = []; order.push(name); }
-              byProduct[name].push(a);
-            });
-            order.forEach(function (name) {
-              var grp = byProduct[name];
-              var gQty = sumRecs(grp, F.qty);
-              var gHardware = sumRecs(grp, F.hardware);
-              var gLabor = sumRecs(grp, F.labor);
-              // Parent designators — cam/reader parents only (v1 parity).
-              var parentRecs = [];
-              grp.forEach(function (a) {
-                var pc = connFirst(a, F.accessoryParent);
-                var parent = pc && tree.byId[pc.id];
-                if (parent && isCamReaderRec(parent)) parentRecs.push(parent);
-              });
-              var pl = designatorList(parentRecs);
-              pushRow('scw-pg2-mount', [
-                { html: esc(name) + (pl ? '<span class="scw-pg2-l4-conn">' + esc(pl) + '</span>' : '') },
-                { html: String(Math.round(gQty)) },
-                { html: esc(money(gHardware)) }
-              ]);
-              if (gLabor > 0) {
-                var desc = '';
-                for (var gi = 0; gi < grp.length; gi++) {
-                  if (readNum(grp[gi], F.labor) > 0) {
-                    desc = readText(grp[gi], F.installDesc);
-                    if (desc) break;
-                  }
-                }
-                if (desc) {
-                  pushRow('scw-pg2-mount-labor', [
-                    { html: esc(desc) },
-                    { html: '' },
-                    { html: masked ? tbd() : esc(money(gLabor)) }
-                  ]);
-                }
-              }
-            });
+          } else {
+            bctx.prods.push({ product: product, accessories: accessories, band: '' });
           }
         });
-
-        // L2 footer — total = hardware + labor for the whole bucket
-        // (accessories included); qty shown only for the drop bucket.
-        var isAssumptions = kind === 'assumptions';
-        if (!isAssumptions) {
-          var bHardware = sumRecs(bucketAllRecs, F.hardware);
-          var bLabor = laborSum(bucketAllRecs);
-          var bQty = sumRecs(bucketParentRecs, F.qty);
-          pushRow('scw-pg2-l2foot' + (hideQtyCost ? ' scw-pg2-hide-qtycost' : ''), [
-            { html: '<strong>' + esc(displayLabel) + '</strong>', cls: 'scw-pg2-l2foot-label' },
-            { html: context === 'drop' ? '<strong>' + Math.round(bQty) + '</strong>' : '' },
-            { html: '<strong>' + (masked && bLabor === 0 && bHardware === 0 ? tbd() : esc(money(bHardware + bLabor))) + '</strong>' }
-          ]);
-        }
-
-        // Promoted L2 acts as L1 → gets the L1 footer treatment.
-        if (promoted && !isAssumptions) {
-          pushL1Footer(displayLabel, bucketAllRecs);
-        }
+        if (bctx.parentRecs.length) bctxs.push(bctx);
       });
 
-      if (!promoted) pushL1Footer(l1g.label, l1Recs);
+      if (promoted) {
+        // Each promoted bucket is its own section.
+        bctxs.forEach(function (bctx) {
+          emitBucketHeaderRow(bctx, true, showHdr);
+          if (isCO) {
+            emitBands([bctx], true);
+          } else {
+            bctx.prods.forEach(function (pr, pi) {
+              emitProductBlock(pr.product, pr.accessories, bctx, '', pi === 0);
+            });
+          }
+          if (bctx.kind !== 'assumptions') {
+            if (!isCO) emitBucketFooter(bctx);
+            pushL1Footer(bctx.displayLabel, bctx.allRecs);
+          }
+        });
+        return;
+      }
+
+      pushRow('scw-pg2-l1', [
+        { html: esc(l1g.label), cls: 'scw-pg2-l1-label' },
+        { html: showHdr ? '<strong>Qty</strong>' : '' },
+        { html: showHdr ? '<strong>Cost</strong>' : '' }
+      ]);
+
+      if (isCO) {
+        emitBands(bctxs, false);
+      } else {
+        bctxs.forEach(function (bctx) {
+          emitBucketHeaderRow(bctx, false, false);
+          bctx.prods.forEach(function (pr, pi) {
+            emitProductBlock(pr.product, pr.accessories, bctx, '', pi === 0);
+          });
+          if (bctx.kind !== 'assumptions') emitBucketFooter(bctx);
+        });
+      }
+
+      pushL1Footer(l1g.label, l1Recs);
     });
 
     function pushL1Footer(title, recs) {
@@ -682,26 +795,19 @@
     var html = ['<table class="scw-pg2-table"><colgroup>' +
       '<col class="scw-pg2-col-label"><col class="scw-pg2-col-qty"><col class="scw-pg2-col-cost">' +
       '</colgroup><tbody>'];
-    var prevRemoved = false;
     rows.forEach(function (row) {
-      var removed = row.co === 'remove';
-      if (removed && !prevRemoved) {
-        html.push('<tr class="scw-pg2-co-banner"><td colspan="3">Removed from install scope — credit</td></tr>');
-      }
-      prevRemoved = removed;
-      var coCls = row.co === 'remove' ? ' scw-pg2-co-rm' : (row.co === 'add' ? ' scw-pg2-co-add' : '');
       if (row.title !== undefined) {
-        html.push('<tr class="' + row.cls + coCls + '"><td colspan="2"><div class="scw-pg2-l1foot-title">' +
+        html.push('<tr class="' + row.cls + '"><td colspan="2"><div class="scw-pg2-l1foot-title">' +
           esc(row.title) + '</div></td><td></td></tr>');
       } else if (row.label !== undefined) {
         var valueHtml = row.maskedValue ? '<strong>' + tbd() + '</strong>' : esc(row.value);
-        html.push('<tr class="' + row.cls + coCls + '">' +
+        html.push('<tr class="' + row.cls + '">' +
           '<td colspan="2"><div class="scw-pg2-l1foot-label">' + esc(row.label) + '</div></td>' +
           '<td><div class="scw-pg2-l1foot-value">' + valueHtml + '</div>' +
           (row.note ? '<div class="scw-pg2-disc-note">' + esc(row.note) + '</div>' : '') +
           '</td></tr>');
       } else {
-        html.push('<tr class="' + row.cls + coCls + '">' + row.cells.map(function (c, idx) {
+        html.push('<tr class="' + row.cls + '">' + row.cells.map(function (c) {
           return '<td class="' + (c.cls || '') + '">' + c.html + '</td>';
         }).join('') + '</tr>');
       }
@@ -716,6 +822,222 @@
         .forEach(function (td) { td.innerHTML = ''; });
     }
     return el;
+  }
+
+  // ── CO "What's Changing" manifest (dormant until v1 retires) ──────
+  // proposal-grid.js (v1) still renders and owns #scw-co-change-summary;
+  // the publish pipeline scrapes that element scene-wide and the e-sign
+  // walker consumes the same scw-cos-* structure. When v1 is deleted,
+  // flip CONFIG.ownCoManifest — v2 then renders the IDENTICAL id +
+  // structure from the model, so scrapeCoChangeSummary and everything
+  // downstream keep working unchanged.
+  var CO_SUMMARY_ID = 'scw-co-change-summary';
+  function coMoney(n) {
+    return (n < 0 ? '−' : '') + '$' + Math.abs(n || 0).toLocaleString('en-US',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function injectManifestCss() {
+    var ID = 'scw-pg2-cos-css';
+    if (document.getElementById(ID) || document.getElementById('scw-co-rm-css')) return;
+    var S = '#' + CO_SUMMARY_ID;
+    var s = document.createElement('style');
+    s.id = ID;
+    s.textContent = [
+      S + ' { margin: 0 0 16px; border: 1px solid #dbe4ee; border-radius: 10px; overflow: hidden; background: #fff; font-family: system-ui, -apple-system, sans-serif; }',
+      S + ' .scw-cos-title { padding: 9px 16px 8px; background: #163C6E; color: #fff; font-size: 13px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 8px; }',
+      S + ' .scw-cos-chevron { margin-left: auto; font-size: 12px; line-height: 1; transition: transform 0.15s ease; }',
+      S + '.scw-cos-collapsed .scw-cos-chevron { transform: rotate(-90deg); }',
+      S + '.scw-cos-collapsed .scw-cos-desc, ' + S + '.scw-cos-collapsed .scw-cos-cols { display: none; }',
+      S + '.scw-cos--docked { margin: 12px 0 4px; width: 66%; min-width: 560px; max-width: 100%; }',
+      S + ' .scw-cos-desc { padding: 8px 16px; background: #f0f4fa; color: #334155; font-size: 12px; line-height: 1.45; border-bottom: 1px solid #dbe4ee; }',
+      S + ' .scw-cos-desc b { color: #163C6E; }',
+      S + ' .scw-cos-cols { display: flex; flex-wrap: wrap; }',
+      S + ' .scw-cos-col { flex: 1 1 320px; min-width: 280px; padding: 12px 16px; }',
+      S + ' .scw-cos-col--add { box-shadow: inset 4px 0 0 #059669; }',
+      S + ' .scw-cos-col--rm  { box-shadow: inset 4px 0 0 #e11d48; background: #fff7f7; }',
+      S + ' .scw-cos-head { font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; margin-bottom: 8px; }',
+      S + ' .scw-cos-col--add .scw-cos-head { color: #065f46; }',
+      S + ' .scw-cos-col--rm  .scw-cos-head { color: #9f1239; }',
+      S + ' table.scw-cos-table { width: 100%; border-collapse: collapse; }',
+      S + ' table.scw-cos-table td { padding: 4px 6px; font-size: 12.5px; color: #1e293b; border-bottom: 1px solid #eef2f7; vertical-align: top; }',
+      S + ' td.scw-cos-qty { width: 42px; text-align: right; color: #64748b; white-space: nowrap; }',
+      S + ' td.scw-cos-amt { width: 96px; text-align: right; font-weight: 600; white-space: nowrap; }',
+      S + ' .scw-cos-col--rm td.scw-cos-amt { color: #be123c; }',
+      S + ' .scw-cos-lbl { color: #64748b; font-size: 11.5px; }',
+      S + ' .scw-cos-meta { display: block; color: #64748b; font-size: 11px; margin-top: 1px; }',
+      S + ' tr.scw-cos-sub td { border-bottom: 0; padding-top: 7px; font-weight: 800; font-size: 12.5px; }',
+      S + ' .scw-cos-net { display: flex; justify-content: flex-end; align-items: baseline; gap: 10px; padding: 9px 16px; border-top: 1px solid #dbe4ee; background: #f8fafc; font-size: 13px; font-weight: 800; color: #163C6E; }',
+      S + ' .scw-cos-net-label { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: #64748b; }',
+      S + ' .scw-cos-desc .scw-cos-g { color: #059669; }',
+      S + ' .scw-cos-desc .scw-cos-r { color: #e11d48; }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function renderCoManifest(tree) {
+    var F = CONFIG.fields;
+    var adds = [], removes = [], anyAction = false;
+
+    function pushEntry(rec, productLabel, loc) {
+      var action = coActionOf(rec);
+      if (action) anyAction = true;
+      var pc = connFirst(rec, F.prefix);
+      var prefix = pc ? pc.label : readText(rec, F.prefix);
+      var digits = readText(rec, F.number).replace(/\D/g, '');
+      var n = parseInt(digits, 10);
+      var entry = {
+        product: productLabel,
+        desig: (prefix && isFinite(n)) ? prefix.toUpperCase() + pad3(n) : '',
+        loc: loc,
+        qty: readNum(rec, F.qty) || 1,
+        amt: readNum(rec, F.cost),
+      };
+      if (action === 'remove') removes.push(entry);
+      // Adds: only rows with something to show (skips assumptions rows).
+      else if (entry.product || entry.amt) adds.push(entry);
+    }
+
+    tree.l1s.forEach(function (l1g) {
+      l1g.bucketOrder.forEach(function (bk) {
+        var bucket = l1g.buckets[bk];
+        bucket.productOrder.forEach(function (pk) {
+          var product = bucket.products[pk];
+          product.items.forEach(function (rec) {
+            pushEntry(rec, product.label, l1g.label);
+            (tree.accByParent[rec.id] || []).forEach(function (a) {
+              var nm = cleanProductLabel(readText(a, F.accessoryProduct)) ||
+                       cleanProductLabel(readText(a, F.product)) || 'Mounting Hardware';
+              pushEntry(a, nm, l1g.label);
+            });
+          });
+        });
+      });
+    });
+
+    var summary = document.getElementById(CO_SUMMARY_ID);
+    if (!anyAction) { if (summary) summary.remove(); return; }
+    injectManifestCss();
+
+    if (!summary) {
+      summary = document.createElement('div');
+      summary.id = CO_SUMMARY_ID;
+      var stepper = document.querySelector('.scw-ops-stepper');
+      var grid = document.querySelector('.scw-pg2');
+      if (stepper) stepper.parentNode.insertBefore(summary, stepper.nextSibling);
+      else if (grid && grid.parentNode) grid.parentNode.insertBefore(summary, grid);
+      else return;
+    }
+
+    // Merge identical products (same product + location) into one row —
+    // qty/amounts sum, designators join into the meta line (v1 parity).
+    function groupEntries(list) {
+      var byKey = Object.create(null), order = [];
+      list.forEach(function (e) {
+        var key = e.product + '¦' + e.loc;
+        var g = byKey[key];
+        if (g) {
+          g.qty += e.qty;
+          g.amt += e.amt;
+          if (e.desig) g.desigs.push(e.desig);
+        } else {
+          byKey[key] = { product: e.product, loc: e.loc, qty: e.qty, amt: e.amt, desigs: e.desig ? [e.desig] : [] };
+          order.push(key);
+        }
+      });
+      return order.map(function (k) {
+        var g = byKey[k];
+        g.desig = compressLabels(g.desigs);
+        return g;
+      });
+    }
+    var addsG = groupEntries(adds);
+    var removesG = groupEntries(removes);
+    var countOf = function (list) {
+      return list.reduce(function (t, e) { return t + (e.qty || 1); }, 0);
+    };
+    var locSet = Object.create(null), locCount = 0;
+    addsG.concat(removesG).forEach(function (e) {
+      if (e.loc && !locSet[e.loc]) { locSet[e.loc] = 1; locCount++; }
+    });
+    var showLoc = locCount > 1;
+    var itemRows = function (list) {
+      return list.map(function (e) {
+        var meta = [e.desig, showLoc ? e.loc : ''].filter(Boolean).join(' · ');
+        return '<tr><td>' + esc(e.product || '(item)') +
+          (meta ? '<span class="scw-cos-meta">' + esc(meta) + '</span>' : '') +
+          '</td><td class="scw-cos-qty">' + Math.round(e.qty) + '</td>' +
+          '<td class="scw-cos-amt">' + esc(coMoney(e.amt)) + '</td></tr>';
+      }).join('');
+    };
+    var subRow = function (label, total) {
+      return '<tr class="scw-cos-sub"><td>' + esc(label) + '</td><td></td>' +
+        '<td class="scw-cos-amt">' + esc(coMoney(total)) + '</td></tr>';
+    };
+    var addTotal = addsG.reduce(function (t, e) { return t + e.amt; }, 0);
+    var rmTotal = removesG.reduce(function (t, e) { return t + e.amt; }, 0);
+
+    summary.innerHTML =
+      '<div class="scw-cos-title">Change Order — What\'s Changing</div>' +
+      '<div class="scw-cos-desc">This change order amends the previously approved ' +
+        'installation scope. In the itemized list below, added items are shaded ' +
+        '<b class="scw-cos-g">green</b>; removed items are shaded ' +
+        '<b class="scw-cos-r">red</b> and credited back.</div>' +
+      '<div class="scw-cos-cols">' +
+        (addsG.length ?
+          '<div class="scw-cos-col scw-cos-col--add">' +
+            '<div class="scw-cos-head">Adding to install scope (' + countOf(addsG) + ')</div>' +
+            '<table class="scw-cos-table"><tbody>' + itemRows(addsG) + subRow('Subtotal — additions', addTotal) + '</tbody></table>' +
+          '</div>' : '') +
+        (removesG.length ?
+          '<div class="scw-cos-col scw-cos-col--rm">' +
+            '<div class="scw-cos-head">Removing from install scope — credit (' + countOf(removesG) + ')</div>' +
+            '<table class="scw-cos-table"><tbody>' + itemRows(removesG) + subRow('Subtotal — credits', rmTotal) + '</tbody></table>' +
+          '</div>' : '') +
+      '</div>' +
+      '<div class="scw-cos-net"><span class="scw-cos-net-label">Net change</span>' +
+      '<span>' + esc(coMoney(addTotal + rmTotal)) + '</span></div>';
+
+    // Dock under the ops stepper + chevron + collapse (v1's behavior).
+    var stepperEl = document.querySelector('.scw-ops-stepper');
+    if (stepperEl) {
+      if (summary.previousElementSibling !== stepperEl) {
+        stepperEl.parentNode.insertBefore(summary, stepperEl.nextSibling);
+      }
+      summary.classList.add('scw-cos--docked');
+    }
+    var titleEl = summary.querySelector('.scw-cos-title');
+    if (titleEl && !titleEl.querySelector('.scw-cos-chevron')) {
+      var ch = document.createElement('span');
+      ch.className = 'scw-cos-chevron';
+      ch.textContent = '▾';
+      titleEl.appendChild(ch);
+    }
+    var stored = null;
+    try { stored = window.localStorage.getItem('scwCoSummaryCollapsed'); } catch (e) { /* ignore */ }
+    if (stored === '1') summary.classList.add('scw-cos-collapsed');
+    else if (stored === '0') summary.classList.remove('scw-cos-collapsed');
+    else {
+      summary.classList.remove('scw-cos-collapsed');
+      if (summary.offsetHeight > 300) summary.classList.add('scw-cos-collapsed');
+    }
+    // Collapse click binding — same guard attribute v1 uses, so exactly
+    // one document-level handler exists whichever module registers first.
+    if (!document.documentElement.hasAttribute('data-scw-cos-collapse')) {
+      document.documentElement.setAttribute('data-scw-cos-collapse', '1');
+      document.addEventListener('click', function (e) {
+        var t = e.target && e.target.closest &&
+          e.target.closest('#' + CO_SUMMARY_ID + ' .scw-cos-title');
+        if (!t) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var sm = t.closest('#' + CO_SUMMARY_ID);
+        if (!sm) return;
+        var collapsed = !sm.classList.contains('scw-cos-collapsed');
+        sm.classList.toggle('scw-cos-collapsed', collapsed);
+        try { window.localStorage.setItem('scwCoSummaryCollapsed', collapsed ? '1' : '0'); }
+        catch (err) { /* ignore */ }
+      }, true);
+    }
   }
 
   // ── publish/PDF data (proposal-pdf-export delegation) ─────────────
@@ -741,9 +1063,15 @@
     var records = readRecords(vcfg.dataViewKey);
     if (!records || !records.length) return null;
     if (missingColumns(records).length) return null;
+    var isCO = false;
     for (var ci = 0; ci < records.length; ci++) {
-      if (coActionOf(records[ci])) return null;
+      if (coActionOf(records[ci])) { isCO = true; break; }
     }
+    // CO payloads come from v2 only once v2 OWNS the page (replaceV1) —
+    // while v1 is still the visible CO surface, its banded DOM scrape
+    // stays the publish source so signed documents can't drift from what
+    // is on screen.
+    if (isCO && !CONFIG.replaceV1) return null;
 
     var F = CONFIG.fields;
     var tree = buildTree(records);
@@ -779,6 +1107,131 @@
       return { title: title, hasDiscount: hasDiscount, lines: lines };
     }
 
+    // Products array for a set of product-units within one bucket. hideL3
+    // buckets (services/assumptions) collect ALL their line items under
+    // ONE label-less synthetic product — mirrors the v1 scraper.
+    function buildBucketProducts(bctx, prs) {
+      var products = [];
+      var synth = null;
+      prs.forEach(function (pr) {
+        var product = pr.product, accessories = pr.accessories;
+        var prod = null;
+        if (!bctx.hideL3 && !isBlankish(product.label)) {
+          prod = {
+            level: 3, label: product.label,
+            qty: Math.round(sumRecs(product.items, F.qty)),
+            cost: pubMoney(sumRecs(product.items, F.hardware)),
+            rate: '', hideCost: false,
+            connectedDevices: connDevicesOf(product.items),
+            isMountingHardware: bctx.isMounting, lineItems: [],
+          };
+          products.push(prod);
+        }
+
+        product.l4Order.forEach(function (dk) {
+          var l4 = product.l4s[dk];
+          var text = norm(stripHtml(l4.html));
+          if (isBlankish(text)) return;
+          var item = {
+            level: 4, label: text, description: l4.html,
+            qty: Math.round(sumRecs(l4.items, F.qty)),
+            cost: pubMoney(sumRecs(l4.items, F.labor)),
+            cameraList: bctx.context === 'drop' ? designatorList(l4.items) : '',
+          };
+          if (prod) prod.lineItems.push(item);
+          else {
+            if (!synth) {
+              // Services keep qty/cost visible (only their product-name
+              // headers are hidden); assumptions suppress both.
+              synth = { level: 3, label: '', qty: 0, cost: '', rate: '',
+                        hideCost: bctx.kind === 'assumptions',
+                        connectedDevices: [], isMountingHardware: false, lineItems: [] };
+              products.push(synth);
+            }
+            synth.lineItems.push(item);
+          }
+        });
+
+        if (prod && accessories.length) {
+          var byProduct = Object.create(null), order = [];
+          accessories.forEach(function (a) {
+            var nm = cleanProductLabel(readText(a, F.accessoryProduct)) ||
+                     cleanProductLabel(readText(a, F.product)) || 'Mounting Hardware';
+            if (!byProduct[nm]) { byProduct[nm] = []; order.push(nm); }
+            byProduct[nm].push(a);
+          });
+          order.forEach(function (nm) {
+            var grp = byProduct[nm];
+            var parentRecs = [];
+            grp.forEach(function (a) {
+              var pc = connFirst(a, F.accessoryParent);
+              var parent = pc && tree.byId[pc.id];
+              if (parent && isCamReaderRec(parent)) parentRecs.push(parent);
+            });
+            prod.lineItems.push({
+              level: 4, label: nm, description: '',
+              qty: Math.round(sumRecs(grp, F.qty)),
+              cost: pubMoney(sumRecs(grp, F.hardware)),
+              cameraList: designatorList(parentRecs),
+              // Relocated EQUIPMENT accessory — must NOT be TBD-masked.
+              isEquipment: true,
+            });
+            var gLabor = sumRecs(grp, F.labor);
+            if (gLabor > 0) {
+              var desc = '';
+              for (var gi = 0; gi < grp.length; gi++) {
+                if (readNum(grp[gi], F.labor) > 0) { desc = readText(grp[gi], F.installDesc); if (desc) break; }
+              }
+              if (desc) prod.lineItems.push({ level: 4, label: desc, description: '', qty: '', cost: pubMoney(gLabor), cameraList: '' });
+            }
+          });
+        }
+      });
+      return products;
+    }
+
+    function pubBucketFooter(bctx) {
+      return {
+        label: bctx.displayLabel,
+        qty: bctx.context === 'drop' ? Math.round(sumRecs(bctx.parentRecs, F.qty)) : 0,
+        cost: pubMoney(sumRecs(bctx.allRecs, F.hardware) + sumRecs(bctx.allRecs, F.labor)),
+      };
+    }
+
+    // Banded CO bucket stream — the marker entries scrapeGridView derives
+    // from the banded v1 DOM, emitted directly: coBandHeader → band
+    // buckets (coBand + per-band footer) → coBandTotal.
+    function emitPubBands(sec, bctxList, promotedSec) {
+      ['add', 'rm'].forEach(function (band) {
+        var inBand = [];
+        bctxList.forEach(function (bctx) {
+          var prs = bctx.prods.filter(function (pr) { return pr.band === band; });
+          if (prs.length) inBand.push({ bctx: bctx, prs: prs });
+        });
+        if (!inBand.length) return;
+        var bandLabel = band === 'add' ? 'Items to be Added' : 'Items to be Removed';
+        sec.buckets.push({ level: 2, coBandHeader: true, kind: band, label: bandLabel, products: [], footer: null });
+        var bandCost = 0;
+        inBand.forEach(function (e) {
+          var q = 0, c = 0;
+          e.prs.forEach(function (pr) {
+            pr.product.items.concat(pr.accessories).forEach(function (r) {
+              q += readNum(r, F.qty);
+              c += readNum(r, F.cost);
+            });
+          });
+          bandCost += c;
+          sec.buckets.push({
+            level: 2, label: e.bctx.displayLabel, isPromoted: promotedSec,
+            coBand: band,
+            products: buildBucketProducts(e.bctx, e.prs),
+            footer: { label: e.bctx.displayLabel, qty: Math.round(q), cost: bandMoney(c), coBand: band },
+          });
+        });
+        sec.buckets.push({ level: 2, coBandTotal: true, kind: band, label: bandLabel + ' — subtotal', cost: bandMoney(bandCost), products: [], footer: null });
+      });
+    }
+
     tree.l1s.forEach(function (l1g) {
       var promoted = isBlankish(l1g.label);
       var l1Recs = [];
@@ -792,136 +1245,72 @@
         });
       });
       var rule = findRenameRule(l1Recs);
-      var section = null;
-      if (!promoted) {
-        section = { level: 1, label: l1g.label, promoted: false, buckets: [], footer: null };
-        sections.push(section);
-      }
 
+      // Per-bucket context + product units (same derivation as the render).
+      var bctxs = [];
       l1g.bucketOrder.forEach(function (bk) {
         var bucket = l1g.buckets[bk];
         var kind = bucketKind(bucket);
         var displayLabel = bucket.label;
         if (rule && rule.renames[displayLabel]) displayLabel = rule.renames[displayLabel];
         if (promoted && kind === 'assumptions') displayLabel = 'General Project Assumptions';
-        var context = contextOf(displayLabel, bucket);
-        var hideL3 = kind === 'services' || kind === 'assumptions';
-        var isMounting = norm(displayLabel).toLowerCase() === CONFIG.mountingHardwareLabel;
-
-        var bucketParentRecs = [], bucketAllRecs = [];
-        bucket.productOrder.forEach(function (pk) {
-          bucket.products[pk].items.forEach(function (it) {
-            bucketParentRecs.push(it);
-            bucketAllRecs.push(it);
-            (tree.accByParent[it.id] || []).forEach(function (a) { bucketAllRecs.push(a); });
-          });
-        });
-        if (!bucketParentRecs.length) return;
-
-        var sec = section;
-        if (promoted) {
-          sec = { level: 1, label: displayLabel, promoted: true, buckets: [], footer: null };
-          sections.push(sec);
-        }
-        var b2 = { level: 2, label: displayLabel, isPromoted: promoted, products: [], footer: null };
-        sec.buckets.push(b2);
-
-        // hideL3 buckets (services/assumptions) collect ALL their line
-        // items under ONE label-less product with qty/cost suppressed —
-        // mirrors the v1 scraper's synthetic-L3 behavior.
-        var synth = null;
-
+        var bctx = {
+          kind: kind, displayLabel: displayLabel,
+          context: contextOf(displayLabel, bucket),
+          hideL3: kind === 'services' || kind === 'assumptions',
+          isMounting: norm(displayLabel).toLowerCase() === CONFIG.mountingHardwareLabel,
+          prods: [], parentRecs: [], allRecs: []
+        };
         bucket.productOrder.forEach(function (pk) {
           var product = bucket.products[pk];
           var accessories = [];
           product.items.forEach(function (it) {
-            (tree.accByParent[it.id] || []).forEach(function (a) { accessories.push(a); });
-          });
-
-          var prod = null;
-          if (!hideL3 && !isBlankish(product.label)) {
-            prod = {
-              level: 3, label: product.label,
-              qty: Math.round(sumRecs(product.items, F.qty)),
-              cost: pubMoney(sumRecs(product.items, F.hardware)),
-              rate: '', hideCost: false,
-              connectedDevices: connDevicesOf(product.items),
-              isMountingHardware: isMounting, lineItems: [],
-            };
-            b2.products.push(prod);
-          }
-
-          product.l4Order.forEach(function (dk) {
-            var l4 = product.l4s[dk];
-            var text = norm(stripHtml(l4.html));
-            if (isBlankish(text)) return;
-            var item = {
-              level: 4, label: text, description: l4.html,
-              qty: Math.round(sumRecs(l4.items, F.qty)),
-              cost: pubMoney(sumRecs(l4.items, F.labor)),
-              cameraList: context === 'drop' ? designatorList(l4.items) : '',
-            };
-            if (prod) prod.lineItems.push(item);
-            else {
-              if (!synth) {
-                // Services keep qty/cost visible (only their product-name
-                // headers are hidden); assumptions suppress both.
-                synth = { level: 3, label: '', qty: 0, cost: '', rate: '',
-                          hideCost: kind === 'assumptions',
-                          connectedDevices: [], isMountingHardware: false, lineItems: [] };
-                b2.products.push(synth);
-              }
-              synth.lineItems.push(item);
-            }
-          });
-
-          if (prod && accessories.length) {
-            var byProduct = Object.create(null), order = [];
-            accessories.forEach(function (a) {
-              var nm = cleanProductLabel(readText(a, F.accessoryProduct)) ||
-                       cleanProductLabel(readText(a, F.product)) || 'Mounting Hardware';
-              if (!byProduct[nm]) { byProduct[nm] = []; order.push(nm); }
-              byProduct[nm].push(a);
+            bctx.parentRecs.push(it);
+            bctx.allRecs.push(it);
+            (tree.accByParent[it.id] || []).forEach(function (a) {
+              accessories.push(a);
+              bctx.allRecs.push(a);
             });
-            order.forEach(function (nm) {
-              var grp = byProduct[nm];
-              var parentRecs = [];
-              grp.forEach(function (a) {
-                var pc = connFirst(a, F.accessoryParent);
-                var parent = pc && tree.byId[pc.id];
-                if (parent && isCamReaderRec(parent)) parentRecs.push(parent);
-              });
-              prod.lineItems.push({
-                level: 4, label: nm, description: '',
-                qty: Math.round(sumRecs(grp, F.qty)),
-                cost: pubMoney(sumRecs(grp, F.hardware)),
-                cameraList: designatorList(parentRecs),
-                // Relocated EQUIPMENT accessory — must NOT be TBD-masked.
-                isEquipment: true,
-              });
-              var gLabor = sumRecs(grp, F.labor);
-              if (gLabor > 0) {
-                var desc = '';
-                for (var gi = 0; gi < grp.length; gi++) {
-                  if (readNum(grp[gi], F.labor) > 0) { desc = readText(grp[gi], F.installDesc); if (desc) break; }
-                }
-                if (desc) prod.lineItems.push({ level: 4, label: desc, description: '', qty: '', cost: pubMoney(gLabor), cameraList: '' });
-              }
+          });
+          if (isCO) {
+            coProductSlices(product, accessories).forEach(function (sl) {
+              bctx.prods.push({ product: sl.product, accessories: sl.accessories, band: sl.band });
             });
+          } else {
+            bctx.prods.push({ product: product, accessories: accessories, band: '' });
           }
         });
-
-        if (kind !== 'assumptions') {
-          b2.footer = {
-            label: displayLabel,
-            qty: context === 'drop' ? Math.round(sumRecs(bucketParentRecs, F.qty)) : 0,
-            cost: pubMoney(sumRecs(bucketAllRecs, F.hardware) + sumRecs(bucketAllRecs, F.labor)),
-          };
-          if (promoted) sec.footer = l1FooterData(displayLabel, bucketAllRecs);
-        }
+        if (bctx.parentRecs.length) bctxs.push(bctx);
       });
 
-      if (!promoted && section) section.footer = l1FooterData(l1g.label, l1Recs);
+      if (promoted) {
+        bctxs.forEach(function (bctx) {
+          var sec = { level: 1, label: bctx.displayLabel, promoted: true, buckets: [], footer: null };
+          sections.push(sec);
+          if (isCO) {
+            emitPubBands(sec, [bctx], true);
+          } else {
+            var b2 = { level: 2, label: bctx.displayLabel, isPromoted: true, products: buildBucketProducts(bctx, bctx.prods), footer: null };
+            sec.buckets.push(b2);
+            if (bctx.kind !== 'assumptions') b2.footer = pubBucketFooter(bctx);
+          }
+          if (bctx.kind !== 'assumptions') sec.footer = l1FooterData(bctx.displayLabel, bctx.allRecs);
+        });
+        return;
+      }
+
+      var section = { level: 1, label: l1g.label, promoted: false, buckets: [], footer: null };
+      sections.push(section);
+      if (isCO) {
+        emitPubBands(section, bctxs, false);
+      } else {
+        bctxs.forEach(function (bctx) {
+          var b2 = { level: 2, label: bctx.displayLabel, isPromoted: false, products: buildBucketProducts(bctx, bctx.prods), footer: null };
+          section.buckets.push(b2);
+          if (bctx.kind !== 'assumptions') b2.footer = pubBucketFooter(bctx);
+        });
+      }
+      section.footer = l1FooterData(l1g.label, l1Recs);
     });
 
     var projectTotals = null;
@@ -932,15 +1321,15 @@
       var equipmentTotal = equipmentSubtotal - lineItemDiscounts;
       var installationTotal = sumRecs(tree.allRecords, F.labor);
       var grandTotal = equipmentTotal + installationTotal - proposalDiscount;
-      projectTotals = { title: 'Project Totals', lines: [] };
+      projectTotals = { title: isCO ? 'Change Order Totals' : 'Project Totals', lines: [] };
       if (lineItemDiscounts !== 0 || proposalDiscount !== 0) {
         projectTotals.lines.push({ type: 'sub', label: 'Equipment Subtotal', value: pubMoney(equipmentSubtotal) });
         if (lineItemDiscounts !== 0) projectTotals.lines.push({ type: 'disc', label: 'Line Item Discounts', value: '-' + pubMoney(Math.abs(lineItemDiscounts)) });
       }
-      projectTotals.lines.push({ type: 'final', label: 'Equipment Total', value: pubMoney(equipmentTotal) });
-      projectTotals.lines.push({ type: 'final', label: 'Installation Total', value: pubMoney(installationTotal) });
+      projectTotals.lines.push({ type: 'final', label: isCO ? 'Equipment Net' : 'Equipment Total', value: pubMoney(equipmentTotal) });
+      projectTotals.lines.push({ type: 'final', label: isCO ? 'Installation Net' : 'Installation Total', value: pubMoney(installationTotal) });
       if (proposalDiscount !== 0) projectTotals.lines.push({ type: 'disc', label: 'Proposal Discount', value: '-' + pubMoney(proposalDiscount) });
-      projectTotals.lines.push({ type: 'final', label: 'Grand Total', value: pubMoney(grandTotal) });
+      projectTotals.lines.push({ type: 'final', label: isCO ? 'Change Order Total' : 'Grand Total', value: pubMoney(grandTotal) });
     }
 
     return { sections: sections, projectTotals: projectTotals };
@@ -1010,12 +1399,26 @@
       '.scw-pg2-pt--grand .scw-pg2-l1foot-label { font-size: 21px; }',
       '.scw-pg2-pt--grand .scw-pg2-l1foot-value { font-size: 23px; }',
       '.scw-pg2-disc-note { margin-top: 3px; font-size: 12px; font-style: italic; font-weight: 400; line-height: 1.3; color: #64748b; text-align: right; white-space: normal; max-width: 340px; margin-left: auto; }',
-      // CO treatment
-      '.scw-pg2-co-rm td { background: #fff1f2 !important; }',
-      '.scw-pg2-co-rm td:first-child { box-shadow: inset 4px 0 0 #e11d48; }',
-      '.scw-pg2-co-add td { background: #f0fdf4 !important; }',
+      // CO treatment — banded add/remove presentation (mirrors the live
+      // v1 + co-band scheme: green adds; neutral slate removes with
+      // accounting-red money).
+      '.scw-pg2-co-add td { background: #f0fdf4; background-clip: padding-box; }',
       '.scw-pg2-co-add td:first-child { box-shadow: inset 4px 0 0 #059669; }',
-      '.scw-pg2-co-banner td { background: #e11d48 !important; color: #fff; padding: 3px 12px; font: 700 10px/1.7 system-ui, -apple-system, sans-serif; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }',
+      '.scw-pg2-co-rm td { background: #f8fafc; background-clip: padding-box; }',
+      '.scw-pg2-co-rm td:first-child { box-shadow: inset 4px 0 0 #94a3b8; }',
+      '.scw-pg2-table .scw-pg2-co-rm td:nth-child(3) { color: #be123c; }',
+      // Band header rows
+      '.scw-pg2-band td { font: 700 13px/1.2 system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; padding: 9px 12px; background-clip: padding-box; }',
+      '.scw-pg2-band--add td { background: #ecfdf5; color: #065f46; box-shadow: inset 4px 0 0 #059669; border-top: 2px solid #059669; }',
+      '.scw-pg2-band--rm td { background: #f4f7fa; color: #334155; border-top: 26px solid transparent; box-shadow: inset 4px 0 0 #64748b; }',
+      // Per-bucket band subtotals (native-subtotal look) + band totals
+      '.scw-pg2-band-sub td { background: #f0f4fa; background-clip: padding-box; color: #163C6E; }',
+      '.scw-pg2-band-sub td:first-child { text-align: right; }',
+      '.scw-pg2-band-total td { background-clip: padding-box; border-bottom: 20px solid transparent; }',
+      '.scw-pg2-band-total td:first-child { text-align: right; }',
+      '.scw-pg2-band-total--add td { background: #dcfce7; color: #065f46; border-top: 2px solid #059669; }',
+      '.scw-pg2-band-total--rm td { background: #eef2f7; color: #334155; border-top: 2px solid #64748b; }',
+      '.scw-pg2-table .scw-pg2-band-sub--rm td:nth-child(3), .scw-pg2-table .scw-pg2-band-total--rm td:nth-child(3) { color: #be123c; }',
       // Missing-columns notice
       '.scw-pg2-notice { margin: 10px 0; padding: 10px 14px; border: 1px solid #f5d199; border-radius: 8px; background: #fff9ec; color: #7a4a09; font: 13px/1.5 system-ui, sans-serif; }',
       '.scw-pg2-notice code { font-size: 12px; color: #92400e; }',
@@ -1150,6 +1553,11 @@
           masked: isInstallationMasked(),
           showProjectTotals: vcfg.showProjectTotals !== false
         });
+        // What's-Changing manifest — dormant while v1 owns it.
+        if (CONFIG.ownCoManifest) {
+          try { renderCoManifest(tree); }
+          catch (me) { console.warn(NS + ' CO manifest render failed', me); }
+        }
       }
       if (!CONFIG.replaceV1) el.classList.add('scw-pg2--preview');
 
