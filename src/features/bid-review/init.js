@@ -2501,6 +2501,16 @@
       return;
     }
 
+    // Friction gate: syncing the bid into the SOW wholesale is meant for
+    // the FIRST submission from SVS. On re-submissions it can clobber
+    // SOW-side edits made since, so make the user say so explicitly
+    // before the item-selection modal opens.
+    if (!window.confirm(
+      'Are you sure you want to update the SOW to match this bid?\n\n' +
+      'Typically this should be done on the FIRST submission from SVS \u2014 ' +
+      'NOT on subsequent submissions.'
+    )) return;
+
     var pkgName = findPackageName(grid, pkgId);
 
     confirmCopyToSow({
