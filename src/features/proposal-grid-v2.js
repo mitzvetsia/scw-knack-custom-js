@@ -467,8 +467,11 @@
         if (rule && rule.renames[displayLabel]) displayLabel = rule.renames[displayLabel];
         if (promoted && kind === 'assumptions') displayLabel = 'General Project Assumptions';
         var context = contextOf(displayLabel, bucket);
+        // Services hide the product-name headers but KEEP qty/cost and the
+        // subtotal (matches v1's live rendering of "Other Services");
+        // assumptions hide all of it.
         var hideL3 = kind === 'services' || kind === 'assumptions';
-        var hideQtyCost = kind === 'services' || kind === 'assumptions';
+        var hideQtyCost = kind === 'assumptions';
 
         // Bucket records (parents only; accessories render in clusters).
         var bucketParentRecs = [], bucketAllRecs = [];
@@ -861,7 +864,10 @@
             if (prod) prod.lineItems.push(item);
             else {
               if (!synth) {
-                synth = { level: 3, label: '', qty: 0, cost: '', rate: '', hideCost: true,
+                // Services keep qty/cost visible (only their product-name
+                // headers are hidden); assumptions suppress both.
+                synth = { level: 3, label: '', qty: 0, cost: '', rate: '',
+                          hideCost: kind === 'assumptions',
                           connectedDevices: [], isMountingHardware: false, lineItems: [] };
                 b2.products.push(synth);
               }
