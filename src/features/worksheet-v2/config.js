@@ -624,6 +624,12 @@
     var clone = JSON.parse(JSON.stringify(src));
     clone.sourceViewKey      = 'view_4056';
     clone.mountAfterSelector = '#view_4056';
+    // The sub-portal deployment-dashboard scene has its own "Manage
+    // MDFs / IDFs" grid (view_4060) — the inherited view_3932 doesn't
+    // exist there, which left the field_2818 MDF/IDF picker with no
+    // candidate source (it warned + bailed on click). Also seeds
+    // empty-location L1 groups, same as view_3932 does on deploy.
+    clone.mdfSourceViewKey   = 'view_4060';
     views.push(clone);
   })();
 
