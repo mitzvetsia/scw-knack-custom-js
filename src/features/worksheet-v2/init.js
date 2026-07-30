@@ -2591,6 +2591,28 @@
         };
       })();
 
+      // The edited record's own SOW membership (field_2154) — the picker
+      // flags candidates that share NONE of these SOWs (amber ⚠ on the
+      // item's SOW line) and shows the baseline in the header, so e.g. a
+      // camera on a different SOW than the switch is visible at a glance.
+      var anchorSowIds = [], anchorSowLabels = '';
+      for (var arI = 0; arI < records.length; arI++) {
+        var arRec = records[arI];
+        if (!arRec || arRec.id !== recordId) continue;
+        var asRaw = arRec.field_2154_raw;
+        if (Array.isArray(asRaw)) {
+          for (var asI = 0; asI < asRaw.length; asI++) {
+            if (asRaw[asI] && asRaw[asI].id) {
+              anchorSowIds.push(asRaw[asI].id);
+              var asLbl = String(asRaw[asI].identifier || '')
+                .replace(/<[^>]*>/g, '').trim();
+              if (asLbl) anchorSowLabels += (anchorSowLabels ? ', ' : '') + asLbl;
+            }
+          }
+        }
+        break;
+      }
+
       ns.picker.open({
         sourceViewKey: viewKey,
         putViewKey:    putViewKey,
@@ -2604,6 +2626,8 @@
         groupBy:       groupBy,
         itemLabel:     itemLabel,
         multi:         isMulti,
+        anchorSowIds:   anchorSowIds,
+        anchorSowLabels: anchorSowLabels,
         // Keep the modal open + locked until the field_1957↔field_2197
         // reciprocal cascade settles (mirror-connection-sync view_3962 et al.),
         // so the user can't navigate or start another edit mid-sync.
