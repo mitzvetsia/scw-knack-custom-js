@@ -733,8 +733,9 @@
       // so this 40px alone sets the gap to the next section header.
       '.scw-pg2-l2foot td { background: aliceblue; background-clip: padding-box; border-top: 1px solid #dadada; font-weight: 800; border-bottom: 40px solid transparent; }',
       '.scw-pg2-l2foot td:first-child { text-align: right; }',
-      // L1 footer + project totals
-      '.scw-pg2-l1foot td, .scw-pg2-pt td { text-align: right; font-size: 16px; }',
+      // L1 footer + project totals. Their value cell is td #2 (label has a
+      // colspan), so out-specify the qty-column centering rule above.
+      '.scw-pg2-table .scw-pg2-l1foot td, .scw-pg2-table .scw-pg2-pt td { text-align: right; font-size: 16px; }',
       '.scw-pg2-l1foot--title td { border-top: 20px solid transparent; border-bottom: 5px solid #07467c; }',
       '.scw-pg2-l1foot-title { font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }',
       '.scw-pg2-pt--first .scw-pg2-l1foot-title { font-size: 2.2em; font-weight: 600; }',
