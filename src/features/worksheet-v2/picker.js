@@ -309,6 +309,8 @@
       '.scw-ws-v2-picker-item-sow b { font-weight: 700; color: #475569; }',
       // Candidate lives on a DIFFERENT SOW than the record being edited —
       // amber (warning convention), never red.
+      '.scw-ws-v2-picker-item-sow--none { color: #94a3b8; font-style: italic; }',
+      '.scw-ws-v2-picker-item-sow--none b { color: #94a3b8; }',
       '.scw-ws-v2-picker-item-sow--diff { color: #b45309; }',
       '.scw-ws-v2-picker-item-sow--diff b { color: #b45309; }',
       '.scw-ws-v2-picker-item-sow--diff svg { vertical-align: -1px; margin-right: 2px; }',
@@ -444,7 +446,19 @@
     // every picker's list consistent with the grid (e.g. E-001…E-010 within a
     // bucket, buckets in sortOrder).
     var itemCmp = canonicalItemSort(itemLabel);
-    groups.forEach(function (g) { g.items.sort(itemCmp); });
+    // Optional opts.itemRank(rec) → number: a coarse partition WITHIN each
+    // group applied before the canonical comparator (rank asc). Lets the
+    // Connected Devices picker keep SOW-carrying items ahead of no-SOW
+    // items inside the same MDF/IDF section without forking the sort.
+    var rankFn = (typeof opts.itemRank === 'function') ? opts.itemRank : null;
+    var rankedCmp = rankFn
+      ? function (a, b) {
+          var ra = rankFn(a) || 0, rb = rankFn(b) || 0;
+          if (ra !== rb) return ra - rb;
+          return itemCmp(a, b);
+        }
+      : itemCmp;
+    groups.forEach(function (g) { g.items.sort(rankedCmp); });
 
     // Build modal scaffold
     var overlay = document.createElement('div');
@@ -566,6 +580,13 @@
                   : '') +
                 '<b>SOW:</b> ' + escapeHtml(sowText) + '</span>'
             : '';
+          // No-SOW candidate on a SOW-aware picker (anchorSowIds supplied):
+          // render a muted "SOW: —" so the no-SOW tail inside a group is
+          // visibly distinct from SOW-carrying items, not just unlabeled.
+          if (!sowHtml && Array.isArray(opts.anchorSowIds) && opts.anchorSowIds.length) {
+            sowHtml = '<span class="scw-ws-v2-picker-item-sow ' +
+              'scw-ws-v2-picker-item-sow--none"><b>SOW:</b> &mdash;</span>';
+          }
           // Per-item "locked" state (opts.itemState). Used by the Connected
           // Devices picker to SHOW cam/readers already claimed by another
           // device — grayed + a "Take over" button — instead of hiding them,

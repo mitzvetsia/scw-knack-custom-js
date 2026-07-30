@@ -1329,7 +1329,10 @@
     }
 
     var val = labels.length ? labels.join(', ') : '(none)';
-    var labelHtml = escapeHtml(label);
+    // Live count in the label ("Connected Devices (5)") — the set is the
+    // authoritative union above, so the number matches what the picker
+    // will pre-check.
+    var labelHtml = escapeHtml(label + ' (' + labels.length + ')');
     if (warn) {
       var warnIc = (ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.disconnected) || '';
       labelHtml = '<span class="scw-ws-v2-detail-warn-ic">' + warnIc + '</span>' + labelHtml;
