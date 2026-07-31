@@ -47,7 +47,6 @@ cat \
   src/features/ratking/hash-bump-record-update.js \
   src/features/ratking/scene-776-stub.js \
   src/features/modal-form-connection-sync.js \
-  src/features/proposal-grid.js \
   src/features/proposal-grid-v2.js \
   src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \

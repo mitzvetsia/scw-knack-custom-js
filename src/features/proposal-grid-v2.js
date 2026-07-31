@@ -35,9 +35,9 @@
 
   var CONFIG = {
     enabled: true,
-    // CUTOVER 2026-07-30: v2 is the sole proposal grid on view_3341's
-    // scene. v1 (proposal-grid.js) no longer transforms view_3341 — it
-    // remains in the bundle ONLY for view_3371 (recurring licenses).
+    // CUTOVER 2026-07-30: v2 is the sole proposal grid. v1
+    // (proposal-grid.js) is fully OUT of the bundle (2026-07-31) — its
+    // last deployment, view_3371, is now a self-hosted v2 instance.
     // false → side-by-side parity mode (v2 renders below the v1 grid).
     replaceV1: true,
     // v2 renders the CO "What's Changing" manifest
@@ -58,6 +58,14 @@
         // filters/sort, all CONFIG.fields as columns, hidden here.
         dataViewKey: 'view_4140',
         showProjectTotals: true
+      },
+      // Recurring Services or Licenses — SELF-HOSTED: the view itself is
+      // the flat data view (groupings stripped in Builder, CONFIG.fields
+      // added as columns). v2 renders into its root and hides only the
+      // native table chrome; the view title stays.
+      view_3371: {
+        dataViewKey: 'view_3371',
+        showProjectTotals: false
       }
     },
 
@@ -1450,18 +1458,26 @@
     if (document.getElementById(ID)) return;
     var s = document.createElement('style');
     s.id = ID;
-    // display:none (not the clip trick): the data view is never read from
-    // the DOM — model only — and a 1000-row grid left renderable is real
-    // layout/paint weight on an already-heavy scene.
-    var css = '#' + dataViewKey + ' { display: none !important; }\n' +
-      // After the v1 view is deleted in Builder, v2 mounts INTO the data
-      // view's root (run() adds scw-pg2-host): unhide the root, keep its
-      // native grid chrome hidden.
-      '#' + dataViewKey + '.scw-pg2-host { display: block !important; }\n' +
-      '#' + dataViewKey + '.scw-pg2-host .kn-table-wrapper, ' +
-      '#' + dataViewKey + '.scw-pg2-host .kn-records-nav { display: none !important; }';
-    if (CONFIG.replaceV1) {
-      css += '\n#' + v1ViewId + ' .kn-table-wrapper, #' + v1ViewId + ' .kn-records-nav { display: none !important; }';
+    var css;
+    if (v1ViewId === dataViewKey) {
+      // SELF-HOSTED (view_3371): the view IS the data view — v2 renders
+      // into its root, so hide only the native grid chrome.
+      css = '#' + dataViewKey + ' .kn-table-wrapper, ' +
+        '#' + dataViewKey + ' .kn-records-nav { display: none !important; }';
+    } else {
+      // display:none (not the clip trick): the data view is never read
+      // from the DOM — model only — and a 1000-row grid left renderable
+      // is real layout/paint weight on an already-heavy scene.
+      css = '#' + dataViewKey + ' { display: none !important; }\n' +
+        // After the v1 view is deleted in Builder, v2 mounts INTO the data
+        // view's root (run() adds scw-pg2-host): unhide the root, keep its
+        // native grid chrome hidden.
+        '#' + dataViewKey + '.scw-pg2-host { display: block !important; }\n' +
+        '#' + dataViewKey + '.scw-pg2-host .kn-table-wrapper, ' +
+        '#' + dataViewKey + '.scw-pg2-host .kn-records-nav { display: none !important; }';
+      if (CONFIG.replaceV1) {
+        css += '\n#' + v1ViewId + ' .kn-table-wrapper, #' + v1ViewId + ' .kn-records-nav { display: none !important; }';
+      }
     }
     s.textContent = css;
     document.head.appendChild(s);
@@ -1589,7 +1605,10 @@
         // v2 is the sole writer now. Read by proposal-pdf-export
         // (extractSummaryFields fallback, invoiceTotal, invoiceIsCredit)
         // and sales-stepper's publish gate. REAL numbers, never masked.
-        try {
+        // Only the MAIN grid (showProjectTotals) writes it — the recurring
+        // licenses deployment (view_3371) renders on the same scene and
+        // must never clobber the project totals with license numbers.
+        if (vcfg.showProjectTotals !== false) try {
           var tEquipSub = sumRecs(tree.allRecords, CONFIG.fields.hardware);
           var tLineDisc = sumRecs(tree.allRecords, CONFIG.fields.lineDiscount);
           var tPropDisc = Math.abs(readDetailNum('2302'));
