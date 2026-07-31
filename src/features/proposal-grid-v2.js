@@ -96,6 +96,10 @@
     // Detail views already on the scene (rendered hidden) that v1 also reads.
     sowDetailView:      'view_3861',  // field_2725 FLAG_released to sales
     discountDetailView: 'view_3342',  // field_2302 proposal discount, field_2291 reason
+
+    // Scenes that get the scene-wide bold-blue h2 heading rule (ported
+    // from v1's styleSceneIds — the proposal preview scene).
+    styleSceneIds: ['scene_1096'],
     opsStepperView:     'view_3345',  // presence+visible = Ops viewer (mask bypass)
 
     camReaderBucketId:   '6481e5ba38f283002898113c',
@@ -1465,7 +1469,13 @@
       // view_3883: Knack writes style="flex-basis: undefined%" on Details
       // views without a Builder column width; browsers drop it → columns
       // collapse to content width. Force full width.
-      '#view_3883 .kn-details-column, #view_3883 .kn-details-group { flex-basis: 100% !important; }'
+      '#view_3883 .kn-details-column, #view_3883 .kn-details-group { flex-basis: 100% !important; }',
+      // Scene-wide heading treatment (ported from v1, which scoped it via
+      // styleSceneIds): every view title on the proposal scene renders
+      // bold dark-blue — this is what makes the section headings
+      // ("Recurring Services or Licenses…", BOM, …) read as one document.
+      (CONFIG.styleSceneIds || []).map(function (id) { return '#kn-' + id + ' h2'; }).join(', ') +
+        ' { font-weight: 800; color: #07467c; font-size: 24px; }'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -1479,13 +1489,10 @@
     if (v1ViewId === dataViewKey) {
       // SELF-HOSTED (view_3371): the view IS the data view — v2 renders
       // into its root, so hide only the native grid chrome.
+      // The native view title stays visible — the scene-wide h2 rule in
+      // injectCss() (ported from v1) gives it the bold #07467c treatment.
       css = '#' + dataViewKey + ' .kn-table-wrapper, ' +
-        '#' + dataViewKey + ' .kn-records-nav { display: none !important; }\n' +
-        // The native view title stays visible — join it to the v2 type
-        // ramp (same treatment as the in-grid L1 headers, incl. the
-        // shared 8px left edge).
-        '#' + dataViewKey + ' .view-header h2.kn-title { ' +
-        'font-size: 24px; font-weight: 200; padding-left: 8px; margin-bottom: 0; }';
+        '#' + dataViewKey + ' .kn-records-nav { display: none !important; }';
     } else {
       // display:none (not the clip trick): the data view is never read
       // from the DOM — model only — and a 1000-row grid left renderable
