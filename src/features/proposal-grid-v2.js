@@ -65,7 +65,11 @@
       // native table chrome; the view title stays.
       view_3371: {
         dataViewKey: 'view_3371',
-        showProjectTotals: false
+        showProjectTotals: false,
+        // Licenses/recurring services have no accessory children — don't
+        // require field_2464 as a column (absent column just means the
+        // accessory split no-ops and every record is a main record).
+        noAccessories: true
       }
     },
 
@@ -1079,7 +1083,7 @@
     if (!vcfg || !vcfg.dataViewKey) return null;
     var records = readRecords(vcfg.dataViewKey);
     if (!records || !records.length) return null;
-    if (missingColumns(records).length) return null;
+    if (missingColumns(records, vcfg).length) return null;
     var isCO = false;
     for (var ci = 0; ci < records.length; ci++) {
       if (coActionOf(records[ci])) { isCO = true; break; }
@@ -1491,10 +1495,11 @@
   // to render and surface the exact missing columns instead.
   var PROBE_FIELDS = ['l1', 'projectType', 'bucket', 'bucketSort', 'product',
     'installDesc', 'qty', 'labor', 'hardware', 'cost', 'accessoryParent'];
-  function missingColumns(records) {
+  function missingColumns(records, vcfg) {
     if (!records.length) return [];
     var missing = [];
     for (var i = 0; i < PROBE_FIELDS.length; i++) {
+      if (vcfg && vcfg.noAccessories && PROBE_FIELDS[i] === 'accessoryParent') continue;
       var f = CONFIG.fields[PROBE_FIELDS[i]];
       var present = false;
       // Check several records — a single record can legitimately have a
@@ -1585,7 +1590,7 @@
       if (!records) { dbg('data view model not ready', vcfg.dataViewKey); return; }
 
       var el;
-      var missing = missingColumns(records);
+      var missing = missingColumns(records, vcfg);
       if (missing.length) {
         console.warn(NS + ' NOT rendering — ' + vcfg.dataViewKey +
           ' model is missing columns: ' + missing.join(', '));
