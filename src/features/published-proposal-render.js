@@ -155,6 +155,14 @@
       'body { font-size: 14px; }',
       '.detail-label, .detail-value { font-size: 14px; }',
       '.richtext-content { font-size: 14px; }',
+      // Pin the on-screen sizes the base sheet used before the PDF-only
+      // scale-down (2026-07-31) — only the PDF shrinks.
+      '.l1-header { font-size: 18px; }',
+      '.l1-footer-title { font-size: 13px; }',
+      '.l1-line--final .l1-footer-value { font-size: 15px; }',
+      '.pt-title { font-size: 22px; }',
+      '.pt-line--final:last-child .pt-label { font-size: 17px; }',
+      '.pt-line--final:last-child .pt-value { font-size: 19px; }',
       '.l3-row td:first-child { font-size: 15px; }',
       // No padding-left here — labor/accessory rows sit flush with the
       // product header (v2 layout); this override used to re-indent them.
