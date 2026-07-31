@@ -1360,10 +1360,12 @@
       '.scw-pg2-tbd { color: #94a3b8; font-style: italic; font-weight: 600; }',
       // L1
       '.scw-pg2-l1 td, .scw-pg2-l2--promoted td { border-bottom: 20px solid #07467c !important; padding-top: 30px; }',
-      '.scw-pg2-l1 td:first-child, .scw-pg2-l2--promoted td:first-child { font-size: 24px; font-weight: 200; padding-left: 20px; }',
+      // One shared 8px left edge for every level (L1 header, bucket bars,
+      // products, descriptions, accessories).
+      '.scw-pg2-l1 td:first-child, .scw-pg2-l2--promoted td:first-child { font-size: 24px; font-weight: 200; padding-left: 8px; }',
       // L2 — background-clip keeps the aliceblue bar from bleeding into
       // the transparent spacing borders (the "big blue blur").
-      '.scw-pg2-l2 td { background: aliceblue; background-clip: padding-box; font-size: 16px; padding: 5px 0 5px 20px; border-top: 20px solid transparent; }',
+      '.scw-pg2-l2 td { background: aliceblue; background-clip: padding-box; font-size: 16px; padding: 5px 0 5px 8px; border-top: 20px solid transparent; }',
       '.scw-pg2-l2--assumptions td { font-weight: 600; background: #f0f7ff; }',
       '.scw-pg2-l2--promoted td { background: #fff; }',
       // L3 — extra air + hairline above each product block (suppressed on
@@ -1418,7 +1420,7 @@
       '.scw-pg2-co-rm td:first-child { box-shadow: inset 4px 0 0 #94a3b8; }',
       '.scw-pg2-table .scw-pg2-co-rm td:nth-child(3) { color: #be123c; }',
       // Band header rows
-      '.scw-pg2-band td { font: 700 13px/1.2 system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; padding: 9px 12px; background-clip: padding-box; }',
+      '.scw-pg2-band td { font: 700 13px/1.2 system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; padding: 9px 8px; background-clip: padding-box; }',
       // Accent stripe on the FIRST cell only — per-td insets painted
       // stray bars at the qty/cost column edges.
       '.scw-pg2-band--add td { background: #ecfdf5; color: #065f46; border-top: 2px solid #059669; }',
