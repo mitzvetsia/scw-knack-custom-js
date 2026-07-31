@@ -928,9 +928,11 @@
       body[F.required] = want ? 'Yes' : 'No';
       u.putRecord(saveView, photo.id, body).then(function () {
         photo.required = want;
-        cb.disabled = false;
-        flash('Saved ✓');
         notifyHostSaved(photo);
+        // Required photos get QA served — swap the QA sidebar in (or out)
+        // live instead of making the user close + reopen the viewer.
+        photo.needsQa = want;
+        rebuildModal(photo);
       }).catch(function (err) {
         cb.checked = !want;
         cb.disabled = false;
@@ -1653,6 +1655,37 @@
     });
     document.body.appendChild(overlay);
     _popover = dialog;
+  }
+
+  /** Rebuild the open MODAL in place off the (mutated) photo object —
+   *  used when a field changes what the modal shows structurally (e.g.
+   *  Required toggled → QA sidebar appears/disappears). No-op for the
+   *  docked-popover path. Resets the QA edit state to the photo's
+   *  current values, matching a fresh open. */
+  function rebuildModal(photo) {
+    if (!_popover || !_popover._overlay) return;
+    var anchor  = _popover._triggerChit;
+    var oldOverlay = _popover._overlay;
+    var built = buildModal(photo);
+    built.dialog._triggerChit = anchor;
+    built.dialog._overlay = built.overlay;
+    built.overlay.addEventListener('mousedown', function (e) {
+      if (e.target === built.overlay) closePopover(false);
+    });
+    if (oldOverlay.parentNode) {
+      oldOverlay.parentNode.replaceChild(built.overlay, oldOverlay);
+    } else {
+      document.body.appendChild(built.overlay);
+    }
+    _popover = built.dialog;
+    _initialState = {
+      status:  photo.status,
+      client:  photo.client,
+      notes:   photo.notes,
+      history: photo.history
+    };
+    _hasUnsavedChanges = false;
+    _isSaving = false;
   }
 
   function positionPopover(pop, anchor) {

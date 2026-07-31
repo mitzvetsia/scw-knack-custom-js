@@ -42,6 +42,17 @@
     required: 'field_2446'
   };
 
+  // Photo-type catalog source — a HIDDEN grid of the CONFIG_photo type
+  // object on the deploy scene, read via the view model (session-token
+  // auth; the view-based pattern from Known Issue #17 — NOT the REST-key
+  // Builder snippet). Fill in once the grid exists in Builder:
+  //   view:       the hidden grid's view key
+  //   labelField: the type object's display-name field on that grid
+  var TYPE_SOURCE = {
+    view:       '',   // TODO: e.g. 'view_41XX'
+    labelField: ''    // TODO: e.g. 'field_XXXX'
+  };
+
   var LADDER = [
     { edge: 2400, quality: 0.85 },
     { edge: 2000, quality: 0.80 },
@@ -187,6 +198,28 @@
         if (catalog[i] && catalog[i].id) out.push({ id: catalog[i].id, label: catalog[i].label });
       }
       if (out.length) return out;
+    }
+    // Full catalog from the hidden type-object grid's model (preferred —
+    // complete by construction, no key, no scrape).
+    if (TYPE_SOURCE.view && TYPE_SOURCE.labelField) {
+      try {
+        var tv = typeof Knack !== 'undefined' && Knack.views && Knack.views[TYPE_SOURCE.view];
+        var models = tv && tv.model && tv.model.data && tv.model.data.models;
+        if (models && models.length) {
+          var fromView = [];
+          for (var m = 0; m < models.length; m++) {
+            var a = models[m].attributes || models[m];
+            var lbl = String(a[TYPE_SOURCE.labelField] || '').replace(/<[^>]*>/g, '').trim();
+            if (a.id && lbl) fromView.push({ id: a.id, label: lbl });
+          }
+          if (fromView.length) {
+            fromView.sort(function (x, y) {
+              return x.label.localeCompare(y.label, undefined, { numeric: true, sensitivity: 'base' });
+            });
+            return fromView;
+          }
+        }
+      } catch (eTv) { /* fall through to the scene scrape */ }
     }
     // Scrape shape gotcha: in grouped photo columns the OUTER span's `id`
     // attr is the PHOTO record id and only the INNER span's class is the
