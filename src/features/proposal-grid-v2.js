@@ -803,9 +803,14 @@
           esc(row.title) + '</div></td><td></td></tr>');
       } else if (row.label !== undefined) {
         var valueHtml = row.maskedValue ? '<strong>' + tbd() + '</strong>' : esc(row.value);
-        html.push('<tr class="' + row.cls + '">' +
-          '<td colspan="2"><div class="scw-pg2-l1foot-label">' + esc(row.label) + '</div></td>' +
-          '<td><div class="scw-pg2-l1foot-value">' + valueHtml + '</div>' +
+        // Label + value share one flexed cell so the label sits snug
+        // against its value at the right edge (separate table columns
+        // left a fixed-width gap).
+        html.push('<tr class="' + row.cls + '"><td colspan="3">' +
+          '<div class="scw-pg2-l1foot-line">' +
+          '<div class="scw-pg2-l1foot-label">' + esc(row.label) + '</div>' +
+          '<div class="scw-pg2-l1foot-value">' + valueHtml + '</div>' +
+          '</div>' +
           (row.note ? '<div class="scw-pg2-disc-note">' + esc(row.note) + '</div>' : '') +
           '</td></tr>');
       } else {
@@ -1389,8 +1394,9 @@
       '.scw-pg2-l1foot--title td { border-top: 20px solid transparent; border-bottom: 5px solid #07467c; }',
       '.scw-pg2-l1foot-title { font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }',
       '.scw-pg2-pt--first .scw-pg2-l1foot-title { font-size: 2.2em; font-weight: 600; }',
+      '.scw-pg2-l1foot-line { display: flex; justify-content: flex-end; align-items: baseline; gap: 14px; }',
       '.scw-pg2-l1foot-label { opacity: .85; font-weight: 600; white-space: nowrap; }',
-      '.scw-pg2-l1foot-value { font-weight: 700; white-space: nowrap; display: inline-block; min-width: 120px; }',
+      '.scw-pg2-l1foot-value { font-weight: 700; white-space: nowrap; }',
       '.scw-pg2-l1foot--sub .scw-pg2-l1foot-label, .scw-pg2-l1foot--sub .scw-pg2-l1foot-value { color: #07467c; }',
       '.scw-pg2-l1foot--disc .scw-pg2-l1foot-label, .scw-pg2-l1foot--disc .scw-pg2-l1foot-value { color: orange; }',
       '.scw-pg2-l1foot--final .scw-pg2-l1foot-label, .scw-pg2-l1foot--final .scw-pg2-l1foot-value { color: #07467c; font-weight: 900; }',
