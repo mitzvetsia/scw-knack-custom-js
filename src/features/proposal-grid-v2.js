@@ -297,6 +297,27 @@
     return i === -1 ? Infinity : i;
   }
 
+  // field_2218 (bucket sortOrder) — handles BOTH field shapes: a
+  // connection whose identifier is the number, and a plain numeric field
+  // (_raw is a number, formatted value is a string). Returns NaN when
+  // genuinely blank — never 0, so a blank can't outrank real values.
+  function bucketSortNum(rec) {
+    var f = CONFIG.fields.bucketSort;
+    var sc = connFirst(rec, f);
+    if (sc) {
+      var n = parseFloat(sc.label.replace(/[^0-9.\-]/g, ''));
+      if (isFinite(n)) return n;
+    }
+    var raw = rec && rec[f + '_raw'];
+    if (typeof raw === 'number' && isFinite(raw)) return raw;
+    var t = readText(rec, f);
+    if (t) {
+      var n2 = parseFloat(t.replace(/[^0-9.\-]/g, ''));
+      if (isFinite(n2)) return n2;
+    }
+    return NaN;
+  }
+
   function buildTree(records) {
     var F = CONFIG.fields;
     var byId = Object.create(null);
@@ -335,8 +356,7 @@
       var bKey = bc ? bc.id : ('lbl:' + readText(r, F.bucket));
       var b = l1.buckets[bKey];
       if (!b) {
-        var sortConn = connFirst(r, F.bucketSort);
-        var sortNum = sortConn ? parseFloat(sortConn.label.replace(/[^0-9.\-]/g, '')) : NaN;
+        var sortNum = bucketSortNum(r);
         b = l1.buckets[bKey] = {
           key: bKey,
           bucketId: bc ? bc.id : '',
@@ -348,8 +368,7 @@
       } else if (!isFinite(b.sort)) {
         // First record for this bucket had a blank field_2218 — fill the
         // sort from any later record that carries it.
-        var sortConn2 = connFirst(r, F.bucketSort);
-        var sortNum2 = sortConn2 ? parseFloat(sortConn2.label.replace(/[^0-9.\-]/g, '')) : NaN;
+        var sortNum2 = bucketSortNum(r);
         if (isFinite(sortNum2)) b.sort = sortNum2;
       }
       var pLabel = cleanProductLabel(readText(r, F.product));
@@ -383,9 +402,11 @@
       var l1g = l1Map[l1Order[i]];
       l1g.bucketOrder.sort(function (a, b2) {
         var A = l1g.buckets[a], B = l1g.buckets[b2];
+        // field_2218 is authoritative (Knack-side control); buckets with
+        // no sort value fall back to the display-order list.
+        if (A.sort !== B.sort) return A.sort - B.sort;
         var ra = bucketDisplayRank(A.label), rb = bucketDisplayRank(B.label);
         if (ra !== rb) return ra - rb;
-        if (A.sort !== B.sort) return A.sort - B.sort;
         return 0;
       });
       for (var bi = 0; bi < l1g.bucketOrder.length; bi++) {
@@ -1764,11 +1785,13 @@
         recs.forEach(function (r) {
           var bc = connFirst(r, CONFIG.fields.bucket);
           var label = bc ? bc.label : readText(r, CONFIG.fields.bucket) || '(no bucket)';
-          var sc = connFirst(r, CONFIG.fields.bucketSort);
-          var parsed = sc ? parseFloat(sc.label.replace(/[^0-9.\-]/g, '')) : NaN;
+          var parsed = bucketSortNum(r);
+          var rawVal = r[CONFIG.fields.bucketSort + '_raw'];
+          var shown = Array.isArray(rawVal)
+            ? (rawVal[0] && rawVal[0].identifier) : rawVal;
           var row = seen[label] = seen[label] || { records: 0, sortIdentifiers: {}, blankSort: 0 };
           row.records++;
-          if (sc) row.sortIdentifiers[sc.label] = (row.sortIdentifiers[sc.label] || 0) + 1;
+          if (isFinite(parsed)) row.sortIdentifiers[String(shown)] = (row.sortIdentifiers[String(shown)] || 0) + 1;
           else row.blankSort++;
           if (row.parsed === undefined || isFinite(parsed)) row.parsed = parsed;
           row.displayRank = bucketDisplayRank(label);
