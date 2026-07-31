@@ -1384,9 +1384,6 @@
       // L1 footer + project totals. Their value cell is td #2 (label has a
       // colspan), so out-specify the qty-column centering rule above.
       '.scw-pg2-table .scw-pg2-l1foot td, .scw-pg2-table .scw-pg2-pt td { text-align: right; font-size: 16px; }',
-      // Section-footer titles ("HEADEND: : …") and the Project/Change
-      // Order Totals title read as headings — left-aligned.
-      '.scw-pg2-table .scw-pg2-l1foot--title td { text-align: left; }',
       '.scw-pg2-l1foot--title td { border-top: 20px solid transparent; border-bottom: 5px solid #07467c; }',
       '.scw-pg2-l1foot-title { font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }',
       '.scw-pg2-pt--first .scw-pg2-l1foot-title { font-size: 2.2em; font-weight: 600; }',
