@@ -944,6 +944,7 @@
   // visual treatment (the per-row buttons have their own spinner swap).
   function postWebhook(btn, payload, isBulk) {
     var url = SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK;
+    console.log('[scw-import-unique] POST', url, payload);
     if (isBulk) {
       btn.classList.add('is-loading');
       btn.disabled = true;
@@ -955,16 +956,32 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     }).then(function (resp) {
-      return resp.json().catch(function () { return null; });
-    }).then(function (data) {
-      if (data && data.success) {
-        window.location.reload();
-        return;
-      }
-      if (isBulk) { btn.classList.remove('is-loading'); btn.disabled = false; }
-      else setBtnLoading(btn, false);
-      alert((data && (data.error || data.message)) || 'Failed to import items.');
+      return resp.text().then(function (text) {
+        var data = null;
+        try { data = JSON.parse(text); } catch (e) { /* plain-text body */ }
+        console.log('[scw-import-unique] response HTTP ' + resp.status + ':', text);
+        // Success = HTTP 2xx and the body doesn't explicitly report
+        // failure. Make webhooks answer plain-text "Accepted" by default
+        // (no JSON at all) — that IS a successful hand-off; requiring
+        // {success:true} made every such run alert "Failed to import".
+        var failed = !resp.ok ||
+          (data && data.success === false) ||
+          (data && data.error);
+        if (!failed) {
+          // Make writes the field_2154 connections AFTER responding —
+          // an immediate reload races those PUTs and repaints the page
+          // unchanged ("the button did nothing"). Give the scenario a
+          // beat to land before refreshing; spinners stay on meanwhile.
+          setTimeout(function () { window.location.reload(); }, 3000);
+          return;
+        }
+        if (isBulk) { btn.classList.remove('is-loading'); btn.disabled = false; }
+        else setBtnLoading(btn, false);
+        alert('Import failed (HTTP ' + resp.status + '): ' +
+          ((data && (data.error || data.message)) || text || 'no response body'));
+      });
     }).catch(function (err) {
+      console.error('[scw-import-unique] webhook error', err);
       if (isBulk) { btn.classList.remove('is-loading'); btn.disabled = false; }
       else setBtnLoading(btn, false);
       alert('Webhook error: ' + (err && err.message ? err.message : err));
