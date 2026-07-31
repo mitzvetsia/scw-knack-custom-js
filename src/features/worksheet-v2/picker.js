@@ -90,8 +90,13 @@
     if (!Array.isArray(raw) || !raw.length) return '';
     var names = [];
     for (var i = 0; i < raw.length; i++) {
-      var lbl = raw[i] && (raw[i].identifier || raw[i].id);
-      if (lbl) names.push(String(lbl).replace(/<[^>]*>/g, '').trim());
+      if (!raw[i]) continue;
+      // Identifier can be blank on freshly created SOWs — resolve the
+      // friendly name via card.js's scene-grid lookup before falling
+      // back to the raw record id.
+      var lbl = String(raw[i].identifier || '').replace(/<[^>]*>/g, '').trim() ||
+        (ns.sowNameById && ns.sowNameById(raw[i].id)) || raw[i].id;
+      if (lbl) names.push(lbl);
     }
     return names.join(', ');
   }
