@@ -258,6 +258,20 @@
       '.scw-qa-modal__viewer-bar button.is-danger { color: #fca5a5; border-color: #7f1d1d; }',
       '.scw-qa-modal__viewer-bar button.is-danger:hover { background: #450a0a; }',
       '.scw-qa-modal__viewer-bar button:disabled { opacity: .5; cursor: not-allowed; }',
+      /* Classify bar — Type select + Required checkbox (deploy scene). */
+      '.scw-qa-modal__classify { flex: 0 0 auto; align-self: stretch; display: flex;',
+      '  align-items: center; gap: 14px; padding: 6px 2px; }',
+      '.scw-qa-modal__classify-item { display: flex; align-items: center; gap: 6px;',
+      '  font: 600 12px/1.2 system-ui, sans-serif; color: #cbd5e1; cursor: pointer; }',
+      '.scw-qa-modal__classify-item select {',
+      '  max-width: 320px; padding: 4px 8px; border-radius: 6px;',
+      '  border: 1px solid #475569; background: #1e293b; color: #e2e8f0;',
+      '  font: 500 12px/1.3 system-ui, sans-serif; cursor: pointer; }',
+      '.scw-qa-modal__classify-item select:disabled,',
+      '.scw-qa-modal__classify-item input:disabled { opacity: .5; cursor: wait; }',
+      '.scw-qa-modal__classify-req input { width: 14px; height: 14px; accent-color: #ed8326; cursor: pointer; }',
+      '.scw-qa-modal__classify-status { font: 500 11px/1.2 system-ui, sans-serif; color: #86efac; }',
+      '.scw-qa-modal__classify-status.is-err { color: #fca5a5; }',
       '.scw-qa-modal__uploadwrap { width: 100%; max-width: 420px; }',
       '.scw-qa-modal__drop { display: flex; flex-direction: column; align-items: center; gap: 8px;',
       '  justify-content: center; min-height: 150px; border: 2px dashed #6b7280; border-radius: 10px;',
@@ -747,7 +761,10 @@
     var lockTitle = 'QA is signed off — set it back to Pending or Fail first.';
 
     function swapToUploadPane() {
+      // Keep the classify bar (Type/Required editors) across the swap.
+      var keep = viewerEl.querySelector('.scw-qa-modal__classify');
       viewerEl.innerHTML = '';
+      if (keep) viewerEl.appendChild(keep);
       viewerEl.appendChild(buildUploadPane(photo));
     }
     function pickImage(onFile) {
@@ -828,6 +845,104 @@
     return bar;
   }
 
+  /** Classify bar — photo Type (field_2445 connection) + Required
+   *  (field_2446 Yes/No) editors, auto-saving on change through the
+   *  scene's save view. Deploy-scene only: the fields are exposed
+   *  inline-editable on view_3937; other scenes' save views don't carry
+   *  them, so the bar is omitted there. Type options come from
+   *  photo-edit-panel's collectTypeOptions() (full Builder-snippet
+   *  catalog, scene-scrape fallback). onTypeChanged(label) lets the
+   *  modal retitle itself when the type is reassigned. */
+  function buildClassifyBar(photo, onTypeChanged) {
+    var u = pepUtil();
+    var saveView = pepSaveView(photo.viewKey);
+    if (!u || saveView !== PIC_SAVE_VIEW) return null;
+    var options = u.collectTypeOptions();
+    if (!options.length && photo.required == null) return null;
+
+    var bar = document.createElement('div');
+    bar.className = 'scw-qa-modal__classify';
+
+    var status = document.createElement('span');
+    status.className = 'scw-qa-modal__classify-status';
+    function flash(msg, isErr) {
+      status.textContent = msg;
+      status.classList.toggle('is-err', !!isErr);
+      if (!isErr) setTimeout(function () {
+        if (status.textContent === msg) status.textContent = '';
+      }, 1800);
+    }
+
+    // Type select
+    var typeWrap = document.createElement('label');
+    typeWrap.className = 'scw-qa-modal__classify-item';
+    typeWrap.appendChild(document.createTextNode('Type'));
+    var sel = document.createElement('select');
+    var ph = document.createElement('option');
+    ph.value = '';
+    ph.textContent = '— select type —';
+    sel.appendChild(ph);
+    var currentLabel = (photo.type || '').trim().toLowerCase();
+    options.forEach(function (o) {
+      var opt = document.createElement('option');
+      opt.value = o.id;
+      opt.textContent = o.label;
+      if (o.label.trim().toLowerCase() === currentLabel) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', function () {
+      var id = sel.value;
+      if (!id) return;
+      var label = sel.options[sel.selectedIndex].textContent;
+      sel.disabled = true;
+      flash('Saving…');
+      var body = {};
+      body[F.photoType] = [id];
+      u.putRecord(saveView, photo.id, body).then(function () {
+        photo.type = label;
+        sel.disabled = false;
+        flash('Saved ✓');
+        if (onTypeChanged) { try { onTypeChanged(label); } catch (e) {} }
+        notifyHostSaved(photo);
+      }).catch(function (err) {
+        sel.disabled = false;
+        flash((err && err.message) || 'Save failed', true);
+      });
+    });
+    typeWrap.appendChild(sel);
+    bar.appendChild(typeWrap);
+
+    // Required toggle
+    var reqWrap = document.createElement('label');
+    reqWrap.className = 'scw-qa-modal__classify-item scw-qa-modal__classify-req';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!photo.required;
+    cb.addEventListener('change', function () {
+      var want = cb.checked;
+      cb.disabled = true;
+      flash('Saving…');
+      var body = {};
+      body[F.required] = want ? 'Yes' : 'No';
+      u.putRecord(saveView, photo.id, body).then(function () {
+        photo.required = want;
+        cb.disabled = false;
+        flash('Saved ✓');
+        notifyHostSaved(photo);
+      }).catch(function (err) {
+        cb.checked = !want;
+        cb.disabled = false;
+        flash((err && err.message) || 'Save failed', true);
+      });
+    });
+    reqWrap.appendChild(cb);
+    reqWrap.appendChild(document.createTextNode('Required'));
+    bar.appendChild(reqWrap);
+
+    bar.appendChild(status);
+    return bar;
+  }
+
   /**
    * Modal shell (openForAnchor path). Reuses buildPopover to build the
    * exact same QA controls, then transplants its scrollable body + action
@@ -903,9 +1018,17 @@
 
     var viewer = document.createElement('div');
     viewer.className = 'scw-qa-modal__viewer';
+    // Type / Required editors (deploy scene only — see buildClassifyBar).
+    var classify = buildClassifyBar(photo, function (label) {
+      typeEl.textContent = label;
+      typeEl.title = label;
+      var im = viewer.querySelector('img');
+      if (im) im.alt = label;
+    });
     if (photo.imgUrl) {
       var pbar = buildPhotoViewerBar(viewer, photo);
       if (pbar) viewer.appendChild(pbar);
+      if (classify) viewer.appendChild(classify);
       var img = document.createElement('img');
       img.src = photo.imgUrl;
       img.alt = photo.type || 'Photo';
@@ -913,6 +1036,7 @@
       img.addEventListener('click', function () { window.open(photo.imgUrl, '_blank'); });
       viewer.appendChild(img);
     } else {
+      if (classify) viewer.appendChild(classify);
       viewer.appendChild(buildUploadPane(photo));
     }
     splitBody.appendChild(viewer);
