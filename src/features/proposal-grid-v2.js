@@ -799,8 +799,10 @@
       '</colgroup><tbody>'];
     rows.forEach(function (row) {
       if (row.title !== undefined) {
-        html.push('<tr class="' + row.cls + '"><td colspan="2"><div class="scw-pg2-l1foot-title">' +
-          esc(row.title) + '</div></td><td></td></tr>');
+        // Full-width cell — a colspan-2 title stopped at the qty column's
+        // edge instead of reaching the table's right edge.
+        html.push('<tr class="' + row.cls + '"><td colspan="3"><div class="scw-pg2-l1foot-title">' +
+          esc(row.title) + '</div></td></tr>');
       } else if (row.label !== undefined) {
         var valueHtml = row.maskedValue ? '<strong>' + tbd() + '</strong>' : esc(row.value);
         // Label + value share one flexed cell so the label sits snug
