@@ -1762,7 +1762,8 @@
               html.push('<tr class="l3-row l3-product">');
               html.push('<td' + prodClass + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(prod.label));
               if (prod.connectedDevices && prod.connectedDevices.length) {
-                html.push('<span class="connected-devices">(' + esc(prod.connectedDevices.join(', ')) + ')</span>');
+                // v2-style labeled callout (orange label, quiet gray list).
+                html.push('<span class="conn-line"><b>Connected devices:</b> ' + esc(prod.connectedDevices.join(', ')) + '</span>');
               }
               html.push('</td>');
               if (!prod.hideCost) {
@@ -1779,7 +1780,7 @@
               // (Accessory rollup lines deliberately NOT bolded — only the
               // true L3 product header row gets the bold treatment, so the
               // parent product stands out over its children; 2026-07-17.)
-              html.push('<tr class="' + l4Class + '">');
+              html.push('<tr class="' + l4Class + (item.isEquipment ? ' l4-acc' : '') + '">');
               var l4Content = item.description
                 ? item.description
                     .replace(/<b>/gi, '<span style="font-weight:700">')
@@ -1788,7 +1789,11 @@
                     .replace(/<\/p>/gi, '</div>')
                 : esc(item.label);
               if (item.cameraList) {
-                l4Content += '<br><span class="connected-devices">(' + esc(item.cameraList) + ')</span>';
+                // v2 style: labeled "Applies to:" beneath labor lines;
+                // accessory rollups get the bare gray list.
+                l4Content += item.isEquipment
+                  ? '<span class="conn-line conn-line--bare">' + esc(item.cameraList) + '</span>'
+                  : '<span class="conn-line"><b>Applies to:</b> ' + esc(item.cameraList) + '</span>';
               }
               html.push('<td' + (l4TdClass ? ' class="' + l4TdClass + '"' : '') + (prod.hideCost ? ' colspan="3"' : '') + '>' + l4Content + '</td>');
               if (!prod.hideCost) {
@@ -2162,12 +2167,18 @@
       '/* The PRODUCT header row reads BOLD; labor/description rows and',
       '   accessory rollup lines stay regular. */',
       '.l3-row.l3-product td { font-weight: 700; }',
-      '.connected-devices { display: inline; margin-left: 4px; color: orange; font-weight: 700; font-size: 10px; }',
+      '.l3-row.l3-product td:first-child { font-size: 13px; }',
+      '/* v2-style callouts: orange LABEL, quiet gray designator list. */',
+      '.conn-line { display: block; margin-top: 3px; color: #64748b; font-weight: 400; font-size: 9.5px; line-height: 1.4; }',
+      '.conn-line b { color: orange; font-weight: 800; }',
       '',
-      '/* ── L4 Line Item Row ── */',
-      '.l4-row td { padding: 3px 8px 3px 40px; color: #555; font-size: 10px; font-weight: 300; border-bottom: 1px solid #f8f8f8; }',
+      '/* ── L4 Line Item Row — flush with the product header (v2) ── */',
+      '.l4-row td { padding: 4px 8px; color: #555; font-size: 10px; font-weight: 300; border-bottom: 1px solid #f8f8f8; }',
       '.l4-row td p { margin: 0; }',
-      '.l4-row td.col-qty, .l4-row td.col-cost { padding-left: 8px; font-weight: 600; color: #07467c; }',
+      '.l4-row td.col-qty, .l4-row td.col-cost { font-weight: 600; color: #07467c; }',
+      '/* Accessory rollups muted slate — secondary to the product (v2). */',
+      '.l4-row.l4-acc td { color: #5f6b7a; font-weight: 400; }',
+      '.l4-row.l4-acc td.col-qty, .l4-row.l4-acc td.col-cost { color: #5f6b7a; }',
       '',
       '/* ── L2 Footer ── */',
       '.l2-footer td {',
