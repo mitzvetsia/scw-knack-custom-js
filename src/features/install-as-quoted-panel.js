@@ -189,6 +189,84 @@
     return !looseEq(normCmp(quoted), normCmp(installed));
   }
 
+  // ── connection derivation (field_1957 ↔ field_2197 drift guard) ──
+  // The SOW pair drifts (Known Issue #12): a quoted parent's forward
+  // list (field_1957) can be blank while the children's back-pointers
+  // (field_2197) hold the truth. Derive the quoted connections from
+  // BOTH sides, and diff connections by SOURCE RECORD ID (install
+  // child → field_2819 → proposed id) instead of display labels —
+  // install and SOW records are different objects whose labels differ
+  // ("AC-01" vs "AC-001") even when they name the same device.
+  function buildConnCtx(propIdx, installIdx, linkIdx) {
+    var rev = Object.create(null);        // proposed parent id → [child proposed ids]
+    var fwdParent = Object.create(null);  // proposed child id → parent proposed id
+    var labels = Object.create(null);     // proposed id → display identifier
+    var pid, i;
+    for (pid in propIdx) {
+      var a = propIdx[pid];
+      var back = a[PF.connectedTo + '_raw'];
+      if (Array.isArray(back) && back[0] && back[0].id) {
+        (rev[back[0].id] = rev[back[0].id] || []).push(pid);
+        if (!labels[back[0].id]) labels[back[0].id] = stripHtml(back[0].identifier || '');
+      }
+      var fwd = a[PF.connectedDevices + '_raw'];
+      if (Array.isArray(fwd)) {
+        for (i = 0; i < fwd.length; i++) {
+          if (fwd[i] && fwd[i].id) {
+            fwdParent[fwd[i].id] = pid;
+            if (!labels[fwd[i].id]) labels[fwd[i].id] = stripHtml(fwd[i].identifier || '');
+          }
+        }
+      }
+    }
+    // Child labels via the install records that link to them — the
+    // field_2819 connection identifiers carry the SOW-side labels
+    // ("AC-001") even when no forward list names the child.
+    for (var iid in installIdx) {
+      var raw = installIdx[iid][LINK_FIELD + '_raw'];
+      if (Array.isArray(raw) && raw[0] && raw[0].id && !labels[raw[0].id]) {
+        labels[raw[0].id] = stripHtml(raw[0].identifier || '');
+      }
+    }
+    return { rev: rev, fwdParent: fwdParent, labels: labels, linkIdx: linkIdx };
+  }
+  function uniqIds(arr) {
+    var seen = Object.create(null), out = [];
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i] && !seen[arr[i]]) { seen[arr[i]] = 1; out.push(arr[i]); }
+    }
+    return out;
+  }
+  function rawIds(attrs, key) {
+    var raw = attrs && attrs[key + '_raw'];
+    var out = [];
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) if (raw[i] && raw[i].id) out.push(raw[i].id);
+    }
+    return out;
+  }
+  function sameIdSet(a, b) {
+    if (a.length !== b.length) return false;
+    var s = Object.create(null), i;
+    for (i = 0; i < a.length; i++) s[a[i]] = 1;
+    for (i = 0; i < b.length; i++) if (!s[b[i]]) return false;
+    return true;
+  }
+  // Quoted connected-device ids for a parent: forward list ∪ back-pointers.
+  function quotedChildIds(pa, ctx) {
+    return uniqIds(rawIds(pa, PF.connectedDevices).concat((ctx.rev[pa.id]) || []));
+  }
+  // Quoted parent id for a child: back-pointer, else any forward list naming it.
+  function quotedParentId(pa, ctx) {
+    var ids = rawIds(pa, PF.connectedTo);
+    return ids[0] || ctx.fwdParent[pa.id] || '';
+  }
+  function labelsFor(ids, ctx) {
+    var out = [];
+    for (var i = 0; i < ids.length; i++) out.push(ctx.labels[ids[i]] || ids[i]);
+    return out.join(', ');
+  }
+
   // ── indexes ─────────────────────────────────────────────────────
   // proposed record id → its attributes hash.
   function buildProposedIndex() {
@@ -302,7 +380,7 @@
   // `ia` = the install record's attributes — when present, each quoted
   // value is diffed against the corresponding install field and mismatches
   // get the amber "differs" treatment (+ a count chip in the head).
-  function buildPanel(pa, origins, ia) {
+  function buildPanel(pa, origins, ia, ctx) {
     origins = origins || [];
     var panel = document.createElement('div');
     panel.className = PANEL_CLS;
@@ -353,13 +431,39 @@
     var diffCount = 0;
     for (var i = 0; i < GROUPS.length; i++) {
       var g = GROUPS[i];
-      var val = readVal(pa, PF[g.key]);
+      var val, differs = null;   // null → default label-based compare
+      if (ctx && g.key === 'connectedDevices') {
+        // Derived quoted set (drift-proof) + id-set diff via field_2819.
+        var qIds = quotedChildIds(pa, ctx);
+        val = qIds.length ? labelsFor(qIds, ctx) : '';
+        if (ia && IF[g.key]) {
+          var instIds = rawIds(ia, IF[g.key]);
+          var mapped = [], unmappable = false;
+          for (var mi = 0; mi < instIds.length; mi++) {
+            var mpid = ctx.linkIdx[instIds[mi]];
+            if (mpid) mapped.push(mpid); else unmappable = true;
+          }
+          differs = unmappable || !sameIdSet(qIds, uniqIds(mapped));
+        }
+      } else if (ctx && g.key === 'connectedTo') {
+        var qp = quotedParentId(pa, ctx);
+        val = qp ? (ctx.labels[qp] || readVal(pa, PF.connectedTo) || qp) : '';
+        if (ia && IF[g.key]) {
+          var instParent = rawIds(ia, IF.connectedTo)[0] || '';
+          var mappedParent = instParent ? (ctx.linkIdx[instParent] || '') : '';
+          differs = instParent
+            ? (!mappedParent || mappedParent !== qp)
+            : !!qp;
+        }
+      } else {
+        val = readVal(pa, PF[g.key]);
+      }
       var cell = document.createElement('div');
       cell.className = PANEL_CLS + '-cell';
       var nowHtml = '';
       if (ia && IF[g.key]) {
         var curVal = readVal(ia, IF[g.key]);
-        if (valuesDiffer(g.kind, val, curVal)) {
+        if (differs === null ? valuesDiffer(g.kind, val, curVal) : differs) {
           diffCount++;
           cell.className += ' ' + PANEL_CLS + '-cell--diff';
           nowHtml = '<div class="' + PANEL_CLS + '-now">installed: ' +
@@ -412,7 +516,7 @@
   }
 
   // ── inject ──────────────────────────────────────────────────────
-  function injectPanel(installId, proposedAttrs, origins, installAttrs) {
+  function injectPanel(installId, proposedAttrs, origins, installAttrs, ctx) {
     for (var v = 0; v < INSTALL_VIEWS.length; v++) {
       var container = document.getElementById('scw-ws-v2-' + INSTALL_VIEWS[v]);
       if (!container) continue;
@@ -424,7 +528,7 @@
         if (!detail) continue;
         var prior = detail.querySelector(':scope > .' + PANEL_CLS);
         if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
-        detail.appendChild(buildPanel(proposedAttrs, origins, installAttrs));
+        detail.appendChild(buildPanel(proposedAttrs, origins, installAttrs, ctx));
 
         // Row-level origin chip(s) in the Flags cell — base vs CO is
         // scannable without expanding the card. Idempotent per rebuild.
@@ -484,10 +588,11 @@
     _selfMutating = true;
     var missing = [];
     var installIdx = buildInstallAttrsIndex();
+    var connCtx = buildConnCtx(propIdx, installIdx, linkIdx);
     try {
       for (var i = 0; i < ids.length; i++) {
         var pa = propIdx[linkIdx[ids[i]]];
-        if (pa) injectPanel(ids[i], pa, resolveOrigins(pa, acceptIdx), installIdx[ids[i]]);
+        if (pa) injectPanel(ids[i], pa, resolveOrigins(pa, acceptIdx), installIdx[ids[i]], connCtx);
         else missing.push(ids[i] + ' → ' + linkIdx[ids[i]]);
       }
     } finally {
