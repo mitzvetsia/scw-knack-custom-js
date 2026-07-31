@@ -9,8 +9,11 @@
     // Misc views forced full-page. (view_3341 dropped at the v2 cutover:
     // its grid is hidden and nothing reads its model anymore — letting it
     // fetch the Builder-default page size halves the scene's data load
-    // until the view is deleted in Builder.)
-    'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
+    // until the view is deleted in Builder. view_3896 dropped 2026-07-31:
+    // the publish JSON snapshot now reads view_4140 — see
+    // proposal-pdf-export.js jsonIncludeViews — so nothing reads its
+    // model; delete the view in Builder.)
+    'view_3550', 'view_3586', 'view_3610', 'view_3926',
     // worksheet-v2 source view (mirrors view_3610 — same cap rationale)
     'view_3962',
     // All WORKSHEET_CONFIG views from device-worksheet.js
@@ -63,7 +66,7 @@
   // forcing full pages.
   const FORCED_FULL_PAGE_VIEWS = [
     // change-record-limit.js — misc views
-    'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
+    'view_3550', 'view_3586', 'view_3610', 'view_3926',
     // worksheet-v2 source view
     'view_3962',
     // change-record-limit.js — device-worksheet views

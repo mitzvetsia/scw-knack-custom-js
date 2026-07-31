@@ -142,9 +142,13 @@
       // JSON snapshot for this scene is intentionally slim:
       //   { sowRecordId, view_3896: [...full records...] }
       // No header detail, no other grids — Make pipelines that
-      // duplicate records only care about view_3896's projection.
-      // The rendered HTML proposal is unaffected.
-      jsonIncludeViews: ['view_3896'],
+      // duplicate records only care about this projection.
+      // CONSOLIDATION 2026-07-31: records now come from view_4140 (the
+      // proposal-grid-v2 data view, extended with view_3896's columns)
+      // but stay keyed "view_3896" so Make scenarios are untouched.
+      // view_3896 can be deleted in Builder — the scene then loads the
+      // line-item set once instead of twice.
+      jsonIncludeViews: [{ viewId: 'view_4140', as: 'view_3896' }],
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
       recurringGrids: ['view_3371'],
@@ -2547,13 +2551,18 @@
     if (cfg && Array.isArray(cfg.jsonIncludeViews) && cfg.jsonIncludeViews.length) {
       var slim = { sowRecordId: getPageRecordId() || '' };
       for (var s = 0; s < cfg.jsonIncludeViews.length; s++) {
-        var vid = cfg.jsonIncludeViews[s];
+        // Entry: 'view_XXXX' or { viewId, as } — `as` renames the key in
+        // the snapshot so a view can be swapped out without touching the
+        // Make scenarios that read the old key.
+        var entry = cfg.jsonIncludeViews[s];
+        var vid = typeof entry === 'string' ? entry : (entry && entry.viewId);
         if (typeof vid !== 'string') continue;
+        var asKey = (entry && typeof entry === 'object' && entry.as) || vid;
         var slimT = detectViewType(vid);
         if (slimT === 'grid') {
-          slim[vid] = extractGridRecords(vid);
+          slim[asKey] = extractGridRecords(vid);
         } else if (slimT === 'detail') {
-          slim[vid] = extractDetailRecord(vid);
+          slim[asKey] = extractDetailRecord(vid);
         }
       }
       return slim;
@@ -3992,10 +4001,10 @@
     // whose first member has `field_2219_raw` (the bucket connection).
     // Works for the slim snapshot shape (cfg.jsonIncludeViews) and the
     // full shape, regardless of which view_id the line items live in.
-    // The snapshot view (view_3896) is set to 1000 rows/page in
-    // change-record-limit.js — DON'T fall back to view_3341 here:
-    // that view doesn't project field_2219/_1963/_1958/_2268, so its
-    // models are missing the bucket/sku/name/unit-price needed below.
+    // The snapshot records come from view_4140 (keyed "view_3896" for
+    // Make compatibility; consolidation 2026-07-31). view_4140 must
+    // project field_2219/_1963/_1958/_2268 — the bucket/sku/name/
+    // unit-price read below.
     var lineItems = [];
     var keys = Object.keys(jsonSnapshot);
     for (var ki = 0; ki < keys.length; ki++) {

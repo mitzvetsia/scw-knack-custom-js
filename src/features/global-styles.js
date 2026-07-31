@@ -183,6 +183,7 @@
        so the rendered proposal doesn't include it. */
     #view_3770,
     #view_3887,
+    #view_3896,
     #view_3927 {
       position: absolute !important;
       width: 1px !important;
@@ -194,8 +195,6 @@
       padding: 0 !important;
       margin: -1px !important;
     }
-    /* TEMP: view_3896 left visible for invoiceItems debugging.
-       Re-add to the hidden block above when done. */
 
     /* TEMP: force view_3920 visible (bid-review proposal source view on
        scene_1155). It's hidden Builder-side, not by the bundle — this
