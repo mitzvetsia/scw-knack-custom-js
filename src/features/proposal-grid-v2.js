@@ -1690,6 +1690,15 @@
       if (!ensureFullPage(vcfg.dataViewKey)) return;   // refetch in flight
       var records = readRecords(vcfg.dataViewKey);
       if (!records) { dbg('data view model not ready', vcfg.dataViewKey); return; }
+      // Model exists but is EMPTY: before the fetch returns that's just
+      // "still loading" — rendering a zero-record grid here replaced the
+      // skeleton with blank space for the whole fetch. Only render empty
+      // once Knack has actually completed a render for the data view
+      // (its view-render event) — i.e. the proposal genuinely has no rows.
+      if (!records.length && !_dataViewRendered[vcfg.dataViewKey]) {
+        dbg('model empty, fetch not landed — keeping skeleton', vcfg.dataViewKey);
+        return;
+      }
 
       var el;
       var missing = missingColumns(records, vcfg);
@@ -1801,20 +1810,58 @@
   // ── native render suppression (duplicate data views only) ─────────
   // Knack's own table renderer is pure waste for a model-only data view:
   // profiling showed a ~4.8s main-thread freeze building the hidden
-  // 450-row table for view_4140. No-op the row builders on the view
-  // instance — the model and fetch pipeline are untouched. NEVER applied
-  // to self-hosted deployments (view_3371): their native table stays in
-  // the DOM for viewHasDataRows / empty checks.
+  // 450-row table for view_4140. The model and fetch pipeline are
+  // untouched. NEVER applied to self-hosted deployments (view_3371):
+  // their native table stays in the DOM for viewHasDataRows checks.
+  //
+  // Patched at the PROTOTYPE with a per-view-key guard: Knack RECREATES
+  // the view instance when it renders on fetch success, so an
+  // instance-level patch gets thrown away before it ever matters
+  // (observed live: the 4.9s row build survived an instance patch).
+  var _suppressedKeys = Object.create(null);
+  var _dataViewRendered = Object.create(null);
+  function viewKeyOf(v) {
+    try {
+      return (v && (v.key || (v.model && v.model.view && v.model.view.key))) || '';
+    } catch (e) { return ''; }
+  }
   function suppressNativeRender(viewKey) {
+    _suppressedKeys[viewKey] = true;
     try {
       var kv = typeof Knack !== 'undefined' && Knack.views && Knack.views[viewKey];
       if (!kv) return false;
-      if (kv.__scwPg2Suppressed) return true;
-      ['renderResults', 'renderRecords'].forEach(function (fn) {
-        if (typeof kv[fn] === 'function') kv[fn] = function () { return this; };
+      var FNS = ['renderResults', 'renderRecords', 'renderGroups'];
+      // Instance-level (covers calls bound to this instance)…
+      FNS.forEach(function (fn) {
+        if (typeof kv[fn] === 'function' && !kv['__scwPg2Sup_' + fn]) {
+          kv['__scwPg2Sup_' + fn] = true;
+          kv[fn] = function () { return this; };
+        }
       });
-      kv.__scwPg2Suppressed = true;
-      dbg('native render suppressed for', viewKey);
+      // …and prototype-level with a key guard (survives recreation).
+      var proto = Object.getPrototypeOf(kv);
+      while (proto && proto !== Object.prototype) {
+        /* eslint-disable no-loop-func */
+        FNS.forEach(function (fn) {
+          if (Object.prototype.hasOwnProperty.call(proto, fn) &&
+              typeof proto[fn] === 'function' && !proto['__scwPg2Orig_' + fn]) {
+            var orig = proto[fn];
+            proto['__scwPg2Orig_' + fn] = orig;
+            proto[fn] = function () {
+              var k = viewKeyOf(this);
+              if (k && _suppressedKeys[k]) {
+                if (!suppressNativeRender['__logged_' + k]) {
+                  suppressNativeRender['__logged_' + k] = true;
+                  console.log('[scw-pg2] suppressed native table render for ' + k);
+                }
+                return this;
+              }
+              return orig.apply(this, arguments);
+            };
+          }
+        });
+        proto = Object.getPrototypeOf(proto);
+      }
       return true;
     } catch (e) { return false; }
   }
@@ -1840,7 +1887,13 @@
       .on('knack-view-render.' + v1ViewId + EV, function () { scheduleRun(v1ViewId); });
     $(document)
       .off('knack-view-render.' + vcfg.dataViewKey + EV)
-      .on('knack-view-render.' + vcfg.dataViewKey + EV, function () { scheduleRun(v1ViewId); });
+      .on('knack-view-render.' + vcfg.dataViewKey + EV, function () {
+        // Fetch has landed (Knack renders after records arrive) — from here
+        // an empty model means a genuinely empty proposal, not a race, so
+        // run() may replace the skeleton with the (empty) grid.
+        _dataViewRendered[vcfg.dataViewKey] = true;
+        scheduleRun(v1ViewId);
+      });
     // Proposal-discount + FLAG_released detail views re-render → totals/mask.
     [CONFIG.discountDetailView, CONFIG.sowDetailView].forEach(function (dv) {
       $(document)
@@ -1869,8 +1922,19 @@
       var root = document.getElementById(v1ViewId) || document.getElementById(vcfg.dataViewKey);
       if (root && !root.querySelector('.scw-pg2')) run(v1ViewId);   // skeleton pre-data
       var have = readRecords(vcfg.dataViewKey);
-      if (have && have.length && root) { scheduleRun(v1ViewId); clearInterval(iv); return; }
-      if (tries >= 200) clearInterval(iv);   // ~60s safety stop
+      if (have && have.length && root) {
+        _dataViewRendered[vcfg.dataViewKey] = true;
+        scheduleRun(v1ViewId);
+        clearInterval(iv);
+        return;
+      }
+      if (tries >= 200) {   // ~60s safety stop — with suppression on, the
+        // data view's render event may never fire, so a genuinely empty
+        // proposal would keep the skeleton forever without this fallback.
+        clearInterval(iv);
+        _dataViewRendered[vcfg.dataViewKey] = true;
+        scheduleRun(v1ViewId);
+      }
     }, 300);
   });
 
@@ -1916,6 +1980,36 @@
         });
         if (console.table) console.table(seen);
         return seen;
+      } catch (e) { return String(e); }
+    },
+    // Suppression diagnostic: lists every function on the view instance
+    // and up its prototype chain, flagging which ones we've patched. If
+    // the native-render freeze persists, run
+    // SCW.proposalGridV2.dumpRenderFns('view_4140') and paste the output —
+    // the real row-builder is whatever render-ish name has patched:false.
+    dumpRenderFns: function (viewKey) {
+      try {
+        var kv = Knack.views[viewKey || 'view_4140'];
+        if (!kv) return 'no Knack.views entry for ' + viewKey;
+        var out = [];
+        var level = 0;
+        var obj = kv;
+        while (obj && obj !== Object.prototype) {
+          Object.getOwnPropertyNames(obj).forEach(function (name) {
+            var val;
+            try { val = obj[name]; } catch (e) { return; }
+            if (typeof val !== 'function') return;
+            out.push({
+              level: level === 0 ? 'instance' : 'proto+' + level,
+              name: name,
+              patched: !!(obj['__scwPg2Orig_' + name] || kv['__scwPg2Sup_' + name])
+            });
+          });
+          obj = Object.getPrototypeOf(obj);
+          level++;
+        }
+        if (console.table) console.table(out);
+        return out;
       } catch (e) { return String(e); }
     }
   };
