@@ -1520,6 +1520,19 @@
       // views without a Builder column width; browsers drop it → columns
       // collapse to content width. Force full width.
       '#view_3883 .kn-details-column, #view_3883 .kn-details-group { flex-basis: 100% !important; }',
+      // Loading skeleton — shimmer placeholder while the line-item fetch
+      // is in flight. min-height reserves the grid's space (CLS).
+      '.scw-pg2--skeleton { min-height: 60vh; padding-top: 6px; }',
+      '.scw-pg2-sk-msg { display: flex; align-items: center; gap: 8px; margin: 6px 0 14px; font: 600 13px/1.4 system-ui, sans-serif; color: #64748b; }',
+      '.scw-pg2-sk-spin { width: 14px; height: 14px; border: 2px solid #cbd5e1; border-top-color: #07467c; border-radius: 50%; animation: scwPg2Spin .8s linear infinite; }',
+      '@keyframes scwPg2Spin { to { transform: rotate(360deg); } }',
+      '.scw-pg2-sk-l1, .scw-pg2-sk-bar, .scw-pg2-sk-row { border-radius: 6px; background: linear-gradient(90deg, #eef2f7 25%, #f8fafc 45%, #eef2f7 65%); background-size: 200% 100%; animation: scwPg2Shimmer 1.4s ease-in-out infinite; }',
+      '@keyframes scwPg2Shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }',
+      '.scw-pg2-sk-l1 { height: 26px; width: 38%; margin: 28px 0 10px; }',
+      '.scw-pg2-sk-bar { height: 30px; margin-bottom: 12px; }',
+      '.scw-pg2-sk-row { height: 16px; margin: 10px 0; }',
+      '.scw-pg2-sk-row:nth-of-type(3n) { width: 84%; }',
+      '.scw-pg2-sk-row:nth-of-type(4n) { width: 68%; }',
       // Scene-wide heading treatment (ported from v1, which scoped it via
       // styleSceneIds): every view title on the proposal scene renders
       // bold dark-blue — this is what makes the section headings
@@ -1659,6 +1672,10 @@
     try {
       injectCss();
       injectViewCss(v1ViewId, vcfg.dataViewKey);
+      // Skeleton while the (slow) line-item fetch is in flight — reserves
+      // the grid's space (CLS) and reads as "loading", not "broken".
+      // Replaced in place by the real grid / missing-columns notice.
+      mountSkeleton(root);
 
       if (!ensureFullPage(vcfg.dataViewKey)) return;   // refetch in flight
       var records = readRecords(vcfg.dataViewKey);
@@ -1723,6 +1740,49 @@
     }
   }
 
+  // ── loading skeleton ──────────────────────────────────────────────
+  function mountSkeleton(root) {
+    if (root.querySelector('.scw-pg2')) return;
+    var sk = document.createElement('div');
+    sk.className = 'scw-pg2 scw-pg2--skeleton';
+    var rows = '';
+    for (var g = 0; g < 3; g++) {
+      rows += '<div class="scw-pg2-sk-l1"></div><div class="scw-pg2-sk-bar"></div>';
+      for (var r = 0; r < 4; r++) rows += '<div class="scw-pg2-sk-row"></div>';
+    }
+    sk.innerHTML =
+      '<div class="scw-pg2-sk-msg"><span class="scw-pg2-sk-spin"></span>' +
+      'Building proposal preview…</div>' + rows;
+    root.appendChild(sk);
+  }
+
+  // ── native render suppression (duplicate data views only) ─────────
+  // Knack's own table renderer is pure waste for a model-only data view:
+  // profiling showed a ~4.8s main-thread freeze building the hidden
+  // 450-row table for view_4140. No-op the row builders on the view
+  // instance — the model and fetch pipeline are untouched. NEVER applied
+  // to self-hosted deployments (view_3371): their native table stays in
+  // the DOM for viewHasDataRows / empty checks.
+  function suppressNativeRender(viewKey) {
+    try {
+      var kv = typeof Knack !== 'undefined' && Knack.views && Knack.views[viewKey];
+      if (!kv) return false;
+      if (kv.__scwPg2Suppressed) return true;
+      ['renderResults', 'renderRecords'].forEach(function (fn) {
+        if (typeof kv[fn] === 'function') kv[fn] = function () { return this; };
+      });
+      kv.__scwPg2Suppressed = true;
+      dbg('native render suppressed for', viewKey);
+      return true;
+    } catch (e) { return false; }
+  }
+  function armSuppression(viewKey) {
+    var tries = 0;
+    var iv = setInterval(function () {
+      if (suppressNativeRender(viewKey) || ++tries > 100) clearInterval(iv);
+    }, 100);
+  }
+
   // ── bindings ──────────────────────────────────────────────────────
   var EV = '.scwPg2';
   Object.keys(CONFIG.views).forEach(function (v1ViewId) {
@@ -1745,14 +1805,30 @@
         .off('knack-view-render.' + dv + EV + v1ViewId)
         .on('knack-view-render.' + dv + EV + v1ViewId, function () { scheduleRun(v1ViewId); });
     });
-    // Catch-up: bundle parsed after the scene rendered.
+    // Native render suppression for DUPLICATE data views (never
+    // self-hosted). Arm at parse and re-arm on every scene render —
+    // Knack recreates view instances per scene render, and the patch
+    // must land before the (slow) records fetch returns.
+    if (v1ViewId !== vcfg.dataViewKey) {
+      armSuppression(vcfg.dataViewKey);
+      $(document)
+        .off('knack-scene-render.any' + EV + v1ViewId)
+        .on('knack-scene-render.any' + EV + v1ViewId, function () {
+          armSuppression(vcfg.dataViewKey);
+        });
+    }
+    // Catch-up + fetch-arrival poll. Mounts the skeleton as soon as the
+    // scene DOM exists, then keeps polling until the line-item fetch
+    // lands (observed ~16s of Knack server time) — with the native
+    // render suppressed we can't rely solely on knack-view-render firing.
     var tries = 0;
     var iv = setInterval(function () {
       tries++;
-      var have = readRecords(vcfg.dataViewKey);
       var root = document.getElementById(v1ViewId) || document.getElementById(vcfg.dataViewKey);
-      if (have && root) { scheduleRun(v1ViewId); clearInterval(iv); }
-      else if (tries >= 20) clearInterval(iv);
+      if (root && !root.querySelector('.scw-pg2')) run(v1ViewId);   // skeleton pre-data
+      var have = readRecords(vcfg.dataViewKey);
+      if (have && have.length && root) { scheduleRun(v1ViewId); clearInterval(iv); return; }
+      if (tries >= 200) clearInterval(iv);   // ~60s safety stop
     }, 300);
   });
 
