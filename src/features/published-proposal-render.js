@@ -156,9 +156,12 @@
       '.detail-label, .detail-value { font-size: 14px; }',
       '.richtext-content { font-size: 14px; }',
       '.l3-row td:first-child { font-size: 15px; }',
-      '.l4-row td { font-size: 14px; padding-left: 40px; letter-spacing: 0.3px; line-height: 1.6; }',
+      // No padding-left here — labor/accessory rows sit flush with the
+      // product header (v2 layout); this override used to re-indent them.
+      '.l4-row td { font-size: 14px; letter-spacing: 0.3px; line-height: 1.6; }',
       '.l4-row td.col-qty, .l4-row td.col-cost { font-size: 14px; }',
       '.connected-devices { font-size: 13px; }',
+      '.conn-line { font-size: 12.5px; }',
       '.product-table thead th { font-size: 11px; }',
       '.l2-header { font-size: 15px; }',
     ].join('\n');
