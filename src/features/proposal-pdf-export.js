@@ -4682,6 +4682,14 @@
           continue;
         }
 
+        // Appended image sections (Site Maps / Additional Photos). Their
+        // <img>s are stripped up top, so descending would leave one
+        // dangling "Site Maps" <h2> per floorplan page.
+        if (classes && (classes.contains('append-image-page') ||
+                        classes.contains('append-image-grid-section'))) {
+          continue;
+        }
+
         if (classes && classes.contains('detail-label-none')) { emitDetailLabelNone(child); continue; }
         if (child.tagName.toLowerCase() === 'table' && classes && classes.contains('detail-table')) {
           emitDetailTable(child); continue;
