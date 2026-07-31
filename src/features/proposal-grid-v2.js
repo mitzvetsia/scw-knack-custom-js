@@ -345,6 +345,12 @@
           products: Object.create(null), productOrder: []
         };
         l1.bucketOrder.push(bKey);
+      } else if (!isFinite(b.sort)) {
+        // First record for this bucket had a blank field_2218 — fill the
+        // sort from any later record that carries it.
+        var sortConn2 = connFirst(r, F.bucketSort);
+        var sortNum2 = sortConn2 ? parseFloat(sortConn2.label.replace(/[^0-9.\-]/g, '')) : NaN;
+        if (isFinite(sortNum2)) b.sort = sortNum2;
       }
       var pLabel = cleanProductLabel(readText(r, F.product));
       var pKey = pLabel.toLowerCase();
@@ -1746,6 +1752,29 @@
           return { field: c.field && c.field.key, grouping: !!c.grouping, group_sort: c.group_sort || null, header: c.header };
         });
         return { groups: mv.groups || null, groupedColumns: cols.filter(function (c) { return c.grouping; }), allColumns: cols };
+      } catch (e) { return String(e); }
+    },
+    // Per-bucket field_2218 diagnostic: what the sortOrder connection
+    // actually holds in the loaded model vs how v2 parses/ranks it.
+    // Run SCW.proposalGridV2.dumpBucketSort() in the console.
+    dumpBucketSort: function (viewKey) {
+      try {
+        var recs = readRecords(viewKey || CONFIG.views.view_3341.dataViewKey) || [];
+        var seen = {};
+        recs.forEach(function (r) {
+          var bc = connFirst(r, CONFIG.fields.bucket);
+          var label = bc ? bc.label : readText(r, CONFIG.fields.bucket) || '(no bucket)';
+          var sc = connFirst(r, CONFIG.fields.bucketSort);
+          var parsed = sc ? parseFloat(sc.label.replace(/[^0-9.\-]/g, '')) : NaN;
+          var row = seen[label] = seen[label] || { records: 0, sortIdentifiers: {}, blankSort: 0 };
+          row.records++;
+          if (sc) row.sortIdentifiers[sc.label] = (row.sortIdentifiers[sc.label] || 0) + 1;
+          else row.blankSort++;
+          if (row.parsed === undefined || isFinite(parsed)) row.parsed = parsed;
+          row.displayRank = bucketDisplayRank(label);
+        });
+        if (console.table) console.table(seen);
+        return seen;
       } catch (e) { return String(e); }
     }
   };
