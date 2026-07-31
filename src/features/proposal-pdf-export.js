@@ -4350,15 +4350,25 @@
       return (s || '').replace(/\s+/g, ' ').replace(/ /g, ' ').trim();
     }
 
+    // View titles are held PENDING and only flushed when real content
+    // follows. Views whose content is deliberately skipped (BOM tables,
+    // Site Maps — images are stripped above) would otherwise leave a
+    // dangling header at the tail of the agreement.
+    var pendingTitle = null;
+    function emitEl(el) {
+      if (pendingTitle) { elements.push(pendingTitle); pendingTitle = null; }
+      elements.push(el);
+    }
+
     function pushHeader(level, text) {
       if (!text) return;
       var typeMap = { 1: 'text_header_one', 2: 'text_header_two', 3: 'text_header_three' };
-      elements.push({ type: typeMap[level] || 'text_header_three', text: text });
+      emitEl({ type: typeMap[level] || 'text_header_three', text: text });
     }
 
     function pushNormal(text) {
       if (!text) return;
-      elements.push({ type: 'text_normal', text: text });
+      emitEl({ type: 'text_normal', text: text });
     }
 
     // Cell text with element boundaries turned into spaces. Reading
@@ -4419,13 +4429,16 @@
         var label = cleanText(labelEl.textContent);
         if (/^expiration\s+date/i.test(label)) continue;
         if (/^proposal\s+id/i.test(label)) continue;
-        var value = cleanText(valueEl ? valueEl.textContent : '');
+        // cellText, not textContent — multi-line values (Project Address
+        // street<br>city) glue together across the tag otherwise
+        // ("…North Carolina 8Denton, NC…").
+        var value = valueEl ? cellText(valueEl) : '';
         cells.push([
           { text: label, styles: ['bold'] },
           { text: value }
         ]);
       }
-      if (cells.length) elements.push({ type: 'table', table_cells: padRows(cells) });
+      if (cells.length) emitEl({ type: 'table', table_cells: padRows(cells) });
     }
 
     // .col-qty / .col-cost cells get center alignment per request.
@@ -4455,7 +4468,7 @@
 
       function flushTable() {
         if (combinedCells.length) {
-          elements.push({ type: 'table', table_cells: padRows(combinedCells) });
+          emitEl({ type: 'table', table_cells: padRows(combinedCells) });
         }
         combinedCells = [];
         emittedHeaderRow = false;
@@ -4567,7 +4580,7 @@
         tableCells.push([labelCell, valueCell]);
       }
       if (tableCells.length) {
-        elements.push({ type: 'table', table_cells: padRows(tableCells) });
+        emitEl({ type: 'table', table_cells: padRows(tableCells) });
       }
     }
 
@@ -4619,7 +4632,7 @@
           cells.push(rowOut);
         }
         if (cells.length > 1) {
-          elements.push({ type: 'table', table_cells: padRows(cells) });
+          emitEl({ type: 'table', table_cells: padRows(cells) });
         }
       }
 
@@ -4650,7 +4663,7 @@
         }
         cells.push(rowCells);
       }
-      if (cells.length) elements.push({ type: 'table', table_cells: padRows(cells) });
+      if (cells.length) emitEl({ type: 'table', table_cells: padRows(cells) });
     }
 
     function walkChildren(parent) {
@@ -4674,7 +4687,11 @@
           emitDetailTable(child); continue;
         }
         if (classes && classes.contains('view-title')) {
-          pushHeader(2, cleanText(child.textContent));
+          // Held pending — flushed by emitEl only when content follows.
+          // A title whose section emits nothing (BOM, Site Maps) is
+          // silently replaced by the next title or dropped at the end.
+          var vt = cleanText(child.textContent);
+          if (vt) pendingTitle = { type: 'text_header_two', text: vt };
           continue;
         }
         if (classes && classes.contains('view-narrative')) {

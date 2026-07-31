@@ -188,6 +188,12 @@
       .replace(/<(?!\/?(br|b|ul|ol|li)\b)[^>]*>/gi, '')
       .replace(/<\s*br\s*\/?\s*>/gi, '<br />');
   }
+  // MDF/IDF display names ("TYPE: ##: Name") leave an empty middle segment
+  // on HEADENDs, which never carry a ## — "HEADEND: : Chief's Office".
+  // Collapse the empty segment so headers read "HEADEND: Chief's Office".
+  function cleanL1Label(s) {
+    return norm(s).replace(/:\s*:/g, ':');
+  }
   // Same product-label hygiene as v1 (baked designator lists, doubled SKU).
   function cleanProductLabel(s) {
     var out = norm(s);
@@ -349,7 +355,7 @@
       var l1Key = l1c ? l1c.id : '';
       var l1 = l1Map[l1Key];
       if (!l1) {
-        l1 = l1Map[l1Key] = { key: l1Key, label: l1c ? l1c.label : '', buckets: Object.create(null), bucketOrder: [] };
+        l1 = l1Map[l1Key] = { key: l1Key, label: l1c ? cleanL1Label(l1c.label) : '', buckets: Object.create(null), bucketOrder: [] };
         l1Order.push(l1Key);
       }
       var bc = connFirst(r, F.bucket);
