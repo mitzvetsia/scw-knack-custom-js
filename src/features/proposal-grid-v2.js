@@ -1452,7 +1452,20 @@
       '.scw-pg2-notice code { font-size: 12px; color: #92400e; }',
       // Side-by-side parity frame (replaceV1: false)
       '.scw-pg2--preview { margin-top: 28px; border-top: 3px dashed #94a3b8; padding-top: 10px; }',
-      '.scw-pg2--preview::before { content: "v2 preview (model-driven rebuild)"; display: block; font: 600 11px/1.6 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #64748b; margin-bottom: 6px; }'
+      '.scw-pg2--preview::before { content: "v2 preview (model-driven rebuild)"; display: block; font: 600 11px/1.6 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #64748b; margin-bottom: 6px; }',
+      // ── Proposal-scene data-source views (ported from v1\'s stylesheet
+      // when proposal-grid.js left the bundle, 2026-07-31) ──
+      // view_3342 = discount detail source (CONFIG.discountDetailView) —
+      // clip-hidden, NOT display:none: kept "rendered" so the DOM read of
+      // field_2302/field_2291 stays on a laid-out view.
+      '#view_3342 { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; padding: 0 !important; margin: -1px !important; }',
+      // view_3861 = SOW header details (CONFIG.sowDetailView) — model/text
+      // source for isInstallationMasked (field_2725); never user-facing.
+      '#view_3861 { display: none !important; }',
+      // view_3883: Knack writes style="flex-basis: undefined%" on Details
+      // views without a Builder column width; browsers drop it → columns
+      // collapse to content width. Force full width.
+      '#view_3883 .kn-details-column, #view_3883 .kn-details-group { flex-basis: 100% !important; }'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -1467,7 +1480,12 @@
       // SELF-HOSTED (view_3371): the view IS the data view — v2 renders
       // into its root, so hide only the native grid chrome.
       css = '#' + dataViewKey + ' .kn-table-wrapper, ' +
-        '#' + dataViewKey + ' .kn-records-nav { display: none !important; }';
+        '#' + dataViewKey + ' .kn-records-nav { display: none !important; }\n' +
+        // The native view title stays visible — join it to the v2 type
+        // ramp (same treatment as the in-grid L1 headers, incl. the
+        // shared 8px left edge).
+        '#' + dataViewKey + ' .view-header h2.kn-title { ' +
+        'font-size: 24px; font-weight: 200; padding-left: 8px; margin-bottom: 0; }';
     } else {
       // display:none (not the clip trick): the data view is never read
       // from the DOM — model only — and a 1000-row grid left renderable
