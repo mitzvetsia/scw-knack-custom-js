@@ -261,6 +261,8 @@
       /* Classify bar — Type select + Required checkbox (deploy scene). */
       '.scw-qa-modal__classify { flex: 0 0 auto; align-self: stretch; display: flex;',
       '  align-items: center; gap: 14px; padding: 6px 2px; }',
+      /* Inside the viewer-bar: sit left, push Replace/Remove right. */
+      '.scw-qa-modal__viewer-bar .scw-qa-modal__classify { padding: 0; margin-right: auto; align-self: auto; }',
       '.scw-qa-modal__classify-item { display: flex; align-items: center; gap: 6px;',
       '  font: 600 12px/1.2 system-ui, sans-serif; color: #cbd5e1; cursor: pointer; }',
       '.scw-qa-modal__classify-item select {',
@@ -1027,8 +1029,14 @@
     });
     if (photo.imgUrl) {
       var pbar = buildPhotoViewerBar(viewer, photo);
-      if (pbar) viewer.appendChild(pbar);
-      if (classify) viewer.appendChild(classify);
+      if (pbar) {
+        // Classify controls join the top action bar: Type/Required on the
+        // left, Replace/Remove on the right.
+        if (classify) pbar.insertBefore(classify, pbar.firstChild);
+        viewer.appendChild(pbar);
+      } else if (classify) {
+        viewer.appendChild(classify);
+      }
       var img = document.createElement('img');
       img.src = photo.imgUrl;
       img.alt = photo.type || 'Photo';

@@ -188,15 +188,20 @@
       }
       if (out.length) return out;
     }
+    // Scrape shape gotcha: in grouped photo columns the OUTER span's `id`
+    // attr is the PHOTO record id and only the INNER span's class is the
+    // TYPE record id (24-hex). Walk the INNERMOST connection-value spans
+    // and take the 24-hex class — never the id attr, which on wrappers
+    // points at the photo record (a 400 on PUT).
     var seen = {};
     var scraped = [];
     var spans = document.querySelectorAll(
-      'td.' + F.type + ' span[id][data-kn="connection-value"]');
+      'td.' + F.type + ' span[data-kn="connection-value"]');
     for (var s = 0; s < spans.length; s++) {
-      var id = (spans[s].id || '').trim();
-      if (!id || seen[id]) continue;
-      var inner = spans[s].querySelector('span[data-kn="connection-value"]');
-      var label = ((inner ? inner.textContent : spans[s].textContent) || '').trim();
+      if (spans[s].querySelector('span[data-kn="connection-value"]')) continue; // wrapper
+      var id = (spans[s].className || '').trim();
+      if (!/^[0-9a-f]{24}$/i.test(id) || seen[id]) continue;
+      var label = (spans[s].textContent || '').trim();
       if (!label) continue;
       seen[id] = true;
       scraped.push({ id: id, label: label });
