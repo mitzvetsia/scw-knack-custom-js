@@ -585,20 +585,23 @@
           // Same tight labeled callout as Connected devices.
           if (list) camHtml = '<span class="scw-pg2-l4-conn"><b>Applies to:</b> ' + esc(list) + '</span>';
         }
-        // Connected devices (labeled) — beneath the labor description.
-        // Only names that resolve to records in THIS view.
+        // Connected devices (labeled, with a device count) — beneath the
+        // labor description. Only names that resolve to records in THIS
+        // view; deduped so the count is unique devices.
         var connNames = [];
+        var connSeen = Object.create(null);
         l4.items.forEach(function (it) {
           var raw = it[F.connectedDevices + '_raw'];
           if (!Array.isArray(raw)) return;
           raw.forEach(function (c) {
             if (!c || !c.id || !tree.byId[c.id]) return;
             var t = norm(stripHtml(c.identifier));
-            if (t && !isBlankish(t)) connNames.push(t);
+            if (t && !isBlankish(t) && !connSeen[t]) { connSeen[t] = 1; connNames.push(t); }
           });
         });
         var connHtml = connNames.length
-          ? '<span class="scw-pg2-l4-conn"><b>Connected devices:</b> ' + esc(compressLabels(connNames)) + '</span>'
+          ? '<span class="scw-pg2-l4-conn"><b>' + connNames.length + ' connected device' +
+            (connNames.length === 1 ? '' : 's') + ':</b> ' + esc(compressLabels(connNames)) + '</span>'
           : '';
         pushRow('scw-pg2-l4' + (bctx.hideQtyCost ? ' scw-pg2-hide-qtycost' : '') + tintCls, [
           { html: '<span class="scw-pg2-l4-desc">' + l4.html + '</span>' + camHtml + connHtml },
@@ -1153,17 +1156,18 @@
     var sections = [];
 
     function connDevicesOf(recs) {
-      var names = [];
+      var names = [], seen = Object.create(null);
       recs.forEach(function (it) {
         var raw = it[F.connectedDevices + '_raw'];
         if (!Array.isArray(raw)) return;
         raw.forEach(function (c) {
           if (!c || !c.id || !tree.byId[c.id]) return;
           var t = norm(stripHtml(c.identifier));
-          if (t && !isBlankish(t)) names.push(t);
+          if (t && !isBlankish(t) && !seen[t]) { seen[t] = 1; names.push(t); }
         });
       });
-      return compressLabelsArr(names);
+      // count = unique devices (the compressed list can be shorter — ranges).
+      return { list: compressLabelsArr(names), count: names.length };
     }
 
     function l1FooterData(title, recs) {
@@ -1192,12 +1196,14 @@
         var product = pr.product, accessories = pr.accessories;
         var prod = null;
         if (!bctx.hideL3 && !isBlankish(product.label)) {
+          var cd = connDevicesOf(product.items);
           prod = {
             level: 3, label: product.label,
             qty: Math.round(sumRecs(product.items, F.qty)),
             cost: pubMoney(sumRecs(product.items, F.hardware)),
             rate: '', hideCost: false,
-            connectedDevices: connDevicesOf(product.items),
+            connectedDevices: cd.list,
+            connectedDevicesCount: cd.count,
             isMountingHardware: bctx.isMounting, lineItems: [],
           };
           products.push(prod);

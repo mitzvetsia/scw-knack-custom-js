@@ -1795,7 +1795,15 @@
               html.push('<td' + prodClass + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(prod.label));
               if (prod.connectedDevices && prod.connectedDevices.length) {
                 // v2-style labeled callout (orange label, quiet gray list).
-                html.push('<span class="conn-line"><b>Connected devices:</b> ' + esc(prod.connectedDevices.join(', ')) + '</span>');
+                // Device COUNT in the label ("24 connected devices:") —
+                // the compressed list can be shorter than the true count
+                // (ranges), so the payload carries it explicitly. Older /
+                // v1-scraped payloads without the count keep the plain label.
+                var cdN = prod.connectedDevicesCount;
+                var cdLabel = (typeof cdN === 'number' && cdN > 0)
+                  ? cdN + ' connected device' + (cdN === 1 ? '' : 's') + ':'
+                  : 'Connected devices:';
+                html.push('<span class="conn-line"><b>' + esc(cdLabel) + '</b> ' + esc(prod.connectedDevices.join(', ')) + '</span>');
               }
               html.push('</td>');
               if (!prod.hideCost) {
