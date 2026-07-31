@@ -1529,7 +1529,11 @@
       // Loading skeleton — shimmer placeholder while the line-item fetch
       // is in flight. min-height reserves the grid's space (CLS).
       '.scw-pg2--skeleton { min-height: 60vh; padding-top: 6px; }',
-      '.scw-pg2-sk-msg { display: flex; align-items: center; gap: 8px; margin: 6px 0 14px; font: 600 13px/1.4 system-ui, sans-serif; color: #64748b; }',
+      '.scw-pg2-sk-head { margin: 6px 0 18px; }',
+      '.scw-pg2-sk-msg { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font: 600 13px/1.4 system-ui, sans-serif; color: #475569; }',
+      '.scw-pg2-sk-elapsed { font-weight: 500; color: #94a3b8; }',
+      '.scw-pg2-sk-track { height: 6px; border-radius: 999px; background: #e2e8f0; overflow: hidden; max-width: 520px; }',
+      '.scw-pg2-sk-fill { height: 100%; width: 2%; border-radius: 999px; background: linear-gradient(90deg, #0f4c75, #07467c); transition: width .3s ease; }',
       '.scw-pg2-sk-spin { width: 14px; height: 14px; border: 2px solid #cbd5e1; border-top-color: #07467c; border-radius: 50%; animation: scwPg2Spin .8s linear infinite; }',
       '@keyframes scwPg2Spin { to { transform: rotate(360deg); } }',
       '.scw-pg2-sk-l1, .scw-pg2-sk-bar, .scw-pg2-sk-row { border-radius: 6px; background: linear-gradient(90deg, #eef2f7 25%, #f8fafc 45%, #eef2f7 65%); background-size: 200% 100%; animation: scwPg2Shimmer 1.4s ease-in-out infinite; }',
@@ -1747,6 +1751,16 @@
   }
 
   // ── loading skeleton ──────────────────────────────────────────────
+  // Active loading state: staged status messages + a time-eased progress
+  // bar. True progress is unknowable (one long Knack request), so the
+  // bar eases toward ~95% and snaps away when the real grid swaps in.
+  var SK_STAGES = [
+    { at: 0,  msg: 'Loading proposal line items…' },
+    { at: 5,  msg: 'Still loading — Knack is assembling the line items…' },
+    { at: 12, msg: 'Large proposals can take 15–20 seconds — hang tight…' },
+    { at: 22, msg: 'Almost there — still waiting on Knack…' },
+    { at: 40, msg: 'This is taking longer than usual. Still trying…' }
+  ];
   function mountSkeleton(root) {
     if (root.querySelector('.scw-pg2')) return;
     var sk = document.createElement('div');
@@ -1757,9 +1771,31 @@
       for (var r = 0; r < 4; r++) rows += '<div class="scw-pg2-sk-row"></div>';
     }
     sk.innerHTML =
-      '<div class="scw-pg2-sk-msg"><span class="scw-pg2-sk-spin"></span>' +
-      'Building proposal preview…</div>' + rows;
+      '<div class="scw-pg2-sk-head">' +
+        '<div class="scw-pg2-sk-msg"><span class="scw-pg2-sk-spin"></span>' +
+          '<span class="scw-pg2-sk-msg-text">' + SK_STAGES[0].msg + '</span>' +
+          '<span class="scw-pg2-sk-elapsed"></span></div>' +
+        '<div class="scw-pg2-sk-track"><div class="scw-pg2-sk-fill"></div></div>' +
+      '</div>' + rows;
     root.appendChild(sk);
+
+    var t0 = Date.now();
+    var fill    = sk.querySelector('.scw-pg2-sk-fill');
+    var msgEl   = sk.querySelector('.scw-pg2-sk-msg-text');
+    var elapsed = sk.querySelector('.scw-pg2-sk-elapsed');
+    var tick = setInterval(function () {
+      // Self-cleaning: the real grid replaceWith()es this element.
+      if (!sk.isConnected) { clearInterval(tick); return; }
+      var s = (Date.now() - t0) / 1000;
+      // Ease toward 95% — fast early movement, slow tail.
+      fill.style.width = Math.min(95, 100 * (1 - Math.exp(-s / 7))).toFixed(1) + '%';
+      var msg = SK_STAGES[0].msg;
+      for (var i = 0; i < SK_STAGES.length; i++) {
+        if (s >= SK_STAGES[i].at) msg = SK_STAGES[i].msg;
+      }
+      if (msgEl.textContent !== msg) msgEl.textContent = msg;
+      if (s >= 3) elapsed.textContent = Math.round(s) + 's';
+    }, 250);
   }
 
   // ── native render suppression (duplicate data views only) ─────────
