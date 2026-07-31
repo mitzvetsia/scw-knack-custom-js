@@ -1391,6 +1391,33 @@
       var data = null;
 
       if (viewType === 'grid') {
+        // proposal-grid-v2 data view (e.g. view_4140): while the owning
+        // v1 Builder view still exists it handles publish at its own DOM
+        // position — never raw-scrape the hidden flat grid. Once the v1
+        // view is deleted in Builder, its element is gone from the walk
+        // entirely, so the data view's slot is where the v2 grid must
+        // publish from (matching where v2 mounts on the page).
+        var pg2Owner = null;
+        try {
+          var pgV2c = window.SCW && SCW.proposalGridV2 && SCW.proposalGridV2.CONFIG;
+          if (pgV2c && pgV2c.views) {
+            for (var pgk in pgV2c.views) {
+              var pgv = pgV2c.views[pgk];
+              if (pgv && pgv.dataViewKey === viewId && pgk !== viewId) { pg2Owner = pgk; break; }
+            }
+          }
+        } catch (ePg2) { /* fall through to the normal grid path */ }
+        if (pg2Owner) {
+          if (document.getElementById(pg2Owner)) {
+            SCW.debug('[SCW PDF Export]', viewId, '→ v2 data view, owner ' + pg2Owner + ' present, skipping');
+            continue;
+          }
+          data = scrapeGridView(pg2Owner, cfg.gridKeys);
+          if (!data) {
+            SCW.debug('[SCW PDF Export]', viewId, '→ v2 payload unavailable for ' + pg2Owner + ', skipping');
+            continue;
+          }
+        } else {
         if (!viewHasDataRows(viewId)) {
           SCW.debug('[SCW PDF Export]', viewId, '→ empty grid, skipping');
           continue;
@@ -1416,6 +1443,7 @@
         }
         if (data && cfg.recurringGrids && cfg.recurringGrids.indexOf(viewId) !== -1) {
           data.isRecurring = true;
+        }
         }
       } else if (viewType === 'report') {
         if (!viewHasDataRows(viewId)) {
