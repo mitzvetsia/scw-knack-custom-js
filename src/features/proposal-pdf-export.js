@@ -4060,7 +4060,10 @@
     // of TBD-mode display masking.
     var modelLaborTotal = (function () {
       try {
-        var candidateViews = ['view_3341', 'view_3450', 'view_3451'];
+        // view_4140 first — proposal-grid-v2's flat data view carries the
+        // full model after the cutover; view_3341 kept while the Builder
+        // view still exists.
+        var candidateViews = ['view_4140', 'view_3341', 'view_3450', 'view_3451'];
         if (typeof Knack === 'undefined' || !Knack.views) return null;
         for (var vi = 0; vi < candidateViews.length; vi++) {
           var v = Knack.views[candidateViews[vi]];

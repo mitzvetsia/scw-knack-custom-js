@@ -35,15 +35,15 @@
 
   var CONFIG = {
     enabled: true,
-    // false → v2 renders below the v1 grid for side-by-side parity checks.
-    // true  → v1's table is hidden (still running for publish) and v2 is
-    //         the only visible grid.
-    replaceV1: false,
-    // true → v2 renders the CO "What's Changing" manifest
-    // (#scw-co-change-summary). Keep FALSE while proposal-grid.js (v1) is
-    // in the bundle — v1 renders and owns the manifest until it's deleted
-    // (the publish pipeline scrapes the element scene-wide either way).
-    ownCoManifest: false,
+    // CUTOVER 2026-07-30: v2 is the sole proposal grid on view_3341's
+    // scene. v1 (proposal-grid.js) no longer transforms view_3341 — it
+    // remains in the bundle ONLY for view_3371 (recurring licenses).
+    // false → side-by-side parity mode (v2 renders below the v1 grid).
+    replaceV1: true,
+    // v2 renders the CO "What's Changing" manifest
+    // (#scw-co-change-summary) — same id + structure v1 produced, so the
+    // publish scrape and e-sign walker are unchanged.
+    ownCoManifest: true,
     debug: false,
 
     views: {
@@ -1384,6 +1384,9 @@
       // L1 footer + project totals. Their value cell is td #2 (label has a
       // colspan), so out-specify the qty-column centering rule above.
       '.scw-pg2-table .scw-pg2-l1foot td, .scw-pg2-table .scw-pg2-pt td { text-align: right; font-size: 16px; }',
+      // Section-footer titles ("HEADEND: : …") and the Project/Change
+      // Order Totals title read as headings — left-aligned.
+      '.scw-pg2-table .scw-pg2-l1foot--title td { text-align: left; }',
       '.scw-pg2-l1foot--title td { border-top: 20px solid transparent; border-bottom: 5px solid #07467c; }',
       '.scw-pg2-l1foot-title { font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }',
       '.scw-pg2-pt--first .scw-pg2-l1foot-title { font-size: 2.2em; font-weight: 600; }',
@@ -1409,8 +1412,12 @@
       '.scw-pg2-table .scw-pg2-co-rm td:nth-child(3) { color: #be123c; }',
       // Band header rows
       '.scw-pg2-band td { font: 700 13px/1.2 system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; padding: 9px 12px; background-clip: padding-box; }',
-      '.scw-pg2-band--add td { background: #ecfdf5; color: #065f46; box-shadow: inset 4px 0 0 #059669; border-top: 2px solid #059669; }',
-      '.scw-pg2-band--rm td { background: #f4f7fa; color: #334155; border-top: 26px solid transparent; box-shadow: inset 4px 0 0 #64748b; }',
+      // Accent stripe on the FIRST cell only — per-td insets painted
+      // stray bars at the qty/cost column edges.
+      '.scw-pg2-band--add td { background: #ecfdf5; color: #065f46; border-top: 2px solid #059669; }',
+      '.scw-pg2-band--add td:first-child { box-shadow: inset 4px 0 0 #059669; }',
+      '.scw-pg2-band--rm td { background: #f4f7fa; color: #334155; border-top: 26px solid transparent; }',
+      '.scw-pg2-band--rm td:first-child { box-shadow: inset 4px 0 0 #64748b; }',
       // Per-bucket band subtotals (native-subtotal look) + band totals
       '.scw-pg2-band-sub td { background: #f0f4fa; background-clip: padding-box; color: #163C6E; }',
       '.scw-pg2-band-sub td:first-child { text-align: right; }',
@@ -1437,7 +1444,13 @@
     // display:none (not the clip trick): the data view is never read from
     // the DOM — model only — and a 1000-row grid left renderable is real
     // layout/paint weight on an already-heavy scene.
-    var css = '#' + dataViewKey + ' { display: none !important; }';
+    var css = '#' + dataViewKey + ' { display: none !important; }\n' +
+      // After the v1 view is deleted in Builder, v2 mounts INTO the data
+      // view's root (run() adds scw-pg2-host): unhide the root, keep its
+      // native grid chrome hidden.
+      '#' + dataViewKey + '.scw-pg2-host { display: block !important; }\n' +
+      '#' + dataViewKey + '.scw-pg2-host .kn-table-wrapper, ' +
+      '#' + dataViewKey + '.scw-pg2-host .kn-records-nav { display: none !important; }';
     if (CONFIG.replaceV1) {
       css += '\n#' + v1ViewId + ' .kn-table-wrapper, #' + v1ViewId + ' .kn-records-nav { display: none !important; }';
     }
@@ -1531,6 +1544,11 @@
     var vcfg = CONFIG.views[v1ViewId];
     if (!vcfg || !vcfg.dataViewKey) return;
     var root = document.getElementById(v1ViewId);
+    if (!root) {
+      // v1 view deleted in Builder — mount into the data view's root.
+      root = document.getElementById(vcfg.dataViewKey);
+      if (root) root.classList.add('scw-pg2-host');
+    }
     if (!root) return;
 
     try {
@@ -1553,11 +1571,32 @@
           masked: isInstallationMasked(),
           showProjectTotals: vcfg.showProjectTotals !== false
         });
-        // What's-Changing manifest — dormant while v1 owns it.
+        // CO What's-Changing manifest (v2 owns it since the cutover).
         if (CONFIG.ownCoManifest) {
           try { renderCoManifest(tree); }
           catch (me) { console.warn(NS + ' CO manifest render failed', me); }
         }
+        // Totals stash — v1's buildProjectTotalRows used to write this;
+        // v2 is the sole writer now. Read by proposal-pdf-export
+        // (extractSummaryFields fallback, invoiceTotal, invoiceIsCredit)
+        // and sales-stepper's publish gate. REAL numbers, never masked.
+        try {
+          var tEquipSub = sumRecs(tree.allRecords, CONFIG.fields.hardware);
+          var tLineDisc = sumRecs(tree.allRecords, CONFIG.fields.lineDiscount);
+          var tPropDisc = Math.abs(readDetailNum('2302'));
+          var tEquip = tEquipSub - tLineDisc;
+          var tInstall = sumRecs(tree.allRecords, CONFIG.fields.labor);
+          window.SCW.proposalGridTotals = {
+            viewId: v1ViewId,
+            equipmentSubtotal: tEquipSub,
+            lineItemDiscounts: tLineDisc,
+            proposalDiscount: tPropDisc,
+            equipmentTotal: tEquip,
+            installationTotal: tInstall,
+            grandTotal: tEquip + tInstall - tPropDisc,
+            at: Date.now()
+          };
+        } catch (te) { /* stash is best-effort */ }
       }
       if (!CONFIG.replaceV1) el.classList.add('scw-pg2--preview');
 
@@ -1603,7 +1642,7 @@
     var iv = setInterval(function () {
       tries++;
       var have = readRecords(vcfg.dataViewKey);
-      var root = document.getElementById(v1ViewId);
+      var root = document.getElementById(v1ViewId) || document.getElementById(vcfg.dataViewKey);
       if (have && root) { scheduleRun(v1ViewId); clearInterval(iv); }
       else if (tries >= 20) clearInterval(iv);
     }, 300);

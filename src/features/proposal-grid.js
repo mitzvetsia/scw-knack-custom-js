@@ -27,22 +27,10 @@
     views: {
       // view_3301 removed 2026-07-30 — stale predecessor of view_3341,
       // no longer exists in Builder.
-      view_3341: {
-        showProjectTotals: true,
-        keys: {
-          qty: 'field_1964',
-          labor: 'field_2028',
-          hardware: 'field_2201',
-          cost: 'field_2203',
-          discount: 'field_2267',
-          field2019: 'field_2019',
-          prefix: 'field_2240',
-          number: 'field_1951',
-          l2Sort: 'field_2218',
-          l2Selector: 'field_2228',
-          l3BlankLabelField: 'field_2208',
-        },
-      },
+      // view_3341 removed 2026-07-31 (CUTOVER) — proposal-grid-v2.js is
+      // the sole owner of the main proposal grid. v1 remains in the
+      // bundle ONLY for view_3371 (recurring licenses), whose publish
+      // scrape still depends on this pipeline's synthesized rows.
       view_3371: {
         showProjectTotals: false,
         keys: {
@@ -3294,6 +3282,16 @@ tr.${CO_RM.bannerCls} td {
     // unconditionally so base proposals never show a blank CO Action
     // column. Tint/banner rules are class-scoped, so harmless on base.
     coRmInjectCss();
+
+    // CUTOVER: proposal-grid-v2 owns the CO surfaces (banded grid +
+    // #scw-co-change-summary manifest). Without this early return, a
+    // v1 pass over an action-less view (view_3371 licenses) would
+    // DELETE v2's manifest via the no-action branch below.
+    if (window.SCW && window.SCW.proposalGridV2 &&
+        window.SCW.proposalGridV2.CONFIG &&
+        window.SCW.proposalGridV2.CONFIG.ownCoManifest) {
+      return;
+    }
 
     // Clear banner rows from the previous pass before snapshotting rows.
     Array.prototype.slice.call(tbody.querySelectorAll('tr.' + CO_RM.bannerCls))

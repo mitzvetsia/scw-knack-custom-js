@@ -6,8 +6,11 @@
   // which silently breaks group-collapse and sort. Forcing 1000/page
   // makes the worksheet operate on the complete dataset.
   const VIEW_IDS = [
-    // Misc views forced full-page
-    'view_3341', 'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
+    // Misc views forced full-page. (view_3341 dropped at the v2 cutover:
+    // its grid is hidden and nothing reads its model anymore — letting it
+    // fetch the Builder-default page size halves the scene's data load
+    // until the view is deleted in Builder.)
+    'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
     // worksheet-v2 source view (mirrors view_3610 — same cap rationale)
     'view_3962',
     // All WORKSHEET_CONFIG views from device-worksheet.js
@@ -60,7 +63,7 @@
   // forcing full pages.
   const FORCED_FULL_PAGE_VIEWS = [
     // change-record-limit.js — misc views
-    'view_3341', 'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
+    'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
     // worksheet-v2 source view
     'view_3962',
     // change-record-limit.js — device-worksheet views

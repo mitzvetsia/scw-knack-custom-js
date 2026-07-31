@@ -49,8 +49,6 @@ cat \
   src/features/modal-form-connection-sync.js \
   src/features/proposal-grid.js \
   src/features/proposal-grid-v2.js \
-  src/features/co-band-mockup.js \
-  src/features/view-3341-loading-overlay.js \
   src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \
   src/features/proposal-preview-images.js \
