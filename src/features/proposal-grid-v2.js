@@ -424,7 +424,9 @@
       var continues = next && next.p === cur.p && next.n === cur.n + 1;
       if (continues) continue;
       var len = i - runStart + 1;
-      if (len >= 3) out.push(parsed[runStart].lbl + '–' + cur.lbl);
+      // "thru", not an en dash — the designators already contain hyphens,
+      // so "I-046–I-048" read as a 2-item list instead of a span.
+      if (len >= 3) out.push(parsed[runStart].lbl + ' thru ' + cur.lbl);
       else for (var j = runStart; j <= i; j++) out.push(parsed[j].lbl);
       runStart = -1;
     }
