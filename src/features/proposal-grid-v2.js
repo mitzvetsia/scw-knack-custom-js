@@ -100,6 +100,20 @@
     // Scenes that get the scene-wide bold-blue h2 heading rule (ported
     // from v1's styleSceneIds — the proposal preview scene).
     styleSceneIds: ['scene_1096'],
+
+    // Fixed bucket (L2 group) presentation order, matched on the RAW
+    // bucket label (pre-rename, lowercased). Wins over field_2218's
+    // numeric sortOrder; unlisted buckets sink below the listed ones and
+    // fall back to field_2218 among themselves.
+    bucketDisplayOrder: [
+      'networking or headend',
+      'other equipment',
+      'camera or reader',
+      'mounting brackets',
+      'mounting hardware',
+      'other services',
+      'assumptions'
+    ],
     opsStepperView:     'view_3345',  // presence+visible = Ops viewer (mask bypass)
 
     camReaderBucketId:   '6481e5ba38f283002898113c',
@@ -276,6 +290,13 @@
     return out;
   }
 
+  // Rank in CONFIG.bucketDisplayOrder (raw label, lowercased); unlisted
+  // buckets rank below every listed one (Infinity → field_2218 tiebreak).
+  function bucketDisplayRank(label) {
+    var i = CONFIG.bucketDisplayOrder.indexOf(String(label || '').toLowerCase().trim());
+    return i === -1 ? Infinity : i;
+  }
+
   function buildTree(records) {
     var F = CONFIG.fields;
     var byId = Object.create(null);
@@ -355,8 +376,10 @@
     for (i = 0; i < l1Order.length; i++) {
       var l1g = l1Map[l1Order[i]];
       l1g.bucketOrder.sort(function (a, b2) {
-        var sa = l1g.buckets[a].sort, sb = l1g.buckets[b2].sort;
-        if (sa !== sb) return sa - sb;
+        var A = l1g.buckets[a], B = l1g.buckets[b2];
+        var ra = bucketDisplayRank(A.label), rb = bucketDisplayRank(B.label);
+        if (ra !== rb) return ra - rb;
+        if (A.sort !== B.sort) return A.sort - B.sort;
         return 0;
       });
       for (var bi = 0; bi < l1g.bucketOrder.length; bi++) {
