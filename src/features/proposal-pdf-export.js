@@ -505,6 +505,9 @@
           console.log('[scw-pdf] grid payload for ' + viewId + ' built from proposal-grid-v2 model (no DOM scrape)');
           return {
             viewId: viewId, type: 'grid', title: getViewTitle(viewId),
+            // Provenance stamp — renderGridSections emits it as a hidden
+            // marker so any published page/PDF can be attributed.
+            gridSource: 'v2',
             sections: v2data.sections, projectTotals: v2data.projectTotals
           };
         }
@@ -1674,6 +1677,12 @@
   }
 
   function renderGridSections(view, html, isChangeOrder) {
+    // Provenance marker (v2-sourced payloads only) — invisible, but lets
+    // any published page/PDF answer "which grid built this?" via
+    // [data-scw-grid-src] in DevTools.
+    if (view.gridSource) {
+      html.push('<span data-scw-grid-src="' + esc(view.gridSource) + '" style="display:none"></span>');
+    }
     if (view.title) {
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
     }
