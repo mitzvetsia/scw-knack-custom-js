@@ -202,6 +202,10 @@
   // KEEP links stay in place, in order; the rest move into a panel behind a
   // toggle button inserted right after the last kept link. Idempotent — skips
   // when already collapsed, and rebuilds after Knack regenerates the nav.
+  // Currently-mounted K1 wrap (outside-click closer reads it; assigned on
+  // every collapse() pass because nav rebuilds re-create the element).
+  var _k1Wrap = null;
+
   function collapse() {
     var nav = document.getElementById(NAV_VIEW);
     if (!nav) return;
@@ -220,7 +224,7 @@
     var collapsedDirect = direct.filter(function (a) { return KEEP.indexOf(labelOf(a)) === -1; });
 
     // Already collapsed (wrap present, nothing loose) or nothing to collapse.
-    if (existingWrap && !collapsedDirect.length) return;
+    if (existingWrap && !collapsedDirect.length) { _k1Wrap = existingWrap; return; }
     if (!existingWrap && !collapsedDirect.length) return;
 
     _busy = true;
@@ -250,18 +254,27 @@
       }
       var panelEl = wrap.querySelector('.scw-k1-panel');
       collapsedDirect.forEach(function (a) { panelEl.appendChild(a); });
+      // Cache for the outside-click closer — re-assigned every pass since
+      // Knack nav rebuilds re-create the wrap.
+      _k1Wrap = wrap;
     } finally {
       setTimeout(function () { _busy = false; }, 0);
     }
   }
 
-  // Close the dropdown on any outside click (bound once).
+  // Close the dropdown on any outside click (bound once). Uses the wrap
+  // cached by collapse() instead of a per-click document.querySelector —
+  // this listener fires on EVERY click on every page (perf traces
+  // 2026-07-30). collapse() re-assigns the ref on every pass, so nav
+  // rebuilds that re-create the wrap keep it fresh; a stale ref no-ops.
   function bindOutsideClose() {
     if (document.documentElement.hasAttribute('data-scw-k1-close')) return;
     document.documentElement.setAttribute('data-scw-k1-close', '1');
     document.addEventListener('click', function (e) {
-      var open = document.querySelector('.scw-k1-wrap.is-open');
-      if (open && !open.contains(e.target)) open.classList.remove('is-open');
+      if (_k1Wrap && _k1Wrap.classList.contains('is-open') &&
+          !_k1Wrap.contains(e.target)) {
+        _k1Wrap.classList.remove('is-open');
+      }
     });
   }
 

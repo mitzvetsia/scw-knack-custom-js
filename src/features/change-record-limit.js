@@ -6,8 +6,14 @@
   // which silently breaks group-collapse and sort. Forcing 1000/page
   // makes the worksheet operate on the complete dataset.
   const VIEW_IDS = [
-    // Misc views forced full-page
-    'view_3301', 'view_3341', 'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
+    // Misc views forced full-page. (view_3341 dropped at the v2 cutover:
+    // its grid is hidden and nothing reads its model anymore — letting it
+    // fetch the Builder-default page size halves the scene's data load
+    // until the view is deleted in Builder. view_3896 dropped 2026-07-31:
+    // the publish JSON snapshot now reads view_4140 — see
+    // proposal-pdf-export.js jsonIncludeViews — so nothing reads its
+    // model; delete the view in Builder.)
+    'view_3550', 'view_3586', 'view_3610', 'view_3926',
     // worksheet-v2 source view (mirrors view_3610 — same cap rationale)
     'view_3962',
     // All WORKSHEET_CONFIG views from device-worksheet.js
@@ -43,7 +49,10 @@
     'view_4079', 'view_4084', 'view_4086', 'view_4088',
     // Sub portal Manage Change Order page (scene_1374) — 1:1 analogues of
     // the four CO scene views above, same full-model rationale.
-    'view_4112', 'view_4114', 'view_4116', 'view_4118'
+    'view_4112', 'view_4114', 'view_4116', 'view_4118',
+    // proposal-grid-v2 flat data view (duplicate of view_3341, no
+    // groupings) — v2 renders the whole grid off this model.
+    'view_4140'
   ];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
@@ -57,7 +66,7 @@
   // forcing full pages.
   const FORCED_FULL_PAGE_VIEWS = [
     // change-record-limit.js — misc views
-    'view_3301', 'view_3341', 'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
+    'view_3550', 'view_3586', 'view_3610', 'view_3926',
     // worksheet-v2 source view
     'view_3962',
     // change-record-limit.js — device-worksheet views
@@ -78,7 +87,9 @@
     // Change Order scene views (see VIEW_IDS above)
     'view_4079', 'view_4084', 'view_4086', 'view_4088',
     // Sub portal Manage Change Order views (see VIEW_IDS above)
-    'view_4112', 'view_4114', 'view_4116', 'view_4118'
+    'view_4112', 'view_4114', 'view_4116', 'view_4118',
+    // proposal-grid-v2 flat data view (see VIEW_IDS above)
+    'view_4140'
   ];
 
   (function injectHidePaginationCss() {

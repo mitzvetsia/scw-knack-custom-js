@@ -14,6 +14,7 @@ trap 'rm -f "$TMP_BUNDLE"' EXIT
 cat \
   src/config.js \
   src/util.js \
+  src/features/patch-jquery-delegate-matching.js \
   src/features/session-timeout.js \
   src/features/_design-tokens.js \
   src/features/sow-color.js \
@@ -46,9 +47,7 @@ cat \
   src/features/ratking/hash-bump-record-update.js \
   src/features/ratking/scene-776-stub.js \
   src/features/modal-form-connection-sync.js \
-  src/features/proposal-grid.js \
-  src/features/co-band-mockup.js \
-  src/features/view-3341-loading-overlay.js \
+  src/features/proposal-grid-v2.js \
   src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \
   src/features/proposal-preview-images.js \

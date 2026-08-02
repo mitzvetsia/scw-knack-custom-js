@@ -1523,7 +1523,6 @@
          device-worksheet\'s default black/gray shadow). Big positive
          y-offset combined with negative spread keeps the shadow strictly
          below + to the sides — never on top. */
-      '.scw-bid-review__expand-cell .scw-ws-card:has(.scw-ws-open),',
       '.scw-bid-review__expand-cell .scw-ws-card {',
       '  box-shadow: 0 16px 20px -10px rgba(2, 132, 199, 0.385),',
       '              -10px 14px 18px -10px rgba(2, 132, 199, 0.315),',
@@ -1682,8 +1681,10 @@
       '.scw-bid-review__panel-col--worksheet .scw-ws-photo-wrap,',
       '.scw-bid-review__panel-col--worksheet .scw-inline-photo-field,',
       '.scw-bid-review__panel-col--worksheet .scw-inline-photo-row,',
-      '.scw-bid-review__panel-col--worksheet .scw-ws-field:has(td[data-field-key="field_771"]),',
-      '.scw-bid-review__panel-col--worksheet .scw-ws-field:has(td[data-field-key="field_2415"]) {',
+      /* (two v1-only :has(td[data-field-key]) hide rules dropped 2026-07-30 —
+         the v1 expand-panel worksheet is never built now (Known Issue #19)
+         and :has() rules tax every style recalc on this page) */
+      '.scw-bid-review__panel-col--worksheet .scw-ws-field-none {',
       '  display: none !important;',
       '}',
       '.scw-bid-review__panel-col--worksheet .scw-ws-card {',

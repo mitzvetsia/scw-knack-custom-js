@@ -331,6 +331,9 @@
   }
 
   // ── Click handling (delegated, document-wide) ──────────────────────
+  // The currently-open dropdown, tracked so the outside-click close path
+  // never scans the document (this listener fires on EVERY click).
+  var _openDd = null;
   document.addEventListener('click', function (e) {
     var target = e.target;
 
@@ -358,6 +361,7 @@
 
       saveSelected(viewId, serializeSelected(presetId, nextDir));
       dd.classList.remove('is-open');
+      _openDd = null;
 
       // Trigger view re-render so transformView re-reads the active rules.
       try {
@@ -378,19 +382,22 @@
       var ddBtn = btn.closest('.' + DD_CLS);
       if (!ddBtn) return;
       var wasOpen = ddBtn.classList.contains('is-open');
-      // Close any other open dropdowns first.
-      document.querySelectorAll('.' + DD_CLS + '.is-open').forEach(function (d) {
-        d.classList.remove('is-open');
-      });
+      // Close any other open dropdown first — via the tracked ref, not a
+      // document scan (this listener runs on every document click; the
+      // scans taxed clicks on huge scenes — perf traces 2026-07-30). A
+      // stale ref degrades safely: classList on a detached node no-ops.
+      if (_openDd && _openDd !== ddBtn) _openDd.classList.remove('is-open');
       if (!wasOpen) ddBtn.classList.add('is-open');
+      _openDd = wasOpen ? null : ddBtn;
       e.stopPropagation();
       return;
     }
 
-    // Outside click → close all.
-    document.querySelectorAll('.' + DD_CLS + '.is-open').forEach(function (d) {
-      d.classList.remove('is-open');
-    });
+    // Outside click → close the open dropdown (tracked ref, no scan).
+    if (_openDd) {
+      _openDd.classList.remove('is-open');
+      _openDd = null;
+    }
   });
 
   // ── Bindings ────────────────────────────────────────────────────────

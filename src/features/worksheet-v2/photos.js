@@ -1052,8 +1052,13 @@
       completedDate: el.getAttribute('data-qa-date')     || '',
       completed:     !!resolvedImg,
       needsQa:       !!needsQa,
-      // Photo-add + classify support in the QA modal (qa-popover.js):
-      required:      el.getAttribute('data-photo-required') === 'true',
+      // Photo-add + classify support in the QA modal (qa-popover.js).
+      // The chit itself may not carry data-photo-required — resolve from
+      // the nearest element that does (the photo card).
+      required:      (function () {
+        var reqEl = (el.closest && el.closest('[data-photo-required]')) || el;
+        return reqEl.getAttribute('data-photo-required') === 'true';
+      })(),
       viewKey:       viewKey
     };
 

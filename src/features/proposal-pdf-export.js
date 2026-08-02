@@ -142,9 +142,13 @@
       // JSON snapshot for this scene is intentionally slim:
       //   { sowRecordId, view_3896: [...full records...] }
       // No header detail, no other grids — Make pipelines that
-      // duplicate records only care about view_3896's projection.
-      // The rendered HTML proposal is unaffected.
-      jsonIncludeViews: ['view_3896'],
+      // duplicate records only care about this projection.
+      // CONSOLIDATION 2026-07-31: records now come from view_4140 (the
+      // proposal-grid-v2 data view, extended with view_3896's columns)
+      // but stay keyed "view_3896" so Make scenarios are untouched.
+      // view_3896 can be deleted in Builder — the scene then loads the
+      // line-item set once instead of twice.
+      jsonIncludeViews: [{ viewId: 'view_4140', as: 'view_3896' }],
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
       recurringGrids: ['view_3371'],
@@ -491,6 +495,31 @@
   }
 
   function scrapeGridView(viewId, keys) {
+    // proposal-grid-v2 (model-driven rebuild): when v2 owns this view it
+    // builds the same intermediate structure straight from the Backbone
+    // model — no DOM scrape, no dependency on v1's transformed rows.
+    // Returns null (→ fall through to the v1 DOM scrape) when v2 isn't
+    // active for the view, the model isn't ready, or the grid is a CO
+    // (banded CO publish isn't ported to v2 yet).
+    try {
+      var pgV2 = window.SCW && window.SCW.proposalGridV2;
+      if (pgV2 && typeof pgV2.buildPublishData === 'function') {
+        var v2data = pgV2.buildPublishData(viewId);
+        if (v2data) {
+          console.log('[scw-pdf] grid payload for ' + viewId + ' built from proposal-grid-v2 model (no DOM scrape)');
+          return {
+            viewId: viewId, type: 'grid', title: getViewTitle(viewId),
+            // Provenance stamp — renderGridSections emits it as a hidden
+            // marker so any published page/PDF can be attributed.
+            gridSource: 'v2',
+            sections: v2data.sections, projectTotals: v2data.projectTotals
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('[scw-pdf] proposal-grid-v2 publish source failed — falling back to DOM scrape', e);
+    }
+
     var root = document.getElementById(viewId);
     if (!root) return null;
 
@@ -1366,6 +1395,33 @@
       var data = null;
 
       if (viewType === 'grid') {
+        // proposal-grid-v2 data view (e.g. view_4140): while the owning
+        // v1 Builder view still exists it handles publish at its own DOM
+        // position — never raw-scrape the hidden flat grid. Once the v1
+        // view is deleted in Builder, its element is gone from the walk
+        // entirely, so the data view's slot is where the v2 grid must
+        // publish from (matching where v2 mounts on the page).
+        var pg2Owner = null;
+        try {
+          var pgV2c = window.SCW && SCW.proposalGridV2 && SCW.proposalGridV2.CONFIG;
+          if (pgV2c && pgV2c.views) {
+            for (var pgk in pgV2c.views) {
+              var pgv = pgV2c.views[pgk];
+              if (pgv && pgv.dataViewKey === viewId && pgk !== viewId) { pg2Owner = pgk; break; }
+            }
+          }
+        } catch (ePg2) { /* fall through to the normal grid path */ }
+        if (pg2Owner) {
+          if (document.getElementById(pg2Owner)) {
+            SCW.debug('[SCW PDF Export]', viewId, '→ v2 data view, owner ' + pg2Owner + ' present, skipping');
+            continue;
+          }
+          data = scrapeGridView(pg2Owner, cfg.gridKeys);
+          if (!data) {
+            SCW.debug('[SCW PDF Export]', viewId, '→ v2 payload unavailable for ' + pg2Owner + ', skipping');
+            continue;
+          }
+        } else {
         if (!viewHasDataRows(viewId)) {
           SCW.debug('[SCW PDF Export]', viewId, '→ empty grid, skipping');
           continue;
@@ -1391,6 +1447,7 @@
         }
         if (data && cfg.recurringGrids && cfg.recurringGrids.indexOf(viewId) !== -1) {
           data.isRecurring = true;
+        }
         }
       } else if (viewType === 'report') {
         if (!viewHasDataRows(viewId)) {
@@ -1652,6 +1709,12 @@
   }
 
   function renderGridSections(view, html, isChangeOrder) {
+    // Provenance marker (v2-sourced payloads only) — invisible, but lets
+    // any published page/PDF answer "which grid built this?" via
+    // [data-scw-grid-src] in DevTools.
+    if (view.gridSource) {
+      html.push('<span data-scw-grid-src="' + esc(view.gridSource) + '" style="display:none"></span>');
+    }
     if (view.title) {
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
     }
@@ -1731,7 +1794,16 @@
               html.push('<tr class="l3-row l3-product">');
               html.push('<td' + prodClass + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(prod.label));
               if (prod.connectedDevices && prod.connectedDevices.length) {
-                html.push('<span class="connected-devices">(' + esc(prod.connectedDevices.join(', ')) + ')</span>');
+                // v2-style labeled callout (orange label, quiet gray list).
+                // Device COUNT in the label ("24 connected devices:") —
+                // the compressed list can be shorter than the true count
+                // (ranges), so the payload carries it explicitly. Older /
+                // v1-scraped payloads without the count keep the plain label.
+                var cdN = prod.connectedDevicesCount;
+                var cdLabel = (typeof cdN === 'number' && cdN > 0)
+                  ? cdN + ' connected device' + (cdN === 1 ? '' : 's') + ':'
+                  : 'Connected devices:';
+                html.push('<span class="conn-line"><b>' + esc(cdLabel) + '</b> ' + esc(prod.connectedDevices.join(', ')) + '</span>');
               }
               html.push('</td>');
               if (!prod.hideCost) {
@@ -1748,7 +1820,7 @@
               // (Accessory rollup lines deliberately NOT bolded — only the
               // true L3 product header row gets the bold treatment, so the
               // parent product stands out over its children; 2026-07-17.)
-              html.push('<tr class="' + l4Class + '">');
+              html.push('<tr class="' + l4Class + (item.isEquipment ? ' l4-acc' : '') + '">');
               var l4Content = item.description
                 ? item.description
                     .replace(/<b>/gi, '<span style="font-weight:700">')
@@ -1757,7 +1829,11 @@
                     .replace(/<\/p>/gi, '</div>')
                 : esc(item.label);
               if (item.cameraList) {
-                l4Content += '<br><span class="connected-devices">(' + esc(item.cameraList) + ')</span>';
+                // v2 style: labeled "Applies to:" beneath labor lines;
+                // accessory rollups get the bare gray list.
+                l4Content += item.isEquipment
+                  ? '<span class="conn-line conn-line--bare">' + esc(item.cameraList) + '</span>'
+                  : '<span class="conn-line"><b>Applies to:</b> ' + esc(item.cameraList) + '</span>';
               }
               html.push('<td' + (l4TdClass ? ' class="' + l4TdClass + '"' : '') + (prod.hideCost ? ' colspan="3"' : '') + '>' + l4Content + '</td>');
               if (!prod.hideCost) {
@@ -2067,7 +2143,7 @@
       '@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
       '',
       '*, *::before, *::after { box-sizing: border-box; }',
-      'body { font-family: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #333; font-size: 11px; line-height: 1.4; margin: 0; padding: 14px; }',
+      'body { font-family: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #333; font-size: 10px; line-height: 1.4; margin: 0; padding: 14px; }',
       '',
       '/* ── View Title ── */',
       '.view-title {',
@@ -2101,15 +2177,16 @@
       '/* ── L1 Section ── */',
       '.l1-section { margin-bottom: 12px; }',
       '.l1-header {',
-      '  font-size: 18px; font-weight: 200; color: #07467c;',
-      '  padding: 20px 0 6px 0; border-bottom: 3px solid #07467c;',
+      '  font-size: 16px; font-weight: 200; color: #07467c;',
+      '  /* 8px left = same edge as the product-table cells */',
+      '  padding: 20px 8px 6px 8px; border-bottom: 3px solid #07467c;',
       '  margin-bottom: 4px;',
       '}',
       '',
       '/* ── L2 Bucket ── */',
       '.l2-header {',
-      '  font-size: 13px; font-weight: 400; color: #07467c;',
-      '  background: aliceblue; padding: 5px 10px;',
+      '  font-size: 12px; font-weight: 400; color: #07467c;',
+      '  background: aliceblue; padding: 5px 8px;',
       '  margin-top: 12px; margin-bottom: 0;',
       '}',
       '',
@@ -2125,18 +2202,24 @@
       '',
       '/* ── L3 Product Row ── */',
       '.l3-row td { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; font-weight: 400; color: #07467c; }',
-      '.l3-row td:first-child { font-size: 12px; }',
+      '.l3-row td:first-child { font-size: 11px; }',
       '.l3-row td.col-qty, .l3-row td.col-cost { font-weight: 600; }',
       '.l3-row td.mounting { padding-left: 40px; font-size: 11px; }',
       '/* The PRODUCT header row reads BOLD; labor/description rows and',
       '   accessory rollup lines stay regular. */',
       '.l3-row.l3-product td { font-weight: 700; }',
-      '.connected-devices { display: inline; margin-left: 4px; color: orange; font-weight: 700; font-size: 10px; }',
+      '.l3-row.l3-product td:first-child { font-size: 12px; }',
+      '/* v2-style callouts: orange LABEL, quiet gray designator list. */',
+      '.conn-line { display: block; margin-top: 3px; color: #64748b; font-weight: 400; font-size: 9px; line-height: 1.4; }',
+      '.conn-line b { color: orange; font-weight: 800; }',
       '',
-      '/* ── L4 Line Item Row ── */',
-      '.l4-row td { padding: 3px 8px 3px 40px; color: #555; font-size: 10px; font-weight: 300; border-bottom: 1px solid #f8f8f8; }',
+      '/* ── L4 Line Item Row — flush with the product header (v2) ── */',
+      '.l4-row td { padding: 4px 8px; color: #555; font-size: 9.5px; font-weight: 300; border-bottom: 1px solid #f8f8f8; }',
       '.l4-row td p { margin: 0; }',
-      '.l4-row td.col-qty, .l4-row td.col-cost { padding-left: 8px; font-weight: 600; color: #07467c; }',
+      '.l4-row td.col-qty, .l4-row td.col-cost { font-weight: 600; color: #07467c; }',
+      '/* Accessory rollups muted slate — secondary to the product (v2). */',
+      '.l4-row.l4-acc td { color: #5f6b7a; font-weight: 400; }',
+      '.l4-row.l4-acc td.col-qty, .l4-row.l4-acc td.col-cost { color: #5f6b7a; }',
       '',
       '/* ── L2 Footer ── */',
       '.l2-footer td {',
@@ -2153,7 +2236,7 @@
       '}',
       '.l1-footer-title {',
       '  text-align: right; font-weight: 700; color: #07467c;',
-      '  font-size: 13px; margin-bottom: 4px;',
+      '  font-size: 12px; margin-bottom: 4px;',
       '}',
       '.l1-footer-line {',
       '  display: flex; justify-content: flex-end; gap: 20px;',
@@ -2164,7 +2247,7 @@
       '.l1-line--sub .l1-footer-label, .l1-line--sub .l1-footer-value { color: #07467c; }',
       '.l1-line--disc .l1-footer-label, .l1-line--disc .l1-footer-value { color: orange; }',
       '.l1-line--final .l1-footer-label, .l1-line--final .l1-footer-value { color: #07467c; font-weight: 900; }',
-      '.l1-line--final .l1-footer-value { font-size: 15px; }',
+      '.l1-line--final .l1-footer-value { font-size: 14px; }',
       '/* Tight cluster: per-L1 Subtotal → Discount → Total */',
       '.l1-line--sub, .l1-line--disc { padding-top: 0; padding-bottom: 0; }',
       '.l1-line--sub + .l1-footer-line, .l1-line--disc + .l1-footer-line { padding-top: 0; }',
@@ -2174,7 +2257,7 @@
       '  margin-top: 30px; page-break-inside: avoid;',
       '}',
       '.pt-title {',
-      '  font-size: 22px; font-weight: 600; color: #07467c;',
+      '  font-size: 19px; font-weight: 600; color: #07467c;',
       '  padding-bottom: 8px; border-bottom: 3px solid #07467c;',
       '  margin-bottom: 6px;',
       '}',
@@ -2187,8 +2270,8 @@
       '.pt-line--sub .pt-label, .pt-line--sub .pt-value { color: #07467c; }',
       '.pt-line--disc .pt-label, .pt-line--disc .pt-value { color: orange; }',
       '.pt-line--final .pt-label, .pt-line--final .pt-value { color: #07467c; font-weight: 900; }',
-      '.pt-line--final:last-child .pt-label { font-size: 17px; }',
-      '.pt-line--final:last-child .pt-value { font-size: 19px; }',
+      '.pt-line--final:last-child .pt-label { font-size: 15px; }',
+      '.pt-line--final:last-child .pt-value { font-size: 17px; }',
       '/* Extra padding below Equipment Total and Installation Total */',
       '/* (COs label these Equipment Net / Installation Net) */',
       '.pt-line--equipment-total, .pt-line--installation-total,',
@@ -2255,7 +2338,7 @@
       '      sync with co-band-mockup.js (V1 + gray rows / red credits). ── */',
       '.co-band-hdr {',
       '  font-weight: 800; font-size: 11px; text-transform: uppercase;',
-      '  letter-spacing: 0.06em; padding: 8px 10px; margin: 14px 0 8px;',
+      '  letter-spacing: 0.06em; padding: 8px; margin: 14px 0 8px;',
       '  page-break-after: avoid;',
       '}',
       '.co-band-hdr--add {',
@@ -2476,13 +2559,18 @@
     if (cfg && Array.isArray(cfg.jsonIncludeViews) && cfg.jsonIncludeViews.length) {
       var slim = { sowRecordId: getPageRecordId() || '' };
       for (var s = 0; s < cfg.jsonIncludeViews.length; s++) {
-        var vid = cfg.jsonIncludeViews[s];
+        // Entry: 'view_XXXX' or { viewId, as } — `as` renames the key in
+        // the snapshot so a view can be swapped out without touching the
+        // Make scenarios that read the old key.
+        var entry = cfg.jsonIncludeViews[s];
+        var vid = typeof entry === 'string' ? entry : (entry && entry.viewId);
         if (typeof vid !== 'string') continue;
+        var asKey = (entry && typeof entry === 'object' && entry.as) || vid;
         var slimT = detectViewType(vid);
         if (slimT === 'grid') {
-          slim[vid] = extractGridRecords(vid);
+          slim[asKey] = extractGridRecords(vid);
         } else if (slimT === 'detail') {
-          slim[vid] = extractDetailRecord(vid);
+          slim[asKey] = extractDetailRecord(vid);
         }
       }
       return slim;
@@ -3921,10 +4009,10 @@
     // whose first member has `field_2219_raw` (the bucket connection).
     // Works for the slim snapshot shape (cfg.jsonIncludeViews) and the
     // full shape, regardless of which view_id the line items live in.
-    // The snapshot view (view_3896) is set to 1000 rows/page in
-    // change-record-limit.js — DON'T fall back to view_3341 here:
-    // that view doesn't project field_2219/_1963/_1958/_2268, so its
-    // models are missing the bucket/sku/name/unit-price needed below.
+    // The snapshot records come from view_4140 (keyed "view_3896" for
+    // Make compatibility; consolidation 2026-07-31). view_4140 must
+    // project field_2219/_1963/_1958/_2268 — the bucket/sku/name/
+    // unit-price read below.
     var lineItems = [];
     var keys = Object.keys(jsonSnapshot);
     for (var ki = 0; ki < keys.length; ki++) {
@@ -4038,7 +4126,10 @@
     // of TBD-mode display masking.
     var modelLaborTotal = (function () {
       try {
-        var candidateViews = ['view_3341', 'view_3450', 'view_3451'];
+        // view_4140 first — proposal-grid-v2's flat data view carries the
+        // full model after the cutover; view_3341 kept while the Builder
+        // view still exists.
+        var candidateViews = ['view_4140', 'view_3341', 'view_3450', 'view_3451'];
         if (typeof Knack === 'undefined' || !Knack.views) return null;
         for (var vi = 0; vi < candidateViews.length; vi++) {
           var v = Knack.views[candidateViews[vi]];
@@ -4259,15 +4350,25 @@
       return (s || '').replace(/\s+/g, ' ').replace(/ /g, ' ').trim();
     }
 
+    // View titles are held PENDING and only flushed when real content
+    // follows. Views whose content is deliberately skipped (BOM tables,
+    // Site Maps — images are stripped above) would otherwise leave a
+    // dangling header at the tail of the agreement.
+    var pendingTitle = null;
+    function emitEl(el) {
+      if (pendingTitle) { elements.push(pendingTitle); pendingTitle = null; }
+      elements.push(el);
+    }
+
     function pushHeader(level, text) {
       if (!text) return;
       var typeMap = { 1: 'text_header_one', 2: 'text_header_two', 3: 'text_header_three' };
-      elements.push({ type: typeMap[level] || 'text_header_three', text: text });
+      emitEl({ type: typeMap[level] || 'text_header_three', text: text });
     }
 
     function pushNormal(text) {
       if (!text) return;
-      elements.push({ type: 'text_normal', text: text });
+      emitEl({ type: 'text_normal', text: text });
     }
 
     // Cell text with element boundaries turned into spaces. Reading
@@ -4328,13 +4429,16 @@
         var label = cleanText(labelEl.textContent);
         if (/^expiration\s+date/i.test(label)) continue;
         if (/^proposal\s+id/i.test(label)) continue;
-        var value = cleanText(valueEl ? valueEl.textContent : '');
+        // cellText, not textContent — multi-line values (Project Address
+        // street<br>city) glue together across the tag otherwise
+        // ("…North Carolina 8Denton, NC…").
+        var value = valueEl ? cellText(valueEl) : '';
         cells.push([
           { text: label, styles: ['bold'] },
           { text: value }
         ]);
       }
-      if (cells.length) elements.push({ type: 'table', table_cells: padRows(cells) });
+      if (cells.length) emitEl({ type: 'table', table_cells: padRows(cells) });
     }
 
     // .col-qty / .col-cost cells get center alignment per request.
@@ -4364,7 +4468,7 @@
 
       function flushTable() {
         if (combinedCells.length) {
-          elements.push({ type: 'table', table_cells: padRows(combinedCells) });
+          emitEl({ type: 'table', table_cells: padRows(combinedCells) });
         }
         combinedCells = [];
         emittedHeaderRow = false;
@@ -4476,7 +4580,7 @@
         tableCells.push([labelCell, valueCell]);
       }
       if (tableCells.length) {
-        elements.push({ type: 'table', table_cells: padRows(tableCells) });
+        emitEl({ type: 'table', table_cells: padRows(tableCells) });
       }
     }
 
@@ -4528,7 +4632,7 @@
           cells.push(rowOut);
         }
         if (cells.length > 1) {
-          elements.push({ type: 'table', table_cells: padRows(cells) });
+          emitEl({ type: 'table', table_cells: padRows(cells) });
         }
       }
 
@@ -4559,7 +4663,7 @@
         }
         cells.push(rowCells);
       }
-      if (cells.length) elements.push({ type: 'table', table_cells: padRows(cells) });
+      if (cells.length) emitEl({ type: 'table', table_cells: padRows(cells) });
     }
 
     function walkChildren(parent) {
@@ -4578,12 +4682,24 @@
           continue;
         }
 
+        // Appended image sections (Site Maps / Additional Photos). Their
+        // <img>s are stripped up top, so descending would leave one
+        // dangling "Site Maps" <h2> per floorplan page.
+        if (classes && (classes.contains('append-image-page') ||
+                        classes.contains('append-image-grid-section'))) {
+          continue;
+        }
+
         if (classes && classes.contains('detail-label-none')) { emitDetailLabelNone(child); continue; }
         if (child.tagName.toLowerCase() === 'table' && classes && classes.contains('detail-table')) {
           emitDetailTable(child); continue;
         }
         if (classes && classes.contains('view-title')) {
-          pushHeader(2, cleanText(child.textContent));
+          // Held pending — flushed by emitEl only when content follows.
+          // A title whose section emits nothing (BOM, Site Maps) is
+          // silently replaced by the next title or dropped at the end.
+          var vt = cleanText(child.textContent);
+          if (vt) pendingTitle = { type: 'text_header_two', text: vt };
           continue;
         }
         if (classes && classes.contains('view-narrative')) {

@@ -126,7 +126,15 @@
         var s = raw[j];
         if (!s || !s.id || seen[s.id]) continue;
         seen[s.id] = true;
-        list.push({ id: s.id, label: stripHtml(s.identifier) || s.id, name: nameMap[s.id] || '' });
+        // Identifier can be blank on freshly created SOWs (stale stored
+        // identifier) — prefer the friendly name from the SOW grids over
+        // ever showing a raw record id on the pill.
+        list.push({
+          id: s.id,
+          label: stripHtml(s.identifier) || nameMap[s.id] ||
+                 (ns.sowNameById && ns.sowNameById(s.id)) || s.id,
+          name: nameMap[s.id] || ''
+        });
       }
     }
     list.sort(function (a, b) {

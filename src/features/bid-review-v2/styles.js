@@ -23,7 +23,10 @@
        bottom on load (confirmed via scroll-spy: repeated ~288px drops with
        NO scrollTo/scrollBy/scrollTop call). Disable it while the bid-review
        page is active (body.scw-bid-review-active is set by v1's mount). */
-    'html:has(body.scw-bid-review-active), body.scw-bid-review-active {',
+    /* Was html:has(body.scw-bid-review-active) — render.js now stamps the
+       class on <html> alongside <body> (:has() on html was a
+       whole-document invalidation anchor on this 15k-node page). */
+    'html.scw-bid-review-active, body.scw-bid-review-active {',
     '  overflow-anchor: none !important;',
     '}',
     'body.scw-bid-review-active * { overflow-anchor: none !important; }',
@@ -977,8 +980,9 @@
     '  overflow-wrap: anywhere; word-break: break-word;',
     '}',
     /* When warning chips are pinned top-right, keep the product name clear
-       of them so a long name never slides under the chip cluster. */
-    '.scw-bid-review-v2__sow-cell:has(.scw-bid-review-v2__warn-chips) .scw-bid-review-v2__sow-product {',
+       of them so a long name never slides under the chip cluster.
+       (card.js stamps --has-warns when it renders chips — was :has().) */
+    '.scw-bid-review-v2__sow-cell--has-warns .scw-bid-review-v2__sow-product {',
     '  padding-right: 56px;',
     '}',
     /* Per-line-item survey note (field_2412) — bold amber callout inside the

@@ -28,10 +28,14 @@
        so the JS anchor is the sole scroll manager. Self-scoped via :has to
        only apply when a worksheet-v2 body is mounted (same fix bid-review-v2
        uses). */
-    'html:has(.scw-ws-v2-body), body:has(.scw-ws-v2-body) {',
+    /* NOTE: was `html:has(.scw-ws-v2-body)` — converted to a JS-toggled
+       class (init.js stamps scw-ws-v2-on on <html>/<body> when a v2 body
+       mounts). :has() rules made every style recalc walk the whole
+       document on the huge grids (perf trace 2026-07-30). */
+    'html.scw-ws-v2-on, body.scw-ws-v2-on {',
     '  overflow-anchor: none !important;',
     '}',
-    'body:has(.scw-ws-v2-body) * { overflow-anchor: none !important; }',
+    'body.scw-ws-v2-on * { overflow-anchor: none !important; }',
     /* ── Container ──────────────────────────────────────────── */
     '.scw-ws-v2 {',
     '  margin: 24px 0 !important;',
@@ -962,13 +966,10 @@
     '.scw-ws-v2-row--services > .scw-ws-v2-cell--tag {',
     '  grid-column: 2 / span 2 !important;',
     '}',
-    /* When the row carries an attached-to chip in the label slot
-       (promoted accessory), the label slot stays visible so we
-       collapse the product back to a single column. */
-    '.scw-ws-v2-row--default:has(.scw-ws-v2-cell--attached) > .scw-ws-v2-cell--product,',
-    '.scw-ws-v2-row--services:has(.scw-ws-v2-cell--attached) > .scw-ws-v2-cell--tag {',
-    '  grid-column: auto !important;',
-    '}',
+    /* (Dead rule removed 2026-07-30: .scw-ws-v2-cell--attached is no
+       longer emitted — the attached-to indicator moved to the
+       .scw-ws-v2-attached-caption line, so the :has() row rule matched
+       nothing and only added selector-invalidation cost.) */
     /* Attached-label cell — small italic identifier; visually distinct
        from interactive cells (no border, no cursor). */
     '.scw-ws-v2-cell--attached {',
@@ -1398,7 +1399,9 @@
     '}',
     /* When there\'s no identity zone (default/services), let connections
        fill the full width. */
-    '.scw-ws-v2-detail-zones:not(:has(.scw-ws-v2-detail-zone--identity)) {',
+    /* was :not(:has(.scw-ws-v2-detail-zone--identity)) — card.js now
+       stamps the modifier at build time (cheaper than :has). */
+    '.scw-ws-v2-detail-zones--no-identity {',
     '  grid-template-columns: 1fr !important;',
     '}',
 
@@ -1668,25 +1671,25 @@
        accordion containing view_3610 directly; the standalone view
        rule is the fallback for builds where the accordion wrapper
        isn\'t injected (cleaner failure mode than visible v1). */
-    '.scw-ktl-accordion:has(#view_3610) { display: none !important; }',
+    '.scw-acc-for-view_3610 { display: none !important; }',
     '#view_3610 { display: none !important; }',
     /* Same cutover for the sales page: hide v1\'s view_3586 table +
        accordion shell now that v2 is the primary surface there. The
        view keeps loading (v2\'s data source + hoisted native filters);
        only its rendered area is hidden. Reverse by removing these two
        rules + the view_3586 entry in device-worksheet\'s V2 kill-switch. */
-    '.scw-ktl-accordion:has(#view_3586) { display: none !important; }',
+    '.scw-acc-for-view_3586 { display: none !important; }',
     '#view_3586 { display: none !important; }',
     /* Same cutover for the deploy/install page: hide v1\'s view_4093 table +
        accordion shell now that v2 is primary there. Camera Config + QA fold
        into the v2 cards via install-config-subpanel/config-qa-popover. Reverse
        by removing these two rules + the view_4093 entry in device-worksheet\'s
        V2 kill-switch + flipping the config entry enabled:false. */
-    '.scw-ktl-accordion:has(#view_4093) { display: none !important; }',
+    '.scw-acc-for-view_4093 { display: none !important; }',
     '#view_4093 { display: none !important; }',
     /* "WHAT WE'RE INSTALLING" (view_4056) — same install object/cutover as
        view_4093. Hide its native table + accordion shell; v2 renders the cards. */
-    '.scw-ktl-accordion:has(#view_4056) { display: none !important; }',
+    '.scw-acc-for-view_4056 { display: none !important; }',
     '#view_4056 { display: none !important; }',
     /* Same cutover for the survey/bid page: v2 is primary on view_3505 now.
        FULL cutover — hide the native view AND its KTL accordion shell so JUST
@@ -1696,7 +1699,7 @@
        only catches the shell wrapping the hidden source table. #view_3505 stays
        in the DOM (display:none) so v2 still reads its model. Reverse by removing
        these rules + the view_3505 V2_TAKEOVER entry + hideSourceAccordion. */
-    '.scw-ktl-accordion:has(#view_3505) { display: none !important; }',
+    '.scw-acc-for-view_3505 { display: none !important; }',
     '#view_3505 { display: none !important; }',
     /* Change Order scene — full cutover for the CO worksheet source
        (view_4079, SOW Line Items connected to the CO) plus the scene\'s
@@ -1704,25 +1707,25 @@
        view_4086 (project install items — removal source), view_4088
        (project SOW/proposal items — adoption source). All keep loading;
        only their rendered areas are hidden. */
-    '.scw-ktl-accordion:has(#view_4079) { display: none !important; }',
+    '.scw-acc-for-view_4079 { display: none !important; }',
     '#view_4079 { display: none !important; }',
-    '.scw-ktl-accordion:has(#view_4084) { display: none !important; }',
+    '.scw-acc-for-view_4084 { display: none !important; }',
     '#view_4084 { display: none !important; }',
-    '.scw-ktl-accordion:has(#view_4086) { display: none !important; }',
+    '.scw-acc-for-view_4086 { display: none !important; }',
     '#view_4086 { display: none !important; }',
-    '.scw-ktl-accordion:has(#view_4088) { display: none !important; }',
+    '.scw-acc-for-view_4088 { display: none !important; }',
     '#view_4088 { display: none !important; }',
     /* Sub portal "Manage Change Order" page (scene_1374) — 1:1 analogues of
        the CO scene views above: view_4112 (CO worksheet source), view_4114
        (MDF/IDF locations), view_4116 (removal source), view_4118 (adoption
        source). Same full cutover: models keep loading, native areas hide. */
-    '.scw-ktl-accordion:has(#view_4112) { display: none !important; }',
+    '.scw-acc-for-view_4112 { display: none !important; }',
     '#view_4112 { display: none !important; }',
-    '.scw-ktl-accordion:has(#view_4114) { display: none !important; }',
+    '.scw-acc-for-view_4114 { display: none !important; }',
     '#view_4114 { display: none !important; }',
-    '.scw-ktl-accordion:has(#view_4116) { display: none !important; }',
+    '.scw-acc-for-view_4116 { display: none !important; }',
     '#view_4116 { display: none !important; }',
-    '.scw-ktl-accordion:has(#view_4118) { display: none !important; }',
+    '.scw-acc-for-view_4118 { display: none !important; }',
     '#view_4118 { display: none !important; }',
 
     /* ── Read-only panels (viewCfg.readOnly — e.g. the CO adoption panel
@@ -2079,11 +2082,10 @@
     /* While a Knack modal is open (child-page modal or confirm dialog),
        hide the floating bar — it sits ABOVE Knack\'s modal layer and
        would paint over the dialog (e.g. the add-document page on the
-       bid-review scene). Knack removes modal nodes from the DOM on
-       close, so :has() re-shows the bar automatically. */
-    'body:has([id^="kn-modal-bg"]) .scw-ws-v2-toolbar--floating,',
-    'body:has([id^="kn-page-modal"]) .scw-ws-v2-toolbar--floating,',
-    'body:has(.kn-modal-bg) .scw-ws-v2-toolbar--floating {',
+       bid-review scene). Was body:has([id^=kn-modal-bg]) — init.js now
+       toggles body.scw-kn-modal-open via a cheap body-children observer
+       (:has() on body was a whole-document invalidation anchor). */
+    'body.scw-kn-modal-open .scw-ws-v2-toolbar--floating {',
     '  visibility: hidden !important;',
     '}',
 

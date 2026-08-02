@@ -260,12 +260,24 @@ window.SCW = window.SCW || {};
   // knack-view-render / knack-scene-render event. Without a catch-up
   // pass the feature silently no-ops on first paint until the user
   // navigates or refreshes. Poll briefly for the rendered DOM and
-  // fire the matching event once.
-  function scheduleCatchUp(eventName, viewOrSceneId, kind) {
+  // fire the matching event once — but ONLY if the real Knack event
+  // never reached this binding.
+  //
+  // ⚠️ The original version triggered unconditionally as soon as the
+  // view's DOM + model existed, so on every normal page load (where
+  // Knack's own event fires first) EVERY feature handler ran a SECOND
+  // time 300ms–6s later. On heavy scenes (bid compare grid: ~15k DOM
+  // nodes, ~145ms per style recalc) that duplicated the entire
+  // transform pipeline and produced the visible late "page jump" as
+  // grids re-transformed after first paint. `firedRef.fired` is set by
+  // the bound handler itself, so the poller now stands down the moment
+  // the genuine event (or a previous catch-up) has run.
+  function scheduleCatchUp(eventName, viewOrSceneId, kind, firedRef) {
     var attempts = 0;
     var maxAttempts = 20;          // ~6s at 300ms cadence
     var iv = setInterval(function () {
       attempts++;
+      if (firedRef.fired) { clearInterval(iv); return; }
       var found = false;
       try {
         if (kind === 'view') {
@@ -290,14 +302,24 @@ window.SCW = window.SCW || {};
     }, 300);
   }
 
+  // Wrap a bound handler so the catch-up poller can tell whether the
+  // real render event already reached it (fired flag shared via ref).
+  function trackFired(fn, firedRef) {
+    return function scwTrackedHandler() {
+      firedRef.fired = true;
+      return fn.apply(this, arguments);
+    };
+  }
+
   namespace.onViewRender = function onViewRender(viewId, handler, ns) {
     if (!viewId || typeof handler !== 'function') return;
     var nsNorm = normalizeNamespace(ns);
     var eventName = 'knack-view-render.' + viewId + nsNorm;
     var timed = timedHandler(handler, viewId + ' ' + nsNorm);
     var wrapped = safeHandler(timed, 'onViewRender(' + viewId + ', ns=' + (ns || '.scw') + ')');
-    $(document).off(eventName).on(eventName, wrapped);
-    scheduleCatchUp(eventName, viewId, 'view');
+    var firedRef = { fired: false };
+    $(document).off(eventName).on(eventName, trackFired(wrapped, firedRef));
+    scheduleCatchUp(eventName, viewId, 'view', firedRef);
   };
 
   namespace.onSceneRender = function onSceneRender(sceneId, handler, ns) {
@@ -306,8 +328,9 @@ window.SCW = window.SCW || {};
     var eventName = 'knack-scene-render.' + sceneId + nsNorm;
     var timed = timedHandler(handler, sceneId + ' ' + nsNorm);
     var wrapped = safeHandler(timed, 'onSceneRender(' + sceneId + ', ns=' + (ns || '.scw') + ')');
-    $(document).off(eventName).on(eventName, wrapped);
-    scheduleCatchUp(eventName, sceneId, 'scene');
+    var firedRef = { fired: false };
+    $(document).off(eventName).on(eventName, trackFired(wrapped, firedRef));
+    scheduleCatchUp(eventName, sceneId, 'scene', firedRef);
   };
 })(window.SCW);
 

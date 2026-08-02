@@ -90,10 +90,28 @@
     if (!Array.isArray(raw) || !raw.length) return '';
     var names = [];
     for (var i = 0; i < raw.length; i++) {
-      var lbl = raw[i] && (raw[i].identifier || raw[i].id);
-      if (lbl) names.push(String(lbl).replace(/<[^>]*>/g, '').trim());
+      if (!raw[i]) continue;
+      // Identifier can be blank on freshly created SOWs — resolve the
+      // friendly name via card.js's scene-grid lookup before falling
+      // back to the raw record id.
+      var lbl = String(raw[i].identifier || '').replace(/<[^>]*>/g, '').trim() ||
+        (ns.sowNameById && ns.sowNameById(raw[i].id)) || raw[i].id;
+      if (lbl) names.push(lbl);
     }
     return names.join(', ');
+  }
+
+  // SOW record IDS for a candidate (same field_2154 read as sowLabelsOf) —
+  // used to compare a candidate's SOW membership against the record being
+  // edited (opts.anchorSowIds) so cross-SOW picks are flagged.
+  function sowIdsOf(rec) {
+    var raw = rec && rec.field_2154_raw;
+    if (!Array.isArray(raw)) return [];
+    var ids = [];
+    for (var i = 0; i < raw.length; i++) {
+      if (raw[i] && raw[i].id) ids.push(raw[i].id);
+    }
+    return ids;
   }
 
   // Canonical groupBy: MDF/IDF location (field_1946). No-MDF records sink to a
@@ -235,6 +253,7 @@
       '  font-style: italic;',
       '}',
       '.scw-ws-v2-picker-group {',
+      '  display: flex; align-items: center; gap: 8px;',
       '  padding: 6px 18px 4px;',
       '  font: 700 11px/1.2 system-ui, -apple-system, sans-serif;',
       '  letter-spacing: 0.05em;',
@@ -244,6 +263,34 @@
       '  border-top: 1px solid #e2e8f0;',
       '  border-bottom: 1px solid #e2e8f0;',
       '  position: sticky; top: 0; z-index: 2;',
+      '  cursor: pointer; user-select: none; -webkit-user-select: none;',
+      '}',
+      '.scw-ws-v2-picker-group:hover { background: #eef2f7; }',
+      '.scw-ws-v2-picker-group-chev {',
+      '  flex: 0 0 auto; display: inline-flex;',
+      '  transition: transform 120ms ease;',
+      '}',
+      '.scw-ws-v2-picker-groupwrap.is-collapsed .scw-ws-v2-picker-group-chev {',
+      '  transform: rotate(-90deg);',
+      '}',
+      '.scw-ws-v2-picker-group-lbl { flex: 1 1 auto; min-width: 0; }',
+      // "sel / total" tally per group — total = devices in the section,
+      // first number = how many are currently checked (live).
+      '.scw-ws-v2-picker-group-count {',
+      '  flex: 0 0 auto;',
+      '  font: 700 10.5px/1 system-ui, sans-serif; letter-spacing: 0;',
+      '  color: #475569; background: #e2e8f0;',
+      '  padding: 3px 8px; border-radius: 999px;',
+      '  font-variant-numeric: tabular-nums; text-transform: none;',
+      '}',
+      '.scw-ws-v2-picker-group-count.has-sel { color: #fff; background: #07467c; }',
+      '.scw-ws-v2-picker-groupwrap.is-collapsed .scw-ws-v2-picker-group-body {',
+      '  display: none;',
+      '}',
+      // While the search box has a query, collapsed groups open so
+      // matches are never hidden; collapse state returns when cleared.
+      '.scw-ws-v2-picker-bd.is-searching .scw-ws-v2-picker-group-body {',
+      '  display: block !important;',
       '}',
       '.scw-ws-v2-picker-item {',
       '  display: flex; align-items: center; gap: 10px;',
@@ -265,6 +312,13 @@
       '  font-size: 11px; font-weight: 600; color: #64748b; line-height: 1.2;',
       '}',
       '.scw-ws-v2-picker-item-sow b { font-weight: 700; color: #475569; }',
+      // Candidate lives on a DIFFERENT SOW than the record being edited —
+      // amber (warning convention), never red.
+      '.scw-ws-v2-picker-item-sow--none { color: #94a3b8; font-style: italic; }',
+      '.scw-ws-v2-picker-item-sow--none b { color: #94a3b8; }',
+      '.scw-ws-v2-picker-item-sow--diff { color: #b45309; }',
+      '.scw-ws-v2-picker-item-sow--diff b { color: #b45309; }',
+      '.scw-ws-v2-picker-item-sow--diff svg { vertical-align: -1px; margin-right: 2px; }',
       '.scw-ws-v2-picker-item input[type=checkbox],',
       '.scw-ws-v2-picker-item input[type=radio] {',
       '  width: 16px; height: 16px; cursor: pointer;',
@@ -397,7 +451,19 @@
     // every picker's list consistent with the grid (e.g. E-001…E-010 within a
     // bucket, buckets in sortOrder).
     var itemCmp = canonicalItemSort(itemLabel);
-    groups.forEach(function (g) { g.items.sort(itemCmp); });
+    // Optional opts.itemRank(rec) → number: a coarse partition WITHIN each
+    // group applied before the canonical comparator (rank asc). Lets the
+    // Connected Devices picker keep SOW-carrying items ahead of no-SOW
+    // items inside the same MDF/IDF section without forking the sort.
+    var rankFn = (typeof opts.itemRank === 'function') ? opts.itemRank : null;
+    var rankedCmp = rankFn
+      ? function (a, b) {
+          var ra = rankFn(a) || 0, rb = rankFn(b) || 0;
+          if (ra !== rb) return ra - rb;
+          return itemCmp(a, b);
+        }
+      : itemCmp;
+    groups.forEach(function (g) { g.items.sort(rankedCmp); });
 
     // Build modal scaffold
     var overlay = document.createElement('div');
@@ -411,6 +477,10 @@
     hd.innerHTML = escapeHtml(opts.label || 'Pick a record') +
       '<span class="scw-ws-v2-picker-sub">' +
         (multi ? candidates.length + ' options' : 'Single select') +
+        // Anchor context (e.g. "This device: SW-1361") so cross-SOW
+        // flags on the items have a visible baseline to compare against.
+        (opts.anchorSowLabels
+          ? ' · This device: ' + escapeHtml(opts.anchorSowLabels) : '') +
       '</span>' +
       '<button type="button" class="scw-ws-v2-picker-close" aria-label="Close">&times;</button>';
     card.appendChild(hd);
@@ -443,12 +513,41 @@
           '</span>';
         bd.appendChild(noneRow);
       }
+      // Group sections are wrappers of (clickable header + body) so each
+      // MDF/IDF can collapse. Auto-collapse below keeps big pickers
+      // scannable; headers carry a live "checked / total" tally.
+      var groupWraps = [];   // [{ wrap, body, countEl }]
       groups.forEach(function (g) {
+        var itemHost = bd;
         if (g.label) {
+          var wrap = document.createElement('div');
+          wrap.className = 'scw-ws-v2-picker-groupwrap';
           var head = document.createElement('div');
           head.className = 'scw-ws-v2-picker-group';
-          head.textContent = g.label;
-          bd.appendChild(head);
+          head.setAttribute('role', 'button');
+          head.setAttribute('title', 'Click to collapse / expand this section');
+          head.innerHTML =
+            '<span class="scw-ws-v2-picker-group-chev">' +
+              '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" ' +
+                'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' +
+                '<polyline points="6 9 12 15 18 9"/></svg>' +
+            '</span>' +
+            '<span class="scw-ws-v2-picker-group-lbl">' + escapeHtml(g.label) + '</span>' +
+            '<span class="scw-ws-v2-picker-group-count"></span>';
+          var body = document.createElement('div');
+          body.className = 'scw-ws-v2-picker-group-body';
+          wrap.appendChild(head);
+          wrap.appendChild(body);
+          bd.appendChild(wrap);
+          head.addEventListener('click', function () {
+            wrap.classList.toggle('is-collapsed');
+          });
+          groupWraps.push({
+            wrap: wrap, body: body,
+            countEl: head.querySelector('.scw-ws-v2-picker-group-count'),
+            total: g.items.length
+          });
+          itemHost = body;
         }
         g.items.forEach(function (rec) {
           var row = document.createElement('label');
@@ -460,9 +559,39 @@
           // same MDF/IDF can live on different SOWs. Only rendered for record
           // candidates that actually carry a SOW connection.
           var sowText = sowLabelsOf(rec);
+          // Cross-SOW flag: when the caller supplies the edited record's own
+          // SOW ids (opts.anchorSowIds), a candidate sharing NONE of them is
+          // on a different SOW — amber + warning triangle so e.g. a camera
+          // on SW-1060 stands out inside a switch that lives on SW-1001.
+          var sowDiff = false;
+          if (sowText && Array.isArray(opts.anchorSowIds) && opts.anchorSowIds.length) {
+            var candSows = sowIdsOf(rec);
+            if (candSows.length) {
+              sowDiff = true;
+              for (var cs = 0; cs < candSows.length; cs++) {
+                if (opts.anchorSowIds.indexOf(candSows[cs]) !== -1) { sowDiff = false; break; }
+              }
+            }
+          }
           var sowHtml = sowText
-            ? '<span class="scw-ws-v2-picker-item-sow"><b>SOW:</b> ' + escapeHtml(sowText) + '</span>'
+            ? '<span class="scw-ws-v2-picker-item-sow' +
+                (sowDiff ? ' scw-ws-v2-picker-item-sow--diff' : '') + '"' +
+                (sowDiff ? ' title="On a different SOW than the record you\'re editing"' : '') + '>' +
+                (sowDiff
+                  ? '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" ' +
+                      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                      '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+                      '<line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+                  : '') +
+                '<b>SOW:</b> ' + escapeHtml(sowText) + '</span>'
             : '';
+          // No-SOW candidate on a SOW-aware picker (anchorSowIds supplied):
+          // render a muted "SOW: —" so the no-SOW tail inside a group is
+          // visibly distinct from SOW-carrying items, not just unlabeled.
+          if (!sowHtml && Array.isArray(opts.anchorSowIds) && opts.anchorSowIds.length) {
+            sowHtml = '<span class="scw-ws-v2-picker-item-sow ' +
+              'scw-ws-v2-picker-item-sow--none"><b>SOW:</b> &mdash;</span>';
+          }
           // Per-item "locked" state (opts.itemState). Used by the Connected
           // Devices picker to SHOW cam/readers already claimed by another
           // device — grayed + a "Take over" button — instead of hiding them,
@@ -495,9 +624,40 @@
               sowHtml +
             '</span>' +
             takeoverHtml;
-          bd.appendChild(row);
+          itemHost.appendChild(row);
         });
       });
+
+      // ── Group tallies + auto-collapse ─────────────────────────────
+      // Each header shows "checked / total" (live). With multiple groups
+      // and a big candidate list, groups holding NO current selection
+      // start collapsed — one click opens them; the tally says what's
+      // inside without scrolling.
+      if (groupWraps.length) {
+        var syncGroupCounts = function () {
+          for (var gi = 0; gi < groupWraps.length; gi++) {
+            var gw = groupWraps[gi];
+            var n = 0;
+            var boxes = gw.body.querySelectorAll('input:checked');
+            for (var bi = 0; bi < boxes.length; bi++) {
+              if (boxes[bi].value) n++;
+            }
+            gw.countEl.textContent = n + ' / ' + gw.total;
+            gw.countEl.classList.toggle('has-sel', n > 0);
+          }
+        };
+        bd.addEventListener('change', syncGroupCounts);
+        syncGroupCounts();
+
+        var AUTO_COLLAPSE_MIN = 16;
+        if (groupWraps.length > 1 && candidates.length >= AUTO_COLLAPSE_MIN) {
+          for (var gc = 0; gc < groupWraps.length; gc++) {
+            if (!groupWraps[gc].body.querySelector('input:checked')) {
+              groupWraps[gc].wrap.classList.add('is-collapsed');
+            }
+          }
+        }
+      }
     }
 
     // Multi/checkbox-mode behaviors. Checkboxes that share a `name` do NOT
@@ -953,11 +1113,15 @@
 
       var searchItems = Array.prototype.slice.call(bd.querySelectorAll(
         '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none)'));
-      var searchGroups = Array.prototype.slice.call(
-        bd.querySelectorAll('.scw-ws-v2-picker-group'));
+      var searchWraps = Array.prototype.slice.call(
+        bd.querySelectorAll('.scw-ws-v2-picker-groupwrap'));
 
       var applySearch = function () {
         var q = (searchInput.value || '').trim().toLowerCase();
+        // While a query is live, collapsed groups force-open (CSS keyed
+        // on is-searching) so matches inside them are never hidden; the
+        // user's collapse state comes back when the query clears.
+        bd.classList.toggle('is-searching', !!q);
         var anyVisible = false;
         for (var i = 0; i < searchItems.length; i++) {
           var it = searchItems[i];
@@ -965,18 +1129,16 @@
           it.style.display = show ? '' : 'none';
           if (show) anyVisible = true;
         }
-        for (var g = 0; g < searchGroups.length; g++) {
-          var head = searchGroups[g];
+        // A whole group section hides when none of its items match.
+        for (var g = 0; g < searchWraps.length; g++) {
+          var wrap = searchWraps[g];
           var vis = false;
-          var sib = head.nextElementSibling;
-          while (sib && !(sib.classList && sib.classList.contains('scw-ws-v2-picker-group'))) {
-            if (sib.classList &&
-                sib.classList.contains('scw-ws-v2-picker-item') &&
-                !sib.classList.contains('scw-ws-v2-picker-item--none') &&
-                sib.style.display !== 'none') { vis = true; break; }
-            sib = sib.nextElementSibling;
+          var its = wrap.querySelectorAll(
+            '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none)');
+          for (var k = 0; k < its.length; k++) {
+            if (its[k].style.display !== 'none') { vis = true; break; }
           }
-          head.style.display = vis ? '' : 'none';
+          wrap.style.display = vis ? '' : 'none';
         }
         noMatchEl.style.display = anyVisible ? 'none' : '';
       };

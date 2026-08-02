@@ -42,6 +42,9 @@
   var sowToItems = null;
   var itemLabels = null;   // itemId → display label (field_1950)
   var itemMeta   = null;   // itemId → { mdfId, mdfLabel, isAssumption }
+  var indexLoaded = 0;     // records actually loaded into the index
+  var indexTotal  = null;  // view_3913's server-side total_records
+  var indexTruncated = false;   // total > loaded → counts are WRONG
 
   var DOWNLOAD_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" ' +
@@ -583,6 +586,23 @@
       var v = Knack.views && Knack.views[LINE_ITEM_VIEW];
       if (!v || !v.model || !v.model.data || !v.model.data.models) return;
       var models = v.model.data.models;
+
+      // Truncation guard: the index only covers what LOADED (max
+      // 1000/page). If the server-side total exceeds that, view_3913 is
+      // holding line items beyond this project (missing Builder source
+      // filter) and every count this feature shows is unreliable.
+      var data = v.model.data;
+      var total = data.total_records != null ? data.total_records
+        : (data.pagination_meta && data.pagination_meta.total_records);
+      indexLoaded = models.length;
+      indexTotal  = (typeof total === 'number') ? total : null;
+      indexTruncated = indexTotal !== null && indexTotal > indexLoaded;
+      if (indexTruncated) {
+        console.error('[scw-import-unique] ' + LINE_ITEM_VIEW + ' holds ' +
+          indexTotal + ' line items but only ' + indexLoaded + ' loaded — ' +
+          'unique-item counts are WRONG. The view needs a Builder source ' +
+          'filter scoping it to THIS project\'s line items.');
+      }
       var idx    = {};
       var labels = {};
       var meta   = {};
@@ -668,6 +688,32 @@
     return ids === null ? null : ids.length;
   }
 
+  // SOWs allowed to contribute items: the receiving SOW plus the rows
+  // actually rendered in view_3869 (alternative SOWs on the SAME project).
+  // view_3913's model can carry line items from OTHER projects (its
+  // Builder source filter has drifted before) — without this guard,
+  // "Combine All SOWs" would union other projects' SOWs into the import.
+  function allowedSowIds() {
+    var out = {};
+    var rcv = getReceivingSowId();
+    if (rcv) out[rcv] = 1;
+    try {
+      var v = Knack.views && Knack.views[TARGET_VIEW];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (models) {
+        for (var i = 0; i < models.length; i++) {
+          var rec = models[i] && models[i].attributes;
+          if (rec && rec.id) out[rec.id] = 1;
+        }
+      }
+    } catch (e) { /* fall through to DOM */ }
+    var rows = document.querySelectorAll('#' + TARGET_VIEW + ' tbody tr[id]');
+    for (var j = 0; j < rows.length; j++) {
+      if (/^[a-f0-9]{24}$/.test(rows[j].id)) out[rows[j].id] = 1;
+    }
+    return out;
+  }
+
   // Union of unique item ids across every source SOW that has at least one
   // unique item relative to the receiving SOW. Splits contributing source
   // SOWs into delete-eligible (no survey requested) vs. blocked (survey
@@ -676,6 +722,7 @@
   // or null if the index hasn't been built yet.
   function aggregateAllUnique(receivingSowId) {
     if (!sowToItems || !receivingSowId) return null;
+    var allowed = allowedSowIds();
     var rcv = sowToItems[receivingSowId] || {};
     var seen = {};
     var itemIds = [];
@@ -685,6 +732,7 @@
     for (var sowId in sowToItems) {
       if (!Object.prototype.hasOwnProperty.call(sowToItems, sowId)) continue;
       if (sowId === receivingSowId) continue;
+      if (!allowed[sowId]) continue;   // other-project SOW — never import from it
       var items = sowToItems[sowId];
       var contributed = false;
       for (var itemId in items) {
@@ -896,6 +944,7 @@
   // visual treatment (the per-row buttons have their own spinner swap).
   function postWebhook(btn, payload, isBulk) {
     var url = SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK;
+    console.log('[scw-import-unique] POST', url, payload);
     if (isBulk) {
       btn.classList.add('is-loading');
       btn.disabled = true;
@@ -907,16 +956,32 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     }).then(function (resp) {
-      return resp.json().catch(function () { return null; });
-    }).then(function (data) {
-      if (data && data.success) {
-        window.location.reload();
-        return;
-      }
-      if (isBulk) { btn.classList.remove('is-loading'); btn.disabled = false; }
-      else setBtnLoading(btn, false);
-      alert((data && (data.error || data.message)) || 'Failed to import items.');
+      return resp.text().then(function (text) {
+        var data = null;
+        try { data = JSON.parse(text); } catch (e) { /* plain-text body */ }
+        console.log('[scw-import-unique] response HTTP ' + resp.status + ':', text);
+        // Success = HTTP 2xx and the body doesn't explicitly report
+        // failure. Make webhooks answer plain-text "Accepted" by default
+        // (no JSON at all) — that IS a successful hand-off; requiring
+        // {success:true} made every such run alert "Failed to import".
+        var failed = !resp.ok ||
+          (data && data.success === false) ||
+          (data && data.error);
+        if (!failed) {
+          // Make writes the field_2154 connections AFTER responding —
+          // an immediate reload races those PUTs and repaints the page
+          // unchanged ("the button did nothing"). Give the scenario a
+          // beat to land before refreshing; spinners stay on meanwhile.
+          setTimeout(function () { window.location.reload(); }, 3000);
+          return;
+        }
+        if (isBulk) { btn.classList.remove('is-loading'); btn.disabled = false; }
+        else setBtnLoading(btn, false);
+        alert('Import failed (HTTP ' + resp.status + '): ' +
+          ((data && (data.error || data.message)) || text || 'no response body'));
+      });
     }).catch(function (err) {
+      console.error('[scw-import-unique] webhook error', err);
       if (isBulk) { btn.classList.remove('is-loading'); btn.disabled = false; }
       else setBtnLoading(btn, false);
       alert('Webhook error: ' + (err && err.message ? err.message : err));
@@ -1153,6 +1218,16 @@
     msgSpan.textContent =
       n + ' unique item' + (n === 1 ? '' : 's') +
       ' across ' + agg.sourceIds.length + ' SOW' + (agg.sourceIds.length === 1 ? '' : 's');
+    if (indexTruncated) {
+      msgSpan.textContent = '⚠ counts unreliable (' + indexLoaded + ' of ' +
+        indexTotal + ' line items loaded) · ' + msgSpan.textContent;
+      msgSpan.style.color = '#b45309';
+      msgSpan.title = LINE_ITEM_VIEW + ' holds more line items than one page ' +
+        'can load — it needs a Builder source filter scoping it to this project.';
+    } else {
+      msgSpan.style.color = '';
+      msgSpan.title = '';
+    }
   }
 
   // ── Inject a button-cell into each data row ──────────────
@@ -1300,4 +1375,32 @@
     .on('knack-scene-render.any' + EVENT_NS, function () {
       setTimeout(syncAll, 1200);
     });
+
+  // Console diagnostic — run SCW.importUniqueItems.dump() on the SOW page
+  // to see exactly what the feature is working from.
+  window.SCW = window.SCW || {};
+  SCW.importUniqueItems = {
+    dump: function () {
+      var out = {
+        receivingSowId: getReceivingSowId(),
+        indexBuilt:     !!sowToItems,
+        itemsLoaded:    indexLoaded,
+        itemsTotal:     indexTotal,
+        truncated:      indexTruncated,
+        sowsInIndex:    sowToItems ? Object.keys(sowToItems).length : 0,
+        allowedSowIds:  Object.keys(allowedSowIds())
+      };
+      if (sowToItems) {
+        var perSow = {};
+        for (var sowId in sowToItems) {
+          if (Object.prototype.hasOwnProperty.call(sowToItems, sowId)) {
+            perSow[sowId] = Object.keys(sowToItems[sowId]).length;
+          }
+        }
+        out.itemCountPerSow = perSow;
+      }
+      console.table ? console.table(out) : console.log(out);
+      return out;
+    }
+  };
 })();

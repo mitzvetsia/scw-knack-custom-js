@@ -57,6 +57,44 @@
     return String(v).replace(/<[^>]*>/g, '').trim();
   }
 
+  // SOW connection identifiers can be BLANK on freshly created SOW
+  // headers — Knack denormalizes the identifier onto the line item at
+  // write time, before the SOW's display name has computed, so the
+  // native field_2154 cells render blank and readField would fall back
+  // to the raw 24-hex record id. Resolve the friendly name from the SOW
+  // header grids on the scene before ever showing an id.
+  var SOW_NAME_VIEWS  = ['view_3325', 'view_3918', 'view_3884'];
+  var SOW_NAME_FIELDS = ['field_2126', 'field_2127', 'field_2122'];
+  function sowNameById(id) {
+    if (!id) return '';
+    for (var vi = 0; vi < SOW_NAME_VIEWS.length; vi++) {
+      try {
+        var v = window.Knack && Knack.views && Knack.views[SOW_NAME_VIEWS[vi]];
+        var models = v && v.model && v.model.data && v.model.data.models;
+        if (!models) continue;
+        for (var i = 0; i < models.length; i++) {
+          var a = models[i] && models[i].attributes;
+          if (!a || a.id !== id) continue;
+          for (var f = 0; f < SOW_NAME_FIELDS.length; f++) {
+            var n = String(a[SOW_NAME_FIELDS[f]] || '').replace(/<[^>]*>/g, '').trim();
+            if (n) return n;
+          }
+        }
+      } catch (e) { /* next view */ }
+    }
+    return '';
+  }
+  function readSowField(rec) {
+    var raw = rec && rec['field_2154_raw'];
+    if (!Array.isArray(raw) || !raw.length) return '';
+    return raw.map(function (r) {
+      if (!r) return '';
+      var ident = String(r.identifier || '').replace(/<[^>]*>/g, '').trim();
+      return ident || sowNameById(r.id) || r.id || '';
+    }).filter(Boolean).join(', ');
+  }
+  ns.sowNameById = sowNameById;
+
   /** Normalize a money/number string to a plain numeric string, PRESERVING
    *  the sign across every negative format Knack emits: "-$2,500.00",
    *  "$-2,500.00", accounting parens "($2,500.00)", and trailing-minus
@@ -641,7 +679,7 @@
   /** SOW summary cell — omitted entirely when the view hides SOW. */
   function sowSlot(rec, viewKey) {
     if (hideSow(viewKey)) return '';
-    return sowCell(rec, viewKey, readField(rec, 'field_2154'));
+    return sowCell(rec, viewKey, readSowField(rec));
   }
 
   /** Blank money cells for no-money rows (assumptions). Matches the active
@@ -1059,7 +1097,7 @@
     var plusMat     = readNum(rec,   'field_1974');
     var matTotal    = readField(rec, 'field_2146');
     var installFee  = readField(rec, 'field_2028');
-    var sow         = readField(rec, 'field_2154');
+    var sow         = readSowField(rec);
 
     // Cameras/readers don't carry a quantity — the qty slot is reused
     // for the Existing/Exterior/Plenum chip stack so the rest of the
@@ -1098,7 +1136,7 @@
     var plusMat     = readNum(rec,   'field_1974');
     var matTotal    = readField(rec, 'field_2146');
     var installFee  = readField(rec, 'field_2028');
-    var sow         = readField(rec, 'field_2154');
+    var sow         = readSowField(rec);
 
     // Sales mirrors v1 by putting Qty in the detail panel, so the row's
     // qty slot stays blank there.
@@ -1136,7 +1174,7 @@
     var plusMat     = readNum(rec,   'field_1974');
     var matTotal    = readField(rec, 'field_2146');
     var installFee  = readField(rec, 'field_2028');
-    var sow         = readField(rec, 'field_2154');
+    var sow         = readSowField(rec);
 
     var qtyInput = isSalesMoney(viewKey) ? null : qtyCell(rec, viewKey, qty);
     var noQty = (qtyInput === null);
@@ -1173,7 +1211,7 @@
     // rows now share the default grid template AND the labor-desc cell
     // spans the empty middle columns for readability.
     var laborDesc = readField(rec, 'field_2020');
-    var sow       = readField(rec, 'field_2154');
+    var sow       = readSowField(rec);
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--assumptions">' +
       chevronCell(rec) +
@@ -1199,7 +1237,9 @@
       ? 'scw-ws-v2-input scw-ws-v2-input--num'
       : 'scw-ws-v2-input scw-ws-v2-input--text';
     var step = kind === 'number' ? ' step="any"' : '';
-    return '<div class="scw-ws-v2-detail-field">' +
+    // data-scw-df carries the field key so per-field CSS (e.g. co-adopt's
+    // readonly hides) can target [data-scw-df="field_X"] instead of :has().
+    return '<div class="scw-ws-v2-detail-field" data-scw-df="' + escapeHtml(fieldKey) + '">' +
       '<div class="scw-ws-v2-detail-label">' + escapeHtml(label) + '</div>' +
       '<input type="' + inputType + '"' + step + ' class="' + inputCls + '" ' +
         'aria-label="' + escapeHtml(label) + '" ' +
@@ -1271,7 +1311,8 @@
       '</div>';
     }
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn' +
-        (warn ? ' scw-ws-v2-detail-field--warn' : '') + '">' +
+        (warn ? ' scw-ws-v2-detail-field--warn' : '') + '" ' +
+        'data-scw-df="' + escapeHtml(fieldKey) + '">' +
       '<div class="scw-ws-v2-detail-label">' + labelHtml + '</div>' +
       '<button type="button" class="scw-ws-v2-conn-btn" ' +
         'data-scw-ws-v2-conn="' + escapeHtml(fieldKey) + '" ' +
@@ -1326,13 +1367,17 @@
     }
 
     var val = labels.length ? labels.join(', ') : '(none)';
-    var labelHtml = escapeHtml(label);
+    // Live count in the label ("Connected Devices (5)") — the set is the
+    // authoritative union above, so the number matches what the picker
+    // will pre-check.
+    var labelHtml = escapeHtml(label + ' (' + labels.length + ')');
     if (warn) {
       var warnIc = (ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.disconnected) || '';
       labelHtml = '<span class="scw-ws-v2-detail-warn-ic">' + warnIc + '</span>' + labelHtml;
     }
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn' +
-        (warn ? ' scw-ws-v2-detail-field--warn' : '') + '">' +
+        (warn ? ' scw-ws-v2-detail-field--warn' : '') + '" ' +
+        'data-scw-df="' + escapeHtml(fieldKey) + '">' +
       '<div class="scw-ws-v2-detail-label">' + labelHtml + '</div>' +
       '<button type="button" class="scw-ws-v2-conn-btn" ' +
         'data-scw-ws-v2-conn="' + escapeHtml(fieldKey) + '" ' +
@@ -1594,7 +1639,7 @@
     var bid = bucketIdOf(rec);
     var showParent = hasParent || (bid !== NETWORKING_BUCKET);
     return '<div class="scw-ws-v2-detail">' +
-      '<div class="scw-ws-v2-detail-zones">' +
+      '<div class="scw-ws-v2-detail-zones scw-ws-v2-detail-zones--no-identity">' +
         salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           (showParent ? detailConnection(rec, viewKey, 'field_2464', 'Parent') : '') +
@@ -1609,7 +1654,7 @@
 
   function buildDetail_services(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
-      '<div class="scw-ws-v2-detail-zones">' +
+      '<div class="scw-ws-v2-detail-zones scw-ws-v2-detail-zones--no-identity">' +
         salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
@@ -1621,7 +1666,7 @@
 
   function buildDetail_assumptions(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
-      '<div class="scw-ws-v2-detail-zones">' +
+      '<div class="scw-ws-v2-detail-zones scw-ws-v2-detail-zones--no-identity">' +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +

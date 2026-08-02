@@ -1291,6 +1291,45 @@
     return null;
   }
 
+  // Optimistically patch the CHILDREN's back-pointer connection in the
+  // local Backbone model after a Connected Devices save, so the card UI
+  // (which derives its display from the children's back-pointers) shows
+  // the full cascade result IMMEDIATELY on the post-save notify() —
+  // instead of waiting seconds for the scw-cascade-idle refetch. The
+  // refetch still runs and reconciles with server truth; this only
+  // bridges the gap. Silent set() — the caller's notify() re-renders.
+  function patchLocalBackPointers(viewKey, parentId, chosenIds, backField, parentLabel) {
+    try {
+      var view = (typeof Knack !== 'undefined' && Knack.views && Knack.views[viewKey]) || null;
+      var models = view && view.model && view.model.data && view.model.data.models;
+      if (!models || !models.length) return;
+      var chosen = Object.create(null);
+      for (var i = 0; i < chosenIds.length; i++) chosen[chosenIds[i]] = true;
+      var ident = parentLabel || parentId;
+      for (var m = 0; m < models.length; m++) {
+        var mod = models[m];
+        var attrs = mod && mod.attributes;
+        var id = attrs && attrs.id;
+        if (!id || id === parentId || typeof mod.set !== 'function') continue;
+        var raw = attrs[backField + '_raw'];
+        var points = Array.isArray(raw) && raw.length > 0 && raw[0] && raw[0].id === parentId;
+        var patch = null;
+        if (chosen[id] && !points) {
+          patch = {};
+          patch[backField + '_raw'] = [{ id: parentId, identifier: ident }];
+          patch[backField] = '<span class="' + parentId + '">' + ident + '</span>';
+        } else if (!chosen[id] && points) {
+          patch = {};
+          patch[backField + '_raw'] = [];
+          patch[backField] = '';
+        }
+        if (patch) mod.set(patch, { silent: true });
+      }
+    } catch (e) {
+      console.warn('[scw-ws-v2] optimistic back-pointer patch failed', e);
+    }
+  }
+
   // Connection-cell click — opens the picker modal scoped to the
   // record's bucket-appropriate candidate set. Currently wired for
   // field_1957 (Connected Devices) on default-bucket rows; reusable
@@ -1549,7 +1588,7 @@
             candidates: connCands,
             itemState: function (r) {
               var owner = _lockedBy[r.id];
-              return owner ? { locked: true, note: 'Connected to ' + owner } : null;
+              return owner ? { locked: true, note: 'Already assigned to ' + owner } : null;
             },
             groupBy: function (r) {
               var raw = r[_mdfF + '_raw'];
@@ -1564,7 +1603,17 @@
               if (lbl && prod) return lbl + ' · ' + prod;
               return lbl || prod || r.id;
             },
-            multi: _isCD, onSaved: surveyRefetch,
+            multi: _isCD,
+            onSaved: function (ids) {
+              // Optimistic: flip the children's Connected To (field_2381)
+              // locally so the cascade result renders on THIS notify, not
+              // after the multi-second refetch.
+              if (_isCD) {
+                patchLocalBackPointers(viewKey, recordId, ids || [], _CT,
+                  _ownerLabel(recordId, ''));
+              }
+              surveyRefetch();
+            },
             // Keep the modal open + locked until the field_2380↔field_2381
             // reciprocal cascade settles (mirror-connection-sync view_3505).
             awaitCascade: true
@@ -1601,6 +1650,7 @@
             }
           }
           var iCands = [];
+          var _iLocked = {};   // camId → owner record id (claimed by another device)
           for (var ci3 = 0; ci3 < records.length; ci3++) {
             var icr = records[ci3];
             if (!icr || !icr.id || icr.id === recordId) continue;
@@ -1608,9 +1658,14 @@
               ? ns.card.bucketIdOf(icr, viewKey) : '';
             if (_iIsCD) {
               if (icb !== _icam) continue;                  // devices → connect cam/readers
-              if (!_iSel[icr.id]) {                          // skip cams already spoken for
+              // Cams already claimed by ANOTHER device stay VISIBLE but
+              // locked ("Already assigned to …" + Take over) — reassignment
+              // is deliberate, not hidden. Same UX as the SOW/survey pickers.
+              if (!_iSel[icr.id]) {
                 var ictRaw = icr[_ICT + '_raw'];
-                if (Array.isArray(ictRaw) && ictRaw.length && ictRaw[0] && ictRaw[0].id) continue;
+                if (Array.isArray(ictRaw) && ictRaw.length && ictRaw[0] && ictRaw[0].id) {
+                  _iLocked[icr.id] = ictRaw[0].id;
+                }
               }
             } else {
               if (icb === _icam) continue;                   // cam → connect to network gear
@@ -1624,6 +1679,22 @@
           var _ialt  = IF.labelAlt     || 'field_2801';
           var _iprod = IF.productName  || 'field_2790';
           var _imdf  = IF.mdfIdf       || 'field_2818';
+          var _iLabel = function (r) {
+            var lbl = (r[_ilbl] || '').toString().replace(/<[^>]*>/g, '').trim() ||
+                      (r[_ialt] || '').toString().replace(/<[^>]*>/g, '').trim();
+            var prod = (r[_iprod] || '').toString().replace(/<[^>]*>/g, '').trim();
+            if (lbl && prod) return lbl + ' · ' + prod;
+            return lbl || prod || r.id;
+          };
+          // Resolve a record id to its worksheet-style label from the
+          // loaded records (owner in a lock note, or the edited record
+          // itself for the optimistic back-pointer identifier).
+          var _iLabelById = function (id) {
+            for (var li = 0; li < records.length; li++) {
+              if (records[li] && records[li].id === id) return _iLabel(records[li]);
+            }
+            return '';
+          };
           var installRefetch = function () {
             if (ns.data && typeof ns.data.refetchAndNotify === 'function') ns.data.refetchAndNotify(viewKey);
             else if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
@@ -1632,6 +1703,12 @@
             sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
             fieldKey: fieldKey, label: label, selectedIds: sel,
             candidates: iCands,
+            itemState: function (r) {
+              var ownId = _iLocked[r.id];
+              if (!ownId) return null;
+              var ownLbl = _iLabelById(ownId);
+              return { locked: true, note: 'Already assigned to ' + (ownLbl || 'another device') };
+            },
             groupBy: function (r) {
               var raw = r[_imdf + '_raw'];
               if (Array.isArray(raw) && raw[0] && raw[0].id) {
@@ -1639,14 +1716,18 @@
               }
               return { id: '__unknown', label: 'No MDF / IDF' };
             },
-            itemLabel: function (r) {
-              var lbl = (r[_ilbl] || '').toString().replace(/<[^>]*>/g, '').trim() ||
-                        (r[_ialt] || '').toString().replace(/<[^>]*>/g, '').trim();
-              var prod = (r[_iprod] || '').toString().replace(/<[^>]*>/g, '').trim();
-              if (lbl && prod) return lbl + ' · ' + prod;
-              return lbl || prod || r.id;
+            itemLabel: _iLabel,
+            multi: _iIsCD,
+            onSaved: function (ids) {
+              // Optimistic: flip the children's Connected To (field_2821)
+              // locally so the cascade result renders without waiting on
+              // the full refetch round-trip.
+              if (_iIsCD) {
+                patchLocalBackPointers(viewKey, recordId, ids || [], _ICT,
+                  _iLabelById(recordId));
+              }
+              installRefetch();
             },
-            multi: _iIsCD, onSaved: installRefetch,
             // Keep the modal open + locked until the field_2820↔field_2821
             // reciprocal cascade settles (mirror-connection-sync view_4093/4056).
             awaitCascade: true
@@ -2494,19 +2575,31 @@
       }
 
       var candidates = [];
+      // cams already assigned to ANOTHER device: camId → owner record id.
+      // Offered LOCKED ("Already assigned to …" + Take over) instead of
+      // hidden, so reassignment is visible and deliberate — same UX the
+      // survey worksheet's picker has had.
+      var lockedOwner = Object.create(null);
       for (var c = 0; c < records.length; c++) {
         var r = records[c];
         if (!r || !r.id || r.id === recordId) continue;
         if (fieldKey === 'field_1957') {
-          // Connected Devices (NVR side): pick from cam/reader rows
-          // whose reciprocal field_2197 is empty or already points
-          // at this NVR.
+          // Connected Devices (NVR side): every cam/reader row. Blank or
+          // points-at-me → freely selectable; claimed by another device →
+          // locked with a Take over affordance.
           if (bucketIdOf(r) !== CAM_READER) continue;
           var recip = reciprocalIds(r);
           var blank = recip.length === 0;
           var pointsToMe = recip.indexOf(recordId) !== -1;
           var alreadySel = selSet[r.id];
-          if (!blank && !pointsToMe && !alreadySel) continue;
+          if (!blank && !pointsToMe && !alreadySel) {
+            var _loRaw = r['field_2197_raw'];
+            lockedOwner[r.id] = {
+              id:    recip[0],
+              ident: (Array.isArray(_loRaw) && _loRaw[0] && _loRaw[0].identifier != null)
+                       ? String(_loRaw[0].identifier) : ''
+            };
+          }
         } else if (fieldKey === 'field_2197') {
           // Connected Device (cam/reader side): pick the NVR/headend
           // this device connects to. Candidates = rows with the
@@ -2536,6 +2629,30 @@
         return hexWrap ? '(unnamed device)' + loc : rec.id;
       }
 
+      // Worksheet-style label for a record id from the loaded records —
+      // owner in a lock note, or the edited record itself (optimistic
+      // back-pointer identifier).
+      function labelById(id) {
+        for (var li = 0; li < records.length; li++) {
+          if (records[li] && records[li].id === id) return itemLabel(records[li]);
+        }
+        return '';
+      }
+
+      // Lock state for cams claimed by another device — the picker renders
+      // the lock note + a "Take over" button so the user can deliberately
+      // steal them.
+      var itemState = null;
+      if (fieldKey === 'field_1957') {
+        itemState = function (rec) {
+          var own = lockedOwner[rec.id];
+          if (!own) return null;
+          var ownLbl = labelById(own.id) ||
+            String(own.ident || '').replace(/<[^>]*>/g, '').trim();
+          return { locked: true, note: 'Already assigned to ' + (ownLbl || 'another device') };
+        };
+      }
+
       // mirror-connection-sync has a createMirror() instance bound to
       // view_3962 (the v2 source view), so v2 PUTs route through the
       // source view directly — the cascade still fires.
@@ -2551,11 +2668,15 @@
       // MDF-only grouping then yields several identical "MDF" headers with
       // no hint which SOW each belongs to (and lookalike "E-001 · <product>"
       // items, since drop numbering restarts per SOW). When the candidate
-      // set spans more than one SOW, compose the group as "SW-1001 · MDF"
-      // (SOW read from field_2154) so headers dedupe and groups order
-      // SOW-first. Single-SOW surfaces (build-SOW view_3962, sales
-      // view_3586) detect one SOW and keep the canonical grouping.
-      var groupBy;   // undefined → picker's canonical MDF/IDF default
+      // set spans more than one SOW tag, group by the MDF RECORD ID (unique
+      // per SOW, since each SOW carries its own MDF/IDF locations) and fold
+      // the SOW into the header label ("SW-1001 · IDF: 06"). Keying on the
+      // MDF id alone keeps no-SOW items INSIDE their IDF section — ranked
+      // after the SOW-carrying items via itemRank — instead of banished to
+      // a separate "No SOW · …" section at the bottom. Single-SOW surfaces
+      // (build-SOW view_3962, sales view_3586) keep the canonical grouping.
+      var groupBy;    // undefined → picker's canonical MDF/IDF default
+      var itemRank;   // undefined → canonical sort only
       (function () {
         function sowTag(rec) {
           var raw = rec && rec['field_2154_raw'];
@@ -2578,18 +2699,53 @@
         }
         if (distinct < 2) return;   // single SOW → canonical grouping
         var mdfGroup = ns.picker.groupByMdfIdf;
+        // Header SOW label per MDF: borrowed from the first SOW-carrying
+        // item in that MDF (no-SOW items inherit their section's SOW tag).
+        var mdfSowLbl = Object.create(null);
+        for (var mi = 0; mi < candidates.length; mi++) {
+          var mRec = candidates[mi];
+          var mg = mdfGroup(mRec), ms = sowTag(mRec);
+          if (ms.label && mg.id !== '__unknown' && !mdfSowLbl[mg.id]) {
+            mdfSowLbl[mg.id] = ms.label;
+          }
+        }
         groupBy = function (rec) {
           var m = mdfGroup(rec);
           var s = sowTag(rec);
-          // No SOW AND no MDF → keep the canonical '__unknown' group so it
-          // sinks to the bottom instead of alphabetizing as "No SOW · …".
-          if (!s.id && m.id === '__unknown') return m;
-          return {
-            id:    (s.id || '__nosow') + '::' + m.id,
-            label: (s.label || 'No SOW') + ' · ' + m.label
-          };
+          if (m.id === '__unknown') {
+            // No MDF at all: no-SOW too → canonical '__unknown' sink;
+            // SOW-carrying → per-SOW "No MDF" groups after the real MDFs.
+            if (!s.id) return m;
+            return { id: '__nomdf::' + s.id, label: s.label + ' · No MDF / IDF', rank: 1 };
+          }
+          var sl = mdfSowLbl[m.id];
+          return { id: m.id, label: (sl ? sl + ' · ' : '') + m.label };
         };
+        // Within each MDF section: SOW-carrying items first, no-SOW after.
+        itemRank = function (rec) { return sowTag(rec).id ? 0 : 1; };
       })();
+
+      // The edited record's own SOW membership (field_2154) — the picker
+      // flags candidates that share NONE of these SOWs (amber ⚠ on the
+      // item's SOW line) and shows the baseline in the header, so e.g. a
+      // camera on a different SOW than the switch is visible at a glance.
+      var anchorSowIds = [], anchorSowLabels = '';
+      for (var arI = 0; arI < records.length; arI++) {
+        var arRec = records[arI];
+        if (!arRec || arRec.id !== recordId) continue;
+        var asRaw = arRec.field_2154_raw;
+        if (Array.isArray(asRaw)) {
+          for (var asI = 0; asI < asRaw.length; asI++) {
+            if (asRaw[asI] && asRaw[asI].id) {
+              anchorSowIds.push(asRaw[asI].id);
+              var asLbl = String(asRaw[asI].identifier || '')
+                .replace(/<[^>]*>/g, '').trim();
+              if (asLbl) anchorSowLabels += (anchorSowLabels ? ', ' : '') + asLbl;
+            }
+          }
+        }
+        break;
+      }
 
       ns.picker.open({
         sourceViewKey: viewKey,
@@ -2600,20 +2756,30 @@
         selectedIds:   sel,
         candidates:    candidates,
         // Canonical MDF/IDF grouping + sort — except when candidates span
-        // multiple SOWs (bid review), where groups compose "SOW · MDF".
+        // multiple SOWs (bid review), where headers compose "SOW · MDF" and
+        // no-SOW items rank after SOW items within their MDF section.
         groupBy:       groupBy,
+        itemRank:      itemRank,
         itemLabel:     itemLabel,
+        itemState:     itemState,
         multi:         isMulti,
+        anchorSowIds:   anchorSowIds,
+        anchorSowLabels: anchorSowLabels,
         // Keep the modal open + locked until the field_1957↔field_2197
         // reciprocal cascade settles (mirror-connection-sync view_3962 et al.),
         // so the user can't navigate or start another edit mid-sync.
         awaitCascade:  true,
-        onSaved:       function () {
-          // notify() reads from the source view's Backbone model.
-          // When the cascade kicks off in response to the PUT, the
-          // scw-cascade-idle subscriber in data.js will refetch +
-          // re-notify once everything settles. This early notify is
-          // belt-and-suspenders for the no-cascade-fired case.
+        onSaved:       function (ids) {
+          // Optimistic: flip the children's Connected To (field_2197)
+          // locally so the field AND the cascade's reciprocal writes
+          // render on THIS notify — the scw-cascade-idle refetch
+          // reconciles with server truth afterward. The card display
+          // derives Connected Devices from the children's back-pointers,
+          // so without this the UI lags the save by the full refetch.
+          if (fieldKey === 'field_1957') {
+            patchLocalBackPointers(viewKey, recordId, ids || [], 'field_2197',
+              labelById(recordId));
+          }
           if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
         }
       });
@@ -2764,6 +2930,43 @@
   $(document)
     .off('knack-view-render.any.scwWsV2Mount')
     .on('knack-view-render.any.scwWsV2Mount', function () { tryMountAll(); });
+
+  // ── scw-ws-v2-on html/body class ─────────────────────────────────
+  // Replaces the old `html:has(.scw-ws-v2-body)` / `body:has(...)`
+  // scroll-anchor-kill selectors in styles.js — :has() anchored on
+  // html/body made every style recalc consider the whole document
+  // (perf trace 2026-07-30). Kept in sync on every scene render; the
+  // class stays cheap because it's a plain toggle.
+  function syncWsV2OnClass() {
+    var on = !!document.querySelector('.scw-ws-v2-body');
+    document.documentElement.classList.toggle('scw-ws-v2-on', on);
+    document.body.classList.toggle('scw-ws-v2-on', on);
+  }
+  $(document)
+    .off('knack-scene-render.any.scwWsV2OnClass knack-view-render.any.scwWsV2OnClass')
+    .on('knack-scene-render.any.scwWsV2OnClass knack-view-render.any.scwWsV2OnClass',
+      function () { setTimeout(syncWsV2OnClass, 0); });
+
+  // ── Knack-modal-open body class ──────────────────────────────────
+  // Replaces `body:has([id^="kn-modal-bg"])` (same :has() cost story).
+  // Knack appends/removes its modal bg as a DIRECT child of <body>, so
+  // a childList-only observer (no subtree) is essentially free.
+  function syncModalOpenClass() {
+    var open = !!(document.getElementById('kn-modal-bg') ||
+                  document.querySelector('body > [id^="kn-modal-bg"], ' +
+                                         'body > [id^="kn-page-modal"], ' +
+                                         'body > .kn-modal-bg'));
+    document.body.classList.toggle('scw-kn-modal-open', open);
+  }
+  function armModalObserver() {
+    if (!document.body || document.body.hasAttribute('data-scw-modal-obs')) return;
+    document.body.setAttribute('data-scw-modal-obs', '1');
+    new MutationObserver(syncModalOpenClass)
+      .observe(document.body, { childList: true });
+    syncModalOpenClass();
+  }
+  if (document.body) armModalObserver();
+  else document.addEventListener('DOMContentLoaded', armModalObserver);
 
   // First-paint attempt for hot reload / late bundle load.
   setTimeout(tryMountAll, 0);

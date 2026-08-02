@@ -28,7 +28,7 @@
   // ── Config ───────────────────────────────────────────────
   var HOST_VIEW      = 'view_3969';   // role-gated rich-text host (Sales)
   var SOURCE_VIEW    = 'view_3861';   // SOW details view on the proposal page
-  var LINE_ITEM_VIEW = 'view_3341';   // SOW Line Items grid
+  var LINE_ITEM_VIEW = 'view_4140';   // SOW Line Items (proposal-grid-v2 flat data view)
   var LICENSE_VIEW   = 'view_3371';   // License records table
   var EXTRA_FIELD    = 'field_2126';  // SOW Name — surfaced top-level
   var SCENE_ID       = 'scene_1096';  // proposal page scene
@@ -153,8 +153,16 @@
     return isNaN(n) ? null : n;
   }
 
-  // Live installation total from the rendered proposal grid (view_3341).
+  // Live installation total — proposal-grid-v2 stashes the computed
+  // totals on render (SCW.proposalGridTotals); the DOM read of v1's
+  // rendered rows remains only as a legacy fallback.
   function readGridInstallationTotal() {
+    try {
+      var pg = window.SCW && window.SCW.proposalGridTotals;
+      if (pg && typeof pg.installationTotal === 'number' && isFinite(pg.installationTotal)) {
+        return Math.round(pg.installationTotal * 100) / 100;
+      }
+    } catch (e) { /* fall through */ }
     var view = document.getElementById(GRID_VIEW);
     if (!view) return null;
     var el = view.querySelector('.scw-project-totals--installation-total .scw-l1-value');

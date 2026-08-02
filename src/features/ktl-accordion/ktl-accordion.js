@@ -143,11 +143,12 @@
             so unenhanced KTL sections are untouched.
          ══════════════════════════════════════════════════ */
 
-      /* Cancel the global :has(.ktlHideShowButton) legacy rule on the
-         .kn-view host element itself — this is the source of the
-         accent-colored background slab. */
-      '.kn-view.scw-ktl-accordion-host,',
-      '.kn-view.scw-ktl-accordion-host:has(.ktlHideShowButton) {',
+      /* Cancel the global legacy background on the .kn-view host —
+         this is the source of the accent-colored background slab.
+         (The redundant :has(.ktlHideShowButton) variant was dropped —
+         the class selector alone matches the same hosts, and JS also
+         sets inline !important styles on them.) */
+      '.kn-view.scw-ktl-accordion-host {',
       '  background: transparent !important;',
       '  background-color: transparent !important;',
       '  padding: 0 !important;',
@@ -930,7 +931,7 @@
 
       // Create our wrapper card
       var wrapper = document.createElement('div');
-      wrapper.className = 'scw-ktl-accordion';
+      wrapper.className = 'scw-ktl-accordion scw-acc-for-' + viewKey;
       if (accent) wrapper.style.setProperty('--scw-accent', accent);
       if (accentRgb) wrapper.style.setProperty('--scw-accent-rgb', accentRgb);
 
@@ -1153,7 +1154,7 @@
     knView.setAttribute(ENHANCED, '1');
 
     var wrapper = document.createElement('div');
-    wrapper.className = 'scw-ktl-accordion';
+    wrapper.className = 'scw-ktl-accordion scw-acc-for-' + viewKey;
     if (accent) {
       wrapper.style.setProperty('--scw-accent', accent);
       var rgb = parseRgb(accent);
