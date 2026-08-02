@@ -79,30 +79,50 @@ flow" = fill it after validation. One form, one object, one activation rule.
 
 ### Sales stepper (scene_1116, workflow-stepper.js)
 
+**Hard UX requirement (2026-08-02): NO form → return → second-form
+round-trip.** Sales does ONE gesture. The initiate step therefore stops
+navigating to the Knack form entirely and becomes a single custom modal +
+single webhook — the same replace-the-native-form pattern the codebase
+already uses (`co-add-item-form.js` → MAKE_CO_ADD_ITEMS_WEBHOOK,
+`qa-popover.js`, bulk-upload modal).
+
 1. **Project Playbook** — unchanged.
-2. **Initiate Installation Project** — same mechanics (form via view_3828,
-   poll `field_1199`), but the click first opens a small choice modal:
-   - **"Initiate — I'll request the survey when I'm ready"** → proceed to the
-     initiate form as today. The validation ask rides the initiate scenario
-     (see Make section).
-   - **"Initiate + request the survey now"** → proceed to the initiate form;
-     on return, once `field_1199` lands, the stepper auto-expands the
-     Request Site Survey accordion so Sales flows straight into capturing
-     the survey details. (Intent flag stored per-SOW so the auto-expand
-     survives the round-trip; this flag is UX-only — the server-visible
-     state is the pending REQ record itself.)
+2. **Initiate Installation Project** — becomes a `webhookAction` step
+   opening ONE custom modal:
+   - **Top section**: whatever the current initiate Knack form collects
+     (⚠️ discovery — it may be little more than a confirm; see below).
+   - **Choice radio**:
+     - "Request the site survey now" → reveals the survey-details section
+       inline (same fields as view_3853's form: instructions, other notes,
+       POC, scheduling prefs, …). For the POC/connection inputs, reuse the
+       ops-stepper `recipient` picker pattern (issue-change-order reads
+       contacts from a view + editable name/email/phone) or `ns.picker`.
+     - "I'll request the survey when I'm ready" → survey section stays
+       hidden.
+   - **Footer**: Cancel | Initiate Project.
+   - Submit fires ONE webhook (the extended initiate scenario). Payload:
+     `{ sourceRecordId, surveyMode: 'now'|'later', survey: {…details}|null,
+     notes, triggeredBy }`. Make does everything server-side: project setup
+     (as today) + the Ops validation ping + (when `survey` present) creates
+     the Pending Validation REQ record.
+   - The existing `pollAfterClick` machinery is kept as-is — the step locks
+     into "Initializing project…" and polls until `field_1199` lands.
+     Completion refreshes view_3491 as today.
 3. **"Request SOW validated" button** — REMOVED (subsumed by initiation).
    Keep the webhook key temporarily for the Make transition; delete the step
    config + `requestedState` machinery.
-4. **Request Site Survey accordion (view_3853)** — gate changes from
-   "disabled until `field_2723` = Yes" to **"disabled until `field_1199` has
-   value"** (initiated). New header states:
+4. **Request Site Survey accordion (view_3853)** — no longer part of the
+   initiation gesture; it remains the "later" path and the change-of-mind
+   path. Gate loosens from "validated" to **"initiated"** (`field_1199` has
+   value), preserving the unifying rule:
    - Not initiated → locked, "Initiate the installation project first".
-   - Initiated, no REQ, not validated → open for capture; helper text
-     "Details captured now will send automatically when Ops validates".
-   - Pending REQ exists → info state: "Survey request armed — sends when Ops
-     validates" + link to review/edit the pending REQ. Completed check stays
-     keyed on `field_2706` = Yes / CR path (`field_2728` > 0) as today.
+   - Initiated, no REQ, not validated → open; submitting creates a Pending
+     Validation REQ (helper text: "sends automatically when Ops
+     validates"). This is how a "later" Sales changes their mind early.
+   - Pending REQ exists (from either path) → info state: "Survey request
+     armed — sends when Ops validates" + link to review/edit the pending
+     REQ. Completed check stays keyed on `field_2706` = Yes / CR path
+     (`field_2728` > 0) as today.
    - Validated, no REQ → open, submits fire immediately (today's behavior).
 5. Downstream steps — untouched.
 
@@ -140,12 +160,15 @@ flow" = fill it after validation. One form, one object, one activation rule.
 
 ### Make work
 
-- **Initiate scenario**: after project setup, ALSO send the Ops validation
-  ask (the notify that `MAKE_REQUEST_SOW_VALIDATION_WEBHOOK` sends today —
-  Slack/CU ping), so initiation = validation request. Message should state
-  whether a survey is armed (armed-ness may land seconds later if Sales is
-  mid-form — acceptable; the mark-ready path is the enforcement point, the
-  ping is informational).
+- **Initiate scenario**: becomes webhook-driven from the custom modal (the
+  Knack initiate form is retired from this flow — hide/retire view_3828 and
+  its form page once cut over). One run does: project setup (as today,
+  including whatever the old form's record rules/fields did — port them
+  into the scenario), the Ops validation ask (the notify that
+  `MAKE_REQUEST_SOW_VALIDATION_WEBHOOK` sends today — Slack/CU ping, now
+  stating whether a survey is armed since both facts arrive in one
+  payload), and — when `payload.survey` is present — creation of the
+  Pending Validation REQ record from the payload fields.
 - **Mark-ready scenario** (`MAKE_OPS_MARK_READY_WEBHOOK`, stepId
   `mark-ready`): new branch after flipping `field_2723` — find Pending
   Validation REQ(s) for this SOW; if found AND `field_2728` = 0 (CR path not
@@ -176,26 +199,40 @@ flow" = fill it after validation. One form, one object, one activation rule.
 
 ### Open discovery items (before implementation)
 
-1. What view_3853's submit does today (form record rules vs Make creates the
+1. What the CURRENT initiate form (reached via menu view_3828) collects —
+   its full field list + record rules. Everything it does must be either
+   ported into the custom modal (user-entered fields) or into the Make
+   scenario (record rules / connections). Also: does anything else link to
+   that form page besides the stepper?
+2. What view_3853's submit does today (form record rules vs Make creates the
    REQ; what flips `field_2706`). Determines where the pending-status rule
-   lives.
-2. Whether REQ status `field_2349` can take a new option cleanly (check
+   lives for the "later"/change-of-mind path. Also confirm the form's full
+   field list — it defines the survey-details section of the initiate
+   modal — and whether it includes any FILE upload inputs (a custom modal
+   needs the base64→Make pattern from bulk-upload.js for those).
+3. Whether REQ status `field_2349` can take a new option cleanly (check
    sub-portal `survey-request-header.js` statusMod mapping — 'pending' bucket
    already renders amber, so "Pending Validation" maps fine).
-3. What `field_2917` counts (existing >0 gate) — preserve the same guard on
+4. What `field_2917` counts (existing >0 gate) — preserve the same guard on
    the new flow (don't let an empty SOW enter validation).
-4. Which Make scenario watches REQ creation today, and whether the
+5. Which Make scenario watches REQ creation today, and whether the
    sub-notification lives there or in Knack record rules/emails.
 
 ### Implementation order
 
-1. Builder: REQ pending status + SOW pending-REQ rollup + view filters.
-2. Make: gate the REQ-creation scenario on status ≠ pending (safe no-op
+1. Discovery: initiate form + view_3853 form field lists / record rules /
+   watching scenarios (items above) — the modal's field set and the Make
+   port both depend on them.
+2. Builder: REQ pending status + SOW pending-REQ rollup + view filters.
+3. Make: gate the REQ-creation scenario on status ≠ pending (safe no-op
    until pending records exist).
-3. Bundle: view_3853 gate change + armed/capture header states; initiate
-   choice modal + auto-expand; remove request-sow-validation step.
-4. Make: mark-ready activation branch; initiate scenario carries the
-   validation ping.
-5. Ops surfaces: stepper modal context line + pill badge.
-6. Cleanup: retire `MAKE_REQUEST_SOW_VALIDATION_WEBHOOK` step config,
-   localStorage `requestedState` code, and the standalone Make scenario.
+4. Make: extend the initiate scenario to webhook-driven (project setup +
+   validation ping + optional pending-REQ create from payload).
+5. Bundle: the new initiate modal (choice radio + survey-details section,
+   one webhook, keep `pollAfterClick`); view_3853 gate change +
+   armed/capture header states; remove request-sow-validation step.
+6. Make: mark-ready activation branch.
+7. Ops surfaces: stepper modal context line + pill badge.
+8. Cleanup: retire `MAKE_REQUEST_SOW_VALIDATION_WEBHOOK` step config,
+   localStorage `requestedState` code, the standalone Make scenario, and
+   the old initiate form page / view_3828 menu.
