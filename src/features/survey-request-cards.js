@@ -100,7 +100,20 @@
       '.scw-srqc__row b {' +
       '  font-size: 10px; font-weight: 700; color: #94a3b8;' +
       '  text-transform: uppercase; letter-spacing: .3px; display: block;' +
-      '}';
+      '}' +
+      /* Peek: when cards exist, the completed/armed survey step header is
+         clickable again — the click toggles the cards panel (NOT the
+         locked create form). Three-class selector out-specifies
+         workflow-stepper's two-class pointer-events:none lock; this file
+         loads after it in build order. */
+      '.scw-ktl-accordion.scw-srqc-has-cards.scw-step-completed.scw-step-disabled {' +
+      '  pointer-events: auto;' +
+      '}' +
+      '.scw-ktl-accordion.scw-srqc-has-cards.scw-step-completed.scw-step-disabled' +
+      '  .scw-ktl-accordion__header { cursor: pointer; }' +
+      /* Keep the form body sealed even though pointer-events came back. */
+      '.scw-ktl-accordion.scw-srqc-has-cards.scw-step-completed.scw-step-disabled' +
+      '  .scw-ktl-accordion__body { display: none !important; }';
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = css;
@@ -256,11 +269,32 @@
   // Anchor: directly beneath the survey step — the view_3853 accordion
   // wrapper, or the either/or choice group when the accordion currently
   // lives inside it (workflow-stepper moves it there pre-decision).
+  function surveyHeader() {
+    return document.querySelector('.scw-ktl-accordion__header[data-view-key="view_3853"]');
+  }
   function findAnchor() {
-    var hdr = document.querySelector('.scw-ktl-accordion__header[data-view-key="view_3853"]');
+    var hdr = surveyHeader();
     var wrap = hdr && hdr.closest('.scw-ktl-accordion');
     if (!wrap) return null;
     return wrap.closest('.scw-step-choice') || wrap;
+  }
+
+  // Peek: clicking the COMPLETED/armed survey step toggles the cards
+  // panel instead of doing nothing. Capture-phase so it beats the
+  // ktl-accordion toggle handler when the step is active-but-clicked-
+  // while-locked; active (unlocked) accordions keep native behavior.
+  function bindPeek(hdr) {
+    if (!hdr || hdr.getAttribute('data-scw-srqc-peek')) return;
+    hdr.setAttribute('data-scw-srqc-peek', '1');
+    hdr.addEventListener('click', function (e) {
+      var aw = hdr.closest('.scw-ktl-accordion');
+      if (!aw || !aw.classList.contains('scw-step-disabled')) return;
+      var cards = document.getElementById(WRAP_ID);
+      if (!cards) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      cards.style.display = (cards.style.display === 'none') ? '' : 'none';
+    }, true);
   }
 
   function render() {
@@ -268,11 +302,20 @@
     var anchor = findAnchor();
     var wrap = document.getElementById(WRAP_ID);
     var records = getRecords();
+    var hdr = surveyHeader();
+    var accWrap = hdr && hdr.closest('.scw-ktl-accordion');
 
     if (!records.length || !anchor) {
       if (wrap) wrap.remove();
+      if (accWrap) accWrap.classList.remove('scw-srqc-has-cards');
       return;
     }
+
+    // Cards exist → the completed/armed step header becomes a toggle.
+    if (accWrap && !accWrap.classList.contains('scw-srqc-has-cards')) {
+      accWrap.classList.add('scw-srqc-has-cards');
+    }
+    bindPeek(hdr);
 
     if (!wrap) {
       wrap = document.createElement('div');
