@@ -16,14 +16,31 @@
       completed: { field: 'field_2724', value: 'Yes' }
     },
     {
+      // Renamed 2026-08-02 (docs/project-stage-workflow.md): initiation now
+      // ALWAYS means "please validate this SOW" — the Make scenario behind
+      // the form sends the Ops validation ping alongside project setup.
+      // Mechanics are unchanged: same form (menu view_3828), same
+      // field_1199 poll, same view_3491 refresh.
       type: 'action',
       id: 'initiate-install',
-      label: 'Initiate Installation Project',
+      label: 'Request SOW Validation Only (request survey later)',
       menuView: 'view_3828',
       insertAfter: 'view_2924',
       completed: { field: 'field_1199', hasValue: true },
       lockWhenCompleted: true,
       disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' },
+      // Once fired, show the waiting state until Ops validates (or the
+      // flow advances via survey / change-request paths).
+      completedMessage: {
+        when: {
+          all: [
+            { field: 'field_2723', notValue: 'Yes' },
+            { field: 'field_2706', notValue: 'Yes' },
+            { not: { field: 'field_2728', gt: 0 } }
+          ]
+        },
+        text: 'Validation requested — waiting on Ops'
+      },
       // When the Make automation finishes (field_1199 populated), refresh
       // these views so their DOM reflects the new install-project state
       // (e.g. view_3491's Clickup task / project link) without a manual reload.
@@ -34,49 +51,34 @@
       // field appears so the user can't double-fire the action and the
       // step transitions to "completed" automatically.
       pollAfterClick: {
-        pendingLabel: 'Initializing project — please wait…',
+        pendingLabel: 'Setting up project & requesting validation — please wait…',
         pollMs:       4000,
         timeoutMs:    120 * 1000
       }
     },
-    {
-      // Sales-side ask: once the install project is initiated
-      // (field_1199 hasValue) but THIS SOW hasn't been validated by Ops
-      // (field_2723 != Yes) and no survey has been asked for by any path
-      // (field_2706 != Yes AND no change requests, field_2728 == 0), the
-      // "Request Site Survey" accordion below is greyed out ("SOW not yet
-      // validated"). Surface an action so Sales can ping Ops to validate
-      // THIS SOW instead of staring at a dead step. Fires
-      // MAKE_REQUEST_SOW_VALIDATION_WEBHOOK (notify-only; Ops still owns the
-      // field_2723 flip). Hides the moment Ops validates (field_2723 = Yes)
-      // or a survey is asked for (the inverse of the accordion's completed
-      // gate), so it never lingers once it's moot.
-      type: 'action',
-      id: 'request-sow-validation',
-      label: 'Request SOW validated as ready for Survey',
-      insertAfterStepId: 'initiate-install',
-      webhookAction: 'requestSowValidation',
-      showWhen: {
-        all: [
-          { field: 'field_1199', hasValue: true },
-          { field: 'field_2723', notValue: 'Yes' },
-          { field: 'field_2706', notValue: 'Yes' },
-          { not: { field: 'field_2728', gt: 0 } },
-          { field: 'field_2917', gt: 0 }
-        ]
-      },
-      // After a successful request, remember it per-SOW so the button locks
-      // into a non-clickable "requested" state instead of re-offering (and
-      // re-pinging Ops) until Ops validates the SOW.
-      requestedState: {
-        label: 'Validation requested — waiting on Ops',
-        timeoutMs: 24 * 60 * 60 * 1000
-      }
-    },
+    // The standalone "Request SOW validated as ready for Survey" step was
+    // REMOVED 2026-08-02: both remaining sales actions ARE validation
+    // requests (docs/project-stage-workflow.md), so the notify-only side
+    // channel (MAKE_REQUEST_SOW_VALIDATION_WEBHOOK + localStorage
+    // requestedState) is retired.
     {
       type: 'accordion',
       viewKey: 'view_3853',
       label: 'Request Site Survey',
+      // Dynamic header label (2026-08-02): the SAME form serves both
+      // paths — Make branches on the SOW's validation state at submission
+      // time (docs/project-stage-workflow.md).
+      //   field_2723 != Yes → "Validate SOW & Request Survey" (Make
+      //     creates the REQ as Pending Validation, pings Ops, and runs
+      //     project setup when field_1199 is empty; the survey fires when
+      //     Ops marks ready)
+      //   field_2723 = Yes  → "Request Survey" (fires immediately — the
+      //     original behavior)
+      // First matching entry wins; a no-`when` entry is the fallback.
+      dynamicLabel: [
+        { when: { field: 'field_2723', notValue: 'Yes' }, label: 'Validate SOW & Request Survey' },
+        { label: 'Request Survey' }
+      ],
       // Complete if the survey has been requested (field_2706 = Yes)
       // OR if there are any change requests queued (field_2728 > 0),
       // since the workflow has advanced past the initial survey step.
@@ -98,7 +100,22 @@
         text: 'Survey Requested on {link}',
         link: { view: 'view_3876', field: 'field_2329' }
       },
-      disabled: { field: 'field_2723', notValue: 'Yes', message: 'Waiting on Ops to validate SOW' }
+      // Ungated except for the Playbook (was: locked on field_2723 with
+      // "Waiting on Ops to validate SOW"). Pre-validation submits are
+      // legitimate now — Make's branch decides pending-vs-fire.
+      disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' },
+      // Info note while unvalidated so Sales knows the survey won't reach
+      // the sub until Ops signs off.
+      // TODO(pending-REQ rollup): once the Builder rollup field (count of
+      // Pending Validation REQs) exists on view_3827, add an armed state
+      // here — "Survey request armed — sends when Ops validates" — keyed
+      // on it, IF discovery shows field_2706 does NOT flip on a pending
+      // submit. If field_2706 flips at submit regardless, the completed
+      // gate above already covers it.
+      activeMessage: {
+        when: { field: 'field_2723', notValue: 'Yes' },
+        text: 'Sent after Ops validates the SOW'
+      }
     },
     {
       type: 'action',
@@ -747,76 +764,9 @@
           });
         }
       });
-    },
-
-    // Sales asks Ops to validate THIS SOW as ready for survey. Notify-only:
-    // it does NOT flip field_2723 (Ops owns that gate). On success we stamp
-    // a per-SOW "requested" flag and reload so the step re-renders into the
-    // locked "Validation requested — waiting on Ops" state.
-    requestSowValidation: function (step, el) {
-      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_REQUEST_SOW_VALIDATION_WEBHOOK) || '';
-      if (!url || /PLACEHOLDER/.test(url)) {
-        alert('Request-SOW-validation webhook URL is not configured.');
-        return;
-      }
-      var sourceRecordId = getSourceSowId();
-      if (!sourceRecordId) {
-        alert('Could not determine current SOW record ID.');
-        return;
-      }
-      openNotesPromptModal({
-        title:       'Request SOW Validation',
-        intro:       'Ask Ops to validate THIS SOW as ready for survey. Add any context that helps them prioritize it.',
-        placeholder: 'e.g. Customer chose this option — please validate so we can request the survey.',
-        submitLabel: 'Send Request',
-        onSubmit: function (notes, setSubmitting, onError) {
-          setSubmitting(true);
-          setStepLoading(el, true);
-          var account = readConnectionFromView('view_3491', 'field_2119');
-          var project = readConnectionFromView('view_3491', 'field_6');
-          var projectName = readFieldFromView('view_3491', 'field_1456');
-          fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sourceRecordId: sourceRecordId,
-              stepId:         step.id,
-              actionLabel:    step.label || '',
-              notes:          notes,
-              account:        account,
-              project:        project,
-              projectName:    projectName,
-              triggeredBy:    getTriggeredBy()
-            })
-          }).then(function (resp) {
-            return resp.text().then(function (body) {
-              var data = null;
-              try { data = body ? JSON.parse(body) : null; } catch (e) {}
-              return { ok: resp.ok, status: resp.status, body: body, data: data };
-            });
-          }).then(function (resp) {
-            // Notify-only scenario may 200 with an empty body — treat any
-            // 2xx (or explicit success) as accepted.
-            var ok = resp.ok || (resp.data && resp.data.success === true);
-            if (!ok) {
-              setSubmitting(false);
-              setStepLoading(el, false);
-              onError(
-                (resp.data && (resp.data.error || resp.data.message)) ||
-                ('Webhook returned HTTP ' + resp.status + '.')
-              );
-              return;
-            }
-            setRequested(step.id);
-            window.location.reload();
-          }).catch(function (err) {
-            setSubmitting(false);
-            setStepLoading(el, false);
-            onError('Network error: ' + (err && err.message ? err.message : err));
-          });
-        }
-      });
     }
+    // requestSowValidation handler REMOVED 2026-08-02 — the standalone
+    // validation-request step is retired (see the STEPS comment above).
   };
 
   // ── Notes-prompt modal ───────────────────────────────────
@@ -994,7 +944,9 @@
   //      by .when) — uses info icon.
   //   2. step.disabled.message when baseDisabled AND step is NOT
   //      completed — uses lock icon.
-  //   3. none otherwise.
+  //   3. step.activeMessage when the step is active (neither completed
+  //      nor disabled), optionally gated by .when — uses info icon.
+  //   4. none otherwise.
   function resolveHeaderMessage(step, isCompleted, baseDisabled) {
     if (isCompleted && step.completedMessage) {
       var cm = step.completedMessage;
@@ -1008,6 +960,27 @@
     if (baseDisabled && !isCompleted && step.disabled && step.disabled.message) {
       // Lock messages don't accept tokens — plain text.
       return { html: escapeHtml(step.disabled.message), icon: LOCK_SM_SVG };
+    }
+    if (!isCompleted && !baseDisabled && step.activeMessage) {
+      var am = step.activeMessage;
+      var amText = typeof am === 'string' ? am : (am && am.text) || '';
+      var amWhen = typeof am === 'object' ? am.when : null;
+      if (amText && (!amWhen || conditionMet(amWhen))) {
+        var amHtml = expandMessage(amText, typeof am === 'object' ? am : null);
+        if (amHtml) return { html: amHtml, icon: INFO_SM_SVG };
+      }
+    }
+    return null;
+  }
+
+  // Resolve a state-dependent step label: first dynamicLabel entry whose
+  // `when` matches wins; an entry with no `when` is the fallback. Returns
+  // null when the step has no dynamicLabel (caller keeps step.label).
+  function resolveDynamicLabel(step) {
+    if (!step.dynamicLabel) return null;
+    for (var i = 0; i < step.dynamicLabel.length; i++) {
+      var d = step.dynamicLabel[i];
+      if (!d.when || conditionMet(d.when)) return d.label || null;
     }
     return null;
   }
@@ -1048,6 +1021,15 @@
     if (!wrap) return;
     var hdr = wrap.querySelector('.scw-ktl-accordion__header');
     var iconEl = hdr.querySelector('.scw-acc-icon');
+
+    // State-dependent header label (dynamicLabel). Change-guarded write —
+    // ktl-accordion's syncState runs off a MutationObserver, so an
+    // unconditional textContent write would re-fire it every pass.
+    var dynLabel = resolveDynamicLabel(step);
+    if (dynLabel) {
+      var ttlEl = hdr.querySelector('.scw-acc-title');
+      if (ttlEl && ttlEl.textContent !== dynLabel) ttlEl.textContent = dynLabel;
+    }
 
     var isCompleted = step.completed ? conditionMet(step.completed) : false;
     var baseDisabled = step.disabled ? conditionMet(step.disabled) : false;
@@ -1104,23 +1086,6 @@
       if (href) el.href = href;
     }
 
-    // ── requestedState: lock after a fire-and-forget "request" action ──
-    // Steps that ping a human (e.g. asking Ops to validate the SOW) have no
-    // server flag of their own to flip, so we remember the request per-SOW
-    // in localStorage and render a non-clickable "requested" state until the
-    // gating field changes (which then hides the step via showWhen).
-    if (step.requestedState && isRequested(step)) {
-      var rIcon = el.querySelector('.scw-step-icon');
-      if (rIcon) rIcon.innerHTML = CHECK_CIRCLE_SVG;
-      var rTitle = el.querySelector('.scw-step-title');
-      if (rTitle) rTitle.textContent = step.requestedState.label || step.label;
-      el.classList.remove('is-processing', 'is-loading');
-      el.classList.add('is-completed', 'is-disabled');
-      el.removeAttribute('href');
-      renderHeaderMessage(el, step, step.id, false, false);
-      return;
-    }
-
     var isCompleted = step.completed ? conditionMet(step.completed) : false;
     var baseDisabled = step.disabled ? conditionMet(step.disabled) : false;
     var lockedByCompletion = !!(step.lockWhenCompleted && isCompleted);
@@ -1167,10 +1132,12 @@
     }
 
     // Not processing — restore in case we just exited that state.
+    // (dynamicLabel wins over the static label when configured.)
     el.classList.remove('is-processing');
+    var stepLabel = resolveDynamicLabel(step) || step.label;
     var titleEl2 = el.querySelector('.scw-step-title');
-    if (titleEl2 && titleEl2.textContent !== step.label) {
-      titleEl2.textContent = step.label;
+    if (titleEl2 && titleEl2.textContent !== stepLabel) {
+      titleEl2.textContent = stepLabel;
     }
     if (!step.webhookAction) {
       var hrefAfter = resolveHref(step);
@@ -1233,33 +1200,6 @@
   }
   function clearPollFlag(stepId) {
     try { localStorage.removeItem(pollFlagKey(stepId)); } catch (e) {}
-  }
-
-  // ── requestedState: remember a fired notify-only action per-SOW ──
-  // Used by webhook actions that ping a human and have no server flag of
-  // their own (e.g. "Request SOW validated as ready for Survey"). Keyed by
-  // stepId + SOW id and TTL-bounded so a stale request eventually re-offers.
-  var REQUESTED_FLAG_PREFIX = 'scw-step-requested:';
-  function requestedFlagKey(stepId) {
-    return REQUESTED_FLAG_PREFIX + stepId + ':' + (getSourceSowId() || '');
-  }
-  function isRequested(step) {
-    try {
-      var raw = localStorage.getItem(requestedFlagKey(step.id));
-      if (!raw) return false;
-      var ts = parseInt(raw, 10);
-      if (!isFinite(ts)) return false;
-      var ttl = (step.requestedState && step.requestedState.timeoutMs) || (24 * 60 * 60 * 1000);
-      if (Date.now() - ts > ttl) {
-        localStorage.removeItem(requestedFlagKey(step.id));
-        return false;
-      }
-      return true;
-    } catch (e) { return false; }
-  }
-  function setRequested(stepId) {
-    try { localStorage.setItem(requestedFlagKey(stepId), String(Date.now())); }
-    catch (e) {}
   }
 
   function startStepPoll(step) {

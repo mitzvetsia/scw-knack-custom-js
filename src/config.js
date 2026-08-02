@@ -205,15 +205,14 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Response body: { success: true, message?: "..." }
   //             or:  { success: false, error: "<message>" }
   MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/r84mgo96cdsq3kox3y6lj0im6b7ovme2",
-  // Fires on the Sales "Request SOW validated as ready for Survey" stepper
-  // action (workflow-stepper.js, scene_1116). Shown only when the install
-  // project is initiated (field_1199 hasValue) but THIS SOW has not been
-  // validated (field_2723 != Yes) and no survey has been asked for by any
-  // path (field_2706 != Yes AND field_2728 == 0). It does NOT flip any flag
-  // — that's Ops's gate. It only notifies Ops to validate this SOW. Payload:
-  //   { sourceRecordId, stepId, actionLabel, notes, account, project,
-  //     projectName, triggeredBy }
-  //   Response body: { success: true } or any 2xx (fire-and-forget notify).
+  // ⚠️ RETIRED FROM CODE 2026-08-02 (docs/project-stage-workflow.md): the
+  // standalone "Request SOW validated as ready for Survey" stepper button
+  // was removed — both remaining sales actions (the renamed initiate form
+  // and the survey request form) ARE validation requests, and the Ops ping
+  // moves into their Make scenarios. Key kept only so the Make scenario
+  // behind it can be re-used/merged during the transition; delete both once
+  // the initiate + survey scenarios carry the ping (cleanup step 8 in the
+  // design doc).
   MAKE_REQUEST_SOW_VALIDATION_WEBHOOK: "https://hook.us1.make.com/os586ruwyb1p2o3j31xoju3v7togumfy",
   // Ops-side stepper actions (view_3345 on the proposal page). Each fires on
   // button click with a notes modal. Payload shape:
