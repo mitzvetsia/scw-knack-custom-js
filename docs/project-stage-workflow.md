@@ -158,8 +158,8 @@ V=Yes — least-wrong proxy, caveat documented in the step config.
 
 **DOM constraint:** `#scw-step-initiate-install` is a scene-reveal marker
 (`scene-tweaks.js` `transformsReady`) — the step must ALWAYS exist in the
-DOM. State gating on it therefore LOCKS (array-form `disabled` with
-per-reason messages), never hides (no `showWhen`).
+DOM. Post-choice removal is therefore a CSS soft-hide (`softHideWhen` →
+`.scw-step-soft-hidden`, `display:none`), never a `showWhen` removal.
 
 **Signal caveats (verify in Builder):**
 - Does `field_2728` reliably read > 0 whenever a sibling survey exists? An
@@ -172,15 +172,24 @@ per-reason messages), never hides (no `showWhen`).
   no-survey case remains exposed until the stamp field lands).
 
 Notes on the construct:
-- **Change-of-mind (arm late) is free**: after "Validation Only" while
-  waiting on Ops, the survey button still reads "Validate SOW & Request
-  Survey"; submitting it arms the survey mid-wait. No special affordance.
-- **Both buttons stay visible post-playbook** until their state resolves
-  them (validation-only → completed once `field_1199` lands; survey →
-  armed/completed per above). If Sales goes straight to "Validate SOW &
-  Request Survey", the validation-only button flips to its
-  completed/requested state too (`field_1199` lands via that path's
-  setup).
+- **Post-choice display collapses to ONE narrative (revised 2026-08-02,
+  third session).** The two-button construct exists only inside the
+  pre-decision "Choose one" window. The moment either path is taken (or
+  the choice is moot — validated, sibling survey), the "Validate SOW
+  Only" step soft-hides and the survey step carries the whole story:
+  - **Straight-to-survey path (ARMED)**: survey step ✓ with "Request
+    pending — sends to the subcontractor once Ops validates the SOW",
+    with the submitted request's details rendered beneath it
+    (survey-request-cards.js). No separate "validation requested" step.
+  - **Validate-first path**: survey step LOCKED with "Waiting on Ops to
+    validate the SOW — this unlocks automatically" (neutral "Request
+    Site Survey" label), flipping live to "Request Survey" when
+    `field_2723` lands. The lock IS the validation-state indicator.
+- **Change-of-mind (arm late) is CLOSED post-choice**: once "Validate
+  SOW Only" fires (`field_1199` set) the survey step locks until Ops
+  validates — Sales can no longer arm a survey mid-wait. Deliberate
+  trade (clarity over flexibility); the pre-decision straight-to-survey
+  submit remains the way to arm.
 - **The label swap is client-side trivia** (`conditionMet` on
   `field_2723` in the accordion header) — the real branch lives in Make.
 

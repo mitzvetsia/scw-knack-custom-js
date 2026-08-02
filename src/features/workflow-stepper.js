@@ -46,36 +46,25 @@
         ]
       },
       lockWhenCompleted: true,
-      // Array form: first matching entry wins. NOTE this step must ALWAYS
-      // exist in the DOM (scene-tweaks.js uses #scw-step-initiate-install
-      // as a scene-reveal marker) — so state gating here locks, never
-      // hides (no showWhen).
+      // This step exists ONLY as one of the two "Choose one" options
+      // (2026-08-02): once the choice is made — or is moot — it vanishes
+      // and the survey step carries the whole narrative (locked "waiting
+      // on Ops" in the validate-first path; "request pending" when armed).
+      // NOTE the element must ALWAYS exist in the DOM (scene-tweaks.js
+      // uses #scw-step-initiate-install as its scene-reveal marker), so
+      // this is a CSS soft-hide, never a showWhen removal.
+      softHideWhen: {
+        any: [
+          { field: 'field_1199', hasValue: true },   // validate-only fired
+          { field: 'field_2723', value: 'Yes' },     // already validated
+          { field: 'field_2706', value: 'Yes' },     // survey path taken
+          { field: 'field_2728', gt: 0 }             // sibling owns the survey
+        ]
+      },
       disabled: [
         { when: { field: 'field_2724', notValue: 'Yes' },
-          message: 'Complete the Project Playbook first' },
-        // Sibling SOW already has the survey (change-request path): the
-        // right ask is the alternative-bid action below, not a plain
-        // validation request.
-        { when: { all: [ { field: 'field_2728', gt: 0 },
-                         { field: 'field_2706', notValue: 'Yes' } ] },
-          message: 'Use "Request Validation & Add as Alternative Bid" below' }
+          message: 'Complete the Project Playbook first' }
       ],
-      // Once fired, show the waiting state until Ops validates. Stays
-      // visible while the survey is merely ARMED (2706 = Yes, 2723 ≠ Yes)
-      // — hiding it there left a bare green check with no explanation of
-      // what happens next. Suppressed only on the sibling-survey path
-      // (2728 > 0 with this SOW's 2706 = No), where the alt-bid flow owns
-      // the narrative.
-      completedMessage: {
-        when: {
-          all: [
-            { field: 'field_2723', notValue: 'Yes' },
-            { not: { all: [ { field: 'field_2728', gt: 0 },
-                            { field: 'field_2706', value: 'No' } ] } }
-          ]
-        },
-        text: 'Validation requested — waiting on Ops'
-      },
       // When the Make automation finishes (field_1199 populated), refresh
       // these views so their DOM reflects the new install-project state
       // (e.g. view_3491's Clickup task / project link) without a manual reload.
@@ -117,6 +106,13 @@
         { when: { any: [ { field: 'field_2706', value: 'Yes' },
                          { field: 'field_2728', gt: 0 } ] },
           label: 'Request Site Survey' },
+        // Validate-first path in flight (validation requested, Ops hasn't
+        // flipped field_2723 yet): neutral label — the step is locked
+        // below with "Waiting on Ops to validate", so the header must not
+        // read as an offer to validate again.
+        { when: { all: [ { field: 'field_1199', hasValue: true },
+                         { field: 'field_2723', notValue: 'Yes' } ] },
+          label: 'Request Site Survey' },
         { when: { field: 'field_2723', notValue: 'Yes' }, label: 'Validate SOW & Straight to Survey' },
         { label: 'Request Survey' }
       ],
@@ -153,7 +149,7 @@
         {
           when: { all: [ { field: 'field_2706', value: 'Yes' },
                          { field: 'field_2723', notValue: 'Yes' } ] },
-          text: 'Survey request armed — sends when Ops validates'
+          text: 'Request pending — sends to the subcontractor once Ops validates the SOW'
         },
         {
           when: { all: [ { field: 'field_2728', gt: 0 },
@@ -162,10 +158,22 @@
           link: { view: 'view_3876', field: 'field_2329' }
         }
       ],
-      // Ungated except for the Playbook (was: locked on field_2723 with
-      // "Waiting on Ops to validate SOW"). Pre-validation submits are
-      // legitimate now — Make's branch decides pending-vs-fire.
-      disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' },
+      // Two locks (array — first match wins):
+      //   1. Playbook incomplete.
+      //   2. Validate-first path in flight: the user chose "Validate SOW
+      //      Only" (field_1199 populated) and Ops hasn't validated yet.
+      //      The survey button reads locked-until-validated — this is the
+      //      whole post-choice display for that path (the Validate step
+      //      itself soft-hides). Unlocks automatically when field_2723
+      //      flips. NOTE the pre-decision "Validate SOW & Straight to
+      //      Survey" submit stays ungated — Make branches on field_2723.
+      disabled: [
+        { when: { field: 'field_2724', notValue: 'Yes' },
+          message: 'Complete the Project Playbook first' },
+        { when: { all: [ { field: 'field_1199', hasValue: true },
+                         { field: 'field_2723', notValue: 'Yes' } ] },
+          message: 'Waiting on Ops to validate the SOW — this unlocks automatically' }
+      ],
       // TODO(pending-REQ rollup): once the Builder rollup field (count of
       // Pending Validation REQs) exists on view_3827, add an armed state
       // here — "Survey request armed — sends when Ops validates" — keyed
@@ -328,6 +336,11 @@
       '#kn-scene_1116 .view-group-4 > .view-column:empty {' +
       '  display: none !important;' +
       '}' +
+
+      /* ── Soft-hidden step: visually gone but kept in the DOM ──
+         (scene-tweaks.js requires #scw-step-initiate-install to EXIST as
+         its scene-reveal marker, so post-choice removal is CSS-only). */
+      '.scw-step-soft-hidden { display: none !important; }' +
 
       /* ── Completed accordion ── */
       '.scw-step-completed .scw-acc-icon { color: #16a34a !important; opacity: 1 !important; }' +
@@ -1366,6 +1379,15 @@
       el = buildActionStep(step);
       var afterAcc = findInsertAnchor(step);
       if (afterAcc) afterAcc.after(el);
+    }
+
+    // Soft-hide: CSS display:none while the condition holds, but the
+    // element stays in the DOM (unlike showWhen) — scene-tweaks.js keys
+    // its scene-reveal on #scw-step-initiate-install existing. State
+    // application continues below so poll-flag cleanup and menu hiding
+    // still run while hidden.
+    if (step.softHideWhen) {
+      el.classList.toggle('scw-step-soft-hidden', conditionMet(step.softHideWhen));
     }
 
     // Update href (only for navigation-type steps, not webhook steps)
