@@ -14,8 +14,8 @@ Sales initiates the install project → waits → Ops validates the SOW
 ask** (initiating = "set up the project AND ask Ops to validate"), and lets
 Sales **optionally capture the survey-request details at initiation time** so
 the survey request fires automatically the moment Ops validates — no second
-Sales touch. If Sales doesn't capture details up front, they fill the same
-form later exactly as today.
+Sales touch. If Sales doesn't capture details up front, they request the
+survey after validation via the same survey-details modal.
 
 ## Current state (as-is reference)
 
@@ -47,12 +47,12 @@ Current sequence:
 
 ## Locked decisions (2026-08-02)
 
-1. **Path-A details = a real Survey Request record in "Pending Validation"
-   status.** No survey-detail fields duplicated onto the SOW header, no
-   Make-side datastore. Sales fills the SAME form (view_3853); the REQ record
-   is created immediately but pending. Every surface that lists REQ records
-   gets a "status is not pending" filter (blank fails safe — same pattern as
-   the CO Type filter).
+1. **Up-front survey details = a real Survey Request record in "Pending
+   Validation" status.** No survey-detail fields duplicated onto the SOW
+   header, no Make-side datastore. The REQ record is created immediately
+   (by Make, from the modal payload) but pending. Every surface that lists
+   REQ records gets a "status is not pending" filter (blank fails safe —
+   same pattern as the CO Type filter).
 2. **Initiation subsumes the validation ask.** There is no separate "request
    validation" button anymore. Initiating the install project ALWAYS asks Ops
    to validate. The old notify-only webhook's job moves into the initiate
@@ -69,62 +69,79 @@ Current sequence:
 The fork ("survey now" vs "survey later") is NOT two branches of logic — it's
 **one rule applied at REQ-creation time**:
 
-> The survey request form is fillable any time after initiation. A REQ
-> created while the SOW is **not yet validated** is created **Pending
+> A REQ created while the SOW is **not yet validated** is created **Pending
 > Validation** and fires when Ops marks ready. A REQ created while the SOW
 > **is validated** fires immediately (today's behavior).
 
-So "everything at once" = fill the form right at initiation; "same basic
-flow" = fill it after validation. One form, one object, one activation rule.
+So "Request SOW Validation & Survey" = capture details at initiation (REQ
+pending, fires on validation); "Request Survey" = capture after validation
+(REQ live, fires now). One shared survey-details modal component, one
+object, one activation rule — the actions differ only in WHEN the REQ is
+created relative to `field_2723`.
 
-### Sales stepper (scene_1116, workflow-stepper.js)
+### Sales stepper (scene_1116, workflow-stepper.js) — the THREE-ACTION model
 
-**Hard UX requirement (2026-08-02): NO form → return → second-form
-round-trip.** Sales does ONE gesture. The initiate step therefore stops
-navigating to the Knack form entirely and becomes a single custom modal +
-single webhook — the same replace-the-native-form pattern the codebase
-already uses (`co-add-item-form.js` → MAKE_CO_ADD_ITEMS_WEBHOOK,
-`qa-popover.js`, bulk-upload modal).
+**Hard UX requirements (2026-08-02):**
+- NO form → return → second-form round-trip. Every action is a single
+  custom modal + single webhook — the replace-the-native-form pattern the
+  codebase already uses (`co-add-item-form.js` → MAKE_CO_ADD_ITEMS_WEBHOOK,
+  `qa-popover.js`, bulk-upload modal).
+- Sales sees exactly THREE possible actions, surfaced by SOW state —
+  "Initiate" is no longer a visible verb (project setup rides invisibly on
+  the validation actions):
 
-1. **Project Playbook** — unchanged.
-2. **Initiate Installation Project** — becomes a `webhookAction` step
-   opening ONE custom modal:
-   - **Top section**: whatever the current initiate Knack form collects
-     (⚠️ discovery — it may be little more than a confirm; see below).
-   - **Choice radio**:
-     - "Request the site survey now" → reveals the survey-details section
-       inline (same fields as view_3853's form: instructions, other notes,
-       POC, scheduling prefs, …). For the POC/connection inputs, reuse the
-       ops-stepper `recipient` picker pattern (issue-change-order reads
-       contacts from a view + editable name/email/phone) or `ns.picker`.
-     - "I'll request the survey when I'm ready" → survey section stays
-       hidden.
-   - **Footer**: Cancel | Initiate Project.
-   - Submit fires ONE webhook (the extended initiate scenario). Payload:
-     `{ sourceRecordId, surveyMode: 'now'|'later', survey: {…details}|null,
-     notes, triggeredBy }`. Make does everything server-side: project setup
-     (as today) + the Ops validation ping + (when `survey` present) creates
-     the Pending Validation REQ record.
-   - The existing `pollAfterClick` machinery is kept as-is — the step locks
-     into "Initializing project…" and polls until `field_1199` lands.
-     Completion refreshes view_3491 as today.
-3. **"Request SOW validated" button** — REMOVED (subsumed by initiation).
-   Keep the webhook key temporarily for the Make transition; delete the step
-   config + `requestedState` machinery.
-4. **Request Site Survey accordion (view_3853)** — no longer part of the
-   initiation gesture; it remains the "later" path and the change-of-mind
-   path. Gate loosens from "validated" to **"initiated"** (`field_1199` has
-   value), preserving the unifying rule:
-   - Not initiated → locked, "Initiate the installation project first".
-   - Initiated, no REQ, not validated → open; submitting creates a Pending
-     Validation REQ (helper text: "sends automatically when Ops
-     validates"). This is how a "later" Sales changes their mind early.
-   - Pending REQ exists (from either path) → info state: "Survey request
-     armed — sends when Ops validates" + link to review/edit the pending
-     REQ. Completed check stays keyed on `field_2706` = Yes / CR path
-     (`field_2728` > 0) as today.
-   - Validated, no REQ → open, submits fire immediately (today's behavior).
-5. Downstream steps — untouched.
+  1. **"Request SOW Validation & Survey"** — the everything-at-once path.
+  2. **"Request SOW Validation Only (request survey later)"**.
+  3. **"Request Survey"** — only on an already-validated SOW.
+
+**State → what renders** (after Project Playbook, which is unchanged):
+
+| SOW state | Stepper shows |
+|---|---|
+| Playbook incomplete | Actions 1 + 2 visible but locked ("Complete the Project Playbook first") |
+| Playbook done, no validation requested | Actions 1 + 2 active, side by side |
+| Validation requested, waiting on Ops | Locked status row — "Validation requested — survey armed, sends when Ops validates" (action 1) or "Validation requested — waiting on Ops" (action 2) |
+| Validated (`field_2723` = Yes), no REQ | Action 3 active |
+| Survey requested (`field_2706` = Yes) / CR path (`field_2728` > 0) | Completed states + downstream steps as today |
+
+**Action behaviors:**
+
+- **Action 1 — Request SOW Validation & Survey**: modal = initiate-form
+  fields (⚠️ discovery) + the survey-details section (view_3853's field
+  set: instructions, other notes, POC, scheduling prefs, …; POC/connection
+  inputs reuse the ops-stepper `recipient` picker pattern or `ns.picker`).
+  Footer: Cancel | Request Validation & Survey. One webhook → Make does
+  project setup + Ops validation ping + creates the **Pending Validation
+  REQ**. Payload: `{ sourceRecordId, surveyMode: 'now', survey: {…},
+  notes, triggeredBy }`.
+- **Action 2 — Request SOW Validation Only**: modal = initiate-form fields
+  + notes. Same webhook, `surveyMode: 'later'`, `survey: null` → project
+  setup + validation ping only.
+- **Action 3 — Request Survey**: THE SAME survey-details modal component as
+  action 1's survey section — one shared form component, one field set.
+  Fires the same webhook shape (`surveyMode: 'now'`, no initiate section —
+  project setup already done, Make no-ops it) → creates a REQ that fires
+  immediately (SOW already validated). **This replaces the native
+  view_3853 form entirely** — survey capture looks identical at every
+  entry point. Retire/hide view_3853's form once cut over (its accordion
+  shell may remain as the host for the status/completed states, or the
+  action row replaces it — implementer's choice, prefer whichever keeps
+  the completed/CR-path messaging that exists today).
+- After actions 1/2: the fired step locks into "Initializing project…" and
+  the existing `pollAfterClick` machinery polls until `field_1199` lands
+  (completion refreshes view_3491 as today), then the waiting-on-Ops
+  status row takes over (driven by server state — the pending REQ rollup /
+  a validation-requested field — NOT localStorage).
+- **Removed**: the standalone "Request SOW validated" button + its
+  `requestedState` localStorage machinery, and the initiate menu step
+  (view_3828).
+
+**Decision (per 2026-08-02 session): action 3 is HIDDEN until validated.**
+There is no pre-validation "arm the survey late" affordance — a Sales user
+who picked action 2 and changes their mind before Ops validates simply
+waits for validation, then uses action 3. (The pending-REQ activation rule
+in Make still supports arming pre-validation if we ever want to add a
+change-of-mind affordance later; it's a UI decision, not a data-model one.)
 
 ### Ops surfaces
 
@@ -148,12 +165,12 @@ already uses (`co-add-item-form.js` → MAKE_CO_ADD_ITEMS_WEBHOOK,
   Validation status (the `field_2728` pattern) so steppers/pills/Make can
   read "armed" without fetching REQ records. Expose it on view_3827,
   view_3325, and view_3861.
-- **view_3853 form**: record rule sets status = Pending Validation **when
-  the SOW's `field_2723` ≠ Yes** at submit time; otherwise today's rules run
-  unchanged. (⚠️ Discovery required first: confirm exactly what view_3853's
-  submit does today — does the form create the REQ directly with record
-  rules flipping `field_2706`, or does Make create the REQ? The activation
-  design plugs into whichever it is.)
+- **view_3853 form**: RETIRED once the shared survey-details modal ships —
+  all REQ creation goes through Make from the modal payload, and the
+  pending-vs-live status rule lives in the Make scenario (create pending
+  when the SOW's `field_2723` ≠ Yes, live otherwise). (⚠️ Discovery still
+  required: what view_3853's submit does today — its record rules and
+  whatever flips `field_2706` must be ported into the scenario.)
 - **REQ-listing views** (sub portal, survey grids, ops views): add
   "status is not Pending Validation" filters. Blank status must fail safe
   (treated as not-pending, i.e. visible) so legacy records are unaffected.
@@ -191,6 +208,11 @@ already uses (`co-add-item-form.js` → MAKE_CO_ADD_ITEMS_WEBHOOK,
 - **Sales changes mind (disarm)**: the pending REQ is a real record — give
   the armed info-state a "cancel request" affordance (status → Void/Draft or
   delete). v1 can punt to editing/deleting via the REQ's own page.
+- **Sales changes mind (arm late)**: intentionally NOT offered — action 3
+  is hidden until validated (locked decision above). If Sales picked
+  "Validation Only" and wants the survey sooner, they wait for validation;
+  the data model supports adding a pre-validation arm affordance later
+  without schema changes.
 - **Stale pending REQs** (SOW never validated): visible on the SOW's armed
   state and the ops pill badge; no TTL — they ride the SOW.
 - **Legacy SOWs mid-flow at cutover**: no pending REQs exist, rollup = 0,
@@ -217,6 +239,13 @@ already uses (`co-add-item-form.js` → MAKE_CO_ADD_ITEMS_WEBHOOK,
    the new flow (don't let an empty SOW enter validation).
 5. Which Make scenario watches REQ creation today, and whether the
    sub-notification lives there or in Knack record rules/emails.
+6. Whether `field_1199` (install project link) is per-SOW or effectively
+   project-level (shared across duplicate SOW options via the project
+   connection). If shared, the validation actions on a second SOW option
+   must have Make no-op the project-setup portion (idempotent create), and
+   the stepper's "not initiated" state may never appear on siblings —
+   confirm how the duplicate-SOW flow (`create-sow-option-btn.js`,
+   `field_2917`, the sibling-survey `completedMessage` link) interacts.
 
 ### Implementation order
 
@@ -228,11 +257,12 @@ already uses (`co-add-item-form.js` → MAKE_CO_ADD_ITEMS_WEBHOOK,
    until pending records exist).
 4. Make: extend the initiate scenario to webhook-driven (project setup +
    validation ping + optional pending-REQ create from payload).
-5. Bundle: the new initiate modal (choice radio + survey-details section,
-   one webhook, keep `pollAfterClick`); view_3853 gate change +
-   armed/capture header states; remove request-sow-validation step.
+5. Bundle: the shared survey-details modal component + the three action
+   steps (validation&survey / validation-only / request-survey), state-
+   driven rendering, keep `pollAfterClick`; remove the
+   request-sow-validation step and the initiate menu step.
 6. Make: mark-ready activation branch.
 7. Ops surfaces: stepper modal context line + pill badge.
 8. Cleanup: retire `MAKE_REQUEST_SOW_VALIDATION_WEBHOOK` step config,
-   localStorage `requestedState` code, the standalone Make scenario, and
-   the old initiate form page / view_3828 menu.
+   localStorage `requestedState` code, the standalone Make scenario, the
+   old initiate form page / view_3828 menu, and the native view_3853 form.
