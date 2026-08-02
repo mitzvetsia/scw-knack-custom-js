@@ -26,9 +26,37 @@
       label: 'Request SOW Validation Only (request survey later)',
       menuView: 'view_3828',
       insertAfter: 'view_2924',
-      completed: { field: 'field_1199', hasValue: true },
+      // ⚠️ Completion proxy: field_1199 (CU project link) signals "project
+      // submitted to Ops", which coincides with "validation requested" for
+      // the FIRST SOW but not for alternatives (a clone may copy — or not
+      // copy — field_1199, and neither means validation was asked for THIS
+      // SOW). TODO(validation-requested stamp): once Builder gains a
+      // per-SOW "DATE_validation requested" field written by every Make
+      // scenario that carries the validation ask, key `completed` (and the
+      // pollAfterClick exit) on that stamp instead of field_1199.
+      // field_2723 = Yes also completes it — Ops validating makes the
+      // request moot.
+      completed: {
+        any: [
+          { field: 'field_1199', hasValue: true },
+          { field: 'field_2723', value: 'Yes' }
+        ]
+      },
       lockWhenCompleted: true,
-      disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' },
+      // Array form: first matching entry wins. NOTE this step must ALWAYS
+      // exist in the DOM (scene-tweaks.js uses #scw-step-initiate-install
+      // as a scene-reveal marker) — so state gating here locks, never
+      // hides (no showWhen).
+      disabled: [
+        { when: { field: 'field_2724', notValue: 'Yes' },
+          message: 'Complete the Project Playbook first' },
+        // Sibling SOW already has the survey (change-request path): the
+        // right ask is the alternative-bid action below, not a plain
+        // validation request.
+        { when: { all: [ { field: 'field_2728', gt: 0 },
+                         { field: 'field_2706', notValue: 'Yes' } ] },
+          message: 'Use "Request Validation & Add as Alternative Bid" below' }
+      ],
       // Once fired, show the waiting state until Ops validates (or the
       // flow advances via survey / change-request paths).
       completedMessage: {
@@ -75,7 +103,13 @@
       //   field_2723 = Yes  → "Request Survey" (fires immediately — the
       //     original behavior)
       // First matching entry wins; a no-`when` entry is the fallback.
+      // Once the step is completed (survey requested here or on a
+      // sibling), fall back to the neutral historical label so a done
+      // step never reads as an offer.
       dynamicLabel: [
+        { when: { any: [ { field: 'field_2706', value: 'Yes' },
+                         { field: 'field_2728', gt: 0 } ] },
+          label: 'Request Site Survey' },
         { when: { field: 'field_2723', notValue: 'Yes' }, label: 'Validate SOW & Request Survey' },
         { label: 'Request Survey' }
       ],
@@ -142,12 +176,21 @@
       }
     },
     {
-      // Shows only when the SOW has pending change requests (field_2728 > 0)
-      // AND a survey has not yet been requested (field_2706 = No).
-      // Click opens a notes-prompt modal → MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK.
+      // STATE 3 (docs/project-stage-workflow.md gating): a SIBLING SOW has
+      // the survey (field_2728 > 0) and THIS SOW doesn't (field_2706 = No)
+      // — the one sales ask is "validate this SOW and add it to that
+      // survey as an alternative bid". Click opens a notes-prompt modal →
+      // MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK (payload now carries stepId so
+      // Make can treat it as a validation request too).
       type: 'action',
       id: 'request-alternative-proposal',
       label: 'Request Alternative Proposal',
+      // Validation state decides how much the ask claims to do.
+      dynamicLabel: [
+        { when: { field: 'field_2723', notValue: 'Yes' },
+          label: 'Request Validation & Add as Alternative Bid to Survey' },
+        { label: 'Request Addition to Survey as Alternative Bid' }
+      ],
       insertAfterStepId: 'review-site-survey',
       webhookAction: 'requestAlternativeProposal',
       showWhen: {
@@ -158,13 +201,30 @@
       }
     },
     {
+      // STATE 4: the survey lives on THIS SOW (field_2706 = Yes) and
+      // changes have queued since (field_2728 > 0) — sales asks for the
+      // surveyed bid package to be brought back in line with the SOW.
+      // Sales-side mirror of Ops's "Update Subcontractor Bid Request".
+      type: 'action',
+      id: 'request-bid-update-to-match',
+      label: 'Request Survey Bid Updated to Match SOW',
+      insertAfterStepId: 'request-alternative-proposal',
+      webhookAction: 'requestBidUpdate',
+      showWhen: {
+        all: [
+          { field: 'field_2706', value: 'Yes' },
+          { field: 'field_2728', gt: 0 }
+        ]
+      }
+    },
+    {
       // Navigates to the currently-published-proposal details page.
       // Scrapes the href from view_3814's first "View Published Proposal"
       // row link — same source the totals panel's proposal block uses.
       type: 'action',
       id: 'review-final-proposal',
       label: 'Review Completed Proposal',
-      insertAfterStepId: 'request-alternative-proposal',
+      insertAfterStepId: 'request-bid-update-to-match',
       hrefSelector: '#view_3814 tbody tr a.kn-link-page',
       activeIcon: 'eye',
       newTab: true,
@@ -729,6 +789,12 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               sourceRecordId: sourceRecordId,
+              // stepId lets Make also treat this as a validation request
+              // for THIS SOW (state 3 of the gating model — see
+              // docs/project-stage-workflow.md). Additive: existing
+              // scenario branches ignore unknown keys.
+              stepId:         step.id,
+              actionLabel:    step.label || '',
               notes:          notes,
               account:        account,
               project:        project,
@@ -764,9 +830,75 @@
           });
         }
       });
-    }
+    },
     // requestSowValidation handler REMOVED 2026-08-02 — the standalone
     // validation-request step is retired (see the STEPS comment above).
+
+    // State 4: survey already on THIS SOW, changes queued — ask the bid
+    // team to bring the surveyed bid package back in line with the SOW.
+    // Sibling copy of requestAlternativeProposal (same modal + payload
+    // shape, its own webhook key so Make can be wired independently).
+    requestBidUpdate: function (step, el) {
+      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_REQUEST_BID_UPDATE_WEBHOOK) || '';
+      if (!url || /PLACEHOLDER/.test(url)) {
+        alert('Request-bid-update webhook URL is not configured.');
+        return;
+      }
+      var sourceRecordId = getSourceSowId();
+      if (!sourceRecordId) {
+        alert('Could not determine current SOW record ID.');
+        return;
+      }
+      openNotesPromptModal({
+        title:         'Request Survey Bid Update',
+        intro:         'Ask the bid team to update the surveyed bid package to match the current SOW.',
+        placeholder:   'e.g. Swapped 2 cameras to the cheaper model, added a reader at the side door',
+        submitLabel:   'Submit Request',
+        onSubmit: function (notes, setSubmitting, onError) {
+          setSubmitting(true);
+          setStepLoading(el, true);
+          var account = readConnectionFromView('view_3491', 'field_2119');
+          var project = readConnectionFromView('view_3491', 'field_6');
+          var projectName = readFieldFromView('view_3491', 'field_1456');
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceRecordId: sourceRecordId,
+              stepId:         step.id,
+              actionLabel:    step.label || '',
+              notes:          notes,
+              account:        account,
+              project:        project,
+              projectName:    projectName,
+              triggeredBy:    getTriggeredBy()
+            })
+          }).then(function (resp) {
+            return resp.text().then(function (body) {
+              var data = null;
+              try { data = body ? JSON.parse(body) : null; } catch (e) {}
+              return { ok: resp.ok, status: resp.status, body: body, data: data };
+            });
+          }).then(function (resp) {
+            var ok = resp.ok || (resp.data && resp.data.success === true);
+            if (!ok) {
+              setSubmitting(false);
+              setStepLoading(el, false);
+              onError(
+                (resp.data && (resp.data.error || resp.data.message)) ||
+                ('Webhook returned HTTP ' + resp.status + '.')
+              );
+              return;
+            }
+            window.location.reload();
+          }).catch(function (err) {
+            setSubmitting(false);
+            setStepLoading(el, false);
+            onError('Network error: ' + (err && err.message ? err.message : err));
+          });
+        }
+      });
+    }
   };
 
   // ── Notes-prompt modal ───────────────────────────────────
@@ -957,9 +1089,11 @@
         if (finalHtml) return { html: finalHtml, icon: INFO_SM_SVG };
       }
     }
-    if (baseDisabled && !isCompleted && step.disabled && step.disabled.message) {
-      // Lock messages don't accept tokens — plain text.
-      return { html: escapeHtml(step.disabled.message), icon: LOCK_SM_SVG };
+    if (baseDisabled && !isCompleted && step.disabled) {
+      // Lock messages don't accept tokens — plain text. resolveDisabled
+      // picks the matching message for array-form disabled configs.
+      var dMsg = resolveDisabled(step).message;
+      if (dMsg) return { html: escapeHtml(dMsg), icon: LOCK_SM_SVG };
     }
     if (!isCompleted && !baseDisabled && step.activeMessage) {
       var am = step.activeMessage;
@@ -971,6 +1105,27 @@
       }
     }
     return null;
+  }
+
+  // Resolve step.disabled to { disabled, message }. Supports the original
+  // single condition-object form ({ field…, message }) and an ARRAY of
+  // { when, message } entries — first matching entry wins, so different
+  // lock reasons can carry different messages.
+  function resolveDisabled(step) {
+    if (!step.disabled) return { disabled: false, message: '' };
+    if (Array.isArray(step.disabled)) {
+      for (var i = 0; i < step.disabled.length; i++) {
+        var d = step.disabled[i];
+        if (conditionMet(d.when || d)) {
+          return { disabled: true, message: d.message || '' };
+        }
+      }
+      return { disabled: false, message: '' };
+    }
+    return {
+      disabled: conditionMet(step.disabled),
+      message: step.disabled.message || ''
+    };
   }
 
   // Resolve a state-dependent step label: first dynamicLabel entry whose
@@ -1032,7 +1187,7 @@
     }
 
     var isCompleted = step.completed ? conditionMet(step.completed) : false;
-    var baseDisabled = step.disabled ? conditionMet(step.disabled) : false;
+    var baseDisabled = resolveDisabled(step).disabled;
     var lockedByCompletion = !!(step.lockWhenCompleted && isCompleted);
     var isDisabled = baseDisabled || lockedByCompletion;
 
@@ -1087,7 +1242,7 @@
     }
 
     var isCompleted = step.completed ? conditionMet(step.completed) : false;
-    var baseDisabled = step.disabled ? conditionMet(step.disabled) : false;
+    var baseDisabled = resolveDisabled(step).disabled;
     var lockedByCompletion = !!(step.lockWhenCompleted && isCompleted);
     var isDisabled = baseDisabled || lockedByCompletion;
 

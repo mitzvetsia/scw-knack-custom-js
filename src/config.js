@@ -200,11 +200,23 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // webhooks). ⚠️ Requires field_2952 on view_3861 for CO mode to activate.
   //   Response body: { success: true } or { success: false, error: "..." }
   MAKE_CO_ISSUE_WEBHOOK: "https://hook.us1.make.com/fwpbnldo3fkrywggxwu18qsh6ghgrg7w",
-  // Fires on the "Request Alternative Proposal" stepper action. Expects:
-  //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
+  // Fires on the "Request Validation & Add as Alternative Bid to Survey"
+  // stepper action (state 3 of the gating model — sibling SOW has the
+  // survey; docs/project-stage-workflow.md). Payload now carries stepId
+  // ('request-alternative-proposal') + actionLabel so the scenario can also
+  // treat it as a validation request for this SOW. Expects:
+  //   Request body:  { sourceRecordId, stepId, actionLabel, notes, account,
+  //                    project, projectName, triggeredBy }
   //   Response body: { success: true, message?: "..." }
   //             or:  { success: false, error: "<message>" }
   MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/r84mgo96cdsq3kox3y6lj0im6b7ovme2",
+  // Fires on the "Request Survey Bid Updated to Match SOW" stepper action
+  // (state 4 — survey on THIS SOW, changes queued since; the sales-side
+  // mirror of Ops's Update Subcontractor Bid Request). Same payload shape
+  // as the alt-proposal action (stepId = 'request-bid-update-to-match').
+  // ⚠️ PLACEHOLDER — point at the real Make scenario before enabling in
+  // production; the button alerts "not configured" until then.
+  MAKE_REQUEST_BID_UPDATE_WEBHOOK: "PLACEHOLDER",
   // ⚠️ RETIRED FROM CODE 2026-08-02 (docs/project-stage-workflow.md): the
   // standalone "Request SOW validated as ready for Survey" stepper button
   // was removed — both remaining sales actions (the renamed initiate form

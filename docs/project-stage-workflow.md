@@ -114,7 +114,48 @@ branches on validation state at submission time.
 4. **Removed**: the standalone "Request SOW validated" button + its
    `requestedState` localStorage machinery (subsumed — both remaining
    buttons ARE validation requests).
-5. Downstream steps — untouched.
+5. Downstream steps — untouched EXCEPT the sibling-survey / this-survey
+   states below.
+
+### The FOUR-STATE gating model (locked 2026-08-02, second session)
+
+The per-SOW gating must account for the PROJECT: a survey may already
+exist on a sibling SOW. Signals: V = `field_2723` (this SOW validated),
+S_this = `field_2706` (survey on this SOW), S_sib = `field_2728` > 0 with
+S_this ≠ Yes (survey on a sibling — the change-request path; caveat
+below), Playbook gate (`field_2724`) over everything.
+
+| # | State | Sales actions |
+|---|---|---|
+| 1 | Not validated, no survey anywhere (V≠Yes, S_this≠Yes, `2728`=0) | **Validate SOW & Request Survey** (accordion) + **Request SOW Validation Only** |
+| 2 | Validated, no survey on project (V=Yes, S_this≠Yes, `2728`=0) | **Request Survey** (accordion — fires immediately) |
+| 3 | Survey on a SIBLING SOW (`2728`>0, S_this≠Yes) | ONLY **Request Validation & Add as Alternative Bid to Survey** — the relabeled `request-alternative-proposal` step (dynamic label drops the "Validation &" part when V=Yes; payload now carries stepId/actionLabel so Make also treats it as a validation ask). The validation-only step LOCKS with "Use the alternative-bid action below"; the survey accordion is completed with the sibling "Survey Requested on {link}" message and reverts to the neutral "Request Site Survey" label |
+| 4 | Survey on THIS SOW (S_this=Yes) | **Request Survey Bid Updated to Match SOW** — new `request-bid-update-to-match` step, shown when changes have queued (`2728`>0); the sales-side mirror of Ops's Update Subcontractor Bid Request. New `MAKE_REQUEST_BID_UPDATE_WEBHOOK` (PLACEHOLDER until the Make scenario exists — the button alerts "not configured") |
+
+**Completion proxy for "Request SOW Validation Only":** `field_1199` (CU
+project link) means "project submitted to Ops" — correct for the FIRST
+SOW, wrong for alternatives (a clone may or may not copy it; neither means
+validation was asked for THIS SOW). Locked direction: add a per-SOW
+**"DATE_validation requested"** stamp, written by EVERY Make scenario that
+carries a validation ask (validation-only, validate+survey,
+validate+add-as-alternative); completion = stamp present OR V=Yes. Interim
+(until the Builder field exists): completed = `field_1199` hasValue OR
+V=Yes — least-wrong proxy, caveat documented in the step config.
+
+**DOM constraint:** `#scw-step-initiate-install` is a scene-reveal marker
+(`scene-tweaks.js` `transformsReady`) — the step must ALWAYS exist in the
+DOM. State gating on it therefore LOCKS (array-form `disabled` with
+per-reason messages), never hides (no `showWhen`).
+
+**Signal caveats (verify in Builder):**
+- Does `field_2728` reliably read > 0 whenever a sibling survey exists? An
+  identical clone with zero line-item diffs might read 0 and wrongly land
+  in state 1/2. If so, a project-level "survey exists" rollup is needed as
+  the S_sib signal instead.
+- Is `field_1199` copied on SOW clone? Copied → validation-only shows
+  completed prematurely on alternatives; not copied → shows active but
+  the state-3 lock covers the sibling-survey case (the validated-sibling-
+  no-survey case remains exposed until the stamp field lands).
 
 Notes on the construct:
 - **Change-of-mind (arm late) is free**: after "Validation Only" while
