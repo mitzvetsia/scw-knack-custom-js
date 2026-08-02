@@ -23,7 +23,10 @@
       // field_1199 poll, same view_3491 refresh.
       type: 'action',
       id: 'initiate-install',
-      label: 'Request SOW Validation Only (request survey later)',
+      label: 'Validate SOW Only',
+      // Helper line under the title (rendered only while the step is
+      // active — completed/locked states carry their own messages).
+      subText: 'Ops reviews & validates this SOW. Come back to request the survey whenever you’re ready.',
       menuView: 'view_3828',
       insertAfter: 'view_2924',
       // ⚠️ Completion proxy: field_1199 (CU project link) signals "project
@@ -110,8 +113,17 @@
         { when: { any: [ { field: 'field_2706', value: 'Yes' },
                          { field: 'field_2728', gt: 0 } ] },
           label: 'Request Site Survey' },
-        { when: { field: 'field_2723', notValue: 'Yes' }, label: 'Validate SOW & Request Survey' },
+        { when: { field: 'field_2723', notValue: 'Yes' }, label: 'Validate SOW & Straight to Survey' },
         { label: 'Request Survey' }
+      ],
+      // Helper line under the title — replaces the old right-side
+      // activeMessage note (which crowded the header when the choice
+      // group renders the two options side by side). Only the
+      // unvalidated case needs explaining; once validated the label
+      // "Request Survey" speaks for itself.
+      subText: [
+        { when: { field: 'field_2723', notValue: 'Yes' },
+          text: 'Fill in the survey details now — the request is sent automatically as soon as Ops validates.' }
       ],
       // Complete if the survey has been requested (field_2706 = Yes)
       // OR if there are any change requests queued (field_2728 > 0),
@@ -138,18 +150,12 @@
       // "Waiting on Ops to validate SOW"). Pre-validation submits are
       // legitimate now — Make's branch decides pending-vs-fire.
       disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' },
-      // Info note while unvalidated so Sales knows the survey won't reach
-      // the sub until Ops signs off.
       // TODO(pending-REQ rollup): once the Builder rollup field (count of
       // Pending Validation REQs) exists on view_3827, add an armed state
       // here — "Survey request armed — sends when Ops validates" — keyed
       // on it, IF discovery shows field_2706 does NOT flip on a pending
       // submit. If field_2706 flips at submit regardless, the completed
       // gate above already covers it.
-      activeMessage: {
-        when: { field: 'field_2723', notValue: 'Yes' },
-        text: 'Sent after Ops validates the SOW'
-      }
     },
     {
       type: 'action',
@@ -362,10 +368,27 @@
       '  justify-content: center; width: 28px; margin-right: 6px;' +
       '  color: var(--scw-step-accent, #295f91); opacity: .75;' +
       '}' +
+      '.scw-step-action .scw-step-text {' +
+      '  flex: 1 1 auto; min-width: 0; display: flex;' +
+      '  flex-direction: column; gap: 1px;' +
+      '}' +
+      /* flex kept for the ops/sales steppers, whose rows have the title
+         as a direct flex child of the row (no .scw-step-text wrapper) —
+         inside this module's column wrapper it's inert. */
       '.scw-step-action .scw-step-title {' +
       '  flex: 1 1 auto; font-size: 14px; font-weight: 600;' +
       '  color: #1e293b; white-space: nowrap; overflow: hidden;' +
       '  text-overflow: ellipsis;' +
+      '}' +
+      /* Helper sub-line under a step title (action rows + accordion
+         headers). Wraps freely — it exists so the TITLE can stay short. */
+      '.scw-step-sub {' +
+      '  font-size: 11.5px; font-weight: 500; color: #64748b;' +
+      '  line-height: 1.35; white-space: normal;' +
+      '}' +
+      '.scw-ktl-accordion__header.scw-step-has-sub { flex-wrap: wrap; }' +
+      '.scw-ktl-accordion__header .scw-step-sub {' +
+      '  flex: 1 1 100%; order: 10; margin: 2px 0 0 30px;' +
       '}' +
 
       /* ── Action step states ── */
@@ -641,10 +664,16 @@
     icon.innerHTML = CIRCLE_SVG;
     el.appendChild(icon);
 
+    // Title + optional helper sub-line stack in a column so the row can
+    // carry two lines without the title losing its ellipsis behavior.
+    var textWrap = document.createElement('span');
+    textWrap.className = 'scw-step-text';
+    el.appendChild(textWrap);
+
     var title = document.createElement('span');
     title.className = 'scw-step-title';
     title.textContent = step.label;
-    el.appendChild(title);
+    textWrap.appendChild(title);
 
     return el;
   }
@@ -1171,6 +1200,19 @@
     };
   }
 
+  // Resolve step.subText (helper line under the title) — a plain string,
+  // or an array of { when, text } entries, first match wins. Returns null
+  // when nothing applies (no sub-line rendered).
+  function resolveSubText(step) {
+    if (!step.subText) return null;
+    if (typeof step.subText === 'string') return step.subText;
+    for (var i = 0; i < step.subText.length; i++) {
+      var s = step.subText[i];
+      if (!s.when || conditionMet(s.when)) return s.text || null;
+    }
+    return null;
+  }
+
   // Resolve a state-dependent step label: first dynamicLabel entry whose
   // `when` matches wins; an entry with no `when` is the fallback. Returns
   // null when the step has no dynamicLabel (caller keeps step.label).
@@ -1243,6 +1285,24 @@
     // styles that combined state (full opacity, green icon, no clicks).
     wrap.classList.toggle('scw-step-completed', isCompleted);
     wrap.classList.toggle('scw-step-disabled', isDisabled);
+
+    // Helper sub-line — active states only (completed/locked headers carry
+    // their own messages). Change-guarded writes: ktl-accordion's
+    // MutationObserver watches this header.
+    var subTxt = (!isCompleted && !baseDisabled) ? resolveSubText(step) : null;
+    var subEl = hdr.querySelector('.scw-step-sub');
+    if (subTxt) {
+      if (!subEl) {
+        subEl = document.createElement('span');
+        subEl.className = 'scw-step-sub';
+        hdr.appendChild(subEl);
+      }
+      if (subEl.textContent !== subTxt) subEl.textContent = subTxt;
+      if (!hdr.classList.contains('scw-step-has-sub')) hdr.classList.add('scw-step-has-sub');
+    } else {
+      if (subEl) subEl.remove();
+      if (hdr.classList.contains('scw-step-has-sub')) hdr.classList.remove('scw-step-has-sub');
+    }
 
     renderHeaderMessage(hdr, step, step.viewKey, isCompleted, baseDisabled);
   }
@@ -1322,6 +1382,9 @@
       el.classList.add('is-processing');
       el.classList.add('is-disabled');
       el.classList.remove('is-completed');
+      // Helper sub-line is noise under the spinner label — drop it.
+      var procSub = el.querySelector('.scw-step-sub');
+      if (procSub) procSub.remove();
       // Drop the href so even an accessibility-tab-Enter doesn't fire.
       el.removeAttribute('href');
       renderHeaderMessage(el, step, step.id, false, false);
@@ -1350,6 +1413,21 @@
     // the step reads as "done" while still being non-clickable.
     el.classList.toggle('is-completed', isCompleted);
     el.classList.toggle('is-disabled', isDisabled);
+
+    // Helper sub-line — active states only.
+    var actSub = (!isCompleted && !isDisabled) ? resolveSubText(step) : null;
+    var textWrap2 = el.querySelector('.scw-step-text');
+    var actSubEl = textWrap2 && textWrap2.querySelector('.scw-step-sub');
+    if (actSub && textWrap2) {
+      if (!actSubEl) {
+        actSubEl = document.createElement('span');
+        actSubEl.className = 'scw-step-sub';
+        textWrap2.appendChild(actSubEl);
+      }
+      if (actSubEl.textContent !== actSub) actSubEl.textContent = actSub;
+    } else if (actSubEl) {
+      actSubEl.remove();
+    }
 
     // Disabled / informational message — shared helper with accordions.
     renderHeaderMessage(el, step, step.id, isCompleted, baseDisabled);
