@@ -27,8 +27,20 @@ SOW-header flags driving `workflow-stepper.js` (source view_3827):
 | `field_1199` | Install project link — populated = initiated | Make (initiate scenario) |
 | `field_2723` | FLAG_ready for survey (validated) | Make (mark-ready, fired by Ops) |
 | `field_2706` | FLAG_survey requested | Survey request form view_3853 path |
-| `field_2728` | Pending change-request count | System (CR path supersedes survey path) |
-| `field_2917` | Count gate on the validation-request button (⚠️ confirm meaning in Builder — likely SOW line-item count) | System |
+| `field_2728` | "FLAG_SOWs with Survey Requested = yes" — PROJECT-level count of SOWs with `field_2706` = Yes, INCLUDING this one (confirmed from live DOM 2026-08-02; the old "change-request count" comments were wrong). `>0` with this SOW's `2706` ≠ Yes ⇒ sibling has the survey | System |
+| `field_2917` | "FLAG_SOWs with Survey Validated" — project-level count (confirmed 2026-08-02) | System |
+
+**Confirmed 2026-08-02 (live DOM):** `field_2706` flips at SUBMIT via the
+view_3853 form's record rule, regardless of validation state — so
+**armed = `field_2706` = Yes AND `field_2723` ≠ Yes**, derivable on every
+view that carries both flags with NO Builder rollup. The rollup remains a
+nice-to-have for counting multiples; the derived signal is live in
+ops-stepper (`armedSurveyCount` fallback), the survey accordion's armed
+completed-message, and survey-request-cards. Also confirmed: view_3876's
+object is **SOW_OPS_site survey request** (the sales capture record — POC
+/ badging / PPE, request date `field_1195`), NOT the sub-facing SR-#/REQ
+object; the "Pending Validation" status field belongs on the SOW_OPS
+object, and Make creates the sub-facing REQ downstream.
 
 Current sequence:
 1. Playbook form (view_2924) → `field_2724`.

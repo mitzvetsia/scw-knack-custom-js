@@ -135,17 +135,29 @@
         ]
       },
       lockWhenCompleted: true,
-      // When the step is completed via the change-request path (i.e.
-      // the survey was actually requested on a sibling SOW), surface
-      // an info note linking back to that SOW. The {link} token pulls
-      // the connection's identifier + record-id from field_2329 on
-      // view_3876, then builds an href by swapping the second record-id
-      // in the current URL hash (the SOW slot) for the linked record id.
-      completedMessage: {
-        when: { field: 'field_2728', gt: 0 },
-        text: 'Survey Requested on {link}',
-        link: { view: 'view_3876', field: 'field_2329' }
-      },
+      // Completed-state notes (array — first matching entry wins):
+      //   1. THIS SOW's survey is captured but the SOW isn't validated →
+      //      the request is ARMED (field_2706 flips at submit; Make holds
+      //      the send until Ops marks ready).
+      //   2. Sibling path ONLY (field_2728 counts the project's SOWs with
+      //      survey requested — INCLUDING this one — so gate the sibling
+      //      link on field_2706 ≠ Yes or it renders with an empty {link}
+      //      on the surveyed SOW itself). {link} pulls identifier +
+      //      record-id from field_2329 on view_3876 and swaps the SOW
+      //      slot in the current hash.
+      completedMessage: [
+        {
+          when: { all: [ { field: 'field_2706', value: 'Yes' },
+                         { field: 'field_2723', notValue: 'Yes' } ] },
+          text: 'Survey request armed — sends when Ops validates'
+        },
+        {
+          when: { all: [ { field: 'field_2728', gt: 0 },
+                         { field: 'field_2706', notValue: 'Yes' } ] },
+          text: 'Survey Requested on {link}',
+          link: { view: 'view_3876', field: 'field_2329' }
+        }
+      ],
       // Ungated except for the Playbook (was: locked on field_2723 with
       // "Waiting on Ops to validate SOW"). Pre-validation submits are
       // legitimate now — Make's branch decides pending-vs-fire.
@@ -207,10 +219,15 @@
       }
     },
     {
-      // STATE 4: the survey lives on THIS SOW (field_2706 = Yes) and
-      // changes have queued since (field_2728 > 0) — sales asks for the
-      // surveyed bid package to be brought back in line with the SOW.
-      // Sales-side mirror of Ops's "Update Subcontractor Bid Request".
+      // STATE 4: the survey on THIS SOW has actually been SENT — under
+      // the always-pending mechanics that means field_2706 = Yes AND the
+      // SOW is validated (field_2723 = Yes; an armed-but-unsent request
+      // has nothing to update yet). Sales asks for the surveyed bid
+      // package to be brought back in line with the SOW — the sales-side
+      // mirror of Ops's "Update Subcontractor Bid Request".
+      // (⚠️ field_2728 is NOT a change-count — it counts the project's
+      // SOWs with survey requested, including this one — so it can't
+      // gate "changes queued since the survey".)
       type: 'action',
       id: 'request-bid-update-to-match',
       label: 'Request Survey Bid Updated to Match SOW',
@@ -219,7 +236,7 @@
       showWhen: {
         all: [
           { field: 'field_2706', value: 'Yes' },
-          { field: 'field_2728', gt: 0 }
+          { field: 'field_2723', value: 'Yes' }
         ]
       }
     },
@@ -1153,12 +1170,17 @@
   //   4. none otherwise.
   function resolveHeaderMessage(step, isCompleted, baseDisabled) {
     if (isCompleted && step.completedMessage) {
-      var cm = step.completedMessage;
-      var cmText = typeof cm === 'string' ? cm : (cm && cm.text) || '';
-      var cmWhen = typeof cm === 'object' ? cm.when : null;
-      if (cmText && (!cmWhen || conditionMet(cmWhen))) {
-        var finalHtml = expandMessage(cmText, typeof cm === 'object' ? cm : null);
-        if (finalHtml) return { html: finalHtml, icon: INFO_SM_SVG };
+      // Array form: first matching entry wins (single object still works).
+      var cmList = Array.isArray(step.completedMessage)
+        ? step.completedMessage : [step.completedMessage];
+      for (var ci = 0; ci < cmList.length; ci++) {
+        var cm = cmList[ci];
+        var cmText = typeof cm === 'string' ? cm : (cm && cm.text) || '';
+        var cmWhen = typeof cm === 'object' ? cm.when : null;
+        if (cmText && (!cmWhen || conditionMet(cmWhen))) {
+          var finalHtml = expandMessage(cmText, typeof cm === 'object' ? cm : null);
+          if (finalHtml) return { html: finalHtml, icon: INFO_SM_SVG };
+        }
       }
     }
     if (baseDisabled && !isCompleted && step.disabled) {

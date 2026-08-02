@@ -742,14 +742,25 @@
     return !!(view && view.querySelector('.kn-detail.' + fieldKey));
   }
 
-  /** Count of Pending Validation survey requests armed on this SOW, read
-   *  from the Builder rollup (ARMED_REQ_COUNT_FIELD) on view_3861. Fails
-   *  open to 0 when the field key is unset or not projected — Mark Ready
-   *  then behaves as plain validation. */
+  /** Count of armed survey requests on this SOW.
+   *  Preferred source: the Builder rollup (ARMED_REQ_COUNT_FIELD) once it
+   *  exists on view_3861. Until then, DERIVED from the flags already on
+   *  the view: field_2706 flips at submit regardless of validation
+   *  (confirmed 2026-08-02), so 2706 = Yes while 2723 = No means a
+   *  request was captured but the survey hasn't been sent — armed. The
+   *  derived form can't count multiples; it reports 1. Legacy-safe: this
+   *  state was unreachable before the stepper ungated pre-validation
+   *  submits. */
   function armedSurveyCount() {
-    if (!ARMED_REQ_COUNT_FIELD || !fieldPresent(ARMED_REQ_COUNT_FIELD)) return 0;
-    var n = parseFloat(readField(ARMED_REQ_COUNT_FIELD));
-    return (isFinite(n) && n > 0) ? n : 0;
+    if (ARMED_REQ_COUNT_FIELD && fieldPresent(ARMED_REQ_COUNT_FIELD)) {
+      var n = parseFloat(readField(ARMED_REQ_COUNT_FIELD));
+      return (isFinite(n) && n > 0) ? n : 0;
+    }
+    if (conditionMet({ field: 'field_2706', value: 'Yes' }) &&
+        conditionMet({ field: 'field_2723', value: 'No' })) {
+      return 1;
+    }
+    return 0;
   }
 
   /** { id, label } options for the branch / tech-group picker, read from
