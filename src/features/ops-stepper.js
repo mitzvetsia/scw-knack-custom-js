@@ -63,6 +63,27 @@
   var PICKER_SUB_FIELD      = 'field_2347';  // subcontractor connection / identifier
   var PICKER_LABEL_FIELD    = 'field_2345';  // survey identifier (e.g. SR-1)
 
+  // ── Armed-survey detection + branch picker (Mark Ready) ──
+  // "Validate SOW & Straight to Survey" on the sales page creates a
+  // Survey Request in Pending Validation status; marking the SOW ready
+  // then FIRES it (docs/project-stage-workflow.md). The Mark Ready modal
+  // must say WHICH gesture Ops is making — validate-only vs
+  // validate-and-send — and, when sending, collect the branch/tech group
+  // the survey goes to (payload.surveyBranch → Make's activation branch
+  // assigns it before notifying).
+  //
+  // ⚠️ Builder TBDs (both fail open — until they exist, Mark Ready
+  // renders as plain validation with the validate-only info banner):
+  //   ARMED_REQ_COUNT_FIELD — SOW rollup counting this SOW's Pending
+  //     Validation REQs; must be projected onto view_3861.
+  //   BRANCH_PICKER_VIEW / BRANCH_LABEL_FIELD — a (hidden is fine) grid
+  //     of branches / tech groups on scene_1096 + its display-name field.
+  //     Unconfigured while armed → the banner says assignment falls to
+  //     the Make default and no picker renders.
+  var ARMED_REQ_COUNT_FIELD = '';   // e.g. 'field_XXXX' — TBD in Builder
+  var BRANCH_PICKER_VIEW    = '';   // e.g. 'view_XXXX'  — TBD in Builder
+  var BRANCH_LABEL_FIELD    = '';   // e.g. 'field_XXXX' — TBD in Builder
+
   var NS         = '.scwOpsStepper';
   var BLOCK_CLS  = 'scw-ops-stepper';
   var STYLE_ID   = 'scw-ops-stepper-css';
@@ -138,6 +159,13 @@
       // Once Ops has marked the SOW ready, render as completed (green
       // check, non-clickable) to mirror the sales build stepper.
       completed: { field: 'field_2723', value: 'Yes' },
+      // Button label telegraphs the armed-survey consequence BEFORE the
+      // modal opens. Falls back to step.label when nothing is armed.
+      dynamicLabel: function () {
+        return armedSurveyCount() > 0
+          ? 'Mark Ready — Send Armed Survey Request'
+          : null;
+      },
       // Active (clickable) when Ops hasn't marked it ready and there
       // are no CRs yet.
       showWhen: {
@@ -511,6 +539,19 @@
       '.scw-ops-modal-error {' +
       '  margin-top: 8px; color: #b91c1c; font-size: 12px;' +
       '}' +
+      /* Context banner (Mark Ready): validate-only vs validate-and-send.
+         Amber = warning convention (never red — red is for errors). */
+      '.scw-ops-modal-banner {' +
+      '  font-size: 12.5px; font-weight: 600; line-height: 1.45;' +
+      '  padding: 9px 11px; border-radius: 8px; margin-bottom: 12px;' +
+      '}' +
+      '.scw-ops-modal-banner--info {' +
+      '  background: #eef2f6; color: #334155; border: 1px solid #dbe3ea;' +
+      '}' +
+      '.scw-ops-modal-banner--warn {' +
+      '  background: rgba(245,158,11,0.10); color: #b45309;' +
+      '  border: 1px solid rgba(245,158,11,0.35);' +
+      '}' +
       /* Recipient single-select (issue-change-order) */
       '.scw-ops-modal-recipient {' +
       '  width: 100%; box-sizing: border-box; margin-top: 6px;' +
@@ -699,6 +740,45 @@
   function fieldPresent(fieldKey) {
     var view = document.getElementById(SOURCE_VIEW);
     return !!(view && view.querySelector('.kn-detail.' + fieldKey));
+  }
+
+  /** Count of Pending Validation survey requests armed on this SOW, read
+   *  from the Builder rollup (ARMED_REQ_COUNT_FIELD) on view_3861. Fails
+   *  open to 0 when the field key is unset or not projected — Mark Ready
+   *  then behaves as plain validation. */
+  function armedSurveyCount() {
+    if (!ARMED_REQ_COUNT_FIELD || !fieldPresent(ARMED_REQ_COUNT_FIELD)) return 0;
+    var n = parseFloat(readField(ARMED_REQ_COUNT_FIELD));
+    return (isFinite(n) && n > 0) ? n : 0;
+  }
+
+  /** { id, label } options for the branch / tech-group picker, read from
+   *  BRANCH_PICKER_VIEW's model with a DOM-scrape fallback. Empty when
+   *  the view isn't configured or isn't on the scene. */
+  function readBranchOptions() {
+    var out = [];
+    if (!BRANCH_PICKER_VIEW) return out;
+    try {
+      var v = Knack.views && Knack.views[BRANCH_PICKER_VIEW];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var attrs = models[i].attributes || models[i];
+        if (!attrs || !attrs.id) continue;
+        var label = BRANCH_LABEL_FIELD ? readDisplayValue(attrs, BRANCH_LABEL_FIELD) : '';
+        out.push({ id: attrs.id, label: label || attrs.id });
+      }
+    } catch (e) { /* fall through to DOM */ }
+    if (!out.length) {
+      var viewEl = document.getElementById(BRANCH_PICKER_VIEW);
+      var rows = viewEl ? viewEl.querySelectorAll('tbody tr[id]') : [];
+      for (var r = 0; r < rows.length; r++) {
+        if (!/^[a-f0-9]{24}$/i.test(rows[r].id || '')) continue;
+        var td = BRANCH_LABEL_FIELD ? rows[r].querySelector('td.' + BRANCH_LABEL_FIELD) : null;
+        var txt = td ? (td.textContent || '').replace(/\s+/g, ' ').trim() : '';
+        out.push({ id: rows[r].id, label: txt || rows[r].id });
+      }
+    }
+    return out;
   }
 
   /** Record id of the SOW's basis-bid connection (field_2942) as rendered on
@@ -1479,6 +1559,16 @@
       card.appendChild(intro);
     }
 
+    // Context banner — e.g. Mark Ready's "validate only" vs "this also
+    // sends the armed survey request" callout. { tone: 'info'|'warn', text }.
+    if (opts.banner && opts.banner.text) {
+      var banner = document.createElement('div');
+      banner.className = 'scw-ops-modal-banner scw-ops-modal-banner--' +
+        (opts.banner.tone === 'warn' ? 'warn' : 'info');
+      banner.textContent = opts.banner.text;
+      card.appendChild(banner);
+    }
+
     var ta = document.createElement('textarea');
     ta.className = 'scw-ops-modal-textarea';
     ta.placeholder = opts.placeholder || '';
@@ -1746,6 +1836,57 @@
     var recipientPicker = buildRecipientPicker(opts.recipient);
     if (recipientPicker) card.appendChild(recipientPicker.element);
 
+    // Branch / tech-group picker — MULTI-select checkbox list used by
+    // Mark Ready when an armed survey will fire. Ops may send the survey
+    // request to more than one subcontracting group, so this mirrors the
+    // alt-bid survey picker's checkbox-list shape (and reuses its CSS).
+    // Options are resolved by the CALLER (fireStep) so this stays dumb:
+    //   opts.branchPicker = { question, required, options: [{id,label}] }
+    // Chosen values ride on ctx.branches = [{ id, label }, …] — ALWAYS an
+    // array (one or many) so Make parses one way.
+    function buildBranchPicker(config) {
+      if (!config || !Array.isArray(config.options) || !config.options.length) return null;
+      var wrap = document.createElement('div');
+      wrap.className = 'scw-ops-modal-submission';
+      var q = document.createElement('div');
+      q.className = 'scw-ops-modal-submission__q';
+      q.textContent = config.question || 'Send the survey to';
+      wrap.appendChild(q);
+      var list = document.createElement('ul');
+      list.className = 'scw-ops-modal-list';
+      config.options.forEach(function (o) {
+        var li = document.createElement('li');
+        var lbl = document.createElement('label');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.setAttribute('data-id', o.id);
+        var span = document.createElement('span');
+        span.textContent = o.label;
+        lbl.appendChild(cb);
+        lbl.appendChild(span);
+        li.appendChild(lbl);
+        list.appendChild(li);
+      });
+      wrap.appendChild(list);
+      return {
+        element:  wrap,
+        required: !!config.required,
+        getValue: function () {
+          var picked = list.querySelectorAll('input[type="checkbox"][data-id]:checked');
+          var out = [];
+          for (var i = 0; i < picked.length; i++) {
+            var id = picked[i].getAttribute('data-id');
+            for (var j = 0; j < config.options.length; j++) {
+              if (config.options[j].id === id) { out.push(config.options[j]); break; }
+            }
+          }
+          return out;
+        }
+      };
+    }
+    var branchPicker = buildBranchPicker(opts.branchPicker);
+    if (branchPicker) card.appendChild(branchPicker.element);
+
     // Submission options — also-submit-to-Sales / Second Set / no.
     // Rendered ABOVE the note textarea so the operator picks a submit
     // target first; the textarea then surfaces only when a real
@@ -1861,17 +2002,31 @@
       return { blocked: false, recipient: rec };
     }
 
+    // Required-branch gate (Mark Ready with an armed survey). At least
+    // one branch / tech group must be checked when the picker is required.
+    function branchOrBlock() {
+      var b = branchPicker ? branchPicker.getValue() : [];
+      if (branchPicker && branchPicker.required && !b.length) {
+        showError('Pick at least one branch / tech group for the survey first.');
+        return { blocked: true };
+      }
+      return { blocked: false, branches: b };
+    }
+
     submitBtn.addEventListener('click', function () {
       err.style.display = 'none';
       var gate = recipientOrBlock();
       if (gate.blocked) return;
+      var bGate = branchOrBlock();
+      if (bGate.blocked) return;
       var notes = (ta.value || '').trim();
       onSubmit(notes, {
         setSubmitting: setSubmitting, showError: showError, close: close,
         mode: opts.primaryMode || null,
         submission:    submissionGroup ? submissionGroup.getValue() : null,
         clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
-        recipient:     gate.recipient || null
+        recipient:     gate.recipient || null,
+        branches:      bGate.branches || []
       });
     });
     if (secondaryBtn) {
@@ -1879,13 +2034,16 @@
         err.style.display = 'none';
         var gate = recipientOrBlock();
         if (gate.blocked) return;
+        var bGate = branchOrBlock();
+        if (bGate.blocked) return;
         var notes = (ta.value || '').trim();
         onSubmit(notes, {
           setSubmitting: setSubmitting, showError: showError, close: close,
           mode: opts.secondaryMode || null,
           submission:    submissionGroup ? submissionGroup.getValue() : null,
           clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
-          recipient:     gate.recipient || null
+          recipient:     gate.recipient || null,
+          branches:      bGate.branches || []
         });
       });
     }
@@ -2121,6 +2279,44 @@
       if (gateReason) { alert('Can’t publish as final yet.\n\n' + gateReason); return; }
     }
 
+    // Mark Ready: say WHICH gesture this is. When a survey request is
+    // armed (Pending Validation REQ on this SOW), validating ALSO sends
+    // it — the modal gets an amber callout + a required branch picker.
+    // When nothing is armed, a quiet info line says validation-only.
+    if (step.id === 'mark-ready') {
+      var armedN = armedSurveyCount();
+      var overrides = {};
+      if (armedN > 0) {
+        var branchOpts = readBranchOptions();
+        overrides.title = 'Mark Ready — Send Armed Survey Request';
+        overrides.banner = {
+          tone: 'warn',
+          text: 'A survey request is ARMED on this SOW — marking ready ' +
+                'validates the SOW and immediately sends the survey request' +
+                (branchOpts.length
+                  ? ' to the branch(es) / tech group(s) you pick below.'
+                  : '. (Branch picker view not configured — assignment ' +
+                    'falls to the Make default.)')
+        };
+        if (branchOpts.length) {
+          overrides.branchPicker = {
+            question: 'Which branch / tech group should this survey go to?',
+            required: true,
+            options: branchOpts
+          };
+        }
+      } else {
+        overrides.banner = {
+          tone: 'info',
+          text: 'Validation only — no survey request is armed. Sales will ' +
+                'request the survey separately.'
+        };
+      }
+      runNotesPromptAndFire(step, btn, url, null, null,
+        { modal: overrides, armedCount: armedN });
+      return;
+    }
+
     // Steps that target a subset of surveys (Request Alt Bid) ask
     // the user to pick first, then fall through to the standard
     // notes prompt with the picked ids in scope.
@@ -2138,16 +2334,18 @@
     runNotesPromptAndFire(step, btn, url, null, null);
   }
 
-  function runNotesPromptAndFire(step, btn, url, selectedSurveyIds, surveyOptions) {
+  function runNotesPromptAndFire(step, btn, url, selectedSurveyIds, surveyOptions, extra) {
     // Merge step-level submission options onto the modal opts so the
     // notes-prompt modal can render the radio group when present. Keeps
     // the data on the step (where the rest of the step config lives)
-    // instead of cluttering step.modal.
+    // instead of cluttering step.modal. `extra.modal` (per-fire
+    // overrides — e.g. Mark Ready's armed-survey banner/picker/title)
+    // merges LAST so it wins over the static step.modal config.
     var modalOpts = $.extend({}, step.modal, {
       submission:    step.submission    || null,
       clickupStatus: step.clickupStatus || null,
       recipient:     step.recipient     || null
-    });
+    }, (extra && extra.modal) || {});
     openNotesPromptModal(modalOpts, function (notes, ctx) {
       ctx.setSubmitting(true);
       setBtnLoading(btn, true);
@@ -2171,6 +2369,14 @@
       if (ctx.recipient)              payload.recipient = ctx.recipient;
       if (ctx.submission)             payload.submission = ctx.submission;
       else if (step.forceSubmission)  payload.submission = step.forceSubmission;
+      // Armed-survey context (mark-ready): how many Pending Validation
+      // REQs this validation fires + the chosen branch / tech-group
+      // targets. surveyBranches is ALWAYS an array (one or many) so
+      // Make's activation branch parses one way.
+      if (extra && extra.armedCount !== undefined) {
+        payload.armedSurveyCount = extra.armedCount;
+        payload.surveyBranches   = ctx.branches || [];
+      }
       // ClickUp status update ('gfe-submitted' / 'final-bid-submitted' /
       // null). Independent of submission — the user can pick any combo.
       if (ctx.clickupStatus) payload.clickupStatus = ctx.clickupStatus;
@@ -2327,7 +2533,10 @@
 
       var titleEl = document.createElement('span');
       titleEl.className = 'scw-step-title';
-      titleEl.textContent = step.label;
+      // Optional dynamic label (fn returning a string or null) — used by
+      // mark-ready to telegraph "…Send Armed Survey Request".
+      titleEl.textContent =
+        (typeof step.dynamicLabel === 'function' && step.dynamicLabel()) || step.label;
       el.appendChild(titleEl);
 
       if (available && !completed) {

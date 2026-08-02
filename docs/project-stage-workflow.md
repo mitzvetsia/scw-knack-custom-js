@@ -172,15 +172,39 @@ Notes on the construct:
 
 ### Ops surfaces
 
-- **ops-stepper.js (view_3345)** — Mark Ready step: when a pending REQ
-  exists for this SOW, add a context line in the modal: "A survey request is
-  armed for this SOW — marking ready will send it to the subcontractor
-  immediately." Read via a hidden/existing view carrying the pending-REQ
-  rollup (see Builder section).
-- **ops-review-pill.js (view_3325)** — insert a state between "Mark Ready"
-  and "Ready for Survey": same "Mark Ready for Survey" action pill but badged
-  "(survey armed)" when the pending-REQ rollup > 0, so Ops can prioritize
-  SOWs where validation unblocks the whole chain.
+- **ops-stepper.js (view_3345) — IMPLEMENTED 2026-08-02.** Mark Ready
+  must answer "am I just validating, or also sending a survey?":
+  - **Button label**: "Mark Ready for Survey" → "Mark Ready — Send Armed
+    Survey Request" when armed (dynamic label, resolved at render).
+  - **Modal banner**: armed → amber callout "A survey request is ARMED on
+    this SOW — marking ready validates the SOW and immediately sends the
+    survey request to the branch(es)/tech group(s) you pick below." Not
+    armed → quiet info line "Validation only — no survey request is
+    armed. Sales will request the survey separately."
+  - **Branch / tech-group picker**: MULTI-select checkbox list (Ops may
+    send the survey request to more than one subcontracting group),
+    required when armed and options exist. Options come from a grid view
+    on scene_1096.
+  - **Payload**: `armedSurveyCount` + `surveyBranches: [{id,label},…]` —
+    ALWAYS an array (one or many) so Make's activation branch parses one
+    way. Make fans the activation out per selected branch.
+  - **Config seams (fail open — plain-validation behavior until set)**:
+    `ARMED_REQ_COUNT_FIELD` (SOW rollup of Pending Validation REQs,
+    projected onto view_3861), `BRANCH_PICKER_VIEW` +
+    `BRANCH_LABEL_FIELD` (a hidden-ok grid of branches/tech groups on
+    scene_1096). All three are Builder TBDs.
+- **ops-review-pill.js (view_3325)** — still to do: insert a state between
+  "Mark Ready" and "Ready for Survey": same pill badged "(survey armed)"
+  when the pending-REQ rollup > 0, so Ops can prioritize SOWs where
+  validation unblocks the whole chain. Needs the same rollup field added
+  as a (hidden) column on view_3325.
+
+**Open design question — branch selection on the immediate path**: when
+Sales requests the survey on an already-validated SOW (state 2, fires
+instantly), Ops is not in the loop, so WHO picks the branch(es) there?
+Options: the existing survey-request form's own assignment mechanism
+(discovery — how is the sub assigned today?), or Make holds the REQ until
+Ops assigns. The armed path solves it for pre-validation requests only.
 
 ### Builder work
 
