@@ -1727,12 +1727,26 @@
       setTimeout(function () { collapseStepAccordion(viewKey); }, ms);
     });
     // Refresh source view to get updated field values, then re-apply steps
-    if (typeof Knack !== 'undefined' && Knack.views[SOURCE_VIEW] && Knack.views[SOURCE_VIEW].model) {
-      Knack.views[SOURCE_VIEW].model.fetch({
-        success: function () { setTimeout(applySteps, 300); }
+    function refetchAndApply() {
+      if (typeof Knack !== 'undefined' && Knack.views[SOURCE_VIEW] && Knack.views[SOURCE_VIEW].model) {
+        Knack.views[SOURCE_VIEW].model.fetch({
+          success: function () { setTimeout(applySteps, 300); }
+        });
+      }
+    }
+    refetchAndApply();
+    setTimeout(applySteps, 1500);
+    // Survey submits (view_3853) now resolve ASYNC in Make: every REQ is
+    // created Pending Validation, then Make promotes it (validated SOW →
+    // partner submit + field_2706 flip) seconds later. The immediate
+    // refetch above races that flip, so schedule late rounds to catch it
+    // — otherwise the accordion briefly reads un-done after a submit on a
+    // validated SOW.
+    if (viewKey === 'view_3853') {
+      [4000, 9000].forEach(function (ms) {
+        setTimeout(refetchAndApply, ms);
       });
     }
-    setTimeout(applySteps, 1500);
   }
 
   // Any view referenced by a step's menuView / hrefSelector is a source

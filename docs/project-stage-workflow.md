@@ -74,11 +74,13 @@ The fork ("survey now" vs "survey later") is NOT two branches of logic — it's
 > Validation** and fires when Ops marks ready. A REQ created while the SOW
 > **is validated** fires immediately (today's behavior).
 
-So "Validate SOW & Request Survey" = capture details before validation (REQ
-pending, fires on validation); "Request Survey" = capture after validation
-(REQ live, fires now). ONE form (view_3853), one object, one activation
-rule — the two labels differ only in WHEN the REQ is created relative to
-`field_2723`, and Make applies the rule at submission time.
+So "Validate SOW & Request Survey" = capture details before validation
+(REQ stays pending, fires on validation); "Request Survey" = capture after
+validation (Make promotes the pending REQ within seconds). ONE form
+(view_3853), one object, one creation path — EVERY submit creates the REQ
+Pending Validation, and Make's scenario decides whether to promote it
+immediately based on `field_2723` (see the Make section for the locked
+branch matrix).
 
 ### Sales stepper (scene_1116, workflow-stepper.js) — TWO BUTTONS, dynamic label
 
@@ -199,12 +201,12 @@ Notes on the construct:
   validation unblocks the whole chain. Needs the same rollup field added
   as a (hidden) column on view_3325.
 
-**Open design question — branch selection on the immediate path**: when
-Sales requests the survey on an already-validated SOW (state 2, fires
-instantly), Ops is not in the loop, so WHO picks the branch(es) there?
-Options: the existing survey-request form's own assignment mechanism
-(discovery — how is the sub assigned today?), or Make holds the REQ until
-Ops assigns. The armed path solves it for pre-validation requests only.
+**RESOLVED (2026-08-02, third session) — branch selection on the
+immediate path**: on a validated SOW, Make submits the request to the
+partner from the EXISTING assignment mechanism and flips the REQ back out
+of pending. Ops branch selection therefore applies only to the armed path
+(Mark Ready), where `surveyBranches` overrides/populates the assignment
+before Make submits.
 
 ### Builder work
 
@@ -217,11 +219,12 @@ Ops assigns. The armed path solves it for pre-validation requests only.
   read "armed" without fetching REQ records. Expose it on view_3827,
   view_3325, and view_3861.
 - **view_3853 form**: STAYS — it's the single survey-capture surface for
-  both labels. The pending-vs-live decision lives in the Make branch, not
-  form record rules. (⚠️ Discovery required: what view_3853's submit does
-  today — its record rules and whatever flips `field_2706` — the branch
-  has to be inserted upstream of the sub-notification and the
-  `field_2706` flip.)
+  both labels. Its record rule sets status = Pending Validation on EVERY
+  submit (unconditional — one creation path); promotion is Make's job.
+  (⚠️ Discovery still required: what else view_3853's submit does today —
+  existing record rules and whatever flips `field_2706` — since the
+  sub-notification and `field_2706` flip must move behind Make's
+  promote.)
 - **REQ-listing views** (sub portal, survey grids, ops views): add
   "status is not Pending Validation" filters. Blank status must fail safe
   (treated as not-pending, i.e. visible) so legacy records are unaffected.
@@ -232,17 +235,30 @@ Ops assigns. The armed path solves it for pre-validation requests only.
   after project setup, ALSO send the Ops validation ask (the Slack/CU ping
   that `MAKE_REQUEST_SOW_VALIDATION_WEBHOOK` sends today), since this
   button now MEANS "Request SOW Validation Only".
-- **Survey-request scenario — THE BRANCH** (whichever scenario/rules react
-  to view_3853's submit today; ⚠️ discovery): read the SOW's `field_2723`
-  at run time and fork —
-  - **Validated** → today's behavior: REQ live/Requested, stamp requested
-    date (`field_2351`), flip `field_2706` = Yes, notify sub.
-  - **Not validated** → set REQ status = Pending Validation, ping Ops to
-    validate ("survey armed" phrasing), do NOT notify the sub or stamp the
-    requested date, and — when `field_1199` is empty — ALSO run project
-    setup (call/duplicate the initiate scenario's setup steps) so
-    "Validate SOW & Request Survey" is a complete single gesture on a
-    fresh SOW.
+- **Survey-request scenario — THE BRANCH (mechanics locked 2026-08-02,
+  third session)**: every REQ is created in **Pending Validation status
+  unconditionally at submission** (form record rule) — one creation path;
+  Make's scenario then decides whether to PROMOTE it. ⚠️ The
+  fire-vs-pending fork keys on **validated (`field_2723`)** — NOT on
+  "ClickUp task exists". The two usually coincide but the mid-wait arm
+  path breaks the correlation (Validation Only fired → CU task exists →
+  Sales arms the survey before Ops validates); testing CU-existence
+  would fire that survey early. The two checks are orthogonal:
+
+  | SOW validated? | Setup/CU exists? | Make does |
+  |---|---|---|
+  | Yes | Yes | Assign the partner (existing assignment mechanism) → submit the request to the partner → flip REQ pending → complete/Requested (stamp `field_2351`, flip `field_2706` = Yes) |
+  | No | No | Create project setup + CU task + the Ops validation ping → **leave the REQ pending** |
+  | No | Yes | Mid-wait arm: setup already exists — **leave pending**; optionally re-ping Ops that a survey is now armed |
+  | Yes | No | Shouldn't occur under the new SOP; if it does: create setup, then fire |
+
+  Consequences: (a) the validated path has a TRANSIENT pending window
+  (seconds until Make's flip) — harmless for the armed signal, but the
+  sales stepper adds late post-submit refetches so the accordion catches
+  the async flip; (b) the immediate path's partner question is RESOLVED —
+  the existing assignment mechanism supplies it, so Ops branch selection
+  applies only to the armed path (Mark Ready), where `surveyBranches`
+  overrides/populates the assignment before Make submits.
 - **Mark-ready scenario** (`MAKE_OPS_MARK_READY_WEBHOOK`, stepId
   `mark-ready`): new branch after flipping `field_2723` — find Pending
   Validation REQ(s) for this SOW; if found AND `field_2728` = 0 (CR path not
