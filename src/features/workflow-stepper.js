@@ -459,7 +459,42 @@
       '}' +
 
       /* ── Hide original menu view ── */
-      '.scw-step-menu-hidden { display: none !important; }';
+      '.scw-step-menu-hidden { display: none !important; }' +
+
+      /* ── Either/or choice group (S1: validation-only vs validate+survey).
+         Stacked with an OR divider by default; side-by-side when the
+         container is wide enough — EXCEPT while the survey accordion is
+         expanded (its form needs full width). ── */
+      '.scw-step-choice {' +
+      '  border: 1px dashed #cbd5e1; border-radius: 16px;' +
+      '  padding: 10px 12px 4px; margin-bottom: 8px;' +
+      '  container-type: inline-size;' +
+      '}' +
+      '.scw-step-choice__label {' +
+      '  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;' +
+      '  text-transform: uppercase; color: #64748b; margin: 0 2px 8px;' +
+      '}' +
+      '.scw-step-choice__options { display: flex; flex-direction: column; }' +
+      '.scw-step-choice__or {' +
+      '  display: flex; align-items: center; gap: 10px;' +
+      '  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;' +
+      '  text-transform: uppercase; color: #94a3b8; margin: 0 0 8px;' +
+      '}' +
+      '.scw-step-choice__or::before, .scw-step-choice__or::after {' +
+      '  content: ""; flex: 1 1 auto; height: 1px; background: #e2e8f0;' +
+      '}' +
+      '@container (min-width: 640px) {' +
+      '  .scw-step-choice__options { flex-direction: row; align-items: stretch; gap: 10px; }' +
+      '  .scw-step-choice__options > .scw-step-action,' +
+      '  .scw-step-choice__options > .scw-ktl-accordion { flex: 1 1 0; min-width: 0; margin-bottom: 8px; }' +
+      '  .scw-step-choice__or { flex: 0 0 auto; align-self: center; margin: 0 0 8px; }' +
+      '  .scw-step-choice__or::before, .scw-step-choice__or::after { display: none; }' +
+      '}' +
+      /* Expanded survey form → force the stacked layout so the form gets
+         the full column width (overrides the container query). */
+      '.scw-step-choice:has(.scw-ktl-accordion.is-expanded) .scw-step-choice__options {' +
+      '  flex-direction: column;' +
+      '}';
 
     // Hide any view a step fully replaces but doesn't source its href
     // from (step.hideMenuView). CSS-based + view-id selector so there's
@@ -640,15 +675,23 @@
     return null;
   }
 
+  // If an anchor element has been moved inside the either/or choice group,
+  // insert AFTER the group instead — otherwise later steps would land
+  // inside the group when they append after the survey accordion.
+  function normalizeAnchor(el) {
+    if (!el || !el.closest) return el;
+    return el.closest('.scw-step-choice') || el;
+  }
+
   function findInsertAnchor(step) {
     if (step.insertAfterStepId) {
       var el = document.getElementById('scw-step-' + step.insertAfterStepId);
-      if (el) return el;
+      if (el) return normalizeAnchor(el);
       // Anchor step isn't in the DOM — gated out by showWhen. Fall back
       // to the nearest rendered predecessor in STEPS order.
-      return nearestRenderedPredecessor(step);
+      return normalizeAnchor(nearestRenderedPredecessor(step));
     }
-    return findAccordion(step.insertAfter);
+    return normalizeAnchor(findAccordion(step.insertAfter));
   }
 
   // ── Webhook-driven step actions ──────────────────────────
@@ -1315,6 +1358,81 @@
     hideStepMenu(step);
   }
 
+  // ── Either/or choice group ───────────────────────────────
+  // "Request SOW Validation Only" and "Validate SOW & Request Survey" are
+  // mutually exclusive ways to enter the funnel, so while BOTH are still
+  // on offer they render inside one "Choose one" group (side-by-side when
+  // the column is wide enough, stacked with an OR divider otherwise).
+  // The group exists only in the pre-decision window (states S0/S1):
+  // not validated, no survey anywhere, validation not yet requested.
+  // The moment any of that changes the group dissolves and the steps
+  // return to their normal stacked positions.
+  var CHOICE_GROUP_ID = 'scw-step-choice-validation';
+
+  function choiceWindowOpen() {
+    return conditionMet({
+      all: [
+        { field: 'field_2723', notValue: 'Yes' },
+        { field: 'field_2706', notValue: 'Yes' },
+        { not: { field: 'field_2728', gt: 0 } },
+        { not: { field: 'field_1199', hasValue: true } }
+      ]
+    });
+  }
+
+  function applyChoiceGroup() {
+    var initEl = document.getElementById('scw-step-initiate-install');
+    var acc = findAccordion('view_3853');
+    var group = document.getElementById(CHOICE_GROUP_ID);
+
+    if (!choiceWindowOpen() || !initEl || !acc) {
+      // Dissolve: restore the two options as ordinary siblings where the
+      // group sits, preserving order (validation-only, then accordion).
+      if (group && group.parentNode) {
+        var opts = group.querySelector('.scw-step-choice__options');
+        if (opts) {
+          if (initEl && initEl.parentNode === opts) group.parentNode.insertBefore(initEl, group);
+          if (acc && acc.parentNode === opts) group.parentNode.insertBefore(acc, group);
+        }
+        group.remove();
+      }
+      return;
+    }
+
+    if (!group) {
+      group = document.createElement('div');
+      group.id = CHOICE_GROUP_ID;
+      group.className = 'scw-step-choice';
+
+      var label = document.createElement('div');
+      label.className = 'scw-step-choice__label';
+      label.textContent = 'Choose one';
+      group.appendChild(label);
+
+      var options = document.createElement('div');
+      options.className = 'scw-step-choice__options';
+      group.appendChild(options);
+
+      var or = document.createElement('div');
+      or.className = 'scw-step-choice__or';
+      or.textContent = 'or';
+      options.appendChild(or);
+
+      // The group takes the validation-only step's slot (right after the
+      // Playbook accordion).
+      initEl.parentNode.insertBefore(group, initEl);
+    }
+
+    // Adopt / re-adopt both options. Self-healing: Knack may replace
+    // view_3853 wholesale, in which case ktl-accordion re-adopts the
+    // fresh view into the wrapper at its ORIGINAL scene position —
+    // outside our group — so pull it back in on every pass.
+    var optsEl = group.querySelector('.scw-step-choice__options');
+    var orEl = optsEl.querySelector('.scw-step-choice__or');
+    if (initEl.parentNode !== optsEl) optsEl.insertBefore(initEl, orEl);
+    if (acc.parentNode !== optsEl) optsEl.appendChild(acc);
+  }
+
   // ── Main apply ───────────────────────────────────────────
   function applySteps() {
     for (var i = 0; i < STEPS.length; i++) {
@@ -1322,6 +1440,7 @@
       if (step.type === 'accordion') applyAccordionState(step);
       else if (step.type === 'action') applyActionState(step);
     }
+    applyChoiceGroup();
   }
 
   // ── pollAfterClick: lock + poll until a step's completion field flips ──
