@@ -60,14 +60,18 @@
                          { field: 'field_2706', notValue: 'Yes' } ] },
           message: 'Use "Request Validation & Add as Alternative Bid" below' }
       ],
-      // Once fired, show the waiting state until Ops validates (or the
-      // flow advances via survey / change-request paths).
+      // Once fired, show the waiting state until Ops validates. Stays
+      // visible while the survey is merely ARMED (2706 = Yes, 2723 ≠ Yes)
+      // — hiding it there left a bare green check with no explanation of
+      // what happens next. Suppressed only on the sibling-survey path
+      // (2728 > 0 with this SOW's 2706 = No), where the alt-bid flow owns
+      // the narrative.
       completedMessage: {
         when: {
           all: [
             { field: 'field_2723', notValue: 'Yes' },
-            { field: 'field_2706', notValue: 'Yes' },
-            { not: { field: 'field_2728', gt: 0 } }
+            { not: { all: [ { field: 'field_2728', gt: 0 },
+                            { field: 'field_2706', value: 'No' } ] } }
           ]
         },
         text: 'Validation requested — waiting on Ops'
@@ -183,15 +187,19 @@
       insertAfter: 'view_3853',
       activeIcon: 'eye',
       newTab: true,
-      // Locked only when the survey hasn't been requested AND the
-      // workflow hasn't advanced via the change-request path (field_2728 > 0).
-      disabled: {
-        all: [
-          { field: 'field_2706', notValue: 'Yes' },
-          { not: { field: 'field_2728', gt: 0 } }
-        ],
-        message: 'Site survey not yet requested'
-      }
+      // Unlocked only when the survey was actually SENT (field_2706 = Yes
+      // AND validated) or the workflow advanced via a sibling's survey
+      // (field_2728 > 0 with this SOW's 2706 = No). An ARMED request
+      // (2706 = Yes, 2723 ≠ Yes) stays locked — no report exists yet.
+      // Array form: first matching entry wins, each with its own message.
+      disabled: [
+        { when: { all: [ { field: 'field_2706', value: 'Yes' },
+                         { field: 'field_2723', notValue: 'Yes' } ] },
+          message: 'Survey not sent yet — waiting on Ops validation' },
+        { when: { all: [ { field: 'field_2706', notValue: 'Yes' },
+                         { not: { field: 'field_2728', gt: 0 } } ] },
+          message: 'Site survey not yet requested' }
+      ]
     },
     {
       // STATE 3 (docs/project-stage-workflow.md gating): a SIBLING SOW has

@@ -142,17 +142,21 @@
       label: 'Mark Ready for Survey',
       tone: 'primary',
       // Keyed on field_2723 — the flag this step's webhook actually
-      // flips server-side. field_2706 ("survey requested") only flips
-      // downstream when Sales requests the survey, so keying the step
-      // state on it made it effectively un-completable from Ops' side.
+      // flips server-side.
       //
-      // Hide the step entirely once the flow has advanced to the change-
-      // request stage. If the SOW hasn't been marked ready AND there
-      // are already CRs queued, the Request Alternative Bid step takes
-      // over — surfacing a grayed-out Mark Ready here would just be noise.
+      // ⚠️ Gate corrected 2026-08-02: field_2728 is NOT a change-request
+      // count — it counts the PROJECT's SOWs with survey requested,
+      // INCLUDING this one. An ARMED SOW (survey captured pre-validation:
+      // field_2706 = Yes while 2723 = No) therefore reads 2728 > 0, and
+      // the old hideWhen (2723=No ∧ 2728>0) hid Mark Ready on exactly the
+      // SOW whose validation must FIRE the armed survey. Hide only the
+      // true alt-bid handoff state: a SIBLING has the survey (2728 > 0
+      // while THIS SOW's 2706 = No) — the Request Alternative Bid step
+      // takes over there.
       hideWhen: {
         all: [
           { field: 'field_2723', value: 'No' },
+          { field: 'field_2706', value: 'No' },
           { field: 'field_2728', gt: 0 }
         ]
       },
@@ -230,12 +234,22 @@
       id: 'update-matching-bid',
       label: 'Update Subcontractor Bid Request',
       tone: 'amber',
-      // Mirror image of request-alt-bid — only available once the
-      // survey has been requested (field_2706 = Yes). Same payload, same
-      // picker UX; Make routes to a different scenario that updates the
-      // existing bid record(s) instead of creating a new alt-bid package.
-      showWhen: { field: 'field_2706', value: 'Yes' },
-      hideWhen: { field: 'field_2706', value: 'No' },
+      // Mirror image of request-alt-bid — only available once the survey
+      // has actually been SENT. Under the always-pending capture flow
+      // field_2706 flips at submit, so 2706 = Yes alone can mean ARMED
+      // (no bid exists yet, field_2737 = 0) — require validation too.
+      showWhen: {
+        all: [
+          { field: 'field_2706', value: 'Yes' },
+          { field: 'field_2723', value: 'Yes' }
+        ]
+      },
+      hideWhen: {
+        any: [
+          { field: 'field_2706', notValue: 'Yes' },
+          { field: 'field_2723', notValue: 'Yes' }
+        ]
+      },
       webhookKey: 'MAKE_OPS_UPDATE_MATCHING_BID_WEBHOOK',
       pickSurveys: true,
       modal: {
