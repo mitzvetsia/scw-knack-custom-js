@@ -308,6 +308,13 @@
       '}',
       '.scw-ws-v2-picker-item-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }',
       '.scw-ws-v2-picker-item-name { }',
+      // Generic secondary line beneath the name (e.g. a product SKU).
+      // Rendered from a candidate\'s `sub` property; searchable because the
+      // filter matches the row\'s full textContent.
+      '.scw-ws-v2-picker-item-sub {',
+      '  font-size: 11px; font-weight: 600; color: #64748b; line-height: 1.2;',
+      '  letter-spacing: .02em;',
+      '}',
       '.scw-ws-v2-picker-item-sow {',
       '  font-size: 11px; font-weight: 600; color: #64748b; line-height: 1.2;',
       '}',
@@ -614,12 +621,18 @@
           var takeoverHtml = locked
             ? '<button type="button" class="scw-ws-v2-picker-takeover">Take over</button>'
             : '';
+          // Optional secondary line (candidate `sub`, e.g. product SKU) —
+          // shown muted beneath the name, included in the search filter.
+          var subHtml = rec.sub
+            ? '<span class="scw-ws-v2-picker-item-sub">' + escapeHtml(rec.sub) + '</span>'
+            : '';
           row.innerHTML =
             '<input type="' + inputType + '" name="' + inputName + '" value="' +
               escapeHtml(rec.id) + '"' + (isChecked ? ' checked' : '') +
               (locked ? ' disabled' : '') + '>' +
             '<span class="scw-ws-v2-picker-item-text">' +
               '<span class="scw-ws-v2-picker-item-name">' + escapeHtml(labelText) + '</span>' +
+              subHtml +
               lockHtml +
               sowHtml +
             '</span>' +

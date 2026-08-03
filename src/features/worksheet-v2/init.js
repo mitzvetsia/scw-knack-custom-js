@@ -1920,7 +1920,11 @@
             if (!allowedInBucket(pid, p)) { _dbgRejBucket++; continue; }
             prodCandidates.push({
               id: pid,
-              name: p.name || '(unnamed)'
+              name: p.name || '(unnamed)',
+              // SKU (Builder snippet's productMap `sku`, field_56) — the
+              // picker renders it as a muted second line and the search
+              // filter matches it, so typing a SKU finds the product.
+              sub: p.sku || ''
             });
           }
           // `degraded` labels the picker "(in-use only)" and drives the
