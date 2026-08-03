@@ -72,17 +72,22 @@
   // the survey goes to (payload.surveyBranch → Make's activation branch
   // assigns it before notifying).
   //
-  // ⚠️ Builder TBDs (both fail open — until they exist, Mark Ready
+  // ⚠️ Builder TBDs (all fail open — until they exist, Mark Ready
   // renders as plain validation with the validate-only info banner):
   //   ARMED_REQ_COUNT_FIELD — SOW rollup counting this SOW's Pending
   //     Validation REQs; must be projected onto view_3861.
-  //   BRANCH_PICKER_VIEW / BRANCH_LABEL_FIELD — a (hidden is fine) grid
-  //     of branches / tech groups on scene_1096 + its display-name field.
-  //     Unconfigured while armed → the banner says assignment falls to
-  //     the Make default and no picker renders.
+  //   Branch picker options — PRIMARY source is the Builder catalog
+  //     snippet (knack-snippets/tech-group-options.snippet.js →
+  //     window.SCW.techGroupOptions), decided 2026-08-03 after an
+  //     all-records grid proved un-addable on scene_1096. The
+  //     BRANCH_PICKER_VIEW / BRANCH_LABEL_FIELD view-read seams below
+  //     stay as the eventual hidden-view migration path (Known Issue
+  //     #17) and win only when the snippet global is absent.
+  //     No source while a request is pending → the banner says
+  //     assignment falls to the Make default and no picker renders.
   var ARMED_REQ_COUNT_FIELD = '';   // e.g. 'field_XXXX' — TBD in Builder
-  var BRANCH_PICKER_VIEW    = '';   // e.g. 'view_XXXX'  — TBD in Builder
-  var BRANCH_LABEL_FIELD    = '';   // e.g. 'field_XXXX' — TBD in Builder
+  var BRANCH_PICKER_VIEW    = '';   // e.g. 'view_XXXX'  — future hidden-view path
+  var BRANCH_LABEL_FIELD    = '';   // e.g. 'field_XXXX' — future hidden-view path
 
   var NS         = '.scwOpsStepper';
   var BLOCK_CLS  = 'scw-ops-stepper';
@@ -783,11 +788,27 @@
     return 0;
   }
 
-  /** { id, label } options for the branch / tech-group picker, read from
-   *  BRANCH_PICKER_VIEW's model with a DOM-scrape fallback. Empty when
-   *  the view isn't configured or isn't on the scene. */
+  /** { id, label } options for the branch / tech-group picker.
+   *  Primary source: window.SCW.techGroupOptions — populated by the
+   *  Builder catalog snippet (knack-snippets/tech-group-options.snippet.js,
+   *  same pattern as dropPrefixOptions; a standalone all-records grid
+   *  wasn't addable on scene_1096). Secondary: BRANCH_PICKER_VIEW's model
+   *  with a DOM-scrape fallback, kept for a future hidden-view migration
+   *  (Known Issue #17). Empty when neither source exists — fail open. */
   function readBranchOptions() {
     var out = [];
+    // Snippet-provided catalog global.
+    try {
+      var cat = window.SCW && SCW.techGroupOptions;
+      if (cat && cat.length) {
+        for (var c = 0; c < cat.length; c++) {
+          if (!cat[c] || !cat[c].id) continue;
+          out.push({ id: String(cat[c].id),
+                     label: String(cat[c].label || cat[c].identifier || cat[c].id) });
+        }
+        if (out.length) return out;
+      }
+    } catch (e) { /* fall through to view source */ }
     if (!BRANCH_PICKER_VIEW) return out;
     try {
       var v = Knack.views && Knack.views[BRANCH_PICKER_VIEW];

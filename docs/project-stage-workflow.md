@@ -208,16 +208,22 @@ Notes on the construct:
     pending. Sales will request the survey separately."
   - **Branch / tech-group picker**: MULTI-select checkbox list (Ops may
     send the survey request to more than one subcontracting group),
-    required when pending and options exist. Options come from a grid view
-    on scene_1096.
+    required when pending and options exist. Options come from the
+    Builder catalog snippet `window.SCW.techGroupOptions`
+    (knack-snippets/tech-group-options.snippet.js) — decided 2026-08-03
+    after an all-records grid proved un-addable on scene_1096; same
+    pattern as the prefix / bucket / photo-type catalogs.
   - **Payload**: `pendingSurveyCount` + `surveyBranches: [{id,label},…]` —
     ALWAYS an array (one or many) so Make's activation branch parses one
     way. Make fans the activation out per selected branch.
   - **Config seams (fail open — plain-validation behavior until set)**:
     `ARMED_REQ_COUNT_FIELD` (SOW rollup of Pending Validation REQs,
-    projected onto view_3861), `BRANCH_PICKER_VIEW` +
-    `BRANCH_LABEL_FIELD` (a hidden-ok grid of branches/tech groups on
-    scene_1096). All three are Builder TBDs.
+    projected onto view_3861), and the tech-group snippet's object /
+    label-field keys (knack-snippets/tech-group-options.snippet.js —
+    fill the TODOs + key, paste into Builder). `BRANCH_PICKER_VIEW` +
+    `BRANCH_LABEL_FIELD` remain as the future hidden-view migration
+    path (Known Issue #17) and win only when the snippet global is
+    absent.
 - **ops-review-pill.js (view_3325)** — still to do: insert a state between
   "Mark Ready" and "Ready for Survey": same pill badged "(survey armed)"
   when the pending-REQ rollup > 0, so Ops can prioritize SOWs where
