@@ -286,6 +286,10 @@
       var a = imgs[i].closest('a[href]');
       out.push({
         thumb: imgs[i].getAttribute('src') || '',
+        // Full-size asset for the lightbox stage — Knack stamps the gallery
+        // URL on grid images; fall back to the thumb src when absent.
+        full:  imgs[i].getAttribute('data-kn-img-gallery') ||
+               imgs[i].getAttribute('src') || '',
         href: (a && a.getAttribute('href')) || ''
       });
     }
@@ -367,6 +371,7 @@
     var photosHtml = '';
     for (var p = 0; p < photos.length; p++) {
       photosHtml += '<a class="' + P + '-thumb" href="' + esc(photos[p].href) + '" ' +
+        'data-scw-mdf-photo-full="' + esc(photos[p].full || photos[p].thumb) + '" ' +
         'title="Open photo"><img src="' + esc(photos[p].thumb) + '" alt="" loading="lazy"></a>';
     }
     photosHtml += '<button type="button" class="' + P + '-addphoto" ' +
@@ -836,6 +841,41 @@
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-mdf-notes-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-mdf-notes-bound', '1');
     document.addEventListener('click', function (e) {
+      // Photo thumb → same in-place lightbox viewer as the line-item photo
+      // strips (photos.js openLightbox), flipping between THIS location's
+      // photos. Knack's edit-photo page stays reachable via the lightbox's
+      // "Edit" link (the thumb's native href). If the viewer isn't loaded,
+      // fall through so the native href navigates as before.
+      var thumb = e.target && e.target.closest &&
+        e.target.closest('a.' + P + '-thumb');
+      if (thumb) {
+        var lb = ns.photos && ns.photos.openLightbox;
+        var stripEl = thumb.closest('.' + P + '-photos-strip');
+        if (lb && stripEl) {
+          var thumbs = stripEl.querySelectorAll('a.' + P + '-thumb');
+          var items = [], idx = 0;
+          for (var ti = 0; ti < thumbs.length; ti++) {
+            var url = thumbs[ti].getAttribute('data-scw-mdf-photo-full') || '';
+            if (!url) {
+              var im = thumbs[ti].querySelector('img');
+              url = (im && im.getAttribute('src')) || '';
+            }
+            if (!url) continue;
+            if (thumbs[ti] === thumb) idx = items.length;
+            items.push({
+              url:      url,
+              type:     'MDF/IDF photo',
+              editHref: thumbs[ti].getAttribute('href') || ''
+            });
+          }
+          if (items.length) {
+            e.preventDefault();
+            e.stopPropagation();
+            lb(items, idx);
+          }
+        }
+        return;
+      }
       var add = e.target && e.target.closest &&
         e.target.closest('[data-scw-ws-v2-mdf-add]');
       if (add) {
