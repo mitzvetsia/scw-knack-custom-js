@@ -375,5 +375,40 @@
     .on('knack-view-render.view_3827' + NS, function () {
       setTimeout(render, 900);
     });
+
+  // After the survey form (view_3853) submits, the new request should
+  // appear here without a manual reload. Refetch the hidden grid's model
+  // on a few delays (the record + its SOW connection settle server-side
+  // moments after the submit response) and re-render. Bound BOTH to
+  // Knack's record events and to a raw submit-button click — the Knack
+  // events don't reliably fire for this form (same gap workflow-stepper
+  // covers), and a refetch after a validation-blocked click is a
+  // harmless idempotent read.
+  function refetchAndRender() {
+    try {
+      var v = Knack.views && Knack.views[CONFIG.viewId];
+      if (v && v.model) {
+        v.model.fetch({
+          success: function () { setTimeout(render, 200); },
+          error:   function () { render(); }
+        });
+        return;
+      }
+    } catch (e) { /* fall through */ }
+    render();
+  }
+  function scheduleSubmitRefresh() {
+    [2000, 5000, 10000].forEach(function (ms) {
+      setTimeout(refetchAndRender, ms);
+    });
+  }
+  ['knack-form-submit', 'knack-record-create', 'knack-record-update'].forEach(function (evt) {
+    $(document)
+      .off(evt + '.view_3853' + NS)
+      .on(evt + '.view_3853' + NS, scheduleSubmitRefresh);
+  });
+  $(document)
+    .off('click' + NS, '#view_3853 .kn-submit button')
+    .on('click' + NS, '#view_3853 .kn-submit button', scheduleSubmitRefresh);
 })();
 /*** END SURVEY REQUEST CARDS ***********************************************/

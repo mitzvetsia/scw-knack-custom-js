@@ -1769,6 +1769,24 @@
     if (arrow) { arrow.classList.remove('ktlDown'); arrow.classList.add('ktlUp'); }
   }
 
+  // Refetch the SOW source view's model, then re-apply steps. Model
+  // attributes carry record-rule updates (e.g. field_2706 flipping at
+  // survey submit); a bare fetch doesn't re-render the hidden details
+  // DOM, so readField prefers the model. Always re-applies — even on
+  // fetch error — so one failed request can't strand a stale stepper.
+  function refetchSourceAndApply() {
+    try {
+      if (typeof Knack !== 'undefined' && Knack.views[SOURCE_VIEW] && Knack.views[SOURCE_VIEW].model) {
+        Knack.views[SOURCE_VIEW].model.fetch({
+          success: function () { setTimeout(applySteps, 300); },
+          error:   function () { setTimeout(applySteps, 300); }
+        });
+        return;
+      }
+    } catch (e) { /* fall through */ }
+    applySteps();
+  }
+
   // Collapse accordion and refresh steps after form submit
   function onFormSubmit(viewKey) {
     // KTL persistent forms re-render after submit (showing the "Form
@@ -1779,14 +1797,7 @@
       setTimeout(function () { collapseStepAccordion(viewKey); }, ms);
     });
     // Refresh source view to get updated field values, then re-apply steps
-    function refetchAndApply() {
-      if (typeof Knack !== 'undefined' && Knack.views[SOURCE_VIEW] && Knack.views[SOURCE_VIEW].model) {
-        Knack.views[SOURCE_VIEW].model.fetch({
-          success: function () { setTimeout(applySteps, 300); }
-        });
-      }
-    }
-    refetchAndApply();
+    refetchSourceAndApply();
     setTimeout(applySteps, 1500);
     // Survey submits (view_3853) now resolve ASYNC in Make: every REQ is
     // created Pending Validation, then Make promotes it (validated SOW →
@@ -1796,7 +1807,7 @@
     // validated SOW.
     if (viewKey === 'view_3853') {
       [4000, 9000].forEach(function (ms) {
-        setTimeout(refetchAndApply, ms);
+        setTimeout(refetchSourceAndApply, ms);
       });
     }
   }
@@ -1865,6 +1876,25 @@
         .on(evt + '.' + vk + NS, function () { handleStepFormSubmit(vk); });
     });
   });
+
+  // Belt-and-braces for the survey form: Knack's record events don't
+  // reliably fire for view_3853's create form, which left the stepper
+  // stale (no pending note) until a manual page refresh. A delegated
+  // click on the form's submit button schedules refetch rounds
+  // regardless of Knack's events — harmless when validation blocks the
+  // submit (the refetch is an idempotent read; the completed gate simply
+  // doesn't flip). The Knack-event path above still runs when it does
+  // fire; refetchSourceAndApply is idempotent so overlap is fine.
+  $(document)
+    .off('click' + NS, '#view_3853 .kn-submit button')
+    .on('click' + NS, '#view_3853 .kn-submit button', function () {
+      [2000, 5000, 10000].forEach(function (ms) {
+        setTimeout(refetchSourceAndApply, ms);
+      });
+      // Collapse the accordion once the confirmation lands, matching the
+      // event-driven path's behavior.
+      setTimeout(function () { collapseStepAccordion('view_3853'); }, 2000);
+    });
 
   // ── Cross-tab refresh after Ops stepper completion ───────
   // ops-stepper.js (on the Ops tab) writes
