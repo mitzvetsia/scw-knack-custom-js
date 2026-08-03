@@ -348,7 +348,9 @@
           dropNumber:       { key: 'field_1951', type: 'directEdit' },
           dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
-          connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
+          // field_2197 is DERIVED + READ-ONLY — edits flow through the parent's
+          // Connected Devices picker (field_1957) + cascade (Known Issue #12 step 1)
+          connectedDevice:  { key: 'field_2197', type: 'readOnly' },
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
           selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
                               linkField: 'field_2360',
@@ -486,7 +488,8 @@
             dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
             conduit:          { key: 'field_2035', type: 'directEdit',  feeTrigger: true },
             mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
-            connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
+            // field_2197 is DERIVED + READ-ONLY (Known Issue #12 step 1)
+            connectedDevice:  { key: 'field_2197', type: 'readOnly' },
             scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
             selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
                                 linkField: 'field_2360',
@@ -531,7 +534,8 @@
           dropNumber:       { key: 'field_1951', type: 'directEdit' },
 
           // ── Detail panel – right ──
-          connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
+          // field_2197 is DERIVED + READ-ONLY (Known Issue #12 step 1)
+          connectedDevice:  { key: 'field_2197', type: 'readOnly' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
           dropLength:       { key: 'field_1965', type: 'directEdit', skipEmpty: true },
           laborDescription: { key: 'field_2020', type: 'directEdit', skipEmpty: true, notes: true }

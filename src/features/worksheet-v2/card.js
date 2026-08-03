@@ -1611,8 +1611,11 @@
         '</div>' +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           detailMountingHardware(rec, viewKey) +
+          // Connected To is DERIVED + READ-ONLY (Known Issue #12 step 1,
+          // locked 2026-08-03): every edit flows through the parent's
+          // Connected Devices picker; the cascade writes field_2197.
           detailConnection(rec,       viewKey, 'field_2197', 'Connected Device',
-                           hasIssue(rec, 'disconnected')) +
+                           hasIssue(rec, 'disconnected'), true) +
           detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
@@ -1706,8 +1709,10 @@
 
     var right = detailMountingHardware(rec, viewKey);
     if (isCam) {
+      // Connected To is DERIVED + READ-ONLY (Known Issue #12 step 1) —
+      // edit via the parent's Connected Devices picker instead.
       right += detailConnection(rec, viewKey, 'field_2197', 'Connected Device',
-                                hasIssue(rec, 'disconnected'));
+                                hasIssue(rec, 'disconnected'), true);
     } else if (cat === 'default') {
       if (isMapConnectionsRow(rec)) {
         right += detailConnectedDevices(rec, viewKey, 'field_1957', 'Connected Devices');

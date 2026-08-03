@@ -109,8 +109,10 @@
       { key: 'field_2035', label: 'Conduit',           kind: 'number' },
       { key: 'field_1953', label: 'SCW Notes',         kind: 'text' },
       { key: 'field_1946', label: 'MDF / IDF',         kind: 'conn-single', candSource: 'mdf' },
-      { key: 'field_2154', label: 'SOW',               kind: 'conn-multi',  candSource: 'sows' },
-      { key: 'field_2197', label: 'Connected Device',  kind: 'conn-single', candSource: 'devices' }
+      { key: 'field_2154', label: 'SOW',               kind: 'conn-multi',  candSource: 'sows' }
+      // field_2197 (Connected Device) removed 2026-08-03: DERIVED +
+      // READ-ONLY app-wide (Known Issue #12 step 1) — bulk-connect via the
+      // parent's Connected Devices (field_1957) instead.
     ],
     'default': [
       { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
@@ -156,8 +158,8 @@
       { key: 'field_2461', label: 'Existing cabling',  kind: 'bool' },
       { key: 'field_1984', label: 'Exterior',          kind: 'bool' },
       { key: 'field_1953', label: 'SCW Notes',         kind: 'text' },
-      { key: 'field_1946', label: 'MDF / IDF',         kind: 'conn-single', candSource: 'mdf' },
-      { key: 'field_2197', label: 'Connected Device',  kind: 'conn-single', candSource: 'devices' }
+      { key: 'field_1946', label: 'MDF / IDF',         kind: 'conn-single', candSource: 'mdf' }
+      // field_2197 removed — derived + read-only (Known Issue #12 step 1).
     ],
     'default': [
       { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
