@@ -98,7 +98,7 @@
   // user's session — same mechanic as the CO recipient picker's
   // write-back). Same view shape as view_3876 on the sales scene.
   // Unconfigured → fail open: no editor renders, modal behaves as today.
-  var PENDING_REQ_VIEW = '';        // e.g. 'view_XXXX' — TBD in Builder
+  var PENDING_REQ_VIEW = 'view_4141';  // hidden connected grid on scene_1096 (added 2026-08-03)
   // Field map = the SOW_OPS_site survey request capture record
   // (matches survey-request-cards.js).
   var PENDING_REQ_FIELDS = {
@@ -471,6 +471,11 @@
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var css =
+      /* Hide the pending survey-request source grid — data source for the
+         Mark Ready modal's request editor only (model + inline-edit PUT
+         both work with the view display:none'd). */
+      (PENDING_REQ_VIEW ? '#' + PENDING_REQ_VIEW + ' { display: none !important; }' : '') +
+
       /* Container — sits flush inside the rich-text host (view_3345). */
       '.' + BLOCK_CLS + ' {' +
       '  display: flex; flex-direction: column; gap: 0;' +
