@@ -181,6 +181,7 @@ cat \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
   src/features/connected-to-readonly.js \
+  src/features/calc-field-nudge.js \
   src/features/connection-picker.js \
   src/features/connected-device-count-on-form.js \
   src/features/grid-direct-edit.js \
