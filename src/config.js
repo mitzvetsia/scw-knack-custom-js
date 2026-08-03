@@ -242,6 +242,12 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // (mark-ready surfaces no such radio) — same as a publish step where the
   // user picks "just publish", so the shape stays compatible.
   MAKE_OPS_MARK_READY_WEBHOOK:           "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
+  // Second fire on Mark Ready when a survey request is PENDING: after the
+  // mark-ready webhook is accepted, ops-stepper POSTs the survey
+  // activation scenario a minimal payload — { surveyRequestId, branchIds:
+  // [id,…], sowId } — so the send can be built/retried independently of
+  // the validate/publish scenario. branchIds is ALWAYS an array.
+  MAKE_SEND_PENDING_SURVEY_WEBHOOK:      "https://hook.us1.make.com/pxskjhs7pxum1fzh1t909dug5jevqr1b",
   MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:      "https://hook.us1.make.com/r08nmy4ellspsjo9f2s0kdkhxucvf78u",
   // Update Subcontractor Bid Request: same payload shape as Request Alt
   // Bid (incl. selectedSurveyIds[]) AND the same Make webhook URL.

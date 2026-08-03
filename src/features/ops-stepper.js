@@ -2736,31 +2736,73 @@
               }));
           } catch (eLs) { /* localStorage may be disabled; non-fatal */ }
         }
-        // Diagnostic hold: leave everything open and surface the raw
-        // result so the Network tab / console stay inspectable.
-        if (diagnosticHold()) {
-          setBtnLoading(btn, false);
-          ctx.setSubmitting(false);
-          ctx.showError('[debug hold] webhook resolved status=' + resp.status +
-            (resp.status === 0 ? ' (status 0 = no readable response — check the Network tab: did the POST row complete, CORS-error, or fail?)' : '') +
-            ' — tab left open because scwOpsStepperHold is set.');
-          return;
+        // Mark Ready with a PENDING request: SECOND fire to the survey
+        // activation scenario — minimal payload (request id + chosen
+        // branch ids + sowId) so the send is independently retryable.
+        // Awaited before the success flow so a failure is surfaced, but
+        // it never rolls back the (already accepted) validation: on
+        // failure we alert and continue. A bare Make webhook replies
+        // 200 "Accepted" (non-JSON), so plain HTTP success counts.
+        var secondFire = Promise.resolve();
+        if (step.id === 'mark-ready' && extra && extra.armedCount > 0) {
+          var actUrl = (window.SCW && SCW.CONFIG &&
+                        SCW.CONFIG.MAKE_SEND_PENDING_SURVEY_WEBHOOK) || '';
+          var reqId = (ctx.surveyRequest && ctx.surveyRequest.id) || '';
+          if (!reqId) {
+            var pr = readPendingRequest();
+            reqId = (pr && pr.id) || '';
+          }
+          if (actUrl && !/PLACEHOLDER/.test(actUrl)) {
+            secondFire = postWebhook(actUrl, {
+              surveyRequestId: reqId,
+              branchIds: (ctx.branches || []).map(function (b) { return b.id; }),
+              sowId: getSourceRecordId()
+            }).then(function (r2) {
+              var ok2 = r2.ok || r2.status === 0 || (r2.data && (
+                r2.data.success === true ||
+                (typeof r2.data.status === 'string' &&
+                 r2.data.status.toLowerCase() === 'accepted')));
+              if (!ok2) {
+                alert('The SOW was marked ready, but sending the pending ' +
+                      'survey request failed: ' +
+                      webhookErrorMsg(r2, 'Survey send webhook') +
+                      '\n\nThe request was NOT dispatched — retry it from ' +
+                      'Make or flag it to the team.');
+              }
+            });
+          } else {
+            console.warn('[scw-ops-stepper] MAKE_SEND_PENDING_SURVEY_WEBHOOK ' +
+              'not configured — pending survey request ' + (reqId || '(unknown)') +
+              ' was not dispatched.');
+          }
         }
-        // Close the notes modal before navigating — the redirect is
-        // just a hash change, it doesn't tear down body-level overlays.
-        ctx.close();
-        // Fire a cross-tab signal so the build page (if open in
-        // another tab) reloads and doesn't show stale data.
-        signalOpsStepperCompletion(getSourceRecordId());
-        // Mark the step as pending so the parent page's next-step
-        // pill renders grayed out until Make finishes flipping the
-        // underlying field values.
-        markStepPending(getSourceRecordId(), step.id);
-        // Close this tab — the Ops list opened us in a new window,
-        // so there's no reason to keep it around once the action
-        // is done. Falls back to a parent-page redirect if the
-        // browser blocks window.close().
-        dismissAfterSuccess();
+        return secondFire.then(function () {
+          // Diagnostic hold: leave everything open and surface the raw
+          // result so the Network tab / console stay inspectable.
+          if (diagnosticHold()) {
+            setBtnLoading(btn, false);
+            ctx.setSubmitting(false);
+            ctx.showError('[debug hold] webhook resolved status=' + resp.status +
+              (resp.status === 0 ? ' (status 0 = no readable response — check the Network tab: did the POST row complete, CORS-error, or fail?)' : '') +
+              ' — tab left open because scwOpsStepperHold is set.');
+            return;
+          }
+          // Close the notes modal before navigating — the redirect is
+          // just a hash change, it doesn't tear down body-level overlays.
+          ctx.close();
+          // Fire a cross-tab signal so the build page (if open in
+          // another tab) reloads and doesn't show stale data.
+          signalOpsStepperCompletion(getSourceRecordId());
+          // Mark the step as pending so the parent page's next-step
+          // pill renders grayed out until Make finishes flipping the
+          // underlying field values.
+          markStepPending(getSourceRecordId(), step.id);
+          // Close this tab — the Ops list opened us in a new window,
+          // so there's no reason to keep it around once the action
+          // is done. Falls back to a parent-page redirect if the
+          // browser blocks window.close().
+          dismissAfterSuccess();
+        });
       }).catch(function (e) {
         setBtnLoading(btn, false);
         ctx.setSubmitting(false);

@@ -225,6 +225,12 @@ Notes on the construct:
     ALWAYS an array (one or many) so Make's activation branch parses one
     way — + `surveyRequest` (the reviewed/edited details, so Make never
     re-reads mid-flight). Make fans the activation out per selected branch.
+  - **Second webhook (added 2026-08-03)**: after the mark-ready webhook is
+    ACCEPTED, a second POST goes to the dedicated survey-activation
+    scenario (`MAKE_SEND_PENDING_SURVEY_WEBHOOK`) with a minimal payload:
+    `{ surveyRequestId, branchIds: [id,…], sowId }`. Awaited before the
+    success flow (failure alerts but never rolls back the validation); a
+    bare 200 "Accepted" reply counts as success.
   - **Config seams (fail open — plain-validation behavior until set)**:
     `ARMED_REQ_COUNT_FIELD` (SOW rollup of Pending Validation REQs,
     projected onto view_3861), and the tech-group snippet's object /
