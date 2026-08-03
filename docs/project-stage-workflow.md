@@ -213,9 +213,18 @@ Notes on the construct:
     (knack-snippets/tech-group-options.snippet.js) — decided 2026-08-03
     after an all-records grid proved un-addable on scene_1096; same
     pattern as the prefix / bucket / photo-type catalogs.
+  - **Pending-request editor (added 2026-08-03)**: when a request is
+    pending, the modal ALSO serves the request's details prefilled +
+    editable (POC-can-change-scope, badging flag + details, PPE,
+    anything-else notes; POC + request date shown read-only) so Ops can
+    correct them before the send. Edits PUT to the request record via a
+    hidden connected grid on scene_1096 (`PENDING_REQ_VIEW`, inline edit
+    ON — Builder TBD; fail open: unconfigured → no editor renders) and
+    ride the payload as `surveyRequest`.
   - **Payload**: `pendingSurveyCount` + `surveyBranches: [{id,label},…]` —
     ALWAYS an array (one or many) so Make's activation branch parses one
-    way. Make fans the activation out per selected branch.
+    way — + `surveyRequest` (the reviewed/edited details, so Make never
+    re-reads mid-flight). Make fans the activation out per selected branch.
   - **Config seams (fail open — plain-validation behavior until set)**:
     `ARMED_REQ_COUNT_FIELD` (SOW rollup of Pending Validation REQs,
     projected onto view_3861), and the tech-group snippet's object /

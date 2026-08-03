@@ -89,6 +89,28 @@
   var BRANCH_PICKER_VIEW    = '';   // e.g. 'view_XXXX'  — future hidden-view path
   var BRANCH_LABEL_FIELD    = '';   // e.g. 'field_XXXX' — future hidden-view path
 
+  // ── Pending-request editor (Mark Ready) ──
+  // When a survey request is pending, the Mark Ready modal surfaces the
+  // request's details prefilled + EDITABLE so Ops can correct them before
+  // the send. Source + write path: a hidden grid of SOW_OPS_site survey
+  // requests CONNECTED to this page's SOW on scene_1096, with the fields
+  // below as columns and inline editing ON (view-based PUT rides the
+  // user's session — same mechanic as the CO recipient picker's
+  // write-back). Same view shape as view_3876 on the sales scene.
+  // Unconfigured → fail open: no editor renders, modal behaves as today.
+  var PENDING_REQ_VIEW = '';        // e.g. 'view_XXXX' — TBD in Builder
+  // Field map = the SOW_OPS_site survey request capture record
+  // (matches survey-request-cards.js).
+  var PENDING_REQ_FIELDS = {
+    requested:      'field_1195',  // SYS_request date (read-only display)
+    poc:            'field_1197',  // REL_poc contact (read-only display)
+    pocAuthorized:  'field_1198',  // FLAG_poc authorized (Yes/No, editable)
+    badgingFlag:    'field_1358',  // FLAG_badging/site access (Yes/No, editable)
+    badgingDetails: 'field_1360',  // badging details text (editable)
+    ppe:            'field_1361',  // FLAG_ppe (Yes/No, editable)
+    notes:          'field_1194'   // "anything else" text (editable)
+  };
+
   var NS         = '.scwOpsStepper';
   var BLOCK_CLS  = 'scw-ops-stepper';
   var STYLE_ID   = 'scw-ops-stepper-css';
@@ -597,6 +619,21 @@
       '  border: 1px solid #d1d5db; border-radius: 6px;' +
       '  font-family: inherit; font-size: 13px; background: #fff; color: #1f2937;' +
       '}' +
+      /* Pending survey-request editor (Mark Ready) */
+      '.scw-ops-modal-req-ro { font-size: 12px; color: #475569; margin-top: 6px; }' +
+      '.scw-ops-modal-req-row {' +
+      '  display: flex; align-items: flex-start; gap: 8px; margin-top: 6px;' +
+      '}' +
+      '.scw-ops-modal-req-row label {' +
+      '  flex: 0 0 128px; font-size: 11px; font-weight: 700; color: #6b7280;' +
+      '  text-transform: uppercase; letter-spacing: .03em; padding-top: 8px;' +
+      '}' +
+      '.scw-ops-modal-req-row select, .scw-ops-modal-req-row textarea {' +
+      '  flex: 1; min-width: 0; box-sizing: border-box; padding: 7px 9px;' +
+      '  border: 1px solid #d1d5db; border-radius: 6px;' +
+      '  font-family: inherit; font-size: 13px; background: #fff; color: #1f2937;' +
+      '}' +
+      '.scw-ops-modal-req-row textarea { min-height: 44px; resize: vertical; }' +
       '.scw-ops-modal-rcp-hint {' +
       '  font-size: 11px; color: #6b7280; margin-top: 6px;' +
       '}' +
@@ -831,6 +868,45 @@
       }
     }
     return out;
+  }
+
+  /** The SOW's pending survey-request capture record from
+   *  PENDING_REQ_VIEW's model (DOM-scrape fallback) — { id, values } with
+   *  plain-text display values per PENDING_REQ_FIELDS logical name, or
+   *  null when the view is unconfigured / has no rows (fail open). The
+   *  view is connected to the page SOW, so its rows ARE this SOW's
+   *  requests; first row wins (one pending request per SOW by design). */
+  function readPendingRequest() {
+    if (!PENDING_REQ_VIEW) return null;
+    var F = PENDING_REQ_FIELDS;
+    function firstFromModel() {
+      var v = Knack.views && Knack.views[PENDING_REQ_VIEW];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      if (!models.length) return null;
+      var a = models[0].attributes || models[0];
+      if (!a || !a.id) return null;
+      var values = {};
+      for (var k in F) values[k] = readDisplayValue(a, F[k]);
+      return { id: a.id, values: values };
+    }
+    function firstFromDom() {
+      var viewEl = document.getElementById(PENDING_REQ_VIEW);
+      var rows = viewEl ? viewEl.querySelectorAll('tbody tr[id]') : [];
+      for (var r = 0; r < rows.length; r++) {
+        if (!/^[a-f0-9]{24}$/i.test(rows[r].id || '')) continue;
+        var values = {};
+        for (var k in F) {
+          var td = rows[r].querySelector('td.' + F[k]);
+          values[k] = td
+            ? (td.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
+            : '';
+        }
+        return { id: rows[r].id, values: values };
+      }
+      return null;
+    }
+    try { return firstFromModel() || firstFromDom(); }
+    catch (e) { return firstFromDom(); }
   }
 
   /** Record id of the SOW's basis-bid connection (field_2942) as rendered on
@@ -1936,6 +2012,109 @@
         }
       };
     }
+    // Pending survey-request editor — Mark Ready serves the request's
+    // details prefilled + editable so Ops can correct them before the
+    // send. opts.requestEditor = { view, record: { id, values } }.
+    // Same contract as the recipient picker's write-back: edits PUT to
+    // the request record through the hidden grid view on submit
+    // (fire-and-forget — the webhook payload carries the edited values,
+    // so a failed sync never blocks the action).
+    function buildRequestEditor(config) {
+      if (!config || !config.record || !config.record.id) return null;
+      var orig = config.record.values || {};
+
+      var wrap = document.createElement('div');
+      wrap.className = 'scw-ops-modal-submission';
+      var q = document.createElement('div');
+      q.className = 'scw-ops-modal-submission__q';
+      q.textContent = 'Survey request details — review & edit before sending';
+      wrap.appendChild(q);
+
+      // Read-only identity line: POC + requested date.
+      var ro = [];
+      if (orig.poc)       ro.push('POC: ' + orig.poc);
+      if (orig.requested) ro.push('Requested ' + orig.requested);
+      if (ro.length) {
+        var roEl = document.createElement('div');
+        roEl.className = 'scw-ops-modal-req-ro';
+        roEl.textContent = ro.join(' · ');
+        wrap.appendChild(roEl);
+      }
+
+      var controls = {};
+      function addRow(key, label, kind) {
+        var row = document.createElement('div');
+        row.className = 'scw-ops-modal-req-row';
+        var lab = document.createElement('label');
+        lab.textContent = label;
+        row.appendChild(lab);
+        var ctl;
+        if (kind === 'bool') {
+          ctl = document.createElement('select');
+          ['Yes', 'No'].forEach(function (v) {
+            var o = document.createElement('option');
+            o.value = v; o.textContent = v;
+            ctl.appendChild(o);
+          });
+          ctl.value = /^yes$/i.test((orig[key] || '').trim()) ? 'Yes' : 'No';
+        } else {
+          ctl = document.createElement('textarea');
+          ctl.value = orig[key] || '';
+        }
+        row.appendChild(ctl);
+        wrap.appendChild(row);
+        controls[key] = ctl;
+      }
+      addRow('pocAuthorized',  'POC can change scope', 'bool');
+      addRow('badgingFlag',    'Badging / access reqs', 'bool');
+      addRow('badgingDetails', 'Badging details', 'text');
+      addRow('ppe',            'PPE required', 'bool');
+      addRow('notes',          'Anything else', 'text');
+
+      var hint = document.createElement('div');
+      hint.className = 'scw-ops-modal-rcp-hint';
+      hint.textContent = 'Edits here update the survey request record when you submit.';
+      wrap.appendChild(hint);
+
+      function currentValues() {
+        var out = { id: config.record.id };
+        for (var k in controls) out[k] = (controls[k].value || '').trim();
+        return out;
+      }
+
+      return {
+        element: wrap,
+        getValue: currentValues,
+        saveEdits: function () {
+          if (!config.view || !window.SCW || !SCW.knackAjax) return;
+          var F = PENDING_REQ_FIELDS;
+          var cur = currentValues();
+          var data = {};
+          ['pocAuthorized', 'badgingFlag', 'badgingDetails', 'ppe', 'notes']
+            .forEach(function (k) {
+              if (cur[k] !== (orig[k] || '').trim()) data[F[k]] = cur[k];
+            });
+          if (!Object.keys(data).length) return;
+          SCW.knackAjax({
+            url: SCW.knackRecordUrl(config.view, config.record.id),
+            type: 'PUT',
+            data: JSON.stringify(data),
+            success: function () {
+              SCW.debug('[scw-ops-stepper] survey request updated:',
+                config.record.id, data);
+            },
+            error: function (xhr) {
+              console.warn('[scw-ops-stepper] survey request update failed (' +
+                (xhr && xhr.status) + ') — the webhook payload still ' +
+                'carries the edited values.', config.record.id, data);
+            }
+          });
+        }
+      };
+    }
+    var requestEditor = buildRequestEditor(opts.requestEditor);
+    if (requestEditor) card.appendChild(requestEditor.element);
+
     var branchPicker = buildBranchPicker(opts.branchPicker);
     if (branchPicker) card.appendChild(branchPicker.element);
 
@@ -2071,6 +2250,8 @@
       if (gate.blocked) return;
       var bGate = branchOrBlock();
       if (bGate.blocked) return;
+      // Sync any survey-request detail edits back to the request record.
+      if (requestEditor) requestEditor.saveEdits();
       var notes = (ta.value || '').trim();
       onSubmit(notes, {
         setSubmitting: setSubmitting, showError: showError, close: close,
@@ -2078,7 +2259,8 @@
         submission:    submissionGroup ? submissionGroup.getValue() : null,
         clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
         recipient:     gate.recipient || null,
-        branches:      bGate.branches || []
+        branches:      bGate.branches || [],
+        surveyRequest: requestEditor ? requestEditor.getValue() : null
       });
     });
     if (secondaryBtn) {
@@ -2088,6 +2270,7 @@
         if (gate.blocked) return;
         var bGate = branchOrBlock();
         if (bGate.blocked) return;
+        if (requestEditor) requestEditor.saveEdits();
         var notes = (ta.value || '').trim();
         onSubmit(notes, {
           setSubmitting: setSubmitting, showError: showError, close: close,
@@ -2095,7 +2278,8 @@
           submission:    submissionGroup ? submissionGroup.getValue() : null,
           clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
           recipient:     gate.recipient || null,
-          branches:      bGate.branches || []
+          branches:      bGate.branches || [],
+          surveyRequest: requestEditor ? requestEditor.getValue() : null
         });
       });
     }
@@ -2340,6 +2524,12 @@
       var overrides = {};
       if (armedN > 0) {
         var branchOpts = readBranchOptions();
+        // Serve the pending request's details for review/edit before the
+        // send (null when PENDING_REQ_VIEW isn't configured — fail open).
+        var pendingReq = readPendingRequest();
+        if (pendingReq) {
+          overrides.requestEditor = { view: PENDING_REQ_VIEW, record: pendingReq };
+        }
         overrides.title = 'Mark Ready — Send Pending Survey Request';
         overrides.banner = {
           tone: 'warn',
@@ -2430,6 +2620,11 @@
       if (extra && extra.armedCount !== undefined) {
         payload.pendingSurveyCount = extra.armedCount;
         payload.surveyBranches     = ctx.branches || [];
+        // The (possibly edited) request details as reviewed in the modal
+        // — { id, pocAuthorized, badgingFlag, badgingDetails, ppe, notes }.
+        // The record itself is also PUT-updated on submit; this copy means
+        // Make never has to re-read mid-flight.
+        if (ctx.surveyRequest) payload.surveyRequest = ctx.surveyRequest;
       }
       // ClickUp status update ('gfe-submitted' / 'final-bid-submitted' /
       // null). Independent of submission — the user can pick any combo.
