@@ -3136,6 +3136,16 @@
       if (lbl && prod) return lbl + ' · ' + prod;
       if (prod) return prod + loc;
       if (lbl)  return lbl;
+      // Service/assumption rows carry no drop label and no product — their
+      // human-readable identity is the labor description (field_2020).
+      var desc = (rec.field_2020 || '').toString()
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ')
+        .trim();
+      if (desc) {
+        if (desc.length > 90) desc = desc.slice(0, 89) + '…';
+        return desc + loc;
+      }
       return hexWrap ? '(unnamed item)' + loc : rec.id;
     }
 
