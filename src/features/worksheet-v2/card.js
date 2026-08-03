@@ -2258,11 +2258,11 @@
       'MDF / IDF'), 'scw-ws-v2-sd--conn');
 
     if (cat === 'cam') {
-      // Connected To (field_2821, single → network device) — EDITABLE; the
-      // field_2820↔field_2821 cascade (createMirror VIEW_ID view_4093) keeps
-      // the NVR/switch's Connected Devices in sync.
+      // Connected To (field_2821) is DERIVED + READ-ONLY (Known Issue #12
+      // step 1, same regime as SOW field_2197) — edits flow through the
+      // parent's Connected Devices picker (field_2820) + cascade.
       items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2821',
-        'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn');
+        'Connected To', hasIssue(rec, 'disconnected'), true), 'scw-ws-v2-sd--conn');
       items += sdItem(detailReadOnly(rec, F.dropLength || 'field_2804', 'Drop Length'),
         'scw-ws-v2-sd--num');
       items += sdItem(detailReadOnly(rec, F.conduit || 'field_2803', 'Conduit'),
