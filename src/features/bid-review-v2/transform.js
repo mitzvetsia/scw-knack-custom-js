@@ -791,6 +791,46 @@
     var sowItemIndex = Object.create(null);
     var sowFullByItem = Object.create(null); // keeps the raw record for expand-panel use
     var sowItemList = sowItems || [];
+
+    // Authoritative Connected Devices. field_1957 (parent forward list) and
+    // field_2197 (child back-pointer) are SEPARATE fields kept aligned only
+    // by the cascade (CLAUDE.md Known Issue #12), so the forward list can
+    // read stale (e.g. one device) while children still point here. Mirror
+    // worksheet-v2's detailConnectedDevices: union the forward list with
+    // every item whose Connected To points back at the parent — the
+    // collapsed row then matches the expand panel's count, and the
+    // connDevice diff compares bids against the authoritative set.
+    var connBackIdx = Object.create(null);
+    for (var bp = 0; bp < sowItemList.length; bp++) {
+      var brec = sowItemList[bp];
+      if (!brec || !brec.id) continue;
+      var pid = connectionId(brec, SFK.connTo);
+      if (!pid) continue;
+      (connBackIdx[pid] = connBackIdx[pid] || []).push({
+        id: brec.id,
+        identifier: raw(brec, SFK.displayLabel) ||
+                    connectionLabel(brec, SFK.product) || brec.id
+      });
+    }
+    function connDeviceUnion(rec) {
+      var seen = Object.create(null);
+      var out = [];
+      var fwd = connectionAll(rec, SFK.connDevice);
+      for (var f = 0; f < fwd.length; f++) {
+        if (fwd[f] && fwd[f].id && !seen[fwd[f].id]) {
+          seen[fwd[f].id] = true;
+          out.push(fwd[f]);
+        }
+      }
+      var kids = connBackIdx[rec.id] || [];
+      for (var k = 0; k < kids.length; k++) {
+        if (!seen[kids[k].id]) {
+          seen[kids[k].id] = true;
+          out.push(kids[k]);
+        }
+      }
+      return out;
+    }
     for (var si = 0; si < sowItemList.length; si++) {
       var s = sowItemList[si];
       if (!s || !s.id) continue;
@@ -839,7 +879,7 @@
         // connDevice (field_1957) populated (its cameras); a camera/reader
         // has connTo (field_2197) populated (its NVR) — the cell renders
         // whichever is present, so each device shows the appropriate field.
-        connDevice:     connectionAll(s, SFK.connDevice),
+        connDevice:     connDeviceUnion(s),
         connTo:         connectionLabel(s, SFK.connTo),
         connToId:       connectionId(s, SFK.connTo),
         // Cabling attributes for the comparison cells (cam/reader). Diffed
