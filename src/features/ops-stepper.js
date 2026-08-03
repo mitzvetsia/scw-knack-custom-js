@@ -99,16 +99,21 @@
   // write-back). Same view shape as view_3876 on the sales scene.
   // Unconfigured → fail open: no editor renders, modal behaves as today.
   var PENDING_REQ_VIEW = 'view_4141';  // hidden connected grid on scene_1096 (added 2026-08-03)
-  // Field map = the SOW_OPS_site survey request capture record
-  // (matches survey-request-cards.js).
+  // Field map = the SOW_OPS_site survey request capture record. NOTE the
+  // POC lives in the INPUT fields (what the view_3853 form writes) — the
+  // REL_poc contact connection (field_1197) is typically BLANK on these
+  // records, so read/edit the inputs, not the connection.
   var PENDING_REQ_FIELDS = {
     requested:      'field_1195',  // SYS_request date (read-only display)
-    poc:            'field_1197',  // REL_poc contact (read-only display)
+    pocName:        'field_1191',  // INPUT_poc name (person field, editable)
+    pocEmail:       'field_1192',  // INPUT_poc email (editable)
+    pocPhone:       'field_1193',  // INPUT_phone (editable)
     pocAuthorized:  'field_1198',  // FLAG_poc authorized (Yes/No, editable)
     badgingFlag:    'field_1358',  // FLAG_badging/site access (Yes/No, editable)
     badgingDetails: 'field_1360',  // badging details text (editable)
     ppe:            'field_1361',  // FLAG_ppe (Yes/No, editable)
-    notes:          'field_1194'   // "anything else" text (editable)
+    notes:          'field_1194',  // "anything else" text (editable)
+    status:         'field_2992'   // FLAG_status (PENDING/…, read-only; row pick)
   };
 
   var NS         = '.scwOpsStepper';
@@ -633,7 +638,8 @@
       '  flex: 0 0 128px; font-size: 11px; font-weight: 700; color: #6b7280;' +
       '  text-transform: uppercase; letter-spacing: .03em; padding-top: 8px;' +
       '}' +
-      '.scw-ops-modal-req-row select, .scw-ops-modal-req-row textarea {' +
+      '.scw-ops-modal-req-row select, .scw-ops-modal-req-row textarea,' +
+      ' .scw-ops-modal-req-row input {' +
       '  flex: 1; min-width: 0; box-sizing: border-box; padding: 7px 9px;' +
       '  border: 1px solid #d1d5db; border-radius: 6px;' +
       '  font-family: inherit; font-size: 13px; background: #fff; color: #1f2937;' +
@@ -880,21 +886,39 @@
    *  plain-text display values per PENDING_REQ_FIELDS logical name, or
    *  null when the view is unconfigured / has no rows (fail open). The
    *  view is connected to the page SOW, so its rows ARE this SOW's
-   *  requests; first row wins (one pending request per SOW by design). */
+   *  requests; the row whose status reads pending wins, else the first. */
   function readPendingRequest() {
     if (!PENDING_REQ_VIEW) return null;
     var F = PENDING_REQ_FIELDS;
+    // Prefer the row whose status reads pending — the view may also carry
+    // already-sent requests. No status match → first row (fail open).
+    function pickPending(list) {
+      for (var i = 0; i < list.length; i++) {
+        if (/pending/i.test(list[i].values.status || '')) return list[i];
+      }
+      return list[0] || null;
+    }
     function firstFromModel() {
       var v = Knack.views && Knack.views[PENDING_REQ_VIEW];
       var models = (v && v.model && v.model.data && v.model.data.models) || [];
-      if (!models.length) return null;
-      var a = models[0].attributes || models[0];
-      if (!a || !a.id) return null;
-      var values = {};
-      for (var k in F) values[k] = readDisplayValue(a, F[k]);
-      return { id: a.id, values: values };
+      var out = [];
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i].attributes || models[i];
+        if (!a || !a.id) continue;
+        var values = {};
+        for (var k in F) values[k] = readDisplayValue(a, F[k]);
+        // Raw person-name shape ({first,last,…}) — the write-back must
+        // match it (same contract as the recipient picker).
+        var nameRaw = a[F.pocName + '_raw'];
+        out.push({
+          id: a.id, values: values,
+          nameRaw: (nameRaw && typeof nameRaw === 'object') ? nameRaw : null
+        });
+      }
+      return pickPending(out);
     }
     function firstFromDom() {
+      var out = [];
       var viewEl = document.getElementById(PENDING_REQ_VIEW);
       var rows = viewEl ? viewEl.querySelectorAll('tbody tr[id]') : [];
       for (var r = 0; r < rows.length; r++) {
@@ -906,9 +930,9 @@
             ? (td.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
             : '';
         }
-        return { id: rows[r].id, values: values };
+        out.push({ id: rows[r].id, values: values, nameRaw: null });
       }
-      return null;
+      return pickPending(out);
     }
     try { return firstFromModel() || firstFromDom(); }
     catch (e) { return firstFromDom(); }
@@ -2027,6 +2051,12 @@
     function buildRequestEditor(config) {
       if (!config || !config.record || !config.record.id) return null;
       var orig = config.record.values || {};
+      // Person-name raw shape (when the model provided it) — drives the
+      // First/Last split exactly like the recipient picker.
+      var nameRaw   = config.record.nameRaw || null;
+      var nameIsObj = !!nameRaw;
+      var origFirst = nameIsObj ? String(nameRaw.first || '').trim() : '';
+      var origLast  = nameIsObj ? String(nameRaw.last  || '').trim() : '';
 
       var wrap = document.createElement('div');
       wrap.className = 'scw-ops-modal-submission';
@@ -2035,9 +2065,9 @@
       q.textContent = 'Survey request details — review & edit before sending';
       wrap.appendChild(q);
 
-      // Read-only identity line: POC + requested date.
+      // Read-only identity line: status + requested date.
       var ro = [];
-      if (orig.poc)       ro.push('POC: ' + orig.poc);
+      if (orig.status)    ro.push(orig.status);
       if (orig.requested) ro.push('Requested ' + orig.requested);
       if (ro.length) {
         var roEl = document.createElement('div');
@@ -2047,7 +2077,7 @@
       }
 
       var controls = {};
-      function addRow(key, label, kind) {
+      function addRow(key, label, kind, initial) {
         var row = document.createElement('div');
         row.className = 'scw-ops-modal-req-row';
         var lab = document.createElement('label');
@@ -2061,20 +2091,34 @@
             o.value = v; o.textContent = v;
             ctl.appendChild(o);
           });
-          ctl.value = /^yes$/i.test((orig[key] || '').trim()) ? 'Yes' : 'No';
-        } else {
+          ctl.value = /^yes$/i.test((initial || '').trim()) ? 'Yes' : 'No';
+        } else if (kind === 'area') {
           ctl = document.createElement('textarea');
-          ctl.value = orig[key] || '';
+          ctl.value = initial || '';
+        } else {
+          ctl = document.createElement('input');
+          ctl.type = kind;
+          ctl.value = initial || '';
         }
         row.appendChild(ctl);
         wrap.appendChild(row);
         controls[key] = ctl;
       }
-      addRow('pocAuthorized',  'POC can change scope', 'bool');
-      addRow('badgingFlag',    'Badging / access reqs', 'bool');
-      addRow('badgingDetails', 'Badging details', 'text');
-      addRow('ppe',            'PPE required', 'bool');
-      addRow('notes',          'Anything else', 'text');
+      // POC lives in the request's INPUT fields (the connection field is
+      // typically blank) — a person-name raw gets First/Last inputs.
+      if (nameIsObj) {
+        addRow('pocFirst', 'POC first name', 'text', origFirst);
+        addRow('pocLast',  'POC last name',  'text', origLast);
+      } else {
+        addRow('pocName',  'POC name',       'text', orig.pocName);
+      }
+      addRow('pocEmail',       'POC email',             'email', orig.pocEmail);
+      addRow('pocPhone',       'POC phone',             'tel',   orig.pocPhone);
+      addRow('pocAuthorized',  'POC can change scope',  'bool',  orig.pocAuthorized);
+      addRow('badgingFlag',    'Badging / access reqs', 'bool',  orig.badgingFlag);
+      addRow('badgingDetails', 'Badging details',       'area',  orig.badgingDetails);
+      addRow('ppe',            'PPE required',          'bool',  orig.ppe);
+      addRow('notes',          'Anything else',         'area',  orig.notes);
 
       var hint = document.createElement('div');
       hint.className = 'scw-ops-modal-rcp-hint';
@@ -2084,6 +2128,10 @@
       function currentValues() {
         var out = { id: config.record.id };
         for (var k in controls) out[k] = (controls[k].value || '').trim();
+        // Payload convenience: one joined name regardless of input shape.
+        out.pocName = nameIsObj
+          ? ((out.pocFirst || '') + ' ' + (out.pocLast || '')).trim()
+          : (out.pocName || '');
         return out;
       }
 
@@ -2095,10 +2143,24 @@
           var F = PENDING_REQ_FIELDS;
           var cur = currentValues();
           var data = {};
-          ['pocAuthorized', 'badgingFlag', 'badgingDetails', 'ppe', 'notes']
-            .forEach(function (k) {
-              if (cur[k] !== (orig[k] || '').trim()) data[F[k]] = cur[k];
-            });
+          // POC name — person-field object shape when the raw was one
+          // (same contract as the recipient picker's write-back).
+          if (nameIsObj) {
+            if ((cur.pocFirst !== origFirst || cur.pocLast !== origLast) &&
+                (cur.pocFirst || cur.pocLast)) {
+              var nObj = { first: cur.pocFirst, last: cur.pocLast };
+              if (nameRaw.title)  nObj.title  = nameRaw.title;
+              if (nameRaw.middle) nObj.middle = nameRaw.middle;
+              data[F.pocName] = nObj;
+            }
+          } else if (controls.pocName && cur.pocName &&
+                     cur.pocName !== (orig.pocName || '').trim()) {
+            data[F.pocName] = cur.pocName;
+          }
+          ['pocEmail', 'pocPhone', 'pocAuthorized', 'badgingFlag',
+           'badgingDetails', 'ppe', 'notes'].forEach(function (k) {
+            if (cur[k] !== (orig[k] || '').trim()) data[F[k]] = cur[k];
+          });
           if (!Object.keys(data).length) return;
           SCW.knackAjax({
             url: SCW.knackRecordUrl(config.view, config.record.id),

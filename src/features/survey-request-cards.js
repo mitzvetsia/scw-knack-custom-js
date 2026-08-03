@@ -32,16 +32,21 @@
     fields: {
       sow:            'field_2329', // SOW connection (rows may span the project)
       requested:      'field_1195', // SYS_request date
-      poc:            'field_1197', // REL_poc contact record
+      // POC lives in the request's INPUT fields (what the view_3853 form
+      // writes) — the REL_poc contact connection (field_1197) is
+      // typically BLANK, so read the inputs and fall back to the rel.
+      pocName:        'field_1191', // INPUT_poc name
+      pocEmail:       'field_1192', // INPUT_poc email
+      pocPhone:       'field_1193', // INPUT_phone
+      poc:            'field_1197', // REL_poc contact record (fallback)
       pocAuthorized:  'field_1198', // FLAG_poc authorized to make changes
       badgingFlag:    'field_1358', // FLAG_badging/security/training reqs
       badgingDetails: 'field_1360', // badging details text
       ppe:            'field_1361', // FLAG_ppe requirements
-      // TODO(Builder): the pending/complete status field on this object
-      // (locked mechanics: created pending, Make promotes). Until it
-      // exists + is a column here, armed-ness is DERIVED per-row: the
-      // row belongs to the page's SOW AND field_2723 != Yes.
-      status:         ''
+      // FLAG_status (PENDING/…) — landed in Builder 2026-08-03. Reads ''
+      // until the column is added to view_3876; the derived armed signal
+      // covers that gap.
+      status:         'field_2992'
     },
     armedStatusMatch: 'pending'
   };
@@ -180,7 +185,9 @@
           sow:            displayValue(a, F.sow),
           sowId:          connectionId(a, F.sow),
           requested:      displayValue(a, F.requested),
-          poc:            displayValue(a, F.poc),
+          poc:            displayValue(a, F.pocName) || displayValue(a, F.poc),
+          pocEmail:       displayValue(a, F.pocEmail),
+          pocPhone:       displayValue(a, F.pocPhone),
           pocAuthorized:  displayValue(a, F.pocAuthorized),
           badgingFlag:    displayValue(a, F.badgingFlag),
           badgingDetails: displayValue(a, F.badgingDetails),
@@ -203,7 +210,9 @@
           id: rows[r].id,
           sow: cell(F.sow),
           sowId: sowSpan ? String(sowSpan.className || '').trim() : '',
-          requested: cell(F.requested), poc: cell(F.poc),
+          requested: cell(F.requested),
+          poc: cell(F.pocName) || cell(F.poc),
+          pocEmail: cell(F.pocEmail), pocPhone: cell(F.pocPhone),
           pocAuthorized: cell(F.pocAuthorized), badgingFlag: cell(F.badgingFlag),
           badgingDetails: cell(F.badgingDetails), ppe: cell(F.ppe),
           status: cell(F.status)
@@ -259,6 +268,8 @@
           ? '<div class="scw-srqc__dates"><span class="scw-srqc__date">' +
             '<b>Requested</b>' + esc(rec.requested) + '</span></div>'
           : '') +
+        textRow('POC contact',
+                [rec.pocEmail, rec.pocPhone].filter(Boolean).join(' · ')) +
         textRow('POC authorized for scope changes', rec.pocAuthorized) +
         textRow('Badging / site access requirements',
                 rec.badgingDetails || (rec.badgingFlag === 'Yes' ? 'Yes' : '')) +
