@@ -247,7 +247,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // activation scenario a minimal payload — { surveyRequestId, branchIds:
   // [id,…], sowId } — so the send can be built/retried independently of
   // the validate/publish scenario. branchIds is ALWAYS an array.
-  MAKE_SEND_PENDING_SURVEY_WEBHOOK:      "https://hook.us1.make.com/pxskjhs7pxum1fzh1t909dug5jevqr1b",
+  MAKE_SEND_PENDING_SURVEY_WEBHOOK:      "https://hook.us1.make.com/yao4qdea7hupuhjimwgi1nvpugbc6lfc",
   MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:      "https://hook.us1.make.com/r08nmy4ellspsjo9f2s0kdkhxucvf78u",
   // Update Subcontractor Bid Request: same payload shape as Request Alt
   // Bid (incl. selectedSurveyIds[]) AND the same Make webhook URL.
