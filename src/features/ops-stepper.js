@@ -163,19 +163,25 @@
       // Once Ops has marked the SOW ready, render as completed (green
       // check, non-clickable) to mirror the sales build stepper.
       completed: { field: 'field_2723', value: 'Yes' },
-      // Button label telegraphs the armed-survey consequence BEFORE the
-      // modal opens. Falls back to step.label when nothing is armed.
+      // Button label telegraphs the pending-survey consequence BEFORE
+      // the modal opens. Falls back to step.label when nothing is pending.
       dynamicLabel: function () {
         return armedSurveyCount() > 0
-          ? 'Mark Ready — Send Armed Survey Request'
+          ? 'Mark Ready — Send Pending Survey Request'
           : null;
       },
-      // Active (clickable) when Ops hasn't marked it ready and there
-      // are no CRs yet.
+      // Active (clickable) when Ops hasn't marked it ready, EXCEPT the
+      // sibling-survey handoff (a SIBLING has the survey while this SOW's
+      // 2706 = No — same condition as hideWhen). ⚠️ Must NOT gate on bare
+      // field_2728 > 0: it counts the project's survey-requested SOWs
+      // INCLUDING this one, so a pending SOW (2706 = Yes, 2723 = No)
+      // always reads 2728 > 0 — the old bare gate locked Mark Ready on
+      // exactly the SOW whose validation must send the pending survey.
       showWhen: {
         all: [
           { field: 'field_2723', value: 'No' },
-          { not: { field: 'field_2728', gt: 0 } }
+          { not: { all: [ { field: 'field_2728', gt: 0 },
+                          { field: 'field_2706', value: 'No' } ] } }
         ]
       },
       // Single webhook handles both "mark ready" and the draft publish
@@ -2313,10 +2319,10 @@
       var overrides = {};
       if (armedN > 0) {
         var branchOpts = readBranchOptions();
-        overrides.title = 'Mark Ready — Send Armed Survey Request';
+        overrides.title = 'Mark Ready — Send Pending Survey Request';
         overrides.banner = {
           tone: 'warn',
-          text: 'A survey request is ARMED on this SOW — marking ready ' +
+          text: 'A survey request is PENDING on this SOW — marking ready ' +
                 'validates the SOW and immediately sends the survey request' +
                 (branchOpts.length
                   ? ' to the branch(es) / tech group(s) you pick below.'
@@ -2333,7 +2339,7 @@
       } else {
         overrides.banner = {
           tone: 'info',
-          text: 'Validation only — no survey request is armed. Sales will ' +
+          text: 'Validation only — no survey request is pending. Sales will ' +
                 'request the survey separately.'
         };
       }
@@ -2394,13 +2400,15 @@
       if (ctx.recipient)              payload.recipient = ctx.recipient;
       if (ctx.submission)             payload.submission = ctx.submission;
       else if (step.forceSubmission)  payload.submission = step.forceSubmission;
-      // Armed-survey context (mark-ready): how many Pending Validation
+      // Pending-survey context (mark-ready): how many Pending Validation
       // REQs this validation fires + the chosen branch / tech-group
       // targets. surveyBranches is ALWAYS an array (one or many) so
-      // Make's activation branch parses one way.
+      // Make's activation branch parses one way. (Key renamed from
+      // armedSurveyCount 2026-08-03, before any Make scenario consumed it
+      // — "pending" is the locked vocabulary.)
       if (extra && extra.armedCount !== undefined) {
-        payload.armedSurveyCount = extra.armedCount;
-        payload.surveyBranches   = ctx.branches || [];
+        payload.pendingSurveyCount = extra.armedCount;
+        payload.surveyBranches     = ctx.branches || [];
       }
       // ClickUp status update ('gfe-submitted' / 'final-bid-submitted' /
       // null). Independent of submission — the user can pick any combo.

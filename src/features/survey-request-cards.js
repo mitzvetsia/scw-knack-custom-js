@@ -246,7 +246,7 @@
 
   function buildCard(rec) {
     var armed = isArmed(rec);
-    var chipText = armed ? 'Armed' : (rec.status || 'Submitted');
+    var chipText = armed ? 'Pending' : (rec.status || 'Submitted');
     return '' +
       '<div class="scw-srqc' + (armed ? ' scw-srqc--armed' : '') + '" data-req="' + esc(rec.id) + '">' +
         '<div class="scw-srqc__top">' +

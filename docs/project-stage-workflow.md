@@ -197,18 +197,20 @@ Notes on the construct:
 
 - **ops-stepper.js (view_3345) — IMPLEMENTED 2026-08-02.** Mark Ready
   must answer "am I just validating, or also sending a survey?":
-  - **Button label**: "Mark Ready for Survey" → "Mark Ready — Send Armed
-    Survey Request" when armed (dynamic label, resolved at render).
-  - **Modal banner**: armed → amber callout "A survey request is ARMED on
-    this SOW — marking ready validates the SOW and immediately sends the
+  - **Button label**: "Mark Ready for Survey" → "Mark Ready — Send Pending
+    Survey Request" when a request is pending (dynamic label, resolved at
+    render). ("Pending" is the locked user-facing vocabulary, 2026-08-03 —
+    "armed" survives only as internal jargon in code/docs.)
+  - **Modal banner**: pending → amber callout "A survey request is PENDING
+    on this SOW — marking ready validates the SOW and immediately sends the
     survey request to the branch(es)/tech group(s) you pick below." Not
-    armed → quiet info line "Validation only — no survey request is
-    armed. Sales will request the survey separately."
+    pending → quiet info line "Validation only — no survey request is
+    pending. Sales will request the survey separately."
   - **Branch / tech-group picker**: MULTI-select checkbox list (Ops may
     send the survey request to more than one subcontracting group),
-    required when armed and options exist. Options come from a grid view
+    required when pending and options exist. Options come from a grid view
     on scene_1096.
-  - **Payload**: `armedSurveyCount` + `surveyBranches: [{id,label},…]` —
+  - **Payload**: `pendingSurveyCount` + `surveyBranches: [{id,label},…]` —
     ALWAYS an array (one or many) so Make's activation branch parses one
     way. Make fans the activation out per selected branch.
   - **Config seams (fail open — plain-validation behavior until set)**:
