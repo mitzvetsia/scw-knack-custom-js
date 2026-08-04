@@ -363,6 +363,38 @@
     (document.head || document.documentElement).appendChild(s);
   })();
 
+  // ── Scroll hold ───────────────────────────────────────────────────
+  // A photo delete/disconnect sets off a CASCADE of layout shifts: the
+  // optimistic card removal, the native DOC_photos grid re-render from the
+  // kn-link-delete click, the worksheet refetch+rebuild ~1.5s later, then
+  // group-collapse re-applying — each one yanked the viewport ("screen
+  // jumps around wildly"). Pin the scroll position through the settling
+  // window with an rAF loop; any REAL user scroll gesture (wheel / touch /
+  // keys / scrollbar drag) releases the hold immediately so we never fight
+  // the user.
+  function holdScroll(ms) {
+    var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+    var done = false;
+    var t0 = Date.now();
+    function release() {
+      if (done) return;
+      done = true;
+      ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (evt) {
+        window.removeEventListener(evt, release, true);
+      });
+    }
+    ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (evt) {
+      window.addEventListener(evt, release, true);
+    });
+    (function tick() {
+      if (done) return;
+      if (Date.now() - t0 > ms) { release(); return; }
+      var cur = window.pageYOffset || document.documentElement.scrollTop || 0;
+      if (Math.abs(cur - y) > 1) window.scrollTo(0, y);
+      requestAnimationFrame(tick);
+    })();
+  }
+
   // Photo-delete settling registry. Between the optimistic card removal and
   // the authoritative refetch, Knack re-renders rebuild the strip from the
   // STALE source row (the photo connection is still on it) — without this
@@ -842,6 +874,9 @@
 
       // The actual delete — run only after the user confirms (below).
       function doDelete() {
+        // Pin the viewport through the delete's re-render cascade (native
+        // grid re-render → refetch → worksheet rebuild → group re-apply).
+        holdScroll(4000);
         // Path 1 — the photo record's row in the photos source grid, if the
         // grid is on the page AND the row is on its current pagination page.
         // Photo ids are 24-hex and unique, so a page-wide lookup is safe.
@@ -946,6 +981,8 @@
       }
 
       function doDisconnect() {
+        // Same re-render cascade as delete — pin the viewport through it.
+        holdScroll(4000);
         SCW.knackAjax({
           url:  SCW.knackRecordUrl(saveView, photoId),
           type: 'GET',
