@@ -36,25 +36,30 @@
   // ── TODO: fill in from Builder (tech group / branch object) ─────────
   var TECH_GROUP_OBJECT = 'object_XX';    // the object field_2954/field_2347 connect to
   var LABEL_FIELD       = 'field_XXXX';   // group display-name field
-  // Optional: an active/enabled Yes/No flag to filter retired groups.
-  // Leave '' to include every record.
-  var ACTIVE_FLAG_FIELD = '';             // e.g. 'field_XXXX' — '' = no filter
+  // Group status — ONLY records whose status is 'Active' are offered.
+  // Filtered server-side in the fetch AND re-checked client-side.
+  var STATUS            = 'field_1583';
+
+  // Server-side filter: fetch only Active groups (same pattern as the
+  // productBucketMap snippet's Enabled filter).
+  var filters = encodeURIComponent(JSON.stringify({
+    match: 'and',
+    rules: [ { field: STATUS, operator: 'is', value: 'Active' } ]
+  }));
 
   window.SCW = window.SCW || {};
   var out = [];
 
   function isActive(rec) {
-    if (!ACTIVE_FLAG_FIELD) return true;
-    var s = String(rec[ACTIVE_FLAG_FIELD] == null ? '' : rec[ACTIVE_FLAG_FIELD])
+    var s = String(rec[STATUS] == null ? '' : rec[STATUS])
       .replace(/<[^>]*>/g, '').trim().toLowerCase();
-    // Fail open: blank/unknown counts as active.
-    return s !== 'no' && s !== 'false' && s !== '0';
+    return s === 'active';
   }
 
   function fetchPage(page) {
     $.ajax({
       url: 'https://api.knack.com/v1/objects/' + TECH_GROUP_OBJECT +
-           '/records?rows_per_page=1000&page=' + page,
+           '/records?rows_per_page=1000&filters=' + filters + '&page=' + page,
       type: 'GET',
       headers: {
         'X-Knack-Application-Id': APP_ID,
