@@ -42,12 +42,23 @@
     evidenceFields: ['field_1949',  // product connection
                      'field_2150'], // sub bid
 
+    // The install fee is a markup over these inputs, so ANY of them being
+    // positive means the fee CANNOT legitimately be zero. A calc reading 0
+    // alongside a positive input here is the stuck state Knack stores on
+    // API-created records (it writes 0, not blank, when the initial
+    // equation pass never ran).
+    positiveInputs: ['field_2150',  // sub bid
+                     'field_1973',  // +Hrs
+                     'field_1974'], // +Mat
+
     // Nudge body: the first of these present on the record is re-sent with
-    // its CURRENT value. Any update triggers the recalc; preferring an
-    // equation input (qty, product) over notes is belt-and-braces.
-    nudgeFields: ['field_1964',     // qty (number)
-                  'field_1949',     // product (connection)
-                  'field_1953'],    // SCW notes (text — always accepted)
+    // its CURRENT value — any update triggers the recalc. SCW Notes leads
+    // because it's inline-editable on every configured grid (qty/product
+    // are read-only columns on view_3921, and a view-based PUT can reject
+    // fields the view doesn't allow editing).
+    nudgeFields: ['field_1953',     // SCW notes (text — editable everywhere)
+                  'field_1964',     // qty (number)
+                  'field_1949'],    // product (connection)
 
     maxPerSweep:   20,
     maxConcurrent: 3,
@@ -88,15 +99,47 @@
            String(attrs[fieldKey]).replace(/&nbsp;/g, '').trim() !== '';
   }
 
-  /** The calc is STUCK when the record carries the field key (the view
-   *  exposes the column) but both raw and display are blank. A computed
-   *  zero comes back as 0 / "0.00" — that's calculated, not stuck. */
-  function calcIsStuck(attrs) {
+  /** Numeric read of a currency/number field: raw first, display fallback
+   *  ($ and commas stripped). NaN when the field holds no number at all. */
+  function numOf(attrs, fieldKey) {
+    var raw = attrs[fieldKey + '_raw'];
+    if (typeof raw === 'number') return raw;
+    if (!isBlank(raw) && !Array.isArray(raw)) {
+      var n = parseFloat(String(raw).replace(/[$,\s]/g, ''));
+      if (!isNaN(n)) return n;
+    }
+    var disp = String(attrs[fieldKey] == null ? '' : attrs[fieldKey])
+      .replace(/&nbsp;/g, '').replace(/<[^>]*>/g, '').replace(/[$,\s]/g, '');
+    if (!disp) return NaN;
+    var d = parseFloat(disp);
+    return isNaN(d) ? NaN : d;
+  }
+
+  /** Stuck-state classifier for the calc field:
+   *    'blank' — the record carries the key but no value at all (equation
+   *              never ran, stored empty)
+   *    'zero'  — the calc reads 0 (how Knack stores a never-run equation on
+   *              API-created records). Only meaningful when a positive input
+   *              proves the true fee can't be 0 — the sweep checks that.
+   *    null    — calculated (any non-zero number), or the view doesn't
+   *              expose the column. */
+  function stuckState(attrs) {
     var k = CONFIG.calcField;
-    if (!(k in attrs) && !((k + '_raw') in attrs)) return false;
-    return isBlank(attrs[k + '_raw']) &&
-           (isBlank(attrs[k]) ||
-            String(attrs[k]).replace(/&nbsp;/g, '').trim() === '');
+    if (!(k in attrs) && !((k + '_raw') in attrs)) return null;
+    var n = numOf(attrs, k);
+    if (isNaN(n)) return 'blank';
+    if (n === 0)  return 'zero';
+    return null;
+  }
+
+  /** True when any fee input (sub bid / +Hrs / +Mat) is a positive number —
+   *  the proof that a zero calc is stuck rather than legitimately $0. */
+  function hasPositiveInput(attrs) {
+    for (var i = 0; i < CONFIG.positiveInputs.length; i++) {
+      var n = numOf(attrs, CONFIG.positiveInputs[i]);
+      if (!isNaN(n) && n > 0) return true;
+    }
+    return false;
   }
 
   /** Same-value nudge body from the first available nudge field. */
@@ -181,12 +224,20 @@
     for (var i = 0; i < attrsList.length; i++) {
       var attrs = attrsList[i];
       if (nudgedOnce[attrs.id]) continue;
-      if (!calcIsStuck(attrs)) continue;
-      var hasEvidence = false;
-      for (var e = 0; e < CONFIG.evidenceFields.length; e++) {
-        if (fieldHasValue(attrs, CONFIG.evidenceFields[e])) { hasEvidence = true; break; }
+      var state = stuckState(attrs);
+      if (!state) continue;
+      if (state === 'zero') {
+        // A zero calc is only provably stuck when a fee input is positive
+        // (fee = markup over sub bid / +Hrs / +Mat, so input > 0 ⇒ fee > 0).
+        if (!hasPositiveInput(attrs)) continue;
+      } else {
+        // Blank calc: nudge when the row clearly should have priced.
+        var hasEvidence = false;
+        for (var e = 0; e < CONFIG.evidenceFields.length; e++) {
+          if (fieldHasValue(attrs, CONFIG.evidenceFields[e])) { hasEvidence = true; break; }
+        }
+        if (!hasEvidence) continue;
       }
-      if (!hasEvidence) continue;
       var body = buildNudgeBody(attrs);
       if (!body) continue;
       jobs.push({ viewKey: viewKey, recordId: attrs.id, body: body, attempt: 1 });
@@ -194,8 +245,11 @@
     }
     if (!jobs.length) return;
 
-    log('nudging ' + jobs.length + ' stuck record(s) on ' + viewKey,
-        jobs.map(function (j) { return j.recordId; }));
+    // Always announce a nudge batch (not debug-gated) — the write is real,
+    // so it should be visible in the console when verifying the feature.
+    console.info('[scw-calc-nudge] nudging ' + jobs.length +
+      ' stuck record(s) on ' + viewKey + ':',
+      jobs.map(function (j) { return j.recordId; }).join(', '));
 
     var pending = jobs.length;
     var anyOk = false;
