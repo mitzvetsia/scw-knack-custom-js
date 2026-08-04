@@ -560,8 +560,20 @@
       var cls = 'scw-ws-v2-photo-card' +
         (p.required ? ' scw-ws-v2-photo-card--required' : '') +
         (missing   ? ' scw-ws-v2-photo-card--missing'  : '');
+      // Strip <img> uses the thumb derivative, NOT p.imgUrl — the scrape
+      // prefers the full-size gallery URL (needed by the viewer/QA modal,
+      // which keep reading the data attrs), but rendering it here loaded
+      // every card at 2-3 MB (measured: 42 originals = 53.6 MB on one
+      // survey load). onerror falls back to the original if the asset
+      // never generated the derivative.
+      var thumbSrc = (p.imgUrl && window.SCW && SCW.knackImgThumb)
+        ? SCW.knackImgThumb(p.imgUrl) : p.imgUrl;
       var thumb = p.imgUrl
-        ? '<img class="scw-ws-v2-photo-img" draggable="false" src="' + escapeHtml(p.imgUrl) + '" alt="">'
+        ? '<img class="scw-ws-v2-photo-img" draggable="false" loading="lazy" ' +
+            'src="' + escapeHtml(thumbSrc) + '" alt=""' +
+            (thumbSrc !== p.imgUrl
+              ? ' onerror="this.onerror=null;this.src=\'' + escapeHtml(p.imgUrl) + '\'"'
+              : '') + '>'
         : '<div class="scw-ws-v2-photo-img scw-ws-v2-photo-img--placeholder">No image</div>';
       var typeHtml = p.type
         ? '<div class="scw-ws-v2-photo-type">' + escapeHtml(p.type) + '</div>'
@@ -731,7 +743,10 @@
           btn.type = 'button';
           btn.className = 'scw-ws-v2-lightbox-thumb';
           var t = document.createElement('img');
-          t.src = items[j].url; t.alt = ''; t.loading = 'lazy';
+          t.alt = ''; t.loading = 'lazy';
+          // Mini-thumb strip: thumb derivative (stage keeps the original).
+          if (window.SCW && SCW.knackImgThumbInto) SCW.knackImgThumbInto(t, items[j].url);
+          else t.src = items[j].url;
           btn.appendChild(t);
           btn.addEventListener('click', function (e) {
             e.stopPropagation();
