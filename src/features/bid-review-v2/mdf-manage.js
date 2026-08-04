@@ -496,6 +496,27 @@
         type: 'PUT',
         data: JSON.stringify(body),
         success: function (resp2) {
+          // Same silent-drop detection as commitFields: field_1642 IS a
+          // displayed column on view_3822, so its echo is meaningful — an
+          // echoed OLD label means the write was dropped (column shown
+          // without inline editing). That leaves every surface that renders
+          // the display name (headers, connection identifiers, this panel's
+          // prefill on reload) stuck on the old name even though the
+          // underlying name field saved — the "name doesn't stick" bug.
+          var e2 = (resp2 && resp2.record && resp2.record.id) ? resp2.record : resp2;
+          var echoed2 = e2 ? stripTags(e2[F.displayName + '_raw'] != null
+            ? e2[F.displayName + '_raw'] : e2[F.displayName]) : '';
+          if (echoed2 && echoed2 !== newLabel) {
+            console.warn('[scw-brv2-mdf] display-name (field_1642) sync write ' +
+              'was silently dropped — server still has "' + echoed2 + '". Its ' +
+              'column on ' + mdfViewKey() + ' is displayed without inline ' +
+              'editing; enable inline editing on it in Builder so renames ' +
+              'persist.', { sent: newLabel, echoedRecord: e2 });
+            setStatus('Name saved, but the display label didn’t update — enable ' +
+              'inline editing on the field_1642 column on ' + mdfViewKey() +
+              ' in Builder.', true, true);
+            return;
+          }
           try {
             if (typeof SCW.syncKnackModel === 'function') {
               SCW.syncKnackModel(mdfViewKey(), rec.id, resp2, F.displayName, newLabel);
@@ -531,13 +552,44 @@
         data: JSON.stringify(fields),
         success: function (resp) {
           saving = false;
+          // A view-scoped PUT can return 200 while silently DROPPING a
+          // write. Detection (matching mdf-notes.js, observed live
+          // 2026-07-22): the echo only contains fields the view DISPLAYS,
+          // so ABSENCE from the echo proves nothing (a non-column field
+          // can save fine and simply not be echoed). Only an echoed value
+          // that CONTRADICTS what we sent proves a real drop — e.g. a
+          // column displayed read-only (inline edit off) echoes the OLD
+          // value back.
+          var echo = (resp && resp.record && resp.record.id) ? resp.record : resp;
+          var dropped = [];
+          var landed = [];
           for (var k2 = 0; k2 < fks.length; k2++) {
-            saved[fks[k2]] = fields[fks[k2]];
+            var fk2 = fks[k2];
+            if (echo && ((fk2 + '_raw') in echo || fk2 in echo)) {
+              var got = echo[fk2 + '_raw'] != null ? echo[fk2 + '_raw'] : echo[fk2];
+              got = stripTags(got == null ? '' : String(got)).trim();
+              if (got !== String(fields[fk2]).trim()) {
+                dropped.push(fk2);
+                continue;
+              }
+            }
+            landed.push(fk2);
+            saved[fk2] = fields[fk2];
             try {
               if (typeof SCW.syncKnackModel === 'function') {
-                SCW.syncKnackModel(mdfViewKey(), rec.id, resp, fks[k2], fields[fks[k2]]);
+                SCW.syncKnackModel(mdfViewKey(), rec.id, resp, fk2, fields[fk2]);
               }
             } catch (e) { /* best-effort */ }
+          }
+          if (dropped.length) {
+            console.warn('[scw-brv2-mdf] server echoed a DIFFERENT value for ' +
+              dropped.join(', ') + ' — its column on ' + mdfViewKey() +
+              ' is displayed without inline editing, so the write was ' +
+              'dropped. Enable inline editing on that column in Builder.',
+              { sent: fields, echoedRecord: echo });
+            setStatus('NOT saved: ' + dropped.join(', ') + ' — enable inline ' +
+              'editing on its column on ' + mdfViewKey() + ' in Builder.', true, true);
+            if (!landed.length) return;
           }
           var newLabel = composeLabel();
           var title = headerTr.querySelector('.scw-bid-review-v2__grp-title');
@@ -546,10 +598,11 @@
           patchConnectionIdentifiers(rec.id, newLabel);
           patchSourceViewDom(rec.id, fields, newLabel);
           maybeSyncDisplayName(resp, newLabel);
-          if (Object.prototype.hasOwnProperty.call(fields, F.notes)) {
+          if (Object.prototype.hasOwnProperty.call(fields, F.notes) &&
+              landed.indexOf(F.notes) !== -1) {
             updateNotesCallout(fields[F.notes]);
           }
-          setStatus('Saved ✓');
+          if (!dropped.length) setStatus('Saved ✓');
         },
         error: function (xhr) {
           saving = false;
