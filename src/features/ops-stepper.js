@@ -88,6 +88,9 @@
   var ARMED_REQ_COUNT_FIELD = '';   // e.g. 'field_XXXX' — TBD in Builder
   var BRANCH_PICKER_VIEW    = '';   // e.g. 'view_XXXX'  — future hidden-view path
   var BRANCH_LABEL_FIELD    = '';   // e.g. 'field_XXXX' — future hidden-view path
+  // Pre-checked branch in the picker (case-insensitive label match). Ops
+  // can uncheck it / pick others — it's a default, not a lock. '' = none.
+  var DEFAULT_BRANCH_LABEL  = 'Secure Vision Solutions';
 
   // ── Pending-request editor (Mark Ready) ──
   // When a survey request is pending, the Mark Ready modal surfaces the
@@ -2011,12 +2014,19 @@
       wrap.appendChild(q);
       var list = document.createElement('ul');
       list.className = 'scw-ops-modal-list';
+      // Default selection — pre-check the option whose label matches
+      // config.preselect (case-insensitive). Just a starting value: the
+      // user can uncheck it or pick others freely.
+      var pre = String(config.preselect || '').trim().toLowerCase();
       config.options.forEach(function (o) {
         var li = document.createElement('li');
         var lbl = document.createElement('label');
         var cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.setAttribute('data-id', o.id);
+        if (pre && String(o.label || '').trim().toLowerCase() === pre) {
+          cb.checked = true;
+        }
         var span = document.createElement('span');
         span.textContent = o.label;
         lbl.appendChild(cb);
@@ -2611,6 +2621,7 @@
           overrides.branchPicker = {
             question: 'Which branch / tech group should this survey go to?',
             required: true,
+            preselect: DEFAULT_BRANCH_LABEL,
             options: branchOpts
           };
         }
