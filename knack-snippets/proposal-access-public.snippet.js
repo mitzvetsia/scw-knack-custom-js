@@ -72,6 +72,7 @@
   // Required fields exposed on the public lookup view (view_3952):
   //   field_2746  FLAG_good faith estimate          → site-survey gate
   //   field_2747  FLAG_final proposal               → accept-proposal gate
+  //   field_2990  acceptance count (> 1 = accepted) → accept-proposal gate
   //   field_2748  FLAG_sow only                     → site-survey gate
   //   field_2907  FLAG_SOWs with Survey Requested   → site-survey gate
   //                (Text-formula field on the proposal that pulls from
@@ -147,6 +148,17 @@
     return false;
   }
 
+  // Acceptance count (field_2990). Numeric read, raw first; anything
+  // missing/blank/non-numeric reads 0 so the Accept gate fails safe.
+  function acceptCountOf(attrs) {
+    if (!attrs) return 0;
+    var raw = attrs.field_2990_raw;
+    var val = (raw != null && raw !== '') ? raw : attrs.field_2990;
+    var n = Number(String(val == null ? '' : val)
+      .replace(/<[^>]*>/g, '').replace(/[^0-9.\-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+
   var CTA_CONFIGS = [
     {
       viewId: 'view_3953',   // I'm Ready for a Site Survey
@@ -165,9 +177,15 @@
       // the proposal id — the accept form then opens connectionless. Splice the
       // proposal record id on as the final path segment so Knack scopes the
       // child page to it and the connected Add form auto-fills the connection.
+      //
+      // ALSO suppressed once accepted: field_2990 (acceptance count) > 1.
+      // ⚠️ field_2990 must be exposed as a column on the lookup view
+      // (view_3952) or the gate can't see it — missing/blank fails safe
+      // (CTA keeps showing).
       appendRecordId: true,
       gate: function (attrs) {
         if (isChangeOrderProposal(attrs)) return false;   // e-sign only
+        if (acceptCountOf(attrs) > 1) return false;       // already accepted
         return isYes(attrs.field_2747) || isYes(attrs.field_2747_raw);
       }
     }
