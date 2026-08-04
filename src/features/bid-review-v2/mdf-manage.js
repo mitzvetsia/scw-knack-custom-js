@@ -477,58 +477,62 @@
         (saved[F.name] || '')).replace(/:\s*:/g, ':').trim();
     }
 
-    // If the server's display name disagrees with the composed label,
-    // write field_1642 explicitly (silent best-effort). When field_1642 is
-    // rule-maintained rather than a live formula, nothing else ever
-    // updates it after a REST PUT — connection identifiers everywhere
-    // (and every future page load) would keep the old name. If Knack
-    // rejects the write (live formula → read-only), that's fine: the
-    // formula will recompute server-side on its own.
+    // field_1642 is a TEXT FORMULA (confirmed in Builder 2026-08-04) — it
+    // can never be written directly; Knack recomputes it server-side from
+    // type/##/name whenever the record updates. That makes it the ONLY
+    // reliable proof a rename actually landed: view_3822 doesn't display
+    // the input fields (field_1641/field_2458/field_1943), so their PUT
+    // echoes prove nothing either way. Verify with a delayed GET: the
+    // formula recomputed to the composed label → the write landed; still
+    // the OLD label → the type/##/name write was silently dropped →
+    // surface the real Builder fix instead of a false "Saved ✓".
     function maybeSyncDisplayName(resp, newLabel) {
       var r = (resp && resp.record && resp.record.id) ? resp.record : resp;
       var srvLabel = r ? stripTags(r[F.displayName + '_raw'] != null
         ? r[F.displayName + '_raw'] : r[F.displayName]) : '';
-      if (!srvLabel || srvLabel === newLabel) return;
-      var body = {};
-      body[F.displayName] = newLabel;
-      SCW.knackAjax({
-        url:  SCW.knackRecordUrl(mdfViewKey(), rec.id),
-        type: 'PUT',
-        data: JSON.stringify(body),
-        success: function (resp2) {
-          // Same silent-drop detection as commitFields: field_1642 IS a
-          // displayed column on view_3822, so its echo is meaningful — an
-          // echoed OLD label means the write was dropped (column shown
-          // without inline editing). That leaves every surface that renders
-          // the display name (headers, connection identifiers, this panel's
-          // prefill on reload) stuck on the old name even though the
-          // underlying name field saved — the "name doesn't stick" bug.
-          var e2 = (resp2 && resp2.record && resp2.record.id) ? resp2.record : resp2;
-          var echoed2 = e2 ? stripTags(e2[F.displayName + '_raw'] != null
-            ? e2[F.displayName + '_raw'] : e2[F.displayName]) : '';
-          if (echoed2 && echoed2 !== newLabel) {
-            console.warn('[scw-brv2-mdf] display-name (field_1642) sync write ' +
-              'was silently dropped — server still has "' + echoed2 + '". Its ' +
-              'column on ' + mdfViewKey() + ' is displayed without inline ' +
-              'editing; enable inline editing on it in Builder so renames ' +
-              'persist.', { sent: newLabel, echoedRecord: e2 });
-            setStatus('Name saved, but the display label didn’t update — enable ' +
-              'inline editing on the field_1642 column on ' + mdfViewKey() +
-              ' in Builder.', true, true);
-            return;
-          }
-          try {
-            if (typeof SCW.syncKnackModel === 'function') {
-              SCW.syncKnackModel(mdfViewKey(), rec.id, resp2, F.displayName, newLabel);
+      if (srvLabel === newLabel) return;   // formula already recomputed in the echo
+      setTimeout(function () {
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(mdfViewKey(), rec.id),
+          type: 'GET',
+          success: function (resp2) {
+            var r2 = (resp2 && resp2.record && resp2.record.id) ? resp2.record : resp2;
+            var srv2 = r2 ? stripTags(r2[F.displayName + '_raw'] != null
+              ? r2[F.displayName + '_raw'] : r2[F.displayName]) : '';
+            if (!srv2) return;
+            // The recomputed formula is the truth — apply IT everywhere
+            // (header, connection identifiers, model), even when its
+            // formatting differs from our locally composed label.
+            try {
+              if (typeof SCW.syncKnackModel === 'function') {
+                SCW.syncKnackModel(mdfViewKey(), rec.id, resp2, F.displayName, srv2);
+              }
+            } catch (e) { /* best-effort */ }
+            if (srv2 !== newLabel) {
+              var title2 = headerTr.querySelector('.scw-bid-review-v2__grp-title');
+              if (title2) title2.textContent = srv2;
+              gear.setAttribute('data-scw-mdf-label', srv2);
+              patchConnectionIdentifiers(rec.id, srv2);
             }
-          } catch (e) { /* best-effort */ }
-        },
-        error: function (xhr) {
-          console.info('[scw-brv2-mdf] field_1642 sync write rejected (' +
-            (xhr && xhr.status) + ') — likely a live formula field; ' +
-            'server will recompute it itself.');
-        }
-      });
+            // If the recomputed label doesn't carry the new name, the
+            // type/##/name write itself was silently dropped.
+            var nm2 = String(saved[F.name] || '').trim();
+            if (nm2 && srv2.indexOf(nm2) === -1) {
+              console.warn('[scw-brv2-mdf] rename did NOT persist — the display ' +
+                'formula (field_1642) recomputed to "' + srv2 + '" without the ' +
+                'new name, so ' + mdfViewKey() + ' silently dropped the ' +
+                'type/##/name write. Builder fix: add field_1641, field_2458 ' +
+                'and field_1943 as inline-editable columns on ' + mdfViewKey() +
+                ' (the view is hidden — extra columns cost nothing).',
+                { composed: newLabel, serverLabel: srv2 });
+              setStatus('NOT saved — add field_1943 / field_1641 / field_2458 as ' +
+                'inline-editable columns on ' + mdfViewKey() + ' in Builder.',
+                true, true);
+            }
+          },
+          error: function () { /* verification is best-effort */ }
+        });
+      }, 1500);
     }
 
     // Shared commit: diff-only PUT of the given {field: value} map. On
