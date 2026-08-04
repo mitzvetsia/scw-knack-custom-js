@@ -265,30 +265,32 @@
     var field   = el.getAttribute('data-field');
     if (!viewKey || !recId || !field) return;
     if (el.getAttribute('data-scw-saved-val') === el.value) return;   // unchanged
-    if (!(window.SCW && typeof SCW.knackAjax === 'function' && typeof SCW.knackRecordUrl === 'function')) return;
+    if (!(window.SCW && SCW.mdfEdit)) return;
     var value = el.value;
     var body = {}; body[field] = value;
     el.classList.add('scw-mdf-input--saving');
-    SCW.knackAjax({
-      url:  SCW.knackRecordUrl(viewKey, recId),
-      type: 'PUT',
-      data: JSON.stringify(body),
-      dataType: 'json'
-    }).then(function (resp) {
-      el.classList.remove('scw-mdf-input--saving');
-      el.setAttribute('data-scw-saved-val', value);
-      el.classList.add('scw-mdf-input--saved');
-      setTimeout(function () { el.classList.remove('scw-mdf-input--saved'); }, 1200);
-      // Sync the model in place — no refetch / re-render, so the caret stays put
-      // and other features see the new value.
-      try {
-        if (typeof SCW.syncKnackModel === 'function') SCW.syncKnackModel(viewKey, recId, resp, field, value);
-      } catch (e) {}
-    }, function (xhr) {
+    function flagErr() {
       el.classList.remove('scw-mdf-input--saving');
       el.classList.add('scw-mdf-input--err');
-      console.warn('[scw-mdf-idf-cards] save failed', viewKey, recId, field, xhr && xhr.status);
       setTimeout(function () { el.classList.remove('scw-mdf-input--err'); }, 2500);
+    }
+    // Shared core save (mdf-edit-core.js) — silent-drop detection,
+    // display-formula verification, and model sync in place (no refetch /
+    // re-render, so the caret stays put) — identical semantics to the
+    // worksheet + compare-bid location editors.
+    SCW.mdfEdit.save({
+      viewKey:  viewKey,
+      recordId: recId,
+      fields:   body,
+      onDone: function (res) {
+        if (res.dropped.length) return;   // onDropped already flagged it
+        el.classList.remove('scw-mdf-input--saving');
+        el.setAttribute('data-scw-saved-val', value);
+        el.classList.add('scw-mdf-input--saved');
+        setTimeout(function () { el.classList.remove('scw-mdf-input--saved'); }, 1200);
+      },
+      onDropped: flagErr,
+      onError: flagErr
     });
   }
 
