@@ -555,6 +555,47 @@ window.SCW = window.SCW || {};
            '/views/' + viewId + '/records/' + recordId;
   };
 
+  /**
+   * SCW.knackImgThumb(url[, style]) — thumbnail URL for a Knack-hosted image.
+   *
+   * Rendering /original/ S3 assets (multi-MB camera photos) as thumbnails is
+   * the #1 image-weight problem on photo-heavy pages (measured: 137 originals
+   * = 34.8 MB vs 145 real thumbs = 0.5 MB on one bid-review load). This swaps
+   * the asset path onto a thumb derivative instead:
+   *   - S3 asset URL  …/assets/<app>/<asset>/original/<file>
+   *       → …/assets/<app>/<asset>/<style>/<file>
+   *   - api.knack.com …/download/asset/<asset>/<file>
+   *       → the equivalent S3 <style> URL
+   * Anything unrecognized returns unchanged. `style` defaults to 'thumb_14'
+   * (the app's 300×300 derivative). ⚠️ Not every field generates every
+   * style — callers rendering <img> MUST attach an onerror fallback to the
+   * original URL (a missing derivative 404s).
+   */
+  namespace.knackImgThumb = function (url, style) {
+    style = style || 'thumb_14';
+    var s = String(url == null ? '' : url);
+    var m = s.match(
+      /^(https?:\/\/s3[^/]*\.amazonaws\.com\/assets\.knackhq\.com\/assets\/[a-f0-9]{24}\/[a-f0-9]{24}\/)original(\/.+)$/i);
+    if (m) return m[1] + style + m[2];
+    m = s.match(
+      /^https?:\/\/api\.knack\.com\/v1\/applications\/([a-f0-9]{24})\/download\/asset\/([a-f0-9]{24})\/(.+)$/i);
+    if (m) {
+      return 'https://s3.us-east-1.amazonaws.com/assets.knackhq.com/assets/' +
+        m[1] + '/' + m[2] + '/' + style + '/' + m[3];
+    }
+    return s;
+  };
+
+  /** Set an <img>'s src to the thumb derivative of `url`, falling back to
+   *  the original on 404 (assets whose field never generated the style). */
+  namespace.knackImgThumbInto = function (img, url, style) {
+    var thumb = namespace.knackImgThumb(url, style);
+    if (thumb !== url) {
+      img.onerror = function () { this.onerror = null; this.src = url; };
+    }
+    img.src = thumb;
+  };
+
   // ── Global 401/403 interceptor ──
   // Catches auth failures from ANY AJAX/fetch call (including KTL bulk ops)
   // and shows the session-expired toast (see maybeFlagAuthFailure for the

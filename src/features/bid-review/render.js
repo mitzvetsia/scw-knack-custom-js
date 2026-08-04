@@ -2094,7 +2094,11 @@
     if (isImg) {
       var img = document.createElement('img');
       img.loading = 'lazy';
-      img.src = d.directUrl;
+      // Thumb derivative instead of the full download-asset file (site
+      // maps here measured 4+ MB each as strip thumbnails); onerror
+      // falls back to the original when no derivative exists.
+      if (window.SCW && SCW.knackImgThumbInto) SCW.knackImgThumbInto(img, d.directUrl);
+      else img.src = d.directUrl;
       img.alt = d.fileName;
       thumb.appendChild(img);
     } else {

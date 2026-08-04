@@ -370,9 +370,18 @@
 
     var photosHtml = '';
     for (var p = 0; p < photos.length; p++) {
+      // The manage grid renders field_771 at /original/ size — swap the
+      // strip <img> to the thumb derivative (onerror falls back to the
+      // original); the lightbox keeps the full-size URL.
+      var pFull = photos[p].full || photos[p].thumb;
+      var pDisp = (window.SCW && SCW.knackImgThumb)
+        ? SCW.knackImgThumb(photos[p].thumb) : photos[p].thumb;
       photosHtml += '<a class="' + P + '-thumb" href="' + esc(photos[p].href) + '" ' +
-        'data-scw-mdf-photo-full="' + esc(photos[p].full || photos[p].thumb) + '" ' +
-        'title="Open photo"><img src="' + esc(photos[p].thumb) + '" alt="" loading="lazy"></a>';
+        'data-scw-mdf-photo-full="' + esc(pFull) + '" ' +
+        'title="Open photo"><img src="' + esc(pDisp) + '" alt="" loading="lazy" ' +
+        (pDisp !== photos[p].thumb
+          ? 'onerror="this.onerror=null;this.src=\'' + esc(photos[p].thumb) + '\'"'
+          : '') + '></a>';
     }
     photosHtml += '<button type="button" class="' + P + '-addphoto" ' +
       'data-scw-ws-v2-mdf-add="' + esc(l1.id) + '" ' +

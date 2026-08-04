@@ -289,7 +289,11 @@
         btn.className = 'scw-bid-review-v2__photos-thumb';
         btn.addEventListener('click', function (e) { openViewer(idx, e); });
         var img = document.createElement('img');
-        img.src = urls[idx]; img.alt = ''; img.loading = 'lazy';
+        img.alt = ''; img.loading = 'lazy';
+        // Thumb derivative, NOT the multi-MB original (the scrape returns
+        // full-size gallery URLs — the viewer still opens those).
+        if (window.SCW && SCW.knackImgThumbInto) SCW.knackImgThumbInto(img, urls[idx]);
+        else img.src = urls[idx];
         btn.appendChild(img);
         stack.appendChild(btn);
       })(v);
@@ -1439,9 +1443,11 @@
         a.rel = 'noopener';
         a.className = 'scw-bid-review-v2__l1-detail-photo';
         var thumb = document.createElement('img');
-        thumb.src = photos[pi].url;
         thumb.alt = '';
         thumb.loading = 'lazy';
+        // Thumb derivative for the strip; the href keeps the original.
+        if (window.SCW && SCW.knackImgThumbInto) SCW.knackImgThumbInto(thumb, photos[pi].url);
+        else thumb.src = photos[pi].url;
         a.appendChild(thumb);
         if (photos[pi].id) {
           var delBtn = document.createElement('button');
