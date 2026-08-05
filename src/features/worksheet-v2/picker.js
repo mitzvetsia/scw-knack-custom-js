@@ -862,9 +862,23 @@
       if (!countEl) return;
       var checked = bd.querySelectorAll(
         'input[name="scw-ws-v2-pick-' + opts.fieldKey + '"]:checked');
-      var n = 0;
-      for (var i = 0; i < checked.length; i++) { if (checked[i].value) n++; }
-      countEl.textContent = n + ' selected';
+      var n = 0, visible = 0;
+      for (var i = 0; i < checked.length; i++) {
+        if (!checked[i].value) continue;
+        n++;
+        var chkRow = checked[i].closest ? checked[i].closest('.scw-ws-v2-picker-item') : null;
+        if (!chkRow || chkRow.style.display !== 'none') visible++;
+      }
+      // With a SOW pill active, the headline count is the selections ON
+      // that SOW. Selections hidden by the filter are STILL SAVED, so
+      // they surface as an explicit "+N elsewhere" instead of silently
+      // disappearing from the tally.
+      if (activeSow && visible !== n) {
+        countEl.textContent = visible + ' selected on this SOW · +' +
+          (n - visible) + ' elsewhere';
+      } else {
+        countEl.textContent = n + ' selected';
+      }
     }
     if (countEl) {
       bd.addEventListener('change', updateCount);
@@ -1179,6 +1193,9 @@
         wrap.style.display = vis ? '' : 'none';
       }
       if (noMatchEl) noMatchEl.style.display = anyVisible ? 'none' : '';
+      // Re-tally the footer "N selected" against the new visibility so a
+      // SOW pill narrows the count to that SOW's selections.
+      updateCount();
     };
 
     // SOW pills — distinct SOWs across the candidates, naturally sorted.
