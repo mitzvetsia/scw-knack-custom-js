@@ -2204,4 +2204,35 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   Object.keys(CONFIG.views).forEach(bindForView);
+
+  // Catch-up pass (same mechanism as proposal-grid.js): if the bundle
+  // finished loading AFTER Knack already emitted
+  // knack-records-render.view_XXXX — the norm on this KTL-free scene,
+  // where Knack renders while the bundle is still downloading — our
+  // handler missed the initial event entirely and nothing ever re-fires
+  // it: the raw flat table just sits there. For each configured view
+  // that's already rendered with data but no totals, trigger the event
+  // once so bindForView's handler runs.
+  Object.keys(CONFIG.views).forEach(function (viewId) {
+    var attempts = 0;
+    var maxAttempts = 20;          // ~6s total at 300ms cadence
+    var intervalMs = 300;
+    var iv = setInterval(function () {
+      attempts++;
+      var view = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[viewId] : null;
+      var rendered = view && view.model && view.model.data
+        && (Array.isArray(view.model.data) ? view.model.data.length
+                                            : (view.model.data.models && view.model.data.models.length));
+      var root = document.getElementById(viewId);
+      var hasDataRows = !!(root && root.querySelector('tbody tr[id]'));
+      var hasTotals = !!(root && root.querySelector('tbody tr.scw-level-total-row'));
+
+      if (rendered && hasDataRows && !hasTotals) {
+        $(document).trigger('knack-records-render.' + viewId, [view]);
+        clearInterval(iv);
+      } else if (hasTotals || attempts >= maxAttempts) {
+        clearInterval(iv);
+      }
+    }, intervalMs);
+  });
 })();
