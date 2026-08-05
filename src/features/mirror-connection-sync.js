@@ -1161,6 +1161,39 @@
           CONNECTIONS_FIELD + ' on ' + kept.length + ' still-selected child(ren)');
     }
 
+    // --- 3b. Old-parent forward-list sync for STOLEN children ----------
+    // An added child may currently point at a DIFFERENT parent (the
+    // picker's "Take over"). The added-child PUT below repoints the
+    // child's CONNECTIONS_FIELD, but the OLD parent's forward
+    // TRIGGER_FIELD array is a SEPARATE field nothing on this path
+    // rewrites — it keeps listing the stolen child, so the old parent's
+    // card (forward ∪ back-pointer union) and picker pre-check stay
+    // stale until someone edits that parent. Capture each added child's
+    // current parent NOW (before any PUT/model patch clears it) and
+    // rewrite that parent's forward list via syncParentForward — which
+    // unions the parent's remaining back-pointers so it can never drop
+    // still-connected siblings, then explicitly removes the stolen child.
+    var stolenFrom = [];   // [{ parentId, childId }]
+    for (var sf = 0; sf < added.length; sf++) {
+      var sfAttrs = getModelAttrs(added[sf]);
+      var sfRaw = sfAttrs && sfAttrs[CONNECTIONS_FIELD + '_raw'];
+      var sfPid = (Array.isArray(sfRaw) && sfRaw[0] && sfRaw[0].id) ? sfRaw[0].id : '';
+      if (sfPid && sfPid !== R.id) {
+        stolenFrom.push({ parentId: sfPid, childId: added[sf] });
+      }
+    }
+    if (stolenFrom.length) {
+      log('  takeover: ' + stolenFrom.length + ' added child(ren) stolen from ' +
+          'other parent(s) — syncing their forward ' + TRIGGER_FIELD + ' list(s)');
+      for (var sg = 0; sg < stolenFrom.length; sg++) {
+        try {
+          syncParentForward(stolenFrom[sg].parentId, stolenFrom[sg].childId, false);
+        } catch (sfErr) {
+          console.warn(LOG_PREFIX, 'stolen-child forward-sync threw', sfErr);
+        }
+      }
+    }
+
     // --- 4. Resolve destination group for added children ---------------
     var rGroupRaw = R[GROUPING_FIELD + '_raw'];
     if (!Array.isArray(rGroupRaw) || !rGroupRaw.length) {
