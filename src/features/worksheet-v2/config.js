@@ -468,6 +468,7 @@
         //    cascade fires). Mounting Height is a 3-option chip → bulk 'select'.
         bulkFields: {
           cam: [
+            { f: 'product',        kind: 'conn-single', label: 'Product',     candSource: 'products' },
             { f: 'dropPrefix',     kind: 'conn-single', label: 'Prefix',      candSource: 'dropPrefix' },
             { f: 'dropNumber',     kind: 'number',      label: 'Cam/Reader #' },
             { f: 'laborDesc',      kind: 'text',        label: 'Labor description' },
@@ -485,6 +486,7 @@
             { f: 'bid',          kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
           ],
           'default': [
+            { f: 'product',     kind: 'conn-single', label: 'Product', candSource: 'products' },
             { f: 'laborDesc',   kind: 'text',        label: 'Labor description' },
             { f: 'labor',       kind: 'number',      label: 'Labor' },
             { f: 'qty',         kind: 'number',      label: 'Qty', gateNo: 'qtyOne' },

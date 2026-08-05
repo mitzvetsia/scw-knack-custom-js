@@ -1707,7 +1707,9 @@
       for (i = 0; i < models.length; i++) {
         var a = models[i] && models[i].attributes;
         if (!a || !sel[a.id]) continue;
-        var raw = a.field_2219_raw;
+        // Bucket field differs per object: SOW = field_2219, survey
+        // line items (view_3505) = field_2366.
+        var raw = a.field_2219_raw || a.field_2366_raw;
         var bid = (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) || '';
         if (bid) bucketsInSelection[bid] = true;
       }
@@ -1747,7 +1749,7 @@
         for (i = 0; i < models.length; i++) {
           var ma = models[i] && models[i].attributes;
           if (!ma) continue;
-          var mraw = ma.field_2219_raw;
+          var mraw = ma.field_2219_raw || ma.field_2366_raw;
           var mbid = (Array.isArray(mraw) && mraw.length && mraw[0] && mraw[0].id) || '';
           for (var fc = 0; fc < fconn.length; fc++) {
             var fraw = ma[fconn[fc] + '_raw'];
