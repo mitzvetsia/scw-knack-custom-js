@@ -519,6 +519,17 @@
     }
     return compressLabels(labels);
   }
+  /** Composed drop label for ONE record ("SW-001") — single-record version
+   *  of designatorList. Empty string when the record has no prefix/number. */
+  function designatorOf(rec) {
+    var F = CONFIG.fields;
+    var pc = connFirst(rec, F.prefix);
+    var prefix = pc ? pc.label : readText(rec, F.prefix);
+    var digits = readText(rec, F.number).replace(/\D/g, '');
+    var n = parseInt(digits, 10);
+    if (!prefix || !isFinite(n)) return '';
+    return prefix.toUpperCase() + pad3(n);
+  }
   function isCamReaderRec(rec) {
     // Bucket id shows up on both the bucket connection and the sortOrder
     // connection (same record id) — accept either so a blank one can't
@@ -593,22 +604,36 @@
         }
         // Connected devices (labeled, with a device count) — beneath the
         // labor description. Only names that resolve to records in THIS
-        // view; deduped so the count is unique devices.
-        var connNames = [];
-        var connSeen = Object.create(null);
+        // view; deduped so the count is unique devices. When SEVERAL units
+        // in the group each carry their own devices (e.g. two switches on
+        // one line), the callout splits PER UNIT — "SW-001 — 19 connected
+        // devices: …" — so which devices hang off which unit stays legible.
+        var connUnits = [];
         l4.items.forEach(function (it) {
           var raw = it[F.connectedDevices + '_raw'];
           if (!Array.isArray(raw)) return;
+          var names = [], seen = Object.create(null);
           raw.forEach(function (c) {
             if (!c || !c.id || !tree.byId[c.id]) return;
             var t = norm(stripHtml(c.identifier));
-            if (t && !isBlankish(t) && !connSeen[t]) { connSeen[t] = 1; connNames.push(t); }
+            if (t && !isBlankish(t) && !seen[t]) { seen[t] = 1; names.push(t); }
           });
+          if (names.length) connUnits.push({ rec: it, names: names });
         });
-        var connHtml = connNames.length
-          ? '<span class="scw-pg2-l4-conn"><b>' + connNames.length + ' connected device' +
-            (connNames.length === 1 ? '' : 's') + ':</b> ' + esc(compressLabels(connNames)) + '</span>'
-          : '';
+        var connHtml = '';
+        if (connUnits.length > 1) {
+          for (var cu = 0; cu < connUnits.length; cu++) {
+            var uLbl = designatorOf(connUnits[cu].rec) || ('Unit ' + (cu + 1));
+            var uN = connUnits[cu].names.length;
+            connHtml += '<span class="scw-pg2-l4-conn"><b>' + esc(uLbl) + ' — ' + uN +
+              ' connected device' + (uN === 1 ? '' : 's') + ':</b> ' +
+              esc(compressLabels(connUnits[cu].names)) + '</span>';
+          }
+        } else if (connUnits.length === 1) {
+          var oN = connUnits[0].names.length;
+          connHtml = '<span class="scw-pg2-l4-conn"><b>' + oN + ' connected device' +
+            (oN === 1 ? '' : 's') + ':</b> ' + esc(compressLabels(connUnits[0].names)) + '</span>';
+        }
         pushRow('scw-pg2-l4' + (bctx.hideQtyCost ? ' scw-pg2-hide-qtycost' : '') + tintCls, [
           { html: '<span class="scw-pg2-l4-desc">' + l4.html + '</span>' + camHtml + connHtml },
           { html: bctx.hideQtyCost ? '' : '<strong>' + Math.round(l4Qty) + '</strong>' },
@@ -1203,6 +1228,26 @@
         var prod = null;
         if (!bctx.hideL3 && !isBlankish(product.label)) {
           var cd = connDevicesOf(product.items);
+          // Per-unit breakdown: when SEVERAL parent units in this product
+          // group each carry their own connected devices (e.g. two
+          // switches on one product line), split the callout per unit —
+          // "SW-001 — 19 connected devices: …" — instead of one merged
+          // list that hides which devices hang off which unit.
+          var cdGroups = null;
+          if (product.items.length > 1) {
+            var gs = [];
+            product.items.forEach(function (unitRec) {
+              var one = connDevicesOf([unitRec]);
+              if (!one.count) return;
+              gs.push({ label: designatorOf(unitRec), count: one.count, devices: one.list });
+            });
+            if (gs.length > 1) {
+              for (var gu = 0; gu < gs.length; gu++) {
+                if (!gs[gu].label) gs[gu].label = 'Unit ' + (gu + 1);
+              }
+              cdGroups = gs;
+            }
+          }
           prod = {
             level: 3, label: product.label,
             qty: Math.round(sumRecs(product.items, F.qty)),
@@ -1210,6 +1255,7 @@
             rate: '', hideCost: false,
             connectedDevices: cd.list,
             connectedDevicesCount: cd.count,
+            connectedDeviceGroups: cdGroups || undefined,
             isMountingHardware: bctx.isMounting, lineItems: [],
           };
           products.push(prod);

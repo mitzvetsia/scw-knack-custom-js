@@ -651,9 +651,30 @@
 
         var connDevSpan = tr.querySelector('.scw-l3-connected-devices');
         var connDevices = [];
+        var connDeviceGroups = null;
         if (connDevSpan) {
-          var connText = norm(connDevSpan.textContent).replace(/^\(/, '').replace(/\)$/, '');
-          if (connText) connDevices = connText.split(',').map(function (s) { return norm(s); }).filter(Boolean);
+          // Per-unit breakdown (proposal-grid renders .scw-cd-group children
+          // when several units on one line carry their own devices) — carry
+          // the groups through so the PDF re-emits one line per unit.
+          var cdGroupEls = connDevSpan.querySelectorAll('.scw-cd-group');
+          if (cdGroupEls.length) {
+            connDeviceGroups = [];
+            for (var cdg = 0; cdg < cdGroupEls.length; cdg++) {
+              var gEl = cdGroupEls[cdg];
+              var gB = gEl.querySelector('b');
+              var gLabel = gB ? norm(gB.textContent).replace(/\s*—.*$/, '') : '';
+              var gClone = gEl.cloneNode(true);
+              var gCB = gClone.querySelector('b');
+              if (gCB) gCB.remove();
+              var gDevs = norm(gClone.textContent)
+                .split(',').map(function (s) { return norm(s); }).filter(Boolean);
+              connDeviceGroups.push({ label: gLabel, count: gDevs.length, devices: gDevs });
+              for (var gd = 0; gd < gDevs.length; gd++) connDevices.push(gDevs[gd]);
+            }
+          } else {
+            var connText = norm(connDevSpan.textContent).replace(/^\(/, '').replace(/\)$/, '');
+            if (connText) connDevices = connText.split(',').map(function (s) { return norm(s); }).filter(Boolean);
+          }
         } else {
           // Fallback: newer proposal-grid renders the camera/reader
           // label list inline inside .scw-concat-cameras as an orange
@@ -698,7 +719,9 @@
         currentL3 = {
           level: 3, label: l3Label, qty: l3Qty, cost: l3Cost, rate: l3Rate, hideCost: hideCost,
           productLabel: l3ProductLabel, descText: l3DescText,
-          connectedDevices: connDevices, isMountingHardware: isMounting, lineItems: [],
+          connectedDevices: connDevices,
+          connectedDeviceGroups: connDeviceGroups || undefined,
+          isMountingHardware: isMounting, lineItems: [],
         };
 
         if (currentL2) currentL2.products.push(currentL3);
@@ -1820,7 +1843,18 @@
               var prodHead = prod.productLabel || prod.label;
               html.push('<tr class="l3-row l3-product">');
               html.push('<td' + prodClass + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(prodHead));
-              if (prod.connectedDevices && prod.connectedDevices.length) {
+              if (prod.connectedDeviceGroups && prod.connectedDeviceGroups.length) {
+                // Per-unit breakdown (several parent units on one product
+                // line, e.g. two switches): one labeled line per unit.
+                for (var cg = 0; cg < prod.connectedDeviceGroups.length; cg++) {
+                  var grp = prod.connectedDeviceGroups[cg];
+                  var gN = grp.count || (grp.devices ? grp.devices.length : 0);
+                  html.push('<span class="conn-line"><b>' +
+                    esc((grp.label || 'Unit ' + (cg + 1)) + ' — ' + gN +
+                      ' connected device' + (gN === 1 ? '' : 's') + ':') + '</b> ' +
+                    esc((grp.devices || []).join(', ')) + '</span>');
+                }
+              } else if (prod.connectedDevices && prod.connectedDevices.length) {
                 // v2-style labeled callout (orange label, quiet gray list).
                 // Device COUNT in the label ("24 connected devices:") —
                 // the compressed list can be shorter than the true count

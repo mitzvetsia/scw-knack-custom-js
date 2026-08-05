@@ -1693,10 +1693,16 @@ ${sel('tr.scw-mounting-labor-line td:first-child')} {
       }
     }
 
+    // Collect PER PARENT ROW — when several units on this line each carry
+    // their own connected devices (e.g. two switches), the callout splits
+    // per unit ("SW-001 — 19 connected devices: …") instead of one merged
+    // list that hides which devices hang off which unit.
+    const perParent = [];
     for (let i = 0; i < rows.length; i++) {
       const cell = getRowCell(caches, rows[i], 'field_1957');
       if (!cell) continue;
       const spans = cell.querySelectorAll('span[data-kn="connection-value"]');
+      const devs = [];
       for (let j = 0; j < spans.length; j++) {
         const recId = (spans[j].className || '').trim();
         // Skip connections whose record isn't in this view (other SOW).
@@ -1704,8 +1710,10 @@ ${sel('tr.scw-mounting-labor-line td:first-child')} {
         if (/^[0-9a-f]{24}$/i.test(recId) && !viewRowIds[recId]) continue;
         const text = norm(spans[j].textContent || '');
         if (!text || isBlankish(text)) continue;
+        devs.push(text);
         devices.push(text);
       }
+      if (devs.length) perParent.push({ row: rows[i], devices: devs });
     }
 
     if (!devices.length) return;
@@ -1716,7 +1724,23 @@ ${sel('tr.scw-mounting-labor-line td:first-child')} {
 
     const span = document.createElement('span');
     span.className = 'scw-l3-connected-devices';
-    span.innerHTML = '<b style="color:orange;">(' + escapeHtml(devices.join(', ')) + ')</b>';
+    if (perParent.length > 1) {
+      const parts = [];
+      for (let p = 0; p < perParent.length; p++) {
+        const pfx = getRowCellText(caches, perParent[p].row, ctx.keys.prefix);
+        const numDigits = (getRowCellText(caches, perParent[p].row, ctx.keys.number) || '')
+          .replace(/\D/g, '');
+        let unitLbl = (pfx && numDigits) ? pfx.toUpperCase() + numDigits : '';
+        if (!unitLbl) unitLbl = 'Unit ' + (p + 1);
+        const n = perParent[p].devices.length;
+        parts.push('<span class="scw-cd-group"><b style="color:orange;">' +
+          escapeHtml(unitLbl) + ' — ' + n + ' connected device' + (n === 1 ? '' : 's') +
+          ':</b> ' + escapeHtml(perParent[p].devices.join(', ')) + '</span>');
+      }
+      span.innerHTML = parts.join('<br>');
+    } else {
+      span.innerHTML = '<b style="color:orange;">(' + escapeHtml(devices.join(', ')) + ')</b>';
+    }
     labelCell.appendChild(span);
   }
 
