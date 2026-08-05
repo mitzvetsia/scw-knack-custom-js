@@ -17,7 +17,12 @@
  *     groupBy:          function (rec) -> {id, label},   // optional
  *     itemLabel:        function (rec) -> 'E-001 · NVR Pro 16ch',
  *     multi:            true,                 // false → single-select
- *     onSaved:          function (newIds) {} // after PUT success
+ *     onSaved:          function (newIds) {}, // after PUT success
+ *     sowFilter:        { fieldKey, label, nameById }  // optional — which
+ *                       // membership connection the filter pills / per-item
+ *                       // line / filtered tally read. Defaults to SOW
+ *                       // (field_2154, label 'SOW'); the survey/bid page
+ *                       // passes Bid (field_2415, label 'Bid').
  *   })
  *
  * Save fires a direct PUT via SCW.knackAjax — same pattern as
@@ -82,30 +87,38 @@
     return isFinite(n) ? n : null;
   }
 
-  // Comma-joined SOW labels (SW-####) for a candidate record, read from its
-  // SOW connection (field_2154). Empty string for non-record candidates
-  // (products / MDF / prefixes) that carry no SOW. Shown under the item label.
-  function sowLabelsOf(rec) {
-    var raw = rec && rec.field_2154_raw;
+  // Comma-joined membership labels (SW-#### / bid names) for a candidate
+  // record, read from its membership connection — SOW (field_2154) by
+  // default, or whatever opts.sowFilter.fieldKey names (e.g. the survey
+  // page's Bid field_2415). Empty string for non-record candidates
+  // (products / MDF / prefixes) that carry no membership. Shown under the
+  // item label. `nameById` (opts.sowFilter.nameById) overrides labels.
+  function sowLabelsOf(rec, fieldKey, nameById) {
+    var fk = fieldKey || 'field_2154';
+    var raw = rec && rec[fk + '_raw'];
     if (!Array.isArray(raw) || !raw.length) return '';
     var names = [];
     for (var i = 0; i < raw.length; i++) {
       if (!raw[i]) continue;
       // Identifier can be blank on freshly created SOWs — resolve the
       // friendly name via card.js's scene-grid lookup before falling
-      // back to the raw record id.
-      var lbl = String(raw[i].identifier || '').replace(/<[^>]*>/g, '').trim() ||
-        (ns.sowNameById && ns.sowNameById(raw[i].id)) || raw[i].id;
+      // back to the raw record id. (SOW-only fallback; other membership
+      // fields supply names via nameById.)
+      var lbl = (nameById && nameById[raw[i].id]) ||
+        String(raw[i].identifier || '').replace(/<[^>]*>/g, '').trim() ||
+        (fk === 'field_2154' && ns.sowNameById && ns.sowNameById(raw[i].id)) ||
+        raw[i].id;
       if (lbl) names.push(lbl);
     }
     return names.join(', ');
   }
 
-  // SOW record IDS for a candidate (same field_2154 read as sowLabelsOf) —
-  // used to compare a candidate's SOW membership against the record being
-  // edited (opts.anchorSowIds) so cross-SOW picks are flagged.
-  function sowIdsOf(rec) {
-    var raw = rec && rec.field_2154_raw;
+  // Membership record IDS for a candidate (same connection read as
+  // sowLabelsOf) — used to compare a candidate's membership against the
+  // record being edited (opts.anchorSowIds) so cross-SOW/-Bid picks are
+  // flagged, and stamped on rows for the filter pills.
+  function sowIdsOf(rec, fieldKey) {
+    var raw = rec && rec[(fieldKey || 'field_2154') + '_raw'];
     if (!Array.isArray(raw)) return [];
     var ids = [];
     for (var i = 0; i < raw.length; i++) {
@@ -467,6 +480,15 @@
     var multi      = opts.multi !== false; // default true
     var selected   = (opts.selectedIds || []).slice();
     var candidates = (opts.candidates || []).slice();
+    // Membership filter config — which connection the filter pills,
+    // per-item membership line, cross-membership flag, and filtered
+    // tally all read. Defaults to the SOW connection (field_2154); the
+    // survey/bid page passes { fieldKey:'field_2415', label:'Bid',
+    // nameById:{...} } so the same feature set keys on Bid instead.
+    var sowCfg   = opts.sowFilter || {};
+    var SOW_CONN = sowCfg.fieldKey || 'field_2154';
+    var SOW_LBL  = sowCfg.label || 'SOW';
+    var SOW_NAMES = sowCfg.nameById || null;
     var groups     = groupCandidates(candidates, opts.groupBy);
     var itemLabel  = (typeof opts.itemLabel === 'function')
       ? opts.itemLabel
@@ -581,18 +603,19 @@
           row.className = 'scw-ws-v2-picker-item';
           var labelText = itemLabel(rec) || rec.id;
           var isChecked = selected.indexOf(rec.id) !== -1;
-          // Show each record's SOW(s) (field_2154) beneath its label so the
-          // user can tell which SOW a candidate belongs to — items on the
-          // same MDF/IDF can live on different SOWs. Only rendered for record
-          // candidates that actually carry a SOW connection.
-          var sowText = sowLabelsOf(rec);
-          // Cross-SOW flag: when the caller supplies the edited record's own
-          // SOW ids (opts.anchorSowIds), a candidate sharing NONE of them is
-          // on a different SOW — amber + warning triangle so e.g. a camera
-          // on SW-1060 stands out inside a switch that lives on SW-1001.
+          // Show each record's SOW(s)/Bid(s) beneath its label so the
+          // user can tell which one a candidate belongs to — items on the
+          // same MDF/IDF can live on different SOWs/Bids. Only rendered for
+          // record candidates that actually carry the membership connection.
+          var sowText = sowLabelsOf(rec, SOW_CONN, SOW_NAMES);
+          // Cross-membership flag: when the caller supplies the edited
+          // record's own membership ids (opts.anchorSowIds), a candidate
+          // sharing NONE of them is on a different SOW/Bid — amber + warning
+          // triangle so e.g. a camera on SW-1060 stands out inside a switch
+          // that lives on SW-1001.
           var sowDiff = false;
           if (sowText && Array.isArray(opts.anchorSowIds) && opts.anchorSowIds.length) {
-            var candSows = sowIdsOf(rec);
+            var candSows = sowIdsOf(rec, SOW_CONN);
             if (candSows.length) {
               sowDiff = true;
               for (var cs = 0; cs < candSows.length; cs++) {
@@ -603,21 +626,23 @@
           var sowHtml = sowText
             ? '<span class="scw-ws-v2-picker-item-sow' +
                 (sowDiff ? ' scw-ws-v2-picker-item-sow--diff' : '') + '"' +
-                (sowDiff ? ' title="On a different SOW than the record you\'re editing"' : '') + '>' +
+                (sowDiff ? ' title="On a different ' + escapeHtml(SOW_LBL) +
+                  ' than the record you\'re editing"' : '') + '>' +
                 (sowDiff
                   ? '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" ' +
                       'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
                       '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
                       '<line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
                   : '') +
-                '<b>SOW:</b> ' + escapeHtml(sowText) + '</span>'
+                '<b>' + escapeHtml(SOW_LBL) + ':</b> ' + escapeHtml(sowText) + '</span>'
             : '';
-          // No-SOW candidate on a SOW-aware picker (anchorSowIds supplied):
-          // render a muted "SOW: —" so the no-SOW tail inside a group is
-          // visibly distinct from SOW-carrying items, not just unlabeled.
+          // No-membership candidate on a membership-aware picker
+          // (anchorSowIds supplied): render a muted "SOW: — / Bid: —" so the
+          // tail inside a group is visibly distinct, not just unlabeled.
           if (!sowHtml && Array.isArray(opts.anchorSowIds) && opts.anchorSowIds.length) {
             sowHtml = '<span class="scw-ws-v2-picker-item-sow ' +
-              'scw-ws-v2-picker-item-sow--none"><b>SOW:</b> &mdash;</span>';
+              'scw-ws-v2-picker-item-sow--none"><b>' + escapeHtml(SOW_LBL) +
+              ':</b> &mdash;</span>';
           }
           // Per-item "locked" state (opts.itemState). Used by the Connected
           // Devices picker to SHOW cam/readers already claimed by another
@@ -657,9 +682,9 @@
               sowHtml +
             '</span>' +
             takeoverHtml;
-          // SOW membership stamp — the SOW filter pills read this to show
-          // ONLY the items on the active SOW.
-          var rowSows = sowIdsOf(rec);
+          // Membership stamp — the filter pills read this to show ONLY the
+          // items on the active SOW/Bid.
+          var rowSows = sowIdsOf(rec, SOW_CONN);
           if (rowSows.length) row.setAttribute('data-scw-sows', rowSows.join(','));
           itemHost.appendChild(row);
         });
@@ -869,13 +894,13 @@
         var chkRow = checked[i].closest ? checked[i].closest('.scw-ws-v2-picker-item') : null;
         if (!chkRow || chkRow.style.display !== 'none') visible++;
       }
-      // With a SOW pill active, the headline count is the selections ON
-      // that SOW. Selections hidden by the filter are STILL SAVED, so
+      // With a filter pill active, the headline count is the selections ON
+      // that SOW/Bid. Selections hidden by the filter are STILL SAVED, so
       // they surface as an explicit "+N elsewhere" instead of silently
       // disappearing from the tally.
       if (activeSow && visible !== n) {
-        countEl.textContent = visible + ' selected on this SOW · +' +
-          (n - visible) + ' elsewhere';
+        countEl.textContent = visible + ' selected on this ' + SOW_LBL +
+          ' · +' + (n - visible) + ' elsewhere';
       } else {
         countEl.textContent = n + ' selected';
       }
@@ -1198,15 +1223,16 @@
       updateCount();
     };
 
-    // SOW pills — distinct SOWs across the candidates, naturally sorted.
-    // Rendered whenever toggling is meaningful: 2+ distinct SOWs, or one
-    // SOW alongside no-SOW candidates (so "only SW-1001" still filters).
+    // Filter pills — distinct SOWs/Bids across the candidates, naturally
+    // sorted. Rendered whenever toggling is meaningful: 2+ distinct values,
+    // or one alongside no-membership candidates (so "only SW-1001" still
+    // filters).
     if (candidates.length) {
       var sowById = {};
       var sowCount = 0;
       var hasNoSow = false;
       for (var sc = 0; sc < candidates.length; sc++) {
-        var sraw = candidates[sc] && candidates[sc].field_2154_raw;
+        var sraw = candidates[sc] && candidates[sc][SOW_CONN + '_raw'];
         if (!Array.isArray(sraw) || !sraw.length) { hasNoSow = true; continue; }
         var any = false;
         for (var sr = 0; sr < sraw.length; sr++) {
@@ -1214,8 +1240,10 @@
           if (!se || !se.id) continue;
           any = true;
           if (sowById[se.id]) continue;
-          sowById[se.id] = String(se.identifier || '').replace(/<[^>]*>/g, '').trim() ||
-            (ns.sowNameById && ns.sowNameById(se.id)) || se.id;
+          sowById[se.id] = (SOW_NAMES && SOW_NAMES[se.id]) ||
+            String(se.identifier || '').replace(/<[^>]*>/g, '').trim() ||
+            (SOW_CONN === 'field_2154' && ns.sowNameById && ns.sowNameById(se.id)) ||
+            se.id;
           sowCount++;
         }
         if (!any) hasNoSow = true;
@@ -1229,7 +1257,8 @@
           return String(a.label).localeCompare(String(b.label), undefined,
             { numeric: true, sensitivity: 'base' });
         });
-        var pillHtml = '<span class="scw-ws-v2-picker-sowpills-lbl">SOW</span>' +
+        var pillHtml = '<span class="scw-ws-v2-picker-sowpills-lbl">' +
+          escapeHtml(SOW_LBL) + '</span>' +
           '<button type="button" class="scw-ws-v2-picker-sowpill ' +
             'scw-ws-v2-picker-sowpill--active" data-scw-sow-pill="">All</button>';
         for (var pi = 0; pi < pillList.length; pi++) {

@@ -1582,6 +1582,90 @@
             }
             connCands.push(crec);
           }
+          // ── Bid parity with the SOW Connected Devices picker ──────────
+          // The SOW picker's sort/filter-by-SOW set (filter pills, per-item
+          // membership line, cross-membership amber flag, filtered "N
+          // selected" tally, composite group headers) keyed on the survey
+          // page's own segmentation: the Bid connection (field_2415).
+          var _bidF = SF.bid || 'field_2415';
+          // Friendly bid labels ("141 — White Storage …") resolved the same
+          // way as the Bid picker's candidates (BIDs grid view_3507 +
+          // name field_2636). Falls back to raw identifiers when the grid
+          // isn't loaded.
+          var _bidNameById = Object.create(null);
+          (function () {
+            var bl = surveyCandidates(['view_3507'], 'field_2414', _bidF, 'field_2636');
+            for (var bi = 0; bi < bl.length; bi++) _bidNameById[bl[bi].id] = bl[bi].name;
+          })();
+          var _bidTag = function (r) {
+            var raw = r && r[_bidF + '_raw'];
+            var ids = [], labels = [];
+            if (Array.isArray(raw)) {
+              for (var i = 0; i < raw.length; i++) {
+                if (raw[i] && raw[i].id) {
+                  ids.push(raw[i].id);
+                  var l = _bidNameById[raw[i].id] ||
+                    String(raw[i].identifier || '').replace(/<[^>]*>/g, '').trim();
+                  if (l) labels.push(l);
+                }
+              }
+            }
+            return { id: ids.join('+'), label: labels.join(' + ') };
+          };
+          // Anchor = the record being edited — candidates sharing none of
+          // its bids get the amber cross-membership flag, and the header
+          // shows the baseline ("This device: 141 — …").
+          var _anchorBidIds = [], _anchorBidLabels = '';
+          (function () {
+            var araw = current && current[_bidF + '_raw'];
+            if (!Array.isArray(araw)) return;
+            for (var ai = 0; ai < araw.length; ai++) {
+              if (!araw[ai] || !araw[ai].id) continue;
+              _anchorBidIds.push(araw[ai].id);
+              var albl = _bidNameById[araw[ai].id] ||
+                String(araw[ai].identifier || '').replace(/<[^>]*>/g, '').trim();
+              if (albl) _anchorBidLabels += (_anchorBidLabels ? ', ' : '') + albl;
+            }
+          })();
+          var _mdfGroup = function (r) {
+            var raw = r[_mdfF + '_raw'];
+            if (Array.isArray(raw) && raw[0] && raw[0].id) {
+              return { id: raw[0].id, label: String(raw[0].identifier || '').replace(/<[^>]*>/g, '').trim() || 'MDF / IDF' };
+            }
+            return { id: '__unknown', label: 'No MDF / IDF' };
+          };
+          // Candidates spanning 2+ bids: compose "Bid · MDF" headers and
+          // rank bid-carrying items ahead of no-bid items within each MDF
+          // section — mirrors the SOW picker's multi-SOW grouping.
+          var _bidGroupBy = null, _bidRank = null;
+          (function () {
+            var seen = Object.create(null), distinct = 0;
+            for (var i = 0; i < connCands.length; i++) {
+              var k = _bidTag(connCands[i]).id;
+              if (!seen[k]) { seen[k] = 1; distinct++; }
+            }
+            if (distinct < 2) return;   // single bid → plain MDF grouping
+            // Header bid label per MDF: borrowed from the first bid-carrying
+            // item in that MDF (no-bid items inherit their section's tag).
+            var mdfBidLbl = Object.create(null);
+            for (var mi = 0; mi < connCands.length; mi++) {
+              var mg = _mdfGroup(connCands[mi]), ms = _bidTag(connCands[mi]);
+              if (ms.label && mg.id !== '__unknown' && !mdfBidLbl[mg.id]) {
+                mdfBidLbl[mg.id] = ms.label;
+              }
+            }
+            _bidGroupBy = function (r) {
+              var m = _mdfGroup(r);
+              var s = _bidTag(r);
+              if (m.id === '__unknown') {
+                if (!s.id) return m;
+                return { id: '__nomdf::' + s.id, label: s.label + ' · No MDF / IDF', rank: 1 };
+              }
+              var sl = mdfBidLbl[m.id];
+              return { id: m.id, label: (sl ? sl + ' · ' : '') + m.label };
+            };
+            _bidRank = function (r) { return _bidTag(r).id ? 0 : 1; };
+          })();
           ns.picker.open({
             sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
             fieldKey: fieldKey, label: label, selectedIds: sel,
@@ -1590,13 +1674,13 @@
               var owner = _lockedBy[r.id];
               return owner ? { locked: true, note: 'Already assigned to ' + owner } : null;
             },
-            groupBy: function (r) {
-              var raw = r[_mdfF + '_raw'];
-              if (Array.isArray(raw) && raw[0] && raw[0].id) {
-                return { id: raw[0].id, label: String(raw[0].identifier || '').replace(/<[^>]*>/g, '').trim() || 'MDF / IDF' };
-              }
-              return { id: '__unknown', label: 'No MDF / IDF' };
-            },
+            groupBy: _bidGroupBy || _mdfGroup,
+            itemRank: _bidRank,
+            anchorSowIds: _anchorBidIds,
+            anchorSowLabels: _anchorBidLabels,
+            // Route the picker's membership machinery (pills / item line /
+            // tally) at the Bid connection instead of the SOW default.
+            sowFilter: { fieldKey: _bidF, label: 'Bid', nameById: _bidNameById },
             itemLabel: function (r) {
               var lbl  = (r[_lblF]  || '').toString().replace(/<[^>]*>/g, '').trim();
               var prod = (r[_prodF] || '').toString().replace(/<[^>]*>/g, '').trim();
