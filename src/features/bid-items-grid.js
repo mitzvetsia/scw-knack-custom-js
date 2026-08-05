@@ -479,6 +479,14 @@ tr.scw-assoc-equip-list .scw-l3-product { font-weight: 600 !important; color: #3
 /* Hide the raw field_2409 column (data lives in data rows for injection) */
 th.field_2409, td.field_2409 { display: none !important; }
 
+/* Grouping-source columns: with Knack's native grouping OFF in Builder
+   (2026-08-05), the view exposes the MDF/IDF and bucket connections as
+   real leading columns purely as data sources for the model-driven
+   rebuild — never displayed. View-scoped: these fields render legitimately
+   on other views. */
+${sel('th.field_2375')}, ${sel('td.field_2375')},
+${sel('th.field_2366')}, ${sel('td.field_2366')} { display: none !important; }
+
 tr.scw-hide-level3-header { display: none !important; }
 
 /* Prevent KTL ktlDisplayNone_hc from collapsing hidden-column cells in our
@@ -1013,12 +1021,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const L2_CONN = vcfg.keys.l2Conn || 'field_2366';
 
     const attrsById = readModelAttrsById(ctx.viewId);
-    if (!Object.keys(attrsById).length) {
-      // No model yet (mid-populate render) — leave the DOM alone; the
-      // safety re-runs / next knack-records-render try again with data.
-      console.warn(`[SCW bid-items][${ctx.viewId}] model empty — skipping group rebuild this pass`);
-      return;
-    }
 
     const dataRows = Array.from(tbody.querySelectorAll('tr[id]')).filter(
       (r) => !r.classList.contains('kn-table-group') && !r.classList.contains('scw-level-total-row')
@@ -1027,18 +1029,28 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     // ── derive grouping info per row ──
     const rowInfos = dataRows.map((row) => {
+      // Grouping straight off the row's rendered connection cells — the
+      // Builder exposes field_2375/field_2366 as (CSS-hidden) columns for
+      // exactly this, so the values are always in step with the rows.
+      // Model attrs are the backup only.
       const attrs = attrsById[row.id] || {};
-      const l1Label = connIdentifier(attrs[L1_CONN + '_raw']);
-      const l2Label = connIdentifier(attrs[L2_CONN + '_raw']);
+      const l1Cell = getRowCell(caches, row, L1_CONN);
+      const l1Span = l1Cell && l1Cell.querySelector('span[data-kn="connection-value"]');
+      const l1Label = l1Span ? norm(l1Span.textContent)
+        : connIdentifier(attrs[L1_CONN + '_raw']);
+      const l2Cell = getRowCell(caches, row, L2_CONN);
+      const l2Span = l2Cell && l2Cell.querySelector('span[data-kn="connection-value"]');
+      const l2Label = l2Span ? norm(l2Span.textContent)
+        : connIdentifier(attrs[L2_CONN + '_raw']);
+      let l2Id = l2Span ? (l2Span.className || '').trim() : '';
 
-      // Bucket sort value + id straight off the rendered field_2218 cell
+      // Bucket sort value off the rendered field_2218 cell
       // (<span id="<bucketId>" data-kn="connection-value">N</span>).
-      let l2Id = '';
       let l2Sort = Number.POSITIVE_INFINITY;
       const sortCell = getRowCell(caches, row, ctx.keys.l2Sort);
       if (sortCell) {
         const span = sortCell.querySelector('span[data-kn="connection-value"]');
-        if (span) l2Id = span.id || '';
+        if (span && !l2Id) l2Id = span.id || '';
         const n = parseFloat(norm((span || sortCell).textContent || '').replace(/[^\d.-]/g, ''));
         if (Number.isFinite(n)) l2Sort = n;
       }
@@ -1056,17 +1068,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       return { row, l1Label, l2Id, l2Label, l2Sort, l3Key };
     });
-
-    // Guard: if NO row resolved an MDF/IDF or bucket identifier, the model
-    // isn't carrying the grouping connections (view config changed?). Keep
-    // Knack's native grouping rather than collapsing everything into the
-    // blank section — and say so loudly.
-    if (!rowInfos.some((i) => i.l1Label || i.l2Label)) {
-      console.warn(`[SCW bid-items][${ctx.viewId}] model records carry neither ` +
-        `${L1_CONN}_raw nor ${L2_CONN}_raw — leaving Knack's native grouping ` +
-        `in place. Check the view's fields in Builder.`);
-      return;
-    }
 
     // ── assemble L1 → L2 → L3 (first-seen order within each level) ──
     const l1Map = new Map();
