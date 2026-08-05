@@ -674,8 +674,30 @@
 
         var isMounting = tr.classList.contains('scw-level3--mounting-hardware');
 
+        // Split the product name(s) from the labor description when the grid
+        // injected them as separate spans (bid preview: .scw-l3-product above
+        // .scw-l3-2409 — bid-items-grid only; proposal L3s carry neither).
+        // groupLabelText() flattens the whole cell into one run-on bold line
+        // ("SCW 24 Port PoE Switch… Installation and provisioning of…") —
+        // capturing the parts lets the PDF render product-first with the
+        // description beneath, matching the live grid.
+        var l3ProductLabel = '';
+        var l3DescText = '';
+        var prodSpan3 = tr.querySelector('.scw-l3-product');
+        if (prodSpan3) {
+          var pc3 = prodSpan3.cloneNode(true);
+          var pcBrs = pc3.querySelectorAll('br');
+          for (var pb3 = 0; pb3 < pcBrs.length; pb3++) {
+            pcBrs[pb3].parentNode.replaceChild(document.createTextNode(', '), pcBrs[pb3]);
+          }
+          l3ProductLabel = norm(pc3.textContent);
+          var descSpan3 = tr.querySelector('.scw-l3-2409');
+          if (descSpan3) l3DescText = norm(descSpan3.textContent);
+        }
+
         currentL3 = {
           level: 3, label: l3Label, qty: l3Qty, cost: l3Cost, rate: l3Rate, hideCost: hideCost,
+          productLabel: l3ProductLabel, descText: l3DescText,
           connectedDevices: connDevices, isMountingHardware: isMounting, lineItems: [],
         };
 
@@ -1791,8 +1813,13 @@
               // L3s hosting orphan description rows, which also render as
               // l3-row) — the PDF CSS bolds it and the e-sign walker bolds
               // its cells, so products stand out from labor descriptions.
+              // When the scrape split product name(s) from the labor
+              // description (bid preview), the bold header carries ONLY the
+              // product; the description follows as a quiet sub-row —
+              // matching the live grid instead of one flattened run-on line.
+              var prodHead = prod.productLabel || prod.label;
               html.push('<tr class="l3-row l3-product">');
-              html.push('<td' + prodClass + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(prod.label));
+              html.push('<td' + prodClass + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(prodHead));
               if (prod.connectedDevices && prod.connectedDevices.length) {
                 // v2-style labeled callout (orange label, quiet gray list).
                 // Device COUNT in the label ("24 connected devices:") —
@@ -1811,6 +1838,15 @@
                 html.push('<td class="col-cost">' + esc(prod.cost) + '</td>');
               }
               html.push('</tr>');
+
+              if (prod.productLabel && prod.descText) {
+                html.push('<tr class="l4-row">');
+                html.push('<td class="l4-desc"' + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(prod.descText) + '</td>');
+                if (!prod.hideCost) {
+                  html.push('<td class="col-qty"></td><td class="col-cost"></td>');
+                }
+                html.push('</tr>');
+              }
             }
 
             var l4Class = prod.label ? 'l4-row' : 'l3-row';
@@ -4887,6 +4923,12 @@
               mdfIdf:      l1.label || '',
               bucket:      l2.label || '',
               description: l3.label || '',
+              // Split parts (bid preview scrape only — empty elsewhere):
+              // productName = the bold product line, laborDescription = the
+              // work description beneath it. `description` stays the full
+              // flattened label for Make back-compat.
+              productName:      l3.productLabel || '',
+              laborDescription: l3.descText || '',
               qty:         l3.qty != null ? l3.qty : '',
               rate:        l3.rate || '',
               cost:        l3.cost || ''
