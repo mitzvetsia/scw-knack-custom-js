@@ -61,10 +61,23 @@
                   'field_1949'],    // product (connection)
 
     maxPerSweep:   20,
+    // Hard ceiling per PAGE LOAD across all sweeps. The post-nudge refetch
+    // re-renders the view, which schedules another sweep, which nudges the
+    // NEXT maxPerSweep records — on a grid with many stuck rows that
+    // cascaded into 60+ PUTs and repeated grid rebuilds under the user
+    // (observed live 2026-08-05). The ceiling stops the cascade.
+    maxPerLoad:    40,
     maxConcurrent: 3,
     maxAttempts:   4,
     baseBackoffMs: 500,
-    sweepDebounceMs: 1500
+    sweepDebounceMs: 1500,
+    // Cross-page-load cooldowns (localStorage). A nudged record isn't
+    // re-nudged for retryCooldownMs; a record that STAYED stuck after a
+    // nudge clearly can't be healed this way (legitimately $0, or a deeper
+    // data issue) and is left alone for stickyCooldownMs — without this,
+    // every page load by every user re-nudged the same records forever.
+    retryCooldownMs:  24 * 3600 * 1000,        // 1 day
+    stickyCooldownMs: 30 * 24 * 3600 * 1000    // 30 days
   };
 
   // ── helpers ─────────────────────────────────────────────────────
@@ -165,8 +178,32 @@
     return null;
   }
 
+  // ── persistent nudge memory (cross page-load, localStorage) ─────
+  var MEMO_KEY = 'scwCalcNudgeMemo';
+  var memo = (function () {
+    try {
+      var m = JSON.parse(localStorage.getItem(MEMO_KEY) || '{}') || {};
+      var now = Date.now();
+      var pruned = {};
+      for (var k in m) {
+        if (m[k] && (now - (m[k].t || 0)) < CONFIG.stickyCooldownMs) pruned[k] = m[k];
+      }
+      return pruned;
+    } catch (e) { return {}; }
+  })();
+  function memoSave() {
+    try { localStorage.setItem(MEMO_KEY, JSON.stringify(memo)); } catch (e) {}
+  }
+  function memoCooldownActive(id) {
+    var e = memo[id];
+    if (!e) return false;
+    return (Date.now() - (e.t || 0)) <
+      (e.sticky ? CONFIG.stickyCooldownMs : CONFIG.retryCooldownMs);
+  }
+
   // ── nudge queue: concurrency-capped + retry + backoff ───────────
   var nudgedOnce = Object.create(null);   // recordId → true (per page load)
+  var nudgedThisLoad = 0;                 // total across sweeps (maxPerLoad)
   var queue = [];
   var inFlight = 0;
 
@@ -221,35 +258,50 @@
     if (!attrsList.length) return;
 
     var jobs = [];
+    var memoDirty = false;
     for (var i = 0; i < attrsList.length; i++) {
       var attrs = attrsList[i];
-      if (nudgedOnce[attrs.id]) continue;
       var state = stuckState(attrs);
-      if (!state) continue;
+      var stuck = false;
       if (state === 'zero') {
         // A zero calc is only provably stuck when a fee input is positive
         // (fee = markup over sub bid / +Hrs / +Mat, so input > 0 ⇒ fee > 0).
-        if (!hasPositiveInput(attrs)) continue;
-      } else {
+        stuck = hasPositiveInput(attrs);
+      } else if (state === 'blank') {
         // Blank calc: nudge when the row clearly should have priced.
-        var hasEvidence = false;
         for (var e = 0; e < CONFIG.evidenceFields.length; e++) {
-          if (fieldHasValue(attrs, CONFIG.evidenceFields[e])) { hasEvidence = true; break; }
+          if (fieldHasValue(attrs, CONFIG.evidenceFields[e])) { stuck = true; break; }
         }
-        if (!hasEvidence) continue;
       }
+      if (!stuck) continue;
+      if (nudgedOnce[attrs.id]) {
+        // Nudged THIS load and still stuck after the refetch — the nudge
+        // can't heal it (legitimately $0, or a deeper data issue). Mark it
+        // sticky so no page load re-nudges it for stickyCooldownMs.
+        if (!memo[attrs.id] || !memo[attrs.id].sticky) {
+          memo[attrs.id] = { t: Date.now(), sticky: true };
+          memoDirty = true;
+        }
+        continue;
+      }
+      if (memoCooldownActive(attrs.id)) continue;
+      if (nudgedThisLoad + jobs.length >= CONFIG.maxPerLoad) break;
       var body = buildNudgeBody(attrs);
       if (!body) continue;
       jobs.push({ viewKey: viewKey, recordId: attrs.id, body: body, attempt: 1 });
       if (jobs.length >= CONFIG.maxPerSweep) break;
     }
-    if (!jobs.length) return;
+    if (!jobs.length) {
+      if (memoDirty) memoSave();
+      return;
+    }
 
     // Always announce a nudge batch (not debug-gated) — the write is real,
     // so it should be visible in the console when verifying the feature.
+    // The full record-id list is debug-only noise.
     console.info('[scw-calc-nudge] nudging ' + jobs.length +
-      ' stuck record(s) on ' + viewKey + ':',
-      jobs.map(function (j) { return j.recordId; }).join(', '));
+      ' stuck record(s) on ' + viewKey +
+      (CONFIG.debug ? ': ' + jobs.map(function (j) { return j.recordId; }).join(', ') : ''));
 
     var pending = jobs.length;
     var anyOk = false;
@@ -260,9 +312,12 @@
     }
     for (var j = 0; j < jobs.length; j++) {
       nudgedOnce[jobs[j].recordId] = true;
+      nudgedThisLoad++;
+      memo[jobs[j].recordId] = { t: Date.now() };
       jobs[j].done = onDone;
       queue.push(jobs[j]);
     }
+    memoSave();
     pump();
   }
 
