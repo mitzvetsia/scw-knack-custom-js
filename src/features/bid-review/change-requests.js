@@ -1487,12 +1487,8 @@
     }
     h.push('</div>');
 
-    if (action === 'remove') {
-      // Removal — just notes
-      if (item.changeNotes) {
-        h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + escHtml(item.changeNotes) + '&rdquo;</div>');
-      }
-    } else if (fieldList && fieldList.length) {
+    var renderedTable = false;
+    if (action !== 'remove' && fieldList && fieldList.length) {
       // Revise or Add — field changes table.
       // Move a Product change to the top so the biggest swap is the
       // first thing readers see.
@@ -1537,10 +1533,17 @@
         h.push('</tr>');
       }
       h.push('</table>');
+      renderedTable = true;
+    }
 
-      if (item.changeNotes) {
-        h.push('<div style="font-size:12px;color:#64748b;font-style:italic;margin-top:6px;border-top:1px solid ' + palette.border + ';padding-top:4px;">&ldquo;' + escHtml(item.changeNotes) + '&rdquo;</div>');
-      }
+    // The change note must ALWAYS render — removes have no field table,
+    // and reinstates / note-only revisions have an EMPTY field list; the
+    // old structure only emitted the note inside those branches, so every
+    // other item shape silently dropped it.
+    if (item.changeNotes) {
+      h.push(renderedTable
+        ? '<div style="font-size:12px;color:#64748b;font-style:italic;margin-top:6px;border-top:1px solid ' + palette.border + ';padding-top:4px;">&ldquo;' + escHtml(item.changeNotes) + '&rdquo;</div>'
+        : '<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + escHtml(item.changeNotes) + '&rdquo;</div>');
     }
 
     h.push('</div>');
@@ -1575,10 +1578,7 @@
     }
     lines.push(header);
 
-    if (action === 'remove') {
-      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
-      else lines.push('  Requesting removal');
-    } else if (fieldList && fieldList.length) {
+    if (action !== 'remove' && fieldList && fieldList.length) {
       for (var fi = 0; fi < fieldList.length; fi++) {
         var f = fieldList[fi];
         var isCurrency = false;
@@ -1593,8 +1593,14 @@
           lines.push('  ' + f.label + ': ' + toStr);
         }
       }
-      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
     }
+
+    // The change note must ALWAYS make it into the plain text — removes
+    // have no field lines, and reinstates / note-only revisions have an
+    // EMPTY field list; the old structure only emitted the note inside
+    // those branches, so it never reached ClickUp for other item shapes.
+    if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+    else if (action === 'remove') lines.push('  Requesting removal');
 
     return lines.join('\n');
   }
