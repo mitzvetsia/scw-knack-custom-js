@@ -236,6 +236,26 @@
       '.scw-ws-v2-picker-search-empty {',
       '  padding: 18px; text-align: center; color: #64748b; font-style: italic;',
       '}',
+      /* SOW filter pills — toggle the list to ONLY items on a given SOW. */
+      '.scw-ws-v2-picker-sowpills {',
+      '  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;',
+      '  padding: 10px 18px; border-bottom: 1px solid #e5e7eb; background: #fff;',
+      '  flex: 0 0 auto;',
+      '}',
+      '.scw-ws-v2-picker-sowpills-lbl {',
+      '  font: 700 10px/1 system-ui, sans-serif; text-transform: uppercase;',
+      '  letter-spacing: .05em; color: #64748b; margin-right: 2px;',
+      '}',
+      '.scw-ws-v2-picker-sowpill {',
+      '  padding: 3px 10px; border-radius: 999px; border: 1px solid #cbd5e1;',
+      '  background: #fff; color: #334155; cursor: pointer;',
+      '  font: 600 11.5px/1.4 system-ui, sans-serif;',
+      '  transition: background .12s, border-color .12s;',
+      '}',
+      '.scw-ws-v2-picker-sowpill:hover { border-color: #94a3b8; background: #f8fafc; }',
+      '.scw-ws-v2-picker-sowpill--active {',
+      '  background: #0f4c75; border-color: #0f4c75; color: #fff;',
+      '}',
       '.scw-ws-v2-picker-item--none {',
       '  background: #f8fafc;',
       '  border-bottom: 1px solid #e2e8f0;',
@@ -637,6 +657,10 @@
               sowHtml +
             '</span>' +
             takeoverHtml;
+          // SOW membership stamp — the SOW filter pills read this to show
+          // ONLY the items on the active SOW.
+          var rowSows = sowIdsOf(rec);
+          if (rowSows.length) row.setAttribute('data-scw-sows', rowSows.join(','));
           itemHost.appendChild(row);
         });
       });
@@ -1104,12 +1128,118 @@
       }
     }
 
-    // ── Search filter ───────────────────────────────────────────────
+    // ── SOW filter pills + search filter ────────────────────────────
+    // Both funnel into ONE applyFilters(): an item must match the live
+    // search query AND the active SOW pill. The "Clear all / (no
+    // selection)" row is never filtered; group headers hide when none of
+    // their items survive the filters.
+    var searchInput = null;
+    var activeSow = null;   // null = All
+    var filterItems = [];
+    var filterWraps = [];
+    var noMatchEl = null;
+    if (candidates.length) {
+      filterItems = Array.prototype.slice.call(bd.querySelectorAll(
+        '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none)'));
+      filterWraps = Array.prototype.slice.call(
+        bd.querySelectorAll('.scw-ws-v2-picker-groupwrap'));
+      noMatchEl = document.createElement('div');
+      noMatchEl.className = 'scw-ws-v2-picker-search-empty';
+      noMatchEl.textContent = 'No matches.';
+      noMatchEl.style.display = 'none';
+      bd.appendChild(noMatchEl);
+    }
+
+    var applyFilters = function () {
+      var q = searchInput ? (searchInput.value || '').trim().toLowerCase() : '';
+      // While a query or SOW filter is live, collapsed groups force-open
+      // (CSS keyed on is-searching) so matches inside them are never
+      // hidden; the user's collapse state comes back when both clear.
+      bd.classList.toggle('is-searching', !!q || !!activeSow);
+      var anyVisible = false;
+      for (var i = 0; i < filterItems.length; i++) {
+        var it = filterItems[i];
+        var show = !q || (it.textContent || '').toLowerCase().indexOf(q) !== -1;
+        if (show && activeSow) {
+          // Only items ON the active SOW — no-SOW items hide too.
+          var sows = it.getAttribute('data-scw-sows') || '';
+          show = (',' + sows + ',').indexOf(',' + activeSow + ',') !== -1;
+        }
+        it.style.display = show ? '' : 'none';
+        if (show) anyVisible = true;
+      }
+      for (var g = 0; g < filterWraps.length; g++) {
+        var wrap = filterWraps[g];
+        var vis = false;
+        var its = wrap.querySelectorAll(
+          '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none)');
+        for (var k = 0; k < its.length; k++) {
+          if (its[k].style.display !== 'none') { vis = true; break; }
+        }
+        wrap.style.display = vis ? '' : 'none';
+      }
+      if (noMatchEl) noMatchEl.style.display = anyVisible ? 'none' : '';
+    };
+
+    // SOW pills — distinct SOWs across the candidates, naturally sorted.
+    // Rendered whenever toggling is meaningful: 2+ distinct SOWs, or one
+    // SOW alongside no-SOW candidates (so "only SW-1001" still filters).
+    if (candidates.length) {
+      var sowById = {};
+      var sowCount = 0;
+      var hasNoSow = false;
+      for (var sc = 0; sc < candidates.length; sc++) {
+        var sraw = candidates[sc] && candidates[sc].field_2154_raw;
+        if (!Array.isArray(sraw) || !sraw.length) { hasNoSow = true; continue; }
+        var any = false;
+        for (var sr = 0; sr < sraw.length; sr++) {
+          var se = sraw[sr];
+          if (!se || !se.id) continue;
+          any = true;
+          if (sowById[se.id]) continue;
+          sowById[se.id] = String(se.identifier || '').replace(/<[^>]*>/g, '').trim() ||
+            (ns.sowNameById && ns.sowNameById(se.id)) || se.id;
+          sowCount++;
+        }
+        if (!any) hasNoSow = true;
+      }
+      if (sowCount >= 2 || (sowCount === 1 && hasNoSow)) {
+        var pillWrap = document.createElement('div');
+        pillWrap.className = 'scw-ws-v2-picker-sowpills';
+        var pillList = Object.keys(sowById).map(function (id) {
+          return { id: id, label: sowById[id] };
+        }).sort(function (a, b) {
+          return String(a.label).localeCompare(String(b.label), undefined,
+            { numeric: true, sensitivity: 'base' });
+        });
+        var pillHtml = '<span class="scw-ws-v2-picker-sowpills-lbl">SOW</span>' +
+          '<button type="button" class="scw-ws-v2-picker-sowpill ' +
+            'scw-ws-v2-picker-sowpill--active" data-scw-sow-pill="">All</button>';
+        for (var pi = 0; pi < pillList.length; pi++) {
+          pillHtml += '<button type="button" class="scw-ws-v2-picker-sowpill" ' +
+            'data-scw-sow-pill="' + escapeHtml(pillList[pi].id) + '" ' +
+            'title="Show only items on ' + escapeHtml(pillList[pi].label) + '">' +
+            escapeHtml(pillList[pi].label) + '</button>';
+        }
+        pillWrap.innerHTML = pillHtml;
+        card.insertBefore(pillWrap, bd);
+        pillWrap.addEventListener('click', function (ev) {
+          var btn = ev.target && ev.target.closest &&
+            ev.target.closest('[data-scw-sow-pill]');
+          if (!btn) return;
+          activeSow = btn.getAttribute('data-scw-sow-pill') || null;
+          var all = pillWrap.querySelectorAll('.scw-ws-v2-picker-sowpill');
+          for (var ai = 0; ai < all.length; ai++) {
+            all[ai].classList.toggle('scw-ws-v2-picker-sowpill--active', all[ai] === btn);
+          }
+          applyFilters();
+        });
+      }
+    }
+
     // Sizable lists (the product picker especially) get a type-to-filter
     // box between the header and the scrolling list. Matches each option's
-    // text (name + any SOW line); group headers hide when none of their
-    // items match. The "Clear all / (no selection)" row is never filtered.
-    var searchInput = null;
+    // text (name + any SOW line).
     if (candidates.length >= 8) {
       var searchWrap = document.createElement('div');
       searchWrap.className = 'scw-ws-v2-picker-search';
@@ -1117,45 +1247,7 @@
         'placeholder="Search…" autocomplete="off" spellcheck="false">';
       card.insertBefore(searchWrap, bd);
       searchInput = searchWrap.querySelector('input');
-
-      var noMatchEl = document.createElement('div');
-      noMatchEl.className = 'scw-ws-v2-picker-search-empty';
-      noMatchEl.textContent = 'No matches.';
-      noMatchEl.style.display = 'none';
-      bd.appendChild(noMatchEl);
-
-      var searchItems = Array.prototype.slice.call(bd.querySelectorAll(
-        '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none)'));
-      var searchWraps = Array.prototype.slice.call(
-        bd.querySelectorAll('.scw-ws-v2-picker-groupwrap'));
-
-      var applySearch = function () {
-        var q = (searchInput.value || '').trim().toLowerCase();
-        // While a query is live, collapsed groups force-open (CSS keyed
-        // on is-searching) so matches inside them are never hidden; the
-        // user's collapse state comes back when the query clears.
-        bd.classList.toggle('is-searching', !!q);
-        var anyVisible = false;
-        for (var i = 0; i < searchItems.length; i++) {
-          var it = searchItems[i];
-          var show = !q || (it.textContent || '').toLowerCase().indexOf(q) !== -1;
-          it.style.display = show ? '' : 'none';
-          if (show) anyVisible = true;
-        }
-        // A whole group section hides when none of its items match.
-        for (var g = 0; g < searchWraps.length; g++) {
-          var wrap = searchWraps[g];
-          var vis = false;
-          var its = wrap.querySelectorAll(
-            '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none)');
-          for (var k = 0; k < its.length; k++) {
-            if (its[k].style.display !== 'none') { vis = true; break; }
-          }
-          wrap.style.display = vis ? '' : 'none';
-        }
-        noMatchEl.style.display = anyVisible ? 'none' : '';
-      };
-      searchInput.addEventListener('input', applySearch);
+      searchInput.addEventListener('input', applyFilters);
     }
 
     document.body.appendChild(overlay);
