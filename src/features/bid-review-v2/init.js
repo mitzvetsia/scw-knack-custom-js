@@ -1202,6 +1202,7 @@
     wirePanelClose();
     wireHeaderActions();
     if (ns.columnCollapse && typeof ns.columnCollapse.wire === 'function') ns.columnCollapse.wire();
+    if (ns.basisFilter && typeof ns.basisFilter.wire === 'function') ns.basisFilter.wire();
     hookV1Rerender();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {

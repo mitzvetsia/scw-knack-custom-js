@@ -1233,6 +1233,10 @@
     });
   }
 
-  ns.render = { render: render, bindOnce: bindOnce, distill: distill, markDirty: markDirty };
+  // basisFor exported for bid-review-v2's basis column filter — same
+  // resolution order as the selector (session pick → persisted field_2942 →
+  // K1 snapshot sentinel), so the filter always agrees with the dropdown.
+  ns.render = { render: render, bindOnce: bindOnce, distill: distill,
+                markDirty: markDirty, basisFor: basisFor };
 })();
 /*** END SUB-BID DIFF — RENDER ***********************************************/

@@ -1929,6 +1929,14 @@
       for (var pc = 0; pc < pkgs.length; pc++) if (pkgs[pc] && pkgs[pc].id) pkgIds.push(pkgs[pc].id);
       ns.columnCollapse.applyToSection(section, grid.sowId, pkgIds);
     }
+    // Basis column filter — with a basis bid chosen (sub-bid-diff dropdown /
+    // field_2942), only that bid's column shows; the rest hide until the
+    // user opts into "Show all bids".
+    if (ns.basisFilter && typeof ns.basisFilter.applyToSection === 'function') {
+      var bfIds = [];
+      for (var bf = 0; bf < pkgs.length; bf++) if (pkgs[bf] && pkgs[bf].id) bfIds.push(pkgs[bf].id);
+      ns.basisFilter.applyToSection(section, grid.sowId, bfIds);
+    }
     return section;
   }
 

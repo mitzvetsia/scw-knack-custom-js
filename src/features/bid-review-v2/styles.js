@@ -185,6 +185,21 @@
     '  writing-mode: vertical-rl; transform: rotate(180deg);',
     '  letter-spacing: 0.5px; white-space: nowrap;',
     '}',
+    /* ── Basis column filter — non-basis bid columns hidden entirely ── */
+    '.scw-bid-review-v2__pkg-col--basis-hidden { display: none !important; }',
+    /* Toggle pill in the basis column title band (below the collapse »). */
+    '.scw-bid-review-v2__basis-toggle {',
+    '  display: block; margin-top: 6px;',
+    '  padding: 3px 10px; border-radius: 999px;',
+    '  border: 1px solid #cbd5e1; background: #fff; color: #475569;',
+    '  font: 600 10.5px/1.3 system-ui, -apple-system, sans-serif;',
+    '  cursor: pointer; text-transform: none; letter-spacing: 0;',
+    '}',
+    '.scw-bid-review-v2__basis-toggle:hover { background: #f1f5f9; color: #0f172a; }',
+    '.scw-bid-review-v2__basis-toggle--filtering {',
+    '  background: #e3edf6; border-color: #93b7d7; color: #07467c;',
+    '}',
+    '.scw-bid-review-v2__basis-toggle--filtering:hover { background: #d3e3f2; }',
     /* ── Table + thead ─────────────────────────────────────── */
     /* table-layout:fixed + width:100% makes the bid columns divide the
        available width equally instead of each forcing a min-width (which
