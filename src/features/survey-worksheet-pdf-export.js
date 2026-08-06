@@ -33,9 +33,19 @@
   // { viewId, label? } — if `label` is set it replaces the view's
   // own header as the section title.
   var PAGE1_DETAIL_VIEWS = [
+    // Tech-side survey worksheet scene (view_3800's page).
     { viewId: 'view_3796' },
     { viewId: 'view_3795' },
-    { viewId: 'view_3798', label: 'Survey Contact(s)' }
+    { viewId: 'view_3798', label: 'Survey Contact(s)' },
+    // Subcontractor portal scene_1140 (view_3505's page) — the tech-side
+    // views above don't exist there, so its PDF printed with NO page-1
+    // cover. Absent views scrape to null, so each scene only picks up
+    // its own sections. skipFields drops noise cells by field class:
+    // the ClickUp link and the PDF's own file field must not print.
+    { viewId: 'view_3504', skipFields: ['field_2632'] },
+    { viewId: 'view_3568', label: 'Survey POC' },
+    { viewId: 'view_3825', label: 'Survey Instructions',
+      skipFields: ['field_2356'] }
   ];
 
   // Label substrings used to pick the client and site names out of
@@ -1109,7 +1119,7 @@
     return '';
   }
 
-  function scrapeDetailViewFields(viewId) {
+  function scrapeDetailViewFields(viewId, skipFields) {
     var root = document.getElementById(viewId);
     if (!root) return null;
     var title = '';
@@ -1121,6 +1131,15 @@
     for (var i = 0; i < items.length; i++) {
       var item = items[i];
       if (item.id === viewId) continue;
+      // Per-view field exclusions (PAGE1_DETAIL_VIEWS skipFields) —
+      // the field key rides as a class on the .kn-detail wrapper.
+      if (skipFields) {
+        var skippedField = false;
+        for (var sk = 0; sk < skipFields.length; sk++) {
+          if (item.classList.contains(skipFields[sk])) { skippedField = true; break; }
+        }
+        if (skippedField) continue;
+      }
       var labelEl = item.querySelector('.kn-detail-label');
       var valueEl = item.querySelector('.kn-detail-body');
       if (!valueEl) continue;
@@ -1143,7 +1162,7 @@
     var seenValues = {};
     for (var i = 0; i < PAGE1_DETAIL_VIEWS.length; i++) {
       var cfg = PAGE1_DETAIL_VIEWS[i];
-      var sec = scrapeDetailViewFields(cfg.viewId);
+      var sec = scrapeDetailViewFields(cfg.viewId, cfg.skipFields);
       if (!sec) continue;
       // Label override (e.g. view_3798 → "Survey Contact(s)")
       if (cfg.label) sec.title = cfg.label;
