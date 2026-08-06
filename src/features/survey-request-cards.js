@@ -118,7 +118,13 @@
       '  .scw-ktl-accordion__header { cursor: pointer; }' +
       /* Keep the form body sealed even though pointer-events came back. */
       '.scw-ktl-accordion.scw-srqc-has-cards.scw-step-completed.scw-step-disabled' +
-      '  .scw-ktl-accordion__body { display: none !important; }';
+      '  .scw-ktl-accordion__body { display: none !important; }' +
+      /* One-request-per-project guard notice (amber = warning). */
+      '#scw-srq-guard-msg {' +
+      '  margin: 8px 0; padding: 10px 12px; border-radius: 8px;' +
+      '  background: #fef3c7; border: 1px solid #f0c489; color: #b45309;' +
+      '  font: 600 12.5px/1.4 system-ui, sans-serif;' +
+      '}';
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = css;
@@ -168,6 +174,44 @@
     } catch (e) { /* fall back to DOM */ }
     var el = document.querySelector('#' + SOW_VIEW + ' .kn-detail.field_2723 .kn-detail-body');
     return !!el && el.textContent.trim().toLowerCase() === 'yes';
+  }
+
+  // Numeric field off the SOW-header view (model attrs, DOM fallback).
+  // Returns null when unreadable — callers fail open.
+  function sowHeaderNumber(fieldKey) {
+    var txt = '';
+    try {
+      var v = Knack.views && Knack.views[SOW_VIEW];
+      var a = v && v.model && v.model.attributes;
+      if (a && a[fieldKey] != null) txt = String(a[fieldKey]);
+    } catch (e) { /* fall back to DOM */ }
+    if (!txt) {
+      var el = document.querySelector('#' + SOW_VIEW + ' .kn-detail.' + fieldKey + ' .kn-detail-body');
+      if (el) txt = el.textContent;
+    }
+    txt = String(txt || '').replace(/<[^>]*>/g, '').trim();
+    if (txt === '') return null;
+    var n = parseInt(txt, 10);
+    return isFinite(n) ? n : null;
+  }
+
+  // Count of the project's SOWs with a VALIDATED survey — field_2917 on
+  // the SOW header view. 0 means NO survey request anywhere on the
+  // project has fired yet, so every request row is still pending —
+  // including sibling-SOW rows the own-SOW fallback below can't judge.
+  function projectValidatedCount() {
+    return sowHeaderNumber('field_2917');
+  }
+
+  // ONE SURVEY REQUEST PER PROJECT — does the project already carry one?
+  // Union of two signals so a stale/misconfigured view can't open a hole:
+  //   • any row in the project-wide requests grid (view_3876), OR
+  //   • the SOW header's field_2728 count (SOWs with survey requested,
+  //     project-wide incl. siblings) > 0.
+  function projectHasRequest() {
+    if (getRecords().length > 0) return true;
+    var n = sowHeaderNumber('field_2728');
+    return n != null && n > 0;
   }
 
   function getRecords() {
@@ -228,6 +272,11 @@
       return String(rec.status).toLowerCase()
         .indexOf(CONFIG.armedStatusMatch) !== -1;
     }
+    // Project-level guard: ZERO SOWs on the project have a validated
+    // survey → nothing has fired yet, so every request is still pending
+    // — including sibling-SOW rows the per-SOW derivation below can't
+    // judge (they used to fall through to "Submitted").
+    if (projectValidatedCount() === 0) return true;
     // Derived: this page's SOW's own request while the SOW isn't yet
     // validated — the submit flipped field_2706 but the survey hasn't
     // been sent. Sibling rows can't be judged from here → treated sent.
@@ -347,6 +396,78 @@
       wrap.setAttribute('data-scw-html', html);
       wrap.innerHTML = html;
     }
+
+    syncFormGuard();
+  }
+
+  // ── HARD GUARD: one survey request per PROJECT ───────────────────────
+  // A project may NEVER carry more than one survey request. The workflow
+  // stepper hides/disables the survey step once flags flip, but that's
+  // cosmetic gating — flags settle late, a tab can go stale, and the
+  // view_3853 form is still reachable. This locks the form itself:
+  //   • render pass: disable the submit button + show an amber notice
+  //     whenever the project already has a request;
+  //   • capture-phase click/submit blockers as the backstop, so even a
+  //     click that races the render pass (or a stale-tab submit) is
+  //     stopped before Knack's handler runs.
+  var GUARD_MSG = 'This project already has a survey request — only one ' +
+    'survey request is allowed per project. Edit or work from the ' +
+    'existing request instead.';
+
+  function guardNoticeEl(form) {
+    var el = document.getElementById('scw-srq-guard-msg');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'scw-srq-guard-msg';
+    el.textContent = GUARD_MSG;
+    var submit = form.querySelector('.kn-submit');
+    if (submit) submit.insertAdjacentElement('beforebegin', el);
+    else form.appendChild(el);
+    return el;
+  }
+
+  function syncFormGuard() {
+    var form = document.querySelector('#view_3853 form');
+    if (!form) return;
+    var btn = form.querySelector('.kn-submit button');
+    var blocked = projectHasRequest();
+    if (blocked) {
+      guardNoticeEl(form);
+      if (btn) {
+        btn.disabled = true;
+        btn.setAttribute('title', GUARD_MSG);
+      }
+    } else {
+      var el = document.getElementById('scw-srq-guard-msg');
+      if (el) el.remove();
+      if (btn && btn.disabled) {
+        btn.disabled = false;
+        btn.removeAttribute('title');
+      }
+    }
+  }
+
+  function blockIfDuplicate(e, target) {
+    if (!target) return;
+    if (!projectHasRequest()) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    var form = document.querySelector('#view_3853 form');
+    if (form) guardNoticeEl(form);
+    syncFormGuard();
+  }
+
+  if (!document.documentElement.hasAttribute('data-scw-srq-guard-bound')) {
+    document.documentElement.setAttribute('data-scw-srq-guard-bound', '1');
+    document.addEventListener('click', function (e) {
+      blockIfDuplicate(e, e.target && e.target.closest &&
+        e.target.closest('#view_3853 .kn-submit button'));
+    }, true);
+    // Enter-key submits bypass the button — catch the form submit too.
+    document.addEventListener('submit', function (e) {
+      blockIfDuplicate(e, e.target && e.target.closest &&
+        e.target.closest('#view_3853 form'));
+    }, true);
   }
 
   // ── Public API ───────────────────────────────────────────
