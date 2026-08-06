@@ -1516,14 +1516,19 @@
       html.push(renderMdfPhotoChecklist(mdfGroups));
     }
 
-    if (mdfGroups.length && allCams.length) {
+    if (mdfGroups.length) {
       // (2) MDF/IDF EQUIPMENT BREAKDOWN — the non-camera, non-distribution
       // gear (PoE converters, racks, UPS, …) per MDF/IDF, plus any service
       // / assumption rows that live in an MDF/IDF. Equipment renders as a
       // compact two-column block (gear list on the left, one shared notes
       // box on the right) to kill the per-card wasted space; services /
       // assumptions keep their full card (description + writing area).
-      // Distribution devices are skipped here — they're grid columns below.
+      // Distribution devices are skipped here ONLY when the assignment
+      // grid below will render them as columns (i.e. the survey has
+      // cameras/readers). A zero-camera survey (pure access control) has
+      // no grid, so distribution gear must print here — the old
+      // `allCams.length` gate on this whole section made a no-camera
+      // survey's PDF drop every hardware item.
       var perGroup = [];
       for (var gi = 0; gi < mdfGroups.length; gi++) {
         var grp = mdfGroups[gi];
@@ -1531,7 +1536,7 @@
         for (var nci = 0; nci < grp.nonCam.length; nci++) {
           var nc = grp.nonCam[nci];
           if (nc.type === 'card') {
-            if (acceptsIncomingConnections(nc)) continue;        // grid column
+            if (allCams.length && acceptsIncomingConnections(nc)) continue; // grid column
             if (isServiceOrAssumptionBucket(nc)) other.push(nc); // full card
             else equipment.push(nc);                             // compact list
           } else if (nc.type === 'group') {
