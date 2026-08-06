@@ -576,6 +576,11 @@
       '  border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);' +
       '  padding: 20px 22px 16px;' +
       '  font-family: inherit; color: #111827;' +
+      /* Short screens: cap to the viewport and scroll INSIDE the card.
+         Without this the flex-centered card clips off both ends (the
+         Mark Ready + pending-survey editor variant especially) with no
+         way to reach the top fields or the action buttons. */
+      '  max-height: 90vh; overflow-y: auto; -webkit-overflow-scrolling: touch;' +
       '}' +
       '.scw-ops-modal-hdr {' +
       '  font-size: 16px; font-weight: 700; margin-bottom: 4px;' +
