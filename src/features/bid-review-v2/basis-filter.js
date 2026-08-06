@@ -116,6 +116,28 @@
       cells[i].classList.toggle(HIDE_CLS, filtering && pid !== basis);
     }
 
+    // Full-width rows (docs band, L1/L2 group headers) declare
+    // colspan = packages + 3. Under table-layout:fixed the colspan defines
+    // the table's column count, so with N bid columns display:none'd the
+    // table still reserves N phantom columns and the visible ones don't
+    // stretch — dead space on the right. Shrink those colspans to the
+    // visible column count while filtering; restore from the stamped
+    // original when the filter lifts (cells are rebuilt each render, so
+    // stamps never go stale).
+    var fullSpan = pkgIds.length + 3;
+    var hiddenN = filtering ? (pkgIds.length - 1) : 0;
+    var spans = section.querySelectorAll('td[colspan], th[colspan]');
+    for (var sp = 0; sp < spans.length; sp++) {
+      var sc = spans[sp];
+      var orig = parseInt(sc.getAttribute('data-scw-orig-colspan') || '', 10);
+      if (!isFinite(orig)) {
+        orig = parseInt(sc.getAttribute('colspan') || '1', 10) || 1;
+        if (orig !== fullSpan) continue;   // not a full-width row
+        sc.setAttribute('data-scw-orig-colspan', String(orig));
+      }
+      sc.colSpan = orig - hiddenN;
+    }
+
     // Toggle pill — lives in the basis column's title band th. Remove any
     // stale instance first (basis may have moved to a different column).
     var old = section.querySelectorAll('.' + TOGGLE_CLS);
