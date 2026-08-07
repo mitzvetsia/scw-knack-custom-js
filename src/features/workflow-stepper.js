@@ -918,7 +918,19 @@
               return { ok: resp.ok, status: resp.status, body: body, data: data };
             });
           }).then(function (resp) {
-            if (resp.data && resp.data.success) {
+            // Make's default ack for an accepted webhook is HTTP 200 with a
+            // plain-text "Accepted" body — sent whenever the scenario takes
+            // the request but the Webhook Response module doesn't answer
+            // within Make's 40s window (or isn't configured to return
+            // JSON). The old strict `data.success` check rejected that ack
+            // with "non-JSON or unexpected response" even though the
+            // request WENT THROUGH — and the error invited a resubmit
+            // (duplicate alt-proposal requests). Mirror requestBidUpdate:
+            // HTTP-OK counts as success unless the body carries an
+            // explicit JSON error.
+            var explicitError = resp.data &&
+              (resp.data.success === false || resp.data.error);
+            if ((resp.data && resp.data.success) || (resp.ok && !explicitError)) {
               // Make did its thing — reload so the stepper re-evaluates
               // against the latest field values (e.g. an alt-proposal
               // record may now be present / flags may have flipped).
@@ -929,9 +941,7 @@
             setStepLoading(el, false);
             onError(
               (resp.data && (resp.data.error || resp.data.message)) ||
-              (resp.ok
-                ? 'Webhook returned a non-JSON or unexpected response.'
-                : 'Webhook returned HTTP ' + resp.status + '.')
+              'Webhook returned HTTP ' + resp.status + '.'
             );
           }).catch(function (err) {
             setSubmitting(false);
