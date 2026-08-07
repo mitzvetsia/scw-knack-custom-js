@@ -705,6 +705,22 @@
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-detail-notes {',
     '  grid-template-columns: 1fr !important;',
     '}',
+    /* Connected Devices — one device per line, with per-device SOW pills
+       (lineBreakConnectedDevices). Blue pill = the expanded record's own
+       SOW; amber pill = a different SOW (amber = warning convention). */
+    '.scw-br-v2-cd-line { display: block; }',
+    '.scw-br-v2-cd-sow {',
+    '  display: inline-block; margin-left: 6px; padding: 0 5px;',
+    '  border-radius: 8px; vertical-align: 1px;',
+    '  font: 700 9px system-ui, -apple-system, sans-serif;',
+    '  line-height: 13px; letter-spacing: 0.03em;',
+    '}',
+    '.scw-br-v2-cd-sow--current {',
+    '  background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;',
+    '}',
+    '.scw-br-v2-cd-sow--other {',
+    '  background: #fffbeb; color: #b45309; border: 1px solid #fde68a;',
+    '}',
     /* SCW Notes — editable textarea (swapped in by makeScwNotesTextarea);
        inherits the standard editable-input look, just needs some height so
        multi-line notes are workable. */

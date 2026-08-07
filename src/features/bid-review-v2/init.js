@@ -1096,14 +1096,46 @@
   }
 
   // Connected Devices (field_1957) is multi-value; show each on its own
-  // line instead of comma-joined.
+  // line instead of comma-joined, and tag each device with the SOW(s) it
+  // belongs to — blue pill for the expanded record's own SOW(s), amber for
+  // a DIFFERENT SOW — so cross-SOW connections read at a glance.
   function lineBreakConnectedDevices(card) {
-    var vals = card.querySelectorAll(
-      '[data-scw-ws-v2-conn="field_1957"] .scw-ws-v2-conn-btn-val');
-    for (var i = 0; i < vals.length; i++) {
-      var elv = vals[i];
+    var btns = card.querySelectorAll('[data-scw-ws-v2-conn="field_1957"]');
+    for (var i = 0; i < btns.length; i++) {
+      var btn = btns[i];
+      var elv = btn.querySelector('.scw-ws-v2-conn-btn-val');
+      if (!elv) continue;
       var txt = (elv.textContent || '').trim();
       if (!txt || txt === '(none)') continue;
+
+      var entries = connectedDevicesWithSows(
+        btn.getAttribute('data-scw-ws-v2-record'),
+        btn.getAttribute('data-scw-ws-v2-view'));
+
+      if (entries && entries.length) {
+        elv.textContent = '';
+        for (var e = 0; e < entries.length; e++) {
+          var line = document.createElement('span');
+          line.className = 'scw-br-v2-cd-line';
+          line.appendChild(document.createTextNode(entries[e].label));
+          var sows = entries[e].sows;
+          for (var s = 0; s < sows.length; s++) {
+            var pill = document.createElement('span');
+            pill.className = 'scw-br-v2-cd-sow' +
+              (sows[s].current ? ' scw-br-v2-cd-sow--current'
+                               : ' scw-br-v2-cd-sow--other');
+            pill.textContent = sows[s].label;
+            pill.title = sows[s].current
+              ? 'On this item’s SOW (' + sows[s].label + ')'
+              : 'On a DIFFERENT SOW (' + sows[s].label + ')';
+            line.appendChild(pill);
+          }
+          elv.appendChild(line);
+        }
+        continue;
+      }
+
+      // Model unavailable — fall back to plain per-line text.
       var parts = txt.split(/\s*,\s*/);
       if (parts.length < 2) continue;
       elv.textContent = '';
@@ -1112,6 +1144,93 @@
         elv.appendChild(document.createTextNode(parts[p]));
       }
     }
+  }
+
+  // Resolve the expanded record's authoritative Connected Devices set (same
+  // forward field_1957 ∪ field_2197 back-pointer union worksheet-v2's card
+  // renders) and each device's SOW membership (field_2154), flagged against
+  // the expanded record's own SOW set. Returns null when the source-view
+  // model isn't readable (caller falls back to plain line breaks).
+  function connectedDevicesWithSows(recordId, viewKey) {
+    var wsv2 = window.SCW && SCW.worksheetV2;
+    if (!recordId || !viewKey || !wsv2 || !wsv2.data ||
+        typeof wsv2.data.readRecords !== 'function') return null;
+    var recs;
+    try { recs = wsv2.data.readRecords(viewKey) || []; } catch (err) { return null; }
+
+    var byId = Object.create(null), rec = null;
+    for (var i = 0; i < recs.length; i++) {
+      var r = recs[i];
+      if (!r || !r.id) continue;
+      byId[r.id] = r;
+      if (r.id === recordId) rec = r;
+    }
+    if (!rec) return null;
+
+    var ownSows = Object.create(null);
+    var ownRaw = rec.field_2154_raw;
+    if (Array.isArray(ownRaw)) {
+      for (var o = 0; o < ownRaw.length; o++) {
+        if (ownRaw[o] && ownRaw[o].id) ownSows[ownRaw[o].id] = true;
+      }
+    }
+
+    function devLabel(drec, fallback) {
+      if (drec) {
+        var raw = drec.field_1950_raw;
+        if (Array.isArray(raw) && raw[0]) {
+          var l = String(raw[0].identifier || raw[0].id || '');
+          if (l) return l;
+        }
+        var v = drec.field_1950;
+        if (v != null) {
+          var t = String(v).replace(/<[^>]*>/g, '').trim();
+          if (t) return t;
+        }
+      }
+      return fallback || (drec && drec.id) || '';
+    }
+    function entryFor(drec, fallbackLabel) {
+      var sows = [];
+      var sraw = drec && drec.field_2154_raw;
+      if (Array.isArray(sraw)) {
+        for (var x = 0; x < sraw.length; x++) {
+          if (!sraw[x] || !sraw[x].id) continue;
+          sows.push({
+            label: String(sraw[x].identifier || sraw[x].id),
+            current: !!ownSows[sraw[x].id]
+          });
+        }
+      }
+      // Same-SOW pills first so the amber outliers trail visibly.
+      sows.sort(function (a, b) { return (a.current ? 0 : 1) - (b.current ? 0 : 1); });
+      return { label: devLabel(drec, fallbackLabel), sows: sows };
+    }
+
+    var seen = Object.create(null), out = [];
+    var fwd = rec.field_1957_raw;
+    if (Array.isArray(fwd)) {
+      for (var f = 0; f < fwd.length; f++) {
+        var fe = fwd[f];
+        if (!fe || !fe.id || seen[fe.id]) continue;
+        seen[fe.id] = true;
+        out.push(entryFor(byId[fe.id], String(fe.identifier || fe.id)));
+      }
+    }
+    for (var k = 0; k < recs.length; k++) {
+      var c = recs[k];
+      if (!c || !c.id || c.id === recordId || seen[c.id]) continue;
+      var back = c.field_2197_raw;
+      if (!Array.isArray(back)) continue;
+      var points = false;
+      for (var b = 0; b < back.length; b++) {
+        if (back[b] && back[b].id === recordId) { points = true; break; }
+      }
+      if (!points) continue;
+      seen[c.id] = true;
+      out.push(entryFor(c, ''));
+    }
+    return out;
   }
 
   // SCW Notes (field_1953) — EDITABLE on the bid comparison page (was locked
