@@ -63,6 +63,16 @@
     };
   }
 
+  // Photo types pinned to the FRONT of every strip, in this order (matched
+  // case-insensitively against field_2445's display label). Types not listed
+  // fall back to the default ordering (missing-required first, then required,
+  // then type, then id). Add more entries here to pin additional types.
+  var PHOTO_TYPE_PRIORITY = ['proposed mounting location'];
+  function typeRank(t) {
+    var i = PHOTO_TYPE_PRIORITY.indexOf(String(t || '').trim().toLowerCase());
+    return i === -1 ? PHOTO_TYPE_PRIORITY.length : i;
+  }
+
   /** Walk the source-view <tr> for this record and pull a list of
    *  attached photo records: { id, imgUrl, type, required, completed, notes } */
   function extractPhotoRecords(sourceViewKey, recordId) {
@@ -195,8 +205,12 @@
 
     var arr = [];
     for (var k in map) arr.push(map[k]);
-    // Sort: required+incomplete first, then required, then by type, then id
+    // Sort: pinned types first (PHOTO_TYPE_PRIORITY), then required+incomplete,
+    // then required, then by type, then id
     arr.sort(function (a, b) {
+      var at = typeRank(a.type);
+      var bt = typeRank(b.type);
+      if (at !== bt) return at - bt;
       var am = (a.required && !a.completed) ? 0 : 1;
       var bm = (b.required && !b.completed) ? 0 : 1;
       if (am !== bm) return am - bm;
