@@ -2272,11 +2272,12 @@
       items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
         'scw-ws-v2-sd--wide');
     } else if (cat === 'default') {
-      // Connected Devices (field_2820, multi) — EDITABLE, network devices only
-      // (v1: showWhenFieldIsYes field_2795 / mapConn).
-      if (readBool(rec, F.mapConn || 'field_2795') === 'Yes') {
-        items += sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2820', 'Connected Devices'), 'scw-ws-v2-sd--conn');
-      }
+      // Connected Devices (field_2820, multi) — EDITABLE on every network/
+      // hardware row. (Formerly gated on mapConn/field_2795 = Yes like v1,
+      // which hid the control on most deploy rows — relays, hubs, locks —
+      // leaving no way to edit device wiring there. Empty renders "(none)"
+      // with the edit affordance.)
+      items += sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2820', 'Connected Devices'), 'scw-ws-v2-sd--conn');
       var mhDef = detailMountingHardwareRO(rec, viewKey);
       if (mhDef) items += sdItem(mhDef, 'scw-ws-v2-sd--wide');
       items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
@@ -2284,6 +2285,11 @@
     }
     // services / assumptions: their labor/assumption text is in the header
     // (read-only) — nothing extra in the detail panel.
+
+    // Edit history (auditField views only) — collapsed section, all categories.
+    if (ns.audit && typeof ns.audit.detailSection === 'function') {
+      items += ns.audit.detailSection(rec, viewKey);
+    }
 
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-survey-detail scw-ws-v2-install-detail">' + items + '</div>' +

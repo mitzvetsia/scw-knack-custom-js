@@ -248,14 +248,29 @@
   }
   function save(viewId, recordId, valuesObj, onDone) {
     var data = {}; data[CONFIG.VALUE_FIELD] = JSON.stringify(valuesObj);
+    // Edit-history hook (worksheet-v2 deploy pages): snapshot the current blob
+    // BEFORE the write; log the changed keys after success. No-ops on views
+    // without an auditField (worksheet-v2/audit-log.js).
+    var _audit = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.audit;
+    var _aPrev = null;
+    try {
+      if (_audit && _audit.enabledFor(viewId)) {
+        _aPrev = _audit.snapshotValues(viewId, recordId, data);
+      }
+    } catch (e) { _aPrev = null; }
+    function logAudit() {
+      try {
+        if (_aPrev && _audit) _audit.logPut(viewId, recordId, data, { prevValues: _aPrev });
+      } catch (e) { /* ignore */ }
+    }
     var view = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[viewId] : null;
     if (view && view.model && typeof view.model.updateRecord === 'function') {
-      view.model.updateRecord(recordId, data, { success: function () { onDone(true); }, error: function () { onDone(false, 'updateRecord failed'); } });
+      view.model.updateRecord(recordId, data, { success: function () { logAudit(); onDone(true); }, error: function () { onDone(false, 'updateRecord failed'); } });
       return;
     }
     SCW.knackAjax({
       url: SCW.knackRecordUrl(viewId, recordId), type: 'PUT', data: JSON.stringify(data),
-      success: function () { onDone(true); }, error: function (xhr) { onDone(false, parseKnackError(xhr)); }
+      success: function () { logAudit(); onDone(true); }, error: function (xhr) { onDone(false, parseKnackError(xhr)); }
     });
   }
   /* ── wire a mounted panel (auto-save, no Save button) ──

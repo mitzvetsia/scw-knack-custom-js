@@ -272,7 +272,15 @@
         // (schema resolved per record from schemaField; answers merged into
         // valueField). Uses the internal field set (all active fields) via
         // window.SCW.deliverables.
-        questionnaire: { schemaField: 'field_2930', valueField: 'field_2932' }
+        questionnaire: { schemaField: 'field_2930', valueField: 'field_2932' },
+        // Per-record edit-history blob (worksheet-v2/audit-log.js). Every save
+        // through the worksheet (edit.js / picker.js / bulk.js / deliverables
+        // panel) appends a {t,u,f,l,from,to} entry; the card detail panel
+        // renders it as a collapsed "Edit history (N)" section. The view_4056
+        // sub-portal clone inherits this via the JSON deep-clone. ⚠️ Builder:
+        // field_2995 must be an inline-editable column on view_4093 AND
+        // view_4056 or the view-based audit PUT 403s (warned in console).
+        auditField: 'field_2995'
       }
 
       // ── Sales scope-of-work-details page (view_3586) ────────────────

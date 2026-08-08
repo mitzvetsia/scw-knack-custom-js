@@ -1049,8 +1049,18 @@
     var s = xhr.status;
     return s === 0 || s === 408 || s === 429 || (s >= 500 && s <= 599);
   }
-  function doPutWithRetry(viewKey, recordId, body, attempt) {
+  function doPutWithRetry(viewKey, recordId, body, attempt, _auditPrev) {
     attempt = attempt || 1;
+    // Edit-history snapshot (auditField views only) — captured ONCE before
+    // the first attempt and carried through retries, so a retry can't read
+    // post-patch values as the "from" side.
+    if (attempt === 1 && _auditPrev == null) {
+      try {
+        if (ns.audit && ns.audit.enabledFor(viewKey)) {
+          _auditPrev = ns.audit.snapshotValues(viewKey, recordId, body);
+        }
+      } catch (e) { /* ignore */ }
+    }
     var d = $.Deferred();
     try {
       SCW.knackAjax({
@@ -1058,13 +1068,18 @@
         type: 'PUT',
         data: JSON.stringify(body),
         success: function (resp) {
+          try {
+            if (_auditPrev && ns.audit && typeof ns.audit.logPut === 'function') {
+              ns.audit.logPut(viewKey, recordId, body, { prevValues: _auditPrev, resp: resp });
+            }
+          } catch (e) { /* ignore */ }
           d.resolve({ ok: true, recordId: recordId, status: 200, resp: resp });
         },
         error: function (xhr) {
           if (attempt < MAX_ATTEMPTS && isRetryable(xhr)) {
             var wait = BASE_BACKOFF * Math.pow(2, attempt - 1) + Math.random() * 250;
             setTimeout(function () {
-              doPutWithRetry(viewKey, recordId, body, attempt + 1)
+              doPutWithRetry(viewKey, recordId, body, attempt + 1, _auditPrev)
                 .then(function (r) { d.resolve(r); });
             }, wait);
           } else {

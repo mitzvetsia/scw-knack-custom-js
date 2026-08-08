@@ -308,6 +308,14 @@
           $(document).trigger('scw-ws-v2-record-saved',
             [{ viewKey: viewKey, recordId: recordId, fieldKey: fieldKey }]);
         } catch (e) { /* ignore */ }
+        // Append to the record's edit-history blob (auditField views only).
+        try {
+          if (ns.audit && typeof ns.audit.logPut === 'function') {
+            var _aPrev = {}; _aPrev[fieldKey] = prevValue;
+            var _aBody = {}; _aBody[fieldKey] = newValue;
+            ns.audit.logPut(viewKey, recordId, _aBody, { prevValues: _aPrev, resp: resp });
+          }
+        } catch (e) { /* ignore */ }
         // Fee (and the other RECALC CALCs) depend on a server-side formula
         // recompute. Read back ONLY the edited record via the view-scoped
         // session-token endpoint and patch its CALC fields — instead of the
