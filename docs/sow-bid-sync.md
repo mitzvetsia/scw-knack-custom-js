@@ -206,24 +206,52 @@ Record) at apply time — the payload's projected copies
    resolve `sowId` (body → package `field_2387` → abort branch).
 1. **Searches → Array Aggregators**: bid items (`field_2415` is package,
    1000/page) → `BIDS`; SOW items (`field_2154` contains sowId) → `ITEMS`.
-   Collect ids referenced by connections but absent from `ITEMS` (current
-   `field_1957` children AND their `field_2197` parents can live on other
-   SOWs) → iterate → Get a Record → `EXTRA`; `ALL` = merge(ITEMS, EXTRA).
+   No other reads are needed: "in scope" = membership in `ITEMS`, and
+   out-of-scope children are preserved WITHOUT ever reading them — the
+   scope tests, exclusivity counts, current parents (`field_2197`) and
+   current forward lists (`field_1957`) all come from `ITEMS` lookups
+   (`get(map(ITEMS; <field>; id; <id>); 1)`).
 2. **Creates first**: iterate no-`field_2404` bids → Create SOW item
    (incl. `field_2154=[sowId]`) → write the new id back to the bid's
    `field_2404` → aggregate. Then build `XLAT` (bidId→sowItemId) from
    matched bids ∪ creates — the translation map MUST include creates.
 3. **Scalar updates**: iterate matched bids (skip dupes beyond the kept
    one) → Update the `field_2404` target.
-4. **Connection pass** (scoped merge): outer iterator = matched bids with
-   `mapConn` + `field_2380`; inner iterator per parent over
-   deduplicate(current `field_1957` ∪ translated desired); per child,
-   router on (inScope / inDesired / currentParent scope / exclusivity)
-   implements the steal guard + shared-child keep; child `field_2197`
-   writes fire here; inner Array Aggregator collapses survivors →
-   Update parent `field_1957` (filter: only when changed). Aggregate
-   {oldParent, child} moves → post-loop cleanup pass on in-scope old
-   parents not matched on this bid.
+4. **Connection pass** (scoped merge) — PLAN-THEN-WRITE, no routers:
+   - Pre-compute `CLAIMED` = every translated desired child id across ALL
+     parents on this bid. This is what makes the pass safe against its own
+     intra-run staleness: `ITEMS` is a run-start snapshot, so parent Q's
+     pass would otherwise see a child that parent P's pass just took as
+     "still mine" and clear its `field_2197`. Claimed children are always
+     dropped-without-clearing by every other parent.
+   - Outer iterator: matched bids with `mapConn` + `field_2380`, filtered
+     to parents present in `ITEMS` (off-SOW parents skip + warn).
+     `current` = parent's `field_1957` ids from `ITEMS`; `desired` =
+     `deduplicate(map(XLAT; sow; bid; <field_2380 ids>))`.
+   - Inner iterator over `deduplicate(merge(current; desired))` → ONE Set
+     Variables module computing the decision {keep, action} per child from
+     pure `ITEMS` lookups (decision table below) → inner Array Aggregator
+     collects the plan. No filters before the aggregator — every child
+     reaches it.
+   - Writes from the plan: Update parent `field_1957` =
+     `map(plan; childId; keep; true)` (filter: sorted join ≠ sorted
+     current); one iterator over plan rows with action `set2197`/
+     `clear2197` → Update child `field_2197`.
+   - Decision table (childId c, parent P, this run's sowId S):
+     | facts | keep | action |
+     |---|---|---|
+     | c ∉ ITEMS, in current | yes | none — other SOW's graph |
+     | c ∉ ITEMS, desired only | no | warn: cross-SOW bid child |
+     | desired, c's `field_2197` = P | yes | none |
+     | desired, c's parent ∉ ITEMS | no | warn: steal blocked |
+     | desired, otherwise | yes | set2197 → P |
+     | current only, claimed by another parent | no | none (that parent sets 2197) |
+     | current only, exclusive to S, still → P | no | clear2197 |
+     | current only, exclusive to S, → elsewhere | no | none |
+     | current only, shared with another SOW | yes | warn: shared child kept |
+   - Optional hygiene pass: in-scope parents NOT matched on this bid whose
+     `field_1957` still lists claimed children — subtract them. The
+     client-side cascade's kept-repair also heals this on next load.
 5. **Removals**: iterate `ITEMS` not covered (minus accessory exemption)
    → Update `field_2154` = current MINUS sowId (**subtract, never clear**
    — the item may live on other SOWs). Then disconnectBids
