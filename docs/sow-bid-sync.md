@@ -182,6 +182,42 @@ removal skipped) should surface in the run output — they are the cases
 where two SOWs' bids genuinely disagree about one physical record, and a
 human has to pick.
 
+## Make implementation sketch (module flow)
+
+0. **Webhook → Webhook Response 200 immediately** (processing exceeds the
+   40s response window) → filter `actionType = package_copy_to_sow` →
+   resolve `sowId` (body → package `field_2387` → abort branch).
+1. **Searches → Array Aggregators**: bid items (`field_2415` is package,
+   1000/page) → `BIDS`; SOW items (`field_2154` contains sowId) → `ITEMS`.
+   Collect ids referenced by connections but absent from `ITEMS` (current
+   `field_1957` children AND their `field_2197` parents can live on other
+   SOWs) → iterate → Get a Record → `EXTRA`; `ALL` = merge(ITEMS, EXTRA).
+2. **Creates first**: iterate no-`field_2404` bids → Create SOW item
+   (incl. `field_2154=[sowId]`) → write the new id back to the bid's
+   `field_2404` → aggregate. Then build `XLAT` (bidId→sowItemId) from
+   matched bids ∪ creates — the translation map MUST include creates.
+3. **Scalar updates**: iterate matched bids (skip dupes beyond the kept
+   one) → Update the `field_2404` target.
+4. **Connection pass** (scoped merge): outer iterator = matched bids with
+   `mapConn` + `field_2380`; inner iterator per parent over
+   deduplicate(current `field_1957` ∪ translated desired); per child,
+   router on (inScope / inDesired / currentParent scope / exclusivity)
+   implements the steal guard + shared-child keep; child `field_2197`
+   writes fire here; inner Array Aggregator collapses survivors →
+   Update parent `field_1957` (filter: only when changed). Aggregate
+   {oldParent, child} moves → post-loop cleanup pass on in-scope old
+   parents not matched on this bid.
+5. **Removals**: iterate `ITEMS` not covered (minus accessory exemption)
+   → Update `field_2154` = current MINUS sowId (**subtract, never clear**
+   — the item may live on other SOWs). Then disconnectBids
+   (`field_2404` = [] on dupes).
+6. **Warnings**: text-aggregate steal-blocked / shared-removal-skipped →
+   notify. A `dryRun` flag in the body + a filter on every write module
+   gives a plan-only run for testing.
+
+Make runs modules sequentially per execution, so Knack's ~10 req/s limit
+is not a concern the way it is client-side.
+
 ## Migration order
 
 1. Rework the existing scenario to derive from `packageId` + `sowId`,
