@@ -182,6 +182,15 @@ removal skipped) should surface in the run output — they are the cases
 where two SOWs' bids genuinely disagree about one physical record, and a
 human has to pick.
 
+**The scoped-merge pass works IDENTICALLY in the current payload-driven
+scenario** — only the inputs differ: the bidId→sowItemId translation map
+comes free from `updates[]` (every entry pairs `bidRecordId` with
+`sowItemId`) ∪ the creates' new ids, instead of from searches. Two things
+the payload can NOT provide: the parent's CURRENT `field_1957` and each
+child's current `field_2154`/`field_2197` must be fetched fresh (Get a
+Record) at apply time — the payload's projected copies
+(`field_2404.field_1957_raw` etc.) are page-load snapshots.
+
 ## Make implementation sketch (module flow)
 
 0. **Webhook → Webhook Response 200 immediately** (processing exceeds the
