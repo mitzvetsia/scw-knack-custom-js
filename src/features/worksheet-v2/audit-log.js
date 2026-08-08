@@ -46,7 +46,8 @@
     dropPrefix: 'Prefix',            dropNumber: 'Drop number',
     labor: 'Labor',                  subBid: 'Sub Bid',
     installStatus: 'Install status', qaStatus: 'QA status',
-    qaNotes: 'QA notes'
+    qaNotes: 'QA notes',             accessories: 'Accessories',
+    children: 'Accessories',         parent: 'Attached to'
   };
 
   function auditFieldOf(viewKey) {
@@ -232,7 +233,24 @@
    *  is patched BEFORE the PUT fires — so a rapid follow-up edit's readLog
    *  sees this append even while the PUT is still in flight (serializes the
    *  read-modify-write through the local copy) — then re-patched with the
-   *  server response + pending-overlay + notify so the section re-renders. */
+   *  server response + pending-overlay + notify so the trigger re-renders.
+   *
+   *  Network writes drain through a small concurrency-capped queue: a
+   *  Connected Devices cascade fans out one audit write per touched child on
+   *  top of the cascade's own PUTs, and Knack silently 429s past ~10 req/s. */
+  var _writeQueue = [], _writesRunning = 0;
+  var MAX_AUDIT_WRITES = 2;
+
+  function drainWrites() {
+    while (_writesRunning < MAX_AUDIT_WRITES && _writeQueue.length) {
+      var job = _writeQueue.shift();
+      _writesRunning++;
+      try {
+        job(function () { _writesRunning--; drainWrites(); });
+      } catch (e) { _writesRunning--; }
+    }
+  }
+
   function writeLog(viewKey, recordId, auditField, entries) {
     var json = JSON.stringify(entries);
     var body = {}; body[auditField] = json;
@@ -244,37 +262,42 @@
         ns.data.registerPendingWrite(viewKey, recordId, auditField, json);
       }
     } catch (e) { /* ignore */ }
-    var attempt = 0;
-    function fire() {
-      attempt++;
-      SCW.knackAjax({
-        url:  SCW.knackRecordUrl(viewKey, recordId),
-        type: 'PUT',
-        data: JSON.stringify(body),
-        success: function (resp) {
-          try {
-            if (typeof SCW.syncKnackModel === 'function') {
-              SCW.syncKnackModel(viewKey, recordId, resp, auditField, json);
+    _writeQueue.push(function (done) {
+      var attempt = 0;
+      function fire() {
+        attempt++;
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(viewKey, recordId),
+          type: 'PUT',
+          data: JSON.stringify(body),
+          success: function (resp) {
+            try {
+              if (typeof SCW.syncKnackModel === 'function') {
+                SCW.syncKnackModel(viewKey, recordId, resp, auditField, json);
+              }
+              if (ns.data && typeof ns.data.registerPendingWrite === 'function') {
+                ns.data.registerPendingWrite(viewKey, recordId, auditField, json);
+              }
+              if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
+            } catch (e) { /* ignore */ }
+            done();
+          },
+          error: function (xhr) {
+            var s = xhr && xhr.status;
+            if (attempt < 3 && (s === 0 || s === 408 || s === 429 || (s >= 500 && s <= 599))) {
+              setTimeout(fire, 800 * attempt);
+              return;
             }
-            if (ns.data && typeof ns.data.registerPendingWrite === 'function') {
-              ns.data.registerPendingWrite(viewKey, recordId, auditField, json);
-            }
-            if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
-          } catch (e) { /* ignore */ }
-        },
-        error: function (xhr) {
-          var s = xhr && xhr.status;
-          if (attempt < 2 && (s === 0 || s === 408 || s === 429 || (s >= 500 && s <= 599))) {
-            setTimeout(fire, 800);
-            return;
+            // A 403 here almost always means the audit field isn't an
+            // inline-editable column on this view in Builder.
+            console.warn('[scw-ws-v2-audit] audit write failed', viewKey, recordId, s);
+            done();
           }
-          // A 403 here almost always means the audit field isn't an
-          // inline-editable column on this view in Builder.
-          console.warn('[scw-ws-v2-audit] audit write failed', viewKey, recordId, s);
-        }
-      });
-    }
-    try { fire(); } catch (e) { /* ignore */ }
+        });
+      }
+      try { fire(); } catch (e) { done(); }
+    });
+    drainWrites();
   }
 
   /**
@@ -295,6 +318,17 @@
       var from = truncate(String(c.from == null ? '' : c.from));
       var to   = truncate(String(c.to   == null ? '' : c.to));
       if (from === to) continue;   // nothing actually changed
+      // Dedupe: cascade repair/verify passes re-PUT identical values moments
+      // after the original write — skip when the LATEST entry for this field
+      // already records the same from→to within the last 10 minutes.
+      var dup = false;
+      for (var j = entries.length - 1; j >= 0; j--) {
+        if (!entries[j] || entries[j].f !== c.f) continue;
+        dup = entries[j].from === from && entries[j].to === to &&
+              (Date.parse(t) - (Date.parse(entries[j].t) || 0)) < 600000;
+        break;
+      }
+      if (dup) continue;
       entries.push({ t: t, u: u, f: c.f, l: c.l || labelFor(viewKey, c.f, null), from: from, to: to });
       added++;
     }
@@ -375,14 +409,17 @@
     return rows;
   }
 
-  /** Compact trigger in the card's detail panel — the log itself opens in a
-   *  modal (an inline list can't scale past a handful of entries). */
+  /** Compact trigger for the card's detail panel — the log itself opens in a
+   *  modal (an inline list can't scale past a handful of entries). Returned
+   *  as a SLOT that card.js places as a sibling of the detail grid; CSS pins
+   *  it to the panel's far right, aligned under the row's warning-icon
+   *  column. */
   function detailSection(rec, viewKey) {
     var AF = auditFieldOf(viewKey);
     if (!AF) return '';
     var entries = readLog(rec, AF);
     if (!entries.length) return '';
-    return '<div class="scw-ws-v2-sd-item scw-ws-v2-sd--wide scw-ws-v2-sd--audit">' +
+    return '<div class="scw-ws-v2-audit-slot">' +
       '<button type="button" class="scw-ws-v2-audit-btn" ' +
         'data-scw-ws-v2-audit-open="' + esc(rec.id) + '" ' +
         'data-scw-ws-v2-audit-view="' + esc(viewKey) + '" ' +
@@ -454,10 +491,15 @@
     var style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent =
-      // Trigger button (card detail panel)
+      // Trigger button — pinned to the detail panel's top-right, flush with
+      // the row's warning-icon column above (the --audit modifier on the
+      // panel reserves the right edge so wide detail text can't run under it)
+      '.scw-ws-v2-detail--audit{position:relative;}' +
+      '.scw-ws-v2-detail--audit .scw-ws-v2-install-detail{padding-right:150px;}' +
+      '.scw-ws-v2-audit-slot{position:absolute;top:8px;right:12px;}' +
       '.scw-ws-v2-audit-btn{display:inline-flex;align-items:center;gap:6px;' +
         'background:#fff;border:1px solid #e2e8f0;border-radius:6px;' +
-        'padding:3px 10px;cursor:pointer;' +
+        'padding:3px 10px;cursor:pointer;white-space:nowrap;' +
         'font:600 11px/1.2 inherit;color:#64748b;letter-spacing:.02em;}' +
       '.scw-ws-v2-audit-btn:hover{color:#334155;border-color:#cbd5e1;background:#f8fafc;}' +
       '.scw-ws-v2-audit-btn svg{flex:0 0 auto;}' +

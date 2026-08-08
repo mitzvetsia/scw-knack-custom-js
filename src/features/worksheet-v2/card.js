@@ -2286,13 +2286,16 @@
     // services / assumptions: their labor/assumption text is in the header
     // (read-only) — nothing extra in the detail panel.
 
-    // Edit history (auditField views only) — collapsed section, all categories.
-    if (ns.audit && typeof ns.audit.detailSection === 'function') {
-      items += ns.audit.detailSection(rec, viewKey);
-    }
+    // Edit history (auditField views only) — trigger pinned to the panel's
+    // far right, aligned under the row's warning-icon column. Sits OUTSIDE
+    // the sd grid (a sibling of it) so the grid flow can't push it around;
+    // the --audit modifier reserves the right edge against overlap.
+    var auditHtml = (ns.audit && typeof ns.audit.detailSection === 'function')
+      ? ns.audit.detailSection(rec, viewKey) : '';
 
-    return '<div class="scw-ws-v2-detail">' +
+    return '<div class="scw-ws-v2-detail' + (auditHtml ? ' scw-ws-v2-detail--audit' : '') + '">' +
       '<div class="scw-ws-v2-survey-detail scw-ws-v2-install-detail">' + items + '</div>' +
+      auditHtml +
     '</div>';
   }
 
