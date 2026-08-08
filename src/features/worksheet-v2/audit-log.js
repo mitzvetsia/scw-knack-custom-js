@@ -13,8 +13,9 @@
  *      "from": "old value",               // display form, tag-stripped
  *      "to":   "new value" }, ...]        // capped at MAX_ENTRIES (oldest drop)
  *
- * The blob is read back into a collapsed "Edit history (N)" section at the
- * bottom of the card's detail panel (card.js calls ns.audit.detailSection).
+ * The blob is read back through a compact history-icon button at the bottom
+ * of the card's detail panel (card.js calls ns.audit.detailSection); clicking
+ * it opens a scrollable MODAL with the full log, read fresh at open time.
  *
  * Views without `auditField` in their config no-op entirely — this module is
  * inert everywhere except the deploy/install surfaces.
@@ -345,12 +346,15 @@
     } catch (e) { return ''; }
   }
 
-  function detailSection(rec, viewKey) {
-    var AF = auditFieldOf(viewKey);
-    if (!AF) return '';
-    var entries = readLog(rec, AF);
-    if (!entries.length) return '';
+  // Clock-with-counterclockwise-arrow — the standard "history" glyph.
+  var HISTORY_ICON =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M3 3v5h5"></path>' +
+      '<path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"></path>' +
+      '<polyline points="12 7 12 12 15 15"></polyline></svg>';
 
+  function entryRowsHtml(entries) {
     var rows = '';
     for (var i = entries.length - 1; i >= 0; i--) {   // newest first
       var e = entries[i] || {};
@@ -368,18 +372,79 @@
           '</span>' +
         '</div>';
     }
+    return rows;
+  }
 
+  /** Compact trigger in the card's detail panel — the log itself opens in a
+   *  modal (an inline list can't scale past a handful of entries). */
+  function detailSection(rec, viewKey) {
+    var AF = auditFieldOf(viewKey);
+    if (!AF) return '';
+    var entries = readLog(rec, AF);
+    if (!entries.length) return '';
     return '<div class="scw-ws-v2-sd-item scw-ws-v2-sd--wide scw-ws-v2-sd--audit">' +
-      '<div class="scw-ws-v2-audit">' +
-        '<button type="button" class="scw-ws-v2-audit-toggle" data-scw-ws-v2-audit-toggle="" aria-expanded="false">' +
-          '<span class="scw-ws-v2-audit-chev"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" ' +
-            'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
-            '<polyline points="9 6 15 12 9 18"></polyline></svg></span>' +
-          '<span>Edit history (' + entries.length + ')</span>' +
-        '</button>' +
-        '<div class="scw-ws-v2-audit-body">' + rows + '</div>' +
-      '</div>' +
+      '<button type="button" class="scw-ws-v2-audit-btn" ' +
+        'data-scw-ws-v2-audit-open="' + esc(rec.id) + '" ' +
+        'data-scw-ws-v2-audit-view="' + esc(viewKey) + '" ' +
+        'title="View this line item’s edit history">' +
+        HISTORY_ICON +
+        '<span>Edit history (' + entries.length + ')</span>' +
+      '</button>' +
     '</div>';
+  }
+
+  /** Full history modal — reads the record FRESH at open time (the trigger's
+   *  count can be a render behind; the modal never is). Reuses the bulk-modal
+   *  shell (styles.js) for the backdrop/card; the entry list scrolls. */
+  function openModal(viewKey, recordId) {
+    var AF = auditFieldOf(viewKey);
+    if (!AF || !recordId) return;
+    var rec = findRecord(viewKey, recordId);
+    var entries = readLog(rec, AF);
+
+    var title = '';
+    try {
+      var F = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+      var lbl  = stripTags(rec && (rec[F.displayLabel] != null ? rec[F.displayLabel] : rec[F.labelAlt]));
+      var prod = stripTags(rec && (rec[F.productName] != null ? rec[F.productName] : rec[F.product]));
+      title = (lbl && prod) ? lbl + ' · ' + prod : (lbl || prod || '');
+    } catch (e) { /* ignore */ }
+
+    var old = document.querySelector('.scw-ws-v2-audit-overlay');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+
+    var ov = document.createElement('div');
+    ov.className = 'scw-ws-v2-bulk-overlay scw-ws-v2-audit-overlay';
+    ov.innerHTML =
+      '<div class="scw-ws-v2-bulk-modal scw-ws-v2-audit-modal">' +
+        '<div class="scw-ws-v2-bulk-modal-head">' +
+          '<div class="scw-ws-v2-bulk-modal-title scw-ws-v2-audit-modal-title">' +
+            HISTORY_ICON + '<span>Edit history' + (title ? ' — ' + esc(title) : '') + '</span></div>' +
+          '<div class="scw-ws-v2-bulk-modal-sub">' + entries.length +
+            ' change' + (entries.length === 1 ? '' : 's') +
+            (entries.length >= MAX_ENTRIES ? ' · only the most recent ' + MAX_ENTRIES + ' are kept' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="scw-ws-v2-audit-modal-body">' +
+          (entries.length ? entryRowsHtml(entries)
+                          : '<div class="scw-ws-v2-audit-empty">No edits recorded yet.</div>') +
+        '</div>' +
+        '<div class="scw-ws-v2-bulk-modal-actions">' +
+          '<button type="button" class="scw-ws-v2-bulk-modal-cancel">Close</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+
+    function close() {
+      if (ov.parentNode) ov.parentNode.removeChild(ov);
+      document.removeEventListener('keydown', onKey, true);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    }
+    ov.querySelector('.scw-ws-v2-bulk-modal-cancel').addEventListener('click', close);
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    document.addEventListener('keydown', onKey, true);
   }
 
   // ── CSS + toggle wiring (once) ─────────────────────────────────────
@@ -389,22 +454,28 @@
     var style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent =
-      '.scw-ws-v2-audit{width:100%;}' +
-      '.scw-ws-v2-audit-toggle{display:inline-flex;align-items:center;gap:5px;' +
-        'background:none;border:none;padding:2px 0;cursor:pointer;' +
+      // Trigger button (card detail panel)
+      '.scw-ws-v2-audit-btn{display:inline-flex;align-items:center;gap:6px;' +
+        'background:#fff;border:1px solid #e2e8f0;border-radius:6px;' +
+        'padding:3px 10px;cursor:pointer;' +
         'font:600 11px/1.2 inherit;color:#64748b;letter-spacing:.02em;}' +
-      '.scw-ws-v2-audit-toggle:hover{color:#334155;}' +
-      '.scw-ws-v2-audit-chev{display:inline-flex;transition:transform .12s ease;}' +
-      '.scw-ws-v2-audit--open .scw-ws-v2-audit-chev{transform:rotate(90deg);}' +
-      '.scw-ws-v2-audit-body{display:none;margin-top:4px;border-top:1px solid #e2e8f0;' +
-        'max-height:220px;overflow-y:auto;}' +
-      '.scw-ws-v2-audit--open .scw-ws-v2-audit-body{display:block;}' +
+      '.scw-ws-v2-audit-btn:hover{color:#334155;border-color:#cbd5e1;background:#f8fafc;}' +
+      '.scw-ws-v2-audit-btn svg{flex:0 0 auto;}' +
+      // Modal
+      '.scw-ws-v2-audit-overlay{z-index:100000;}' +
+      '.scw-ws-v2-audit-modal{width:min(680px,94vw);}' +
+      '.scw-ws-v2-audit-modal-title{display:flex;align-items:center;gap:8px;}' +
+      '.scw-ws-v2-audit-modal-title svg{width:15px;height:15px;flex:0 0 auto;}' +
+      '.scw-ws-v2-audit-modal-body{max-height:min(58vh,520px);overflow-y:auto;' +
+        'padding:4px 18px 10px;border-top:1px solid #f1f5f9;}' +
+      '.scw-ws-v2-audit-empty{color:#94a3b8;font-size:12px;padding:14px 0;}' +
+      // Entry rows (modal list)
       '.scw-ws-v2-audit-row{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;' +
-        'padding:4px 0;border-bottom:1px solid #f1f5f9;font-size:11.5px;line-height:1.35;}' +
+        'padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:12px;line-height:1.4;}' +
       '.scw-ws-v2-audit-row:last-child{border-bottom:none;}' +
-      '.scw-ws-v2-audit-when{color:#94a3b8;white-space:nowrap;min-width:96px;}' +
+      '.scw-ws-v2-audit-when{color:#94a3b8;white-space:nowrap;min-width:104px;}' +
       '.scw-ws-v2-audit-who{color:#475569;font-weight:600;white-space:nowrap;}' +
-      '.scw-ws-v2-audit-what{color:#334155;flex:1 1 260px;min-width:200px;}' +
+      '.scw-ws-v2-audit-what{color:#334155;flex:1 1 280px;min-width:220px;}' +
       '.scw-ws-v2-audit-fld{font-weight:600;color:#0f4c75;margin-right:4px;}' +
       '.scw-ws-v2-audit-from{color:#94a3b8;text-decoration:line-through;' +
         'text-decoration-color:#cbd5e1;word-break:break-word;}' +
@@ -416,14 +487,12 @@
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-audit-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-audit-bound', '1');
     document.addEventListener('click', function (e) {
-      var btn = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-audit-toggle]');
+      var btn = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-audit-open]');
       if (!btn) return;
       e.preventDefault();
       e.stopPropagation();
-      var box = btn.closest('.scw-ws-v2-audit');
-      if (!box) return;
-      var open = box.classList.toggle('scw-ws-v2-audit--open');
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      openModal(btn.getAttribute('data-scw-ws-v2-audit-view') || '',
+                btn.getAttribute('data-scw-ws-v2-audit-open') || '');
     });
   }
 
@@ -432,6 +501,7 @@
     logPut:         logPut,
     snapshotValues: snapshotValues,
     detailSection:  detailSection,
+    openModal:      openModal,
     enabledFor:     function (viewKey) { return !!auditFieldOf(viewKey); }
   };
 })();
