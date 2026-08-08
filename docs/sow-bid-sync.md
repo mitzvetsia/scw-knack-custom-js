@@ -84,37 +84,45 @@ derivation at apply time is semantically identical to the button's payload.
 
 ## Field map — payload key → bid record field
 
-What each rich-payload key was built from; remap the scenario's apply modules
-from `updates[].<key>` to these on the search-A record. Booleans arrive as
-real booleans in `_raw`; connection ids come from `_raw[].id`.
+The sync's core write, per matched bid record: **Update the SOW line item
+(`field_2404` target) with the bid's values.** Read from the bid record's
+`_raw` side (booleans arrive as real booleans; connection ids as
+`_raw[].id`); write to the SOW-side field in column 3. Connection ids for
+product / prefix / bucket / MDF are PORTABLE — both objects connect to
+the same catalog/location/bucket objects, so the id passes straight
+through.
 
-| payload key    | bid field              | notes |
-|----------------|------------------------|-------|
-| sowItemId      | `field_2404_raw[0].id` | update target |
-| label          | `field_2365`           | cosmetic (modal display only) |
-| qty            | `field_2399_raw`       | number |
-| rate           | `field_2400_raw`       | numeric string ("725.00") |
-| labor          | `field_2401_raw`       | number |
-| laborDesc      | `field_2409`           | HTML preserved |
-| productName    | `field_2379_raw`       | |
-| existCabling   | `field_2370_raw`       | boolean |
-| connDevice     | `field_2380_raw[].id`  | **bid** record ids — translate to SOW item ids via each connected bid's own `field_2404` (existing scenario step, keep it) |
-| mapConn        | `field_2374_raw`       | boolean |
-| notes          | `field_2412_raw`       | |
-| product        | `field_2627_raw[0].id` | product connection |
-| sku            | `field_2328_raw`       | not projected by view_3680 → was always "" |
-| price          | —                      | ⚠ was `num(field_2382)` = leading digits of the SKU text ("26DF8M-180" → 26). Junk — do not port. |
-| productDesc    | `field_2629_raw`       | client stripped HTML tags |
-| dropLength     | `field_2367_raw`       | |
-| conduit        | `field_2368_raw`       | numeric feet, NOT yes/no |
-| plenum         | `field_2371_raw`       | boolean |
-| dropPrefix     | `field_2361_raw[0].id` | |
-| dropNumber     | `field_2362_raw`       | number |
-| exterior       | `field_2372_raw`       | boolean |
-| limitQtyOne    | `field_2373_raw`       | boolean |
-| proposalBucket | `field_2366_raw[0].id` | same bucket object as SOW-side `field_2219` — id is portable |
-| mdfIdf         | `field_2375_raw[0].id` | same location object as SOW-side `field_1946` — id is portable |
-| bidRecord      | whole record           | see caveat below |
+| payload key    | bid field (read)       | SOW field (write) | notes |
+|----------------|------------------------|-------------------|-------|
+| sowItemId      | `field_2404_raw[0].id` | —                 | the record being updated |
+| label          | `field_2365`           | —                 | cosmetic; SOW label `field_1950` recomputes from prefix + number |
+| qty            | `field_2399_raw`       | `field_1964`      | number |
+| rate           | `field_2400_raw`       | `field_2150`      | INPUT sub bid (unit) — extended `field_2151` is a CALC and recomputes |
+| labor          | `field_2401_raw`       | —                 | CALC on both sides — never write |
+| laborDesc      | `field_2409`           | `field_2020`      | HTML preserved. ⚠ the SOW object also carries `field_2019` (the copy view_3680 projects) — verify which one the current apply writes and match it |
+| productName    | `field_2379_raw`       | —                 | SOW stored name (`field_1958`) derives from the product connection |
+| existCabling   | `field_2370_raw`       | `field_2461`      | boolean |
+| connDevice     | `field_2380_raw[].id`  | `field_1957`/`field_2197` | **bid** record ids → SOW ids via each connected bid's `field_2404` — then the SCOPED MERGE below, never a plain write |
+| mapConn        | `field_2374_raw`       | `field_2231`      | boolean |
+| notes          | `field_2412_raw`       | `field_2412`      | survey notes — same field key on both objects |
+| product        | `field_2627_raw[0].id` | `field_1949`      | portable id |
+| sku            | `field_2328_raw`       | —                 | not projected by view_3680 → was always "" |
+| price          | —                      | —                 | ⚠ was `num(field_2382)` = leading digits of the SKU text ("26DF8M-180" → 26). Junk — do not port. |
+| productDesc    | `field_2629_raw`       | —                 | derives from the product connection |
+| dropLength     | `field_2367_raw`       | `field_1965`      | |
+| conduit        | `field_2368_raw`       | `field_2035`      | numeric feet, NOT yes/no |
+| plenum         | `field_2371_raw`       | `field_1983`      | boolean |
+| dropPrefix     | `field_2361_raw[0].id` | `field_2240`      | same Drop Prefix catalog — portable id |
+| dropNumber     | `field_2362_raw`       | `field_1951`      | number; `field_1950` label recomputes |
+| exterior       | `field_2372_raw`       | `field_1984`      | boolean |
+| limitQtyOne    | `field_2373_raw`       | ⚠ verify          | no SOW-side key in worksheet-v2's map — copy the current scenario's target (or skip) |
+| proposalBucket | `field_2366_raw[0].id` | `field_2219`      | portable id |
+| mdfIdf         | `field_2375_raw[0].id` | `field_1946`      | portable id |
+| bidRecord      | whole record           | —                 | see caveat below |
+
+**Creates** write the same columns PLUS `field_2154 = [sowId]`, then write
+the new record's id back to the bid's `field_2404` (future syncs match on
+it, and the run's own translation map needs it).
 
 Removals entry label: SOW item `field_1950`, falling back to product name.
 
