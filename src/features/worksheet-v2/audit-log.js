@@ -131,6 +131,38 @@
     return out;
   }
 
+  /** Pre-PUT snapshot of a record's RAW connection values for every field in
+   *  `body` — {fieldKey: [{id, identifier}]}. The reciprocal (losing-owner)
+   *  logic needs the old owner's record ID, which display strings lose. */
+  function snapshotRaw(viewKey, recordId, body) {
+    var rec = findRecord(viewKey, recordId);
+    var out = {};
+    if (!rec) return out;
+    for (var fieldKey in body) {
+      if (!Object.prototype.hasOwnProperty.call(body, fieldKey)) continue;
+      var raw = rec[fieldKey + '_raw'];
+      if (!Array.isArray(raw)) continue;
+      var copy = [];
+      for (var i = 0; i < raw.length; i++) {
+        if (raw[i]) copy.push({ id: raw[i].id, identifier: raw[i].identifier });
+      }
+      out[fieldKey] = copy;
+    }
+    return out;
+  }
+
+  /** Worksheet-style label for a record ("AC-01 · Keypad Reader"). */
+  function recLabel(rec, viewKey) {
+    if (!rec) return '';
+    try {
+      var F = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+      var lbl  = stripTags(rec[F.displayLabel] != null ? rec[F.displayLabel] : rec[F.labelAlt]);
+      var prod = stripTags(rec[F.productName] != null ? rec[F.productName] : rec[F.product]);
+      if (lbl && prod) return lbl + ' · ' + prod;
+      return lbl || prod || rec.id;
+    } catch (e) { return rec.id || ''; }
+  }
+
   /** Resolve a "to" display for a body value when no server response is
    *  available: connection id arrays resolve identifiers by scanning the
    *  loaded records; scalars are stripped/truncated. */
@@ -365,6 +397,78 @@
       changes.push({ f: fieldKey, l: labelFor(viewKey, fieldKey, o.labels), from: from, to: to });
     }
     log(viewKey, recordId, changes);
+
+    // ── Reciprocal: the LOSING owner on a Connected To re-point ────────
+    // A takeover (hub A steals a cam from hub B) or a cross-MDF clear only
+    // WRITES hub A and the cam — hub B's Connected Devices display just
+    // re-derives from back-pointers with no PUT of its own, so no write
+    // hook ever fires for it. Synthesize its entry here from the cam's
+    // pre-PUT raw value (o.prevRaw carries the old owner's record id).
+    try {
+      var F2 = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+      var CT = F2.connectedDevice, CD = F2.connectedDevices;
+      if (CT && CD && Object.prototype.hasOwnProperty.call(body, CT) && o.prevRaw) {
+        var pArr = o.prevRaw[CT];
+        var prevOwner = (Array.isArray(pArr) && pArr[0] && pArr[0].id) ? pArr[0].id : '';
+        var nv = body[CT];
+        var newOwner = Array.isArray(nv)
+          ? ((nv[0] && nv[0].id) || nv[0] || '') : (nv || '');
+        if (prevOwner && prevOwner !== newOwner && prevOwner !== recordId) {
+          logOwnerLoss(viewKey, prevOwner, recordId, CD, CT);
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Append a "Connected Devices" entry to the parent that LOST a child.
+   *  before/after lists derive from the back-pointer scan (the same source
+   *  the card display uses), with the departing child forced into "before"
+   *  and out of "after" so the entry is right regardless of whether the
+   *  local model has been patched yet. */
+  function logOwnerLoss(viewKey, ownerId, childId, CD, CT) {
+    var owner = findRecord(viewKey, ownerId);
+    if (!owner) return;
+
+    // Skip when the owner ITSELF was just edited (its picker logged the
+    // change seconds ago — e.g. un-checking a cam fires the same cascade
+    // clear). A stolen-from / cross-MDF-cleared owner has no fresh entry.
+    var AF = auditFieldOf(viewKey);
+    var existing = readLog(owner, AF);
+    for (var x = existing.length - 1; x >= 0; x--) {
+      if (!existing[x] || existing[x].f !== CD) continue;
+      if (Date.now() - (Date.parse(existing[x].t) || 0) < 15000) return;
+      break;
+    }
+
+    var child = findRecord(viewKey, childId);
+    var childLabel = child ? recLabel(child, viewKey) : childId;
+
+    var after = [], seen = {};
+    try {
+      var records = (ns.data && ns.data.readRecords(viewKey)) || [];
+      for (var i = 0; i < records.length; i++) {
+        var r = records[i];
+        if (!r || !r.id || r.id === childId || seen[r.id]) continue;
+        var ct = r[CT + '_raw'];
+        if (Array.isArray(ct) && ct[0] && ct[0].id === ownerId) {
+          seen[r.id] = true;
+          after.push(recLabel(r, viewKey));
+        }
+      }
+    } catch (e) { /* ignore */ }
+    after.sort(function (a, b) {
+      return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+    });
+    var before = after.concat([childLabel]);
+    before.sort(function (a, b) {
+      return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    log(viewKey, ownerId, [{
+      f: CD, l: 'Connected Devices',
+      from: before.join(', '),
+      to:   after.length ? after.join(', ') : '—'
+    }]);
   }
 
   // ── History section (rendered by card.js inside the detail panel) ──
@@ -542,6 +646,7 @@
     log:            log,
     logPut:         logPut,
     snapshotValues: snapshotValues,
+    snapshotRaw:    snapshotRaw,
     detailSection:  detailSection,
     openModal:      openModal,
     enabledFor:     function (viewKey) { return !!auditFieldOf(viewKey); }

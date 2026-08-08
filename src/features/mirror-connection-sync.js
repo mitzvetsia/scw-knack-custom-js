@@ -316,7 +316,8 @@
     // to its audit blob on success. No-ops unless the URL's view configures
     // an auditField (install/deploy views only); repair-pass re-PUTs of
     // identical values are dropped by audit-log's dedupe.
-    var _audit = null, _auditPrev = null, _auditView = '', _auditRecId = '';
+    var _audit = null, _auditPrev = null, _auditPrevRaw = null,
+        _auditView = '', _auditRecId = '';
     try {
       var _wsv2 = window.SCW && SCW.worksheetV2;
       var _m = /\/views\/(view_\d+)\/records\/([0-9a-f]{24})/i.exec(url || '');
@@ -325,6 +326,9 @@
         _auditView = _m[1];
         _auditRecId = _m[2];
         _auditPrev = _audit.snapshotValues(_auditView, _auditRecId, body || {});
+        // Raw connection snapshot too — a Connected To re-point needs the
+        // OLD owner's record id so the losing parent's log gets an entry.
+        _auditPrevRaw = _audit.snapshotRaw(_auditView, _auditRecId, body || {});
       }
     } catch (e) { _audit = null; }
     var _onDone = onDone;
@@ -333,7 +337,7 @@
         try {
           if (!err) {
             _audit.logPut(_auditView, _auditRecId, body || {},
-              { prevValues: _auditPrev, resp: resp });
+              { prevValues: _auditPrev, prevRaw: _auditPrevRaw, resp: resp });
           }
         } catch (e) { /* ignore */ }
         if (typeof onDone === 'function') onDone(err, resp);
