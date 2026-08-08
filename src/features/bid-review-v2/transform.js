@@ -834,6 +834,11 @@
       var out = [];
       function add(entry) {
         if (!entry || !entry.id || seen[entry.id]) return;
+        // A record can never be its own connected device — a self-pointing
+        // field_2197 (cascade drift) otherwise lists + counts the record in
+        // its OWN Connected list. init.js's expand-panel union already skips
+        // self; mirror it here.
+        if (entry.id === rec.id) return;
         seen[entry.id] = true;
         out.push({ id: entry.id, identifier: entry.identifier, sows: deviceSows(entry.id) });
       }
@@ -1482,12 +1487,16 @@
       if (!id) return '';
       return fromBid ? (_bidToSow[id] || '') : id;
     }
-    function connIdSet(arr, fromBid) {
+    // Self-references are excluded from BOTH sides: connDeviceUnion already
+    // drops them on the SOW side, and a bid snapshot seeded from a SOW item
+    // that self-pointed at the time carries the same junk — without the
+    // symmetric skip that bid would flag a phantom connDevice diff forever.
+    function connIdSet(arr, fromBid, selfId) {
       var set = Object.create(null);
       if (Array.isArray(arr)) {
         for (var i = 0; i < arr.length; i++) {
           var sid = sowIdOf(arr[i] && arr[i].id, fromBid);
-          if (sid) set[sid] = true;
+          if (sid && sid !== selfId) set[sid] = true;
         }
       }
       return set;
@@ -1503,9 +1512,9 @@
     // their underlying SOW line item id (label-agnostic). Anchor on the SOW
     // side carrying connections (the reference) so a row with no SOW-side
     // topology is never flagged.
-    var sowCDset = connIdSet(sd.connDevice, false);
+    var sowCDset = connIdSet(sd.connDevice, false, row.sowItem);
     var connDeviceDiff = Object.keys(sowCDset).length
-      ? !sameSet(sowCDset, connIdSet(cell.connDevice || [], true)) : false;
+      ? !sameSet(sowCDset, connIdSet(cell.connDevice || [], true, row.sowItem)) : false;
     // Connected To: single connection, compared by SOW line item id.
     var sowCTid = sowIdOf(sd.connToId, false);
     var connToDiff = sowCTid ? (sowCTid !== sowIdOf(cell.connToId, true)) : false;

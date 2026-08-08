@@ -1197,7 +1197,9 @@
     if (Array.isArray(fwd)) {
       for (var f = 0; f < fwd.length; f++) {
         var fe = fwd[f];
-        if (!fe || !fe.id || seen[fe.id]) continue;
+        // Skip self — the back-pointer scan below already does; a record in
+        // its own forward field_1957 list must not render as its own device.
+        if (!fe || !fe.id || fe.id === recordId || seen[fe.id]) continue;
         seen[fe.id] = true;
         out.push(entryFor(byId[fe.id], String(fe.identifier || fe.id)));
       }
