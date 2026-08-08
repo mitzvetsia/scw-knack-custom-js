@@ -126,6 +126,13 @@
    *   creates  — bid cell with no SOW match  → new SOW item needed
    *   removals — SOW item with no bid cell   → remove from SOW
    *
+   * ⚠ SYNC CONTRACT LIVES IN docs/sow-bid-sync.md — the Make scenario
+   * self-derives the authoritative sync from {packageId, sowId} at apply
+   * time (a second trigger fires on subcontractor bid submit, with no page
+   * behind it). This rich payload is ADVISORY: the confirm modal previews
+   * from it and Make run history logs it, but changes to sync semantics
+   * must land in the scenario's derivation + the doc, not only here.
+   *
    * @param {string} pkgId   — bid package ID to sync
    * @param {object} sowGrid — one entry from state.sowGrids
    * @returns {object} payload ready for submitAction
