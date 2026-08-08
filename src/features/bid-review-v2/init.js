@@ -1108,33 +1108,13 @@
       var txt = (elv.textContent || '').trim();
       if (!txt || txt === '(none)') continue;
 
-      var entries = connectedDevicesWithSows(
+      var data = connectedDevicesWithSows(
         btn.getAttribute('data-scw-ws-v2-record'),
         btn.getAttribute('data-scw-ws-v2-view'));
 
-      if (entries && entries.length) {
+      if (data && data.entries.length) {
         elv.textContent = '';
-        for (var e = 0; e < entries.length; e++) {
-          var line = document.createElement('span');
-          line.className = 'scw-br-v2-cd-line';
-          line.appendChild(document.createTextNode(entries[e].label));
-          var sows = entries[e].sows;
-          for (var s = 0; s < sows.length; s++) {
-            var pill = document.createElement('span');
-            pill.className = 'scw-br-v2-cd-sow';
-            pill.textContent = sows[s].label;
-            pill.title = 'On a DIFFERENT SOW (' + sows[s].label + '), not this one';
-            line.appendChild(pill);
-          }
-          if (entries[e].noSow) {
-            var np = document.createElement('span');
-            np.className = 'scw-br-v2-cd-sow scw-br-v2-cd-sow--none';
-            np.textContent = 'no SOW';
-            np.title = 'Not on any SOW';
-            line.appendChild(np);
-          }
-          elv.appendChild(line);
-        }
+        elv.appendChild(buildCdMatrix(data));
         continue;
       }
 
@@ -1170,11 +1150,13 @@
     }
     if (!rec) return null;
 
-    var ownSows = Object.create(null);
+    var ownList = [];
     var ownRaw = rec.field_2154_raw;
     if (Array.isArray(ownRaw)) {
       for (var o = 0; o < ownRaw.length; o++) {
-        if (ownRaw[o] && ownRaw[o].id) ownSows[ownRaw[o].id] = true;
+        if (ownRaw[o] && ownRaw[o].id) {
+          ownList.push({ id: ownRaw[o].id, label: String(ownRaw[o].identifier || ownRaw[o].id) });
+        }
       }
     }
 
@@ -1193,24 +1175,20 @@
       }
       return fallback || (drec && drec.id) || '';
     }
-    // Exception-only tagging: devices on the expanded record's own SOW carry
-    // NO pills (the normal case stays skimmable); a device NOT on it lists
-    // the SOW(s) it lives on, or noSow when it has none. Unknown membership
-    // (device record not loaded) → no pills, noSow false.
+    // Full membership per device, for the matrix renderer. `known:false`
+    // means the device record isn't loaded (its cells render as unknown).
     function entryFor(drec, fallbackLabel) {
       var label = devLabel(drec, fallbackLabel);
-      if (!drec) return { label: label, sows: [], noSow: false };
-      var sows = [], onCurrent = false;
+      if (!drec) return { label: label, known: false, sows: [] };
+      var sows = [];
       var sraw = drec.field_2154_raw;
       if (Array.isArray(sraw)) {
         for (var x = 0; x < sraw.length; x++) {
           if (!sraw[x] || !sraw[x].id) continue;
-          if (ownSows[sraw[x].id]) { onCurrent = true; continue; }
-          sows.push({ label: String(sraw[x].identifier || sraw[x].id) });
+          sows.push({ id: sraw[x].id, label: String(sraw[x].identifier || sraw[x].id) });
         }
       }
-      if (onCurrent) return { label: label, sows: [], noSow: false };
-      return { label: label, sows: sows, noSow: !sows.length };
+      return { label: label, known: true, sows: sows };
     }
 
     var seen = Object.create(null), out = [];
@@ -1236,7 +1214,82 @@
       seen[c.id] = true;
       out.push(entryFor(c, ''));
     }
-    return out;
+    return { entries: out, ownSows: ownList };
+  }
+
+  // Mini membership matrix for the expanded editor's Connected Devices value:
+  // one row per device, one column per SOW (the expanded record's own SOW(s)
+  // first, then any other SOW a device lives on, then a trailing "no SOW"
+  // column when needed). A check in every SOW column the device is on — so
+  // multi-SOW membership reads naturally without merged cells.
+  function buildCdMatrix(data) {
+    var cols = [], colIdx = Object.create(null);
+    function addCol(id, label, current) {
+      if (colIdx[id] !== undefined) {
+        if (current) cols[colIdx[id]].current = true;
+        return;
+      }
+      colIdx[id] = cols.length;
+      cols.push({ id: id, label: label, current: !!current });
+    }
+    var e, s, c;
+    for (e = 0; e < data.ownSows.length; e++) {
+      addCol(data.ownSows[e].id, data.ownSows[e].label, true);
+    }
+    var hasNone = false;
+    for (e = 0; e < data.entries.length; e++) {
+      var en = data.entries[e];
+      if (en.known && !en.sows.length) hasNone = true;
+      for (s = 0; s < en.sows.length; s++) addCol(en.sows[s].id, en.sows[s].label, false);
+    }
+    cols.sort(function (a, b) {
+      if (a.current !== b.current) return a.current ? -1 : 1;
+      return String(a.label).localeCompare(String(b.label), undefined, { numeric: true });
+    });
+
+    function cell(rowEl, cls, text, title) {
+      var el = document.createElement('span');
+      el.className = 'scw-br-v2-cdm-cell' + (cls ? ' ' + cls : '');
+      el.textContent = text || '';
+      if (title) el.title = title;
+      rowEl.appendChild(el);
+      return el;
+    }
+
+    var wrap = document.createElement('span');
+    wrap.className = 'scw-br-v2-cdm';
+
+    var head = document.createElement('span');
+    head.className = 'scw-br-v2-cdm-row scw-br-v2-cdm-head';
+    cell(head, 'scw-br-v2-cdm-dev', '');
+    for (c = 0; c < cols.length; c++) {
+      cell(head,
+        cols[c].current ? 'scw-br-v2-cdm-col--cur' : 'scw-br-v2-cdm-col--other',
+        cols[c].label,
+        cols[c].current ? 'This item’s SOW' : 'A different SOW');
+    }
+    if (hasNone) cell(head, 'scw-br-v2-cdm-col--none', 'no SOW', 'Not on any SOW');
+    wrap.appendChild(head);
+
+    for (e = 0; e < data.entries.length; e++) {
+      var en2 = data.entries[e];
+      var row = document.createElement('span');
+      row.className = 'scw-br-v2-cdm-row';
+      cell(row, 'scw-br-v2-cdm-dev', en2.label);
+      var member = Object.create(null);
+      for (s = 0; s < en2.sows.length; s++) member[en2.sows[s].id] = true;
+      for (c = 0; c < cols.length; c++) {
+        cell(row,
+          'scw-br-v2-cdm-mark' + (cols[c].current ? ' scw-br-v2-cdm-mark--cur' : ''),
+          en2.known ? (member[cols[c].id] ? '✓' : '') : '·');
+      }
+      if (hasNone) {
+        cell(row, 'scw-br-v2-cdm-mark scw-br-v2-cdm-mark--none',
+          (en2.known && !en2.sows.length) ? '✓' : '');
+      }
+      wrap.appendChild(row);
+    }
+    return wrap;
   }
 
   // SCW Notes (field_1953) — EDITABLE on the bid comparison page (was locked
