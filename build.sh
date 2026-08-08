@@ -28,6 +28,7 @@ cat \
   src/features/modal-scroll-restore.js \
   src/features/ktl-hide-show-state.js \
   src/features/global-styles.js \
+  src/features/google-places-pac-watchdog.js \
   src/features/hide-data-source-views.js \
   src/features/scene-tweaks.js \
   src/features/percent-field-format.js \
@@ -38,6 +39,7 @@ cat \
   src/features/ktl-accordion/ktl-accordion.js \
   src/features/accordion-menu-inject.js \
   src/features/workflow-stepper.js \
+  src/features/survey-request-cards.js \
   src/features/accordion-section-icons.js \
   src/features/ratking/modal-backdrop-click-disable.js \
   src/features/ratking/default-field-values.js \
@@ -70,10 +72,12 @@ cat \
   src/features/bid-review-v2/transform.js \
   src/features/bid-review-v2/warnings.js \
   src/features/bid-review-v2/column-collapse.js \
+  src/features/bid-review-v2/basis-filter.js \
   src/features/bid-review-v2/toolbar.js \
   src/features/bid-review-v2/search.js \
   src/features/bid-review-v2/edit.js \
   src/features/bid-review-v2/card.js \
+  src/features/mdf-edit-core.js \
   src/features/bid-review-v2/mdf-manage.js \
   src/features/bid-review-v2/bulk-cr.js \
   src/features/bid-review-v2/render.js \
@@ -179,6 +183,9 @@ cat \
   src/features/worksheet-warning-summary.js \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
+  src/features/connected-to-readonly.js \
+  src/features/calc-field-nudge.js \
+  src/features/address-complete-guard.js \
   src/features/connection-picker.js \
   src/features/connected-device-count-on-form.js \
   src/features/grid-direct-edit.js \

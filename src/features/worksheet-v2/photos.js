@@ -63,6 +63,16 @@
     };
   }
 
+  // Photo types pinned to the FRONT of every strip, in this order (matched
+  // case-insensitively against field_2445's display label). Types not listed
+  // fall back to the default ordering (missing-required first, then required,
+  // then type, then id). Add more entries here to pin additional types.
+  var PHOTO_TYPE_PRIORITY = ['proposed mounting location'];
+  function typeRank(t) {
+    var i = PHOTO_TYPE_PRIORITY.indexOf(String(t || '').trim().toLowerCase());
+    return i === -1 ? PHOTO_TYPE_PRIORITY.length : i;
+  }
+
   /** Walk the source-view <tr> for this record and pull a list of
    *  attached photo records: { id, imgUrl, type, required, completed, notes } */
   function extractPhotoRecords(sourceViewKey, recordId) {
@@ -195,8 +205,12 @@
 
     var arr = [];
     for (var k in map) arr.push(map[k]);
-    // Sort: required+incomplete first, then required, then by type, then id
+    // Sort: pinned types first (PHOTO_TYPE_PRIORITY), then required+incomplete,
+    // then required, then by type, then id
     arr.sort(function (a, b) {
+      var at = typeRank(a.type);
+      var bt = typeRank(b.type);
+      if (at !== bt) return at - bt;
       var am = (a.required && !a.completed) ? 0 : 1;
       var bm = (b.required && !b.completed) ? 0 : 1;
       if (am !== bm) return am - bm;
@@ -363,6 +377,38 @@
     (document.head || document.documentElement).appendChild(s);
   })();
 
+  // ── Scroll hold ───────────────────────────────────────────────────
+  // A photo delete/disconnect sets off a CASCADE of layout shifts: the
+  // optimistic card removal, the native DOC_photos grid re-render from the
+  // kn-link-delete click, the worksheet refetch+rebuild ~1.5s later, then
+  // group-collapse re-applying — each one yanked the viewport ("screen
+  // jumps around wildly"). Pin the scroll position through the settling
+  // window with an rAF loop; any REAL user scroll gesture (wheel / touch /
+  // keys / scrollbar drag) releases the hold immediately so we never fight
+  // the user.
+  function holdScroll(ms) {
+    var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+    var done = false;
+    var t0 = Date.now();
+    function release() {
+      if (done) return;
+      done = true;
+      ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (evt) {
+        window.removeEventListener(evt, release, true);
+      });
+    }
+    ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (evt) {
+      window.addEventListener(evt, release, true);
+    });
+    (function tick() {
+      if (done) return;
+      if (Date.now() - t0 > ms) { release(); return; }
+      var cur = window.pageYOffset || document.documentElement.scrollTop || 0;
+      if (Math.abs(cur - y) > 1) window.scrollTo(0, y);
+      requestAnimationFrame(tick);
+    })();
+  }
+
   // Photo-delete settling registry. Between the optimistic card removal and
   // the authoritative refetch, Knack re-renders rebuild the strip from the
   // STALE source row (the photo connection is still on it) — without this
@@ -528,8 +574,20 @@
       var cls = 'scw-ws-v2-photo-card' +
         (p.required ? ' scw-ws-v2-photo-card--required' : '') +
         (missing   ? ' scw-ws-v2-photo-card--missing'  : '');
+      // Strip <img> uses the thumb derivative, NOT p.imgUrl — the scrape
+      // prefers the full-size gallery URL (needed by the viewer/QA modal,
+      // which keep reading the data attrs), but rendering it here loaded
+      // every card at 2-3 MB (measured: 42 originals = 53.6 MB on one
+      // survey load). onerror falls back to the original if the asset
+      // never generated the derivative.
+      var thumbSrc = (p.imgUrl && window.SCW && SCW.knackImgThumb)
+        ? SCW.knackImgThumb(p.imgUrl) : p.imgUrl;
       var thumb = p.imgUrl
-        ? '<img class="scw-ws-v2-photo-img" draggable="false" src="' + escapeHtml(p.imgUrl) + '" alt="">'
+        ? '<img class="scw-ws-v2-photo-img" draggable="false" loading="lazy" ' +
+            'src="' + escapeHtml(thumbSrc) + '" alt=""' +
+            (thumbSrc !== p.imgUrl
+              ? ' onerror="this.onerror=null;this.src=\'' + escapeHtml(p.imgUrl) + '\'"'
+              : '') + '>'
         : '<div class="scw-ws-v2-photo-img scw-ws-v2-photo-img--placeholder">No image</div>';
       var typeHtml = p.type
         ? '<div class="scw-ws-v2-photo-type">' + escapeHtml(p.type) + '</div>'
@@ -699,7 +757,10 @@
           btn.type = 'button';
           btn.className = 'scw-ws-v2-lightbox-thumb';
           var t = document.createElement('img');
-          t.src = items[j].url; t.alt = ''; t.loading = 'lazy';
+          t.alt = ''; t.loading = 'lazy';
+          // Mini-thumb strip: thumb derivative (stage keeps the original).
+          if (window.SCW && SCW.knackImgThumbInto) SCW.knackImgThumbInto(t, items[j].url);
+          else t.src = items[j].url;
           btn.appendChild(t);
           btn.addEventListener('click', function (e) {
             e.stopPropagation();
@@ -842,6 +903,9 @@
 
       // The actual delete — run only after the user confirms (below).
       function doDelete() {
+        // Pin the viewport through the delete's re-render cascade (native
+        // grid re-render → refetch → worksheet rebuild → group re-apply).
+        holdScroll(4000);
         // Path 1 — the photo record's row in the photos source grid, if the
         // grid is on the page AND the row is on its current pagination page.
         // Photo ids are 24-hex and unique, so a page-wide lookup is safe.
@@ -946,6 +1010,8 @@
       }
 
       function doDisconnect() {
+        // Same re-render cascade as delete — pin the viewport through it.
+        holdScroll(4000);
         SCW.knackAjax({
           url:  SCW.knackRecordUrl(saveView, photoId),
           type: 'GET',

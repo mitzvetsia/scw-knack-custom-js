@@ -253,12 +253,19 @@
         },
         // Bulk-edit field spec — ONLY what's actually editable on the install
         // card (everything else is read-only there), so the bulk modal stops
-        // offering inherited SOW fields. SCW Notes is the lone editable column.
+        // offering inherited SOW fields. MDF/IDF resolves via candSource 'mdf'
+        // → this entry's mdfSourceViewKey (view_3932; the view_4056 clone
+        // swaps in view_4060). ⚠️ field_2818 must be inline-editable on the
+        // source grid in Builder or the view-based PUT won't persist it.
         bulkFields: {
-          cam:         [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' } ],
-          'default':   [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' } ],
-          services:    [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' } ],
-          assumptions: [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' } ]
+          cam:         [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' },
+                         { f: 'mdfIdf',   kind: 'conn-single', candSource: 'mdf', label: 'MDF / IDF' } ],
+          'default':   [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' },
+                         { f: 'mdfIdf',   kind: 'conn-single', candSource: 'mdf', label: 'MDF / IDF' } ],
+          services:    [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' },
+                         { f: 'mdfIdf',   kind: 'conn-single', candSource: 'mdf', label: 'MDF / IDF' } ],
+          assumptions: [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' },
+                         { f: 'mdfIdf',   kind: 'conn-single', candSource: 'mdf', label: 'MDF / IDF' } ]
         },
         // Questionnaire (deliverables) answers live in a JSON blob on the line
         // item. bulk.js folds a "System Questionnaire" section into the modal
@@ -461,6 +468,7 @@
         //    cascade fires). Mounting Height is a 3-option chip → bulk 'select'.
         bulkFields: {
           cam: [
+            { f: 'product',        kind: 'conn-single', label: 'Product',     candSource: 'products' },
             { f: 'dropPrefix',     kind: 'conn-single', label: 'Prefix',      candSource: 'dropPrefix' },
             { f: 'dropNumber',     kind: 'number',      label: 'Cam/Reader #' },
             { f: 'laborDesc',      kind: 'text',        label: 'Labor description' },
@@ -478,6 +486,7 @@
             { f: 'bid',          kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
           ],
           'default': [
+            { f: 'product',     kind: 'conn-single', label: 'Product', candSource: 'products' },
             { f: 'laborDesc',   kind: 'text',        label: 'Labor description' },
             { f: 'labor',       kind: 'number',      label: 'Labor' },
             { f: 'qty',         kind: 'number',      label: 'Qty', gateNo: 'qtyOne' },

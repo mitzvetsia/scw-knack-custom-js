@@ -200,20 +200,31 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // webhooks). ⚠️ Requires field_2952 on view_3861 for CO mode to activate.
   //   Response body: { success: true } or { success: false, error: "..." }
   MAKE_CO_ISSUE_WEBHOOK: "https://hook.us1.make.com/fwpbnldo3fkrywggxwu18qsh6ghgrg7w",
-  // Fires on the "Request Alternative Proposal" stepper action. Expects:
-  //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
+  // Fires on the "Request Validation & Add as Alternative Bid to Survey"
+  // stepper action (state 3 of the gating model — sibling SOW has the
+  // survey; docs/project-stage-workflow.md). Payload now carries stepId
+  // ('request-alternative-proposal') + actionLabel so the scenario can also
+  // treat it as a validation request for this SOW. Expects:
+  //   Request body:  { sourceRecordId, stepId, actionLabel, notes, account,
+  //                    project, projectName, triggeredBy }
   //   Response body: { success: true, message?: "..." }
   //             or:  { success: false, error: "<message>" }
   MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/r84mgo96cdsq3kox3y6lj0im6b7ovme2",
-  // Fires on the Sales "Request SOW validated as ready for Survey" stepper
-  // action (workflow-stepper.js, scene_1116). Shown only when the install
-  // project is initiated (field_1199 hasValue) but THIS SOW has not been
-  // validated (field_2723 != Yes) and no survey has been asked for by any
-  // path (field_2706 != Yes AND field_2728 == 0). It does NOT flip any flag
-  // — that's Ops's gate. It only notifies Ops to validate this SOW. Payload:
-  //   { sourceRecordId, stepId, actionLabel, notes, account, project,
-  //     projectName, triggeredBy }
-  //   Response body: { success: true } or any 2xx (fire-and-forget notify).
+  // Fires on the "Request Survey Bid Updated to Match SOW" stepper action
+  // (state 4 — survey on THIS SOW, changes queued since; the sales-side
+  // mirror of Ops's Update Subcontractor Bid Request). Same payload shape
+  // as the alt-proposal action (stepId = 'request-bid-update-to-match').
+  // ⚠️ PLACEHOLDER — point at the real Make scenario before enabling in
+  // production; the button alerts "not configured" until then.
+  MAKE_REQUEST_BID_UPDATE_WEBHOOK: "PLACEHOLDER",
+  // ⚠️ RETIRED FROM CODE 2026-08-02 (docs/project-stage-workflow.md): the
+  // standalone "Request SOW validated as ready for Survey" stepper button
+  // was removed — both remaining sales actions (the renamed initiate form
+  // and the survey request form) ARE validation requests, and the Ops ping
+  // moves into their Make scenarios. Key kept only so the Make scenario
+  // behind it can be re-used/merged during the transition; delete both once
+  // the initiate + survey scenarios carry the ping (cleanup step 8 in the
+  // design doc).
   MAKE_REQUEST_SOW_VALIDATION_WEBHOOK: "https://hook.us1.make.com/os586ruwyb1p2o3j31xoju3v7togumfy",
   // Ops-side stepper actions (view_3345 on the proposal page). Each fires on
   // button click with a notes modal. Payload shape:
@@ -231,6 +242,12 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // (mark-ready surfaces no such radio) — same as a publish step where the
   // user picks "just publish", so the shape stays compatible.
   MAKE_OPS_MARK_READY_WEBHOOK:           "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
+  // Second fire on Mark Ready when a survey request is PENDING: after the
+  // mark-ready webhook is accepted, ops-stepper POSTs the survey
+  // activation scenario a minimal payload — { surveyRequestId, branchIds:
+  // [id,…], sowId } — so the send can be built/retried independently of
+  // the validate/publish scenario. branchIds is ALWAYS an array.
+  MAKE_SEND_PENDING_SURVEY_WEBHOOK:      "https://hook.us1.make.com/yao4qdea7hupuhjimwgi1nvpugbc6lfc",
   MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:      "https://hook.us1.make.com/r08nmy4ellspsjo9f2s0kdkhxucvf78u",
   // Update Subcontractor Bid Request: same payload shape as Request Alt
   // Bid (incl. selectedSurveyIds[]) AND the same Make webhook URL.

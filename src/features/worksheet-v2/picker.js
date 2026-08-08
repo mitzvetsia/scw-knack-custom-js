@@ -17,7 +17,12 @@
  *     groupBy:          function (rec) -> {id, label},   // optional
  *     itemLabel:        function (rec) -> 'E-001 · NVR Pro 16ch',
  *     multi:            true,                 // false → single-select
- *     onSaved:          function (newIds) {} // after PUT success
+ *     onSaved:          function (newIds) {}, // after PUT success
+ *     sowFilter:        { fieldKey, label, nameById }  // optional — which
+ *                       // membership connection the filter pills / per-item
+ *                       // line / filtered tally read. Defaults to SOW
+ *                       // (field_2154, label 'SOW'); the survey/bid page
+ *                       // passes Bid (field_2415, label 'Bid').
  *   })
  *
  * Save fires a direct PUT via SCW.knackAjax — same pattern as
@@ -82,30 +87,38 @@
     return isFinite(n) ? n : null;
   }
 
-  // Comma-joined SOW labels (SW-####) for a candidate record, read from its
-  // SOW connection (field_2154). Empty string for non-record candidates
-  // (products / MDF / prefixes) that carry no SOW. Shown under the item label.
-  function sowLabelsOf(rec) {
-    var raw = rec && rec.field_2154_raw;
+  // Comma-joined membership labels (SW-#### / bid names) for a candidate
+  // record, read from its membership connection — SOW (field_2154) by
+  // default, or whatever opts.sowFilter.fieldKey names (e.g. the survey
+  // page's Bid field_2415). Empty string for non-record candidates
+  // (products / MDF / prefixes) that carry no membership. Shown under the
+  // item label. `nameById` (opts.sowFilter.nameById) overrides labels.
+  function sowLabelsOf(rec, fieldKey, nameById) {
+    var fk = fieldKey || 'field_2154';
+    var raw = rec && rec[fk + '_raw'];
     if (!Array.isArray(raw) || !raw.length) return '';
     var names = [];
     for (var i = 0; i < raw.length; i++) {
       if (!raw[i]) continue;
       // Identifier can be blank on freshly created SOWs — resolve the
       // friendly name via card.js's scene-grid lookup before falling
-      // back to the raw record id.
-      var lbl = String(raw[i].identifier || '').replace(/<[^>]*>/g, '').trim() ||
-        (ns.sowNameById && ns.sowNameById(raw[i].id)) || raw[i].id;
+      // back to the raw record id. (SOW-only fallback; other membership
+      // fields supply names via nameById.)
+      var lbl = (nameById && nameById[raw[i].id]) ||
+        String(raw[i].identifier || '').replace(/<[^>]*>/g, '').trim() ||
+        (fk === 'field_2154' && ns.sowNameById && ns.sowNameById(raw[i].id)) ||
+        raw[i].id;
       if (lbl) names.push(lbl);
     }
     return names.join(', ');
   }
 
-  // SOW record IDS for a candidate (same field_2154 read as sowLabelsOf) —
-  // used to compare a candidate's SOW membership against the record being
-  // edited (opts.anchorSowIds) so cross-SOW picks are flagged.
-  function sowIdsOf(rec) {
-    var raw = rec && rec.field_2154_raw;
+  // Membership record IDS for a candidate (same connection read as
+  // sowLabelsOf) — used to compare a candidate's membership against the
+  // record being edited (opts.anchorSowIds) so cross-SOW/-Bid picks are
+  // flagged, and stamped on rows for the filter pills.
+  function sowIdsOf(rec, fieldKey) {
+    var raw = rec && rec[(fieldKey || 'field_2154') + '_raw'];
     if (!Array.isArray(raw)) return [];
     var ids = [];
     for (var i = 0; i < raw.length; i++) {
@@ -236,6 +249,26 @@
       '.scw-ws-v2-picker-search-empty {',
       '  padding: 18px; text-align: center; color: #64748b; font-style: italic;',
       '}',
+      /* SOW filter pills — toggle the list to ONLY items on a given SOW. */
+      '.scw-ws-v2-picker-sowpills {',
+      '  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;',
+      '  padding: 10px 18px; border-bottom: 1px solid #e5e7eb; background: #fff;',
+      '  flex: 0 0 auto;',
+      '}',
+      '.scw-ws-v2-picker-sowpills-lbl {',
+      '  font: 700 10px/1 system-ui, sans-serif; text-transform: uppercase;',
+      '  letter-spacing: .05em; color: #64748b; margin-right: 2px;',
+      '}',
+      '.scw-ws-v2-picker-sowpill {',
+      '  padding: 3px 10px; border-radius: 999px; border: 1px solid #cbd5e1;',
+      '  background: #fff; color: #334155; cursor: pointer;',
+      '  font: 600 11.5px/1.4 system-ui, sans-serif;',
+      '  transition: background .12s, border-color .12s;',
+      '}',
+      '.scw-ws-v2-picker-sowpill:hover { border-color: #94a3b8; background: #f8fafc; }',
+      '.scw-ws-v2-picker-sowpill--active {',
+      '  background: #0f4c75; border-color: #0f4c75; color: #fff;',
+      '}',
       '.scw-ws-v2-picker-item--none {',
       '  background: #f8fafc;',
       '  border-bottom: 1px solid #e2e8f0;',
@@ -308,6 +341,13 @@
       '}',
       '.scw-ws-v2-picker-item-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }',
       '.scw-ws-v2-picker-item-name { }',
+      // Generic secondary line beneath the name (e.g. a product SKU).
+      // Rendered from a candidate\'s `sub` property; searchable because the
+      // filter matches the row\'s full textContent.
+      '.scw-ws-v2-picker-item-sub {',
+      '  font-size: 11px; font-weight: 600; color: #64748b; line-height: 1.2;',
+      '  letter-spacing: .02em;',
+      '}',
       '.scw-ws-v2-picker-item-sow {',
       '  font-size: 11px; font-weight: 600; color: #64748b; line-height: 1.2;',
       '}',
@@ -440,6 +480,15 @@
     var multi      = opts.multi !== false; // default true
     var selected   = (opts.selectedIds || []).slice();
     var candidates = (opts.candidates || []).slice();
+    // Membership filter config — which connection the filter pills,
+    // per-item membership line, cross-membership flag, and filtered
+    // tally all read. Defaults to the SOW connection (field_2154); the
+    // survey/bid page passes { fieldKey:'field_2415', label:'Bid',
+    // nameById:{...} } so the same feature set keys on Bid instead.
+    var sowCfg   = opts.sowFilter || {};
+    var SOW_CONN = sowCfg.fieldKey || 'field_2154';
+    var SOW_LBL  = sowCfg.label || 'SOW';
+    var SOW_NAMES = sowCfg.nameById || null;
     var groups     = groupCandidates(candidates, opts.groupBy);
     var itemLabel  = (typeof opts.itemLabel === 'function')
       ? opts.itemLabel
@@ -554,18 +603,19 @@
           row.className = 'scw-ws-v2-picker-item';
           var labelText = itemLabel(rec) || rec.id;
           var isChecked = selected.indexOf(rec.id) !== -1;
-          // Show each record's SOW(s) (field_2154) beneath its label so the
-          // user can tell which SOW a candidate belongs to — items on the
-          // same MDF/IDF can live on different SOWs. Only rendered for record
-          // candidates that actually carry a SOW connection.
-          var sowText = sowLabelsOf(rec);
-          // Cross-SOW flag: when the caller supplies the edited record's own
-          // SOW ids (opts.anchorSowIds), a candidate sharing NONE of them is
-          // on a different SOW — amber + warning triangle so e.g. a camera
-          // on SW-1060 stands out inside a switch that lives on SW-1001.
+          // Show each record's SOW(s)/Bid(s) beneath its label so the
+          // user can tell which one a candidate belongs to — items on the
+          // same MDF/IDF can live on different SOWs/Bids. Only rendered for
+          // record candidates that actually carry the membership connection.
+          var sowText = sowLabelsOf(rec, SOW_CONN, SOW_NAMES);
+          // Cross-membership flag: when the caller supplies the edited
+          // record's own membership ids (opts.anchorSowIds), a candidate
+          // sharing NONE of them is on a different SOW/Bid — amber + warning
+          // triangle so e.g. a camera on SW-1060 stands out inside a switch
+          // that lives on SW-1001.
           var sowDiff = false;
           if (sowText && Array.isArray(opts.anchorSowIds) && opts.anchorSowIds.length) {
-            var candSows = sowIdsOf(rec);
+            var candSows = sowIdsOf(rec, SOW_CONN);
             if (candSows.length) {
               sowDiff = true;
               for (var cs = 0; cs < candSows.length; cs++) {
@@ -576,21 +626,23 @@
           var sowHtml = sowText
             ? '<span class="scw-ws-v2-picker-item-sow' +
                 (sowDiff ? ' scw-ws-v2-picker-item-sow--diff' : '') + '"' +
-                (sowDiff ? ' title="On a different SOW than the record you\'re editing"' : '') + '>' +
+                (sowDiff ? ' title="On a different ' + escapeHtml(SOW_LBL) +
+                  ' than the record you\'re editing"' : '') + '>' +
                 (sowDiff
                   ? '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" ' +
                       'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
                       '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
                       '<line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
                   : '') +
-                '<b>SOW:</b> ' + escapeHtml(sowText) + '</span>'
+                '<b>' + escapeHtml(SOW_LBL) + ':</b> ' + escapeHtml(sowText) + '</span>'
             : '';
-          // No-SOW candidate on a SOW-aware picker (anchorSowIds supplied):
-          // render a muted "SOW: —" so the no-SOW tail inside a group is
-          // visibly distinct from SOW-carrying items, not just unlabeled.
+          // No-membership candidate on a membership-aware picker
+          // (anchorSowIds supplied): render a muted "SOW: — / Bid: —" so the
+          // tail inside a group is visibly distinct, not just unlabeled.
           if (!sowHtml && Array.isArray(opts.anchorSowIds) && opts.anchorSowIds.length) {
             sowHtml = '<span class="scw-ws-v2-picker-item-sow ' +
-              'scw-ws-v2-picker-item-sow--none"><b>SOW:</b> &mdash;</span>';
+              'scw-ws-v2-picker-item-sow--none"><b>' + escapeHtml(SOW_LBL) +
+              ':</b> &mdash;</span>';
           }
           // Per-item "locked" state (opts.itemState). Used by the Connected
           // Devices picker to SHOW cam/readers already claimed by another
@@ -614,16 +666,26 @@
           var takeoverHtml = locked
             ? '<button type="button" class="scw-ws-v2-picker-takeover">Take over</button>'
             : '';
+          // Optional secondary line (candidate `sub`, e.g. product SKU) —
+          // shown muted beneath the name, included in the search filter.
+          var subHtml = rec.sub
+            ? '<span class="scw-ws-v2-picker-item-sub">' + escapeHtml(rec.sub) + '</span>'
+            : '';
           row.innerHTML =
             '<input type="' + inputType + '" name="' + inputName + '" value="' +
               escapeHtml(rec.id) + '"' + (isChecked ? ' checked' : '') +
               (locked ? ' disabled' : '') + '>' +
             '<span class="scw-ws-v2-picker-item-text">' +
               '<span class="scw-ws-v2-picker-item-name">' + escapeHtml(labelText) + '</span>' +
+              subHtml +
               lockHtml +
               sowHtml +
             '</span>' +
             takeoverHtml;
+          // Membership stamp — the filter pills read this to show ONLY the
+          // items on the active SOW/Bid.
+          var rowSows = sowIdsOf(rec, SOW_CONN);
+          if (rowSows.length) row.setAttribute('data-scw-sows', rowSows.join(','));
           itemHost.appendChild(row);
         });
       });
@@ -825,9 +887,23 @@
       if (!countEl) return;
       var checked = bd.querySelectorAll(
         'input[name="scw-ws-v2-pick-' + opts.fieldKey + '"]:checked');
-      var n = 0;
-      for (var i = 0; i < checked.length; i++) { if (checked[i].value) n++; }
-      countEl.textContent = n + ' selected';
+      var n = 0, visible = 0;
+      for (var i = 0; i < checked.length; i++) {
+        if (!checked[i].value) continue;
+        n++;
+        var chkRow = checked[i].closest ? checked[i].closest('.scw-ws-v2-picker-item') : null;
+        if (!chkRow || chkRow.style.display !== 'none') visible++;
+      }
+      // With a filter pill active, the headline count is the selections ON
+      // that SOW/Bid. Selections hidden by the filter are STILL SAVED, so
+      // they surface as an explicit "+N elsewhere" instead of silently
+      // disappearing from the tally.
+      if (activeSow && visible !== n) {
+        countEl.textContent = visible + ' selected on this ' + SOW_LBL +
+          ' · +' + (n - visible) + ' elsewhere';
+      } else {
+        countEl.textContent = n + ' selected';
+      }
     }
     if (countEl) {
       bd.addEventListener('change', updateCount);
@@ -1091,12 +1167,125 @@
       }
     }
 
-    // ── Search filter ───────────────────────────────────────────────
+    // ── SOW filter pills + search filter ────────────────────────────
+    // Both funnel into ONE applyFilters(): an item must match the live
+    // search query AND the active SOW pill. The "Clear all / (no
+    // selection)" row is never filtered; group headers hide when none of
+    // their items survive the filters.
+    var searchInput = null;
+    var activeSow = null;   // null = All
+    var filterItems = [];
+    var filterWraps = [];
+    var noMatchEl = null;
+    if (candidates.length) {
+      filterItems = Array.prototype.slice.call(bd.querySelectorAll(
+        '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none)'));
+      filterWraps = Array.prototype.slice.call(
+        bd.querySelectorAll('.scw-ws-v2-picker-groupwrap'));
+      noMatchEl = document.createElement('div');
+      noMatchEl.className = 'scw-ws-v2-picker-search-empty';
+      noMatchEl.textContent = 'No matches.';
+      noMatchEl.style.display = 'none';
+      bd.appendChild(noMatchEl);
+    }
+
+    var applyFilters = function () {
+      var q = searchInput ? (searchInput.value || '').trim().toLowerCase() : '';
+      // While a query or SOW filter is live, collapsed groups force-open
+      // (CSS keyed on is-searching) so matches inside them are never
+      // hidden; the user's collapse state comes back when both clear.
+      bd.classList.toggle('is-searching', !!q || !!activeSow);
+      var anyVisible = false;
+      for (var i = 0; i < filterItems.length; i++) {
+        var it = filterItems[i];
+        var show = !q || (it.textContent || '').toLowerCase().indexOf(q) !== -1;
+        if (show && activeSow) {
+          // Only items ON the active SOW — no-SOW items hide too.
+          var sows = it.getAttribute('data-scw-sows') || '';
+          show = (',' + sows + ',').indexOf(',' + activeSow + ',') !== -1;
+        }
+        it.style.display = show ? '' : 'none';
+        if (show) anyVisible = true;
+      }
+      for (var g = 0; g < filterWraps.length; g++) {
+        var wrap = filterWraps[g];
+        var vis = false;
+        var its = wrap.querySelectorAll(
+          '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none)');
+        for (var k = 0; k < its.length; k++) {
+          if (its[k].style.display !== 'none') { vis = true; break; }
+        }
+        wrap.style.display = vis ? '' : 'none';
+      }
+      if (noMatchEl) noMatchEl.style.display = anyVisible ? 'none' : '';
+      // Re-tally the footer "N selected" against the new visibility so a
+      // SOW pill narrows the count to that SOW's selections.
+      updateCount();
+    };
+
+    // Filter pills — distinct SOWs/Bids across the candidates, naturally
+    // sorted. Rendered whenever toggling is meaningful: 2+ distinct values,
+    // or one alongside no-membership candidates (so "only SW-1001" still
+    // filters).
+    if (candidates.length) {
+      var sowById = {};
+      var sowCount = 0;
+      var hasNoSow = false;
+      for (var sc = 0; sc < candidates.length; sc++) {
+        var sraw = candidates[sc] && candidates[sc][SOW_CONN + '_raw'];
+        if (!Array.isArray(sraw) || !sraw.length) { hasNoSow = true; continue; }
+        var any = false;
+        for (var sr = 0; sr < sraw.length; sr++) {
+          var se = sraw[sr];
+          if (!se || !se.id) continue;
+          any = true;
+          if (sowById[se.id]) continue;
+          sowById[se.id] = (SOW_NAMES && SOW_NAMES[se.id]) ||
+            String(se.identifier || '').replace(/<[^>]*>/g, '').trim() ||
+            (SOW_CONN === 'field_2154' && ns.sowNameById && ns.sowNameById(se.id)) ||
+            se.id;
+          sowCount++;
+        }
+        if (!any) hasNoSow = true;
+      }
+      if (sowCount >= 2 || (sowCount === 1 && hasNoSow)) {
+        var pillWrap = document.createElement('div');
+        pillWrap.className = 'scw-ws-v2-picker-sowpills';
+        var pillList = Object.keys(sowById).map(function (id) {
+          return { id: id, label: sowById[id] };
+        }).sort(function (a, b) {
+          return String(a.label).localeCompare(String(b.label), undefined,
+            { numeric: true, sensitivity: 'base' });
+        });
+        var pillHtml = '<span class="scw-ws-v2-picker-sowpills-lbl">' +
+          escapeHtml(SOW_LBL) + '</span>' +
+          '<button type="button" class="scw-ws-v2-picker-sowpill ' +
+            'scw-ws-v2-picker-sowpill--active" data-scw-sow-pill="">All</button>';
+        for (var pi = 0; pi < pillList.length; pi++) {
+          pillHtml += '<button type="button" class="scw-ws-v2-picker-sowpill" ' +
+            'data-scw-sow-pill="' + escapeHtml(pillList[pi].id) + '" ' +
+            'title="Show only items on ' + escapeHtml(pillList[pi].label) + '">' +
+            escapeHtml(pillList[pi].label) + '</button>';
+        }
+        pillWrap.innerHTML = pillHtml;
+        card.insertBefore(pillWrap, bd);
+        pillWrap.addEventListener('click', function (ev) {
+          var btn = ev.target && ev.target.closest &&
+            ev.target.closest('[data-scw-sow-pill]');
+          if (!btn) return;
+          activeSow = btn.getAttribute('data-scw-sow-pill') || null;
+          var all = pillWrap.querySelectorAll('.scw-ws-v2-picker-sowpill');
+          for (var ai = 0; ai < all.length; ai++) {
+            all[ai].classList.toggle('scw-ws-v2-picker-sowpill--active', all[ai] === btn);
+          }
+          applyFilters();
+        });
+      }
+    }
+
     // Sizable lists (the product picker especially) get a type-to-filter
     // box between the header and the scrolling list. Matches each option's
-    // text (name + any SOW line); group headers hide when none of their
-    // items match. The "Clear all / (no selection)" row is never filtered.
-    var searchInput = null;
+    // text (name + any SOW line).
     if (candidates.length >= 8) {
       var searchWrap = document.createElement('div');
       searchWrap.className = 'scw-ws-v2-picker-search';
@@ -1104,45 +1293,7 @@
         'placeholder="Search…" autocomplete="off" spellcheck="false">';
       card.insertBefore(searchWrap, bd);
       searchInput = searchWrap.querySelector('input');
-
-      var noMatchEl = document.createElement('div');
-      noMatchEl.className = 'scw-ws-v2-picker-search-empty';
-      noMatchEl.textContent = 'No matches.';
-      noMatchEl.style.display = 'none';
-      bd.appendChild(noMatchEl);
-
-      var searchItems = Array.prototype.slice.call(bd.querySelectorAll(
-        '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none)'));
-      var searchWraps = Array.prototype.slice.call(
-        bd.querySelectorAll('.scw-ws-v2-picker-groupwrap'));
-
-      var applySearch = function () {
-        var q = (searchInput.value || '').trim().toLowerCase();
-        // While a query is live, collapsed groups force-open (CSS keyed
-        // on is-searching) so matches inside them are never hidden; the
-        // user's collapse state comes back when the query clears.
-        bd.classList.toggle('is-searching', !!q);
-        var anyVisible = false;
-        for (var i = 0; i < searchItems.length; i++) {
-          var it = searchItems[i];
-          var show = !q || (it.textContent || '').toLowerCase().indexOf(q) !== -1;
-          it.style.display = show ? '' : 'none';
-          if (show) anyVisible = true;
-        }
-        // A whole group section hides when none of its items match.
-        for (var g = 0; g < searchWraps.length; g++) {
-          var wrap = searchWraps[g];
-          var vis = false;
-          var its = wrap.querySelectorAll(
-            '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none)');
-          for (var k = 0; k < its.length; k++) {
-            if (its[k].style.display !== 'none') { vis = true; break; }
-          }
-          wrap.style.display = vis ? '' : 'none';
-        }
-        noMatchEl.style.display = anyVisible ? 'none' : '';
-      };
-      searchInput.addEventListener('input', applySearch);
+      searchInput.addEventListener('input', applyFilters);
     }
 
     document.body.appendChild(overlay);

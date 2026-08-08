@@ -16,14 +16,55 @@
       completed: { field: 'field_2724', value: 'Yes' }
     },
     {
+      // Renamed 2026-08-02 (docs/project-stage-workflow.md): initiation now
+      // ALWAYS means "please validate this SOW" — the Make scenario behind
+      // the form sends the Ops validation ping alongside project setup.
+      // Mechanics are unchanged: same form (menu view_3828), same
+      // field_1199 poll, same view_3491 refresh.
       type: 'action',
       id: 'initiate-install',
-      label: 'Initiate Installation Project',
+      label: 'Validate SOW Only',
+      // Helper line under the title (rendered only while the step is
+      // active — completed/locked states carry their own messages).
+      subText: 'Ops reviews & validates this SOW. Come back to request the survey whenever you’re ready.',
       menuView: 'view_3828',
       insertAfter: 'view_2924',
-      completed: { field: 'field_1199', hasValue: true },
+      // ⚠️ Completion proxy: field_1199 (CU project link) signals "project
+      // submitted to Ops", which coincides with "validation requested" for
+      // the FIRST SOW but not for alternatives (a clone may copy — or not
+      // copy — field_1199, and neither means validation was asked for THIS
+      // SOW). TODO(validation-requested stamp): once Builder gains a
+      // per-SOW "DATE_validation requested" field written by every Make
+      // scenario that carries the validation ask, key `completed` (and the
+      // pollAfterClick exit) on that stamp instead of field_1199.
+      // field_2723 = Yes also completes it — Ops validating makes the
+      // request moot.
+      completed: {
+        any: [
+          { field: 'field_1199', hasValue: true },
+          { field: 'field_2723', value: 'Yes' }
+        ]
+      },
       lockWhenCompleted: true,
-      disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' },
+      // This step exists ONLY as one of the two "Choose one" options
+      // (2026-08-02): once the choice is made — or is moot — it vanishes
+      // and the survey step carries the whole narrative (locked "waiting
+      // on Ops" in the validate-first path; "request pending" when armed).
+      // NOTE the element must ALWAYS exist in the DOM (scene-tweaks.js
+      // uses #scw-step-initiate-install as its scene-reveal marker), so
+      // this is a CSS soft-hide, never a showWhen removal.
+      softHideWhen: {
+        any: [
+          { field: 'field_1199', hasValue: true },   // validate-only fired
+          { field: 'field_2723', value: 'Yes' },     // already validated
+          { field: 'field_2706', value: 'Yes' },     // survey path taken
+          { field: 'field_2728', gt: 0 }             // sibling owns the survey
+        ]
+      },
+      disabled: [
+        { when: { field: 'field_2724', notValue: 'Yes' },
+          message: 'Complete the Project Playbook first' }
+      ],
       // When the Make automation finishes (field_1199 populated), refresh
       // these views so their DOM reflects the new install-project state
       // (e.g. view_3491's Clickup task / project link) without a manual reload.
@@ -34,49 +75,56 @@
       // field appears so the user can't double-fire the action and the
       // step transitions to "completed" automatically.
       pollAfterClick: {
-        pendingLabel: 'Initializing project — please wait…',
+        pendingLabel: 'Setting up project & requesting validation — please wait…',
         pollMs:       4000,
         timeoutMs:    120 * 1000
       }
     },
-    {
-      // Sales-side ask: once the install project is initiated
-      // (field_1199 hasValue) but THIS SOW hasn't been validated by Ops
-      // (field_2723 != Yes) and no survey has been asked for by any path
-      // (field_2706 != Yes AND no change requests, field_2728 == 0), the
-      // "Request Site Survey" accordion below is greyed out ("SOW not yet
-      // validated"). Surface an action so Sales can ping Ops to validate
-      // THIS SOW instead of staring at a dead step. Fires
-      // MAKE_REQUEST_SOW_VALIDATION_WEBHOOK (notify-only; Ops still owns the
-      // field_2723 flip). Hides the moment Ops validates (field_2723 = Yes)
-      // or a survey is asked for (the inverse of the accordion's completed
-      // gate), so it never lingers once it's moot.
-      type: 'action',
-      id: 'request-sow-validation',
-      label: 'Request SOW validated as ready for Survey',
-      insertAfterStepId: 'initiate-install',
-      webhookAction: 'requestSowValidation',
-      showWhen: {
-        all: [
-          { field: 'field_1199', hasValue: true },
-          { field: 'field_2723', notValue: 'Yes' },
-          { field: 'field_2706', notValue: 'Yes' },
-          { not: { field: 'field_2728', gt: 0 } },
-          { field: 'field_2917', gt: 0 }
-        ]
-      },
-      // After a successful request, remember it per-SOW so the button locks
-      // into a non-clickable "requested" state instead of re-offering (and
-      // re-pinging Ops) until Ops validates the SOW.
-      requestedState: {
-        label: 'Validation requested — waiting on Ops',
-        timeoutMs: 24 * 60 * 60 * 1000
-      }
-    },
+    // The standalone "Request SOW validated as ready for Survey" step was
+    // REMOVED 2026-08-02: both remaining sales actions ARE validation
+    // requests (docs/project-stage-workflow.md), so the notify-only side
+    // channel (MAKE_REQUEST_SOW_VALIDATION_WEBHOOK + localStorage
+    // requestedState) is retired.
     {
       type: 'accordion',
       viewKey: 'view_3853',
       label: 'Request Site Survey',
+      // Dynamic header label (2026-08-02): the SAME form serves both
+      // paths — Make branches on the SOW's validation state at submission
+      // time (docs/project-stage-workflow.md).
+      //   field_2723 != Yes → "Validate SOW & Request Survey" (Make
+      //     creates the REQ as Pending Validation, pings Ops, and runs
+      //     project setup when field_1199 is empty; the survey fires when
+      //     Ops marks ready)
+      //   field_2723 = Yes  → "Request Survey" (fires immediately — the
+      //     original behavior)
+      // First matching entry wins; a no-`when` entry is the fallback.
+      // Once the step is completed (survey requested here or on a
+      // sibling), fall back to the neutral historical label so a done
+      // step never reads as an offer.
+      dynamicLabel: [
+        { when: { any: [ { field: 'field_2706', value: 'Yes' },
+                         { field: 'field_2728', gt: 0 } ] },
+          label: 'Request Site Survey' },
+        // Validate-first path in flight (validation requested, Ops hasn't
+        // flipped field_2723 yet): neutral label — the step is locked
+        // below with "Waiting on Ops to validate", so the header must not
+        // read as an offer to validate again.
+        { when: { all: [ { field: 'field_1199', hasValue: true },
+                         { field: 'field_2723', notValue: 'Yes' } ] },
+          label: 'Request Site Survey' },
+        { when: { field: 'field_2723', notValue: 'Yes' }, label: 'Validate SOW & Straight to Survey' },
+        { label: 'Request Survey' }
+      ],
+      // Helper line under the title — replaces the old right-side
+      // activeMessage note (which crowded the header when the choice
+      // group renders the two options side by side). Only the
+      // unvalidated case needs explaining; once validated the label
+      // "Request Survey" speaks for itself.
+      subText: [
+        { when: { field: 'field_2723', notValue: 'Yes' },
+          text: 'Fill in the survey details now — the request is sent automatically as soon as Ops validates.' }
+      ],
       // Complete if the survey has been requested (field_2706 = Yes)
       // OR if there are any change requests queued (field_2728 > 0),
       // since the workflow has advanced past the initial survey step.
@@ -87,18 +135,51 @@
         ]
       },
       lockWhenCompleted: true,
-      // When the step is completed via the change-request path (i.e.
-      // the survey was actually requested on a sibling SOW), surface
-      // an info note linking back to that SOW. The {link} token pulls
-      // the connection's identifier + record-id from field_2329 on
-      // view_3876, then builds an href by swapping the second record-id
-      // in the current URL hash (the SOW slot) for the linked record id.
-      completedMessage: {
-        when: { field: 'field_2728', gt: 0 },
-        text: 'Survey Requested on {link}',
-        link: { view: 'view_3876', field: 'field_2329' }
-      },
-      disabled: { field: 'field_2723', notValue: 'Yes', message: 'Waiting on Ops to validate SOW' }
+      // Completed-state notes (array — first matching entry wins):
+      //   1. THIS SOW's survey is captured but the SOW isn't validated →
+      //      the request is ARMED (field_2706 flips at submit; Make holds
+      //      the send until Ops marks ready).
+      //   2. Sibling path ONLY (field_2728 counts the project's SOWs with
+      //      survey requested — INCLUDING this one — so gate the sibling
+      //      link on field_2706 ≠ Yes or it renders with an empty {link}
+      //      on the surveyed SOW itself). {link} pulls identifier +
+      //      record-id from field_2329 on view_3876 and swaps the SOW
+      //      slot in the current hash.
+      completedMessage: [
+        {
+          when: { all: [ { field: 'field_2706', value: 'Yes' },
+                         { field: 'field_2723', notValue: 'Yes' } ] },
+          text: 'Request pending — sends to the subcontractor once Ops validates the SOW'
+        },
+        {
+          when: { all: [ { field: 'field_2728', gt: 0 },
+                         { field: 'field_2706', notValue: 'Yes' } ] },
+          text: 'Survey Requested on {link}',
+          link: { view: 'view_3876', field: 'field_2329' }
+        }
+      ],
+      // Two locks (array — first match wins):
+      //   1. Playbook incomplete.
+      //   2. Validate-first path in flight: the user chose "Validate SOW
+      //      Only" (field_1199 populated) and Ops hasn't validated yet.
+      //      The survey button reads locked-until-validated — this is the
+      //      whole post-choice display for that path (the Validate step
+      //      itself soft-hides). Unlocks automatically when field_2723
+      //      flips. NOTE the pre-decision "Validate SOW & Straight to
+      //      Survey" submit stays ungated — Make branches on field_2723.
+      disabled: [
+        { when: { field: 'field_2724', notValue: 'Yes' },
+          message: 'Complete the Project Playbook first' },
+        { when: { all: [ { field: 'field_1199', hasValue: true },
+                         { field: 'field_2723', notValue: 'Yes' } ] },
+          message: 'Waiting on Ops to validate the SOW — this unlocks automatically' }
+      ],
+      // TODO(pending-REQ rollup): once the Builder rollup field (count of
+      // Pending Validation REQs) exists on view_3827, add an armed state
+      // here — "Survey request armed — sends when Ops validates" — keyed
+      // on it, IF discovery shows field_2706 does NOT flip on a pending
+      // submit. If field_2706 flips at submit regardless, the completed
+      // gate above already covers it.
     },
     {
       type: 'action',
@@ -114,23 +195,36 @@
       insertAfter: 'view_3853',
       activeIcon: 'eye',
       newTab: true,
-      // Locked only when the survey hasn't been requested AND the
-      // workflow hasn't advanced via the change-request path (field_2728 > 0).
-      disabled: {
-        all: [
-          { field: 'field_2706', notValue: 'Yes' },
-          { not: { field: 'field_2728', gt: 0 } }
-        ],
-        message: 'Site survey not yet requested'
-      }
+      // Unlocked only when the survey was actually SENT (field_2706 = Yes
+      // AND validated) or the workflow advanced via a sibling's survey
+      // (field_2728 > 0 with this SOW's 2706 = No). An ARMED request
+      // (2706 = Yes, 2723 ≠ Yes) stays locked — no report exists yet.
+      // Array form: first matching entry wins, each with its own message.
+      disabled: [
+        { when: { all: [ { field: 'field_2706', value: 'Yes' },
+                         { field: 'field_2723', notValue: 'Yes' } ] },
+          message: 'Survey not sent yet — waiting on Ops validation' },
+        { when: { all: [ { field: 'field_2706', notValue: 'Yes' },
+                         { not: { field: 'field_2728', gt: 0 } } ] },
+          message: 'Site survey not yet requested' }
+      ]
     },
     {
-      // Shows only when the SOW has pending change requests (field_2728 > 0)
-      // AND a survey has not yet been requested (field_2706 = No).
-      // Click opens a notes-prompt modal → MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK.
+      // STATE 3 (docs/project-stage-workflow.md gating): a SIBLING SOW has
+      // the survey (field_2728 > 0) and THIS SOW doesn't (field_2706 = No)
+      // — the one sales ask is "validate this SOW and add it to that
+      // survey as an alternative bid". Click opens a notes-prompt modal →
+      // MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK (payload now carries stepId so
+      // Make can treat it as a validation request too).
       type: 'action',
       id: 'request-alternative-proposal',
       label: 'Request Alternative Proposal',
+      // Validation state decides how much the ask claims to do.
+      dynamicLabel: [
+        { when: { field: 'field_2723', notValue: 'Yes' },
+          label: 'Request Validation & Add as Alternative Bid to Survey' },
+        { label: 'Request Addition to Survey as Alternative Bid' }
+      ],
       insertAfterStepId: 'review-site-survey',
       webhookAction: 'requestAlternativeProposal',
       showWhen: {
@@ -141,13 +235,35 @@
       }
     },
     {
+      // STATE 4: the survey on THIS SOW has actually been SENT — under
+      // the always-pending mechanics that means field_2706 = Yes AND the
+      // SOW is validated (field_2723 = Yes; an armed-but-unsent request
+      // has nothing to update yet). Sales asks for the surveyed bid
+      // package to be brought back in line with the SOW — the sales-side
+      // mirror of Ops's "Update Subcontractor Bid Request".
+      // (⚠️ field_2728 is NOT a change-count — it counts the project's
+      // SOWs with survey requested, including this one — so it can't
+      // gate "changes queued since the survey".)
+      type: 'action',
+      id: 'request-bid-update-to-match',
+      label: 'Request Survey Bid Updated to Match SOW',
+      insertAfterStepId: 'request-alternative-proposal',
+      webhookAction: 'requestBidUpdate',
+      showWhen: {
+        all: [
+          { field: 'field_2706', value: 'Yes' },
+          { field: 'field_2723', value: 'Yes' }
+        ]
+      }
+    },
+    {
       // Navigates to the currently-published-proposal details page.
       // Scrapes the href from view_3814's first "View Published Proposal"
       // row link — same source the totals panel's proposal block uses.
       type: 'action',
       id: 'review-final-proposal',
       label: 'Review Completed Proposal',
-      insertAfterStepId: 'request-alternative-proposal',
+      insertAfterStepId: 'request-bid-update-to-match',
       hrefSelector: '#view_3814 tbody tr a.kn-link-page',
       activeIcon: 'eye',
       newTab: true,
@@ -221,6 +337,11 @@
       '  display: none !important;' +
       '}' +
 
+      /* ── Soft-hidden step: visually gone but kept in the DOM ──
+         (scene-tweaks.js requires #scw-step-initiate-install to EXIST as
+         its scene-reveal marker, so post-choice removal is CSS-only). */
+      '.scw-step-soft-hidden { display: none !important; }' +
+
       /* ── Completed accordion ── */
       '.scw-step-completed .scw-acc-icon { color: #16a34a !important; opacity: 1 !important; }' +
 
@@ -285,10 +406,27 @@
       '  justify-content: center; width: 28px; margin-right: 6px;' +
       '  color: var(--scw-step-accent, #295f91); opacity: .75;' +
       '}' +
+      '.scw-step-action .scw-step-text {' +
+      '  flex: 1 1 auto; min-width: 0; display: flex;' +
+      '  flex-direction: column; gap: 1px;' +
+      '}' +
+      /* flex kept for the ops/sales steppers, whose rows have the title
+         as a direct flex child of the row (no .scw-step-text wrapper) —
+         inside this module's column wrapper it's inert. */
       '.scw-step-action .scw-step-title {' +
       '  flex: 1 1 auto; font-size: 14px; font-weight: 600;' +
       '  color: #1e293b; white-space: nowrap; overflow: hidden;' +
       '  text-overflow: ellipsis;' +
+      '}' +
+      /* Helper sub-line under a step title (action rows + accordion
+         headers). Wraps freely — it exists so the TITLE can stay short. */
+      '.scw-step-sub {' +
+      '  font-size: 11.5px; font-weight: 500; color: #64748b;' +
+      '  line-height: 1.35; white-space: normal;' +
+      '}' +
+      '.scw-ktl-accordion__header.scw-step-has-sub { flex-wrap: wrap; }' +
+      '.scw-ktl-accordion__header .scw-step-sub {' +
+      '  flex: 1 1 100%; order: 10; margin: 2px 0 0 30px;' +
       '}' +
 
       /* ── Action step states ── */
@@ -382,7 +520,42 @@
       '}' +
 
       /* ── Hide original menu view ── */
-      '.scw-step-menu-hidden { display: none !important; }';
+      '.scw-step-menu-hidden { display: none !important; }' +
+
+      /* ── Either/or choice group (S1: validation-only vs validate+survey).
+         Stacked with an OR divider by default; side-by-side when the
+         container is wide enough — EXCEPT while the survey accordion is
+         expanded (its form needs full width). ── */
+      '.scw-step-choice {' +
+      '  border: 1px dashed #cbd5e1; border-radius: 16px;' +
+      '  padding: 10px 12px 4px; margin-bottom: 8px;' +
+      '  container-type: inline-size;' +
+      '}' +
+      '.scw-step-choice__label {' +
+      '  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;' +
+      '  text-transform: uppercase; color: #64748b; margin: 0 2px 8px;' +
+      '}' +
+      '.scw-step-choice__options { display: flex; flex-direction: column; }' +
+      '.scw-step-choice__or {' +
+      '  display: flex; align-items: center; gap: 10px;' +
+      '  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;' +
+      '  text-transform: uppercase; color: #94a3b8; margin: 0 0 8px;' +
+      '}' +
+      '.scw-step-choice__or::before, .scw-step-choice__or::after {' +
+      '  content: ""; flex: 1 1 auto; height: 1px; background: #e2e8f0;' +
+      '}' +
+      '@container (min-width: 640px) {' +
+      '  .scw-step-choice__options { flex-direction: row; align-items: stretch; gap: 10px; }' +
+      '  .scw-step-choice__options > .scw-step-action,' +
+      '  .scw-step-choice__options > .scw-ktl-accordion { flex: 1 1 0; min-width: 0; margin-bottom: 8px; }' +
+      '  .scw-step-choice__or { flex: 0 0 auto; align-self: center; margin: 0 0 8px; }' +
+      '  .scw-step-choice__or::before, .scw-step-choice__or::after { display: none; }' +
+      '}' +
+      /* Expanded survey form → force the stacked layout so the form gets
+         the full column width (overrides the container query). */
+      '.scw-step-choice:has(.scw-ktl-accordion.is-expanded) .scw-step-choice__options {' +
+      '  flex-direction: column;' +
+      '}';
 
     // Hide any view a step fully replaces but doesn't source its href
     // from (step.hideMenuView). CSS-based + view-id selector so there's
@@ -529,10 +702,16 @@
     icon.innerHTML = CIRCLE_SVG;
     el.appendChild(icon);
 
+    // Title + optional helper sub-line stack in a column so the row can
+    // carry two lines without the title losing its ellipsis behavior.
+    var textWrap = document.createElement('span');
+    textWrap.className = 'scw-step-text';
+    el.appendChild(textWrap);
+
     var title = document.createElement('span');
     title.className = 'scw-step-title';
     title.textContent = step.label;
-    el.appendChild(title);
+    textWrap.appendChild(title);
 
     return el;
   }
@@ -563,15 +742,23 @@
     return null;
   }
 
+  // If an anchor element has been moved inside the either/or choice group,
+  // insert AFTER the group instead — otherwise later steps would land
+  // inside the group when they append after the survey accordion.
+  function normalizeAnchor(el) {
+    if (!el || !el.closest) return el;
+    return el.closest('.scw-step-choice') || el;
+  }
+
   function findInsertAnchor(step) {
     if (step.insertAfterStepId) {
       var el = document.getElementById('scw-step-' + step.insertAfterStepId);
-      if (el) return el;
+      if (el) return normalizeAnchor(el);
       // Anchor step isn't in the DOM — gated out by showWhen. Fall back
       // to the nearest rendered predecessor in STEPS order.
-      return nearestRenderedPredecessor(step);
+      return normalizeAnchor(nearestRenderedPredecessor(step));
     }
-    return findAccordion(step.insertAfter);
+    return normalizeAnchor(findAccordion(step.insertAfter));
   }
 
   // ── Webhook-driven step actions ──────────────────────────
@@ -712,6 +899,12 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               sourceRecordId: sourceRecordId,
+              // stepId lets Make also treat this as a validation request
+              // for THIS SOW (state 3 of the gating model — see
+              // docs/project-stage-workflow.md). Additive: existing
+              // scenario branches ignore unknown keys.
+              stepId:         step.id,
+              actionLabel:    step.label || '',
               notes:          notes,
               account:        account,
               project:        project,
@@ -725,7 +918,19 @@
               return { ok: resp.ok, status: resp.status, body: body, data: data };
             });
           }).then(function (resp) {
-            if (resp.data && resp.data.success) {
+            // Make's default ack for an accepted webhook is HTTP 200 with a
+            // plain-text "Accepted" body — sent whenever the scenario takes
+            // the request but the Webhook Response module doesn't answer
+            // within Make's 40s window (or isn't configured to return
+            // JSON). The old strict `data.success` check rejected that ack
+            // with "non-JSON or unexpected response" even though the
+            // request WENT THROUGH — and the error invited a resubmit
+            // (duplicate alt-proposal requests). Mirror requestBidUpdate:
+            // HTTP-OK counts as success unless the body carries an
+            // explicit JSON error.
+            var explicitError = resp.data &&
+              (resp.data.success === false || resp.data.error);
+            if ((resp.data && resp.data.success) || (resp.ok && !explicitError)) {
               // Make did its thing — reload so the stepper re-evaluates
               // against the latest field values (e.g. an alt-proposal
               // record may now be present / flags may have flipped).
@@ -736,9 +941,7 @@
             setStepLoading(el, false);
             onError(
               (resp.data && (resp.data.error || resp.data.message)) ||
-              (resp.ok
-                ? 'Webhook returned a non-JSON or unexpected response.'
-                : 'Webhook returned HTTP ' + resp.status + '.')
+              'Webhook returned HTTP ' + resp.status + '.'
             );
           }).catch(function (err) {
             setSubmitting(false);
@@ -748,15 +951,17 @@
         }
       });
     },
+    // requestSowValidation handler REMOVED 2026-08-02 — the standalone
+    // validation-request step is retired (see the STEPS comment above).
 
-    // Sales asks Ops to validate THIS SOW as ready for survey. Notify-only:
-    // it does NOT flip field_2723 (Ops owns that gate). On success we stamp
-    // a per-SOW "requested" flag and reload so the step re-renders into the
-    // locked "Validation requested — waiting on Ops" state.
-    requestSowValidation: function (step, el) {
-      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_REQUEST_SOW_VALIDATION_WEBHOOK) || '';
+    // State 4: survey already on THIS SOW, changes queued — ask the bid
+    // team to bring the surveyed bid package back in line with the SOW.
+    // Sibling copy of requestAlternativeProposal (same modal + payload
+    // shape, its own webhook key so Make can be wired independently).
+    requestBidUpdate: function (step, el) {
+      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_REQUEST_BID_UPDATE_WEBHOOK) || '';
       if (!url || /PLACEHOLDER/.test(url)) {
-        alert('Request-SOW-validation webhook URL is not configured.');
+        alert('Request-bid-update webhook URL is not configured.');
         return;
       }
       var sourceRecordId = getSourceSowId();
@@ -765,10 +970,10 @@
         return;
       }
       openNotesPromptModal({
-        title:       'Request SOW Validation',
-        intro:       'Ask Ops to validate THIS SOW as ready for survey. Add any context that helps them prioritize it.',
-        placeholder: 'e.g. Customer chose this option — please validate so we can request the survey.',
-        submitLabel: 'Send Request',
+        title:         'Request Survey Bid Update',
+        intro:         'Ask the bid team to update the surveyed bid package to match the current SOW.',
+        placeholder:   'e.g. Swapped 2 cameras to the cheaper model, added a reader at the side door',
+        submitLabel:   'Submit Request',
         onSubmit: function (notes, setSubmitting, onError) {
           setSubmitting(true);
           setStepLoading(el, true);
@@ -795,8 +1000,6 @@
               return { ok: resp.ok, status: resp.status, body: body, data: data };
             });
           }).then(function (resp) {
-            // Notify-only scenario may 200 with an empty body — treat any
-            // 2xx (or explicit success) as accepted.
             var ok = resp.ok || (resp.data && resp.data.success === true);
             if (!ok) {
               setSubmitting(false);
@@ -807,7 +1010,6 @@
               );
               return;
             }
-            setRequested(step.id);
             window.location.reload();
           }).catch(function (err) {
             setSubmitting(false);
@@ -994,20 +1196,84 @@
   //      by .when) — uses info icon.
   //   2. step.disabled.message when baseDisabled AND step is NOT
   //      completed — uses lock icon.
-  //   3. none otherwise.
+  //   3. step.activeMessage when the step is active (neither completed
+  //      nor disabled), optionally gated by .when — uses info icon.
+  //   4. none otherwise.
   function resolveHeaderMessage(step, isCompleted, baseDisabled) {
     if (isCompleted && step.completedMessage) {
-      var cm = step.completedMessage;
-      var cmText = typeof cm === 'string' ? cm : (cm && cm.text) || '';
-      var cmWhen = typeof cm === 'object' ? cm.when : null;
-      if (cmText && (!cmWhen || conditionMet(cmWhen))) {
-        var finalHtml = expandMessage(cmText, typeof cm === 'object' ? cm : null);
-        if (finalHtml) return { html: finalHtml, icon: INFO_SM_SVG };
+      // Array form: first matching entry wins (single object still works).
+      var cmList = Array.isArray(step.completedMessage)
+        ? step.completedMessage : [step.completedMessage];
+      for (var ci = 0; ci < cmList.length; ci++) {
+        var cm = cmList[ci];
+        var cmText = typeof cm === 'string' ? cm : (cm && cm.text) || '';
+        var cmWhen = typeof cm === 'object' ? cm.when : null;
+        if (cmText && (!cmWhen || conditionMet(cmWhen))) {
+          var finalHtml = expandMessage(cmText, typeof cm === 'object' ? cm : null);
+          if (finalHtml) return { html: finalHtml, icon: INFO_SM_SVG };
+        }
       }
     }
-    if (baseDisabled && !isCompleted && step.disabled && step.disabled.message) {
-      // Lock messages don't accept tokens — plain text.
-      return { html: escapeHtml(step.disabled.message), icon: LOCK_SM_SVG };
+    if (baseDisabled && !isCompleted && step.disabled) {
+      // Lock messages don't accept tokens — plain text. resolveDisabled
+      // picks the matching message for array-form disabled configs.
+      var dMsg = resolveDisabled(step).message;
+      if (dMsg) return { html: escapeHtml(dMsg), icon: LOCK_SM_SVG };
+    }
+    if (!isCompleted && !baseDisabled && step.activeMessage) {
+      var am = step.activeMessage;
+      var amText = typeof am === 'string' ? am : (am && am.text) || '';
+      var amWhen = typeof am === 'object' ? am.when : null;
+      if (amText && (!amWhen || conditionMet(amWhen))) {
+        var amHtml = expandMessage(amText, typeof am === 'object' ? am : null);
+        if (amHtml) return { html: amHtml, icon: INFO_SM_SVG };
+      }
+    }
+    return null;
+  }
+
+  // Resolve step.disabled to { disabled, message }. Supports the original
+  // single condition-object form ({ field…, message }) and an ARRAY of
+  // { when, message } entries — first matching entry wins, so different
+  // lock reasons can carry different messages.
+  function resolveDisabled(step) {
+    if (!step.disabled) return { disabled: false, message: '' };
+    if (Array.isArray(step.disabled)) {
+      for (var i = 0; i < step.disabled.length; i++) {
+        var d = step.disabled[i];
+        if (conditionMet(d.when || d)) {
+          return { disabled: true, message: d.message || '' };
+        }
+      }
+      return { disabled: false, message: '' };
+    }
+    return {
+      disabled: conditionMet(step.disabled),
+      message: step.disabled.message || ''
+    };
+  }
+
+  // Resolve step.subText (helper line under the title) — a plain string,
+  // or an array of { when, text } entries, first match wins. Returns null
+  // when nothing applies (no sub-line rendered).
+  function resolveSubText(step) {
+    if (!step.subText) return null;
+    if (typeof step.subText === 'string') return step.subText;
+    for (var i = 0; i < step.subText.length; i++) {
+      var s = step.subText[i];
+      if (!s.when || conditionMet(s.when)) return s.text || null;
+    }
+    return null;
+  }
+
+  // Resolve a state-dependent step label: first dynamicLabel entry whose
+  // `when` matches wins; an entry with no `when` is the fallback. Returns
+  // null when the step has no dynamicLabel (caller keeps step.label).
+  function resolveDynamicLabel(step) {
+    if (!step.dynamicLabel) return null;
+    for (var i = 0; i < step.dynamicLabel.length; i++) {
+      var d = step.dynamicLabel[i];
+      if (!d.when || conditionMet(d.when)) return d.label || null;
     }
     return null;
   }
@@ -1049,8 +1315,17 @@
     var hdr = wrap.querySelector('.scw-ktl-accordion__header');
     var iconEl = hdr.querySelector('.scw-acc-icon');
 
+    // State-dependent header label (dynamicLabel). Change-guarded write —
+    // ktl-accordion's syncState runs off a MutationObserver, so an
+    // unconditional textContent write would re-fire it every pass.
+    var dynLabel = resolveDynamicLabel(step);
+    if (dynLabel) {
+      var ttlEl = hdr.querySelector('.scw-acc-title');
+      if (ttlEl && ttlEl.textContent !== dynLabel) ttlEl.textContent = dynLabel;
+    }
+
     var isCompleted = step.completed ? conditionMet(step.completed) : false;
-    var baseDisabled = step.disabled ? conditionMet(step.disabled) : false;
+    var baseDisabled = resolveDisabled(step).disabled;
     var lockedByCompletion = !!(step.lockWhenCompleted && isCompleted);
     var isDisabled = baseDisabled || lockedByCompletion;
 
@@ -1063,6 +1338,24 @@
     // styles that combined state (full opacity, green icon, no clicks).
     wrap.classList.toggle('scw-step-completed', isCompleted);
     wrap.classList.toggle('scw-step-disabled', isDisabled);
+
+    // Helper sub-line — active states only (completed/locked headers carry
+    // their own messages). Change-guarded writes: ktl-accordion's
+    // MutationObserver watches this header.
+    var subTxt = (!isCompleted && !baseDisabled) ? resolveSubText(step) : null;
+    var subEl = hdr.querySelector('.scw-step-sub');
+    if (subTxt) {
+      if (!subEl) {
+        subEl = document.createElement('span');
+        subEl.className = 'scw-step-sub';
+        hdr.appendChild(subEl);
+      }
+      if (subEl.textContent !== subTxt) subEl.textContent = subTxt;
+      if (!hdr.classList.contains('scw-step-has-sub')) hdr.classList.add('scw-step-has-sub');
+    } else {
+      if (subEl) subEl.remove();
+      if (hdr.classList.contains('scw-step-has-sub')) hdr.classList.remove('scw-step-has-sub');
+    }
 
     renderHeaderMessage(hdr, step, step.viewKey, isCompleted, baseDisabled);
   }
@@ -1098,31 +1391,23 @@
       if (afterAcc) afterAcc.after(el);
     }
 
+    // Soft-hide: CSS display:none while the condition holds, but the
+    // element stays in the DOM (unlike showWhen) — scene-tweaks.js keys
+    // its scene-reveal on #scw-step-initiate-install existing. State
+    // application continues below so poll-flag cleanup and menu hiding
+    // still run while hidden.
+    if (step.softHideWhen) {
+      el.classList.toggle('scw-step-soft-hidden', conditionMet(step.softHideWhen));
+    }
+
     // Update href (only for navigation-type steps, not webhook steps)
     if (!step.webhookAction) {
       var href = resolveHref(step);
       if (href) el.href = href;
     }
 
-    // ── requestedState: lock after a fire-and-forget "request" action ──
-    // Steps that ping a human (e.g. asking Ops to validate the SOW) have no
-    // server flag of their own to flip, so we remember the request per-SOW
-    // in localStorage and render a non-clickable "requested" state until the
-    // gating field changes (which then hides the step via showWhen).
-    if (step.requestedState && isRequested(step)) {
-      var rIcon = el.querySelector('.scw-step-icon');
-      if (rIcon) rIcon.innerHTML = CHECK_CIRCLE_SVG;
-      var rTitle = el.querySelector('.scw-step-title');
-      if (rTitle) rTitle.textContent = step.requestedState.label || step.label;
-      el.classList.remove('is-processing', 'is-loading');
-      el.classList.add('is-completed', 'is-disabled');
-      el.removeAttribute('href');
-      renderHeaderMessage(el, step, step.id, false, false);
-      return;
-    }
-
     var isCompleted = step.completed ? conditionMet(step.completed) : false;
-    var baseDisabled = step.disabled ? conditionMet(step.disabled) : false;
+    var baseDisabled = resolveDisabled(step).disabled;
     var lockedByCompletion = !!(step.lockWhenCompleted && isCompleted);
     var isDisabled = baseDisabled || lockedByCompletion;
 
@@ -1159,6 +1444,9 @@
       el.classList.add('is-processing');
       el.classList.add('is-disabled');
       el.classList.remove('is-completed');
+      // Helper sub-line is noise under the spinner label — drop it.
+      var procSub = el.querySelector('.scw-step-sub');
+      if (procSub) procSub.remove();
       // Drop the href so even an accessibility-tab-Enter doesn't fire.
       el.removeAttribute('href');
       renderHeaderMessage(el, step, step.id, false, false);
@@ -1167,10 +1455,12 @@
     }
 
     // Not processing — restore in case we just exited that state.
+    // (dynamicLabel wins over the static label when configured.)
     el.classList.remove('is-processing');
+    var stepLabel = resolveDynamicLabel(step) || step.label;
     var titleEl2 = el.querySelector('.scw-step-title');
-    if (titleEl2 && titleEl2.textContent !== step.label) {
-      titleEl2.textContent = step.label;
+    if (titleEl2 && titleEl2.textContent !== stepLabel) {
+      titleEl2.textContent = stepLabel;
     }
     if (!step.webhookAction) {
       var hrefAfter = resolveHref(step);
@@ -1186,11 +1476,101 @@
     el.classList.toggle('is-completed', isCompleted);
     el.classList.toggle('is-disabled', isDisabled);
 
+    // Helper sub-line — active states only.
+    var actSub = (!isCompleted && !isDisabled) ? resolveSubText(step) : null;
+    var textWrap2 = el.querySelector('.scw-step-text');
+    var actSubEl = textWrap2 && textWrap2.querySelector('.scw-step-sub');
+    if (actSub && textWrap2) {
+      if (!actSubEl) {
+        actSubEl = document.createElement('span');
+        actSubEl.className = 'scw-step-sub';
+        textWrap2.appendChild(actSubEl);
+      }
+      if (actSubEl.textContent !== actSub) actSubEl.textContent = actSub;
+    } else if (actSubEl) {
+      actSubEl.remove();
+    }
+
     // Disabled / informational message — shared helper with accordions.
     renderHeaderMessage(el, step, step.id, isCompleted, baseDisabled);
 
     // Hide original menu view
     hideStepMenu(step);
+  }
+
+  // ── Either/or choice group ───────────────────────────────
+  // "Request SOW Validation Only" and "Validate SOW & Request Survey" are
+  // mutually exclusive ways to enter the funnel, so while BOTH are still
+  // on offer they render inside one "Choose one" group (side-by-side when
+  // the column is wide enough, stacked with an OR divider otherwise).
+  // The group exists only in the pre-decision window (states S0/S1):
+  // not validated, no survey anywhere, validation not yet requested.
+  // The moment any of that changes the group dissolves and the steps
+  // return to their normal stacked positions.
+  var CHOICE_GROUP_ID = 'scw-step-choice-validation';
+
+  function choiceWindowOpen() {
+    return conditionMet({
+      all: [
+        { field: 'field_2723', notValue: 'Yes' },
+        { field: 'field_2706', notValue: 'Yes' },
+        { not: { field: 'field_2728', gt: 0 } },
+        { not: { field: 'field_1199', hasValue: true } }
+      ]
+    });
+  }
+
+  function applyChoiceGroup() {
+    var initEl = document.getElementById('scw-step-initiate-install');
+    var acc = findAccordion('view_3853');
+    var group = document.getElementById(CHOICE_GROUP_ID);
+
+    if (!choiceWindowOpen() || !initEl || !acc) {
+      // Dissolve: restore the two options as ordinary siblings where the
+      // group sits, preserving order (validation-only, then accordion).
+      if (group && group.parentNode) {
+        var opts = group.querySelector('.scw-step-choice__options');
+        if (opts) {
+          if (initEl && initEl.parentNode === opts) group.parentNode.insertBefore(initEl, group);
+          if (acc && acc.parentNode === opts) group.parentNode.insertBefore(acc, group);
+        }
+        group.remove();
+      }
+      return;
+    }
+
+    if (!group) {
+      group = document.createElement('div');
+      group.id = CHOICE_GROUP_ID;
+      group.className = 'scw-step-choice';
+
+      var label = document.createElement('div');
+      label.className = 'scw-step-choice__label';
+      label.textContent = 'Choose one';
+      group.appendChild(label);
+
+      var options = document.createElement('div');
+      options.className = 'scw-step-choice__options';
+      group.appendChild(options);
+
+      var or = document.createElement('div');
+      or.className = 'scw-step-choice__or';
+      or.textContent = 'or';
+      options.appendChild(or);
+
+      // The group takes the validation-only step's slot (right after the
+      // Playbook accordion).
+      initEl.parentNode.insertBefore(group, initEl);
+    }
+
+    // Adopt / re-adopt both options. Self-healing: Knack may replace
+    // view_3853 wholesale, in which case ktl-accordion re-adopts the
+    // fresh view into the wrapper at its ORIGINAL scene position —
+    // outside our group — so pull it back in on every pass.
+    var optsEl = group.querySelector('.scw-step-choice__options');
+    var orEl = optsEl.querySelector('.scw-step-choice__or');
+    if (initEl.parentNode !== optsEl) optsEl.insertBefore(initEl, orEl);
+    if (acc.parentNode !== optsEl) optsEl.appendChild(acc);
   }
 
   // ── Main apply ───────────────────────────────────────────
@@ -1200,6 +1580,7 @@
       if (step.type === 'accordion') applyAccordionState(step);
       else if (step.type === 'action') applyActionState(step);
     }
+    applyChoiceGroup();
   }
 
   // ── pollAfterClick: lock + poll until a step's completion field flips ──
@@ -1233,33 +1614,6 @@
   }
   function clearPollFlag(stepId) {
     try { localStorage.removeItem(pollFlagKey(stepId)); } catch (e) {}
-  }
-
-  // ── requestedState: remember a fired notify-only action per-SOW ──
-  // Used by webhook actions that ping a human and have no server flag of
-  // their own (e.g. "Request SOW validated as ready for Survey"). Keyed by
-  // stepId + SOW id and TTL-bounded so a stale request eventually re-offers.
-  var REQUESTED_FLAG_PREFIX = 'scw-step-requested:';
-  function requestedFlagKey(stepId) {
-    return REQUESTED_FLAG_PREFIX + stepId + ':' + (getSourceSowId() || '');
-  }
-  function isRequested(step) {
-    try {
-      var raw = localStorage.getItem(requestedFlagKey(step.id));
-      if (!raw) return false;
-      var ts = parseInt(raw, 10);
-      if (!isFinite(ts)) return false;
-      var ttl = (step.requestedState && step.requestedState.timeoutMs) || (24 * 60 * 60 * 1000);
-      if (Date.now() - ts > ttl) {
-        localStorage.removeItem(requestedFlagKey(step.id));
-        return false;
-      }
-      return true;
-    } catch (e) { return false; }
-  }
-  function setRequested(stepId) {
-    try { localStorage.setItem(requestedFlagKey(stepId), String(Date.now())); }
-    catch (e) {}
   }
 
   function startStepPoll(step) {
@@ -1425,6 +1779,24 @@
     if (arrow) { arrow.classList.remove('ktlDown'); arrow.classList.add('ktlUp'); }
   }
 
+  // Refetch the SOW source view's model, then re-apply steps. Model
+  // attributes carry record-rule updates (e.g. field_2706 flipping at
+  // survey submit); a bare fetch doesn't re-render the hidden details
+  // DOM, so readField prefers the model. Always re-applies — even on
+  // fetch error — so one failed request can't strand a stale stepper.
+  function refetchSourceAndApply() {
+    try {
+      if (typeof Knack !== 'undefined' && Knack.views[SOURCE_VIEW] && Knack.views[SOURCE_VIEW].model) {
+        Knack.views[SOURCE_VIEW].model.fetch({
+          success: function () { setTimeout(applySteps, 300); },
+          error:   function () { setTimeout(applySteps, 300); }
+        });
+        return;
+      }
+    } catch (e) { /* fall through */ }
+    applySteps();
+  }
+
   // Collapse accordion and refresh steps after form submit
   function onFormSubmit(viewKey) {
     // KTL persistent forms re-render after submit (showing the "Form
@@ -1435,12 +1807,19 @@
       setTimeout(function () { collapseStepAccordion(viewKey); }, ms);
     });
     // Refresh source view to get updated field values, then re-apply steps
-    if (typeof Knack !== 'undefined' && Knack.views[SOURCE_VIEW] && Knack.views[SOURCE_VIEW].model) {
-      Knack.views[SOURCE_VIEW].model.fetch({
-        success: function () { setTimeout(applySteps, 300); }
+    refetchSourceAndApply();
+    setTimeout(applySteps, 1500);
+    // Survey submits (view_3853) now resolve ASYNC in Make: every REQ is
+    // created Pending Validation, then Make promotes it (validated SOW →
+    // partner submit + field_2706 flip) seconds later. The immediate
+    // refetch above races that flip, so schedule late rounds to catch it
+    // — otherwise the accordion briefly reads un-done after a submit on a
+    // validated SOW.
+    if (viewKey === 'view_3853') {
+      [4000, 9000].forEach(function (ms) {
+        setTimeout(refetchSourceAndApply, ms);
       });
     }
-    setTimeout(applySteps, 1500);
   }
 
   // Any view referenced by a step's menuView / hrefSelector is a source
@@ -1507,6 +1886,25 @@
         .on(evt + '.' + vk + NS, function () { handleStepFormSubmit(vk); });
     });
   });
+
+  // Belt-and-braces for the survey form: Knack's record events don't
+  // reliably fire for view_3853's create form, which left the stepper
+  // stale (no pending note) until a manual page refresh. A delegated
+  // click on the form's submit button schedules refetch rounds
+  // regardless of Knack's events — harmless when validation blocks the
+  // submit (the refetch is an idempotent read; the completed gate simply
+  // doesn't flip). The Knack-event path above still runs when it does
+  // fire; refetchSourceAndApply is idempotent so overlap is fine.
+  $(document)
+    .off('click' + NS, '#view_3853 .kn-submit button')
+    .on('click' + NS, '#view_3853 .kn-submit button', function () {
+      [2000, 5000, 10000].forEach(function (ms) {
+        setTimeout(refetchSourceAndApply, ms);
+      });
+      // Collapse the accordion once the confirmation lands, matching the
+      // event-driven path's behavior.
+      setTimeout(function () { collapseStepAccordion('view_3853'); }, 2000);
+    });
 
   // ── Cross-tab refresh after Ops stepper completion ───────
   // ops-stepper.js (on the Ops tab) writes

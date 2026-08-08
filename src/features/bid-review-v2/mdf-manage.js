@@ -45,13 +45,12 @@
   var STYLE_ID = P + '-css';
   var ROW_CLS  = P + '-panel-row';
 
-  var F = {
-    type:        'field_1641',
-    num:         'field_2458',
-    name:        'field_1943',
-    notes:       'field_1643',
-    displayName: 'field_1642'
-  };
+  // Shared save engine — field map, display-name parsing, silent-drop
+  // detection, formula verification, and model/identifier patching all
+  // live in mdf-edit-core.js so every location editor behaves identically.
+  var core = window.SCW.mdfEdit;
+  if (!core) return;
+  var F = core.FIELDS;
 
   function mdfViewKey() {
     return (window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
@@ -67,16 +66,7 @@
     });
   }
 
-  /** field_1642 is the computed "TYPE: ## : name" label. Split on the first
-   *  two colons; degrade gracefully when the ## segment is missing. */
-  function parseDisplayName(dn) {
-    dn = String(dn == null ? '' : dn);
-    var m = /^([^:]*):([^:]*):([\s\S]*)$/.exec(dn);
-    if (m) return { type: m[1].trim(), num: m[2].trim(), name: m[3].trim() };
-    m = /^([^:]*):([\s\S]*)$/.exec(dn);
-    if (m) return { type: m[1].trim(), num: '', name: m[2].trim() };
-    return { type: '', num: '', name: dn.trim() };
-  }
+  var parseDisplayName = core.parseDisplayName;
 
   function allRecords() {
     var recs = [];
@@ -109,72 +99,9 @@
     return stripTags(raw != null ? raw : rec[fk]);
   }
 
-  /** After a rename, rewrite the location's connection identifier in EVERY
-   *  loaded view model on the scene. The comparison grid groups by the line
-   *  items' field_1946 identifier (transform.js connectionLabel), which
-   *  snapshots the display name at load — left stale, the next grid rebuild
-   *  resurrects the old name and the rename looks like it "didn't take".
-   *  Patches `_raw` identifiers plus the rendered HTML connection copy
-   *  (<span class="<recId>">label</span>). Best-effort by design. */
-  function patchConnectionIdentifiers(recId, newLabel) {
-    if (!recId || !newLabel) return;
-    var own = Object.prototype.hasOwnProperty;
-    var spanRe = new RegExp(
-      '(<span[^>]*class="[^"]*' + recId + '[^"]*"[^>]*>)[^<]*(</span>)', 'g');
-    var htmlLabel = esc(newLabel).replace(/\$/g, '$$$$');
-    try {
-      var views = (window.Knack && Knack.views) || {};
-      for (var vk in views) {
-        if (!own.call(views, vk)) continue;
-        var v = views[vk];
-        var models = v && v.model && v.model.data && v.model.data.models;
-        if (!models || !models.length) continue;
-        for (var i = 0; i < models.length; i++) {
-          var attrs = models[i] && (models[i].attributes || models[i]);
-          if (!attrs) continue;
-          for (var key in attrs) {
-            if (!own.call(attrs, key)) continue;
-            var val = attrs[key];
-            if (/_raw$/.test(key)) {
-              if (Array.isArray(val)) {
-                for (var r = 0; r < val.length; r++) {
-                  if (val[r] && val[r].id === recId) val[r].identifier = newLabel;
-                }
-              } else if (val && val.id === recId && val.identifier != null) {
-                val.identifier = newLabel;
-              }
-            } else if (typeof val === 'string' && val.indexOf(recId) !== -1) {
-              attrs[key] = val.replace(spanRe, '$1' + htmlLabel + '$2');
-            }
-          }
-        }
-      }
-    } catch (e) { /* best-effort — a manual refresh still shows the rename */ }
-  }
-
-  /** Patch the hidden source view's table DOM after a save. The L1 detail
-   *  band (photos/SCW Notes) and the survey-notes callout re-SCRAPE that
-   *  DOM on every grid rebuild (readSourceFieldText / findMdfIdfSourceRow)
-   *  — the model sync alone leaves those scrapes stale. Writes the saved
-   *  fields plus the recomposed display name into the row's cells. */
-  function patchSourceViewDom(recId, fields, newLabel) {
-    var own = Object.prototype.hasOwnProperty;
-    try {
-      var viewEl = document.getElementById(mdfViewKey());
-      var tr = viewEl && viewEl.querySelector('tbody tr[id="' + recId + '"]');
-      if (!tr) return;
-      var map = {};
-      for (var fk in fields) { if (own.call(fields, fk)) map[fk] = fields[fk]; }
-      map[F.displayName] = newLabel;
-      for (var k in map) {
-        if (!own.call(map, k)) continue;
-        var td = tr.querySelector('td.' + k);
-        if (!td) continue;
-        var span = td.querySelector('span');
-        (span || td).textContent = map[k];
-      }
-    } catch (e) { /* best-effort */ }
-  }
+  // Model-identifier + hidden-source-DOM patching live in mdf-edit-core
+  // (core.patchConnectionIdentifiers / core.patchSourceViewDom) — the core
+  // fires both automatically after a verified save.
 
   /** Designator <option> markup: HEADEND/IDF always offered, plus any other
    *  type seen across the loaded location records (dedicated column first,
@@ -477,155 +404,57 @@
         (saved[F.name] || '')).replace(/:\s*:/g, ':').trim();
     }
 
-    // If the server's display name disagrees with the composed label,
-    // write field_1642 explicitly (silent best-effort). When field_1642 is
-    // rule-maintained rather than a live formula, nothing else ever
-    // updates it after a REST PUT — connection identifiers everywhere
-    // (and every future page load) would keep the old name. If Knack
-    // rejects the write (live formula → read-only), that's fine: the
-    // formula will recompute server-side on its own.
-    function maybeSyncDisplayName(resp, newLabel) {
-      var r = (resp && resp.record && resp.record.id) ? resp.record : resp;
-      var srvLabel = r ? stripTags(r[F.displayName + '_raw'] != null
-        ? r[F.displayName + '_raw'] : r[F.displayName]) : '';
-      if (!srvLabel || srvLabel === newLabel) return;
-      var body = {};
-      body[F.displayName] = newLabel;
-      SCW.knackAjax({
-        url:  SCW.knackRecordUrl(mdfViewKey(), rec.id),
-        type: 'PUT',
-        data: JSON.stringify(body),
-        success: function (resp2) {
-          try {
-            if (typeof SCW.syncKnackModel === 'function') {
-              SCW.syncKnackModel(mdfViewKey(), rec.id, resp2, F.displayName, newLabel);
-            }
-          } catch (e) { /* best-effort */ }
-        },
-        error: function (xhr) {
-          console.info('[scw-brv2-mdf] field_1642 sync write rejected (' +
-            (xhr && xhr.status) + ') — likely a live formula field; ' +
-            'server will recompute it itself.');
-        }
-      });
+    // Retitle every surface showing this location's label: header title,
+    // the gear's label attribute, and (via the core) the connection
+    // identifiers in every loaded model. Called immediately with the
+    // locally composed label, then again by the core's verification with
+    // the server-recomputed formula (whose formatting is the truth).
+    function retitle(label) {
+      var title = headerTr.querySelector('.scw-bid-review-v2__grp-title');
+      if (title) title.textContent = label;
+      gear.setAttribute('data-scw-mdf-label', label);
+      core.patchConnectionIdentifiers(rec.id, label);
     }
 
-    // Shared commit: diff-only PUT of the given {field: value} map. On
-    // success, sync view_3822's model in place, retitle the header, and
-    // patch the location's connection identifiers across every loaded
-    // model (see patchConnectionIdentifiers). NO refetch — the old
-    // post-save refetch triggered a grid rebuild whose stale line-item
-    // identifiers reverted the rename on screen.
+    // Shared commit: diff-only PUT through the core save engine
+    // (mdf-edit-core.js) — silent-drop detection, display-formula
+    // verification, model sync, and source-DOM patching are all core
+    // behavior, identical to the build/deploy/survey editors. This panel
+    // only owns its own UI: status line, header retitle, notes callout.
+    // NO refetch — the old post-save refetch triggered a grid rebuild
+    // whose stale line-item identifiers reverted the rename on screen
+    // (the core patches those identifiers in place instead).
     var saving = false;
     function commitFields(fields) {
-      var fks = [];
+      var any = false;
       for (var fk0 in fields) {
-        if (Object.prototype.hasOwnProperty.call(fields, fk0)) fks.push(fk0);
+        if (Object.prototype.hasOwnProperty.call(fields, fk0)) { any = true; break; }
       }
-      if (!fks.length || saving) return;
+      if (!any || saving) return;
       saving = true;
-      setStatus('Saving…', false, true);
-      SCW.knackAjax({
-        url:  SCW.knackRecordUrl(mdfViewKey(), rec.id),
-        type: 'PUT',
-        data: JSON.stringify(fields),
-        success: function (resp) {
+      setStatus('Saving\u2026', false, true);
+      core.save({
+        viewKey:  mdfViewKey(),
+        recordId: rec.id,
+        fields:   fields,
+        onDone: function (res) {
           saving = false;
-          for (var k2 = 0; k2 < fks.length; k2++) {
-            saved[fks[k2]] = fields[fks[k2]];
-            try {
-              if (typeof SCW.syncKnackModel === 'function') {
-                SCW.syncKnackModel(mdfViewKey(), rec.id, resp, fks[k2], fields[fks[k2]]);
-              }
-            } catch (e) { /* best-effort */ }
+          for (var i = 0; i < res.landed.length; i++) {
+            saved[res.landed[i]] = fields[res.landed[i]];
           }
-          var newLabel = composeLabel();
-          var title = headerTr.querySelector('.scw-bid-review-v2__grp-title');
-          if (title) title.textContent = newLabel;
-          gear.setAttribute('data-scw-mdf-label', newLabel);
-          patchConnectionIdentifiers(rec.id, newLabel);
-          patchSourceViewDom(rec.id, fields, newLabel);
-          maybeSyncDisplayName(resp, newLabel);
-          if (Object.prototype.hasOwnProperty.call(fields, F.notes)) {
+          if (res.landed.length) retitle(composeLabel());
+          if (Object.prototype.hasOwnProperty.call(fields, F.notes) &&
+              res.landed.indexOf(F.notes) !== -1) {
             updateNotesCallout(fields[F.notes]);
           }
-          setStatus('Saved ✓');
+          if (!res.dropped.length) setStatus('Saved \u2713');
         },
-        error: function (xhr) {
+        // Verification returned the server-recomputed display formula —
+        // its formatting is the truth; re-apply everywhere.
+        onLabel: function (srvLabel) { retitle(srvLabel); },
+        onDropped: function (fks, msg) { setStatus(msg, true, true); },
+        onError: function (msg) {
           saving = false;
-          // Surface Knack's actual rejection reason — the generic "are these
-          // fields editable?" guess sent users hunting the wrong Builder
-          // setting. Knack 400s carry {"errors":[{"message":…}]} naming the
-          // offending field/rule.
-          var srvMsg = '';
-          try {
-            var rb = JSON.parse((xhr && xhr.responseText) || '');
-            var errs = (rb && (rb.errors || rb.error)) || [];
-            if (!Array.isArray(errs)) errs = [errs];
-            srvMsg = errs.map(function (er) {
-              return (er && (er.message || er.msg)) || (typeof er === 'string' ? er : '');
-            }).filter(Boolean).join('; ');
-          } catch (e) { /* not JSON */ }
-          // Introspect the view's LIVE schema — Knack ships it to the browser
-          // (Knack.views[k].model.view), so we can say exactly which
-          // precondition for a view-scoped PUT fails instead of guessing:
-          //   1. view type must be 'table' (lists/details can't take PUTs)
-          //   2. the view-level cell editor (inline editing) must be on
-          //   3. each sent field must be a column, without ignore_edit
-          var vinfo = null;
-          try {
-            var kv = window.Knack && Knack.views && Knack.views[mdfViewKey()];
-            var vv = kv && kv.model && kv.model.view;
-            if (vv) {
-              vinfo = {
-                type: vv.type || '',
-                cellEditor: !!(vv.options && vv.options.cell_editor),
-                columns: {}
-              };
-              var cols = vv.columns || [];
-              for (var ci = 0; ci < cols.length; ci++) {
-                var col = cols[ci] || {};
-                var cf = (col.field && col.field.key) || col.id;
-                if (cf) vinfo.columns[cf] = { ignoreEdit: !!col.ignore_edit };
-              }
-            }
-          } catch (e) { /* best-effort */ }
-          var problems = [];
-          if (vinfo) {
-            if (vinfo.type && vinfo.type !== 'table') {
-              problems.push(mdfViewKey() + ' is a "' + vinfo.type + '" view — record ' +
-                'PUTs need an inline-editable grid (table). Use/add a grid of MDF/IDF ' +
-                'locations on this scene instead.');
-            } else if (!vinfo.cellEditor) {
-              problems.push('inline editing (cell editor) is OFF on ' + mdfViewKey() +
-                ' as this page loaded it — enable it in Builder, then hard-refresh.');
-            } else {
-              for (var pk in fields) {
-                if (!Object.prototype.hasOwnProperty.call(fields, pk)) continue;
-                var colInfo = vinfo.columns[pk];
-                if (!colInfo) {
-                  problems.push(pk + ' is not a column on ' + mdfViewKey() +
-                    ' — add it to the grid in Builder.');
-                } else if (colInfo.ignoreEdit) {
-                  problems.push(pk + '’s column on ' + mdfViewKey() +
-                    ' has inline editing disabled (column setting).');
-                }
-              }
-            }
-          }
-          console.warn('[scw-brv2-mdf] save failed', {
-            view: mdfViewKey(), recordId: rec.id, sent: fields,
-            status: xhr && xhr.status, response: xhr && xhr.responseText,
-            viewSchema: vinfo, problems: problems
-          });
-          var msg = 'Save failed (' + (xhr && xhr.status) + ')';
-          if (srvMsg) msg += ': ' + srvMsg;
-          if (problems.length) {
-            msg += ' — ' + problems.join(' ');
-          } else if (!srvMsg || /invalid request/i.test(srvMsg)) {
-            msg += ' — view schema looks editable from here; see console ' +
-              '([scw-brv2-mdf]) for the sent fields + view schema snapshot.';
-          }
           setStatus(msg, true, true);
         }
       });

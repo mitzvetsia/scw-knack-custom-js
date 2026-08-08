@@ -109,8 +109,10 @@
       { key: 'field_2035', label: 'Conduit',           kind: 'number' },
       { key: 'field_1953', label: 'SCW Notes',         kind: 'text' },
       { key: 'field_1946', label: 'MDF / IDF',         kind: 'conn-single', candSource: 'mdf' },
-      { key: 'field_2154', label: 'SOW',               kind: 'conn-multi',  candSource: 'sows' },
-      { key: 'field_2197', label: 'Connected Device',  kind: 'conn-single', candSource: 'devices' }
+      { key: 'field_2154', label: 'SOW',               kind: 'conn-multi',  candSource: 'sows' }
+      // field_2197 (Connected Device) removed 2026-08-03: DERIVED +
+      // READ-ONLY app-wide (Known Issue #12 step 1) — bulk-connect via the
+      // parent's Connected Devices (field_1957) instead.
     ],
     'default': [
       { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
@@ -156,8 +158,8 @@
       { key: 'field_2461', label: 'Existing cabling',  kind: 'bool' },
       { key: 'field_1984', label: 'Exterior',          kind: 'bool' },
       { key: 'field_1953', label: 'SCW Notes',         kind: 'text' },
-      { key: 'field_1946', label: 'MDF / IDF',         kind: 'conn-single', candSource: 'mdf' },
-      { key: 'field_2197', label: 'Connected Device',  kind: 'conn-single', candSource: 'devices' }
+      { key: 'field_1946', label: 'MDF / IDF',         kind: 'conn-single', candSource: 'mdf' }
+      // field_2197 removed — derived + read-only (Known Issue #12 step 1).
     ],
     'default': [
       { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
@@ -1705,7 +1707,9 @@
       for (i = 0; i < models.length; i++) {
         var a = models[i] && models[i].attributes;
         if (!a || !sel[a.id]) continue;
-        var raw = a.field_2219_raw;
+        // Bucket field differs per object: SOW = field_2219, survey
+        // line items (view_3505) = field_2366.
+        var raw = a.field_2219_raw || a.field_2366_raw;
         var bid = (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) || '';
         if (bid) bucketsInSelection[bid] = true;
       }
@@ -1745,7 +1749,7 @@
         for (i = 0; i < models.length; i++) {
           var ma = models[i] && models[i].attributes;
           if (!ma) continue;
-          var mraw = ma.field_2219_raw;
+          var mraw = ma.field_2219_raw || ma.field_2366_raw;
           var mbid = (Array.isArray(mraw) && mraw.length && mraw[0] && mraw[0].id) || '';
           for (var fc = 0; fc < fconn.length; fc++) {
             var fraw = ma[fconn[fc] + '_raw'];

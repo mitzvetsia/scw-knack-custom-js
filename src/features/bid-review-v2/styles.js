@@ -185,6 +185,21 @@
     '  writing-mode: vertical-rl; transform: rotate(180deg);',
     '  letter-spacing: 0.5px; white-space: nowrap;',
     '}',
+    /* ── Basis column filter — non-basis bid columns hidden entirely ── */
+    '.scw-bid-review-v2__pkg-col--basis-hidden { display: none !important; }',
+    /* Toggle pill in the basis column title band (below the collapse »). */
+    '.scw-bid-review-v2__basis-toggle {',
+    '  display: block; margin-top: 6px;',
+    '  padding: 3px 10px; border-radius: 999px;',
+    '  border: 1px solid #cbd5e1; background: #fff; color: #475569;',
+    '  font: 600 10.5px/1.3 system-ui, -apple-system, sans-serif;',
+    '  cursor: pointer; text-transform: none; letter-spacing: 0;',
+    '}',
+    '.scw-bid-review-v2__basis-toggle:hover { background: #f1f5f9; color: #0f172a; }',
+    '.scw-bid-review-v2__basis-toggle--filtering {',
+    '  background: #e3edf6; border-color: #93b7d7; color: #07467c;',
+    '}',
+    '.scw-bid-review-v2__basis-toggle--filtering:hover { background: #d3e3f2; }',
     /* ── Table + thead ─────────────────────────────────────── */
     /* table-layout:fixed + width:100% makes the bid columns divide the
        available width equally instead of each forcing a min-width (which
@@ -690,6 +705,28 @@
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-detail-notes {',
     '  grid-template-columns: 1fr !important;',
     '}',
+    /* Connected Devices membership matrix (expanded editor, buildCdMatrix):
+       one row per device, one column per SOW (own SOW first, blue header;
+       other SOWs amber; trailing "no SOW" column when needed). Spans styled
+       as table cells — a real <table> isn't valid inside the conn button. */
+    '.scw-br-v2-cdm { display: table; margin-top: 1px; }',
+    '.scw-br-v2-cdm-row { display: table-row; }',
+    '.scw-br-v2-cdm-cell {',
+    '  display: table-cell; padding: 1px 12px 1px 0;',
+    '  font-size: 12px; vertical-align: middle; text-align: center;',
+    '}',
+    '.scw-br-v2-cdm-dev { text-align: left; padding-right: 16px; white-space: nowrap; }',
+    '.scw-br-v2-cdm-head .scw-br-v2-cdm-cell {',
+    '  font: 700 9px system-ui, -apple-system, sans-serif;',
+    '  text-transform: uppercase; letter-spacing: 0.05em;',
+    '  padding-bottom: 3px; white-space: nowrap;',
+    '}',
+    '.scw-br-v2-cdm-col--cur  { color: #1d4ed8; }',
+    '.scw-br-v2-cdm-col--other { color: #b45309; }',
+    '.scw-br-v2-cdm-col--none  { color: #b45309; font-style: italic; }',
+    '.scw-br-v2-cdm-mark { color: #475569; }',
+    '.scw-br-v2-cdm-mark--cur { color: #1d4ed8; }',
+    '.scw-br-v2-cdm-mark--none { color: #b45309; }',
     /* SCW Notes — editable textarea (swapped in by makeScwNotesTextarea);
        inherits the standard editable-input look, just needs some height so
        multi-line notes are workable. */
@@ -1260,6 +1297,31 @@
     '  color: #64748b; font-size: 10px; font-weight: 700;',
     '  text-transform: uppercase; letter-spacing: .03em;',
     '}',
+    /* Connected-devices membership groups (SOW column, connLineHtml). When
+       any connected device is off this SOW the list breaks into one line per
+       group — This SOW / SOW <n> / No SOW — each label naming only ITS
+       devices. Amber = attention (not error); "No SOW" dashed. */
+    '.scw-brv2-conn-grpline { display: block; padding-left: 10px; }',
+    '.scw-brv2-conn-grplab {',
+    '  display: inline-block; margin-right: 5px; padding: 0 5px;',
+    '  border-radius: 8px; vertical-align: 1px;',
+    '  font: 700 9px system-ui, -apple-system, sans-serif;',
+    '  line-height: 13px; letter-spacing: 0.04em; text-transform: uppercase;',
+    '  white-space: nowrap;',
+    '}',
+    '.scw-brv2-conn-grplab--cur   { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }',
+    '.scw-brv2-conn-grplab--other { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }',
+    '.scw-brv2-conn-grplab--none  { background: #fffbeb; color: #b45309; border: 1px dashed #fde68a; }',
+    /* SOW-membership pill on the single Connected-To line (unambiguous —
+       one device, its pill). Same amber; dashed = no SOW. */
+    '.scw-brv2-conn-sow {',
+    '  display: inline-block; margin-left: 4px; padding: 0 5px;',
+    '  border-radius: 8px; vertical-align: 1px;',
+    '  background: #fffbeb; color: #b45309; border: 1px solid #fde68a;',
+    '  font: 700 9px system-ui, -apple-system, sans-serif;',
+    '  line-height: 13px; letter-spacing: 0.03em; white-space: nowrap;',
+    '}',
+    '.scw-brv2-conn-sow--none { border-style: dashed; }',
     /* ── Inputs ────────────────────────────────────────────── */
     '.scw-bid-review-v2-input {',
     '  border: 1px solid #cbd5e1; border-radius: 4px;',

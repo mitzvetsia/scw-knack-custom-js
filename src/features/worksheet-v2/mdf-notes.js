@@ -34,14 +34,12 @@
   var STYLE_ID = 'scw-ws-v2-mdf-notes-css';
   var P = 'scw-ws-v2-mdf';
 
-  var F = {
-    type:        'field_1641',
-    num:         'field_2458',
-    name:        'field_1943',
-    notes:       'field_1643',
-    surveyNotes: 'field_2457',
-    displayName: 'field_1642'
-  };
+  // Shared save engine — field map, silent-drop detection, display-formula
+  // verification, and model/identifier patching live in mdf-edit-core.js
+  // so this panel behaves identically to the compare-bid + survey editors.
+  var core = window.SCW.mdfEdit;
+  if (!core) return;
+  var F = core.FIELDS;
 
   var PENCIL_SVG =
     '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
@@ -230,16 +228,7 @@
     return stripTags(raw != null ? raw : attrs[fk]);
   }
 
-  /** field_1642 is the computed "TYPE: ##: name" label — parse as fallback
-   *  when the dedicated columns come back empty. */
-  function parseDisplayName(dn) {
-    dn = String(dn == null ? '' : dn);
-    var m = /^([^:]*):([^:]*):([\s\S]*)$/.exec(dn);
-    if (m) return { type: m[1].trim(), num: m[2].trim(), name: m[3].trim() };
-    m = /^([^:]*):([\s\S]*)$/.exec(dn);
-    if (m) return { type: m[1].trim(), num: '', name: m[2].trim() };
-    return { type: '', num: '', name: dn.trim() };
-  }
+  var parseDisplayName = core.parseDisplayName;
 
   /** Row index for a manage view: 24-hex id → its rendered <tr>. Built
    *  ONCE per sweep and passed into locationPhotos — the old per-L1
@@ -286,6 +275,10 @@
       var a = imgs[i].closest('a[href]');
       out.push({
         thumb: imgs[i].getAttribute('src') || '',
+        // Full-size asset for the lightbox stage — Knack stamps the gallery
+        // URL on grid images; fall back to the thumb src when absent.
+        full:  imgs[i].getAttribute('data-kn-img-gallery') ||
+               imgs[i].getAttribute('src') || '',
         href: (a && a.getAttribute('href')) || ''
       });
     }
@@ -366,8 +359,18 @@
 
     var photosHtml = '';
     for (var p = 0; p < photos.length; p++) {
+      // The manage grid renders field_771 at /original/ size — swap the
+      // strip <img> to the thumb derivative (onerror falls back to the
+      // original); the lightbox keeps the full-size URL.
+      var pFull = photos[p].full || photos[p].thumb;
+      var pDisp = (window.SCW && SCW.knackImgThumb)
+        ? SCW.knackImgThumb(photos[p].thumb) : photos[p].thumb;
       photosHtml += '<a class="' + P + '-thumb" href="' + esc(photos[p].href) + '" ' +
-        'title="Open photo"><img src="' + esc(photos[p].thumb) + '" alt="" loading="lazy"></a>';
+        'data-scw-mdf-photo-full="' + esc(pFull) + '" ' +
+        'title="Open photo"><img src="' + esc(pDisp) + '" alt="" loading="lazy" ' +
+        (pDisp !== photos[p].thumb
+          ? 'onerror="this.onerror=null;this.src=\'' + esc(photos[p].thumb) + '\'"'
+          : '') + '></a>';
     }
     photosHtml += '<button type="button" class="' + P + '-addphoto" ' +
       'data-scw-ws-v2-mdf-add="' + esc(l1.id) + '" ' +
@@ -412,35 +415,31 @@
     return band;
   }
 
-  /** Blur-save for the band's inline SCW Notes textarea. */
+  /** Blur-save for the band's inline SCW Notes textarea — through the
+   *  shared core (drop detection + model sync included). */
   function saveBandNotes(ta, manageViewKey, recId, field) {
     if (ta.getAttribute('data-scw-saved-val') === ta.value) return;
-    if (!(window.SCW && typeof SCW.knackAjax === 'function' &&
-          typeof SCW.knackRecordUrl === 'function')) return;
     var value = ta.value;
     var body = {}; body[field] = value;
     ta.classList.add(P + '-band-ta--saving');
-    SCW.knackAjax({
-      url:  SCW.knackRecordUrl(manageViewKey, recId),
-      type: 'PUT',
-      data: JSON.stringify(body),
-      dataType: 'json'
-    }).then(function (resp) {
-      ta.classList.remove(P + '-band-ta--saving');
-      ta.setAttribute('data-scw-saved-val', value);
-      ta.classList.add(P + '-band-ta--saved');
-      setTimeout(function () { ta.classList.remove(P + '-band-ta--saved'); }, 1200);
-      try {
-        if (typeof SCW.syncKnackModel === 'function') {
-          SCW.syncKnackModel(manageViewKey, recId, resp, field, value);
-        }
-      } catch (e) { /* model sync best-effort */ }
-    }, function (xhr) {
+    function flagErr() {
       ta.classList.remove(P + '-band-ta--saving');
       ta.classList.add(P + '-band-ta--err');
-      console.warn('[scw-ws-v2-mdf] notes save failed', manageViewKey, recId,
-        xhr && xhr.status);
       setTimeout(function () { ta.classList.remove(P + '-band-ta--err'); }, 2500);
+    }
+    core.save({
+      viewKey:  manageViewKey,
+      recordId: recId,
+      fields:   body,
+      onDone: function (res) {
+        if (res.dropped.length) return;   // onDropped already flagged it
+        ta.classList.remove(P + '-band-ta--saving');
+        ta.setAttribute('data-scw-saved-val', value);
+        ta.classList.add(P + '-band-ta--saved');
+        setTimeout(function () { ta.classList.remove(P + '-band-ta--saved'); }, 1200);
+      },
+      onDropped: flagErr,
+      onError: flagErr
     });
   }
 
@@ -756,42 +755,17 @@
       saving = true;
       status.classList.remove('is-err');
       status.textContent = 'Saving…';
-      SCW.knackAjax({
-        url:  SCW.knackRecordUrl(cfg.viewKey, l1Id),
-        type: 'PUT',
-        data: JSON.stringify(fields),
-        success: function (resp) {
+      // Shared core save — silent-drop detection, display-formula
+      // verification, model sync, and identifier patching all included,
+      // identical to the compare-bid panel.
+      var own = Object.prototype.hasOwnProperty;
+      core.save({
+        viewKey:  cfg.viewKey,
+        recordId: l1Id,
+        fields:   fields,
+        onDone: function (res) {
           saving = false;
-          // Knack's view-based PUT can return 200 while silently DROPPING a
-          // field the target view doesn't expose as an inline-editable
-          // column — the record is otherwise saved, that one field just
-          // never lands. BUT the response only echoes fields the view
-          // DISPLAYS: a field that saved fine but isn't a column on the
-          // view is simply ABSENT from the response (observed live
-          // 2026-07-22 — field_1943 saved, refresh showed the new name,
-          // yet the old absence-as-dropped check flagged it). So absence
-          // proves nothing; only an echoed value that CONTRADICTS what we
-          // sent proves a real drop.
-          var own = Object.prototype.hasOwnProperty;
-          var dropped = [];
-          for (var fk in fields) {
-            if (!own.call(fields, fk)) continue;
-            if (!resp || (!own.call(resp, fk + '_raw') && !own.call(resp, fk))) continue;
-            var got = resp[fk + '_raw'] != null ? resp[fk + '_raw'] : resp[fk];
-            got = stripTags(got == null ? '' : got);
-            if (got !== fields[fk]) dropped.push(fk);
-          }
-          if (dropped.length) {
-            dirty = true;
-            status.classList.add('is-err');
-            status.textContent = 'Save didn’t take — ' + dropped.join(', ') +
-              ' isn’t editable on this view (check Knack Builder inline-edit settings).';
-            console.warn('[scw-ws-v2-mdf] server echoed a different value — view is ' +
-              'missing inline-edit config for these fields', {
-                view: cfg.viewKey, recordId: l1Id, sent: fields, dropped: dropped, response: resp
-              });
-            return;
-          }
+          if (res.dropped.length) { dirty = true; return; }   // onDropped set the status
           dirty = false;
           status.textContent = 'Saved ✓';
           // Retitle the L1 header in place from the saved values.
@@ -808,25 +782,22 @@
           } catch (e) { /* best-effort */ }
           setTimeout(closePanels, 700);
         },
-        error: function (xhr) {
+        // Verification returned the server-recomputed display formula —
+        // its formatting is the truth; retitle with it.
+        onLabel: function (srvLabel) {
+          var lbl = block.querySelector('.scw-ws-v2-l1-label');
+          if (lbl) lbl.textContent = srvLabel;
+        },
+        onDropped: function (fks, msg) {
+          dirty = true;
+          status.classList.add('is-err');
+          status.textContent = msg;
+        },
+        onError: function (msg) {
           saving = false;
           dirty = true;
           status.classList.add('is-err');
-          var srvMsg = '';
-          try {
-            var rb = JSON.parse((xhr && xhr.responseText) || '');
-            var errs = (rb && (rb.errors || rb.error)) || [];
-            if (!Array.isArray(errs)) errs = [errs];
-            srvMsg = errs.map(function (er) {
-              return (er && (er.message || er.msg)) || (typeof er === 'string' ? er : '');
-            }).filter(Boolean).join('; ');
-          } catch (e) { /* not JSON */ }
-          console.warn('[scw-ws-v2-mdf] save failed', {
-            view: cfg.viewKey, recordId: l1Id, sent: fields,
-            status: xhr && xhr.status, response: xhr && xhr.responseText
-          });
-          status.textContent = 'Save failed (' + (xhr && xhr.status) + ')' +
-            (srvMsg ? ': ' + srvMsg : '');
+          status.textContent = msg;
         }
       });
     }
@@ -836,6 +807,41 @@
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-mdf-notes-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-mdf-notes-bound', '1');
     document.addEventListener('click', function (e) {
+      // Photo thumb → same in-place lightbox viewer as the line-item photo
+      // strips (photos.js openLightbox), flipping between THIS location's
+      // photos. Knack's edit-photo page stays reachable via the lightbox's
+      // "Edit" link (the thumb's native href). If the viewer isn't loaded,
+      // fall through so the native href navigates as before.
+      var thumb = e.target && e.target.closest &&
+        e.target.closest('a.' + P + '-thumb');
+      if (thumb) {
+        var lb = ns.photos && ns.photos.openLightbox;
+        var stripEl = thumb.closest('.' + P + '-photos-strip');
+        if (lb && stripEl) {
+          var thumbs = stripEl.querySelectorAll('a.' + P + '-thumb');
+          var items = [], idx = 0;
+          for (var ti = 0; ti < thumbs.length; ti++) {
+            var url = thumbs[ti].getAttribute('data-scw-mdf-photo-full') || '';
+            if (!url) {
+              var im = thumbs[ti].querySelector('img');
+              url = (im && im.getAttribute('src')) || '';
+            }
+            if (!url) continue;
+            if (thumbs[ti] === thumb) idx = items.length;
+            items.push({
+              url:      url,
+              type:     'MDF/IDF photo',
+              editHref: thumbs[ti].getAttribute('href') || ''
+            });
+          }
+          if (items.length) {
+            e.preventDefault();
+            e.stopPropagation();
+            lb(items, idx);
+          }
+        }
+        return;
+      }
       var add = e.target && e.target.closest &&
         e.target.closest('[data-scw-ws-v2-mdf-add]');
       if (add) {

@@ -63,6 +63,62 @@
   var PICKER_SUB_FIELD      = 'field_2347';  // subcontractor connection / identifier
   var PICKER_LABEL_FIELD    = 'field_2345';  // survey identifier (e.g. SR-1)
 
+  // ── Armed-survey detection + branch picker (Mark Ready) ──
+  // "Validate SOW & Straight to Survey" on the sales page creates a
+  // Survey Request in Pending Validation status; marking the SOW ready
+  // then FIRES it (docs/project-stage-workflow.md). The Mark Ready modal
+  // must say WHICH gesture Ops is making — validate-only vs
+  // validate-and-send — and, when sending, collect the branch/tech group
+  // the survey goes to (payload.surveyBranch → Make's activation branch
+  // assigns it before notifying).
+  //
+  // ⚠️ Builder TBDs (all fail open — until they exist, Mark Ready
+  // renders as plain validation with the validate-only info banner):
+  //   ARMED_REQ_COUNT_FIELD — SOW rollup counting this SOW's Pending
+  //     Validation REQs; must be projected onto view_3861.
+  //   Branch picker options — PRIMARY source is the Builder catalog
+  //     snippet (knack-snippets/tech-group-options.snippet.js →
+  //     window.SCW.techGroupOptions), decided 2026-08-03 after an
+  //     all-records grid proved un-addable on scene_1096. The
+  //     BRANCH_PICKER_VIEW / BRANCH_LABEL_FIELD view-read seams below
+  //     stay as the eventual hidden-view migration path (Known Issue
+  //     #17) and win only when the snippet global is absent.
+  //     No source while a request is pending → the banner says
+  //     assignment falls to the Make default and no picker renders.
+  var ARMED_REQ_COUNT_FIELD = '';   // e.g. 'field_XXXX' — TBD in Builder
+  var BRANCH_PICKER_VIEW    = '';   // e.g. 'view_XXXX'  — future hidden-view path
+  var BRANCH_LABEL_FIELD    = '';   // e.g. 'field_XXXX' — future hidden-view path
+  // Pre-checked branch in the picker (case-insensitive label match). Ops
+  // can uncheck it / pick others — it's a default, not a lock. '' = none.
+  var DEFAULT_BRANCH_LABEL  = 'Secure Vision Solutions';
+
+  // ── Pending-request editor (Mark Ready) ──
+  // When a survey request is pending, the Mark Ready modal surfaces the
+  // request's details prefilled + EDITABLE so Ops can correct them before
+  // the send. Source + write path: a hidden grid of SOW_OPS_site survey
+  // requests CONNECTED to this page's SOW on scene_1096, with the fields
+  // below as columns and inline editing ON (view-based PUT rides the
+  // user's session — same mechanic as the CO recipient picker's
+  // write-back). Same view shape as view_3876 on the sales scene.
+  // Unconfigured → fail open: no editor renders, modal behaves as today.
+  var PENDING_REQ_VIEW = 'view_4141';  // hidden connected grid on scene_1096 (added 2026-08-03)
+  // Field map = the SOW_OPS_site survey request capture record. NOTE the
+  // POC lives in the INPUT fields (what the view_3853 form writes) — the
+  // REL_poc contact connection (field_1197) is typically BLANK on these
+  // records, so read/edit the inputs, not the connection.
+  var PENDING_REQ_FIELDS = {
+    requested:      'field_1195',  // SYS_request date (read-only display)
+    pocName:        'field_1191',  // INPUT_poc name (person field, editable)
+    pocEmail:       'field_1192',  // INPUT_poc email (editable)
+    pocPhone:       'field_1193',  // INPUT_phone (editable)
+    pocAuthorized:  'field_1198',  // FLAG_poc authorized (Yes/No, editable)
+    badgingFlag:    'field_1358',  // FLAG_badging/site access (Yes/No, editable)
+    badgingDetails: 'field_1360',  // badging details text (editable)
+    ppe:            'field_1361',  // FLAG_ppe (Yes/No, editable)
+    notes:          'field_1194',  // "anything else" text (editable)
+    status:         'field_2992'   // FLAG_status (PENDING/…, read-only; row pick)
+  };
+
   var NS         = '.scwOpsStepper';
   var BLOCK_CLS  = 'scw-ops-stepper';
   var STYLE_ID   = 'scw-ops-stepper-css';
@@ -121,29 +177,46 @@
       label: 'Mark Ready for Survey',
       tone: 'primary',
       // Keyed on field_2723 — the flag this step's webhook actually
-      // flips server-side. field_2706 ("survey requested") only flips
-      // downstream when Sales requests the survey, so keying the step
-      // state on it made it effectively un-completable from Ops' side.
+      // flips server-side.
       //
-      // Hide the step entirely once the flow has advanced to the change-
-      // request stage. If the SOW hasn't been marked ready AND there
-      // are already CRs queued, the Request Alternative Bid step takes
-      // over — surfacing a grayed-out Mark Ready here would just be noise.
+      // ⚠️ Gate corrected 2026-08-02: field_2728 is NOT a change-request
+      // count — it counts the PROJECT's SOWs with survey requested,
+      // INCLUDING this one. An ARMED SOW (survey captured pre-validation:
+      // field_2706 = Yes while 2723 = No) therefore reads 2728 > 0, and
+      // the old hideWhen (2723=No ∧ 2728>0) hid Mark Ready on exactly the
+      // SOW whose validation must FIRE the armed survey. Hide only the
+      // true alt-bid handoff state: a SIBLING has the survey (2728 > 0
+      // while THIS SOW's 2706 = No) — the Request Alternative Bid step
+      // takes over there.
       hideWhen: {
         all: [
           { field: 'field_2723', value: 'No' },
+          { field: 'field_2706', value: 'No' },
           { field: 'field_2728', gt: 0 }
         ]
       },
       // Once Ops has marked the SOW ready, render as completed (green
       // check, non-clickable) to mirror the sales build stepper.
       completed: { field: 'field_2723', value: 'Yes' },
-      // Active (clickable) when Ops hasn't marked it ready and there
-      // are no CRs yet.
+      // Button label telegraphs the pending-survey consequence BEFORE
+      // the modal opens. Falls back to step.label when nothing is pending.
+      dynamicLabel: function () {
+        return armedSurveyCount() > 0
+          ? 'Mark Ready — Send Pending Survey Request'
+          : null;
+      },
+      // Active (clickable) when Ops hasn't marked it ready, EXCEPT the
+      // sibling-survey handoff (a SIBLING has the survey while this SOW's
+      // 2706 = No — same condition as hideWhen). ⚠️ Must NOT gate on bare
+      // field_2728 > 0: it counts the project's survey-requested SOWs
+      // INCLUDING this one, so a pending SOW (2706 = Yes, 2723 = No)
+      // always reads 2728 > 0 — the old bare gate locked Mark Ready on
+      // exactly the SOW whose validation must send the pending survey.
       showWhen: {
         all: [
           { field: 'field_2723', value: 'No' },
-          { not: { field: 'field_2728', gt: 0 } }
+          { not: { all: [ { field: 'field_2728', gt: 0 },
+                          { field: 'field_2706', value: 'No' } ] } }
         ]
       },
       // Single webhook handles both "mark ready" and the draft publish
@@ -202,12 +275,22 @@
       id: 'update-matching-bid',
       label: 'Update Subcontractor Bid Request',
       tone: 'amber',
-      // Mirror image of request-alt-bid — only available once the
-      // survey has been requested (field_2706 = Yes). Same payload, same
-      // picker UX; Make routes to a different scenario that updates the
-      // existing bid record(s) instead of creating a new alt-bid package.
-      showWhen: { field: 'field_2706', value: 'Yes' },
-      hideWhen: { field: 'field_2706', value: 'No' },
+      // Mirror image of request-alt-bid — only available once the survey
+      // has actually been SENT. Under the always-pending capture flow
+      // field_2706 flips at submit, so 2706 = Yes alone can mean ARMED
+      // (no bid exists yet, field_2737 = 0) — require validation too.
+      showWhen: {
+        all: [
+          { field: 'field_2706', value: 'Yes' },
+          { field: 'field_2723', value: 'Yes' }
+        ]
+      },
+      hideWhen: {
+        any: [
+          { field: 'field_2706', notValue: 'Yes' },
+          { field: 'field_2723', notValue: 'Yes' }
+        ]
+      },
       webhookKey: 'MAKE_OPS_UPDATE_MATCHING_BID_WEBHOOK',
       pickSurveys: true,
       modal: {
@@ -396,6 +479,11 @@
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var css =
+      /* Hide the pending survey-request source grid — data source for the
+         Mark Ready modal's request editor only (model + inline-edit PUT
+         both work with the view display:none'd). */
+      (PENDING_REQ_VIEW ? '#' + PENDING_REQ_VIEW + ' { display: none !important; }' : '') +
+
       /* Container — sits flush inside the rich-text host (view_3345). */
       '.' + BLOCK_CLS + ' {' +
       '  display: flex; flex-direction: column; gap: 0;' +
@@ -488,6 +576,11 @@
       '  border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);' +
       '  padding: 20px 22px 16px;' +
       '  font-family: inherit; color: #111827;' +
+      /* Short screens: cap to the viewport and scroll INSIDE the card.
+         Without this the flex-centered card clips off both ends (the
+         Mark Ready + pending-survey editor variant especially) with no
+         way to reach the top fields or the action buttons. */
+      '  max-height: 90vh; overflow-y: auto; -webkit-overflow-scrolling: touch;' +
       '}' +
       '.scw-ops-modal-hdr {' +
       '  font-size: 16px; font-weight: 700; margin-bottom: 4px;' +
@@ -511,6 +604,19 @@
       '.scw-ops-modal-error {' +
       '  margin-top: 8px; color: #b91c1c; font-size: 12px;' +
       '}' +
+      /* Context banner (Mark Ready): validate-only vs validate-and-send.
+         Amber = warning convention (never red — red is for errors). */
+      '.scw-ops-modal-banner {' +
+      '  font-size: 12.5px; font-weight: 600; line-height: 1.45;' +
+      '  padding: 9px 11px; border-radius: 8px; margin-bottom: 12px;' +
+      '}' +
+      '.scw-ops-modal-banner--info {' +
+      '  background: #eef2f6; color: #334155; border: 1px solid #dbe3ea;' +
+      '}' +
+      '.scw-ops-modal-banner--warn {' +
+      '  background: rgba(245,158,11,0.10); color: #b45309;' +
+      '  border: 1px solid rgba(245,158,11,0.35);' +
+      '}' +
       /* Recipient single-select (issue-change-order) */
       '.scw-ops-modal-recipient {' +
       '  width: 100%; box-sizing: border-box; margin-top: 6px;' +
@@ -531,6 +637,22 @@
       '  border: 1px solid #d1d5db; border-radius: 6px;' +
       '  font-family: inherit; font-size: 13px; background: #fff; color: #1f2937;' +
       '}' +
+      /* Pending survey-request editor (Mark Ready) */
+      '.scw-ops-modal-req-ro { font-size: 12px; color: #475569; margin-top: 6px; }' +
+      '.scw-ops-modal-req-row {' +
+      '  display: flex; align-items: flex-start; gap: 8px; margin-top: 6px;' +
+      '}' +
+      '.scw-ops-modal-req-row label {' +
+      '  flex: 0 0 128px; font-size: 11px; font-weight: 700; color: #6b7280;' +
+      '  text-transform: uppercase; letter-spacing: .03em; padding-top: 8px;' +
+      '}' +
+      '.scw-ops-modal-req-row select, .scw-ops-modal-req-row textarea,' +
+      ' .scw-ops-modal-req-row input {' +
+      '  flex: 1; min-width: 0; box-sizing: border-box; padding: 7px 9px;' +
+      '  border: 1px solid #d1d5db; border-radius: 6px;' +
+      '  font-family: inherit; font-size: 13px; background: #fff; color: #1f2937;' +
+      '}' +
+      '.scw-ops-modal-req-row textarea { min-height: 44px; resize: vertical; }' +
       '.scw-ops-modal-rcp-hint {' +
       '  font-size: 11px; color: #6b7280; margin-top: 6px;' +
       '}' +
@@ -699,6 +821,129 @@
   function fieldPresent(fieldKey) {
     var view = document.getElementById(SOURCE_VIEW);
     return !!(view && view.querySelector('.kn-detail.' + fieldKey));
+  }
+
+  /** Count of armed survey requests on this SOW.
+   *  Preferred source: the Builder rollup (ARMED_REQ_COUNT_FIELD) once it
+   *  exists on view_3861. Until then, DERIVED from the flags already on
+   *  the view: field_2706 flips at submit regardless of validation
+   *  (confirmed 2026-08-02), so 2706 = Yes while 2723 = No means a
+   *  request was captured but the survey hasn't been sent — armed. The
+   *  derived form can't count multiples; it reports 1. Legacy-safe: this
+   *  state was unreachable before the stepper ungated pre-validation
+   *  submits. */
+  function armedSurveyCount() {
+    if (ARMED_REQ_COUNT_FIELD && fieldPresent(ARMED_REQ_COUNT_FIELD)) {
+      var n = parseFloat(readField(ARMED_REQ_COUNT_FIELD));
+      return (isFinite(n) && n > 0) ? n : 0;
+    }
+    if (conditionMet({ field: 'field_2706', value: 'Yes' }) &&
+        conditionMet({ field: 'field_2723', value: 'No' })) {
+      return 1;
+    }
+    return 0;
+  }
+
+  /** { id, label } options for the branch / tech-group picker.
+   *  Primary source: window.SCW.techGroupOptions — populated by the
+   *  Builder catalog snippet (knack-snippets/tech-group-options.snippet.js,
+   *  same pattern as dropPrefixOptions; a standalone all-records grid
+   *  wasn't addable on scene_1096). Secondary: BRANCH_PICKER_VIEW's model
+   *  with a DOM-scrape fallback, kept for a future hidden-view migration
+   *  (Known Issue #17). Empty when neither source exists — fail open. */
+  function readBranchOptions() {
+    var out = [];
+    // Snippet-provided catalog global.
+    try {
+      var cat = window.SCW && SCW.techGroupOptions;
+      if (cat && cat.length) {
+        for (var c = 0; c < cat.length; c++) {
+          if (!cat[c] || !cat[c].id) continue;
+          out.push({ id: String(cat[c].id),
+                     label: String(cat[c].label || cat[c].identifier || cat[c].id) });
+        }
+        if (out.length) return out;
+      }
+    } catch (e) { /* fall through to view source */ }
+    if (!BRANCH_PICKER_VIEW) return out;
+    try {
+      var v = Knack.views && Knack.views[BRANCH_PICKER_VIEW];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var attrs = models[i].attributes || models[i];
+        if (!attrs || !attrs.id) continue;
+        var label = BRANCH_LABEL_FIELD ? readDisplayValue(attrs, BRANCH_LABEL_FIELD) : '';
+        out.push({ id: attrs.id, label: label || attrs.id });
+      }
+    } catch (e) { /* fall through to DOM */ }
+    if (!out.length) {
+      var viewEl = document.getElementById(BRANCH_PICKER_VIEW);
+      var rows = viewEl ? viewEl.querySelectorAll('tbody tr[id]') : [];
+      for (var r = 0; r < rows.length; r++) {
+        if (!/^[a-f0-9]{24}$/i.test(rows[r].id || '')) continue;
+        var td = BRANCH_LABEL_FIELD ? rows[r].querySelector('td.' + BRANCH_LABEL_FIELD) : null;
+        var txt = td ? (td.textContent || '').replace(/\s+/g, ' ').trim() : '';
+        out.push({ id: rows[r].id, label: txt || rows[r].id });
+      }
+    }
+    return out;
+  }
+
+  /** The SOW's pending survey-request capture record from
+   *  PENDING_REQ_VIEW's model (DOM-scrape fallback) — { id, values } with
+   *  plain-text display values per PENDING_REQ_FIELDS logical name, or
+   *  null when the view is unconfigured / has no rows (fail open). The
+   *  view is connected to the page SOW, so its rows ARE this SOW's
+   *  requests; the row whose status reads pending wins, else the first. */
+  function readPendingRequest() {
+    if (!PENDING_REQ_VIEW) return null;
+    var F = PENDING_REQ_FIELDS;
+    // Prefer the row whose status reads pending — the view may also carry
+    // already-sent requests. No status match → first row (fail open).
+    function pickPending(list) {
+      for (var i = 0; i < list.length; i++) {
+        if (/pending/i.test(list[i].values.status || '')) return list[i];
+      }
+      return list[0] || null;
+    }
+    function firstFromModel() {
+      var v = Knack.views && Knack.views[PENDING_REQ_VIEW];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      var out = [];
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i].attributes || models[i];
+        if (!a || !a.id) continue;
+        var values = {};
+        for (var k in F) values[k] = readDisplayValue(a, F[k]);
+        // Raw person-name shape ({first,last,…}) — the write-back must
+        // match it (same contract as the recipient picker).
+        var nameRaw = a[F.pocName + '_raw'];
+        out.push({
+          id: a.id, values: values,
+          nameRaw: (nameRaw && typeof nameRaw === 'object') ? nameRaw : null
+        });
+      }
+      return pickPending(out);
+    }
+    function firstFromDom() {
+      var out = [];
+      var viewEl = document.getElementById(PENDING_REQ_VIEW);
+      var rows = viewEl ? viewEl.querySelectorAll('tbody tr[id]') : [];
+      for (var r = 0; r < rows.length; r++) {
+        if (!/^[a-f0-9]{24}$/i.test(rows[r].id || '')) continue;
+        var values = {};
+        for (var k in F) {
+          var td = rows[r].querySelector('td.' + F[k]);
+          values[k] = td
+            ? (td.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
+            : '';
+        }
+        out.push({ id: rows[r].id, values: values, nameRaw: null });
+      }
+      return pickPending(out);
+    }
+    try { return firstFromModel() || firstFromDom(); }
+    catch (e) { return firstFromDom(); }
   }
 
   /** Record id of the SOW's basis-bid connection (field_2942) as rendered on
@@ -1479,6 +1724,16 @@
       card.appendChild(intro);
     }
 
+    // Context banner — e.g. Mark Ready's "validate only" vs "this also
+    // sends the armed survey request" callout. { tone: 'info'|'warn', text }.
+    if (opts.banner && opts.banner.text) {
+      var banner = document.createElement('div');
+      banner.className = 'scw-ops-modal-banner scw-ops-modal-banner--' +
+        (opts.banner.tone === 'warn' ? 'warn' : 'info');
+      banner.textContent = opts.banner.text;
+      card.appendChild(banner);
+    }
+
     var ta = document.createElement('textarea');
     ta.className = 'scw-ops-modal-textarea';
     ta.placeholder = opts.placeholder || '';
@@ -1746,6 +2001,205 @@
     var recipientPicker = buildRecipientPicker(opts.recipient);
     if (recipientPicker) card.appendChild(recipientPicker.element);
 
+    // Branch / tech-group picker — MULTI-select checkbox list used by
+    // Mark Ready when an armed survey will fire. Ops may send the survey
+    // request to more than one subcontracting group, so this mirrors the
+    // alt-bid survey picker's checkbox-list shape (and reuses its CSS).
+    // Options are resolved by the CALLER (fireStep) so this stays dumb:
+    //   opts.branchPicker = { question, required, options: [{id,label}] }
+    // Chosen values ride on ctx.branches = [{ id, label }, …] — ALWAYS an
+    // array (one or many) so Make parses one way.
+    function buildBranchPicker(config) {
+      if (!config || !Array.isArray(config.options) || !config.options.length) return null;
+      var wrap = document.createElement('div');
+      wrap.className = 'scw-ops-modal-submission';
+      var q = document.createElement('div');
+      q.className = 'scw-ops-modal-submission__q';
+      q.textContent = config.question || 'Send the survey to';
+      wrap.appendChild(q);
+      var list = document.createElement('ul');
+      list.className = 'scw-ops-modal-list';
+      // Default selection — pre-check the option whose label matches
+      // config.preselect (case-insensitive). Just a starting value: the
+      // user can uncheck it or pick others freely.
+      var pre = String(config.preselect || '').trim().toLowerCase();
+      config.options.forEach(function (o) {
+        var li = document.createElement('li');
+        var lbl = document.createElement('label');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.setAttribute('data-id', o.id);
+        if (pre && String(o.label || '').trim().toLowerCase() === pre) {
+          cb.checked = true;
+        }
+        var span = document.createElement('span');
+        span.textContent = o.label;
+        lbl.appendChild(cb);
+        lbl.appendChild(span);
+        li.appendChild(lbl);
+        list.appendChild(li);
+      });
+      wrap.appendChild(list);
+      return {
+        element:  wrap,
+        required: !!config.required,
+        getValue: function () {
+          var picked = list.querySelectorAll('input[type="checkbox"][data-id]:checked');
+          var out = [];
+          for (var i = 0; i < picked.length; i++) {
+            var id = picked[i].getAttribute('data-id');
+            for (var j = 0; j < config.options.length; j++) {
+              if (config.options[j].id === id) { out.push(config.options[j]); break; }
+            }
+          }
+          return out;
+        }
+      };
+    }
+    // Pending survey-request editor — Mark Ready serves the request's
+    // details prefilled + editable so Ops can correct them before the
+    // send. opts.requestEditor = { view, record: { id, values } }.
+    // Same contract as the recipient picker's write-back: edits PUT to
+    // the request record through the hidden grid view on submit
+    // (fire-and-forget — the webhook payload carries the edited values,
+    // so a failed sync never blocks the action).
+    function buildRequestEditor(config) {
+      if (!config || !config.record || !config.record.id) return null;
+      var orig = config.record.values || {};
+      // Person-name raw shape (when the model provided it) — drives the
+      // First/Last split exactly like the recipient picker.
+      var nameRaw   = config.record.nameRaw || null;
+      var nameIsObj = !!nameRaw;
+      var origFirst = nameIsObj ? String(nameRaw.first || '').trim() : '';
+      var origLast  = nameIsObj ? String(nameRaw.last  || '').trim() : '';
+
+      var wrap = document.createElement('div');
+      wrap.className = 'scw-ops-modal-submission';
+      var q = document.createElement('div');
+      q.className = 'scw-ops-modal-submission__q';
+      q.textContent = 'Survey request details — review & edit before sending';
+      wrap.appendChild(q);
+
+      // Read-only identity line: status + requested date.
+      var ro = [];
+      if (orig.status)    ro.push(orig.status);
+      if (orig.requested) ro.push('Requested ' + orig.requested);
+      if (ro.length) {
+        var roEl = document.createElement('div');
+        roEl.className = 'scw-ops-modal-req-ro';
+        roEl.textContent = ro.join(' · ');
+        wrap.appendChild(roEl);
+      }
+
+      var controls = {};
+      function addRow(key, label, kind, initial) {
+        var row = document.createElement('div');
+        row.className = 'scw-ops-modal-req-row';
+        var lab = document.createElement('label');
+        lab.textContent = label;
+        row.appendChild(lab);
+        var ctl;
+        if (kind === 'bool') {
+          ctl = document.createElement('select');
+          ['Yes', 'No'].forEach(function (v) {
+            var o = document.createElement('option');
+            o.value = v; o.textContent = v;
+            ctl.appendChild(o);
+          });
+          ctl.value = /^yes$/i.test((initial || '').trim()) ? 'Yes' : 'No';
+        } else if (kind === 'area') {
+          ctl = document.createElement('textarea');
+          ctl.value = initial || '';
+        } else {
+          ctl = document.createElement('input');
+          ctl.type = kind;
+          ctl.value = initial || '';
+        }
+        row.appendChild(ctl);
+        wrap.appendChild(row);
+        controls[key] = ctl;
+      }
+      // POC lives in the request's INPUT fields (the connection field is
+      // typically blank) — a person-name raw gets First/Last inputs.
+      if (nameIsObj) {
+        addRow('pocFirst', 'POC first name', 'text', origFirst);
+        addRow('pocLast',  'POC last name',  'text', origLast);
+      } else {
+        addRow('pocName',  'POC name',       'text', orig.pocName);
+      }
+      addRow('pocEmail',       'POC email',             'email', orig.pocEmail);
+      addRow('pocPhone',       'POC phone',             'tel',   orig.pocPhone);
+      addRow('pocAuthorized',  'POC can change scope',  'bool',  orig.pocAuthorized);
+      addRow('badgingFlag',    'Badging / access reqs', 'bool',  orig.badgingFlag);
+      addRow('badgingDetails', 'Badging details',       'area',  orig.badgingDetails);
+      addRow('ppe',            'PPE required',          'bool',  orig.ppe);
+      addRow('notes',          'Anything else',         'area',  orig.notes);
+
+      var hint = document.createElement('div');
+      hint.className = 'scw-ops-modal-rcp-hint';
+      hint.textContent = 'Edits here update the survey request record when you submit.';
+      wrap.appendChild(hint);
+
+      function currentValues() {
+        var out = { id: config.record.id };
+        for (var k in controls) out[k] = (controls[k].value || '').trim();
+        // Payload convenience: one joined name regardless of input shape.
+        out.pocName = nameIsObj
+          ? ((out.pocFirst || '') + ' ' + (out.pocLast || '')).trim()
+          : (out.pocName || '');
+        return out;
+      }
+
+      return {
+        element: wrap,
+        getValue: currentValues,
+        saveEdits: function () {
+          if (!config.view || !window.SCW || !SCW.knackAjax) return;
+          var F = PENDING_REQ_FIELDS;
+          var cur = currentValues();
+          var data = {};
+          // POC name — person-field object shape when the raw was one
+          // (same contract as the recipient picker's write-back).
+          if (nameIsObj) {
+            if ((cur.pocFirst !== origFirst || cur.pocLast !== origLast) &&
+                (cur.pocFirst || cur.pocLast)) {
+              var nObj = { first: cur.pocFirst, last: cur.pocLast };
+              if (nameRaw.title)  nObj.title  = nameRaw.title;
+              if (nameRaw.middle) nObj.middle = nameRaw.middle;
+              data[F.pocName] = nObj;
+            }
+          } else if (controls.pocName && cur.pocName &&
+                     cur.pocName !== (orig.pocName || '').trim()) {
+            data[F.pocName] = cur.pocName;
+          }
+          ['pocEmail', 'pocPhone', 'pocAuthorized', 'badgingFlag',
+           'badgingDetails', 'ppe', 'notes'].forEach(function (k) {
+            if (cur[k] !== (orig[k] || '').trim()) data[F[k]] = cur[k];
+          });
+          if (!Object.keys(data).length) return;
+          SCW.knackAjax({
+            url: SCW.knackRecordUrl(config.view, config.record.id),
+            type: 'PUT',
+            data: JSON.stringify(data),
+            success: function () {
+              SCW.debug('[scw-ops-stepper] survey request updated:',
+                config.record.id, data);
+            },
+            error: function (xhr) {
+              console.warn('[scw-ops-stepper] survey request update failed (' +
+                (xhr && xhr.status) + ') — the webhook payload still ' +
+                'carries the edited values.', config.record.id, data);
+            }
+          });
+        }
+      };
+    }
+    var requestEditor = buildRequestEditor(opts.requestEditor);
+    if (requestEditor) card.appendChild(requestEditor.element);
+
+    var branchPicker = buildBranchPicker(opts.branchPicker);
+    if (branchPicker) card.appendChild(branchPicker.element);
+
     // Submission options — also-submit-to-Sales / Second Set / no.
     // Rendered ABOVE the note textarea so the operator picks a submit
     // target first; the textarea then surfaces only when a real
@@ -1861,17 +2315,34 @@
       return { blocked: false, recipient: rec };
     }
 
+    // Required-branch gate (Mark Ready with an armed survey). At least
+    // one branch / tech group must be checked when the picker is required.
+    function branchOrBlock() {
+      var b = branchPicker ? branchPicker.getValue() : [];
+      if (branchPicker && branchPicker.required && !b.length) {
+        showError('Pick at least one branch / tech group for the survey first.');
+        return { blocked: true };
+      }
+      return { blocked: false, branches: b };
+    }
+
     submitBtn.addEventListener('click', function () {
       err.style.display = 'none';
       var gate = recipientOrBlock();
       if (gate.blocked) return;
+      var bGate = branchOrBlock();
+      if (bGate.blocked) return;
+      // Sync any survey-request detail edits back to the request record.
+      if (requestEditor) requestEditor.saveEdits();
       var notes = (ta.value || '').trim();
       onSubmit(notes, {
         setSubmitting: setSubmitting, showError: showError, close: close,
         mode: opts.primaryMode || null,
         submission:    submissionGroup ? submissionGroup.getValue() : null,
         clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
-        recipient:     gate.recipient || null
+        recipient:     gate.recipient || null,
+        branches:      bGate.branches || [],
+        surveyRequest: requestEditor ? requestEditor.getValue() : null
       });
     });
     if (secondaryBtn) {
@@ -1879,13 +2350,18 @@
         err.style.display = 'none';
         var gate = recipientOrBlock();
         if (gate.blocked) return;
+        var bGate = branchOrBlock();
+        if (bGate.blocked) return;
+        if (requestEditor) requestEditor.saveEdits();
         var notes = (ta.value || '').trim();
         onSubmit(notes, {
           setSubmitting: setSubmitting, showError: showError, close: close,
           mode: opts.secondaryMode || null,
           submission:    submissionGroup ? submissionGroup.getValue() : null,
           clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
-          recipient:     gate.recipient || null
+          recipient:     gate.recipient || null,
+          branches:      bGate.branches || [],
+          surveyRequest: requestEditor ? requestEditor.getValue() : null
         });
       });
     }
@@ -2121,6 +2597,51 @@
       if (gateReason) { alert('Can’t publish as final yet.\n\n' + gateReason); return; }
     }
 
+    // Mark Ready: say WHICH gesture this is. When a survey request is
+    // armed (Pending Validation REQ on this SOW), validating ALSO sends
+    // it — the modal gets an amber callout + a required branch picker.
+    // When nothing is armed, a quiet info line says validation-only.
+    if (step.id === 'mark-ready') {
+      var armedN = armedSurveyCount();
+      var overrides = {};
+      if (armedN > 0) {
+        var branchOpts = readBranchOptions();
+        // Serve the pending request's details for review/edit before the
+        // send (null when PENDING_REQ_VIEW isn't configured — fail open).
+        var pendingReq = readPendingRequest();
+        if (pendingReq) {
+          overrides.requestEditor = { view: PENDING_REQ_VIEW, record: pendingReq };
+        }
+        overrides.title = 'Mark Ready — Send Pending Survey Request';
+        overrides.banner = {
+          tone: 'warn',
+          text: 'A survey request is PENDING on this SOW — marking ready ' +
+                'validates the SOW and immediately sends the survey request' +
+                (branchOpts.length
+                  ? ' to the branch(es) / tech group(s) you pick below.'
+                  : '. (Branch picker view not configured — assignment ' +
+                    'falls to the Make default.)')
+        };
+        if (branchOpts.length) {
+          overrides.branchPicker = {
+            question: 'Which branch / tech group should this survey go to?',
+            required: true,
+            preselect: DEFAULT_BRANCH_LABEL,
+            options: branchOpts
+          };
+        }
+      } else {
+        overrides.banner = {
+          tone: 'info',
+          text: 'Validation only — no survey request is pending. Sales will ' +
+                'request the survey separately.'
+        };
+      }
+      runNotesPromptAndFire(step, btn, url, null, null,
+        { modal: overrides, armedCount: armedN });
+      return;
+    }
+
     // Steps that target a subset of surveys (Request Alt Bid) ask
     // the user to pick first, then fall through to the standard
     // notes prompt with the picked ids in scope.
@@ -2138,16 +2659,18 @@
     runNotesPromptAndFire(step, btn, url, null, null);
   }
 
-  function runNotesPromptAndFire(step, btn, url, selectedSurveyIds, surveyOptions) {
+  function runNotesPromptAndFire(step, btn, url, selectedSurveyIds, surveyOptions, extra) {
     // Merge step-level submission options onto the modal opts so the
     // notes-prompt modal can render the radio group when present. Keeps
     // the data on the step (where the rest of the step config lives)
-    // instead of cluttering step.modal.
+    // instead of cluttering step.modal. `extra.modal` (per-fire
+    // overrides — e.g. Mark Ready's armed-survey banner/picker/title)
+    // merges LAST so it wins over the static step.modal config.
     var modalOpts = $.extend({}, step.modal, {
       submission:    step.submission    || null,
       clickupStatus: step.clickupStatus || null,
       recipient:     step.recipient     || null
-    });
+    }, (extra && extra.modal) || {});
     openNotesPromptModal(modalOpts, function (notes, ctx) {
       ctx.setSubmitting(true);
       setBtnLoading(btn, true);
@@ -2171,6 +2694,21 @@
       if (ctx.recipient)              payload.recipient = ctx.recipient;
       if (ctx.submission)             payload.submission = ctx.submission;
       else if (step.forceSubmission)  payload.submission = step.forceSubmission;
+      // Pending-survey context (mark-ready): how many Pending Validation
+      // REQs this validation fires + the chosen branch / tech-group
+      // targets. surveyBranches is ALWAYS an array (one or many) so
+      // Make's activation branch parses one way. (Key renamed from
+      // armedSurveyCount 2026-08-03, before any Make scenario consumed it
+      // — "pending" is the locked vocabulary.)
+      if (extra && extra.armedCount !== undefined) {
+        payload.pendingSurveyCount = extra.armedCount;
+        payload.surveyBranches     = ctx.branches || [];
+        // The (possibly edited) request details as reviewed in the modal
+        // — { id, pocAuthorized, badgingFlag, badgingDetails, ppe, notes }.
+        // The record itself is also PUT-updated on submit; this copy means
+        // Make never has to re-read mid-flight.
+        if (ctx.surveyRequest) payload.surveyRequest = ctx.surveyRequest;
+      }
       // ClickUp status update ('gfe-submitted' / 'final-bid-submitted' /
       // null). Independent of submission — the user can pick any combo.
       if (ctx.clickupStatus) payload.clickupStatus = ctx.clickupStatus;
@@ -2214,31 +2752,73 @@
               }));
           } catch (eLs) { /* localStorage may be disabled; non-fatal */ }
         }
-        // Diagnostic hold: leave everything open and surface the raw
-        // result so the Network tab / console stay inspectable.
-        if (diagnosticHold()) {
-          setBtnLoading(btn, false);
-          ctx.setSubmitting(false);
-          ctx.showError('[debug hold] webhook resolved status=' + resp.status +
-            (resp.status === 0 ? ' (status 0 = no readable response — check the Network tab: did the POST row complete, CORS-error, or fail?)' : '') +
-            ' — tab left open because scwOpsStepperHold is set.');
-          return;
+        // Mark Ready with a PENDING request: SECOND fire to the survey
+        // activation scenario — minimal payload (request id + chosen
+        // branch ids + sowId) so the send is independently retryable.
+        // Awaited before the success flow so a failure is surfaced, but
+        // it never rolls back the (already accepted) validation: on
+        // failure we alert and continue. A bare Make webhook replies
+        // 200 "Accepted" (non-JSON), so plain HTTP success counts.
+        var secondFire = Promise.resolve();
+        if (step.id === 'mark-ready' && extra && extra.armedCount > 0) {
+          var actUrl = (window.SCW && SCW.CONFIG &&
+                        SCW.CONFIG.MAKE_SEND_PENDING_SURVEY_WEBHOOK) || '';
+          var reqId = (ctx.surveyRequest && ctx.surveyRequest.id) || '';
+          if (!reqId) {
+            var pr = readPendingRequest();
+            reqId = (pr && pr.id) || '';
+          }
+          if (actUrl && !/PLACEHOLDER/.test(actUrl)) {
+            secondFire = postWebhook(actUrl, {
+              surveyRequestId: reqId,
+              branchIds: (ctx.branches || []).map(function (b) { return b.id; }),
+              sowId: getSourceRecordId()
+            }).then(function (r2) {
+              var ok2 = r2.ok || r2.status === 0 || (r2.data && (
+                r2.data.success === true ||
+                (typeof r2.data.status === 'string' &&
+                 r2.data.status.toLowerCase() === 'accepted')));
+              if (!ok2) {
+                alert('The SOW was marked ready, but sending the pending ' +
+                      'survey request failed: ' +
+                      webhookErrorMsg(r2, 'Survey send webhook') +
+                      '\n\nThe request was NOT dispatched — retry it from ' +
+                      'Make or flag it to the team.');
+              }
+            });
+          } else {
+            console.warn('[scw-ops-stepper] MAKE_SEND_PENDING_SURVEY_WEBHOOK ' +
+              'not configured — pending survey request ' + (reqId || '(unknown)') +
+              ' was not dispatched.');
+          }
         }
-        // Close the notes modal before navigating — the redirect is
-        // just a hash change, it doesn't tear down body-level overlays.
-        ctx.close();
-        // Fire a cross-tab signal so the build page (if open in
-        // another tab) reloads and doesn't show stale data.
-        signalOpsStepperCompletion(getSourceRecordId());
-        // Mark the step as pending so the parent page's next-step
-        // pill renders grayed out until Make finishes flipping the
-        // underlying field values.
-        markStepPending(getSourceRecordId(), step.id);
-        // Close this tab — the Ops list opened us in a new window,
-        // so there's no reason to keep it around once the action
-        // is done. Falls back to a parent-page redirect if the
-        // browser blocks window.close().
-        dismissAfterSuccess();
+        return secondFire.then(function () {
+          // Diagnostic hold: leave everything open and surface the raw
+          // result so the Network tab / console stay inspectable.
+          if (diagnosticHold()) {
+            setBtnLoading(btn, false);
+            ctx.setSubmitting(false);
+            ctx.showError('[debug hold] webhook resolved status=' + resp.status +
+              (resp.status === 0 ? ' (status 0 = no readable response — check the Network tab: did the POST row complete, CORS-error, or fail?)' : '') +
+              ' — tab left open because scwOpsStepperHold is set.');
+            return;
+          }
+          // Close the notes modal before navigating — the redirect is
+          // just a hash change, it doesn't tear down body-level overlays.
+          ctx.close();
+          // Fire a cross-tab signal so the build page (if open in
+          // another tab) reloads and doesn't show stale data.
+          signalOpsStepperCompletion(getSourceRecordId());
+          // Mark the step as pending so the parent page's next-step
+          // pill renders grayed out until Make finishes flipping the
+          // underlying field values.
+          markStepPending(getSourceRecordId(), step.id);
+          // Close this tab — the Ops list opened us in a new window,
+          // so there's no reason to keep it around once the action
+          // is done. Falls back to a parent-page redirect if the
+          // browser blocks window.close().
+          dismissAfterSuccess();
+        });
       }).catch(function (e) {
         setBtnLoading(btn, false);
         ctx.setSubmitting(false);
@@ -2327,7 +2907,10 @@
 
       var titleEl = document.createElement('span');
       titleEl.className = 'scw-step-title';
-      titleEl.textContent = step.label;
+      // Optional dynamic label (fn returning a string or null) — used by
+      // mark-ready to telegraph "…Send Armed Survey Request".
+      titleEl.textContent =
+        (typeof step.dynamicLabel === 'function' && step.dynamicLabel()) || step.label;
       el.appendChild(titleEl);
 
       if (available && !completed) {

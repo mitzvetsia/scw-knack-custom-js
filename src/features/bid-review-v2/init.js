@@ -1096,14 +1096,30 @@
   }
 
   // Connected Devices (field_1957) is multi-value; show each on its own
-  // line instead of comma-joined.
+  // line instead of comma-joined, and tag each device with the SOW(s) it
+  // belongs to — blue pill for the expanded record's own SOW(s), amber for
+  // a DIFFERENT SOW — so cross-SOW connections read at a glance.
   function lineBreakConnectedDevices(card) {
-    var vals = card.querySelectorAll(
-      '[data-scw-ws-v2-conn="field_1957"] .scw-ws-v2-conn-btn-val');
-    for (var i = 0; i < vals.length; i++) {
-      var elv = vals[i];
+    var btns = card.querySelectorAll('[data-scw-ws-v2-conn="field_1957"]');
+    for (var i = 0; i < btns.length; i++) {
+      var btn = btns[i];
+      var elv = btn.querySelector('.scw-ws-v2-conn-btn-val');
+      if (!elv) continue;
       var txt = (elv.textContent || '').trim();
       if (!txt || txt === '(none)') continue;
+
+      var data = connectedDevicesWithSows(
+        btn.getAttribute('data-scw-ws-v2-record'),
+        btn.getAttribute('data-scw-ws-v2-view'));
+
+      if (data && data.entries.length) {
+        elv.textContent = '';
+        elv.appendChild(buildCdMatrix(data));
+        updateCdFieldLabel(btn, data);
+        continue;
+      }
+
+      // Model unavailable — fall back to plain per-line text.
       var parts = txt.split(/\s*,\s*/);
       if (parts.length < 2) continue;
       elv.textContent = '';
@@ -1112,6 +1128,202 @@
         elv.appendChild(document.createTextNode(parts[p]));
       }
     }
+  }
+
+  // Resolve the expanded record's authoritative Connected Devices set (same
+  // forward field_1957 ∪ field_2197 back-pointer union worksheet-v2's card
+  // renders) and each device's SOW membership (field_2154), flagged against
+  // the expanded record's own SOW set. Returns null when the source-view
+  // model isn't readable (caller falls back to plain line breaks).
+  function connectedDevicesWithSows(recordId, viewKey) {
+    var wsv2 = window.SCW && SCW.worksheetV2;
+    if (!recordId || !viewKey || !wsv2 || !wsv2.data ||
+        typeof wsv2.data.readRecords !== 'function') return null;
+    var recs;
+    try { recs = wsv2.data.readRecords(viewKey) || []; } catch (err) { return null; }
+
+    var byId = Object.create(null), rec = null;
+    for (var i = 0; i < recs.length; i++) {
+      var r = recs[i];
+      if (!r || !r.id) continue;
+      byId[r.id] = r;
+      if (r.id === recordId) rec = r;
+    }
+    if (!rec) return null;
+
+    var ownList = [];
+    var ownRaw = rec.field_2154_raw;
+    if (Array.isArray(ownRaw)) {
+      for (var o = 0; o < ownRaw.length; o++) {
+        if (ownRaw[o] && ownRaw[o].id) {
+          ownList.push({ id: ownRaw[o].id, label: String(ownRaw[o].identifier || ownRaw[o].id) });
+        }
+      }
+    }
+
+    function devLabel(drec, fallback) {
+      if (drec) {
+        var raw = drec.field_1950_raw;
+        if (Array.isArray(raw) && raw[0]) {
+          var l = String(raw[0].identifier || raw[0].id || '');
+          if (l) return l;
+        }
+        var v = drec.field_1950;
+        if (v != null) {
+          var t = String(v).replace(/<[^>]*>/g, '').trim();
+          if (t) return t;
+        }
+      }
+      return fallback || (drec && drec.id) || '';
+    }
+    // Full membership per device, for the matrix renderer. `known:false`
+    // means the device record isn't loaded (its cells render as unknown).
+    function entryFor(drec, fallbackLabel) {
+      var label = devLabel(drec, fallbackLabel);
+      if (!drec) return { label: label, known: false, sows: [] };
+      var sows = [];
+      var sraw = drec.field_2154_raw;
+      if (Array.isArray(sraw)) {
+        for (var x = 0; x < sraw.length; x++) {
+          if (!sraw[x] || !sraw[x].id) continue;
+          sows.push({ id: sraw[x].id, label: String(sraw[x].identifier || sraw[x].id) });
+        }
+      }
+      return { label: label, known: true, sows: sows };
+    }
+
+    var seen = Object.create(null), out = [];
+    var fwd = rec.field_1957_raw;
+    if (Array.isArray(fwd)) {
+      for (var f = 0; f < fwd.length; f++) {
+        var fe = fwd[f];
+        if (!fe || !fe.id || seen[fe.id]) continue;
+        seen[fe.id] = true;
+        out.push(entryFor(byId[fe.id], String(fe.identifier || fe.id)));
+      }
+    }
+    for (var k = 0; k < recs.length; k++) {
+      var c = recs[k];
+      if (!c || !c.id || c.id === recordId || seen[c.id]) continue;
+      var back = c.field_2197_raw;
+      if (!Array.isArray(back)) continue;
+      var points = false;
+      for (var b = 0; b < back.length; b++) {
+        if (back[b] && back[b].id === recordId) { points = true; break; }
+      }
+      if (!points) continue;
+      seen[c.id] = true;
+      out.push(entryFor(c, ''));
+    }
+    return { entries: out, ownSows: ownList };
+  }
+
+  // Rewrite the detail-field label's "(6)" total into
+  // "(5 on this SOW · 6 total)". Regex only matches a bare-digits paren, so
+  // a second pass (re-decorate) is a no-op.
+  function updateCdFieldLabel(btn, data) {
+    var field = btn.closest('.scw-ws-v2-detail-field');
+    var lab = field && field.querySelector('.scw-ws-v2-detail-label');
+    if (!lab || !data.ownSows.length) return;
+    var ownIds = Object.create(null);
+    for (var i = 0; i < data.ownSows.length; i++) ownIds[data.ownSows[i].id] = true;
+    var on = 0;
+    for (var e = 0; e < data.entries.length; e++) {
+      var sows = data.entries[e].sows;
+      for (var s = 0; s < sows.length; s++) {
+        if (ownIds[sows[s].id]) { on++; break; }
+      }
+    }
+    lab.innerHTML = lab.innerHTML.replace(/\(\s*\d+\s*\)/,
+      '(' + on + ' on this SOW · ' + data.entries.length + ' total)');
+  }
+
+  // Mini membership matrix for the expanded editor's Connected Devices value:
+  // one row per device, one column per SOW (the expanded record's own SOW(s)
+  // first, then any other SOW a device lives on, then a trailing "no SOW"
+  // column when needed). A check in every SOW column the device is on — so
+  // multi-SOW membership reads naturally without merged cells.
+  function buildCdMatrix(data) {
+    var cols = [], colIdx = Object.create(null);
+    function addCol(id, label, current) {
+      if (colIdx[id] !== undefined) {
+        if (current) cols[colIdx[id]].current = true;
+        return;
+      }
+      colIdx[id] = cols.length;
+      cols.push({ id: id, label: label, current: !!current });
+    }
+    var e, s, c;
+    for (e = 0; e < data.ownSows.length; e++) {
+      addCol(data.ownSows[e].id, data.ownSows[e].label, true);
+    }
+    var hasNone = false, noneCount = 0;
+    var colCount = Object.create(null);
+    for (e = 0; e < data.entries.length; e++) {
+      var en = data.entries[e];
+      if (en.known && !en.sows.length) { hasNone = true; noneCount++; }
+      var counted = Object.create(null);
+      for (s = 0; s < en.sows.length; s++) {
+        addCol(en.sows[s].id, en.sows[s].label, false);
+        if (!counted[en.sows[s].id]) {
+          counted[en.sows[s].id] = true;
+          colCount[en.sows[s].id] = (colCount[en.sows[s].id] || 0) + 1;
+        }
+      }
+    }
+    cols.sort(function (a, b) {
+      if (a.current !== b.current) return a.current ? -1 : 1;
+      return String(a.label).localeCompare(String(b.label), undefined, { numeric: true });
+    });
+
+    function cell(rowEl, cls, text, title) {
+      var el = document.createElement('span');
+      el.className = 'scw-br-v2-cdm-cell' + (cls ? ' ' + cls : '');
+      el.textContent = text || '';
+      if (title) el.title = title;
+      rowEl.appendChild(el);
+      return el;
+    }
+
+    var wrap = document.createElement('span');
+    wrap.className = 'scw-br-v2-cdm';
+
+    var head = document.createElement('span');
+    head.className = 'scw-br-v2-cdm-row scw-br-v2-cdm-head';
+    cell(head, 'scw-br-v2-cdm-dev', '');
+    for (c = 0; c < cols.length; c++) {
+      var n = colCount[cols[c].id] || 0;
+      cell(head,
+        cols[c].current ? 'scw-br-v2-cdm-col--cur' : 'scw-br-v2-cdm-col--other',
+        cols[c].label + ' (' + n + ')',
+        (cols[c].current ? 'This item’s SOW — ' : 'A different SOW — ') +
+          n + ' of these devices on it');
+    }
+    if (hasNone) {
+      cell(head, 'scw-br-v2-cdm-col--none', 'no SOW (' + noneCount + ')',
+        noneCount + ' device(s) not on any SOW');
+    }
+    wrap.appendChild(head);
+
+    for (e = 0; e < data.entries.length; e++) {
+      var en2 = data.entries[e];
+      var row = document.createElement('span');
+      row.className = 'scw-br-v2-cdm-row';
+      cell(row, 'scw-br-v2-cdm-dev', en2.label);
+      var member = Object.create(null);
+      for (s = 0; s < en2.sows.length; s++) member[en2.sows[s].id] = true;
+      for (c = 0; c < cols.length; c++) {
+        cell(row,
+          'scw-br-v2-cdm-mark' + (cols[c].current ? ' scw-br-v2-cdm-mark--cur' : ''),
+          en2.known ? (member[cols[c].id] ? '✓' : '') : '·');
+      }
+      if (hasNone) {
+        cell(row, 'scw-br-v2-cdm-mark scw-br-v2-cdm-mark--none',
+          (en2.known && !en2.sows.length) ? '✓' : '');
+      }
+      wrap.appendChild(row);
+    }
+    return wrap;
   }
 
   // SCW Notes (field_1953) — EDITABLE on the bid comparison page (was locked
@@ -1202,6 +1414,7 @@
     wirePanelClose();
     wireHeaderActions();
     if (ns.columnCollapse && typeof ns.columnCollapse.wire === 'function') ns.columnCollapse.wire();
+    if (ns.basisFilter && typeof ns.basisFilter.wire === 'function') ns.basisFilter.wire();
     hookV1Rerender();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {

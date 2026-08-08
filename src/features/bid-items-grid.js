@@ -29,6 +29,9 @@
           l2Sort: 'field_2218',
           l2Selector: 'field_2228',
           conduit: 'field_2368',  // per-row conduit feet — summed into the L3 drop header
+          // Model-driven grouping connections (rebuildGroupRowsFromModel):
+          l1Conn: 'field_2375',   // MDF/IDF connection → L1 group identifier
+          l2Conn: 'field_2366',   // proposal-bucket connection → L2 group identifier
         },
       },
     },
@@ -475,6 +478,14 @@ tr.scw-assoc-equip-list .scw-l3-product { font-weight: 600 !important; color: #3
 
 /* Hide the raw field_2409 column (data lives in data rows for injection) */
 th.field_2409, td.field_2409 { display: none !important; }
+
+/* Grouping-source columns: with Knack's native grouping OFF in Builder
+   (2026-08-05), the view exposes the MDF/IDF and bucket connections as
+   real leading columns purely as data sources for the model-driven
+   rebuild — never displayed. View-scoped: these fields render legitimately
+   on other views. */
+${sel('th.field_2375')}, ${sel('td.field_2375')},
+${sel('th.field_2366')}, ${sel('td.field_2366')} { display: none !important; }
 
 tr.scw-hide-level3-header { display: none !important; }
 
@@ -951,274 +962,169 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ============================================================
-  // FEATURE: L1 group reorder — alphabetical, blank labels last
+  // MODEL-DRIVEN GROUP REBUILD — Knack native grouping is DUMPED
   // ============================================================
+  //
+  // Knack’s native grouping proved too fragile to layer on (decided
+  // 2026-08-05): headers vanish when consecutive groups share a blank
+  // group value, orphan rows render ungrouped when the view sort fights
+  // the grouping, and grouping by ONE field (field_2409) merged distinct
+  // products that share a labor description into a single line (the
+  // "two switches, one line, Qty 2" confusion). This is the same call
+  // worksheet-v2 made: read the records from the view MODEL, derive the
+  // grouping ourselves, and synthesize the L1/L2/L3 header rows from
+  // scratch. Every native kn-table-group row is REMOVED each run; the
+  // data rows (Knack-rendered, hidden by CSS — the pipeline reads their
+  // cells) are physically re-ordered under our own headers.
+  //
+  // Synthesized headers carry the same classes Knack used
+  // (kn-table-group kn-group-level-N, + scw-synth-group), so the whole
+  // downstream pipeline — subtotals, concat, product injection,
+  // associated equipment, group-collapse, the PDF scrape — is untouched.
+  //
+  // Grouping derivation per data row:
+  //   L1  = MDF/IDF connection identifier (field_2375_raw, model)
+  //   L2  = bucket connection identifier (field_2366_raw, model);
+  //         ordered by the bucket sort value scraped from the row’s
+  //         field_2218 cell (missing → last)
+  //   L3  = product + labor description + rate  (drop/camera sections:
+  //         description + rate only — the concat list names the cameras).
+  //         Including product means two different products that share a
+  //         description never merge; including rate replaces the old
+  //         splitLevel3GroupsByRate feature.
 
-  function reorderLevel1Groups($tbody) {
-    const tbody = $tbody?.[0];
+  function readModelAttrsById(viewId) {
+    const map = Object.create(null);
+    try {
+      const models = (Knack.views[viewId] && Knack.views[viewId].model &&
+        Knack.views[viewId].model.data && Knack.views[viewId].model.data.models) || [];
+      for (const m of models) {
+        if (m && m.id) map[m.id] = m.attributes || {};
+      }
+    } catch (e) { /* model unavailable — rows fall back to the blank group */ }
+    return map;
+  }
+
+  function connIdentifier(raw) {
+    if (Array.isArray(raw)) {
+      return raw.length && raw[0] && raw[0].identifier != null ? norm(String(raw[0].identifier)) : '';
+    }
+    return raw && raw.identifier != null ? norm(String(raw.identifier)) : '';
+  }
+
+  function rebuildGroupRowsFromModel(ctx, $tbody, caches) {
+    const tbody = $tbody && $tbody[0];
     if (!tbody) return;
 
-    const l1Headers = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1'));
-    if (l1Headers.length < 2) return;
+    const vcfg = CONFIG.views[ctx.viewId] || {};
+    const L1_CONN = vcfg.keys.l1Conn || 'field_2375';
+    const L2_CONN = vcfg.keys.l2Conn || 'field_2366';
 
-    const blocks = l1Headers.map((l1El, idx) => {
-      const nextL1El = idx + 1 < l1Headers.length ? l1Headers[idx + 1] : null;
-      const nodes = [];
-      let n = l1El;
-      while (n && n !== nextL1El) {
-        nodes.push(n);
-        n = n.nextElementSibling;
+    const attrsById = readModelAttrsById(ctx.viewId);
+
+    const dataRows = Array.from(tbody.querySelectorAll('tr[id]')).filter(
+      (r) => !r.classList.contains('kn-table-group') && !r.classList.contains('scw-level-total-row')
+    );
+    if (!dataRows.length) return;
+
+    // ── derive grouping info per row ──
+    const rowInfos = dataRows.map((row) => {
+      // Grouping straight off the row's rendered connection cells — the
+      // Builder exposes field_2375/field_2366 as (CSS-hidden) columns for
+      // exactly this, so the values are always in step with the rows.
+      // Model attrs are the backup only.
+      const attrs = attrsById[row.id] || {};
+      const l1Cell = getRowCell(caches, row, L1_CONN);
+      const l1Span = l1Cell && l1Cell.querySelector('span[data-kn="connection-value"]');
+      const l1Label = l1Span ? norm(l1Span.textContent)
+        : connIdentifier(attrs[L1_CONN + '_raw']);
+      const l2Cell = getRowCell(caches, row, L2_CONN);
+      const l2Span = l2Cell && l2Cell.querySelector('span[data-kn="connection-value"]');
+      const l2Label = l2Span ? norm(l2Span.textContent)
+        : connIdentifier(attrs[L2_CONN + '_raw']);
+      let l2Id = l2Span ? (l2Span.className || '').trim() : '';
+
+      // Bucket sort value off the rendered field_2218 cell
+      // (<span id="<bucketId>" data-kn="connection-value">N</span>).
+      let l2Sort = Number.POSITIVE_INFINITY;
+      const sortCell = getRowCell(caches, row, ctx.keys.l2Sort);
+      if (sortCell) {
+        const span = sortCell.querySelector('span[data-kn="connection-value"]');
+        if (span && !l2Id) l2Id = span.id || '';
+        const n = parseFloat(norm((span || sortCell).textContent || '').replace(/[^\d.-]/g, ''));
+        if (Number.isFinite(n)) l2Sort = n;
       }
-      const label = norm(l1El.querySelector('td')?.textContent || '');
-      return { idx, label, nodes };
+
+      const contextKey = contextKeyFromLevel2Info(ctx, { label: l2Label, recordId: null });
+      const product = getRowCellText(caches, row, ctx.keys.product);
+      const desc = getRowCellText(caches, row, ctx.keys.field2409);
+      const rate = getRowNumericValue(caches, row, ctx.keys.rate);
+      const rateKey = Number.isFinite(rate) ? rate.toFixed(2) : '';
+      // Cameras (drop) stay one line per description+rate — the concat
+      // feature lists each camera. Everything else keys on the product
+      // too, so distinct products never share a line.
+      const l3Key = (contextKey === 'drop' ? '' : normKey(product) + '\u0001') +
+        normKey(desc) + '\u0001' + rateKey;
+
+      return { row, l1Label, l2Id, l2Label, l2Sort, l3Key };
     });
 
-    blocks.sort((a, b) => {
-      const aBlank = a.label === '';
-      const bBlank = b.label === '';
+    // ── assemble L1 → L2 → L3 (first-seen order within each level) ──
+    const l1Map = new Map();
+    for (const info of rowInfos) {
+      let l1 = l1Map.get(info.l1Label);
+      if (!l1) {
+        l1 = { label: info.l1Label, l2Map: new Map() };
+        l1Map.set(info.l1Label, l1);
+      }
+      const l2Key = info.l2Id || normKey(info.l2Label);
+      let l2 = l1.l2Map.get(l2Key);
+      if (!l2) {
+        l2 = { label: info.l2Label, sort: info.l2Sort, l3Map: new Map() };
+        l1.l2Map.set(l2Key, l2);
+      }
+      if (info.l2Sort < l2.sort) l2.sort = info.l2Sort;
+      let l3 = l2.l3Map.get(info.l3Key);
+      if (!l3) {
+        l3 = { rows: [] };
+        l2.l3Map.set(info.l3Key, l3);
+      }
+      l3.rows.push(info.row);
+    }
+
+    // L1 order: alphabetical, blank (no MDF/IDF — promoted L2 sections) last.
+    const l1List = Array.from(l1Map.values()).sort((a, b) => {
+      const aBlank = !a.label;
+      const bBlank = !b.label;
       if (aBlank !== bBlank) return aBlank ? 1 : -1;
       return a.label.localeCompare(b.label);
     });
 
+    // ── dump every native + previously-synthesized group row ──
+    tbody.querySelectorAll('tr.kn-table-group').forEach((el) => el.remove());
+
+    function makeHeader(level, label) {
+      const tr = document.createElement('tr');
+      tr.className = `kn-table-group kn-group-level-${level} scw-synth-group`;
+      const td = document.createElement('td');
+      if (label) td.textContent = label;
+      tr.appendChild(td);
+      return tr;
+    }
+
     const frag = document.createDocumentFragment();
-    for (const block of blocks) {
-      for (const n of block.nodes) frag.appendChild(n);
-    }
-    tbody.appendChild(frag);
-  }
-
-  // ============================================================
-  // FEATURE: L2 group reorder — within each L1 section
-  // ============================================================
-
-  function getSortValueForL2Block(ctx, l2HeaderEl, stopEl) {
-    const sortKey = ctx.keys.l2Sort;
-    let cur = l2HeaderEl.nextElementSibling;
-
-    while (cur && cur !== stopEl) {
-      if (cur.id && cur.tagName === 'TR') {
-        const cell = cur.querySelector(`td.${sortKey}`);
-        if (cell) {
-          const raw = norm(cell.textContent || '');
-          const num = parseFloat(String(raw).replace(/[^\d.-]/g, ''));
-          if (Number.isFinite(num)) return num;
+    for (const l1 of l1List) {
+      frag.appendChild(makeHeader(1, l1.label));
+      const l2List = Array.from(l1.l2Map.values()).sort((a, b) => a.sort - b.sort);
+      for (const l2 of l2List) {
+        frag.appendChild(makeHeader(2, l2.label));
+        for (const l3 of l2.l3Map.values()) {
+          frag.appendChild(makeHeader(3, ''));
+          for (const row of l3.rows) frag.appendChild(row);   // moves the node
         }
       }
-
-      if (cur.classList?.contains('kn-table-group')) {
-        const m = cur.className.match(/kn-group-level-(\d+)/);
-        const lvl = m ? parseInt(m[1], 10) : null;
-        if (lvl !== null && lvl <= 2) break;
-      }
-      cur = cur.nextElementSibling;
     }
-
-    return null;
-  }
-
-  function reorderLevel2GroupsBySortField(ctx, $tbody, runId) {
-    const opt = ctx.features.l2Sort;
-    if (!opt?.enabled) return;
-
-    const tbody = $tbody?.[0];
-    if (!tbody) return;
-
-    const stampKey = 'scwL2ReorderStamp';
-    if (tbody.dataset[stampKey] === String(runId)) return;
-    tbody.dataset[stampKey] = String(runId);
-
-    const l1Headers = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1'));
-    if (!l1Headers.length) return;
-
-    const missing = opt.missingSortGoesLast ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
-
-    for (let i = 0; i < l1Headers.length; i++) {
-      const l1El = l1Headers[i];
-      const nextL1El = i + 1 < l1Headers.length ? l1Headers[i + 1] : null;
-
-      const sectionNodes = [];
-      let cur = l1El.nextElementSibling;
-      while (cur && cur !== nextL1El) {
-        sectionNodes.push(cur);
-        cur = cur.nextElementSibling;
-      }
-      if (!sectionNodes.length) continue;
-
-      const l2Headers = sectionNodes.filter(
-        (n) => n.classList && n.classList.contains('kn-table-group') && n.classList.contains('kn-group-level-2')
-      );
-      if (l2Headers.length < 2) continue;
-
-      const firstL2 = l2Headers[0];
-
-      const prefixNodes = [];
-      cur = l1El.nextElementSibling;
-      while (cur && cur !== nextL1El && cur !== firstL2) {
-        prefixNodes.push(cur);
-        cur = cur.nextElementSibling;
-      }
-
-      const blocks = l2Headers.map((l2El, idx) => {
-        const nextL2El = idx + 1 < l2Headers.length ? l2Headers[idx + 1] : null;
-
-        const nodes = [];
-        let n = l2El;
-        while (n && n !== nextL1El && n !== nextL2El) {
-          nodes.push(n);
-          n = n.nextElementSibling;
-        }
-
-        const sortVal = getSortValueForL2Block(ctx, l2El, nextL2El || nextL1El);
-        return { idx, sortVal, nodes };
-      });
-
-      const lastBlock = blocks[blocks.length - 1];
-      const lastBlockLastNode = lastBlock.nodes[lastBlock.nodes.length - 1];
-
-      const suffixNodes = [];
-      cur = lastBlockLastNode ? lastBlockLastNode.nextElementSibling : null;
-      while (cur && cur !== nextL1El) {
-        suffixNodes.push(cur);
-        cur = cur.nextElementSibling;
-      }
-
-      blocks.sort((a, b) => {
-        const av = Number.isFinite(a.sortVal) ? a.sortVal : missing;
-        const bv = Number.isFinite(b.sortVal) ? b.sortVal : missing;
-        if (av !== bv) return av - bv;
-        return a.idx - b.idx;
-      });
-
-      const frag = document.createDocumentFragment();
-      for (const n of prefixNodes) frag.appendChild(n);
-      for (const block of blocks) for (const n of block.nodes) frag.appendChild(n);
-      for (const n of suffixNodes) frag.appendChild(n);
-
-      if (nextL1El) tbody.insertBefore(frag, nextL1El);
-      else tbody.appendChild(frag);
-    }
-  }
-
-  // ============================================================
-  // FEATURE: Heal orphaned camera ("drop") rows
-  // ============================================================
-  //
-  // Knack groups this view natively by MDF/bucket but the view is SORTED by
-  // a non-group field (field_2404). When that sort places a bucket's rows
-  // such that Knack never opens a group header for them, the rows render as
-  // raw "prefix" rows directly under the L1 header — with no L2 "Camera or
-  // Reader" header and no L3 drop header. The concat/reorder key off those
-  // headers, so the orphaned cameras get skipped entirely (observed: HEADEND
-  // cameras rendering ungrouped while every other MDF's cameras grouped fine).
-  //
-  // Self-heal: for each L1 section, gather the prefix DROP rows (rows before
-  // the first L2 header that carry a drop prefix), and splice them into a
-  // proper "Camera or Reader" L2+L3 block cloned from a working one so the
-  // existing pipeline (sort into position + concat) handles them identically.
-  function healOrphanDropGroups(ctx, $tbody, caches) {
-    const tbody = $tbody && $tbody[0];
-    if (!tbody || !ctx.features.concat?.enabled) return;
-    const dropCtx = ctx.features.concat.onlyContextKey; // 'drop'
-
-    // Locate a template drop L2 header + its following L3 header to clone.
-    let tmplL2 = null, tmplL3 = null;
-    const allL2 = tbody.querySelectorAll('tr.kn-table-group.kn-group-level-2');
-    for (const l2 of allL2) {
-      if (contextKeyFromLevel2Info(ctx, getLevel2InfoFromGroupRow($(l2))) !== dropCtx) continue;
-      const nxt = l2.nextElementSibling;
-      if (nxt && nxt.classList?.contains('kn-group-level-3')) { tmplL2 = l2; tmplL3 = nxt; break; }
-    }
-    if (!tmplL2 || !tmplL3) return; // nothing to clone from — can't heal safely
-
-    const l1Headers = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1'));
-    for (let i = 0; i < l1Headers.length; i++) {
-      const l1El = l1Headers[i];
-      const nextL1El = i + 1 < l1Headers.length ? l1Headers[i + 1] : null;
-
-      // Walk to the first L2 header, collecting drop-prefix data rows on the way.
-      const prefixDrops = [];
-      let cur = l1El.nextElementSibling;
-      while (cur && cur !== nextL1El) {
-        if (cur.classList?.contains('kn-table-group')) {
-          const m = cur.className.match(/kn-group-level-(\d+)/);
-          if (m && parseInt(m[1], 10) <= 2) break; // reached the first L2 — stop
-        }
-        if (cur.id && cur.tagName === 'TR' && getRowCellText(caches, cur, ctx.keys.prefix)) {
-          prefixDrops.push(cur);
-        }
-        cur = cur.nextElementSibling;
-      }
-      if (!prefixDrops.length) continue;
-
-      // Build a fresh "Camera or Reader" L2 + L3 from the template.
-      const newL2 = tmplL2.cloneNode(true);
-      const newL3 = tmplL3.cloneNode(true);
-      $(newL2).removeData(); $(newL3).removeData();
-      newL2.classList.remove('scw-promoted-l2-as-l1'); // never promoted here
-      // Strip any injected camera-concat content so it re-injects fresh.
-      const cc = newL3.querySelector('.scw-concat-cameras');
-      if (cc) { while (cc.firstChild) cc.parentNode.insertBefore(cc.firstChild, cc); cc.remove(); }
-
-      const ref = prefixDrops[0];
-      ref.parentNode.insertBefore(newL2, ref);
-      newL2.parentNode.insertBefore(newL3, ref);
-      // Pull every drop-prefix row up directly under the new L3 (consecutive).
-      let after = newL3;
-      for (const r of prefixDrops) { after.parentNode.insertBefore(r, after.nextSibling); after = r; }
-    }
-  }
-
-  // ============================================================
-  // FEATURE: Heal orphaned L3 data rows (blank L3-group value)
-  // ============================================================
-  //
-  // field_2409 is the L3 grouping field. Knack only opens a group header when
-  // the group value CHANGES — and "blank == blank" reads as unchanged even
-  // across an L2 boundary, so when two consecutive L3 groups both have a blank
-  // field_2409 (e.g. an NVR under "Networking or Headend" followed by a Rack
-  // under "Other Equipment"), Knack suppresses the SECOND group's L3 header.
-  // The pipeline hides every raw data row and surfaces equipment ONLY through
-  // L3 headers, so the headerless row disappears from the proposal entirely
-  // while still counting toward the totals (observed: a "$445 Rack added during
-  // survey" line vanishing). healOrphanDropGroups only covers camera/drop rows.
-  //
-  // Self-heal generally: walk the tbody; any data row sitting directly under an
-  // L2 header with no L3 in between gets a synthetic, empty L3 header spliced in
-  // before it. The normal pipeline then fills that header from the row's own
-  // data (product name from field_2365, rate/qty/cost), so the orphan renders
-  // identically to every other L3 line. Consecutive blank-group rows share the
-  // one synthesized header. Idempotent: on re-runs the row already has an L3
-  // above it, so nothing new is inserted.
-  function healOrphanLevel3(ctx, $tbody) {
-    const tbody = $tbody && $tbody[0];
-    if (!tbody) return;
-    function levelOf(tr) {
-      if (!tr.classList || !tr.classList.contains('kn-table-group')) return null;
-      const m = tr.className.match(/kn-group-level-(\d+)/);
-      return m ? parseInt(m[1], 10) : null;
-    }
-    function isDataRow(tr) {
-      return tr.tagName === 'TR' && tr.id &&
-        !tr.classList.contains('kn-table-group') &&
-        !tr.classList.contains('scw-level-total-row');
-    }
-    let lastHeaderLevel = 0;
-    const rows = Array.from(tbody.children);
-    for (let i = 0; i < rows.length; i++) {
-      const tr = rows[i];
-      const lvl = levelOf(tr);
-      if (lvl != null) { lastHeaderLevel = lvl; continue; }
-      // A data row whose nearest preceding header is the L2 (level 2) is an
-      // orphan — give it a synthetic L3. After that, the cluster is "under an
-      // L3", so siblings in the same blank group don't each get one.
-      if (isDataRow(tr) && lastHeaderLevel === 2) {
-        const synth = document.createElement('tr');
-        synth.className = 'kn-table-group kn-group-level-3 scw-l3-orphan-healed';
-        synth.appendChild(document.createElement('td'));
-        tr.parentNode.insertBefore(synth, tr);
-        lastHeaderLevel = 3;
-      }
-    }
+    tbody.insertBefore(frag, tbody.firstChild);
   }
 
   // ============================================================
@@ -1887,74 +1793,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ============================================================
-  // FEATURE: Split L3 (labor-description) groups by rate
-  // ============================================================
-  // The grid is Knack-grouped at L3 by field_2409 alone, so items with the
-  // same labor description but DIFFERENT rates land in one group — the
-  // header then shows an averaged rate against a summed cost, which reads
-  // as a wrong bill line to the subcontractor. Split such groups so every
-  // rendered L3 line is one (labor description + rate) pair: qty and cost
-  // are summed within the pair, and the rate shown is the pair's actual
-  // rate. Split headers are tagged .scw-l3-rate-split and rebuilt from
-  // scratch on every pipeline run (idempotent under re-renders).
-  function splitLevel3GroupsByRate(ctx, $tbody, caches) {
-    const rateKey = ctx.keys.rate;
-    if (!rateKey || !$tbody.length) return;
-
-    // Fresh slate — re-derive the splits from the data rows every run.
-    $tbody.find('tr.kn-table-group.kn-group-level-3.scw-l3-rate-split').remove();
-
-    const l3Headers = $tbody.find('tr.kn-table-group.kn-group-level-3').get();
-    for (const headerEl of l3Headers) {
-      // Skip sections whose L3 money is hidden (Services / Assumptions) —
-      // rate has no meaning there and splits would just duplicate headers.
-      let l2El = headerEl.previousElementSibling;
-      while (l2El && !(l2El.classList.contains('kn-table-group') &&
-                       l2El.classList.contains('kn-group-level-2'))) {
-        l2El = l2El.previousElementSibling;
-      }
-      if (l2El) {
-        const rule = getLevel2Rule(ctx, getLevel2InfoFromGroupRow($(l2El)));
-        if (rule && rule.hideLevel3Summary) continue;
-      }
-
-      const rows = getGroupBlock($(headerEl), 3).filter('tr[id]').get();
-      if (rows.length < 2) continue;
-
-      // Partition billable rows by rate (first-seen order). No-sub-bid rows
-      // carry no money — keep them with the first partition so the product
-      // list / associated-equipment features still see them.
-      const freeRows = [];
-      const byRate = new Map();
-      const partitions = [];
-      for (const row of rows) {
-        if (rowIsIncluded(ctx, row)) { freeRows.push(row); continue; }
-        const key = getRowNumericValue(caches, row, rateKey).toFixed(2);
-        let part = byRate.get(key);
-        if (!part) { part = []; byRate.set(key, part); partitions.push(part); }
-        part.push(row);
-      }
-      if (partitions.length < 2) continue;   // one rate (or all free) — no split
-      partitions[0] = freeRows.concat(partitions[0]);
-
-      // Reflow: original header keeps partition 0; each further partition
-      // gets a fresh bare L3 header (the pipeline enhances it like any
-      // other — cells template, field_2409 label injection, sums).
-      let anchor = headerEl;
-      partitions.forEach((partRows, idx) => {
-        if (idx > 0) {
-          const head = document.createElement('tr');
-          head.className = 'kn-table-group kn-group-level-3 scw-l3-rate-split';
-          head.appendChild(document.createElement('td'));
-          anchor.after(head);
-          anchor = head;
-        }
-        for (const row of partRows) { anchor.after(row); anchor = row; }
-      });
-    }
-  }
-
-  // ============================================================
   // MAIN PROCESSOR
   // ============================================================
 
@@ -1980,13 +1818,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       .find(`tr.kn-table-group.kn-group-level-3.${ctx.l2Specials.classOnLevel3}`)
       .removeClass(ctx.l2Specials.classOnLevel3);
 
-    reorderLevel1Groups($tbody);
-    healOrphanDropGroups(ctx, $tbody, caches);
-    healOrphanLevel3(ctx, $tbody);
-    reorderLevel2GroupsBySortField(ctx, $tbody, runId);
-    // After heal/reorder, before group processing: one rendered L3 line
-    // per (labor description + rate) pair.
-    splitLevel3GroupsByRate(ctx, $tbody, caches);
+    // Model-driven rebuild: dump Knack's native group rows, synthesize
+    // L1/L2/L3 headers from the view model, and re-seat every data row
+    // under them. Replaces the old reorder/heal/split layers wholesale.
+    rebuildGroupRowsFromModel(ctx, $tbody, caches);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
     if (!$firstDataRow.length) return;
@@ -2369,4 +2204,35 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   Object.keys(CONFIG.views).forEach(bindForView);
+
+  // Catch-up pass (same mechanism as proposal-grid.js): if the bundle
+  // finished loading AFTER Knack already emitted
+  // knack-records-render.view_XXXX — the norm on this KTL-free scene,
+  // where Knack renders while the bundle is still downloading — our
+  // handler missed the initial event entirely and nothing ever re-fires
+  // it: the raw flat table just sits there. For each configured view
+  // that's already rendered with data but no totals, trigger the event
+  // once so bindForView's handler runs.
+  Object.keys(CONFIG.views).forEach(function (viewId) {
+    var attempts = 0;
+    var maxAttempts = 20;          // ~6s total at 300ms cadence
+    var intervalMs = 300;
+    var iv = setInterval(function () {
+      attempts++;
+      var view = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[viewId] : null;
+      var rendered = view && view.model && view.model.data
+        && (Array.isArray(view.model.data) ? view.model.data.length
+                                            : (view.model.data.models && view.model.data.models.length));
+      var root = document.getElementById(viewId);
+      var hasDataRows = !!(root && root.querySelector('tbody tr[id]'));
+      var hasTotals = !!(root && root.querySelector('tbody tr.scw-level-total-row'));
+
+      if (rendered && hasDataRows && !hasTotals) {
+        $(document).trigger('knack-records-render.' + viewId, [view]);
+        clearInterval(iv);
+      } else if (hasTotals || attempts >= maxAttempts) {
+        clearInterval(iv);
+      }
+    }, intervalMs);
+  });
 })();

@@ -40,9 +40,11 @@
       // NEVER offered on a change-order proposal — a CO is accepted via the
       // issued e-signature agreement, not the Accept flow (which would fire
       // the base-scope acceptance pipeline). See isChangeOrderProposal().
-      // Suppressed once the proposal is ACCEPTED (field_2991 flag_accepted)
-      // — injectAcceptedBanner() renders a "this proposal has been
-      // accepted" notice in the CTA's place instead.
+      // Suppressed once the proposal is ACCEPTED (field_2990 acceptance
+      // count > 1 — replaced the old field_2991 FLAG_accepted gate, which
+      // was never reliably written; see CLAUDE.md Known Issue #18) —
+      // injectAcceptedBanner() renders a "this proposal has been accepted"
+      // notice in the CTA's place instead.
       appendRecordId: true,
       gate: function (attrs) {
         if (isChangeOrderProposal()) return false;
@@ -502,32 +504,39 @@
       '<div style="font-weight:500;">' + body + '</div>';
     doc.body.insertBefore(banner, doc.body.firstChild);
   }
-  // ── Accepted proposal (field_2991 flag_accepted) ────────────────
-  // True when the proposal has been accepted. The flag is checked on
-  // BOTH records on this scene (the published-proposal record and the
-  // SOW detail view) so it works wherever Builder ends up exposing
-  // field_2991. Fails safe: missing/blank field → not accepted, the
-  // Accept CTA keeps showing.
-  var ACCEPTED_FIELD = 'field_2991';
+  // ── Accepted proposal (field_2990 acceptance count > 1) ─────────
+  // True when the proposal counts as accepted. Replaced the old
+  // field_2991 FLAG_accepted gate (the flag was never reliably written —
+  // CLAUDE.md Known Issue #18) with the field_2990 count: accepted when
+  // it reads GREATER THAN 1. Checked on BOTH records on this scene (the
+  // published-proposal record and the SOW detail view) so it works
+  // wherever Builder exposes field_2990. Fails safe: missing/blank/
+  // non-numeric field → not accepted, the Accept CTA keeps showing.
+  var ACCEPT_COUNT_FIELD = 'field_2990';
+  function readAcceptCount(attrs) {
+    if (!attrs) return NaN;
+    var raw = attrs[ACCEPT_COUNT_FIELD + '_raw'];
+    var val = (raw != null && raw !== '') ? raw : attrs[ACCEPT_COUNT_FIELD];
+    var n = Number(String(val == null ? '' : val)
+      .replace(/<[^>]*>/g, '').replace(/[^0-9.\-]/g, ''));
+    return isNaN(n) ? NaN : n;
+  }
   function isProposalAccepted() {
-    function check(attrs) {
-      return !!attrs && (isYesValue(attrs[ACCEPTED_FIELD]) ||
-                         isYesValue(attrs[ACCEPTED_FIELD + '_raw']) ||
-                         attrs[ACCEPTED_FIELD + '_raw'] === true);
-    }
-    if (check(readPublishedProposalAttrs())) return true;
+    var n = readAcceptCount(readPublishedProposalAttrs());
+    if (!isNaN(n)) return n > 1;
     try {
       var v = window.Knack && Knack.views && Knack.views[SOW_DETAIL_VIEW];
       var attrs = v && v.model && (v.model.attributes
                   || (v.model.data && v.model.data.attributes));
-      if (check(attrs)) return true;
+      var n2 = readAcceptCount(attrs);
+      if (!isNaN(n2)) return n2 > 1;
     } catch (e) { /* not accepted */ }
     return false;
   }
 
   // Green "already accepted" notice — takes the Accept CTA's spot (just
-  // above the first .view-title) when field_2991 says the proposal has
-  // been accepted. COs are excluded: they carry their own e-sign banner.
+  // above the first .view-title) when field_2990 (> 1) says the proposal
+  // has been accepted. COs are excluded: they carry their own e-sign banner.
   function injectAcceptedBanner(iframe) {
     if (!iframe || isChangeOrderProposal() || !isProposalAccepted()) return;
     var doc;

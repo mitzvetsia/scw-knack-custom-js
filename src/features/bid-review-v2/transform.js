@@ -791,6 +791,58 @@
     var sowItemIndex = Object.create(null);
     var sowFullByItem = Object.create(null); // keeps the raw record for expand-panel use
     var sowItemList = sowItems || [];
+
+    // Authoritative Connected Devices. field_1957 (parent forward list) and
+    // field_2197 (child back-pointer) are SEPARATE fields kept aligned only
+    // by the cascade (CLAUDE.md Known Issue #12), so the forward list can
+    // read stale (e.g. one device) while children still point here. Mirror
+    // worksheet-v2's detailConnectedDevices: union the forward list with
+    // every item whose Connected To points back at the parent — the
+    // collapsed row then matches the expand panel's count, and the
+    // connDevice diff compares bids against the authoritative set.
+    var connBackIdx = Object.create(null);
+    var sowItemById = Object.create(null);
+    for (var bp = 0; bp < sowItemList.length; bp++) {
+      var brec = sowItemList[bp];
+      if (!brec || !brec.id) continue;
+      sowItemById[brec.id] = brec;
+      var pid = connectionId(brec, SFK.connTo);
+      if (!pid) continue;
+      (connBackIdx[pid] = connBackIdx[pid] || []).push({
+        id: brec.id,
+        identifier: raw(brec, SFK.displayLabel) ||
+                    connectionLabel(brec, SFK.product) || brec.id
+      });
+    }
+    // SOW membership ({id, label} per SOW) of a connected device, read off the
+    // device's OWN field_2154 record. null when the device record isn't loaded
+    // (renderer then skips SOW tagging for that entry).
+    function deviceSows(devId) {
+      var drec = sowItemById[devId];
+      if (!drec) return null;
+      var conns = connectionAll(drec, SFK.sow);
+      var out = [];
+      for (var i = 0; i < conns.length; i++) {
+        if (conns[i] && conns[i].id) {
+          out.push({ id: conns[i].id, label: String(conns[i].identifier || conns[i].id) });
+        }
+      }
+      return out;
+    }
+    function connDeviceUnion(rec) {
+      var seen = Object.create(null);
+      var out = [];
+      function add(entry) {
+        if (!entry || !entry.id || seen[entry.id]) return;
+        seen[entry.id] = true;
+        out.push({ id: entry.id, identifier: entry.identifier, sows: deviceSows(entry.id) });
+      }
+      var fwd = connectionAll(rec, SFK.connDevice);
+      for (var f = 0; f < fwd.length; f++) add(fwd[f]);
+      var kids = connBackIdx[rec.id] || [];
+      for (var k = 0; k < kids.length; k++) add(kids[k]);
+      return out;
+    }
     for (var si = 0; si < sowItemList.length; si++) {
       var s = sowItemList[si];
       if (!s || !s.id) continue;
@@ -839,9 +891,12 @@
         // connDevice (field_1957) populated (its cameras); a camera/reader
         // has connTo (field_2197) populated (its NVR) — the cell renders
         // whichever is present, so each device shows the appropriate field.
-        connDevice:     connectionAll(s, SFK.connDevice),
+        connDevice:     connDeviceUnion(s),
         connTo:         connectionLabel(s, SFK.connTo),
         connToId:       connectionId(s, SFK.connTo),
+        // SOW membership of the Connected To parent — same {id,label} shape
+        // as connDevice[].sows, for the renderer's SOW tagging.
+        connToSows:     (function (pid) { return pid ? deviceSows(pid) : null; })(connectionId(s, SFK.connTo)),
         // Cabling attributes for the comparison cells (cam/reader). Diffed
         // against the bid record's own cabling fields in getMismatches.
         existCabling:   bool(s, SFK.existCabling),

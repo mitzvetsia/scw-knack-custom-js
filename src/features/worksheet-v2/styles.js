@@ -2443,7 +2443,19 @@
     '.scw-ws-v2-photo-img {',
     '  display: block !important;',
     '  width: auto !important;',
-    '  max-height: 200px !important;',
+    /* Reserve the box BEFORE the image decodes. With max-height alone the
+       img rendered ~0px tall until its bytes arrived, then popped open to
+       200px — on a full rebuild (every field edit recreates every strip)
+       or a fresh upload, each late-decoding thumbnail shoved the page
+       ("screen jumping"). The scroll anchor only fights shifts for 600ms;
+       slow S3 loads land later, so the layout itself must be stable: a
+       fixed height keeps every strip's vertical size constant from first
+       paint, min-width gives the undecoded box a footprint, and
+       object-fit + background letterbox odd aspect ratios cleanly. */
+    '  height: 200px !important;',
+    '  min-width: 90px !important;',
+    '  object-fit: contain !important;',
+    '  background: #f8fafc !important;',
     '  border-radius: 6px !important;',
     '  border: 1px solid #ddd !important;',
     '  box-shadow: 0 1px 4px rgba(0,0,0,0.08) !important;',
