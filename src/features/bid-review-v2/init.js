@@ -1115,6 +1115,7 @@
       if (data && data.entries.length) {
         elv.textContent = '';
         elv.appendChild(buildCdMatrix(data));
+        updateCdFieldLabel(btn, data);
         continue;
       }
 
@@ -1217,6 +1218,26 @@
     return { entries: out, ownSows: ownList };
   }
 
+  // Rewrite the detail-field label's "(6)" total into
+  // "(5 on this SOW · 6 total)". Regex only matches a bare-digits paren, so
+  // a second pass (re-decorate) is a no-op.
+  function updateCdFieldLabel(btn, data) {
+    var field = btn.closest('.scw-ws-v2-detail-field');
+    var lab = field && field.querySelector('.scw-ws-v2-detail-label');
+    if (!lab || !data.ownSows.length) return;
+    var ownIds = Object.create(null);
+    for (var i = 0; i < data.ownSows.length; i++) ownIds[data.ownSows[i].id] = true;
+    var on = 0;
+    for (var e = 0; e < data.entries.length; e++) {
+      var sows = data.entries[e].sows;
+      for (var s = 0; s < sows.length; s++) {
+        if (ownIds[sows[s].id]) { on++; break; }
+      }
+    }
+    lab.innerHTML = lab.innerHTML.replace(/\(\s*\d+\s*\)/,
+      '(' + on + ' on this SOW · ' + data.entries.length + ' total)');
+  }
+
   // Mini membership matrix for the expanded editor's Connected Devices value:
   // one row per device, one column per SOW (the expanded record's own SOW(s)
   // first, then any other SOW a device lives on, then a trailing "no SOW"
@@ -1236,11 +1257,19 @@
     for (e = 0; e < data.ownSows.length; e++) {
       addCol(data.ownSows[e].id, data.ownSows[e].label, true);
     }
-    var hasNone = false;
+    var hasNone = false, noneCount = 0;
+    var colCount = Object.create(null);
     for (e = 0; e < data.entries.length; e++) {
       var en = data.entries[e];
-      if (en.known && !en.sows.length) hasNone = true;
-      for (s = 0; s < en.sows.length; s++) addCol(en.sows[s].id, en.sows[s].label, false);
+      if (en.known && !en.sows.length) { hasNone = true; noneCount++; }
+      var counted = Object.create(null);
+      for (s = 0; s < en.sows.length; s++) {
+        addCol(en.sows[s].id, en.sows[s].label, false);
+        if (!counted[en.sows[s].id]) {
+          counted[en.sows[s].id] = true;
+          colCount[en.sows[s].id] = (colCount[en.sows[s].id] || 0) + 1;
+        }
+      }
     }
     cols.sort(function (a, b) {
       if (a.current !== b.current) return a.current ? -1 : 1;
@@ -1263,12 +1292,17 @@
     head.className = 'scw-br-v2-cdm-row scw-br-v2-cdm-head';
     cell(head, 'scw-br-v2-cdm-dev', '');
     for (c = 0; c < cols.length; c++) {
+      var n = colCount[cols[c].id] || 0;
       cell(head,
         cols[c].current ? 'scw-br-v2-cdm-col--cur' : 'scw-br-v2-cdm-col--other',
-        cols[c].label,
-        cols[c].current ? 'This item’s SOW' : 'A different SOW');
+        cols[c].label + ' (' + n + ')',
+        (cols[c].current ? 'This item’s SOW — ' : 'A different SOW — ') +
+          n + ' of these devices on it');
     }
-    if (hasNone) cell(head, 'scw-br-v2-cdm-col--none', 'no SOW', 'Not on any SOW');
+    if (hasNone) {
+      cell(head, 'scw-br-v2-cdm-col--none', 'no SOW (' + noneCount + ')',
+        noneCount + ' device(s) not on any SOW');
+    }
     wrap.appendChild(head);
 
     for (e = 0; e < data.entries.length; e++) {

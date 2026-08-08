@@ -455,15 +455,16 @@
           inner = escapeHtml(joined);
         } else {
           inner = '';
-          if (cur.length) inner += grpLine('This SOW', 'cur', cur);
+          if (cur.length) inner += grpLine('This SOW (' + cur.length + ')', 'cur', cur);
           for (var g = 0; g < otherOrder.length; g++) {
-            inner += grpLine('SOW ' + otherOrder[g], 'other', otherMap[otherOrder[g]]);
+            inner += grpLine('SOW ' + otherOrder[g] + ' (' + otherMap[otherOrder[g]].length + ')',
+              'other', otherMap[otherOrder[g]]);
           }
-          if (none.length) inner += grpLine('No SOW', 'none', none);
+          if (none.length) inner += grpLine('No SOW (' + none.length + ')', 'none', none);
         }
         html += '<div class="scw-bid-review-v2__cell-conn' + a.cls + '"' + a.hook +
           ' title="Connected devices: ' + escapeHtml(joined) + '">' +
-          '<label>Connected</label>' + inner + '</div>';
+          '<label>Connected (' + names.length + ')</label>' + inner + '</div>';
       }
     } else if (opts.side === 'bid' && opts.deviceDiff) {
       // Bid has NO connected devices but the SOW does — surface the gap so the
