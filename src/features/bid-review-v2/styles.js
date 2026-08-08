@@ -1291,6 +1291,17 @@
     '  color: #64748b; font-size: 10px; font-weight: 700;',
     '  text-transform: uppercase; letter-spacing: .03em;',
     '}',
+    /* SOW-membership pill on a connected device (SOW column). Only rendered
+       for devices NOT on the section's SOW — amber (warning convention) with
+       the SOW number(s) the device actually lives on, or "no SOW". */
+    '.scw-brv2-conn-sow {',
+    '  display: inline-block; margin-left: 4px; padding: 0 5px;',
+    '  border-radius: 8px; vertical-align: 1px;',
+    '  background: #fffbeb; color: #b45309; border: 1px solid #fde68a;',
+    '  font: 700 9px system-ui, -apple-system, sans-serif;',
+    '  line-height: 13px; letter-spacing: 0.03em; white-space: nowrap;',
+    '}',
+    '.scw-brv2-conn-sow--none { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }',
     /* ── Inputs ────────────────────────────────────────────── */
     '.scw-bid-review-v2-input {',
     '  border: 1px solid #cbd5e1; border-radius: 4px;',

@@ -369,6 +369,31 @@
   // cameras/readers), a camera/reader populates connTo (its NVR/switch) — so
   // rendering whichever is present shows the appropriate field per device.
   // Returns '' when neither is set, so rows without topology stay uncluttered.
+  // SOW-membership pills for a connected device on the SOW side. A device on
+  // the section's own SOW renders plain (no pill); a device NOT on it gets an
+  // amber pill per SOW it lives on (or "no SOW"), so cross-SOW / dangling
+  // connections read at a glance. `sows` is null when membership is unknown
+  // (device record not loaded) — no tagging.
+  function connSowPillsHtml(sows, sowId) {
+    if (!sowId || !Array.isArray(sows)) return '';
+    for (var i = 0; i < sows.length; i++) {
+      if (sows[i] && sows[i].id === sowId) return '';
+    }
+    if (!sows.length) {
+      return '<span class="scw-brv2-conn-sow scw-brv2-conn-sow--none"' +
+        ' title="Not on any SOW">no SOW</span>';
+    }
+    var html = '';
+    for (var j = 0; j < sows.length; j++) {
+      var lbl = ns.transform.stripHtml(String(sows[j].label || '')).trim();
+      if (!lbl) continue;
+      html += '<span class="scw-brv2-conn-sow"' +
+        ' title="On a DIFFERENT SOW (' + escapeHtml(lbl) + '), not this one">' +
+        escapeHtml(lbl) + '</span>';
+    }
+    return html;
+  }
+
   function connLineHtml(connDevice, connTo, opts) {
     opts = opts || {};
     var DIFF = ' scw-bid-review-v2__field-diff';
@@ -383,17 +408,20 @@
     var html = '';
     if (Array.isArray(connDevice) && connDevice.length) {
       var names = [];
+      var parts = [];
       for (var i = 0; i < connDevice.length; i++) {
         var c = connDevice[i];
         var lbl = ns.transform.stripHtml((c && (c.identifier || c.name)) || '').trim();
-        if (lbl) names.push(lbl);
+        if (!lbl) continue;
+        names.push(lbl);
+        parts.push(escapeHtml(lbl) + connSowPillsHtml(c && c.sows, opts.sowId));
       }
       if (names.length) {
         var a = lineAttrs(!!opts.deviceDiff);
         var joined = names.join(', ');
         html += '<div class="scw-bid-review-v2__cell-conn' + a.cls + '"' + a.hook +
           ' title="Connected devices: ' + escapeHtml(joined) + '">' +
-          '<label>Connected</label>' + escapeHtml(joined) + '</div>';
+          '<label>Connected</label>' + parts.join(', ') + '</div>';
       }
     } else if (opts.side === 'bid' && opts.deviceDiff) {
       // Bid has NO connected devices but the SOW does — surface the gap so the
@@ -408,7 +436,8 @@
       var a2 = lineAttrs(!!opts.toDiff);
       html += '<div class="scw-bid-review-v2__cell-conn' + a2.cls + '"' + a2.hook +
         ' title="Connected to: ' + escapeHtml(to) + '">' +
-        '<label>Connected&nbsp;to</label>' + escapeHtml(to) + '</div>';
+        '<label>Connected&nbsp;to</label>' + escapeHtml(to) +
+        connSowPillsHtml(opts.connToSows, opts.sowId) + '</div>';
     } else if (opts.side === 'bid' && opts.toDiff) {
       // Bid not connected but the SOW expects a connection — show the gap.
       var a2m = lineAttrs(true);
@@ -539,7 +568,8 @@
           escapeHtml(descTxt) + '">' + descRich +
         '</div>' : '') +
       accessoriesHtml +
-      connLineHtml(sowItemData.connDevice, sowItemData.connTo, { side: 'sow' }) +
+      connLineHtml(sowItemData.connDevice, sowItemData.connTo,
+        { side: 'sow', sowId: sowId, connToSows: sowItemData.connToSows }) +
       cablingLineHtml(sowItemData, { side: 'sow' }) +
       // SOW MDF/IDF — shown when a bid overrides it (diff.mdfIdf) so the
       // override reads as a side-by-side: the SOW's location here, the bid's

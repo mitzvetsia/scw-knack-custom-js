@@ -801,9 +801,11 @@
     // collapsed row then matches the expand panel's count, and the
     // connDevice diff compares bids against the authoritative set.
     var connBackIdx = Object.create(null);
+    var sowItemById = Object.create(null);
     for (var bp = 0; bp < sowItemList.length; bp++) {
       var brec = sowItemList[bp];
       if (!brec || !brec.id) continue;
+      sowItemById[brec.id] = brec;
       var pid = connectionId(brec, SFK.connTo);
       if (!pid) continue;
       (connBackIdx[pid] = connBackIdx[pid] || []).push({
@@ -812,23 +814,33 @@
                     connectionLabel(brec, SFK.product) || brec.id
       });
     }
+    // SOW membership ({id, label} per SOW) of a connected device, read off the
+    // device's OWN field_2154 record. null when the device record isn't loaded
+    // (renderer then skips SOW tagging for that entry).
+    function deviceSows(devId) {
+      var drec = sowItemById[devId];
+      if (!drec) return null;
+      var conns = connectionAll(drec, SFK.sow);
+      var out = [];
+      for (var i = 0; i < conns.length; i++) {
+        if (conns[i] && conns[i].id) {
+          out.push({ id: conns[i].id, label: String(conns[i].identifier || conns[i].id) });
+        }
+      }
+      return out;
+    }
     function connDeviceUnion(rec) {
       var seen = Object.create(null);
       var out = [];
+      function add(entry) {
+        if (!entry || !entry.id || seen[entry.id]) return;
+        seen[entry.id] = true;
+        out.push({ id: entry.id, identifier: entry.identifier, sows: deviceSows(entry.id) });
+      }
       var fwd = connectionAll(rec, SFK.connDevice);
-      for (var f = 0; f < fwd.length; f++) {
-        if (fwd[f] && fwd[f].id && !seen[fwd[f].id]) {
-          seen[fwd[f].id] = true;
-          out.push(fwd[f]);
-        }
-      }
+      for (var f = 0; f < fwd.length; f++) add(fwd[f]);
       var kids = connBackIdx[rec.id] || [];
-      for (var k = 0; k < kids.length; k++) {
-        if (!seen[kids[k].id]) {
-          seen[kids[k].id] = true;
-          out.push(kids[k]);
-        }
-      }
+      for (var k = 0; k < kids.length; k++) add(kids[k]);
       return out;
     }
     for (var si = 0; si < sowItemList.length; si++) {
@@ -882,6 +894,9 @@
         connDevice:     connDeviceUnion(s),
         connTo:         connectionLabel(s, SFK.connTo),
         connToId:       connectionId(s, SFK.connTo),
+        // SOW membership of the Connected To parent — same {id,label} shape
+        // as connDevice[].sows, for the renderer's SOW tagging.
+        connToSows:     (function (pid) { return pid ? deviceSows(pid) : null; })(connectionId(s, SFK.connTo)),
         // Cabling attributes for the comparison cells (cam/reader). Diffed
         // against the bid record's own cabling fields in getMismatches.
         existCabling:   bool(s, SFK.existCabling),
