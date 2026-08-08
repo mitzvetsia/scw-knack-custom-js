@@ -525,9 +525,22 @@
       }
       var subgroups = [];
       if (rmRows.length) {
+        // Label honestly: a row lands here either because it's on nothing at
+        // all, or because its only bid cells sit on basis-hidden columns
+        // (hiddenBidOnly — still live on another, undisplayed bid).
+        var rmHusks = 0;
+        for (var rh = 0; rh < rmRows.length; rh++) {
+          if (rmRows[rh].hiddenBidOnly) rmHusks++;
+        }
+        var rmLabel = 'Removed — no longer on any SOW or bid';
+        if (rmHusks === rmRows.length) {
+          rmLabel = 'Not on this SOW or displayed bid — still on another bid';
+        } else if (rmHusks) {
+          rmLabel = 'Removed — not on this SOW or displayed bid';
+        }
         subgroups.push({
           key:              mdfKey + '::removed',
-          label:            'Removed — no longer on any SOW or bid',
+          label:            rmLabel,
           rows:             rmRows,
           removedItems:     true,
           defaultCollapsed: true
@@ -1340,6 +1353,48 @@
       var removedRowsGrid = dedupeRowsBySowItem(removedRows, _seenSowItem, false);
       otherSowRows        = dedupeRowsBySowItem(otherSowRows, _seenSowItem, false);
       bidOnlyRows         = dedupeRowsBySowItem(bidOnlyRows, _seenSowItem, false);
+
+      // ── Basis-filter interaction: bid-only rows with no VISIBLE cell ──
+      // With a basis bid chosen, non-basis columns are display:none'd
+      // (basis-filter.js). A bid-only row whose EVERY cell sits on a hidden
+      // column renders as a husk — empty SOW cell plus a cutout on the
+      // displayed bid — while the bid that actually carries it is invisible.
+      // Route those into the collapsed Removed subgroup ("not on this SOW or
+      // displayed bid — still on another bid"). The show-all toggle and
+      // basis changes trigger a rebuild (basis-filter.js rebuildGrid), so
+      // the row returns to the main grid whenever its column is shown.
+      var hiddenPkg = (ns.basisFilter && typeof ns.basisFilter.hiddenFor === 'function')
+        ? ns.basisFilter.hiddenFor(sow.id, packages.map(function (p) { return p.id; }))
+        : null;
+      if (hiddenPkg && bidOnlyRows.length) {
+        var keptBidOnly = [];
+        for (var hb = 0; hb < bidOnlyRows.length; hb++) {
+          var hbr = bidOnlyRows[hb];
+          var hbPids = Object.keys(hbr.cellsByPackage || {});
+          var hbVisible = !hbPids.length;   // no cells at all → not a husk, keep
+          for (var hv = 0; hv < hbPids.length; hv++) {
+            if (!hiddenPkg[hbPids[hv]]) { hbVisible = true; break; }
+          }
+          if (hbVisible) { keptBidOnly.push(hbr); continue; }
+          hbr.removed       = true;
+          hbr.hiddenBidOnly = true;
+          hbr.hasBidRecord  = true;
+          // "What it is" snapshot off its (hidden) live cell, same shape the
+          // Source-B removed rows carry for the expand panel.
+          var hbCell = hbr.cellsByPackage[hbPids[0]];
+          if (!hbr.detail && hbCell) {
+            hbr.detail = {
+              side:    'BID',
+              product: hbCell.productName,
+              qty:     hbCell.qty,
+              fee:     hbCell.labor,
+              desc:    hbCell.laborDesc
+            };
+          }
+          removedRowsGrid.push(hbr);
+        }
+        bidOnlyRows = keptBidOnly;
+      }
 
       var otherRows = otherSowRows.concat(bidOnlyRows);
 

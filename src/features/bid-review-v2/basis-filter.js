@@ -78,6 +78,32 @@
     return document.querySelector('.scw-bid-review-v2__sow[data-sow-id="' + sowId + '"]');
   }
 
+  /** Pkg id → true for every bid column the filter currently hides for this
+   *  SOW, or null when no filtering applies (no valid basis, K1 sentinel,
+   *  "show all" opted in, or fewer than 2 columns). Pure read, same rules as
+   *  applyToSection — transform.buildState uses it to bucket rows whose only
+   *  bid cells sit on hidden columns into the Removed subgroup. */
+  function hiddenFor(sowId, pkgIds) {
+    if (!sowId || !pkgIds || pkgIds.length < 2) return null;
+    var basis = basisOf(sowId);
+    if (!basis || basis === K1_ID || pkgIds.indexOf(basis) === -1) return null;
+    if (userShowAll(sowId)) return null;
+    var out = Object.create(null);
+    for (var i = 0; i < pkgIds.length; i++) {
+      if (pkgIds[i] !== basis) out[pkgIds[i]] = true;
+    }
+    return out;
+  }
+
+  /** Row bucketing depends on which columns are visible (hiddenFor above) —
+   *  after a toggle or basis change the grid must REBUILD, not just repaint,
+   *  so husk rows move between the main grid and the Removed subgroup. */
+  function rebuildGrid() {
+    if (ns.data && typeof ns.data.notifyDebounced === 'function') {
+      ns.data.notifyDebounced();
+    }
+  }
+
   /** Distinct pkg ids present in a section's column cells (fallback when
    *  the caller doesn't supply them, e.g. re-apply on a basis change). */
   function collectPkgIds(section) {
@@ -184,6 +210,7 @@
       if (!sowId) return;
       setUserShowAll(sowId, !userShowAll(sowId));
       reapply(sowId);
+      rebuildGrid();
     });
 
     // Basis dropdown change (sub-bid-diff selector) — repaint the section
@@ -196,12 +223,13 @@
       if (!sel) return;
       var sowId = sel.getAttribute('data-sow-id');
       if (!sowId) return;
-      setTimeout(function () { reapply(sowId); }, 0);
+      setTimeout(function () { reapply(sowId); rebuildGrid(); }, 0);
     });
   }
 
   ns.basisFilter = {
     applyToSection: applyToSection,
+    hiddenFor:      hiddenFor,
     wire:           wire
   };
 })();
