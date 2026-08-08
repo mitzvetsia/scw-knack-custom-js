@@ -123,6 +123,65 @@ carried projections like `field_2404.field_2154_raw`. Object-API records
 don't have dotted keys. If any apply module read a dotted key off
 `bidRecord`, remap it to the search-B (SOW item) record's own field.
 
+## Connection writes — SCOPED MERGE (multi-SOW / multi-bid)
+
+The device-graph write (`field_1957` Connected Devices / `field_2197`
+Connected To) is the one place a wholesale "set it to what the bid says"
+is WRONG. SOW line items are shared across SOWs (`field_2154` is multi),
+so a switch on SOW-A and SOW-B carries children from BOTH SOWs' graphs —
+and bid P_A only knows about SOW-A's. Overwriting `field_1957` from P_A's
+view wipes the B-side connections. The rule:
+
+> **A sync of (packageId, sowId) may only add/remove connections whose
+> CHILD item is on `sowId` (`field_2154` contains it). Everything else on
+> a parent's list is another SOW's graph — carried through untouched.**
+
+Per matched parent P (bid item with `mapConn` true and `field_2380` set):
+
+1. `desired` = translate P's bid-side `field_2380` ids → SOW item ids via
+   the bidId→sowItemId map (`field_2404` of each connected bid record,
+   **plus the ids of records created earlier in this same run** — see
+   ordering below).
+2. `current` = P's `field_1957_raw`.
+3. **Steal guard** (child side, evaluated FIRST): a `desired` child whose
+   `field_2197` currently points at a parent NOT on `sowId` is owned by a
+   different SOW's graph — DROP it from `desired` + warn, never re-point.
+   (Within-SOW re-pointing — the child's old parent is on `sowId` — is
+   normal reassignment and proceeds.)
+4. `new field_1957` = (`current` where child `field_2154` does NOT contain
+   `sowId`) ∪ `desired`. PUT only if changed.
+5. `field_2197` writes, mirroring step 4 exactly:
+   - each `desired` child not already pointing at P → set to P (and if its
+     old parent is an in-scope parent NOT matched on this bid, also remove
+     the child from THAT parent's `field_1957` so the canonical side stays
+     clean);
+   - each `current` in-scope child dropped from the graph → clear its
+     `field_2197` **only if** it still points at P AND the child is
+     EXCLUSIVELY on this SOW (`field_2154` == [`sowId`]). A child shared
+     with another SOW is add/keep only — a bid implying its removal logs a
+     warning instead of writing (removing it would tear the other SOW's
+     graph; with a single physical field there is no both-ways answer).
+
+Every guard decision applies to BOTH sides — whatever is dropped from
+`desired` in step 3 must not appear in step 4's union, or the pair drifts.
+Make writes both fields itself (no client cascade runs server-side), so
+steps 4–5 ARE the cascade here.
+
+**Ordering within a run** (violating this silently narrows graphs):
+
+1. `creates` land first → their new record ids join the bidId→sowItemId
+   map (a bid's `field_2380` routinely references bid items whose SOW
+   record didn't exist until this run — translating before creating drops
+   those connections).
+2. Scalar `updates` (qty/rate/labor/etc. — no cross-record hazards).
+3. The connection pass above.
+4. `removals` / `disconnectBids` last.
+
+Warnings accumulated in steps 3/5 (cross-SOW steal blocked, shared-child
+removal skipped) should surface in the run output — they are the cases
+where two SOWs' bids genuinely disagree about one physical record, and a
+human has to pick.
+
 ## Migration order
 
 1. Rework the existing scenario to derive from `packageId` + `sowId`,
