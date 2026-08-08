@@ -414,7 +414,10 @@
         var lbl = ns.transform.stripHtml((c && (c.identifier || c.name)) || '').trim();
         if (!lbl) continue;
         names.push(lbl);
-        parts.push(escapeHtml(lbl) + connSowPillsHtml(c && c.sows, opts.sowId));
+        // nowrap group so a pill visually binds to ITS device instead of
+        // floating at the end of the wrapped list.
+        parts.push('<span class="scw-brv2-conn-dev">' + escapeHtml(lbl) +
+          connSowPillsHtml(c && c.sows, opts.sowId) + '</span>');
       }
       if (names.length) {
         var a = lineAttrs(!!opts.deviceDiff);

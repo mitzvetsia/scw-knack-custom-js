@@ -1121,14 +1121,17 @@
           var sows = entries[e].sows;
           for (var s = 0; s < sows.length; s++) {
             var pill = document.createElement('span');
-            pill.className = 'scw-br-v2-cd-sow' +
-              (sows[s].current ? ' scw-br-v2-cd-sow--current'
-                               : ' scw-br-v2-cd-sow--other');
+            pill.className = 'scw-br-v2-cd-sow';
             pill.textContent = sows[s].label;
-            pill.title = sows[s].current
-              ? 'On this item’s SOW (' + sows[s].label + ')'
-              : 'On a DIFFERENT SOW (' + sows[s].label + ')';
+            pill.title = 'On a DIFFERENT SOW (' + sows[s].label + '), not this one';
             line.appendChild(pill);
+          }
+          if (entries[e].noSow) {
+            var np = document.createElement('span');
+            np.className = 'scw-br-v2-cd-sow scw-br-v2-cd-sow--none';
+            np.textContent = 'no SOW';
+            np.title = 'Not on any SOW';
+            line.appendChild(np);
           }
           elv.appendChild(line);
         }
@@ -1190,21 +1193,24 @@
       }
       return fallback || (drec && drec.id) || '';
     }
+    // Exception-only tagging: devices on the expanded record's own SOW carry
+    // NO pills (the normal case stays skimmable); a device NOT on it lists
+    // the SOW(s) it lives on, or noSow when it has none. Unknown membership
+    // (device record not loaded) → no pills, noSow false.
     function entryFor(drec, fallbackLabel) {
-      var sows = [];
-      var sraw = drec && drec.field_2154_raw;
+      var label = devLabel(drec, fallbackLabel);
+      if (!drec) return { label: label, sows: [], noSow: false };
+      var sows = [], onCurrent = false;
+      var sraw = drec.field_2154_raw;
       if (Array.isArray(sraw)) {
         for (var x = 0; x < sraw.length; x++) {
           if (!sraw[x] || !sraw[x].id) continue;
-          sows.push({
-            label: String(sraw[x].identifier || sraw[x].id),
-            current: !!ownSows[sraw[x].id]
-          });
+          if (ownSows[sraw[x].id]) { onCurrent = true; continue; }
+          sows.push({ label: String(sraw[x].identifier || sraw[x].id) });
         }
       }
-      // Same-SOW pills first so the amber outliers trail visibly.
-      sows.sort(function (a, b) { return (a.current ? 0 : 1) - (b.current ? 0 : 1); });
-      return { label: devLabel(drec, fallbackLabel), sows: sows };
+      if (onCurrent) return { label: label, sows: [], noSow: false };
+      return { label: label, sows: sows, noSow: !sows.length };
     }
 
     var seen = Object.create(null), out = [];

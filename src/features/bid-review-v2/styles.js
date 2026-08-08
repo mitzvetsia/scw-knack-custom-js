@@ -705,22 +705,20 @@
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-detail-notes {',
     '  grid-template-columns: 1fr !important;',
     '}',
-    /* Connected Devices — one device per line, with per-device SOW pills
-       (lineBreakConnectedDevices). Blue pill = the expanded record's own
-       SOW; amber pill = a different SOW (amber = warning convention). */
+    /* Connected Devices — one device per line (lineBreakConnectedDevices).
+       Exception-only SOW pills: a device on the expanded record's own SOW is
+       plain; a device on a DIFFERENT SOW gets an amber pill with that SOW's
+       number; "no SOW" is the same amber with a dashed border (attention,
+       not an error). */
     '.scw-br-v2-cd-line { display: block; }',
     '.scw-br-v2-cd-sow {',
     '  display: inline-block; margin-left: 6px; padding: 0 5px;',
     '  border-radius: 8px; vertical-align: 1px;',
-    '  font: 700 9px system-ui, -apple-system, sans-serif;',
-    '  line-height: 13px; letter-spacing: 0.03em;',
-    '}',
-    '.scw-br-v2-cd-sow--current {',
-    '  background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;',
-    '}',
-    '.scw-br-v2-cd-sow--other {',
     '  background: #fffbeb; color: #b45309; border: 1px solid #fde68a;',
+    '  font: 700 9px system-ui, -apple-system, sans-serif;',
+    '  line-height: 13px; letter-spacing: 0.03em; white-space: nowrap;',
     '}',
+    '.scw-br-v2-cd-sow--none { border-style: dashed; }',
     /* SCW Notes — editable textarea (swapped in by makeScwNotesTextarea);
        inherits the standard editable-input look, just needs some height so
        multi-line notes are workable. */
@@ -1292,8 +1290,10 @@
     '  text-transform: uppercase; letter-spacing: .03em;',
     '}',
     /* SOW-membership pill on a connected device (SOW column). Only rendered
-       for devices NOT on the section's SOW — amber (warning convention) with
-       the SOW number(s) the device actually lives on, or "no SOW". */
+       for devices NOT on the section's SOW — amber (attention, not error)
+       with the SOW number(s) the device actually lives on. "no SOW" uses the
+       same amber with a dashed border (informational, not necessarily bad). */
+    '.scw-brv2-conn-dev { white-space: nowrap; }',
     '.scw-brv2-conn-sow {',
     '  display: inline-block; margin-left: 4px; padding: 0 5px;',
     '  border-radius: 8px; vertical-align: 1px;',
@@ -1301,7 +1301,7 @@
     '  font: 700 9px system-ui, -apple-system, sans-serif;',
     '  line-height: 13px; letter-spacing: 0.03em; white-space: nowrap;',
     '}',
-    '.scw-brv2-conn-sow--none { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }',
+    '.scw-brv2-conn-sow--none { border-style: dashed; }',
     /* ── Inputs ────────────────────────────────────────────── */
     '.scw-bid-review-v2-input {',
     '  border: 1px solid #cbd5e1; border-radius: 4px;',
