@@ -21,6 +21,12 @@
  * (or a time cap), abort if the user scrolls, and fall back to holding the
  * pre-rebuild scroll position whenever the anchor row isn't resolvable.
  *
+ * On top of the loop, a DOC-HEIGHT FLOOR (body min-height = pre-rebuild
+ * scrollHeight, ~1.5s) makes the browser's scroll CLAMP impossible while the
+ * rebuilt DOM is transiently short — the clamp fires between frames with no
+ * JS scroll involved, so it's the one jump the loop alone can't stop (see
+ * the FLOOR_MS note below).
+ *
  *   SCW.v2ScrollAnchor.around(rowSelector, idAttr, runRebuildFn)
  ****************************************************************************/
 (function () {
@@ -66,6 +72,46 @@
   // they're superseded and abort, so only the latest render's loop runs.
   var _runToken = 0;
 
+  // ── Doc-height floor (browser-clamp guard) ─────────────────────────────
+  // The rebuilt DOM is transiently SHORTER than what it replaced while photo
+  // strips re-decode and late mounts fill back in. If the document's
+  // scrollable range dips below the current scrollY for even one layout
+  // pass, the BROWSER clamps the scroll to the new bottom — no scrollTo/
+  // scrollBy involved, so nothing for scroll-spy to trace; the page just
+  // "randomly" jumps up and stays there when the content regrows (observed
+  // on scene_1140: every MDF save's refetch→rebuild landed scrollY at
+  // exactly docHeight − viewportHeight). The settle loop can't prevent it —
+  // the clamp fires between our frames and re-clamps as long as the doc
+  // stays short. So FLOOR the height across the rebuild: body min-height =
+  // the pre-rebuild scrollHeight, released after FLOOR_MS (images have
+  // decoded and layout has settled by then) or as soon as the user scrolls
+  // (their gesture re-legitimizes wherever the page sits). Re-arming while
+  // active just refreshes the window, so a render storm stays floored until
+  // FLOOR_MS after its last rebuild.
+  var FLOOR_MS = 1500;
+  var _floorTimer = 0;
+  var _floorPrev = null;   // body.style.minHeight to restore ('' typically)
+  function releaseFloor() {
+    if (_floorTimer) { clearTimeout(_floorTimer); _floorTimer = 0; }
+    if (_floorPrev !== null) {
+      try { document.body.style.minHeight = _floorPrev; } catch (e) { /* ignore */ }
+      _floorPrev = null;
+    }
+  }
+  function applyFloor(px) {
+    if (!px) return;
+    try {
+      if (_floorPrev === null) _floorPrev = document.body.style.minHeight || '';
+      document.body.style.minHeight = px + 'px';
+    } catch (e) { return; }
+    if (_floorTimer) clearTimeout(_floorTimer);
+    _floorTimer = setTimeout(releaseFloor, FLOOR_MS);
+    // One-shot user-gesture release (once: they self-remove; releaseFloor
+    // is idempotent, so a stale one firing later is a no-op).
+    window.addEventListener('wheel', releaseFloor, { passive: true, once: true });
+    window.addEventListener('touchmove', releaseFloor, { passive: true, once: true });
+  }
+
   function cssEsc(s) {
     if (window.CSS && CSS.escape) return CSS.escape(s);
     return String(s).replace(/["\\\]\[]/g, '\\$&');
@@ -79,6 +125,12 @@
     var myToken = ++_runToken;   // supersede any in-flight settle loop
     var anchor = null;
     var prevY = scrollY();
+    // Clamp guard — capture the pre-rebuild height while the old content is
+    // still in place. Skipped at the top of the page (nothing to clamp).
+    var floorPx = 0;
+    if (prevY > 0) {
+      try { floorPx = document.documentElement.scrollHeight; } catch (eF) { /* ignore */ }
+    }
     try {
       var rows = document.querySelectorAll(rowSelector);
       var guard = 72;                       // clear sticky toolbars / headers
@@ -93,6 +145,9 @@
     } catch (e) { /* ignore — fall through to a plain rebuild */ }
 
     run();
+    // Floor AFTER the swap so the short rebuilt DOM never shrinks the
+    // scrollable range below where the user sits (see the note on FLOOR_MS).
+    applyFloor(floorPx);
 
     // Bounded settle loop. Re-pin the anchor (or hold prevY) every frame so
     // late layout shifts can't drift or clamp the page. Stops early once
