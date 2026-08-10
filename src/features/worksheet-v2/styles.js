@@ -3223,6 +3223,11 @@
     '  color: #0e7490 !important; background: #ecfeff !important;',
     '  border-color: #a5f3fc !important;',
     '}',
+    '.scw-ws-v2-warn-chit[data-issue-type="surveyAdded"],',
+    '.scw-ws-v2-warn-chip[data-issue-type="surveyAdded"] {',
+    '  color: #a21caf !important; background: #fdf4ff !important;',
+    '  border-color: #f0abfc !important;',
+    '}',
     /* Card-flash animation triggered when a warning chip is clicked
        — amber pulse on the matching cards so the user sees them at
        a glance after scrolling. */

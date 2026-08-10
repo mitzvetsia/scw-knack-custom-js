@@ -23,6 +23,10 @@
  *                  scrolled past — reused as-is by bid-review-v2\'s
  *                  warnings.js, so this single check covers both the
  *                  build-SOW worksheet and the bid comparison grid.
+ *   surveyAdded  — the record\'s product name carries the "added during
+ *                  survey" marker (a line item created during the field
+ *                  survey rather than the original quote). Informational,
+ *                  like notes; also reused by bid-review-v2.
  *
  * Public API:
  *   ns.warnings.analyze(records, viewKey)  — run once per render,
@@ -37,12 +41,13 @@
   var ns = window.SCW && window.SCW.worksheetV2;
   if (!ns) return;
 
-  var TYPES  = ['photos', 'disconnected', 'bracket', 'notes'];
+  var TYPES  = ['photos', 'disconnected', 'bracket', 'notes', 'surveyAdded'];
   var LABELS = {
     photos:       'missing photos',
     disconnected: 'disconnected',
     bracket:      'wrong accessory',
-    notes:        'has SCW notes'
+    notes:        'has SCW notes',
+    surveyAdded:  'added during survey'
   };
 
   // Per-issue-type inline SVG. Picked to match v1\'s vocabulary —
@@ -92,7 +97,17 @@
       '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
       'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
       'stroke-linejoin="round">' +
-      '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
+      '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+    // Clipboard with a plus (Lucide "clipboard-plus") — "this line item was
+    // added during the survey", i.e. it grew out of the field walk rather
+    // than the original quote. Informational, like notes.
+    surveyAdded:
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+      'stroke-linejoin="round">' +
+      '<rect x="8" y="2" width="8" height="4" rx="1"/>' +
+      '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>' +
+      '<path d="M9 14h6"/><path d="M12 11v6"/></svg>'
   };
 
   // Per-view cache of the last analyze() result. analyze() is cheap
@@ -256,6 +271,28 @@
     return true;
   }
 
+  /** Product name carries the "added during survey" marker — the product
+   *  chosen for line items created during the field survey rather than the
+   *  original quote. Checks the display text AND the connection identifiers
+   *  (the marker lives in the product's name either way). Substring match,
+   *  case-insensitive, so naming variants like "(Added During Survey)"
+   *  all register. */
+  var SURVEY_ADDED_RE = /added\s+during\s+survey/i;
+  function isSurveyAddedProduct(rec) {
+    var key = F().productName || 'field_1949';
+    if (!rec) return false;
+    var txt = (rec[key] == null ? '' : String(rec[key])).replace(/<[^>]*>/g, ' ');
+    if (SURVEY_ADDED_RE.test(txt)) return true;
+    var raw = rec[key + '_raw'];
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) {
+        var ident = raw[i] && (raw[i].identifier || raw[i].name || '');
+        if (SURVEY_ADDED_RE.test(String(ident))) return true;
+      }
+    }
+    return false;
+  }
+
   /** SCW Notes (logical `scwNotes`) is non-blank. Plain-text/textarea field —
    *  read the record directly (no DOM scrape needed, unlike photos). */
   function hasScwNotesText(rec) {
@@ -378,6 +415,7 @@
       if (isDisconnected(rec))                     issues.push('disconnected');
       if (bracketParents[rec.id])                  issues.push('bracket');
       if (hasScwNotesText(rec))                    issues.push('notes');
+      if (isSurveyAddedProduct(rec))               issues.push('surveyAdded');
       if (issues.length) byRecord[rec.id] = issues;
     }
 

@@ -862,6 +862,9 @@
     '.scw-bid-review-v2__warn-chip[data-issue-type="notes"] {',
     '  color: #0e7490; background: #ecfeff; border-color: #a5f3fc;',
     '}',
+    '.scw-bid-review-v2__warn-chip[data-issue-type="surveyAdded"] {',
+    '  color: #a21caf; background: #fdf4ff; border-color: #f0abfc;',
+    '}',
     /* Aggregate (summary) chips in the MDF/IDF group header — icon + count
        + label, auto-width pill. Sits between the title and the row count.
        CRITICAL: the base __warn-chips rule above is an absolutely-positioned

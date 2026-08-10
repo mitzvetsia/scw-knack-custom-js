@@ -33,7 +33,7 @@
 
   var SOW_VIEW = (ns.CONFIG && ns.CONFIG.sourceViewKeys && ns.CONFIG.sourceViewKeys[1]) ||
                  'view_3921';
-  var TYPES = ['photos', 'disconnected', 'bracket', 'notes'];
+  var TYPES = ['photos', 'disconnected', 'bracket', 'notes', 'surveyAdded'];
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -177,7 +177,7 @@
     if (!w || !ids || !ids.length) return '';
     var ICONS  = w.ICONS  || {};
     var LABELS = w.LABELS || {};
-    var counts = { photos: 0, disconnected: 0, bracket: 0, notes: 0 };
+    var counts = { photos: 0, disconnected: 0, bracket: 0, notes: 0, surveyAdded: 0 };
     for (var i = 0; i < ids.length; i++) {
       var issues = issuesFor(ids[i]);
       for (var j = 0; j < issues.length; j++) {
