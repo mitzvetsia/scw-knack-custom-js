@@ -44,7 +44,7 @@
   var TOOLBAR_ID      = 'scw-closeout-actions';
   // The deal-greenlight document scenario's webhook. Same scenario as the
   // automated greenlight run — this button only adds the branch flags.
-  var WEBHOOK = '';   // TODO: paste the greenlight scenario's webhook URL
+  var WEBHOOK = 'https://hook.us1.make.com/5b196mfxdtcklk0ik9rdsfdyy7da6d8g';
 
   var DOCS = [
     { flag: 'GenerateSowPdf',               label: 'Scope of Work PDF' },
