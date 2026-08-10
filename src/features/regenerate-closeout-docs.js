@@ -5,8 +5,10 @@
  * Kickoff Deck — without re-greenlighting the deal.
  *
  * The button mounts in the #scw-closeout-actions toolbar on view_3940 and
- * opens a small picker with one checkbox per document (all checked by
- * default). The three greenlight documents POST to the SAME Make scenario
+ * opens a small picker with one checkbox per document (NONE checked by
+ * default — regeneration is always an explicit opt-in; Generate stays
+ * disabled until something is picked). The three greenlight documents
+ * POST to the SAME Make scenario
  * the greenlight flow uses, with the greenlight payload shape plus one
  * "yes"/"no" flag per document branch:
  *
@@ -272,12 +274,12 @@
     panel.id = PANEL_ID;
     var rows = '';
     for (var i = 0; i < DOCS.length; i++) {
-      rows += '<label><input type="checkbox" checked data-flag="' + DOCS[i].flag + '">' +
+      rows += '<label><input type="checkbox" data-flag="' + DOCS[i].flag + '">' +
         DOCS[i].label + '</label>';
     }
     // Kickoff Deck rides in the same picker but fires its own webhook —
     // the flag is picker-only and never reaches the greenlight payload.
-    rows += '<label><input type="checkbox" checked data-flag="' + KICKOFF_FLAG + '">' +
+    rows += '<label><input type="checkbox" data-flag="' + KICKOFF_FLAG + '">' +
       KICKOFF_LABEL + '</label>';
     panel.innerHTML =
       '<div class="scw-rgd-title">Regenerate documents</div>' + rows +
