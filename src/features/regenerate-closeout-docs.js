@@ -1,14 +1,14 @@
 /*** FEATURE: "Regenerate Docs" button on the CLOSEOUT view ******************
  *
- * Lets ops re-run the deal-greenlight document automation for ONE OR ALL of
- * the generated closeout documents — Scope of Work PDF, Location Approval
- * Form, View Approval Form — without re-greenlighting the deal.
+ * Lets ops re-run the closeout document automations for ONE OR ALL of:
+ * Scope of Work PDF, Location Approval Form, View Approval Form, and the
+ * Kickoff Deck — without re-greenlighting the deal.
  *
- * The button mounts in the #scw-closeout-actions toolbar on view_3940
- * (next to "Regenerate Kickoff Deck") and opens a small picker with one
- * checkbox per document (all checked by default). Generate POSTs to the
- * SAME Make scenario the greenlight flow uses, with the greenlight payload
- * shape plus one "yes"/"no" flag per document branch:
+ * The button mounts in the #scw-closeout-actions toolbar on view_3940 and
+ * opens a small picker with one checkbox per document (all checked by
+ * default). The three greenlight documents POST to the SAME Make scenario
+ * the greenlight flow uses, with the greenlight payload shape plus one
+ * "yes"/"no" flag per document branch:
  *
  *   [{ "CloseoutID":   "<closeout record id>",
  *      "AcceptanceID": "<acceptance record id>",
@@ -27,30 +27,49 @@
  * branch filter unchanged — only this button's explicit "no"s skip a
  * branch. Nothing about the greenlight flow needs to change.
  *
- * ID sources (same derivation as regenerate-kickoff-deck.js):
- *   CloseoutID   → first row of view_3940 (the CLOSEOUT grid)
- *   AcceptanceID → the single ACCEPTANCE row in view_3914
+ * The KICKOFF DECK option fires a SEPARATE POST to the kickoff-deck Make
+ * scenario with the exact payload the retired standalone "Regenerate
+ * Kickoff Deck" button sent (this feature absorbed that button):
  *
- * Response handling matches the kickoff-deck button: lenient success
- * parsing (any 2xx without success:false counts; CORS-opaque status 0
- * counts), then staggered refetches of view_3940/view_3941 so the
+ *   [{ "project_recordID": "...", "questionnaire_recordID": "...",
+ *      "acceptance_recordID": "...", "closeout_recordID": "..." }]
+ *
+ * No Make-side change for it — same scenario, same payload, new trigger UI.
+ *
+ * ID sources:
+ *   CloseoutID / closeout_recordID → first row of view_3940 (CLOSEOUT grid)
+ *   AcceptanceID / acceptance_recordID → the ACCEPTANCE row in view_3914
+ *   questionnaire_recordID → the questionnaire row in view_4015
+ *   project_recordID → the deploy-scene URL hash
+ *
+ * Response handling: lenient success parsing per request (any 2xx without
+ * success:false counts; CORS-opaque status 0 counts). Both webhooks must
+ * land for the "Done" state — a partial failure names the side that
+ * failed. Then staggered refetches of view_3940/view_3941 so the
  * deliverables strip picks up the regenerated files.
  ****************************************************************************/
 (function () {
   'use strict';
 
-  var VIEW            = 'view_3940';   // CLOSEOUT view (button mount)
-  var ACCEPTANCE_VIEW = 'view_3914';   // ACCEPTANCE (single row)
-  var TOOLBAR_ID      = 'scw-closeout-actions';
+  var VIEW                = 'view_3940';   // CLOSEOUT view (button mount)
+  var ACCEPTANCE_VIEW     = 'view_3914';   // ACCEPTANCE (single row)
+  var QUESTIONNAIRE_VIEW  = 'view_4015';   // System Setup Questionnaire (single row)
+  var TOOLBAR_ID          = 'scw-closeout-actions';
   // The deal-greenlight document scenario's webhook. Same scenario as the
   // automated greenlight run — this button only adds the branch flags.
   var WEBHOOK = 'https://hook.us1.make.com/5b196mfxdtcklk0ik9rdsfdyy7da6d8g';
+  // The kickoff-deck scenario's webhook (was regenerate-kickoff-deck.js).
+  var KICKOFF_WEBHOOK = 'https://hook.us1.make.com/biytjoog3spow4fx2f7zanjjjj792q9c';
 
   var DOCS = [
     { flag: 'GenerateSowPdf',               label: 'Scope of Work PDF' },
     { flag: 'GenerateLocationApprovalForm', label: 'Location Approval Form' },
     { flag: 'GenerateViewApprovalForm',     label: 'View Approval Form' }
   ];
+  // Picker-only flag — never sent to the greenlight webhook (gatherPayload
+  // maps DOCS flags only); routes to KICKOFF_WEBHOOK instead.
+  var KICKOFF_FLAG  = 'KickoffDeck';
+  var KICKOFF_LABEL = 'Kickoff Deck';
 
   var BTN_ID   = 'scw-regen-docs-btn';
   var WRAP_ID  = 'scw-regen-docs-wrap';
@@ -135,6 +154,21 @@
     return [row];
   }
 
+  // project id from the deploy-scene URL: #…/project-dashboard/<id>/…
+  // (same derivation the retired kickoff-deck button used).
+  function urlProjectId() {
+    var m = (window.location.hash || '').match(/project-dashboard\/([0-9a-f]{24})/i);
+    return m ? m[1] : '';
+  }
+  function gatherKickoffPayload() {
+    return [{
+      project_recordID:       urlProjectId(),
+      questionnaire_recordID: firstRowId(QUESTIONNAIRE_VIEW),
+      acceptance_recordID:    firstRowId(ACCEPTANCE_VIEW),
+      closeout_recordID:      firstRowId(VIEW)
+    }];
+  }
+
   function setState(btn, state, msg) {
     btn.classList.remove('is-loading', 'is-done', 'is-err');
     if (state === 'loading') {
@@ -169,31 +203,57 @@
     setTimeout(refreshCloseoutViews, 8000);
   }
 
-  function fire(btn, selection) {
-    if (!WEBHOOK) {
-      alert('Regenerate Docs is not wired up yet — the greenlight scenario’s ' +
-        'webhook URL needs to be set in regenerate-closeout-docs.js.');
-      return;
-    }
-    var payload = gatherPayload(selection);
-    if (!payload[0].CloseoutID || !payload[0].AcceptanceID) {
-      setState(btn, 'err', 'Missing closeout/acceptance id');
-      return;
-    }
-    if (window.SCW && SCW.debug) SCW.debug('[regen-docs] payload', payload[0]);
-    setState(btn, 'loading');
+  // One lenient POST: cb(true) for any 2xx without an explicit
+  // success:false, and for CORS-opaque status 0 (the webhook landed).
+  function postWebhook(url, payload, cb) {
     $.ajax({
-      url: WEBHOOK, type: 'POST', contentType: 'application/json',
+      url: url, type: 'POST', contentType: 'application/json',
       data: JSON.stringify(payload), crossDomain: true, timeout: 120000
     }).done(function (resp) {
       var data = resp;
       if (typeof resp === 'string') { try { data = JSON.parse(resp); } catch (e) { data = null; } }
-      if (!data || data.success !== false) onSuccess(btn);
-      else setState(btn, 'err', (data && data.error) ? 'Failed: ' + data.error : 'Generation failed');
+      cb(!data || data.success !== false);
     }).fail(function (xhr) {
-      if (xhr && (xhr.status === 0 || (xhr.status >= 200 && xhr.status < 300))) onSuccess(btn);
-      else setState(btn, 'err', 'Webhook error (' + (xhr ? xhr.status : '?') + ')');
+      cb(!!(xhr && (xhr.status === 0 || (xhr.status >= 200 && xhr.status < 300))));
     });
+  }
+
+  function fire(btn, selection) {
+    var docsWanted = false;
+    for (var i = 0; i < DOCS.length; i++) {
+      if (selection[DOCS[i].flag]) docsWanted = true;
+    }
+    var kickoffWanted = !!selection[KICKOFF_FLAG];
+    if (!docsWanted && !kickoffWanted) return;
+
+    var docsPayload = docsWanted ? gatherPayload(selection) : null;
+    if (docsWanted && (!docsPayload[0].CloseoutID || !docsPayload[0].AcceptanceID)) {
+      setState(btn, 'err', 'Missing closeout/acceptance id');
+      return;
+    }
+    var kickoffPayload = kickoffWanted ? gatherKickoffPayload() : null;
+    if (window.SCW && SCW.debug) {
+      SCW.debug('[regen-docs] payloads', { docs: docsPayload, kickoff: kickoffPayload });
+    }
+    setState(btn, 'loading');
+
+    // The two scenarios are independent webhooks — fire what's selected in
+    // parallel and settle once, naming any side that failed.
+    var pendingN = (docsWanted ? 1 : 0) + (kickoffWanted ? 1 : 0);
+    var failedNames = [];
+    function settle(name, ok) {
+      if (!ok) failedNames.push(name);
+      pendingN--;
+      if (pendingN > 0) return;
+      if (!failedNames.length) onSuccess(btn);
+      else setState(btn, 'err', failedNames.join(' + ') + ' failed — retry');
+    }
+    if (docsWanted) {
+      postWebhook(WEBHOOK, docsPayload, function (ok) { settle('Docs', ok); });
+    }
+    if (kickoffWanted) {
+      postWebhook(KICKOFF_WEBHOOK, kickoffPayload, function (ok) { settle('Kickoff deck', ok); });
+    }
   }
 
   // ── picker panel ─────────────────────────────────────────────────────
@@ -215,6 +275,10 @@
       rows += '<label><input type="checkbox" checked data-flag="' + DOCS[i].flag + '">' +
         DOCS[i].label + '</label>';
     }
+    // Kickoff Deck rides in the same picker but fires its own webhook —
+    // the flag is picker-only and never reaches the greenlight payload.
+    rows += '<label><input type="checkbox" checked data-flag="' + KICKOFF_FLAG + '">' +
+      KICKOFF_LABEL + '</label>';
     panel.innerHTML =
       '<div class="scw-rgd-title">Regenerate documents</div>' + rows +
       '<div class="scw-rgd-actions">' +
@@ -262,18 +326,12 @@
       wrap.appendChild(btn);
     }
     // Live in the shared closeout-actions toolbar (send-coc-button.js builds
-    // it and adopts the kickoff button); until it exists, sit after the
-    // header like the sibling, then get adopted on a later render pass.
+    // it and adopts this control into the utility slot on the LEFT — the
+    // slot the retired kickoff-deck button used to hold); until the toolbar
+    // exists, sit after the header, then get adopted on a later render pass.
     var tb = document.getElementById(TOOLBAR_ID);
     if (tb) {
-      if (wrap.parentNode !== tb) {
-        var kick = document.getElementById('scw-regen-kickoff-deck');
-        if (kick && kick.parentNode === tb && kick.nextSibling) {
-          tb.insertBefore(wrap, kick.nextSibling);
-        } else {
-          tb.appendChild(wrap);
-        }
-      }
+      if (wrap.parentNode !== tb) tb.insertBefore(wrap, tb.firstChild);
     } else if (!wrap.parentNode) {
       var header = view.querySelector('.view-header');
       if (header && header.parentNode) header.parentNode.insertBefore(wrap, header.nextSibling);

@@ -1,11 +1,12 @@
 /*** FEATURE: "Send CoC" button + CoC status pill on the CLOSEOUT view ******
  *
- * Builds a closeout-actions toolbar row on the closeout view (view_3940),
- * where the "Regenerate Kickoff Deck" button renders today. The row holds:
+ * Builds a closeout-actions toolbar row on the closeout view (view_3940).
+ * The row holds:
  *
- *   • the existing "Regenerate Kickoff Deck" button — adopted into the row
- *     (utility action, LEFT). regenerate-kickoff-deck.js still owns its
- *     creation + behavior; this module only re-parents the node.
+ *   • the "Regenerate Docs…" control — adopted into the row (utility
+ *     action, LEFT; it absorbed the retired standalone Regenerate Kickoff
+ *     Deck button). regenerate-closeout-docs.js still owns its creation +
+ *     behavior; this module only re-parents the node.
  *   • a "Send CoC" button (primary action, RIGHT — repo convention: primary
  *     is rightmost) that navigates to the Knack child page
  *     `edit-install-closeout-send-coc/<closeoutId>/`.
@@ -40,7 +41,8 @@
   var TOOLBAR_ID   = 'scw-closeout-actions';
   var BTN_ID       = 'scw-send-coc-btn';
   var PILL_ID      = 'scw-coc-status-pill';
-  var KICKOFF_ID   = 'scw-regen-kickoff-deck';
+  var REGEN_WRAP_ID = 'scw-regen-docs-wrap';   // Regenerate Docs (utility, LEFT)
+  var REGEN_BTN_ID  = 'scw-regen-docs-btn';
   var STYLE_ID     = 'scw-send-coc-css';
   var EVENT_NS     = '.scwSendCoc';
   var SENT_RE      = /sent|complete|signed|issued|done/i;
@@ -67,16 +69,14 @@
     s.textContent =
       '#' + TOOLBAR_ID + '{display:flex;align-items:center;flex-wrap:wrap;gap:10px;' +
         'margin:0 0 14px 0;}' +
-      // Neutralize the kickoff button's own block-forcing margins once it
-      // lives inside the row (regenerate-kickoff-deck.js sets margin-right:auto).
-      '#' + TOOLBAR_ID + ' #' + KICKOFF_ID + '{margin:0;}' +
-      // Visual hierarchy: the kickoff regenerate is a utility action — render
-      // it as an outline secondary inside the row so the primary Send CoC
+      '#' + TOOLBAR_ID + ' #' + REGEN_BTN_ID + '{margin:0;}' +
+      // Visual hierarchy: Regenerate Docs is a utility action — render it
+      // as an outline secondary inside the row so the primary Send CoC
       // stands alone. Idle state only: its own loading/done/err colors win.
-      '#' + TOOLBAR_ID + ' #' + KICKOFF_ID +
+      '#' + TOOLBAR_ID + ' #' + REGEN_BTN_ID +
         ':not(.is-loading):not(.is-done):not(.is-err){' +
         'color:#0f4c75;background:#fff;border-color:#c7d4e0;}' +
-      '#' + TOOLBAR_ID + ' #' + KICKOFF_ID +
+      '#' + TOOLBAR_ID + ' #' + REGEN_BTN_ID +
         ':not(.is-loading):not(.is-done):not(.is-err):hover{background:#f1f5f9;}' +
       '#' + BTN_ID + '{display:inline-flex;align-items:center;gap:8px;' +
         'padding:9px 16px;font:600 13px/1 system-ui,-apple-system,sans-serif;cursor:pointer;' +
@@ -181,10 +181,10 @@
       else view.insertBefore(tb, view.firstChild);
     }
 
-    // Adopt the kickoff-deck button (utility, LEFT) if its module has
+    // Adopt the Regenerate Docs control (utility, LEFT) if its module has
     // mounted it outside the row. It stays fully owned by its own module.
-    var kick = document.getElementById(KICKOFF_ID);
-    if (kick && kick.parentNode !== tb) tb.insertBefore(kick, tb.firstChild);
+    var regen = document.getElementById(REGEN_WRAP_ID);
+    if (regen && regen.parentNode !== tb) tb.insertBefore(regen, tb.firstChild);
 
     var state = readCocState(dep.view);
 
@@ -228,8 +228,8 @@
                  (state.contact ? ' · Recipient: ' + state.contact : '');
   }
 
-  // Run AFTER regenerate-kickoff-deck's 50/150ms mounts so the adopt pass
-  // finds its button; the 600ms retry catches a late kickoff re-mount.
+  // Run AFTER regenerate-closeout-docs' 60/160ms mounts so the adopt pass
+  // finds its control; the 600ms retry catches a late re-mount.
   function mountSoon() {
     setTimeout(mount, 250);
     setTimeout(mount, 600);
