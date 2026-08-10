@@ -153,6 +153,46 @@
     };
   }
 
+  // ── Unchanged-model gate (poll ticks) ───────────────────────────────
+  // A background poll tick whose fetch brings back an UNCHANGED model must
+  // cost zero DOM work — the rebuild swap (even at 100% card reuse) is the
+  // "little flash" users see every 15s during a poll burst. Fingerprint
+  // the model; refetchAndNotify({skipIfUnchanged}) skips the notify when
+  // it matches what the page last rendered. Baseline refreshes on every
+  // runNotify, so user-driven renders keep it current.
+  var _renderedFp = Object.create(null);
+  // True while a skipIfUnchanged fetch is in flight for the view. The
+  // fetch ALSO fires Knack's native knack-view-render (reset → render),
+  // whose listener below would rebuild regardless of the settle gate —
+  // so the render-event path checks this flag + the fingerprint too.
+  // User-driven native renders (no flag) always repaint.
+  var _quietFetch = Object.create(null);
+  function quietSkip(viewKey) {
+    if (!_quietFetch[viewKey]) return false;
+    var fp = modelFp(viewKey);
+    if (!fp || fp !== _renderedFp[viewKey]) return false;
+    try {
+      if (window.localStorage && localStorage.scwScrollSpy === '1') {
+        console.warn('[scw-ws-v2] ' + viewKey +
+          ' poll refetch: model unchanged — render skipped');
+      }
+    } catch (eL) { /* ignore */ }
+    return true;
+  }
+  function modelFp(viewKey) {
+    try {
+      var v = Knack.views[viewKey];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (!models) return '';
+      var parts = new Array(models.length);
+      for (var i = 0; i < models.length; i++) {
+        var m = models[i];
+        parts[i] = (m && m.id) + '' + JSON.stringify(m && m.attributes);
+      }
+      return models.length + '' + parts.join('');
+    } catch (e) { return ''; }   // unreadable → treated as changed
+  }
+
   function runNotify(sourceViewKey) {
     var list = subscribers[sourceViewKey];
     if (!list || !list.length) return;
@@ -166,6 +206,8 @@
     // the stale value ("edit flashes green then reverts"). Applying the
     // overlay here makes every rebuild honor writes newer than the TTL.
     applyPendingOverlay(sourceViewKey);
+    // Baseline AFTER the overlay — what subscribers are about to render.
+    _renderedFp[sourceViewKey] = modelFp(sourceViewKey);
     var records = readRecords(sourceViewKey);
     for (var i = 0; i < list.length; i++) {
       try { list[i](sourceViewKey, records); }
@@ -312,7 +354,7 @@
     if (Object.keys(v).length === 0) delete _pending[viewKey];
   }
 
-  function refetchAndNotify(viewKey) {
+  function refetchAndNotify(viewKey, opts) {
     try {
       var v = Knack.views[viewKey];
       if (!v || !v.model || typeof v.model.fetch !== 'function') {
@@ -331,12 +373,22 @@
         return;
       }
       _fetchInFlight[viewKey] = true;
+      if (opts && opts.skipIfUnchanged) _quietFetch[viewKey] = true;
       var settle = function () {
         _fetchInFlight[viewKey] = false;
         // Re-apply optimistic edits the fetch just clobbered BEFORE notify,
         // so the rebuild renders the user's in-flight values, not stale
         // pre-commit server data.
         applyPendingOverlay(viewKey);
+        // Unchanged-model gate: a caller that opted in (poll ticks) skips
+        // the notify entirely when the fetched model fingerprints the same
+        // as what the page last rendered — a background freshness check
+        // that finds nothing must not repaint (the poll-burst "flash").
+        // Never skipped when another caller asked mid-flight.
+        var skipUnchanged = opts && opts.skipIfUnchanged && !_fetchWantFollow[viewKey]
+          && quietSkip(viewKey);
+        _quietFetch[viewKey] = false;
+        if (skipUnchanged) return;
         notify(viewKey);
         if (_fetchWantFollow[viewKey]) {
           _fetchWantFollow[viewKey] = false;
@@ -356,6 +408,7 @@
       }
     } catch (e) {
       _fetchInFlight[viewKey] = false;
+      _quietFetch[viewKey] = false;
       notify(viewKey);
     }
   }
@@ -459,7 +512,13 @@
       // view (initial load, filter change, sort change, model.fetch).
       $(document)
         .off('knack-view-render.' + key + '.scwWsV2')
-        .on('knack-view-render.' + key + '.scwWsV2', function () { armGuard(); notify(key); });
+        .on('knack-view-render.' + key + '.scwWsV2', function () {
+          armGuard();
+          // The quiet (poll) fetch's own native render — model unchanged
+          // means our rebuild output would be identical: skip the repaint.
+          if (quietSkip(key)) return;
+          notify(key);
+        });
 
       // knack-cell-update fires on inline-edit save — we re-notify so
       // subscribers can patch the affected record without waiting for
