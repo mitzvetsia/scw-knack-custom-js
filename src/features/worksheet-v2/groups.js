@@ -92,6 +92,7 @@
       if (records[i] && records[i].id) recordById[records[i].id] = records[i];
     }
     var attached = Object.create(null);
+    var parentOf = Object.create(null);   // recId → the loaded parent that hides it
     for (var j = 0; j < records.length; j++) {
       var rec = records[j];
       if (!rec || !rec.id) continue;
@@ -104,11 +105,44 @@
       if (!Array.isArray(raw)) continue;
       for (var k = 0; k < raw.length; k++) {
         var parentId = raw[k] && raw[k].id;
-        if (parentId && recordById[parentId]) {
+        if (parentId && parentId !== rec.id && recordById[parentId]) {
           attached[rec.id] = true;
+          parentOf[rec.id] = parentId;
           break;
         }
       }
+    }
+    // Mutual-parent cycle guard. Corrupt reciprocal links can leave TWO
+    // records naming EACH OTHER as parent (seen live on the install
+    // worksheet: a camera + its mount, and a monitor + its wall mount,
+    // each pair holding both directions of the accessory link). Without
+    // this, each record hides under the other and BOTH vanish from the
+    // worksheet completely — no card, no chip, no warning. Break the tie
+    // so bad data stays visible: the mounting-hardware-bucket side stays
+    // attached (it is plausibly a real accessory), the other side renders
+    // as its own card; when the buckets don't disambiguate, show both.
+    for (var cid in parentOf) {
+      var pid = parentOf[cid];
+      if (cid >= pid) continue;                 // visit each pair once
+      if (parentOf[pid] !== cid) continue;      // not a 2-cycle
+      var cMount = bucketIdOf(recordById[cid]) === MOUNTING_HARDWARE_BUCKET;
+      var pMount = bucketIdOf(recordById[pid]) === MOUNTING_HARDWARE_BUCKET;
+      var kept;
+      if (cMount !== pMount) {
+        kept = cMount ? pid : cid;              // device side un-hides
+        delete attached[kept];
+      } else {
+        kept = 'both';                          // ambiguous — show both
+        delete attached[cid];
+        delete attached[pid];
+      }
+      try {
+        console.warn('[scw-ws-v2] accessory parent cycle: records ' + cid +
+          ' and ' + pid + ' each name the other as parent (' +
+          ACCESSORY_PARENT_FIELD + ') — corrupt reciprocal link, fix the ' +
+          'data; keeping ' + (kept === 'both' ? 'both visible' : kept +
+          ' visible') + ' so it can be found');
+      } catch (e) { /* ignore */ }
     }
     return attached;
   }
