@@ -367,6 +367,26 @@
     var t = view.querySelector('.scw-mdf-toolbar'); if (t && t.parentNode) t.parentNode.removeChild(t);
   }
 
+  // True when a MOUNTED worksheet-v2 deployment manages this locations grid
+  // (config mdfManage.viewKey — e.g. view_3617 on the survey scene):
+  // worksheet-v2/mdf-notes.js folds the same editing into the worksheet's L1
+  // headers and its static CSS hides this view's section, so cards here
+  // would be an invisible second editor over the same records. Mount-based
+  // (not config-based) so the cards remain a fallback if the worksheet
+  // never mounts.
+  function worksheetManagesView(viewKey) {
+    try {
+      var wcfg = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.cfg;
+      if (!wcfg || typeof wcfg.viewCfg !== 'function') return false;
+      var mounts = document.querySelectorAll('.scw-ws-v2[id^="scw-ws-v2-"]');
+      for (var i = 0; i < mounts.length; i++) {
+        var vc = wcfg.viewCfg(mounts[i].id.replace('scw-ws-v2-', ''));
+        if (vc && vc.mdfManage && vc.mdfManage.viewKey === viewKey) return true;
+      }
+    } catch (e) { /* fall through — keep the cards */ }
+    return false;
+  }
+
   function transform(viewKey) {
     var view = document.getElementById(viewKey);
     if (!view) return;
@@ -383,6 +403,10 @@
     // knack-view-render.any, so even if our scan won the initial race, the
     // worksheet's later render fires this and removes our cards.
     if (view.querySelector('tr[data-scw-worksheet], tr.scw-ws-row')) { teardown(view); return; }
+
+    // Same deferral when a worksheet-v2 deployment MANAGES this grid via its
+    // mdfManage config (the L1-header pencil + band own the editing there).
+    if (worksheetManagesView(viewKey)) { teardown(view); return; }
 
     // Don't clobber an input the user is mid-edit in.
     var ae = document.activeElement;

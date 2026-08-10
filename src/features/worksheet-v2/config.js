@@ -416,6 +416,24 @@
         },
         mdfSourceViewKey:  'view_3617',     // MDF/IDF locations grid on the survey scene
         mdfLabelField:     'field_1642',    // MDF/IDF full label
+        // Location management folded INTO the worksheet (mdf-notes.js), same
+        // as the build-SOW/deploy pages: every L1 header gets the pencil
+        // panel (HEADEND/IDF designator + ## + name + delete-when-empty) and
+        // each expanded group opens with the location band (photos strip +
+        // add-photos tile + notes). Reads/PUTs go through the OPS_MDF-IDFs
+        // grid (view_3617) with the user's session; the standalone section
+        // (view_3508 heading + view_3617 accordion) is hidden by mdf-notes.js
+        // static CSS. ⚠️ Notes editability is INVERTED vs the internal pages:
+        // this scene's audience writes SURVEY notes, so field_2457 is the
+        // editable band field and ops' Notes (field_1643) shows read-only in
+        // the callout — matching which columns view_3617 inline-edits
+        // (field_1643 has no cell-edit there, so a PUT would be dropped).
+        mdfManage: { viewKey: 'view_3617',
+                     notesField: 'field_2457',  notesLabel: 'Survey Notes',
+                     calloutField: 'field_1643', calloutLabel: 'SCW Notes' },
+        // "+ Add MDF/IDF" toolbar CTA — clicks the (hidden) view_3509 menu
+        // link (#new-add-mdfidf/<requestId>), replacing the standalone menu.
+        addMdfMenuView:    'view_3509',
         fields: {
           // identity / grouping
           product:        'field_2627',     // REL_product (editable)

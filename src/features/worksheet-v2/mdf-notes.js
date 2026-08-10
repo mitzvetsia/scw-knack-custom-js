@@ -1,10 +1,11 @@
 /*** WORKSHEET V2 — MDF/IDF LOCATION MANAGE (manage-section integration) ******
  *
  * Folds the standalone "Manage MDFs / IDFs" section INTO the worksheet
- * (deploy scene view_3932; build-SOW scene view_3577 — config-driven per
- * worksheet-v2 view entry), with full parity to the bid-review-v2 manage panel
- * (bid-review-v2/mdf-manage.js): every real-location L1 header gets a pencil
- * that opens a panel directly under the header with
+ * (deploy scene view_3932; build-SOW scene view_3577; survey/bid scene
+ * view_3617 — config-driven per worksheet-v2 view entry), with full parity
+ * to the bid-review-v2 manage panel (bid-review-v2/mdf-manage.js): every
+ * real-location L1 header gets a pencil that opens a panel directly under
+ * the header with
  *
  *   - editable designator badge (HEADEND/IDF select + in-badge ## input —
  *     HEADENDs never carry a ##: flipping to HEADEND hides + clears it)
@@ -24,6 +25,14 @@
  *
  * Config (per worksheet-v2 view entry):
  *   mdfManage: { viewKey: 'view_3932', notesField: 'field_1643' }
+ *
+ * Notes editability is config-flippable: `notesField`/`notesLabel` name the
+ * INLINE-EDITABLE band field (default field_1643 "SCW Notes"), and
+ * `calloutField`/`calloutLabel` the READ-ONLY callout above it (default
+ * field_2457 "Survey Notes"). Internal pages keep the defaults; the
+ * sub-facing survey scene (view_3505 → view_3617) inverts them — its
+ * audience WRITES survey notes and only reads ops' notes (and view_3617
+ * only inline-edits field_2457, so a field_1643 PUT would be dropped).
  ****************************************************************************/
 (function () {
   'use strict';
@@ -80,12 +89,17 @@
          their home now. Static CSS so there is no flash while models load.
          view_3932 = deploy scene; view_3577 = build-SOW scene (view_3962
          integration); view_4060 = sub-portal deployment dashboard
-         (view_4056 integration). The views still render (display:none
-         keeps their models + rows readable for the pencil panel /
-         photo scrape). */
+         (view_4056 integration); view_3617 = survey/bid scene (view_3505
+         integration — its "MDF/IDFs" rich-text heading view_3508 goes with
+         it; the view_3509 Add-menu is absorbed by the toolbar CTA). The
+         views still render (display:none keeps their models + rows
+         readable for the pencil panel / photo scrape). */
       '.scw-acc-for-view_3932,',
       '.scw-acc-for-view_3577,',
-      '.scw-acc-for-view_4060 {',
+      '.scw-acc-for-view_4060,',
+      '.scw-acc-for-view_3617,',
+      '#view_3617,',
+      '#view_3508 {',
       '  display: none !important;',
       '}',
       /* Icon-only pencil before the L1 title — borderless, quiet; a soft
@@ -287,11 +301,22 @@
 
   /** Content signature for a band — retrofit skips the rebuild+replaceChild
    *  when nothing it displays has changed. */
-  function bandSig(attrs, photos, notesField) {
-    var s = (attrs ? fieldText(attrs, F.surveyNotes) : '') + '\u0001' +
-            (attrs ? fieldText(attrs, notesField) : '');
+  function bandSig(attrs, photos, nc) {
+    var s = (attrs ? fieldText(attrs, nc.calloutField) : '') + '\u0001' +
+            (attrs ? fieldText(attrs, nc.editField) : '');
     for (var i = 0; i < photos.length; i++) s += '\u0001' + photos[i].thumb;
     return s;
+  }
+
+  /** Per-deployment notes wiring — which field the band's textarea EDITS
+   *  and which shows READ-ONLY in the callout (see header note). */
+  function notesCfg(cfg) {
+    return {
+      editField:    (cfg && cfg.notesField)   || F.notes,
+      editLabel:    (cfg && cfg.notesLabel)   || 'SCW Notes',
+      calloutField: (cfg && cfg.calloutField) || F.surveyNotes,
+      calloutLabel: (cfg && cfg.calloutLabel) || 'Survey Notes'
+    };
   }
 
   /** Identity-aware bulk photo uploader against this MDF/IDF location
@@ -354,8 +379,9 @@
     if (!attrs && !photos.length) return null;   // nothing yet — retrofit adds later
     injectStyles();
 
-    var sNotes = attrs ? fieldText(attrs, F.surveyNotes) : '';
-    var notes  = attrs ? fieldText(attrs, cfg.notesField || F.notes) : '';
+    var nc = notesCfg(cfg);
+    var sNotes = attrs ? fieldText(attrs, nc.calloutField) : '';
+    var notes  = attrs ? fieldText(attrs, nc.editField) : '';
 
     var photosHtml = '';
     for (var p = 0; p < photos.length; p++) {
@@ -382,15 +408,15 @@
     band.setAttribute('data-scw-ws-v2-mdf-band', l1.id);
     // Content signature — retrofit compares before rebuilding so an
     // unchanged band is never re-created/replaced on sweep.
-    band.setAttribute('data-scw-sig',
-      bandSig(attrs, photos, cfg.notesField || F.notes));
+    band.setAttribute('data-scw-sig', bandSig(attrs, photos, nc));
     band.innerHTML =
-      // Survey Notes stay READ-ONLY here (subs' territory — same rule as
-      // the comparison page); SCW Notes edit INLINE, saving on blur.
+      // The callout field stays READ-ONLY (the other audience's territory —
+      // same rule as the comparison page); the edit field saves on blur.
+      // Which is which flips per deployment — see notesCfg.
       (sNotes
         ? '<div class="' + P + '-callout">' +
             '<span class="' + P + '-callout-ic">' + DOC_SVG + '</span>' +
-            '<div><div class="' + P + '-callout-lbl">Survey Notes</div>' +
+            '<div><div class="' + P + '-callout-lbl">' + esc(nc.calloutLabel) + '</div>' +
             '<div class="' + P + '-callout-txt">' + esc(sNotes) + '</div></div>' +
           '</div>'
         : '') +
@@ -400,7 +426,7 @@
           '<div class="' + P + '-photos-strip">' + photosHtml + '</div>' +
         '</div>' +
         '<div class="' + P + '-band-sec">' +
-          '<div class="' + P + '-lbl">SCW Notes</div>' +
+          '<div class="' + P + '-lbl">' + esc(nc.editLabel) + '</div>' +
           '<textarea class="' + P + '-band-ta" placeholder="Add notes — saves when you click away"></textarea>' +
         '</div>' +
       '</div>';
@@ -409,7 +435,7 @@
       ta.value = notes;
       ta.setAttribute('data-scw-saved-val', notes);
       ta.addEventListener('blur', function () {
-        saveBandNotes(ta, cfg.viewKey, l1.id, cfg.notesField || F.notes);
+        saveBandNotes(ta, cfg.viewKey, l1.id, nc.editField);
       });
     }
     return band;
@@ -474,7 +500,7 @@
       var cfg = manageCfg(srcKey);
       if (!cfg) continue;
       if (!(cfg.viewKey in rowIdx)) rowIdx[cfg.viewKey] = photoRowIndex(cfg.viewKey);
-      var notesField = cfg.notesField || F.notes;
+      var nc = notesCfg(cfg);
       var sections = mounts[m].querySelectorAll('[data-scw-ws-v2-l1]');
       for (var s = 0; s < sections.length; s++) {
         var id = sections[s].getAttribute('data-scw-ws-v2-l1') || '';
@@ -500,7 +526,7 @@
           if (!(cur && cur.contains(document.activeElement))) {
             var photos = locationPhotos(cfg.viewKey, id, rowIdx[cfg.viewKey]);
             if (attrs || photos.length) {
-              var sig = bandSig(attrs, photos, notesField);
+              var sig = bandSig(attrs, photos, nc);
               if (!(cur && cur.getAttribute('data-scw-sig') === sig)) {
                 var fresh = detailBand({ id: id }, srcKey,
                   { attrs: attrs, photos: photos });
