@@ -21,7 +21,14 @@
 
   var STYLE_ID = 'scw-files-gallery-css';
   var EVENT_NS = '.scwFilesGallery';
-  var MODE_LS  = 'scwFilesGalleryMode';   // 'gallery' | 'table' (shared)
+  // Mode persistence is PER VIEW ('gallery' | 'table'), default gallery.
+  // The pre-2026-08 key was SHARED across every gallery view — clicking
+  // "Table view" once anywhere flipped ALL of them to tables forever
+  // ("make this a gallery view?" on the survey page's Site Maps accordion
+  // was exactly that stuck preference). The legacy shared key is
+  // deliberately ignored so stuck table modes reset to gallery.
+  var MODE_LS  = 'scwFilesGalleryMode';
+  function modeKey(viewId) { return MODE_LS + ':' + viewId; }
 
   // Per-view configs. kind:'file' = Knack File field (PDF/image, ext-sniffed);
   // kind:'image' = Knack Image field (always rendered as an image).
@@ -320,8 +327,8 @@
   }
 
   // ── transform ───────────────────────────────────────────────
-  function currentMode() {
-    try { return localStorage.getItem(MODE_LS) === 'table' ? 'table' : 'gallery'; }
+  function currentMode(viewId) {
+    try { return localStorage.getItem(modeKey(viewId)) === 'table' ? 'table' : 'gallery'; }
     catch (e) { return 'gallery'; }
   }
   function applyMode(view, mode) {
@@ -338,7 +345,7 @@
       btn.className = 'scw-files-gallery-toggle';
       btn.addEventListener('click', function () {
         var mode = view.classList.contains('scw-files-gallery-on') ? 'table' : 'gallery';
-        try { localStorage.setItem(MODE_LS, mode); } catch (e) {}
+        try { localStorage.setItem(modeKey(view.id), mode); } catch (e) {}
         applyMode(view, mode);
       });
       toolbar.appendChild(btn);
@@ -380,7 +387,7 @@
     } else {
       grid.appendChild(frag);
     }
-    applyMode(view, currentMode());
+    applyMode(view, currentMode(cfg.id));
   }
 
   // ── styles ──────────────────────────────────────────────────
