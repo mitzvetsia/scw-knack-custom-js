@@ -2289,12 +2289,29 @@
             'scw-ws-v2-sd--conn');
         }
       }
-      // Connected Devices (field_2820, multi) — EDITABLE on every network/
-      // hardware row. (Formerly gated on mapConn/field_2795 = Yes like v1,
-      // which hid the control on most deploy rows — relays, hubs, locks —
-      // leaving no way to edit device wiring there. Empty renders "(none)"
-      // with the edit affordance.)
-      items += sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2820', 'Connected Devices'), 'scw-ws-v2-sd--conn');
+      // Connected Devices (field_2820, multi) — EDITABLE when the product
+      // is flagged Map Connections (field_2795 = Yes) OR the row already
+      // has any wiring (forward list ∪ back-pointers). The flag alone
+      // under-covers (relays/hubs/locks ship with it unset in the catalog
+      // — the reason a blanket ungate existed here), and the blanket
+      // ungate over-covered (monitors/passive gear offered a wiring
+      // picker). Flag-unset AND unwired rows hide the control — fix the
+      // product's Map Connections flag in the catalog to enable them.
+      var _cdKey  = F.connectedDevices || 'field_2820';
+      var _mcKey  = F.mapConn || 'field_2795';
+      var _mcRaw  = rec[_mcKey + '_raw'];
+      var _isMapConn = (_mcRaw === true || _mcRaw === 'Yes' || _mcRaw === 'yes' || _mcRaw === 1) ||
+        ((rec[_mcKey] || '').toString().replace(/<[^>]*>/g, '').trim().toLowerCase() === 'yes');
+      var _fwdRaw = rec[_cdKey + '_raw'];
+      var _hasWiring = Array.isArray(_fwdRaw) && _fwdRaw.length > 0;
+      if (!_hasWiring) {
+        try {
+          _hasWiring = (backIndex(viewKey, F.connectedDevice || 'field_2821')[rec.id] || []).length > 0;
+        } catch (eBW) { /* index unavailable — flag decides */ }
+      }
+      if (_isMapConn || _hasWiring) {
+        items += sdItem(detailConnectedDevices(rec, viewKey, _cdKey, 'Connected Devices'), 'scw-ws-v2-sd--conn');
+      }
       var mhDef = detailMountingHardwareRO(rec, viewKey);
       if (mhDef) items += sdItem(mhDef, 'scw-ws-v2-sd--wide');
       items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
