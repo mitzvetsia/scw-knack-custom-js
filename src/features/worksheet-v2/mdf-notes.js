@@ -225,6 +225,21 @@
     } catch (e) { return null; }
   }
 
+  /** Capture-early scroll guard (the v1 preserve-scroll coordinator's
+   *  winning idea): arm BEFORE the PUT/DELETE, so the anchor row is
+   *  captured before the quiet model.fetch's render storm — during which
+   *  Knack's own code can scroll the page through a pre-patch native
+   *  reference the scroll-spy can't even trace. See _v2-scroll-anchor.js
+   *  guard(). Best-effort: without the module, saves behave as before. */
+  function armScrollGuard() {
+    try {
+      if (window.SCW && SCW.v2ScrollAnchor &&
+          typeof SCW.v2ScrollAnchor.guard === 'function') {
+        SCW.v2ScrollAnchor.guard();
+      }
+    } catch (e) { /* best-effort */ }
+  }
+
   function manageAttrs(manageViewKey, recId) {
     try {
       var v = Knack && Knack.views && Knack.views[manageViewKey];
@@ -445,6 +460,7 @@
    *  shared core (drop detection + model sync included). */
   function saveBandNotes(ta, manageViewKey, recId, field) {
     if (ta.getAttribute('data-scw-saved-val') === ta.value) return;
+    armScrollGuard();
     var value = ta.value;
     var body = {}; body[field] = value;
     ta.classList.add(P + '-band-ta--saving');
@@ -615,6 +631,7 @@
       }
       goBtn.disabled = true;
       st.textContent = 'Deleting…';
+      armScrollGuard();
       SCW.knackAjax({
         url:  SCW.knackRecordUrl(cfg.viewKey, l1Id),
         type: 'DELETE',
@@ -778,6 +795,7 @@
         if (v !== (initial[fk] || '')) { fields[fk] = v; changed++; }
       }
       if (!changed) { closePanels(); return; }
+      armScrollGuard();
       saving = true;
       status.classList.remove('is-err');
       status.textContent = 'Saving…';

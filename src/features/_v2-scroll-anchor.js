@@ -233,6 +233,103 @@
     raf(tick);
   }
 
-  window.SCW.v2ScrollAnchor = { around: around };
+  // ── Edit-time guard — capture-early / restore-late ─────────────────────
+  // The property that made the v1 pages' preserve-scroll-on-refresh
+  // coordinator win this fight: it snapshots scroll at EDIT time (on
+  // knack-cell-update, before any render), then restores after the storm
+  // settles — so a scroll fired DURING Knack's own render can't survive.
+  // around() can't cover that flow: it captures at REBUILD time, which on
+  // a Knack-native render (model.fetch → view render → our rebuild) is
+  // already AFTER Knack scrolled — it then faithfully preserves the wrong
+  // position (observed on scene_1140: the JUMP logs BEFORE the
+  // view-render event). guard(ms) is the capture-early port for
+  // programmatic save paths (MDF saves etc.) that never fire a native
+  // knack-cell-update: call it right before the PUT; for the next `ms` a
+  // per-frame watchdog snaps back any big no-gesture displacement while
+  // the doc height is stable, and re-baselines on genuine layout changes
+  // so a later external scroll is still caught. User input cancels it.
+  // ROW-anchored, not pixel-anchored: on this page the doc height naturally
+  // jitters 100-450px per rebuild (lazy photos, group state), so "did the
+  // height change?" cannot separate legit reflow from an external scroll —
+  // but the row nearest the viewport top IS the user's context either way.
+  // Whatever moves it (Knack's scroll OR content shrinking above), putting
+  // it back at its captured viewport offset restores what the user was
+  // looking at. Only BIG displacements are chased — around()'s settle loop
+  // owns fine re-pinning during its own window.
+  var GUARD_MS_DEFAULT = 3000;   // save + fetch + render storm + Knack's late scroll
+  var GUARD_JUMP_PX = 120;       // below this, leave the page alone
+  var _guardToken = 0;
+  var _guardUntil = 0;           // first capture wins while a guard is active
+  function nowMs() {
+    return (window.performance && performance.now) ? performance.now() : 0;
+  }
+  function guard(ms, rowSelector, idAttr) {
+    rowSelector = rowSelector || '[data-scw-ws-v2-record]';
+    idAttr = idAttr || 'data-scw-ws-v2-record';
+    if (!(ms > 0)) ms = GUARD_MS_DEFAULT;
+    // A storm arms the guard repeatedly (save → refetch → coalesced
+    // refetch…). Only the FIRST capture has a pre-storm baseline — a
+    // re-capture mid-storm could anchor a just-jumped position and defend
+    // the wrong spot. Keep the active guard; gestures cancel it, so a
+    // fresh arm after real user scrolling still baselines fresh.
+    var armT = nowMs();
+    if (armT && armT < _guardUntil) return;
+    _guardUntil = armT + ms;
+    var token = ++_guardToken;   // a newer guard supersedes an EXPIRED one
+    // Same nearest-visible-row capture as around() — but at SAVE time,
+    // before any render can move the page.
+    var anchor = null;
+    try {
+      var rows = document.querySelectorAll(rowSelector);
+      var guardPx = 72;
+      var vh = window.innerHeight || document.documentElement.clientHeight;
+      for (var i = 0; i < rows.length; i++) {
+        var key = rows[i].getAttribute(idAttr);
+        if (!key) continue;
+        var r = rows[i].getBoundingClientRect();
+        if (r.bottom > guardPx && r.top < vh) { anchor = { key: key, top: r.top }; break; }
+      }
+    } catch (e) { /* no anchor → guard is a no-op */ }
+    if (!anchor) return;
+    var t0 = null;
+    function cancel() {
+      if (token === _guardToken) _guardToken++;
+      cleanup();
+    }
+    function onKey(e) {
+      if (!e.key || !/^(Arrow|Page|Home|End| )/.test(e.key)) return;
+      var t = e.target;
+      if (t && (t.isContentEditable ||
+        /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
+      cancel();
+    }
+    function cleanup() {
+      window.removeEventListener('wheel', cancel, { passive: true });
+      window.removeEventListener('touchmove', cancel, { passive: true });
+      window.removeEventListener('keydown', onKey, true);
+    }
+    window.addEventListener('wheel', cancel, { passive: true });
+    window.addEventListener('touchmove', cancel, { passive: true });
+    window.addEventListener('keydown', onKey, true);
+    function tick(ts) {
+      if (token !== _guardToken) { cleanup(); return; }
+      if (t0 == null) t0 = ts || 0;
+      if ((ts || 0) - t0 > ms) { cleanup(); return; }
+      try {
+        var el = document.querySelector(
+          '[' + idAttr + '="' + cssEsc(anchor.key) + '"]');
+        // A row inside a collapsed group reads rect 0,0 — never anchor math
+        // against a hidden element.
+        if (el && el.getClientRects().length) {
+          var delta = el.getBoundingClientRect().top - anchor.top;
+          if (Math.abs(delta) > GUARD_JUMP_PX) window.scrollBy(0, delta);
+        }
+      } catch (e2) { /* keep watching */ }
+      raf(tick);
+    }
+    raf(tick);
+  }
+
+  window.SCW.v2ScrollAnchor = { around: around, guard: guard };
 })();
 /*** END V2 SCROLL ANCHOR ***************************************************/

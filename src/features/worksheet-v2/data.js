@@ -319,6 +319,18 @@
         notify(viewKey);
         return;
       }
+      // Capture-early scroll guard: the full fetch re-renders Knack's
+      // NATIVE grid, and Knack's own post-render code can scroll the page
+      // through a pre-patch native reference (invisible to scroll-spy;
+      // observed on scene_1140 as big "no user gesture" jumps). Anchor the
+      // nearest row NOW — before the fetch — so the watchdog can put it
+      // back if anything yanks the viewport during the storm.
+      try {
+        if (window.SCW && SCW.v2ScrollAnchor &&
+            typeof SCW.v2ScrollAnchor.guard === 'function') {
+          SCW.v2ScrollAnchor.guard();
+        }
+      } catch (eG) { /* best-effort */ }
       if (_fetchInFlight[viewKey]) {
         // Coalesce — a fetch is already running for this view. Just make
         // sure we re-render once it lands.
