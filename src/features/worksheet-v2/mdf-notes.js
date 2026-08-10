@@ -912,18 +912,41 @@
   // Retrofit pencils when the manage view's model lands after the worksheet
   // rendered — the source of the "pencils sometimes missing" flakiness.
   var _retrofitTimer = 0;
+  var _retrofitLastRun = 0;
+  /** Is `viewKey` the manage view of any MOUNTED worksheet? */
+  function isManageViewKey(viewKey) {
+    if (!viewKey) return false;
+    try {
+      var mounts = document.querySelectorAll('.scw-ws-v2[id^="scw-ws-v2-"]');
+      for (var i = 0; i < mounts.length; i++) {
+        var cfg = manageCfg(mounts[i].id.replace('scw-ws-v2-', ''));
+        if (cfg && cfg.viewKey === viewKey) return true;
+      }
+    } catch (e) { /* ignore */ }
+    return false;
+  }
   $(document)
     .off('knack-view-render.any.scwWsV2MdfRetrofit')
-    .on('knack-view-render.any.scwWsV2MdfRetrofit', function () {
-      // Trailing debounce — scene load / refetch storms fire one render
-      // event per view; one sweep per storm is enough (each sweep covers
-      // every mount). The old per-event scheduling stacked dozens of
-      // full sweeps during a big-quote init.
+    .on('knack-view-render.any.scwWsV2MdfRetrofit', function (e, view) {
+      // One sweep per storm is enough (each sweep covers every mount) —
+      // but a PURE trailing debounce starves on busy scenes: during a
+      // scene load the renders (dozen views + v2 rebuilds + KTL) arrive
+      // faster than the window for seconds on end, and the bands showed
+      // up "REALLY late" (survey/bid page, 2026-08-10). Two rules fix it:
+      //   1. The MANAGE view itself rendering is the very data the
+      //      pencils/bands wait on → sweep next tick, no debounce.
+      //   2. Everything else debounces 150ms but with a MAX-WAIT — if
+      //      events keep streaming, still sweep at least every 400ms.
       if (_retrofitTimer) clearTimeout(_retrofitTimer);
-      _retrofitTimer = setTimeout(function () {
+      var run = function () {
         _retrofitTimer = 0;
+        _retrofitLastRun = Date.now();
         retrofit();
-      }, 150);
+      };
+      var wait = 150;
+      if (isManageViewKey(view && view.key)) wait = 0;
+      else if (Date.now() - _retrofitLastRun > 400) wait = 0;
+      _retrofitTimer = setTimeout(run, wait);
     });
 
   injectStyles();
