@@ -395,6 +395,23 @@
     injectStyles();
 
     var nc = notesCfg(cfg);
+    // ADOPT the live band when nothing it shows has changed — a full
+    // worksheet rebuild otherwise re-creates every band from scratch
+    // (fresh <img> decodes, a transient height wobble, a lost caret) for
+    // identical content. Moving the existing node into the new tree keeps
+    // decoded images and the notes textarea exactly as they were. Guarded
+    // to the same mount so multi-worksheet scenes never steal each
+    // other's bands, and never adopts a band the user is typing in
+    // mid-signature-change (the sig match already implies same value).
+    var sig = bandSig(attrs, photos, nc);
+    var existing = document.querySelector(
+      '[data-scw-ws-v2-mdf-band="' + l1.id + '"]');
+    if (existing && existing.getAttribute('data-scw-sig') === sig) {
+      var owner = existing.closest &&
+        existing.closest('.scw-ws-v2[id^="scw-ws-v2-"]');
+      if (!owner || owner.id === 'scw-ws-v2-' + sourceViewKey) return existing;
+    }
+
     var sNotes = attrs ? fieldText(attrs, nc.calloutField) : '';
     var notes  = attrs ? fieldText(attrs, nc.editField) : '';
 

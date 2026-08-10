@@ -209,11 +209,19 @@
             try { hNow = document.documentElement.scrollHeight; } catch (eH) { /* ignore */ }
             var heightStable = capH > 0 && hNow > 0 && Math.abs(hNow - capH) < 80;
             if (heightStable) {
+              guardLog('around: chasing ' + Math.round(delta) +
+                'px displacement of ' + anchor.key + ' (height stable)');
               window.scrollBy(0, delta); corrected = true;
             } else if (withinHoldWindow && Math.abs(scrollY() - prevY) > 1) {
               window.scrollTo(0, prevY); corrected = true;
             }
           } else if (Math.abs(delta) > 1) {
+            // Diary the re-pins big enough to feel — the "little nudge"
+            // class (~50px chases after a rebuild) is content ABOVE the
+            // anchor changing height; the anchor key names WHERE.
+            if (Math.abs(delta) > 10) {
+              guardLog('around: re-pin ' + Math.round(delta) + 'px on ' + anchor.key);
+            }
             window.scrollBy(0, delta); corrected = true;
           }
         } else if (withinHoldWindow) {
