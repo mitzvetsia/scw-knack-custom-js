@@ -90,6 +90,53 @@
     };
   } catch (e) { /* ignore */ }
 
+  // Element-level scroll APIs — documentElement/body.scrollTo/scrollBy move
+  // the window without ever touching window.scrollTo, and Chrome's
+  // scrollIntoViewIfNeeded is a variant the scrollIntoView patch misses.
+  // Both were invisible in the survey/bid captures (2026-08-10): big JUMP UP
+  // warnings with no traced caller. NOTE: a caller that saved a reference to
+  // the NATIVE window.scrollTo before this bundle ran (Knack's own bundle
+  // loads first) still bypasses every patch here — if a jump logs with no
+  // stack even after this, that's the remaining explanation.
+  function isRootScroller(el) {
+    return el === document.scrollingElement ||
+           el === document.documentElement || el === document.body;
+  }
+  try {
+    var _eScrollTo = Element.prototype.scrollTo;
+    if (_eScrollTo) {
+      Element.prototype.scrollTo = function () {
+        if (isRootScroller(this)) {
+          console.warn(P + ' ' + describe(this) + '.scrollTo(', arguments[0], arguments[1], ') from', y());
+          console.trace(P + ' element scrollTo stack');
+        }
+        return _eScrollTo.apply(this, arguments);
+      };
+    }
+  } catch (e) { /* ignore */ }
+  try {
+    var _eScrollBy = Element.prototype.scrollBy;
+    if (_eScrollBy) {
+      Element.prototype.scrollBy = function () {
+        if (isRootScroller(this)) {
+          console.warn(P + ' ' + describe(this) + '.scrollBy(', arguments[0], arguments[1], ') from', y());
+          console.trace(P + ' element scrollBy stack');
+        }
+        return _eScrollBy.apply(this, arguments);
+      };
+    }
+  } catch (e) { /* ignore */ }
+  try {
+    var _sIVN = Element.prototype.scrollIntoViewIfNeeded;
+    if (_sIVN) {
+      Element.prototype.scrollIntoViewIfNeeded = function () {
+        console.warn(P + ' scrollIntoViewIfNeeded on', describe(this), 'from', y());
+        console.trace(P + ' scrollIntoViewIfNeeded stack');
+        return _sIVN.apply(this, arguments);
+      };
+    }
+  } catch (e) { /* ignore */ }
+
   // Direct scrollTop assignment (e.g. jQuery $(window).scrollTop(pos) on some
   // versions, or el.scrollTop = n) — window.scrollTo patching misses these.
   // Wrap the shared prototype accessor and only log for the scroll roots.

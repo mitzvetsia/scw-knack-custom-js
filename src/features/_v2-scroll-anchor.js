@@ -125,12 +125,12 @@
     var myToken = ++_runToken;   // supersede any in-flight settle loop
     var anchor = null;
     var prevY = scrollY();
-    // Clamp guard — capture the pre-rebuild height while the old content is
-    // still in place. Skipped at the top of the page (nothing to clamp).
-    var floorPx = 0;
-    if (prevY > 0) {
-      try { floorPx = document.documentElement.scrollHeight; } catch (eF) { /* ignore */ }
-    }
+    // Pre-rebuild doc height: the clamp-guard floor (below) and the
+    // displacement-vs-layout test in the settle loop both key off it.
+    var capH = 0;
+    try { capH = document.documentElement.scrollHeight; } catch (eF) { /* ignore */ }
+    // Clamp guard — skipped at the top of the page (nothing to clamp).
+    var floorPx = prevY > 0 ? capH : 0;
     try {
       var rows = document.querySelectorAll(rowSelector);
       var guard = 72;                       // clear sticky toolbars / headers
@@ -156,13 +156,25 @@
     var stable = 0;
     var userScrolled = false;
     function onUserScroll() { userScrolled = true; }
+    // Keyboard scrolling counts as the user taking over too — now that the
+    // loop CHASES displacement, it must never fight a PageUp/arrow scroll.
+    // Keys typed into inputs don't scroll the page, so they don't abort.
+    function onKeyScroll(e) {
+      if (!e.key || !/^(Arrow|Page|Home|End| )/.test(e.key)) return;
+      var t = e.target;
+      if (t && (t.isContentEditable ||
+        /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
+      userScrolled = true;
+    }
     // passive listeners — we only OBSERVE that the user grabbed the scroll.
     window.addEventListener('wheel', onUserScroll, { passive: true });
     window.addEventListener('touchmove', onUserScroll, { passive: true });
+    window.addEventListener('keydown', onKeyScroll, true);
 
     function cleanup() {
       window.removeEventListener('wheel', onUserScroll, { passive: true });
       window.removeEventListener('touchmove', onUserScroll, { passive: true });
+      window.removeEventListener('keydown', onKeyScroll, true);
     }
 
     function tick(ts) {
@@ -180,12 +192,25 @@
           // but never CHASE a big downward shift (content added above = a jump).
           var delta = el.getBoundingClientRect().top - anchor.top;
           if (delta > BIG_DOWN || delta < -BIG_UP) {
-            // Big shift either direction — hold the pre-edit scroll rather than
-            // chasing it, but ONLY within HOLD_MS (see its comment above). A
-            // shift that's STILL big past that window means the row genuinely
-            // relocated (not a transient reflow) — stop forcing prevY so the
-            // page can settle wherever the rebuild actually left it.
-            if (withinHoldWindow && Math.abs(scrollY() - prevY) > 1) {
+            // Big shift — TWO causes that need OPPOSITE responses:
+            //  · LAYOUT: content above grew/shrank, and the doc height moved
+            //    with it. Chasing that is itself a jump (the scrollBy(+243) /
+            //    scrollBy(-6526) incidents in the notes above) → old
+            //    behavior: hold prevY within HOLD_MS, then let it settle.
+            //  · DISPLACEMENT: the doc height is UNCHANGED and the anchor
+            //    moved anyway — nothing reflowed; something scrolled the
+            //    WINDOW out from under the user (Knack scrolling after a
+            //    render through a pre-patch native scrollTo reference —
+            //    invisible to scroll-spy, observed on scene_1140 as
+            //    -600/-955px "no user gesture" jumps at a rock-stable
+            //    docHeight). That one we CHASE: restoring the anchor row's
+            //    viewport spot exactly undoes the external scroll.
+            var hNow = 0;
+            try { hNow = document.documentElement.scrollHeight; } catch (eH) { /* ignore */ }
+            var heightStable = capH > 0 && hNow > 0 && Math.abs(hNow - capH) < 80;
+            if (heightStable) {
+              window.scrollBy(0, delta); corrected = true;
+            } else if (withinHoldWindow && Math.abs(scrollY() - prevY) > 1) {
               window.scrollTo(0, prevY); corrected = true;
             }
           } else if (Math.abs(delta) > 1) {
