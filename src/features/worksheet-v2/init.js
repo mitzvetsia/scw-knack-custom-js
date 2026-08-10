@@ -2121,10 +2121,31 @@
         return;
       }
 
-      // Parent picker (field_2464) — candidates are every other
-      // line item on the source view. Single-select. Used by
-      // promoted accessories to re-parent themselves.
-      if (fieldKey === 'field_2464') {
+      // Parent picker — the accessory→parent single connection, resolved
+      // per view (SOW field_2464; install field_2853 via the `parent`
+      // mapping). Candidates are every other line item on the source view.
+      // Single-select. Used by promoted/orphaned accessories to
+      // (re-)parent themselves. ONLY this child-side field is ever edited
+      // directly — the parent's forward children array (SOW field_2207,
+      // install field_2852) is DERIVED from the back-pointers below.
+      var _pF = (ns.cfg && typeof ns.cfg.fields === 'function' &&
+                 ns.cfg.fields(viewKey)) || {};
+      if (fieldKey === (_pF.parent || 'field_2464')) {
+        var _pk           = fieldKey;
+        var _isSowPair    = (_pk === 'field_2464');
+        // Forward children-array key(s): the one we PUT, and the set we
+        // scan to find old parents. SOW carries TWO denormalized forward
+        // fields (field_2207 + field_1958); install has just field_2852.
+        var _childPutKey  = _isSowPair
+          ? 'field_2207'
+          : (_pF.children || _pF.accessories || 'field_2852');
+        var _childScanKeys = _isSowPair
+          ? ['field_2207', 'field_1958']
+          : [_childPutKey];
+        var _mdfKey = _pF.mdfIdf || 'field_1946';
+        // Accessories inherit the parent's SOW membership on the SOW
+        // object only — install line items carry no SOW connection.
+        var _sowKey = _isSowPair ? 'field_2154' : null;
         // Parent candidates are EVERY primary line item on the source view —
         // all buckets (cameras, readers, NVRs/switches, enclosures, services,
         // assumptions, …), not just Cam/Reader + Networking/Headend. They're
@@ -2137,7 +2158,7 @@
         for (var pc = 0; pc < records.length; pc++) {
           var r = records[pc];
           if (!r || !r.id || r.id === recordId) continue;
-          var ownParentRaw = r.field_2464_raw;
+          var ownParentRaw = r[_pk + '_raw'];
           if (Array.isArray(ownParentRaw) && ownParentRaw.length) continue;
           parentCands.push(r);
         }
@@ -2148,7 +2169,7 @@
           sourceViewKey: viewKey,
           putViewKey:    viewKey,
           recordId:      recordId,
-          fieldKey:      'field_2464',
+          fieldKey:      _pk,
           label:         'Parent',
           selectedIds:   sel,
           candidates:    parentCands,
@@ -2156,13 +2177,23 @@
           // Grouped by MDF/IDF + canonically sorted by the picker default
           // (see CLAUDE.md "Picker conventions").
           itemLabel: function (r) {
-            // Share the same product/drop resolver the card display
+            // SOW: share the same product/drop resolver the card display
             // uses — it strips Knack\'s "<recordId> (<mdfLabel>)"
             // auto-identifier for buckets with no real drop label.
-            if (ns.card && typeof ns.card.labelLineItem === 'function') {
+            if (_isSowPair && ns.card && typeof ns.card.labelLineItem === 'function') {
               return ns.card.labelLineItem(r);
             }
-            return r.id;
+            // Non-SOW objects (install): labelLineItem reads SOW literals
+            // (field_1949/field_1950), so compose "label · product" from
+            // the per-view field map instead.
+            var a = r.attributes || r;
+            function _cl(v) { return (v || '').toString().replace(/<[^>]*>/g, '').trim(); }
+            var _lbl  = (_pF.labelAlt && _cl(a[_pF.labelAlt])) ||
+                        (_pF.displayLabel && _cl(a[_pF.displayLabel])) || '';
+            var _prod = (_pF.productName && _cl(a[_pF.productName])) || '';
+            if (/^[a-f0-9]{24}(\s|\b|$)/i.test(_lbl)) _lbl = '';
+            if (_lbl && _prod) return _lbl + ' · ' + _prod;
+            return _prod || _lbl || r.id;
           },
           onSaved: function (chosenIds) {
             // Data model — there is NO server-side auto-mirror; the
@@ -2193,10 +2224,10 @@
                 if (chosenIds && chosenIds[0]) {
                   newRaw.push({ id: chosenIds[0], identifier: '' });
                 }
-                srcRec.set({
-                  field_2464_raw: newRaw,
-                  field_2464:     chosenIds && chosenIds[0] ? chosenIds[0] : ''
-                }, { silent: true });
+                var _setP = {};
+                _setP[_pk + '_raw'] = newRaw;
+                _setP[_pk] = chosenIds && chosenIds[0] ? chosenIds[0] : '';
+                srcRec.set(_setP, { silent: true });
               }
             } catch (eSrc) { /* best-effort */ }
 
@@ -2216,7 +2247,10 @@
               for (var oi = 0; oi < jr.length; oi++) {
                 var r = jr[oi];
                 if (!r || !r.id || r.id === newParentId) continue;
-                var raws = [r.field_2207_raw, r.field_1958_raw];
+                var raws = [];
+                for (var rk = 0; rk < _childScanKeys.length; rk++) {
+                  raws.push(r[_childScanKeys[rk] + '_raw']);
+                }
                 for (var ri = 0; ri < raws.length; ri++) {
                   var raw = raws[ri];
                   if (!Array.isArray(raw)) continue;
@@ -2239,10 +2273,11 @@
               }
             }
 
-            // Inherit the new parent's SOW + MDF/IDF. An accessory rides
-            // with its parent, so a re-parent mirrors the parent's
-            // field_2154 (SOW array) and field_1946 (MDF/IDF) onto the
-            // accessory — exactly, including blanks. Skipped on clear
+            // Inherit the new parent's SOW + MDF/IDF (per-view keys — the
+            // install object has no SOW connection, so only its MDF/IDF
+            // field_2818 follows). An accessory rides with its parent, so
+            // a re-parent mirrors the parent's SOW array and MDF/IDF onto
+            // the accessory — exactly, including blanks. Skipped on clear
             // (no new parent). Local raws are patched too so the card
             // regroups under the right MDF group and the SOW cell
             // updates before the refetch lands.
@@ -2254,8 +2289,10 @@
                 var pAttrs = pRec && (pRec.attributes ||
                   (typeof pRec.toJSON === 'function' ? pRec.toJSON() : null));
                 if (pAttrs) {
-                  var pSowRaw = Array.isArray(pAttrs.field_2154_raw) ? pAttrs.field_2154_raw : [];
-                  var pMdfRaw = Array.isArray(pAttrs.field_1946_raw) ? pAttrs.field_1946_raw : [];
+                  var pSowRaw = (_sowKey && Array.isArray(pAttrs[_sowKey + '_raw']))
+                    ? pAttrs[_sowKey + '_raw'] : [];
+                  var pMdfRaw = Array.isArray(pAttrs[_mdfKey + '_raw'])
+                    ? pAttrs[_mdfKey + '_raw'] : [];
                   var sowIds = [], si;
                   for (si = 0; si < pSowRaw.length; si++) {
                     if (pSowRaw[si] && pSowRaw[si].id) sowIds.push(pSowRaw[si].id);
@@ -2266,17 +2303,20 @@
                   }
                   if (srcRec) {
                     try {
-                      srcRec.set({
-                        field_2154_raw: pSowRaw.slice(),
-                        field_1946_raw: pMdfRaw.slice()
-                      }, { silent: true });
+                      var _inhSet = {};
+                      if (_sowKey) _inhSet[_sowKey + '_raw'] = pSowRaw.slice();
+                      _inhSet[_mdfKey + '_raw'] = pMdfRaw.slice();
+                      srcRec.set(_inhSet, { silent: true });
                     } catch (eSet) { /* best-effort */ }
                   }
+                  var _inhBody = {};
+                  if (_sowKey) _inhBody[_sowKey] = sowIds;
+                  _inhBody[_mdfKey] = mdfIds;
                   pending++;
                   SCW.knackAjax({
                     url:  SCW.knackRecordUrl(viewKey, recordId),
                     type: 'PUT',
-                    data: JSON.stringify({ field_2154: sowIds, field_1946: mdfIds }),
+                    data: JSON.stringify(_inhBody),
                     success: function () { pending--; done(); },
                     error: function (xhr) {
                       console.warn('[scw-ws-v2] parent SOW/MDF inherit PUT failed for ' +
@@ -2313,7 +2353,7 @@
                 for (var i = 0; i < rs.length; i++) {
                   var r = rs[i];
                   if (!r || !r.id) continue;
-                  var raw = r.field_2464_raw;
+                  var raw = r[_pk + '_raw'];
                   if (!Array.isArray(raw) || !raw.length || !raw[0]) continue;
                   if (raw[0].id === parentId) ids.push(r.id);
                 }
@@ -2338,11 +2378,13 @@
               if (mode === 'remove') {
                 ids = ids.filter(function (x) { return x !== recordId; });
               }
-              var body = JSON.stringify({ field_2207: ids });
+              var _putBody = {};
+              _putBody[_childPutKey] = ids;
+              var body = JSON.stringify(_putBody);
               if (window.SCW && window.SCW.DEBUG) console.log('[scw-ws-v2] cascade ' + mode + ' PUT', {
                 url:  url,
                 body: body,
-                source: 'derived from field_2464_raw back-pointers'
+                source: 'derived from ' + _pk + '_raw back-pointers'
               });
               SCW.knackAjax({
                 url:  url,
@@ -2352,9 +2394,9 @@
                   var rp = putResp && putResp.record ? putResp.record : putResp;
                   if (window.SCW && window.SCW.DEBUG) console.log('[scw-ws-v2] cascade ' + mode + ' PUT OK', {
                     parent: parentId,
-                    sent:           ids,
-                    got_field_2207: rp && rp.field_2207,
-                    got_2207_raw:   rp && rp.field_2207_raw
+                    sent:              ids,
+                    got_children:      rp && rp[_childPutKey],
+                    got_children_raw:  rp && rp[_childPutKey + '_raw']
                   });
                   pending--; done();
                 },

@@ -2272,6 +2272,23 @@
       items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
         'scw-ws-v2-sd--wide');
     } else if (cat === 'default') {
+      // Parent (install field_2853 — the field_2464 analogue). EDITABLE,
+      // same rules as the SOW Parent field (buildDetail_default): shown on
+      // any default-category row that is NOT Networking/Headend (those are
+      // primary items), and always once a parent exists so it can be
+      // cleared. The generalized parent-picker branch in init.js resolves
+      // the per-view key and rebuilds the parent's forward children array
+      // (field_2852) from the back-pointers — that forward array is
+      // DERIVED and never directly editable.
+      var _pk = F.parent;
+      if (_pk) {
+        var _pRaw = rec[_pk + '_raw'];
+        var _hasP = Array.isArray(_pRaw) && _pRaw.length && _pRaw[0] && _pRaw[0].id;
+        if (_hasP || bucketIdOf(rec, viewKey) !== NETWORKING_BUCKET) {
+          items += sdItem(detailConnection(rec, viewKey, _pk, 'Parent'),
+            'scw-ws-v2-sd--conn');
+        }
+      }
       // Connected Devices (field_2820, multi) — EDITABLE on every network/
       // hardware row. (Formerly gated on mapConn/field_2795 = Yes like v1,
       // which hid the control on most deploy rows — relays, hubs, locks —
