@@ -320,17 +320,10 @@
         return;
       }
       // Capture-early scroll guard: the full fetch re-renders Knack's
-      // NATIVE grid, and Knack's own post-render code can scroll the page
-      // through a pre-patch native reference (invisible to scroll-spy;
-      // observed on scene_1140 as big "no user gesture" jumps). Anchor the
-      // nearest row NOW — before the fetch — so the watchdog can put it
-      // back if anything yanks the viewport during the storm.
-      try {
-        if (window.SCW && SCW.v2ScrollAnchor &&
-            typeof SCW.v2ScrollAnchor.guard === 'function') {
-          SCW.v2ScrollAnchor.guard();
-        }
-      } catch (eG) { /* best-effort */ }
+      // NATIVE grid — the moment its deferred scroll fires (poll.js burst
+      // ticks run this path every 15s after an edit, which is why the
+      // jumps feel random). Anchor the nearest row NOW, before the fetch.
+      armGuard();
       if (_fetchInFlight[viewKey]) {
         // Coalesce — a fetch is already running for this view. Just make
         // sure we re-render once it lands.
@@ -440,6 +433,22 @@
     }
   }
 
+  /** Capture-early scroll guard (see _v2-scroll-anchor.js guard()). Armed
+   *  at every point a native re-render can follow — Knack's own deferred
+   *  post-render code scrolls the page through a pre-patch native
+   *  reference (invisible to scroll-spy). Every observed jump fires AFTER
+   *  the knack-view-render event, so a render-time capture is still a
+   *  healthy pre-jump baseline; guard() ignores re-arms while active
+   *  (extends the window) so storm-repeat calls stay cheap. */
+  function armGuard() {
+    try {
+      if (window.SCW && SCW.v2ScrollAnchor &&
+          typeof SCW.v2ScrollAnchor.guard === 'function') {
+        SCW.v2ScrollAnchor.guard();
+      }
+    } catch (e) { /* best-effort */ }
+  }
+
   /** Wire the Knack event listeners that drive notify(). */
   function attachListeners() {
     if (!ns.CONFIG || !ns.CONFIG.enabled) return;
@@ -450,7 +459,7 @@
       // view (initial load, filter change, sort change, model.fetch).
       $(document)
         .off('knack-view-render.' + key + '.scwWsV2')
-        .on('knack-view-render.' + key + '.scwWsV2', function () { notify(key); });
+        .on('knack-view-render.' + key + '.scwWsV2', function () { armGuard(); notify(key); });
 
       // knack-cell-update fires on inline-edit save — we re-notify so
       // subscribers can patch the affected record without waiting for
@@ -467,7 +476,7 @@
         var mdfKey = vcfg.mdfSourceViewKey;
         $(document)
           .off('knack-view-render.' + mdfKey + '.scwWsV2-' + key)
-          .on('knack-view-render.' + mdfKey + '.scwWsV2-' + key, function () { notify(key); });
+          .on('knack-view-render.' + mdfKey + '.scwWsV2-' + key, function () { armGuard(); notify(key); });
       }
     });
 

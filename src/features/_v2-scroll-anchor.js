@@ -259,21 +259,36 @@
   var GUARD_MS_DEFAULT = 3000;   // save + fetch + render storm + Knack's late scroll
   var GUARD_JUMP_PX = 120;       // below this, leave the page alone
   var _guardToken = 0;
-  var _guardUntil = 0;           // first capture wins while a guard is active
+  var _guardUntil = 0;           // active guard's deadline (extendable by re-arms)
   function nowMs() {
     return (window.performance && performance.now) ? performance.now() : 0;
+  }
+  // Diary — only while scroll-spy is armed, so debugging captures narrate
+  // exactly what the guard saw and did (or why it did nothing).
+  function guardLog(msg) {
+    try {
+      if (window.localStorage && localStorage.scwScrollSpy === '1') {
+        console.warn('[scw-v2-guard] ' + msg);
+      }
+    } catch (e) { /* ignore */ }
   }
   function guard(ms, rowSelector, idAttr) {
     rowSelector = rowSelector || '[data-scw-ws-v2-record]';
     idAttr = idAttr || 'data-scw-ws-v2-record';
     if (!(ms > 0)) ms = GUARD_MS_DEFAULT;
-    // A storm arms the guard repeatedly (save → refetch → coalesced
-    // refetch…). Only the FIRST capture has a pre-storm baseline — a
-    // re-capture mid-storm could anchor a just-jumped position and defend
-    // the wrong spot. Keep the active guard; gestures cancel it, so a
-    // fresh arm after real user scrolling still baselines fresh.
+    // A storm arms the guard repeatedly (save → refetch → render →
+    // coalesced refetch…). Only the FIRST capture has a pre-storm
+    // baseline — a re-capture mid-storm could anchor a just-jumped
+    // position and defend the wrong spot. Keep the active guard's anchor
+    // but EXTEND its window, so a long storm can't outlive it (observed:
+    // a late Knack scroll landing just past a fixed 3s window). Gestures
+    // cancel, so a fresh arm after real user scrolling baselines fresh.
     var armT = nowMs();
-    if (armT && armT < _guardUntil) return;
+    if (armT && armT < _guardUntil) {
+      _guardUntil = armT + ms;
+      guardLog('re-arm → window extended');
+      return;
+    }
     _guardUntil = armT + ms;
     var token = ++_guardToken;   // a newer guard supersedes an EXPIRED one
     // Same nearest-visible-row capture as around() — but at SAVE time,
@@ -290,10 +305,12 @@
         if (r.bottom > guardPx && r.top < vh) { anchor = { key: key, top: r.top }; break; }
       }
     } catch (e) { /* no anchor → guard is a no-op */ }
-    if (!anchor) return;
-    var t0 = null;
+    if (!anchor) { guardLog('arm SKIPPED — no visible anchor row'); return; }
+    guardLog('armed on ' + anchor.key + ' @top=' + Math.round(anchor.top) +
+      ' y=' + Math.round(scrollY()));
     function cancel() {
-      if (token === _guardToken) _guardToken++;
+      if (token === _guardToken) { _guardToken++; _guardUntil = 0; }
+      guardLog('cancelled by user gesture');
       cleanup();
     }
     function onKey(e) {
@@ -311,10 +328,11 @@
     window.addEventListener('wheel', cancel, { passive: true });
     window.addEventListener('touchmove', cancel, { passive: true });
     window.addEventListener('keydown', onKey, true);
-    function tick(ts) {
+    function tick() {
       if (token !== _guardToken) { cleanup(); return; }
-      if (t0 == null) t0 = ts || 0;
-      if ((ts || 0) - t0 > ms) { cleanup(); return; }
+      // Deadline is the MODULE-level _guardUntil so mid-storm re-arms
+      // extend this loop instead of racing a fixed closure window.
+      if (nowMs() > _guardUntil) { guardLog('expired (no action pending)'); cleanup(); return; }
       try {
         var el = document.querySelector(
           '[' + idAttr + '="' + cssEsc(anchor.key) + '"]');
@@ -322,7 +340,11 @@
         // against a hidden element.
         if (el && el.getClientRects().length) {
           var delta = el.getBoundingClientRect().top - anchor.top;
-          if (Math.abs(delta) > GUARD_JUMP_PX) window.scrollBy(0, delta);
+          if (Math.abs(delta) > GUARD_JUMP_PX) {
+            guardLog('correcting ' + Math.round(delta) + 'px displacement of ' +
+              anchor.key + ' (y=' + Math.round(scrollY()) + ')');
+            window.scrollBy(0, delta);
+          }
         }
       } catch (e2) { /* keep watching */ }
       raf(tick);
