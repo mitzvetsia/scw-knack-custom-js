@@ -24,8 +24,9 @@
  *                  warnings.js, so this single check covers both the
  *                  build-SOW worksheet and the bid comparison grid.
  *   surveyAdded  — the record\'s product name carries the "added during
- *                  survey" marker (a line item created during the field
- *                  survey rather than the original quote). Informational,
+ *                  survey" marker: a placeholder product from the field
+ *                  walk whose real model hasn\'t been picked yet. Labeled
+ *                  "missing model selection" in the UI. Informational,
  *                  like notes; also reused by bid-review-v2.
  *
  * Public API:
@@ -47,7 +48,7 @@
     disconnected: 'disconnected',
     bracket:      'wrong accessory',
     notes:        'has SCW notes',
-    surveyAdded:  'added during survey'
+    surveyAdded:  'missing model selection'
   };
 
   // Per-issue-type inline SVG. Picked to match v1\'s vocabulary —
@@ -98,9 +99,10 @@
       'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
       'stroke-linejoin="round">' +
       '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
-    // Clipboard with a plus (Lucide "clipboard-plus") — "this line item was
-    // added during the survey", i.e. it grew out of the field walk rather
-    // than the original quote. Informational, like notes.
+    // Clipboard with a plus (Lucide "clipboard-plus") — the line item still
+    // carries the "added during survey" placeholder product from the field
+    // walk, i.e. its real model hasn't been selected yet ("missing model
+    // selection"). Informational, like notes.
     surveyAdded:
       '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
       'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
