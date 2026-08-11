@@ -150,6 +150,13 @@ window.SCW=window.SCW||{},typeof window.SCW.init!="function"&&(window.SCW.init=f
       display: none !important;
     }
 
+    /* view_4144 (client portal): hide the records-nav strip \u2014 entries
+       summary / pagination / per-page picker are internal chrome the
+       client doesn't need on this single-record view. */
+    #view_4144 .kn-records-nav {
+      display: none !important;
+    }
+
     /* Hide KTL filter controls globally, except on scene_1085 and scene_190 */
     .filterCtrlDiv {
       display: none !important;
