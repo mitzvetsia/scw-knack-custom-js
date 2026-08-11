@@ -202,5 +202,46 @@
   }
   $(document).off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () { setTimeout(transform, 120); });
+
+  // ── SPA-navigation resilience ─────────────────────────────────────────
+  // The client portal renders through Knack's newer Vue pipeline
+  // (data-vue-component markers). Observed live: in-app navigations can
+  // leave the raw grid on screen until a hard refresh — either the legacy
+  // knack-*-render event is missed, or Vue re-patches the view AFTER our
+  // transform ran and wipes the injected cards. Two safety nets, both
+  // no-ops when the cards are already live (needsRun() false — our own
+  // insert can't loop the observer):
+  //   1. hashchange → a short retry sweep while the new scene settles.
+  //   2. a debounced body observer → catches renders that fired no event
+  //      (or wiped us after one).
+  function needsRun() {
+    var view = document.getElementById(VIEW);
+    if (!view) return false;
+    if (view.querySelector('.' + WRAP_CLS)) return false;
+    return !!view.querySelector('tbody tr[id]');
+  }
+  var _sweepTimers = [];
+  function sweep() {
+    for (var i = 0; i < _sweepTimers.length; i++) clearTimeout(_sweepTimers[i]);
+    _sweepTimers = [];
+    var delays = [200, 600, 1500, 3000];
+    for (var d = 0; d < delays.length; d++) {
+      _sweepTimers.push(setTimeout(function () {
+        if (needsRun()) transform();
+      }, delays[d]));
+    }
+  }
+  window.addEventListener('hashchange', sweep);
+  sweep();   // cover the initial load racing the bundle download too
+  var _obsT = 0;
+  try {
+    new MutationObserver(function () {
+      if (_obsT) return;
+      _obsT = setTimeout(function () {
+        _obsT = 0;
+        if (needsRun()) transform();
+      }, 180);
+    }).observe(document.body, { childList: true, subtree: true });
+  } catch (eObs) { /* no MutationObserver — the sweeps still cover it */ }
 })();
 /*** END FEATURE: client System Setup Questionnaire list *********************/
