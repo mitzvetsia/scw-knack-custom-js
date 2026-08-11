@@ -157,6 +157,17 @@ window.SCW=window.SCW||{},typeof window.SCW.init!="function"&&(window.SCW.init=f
       display: none !important;
     }
 
+    /* view_3176 (Mounting Location Approvals, client portal): hide the
+       WHOLE view when it has no records (Knack marks that state with a
+       tr.kn-tr-nodata row). Pure CSS so it also survives the portal's
+       Vue re-renders. The :not(:has(input with text)) guard keeps the
+       view visible while a keyword search is typed \u2014 a fruitless search
+       must not vanish the view (and its search box) mid-use. Browsers
+       without :has() fail open: the view just stays visible. */
+    #view_3176:has(tr.kn-tr-nodata):not(:has(.table-keyword-search input:not(:placeholder-shown))) {
+      display: none !important;
+    }
+
     /* Hide KTL filter controls globally, except on scene_1085 and scene_190 */
     .filterCtrlDiv {
       display: none !important;
