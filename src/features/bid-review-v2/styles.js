@@ -184,6 +184,9 @@
     '.scw-bid-review-v2__pkg-expand-label {',
     '  writing-mode: vertical-rl; transform: rotate(180deg);',
     '  letter-spacing: 0.5px; white-space: nowrap;',
+    /* The label now carries the sub/bid NAME (not just "Bid 2") — cap the
+       vertical run so a long name can't stretch the collapsed strip. */
+    '  max-height: 200px; overflow: hidden; text-overflow: ellipsis;',
     '}',
     /* ── Basis column filter — non-basis bid columns hidden entirely ── */
     '.scw-bid-review-v2__pkg-col--basis-hidden { display: none !important; }',
@@ -864,6 +867,13 @@
     '}',
     '.scw-bid-review-v2__warn-chip[data-issue-type="surveyAdded"] {',
     '  color: #a21caf; background: #fdf4ff; border-color: #f0abfc;',
+    '}',
+    /* Bid-column identity: small "Subcontractor Bid" eyebrow above the
+       sub/bid name that pkgTitleCell renders as the big title. */
+    '.scw-bid-review-v2__head-eyebrow {',
+    '  font: 700 10px/1.2 system-ui, -apple-system, sans-serif;',
+    '  text-transform: uppercase; letter-spacing: .06em; color: #64748b;',
+    '  margin: 0 0 2px;',
     '}',
     /* Aggregate (summary) chips in the MDF/IDF group header — icon + count
        + label, auto-width pill. Sits between the title and the row count.

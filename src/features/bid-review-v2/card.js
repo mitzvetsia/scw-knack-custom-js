@@ -1652,7 +1652,12 @@
 
   function pkgTitleCell(pkg, sowId, idx) {
     var pair = escapeHtml((sowId || '') + '::' + (pkg.id || ''));
-    var label = 'Bid ' + ((idx || 0) + 1);
+    // WHOSE bid is this column? Sub company name (once FK.bidSub is
+    // configured) → bid friendly name (field_2636) → package identifier
+    // (BD-#). Only when none resolve does the generic "Bid N" survive —
+    // an anonymous "Bid 2" tells the reviewer nothing.
+    var who   = String(pkg.subName || pkg.bidName || pkg.name || '').trim();
+    var label = who || ('Bid ' + ((idx || 0) + 1));
     // Collapse handle (»), an expand handle («) shown only while collapsed,
     // and the title. Wired by column-collapse.js via the data-* attrs.
     var controls =
@@ -1660,13 +1665,19 @@
         'data-scw-br-v2-colcollapse="' + pair + '" title="Collapse this bid column" ' +
         'aria-label="Collapse bid column">&raquo;</button>' +
       '<button type="button" class="scw-bid-review-v2__pkg-expand" ' +
-        'data-scw-br-v2-colexpand="' + pair + '" title="Expand ' + label + '" ' +
+        'data-scw-br-v2-colexpand="' + pair + '" title="Expand ' + escapeHtml(label) + '" ' +
         'aria-label="Expand bid column">' +
         '<span class="scw-bid-review-v2__pkg-expand-icon">&laquo;</span>' +
-        '<span class="scw-bid-review-v2__pkg-expand-label">' + label + '</span>' +
+        '<span class="scw-bid-review-v2__pkg-expand-label">' + escapeHtml(label) + '</span>' +
       '</button>';
-    return pkgTh(pkg, 'scw-bid-review-v2__head-cell--title',
-      controls + '<div class="scw-bid-review-v2__head-title">Subcontractor Bid</div>');
+    // With an identity: small "Subcontractor Bid" eyebrow + the name as the
+    // big title. Without: the title stays "Subcontractor Bid" as before.
+    var titleHtml = who
+      ? '<div class="scw-bid-review-v2__head-eyebrow">Subcontractor Bid</div>' +
+        '<div class="scw-bid-review-v2__head-title" title="Subcontractor Bid — ' +
+          escapeHtml(who) + '">' + escapeHtml(who) + '</div>'
+      : '<div class="scw-bid-review-v2__head-title">Subcontractor Bid</div>';
+    return pkgTh(pkg, 'scw-bid-review-v2__head-cell--title', controls + titleHtml);
   }
 
   function pkgTotalsCell(pkg) {

@@ -748,7 +748,17 @@
       card.className = 'scw-bid-review-v2__bid-card';
       var lbl = document.createElement('div');
       lbl.className = 'scw-bid-review-v2__bid-card-label';
-      lbl.textContent = labels[i] || ('Bid ' + (i - 2));
+      // Prefer the column's title text (the sub/bid name pkgTitleCell
+      // renders) — the raw th.textContent concatenates the collapse
+      // chevrons + eyebrow + basis-toggle text into garbage like
+      // "»«Bid 2Subcontractor BidShow all bids".
+      var lblTxt = '';
+      var lblTh = table ? table.querySelectorAll('thead th')[i] : null;
+      if (lblTh && lblTh.querySelector) {
+        var tEl = lblTh.querySelector('.scw-bid-review-v2__head-title');
+        if (tEl) lblTxt = (tEl.textContent || '').replace(/\s+/g, ' ').trim();
+      }
+      lbl.textContent = lblTxt || labels[i] || ('Bid ' + (i - 2));
       card.appendChild(lbl);
       var body = document.createElement('div');
       body.className = 'scw-bid-review-v2__bid-card-body';

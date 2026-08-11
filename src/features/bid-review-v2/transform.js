@@ -630,6 +630,18 @@
         if (bidName) info.bidName = bidName;
       }
 
+      // Subcontractor identity (connection on the bid package). DORMANT
+      // until CONFIG.fieldKeys.bidSub names the field AND the column is
+      // exposed on view_3573 — then the comparison-grid column headers show
+      // the sub's company name instead of the bid label.
+      if (FK.bidSub) {
+        var subConns = connectionAll(rec, FK.bidSub);
+        var subNm = (subConns.length && subConns[0])
+          ? stripHtml(String(subConns[0].identifier || '')) : '';
+        if (!subNm) subNm = stripHtml(String(rec[FK.bidSub] || ''));
+        if (subNm) info.subName = subNm;
+      }
+
       // REL_SOW on the bid package (field_2387). Gates which SOW grids this bid
       // appears on: a bid tied to a sibling SOW must NOT show on other SOWs'
       // grids (v1 parity) — without this, a bid for SOW-A leaks onto SOW-B's
@@ -1435,6 +1447,7 @@
         var info = pkgInfo[packages[pi].id] || {};
         packages[pi].bidStatus   = info.bidStatus || '';
         packages[pi].bidName     = info.bidName || '';
+        packages[pi].subName     = info.subName || '';
         packages[pi].pdfUrl      = info.pdfUrl || '';
         packages[pi].pdfFilename = info.pdfFilename || '';
       }

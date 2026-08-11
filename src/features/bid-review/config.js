@@ -110,6 +110,11 @@
       bidSurvey:       'field_2386',   // REL_survey (connection on bid package, view_3573)
       bidStatus:       'field_2550',   // Bid status (text field on bid package, view_3573)
       bidName:         'field_2636',   // Bid friendly name (text field on bid package, view_3573)
+      bidSub:          '',             // REL_subcontractor on the bid package — TBD: expose
+                                       // the sub connection as a column on view_3573 and put
+                                       // its field key here; the comparison-grid column
+                                       // headers then show the sub's COMPANY NAME instead of
+                                       // the bid name/label (bid-review-v2 transform+card).
       bidSow:          'field_2387',   // REL_SOW (connection on bid package, view_3573).
                                        // Used to gate which bid columns appear in each
                                        // SOW grid: a bid only shows on a SOW grid when
