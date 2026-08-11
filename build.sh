@@ -234,6 +234,7 @@ cat \
   src/features/customer-account-link.js \
   src/features/customer-questionnaire-scene.js \
   src/features/client-questionnaire-list.js \
+  src/features/client-sites-list.js \
   src/features/send-coc-button.js \
   src/features/regenerate-closeout-docs.js \
   src/features/co-header-card.js \
