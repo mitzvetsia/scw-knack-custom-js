@@ -503,8 +503,13 @@
   /** Post-build pass: neutralize every editable control in a locked card
    *  except the whitelisted three. Read-only inputs (keep readable, white
    *  bg, no pointer/keyboard), non-interactive chips / connection pickers /
-   *  accessory buttons, and hide the per-row delete. */
-  function lockCardFields(card) {
+   *  accessory buttons, and hide the per-row delete.
+   *  opts.keepAccessoryAdd (the SALES survey-assoc lock) leaves the
+   *  mounting-hardware "+ Add" live — adding an accessory opens the same
+   *  add-accessories modal the ops build-SOW page uses; removing / qty
+   *  stepping existing accessories stays locked. The survey worksheet's
+   *  finalized-row lock passes no opts and keeps the full lock. */
+  function lockCardFields(card, opts) {
     var i, el, f;
     var inputs = card.querySelectorAll(
       'input[data-scw-ws-v2-field], textarea[data-scw-ws-v2-field]'
@@ -531,11 +536,11 @@
       setLockTooltip(el);
     }
     // Boolean chips (cabling), accessory add/remove/qty, and the per-row
-    // trash button.
-    var ctls = card.querySelectorAll(
-      '[data-scw-ws-v2-chip], .scw-ws-v2-mh-add, .scw-ws-v2-mh-del, ' +
-      '.scw-ws-v2-mh-unlink, .scw-ws-v2-mh-step, .scw-ws-v2-mh-chip'
-    );
+    // trash button. keepAccessoryAdd exempts the "+ Add" only.
+    var ctlSel = '[data-scw-ws-v2-chip], .scw-ws-v2-mh-del, ' +
+      '.scw-ws-v2-mh-unlink, .scw-ws-v2-mh-step, .scw-ws-v2-mh-chip';
+    if (!(opts && opts.keepAccessoryAdd)) ctlSel += ', .scw-ws-v2-mh-add';
+    var ctls = card.querySelectorAll(ctlSel);
     for (i = 0; i < ctls.length; i++) {
       ctls[i].style.pointerEvents = 'none';
       ctls[i].classList.add('scw-ws-v2-locked-ctl');
@@ -559,7 +564,8 @@
 
   // Shared copy + glyph for the lock messaging.
   var LOCKED_MSG = 'This item is locked because it has already been ' +
-    'submitted for survey. Product, Custom Disc % and SCW Notes remain editable.';
+    'submitted for survey. Product, Custom Disc %, SCW Notes and adding ' +
+    'mounting hardware remain editable.';
   var LOCK_HOVER_MSG = 'Fields are locked because this item has been part of a survey.';
   // Reason-aware copy — set per card right before the lock pass runs (sales
   // survey-assoc vs survey finalized). setLockTooltip + addLockedNote read it.
@@ -2485,7 +2491,10 @@
         ? { msg: LOCKED_MSG, hover: LOCK_HOVER_MSG }
         : { msg: 'This item is locked because it has been finalized.',
             hover: 'Locked — this item is finalized.' };
-      lockCardFields(card);
+      // Sales survey-assoc lock keeps the mounting-hardware "+ Add" live
+      // (same add-accessories modal as the ops build-SOW page); the survey
+      // finalized lock stays a full lock.
+      lockCardFields(card, { keepAccessoryAdd: isSalesMoney(sourceViewKey) });
       addLockedNote(card);
     }
     // Leading bulk-select checkbox — absolutely positioned INSIDE the
