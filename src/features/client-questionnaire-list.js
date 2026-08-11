@@ -1,14 +1,20 @@
-/*** FEATURE: client System Setup Questionnaire list (view_4145) *************
+/*** FEATURE: client System Setup Questionnaire list (view_4145/4146) ********
  *
- * Client-facing replacement for the raw questionnaire grid on the
- * client-login scene. Each row renders as a card — site name, installation
- * project, address — with ONE prominent "Complete Your Questionnaire" CTA.
+ * Client-facing replacement for the raw questionnaire grids on the client
+ * portal. Each row renders as a card — site name, installation project,
+ * address — with ONE prominent "Complete Your Questionnaire" CTA.
+ *
+ * Deployments (same columns on both):
+ *   view_4145 — the client-login landing list
+ *   view_4146 — the same list embedded on the site-details2 child page
+ *               (its native link hrefs are nested under site-details2/…;
+ *               the slug-substring match below picks them up unchanged)
  *
  * The CTA target is DYNAMIC per row:
  *   • SOW_published proposal (field_2936) populated →
- *       #client-login/install-system-setup-questionnairre-details/<id>/
+ *       …install-system-setup-questionnairre-details/<id>/
  *   • else Quote (field_1768) populated →
- *       #client-login/edit-system-setup-questionnaire/<id>/
+ *       …edit-system-setup-questionnaire/<id>/
  *   • neither → no button (nothing sensible to open).
  *
  * The native table stays in the DOM as the data source (hidden via a class
@@ -17,13 +23,17 @@
  * link columns when present — Knack owns those slugs — with the literal
  * paths above as fallback. The view description (which leaks the "_oln="
  * keyword text to clients) is hidden whenever the cards are live.
+ *
+ * SPA-navigation safety nets: the portal's Vue-rendered pages can miss the
+ * legacy knack-*-render events or wipe injected DOM on in-app navigation
+ * (raw grid until refresh without this) — a hashchange retry sweep plus a
+ * debounced body observer re-run the transform whenever a target view has
+ * rows but no cards.
  ****************************************************************************/
 (function () {
   'use strict';
 
-  // view_4145 — a duplicate of the original view_4142 grid (same columns);
-  // the card treatment targets the dupe, leaving view_4142 untouched.
-  var VIEW     = 'view_4145';
+  var VIEWS    = ['view_4145', 'view_4146'];
   var STYLE_ID = 'scw-cq-css';
   var WRAP_CLS = 'scw-cq-cards';
   var ON_CLS   = 'scw-cq-on';
@@ -39,7 +49,8 @@
   // Fallback hash paths (used only when the native link cells are absent).
   var LINK_PROPOSAL = '#client-login/install-system-setup-questionnairre-details/{id}/';
   var LINK_QUOTE    = '#client-login/edit-system-setup-questionnaire/{id}/';
-  // Substrings that identify which native link column is which.
+  // Substrings that identify which native link column is which (matches the
+  // nested site-details2/… variants on view_4146 too).
   var SLUG_PROPOSAL = 'install-system-setup-questionnairre-details';
   var SLUG_QUOTE    = 'edit-system-setup-questionnaire';
 
@@ -57,41 +68,46 @@
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
+    var css = '';
+    for (var i = 0; i < VIEWS.length; i++) {
+      var V = '#' + VIEWS[i];
+      css +=
+        // Cards live; native grid + keyword-leaking description hidden.
+        V + '.' + ON_CLS + ' .kn-table-wrapper,' +
+        V + '.' + ON_CLS + ' .kn-records-nav,' +
+        V + '.' + ON_CLS + ' .kn-description{display:none !important;}' +
+        V + ' .' + WRAP_CLS + '{display:grid;gap:14px;max-width:760px;' +
+          'margin:6px 0 10px;font-family:system-ui,-apple-system,sans-serif;}' +
+        V + ' .scw-cq-card{position:relative;background:#fff;' +
+          'border:1px solid #dbe4ee;border-left:4px solid #0f4c75;border-radius:12px;' +
+          'box-shadow:0 2px 10px rgba(15,23,42,.06);padding:18px 20px;}' +
+        V + ' .scw-cq-badge{position:absolute;top:14px;right:16px;' +
+          'font:700 10.5px/1.2 system-ui,sans-serif;letter-spacing:.05em;' +
+          'text-transform:uppercase;color:#b45309;background:#fffbeb;' +
+          'border:1px solid #fde68a;border-radius:999px;padding:4px 10px;}' +
+        V + ' .scw-cq-site{display:flex;align-items:center;gap:9px;' +
+          'font:700 17px/1.3 system-ui,sans-serif;color:#0f172a;margin:0 90px 4px 0;}' +
+        V + ' .scw-cq-site svg{color:#0f4c75;flex:none;}' +
+        V + ' .scw-cq-project{font:600 13px/1.4 system-ui,sans-serif;' +
+          'color:#475569;margin:0 0 10px;}' +
+        V + ' .scw-cq-addr{display:flex;gap:7px;align-items:flex-start;' +
+          'font:400 13px/1.55 system-ui,sans-serif;color:#64748b;margin:0 0 16px;}' +
+        V + ' .scw-cq-addr svg{flex:none;margin-top:3px;color:#94a3b8;}' +
+        V + ' .scw-cq-cta{display:inline-flex;align-items:center;gap:9px;' +
+          'padding:12px 22px;font:600 14px/1 system-ui,sans-serif;color:#fff !important;' +
+          'background:#0f4c75;border:1px solid #0a3a63;border-radius:8px;' +
+          'text-decoration:none !important;transition:background .12s;cursor:pointer;}' +
+        V + ' .scw-cq-cta:hover{background:#0a3a63;color:#fff;}' +
+        V + ' .scw-cq-cta-arrow{font-size:15px;line-height:1;}' +
+        '@media (max-width:640px){' +
+          V + ' .scw-cq-card{padding:16px;}' +
+          V + ' .scw-cq-cta{display:flex;justify-content:center;width:100%;}' +
+          V + ' .scw-cq-badge{position:static;display:inline-block;margin:0 0 8px;}' +
+        '}';
+    }
     var s = document.createElement('style');
     s.id = STYLE_ID;
-    s.textContent =
-      // Cards live; native grid + keyword-leaking description hidden.
-      '#' + VIEW + '.' + ON_CLS + ' .kn-table-wrapper,' +
-      '#' + VIEW + '.' + ON_CLS + ' .kn-records-nav,' +
-      '#' + VIEW + '.' + ON_CLS + ' .kn-description{display:none !important;}' +
-      '#' + VIEW + ' .' + WRAP_CLS + '{display:grid;gap:14px;max-width:760px;' +
-        'margin:6px 0 10px;font-family:system-ui,-apple-system,sans-serif;}' +
-      '#' + VIEW + ' .scw-cq-card{position:relative;background:#fff;' +
-        'border:1px solid #dbe4ee;border-left:4px solid #0f4c75;border-radius:12px;' +
-        'box-shadow:0 2px 10px rgba(15,23,42,.06);padding:18px 20px;}' +
-      '#' + VIEW + ' .scw-cq-badge{position:absolute;top:14px;right:16px;' +
-        'font:700 10.5px/1.2 system-ui,sans-serif;letter-spacing:.05em;' +
-        'text-transform:uppercase;color:#b45309;background:#fffbeb;' +
-        'border:1px solid #fde68a;border-radius:999px;padding:4px 10px;}' +
-      '#' + VIEW + ' .scw-cq-site{display:flex;align-items:center;gap:9px;' +
-        'font:700 17px/1.3 system-ui,sans-serif;color:#0f172a;margin:0 90px 4px 0;}' +
-      '#' + VIEW + ' .scw-cq-site svg{color:#0f4c75;flex:none;}' +
-      '#' + VIEW + ' .scw-cq-project{font:600 13px/1.4 system-ui,sans-serif;' +
-        'color:#475569;margin:0 0 10px;}' +
-      '#' + VIEW + ' .scw-cq-addr{display:flex;gap:7px;align-items:flex-start;' +
-        'font:400 13px/1.55 system-ui,sans-serif;color:#64748b;margin:0 0 16px;}' +
-      '#' + VIEW + ' .scw-cq-addr svg{flex:none;margin-top:3px;color:#94a3b8;}' +
-      '#' + VIEW + ' .scw-cq-cta{display:inline-flex;align-items:center;gap:9px;' +
-        'padding:12px 22px;font:600 14px/1 system-ui,sans-serif;color:#fff !important;' +
-        'background:#0f4c75;border:1px solid #0a3a63;border-radius:8px;' +
-        'text-decoration:none !important;transition:background .12s;cursor:pointer;}' +
-      '#' + VIEW + ' .scw-cq-cta:hover{background:#0a3a63;color:#fff;}' +
-      '#' + VIEW + ' .scw-cq-cta-arrow{font-size:15px;line-height:1;}' +
-      '@media (max-width:640px){' +
-        '#' + VIEW + ' .scw-cq-card{padding:16px;}' +
-        '#' + VIEW + ' .scw-cq-cta{display:flex;justify-content:center;width:100%;}' +
-        '#' + VIEW + ' .scw-cq-badge{position:static;display:inline-block;margin:0 0 8px;}' +
-      '}';
+    s.textContent = css;
     document.head.appendChild(s);
   }
 
@@ -138,8 +154,8 @@
     return fallbackTpl.replace('{id}', id);
   }
 
-  function transform() {
-    var view = document.getElementById(VIEW);
+  function transform(viewKey) {
+    var view = document.getElementById(viewKey);
     if (!view) return;
     injectStyles();
 
@@ -199,28 +215,33 @@
     view.classList.add(ON_CLS);
   }
 
-  if (window.SCW && typeof SCW.onViewRender === 'function') {
-    SCW.onViewRender(VIEW, function () { setTimeout(transform, 30); }, EVENT_NS);
+  function transformAll() {
+    for (var i = 0; i < VIEWS.length; i++) transform(VIEWS[i]);
   }
+
+  VIEWS.forEach(function (viewKey) {
+    if (window.SCW && typeof SCW.onViewRender === 'function') {
+      SCW.onViewRender(viewKey, function () {
+        setTimeout(function () { transform(viewKey); }, 30);
+      }, EVENT_NS);
+    }
+  });
   $(document).off('knack-scene-render.any' + EVENT_NS)
-    .on('knack-scene-render.any' + EVENT_NS, function () { setTimeout(transform, 120); });
+    .on('knack-scene-render.any' + EVENT_NS, function () { setTimeout(transformAll, 120); });
 
   // ── SPA-navigation resilience ─────────────────────────────────────────
-  // The client portal renders through Knack's newer Vue pipeline
-  // (data-vue-component markers). Observed live: in-app navigations can
-  // leave the raw grid on screen until a hard refresh — either the legacy
-  // knack-*-render event is missed, or Vue re-patches the view AFTER our
-  // transform ran and wipes the injected cards. Two safety nets, both
-  // no-ops when the cards are already live (needsRun() false — our own
-  // insert can't loop the observer):
-  //   1. hashchange → a short retry sweep while the new scene settles.
-  //   2. a debounced body observer → catches renders that fired no event
-  //      (or wiped us after one).
-  function needsRun() {
-    var view = document.getElementById(VIEW);
+  // (See header note.) Both nets are no-ops when the cards are already
+  // live — needsRun() false, so our own insert can't loop the observer.
+  function needsRun(viewKey) {
+    var view = document.getElementById(viewKey);
     if (!view) return false;
     if (view.querySelector('.' + WRAP_CLS)) return false;
     return !!view.querySelector('tbody tr[id]');
+  }
+  function runNeeded() {
+    for (var i = 0; i < VIEWS.length; i++) {
+      if (needsRun(VIEWS[i])) transform(VIEWS[i]);
+    }
   }
   var _sweepTimers = [];
   function sweep() {
@@ -228,9 +249,7 @@
     _sweepTimers = [];
     var delays = [200, 600, 1500, 3000];
     for (var d = 0; d < delays.length; d++) {
-      _sweepTimers.push(setTimeout(function () {
-        if (needsRun()) transform();
-      }, delays[d]));
+      _sweepTimers.push(setTimeout(runNeeded, delays[d]));
     }
   }
   window.addEventListener('hashchange', sweep);
@@ -241,7 +260,7 @@
       if (_obsT) return;
       _obsT = setTimeout(function () {
         _obsT = 0;
-        if (needsRun()) transform();
+        runNeeded();
       }, 180);
     }).observe(document.body, { childList: true, subtree: true });
   } catch (eObs) { /* no MutationObserver — the sweeps still cover it */ }
