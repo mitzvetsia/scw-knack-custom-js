@@ -1,4 +1,4 @@
-/*** FEATURE: client System Setup Questionnaire list (view_4142) *************
+/*** FEATURE: client System Setup Questionnaire list (view_4145) *************
  *
  * Client-facing replacement for the raw questionnaire grid on the
  * client-login scene. Each row renders as a card — site name, installation
@@ -21,7 +21,9 @@
 (function () {
   'use strict';
 
-  var VIEW     = 'view_4142';
+  // view_4145 — a duplicate of the original view_4142 grid (same columns);
+  // the card treatment targets the dupe, leaving view_4142 untouched.
+  var VIEW     = 'view_4145';
   var STYLE_ID = 'scw-cq-css';
   var WRAP_CLS = 'scw-cq-cards';
   var ON_CLS   = 'scw-cq-on';
