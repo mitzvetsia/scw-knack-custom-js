@@ -2446,8 +2446,30 @@
         _mdfViews.push('view_3577', 'view_3822');
         var mdfRecords = firstViewRecords(_mdfViews);
         if (!mdfRecords || !mdfRecords.length) {
+          // Not a code failure — the project has no MDF/IDF location records
+          // yet (or the locations grid is missing from the scene / still
+          // loading). The old silent return here read as "clicking does
+          // nothing" on freshly-deployed projects quoted without locations —
+          // surface the state, and when the toolbar carries the
+          // "+ Add MDF/IDF" CTA route straight into creating the first one
+          // (its click handler runs the full menu-view → link-scan chain).
           console.warn('[scw-ws-v2] MDF locations grid (' + _mdfViews.join('/') +
-            ') empty/missing — MDF picker can\'t open');
+            ') empty/missing — no locations to pick');
+          var _mdfMount = document.getElementById('scw-ws-v2-' + viewKey);
+          var _mdfAddBtn = _mdfMount && _mdfMount.querySelector(
+            '.scw-ws-v2-toolbar-btn--cta[data-scw-ws-v2-action="add-mdf"]');
+          if (_mdfAddBtn) {
+            if (window.confirm('This project has no MDF/IDF locations yet.\n\n' +
+                'Create the first one now?')) {
+              _mdfAddBtn.click();
+            }
+          } else {
+            alert('This project has no MDF/IDF locations yet, and this page ' +
+              'has no "Add MDF/IDF" action to create one.\n\n' +
+              'Add an "Add MDF/IDF" menu link to this scene in Knack Builder — ' +
+              'the worksheet toolbar picks it up automatically and this ' +
+              'picker will then offer to create the first location.');
+          }
           return;
         }
         var mdfCandidates = [];
