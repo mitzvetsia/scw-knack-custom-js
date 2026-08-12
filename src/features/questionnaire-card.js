@@ -22,16 +22,16 @@
  * The grid stays rendered (Backbone model + questionnaire-deployment-audit
  * keep working) — it's just display:none'd, like view_3914's.
  *
- * One entry per deployment page; the sub scene has no CORE_company details
- * view yet, so its access list renders names without edit/add affordances
- * until a details view is added there (set detailView when it exists).
+ * One entry per deployment page. The sub entry deliberately carries NO
+ * details view: subs don't manage customer accounts (decided 2026-08-12),
+ * so its access list renders plain names — no edit links, no add button.
  ****************************************************************************/
 (function () {
   'use strict';
 
   var DEPLOYMENTS = [
     { view: 'view_4015', detailView: 'view_4040' },  // ops deploy (scene_1311)
-    { view: 'view_4053', detailView: '' }            // sub dashboard (scene_1353)
+    { view: 'view_4053', detailView: '' }            // sub dashboard — names only
   ];
   var STYLE_ID    = 'scw-qst-card-css';
   var EVENT_NS    = '.scwQstCard';

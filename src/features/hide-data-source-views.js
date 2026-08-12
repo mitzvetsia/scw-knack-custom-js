@@ -125,6 +125,12 @@
     // Order page (scene_1374). co-sub-lock.js reads CO Status from its
     // model to decide the page-wide edit window.
     'view_4122',
+    // 'view_4066' — ACCEPTANCE grid on the sub deployment dashboard
+    // (scene_1353). Hidden from subs entirely (decided 2026-08-12) —
+    // agreements/invoices are an ops surface. Kept rendered because
+    // regenerate-closeout-docs.js reads its first row for the
+    // AcceptanceID webhook payload.
+    'view_4066',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the

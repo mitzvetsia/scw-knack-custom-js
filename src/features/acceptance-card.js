@@ -20,15 +20,14 @@
  *
  * COLUMN GUARD: the card only takes over a view whose table actually has
  * the proposal column (th.field_2755) — otherwise the native table stays
- * visible untouched. The sub-dashboard ACCEPTANCE grid (view_4066) ships
- * with only project + matching-bid columns today; add field_2755/2765/
- * 2766/2940/1847/2767 to it in Builder and the card lights up there with
- * zero code change.
+ * visible untouched. The sub-dashboard ACCEPTANCE grid (view_4066) is
+ * deliberately NOT listed: acceptances are an ops surface, and the sub's
+ * grid is hidden outright (hide-data-source-views.js; decided 2026-08-12).
  ****************************************************************************/
 (function () {
   'use strict';
 
-  var VIEWS    = ['view_3914', 'view_4066'];  // ops deploy / sub dashboard
+  var VIEWS    = ['view_3914'];  // ops deploy scene only
   var STYLE_ID = 'scw-acpt-css';
   var EVENT_NS = '.scwAcceptanceCard';
   var F = {

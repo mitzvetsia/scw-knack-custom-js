@@ -22,12 +22,11 @@
   'use strict';
 
   // One entry per deployment page. detail = the CORE_company details view
-  // the edit/add hrefs are harvested from (hidden in place); '' = none on
-  // that scene yet, so names stay plain but the new-tab magnifier still
-  // works. Set it when a details view is added to the sub scene.
+  // the edit/add hrefs are harvested from (hidden in place). The sub
+  // dashboard questionnaire grid (view_4053) is deliberately NOT listed —
+  // subs don't manage customer accounts (decided 2026-08-12).
   var PAIRS = [
-    { grid: 'view_4015', detail: 'view_4040' },  // ops deploy (scene_1311)
-    { grid: 'view_4053', detail: '' }            // sub dashboard (scene_1353)
+    { grid: 'view_4015', detail: 'view_4040' }   // ops deploy (scene_1311)
   ];
   var CONN_FIELD  = 'field_1778';  // "Who has Access" connection column
   var NS          = '.scwCustAcct';

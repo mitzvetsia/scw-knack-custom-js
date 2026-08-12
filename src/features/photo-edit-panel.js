@@ -31,7 +31,11 @@
 
   var SAVE_VIEWS = {
     view_4093: 'view_3937',   // deploy / implementation (scene_1311)
-    view_4056: 'view_3937',   // "WHAT WE'RE INSTALLING" (same scene)
+    // view_4056 (sub deployment dashboard) deliberately UNMAPPED — subs
+    // don't do photo QA / classify (decided 2026-08-12), and view_3937
+    // lives on scene_1311, so a PUT through it 404s from the sub scene
+    // anyway (knackRecordUrl uses the CURRENT scene key). photos.js also
+    // blocks the QA modal on that surface (QA_MODAL_DISABLED_VIEWS).
     view_3962: 'view_3584',   // build-SOW scene DOC_photos grid
     view_3505: 'view_4070'    // survey scene DOC_photos grid
   };

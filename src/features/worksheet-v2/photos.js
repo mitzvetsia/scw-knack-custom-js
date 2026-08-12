@@ -355,7 +355,10 @@
   // item's id rather than blanking the whole field), leaving the photo
   // record and its image untouched. Enabled only where photo-edit-panel.js
   // already has a same-scene save view wired up (SAVE_VIEWS).
-  var PHOTO_DISCONNECT_VIEWS = { view_4093: 1, view_4056: 1 };
+  // view_4056 (sub dashboard) deliberately EXCLUDED — subs don't manage
+  // photo records (decided 2026-08-12), and their scene has no DOC_photos
+  // save view anyway.
+  var PHOTO_DISCONNECT_VIEWS = { view_4093: 1 };
   var FK_LINE_ITEM_CONN = 'field_2849';   // DOC_photos → connected Install Line Item(s)
   var FK_PROJECT_CONN   = 'field_675';    // DOC_photos → Project
 
@@ -474,7 +477,16 @@
   // model qa-popover.js uses (computeChitState). Only rendered when the
   // source view exposed QA columns (p.qaPresent) — i.e. the install
   // worksheet (view_4093). Other surfaces render no chit.
-  var QA_CHIT_VIEWS = { view_4093: 1, view_4056: 1 };
+  // view_4056 (sub dashboard) deliberately EXCLUDED — photo QA is an ops
+  // surface; subs see plain photo strips (thumbnails → lightbox, "+ Add" →
+  // the Knack add-photo page). Decided 2026-08-12.
+  var QA_CHIT_VIEWS = { view_4093: 1 };
+
+  // Surfaces where the photo QA / classify modal must NEVER open — even
+  // from the attr-independent empty-card click path. openPhotoQaModal
+  // returns false for these, so callers fall through to native behavior
+  // (empty card → Knack add-photo navigation; filled card → lightbox).
+  var QA_MODAL_DISABLED_VIEWS = { view_4056: 1 };
 
   function qaChitState(p) {
     if (!p.completed) return 'missing';
@@ -1115,6 +1127,11 @@
                (el.closest('.scw-ws-v2-card') &&
                 el.closest('.scw-ws-v2-card').querySelector('[data-scw-ws-v2-view]'));
     if (host) viewKey = host.getAttribute('data-scw-ws-v2-view') || '';
+
+    // Sub-dashboard (and any other opted-out surface): no QA / classify
+    // modal at all — returning false lets the caller fall through to the
+    // native path (add-photo navigation / lightbox).
+    if (viewKey && QA_MODAL_DISABLED_VIEWS[viewKey]) return false;
 
     var resolvedImg = imgUrl || el.getAttribute('data-qa-img') || '';
     var snapshot = {
