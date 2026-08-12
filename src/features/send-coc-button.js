@@ -27,10 +27,14 @@
 (function () {
   'use strict';
 
-  // Deployments — mirror closeout-deliverables.js. Internal deploy scene
-  // only for now; add the sub view here if subs ever send CoCs.
+  // Deployments — mirror closeout-deliverables.js. ⚠️ The sub slug assumes
+  // a send-CoC child page exists under the sub dashboard closeout view —
+  // if Builder hasn't created it there yet, the button navigates to a
+  // not-found hash; create the child page (same form as the ops one) and
+  // correct the slug here if Knack generates a numbered variant.
   var DEPLOYMENTS = [
-    { view: 'view_3940', slug: 'edit-install-closeout-send-coc' }
+    { view: 'view_3940', slug: 'edit-install-closeout-send-coc' },   // ops deploy
+    { view: 'view_4058', slug: 'edit-install-closeout-send-coc' }    // sub dashboard
   ];
 
   var F = {

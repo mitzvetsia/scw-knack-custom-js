@@ -1,6 +1,6 @@
-/*** FEATURE: Other Files gallery (view_3942) ******************************
+/*** FEATURE: Other Files gallery (view_3942 / view_4063) ******************
  *
- * Replaces the raw "Other Files" DOC_file table on the deploy scene with a
+ * Replaces the raw "Other Files" DOC_file table on the deploy scenes with a
  * thumbnail gallery: image files render their Knack thumb/S3 preview,
  * everything else gets an extension tile. Clicking a tile proxies the row's
  * native kn-view-asset anchor (Knack's viewer/download still handles it);
@@ -25,30 +25,47 @@
 (function () {
   'use strict';
 
-  var VIEW        = 'view_3942';
+  // One entry per deployment page (mirror closeout-deliverables.js). Only
+  // one scene renders at a time — activeCfg() resolves the live one and
+  // stores it in C for the helpers.
+  //   view         — the visible "Other Files" DOC_file grid
+  //   saveView     — hidden DOC inline-edit grid (same save view
+  //                  closeout-deliverables.js PUTs through). Required/notes/
+  //                  closeout reads come from its model, writes PUT through
+  //                  it. Each control feature-detects its column on the save
+  //                  view first (the gallery view as fallback exposure), so
+  //                  the gallery degrades gracefully until Builder exposes a
+  //                  field.
+  //   closeoutView — the scene's closeout grid; its first row is the page's
+  //                  closeout record. Flipping a file to Required stamps
+  //                  this onto the DOC so it joins the closeout deliverables.
+  var DEPLOYMENTS = [
+    { view: 'view_3942', saveView: 'view_3941', closeoutView: 'view_3940' },  // ops deploy
+    { view: 'view_4063', saveView: 'view_4068', closeoutView: 'view_4058' }   // sub dashboard
+  ];
+  var C = DEPLOYMENTS[0];   // active deployment (resolved per render)
+  function activeCfg() {
+    for (var i = 0; i < DEPLOYMENTS.length; i++) {
+      if (document.getElementById(DEPLOYMENTS[i].view)) return DEPLOYMENTS[i];
+    }
+    return null;
+  }
+
   var FILE_FIELD  = 'field_68';
   var TYPE_FIELD  = 'field_2877';
-  // Required/notes/closeout live on the hidden DOC inline-edit grid
-  // (view_3941 — the same save view closeout-deliverables.js PUTs
-  // through), NOT on view_3942. Reads come from its model, writes PUT
-  // through it. Each control feature-detects its column on the save view
-  // first (view_3942 as fallback exposure), so the gallery degrades
-  // gracefully until Builder exposes a field.
-  var SAVE_VIEW      = 'view_3941';
   var REQUIRED_FIELD = 'field_2894';  // FLAG_required (Yes/No)
   var NOTES_FIELD    = 'field_588';   // INPUT_notes
   var CLOSEOUT_FIELD = 'field_2885';  // REL_install closeout (connection)
-  // The page's closeout record — read from the closeout grid on the same
-  // scene (first row). Flipping a file to Required stamps this onto the
-  // DOC so it joins the closeout deliverables.
-  var CLOSEOUT_VIEW  = 'view_3940';
   // Builder TODO: hidden all-records grid of CONFIG_file type on the deploy
   // scene. When added, set the view key + the label (name) field key and the
   // picker gets the FULL catalog instead of the in-use union.
   var TYPE_SOURCE_VIEW  = '';
   var TYPE_LABEL_FIELD  = '';
-  // Extra views whose models are scanned for in-use types (fallback source).
-  var TYPE_UNION_VIEWS  = [VIEW, 'view_3940', 'view_3941'];
+  // Views whose models are scanned for in-use types (fallback source) —
+  // the active deployment's gallery + closeout + save views.
+  function typeUnionViews() {
+    return [C.view, C.closeoutView, C.saveView];
+  }
 
   var STYLE_ID = 'scw-ofg-css';
   var EVENT_NS = '.scwOtherFilesGallery';
@@ -62,9 +79,13 @@
 
   function injectCss() {
     if (document.getElementById(STYLE_ID)) return;
+    var hideSel = [];
+    for (var hv = 0; hv < DEPLOYMENTS.length; hv++) {
+      hideSel.push('#' + DEPLOYMENTS[hv].view + ' .kn-table-wrapper',
+                   '#' + DEPLOYMENTS[hv].view + ' .kn-records-nav');
+    }
     var css = [
-      '#' + VIEW + ' .kn-table-wrapper,',
-      '#' + VIEW + ' .kn-records-nav { display: none !important; }',
+      hideSel.join(',\n') + ' { display: none !important; }',
       '.scw-ofg-grid { display: grid; gap: 12px; margin-top: 8px;',
       '  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }',
       '.scw-ofg-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;',
@@ -167,8 +188,9 @@
     }
     if (!out.length) {
       // Fallback: union of types already in use across the scene's models.
-      for (var vi = 0; vi < TYPE_UNION_VIEWS.length; vi++) {
-        var recs = modelAttrsById(TYPE_UNION_VIEWS[vi]);
+      var unionViews = typeUnionViews();
+      for (var vi = 0; vi < unionViews.length; vi++) {
+        var recs = modelAttrsById(unionViews[vi]);
         for (var rid in recs) {
           var raw = recs[rid][TYPE_FIELD + '_raw'];
           if (Array.isArray(raw)) {
@@ -199,17 +221,17 @@
   /** The page's closeout record id — first row of the closeout grid on
    *  this scene (one closeout per project). */
   function closeoutRecordId() {
-    var row = document.querySelector('#' + CLOSEOUT_VIEW + ' tbody tr[id]');
+    var row = document.querySelector('#' + C.closeoutView + ' tbody tr[id]');
     return row ? row.id : '';
   }
 
   /** Which view exposes a field as a column — the save view preferred
-   *  (hidden views keep their DOM), view_3942 as fallback. A view-based
-   *  PUT only accepts fields the view exposes, so the answer is both
-   *  "can we show this control" and "where do we write it". */
+   *  (hidden views keep their DOM), the gallery view as fallback. A
+   *  view-based PUT only accepts fields the view exposes, so the answer is
+   *  both "can we show this control" and "where do we write it". */
   function columnView(fk) {
-    if (document.querySelector('#' + SAVE_VIEW + ' thead th.' + fk)) return SAVE_VIEW;
-    if (document.querySelector('#' + VIEW + ' thead th.' + fk)) return VIEW;
+    if (document.querySelector('#' + C.saveView + ' thead th.' + fk)) return C.saveView;
+    if (document.querySelector('#' + C.view + ' thead th.' + fk)) return C.view;
     return '';
   }
 
@@ -224,24 +246,24 @@
     // required/notes), then the gallery view — its render event rebuilds
     // the cards against the fresh save-view model.
     try {
-      var sv = window.Knack && Knack.views && Knack.views[SAVE_VIEW];
+      var sv = window.Knack && Knack.views && Knack.views[C.saveView];
       if (sv && sv.model && typeof sv.model.fetch === 'function') sv.model.fetch();
     } catch (e) { /* best-effort */ }
     setTimeout(function () {
       try {
-        var v = window.Knack && Knack.views && Knack.views[VIEW];
+        var v = window.Knack && Knack.views && Knack.views[C.view];
         if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
       } catch (e) { /* best-effort */ }
     }, 350);
-    // The closeout grid (view_3940) renders the deliverables strip from
-    // its OWN connection columns — a required flip that (un)links the DOC
-    // to the closeout (field_2885) doesn't show up there until ITS model
+    // The closeout grid renders the deliverables strip from its OWN
+    // connection columns — a required flip that (un)links the DOC to the
+    // closeout (field_2885) doesn't show up there until ITS model
     // refetches (its fetch re-fires knack-view-render, which rebuilds the
     // strip). Fetch twice, staggered, so a lagging reverse-connection
     // update still lands without the user refreshing the page.
     function fetchCloseout() {
       try {
-        var cv = window.Knack && Knack.views && Knack.views[CLOSEOUT_VIEW];
+        var cv = window.Knack && Knack.views && Knack.views[C.closeoutView];
         if (cv && cv.model && typeof cv.model.fetch === 'function') cv.model.fetch();
       } catch (e) { /* best-effort */ }
     }
@@ -295,7 +317,7 @@
       pop.innerHTML = '<div class="scw-ofg-pop__status">Saving…</div>';
       var fields = {};
       fields[TYPE_FIELD] = id ? [id] : [];   // [] clears the connection
-      putDoc(columnView(TYPE_FIELD) || VIEW, recId, fields, function (ok) {
+      putDoc(columnView(TYPE_FIELD) || C.view, recId, fields, function (ok) {
         closePopover();
         if (ok) refetch();
         else alert('Could not save the file type — try again.');
@@ -337,7 +359,7 @@
       var fields = {};
       fields[NOTES_FIELD] = ta.value.trim();
       pop.innerHTML = '<div class="scw-ofg-pop__status">Saving…</div>';
-      putDoc(columnView(NOTES_FIELD) || SAVE_VIEW, recId, fields, function (ok) {
+      putDoc(columnView(NOTES_FIELD) || C.saveView, recId, fields, function (ok) {
         closePopover();
         if (ok) refetch();
         else alert('Could not save the notes — try again.');
@@ -367,11 +389,11 @@
     var typeLabel = (Array.isArray(typeRaw) && typeRaw.length && typeRaw[0]) ?
       String(typeRaw[0].identifier || '').trim() : '';
 
-    // Required/notes live on the SAVE VIEW's model (view_3941 — the DOC
-    // inline-edit grid); fall back to a view_3942 cell if the field is
-    // exposed there instead.
+    // Required/notes live on the SAVE VIEW's model (the DOC inline-edit
+    // grid); fall back to a gallery-view cell if the field is exposed
+    // there instead.
     function readDocField(fk) {
-      var sv = modelAttrsById(SAVE_VIEW)[recId];
+      var sv = modelAttrsById(C.saveView)[recId];
       if (sv && sv[fk] !== undefined) return stripHtml(sv[fk]);
       var td = row.querySelector('td.' + fk);
       return td ? td.textContent.replace(/\s+/g, ' ').trim() : '';
@@ -431,8 +453,8 @@
     var reqBtn = card.querySelector('.scw-ofg-req');
     if (reqBtn) reqBtn.addEventListener('click', function () {
       var next = !isRequired;
-      var reqView = columnView(REQUIRED_FIELD) || SAVE_VIEW;
-      var cloView = caps.closeout ? (columnView(CLOSEOUT_FIELD) || SAVE_VIEW) : '';
+      var reqView = columnView(REQUIRED_FIELD) || C.saveView;
+      var cloView = caps.closeout ? (columnView(CLOSEOUT_FIELD) || C.saveView) : '';
       var fields = {};
       fields[REQUIRED_FIELD] = next ? 'Yes' : 'No';
       // Required ⇄ closeout membership travel together: flipping ON stamps
@@ -475,7 +497,10 @@
   }
 
   function render() {
-    var viewEl = document.getElementById(VIEW);
+    var cfg = activeCfg();
+    if (!cfg) return;
+    C = cfg;
+    var viewEl = document.getElementById(C.view);
     if (!viewEl) return;
     injectCss();
 
@@ -486,7 +511,7 @@
     var rows = viewEl.querySelectorAll('tbody tr[id]');
     if (!rows.length) return;
 
-    var attrsById = modelAttrsById(VIEW);
+    var attrsById = modelAttrsById(C.view);
     var caps = {
       required: !!columnView(REQUIRED_FIELD),
       notes:    !!columnView(NOTES_FIELD),
@@ -501,7 +526,12 @@
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
-    SCW.onViewRender(VIEW, function () { setTimeout(render, 30); }, EVENT_NS);
+    DEPLOYMENTS.forEach(function (dep) {
+      SCW.onViewRender(dep.view, function () { setTimeout(render, 30); }, EVENT_NS);
+      // The save view's model is the required/notes read source — rebuild
+      // the cards when it refetches too.
+      SCW.onViewRender(dep.saveView, function () { setTimeout(render, 30); }, EVENT_NS);
+    });
   }
   $(document).off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () { setTimeout(render, 150); });

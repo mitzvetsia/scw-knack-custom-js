@@ -1,25 +1,35 @@
 /*** FEATURE: Deployment-side questionnaire audit trail *********************
  *
  * When the System Setup Questionnaire is in "Pending Project Manager Signoff"
- * (field_1772), any inline edit a PM makes on the DEPLOYMENT-side questionnaire
- * grid (view_4015) to a field that also lives on the questionnaire is appended
- * to the audit trail (field_2937) — same tamper-audit purpose as the customer
- * scene, but for changes made after the customer has signed off.
+ * (field_1772), any inline edit a PM makes on a DEPLOYMENT-side questionnaire
+ * grid (view_4015 ops / view_4053 sub) to a field that also lives on the
+ * questionnaire is appended to the audit trail (field_2937) — same
+ * tamper-audit purpose as the customer scene, but for changes made after the
+ * customer has signed off.
  *
  * Mechanism: snapshot the row's field values on render; on knack-cell-update
  * diff against the snapshot to find what changed, and (only while status is
- * Pending PM Signoff) append a stamped line to field_2937 via view_4015's
- * record endpoint (the user made field_2937 inline-editable there).
+ * Pending PM Signoff) append a stamped line to field_2937 via the grid's
+ * record endpoint (field_2937 must be inline-editable there).
  *
- * Prereq: field_2937 must be present + writable on view_4015 (done).
+ * Prereq: field_2937 present + writable on view_4015 (done) and on
+ * view_4053 (Builder — until then the append PUT warns in console).
  ****************************************************************************/
 (function () {
   'use strict';
 
-  var VIEW         = 'view_4015';   // deployment-side questionnaire grid
+  var VIEWS        = ['view_4015', 'view_4053'];  // deployment-side questionnaire grids
   var STATUS_FIELD = 'field_1772';  // STATUS — gate: only audit while Pending PM Signoff
   var AUDIT_FIELD  = 'field_2937';  // audit-trail paragraph
   var EVENT_NS     = '.scwQDeployAudit';
+
+  // Only one deployment scene renders at a time — resolve the live grid.
+  function activeView() {
+    for (var i = 0; i < VIEWS.length; i++) {
+      if (document.getElementById(VIEWS[i])) return VIEWS[i];
+    }
+    return VIEWS[0];
+  }
 
   // Fields NEVER audited (the audit field itself + the status field + Knack
   // system columns). Everything else editable on view_4015 is a questionnaire
@@ -33,7 +43,7 @@
   var _busy = false;
 
   function getRecords() {
-    var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[VIEW] : null;
+    var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[activeView()] : null;
     var models = v && v.model && v.model.data && v.model.data.models;
     if (!models || !models.length) return [];
     return models.map(function (m) { return m.attributes || (m.toJSON ? m.toJSON() : m); });
@@ -83,7 +93,7 @@
     return /project\s*manager/.test(s) && /sign\s*off|signoff/.test(s);
   }
   function fieldLabel(fk) {
-    var th = document.querySelector('#' + VIEW + ' thead th.' + fk);
+    var th = document.querySelector('#' + activeView() + ' thead th.' + fk);
     var t = th ? th.textContent.replace(/\s+/g, ' ').trim() : '';
     return t || fk;
   }
@@ -113,7 +123,7 @@
     var combined = (_auditBase[recId] ? _auditBase[recId] + '\n' : '') + lines.join('\n');
     var data = {}; data[AUDIT_FIELD] = combined;
     SCW.knackAjax({
-      url: SCW.knackRecordUrl(VIEW, recId), type: 'PUT', data: JSON.stringify(data),
+      url: SCW.knackRecordUrl(activeView(), recId), type: 'PUT', data: JSON.stringify(data),
       success: function () { _auditBase[recId] = combined; if (done) done(true); },
       error: function (xhr) {
         console.warn('[scw-qd-audit] append failed', xhr && xhr.status);
@@ -155,11 +165,13 @@
     }
   }
 
-  if (window.SCW && typeof SCW.onViewRender === 'function') {
-    SCW.onViewRender(VIEW, function () { setTimeout(seedSnapshots, 0); }, EVENT_NS);
-  }
-  $(document)
-    .off('knack-cell-update.' + VIEW + EVENT_NS)
-    .on('knack-cell-update.' + VIEW + EVENT_NS, function () { setTimeout(onCellUpdate, 0); });
+  VIEWS.forEach(function (VIEW) {
+    if (window.SCW && typeof SCW.onViewRender === 'function') {
+      SCW.onViewRender(VIEW, function () { setTimeout(seedSnapshots, 0); }, EVENT_NS);
+    }
+    $(document)
+      .off('knack-cell-update.' + VIEW + EVENT_NS)
+      .on('knack-cell-update.' + VIEW + EVENT_NS, function () { setTimeout(onCellUpdate, 0); });
+  });
 })();
 /*** END FEATURE: Deployment-side questionnaire audit trail *****************/

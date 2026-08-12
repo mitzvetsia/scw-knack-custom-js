@@ -53,9 +53,24 @@
 (function () {
   'use strict';
 
-  var VIEW                = 'view_3940';   // CLOSEOUT view (button mount)
-  var ACCEPTANCE_VIEW     = 'view_3914';   // ACCEPTANCE (single row)
-  var QUESTIONNAIRE_VIEW  = 'view_4015';   // System Setup Questionnaire (single row)
+  // One entry per deployment page (mirror closeout-deliverables.js /
+  // send-coc-button.js). Only one scene renders at a time — activeDep()
+  // resolves the live one. refreshViews = closeout grid + the hidden DOC
+  // grid the deliverables strip reads on that scene.
+  var DEPLOYMENTS = [
+    { view: 'view_3940', acceptanceView: 'view_3914',       // ops deploy
+      questionnaireView: 'view_4015',
+      refreshViews: ['view_3940', 'view_3941'] },
+    { view: 'view_4058', acceptanceView: 'view_4066',       // sub dashboard
+      questionnaireView: 'view_4053',
+      refreshViews: ['view_4058', 'view_4068'] }
+  ];
+  function activeDep() {
+    for (var i = 0; i < DEPLOYMENTS.length; i++) {
+      if (document.getElementById(DEPLOYMENTS[i].view)) return DEPLOYMENTS[i];
+    }
+    return null;
+  }
   var TOOLBAR_ID          = 'scw-closeout-actions';
   // The deal-greenlight document scenario's webhook. Same scenario as the
   // automated greenlight run — this button only adds the branch flags.
@@ -144,10 +159,10 @@
     return (tr && HEX24.test(tr.id)) ? tr.id : '';
   }
 
-  function gatherPayload(selection) {
+  function gatherPayload(dep, selection) {
     var row = {
-      CloseoutID:   firstRowId(VIEW),
-      AcceptanceID: firstRowId(ACCEPTANCE_VIEW),
+      CloseoutID:   firstRowId(dep.view),
+      AcceptanceID: firstRowId(dep.acceptanceView),
       Source:       'regen-docs-button'
     };
     for (var i = 0; i < DOCS.length; i++) {
@@ -156,18 +171,21 @@
     return [row];
   }
 
-  // project id from the deploy-scene URL: #…/project-dashboard/<id>/…
-  // (same derivation the retired kickoff-deck button used).
+  // project id from the deploy-scene URL — ops route carries it as
+  // #…/project-dashboard/<id>/…, the sub portal as
+  // #…/deployment-dashboard/<id>/… (same derivation the retired
+  // kickoff-deck button used).
   function urlProjectId() {
-    var m = (window.location.hash || '').match(/project-dashboard\/([0-9a-f]{24})/i);
+    var m = (window.location.hash || '')
+      .match(/(?:project-dashboard|deployment-dashboard)\/([0-9a-f]{24})/i);
     return m ? m[1] : '';
   }
-  function gatherKickoffPayload() {
+  function gatherKickoffPayload(dep) {
     return [{
       project_recordID:       urlProjectId(),
-      questionnaire_recordID: firstRowId(QUESTIONNAIRE_VIEW),
-      acceptance_recordID:    firstRowId(ACCEPTANCE_VIEW),
-      closeout_recordID:      firstRowId(VIEW)
+      questionnaire_recordID: firstRowId(dep.questionnaireView),
+      acceptance_recordID:    firstRowId(dep.acceptanceView),
+      closeout_recordID:      firstRowId(dep.view)
     }];
   }
 
@@ -192,17 +210,17 @@
 
   // Same staggered refresh as the kickoff-deck button — Make writes the new
   // DOC records, then the deliverables strip rebuilds on these views' render.
-  function refreshCloseoutViews() {
-    ['view_3940', 'view_3941'].forEach(function (vk) {
+  function refreshCloseoutViews(dep) {
+    (dep ? dep.refreshViews : []).forEach(function (vk) {
       var v = window.Knack && Knack.views && Knack.views[vk];
       if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
     });
   }
-  function onSuccess(btn) {
+  function onSuccess(btn, dep) {
     setState(btn, 'done');
-    refreshCloseoutViews();
-    setTimeout(refreshCloseoutViews, 3000);
-    setTimeout(refreshCloseoutViews, 8000);
+    refreshCloseoutViews(dep);
+    setTimeout(function () { refreshCloseoutViews(dep); }, 3000);
+    setTimeout(function () { refreshCloseoutViews(dep); }, 8000);
   }
 
   // One lenient POST: cb(true) for any 2xx without an explicit
@@ -221,6 +239,8 @@
   }
 
   function fire(btn, selection) {
+    var dep = activeDep();
+    if (!dep) return;
     var docsWanted = false;
     for (var i = 0; i < DOCS.length; i++) {
       if (selection[DOCS[i].flag]) docsWanted = true;
@@ -228,12 +248,12 @@
     var kickoffWanted = !!selection[KICKOFF_FLAG];
     if (!docsWanted && !kickoffWanted) return;
 
-    var docsPayload = docsWanted ? gatherPayload(selection) : null;
+    var docsPayload = docsWanted ? gatherPayload(dep, selection) : null;
     if (docsWanted && (!docsPayload[0].CloseoutID || !docsPayload[0].AcceptanceID)) {
       setState(btn, 'err', 'Missing closeout/acceptance id');
       return;
     }
-    var kickoffPayload = kickoffWanted ? gatherKickoffPayload() : null;
+    var kickoffPayload = kickoffWanted ? gatherKickoffPayload(dep) : null;
     if (window.SCW && SCW.debug) {
       SCW.debug('[regen-docs] payloads', { docs: docsPayload, kickoff: kickoffPayload });
     }
@@ -247,7 +267,7 @@
       if (!ok) failedNames.push(name);
       pendingN--;
       if (pendingN > 0) return;
-      if (!failedNames.length) onSuccess(btn);
+      if (!failedNames.length) onSuccess(btn, dep);
       else setState(btn, 'err', failedNames.join(' + ') + ' failed — retry');
     }
     if (docsWanted) {
@@ -312,7 +332,9 @@
 
   // ── mount ────────────────────────────────────────────────────────────
   function mount() {
-    var view = document.getElementById(VIEW);
+    var dep = activeDep();
+    if (!dep) return;
+    var view = document.getElementById(dep.view);
     if (!view) return;
     injectStyles();
     var wrap = document.getElementById(WRAP_ID);
@@ -342,7 +364,9 @@
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
-    SCW.onViewRender(VIEW, function () { setTimeout(mount, 60); }, EVENT_NS);
+    DEPLOYMENTS.forEach(function (dep) {
+      SCW.onViewRender(dep.view, function () { setTimeout(mount, 60); }, EVENT_NS);
+    });
   }
   $(document).off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () { setTimeout(mount, 160); });

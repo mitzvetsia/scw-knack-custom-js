@@ -230,6 +230,7 @@
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
+      /(subcontractor-portal\/deployment-dashboard\/[a-f0-9]{24})/,
       /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
       /(proposals\/scope-of-work\/[a-f0-9]{24})/
     ];
@@ -259,6 +260,14 @@
   // missed, mislabeling install line items as SOW line items.
   function isDeployBase(base) {
     return /(^|\/)deploy\/[a-f0-9]{24}/.test(base);
+  }
+  // The SUB deployment dashboard (scene_1353, view_4056) also renders
+  // INSTALL line items — but its Knack child pages carry the generic slugs
+  // (edit-photo / add-photo-to-sow-line-item), NOT the ops deploy ones, so
+  // it is deploy-like ONLY for the bulk-upload identity (installLineItemID),
+  // never for slug choice. Keep the two predicates separate.
+  function isSubDeployBase(base) {
+    return /(^|\/)deployment-dashboard\/[a-f0-9]{24}/.test(base);
   }
 
   function editPhotoHref(photoRecordId) {
@@ -294,7 +303,8 @@
     if (surveyBasePath()) return 'surveyLineItemID';
     var base = buildSowBasePath();
     if (!base) return '';
-    return isDeployBase(base) ? 'installLineItemID' : 'sowLineItemID';
+    return (isDeployBase(base) || isSubDeployBase(base))
+      ? 'installLineItemID' : 'sowLineItemID';
   }
 
   /** Survey-scene base path. Returns '' off the survey scene so the

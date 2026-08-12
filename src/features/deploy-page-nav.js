@@ -1,7 +1,9 @@
-/*** DEPLOY PAGE NAV + CHANGE-ORDER RELOCATION (scene_1311) *******************
+/*** DEPLOY PAGE NAV + CHANGE-ORDER RELOCATION (scene_1311 + scene_1353) *****
  *
- * Two structural fixes for the manage-deployment page, which reads as nine
- * co-equal accordion bars with no hierarchy:
+ * Two structural fixes for the manage-deployment pages — the internal ops
+ * scene (scene_1311) AND the subcontractor deployment dashboard
+ * (scene_1353), which read as nine co-equal accordion bars with no
+ * hierarchy:
  *
  *   1. STICKY SIGNPOST BAR — a compact pill nav pinned to the top of the
  *      scene: one pill per (visible) accordion section, plus "Install Items"
@@ -20,17 +22,29 @@
  * View-id resilience: the CO grid and CTA are found by TITLE ("Change
  * Orders" grid header / a link whose text is "Create Change Order"), not
  * hardcoded view ids — Builder reshuffles won't silently break the move
- * (worst case: nothing matches and the page keeps its native order).
+ * (worst case: nothing matches and the page keeps its native order). That
+ * also makes the sub scene nearly free: only the scene id, the worksheet
+ * mount id, and the questionnaire view key differ per deployment.
  ****************************************************************************/
 (function () {
   'use strict';
 
-  var SCENE_ID  = 'scene_1311';
+  // One entry per deployment page. Only one scene renders at a time, so the
+  // injected element ids (nav / strip / bands) stay shared — they live
+  // inside the scene container and die with it on navigation.
+  var SCENES = [
+    { sceneId: 'scene_1311',                 // internal ops deploy page
+      worksheetMount: 'scw-ws-v2-view_4093',
+      questionnaireView: 'view_4015' },
+    { sceneId: 'scene_1353',                 // subcontractor deployment dashboard
+      worksheetMount: 'scw-ws-v2-view_4056',
+      questionnaireView: 'view_4053' }
+  ];
+
   var NAV_ID    = 'scw-deploy-nav';
   var STRIP_ID  = 'scw-deploy-co-strip';
   var STYLE_ID  = 'scw-deploy-nav-css';
   var EVENT_NS  = '.scwDeployNav';
-  var WORKSHEET_MOUNT = 'scw-ws-v2-view_4093';
 
   // Accordion sections excluded from the nav — the staging/data-source
   // sections slated for hiding ("MICAH'S SHIT" block), plus the (hidden)
@@ -66,6 +80,11 @@
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
+    // Per-scene selector unions (worksheet mount ids / scene containers).
+    var mountSel = SCENES.map(function (s) { return '#' + s.worksheetMount; }).join(', ');
+    var stripSceneSel = SCENES.map(function (s) {
+      return '#kn-' + s.sceneId + ' > #' + STRIP_ID;
+    }).join(', ');
     var css = [
       '#' + NAV_ID + ' {',
       '  position: sticky; top: 0; z-index: 900;',
@@ -145,7 +164,7 @@
       '.scw-deploy-rollup--warn { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
       '.scw-deploy-rollup--ok   { background: #dcfce7; border-color: #86efac; color: #15803d; }',
       /* Scroll targets clear the sticky bar */
-      '.scw-ktl-accordion, #' + WORKSHEET_MOUNT + ', #' + STRIP_ID + ' {',
+      '.scw-ktl-accordion, ' + mountSel + ', #' + STRIP_ID + ' {',
       '  scroll-margin-top: 58px;',
       '}',
       /* CO strip — sits directly ABOVE the worksheet it explains. It is
@@ -153,7 +172,7 @@
          which sizes its children as layout columns — force full width
          under either grid or flex layout, and un-column the relocated
          views inside it. */
-      '#kn-' + SCENE_ID + ' > #' + STRIP_ID + ', #' + STRIP_ID + ' {',
+      stripSceneSel + ', #' + STRIP_ID + ' {',
       '  width: 100% !important; max-width: 100% !important;',
       '  grid-column: 1 / -1 !important; flex: 1 1 100% !important;',
       /* No extra top margin — the band divider provides the gap, so the
@@ -192,8 +211,13 @@
     document.head.appendChild(style);
   }
 
-  function sceneEl() {
-    return document.getElementById('kn-' + SCENE_ID);
+  /** The deployment scene currently rendered, if any: {cfg, el}. */
+  function activeScene() {
+    for (var i = 0; i < SCENES.length; i++) {
+      var el = document.getElementById('kn-' + SCENES[i].sceneId);
+      if (el) return { cfg: SCENES[i], el: el };
+    }
+    return null;
   }
 
   function txt(el) {
@@ -210,7 +234,8 @@
     return null;
   }
   // Any view whose (menu) link matches — used for the proxy-CTA sources
-  // ("Create Change Order" on view_4081, "Add Project Note" on view_4133).
+  // ("Create Change Order" on view_4081 / view_4110, "Add Project Note"
+  // on view_4133 — whichever the scene carries).
   function findMenuLinkView(scene, re) {
     var anchors = scene.querySelectorAll('.kn-view a');
     for (var i = 0; i < anchors.length; i++) {
@@ -221,8 +246,8 @@
     return null;
   }
 
-  function moveChangeOrders(scene) {
-    var anchor = document.getElementById(WORKSHEET_MOUNT);
+  function moveChangeOrders(scene, cfg) {
+    var anchor = document.getElementById(cfg.worksheetMount);
     if (!anchor || !anchor.parentNode) return;
 
     // Bare positioning container — the CO grid's own accordion bar is the
@@ -240,8 +265,9 @@
     }
 
     // Installation section order: Project Notes → Change Orders → worksheet.
-    // The notes accordion (view_4135) moves in as a whole wrapper — the view
-    // stays inside its body, so ktl-accordion's orphan adoption never fires.
+    // The notes accordion moves in as a whole wrapper — the view stays
+    // inside its body, so ktl-accordion's orphan adoption never fires.
+    // (The sub scene has no Project Notes section yet — findAcc no-ops.)
     var notes = findAcc(scene, /^project notes$/i);
     if (notes && !strip.contains(notes)) {
       strip.insertBefore(notes, strip.firstChild);
@@ -305,12 +331,12 @@
     }
   }
 
-  function applyBands(scene) {
+  function applyBands(scene, cfg) {
     for (var i = 0; i < BANDS.length; i++) {
       var b = BANDS[i], target = null;
       if (b.strip) {
         target = document.getElementById(STRIP_ID) ||
-                 document.getElementById(WORKSHEET_MOUNT);
+                 document.getElementById(cfg.worksheetMount);
       } else {
         var acc = findAcc(scene, b.find);
         if (acc && acc.style.display !== 'none' && acc.offsetParent) target = acc;
@@ -373,13 +399,14 @@
   }
 
   function placeViewActions(scene) {
-    // Change Orders ← "Create Change Order" (view_4081). The strip now
-    // holds TWO accordions, so match by title, not first-in-strip.
+    // Change Orders ← "Create Change Order" (view_4081 on ops, view_4110 on
+    // the sub scene — matched by link text either way). The strip can hold
+    // TWO accordions, so match by title, not first-in-strip.
     mountProxyCta(
       findAcc(scene, /^change orders?$/i),
       findMenuLinkView(scene, /create change order/i),
       'scw-deploy-co-actionbar', 'scw-deploy-co-cta');
-    // Project Notes ← "Add Project Note" (view_4133).
+    // Project Notes ← "Add Project Note" (view_4133; ops scene only today).
     mountProxyCta(
       findAcc(scene, /^project notes$/i),
       findMenuLinkView(scene, /add project note/i),
@@ -408,16 +435,17 @@
     else acc.removeAttribute('data-scw-attention');
   }
 
-  // Questionnaire STATUS (field_1772) — may not be a column on view_4015,
-  // so scan every loaded model for it (same trick as the deploy audit).
-  function questionnaireStatus() {
+  // Questionnaire STATUS (field_1772) — may not be a column on the
+  // questionnaire grid, so scan every loaded model for it (same trick as
+  // the deploy audit). cfg.questionnaireView marks "a record exists".
+  function questionnaireStatus(cfg) {
     try {
       var views = (typeof Knack !== 'undefined' && Knack.views) || {};
       var sawRecord = false;
       for (var vid in views) {
         var v = views[vid];
         var models = v && v.model && v.model.data && v.model.data.models;
-        if (vid === 'view_4015' && models && models.length) sawRecord = true;
+        if (vid === cfg.questionnaireView && models && models.length) sawRecord = true;
         if (!models) continue;
         for (var i = 0; i < models.length; i++) {
           var a = models[i] && models[i].attributes;
@@ -433,10 +461,10 @@
     } catch (e) { return null; }
   }
 
-  function applyRollups(scene) {
+  function applyRollups(scene, cfg) {
     var q = findAcc(scene, /^system setup questionnaire/i);
     if (q) {
-      var st = questionnaireStatus();
+      var st = questionnaireStatus(cfg);
       upsertRollup(q, st && st.text, !!(st && st.warn));
     }
     // Closeout — read the deliverable cards' state classes (three-tier
@@ -468,7 +496,7 @@
     return false;
   }
 
-  function collectTargets(scene) {
+  function collectTargets(scene, cfg) {
     var out = [];
     // Accordion sections, document order. Skip hidden ones (e.g. the
     // Manage MDFs/IDFs section mdf-notes.js folded into the worksheet).
@@ -501,7 +529,7 @@
       out.push({ label: 'Change Orders', count: rows ? String(rows) : '', el: strip, kind: 'co' });
     }
     // Install worksheet.
-    var ws = document.getElementById(WORKSHEET_MOUNT);
+    var ws = document.getElementById(cfg.worksheetMount);
     if (ws) {
       var m = txt(ws.querySelector('.scw-ws-v2-count')).match(/\d+/);
       out.push({ label: 'Install Items', count: m ? m[0] : '', el: ws, kind: 'worksheet' });
@@ -520,8 +548,8 @@
     catch (e) { t.el.scrollIntoView(); }
   }
 
-  function buildNav(scene) {
-    var targets = collectTargets(scene);
+  function buildNav(scene, cfg) {
+    var targets = collectTargets(scene, cfg);
     if (targets.length < 2) return;
 
     // Anchor the bar INTO the page flow, directly above the first section it
@@ -600,28 +628,31 @@
     if (_timer) clearTimeout(_timer);
     _timer = setTimeout(function () {
       _timer = null;
-      var scene = sceneEl();
-      if (!scene) return;
+      var active = activeScene();
+      if (!active) return;
+      var scene = active.el, cfg = active.cfg;
       injectStyles();
-      try { moveChangeOrders(scene); } catch (e) { /* keep native order */ }
+      try { moveChangeOrders(scene, cfg); } catch (e) { /* keep native order */ }
       try { applyNames(scene); } catch (e) { /* labels are cosmetic */ }
       try { reorderSections(scene); } catch (e) { /* keep native order */ }
-      try { applyBands(scene); } catch (e) { /* signposts are cosmetic */ }
+      try { applyBands(scene, cfg); } catch (e) { /* signposts are cosmetic */ }
       try { applyReferenceTier(scene); } catch (e) { /* cosmetic only */ }
-      try { applyRollups(scene); } catch (e) { /* rollups are optional */ }
+      try { applyRollups(scene, cfg); } catch (e) { /* rollups are optional */ }
       try { placeViewActions(scene); } catch (e) { /* actions stay put */ }
-      try { buildNav(scene); } catch (e) { /* nav is optional chrome */ }
+      try { buildNav(scene, cfg); } catch (e) { /* nav is optional chrome */ }
     }, delay == null ? 250 : delay);
   }
 
-  $(document).on('knack-scene-render.' + SCENE_ID + EVENT_NS, function () {
-    scheduleApply(150);
-  });
+  for (var s = 0; s < SCENES.length; s++) {
+    $(document).on('knack-scene-render.' + SCENES[s].sceneId + EVENT_NS, function () {
+      scheduleApply(150);
+    });
+  }
   $(document).on('knack-view-render.any' + EVENT_NS, function () {
-    if (sceneEl()) scheduleApply(250);
+    if (activeScene()) scheduleApply(250);
   });
   // Heartbeat — counts drift as grids refetch; the sig check makes a
   // no-change pass nearly free.
-  setInterval(function () { if (sceneEl()) scheduleApply(0); }, 3000);
+  setInterval(function () { if (activeScene()) scheduleApply(0); }, 3000);
 })();
 /*** END DEPLOY PAGE NAV + CHANGE-ORDER RELOCATION ****************************/

@@ -1,4 +1,4 @@
-/*** PHOTO GRID MANAGER (view_3931 "Additional Photos") ***********************
+/*** PHOTO GRID MANAGER (view_3931 / view_4062 "Additional Photos") ***********
  *
  * Turns a photo table into a thumbnail CARD GRID without cloning anything:
  * the native <tr>/<td> elements are restyled via CSS (tbody → grid, tr →
@@ -29,10 +29,24 @@
 
   var VIEWS = [
     {
-      id: 'view_3931',
+      id: 'view_3931',   // ops deploy "Additional Photos" (scene_1311)
       imageField: 'field_771',
       // Labeled field rows, in card order. editable is informational —
       // the cell keeps whatever cell-edit behavior Knack gave it.
+      fields: [
+        { key: 'field_2445', label: 'Photo Type' },
+        { key: 'field_2342', label: 'SOW Line Item' },
+        { key: 'field_2849', label: 'Install Line Item' },
+        { key: 'field_2419', label: 'Survey Line Item' },
+        { key: 'field_114',  label: 'Notes' }
+      ],
+      empty: 'No photos yet.'
+    },
+    {
+      id: 'view_4062',   // sub dashboard "Additional Photos" (scene_1353)
+      imageField: 'field_771',
+      // Same DOC_photos object — labels only apply to columns the view
+      // actually renders; missing ones are skipped harmlessly.
       fields: [
         { key: 'field_2445', label: 'Photo Type' },
         { key: 'field_2342', label: 'SOW Line Item' },

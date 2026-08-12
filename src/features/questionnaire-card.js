@@ -1,6 +1,6 @@
-/*** FEATURE: System Setup Questionnaire card (view_4015) *******************
+/*** FEATURE: System Setup Questionnaire card (view_4015 / view_4053) *******
  *
- * Replaces the deploy page's raw questionnaire grid (KTL chrome, 12 columns,
+ * Replaces the deploy pages' raw questionnaire grid (KTL chrome, 12 columns,
  * inline audit-log text, a wall of connected line items) with a clean card,
  * same treatment as the Acceptances section (acceptance-card.js):
  *
@@ -10,22 +10,29 @@
  *     step done / current / todo with who + date where known
  *   - Who has access — built HERE from primary sources (customer ids from
  *     the raw connection spans, edit/add hrefs harvested straight from
- *     view_4040), NOT scraped from customer-account-link's decorated cell.
- *     That makes the card a pure function of the two views' DOM: rebuild
- *     on either view's render and the result is order-independent — no
- *     race against another module's mutations.
+ *     the deployment's CORE_company details view), NOT scraped from
+ *     customer-account-link's decorated cell. That makes the card a pure
+ *     function of the two views' DOM: rebuild on either view's render and
+ *     the result is order-independent — no race against another module's
+ *     mutations.
  *   - AUDIT TRAIL collapsed behind a click (<details>) — the raw log never
  *     paints unless the user deliberately opens it
  *   - connected install line items likewise collapsed to a count
  *
  * The grid stays rendered (Backbone model + questionnaire-deployment-audit
  * keep working) — it's just display:none'd, like view_3914's.
+ *
+ * One entry per deployment page; the sub scene has no CORE_company details
+ * view yet, so its access list renders names without edit/add affordances
+ * until a details view is added there (set detailView when it exists).
  ****************************************************************************/
 (function () {
   'use strict';
 
-  var VIEW        = 'view_4015';
-  var DETAIL_VIEW = 'view_4040';   // CORE_company Details — edit/add href source
+  var DEPLOYMENTS = [
+    { view: 'view_4015', detailView: 'view_4040' },  // ops deploy (scene_1311)
+    { view: 'view_4053', detailView: '' }            // sub dashboard (scene_1353)
+  ];
   var STYLE_ID    = 'scw-qst-card-css';
   var EVENT_NS    = '.scwQstCard';
   var HEX24       = /^[a-f0-9]{24}$/i;
@@ -75,14 +82,18 @@
 
   function injectCss() {
     if (document.getElementById(STYLE_ID)) return;
+    /* Hide the raw grid chrome on every deployment view — the card replaces
+       it. Model + audit module keep reading the (hidden) table. */
+    var hideSel = [], flatSel = [];
+    for (var d = 0; d < DEPLOYMENTS.length; d++) {
+      var v = DEPLOYMENTS[d].view;
+      hideSel.push('#' + v + ' .view-header', '#' + v + ' .kn-records-nav',
+                   '#' + v + ' .kn-table-wrapper', '#' + v + ' .ktlShrinkLink');
+      flatSel.push('#' + v + ' .ktlHideShowSection');
+    }
     var css = [
-      /* Hide the raw grid chrome — the card replaces it. Model + audit
-         module keep reading the (hidden) table. */
-      '#' + VIEW + ' .view-header,',
-      '#' + VIEW + ' .kn-records-nav,',
-      '#' + VIEW + ' .kn-table-wrapper,',
-      '#' + VIEW + ' .ktlShrinkLink { display: none !important; }',
-      '#' + VIEW + ' .ktlHideShowSection {',
+      hideSel.join(',\n') + ' { display: none !important; }',
+      flatSel.join(',\n') + ' {',
       '  border: none !important; padding: 0 !important; margin: 0 !important;',
       '}',
       '.scw-qst-card {',
@@ -167,26 +178,31 @@
   }
 
   // ── Who-has-access, from primary sources (no scrape of decorated DOM) ──
-  // Edit/add hrefs harvested straight from view_4040, exactly like
-  // customer-account-link does. Captured once, kept across renders.
-  var editBase = '', addUrl = '';
-  function captureAccountLinks() {
-    var detail = document.getElementById(DETAIL_VIEW);
-    if (!detail) return;
+  // Edit/add hrefs harvested straight from the deployment's details view,
+  // exactly like customer-account-link does. Captured once per deployment,
+  // kept across renders. Deployments with no details view keep empty links
+  // (names render plain — no edit/add affordances).
+  var _links = {};   // view key → { editBase, addUrl }
+  function captureAccountLinks(dep) {
+    var l = (_links[dep.view] = _links[dep.view] || { editBase: '', addUrl: '' });
+    if (!dep.detailView) return l;
+    var detail = document.getElementById(dep.detailView);
+    if (!detail) return l;
     var addA  = detail.querySelector('a[href*="add-customer-account2/"]');
     var editA = detail.querySelector('a[href*="edit-customer-account/"]');
-    if (addA) addUrl = addA.getAttribute('href') || addUrl;
+    if (addA) l.addUrl = addA.getAttribute('href') || l.addUrl;
     var src = (editA && editA.getAttribute('href')) ||
               (addA && addA.getAttribute('href')) || '';
     var m = src.match(/^(#.*\/)(?:edit-customer-account|add-customer-account2)\//);
-    if (m) editBase = m[1] + 'edit-customer-account/';
+    if (m) l.editBase = m[1] + 'edit-customer-account/';
+    return l;
   }
 
   // Customer record ids = the 24-hex CLASS on the inner connection-value
   // spans — raw grid markup, present the moment the row renders. Reading
   // textContent works whether or not customer-account-link has decorated
   // the cell (its anchor adds no text), so render order is irrelevant.
-  function accessHtml(tr) {
+  function accessHtml(tr, links) {
     var td = cell(tr, F.access);
     if (!td) return '';
     var html = '';
@@ -197,14 +213,14 @@
       var name = String(spans[i].textContent || '').replace(/\s+/g, ' ').trim();
       if (!name) continue;
       html += '<div class="scw-qst-acct">' +
-        (editBase
+        (links.editBase
           ? '<a class="scw-cust-edit-link" title="Edit customer account" href="' +
-              esc(editBase + cls) + '">' + esc(name) + PENCIL_SVG + '</a>'
+              esc(links.editBase + cls) + '">' + esc(name) + PENCIL_SVG + '</a>'
           : esc(name)) +
         '</div>';
     }
-    if (addUrl) {
-      html += '<a class="scw-cust-add-btn" href="' + esc(addUrl) + '">' +
+    if (links.addUrl) {
+      html += '<a class="scw-cust-add-btn" href="' + esc(links.addUrl) + '">' +
         PLUS_SVG + '<span>Add customer account</span></a>';
     }
     return html;
@@ -259,7 +275,7 @@
     return stages;
   }
 
-  function buildCard(tr) {
+  function buildCard(tr, links) {
     var status = cellText(tr, F.status);
     var openA  = tr.querySelector('td.kn-table-link a[href]');
     var href   = openA ? openA.getAttribute('href') : '';
@@ -290,7 +306,7 @@
     html += '</div>' +
       '<div class="scw-qst-access">' +
         '<div class="scw-qst-lbl">Who has access</div>' +
-        '<div class="scw-qst-access-body">' + accessHtml(tr) + '</div>' +
+        '<div class="scw-qst-access-body">' + accessHtml(tr, links) + '</div>' +
       '</div>';
 
     if (audit.length) {
@@ -307,25 +323,28 @@
     return card;
   }
 
-  function render() {
-    var viewEl = document.getElementById(VIEW);
+  function render(dep) {
+    var viewEl = document.getElementById(dep.view);
     if (!viewEl) return;
     injectCss();
-    captureAccountLinks();
+    var links = captureAccountLinks(dep);
     var prior = viewEl.querySelectorAll(':scope > .scw-qst-card');
     for (var p = 0; p < prior.length; p++) prior[p].remove();
     var rows = viewEl.querySelectorAll('tbody tr[id]');
     for (var r = 0; r < rows.length; r++) {
-      viewEl.appendChild(buildCard(rows[r]));
+      viewEl.appendChild(buildCard(rows[r], links));
     }
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
-    // The card is a pure function of view_4015 (row data) + view_4040
+    // The card is a pure function of the grid (row data) + the details view
     // (edit/add hrefs) — rebuilding on EITHER view's render makes the
     // final state order-independent. No timers racing other modules.
-    SCW.onViewRender(VIEW, function () { setTimeout(render, 30); }, EVENT_NS);
-    SCW.onViewRender(DETAIL_VIEW, function () { setTimeout(render, 30); }, EVENT_NS);
+    DEPLOYMENTS.forEach(function (dep) {
+      var rerun = function () { setTimeout(function () { render(dep); }, 30); };
+      SCW.onViewRender(dep.view, rerun, EVENT_NS);
+      if (dep.detailView) SCW.onViewRender(dep.detailView, rerun, EVENT_NS);
+    });
   }
 })();
 /*** END FEATURE: System Setup Questionnaire card ***************************/

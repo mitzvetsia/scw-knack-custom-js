@@ -1,6 +1,6 @@
-/*** FEATURE: Acceptance summary card (view_3914) **************************
+/*** FEATURE: Acceptance summary card (view_3914 / view_4066) **************
  *
- * Replaces the raw INSTALL_acceptance table on the deploy scene with clean
+ * Replaces the raw INSTALL_acceptance table on the deploy scenes with clean
  * cards — ONE PER RECORD (2026-07-17: a project accrues an acceptance per
  * signed agreement — the base proposal plus each change order — so the old
  * first-row-only render hid every CO acceptance). Each card: the proposal as
@@ -17,11 +17,18 @@
  *   field_1847  Xero Equipment Invoice Link (URL)      → button
  *   field_2767  SYS_signed agreement (file)            → button
  *   .kn-action-link "Create Questionnaire"             → primary button
+ *
+ * COLUMN GUARD: the card only takes over a view whose table actually has
+ * the proposal column (th.field_2755) — otherwise the native table stays
+ * visible untouched. The sub-dashboard ACCEPTANCE grid (view_4066) ships
+ * with only project + matching-bid columns today; add field_2755/2765/
+ * 2766/2940/1847/2767 to it in Builder and the card lights up there with
+ * zero code change.
  ****************************************************************************/
 (function () {
   'use strict';
 
-  var VIEW     = 'view_3914';
+  var VIEWS    = ['view_3914', 'view_4066'];  // ops deploy / sub dashboard
   var STYLE_ID = 'scw-acpt-css';
   var EVENT_NS = '.scwAcceptanceCard';
   var F = {
@@ -64,13 +71,18 @@
 
   function injectCss() {
     if (document.getElementById(STYLE_ID)) return;
+    // Hide the raw grid chrome — the card replaces it. Scoped to the
+    // .scw-acpt-on marker class render() stamps only after the column
+    // guard passes, so a view without the acceptance columns keeps its
+    // native table.
+    var hideSel = [];
+    for (var hv = 0; hv < VIEWS.length; hv++) {
+      hideSel.push('#' + VIEWS[hv] + '.scw-acpt-on .view-header',
+                   '#' + VIEWS[hv] + '.scw-acpt-on .kn-records-nav',
+                   '#' + VIEWS[hv] + '.scw-acpt-on .kn-table-wrapper');
+    }
     var css = [
-      // Hide the raw grid chrome — the card replaces it. (Editing no longer
-      // proxies Knack's cell editor; the card has its own editors, so the
-      // table can be plain display:none again.)
-      '#' + VIEW + ' .view-header,',
-      '#' + VIEW + ' .kn-records-nav,',
-      '#' + VIEW + ' .kn-table-wrapper { display: none !important; }',
+      hideSel.join(',\n') + ' { display: none !important; }',
       '.scw-acpt-card {',
       '  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;',
       '  box-shadow: 0 1px 2px rgba(15,23,42,.04); padding: 16px 18px; margin-top: 8px;',
@@ -180,20 +192,20 @@
   // Both PUT through this view with the user's session and refetch so the
   // card rebuilds with the fresh value.
 
-  function refreshAcptView() {
+  function refreshAcptView(viewKey) {
     try {
-      var v = window.Knack && Knack.views && Knack.views[VIEW];
+      var v = window.Knack && Knack.views && Knack.views[viewKey];
       if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
     } catch (e) { /* best-effort */ }
   }
-  function putAcceptance(recId, fields) {
+  function putAcceptance(viewKey, recId, fields) {
     return new Promise(function (resolve, reject) {
       if (!recId) return reject(new Error('no acceptance record on the page'));
       if (!(window.SCW && typeof SCW.knackAjax === 'function')) {
         return reject(new Error('SCW.knackAjax unavailable'));
       }
       SCW.knackAjax({
-        url:  SCW.knackRecordUrl(VIEW, recId),
+        url:  SCW.knackRecordUrl(viewKey, recId),
         type: 'PUT',
         data: JSON.stringify(fields),
         success: resolve,
@@ -227,7 +239,7 @@
   }
 
   /** Xero invoice link (field_1847, Link field) — URL input modal. */
-  function openXeroEditor(recId, currentUrl) {
+  function openXeroEditor(viewKey, recId, currentUrl) {
     var body = document.createElement('div');
     body.innerHTML =
       '<input type="url" class="scw-acpt-m__input" placeholder="https://…">' +
@@ -253,16 +265,16 @@
       status.textContent = 'Saving…';
       var fields = {};
       fields[F.xero] = url;   // empty string clears the link
-      putAcceptance(recId, fields).then(function () {
+      putAcceptance(viewKey, recId, fields).then(function () {
         m.close();
-        refreshAcptView();
+        refreshAcptView(viewKey);
       }).catch(function (err) { fail((err && err.message) || 'Save failed'); });
     });
   }
 
   /** Signed agreement (field_2767, File field) — picker → Knack asset
    *  upload with the session token → PUT the asset id. */
-  function openAgreementUpload(recId) {
+  function openAgreementUpload(viewKey, recId) {
     var input = document.createElement('input');
     input.type = 'file';
     input.accept = '.pdf,.doc,.docx,image/*,application/pdf';
@@ -302,9 +314,9 @@
           status.textContent = 'Saving…';
           var fields = {};
           fields[F.agreement] = assetId;
-          putAcceptance(recId, fields).then(function () {
+          putAcceptance(viewKey, recId, fields).then(function () {
             m.close();
-            refreshAcptView();
+            refreshAcptView(viewKey);
           }).catch(function (err) {
             status.classList.add('is-err');
             status.textContent = (err && err.message) || 'Save failed';
@@ -325,7 +337,7 @@
 
   /** One compact list row for one acceptance record. All anchors/editors
    *  bind to THIS row's record. */
-  function buildCard(row) {
+  function buildCard(viewKey, row) {
     var recId   = row.id;
     var propA   = cellAnchor(row, F.proposal, 'a[data-kn="connection-link"]') || cellAnchor(row, F.proposal);
     var propTxt = propA ? propA.textContent.replace(/\s+/g, ' ').trim() : (cellText(row, F.proposal) || 'Proposal');
@@ -393,9 +405,9 @@
       editBtns[eb].addEventListener('click', function () {
         var fk = this.getAttribute('data-edit-field');
         if (fk === F.xero) {
-          openXeroEditor(recId, xeroA ? (xeroA.getAttribute('href') || '') : '');
+          openXeroEditor(viewKey, recId, xeroA ? (xeroA.getAttribute('href') || '') : '');
         } else if (fk === F.agreement) {
-          openAgreementUpload(recId);
+          openAgreementUpload(viewKey, recId);
         }
       });
     }
@@ -403,9 +415,24 @@
   }
 
   function render() {
+    for (var vi = 0; vi < VIEWS.length; vi++) renderView(VIEWS[vi]);
+  }
+
+  function renderView(VIEW) {
     var viewEl = document.getElementById(VIEW);
     if (!viewEl) return;
     injectCss();
+
+    // COLUMN GUARD — no proposal column means this grid doesn't expose the
+    // acceptance fields (the sub view_4066 ships thin). Leave the native
+    // table alone; the card takes over the moment Builder adds the columns.
+    if (!viewEl.querySelector('thead th.' + F.proposal)) {
+      viewEl.classList.remove('scw-acpt-on');
+      var stale = viewEl.querySelector(':scope > .scw-acpt-card');
+      if (stale) stale.remove();
+      return;
+    }
+    viewEl.classList.add('scw-acpt-on');
 
     // Rebuild from scratch — a project accrues one acceptance per signed
     // agreement (base proposal + each CO). ONE card, one compact list row
@@ -441,7 +468,7 @@
     card.className = 'scw-acpt-card';
     card.innerHTML = '<div class="scw-acpt-eyebrow">Acceptance</div>';
     for (var ei = 0; ei < entries.length; ei++) {
-      card.appendChild(buildCard(entries[ei].row));
+      card.appendChild(buildCard(VIEW, entries[ei].row));
     }
     viewEl.appendChild(card);
 
@@ -472,7 +499,9 @@
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
-    SCW.onViewRender(VIEW, function () { setTimeout(render, 30); }, EVENT_NS);
+    VIEWS.forEach(function (v) {
+      SCW.onViewRender(v, function () { setTimeout(render, 30); }, EVENT_NS);
+    });
   }
   $(document).off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () { setTimeout(render, 150); });
