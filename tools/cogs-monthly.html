@@ -672,25 +672,34 @@ function buildXero(rows, fileName) {
     }
   }
   if (hi < 0) throw new Error('Couldn’t find the Date/Debit/Credit header row — is this the Account Transactions report?');
-  var account = '';
-  for (var a = hi + 1; a < Math.min(rows.length, hi + 6); a++) {
-    var c0 = String(rows[a][idx.date] || '').trim();
-    if (c0 && !parseXeroDate(c0) && c0 !== 'Opening Balance') { account = c0; break; }
+  // The report may contain several account sections (e.g. 1141 - Inventory AND
+  // 5258 - COGS). Split into sections and use the inventory-looking one.
+  var sections = [], cur = null;
+  function section(name) {
+    cur = { name: name, opening: null, closing: null, txs: [] };
+    sections.push(cur);
+    return cur;
   }
-  var opening = null, closing = null, txs = [];
   for (var r2 = hi + 1; r2 < rows.length; r2++) {
     var f = rows[r2];
     var g = function (k) { return (k in idx) && idx[k] < f.length ? String(f[idx[k]] == null ? '' : f[idx[k]]).trim() : ''; };
     var c0v = g('date');
+    if (!c0v) continue;
     var deb = parseNum(g('debit')) || 0, cred = parseNum(g('credit')) || 0;
-    if (/^opening balance$/i.test(c0v)) { opening = deb - cred; continue; }
-    if (/^closing balance$/i.test(c0v)) { closing = deb - cred; continue; }
+    if (/^opening balance$/i.test(c0v)) { (cur || section('')).opening = deb - cred; continue; }
+    if (/^closing balance$/i.test(c0v)) { if (cur) cur.closing = deb - cred; continue; }
+    if (/^total\b/i.test(c0v)) continue;
     var date = parseXeroDate(c0v);
-    if (!date) continue;
-    txs.push({ date: date, contact: g('contact'), desc: g('description'), ref: g('reference'),
-               debit: deb, credit: cred });
+    if (!date) { section(c0v); continue; }
+    if (!cur) section('');
+    cur.txs.push({ date: date, contact: g('contact'), desc: g('description'), ref: g('reference'),
+                   debit: deb, credit: cred });
   }
-  if (!txs.length && opening === null) throw new Error('No transactions found in the Xero report.');
+  var withTxs = sections.filter(function (s) { return s.txs.length; });
+  var pick = withTxs.filter(function (s) { return /1141|inventor/i.test(s.name); })[0] || withTxs[0];
+  if (!pick) throw new Error('No transactions found in the Xero report.');
+  var account = pick.name, opening = pick.opening, closing = pick.closing, txs = pick.txs;
+  var otherSections = withTxs.filter(function (s) { return s !== pick; }).map(function (s) { return s.name; });
   txs.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
   var keyCounts = {};
   txs.forEach(function (t) {
@@ -699,6 +708,7 @@ function buildXero(rows, fileName) {
     t.key = keyCounts[base] > 1 ? base + '§' + keyCounts[base] : base;
   });
   return { account: account, opening: opening, closing: closing, txs: txs, fileName: fileName,
+           otherSections: otherSections,
            minDate: txs.length ? txs[0].date : '', maxDate: txs.length ? txs[txs.length - 1].date : '' };
 }
 /* Apply the user's "moved/changed in Xero" adjustments to the transaction list.
@@ -984,15 +994,19 @@ function computeRecon() {
   if (state.xero) {
     var x = state.xero;
     var atxs = adjustedXeroTxs();
+    /* COGS-labeled DEBITS on the inventory account are accrual reversals
+       ("rev booked last month, shipped this month") — they net against booked
+       COGS and are NOT purchases. Balance math still uses raw debits/credits. */
     function totalsFor(list) {
-      var r = { preNet: 0, purch: 0, credTotal: 0, cogsCred: 0, credits: [], monthTxs: 0 };
+      var r = { preNet: 0, purch: 0, credTotal: 0, cogsCred: 0, cogsDeb: 0, allDeb: 0, credits: [], monthTxs: 0 };
       list.forEach(function (t) {
         if (t.date < start) r.preNet += t.debit - t.credit;
         if (t.date.slice(0, 7) === month) {
           r.monthTxs++;
-          r.purch += t.debit;
+          r.allDeb += t.debit;
           r.credTotal += t.credit;
-          if (isCogsTx(t)) r.cogsCred += t.credit;
+          if (isCogsTx(t)) { r.cogsCred += t.credit - t.debit; r.cogsDeb += t.debit; }
+          else r.purch += t.debit;
           if (t.credit) r.credits.push(t);
         }
       });
@@ -1010,12 +1024,13 @@ function computeRecon() {
     A.credits.forEach(function (cr) { cr.isCogs = isCogsTx(cr); });
     xero = { account: x.account, openingAtStart: openingAtStart, purch: A.purch,
              credTotal: A.credTotal, credits: A.credits,
-             cogsCred: A.cogsCred, otherCred: A.credTotal - A.cogsCred,
-             endBal: openingAtStart === null ? null : openingAtStart + A.purch - A.credTotal,
-             bookDelta: A.purch - A.credTotal,
+             cogsCred: A.cogsCred, cogsDeb: A.cogsDeb,
+             otherCred: A.credTotal - (A.cogsCred + A.cogsDeb),
+             endBal: openingAtStart === null ? null : openingAtStart + A.allDeb - A.credTotal,
+             bookDelta: A.allDeb - A.credTotal,
              adjCount: adjCount, txs: atxs,
              raw: { openingAtStart: rawOpening, purch: R.purch, credTotal: R.credTotal, cogsCred: R.cogsCred,
-                    endBal: rawOpening === null ? null : rawOpening + R.purch - R.credTotal } };
+                    endBal: rawOpening === null ? null : rawOpening + R.allDeb - R.credTotal } };
   }
 
   return { month: month, startDate: startDate, endDate: endDate, endIsBoundary: endIsBoundary,
@@ -1029,26 +1044,28 @@ function computeMonthly() {
   var byM = {};
   function M(m) {
     var e = byM[m];
-    if (!e) e = byM[m] = { month: m, units: 0, ecom: 0, install: 0, all: 0,
+    if (!e) e = byM[m] = { month: m, hasShip: false, units: 0, ecom: 0, install: 0, all: 0,
                            booked: null, purch: null, physStart: null, physEnd: null, bookEnd: null };
     return e;
   }
   state.shipped.recs.forEach(function (x) {
     var e = M(x.date.slice(0, 7));
+    e.hasShip = true;
     var mk = matchSku(items, x.sku);
     var ext = (mk.key ? items.get(mk.key).cost : 0) * x.qty;
     e.units += x.qty;
     e.all += ext;
     if (bucketOf(x.channel) === 'install') e.install += ext; else e.ecom += ext;
   });
+  // months known only to the tracker or Xero still get a row (computed shows —)
+  if (state.tracker) state.tracker.months.forEach(function (m) { M(m); });
   if (state.xero) {
     var atxs = adjustedXeroTxs().filter(function (t) { return !t.excluded; });
     atxs.forEach(function (t) {
-      var m = t.date.slice(0, 7);
-      if (!byM[m]) return;    // only months we shipped in
-      var e = byM[m];
-      e.purch = (e.purch || 0) + t.debit;
-      if (isCogsTx(t) && t.credit) e.booked = (e.booked || 0) + t.credit;
+      var e = M(t.date.slice(0, 7));
+      // COGS-labeled debits are accrual reversals: net them against booked
+      if (isCogsTx(t)) { if (t.credit || t.debit) e.booked = (e.booked || 0) + t.credit - t.debit; }
+      else e.purch = (e.purch || 0) + t.debit;
     });
     if (state.xero.opening !== null) {
       Object.keys(byM).forEach(function (m) {
@@ -1168,26 +1185,28 @@ function renderMoM(rows) {
       '<th class="num">Over/(under) vs computed</th><th class="num">Purchases in</th>' : '') +
     (showPhys ? '<th class="num">Physical Δ</th><th class="num">Book − physical @ end</th>' : '') +
     '</tr></thead><tbody>';
-  var T = { units: 0, ecom: 0, install: 0, all: 0, booked: 0, anyBooked: false, purch: 0, ou: 0, se: 0, rep: 0, anyT: false };
+  var T = { units: 0, ecom: 0, install: 0, all: 0, booked: 0, anyBooked: false, purch: 0, ou: 0, se: 0, rep: 0, anyT: false, bvr: 0, anyBvr: false };
   rows.forEach(function (r) {
-    T.units += r.units; T.ecom += r.ecom; T.install += r.install; T.all += r.all;
-    if (r.booked !== null) { T.booked += r.booked; T.anyBooked = true; T.ou += r.booked - r.all; }
+    if (r.hasShip) { T.units += r.units; T.ecom += r.ecom; T.install += r.install; T.all += r.all; }
+    if (r.booked !== null) { T.booked += r.booked; T.anyBooked = true; if (r.hasShip) T.ou += r.booked - r.all; }
     if (r.purch !== null) T.purch += r.purch;
     var tk = trk(r.month);
-    if (tk) { T.se += tk.se; T.rep += tk.replen; T.anyT = true; }
+    if (tk) { T.se += tk.se; T.rep += tk.replen; T.anyT = true;
+      if (r.booked !== null) { T.bvr += r.booked - tk.replen; T.anyBvr = true; } }
     var physD = (r.physStart !== null && r.physEnd !== null) ? r.physEnd - r.physStart : null;
     var endGap = (r.bookEnd !== null && r.physEnd !== null) ? r.bookEnd - r.physEnd : null;
+    var noShip = '<span class="d2">—</span>';
     html += '<tr data-month="' + r.month + '" style="cursor:pointer"' +
       (r.month === state.shipped.month ? ' class="adj-edited"' : '') + '>' +
       '<td><b>' + monthLabel(r.month) + '</b></td>' +
-      '<td class="num">' + fmtQ(r.units) + '</td>' +
-      '<td class="num">' + fmt$(r.ecom) + '</td>' +
-      '<td class="num">' + fmt$(r.install) + '</td>' +
-      '<td class="num"><b>' + fmt$(r.all) + '</b></td>' +
+      '<td class="num">' + (r.hasShip ? fmtQ(r.units) : noShip) + '</td>' +
+      '<td class="num">' + (r.hasShip ? fmt$(r.ecom) : noShip) + '</td>' +
+      '<td class="num">' + (r.hasShip ? fmt$(r.install) : noShip) + '</td>' +
+      '<td class="num">' + (r.hasShip ? '<b>' + fmt$(r.all) + '</b>' : noShip) + '</td>' +
       (showT ? '<td class="num">' + (tk ? fmt$(tk.se) : '—') + '</td><td class="num">' + (tk ? fmt$(tk.replen) : '—') + '</td>' : '') +
       (showX ? '<td class="num">' + (r.booked === null ? '<span class="d2">not booked</span>' : fmt$(r.booked)) + '</td>' +
         (showT ? '<td class="num">' + (r.booked !== null && tk ? gapCell(r.booked - tk.replen, tk.replen) : '—') + '</td>' : '') +
-        '<td class="num">' + (r.booked === null ? '—' : gapCell(r.booked - r.all, r.all)) + '</td>' +
+        '<td class="num">' + (r.booked === null || !r.hasShip ? '—' : gapCell(r.booked - r.all, r.all)) + '</td>' +
         '<td class="num">' + (r.purch === null ? '—' : fmt$(r.purch)) + '</td>' : '') +
       (showPhys ? '<td class="num">' + (physD === null ? '—' : (physD >= 0 ? '+' : '') + fmt$(physD)) + '</td>' +
         '<td class="num">' + (endGap === null ? '—' : gapCell(endGap, r.physEnd)) + '</td>' : '') +
@@ -1199,7 +1218,7 @@ function renderMoM(rows) {
       '<td class="num">' + fmt$(T.all) + '</td>' +
       (showT ? '<td class="num">' + (T.anyT ? fmt$(T.se) : '—') + '</td><td class="num">' + (T.anyT ? fmt$(T.rep) : '—') + '</td>' : '') +
       (showX ? '<td class="num">' + (T.anyBooked ? fmt$(T.booked) : '—') + '</td>' +
-        (showT ? '<td class="num">' + (T.anyBooked && T.anyT ? gapCell(T.booked - T.rep, T.rep) : '—') + '</td>' : '') +
+        (showT ? '<td class="num">' + (T.anyBvr ? gapCell(T.bvr, T.booked) : '—') + '</td>' : '') +
         '<td class="num">' + (T.anyBooked ? gapCell(T.ou, T.all) : '—') + '</td>' +
         '<td class="num">' + fmt$(T.purch) + '</td>' : '') +
       (showPhys ? '<td></td><td></td>' : '') + '</tr>';
@@ -1212,11 +1231,11 @@ function exportMomCsv() {
     var tk = (state.tracker && state.tracker.byMonth[r.month]) || null;
     var physD = (r.physStart !== null && r.physEnd !== null) ? num2(r.physEnd - r.physStart) : '';
     var endGap = (r.bookEnd !== null && r.physEnd !== null) ? num2(r.bookEnd - r.physEnd) : '';
-    return [r.month, r.units, num2(r.ecom), num2(r.install), num2(r.all),
+    return [r.month, r.hasShip ? r.units : '', r.hasShip ? num2(r.ecom) : '', r.hasShip ? num2(r.install) : '', r.hasShip ? num2(r.all) : '',
             tk ? num2(tk.se) : '', tk ? num2(tk.replen) : '', tk ? num2(tk.tariff) : '',
             r.booked === null ? '' : num2(r.booked),
             (r.booked !== null && tk) ? num2(r.booked - tk.replen) : '',
-            r.booked === null ? '' : num2(r.booked - r.all),
+            (r.booked === null || !r.hasShip) ? '' : num2(r.booked - r.all),
             r.purch === null ? '' : num2(r.purch),
             r.physStart === null ? '' : num2(r.physStart),
             r.physEnd === null ? '' : num2(r.physEnd), physD, endGap];
@@ -1293,10 +1312,10 @@ function renderMovement(rc) {
     $('moveBooks').innerHTML =
       kv('Opening balance @ ' + rc.startDate, x.openingAtStart === null ? '—' :
         fmt$(x.openingAtStart) + (x.raw.openingAtStart === null ? '' : was(x.openingAtStart, x.raw.openingAtStart))) +
-      kv('+ Purchases booked in (debits)', fmt$(x.purch) + was(x.purch, x.raw.purch)) +
-      kv('− COGS journals booked', '−' + fmt$(x.cogsCred) + was(x.cogsCred, x.raw.cogsCred, true)) +
-      (x.otherCred || (x.raw.credTotal - x.raw.cogsCred) ?
-        kv('− Other credits (refunds, write-downs…)', '−' + fmt$(x.otherCred) + was(x.otherCred, x.raw.credTotal - x.raw.cogsCred, true)) : '') +
+      kv('+ Purchases booked in (non-COGS debits)', fmt$(x.purch) + was(x.purch, x.raw.purch)) +
+      kv('− COGS journals booked (net)', '−' + fmt$(x.cogsCred) + was(x.cogsCred, x.raw.cogsCred, true)) +
+      (x.cogsDeb ? kv('&nbsp;&nbsp;incl. accrual reversal debits', '+' + fmt$(x.cogsDeb)) : '') +
+      (x.otherCred ? kv('− Other credits (refunds, write-downs…)', '−' + fmt$(x.otherCred)) : '') +
       (credLines || '') +
       '<div class="kv total"><span class="k">⇒ Book balance @ month end</span><span class="v">' +
       (x.endBal === null ? '—' : fmt$(x.endBal) + (x.raw.endBal === null ? '' : was(x.endBal, x.raw.endBal))) + '</span></div>';
@@ -1920,7 +1939,8 @@ function ingestFile(name, u8) {
           state.xero = buildXero(rows, file.name);
           hashFile(u8).then(function (h) { state.xero.hash = h; state.xero.bytes = u8.length; });
           setSlot('slotXero', file.name, state.xero.txs.length + ' transactions · ' +
-            (state.xero.account || 'account') + (state.xero.minDate ? ' · ' + state.xero.minDate + ' → ' + state.xero.maxDate : ''));
+            (state.xero.account || 'account') + (state.xero.minDate ? ' · ' + state.xero.minDate + ' → ' + state.xero.maxDate : '') +
+            (state.xero.otherSections.length ? ' (+' + state.xero.otherSections.length + ' other account section ignored)' : ''));
           afterLoad();
         }).catch(function (err) {
           toast('Could not read "' + file.name + '": ' + err.message);
