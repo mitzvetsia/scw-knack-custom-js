@@ -100,6 +100,41 @@ layer cost), capitalized freight/tax in Xero bills, dropships that never touch
 ShipEdge stock, bill dates lagging receipt dates, and $0-cost SKUs (RMA grades)
 that the physical side values at zero.
 
+## Xero adjustments ("moved/changed in Xero")
+
+The movement card lists every transaction from the Xero report with a per-row
+status: **in Xero as-is** (default), **changed in Xero…** (edit its
+date/debit/credit inline), or **moved out / recoded** (excluded — it no longer
+belongs to the inventory account). Every change recomputes all balances,
+cross-checks and the month-by-month table instantly, with "(was $X)"
+annotations showing the impact against the dropped report. A note field per
+adjustment feeds the audit record; originals are always retained. Adjustments
+persist in the browser (localStorage) across sessions and can be reset in one
+click.
+
+## Audit record
+
+**Download audit record** (Journal summary card) produces a single
+self-contained HTML file (`cogs-audit_YYYY-MM.html`): input files with SHA-256
+fingerprints, the journal numbers and channel mapping, the month-by-month
+table, every data fix-up applied, the full cost-shipped-per-item table, the
+movement reconciliation with raw-vs-adjusted Xero figures, every Xero
+adjustment (original → adjusted + note), a plain-language method note, and an
+embedded machine-readable JSON block containing the complete computed state
+(including per-shipment detail and the full per-SKU movement list).
+
+## Multi-month / year-to-date mode
+
+Drop shipped reports covering multiple months (several monthly files, or one
+spanning export — identical duplicate lines across files are deduped) and the
+tool computes **every month**: a month picker drives the detail views, and the
+"Month by month — what COGS should have been" table shows per month the
+computed Ecom/Install/All COGS vs the **COGS journals actually booked** in
+Xero (over/under per month + YTD total), booked purchases, physical value
+change and the month-end book-vs-physical gap where the snapshot report covers
+the boundaries. Caveat: all months are costed at the single products export's
+current costs, so restatements for older months inherit more cost drift.
+
 ## Known limitations
 
 - **Price changes**: merchandise COGS uses the item cost as of the products

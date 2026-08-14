@@ -68,6 +68,22 @@
   .slot b{font-weight:650}
   .slot .meta{color:var(--ink-3);font-size:11.5px}
 
+  /* ---- month picker ---- */
+  .months{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .months button{padding:5px 14px;border-radius:999px;font-weight:650;font-size:13px}
+  .months button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  .months .cnt{font-weight:400;font-size:11.5px;opacity:.75;margin-left:5px}
+
+  /* ---- xero tx adjustments ---- */
+  tr.adj-excluded td{opacity:.5;text-decoration:line-through}
+  tr.adj-excluded td:last-child, tr.adj-excluded td.adj-cell{text-decoration:none}
+  tr.adj-edited td{background:#fffbeb}
+  .adj-in{font:inherit;font-size:12.5px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--ink)}
+  .adj-in.n{width:86px;text-align:right;font-variant-numeric:tabular-nums}
+  .adj-in.d{width:104px}
+  .adj-in.note{width:150px}
+  tr.tx-group td{background:var(--bg);font-weight:650;font-size:11.5px;letter-spacing:.03em;color:var(--ink-2)}
+
   /* ---- stat tiles ---- */
   .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;margin-bottom:16px}
   .tile{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
@@ -183,6 +199,8 @@
 
   <div id="results">
 
+    <div class="months" id="monthPicker" style="display:none"></div>
+
     <div class="tiles" id="tiles"></div>
 
     <div class="grid2">
@@ -195,6 +213,16 @@
         <div class="tbl-wrap" style="border:none"><table id="chanTable"></table></div>
         <div class="sub" style="margin-top:8px">Blank-channel shipments (exchanges, internal, employee) default to the Ecommerce bucket &mdash; change any mapping and the numbers recompute.</div>
       </div>
+    </div>
+
+    <div class="card" id="momCard" style="display:none">
+      <h2>Month by month — what COGS should have been</h2>
+      <div class="controls">
+        <span class="sub" id="momNote"></span>
+        <span class="spacer"></span>
+        <button id="btnMomCsv">Download month-by-month CSV</button>
+      </div>
+      <div class="tbl-wrap"><table id="momTable"></table></div>
     </div>
 
     <div class="card">
@@ -228,6 +256,7 @@
         </div>
       </div>
       <div id="crossChecks" style="margin-top:14px"></div>
+      <div id="xeroTxs" style="margin-top:14px"></div>
       <div class="controls" style="margin-top:14px">
         <span class="sub" id="moversNote"></span>
         <span class="spacer"></span>
@@ -443,17 +472,35 @@ function buildShipped(text, fileName) {
   }
   finalize(cur);
 
-  // dominant month
-  var byMonth = {};
-  recs.forEach(function (x) {
-    var m = x.date.slice(0, 7);
-    byMonth[m] = (byMonth[m] || 0) + 1;
-  });
-  var month = Object.keys(byMonth).sort(function (a, b) { return byMonth[b] - byMonth[a]; })[0] || '';
-  var outOfMonth = recs.filter(function (x) { return x.date.slice(0, 7) !== month; });
+  return { recs: recs, repaired: repaired, badRows: badRows, zeroQty: zeroQty, fileName: fileName };
+}
 
-  return { recs: recs, repaired: repaired, badRows: badRows, zeroQty: zeroQty,
-           month: month, outOfMonth: outOfMonth, fileName: fileName };
+/* Merge one or more shipped files (drop the whole year to get month-over-month).
+   Identical lines across overlapping files are deduped. The selected month drives
+   the detail views; every month is computed in the month-by-month table. */
+function mergeShipped() {
+  var seen = {}, recs = [], dupes = 0;
+  var repaired = [], badRows = [], zeroQty = [];
+  state.shippedFiles.forEach(function (fl) {
+    fl.recs.forEach(function (x) {
+      var k = [x.ship, x.order, x.sku, x.qty, x.date].join('§');
+      if (seen[k]) { dupes++; return; }
+      seen[k] = 1; recs.push(x);
+    });
+    repaired = repaired.concat(fl.repaired);
+    badRows = badRows.concat(fl.badRows);
+    zeroQty = zeroQty.concat(fl.zeroQty);
+  });
+  var byMonth = {};
+  recs.forEach(function (x) { var m = x.date.slice(0, 7); byMonth[m] = (byMonth[m] || 0) + 1; });
+  var months = Object.keys(byMonth).sort();
+  var prev = state.shipped && state.shipped.month;
+  state.shipped = {
+    recs: recs, months: months, byMonth: byMonth,
+    month: (prev && months.indexOf(prev) !== -1) ? prev : months[months.length - 1],
+    repaired: repaired, badRows: badRows, zeroQty: zeroQty, dupes: dupes,
+    files: state.shippedFiles.map(function (f) { return { fileName: f.fileName, lines: f.recs.length, hash: f.hash, bytes: f.bytes }; })
+  };
 }
 
 /* ================= inventory-by-SKU daily snapshot report ================= */
@@ -641,9 +688,35 @@ function buildXero(rows, fileName) {
   }
   if (!txs.length && opening === null) throw new Error('No transactions found in the Xero report.');
   txs.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+  var keyCounts = {};
+  txs.forEach(function (t) {
+    var base = [t.date, t.ref, t.debit, t.credit, (t.desc || '').slice(0, 40)].join('§');
+    keyCounts[base] = (keyCounts[base] || 0) + 1;
+    t.key = keyCounts[base] > 1 ? base + '§' + keyCounts[base] : base;
+  });
   return { account: account, opening: opening, closing: closing, txs: txs, fileName: fileName,
            minDate: txs.length ? txs[0].date : '', maxDate: txs.length ? txs[txs.length - 1].date : '' };
 }
+/* Apply the user's "moved/changed in Xero" adjustments to the transaction list.
+   Returns entries carrying both adjusted values and the original for the record. */
+function adjustedXeroTxs() {
+  if (!state.xero) return [];
+  return state.xero.txs.map(function (t) {
+    var adj = state.adjustments[t.key] || null;
+    var e = { key: t.key, date: t.date, contact: t.contact, desc: t.desc, ref: t.ref,
+              debit: t.debit, credit: t.credit, orig: t, adj: adj, excluded: false };
+    if (adj) {
+      if (adj.action === 'exclude') e.excluded = true;
+      else if (adj.action === 'edit') {
+        if (adj.date) e.date = adj.date;
+        if (adj.debit != null) e.debit = adj.debit;
+        if (adj.credit != null) e.credit = adj.credit;
+      }
+    }
+    return e;
+  });
+}
+function isCogsTx(t) { return /cog/i.test(t.desc || '') || /cog/i.test(t.ref || ''); }
 
 /* ================= SKU matching (zero-tolerant) ================= */
 /* Excel/exports strip leading zeros off numeric SKUs ("00405614" -> "405614").
@@ -663,17 +736,43 @@ function matchSku(items, sku) {
 }
 
 /* ================= compute ================= */
+var VERSION = '3';
 var INSTALL_CHANNEL = 'Installation Services';
 var state = {
-  shipped: null, master: null,
+  shipped: null, master: null, snapshot: null, xero: null,
   bucketMap: {},           // channel -> 'install' | 'ecom'
+  adjustments: {},         // txKey -> {action:'exclude'|'edit', date, debit, credit, note}
   sortKey: 'ext', sortDir: -1, filter: '',
-  computed: null
+  computed: null, recon: null
 };
 try {
   var savedBuckets = JSON.parse(localStorage.getItem('scwCogsBuckets') || '{}');
   if (savedBuckets && typeof savedBuckets === 'object') state.bucketMap = savedBuckets;
+  var savedAdj = JSON.parse(localStorage.getItem('scwCogsAdjustments') || '{}');
+  if (savedAdj && typeof savedAdj === 'object') state.adjustments = savedAdj;
 } catch (e) { /* localStorage unavailable on some file:// setups — fine */ }
+function saveAdjustments() {
+  try { localStorage.setItem('scwCogsAdjustments', JSON.stringify(state.adjustments)); } catch (e) {}
+}
+
+/* ---- file hashing for the audit record ---- */
+function fnvHash(u8) {
+  var h = 0x811c9dc5;
+  for (var i = 0; i < u8.length; i++) { h ^= u8[i]; h = (h * 0x01000193) >>> 0; }
+  return 'fnv-' + h.toString(16).padStart(8, '0');
+}
+function hashFile(u8) {
+  try {
+    if (crypto && crypto.subtle && crypto.subtle.digest) {
+      return crypto.subtle.digest('SHA-256', u8).then(function (b) {
+        return 'sha256-' + Array.prototype.map.call(new Uint8Array(b), function (x) {
+          return x.toString(16).padStart(2, '0');
+        }).join('').slice(0, 16);
+      }, function () { return fnvHash(u8); });
+    }
+  } catch (e) {}
+  return Promise.resolve(fnvHash(u8));
+}
 
 function bucketOf(channel) {
   if (channel in state.bucketMap) return state.bucketMap[channel];
@@ -682,6 +781,7 @@ function bucketOf(channel) {
 
 function compute() {
   if (!state.shipped || !state.master) return null;
+  var month = state.shipped.month;
   var items = state.master.items;
   var perSku = new Map();       // master key (or raw sku) -> row
   var channels = new Map();     // channel -> {qty, ext, rows}
@@ -692,6 +792,7 @@ function compute() {
   var tot = { all: 0, install: 0, ecom: 0, units: 0 };
 
   state.shipped.recs.forEach(function (x) {
+    if (x.date.slice(0, 7) !== month) return;   // detail views are month-scoped
     var m = matchSku(items, x.sku);
     var it = m.key ? items.get(m.key) : null;
     var cost = it ? it.cost : 0;
@@ -762,29 +863,35 @@ function nextMonthOf(month) {
 }
 function computeRecon() {
   var c = state.computed;
-  if (!c || !state.snapshot) return null;
+  if (!c || (!state.snapshot && !state.xero)) return null;
   var items = state.master.items;
-  var snap = state.snapshot;
   var month = state.shipped.month;
   var start = month + '-01';
   var nm1 = nextMonthOf(month) + '-01';
   var notes = [];
+  var startDate = start, endDate = nm1, endIsBoundary = true;
+  var tot = null, moveRows = [];
+  var snap = state.snapshot, snapOk = !!snap;
 
-  var startDate = start;
-  if (snap.dates.indexOf(start) === -1) {
+  if (snap && snap.dates.indexOf(start) === -1) {
     var inMonth = snap.dates.filter(function (d) { return d.slice(0, 7) === month; });
-    if (!inMonth.length) return { coverageError: 'The inventory-by-SKU report has no dates in ' + month + ' — it doesn’t cover the shipped report’s month.' };
-    startDate = inMonth[0];
-    notes.push({ kind: 'warn', text: 'Snapshot doesn’t include ' + start + ' — using ' + startDate + ' as the start boundary, so early-month movement is missed.' });
+    if (!inMonth.length) {
+      if (!state.xero) return { coverageError: 'The inventory-by-SKU report has no dates in ' + month + ' — it doesn’t cover the shipped report’s month.' };
+      notes.push({ kind: 'bad', text: 'The inventory-by-SKU report has no dates in ' + month + ' — physical side skipped.' });
+      snapOk = false;
+    } else {
+      startDate = inMonth[0];
+      notes.push({ kind: 'warn', text: 'Snapshot doesn’t include ' + start + ' — using ' + startDate + ' as the start boundary, so early-month movement is missed.' });
+    }
   }
-  var endDate = nm1, endIsBoundary = true;
-  if (snap.dates.indexOf(nm1) === -1) {
+  if (snapOk && snap.dates.indexOf(nm1) === -1) {
     var inM = snap.dates.filter(function (d) { return d.slice(0, 7) === month; });
     endDate = inM[inM.length - 1];
     endIsBoundary = false;
     notes.push({ kind: 'warn', text: 'Snapshot doesn’t include ' + nm1 + ' (start-of-day = month-end position) — using ' + endDate + ' instead, so the last day(s) of movement are missed.' });
   }
 
+  if (snapOk) {
   // shipped qty per canonical SKU (c.rows keys are master SKUs where matched)
   var shipBySku = new Map();
   c.rows.forEach(function (r) { shipBySku.set(r.sku, (shipBySku.get(r.sku) || 0) + r.qty); });
@@ -832,42 +939,108 @@ function computeRecon() {
   if (missingWithStock.length) {
     notes.push({ kind: 'warn', text: 'SKU(s) in the snapshot with stock but missing from the item data (valued at $0): ' + missingWithStock.join(', ') });
   }
+  }
 
-  // Xero side
+  // Xero side — computed twice: with the user's adjustments applied, and raw
   var xero = null;
   if (state.xero) {
     var x = state.xero;
-    var preNet = 0, purch = 0, credTotal = 0, credits = [], monthTxs = 0;
-    x.txs.forEach(function (t) {
-      var tm = t.date.slice(0, 7);
-      if (t.date < start) preNet += t.debit - t.credit;
-      if (tm === month) {
-        monthTxs++;
-        purch += t.debit;
-        credTotal += t.credit;
-        if (t.credit) credits.push(t);
-      }
-    });
-    var openingAtStart = x.opening === null ? null : x.opening + preNet;
+    var atxs = adjustedXeroTxs();
+    function totalsFor(list) {
+      var r = { preNet: 0, purch: 0, credTotal: 0, cogsCred: 0, credits: [], monthTxs: 0 };
+      list.forEach(function (t) {
+        if (t.date < start) r.preNet += t.debit - t.credit;
+        if (t.date.slice(0, 7) === month) {
+          r.monthTxs++;
+          r.purch += t.debit;
+          r.credTotal += t.credit;
+          if (isCogsTx(t)) r.cogsCred += t.credit;
+          if (t.credit) r.credits.push(t);
+        }
+      });
+      return r;
+    }
+    var A = totalsFor(atxs.filter(function (t) { return !t.excluded; }));
+    var R = totalsFor(x.txs);
+    var adjCount = atxs.filter(function (t) { return t.adj; }).length;
+    var openingAtStart = x.opening === null ? null : x.opening + A.preNet;
+    var rawOpening = x.opening === null ? null : x.opening + R.preNet;
     if (x.opening !== null && x.minDate && x.minDate > start && x.minDate.slice(0, 7) === month) {
       notes.push({ kind: 'warn', text: 'The Xero report’s period seems to start after ' + start + ' — the opening balance may not be the month-start balance.' });
     }
-    if (!monthTxs) notes.push({ kind: 'warn', text: 'The Xero report has no transactions dated in ' + month + '.' });
-    // split credits into COGS journals vs other credits (vendor refunds etc.)
-    var cogsCred = 0;
-    credits.forEach(function (cr) {
-      cr.isCogs = /cog/i.test(cr.desc || '') || /cog/i.test(cr.ref || '');
-      if (cr.isCogs) cogsCred += cr.credit;
-    });
-    xero = { account: x.account, openingAtStart: openingAtStart, purch: purch,
-             credTotal: credTotal, credits: credits,
-             cogsCred: cogsCred, otherCred: credTotal - cogsCred,
-             endBal: openingAtStart === null ? null : openingAtStart + purch - credTotal,
-             bookDelta: purch - credTotal };
+    if (!A.monthTxs) notes.push({ kind: 'warn', text: 'The Xero report has no transactions dated in ' + month + '.' });
+    A.credits.forEach(function (cr) { cr.isCogs = isCogsTx(cr); });
+    xero = { account: x.account, openingAtStart: openingAtStart, purch: A.purch,
+             credTotal: A.credTotal, credits: A.credits,
+             cogsCred: A.cogsCred, otherCred: A.credTotal - A.cogsCred,
+             endBal: openingAtStart === null ? null : openingAtStart + A.purch - A.credTotal,
+             bookDelta: A.purch - A.credTotal,
+             adjCount: adjCount, txs: atxs,
+             raw: { openingAtStart: rawOpening, purch: R.purch, credTotal: R.credTotal, cogsCred: R.cogsCred,
+                    endBal: rawOpening === null ? null : rawOpening + R.purch - R.credTotal } };
   }
 
   return { month: month, startDate: startDate, endDate: endDate, endIsBoundary: endIsBoundary,
            notes: notes, tot: tot, moveRows: moveRows, cogs: c.tot.all, xero: xero };
+}
+
+/* ================= month-by-month: what COGS should have been ================= */
+function computeMonthly() {
+  if (!state.shipped || !state.master) return null;
+  var items = state.master.items;
+  var byM = {};
+  function M(m) {
+    var e = byM[m];
+    if (!e) e = byM[m] = { month: m, units: 0, ecom: 0, install: 0, all: 0,
+                           booked: null, purch: null, physStart: null, physEnd: null, bookEnd: null };
+    return e;
+  }
+  state.shipped.recs.forEach(function (x) {
+    var e = M(x.date.slice(0, 7));
+    var mk = matchSku(items, x.sku);
+    var ext = (mk.key ? items.get(mk.key).cost : 0) * x.qty;
+    e.units += x.qty;
+    e.all += ext;
+    if (bucketOf(x.channel) === 'install') e.install += ext; else e.ecom += ext;
+  });
+  if (state.xero) {
+    var atxs = adjustedXeroTxs().filter(function (t) { return !t.excluded; });
+    atxs.forEach(function (t) {
+      var m = t.date.slice(0, 7);
+      if (!byM[m]) return;    // only months we shipped in
+      var e = byM[m];
+      e.purch = (e.purch || 0) + t.debit;
+      if (isCogsTx(t) && t.credit) e.booked = (e.booked || 0) + t.credit;
+    });
+    if (state.xero.opening !== null) {
+      Object.keys(byM).forEach(function (m) {
+        var cut = nextMonthOf(m) + '-01';
+        var bal = state.xero.opening;
+        atxs.forEach(function (t) { if (t.date < cut) bal += t.debit - t.credit; });
+        // meaningless for months before the report period begins
+        if (state.xero.minDate && cut > state.xero.minDate) byM[m].bookEnd = bal;
+      });
+    }
+  }
+  if (state.snapshot) {
+    var snap = state.snapshot;
+    Object.keys(byM).forEach(function (m) {
+      var s = m + '-01', e1 = nextMonthOf(m) + '-01';
+      var hasS = snap.dates.indexOf(s) !== -1, hasE = snap.dates.indexOf(e1) !== -1;
+      if (!hasS && !hasE) return;
+      var sv = 0, ev = 0;
+      snap.bySku.forEach(function (v, rawSku) {
+        var mk = matchSku(items, rawSku);
+        var cost = mk.key ? items.get(mk.key).cost : 0;
+        if (!cost) return;
+        if (hasS) sv += (v.dates.get(s) || 0) * cost;
+        if (hasE) ev += (v.dates.get(e1) || 0) * cost;
+      });
+      byM[m].physStart = hasS ? sv : null;
+      byM[m].physEnd = hasE ? ev : null;
+    });
+  }
+  return Object.keys(byM).sort().map(function (m) { return byM[m]; });
 }
 /* ================= formatting & DOM helpers ================= */
 function $(id) { return document.getElementById(id); }
@@ -903,6 +1076,7 @@ function renderAll() {
   mb.textContent = monthLabel(state.shipped.month);
   mb.classList.add('on');
 
+  renderMonthPicker();
   renderTiles(c);
   renderJournal(c);
   renderChannels(c);
@@ -912,6 +1086,95 @@ function renderAll() {
   renderRecon(c);
   state.recon = computeRecon();
   renderMovement(state.recon);
+  state.monthly = computeMonthly();
+  renderMoM(state.monthly);
+}
+var refreshPending = false;
+function refreshRecon() {   // adjustments changed — recompute recon + MoM without nuking inputs
+  if (refreshPending) return;   // coalesce change + blur double-fires; render after the event settles
+  refreshPending = true;
+  setTimeout(function () {
+    refreshPending = false;
+    state.recon = computeRecon();
+    renderMovement(state.recon);
+    state.monthly = computeMonthly();
+    renderMoM(state.monthly);
+  }, 0);
+}
+
+function renderMonthPicker() {
+  var s = state.shipped, el = $('monthPicker');
+  if (!s || s.months.length < 2) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.innerHTML = s.months.map(function (m) {
+    return '<button data-month="' + m + '" class="' + (m === s.month ? 'active' : '') + '">' +
+      monthLabel(m) + '<span class="cnt">' + fmtQ(s.byMonth[m]) + ' lines</span></button>';
+  }).join('');
+}
+
+function renderMoM(rows) {
+  var card = $('momCard');
+  if (!rows || (rows.length < 2 && !state.xero)) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  $('momNote').textContent = 'Computed from the shipped data at current item costs' +
+    (state.xero ? ' · booked = COGS journal credits in Xero (adjustments applied)' : '') +
+    (rows.length > 1 ? ' · click a row to open that month' : '');
+  var showPhys = rows.some(function (r) { return r.physStart !== null || r.physEnd !== null; });
+  var showX = !!state.xero;
+  var html = '<thead><tr><th>Month</th><th class="num">Units</th><th class="num">Ecom COGS</th><th class="num">Install COGS</th>' +
+    '<th class="num">All COGS (computed)</th>' +
+    (showX ? '<th class="num">COGS booked</th><th class="num">Over/(under) booked</th><th class="num">Purchases in</th>' : '') +
+    (showPhys ? '<th class="num">Physical Δ</th><th class="num">Book − physical @ end</th>' : '') +
+    '</tr></thead><tbody>';
+  var T = { units: 0, ecom: 0, install: 0, all: 0, booked: 0, anyBooked: false, purch: 0, ou: 0 };
+  rows.forEach(function (r) {
+    T.units += r.units; T.ecom += r.ecom; T.install += r.install; T.all += r.all;
+    if (r.booked !== null) { T.booked += r.booked; T.anyBooked = true; T.ou += r.booked - r.all; }
+    if (r.purch !== null) T.purch += r.purch;
+    var physD = (r.physStart !== null && r.physEnd !== null) ? r.physEnd - r.physStart : null;
+    var endGap = (r.bookEnd !== null && r.physEnd !== null) ? r.bookEnd - r.physEnd : null;
+    html += '<tr data-month="' + r.month + '" style="cursor:pointer"' +
+      (r.month === state.shipped.month ? ' class="adj-edited"' : '') + '>' +
+      '<td><b>' + monthLabel(r.month) + '</b></td>' +
+      '<td class="num">' + fmtQ(r.units) + '</td>' +
+      '<td class="num">' + fmt$(r.ecom) + '</td>' +
+      '<td class="num">' + fmt$(r.install) + '</td>' +
+      '<td class="num"><b>' + fmt$(r.all) + '</b></td>' +
+      (showX ? '<td class="num">' + (r.booked === null ? '<span class="d2">not booked</span>' : fmt$(r.booked)) + '</td>' +
+        '<td class="num">' + (r.booked === null ? '—' : gapCell(r.booked - r.all, r.all)) + '</td>' +
+        '<td class="num">' + (r.purch === null ? '—' : fmt$(r.purch)) + '</td>' : '') +
+      (showPhys ? '<td class="num">' + (physD === null ? '—' : (physD >= 0 ? '+' : '') + fmt$(physD)) + '</td>' +
+        '<td class="num">' + (endGap === null ? '—' : gapCell(endGap, r.physEnd)) + '</td>' : '') +
+      '</tr>';
+  });
+  if (rows.length > 1) {
+    html += '<tr class="tot"><td>Total</td><td class="num">' + fmtQ(T.units) + '</td>' +
+      '<td class="num">' + fmt$(T.ecom) + '</td><td class="num">' + fmt$(T.install) + '</td>' +
+      '<td class="num">' + fmt$(T.all) + '</td>' +
+      (showX ? '<td class="num">' + (T.anyBooked ? fmt$(T.booked) : '—') + '</td>' +
+        '<td class="num">' + (T.anyBooked ? gapCell(T.ou, T.all) : '—') + '</td>' +
+        '<td class="num">' + fmt$(T.purch) + '</td>' : '') +
+      (showPhys ? '<td></td><td></td>' : '') + '</tr>';
+  }
+  $('momTable').innerHTML = html + '</tbody>';
+}
+function exportMomCsv() {
+  var rows = state.monthly || [];
+  var out = rows.map(function (r) {
+    var physD = (r.physStart !== null && r.physEnd !== null) ? num2(r.physEnd - r.physStart) : '';
+    var endGap = (r.bookEnd !== null && r.physEnd !== null) ? num2(r.bookEnd - r.physEnd) : '';
+    return [r.month, r.units, num2(r.ecom), num2(r.install), num2(r.all),
+            r.booked === null ? '' : num2(r.booked),
+            r.booked === null ? '' : num2(r.booked - r.all),
+            r.purch === null ? '' : num2(r.purch),
+            r.physStart === null ? '' : num2(r.physStart),
+            r.physEnd === null ? '' : num2(r.physEnd), physD, endGap];
+  });
+  download('cogs-month-by-month.csv',
+    toCSV(['Month', 'Units', 'Ecom COGS', 'Install COGS', 'All COGS (computed)', 'COGS Booked (journals)',
+           'Over/(Under) Booked', 'Purchases In', 'Physical Value @ Start', 'Physical Value @ End',
+           'Physical Delta', 'Book - Physical @ End'], out));
+  toast('cogs-month-by-month.csv downloaded');
 }
 
 function gapCell(gap, base) {
@@ -931,17 +1194,27 @@ function renderMovement(rc) {
     $('crossChecks').innerHTML = ''; $('moveTable').innerHTML = ''; $('moversNote').textContent = '';
     return;
   }
-  $('movementSub').textContent = ' — ' + monthLabel(rc.month) + ' · snapshot ' + rc.startDate + ' → ' + rc.endDate + ' (start-of-day)';
-  $('movementNotes').innerHTML = rc.notes.map(function (n) {
+  $('movementSub').textContent = ' — ' + monthLabel(rc.month) +
+    (rc.tot ? ' · snapshot ' + rc.startDate + ' → ' + rc.endDate + ' (start-of-day)' : '');
+  var notesHtml = rc.notes.map(function (n) {
     return '<div class="issue ' + n.kind + '" style="padding:7px 12px">' + esc(n.text) + '</div>';
   }).join('');
+  if (rc.xero && rc.xero.adjCount) {
+    notesHtml += '<div class="issue info" style="padding:7px 12px"><b>' + rc.xero.adjCount +
+      ' Xero adjustment' + (rc.xero.adjCount > 1 ? 's' : '') + ' applied</b> — book figures below reflect Xero after your changes' +
+      (rc.xero.endBal !== null && rc.xero.raw.endBal !== null && rc.xero.endBal !== rc.xero.raw.endBal
+        ? '; month-end balance ' + fmt$(rc.xero.endBal) + ' (was ' + fmt$(rc.xero.raw.endBal) + ')' : '') +
+      '. Every change is captured in the audit record.</div>';
+  }
+  $('movementNotes').innerHTML = notesHtml;
 
   function kv(k, v, cls) {
     return '<div class="kv"><span class="k">' + k + '</span><span class="v' + (cls ? ' ' + cls : '') + '">' + v + '</span></div>';
   }
   var t = rc.tot;
-  $('movePhysical').innerHTML =
-    kv('Inventory value @ ' + rc.startDate, fmt$(t.startVal)) +
+  $('movePhysical').innerHTML = !t
+    ? '<div class="sub" style="padding:14px 0">Drop the ShipEdge <b>Total Inventory by SKU</b> daily-snapshot report (covering the 1st of this month through the 1st of the next) to add the physical side: start/end value, the month’s change, and per-SKU implied receipts vs unexplained losses.</div>'
+    : kv('Inventory value @ ' + rc.startDate, fmt$(t.startVal)) +
     kv('Inventory value @ ' + rc.endDate, fmt$(t.endVal)) +
     kv('Change over the month', (t.deltaVal >= 0 ? '+' : '') + fmt$(t.deltaVal)) +
     kv('COGS shipped out (this tool)', '−' + fmt$(rc.cogs)) +
@@ -960,20 +1233,29 @@ function renderMovement(rc) {
       return kv('<span class="d2">' + esc(cr.date) + ' · ' + esc((cr.desc || cr.contact || 'credit').slice(0, 52)) +
         (cr.isCogs ? '' : ' <span class="rowflag fix">not COGS</span>') + '</span>', '−' + fmt$(cr.credit));
     }).join('');
+    function was(cur, raw, flip) {
+      if (Math.abs(cur - raw) < 0.005) return '';
+      return ' <span class="d2">(was ' + (flip ? '−' : '') + fmt$(raw) + ')</span>';
+    }
     $('moveBooks').innerHTML =
-      kv('Opening balance @ ' + rc.startDate, x.openingAtStart === null ? '—' : fmt$(x.openingAtStart)) +
-      kv('+ Purchases booked in (debits)', fmt$(x.purch)) +
-      kv('− COGS journals booked', '−' + fmt$(x.cogsCred)) +
-      (x.otherCred ? kv('− Other credits (refunds, write-downs…)', '−' + fmt$(x.otherCred)) : '') +
+      kv('Opening balance @ ' + rc.startDate, x.openingAtStart === null ? '—' :
+        fmt$(x.openingAtStart) + (x.raw.openingAtStart === null ? '' : was(x.openingAtStart, x.raw.openingAtStart))) +
+      kv('+ Purchases booked in (debits)', fmt$(x.purch) + was(x.purch, x.raw.purch)) +
+      kv('− COGS journals booked', '−' + fmt$(x.cogsCred) + was(x.cogsCred, x.raw.cogsCred, true)) +
+      (x.otherCred || (x.raw.credTotal - x.raw.cogsCred) ?
+        kv('− Other credits (refunds, write-downs…)', '−' + fmt$(x.otherCred) + was(x.otherCred, x.raw.credTotal - x.raw.cogsCred, true)) : '') +
       (credLines || '') +
-      '<div class="kv total"><span class="k">⇒ Book balance @ month end</span><span class="v">' + (x.endBal === null ? '—' : fmt$(x.endBal)) + '</span></div>';
+      '<div class="kv total"><span class="k">⇒ Book balance @ month end</span><span class="v">' +
+      (x.endBal === null ? '—' : fmt$(x.endBal) + (x.raw.endBal === null ? '' : was(x.endBal, x.raw.endBal))) + '</span></div>';
 
     var rows = [];
     function chk(label, se, xe, base) { rows.push('<tr><td>' + label + '</td><td class="num">' + fmt$(se) + '</td><td class="num">' + fmt$(xe) + '</td><td class="num">' + gapCell(xe - se, base) + '</td></tr>'); }
-    if (x.openingAtStart !== null) chk('Month-start inventory value', rc.tot.startVal, x.openingAtStart, x.openingAtStart);
-    if (x.endBal !== null) chk('Month-end inventory value', rc.tot.endVal, x.endBal, x.endBal);
-    chk('Change over the month', rc.tot.deltaVal, x.bookDelta, rc.tot.startVal);
-    chk('Receipts: implied (physical) vs purchases (booked)', rc.tot.netRecvVal, x.purch, x.purch);
+    if (rc.tot) {
+      if (x.openingAtStart !== null) chk('Month-start inventory value', rc.tot.startVal, x.openingAtStart, x.openingAtStart);
+      if (x.endBal !== null) chk('Month-end inventory value', rc.tot.endVal, x.endBal, x.endBal);
+      chk('Change over the month', rc.tot.deltaVal, x.bookDelta, rc.tot.startVal);
+      chk('Receipts: implied (physical) vs purchases (booked)', rc.tot.netRecvVal, x.purch, x.purch);
+    }
     chk('COGS: this tool vs journals booked', rc.cogs, x.cogsCred || x.credTotal, rc.cogs);
     $('crossChecks').innerHTML =
       '<h2 style="font-size:13.5px">Cross-checks <span class="sub" style="display:inline;font-weight:400">(gap = Xero − ShipEdge; green ≤ 1%, amber ≤ 5%)</span></h2>' +
@@ -982,6 +1264,15 @@ function renderMovement(rc) {
       '<div class="sub" style="margin-top:6px">Expected noise: ShipEdge values use the current item cost (not each layer’s actual cost), Xero bills can include capitalized freight/tax, dropships may never touch ShipEdge stock, and bill dates lag receipt dates.</div>';
   }
 
+  renderXeroTxs(rc);
+
+  if (!rc.moveRows.length) {
+    $('moversNote').textContent = '';
+    $('btnMoveCsv').style.display = 'none';
+    $('moveTable').innerHTML = '';
+    return;
+  }
+  $('btnMoveCsv').style.display = '';
   var top = rc.moveRows.slice(0, 30);
   $('moversNote').textContent = 'Top ' + top.length + ' of ' + rc.moveRows.length + ' SKUs with activity, by |implied value|. Positive implied = received; negative = shrank more than shipments explain.';
   var html = '<thead><tr><th>SKU</th><th>Description</th><th class="num">Start</th><th class="num">End</th><th class="num">Δ</th><th class="num">Shipped</th><th class="num">Implied ±</th><th class="num">Unit cost</th><th class="num">Implied value</th></tr></thead><tbody>';
@@ -998,6 +1289,63 @@ function renderMovement(rc) {
   });
   $('moveTable').innerHTML = html + '</tbody>';
 }
+/* The full Xero transaction list with per-row adjustment controls: mark a
+   transaction as removed/recoded or changed in Xero and every number recomputes. */
+function renderXeroTxs(rc) {
+  var el = $('xeroTxs');
+  if (!rc || !rc.xero) { el.innerHTML = ''; return; }
+  var x = rc.xero;
+  var groups = [
+    { t: 'Before ' + monthLabel(rc.month), f: function (t) { return t.date.slice(0, 7) < rc.month; } },
+    { t: monthLabel(rc.month), f: function (t) { return t.date.slice(0, 7) === rc.month; } },
+    { t: 'After ' + monthLabel(rc.month) + ' (no effect on this month)', f: function (t) { return t.date.slice(0, 7) > rc.month; } }
+  ];
+  var body = '';
+  groups.forEach(function (g) {
+    var list = x.txs.filter(g.f);
+    if (!list.length) return;
+    body += '<tr class="tx-group"><td colspan="7">' + esc(g.t) + ' · ' + list.length + ' transactions</td></tr>';
+    list.forEach(function (t) {
+      var st = t.adj ? t.adj.action : 'asis';
+      var key = esc(t.key);
+      var rowCls = st === 'exclude' ? 'adj-excluded' : (st === 'edit' ? 'adj-edited' : '');
+      var dateCell = st === 'edit'
+        ? '<input type="date" class="adj-in d" data-adjkey="' + key + '" data-adjfield="date" value="' + esc(t.date) + '">'
+        : esc(t.date);
+      var debCell = st === 'edit'
+        ? '<input class="adj-in n" data-adjkey="' + key + '" data-adjfield="debit" value="' + (t.debit ? num2(t.debit) : '') + '">'
+        : (t.debit ? fmt$(t.debit) : '');
+      var credCell = st === 'edit'
+        ? '<input class="adj-in n" data-adjkey="' + key + '" data-adjfield="credit" value="' + (t.credit ? num2(t.credit) : '') + '">'
+        : (t.credit ? fmt$(t.credit) : '');
+      var label = (t.contact ? t.contact + ' — ' : '') + (t.desc || '');
+      body += '<tr class="' + rowCls + '">' +
+        '<td class="adj-cell" style="white-space:nowrap">' + dateCell + '</td>' +
+        '<td><span class="d2">' + esc(label.length > 58 ? label.slice(0, 58) + '…' : label) + '</span></td>' +
+        '<td><span class="d2">' + esc(t.ref) + '</span></td>' +
+        '<td class="num adj-cell">' + debCell + '</td>' +
+        '<td class="num adj-cell">' + credCell + '</td>' +
+        '<td class="adj-cell"><select data-adjkey="' + key + '" data-adjrole="status">' +
+        '<option value="asis"' + (st === 'asis' ? ' selected' : '') + '>in Xero as-is</option>' +
+        '<option value="edit"' + (st === 'edit' ? ' selected' : '') + '>changed in Xero…</option>' +
+        '<option value="exclude"' + (st === 'exclude' ? ' selected' : '') + '>moved out / recoded</option>' +
+        '</select></td>' +
+        '<td class="adj-cell">' + (st !== 'asis'
+          ? '<input class="adj-in note" placeholder="why? (for the audit record)" data-adjkey="' + key + '" data-adjfield="note" value="' + esc(t.adj && t.adj.note || '') + '">'
+          : '') + '</td></tr>';
+    });
+  });
+  el.innerHTML =
+    '<details class="issue info"' + (x.adjCount ? ' open' : '') + '><summary>Xero transactions — mark anything you’ve moved or changed in Xero' +
+    '<span class="n">' + (x.adjCount ? x.adjCount + ' adjusted' : x.txs.length + ' txs') + '</span></summary><div class="body">' +
+    '<p>Set a row to <i>changed in Xero…</i> to edit its date/amounts, or <i>moved out / recoded</i> if it no longer belongs to this account. ' +
+    'All balances, cross-checks and the month-by-month table update instantly; the original values stay in the audit record.' +
+    (x.adjCount ? ' <button id="btnClearAdj" style="margin-left:8px">Reset all adjustments</button>' : '') + '</p>' +
+    '<div class="tbl-wrap" style="max-height:380px;overflow-y:auto"><table>' +
+    '<thead><tr><th>Date</th><th>Description</th><th>Ref</th><th class="num">Debit</th><th class="num">Credit</th><th>Status</th><th>Note</th></tr></thead>' +
+    '<tbody>' + body + '</tbody></table></div></div></details>';
+}
+
 function exportMoveCsv() {
   var rc = state.recon;
   if (!rc || rc.coverageError) return;
@@ -1032,7 +1380,10 @@ function renderJournal(c) {
     kv('All COGs', fmt$(c.tot.all)) +
     '<div class="kv"><span class="k">Tariffs (from FIFO tracker)</span>' +
     '<input type="text" id="tariff" placeholder="0.00" autocomplete="off"></div>' +
-    '<div class="kv total"><span class="k">Total journal</span><span class="v" id="journalTotal">' + fmt$(c.tot.all) + '</span></div>';
+    '<div class="kv total"><span class="k">Total journal</span><span class="v" id="journalTotal">' + fmt$(c.tot.all) + '</span></div>' +
+    '<div style="margin-top:12px;display:flex;gap:10px;align-items:center">' +
+    '<button class="primary" id="btnAudit">Download audit record</button>' +
+    '<span class="sub">self-contained HTML: inputs, fix-ups, every number, and any Xero adjustments</span></div>';
   function kv(k, v) { return '<div class="kv"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + '</span></div>'; }
 }
 function updateJournalTotal() {
@@ -1108,10 +1459,9 @@ function renderIssues(c) {
         c.zeroCostRows.slice().sort(function (a, b) { return b.qty - a.qty; })
           .map(function (r) { return [esc(r.sku), fmtQ(r.qty), esc(r.desc)]; })));
   }
-  if (s.outOfMonth.length) {
-    out += issueBlock('warn', 'Rows dated outside ' + monthLabel(s.month), s.outOfMonth.length,
-      miniTable([{ t: 'Date' }, { t: 'Ship#' }, { t: 'SKU' }, { t: 'Qty', num: 1 }],
-        s.outOfMonth.map(function (r) { return [esc(r.date), esc(r.ship), esc(r.sku), fmtQ(r.qty)]; })));
+  if (s.dupes) {
+    out += issueBlock('info', 'Duplicate shipment lines removed across the dropped shipped files', s.dupes,
+      '<p>Identical lines (same Ship#, order, SKU, qty and timestamp) appearing in more than one dropped file are counted once.</p>');
   }
   if (m.dupes.length || m.badCost.length) {
     out += issueBlock('warn', 'Item-data oddities (duplicate SKUs / unreadable costs)', m.dupes.length + m.badCost.length,
@@ -1292,6 +1642,187 @@ function copyTsv() {
   } else fallback();
 }
 
+/* ================= audit record export ================= */
+/* A single self-contained HTML file: which inputs produced which numbers, every
+   fix-up and Xero adjustment (original -> adjusted, with notes), the full
+   cost-shipped table, and a machine-readable JSON block of the complete state. */
+function exportAudit() {
+  var c = state.computed;
+  if (!c) { toast('Load the shipped report and item data first'); return; }
+  var s = state.shipped, m = state.master, rc = state.recon, monthly = state.monthly;
+  var month = s.month;
+  var tariff = parseNum($('tariff') ? $('tariff').value : '') || 0;
+  var manualXero = $('xeroVal') ? $('xeroVal').value : '';
+  var now = new Date();
+
+  function aTable(headers, rows) {
+    return '<table><thead><tr>' + headers.map(function (h) { return '<th' + (h.num ? ' class="n"' : '') + '>' + esc(h.t) + '</th>'; }).join('') +
+      '</tr></thead><tbody>' + rows.map(function (r) {
+        return '<tr>' + r.map(function (cell, i) { return '<td' + (headers[i].num ? ' class="n"' : '') + '>' + cell + '</td>'; }).join('') + '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+  function sec(title, inner, open) {
+    return '<details' + (open ? ' open' : '') + '><summary>' + esc(title) + '</summary>' + inner + '</details>';
+  }
+  function kvRow(k, v) { return '<div class="kv"><span>' + k + '</span><b>' + v + '</b></div>'; }
+
+  // inputs
+  var inputs = [];
+  (s.files || []).forEach(function (f) {
+    inputs.push({ role: 'Shipped-items report', fileName: f.fileName, detail: f.lines + ' lines', hash: f.hash || 'n/a', bytes: f.bytes || 0 });
+  });
+  inputs.push({ role: 'Item data (products export)', fileName: m.fileName, detail: m.rowCount + ' SKUs', hash: m.hash || 'n/a', bytes: m.bytes || 0 });
+  if (state.snapshot) inputs.push({ role: 'Inventory by SKU (daily snapshots)', fileName: state.snapshot.fileName,
+    detail: state.snapshot.rowCount + ' SKUs · ' + state.snapshot.dates[0] + ' → ' + state.snapshot.dates[state.snapshot.dates.length - 1],
+    hash: state.snapshot.hash || 'n/a', bytes: state.snapshot.bytes || 0 });
+  if (state.xero) inputs.push({ role: 'Xero account transactions', fileName: state.xero.fileName,
+    detail: state.xero.txs.length + ' txs · ' + (state.xero.account || '') + ' · ' + state.xero.minDate + ' → ' + state.xero.maxDate,
+    hash: state.xero.hash || 'n/a', bytes: state.xero.bytes || 0 });
+
+  // adjustments record
+  var adjRows = [], adjJson = [];
+  if (state.xero) {
+    adjustedXeroTxs().forEach(function (t) {
+      if (!t.adj) return;
+      var o = t.orig;
+      var origStr = o.date + ' · D ' + num2(o.debit) + ' / C ' + num2(o.credit);
+      var newStr = t.adj.action === 'exclude' ? '<b>removed / recoded out of this account</b>'
+        : '<b>' + esc(t.date) + ' · D ' + num2(t.debit) + ' / C ' + num2(t.credit) + '</b>';
+      adjRows.push([esc((o.contact ? o.contact + ' — ' : '') + (o.desc || '').slice(0, 60)), esc(o.ref), esc(origStr), newStr, esc(t.adj.note || '')]);
+      adjJson.push({ key: t.key, action: t.adj.action, note: t.adj.note || '',
+        original: { date: o.date, contact: o.contact, desc: o.desc, ref: o.ref, debit: o.debit, credit: o.credit },
+        adjusted: t.adj.action === 'exclude' ? null : { date: t.date, debit: t.debit, credit: t.credit } });
+    });
+  }
+
+  var body = '';
+  body += '<h1>SCW Monthly COGS — audit record</h1>';
+  body += '<p class="meta">' + esc(monthLabel(month)) + ' · generated ' + esc(now.toLocaleString()) + ' (' + esc(now.toISOString()) + ') · workbench v' + VERSION + ' · all figures computed locally from the files below</p>';
+
+  body += sec('1 · Input files', aTable(
+    [{ t: 'Role' }, { t: 'File' }, { t: 'Contents' }, { t: 'Fingerprint' }, { t: 'Bytes', num: 1 }],
+    inputs.map(function (f) { return [esc(f.role), esc(f.fileName), esc(f.detail), '<code>' + esc(f.hash) + '</code>', fmtQ(f.bytes)]; })), true);
+
+  var chanRows = [];
+  state.computed.channels.forEach(function (v, ch) {
+    chanRows.push([ch ? esc(ch) : '<i>(blank)</i>', fmtQ(v.rows), fmtQ(v.qty), fmt$(v.ext), bucketOf(ch) === 'install' ? 'Install' : 'Ecommerce']);
+  });
+  body += sec('2 · Journal summary — ' + monthLabel(month),
+    kvRow('Ecommerce COGS', fmt$(c.tot.ecom)) + kvRow('Install COGS', fmt$(c.tot.install)) +
+    kvRow('All COGs', fmt$(c.tot.all)) + kvRow('Tariffs (entered from FIFO tracker)', fmt$(tariff)) +
+    kvRow('Total journal', fmt$(c.tot.all + tariff)) +
+    '<h3>Channel → bucket mapping</h3>' +
+    aTable([{ t: 'Channel' }, { t: 'Rows', num: 1 }, { t: 'Units', num: 1 }, { t: 'Cost shipped', num: 1 }, { t: 'Bucket' }], chanRows), true);
+
+  if (monthly && (monthly.length > 1 || state.xero)) {
+    body += sec('3 · Month by month — computed vs booked', aTable(
+      [{ t: 'Month' }, { t: 'Units', num: 1 }, { t: 'Ecom', num: 1 }, { t: 'Install', num: 1 }, { t: 'All COGs (computed)', num: 1 },
+       { t: 'COGS booked', num: 1 }, { t: 'Over/(under)', num: 1 }, { t: 'Purchases in', num: 1 },
+       { t: 'Physical Δ', num: 1 }, { t: 'Book − physical @ end', num: 1 }],
+      monthly.map(function (r) {
+        var physD = (r.physStart !== null && r.physEnd !== null) ? fmt$(r.physEnd - r.physStart) : '—';
+        var endGap = (r.bookEnd !== null && r.physEnd !== null) ? fmt$(r.bookEnd - r.physEnd) : '—';
+        return [esc(monthLabel(r.month)), fmtQ(r.units), fmt$(r.ecom), fmt$(r.install), '<b>' + fmt$(r.all) + '</b>',
+                r.booked === null ? 'not booked' : fmt$(r.booked),
+                r.booked === null ? '—' : fmt$(r.booked - r.all),
+                r.purch === null ? '—' : fmt$(r.purch), physD, endGap];
+      })), true);
+  }
+
+  var fx = '';
+  if (s.repaired.length) fx += '<h3>Broken export rows repaired (' + s.repaired.length + ')</h3>' + aTable(
+    [{ t: 'Date' }, { t: 'Ship#' }, { t: 'SKU' }, { t: 'Qty', num: 1 }],
+    s.repaired.map(function (r) { return [esc(r.date), esc(r.ship), esc(r.sku), fmtQ(r.qty)]; }));
+  if (c.zerofixes.length) {
+    var zf = {};
+    c.zerofixes.forEach(function (z) { var k = z.from + '→' + z.to; zf[k] = zf[k] || { from: z.from, to: z.to, qty: 0 }; zf[k].qty += z.qty; });
+    fx += '<h3>Leading-zero SKUs re-matched</h3>' + aTable([{ t: 'Shipped as' }, { t: 'Matched to' }, { t: 'Qty', num: 1 }],
+      Object.keys(zf).map(function (k) { return [esc(zf[k].from), esc(zf[k].to), fmtQ(zf[k].qty)]; }));
+  }
+  if (c.unmatched.size) fx += '<h3>Unmatched SKUs (costed $0)</h3>' + aTable([{ t: 'SKU' }, { t: 'Qty', num: 1 }],
+    Array.from(c.unmatched.entries()).map(function (e) { return [esc(e[0]), fmtQ(e[1].qty)]; }));
+  if (c.zeroCostRows.length) fx += '<h3>Shipped items with $0 item-data cost (' + c.zeroCostRows.length + ')</h3>' + aTable(
+    [{ t: 'SKU' }, { t: 'Qty', num: 1 }, { t: 'Description' }],
+    c.zeroCostRows.map(function (r) { return [esc(r.sku), fmtQ(r.qty), esc(r.desc.slice(0, 70))]; }));
+  if (s.badRows.length) fx += '<h3>Unparseable rows excluded (' + s.badRows.length + ')</h3>' + aTable([{ t: 'Reason' }, { t: 'Content' }],
+    s.badRows.map(function (b) { return [esc(b.reason), esc(b.raw.slice(0, 160))]; }));
+  if (s.dupes) fx += '<p>' + s.dupes + ' duplicate shipment line(s) removed across dropped files.</p>';
+  body += sec('4 · Data fix-ups applied', fx || '<p>None.</p>', true);
+
+  body += sec('5 · Cost shipped / item — ' + monthLabel(month) + ' (' + c.rows.length + ' SKUs)', aTable(
+    [{ t: 'SKU' }, { t: 'Description' }, { t: 'Install qty', num: 1 }, { t: 'Ecom qty', num: 1 }, { t: 'Qty', num: 1 }, { t: 'Unit cost', num: 1 }, { t: 'Cost shipped', num: 1 }],
+    c.rows.slice().sort(function (a, b) { return b.ext - a.ext; }).map(function (r) {
+      return [esc(r.sku), esc(r.desc.slice(0, 80)), r.iq ? fmtQ(r.iq) : '', r.eq ? fmtQ(r.eq) : '', fmtQ(r.qty), fmt$(r.cost), fmt$(r.ext)];
+    }).concat([['<b>Total</b>', '', '', '', '<b>' + fmtQ(c.tot.units) + '</b>', '', '<b>' + fmt$(c.tot.all) + '</b>']])));
+
+  if (rc && !rc.coverageError) {
+    var mv = '<p>' + rc.notes.map(function (n) { return esc(n.text); }).join(' ') + '</p>';
+    if (rc.tot) {
+      mv += '<p>Snapshot boundaries: ' + esc(rc.startDate) + ' → ' + esc(rc.endDate) + ' (start-of-day).</p>' +
+        kvRow('Physical value @ start / end', fmt$(rc.tot.startVal) + ' / ' + fmt$(rc.tot.endVal)) +
+        kvRow('Physical change', fmt$(rc.tot.deltaVal)) +
+        kvRow('Net receipts implied (Δ + COGS)', fmt$(rc.tot.netRecvVal) + ' (receipts ' + fmt$(rc.tot.recvVal) + ' on ' + rc.tot.recvSkus + ' SKUs; losses ' + fmt$(rc.tot.lossVal) + ' on ' + rc.tot.lossSkus + ')');
+    }
+    if (rc.xero) {
+      var x = rc.xero;
+      mv += kvRow('Xero opening @ month start', x.openingAtStart === null ? '—' : fmt$(x.openingAtStart)) +
+        kvRow('Xero purchases in / credits out', fmt$(x.purch) + ' / ' + fmt$(x.credTotal) + ' (COGS journals ' + fmt$(x.cogsCred) + ')') +
+        kvRow('Xero book balance @ month end', x.endBal === null ? '—' : fmt$(x.endBal)) +
+        (x.adjCount ? kvRow('Unadjusted (as in the dropped report)', 'purchases ' + fmt$(x.raw.purch) + ' / credits ' + fmt$(x.raw.credTotal) + ' / end ' + (x.raw.endBal === null ? '—' : fmt$(x.raw.endBal))) : '') +
+        (rc.tot ? kvRow('Month-end gap (book − physical)', x.endBal === null ? '—' : fmt$(x.endBal - rc.tot.endVal)) : '') +
+        kvRow('COGS gap (booked journals − computed)', fmt$(x.cogsCred - rc.cogs));
+    }
+    if (rc.moveRows.length) mv += '<h3>Top 40 SKU movements (full list in the JSON block)</h3>' + aTable(
+      [{ t: 'SKU' }, { t: 'Start', num: 1 }, { t: 'End', num: 1 }, { t: 'Δ', num: 1 }, { t: 'Shipped', num: 1 }, { t: 'Implied ±', num: 1 }, { t: 'Implied value', num: 1 }],
+      rc.moveRows.slice(0, 40).map(function (e) { return [esc(e.sku), fmtQ(e.s0), fmtQ(e.e0), fmtQ(e.delta), fmtQ(e.sh), fmtQ(e.impl), fmt$(e.implVal)]; }));
+    body += sec('6 · Inventory movement reconciliation — ' + monthLabel(month), mv);
+  }
+
+  body += sec('7 · Xero adjustments (“moved/changed in Xero”)', adjRows.length
+    ? aTable([{ t: 'Transaction' }, { t: 'Ref' }, { t: 'Original' }, { t: 'As adjusted' }, { t: 'Note' }], adjRows)
+    : '<p>None applied.</p>', true);
+  if (manualXero) body += '<p class="meta">Manually entered Xero balance on the reconciliation card: ' + esc(manualXero) + '</p>';
+
+  body += sec('8 · Method', '<p>Every shipped line for the month is joined to its SKU’s cost in the products export (exact SKU match first, then leading-zero re-padding); COGS = qty × that cost, split into buckets by the channel mapping above. Costs are as of the products-export pull date — the same “latest cost” basis as the historical spreadsheet. Inventory snapshots are start-of-day positions, so a month runs from the 1st to the 1st of the next month; per-SKU implied receipts = quantity change + shipped. Xero figures come from the dropped Account Transactions report with the section-7 adjustments applied (originals retained above). The JSON block below contains the complete computed state, including the full per-SKU movement list and per-shipment detail.</p>');
+
+  var json = {
+    version: VERSION, generatedAt: now.toISOString(), month: month, months: s.months,
+    inputs: inputs, journal: { ecom: c.tot.ecom, install: c.tot.install, all: c.tot.all, tariff: tariff, totalJournal: c.tot.all + tariff },
+    buckets: (function () { var b = {}; state.computed.channels.forEach(function (v, ch) { b[ch || '(blank)'] = bucketOf(ch); }); return b; })(),
+    monthly: monthly,
+    costShippedPerItem: c.rows,
+    fixups: { repaired: s.repaired, badRows: s.badRows, dupesRemoved: s.dupes,
+              zerofixes: c.zerofixes, unmatched: Array.from(c.unmatched.entries()),
+              zeroCostShipped: c.zeroCostRows.map(function (r) { return { sku: r.sku, qty: r.qty }; }) },
+    recon: rc && !rc.coverageError ? { startDate: rc.startDate, endDate: rc.endDate, totals: rc.tot, cogs: rc.cogs,
+      xero: rc.xero ? { adjusted: { openingAtStart: rc.xero.openingAtStart, purch: rc.xero.purch, credTotal: rc.xero.credTotal, cogsCred: rc.xero.cogsCred, endBal: rc.xero.endBal }, raw: rc.xero.raw } : null,
+      movement: rc.moveRows } : null,
+    adjustments: adjJson,
+    shipmentDetail: c.detail
+  };
+  var jsonStr = JSON.stringify(json).replace(/</g, '\\u003c');
+
+  var html = '<!doctype html><html><head><meta charset="utf-8"><title>COGS audit ' + esc(month) + '</title><style>' +
+    'body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1a2330;max-width:1050px;margin:24px auto;padding:0 16px}' +
+    'h1{font-size:19px}h3{font-size:13px;margin:14px 0 6px}code{background:#f1f3f6;padding:0 4px;border-radius:4px}' +
+    '.meta{color:#5b6675;font-size:12px}details{border:1px solid #e3e7ec;border-radius:8px;margin:10px 0;padding:0 14px 10px}' +
+    'summary{font-weight:650;padding:10px 0;cursor:pointer}table{border-collapse:collapse;width:100%;font-size:12px;margin:6px 0}' +
+    'th{text-align:left;background:#f6f7f9;border-bottom:1px solid #e3e7ec;padding:5px 8px}td{border-bottom:1px solid #eef1f4;padding:4px 8px;vertical-align:top}' +
+    'th.n,td.n{text-align:right;font-variant-numeric:tabular-nums}' +
+    '.kv{display:flex;justify-content:space-between;border-bottom:1px dashed #e3e7ec;padding:5px 0}.kv b{font-variant-numeric:tabular-nums}' +
+    '</style></head><body>' + body +
+    '<p class="meta">Machine-readable copy of everything above (open this file in a text editor, or parse the JSON):</p>' +
+    '<script type="application/json" id="audit-data">' + jsonStr + '</' + 'script></body></html>';
+
+  var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'cogs-audit_' + month + '.html';
+  document.body.appendChild(a); a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 400);
+  toast('cogs-audit_' + month + '.html downloaded');
+}
+
 /* ================= file intake & wiring ================= */
 function setSlot(id, name, meta) {
   var el = $(id);
@@ -1318,6 +1849,7 @@ function handleFiles(fileList) {
       if ((u8[0] === 0x50 && u8[1] === 0x4b) || /\.xlsx$/i.test(file.name)) {
         readXlsxRows(buf).then(function (rows) {
           state.xero = buildXero(rows, file.name);
+          hashFile(u8).then(function (h) { state.xero.hash = h; state.xero.bytes = u8.length; });
           setSlot('slotXero', file.name, state.xero.txs.length + ' transactions · ' +
             (state.xero.account || 'account') + (state.xero.minDate ? ' · ' + state.xero.minDate + ' → ' + state.xero.maxDate : ''));
           afterLoad();
@@ -1330,18 +1862,27 @@ function handleFiles(fileList) {
       var type = detectType(text);
       try {
         if (type === 'shipped') {
-          state.shipped = buildShipped(text, file.name);
-          setSlot('slotShipped', file.name,
-            state.shipped.recs.length + ' shipment lines · ' + monthLabel(state.shipped.month));
+          var sf = buildShipped(text, file.name);
+          hashFile(u8).then(function (h) { sf.hash = h; sf.bytes = u8.length; });
+          state.shippedFiles = (state.shippedFiles || []).filter(function (f) { return f.fileName !== file.name; });
+          state.shippedFiles.push(sf);
+          mergeShipped();
+          var s = state.shipped;
+          setSlot('slotShipped', state.shippedFiles.length === 1 ? file.name : state.shippedFiles.length + ' files',
+            s.recs.length + ' shipment lines · ' + (s.months.length === 1 ? monthLabel(s.months[0])
+              : s.months.length + ' months (' + monthLabel(s.months[0]) + ' → ' + monthLabel(s.months[s.months.length - 1]) + ')'));
         } else if (type === 'master') {
           state.master = buildMaster(text, file.name);
+          hashFile(u8).then(function (h) { state.master.hash = h; state.master.bytes = u8.length; });
           setSlot('slotMaster', file.name, state.master.rowCount + ' items with costs');
         } else if (type === 'snapshot') {
           state.snapshot = buildSnapshot(text, file.name);
+          hashFile(u8).then(function (h) { state.snapshot.hash = h; state.snapshot.bytes = u8.length; });
           setSlot('slotSnapshot', file.name, state.snapshot.rowCount + ' SKUs · ' +
             state.snapshot.dates[0] + ' → ' + state.snapshot.dates[state.snapshot.dates.length - 1]);
         } else if (type === 'xero') {
           state.xero = buildXero(parseCSV(text, { backslash: false }), file.name);
+          hashFile(u8).then(function (h) { state.xero.hash = h; state.xero.bytes = u8.length; });
           setSlot('slotXero', file.name, state.xero.txs.length + ' transactions · ' +
             (state.xero.account || 'account') + (state.xero.minDate ? ' · ' + state.xero.minDate + ' → ' + state.xero.maxDate : ''));
         } else {
@@ -1386,7 +1927,18 @@ function handleFiles(fileList) {
     else if (t.id === 'btnCopy') copyTsv();
     else if (t.id === 'btnInvCsv') exportInvCsv();
     else if (t.id === 'btnMoveCsv') exportMoveCsv();
+    else if (t.id === 'btnMomCsv') exportMomCsv();
+    else if (t.id === 'btnAudit') exportAudit();
+    else if (t.id === 'btnClearAdj') {
+      if (state.xero) state.xero.txs.forEach(function (tx) { delete state.adjustments[tx.key]; });
+      saveAdjustments(); refreshRecon();
+      toast('All Xero adjustments reset');
+    }
     else {
+      var pick = t.closest && t.closest('#monthPicker button');
+      if (pick) { selectMonth(pick.getAttribute('data-month')); return; }
+      var momRow = t.closest && t.closest('#momTable tbody tr[data-month]');
+      if (momRow) { selectMonth(momRow.getAttribute('data-month')); return; }
       var th = t.closest && t.closest('th.sortable');
       if (th) {
         var k = th.getAttribute('data-sort');
@@ -1396,8 +1948,41 @@ function handleFiles(fileList) {
       }
     }
   });
+  function selectMonth(m) {
+    if (!state.shipped || state.shipped.month === m || state.shipped.months.indexOf(m) === -1) return;
+    state.shipped.month = m;
+    afterLoad();
+  }
   document.addEventListener('change', function (e) {
     var t = e.target;
+    if (t.matches && t.matches('select[data-adjrole="status"]')) {
+      var key = t.getAttribute('data-adjkey'), v = t.value;
+      if (v === 'asis') delete state.adjustments[key];
+      else {
+        var prev = state.adjustments[key] || {};
+        if (v === 'exclude') state.adjustments[key] = { action: 'exclude', note: prev.note || '' };
+        else {
+          var cur = null;
+          state.xero.txs.forEach(function (tx) { if (tx.key === key) cur = tx; });
+          state.adjustments[key] = { action: 'edit',
+            date: prev.date || (cur && cur.date) || '', debit: prev.debit != null ? prev.debit : (cur ? cur.debit : 0),
+            credit: prev.credit != null ? prev.credit : (cur ? cur.credit : 0), note: prev.note || '' };
+        }
+      }
+      saveAdjustments(); refreshRecon();
+      return;
+    }
+    if (t.matches && t.matches('[data-adjfield]')) {
+      var key2 = t.getAttribute('data-adjkey'), f = t.getAttribute('data-adjfield');
+      var adj = state.adjustments[key2];
+      if (adj) {
+        if (f === 'note') adj.note = t.value;
+        else if (f === 'date') { var d = parseXeroDate(t.value); if (d) adj.date = d; }
+        else adj[f] = parseNum(t.value) || 0;
+        saveAdjustments(); refreshRecon();
+      }
+      return;
+    }
     if (t.matches && t.matches('select[data-channel]')) {
       state.bucketMap[t.getAttribute('data-channel')] = t.value;
       try { localStorage.setItem('scwCogsBuckets', JSON.stringify(state.bucketMap)); } catch (err) {}
