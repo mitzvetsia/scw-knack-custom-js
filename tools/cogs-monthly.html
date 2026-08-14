@@ -267,6 +267,7 @@
       </div>
       <div id="crossChecks" style="margin-top:14px"></div>
       <div id="xeroTxs" style="margin-top:14px"></div>
+      <div id="returnsRadar" style="margin-top:14px"></div>
       <div class="controls" style="margin-top:14px">
         <span class="sub" id="moversNote"></span>
         <span class="spacer"></span>
@@ -1048,8 +1049,67 @@ function computeRecon() {
                     endBal: rawOpening === null ? null : rawOpening + R.allDeb - R.credTotal } };
   }
 
+  /* Returns radar: day-level implied receipts. A unit shipped (COGS booked),
+     returned to stock (ShipEdge only — no Xero entry), then shipped again gets
+     COGS-counted twice unless the tracker fulfilled the re-ship from a $0
+     layer. A return re-entering stock shows up as a small positive
+     day-implied-receipt on a SKU that shipped recently. */
+  var returns = null;
+  if (snapOk) {
+    var shipDays = new Map();   // canonical sku -> Map(day -> qty)
+    state.shipped.recs.forEach(function (x) {
+      var mk2 = matchSku(items, x.sku);
+      var key2 = mk2.key || x.sku;
+      var d2 = x.date.slice(0, 10);
+      var e2 = shipDays.get(key2);
+      if (!e2) { e2 = new Map(); shipDays.set(key2, e2); }
+      e2.set(d2, (e2.get(d2) || 0) + x.qty);
+    });
+    var zeroLayerSkus = {};
+    var tkm = state.tracker && state.tracker.byMonth[month];
+    if (tkm) tkm.lines.forEach(function (l) { if (l.per > 0 && !l.replenPer) zeroLayerSkus[l.sku] = true; });
+    var dts = snap.dates;
+    var events = [];
+    snap.bySku.forEach(function (v, rawSku) {
+      var mk3 = matchSku(items, rawSku);
+      var key3 = mk3.key || rawSku;
+      var it3 = mk3.key ? items.get(mk3.key) : null;
+      var sd = shipDays.get(key3);
+      for (var di = 0; di < dts.length - 1; di++) {
+        var d0 = dts[di];
+        if (d0.slice(0, 7) !== month) continue;
+        var delta = (v.dates.get(dts[di + 1]) || 0) - (v.dates.get(d0) || 0);
+        var shOn = sd ? (sd.get(d0) || 0) : 0;
+        var recv = delta + shOn;
+        if (recv <= 0) continue;
+        // shipped in the 21 days before d0?
+        var recentShip = false;
+        if (sd) sd.forEach(function (q, dd) {
+          if (dd < d0 && dd >= addDays(d0, -21)) recentShip = true;
+        });
+        events.push({ sku: key3, date: d0, qty: recv, cost: it3 ? it3.cost : 0,
+                      val: recv * (it3 ? it3.cost : 0),
+                      returnLike: recv <= 5 && recentShip,
+                      recentShip: recentShip, zeroLayer: !!zeroLayerSkus[key3],
+                      desc: ((it3 && it3.desc) || v.desc || '').replace(/\s+/g, ' ').slice(0, 60) });
+      }
+    });
+    events.sort(function (a, b) { return b.val - a.val; });
+    var rl = events.filter(function (e) { return e.returnLike; });
+    returns = { events: events, totalEvents: events.length,
+                returnLike: rl.length,
+                returnLikeQty: rl.reduce(function (a, e) { return a + e.qty; }, 0),
+                returnLikeVal: rl.reduce(function (a, e) { return a + e.val; }, 0),
+                caught: rl.filter(function (e) { return e.zeroLayer; }).length };
+  }
+
   return { month: month, startDate: startDate, endDate: endDate, endIsBoundary: endIsBoundary,
-           notes: notes, tot: tot, moveRows: moveRows, cogs: c.tot.all, xero: xero };
+           notes: notes, tot: tot, moveRows: moveRows, cogs: c.tot.all, xero: xero, returns: returns };
+}
+function addDays(iso, n) {
+  var d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }
 
 /* ================= month-by-month: what COGS should have been ================= */
@@ -1257,7 +1317,9 @@ function renderSeFifo() {
   var top = diff.slice(0, 40);
   var body = top.map(function (l) {
     var d = l.se - l.replen;
-    return '<tr><td>' + esc(l.sku) + '</td><td class="num">' + fmtQ(l.qty) + '</td>' +
+    var zchip = (l.per > 0 && !l.replenPer)
+      ? '<span class="rowflag zero" title="fulfilled from a $0 FIFO layer — often a caught return re-ship, or missing replen data">$0 layer</span>' : '';
+    return '<tr><td>' + esc(l.sku) + zchip + '</td><td class="num">' + fmtQ(l.qty) + '</td>' +
       '<td class="num">' + fmt$(l.per) + '</td><td class="num">' + fmt$(l.replenPer) + '</td>' +
       '<td class="num">' + fmt$(l.se) + '</td><td class="num">' + fmt$(l.replen) + '</td>' +
       '<td class="num' + (d < 0 ? ' delta-warn' : '') + '">' + (d >= 0 ? '+' : '') + fmt$(d) + '</td></tr>';
@@ -1266,6 +1328,10 @@ function renderSeFifo() {
     '<details class="issue info"><summary>ShipEdge cost vs FIFO (replen) cost — ' + esc(monthLabel(m)) +
     '<span class="n">SE ' + fmt$(tk.se) + ' · FIFO ' + fmt$(tk.replen) + ' · Δ ' + (tk.se - tk.replen >= 0 ? '+' : '') + fmt$(tk.se - tk.replen) + '</span></summary>' +
     '<div class="body"><p>' + diff.length + ' of ' + tk.lines.length + ' tracker line items price differently under the two bases' +
+    (function () { var z = tk.lines.filter(function (l) { return l.per > 0 && !l.replenPer; });
+      return z.length ? ' — incl. <b>' + z.length + ' line(s) fulfilled from $0 FIFO layers</b> (' +
+        fmtQ(z.reduce(function (a, l) { return a + l.qty; }, 0)) + ' units, ' +
+        fmt$(z.reduce(function (a, l) { return a + l.se; }, 0)) + ' at SE cost — caught returns avoid double-booking exactly this amount)' : ''; })() +
     (diff.length > 40 ? ' (top 40 by |Δ| shown — download for all)' : '') +
     '. Positive Δ = FIFO layers were cheaper than the ShipEdge cost at close (older stock consumed). ' +
     '<button id="btnSeFifoCsv" style="margin-left:6px">Download full comparison CSV</button></p>' +
@@ -1398,6 +1464,7 @@ function renderMovement(rc) {
   }
 
   renderXeroTxs(rc);
+  renderReturns(rc);
 
   if (!rc.moveRows.length) {
     $('moversNote').textContent = '';
@@ -1477,6 +1544,52 @@ function renderXeroTxs(rc) {
     '<div class="tbl-wrap" style="max-height:380px;overflow-y:auto"><table>' +
     '<thead><tr><th>Date</th><th>Description</th><th>Ref</th><th class="num">Debit</th><th class="num">Credit</th><th>Status</th><th>Note</th></tr></thead>' +
     '<tbody>' + body + '</tbody></table></div></div></details>';
+}
+
+/* Returns radar panel: day-level stock re-entries, flagged as return-like when
+   small and on a recently-shipped SKU, cross-referenced against $0 FIFO layers. */
+function renderReturns(rc) {
+  var el = $('returnsRadar');
+  if (!el) return;
+  if (!rc || !rc.returns) { el.innerHTML = ''; return; }
+  var R = rc.returns;
+  var show = R.events.filter(function (e) { return e.returnLike; }).slice(0, 40);
+  var body = show.map(function (e) {
+    return '<tr><td>' + esc(e.sku) +
+      (e.zeroLayer ? '<span class="rowflag fix" title="the tracker fulfilled this SKU from a $0 layer this month — likely caught">$0 layer</span>'
+                   : '<span class="rowflag zero" title="no $0 FIFO layer for this SKU this month — if it re-ships, COGS counts twice">not in tracker</span>') +
+      '</td><td>' + esc(e.date) + '</td>' +
+      '<td class="num">+' + fmtQ(e.qty) + '</td>' +
+      '<td class="num">' + fmt$(e.cost) + '</td>' +
+      '<td class="num">' + fmt$(e.val) + '</td>' +
+      '<td><span class="d2">' + esc(e.desc) + '</span></td></tr>';
+  }).join('');
+  el.innerHTML =
+    '<details class="issue warn"><summary>Returns radar — stock re-entries on recently-shipped SKUs' +
+    '<span class="n">' + R.returnLike + ' events · ' + fmtQ(R.returnLikeQty) + ' units · ' + fmt$(R.returnLikeVal) +
+    ' · ' + R.caught + ' with $0 layer</span></summary><div class="body">' +
+    '<p>Small quantity increases (≤5 units/day) on SKUs that shipped in the previous 3 weeks — the signature of a return ' +
+    're-entering ShipEdge stock with no Xero entry. If such a unit ships again and the tracker doesn’t fulfill it from a ' +
+    '<b>$0 layer</b>, its COGS gets booked twice. Rows tagged <i>not in tracker</i> have no $0 layer this month — check those first. ' +
+    '(' + (R.totalEvents - R.returnLike) + ' larger receipt events this month look like normal PO receiving and are excluded here; ' +
+    'they’re all in the CSV.) <button id="btnReturnsCsv" style="margin-left:6px">Download all receipt events CSV</button></p>' +
+    (show.length ? '<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table>' +
+      '<thead><tr><th>SKU</th><th>Date back in stock</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Value</th><th>Description</th></tr></thead>' +
+      '<tbody>' + body + '</tbody></table></div>'
+      : '<p>No return-like re-entries detected this month.</p>') +
+    '</div></details>';
+}
+function exportReturnsCsv() {
+  var rc = state.recon;
+  if (!rc || !rc.returns) return;
+  var rows = rc.returns.events.map(function (e) {
+    return [e.sku, e.date, e.qty, num2(e.cost), num2(e.val),
+            e.returnLike ? 'RETURN-LIKE' : 'PO-like', e.recentShip ? 'shipped<=21d before' : '',
+            e.zeroLayer ? '$0 FIFO layer this month' : '', e.desc];
+  });
+  download('receipt-events_' + rc.month + '.csv',
+    toCSV(['Sku', 'Date', 'Qty In', 'Unit Cost', 'Value', 'Classification', 'Recent Shipment', 'Tracker $0 Layer', 'Description'], rows));
+  toast('receipt-events_' + rc.month + '.csv downloaded');
 }
 
 function exportMoveCsv() {
@@ -2149,6 +2262,7 @@ function bootPreload() {
     else if (t.id === 'btnMoveCsv') exportMoveCsv();
     else if (t.id === 'btnMomCsv') exportMomCsv();
     else if (t.id === 'btnSeFifoCsv') exportSeFifoCsv();
+    else if (t.id === 'btnReturnsCsv') exportReturnsCsv();
     else if (t.id === 'btnAudit') exportAudit();
     else if (t.id === 'btnClearAdj') {
       if (state.xero) state.xero.txs.forEach(function (tx) { delete state.adjustments[tx.key]; });

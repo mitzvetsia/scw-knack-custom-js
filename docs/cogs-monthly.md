@@ -155,6 +155,19 @@ month-close snapshot or iterating on a fixed dataset. Audit records from v4
 also embed the full Xero transaction list and tracker month totals in their
 JSON block, so booked-journal forensics can be done from the audit alone.
 
+## Returns radar
+
+The movement card includes a day-level **Returns radar**: every small stock
+re-entry (≤5 units/day) on a SKU that shipped within the prior 3 weeks — the
+signature of a return coming back into ShipEdge with no Xero entry. If such a
+unit ships again and the tracker doesn't fulfill it from a **$0 FIFO layer**,
+its COGS books twice (ShipEdge and Xero both count the re-ship). Rows are
+cross-referenced against the tracker's $0-layer lines ("caught") and exported
+with all PO-like receipt events in a CSV. Precision caveat: small legitimate
+PO receipts appear in the list too — it is a review queue sorted by value,
+not an accusation list. A ShipEdge receiving/returns export would let the
+radar subtract true PO receipts and isolate pure returns.
+
 ## Known limitations
 
 - **Price changes**: merchandise COGS uses the item cost as of the products
