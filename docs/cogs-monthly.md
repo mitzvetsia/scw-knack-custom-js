@@ -64,6 +64,42 @@ partial value the spreadsheet flow captured for them at close-time costs. The
 four zero-stripped SKUs ($2,369.20) were already reflected in the sheet's
 number.
 
+## Inventory movement reconciliation (optional inputs 3 & 4)
+
+Two more drops turn the tool into a three-way month-close reconciliation:
+
+- **Input 3 — ShipEdge "Total Inventory by SKU" report** (daily snapshots:
+  `company_name, sku, description, available, pending, processing, total, date`).
+  A snapshot dated D is the position at the **start of day D**, so a month runs
+  1st → 1st-of-next-month; the report must include both boundary dates (the tool
+  falls back to the nearest covered date with a warning). `total` matches the
+  products export's "In Warehouse" (verified 2399/2427 SKUs on the pull date).
+- **Input 4 — Xero Account Transactions for the Inventory account (1141)**.
+  The native `.xlsx` parses directly in-browser (minimal ZIP/OOXML reader via
+  `DecompressionStream`); a CSV export of the same report also works. The tool
+  reads Opening/Closing Balance rows, dated transactions, debits/credits, and
+  classifies credits into COGS journals (description matches /cog/i) vs other
+  credits (vendor refunds, write-downs).
+
+What it computes for the shipped-report month:
+
+- **Physical side**: inventory value at both boundaries (qty × current cost),
+  the month's change, and per-SKU `implied = Δqty + shipped` — positive is
+  implied receipts, negative is unexplained loss (shrank more than shipments
+  explain). Per-SKU movement CSV export included.
+- **Books side**: opening balance rolled to the month start, purchases in,
+  COGS journals out (itemized), implied month-end balance.
+- **Cross-checks** (gap = Xero − ShipEdge; green ≤1%, amber ≤5%):
+  month-start value, month-end value, month change, implied receipts vs
+  booked purchases, this tool's COGS vs the booked COGS journals.
+
+May 2026 actuals: month-end gap **+$22,467.68 (2.3%)** (books over physical),
+receipts gap +$2,403.49 (1.1%), booked COGS journals $283,092.53 vs computed
+$288,121.36 (−$5,028.83). Expected noise sources: current-cost valuation (not
+layer cost), capitalized freight/tax in Xero bills, dropships that never touch
+ShipEdge stock, bill dates lagging receipt dates, and $0-cost SKUs (RMA grades)
+that the physical side values at zero.
+
 ## Known limitations
 
 - **Price changes**: merchandise COGS uses the item cost as of the products

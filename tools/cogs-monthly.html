@@ -88,7 +88,7 @@
   .kv input[type=text]:focus{outline:2px solid #f3c391;border-color:var(--accent)}
   .kv.total{border-top:2px solid var(--line);border-bottom:none;margin-top:2px;padding-top:10px}
   .kv.total .k{color:var(--ink);font-weight:650}
-  .delta-ok{color:var(--good)} .delta-bad{color:var(--bad)}
+  .delta-ok{color:var(--good)} .delta-warn{color:var(--warn)} .delta-bad{color:var(--bad)}
 
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   @media(max-width:840px){.grid2{grid-template-columns:1fr}}
@@ -175,8 +175,10 @@
     <div class="slots">
       <div class="slot" id="slotShipped"><span class="dot"></span><span><b>Shipped-items report</b><br><span class="meta">waiting for file&hellip;</span></span></div>
       <div class="slot" id="slotMaster"><span class="dot"></span><span><b>Item data (product export)</b><br><span class="meta">waiting for file&hellip;</span></span></div>
+      <div class="slot" id="slotSnapshot"><span class="dot"></span><span><b>Inventory by SKU (optional)</b><br><span class="meta">daily snapshot report &mdash; unlocks movement recon</span></span></div>
+      <div class="slot" id="slotXero"><span class="dot"></span><span><b>Xero inventory transactions (optional)</b><br><span class="meta">.xlsx or .csv export of account 1141</span></span></div>
     </div>
-    <input type="file" id="fileInput" accept=".csv,text/csv" multiple style="display:none">
+    <input type="file" id="fileInput" accept=".csv,.xlsx,text/csv" multiple style="display:none">
   </div>
 
   <div id="results">
@@ -212,6 +214,28 @@
       <div class="tbl-wrap" style="max-height:560px;overflow-y:auto"><table id="itemTable"></table></div>
     </div>
 
+    <div class="card" id="movementCard" style="display:none">
+      <h2>Inventory movement reconciliation <span class="sub" id="movementSub" style="display:inline"></span></h2>
+      <div id="movementNotes"></div>
+      <div class="grid2" style="margin-top:8px">
+        <div>
+          <h2 style="font-size:13.5px">ShipEdge physical <span class="sub" style="display:inline;font-weight:400">(valued at current item cost)</span></h2>
+          <div id="movePhysical"></div>
+        </div>
+        <div>
+          <h2 style="font-size:13.5px">Xero books <span class="sub" style="display:inline;font-weight:400" id="moveXeroSub"></span></h2>
+          <div id="moveBooks"></div>
+        </div>
+      </div>
+      <div id="crossChecks" style="margin-top:14px"></div>
+      <div class="controls" style="margin-top:14px">
+        <span class="sub" id="moversNote"></span>
+        <span class="spacer"></span>
+        <button id="btnMoveCsv">Download per-SKU movement CSV</button>
+      </div>
+      <div class="tbl-wrap" style="max-height:420px;overflow-y:auto"><table id="moveTable"></table></div>
+    </div>
+
     <div class="grid2">
       <div class="card">
         <h2>ShipEdge inventory value</h2>
@@ -235,6 +259,8 @@
         <li>Every shipped line is joined to its item cost: <code>qty &times; cost</code>. The tiles give the MJ numbers; type the tariff total from the FIFO tracker to get the full journal.</li>
         <li><b>Download cost shipped / item CSV</b> (or copy/paste) feeds the herr cheetoh FIFO tracker, same as the old tab. The shipment-detail CSV has per-shipment dates if you ever want FIFO at day grain.</li>
         <li>Quirks handled automatically (each one shows up under Data quality when it fires): SKUs with stripped leading zeros, shipped rows the ShipEdge writer breaks apart when a description contains inch marks (<code>\"</code>) or line breaks, MySQL-style <code>\N</code> nulls and <code>\"</code> escapes in the products export.</li>
+        <li><b>Optional &mdash; Total Inventory by SKU report</b> (daily snapshots; must include the 1st of the month and ideally the 1st of the next month): unlocks the movement reconciliation &mdash; start/end inventory value, the month&rsquo;s change, and per-SKU implied receipts (<code>&Delta; + shipped</code>) vs unexplained losses.</li>
+        <li><b>Optional &mdash; Xero Account Transactions for the Inventory account</b> (the native <code>.xlsx</code> works as-is; a CSV export works too): adds the books side &mdash; opening balance, purchases in, COGS journal credits out &mdash; and cross-checks it against the physical movement and this tool&rsquo;s COGS number.</li>
         <li>Everything runs locally in your browser &mdash; no data leaves this page.</li>
       </ul>
     </details>
@@ -300,6 +326,13 @@ function detectType(text) {
   var h = hdr.map(function (x) { return cleanVal(x, false).toLowerCase(); });
   if (h.indexOf('processed_at') !== -1 || h.indexOf('ship#') !== -1) return 'shipped';
   if (h.indexOf('cost') !== -1 && (h.indexOf('in warehouse') !== -1 || h.indexOf('available') !== -1)) return 'master';
+  if (h.indexOf('sku') !== -1 && h.indexOf('total') !== -1 && h.indexOf('date') !== -1) return 'snapshot';
+  // Xero account-transactions CSV: header row sits below a title block
+  var head = parseCSV(text.slice(0, 8000), { backslash: false });
+  for (var r = 0; r < Math.min(head.length, 30); r++) {
+    var low = head[r].map(function (x) { return cleanVal(x, false).toLowerCase(); });
+    if (low.indexOf('date') !== -1 && low.indexOf('debit') !== -1 && low.indexOf('credit') !== -1) return 'xero';
+  }
   return null;
 }
 
@@ -423,6 +456,195 @@ function buildShipped(text, fileName) {
            month: month, outOfMonth: outOfMonth, fileName: fileName };
 }
 
+/* ================= inventory-by-SKU daily snapshot report ================= */
+/* Columns: company_name, sku, description, available, pending, processing, total, date
+   One row per SKU per day; `total` = available+pending+processing and matches the
+   products export's "In Warehouse". A snapshot dated D reflects the position at the
+   START of day D — so a month runs from the 1st to the 1st of the next month. */
+function buildSnapshot(text, fileName) {
+  var rows = parseCSV(text, { backslash: false });
+  var hdr = rows[0].map(function (x) { return cleanVal(x, false).toLowerCase(); });
+  var idx = {};
+  hdr.forEach(function (h, i) { if (!(h in idx)) idx[h] = i; });
+  ['sku', 'total', 'date'].forEach(function (k) {
+    if (!(k in idx)) throw new Error('Inventory-by-SKU report is missing the "' + k + '" column.');
+  });
+  var bySku = new Map(), dateSet = {};
+  for (var r = 1; r < rows.length; r++) {
+    var f = rows[r];
+    var g = function (k) { return idx[k] < f.length ? cleanVal(f[idx[k]], false) : ''; };
+    var sku = g('sku');
+    if (!sku) continue;
+    var date = g('date').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    var e = bySku.get(sku);
+    if (!e) { e = { desc: g('description'), dates: new Map() }; bySku.set(sku, e); }
+    e.dates.set(date, parseNum(g('total')) || 0);
+    dateSet[date] = 1;
+  }
+  var dates = Object.keys(dateSet).sort();
+  if (!dates.length) throw new Error('Inventory-by-SKU report has no dated rows.');
+  return { bySku: bySku, dates: dates, fileName: fileName, rowCount: bySku.size };
+}
+
+/* ================= minimal .xlsx reader (for the Xero export) ================= */
+/* Just enough OOXML to read a single-sheet report: parse the ZIP central directory,
+   inflate entries via DecompressionStream('deflate-raw'), pull shared strings and
+   worksheet cells. Returns rows as arrays of strings (numbers as numeric strings). */
+function xmlDecode(s) {
+  return s.replace(/&(#x?[0-9a-fA-F]+|[a-z]+);/g, function (m, e) {
+    if (e[0] === '#') return String.fromCodePoint(parseInt(e[1] === 'x' ? e.slice(2) : e.slice(1), e[1] === 'x' ? 16 : 10));
+    return { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }[e] || m;
+  });
+}
+function colToIdx(ref) {
+  var n = 0;
+  for (var i = 0; i < ref.length; i++) {
+    var c = ref.charCodeAt(i);
+    if (c < 65 || c > 90) break;
+    n = n * 26 + (c - 64);
+  }
+  return n - 1;
+}
+function readXlsxRows(buf) {
+  if (typeof DecompressionStream === 'undefined') {
+    return Promise.reject(new Error('This browser can’t unzip .xlsx — export the Xero report as CSV instead.'));
+  }
+  var u8 = new Uint8Array(buf), dv = new DataView(buf);
+  var eocd = -1;
+  for (var i = u8.length - 22; i >= Math.max(0, u8.length - 22 - 65557); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return Promise.reject(new Error('Not a valid .xlsx file (no zip directory).'));
+  var count = dv.getUint16(eocd + 10, true), off = dv.getUint32(eocd + 16, true);
+  var entries = {};
+  for (var k = 0; k < count; k++) {
+    if (dv.getUint32(off, true) !== 0x02014b50) break;
+    var method = dv.getUint16(off + 10, true);
+    var csize = dv.getUint32(off + 20, true);
+    var nlen = dv.getUint16(off + 28, true), elen = dv.getUint16(off + 30, true), clen = dv.getUint16(off + 32, true);
+    var lho = dv.getUint32(off + 42, true);
+    var name = new TextDecoder().decode(u8.subarray(off + 46, off + 46 + nlen));
+    entries[name] = { method: method, csize: csize, lho: lho };
+    off += 46 + nlen + elen + clen;
+  }
+  function readEntry(name) {
+    var en = entries[name];
+    if (!en) return Promise.resolve(null);
+    var lnlen = dv.getUint16(en.lho + 26, true), lelen = dv.getUint16(en.lho + 28, true);
+    var start = en.lho + 30 + lnlen + lelen;
+    var comp = u8.subarray(start, start + en.csize);
+    if (en.method === 0) return Promise.resolve(new TextDecoder().decode(comp));
+    var stream = new Blob([comp]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Response(stream).text();
+  }
+  var sheetNames = Object.keys(entries).filter(function (n) { return /^xl\/worksheets\/sheet\d+\.xml$/.test(n); })
+    .sort(function (a, b) { return parseInt(a.match(/\d+/)[0], 10) - parseInt(b.match(/\d+/)[0], 10); });
+  if (!sheetNames.length) return Promise.reject(new Error('.xlsx has no worksheets.'));
+  return readEntry('xl/sharedStrings.xml').then(function (sstXml) {
+    var sst = [];
+    if (sstXml) {
+      var siRe = /<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g, m;
+      while ((m = siRe.exec(sstXml))) {
+        var txt = '', tRe = /<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g, tm;
+        while ((tm = tRe.exec(m[1]))) txt += xmlDecode(tm[1]);
+        sst.push(txt);
+      }
+    }
+    return readEntry(sheetNames[0]).then(function (xml) {
+      var rows = [];
+      var rowRe = /<row[^>]*>([\s\S]*?)<\/row>/g, rm;
+      while ((rm = rowRe.exec(xml))) {
+        var row = [];
+        var cellRe = /<c\s([^>]*?)\/>|<c\s([^>]*?)>([\s\S]*?)<\/c>/g, cm;
+        while ((cm = cellRe.exec(rm[1]))) {
+          var attrs = cm[1] || cm[2] || '', inner = cm[3] || '';
+          var refM = attrs.match(/r="([A-Z]+)\d+"/);
+          var col = refM ? colToIdx(refM[1]) : row.length;
+          var tM = attrs.match(/t="([^"]+)"/);
+          var t = tM ? tM[1] : '';
+          var val = '';
+          if (t === 'inlineStr') {
+            var isM = inner.match(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/);
+            val = isM ? xmlDecode(isM[1]) : '';
+          } else {
+            var vM = inner.match(/<v>([\s\S]*?)<\/v>/);
+            var raw = vM ? xmlDecode(vM[1]) : '';
+            if (t === 's') val = sst[parseInt(raw, 10)] || '';
+            else val = raw;
+          }
+          while (row.length < col) row.push('');
+          row[col] = val;
+        }
+        rows.push(row);
+      }
+      return rows;
+    });
+  });
+}
+function xlsxSerialToISO(n) {
+  var d = new Date(Math.round((n - 25569) * 86400000));
+  return isNaN(d) ? '' : d.toISOString().slice(0, 10);
+}
+
+/* ================= Xero account-transactions report ================= */
+/* Works on rows from either the .xlsx or a CSV export. Layout: a title block, a
+   header row (Date/Contact/Description/Reference/.../Debit/Credit), Opening Balance,
+   dated transaction rows, then Total / Closing Balance rows. */
+function parseXeroDate(v) {
+  v = String(v == null ? '' : v).trim();
+  if (!v) return '';
+  var m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[1] + '-' + m[2] + '-' + m[3];
+  if (/^\d+(\.\d+)?$/.test(v)) {
+    var n = Number(v);
+    if (n > 20000 && n < 80000) return xlsxSerialToISO(n);  // Excel serial (1954–2118)
+    return '';
+  }
+  var t = Date.parse(v);
+  if (!isNaN(t) && /[A-Za-z]/.test(v)) {
+    var d = new Date(t);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);   // US-format Xero export
+  if (m) return m[3] + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0');
+  return '';
+}
+function buildXero(rows, fileName) {
+  var hi = -1, idx = {};
+  for (var r = 0; r < Math.min(rows.length, 30); r++) {
+    var lower = rows[r].map(function (x) { return String(x || '').trim().toLowerCase(); });
+    if (lower.indexOf('date') !== -1 && lower.indexOf('debit') !== -1 && lower.indexOf('credit') !== -1) {
+      hi = r;
+      rows[r].forEach(function (h, i) { idx[String(h || '').trim().toLowerCase()] = i; });
+      break;
+    }
+  }
+  if (hi < 0) throw new Error('Couldn’t find the Date/Debit/Credit header row — is this the Account Transactions report?');
+  var account = '';
+  for (var a = hi + 1; a < Math.min(rows.length, hi + 6); a++) {
+    var c0 = String(rows[a][idx.date] || '').trim();
+    if (c0 && !parseXeroDate(c0) && c0 !== 'Opening Balance') { account = c0; break; }
+  }
+  var opening = null, closing = null, txs = [];
+  for (var r2 = hi + 1; r2 < rows.length; r2++) {
+    var f = rows[r2];
+    var g = function (k) { return (k in idx) && idx[k] < f.length ? String(f[idx[k]] == null ? '' : f[idx[k]]).trim() : ''; };
+    var c0v = g('date');
+    var deb = parseNum(g('debit')) || 0, cred = parseNum(g('credit')) || 0;
+    if (/^opening balance$/i.test(c0v)) { opening = deb - cred; continue; }
+    if (/^closing balance$/i.test(c0v)) { closing = deb - cred; continue; }
+    var date = parseXeroDate(c0v);
+    if (!date) continue;
+    txs.push({ date: date, contact: g('contact'), desc: g('description'), ref: g('reference'),
+               debit: deb, credit: cred });
+  }
+  if (!txs.length && opening === null) throw new Error('No transactions found in the Xero report.');
+  txs.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+  return { account: account, opening: opening, closing: closing, txs: txs, fileName: fileName,
+           minDate: txs.length ? txs[0].date : '', maxDate: txs.length ? txs[txs.length - 1].date : '' };
+}
+
 /* ================= SKU matching (zero-tolerant) ================= */
 /* Excel/exports strip leading zeros off numeric SKUs ("00405614" -> "405614").
    Exact match first; otherwise re-pad with leading zeros (and the reverse). */
@@ -532,6 +754,121 @@ function compute() {
            unmatched: unmatched, ambiguous: ambiguous, zerofixes: zerofixes,
            zeroCostRows: zeroCostRows, invWh: invWh, invAvail: invAvail, invRows: invRows };
 }
+
+/* ================= inventory movement reconciliation ================= */
+function nextMonthOf(month) {
+  var y = Number(month.slice(0, 4)), m = Number(month.slice(5, 7));
+  return m === 12 ? (y + 1) + '-01' : y + '-' + String(m + 1).padStart(2, '0');
+}
+function computeRecon() {
+  var c = state.computed;
+  if (!c || !state.snapshot) return null;
+  var items = state.master.items;
+  var snap = state.snapshot;
+  var month = state.shipped.month;
+  var start = month + '-01';
+  var nm1 = nextMonthOf(month) + '-01';
+  var notes = [];
+
+  var startDate = start;
+  if (snap.dates.indexOf(start) === -1) {
+    var inMonth = snap.dates.filter(function (d) { return d.slice(0, 7) === month; });
+    if (!inMonth.length) return { coverageError: 'The inventory-by-SKU report has no dates in ' + month + ' — it doesn’t cover the shipped report’s month.' };
+    startDate = inMonth[0];
+    notes.push({ kind: 'warn', text: 'Snapshot doesn’t include ' + start + ' — using ' + startDate + ' as the start boundary, so early-month movement is missed.' });
+  }
+  var endDate = nm1, endIsBoundary = true;
+  if (snap.dates.indexOf(nm1) === -1) {
+    var inM = snap.dates.filter(function (d) { return d.slice(0, 7) === month; });
+    endDate = inM[inM.length - 1];
+    endIsBoundary = false;
+    notes.push({ kind: 'warn', text: 'Snapshot doesn’t include ' + nm1 + ' (start-of-day = month-end position) — using ' + endDate + ' instead, so the last day(s) of movement are missed.' });
+  }
+
+  // shipped qty per canonical SKU (c.rows keys are master SKUs where matched)
+  var shipBySku = new Map();
+  c.rows.forEach(function (r) { shipBySku.set(r.sku, (shipBySku.get(r.sku) || 0) + r.qty); });
+
+  // canonicalize snapshot SKUs onto the master key space
+  var perSku = new Map();
+  function entry(sku, desc) {
+    var e = perSku.get(sku);
+    if (!e) {
+      var it = items.get(sku);
+      e = { sku: sku, desc: ((it && it.desc) || desc || '').replace(/\s+/g, ' ').trim(),
+            cost: it ? it.cost : 0, inMaster: !!it, s0: 0, e0: 0, sh: 0 };
+      perSku.set(sku, e);
+    }
+    return e;
+  }
+  var missingWithStock = [];
+  snap.bySku.forEach(function (v, rawSku) {
+    var m = matchSku(items, rawSku);
+    var key = m.key || rawSku;
+    var e = entry(key, v.desc);
+    e.s0 += v.dates.get(startDate) || 0;
+    e.e0 += v.dates.get(endDate) || 0;
+    if (!m.key && ((v.dates.get(startDate) || 0) || (v.dates.get(endDate) || 0))) {
+      missingWithStock.push(rawSku);
+    }
+  });
+  shipBySku.forEach(function (q, sku) { entry(sku, '').sh += q; });
+
+  var tot = { startVal: 0, endVal: 0, deltaVal: 0, recvVal: 0, lossVal: 0, recvSkus: 0, lossSkus: 0 };
+  var moveRows = [];
+  perSku.forEach(function (e) {
+    e.delta = e.e0 - e.s0;
+    e.impl = e.delta + e.sh;                 // + implied receipts, − unexplained loss
+    e.implVal = e.impl * e.cost;
+    tot.startVal += e.s0 * e.cost;
+    tot.endVal += e.e0 * e.cost;
+    if (e.impl > 0) { tot.recvVal += e.implVal; tot.recvSkus++; }
+    if (e.impl < 0) { tot.lossVal += e.implVal; tot.lossSkus++; }
+    if (e.s0 || e.e0 || e.sh) moveRows.push(e);
+  });
+  tot.deltaVal = tot.endVal - tot.startVal;
+  tot.netRecvVal = tot.recvVal + tot.lossVal;
+  moveRows.sort(function (a, b) { return Math.abs(b.implVal) - Math.abs(a.implVal) || b.e0 * b.cost - a.e0 * a.cost; });
+  if (missingWithStock.length) {
+    notes.push({ kind: 'warn', text: 'SKU(s) in the snapshot with stock but missing from the item data (valued at $0): ' + missingWithStock.join(', ') });
+  }
+
+  // Xero side
+  var xero = null;
+  if (state.xero) {
+    var x = state.xero;
+    var preNet = 0, purch = 0, credTotal = 0, credits = [], monthTxs = 0;
+    x.txs.forEach(function (t) {
+      var tm = t.date.slice(0, 7);
+      if (t.date < start) preNet += t.debit - t.credit;
+      if (tm === month) {
+        monthTxs++;
+        purch += t.debit;
+        credTotal += t.credit;
+        if (t.credit) credits.push(t);
+      }
+    });
+    var openingAtStart = x.opening === null ? null : x.opening + preNet;
+    if (x.opening !== null && x.minDate && x.minDate > start && x.minDate.slice(0, 7) === month) {
+      notes.push({ kind: 'warn', text: 'The Xero report’s period seems to start after ' + start + ' — the opening balance may not be the month-start balance.' });
+    }
+    if (!monthTxs) notes.push({ kind: 'warn', text: 'The Xero report has no transactions dated in ' + month + '.' });
+    // split credits into COGS journals vs other credits (vendor refunds etc.)
+    var cogsCred = 0;
+    credits.forEach(function (cr) {
+      cr.isCogs = /cog/i.test(cr.desc || '') || /cog/i.test(cr.ref || '');
+      if (cr.isCogs) cogsCred += cr.credit;
+    });
+    xero = { account: x.account, openingAtStart: openingAtStart, purch: purch,
+             credTotal: credTotal, credits: credits,
+             cogsCred: cogsCred, otherCred: credTotal - cogsCred,
+             endBal: openingAtStart === null ? null : openingAtStart + purch - credTotal,
+             bookDelta: purch - credTotal };
+  }
+
+  return { month: month, startDate: startDate, endDate: endDate, endIsBoundary: endIsBoundary,
+           notes: notes, tot: tot, moveRows: moveRows, cogs: c.tot.all, xero: xero };
+}
 /* ================= formatting & DOM helpers ================= */
 function $(id) { return document.getElementById(id); }
 function esc(s) {
@@ -573,6 +910,106 @@ function renderAll() {
   renderItemTable(c);
   renderInventory(c);
   renderRecon(c);
+  state.recon = computeRecon();
+  renderMovement(state.recon);
+}
+
+function gapCell(gap, base) {
+  var pct = base ? Math.abs(gap) / Math.abs(base) : 0;
+  var cls = pct <= 0.01 ? 'delta-ok' : pct <= 0.05 ? 'delta-warn' : 'delta-bad';
+  var sign = gap >= 0 ? '+' : '';
+  return '<span class="' + cls + '">' + sign + fmt$(gap) + (base ? ' (' + (pct * 100).toFixed(1) + '%)' : '') + '</span>';
+}
+function renderMovement(rc) {
+  var card = $('movementCard');
+  if (!rc) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  if (rc.coverageError) {
+    $('movementSub').textContent = '';
+    $('movementNotes').innerHTML = '<div class="issue bad" style="padding:8px 12px">' + esc(rc.coverageError) + '</div>';
+    $('movePhysical').innerHTML = ''; $('moveBooks').innerHTML = '';
+    $('crossChecks').innerHTML = ''; $('moveTable').innerHTML = ''; $('moversNote').textContent = '';
+    return;
+  }
+  $('movementSub').textContent = ' — ' + monthLabel(rc.month) + ' · snapshot ' + rc.startDate + ' → ' + rc.endDate + ' (start-of-day)';
+  $('movementNotes').innerHTML = rc.notes.map(function (n) {
+    return '<div class="issue ' + n.kind + '" style="padding:7px 12px">' + esc(n.text) + '</div>';
+  }).join('');
+
+  function kv(k, v, cls) {
+    return '<div class="kv"><span class="k">' + k + '</span><span class="v' + (cls ? ' ' + cls : '') + '">' + v + '</span></div>';
+  }
+  var t = rc.tot;
+  $('movePhysical').innerHTML =
+    kv('Inventory value @ ' + rc.startDate, fmt$(t.startVal)) +
+    kv('Inventory value @ ' + rc.endDate, fmt$(t.endVal)) +
+    kv('Change over the month', (t.deltaVal >= 0 ? '+' : '') + fmt$(t.deltaVal)) +
+    kv('COGS shipped out (this tool)', '−' + fmt$(rc.cogs)) +
+    '<div class="kv total"><span class="k">⇒ Net receipts implied (Δ + COGS)</span><span class="v">' + fmt$(t.netRecvVal) + '</span></div>' +
+    kv('&nbsp;&nbsp;receipts (+) on ' + t.recvSkus + ' SKUs', fmt$(t.recvVal)) +
+    kv('&nbsp;&nbsp;unexplained losses (−) on ' + t.lossSkus + ' SKUs', fmt$(t.lossVal));
+
+  var x = rc.xero;
+  if (!x) {
+    $('moveXeroSub').textContent = '';
+    $('moveBooks').innerHTML = '<div class="sub" style="padding:14px 0">Drop the Xero Account Transactions export for the Inventory account (.xlsx straight from Xero, or a CSV of it) to compare the books side: opening balance, purchases in, COGS journals out.</div>';
+    $('crossChecks').innerHTML = '';
+  } else {
+    $('moveXeroSub').textContent = x.account ? '(' + x.account + ')' : '';
+    var credLines = x.credits.map(function (cr) {
+      return kv('<span class="d2">' + esc(cr.date) + ' · ' + esc((cr.desc || cr.contact || 'credit').slice(0, 52)) +
+        (cr.isCogs ? '' : ' <span class="rowflag fix">not COGS</span>') + '</span>', '−' + fmt$(cr.credit));
+    }).join('');
+    $('moveBooks').innerHTML =
+      kv('Opening balance @ ' + rc.startDate, x.openingAtStart === null ? '—' : fmt$(x.openingAtStart)) +
+      kv('+ Purchases booked in (debits)', fmt$(x.purch)) +
+      kv('− COGS journals booked', '−' + fmt$(x.cogsCred)) +
+      (x.otherCred ? kv('− Other credits (refunds, write-downs…)', '−' + fmt$(x.otherCred)) : '') +
+      (credLines || '') +
+      '<div class="kv total"><span class="k">⇒ Book balance @ month end</span><span class="v">' + (x.endBal === null ? '—' : fmt$(x.endBal)) + '</span></div>';
+
+    var rows = [];
+    function chk(label, se, xe, base) { rows.push('<tr><td>' + label + '</td><td class="num">' + fmt$(se) + '</td><td class="num">' + fmt$(xe) + '</td><td class="num">' + gapCell(xe - se, base) + '</td></tr>'); }
+    if (x.openingAtStart !== null) chk('Month-start inventory value', rc.tot.startVal, x.openingAtStart, x.openingAtStart);
+    if (x.endBal !== null) chk('Month-end inventory value', rc.tot.endVal, x.endBal, x.endBal);
+    chk('Change over the month', rc.tot.deltaVal, x.bookDelta, rc.tot.startVal);
+    chk('Receipts: implied (physical) vs purchases (booked)', rc.tot.netRecvVal, x.purch, x.purch);
+    chk('COGS: this tool vs journals booked', rc.cogs, x.cogsCred || x.credTotal, rc.cogs);
+    $('crossChecks').innerHTML =
+      '<h2 style="font-size:13.5px">Cross-checks <span class="sub" style="display:inline;font-weight:400">(gap = Xero − ShipEdge; green ≤ 1%, amber ≤ 5%)</span></h2>' +
+      '<div class="tbl-wrap"><table><thead><tr><th>Check</th><th class="num">ShipEdge physical</th><th class="num">Xero books</th><th class="num">Gap</th></tr></thead><tbody>' +
+      rows.join('') + '</tbody></table></div>' +
+      '<div class="sub" style="margin-top:6px">Expected noise: ShipEdge values use the current item cost (not each layer’s actual cost), Xero bills can include capitalized freight/tax, dropships may never touch ShipEdge stock, and bill dates lag receipt dates.</div>';
+  }
+
+  var top = rc.moveRows.slice(0, 30);
+  $('moversNote').textContent = 'Top ' + top.length + ' of ' + rc.moveRows.length + ' SKUs with activity, by |implied value|. Positive implied = received; negative = shrank more than shipments explain.';
+  var html = '<thead><tr><th>SKU</th><th>Description</th><th class="num">Start</th><th class="num">End</th><th class="num">Δ</th><th class="num">Shipped</th><th class="num">Implied ±</th><th class="num">Unit cost</th><th class="num">Implied value</th></tr></thead><tbody>';
+  top.forEach(function (e) {
+    var flag = !e.inMaster ? '<span class="rowflag miss">no cost match</span>' : (!e.cost ? '<span class="rowflag zero">$0 cost</span>' : '');
+    html += '<tr><td>' + esc(e.sku) + flag + '</td>' +
+      '<td><span class="d2">' + esc(e.desc.length > 80 ? e.desc.slice(0, 80) + '…' : e.desc) + '</span></td>' +
+      '<td class="num">' + fmtQ(e.s0) + '</td><td class="num">' + fmtQ(e.e0) + '</td>' +
+      '<td class="num">' + (e.delta >= 0 ? '+' : '') + fmtQ(e.delta) + '</td>' +
+      '<td class="num">' + fmtQ(e.sh) + '</td>' +
+      '<td class="num">' + (e.impl >= 0 ? '+' : '') + fmtQ(e.impl) + '</td>' +
+      '<td class="num">' + fmt$(e.cost) + '</td>' +
+      '<td class="num' + (e.implVal < 0 ? ' delta-bad' : '') + '">' + fmt$(e.implVal) + '</td></tr>';
+  });
+  $('moveTable').innerHTML = html + '</tbody>';
+}
+function exportMoveCsv() {
+  var rc = state.recon;
+  if (!rc || rc.coverageError) return;
+  var rows = rc.moveRows.map(function (e) {
+    return [e.sku, e.desc, e.s0, e.e0, e.delta, e.sh, e.impl, num2(e.cost),
+            num2(e.delta * e.cost), num2(e.implVal),
+            !e.inMaster ? 'NO COST MATCH' : (!e.cost ? 'ZERO COST' : '')];
+  });
+  download('inventory-movement_' + rc.month + '.csv',
+    toCSV(['Sku', 'Description', 'Start Qty (' + rc.startDate + ')', 'End Qty (' + rc.endDate + ')', 'Delta Qty',
+           'Shipped Qty', 'Implied Received(+)/Lost(-)', 'Unit Cost', 'Delta Value', 'Implied Value', 'Flags'], rows));
+  toast('inventory-movement_' + rc.month + '.csv downloaded');
 }
 
 function renderTiles(c) {
@@ -862,11 +1299,34 @@ function setSlot(id, name, meta) {
   el.querySelector('span:last-child').innerHTML =
     '<b>' + esc(name) + '</b><br><span class="meta">' + esc(meta) + '</span>';
 }
+function afterLoad() {
+  if (state.shipped && state.master) {
+    var tariff = $('tariff') ? $('tariff').value : '';
+    var xeroIn = $('xeroVal') ? $('xeroVal').value : '';
+    state.computed = compute();
+    renderAll();
+    if ($('tariff') && tariff) { $('tariff').value = tariff; updateJournalTotal(); }
+    if ($('xeroVal') && xeroIn) { $('xeroVal').value = xeroIn; updateRecon(); }
+  }
+}
 function handleFiles(fileList) {
   Array.prototype.forEach.call(fileList, function (file) {
     var reader = new FileReader();
     reader.onload = function () {
-      var text = String(reader.result || '');
+      var buf = reader.result;
+      var u8 = new Uint8Array(buf);
+      if ((u8[0] === 0x50 && u8[1] === 0x4b) || /\.xlsx$/i.test(file.name)) {
+        readXlsxRows(buf).then(function (rows) {
+          state.xero = buildXero(rows, file.name);
+          setSlot('slotXero', file.name, state.xero.txs.length + ' transactions · ' +
+            (state.xero.account || 'account') + (state.xero.minDate ? ' · ' + state.xero.minDate + ' → ' + state.xero.maxDate : ''));
+          afterLoad();
+        }).catch(function (err) {
+          toast('Could not read "' + file.name + '": ' + err.message);
+        });
+        return;
+      }
+      var text = new TextDecoder().decode(u8);
       var type = detectType(text);
       try {
         if (type === 'shipped') {
@@ -876,20 +1336,25 @@ function handleFiles(fileList) {
         } else if (type === 'master') {
           state.master = buildMaster(text, file.name);
           setSlot('slotMaster', file.name, state.master.rowCount + ' items with costs');
+        } else if (type === 'snapshot') {
+          state.snapshot = buildSnapshot(text, file.name);
+          setSlot('slotSnapshot', file.name, state.snapshot.rowCount + ' SKUs · ' +
+            state.snapshot.dates[0] + ' → ' + state.snapshot.dates[state.snapshot.dates.length - 1]);
+        } else if (type === 'xero') {
+          state.xero = buildXero(parseCSV(text, { backslash: false }), file.name);
+          setSlot('slotXero', file.name, state.xero.txs.length + ' transactions · ' +
+            (state.xero.account || 'account') + (state.xero.minDate ? ' · ' + state.xero.minDate + ' → ' + state.xero.maxDate : ''));
         } else {
-          toast('"' + file.name + '" doesn’t look like either export — check the file');
+          toast('"' + file.name + '" doesn’t look like any of the four expected exports — check the file');
           return;
         }
       } catch (err) {
         toast('Could not read "' + file.name + '": ' + err.message);
         return;
       }
-      if (state.shipped && state.master) {
-        state.computed = compute();
-        renderAll();
-      }
+      afterLoad();
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   });
 }
 
@@ -920,6 +1385,7 @@ function handleFiles(fileList) {
     else if (t.id === 'btnDetail') exportDetailCsv();
     else if (t.id === 'btnCopy') copyTsv();
     else if (t.id === 'btnInvCsv') exportInvCsv();
+    else if (t.id === 'btnMoveCsv') exportMoveCsv();
     else {
       var th = t.closest && t.closest('th.sortable');
       if (th) {
