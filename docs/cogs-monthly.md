@@ -155,6 +155,18 @@ month-close snapshot or iterating on a fixed dataset. Audit records from v4
 also embed the full Xero transaction list and tracker month totals in their
 JSON block, so booked-journal forensics can be done from the audit alone.
 
+## Month true-up card
+
+The first card under the tiles is the monthly verdict — one status row per
+close question, each green (≤1%) / amber (≤5%) / red with the dollar gap and
+its likely driver: **COGS booked vs what ShipEdge shipping supports** (and vs
+the tracker FIFO basis), **stock added in ShipEdge vs purchases added in Xero**
+(unmatched adds = returns re-entering + unbilled receipts), **return-like
+re-entries** without $0 FIFO layers, **books-vs-physical drift this month**
+(the change in the gap, not its level), unexplained losses, and unbooked
+journals. Everything below the card is drill-down for whichever row isn't
+green.
+
 ## Returns radar
 
 The movement card includes a day-level **Returns radar**: every small stock

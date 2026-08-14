@@ -76,6 +76,15 @@
   }
   .slot-x:hover{background:#fee2e2;color:var(--bad)}
 
+  /* ---- true-up rows ---- */
+  .tu{display:flex;gap:10px;align-items:baseline;padding:9px 0;border-bottom:1px dashed var(--line)}
+  .tu:last-child{border-bottom:none}
+  .tu .tag{flex:none;position:relative;top:-1px}
+  .tu .body{flex:1}
+  .tu b{font-size:13.5px}
+  .tu .amt{font-variant-numeric:tabular-nums;font-weight:650;margin-left:8px}
+  .tu .why{display:block;color:var(--ink-2);font-size:12.5px;margin-top:2px}
+
   /* ---- month picker ---- */
   .months{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
   .months button{padding:5px 14px;border-radius:999px;font-weight:650;font-size:13px}
@@ -211,6 +220,11 @@
     <div class="months" id="monthPicker" style="display:none"></div>
 
     <div class="tiles" id="tiles"></div>
+
+    <div class="card" id="trueupCard" style="display:none">
+      <h2>Month true-up <span class="sub" style="display:inline" id="trueupSub"></span></h2>
+      <div id="trueup"></div>
+    </div>
 
     <div class="grid2">
       <div class="card">
@@ -1218,6 +1232,7 @@ function renderAll() {
   renderMovement(state.recon);
   state.monthly = computeMonthly();
   renderMoM(state.monthly);
+  renderTrueUp();
 }
 var refreshPending = false;
 function refreshRecon() {   // adjustments changed — recompute recon + MoM without nuking inputs
@@ -1229,6 +1244,7 @@ function refreshRecon() {   // adjustments changed — recompute recon + MoM wit
     renderMovement(state.recon);
     state.monthly = computeMonthly();
     renderMoM(state.monthly);
+    renderTrueUp();
   }, 0);
 }
 
@@ -1374,6 +1390,85 @@ function exportMomCsv() {
            'Over/(Under) vs Computed', 'Purchases In', 'Physical Value @ Start', 'Physical Value @ End',
            'Physical Delta', 'Book - Physical @ End'], out));
   toast('cogs-month-by-month.csv downloaded');
+}
+
+/* ================= month true-up (the verdict card) ================= */
+function signed$(v) { return (v >= 0 ? '+' : '') + fmt$(v); }
+function renderTrueUp() {
+  var card = $('trueupCard');
+  var c = state.computed, rc = state.recon;
+  if (!c) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  var m = state.shipped.month;
+  $('trueupSub').textContent = '— ' + monthLabel(m) + ' · does this month true up?';
+  var tk = state.tracker && state.tracker.byMonth[m];
+  var x = rc && rc.xero;
+  var rows = [];
+  function row(kind, title, amount, why) { rows.push({ kind: kind, title: title, amount: amount, why: why }); }
+  function band(gap, base) {
+    var p = base ? Math.abs(gap) / Math.abs(base) : 1;
+    return p <= 0.01 ? 'good' : p <= 0.05 ? 'warn' : 'bad';
+  }
+
+  // 1 — COGS booked vs what ShipEdge shipping supports
+  if (x && x.cogsCred) {
+    var g1 = x.cogsCred - c.tot.all;
+    row(band(g1, c.tot.all), 'COGS booked vs ShipEdge shipping',
+      fmt$(x.cogsCred) + ' booked · ' + fmt$(c.tot.all) + ' shipped at cost · gap ' + signed$(g1),
+      (tk ? 'Vs the tracker FIFO basis the journals book from: ' + signed$(x.cogsCred - tk.replen) + '. ' : '') +
+      'Cost-basis (FIFO layers vs current cost) explains small gaps; big ones mean accruals, or shipments missed/double-counted.');
+  } else if (x) {
+    row('bad', 'COGS journal not booked for ' + monthLabel(m),
+      fmt$(c.tot.all) + ' of shipped cost waiting to post' + (tk ? ' (tracker FIFO basis ' + fmt$(tk.replen) + ')' : ''),
+      'Until this posts, the inventory account keeps climbing and every balance check below reads off.');
+  } else {
+    row('warn', 'COGS booked vs ShipEdge shipping', '—',
+      'Drop the Xero Account Transactions export to check the booked journals against what actually shipped.');
+  }
+
+  // 2 — stock into ShipEdge vs purchases into Xero (the "unmatched adds" check)
+  if (rc && rc.tot && x) {
+    var g2 = x.purch - rc.tot.netRecvVal;
+    row(band(g2, x.purch), 'Stock added in ShipEdge vs purchases added in Xero',
+      fmt$(rc.tot.netRecvVal) + ' entered the warehouse · ' + fmt$(x.purch) + ' billed into 1141 · gap ' + signed$(g2),
+      g2 < 0
+        ? 'More value entered stock than was billed — ShipEdge adds with no Xero add. Returns re-entering stock and unbilled receipts land exactly here.'
+        : 'More was billed than physically arrived — capitalized freight/tax, dropships that never touch the warehouse, or bills dated ahead of receipt.');
+  } else if (rc && rc.tot) {
+    row('warn', 'Stock added in ShipEdge vs purchases added in Xero', fmt$(rc.tot.netRecvVal) + ' entered the warehouse',
+      'Drop the Xero export to compare against billed purchases.');
+  }
+
+  // 3 — returns exposure
+  if (rc && rc.returns && rc.returns.returnLike) {
+    var R = rc.returns;
+    row(R.returnLike - R.caught ? 'warn' : 'good', 'Return-like stock re-entries',
+      R.returnLike + ' events · ' + fmt$(R.returnLikeVal) + ' · ' + (R.returnLike - R.caught) + ' with no $0 FIFO layer',
+      'Each uncaught one that re-ships books COGS twice. Review the Returns radar (below) — small PO receipts appear there too, so it’s a queue, not a verdict.');
+  }
+
+  // 4 — balance drift (the month's own contribution to the book-vs-physical gap)
+  if (rc && rc.tot && x && x.endBal !== null && x.openingAtStart !== null) {
+    var gS = x.openingAtStart - rc.tot.startVal;
+    var gE = x.endBal - rc.tot.endVal;
+    var drift = gE - gS;
+    row(band(drift, x.endBal), 'Books-vs-physical drift this month',
+      'gap ' + signed$(gS) + ' → ' + signed$(gE) + ' · moved ' + signed$(drift),
+      'A steady gap is structural (freight in bills, $0-cost RMA stock). A jump means this month’s bookings don’t match this month’s movement.');
+  }
+
+  // 5 — unexplained losses
+  if (rc && rc.tot && rc.tot.lossVal < -2000) {
+    row('warn', 'Inventory losses shipments don’t explain',
+      fmt$(rc.tot.lossVal) + ' across ' + rc.tot.lossSkus + ' SKUs',
+      'Stock dropped with no shipment record — adjustments, shrink, or SKU renames. Biggest ones are in the movement table.');
+  }
+
+  $('trueup').innerHTML = rows.map(function (r) {
+    return '<div class="tu"><span class="tag ' + r.kind + '">' +
+      { good: 'true', warn: 'check', bad: 'off' }[r.kind] + '</span><span class="body"><b>' + r.title + '</b>' +
+      '<span class="amt">' + r.amount + '</span><span class="why">' + r.why + '</span></span></div>';
+  }).join('');
 }
 
 function gapCell(gap, base) {
