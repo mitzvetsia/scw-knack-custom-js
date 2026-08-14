@@ -1082,6 +1082,16 @@ function computeRecon() {
     var zeroLayerSkus = {};
     var tkm = state.tracker && state.tracker.byMonth[month];
     if (tkm) tkm.lines.forEach(function (l) { if (l.per > 0 && !l.replenPer) zeroLayerSkus[l.sku] = true; });
+    // exchange/return re-shipments (order refs containing XCHG or _cp)
+    var xchg = new Map();   // canonical sku -> [{day, order}]
+    state.shipped.recs.forEach(function (x) {
+      var ou = (x.order || '').toUpperCase();
+      if (ou.indexOf('XCHG') === -1 && ou.slice(-3) !== '_CP') return;
+      var mkx = matchSku(items, x.sku);
+      var kx = mkx.key || x.sku;
+      if (!xchg.has(kx)) xchg.set(kx, []);
+      xchg.get(kx).push({ day: x.date.slice(0, 10), order: x.order });
+    });
     var dts = snap.dates;
     var events = [];
     snap.bySku.forEach(function (v, rawSku) {
@@ -1089,32 +1099,60 @@ function computeRecon() {
       var key3 = mk3.key || rawSku;
       var it3 = mk3.key ? items.get(mk3.key) : null;
       var sd = shipDays.get(key3);
+      // daily implied receipts r(i) = delta(i) + shippedOn(i), full series for windows
+      var rArr = new Array(dts.length - 1);
       for (var di = 0; di < dts.length - 1; di++) {
-        var d0 = dts[di];
+        rArr[di] = (v.dates.get(dts[di + 1]) || 0) - (v.dates.get(dts[di]) || 0) +
+                   (sd ? (sd.get(dts[di]) || 0) : 0);
+      }
+      for (var dj = 0; dj < dts.length - 1; dj++) {
+        var d0 = dts[dj];
         if (d0.slice(0, 7) !== month) continue;
-        var delta = (v.dates.get(dts[di + 1]) || 0) - (v.dates.get(d0) || 0);
-        var shOn = sd ? (sd.get(d0) || 0) : 0;
-        var recv = delta + shOn;
+        var recv = rArr[dj];
         if (recv <= 0) continue;
-        // shipped in the 21 days before d0?
         var recentShip = false;
         if (sd) sd.forEach(function (q, dd) {
           if (dd < d0 && dd >= addDays(d0, -21)) recentShip = true;
         });
+        var small = recv <= 5 && recentShip;
+        // classification: a one-day offset between Processed_at and the stock
+        // decrement makes +q then −q — if the uptick doesn't survive a ±2-day
+        // net, it's a timing artifact, not a return
+        var net5 = 0, poAdj = false;
+        for (var k = -2; k <= 2; k++) {
+          if (dj + k >= 0 && dj + k < rArr.length) net5 += rArr[dj + k];
+        }
+        for (var k2 = -3; k2 <= 3; k2++) {
+          if (k2 !== 0 && dj + k2 >= 0 && dj + k2 < rArr.length && rArr[dj + k2] >= 6) { poAdj = true; break; }
+        }
+        var cls = !small ? 'po-like' : (net5 < 0.5 * recv ? 'timing-phantom' : (poAdj ? 'po-tail' : 'return-like'));
+        // exchange re-shipment of the same SKU within the next 45 days?
+        var reship = null;
+        (xchg.get(key3) || []).some(function (xs) {
+          if (xs.day >= d0 && xs.day <= addDays(d0, 45)) { reship = xs; return true; }
+          return false;
+        });
         events.push({ sku: key3, date: d0, qty: recv, cost: it3 ? it3.cost : 0,
-                      val: recv * (it3 ? it3.cost : 0),
-                      returnLike: recv <= 5 && recentShip,
+                      val: recv * (it3 ? it3.cost : 0), cls: cls,
+                      returnLike: cls === 'return-like',
                       recentShip: recentShip, zeroLayer: !!zeroLayerSkus[key3],
+                      reship: reship,
                       desc: ((it3 && it3.desc) || v.desc || '').replace(/\s+/g, ' ').slice(0, 60) });
       }
     });
     events.sort(function (a, b) { return b.val - a.val; });
+    function bucket(cls) {
+      var l = events.filter(function (e) { return e.cls === cls; });
+      return { n: l.length, val: l.reduce(function (a, e) { return a + e.val; }, 0) };
+    }
     var rl = events.filter(function (e) { return e.returnLike; });
     returns = { events: events, totalEvents: events.length,
                 returnLike: rl.length,
                 returnLikeQty: rl.reduce(function (a, e) { return a + e.qty; }, 0),
                 returnLikeVal: rl.reduce(function (a, e) { return a + e.val; }, 0),
-                caught: rl.filter(function (e) { return e.zeroLayer; }).length };
+                caught: rl.filter(function (e) { return e.zeroLayer; }).length,
+                reshipped: rl.filter(function (e) { return e.reship; }).length,
+                phantom: bucket('timing-phantom'), poTail: bucket('po-tail') };
   }
 
   return { month: month, startDate: startDate, endDate: endDate, endIsBoundary: endIsBoundary,
@@ -1439,12 +1477,12 @@ function renderTrueUp() {
       'Drop the Xero export to compare against billed purchases.');
   }
 
-  // 3 — returns exposure
+  // 3 — returns exposure (timing artifacts and PO tails already filtered out)
   if (rc && rc.returns && rc.returns.returnLike) {
     var R = rc.returns;
-    row(R.returnLike - R.caught ? 'warn' : 'good', 'Return-like stock re-entries',
-      R.returnLike + ' events · ' + fmt$(R.returnLikeVal) + ' · ' + (R.returnLike - R.caught) + ' with no $0 FIFO layer',
-      'Each uncaught one that re-ships books COGS twice. Review the Returns radar (below) — small PO receipts appear there too, so it’s a queue, not a verdict.');
+    row(R.returnLike - R.caught ? 'warn' : 'good', 'Likely return re-entries',
+      R.returnLike + ' events · ' + fmt$(R.returnLikeVal) + ' · ' + (R.returnLike - R.caught) + ' with no $0 FIFO layer · ' + R.reshipped + ' already re-shipped',
+      'Returns back into ShipEdge with no Xero entry — each one that re-ships without a $0 layer books COGS twice. Timing artifacts (' + R.phantom.n + ') and PO tails (' + R.poTail.n + ') are filtered out; see the Returns radar.');
   }
 
   // 4 — balance drift (the month's own contribution to the book-vs-physical gap)
@@ -1653,6 +1691,7 @@ function renderReturns(rc) {
     return '<tr><td>' + esc(e.sku) +
       (e.zeroLayer ? '<span class="rowflag fix" title="the tracker fulfilled this SKU from a $0 layer this month — likely caught">$0 layer</span>'
                    : '<span class="rowflag zero" title="no $0 FIFO layer for this SKU this month — if it re-ships, COGS counts twice">not in tracker</span>') +
+      (e.reship ? '<span class="rowflag miss" title="' + esc(e.reship.order) + '">re-shipped ' + esc(e.reship.day.slice(5)) + '</span>' : '') +
       '</td><td>' + esc(e.date) + '</td>' +
       '<td class="num">+' + fmtQ(e.qty) + '</td>' +
       '<td class="num">' + fmt$(e.cost) + '</td>' +
@@ -1660,14 +1699,14 @@ function renderReturns(rc) {
       '<td><span class="d2">' + esc(e.desc) + '</span></td></tr>';
   }).join('');
   el.innerHTML =
-    '<details class="issue warn"><summary>Returns radar — stock re-entries on recently-shipped SKUs' +
+    '<details class="issue warn"><summary>Returns radar — likely return re-entries' +
     '<span class="n">' + R.returnLike + ' events · ' + fmtQ(R.returnLikeQty) + ' units · ' + fmt$(R.returnLikeVal) +
-    ' · ' + R.caught + ' with $0 layer</span></summary><div class="body">' +
-    '<p>Small quantity increases (≤5 units/day) on SKUs that shipped in the previous 3 weeks — the signature of a return ' +
-    're-entering ShipEdge stock with no Xero entry. If such a unit ships again and the tracker doesn’t fulfill it from a ' +
-    '<b>$0 layer</b>, its COGS gets booked twice. Rows tagged <i>not in tracker</i> have no $0 layer this month — check those first. ' +
-    '(' + (R.totalEvents - R.returnLike) + ' larger receipt events this month look like normal PO receiving and are excluded here; ' +
-    'they’re all in the CSV.) <button id="btnReturnsCsv" style="margin-left:6px">Download all receipt events CSV</button></p>' +
+    ' · ' + R.caught + ' with $0 layer · ' + R.reshipped + ' re-shipped via exchange</span></summary><div class="body">' +
+    '<p>Small stock re-entries (≤5 units/day) on SKUs shipped in the prior 3 weeks, <b>after filtering out ' +
+    R.phantom.n + ' one-day timing artifacts (' + fmt$(R.phantom.val) + ' — shipment logged one day, stock decremented the next; they net to zero) and ' +
+    R.poTail.n + ' partial-PO receiving tails (' + fmt$(R.poTail.val) + ')</b>. What remains is the return signature: it came back into ShipEdge with no Xero entry. ' +
+    'If it ships again without a <b>$0 FIFO layer</b>, COGS books twice — rows tagged <i>re-shipped</i> already went out again on an exchange order. ' +
+    '<button id="btnReturnsCsv" style="margin-left:6px">Download all receipt events CSV</button></p>' +
     (show.length ? '<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table>' +
       '<thead><tr><th>SKU</th><th>Date back in stock</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Value</th><th>Description</th></tr></thead>' +
       '<tbody>' + body + '</tbody></table></div>'
@@ -1679,11 +1718,12 @@ function exportReturnsCsv() {
   if (!rc || !rc.returns) return;
   var rows = rc.returns.events.map(function (e) {
     return [e.sku, e.date, e.qty, num2(e.cost), num2(e.val),
-            e.returnLike ? 'RETURN-LIKE' : 'PO-like', e.recentShip ? 'shipped<=21d before' : '',
-            e.zeroLayer ? '$0 FIFO layer this month' : '', e.desc];
+            e.cls.toUpperCase(), e.recentShip ? 'shipped<=21d before' : '',
+            e.zeroLayer ? '$0 FIFO layer this month' : '',
+            e.reship ? e.reship.day + ' ' + e.reship.order : '', e.desc];
   });
   download('receipt-events_' + rc.month + '.csv',
-    toCSV(['Sku', 'Date', 'Qty In', 'Unit Cost', 'Value', 'Classification', 'Recent Shipment', 'Tracker $0 Layer', 'Description'], rows));
+    toCSV(['Sku', 'Date', 'Qty In', 'Unit Cost', 'Value', 'Classification', 'Recent Shipment', 'Tracker $0 Layer', 'Exchange Re-shipment', 'Description'], rows));
   toast('receipt-events_' + rc.month + '.csv downloaded');
 }
 
