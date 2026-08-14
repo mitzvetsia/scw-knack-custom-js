@@ -193,6 +193,7 @@
       <div class="slot" id="slotMaster"><span class="dot"></span><span><b>Item data (product export)</b><br><span class="meta">waiting for file&hellip;</span></span></div>
       <div class="slot" id="slotSnapshot"><span class="dot"></span><span><b>Inventory by SKU (optional)</b><br><span class="meta">daily snapshot report &mdash; unlocks movement recon</span></span></div>
       <div class="slot" id="slotXero"><span class="dot"></span><span><b>Xero inventory transactions (optional)</b><br><span class="meta">.xlsx or .csv export of account 1141</span></span></div>
+      <div class="slot" id="slotTracker"><span class="dot"></span><span><b>Herr Cheetoh line items (optional)</b><br><span class="meta">COGs line items export &mdash; adds tracker columns to month-by-month</span></span></div>
     </div>
     <input type="file" id="fileInput" accept=".csv,.xlsx,text/csv" multiple style="display:none">
   </div>
@@ -290,6 +291,8 @@
         <li>Quirks handled automatically (each one shows up under Data quality when it fires): SKUs with stripped leading zeros, shipped rows the ShipEdge writer breaks apart when a description contains inch marks (<code>\"</code>) or line breaks, MySQL-style <code>\N</code> nulls and <code>\"</code> escapes in the products export.</li>
         <li><b>Optional &mdash; Total Inventory by SKU report</b> (daily snapshots; must include the 1st of the month and ideally the 1st of the next month): unlocks the movement reconciliation &mdash; start/end inventory value, the month&rsquo;s change, and per-SKU implied receipts (<code>&Delta; + shipped</code>) vs unexplained losses.</li>
         <li><b>Optional &mdash; Xero Account Transactions for the Inventory account</b> (the native <code>.xlsx</code> works as-is; a CSV export works too): adds the books side &mdash; opening balance, purchases in, COGS journal credits out &mdash; and cross-checks it against the physical movement and this tool&rsquo;s COGS number.</li>
+        <li><b>Optional &mdash; Herr Cheetoh COGs line items export</b> (the file with a <code>COG REPORT</code> column): adds tracker columns to the month-by-month table &mdash; the tracker&rsquo;s ShipEdge-cost total, its replen/FIFO total (the basis the journals book from), and a booked-vs-replen gap per month.</li>
+        <li>A copy of this page can be built with all data <b>embedded</b> (<code>tools/make-preloaded.py</code>) so it opens fully loaded &mdash; useful for sharing a month-close snapshot or iterating on one dataset.</li>
         <li>Everything runs locally in your browser &mdash; no data leaves this page.</li>
       </ul>
     </details>
@@ -356,6 +359,7 @@ function detectType(text) {
   if (h.indexOf('processed_at') !== -1 || h.indexOf('ship#') !== -1) return 'shipped';
   if (h.indexOf('cost') !== -1 && (h.indexOf('in warehouse') !== -1 || h.indexOf('available') !== -1)) return 'master';
   if (h.indexOf('sku') !== -1 && h.indexOf('total') !== -1 && h.indexOf('date') !== -1) return 'snapshot';
+  if (h.indexOf('cog report') !== -1) return 'tracker';
   // Xero account-transactions CSV: header row sits below a title block
   var head = parseCSV(text.slice(0, 8000), { backslash: false });
   for (var r = 0; r < Math.min(head.length, 30); r++) {
@@ -718,6 +722,40 @@ function adjustedXeroTxs() {
 }
 function isCogsTx(t) { return /cog/i.test(t.desc || '') || /cog/i.test(t.ref || ''); }
 
+/* ================= Herr Cheetoh tracker line items ================= */
+/* One row per SKU per month: 'COG REPORT' = "2026 01-Jan"-style bucket,
+   'Shipedge Data Total Cost' (qty x ShipEdge cost at calc time),
+   'Replen Data Total Cost' (FIFO/replenishment basis — what the journals book),
+   'Tariff Cost'. Aggregated per month for the month-by-month comparison. */
+function buildTracker(text, fileName) {
+  var rows = parseCSV(text, { backslash: false });
+  var hdr = rows[0].map(function (x) { return cleanVal(x, false); });
+  var idx = {};
+  hdr.forEach(function (h, i) { if (!(h in idx)) idx[h] = i; });
+  if (!('COG REPORT' in idx)) throw new Error('Tracker export is missing the "COG REPORT" column.');
+  function monthOf(rep) {   // "2026 01-Jan" -> "2026-01"
+    var m = String(rep || '').match(/^(\d{4})\s+(\d{2})/);
+    return m ? m[1] + '-' + m[2] : '';
+  }
+  var byMonth = {}, lineCount = 0;
+  for (var r = 1; r < rows.length; r++) {
+    var f = rows[r];
+    var g = function (k) { return (k in idx) && idx[k] < f.length ? cleanVal(f[idx[k]], false) : ''; };
+    var mo = monthOf(g('COG REPORT'));
+    if (!mo) continue;
+    lineCount++;
+    var e = byMonth[mo];
+    if (!e) e = byMonth[mo] = { se: 0, replen: 0, tariff: 0, qty: 0, skus: 0 };
+    e.se += parseNum(g('Shipedge Data Total Cost')) || 0;
+    e.replen += parseNum(g('Replen Data Total Cost')) || 0;
+    e.tariff += parseNum(g('Tariff Cost')) || 0;
+    e.qty += parseNum(g('Quantity Shipped')) || 0;
+    e.skus++;
+  }
+  if (!lineCount) throw new Error('No tracker line items with a parseable COG REPORT month.');
+  return { byMonth: byMonth, months: Object.keys(byMonth).sort(), lineCount: lineCount, fileName: fileName };
+}
+
 /* ================= SKU matching (zero-tolerant) ================= */
 /* Excel/exports strip leading zeros off numeric SKUs ("00405614" -> "405614").
    Exact match first; otherwise re-pad with leading zeros (and the reverse). */
@@ -736,7 +774,7 @@ function matchSku(items, sku) {
 }
 
 /* ================= compute ================= */
-var VERSION = '3';
+var VERSION = '4';
 var INSTALL_CHANNEL = 'Installation Services';
 var state = {
   shipped: null, master: null, snapshot: null, xero: null,
@@ -1121,16 +1159,22 @@ function renderMoM(rows) {
     (rows.length > 1 ? ' · click a row to open that month' : '');
   var showPhys = rows.some(function (r) { return r.physStart !== null || r.physEnd !== null; });
   var showX = !!state.xero;
+  var showT = !!state.tracker;
+  function trk(m) { return (state.tracker && state.tracker.byMonth[m]) || null; }
   var html = '<thead><tr><th>Month</th><th class="num">Units</th><th class="num">Ecom COGS</th><th class="num">Install COGS</th>' +
     '<th class="num">All COGS (computed)</th>' +
-    (showX ? '<th class="num">COGS booked</th><th class="num">Over/(under) booked</th><th class="num">Purchases in</th>' : '') +
+    (showT ? '<th class="num">Tracker (SE cost)</th><th class="num">Tracker (replen)</th>' : '') +
+    (showX ? '<th class="num">COGS booked</th>' + (showT ? '<th class="num">Booked − replen</th>' : '') +
+      '<th class="num">Over/(under) vs computed</th><th class="num">Purchases in</th>' : '') +
     (showPhys ? '<th class="num">Physical Δ</th><th class="num">Book − physical @ end</th>' : '') +
     '</tr></thead><tbody>';
-  var T = { units: 0, ecom: 0, install: 0, all: 0, booked: 0, anyBooked: false, purch: 0, ou: 0 };
+  var T = { units: 0, ecom: 0, install: 0, all: 0, booked: 0, anyBooked: false, purch: 0, ou: 0, se: 0, rep: 0, anyT: false };
   rows.forEach(function (r) {
     T.units += r.units; T.ecom += r.ecom; T.install += r.install; T.all += r.all;
     if (r.booked !== null) { T.booked += r.booked; T.anyBooked = true; T.ou += r.booked - r.all; }
     if (r.purch !== null) T.purch += r.purch;
+    var tk = trk(r.month);
+    if (tk) { T.se += tk.se; T.rep += tk.replen; T.anyT = true; }
     var physD = (r.physStart !== null && r.physEnd !== null) ? r.physEnd - r.physStart : null;
     var endGap = (r.bookEnd !== null && r.physEnd !== null) ? r.bookEnd - r.physEnd : null;
     html += '<tr data-month="' + r.month + '" style="cursor:pointer"' +
@@ -1140,7 +1184,9 @@ function renderMoM(rows) {
       '<td class="num">' + fmt$(r.ecom) + '</td>' +
       '<td class="num">' + fmt$(r.install) + '</td>' +
       '<td class="num"><b>' + fmt$(r.all) + '</b></td>' +
+      (showT ? '<td class="num">' + (tk ? fmt$(tk.se) : '—') + '</td><td class="num">' + (tk ? fmt$(tk.replen) : '—') + '</td>' : '') +
       (showX ? '<td class="num">' + (r.booked === null ? '<span class="d2">not booked</span>' : fmt$(r.booked)) + '</td>' +
+        (showT ? '<td class="num">' + (r.booked !== null && tk ? gapCell(r.booked - tk.replen, tk.replen) : '—') + '</td>' : '') +
         '<td class="num">' + (r.booked === null ? '—' : gapCell(r.booked - r.all, r.all)) + '</td>' +
         '<td class="num">' + (r.purch === null ? '—' : fmt$(r.purch)) + '</td>' : '') +
       (showPhys ? '<td class="num">' + (physD === null ? '—' : (physD >= 0 ? '+' : '') + fmt$(physD)) + '</td>' +
@@ -1151,7 +1197,9 @@ function renderMoM(rows) {
     html += '<tr class="tot"><td>Total</td><td class="num">' + fmtQ(T.units) + '</td>' +
       '<td class="num">' + fmt$(T.ecom) + '</td><td class="num">' + fmt$(T.install) + '</td>' +
       '<td class="num">' + fmt$(T.all) + '</td>' +
+      (showT ? '<td class="num">' + (T.anyT ? fmt$(T.se) : '—') + '</td><td class="num">' + (T.anyT ? fmt$(T.rep) : '—') + '</td>' : '') +
       (showX ? '<td class="num">' + (T.anyBooked ? fmt$(T.booked) : '—') + '</td>' +
+        (showT ? '<td class="num">' + (T.anyBooked && T.anyT ? gapCell(T.booked - T.rep, T.rep) : '—') + '</td>' : '') +
         '<td class="num">' + (T.anyBooked ? gapCell(T.ou, T.all) : '—') + '</td>' +
         '<td class="num">' + fmt$(T.purch) + '</td>' : '') +
       (showPhys ? '<td></td><td></td>' : '') + '</tr>';
@@ -1161,18 +1209,23 @@ function renderMoM(rows) {
 function exportMomCsv() {
   var rows = state.monthly || [];
   var out = rows.map(function (r) {
+    var tk = (state.tracker && state.tracker.byMonth[r.month]) || null;
     var physD = (r.physStart !== null && r.physEnd !== null) ? num2(r.physEnd - r.physStart) : '';
     var endGap = (r.bookEnd !== null && r.physEnd !== null) ? num2(r.bookEnd - r.physEnd) : '';
     return [r.month, r.units, num2(r.ecom), num2(r.install), num2(r.all),
+            tk ? num2(tk.se) : '', tk ? num2(tk.replen) : '', tk ? num2(tk.tariff) : '',
             r.booked === null ? '' : num2(r.booked),
+            (r.booked !== null && tk) ? num2(r.booked - tk.replen) : '',
             r.booked === null ? '' : num2(r.booked - r.all),
             r.purch === null ? '' : num2(r.purch),
             r.physStart === null ? '' : num2(r.physStart),
             r.physEnd === null ? '' : num2(r.physEnd), physD, endGap];
   });
   download('cogs-month-by-month.csv',
-    toCSV(['Month', 'Units', 'Ecom COGS', 'Install COGS', 'All COGS (computed)', 'COGS Booked (journals)',
-           'Over/(Under) Booked', 'Purchases In', 'Physical Value @ Start', 'Physical Value @ End',
+    toCSV(['Month', 'Units', 'Ecom COGS', 'Install COGS', 'All COGS (computed)',
+           'Tracker ShipEdge-Cost Total', 'Tracker Replen Total', 'Tracker Tariff',
+           'COGS Booked (journals)', 'Booked - Tracker Replen',
+           'Over/(Under) vs Computed', 'Purchases In', 'Physical Value @ Start', 'Physical Value @ End',
            'Physical Delta', 'Book - Physical @ End'], out));
   toast('cogs-month-by-month.csv downloaded');
 }
@@ -1668,8 +1721,8 @@ function exportAudit() {
 
   // inputs
   var inputs = [];
-  (s.files || []).forEach(function (f) {
-    inputs.push({ role: 'Shipped-items report', fileName: f.fileName, detail: f.lines + ' lines', hash: f.hash || 'n/a', bytes: f.bytes || 0 });
+  (state.shippedFiles || []).forEach(function (f) {
+    inputs.push({ role: 'Shipped-items report', fileName: f.fileName, detail: f.recs.length + ' lines', hash: f.hash || 'n/a', bytes: f.bytes || 0 });
   });
   inputs.push({ role: 'Item data (products export)', fileName: m.fileName, detail: m.rowCount + ' SKUs', hash: m.hash || 'n/a', bytes: m.bytes || 0 });
   if (state.snapshot) inputs.push({ role: 'Inventory by SKU (daily snapshots)', fileName: state.snapshot.fileName,
@@ -1678,6 +1731,9 @@ function exportAudit() {
   if (state.xero) inputs.push({ role: 'Xero account transactions', fileName: state.xero.fileName,
     detail: state.xero.txs.length + ' txs · ' + (state.xero.account || '') + ' · ' + state.xero.minDate + ' → ' + state.xero.maxDate,
     hash: state.xero.hash || 'n/a', bytes: state.xero.bytes || 0 });
+  if (state.tracker) inputs.push({ role: 'Herr Cheetoh line items', fileName: state.tracker.fileName,
+    detail: state.tracker.lineCount + ' line items · ' + state.tracker.months[0] + ' → ' + state.tracker.months[state.tracker.months.length - 1],
+    hash: state.tracker.hash || 'n/a', bytes: state.tracker.bytes || 0 });
 
   // adjustments record
   var adjRows = [], adjJson = [];
@@ -1797,6 +1853,13 @@ function exportAudit() {
     recon: rc && !rc.coverageError ? { startDate: rc.startDate, endDate: rc.endDate, totals: rc.tot, cogs: rc.cogs,
       xero: rc.xero ? { adjusted: { openingAtStart: rc.xero.openingAtStart, purch: rc.xero.purch, credTotal: rc.xero.credTotal, cogsCred: rc.xero.cogsCred, endBal: rc.xero.endBal }, raw: rc.xero.raw } : null,
       movement: rc.moveRows } : null,
+    xeroTxs: state.xero ? { account: state.xero.account, opening: state.xero.opening, closing: state.xero.closing,
+      txs: adjustedXeroTxs().map(function (t) {
+        return { date: t.orig.date, contact: t.orig.contact, desc: t.orig.desc, ref: t.orig.ref,
+                 debit: t.orig.debit, credit: t.orig.credit,
+                 adjusted: t.adj ? (t.excluded ? 'excluded' : { date: t.date, debit: t.debit, credit: t.credit }) : null };
+      }) } : null,
+    tracker: state.tracker ? { fileName: state.tracker.fileName, byMonth: state.tracker.byMonth } : null,
     adjustments: adjJson,
     shipmentDetail: c.detail
   };
@@ -1843,9 +1906,15 @@ function afterLoad() {
 function handleFiles(fileList) {
   Array.prototype.forEach.call(fileList, function (file) {
     var reader = new FileReader();
-    reader.onload = function () {
-      var buf = reader.result;
-      var u8 = new Uint8Array(buf);
+    reader.onload = function () { ingestFile(file.name, new Uint8Array(reader.result)); };
+    reader.readAsArrayBuffer(file);
+  });
+}
+function ingestFile(name, u8) {
+  var file = { name: name };
+  var buf = u8.buffer.byteLength === u8.length ? u8.buffer : u8.slice().buffer;
+  {
+    {
       if ((u8[0] === 0x50 && u8[1] === 0x4b) || /\.xlsx$/i.test(file.name)) {
         readXlsxRows(buf).then(function (rows) {
           state.xero = buildXero(rows, file.name);
@@ -1885,6 +1954,11 @@ function handleFiles(fileList) {
           hashFile(u8).then(function (h) { state.xero.hash = h; state.xero.bytes = u8.length; });
           setSlot('slotXero', file.name, state.xero.txs.length + ' transactions · ' +
             (state.xero.account || 'account') + (state.xero.minDate ? ' · ' + state.xero.minDate + ' → ' + state.xero.maxDate : ''));
+        } else if (type === 'tracker') {
+          state.tracker = buildTracker(text, file.name);
+          hashFile(u8).then(function (h) { state.tracker.hash = h; state.tracker.bytes = u8.length; });
+          setSlot('slotTracker', file.name, state.tracker.lineCount + ' line items · ' +
+            state.tracker.months[0] + ' → ' + state.tracker.months[state.tracker.months.length - 1]);
         } else {
           toast('"' + file.name + '" doesn’t look like any of the four expected exports — check the file');
           return;
@@ -1894,9 +1968,34 @@ function handleFiles(fileList) {
         return;
       }
       afterLoad();
-    };
-    reader.readAsArrayBuffer(file);
+    }
+  }
+}
+
+/* ================= embedded-data preload ================= */
+/* A build of this page can ship with its data baked in: a
+   <script type="application/json" id="scw-preload"> block of the form
+   { "files": [ { "name": "...", "text": "..." } or { "name": "...", "b64": "..." } ],
+     "note": "shown as a toast" }
+   Each entry runs through the exact same ingest path as a dropped file. */
+function bootPreload() {
+  var el = document.getElementById('scw-preload');
+  if (!el) return;
+  var p;
+  try { p = JSON.parse(el.textContent); } catch (e) { toast('Preload block unreadable: ' + e.message); return; }
+  if (!p || !p.files || !p.files.length) return;
+  p.files.forEach(function (f) {
+    var u8;
+    if (f.b64) {
+      var bin = atob(f.b64);
+      u8 = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    } else {
+      u8 = new TextEncoder().encode(f.text || '');
+    }
+    ingestFile(f.name, u8);
   });
+  if (p.note) setTimeout(function () { toast(p.note); }, 600);
 }
 
 (function wire() {
@@ -2000,6 +2099,11 @@ function handleFiles(fileList) {
     else if (t.id === 'tariff') updateJournalTotal();
     else if (t.id === 'xeroVal') updateRecon();
   });
+
+  // the preload block (if any) is injected at the end of <body>, after this
+  // script — wait for the DOM to finish parsing before looking for it
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootPreload);
+  else bootPreload();
 })();
 </script>
 </body>

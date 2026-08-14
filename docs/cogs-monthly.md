@@ -135,6 +135,26 @@ change and the month-end book-vs-physical gap where the snapshot report covers
 the boundaries. Caveat: all months are costed at the single products export's
 current costs, so restatements for older months inherit more cost drift.
 
+## Herr Cheetoh tracker input (optional input 5)
+
+Drop the tracker's **COGs line items export** (the file with a `COG REPORT`
+column) and the month-by-month table gains tracker columns: the tracker's
+ShipEdge-cost total, its **replen/FIFO total — the basis the COGS journals are
+actually booked from** (confirmed: April and May 2026 journals match the replen
+total to the penny), and a per-month **Booked − replen** gap. This makes the
+three-way "computed vs tracker vs booked" forensics a standing feature instead
+of a manual exercise.
+
+## Preloaded builds (`tools/make-preloaded.py`)
+
+`python3 tools/make-preloaded.py OUT.html file1.csv file2.csv … [--note "…"]`
+embeds the given exports (text or `.xlsx`) into a copy of the workbench as a
+`<script id="scw-preload">` JSON block. The output is a single HTML file that
+opens with everything already loaded — same parsers, same UI — for sharing a
+month-close snapshot or iterating on a fixed dataset. Audit records from v4
+also embed the full Xero transaction list and tracker month totals in their
+JSON block, so booked-journal forensics can be done from the audit alone.
+
 ## Known limitations
 
 - **Price changes**: merchandise COGS uses the item cost as of the products
