@@ -722,19 +722,21 @@ function parse7501(pageResults, onNote) {
     var corroborates = function (v) {
       return vFromMpf == null ? null : Math.abs(v - vFromMpf) <= Math.max(3, vFromMpf * 0.005);
     };
-    // option A: trust value+duty, correct the rate (snap to 1/4-point grid)
+    // option A: trust value+duty, correct the rate (snap to 1/4-point grid).
+    // A derived rate above 200% means the DUTY read is garbage (OCR-glued
+    // digits), never a real tariff — refuse it and leave the line flagged.
     var optA = null;
     if (b.value > 0) {
       var rRaw = b.duty / b.value * 100;
       var rSnap = Math.round(rRaw * 4) / 4;
-      if (Math.abs(rRaw - rSnap) <= 0.11 && rSnap > 0 && consistent(b.value, rSnap, b.duty))
+      if (Math.abs(rRaw - rSnap) <= 0.11 && rSnap > 0 && rSnap <= 200 && consistent(b.value, rSnap, b.duty))
         optA = { rate: rSnap, value: b.value, corr: corroborates(b.value) };
     }
     // option B: trust rate+duty, correct the value
     var optB = null;
     if (b.rate > 0) {
       var vDer = Math.round(b.duty / b.rate * 100);
-      if (vDer > 0 && consistent(vDer, b.rate, b.duty))
+      if (vDer > 0 && vDer < 5e8 && consistent(vDer, b.rate, b.duty))
         optB = { rate: b.rate, value: vDer, corr: corroborates(vDer) };
     }
     var pick = null;
@@ -744,6 +746,9 @@ function parse7501(pageResults, onNote) {
       else pick = optB;   // digit slips in the value are the more common OCR error
     } else pick = optA || optB;
     if (!pick || pick.corr === false) return;   // MPF contradicts — leave for manual review
+    // never OVERWRITE a value we actually read unless the MPF independently
+    // agrees with the replacement — a garbled duty must not rewrite the value
+    if (pick === optB && pick.corr !== true && b.value > 0) return;
     if (pick.rate !== b.rate) { b.flags.push('rate auto-corrected ' + b.rate + '% -> ' + pick.rate + '% (duty / value)'); b.rate = pick.rate; }
     if (pick.value !== b.value) { b.flags.push('entered value auto-corrected ' + (b.value || '?') + ' -> ' + pick.value + ' (duty / rate' + (pick.corr ? ', MPF agrees' : '') + ')'); b.value = pick.value; }
   });
@@ -759,7 +764,16 @@ function parse7501(pageResults, onNote) {
     seen[b.no] = b; uniq.push(b);
   });
   uniq.sort(function (a, b) { return a.no.localeCompare(b.no); });
-  return { lines: uniq, totalEnteredHint: totalEnteredHint, recap: recap };
+
+  // the broker bill's own "DUTY TO CUSTOMS" charge (on the charges page, not
+  // the 7501) is an independent total to reconcile the per-line duties against
+  var billDuty = null;
+  pageResults.forEach(function (p) {
+    var m = p.text.match(/DUTY\s+TO\s+CUSTOMS\s*\$?\s*([\d,]+\.\d{2})/i);
+    if (m && billDuty == null) billDuty = numVal(m[1]);
+  });
+
+  return { lines: uniq, totalEnteredHint: totalEnteredHint, recap: recap, billDuty: billDuty };
 }
 
 function consistent(value, rate, duty) {
@@ -883,6 +897,19 @@ function renderReview() {
       ? '<span class="badge ok">✓ ' + (l.rate ? l.rate + '% × ' + fmtInt(l.value) + ' = ' + fmtMoney(r2(l.value * l.rate / 100)) : '') + '</span>'
       : '<span class="badge warn">⚠ ' + (cons.why || ('rate × value = ' + fmtMoney(r2((l.value || 0) * (l.rate || 0) / 100)) + ' ≠ duty ' + fmtMoney(l.duty || 0))) + '</span>' +
         (cons.suggest ? ' <a href="#" class="link" data-suggest="' + idx + '|' + cons.suggest + '">use ' + fmtInt(cons.suggest) + '?</a>' : '');
+    // when a line won't reconcile, offer the rate of consistent sibling lines
+    // that share its base HTS + origin (same merchandise class, same programs)
+    if (!cons.ok && l.hts && l.value > 0) {
+      var sibRates = [];
+      APP.lines.forEach(function (o) {
+        if (o === l || !o.hts || o.hts !== l.hts || o.coo !== l.coo) return;
+        if (lineConsistency(o).ok && o.rate > 0 && sibRates.indexOf(o.rate) === -1) sibRates.push(o.rate);
+      });
+      if (sibRates.length === 1) {
+        badge += ' <a href="#" class="link" data-sibrate="' + idx + '|' + sibRates[0] + '">use ' + sibRates[0] +
+          '% like the other ' + esc(l.hts) + ' · ' + esc(l.coo || '') + ' lines?</a>';
+      }
+    }
     if (l.flags && l.flags.length) {
       badge += '<div class="small" style="max-width:260px;white-space:normal">ⓘ ' + l.flags.map(esc).join('; ') + '</div>';
     }
@@ -931,6 +958,17 @@ function renderReview() {
       renderReview(); renderOutput();
     });
   });
+  Array.prototype.forEach.call($('linesTable').querySelectorAll('a[data-sibrate]'), function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      var parts = a.dataset.sibrate.split('|');
+      var l = APP.lines[+parts[0]];
+      l.rate = parseFloat(parts[1]);
+      l.duty = r2(l.value * l.rate / 100);
+      (l.flags = l.flags || []).push('rate adopted from sibling lines; duty recomputed as rate × value — confirm against the PDF');
+      renderReview(); renderOutput();
+    });
+  });
   Array.prototype.forEach.call($('linesTable').querySelectorAll('a[data-del]'), function (a) {
     a.addEventListener('click', function (e) {
       e.preventDefault();
@@ -951,6 +989,13 @@ function renderReview() {
         : '<span class="badge err">off by ' + fmtMoney(d) + '</span>');
   }
   tot += ' &nbsp;·&nbsp; Σ duty ' + fmtMoney(sumD);
+  if (APP.billDuty != null) {
+    var dd = r2(sumD - APP.billDuty);
+    tot += ' vs bill’s Duty to Customs ' + fmtMoney(APP.billDuty) + ' → ' +
+      (Math.abs(dd) <= Math.max(2, APP.billDuty * 0.005)
+        ? '<span class="badge ok">reconciles</span>'
+        : '<span class="badge err">off by ' + fmtMoney(dd) + ' — a duty cell was misread; fix the line it points at</span>');
+  }
   $('lineTotals').innerHTML = tot;
 
   var mb = $('matchBanner');
@@ -1111,7 +1156,9 @@ $('btnProcess').addEventListener('click', async function () {
     APP.pageResults = pageResults;
     var parsed = parse7501(pageResults, logLine);
     APP.lines = parsed.lines;
+    APP.billDuty = parsed.billDuty;
     APP.ocrRan = true;
+    if (parsed.billDuty != null) logLine('Bill charge "Duty to Customs": ' + fmtMoney(parsed.billDuty) + ' (used as a duty cross-check)');
     logLine('Parsed ' + APP.lines.length + ' entry line(s).');
     if (parsed.recap && (parsed.recap.nev || parsed.recap.inv)) {
       logLine('Broker recap on the bill: invoice ' + (parsed.recap.inv ? fmtMoney(parsed.recap.inv) : '?') +
