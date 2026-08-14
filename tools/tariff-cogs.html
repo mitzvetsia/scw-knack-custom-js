@@ -193,9 +193,11 @@
     <div class="tablewrap"><table id="previewTable"></table></div>
     <div class="btnrow" style="margin-top:12px">
       <button class="primary" id="btnDownload">Download CSV</button>
+      <button id="btnWorkbook">Download workbook (XLSX)</button>
       <button id="btnCopy">Copy CSV to clipboard</button>
       <span class="small" id="outName"></span>
     </div>
+    <div class="small" style="margin-top:6px">CSV = flat file for the COGS calculator. Workbook = audit trail: the same rows with <b>live formulas</b> (click any computed cell to see the math), a "7501 LINES" sheet with the entry lines as reviewed, and a README of the method.</div>
   </section>
 
   <div class="footer">
@@ -388,7 +390,8 @@ function parseInvoiceRows(rows, fileName) {
 
   return {
     name: fileName, preamble: preamble, header: header.slice(0, ncols), items: items,
-    tail: tail, gross: gross, discount: discount, net: net, stated: stated, ncols: ncols
+    tail: tail, gross: gross, discount: discount, net: net, stated: stated, ncols: ncols,
+    cols: col
   };
 }
 function padRow(r, n) { while (r.length < n) r.push(''); return r; }
@@ -1106,7 +1109,137 @@ function buildOutputRows() {
   all.push(headers);
   rows.forEach(function (r) { all.push(r); });
   inv.tail.forEach(function (r) { all.push(r); });
-  return { all: all, itemRows: rows, missing: missing, headers: headers };
+  return { all: all, itemRows: rows, missing: missing, headers: headers,
+           pre: pre, discTotal: discTotal, withFees: withFees };
+}
+
+/* ---- audit workbook: same rows, but every computed cell is a live formula ---- */
+function buildWorkbook() {
+  var inv = APP.invoice, m = APP.match;
+  if (!inv || !m || !window.XLSX) return null;
+  var out = buildOutputRows();
+  if (!out) return null;
+  var withFees = out.withFees;
+  var MONEY = '"$"#,##0.00';
+
+  /* ---------- sheet 2 data first (sheet 1 formulas point at it) ---------- */
+  var lines = APP.lines.slice();
+  var lrows = [['LINE', 'COO', 'TARIFF %', 'ENTERED VALUE $', 'DUTY ON 7501 $', 'MPF $', 'HMF $',
+                'BASE HTS', 'MATCHED INVOICE GROUP(S)', 'GROUP INVOICE GROSS $',
+                'ALLOC FACTOR (D÷J)', 'CHECK: D×C−E (≈0)']];
+  lines.forEach(function (l) {
+    var grs = (m.lineGroups[l.no] || []).map(function (g) { return g.desc + ' · ' + (g.coo || '?'); }).join('; ');
+    lrows.push([l.no, l.coo || '', l.rate || 0, l.value || 0, l.duty || 0,
+                l.mpf != null ? l.mpf : '', l.hmf != null ? l.hmf : '', l.hts || '',
+                grs, m.lineGross[l.no] || '', '', '']);
+  });
+  var nL = lines.length;
+  lrows.push([]);
+  var sumRow = {}, push = function (label, val) { lrows.push([label, val]); sumRow[label] = lrows.length; };
+  push('Invoice gross (items)', inv.gross);
+  push('Invoice discounts', inv.discount);
+  push('Invoice net (entered-value basis)', inv.net);
+  push('Σ entered values (7501)', 0);
+  push('Entry fees allocated (MPF+HMF+other)', APP.entryFees || 0);
+  if (APP.billDuty != null) push('Bill "Duty to Customs"', APP.billDuty);
+  push('Σ discounted amounts (fee basis)', 0);
+
+  var wsL = XLSX.utils.aoa_to_sheet(lrows);
+  lines.forEach(function (l, i) {
+    var r = i + 2;
+    var gross = m.lineGross[l.no];
+    wsL['K' + r] = { t: 'n', f: 'IF(J' + r + '>0,D' + r + '/J' + r + ',0)',
+                     v: gross > 0 ? (l.value || 0) / gross : 0, z: '0.000000' };
+    wsL['L' + r] = { t: 'n', f: 'ROUND(D' + r + '*C' + r + '/100,2)-E' + r,
+                     v: r2((l.value || 0) * (l.rate || 0) / 100 - (l.duty || 0)), z: '0.00' };
+    ['D', 'E', 'F', 'G', 'J'].forEach(function (cl) { if (wsL[cl + r]) wsL[cl + r].z = MONEY; });
+    if (wsL['C' + r]) wsL['C' + r].z = '0.00"%"';
+  });
+
+  /* ---------- sheet 1: INVOICE (items in CSV order, formulas per row) ---------- */
+  var C = inv.cols, EC = XLSX.utils.encode_col;
+  var qtyL = EC(C.qty), amtL = EC(C.amount), unitL = EC(C.unit);
+  var b = inv.ncols;
+  var colL = EC(b), colM = EC(b + 1), colN = EC(b + 2), colO = EC(b + 3), colP = EC(b + 4), colQ = EC(b + 5);
+  var LK = "'7501 LINES'!$A:$L";
+  var nItems = out.pre.length;
+
+  var irows = [out.headers];
+  out.pre.forEach(function (e) {
+    var raw = e.raw.map(function (c, i) {
+      if (i === C.item || i === C.qty || i === C.unit || i === C.amount) {
+        var n = parseMoney(c); return n != null ? n : c;
+      }
+      return c;
+    });
+    irows.push(raw.concat(e.cols.map(function () { return ''; })));
+  });
+  inv.tail.forEach(function (r) { irows.push(r); });
+  var wsI = XLSX.utils.aoa_to_sheet(irows);
+
+  var sumEnteredR = sumRow['Σ entered values (7501)'];
+  var feesR = sumRow['Entry fees allocated (MPF+HMF+other)'];
+  var sumDiscR = sumRow['Σ discounted amounts (fee basis)'];
+  wsL['B' + sumEnteredR] = { t: 'n', f: 'SUM(D2:D' + (nL + 1) + ')', v: 0, z: MONEY };
+  wsL['B' + sumDiscR] = { t: 'n', f: 'SUM(INVOICE!' + colO + '2:' + colO + (nItems + 1) + ')', v: r2(out.discTotal), z: MONEY };
+  ['Invoice gross (items)', 'Invoice discounts', 'Invoice net (entered-value basis)',
+   'Entry fees allocated (MPF+HMF+other)', 'Bill "Duty to Customs"'].forEach(function (k) {
+    if (sumRow[k] && wsL['B' + sumRow[k]]) wsL['B' + sumRow[k]].z = MONEY;
+  });
+  var sV = 0; lines.forEach(function (l) { sV += l.value || 0; });
+  wsL['B' + sumEnteredR].v = sV;
+
+  out.pre.forEach(function (e, i) {
+    var r = i + 2;
+    if (e.disc == null) return;   // unmatched rows stay blank
+    var vlkV = 'VLOOKUP($' + colM + r + ',' + LK + ',4,0)';
+    var vlkG = 'VLOOKUP($' + colM + r + ',' + LK + ',10,0)';
+    wsI[colL + r] = { t: 'n', f: 'VLOOKUP($' + colM + r + ',' + LK + ',3,0)',
+                      v: parseFloat(e.cols[0]), z: '0.00"%"' };
+    wsI[colM + r] = { t: 's', v: e.cols[1] };
+    wsI[colN + r] = { t: 'n', f: 'ROUND($' + amtL + r + '*' + vlkV + '/' + vlkG + '/$' + qtyL + r + ',2)',
+                      v: parseMoney(e.cols[2]), z: MONEY };
+    wsI[colO + r] = { t: 'n', f: 'ROUND($' + amtL + r + '*' + vlkV + '/' + vlkG + ',2)',
+                      v: e.disc, z: MONEY };
+    if (withFees) {
+      var fee = r2((APP.entryFees || 0) * e.disc / out.discTotal);
+      wsI[colQ + r] = { t: 'n', f: "ROUND('7501 LINES'!$B$" + feesR + '*$' + colO + r + "/'7501 LINES'!$B$" + sumDiscR + ',2)',
+                        v: fee, z: MONEY };
+      wsI[colP + r] = { t: 'n', f: 'ROUND($' + colQ + r + '/$' + qtyL + r + ',2)',
+                        v: r2(fee / e.qty), z: MONEY };
+    }
+    if (wsI[unitL + r] && wsI[unitL + r].t === 'n') wsI[unitL + r].z = MONEY;
+    if (wsI[amtL + r] && wsI[amtL + r].t === 'n') wsI[amtL + r].z = MONEY;
+  });
+
+  /* ---------- sheet 3: README ---------- */
+  var readme = [
+    ['SCW Tariff COGS workbook — calculation audit trail'],
+    ['Generated: ' + new Date().toLocaleString()],
+    ['Invoice file: ' + inv.name],
+    ['Customs bill PDF: ' + (pdfFile ? pdfFile.name : '(entered manually)')],
+    [''],
+    ['INVOICE sheet — supplier items plus the computed columns. Every computed cell is a live formula; click it to see the math.'],
+    ['TARIFF % — the matched 7501 entry line’s ad-valorem duty rate (sum of Chapter-99 + base HTS rates; MPF/HMF excluded). Looked up from the 7501 LINES sheet by ENTRY LINE.'],
+    ['DISCOUNTED AMOUNT — item AMOUNT × (line ENTERED VALUE ÷ GROUP INVOICE GROSS). The broker allocates invoice-level discounts pro-rata, so the 7501 entered value is the post-discount basis; it is pro-rated back across the line’s items by amount.'],
+    ['DISCOUNTED COST EACH — the same computation divided by QTY.'],
+    ['ENTRY FEES AMOUNT — total entry fees × (row’s DISCOUNTED AMOUNT ÷ Σ DISCOUNTED AMOUNTS). MPF is capped per ENTRY, which is why it is allocated in dollars rather than folded into the % rate. HMF = 0.125% of value (ocean entries).'],
+    [''],
+    ['7501 LINES sheet — one row per entry line as read off the CBP Form 7501 (including any manual corrections made in the review table). The CHECK column recomputes rate × entered value − duty and should be ≈ 0. The summary block reconciles Σ entered values against the invoice net.'],
+    [''],
+    ['The CSV download is the flat calculator-ready file (identical numbers). The supplier invoice’s preamble rows are omitted from this workbook — see the CSV for the verbatim layout.']
+  ];
+  var wsR = XLSX.utils.aoa_to_sheet(readme);
+  wsR['!cols'] = [{ wch: 130 }];
+
+  wsI['!cols'] = out.headers.map(function (h, i) { return { wch: Math.max(10, Math.min(26, String(h).length + 4)) }; });
+  wsL['!cols'] = lrows[0].map(function (h) { return { wch: Math.max(9, Math.min(30, String(h).length + 2)) }; });
+
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsI, 'INVOICE');
+  XLSX.utils.book_append_sheet(wb, wsL, '7501 LINES');
+  XLSX.utils.book_append_sheet(wb, wsR, 'README');
+  return wb;
 }
 
 function renderOutput() {
@@ -1261,6 +1394,12 @@ $('btnDownload').addEventListener('click', function () {
   a.download = outFileName();
   document.body.appendChild(a); a.click();
   setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+});
+$('btnWorkbook').addEventListener('click', function () {
+  if (!window.XLSX) { logLine('✕ XLSX library not loaded — check connection and reload.', true); return; }
+  var wb = buildWorkbook();
+  if (!wb) return;
+  XLSX.writeFile(wb, outFileName().replace(/\.csv$/, '.xlsx'));
 });
 $('btnCopy').addEventListener('click', function () {
   if (!APP.csvText) return;
