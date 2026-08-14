@@ -178,6 +178,12 @@
       <span class="small">Add lines by hand if OCR missed any (read them straight off the 7501 pages).</span>
     </div>
     <div class="totline" id="lineTotals"></div>
+    <div class="totline" id="feeRow" style="display:none">
+      Entry fees to allocate (MPF + HMF + other, 7501 box 39): $
+      <input type="text" id="feeInput" style="width:90px;font:inherit;padding:3px 6px;border:1px solid var(--line);border-radius:5px">
+      <span class="small" id="feeMeta"></span>
+      &nbsp;&nbsp;<label class="small"><input type="checkbox" id="optFees" checked> add ENTRY FEES columns to the CSV (allocated pro-rata by entered value)</label>
+    </div>
     <div class="banner" id="matchBanner"></div>
   </section>
 
@@ -229,6 +235,19 @@ function parseMoney(s) {
 }
 function fmtMoney(x) {
   return '$' + x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+/* editable cells accept basic arithmetic: "2368.50+947.40" -> 3315.90.
+   Whitelisted charset (digits . + - * / parens) — evaluated locally. */
+function parseMathInput(s) {
+  if (s == null) return null;
+  var t = String(s).replace(/[$,%\s]/g, '');
+  if (t === '') return null;
+  if (/^-?\d+(\.\d+)?$/.test(t)) return parseFloat(t);
+  if (!/^[\d.+\-*/()]+$/.test(t)) return parseMoney(s);
+  try {
+    var v = new Function('return (' + t + ')')();
+    return typeof v === 'number' && isFinite(v) ? Math.round(v * 10000) / 10000 : null;
+  } catch (e) { return parseMoney(s); }
 }
 function fmtInt(x) { return x.toLocaleString('en-US'); }
 function r2(x) { return Math.round((x + 1e-9) * 100) / 100; }
@@ -622,7 +641,7 @@ function parse7501(pageResults, onNote) {
 
   var blocks = [], cur = null;
   var pendingCoo = [];   // COO evidence seen between blocks (trailing header of the next line)
-  var totalEnteredHint = null, recap = null;
+  var totalEnteredHint = null, recap = null, otherFeesHint = null;
 
   function openBlock(pageNo) {
     cur = { rate: 0, duty: 0, value: 0, hts: null, mpf: null, hmf: null,
@@ -680,6 +699,8 @@ function parse7501(pageResults, onNote) {
 
     var tm = page.text.match(/Total\s+Entered\s+Value[\s\S]{0,60}?\$?\s?([\d,]{3,})/i);
     if (tm) totalEnteredHint = numVal(tm[1]);
+    var fm = page.text.match(/Total\s+Other\s+Fees[\s\S]{0,60}?\$?\s?([\d,]+\.\d{2})/i);
+    if (fm && otherFeesHint == null) otherFeesHint = numVal(fm[1]);
     var mInv = page.text.match(/INV\s*VALUE\s+([\d,]+\.?\d*)/i);
     var mNev = page.text.match(/NEV\s+([\d,]+\.?\d*)/i);
     var mDis = page.text.match(/D[Il1]SCOUNT\s+([\d,]+\.?\d*)/i);
@@ -773,7 +794,8 @@ function parse7501(pageResults, onNote) {
     if (m && billDuty == null) billDuty = numVal(m[1]);
   });
 
-  return { lines: uniq, totalEnteredHint: totalEnteredHint, recap: recap, billDuty: billDuty };
+  return { lines: uniq, totalEnteredHint: totalEnteredHint, recap: recap,
+           billDuty: billDuty, otherFeesHint: otherFeesHint };
 }
 
 function consistent(value, rate, duty) {
@@ -889,7 +911,7 @@ function renderReview() {
   var m = APP.match;
 
   var html = '<tr><th>Line</th><th>COO</th><th class="num">Tariff %</th><th class="num">Entered value $</th>' +
-    '<th class="num">Duty on 7501 $</th><th>Base HTS</th><th>Check</th><th>Matched invoice group(s)</th><th class="num">Group net $</th><th></th></tr>';
+    '<th class="num">Duty on 7501 $</th><th class="num">MPF / HMF $</th><th>Base HTS</th><th>Check</th><th>Matched invoice group(s)</th><th class="num">Group net $</th><th></th></tr>';
 
   APP.lines.forEach(function (l, idx) {
     var cons = lineConsistency(l);
@@ -931,6 +953,7 @@ function renderReview() {
       '<td class="num"><input data-i="' + idx + '" data-k="rate" value="' + (l.rate || '') + '" class="num"></td>' +
       '<td class="num"><input data-i="' + idx + '" data-k="value" value="' + (l.value || '') + '" class="num"></td>' +
       '<td class="num"><input data-i="' + idx + '" data-k="duty" value="' + (l.duty || '') + '" class="num"></td>' +
+      '<td class="num small mono">' + (l.mpf != null ? l.mpf.toFixed(2) : '—') + ' / ' + (l.hmf != null ? l.hmf.toFixed(2) : '—') + '</td>' +
       '<td class="mono small">' + esc(l.hts || '') + '</td>' +
       '<td>' + badge + '</td>' +
       '<td>' + gchips + '</td>' +
@@ -946,7 +969,7 @@ function renderReview() {
       var l = APP.lines[+inp.dataset.i], k = inp.dataset.k;
       if (k === 'no') l.no = inp.value.trim();
       else if (k === 'coo') l.coo = inp.value.trim().toUpperCase() || null;
-      else l[k] = parseMoney(inp.value) || 0;
+      else l[k] = parseMathInput(inp.value) || 0;
       renderReview(); renderOutput();
     });
   });
@@ -998,6 +1021,15 @@ function renderReview() {
   }
   $('lineTotals').innerHTML = tot;
 
+  $('feeRow').style.display = APP.lines.length ? 'block' : 'none';
+  if (document.activeElement !== $('feeInput'))
+    $('feeInput').value = APP.entryFees != null ? APP.entryFees : '';
+  $('feeMeta').textContent = APP.feeMeta
+    ? (APP.feeMeta.hint != null
+        ? '(from the 7501 "Total Other Fees" box · per-line Σ: MPF ' + fmtMoney(APP.feeMeta.sumM) + ' + HMF ' + fmtMoney(APP.feeMeta.sumH) + ')'
+        : '(Σ of per-line MPF + HMF rows — verify against box 39 "Total Other Fees": MPF is capped per entry, so the charged total can be lower)')
+    : '(type the "Total Other Fees" amount from 7501 box 39 — math like 651.50+278.13 works)';
+
   var mb = $('matchBanner');
   if (m) {
     var un = m.groups.filter(function (gr) { return !m.assign[gr.key]; });
@@ -1018,6 +1050,7 @@ function renderReview() {
 
 /* ============================== output ============================== */
 var EXTRA_HEADERS = ['TARIFF %', 'ENTRY LINE', 'DISCOUNTED COST EACH', 'DISCOUNTED AMOUNT'];
+var FEE_HEADERS = ['ENTRY FEES EACH', 'ENTRY FEES AMOUNT'];
 
 function buildOutputRows() {
   var inv = APP.invoice, m = APP.match;
@@ -1033,29 +1066,47 @@ function buildOutputRows() {
     return a.item - b.item;
   });
 
-  var g = groupItems(inv);
-  var rows = [], missing = 0;
+  var withFees = APP.entryFees > 0 && $('optFees').checked;
+  var pre = [], missing = 0, discTotal = 0;
   sorted.forEach(function (it) {
     var key = it.desc.toUpperCase() + '||' + (cooToIso(it.coo) || it.coo.toUpperCase());
     var no = m.assign[key];
     var l = no ? lineByNo[no] : null;
     if (!l || !l.value || !(m.lineGross[no] > 0)) {
-      rows.push(it.raw.concat(['', '', '', '']));
+      pre.push({ raw: it.raw, cols: ['', '', '', ''], disc: null, qty: it.qty || 1 });
       missing++;
       return;
     }
     var factor = l.value / m.lineGross[no];
     var amt = r2(it.amount * factor);
     var each = r2(it.amount * factor / (it.qty || 1));
-    rows.push(it.raw.concat([l.rate.toFixed(2) + '%', l.no, fmtMoney(each), fmtMoney(amt)]));
+    discTotal = r2(discTotal + amt);
+    pre.push({ raw: it.raw, cols: [l.rate.toFixed(2) + '%', l.no, fmtMoney(each), fmtMoney(amt)],
+               disc: amt, qty: it.qty || 1 });
   });
 
+  // allocate the entry-level fees (MPF/HMF/other) pro-rata by entered value —
+  // MPF is capped per ENTRY, so per-line 0.3464% is not what was actually paid
+  var rows = pre.map(function (e) {
+    var cols = e.cols;
+    if (withFees) {
+      if (e.disc != null && discTotal > 0) {
+        var fee = r2(APP.entryFees * e.disc / discTotal);
+        cols = cols.concat([fmtMoney(r2(fee / e.qty)), fmtMoney(fee)]);
+      } else {
+        cols = cols.concat(['', '']);
+      }
+    }
+    return e.raw.concat(cols);
+  });
+
+  var headers = inv.header.concat(EXTRA_HEADERS, withFees ? FEE_HEADERS : []);
   var all = [];
   inv.preamble.forEach(function (r) { all.push(r); });
-  all.push(inv.header.concat(EXTRA_HEADERS));
+  all.push(headers);
   rows.forEach(function (r) { all.push(r); });
   inv.tail.forEach(function (r) { all.push(r); });
-  return { all: all, itemRows: rows, missing: missing };
+  return { all: all, itemRows: rows, missing: missing, headers: headers };
 }
 
 function renderOutput() {
@@ -1065,8 +1116,7 @@ function renderOutput() {
   APP.csvText = writeCsv(out.all);
   $('outputPanel').style.display = 'block';
 
-  var hdr = APP.invoice.header.concat(EXTRA_HEADERS);
-  var html = '<tr>' + hdr.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr>';
+  var html = '<tr>' + out.headers.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr>';
   out.itemRows.forEach(function (r) {
     html += '<tr>' + r.map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>';
   });
@@ -1159,6 +1209,14 @@ $('btnProcess').addEventListener('click', async function () {
     APP.billDuty = parsed.billDuty;
     APP.ocrRan = true;
     if (parsed.billDuty != null) logLine('Bill charge "Duty to Customs": ' + fmtMoney(parsed.billDuty) + ' (used as a duty cross-check)');
+    var sumM = 0, sumH = 0;
+    parsed.lines.forEach(function (l) { sumM += l.mpf || 0; sumH += l.hmf || 0; });
+    APP.feeMeta = { hint: parsed.otherFeesHint, sumM: r2(sumM), sumH: r2(sumH) };
+    APP.entryFees = parsed.otherFeesHint != null ? parsed.otherFeesHint : r2(sumM + sumH);
+    logLine('Entry fees: ' + (parsed.otherFeesHint != null
+      ? fmtMoney(parsed.otherFeesHint) + ' from the 7501 "Total Other Fees" box'
+      : fmtMoney(APP.entryFees) + ' = Σ per-line MPF ' + fmtMoney(r2(sumM)) + ' + HMF ' + fmtMoney(r2(sumH)) +
+        ' (check box 39 — MPF is capped per entry, so the printed total can be lower)'));
     logLine('Parsed ' + APP.lines.length + ' entry line(s).');
     if (parsed.recap && (parsed.recap.nev || parsed.recap.inv)) {
       logLine('Broker recap on the bill: invoice ' + (parsed.recap.inv ? fmtMoney(parsed.recap.inv) : '?') +
@@ -1188,6 +1246,12 @@ $('btnAddLine').addEventListener('click', function () {
   APP.lines.push({ no: next.slice(-3), coo: '', rate: 0, value: 0, duty: 0, hts: null, mpf: null, hmf: null, flags: [] });
   renderReview();
 });
+
+$('feeInput').addEventListener('change', function () {
+  APP.entryFees = parseMathInput(this.value) || 0;
+  renderReview(); renderOutput();
+});
+$('optFees').addEventListener('change', function () { renderOutput(); });
 
 $('btnDownload').addEventListener('click', function () {
   if (!APP.csvText) return;
