@@ -1,0 +1,955 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SCW Monthly COGS Workbench</title>
+<!--
+  SCW Monthly COGS Workbench
+  ==========================
+  Standalone tool (no server, no dependencies). Open this file in a browser,
+  drop in the two ShipEdge exports for the month, and it rebuilds the
+  "cost shipped / item" tab, the MJ summary numbers, and the inventory-value
+  check — with all the CSV quirks those exports carry handled automatically.
+
+  Inputs (drop both at once; order doesn't matter — detected by headers):
+    1. Shipped-items report  (Company_name, Channel, Ship#, ..., Qty, Sold_price, Processed_at)
+    2. Product/item export   (Company Name, Sku, ..., Cost, Available, In Warehouse, ...)
+
+  This file is NOT part of the Knack bundle — do not add it to build.sh.
+-->
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#1a2330; --ink-2:#5b6675; --ink-3:#8a94a3;
+    --line:#e3e7ec; --accent:#ed8326; --accent-ink:#9a4d0b;
+    --good:#15803d; --good-bg:#ecfdf3;
+    --warn:#b45309; --warn-bg:#fffbeb;
+    --bad:#b91c1c;  --bad-bg:#fef2f2;
+    --info:#1d4ed8; --info-bg:#eff6ff;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:24px 20px 80px;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:21px;font-weight:650;margin:0}
+  h2{font-size:15px;font-weight:650;margin:0 0 10px}
+  .sub{color:var(--ink-2);margin:4px 0 0;font-size:13px}
+  .topbar{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .month-badge{
+    display:none;background:var(--accent);color:#fff;font-weight:650;font-size:13px;
+    padding:3px 12px;border-radius:999px;letter-spacing:.02em;
+  }
+  .month-badge.on{display:inline-block}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px}
+
+  /* ---- drop zone ---- */
+  .drop{
+    border:2px dashed #c9d1db;border-radius:var(--radius);background:var(--card);
+    padding:26px 18px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;
+    margin-bottom:16px;
+  }
+  .drop.hover{border-color:var(--accent);background:#fff7ef}
+  .drop .big{font-size:15px;font-weight:600}
+  .drop .hint{color:var(--ink-3);font-size:12.5px;margin-top:4px}
+  .slots{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+  .slot{
+    display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;
+    padding:7px 12px;font-size:12.5px;background:var(--bg);color:var(--ink-2);min-width:250px;text-align:left;
+  }
+  .slot .dot{width:9px;height:9px;border-radius:50%;background:#cbd3dc;flex:none}
+  .slot.ok .dot{background:var(--good)}
+  .slot.ok{color:var(--ink);border-color:#bfe3cc;background:var(--good-bg)}
+  .slot b{font-weight:650}
+  .slot .meta{color:var(--ink-3);font-size:11.5px}
+
+  /* ---- stat tiles ---- */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;margin-bottom:16px}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+  .tile .lbl{font-size:12.5px;color:var(--ink-2)}
+  .tile .val{font-size:26px;font-weight:650;margin-top:2px;letter-spacing:-.01em}
+  .tile .note{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+  .tile.accent{border-top:3px solid var(--accent)}
+
+  /* ---- journal / inventory rows ---- */
+  .kv{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px dashed var(--line)}
+  .kv:last-child{border-bottom:none}
+  .kv .k{color:var(--ink-2)}
+  .kv .v{font-weight:650;font-variant-numeric:tabular-nums}
+  .kv input[type=text]{
+    width:130px;text-align:right;font:inherit;font-variant-numeric:tabular-nums;
+    padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);
+  }
+  .kv input[type=text]:focus{outline:2px solid #f3c391;border-color:var(--accent)}
+  .kv.total{border-top:2px solid var(--line);border-bottom:none;margin-top:2px;padding-top:10px}
+  .kv.total .k{color:var(--ink);font-weight:650}
+  .delta-ok{color:var(--good)} .delta-bad{color:var(--bad)}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:840px){.grid2{grid-template-columns:1fr}}
+
+  /* ---- issues ---- */
+  .issue{border-left:3px solid var(--line);border-radius:6px;background:var(--bg);margin:8px 0;font-size:13px}
+  .issue>summary{padding:8px 12px;cursor:pointer;font-weight:600;list-style:none;display:flex;gap:8px;align-items:center}
+  .issue>summary::-webkit-details-marker{display:none}
+  .issue>summary .n{margin-left:auto;font-weight:650;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+  .issue .body{padding:2px 12px 10px;color:var(--ink-2)}
+  .issue table{margin-top:6px}
+  .issue.bad{border-color:var(--bad);background:var(--bad-bg)}
+  .issue.warn{border-color:var(--warn);background:var(--warn-bg)}
+  .issue.info{border-color:var(--info);background:var(--info-bg)}
+  .issue.good{border-color:var(--good);background:var(--good-bg)}
+  .tag{display:inline-block;font-size:11px;font-weight:650;padding:1px 8px;border-radius:999px;vertical-align:1px}
+  .tag.bad{color:var(--bad);background:#fee2e2}
+  .tag.warn{color:var(--warn);background:#fef3c7}
+  .tag.info{color:var(--info);background:#dbeafe}
+  .tag.good{color:var(--good);background:#dcfce7}
+
+  /* ---- tables ---- */
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th{
+    text-align:left;font-size:11.5px;letter-spacing:.03em;color:var(--ink-2);font-weight:650;
+    background:var(--bg);border-bottom:1px solid var(--line);padding:8px 10px;white-space:nowrap;
+    position:sticky;top:0;
+  }
+  th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+  td{border-bottom:1px solid #eef1f4;padding:6px 10px;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  th.sortable{cursor:pointer;user-select:none}
+  th.sortable:hover{color:var(--ink)}
+  th .arr{font-size:9px;margin-left:3px}
+  tr.tot td{background:var(--bg);font-weight:650;border-top:2px solid var(--line)}
+  td .d2{color:var(--ink-3);font-size:12px}
+  .rowflag{font-size:10.5px;font-weight:650;border-radius:4px;padding:0 5px;margin-left:6px;white-space:nowrap}
+  .rowflag.zero{color:var(--warn);background:#fef3c7}
+  .rowflag.miss{color:var(--bad);background:#fee2e2}
+  .rowflag.fix{color:var(--info);background:#dbeafe}
+
+  /* ---- controls ---- */
+  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
+  .controls input[type=search]{
+    font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:7px;min-width:220px;background:#fff;color:var(--ink);
+  }
+  .controls input[type=search]:focus{outline:2px solid #f3c391;border-color:var(--accent)}
+  .spacer{flex:1}
+  button{
+    font:inherit;font-size:13px;font-weight:600;padding:7px 13px;border-radius:7px;cursor:pointer;
+    border:1px solid var(--line);background:var(--card);color:var(--ink);
+  }
+  button:hover{background:var(--bg)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{background:#df7517}
+  select{font:inherit;font-size:12.5px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)}
+
+  #results{display:none}
+  #results.on{display:block}
+  .help{color:var(--ink-2);font-size:13px}
+  .help summary{cursor:pointer;font-weight:650;color:var(--ink)}
+  .help code{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
+  .help ul{margin:8px 0;padding-left:20px}
+  .toast{
+    position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#111827;color:#fff;
+    padding:9px 16px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
+  }
+  .toast.on{opacity:.95}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <h1>SCW Monthly COGS Workbench</h1>
+    <span class="month-badge" id="monthBadge"></span>
+    <span class="sub">shipped items &times; latest item cost &rarr; cost shipped / item</span>
+  </div>
+
+  <div class="drop" id="drop">
+    <div class="big">Drop the two ShipEdge exports here (or click to browse)</div>
+    <div class="hint">Shipped-items report + Products/item export &mdash; both at once or one at a time; they're recognized by their headers.</div>
+    <div class="slots">
+      <div class="slot" id="slotShipped"><span class="dot"></span><span><b>Shipped-items report</b><br><span class="meta">waiting for file&hellip;</span></span></div>
+      <div class="slot" id="slotMaster"><span class="dot"></span><span><b>Item data (product export)</b><br><span class="meta">waiting for file&hellip;</span></span></div>
+    </div>
+    <input type="file" id="fileInput" accept=".csv,text/csv" multiple style="display:none">
+  </div>
+
+  <div id="results">
+
+    <div class="tiles" id="tiles"></div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>Journal summary</h2>
+        <div id="journal"></div>
+      </div>
+      <div class="card">
+        <h2>Channels &rarr; journal bucket</h2>
+        <div class="tbl-wrap" style="border:none"><table id="chanTable"></table></div>
+        <div class="sub" style="margin-top:8px">Blank-channel shipments (exchanges, internal, employee) default to the Ecommerce bucket &mdash; change any mapping and the numbers recompute.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Data quality &amp; fix-ups</h2>
+      <div id="issues"></div>
+    </div>
+
+    <div class="card">
+      <h2>Cost shipped / item</h2>
+      <div class="controls">
+        <input type="search" id="filter" placeholder="Filter by SKU or description&hellip;">
+        <span class="spacer"></span>
+        <button id="btnCopy">Copy for Google Sheets</button>
+        <button id="btnDetail">Download shipment detail CSV</button>
+        <button class="primary" id="btnItemCsv">Download cost shipped / item CSV</button>
+      </div>
+      <div class="tbl-wrap" style="max-height:560px;overflow-y:auto"><table id="itemTable"></table></div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>ShipEdge inventory value</h2>
+        <div id="inventory"></div>
+      </div>
+      <div class="card">
+        <h2>Xero reconciliation</h2>
+        <div id="recon"></div>
+        <div class="sub" style="margin-top:8px">Paste Xero&rsquo;s inventory asset balance to see the gap. Download the per-SKU value file to chase down any mismatch line by line.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="card help">
+    <details>
+      <summary>How this works / monthly workflow</summary>
+      <ul>
+        <li><b>Export 1 &mdash; shipped items:</b> the ShipEdge processed-shipments report for the month (the file with <code>Ship#</code>, <code>Qty</code>, <code>Processed_at</code> columns).</li>
+        <li><b>Export 2 &mdash; item data:</b> the ShipEdge products export (the file with <code>Cost</code>, <code>Available</code>, <code>In Warehouse</code> columns). Costs are whatever ShipEdge holds on export day &mdash; pull it right after month close so the &ldquo;latest cost&rdquo; approximation stays tight.</li>
+        <li>Every shipped line is joined to its item cost: <code>qty &times; cost</code>. The tiles give the MJ numbers; type the tariff total from the FIFO tracker to get the full journal.</li>
+        <li><b>Download cost shipped / item CSV</b> (or copy/paste) feeds the herr cheetoh FIFO tracker, same as the old tab. The shipment-detail CSV has per-shipment dates if you ever want FIFO at day grain.</li>
+        <li>Quirks handled automatically (each one shows up under Data quality when it fires): SKUs with stripped leading zeros, shipped rows the ShipEdge writer breaks apart when a description contains inch marks (<code>\"</code>) or line breaks, MySQL-style <code>\N</code> nulls and <code>\"</code> escapes in the products export.</li>
+        <li>Everything runs locally in your browser &mdash; no data leaves this page.</li>
+      </ul>
+    </details>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+<script>
+'use strict';
+
+/* ================= CSV parsing ================= */
+/* State-machine parser. Two modes:
+   - backslash:true  (ShipEdge products export, MySQL-dump style): `\` escapes the
+     next char inside quotes (`\"` = literal quote, `\<newline>` = literal newline),
+     unquoted `\N` = null.
+   - backslash:false (shipped-items report): standard doubled `""` quotes, but the
+     writer is buggy — unescaped interior quotes appear (inch marks), so a closing
+     quote only counts when followed by a delimiter; anything else is literal. */
+function parseCSV(text, opts) {
+  var backslash = !!(opts && opts.backslash);
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  var rows = [], row = [], field = '', inQ = false, i = 0, n = text.length;
+  while (i < n) {
+    var c = text[i];
+    if (inQ) {
+      if (backslash && c === '\\' && i + 1 < n) { field += text[i + 1]; i += 2; continue; }
+      if (c === '"') {
+        var nx = i + 1 < n ? text[i + 1] : '';
+        if (nx === '"') { field += '"'; i += 2; continue; }
+        if (nx === ',' || nx === '\r' || nx === '\n' || nx === '') { inQ = false; i++; continue; }
+        field += '"'; i++; continue;
+      }
+      field += c; i++;
+    } else {
+      if (c === '"' && field === '') { inQ = true; i++; }
+      else if (c === ',') { row.push(field); field = ''; i++; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && i + 1 < n && text[i + 1] === '\n') i++;
+        row.push(field); rows.push(row); row = []; field = ''; i++;
+      }
+      else { field += c; i++; }
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+function cleanVal(v, mysqlNulls) {
+  v = (v == null ? '' : String(v)).trim();
+  if (mysqlNulls && v === '\\N') return '';
+  return v;
+}
+function parseNum(v) {
+  v = String(v == null ? '' : v).replace(/[$,\s]/g, '');
+  if (v === '') return null;
+  var x = Number(v);
+  return isFinite(x) ? x : null;
+}
+
+/* ================= file type detection ================= */
+function detectType(text) {
+  var firstLine = text.slice(0, 4000).split(/\r?\n/)[0] || '';
+  var hdr = parseCSV(firstLine, { backslash: false })[0] || [];
+  var h = hdr.map(function (x) { return cleanVal(x, false).toLowerCase(); });
+  if (h.indexOf('processed_at') !== -1 || h.indexOf('ship#') !== -1) return 'shipped';
+  if (h.indexOf('cost') !== -1 && (h.indexOf('in warehouse') !== -1 || h.indexOf('available') !== -1)) return 'master';
+  return null;
+}
+
+/* ================= item master (products export) ================= */
+function buildMaster(text, fileName) {
+  var rows = parseCSV(text, { backslash: true });
+  var hdr = rows[0].map(function (x) { return cleanVal(x, true); });
+  var idx = {};
+  hdr.forEach(function (h, i) { if (!(h in idx)) idx[h] = i; });
+  ['Sku', 'Cost'].forEach(function (k) {
+    if (!(k in idx)) throw new Error('Products export is missing the "' + k + '" column.');
+  });
+  var items = new Map(), dupes = [], badCost = [];
+  for (var r = 1; r < rows.length; r++) {
+    var f = rows[r];
+    if (!f.some(function (x) { return cleanVal(x, true) !== ''; })) continue;
+    var g = function (k) { return (k in idx) && idx[k] < f.length ? cleanVal(f[idx[k]], true) : ''; };
+    var sku = g('Sku');
+    if (!sku) continue;
+    if (items.has(sku)) dupes.push(sku);
+    var cost = parseNum(g('Cost'));
+    if (cost === null && g('Cost') !== '') badCost.push({ sku: sku, raw: g('Cost') });
+    items.set(sku, {
+      cost: cost === null ? 0 : cost,
+      costMissing: g('Cost') === '' || cost === null,
+      desc: g('Description'),
+      avail: parseNum(g('Available')) || 0,
+      wh: parseNum(g('In Warehouse')) || 0,
+      supplier: g('Supplier'),
+      discontinued: g('Discontinued')
+    });
+  }
+  return { items: items, dupes: dupes, badCost: badCost, fileName: fileName, rowCount: items.size };
+}
+
+/* ================= shipped-items report ================= */
+/* The ShipEdge writer emits descriptions containing `\"` or line breaks RAW —
+   the row splits into extra fields and/or extra physical lines, then gets padded
+   with trailing empty columns. Repair by logical-row reassembly anchored on the
+   Processed_at datetime: columns 0-6 are fixed (Company..Upc), the datetime is
+   the rightmost anchor, Qty/Sold_price sit just left of it, and everything in
+   between is description overflow. */
+var DATE_RE = /^\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}/;
+function trimTrailingEmpties(f) {
+  var out = f.slice();
+  while (out.length && cleanVal(out[out.length - 1], false) === '') out.pop();
+  return out;
+}
+function findDateIdx(fields) {
+  for (var j = fields.length - 1; j >= 0; j--) {
+    if (DATE_RE.test(cleanVal(fields[j], false))) return j;
+  }
+  return -1;
+}
+function buildShipped(text, fileName) {
+  var rows = parseCSV(text, { backslash: false });
+  var hdr = rows[0].map(function (x) { return cleanVal(x, false); });
+  if (cleanVal(hdr[5], false) !== 'Sku' || cleanVal(hdr[8], false) !== 'Qty') {
+    // tolerate renamed headers as long as the well-known ones are somewhere
+    if (hdr.indexOf('Sku') === -1 || hdr.indexOf('Qty') === -1) {
+      throw new Error('Shipped report: expected the standard column layout (…, Sku, Upc, Description, Qty, Sold_price, Processed_at).');
+    }
+  }
+  var company = '';
+  for (var r0 = 1; r0 < rows.length; r0++) {
+    var c0 = cleanVal(rows[r0][0], false);
+    if (c0) { company = c0; break; }
+  }
+  var recs = [], repaired = [], badRows = [], zeroQty = [];
+  var cur = null;
+
+  function finalize(cu) {
+    if (!cu) return;
+    var f = cu.fields;
+    var j = findDateIdx(f);
+    var raw = f.map(function (x) { return cleanVal(x, false); }).filter(String).join(' | ');
+    if (j < 9) { badRows.push({ reason: 'no Processed_at datetime found', raw: raw }); return; }
+    var qty = parseNum(f[j - 2]);
+    var rec = {
+      channel: cleanVal(f[1], false),
+      ship: cleanVal(f[2], false),
+      order: cleanVal(f[3], false),
+      ref: cleanVal(f[4], false),
+      sku: cleanVal(f[5], false),
+      upc: cleanVal(f[6], false),
+      desc: f.slice(7, j - 2).map(function (x) { return cleanVal(x, false); })
+             .join(' ').replace(/\s+/g, ' ').trim(),
+      qty: qty === null ? 0 : qty,
+      sold: parseNum(f[j - 1]),
+      date: cleanVal(f[j], false),
+      repaired: (j !== 10 || cu.lines > 1)
+    };
+    if (!rec.sku) { badRows.push({ reason: 'no SKU', raw: raw }); return; }
+    if (qty === null) { badRows.push({ reason: 'Qty is not a number ("' + cleanVal(f[j - 2], false) + '")', raw: raw }); return; }
+    if (rec.repaired) repaired.push(rec);
+    if (rec.qty === 0) zeroQty.push(rec);
+    recs.push(rec);
+  }
+
+  for (var r = 1; r < rows.length; r++) {
+    var f = trimTrailingEmpties(rows[r]);
+    if (!f.length) continue;
+    var isStart = f.length >= 6 && cleanVal(f[0], false) === company;
+    if (cur === null) cur = { fields: f, lines: 1 };
+    else if (isStart) { finalize(cur); cur = { fields: f, lines: 1 }; }
+    else { cur.fields = cur.fields.concat(f); cur.lines++; }
+    if (cur && findDateIdx(cur.fields) >= 9) { finalize(cur); cur = null; }
+  }
+  finalize(cur);
+
+  // dominant month
+  var byMonth = {};
+  recs.forEach(function (x) {
+    var m = x.date.slice(0, 7);
+    byMonth[m] = (byMonth[m] || 0) + 1;
+  });
+  var month = Object.keys(byMonth).sort(function (a, b) { return byMonth[b] - byMonth[a]; })[0] || '';
+  var outOfMonth = recs.filter(function (x) { return x.date.slice(0, 7) !== month; });
+
+  return { recs: recs, repaired: repaired, badRows: badRows, zeroQty: zeroQty,
+           month: month, outOfMonth: outOfMonth, fileName: fileName };
+}
+
+/* ================= SKU matching (zero-tolerant) ================= */
+/* Excel/exports strip leading zeros off numeric SKUs ("00405614" -> "405614").
+   Exact match first; otherwise re-pad with leading zeros (and the reverse). */
+function matchSku(items, sku) {
+  if (items.has(sku)) return { key: sku, how: 'exact' };
+  var cands = [];
+  for (var k = 1; k <= 6; k++) {
+    var c = new Array(k + 1).join('0') + sku;
+    if (items.has(c)) cands.push(c);
+  }
+  var st = sku.replace(/^0+/, '');
+  if (st && st !== sku && items.has(st)) cands.push(st);
+  if (cands.length === 1) return { key: cands[0], how: 'zerofix' };
+  if (cands.length > 1) return { key: null, how: 'ambiguous', cands: cands };
+  return { key: null, how: 'none' };
+}
+
+/* ================= compute ================= */
+var INSTALL_CHANNEL = 'Installation Services';
+var state = {
+  shipped: null, master: null,
+  bucketMap: {},           // channel -> 'install' | 'ecom'
+  sortKey: 'ext', sortDir: -1, filter: '',
+  computed: null
+};
+try {
+  var savedBuckets = JSON.parse(localStorage.getItem('scwCogsBuckets') || '{}');
+  if (savedBuckets && typeof savedBuckets === 'object') state.bucketMap = savedBuckets;
+} catch (e) { /* localStorage unavailable on some file:// setups — fine */ }
+
+function bucketOf(channel) {
+  if (channel in state.bucketMap) return state.bucketMap[channel];
+  return channel === INSTALL_CHANNEL ? 'install' : 'ecom';
+}
+
+function compute() {
+  if (!state.shipped || !state.master) return null;
+  var items = state.master.items;
+  var perSku = new Map();       // master key (or raw sku) -> row
+  var channels = new Map();     // channel -> {qty, ext, rows}
+  var unmatched = new Map();    // raw sku -> {qty, desc}
+  var ambiguous = [];
+  var zerofixes = [];
+  var detail = [];
+  var tot = { all: 0, install: 0, ecom: 0, units: 0 };
+
+  state.shipped.recs.forEach(function (x) {
+    var m = matchSku(items, x.sku);
+    var it = m.key ? items.get(m.key) : null;
+    var cost = it ? it.cost : 0;
+    var ext = cost * x.qty;
+    var bucket = bucketOf(x.channel);
+
+    if (m.how === 'zerofix') zerofixes.push({ from: x.sku, to: m.key, qty: x.qty });
+    if (m.how === 'ambiguous') ambiguous.push({ sku: x.sku, cands: m.cands, qty: x.qty });
+    if (!it) {
+      var u = unmatched.get(x.sku) || { qty: 0, desc: x.desc };
+      u.qty += x.qty; unmatched.set(x.sku, u);
+    }
+
+    var ch = channels.get(x.channel) || { qty: 0, ext: 0, rows: 0 };
+    ch.qty += x.qty; ch.ext += ext; ch.rows++;
+    channels.set(x.channel, ch);
+
+    tot.units += x.qty;
+    if (it) {
+      tot.all += ext;
+      tot[bucket] += ext;
+    }
+
+    var key = m.key || '⁉' + x.sku;
+    var niceDesc = ((it && it.desc) || x.desc).replace(/\s+/g, ' ').trim();
+    var row = perSku.get(key);
+    if (!row) {
+      row = { sku: m.key || x.sku, desc: niceDesc, qty: 0, iq: 0, eq: 0,
+              cost: cost, ext: 0, unmatched: !it,
+              zeroCost: !!(it && (!it.cost || it.costMissing)),
+              zerofix: m.how === 'zerofix' };
+      perSku.set(key, row);
+    }
+    row.qty += x.qty;
+    if (bucket === 'install') row.iq += x.qty; else row.eq += x.qty;
+    row.ext += ext;
+    if (m.how === 'zerofix') row.zerofix = true;
+
+    detail.push({ date: x.date, ship: x.ship, order: x.order, ref: x.ref, channel: x.channel,
+                  bucket: bucket, sku: m.key || x.sku, desc: niceDesc,
+                  qty: x.qty, cost: cost, ext: ext, sold: x.sold,
+                  flags: [x.repaired ? 'repaired-row' : '', m.how === 'zerofix' ? 'sku-zerofixed' : '',
+                          !it ? 'NO-COST-MATCH' : (row.zeroCost ? 'zero-cost' : '')].filter(String).join('; ') });
+  });
+
+  var rows = Array.from(perSku.values());
+  var zeroCostRows = rows.filter(function (r) { return !r.unmatched && r.zeroCost && r.qty > 0; });
+
+  // inventory value from the master
+  var invWh = 0, invAvail = 0, invRows = [];
+  items.forEach(function (it, sku) {
+    var w = it.cost * it.wh, a = it.cost * it.avail;
+    invWh += w; invAvail += a;
+    if (it.wh || it.avail) invRows.push({ sku: sku, desc: it.desc, wh: it.wh, avail: it.avail,
+                                          cost: it.cost, whVal: w, availVal: a, disc: it.discontinued });
+  });
+  invRows.sort(function (a, b) { return b.whVal - a.whVal; });
+
+  return { rows: rows, detail: detail, channels: channels, tot: tot,
+           unmatched: unmatched, ambiguous: ambiguous, zerofixes: zerofixes,
+           zeroCostRows: zeroCostRows, invWh: invWh, invAvail: invAvail, invRows: invRows };
+}
+/* ================= formatting & DOM helpers ================= */
+function $(id) { return document.getElementById(id); }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function fmt$(x) {
+  var neg = x < 0; x = Math.abs(x);
+  var s = '$' + x.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return neg ? '-' + s : s;
+}
+function fmtQ(x) { return (Math.round(x * 100) / 100).toLocaleString('en-US'); }
+function monthLabel(m) {
+  if (!/^\d{4}-\d{2}$/.test(m)) return m || '';
+  var d = new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1, 1);
+  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+var toastTimer = null;
+function toast(msg) {
+  var t = $('toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.classList.remove('on'); }, 2600);
+}
+
+/* ================= rendering ================= */
+function renderAll() {
+  var c = state.computed;
+  if (!c) return;
+  $('results').classList.add('on');
+  var mb = $('monthBadge');
+  mb.textContent = monthLabel(state.shipped.month);
+  mb.classList.add('on');
+
+  renderTiles(c);
+  renderJournal(c);
+  renderChannels(c);
+  renderIssues(c);
+  renderItemTable(c);
+  renderInventory(c);
+  renderRecon(c);
+}
+
+function renderTiles(c) {
+  var skuCount = c.rows.length;
+  $('tiles').innerHTML =
+    tile('All COGs', fmt$(c.tot.all), 'merchandise cost shipped, all channels', true) +
+    tile('Ecommerce COGs', fmt$(c.tot.ecom), 'the monthly “[DATE] COGs” MJ line') +
+    tile('Install COGs', fmt$(c.tot.install), 'Installation Services channel') +
+    tile('Units shipped', fmtQ(c.tot.units), skuCount + ' distinct SKUs');
+  function tile(lbl, val, note, accent) {
+    return '<div class="tile' + (accent ? ' accent' : '') + '"><div class="lbl">' + esc(lbl) +
+           '</div><div class="val">' + esc(val) + '</div><div class="note">' + esc(note) + '</div></div>';
+  }
+}
+
+function renderJournal(c) {
+  $('journal').innerHTML =
+    kv('Ecommerce COGs', fmt$(c.tot.ecom)) +
+    kv('Install COGs', fmt$(c.tot.install)) +
+    kv('All COGs', fmt$(c.tot.all)) +
+    '<div class="kv"><span class="k">Tariffs (from FIFO tracker)</span>' +
+    '<input type="text" id="tariff" placeholder="0.00" autocomplete="off"></div>' +
+    '<div class="kv total"><span class="k">Total journal</span><span class="v" id="journalTotal">' + fmt$(c.tot.all) + '</span></div>';
+  function kv(k, v) { return '<div class="kv"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + '</span></div>'; }
+}
+function updateJournalTotal() {
+  var c = state.computed; if (!c) return;
+  var t = parseNum($('tariff').value) || 0;
+  $('journalTotal').textContent = fmt$(c.tot.all + t);
+}
+
+function renderChannels(c) {
+  var html = '<thead><tr><th>Channel</th><th class="num">Rows</th><th class="num">Units</th><th class="num">Cost shipped</th><th>Bucket</th></tr></thead><tbody>';
+  var chans = Array.from(c.channels.keys()).sort(function (a, b) {
+    return c.channels.get(b).ext - c.channels.get(a).ext;
+  });
+  chans.forEach(function (ch) {
+    var v = c.channels.get(ch);
+    var b = bucketOf(ch);
+    html += '<tr><td>' + (ch ? esc(ch) : '<i>(blank)</i>') + '</td>' +
+      '<td class="num">' + fmtQ(v.rows) + '</td>' +
+      '<td class="num">' + fmtQ(v.qty) + '</td>' +
+      '<td class="num">' + fmt$(v.ext) + '</td>' +
+      '<td><select data-channel="' + esc(ch) + '">' +
+      '<option value="ecom"' + (b === 'ecom' ? ' selected' : '') + '>Ecommerce</option>' +
+      '<option value="install"' + (b === 'install' ? ' selected' : '') + '>Install</option>' +
+      '</select></td></tr>';
+  });
+  $('chanTable').innerHTML = html + '</tbody>';
+}
+
+function issueBlock(kind, title, count, bodyHtml, open) {
+  return '<details class="issue ' + kind + '"' + (open ? ' open' : '') + '><summary>' +
+    '<span class="tag ' + kind + '">' + { bad: 'needs review', warn: 'check', info: 'auto-fixed', good: 'ok' }[kind] + '</span> ' +
+    esc(title) + '<span class="n">' + count + '</span></summary><div class="body">' + bodyHtml + '</div></details>';
+}
+function miniTable(headers, rows) {
+  return '<div class="tbl-wrap" style="max-height:260px;overflow-y:auto"><table><thead><tr>' +
+    headers.map(function (h) { return '<th' + (h.num ? ' class="num"' : '') + '>' + esc(h.t) + '</th>'; }).join('') +
+    '</tr></thead><tbody>' +
+    rows.map(function (r) {
+      return '<tr>' + r.map(function (cell, i) {
+        return '<td' + (headers[i].num ? ' class="num"' : '') + '>' + cell + '</td>';
+      }).join('') + '</tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+function renderIssues(c) {
+  var out = '';
+  var s = state.shipped, m = state.master;
+
+  if (c.unmatched.size) {
+    out += issueBlock('bad', 'Shipped SKUs with no row in the item data — costed at $0', c.unmatched.size,
+      '<p>These shipped but can’t be matched to a cost, so they’re in the tables at $0. ' +
+      'Re-pull the products export or fix the SKU in ShipEdge, then re-drop the file.</p>' +
+      miniTable([{ t: 'SKU' }, { t: 'Qty', num: 1 }, { t: 'Description' }],
+        Array.from(c.unmatched.entries()).sort(function (a, b) { return b[1].qty - a[1].qty; })
+          .map(function (e) { return [esc(e[0]), fmtQ(e[1].qty), esc(e[1].desc)]; })), true);
+  }
+  if (c.ambiguous.length) {
+    out += issueBlock('bad', 'Ambiguous leading-zero SKU matches (left unmatched)', c.ambiguous.length,
+      miniTable([{ t: 'Shipped SKU' }, { t: 'Candidates' }, { t: 'Qty', num: 1 }],
+        c.ambiguous.map(function (a) { return [esc(a.sku), esc(a.cands.join(', ')), fmtQ(a.qty)]; })), true);
+  }
+  if (s.badRows.length) {
+    out += issueBlock('bad', 'Rows that could not be parsed (excluded)', s.badRows.length,
+      miniTable([{ t: 'Reason' }, { t: 'Row content' }],
+        s.badRows.map(function (b) { return [esc(b.reason), '<span class="d2">' + esc(b.raw.slice(0, 220)) + '</span>']; })), true);
+  }
+  if (c.zeroCostRows.length) {
+    var zq = c.zeroCostRows.reduce(function (a, r) { return a + r.qty; }, 0);
+    out += issueBlock('warn', 'Shipped items whose item-data cost is $0', c.zeroCostRows.length,
+      '<p>' + fmtQ(zq) + ' units contributed $0 to COGS. RMA/refurb units, swag and employee-use items are usually legit at $0 — ' +
+      'scan for real products that should carry a cost.</p>' +
+      miniTable([{ t: 'SKU' }, { t: 'Qty', num: 1 }, { t: 'Description' }],
+        c.zeroCostRows.slice().sort(function (a, b) { return b.qty - a.qty; })
+          .map(function (r) { return [esc(r.sku), fmtQ(r.qty), esc(r.desc)]; })));
+  }
+  if (s.outOfMonth.length) {
+    out += issueBlock('warn', 'Rows dated outside ' + monthLabel(s.month), s.outOfMonth.length,
+      miniTable([{ t: 'Date' }, { t: 'Ship#' }, { t: 'SKU' }, { t: 'Qty', num: 1 }],
+        s.outOfMonth.map(function (r) { return [esc(r.date), esc(r.ship), esc(r.sku), fmtQ(r.qty)]; })));
+  }
+  if (m.dupes.length || m.badCost.length) {
+    out += issueBlock('warn', 'Item-data oddities (duplicate SKUs / unreadable costs)', m.dupes.length + m.badCost.length,
+      (m.dupes.length ? '<p>Duplicate SKUs (last row wins): ' + esc(m.dupes.join(', ')) + '</p>' : '') +
+      (m.badCost.length ? miniTable([{ t: 'SKU' }, { t: 'Raw cost value' }],
+        m.badCost.map(function (b) { return [esc(b.sku), esc(b.raw)]; })) : ''));
+  }
+  if (s.repaired.length) {
+    out += issueBlock('info', 'Broken export rows repaired (ShipEdge splits rows on descriptions with " marks)', s.repaired.length,
+      '<p>The ShipEdge writer breaks these rows into extra columns/lines. They were reassembled and are included in every number. ' +
+      'The old spreadsheet flow usually dropped them.</p>' +
+      miniTable([{ t: 'Date' }, { t: 'Ship#' }, { t: 'SKU' }, { t: 'Qty', num: 1 }, { t: 'Description' }],
+        s.repaired.map(function (r) { return [esc(r.date), esc(r.ship), esc(r.sku), fmtQ(r.qty), esc(r.desc.slice(0, 90))]; })));
+  }
+  if (c.zerofixes.length) {
+    var zf = {};
+    c.zerofixes.forEach(function (z) {
+      var k = z.from + '→' + z.to;
+      zf[k] = zf[k] || { from: z.from, to: z.to, qty: 0 };
+      zf[k].qty += z.qty;
+    });
+    var zfl = Object.keys(zf).map(function (k) { return zf[k]; });
+    out += issueBlock('info', 'SKUs re-matched after leading zeros were stripped', zfl.length,
+      '<p>The shipped report drops leading zeros on numeric SKUs; these were matched back to their item-data rows (and their cost counted).</p>' +
+      miniTable([{ t: 'Shipped as' }, { t: 'Matched to' }, { t: 'Qty', num: 1 }],
+        zfl.map(function (z) { return [esc(z.from), esc(z.to), fmtQ(z.qty)]; })));
+  }
+  if (s.zeroQty.length) {
+    out += issueBlock('info', 'Zero-quantity rows (kept, contribute nothing)', s.zeroQty.length,
+      miniTable([{ t: 'Date' }, { t: 'Ship#' }, { t: 'SKU' }],
+        s.zeroQty.map(function (r) { return [esc(r.date), esc(r.ship), esc(r.sku)]; })));
+  }
+  if (!out) out = '<span class="tag good">ok</span> <span class="help">No data-quality issues detected in either file.</span>';
+  $('issues').innerHTML = out;
+}
+
+var SORTS = {
+  sku: function (r) { return r.sku.toLowerCase(); },
+  desc: function (r) { return r.desc.toLowerCase(); },
+  iq: function (r) { return r.iq; }, eq: function (r) { return r.eq; },
+  qty: function (r) { return r.qty; }, cost: function (r) { return r.cost; }, ext: function (r) { return r.ext; }
+};
+function renderItemTable(c) {
+  var f = state.filter.trim().toLowerCase();
+  var rows = c.rows.filter(function (r) {
+    return !f || r.sku.toLowerCase().indexOf(f) !== -1 || r.desc.toLowerCase().indexOf(f) !== -1;
+  });
+  var get = SORTS[state.sortKey] || SORTS.ext;
+  rows.sort(function (a, b) {
+    var x = get(a), y = get(b);
+    return (x < y ? -1 : x > y ? 1 : 0) * state.sortDir || a.sku.localeCompare(b.sku);
+  });
+  var cols = [
+    { k: 'sku', t: 'SKU' }, { k: 'desc', t: 'Description' },
+    { k: 'iq', t: 'Install qty', num: 1 }, { k: 'eq', t: 'Ecom qty', num: 1 },
+    { k: 'qty', t: 'Total qty', num: 1 }, { k: 'cost', t: 'Unit cost', num: 1 }, { k: 'ext', t: 'Cost shipped', num: 1 }
+  ];
+  var html = '<thead><tr>' + cols.map(function (col) {
+    var arr = state.sortKey === col.k ? '<span class="arr">' + (state.sortDir === 1 ? '▲' : '▼') + '</span>' : '';
+    return '<th class="sortable' + (col.num ? ' num' : '') + '" data-sort="' + col.k + '">' + esc(col.t) + arr + '</th>';
+  }).join('') + '</tr></thead><tbody>';
+  rows.forEach(function (r) {
+    var flags = '';
+    if (r.unmatched) flags += '<span class="rowflag miss">no cost match</span>';
+    else if (r.zeroCost) flags += '<span class="rowflag zero">$0 cost</span>';
+    if (r.zerofix) flags += '<span class="rowflag fix">zeros restored</span>';
+    html += '<tr><td>' + esc(r.sku) + flags + '</td>' +
+      '<td><span class="d2">' + esc(r.desc.length > 110 ? r.desc.slice(0, 110) + '…' : r.desc) + '</span></td>' +
+      '<td class="num">' + (r.iq ? fmtQ(r.iq) : '') + '</td>' +
+      '<td class="num">' + (r.eq ? fmtQ(r.eq) : '') + '</td>' +
+      '<td class="num">' + fmtQ(r.qty) + '</td>' +
+      '<td class="num">' + fmt$(r.cost) + '</td>' +
+      '<td class="num">' + fmt$(r.ext) + '</td></tr>';
+  });
+  var ti = rows.reduce(function (a, r) { a.iq += r.iq; a.eq += r.eq; a.qty += r.qty; a.ext += r.ext; return a; },
+                       { iq: 0, eq: 0, qty: 0, ext: 0 });
+  html += '<tr class="tot"><td>' + (f ? 'Filtered total (' + rows.length + ' SKUs)' : 'Total (' + rows.length + ' SKUs)') + '</td><td></td>' +
+    '<td class="num">' + fmtQ(ti.iq) + '</td><td class="num">' + fmtQ(ti.eq) + '</td>' +
+    '<td class="num">' + fmtQ(ti.qty) + '</td><td></td><td class="num">' + fmt$(ti.ext) + '</td></tr>';
+  $('itemTable').innerHTML = html + '</tbody>';
+}
+
+function renderInventory(c) {
+  $('inventory').innerHTML =
+    '<div class="kv"><span class="k">In-Warehouse qty × cost</span><span class="v">' + fmt$(c.invWh) + '</span></div>' +
+    '<div class="kv"><span class="k">Available qty × cost</span><span class="v">' + fmt$(c.invAvail) + '</span></div>' +
+    '<div class="kv"><span class="k">SKUs with stock</span><span class="v">' + fmtQ(c.invRows.length) + '</span></div>' +
+    '<div style="margin-top:10px"><button id="btnInvCsv">Download per-SKU inventory value CSV</button></div>';
+}
+function renderRecon(c) {
+  $('recon').innerHTML =
+    '<div class="kv"><span class="k">Xero inventory balance</span>' +
+    '<input type="text" id="xeroVal" placeholder="0.00" autocomplete="off"></div>' +
+    '<div class="kv"><span class="k">vs In-Warehouse value</span><span class="v" id="dWh">—</span></div>' +
+    '<div class="kv"><span class="k">vs Available value</span><span class="v" id="dAvail">—</span></div>';
+}
+function updateRecon() {
+  var c = state.computed; if (!c) return;
+  var x = parseNum($('xeroVal').value);
+  function put(id, base) {
+    var el = $(id);
+    if (x === null) { el.textContent = '—'; el.className = 'v'; return; }
+    var d = x - base;
+    el.textContent = (d >= 0 ? '+' : '') + fmt$(d).replace('$-', '-$');
+    el.className = 'v ' + (Math.abs(d) < 0.005 ? 'delta-ok' : Math.abs(d) <= base * 0.005 ? 'delta-ok' : 'delta-bad');
+  }
+  put('dWh', c.invWh);
+  put('dAvail', c.invAvail);
+}
+
+/* ================= exports ================= */
+function csvCell(v) {
+  v = String(v == null ? '' : v);
+  return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+}
+function toCSV(headers, rows) {
+  var lines = [headers.map(csvCell).join(',')];
+  rows.forEach(function (r) { lines.push(r.map(csvCell).join(',')); });
+  return '\uFEFF' + lines.join('\r\n') + '\r\n';
+}
+function download(name, text) {
+  var blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 400);
+}
+function num2(x) { return (Math.round(x * 100) / 100).toFixed(2); }
+function itemRowsForExport() {
+  var rows = state.computed.rows.slice().sort(function (a, b) { return b.ext - a.ext || a.sku.localeCompare(b.sku); });
+  return rows.map(function (r) {
+    return [r.sku, r.desc, r.qty, r.iq, r.eq, num2(r.cost), num2(r.ext),
+      [r.unmatched ? 'NO COST MATCH' : '', (!r.unmatched && r.zeroCost) ? 'ZERO COST' : '', r.zerofix ? 'zeros restored' : '']
+        .filter(String).join('; ')];
+  });
+}
+var ITEM_HEADERS = ['Sku', 'Description', 'Qty Shipped', 'Install Qty', 'Ecom Qty', 'Unit Cost', 'Cost Shipped', 'Flags'];
+
+function exportItemCsv() {
+  download('cost-shipped-per-item_' + state.shipped.month + '.csv', toCSV(ITEM_HEADERS, itemRowsForExport()));
+  toast('cost-shipped-per-item_' + state.shipped.month + '.csv downloaded');
+}
+function exportDetailCsv() {
+  var rows = state.computed.detail.slice().sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; })
+    .map(function (d) {
+      return [d.date, d.ship, d.order, d.ref, d.channel, d.bucket, d.sku, d.desc, d.qty,
+              num2(d.cost), num2(d.ext), d.sold == null ? '' : num2(d.sold), d.flags];
+    });
+  download('shipped-detail_' + state.shipped.month + '.csv',
+    toCSV(['Processed_at', 'Ship#', 'Order#', 'Ref#', 'Channel', 'Bucket', 'Sku', 'Description', 'Qty', 'Unit Cost', 'Ext Cost', 'Sold Price', 'Flags'], rows));
+  toast('shipped-detail_' + state.shipped.month + '.csv downloaded');
+}
+function exportInvCsv() {
+  var rows = state.computed.invRows.map(function (r) {
+    return [r.sku, r.desc, r.wh, r.avail, num2(r.cost), num2(r.whVal), num2(r.availVal), r.disc];
+  });
+  download('shipedge-inventory-value_' + new Date().toISOString().slice(0, 10) + '.csv',
+    toCSV(['Sku', 'Description', 'In Warehouse', 'Available', 'Unit Cost', 'In-Warehouse Value', 'Available Value', 'Discontinued'], rows));
+  toast('Inventory value CSV downloaded');
+}
+function copyTsv() {
+  var lines = [ITEM_HEADERS.join('\t')];
+  itemRowsForExport().forEach(function (r) {
+    lines.push(r.map(function (v) { return String(v).replace(/[\t\r\n]+/g, ' '); }).join('\t'));
+  });
+  var text = lines.join('\n');
+  function done() { toast(lines.length - 1 + ' rows copied — paste straight into the tracker sheet'); }
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) { toast('Copy failed — use the CSV download instead'); }
+    ta.remove();
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, fallback);
+  } else fallback();
+}
+
+/* ================= file intake & wiring ================= */
+function setSlot(id, name, meta) {
+  var el = $(id);
+  el.classList.add('ok');
+  el.querySelector('span:last-child').innerHTML =
+    '<b>' + esc(name) + '</b><br><span class="meta">' + esc(meta) + '</span>';
+}
+function handleFiles(fileList) {
+  Array.prototype.forEach.call(fileList, function (file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var text = String(reader.result || '');
+      var type = detectType(text);
+      try {
+        if (type === 'shipped') {
+          state.shipped = buildShipped(text, file.name);
+          setSlot('slotShipped', file.name,
+            state.shipped.recs.length + ' shipment lines · ' + monthLabel(state.shipped.month));
+        } else if (type === 'master') {
+          state.master = buildMaster(text, file.name);
+          setSlot('slotMaster', file.name, state.master.rowCount + ' items with costs');
+        } else {
+          toast('"' + file.name + '" doesn’t look like either export — check the file');
+          return;
+        }
+      } catch (err) {
+        toast('Could not read "' + file.name + '": ' + err.message);
+        return;
+      }
+      if (state.shipped && state.master) {
+        state.computed = compute();
+        renderAll();
+      }
+    };
+    reader.readAsText(file);
+  });
+}
+
+(function wire() {
+  var drop = $('drop'), input = $('fileInput');
+  drop.addEventListener('click', function () { input.click(); });
+  input.addEventListener('change', function () { handleFiles(input.files); input.value = ''; });
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('hover'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('hover'); });
+  });
+  drop.addEventListener('drop', function (e) {
+    if (e.dataTransfer && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+  });
+  // drag anywhere on the page also works
+  document.addEventListener('dragover', function (e) { e.preventDefault(); });
+  document.addEventListener('drop', function (e) {
+    if (e.target.closest('#drop')) return;
+    e.preventDefault();
+    if (e.dataTransfer && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+  });
+
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (t.id === 'btnItemCsv') exportItemCsv();
+    else if (t.id === 'btnDetail') exportDetailCsv();
+    else if (t.id === 'btnCopy') copyTsv();
+    else if (t.id === 'btnInvCsv') exportInvCsv();
+    else {
+      var th = t.closest && t.closest('th.sortable');
+      if (th) {
+        var k = th.getAttribute('data-sort');
+        if (state.sortKey === k) state.sortDir = -state.sortDir;
+        else { state.sortKey = k; state.sortDir = (k === 'sku' || k === 'desc') ? 1 : -1; }
+        renderItemTable(state.computed);
+      }
+    }
+  });
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.matches && t.matches('select[data-channel]')) {
+      state.bucketMap[t.getAttribute('data-channel')] = t.value;
+      try { localStorage.setItem('scwCogsBuckets', JSON.stringify(state.bucketMap)); } catch (err) {}
+      var tariff = $('tariff') ? $('tariff').value : '';
+      var xero = $('xeroVal') ? $('xeroVal').value : '';
+      state.computed = compute();
+      renderAll();
+      if ($('tariff')) { $('tariff').value = tariff; updateJournalTotal(); }
+      if ($('xeroVal')) { $('xeroVal').value = xero; updateRecon(); }
+    }
+  });
+  document.addEventListener('input', function (e) {
+    var t = e.target;
+    if (t.id === 'filter') { state.filter = t.value; renderItemTable(state.computed); }
+    else if (t.id === 'tariff') updateJournalTotal();
+    else if (t.id === 'xeroVal') updateRecon();
+  });
+})();
+</script>
+</body>
+</html>

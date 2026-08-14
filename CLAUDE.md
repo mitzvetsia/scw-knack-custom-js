@@ -36,6 +36,8 @@ src/
     legacy/                    # Deprecated feature modules kept for compatibility
 dist/
   knack-bundle.js              # Built artifact — concatenation of all src files
+tools/
+  cogs-monthly.html            # Standalone monthly COGS workbench (NOT in the bundle — see docs/cogs-monthly.md)
 build.sh                       # Concatenates src files → dist/knack-bundle.js
 release.sh                     # Build + commit + tag + push to main + CDN URL
 save.sh                        # Commit source changes only (excludes dist/)
