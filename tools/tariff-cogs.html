@@ -195,9 +195,17 @@
       <button class="primary" id="btnDownload">Download CSV</button>
       <button id="btnWorkbook">Download workbook (XLSX)</button>
       <button id="btnCopy">Copy CSV to clipboard</button>
+      <label class="small"><input type="checkbox" id="optKnackReady" checked> Knack-ready (header row first &mdash; drop the supplier preamble/footer rows)</label>
       <span class="small" id="outName"></span>
     </div>
-    <div class="small" style="margin-top:6px">CSV = flat file for the COGS calculator. Workbook = audit trail: the same rows with <b>live formulas</b> (click any computed cell to see the math), a "7501 LINES" sheet with the entry lines as reviewed, and a README of the method.</div>
+    <div class="small" style="margin-top:6px">CSV = flat file for the COGS calculator / Knack import. Workbook = audit trail: the same rows with <b>live formulas</b> (click any computed cell to see the math), a "7501 LINES" sheet with the entry lines as reviewed, and a README of the method.</div>
+    <div class="btnrow" style="margin-top:14px">
+      <input type="text" id="webhookUrl" placeholder="https://hook.us1.make.com/…  (Make webhook URL — remembered on this computer)"
+             style="flex:1;min-width:280px;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+      <button id="btnWebhook">Send to webhook</button>
+      <span class="small" id="webhookStatus"></span>
+    </div>
+    <div class="small">POSTs the whole dataset as JSON &mdash; entry lines plus every item with its computed tariff / discounted-cost / fee numbers &mdash; for the Make scenario that creates the replenishment.</div>
   </section>
 
   <div class="footer">
@@ -1104,11 +1112,14 @@ function buildOutputRows() {
   });
 
   var headers = inv.header.concat(EXTRA_HEADERS, withFees ? FEE_HEADERS : []);
+  // Knack's CSV import needs the header as row 1 and nothing but data rows
+  // after it — the supplier preamble/footer creates junk records on import
+  var knackReady = !$('optKnackReady') || $('optKnackReady').checked;
   var all = [];
-  inv.preamble.forEach(function (r) { all.push(r); });
+  if (!knackReady) inv.preamble.forEach(function (r) { all.push(r); });
   all.push(headers);
   rows.forEach(function (r) { all.push(r); });
-  inv.tail.forEach(function (r) { all.push(r); });
+  if (!knackReady) inv.tail.forEach(function (r) { all.push(r); });
   return { all: all, itemRows: rows, missing: missing, headers: headers,
            pre: pre, discTotal: discTotal, withFees: withFees };
 }
@@ -1274,6 +1285,82 @@ function outFileName() {
   return base + '_with_tariffs.csv';
 }
 
+/* ---- webhook: the full dataset as JSON, numbers not display strings ---- */
+function buildWebhookPayload() {
+  var inv = APP.invoice, m = APP.match;
+  if (!inv || !m) return null;
+  var out = buildOutputRows();
+  if (!out) return null;
+  var lineByNo = {};
+  APP.lines.forEach(function (l) { lineByNo[l.no] = l; });
+
+  var preambleText = inv.preamble.map(function (r) { return r.join(' '); }).join('\n');
+  var invMatch = preambleText.match(/Invoice\s*No[.:]?\s*([A-Z0-9-]{4,})/i);
+
+  var C = inv.cols;
+  var items = out.pre.map(function (e) {
+    var l = e.disc != null ? lineByNo[e.cols[1]] : null;
+    return {
+      item: parseMoney(e.raw[C.item]),
+      poNo: e.raw[1] || '', cPoNo: e.raw[2] || '', piNo: e.raw[3] || '',
+      partNo: e.raw[4] || '', productCode: e.raw[5] || '',
+      description: e.raw[C.desc] || '', qty: e.qty,
+      coo: e.raw[C.coo] || '', unitPrice: parseMoney(e.raw[C.unit]),
+      amount: parseMoney(e.raw[C.amount]),
+      tariffPct: l ? l.rate : null,
+      entryLine: l ? l.no : null,
+      discountedCostEach: e.disc != null ? r2(e.disc / e.qty) : null,
+      discountedAmount: e.disc,
+      entryFeesAmount: (out.withFees && e.disc != null && out.discTotal > 0)
+        ? r2((APP.entryFees || 0) * e.disc / out.discTotal) : null
+    };
+  });
+  var sumEntered = 0; APP.lines.forEach(function (l) { sumEntered += l.value || 0; });
+
+  return {
+    source: 'scw-tariff-cogs-tool',
+    generatedAt: new Date().toISOString(),
+    invoice: {
+      file: inv.name,
+      invoiceNo: invMatch ? invMatch[1] : null,
+      gross: inv.gross, discounts: inv.discount, net: inv.net
+    },
+    customsBill: {
+      file: pdfFile ? pdfFile.name : null,
+      sumEnteredValues: r2(sumEntered),
+      entryFees: APP.entryFees || 0,
+      billDutyToCustoms: APP.billDuty != null ? APP.billDuty : null
+    },
+    entryLines: APP.lines.map(function (l) {
+      return { line: l.no, coo: l.coo || null, tariffPct: l.rate || 0,
+               enteredValue: l.value || 0, duty: l.duty || 0,
+               mpf: l.mpf != null ? l.mpf : null, hmf: l.hmf != null ? l.hmf : null,
+               baseHts: l.hts || null, groupInvoiceGross: m.lineGross[l.no] || null,
+               matchedGroups: (m.lineGroups[l.no] || []).map(function (g) {
+                 return { description: g.desc, coo: g.coo || null, gross: g.gross };
+               }) };
+    }),
+    items: items
+  };
+}
+
+function sendWebhook(url, payload, onStatus) {
+  var body = JSON.stringify(payload);
+  onStatus('sending…');
+  fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body })
+    .then(function (r) {
+      onStatus(r.ok ? '✓ delivered (HTTP ' + r.status + ')' : '✕ webhook answered HTTP ' + r.status);
+    })
+    .catch(function () {
+      // no CORS headers on the webhook — resend opaquely; the request still
+      // lands, we just can't read the response (same pattern the Knack bundle
+      // uses for Make webhooks)
+      fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: body })
+        .then(function () { onStatus('⚠ sent (webhook has no CORS — response unreadable; check the scenario ran)'); })
+        .catch(function (err) { onStatus('✕ failed to send: ' + err); });
+    });
+}
+
 /* ============================== glue ============================== */
 function bindDrop(dropId, inputId, onFile) {
   var drop = $(dropId), input = $(inputId);
@@ -1380,6 +1467,19 @@ $('btnAddLine').addEventListener('click', function () {
   renderReview();
 });
 
+$('optKnackReady').addEventListener('change', function () { renderOutput(); });
+try { $('webhookUrl').value = localStorage.getItem('scwTariffWebhookUrl') || ''; } catch (e) {}
+$('webhookUrl').addEventListener('change', function () {
+  try { localStorage.setItem('scwTariffWebhookUrl', this.value.trim()); } catch (e) {}
+});
+$('btnWebhook').addEventListener('click', function () {
+  var url = $('webhookUrl').value.trim();
+  var st = function (s) { $('webhookStatus').textContent = s; };
+  if (!/^https:\/\//.test(url)) { st('✕ paste the Make webhook URL first (https://…)'); return; }
+  var payload = buildWebhookPayload();
+  if (!payload) { st('✕ nothing to send yet — build the sheet first'); return; }
+  sendWebhook(url, payload, st);
+});
 $('feeInput').addEventListener('change', function () {
   APP.entryFees = parseMathInput(this.value) || 0;
   renderReview(); renderOutput();
