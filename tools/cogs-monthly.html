@@ -67,6 +67,14 @@
   .slot.ok{color:var(--ink);border-color:#bfe3cc;background:var(--good-bg)}
   .slot b{font-weight:650}
   .slot .meta{color:var(--ink-3);font-size:11.5px}
+  .slot{position:relative}
+  .slot.ok{padding-right:30px}
+  .slot-x{
+    position:absolute;top:50%;right:6px;transform:translateY(-50%);
+    border:none;background:transparent;color:var(--ink-3);font-size:15px;font-weight:650;
+    padding:2px 6px;cursor:pointer;border-radius:5px;line-height:1;
+  }
+  .slot-x:hover{background:#fee2e2;color:var(--bad)}
 
   /* ---- month picker ---- */
   .months{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
@@ -1906,11 +1914,48 @@ function exportAudit() {
 }
 
 /* ================= file intake & wiring ================= */
+var SLOT_DEFAULTS = {
+  slotShipped: '<b>Shipped-items report</b><br><span class="meta">waiting for file&hellip;</span>',
+  slotMaster: '<b>Item data (product export)</b><br><span class="meta">waiting for file&hellip;</span>',
+  slotSnapshot: '<b>Inventory by SKU (optional)</b><br><span class="meta">daily snapshot report &mdash; unlocks movement recon</span>',
+  slotXero: '<b>Xero inventory transactions (optional)</b><br><span class="meta">.xlsx or .csv export of account 1141</span>',
+  slotTracker: '<b>Herr Cheetoh line items (optional)</b><br><span class="meta">COGs line items export &mdash; adds tracker columns to month-by-month</span>'
+};
 function setSlot(id, name, meta) {
   var el = $(id);
   el.classList.add('ok');
   el.querySelector('span:last-child').innerHTML =
     '<b>' + esc(name) + '</b><br><span class="meta">' + esc(meta) + '</span>';
+  if (!el.querySelector('.slot-x')) {
+    var x = document.createElement('button');
+    x.className = 'slot-x';
+    x.setAttribute('data-clear', id);
+    x.title = 'Remove this input (drop a replacement any time)';
+    x.textContent = '×';
+    el.appendChild(x);
+  }
+}
+function resetSlot(id) {
+  var el = $(id);
+  el.classList.remove('ok');
+  el.querySelector('span:last-child').innerHTML = SLOT_DEFAULTS[id];
+  var x = el.querySelector('.slot-x');
+  if (x) x.remove();
+}
+function clearInput(id) {
+  if (id === 'slotShipped') { state.shippedFiles = []; state.shipped = null; }
+  else if (id === 'slotMaster') state.master = null;
+  else if (id === 'slotSnapshot') state.snapshot = null;
+  else if (id === 'slotXero') state.xero = null;
+  else if (id === 'slotTracker') state.tracker = null;
+  resetSlot(id);
+  if (state.shipped && state.master) afterLoad();
+  else {
+    state.computed = null; state.recon = null; state.monthly = null;
+    $('results').classList.remove('on');
+    $('monthBadge').classList.remove('on');
+  }
+  toast('Input removed — drop a replacement file any time');
 }
 function afterLoad() {
   if (state.shipped && state.master) {
@@ -2020,7 +2065,10 @@ function bootPreload() {
 
 (function wire() {
   var drop = $('drop'), input = $('fileInput');
-  drop.addEventListener('click', function () { input.click(); });
+  drop.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('.slot-x')) return;
+    input.click();
+  });
   input.addEventListener('change', function () { handleFiles(input.files); input.value = ''; });
   ['dragenter', 'dragover'].forEach(function (ev) {
     drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('hover'); });
@@ -2052,6 +2100,9 @@ function bootPreload() {
       if (state.xero) state.xero.txs.forEach(function (tx) { delete state.adjustments[tx.key]; });
       saveAdjustments(); refreshRecon();
       toast('All Xero adjustments reset');
+    }
+    else if (t.matches && t.matches('.slot-x[data-clear]')) {
+      clearInput(t.getAttribute('data-clear'));
     }
     else {
       var pick = t.closest && t.closest('#monthPicker button');
