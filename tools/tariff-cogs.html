@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tariff COGS Sheet Builder — SCW</title>
+<!--
+  Tariff COGS Sheet Builder
+  =========================
+  Input:  (1) supplier commercial invoice (CSV or XLSX — the UNV "CINV" file)
+          (2) customs broker bill PDF containing the CBP Form 7501 Entry Summary
+              (scanned pages are OK — they are OCR'd in the browser)
+  Output: the invoice enriched with 4 columns per item row —
+          TARIFF % | ENTRY LINE | DISCOUNTED COST EACH | DISCOUNTED AMOUNT
+          (same sheet you'd hand-build for the tariff COGS calculator)
+
+  How it works:
+  - The 7501 groups merchandise into entry lines (001, 002, ...). Each line has
+    Chapter-99 tariff rows (19%, 25%, 10%, 50%, ...) plus a base HTS row that
+    carries the line's entered value (invoice value after the broker allocates
+    any invoice-level discount pro-rata).
+  - Invoice items are grouped by (DESCRIPTION, COO) and matched to entry lines
+    of the same origin by comparing group totals against entered values.
+  - Each line's entered value is then pro-rated back across its items by amount:
+      discounted amount = item amount x (entered value / group gross)
+  - Tariff % per line = sum of the line's ad-valorem duty rates (MPF/HMF excluded).
+    Everything is cross-checked: rate x entered value must equal the duty printed
+    on the 7501, and the sum of entered values must equal the invoice total after
+    discounts. Anything that doesn't reconcile is flagged for review, and every
+    parsed number is editable before you download.
+
+  Everything runs locally in your browser — files never leave your machine.
+  (The three libraries below are fetched from the jsDelivr CDN on load.)
+-->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js" onerror="window.__cdnFail='pdf.js'"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" onerror="window.__cdnFail='tesseract.js'"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" onerror="window.__cdnFail='xlsx'"></script>
+<style>
+  :root {
+    --accent: #ed8326;
+    --accent-dark: #c96a15;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --ok: #15803d;
+    --ok-bg: #dcfce7;
+    --warn: #b45309;
+    --warn-bg: #fef3c7;
+    --err: #b91c1c;
+    --err-bg: #fee2e2;
+    --panel: #ffffff;
+    --page: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 80px;
+    font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); background: var(--page);
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h1 .tag { color: var(--accent); }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .cards { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+  .card {
+    flex: 1 1 320px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px;
+  }
+  .drop {
+    border: 2px dashed #cbd5e1; border-radius: 8px; padding: 18px 14px;
+    text-align: center; color: var(--muted); cursor: pointer; transition: all .15s;
+  }
+  .drop.hover { border-color: var(--accent); background: #fff7ed; color: var(--accent-dark); }
+  .drop.loaded { border-style: solid; border-color: #86efac; background: #f0fdf4; color: var(--ok); }
+  .drop input { display: none; }
+  .drop .big { font-size: 15px; font-weight: 600; }
+  .drop .hint { font-size: 12px; margin-top: 4px; }
+  .filemeta { font-size: 12px; margin-top: 10px; color: var(--muted); white-space: pre-line; }
+  .btnrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 16px; }
+  button {
+    font: inherit; font-weight: 600; border: 0; border-radius: 8px;
+    padding: 10px 18px; cursor: pointer; background: #e5e7eb; color: var(--ink);
+  }
+  button.primary { background: var(--accent); color: #fff; }
+  button.primary:hover { background: var(--accent-dark); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .opt { font-size: 12.5px; color: var(--muted); }
+  .opt input[type=text] { width: 70px; font: inherit; padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; }
+  #log {
+    background: #111827; color: #d1d5db; border-radius: 8px; padding: 10px 14px;
+    font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace; max-height: 180px;
+    overflow-y: auto; display: none; white-space: pre-wrap;
+  }
+  #log .err { color: #fca5a5; }
+  .progressbar { height: 6px; border-radius: 3px; background: #374151; overflow: hidden; margin-top: 8px; display: none; }
+  .progressbar > div { height: 100%; width: 0%; background: var(--accent); transition: width .2s; }
+  section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 16px; display: none; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; white-space: nowrap; }
+  th { background: #f9fafb; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+  td.num, th.num { text-align: right; }
+  .tablewrap { overflow-x: auto; }
+  td input, td select {
+    font: inherit; padding: 2px 5px; border: 1px solid transparent; border-radius: 4px;
+    background: transparent; width: 90px;
+  }
+  td input:hover, td select:hover { border-color: var(--line); background: #fff; }
+  td input:focus, td select:focus { border-color: var(--accent); background: #fff; outline: none; }
+  td input.coo { width: 46px; }
+  td input.num { text-align: right; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11.5px; font-weight: 600; }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.err { background: var(--err-bg); color: var(--err); }
+  .chip { display: inline-block; background: #eef2ff; color: #3730a3; border-radius: 6px; padding: 1px 7px; font-size: 12px; margin: 1px 2px; }
+  .totline { margin-top: 10px; font-size: 13px; }
+  .totline b { font-weight: 700; }
+  .banner { border-radius: 8px; padding: 10px 14px; margin: 10px 0; font-size: 13px; display: none; }
+  .banner.ok { background: var(--ok-bg); color: var(--ok); }
+  .banner.warn { background: var(--warn-bg); color: var(--warn); }
+  .banner.err { background: var(--err-bg); color: var(--err); }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .small { font-size: 12px; color: var(--muted); }
+  a.link { color: var(--accent-dark); }
+  #previewTable td { font-size: 12px; }
+  .footer { margin-top: 26px; font-size: 11.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="tag">SCW</span> Tariff COGS Sheet Builder</h1>
+  <p class="sub">Drop the supplier invoice (CSV/XLSX) and the customs broker bill (PDF with the CBP 7501 Entry Summary).
+  The 7501 is OCR'd in your browser, entry lines are matched to invoice items, and you get the
+  invoice back with <b>TARIFF&nbsp;%</b>, <b>ENTRY&nbsp;LINE</b>, <b>DISCOUNTED&nbsp;COST&nbsp;EACH</b> and <b>DISCOUNTED&nbsp;AMOUNT</b> columns.
+  Files are processed locally &mdash; nothing is uploaded.</p>
+
+  <div class="cards">
+    <div class="card">
+      <h2>1 &middot; Supplier invoice (CSV / XLSX)</h2>
+      <label class="drop" id="dropInv">
+        <input type="file" id="fileInv" accept=".csv,.xlsx,.xls">
+        <div class="big">Choose or drop the invoice</div>
+        <div class="hint">e.g. H2025120124CINV.csv &mdash; needs ITEM / DESCRIPTION / QTY / COO / AMOUNT columns</div>
+      </label>
+      <div class="filemeta" id="metaInv"></div>
+    </div>
+    <div class="card">
+      <h2>2 &middot; Customs bill PDF (CBP 7501)</h2>
+      <label class="drop" id="dropPdf">
+        <input type="file" id="filePdf" accept=".pdf">
+        <div class="big">Choose or drop the PDF</div>
+        <div class="hint">The UPS SCS / broker bill &mdash; scanned pages are fine (OCR runs locally)</div>
+      </label>
+      <div class="filemeta" id="metaPdf"></div>
+    </div>
+  </div>
+
+  <div class="btnrow">
+    <button class="primary" id="btnProcess" disabled>Scan PDF &amp; build sheet</button>
+    <button id="btnManual">Skip OCR &mdash; enter 7501 lines manually</button>
+    <span class="opt">PDF pages: <input type="text" id="pageRange" placeholder="all"> <span class="small">(e.g. 5-10 to skip cover pages)</span></span>
+  </div>
+
+  <div id="log"></div>
+  <div class="progressbar" id="pbar"><div></div></div>
+
+  <section class="panel" id="reviewPanel">
+    <h2>Entry lines from the 7501 &mdash; review &amp; correct</h2>
+    <div class="small" style="margin-bottom:8px">
+      Every cell below is editable. <b>Check</b> is green when rate &times; entered value matches the duty read off the form.
+      Matching assigns each invoice group (DESCRIPTION + origin) to the entry line whose entered value it best explains.
+    </div>
+    <div class="banner" id="lineBanner"></div>
+    <div class="tablewrap"><table id="linesTable"></table></div>
+    <div class="btnrow" style="margin-top:10px">
+      <button id="btnAddLine">+ Add line</button>
+      <span class="small">Add lines by hand if OCR missed any (read them straight off the 7501 pages).</span>
+    </div>
+    <div class="totline" id="lineTotals"></div>
+    <div class="banner" id="matchBanner"></div>
+  </section>
+
+  <section class="panel" id="outputPanel">
+    <h2>Output preview</h2>
+    <div class="banner" id="outBanner"></div>
+    <div class="tablewrap"><table id="previewTable"></table></div>
+    <div class="btnrow" style="margin-top:12px">
+      <button class="primary" id="btnDownload">Download CSV</button>
+      <button id="btnCopy">Copy CSV to clipboard</button>
+      <span class="small" id="outName"></span>
+    </div>
+  </section>
+
+  <div class="footer">
+    Reads the CBP Form 7501: per entry line it sums the ad-valorem Chapter-99 + base HTS rates (MPF/HMF excluded),
+    takes the base row's entered value, and validates rate &times; value against the printed duty.
+    Invoice-level discounts are assumed allocated pro-rata by the broker (that's what the 7501 "entered value" already reflects).
+    If a line won't reconcile, fix the numbers in the table &mdash; the sheet rebuilds instantly. &mdash; SCW internal tool
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ============================== utilities ============================== */
+var $ = function (id) { return document.getElementById(id); };
+
+function logLine(msg, isErr) {
+  var el = $('log');
+  el.style.display = 'block';
+  var span = document.createElement('span');
+  if (isErr) span.className = 'err';
+  span.textContent = msg + '\n';
+  el.appendChild(span);
+  el.scrollTop = el.scrollHeight;
+}
+function setProgress(frac) {
+  var bar = $('pbar');
+  bar.style.display = frac == null ? 'none' : 'block';
+  if (frac != null) bar.firstElementChild.style.width = Math.round(frac * 100) + '%';
+}
+
+function parseMoney(s) {
+  if (s == null) return null;
+  s = String(s).replace(/[$,%\s]/g, '').replace(/[()]/g, function (m) { return m === '(' ? '-' : ''; });
+  if (s === '' || s === '-') return null;
+  var v = parseFloat(s);
+  return isNaN(v) ? null : v;
+}
+function fmtMoney(x) {
+  return '$' + x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtInt(x) { return x.toLocaleString('en-US'); }
+function r2(x) { return Math.round((x + 1e-9) * 100) / 100; }
+
+/* RFC-4180-ish CSV parser (quotes, escaped quotes, CR/LF) */
+function parseCsv(text) {
+  var rows = [], row = [], cell = '', i = 0, inQ = false;
+  text = text.replace(/^﻿/, '');
+  while (i < text.length) {
+    var c = text[i];
+    if (inQ) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { cell += '"'; i += 2; continue; }
+        inQ = false; i++; continue;
+      }
+      cell += c; i++; continue;
+    }
+    if (c === '"') { inQ = true; i++; continue; }
+    if (c === ',') { row.push(cell); cell = ''; i++; continue; }
+    if (c === '\r') { i++; continue; }
+    if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; i++; continue; }
+    cell += c; i++;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+function csvCell(c) {
+  c = c == null ? '' : String(c);
+  return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c;
+}
+function writeCsv(rows) {
+  return rows.map(function (r) { return r.map(csvCell).join(','); }).join('\n') + '\n';
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function (m) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m];
+  });
+}
+
+/* COO normalization: invoice country names -> ISO2 used on the 7501 */
+var COO_NAMES = {
+  CHINA: 'CN', 'HONG KONG': 'HK', PHILIPPINES: 'PH', VIETNAM: 'VN', 'VIET NAM': 'VN',
+  THAILAND: 'TH', MALAYSIA: 'MY', INDONESIA: 'ID', INDIA: 'IN', TAIWAN: 'TW',
+  KOREA: 'KR', 'SOUTH KOREA': 'KR', JAPAN: 'JP', MEXICO: 'MX', CAMBODIA: 'KH',
+  SINGAPORE: 'SG', USA: 'US', 'UNITED STATES': 'US', CANADA: 'CA', GERMANY: 'DE',
+  CZECH: 'CZ', 'CZECH REPUBLIC': 'CZ', POLAND: 'PL', TURKEY: 'TR', BANGLADESH: 'BD'
+};
+function cooToIso(name) {
+  if (!name) return null;
+  var u = String(name).trim().toUpperCase();
+  if (COO_NAMES[u]) return COO_NAMES[u];
+  if (/^[A-Z]{2}$/.test(u)) return u;
+  for (var k in COO_NAMES) if (u.indexOf(k) === 0 || k.indexOf(u) === 0) return COO_NAMES[k];
+  return null;
+}
+
+/* ============================== app state ============================== */
+var APP = {
+  invoice: null,     // {preamble, header, items[], tail, gross, discount, net, ncols, name}
+  lines: [],         // [{no, coo, rate, value, duty, hts, mpf, hmf, flags[]}]
+  overrides: {},     // groupKey -> line no | 'none' | 'auto'
+  match: null,       // {assign: {groupKey: lineNo}, groups: {...}}
+  csvText: null,
+  ocrRan: false
+};
+
+/* ============================== invoice parsing ============================== */
+function looksLikeHeader(row) {
+  var joined = row.map(function (c) { return String(c || '').toUpperCase(); });
+  var has = function (s) { return joined.some(function (c) { return c.indexOf(s) !== -1; }); };
+  return has('ITEM') && has('QTY') && (has('COO') || has('ORIGIN')) && has('AMOUNT');
+}
+function colIndex(header, tests, fallback) {
+  for (var i = 0; i < header.length; i++) {
+    var h = String(header[i] || '').toUpperCase().trim();
+    for (var t = 0; t < tests.length; t++) {
+      if (tests[t].test ? tests[t].test(h) : h === tests[t]) return i;
+    }
+  }
+  return fallback;
+}
+
+function parseInvoiceRows(rows, fileName) {
+  var hdrIdx = -1;
+  for (var i = 0; i < rows.length; i++) { if (looksLikeHeader(rows[i])) { hdrIdx = i; break; } }
+  if (hdrIdx === -1) throw new Error('Could not find the invoice header row (needs ITEM / QTY / COO / AMOUNT columns).');
+  var header = rows[hdrIdx];
+
+  var col = {
+    item:   colIndex(header, ['ITEM'], 0),
+    desc:   colIndex(header, [/^DESCRIPTION/], 6),
+    qty:    colIndex(header, [/^QTY/], 7),
+    coo:    colIndex(header, [/^COO/, /ORIGIN/], 8),
+    unit:   colIndex(header, [/UNIT\s*PRICE/], 9),
+    amount: colIndex(header, [/^AMOUNT/], 10)
+  };
+  // number of passthrough columns = up to and including the amount column
+  var ncols = col.amount + 1;
+
+  var preamble = rows.slice(0, hdrIdx).map(function (r) { return r.slice(0, ncols); });
+  var items = [], tail = [];
+  for (var j = hdrIdx + 1; j < rows.length; j++) {
+    var r = rows[j];
+    var isBlank = r.every(function (c) { return String(c || '').trim() === ''; });
+    if (isBlank) continue;
+    var itemNo = String(r[col.item] || '').trim();
+    var amount = parseMoney(r[col.amount]);
+    if (/^\d+$/.test(itemNo) && amount != null) {
+      items.push({
+        raw: padRow(r.slice(0, ncols), ncols),
+        item: parseInt(itemNo, 10),
+        desc: String(r[col.desc] || '').trim(),
+        qty: parseMoney(r[col.qty]) || 1,
+        coo: String(r[col.coo] || '').trim(),
+        amount: amount
+      });
+    } else {
+      tail.push(padRow(r.slice(0, ncols), ncols));
+    }
+  }
+  if (!items.length) throw new Error('No item rows found under the invoice header.');
+
+  var gross = 0; items.forEach(function (it) { gross += it.amount; });
+  gross = r2(gross);
+
+  // discounts: negative numbers in tail rows; stated total: the number closest to gross
+  var discount = 0, stated = null;
+  tail.forEach(function (r) {
+    r.forEach(function (c) {
+      var v = parseMoney(c);
+      if (v == null) return;
+      if (v < 0) discount += v;
+      else if (v > gross * 0.5 && (stated == null || Math.abs(v - gross) < Math.abs(stated - gross))) stated = v;
+    });
+  });
+  discount = r2(discount);
+  var net = stated != null ? stated : r2(gross + discount);
+
+  return {
+    name: fileName, preamble: preamble, header: header.slice(0, ncols), items: items,
+    tail: tail, gross: gross, discount: discount, net: net, stated: stated, ncols: ncols
+  };
+}
+function padRow(r, n) { while (r.length < n) r.push(''); return r; }
+
+function describeInvoice(inv) {
+  var groups = groupItems(inv).order.length;
+  var s = inv.items.length + ' item rows, ' + groups + ' product groups' +
+    '\nGross ' + fmtMoney(inv.gross) +
+    (inv.discount ? ', discounts ' + fmtMoney(inv.discount) : '') +
+    ' → net ' + fmtMoney(inv.net);
+  if (inv.stated != null && Math.abs(inv.gross + inv.discount - inv.stated) > 0.011) {
+    s += '\n⚠ items + discounts = ' + fmtMoney(r2(inv.gross + inv.discount)) +
+         ' but the invoice total row says ' + fmtMoney(inv.stated);
+  }
+  return s;
+}
+
+/* group items by (DESCRIPTION, COO) */
+function groupItems(inv) {
+  var map = {}, order = [];
+  inv.items.forEach(function (it) {
+    var key = it.desc.toUpperCase() + '||' + (cooToIso(it.coo) || it.coo.toUpperCase());
+    if (!map[key]) { map[key] = { key: key, desc: it.desc, coo: cooToIso(it.coo), items: [], gross: 0 }; order.push(key); }
+    map[key].items.push(it);
+    map[key].gross = r2(map[key].gross + it.amount);
+  });
+  return { map: map, order: order };
+}
+/* ============================== PDF -> OCR words ============================== */
+function parsePageRange(spec, nPages) {
+  spec = String(spec || '').trim();
+  if (!spec) { var all = []; for (var i = 1; i <= nPages; i++) all.push(i); return all; }
+  var out = {};
+  spec.split(',').forEach(function (part) {
+    var m = part.trim().match(/^(\d+)\s*-\s*(\d+)$/), a, b;
+    if (m) { a = +m[1]; b = +m[2]; } else if (/^\d+$/.test(part.trim())) { a = b = +part.trim(); } else { return; }
+    for (var p = Math.max(1, a); p <= Math.min(nPages, b); p++) out[p] = true;
+  });
+  return Object.keys(out).map(Number).sort(function (x, y) { return x - y; });
+}
+
+async function ocrPdf(file, rangeSpec, onStep) {
+  if (window.__cdnFail) throw new Error('A required library failed to load from the CDN (' + window.__cdnFail + '). Check your internet connection and reload.');
+  if (!window.pdfjsLib) throw new Error('pdf.js did not load — check your internet connection and reload.');
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';
+
+  var buf = await file.arrayBuffer();
+  var pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  var pages = parsePageRange(rangeSpec, pdf.numPages);
+  onStep('PDF loaded: ' + pdf.numPages + ' pages; scanning ' + (pages.length === pdf.numPages ? 'all' : pages.join(', ')));
+
+  // PSM 11 ("sparse text") — the 7501 is a sparse form; default segmentation
+  // drops isolated cells (line numbers, lone rates), sparse mode finds them.
+  var psm = new URLSearchParams(location.search).get('psm') || '11';
+  var worker = await Tesseract.createWorker('eng', 1, {
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0',
+    langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int'
+  });
+  await worker.setParameters({ tessedit_pageseg_mode: psm });
+
+  var pageResults = [];
+  for (var i = 0; i < pages.length; i++) {
+    var pno = pages[i];
+    onStep('OCR page ' + pno + ' (' + (i + 1) + '/' + pages.length + ')…', (i) / pages.length);
+    var page = await pdf.getPage(pno);
+    var vp1 = page.getViewport({ scale: 1 });
+    var scale = 2000 / vp1.width;
+    var vp = page.getViewport({ scale: scale });
+    var canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+
+    var res = await worker.recognize(canvas, {}, { blocks: true, text: true });
+    var words = [];
+    (res.data.blocks || []).forEach(function (b) {
+      (b.paragraphs || []).forEach(function (par) {
+        (par.lines || []).forEach(function (ln) {
+          (ln.words || []).forEach(function (w) {
+            if (!w.text || !w.text.trim()) return;
+            words.push({
+              text: w.text.trim(),
+              x0: w.bbox.x0 / canvas.width, x1: w.bbox.x1 / canvas.width,
+              y0: w.bbox.y0 / canvas.height, y1: w.bbox.y1 / canvas.height,
+              conf: w.confidence
+            });
+          });
+        });
+      });
+    });
+    pageResults.push({ pageNo: pno, words: words, text: res.data.text || '' });
+    setProgress((i + 1) / pages.length);
+  }
+  await worker.terminate();
+  return pageResults;
+}
+
+/* ============================== 7501 parsing ============================== */
+function normDigits(s) { return s.replace(/[OoQ]/g, '0').replace(/[Il|]/g, '1'); }
+function isNumTok(s) { return /^\$?[\d,]+(?:\.\d+)?$/.test(s.replace(/^\$/, '')); }
+function numVal(s) { return parseMoney(s); }
+
+/* cluster page words into visual rows by y-center */
+function wordsToRows(words) {
+  var sorted = words.slice().sort(function (a, b) {
+    return (a.y0 + a.y1) / 2 - (b.y0 + b.y1) / 2;
+  });
+  var rows = [], cur = null, curY = -1;
+  var heights = sorted.map(function (w) { return w.y1 - w.y0; }).sort(function (a, b) { return a - b; });
+  var medH = heights.length ? heights[Math.floor(heights.length / 2)] : 0.008;
+  var tol = Math.max(0.004, medH * 0.7);
+  sorted.forEach(function (w) {
+    var yc = (w.y0 + w.y1) / 2;
+    if (cur === null || yc - curY > tol) { cur = { y: yc, words: [] }; rows.push(cur); curY = yc; }
+    cur.words.push(w);
+    curY = Math.max(curY, yc);
+  });
+  rows.forEach(function (r) { r.words.sort(function (a, b) { return a.x0 - b.x0; }); });
+  return rows;
+}
+
+/* column band calibration — anchored to the DATA-column sub-headers
+   ("A. Entered Value" / "B. ADA/CVD Rate" / "Dollars  Cents"), because the
+   big "32./33./34." box labels sit to the RIGHT of where data is printed. */
+var DEFAULT_BANDS = { descX: 0.135, valueX: 0.50, rateX: 0.615, dutyX: 0.745, rightX: 0.99 };
+function calibrateBands(rows) {
+  var b = { valueX: null, rateX: null, dutyX: null };
+  rows.slice(0, 22).forEach(function (r) {
+    r.words.forEach(function (w) {
+      var t = w.text.replace(/[|.,]+$/, '').replace(/^[|]/, '');
+      if (b.valueX == null && /^(Entered|CHGS|Relationship)$/i.test(t) && w.x0 > 0.44 && w.x0 < 0.57)
+        b.valueX = w.x0 - 0.03;
+      if (b.rateX == null && /^(ADA\/?CVD|ADAJ?\/?CVD|HTSUS|IRC|Visa)$/i.test(t) && w.x0 > 0.57 && w.x0 < 0.68)
+        b.rateX = w.x0 - 0.03;
+      if (b.dutyX == null && /^([CD]ollars)$/i.test(t) && w.x0 > 0.70 && w.x0 < 0.82)
+        b.dutyX = w.x0 - 0.02;
+    });
+  });
+  var out = {
+    descX: DEFAULT_BANDS.descX,
+    valueX: b.valueX != null ? b.valueX : DEFAULT_BANDS.valueX,
+    rateX: b.rateX != null ? b.rateX : DEFAULT_BANDS.rateX,
+    dutyX: b.dutyX != null ? b.dutyX : DEFAULT_BANDS.dutyX,
+    rightX: DEFAULT_BANDS.rightX
+  };
+  if (!(out.descX < out.valueX && out.valueX < out.rateX && out.rateX < out.dutyX) ||
+      out.valueX < 0.42 || out.valueX > 0.58 || out.rateX < 0.54 || out.rateX > 0.68 ||
+      out.dutyX < 0.66 || out.dutyX > 0.84) {
+    return Object.assign({}, DEFAULT_BANDS);
+  }
+  return out;
+}
+
+/* classify one visual row into the 7501's columns */
+function classifyRow(row, bands) {
+  var out = { lineTok: null, oTok: null, descText: '', rateText: '', valueInt: null,
+              dutyVal: null, ratePct: null, isFree: false, isFee: false, hts: null };
+  var cells = { value: [], rate: [], duty: [], desc: [] };
+  row.words.forEach(function (w) {
+    var t = w.text.replace(/^[\[\](|]+|[\[\])|]+$/g, '');
+    if (!t) return;
+    var xc = (w.x0 + w.x1) / 2;
+    if (w.x0 < bands.descX) {
+      var d = normDigits(t);
+      if (/^\d{3}$/.test(d) && d !== '000') out.lineTok = d;
+      var cm = t.toUpperCase().replace(/^0/, 'O').match(/^O([A-Z]{2})$/);
+      if (cm) out.oTok = cm[1];
+      return;
+    }
+    if (xc < bands.valueX) { cells.desc.push(t); return; }
+    if (xc < bands.rateX) { cells.value.push(t); return; }
+    if (xc < bands.dutyX) { cells.rate.push(t); return; }
+    cells.duty.push(t);
+  });
+  out.descText = cells.desc.join(' ');
+  out.rateText = cells.rate.join(' ');
+
+  // base HTS for display — merchandise chapters only (not 98xx/99xx)
+  var hm = out.descText.match(/\b((?!9[89])\d{4})[.,]\s?(\d{2})[.,]\s?(\d{2,4})\b/);
+  if (hm) out.hts = hm[1] + '.' + hm[2] + (hm[3] ? '.' + hm[3] : '');
+
+  out.isFee = /MP[FE]|H[MV][FE]/i.test(out.rateText);
+  out.isFree = /FREE/i.test(out.rateText);
+
+  // duty: single token, or "942" + "02" dollars/cents split
+  var dutyRaw = null;
+  var dutyNums = cells.duty.map(function (t) { return t.replace(/[$]/g, ''); })
+    .filter(function (t) { return /^[\d,]+(\.\d+)?$/.test(t); });
+  if (dutyNums.length === 1) dutyRaw = dutyNums[0];
+  else if (dutyNums.length >= 2) {
+    var last = dutyNums[dutyNums.length - 1], first = dutyNums.slice(0, -1).join('');
+    if (/^\d{2}$/.test(last) && first.indexOf('.') === -1) dutyRaw = first + '.' + last;
+    else dutyRaw = dutyNums.join('');
+  }
+  if (dutyRaw != null) out.dutyVal = numVal(dutyRaw);
+
+  var rateM = out.rateText.replace(/,/g, '.').match(/(\d+(?:\.\d+)?)\s*%/);
+  if (rateM && !out.isFee) {
+    var rv = parseFloat(rateM[1]);
+    if (rv > 0 && rv <= 200) out.ratePct = rv;
+  } else if (!out.isFee && !out.isFree) {
+    // OCR often drops the % sign ("10%" -> "10", "7.5%" -> "5"). Accept a bare
+    // number in the rate column as a rate ONLY when the same row carries a
+    // cents-bearing duty amount — real duty rows always print cents, while
+    // header junk ("33" / "34") never does. A wrong bare value (5 vs 7.5) is
+    // later repaired by the duty ÷ entered-value auto-correction.
+    var bareM = out.rateText.match(/^\s*(\d+(?:\.\d+)?)\s*$/);
+    if (bareM && dutyRaw != null && /\d\.\d{2}$/.test(dutyRaw)) {
+      var bv = parseFloat(bareM[1]);
+      if (bv >= 1 && bv <= 200) out.ratePct = bv;
+    }
+  }
+
+  // entered value: whole-dollar integer in the value column (only meaningful on
+  // rated/FREE rows — the CHGS "C68" tokens live on MPF/HMF rows, which we skip)
+  var vals = cells.value.map(function (t) { return normDigits(t.replace(/[$]/g, '')); })
+    .filter(function (t) { return /^[\d,]+$/.test(t); })
+    .map(numVal).filter(function (v) { return v != null && v > 0 && v < 5e8; });
+  if (vals.length) out.valueInt = Math.max.apply(null, vals);
+  return out;
+}
+
+/* COO evidence helpers */
+function cooFromDesc(descText) {
+  var rm = descText.match(/RECIP\s+([A-Z]{2})\b/);
+  if (rm) return { coo: rm[1], kind: 'recip' };
+  if (/CN\s?\/\s?HK|OF\s+CHINA|CHINA\s*,?\s*US/i.test(descText)) return { coo: 'CN', kind: 'china' };
+  return null;
+}
+var COO_PRIORITY = { recip: 3, china: 2, otok: 1 };
+var KNOWN_ISO = {};
+Object.keys(COO_NAMES).forEach(function (k) { KNOWN_ISO[COO_NAMES[k]] = true; });
+
+/* parse 7501 line blocks out of the OCR'd pages.
+   Blocks are segmented by CONTENT, not by the (often OCR-dropped) line-number
+   column: a line accumulates its Chapter-99 rate rows until the base-HTS row
+   that carries the entered value; the next rated row starts the next line.
+   Read line-number tokens corroborate the sequential numbering. */
+function parse7501(pageResults, onNote) {
+  var entryPages = pageResults.filter(function (p) {
+    return /ENTRY\s+SUMMARY/i.test(p.text) && /(7501|HTSUS|Entered)/i.test(p.text);
+  });
+  if (!entryPages.length) {
+    entryPages = pageResults.filter(function (p) { return /9903\./.test(p.text) && /Entered/i.test(p.text); });
+  }
+  onNote('Found ' + entryPages.length + ' Entry Summary page(s): ' +
+    (entryPages.map(function (p) { return p.pageNo; }).join(', ') || 'none'));
+
+  var blocks = [], cur = null;
+  var pendingCoo = [];   // COO evidence seen between blocks (trailing header of the next line)
+  var totalEnteredHint = null, recap = null;
+
+  function openBlock(pageNo) {
+    cur = { rate: 0, duty: 0, value: 0, hts: null, mpf: null, hmf: null,
+            cooEv: pendingCoo.splice(0), readNos: [], rateParts: [], flags: [],
+            baseSeen: false, pageNo: pageNo };
+    blocks.push(cur);
+  }
+
+  entryPages.forEach(function (page) {
+    var rows = wordsToRows(page.words);
+    var bands = calibrateBands(rows);
+
+    rows.forEach(function (row) {
+      var c = classifyRow(row, bands);
+      var isData = c.isFee || c.isFree || c.ratePct != null;
+      var startsLine = (cur == null && (isData || c.lineTok)) ||
+                       (cur != null && cur.baseSeen && (isData || c.lineTok));
+
+      var descCoo = cooFromDesc(c.descText);
+      if (startsLine) {
+        if (descCoo) pendingCoo.push(descCoo);
+        openBlock(page.pageNo);
+      } else if (descCoo) {
+        if (cur && !cur.baseSeen) cur.cooEv.push(descCoo);
+        else pendingCoo.push(descCoo);
+      }
+      if (!cur) return;
+
+      if (c.lineTok) cur.readNos.push(c.lineTok);
+      if (c.oTok && !cur.baseSeen) cur.cooEv.push({ coo: c.oTok, kind: 'otok' });
+      // the authoritative base HTS prints just BELOW its entered-value row;
+      // earlier sightings inside the block are noise from the Ch-99 region
+      if (c.hts) {
+        if (cur.baseSeen && !cur.htsAfterBase) { cur.htsAfterBase = c.hts; cur.hts = c.hts; }
+        else if (!cur.hts) cur.hts = c.hts;
+      }
+
+      if (c.isFee) {
+        if (/MPF|\(M?PF\)/i.test(c.rateText) && c.dutyVal != null) cur.mpf = c.dutyVal;
+        else if (c.dutyVal != null) cur.hmf = c.dutyVal;
+        return;
+      }
+      if (c.ratePct != null) {
+        cur.rate = r2(cur.rate + c.ratePct);
+        cur.rateParts.push(c.ratePct);
+        if (c.dutyVal != null) cur.duty = r2(cur.duty + c.dutyVal);
+      } else if (c.isFree && c.dutyVal != null) {
+        cur.duty = r2(cur.duty + c.dutyVal);
+      }
+      if ((c.ratePct != null || c.isFree) && c.valueInt != null) {
+        if (c.valueInt > cur.value) cur.value = c.valueInt;
+        cur.baseSeen = true;
+      }
+    });
+
+    var tm = page.text.match(/Total\s+Entered\s+Value[\s\S]{0,60}?\$?\s?([\d,]{3,})/i);
+    if (tm) totalEnteredHint = numVal(tm[1]);
+    var mInv = page.text.match(/INV\s*VALUE\s+([\d,]+\.?\d*)/i);
+    var mNev = page.text.match(/NEV\s+([\d,]+\.?\d*)/i);
+    var mDis = page.text.match(/D[Il1]SCOUNT\s+([\d,]+\.?\d*)/i);
+    if (mInv || mNev) recap = { inv: mInv && numVal(mInv[1]), nev: mNev && numVal(mNev[1]),
+                                discount: mDis && numVal(mDis[1]) };
+  });
+
+  // prune furniture blocks (opened by stray tokens, never accumulated anything)
+  blocks = blocks.filter(function (b) {
+    return b.rate > 0 || b.value > 0 || b.duty > 0 || b.mpf != null || b.hmf != null;
+  });
+
+  // number blocks sequentially — 7501 lines are strictly 001, 002, 003, …
+  // and block detection is structural, so the sequence outranks read tokens
+  // (OCR happily turns "006" into "008"). Tokens only corroborate or flag.
+  var lastNo = 0;
+  blocks.forEach(function (b) {
+    var adopted = lastNo + 1;
+    var confirms = b.readNos.some(function (t) { return parseInt(t, 10) === adopted; });
+    if (b.readNos.length && !confirms)
+      b.flags.push('line # printed as "' + b.readNos[0] + '" but sequence says ' + ('00' + adopted).slice(-3));
+    lastNo = adopted;
+    b.no = ('00' + adopted).slice(-3);
+
+    // pick COO by evidence priority: RECIP text > CHINA text > O-token
+    var best = null;
+    b.cooEv.forEach(function (ev) {
+      if (ev.kind === 'otok' && !KNOWN_ISO[ev.coo]) return;
+      if (!best || COO_PRIORITY[ev.kind] > COO_PRIORITY[best.kind]) best = ev;
+    });
+    b.coo = best ? best.coo : null;
+  });
+
+  // auto-correct OCR slips using the form's built-in redundancy:
+  // rate x entered value must equal the printed duty, and MPF = 0.3464% of value
+  blocks.forEach(function (b) {
+    if (!(b.duty > 0)) return;
+    if (b.value > 0 && b.rate > 0 && consistent(b.value, b.rate, b.duty)) return;
+    var vFromMpf = b.mpf ? b.mpf / 0.003464 : null;
+    var corroborates = function (v) {
+      return vFromMpf == null ? null : Math.abs(v - vFromMpf) <= Math.max(3, vFromMpf * 0.005);
+    };
+    // option A: trust value+duty, correct the rate (snap to 1/4-point grid)
+    var optA = null;
+    if (b.value > 0) {
+      var rRaw = b.duty / b.value * 100;
+      var rSnap = Math.round(rRaw * 4) / 4;
+      if (Math.abs(rRaw - rSnap) <= 0.11 && rSnap > 0 && consistent(b.value, rSnap, b.duty))
+        optA = { rate: rSnap, value: b.value, corr: corroborates(b.value) };
+    }
+    // option B: trust rate+duty, correct the value
+    var optB = null;
+    if (b.rate > 0) {
+      var vDer = Math.round(b.duty / b.rate * 100);
+      if (vDer > 0 && consistent(vDer, b.rate, b.duty))
+        optB = { rate: b.rate, value: vDer, corr: corroborates(vDer) };
+    }
+    var pick = null;
+    if (optA && optB) {
+      if (optA.corr === true && optB.corr !== true) pick = optA;
+      else if (optB.corr === true && optA.corr !== true) pick = optB;
+      else pick = optB;   // digit slips in the value are the more common OCR error
+    } else pick = optA || optB;
+    if (!pick || pick.corr === false) return;   // MPF contradicts — leave for manual review
+    if (pick.rate !== b.rate) { b.flags.push('rate auto-corrected ' + b.rate + '% -> ' + pick.rate + '% (duty / value)'); b.rate = pick.rate; }
+    if (pick.value !== b.value) { b.flags.push('entered value auto-corrected ' + (b.value || '?') + ' -> ' + pick.value + ' (duty / rate' + (pick.corr ? ', MPF agrees' : '') + ')'); b.value = pick.value; }
+  });
+
+  // de-dupe by line number (a PDF can contain two copies of the same 7501)
+  var seen = {}, uniq = [];
+  blocks.forEach(function (b) {
+    var prev = seen[b.no];
+    if (prev) {
+      if (!lineConsistency(prev).ok && lineConsistency(b).ok) { uniq[uniq.indexOf(prev)] = b; seen[b.no] = b; }
+      return;
+    }
+    seen[b.no] = b; uniq.push(b);
+  });
+  uniq.sort(function (a, b) { return a.no.localeCompare(b.no); });
+  return { lines: uniq, totalEnteredHint: totalEnteredHint, recap: recap };
+}
+
+function consistent(value, rate, duty) {
+  return Math.abs(value * rate / 100 - duty) <= Math.max(2, duty * 0.012);
+}
+
+/* rate x value vs printed duty */
+function lineConsistency(l) {
+  if (!l.rate || !l.value) return { ok: false, why: !l.value ? 'no entered value' : 'no rate' };
+  var ok = consistent(l.value, l.rate, l.duty || 0);
+  var suggest = !ok && l.rate > 0 && l.duty > 0 ? Math.round(l.duty / l.rate * 100) : null;
+  return { ok: ok, expect: l.value * l.rate / 100, suggest: suggest };
+}
+/* ============================== matching ============================== */
+function computeMatch() {
+  if (!APP.invoice) return null;
+  var g = groupItems(APP.invoice);
+  var groups = g.order.map(function (k) { return g.map[k]; });
+  var usable = APP.lines.filter(function (l) { return l.value > 0; });
+  var f = APP.invoice.gross > 0 ? APP.invoice.net / APP.invoice.gross : 1;
+
+  var assign = {};        // groupKey -> line no
+  var taken = {};         // line no -> true (only for exclusive auto-assign)
+
+  // 1. honor manual overrides
+  groups.forEach(function (gr) {
+    var ov = APP.overrides[gr.key];
+    if (ov && ov !== 'auto') {
+      if (ov === 'none') assign[gr.key] = null;
+      else { assign[gr.key] = ov; taken[ov] = true; }
+    }
+  });
+
+  // 2. auto-assign the rest, per COO when possible, by |gross*f - entered|
+  var rest = groups.filter(function (gr) { return !(gr.key in assign); });
+  var byCoo = {};
+  rest.forEach(function (gr) { (byCoo[gr.coo || '?'] = byCoo[gr.coo || '?'] || []).push(gr); });
+
+  Object.keys(byCoo).forEach(function (coo) {
+    var grs = byCoo[coo];
+    var cand = usable.filter(function (l) {
+      if (taken[l.no]) return false;
+      if (coo === '?' || !l.coo) return true;
+      return l.coo === coo;
+    });
+    var cost = function (gr, l) { return Math.abs(gr.gross * f - l.value); };
+
+    if (grs.length <= cand.length && grs.length <= 8 && cand.length <= 8) {
+      // exact assignment via permutations of candidate lines
+      var bestPerm = null, bestCost = Infinity;
+      var permute = function (chosen, remaining) {
+        if (chosen.length === grs.length) {
+          var c = 0;
+          for (var i = 0; i < grs.length; i++) c += cost(grs[i], chosen[i]);
+          if (c < bestCost) { bestCost = c; bestPerm = chosen.slice(); }
+          return;
+        }
+        if (bestCost === 0) return;
+        for (var r = 0; r < remaining.length; r++) {
+          var next = remaining.slice(); var pick = next.splice(r, 1)[0];
+          chosen.push(pick); permute(chosen, next); chosen.pop();
+        }
+      };
+      permute([], cand);
+      if (bestPerm) {
+        grs.forEach(function (gr, i) { assign[gr.key] = bestPerm[i].no; taken[bestPerm[i].no] = true; });
+        return;
+      }
+    }
+    // greedy fallback (more groups than lines, or big N): biggest groups first
+    grs.slice().sort(function (a, b) { return b.gross - a.gross; }).forEach(function (gr) {
+      var best = null, bestC = Infinity;
+      cand.forEach(function (l) {
+        if (taken[l.no]) return;
+        var c = cost(gr, l);
+        if (c < bestC) { bestC = c; best = l; }
+      });
+      if (best) { assign[gr.key] = best.no; taken[best.no] = true; }
+      else {
+        // leftover group: merge into the same-COO line whose delta improves most
+        var bestMerge = null, bestImp = -Infinity;
+        usable.forEach(function (l) {
+          if (l.coo && gr.coo && l.coo !== gr.coo) return;
+          var assignedGross = 0;
+          groups.forEach(function (o) { if (assign[o.key] === l.no) assignedGross += o.gross; });
+          if (!assignedGross) return;
+          var before = Math.abs(assignedGross * f - l.value);
+          var after = Math.abs((assignedGross + gr.gross) * f - l.value);
+          if (before - after > bestImp) { bestImp = before - after; bestMerge = l; }
+        });
+        if (bestMerge && bestImp > 0) assign[gr.key] = bestMerge.no;
+        else assign[gr.key] = null;
+      }
+    });
+  });
+
+  // per-line rollup
+  var lineGroups = {}, lineGross = {};
+  groups.forEach(function (gr) {
+    var no = assign[gr.key];
+    if (!no) return;
+    (lineGroups[no] = lineGroups[no] || []).push(gr);
+    lineGross[no] = r2((lineGross[no] || 0) + gr.gross);
+  });
+
+  return { groups: groups, assign: assign, lineGroups: lineGroups, lineGross: lineGross, f: f };
+}
+
+/* ============================== review UI ============================== */
+function renderReview() {
+  $('reviewPanel').style.display = 'block';
+  APP.match = computeMatch();
+  var m = APP.match;
+
+  var html = '<tr><th>Line</th><th>COO</th><th class="num">Tariff %</th><th class="num">Entered value $</th>' +
+    '<th class="num">Duty on 7501 $</th><th>Base HTS</th><th>Check</th><th>Matched invoice group(s)</th><th class="num">Group net $</th><th></th></tr>';
+
+  APP.lines.forEach(function (l, idx) {
+    var cons = lineConsistency(l);
+    var badge = cons.ok
+      ? '<span class="badge ok">✓ ' + (l.rate ? l.rate + '% × ' + fmtInt(l.value) + ' = ' + fmtMoney(r2(l.value * l.rate / 100)) : '') + '</span>'
+      : '<span class="badge warn">⚠ ' + (cons.why || ('rate × value = ' + fmtMoney(r2((l.value || 0) * (l.rate || 0) / 100)) + ' ≠ duty ' + fmtMoney(l.duty || 0))) + '</span>' +
+        (cons.suggest ? ' <a href="#" class="link" data-suggest="' + idx + '|' + cons.suggest + '">use ' + fmtInt(cons.suggest) + '?</a>' : '');
+    if (l.flags && l.flags.length) {
+      badge += '<div class="small" style="max-width:260px;white-space:normal">ⓘ ' + l.flags.map(esc).join('; ') + '</div>';
+    }
+
+    var gchips = '', gnet = '';
+    if (m) {
+      var grs = m.lineGroups[l.no] || [];
+      gchips = grs.map(function (gr) { return '<span class="chip">' + esc(gr.desc) + ' · ' + esc(gr.coo || '?') + ' · ' + fmtMoney(gr.gross) + '</span>'; }).join('') ||
+        '<span class="badge err">no invoice group</span>';
+      if (grs.length) {
+        var projected = r2((m.lineGross[l.no] || 0) * m.f);
+        var d = r2(projected - l.value);
+        gnet = fmtMoney(projected) + ' <span class="small">(Δ ' + (d >= 0 ? '+' : '') + d.toFixed(2) + ')</span>';
+      }
+    }
+    html += '<tr>' +
+      '<td><input data-i="' + idx + '" data-k="no" value="' + esc(l.no) + '" style="width:44px" class="mono"></td>' +
+      '<td><input data-i="' + idx + '" data-k="coo" value="' + esc(l.coo || '') + '" class="coo mono" placeholder="??"></td>' +
+      '<td class="num"><input data-i="' + idx + '" data-k="rate" value="' + (l.rate || '') + '" class="num"></td>' +
+      '<td class="num"><input data-i="' + idx + '" data-k="value" value="' + (l.value || '') + '" class="num"></td>' +
+      '<td class="num"><input data-i="' + idx + '" data-k="duty" value="' + (l.duty || '') + '" class="num"></td>' +
+      '<td class="mono small">' + esc(l.hts || '') + '</td>' +
+      '<td>' + badge + '</td>' +
+      '<td>' + gchips + '</td>' +
+      '<td class="num small">' + gnet + '</td>' +
+      '<td><a href="#" class="link" data-del="' + idx + '">✕</a></td>' +
+      '</tr>';
+  });
+  $('linesTable').innerHTML = html;
+
+  // wire edits
+  Array.prototype.forEach.call($('linesTable').querySelectorAll('input'), function (inp) {
+    inp.addEventListener('change', function () {
+      var l = APP.lines[+inp.dataset.i], k = inp.dataset.k;
+      if (k === 'no') l.no = inp.value.trim();
+      else if (k === 'coo') l.coo = inp.value.trim().toUpperCase() || null;
+      else l[k] = parseMoney(inp.value) || 0;
+      renderReview(); renderOutput();
+    });
+  });
+  Array.prototype.forEach.call($('linesTable').querySelectorAll('a[data-suggest]'), function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      var parts = a.dataset.suggest.split('|');
+      APP.lines[+parts[0]].value = +parts[1];
+      renderReview(); renderOutput();
+    });
+  });
+  Array.prototype.forEach.call($('linesTable').querySelectorAll('a[data-del]'), function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      APP.lines.splice(+a.dataset.del, 1);
+      renderReview(); renderOutput();
+    });
+  });
+
+  // totals + banners
+  var sumV = 0, sumD = 0;
+  APP.lines.forEach(function (l) { sumV += l.value || 0; sumD = r2(sumD + (l.duty || 0)); });
+  var tot = 'Σ entered values <b>' + fmtMoney(sumV) + '</b>';
+  if (APP.invoice) {
+    var d = r2(sumV - APP.invoice.net);
+    tot += ' vs invoice net ' + fmtMoney(APP.invoice.net) + ' → ' +
+      (Math.abs(d) <= Math.max(2, APP.invoice.net * 0.001)
+        ? '<span class="badge ok">reconciles (Δ ' + (d >= 0 ? '+' : '') + d.toFixed(2) + ')</span>'
+        : '<span class="badge err">off by ' + fmtMoney(d) + '</span>');
+  }
+  tot += ' &nbsp;·&nbsp; Σ duty ' + fmtMoney(sumD);
+  $('lineTotals').innerHTML = tot;
+
+  var mb = $('matchBanner');
+  if (m) {
+    var un = m.groups.filter(function (gr) { return !m.assign[gr.key]; });
+    if (un.length) {
+      mb.className = 'banner err'; mb.style.display = 'block';
+      mb.innerHTML = '<b>' + un.length + ' invoice group(s) not matched to any entry line:</b> ' +
+        un.map(function (gr) { return esc(gr.desc) + ' (' + esc(gr.coo || '?') + ', ' + fmtMoney(gr.gross) + ')'; }).join('; ') +
+        ' — these rows will export without tariff columns. Add/fix the missing line above.';
+    } else { mb.style.display = 'none'; }
+  }
+  var lb = $('lineBanner');
+  var bad = APP.lines.filter(function (l) { return !lineConsistency(l).ok; });
+  if (APP.lines.length && bad.length) {
+    lb.className = 'banner warn'; lb.style.display = 'block';
+    lb.textContent = bad.length + ' line(s) need review — rate × entered value doesn\'t match the duty read from the form. Fix the highlighted numbers (or click the suggestion).';
+  } else lb.style.display = 'none';
+}
+
+/* ============================== output ============================== */
+var EXTRA_HEADERS = ['TARIFF %', 'ENTRY LINE', 'DISCOUNTED COST EACH', 'DISCOUNTED AMOUNT'];
+
+function buildOutputRows() {
+  var inv = APP.invoice, m = APP.match;
+  if (!inv || !m) return null;
+  var lineByNo = {};
+  APP.lines.forEach(function (l) { lineByNo[l.no] = l; });
+
+  var sorted = inv.items.slice().sort(function (a, b) {
+    var ca = a.coo.toUpperCase(), cb = b.coo.toUpperCase();
+    if (ca !== cb) return ca < cb ? -1 : 1;
+    var da = a.desc.toUpperCase(), db = b.desc.toUpperCase();
+    if (da !== db) return da < db ? -1 : 1;
+    return a.item - b.item;
+  });
+
+  var g = groupItems(inv);
+  var rows = [], missing = 0;
+  sorted.forEach(function (it) {
+    var key = it.desc.toUpperCase() + '||' + (cooToIso(it.coo) || it.coo.toUpperCase());
+    var no = m.assign[key];
+    var l = no ? lineByNo[no] : null;
+    if (!l || !l.value || !(m.lineGross[no] > 0)) {
+      rows.push(it.raw.concat(['', '', '', '']));
+      missing++;
+      return;
+    }
+    var factor = l.value / m.lineGross[no];
+    var amt = r2(it.amount * factor);
+    var each = r2(it.amount * factor / (it.qty || 1));
+    rows.push(it.raw.concat([l.rate.toFixed(2) + '%', l.no, fmtMoney(each), fmtMoney(amt)]));
+  });
+
+  var all = [];
+  inv.preamble.forEach(function (r) { all.push(r); });
+  all.push(inv.header.concat(EXTRA_HEADERS));
+  rows.forEach(function (r) { all.push(r); });
+  inv.tail.forEach(function (r) { all.push(r); });
+  return { all: all, itemRows: rows, missing: missing };
+}
+
+function renderOutput() {
+  if (!APP.invoice || !APP.match) return;
+  var out = buildOutputRows();
+  if (!out) return;
+  APP.csvText = writeCsv(out.all);
+  $('outputPanel').style.display = 'block';
+
+  var hdr = APP.invoice.header.concat(EXTRA_HEADERS);
+  var html = '<tr>' + hdr.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr>';
+  out.itemRows.forEach(function (r) {
+    html += '<tr>' + r.map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>';
+  });
+  $('previewTable').innerHTML = html;
+
+  var ob = $('outBanner');
+  if (out.missing) {
+    ob.className = 'banner warn'; ob.style.display = 'block';
+    ob.textContent = out.missing + ' item row(s) have no matched entry line and will export with blank tariff columns.';
+  } else {
+    ob.className = 'banner ok'; ob.style.display = 'block';
+    var totAmt = 0;
+    out.itemRows.forEach(function (r) { var v = parseMoney(r[r.length - 1]); if (v) totAmt = r2(totAmt + v); });
+    ob.textContent = 'All ' + out.itemRows.length + ' item rows matched. Discounted amounts total ' + fmtMoney(totAmt) +
+      (APP.invoice ? ' (invoice net ' + fmtMoney(APP.invoice.net) + ').' : '.');
+  }
+  $('outName').textContent = outFileName();
+}
+
+function outFileName() {
+  var base = (APP.invoice && APP.invoice.name || 'invoice').replace(/\.(csv|xlsx?|XLSX?)$/, '');
+  return base + '_with_tariffs.csv';
+}
+
+/* ============================== glue ============================== */
+function bindDrop(dropId, inputId, onFile) {
+  var drop = $(dropId), input = $(inputId);
+  input.addEventListener('change', function () { if (input.files[0]) onFile(input.files[0]); });
+  ['dragover', 'dragenter'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('hover'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('hover'); });
+  });
+  drop.addEventListener('drop', function (e) {
+    if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]);
+  });
+}
+
+var pdfFile = null;
+bindDrop('dropInv', 'fileInv', function (file) {
+  var reader = new FileReader();
+  var isX = /\.xlsx?$/i.test(file.name);
+  reader.onload = function () {
+    try {
+      var rows;
+      if (isX) {
+        if (!window.XLSX) throw new Error('XLSX library not loaded — check connection and reload.');
+        var wb = XLSX.read(new Uint8Array(reader.result), { type: 'array' });
+        var ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+      } else {
+        rows = parseCsv(reader.result);
+      }
+      APP.invoice = parseInvoiceRows(rows, file.name);
+      APP.overrides = {};
+      $('dropInv').classList.add('loaded');
+      $('dropInv').querySelector('.big').textContent = file.name;
+      $('metaInv').textContent = describeInvoice(APP.invoice);
+      updateButtons();
+      if (APP.lines.length) { renderReview(); renderOutput(); }
+    } catch (err) {
+      $('metaInv').textContent = '✕ ' + err.message;
+      APP.invoice = null; updateButtons();
+    }
+  };
+  if (isX) reader.readAsArrayBuffer(file); else reader.readAsText(file);
+});
+bindDrop('dropPdf', 'filePdf', function (file) {
+  pdfFile = file;
+  $('dropPdf').classList.add('loaded');
+  $('dropPdf').querySelector('.big').textContent = file.name;
+  $('metaPdf').textContent = (file.size / 1024 / 1024).toFixed(1) + ' MB';
+  updateButtons();
+});
+function updateButtons() {
+  $('btnProcess').disabled = !(pdfFile);
+}
+
+$('btnProcess').addEventListener('click', async function () {
+  $('btnProcess').disabled = true;
+  try {
+    logLine('— starting OCR pass (runs entirely in this browser tab) —');
+    var pageResults = await ocrPdf(pdfFile, $('pageRange').value, function (msg, frac) {
+      logLine(msg); if (frac != null) setProgress(frac);
+    });
+    APP.pageResults = pageResults;
+    var parsed = parse7501(pageResults, logLine);
+    APP.lines = parsed.lines;
+    APP.ocrRan = true;
+    logLine('Parsed ' + APP.lines.length + ' entry line(s).');
+    if (parsed.recap && (parsed.recap.nev || parsed.recap.inv)) {
+      logLine('Broker recap on the bill: invoice ' + (parsed.recap.inv ? fmtMoney(parsed.recap.inv) : '?') +
+        (parsed.recap.discount ? ', discount ' + fmtMoney(parsed.recap.discount) : '') +
+        (parsed.recap.nev ? ', net entered ' + fmtMoney(parsed.recap.nev) : ''));
+    }
+    if (!APP.lines.length) logLine('No entry lines found — use "enter 7501 lines manually" below.', true);
+    setProgress(null);
+    renderReview();
+    if (APP.invoice) renderOutput();
+  } catch (err) {
+    logLine('✕ ' + (err && err.message || err), true);
+    setProgress(null);
+  }
+  $('btnProcess').disabled = false;
+});
+
+$('btnManual').addEventListener('click', function () {
+  if (!APP.lines.length) {
+    APP.lines.push({ no: '001', coo: '', rate: 0, value: 0, duty: 0, hts: null, mpf: null, hmf: null, flags: [] });
+  }
+  renderReview();
+  if (APP.invoice) renderOutput();
+});
+$('btnAddLine').addEventListener('click', function () {
+  var next = '00' + (APP.lines.length + 1);
+  APP.lines.push({ no: next.slice(-3), coo: '', rate: 0, value: 0, duty: 0, hts: null, mpf: null, hmf: null, flags: [] });
+  renderReview();
+});
+
+$('btnDownload').addEventListener('click', function () {
+  if (!APP.csvText) return;
+  var blob = new Blob([APP.csvText], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = outFileName();
+  document.body.appendChild(a); a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+});
+$('btnCopy').addEventListener('click', function () {
+  if (!APP.csvText) return;
+  navigator.clipboard.writeText(APP.csvText).then(function () {
+    $('btnCopy').textContent = 'Copied ✓';
+    setTimeout(function () { $('btnCopy').textContent = 'Copy CSV to clipboard'; }, 1500);
+  });
+});
+
+/* test hook: lets the e2e harness read the generated CSV without a download */
+window.__scwTariffTool = {
+  getCsv: function () { return APP.csvText; },
+  getLines: function () { return APP.lines; },
+  state: APP
+};
+
+</script>
+</body>
+</html>
