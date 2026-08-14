@@ -232,6 +232,7 @@
         <button id="btnMomCsv">Download month-by-month CSV</button>
       </div>
       <div class="tbl-wrap"><table id="momTable"></table></div>
+      <div id="seFifo" style="margin-top:14px"></div>
     </div>
 
     <div class="card">
@@ -763,12 +764,18 @@ function buildTracker(text, fileName) {
     if (!mo) continue;
     lineCount++;
     var e = byMonth[mo];
-    if (!e) e = byMonth[mo] = { se: 0, replen: 0, tariff: 0, qty: 0, skus: 0 };
-    e.se += parseNum(g('Shipedge Data Total Cost')) || 0;
-    e.replen += parseNum(g('Replen Data Total Cost')) || 0;
-    e.tariff += parseNum(g('Tariff Cost')) || 0;
-    e.qty += parseNum(g('Quantity Shipped')) || 0;
-    e.skus++;
+    if (!e) e = byMonth[mo] = { se: 0, replen: 0, tariff: 0, qty: 0, skus: 0, lines: [] };
+    var ln = {
+      sku: (g('SKU') || '').split(' - ')[0].trim(),
+      qty: parseNum(g('Quantity Shipped')) || 0,
+      per: parseNum(g('Per Item Cost')) || 0,
+      replenPer: parseNum(g('Average Cost from Replenishment')) || 0,
+      se: parseNum(g('Shipedge Data Total Cost')) || 0,
+      replen: parseNum(g('Replen Data Total Cost')) || 0,
+      tariff: parseNum(g('Tariff Cost')) || 0
+    };
+    e.se += ln.se; e.replen += ln.replen; e.tariff += ln.tariff; e.qty += ln.qty; e.skus++;
+    e.lines.push(ln);
   }
   if (!lineCount) throw new Error('No tracker line items with a parseable COG REPORT month.');
   return { byMonth: byMonth, months: Object.keys(byMonth).sort(), lineCount: lineCount, fileName: fileName };
@@ -1188,7 +1195,7 @@ function renderMoM(rows) {
   function trk(m) { return (state.tracker && state.tracker.byMonth[m]) || null; }
   var html = '<thead><tr><th>Month</th><th class="num">Units</th><th class="num">Ecom COGS</th><th class="num">Install COGS</th>' +
     '<th class="num">All COGS (computed)</th>' +
-    (showT ? '<th class="num">Tracker (SE cost)</th><th class="num">Tracker (replen)</th>' : '') +
+    (showT ? '<th class="num">Tracker (SE cost)</th><th class="num">Tracker (replen)</th><th class="num">SE − FIFO</th>' : '') +
     (showX ? '<th class="num">COGS booked</th>' + (showT ? '<th class="num">Booked − replen</th>' : '') +
       '<th class="num">Over/(under) vs computed</th><th class="num">Purchases in</th>' : '') +
     (showPhys ? '<th class="num">Physical Δ</th><th class="num">Book − physical @ end</th>' : '') +
@@ -1211,7 +1218,8 @@ function renderMoM(rows) {
       '<td class="num">' + (r.hasShip ? fmt$(r.ecom) : noShip) + '</td>' +
       '<td class="num">' + (r.hasShip ? fmt$(r.install) : noShip) + '</td>' +
       '<td class="num">' + (r.hasShip ? '<b>' + fmt$(r.all) + '</b>' : noShip) + '</td>' +
-      (showT ? '<td class="num">' + (tk ? fmt$(tk.se) : '—') + '</td><td class="num">' + (tk ? fmt$(tk.replen) : '—') + '</td>' : '') +
+      (showT ? '<td class="num">' + (tk ? fmt$(tk.se) : '—') + '</td><td class="num">' + (tk ? fmt$(tk.replen) : '—') + '</td>' +
+        '<td class="num">' + (tk ? (tk.se - tk.replen >= 0 ? '+' : '') + fmt$(tk.se - tk.replen) : '—') + '</td>' : '') +
       (showX ? '<td class="num">' + (r.booked === null ? '<span class="d2">not booked</span>' : fmt$(r.booked)) + '</td>' +
         (showT ? '<td class="num">' + (r.booked !== null && tk ? gapCell(r.booked - tk.replen, tk.replen) : '—') + '</td>' : '') +
         '<td class="num">' + (r.booked === null || !r.hasShip ? '—' : gapCell(r.booked - r.all, r.all)) + '</td>' +
@@ -1224,7 +1232,8 @@ function renderMoM(rows) {
     html += '<tr class="tot"><td>Total</td><td class="num">' + fmtQ(T.units) + '</td>' +
       '<td class="num">' + fmt$(T.ecom) + '</td><td class="num">' + fmt$(T.install) + '</td>' +
       '<td class="num">' + fmt$(T.all) + '</td>' +
-      (showT ? '<td class="num">' + (T.anyT ? fmt$(T.se) : '—') + '</td><td class="num">' + (T.anyT ? fmt$(T.rep) : '—') + '</td>' : '') +
+      (showT ? '<td class="num">' + (T.anyT ? fmt$(T.se) : '—') + '</td><td class="num">' + (T.anyT ? fmt$(T.rep) : '—') + '</td>' +
+        '<td class="num">' + (T.anyT ? (T.se - T.rep >= 0 ? '+' : '') + fmt$(T.se - T.rep) : '—') + '</td>' : '') +
       (showX ? '<td class="num">' + (T.anyBooked ? fmt$(T.booked) : '—') + '</td>' +
         (showT ? '<td class="num">' + (T.anyBvr ? gapCell(T.bvr, T.booked) : '—') + '</td>' : '') +
         '<td class="num">' + (T.anyBooked ? gapCell(T.ou, T.all) : '—') + '</td>' +
@@ -1232,6 +1241,50 @@ function renderMoM(rows) {
       (showPhys ? '<td></td><td></td>' : '') + '</tr>';
   }
   $('momTable').innerHTML = html + '</tbody>';
+  renderSeFifo();
+}
+
+/* Per-SKU ShipEdge-cost vs FIFO/replen-cost comparison for the selected month,
+   straight from the tracker's line items. */
+function renderSeFifo() {
+  var el = $('seFifo');
+  if (!el) return;
+  var m = state.shipped ? state.shipped.month : '';
+  var tk = state.tracker && state.tracker.byMonth[m];
+  if (!tk || !tk.lines || !tk.lines.length) { el.innerHTML = ''; return; }
+  var lines = tk.lines.slice().sort(function (a, b) { return Math.abs(b.se - b.replen) - Math.abs(a.se - a.replen); });
+  var diff = lines.filter(function (l) { return Math.abs(l.se - l.replen) > 0.005; });
+  var top = diff.slice(0, 40);
+  var body = top.map(function (l) {
+    var d = l.se - l.replen;
+    return '<tr><td>' + esc(l.sku) + '</td><td class="num">' + fmtQ(l.qty) + '</td>' +
+      '<td class="num">' + fmt$(l.per) + '</td><td class="num">' + fmt$(l.replenPer) + '</td>' +
+      '<td class="num">' + fmt$(l.se) + '</td><td class="num">' + fmt$(l.replen) + '</td>' +
+      '<td class="num' + (d < 0 ? ' delta-warn' : '') + '">' + (d >= 0 ? '+' : '') + fmt$(d) + '</td></tr>';
+  }).join('');
+  el.innerHTML =
+    '<details class="issue info"><summary>ShipEdge cost vs FIFO (replen) cost — ' + esc(monthLabel(m)) +
+    '<span class="n">SE ' + fmt$(tk.se) + ' · FIFO ' + fmt$(tk.replen) + ' · Δ ' + (tk.se - tk.replen >= 0 ? '+' : '') + fmt$(tk.se - tk.replen) + '</span></summary>' +
+    '<div class="body"><p>' + diff.length + ' of ' + tk.lines.length + ' tracker line items price differently under the two bases' +
+    (diff.length > 40 ? ' (top 40 by |Δ| shown — download for all)' : '') +
+    '. Positive Δ = FIFO layers were cheaper than the ShipEdge cost at close (older stock consumed). ' +
+    '<button id="btnSeFifoCsv" style="margin-left:6px">Download full comparison CSV</button></p>' +
+    '<div class="tbl-wrap" style="max-height:340px;overflow-y:auto"><table>' +
+    '<thead><tr><th>SKU</th><th class="num">Qty</th><th class="num">SE unit cost</th><th class="num">FIFO avg cost</th>' +
+    '<th class="num">SE total</th><th class="num">FIFO total</th><th class="num">Δ (SE − FIFO)</th></tr></thead>' +
+    '<tbody>' + body + '</tbody></table></div></div></details>';
+}
+function exportSeFifoCsv() {
+  var m = state.shipped ? state.shipped.month : '';
+  var tk = state.tracker && state.tracker.byMonth[m];
+  if (!tk) return;
+  var rows = tk.lines.slice().sort(function (a, b) { return Math.abs(b.se - b.replen) - Math.abs(a.se - a.replen); })
+    .map(function (l) {
+      return [l.sku, l.qty, num2(l.per), num2(l.replenPer), num2(l.se), num2(l.replen), num2(l.se - l.replen), num2(l.tariff)];
+    });
+  download('se-vs-fifo_' + m + '.csv',
+    toCSV(['Sku', 'Qty Shipped', 'ShipEdge Unit Cost', 'FIFO Avg Cost', 'ShipEdge Total', 'FIFO Total', 'Delta (SE - FIFO)', 'Tariff Cost'], rows));
+  toast('se-vs-fifo_' + m + '.csv downloaded');
 }
 function exportMomCsv() {
   var rows = state.monthly || [];
@@ -2095,6 +2148,7 @@ function bootPreload() {
     else if (t.id === 'btnInvCsv') exportInvCsv();
     else if (t.id === 'btnMoveCsv') exportMoveCsv();
     else if (t.id === 'btnMomCsv') exportMomCsv();
+    else if (t.id === 'btnSeFifoCsv') exportSeFifoCsv();
     else if (t.id === 'btnAudit') exportAudit();
     else if (t.id === 'btnClearAdj') {
       if (state.xero) state.xero.txs.forEach(function (tx) { delete state.adjustments[tx.key]; });
