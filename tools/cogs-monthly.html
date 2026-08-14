@@ -282,6 +282,7 @@
       <div id="crossChecks" style="margin-top:14px"></div>
       <div id="xeroTxs" style="margin-top:14px"></div>
       <div id="returnsRadar" style="margin-top:14px"></div>
+      <div id="lossLedger" style="margin-top:14px"></div>
       <div class="controls" style="margin-top:14px">
         <span class="sub" id="moversNote"></span>
         <span class="spacer"></span>
@@ -1094,6 +1095,8 @@ function computeRecon() {
     });
     var dts = snap.dates;
     var events = [];
+    var rBySku = new Map();          // canonical sku -> daily implied series
+    var gainsByDay = new Map();      // day index -> [{sku, q}] gains >= 4 (transfer matching)
     snap.bySku.forEach(function (v, rawSku) {
       var mk3 = matchSku(items, rawSku);
       var key3 = mk3.key || rawSku;
@@ -1104,7 +1107,12 @@ function computeRecon() {
       for (var di = 0; di < dts.length - 1; di++) {
         rArr[di] = (v.dates.get(dts[di + 1]) || 0) - (v.dates.get(dts[di]) || 0) +
                    (sd ? (sd.get(dts[di]) || 0) : 0);
+        if (rArr[di] >= 4) {
+          if (!gainsByDay.has(di)) gainsByDay.set(di, []);
+          gainsByDay.get(di).push({ sku: key3, q: rArr[di] });
+        }
       }
+      rBySku.set(key3, rArr);
       for (var dj = 0; dj < dts.length - 1; dj++) {
         var d0 = dts[dj];
         if (d0.slice(0, 7) !== month) continue;
@@ -1153,6 +1161,85 @@ function computeRecon() {
                 caught: rl.filter(function (e) { return e.zeroLayer; }).length,
                 reshipped: rl.filter(function (e) { return e.reship; }).length,
                 phantom: bucket('timing-phantom'), poTail: bucket('po-tail') };
+
+    /* Loss ledger: classify every net-loss SKU of the month.
+       transfer  — quantity-matched add on ANOTHER SKU same/±1 day, ranked by
+                   description similarity (stock consolidated between SKUs)
+       regrade   — matching add on an RMA sibling SKU (X → X(RA)/X(RC))
+       echo      — the loss sits on the first days of the month and matches a
+                   prior-month-end shipment whose decrement landed late
+       residual  — small net that dissolves into daily timing churn
+       adjustment — genuinely unexplained (shrink, write-off, kit pulls) */
+    var lossRows = [];
+    var sibIndex = {};
+    rBySku.forEach(function (arr, sk) {
+      var b = rmaBase(sk);
+      (sibIndex[b] = sibIndex[b] || []).push(sk);
+    });
+    moveRows.forEach(function (e) {
+      if (e.impl >= 0) return;
+      var rArr = rBySku.get(e.sku);
+      var lossDays = [];
+      if (rArr) for (var i = 0; i < dts.length - 1; i++) {
+        if (dts[i].slice(0, 7) === month && rArr[i] < 0) lossDays.push({ i: i, d: dts[i], q: rArr[i] });
+      }
+      lossDays.sort(function (a, b) { return a.q - b.q; });
+      var cls = 'adjustment', ev = '';
+      var myTok = descTokens(e.desc);
+      for (var li = 0; li < lossDays.length && cls === 'adjustment'; li++) {
+        var L = lossDays[li], need = -L.q;
+        if (need < 4) break;
+        var best = null;
+        for (var k = -1; k <= 1; k++) {
+          (gainsByDay.get(L.i + k) || []).forEach(function (g) {
+            if (g.sku === e.sku) return;
+            if (Math.abs(g.q - need) > Math.max(2, need * 0.25)) return;
+            var it2 = items.get(g.sku);
+            var sim = tokenSim(myTok, descTokens(it2 && it2.desc));
+            if (!best || sim > best.sim) best = { g: g, sim: sim };
+          });
+        }
+        if (best && best.sim >= 0.3) { cls = 'transfer'; ev = L.d + ': −' + need + ' → +' + best.g.q + ' on ' + best.g.sku + ' (similar description)'; }
+        else if (best) { cls = 'possible transfer'; ev = L.d + ': −' + need + ' → +' + best.g.q + ' on ' + best.g.sku + ' (qty match only)'; }
+      }
+      if (cls === 'adjustment') {
+        lossDays.some(function (L) {
+          return (sibIndex[rmaBase(e.sku)] || []).some(function (sib) {
+            if (sib === e.sku) return false;
+            var sr = rBySku.get(sib), g = 0;
+            for (var k2 = -3; k2 <= 3; k2++) {
+              if (sr && L.i + k2 >= 0 && L.i + k2 < sr.length && sr[L.i + k2] > 0) g += sr[L.i + k2];
+            }
+            if (g >= -L.q * 0.8 && g > 0) { cls = 'regrade'; ev = L.d + ': −' + (-L.q) + ' → +' + g + ' on ' + sib; return true; }
+            return false;
+          });
+        });
+      }
+      if (cls === 'adjustment' && lossDays.length && lossDays[0].d <= month + '-02' && rArr) {
+        var i1 = didxOf(dts, month + '-01');
+        var priorPhantom = 0;
+        for (var k3 = 1; k3 <= 2; k3++) if (i1 - k3 >= 0) priorPhantom += Math.max(0, rArr[i1 - k3]);
+        var earlyLoss = lossDays.filter(function (L) { return L.d <= month + '-02'; })
+                                .reduce(function (a, L) { return a - L.q; }, 0);
+        if (priorPhantom >= earlyLoss * 0.8 && priorPhantom > 0) {
+          cls = 'echo'; ev = 'prior-month-end shipment decremented after the boundary (+' + priorPhantom + ' phantom before the 1st)';
+        }
+      }
+      if (cls === 'adjustment' && lossDays.length) {
+        var Lb = lossDays[0], net5 = 0;
+        for (var k4 = -2; k4 <= 2; k4++) {
+          if (Lb.i + k4 >= 0 && Lb.i + k4 < rArr.length) net5 += rArr[Lb.i + k4];
+        }
+        if (net5 >= 0 || -e.impl <= 2) { cls = 'residual'; ev = 'daily churn nets out (largest dip ' + Lb.d + ' ' + Lb.q + ', ±2d net ' + (net5 >= 0 ? '+' : '') + net5 + ')'; }
+      }
+      lossRows.push({ sku: e.sku, desc: e.desc, s0: e.s0, e0: e.e0, sh: e.sh, impl: e.impl,
+                      val: e.implVal, cls: cls, ev: ev });
+    });
+    lossRows.sort(function (a, b) { return a.val - b.val; });
+    var lby = {};
+    lossRows.forEach(function (l) { lby[l.cls] = (lby[l.cls] || 0) + l.val; });
+    returns.lossLedger = { rows: lossRows, byClass: lby,
+                          total: lossRows.reduce(function (a, l) { return a + l.val; }, 0) };
   }
 
   return { month: month, startDate: startDate, endDate: endDate, endIsBoundary: endIsBoundary,
@@ -1162,6 +1249,28 @@ function addDays(iso, n) {
   var d = new Date(iso + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+function didxOf(dts, d) {
+  var i = dts.indexOf(d);
+  return i >= 0 ? i : 0;
+}
+var TOKEN_STOP = { THE: 1, FOR: 1, WITH: 1, AND: 1, 'V1': 1, 'V2': 1, 'V3': 1, 'V4': 1, 'V5': 1 };
+function descTokens(s) {
+  var out = {};
+  String(s || '').toUpperCase().split(/[^A-Z0-9.]+/).forEach(function (t) {
+    if (t.length >= 2 && !TOKEN_STOP[t]) out[t] = 1;
+  });
+  return out;
+}
+function tokenSim(a, b) {
+  var ka = Object.keys(a), kb = Object.keys(b);
+  if (!ka.length || !kb.length) return 0;
+  var hit = 0;
+  ka.forEach(function (t) { if (b[t]) hit++; });
+  return hit / Math.min(ka.length, kb.length);
+}
+function rmaBase(sku) {
+  return String(sku).replace(/\s*\((R[A-Z0-9]*|RMA)\)\s*$/, '').replace(/\s+RMA$/, '').trim();
 }
 
 /* ================= month-by-month: what COGS should have been ================= */
@@ -1222,7 +1331,13 @@ function computeMonthly() {
       byM[m].physEnd = hasE ? ev : null;
     });
   }
-  return Object.keys(byM).sort().map(function (m) { return byM[m]; });
+  var keys = Object.keys(byM).sort();
+  var first = null;
+  keys.forEach(function (m) {
+    if (first === null && (byM[m].hasShip || byM[m].purch !== null || byM[m].booked !== null)) first = m;
+  });
+  return keys.filter(function (m) { return first === null || m >= first; })
+             .map(function (m) { return byM[m]; });
 }
 /* ================= formatting & DOM helpers ================= */
 function $(id) { return document.getElementById(id); }
@@ -1495,11 +1610,16 @@ function renderTrueUp() {
       'A steady gap is structural (freight in bills, $0-cost RMA stock). A jump means this month’s bookings don’t match this month’s movement.');
   }
 
-  // 5 — unexplained losses
+  // 5 — unexplained losses, decomposed by the loss ledger
   if (rc && rc.tot && rc.tot.lossVal < -2000) {
-    row('warn', 'Inventory losses shipments don’t explain',
-      fmt$(rc.tot.lossVal) + ' across ' + rc.tot.lossSkus + ' SKUs',
-      'Stock dropped with no shipment record — adjustments, shrink, or SKU renames. Biggest ones are in the movement table.');
+    var LL = rc.returns && rc.returns.lossLedger;
+    var adjOnly = LL ? (LL.byClass['adjustment'] || 0) : null;
+    row(adjOnly !== null && adjOnly > -2000 ? 'good' : 'warn', 'Inventory losses shipments don’t explain',
+      fmt$(rc.tot.lossVal) + ' across ' + rc.tot.lossSkus + ' SKUs' +
+      (LL ? ' — truly unexplained: ' + fmt$(adjOnly || 0) : ''),
+      LL ? 'Decomposed in the Loss ledger: ' +
+        Object.keys(LL.byClass).map(function (k) { return k + ' ' + fmt$(LL.byClass[k]); }).join(', ') + '.'
+         : 'Stock dropped with no shipment record — see the movement table.');
   }
 
   $('trueup').innerHTML = rows.map(function (r) {
@@ -1598,6 +1718,7 @@ function renderMovement(rc) {
 
   renderXeroTxs(rc);
   renderReturns(rc);
+  renderLossLedger(rc);
 
   if (!rc.moveRows.length) {
     $('moversNote').textContent = '';
@@ -1713,6 +1834,49 @@ function renderReturns(rc) {
       : '<p>No return-like re-entries detected this month.</p>') +
     '</div></details>';
 }
+/* Loss ledger panel: the detailed accounting behind "losses shipments don't explain". */
+var LOSS_CHIP = { transfer: ['fix', 'moved between SKUs'], 'possible transfer': ['zero', 'qty match only'],
+                  regrade: ['fix', 'RMA regrade'], echo: ['fix', 'boundary echo'],
+                  residual: ['fix', 'timing churn'], adjustment: ['miss', 'unexplained'] };
+function renderLossLedger(rc) {
+  var el = $('lossLedger');
+  if (!el) return;
+  var LL = rc && rc.returns && rc.returns.lossLedger;
+  if (!LL || !LL.rows.length) { if (el) el.innerHTML = ''; return; }
+  var byC = Object.keys(LL.byClass).sort(function (a, b) { return LL.byClass[a] - LL.byClass[b]; })
+    .map(function (k) { return k + ' ' + fmt$(LL.byClass[k]); }).join(' · ');
+  var body = LL.rows.map(function (l) {
+    var chip = LOSS_CHIP[l.cls] || ['zero', l.cls];
+    return '<tr><td>' + esc(l.sku) + '<span class="rowflag ' + chip[0] + '">' + chip[1] + '</span></td>' +
+      '<td class="num">' + fmtQ(l.s0) + '</td><td class="num">' + fmtQ(l.e0) + '</td>' +
+      '<td class="num">' + fmtQ(l.sh) + '</td><td class="num">' + fmtQ(l.impl) + '</td>' +
+      '<td class="num' + (l.cls === 'adjustment' ? ' delta-bad' : '') + '">' + fmt$(l.val) + '</td>' +
+      '<td><span class="d2">' + esc(l.ev || '') + '</span></td>' +
+      '<td><span class="d2">' + esc((l.desc || '').slice(0, 40)) + '</span></td></tr>';
+  }).join('');
+  el.innerHTML =
+    '<details class="issue warn"><summary>Loss ledger — where the unexplained losses actually went' +
+    '<span class="n">' + LL.rows.length + ' SKUs · ' + fmt$(LL.total) + '</span></summary><div class="body">' +
+    '<p>Every net-loss SKU of the month, classified: <b>' + esc(byC) + '</b>. ' +
+    '<i>Moved between SKUs</i> = a quantity-matched add appeared on another SKU with a similar description the same day (stock consolidation — value-neutral in units; any $ difference is the two SKUs’ cost-table spread). ' +
+    '<i>RMA regrade</i> = the units reappeared on the (RA)/(RC) sibling. Only <i>unexplained</i> rows are true shrink candidates. ' +
+    '<button id="btnLossCsv" style="margin-left:6px">Download loss ledger CSV</button></p>' +
+    '<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table>' +
+    '<thead><tr><th>SKU</th><th class="num">Start</th><th class="num">End</th><th class="num">Shipped</th><th class="num">Implied</th><th class="num">Value</th><th>Evidence</th><th>Description</th></tr></thead>' +
+    '<tbody>' + body + '</tbody></table></div></div></details>';
+}
+function exportLossCsv() {
+  var rc = state.recon;
+  var LL = rc && rc.returns && rc.returns.lossLedger;
+  if (!LL) return;
+  var rows = LL.rows.map(function (l) {
+    return [l.sku, l.s0, l.e0, l.sh, l.impl, num2(l.val), l.cls, l.ev, l.desc];
+  });
+  download('loss-ledger_' + rc.month + '.csv',
+    toCSV(['Sku', 'Start Qty', 'End Qty', 'Shipped', 'Implied', 'Value', 'Classification', 'Evidence', 'Description'], rows));
+  toast('loss-ledger_' + rc.month + '.csv downloaded');
+}
+
 function exportReturnsCsv() {
   var rc = state.recon;
   if (!rc || !rc.returns) return;
@@ -2398,6 +2562,7 @@ function bootPreload() {
     else if (t.id === 'btnMomCsv') exportMomCsv();
     else if (t.id === 'btnSeFifoCsv') exportSeFifoCsv();
     else if (t.id === 'btnReturnsCsv') exportReturnsCsv();
+    else if (t.id === 'btnLossCsv') exportLossCsv();
     else if (t.id === 'btnAudit') exportAudit();
     else if (t.id === 'btnClearAdj') {
       if (state.xero) state.xero.txs.forEach(function (tx) { delete state.adjustments[tx.key]; });
