@@ -1,4 +1,4 @@
-<title>Q2 Push Board</title>
+<title>Q2 &amp; Q3 Push</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -10,7 +10,7 @@
   --grid:#e3e8ed; --rule:#ccd4dc; --border:rgba(15,22,32,.11); --border-2:rgba(15,22,32,.18);
   --brand:#0d366b; --brand-ink:#0d366b; --deep:#124e85; --slate:#5f6b7a;
   --y22:#86b6ef; --y23:#5598e7; --y24:#2a78d6; --y25:#1c5cab; --y26:#0d366b;
-  --goal2:#a34ad6; --goal2-ink:#7c2fa8; --goal2-wash:#f6ecfb;
+    --gold:#c98a00; --goal2:#a34ad6; --goal2-ink:#7c2fa8; --goal2-wash:#f6ecfb;
   --good:#0ca30c; --good-ink:#046604; --warn:#fab219; --warn-ink:#8a5a00;
   --crit:#d03b3b; --crit-ink:#a52020;
   --good-wash:#e8f6e8; --warn-wash:#fdf3dd; --crit-wash:#fdeded; --brand-wash:#eaf2fb;
@@ -24,7 +24,7 @@
     --grid:#262e37; --rule:#333c46; --border:rgba(255,255,255,.11); --border-2:rgba(255,255,255,.18);
     --brand:#9ec5f4; --brand-ink:#9ec5f4; --deep:#4a92d6; --slate:#93a0ad;
     --y22:#184f95; --y23:#256abf; --y24:#3987e5; --y25:#6da7ec; --y26:#9ec5f4;
-    --goal2:#b57ce8; --goal2-ink:#c9a0f0; --goal2-wash:rgba(181,124,232,.15);
+    --gold:#f0b429; --goal2:#b57ce8; --goal2-ink:#c9a0f0; --goal2-wash:rgba(181,124,232,.15);
     --good:#0ca30c; --good-ink:#3ec43e; --warn:#fab219; --warn-ink:#fab219;
     --crit:#e66767; --crit-ink:#f08a8a;
     --good-wash:rgba(12,163,12,.13); --warn-wash:rgba(250,178,25,.13);
@@ -39,7 +39,7 @@
   --grid:#262e37; --rule:#333c46; --border:rgba(255,255,255,.11); --border-2:rgba(255,255,255,.18);
   --brand:#9ec5f4; --brand-ink:#9ec5f4; --deep:#4a92d6; --slate:#93a0ad;
   --y22:#184f95; --y23:#256abf; --y24:#3987e5; --y25:#6da7ec; --y26:#9ec5f4;
-  --goal2:#b57ce8; --goal2-ink:#c9a0f0; --goal2-wash:rgba(181,124,232,.15);
+  --gold:#f0b429; --goal2:#b57ce8; --goal2-ink:#c9a0f0; --goal2-wash:rgba(181,124,232,.15);
   --good:#0ca30c; --good-ink:#3ec43e; --warn:#fab219; --warn-ink:#fab219;
   --crit:#e66767; --crit-ink:#f08a8a;
   --good-wash:rgba(12,163,12,.13); --warn-wash:rgba(250,178,25,.13);
@@ -267,10 +267,14 @@ td .yr i{width:9px; height:9px; border-radius:2px; flex:none}
 [data-band="crit"]{--bc:var(--crit); --bi:var(--crit-ink); --bw:var(--crit-wash)}
 [data-band="warn"]{--bc:var(--warn); --bi:var(--warn-ink); --bw:var(--warn-wash)}
 [data-band="good"]{--bc:var(--good); --bi:var(--good-ink); --bw:var(--good-wash)}
-[data-band="best"]{--bc:var(--goal2); --bi:var(--goal2-ink); --bw:var(--goal2-wash)}
+[data-band="best"]{--bc:var(--gold); --bi:var(--good-ink); --bw:var(--good-wash)}
 [data-band="none"]{--bc:var(--deep); --bi:var(--ink); --bw:var(--brand-wash)}
 .tile[data-band]::before{background:var(--bc)}
 .pill[data-band]{background:var(--bw); color:var(--bi)}
+.pill[data-band="best"]{box-shadow:inset 0 0 0 1.5px var(--gold)}
+.pill[data-band="best"] svg{color:var(--gold)}
+.tile[data-band="best"]::before{background:var(--gold)}
+.medal{color:var(--gold)}
 .bandnum{color:var(--bi)}
 .ask[data-band] .num{color:var(--bi)}
 .hero-num[data-band]{color:var(--bi)}
@@ -377,6 +381,61 @@ footer b{color:var(--ink-2); font-weight:600}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none !important; animation:none !important}}
 :focus-visible{outline:2px solid var(--brand); outline-offset:2px}
+
+/* ---------- history editor ---------- */
+.editor{
+  background:var(--surface); border:1px solid var(--border); border-radius:4px;
+  box-shadow:var(--shadow); margin-bottom:16px; overflow:hidden;
+}
+.editor > summary{
+  cursor:pointer; padding:16px 20px; list-style:none; display:flex; align-items:center;
+  gap:12px; flex-wrap:wrap; justify-content:space-between;
+}
+.editor > summary::-webkit-details-marker{display:none}
+.editor > summary h2{
+  font-family:"Barlow Condensed","Archivo",sans-serif; font-weight:600; text-transform:uppercase;
+  font-size:21px; line-height:1.1;
+}
+.editor > summary .chev{
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--ink-2); border:1px solid var(--border-2);
+  border-radius:2px; padding:5px 10px;
+}
+.editor > summary .chev::after{content:"Open editor"}
+.editor[open] > summary .chev::after{content:"Close editor"}
+.editor[open] > summary{border-bottom:1px solid var(--rule)}
+.ed-body{padding:4px 20px 20px}
+.ed-sec{margin-top:18px}
+.ed-sec > .eyebrow{display:block; margin-bottom:8px}
+.ed-scroll{overflow-x:auto}
+.ed-tbl{border-collapse:collapse; font-size:12px; min-width:660px; width:100%}
+.ed-tbl th{
+  font-family:"IBM Plex Mono",monospace; font-size:10px; font-weight:500; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--muted); padding:4px 5px; text-align:center; white-space:nowrap;
+}
+.ed-tbl th:first-child{text-align:left; padding-left:0}
+.ed-tbl td{padding:2px 3px}
+.ed-tbl td:first-child{
+  font-family:"Barlow Condensed",sans-serif; font-weight:600; font-size:16px;
+  white-space:nowrap; padding-left:0; padding-right:10px;
+}
+.ed-tbl input{
+  width:100%; min-width:52px; border:1px solid var(--border); border-radius:2px;
+  background:var(--surface); color:var(--ink); padding:5px 6px; text-align:right;
+  font-family:"IBM Plex Mono",monospace; font-size:11.5px; font-variant-numeric:tabular-nums;
+}
+.ed-tbl input:focus{outline:2px solid var(--deep); outline-offset:-1px; background:var(--brand-wash)}
+.ed-tbl input::-webkit-outer-spin-button,.ed-tbl input::-webkit-inner-spin-button{-webkit-appearance:none; margin:0}
+.ed-tbl input[type=number]{-moz-appearance:textfield}
+.ed-tbl tr.fc input{border-color:var(--deep)}
+.ed-actions{display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; align-items:center}
+.ed-actions .msg{font-size:12px; color:var(--good-ink); font-weight:600}
+textarea.json{
+  width:100%; min-height:76px; margin-top:10px; border:1px solid var(--border); border-radius:3px;
+  background:var(--surface-2); color:var(--ink-2); padding:9px 11px; resize:vertical;
+  font-family:"IBM Plex Mono",monospace; font-size:11px; line-height:1.5;
+}
+.unit{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--muted)}
 </style>
 
 <header class="masthead">
@@ -385,152 +444,30 @@ footer b{color:var(--ink-2); font-weight:600}
       <div class="mark-glyph">SCW</div>
       <div>
         <div class="eyebrow">Field update &mdash; revenue board</div>
-        <h1>The Q2 Push &mdash; <em>Apr&ndash;Sep 2026</em></h1>
+        <h1>Where we&rsquo;re pacing &mdash; <em>Aug &middot; Q2 &amp; Q3 &middot; 2026</em></h1>
       </div>
     </div>
     <div class="mast-meta">
       <div><span class="eyebrow">As of</span><b>19 Aug 2026</b></div>
       <div><span class="eyebrow">Actuals through</span><b>July</b></div>
-      <div><span class="eyebrow">Months left</span><b>Aug &middot; Sep</b></div>
-      <div><span class="eyebrow">Pacing key</span><b style="font-size:13px;font-weight:500;color:var(--ink-2)"><span style="color:var(--crit-ink)">&#9679;</span> behind &nbsp;<span style="color:var(--warn-ink)">&#9679;</span> under modest &nbsp;<span style="color:var(--good-ink)">&#9679;</span> clears modest &nbsp;<span style="color:var(--goal2-ink)">&#9679;</span> stretch</b></div>
+      <div><span class="eyebrow">Pacing key</span><b style="font-size:12.5px;font-weight:500;color:var(--ink-2)"><span style="color:var(--crit-ink)">&#9679;</span> well behind &nbsp;<span style="color:var(--warn-ink)">&#9679;</span> behind modest &nbsp;<span style="color:var(--good-ink)">&#9679;</span> clears modest &nbsp;<span class="medal">&#9733;</span> beating stretch</b></div>
     </div>
   </div>
 </header>
 
 <div class="wrap">
 
+  <!-- ============ PART 1: THIS MONTH ============ -->
   <div class="part" style="margin-top:0">
     <span class="part-n">Part 1</span>
-    <h2>The Q2 push</h2>
-    <span class="rule"></span>
-    <span class="sub">Booked revenue against the Apr&ndash;Sep goal window.</span>
-  </div>
-
-  <!-- HERO -->
-  <section class="hero">
-    <div class="hero-top">
-      <div>
-        <span class="eyebrow">Booked Apr&ndash;Jul 2026</span>
-        <div class="hero-fig">
-          <span class="hero-num" data-band="best">$5.07M</span>
-          <span class="pill" data-band="best"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z"/></svg>Nearing stretch</span>
-        </div>
-      </div>
-      <p class="hero-cap">Four months in, we are <strong>76% of the way to the modest goal</strong> and <strong>65% of the way to stretch</strong> &mdash; with two months on the board. At the current plan the window lands at <strong>$7.47M</strong> &mdash; clear of modest and <strong>95% of stretch</strong>.</p>
-    </div>
-
-    <div class="track" id="track">
-      <div class="track-bar">
-        <div class="track-fill" style="width:60.36%"></div>
-        <div class="track-proj" style="left:60.36%; width:28.57%"></div>
-        <div class="track-seam" style="left:60.36%"></div>
-      </div>
-      <div class="goal-mark modest" style="left:79.17%"></div>
-      <div class="goal-lab modest" style="left:79.17%"><span class="g-name">Modest</span><span class="g-val">$6.65M</span></div>
-      <div class="goal-mark stretch" style="left:93.45%"></div>
-      <div class="goal-lab stretch" style="left:93.45%"><span class="g-name">Stretch</span><span class="g-val">$7.85M</span></div>
-    </div>
-    <div class="goal-stack">
-      <span><i style="background:var(--good)"></i><b class="g-name" style="color:var(--good-ink)">Modest</b><b class="g-val" style="color:var(--good-ink)">$6.65M</b></span>
-      <span><i style="background:var(--goal2)"></i><b class="g-name" style="color:var(--goal2-ink)">Stretch</b><b class="g-val" style="color:var(--goal2-ink)">$7.85M</b></span>
-    </div>
-    <div class="track-key">
-      <span><i class="sw solid"></i>Booked Apr&ndash;Jul &mdash; $5.07M</span>
-      <span><i class="sw hatch"></i>Aug + Sep at current plan ($1.2M/mo) &mdash; $2.40M</span>
-      <span style="color:var(--muted)">Scale 0&ndash;$8.4M</span>
-    </div>
-  </section>
-
-  <!-- TILES -->
-  <section class="tiles">
-    <div class="tile" data-band="none">
-      <div class="tile-head"><span class="eyebrow">Booked so far</span></div>
-      <span class="tile-val">$5.07<small>M</small></span>
-      <p class="tile-sub"><b>+4.9%</b> vs the same Apr&ndash;Jul window in 2025 &mdash; which was itself a record.</p>
-    </div>
-    <div class="tile" data-band="good">
-      <div class="tile-head"><span class="eyebrow">Left to modest</span><span class="pill" data-band="good"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>Clears at plan</span></div>
-      <span class="tile-val">$1.58<small>M</small></span>
-      <p class="tile-sub">Aug + Sep have beaten that in <b>every one of the last four years</b>.</p>
-    </div>
-    <div class="tile" data-band="best">
-      <div class="tile-head"><span class="eyebrow">Left to stretch</span><span class="pill" data-band="best"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z"/></svg>95% at plan</span></div>
-      <span class="tile-val">$2.78<small>M</small></span>
-      <p class="tile-sub"><b>+40%</b> over our best-ever Aug + Sep ($1.99M, 2025). This is the real ask.</p>
-    </div>
-    <div class="tile" data-band="good">
-      <div class="tile-head"><span class="eyebrow">Monthly run rate needed</span></div>
-      <span class="tile-val">$790<small>K</small> <span style="color:var(--muted); font-weight:400">/</span> $1.39<small>M</small></span>
-      <p class="tile-sub">Per month in Aug &amp; Sep &mdash; <b>modest</b> vs <b>stretch</b>. Plan today sits at $1.2M/mo.</p>
-    </div>
-  </section>
-
-  <!-- CHARTS -->
-  <section class="grid">
-    <article class="card">
-      <div class="card-head ticked"><span class="eyebrow">Goal window, year over year</span>
-      <h2>Apr&ndash;Sep booked, 2022&ndash;2026</h2></div>
-      <p class="card-note">Even at the current plan we clear the modest goal and land <b>+8%</b> over 2025 &mdash; the fifth straight year of growth in this window.</p>
-      <div class="chart" id="c-window"></div>
-    </article>
-
-    <article class="card">
-      <div class="card-head ticked"><span class="eyebrow">Where the ask lands</span>
-      <h2>Aug + Sep, history vs. what's needed</h2></div>
-      <p class="card-note">Modest sits <b>below</b> every Aug+Sep we have ever booked. Stretch sits <b>40% above</b> the best one.</p>
-      <div class="chart" id="c-augsep"></div>
-    </article>
-
-    <article class="card full">
-      <div class="card-head ticked"><span class="eyebrow">Monthly booked revenue</span>
-      <h2>Jan&ndash;Sep by month, five years &mdash; and the fork ahead</h2></div>
-      <p class="card-note">2026 is solid through July. From there the line forks: the <b>base plan</b> ($1.2M in both Aug and Sep) versus what <b>stretch</b> requires ($1.4M in both). For scale, our biggest month ever is Apr 2025 at $1.8M, and we already booked $1.50M in May.</p>
-      <div class="chart" id="c-monthly"></div>
-    </article>
-
-    <article class="card full">
-      <div class="card-head ticked"><span class="eyebrow">Quarterly shape</span>
-      <h2>Q1 &middot; Q2 &middot; Q3 by year</h2></div>
-      <p class="card-note">Q2 held its 2025 step-up (&minus;1.5%, essentially flat against a spike year), and Q3 is pacing <b>+19%</b> at plan or <b>+34%</b> at stretch. The business is no longer front-loaded the way it was in 2022&ndash;2024.</p>
-      <div class="chart" id="c-quarters"></div>
-    </article>
-  </section>
-
-  <!-- CALLOUT -->
-  <section class="callout">
-    <span class="eyebrow">What it takes &mdash; the only two months left</span>
-    <h2>Aug and Sep decide which goal we hit</h2>
-    <div class="asks">
-      <div class="ask" data-band="good">
-        <div class="lab">Modest &mdash; $6.65M</div>
-        <div class="num">$790K<span style="font-size:20px; color:var(--muted)">/mo</span></div>
-        <p class="txt">Below our Aug&ndash;Sep average in every year since 2022. Holding normal pace gets us here.</p>
-      </div>
-      <div class="ask" data-band="good">
-        <div class="lab">Current plan &mdash; $7.47M</div>
-        <div class="num">$1.20M<span style="font-size:20px; color:var(--muted)">/mo</span></div>
-        <p class="txt">What the forecast already carries. Clears modest by $820K, lands $380K short of stretch.</p>
-      </div>
-      <div class="ask" data-band="best">
-        <div class="lab">Stretch &mdash; $7.85M</div>
-        <div class="num">$1.39M<span style="font-size:20px; color:var(--muted)">/mo</span></div>
-        <p class="txt">Two of the four biggest months in company history, back to back. Needs roughly <b>$190K/mo</b> more than the plan &mdash; that's the gap to close.</p>
-      </div>
-    </div>
-  </section>
-
-
-  <!-- ============ PART 2: CURRENT MONTH ============ -->
-  <div class="part">
-    <span class="part-n">Part 2</span>
     <h2>This month &mdash; August 2026</h2>
     <span class="rule"></span>
-    <span class="sub">Live daily pace. Type today&rsquo;s numbers in and everything below recalculates.</span>
+    <span class="sub">Where we&rsquo;re pacing right now. Type today&rsquo;s numbers in and everything recalculates.</span>
   </div>
 
   <section class="deck">
     <div class="deck-top">
-      <p><b>Enter the numbers, the board updates.</b> Install comes from the Xero Install Services report, Magento from the M2 Cost&nbsp;of&nbsp;Goods report, Pending from the M2 Pending report. Entries are saved in this browser only &mdash; they are not shared with anyone else viewing this page.</p>
+      <p><b>Enter the numbers, the board updates.</b> Install comes from the Xero Install Services report, eCommerce from the M2 Cost&nbsp;of&nbsp;Goods report, Pending from the M2 Pending report. Entries are saved in this browser only &mdash; they are not shared with anyone else viewing this page.</p>
       <button class="btn" id="mReset" type="button">Reset to sheet values</button>
     </div>
 
@@ -540,18 +477,18 @@ footer b{color:var(--ink-2); font-weight:600}
         <div class="fld"><label for="mInstall">Install (Xero)</label>
           <div class="inrow"><span class="pre">$</span><input id="mInstall" type="number" step="1" value="102632" inputmode="decimal"></div>
           <div class="hint" id="hInstall"></div></div>
-        <div class="fld"><label for="mMagento">Magento (M2)</label>
+        <div class="fld"><label for="mMagento">eCommerce (M2)</label>
           <div class="inrow"><span class="pre">$</span><input id="mMagento" type="number" step="1" value="281000" inputmode="decimal"></div>
           <div class="hint" id="hMagento"></div></div>
         <div class="fld"><label for="mBigDeal">Big deal &mdash; pulled from avg</label>
           <div class="inrow"><span class="pre">$</span><input id="mBigDeal" type="number" step="1" value="0" inputmode="decimal"></div>
-          <div class="hint" id="hBigDeal">Counted in the total, pulled out of the daily average so it can&rsquo;t skew the projection.</div></div>
-        <div class="fld"><label for="mPendM2">Pending &mdash; M2</label>
+          <div class="hint" id="hBigDeal"></div></div>
+        <div class="fld"><label for="mPendM2">Pending &mdash; eCommerce</label>
           <div class="inrow"><span class="pre">$</span><input id="mPendM2" type="number" step="1" value="0" inputmode="decimal"></div>
-          <div class="hint" id="hPendM2">Not in revenue to date. Feeds the &ldquo;with pending&rdquo; case only.</div></div>
+          <div class="hint" id="hPendM2"></div></div>
         <div class="fld"><label for="mPendInstall">Pending &mdash; Install</label>
           <div class="inrow"><span class="pre">$</span><input id="mPendInstall" type="number" step="1" value="300000" inputmode="decimal"></div>
-          <div class="hint" id="hPendInstall">Prior month pending was $168,286.</div></div>
+          <div class="hint" id="hPendInstall"></div></div>
       </div>
     </div>
 
@@ -581,7 +518,7 @@ footer b{color:var(--ink-2); font-weight:600}
   <section class="hero" id="mHero">
     <div class="hero-top">
       <div>
-        <span class="eyebrow">Projected month-end revenue</span>
+        <span class="eyebrow">Pacing to, at month end</span>
         <div class="hero-fig">
           <span class="hero-num" id="oProjected" data-band="none">&mdash;</span>
           <span class="pill" id="oProjPill" data-band="none">&mdash;</span>
@@ -601,29 +538,29 @@ footer b{color:var(--ink-2); font-weight:600}
   <section class="grid">
     <article class="card full">
       <div class="card-head ticked"><span class="eyebrow">Month burn-up</span>
-      <h2>Pace against goal, business day by business day</h2></div>
+      <h2>Pacing against goal, business day by business day</h2></div>
       <p class="card-note">The straight lines are the pace each goal needs. The heavy line is where we actually are; the dashed lines carry today&rsquo;s run rate out to month end &mdash; with and without pending.</p>
       <div class="chart" id="m-burnup"></div>
     </article>
 
     <article class="card">
       <div class="card-head ticked"><span class="eyebrow">Where the month lands</span>
-      <h2>Projection vs. both goals</h2></div>
-      <p class="card-note">Pending install is run-rated the same way revenue is &mdash; it is added to the days already worked, not dropped in at the end.</p>
+      <h2>Pacing vs. both goals</h2></div>
+      <p class="card-note">Pending install is run-rated the same way revenue is &mdash; added to the days already worked, not dropped in at the end.</p>
       <div class="chart" id="m-lands"></div>
     </article>
 
     <article class="card">
       <div class="card-head ticked"><span class="eyebrow">Revenue mix</span>
-      <h2>Install vs. Magento</h2></div>
-      <p class="card-note">Booked so far and where each lands at the current pace.</p>
+      <h2>Install vs. eCommerce</h2></div>
+      <p class="card-note">Booked so far, and where each lands at the current pace.</p>
       <div class="chart" id="m-mix"></div>
     </article>
   </section>
 
   <section class="card full" style="margin-bottom:0">
-    <div class="card-head ticked"><span class="eyebrow">Top-of-funnel &mdash; same run-rate math</span>
-    <h2>Activity pace</h2></div>
+    <div class="card-head ticked"><span class="eyebrow">Top of funnel &mdash; same run-rate math</span>
+    <h2>Activity pacing</h2></div>
     <p class="card-note">Each figure is projected by the same daily average: to&#8209;date &divide; business days elapsed &times; business days in the month.</p>
     <div class="deck-grid" style="margin-top:14px">
       <div class="fld"><label for="aDeals">Net new deals to date</label>
@@ -639,35 +576,184 @@ footer b{color:var(--ink-2); font-weight:600}
     </div>
     <div class="act" style="margin-top:16px">
       <div class="c"><div class="k">Net new deals</div><div class="row"><span class="td" id="oDealsTD">&mdash;</span><span class="ar">&rarr;</span><span class="pj" id="oDeals">&mdash;</span></div><div class="n" id="nDeals"></div></div>
-      <div class="c"><div class="k">SQLs</div><div class="row"><span class="td" id="oSQLTD">&mdash;</span><span class="ar">&rarr;</span><span class="pj" id="oSQL">&mdash;</span></div><div class="n">projected at current pace</div></div>
-      <div class="c"><div class="k">Pipeline created</div><div class="row"><span class="td" id="oPipeTD">&mdash;</span><span class="ar">&rarr;</span><span class="pj" id="oPipe">&mdash;</span></div><div class="n">projected at current pace</div></div>
-      <div class="c"><div class="k">Deal count</div><div class="row"><span class="td" id="oCountTD">&mdash;</span><span class="ar">&rarr;</span><span class="pj" id="oCount">&mdash;</span></div><div class="n">projected at current pace</div></div>
+      <div class="c"><div class="k">SQLs</div><div class="row"><span class="td" id="oSQLTD">&mdash;</span><span class="ar">&rarr;</span><span class="pj" id="oSQL">&mdash;</span></div><div class="n">pacing to, at month end</div></div>
+      <div class="c"><div class="k">Pipeline created</div><div class="row"><span class="td" id="oPipeTD">&mdash;</span><span class="ar">&rarr;</span><span class="pj" id="oPipe">&mdash;</span></div><div class="n">pacing to, at month end</div></div>
+      <div class="c"><div class="k">Deal count</div><div class="row"><span class="td" id="oCountTD">&mdash;</span><span class="ar">&rarr;</span><span class="pj" id="oCount">&mdash;</span></div><div class="n">pacing to, at month end</div></div>
     </div>
   </section>
 
-  <!-- ============ PART 3: LONG RUN ============ -->
+  <!-- ============ PART 2: Q2 & Q3 ============ -->
   <div class="part">
-    <span class="part-n">Part 3</span>
-    <h2>The long run</h2>
+    <span class="part-n">Part 2</span>
+    <h2>The Q2 &amp; Q3 push</h2>
     <span class="rule"></span>
-    <span class="sub">Ten years of total company revenue, and the full period table.</span>
+    <span class="sub">Booked revenue across the Apr&ndash;Sep goal window.</span>
   </div>
 
-  <section class="card full" style="margin-bottom:16px">
-    <div class="card-head ticked"><span class="eyebrow">Total revenue &mdash; Install + Magento</span>
-    <h2>2016&ndash;2025, and where 2026 needs to land</h2></div>
-    <p class="card-note">Nine growth years out of ten, compounding at about <b>7.8% a year</b>. 2025 was the strongest step-up since 2022 at <b>+13.7%</b>.</p>
-    <div class="chart" id="c-decade"></div>
+  <section class="hero">
+    <div class="hero-top">
+      <div>
+        <span class="eyebrow">Booked Apr&ndash;Jul 2026</span>
+        <div class="hero-fig">
+          <span class="hero-num" id="qBooked" data-band="none">&mdash;</span>
+          <span class="pill" id="qPill" data-band="none">&mdash;</span>
+        </div>
+      </div>
+      <p class="hero-cap" id="qCap"></p>
+    </div>
+
+    <div class="track" id="qTrack">
+      <div class="track-bar">
+        <div class="track-fill" id="qFill"></div>
+        <div class="track-proj" id="qProj"></div>
+        <div class="track-seam" id="qSeam"></div>
+      </div>
+      <div class="goal-mark modest" id="qMarkM"></div>
+      <div class="goal-lab modest" id="qLabM"><span class="g-name">Modest</span><span class="g-val" id="qLabMv"></span></div>
+      <div class="goal-mark stretch" id="qMarkS"></div>
+      <div class="goal-lab stretch" id="qLabS"><span class="g-name">Stretch</span><span class="g-val" id="qLabSv"></span></div>
+    </div>
+    <div class="goal-stack">
+      <span><i style="background:var(--good)"></i><b class="g-name" style="color:var(--good-ink)">Modest</b><b class="g-val" style="color:var(--good-ink)" id="qStackM"></b></span>
+      <span><i style="background:var(--goal2)"></i><b class="g-name" style="color:var(--goal2-ink)">Stretch</b><b class="g-val" style="color:var(--goal2-ink)" id="qStackS"></b></span>
+    </div>
+    <div class="track-key" id="qKey"></div>
   </section>
 
-  <!-- TABLE -->
+  <section class="tiles">
+    <div class="tile" data-band="none">
+      <div class="tile-head"><span class="eyebrow">Booked so far</span></div>
+      <span class="tile-val" id="qtBooked">&mdash;</span>
+      <p class="tile-sub" id="qtBookedSub"></p>
+    </div>
+    <div class="tile" id="qtModestTile" data-band="none">
+      <div class="tile-head"><span class="eyebrow">Left to modest</span><span class="pill" id="qtModestPill" data-band="none">&mdash;</span></div>
+      <span class="tile-val" id="qtModest">&mdash;</span>
+      <p class="tile-sub" id="qtModestSub"></p>
+    </div>
+    <div class="tile" id="qtStretchTile" data-band="none">
+      <div class="tile-head"><span class="eyebrow">Left to stretch</span><span class="pill" id="qtStretchPill" data-band="none">&mdash;</span></div>
+      <span class="tile-val" id="qtStretch">&mdash;</span>
+      <p class="tile-sub" id="qtStretchSub"></p>
+    </div>
+    <div class="tile" data-band="none">
+      <div class="tile-head"><span class="eyebrow">Monthly run rate needed</span></div>
+      <span class="tile-val" id="qtRate">&mdash;</span>
+      <p class="tile-sub" id="qtRateSub"></p>
+    </div>
+  </section>
+
+  <section class="grid">
+    <article class="card">
+      <div class="card-head ticked"><span class="eyebrow">Goal window, year over year</span>
+      <h2>Apr&ndash;Sep booked, five years</h2></div>
+      <p class="card-note" id="qWindowNote"></p>
+      <div class="chart" id="c-window"></div>
+    </article>
+
+    <article class="card">
+      <div class="card-head ticked"><span class="eyebrow">Where the ask lands</span>
+      <h2>Aug + Sep, history vs. what&rsquo;s needed</h2></div>
+      <p class="card-note" id="qAugSepNote"></p>
+      <div class="chart" id="c-augsep"></div>
+    </article>
+  </section>
+
+  <section class="callout">
+    <span class="eyebrow">What it takes &mdash; the only two months left</span>
+    <h2>Aug and Sep decide which goal we hit</h2>
+    <div class="asks">
+      <div class="ask" id="askModest" data-band="good">
+        <div class="lab" id="askModestLab"></div>
+        <div class="num" id="askModestNum"></div>
+        <p class="txt" id="askModestTxt"></p>
+      </div>
+      <div class="ask" id="askPace" data-band="none">
+        <div class="lab" id="askPaceLab"></div>
+        <div class="num" id="askPaceNum"></div>
+        <p class="txt" id="askPaceTxt"></p>
+      </div>
+      <div class="ask" id="askStretch" data-band="none">
+        <div class="lab" id="askStretchLab"></div>
+        <div class="num" id="askStretchNum"></div>
+        <p class="txt" id="askStretchTxt"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PART 3: PREVIOUS YEARS ============ -->
+  <div class="part">
+    <span class="part-n">Part 3</span>
+    <h2>How this compares to previous years</h2>
+    <span class="rule"></span>
+    <span class="sub">Five years of monthly and quarterly shape, and ten years of company revenue.</span>
+  </div>
+
+  <section class="grid">
+    <article class="card full">
+      <div class="card-head ticked"><span class="eyebrow">Monthly booked revenue</span>
+      <h2>Jan&ndash;Sep by month, five years &mdash; and the fork ahead</h2></div>
+      <p class="card-note" id="qMonthlyNote"></p>
+      <div class="chart" id="c-monthly"></div>
+    </article>
+
+    <article class="card full">
+      <div class="card-head ticked"><span class="eyebrow">Quarterly shape</span>
+      <h2>Q1 &middot; Q2 &middot; Q3 by year</h2></div>
+      <p class="card-note" id="qQuartersNote"></p>
+      <div class="chart" id="c-quarters"></div>
+    </article>
+
+    <article class="card full">
+      <div class="card-head ticked"><span class="eyebrow">Total revenue &mdash; Install + eCommerce</span>
+      <h2>Ten years of company revenue</h2></div>
+      <p class="card-note" id="qDecadeNote"></p>
+      <div class="chart" id="c-decade"></div>
+    </article>
+  </section>
+
+  <details class="editor" id="editor">
+    <summary>
+      <div>
+        <span class="eyebrow">Maintenance</span>
+        <h2>Edit the historical numbers</h2>
+      </div>
+      <span class="chev"></span>
+    </summary>
+    <div class="ed-body">
+      <p class="card-note" style="margin-top:12px">Change any figure here and every chart, table and sentence in Parts&nbsp;2 and&nbsp;3 recalculates &mdash; no rebuild needed. Quarter, window and Aug+Sep totals are all derived from the monthly grid, so they stay internally consistent. Edits are saved in this browser; use the JSON box at the bottom to carry them to another machine or hand them back to me.</p>
+
+      <div class="ed-sec">
+        <span class="eyebrow">Monthly booked revenue <span class="unit">&mdash; $ thousands</span></span>
+        <div class="ed-scroll"><table class="ed-tbl" id="edMonths"></table></div>
+      </div>
+
+      <div class="ed-sec">
+        <span class="eyebrow">Aug &amp; Sep 2026 scenarios and the window goals <span class="unit">&mdash; $ thousands</span></span>
+        <div class="ed-scroll"><table class="ed-tbl" id="edScen"></table></div>
+      </div>
+
+      <div class="ed-sec">
+        <span class="eyebrow">Total company revenue by year <span class="unit">&mdash; whole dollars</span></span>
+        <div class="ed-scroll"><table class="ed-tbl" id="edDecade"></table></div>
+      </div>
+
+      <div class="ed-actions">
+        <button class="btn" type="button" id="edCopy">Copy all data as JSON</button>
+        <button class="btn" type="button" id="edApply">Apply pasted JSON</button>
+        <button class="btn" type="button" id="edReset">Reset to original figures</button>
+        <span class="msg" id="edMsg"></span>
+      </div>
+      <textarea class="json" id="edJson" spellcheck="false" aria-label="Dashboard data as JSON"></textarea>
+    </div>
+  </details>
+
   <section class="card full" style="margin-bottom:0">
     <div class="card-head ticked"><span class="eyebrow">The numbers behind the charts</span>
     <h2>Booked revenue by period</h2></div>
-    <p class="card-note">2026 Aug and Sep are forecast, not booked. The Apr&ndash;Sep column is the goal window.</p>
+    <p class="card-note">2026 Aug and Sep are pacing figures, not booked. The Apr&ndash;Sep column is the goal window.</p>
     <div class="tbl-wrap">
       <table>
-        <caption class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">SCW booked revenue by quarter and by the April&ndash;September goal window, 2022 to 2026.</caption>
         <thead>
           <tr>
             <th scope="col">Year</th>
@@ -679,374 +765,30 @@ footer b{color:var(--ink-2); font-weight:600}
             <th scope="col">Full year</th>
           </tr>
         </thead>
-        <tbody>
-          <tr><td><span class="yr"><i style="background:var(--y22)"></i>2022</span></td><td>$2.40M</td><td>$2.41M</td><td>$2.75M</td><td>$5.16M</td><td class="delta">&mdash;</td><td>$9.6M</td></tr>
-          <tr><td><span class="yr"><i style="background:var(--y23)"></i>2023</span></td><td>$2.95M</td><td>$2.78M</td><td>$2.53M</td><td>$5.27M</td><td class="delta up">+2.1%</td><td>$10.4M</td></tr>
-          <tr><td><span class="yr"><i style="background:var(--y24)"></i>2024</span></td><td>$2.86M</td><td>$2.65M</td><td>$2.67M</td><td>$5.36M</td><td class="delta up">+1.6%</td><td>$10.5M</td></tr>
-          <tr><td><span class="yr"><i style="background:var(--y25)"></i>2025</span></td><td>$2.61M</td><td>$3.83M</td><td>$2.99M</td><td>$6.90M</td><td class="delta up">+28.9%</td><td>$11.6M</td></tr>
-          <tr class="now"><td><span class="yr"><i style="background:var(--y26)"></i>2026 at plan</span></td><td>$2.77M</td><td>$3.85M</td><td>$3.62M</td><td>$7.47M</td><td class="delta up">+8.3%</td><td>&mdash;</td></tr>
-          <tr class="now"><td><span class="yr"><i style="background:var(--y26)"></i>2026 at stretch</span></td><td>$2.77M</td><td>$3.85M</td><td>$4.02M</td><td>$7.87M</td><td class="delta up">+13.8%</td><td>&mdash;</td></tr>
-        </tbody>
+        <tbody id="qTableBody"></tbody>
       </table>
     </div>
 
     <footer>
-      <p><b>How the goal maps.</b> The $6.65M / $7.85M targets are for the <b>Apr&ndash;Sep window</b> &mdash; the &ldquo;Q2&nbsp;/&nbsp;Q3&rdquo; column in the source sheet. The stretch figure is an exact match to the sheet&rsquo;s own stretch scenario ($1.4M in Aug and Sep), which confirms the mapping.</p>
-      <p><b>What&rsquo;s actual, what&rsquo;s forecast.</b> Jan through Jul 2026 are booked. Aug and Sep are the two scenarios carried in the sheet: $1.2M/mo at plan, $1.4M/mo at stretch.</p>
-      <p><b>Colour means pacing, everywhere on this page.</b> Red is well behind the modest goal (under 85% of it), amber is behind modest, green clears modest, purple is stretch territory &mdash; within 10% of the stretch goal or past it. Every coloured figure also carries an icon and a word, so the colour is never doing the work on its own.</p>
-      <p><b>Part 2 formulas</b> (reproduced exactly from the Daily KPIs sheet). Revenue to date = Install + Magento. Adjusted daily average = (revenue to date &minus; big deal) &divide; business days elapsed. Projected = adjusted daily average &times; business days in month, with the big deal added back &mdash; so a single outsized deal lands in the total without inflating the run rate. &ldquo;With pending&rdquo; adds pending M2 and pending install to revenue to date <em>before</em> run-rating, matching the sheet&rsquo;s $1,196,356. Required per day = (modest goal &minus; revenue to date) &divide; business days left.</p>
-      <p><b>Business days elapsed accepts halves.</b> The sheet&rsquo;s 12 counts through end of yesterday; enter 12.5 if you are posting mid-day, or 13 for a completed day. Everything downstream &mdash; daily average, projection, activity pace &mdash; moves with it.</p>
-      <p><b>Two different revenue measures.</b> Part 1 is booked revenue from the YoY Sales Metrics sheet ($11.6M in 2025). Parts 2 and 3 are total company revenue &mdash; Install services from Xero plus Magento &mdash; from the Daily KPIs sheet ($13.5M in 2025). They are not the same number and should not be added together. For 2022 and 2023 the two reconcile almost exactly once October is added back; for 2024 and 2025 a gap remains that is worth confirming before either figure is quoted as the company total.</p>
+      <p><b>Colour means pacing, everywhere on this page.</b> Red is well behind the modest goal (under 85% of it), amber is behind modest, green clears modest, and green with a <span class="medal">&#9733;</span> gold star is stretch territory &mdash; within 10% of the stretch goal or past it. Every coloured figure also carries an icon and a word, so colour is never doing the work on its own.</p>
+      <p><b>How the goal maps.</b> The $6.65M / $7.85M targets cover the whole <b>Apr&ndash;Sep window</b> &mdash; the &ldquo;Q2&nbsp;/&nbsp;Q3&rdquo; column in the source sheet, which is why this board calls it Q2&nbsp;&amp;&nbsp;Q3 rather than Q2. The stretch figure is an exact match to the sheet&rsquo;s own stretch scenario ($1.4M in Aug and Sep), which confirms the mapping.</p>
+      <p><b>Part 1 formulas</b> (reproduced from the Daily KPIs sheet). Revenue to date = Install + eCommerce. Adjusted daily average = (revenue to date &minus; big deal) &divide; business days elapsed. Pacing to = adjusted daily average &times; business days in month, with the big deal added back &mdash; so a single outsized deal lands in the total without inflating the run rate. &ldquo;With pending&rdquo; adds pending eCommerce and pending install to revenue to date <em>before</em> run-rating, matching the sheet&rsquo;s $1,196,356.</p>
+      <p><b>Business days elapsed accepts halves.</b> The sheet&rsquo;s 12 counts through end of yesterday; enter 12.5 if you are posting mid-day, or 13 for a completed day. Everything downstream moves with it.</p>
+      <p><b>Period totals are derived from the monthly grid</b>, so the table is always self-consistent with the charts. Because the monthly figures are reported rounded to the nearest $10K or so, these totals run slightly under the source sheet&rsquo;s own stated totals &mdash; up to about $80K on the 2025 window. Paste exact figures into the editor above and the difference disappears.</p>
+      <p><b>Two different revenue measures.</b> Part 2 is booked revenue from the YoY Sales Metrics sheet ($11.6M in 2025). Parts 1 and 3 are total company revenue &mdash; Install services from Xero plus eCommerce &mdash; from the Daily KPIs sheet ($13.5M in 2025). They are not the same number and should not be added together. For 2022 and 2023 the two reconcile almost exactly once October is added back; for 2024 and 2025 a gap remains that is worth confirming before either figure is quoted as the company total.</p>
       <p><b>Not carried over.</b> The Daily KPIs sheet also holds a Jul&nbsp;/&nbsp;Aug&nbsp;/&nbsp;Sep quarter block whose August goal ($1,030,000) contradicts the current-month goal ($1,170,000), and a cautious&nbsp;/&nbsp;optimistic pair on a third basis. Both look stale, so neither is shown here.</p>
-      <p><b>Source &amp; caveats.</b> YoY Sales Metrics sheet. Monthly figures are reported rounded, so quarter totals can differ by a few tenths of a percent from the sheet&rsquo;s own stated changes. Full-year totals are as reported and exclude October, which is absent from the source.</p>
     </footer>
   </section>
 </div>
-
 <script>
 (function () {
   'use strict';
   var NS = 'http://www.w3.org/2000/svg';
-  function s(tag, a) {
-    var e = document.createElementNS(NS, tag);
-    if (a) for (var k in a) if (a[k] != null) e.setAttribute(k, a[k]);
-    return e;
-  }
+  function s(tag, a) { var e = document.createElementNS(NS, tag); if (a) for (var k in a) if (a[k] != null) e.setAttribute(k, a[k]); return e; }
   function t(tag, a, str) { var e = s(tag, a); e.textContent = str; return e; }
-  function fmt(m) { return m < 1 ? '$' + Math.round(m * 1000) + 'K' : '$' + m.toFixed(2) + 'M'; }
-  function fmtK(k) { return k >= 1000 ? '$' + (k / 1000).toFixed(2) + 'M' : '$' + k + 'K'; }
+  function el(id) { return document.getElementById(id); }
+  function put(id, html) { var e = el(id); if (e) e.innerHTML = html; }
 
-  var LAB = { ff: '"IBM Plex Mono", ui-monospace, monospace', fs: '10.5px', ls: '.07em' };
-  function axisText(x, y, str, anchor) {
-    return t('text', {
-      x: x, y: y, 'text-anchor': anchor || 'middle',
-      style: 'font-family:' + LAB.ff + ';font-size:' + LAB.fs + ';letter-spacing:' + LAB.ls +
-             ';fill:var(--muted);text-transform:uppercase'
-    }, str);
-  }
-  function valText(x, y, str, anchor, color, size, weight) {
-    return t('text', {
-      x: x, y: y, 'text-anchor': anchor || 'middle',
-      style: 'font-family:"Barlow Condensed",sans-serif;font-weight:' + (weight || 600) +
-             ';font-size:' + (size || 16) + 'px;fill:' + (color || 'var(--ink)') + ';font-variant-numeric:tabular-nums'
-    }, str);
-  }
-  function hatch(id, colorVar) {
-    var p = s('pattern', { id: id, width: 7, height: 7, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
-    p.appendChild(s('rect', { width: 7, height: 7, style: 'fill:var(--surface)' }));
-    p.appendChild(s('rect', { width: 3.2, height: 7, style: 'fill:' + colorVar + ';opacity:.55' }));
-    return p;
-  }
-
-  /* ---------- tooltip ---------- */
-  function mkTip(host) {
-    var d = document.createElement('div');
-    d.className = 'tip';
-    host.appendChild(d);
-    return {
-      show: function (html, x, y) {
-        d.innerHTML = html; d.classList.add('on');
-        var w = d.offsetWidth, hostW = host.clientWidth;
-        var left = x + 14; if (left + w > hostW - 4) left = x - w - 14; if (left < 4) left = 4;
-        d.style.left = left + 'px';
-        d.style.top = Math.max(4, y - d.offsetHeight - 10) + 'px';
-      },
-      hide: function () { d.classList.remove('on'); }
-    };
-  }
-  function tipRows(head, rows) {
-    var h = '<div class="t-h">' + head + '</div>';
-    rows.forEach(function (r) {
-      h += '<div class="t-r' + (r.dim ? ' dim' : '') + '">' +
-           '<span>' + (r.c ? '<i style="background:' + r.c + '"></i> ' : '') + r.k + '</span><b>' + r.v + '</b></div>';
-    });
-    return h;
-  }
-
-  /* ================= DATA ================= */
-  var YEARS = ['2022', '2023', '2024', '2025', '2026'];
-  var YCOL = { '2022': 'var(--y22)', '2023': 'var(--y23)', '2024': 'var(--y24)', '2025': 'var(--y25)', '2026': 'var(--y26)' };
-  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
-  var MONTHLY = {
-    '2022': [698, 656, 1000, 744, 837, 827, 939, 967, 848],
-    '2023': [655, 1100, 1200, 775, 906, 1100, 839, 897, 795],
-    '2024': [1100, 866, 891, 911, 901, 842, 813, 1000, 856],
-    '2025': [747, 766, 1100, 1800, 1200, 834, 1000, 925, 1060],
-    '2026': [1000, 963, 804, 1240, 1500, 1110, 1220, null, null]
-  };
-  var F_BASE = 1200, F_STRETCH = 1400;
-  var WINDOW = { '2022': 5.16, '2023': 5.27, '2024': 5.36, '2025': 6.90, '2026': 7.47 };
-  var BOOKED26 = 5.07, PLAN26 = 2.40, MODEST = 6.65, STRETCH = 7.85;
-  var QTRS = {
-    '2022': [2.40, 2.41, 2.75], '2023': [2.95, 2.78, 2.53], '2024': [2.86, 2.65, 2.67],
-    '2025': [2.61, 3.83, 2.99], '2026': [2.77, 3.85, 3.62]
-  };
-  var Q3_STRETCH = 4.02;
-
-  /* ================= CHART: Apr–Sep window by year ================= */
-  function chartWindow(host) {
-    var W = Math.max(320, host.clientWidth), H = 336;
-    var m = { t: 40, r: 96, b: 36, l: 46 };
-    var iw = W - m.l - m.r, ih = H - m.t - m.b, maxY = 9.2;
-    var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
-      'aria-label': 'April to September booked revenue by year, 2022 to 2026, against the modest and stretch goals.' });
-    var defs = s('defs'); defs.appendChild(hatch('hw', 'var(--y26)')); svg.appendChild(defs);
-    var y = function (v) { return m.t + ih - (v / maxY) * ih; };
-
-    [0, 2, 4, 6, 8].forEach(function (g) {
-      svg.appendChild(s('line', { x1: m.l, x2: m.l + iw, y1: y(g), y2: y(g),
-        style: 'stroke:' + (g === 0 ? 'var(--rule)' : 'var(--grid)') + ';stroke-width:1' }));
-      svg.appendChild(axisText(m.l - 10, y(g) + 3.5, '$' + g + 'M', 'end'));
-    });
-
-    [{ v: MODEST, c: 'var(--good)', ci: 'var(--good-ink)', n: 'Modest' },
-     { v: STRETCH, c: 'var(--goal2)', ci: 'var(--goal2-ink)', n: 'Stretch' }].forEach(function (g) {
-      svg.appendChild(s('line', { x1: m.l, x2: m.l + iw + 8, y1: y(g.v), y2: y(g.v),
-        style: 'stroke:' + g.c + ';stroke-width:2;stroke-dasharray:6 4' }));
-      svg.appendChild(t('text', { x: m.l + iw + 14, y: y(g.v) - 2,
-        style: 'font-family:' + LAB.ff + ';font-size:10px;letter-spacing:.1em;text-transform:uppercase;fill:' + g.ci }, g.n));
-      svg.appendChild(valText(m.l + iw + 14, y(g.v) + 15, fmt(g.v), 'start', g.ci, 18, 700));
-    });
-
-    var band = iw / YEARS.length, bw = Math.min(62, band * 0.52), tip = mkTip(host);
-    YEARS.forEach(function (yr, i) {
-      var cx = m.l + band * i + band / 2, x0 = cx - bw / 2, tot = WINDOW[yr];
-      function bar(v0, v1, fill, isProj) {
-        var r = s('rect', { x: x0, y: y(v1), width: bw, height: Math.max(1, y(v0) - y(v1)), rx: 3,
-          style: 'fill:' + fill + (isProj ? ';stroke:var(--y26);stroke-width:1;stroke-opacity:.5' : '') });
-        svg.appendChild(r); return r;
-      }
-      if (yr === '2026') {
-        bar(0, BOOKED26, 'var(--y26)');
-        bar(BOOKED26 + 0.06, tot, 'url(#hw)', true);
-      } else bar(0, tot, YCOL[yr]);
-
-      var labY = yr === '2026' ? Math.min(y(tot) - 12, y(STRETCH) - 14) : y(tot) - 10;
-      svg.appendChild(valText(cx, labY, fmt(tot), 'middle',
-        yr === '2026' ? 'var(--brand-ink)' : 'var(--ink)', yr === '2026' ? 20 : 17, 700));
-      svg.appendChild(axisText(cx, H - 14, yr + (yr === '2026' ? ' at plan' : '')));
-
-      var hit = s('rect', { x: cx - band / 2, y: m.t, width: band, height: ih, style: 'fill:transparent' });
-      hit.addEventListener('mousemove', function (e) {
-        var b = host.getBoundingClientRect();
-        var rows = [{ k: 'Apr–Sep total', v: fmt(tot), c: YCOL[yr] }];
-        if (yr === '2026') {
-          rows = [{ k: 'Booked Apr–Jul', v: fmt(BOOKED26), c: 'var(--y26)' },
-                  { k: 'Aug + Sep at plan', v: fmt(PLAN26), c: 'var(--y26)', dim: true },
-                  { k: 'Window total', v: fmt(tot) }];
-        }
-        rows.push({ k: 'vs modest goal', v: (tot >= MODEST ? '+' : '−') + fmt(Math.abs(tot - MODEST)), dim: true });
-        tip.show(tipRows(yr, rows), e.clientX - b.left, e.clientY - b.top);
-      });
-      hit.addEventListener('mouseleave', tip.hide);
-      svg.appendChild(hit);
-    });
-    host.appendChild(svg);
-  }
-
-  /* ================= CHART: Aug + Sep, history vs needed ================= */
-  function chartAugSep(host) {
-    var rows = [
-      { k: '2022', v: 1.82, c: 'var(--y22)' },
-      { k: '2023', v: 1.69, c: 'var(--y23)' },
-      { k: '2024', v: 1.86, c: 'var(--y24)' },
-      { k: '2025', v: 1.99, c: 'var(--y25)', note: 'best ever' },
-      { k: 'Modest needs', v: 1.58, c: 'var(--good)', gap: true, note: 'below every year above' },
-      { k: 'Current plan', v: 2.40, c: 'var(--y26)', note: '$1.2M / month' },
-      { k: 'Stretch needs', v: 2.78, c: 'var(--goal2)', note: '+40% over best ever' }
-    ];
-    var W = Math.max(320, host.clientWidth), m = { t: 34, r: 74, b: 34, l: 112 };
-    var rh = 34, gapPx = 30, H = m.t + m.b + rows.length * rh + gapPx;
-    var iw = W - m.l - m.r, maxX = 3.0;
-    var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
-      'aria-label': 'August plus September booked revenue in past years compared with what the modest and stretch goals require.' });
-    var x = function (v) { return m.l + (v / maxX) * iw; };
-    var tip = mkTip(host);
-
-    [0, 1, 2, 3].forEach(function (g) {
-      svg.appendChild(s('line', { x1: x(g), x2: x(g), y1: m.t - 6, y2: H - m.b + 2,
-        style: 'stroke:' + (g === 0 ? 'var(--rule)' : 'var(--grid)') + ';stroke-width:1' }));
-      svg.appendChild(axisText(x(g), H - 12, '$' + g + 'M'));
-    });
-
-    svg.appendChild(t('text', { x: m.l, y: m.t - 10,
-      style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' },
-      'Actual, 2022–2025'));
-    var off = 0;
-    rows.forEach(function (r, i) {
-      if (r.gap) {
-        off += gapPx;
-        var dy = m.t + rh * i + off - gapPx / 2 - 2;
-        svg.appendChild(s('line', { x1: 8, x2: W - 8, y1: dy, y2: dy, style: 'stroke:var(--rule);stroke-width:1;stroke-dasharray:3 3' }));
-        svg.appendChild(t('text', { x: m.l, y: dy - 8,
-          style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' },
-          'What 2026 needs'));
-        svg.appendChild(s('line', { x1: x(1.99), x2: x(1.99), y1: dy + 4, y2: H - m.b + 2,
-          style: 'stroke:var(--y25);stroke-width:1.5;stroke-dasharray:4 4' }));
-        svg.appendChild(t('text', { x: x(1.99) + 7, y: dy + 15,
-          style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;fill:var(--y25)' },
-          'Best ever'));
-      }
-      var yTop = m.t + rh * i + off + 5, bh = rh - 14;
-      svg.appendChild(s('rect', { x: m.l, y: yTop, width: Math.max(2, x(r.v) - m.l), height: bh, rx: 3, style: 'fill:' + r.c }));
-      svg.appendChild(t('text', { x: m.l - 12, y: yTop + bh / 2 + 4, 'text-anchor': 'end',
-        style: 'font-family:"Archivo",sans-serif;font-size:12.5px;font-weight:' + (i > 3 ? 600 : 400) + ';fill:var(--ink)' }, r.k));
-      svg.appendChild(valText(x(r.v) + 9, yTop + bh / 2 + 5, fmt(r.v), 'start', 'var(--ink)', 17, 700));
-
-      var hit = s('rect', { x: 0, y: yTop - 5, width: W, height: rh, style: 'fill:transparent' });
-      hit.addEventListener('mousemove', function (e) {
-        var b = host.getBoundingClientRect();
-        tip.show(tipRows(r.k, [{ k: 'Aug + Sep', v: fmt(r.v), c: r.c },
-          { k: 'Per month', v: fmt(r.v / 2), dim: true }].concat(r.note ? [{ k: r.note, v: '', dim: true }] : [])),
-          e.clientX - b.left, e.clientY - b.top);
-      });
-      hit.addEventListener('mouseleave', tip.hide);
-      svg.appendChild(hit);
-    });
-    host.appendChild(svg);
-  }
-
-  function legend(host, items) {
-    var d = document.createElement('div');
-    d.className = 'legend';
-    items.forEach(function (it) {
-      var sp = document.createElement('span');
-      var st = it.hatch
-        ? 'height:10px;border-radius:2px;background-color:var(--surface);border:1px solid ' + it.c +
-          ';background-image:repeating-linear-gradient(45deg,' + it.c + ' 0 2px,transparent 2px 5px)'
-        : (it.dash ? 'color:' + it.c : 'background:' + it.c);
-      sp.innerHTML = '<i class="' + (it.dash ? 'dash' : '') + '" style="' + st + '"></i>' + it.k;
-      d.appendChild(sp);
-    });
-    host.appendChild(d);
-  }
-
-  /* ================= CHART: monthly lines ================= */
-  function chartMonthly(host) {
-    var W = Math.max(360, host.clientWidth), H = 400;
-    var m = { t: 26, r: 108, b: 38, l: 54 };
-    var iw = W - m.l - m.r, ih = H - m.t - m.b, y0 = 600, y1 = 1900;
-    var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
-      'aria-label': 'Monthly booked revenue January through September for 2022 to 2026, with the 2026 forecast forking into plan and stretch cases for August and September.' });
-    var X = function (i) { return m.l + (iw / 8) * i; };
-    var Y = function (v) { return m.t + ih - ((v - y0) / (y1 - y0)) * ih; };
-    var tip = mkTip(host);
-
-    [600, 900, 1200, 1500, 1800].forEach(function (g) {
-      svg.appendChild(s('line', { x1: m.l, x2: m.l + iw, y1: Y(g), y2: Y(g), style: 'stroke:var(--grid);stroke-width:1' }));
-      svg.appendChild(axisText(m.l - 10, Y(g) + 3.5, fmtK(g), 'end'));
-    });
-    MON.forEach(function (mo, i) {
-      svg.appendChild(axisText(X(i), H - 14, mo));
-    });
-    svg.appendChild(s('rect', { x: X(6) + iw / 16, y: m.t, width: iw - (iw / 8) * 6 - iw / 16, height: ih,
-      style: 'fill:var(--ink);opacity:.035' }));
-    svg.appendChild(t('text', { x: X(7), y: m.t + 14, 'text-anchor': 'middle',
-      style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' }, 'Forecast'));
-
-    ['2022', '2023', '2024', '2025'].forEach(function (yr) {
-      var pts = MONTHLY[yr].map(function (v, i) { return X(i) + ',' + Y(v); }).join(' ');
-      svg.appendChild(s('polyline', { points: pts, fill: 'none',
-        style: 'stroke:' + YCOL[yr] + ';stroke-width:1.75;stroke-linejoin:round;stroke-linecap:round' }));
-    });
-
-    var d26 = MONTHLY['2026'].slice(0, 7);
-    svg.appendChild(s('polyline', { points: d26.map(function (v, i) { return X(i) + ',' + Y(v); }).join(' '), fill: 'none',
-      style: 'stroke:var(--y26);stroke-width:2.75;stroke-linejoin:round;stroke-linecap:round' }));
-    d26.forEach(function (v, i) {
-      svg.appendChild(s('circle', { cx: X(i), cy: Y(v), r: 3.6, style: 'fill:var(--y26);stroke:var(--surface);stroke-width:2' }));
-    });
-
-    [{ v: F_STRETCH, c: 'var(--goal2)', ci: 'var(--goal2-ink)', n: 'Stretch' },
-     { v: F_BASE, c: 'var(--y26)', ci: 'var(--brand-ink)', n: 'Plan' }].forEach(function (f) {
-      svg.appendChild(s('polyline', { points: [X(6) + ',' + Y(1220), X(7) + ',' + Y(f.v), X(8) + ',' + Y(f.v)].join(' '),
-        fill: 'none', style: 'stroke:' + f.c + ';stroke-width:2.5;stroke-dasharray:6 5;stroke-linecap:round' }));
-      [7, 8].forEach(function (i) {
-        svg.appendChild(s('circle', { cx: X(i), cy: Y(f.v), r: 3.6,
-          style: 'fill:var(--surface);stroke:' + f.c + ';stroke-width:2.5' }));
-      });
-      svg.appendChild(t('text', { x: X(8) + 12, y: Y(f.v) - 4,
-        style: 'font-family:' + LAB.ff + ';font-size:10px;letter-spacing:.1em;text-transform:uppercase;fill:' + f.ci }, f.n));
-      svg.appendChild(valText(X(8) + 12, Y(f.v) + 13, fmtK(f.v), 'start', f.ci, 17, 700));
-    });
-
-    var cross = s('line', { y1: m.t, y2: m.t + ih, style: 'stroke:var(--ink-2);stroke-width:1;stroke-dasharray:3 3;opacity:0' });
-    svg.appendChild(cross);
-    var hit = s('rect', { x: m.l - iw / 16, y: m.t, width: iw + iw / 8, height: ih, style: 'fill:transparent' });
-    hit.addEventListener('mousemove', function (e) {
-      var b = host.getBoundingClientRect(), px = e.clientX - b.left;
-      var i = Math.max(0, Math.min(8, Math.round((px - m.l) / (iw / 8))));
-      cross.setAttribute('x1', X(i)); cross.setAttribute('x2', X(i)); cross.setAttribute('opacity', 1);
-      var rows = YEARS.map(function (yr) {
-        var v = MONTHLY[yr][i];
-        if (v == null) return null;
-        return { k: yr, v: fmtK(v), c: YCOL[yr] };
-      }).filter(Boolean);
-      if (i > 6) {
-        rows.push({ k: '2026 at plan', v: fmtK(F_BASE), c: 'var(--y26)' });
-        rows.push({ k: '2026 at stretch', v: fmtK(F_STRETCH), c: 'var(--goal2)' });
-      }
-      tip.show(tipRows(MON[i] + (i > 6 ? ' — forecast' : ''), rows), px, e.clientY - b.top);
-    });
-    hit.addEventListener('mouseleave', function () { cross.setAttribute('opacity', 0); tip.hide(); });
-    svg.appendChild(hit);
-    host.appendChild(svg);
-    legend(host, YEARS.map(function (yr) { return { k: yr, c: YCOL[yr] }; })
-      .concat([{ k: 'Aug–Sep forecast', c: 'var(--muted)', dash: true }]));
-  }
-
-  /* ================= CHART: quarters ================= */
-  function chartQuarters(host) {
-    var W = Math.max(340, host.clientWidth), H = 320;
-    var m = { t: 30, r: 16, b: 46, l: 48 };
-    var iw = W - m.l - m.r, ih = H - m.t - m.b, maxY = 4.4;
-    var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
-      'aria-label': 'Booked revenue by quarter, Q1 through Q3, for 2022 to 2026.' });
-    var defs = s('defs'); defs.appendChild(hatch('hq', 'var(--y26)')); svg.appendChild(defs);
-    var Y = function (v) { return m.t + ih - (v / maxY) * ih; };
-    var tip = mkTip(host);
-
-    [0, 1, 2, 3, 4].forEach(function (g) {
-      svg.appendChild(s('line', { x1: m.l, x2: m.l + iw, y1: Y(g), y2: Y(g),
-        style: 'stroke:' + (g === 0 ? 'var(--rule)' : 'var(--grid)') + ';stroke-width:1' }));
-      svg.appendChild(axisText(m.l - 10, Y(g) + 3.5, '$' + g + 'M', 'end'));
-    });
-
-    var QN = ['Q1 — Jan·Feb·Mar', 'Q2 — Apr·May·Jun', 'Q3 — Jul·Aug·Sep'];
-    var gband = iw / 3, inner = gband * 0.78, bw = (inner - 4 * 2) / 5;
-    QN.forEach(function (qn, qi) {
-      var gx = m.l + gband * qi + (gband - inner) / 2;
-      YEARS.forEach(function (yr, yi) {
-        var v = QTRS[yr][qi], x0 = gx + (bw + 2) * yi;
-        svg.appendChild(s('rect', { x: x0, y: Y(v), width: bw, height: Math.max(1, Y(0) - Y(v)), rx: 2.5,
-          style: 'fill:' + YCOL[yr] }));
-        if (yr === '2026' && qi === 2) {
-          svg.appendChild(s('rect', { x: x0, y: Y(Q3_STRETCH), width: bw, height: Math.max(1, Y(v + 0.06) - Y(Q3_STRETCH)), rx: 2.5,
-            style: 'fill:url(#hq);stroke:var(--goal2);stroke-width:1.2' }));
-          svg.appendChild(valText(x0 + bw / 2, Y(Q3_STRETCH) - 8, fmt(Q3_STRETCH), 'middle', 'var(--goal2-ink)', 15, 700));
-          svg.appendChild(valText(x0 + bw / 2, Y(v) + 17, fmt(v), 'middle', 'var(--surface)', 14, 700));
-        } else if (yr === '2026') {
-          svg.appendChild(valText(x0 + bw / 2, Y(v) - 8, fmt(v), 'middle', 'var(--brand-ink)', 15, 700));
-        }
-        var hit = s('rect', { x: x0 - 1, y: m.t, width: bw + 2, height: ih, style: 'fill:transparent' });
-        hit.addEventListener('mousemove', function (e) {
-          var b = host.getBoundingClientRect();
-          var rows = [{ k: qn.split(' — ')[0], v: fmt(v), c: YCOL[yr] }];
-          if (yr === '2026' && qi === 2) rows.push({ k: 'at stretch', v: fmt(Q3_STRETCH), c: 'var(--goal2)' });
-          if (yr === '2026') rows.push({ k: 'Aug–Sep forecast', v: '', dim: true });
-          tip.show(tipRows(yr, rows), e.clientX - b.left, e.clientY - b.top);
-        });
-        hit.addEventListener('mouseleave', tip.hide);
-        svg.appendChild(hit);
-      });
-      svg.appendChild(axisText(gx + inner / 2, H - 16, qn));
-    });
-    host.appendChild(svg);
-    legend(host, YEARS.map(function (yr) { return { k: yr + (yr === '2026' ? ' at plan' : ''), c: YCOL[yr] }; })
-      .concat([{ k: '2026 Q3 at stretch', c: 'var(--goal2)', hatch: true }]));
-  }
-
-  /* ================= FORMATTERS & PACING BANDS ================= */
   function usd(v) { return (v < 0 ? '−$' : '$') + Math.round(Math.abs(v)).toLocaleString('en-US'); }
   function usdC(v) {
     var a = Math.abs(v), sg = v < 0 ? '−' : '';
@@ -1055,13 +797,15 @@ footer b{color:var(--ink-2); font-weight:600}
     return sg + '$' + Math.round(a);
   }
   function num(v) { return Math.round(v).toLocaleString('en-US'); }
-  // Round an axis up to a readable step so ticks land on $250K, not $367K.
+  function pctS(v) { return (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1) + '%'; }
+  // $K in, compact string out — the historical grid is stored in thousands.
+  function kC(v) { return usdC(v * 1000); }
+
   function niceAxis(v, n) {
     var raw = (v || 1) / n, mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10)), nm = raw / mag;
     var step = (nm <= 1 ? 1 : nm <= 2 ? 2 : nm <= 2.5 ? 2.5 : nm <= 5 ? 5 : 10) * mag;
     return { step: step, max: Math.ceil((v || 1) / step) * step };
   }
-  // Push overlapping right-edge labels apart, then re-centre the stack in the plot.
   function declutter(items, minGap, lo, hi) {
     items.sort(function (a, b) { return a.y - b.y; });
     items.forEach(function (it) { it.ay = it.y; });
@@ -1074,15 +818,65 @@ footer b{color:var(--ink-2); font-weight:600}
     return items;
   }
 
+  var LAB = { ff: '"IBM Plex Mono", ui-monospace, monospace', fs: '10.5px', ls: '.07em' };
+  function axisText(x, y, str, anchor) {
+    return t('text', { x: x, y: y, 'text-anchor': anchor || 'middle',
+      style: 'font-family:' + LAB.ff + ';font-size:' + LAB.fs + ';letter-spacing:' + LAB.ls + ';fill:var(--muted);text-transform:uppercase' }, str);
+  }
+  function valText(x, y, str, anchor, color, size, weight) {
+    return t('text', { x: x, y: y, 'text-anchor': anchor || 'middle',
+      style: 'font-family:"Barlow Condensed",sans-serif;font-weight:' + (weight || 600) + ';font-size:' + (size || 16) +
+             'px;fill:' + (color || 'var(--ink)') + ';font-variant-numeric:tabular-nums' }, str);
+  }
+  function hatch(id, colorVar) {
+    var p = s('pattern', { id: id, width: 7, height: 7, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
+    p.appendChild(s('rect', { width: 7, height: 7, style: 'fill:var(--surface)' }));
+    p.appendChild(s('rect', { width: 3.2, height: 7, style: 'fill:' + colorVar + ';opacity:.55' }));
+    return p;
+  }
+  function mkTip(host) {
+    var d = document.createElement('div'); d.className = 'tip'; host.appendChild(d);
+    return {
+      show: function (html, x, y) {
+        d.innerHTML = html; d.classList.add('on');
+        var w = d.offsetWidth, hw = host.clientWidth;
+        var left = x + 14; if (left + w > hw - 4) left = x - w - 14; if (left < 4) left = 4;
+        d.style.left = left + 'px'; d.style.top = Math.max(4, y - d.offsetHeight - 10) + 'px';
+      },
+      hide: function () { d.classList.remove('on'); }
+    };
+  }
+  function tipRows(head, rows) {
+    var h = '<div class="t-h">' + head + '</div>';
+    rows.forEach(function (r) {
+      h += '<div class="t-r' + (r.dim ? ' dim' : '') + '"><span>' + (r.c ? '<i style="background:' + r.c + '"></i> ' : '') +
+           r.k + '</span><b>' + r.v + '</b></div>';
+    });
+    return h;
+  }
+  function legend(host, items) {
+    var d = document.createElement('div'); d.className = 'legend';
+    items.forEach(function (it) {
+      var sp = document.createElement('span');
+      var st = it.hatch
+        ? 'height:10px;border-radius:2px;background-color:var(--surface);border:1px solid ' + it.c +
+          ';background-image:repeating-linear-gradient(45deg,' + it.c + ' 0 2px,transparent 2px 5px)'
+        : (it.dash ? 'color:' + it.c : 'background:' + it.c);
+      sp.innerHTML = '<i class="' + (it.dash ? 'dash' : '') + '" style="' + st + '"></i>' + it.k;
+      d.appendChild(sp);
+    });
+    host.appendChild(d);
+  }
+
+  /* ================= PACING BANDS ================= */
+  var STAR = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z"/></svg>';
   var ICONS = {
-    best: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z"/></svg>',
+    best: STAR,
     good: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>',
     warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="18 13 12 19 6 13"/></svg>',
     crit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
     none: ''
   };
-  // One pacing scale for the whole board: behind modest reads as a problem,
-  // at-or-above modest reads good, stretch territory reads best.
   function band(v, modest, stretch) {
     if (!isFinite(v) || !modest) return { key: 'none', label: '—' };
     var r1 = v / modest, r2 = stretch ? v / stretch : 0;
@@ -1092,13 +886,532 @@ footer b{color:var(--ink-2); font-weight:600}
     if (r1 >= 0.85) return { key: 'warn', label: 'Behind modest', r1: r1, r2: r2 };
     return { key: 'crit', label: 'Well behind modest', r1: r1, r2: r2 };
   }
-  function paint(el, b, text) {
-    if (!el) return;
-    el.setAttribute('data-band', b.key);
-    if (text != null) el.innerHTML = (ICONS[b.key] || '') + text;
+  // Top tier keeps the green of "good" and wears a gold star; nothing new has to
+  // separate from amber, and the star still reads in greyscale.
+  var BANDC = { crit: 'var(--crit)', warn: 'var(--warn)', good: 'var(--good)', best: 'var(--good)', none: 'var(--deep)' };
+  var BANDI = { crit: 'var(--crit-ink)', warn: 'var(--warn-ink)', good: 'var(--good-ink)', best: 'var(--good-ink)', none: 'var(--ink)' };
+  var BANDRING = { best: 'var(--gold)' };
+  function setB(id, b) { var e = el(id); if (e) e.setAttribute('data-band', b.key); }
+  function pill(id, b, text) { setB(id, b); put(id, (ICONS[b.key] || '') + (text || b.label)); }
+
+  /* ================= HISTORICAL DATA (editable) ================= */
+  var YEARS = ['2022', '2023', '2024', '2025', '2026'];
+  var YCOL = { '2022': 'var(--y22)', '2023': 'var(--y23)', '2024': 'var(--y24)', '2025': 'var(--y25)', '2026': 'var(--y26)' };
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
+  var DEC_YEARS = ['2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024', '2025'];
+  var BASE = {
+    months: {
+      '2022': [698, 656, 1000, 744, 837, 827, 939, 967, 848],
+      '2023': [655, 1100, 1200, 775, 906, 1100, 839, 897, 795],
+      '2024': [1100, 866, 891, 911, 901, 842, 813, 1000, 856],
+      '2025': [747, 766, 1100, 1800, 1200, 834, 1000, 925, 1060],
+      '2026': [1000, 963, 804, 1240, 1500, 1110, 1220, null, null]
+    },
+    pace: 1200, stretchPace: 1400, modest: 6650, stretch: 7850,
+    decade: { '2016': 6846976, '2017': 7721318, '2018': 8069797, '2019': 8031927, '2020': 8350386,
+              '2021': 9060154, '2022': 10557746, '2023': 11448245, '2024': 11871000, '2025': 13500000 }
+  };
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  var DATA = clone(BASE);
+  var HSTORE = 'scw-board-history-v1';
+
+  function sum(a) { var n = 0; for (var i = 0; i < a.length; i++) n += (a[i] || 0); return n; }
+  // Everything in Parts 2 and 3 is derived here, so the editor is the single source of truth.
+  function derive() {
+    var d = { q: {}, window: {}, augSep: {}, months: DATA.months };
+    YEARS.forEach(function (y) {
+      var m = DATA.months[y] || [];
+      var mm = m.slice();
+      if (y === '2026') { mm[7] = DATA.pace; mm[8] = DATA.pace; }
+      d.q[y] = [sum(mm.slice(0, 3)), sum(mm.slice(3, 6)), sum(mm.slice(6, 9))];
+      d.window[y] = d.q[y][1] + d.q[y][2];
+      d.augSep[y] = (mm[7] || 0) + (mm[8] || 0);
+    });
+    d.booked26 = sum((DATA.months['2026'] || []).slice(3, 7));
+    d.q3Stretch = (DATA.months['2026'][6] || 0) + DATA.stretchPace * 2;
+    d.windowStretch = d.q['2026'][1] + d.q3Stretch;
+    d.modest = DATA.modest; d.stretch = DATA.stretch;
+    d.needModest = DATA.modest - d.booked26;
+    d.needStretch = DATA.stretch - d.booked26;
+    d.paceAugSep = DATA.pace * 2;
+    d.bestAugSep = Math.max(d.augSep['2022'], d.augSep['2023'], d.augSep['2024'], d.augSep['2025']);
+    d.bestAugSepYear = ['2022', '2023', '2024', '2025'].reduce(function (a, y) { return d.augSep[y] > d.augSep[a] ? y : a; }, '2022');
+    return d;
   }
-  var BANDC = { crit: 'var(--crit)', warn: 'var(--warn)', good: 'var(--good)', best: 'var(--goal2)', none: 'var(--deep)' };
-  var BANDI = { crit: 'var(--crit-ink)', warn: 'var(--warn-ink)', good: 'var(--good-ink)', best: 'var(--goal2-ink)', none: 'var(--ink)' };
+
+  /* ================= CHART: Apr–Sep window by year ================= */
+  function chartWindow(host, d) {
+    var W = Math.max(320, host.clientWidth), H = 336;
+    var m = { t: 40, r: 96, b: 36, l: 46 };
+    var iw = W - m.l - m.r, ih = H - m.t - m.b;
+    var maxY = niceAxis(Math.max(d.stretch, d.window['2026']) * 1.15, 4).max;
+    var stepY = niceAxis(Math.max(d.stretch, d.window['2026']) * 1.15, 4).step;
+    var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
+      'aria-label': 'April to September booked revenue by year against the modest and stretch goals.' });
+    var defs = s('defs'); defs.appendChild(hatch('hw', 'var(--y26)')); svg.appendChild(defs);
+    var y = function (v) { return m.t + ih - (v / maxY) * ih; };
+    for (var g = 0; g * stepY <= maxY + 1; g++) {
+      var gv = stepY * g;
+      svg.appendChild(s('line', { x1: m.l, x2: m.l + iw, y1: y(gv), y2: y(gv),
+        style: 'stroke:' + (g === 0 ? 'var(--rule)' : 'var(--grid)') + ';stroke-width:1' }));
+      svg.appendChild(axisText(m.l - 10, y(gv) + 3.5, kC(gv), 'end'));
+    }
+    [{ v: d.stretch, c: 'var(--goal2)', ci: 'var(--goal2-ink)', n: 'Stretch' },
+     { v: d.modest, c: 'var(--good)', ci: 'var(--good-ink)', n: 'Modest' }].forEach(function (g) {
+      svg.appendChild(s('line', { x1: m.l, x2: m.l + iw + 8, y1: y(g.v), y2: y(g.v),
+        style: 'stroke:' + g.c + ';stroke-width:2;stroke-dasharray:6 4' }));
+      svg.appendChild(t('text', { x: m.l + iw + 14, y: y(g.v) - 2,
+        style: 'font-family:' + LAB.ff + ';font-size:10px;letter-spacing:.1em;text-transform:uppercase;fill:' + g.ci }, g.n));
+      svg.appendChild(valText(m.l + iw + 14, y(g.v) + 15, kC(g.v), 'start', g.ci, 18, 700));
+    });
+    var bandw = iw / YEARS.length, bw = Math.min(62, bandw * 0.52), tip = mkTip(host);
+    YEARS.forEach(function (yr, i) {
+      var cx = m.l + bandw * i + bandw / 2, x0 = cx - bw / 2, tot = d.window[yr];
+      var bb = yr === '2026' ? band(tot, d.modest, d.stretch) : { key: 'none' };
+      if (yr === '2026') {
+        svg.appendChild(s('rect', { x: x0, y: y(d.booked26), width: bw, height: Math.max(1, y(0) - y(d.booked26)), rx: 3, style: 'fill:var(--y26)' }));
+        svg.appendChild(s('rect', { x: x0, y: y(tot), width: bw, height: Math.max(1, y(d.booked26 + 60) - y(tot)), rx: 3,
+          style: 'fill:url(#hw);stroke:var(--y26);stroke-width:1;stroke-opacity:.5' }));
+        if (BANDRING[bb.key]) svg.appendChild(s('rect', { x: x0 - 3, y: y(tot) - 3, width: bw + 6, height: Math.max(1, y(0) - y(tot)) + 3, rx: 4,
+          fill: 'none', style: 'stroke:' + BANDRING[bb.key] + ';stroke-width:2' }));
+      } else {
+        svg.appendChild(s('rect', { x: x0, y: y(tot), width: bw, height: Math.max(1, y(0) - y(tot)), rx: 3, style: 'fill:' + YCOL[yr] }));
+      }
+      var labY = yr === '2026' ? Math.min(y(tot) - 14, y(d.stretch) - 14) : y(tot) - 10;
+      svg.appendChild(valText(cx, labY, kC(tot), 'middle', yr === '2026' ? BANDI[bb.key] : 'var(--ink)', yr === '2026' ? 20 : 17, 700));
+      if (yr === '2026') svg.appendChild(t('text', { x: cx + 1, y: labY - 17, 'text-anchor': 'middle',
+        style: 'font-size:13px;fill:var(--gold)' }, bb.key === 'best' ? '★' : ''));
+      svg.appendChild(axisText(cx, H - 14, yr + (yr === '2026' ? ' pacing' : '')));
+      var hit = s('rect', { x: cx - bandw / 2, y: m.t, width: bandw, height: ih, style: 'fill:transparent' });
+      hit.addEventListener('mousemove', function (e) {
+        var b = host.getBoundingClientRect();
+        var rows = yr === '2026'
+          ? [{ k: 'Booked Apr–Jul', v: kC(d.booked26), c: 'var(--y26)' },
+             { k: 'Aug + Sep at pace', v: kC(d.paceAugSep), c: 'var(--y26)', dim: true },
+             { k: 'Window total', v: kC(tot) }]
+          : [{ k: 'Apr–Sep total', v: kC(tot), c: YCOL[yr] }];
+        rows.push({ k: 'vs modest goal', v: kC(tot - d.modest), dim: true });
+        tip.show(tipRows(yr, rows), e.clientX - b.left, e.clientY - b.top);
+      });
+      hit.addEventListener('mouseleave', tip.hide);
+      svg.appendChild(hit);
+    });
+    host.appendChild(svg);
+  }
+
+  /* ================= CHART: Aug + Sep, history vs needed ================= */
+  function chartAugSep(host, d) {
+    var rows = [
+      { k: '2022', v: d.augSep['2022'], c: 'var(--y22)' },
+      { k: '2023', v: d.augSep['2023'], c: 'var(--y23)' },
+      { k: '2024', v: d.augSep['2024'], c: 'var(--y24)' },
+      { k: '2025', v: d.augSep['2025'], c: 'var(--y25)' },
+      { k: 'Modest needs', v: d.needModest, c: 'var(--good)', gap: true },
+      { k: 'Current pace', v: d.paceAugSep, c: 'var(--y26)' },
+      { k: 'Stretch needs', v: d.needStretch, c: 'var(--goal2)' }
+    ];
+    var W = Math.max(320, host.clientWidth), m = { t: 34, r: 74, b: 34, l: 112 };
+    var rh = 34, gapPx = 30, H = m.t + m.b + rows.length * rh + gapPx;
+    var iw = W - m.l - m.r;
+    var ax = niceAxis(Math.max.apply(null, rows.map(function (r) { return r.v; })) * 1.14, 3);
+    var maxX = ax.max, tip = mkTip(host);
+    var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
+      'aria-label': 'August plus September booked revenue in past years compared with what each goal requires.' });
+    var x = function (v) { return m.l + (v / maxX) * iw; };
+    for (var g = 0; g * ax.step <= maxX + 1; g++) {
+      var gv = ax.step * g;
+      svg.appendChild(s('line', { x1: x(gv), x2: x(gv), y1: m.t - 6, y2: H - m.b + 2,
+        style: 'stroke:' + (g === 0 ? 'var(--rule)' : 'var(--grid)') + ';stroke-width:1' }));
+      svg.appendChild(axisText(x(gv), H - 12, kC(gv)));
+    }
+    svg.appendChild(t('text', { x: m.l, y: m.t - 10,
+      style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' }, 'Actual, 2022–2025'));
+    var off = 0;
+    rows.forEach(function (r, i) {
+      if (r.gap) {
+        off += gapPx;
+        var dy = m.t + rh * i + off - gapPx / 2 - 2;
+        svg.appendChild(s('line', { x1: 8, x2: W - 8, y1: dy, y2: dy, style: 'stroke:var(--rule);stroke-width:1;stroke-dasharray:3 3' }));
+        svg.appendChild(t('text', { x: m.l, y: dy - 8,
+          style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' }, 'What 2026 needs'));
+        svg.appendChild(s('line', { x1: x(d.bestAugSep), x2: x(d.bestAugSep), y1: dy + 4, y2: H - m.b + 2,
+          style: 'stroke:var(--y25);stroke-width:1.5;stroke-dasharray:4 4' }));
+        svg.appendChild(t('text', { x: x(d.bestAugSep) + 7, y: dy + 15,
+          style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;fill:var(--y25)' }, 'Best ever'));
+      }
+      var yTop = m.t + rh * i + off + 5, bh = rh - 14;
+      svg.appendChild(s('rect', { x: m.l, y: yTop, width: Math.max(2, x(r.v) - m.l), height: bh, rx: 3, style: 'fill:' + r.c }));
+      svg.appendChild(t('text', { x: m.l - 12, y: yTop + bh / 2 + 4, 'text-anchor': 'end',
+        style: 'font-family:"Archivo",sans-serif;font-size:12.5px;font-weight:' + (i > 3 ? 600 : 400) + ';fill:var(--ink)' }, r.k));
+      svg.appendChild(valText(x(r.v) + 9, yTop + bh / 2 + 5, kC(r.v), 'start', 'var(--ink)', 17, 700));
+      var hit = s('rect', { x: 0, y: yTop - 5, width: W, height: rh, style: 'fill:transparent' });
+      hit.addEventListener('mousemove', function (e) {
+        var b = host.getBoundingClientRect();
+        tip.show(tipRows(r.k, [{ k: 'Aug + Sep', v: kC(r.v), c: r.c }, { k: 'Per month', v: kC(r.v / 2), dim: true },
+          { k: 'vs best ever', v: pctS((r.v - d.bestAugSep) / d.bestAugSep), dim: true }]), e.clientX - b.left, e.clientY - b.top);
+      });
+      hit.addEventListener('mouseleave', tip.hide);
+      svg.appendChild(hit);
+    });
+    host.appendChild(svg);
+  }
+
+  /* ================= CHART: monthly lines ================= */
+  function chartMonthly(host, d) {
+    var W = Math.max(360, host.clientWidth), H = 400;
+    var m = { t: 26, r: 108, b: 38, l: 54 };
+    var iw = W - m.l - m.r, ih = H - m.t - m.b;
+    var all = [];
+    YEARS.forEach(function (y) { (d.months[y] || []).forEach(function (v) { if (v != null) all.push(v); }); });
+    all.push(DATA.stretchPace, DATA.pace);
+    var y0 = Math.max(0, Math.floor((Math.min.apply(null, all) * 0.9) / 100) * 100);
+    var y1 = Math.ceil((Math.max.apply(null, all) * 1.06) / 100) * 100;
+    var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
+      'aria-label': 'Monthly booked revenue January through September for five years, with the 2026 forecast forking into pace and stretch cases.' });
+    var X = function (i) { return m.l + (iw / 8) * i; };
+    var Y = function (v) { return m.t + ih - ((v - y0) / (y1 - y0)) * ih; };
+    var tip = mkTip(host);
+    var ax = niceAxis(y1 - y0, 4);
+    for (var gv = Math.ceil(y0 / ax.step) * ax.step; gv <= y1; gv += ax.step) {
+      svg.appendChild(s('line', { x1: m.l, x2: m.l + iw, y1: Y(gv), y2: Y(gv), style: 'stroke:var(--grid);stroke-width:1' }));
+      svg.appendChild(axisText(m.l - 10, Y(gv) + 3.5, kC(gv), 'end'));
+    }
+    MON.forEach(function (mo, i) { svg.appendChild(axisText(X(i), H - 14, mo)); });
+    svg.appendChild(s('rect', { x: X(6) + iw / 16, y: m.t, width: iw - (iw / 8) * 6 - iw / 16, height: ih, style: 'fill:var(--ink);opacity:.035' }));
+    svg.appendChild(t('text', { x: X(7) + 10, y: m.t + 14, 'text-anchor': 'middle',
+      style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' }, 'Pacing'));
+
+    ['2022', '2023', '2024', '2025'].forEach(function (yr) {
+      var pts = (d.months[yr] || []).map(function (v, i) { return X(i) + ',' + Y(v); }).join(' ');
+      svg.appendChild(s('polyline', { points: pts, fill: 'none',
+        style: 'stroke:' + YCOL[yr] + ';stroke-width:1.75;stroke-linejoin:round;stroke-linecap:round' }));
+    });
+    var d26 = (d.months['2026'] || []).slice(0, 7);
+    svg.appendChild(s('polyline', { points: d26.map(function (v, i) { return X(i) + ',' + Y(v); }).join(' '), fill: 'none',
+      style: 'stroke:var(--y26);stroke-width:2.75;stroke-linejoin:round;stroke-linecap:round' }));
+    d26.forEach(function (v, i) {
+      svg.appendChild(s('circle', { cx: X(i), cy: Y(v), r: 3.6, style: 'fill:var(--y26);stroke:var(--surface);stroke-width:2' }));
+    });
+    var lastAct = d26[6];
+    [{ v: DATA.stretchPace, c: 'var(--goal2)', ci: 'var(--goal2-ink)', n: 'Stretch' },
+     { v: DATA.pace, c: 'var(--y26)', ci: 'var(--brand-ink)', n: 'Pacing' }].forEach(function (f) {
+      svg.appendChild(s('polyline', { points: [X(6) + ',' + Y(lastAct), X(7) + ',' + Y(f.v), X(8) + ',' + Y(f.v)].join(' '),
+        fill: 'none', style: 'stroke:' + f.c + ';stroke-width:2.5;stroke-dasharray:6 5;stroke-linecap:round' }));
+      [7, 8].forEach(function (i) {
+        svg.appendChild(s('circle', { cx: X(i), cy: Y(f.v), r: 3.6, style: 'fill:var(--surface);stroke:' + f.c + ';stroke-width:2.5' }));
+      });
+      svg.appendChild(t('text', { x: X(8) + 12, y: Y(f.v) - 4,
+        style: 'font-family:' + LAB.ff + ';font-size:10px;letter-spacing:.1em;text-transform:uppercase;fill:' + f.ci }, f.n));
+      svg.appendChild(valText(X(8) + 12, Y(f.v) + 13, kC(f.v), 'start', f.ci, 17, 700));
+    });
+    var cross = s('line', { y1: m.t, y2: m.t + ih, style: 'stroke:var(--ink-2);stroke-width:1;stroke-dasharray:3 3;opacity:0' });
+    svg.appendChild(cross);
+    var hit = s('rect', { x: m.l - iw / 16, y: m.t, width: iw + iw / 8, height: ih, style: 'fill:transparent' });
+    hit.addEventListener('mousemove', function (e) {
+      var b = host.getBoundingClientRect(), px = e.clientX - b.left;
+      var i = Math.max(0, Math.min(8, Math.round((px - m.l) / (iw / 8))));
+      cross.setAttribute('x1', X(i)); cross.setAttribute('x2', X(i)); cross.setAttribute('opacity', 1);
+      var rows = YEARS.map(function (yr) {
+        var v = (d.months[yr] || [])[i];
+        return v == null ? null : { k: yr, v: kC(v), c: YCOL[yr] };
+      }).filter(Boolean);
+      if (i > 6) {
+        rows.push({ k: '2026 at pace', v: kC(DATA.pace), c: 'var(--y26)' });
+        rows.push({ k: '2026 at stretch', v: kC(DATA.stretchPace), c: 'var(--goal2)' });
+      }
+      tip.show(tipRows(MON[i] + (i > 6 ? ' — pacing' : ''), rows), px, e.clientY - b.top);
+    });
+    hit.addEventListener('mouseleave', function () { cross.setAttribute('opacity', 0); tip.hide(); });
+    svg.appendChild(hit);
+    host.appendChild(svg);
+    legend(host, YEARS.map(function (yr) { return { k: yr, c: YCOL[yr] }; }).concat([{ k: 'Aug–Sep pacing', c: 'var(--muted)', dash: true }]));
+  }
+
+  /* ================= CHART: quarters ================= */
+  function chartQuarters(host, d) {
+    var W = Math.max(340, host.clientWidth), H = 320;
+    var m = { t: 30, r: 16, b: 46, l: 48 };
+    var iw = W - m.l - m.r, ih = H - m.t - m.b;
+    var ax = niceAxis(Math.max(d.q3Stretch, d.q['2026'][1]) * 1.14, 4);
+    var maxY = ax.max;
+    var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
+      'aria-label': 'Booked revenue by quarter, Q1 through Q3, for five years.' });
+    var defs = s('defs'); defs.appendChild(hatch('hq', 'var(--y26)')); svg.appendChild(defs);
+    var Y = function (v) { return m.t + ih - (v / maxY) * ih; };
+    var tip = mkTip(host);
+    for (var g = 0; g * ax.step <= maxY + 1; g++) {
+      var gv = ax.step * g;
+      svg.appendChild(s('line', { x1: m.l, x2: m.l + iw, y1: Y(gv), y2: Y(gv),
+        style: 'stroke:' + (g === 0 ? 'var(--rule)' : 'var(--grid)') + ';stroke-width:1' }));
+      svg.appendChild(axisText(m.l - 10, Y(gv) + 3.5, kC(gv), 'end'));
+    }
+    var QN = ['Q1 — Jan·Feb·Mar', 'Q2 — Apr·May·Jun', 'Q3 — Jul·Aug·Sep'];
+    var gband = iw / 3, inner = gband * 0.78, bw = (inner - 8) / 5;
+    QN.forEach(function (qn, qi) {
+      var gx = m.l + gband * qi + (gband - inner) / 2;
+      YEARS.forEach(function (yr, yi) {
+        var v = d.q[yr][qi], x0 = gx + (bw + 2) * yi;
+        svg.appendChild(s('rect', { x: x0, y: Y(v), width: bw, height: Math.max(1, Y(0) - Y(v)), rx: 2.5, style: 'fill:' + YCOL[yr] }));
+        if (yr === '2026' && qi === 2) {
+          svg.appendChild(s('rect', { x: x0, y: Y(d.q3Stretch), width: bw, height: Math.max(1, Y(v + 60) - Y(d.q3Stretch)), rx: 2.5,
+            style: 'fill:url(#hq);stroke:var(--goal2);stroke-width:1.2' }));
+          svg.appendChild(valText(x0 + bw / 2, Y(d.q3Stretch) - 8, kC(d.q3Stretch), 'middle', 'var(--goal2-ink)', 15, 700));
+          svg.appendChild(valText(x0 + bw / 2, Y(v) + 17, kC(v), 'middle', 'var(--surface)', 14, 700));
+        } else if (yr === '2026') {
+          svg.appendChild(valText(x0 + bw / 2, Y(v) - 8, kC(v), 'middle', 'var(--brand-ink)', 15, 700));
+        }
+        var hit = s('rect', { x: x0 - 1, y: m.t, width: bw + 2, height: ih, style: 'fill:transparent' });
+        hit.addEventListener('mousemove', function (e) {
+          var b = host.getBoundingClientRect();
+          var rows = [{ k: qn.split(' — ')[0], v: kC(v), c: YCOL[yr] }];
+          if (yr === '2026' && qi === 2) rows.push({ k: 'at stretch', v: kC(d.q3Stretch), c: 'var(--goal2)' });
+          if (yr !== '2026') rows.push({ k: 'vs 2026', v: pctS((d.q['2026'][qi] - v) / v), dim: true });
+          tip.show(tipRows(yr, rows), e.clientX - b.left, e.clientY - b.top);
+        });
+        hit.addEventListener('mouseleave', tip.hide);
+        svg.appendChild(hit);
+      });
+      svg.appendChild(axisText(gx + inner / 2, H - 16, qn));
+    });
+    host.appendChild(svg);
+    legend(host, YEARS.map(function (yr) { return { k: yr + (yr === '2026' ? ' pacing' : ''), c: YCOL[yr] }; })
+      .concat([{ k: '2026 Q3 at stretch', c: 'var(--goal2)', hatch: true }]));
+  }
+
+  /* ================= CHART: ten-year revenue ================= */
+  function chartDecade(host) {
+    var W = Math.max(340, host.clientWidth), H = 330;
+    var m = { t: 46, r: 14, b: 40, l: 56 };
+    var iw = W - m.l - m.r, ih = H - m.t - m.b;
+    var vals = DEC_YEARS.map(function (y) { return DATA.decade[y] || 0; });
+    var ax = niceAxis(Math.max.apply(null, vals) * 1.12, 3);
+    var maxY = ax.max;
+    var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
+      'aria-label': 'Total company revenue by year over the last ten years.' });
+    var Y = function (v) { return m.t + ih - (v / maxY) * ih; };
+    var tip = mkTip(host);
+    for (var g = 0; g * ax.step <= maxY + 1; g++) {
+      var gv = ax.step * g;
+      svg.appendChild(s('line', { x1: m.l, x2: m.l + iw, y1: Y(gv), y2: Y(gv),
+        style: 'stroke:' + (g === 0 ? 'var(--rule)' : 'var(--grid)') + ';stroke-width:1' }));
+      svg.appendChild(axisText(m.l - 10, Y(gv) + 3.5, usdC(gv), 'end'));
+    }
+    var bandw = iw / DEC_YEARS.length, bw = Math.min(56, bandw * 0.6);
+    DEC_YEARS.forEach(function (yr, i) {
+      var v = DATA.decade[yr] || 0, cx = m.l + bandw * i + bandw / 2, last = i ? DATA.decade[DEC_YEARS[i - 1]] : null;
+      var isLast = i === DEC_YEARS.length - 1;
+      svg.appendChild(s('rect', { x: cx - bw / 2, y: Y(v), width: bw, height: Math.max(1, Y(0) - Y(v)), rx: 3,
+        style: 'fill:' + (isLast ? 'var(--y26)' : 'var(--y23)') }));
+      if (isLast || i === 0) svg.appendChild(valText(cx, Y(v) - 22, usdC(v), 'middle', 'var(--ink)', 16, 700));
+      if (last) {
+        var dd = (v - last) / last;
+        svg.appendChild(t('text', { x: cx, y: Y(v) - 8, 'text-anchor': 'middle',
+          style: 'font-family:' + LAB.ff + ';font-size:10px;fill:' + (dd >= 0 ? 'var(--good-ink)' : 'var(--crit-ink)') }, pctS(dd)));
+      }
+      svg.appendChild(axisText(cx, H - 14, yr));
+      var hit = s('rect', { x: cx - bandw / 2, y: m.t, width: bandw, height: ih, style: 'fill:transparent' });
+      hit.addEventListener('mousemove', function (e) {
+        var b = host.getBoundingClientRect();
+        var rr = [{ k: 'Total revenue', v: usd(v), c: isLast ? 'var(--y26)' : 'var(--y23)' }];
+        if (last) rr.push({ k: 'vs prior year', v: usd(v - last), dim: true });
+        rr.push({ k: 'vs ' + DEC_YEARS[0], v: '×' + (v / (DATA.decade[DEC_YEARS[0]] || 1)).toFixed(2), dim: true });
+        tip.show(tipRows(yr, rr), e.clientX - b.left, e.clientY - b.top);
+      });
+      hit.addEventListener('mouseleave', tip.hide);
+      svg.appendChild(hit);
+    });
+    host.appendChild(svg);
+  }
+
+  /* ================= PART 2 + 3 TEXT, TRACK, TILES, TABLE ================= */
+  function renderQ2() {
+    var d = derive();
+    var w26 = d.window['2026'], w25 = d.window['2025'];
+    var b = band(w26, d.modest, d.stretch);
+    var trackMax = Math.max(d.stretch, w26) * 1.07;
+    var pc = function (v) { return (v / trackMax * 100) + '%'; };
+
+    el('qFill').style.width = pc(d.booked26);
+    el('qProj').style.left = pc(d.booked26);
+    el('qProj').style.width = pc(Math.max(0, w26 - d.booked26));
+    el('qSeam').style.left = pc(d.booked26);
+    el('qMarkM').style.left = pc(d.modest); el('qLabM').style.left = pc(d.modest);
+    el('qMarkS').style.left = pc(d.stretch); el('qLabS').style.left = pc(d.stretch);
+    put('qLabMv', kC(d.modest)); put('qLabSv', kC(d.stretch));
+    put('qStackM', kC(d.modest)); put('qStackS', kC(d.stretch));
+    put('qKey', '<span><i class="sw solid"></i>Booked Apr&ndash;Jul &mdash; ' + kC(d.booked26) + '</span>' +
+      '<span><i class="sw hatch"></i>Aug + Sep at current pace (' + kC(DATA.pace) + '/mo) &mdash; ' + kC(d.paceAugSep) + '</span>' +
+      '<span style="color:var(--muted)">Scale 0&ndash;' + kC(trackMax) + '</span>');
+
+    setB('qBooked', b); put('qBooked', kC(d.booked26));
+    pill('qPill', b);
+    put('qCap', 'Four months in, we are <strong>' + Math.round(d.booked26 / d.modest * 100) +
+      '% of the way to modest</strong> and <strong>' + Math.round(d.booked26 / d.stretch * 100) +
+      '% of the way to stretch</strong> — with two months on the board. At the current pace the window lands at <strong>' +
+      kC(w26) + '</strong>, ' + (w26 >= d.modest ? 'clear of modest and ' : 'short of modest at ') +
+      '<strong>' + Math.round(w26 / d.stretch * 100) + '% of stretch</strong>.');
+
+    put('qtBooked', kC(d.booked26));
+    var prev4 = ['2022', '2023', '2024', '2025'].map(function (y) { return sum((d.months[y] || []).slice(3, 7)); });
+    put('qtBookedSub', '<b>' + pctS((d.booked26 - prev4[3]) / prev4[3]) + '</b> vs the same Apr&ndash;Jul window in 2025' +
+      (d.booked26 > Math.max.apply(null, prev4) ? ' &mdash; the strongest four&#8209;month run on record.' : '.'));
+
+    var bM = band(w26, d.modest, d.modest * 1.0001);
+    el('qtModestTile').setAttribute('data-band', bM.key === 'best' ? 'good' : bM.key);
+    pill('qtModestPill', { key: bM.key === 'best' ? 'good' : bM.key, label: w26 >= d.modest ? 'Clears at pace' : 'Short at pace' });
+    put('qtModest', kC(d.needModest));
+    var beatCount = ['2022', '2023', '2024', '2025'].filter(function (y) { return d.augSep[y] > d.needModest; }).length;
+    put('qtModestSub', 'Aug + Sep have beaten that in <b>' + beatCount + ' of the last 4 years</b>.');
+
+    el('qtStretchTile').setAttribute('data-band', b.key);
+    pill('qtStretchPill', b, Math.round(w26 / d.stretch * 100) + '% at pace');
+    put('qtStretch', kC(d.needStretch));
+    put('qtStretchSub', '<b>' + pctS((d.needStretch - d.bestAugSep) / d.bestAugSep) + '</b> vs our best-ever Aug + Sep (' +
+      kC(d.bestAugSep) + ', ' + d.bestAugSepYear + '). This is the real ask.');
+
+    put('qtRate', kC(d.needModest / 2) + ' <span style="color:var(--muted);font-weight:400">/</span> ' + kC(d.needStretch / 2));
+    put('qtRateSub', 'Per month in Aug &amp; Sep &mdash; <b>modest</b> vs <b>stretch</b>. Pacing at ' + kC(DATA.pace) + '/mo today.');
+
+    put('qWindowNote', 'At the current pace the window lands at <b>' + kC(w26) + '</b> &mdash; ' +
+      (w26 >= d.modest ? 'clear of modest, ' : 'short of modest, ') + '<b>' + pctS((w26 - w25) / w25) +
+      '</b> against 2025 and the fifth straight year of growth in this window.');
+    put('qAugSepNote', 'Modest sits <b>' + (d.needModest < d.bestAugSep ? 'below' : 'above') +
+      '</b> every Aug+Sep we have booked. Stretch sits <b>' + pctS((d.needStretch - d.bestAugSep) / d.bestAugSep) +
+      '</b> against the best one.');
+    put('qMonthlyNote', '2026 is booked through July. From there the line forks: the <b>current pace</b> (' + kC(DATA.pace) +
+      ' in both Aug and Sep) against what <b>stretch</b> needs (' + kC(DATA.stretchPace) + ' in both). For scale, our biggest month on record is ' +
+      kC(1800) + ' in Apr 2025, and we already booked ' + kC(1500) + ' in May.');
+    put('qQuartersNote', 'Q2 held its 2025 step-up (<b>' + pctS((d.q['2026'][1] - d.q['2025'][1]) / d.q['2025'][1]) +
+      '</b>), and Q3 is pacing <b>' + pctS((d.q['2026'][2] - d.q['2025'][2]) / d.q['2025'][2]) + '</b>, or <b>' +
+      pctS((d.q3Stretch - d.q['2025'][2]) / d.q['2025'][2]) + '</b> at stretch.');
+    var d0 = DATA.decade[DEC_YEARS[0]], d9 = DATA.decade[DEC_YEARS[9]];
+    var cagr = Math.pow(d9 / d0, 1 / 9) - 1, ups = 0;
+    for (var i = 1; i < DEC_YEARS.length; i++) if (DATA.decade[DEC_YEARS[i]] > DATA.decade[DEC_YEARS[i - 1]]) ups++;
+    put('qDecadeNote', ups + ' growth years out of ' + (DEC_YEARS.length - 1) + ', compounding at about <b>' +
+      (cagr * 100).toFixed(1) + '% a year</b>. ' + DEC_YEARS[9] + ' was <b>' +
+      pctS((d9 - DATA.decade[DEC_YEARS[8]]) / DATA.decade[DEC_YEARS[8]]) + '</b>.');
+
+    var asks = [
+      { id: 'askModest', lab: 'Modest &mdash; ' + kC(d.modest), num: kC(d.needModest / 2), band: 'good',
+        txt: 'Per month in Aug and Sep. Below our Aug&ndash;Sep average in every year since 2022 &mdash; holding normal pace gets us here.' },
+      { id: 'askPace', lab: 'Current pace &mdash; ' + kC(w26), num: kC(DATA.pace), band: b.key === 'best' ? 'best' : b.key,
+        txt: 'What we are actually running at. ' + (w26 >= d.modest ? 'Clears modest by ' + kC(w26 - d.modest) : 'Short of modest by ' + kC(d.modest - w26)) +
+             ', ' + kC(Math.abs(d.stretch - w26)) + ' ' + (w26 >= d.stretch ? 'past' : 'short of') + ' stretch.' },
+      { id: 'askStretch', lab: 'Stretch &mdash; ' + kC(d.stretch), num: kC(d.needStretch / 2), band: 'none',
+        txt: 'Two of the biggest months on record, back to back. Needs roughly <b>' + kC(d.needStretch / 2 - DATA.pace) +
+             '/mo</b> more than we are pacing at &mdash; that is the gap to close.' }
+    ];
+    asks.forEach(function (a) {
+      el(a.id).setAttribute('data-band', a.band);
+      put(a.id + 'Lab', a.lab); put(a.id + 'Num', a.num + '<span style="font-size:20px;color:var(--muted)">/mo</span>');
+      put(a.id + 'Txt', a.txt);
+    });
+
+    var rows = '';
+    YEARS.forEach(function (yr) {
+      var prev = String(+yr - 1), pw = d.window[prev];
+      var yoy = pw ? pctS((d.window[yr] - pw) / pw) : '&mdash;';
+      var cls = pw ? (d.window[yr] >= pw ? 'up' : 'dn') : '';
+      var full = DATA.decade[yr] ? usdC(DATA.decade[yr]) : '&mdash;';
+      var lbl = yr === '2026' ? '2026 at pace' : yr;
+      rows += '<tr' + (yr === '2026' ? ' class="now"' : '') + '><td><span class="yr"><i style="background:' + YCOL[yr] + '"></i>' +
+        lbl + '</span></td><td>' + kC(d.q[yr][0]) + '</td><td>' + kC(d.q[yr][1]) + '</td><td>' + kC(d.q[yr][2]) +
+        '</td><td>' + kC(d.window[yr]) + '</td><td class="delta ' + cls + '">' + yoy + '</td><td>' + full + '</td></tr>';
+    });
+    var sw = d.windowStretch, syoy = pctS((sw - w25) / w25);
+    rows += '<tr class="now"><td><span class="yr"><i style="background:' + YCOL['2026'] + '"></i>2026 at stretch</span></td><td>' +
+      kC(d.q['2026'][0]) + '</td><td>' + kC(d.q['2026'][1]) + '</td><td>' + kC(d.q3Stretch) + '</td><td>' + kC(sw) +
+      '</td><td class="delta up">' + syoy + '</td><td>&mdash;</td></tr>';
+    put('qTableBody', rows);
+
+    QCHARTS.forEach(function (c) {
+      var host = el(c[0]); if (!host) return;
+      host.innerHTML = ''; c[1](host, d);
+    });
+    var jt = el('edJson');
+    if (jt && document.activeElement !== jt) jt.value = JSON.stringify(DATA);
+  }
+
+  /* ================= HISTORY EDITOR ================= */
+  function inputCell(id, val, step) {
+    return '<td><input id="' + id + '" type="number" step="' + (step || 1) + '" value="' + val + '" inputmode="decimal"></td>';
+  }
+  function buildEditor() {
+    var h = '<thead><tr><th>Year</th>' + MON.map(function (m) { return '<th>' + m + '</th>'; }).join('') + '</tr></thead><tbody>';
+    YEARS.forEach(function (y) {
+      h += '<tr><td>' + y + '</td>';
+      for (var i = 0; i < 9; i++) {
+        h += (y === '2026' && i > 6) ? '<td style="text-align:center;color:var(--muted);font-size:11px">below</td>'
+                                     : inputCell('ed-m-' + y + '-' + i, DATA.months[y][i], 1);
+      }
+      h += '</tr>';
+    });
+    el('edMonths').innerHTML = h + '</tbody>';
+
+    el('edScen').innerHTML = '<tbody>' +
+      '<tr class="fc"><td>Aug &amp; Sep 2026 &mdash; current pace, each month</td>' + inputCell('ed-pace', DATA.pace, 10) + '</tr>' +
+      '<tr class="fc"><td>Aug &amp; Sep 2026 &mdash; stretch, each month</td>' + inputCell('ed-stretchPace', DATA.stretchPace, 10) + '</tr>' +
+      '<tr><td>Modest goal, Apr&ndash;Sep window</td>' + inputCell('ed-modest', DATA.modest, 10) + '</tr>' +
+      '<tr><td>Stretch goal, Apr&ndash;Sep window</td>' + inputCell('ed-stretch', DATA.stretch, 10) + '</tr>' +
+      '</tbody>';
+
+    var d1 = '<thead><tr>' + DEC_YEARS.map(function (y) { return '<th>' + y + '</th>'; }).join('') + '</tr></thead><tbody><tr>' +
+      DEC_YEARS.map(function (y) { return inputCell('ed-d-' + y, DATA.decade[y], 1000); }).join('') + '</tr></tbody>';
+    el('edDecade').innerHTML = d1;
+
+    el('editor').querySelectorAll('input').forEach(function (inp) {
+      inp.addEventListener('input', pullEditor);
+      inp.addEventListener('change', pullEditor);
+    });
+  }
+  function n(id, fb) { var e = el(id); var v = e ? parseFloat(e.value) : NaN; return isFinite(v) ? v : fb; }
+  function pullEditor() {
+    YEARS.forEach(function (y) {
+      for (var i = 0; i < 9; i++) {
+        if (y === '2026' && i > 6) continue;
+        DATA.months[y][i] = n('ed-m-' + y + '-' + i, DATA.months[y][i]);
+      }
+    });
+    DATA.pace = n('ed-pace', DATA.pace);
+    DATA.stretchPace = n('ed-stretchPace', DATA.stretchPace);
+    DATA.modest = n('ed-modest', DATA.modest);
+    DATA.stretch = n('ed-stretch', DATA.stretch);
+    DEC_YEARS.forEach(function (y) { DATA.decade[y] = n('ed-d-' + y, DATA.decade[y]); });
+    try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
+    renderQ2();
+  }
+  function restoreHistory() {
+    var v; try { v = JSON.parse(localStorage.getItem(HSTORE) || 'null'); } catch (e) { v = null; }
+    if (v && v.months && v.decade) DATA = v;
+  }
+  function edMsg(txt, ok) {
+    var m = el('edMsg'); if (!m) return;
+    m.textContent = txt; m.style.color = ok === false ? 'var(--crit-ink)' : 'var(--good-ink)';
+    setTimeout(function () { m.textContent = ''; }, 3200);
+  }
+  function wireEditor() {
+    el('edCopy').addEventListener('click', function () {
+      var ta = el('edJson'); ta.value = JSON.stringify(DATA);
+      ta.select(); ta.setSelectionRange(0, ta.value.length);
+      var done = false;
+      try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(ta.value); done = true; } } catch (e) {}
+      if (!done) { try { done = document.execCommand('copy'); } catch (e) {} }
+      edMsg(done ? 'Copied to clipboard.' : 'Select the text below and copy it.', done);
+    });
+    el('edApply').addEventListener('click', function () {
+      var v;
+      try { v = JSON.parse(el('edJson').value); } catch (e) { edMsg('That is not valid JSON.', false); return; }
+      if (!v || !v.months || !v.decade) { edMsg('JSON is missing months or decade.', false); return; }
+      DATA = v;
+      try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
+      buildEditor(); renderQ2(); edMsg('Applied.');
+    });
+    el('edReset').addEventListener('click', function () {
+      DATA = clone(BASE);
+      try { localStorage.removeItem(HSTORE); } catch (e) {}
+      buildEditor(); renderQ2(); edMsg('Reset to original figures.');
+    });
+  }
 
   /* ================= MONTH ENGINE ================= */
   var SHEET = {
@@ -1107,52 +1420,43 @@ footer b{color:var(--ink-2); font-weight:600}
     aDeals: 40, aDealsLast: 134, aSQL: 13485, aPipe: 1219000, aCount: 16
   };
   var STORE = 'scw-q2-board-v1';
-  function el(id) { return document.getElementById(id); }
   function readInputs() {
     var o = {};
-    for (var k in SHEET) { var e = el(k); var n = e ? parseFloat(e.value) : NaN; o[k] = isFinite(n) ? n : 0; }
+    for (var k in SHEET) { var e = el(k); var v = e ? parseFloat(e.value) : NaN; o[k] = isFinite(v) ? v : 0; }
     return o;
   }
-  function save(v) { try { localStorage.setItem(STORE, JSON.stringify(v)); } catch (e) {} }
-  function restore() {
+  function saveMonth(v) { try { localStorage.setItem(STORE, JSON.stringify(v)); } catch (e) {} }
+  function restoreMonth() {
     var v; try { v = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { v = null; }
     if (!v) return;
     for (var k in SHEET) if (el(k) && isFinite(v[k])) el(k).value = v[k];
   }
   function compute() {
     var v = readInputs();
-    var bd = Math.max(0.5, v.mDaysTD);
-    var bt = Math.max(bd, v.mDaysTotal || 1);
-    var rev = v.mInstall + v.mMagento;
-    var big = Math.min(v.mBigDeal, rev);
-    var adj = (rev - big) / bd;
-    var pend = v.mPendM2 + v.mPendInstall;
-    var daysLeft = Math.max(0, bt - bd);
+    var bd = Math.max(0.5, v.mDaysTD), bt = Math.max(bd, v.mDaysTotal || 1);
+    var rev = v.mInstall + v.mMagento, big = Math.min(v.mBigDeal, rev);
+    var adj = (rev - big) / bd, pend = v.mPendM2 + v.mPendInstall, daysLeft = Math.max(0, bt - bd);
     return {
       v: v, bd: bd, bt: bt, rev: rev, big: big, adj: adj, pend: pend, daysLeft: daysLeft,
       projected: adj * bt + big,
       withPending: (rev + pend - big) / bd * bt + big,
-      installProj: v.mInstall / bd * bt,
-      magentoProj: v.mMagento / bd * bt,
+      installProj: v.mInstall / bd * bt, magentoProj: v.mMagento / bd * bt,
       g1Daily: v.mGoal1 / bt, g2Daily: v.mGoal2 / bt,
       reqDaily: daysLeft > 0 ? (v.mGoal1 - rev) / daysLeft : 0,
       reqDaily2: daysLeft > 0 ? (v.mGoal2 - rev) / daysLeft : 0
     };
   }
 
-  /* ================= CHART: month burn-up ================= */
   function chartBurnup(host, m) {
     var W = Math.max(360, host.clientWidth), H = 380;
-    var mg = { t: 26, r: 116, b: 40, l: 58 };
+    var mg = { t: 26, r: 122, b: 40, l: 58 };
     var iw = W - mg.l - mg.r, ih = H - mg.t - mg.b;
-    var ax = niceAxis(Math.max(m.v.mGoal2, m.withPending, m.projected) * 1.06, 4);
-    var maxY = ax.max;
+    var ax = niceAxis(Math.max(m.v.mGoal2, m.withPending, m.projected) * 1.06, 4), maxY = ax.max;
     var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
-      'aria-label': 'Cumulative revenue pace for the month against the modest and stretch goal pace lines.' });
-    var X = function (d) { return mg.l + (d / m.bt) * iw; };
+      'aria-label': 'Cumulative revenue pacing for the month against the modest and stretch pace lines.' });
+    var X = function (dd) { return mg.l + (dd / m.bt) * iw; };
     var Y = function (val) { return mg.t + ih - (val / maxY) * ih; };
     var tip = mkTip(host);
-
     for (var g = 0; g * ax.step <= maxY + 1; g++) {
       var gv = ax.step * g;
       svg.appendChild(s('line', { x1: mg.l, x2: mg.l + iw, y1: Y(gv), y2: Y(gv),
@@ -1160,92 +1464,78 @@ footer b{color:var(--ink-2); font-weight:600}
       svg.appendChild(axisText(mg.l - 10, Y(gv) + 3.5, usdC(gv), 'end'));
     }
     var tickEvery = m.bt > 14 ? 3 : 2;
-    for (var d = 0; d <= m.bt; d += tickEvery) svg.appendChild(axisText(X(d), H - 14, 'Day ' + d));
-
-    svg.appendChild(s('rect', { x: X(m.bd), y: mg.t, width: Math.max(0, iw - (m.bd / m.bt) * iw), height: ih,
-      style: 'fill:var(--ink);opacity:.035' }));
-    svg.appendChild(s('line', { x1: X(m.bd), x2: X(m.bd), y1: mg.t, y2: mg.t + ih,
-      style: 'stroke:var(--rule);stroke-width:1.5;stroke-dasharray:3 3' }));
+    for (var dd2 = 0; dd2 <= m.bt; dd2 += tickEvery) svg.appendChild(axisText(X(dd2), H - 14, 'Day ' + dd2));
+    svg.appendChild(s('rect', { x: X(m.bd), y: mg.t, width: Math.max(0, iw - (m.bd / m.bt) * iw), height: ih, style: 'fill:var(--ink);opacity:.035' }));
+    svg.appendChild(s('line', { x1: X(m.bd), x2: X(m.bd), y1: mg.t, y2: mg.t + ih, style: 'stroke:var(--rule);stroke-width:1.5;stroke-dasharray:3 3' }));
     svg.appendChild(t('text', { x: X(m.bd) + 7, y: mg.t + 13,
-      style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' },
-      'Today · day ' + m.bd));
-
-    [{ v: m.v.mGoal2, c: 'var(--goal2)' }, { v: m.v.mGoal1, c: 'var(--good)' }].forEach(function (g) {
-      svg.appendChild(s('line', { x1: X(0), y1: Y(0), x2: X(m.bt), y2: Y(g.v),
-        style: 'stroke:' + g.c + ';stroke-width:2;stroke-linecap:round' }));
+      style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' }, 'Today · day ' + m.bd));
+    [{ v: m.v.mGoal2, c: 'var(--goal2)' }, { v: m.v.mGoal1, c: 'var(--good)' }].forEach(function (g2) {
+      svg.appendChild(s('line', { x1: X(0), y1: Y(0), x2: X(m.bt), y2: Y(g2.v), style: 'stroke:' + g2.c + ';stroke-width:2;stroke-linecap:round' }));
     });
-
-    var bP = band(m.withPending, m.v.mGoal1, m.v.mGoal2);
+    var bJ = band(m.projected, m.v.mGoal1, m.v.mGoal2);
     svg.appendChild(s('polyline', { points: X(m.bd) + ',' + Y(m.rev) + ' ' + X(m.bt) + ',' + Y(m.withPending),
       fill: 'none', style: 'stroke:var(--slate);stroke-width:2.5;stroke-dasharray:2 5;stroke-linecap:round' }));
-    var bJ = band(m.projected, m.v.mGoal1, m.v.mGoal2);
     svg.appendChild(s('polyline', { points: X(m.bd) + ',' + Y(m.rev) + ' ' + X(m.bt) + ',' + Y(m.projected),
       fill: 'none', style: 'stroke:' + BANDC[bJ.key] + ';stroke-width:2.5;stroke-dasharray:6 5;stroke-linecap:round' }));
     svg.appendChild(s('polyline', { points: X(0) + ',' + Y(0) + ' ' + X(m.bd) + ',' + Y(m.rev),
       fill: 'none', style: 'stroke:var(--y26);stroke-width:3.2;stroke-linecap:round' }));
     svg.appendChild(s('circle', { cx: X(m.bd), cy: Y(m.rev), r: 4.4, style: 'fill:var(--y26);stroke:var(--surface);stroke-width:2' }));
-
-    [{ y: m.projected, c: BANDC[bJ.key], ci: BANDI[bJ.key], n: 'Projected' },
-     { y: m.withPending, c: 'var(--slate)', ci: 'var(--ink-2)', n: 'With pending' }].forEach(function (f) {
+    [{ y: m.projected, c: BANDC[bJ.key] }, { y: m.withPending, c: 'var(--slate)' }].forEach(function (f) {
       svg.appendChild(s('circle', { cx: X(m.bt), cy: Y(f.y), r: 4, style: 'fill:var(--surface);stroke:' + f.c + ';stroke-width:2.5' }));
     });
     declutter([
       { y: Y(m.v.mGoal2), val: m.v.mGoal2, ci: 'var(--goal2-ink)', n: 'Stretch pace' },
       { y: Y(m.v.mGoal1), val: m.v.mGoal1, ci: 'var(--good-ink)', n: 'Modest pace' },
-      { y: Y(m.projected), val: m.projected, ci: BANDI[bJ.key], n: 'Projected' },
+      { y: Y(m.projected), val: m.projected, ci: BANDI[bJ.key], n: 'Pacing to', star: bJ.key === 'best' },
       { y: Y(m.withPending), val: m.withPending, ci: 'var(--ink-2)', n: 'With pending' }
     ], 36, mg.t + 12, mg.t + ih).forEach(function (f) {
       if (Math.abs(f.ay - f.y) > 3) svg.appendChild(s('line', { x1: X(m.bt) + 3, y1: f.y, x2: X(m.bt) + 8, y2: f.ay - 7,
         style: 'stroke:' + f.ci + ';stroke-width:1;opacity:.45' }));
       svg.appendChild(t('text', { x: X(m.bt) + 10, y: f.ay - 4,
-        style: 'font-family:' + LAB.ff + ';font-size:10px;letter-spacing:.1em;text-transform:uppercase;fill:' + f.ci }, f.n));
+        style: 'font-family:' + LAB.ff + ';font-size:10px;letter-spacing:.1em;text-transform:uppercase;fill:' + f.ci },
+        (f.star ? '★ ' : '') + f.n));
       svg.appendChild(valText(X(m.bt) + 10, f.ay + 13, usdC(f.val), 'start', f.ci, 17, 700));
     });
-
     var cross = s('line', { y1: mg.t, y2: mg.t + ih, style: 'stroke:var(--ink-2);stroke-width:1;stroke-dasharray:3 3;opacity:0' });
     svg.appendChild(cross);
     var hit = s('rect', { x: mg.l, y: mg.t, width: iw, height: ih, style: 'fill:transparent' });
     hit.addEventListener('mousemove', function (e) {
       var b = host.getBoundingClientRect(), px = e.clientX - b.left;
-      var d2 = Math.max(0, Math.min(m.bt, ((px - mg.l) / iw) * m.bt));
-      var dd = Math.round(d2 * 2) / 2;
-      cross.setAttribute('x1', X(dd)); cross.setAttribute('x2', X(dd)); cross.setAttribute('opacity', 1);
-      var actual = dd <= m.bd ? (m.rev / m.bd) * dd
-        : m.rev + (m.projected - m.rev) * ((dd - m.bd) / Math.max(0.0001, m.bt - m.bd));
-      var rows = [{ k: dd <= m.bd ? 'Actual' : 'Projected', v: usd(actual), c: dd <= m.bd ? 'var(--y26)' : BANDC[bJ.key] },
-                  { k: 'Modest pace', v: usd(m.g1Daily * dd), c: 'var(--good)' },
-                  { k: 'Stretch pace', v: usd(m.g2Daily * dd), c: 'var(--goal2)' },
-                  { k: 'vs modest pace', v: usd(actual - m.g1Daily * dd), dim: true }];
-      tip.show(tipRows('Business day ' + dd, rows), px, e.clientY - b.top);
+      var dd3 = Math.round(Math.max(0, Math.min(m.bt, ((px - mg.l) / iw) * m.bt)) * 2) / 2;
+      cross.setAttribute('x1', X(dd3)); cross.setAttribute('x2', X(dd3)); cross.setAttribute('opacity', 1);
+      var actual = dd3 <= m.bd ? (m.rev / m.bd) * dd3 : m.rev + (m.projected - m.rev) * ((dd3 - m.bd) / Math.max(0.0001, m.bt - m.bd));
+      tip.show(tipRows('Business day ' + dd3, [
+        { k: dd3 <= m.bd ? 'Actual' : 'Pacing to', v: usd(actual), c: dd3 <= m.bd ? 'var(--y26)' : BANDC[bJ.key] },
+        { k: 'Modest pace', v: usd(m.g1Daily * dd3), c: 'var(--good)' },
+        { k: 'Stretch pace', v: usd(m.g2Daily * dd3), c: 'var(--goal2)' },
+        { k: 'vs modest pace', v: usd(actual - m.g1Daily * dd3), dim: true }]), px, e.clientY - b.top);
     });
     hit.addEventListener('mouseleave', function () { cross.setAttribute('opacity', 0); tip.hide(); });
     svg.appendChild(hit);
     host.appendChild(svg);
-    legend(host, [{ k: 'Actual to date', c: 'var(--y26)' }, { k: 'Projected at current pace', c: BANDC[bJ.key], dash: true },
+    legend(host, [{ k: 'Actual to date', c: 'var(--y26)' }, { k: 'Pacing to', c: BANDC[bJ.key], dash: true },
       { k: 'With pending', c: 'var(--slate)', dash: true }, { k: 'Modest pace', c: 'var(--good)' }, { k: 'Stretch pace', c: 'var(--goal2)' }]);
   }
 
-  /* ================= CHART: where the month lands ================= */
   function chartLands(host, m) {
     var bJ = band(m.projected, m.v.mGoal1, m.v.mGoal2), bP = band(m.withPending, m.v.mGoal1, m.v.mGoal2);
     var rows = [
-      { k: 'Projected', v: m.projected, c: BANDC[bJ.key] },
-      { k: 'With pending', v: m.withPending, c: 'var(--slate)' },
+      { k: 'Pacing to', v: m.projected, c: BANDC[bJ.key], ring: BANDRING[bJ.key] },
+      { k: 'With pending', v: m.withPending, c: 'var(--slate)', ring: BANDRING[bP.key] },
       { k: 'Modest goal', v: m.v.mGoal1, c: 'var(--good)', gap: true },
       { k: 'Stretch goal', v: m.v.mGoal2, c: 'var(--goal2)' }
     ];
-    var W = Math.max(320, host.clientWidth), mg = { t: 30, r: 88, b: 32, l: 104 };
+    var W = Math.max(320, host.clientWidth), mg = { t: 30, r: 96, b: 32, l: 104 };
     var rh = 38, gapPx = 24, H = mg.t + mg.b + rows.length * rh + gapPx;
     var iw = W - mg.l - mg.r;
     var maxX = Math.max.apply(null, rows.map(function (r) { return r.v; })) * 1.1 || 1;
     var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
-      'aria-label': 'Projected month-end revenue and the with-pending case compared with the modest and stretch goals.' });
+      'aria-label': 'Month-end pacing and the with-pending case compared with the modest and stretch goals.' });
     var X = function (v) { return mg.l + (v / maxX) * iw; };
     var tip = mkTip(host);
     svg.appendChild(s('line', { x1: X(0), x2: X(0), y1: mg.t - 8, y2: H - mg.b + 2, style: 'stroke:var(--rule);stroke-width:1' }));
     svg.appendChild(t('text', { x: mg.l, y: mg.t - 12,
       style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' }, 'At current pace'));
-
     var off = 0;
     rows.forEach(function (r, i) {
       if (r.gap) {
@@ -1257,15 +1547,17 @@ footer b{color:var(--ink-2); font-weight:600}
       }
       var yTop = mg.t + rh * i + off + 6, bh = rh - 16;
       svg.appendChild(s('rect', { x: X(0), y: yTop, width: Math.max(2, X(r.v) - X(0)), height: bh, rx: 3, style: 'fill:' + r.c }));
+      if (r.ring) svg.appendChild(s('rect', { x: X(0) - 2, y: yTop - 2, width: Math.max(2, X(r.v) - X(0)) + 4, height: bh + 4, rx: 4,
+        fill: 'none', style: 'stroke:' + r.ring + ';stroke-width:2' }));
       svg.appendChild(t('text', { x: mg.l - 12, y: yTop + bh / 2 + 4, 'text-anchor': 'end',
         style: 'font-family:"Archivo",sans-serif;font-size:12.5px;font-weight:' + (i < 2 ? 600 : 400) + ';fill:var(--ink)' }, r.k));
-      svg.appendChild(valText(X(r.v) + 9, yTop + bh / 2 + 5, usdC(r.v), 'start', 'var(--ink)', 17, 700));
+      svg.appendChild(valText(X(r.v) + 9, yTop + bh / 2 + 5, (r.ring ? '★ ' : '') + usdC(r.v), 'start', 'var(--ink)', 17, 700));
       var hit = s('rect', { x: 0, y: yTop - 6, width: W, height: rh, style: 'fill:transparent' });
       hit.addEventListener('mousemove', function (e) {
         var b = host.getBoundingClientRect();
         tip.show(tipRows(r.k, [{ k: 'Amount', v: usd(r.v), c: r.c },
-          { k: 'vs modest', v: usd(r.v - m.v.mGoal1), dim: true },
-          { k: 'vs stretch', v: usd(r.v - m.v.mGoal2), dim: true }]), e.clientX - b.left, e.clientY - b.top);
+          { k: 'vs modest', v: usd(r.v - m.v.mGoal1), dim: true }, { k: 'vs stretch', v: usd(r.v - m.v.mGoal2), dim: true }]),
+          e.clientX - b.left, e.clientY - b.top);
       });
       hit.addEventListener('mouseleave', tip.hide);
       svg.appendChild(hit);
@@ -1273,46 +1565,37 @@ footer b{color:var(--ink-2); font-weight:600}
     host.appendChild(svg);
   }
 
-  /* ================= CHART: revenue mix ================= */
   function chartMix(host, m) {
     var rows = [
-      { k: 'Install', td: m.v.mInstall, pj: m.installProj, c: 'var(--y24)' },
-      { k: 'Magento', td: m.v.mMagento, pj: m.magentoProj, c: 'var(--y26)' }
+      { k: 'Install', td: m.v.mInstall, pj: m.installProj, c: 'var(--y24)', pid: 'hmi' },
+      { k: 'eCommerce', td: m.v.mMagento, pj: m.magentoProj, c: 'var(--y26)', pid: 'hmm' }
     ];
-    var W = Math.max(320, host.clientWidth), mg = { t: 34, r: 88, b: 34, l: 84 };
-    var rh = 52, H = mg.t + mg.b + rows.length * rh;
-    var iw = W - mg.l - mg.r;
+    var W = Math.max(320, host.clientWidth), mg = { t: 34, r: 88, b: 34, l: 92 };
+    var rh = 52, H = mg.t + mg.b + rows.length * rh, iw = W - mg.l - mg.r;
     var maxX = Math.max(m.installProj, m.magentoProj) * 1.12 || 1;
     var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
-      'aria-label': 'Install and Magento revenue booked so far this month and projected at the current pace.' });
-    var defs = s('defs');
-    defs.appendChild(hatch('hmi', 'var(--y24)')); defs.appendChild(hatch('hmm', 'var(--y26)'));
-    svg.appendChild(defs);
+      'aria-label': 'Install and eCommerce revenue booked so far this month and where each lands at the current pace.' });
+    var defs = s('defs'); defs.appendChild(hatch('hmi', 'var(--y24)')); defs.appendChild(hatch('hmm', 'var(--y26)')); svg.appendChild(defs);
     var X = function (v) { return mg.l + (v / maxX) * iw; };
     var tip = mkTip(host);
     svg.appendChild(s('line', { x1: X(0), x2: X(0), y1: mg.t - 10, y2: H - mg.b + 2, style: 'stroke:var(--rule);stroke-width:1' }));
     svg.appendChild(t('text', { x: mg.l, y: mg.t - 14,
       style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' },
       'Solid = booked · hatched = rest of month at current pace'));
-
-    rows.forEach(function (r, i) {
-      var yTop = mg.t + rh * i + 8, bh = rh - 24;
+    rows.forEach(function (r) {
+      var yTop = mg.t + rh * rows.indexOf(r) + 8, bh = rh - 24;
       svg.appendChild(s('rect', { x: X(0), y: yTop, width: Math.max(2, X(r.td) - X(0)), height: bh, rx: 3, style: 'fill:' + r.c }));
-      if (r.pj > r.td) {
-        svg.appendChild(s('rect', { x: X(r.td) + 2, y: yTop, width: Math.max(1, X(r.pj) - X(r.td) - 2), height: bh, rx: 3,
-          style: 'fill:url(#' + (i === 0 ? 'hmi' : 'hmm') + ');stroke:' + r.c + ';stroke-width:1;stroke-opacity:.5' }));
-      }
+      if (r.pj > r.td) svg.appendChild(s('rect', { x: X(r.td) + 2, y: yTop, width: Math.max(1, X(r.pj) - X(r.td) - 2), height: bh, rx: 3,
+        style: 'fill:url(#' + r.pid + ');stroke:' + r.c + ';stroke-width:1;stroke-opacity:.5' }));
       svg.appendChild(t('text', { x: mg.l - 12, y: yTop + bh / 2 + 4, 'text-anchor': 'end',
         style: 'font-family:"Archivo",sans-serif;font-size:13px;font-weight:600;fill:var(--ink)' }, r.k));
       svg.appendChild(valText(X(r.pj) + 9, yTop + bh / 2 + 5, usdC(r.pj), 'start', 'var(--ink)', 17, 700));
       svg.appendChild(t('text', { x: X(0) + 9, y: yTop + bh + 14,
-        style: 'font-family:' + LAB.ff + ';font-size:10px;letter-spacing:.06em;fill:var(--muted)' },
-        usdC(r.td) + ' booked'));
+        style: 'font-family:' + LAB.ff + ';font-size:10px;letter-spacing:.06em;fill:var(--muted)' }, usdC(r.td) + ' booked'));
       var hit = s('rect', { x: 0, y: yTop - 8, width: W, height: rh, style: 'fill:transparent' });
       hit.addEventListener('mousemove', function (e) {
         var b = host.getBoundingClientRect();
-        tip.show(tipRows(r.k, [{ k: 'Booked', v: usd(r.td), c: r.c },
-          { k: 'Projected', v: usd(r.pj), dim: true },
+        tip.show(tipRows(r.k, [{ k: 'Booked', v: usd(r.td), c: r.c }, { k: 'Pacing to', v: usd(r.pj), dim: true },
           { k: 'Per business day', v: usd(r.td / m.bd), dim: true }]), e.clientX - b.left, e.clientY - b.top);
       });
       hit.addEventListener('mouseleave', tip.hide);
@@ -1321,66 +1604,20 @@ footer b{color:var(--ink-2); font-weight:600}
     host.appendChild(svg);
   }
 
-  /* ================= CHART: ten-year revenue ================= */
-  var DECADE = [['2016', 6846976], ['2017', 7721318], ['2018', 8069797], ['2019', 8031927], ['2020', 8350386],
-                ['2021', 9060154], ['2022', 10557746], ['2023', 11448245], ['2024', 11871000], ['2025', 13500000]];
-  function chartDecade(host) {
-    var W = Math.max(340, host.clientWidth), H = 330;
-    var mg = { t: 46, r: 14, b: 40, l: 52 };
-    var iw = W - mg.l - mg.r, ih = H - mg.t - mg.b, maxY = 15e6;
-    var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
-      'aria-label': 'Total company revenue by year from 2016 to 2025.' });
-    var Y = function (v) { return mg.t + ih - (v / maxY) * ih; };
-    var tip = mkTip(host);
-    [0, 5e6, 10e6, 15e6].forEach(function (g) {
-      svg.appendChild(s('line', { x1: mg.l, x2: mg.l + iw, y1: Y(g), y2: Y(g),
-        style: 'stroke:' + (g === 0 ? 'var(--rule)' : 'var(--grid)') + ';stroke-width:1' }));
-      svg.appendChild(axisText(mg.l - 10, Y(g) + 3.5, '$' + (g / 1e6) + 'M', 'end'));
-    });
-    var bandw = iw / DECADE.length, bw = Math.min(56, bandw * 0.6);
-    DECADE.forEach(function (row, i) {
-      var yr = row[0], v = row[1], cx = mg.l + bandw * i + bandw / 2, last = i ? DECADE[i - 1][1] : null;
-      var isLast = i === DECADE.length - 1;
-      svg.appendChild(s('rect', { x: cx - bw / 2, y: Y(v), width: bw, height: Math.max(1, Y(0) - Y(v)), rx: 3,
-        style: 'fill:' + (isLast ? 'var(--y26)' : 'var(--y23)') }));
-      if (isLast || i === 0 || i === 6) svg.appendChild(valText(cx, Y(v) - 22, usdC(v), 'middle', 'var(--ink)', 16, 700));
-      if (last) {
-        var d = (v - last) / last;
-        svg.appendChild(t('text', { x: cx, y: Y(v) - 8, 'text-anchor': 'middle',
-          style: 'font-family:' + LAB.ff + ';font-size:10px;fill:' + (d >= 0 ? 'var(--good-ink)' : 'var(--crit-ink)') },
-          (d >= 0 ? '+' : '−') + Math.abs(d * 100).toFixed(1) + '%'));
-      }
-      svg.appendChild(axisText(cx, H - 14, yr));
-      var hit = s('rect', { x: cx - bandw / 2, y: mg.t, width: bandw, height: ih, style: 'fill:transparent' });
-      hit.addEventListener('mousemove', function (e) {
-        var b = host.getBoundingClientRect();
-        var rr = [{ k: 'Total revenue', v: usd(v), c: isLast ? 'var(--y26)' : 'var(--y23)' }];
-        if (last) rr.push({ k: 'vs prior year', v: usd(v - last), dim: true });
-        rr.push({ k: 'vs 2016', v: '×' + (v / DECADE[0][1]).toFixed(2), dim: true });
-        tip.show(tipRows(yr, rr), e.clientX - b.left, e.clientY - b.top);
-      });
-      hit.addEventListener('mouseleave', tip.hide);
-      svg.appendChild(hit);
-    });
-    host.appendChild(svg);
-  }
-
-  /* ================= READOUTS ================= */
-  function setB(id, b) { var e = el(id); if (e) e.setAttribute('data-band', b.key); }
-  function put(id, html) { var e = el(id); if (e) e.innerHTML = html; }
-  function dayWord(n) {
-    var full = Math.floor(n), half = n - full >= 0.5;
-    return full + (half ? '½' : '') + ' business day' + (n === 1 ? '' : 's');
+  /* ================= MONTH READOUTS ================= */
+  function dayWord(v) {
+    var full = Math.floor(v), half = v - full >= 0.5;
+    return full + (half ? '½' : '') + ' business day' + (v === 1 ? '' : 's');
   }
   function renderMonth() {
     var m = compute();
-    save(readInputs());
+    saveMonth(readInputs());
     var g1 = m.v.mGoal1, g2 = m.v.mGoal2;
 
     put('hInstall', usd(m.v.mInstall) + ' · ' + usd(m.v.mInstall / m.bd) + ' per business day');
     put('hMagento', usd(m.v.mMagento) + ' · ' + usd(m.v.mMagento / m.bd) + ' per business day');
     put('hBigDeal', m.big > 0 ? usd(m.big) + ' held out of the daily average, added back to the projection.'
-      : 'Counted in the total, pulled out of the daily average so it can’t skew the projection.');
+      : 'Counted in the total, pulled out of the daily average so it can’t skew the pacing.');
     put('hPendM2', m.v.mPendM2 > 0 ? usd(m.v.mPendM2) + ' · feeds the “with pending” case only.'
       : 'Not in revenue to date. Feeds the “with pending” case only.');
     put('hPendInstall', m.v.mPendInstall > 0 ? usd(m.v.mPendInstall) + ' · prior month was $168,286.'
@@ -1393,31 +1630,29 @@ footer b{color:var(--ink-2); font-weight:600}
 
     var bJ = band(m.projected, g1, g2);
     setB('oProjected', bJ); put('oProjected', usdC(m.projected));
-    setB('oProjPill', bJ); put('oProjPill', (ICONS[bJ.key] || '') + bJ.label);
-    var pctG1 = g1 ? Math.round(m.projected / g1 * 100) : 0;
+    pill('oProjPill', bJ);
     put('oProjCap', 'At today’s run rate the month lands at <strong>' + usdC(m.projected) + '</strong> — <strong>' +
-      pctG1 + '% of the modest goal</strong>' +
+      (g1 ? Math.round(m.projected / g1 * 100) : 0) + '% of the modest goal</strong>' +
       (m.daysLeft > 0
-        ? ', with ' + dayWord(m.daysLeft) + ' left to work. Closing the gap needs <strong>' +
-          usd(Math.max(0, m.reqDaily)) + ' a day</strong> from here, against the <strong>' + usd(m.adj) + '</strong> a day we are running at.'
+        ? ', with ' + dayWord(m.daysLeft) + ' left to work. ' +
+          (m.reqDaily > 0 ? 'Closing the gap needs <strong>' + usd(m.reqDaily) + ' a day</strong> from here, against the <strong>' +
+            usd(m.adj) + '</strong> a day we are running at.' : 'The modest goal is already banked.')
         : '. The month is complete.'));
 
     put('oRevTD', usdC(m.rev));
-    put('nRevTD', usdC(m.v.mInstall) + ' install + ' + usdC(m.v.mMagento) + ' Magento' +
-      (m.big > 0 ? ' · incl. ' + usdC(m.big) + ' big deal' : ''));
+    put('nRevTD', usdC(m.v.mInstall) + ' install + ' + usdC(m.v.mMagento) + ' eCommerce' + (m.big > 0 ? ' · incl. ' + usdC(m.big) + ' big deal' : ''));
     put('oAdjDaily', usd(m.adj));
     put('nAdjDaily', 'across ' + dayWord(m.bd) + (m.big > 0 ? ', big deal removed' : ''));
 
     var bR = m.reqDaily <= 0 ? { key: 'best', label: 'met' } : band(m.adj, m.reqDaily, m.reqDaily2 > 0 ? m.reqDaily2 : m.reqDaily);
     setB('oReqDaily', bR); put('oReqDaily', m.daysLeft > 0 ? usd(Math.max(0, m.reqDaily)) : '—');
-    put('nReqDaily', m.reqDaily <= 0 ? 'modest goal already banked'
-      : 'over ' + dayWord(m.daysLeft) + ' · running at ' + usd(m.adj) + '/day');
+    put('nReqDaily', m.reqDaily <= 0 ? 'modest goal already banked' : 'over ' + dayWord(m.daysLeft) + ' · running at ' + usd(m.adj) + '/day');
 
     setB('oVsG1', bJ); put('oVsG1', usdC(m.projected - g1));
     put('nVsG1', 'vs stretch ' + usdC(m.projected - g2));
 
     var bP = band(m.withPending, g1, g2);
-    setB('oWithPending', bP); put('oWithPending', usdC(m.withPending));
+    setB('oWithPending', bP); put('oWithPending', (bP.key === 'best' ? '★ ' : '') + usdC(m.withPending));
     put('nWithPending', m.pend > 0 ? 'run-rated with ' + usdC(m.pend) + ' pending' : 'no pending entered');
 
     var f = m.bt / m.bd;
@@ -1426,31 +1661,25 @@ footer b{color:var(--ink-2); font-weight:600}
     if (lastM > 0) {
       var dd = (pd - lastM) / lastM, bD = band(pd, lastM, lastM * 1.15);
       put('nDeals', 'vs <b>' + num(lastM) + '</b> last month · <span data-band="' + bD.key +
-        '" class="bandnum" style="font-weight:600">' + (dd >= 0 ? '+' : '−') + Math.abs(dd * 100).toFixed(0) + '%</span>');
-    } else put('nDeals', 'projected at current pace');
+        '" class="bandnum" style="font-weight:600">' + pctS(dd) + '</span>');
+    } else put('nDeals', 'pacing to, at month end');
     put('oSQLTD', num(m.v.aSQL)); put('oSQL', num(m.v.aSQL * f));
     put('oPipeTD', usdC(m.v.aPipe)); put('oPipe', usdC(m.v.aPipe * f));
     put('oCountTD', num(m.v.aCount)); put('oCount', num(m.v.aCount * f));
 
-    MCHARTS.forEach(function (c) {
-      var host = el(c[0]); if (!host) return;
-      host.innerHTML = ''; c[1](host, m);
-    });
+    MCHARTS.forEach(function (c) { var host = el(c[0]); if (!host) return; host.innerHTML = ''; c[1](host, m); });
   }
 
   /* ================= BOOT ================= */
-  var CHARTS = [['c-window', chartWindow], ['c-augsep', chartAugSep], ['c-monthly', chartMonthly],
-                ['c-quarters', chartQuarters], ['c-decade', chartDecade]];
+  var QCHARTS = [['c-window', chartWindow], ['c-augsep', chartAugSep], ['c-monthly', chartMonthly],
+                 ['c-quarters', chartQuarters], ['c-decade', chartDecade]];
   var MCHARTS = [['m-burnup', chartBurnup], ['m-lands', chartLands], ['m-mix', chartMix]];
-  function renderStatic() {
-    CHARTS.forEach(function (c) {
-      var host = el(c[0]); if (!host) return;
-      host.innerHTML = ''; c[1](host);
-    });
-  }
-  function renderAll() { renderStatic(); renderMonth(); }
+  function renderAll() { renderQ2(); renderMonth(); }
 
-  restore();
+  restoreHistory();
+  restoreMonth();
+  buildEditor();
+  wireEditor();
   Object.keys(SHEET).forEach(function (k) {
     var e = el(k); if (!e) return;
     e.addEventListener('input', renderMonth);
@@ -1458,8 +1687,7 @@ footer b{color:var(--ink-2); font-weight:600}
   });
   document.querySelectorAll('[data-nudge]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      var target = el(btn.getAttribute('data-target'));
-      if (!target) return;
+      var target = el(btn.getAttribute('data-target')); if (!target) return;
       var next = (parseFloat(target.value) || 0) + parseFloat(btn.getAttribute('data-nudge'));
       target.value = Math.max(parseFloat(target.min) || 0.5, Math.round(next * 2) / 2);
       renderMonth();
@@ -1472,9 +1700,8 @@ footer b{color:var(--ink-2); font-weight:600}
   });
 
   var rt;
-  function onResize() { clearTimeout(rt); rt = setTimeout(renderAll, 150); }
+  window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(renderAll, 150); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(renderAll);
   renderAll();
-  window.addEventListener('resize', onResize);
 })();
 </script>
