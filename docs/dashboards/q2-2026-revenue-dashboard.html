@@ -11,6 +11,7 @@
   --brand:#0d366b; --brand-ink:#0d366b; --deep:#124e85; --slate:#5f6b7a;
   --y22:#86b6ef; --y23:#5598e7; --y24:#2a78d6; --y25:#1c5cab; --y26:#0d366b;
     --gold:#c98a00; --goal2:#a34ad6; --goal2-ink:#7c2fa8; --goal2-wash:#f6ecfb;
+    --near:#2a78d6; --near-ink:#124e85; --near-wash:#eaf2fb;
   --good:#0ca30c; --good-ink:#046604; --warn:#fab219; --warn-ink:#8a5a00;
   --crit:#d03b3b; --crit-ink:#a52020;
   --good-wash:#e8f6e8; --warn-wash:#fdf3dd; --crit-wash:#fdeded; --brand-wash:#eaf2fb;
@@ -25,6 +26,7 @@
     --brand:#9ec5f4; --brand-ink:#9ec5f4; --deep:#4a92d6; --slate:#93a0ad;
     --y22:#184f95; --y23:#256abf; --y24:#3987e5; --y25:#6da7ec; --y26:#9ec5f4;
     --gold:#f0b429; --goal2:#b57ce8; --goal2-ink:#c9a0f0; --goal2-wash:rgba(181,124,232,.15);
+    --near:#5598e7; --near-ink:#9ec5f4; --near-wash:rgba(158,197,244,.15);
     --good:#0ca30c; --good-ink:#3ec43e; --warn:#fab219; --warn-ink:#fab219;
     --crit:#e66767; --crit-ink:#f08a8a;
     --good-wash:rgba(12,163,12,.13); --warn-wash:rgba(250,178,25,.13);
@@ -40,6 +42,7 @@
   --brand:#9ec5f4; --brand-ink:#9ec5f4; --deep:#4a92d6; --slate:#93a0ad;
   --y22:#184f95; --y23:#256abf; --y24:#3987e5; --y25:#6da7ec; --y26:#9ec5f4;
   --gold:#f0b429; --goal2:#b57ce8; --goal2-ink:#c9a0f0; --goal2-wash:rgba(181,124,232,.15);
+    --near:#5598e7; --near-ink:#9ec5f4; --near-wash:rgba(158,197,244,.15);
   --good:#0ca30c; --good-ink:#3ec43e; --warn:#fab219; --warn-ink:#fab219;
   --crit:#e66767; --crit-ink:#f08a8a;
   --good-wash:rgba(12,163,12,.13); --warn-wash:rgba(250,178,25,.13);
@@ -266,6 +269,7 @@ td .yr i{width:9px; height:9px; border-radius:2px; flex:none}
 /* ---------- pacing bands: one scale used everywhere ---------- */
 [data-band="crit"]{--bc:var(--crit); --bi:var(--crit-ink); --bw:var(--crit-wash)}
 [data-band="warn"]{--bc:var(--warn); --bi:var(--warn-ink); --bw:var(--warn-wash)}
+[data-band="near"]{--bc:var(--near); --bi:var(--near-ink); --bw:var(--near-wash)}
 [data-band="good"]{--bc:var(--good); --bi:var(--good-ink); --bw:var(--good-wash)}
 [data-band="best"]{--bc:var(--gold); --bi:var(--good-ink); --bw:var(--good-wash)}
 [data-band="none"]{--bc:var(--deep); --bi:var(--ink); --bw:var(--brand-wash)}
@@ -453,7 +457,7 @@ textarea.json{
     <div class="mast-meta">
       <div><span class="eyebrow">As of</span><b>19 Aug 2026</b></div>
       <div><span class="eyebrow">Actuals through</span><b>July</b></div>
-      <div><span class="eyebrow">Pacing key</span><b style="font-size:12.5px;font-weight:500;color:var(--ink-2)"><span style="color:var(--crit-ink)">&#9679;</span> well behind &nbsp;<span style="color:var(--warn-ink)">&#9679;</span> behind modest &nbsp;<span style="color:var(--good-ink)">&#9679;</span> clears modest &nbsp;<span class="medal">&#9733;</span> beating stretch</b></div>
+      <div><span class="eyebrow">Pacing key</span><b style="font-size:12.5px;font-weight:500;color:var(--ink-2)"><span style="color:var(--crit-ink)">&#9679;</span> well behind &nbsp;<span style="color:var(--warn-ink)">&#9679;</span> behind &nbsp;<span style="color:var(--near-ink)">&#9679;</span> near modest &nbsp;<span style="color:var(--good-ink)">&#9679;</span> clears modest &nbsp;<span class="medal">&#9733;</span> beating stretch</b></div>
     </div>
   </div>
 </header>
@@ -546,14 +550,15 @@ textarea.json{
       <div class="chart" id="m-burnup"></div>
     </article>
 
-    <article class="card">
+    <article class="card full"><!-- was half-width; restore class="card" when the mix panel returns -->
       <div class="card-head ticked"><span class="eyebrow">Where the month lands</span>
       <h2>Pacing vs. both goals</h2></div>
       <p class="card-note">Pending install is run-rated the same way revenue is &mdash; added to the days already worked, not dropped in at the end.</p>
       <div class="chart" id="m-lands"></div>
     </article>
 
-    <article class="card">
+    <!-- Revenue mix: parked for now. Remove "hidden" (and re-halve the card above) to restore. -->
+    <article class="card" hidden>
       <div class="card-head ticked"><span class="eyebrow">Revenue mix</span>
       <h2>Install vs. eCommerce</h2></div>
       <p class="card-note">Booked so far, and where each lands at the current pace.</p>
@@ -775,7 +780,7 @@ textarea.json{
     </div>
 
     <footer>
-      <p><b>Colour means pacing, everywhere on this page.</b> Red is well behind the modest goal (under 85% of it), amber is behind modest, green clears modest, and green with a <span class="medal">&#9733;</span> gold star is stretch territory &mdash; within 10% of the stretch goal or past it. Every coloured figure also carries an icon and a word, so colour is never doing the work on its own.</p>
+      <p><b>Colour means pacing, everywhere on this page.</b> Red is well behind the modest goal (under 85% of it), amber is behind (85&ndash;90%), blue is near modest (90&ndash;100% &mdash; within reach, deliberately neutral rather than a warning), green clears modest, and green with a <span class="medal">&#9733;</span> gold star is stretch territory &mdash; within 10% of the stretch goal or past it. Every coloured figure also carries an icon and a word, so colour is never doing the work on its own.</p>
       <p><b>How the goal maps.</b> The $6.65M / $7.85M targets cover the whole <b>Apr&ndash;Sep window</b> &mdash; the &ldquo;Q2&nbsp;/&nbsp;Q3&rdquo; column in the source sheet, which is why this board calls it Q2&nbsp;&amp;&nbsp;Q3 rather than Q2. The stretch figure is an exact match to the sheet&rsquo;s own stretch scenario ($1.4M in Aug and Sep), which confirms the mapping.</p>
       <p><b>Part 1 formulas</b> (reproduced from the Daily KPIs sheet). Revenue to date = Install + eCommerce. Adjusted daily average = (revenue to date &minus; big deal) &divide; business days elapsed. Pacing to = adjusted daily average &times; business days in month, with the big deal added back &mdash; so a single outsized deal lands in the total without inflating the run rate. &ldquo;With pending&rdquo; adds pending eCommerce and pending install to revenue to date <em>before</em> run-rating, matching the sheet&rsquo;s $1,196,356.</p>
       <p><b>Business days elapsed accepts halves.</b> The sheet&rsquo;s 12 counts through end of yesterday; enter 12.5 if you are posting mid-day, or 13 for a completed day. Everything downstream moves with it.</p>
@@ -880,6 +885,7 @@ textarea.json{
     best: STAR,
     good: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>',
     warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="18 13 12 19 6 13"/></svg>',
+    near: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>',
     crit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
     none: ''
   };
@@ -889,13 +895,14 @@ textarea.json{
     if (stretch && r2 >= 1) return { key: 'best', label: 'Beating stretch', r1: r1, r2: r2 };
     if (stretch && r2 >= 0.9 && r1 >= 1) return { key: 'best', label: 'Nearing stretch', r1: r1, r2: r2 };
     if (r1 >= 1) return { key: 'good', label: 'Clears modest', r1: r1, r2: r2 };
+    if (r1 >= 0.9) return { key: 'near', label: 'Near modest', r1: r1, r2: r2 };
     if (r1 >= 0.85) return { key: 'warn', label: 'Behind modest', r1: r1, r2: r2 };
     return { key: 'crit', label: 'Well behind modest', r1: r1, r2: r2 };
   }
   // Top tier keeps the green of "good" and wears a gold star; nothing new has to
   // separate from amber, and the star still reads in greyscale.
-  var BANDC = { crit: 'var(--crit)', warn: 'var(--warn)', good: 'var(--good)', best: 'var(--good)', none: 'var(--deep)' };
-  var BANDI = { crit: 'var(--crit-ink)', warn: 'var(--warn-ink)', good: 'var(--good-ink)', best: 'var(--good-ink)', none: 'var(--ink)' };
+  var BANDC = { crit: 'var(--crit)', warn: 'var(--warn)', near: 'var(--near)', good: 'var(--good)', best: 'var(--good)', none: 'var(--deep)' };
+  var BANDI = { crit: 'var(--crit-ink)', warn: 'var(--warn-ink)', near: 'var(--near-ink)', good: 'var(--good-ink)', best: 'var(--good-ink)', none: 'var(--ink)' };
   var BANDRING = { best: 'var(--gold)' };
   function setB(id, b) { var e = el(id); if (e) e.setAttribute('data-band', b.key); }
   function pill(id, b, text) { setB(id, b); put(id, (ICONS[b.key] || '') + (text || b.label)); }
