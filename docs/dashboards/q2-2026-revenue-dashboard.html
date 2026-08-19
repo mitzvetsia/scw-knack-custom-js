@@ -436,6 +436,9 @@ textarea.json{
   font-family:"IBM Plex Mono",monospace; font-size:11px; line-height:1.5;
 }
 .unit{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--muted)}
+.livelink{margin-top:12px; font-size:12.5px; color:var(--ink-2)}
+.livelink label{display:inline-flex; align-items:flex-start; gap:9px; cursor:pointer}
+.livelink input{width:15px; height:15px; accent-color:var(--deep); margin:2px 0 0; flex:none}
 </style>
 
 <header class="masthead">
@@ -558,7 +561,8 @@ textarea.json{
     </article>
   </section>
 
-  <section class="card full" style="margin-bottom:0">
+  <!-- Activity pacing: parked until the funnel numbers are interrogated. Remove "hidden" to restore. -->
+  <section class="card full" style="margin-bottom:0" hidden>
     <div class="card-head ticked"><span class="eyebrow">Top of funnel &mdash; same run-rate math</span>
     <h2>Activity pacing</h2></div>
     <p class="card-note">Each figure is projected by the same daily average: to&#8209;date &divide; business days elapsed &times; business days in the month.</p>
@@ -618,6 +622,7 @@ textarea.json{
       <span><i style="background:var(--goal2)"></i><b class="g-name" style="color:var(--goal2-ink)">Stretch</b><b class="g-val" style="color:var(--goal2-ink)" id="qStackS"></b></span>
     </div>
     <div class="track-key" id="qKey"></div>
+    <div class="livelink"><label><input type="checkbox" id="qAugLive"><span id="qAugLiveLab">Use this month&rsquo;s live pacing for the window&rsquo;s August</span></label></div>
   </section>
 
   <section class="tiles">
@@ -775,6 +780,7 @@ textarea.json{
       <p><b>Part 1 formulas</b> (reproduced from the Daily KPIs sheet). Revenue to date = Install + eCommerce. Adjusted daily average = (revenue to date &minus; big deal) &divide; business days elapsed. Pacing to = adjusted daily average &times; business days in month, with the big deal added back &mdash; so a single outsized deal lands in the total without inflating the run rate. &ldquo;With pending&rdquo; adds pending eCommerce and pending install to revenue to date <em>before</em> run-rating, matching the sheet&rsquo;s $1,196,356.</p>
       <p><b>Business days elapsed accepts halves.</b> The sheet&rsquo;s 12 counts through end of yesterday; enter 12.5 if you are posting mid-day, or 13 for a completed day. Everything downstream moves with it.</p>
       <p><b>Period totals are derived from the monthly grid</b>, so the table is always self-consistent with the charts. Because the monthly figures are reported rounded to the nearest $10K or so, these totals run slightly under the source sheet&rsquo;s own stated totals &mdash; up to about $80K on the 2025 window. Paste exact figures into the editor above and the difference disappears.</p>
+      <p><b>The window&rsquo;s August.</b> With &ldquo;use this month&rsquo;s live pacing&rdquo; switched on (the default), the Q2&nbsp;&amp;&nbsp;Q3 window takes its August from Part&nbsp;1&rsquo;s live month pacing and only September from the baseline pace. Mind the caveat below &mdash; Part&nbsp;1 paces total company revenue while the window is booked revenue &mdash; so treat the blended figure as directional, and flip the toggle off for a booked-only view.</p>
       <p><b>Two different revenue measures.</b> Part 2 is booked revenue from the YoY Sales Metrics sheet ($11.6M in 2025). Parts 1 and 3 are total company revenue &mdash; Install services from Xero plus eCommerce &mdash; from the Daily KPIs sheet ($13.5M in 2025). They are not the same number and should not be added together. For 2022 and 2023 the two reconcile almost exactly once October is added back; for 2024 and 2025 a gap remains that is worth confirming before either figure is quoted as the company total.</p>
       <p><b>Not carried over.</b> The Daily KPIs sheet also holds a Jul&nbsp;/&nbsp;Aug&nbsp;/&nbsp;Sep quarter block whose August goal ($1,030,000) contradicts the current-month goal ($1,170,000), and a cautious&nbsp;/&nbsp;optimistic pair on a third basis. Both look stale, so neither is shown here.</p>
     </footer>
@@ -919,10 +925,14 @@ textarea.json{
   // Everything in Parts 2 and 3 is derived here, so the editor is the single source of truth.
   function derive() {
     var d = { q: {}, window: {}, augSep: {}, months: DATA.months };
+    // The window's August can ride Part 1's live month pacing; September stays on the baseline.
+    d.augLive = AUG_LIVE ? compute().projected / 1000 : null;
+    d.aug26 = d.augLive != null ? d.augLive : DATA.pace;
+    d.sep26 = DATA.pace;
     YEARS.forEach(function (y) {
       var m = DATA.months[y] || [];
       var mm = m.slice();
-      if (y === '2026') { mm[7] = DATA.pace; mm[8] = DATA.pace; }
+      if (y === '2026') { mm[7] = d.aug26; mm[8] = d.sep26; }
       d.q[y] = [sum(mm.slice(0, 3)), sum(mm.slice(3, 6)), sum(mm.slice(6, 9))];
       d.window[y] = d.q[y][1] + d.q[y][2];
       d.augSep[y] = (mm[7] || 0) + (mm[8] || 0);
@@ -933,7 +943,7 @@ textarea.json{
     d.modest = DATA.modest; d.stretch = DATA.stretch;
     d.needModest = DATA.modest - d.booked26;
     d.needStretch = DATA.stretch - d.booked26;
-    d.paceAugSep = DATA.pace * 2;
+    d.paceAugSep = d.aug26 + d.sep26;
     d.bestAugSep = Math.max(d.augSep['2022'], d.augSep['2023'], d.augSep['2024'], d.augSep['2025']);
     d.bestAugSepYear = ['2022', '2023', '2024', '2025'].reduce(function (a, y) { return d.augSep[y] > d.augSep[a] ? y : a; }, '2022');
     return d;
@@ -1063,7 +1073,7 @@ textarea.json{
     var iw = W - m.l - m.r, ih = H - m.t - m.b;
     var all = [];
     YEARS.forEach(function (y) { (d.months[y] || []).forEach(function (v) { if (v != null) all.push(v); }); });
-    all.push(DATA.stretchPace, DATA.pace);
+    all.push(DATA.stretchPace, d.aug26, d.sep26);
     var y0 = Math.max(0, Math.floor((Math.min.apply(null, all) * 0.9) / 100) * 100);
     var y1 = Math.ceil((Math.max.apply(null, all) * 1.06) / 100) * 100;
     var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
@@ -1093,16 +1103,16 @@ textarea.json{
       svg.appendChild(s('circle', { cx: X(i), cy: Y(v), r: 3.6, style: 'fill:var(--y26);stroke:var(--surface);stroke-width:2' }));
     });
     var lastAct = d26[6];
-    [{ v: DATA.stretchPace, c: 'var(--goal2)', ci: 'var(--goal2-ink)', n: 'Stretch' },
-     { v: DATA.pace, c: 'var(--y26)', ci: 'var(--brand-ink)', n: 'Pacing' }].forEach(function (f) {
-      svg.appendChild(s('polyline', { points: [X(6) + ',' + Y(lastAct), X(7) + ',' + Y(f.v), X(8) + ',' + Y(f.v)].join(' '),
+    [{ a: DATA.stretchPace, b: DATA.stretchPace, c: 'var(--goal2)', ci: 'var(--goal2-ink)', n: 'Stretch' },
+     { a: d.aug26, b: d.sep26, c: 'var(--y26)', ci: 'var(--brand-ink)', n: 'Pacing' }].forEach(function (f) {
+      svg.appendChild(s('polyline', { points: [X(6) + ',' + Y(lastAct), X(7) + ',' + Y(f.a), X(8) + ',' + Y(f.b)].join(' '),
         fill: 'none', style: 'stroke:' + f.c + ';stroke-width:2.5;stroke-dasharray:6 5;stroke-linecap:round' }));
-      [7, 8].forEach(function (i) {
-        svg.appendChild(s('circle', { cx: X(i), cy: Y(f.v), r: 3.6, style: 'fill:var(--surface);stroke:' + f.c + ';stroke-width:2.5' }));
+      [[7, f.a], [8, f.b]].forEach(function (pt) {
+        svg.appendChild(s('circle', { cx: X(pt[0]), cy: Y(pt[1]), r: 3.6, style: 'fill:var(--surface);stroke:' + f.c + ';stroke-width:2.5' }));
       });
-      svg.appendChild(t('text', { x: X(8) + 12, y: Y(f.v) - 4,
+      svg.appendChild(t('text', { x: X(8) + 12, y: Y(f.b) - 4,
         style: 'font-family:' + LAB.ff + ';font-size:10px;letter-spacing:.1em;text-transform:uppercase;fill:' + f.ci }, f.n));
-      svg.appendChild(valText(X(8) + 12, Y(f.v) + 13, kC(f.v), 'start', f.ci, 17, 700));
+      svg.appendChild(valText(X(8) + 12, Y(f.b) + 13, kC(f.b), 'start', f.ci, 17, 700));
     });
     var cross = s('line', { y1: m.t, y2: m.t + ih, style: 'stroke:var(--ink-2);stroke-width:1;stroke-dasharray:3 3;opacity:0' });
     svg.appendChild(cross);
@@ -1116,7 +1126,7 @@ textarea.json{
         return v == null ? null : { k: yr, v: kC(v), c: YCOL[yr] };
       }).filter(Boolean);
       if (i > 6) {
-        rows.push({ k: '2026 at pace', v: kC(DATA.pace), c: 'var(--y26)' });
+        rows.push({ k: '2026 at pace', v: kC(i === 7 ? d.aug26 : d.sep26), c: 'var(--y26)' });
         rows.push({ k: '2026 at stretch', v: kC(DATA.stretchPace), c: 'var(--goal2)' });
       }
       tip.show(tipRows(MON[i] + (i > 6 ? ' — pacing' : ''), rows), px, e.clientY - b.top);
@@ -1240,7 +1250,7 @@ textarea.json{
     put('qLabMv', kC(d.modest)); put('qLabSv', kC(d.stretch));
     put('qStackM', kC(d.modest)); put('qStackS', kC(d.stretch));
     put('qKey', '<span><i class="sw solid"></i>Booked Apr&ndash;Jul &mdash; ' + kC(d.booked26) + '</span>' +
-      '<span><i class="sw hatch"></i>Aug + Sep at current pace (' + kC(DATA.pace) + '/mo) &mdash; ' + kC(d.paceAugSep) + '</span>' +
+      '<span><i class="sw hatch"></i>Aug ' + kC(d.aug26) + (d.augLive != null ? ' (live)' : '') + ' + Sep ' + kC(d.sep26) + ' &mdash; ' + kC(d.paceAugSep) + '</span>' +
       '<span style="color:var(--muted)">Scale 0&ndash;' + kC(trackMax) + '</span>');
 
     setB('qBooked', b); put('qBooked', kC(d.booked26));
@@ -1270,7 +1280,7 @@ textarea.json{
       kC(d.bestAugSep) + ', ' + d.bestAugSepYear + '). This is the real ask.');
 
     put('qtRate', kC(d.needModest / 2) + ' <span style="color:var(--muted);font-weight:400">/</span> ' + kC(d.needStretch / 2));
-    put('qtRateSub', 'Per month in Aug &amp; Sep &mdash; <b>modest</b> vs <b>stretch</b>. Pacing at ' + kC(DATA.pace) + '/mo today.');
+    put('qtRateSub', 'Per month in Aug &amp; Sep &mdash; <b>modest</b> vs <b>stretch</b>. Aug is pacing to ' + kC(d.aug26) + ' today.');
 
     put('qWindowNote', 'At the current pace the window lands at <b>' + kC(w26) + '</b> &mdash; ' +
       (w26 >= d.modest ? 'clear of modest, ' : 'short of modest, ') + '<b>' + pctS((w26 - w25) / w25) +
@@ -1278,8 +1288,8 @@ textarea.json{
     put('qAugSepNote', 'Modest sits <b>' + (d.needModest < d.bestAugSep ? 'below' : 'above') +
       '</b> every Aug+Sep we have booked. Stretch sits <b>' + pctS((d.needStretch - d.bestAugSep) / d.bestAugSep) +
       '</b> against the best one.');
-    put('qMonthlyNote', '2026 is booked through July. From there the line forks: the <b>current pace</b> (' + kC(DATA.pace) +
-      ' in both Aug and Sep) against what <b>stretch</b> needs (' + kC(DATA.stretchPace) + ' in both). For scale, our biggest month on record is ' +
+    put('qMonthlyNote', '2026 is booked through July. From there the line forks: the <b>current pace</b> (Aug ' + kC(d.aug26) +
+      (d.augLive != null ? ' &mdash; live from Part 1' : '') + ', Sep ' + kC(d.sep26) + ') against what <b>stretch</b> needs (' + kC(DATA.stretchPace) + ' in both). For scale, our biggest month on record is ' +
       kC(1800) + ' in Apr 2025, and we already booked ' + kC(1500) + ' in May.');
     put('qQuartersNote', 'Q2 held its 2025 step-up (<b>' + pctS((d.q['2026'][1] - d.q['2025'][1]) / d.q['2025'][1]) +
       '</b>), and Q3 is pacing <b>' + pctS((d.q['2026'][2] - d.q['2025'][2]) / d.q['2025'][2]) + '</b>, or <b>' +
@@ -1294,8 +1304,9 @@ textarea.json{
     var asks = [
       { id: 'askModest', lab: 'Modest &mdash; ' + kC(d.modest), num: kC(d.needModest / 2), band: 'good',
         txt: 'Per month in Aug and Sep. Below our Aug&ndash;Sep average in every year since 2022 &mdash; holding normal pace gets us here.' },
-      { id: 'askPace', lab: 'Current pace &mdash; ' + kC(w26), num: kC(DATA.pace), band: b.key === 'best' ? 'best' : b.key,
-        txt: 'What we are actually running at. ' + (w26 >= d.modest ? 'Clears modest by ' + kC(w26 - d.modest) : 'Short of modest by ' + kC(d.modest - w26)) +
+      { id: 'askPace', lab: 'Current pace &mdash; ' + kC(w26), num: kC(d.paceAugSep / 2), band: b.key === 'best' ? 'best' : b.key,
+        txt: 'Average of Aug (' + kC(d.aug26) + (d.augLive != null ? ', live' : '') + ') and Sep (' + kC(d.sep26) + '). ' +
+             (w26 >= d.modest ? 'Clears modest by ' + kC(w26 - d.modest) : 'Short of modest by ' + kC(d.modest - w26)) +
              ', ' + kC(Math.abs(d.stretch - w26)) + ' ' + (w26 >= d.stretch ? 'past' : 'short of') + ' stretch.' },
       { id: 'askStretch', lab: 'Stretch &mdash; ' + kC(d.stretch), num: kC(d.needStretch / 2), band: 'none',
         txt: 'Two of the biggest months on record, back to back. Needs roughly <b>' + kC(d.needStretch / 2 - DATA.pace) +
@@ -1328,6 +1339,8 @@ textarea.json{
       var host = el(c[0]); if (!host) return;
       host.innerHTML = ''; c[1](host, d);
     });
+    put('qAugLiveLab', 'Use this month&rsquo;s live pacing (' + kC(compute().projected / 1000) +
+      ') for the window&rsquo;s August &mdash; off keeps the flat ' + kC(DATA.pace) + ' baseline. Note: Part 1 paces total revenue, the window is booked revenue.');
     var jt = el('edJson');
     if (jt && document.activeElement !== jt) jt.value = JSON.stringify(DATA);
   }
@@ -1349,7 +1362,7 @@ textarea.json{
     el('edMonths').innerHTML = h + '</tbody>';
 
     el('edScen').innerHTML = '<tbody>' +
-      '<tr class="fc"><td>Aug &amp; Sep 2026 &mdash; current pace, each month</td>' + inputCell('ed-pace', DATA.pace, 10) + '</tr>' +
+      '<tr class="fc"><td>Baseline pace per month &mdash; Sep always; Aug when the live link is off</td>' + inputCell('ed-pace', DATA.pace, 10) + '</tr>' +
       '<tr class="fc"><td>Aug &amp; Sep 2026 &mdash; stretch, each month</td>' + inputCell('ed-stretchPace', DATA.stretchPace, 10) + '</tr>' +
       '<tr><td>Modest goal, Apr&ndash;Sep window</td>' + inputCell('ed-modest', DATA.modest, 10) + '</tr>' +
       '<tr><td>Stretch goal, Apr&ndash;Sep window</td>' + inputCell('ed-stretch', DATA.stretch, 10) + '</tr>' +
@@ -1676,27 +1689,40 @@ textarea.json{
   var MCHARTS = [['m-burnup', chartBurnup], ['m-lands', chartLands], ['m-mix', chartMix]];
   function renderAll() { renderQ2(); renderMonth(); }
 
+  var AUG_LIVE = true;
+  try { AUG_LIVE = localStorage.getItem('scw-board-auglive-v1') !== '0'; } catch (e) {}
   restoreHistory();
   restoreMonth();
   buildEditor();
   wireEditor();
+  var augCb = el('qAugLive');
+  if (augCb) {
+    augCb.checked = AUG_LIVE;
+    augCb.addEventListener('change', function () {
+      AUG_LIVE = augCb.checked;
+      try { localStorage.setItem('scw-board-auglive-v1', AUG_LIVE ? '1' : '0'); } catch (e) {}
+      renderQ2();
+    });
+  }
+  // Month edits feed the window's live August, so both parts re-render.
+  function onMonthInput() { renderMonth(); renderQ2(); }
   Object.keys(SHEET).forEach(function (k) {
     var e = el(k); if (!e) return;
-    e.addEventListener('input', renderMonth);
-    e.addEventListener('change', renderMonth);
+    e.addEventListener('input', onMonthInput);
+    e.addEventListener('change', onMonthInput);
   });
   document.querySelectorAll('[data-nudge]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var target = el(btn.getAttribute('data-target')); if (!target) return;
       var next = (parseFloat(target.value) || 0) + parseFloat(btn.getAttribute('data-nudge'));
       target.value = Math.max(parseFloat(target.min) || 0.5, Math.round(next * 2) / 2);
-      renderMonth();
+      onMonthInput();
     });
   });
   var rst = el('mReset');
   if (rst) rst.addEventListener('click', function () {
     for (var k in SHEET) if (el(k)) el(k).value = SHEET[k];
-    renderMonth();
+    onMonthInput();
   });
 
   var rt;
