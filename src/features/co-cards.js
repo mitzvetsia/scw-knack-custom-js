@@ -71,7 +71,11 @@
     if (document.getElementById(STYLE_ID)) return;
     var css = [
       // Full cutover inside a transformed view: cards replace the table.
+      // The view-header (raw title + `_hsv=` keyword description) is hidden
+      // too, so nothing leaks in the instant before ktl-accordion wraps the
+      // view (its own chrome carries the section title).
       '.' + ON_CLS + ' .kn-table-wrapper,',
+      '.' + ON_CLS + ' .view-header,',
       '.' + ON_CLS + ' .kn-records-nav { display: none !important; }',
 
       '.scw-co-cards { display: flex; flex-direction: column; gap: 8px; }',
@@ -166,10 +170,44 @@
     return card;
   }
 
+  /** The deploy sections all read as scw-ktl-accordion rows. If this CO
+   *  grid isn't wrapped yet — or a too-early `_hsv` classification ran
+   *  before the Knack model was ready and memoized it as a non-accordion
+   *  view — clear the memo and ask ktl-accordion for a re-enhancement
+   *  pass so the section gets the same accordion chrome as everything
+   *  else on the page. */
+  function ensureAccordion(viewEl) {
+    try {
+      if (!viewEl || !viewEl.isConnected || viewEl.closest('.scw-ktl-accordion')) return;
+      var v = window.Knack && Knack.views && Knack.views[viewEl.id];
+      var d = (v && v.model && ((v.model.view && v.model.view.description) ||
+              (v.model.attributes && v.model.attributes.description))) || '';
+      if (!/_hsv=/i.test(String(d))) return;   // not an accordion view — leave it
+      if (viewEl.getAttribute('data-scw-hsv-checked') === '0') {
+        viewEl.removeAttribute('data-scw-hsv-checked');
+      }
+      if (window.SCW && SCW.ktlAccordion &&
+          typeof SCW.ktlAccordion.refresh === 'function') {
+        SCW.ktlAccordion.refresh();
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   function transform(viewEl) {
     if (!viewEl || !isCoGrid(viewEl)) return;
     injectCss();
     viewEl.classList.add(ON_CLS);
+
+    // The toolbar feature re-lays-out .kn-records-nav with its own inline
+    // display — a stylesheet hide loses to that, so pin the hides inline
+    // with !important on every pass (idempotent).
+    var hideSel = ['.kn-table-wrapper', '.view-header', '.kn-records-nav'];
+    for (var hs = 0; hs < hideSel.length; hs++) {
+      var els = viewEl.querySelectorAll(hideSel[hs]);
+      for (var he = 0; he < els.length; he++) {
+        els[he].style.setProperty('display', 'none', 'important');
+      }
+    }
 
     var wrap = viewEl.querySelector('.kn-table-wrapper');
     if (!wrap) return;
@@ -185,6 +223,14 @@
       for (var i = 0; i < rows.length; i++) list.appendChild(buildCard(rows[i]));
     }
     wrap.parentNode.insertBefore(list, wrap.nextSibling);
+
+    // Deferred so it runs after deploy-page-nav has moved the grid into its
+    // strip — wrapping happens in place there.
+    if (transform._accT) clearTimeout(transform._accT);
+    transform._accT = setTimeout(function () {
+      transform._accT = 0;
+      ensureAccordion(viewEl);
+    }, 250);
   }
 
   function scanAll() {
