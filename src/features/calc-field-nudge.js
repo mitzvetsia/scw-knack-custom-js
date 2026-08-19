@@ -31,8 +31,13 @@
 
     // SOW Line Item surfaces (the object field_2028 lives on). Each entry
     // is a view whose model we can scan AND whose record URL accepts the
-    // nudge PUT with the user's session.
-    views: ['view_3962', 'view_3586', 'view_3921', 'view_3610', 'view_4079'],
+    // nudge PUT with the user's session. view_4112 is the sub portal's CO
+    // worksheet (scene_1374 analogue of view_4079) — CO lines are Make-
+    // created, so the stuck-calc state shows up there too; the sub never
+    // SEES the fee (laborOnly hides it) but the nudge still heals the
+    // record for ops/client pricing.
+    views: ['view_3962', 'view_3586', 'view_3921', 'view_3610', 'view_4079',
+            'view_4112'],
 
     // The equation field we watch for the stuck-blank state.
     calcField: 'field_2028',        // INSTALL FEE CALC_installation price extended

@@ -2552,6 +2552,16 @@
     CONNECTIONS_FIELD:   'field_2197',
     GROUPING_FIELD:      'field_1946',
     SOW_FIELD:           'field_2154',
+    // Accessory config mirrors the view_4079 instance: accessories on the
+    // CO are ordinary line items in THIS view's model (no separate hidden
+    // accessory grid on the sub scene), so the accessory view IS the
+    // worksheet view. Enables the accessory-follow on MDF regroups and the
+    // accessory-SOW reconcile sweep on the sub page; repair PUTs go
+    // through view_4112 (field_2154 is already written through it by the
+    // sub's unlink flow).
+    ACCESSORIES_FIELD:        'field_1958',
+    ACCESSORIES_VIEW_ID:      'view_4112',
+    ACCESSORIES_PARENT_FIELD: 'field_2464',
     LABEL_FIELD:         'field_1950',
     MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView4112'
