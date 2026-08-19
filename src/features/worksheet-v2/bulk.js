@@ -838,6 +838,20 @@
     } catch (e) { return false; }
   }
 
+  /** Install-object worksheets (config moneyMode:'install' — the deploy
+   *  pages). The add-accessory modal creates SOW-object records and Make
+   *  resolves the payload's parent ids against the SOW line-item object,
+   *  so install rows can never be valid parents — every such add
+   *  manufactured an orphaned record with no SOW and no parent. Install
+   *  scope changes go through the change-order process anyway. Treated
+   *  like noAccessories: hides the bulk Add/Remove accessories buttons. */
+  function viewIsInstallObject(sourceViewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      return !!(vc && vc.moneyMode === 'install');
+    } catch (e) { return false; }
+  }
+
   /** Config noDelete (install worksheets): nothing is deletable — install
    *  scope changes only via the change-order process. Hides bulk Delete. */
   function viewNoDelete(sourceViewKey) {
@@ -850,7 +864,8 @@
   function refreshToolbar() {
     if (!toolbar) return;
     var n = selSize();
-    var noAcc = viewHasNoAccessories(_sourceViewKey);
+    var noAcc = viewHasNoAccessories(_sourceViewKey) ||
+                viewIsInstallObject(_sourceViewKey);
     toolbar.classList.toggle('scw-ws-v2-bulk-toolbar--active', n > 0);
     toolbar.querySelector('.scw-ws-v2-bulk-count').textContent = n + ' selected';
     toolbar.querySelector('.scw-ws-v2-bulk-edit').disabled   = (n === 0);

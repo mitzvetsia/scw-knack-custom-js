@@ -825,6 +825,37 @@
       var productName = opt2 ? (opt2.dataset.name || opt2.textContent) : '';
       if (!productId) { status.textContent = 'Pick an accessory product first.'; return; }
 
+      // Make mirrors each PARENT's SOW (field_2154) onto the accessory it
+      // creates — a parent with no SOW manufactures a SOW-less accessory
+      // that no SOW-filtered surface will ever show. Block the submit when
+      // any selected parent VERIFIABLY has an empty SOW set (field
+      // projected on the view's model but empty). Parents whose attrs
+      // don't carry the field at all are unverifiable — let them pass
+      // rather than false-block views without the column.
+      var sowKey = (function () {
+        try { return (ns.cfg.fields(viewKey) || {}).sow || 'field_2154'; }
+        catch (e) { return 'field_2154'; }
+      })();
+      var noSow = [];
+      for (var si = 0; si < sel.ids.length; si++) {
+        var pAttrs = byId[sel.ids[si]];
+        if (!pAttrs) continue;
+        var sRaw = pAttrs[sowKey + '_raw'];
+        var sowEmpty = Array.isArray(sRaw)
+          ? sRaw.length === 0
+          : (typeof pAttrs[sowKey] === 'string' &&
+             pAttrs[sowKey].replace(/&nbsp;/g, ' ').trim() === '');
+        if (sowEmpty) noSow.push(labels[si] || sel.ids[si]);
+      }
+      if (noSow.length) {
+        status.textContent = noSow.length + ' selected item' +
+          (noSow.length === 1 ? ' has' : 's have') +
+          ' no SOW assignment — the accessory would be created without a SOW. ' +
+          'Fix the SOW on: ' + noSow.slice(0, 3).join(', ') +
+          (noSow.length > 3 ? ', …' : '');
+        return;
+      }
+
       var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_BULK_ADD_MOUNTING_BOX_WEBHOOK) || '';
       if (!url || /PLACEHOLDER/.test(url)) {
         status.textContent = 'Webhook URL not configured (MAKE_BULK_ADD_MOUNTING_BOX_WEBHOOK).';
