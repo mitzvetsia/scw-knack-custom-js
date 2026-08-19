@@ -129,8 +129,14 @@
     // (scene_1353). Hidden from subs entirely (decided 2026-08-12) —
     // agreements/invoices are an ops surface. Kept rendered because
     // regenerate-closeout-docs.js reads its first row for the
-    // AcceptanceID webhook payload.
+    // AcceptanceID webhook payload (and install-as-quoted-panel.js reads
+    // it as the sub-scene acceptance source for origin/quote chips).
     'view_4066',
+    // 'view_4151' — SOW_proposed line items grid on the sub deployment
+    // dashboard (scene_1353): the sub-scene analogue of view_4072.
+    // install-as-quoted-panel.js reads its model for the As Quoted
+    // panels; subs have no business seeing the raw grid.
+    'view_4151',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the

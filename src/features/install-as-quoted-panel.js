@@ -1,9 +1,10 @@
 /*****  Install "As Quoted" Panel  *****************************************/
 /**
- * On the manage-deployment page (scene_1311), each install line item
- * (view_4093 / view_4056) was created from an "OG" proposed line item now
- * surfaced in the hidden grid view_4072. The install record points back to
- * its proposed record via field_2819 (holds the proposed record id).
+ * On the deployment pages (ops scene_1311 + sub scene_1353), each install
+ * line item (view_4093 / view_4056) was created from an "OG" proposed line
+ * item now surfaced in a hidden grid (view_4072 ops / view_4151 sub). The
+ * install record points back to its proposed record via field_2819 (holds
+ * the proposed record id).
  *
  * This module folds an "As Quoted" collapsible panel into each install card's
  * detail, showing the ORIGINAL quoted values for reference alongside the
@@ -25,10 +26,15 @@
   'use strict';
 
   // view_4093 = Implementation install worksheet; view_4056 = "WHAT WE'RE
-  // INSTALLING" (same install object). No-ops on any scene where view_4072
-  // isn't present (the proposed index comes back empty).
+  // INSTALLING" (same install object). No-ops on any scene where no proposed
+  // grid is present (the proposed index comes back empty).
   var INSTALL_VIEWS = ['view_4093', 'view_4056'];
-  var PROPOSED_VIEW = 'view_4072';     // hidden grid of the OG proposed line items
+  // Hidden grids of the OG proposed line items — one per scene, same columns:
+  //   view_4072 = ops Manage Deployment (scene_1311)
+  //   view_4151 = sub deployment dashboard (scene_1353)
+  // Only one scene renders at a time, so at most one has a populated model;
+  // the index unions whatever is present.
+  var PROPOSED_VIEWS = ['view_4072', 'view_4151'];
   var LINK_FIELD    = 'field_2819';    // on the install record → proposed record id
 
   // ── Provenance (which SOW/CO + which accepted quote) ────────────
@@ -38,7 +44,13 @@
   // "<project#>-<SOW#> | <quote#>" — so we parse rather than needing a
   // SOW grid on the scene. CO detection = SOW number's CO suffix (the
   // system-generated numbering: SW1418 base, SW1418CO change order).
-  var ACCEPT_VIEW     = 'view_3914';
+  // view_3914 = ops acceptance grid; view_4066 = the sub scene's ACCEPTANCE
+  // grid (rendered but hidden by hide-data-source-views). ⚠️ view_4066
+  // currently carries only project + Matching Bid columns — until field_2755
+  // and field_2766 are added to it in Builder, the acceptance index is empty
+  // on the sub scene and origin chips render without quote/signed badges
+  // (everything else works).
+  var ACCEPT_VIEWS    = ['view_3914', 'view_4066'];
   var ACCEPT_PROPOSAL = 'field_2755';  // REL_SOW_published proposal (connection)
   var ACCEPT_SIGNED   = 'field_2766';  // FLAG_agreement signed
 
@@ -268,15 +280,26 @@
   }
 
   // ── indexes ─────────────────────────────────────────────────────
-  // proposed record id → its attributes hash.
+  // proposed record id → its attributes hash (union across the per-scene
+  // proposed grids — only the current scene's view has a model).
   function buildProposedIndex() {
     var idx = Object.create(null);
-    var models = viewModels(PROPOSED_VIEW);
-    for (var i = 0; i < models.length; i++) {
-      var a = models[i] && models[i].attributes;
-      if (a && a.id) idx[a.id] = a;
+    for (var v = 0; v < PROPOSED_VIEWS.length; v++) {
+      var models = viewModels(PROPOSED_VIEWS[v]);
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i] && models[i].attributes;
+        if (a && a.id) idx[a.id] = a;
+      }
     }
     return idx;
+  }
+  // Display name for warnings — the proposed view that actually has records
+  // on this scene, else the whole candidate list.
+  function proposedViewName() {
+    for (var v = 0; v < PROPOSED_VIEWS.length; v++) {
+      if (viewModels(PROPOSED_VIEWS[v]).length) return PROPOSED_VIEWS[v];
+    }
+    return PROPOSED_VIEWS.join('/');
   }
   // install record id → linked proposed record id (from field_2819).
   function buildInstallLinkIndex() {
@@ -314,7 +337,10 @@
    *  wins; among equals the latest quote number (date-prefixed) wins. */
   function buildAcceptanceIndex() {
     var idx = Object.create(null);
-    var models = viewModels(ACCEPT_VIEW);
+    var models = [];
+    for (var av = 0; av < ACCEPT_VIEWS.length; av++) {
+      models = models.concat(viewModels(ACCEPT_VIEWS[av]));
+    }
     for (var i = 0; i < models.length; i++) {
       var a = models[i] && models[i].attributes;
       if (!a) continue;
@@ -575,7 +601,7 @@
         if (!anySow) {
           _warnedNoSow = true;
           console.warn('[scw-as-quoted] no ' + PF.sow + ' (SOW connection) on any ' +
-            PROPOSED_VIEW + ' record — add it as a column in Builder to get ' +
+            proposedViewName() + ' record — add it as a column in Builder to get ' +
             'origin (base vs CO / quote) chips.');
         }
       }
@@ -608,9 +634,10 @@
     // install cards to show provenance.
     if (missing.length && missing.join('|') !== merge._lastMissing) {
       merge._lastMissing = missing.join('|');
+      var pvn = proposedViewName();
       console.warn('[scw-as-quoted] ' + missing.length + ' install record(s) link to ' +
-        'OG proposed records NOT loaded in ' + PROPOSED_VIEW + ' (no As Quoted ' +
-        'panel for them). If these are change-order items, check ' + PROPOSED_VIEW +
+        'OG proposed records NOT loaded in ' + pvn + ' (no As Quoted ' +
+        'panel for them). If these are change-order items, check ' + pvn +
         '’s Builder filters (a "Type is not change order" filter would ' +
         'exclude them):\n  ' + missing.join('\n  '));
     }
@@ -716,14 +743,18 @@
       }, 'scwAsQuoted');
     });
     // Proposed data can render after the install views (or update).
-    window.SCW.onViewRender(PROPOSED_VIEW, function () {
-      invalidate(); stagger();
-    }, 'scwAsQuoted');
-    // The acceptance grid feeds the origin → quote resolution — re-merge
-    // when it (re)loads so chips pick up fresh signed/quote state.
-    window.SCW.onViewRender(ACCEPT_VIEW, function () {
-      invalidate(); stagger();
-    }, 'scwAsQuoted');
+    PROPOSED_VIEWS.forEach(function (pv) {
+      window.SCW.onViewRender(pv, function () {
+        invalidate(); stagger();
+      }, 'scwAsQuoted');
+    });
+    // The acceptance grids feed the origin → quote resolution — re-merge
+    // when one (re)loads so chips pick up fresh signed/quote state.
+    ACCEPT_VIEWS.forEach(function (avk) {
+      window.SCW.onViewRender(avk, function () {
+        invalidate(); stagger();
+      }, 'scwAsQuoted');
+    });
   }
 
   if (document.readyState === 'loading') {
