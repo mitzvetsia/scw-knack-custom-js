@@ -380,10 +380,13 @@
           qty:  num(r, 'field_1964') || 1,
           bid:  num(r, 'field_2150')
         };
+        // field_2150 is the PER-UNIT sub bid — the doc's line amount and the
+        // totals are extended (qty × each), matching how the line is billed.
+        e.total = e.qty * e.bid;
         entries.push(e);
         var t = isRm ? tRm : tAdd;
         if (isRm) nRm++; else nAdd++;
-        t.bid += e.bid;
+        t.bid += e.total;
       }
       var totBid = tAdd.bid + tRm.bid;
 
@@ -447,7 +450,14 @@
                   esc(en.desc) + '</div>'
                 : '') + '</td>' +
             '<td style="' + NUM_TD + '">' + en.qty + '</td>' +
-            '<td style="' + NUM_TD + '">' + esc(money(en.bid)) + '</td>' +
+            // Line total (qty × each); the per-unit price rides beneath it
+            // whenever qty > 1 so the math is visible on the doc.
+            '<td style="' + NUM_TD + '">' + esc(money(en.total)) +
+              (en.qty > 1
+                ? '<br><span style="color:#64748b;font-size:10.5px;' +
+                  'font-weight:400;">' + en.qty + ' × ' + esc(money(en.bid)) +
+                  ' each</span>'
+                : '') + '</td>' +
             '</tr>');
         }
       }
@@ -506,7 +516,10 @@
           tx.push((et.isRm ? '- REMOVE  ' : '+ ADD  ') + et.item +
             (et.drop ? ' — ' + et.drop : ''));
           if (et.desc) tx.push('    ' + et.desc);
-          tx.push('    qty ' + et.qty + ' · sub bid (labor) ' + money(et.bid));
+          tx.push('    qty ' + et.qty + ' · sub bid (labor) ' +
+            (et.qty > 1
+              ? money(et.bid) + ' each · line total ' + money(et.total)
+              : money(et.total)));
         }
       }
       tx.push('');
