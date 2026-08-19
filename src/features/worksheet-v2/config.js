@@ -299,6 +299,26 @@
         label:            'Scope of Work Line Items',
         mdfSourceViewKey: 'view_3602',   // MDF/IDF locations on the sales SOW page
         mdfLabelField:    'field_1642',
+        // Location management folded INTO the worksheet (mdf-notes.js) —
+        // same integration as build-SOW/deploy/survey: every real-location
+        // L1 gets the edit pencil (designator/##/name + delete-when-empty)
+        // and the always-visible detail band (survey-notes callout, photos
+        // strip + add-tile, inline SCW notes). Reads/PUTs go through the
+        // Manage MDFs/IDFs grid (view_3602), whose standalone accordion
+        // section is hidden by mdf-notes.js static CSS. deleteGate ports
+        // the rule mdf-idf-cards.js enforced on the standalone section:
+        // once the SOW's ClickUp task exists (link renders in view_3491),
+        // location deletes lock — ops is working off these locations.
+        mdfManage:        { viewKey: 'view_3602', notesField: 'field_1643',
+                            deleteGate: {
+                              cuLinkView: 'view_3491',
+                              title: 'This SOW already has a ClickUp task — ' +
+                                'locations can’t be deleted once work is initiated.'
+                            } },
+        // "+ Add MDF/IDF" toolbar CTA — clicks the (hidden) view_3654 menu
+        // link (accordion-menu-inject hoisted it into the now-hidden
+        // standalone section), replacing the button that lived there.
+        addMdfMenuView:   'view_3654',
         moneyMode:        'sales',
         hideSow:          true,          // no SOW column / pills / sort on this page
         // "+ Add to SOW" toolbar button clicks the add link inside this

@@ -1,8 +1,9 @@
 /*** WORKSHEET V2 — MDF/IDF LOCATION MANAGE (manage-section integration) ******
  *
  * Folds the standalone "Manage MDFs / IDFs" section INTO the worksheet
- * (deploy scene view_3932; build-SOW scene view_3577; survey/bid scene
- * view_3617 — config-driven per worksheet-v2 view entry), with full parity
+ * (deploy scene view_3932; build-SOW scene view_3577; sales SOW scene
+ * view_3602; survey/bid scene view_3617 — config-driven per worksheet-v2
+ * view entry), with full parity
  * to the bid-review-v2 manage panel (bid-review-v2/mdf-manage.js): every
  * real-location L1 header gets a pencil that opens a panel directly under
  * the header with
@@ -89,7 +90,10 @@
          their home now. Static CSS so there is no flash while models load.
          view_3932 = deploy scene; view_3577 = build-SOW scene (view_3962
          integration); view_4060 = sub-portal deployment dashboard
-         (view_4056 integration); view_3617 = survey/bid scene (view_3505
+         (view_4056 integration); view_3602 = sales SOW scene (view_3586
+         integration — its view_3654 Add-menu, hoisted into the accordion
+         by accordion-menu-inject, is absorbed by the toolbar CTA);
+         view_3617 = survey/bid scene (view_3505
          integration — its "MDF/IDFs" rich-text heading view_3508 goes with
          it; the view_3509 Add-menu is absorbed by the toolbar CTA). The
          views still render (display:none keeps their models + rows
@@ -97,6 +101,7 @@
       '.scw-acc-for-view_3932,',
       '.scw-acc-for-view_3577,',
       '.scw-acc-for-view_4060,',
+      '.scw-acc-for-view_3602,',
       '.scw-acc-for-view_3617,',
       '#view_3617,',
       '#view_3508 {',
@@ -332,6 +337,19 @@
       calloutField: (cfg && cfg.calloutField) || F.surveyNotes,
       calloutLabel: (cfg && cfg.calloutLabel) || 'Survey Notes'
     };
+  }
+
+  /** Optional per-deployment delete gate (config mdfManage.deleteGate):
+   *  while the named view renders a ClickUp link, location deletes are
+   *  blocked — ops is already working off these locations. Same DOM read
+   *  as mdf-idf-cards.js DELETE_GATE / co-header-card.js. A missing gate
+   *  view fails OPEN (delete stays available), matching mdf-idf-cards. */
+  function deleteGateActive(cfg) {
+    var g = cfg && cfg.deleteGate;
+    if (!g || !g.cuLinkView) return null;
+    var root = document.getElementById(g.cuLinkView);
+    if (!root) return null;
+    return root.querySelector('a[href*="clickup.com"]') ? g : null;
   }
 
   /** Identity-aware bulk photo uploader against this MDF/IDF location
@@ -639,10 +657,12 @@
     });
     var goBtn = conf.querySelector('.' + P + '-btn--confirm-del');
     goBtn.addEventListener('click', function () {
-      // Re-verify at the moment of truth — records may have been added
-      // while the confirm sat open.
-      if (!locationIsEmpty(sourceViewKey, l1Id, block)) {
-        st.textContent = 'This location is no longer empty — delete cancelled.';
+      // Re-verify at the moment of truth — records may have been added (or
+      // the ClickUp gate may have engaged) while the confirm sat open.
+      var gateNow = deleteGateActive(cfg);
+      if (gateNow || !locationIsEmpty(sourceViewKey, l1Id, block)) {
+        st.textContent = gateNow ? gateNow.title
+          : 'This location is no longer empty — delete cancelled.';
         goBtn.disabled = true;
         return;
       }
@@ -749,11 +769,13 @@
     // is discoverable without being dangerous.
     var delBtn = panel.querySelector('.' + P + '-btn--delete');
     if (delBtn) {
-      var emptyNow = locationIsEmpty(sourceViewKey, l1Id, block);
+      var gateNow = deleteGateActive(cfg);
+      var emptyNow = !gateNow && locationIsEmpty(sourceViewKey, l1Id, block);
       delBtn.disabled = !emptyNow;
-      delBtn.title = emptyNow
-        ? 'Delete this MDF/IDF location'
-        : 'Can’t delete — this MDF/IDF still has line items under it. Move or delete them first.';
+      delBtn.title = gateNow ? gateNow.title
+        : emptyNow
+          ? 'Delete this MDF/IDF location'
+          : 'Can’t delete — this MDF/IDF still has line items under it. Move or delete them first.';
       delBtn.addEventListener('click', function () {
         var lblEl = block.querySelector('.scw-ws-v2-l1-label');
         openDeleteConfirm(panel, cfg, sourceViewKey, l1Id, block,
