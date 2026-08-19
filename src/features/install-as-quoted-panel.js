@@ -69,7 +69,11 @@
     plenum:           'field_1983',    // Plenum
     sow:              'field_2154',    // SOW connection(s) — the provenance hop
     bucket:           'field_2219',    // proposal bucket (connection)
-    mapConn:          'field_2231'     // FLAG_map camera or reader connections
+    mapConn:          'field_2231',    // FLAG_map camera or reader connections
+    // Sub bid (the sub's own per-line price — sub-safe money, fine on the
+    // sub portal). ⚠️ Builder: field_2150 must be a column on the proposed
+    // grids (view_4072 / view_4151) or the group silently stays hidden.
+    subBid:           'field_2150'
   };
 
   // Corresponding fields on the INSTALL record (view_4093/view_4056 object)
@@ -116,6 +120,7 @@
   var GROUPS = [
     { label: 'Product',           key: 'product' },
     { label: 'Qty',               key: 'qty' },
+    { label: 'Sub Bid',           key: 'subBid' },
     { label: 'MDF / IDF',         key: 'mdfIdf' },
     { label: 'Connected Devices', key: 'connectedDevices', kind: 'multi' },
     { label: 'Connected To',      key: 'connectedTo' },
@@ -481,19 +486,31 @@
     var grid = document.createElement('div');
     grid.className = PANEL_CLS + '-grid';
     var diffCount = 0;
+    var isCamRow = bucketIdOfAttrs(ia, IF.bucket) === CAM_READER_BUCKET ||
+                   bucketIdOfAttrs(pa, PF.bucket) === CAM_READER_BUCKET;
     for (var i = 0; i < GROUPS.length; i++) {
       var g = GROUPS[i];
       // Bucket-rule gating (matches the worksheet cards): Connected Devices
       // only on map-connections products; Connected To only on cam/reader
-      // rows. A populated quoted value always shows regardless — never hide
-      // real data behind a missing flag/bucket column.
+      // rows; the cabling flags (Existing / Exterior / Plenum) only on
+      // cam/reader rows — on anything else they show only when one side is
+      // actually Yes (the install-flags "only-if-true" convention), so a
+      // real drift can't hide. A populated quoted value always shows
+      // regardless — never hide real data behind a missing bucket column.
       if (g.key === 'connectedDevices' &&
           !(yesFlag(ia, IF.mapConn) || yesFlag(pa, PF.mapConn) ||
             (ctx && quotedChildIds(pa, ctx).length))) continue;
       if (g.key === 'connectedTo' &&
-          !(bucketIdOfAttrs(ia, IF.bucket) === CAM_READER_BUCKET ||
-            bucketIdOfAttrs(pa, PF.bucket) === CAM_READER_BUCKET ||
-            (ctx && quotedParentId(pa, ctx)))) continue;
+          !(isCamRow || (ctx && quotedParentId(pa, ctx)))) continue;
+      if (g.kind === 'flag' && !isCamRow &&
+          normFlag(readVal(pa, PF[g.key])) !== 'yes' &&
+          !(ia && IF[g.key] && normFlag(readVal(ia, IF[g.key])) === 'yes')) continue;
+      // Sub Bid renders only when the quoted line actually carries one —
+      // a blank/zero sub bid on services/assumptions is noise, not data.
+      if (g.key === 'subBid') {
+        var sbNum = parseFloat(String(readVal(pa, PF.subBid)).replace(/[$,\s]/g, ''));
+        if (isNaN(sbNum) || sbNum === 0) continue;
+      }
       var val, differs = null;   // null → default label-based compare
       if (ctx && g.key === 'connectedDevices') {
         // Derived quoted set (drift-proof) + id-set diff via field_2819.
