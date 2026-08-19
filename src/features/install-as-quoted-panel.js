@@ -67,7 +67,9 @@
     existCabling:     'field_2461',    // Existing cabling
     exterior:         'field_1984',    // Exterior
     plenum:           'field_1983',    // Plenum
-    sow:              'field_2154'     // SOW connection(s) — the provenance hop
+    sow:              'field_2154',    // SOW connection(s) — the provenance hop
+    bucket:           'field_2219',    // proposal bucket (connection)
+    mapConn:          'field_2231'     // FLAG_map camera or reader connections
   };
 
   // Corresponding fields on the INSTALL record (view_4093/view_4056 object)
@@ -81,8 +83,32 @@
     connectedTo:      'field_2821',
     existCabling:     'field_2807',
     exterior:         'field_2805',
-    plenum:           'field_2806'
+    plenum:           'field_2806',
+    bucket:           'field_2822',    // REL_CONFIG_proposal bucket
+    mapConn:          'field_2795'     // PRODUCT STORED FLAG_map cam/reader conns
   };
+
+  // Proposal-bucket gating for the connection columns — the SAME rules the
+  // worksheet cards follow everywhere (card.js): Connected To renders only
+  // on cam/reader-bucket rows; Connected Devices only when the product's
+  // "map camera or reader connections" flag is Yes. The proposed grids
+  // don't project bucket/flag columns, so read them off the INSTALL record
+  // first (it stores both), fall back to the proposed record, and never
+  // hide a column that actually carries quoted data.
+  var CAM_READER_BUCKET = '6481e5ba38f283002898113c';   // matches card.js
+  function yesFlag(attrs, key) {
+    if (!attrs || !key) return false;
+    var raw = attrs[key + '_raw'];
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return true;
+    var s = String(attrs[key] == null ? '' : attrs[key]).trim().toLowerCase();
+    return s === 'yes' || s === 'true' || s === '1';
+  }
+  function bucketIdOfAttrs(attrs, key) {
+    var raw = attrs && attrs[key + '_raw'];
+    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
+    if (raw && typeof raw === 'object' && raw.id) return raw.id;
+    return '';
+  }
 
   // Compact label/value grid groups (survey notes rendered full-width below).
   // kind drives diff normalization: 'flag' treats blank ≙ No; 'multi'
@@ -457,6 +483,17 @@
     var diffCount = 0;
     for (var i = 0; i < GROUPS.length; i++) {
       var g = GROUPS[i];
+      // Bucket-rule gating (matches the worksheet cards): Connected Devices
+      // only on map-connections products; Connected To only on cam/reader
+      // rows. A populated quoted value always shows regardless — never hide
+      // real data behind a missing flag/bucket column.
+      if (g.key === 'connectedDevices' &&
+          !(yesFlag(ia, IF.mapConn) || yesFlag(pa, PF.mapConn) ||
+            (ctx && quotedChildIds(pa, ctx).length))) continue;
+      if (g.key === 'connectedTo' &&
+          !(bucketIdOfAttrs(ia, IF.bucket) === CAM_READER_BUCKET ||
+            bucketIdOfAttrs(pa, PF.bucket) === CAM_READER_BUCKET ||
+            (ctx && quotedParentId(pa, ctx)))) continue;
       var val, differs = null;   // null → default label-based compare
       if (ctx && g.key === 'connectedDevices') {
         // Derived quoted set (drift-proof) + id-set diff via field_2819.
