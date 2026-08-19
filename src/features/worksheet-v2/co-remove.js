@@ -154,6 +154,19 @@
       '  grid-column: 7 / 8 !important;',
       '}',
 
+      // Non-cam PRODUCT rows: the global styles.js rule hides their blank
+      // label cell and pins the product to "grid-column: 2 / span 2"
+      // (chevron=1 · label=2 · product=3 on the stock grids). Our prepended
+      // checkbox shifts every track +1, so that pin lands the product in the
+      // 20px chevron + 64px label tracks — clipped to ~84px with everything
+      // after it flowing one track early. Re-pin +1 (label 3 + product 4) so
+      // the product absorbs the label slot in THIS grid; the remaining cells
+      // auto-flow into tracks 5-8. Cam rows keep their label cell and flow
+      // correctly, which is why cam-heavy COs never showed the break.
+      '.scw-ws-v2--readonly .scw-ws-v2-card--install .scw-ws-v2-row--default[data-scw-co-remove-row] > .scw-ws-v2-cell--product {',
+      '  grid-column: 3 / 5 !important;',
+      '}',
+
       // ── Read-only design parity with the adoption panel ─────────────────
       // The shared .scw-ws-v2--readonly rules flatten input bg/border, but the
       // install card's SCW Notes is a full-column textarea (the ONE editable
