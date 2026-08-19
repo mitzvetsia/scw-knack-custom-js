@@ -242,6 +242,7 @@ cat \
   src/features/questionnaire-deployment-audit.js \
   src/features/acceptance-card.js \
   src/features/questionnaire-card.js \
+  src/features/co-cards.js \
   src/features/other-files-gallery.js \
   src/features/resend-credentials-btn.js \
   > "$TMP_BUNDLE"
