@@ -386,6 +386,21 @@ footer b{color:var(--ink-2); font-weight:600}
 @media (prefers-reduced-motion:reduce){*{transition:none !important; animation:none !important}}
 :focus-visible{outline:2px solid var(--brand); outline-offset:2px}
 
+/* ---------- topline strip ---------- */
+.topline{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--rule);
+  border:1px solid var(--border); border-radius:4px; box-shadow:var(--shadow);
+  overflow:hidden; margin-bottom:16px;
+}
+.tl{background:var(--surface); padding:16px 20px 14px}
+.tl-row{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:6px}
+.tl-v{
+  font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:42px; line-height:.95;
+  letter-spacing:-.01em; font-variant-numeric:tabular-nums;
+}
+.tl-n{font-size:12px; color:var(--ink-2); margin-top:6px; line-height:1.4}
+@media (max-width:860px){.topline{grid-template-columns:1fr}}
+
 /* ---------- history editor ---------- */
 .editor{
   background:var(--surface); border:1px solid var(--border); border-radius:4px;
@@ -405,8 +420,8 @@ footer b{color:var(--ink-2); font-weight:600}
   text-transform:uppercase; color:var(--ink-2); border:1px solid var(--border-2);
   border-radius:2px; padding:5px 10px;
 }
-.editor > summary .chev::after{content:"Open editor"}
-.editor[open] > summary .chev::after{content:"Close editor"}
+.editor > summary .chev::after{content:"Open"}
+.editor[open] > summary .chev::after{content:"Close"}
 .editor[open] > summary{border-bottom:1px solid var(--rule)}
 .ed-body{padding:4px 20px 20px}
 .ed-sec{margin-top:18px}
@@ -464,16 +479,33 @@ textarea.json{
 
 <div class="wrap">
 
-  <!-- ============ PART 1: THIS MONTH ============ -->
-  <div class="part" style="margin-top:0">
-    <span class="part-n">Part 1</span>
-    <h2>This month &mdash; August 2026</h2>
-    <span class="rule"></span>
-    <span class="sub">Where we&rsquo;re pacing right now. Type today&rsquo;s numbers in and everything recalculates.</span>
-  </div>
+  <!-- ============ TOPLINE: the whole meeting in one band ============ -->
+  <section class="topline" aria-label="Topline summary">
+    <div class="tl">
+      <span class="eyebrow">August &mdash; pacing to</span>
+      <div class="tl-row"><span class="tl-v bandnum" id="tAugV" data-band="none">&mdash;</span><span class="pill" id="tAugP" data-band="none">&mdash;</span></div>
+      <div class="tl-n" id="tAugN"></div>
+    </div>
+    <div class="tl">
+      <span class="eyebrow">Q2 &amp; Q3 window &mdash; pacing to</span>
+      <div class="tl-row"><span class="tl-v bandnum" id="tWinV" data-band="none">&mdash;</span><span class="pill" id="tWinP" data-band="none">&mdash;</span></div>
+      <div class="tl-n" id="tWinN"></div>
+    </div>
+    <div class="tl">
+      <span class="eyebrow">What stretch takes</span>
+      <div class="tl-row"><span class="tl-v" id="tAskV">&mdash;</span></div>
+      <div class="tl-n" id="tAskN"></div>
+    </div>
+  </section>
 
-  <section class="deck">
-    <div class="deck-top">
+  <!-- ============ BACKSTAGE: presenter-only entry drawer ============ -->
+  <details class="editor" style="margin-bottom:28px">
+    <summary>
+      <div><span class="eyebrow">Backstage &mdash; presenter only</span><h2>Update this month&rsquo;s numbers</h2></div>
+      <span class="chev"></span>
+    </summary>
+    <div class="ed-body">
+    <div class="deck-top" style="margin-top:12px">
       <p><b>Enter the numbers, the board updates.</b> Install comes from the Xero Install Services report, eCommerce from the M2 Cost&nbsp;of&nbsp;Goods report, Pending from the M2 Pending report. Entries are saved in this browser only &mdash; they are not shared with anyone else viewing this page.</p>
       <button class="btn" id="mReset" type="button">Reset to sheet values</button>
     </div>
@@ -520,7 +552,21 @@ textarea.json{
           <div class="hint" id="hGoal2"></div></div>
       </div>
     </div>
-  </section>
+
+    <div class="grp">
+      <span class="eyebrow">Window link</span>
+      <div class="livelink" style="margin-top:6px"><label><input type="checkbox" id="qAugLive"><span id="qAugLiveLab">Use this month&rsquo;s live pacing for the window&rsquo;s August</span></label></div>
+    </div>
+    </div>
+  </details>
+
+  <!-- ============ PART 1: THIS MONTH ============ -->
+  <div class="part" style="margin-top:0">
+    <span class="part-n">Part 1</span>
+    <h2>This month &mdash; August 2026</h2>
+    <span class="rule"></span>
+    <span class="sub">Where we&rsquo;re pacing right now.</span>
+  </div>
 
   <section class="hero" id="mHero">
     <div class="hero-top">
@@ -533,6 +579,24 @@ textarea.json{
       </div>
       <p class="hero-cap" id="oProjCap"></p>
     </div>
+
+    <div class="track">
+      <div class="track-bar">
+        <div class="track-fill" id="mFill"></div>
+        <div class="track-proj" id="mProj"></div>
+        <div class="track-seam" id="mSeam"></div>
+      </div>
+      <div class="goal-mark modest" id="mMarkM"></div>
+      <div class="goal-lab modest" id="mLabM"><span class="g-name">Modest</span><span class="g-val" id="mLabMv"></span></div>
+      <div class="goal-mark stretch" id="mMarkS"></div>
+      <div class="goal-lab stretch" id="mLabS"><span class="g-name">Stretch</span><span class="g-val" id="mLabSv"></span></div>
+    </div>
+    <div class="goal-stack">
+      <span><i style="background:var(--good)"></i><b class="g-name" style="color:var(--good-ink)">Modest</b><b class="g-val" style="color:var(--good-ink)" id="mStackM"></b></span>
+      <span><i style="background:var(--goal2)"></i><b class="g-name" style="color:var(--goal2-ink)">Stretch</b><b class="g-val" style="color:var(--goal2-ink)" id="mStackS"></b></span>
+    </div>
+    <div class="track-key" id="mKey"></div>
+
     <div class="readout">
       <div class="ro"><div class="k">Revenue to date</div><div class="v" id="oRevTD">&mdash;</div><div class="n" id="nRevTD"></div></div>
       <div class="ro"><div class="k">Adjusted daily average</div><div class="v" id="oAdjDaily">&mdash;</div><div class="n" id="nAdjDaily"></div></div>
@@ -550,13 +614,6 @@ textarea.json{
       <div class="chart" id="m-burnup"></div>
     </article>
 
-    <article class="card full"><!-- was half-width; restore class="card" when the mix panel returns -->
-      <div class="card-head ticked"><span class="eyebrow">Where the month lands</span>
-      <h2>Pacing vs. both goals</h2></div>
-      <p class="card-note">Pending install is run-rated the same way revenue is &mdash; added to the days already worked, not dropped in at the end.</p>
-      <div class="chart" id="m-lands"></div>
-    </article>
-
     <!-- Revenue mix: parked for now. Remove "hidden" (and re-halve the card above) to restore. -->
     <article class="card" hidden>
       <div class="card-head ticked"><span class="eyebrow">Revenue mix</span>
@@ -564,31 +621,6 @@ textarea.json{
       <p class="card-note">Booked so far, and where each lands at the current pace.</p>
       <div class="chart" id="m-mix"></div>
     </article>
-  </section>
-
-  <!-- Activity pacing: parked until the funnel numbers are interrogated. Remove "hidden" to restore. -->
-  <section class="card full" style="margin-bottom:0" hidden>
-    <div class="card-head ticked"><span class="eyebrow">Top of funnel &mdash; same run-rate math</span>
-    <h2>Activity pacing</h2></div>
-    <p class="card-note">Each figure is projected by the same daily average: to&#8209;date &divide; business days elapsed &times; business days in the month.</p>
-    <div class="deck-grid" style="margin-top:14px">
-      <div class="fld"><label for="aDeals">Net new deals to date</label>
-        <div class="inrow"><input id="aDeals" type="number" step="1" value="40" inputmode="numeric"></div></div>
-      <div class="fld"><label for="aDealsLast">Net new deals last month</label>
-        <div class="inrow"><input id="aDealsLast" type="number" step="1" value="134" inputmode="numeric"></div></div>
-      <div class="fld"><label for="aSQL">SQLs to date</label>
-        <div class="inrow"><input id="aSQL" type="number" step="1" value="13485" inputmode="numeric"></div></div>
-      <div class="fld"><label for="aPipe">Pipeline to date</label>
-        <div class="inrow"><span class="pre">$</span><input id="aPipe" type="number" step="1000" value="1219000" inputmode="decimal"></div></div>
-      <div class="fld"><label for="aCount">Deal count to date</label>
-        <div class="inrow"><input id="aCount" type="number" step="1" value="16" inputmode="numeric"></div></div>
-    </div>
-    <div class="act" style="margin-top:16px">
-      <div class="c"><div class="k">Net new deals</div><div class="row"><span class="td" id="oDealsTD">&mdash;</span><span class="ar">&rarr;</span><span class="pj" id="oDeals">&mdash;</span></div><div class="n" id="nDeals"></div></div>
-      <div class="c"><div class="k">SQLs</div><div class="row"><span class="td" id="oSQLTD">&mdash;</span><span class="ar">&rarr;</span><span class="pj" id="oSQL">&mdash;</span></div><div class="n">pacing to, at month end</div></div>
-      <div class="c"><div class="k">Pipeline created</div><div class="row"><span class="td" id="oPipeTD">&mdash;</span><span class="ar">&rarr;</span><span class="pj" id="oPipe">&mdash;</span></div><div class="n">pacing to, at month end</div></div>
-      <div class="c"><div class="k">Deal count</div><div class="row"><span class="td" id="oCountTD">&mdash;</span><span class="ar">&rarr;</span><span class="pj" id="oCount">&mdash;</span></div><div class="n">pacing to, at month end</div></div>
-    </div>
   </section>
 
   <!-- ============ PART 2: Q2 & Q3 ============ -->
@@ -627,7 +659,6 @@ textarea.json{
       <span><i style="background:var(--goal2)"></i><b class="g-name" style="color:var(--goal2-ink)">Stretch</b><b class="g-val" style="color:var(--goal2-ink)" id="qStackS"></b></span>
     </div>
     <div class="track-key" id="qKey"></div>
-    <div class="livelink"><label><input type="checkbox" id="qAugLive"><span id="qAugLiveLab">Use this month&rsquo;s live pacing for the window&rsquo;s August</span></label></div>
   </section>
 
   <section class="tiles">
@@ -696,7 +727,7 @@ textarea.json{
     <span class="part-n">Part 3</span>
     <h2>How this compares to previous years</h2>
     <span class="rule"></span>
-    <span class="sub">Five years of monthly and quarterly shape, and ten years of company revenue.</span>
+    <span class="sub">Five years of monthly shape, and ten years of company revenue.</span>
   </div>
 
   <section class="grid">
@@ -705,13 +736,6 @@ textarea.json{
       <h2>Jan&ndash;Sep by month, five years &mdash; and the fork ahead</h2></div>
       <p class="card-note" id="qMonthlyNote"></p>
       <div class="chart" id="c-monthly"></div>
-    </article>
-
-    <article class="card full">
-      <div class="card-head ticked"><span class="eyebrow">Quarterly shape</span>
-      <h2>Q1 &middot; Q2 &middot; Q3 by year</h2></div>
-      <p class="card-note" id="qQuartersNote"></p>
-      <div class="chart" id="c-quarters"></div>
     </article>
 
     <article class="card full">
@@ -758,8 +782,13 @@ textarea.json{
     </div>
   </details>
 
-  <section class="card full" style="margin-bottom:0">
-    <div class="card-head ticked"><span class="eyebrow">The numbers behind the charts</span>
+  <details class="editor" style="margin-bottom:0">
+    <summary>
+      <div><span class="eyebrow">Reference</span><h2>Numbers &amp; methodology</h2></div>
+      <span class="chev"></span>
+    </summary>
+    <div class="ed-body">
+    <div class="card-head ticked" style="margin-top:12px"><span class="eyebrow">The numbers behind the charts</span>
     <h2>Booked revenue by period</h2></div>
     <p class="card-note">2026 Aug and Sep are pacing figures, not booked. The Apr&ndash;Sep column is the goal window.</p>
     <div class="tbl-wrap">
@@ -789,7 +818,8 @@ textarea.json{
       <p><b>Two different revenue measures.</b> Part 2 is booked revenue from the YoY Sales Metrics sheet ($11.6M in 2025). Parts 1 and 3 are total company revenue &mdash; Install services from Xero plus eCommerce &mdash; from the Daily KPIs sheet ($13.5M in 2025). They are not the same number and should not be added together. For 2022 and 2023 the two reconcile almost exactly once October is added back; for 2024 and 2025 a gap remains that is worth confirming before either figure is quoted as the company total.</p>
       <p><b>Not carried over.</b> The Daily KPIs sheet also holds a Jul&nbsp;/&nbsp;Aug&nbsp;/&nbsp;Sep quarter block whose August goal ($1,030,000) contradicts the current-month goal ($1,170,000), and a cautious&nbsp;/&nbsp;optimistic pair on a third basis. Both look stale, so neither is shown here.</p>
     </footer>
-  </section>
+    </div>
+  </details>
 </div>
 <script>
 (function () {
@@ -1144,57 +1174,6 @@ textarea.json{
     legend(host, YEARS.map(function (yr) { return { k: yr, c: YCOL[yr] }; }).concat([{ k: 'Aug–Sep pacing', c: 'var(--muted)', dash: true }]));
   }
 
-  /* ================= CHART: quarters ================= */
-  function chartQuarters(host, d) {
-    var W = Math.max(340, host.clientWidth), H = 320;
-    var m = { t: 30, r: 16, b: 46, l: 48 };
-    var iw = W - m.l - m.r, ih = H - m.t - m.b;
-    var ax = niceAxis(Math.max(d.q3Stretch, d.q['2026'][1]) * 1.14, 4);
-    var maxY = ax.max;
-    var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
-      'aria-label': 'Booked revenue by quarter, Q1 through Q3, for five years.' });
-    var defs = s('defs'); defs.appendChild(hatch('hq', 'var(--y26)')); svg.appendChild(defs);
-    var Y = function (v) { return m.t + ih - (v / maxY) * ih; };
-    var tip = mkTip(host);
-    for (var g = 0; g * ax.step <= maxY + 1; g++) {
-      var gv = ax.step * g;
-      svg.appendChild(s('line', { x1: m.l, x2: m.l + iw, y1: Y(gv), y2: Y(gv),
-        style: 'stroke:' + (g === 0 ? 'var(--rule)' : 'var(--grid)') + ';stroke-width:1' }));
-      svg.appendChild(axisText(m.l - 10, Y(gv) + 3.5, kC(gv), 'end'));
-    }
-    var QN = ['Q1 — Jan·Feb·Mar', 'Q2 — Apr·May·Jun', 'Q3 — Jul·Aug·Sep'];
-    var gband = iw / 3, inner = gband * 0.78, bw = (inner - 8) / 5;
-    QN.forEach(function (qn, qi) {
-      var gx = m.l + gband * qi + (gband - inner) / 2;
-      YEARS.forEach(function (yr, yi) {
-        var v = d.q[yr][qi], x0 = gx + (bw + 2) * yi;
-        svg.appendChild(s('rect', { x: x0, y: Y(v), width: bw, height: Math.max(1, Y(0) - Y(v)), rx: 2.5, style: 'fill:' + YCOL[yr] }));
-        if (yr === '2026' && qi === 2) {
-          svg.appendChild(s('rect', { x: x0, y: Y(d.q3Stretch), width: bw, height: Math.max(1, Y(v + 60) - Y(d.q3Stretch)), rx: 2.5,
-            style: 'fill:url(#hq);stroke:var(--goal2);stroke-width:1.2' }));
-          svg.appendChild(valText(x0 + bw / 2, Y(d.q3Stretch) - 8, kC(d.q3Stretch), 'middle', 'var(--goal2-ink)', 15, 700));
-          svg.appendChild(valText(x0 + bw / 2, Y(v) + 17, kC(v), 'middle', 'var(--surface)', 14, 700));
-        } else if (yr === '2026') {
-          svg.appendChild(valText(x0 + bw / 2, Y(v) - 8, kC(v), 'middle', 'var(--brand-ink)', 15, 700));
-        }
-        var hit = s('rect', { x: x0 - 1, y: m.t, width: bw + 2, height: ih, style: 'fill:transparent' });
-        hit.addEventListener('mousemove', function (e) {
-          var b = host.getBoundingClientRect();
-          var rows = [{ k: qn.split(' — ')[0], v: kC(v), c: YCOL[yr] }];
-          if (yr === '2026' && qi === 2) rows.push({ k: 'at stretch', v: kC(d.q3Stretch), c: 'var(--goal2)' });
-          if (yr !== '2026') rows.push({ k: 'vs 2026', v: pctS((d.q['2026'][qi] - v) / v), dim: true });
-          tip.show(tipRows(yr, rows), e.clientX - b.left, e.clientY - b.top);
-        });
-        hit.addEventListener('mouseleave', tip.hide);
-        svg.appendChild(hit);
-      });
-      svg.appendChild(axisText(gx + inner / 2, H - 16, qn));
-    });
-    host.appendChild(svg);
-    legend(host, YEARS.map(function (yr) { return { k: yr + (yr === '2026' ? ' pacing' : ''), c: YCOL[yr] }; })
-      .concat([{ k: '2026 Q3 at stretch', c: 'var(--goal2)', hatch: true }]));
-  }
-
   /* ================= CHART: ten-year revenue ================= */
   function chartDecade(host) {
     var W = Math.max(340, host.clientWidth), H = 330;
@@ -1298,9 +1277,6 @@ textarea.json{
     put('qMonthlyNote', '2026 is booked through July. From there the line forks: the <b>current pace</b> (Aug ' + kC(d.aug26) +
       (d.augLive != null ? ' &mdash; live from Part 1' : '') + ', Sep ' + kC(d.sep26) + ') against what <b>stretch</b> needs (' + kC(DATA.stretchPace) + ' in both). For scale, our biggest month on record is ' +
       kC(1800) + ' in Apr 2025, and we already booked ' + kC(1500) + ' in May.');
-    put('qQuartersNote', 'Q2 held its 2025 step-up (<b>' + pctS((d.q['2026'][1] - d.q['2025'][1]) / d.q['2025'][1]) +
-      '</b>), and Q3 is pacing <b>' + pctS((d.q['2026'][2] - d.q['2025'][2]) / d.q['2025'][2]) + '</b>, or <b>' +
-      pctS((d.q3Stretch - d.q['2025'][2]) / d.q['2025'][2]) + '</b> at stretch.');
     var d0 = DATA.decade[DEC_YEARS[0]], d9 = DATA.decade[DEC_YEARS[9]];
     var cagr = Math.pow(d9 / d0, 1 / 9) - 1, ups = 0;
     for (var i = 1; i < DEC_YEARS.length; i++) if (DATA.decade[DEC_YEARS[i]] > DATA.decade[DEC_YEARS[i - 1]]) ups++;
@@ -1310,14 +1286,12 @@ textarea.json{
 
     var asks = [
       { id: 'askModest', lab: 'Modest &mdash; ' + kC(d.modest), num: kC(d.needModest / 2), band: 'good',
-        txt: 'Per month in Aug and Sep. Below our Aug&ndash;Sep average in every year since 2022 &mdash; holding normal pace gets us here.' },
+        txt: 'Per month &mdash; below every Aug&ndash;Sep since 2022. Normal pace gets us here.' },
       { id: 'askPace', lab: 'Current pace &mdash; ' + kC(w26), num: kC(d.paceAugSep / 2), band: b.key === 'best' ? 'best' : b.key,
-        txt: 'Average of Aug (' + kC(d.aug26) + (d.augLive != null ? ', live' : '') + ') and Sep (' + kC(d.sep26) + '). ' +
-             (w26 >= d.modest ? 'Clears modest by ' + kC(w26 - d.modest) : 'Short of modest by ' + kC(d.modest - w26)) +
-             ', ' + kC(Math.abs(d.stretch - w26)) + ' ' + (w26 >= d.stretch ? 'past' : 'short of') + ' stretch.' },
+        txt: 'Aug ' + kC(d.aug26) + (d.augLive != null ? ' (live)' : '') + ' · Sep ' + kC(d.sep26) + ' &mdash; ' +
+             (w26 >= d.modest ? 'clears modest by ' + kC(w26 - d.modest) : 'short of modest by ' + kC(d.modest - w26)) + '.' },
       { id: 'askStretch', lab: 'Stretch &mdash; ' + kC(d.stretch), num: kC(d.needStretch / 2), band: 'none',
-        txt: 'Two of the biggest months on record, back to back. Needs roughly <b>' + kC(d.needStretch / 2 - DATA.pace) +
-             '/mo</b> more than we are pacing at &mdash; that is the gap to close.' }
+        txt: 'Per month &mdash; <b>' + kC(d.needStretch / 2 - DATA.pace) + '/mo</b> above current pace. That is the gap.' }
     ];
     asks.forEach(function (a) {
       el(a.id).setAttribute('data-band', a.band);
@@ -1348,6 +1322,11 @@ textarea.json{
     });
     put('qAugLiveLab', 'Use this month&rsquo;s live pacing (' + kC(compute().projected / 1000) +
       ') for the window&rsquo;s August &mdash; off keeps the flat ' + kC(DATA.pace) + ' baseline. Note: Part 1 paces total revenue, the window is booked revenue.');
+    setB('tWinV', b); put('tWinV', kC(w26));
+    pill('tWinP', b);
+    put('tWinN', kC(d.booked26) + ' booked Apr–Jul · modest ' + kC(d.modest) + ' · stretch ' + kC(d.stretch));
+    put('tAskV', kC(d.needStretch / 2) + '<span style="font-size:22px;color:var(--muted)">/mo</span>');
+    put('tAskN', 'Aug &amp; Sep each, to hit stretch · modest needs ' + kC(d.needModest / 2) + '/mo');
     var jt = el('edJson');
     if (jt && document.activeElement !== jt) jt.value = JSON.stringify(DATA);
   }
@@ -1436,8 +1415,7 @@ textarea.json{
   /* ================= MONTH ENGINE ================= */
   var SHEET = {
     mInstall: 102632, mMagento: 281000, mBigDeal: 0, mPendM2: 0, mPendInstall: 300000,
-    mDaysTD: 12, mDaysTotal: 21, mGoal1: 1170000, mGoal2: 1360000,
-    aDeals: 40, aDealsLast: 134, aSQL: 13485, aPipe: 1219000, aCount: 16
+    mDaysTD: 12, mDaysTotal: 21, mGoal1: 1170000, mGoal2: 1360000
   };
   var STORE = 'scw-q2-board-v1';
   function readInputs() {
@@ -1537,54 +1515,6 @@ textarea.json{
       { k: 'With pending', c: 'var(--slate)', dash: true }, { k: 'Modest pace', c: 'var(--good)' }, { k: 'Stretch pace', c: 'var(--goal2)' }]);
   }
 
-  function chartLands(host, m) {
-    var bJ = band(m.projected, m.v.mGoal1, m.v.mGoal2), bP = band(m.withPending, m.v.mGoal1, m.v.mGoal2);
-    var rows = [
-      { k: 'Pacing to', v: m.projected, c: BANDC[bJ.key], ring: BANDRING[bJ.key] },
-      { k: 'With pending', v: m.withPending, c: 'var(--slate)', ring: BANDRING[bP.key] },
-      { k: 'Modest goal', v: m.v.mGoal1, c: 'var(--good)', gap: true },
-      { k: 'Stretch goal', v: m.v.mGoal2, c: 'var(--goal2)' }
-    ];
-    var W = Math.max(320, host.clientWidth), mg = { t: 30, r: 96, b: 32, l: 104 };
-    var rh = 38, gapPx = 24, H = mg.t + mg.b + rows.length * rh + gapPx;
-    var iw = W - mg.l - mg.r;
-    var maxX = Math.max.apply(null, rows.map(function (r) { return r.v; })) * 1.1 || 1;
-    var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
-      'aria-label': 'Month-end pacing and the with-pending case compared with the modest and stretch goals.' });
-    var X = function (v) { return mg.l + (v / maxX) * iw; };
-    var tip = mkTip(host);
-    svg.appendChild(s('line', { x1: X(0), x2: X(0), y1: mg.t - 8, y2: H - mg.b + 2, style: 'stroke:var(--rule);stroke-width:1' }));
-    svg.appendChild(t('text', { x: mg.l, y: mg.t - 12,
-      style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' }, 'At current pace'));
-    var off = 0;
-    rows.forEach(function (r, i) {
-      if (r.gap) {
-        off += gapPx;
-        var dy = mg.t + rh * i + off - gapPx / 2 - 2;
-        svg.appendChild(s('line', { x1: 8, x2: W - 8, y1: dy, y2: dy, style: 'stroke:var(--rule);stroke-width:1;stroke-dasharray:3 3' }));
-        svg.appendChild(t('text', { x: mg.l, y: dy - 8,
-          style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' }, 'Targets'));
-      }
-      var yTop = mg.t + rh * i + off + 6, bh = rh - 16;
-      svg.appendChild(s('rect', { x: X(0), y: yTop, width: Math.max(2, X(r.v) - X(0)), height: bh, rx: 3, style: 'fill:' + r.c }));
-      if (r.ring) svg.appendChild(s('rect', { x: X(0) - 2, y: yTop - 2, width: Math.max(2, X(r.v) - X(0)) + 4, height: bh + 4, rx: 4,
-        fill: 'none', style: 'stroke:' + r.ring + ';stroke-width:2' }));
-      svg.appendChild(t('text', { x: mg.l - 12, y: yTop + bh / 2 + 4, 'text-anchor': 'end',
-        style: 'font-family:"Archivo",sans-serif;font-size:12.5px;font-weight:' + (i < 2 ? 600 : 400) + ';fill:var(--ink)' }, r.k));
-      svg.appendChild(valText(X(r.v) + 9, yTop + bh / 2 + 5, (r.ring ? '★ ' : '') + usdC(r.v), 'start', 'var(--ink)', 17, 700));
-      var hit = s('rect', { x: 0, y: yTop - 6, width: W, height: rh, style: 'fill:transparent' });
-      hit.addEventListener('mousemove', function (e) {
-        var b = host.getBoundingClientRect();
-        tip.show(tipRows(r.k, [{ k: 'Amount', v: usd(r.v), c: r.c },
-          { k: 'vs modest', v: usd(r.v - m.v.mGoal1), dim: true }, { k: 'vs stretch', v: usd(r.v - m.v.mGoal2), dim: true }]),
-          e.clientX - b.left, e.clientY - b.top);
-      });
-      hit.addEventListener('mouseleave', tip.hide);
-      svg.appendChild(hit);
-    });
-    host.appendChild(svg);
-  }
-
   function chartMix(host, m) {
     var rows = [
       { k: 'Install', td: m.v.mInstall, pj: m.installProj, c: 'var(--y24)', pid: 'hmi' },
@@ -1675,25 +1605,35 @@ textarea.json{
     setB('oWithPending', bP); put('oWithPending', (bP.key === 'best' ? '★ ' : '') + usdC(m.withPending));
     put('nWithPending', m.pend > 0 ? 'run-rated with ' + usdC(m.pend) + ' pending' : 'no pending entered');
 
-    var f = m.bt / m.bd;
-    put('oDealsTD', num(m.v.aDeals)); put('oDeals', num(m.v.aDeals * f));
-    var pd = m.v.aDeals * f, lastM = m.v.aDealsLast;
-    if (lastM > 0) {
-      var dd = (pd - lastM) / lastM, bD = band(pd, lastM, lastM * 1.15);
-      put('nDeals', 'vs <b>' + num(lastM) + '</b> last month · <span data-band="' + bD.key +
-        '" class="bandnum" style="font-weight:600">' + pctS(dd) + '</span>');
-    } else put('nDeals', 'pacing to, at month end');
-    put('oSQLTD', num(m.v.aSQL)); put('oSQL', num(m.v.aSQL * f));
-    put('oPipeTD', usdC(m.v.aPipe)); put('oPipe', usdC(m.v.aPipe * f));
-    put('oCountTD', num(m.v.aCount)); put('oCount', num(m.v.aCount * f));
+    // Month thermometer — same visual grammar as the window's goal track.
+    var tMax = Math.max(g2, m.projected, m.withPending) * 1.07 || 1;
+    var pcM = function (v) { return (v / tMax * 100) + '%'; };
+    var eF = el('mFill');
+    if (eF) {
+      eF.style.width = pcM(m.rev);
+      el('mProj').style.left = pcM(m.rev);
+      el('mProj').style.width = pcM(Math.max(0, m.projected - m.rev));
+      el('mSeam').style.left = pcM(m.rev);
+      el('mMarkM').style.left = pcM(g1); el('mLabM').style.left = pcM(g1);
+      el('mMarkS').style.left = pcM(g2); el('mLabS').style.left = pcM(g2);
+      put('mLabMv', usdC(g1)); put('mLabSv', usdC(g2));
+      put('mStackM', usdC(g1)); put('mStackS', usdC(g2));
+      put('mKey', '<span><i class="sw solid"></i>Booked through day ' + m.bd + ' &mdash; ' + usdC(m.rev) + '</span>' +
+        '<span><i class="sw hatch"></i>Rest of month at pace &mdash; ' + usdC(Math.max(0, m.projected - m.rev)) + '</span>' +
+        '<span style="color:var(--muted)">Scale 0&ndash;' + usdC(tMax) + '</span>');
+    }
+
+    // Topline: the August block.
+    setB('tAugV', bJ); put('tAugV', usdC(m.projected));
+    pill('tAugP', bJ);
+    put('tAugN', usdC(m.rev) + ' booked · needs ' + usd(Math.max(0, m.reqDaily)) + '/day for modest');
 
     MCHARTS.forEach(function (c) { var host = el(c[0]); if (!host) return; host.innerHTML = ''; c[1](host, m); });
   }
 
   /* ================= BOOT ================= */
-  var QCHARTS = [['c-window', chartWindow], ['c-augsep', chartAugSep], ['c-monthly', chartMonthly],
-                 ['c-quarters', chartQuarters], ['c-decade', chartDecade]];
-  var MCHARTS = [['m-burnup', chartBurnup], ['m-lands', chartLands], ['m-mix', chartMix]];
+  var QCHARTS = [['c-window', chartWindow], ['c-augsep', chartAugSep], ['c-monthly', chartMonthly], ['c-decade', chartDecade]];
+  var MCHARTS = [['m-burnup', chartBurnup], ['m-mix', chartMix]];
   function renderAll() { renderQ2(); renderMonth(); }
 
   var AUG_LIVE = true;
