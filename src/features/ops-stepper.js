@@ -413,11 +413,19 @@
       // preview copy + a "request the signature copy" CTA instead of the
       // issued e-sign banner (published-proposal-render.js + the public
       // token snippet).
+      //
+      // SAME WEBHOOK as Issue — the Make scenario branches on
+      // payload.stepId ('publish-co-preview' stops after creating the
+      // published record; 'issue-change-order' continues into contract +
+      // acceptance + status flip). Same pattern as request-alt-bid /
+      // update-matching-bid sharing MAKE_OPS_REQUEST_ALT_BID_WEBHOOK.
+      // ⚠️ The scenario MUST have that stepId router before this button
+      // is used — without it a preview click runs the full Issue flow.
       id: 'publish-co-preview',
       label: 'Publish CO Preview — client-viewable, no signature request',
       tone: 'secondary',
       coOnly: true,
-      webhookKey: 'MAKE_CO_PREVIEW_WEBHOOK',
+      webhookKey: 'MAKE_CO_ISSUE_WEBHOOK',
       modal: {
         title:       'Publish CO Preview',
         intro:       'Publishes a client-viewable preview of this change ' +

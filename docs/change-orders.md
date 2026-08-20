@@ -93,10 +93,12 @@ install line items.
      verb exists alongside Issue.** The original design collapsed
      publish/accept into Issue; in practice clients want to REVIEW the CO
      as a web quote before anything goes out for signature. The preview
-     ships the same full publish payload to `MAKE_CO_PREVIEW_WEBHOOK`, but
-     Make only creates the published-proposal record (Type = change order,
-     field_2658 Published) — no esignatures contract, no acceptance, no CO
-     Status change. While CO Status is pre-issue, the published page (both
+     ships the same full publish payload to the SAME `MAKE_CO_ISSUE_WEBHOOK`
+     as Issue — the scenario routes on `stepId` ('publish-co-preview' vs
+     'issue-change-order'), sharing the record-creation modules. The
+     preview branch only creates the published-proposal record (Type =
+     change order, field_2658 Published) — no esignatures contract, no
+     acceptance, no CO Status change. While CO Status is pre-issue, the published page (both
      scene_1279 and the public token page) swaps the e-sign banner for
      preview copy plus a "request the signature copy" nudge CTA
      (`MAKE_CO_SIGNATURE_REQUEST_WEBHOOK` — a notify-ops ping, NOT a
@@ -378,14 +380,17 @@ design:
    Declined.
 4. Confirm the existing proposal→install conversion can take "only items
    connected to CO-###" as input — it's the acceptance hook.
-5. **Publish CO Preview** (bundle shipped 2026-08-20; scenario pending) —
-   `MAKE_CO_PREVIEW_WEBHOOK` (blank in config.js until built). Create the
-   published-proposal record from the standard publish payload (html →
-   field_2680, token → field_2904, tokenized URL → field_2908, expiration
-   → field_2659, Type = change order, field_2658 = Published) and STOP —
-   no contract, no acceptance, no status flip. Respond
-   `{ success: true }`. Also add to the Issue scenario: flip any prior
-   preview record to Superseded (field_2658).
+5. **Publish CO Preview** (bundle shipped 2026-08-20) — a BRANCH of the
+   Issue scenario, not its own webhook: both stepper actions fire
+   `MAKE_CO_ISSUE_WEBHOOK` with identical full publish payloads, and the
+   scenario's FIRST router splits on `stepId`. ⚠️ Add that router before
+   using the preview button — without it a preview click runs the full
+   Issue flow (contract sent). Preview branch: create the
+   published-proposal record from the payload (html → field_2680, token →
+   field_2904, tokenized URL → field_2908, expiration → field_2659, Type
+   = change order, field_2658 = Published) and STOP — no contract, no
+   acceptance, no status flip. Respond `{ success: true }`. Issue branch:
+   also flip any prior preview record to Superseded (field_2658).
 6. **CO signature-request nudge** (optional) —
    `MAKE_CO_SIGNATURE_REQUEST_WEBHOOK`: ping ops when a client clicks
    "Request the signature copy" on a preview. Payload

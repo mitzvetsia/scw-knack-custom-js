@@ -199,22 +199,22 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // plus changeOrderId (alias of sourceRecordId, matching the other CO
   // webhooks). ⚠️ Requires field_2952 on view_3861 for CO mode to activate.
   //   Response body: { success: true } or { success: false, error: "..." }
+  // ⚠️ SHARED by TWO stepper actions — the scenario must route on
+  // payload.stepId as its first step:
+  //   'issue-change-order'  → full Issue: published record + esignatures
+  //                           contract + acceptance + CO Status = Issued,
+  //                           and flip any prior preview record to
+  //                           Superseded (field_2658).
+  //   'publish-co-preview'  → create the SOW_published proposals record
+  //                           only (field_2680 html, field_2904 token,
+  //                           field_2908 tokenized URL, field_2659
+  //                           expiration, Type = change order, field_2658
+  //                           = Published) and STOP — no contract, no
+  //                           acceptance, no CO Status change.
+  // Both ship the identical full publish payload (changeOrderId alias
+  // included), so the record-creation modules are common and the branch
+  // point is after them.
   MAKE_CO_ISSUE_WEBHOOK: "https://hook.us1.make.com/fwpbnldo3fkrywggxwu18qsh6ghgrg7w",
-  // Fires on the "Publish CO Preview" stepper action (scene_1096, CO
-  // mode) — publishes a client-viewable change-order quote WITHOUT
-  // issuing. The scenario should create the SOW_published proposals
-  // record from the payload (field_2680 html, field_2904 token,
-  // field_2908 tokenized URL, field_2659 expiration, Type = change
-  // order, field_2658 = Published) and STOP — no esignatures contract,
-  // no acceptance record, no CO Status change. The Issue scenario
-  // should mark any prior preview record Superseded (field_2658) when
-  // it creates the signable snapshot. Payload = the same full publish
-  // shape as issue-change-order (stepId: 'publish-co-preview',
-  // changeOrderId alias included).
-  //   Response body: { success: true } or { success: false, error: "..." }
-  // ⚠️ Blank until the Make scenario exists — the stepper button
-  // alerts "not configured" if clicked before this is filled in.
-  MAKE_CO_PREVIEW_WEBHOOK: "",
   // Fires from the published CO page (scene_1279 AND the public token
   // page snippet) when a client clicks "Request the signature copy" on
   // a PRE-ISSUE CO preview. Minimal notify payload:
