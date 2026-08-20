@@ -403,6 +403,33 @@
     // same full publish shape as publish-final so the scenario reuses the
     // existing publish plumbing.
     {
+      // Publish a client-viewable CO PREVIEW without issuing: same full
+      // publish payload as Issue (html/json/totals/token — Make creates
+      // the published record, Type=CO, field_2658 Published) but NO
+      // esignatures contract, NO acceptance record, NO status flip. Lets
+      // the client review the web quote and deliberate BEFORE ops runs
+      // Issue; the Issue scenario supersedes the preview record. The
+      // published page branches on CO Status (field_2953) to show
+      // preview copy + a "request the signature copy" CTA instead of the
+      // issued e-sign banner (published-proposal-render.js + the public
+      // token snippet).
+      id: 'publish-co-preview',
+      label: 'Publish CO Preview — client-viewable, no signature request',
+      tone: 'secondary',
+      coOnly: true,
+      webhookKey: 'MAKE_CO_PREVIEW_WEBHOOK',
+      modal: {
+        title:       'Publish CO Preview',
+        intro:       'Publishes a client-viewable preview of this change ' +
+                     'order (web quote + tokenized link). Nothing goes out ' +
+                     'for signature and the CO status does not change — ' +
+                     'run Issue when the client is ready to sign.',
+        placeholder: 'e.g. preview for client review ahead of formal issue',
+        submitLabel: 'Publish Preview'
+      },
+      includeFullPayload: true
+    },
+    {
       id: 'issue-change-order',
       label: 'Issue Change Order — send to client for signature',
       tone: 'success',
@@ -1338,6 +1365,7 @@
         step.id === 'publish-gfe' ||
         step.id === 'publish-final' ||
         step.id === 'publish-proposal' ||
+        step.id === 'publish-co-preview' ||
         step.id === 'issue-change-order') {
 
       // Per-step TBD treatment for the publish html. The three publish
@@ -1346,17 +1374,20 @@
       //   publish-sow-tbd → ALWAYS TBD (SOW-only quote, labor pending)
       //   publish-gfe     → NEVER TBD  (Good-Faith Estimate, labor shown)
       //   publish-final   → NEVER TBD  (Final, labor shown)
-      //   issue-change-order → NEVER TBD (CO is fully priced by the sub;
-      //                        the client signs real numbers)
+      //   issue-change-order / publish-co-preview → NEVER TBD (CO is
+      //                        fully priced by the sub; the client sees
+      //                        real numbers)
       var tbdMode;
       if (step.id === 'publish-sow-tbd') tbdMode = true;
       else if (step.id === 'publish-gfe' || step.id === 'publish-final' ||
+               step.id === 'publish-co-preview' ||
                step.id === 'issue-change-order') tbdMode = false;
       else tbdMode = undefined;   // default — read field_2725
 
       // The CO webhooks all key on changeOrderId — alias the SOW record id
-      // so the Issue scenario reads the same name as send-to-sub / remove.
-      if (step.id === 'issue-change-order') {
+      // so the Issue/Preview scenarios read the same name as send-to-sub /
+      // remove.
+      if (step.id === 'issue-change-order' || step.id === 'publish-co-preview') {
         payload.changeOrderId = payload.sourceRecordId;
       }
 
@@ -2577,6 +2608,7 @@
                         step.id === 'publish-gfe' ||
                         step.id === 'publish-final' ||
                         step.id === 'publish-proposal' ||
+                        step.id === 'publish-co-preview' ||
                         step.id === 'issue-change-order';
     if (isPublishStep &&
         window.SCW && SCW.pdfExport && typeof SCW.pdfExport.isPageReady === 'function' &&

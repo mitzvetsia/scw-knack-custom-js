@@ -89,6 +89,20 @@ install line items.
      (type=CO) in one gesture (the client deliberates AFTER send, so
      publish/accept collapse), then the acceptance-created automation branches
      on Type to send the CO agreement via esignatures.
+   - **Amendment (2026-08-20): an optional pre-issue "Publish CO Preview"
+     verb exists alongside Issue.** The original design collapsed
+     publish/accept into Issue; in practice clients want to REVIEW the CO
+     as a web quote before anything goes out for signature. The preview
+     ships the same full publish payload to `MAKE_CO_PREVIEW_WEBHOOK`, but
+     Make only creates the published-proposal record (Type = change order,
+     field_2658 Published) — no esignatures contract, no acceptance, no CO
+     Status change. While CO Status is pre-issue, the published page (both
+     scene_1279 and the public token page) swaps the e-sign banner for
+     preview copy plus a "request the signature copy" nudge CTA
+     (`MAKE_CO_SIGNATURE_REQUEST_WEBHOOK` — a notify-ops ping, NOT a
+     client-initiated Issue, preserving the one-writer rule on Issued).
+     Issue afterwards creates its own frozen snapshot and should mark the
+     preview record Superseded (field_2658).
    - **Invoice timing: the CO branch defers Xero invoice creation to the
      SIGNED webhook.** (Proposal flow invoices at acceptance-creation because
      the client already committed; a CO at issue time is not yet agreed —
@@ -364,6 +378,25 @@ design:
    Declined.
 4. Confirm the existing proposal→install conversion can take "only items
    connected to CO-###" as input — it's the acceptance hook.
+5. **Publish CO Preview** (bundle shipped 2026-08-20; scenario pending) —
+   `MAKE_CO_PREVIEW_WEBHOOK` (blank in config.js until built). Create the
+   published-proposal record from the standard publish payload (html →
+   field_2680, token → field_2904, tokenized URL → field_2908, expiration
+   → field_2659, Type = change order, field_2658 = Published) and STOP —
+   no contract, no acceptance, no status flip. Respond
+   `{ success: true }`. Also add to the Issue scenario: flip any prior
+   preview record to Superseded (field_2658).
+6. **CO signature-request nudge** (optional) —
+   `MAKE_CO_SIGNATURE_REQUEST_WEBHOOK`: ping ops when a client clicks
+   "Request the signature copy" on a preview. Payload
+   `{ source, publishedProposalId, proposalName, coStatus, pageUrl }`.
+   The CTA on both published pages hides until this is configured.
+
+   Builder prerequisites for the preview banner state: **field_2953 (CO
+   Status) added to view_3874** (scene_1279) and **exposed through the
+   SOW connection on view_3952** (public lookup view — arrives as a
+   dotted key). Until then every CO shows the issued-style e-sign banner
+   (fails safe, nothing regresses).
 
 ## Implementation state (bundle, as of 2026-07-07)
 

@@ -457,6 +457,42 @@
     return false;
   }
 
+  // ── CO lifecycle state (issued vs pre-issue preview) ─────────
+  // An ISSUED CO has a live signature request out → the blue "check
+  // your email" banner. A PRE-ISSUE preview (the "Publish CO Preview"
+  // stepper action — published record exists, nothing sent to sign)
+  // shows review copy + an optional "request the signature copy" CTA
+  // instead. Status = CO Status (field_2953) read off the SOW detail
+  // view. ⚠️ Builder: field_2953 must be ADDED to view_3874 — while it
+  // isn't readable, every CO keeps today's issued-style banner
+  // (blank/unknown NEVER reads as preview), so nothing regresses.
+  var CO_STATUS_FIELD = 'field_2953';
+  function readCoStatus() {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[SOW_DETAIL_VIEW];
+      var attrs = v && v.model && (v.model.attributes
+                  || (v.model.data && v.model.data.attributes));
+      if (!attrs) return '';
+      var raw = attrs[CO_STATUS_FIELD + '_raw'];
+      var val = (raw != null && raw !== '') ? raw : attrs[CO_STATUS_FIELD];
+      if (Object.prototype.toString.call(val) === '[object Array]') val = val.join(' ');
+      return String(val == null ? '' : val)
+        .replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim();
+    } catch (e) { return ''; }
+  }
+  // 'preview' ONLY on a positive pre-issue status read; blank or
+  // unreadable falls back to 'issued' (today's behavior).
+  function coBannerState() {
+    var s = readCoStatus().toLowerCase();
+    if (!s) return 'issued';
+    return /issued|accepted|applied|declined/.test(s) ? 'issued' : 'preview';
+  }
+  function coSignatureRequestWebhook() {
+    var u = (window.SCW && SCW.CONFIG &&
+             SCW.CONFIG.MAKE_CO_SIGNATURE_REQUEST_WEBHOOK) || '';
+    return /PLACEHOLDER/.test(u) ? '' : u;
+  }
+
   // Customer-facing notice for issued COs — replaces the Accept CTA.
   // Names the signer when the install agreement contact (field_1089) is
   // on the proposal record; falls back to generic copy.
@@ -482,12 +518,25 @@
         return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
       });
     }
-    var body = contact
-      ? 'The signature request was sent by email to <b>' + escBanner(contact) +
-        '</b> — check that inbox for a message from SCW to review and sign ' +
-        'this change order.'
-      : 'The signature request was sent by email — check your inbox for a ' +
-        'message from SCW to review and sign this change order.';
+
+    var state = coBannerState();
+    var title, body;
+    if (state === 'preview') {
+      // Pre-issue preview: nothing has been sent for signature — this is
+      // a review copy the client can deliberate on.
+      title = 'Change order preview';
+      body = 'This is a review copy of the proposed change order — nothing ' +
+        'has been sent for signature yet. Questions or changes? Contact ' +
+        'your SCW representative.';
+    } else {
+      title = 'This change order is signed electronically';
+      body = contact
+        ? 'The signature request was sent by email to <b>' + escBanner(contact) +
+          '</b> — check that inbox for a message from SCW to review and sign ' +
+          'this change order.'
+        : 'The signature request was sent by email — check your inbox for a ' +
+          'message from SCW to review and sign this change order.';
+    }
 
     var banner = doc.createElement('div');
     banner.className = 'scw-co-esign-banner';
@@ -499,9 +548,64 @@
       'text-align: left;';
     banner.innerHTML =
       '<div style="font-size:15px; font-weight:800; margin-bottom:4px;">' +
-        'This change order is signed electronically' +
+        title +
       '</div>' +
       '<div style="font-weight:500;">' + body + '</div>';
+
+    // Preview-state CTA — the client-side nudge that stands in for the
+    // Issue button: posts a tiny notify payload so ops runs Issue from
+    // the preview page. Only renders once the webhook is configured.
+    if (state === 'preview') {
+      var hookUrl = coSignatureRequestWebhook();
+      if (hookUrl) {
+        var btn = doc.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'Ready to approve? Request the signature copy';
+        btn.style.cssText =
+          'display: inline-block; margin-top: 10px; padding: 9px 18px;' +
+          'background: #0f4c75; color: #fff; border: 1px solid #0f4c75;' +
+          'border-radius: 6px; cursor: pointer;' +
+          'font: 600 13.5px/1.3 system-ui, -apple-system, sans-serif;';
+        btn.addEventListener('click', function () {
+          if (btn.disabled) return;
+          btn.disabled = true;
+          btn.textContent = 'Sending…';
+          var attrsNow = readPublishedProposalAttrs() || {};
+          $.ajax({
+            url: hookUrl,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+              source:              'published-co-page',
+              publishedProposalId: attrsNow.id || '',
+              proposalName:        String(attrsNow.field_2665 || attrsNow.field_2656 || '')
+                                     .replace(/<[^>]*>/g, '').trim(),
+              coStatus:            readCoStatus(),
+              pageUrl:             window.location.href
+            }),
+            success: function () { markSent(); },
+            error: function (xhr) {
+              // status 0 = CORS-opaque response; the POST still landed
+              // on Make's side (same treatment as the CR submit path).
+              if (xhr && xhr.status === 0) { markSent(); return; }
+              btn.disabled = false;
+              btn.textContent = 'Something went wrong — try again';
+            }
+          });
+          function markSent() {
+            var done = doc.createElement('div');
+            done.style.cssText =
+              'margin-top: 10px; font: 700 13.5px/1.4 system-ui, sans-serif;' +
+              'color: #166534;';
+            done.textContent =
+              '✓ Thanks — your SCW team has been notified and will send the ' +
+              'signature request shortly.';
+            banner.replaceChild(done, btn);
+          }
+        });
+        banner.appendChild(btn);
+      }
+    }
     doc.body.insertBefore(banner, doc.body.firstChild);
   }
   // ── Accepted proposal (field_2990 acceptance count > 1) ─────────
