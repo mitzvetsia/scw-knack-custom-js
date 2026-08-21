@@ -43,7 +43,7 @@ button,input,select{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--focus);outline-offset:1px;border-radius:4px}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 
-.wrap{max-width:1240px;margin:0 auto;padding:0 20px}
+.wrap{max-width:1760px;margin:0 auto;padding:0 24px}
 header.top{padding:22px 0 14px;display:flex;flex-wrap:wrap;gap:14px;align-items:baseline}
 .brand{display:flex;align-items:baseline;gap:12px}
 .brand h1{font-size:21px;font-weight:700;letter-spacing:-.015em;margin:0}
@@ -93,7 +93,7 @@ main section.tab{display:none} main section.tab.on{display:block}
 table.data{border-collapse:collapse;width:100%;font-size:12.5px}
 table.data th{position:sticky;top:0;background:var(--surface2);color:var(--ink2);text-align:right;
   font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;padding:7px 9px;white-space:nowrap;z-index:2}
-table.data th:first-child,table.data td:first-child{text-align:left;position:sticky;left:0;background:var(--surface);z-index:1;min-width:270px;max-width:320px}
+table.data th:first-child,table.data td:first-child{text-align:left;position:sticky;left:0;background:var(--surface);z-index:1;min-width:280px;border-right:1px solid var(--border2)}
 table.data th:first-child{background:var(--surface2);z-index:3}
 table.data td{padding:5px 9px;text-align:right;border-top:1px solid var(--grid);white-space:nowrap;
   font-variant-numeric:tabular-nums}
@@ -109,11 +109,13 @@ input.cell{width:74px;border:1px solid transparent;background:transparent;border
   text-align:right;font-variant-numeric:tabular-nums;color:var(--modest);font-weight:600}
 input.cell:hover{border-color:var(--border2)} input.cell:focus{border-color:var(--modest);background:var(--surface)}
 input.cell.wide{width:96px} input.cell.tiny{width:44px;text-align:center}
-input.cell.pos{width:230px;text-align:left}
-input.cell.w56{width:60px} input.cell.w84{width:88px}
+input.cell.pos{width:340px;text-align:left}
+input.cell.w56{width:62px} input.cell.w84{width:96px}
 .badge{display:inline-block;margin-left:6px;border-radius:999px;background:var(--modest-soft);color:var(--modest);
   font-size:10px;font-weight:700;padding:1px 7px;vertical-align:middle;white-space:nowrap}
+td.hc{text-align:center}
 td.hc-derived{text-align:center;color:var(--ink2);font-weight:600;background:color-mix(in srgb, var(--modest-soft) 40%, transparent)}
+td.hc-derived .hcv,td.hc .hcv{display:inline-block;width:44px;text-align:center}
 tr.rowopen>td{background:color-mix(in srgb, var(--surface2) 60%, var(--surface))}
 .role-detail{display:flex;flex-wrap:wrap;gap:10px 40px;padding:8px 4px 10px;white-space:normal}
 .rd-block h4{margin:0 0 7px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
@@ -256,7 +258,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
   <div class="card"><h2>Raise planner</h2><p class="note">Every planned raise in one list — pick who it covers (a whole department, one role, or a named person), how much (% or dollars), and when it starts. Raises stack: a person covered by a department raise and their own raise gets both.</p>
     <div id="raisePlanner"></div>
     <button class="btn addrow" id="addRaise">+ Plan a raise</button></div>
-  <div class="card"><h2>Roster &amp; headcount plan</h2><p class="note">Fully-loaded monthly cost = (salary/12 + planned raises) × (1 + tax&amp;match %) + health + per-seat licenses. Set headcount by month (later months follow), or open a role (▸) to name its people. Tax defaults to Xero's actual employer tax+match rate — <button class="btn mini" id="taxAll"></button> resets every role to it.</p>
+  <div class="card"><h2>Roster &amp; headcount plan</h2><p class="note">Fully-loaded monthly cost = (salary/12 + planned raises) × (1 + tax&amp;match %) + health + per-seat licenses. Set headcount by month (later months follow), or open a role (▸) to name its people or switch it to hourly pay (rate × hrs/wk — shown normalized to $/yr and $/mo everywhere). Tax defaults to Xero's actual employer tax+match rate — <button class="btn mini" id="taxAll"></button> resets every role to it.</p>
     <div class="tablewrap tall" id="staffTable"></div>
     <button class="btn addrow" id="addRole">+ Add role</button>
   </div>
@@ -394,7 +396,12 @@ function repRevenue(rep, m, key){
   if (tenure < 1) return 0;
   return (ramp[Math.min(12, tenure) - 1] || 0) * (rep[key] || 0);
 }
-function raiseFor(role, personId, m){
+const WK = 52 / 12;   // weeks per month for hourly annualization
+function hrsOf(role, p){ return (p && p.phrs) || role.hrs || 40; }
+function roleAnnual(role){
+  return role.payType === "hourly" ? (role.rate || 0) * (role.hrs || 40) * 52 : (role.ote || 0);
+}
+function raiseFor(role, personId, m, hrs){
   let pct = 0, dmo = 0;
   for (const ev of (S.raises || [])){
     if (m < (ev.month || 1) || !ev.amount) continue;
@@ -404,16 +411,24 @@ function raiseFor(role, personId, m){
     if (!hit) continue;
     if (ev.kind === "pct") pct += ev.amount;
     else if (ev.kind === "yr") dmo += ev.amount / 12;
+    else if (ev.kind === "hr") dmo += ev.amount * (hrs || role.hrs || 40) * WK;
     else dmo += ev.amount;
   }
   return { pct, dmo };
 }
 function personCost(role, p, m){
   if (m < (p.from || 1) || m > (p.to || NM)) return 0;
-  const baseSal = p.sal != null ? p.sal : role.ote;
-  const sal = (p.sal2 != null && m >= (p.chgM || 1)) ? p.sal2 : baseSal;
-  const labor = (sal || 0) / 12;
-  const r = raiseFor(role, p.id, m);
+  let labor;
+  const hrs = hrsOf(role, p);
+  if (role.payType === "hourly"){
+    const base = p.sal != null ? p.sal : (role.rate || 0);            // sal holds the $/hr rate on hourly roles
+    const rate = (p.sal2 != null && m >= (p.chgM || 1)) ? p.sal2 : base;
+    labor = rate * hrs * WK;
+  } else {
+    const baseSal = p.sal != null ? p.sal : role.ote;
+    labor = ((p.sal2 != null && m >= (p.chgM || 1)) ? p.sal2 : baseSal || 0) / 12;
+  }
+  const r = raiseFor(role, p.id, m, hrs);
   return (labor + r.dmo + labor * r.pct) * (1 + (role.tax || 0)) + (role.hdv || 0) + (role.lic || 0);
 }
 function staffHC(row, m){
@@ -421,16 +436,14 @@ function staffHC(row, m){
     ? row.people.filter(p => m >= (p.from || 1) && m <= (p.to || NM)).length
     : (row.hc[m - 1] || 0);
 }
+function headCost(row, m){
+  const labor = roleAnnual(row) / 12, r = raiseFor(row, null, m, row.hrs);
+  return (labor + r.dmo + labor * r.pct) * (1 + (row.tax || 0)) + (row.hdv || 0) + (row.lic || 0);
+}
 function staffCost(row, m){
   if (row.people && row.people.length)
     return row.people.reduce((a, p) => a + personCost(row, p, m), 0);
-  const labor = (row.ote || 0) / 12;
-  const r = raiseFor(row, null, m);
-  return (row.hc[m - 1] || 0) * ((labor + r.dmo + labor * r.pct) * (1 + (row.tax || 0)) + (row.hdv || 0) + (row.lic || 0));
-}
-function headCost(row, m){
-  const labor = (row.ote || 0) / 12, r = raiseFor(row, null, m);
-  return (labor + r.dmo + labor * r.pct) * (1 + (row.tax || 0)) + (row.hdv || 0) + (row.lic || 0);
+  return (row.hc[m - 1] || 0) * headCost(row, m);
 }
 function compute(){
   const L = S.levers;
@@ -754,7 +767,7 @@ function renderSales(C){
     [{name:"Booked revenue", color:"--aqua", vals:MODEL.totals.revenue.slice(0, ACT)},
      {name:"Team revenue — modest", color:"--modest", vals:C.team.mod},
      {name:"Team revenue — stretch", color:"--stretch", vals:C.team.str}],
-    {aria:"Team revenue by month vs booked, target and break-even", divider:true, w:980, zero:false,
+    {aria:"Team revenue by month vs booked, target and break-even", divider:true, w:1400, zero:false,
      extraLines:[
        {v:L.targetH1 / 6, x0:FH1[0], x1:FH1[1] - 1, label:"H1 target " + fmtK(L.targetH1 / 6) + "/mo"},
        {v:L.targetH2 / 6, x0:FH2[0], x1:FH2[1] - 1, label:"H2 target " + fmtK(L.targetH2 / 6) + "/mo"},
@@ -854,11 +867,12 @@ function renderRaisePlanner(){
         <select class="cell" style="max-width:250px" data-id="${ev.id}" data-k="rtarget">${
           (opts.length ? opts : [{v: "", t: ev.scope === "person" ? "— name people on roles first —" : "—"}])
           .map(o => `<option value="${esc(o.v)}"${o.v === ev.target ? " selected" : ""}>${esc(o.t)}</option>`).join("")}</select></span>
-      <span class="fld"><label>Amount</label><input class="cell w56" data-id="${ev.id}" data-k="ramount" value="${ev.kind === "pct" ? (ev.amount * 100).toFixed(1) : Math.round(ev.amount).toLocaleString("en-US")}"></span>
+      <span class="fld"><label>Amount</label><input class="cell w56" data-id="${ev.id}" data-k="ramount" value="${ev.kind === "pct" ? (ev.amount * 100).toFixed(1) : ev.kind === "hr" ? ev.amount : Math.round(ev.amount).toLocaleString("en-US")}"></span>
       <span class="fld"><label>Unit</label><select class="cell" data-id="${ev.id}" data-k="rkind">
         <option value="pct"${ev.kind === "pct" ? " selected" : ""}>%</option>
         <option value="yr"${ev.kind === "yr" ? " selected" : ""}>$ / yr</option>
-        <option value="mo"${ev.kind === "mo" ? " selected" : ""}>$ / mo</option></select></span>
+        <option value="mo"${ev.kind === "mo" ? " selected" : ""}>$ / mo</option>
+        <option value="hr"${ev.kind === "hr" ? " selected" : ""}>$ / hr</option></select></span>
       <span class="fld"><label>Starts</label><select class="cell" data-id="${ev.id}" data-k="rmonth">${
         MONTHS.map((mn, i) => `<option value="${i + 1}"${(ev.month || 1) === i + 1 ? " selected" : ""}>${esc(mn)}${i < 12 ? " ’26" : ""}</option>`).join("")}</select></span>
       <span class="fld"><label>&nbsp;</label><span class="subtle">${ev.target ? (imp.heads ? "+" + fmt$(imp.delta) + "/mo across " + imp.heads + " head" + (imp.heads > 1 ? "s" : "") : "covers nobody yet") : ""}</span></span>
@@ -874,7 +888,7 @@ function renderStaff(C){
   monthChart(document.getElementById("chartPayroll"),
     [{name:"Booked payroll (Xero)", color:"--aqua", vals:booked.concat().slice(0, 12), kind:"bar"},
      {name:"Staffing model", color:"--violet", vals:C.staffTotal}],
-    {aria:"Payroll model vs booked", divider:true, w:980});
+    {aria:"Payroll model vs booked", divider:true, w:1400});
 
   const NCOL = 6 + NM + 2;   // pos, salary, health, lic, tax, cost/head + months + total + del
   let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Health</th><th>Lic</th><th>Tax %</th><th>Cost/head</th>` +
@@ -903,14 +917,16 @@ function renderStaff(C){
     const hasPpl = p.people && p.people.length, open = openRoles.has(p.id);
     h += `<tr${open ? ' class="rowopen"' : ""}><td>
       <button class="exp-toggle" data-id="${p.id}" data-k="toggle" aria-expanded="${open}" title="${open ? "Collapse" : "Open"} role details — people, department, raises">${open ? "▾" : "▸"}</button><input class="cell pos" data-id="${p.id}" data-k="position" value="${esc(p.position)}" title="${esc(p.dept)} — ${esc(p.position)}">${hasPpl ? `<span class="badge" title="${p.people.map(x => esc(x.name)).join(", ")}">${p.people.length} named</span>` : ""}</td>
-      <td><input class="cell w84" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}"></td>
+      <td>${p.payType === "hourly"
+        ? `<span title="Normalized: $${p.rate || 0}/hr × ${p.hrs || 40} h/wk × 52 wk">≈ ${Math.round(roleAnnual(p)).toLocaleString("en-US")} <span class="badge">hourly</span></span>`
+        : `<input class="cell w84" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}">`}</td>
       <td><input class="cell w56" data-id="${p.id}" data-k="hdv" value="${p.hdv}"></td>
       <td><input class="cell w56" data-id="${p.id}" data-k="lic" value="${Math.round(p.lic)}"></td>
       <td><input class="cell tiny" data-id="${p.id}" data-k="tax" value="${(p.tax * 100).toFixed(0)}"></td>
       <td title="${hasRaise ? `${fmt$(cur)}/head now → ${fmt$(nw)}/head by Mar ’27 (raise planner)` : "Fully-loaded monthly cost per head"}">${fmt$(cur)}${hasRaise ? ` <span class="dim">→ ${fmt$(nw)}</span>` : ""}</td>` +
       Array.from({length:NM}, (_, i) => hasPpl
-        ? `<td class="hc-derived" title="Derived from the ${p.people.length} named people below">${staffHC(p, i + 1) || "·"}</td>`
-        : `<td><input class="cell tiny" data-id="${p.id}" data-k="hc${i}" value="${p.hc[i]}" title="${MONTHS[i]} headcount — later months follow automatically"></td>`).join("") +
+        ? `<td class="hc-derived" title="Derived from the ${p.people.length} named people below"><span class="hcv">${staffHC(p, i + 1) || "·"}</span></td>`
+        : `<td class="hc"><input class="cell tiny" data-id="${p.id}" data-k="hc${i}" value="${p.hc[i]}" title="${MONTHS[i]} headcount — later months follow automatically"></td>`).join("") +
       `<td><b>${fmt$(fyOf.get(p.id))}</b></td><td><button class="btn mini" data-id="${p.id}" data-k="del" title="Remove role">✕</button></td></tr>`;
     if (open){
       const ppl = (p.people || []).map(pp => {
@@ -920,8 +936,12 @@ function renderStaff(C){
         const costTxt = c0 ? fmt$(c0) + "/mo" + (changed ? " → " + fmt$(cN) + "/mo from " + esc(MONTHS[Math.min(NM, Math.max(1, pp.chgM || 1)) - 1]) : "") : "";
         return `<div class="ppl-row">
           <span class="fld"><label>Person</label><input class="cell pos" data-id="${pp.id}" data-k="pname" value="${esc(pp.name)}"></span>
+          ${p.payType === "hourly" ? `
+          <span class="fld"><label>Rate $/hr</label><input class="cell w56" data-id="${pp.id}" data-k="psal" value="${pp.sal == null ? "" : pp.sal}" placeholder="role: ${p.rate ?? "—"}"></span>
+          <span class="fld"><label>Hrs/wk</label><input class="cell tiny" data-id="${pp.id}" data-k="phrs" value="${pp.phrs ?? ""}" placeholder="${p.hrs ?? 40}"></span>
+          <span class="fld"><label>New rate</label><input class="cell w56" data-id="${pp.id}" data-k="psal2" value="${pp.sal2 == null ? "" : pp.sal2}" placeholder="—"></span>` : `
           <span class="fld"><label>Salary/yr</label><input class="cell w84" data-id="${pp.id}" data-k="psal" value="${pp.sal == null ? "" : Math.round(pp.sal).toLocaleString("en-US")}" placeholder="role: ${Math.round(p.ote / 1000)}K"></span>
-          <span class="fld"><label>New salary</label><input class="cell w84" data-id="${pp.id}" data-k="psal2" value="${pp.sal2 == null ? "" : Math.round(pp.sal2).toLocaleString("en-US")}" placeholder="—"></span>
+          <span class="fld"><label>New salary</label><input class="cell w84" data-id="${pp.id}" data-k="psal2" value="${pp.sal2 == null ? "" : Math.round(pp.sal2).toLocaleString("en-US")}" placeholder="—"></span>`}
           <span class="fld"><label>Change mo</label><input class="cell tiny" data-id="${pp.id}" data-k="pchg" value="${pp.chgM || ""}" placeholder="—" title="1 = Jan 2026 … 15 = Mar 2027"></span>
           <span class="fld"><label>Starts</label><input class="cell tiny" data-id="${pp.id}" data-k="pfrom" value="${pp.from || 1}" title="${esc(MONTHS[Math.min(NM, Math.max(1, pp.from || 1)) - 1])}"></span>
           <span class="fld"><label>Ends</label><input class="cell tiny" data-id="${pp.id}" data-k="pto" value="${pp.to || NM}" title="${esc(MONTHS[Math.min(NM, Math.max(1, pp.to || NM)) - 1])}"></span>
@@ -934,6 +954,13 @@ function renderStaff(C){
           <h4>Role settings</h4>
           <div class="ppl-row">
             <span class="fld"><label>Department</label><select class="cell" style="max-width:210px" data-id="${p.id}" data-k="dept">${DEPTS.map(d => `<option${d === p.dept ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></span>
+            <span class="fld"><label>Pay basis</label><select class="cell" data-id="${p.id}" data-k="paytype">
+              <option value="salary"${p.payType !== "hourly" ? " selected" : ""}>Salary</option>
+              <option value="hourly"${p.payType === "hourly" ? " selected" : ""}>Hourly</option></select></span>
+            ${p.payType === "hourly" ? `
+            <span class="fld"><label>Rate $/hr</label><input class="cell w56" data-id="${p.id}" data-k="rate" value="${p.rate ?? ""}"></span>
+            <span class="fld"><label>Hrs/wk</label><input class="cell tiny" data-id="${p.id}" data-k="hrs" value="${p.hrs ?? 40}"></span>
+            <span class="fld"><label>&nbsp;</label><span class="subtle">≈ ${fmt$(roleAnnual(p))}/yr · ${fmt$(roleAnnual(p) / 12)}/mo before tax &amp; benefits</span></span>` : ""}
             <span class="fld"><label>&nbsp;</label><span class="subtle">Raises for this role live in the Raise planner above${roleRaises ? " — " + roleRaises + " currently apply" : ""}.</span></span>
           </div>
         </div>
@@ -1000,7 +1027,7 @@ function renderExpenses(C){
 /* ---------- trends tab ---------- */
 function renderTrends(){
   const el = document.getElementById("chartTTM");
-  const W = 980, H = 230, mL = 52, mR = 12, mT = 12, mB = 26, iw = W - mL - mR, ih = H - mT - mB;
+  const W = 1400, H = 260, mL = 56, mR = 12, mT = 12, mB = 26, iw = W - mL - mR, ih = H - mT - mB;
   const vals = MODEL.totals.ttm_opex, ticks = niceTicks(0, Math.max(...vals));
   const hi = ticks.at(-1), y = v => mT + ih - v / hi * ih, x = i => mL + iw / 12 * (i + 0.5);
   let g = "";
@@ -1076,6 +1103,9 @@ delegate("staffTable", (id, k, val) => {
   const p = S.staff.find(r => r.id === id); if (!p) return;
   if (k === "position") p.position = val;
   else if (k === "dept") p.dept = val;
+  else if (k === "paytype"){ p.payType = val; if (val === "hourly"){ p.rate = p.rate ?? Math.round((p.ote || 0) / (52 * (p.hrs || 40))); p.hrs = p.hrs ?? 40; } }
+  else if (k === "rate") p.rate = num(val, 0);
+  else if (k === "hrs") p.hrs = Math.max(1, num(val, 40));
   else if (k === "ote") p.ote = num(val, p.ote);
   else if (k === "hdv") p.hdv = num(val, p.hdv);
   else if (k === "lic") p.lic = num(val, p.lic);
@@ -1086,7 +1116,7 @@ delegate("staffTable", (id, k, val) => {
     } }
 });
 delegate("staffTable", (id, k, val) => {
-  if (!/^p(name|sal|sal2|chg|from|to)$/.test(k)) return;
+  if (!/^p(name|sal|sal2|chg|from|to|hrs)$/.test(k)) return;
   for (const role of S.staff){
     const pp = (role.people || []).find(x => x.id === id);
     if (!pp) continue;
@@ -1094,6 +1124,7 @@ delegate("staffTable", (id, k, val) => {
     else if (k === "psal") pp.sal = String(val).trim() === "" ? null : num(val, null);
     else if (k === "psal2") pp.sal2 = String(val).trim() === "" ? null : num(val, null);
     else if (k === "pchg") pp.chgM = String(val).trim() === "" ? null : Math.min(NM, Math.max(1, Math.round(num(val, 1))));
+    else if (k === "phrs") pp.phrs = String(val).trim() === "" ? null : Math.max(1, num(val, 40));
     else if (k === "pfrom") pp.from = Math.min(NM, Math.max(1, Math.round(num(val, 1))));
     else if (k === "pto") pp.to = Math.min(NM, Math.max(1, Math.round(num(val, NM))));
     return;
