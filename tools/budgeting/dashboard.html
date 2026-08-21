@@ -111,6 +111,7 @@ input.cell:hover{border-color:var(--border2)} input.cell:focus{border-color:var(
 input.cell.wide{width:96px} input.cell.tiny{width:44px;text-align:center}
 input.cell.pos{width:340px;text-align:left}
 input.cell.w56{width:62px} input.cell.w84{width:96px}
+.earn-to{color:var(--stretch);font-weight:700;font-size:12px;white-space:nowrap;cursor:help}
 .badge{display:inline-block;margin-left:6px;border-radius:999px;background:var(--modest-soft);color:var(--modest);
   font-size:10px;font-weight:700;padding:1px 7px;vertical-align:middle;white-space:nowrap}
 td.hc{text-align:center}
@@ -905,6 +906,22 @@ function laborAt(role, p, m){
   const baseSal = p ? (p.sal != null ? p.sal : role.ote) : role.ote;
   return ((p && p.sal2 != null && m >= (p.chgM || 1)) ? p.sal2 : baseSal || 0) / 12;
 }
+function earningsAt(role, p, m){
+  const lab = laborAt(role, p, m);
+  const r = raiseFor(role, p ? p.id : null, m, p ? hrsOf(role, p) : role.hrs);
+  return (lab + r.dmo + lab * r.pct) * 12;
+}
+function raisesOn(role, p){
+  return (S.raises || []).filter(ev => ev.amount && (
+    (ev.scope === "dept" && ev.target === role.dept) ||
+    (ev.scope === "role" && ev.target === role.id) ||
+    (ev.scope === "person" && p && ev.target === p.id)))
+    .map(ev => (ev.kind === "pct" ? "+" + (ev.amount * 100).toFixed(1) + "%"
+      : ev.kind === "yr" ? "+" + fmt$(ev.amount) + "/yr"
+      : ev.kind === "hr" ? "+$" + ev.amount + "/hr" : "+" + fmt$(ev.amount) + "/mo")
+      + " from " + MONTHS[Math.min(NM, Math.max(1, ev.month || 1)) - 1]
+      + (ev.scope === "dept" ? " (dept-wide)" : ev.scope === "person" ? " (personal)" : ""));
+}
 function raiseImpact(ev){
   let now = 0, aft = 0, heads = 0, toAnnual = null, toRate = null;
   const m0 = Math.max(1, (ev.month || 1) - 1), m1 = Math.min(NM, ev.month || 1);
@@ -996,9 +1013,15 @@ function renderStaff(C){
     const hasPpl = p.people && p.people.length, open = openRoles.has(p.id);
     h += `<tr${open ? ' class="rowopen"' : ""}><td>
       <button class="exp-toggle" data-id="${p.id}" data-k="toggle" aria-expanded="${open}" title="${open ? "Collapse" : "Open"} role details — people, department, raises">${open ? "▾" : "▸"}</button><input class="cell pos" data-id="${p.id}" data-k="position" value="${esc(p.position)}" title="${esc(p.dept)} — ${esc(p.position)}">${hasPpl ? `<span class="badge" title="${p.people.map(x => esc(x.name)).join(", ")}">${p.people.length} named</span>` : ""}</td>
-      <td>${p.payType === "hourly"
-        ? `<span title="Normalized: $${p.rate || 0}/hr × ${p.hrs || 40} h/wk × 52 wk">≈ ${Math.round(roleAnnual(p)).toLocaleString("en-US")} <span class="badge">hourly</span></span>`
-        : `<input class="cell w84" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}">`}</td>
+      <td>${(() => {
+        const e0 = earningsAt(p, null, 1), eN = earningsAt(p, null, NM);
+        const lifts = raisesOn(p, null);
+        const arrow = Math.abs(eN - e0) > 1
+          ? ` <span class="earn-to" title="Planned raises bring this role to ${fmt$(eN)}/yr earnings${p.payType === "hourly" ? " (≈ $" + (eN / ((p.hrs || 40) * 52)).toFixed(2) + "/hr)" : ""}:\n${lifts.join("\n")}">→ ${Math.round(eN).toLocaleString("en-US")}</span>` : "";
+        return p.payType === "hourly"
+          ? `<span title="Normalized: $${p.rate || 0}/hr × ${p.hrs || 40} h/wk × 52 wk">≈ ${Math.round(roleAnnual(p)).toLocaleString("en-US")} <span class="badge">hourly</span></span>${arrow}`
+          : `<input class="cell w84" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}">${arrow}`;
+      })()}</td>
       <td><input class="cell w56" data-id="${p.id}" data-k="hdv" value="${p.hdv}"></td>
       <td><input class="cell w56" data-id="${p.id}" data-k="lic" value="${Math.round(p.lic)}"></td>
       <td><input class="cell tiny" data-id="${p.id}" data-k="tax" value="${(p.tax * 100).toFixed(0)}"></td>
@@ -1011,8 +1034,11 @@ function renderStaff(C){
       const ppl = (p.people || []).map(pp => {
         const c0 = personCost(p, pp, Math.max(1, pp.from || 1));
         const cN = personCost(p, pp, Math.min(NM, pp.to || NM));
-        const changed = pp.sal2 != null && cN !== c0;
-        const costTxt = c0 ? fmt$(c0) + "/mo" + (changed ? " → " + fmt$(cN) + "/mo from " + esc(MONTHS[Math.min(NM, Math.max(1, pp.chgM || 1)) - 1]) : "") : "";
+        const e0 = earningsAt(p, pp, Math.max(1, pp.from || 1)), eN = earningsAt(p, pp, Math.min(NM, pp.to || NM));
+        const earnTxt = Math.abs(eN - e0) > 1
+          ? `<b>${fmt$(e0)} → ${fmt$(eN)}/yr</b>${p.payType === "hourly" ? " (≈ $" + (eN / (hrsOf(p, pp) * 52)).toFixed(2) + "/hr)" : ""} · `
+          : (c0 ? `${fmt$(eN)}/yr · ` : "");
+        const costTxt = c0 ? earnTxt + fmt$(c0) + "/mo" + (Math.abs(cN - c0) > 1 ? " → " + fmt$(cN) + "/mo loaded" : " loaded") : "";
         return `<div class="ppl-row">
           <span class="fld"><label>Person</label><input class="cell pos" data-id="${pp.id}" data-k="pname" value="${esc(pp.name)}"></span>
           ${p.payType === "hourly" ? `
