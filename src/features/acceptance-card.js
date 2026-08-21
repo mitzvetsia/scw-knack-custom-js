@@ -410,8 +410,10 @@
       '</div>' +
       '<div class="scw-acpt-actions">' +
         fileSlot(F.agreement, 'Signed agreement', fileA,    'Replace signed agreement') +
-        fileSlot(F.bidPdf,    'Bid basis PDF',    bidPdfA,  'Replace bid basis PDF') +
         linkSlot(F.xero,      'Xero invoice',     xeroA,    'Edit Xero invoice link') +
+        // Estimate pair — the bid basis PDF and the Xero estimate are
+        // mirrors of the same document, so they sit adjacent.
+        fileSlot(F.bidPdf,    'Bid basis PDF',    bidPdfA,  'Replace bid basis PDF') +
         linkSlot(F.xeroEst,   'Xero estimate',    xeroEstA, 'Edit Xero estimate link') +
         (actionA ? '<button type="button" class="scw-acpt-btn scw-acpt-btn--primary" data-proxy="action">Create Questionnaire</button>' : '') +
       '</div>';
