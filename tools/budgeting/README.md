@@ -17,6 +17,26 @@ Xero's department tracking**.
 | XERO ACTUALS | vendor × month as booked + status (STEADY/GROWING/DROPPING/DROPPED/NEW/ONE-TIME/PERIODIC) + suggested $/mo + budget-tool cross-ref |
 | RAMP SCHEDULES | editable revenue ramp curves |
 
+## The dashboard (preferred surface)
+
+`dashboard.html` — the same model as an interactive dashboard (published as a Claude
+artifact). Five tabs: Projections (leadership P&L, modest + stretch side by side),
+Sales team (per-rep ramps/attainment/comp), Staffing (headcount plan + raises),
+Expenses (on/off/override/timing per vendor), Trends (TTM drop-off analysis).
+Edits persist in the viewer's browser (localStorage); Copy/Load config moves a
+scenario between people. Rebuild after a data refresh:
+
+1. `python3 build_model_data_v2.py at=<AccountTransactions.xlsx> ...` — the accrual
+   Account Transactions export drives expenses/COGS/payroll and the trailing-12-month
+   trend window; revenue + Xero department tags still come from stage-1's GL parse
+   (`model_data.json`), so run `build_model_data.py` first when refreshing revenue.
+2. `python3 build_dashboard.py` → injects `model_data_v2.json` into
+   `dashboard_template.html` → `dashboard.html`. Republish the artifact from the file.
+
+Verified: the Account Transactions (accrual) file and the GL Detail agree to the
+penny on every overlapping month and bucket, so the workbook (built from the GL)
+and the dashboard (built from Account Transactions) share the same actuals.
+
 ## Refreshing with new data
 1. Export from Xero: **Accounting → General Ledger Detail** for the full year, all accounts, as xlsx.
 2. Export the budget-tool tables to `contractsexpenses.csv` / `allocations.csv` (same columns as before).

@@ -1,0 +1,857 @@
+<title>SCW Money Model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&display=swap">
+<style>
+:root{
+  --page:#f7f7f4; --surface:#fcfcfb; --surface2:#f1f1ed; --ink:#131311; --ink2:#52514e; --muted:#898781;
+  --grid:#e3e2db; --baseline:#c3c2b7; --border:rgba(11,11,11,.10); --border2:rgba(11,11,11,.16);
+  --modest:#2a78d6; --stretch:#eb6834; --aqua:#1baf7a;
+  --modest-soft:rgba(42,120,214,.10); --stretch-soft:rgba(235,104,52,.10); --aqua-soft:rgba(27,175,122,.12);
+  --good:#0ca30c; --good-text:#006300; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+  --chip-good:rgba(12,163,12,.12); --chip-warn:rgba(250,178,25,.16); --chip-serious:rgba(236,131,90,.16);
+  --chip-crit:rgba(208,59,59,.13); --chip-neutral:rgba(11,11,11,.06); --chip-new:rgba(42,120,214,.12);
+  --shadow:0 1px 2px rgba(11,11,11,.05),0 4px 16px rgba(11,11,11,.05);
+  --focus:#2a78d6;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --page:#0d0d0c; --surface:#1a1a19; --surface2:#232322; --ink:#f4f4f1; --ink2:#c3c2b7; --muted:#8b8a84;
+    --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10); --border2:rgba(255,255,255,.18);
+    --modest:#3987e5; --stretch:#d95926; --aqua:#199e70;
+    --modest-soft:rgba(57,135,229,.16); --stretch-soft:rgba(217,89,38,.16); --aqua-soft:rgba(25,158,112,.18);
+    --good:#0ca30c; --good-text:#0ca30c;
+    --chip-good:rgba(12,163,12,.18); --chip-warn:rgba(250,178,25,.16); --chip-serious:rgba(236,131,90,.18);
+    --chip-crit:rgba(208,59,59,.22); --chip-neutral:rgba(255,255,255,.08); --chip-new:rgba(57,135,229,.2);
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"]{
+  --page:#0d0d0c; --surface:#1a1a19; --surface2:#232322; --ink:#f4f4f1; --ink2:#c3c2b7; --muted:#8b8a84;
+  --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10); --border2:rgba(255,255,255,.18);
+  --modest:#3987e5; --stretch:#d95926; --aqua:#199e70;
+  --modest-soft:rgba(57,135,229,.16); --stretch-soft:rgba(217,89,38,.16); --aqua-soft:rgba(25,158,112,.18);
+  --modest:#3987e5; --good:#0ca30c; --good-text:#0ca30c;
+  --chip-good:rgba(12,163,12,.18); --chip-warn:rgba(250,178,25,.16); --chip-serious:rgba(236,131,90,.18);
+  --chip-crit:rgba(208,59,59,.22); --chip-neutral:rgba(255,255,255,.08); --chip-new:rgba(57,135,229,.2);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:0 0 64px}
+h1,h2,h3,.display{font-family:"Archivo",system-ui,sans-serif}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:1px;border-radius:4px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+
+.wrap{max-width:1240px;margin:0 auto;padding:0 20px}
+header.top{padding:22px 0 14px;display:flex;flex-wrap:wrap;gap:14px;align-items:baseline}
+.brand{display:flex;align-items:baseline;gap:12px}
+.brand h1{font-size:21px;font-weight:700;letter-spacing:-.015em;margin:0}
+.brand .sub{color:var(--muted);font-size:12px}
+.top-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.btn{border:1px solid var(--border2);background:var(--surface);border-radius:8px;padding:6px 12px;
+  cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink2)}
+.btn:hover{border-color:var(--ink2);color:var(--ink)}
+.btn.primary{background:var(--modest);border-color:var(--modest);color:#fff}
+.legend-key{display:inline-flex;gap:14px;align-items:center;font-size:12px;color:var(--ink2)}
+.key{display:inline-flex;gap:6px;align-items:center;font-weight:600}
+.key i{width:14px;height:4px;border-radius:2px;display:inline-block}
+.key.mod i{background:var(--modest)} .key.str i{background:var(--stretch)}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:6px 0 16px}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 15px 11px;box-shadow:var(--shadow)}
+.tile .lbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.tile .val{font-family:"Archivo",system-ui,sans-serif;font-size:26px;font-weight:700;letter-spacing:-.01em;margin-top:3px}
+.tile .val small{font-size:15px;color:var(--ink2);font-weight:600}
+.tile .sub{font-size:11.5px;color:var(--ink2);margin-top:2px}
+.tile svg{display:block;margin-top:6px}
+
+nav.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border2);margin-bottom:16px;overflow-x:auto}
+nav.tabs button{background:none;border:none;border-bottom:2px solid transparent;padding:9px 14px 8px;cursor:pointer;
+  font-weight:600;font-size:13.5px;color:var(--muted);white-space:nowrap}
+nav.tabs button:hover{color:var(--ink)}
+nav.tabs button.on{color:var(--ink);border-bottom-color:var(--modest)}
+main section.tab{display:none} main section.tab.on{display:block}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);
+  padding:16px 18px;margin-bottom:16px}
+.card h2{font-size:15px;font-weight:700;margin:0 0 2px}
+.card .note{color:var(--muted);font-size:12px;margin:0 0 10px}
+.cards2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:900px){.cards2{grid-template-columns:1fr}}
+
+.levers{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:flex-end;background:var(--surface);
+  border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:16px}
+.lever{display:flex;flex-direction:column;gap:3px}
+.lever label{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.lever input,.lever select{width:110px;border:1px solid var(--border2);background:var(--surface);
+  border-radius:7px;padding:5px 8px;font-variant-numeric:tabular-nums}
+.lever .unit{font-size:11px;color:var(--muted)}
+
+.tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px}
+table.data{border-collapse:collapse;width:100%;font-size:12.5px}
+table.data th{position:sticky;top:0;background:var(--surface2);color:var(--ink2);text-align:right;
+  font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;padding:7px 9px;white-space:nowrap;z-index:2}
+table.data th:first-child,table.data td:first-child{text-align:left;position:sticky;left:0;background:var(--surface);z-index:1}
+table.data th:first-child{background:var(--surface2);z-index:3}
+table.data td{padding:5px 9px;text-align:right;border-top:1px solid var(--grid);white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+table.data tr.sec td{background:var(--surface2);font-weight:700;color:var(--ink)}
+table.data tr.tot td{border-top:2px solid var(--baseline);font-weight:700}
+table.data tr.actual-col{}
+td.neg{color:var(--crit)} td.pos{color:var(--good-text)}
+table.data td.actual, table.data th.actual{background:color-mix(in srgb, var(--surface2) 55%, var(--surface))}
+table.data td:first-child{font-weight:600}
+table.data .dim{color:var(--muted);font-weight:400}
+
+input.cell{width:74px;border:1px solid transparent;background:transparent;border-radius:6px;padding:3px 5px;
+  text-align:right;font-variant-numeric:tabular-nums;color:var(--modest);font-weight:600}
+input.cell:hover{border-color:var(--border2)} input.cell:focus{border-color:var(--modest);background:var(--surface)}
+input.cell.wide{width:96px} input.cell.tiny{width:44px;text-align:center}
+select.cell{border:1px solid var(--border2);background:var(--surface);border-radius:6px;padding:3px 5px;
+  color:var(--modest);font-weight:600;max-width:130px}
+.switch{appearance:none;width:34px;height:20px;border-radius:12px;background:var(--baseline);position:relative;
+  cursor:pointer;transition:background .15s;flex:none;vertical-align:middle;border:none}
+.switch:checked{background:var(--good)}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.switch:checked::after{left:16px}
+
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 9px 2px 7px;
+  font-size:10.5px;font-weight:700;letter-spacing:.03em;white-space:nowrap}
+.chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.chip.steady{background:var(--chip-neutral);color:var(--ink2)}
+.chip.growing{background:var(--chip-good);color:var(--good-text)}
+.chip.dropping{background:var(--chip-serious);color:var(--serious)}
+.chip.dropped{background:var(--chip-crit);color:var(--crit)}
+.chip.new{background:var(--chip-new);color:var(--modest)}
+.chip.periodic{background:var(--chip-warn);color:#8a6100}
+:root[data-theme="dark"] .chip.periodic{color:var(--warn)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .chip.periodic{color:var(--warn)}}
+.chip.onetime{background:var(--chip-neutral);color:var(--muted)}
+.chip.notinxero{background:var(--chip-neutral);color:var(--muted)}
+.chip.conflict{background:var(--chip-crit);color:var(--crit)}
+
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.toolbar input[type=search]{border:1px solid var(--border2);background:var(--surface);border-radius:8px;
+  padding:6px 10px;min-width:210px}
+.toolbar select{border:1px solid var(--border2);background:var(--surface);border-radius:8px;padding:6px 8px}
+.toolbar .spacer{flex:1}
+.pillcount{font-size:12px;color:var(--muted)}
+
+.chart-tip{position:fixed;pointer-events:none;background:var(--surface);border:1px solid var(--border2);
+  border-radius:8px;box-shadow:var(--shadow);padding:7px 10px;font-size:12px;z-index:50;display:none;min-width:130px}
+.chart-tip .t{font-weight:700;margin-bottom:3px}
+.chart-tip .row{display:flex;justify-content:space-between;gap:14px;font-variant-numeric:tabular-nums}
+.chart-tip .row i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:5px}
+figure.chart{margin:0}
+figure.chart svg{display:block;width:100%;height:auto}
+.chart-legend{display:flex;gap:16px;font-size:11.5px;color:var(--ink2);margin-top:4px;flex-wrap:wrap}
+.chart-legend .key i{width:12px;height:3px}
+.chart-legend .key.bar i{height:9px;width:9px;border-radius:2px}
+
+.attn{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-bottom:16px}
+.attn .card{margin:0;padding:13px 15px}
+.attn h3{margin:0 0 8px;font-size:12.5px;text-transform:uppercase;letter-spacing:.05em}
+.attn ul{list-style:none;margin:0;padding:0;font-size:12.5px}
+.attn li{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid var(--grid)}
+.attn li:first-child{border-top:none}
+.attn li b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attn li span{color:var(--ink2);font-variant-numeric:tabular-nums;flex:none}
+.footnote{color:var(--muted);font-size:11.5px;margin-top:10px;line-height:1.5}
+details.helper{margin-bottom:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+details.helper summary{cursor:pointer;padding:10px 16px;font-weight:600;font-size:13px;color:var(--ink2)}
+details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);line-height:1.55;max-width:70ch}
+.addrow{margin-top:10px}
+.subtle{color:var(--muted)}
+.vname{display:inline-block;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.right{text-align:right}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div class="brand"><h1>SCW Money Model</h1><span class="sub">2026 budget &amp; projections · Xero accrual actuals through Jul 2026</span></div>
+  <div class="top-actions">
+    <span class="legend-key"><span class="key mod"><i></i>Modest</span><span class="key str"><i></i>Stretch</span></span>
+    <button class="btn" id="btnCopy" title="Copy every edited setting as JSON to share or back up">Copy config</button>
+    <button class="btn" id="btnLoad" title="Paste a config JSON copied from this dashboard">Load</button>
+    <button class="btn" id="btnReset" title="Discard all edits and return to the imported defaults">Reset</button>
+  </div>
+</header>
+
+<div class="tiles" id="tiles"></div>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="proj" class="on">Projections</button>
+  <button data-tab="sales">Sales team</button>
+  <button data-tab="staff">Staffing</button>
+  <button data-tab="exp">Expenses</button>
+  <button data-tab="trend">Trends</button>
+</nav>
+
+<main>
+<section class="tab on" id="tab-proj">
+  <div class="levers" id="projLevers"></div>
+  <div class="cards2">
+    <div class="card"><h2>Monthly net profit</h2><p class="note">Bars left of the divider are booked; right are modeled. Hover any month.</p><figure class="chart" id="chartNet"></figure></div>
+    <div class="card"><h2>Cumulative net, 2026</h2><p class="note">Running total of monthly net profit under each scenario.</p><figure class="chart" id="chartCum"></figure></div>
+  </div>
+  <div class="card"><h2>P&amp;L by month</h2><p class="note">Shaded columns are Xero as booked (Jan–Jul). Later columns come from the Sales team, Staffing and Expenses tabs. Commissions sit inside booked payroll for actual months.</p>
+    <div class="tablewrap" id="plTable"></div>
+    <p class="footnote" id="plFoot"></p>
+  </div>
+  <details class="helper"><summary>How this model works</summary><div class="inner" id="notes"></div></details>
+</section>
+
+<section class="tab" id="tab-sales">
+  <div class="levers" id="salesLevers"></div>
+  <div class="card"><h2>Team revenue by month</h2><p class="note">Each rep's ramp × attainment, summed. The gray line is the monthly slice of the annual target.</p><figure class="chart" id="chartTeam"></figure></div>
+  <div class="card"><h2>Reps</h2><p class="note">Attainment is per person per scenario — e.g. Zach 80% modest / 100% stretch. Commission % pays on attained revenue; Sales Manager and Director overrides are in the levers above.</p>
+    <div class="tablewrap" id="salesTable"></div>
+    <button class="btn addrow" id="addRep">+ Add rep</button>
+  </div>
+  <div class="card"><details><summary style="cursor:pointer;font-weight:600">Ramp schedules (monthly run-rate by tenure month)</summary>
+    <div class="tablewrap" style="margin-top:10px" id="rampTable"></div></details></div>
+</section>
+
+<section class="tab" id="tab-staff">
+  <div class="card"><h2>Payroll: model vs booked</h2><p class="note">Bars are Xero booked payroll (wages + tax + benefits, commissions included). The line is this tab's fully-loaded model — expect it to sit under the bars in strong commission months.</p><figure class="chart" id="chartPayroll"></figure></div>
+  <div class="card"><h2>Department-wide raises</h2><p class="note">Applies on top of any per-role raise, from each role's effective month.</p><div class="levers" style="border:none;padding:0;margin:0" id="deptRaises"></div></div>
+  <div class="card"><h2>Roster &amp; headcount plan</h2><p class="note">Fully-loaded monthly cost = (salary/12 + $ raise + salary/12 × raise %) × (1 + tax%) + health + per-seat licenses. Set headcount by month to model hires and exits; blue cells are editable.</p>
+    <div class="tablewrap" id="staffTable"></div>
+    <button class="btn addrow" id="addRole">+ Add role</button>
+  </div>
+</section>
+
+<section class="tab" id="tab-exp">
+  <div class="toolbar">
+    <input type="search" id="expSearch" placeholder="Search expenses…" aria-label="Search expenses">
+    <select id="expDept" aria-label="Filter by department"></select>
+    <select id="expStatus" aria-label="Filter by status"></select>
+    <span class="pillcount" id="expCount"></span>
+    <span class="spacer"></span>
+    <button class="btn" id="addExp">+ Add expense</button>
+  </div>
+  <div class="card"><div class="tablewrap" id="expTable"></div>
+  <p class="footnote">Planned $/mo = override if set, else the chosen source (Xero suggestion or budget-tool figure) × (1 + adj), months FROM–TO, when the switch is on. Per-seat license costs (Slack, Google, Bonusly, seat portions of Hubspot/Gong/Zoom/Atlassian/Rippling/ClickUp) ride headcount on the Staffing tab, not here. Where the budgeting tool's department disagreed with Xero, the budgeting tool's wins.</p></div>
+</section>
+
+<section class="tab" id="tab-trend">
+  <div class="card"><h2>Operating expense, trailing 12 months</h2><p class="note">As booked (accrual), Aug 2025 – Jul 2026. Hover for the month's total.</p><figure class="chart" id="chartTTM"></figure></div>
+  <div class="attn" id="attnCards"></div>
+  <div class="card"><h2>Department conflicts</h2><p class="note">Vendors where the budgeting tool's allocation disagrees with Xero's department tracking — the budgeting tool wins everywhere in this model.</p><div class="tablewrap" id="conflictTable"></div></div>
+  <div class="card"><h2>All vendors, trailing 12 months</h2>
+    <div class="toolbar"><input type="search" id="trSearch" placeholder="Search vendors…" aria-label="Search vendors"><span class="pillcount" id="trCount"></span></div>
+    <div class="tablewrap" id="trendTable"></div></div>
+</section>
+</main>
+</div>
+<div class="chart-tip" id="tip" role="status"></div>
+
+<script>
+const MODEL = /*__MODEL__*/;
+
+/* ---------- constants ---------- */
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const ACT = MODEL.actual_months;              // 7 -> Jan..Jul are booked
+const DEPTS = ["Sales","Marketing","Software Development","Installation Services","Technical Support",
+  "Purchasing & Fulfillment","03 - HR & Business Administration Manager","Facillities","Exec","Product",
+  "General Overhead","Unassigned"];
+const STATUS_CHIP = {"STEADY":"steady","GROWING":"growing","DROPPING":"dropping","DROPPED":"dropped",
+  "NEW":"new","PERIODIC":"periodic","ONE-TIME":"onetime","NOT IN XERO":"notinxero"};
+const LS_KEY = "scw-money-model-v1";
+
+/* ---------- default state from MODEL ---------- */
+function defaultState(){
+  const expenses = [];
+  let id = 0;
+  for (const v of MODEL.vend_master){
+    const fixed = v.fixed_alloc || {};
+    const keys = Object.keys(fixed);
+    const seat = v.seat_monthly || 0;
+    const baseAdj = seat > 0 ? Math.max(0, v.base - seat) : v.base;
+    const mk = (dept, share, budget) => expenses.push({
+      id: "x" + (id++), vendor: v.vendor, dept, share, budget,
+      xero: Math.round(baseAdj * share * 100) / 100,
+      status: v.status, seat, ttm: v.ttm, purpose: v.purpose, conflict: v.contradiction,
+      use: "XERO", override: null, adj: 0, from: 1, to: 12,
+      on: !(v.status === "DROPPED" || v.status === "ONE-TIME")});
+    if (keys.length > 1){
+      const tot = keys.reduce((s, k) => s + fixed[k], 0) || 1;
+      for (const k of keys.sort((a, b) => fixed[b] - fixed[a])) mk(k, fixed[k] / tot, fixed[k]);
+    } else {
+      mk(v.final_dept, 1, keys.length ? fixed[keys[0]] : (v.in_contracts ? v.budget_monthly : null));
+    }
+  }
+  for (const m of MODEL.missing){
+    const fixed = m.fixed_alloc || {}; const keys = Object.keys(fixed);
+    const mk = (dept, budget) => expenses.push({
+      id: "b" + (id++), vendor: m.vendor, dept, share: 1, budget,
+      xero: null, status: "NOT IN XERO", seat: m.seat_monthly || 0, ttm: null, purpose: m.purpose,
+      conflict: false, use: "BUDGET", override: null, adj: 0, from: 1, to: 12, on: false});
+    if (keys.length > 1) for (const k of keys) mk(k, fixed[k]);
+    else mk(m.final_dept, keys.length ? fixed[keys[0]] : m.budget_monthly);
+  }
+  const ramps = {};
+  for (const r of MODEL.ramps) ramps[r.name] = r.vals.slice();
+  return {
+    exp: expenses,
+    levers: { cogsPct: +( (MODEL.totals.cogs.reduce((a,b)=>a+b,0) / MODEL.totals.revenue.reduce((a,b)=>a+b,0)) ).toFixed(3),
+      otherInc: 3000, laborHedge: 0, opexHedge: 0, target: 12050000, smRate: 0.015, dirRate: 0.035 },
+    sales: MODEL.sales.map((s, i) => ({ id: "s" + i, name: s.name, role: s.role, ramp: s.ramp,
+      start: s.start_cal, modest: /Stu/.test(s.name) ? 1 : 0.8, stretch: 1,
+      comm: /Account Executive/.test(s.role) && !/Senior/.test(s.role) ? 0.025 :
+            /Account Manager/.test(s.role) ? 0.015 : /Senior Account/.test(s.role) ? 0.0175 : 0 })),
+    ramps,
+    staff: MODEL.staff.map((s, i) => ({ id: "p" + i, dept: s.dept || "Unassigned", position: s.position,
+      ote: s.ote, hdv: s.hdv, lic: s.lic, tax: s.tax, raiseD: 0, raiseP: 0, raiseM: 9,
+      hc: Array(12).fill(s.hc) })),
+    deptRaise: Object.fromEntries(DEPTS.filter(d => d !== "Unassigned").map(d => [d, 0])),
+  };
+}
+let S = defaultState();
+try {
+  const saved = JSON.parse(localStorage.getItem(LS_KEY) || "null");
+  if (saved && saved.levers && saved.exp && saved.staff) S = saved;
+} catch (e) {}
+function persist(){ try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) {} }
+
+/* ---------- compute ---------- */
+function expensePlanned(e){
+  if (!e.on) return 0;
+  const base = e.override != null ? e.override : (e.use === "BUDGET" ? (e.budget || 0) : (e.xero || 0));
+  return base * (1 + (e.adj || 0));
+}
+function repRevenue(rep, m, key){
+  const ramp = S.ramps[rep.ramp];
+  if (!ramp) return 0;
+  const tenure = m - rep.start + 1;
+  if (tenure < 1) return 0;
+  return (ramp[Math.min(12, tenure) - 1] || 0) * (rep[key] || 0);
+}
+function staffCost(row, m){
+  const labor = (row.ote || 0) / 12;
+  const dr = S.deptRaise[row.dept] || 0;
+  const cur = labor * (1 + (row.tax || 0)) + (row.hdv || 0) + (row.lic || 0);
+  const nw = (labor + (row.raiseD || 0) + labor * ((row.raiseP || 0) + dr)) * (1 + (row.tax || 0)) + (row.hdv || 0) + (row.lic || 0);
+  const hc = row.hc[m - 1] || 0;
+  return hc * (m >= (row.raiseM || 1) ? nw : cur);
+}
+function compute(){
+  const L = S.levers;
+  const out = { rev: {mod:[],str:[]}, oth:[], cogs:{mod:[],str:[]}, pay:[], comp:{mod:[],str:[]},
+    dept: {}, opex:[], net:{mod:[],str:[]}, cogsPct:[], team:{mod:[],str:[]}, staffTotal:[], commDetail:{} };
+  for (const d of DEPTS) out.dept[d] = [];
+  // planned opex rows by dept (model, before hedge)
+  for (let m = 1; m <= 12; m++){
+    const i = m - 1, actual = m <= ACT;
+    // sales
+    let tm = 0, ts = 0, cm = 0, cs = 0;
+    for (const r of S.sales){
+      const rm = repRevenue(r, m, "modest"), rs = repRevenue(r, m, "stretch");
+      tm += rm; ts += rs; cm += rm * (r.comm || 0); cs += rs * (r.comm || 0);
+    }
+    const smM = L.smRate * tm, smS = L.smRate * ts;
+    const dirM = L.dirRate * Math.max(0, tm - L.target / 12), dirS = L.dirRate * Math.max(0, ts - L.target / 12);
+    out.team.mod.push(tm); out.team.str.push(ts);
+    const compM = cm + smM + dirM, compS = cs + smS + dirS;
+    // staffing
+    let st = 0; for (const row of S.staff) st += staffCost(row, m);
+    out.staffTotal.push(st);
+    // expenses by dept
+    const dm = {}; for (const d of DEPTS) dm[d] = 0;
+    for (const e of S.exp){
+      if (m >= (e.from || 1) && m <= (e.to || 12)) dm[e.dept] = (dm[e.dept] || 0) + expensePlanned(e);
+    }
+    // assemble month
+    const rev = actual ? MODEL.totals.revenue[i] : null;
+    out.rev.mod.push(actual ? rev : tm); out.rev.str.push(actual ? rev : ts);
+    out.oth.push(actual ? MODEL.totals.other_income[i] : L.otherInc);
+    const cp = actual ? (MODEL.totals.cogs[i] / (rev || 1)) : L.cogsPct;
+    out.cogsPct.push(cp);
+    out.cogs.mod.push(actual ? MODEL.totals.cogs[i] : tm * L.cogsPct);
+    out.cogs.str.push(actual ? MODEL.totals.cogs[i] : ts * L.cogsPct);
+    out.pay.push(actual ? MODEL.totals.payroll[i] : st * (1 + L.laborHedge));
+    out.comp.mod.push(actual ? 0 : compM); out.comp.str.push(actual ? 0 : compS);
+    let ot = 0;
+    for (const d of DEPTS){
+      const v = actual ? ((MODEL.dept_actual[d] || [])[i] || 0) : dm[d] * (1 + L.opexHedge);
+      out.dept[d].push(v); ot += v;
+    }
+    out.opex.push(ot);
+    out.net.mod.push(out.rev.mod[i] + out.oth[i] - out.cogs.mod[i] - out.pay[i] - out.comp.mod[i] - ot);
+    out.net.str.push(out.rev.str[i] + out.oth[i] - out.cogs.str[i] - out.pay[i] - out.comp.str[i] - ot);
+  }
+  return out;
+}
+
+/* ---------- formatting ---------- */
+const fmt$ = v => (v < 0 ? "−$" : "$") + Math.round(Math.abs(v)).toLocaleString("en-US");
+const fmtK = v => { const a = Math.abs(v), s = v < 0 ? "−" : "";
+  if (a >= 1e6) return s + "$" + (a/1e6).toFixed(2).replace(/\.?0+$/,"") + "M";
+  if (a >= 1e3) return s + "$" + Math.round(a/1e3) + "K"; return s + "$" + Math.round(a); };
+const fmtPct = v => (v * 100).toFixed(1).replace(/\.0$/,"") + "%";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const num = (v, d) => { const n = parseFloat(String(v).replace(/[$,%\s,]/g, "")); return isNaN(n) ? d : n; };
+</script>
+<style>
+:root{--violet:#4a3aa7}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--violet:#9085e9}}
+:root[data-theme="dark"]{--violet:#9085e9}
+</style>
+<script>
+/* ---------- chart engine (inline SVG) ---------- */
+const tip = document.getElementById("tip");
+function showTip(x, y, html){
+  tip.innerHTML = html; tip.style.display = "block";
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(innerWidth - r.width - 8, x + 14) + "px";
+  tip.style.top = Math.max(6, y - r.height - 10) + "px";
+}
+function hideTip(){ tip.style.display = "none"; }
+function niceTicks(lo, hi, n = 4, keep){
+  if (!keep){ if (lo > 0) lo = 0; if (hi < 0) hi = 0; }
+  const span = hi - lo || 1, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1,2,2.5,5,10].map(k => k * mag).find(k => span / k <= n + 0.5) || 10 * mag;
+  const lo2 = Math.floor(lo / step) * step, hi2 = Math.ceil(hi / step) * step;
+  const t = []; for (let v = lo2; v <= hi2 + step * 0.01; v += step) t.push(Math.abs(v) < step * 1e-6 ? 0 : v);
+  if (!keep && !t.includes(0)) t.push(0);
+  return t.sort((a, b) => a - b);
+}
+/* series: [{name, color(css var), vals[12], kind:"line"|"bar", dash}] */
+function monthChart(el, series, opts = {}){
+  const W = opts.w || 640, H = opts.h || 250, mL = 52, mR = 12, mT = 20, mB = 26;
+  const iw = W - mL - mR, ih = H - mT - mB;
+  const all = series.flatMap(s => s.vals).concat(opts.extraLines ? opts.extraLines.map(l => l.v) : []).filter(v => v != null);
+  const lo0 = opts.zero === false ? Math.min(...all) * 0.92 : Math.min(0, ...all);
+  const hi0 = opts.zero === false ? Math.max(...all) * 1.04 : Math.max(0, ...all);
+  const ticks = niceTicks(lo0, hi0, 4, opts.zero === false);
+  const lo = ticks[0], hi = ticks[ticks.length - 1] || 1;
+  const y = v => mT + ih - (v - lo) / (hi - lo) * ih;
+  const bandW = iw / 12, x = i => mL + bandW * (i + 0.5);
+  let g = "";
+  for (const t of ticks) g += `<line x1="${mL}" x2="${W - mR}" y1="${y(t)}" y2="${y(t)}" stroke="var(${t === 0 ? "--baseline" : "--grid"})" stroke-width="1"/>` +
+    `<text x="${mL - 7}" y="${y(t) + 3.5}" text-anchor="end" font-size="10" fill="var(--muted)" style="font-variant-numeric:tabular-nums">${fmtK(t)}</text>`;
+  for (let i = 0; i < 12; i++) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${MONTHS[i]}</text>`;
+  if (opts.divider !== false){
+    const dx = mL + bandW * ACT;
+    g += `<line x1="${dx}" x2="${dx}" y1="${mT}" y2="${mT + ih}" stroke="var(--border2)" stroke-width="1"/>` +
+      `<text x="${dx - 5}" y="11" text-anchor="end" font-size="9" letter-spacing=".08em" fill="var(--muted)">BOOKED</text>` +
+      `<text x="${dx + 5}" y="11" font-size="9" letter-spacing=".08em" fill="var(--muted)">MODEL</text>`;
+  }
+  const bars = series.filter(s => s.kind === "bar"), lines = series.filter(s => s.kind !== "bar");
+  let marks = "";
+  const bw = Math.min(24, (bandW - 6) / (bars.length || 1) - 2);
+  bars.forEach((s, bi) => {
+    s.vals.forEach((v, i) => {
+      if (v == null) return;
+      const cx = x(i) - ((bars.length * (bw + 2) - 2) / 2) + bi * (bw + 2);
+      const y0 = y(0), y1 = y(v), top = Math.min(y0, y1), hgt = Math.max(1, Math.abs(y0 - y1));
+      const rx = 4, up = v >= 0;
+      marks += `<path d="${up
+        ? `M${cx},${y0} L${cx},${top + rx} Q${cx},${top} ${cx + rx},${top} L${cx + bw - rx},${top} Q${cx + bw},${top} ${cx + bw},${top + rx} L${cx + bw},${y0} Z`
+        : `M${cx},${y0} L${cx + bw},${y0} L${cx + bw},${top + hgt - rx} Q${cx + bw},${top + hgt} ${cx + bw - rx},${top + hgt} L${cx + rx},${top + hgt} Q${cx},${top + hgt} ${cx},${top + hgt - rx} Z`}"
+        fill="var(${s.color})" opacity="${i < ACT || !opts.fadeProj ? 1 : 0.55}"/>`;
+    });
+  });
+  for (const ln of (opts.extraLines || []))
+    marks += `<line x1="${mL}" x2="${W - mR}" y1="${y(ln.v)}" y2="${y(ln.v)}" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="5 4"/>` +
+      `<text x="${W - mR - 2}" y="${y(ln.v) - 4}" text-anchor="end" font-size="9.5" fill="var(--muted)">${ln.label}</text>`;
+  [...lines].reverse().forEach(s => {
+    let d = "";
+    s.vals.forEach((v, i) => { if (v != null) d += (d ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1); });
+    marks += `<path d="${d}" fill="none" stroke="var(${s.color})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"${s.dash ? ` stroke-dasharray="${s.dash}"` : ""}/>`;
+    const lastI = s.vals.length - 1, lv = s.vals[lastI];
+    if (lv != null) marks += `<circle cx="${x(lastI)}" cy="${y(lv)}" r="4" fill="var(${s.color})" stroke="var(--surface)" stroke-width="2"/>`;
+  });
+  let hov = "";
+  for (let i = 0; i < 12; i++)
+    hov += `<rect data-i="${i}" x="${mL + bandW * i}" y="${mT}" width="${bandW}" height="${ih}" fill="transparent"/>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.aria || "chart")}">${g}${marks}${hov}</svg>` +
+    (series.length > 1 ? `<div class="chart-legend">${series.map(s =>
+      `<span class="key ${s.kind === "bar" ? "bar" : ""}"><i style="background:var(${s.color})"></i>${esc(s.name)}</span>`).join("")}</div>` : "");
+  const svg = el.querySelector("svg");
+  svg.addEventListener("pointermove", ev => {
+    const t = ev.target.closest("rect[data-i]"); if (!t) { hideTip(); return; }
+    const i = +t.dataset.i;
+    showTip(ev.clientX, ev.clientY, `<div class="t">${MONTHS[i]} 2026 · ${i < ACT ? "booked" : "model"}</div>` +
+      series.map(s => s.vals[i] == null ? "" :
+        `<div class="row"><span><i style="background:var(${s.color})"></i>${esc(s.name)}</span><b>${fmt$(s.vals[i])}</b></div>`).join(""));
+  });
+  svg.addEventListener("pointerleave", hideTip);
+}
+function spark(vals, color = "--modest", w = 96, h = 24){
+  const vs = vals.map(v => v || 0), lo = Math.min(0, ...vs), hi = Math.max(...vs, 1);
+  const x = i => 2 + i * (w - 8) / (vs.length - 1), y = v => 2 + (h - 4) - (v - lo) / (hi - lo || 1) * (h - 4);
+  let d = ""; vs.forEach((v, i) => d += (d ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1));
+  const li = vs.length - 1;
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="${d}" fill="none" stroke="var(${color})" stroke-width="1.5" opacity=".75"/><circle cx="${x(li)}" cy="${y(vs[li])}" r="2.5" fill="var(${color})"/></svg>`;
+}
+
+/* ---------- tiles ---------- */
+function renderTiles(C){
+  const fyNetM = C.net.mod.reduce((a, b) => a + b, 0), fyNetS = C.net.str.reduce((a, b) => a + b, 0);
+  const fyRevM = C.rev.mod.reduce((a, b) => a + b, 0) + C.oth.reduce((a, b) => a + b, 0);
+  const fyRevS = C.rev.str.reduce((a, b) => a + b, 0) + C.oth.reduce((a, b) => a + b, 0);
+  const ytd = C.net.mod.slice(0, ACT).reduce((a, b) => a + b, 0);
+  const payMo = C.staffTotal[11], opexMo = C.opex[11];
+  document.getElementById("tiles").innerHTML = `
+  <div class="tile"><div class="lbl">FY 2026 net — modest</div><div class="val">${fmtK(fyNetM)}</div>${spark(C.net.mod, "--modest")}</div>
+  <div class="tile"><div class="lbl">FY 2026 net — stretch</div><div class="val">${fmtK(fyNetS)}</div>${spark(C.net.str, "--stretch")}</div>
+  <div class="tile"><div class="lbl">FY revenue M / S</div><div class="val">${fmtK(fyRevM)} <small>/ ${fmtK(fyRevS)}</small></div><div class="sub">incl. other income</div></div>
+  <div class="tile"><div class="lbl">Net booked Jan–Jul</div><div class="val">${fmtK(ytd)}</div><div class="sub">Xero actuals, accrual</div></div>
+  <div class="tile"><div class="lbl">Dec run-rate</div><div class="val">${fmtK(payMo)} <small>payroll</small></div><div class="sub">${fmtK(opexMo)}/mo opex planned</div></div>`;
+}
+
+/* ---------- projections tab ---------- */
+function leverInput(id, label, val, unit, step, title){
+  return `<div class="lever" title="${esc(title || "")}"><label for="${id}">${label}</label>
+    <input id="${id}" class="lever-in" type="text" inputmode="decimal" value="${val}"><span class="unit">${unit || ""}</span></div>`;
+}
+function renderProjLevers(){
+  const L = S.levers;
+  document.getElementById("projLevers").innerHTML =
+    leverInput("lvCogs", "COGS % fwd", (L.cogsPct * 100).toFixed(1), "% of sales — YTD actual " + fmtPct(MODEL.totals.cogs.reduce((a,b)=>a+b,0) / MODEL.totals.revenue.reduce((a,b)=>a+b,0))) +
+    leverInput("lvOth", "Other income fwd", L.otherInc, "$/mo (rent, interest)") +
+    leverInput("lvLab", "Labor hedge", (L.laborHedge * 100).toFixed(1), "% on modeled payroll") +
+    leverInput("lvOpx", "Opex hedge", (L.opexHedge * 100).toFixed(1), "% on planned expenses");
+  bind("lvCogs", v => S.levers.cogsPct = num(v, 43) / 100);
+  bind("lvOth", v => S.levers.otherInc = num(v, 3000));
+  bind("lvLab", v => S.levers.laborHedge = num(v, 0) / 100);
+  bind("lvOpx", v => S.levers.opexHedge = num(v, 0) / 100);
+}
+function renderProj(C){
+  monthChart(document.getElementById("chartNet"),
+    [{name:"Net — modest", color:"--modest", vals:C.net.mod, kind:"bar"},
+     {name:"Net — stretch", color:"--stretch", vals:C.net.str, kind:"bar"}],
+    {aria:"Monthly net profit, modest vs stretch"});
+  const cum = a => a.reduce((acc, v) => (acc.push((acc.at(-1) || 0) + v), acc), []);
+  monthChart(document.getElementById("chartCum"),
+    [{name:"Cumulative — modest", color:"--modest", vals:cum(C.net.mod)},
+     {name:"Cumulative — stretch", color:"--stretch", vals:cum(C.net.str)}],
+    {aria:"Cumulative net profit"});
+  // P&L table
+  const rows = [];
+  const push = (label, vals, cls = "", fm = fmt$) => rows.push({label, vals, cls, fm});
+  push("Sales revenue — modest", C.rev.mod); push("Sales revenue — stretch", C.rev.str);
+  push("Other income", C.oth);
+  push("COGS % of sales", C.cogsPct, "", v => fmtPct(v));
+  push("COGS — modest", C.cogs.mod); push("COGS — stretch", C.cogs.str);
+  push("Gross profit — modest", C.rev.mod.map((v, i) => v + C.oth[i] - C.cogs.mod[i]), "tot");
+  push("Gross profit — stretch", C.rev.str.map((v, i) => v + C.oth[i] - C.cogs.str[i]), "tot");
+  push("Payroll (staffing model)", C.pay);
+  push("Sales comp — modest", C.comp.mod); push("Sales comp — stretch", C.comp.str);
+  for (const d of DEPTS) if (C.dept[d].some(v => Math.abs(v) > 0.5)) push("Opex — " + d, C.dept[d], "dim");
+  push("Total opex", C.opex, "tot");
+  push("NET — MODEST", C.net.mod, "tot"); push("NET — STRETCH", C.net.str, "tot");
+  let h = `<table class="data"><thead><tr><th>P&amp;L</th>` +
+    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}">${m}</th>`).join("") + `<th>FY</th></tr></thead><tbody>`;
+  for (const r of rows){
+    const fy = r.fm === fmt$ ? r.vals.reduce((a, b) => a + b, 0) : null;
+    h += `<tr class="${r.cls}"><td class="${r.cls === "dim" ? "dim" : ""}">${esc(r.label)}</td>` +
+      r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}${/NET/.test(r.label) && v < 0 ? " neg" : ""}">${r.fm(v)}</td>`).join("") +
+      `<td>${fy == null ? "" : fmt$(fy)}</td></tr>`;
+  }
+  document.getElementById("plTable").innerHTML = h + "</tbody></table>";
+  document.getElementById("plFoot").textContent =
+    "Break-even sales revenue (Dec, modest inputs): " +
+    fmt$((C.pay[11] + C.opex[11] - S.levers.otherInc) / (1 - S.levers.cogsPct)) +
+    "/mo — payroll + opex less other income, divided by gross margin.";
+  document.getElementById("notes").innerHTML =
+    `Built ${MODEL.built} from the Xero <b>Account Transactions</b> export (accrual, Aug 2025–Jul 2026 — expenses, COGS, payroll), the Xero GL Detail (revenue, department tags), and the budgeting-tool exports (allocations, roster, ramps). Jan–Jul 2026 are booked figures; Aug–Dec are modeled. Where the budgeting tool allocated a vendor to a different department than Xero, the budgeting tool wins (${MODEL.vend_master.filter(v=>v.contradiction).length} conflicts — see Trends). Per-seat licenses ride headcount on Staffing. Commission defaults from the legacy tool: AE 2.5%, AM 1.5%, Sr AE 1.75%, SM override 1.5%, Director 3.5% above target. Edits save in this browser only — use Copy config to share.`;
+}
+</script>
+<script>
+/* ---------- generic binding ---------- */
+function bind(id, setter){
+  const el = document.getElementById(id);
+  if (el) el.addEventListener("change", () => { setter(el.value); persist(); renderAll(); });
+}
+function delegate(rootId, handler){
+  const root = document.getElementById(rootId);
+  root.addEventListener("change", ev => {
+    const t = ev.target, k = t.dataset.k, id = t.dataset.id;
+    if (!k) return;
+    handler(id, k, t.type === "checkbox" ? t.checked : t.value);
+    persist(); renderAll();
+  });
+}
+
+/* ---------- sales tab ---------- */
+function renderSalesLevers(){
+  const L = S.levers;
+  document.getElementById("salesLevers").innerHTML =
+    leverInput("lvTgt", "Annual revenue target", L.target.toLocaleString("en-US"), "$ — director paid above this") +
+    leverInput("lvSm", "Sales Manager override", (L.smRate * 100).toFixed(2), "% of all sales") +
+    leverInput("lvDir", "Director override", (L.dirRate * 100).toFixed(2), "% above target");
+  bind("lvTgt", v => S.levers.target = num(v, 12050000));
+  bind("lvSm", v => S.levers.smRate = num(v, 1.5) / 100);
+  bind("lvDir", v => S.levers.dirRate = num(v, 3.5) / 100);
+}
+function renderSales(C){
+  monthChart(document.getElementById("chartTeam"),
+    [{name:"Team revenue — modest", color:"--modest", vals:C.team.mod},
+     {name:"Team revenue — stretch", color:"--stretch", vals:C.team.str}],
+    {aria:"Team revenue by month", divider:false, w:980, zero:false,
+     extraLines:[{v:S.levers.target / 12, label:"target /mo " + fmtK(S.levers.target / 12)}]});
+  const rampNames = Object.keys(S.ramps);
+  let h = `<table class="data"><thead><tr><th>Rep</th><th>Role</th><th>Ramp</th><th>Start mo</th>
+    <th>Modest %</th><th>Stretch %</th><th>Comm %</th><th>FY modest</th><th>FY stretch</th><th>FY comm M/S</th><th></th></tr></thead><tbody>`;
+  for (const r of S.sales){
+    let fm = 0, fs = 0;
+    for (let m = 1; m <= 12; m++){ fm += repRevenue(r, m, "modest"); fs += repRevenue(r, m, "stretch"); }
+    h += `<tr><td><input class="cell wide" style="text-align:left" data-id="${r.id}" data-k="name" value="${esc(r.name)}"></td>
+      <td><input class="cell wide" style="text-align:left" data-id="${r.id}" data-k="role" value="${esc(r.role)}"></td>
+      <td><select class="cell" data-id="${r.id}" data-k="ramp">${rampNames.map(n => `<option${n === r.ramp ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></td>
+      <td><input class="cell tiny" data-id="${r.id}" data-k="start" value="${r.start}" title="Calendar month selling starts; 0 or negative = ramped before 2026"></td>
+      <td><input class="cell tiny" data-id="${r.id}" data-k="modest" value="${Math.round(r.modest * 100)}"></td>
+      <td><input class="cell tiny" data-id="${r.id}" data-k="stretch" value="${Math.round(r.stretch * 100)}"></td>
+      <td><input class="cell tiny" data-id="${r.id}" data-k="comm" value="${(r.comm * 100).toFixed(2)}"></td>
+      <td>${fmt$(fm)}</td><td>${fmt$(fs)}</td>
+      <td class="dim">${fmtK(fm * r.comm)} / ${fmtK(fs * r.comm)}</td>
+      <td><button class="btn" data-id="${r.id}" data-k="del" title="Remove rep">✕</button></td></tr>`;
+  }
+  const tm = C.team.mod.reduce((a, b) => a + b, 0), ts = C.team.str.reduce((a, b) => a + b, 0);
+  const cm = C.comp.mod.reduce((a, b) => a + b, 0), cs = C.comp.str.reduce((a, b) => a + b, 0);
+  h += `<tr class="tot"><td>TEAM</td><td></td><td></td><td></td><td></td><td></td><td></td>
+    <td>${fmt$(tm)}</td><td>${fmt$(ts)}</td><td>comp ${fmtK(cm)} / ${fmtK(cs)}</td><td></td></tr>`;
+  document.getElementById("salesTable").innerHTML = h + "</tbody></table>";
+  let rh = `<table class="data"><thead><tr><th>Curve</th>${Array.from({length:12}, (_, i) => `<th>M${i + 1}</th>`).join("")}<th>YR1</th></tr></thead><tbody>`;
+  for (const n of Object.keys(S.ramps)){
+    rh += `<tr><td>${esc(n)}</td>` + S.ramps[n].map((v, i) =>
+      `<td><input class="cell" data-id="${esc(n)}" data-k="ramp${i}" value="${Math.round(v)}"></td>`).join("") +
+      `<td>${fmt$(S.ramps[n].reduce((a, b) => a + b, 0))}</td></tr>`;
+  }
+  document.getElementById("rampTable").innerHTML = rh + "</tbody></table>";
+}
+
+/* ---------- staffing tab ---------- */
+function renderStaff(C){
+  const booked = MODEL.totals.payroll.map((v, i) => i < ACT ? v : null);
+  monthChart(document.getElementById("chartPayroll"),
+    [{name:"Booked payroll (Xero)", color:"--aqua", vals:booked.concat().slice(0, 12), kind:"bar"},
+     {name:"Staffing model", color:"--violet", vals:C.staffTotal}],
+    {aria:"Payroll model vs booked", divider:true, w:980});
+  document.getElementById("deptRaises").innerHTML = Object.keys(S.deptRaise).map(d =>
+    `<div class="lever"><label>${esc(d.replace("03 - HR & Business Administration Manager", "HR & Business Admin"))}</label>
+     <input class="lever-in" data-id="${esc(d)}" data-k="deptraise" value="${(S.deptRaise[d] * 100).toFixed(1)}"><span class="unit">%</span></div>`).join("");
+  let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Health/mo</th><th>Lic/mo</th>
+    <th>Tax %</th><th>$ raise/mo</th><th>Raise %</th><th>Eff. mo</th><th>Cost/head</th>` +
+    MONTHS.map(m => `<th>${m}</th>`).join("") + `<th>FY cost</th><th></th></tr></thead><tbody>`;
+  for (const p of S.staff){
+    const labor = p.ote / 12, dr = S.deptRaise[p.dept] || 0;
+    const nw = (labor + p.raiseD + labor * (p.raiseP + dr)) * (1 + p.tax) + p.hdv + p.lic;
+    let fy = 0; for (let m = 1; m <= 12; m++) fy += staffCost(p, m);
+    h += `<tr><td title="${esc(p.dept)}"><span class="dim" style="font-size:10px">${esc(p.dept.slice(0, 14))}</span><br>
+      <input class="cell wide" style="text-align:left" data-id="${p.id}" data-k="position" value="${esc(p.position)}"></td>
+      <td><input class="cell" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}"></td>
+      <td><input class="cell tiny" data-id="${p.id}" data-k="hdv" value="${p.hdv}"></td>
+      <td><input class="cell tiny" data-id="${p.id}" data-k="lic" value="${Math.round(p.lic)}"></td>
+      <td><input class="cell tiny" data-id="${p.id}" data-k="tax" value="${(p.tax * 100).toFixed(0)}"></td>
+      <td><input class="cell tiny" data-id="${p.id}" data-k="raiseD" value="${p.raiseD}"></td>
+      <td><input class="cell tiny" data-id="${p.id}" data-k="raiseP" value="${(p.raiseP * 100).toFixed(1)}"></td>
+      <td><input class="cell tiny" data-id="${p.id}" data-k="raiseM" value="${p.raiseM}"></td>
+      <td>${fmt$(nw)}</td>` +
+      p.hc.map((c, i) => `<td><input class="cell tiny" data-id="${p.id}" data-k="hc${i}" value="${c}"></td>`).join("") +
+      `<td>${fmt$(fy)}</td><td><button class="btn" data-id="${p.id}" data-k="del" title="Remove role">✕</button></td></tr>`;
+  }
+  h += `<tr class="tot"><td>TOTAL</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>` +
+    Array.from({length:12}, (_, i) => `<td>${fmtK(C.staffTotal[i])}</td>`).join("") +
+    `<td>${fmt$(C.staffTotal.reduce((a, b) => a + b, 0))}</td><td></td></tr>`;
+  document.getElementById("staffTable").innerHTML = h + "</tbody></table>";
+}
+
+/* ---------- expenses tab ---------- */
+const expFilter = { q: "", dept: "", status: "" };
+function chip(status, conflict){
+  const cls = STATUS_CHIP[status] || "steady";
+  return `<span class="chip ${cls}" title="${status === "PERIODIC" ? "Quarterly/annual cadence — planned as YTD ÷ 12" : ""}">${esc(status)}</span>` +
+    (conflict ? ` <span class="chip conflict" title="Budget tool dept overrides Xero">DEPT</span>` : "");
+}
+function renderExpenses(C){
+  const selDept = document.getElementById("expDept"), selSt = document.getElementById("expStatus");
+  if (!selDept.options.length){
+    selDept.innerHTML = `<option value="">All departments</option>` + DEPTS.map(d => `<option>${esc(d)}</option>`).join("");
+    selSt.innerHTML = `<option value="">All statuses</option>` + Object.keys(STATUS_CHIP).map(s => `<option>${esc(s)}</option>`).join("");
+  }
+  const q = expFilter.q.toLowerCase();
+  const match = e => (!q || e.vendor.toLowerCase().includes(q) || (e.purpose || "").toLowerCase().includes(q)) &&
+    (!expFilter.dept || e.dept === expFilter.dept) && (!expFilter.status || e.status === expFilter.status);
+  let h = `<table class="data"><thead><tr><th>On</th><th>Expense</th><th>Status</th><th>12-mo trend</th>
+    <th>Xero sugg/mo</th><th>Budget/mo</th><th>Use</th><th>Override</th><th>Adj %</th><th>From</th><th>To</th><th>Planned/mo</th></tr></thead><tbody>`;
+  let shown = 0, totPlanned = 0;
+  for (const d of DEPTS){
+    const rows = S.exp.filter(e => e.dept === d && match(e));
+    if (!rows.length) continue;
+    const sub = rows.reduce((a, e) => a + expensePlanned(e), 0);
+    h += `<tr class="sec"><td colspan="11">${esc(d)}</td><td>${fmt$(sub)}</td></tr>`;
+    for (const e of rows.sort((a, b) => Math.abs(expensePlanned(b) || b.xero || b.budget || 0) - Math.abs(expensePlanned(a) || a.xero || a.budget || 0))){
+      shown++; const pl = expensePlanned(e); totPlanned += pl;
+      h += `<tr><td><input type="checkbox" class="switch" data-id="${e.id}" data-k="on"${e.on ? " checked" : ""} aria-label="Include ${esc(e.vendor)}"></td>
+        <td title="${esc(e.vendor)}${e.purpose ? " — " + esc(e.purpose) : ""}">${e.manual ? `<input class="cell wide" style="text-align:left" data-id="${e.id}" data-k="vendor" value="${esc(e.vendor)}">` : `<span class="vname">${esc(e.vendor)}</span>`}${e.share < 1 ? ` <span class="dim">(${Math.round(e.share * 100)}% share)</span>` : ""}${e.seat > 0 ? ` <span class="dim" title="Per-seat portion carried on Staffing licenses">seats→Staffing</span>` : ""}</td>
+        <td>${chip(e.status, e.conflict)}</td>
+        <td>${e.ttm ? spark(e.ttm, "--modest", 84, 20) : `<span class="dim">—</span>`}</td>
+        <td>${e.xero == null ? `<span class="dim">—</span>` : fmt$(e.xero)}</td>
+        <td>${e.budget == null ? `<span class="dim">—</span>` : fmt$(e.budget)}</td>
+        <td><select class="cell" data-id="${e.id}" data-k="use"><option${e.use === "XERO" ? " selected" : ""}>XERO</option><option${e.use === "BUDGET" ? " selected" : ""}>BUDGET</option></select></td>
+        <td><input class="cell" data-id="${e.id}" data-k="override" value="${e.override == null ? "" : e.override}" placeholder="—"></td>
+        <td><input class="cell tiny" data-id="${e.id}" data-k="adj" value="${(e.adj * 100).toFixed(0)}"></td>
+        <td><input class="cell tiny" data-id="${e.id}" data-k="from" value="${e.from}"></td>
+        <td><input class="cell tiny" data-id="${e.id}" data-k="to" value="${e.to}"></td>
+        <td><b>${fmt$(pl)}</b></td></tr>`;
+    }
+  }
+  h += `<tr class="tot"><td colspan="11">TOTAL PLANNED (full-month rows)</td><td>${fmt$(totPlanned)}</td></tr>`;
+  document.getElementById("expTable").innerHTML = h + "</tbody></table>";
+  document.getElementById("expCount").textContent = shown + " of " + S.exp.length + " rows";
+}
+
+/* ---------- trends tab ---------- */
+function renderTrends(){
+  const el = document.getElementById("chartTTM");
+  const W = 980, H = 230, mL = 52, mR = 12, mT = 12, mB = 26, iw = W - mL - mR, ih = H - mT - mB;
+  const vals = MODEL.totals.ttm_opex, ticks = niceTicks(0, Math.max(...vals));
+  const hi = ticks.at(-1), y = v => mT + ih - v / hi * ih, x = i => mL + iw / 12 * (i + 0.5);
+  let g = "";
+  for (const t of ticks) g += `<line x1="${mL}" x2="${W - mR}" y1="${y(t)}" y2="${y(t)}" stroke="var(${t === 0 ? "--baseline" : "--grid"})"/>` +
+    `<text x="${mL - 7}" y="${y(t) + 3.5}" text-anchor="end" font-size="10" fill="var(--muted)">${fmtK(t)}</text>`;
+  MODEL.ttm_labels.forEach((l, i) => g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="var(--muted)">${l}</text>`);
+  let area = "", line = "";
+  vals.forEach((v, i) => { line += (line ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1); });
+  area = line + `L${x(11)},${y(0)}L${x(0)},${y(0)}Z`;
+  let hov = ""; vals.forEach((v, i) => hov += `<rect data-i="${i}" x="${mL + iw / 12 * i}" y="${mT}" width="${iw / 12}" height="${ih}" fill="transparent"/>`);
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Trailing 12 month operating expense"><path d="${area}" fill="var(--modest)" opacity=".1"/>${g}<path d="${line}" fill="none" stroke="var(--modest)" stroke-width="2" stroke-linejoin="round"/><circle cx="${x(11)}" cy="${y(vals[11])}" r="4" fill="var(--modest)" stroke="var(--surface)" stroke-width="2"/>${hov}</svg>`;
+  const svg = el.querySelector("svg");
+  svg.addEventListener("pointermove", ev => {
+    const t = ev.target.closest("rect[data-i]"); if (!t) return hideTip();
+    const i = +t.dataset.i;
+    showTip(ev.clientX, ev.clientY, `<div class="t">${MODEL.ttm_labels[i]}</div><div class="row"><span>Opex booked</span><b>${fmt$(vals[i])}</b></div>`);
+  });
+  svg.addEventListener("pointerleave", hideTip);
+  const by = st => MODEL.vend_master.filter(v => v.status === st);
+  const li = v => `<li><b title="${esc(v.vendor)}">${esc(v.vendor)}</b><span>${v.status === "DROPPED" ? "was " + fmtK(v.ttm_total / 12) + "/mo" : fmtK(v.base) + "/mo"}</span></li>`;
+  document.getElementById("attnCards").innerHTML = `
+    <div class="card"><h3 style="color:var(--crit)">■ Dropped off</h3><ul>${by("DROPPED").map(li).join("") || "<li>None</li>"}</ul></div>
+    <div class="card"><h3 style="color:var(--serious)">■ Dropping</h3><ul>${by("DROPPING").map(li).join("") || "<li>None</li>"}</ul></div>
+    <div class="card"><h3 style="color:var(--modest)">■ New since May</h3><ul>${by("NEW").map(li).join("") || "<li>None</li>"}</ul></div>
+    <div class="card"><h3 style="color:var(--good-text)">■ Growing</h3><ul>${by("GROWING").map(li).join("") || "<li>None</li>"}</ul></div>`;
+  document.getElementById("conflictTable").innerHTML = `<table class="data"><thead><tr><th>Vendor</th><th>Xero dept</th><th>Budget-tool dept</th><th>Used</th><th>~$/mo</th></tr></thead><tbody>` +
+    MODEL.vend_master.filter(v => v.contradiction).map(v =>
+      `<tr><td>${esc(v.vendor)}</td><td class="dim" style="text-align:left">${esc(v.xero_dept)}</td><td style="text-align:left">${esc(v.budget_dept)}</td><td style="text-align:left">${esc(v.budget_dept)}</td><td>${fmt$(v.base)}</td></tr>`).join("") + "</tbody></table>";
+  renderTrendTable();
+}
+let trQ = "";
+function renderTrendTable(){
+  const q = trQ.toLowerCase();
+  const rows = MODEL.vend_master.filter(v => !q || v.vendor.toLowerCase().includes(q));
+  document.getElementById("trCount").textContent = rows.length + " vendors ≥ $150 TTM";
+  document.getElementById("trendTable").innerHTML = `<table class="data"><thead><tr><th>Vendor</th><th>Status</th><th>Trend</th>
+    <th>TTM total</th><th>Last 3 mo avg</th><th>Suggested/mo</th><th>Budget/mo</th><th>Δ vs budget</th><th>Dept (used)</th></tr></thead><tbody>` +
+    rows.map(v => {
+      const l3 = (v.ttm[9] + v.ttm[10] + v.ttm[11]) / 3;
+      const dlt = v.in_contracts ? v.base - v.budget_monthly : null;
+      return `<tr><td title="${esc(v.vendor)} — ${esc(v.purpose || v.account)}"><span class="vname">${esc(v.vendor)}</span></td><td>${chip(v.status, v.contradiction)}</td>
+      <td>${spark(v.ttm, "--modest", 84, 20)}</td><td>${fmt$(v.ttm_total)}</td><td>${fmt$(l3)}</td>
+      <td><b>${fmt$(v.base)}</b></td><td>${v.in_contracts ? fmt$(v.budget_monthly) : `<span class="dim">—</span>`}</td>
+      <td class="${dlt > 100 ? "neg" : dlt < -100 ? "pos" : ""}">${dlt == null ? `<span class="dim">—</span>` : fmt$(dlt)}</td>
+      <td style="text-align:left" class="dim">${esc(v.final_dept)}</td></tr>`;
+    }).join("") + "</tbody></table>";
+}
+
+/* ---------- events & init ---------- */
+document.getElementById("tabs").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-tab]"); if (!b) return;
+  document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll("main .tab").forEach(x => x.classList.toggle("on", x.id === "tab-" + b.dataset.tab));
+});
+delegate("salesTable", (id, k, val) => {
+  const i = S.sales.findIndex(r => r.id === id); if (i < 0) return;
+  const r = S.sales[i];
+  if (k === "name") r.name = val; else if (k === "role") r.role = val; else if (k === "ramp") r.ramp = val;
+  else if (k === "start") r.start = Math.round(num(val, r.start));
+  else if (k === "modest") r.modest = num(val, 80) / 100;
+  else if (k === "stretch") r.stretch = num(val, 100) / 100;
+  else if (k === "comm") r.comm = num(val, 0) / 100;
+});
+document.getElementById("salesTable").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k=del]"); if (!b) return;
+  S.sales = S.sales.filter(r => r.id !== b.dataset.id); persist(); renderAll();
+});
+delegate("rampTable", (id, k, val) => {
+  const m = k.match(/^ramp(\d+)$/); if (!m || !S.ramps[id]) return;
+  S.ramps[id][+m[1]] = num(val, 0);
+});
+delegate("staffTable", (id, k, val) => {
+  const p = S.staff.find(r => r.id === id); if (!p) return;
+  if (k === "position") p.position = val;
+  else if (k === "ote") p.ote = num(val, p.ote);
+  else if (k === "hdv") p.hdv = num(val, p.hdv);
+  else if (k === "lic") p.lic = num(val, p.lic);
+  else if (k === "tax") p.tax = num(val, p.tax * 100) / 100;
+  else if (k === "raiseD") p.raiseD = num(val, 0);
+  else if (k === "raiseP") p.raiseP = num(val, 0) / 100;
+  else if (k === "raiseM") p.raiseM = Math.round(num(val, 9));
+  else { const m = k.match(/^hc(\d+)$/); if (m) p.hc[+m[1]] = num(val, 0); }
+});
+document.getElementById("staffTable").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k=del]"); if (!b) return;
+  S.staff = S.staff.filter(r => r.id !== b.dataset.id); persist(); renderAll();
+});
+delegate("deptRaises", (id, k, val) => { if (k === "deptraise") S.deptRaise[id] = num(val, 0) / 100; });
+delegate("expTable", (id, k, val) => {
+  const e = S.exp.find(r => r.id === id); if (!e) return;
+  if (k === "on") e.on = val;
+  else if (k === "use") e.use = val;
+  else if (k === "vendor") e.vendor = val;
+  else if (k === "override") e.override = String(val).trim() === "" ? null : num(val, null);
+  else if (k === "adj") e.adj = num(val, 0) / 100;
+  else if (k === "from") e.from = Math.min(12, Math.max(1, Math.round(num(val, 1))));
+  else if (k === "to") e.to = Math.min(12, Math.max(1, Math.round(num(val, 12))));
+});
+document.getElementById("expSearch").addEventListener("input", ev => { expFilter.q = ev.target.value; renderExpenses(); });
+document.getElementById("expDept").addEventListener("change", ev => { expFilter.dept = ev.target.value; renderExpenses(); });
+document.getElementById("expStatus").addEventListener("change", ev => { expFilter.status = ev.target.value; renderExpenses(); });
+document.getElementById("trSearch").addEventListener("input", ev => { trQ = ev.target.value; renderTrendTable(); });
+document.getElementById("addRep").addEventListener("click", () => {
+  S.sales.push({ id: "s" + Date.now(), name: "New rep", role: "Account Executive - RAMP",
+    ramp: Object.keys(S.ramps)[0] || "NEW AE", start: 9, modest: 0.8, stretch: 1, comm: 0.025 });
+  persist(); renderAll();
+});
+document.getElementById("addRole").addEventListener("click", () => {
+  S.staff.push({ id: "p" + Date.now(), dept: "Technical Support", position: "New role", ote: 65000,
+    hdv: 523.5, lic: 75, tax: 0.1, raiseD: 0, raiseP: 0, raiseM: 9,
+    hc: Array.from({length:12}, (_, i) => i >= 8 ? 1 : 0) });
+  persist(); renderAll();
+});
+document.getElementById("addExp").addEventListener("click", () => {
+  S.exp.push({ id: "m" + Date.now(), vendor: "New expense", dept: expFilter.dept || "General Overhead",
+    share: 1, budget: null, xero: null, status: "NOT IN XERO", seat: 0, ttm: null, purpose: "added by hand",
+    conflict: false, manual: true, use: "BUDGET", override: 500, adj: 0, from: 9, to: 12, on: true });
+  persist(); renderAll();
+});
+document.getElementById("btnReset").addEventListener("click", () => {
+  if (!confirm("Discard every edit and return to the imported defaults?")) return;
+  try { localStorage.removeItem(LS_KEY); } catch (e) {}
+  S = defaultState(); renderAll();
+});
+document.getElementById("btnCopy").addEventListener("click", async ev => {
+  const txt = JSON.stringify(S);
+  try { await navigator.clipboard.writeText(txt); ev.target.textContent = "Copied ✓"; }
+  catch (e) { prompt("Copy this config JSON:", txt); }
+  setTimeout(() => ev.target.textContent = "Copy config", 1600);
+});
+document.getElementById("btnLoad").addEventListener("click", () => {
+  const txt = prompt("Paste a config JSON copied from this dashboard:");
+  if (!txt) return;
+  try { const p = JSON.parse(txt); if (p.levers && p.exp && p.staff){ S = p; persist(); renderAll(); } else alert("That doesn't look like a Money Model config."); }
+  catch (e) { alert("Couldn't parse that JSON."); }
+});
+
+function renderAll(){
+  const C = compute();
+  renderTiles(C); renderProjLevers(); renderProj(C);
+  renderSalesLevers(); renderSales(C); renderStaff(C); renderExpenses(C);
+}
+renderAll();
+renderTrends();
+</script>
