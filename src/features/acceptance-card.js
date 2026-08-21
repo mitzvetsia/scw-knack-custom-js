@@ -116,37 +116,45 @@
       '  margin-left: auto; }',
       '.scw-acpt-btn--primary:hover { background: #0a3a63; }',
       // ── Document tiles ─────────────────────────────────────────
-      // One uniform tile per document. DONE: soft green tile — the main
-      // zone opens the doc, a bordered pencil zone on the right edits it.
-      // MISSING: dashed ghost tile, whole thing opens the editor. Fixed
-      // width so the four tiles read as an aligned checklist.
-      '.scw-acpt-doc { display: inline-flex; align-items: stretch; width: 168px;',
+      // Design rules (2026-08-21 pass): labels NEVER truncate (tiles are
+      // content-sized — a checklist you can\'t read is decoration); ONE
+      // state glyph per tile (leading check = done, plus = missing —
+      // state never rides on color alone); the pencil is progressive
+      // disclosure (hidden until tile hover / keyboard focus, fixed
+      // width so nothing shifts). Pair captions carry the shared context
+      // so the tile labels stay short.
+      '.scw-acpt-doc { display: inline-flex; align-items: stretch;',
       '  border-radius: 8px; border: 1px solid #bbf7d0; background: #f0fdf4;',
       '  overflow: hidden; }',
-      '.scw-acpt-doc__open { flex: 1; min-width: 0; display: inline-flex; align-items: center;',
-      '  gap: 7px; padding: 8px 10px; color: #15803d !important; cursor: pointer;',
+      '.scw-acpt-doc__open { display: inline-flex; align-items: center;',
+      '  gap: 7px; padding: 7px 4px 7px 10px; color: #15803d !important; cursor: pointer;',
       '  font: 600 12px/1.2 system-ui, sans-serif; text-decoration: none !important; }',
       '.scw-acpt-doc__open:hover { background: #dcfce7; text-decoration: none !important; }',
-      '.scw-acpt-doc__open svg { flex: none; }',
-      '.scw-acpt-doc__lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
-      '.scw-acpt-doc__check { margin-left: auto; flex: none; color: #16a34a;',
-      '  display: inline-flex; }',
-      '.scw-acpt-doc__edit { flex: none; width: 26px; display: inline-flex; align-items: center;',
-      '  justify-content: center; border: none; border-left: 1px solid #bbf7d0;',
-      '  background: transparent; color: #15803d; cursor: pointer; opacity: .5;',
-      '  transition: opacity .12s, background .12s; padding: 0; }',
-      '.scw-acpt-doc__edit:hover { opacity: 1; background: #dcfce7; }',
-      'button.scw-acpt-doc--missing { width: 168px; box-sizing: border-box;',
-      '  display: inline-flex; align-items: center; gap: 7px; padding: 8px 10px;',
+      '.scw-acpt-doc__open svg { flex: none; color: #16a34a; }',
+      '.scw-acpt-doc__lbl { white-space: nowrap; }',
+      '.scw-acpt-doc__edit { flex: none; width: 24px; display: inline-flex; align-items: center;',
+      '  justify-content: center; border: none; background: transparent;',
+      '  color: #15803d; cursor: pointer; opacity: 0; padding: 0;',
+      '  transition: opacity .12s, background .12s; }',
+      '.scw-acpt-doc:hover .scw-acpt-doc__edit,',
+      '.scw-acpt-doc:focus-within .scw-acpt-doc__edit { opacity: .65; }',
+      '.scw-acpt-doc__edit:hover { opacity: 1 !important; background: #dcfce7; }',
+      'button.scw-acpt-doc--missing { box-sizing: border-box;',
+      '  display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px 7px 10px;',
       '  border-radius: 8px; border: 1.5px dashed #cbd5e1; background: #fff;',
       '  color: #64748b; cursor: pointer; font: 600 12px/1.2 system-ui, sans-serif;',
-      '  text-align: left; transition: border-color .12s, color .12s, background .12s; }',
+      '  text-align: left; white-space: nowrap;',
+      '  transition: border-color .12s, color .12s, background .12s; }',
       'button.scw-acpt-doc--missing:hover { border-color: #0f4c75; color: #0f4c75;',
       '  background: #f8fafc; }',
       'button.scw-acpt-doc--missing svg { flex: none; }',
-      // The agreement/invoice tiles and the bid-PDF/estimate tiles are
-      // mirror pairs — cluster tightly within a pair, breathe between.
-      '.scw-acpt-pair { display: inline-flex; gap: 6px; }',
+      // Mirror pairs (agreement·invoice / bid-PDF·estimate): a micro-
+      // caption names the pair so the tiles inside can use short labels.
+      '.scw-acpt-pair { display: inline-flex; flex-direction: column; gap: 3px; }',
+      '.scw-acpt-pair__cap { font: 700 9.5px/1 system-ui, sans-serif;',
+      '  letter-spacing: .08em; text-transform: uppercase; color: #94a3b8;',
+      '  padding-left: 2px; }',
+      '.scw-acpt-pair__tiles { display: inline-flex; gap: 6px; }',
       // Compact list mode: ONE card, one row per acceptance record —
       // title | pills | actions on a single line (wraps on narrow).
       // Accordion-header rollup badge (signed tally) — sits before the count
@@ -385,31 +393,31 @@
     var bidPdfA  = cellAnchor(row, F.bidPdf, 'a.kn-view-asset') || cellAnchor(row, F.bidPdf);
     var actionA  = row.querySelector('.kn-action-link') || row.querySelector('.kn-table-link a');
 
-    // One uniform tile per document. DONE → soft green tile with a check:
-    // the main zone opens the doc, the bordered pencil zone edits it.
-    // MISSING → dashed ghost tile; the whole tile opens the editor.
-    function fileSlot(fk, label, anchor, editTitle) {
+    // One tile per document. DONE → green tile, leading check; the main
+    // zone opens the doc, the hover-revealed pencil edits it. MISSING →
+    // dashed ghost with a leading plus; the whole tile opens the editor.
+    // `full` is the untruncated document name (tooltips + aria); `label`
+    // is the short on-tile text (the pair caption carries the context).
+    function fileSlot(fk, label, full, anchor, editTitle) {
       if (!anchor) {
-        return '<button type="button" class="scw-acpt-doc--missing" data-edit-field="' + fk + '">' +
+        return '<button type="button" class="scw-acpt-doc--missing" data-edit-field="' + fk + '" title="Add ' + esc(full) + '">' +
           PLUS_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span></button>';
       }
       return '<span class="scw-acpt-doc">' +
-        '<a class="scw-acpt-doc__open" data-proxy-file="' + fk + '" href="javascript:void(0)" title="Open ' + esc(label) + '">' +
-          FILE_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span>' +
-          '<span class="scw-acpt-doc__check">' + CHECK_SVG + '</span>' +
+        '<a class="scw-acpt-doc__open" data-proxy-file="' + fk + '" href="javascript:void(0)" title="Open ' + esc(full) + '">' +
+          CHECK_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span>' +
         '</a>' +
         '<button type="button" class="scw-acpt-doc__edit" data-edit-field="' + fk + '" title="' + esc(editTitle) + '">' + PENCIL_SVG + '</button>' +
       '</span>';
     }
-    function linkSlot(fk, label, anchor, editTitle) {
+    function linkSlot(fk, label, full, anchor, editTitle) {
       if (!anchor) {
-        return '<button type="button" class="scw-acpt-doc--missing" data-edit-field="' + fk + '">' +
-          PLUS_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + ' link</span></button>';
+        return '<button type="button" class="scw-acpt-doc--missing" data-edit-field="' + fk + '" title="Add ' + esc(full) + '">' +
+          PLUS_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span></button>';
       }
       return '<span class="scw-acpt-doc">' +
-        '<a class="scw-acpt-doc__open" target="_blank" rel="noopener" href="' + esc(anchor.getAttribute('href') || '') + '" title="Open ' + esc(label) + '">' +
-          LINK_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span>' +
-          '<span class="scw-acpt-doc__check">' + CHECK_SVG + '</span>' +
+        '<a class="scw-acpt-doc__open" target="_blank" rel="noopener" href="' + esc(anchor.getAttribute('href') || '') + '" title="Open ' + esc(full) + '">' +
+          CHECK_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span>' +
         '</a>' +
         '<button type="button" class="scw-acpt-doc__edit" data-edit-field="' + fk + '" title="' + esc(editTitle) + '">' + PENCIL_SVG + '</button>' +
       '</span>';
@@ -441,15 +449,23 @@
         pill(signed ? 'Agreement signed'         : 'Agreement not signed',    signed) +
       '</div>' +
       '<div class="scw-acpt-actions">' +
-        // Two mirror pairs: the signed agreement with its invoice, and the
-        // bid basis PDF with its Xero estimate.
+        // Two captioned mirror pairs: the signed agreement with its
+        // invoice, and the bid basis PDF with its Xero estimate. The
+        // caption carries the context so tile labels stay short enough
+        // to never truncate.
         '<span class="scw-acpt-pair">' +
-          fileSlot(F.agreement, 'Signed agreement', fileA,    'Replace signed agreement') +
-          linkSlot(F.xero,      'Xero invoice',     xeroA,    'Edit Xero invoice link') +
+          '<span class="scw-acpt-pair__cap">Agreement</span>' +
+          '<span class="scw-acpt-pair__tiles">' +
+            fileSlot(F.agreement, 'Signed PDF',   'signed agreement',   fileA,    'Replace signed agreement') +
+            linkSlot(F.xero,      'Xero invoice', 'Xero invoice link',  xeroA,    'Edit Xero invoice link') +
+          '</span>' +
         '</span>' +
         '<span class="scw-acpt-pair">' +
-          fileSlot(F.bidPdf,    'Bid basis PDF',    bidPdfA,  'Replace bid basis PDF') +
-          linkSlot(F.xeroEst,   'Xero estimate',    xeroEstA, 'Edit Xero estimate link') +
+          '<span class="scw-acpt-pair__cap">Estimate</span>' +
+          '<span class="scw-acpt-pair__tiles">' +
+            fileSlot(F.bidPdf,    'Bid PDF',       'bid basis PDF',      bidPdfA,  'Replace bid basis PDF') +
+            linkSlot(F.xeroEst,   'Xero estimate', 'Xero estimate link', xeroEstA, 'Edit Xero estimate link') +
+          '</span>' +
         '</span>' +
         (actionA ? '<button type="button" class="scw-acpt-btn scw-acpt-btn--primary" data-proxy="action">Create Questionnaire</button>' : '') +
       '</div>';

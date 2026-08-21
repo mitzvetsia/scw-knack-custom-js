@@ -71,8 +71,10 @@
   // lifecycle phases. Everything stays ABOVE the worksheet; Installation
   // (CO strip + worksheet) is always last.
   var BANDS = [
-    { id: 'setup',   label: 'Project Setup',       find: /^system setup questionnaire/i },
+    // Array order mirrors page order (bands anchor to their sections, so
+    // position actually follows reorderSections — paperwork now leads).
     { id: 'paper',   label: 'Paperwork & Billing', find: /^acceptance$/i },
+    { id: 'setup',   label: 'Project Setup',       find: /^system setup questionnaire/i },
     { id: 'close',   label: 'Closeout',            find: /^closeout$/i },
     { id: 'ref',     label: 'Reference',           find: /^other files$/i },
     { id: 'install', label: 'Installation',        strip: true }
@@ -319,15 +321,17 @@
     }
   }
 
-  // Physical order: the questionnaire (project SETUP) reads before the
-  // acceptance paperwork it precedes in real life. One move; everything
-  // else already sits above the worksheet.
+  // Physical order (flipped 2026-08-21): the acceptance paperwork —
+  // agreement + invoice, the moment the project became real — reads
+  // BEFORE the setup questionnaire, matching the project lifecycle
+  // (paperwork exists before setup preferences are captured). One move;
+  // everything else already sits above the worksheet.
   function reorderSections(scene) {
     var q = findAcc(scene, /^system setup questionnaire/i);
     var a = findAcc(scene, /^acceptance$/i);
-    if (!q || !a || !a.parentNode) return;
-    if (a.compareDocumentPosition(q) & Node.DOCUMENT_POSITION_FOLLOWING) {
-      a.parentNode.insertBefore(q, a);
+    if (!q || !a || !q.parentNode) return;
+    if (q.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      q.parentNode.insertBefore(a, q);
     }
   }
 
