@@ -89,6 +89,7 @@ main section.tab{display:none} main section.tab.on{display:block}
 .lever .unit{font-size:11px;color:var(--muted)}
 
 .tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px}
+.tablewrap.tall{max-height:72vh;overflow:auto}
 table.data{border-collapse:collapse;width:100%;font-size:12.5px}
 table.data th{position:sticky;top:0;background:var(--surface2);color:var(--ink2);text-align:right;
   font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;padding:7px 9px;white-space:nowrap;z-index:2}
@@ -235,7 +236,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
   </div>
   <div class="card"><h2>Monthly revenue by rep <span class="scn-toggle" id="repMoScn"><button class="btn on" data-scn="modest">Modest</button><button class="btn" data-scn="stretch">Stretch</button></span></h2>
     <p class="note">Each rep's modeled month-over-month revenue — ramp value for their tenure month × attainment. Use it to check people are plugged into the right curve and start month.</p>
-    <div class="tablewrap" id="repMoTable"></div></div>
+    <div class="tablewrap tall" id="repMoTable"></div></div>
   <div class="card"><details><summary style="cursor:pointer;font-weight:600">Ramp schedules (monthly run-rate by tenure month)</summary>
     <div class="tablewrap" style="margin-top:10px" id="rampTable"></div></details></div>
 </section>
@@ -244,7 +245,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
   <div class="card"><h2>Payroll: model vs booked</h2><p class="note">Bars are Xero booked payroll (wages + tax + benefits, commissions included). The line is this tab's fully-loaded model — expect it to sit under the bars in strong commission months.</p><figure class="chart" id="chartPayroll"></figure></div>
   <div class="card"><h2>Department-wide raises</h2><p class="note">Applies on top of any per-role raise, from each role's effective month.</p><div class="levers" style="border:none;padding:0;margin:0" id="deptRaises"></div></div>
   <div class="card"><h2>Roster &amp; headcount plan</h2><p class="note">Fully-loaded monthly cost = (salary/12 + $ raise + salary/12 × raise %) × (1 + tax%) + health + per-seat licenses. Set headcount by month to model hires and exits; blue cells are editable.</p>
-    <div class="tablewrap" id="staffTable"></div>
+    <div class="tablewrap tall" id="staffTable"></div>
     <button class="btn addrow" id="addRole">+ Add role</button>
   </div>
 </section>
@@ -258,7 +259,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
     <span class="spacer"></span>
     <button class="btn" id="addExp">+ Add expense</button>
   </div>
-  <div class="card"><div class="tablewrap" id="expTable"></div>
+  <div class="card"><div class="tablewrap tall" id="expTable"></div>
   <p class="footnote">Planned $/mo = override if set, else the chosen source (Xero suggestion or budget-tool figure) × (1 + adj), months FROM–TO, when the switch is on. Per-seat license costs (Slack, Google, Bonusly, seat portions of Hubspot/Gong/Zoom/Atlassian/Rippling/ClickUp) ride headcount on the Staffing tab, not here. Where the budgeting tool's department disagreed with Xero, the budgeting tool's wins.</p></div>
 </section>
 
@@ -268,7 +269,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
   <div class="card"><h2>Department conflicts</h2><p class="note">Vendors where the budgeting tool's allocation disagrees with Xero's department tracking — the budgeting tool wins everywhere in this model.</p><div class="tablewrap" id="conflictTable"></div></div>
   <div class="card"><h2>All vendors, trailing 12 months</h2>
     <div class="toolbar"><input type="search" id="trSearch" placeholder="Search vendors…" aria-label="Search vendors"><span class="pillcount" id="trCount"></span></div>
-    <div class="tablewrap" id="trendTable"></div></div>
+    <div class="tablewrap tall" id="trendTable"></div></div>
 </section>
 </main>
 </div>
@@ -371,7 +372,9 @@ function repRevenue(rep, m, key){
 }
 function personCost(role, p, m){
   if (m < (p.from || 1) || m > (p.to || NM)) return 0;
-  const labor = ((p.sal != null ? p.sal : role.ote) || 0) / 12;
+  const baseSal = p.sal != null ? p.sal : role.ote;
+  const sal = (p.sal2 != null && m >= (p.chgM || 1)) ? p.sal2 : baseSal;
+  const labor = (sal || 0) / 12;
   const dr = S.deptRaise[role.dept] || 0;
   const raised = m >= (role.raiseM || 1);
   const base = raised ? (labor + (role.raiseD || 0) + labor * ((role.raiseP || 0) + dr)) : labor;
@@ -650,9 +653,15 @@ function renderProj(C){
 </script>
 <script>
 /* ---------- generic binding ---------- */
+let renderQueued = false;
+function scheduleRender(){
+  if (renderQueued) return;
+  renderQueued = true;
+  setTimeout(() => { renderQueued = false; renderAll(); }, 0);
+}
 function bind(id, setter){
   const el = document.getElementById(id);
-  if (el) el.addEventListener("change", () => { setter(el.value); persist(); renderAll(); });
+  if (el) el.addEventListener("change", () => { setter(el.value); persist(); scheduleRender(); });
 }
 function delegate(rootId, handler){
   const root = document.getElementById(rootId);
@@ -660,7 +669,7 @@ function delegate(rootId, handler){
     const t = ev.target, k = t.dataset.k, id = t.dataset.id;
     if (!k) return;
     handler(id, k, t.type === "checkbox" ? t.checked : t.value);
-    persist(); renderAll();
+    persist(); scheduleRender();
   });
 }
 
@@ -784,12 +793,24 @@ function renderStaff(C){
   let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Health/mo</th><th>Lic/mo</th>
     <th>Tax %</th><th>$ raise/mo</th><th>Raise %</th><th>Eff. mo</th><th>Cost/head</th>` +
     MONTHS.map(m => `<th>${m}</th>`).join("") + `<th>FY cost</th><th></th></tr></thead><tbody>`;
-  for (const p of S.staff){
+  const dOrder = d => { const i = DEPTS.indexOf(d); return i < 0 ? DEPTS.length : i; };
+  const sorted = [...S.staff].sort((a, b) => dOrder(a.dept) - dOrder(b.dept));
+  const fyOf = new Map(), deptFy = new Map();
+  for (const p of sorted){
+    let fy = 0; for (let m = 1; m <= NM; m++) fy += staffCost(p, m);
+    fyOf.set(p.id, fy); deptFy.set(p.dept, (deptFy.get(p.dept) || 0) + fy);
+  }
+  let lastDept = null;
+  for (const p of sorted){
+    if (p.dept !== lastDept){
+      lastDept = p.dept;
+      h += `<tr class="sec"><td colspan="${9 + NM}">${esc(p.dept)}</td><td>${fmt$(deptFy.get(p.dept))}</td><td></td></tr>`;
+    }
     const labor = p.ote / 12, dr = S.deptRaise[p.dept] || 0;
     const nw = (labor + p.raiseD + labor * (p.raiseP + dr)) * (1 + p.tax) + p.hdv + p.lic;
     const hasPpl = p.people && p.people.length, open = openRoles.has(p.id);
-    let fy = 0; for (let m = 1; m <= NM; m++) fy += staffCost(p, m);
-    h += `<tr><td title="${esc(p.dept)} — ${esc(p.position)}"><span class="dim" style="font-size:10px">${esc(p.dept.slice(0, 16))}</span><br>
+    const fy = fyOf.get(p.id);
+    h += `<tr><td title="${esc(p.dept)} — ${esc(p.position)}"><select class="cell" style="font-size:10px;max-width:150px" data-id="${p.id}" data-k="dept" title="Department — changing it moves the role">${DEPTS.map(d => `<option${d === p.dept ? " selected" : ""}>${esc(d)}</option>`).join("")}</select><br>
       <button class="exp-toggle" data-id="${p.id}" data-k="toggle" title="Name the specific people in this role">${open ? "▾" : "▸"}${hasPpl ? " " + p.people.length + "👤" : ""}</button><input class="cell pos" data-id="${p.id}" data-k="position" value="${esc(p.position)}"></td>
       <td><input class="cell" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}"></td>
       <td><input class="cell tiny" data-id="${p.id}" data-k="hdv" value="${p.hdv}"></td>
@@ -805,18 +826,22 @@ function renderStaff(C){
       `<td>${fmt$(fy)}</td><td><button class="btn" data-id="${p.id}" data-k="del" title="Remove role">✕</button></td></tr>`;
     if (open){
       const rows = (p.people || []).map(pp => {
-        const active = Array.from({length:NM}, (_, i) => personCost(p, pp, i + 1)).filter(v => v > 0);
-        const moCost = active[active.length - 1] || personCost(p, pp, NM) || 0;
+        const c0 = personCost(p, pp, Math.max(1, pp.from || 1));
+        const cN = personCost(p, pp, Math.min(NM, pp.to || NM));
+        const changed = pp.sal2 != null && cN !== c0;
+        const costTxt = c0 ? fmt$(c0) + "/mo" + (changed ? " → " + fmt$(cN) + "/mo from " + esc(MONTHS[Math.min(NM, Math.max(1, pp.chgM || 1)) - 1]) : " loaded") : "";
         return `<div class="ppl-row"><span class="lab">who</span><input class="cell pos" data-id="${pp.id}" data-k="pname" value="${esc(pp.name)}">
           <span class="lab">salary/yr</span><input class="cell" data-id="${pp.id}" data-k="psal" value="${pp.sal == null ? "" : Math.round(pp.sal).toLocaleString("en-US")}" placeholder="= role ${Math.round(p.ote / 1000)}K">
-          <span class="lab">from mo</span><input class="cell tiny" data-id="${pp.id}" data-k="pfrom" value="${pp.from || 1}">
-          <span class="lab">to mo</span><input class="cell tiny" data-id="${pp.id}" data-k="pto" value="${pp.to || NM}">
-          <span class="subtle">${moCost ? fmt$(moCost) + "/mo loaded" : ""}</span>
+          <span class="lab">new salary</span><input class="cell" data-id="${pp.id}" data-k="psal2" value="${pp.sal2 == null ? "" : Math.round(pp.sal2).toLocaleString("en-US")}" placeholder="—" title="Leave blank if no change">
+          <span class="lab">change mo</span><input class="cell tiny" data-id="${pp.id}" data-k="pchg" value="${pp.chgM || ""}" placeholder="—" title="1 = Jan 2026 … 15 = Mar 2027">
+          <span class="lab">starts</span><input class="cell tiny" data-id="${pp.id}" data-k="pfrom" value="${pp.from || 1}" title="Month # they start in this role: 1 = Jan 2026 … 15 = Mar 2027 (${esc(MONTHS[Math.min(NM, Math.max(1, pp.from || 1)) - 1])})">
+          <span class="lab">ends</span><input class="cell tiny" data-id="${pp.id}" data-k="pto" value="${pp.to || NM}" title="Last month in role (${esc(MONTHS[Math.min(NM, Math.max(1, pp.to || NM)) - 1])})">
+          <span class="subtle">${costTxt}</span>
           <button class="btn mini" data-id="${pp.id}" data-k="pdel">✕</button></div>`;
       }).join("");
       h += `<tr class="ppl"><td colspan="${11 + NM}"><div class="ppl-grid">${rows}
         <div class="ppl-row"><button class="btn mini" data-id="${p.id}" data-k="padd">+ Add person</button>
-        <span class="subtle">salary blank = copy from role; set from/to months for hires and exits. Named people replace this role's headcount grid.</span></div></div></td></tr>`;
+        <span class="subtle">Model each person: started month X at salary Y (blank = copy from role) · new salary + change mo = WHEN their raise lands (role-level raises still stack on top) · starts/ends = hire and exit months (1 = Jan 2026 … 15 = Mar 2027). Named people replace this role's headcount grid.</span></div></div></td></tr>`;
     }
   }
   h += `<tr class="tot"><td>TOTAL</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>` +
@@ -939,7 +964,7 @@ delegate("salesTable", (id, k, val) => {
 });
 document.getElementById("salesTable").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-k=del]"); if (!b) return;
-  S.sales = S.sales.filter(r => r.id !== b.dataset.id); persist(); renderAll();
+  S.sales = S.sales.filter(r => r.id !== b.dataset.id); persist(); scheduleRender();
 });
 delegate("rampTable", (id, k, val) => {
   const m = k.match(/^ramp(\d+)$/); if (!m || !S.ramps[id]) return;
@@ -948,6 +973,7 @@ delegate("rampTable", (id, k, val) => {
 delegate("staffTable", (id, k, val) => {
   const p = S.staff.find(r => r.id === id); if (!p) return;
   if (k === "position") p.position = val;
+  else if (k === "dept") p.dept = val;
   else if (k === "ote") p.ote = num(val, p.ote);
   else if (k === "hdv") p.hdv = num(val, p.hdv);
   else if (k === "lic") p.lic = num(val, p.lic);
@@ -955,15 +981,20 @@ delegate("staffTable", (id, k, val) => {
   else if (k === "raiseD") p.raiseD = num(val, 0);
   else if (k === "raiseP") p.raiseP = num(val, 0) / 100;
   else if (k === "raiseM") p.raiseM = Math.round(num(val, 9));
-  else { const m = k.match(/^hc(\d+)$/); if (m) p.hc[+m[1]] = num(val, 0); }
+  else { const m = k.match(/^hc(\d+)$/);
+    if (m){ const i = +m[1], v = num(val, 0);
+      for (let j = i; j < NM; j++) p.hc[j] = v;   // fill forward: later months follow
+    } }
 });
 delegate("staffTable", (id, k, val) => {
-  if (!/^p(name|sal|from|to)$/.test(k)) return;
+  if (!/^p(name|sal|sal2|chg|from|to)$/.test(k)) return;
   for (const role of S.staff){
     const pp = (role.people || []).find(x => x.id === id);
     if (!pp) continue;
     if (k === "pname") pp.name = val;
     else if (k === "psal") pp.sal = String(val).trim() === "" ? null : num(val, null);
+    else if (k === "psal2") pp.sal2 = String(val).trim() === "" ? null : num(val, null);
+    else if (k === "pchg") pp.chgM = String(val).trim() === "" ? null : Math.min(NM, Math.max(1, Math.round(num(val, 1))));
     else if (k === "pfrom") pp.from = Math.min(NM, Math.max(1, Math.round(num(val, 1))));
     else if (k === "pto") pp.to = Math.min(NM, Math.max(1, Math.round(num(val, NM))));
     return;
@@ -985,7 +1016,7 @@ document.getElementById("staffTable").addEventListener("click", ev => {
     for (const role of S.staff) if (role.people) role.people = role.people.filter(pp => pp.id !== id);
   }
   else return;
-  persist(); renderAll();
+  persist(); scheduleRender();
 });
 delegate("deptRaises", (id, k, val) => { if (k === "deptraise") S.deptRaise[id] = num(val, 0) / 100; });
 delegate("expTable", (id, k, val) => {
@@ -1005,19 +1036,19 @@ document.getElementById("trSearch").addEventListener("input", ev => { trQ = ev.t
 document.getElementById("addRep").addEventListener("click", () => {
   S.sales.push({ id: "s" + Date.now(), name: "New rep", role: "Account Executive - RAMP",
     ramp: Object.keys(S.ramps)[0] || "NEW AE", start: 9, modest: 0.8, stretch: 1, comm: 0.025 });
-  persist(); renderAll();
+  persist(); scheduleRender();
 });
 document.getElementById("addRole").addEventListener("click", () => {
   S.staff.push({ id: "p" + Date.now(), dept: "Technical Support", position: "New role", ote: 65000,
     hdv: 523.5, lic: 75, tax: 0.1, raiseD: 0, raiseP: 0, raiseM: 9,
     hc: Array.from({length:NM}, (_, i) => i >= 8 ? 1 : 0) });
-  persist(); renderAll();
+  persist(); scheduleRender();
 });
 document.getElementById("addExp").addEventListener("click", () => {
   S.exp.push({ id: "m" + Date.now(), vendor: "New expense", dept: expFilter.dept || "General Overhead",
     share: 1, budget: null, xero: null, status: "NOT IN XERO", seat: 0, ttm: null, purpose: "added by hand",
     conflict: false, manual: true, use: "BUDGET", override: 500, adj: 0, from: 9, to: NM, on: true });
-  persist(); renderAll();
+  persist(); scheduleRender();
 });
 document.getElementById("btnReset").addEventListener("click", () => {
   if (!confirm("Discard every edit and return to the imported defaults?")) return;
@@ -1033,7 +1064,7 @@ document.getElementById("btnCopy").addEventListener("click", async ev => {
 document.getElementById("btnLoad").addEventListener("click", () => {
   const txt = prompt("Paste a config JSON copied from this dashboard:");
   if (!txt) return;
-  try { const p = JSON.parse(txt); if (p.levers && p.exp && p.staff){ S = p; persist(); renderAll(); } else alert("That doesn't look like a Money Model config."); }
+  try { const p = JSON.parse(txt); if (p.levers && p.exp && p.staff){ S = p; persist(); scheduleRender(); } else alert("That doesn't look like a Money Model config."); }
   catch (e) { alert("Couldn't parse that JSON."); }
 });
 
