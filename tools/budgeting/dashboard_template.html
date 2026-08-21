@@ -111,6 +111,11 @@ input.cell:hover{border-color:var(--border2)} input.cell:focus{border-color:var(
 input.cell.wide{width:96px} input.cell.tiny{width:44px;text-align:center}
 input.cell.pos{width:340px;text-align:left}
 input.cell.w56{width:62px} input.cell.w84{width:96px}
+.fix-row{display:flex;gap:10px;align-items:baseline;padding:6px 4px;border-top:1px solid var(--grid);font-size:13px}
+.fix-row:first-child{border-top:none}
+.fix-row.done .fix-body{text-decoration:line-through;color:var(--muted)}
+.fix-row .fix-body{flex:1}
+.fix-row input{transform:translateY(2px)}
 .earn-to{color:var(--good-text);font-weight:700;font-size:12px;white-space:nowrap;cursor:help}
 .earn-to small{font-size:10px;font-weight:600;opacity:.85}
 .badge{display:inline-block;margin-left:6px;border-radius:999px;background:var(--modest-soft);color:var(--modest);
@@ -243,6 +248,10 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
     <p class="note">Payroll and operating spend rolled up per department — booked figures through Jul (payroll splits from Xero's department tracking, 97% tagged; untagged lands in Unassigned), model after. Headcount is the staffing plan for all months. Sales commissions and COGS are company-level and not in this rollup.</p>
     <figure class="chart" id="rollChart"></figure>
     <div class="tablewrap" id="rollTable"></div></div>
+  <div class="card"><h2>Growth &amp; scenario gap</h2>
+    <p class="note">Modest vs stretch as growth: month-over-month, fiscal quarter-over-quarter (FY starts April), and the one true year-over-year inside the horizon — Jan–Mar 2027 vs Jan–Mar 2026 booked. Sales revenue and net profit; booked months are identical under both scenarios.</p>
+    <div class="tablewrap" id="growthQ"></div>
+    <div class="tablewrap" style="margin-top:12px" id="growthM"></div></div>
   <details class="helper"><summary>How this model works</summary><div class="inner" id="notes"></div></details>
 </section>
 
@@ -287,7 +296,9 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
 <section class="tab" id="tab-trend">
   <div class="card"><h2>Operating expense, trailing 12 months</h2><p class="note">As booked (accrual), Aug 2025 – Jul 2026. Hover for the month's total.</p><figure class="chart" id="chartTTM"></figure></div>
   <div class="attn" id="attnCards"></div>
-  <div class="card"><h2>Department conflicts</h2><p class="note">Vendors where the budgeting tool's allocation disagrees with Xero's department tracking — the budgeting tool wins everywhere in this model.</p><div class="tablewrap" id="conflictTable"></div></div>
+  <div class="card"><h2>Accounting correction checklist <span class="pillcount" id="fixCount"></span> <button class="btn mini" id="copyFixes" style="margin-left:10px">Copy checklist</button></h2>
+    <p class="note">Every vendor whose department in this model differs from Xero's current tagging — the budget-tool overrides plus any reassignment you make on the Expenses tab. Tick items as they're recategorized in Xero; the list is the worklist for your bookkeeper.</p>
+    <div id="fixList"></div></div>
   <div class="card"><h2>All vendors, trailing 12 months</h2>
     <div class="toolbar"><input type="search" id="trSearch" placeholder="Search vendors…" aria-label="Search vendors"><span class="pillcount" id="trCount"></span></div>
     <div class="tablewrap tall" id="trendTable"></div></div>
@@ -347,6 +358,7 @@ function defaultState(){
   for (const r of MODEL.ramps) ramps[r.name] = r.vals.slice();
   return {
     exp: expenses,
+    fixes: {},
     levers: { cogsPct: +( (MODEL.totals.cogs.reduce((a,b)=>a+b,0) / MODEL.totals.revenue.reduce((a,b)=>a+b,0)) ).toFixed(3),
       otherInc: 3000, laborHedge: 0, opexHedge: 0,
       targetH1: 6350000, targetH2: 5700000, thrH1: 6350000, thrH2: 5700000, smRate: 0.015, dirRate: 0.035,
@@ -384,6 +396,7 @@ try {
     if (p.taxOn === undefined) p.taxOn = (p.tax || 0) > 0.005;
   }
   // migrate legacy raise fields into raise events
+  if (!S.fixes) S.fixes = {};
   if (!S.raises){
     S.raises = [];
     for (const p of S.staff){
@@ -807,6 +820,38 @@ document.getElementById("rollMetric").addEventListener("click", ev => {
   document.querySelectorAll("#rollMetric .btn").forEach(x => x.classList.toggle("on", x === b));
   renderAll();
 });
+/* ---------- growth & scenario gap ---------- */
+const QTRS = [[0,3,"Q4 FY25","Jan–Mar 26","booked"],[3,6,"Q1 FY26","Apr–Jun 26","booked"],
+  [6,9,"Q2 FY26","Jul–Sep 26","Jul booked"],[9,12,"Q3 FY26","Oct–Dec 26","model"],[12,15,"Q4 FY26","Jan–Mar 27","model"]];
+function renderGrowth(C){
+  const sum = (a, x, y) => a.slice(x, y).reduce((p, q) => p + q, 0);
+  const g = v => v == null ? `<span class="dim">—</span>` : `<span class="${v > 0.001 ? "pos" : v < -0.001 ? "neg" : ""}">${(v * 100).toFixed(1)}%</span>`;
+  const revQ = { mod: QTRS.map(([a, b]) => sum(C.rev.mod, a, b)), str: QTRS.map(([a, b]) => sum(C.rev.str, a, b)) };
+  const netQ = { mod: QTRS.map(([a, b]) => sum(C.net.mod, a, b)), str: QTRS.map(([a, b]) => sum(C.net.str, a, b)) };
+  const qoq = arr => arr.map((v, i) => i ? v / (arr[i - 1] || 1) - 1 : null);
+  let h = `<table class="data"><thead><tr><th>Fiscal quarters</th>` +
+    QTRS.map(q => `<th>${q[2]}<br><span style="font-weight:400">${q[3]} · ${q[4]}</span></th>`).join("") +
+    `<th>YoY Q4 vs Q4</th></tr></thead><tbody>`;
+  const yoyR = { mod: revQ.mod[4] / (revQ.mod[0] || 1) - 1, str: revQ.str[4] / (revQ.str[0] || 1) - 1 };
+  const yoyN = { mod: netQ.mod[4] / (netQ.mod[0] || 1) - 1, str: netQ.str[4] / (netQ.str[0] || 1) - 1 };
+  h += `<tr><td>Revenue — modest</td>${revQ.mod.map(v => `<td>${fmt$(v)}</td>`).join("")}<td rowspan="2" style="vertical-align:middle">${g(yoyR.mod)} M<br>${g(yoyR.str)} S</td></tr>`;
+  h += `<tr class="dim"><td class="dim">QoQ — modest</td>${qoq(revQ.mod).map(v => `<td>${g(v)}</td>`).join("")}</tr>`;
+  h += `<tr><td>Revenue — stretch</td>${revQ.str.map(v => `<td>${fmt$(v)}</td>`).join("")}<td></td></tr>`;
+  h += `<tr class="dim"><td class="dim">QoQ — stretch</td>${qoq(revQ.str).map(v => `<td>${g(v)}</td>`).join("")}<td></td></tr>`;
+  h += `<tr class="tot"><td>Stretch premium (revenue)</td>${revQ.str.map((v, i) => `<td>${fmt$(v - revQ.mod[i])}${revQ.mod[i] ? ` <span class="dim">${((v / revQ.mod[i] - 1) * 100).toFixed(0)}%</span>` : ""}</td>`).join("")}<td></td></tr>`;
+  h += `<tr><td>Net — modest</td>${netQ.mod.map(v => `<td class="${v < 0 ? "neg" : ""}">${fmt$(v)}</td>`).join("")}<td rowspan="2" style="vertical-align:middle">${g(yoyN.mod)} M<br>${g(yoyN.str)} S</td></tr>`;
+  h += `<tr><td>Net — stretch</td>${netQ.str.map(v => `<td class="${v < 0 ? "neg" : ""}">${fmt$(v)}</td>`).join("")}</tr>`;
+  h += `<tr class="tot"><td>Stretch premium (net)</td>${netQ.str.map((v, i) => `<td>${fmt$(v - netQ.mod[i])}</td>`).join("")}<td></td></tr>`;
+  document.getElementById("growthQ").innerHTML = h + "</tbody></table>";
+  const mom = arr => arr.map((v, i) => i ? v / (arr[i - 1] || 1) - 1 : null);
+  let m = `<table class="data"><thead><tr><th>Monthly</th>` +
+    MONTHS.map((mn, i) => `<th class="${i < ACT ? "actual" : ""}">${mn}</th>`).join("") + `</tr></thead><tbody>`;
+  m += `<tr><td>Revenue MoM — modest</td>${mom(C.rev.mod).map((v, i) => `<td class="${i < ACT ? "actual" : ""}">${g(v)}</td>`).join("")}</tr>`;
+  m += `<tr><td>Revenue MoM — stretch</td>${mom(C.rev.str).map((v, i) => `<td class="${i < ACT ? "actual" : ""}">${g(v)}</td>`).join("")}</tr>`;
+  m += `<tr class="tot"><td>Stretch premium /mo (revenue)</td>${C.rev.str.map((v, i) => `<td>${fmt$(v - C.rev.mod[i])}</td>`).join("")}</tr>`;
+  m += `<tr class="tot"><td>Stretch premium /mo (net)</td>${C.net.str.map((v, i) => `<td>${fmt$(v - C.net.mod[i])}</td>`).join("")}</tr>`;
+  document.getElementById("growthM").innerHTML = m + "</tbody></table>";
+}
 /* ---------- goals & break-even (Projections) ---------- */
 function goalHalf(C, [a, b, label], tKey, thrKey, ids){
   const L = S.levers;
@@ -1187,9 +1232,6 @@ function renderTrends(){
     <div class="card"><h3 style="color:var(--serious)">■ Dropping</h3><ul>${by("DROPPING").map(li).join("") || "<li>None</li>"}</ul></div>
     <div class="card"><h3 style="color:var(--modest)">■ New since May</h3><ul>${by("NEW").map(li).join("") || "<li>None</li>"}</ul></div>
     <div class="card"><h3 style="color:var(--good-text)">■ Growing</h3><ul>${by("GROWING").map(li).join("") || "<li>None</li>"}</ul></div>`;
-  document.getElementById("conflictTable").innerHTML = `<table class="data"><thead><tr><th>Vendor</th><th>Xero dept</th><th>Budget-tool dept</th><th>Used</th><th>~$/mo</th></tr></thead><tbody>` +
-    MODEL.vend_master.filter(v => v.contradiction).map(v =>
-      `<tr><td>${esc(v.vendor)}</td><td class="dim" style="text-align:left">${esc(v.xero_dept)}</td><td style="text-align:left">${esc(v.budget_dept)}</td><td style="text-align:left">${esc(v.budget_dept)}</td><td>${fmt$(v.base)}</td></tr>`).join("") + "</tbody></table>";
   renderTrendTable();
 }
 let trQ = "";
@@ -1210,6 +1252,61 @@ function renderTrendTable(){
     }).join("") + "</tbody></table>";
 }
 
+/* ---------- accounting correction checklist ---------- */
+const XVEND = new Map(MODEL.vend_master.map(v => [v.vendor, v]));
+function acctFixItems(){
+  const byVend = new Map();
+  for (const e of S.exp){
+    if (e.manual) continue;
+    const vm = XVEND.get(e.vendor);
+    if (!vm) continue;                     // budget-only vendors: nothing booked to retag yet
+    if (!byVend.has(e.vendor)) byVend.set(e.vendor, []);
+    byVend.get(e.vendor).push(e);
+  }
+  const items = [];
+  for (const [vend, rows] of byVend){
+    const vm = XVEND.get(vend);
+    const target = rows.filter(r => r.dept).sort((a, b) => (b.share || 1) - (a.share || 1))
+      .map(r => r.dept + (rows.length > 1 && r.share < 1 ? " (" + Math.round(r.share * 100) + "%)" : "")).join(" + ");
+    if (!target) continue;
+    const primary = rows[0].dept;
+    const differs = rows.length > 1 ? true : primary !== (vm.xero_dept || "");
+    if (!differs) continue;
+    if (primary === "Unassigned" && !vm.xero_dept) continue;   // nothing decided yet — becomes a correction once you pick a dept
+    items.push({ key: vend, vendor: vend, from: vm.xero_dept || "no department tag", to: target,
+      permo: vm.base, status: vm.status,
+      minor: Math.abs(vm.base) < 100 && !["STEADY","GROWING","DROPPING","PERIODIC","NEW"].includes(vm.status) });
+  }
+  items.sort((a, b) => (a.minor - b.minor) || Math.abs(b.permo) - Math.abs(a.permo));
+  items.push({ key: "__payroll", vendor: "Untagged payroll journals", from: "no department tag",
+    to: "tag department on payroll journals in Xero", permo: 60988 / 7 });
+  return items;
+}
+function renderFixes(){
+  const items = acctFixItems();
+  const done = items.filter(i => S.fixes[i.key]).length;
+  document.getElementById("fixCount").textContent = done + " of " + items.length + " corrected";
+  const main = items.filter(i => !i.minor), minor = items.filter(i => i.minor);
+  const row = i => `
+    <div class="fix-row${S.fixes[i.key] ? " done" : ""}">
+      <input type="checkbox" data-id="${esc(i.key)}" data-k="fixdone"${S.fixes[i.key] ? " checked" : ""} aria-label="Corrected in Xero: ${esc(i.vendor)}">
+      <span class="fix-body"><b>${esc(i.vendor)}</b> — ${i.key === "__payroll" ? esc(i.to) : `retag from <i>${esc(i.from)}</i> to <b>${esc(i.to)}</b>`}</span>
+      <span class="subtle">${i.permo ? "~" + fmt$(Math.abs(i.permo)) + "/mo" : ""}</span>
+    </div>`;
+  document.getElementById("fixList").innerHTML =
+    (main.map(row).join("") || `<p class="subtle">Nothing to correct — model and Xero agree.</p>`) +
+    (minor.length ? `<details style="margin-top:8px"><summary class="subtle" style="cursor:pointer">${minor.length} minor / historical items (one-times & &lt;$100/mo)</summary>${minor.map(row).join("")}</details>` : "");
+}
+delegate("fixList", (id, k, val) => { if (k === "fixdone"){ if (val) S.fixes[id] = true; else delete S.fixes[id]; } });
+document.getElementById("copyFixes").addEventListener("click", async ev => {
+  const txt = "SCW accounting corrections — recategorize in Xero (" + MODEL.built + " model)\n" +
+    acctFixItems().map(i => (S.fixes[i.key] ? "[x] " : "[ ] ") + i.vendor + " — " +
+      (i.key === "__payroll" ? i.to : "from \"" + i.from + "\" to \"" + i.to + "\"") +
+      (i.permo ? " (~" + fmt$(Math.abs(i.permo)) + "/mo)" : "")).join("\n");
+  try { await navigator.clipboard.writeText(txt); ev.target.textContent = "Copied ✓"; }
+  catch (e) { prompt("Copy this checklist:", txt); }
+  setTimeout(() => ev.target.textContent = "Copy checklist", 1600);
+});
 /* ---------- events & init ---------- */
 document.getElementById("tabs").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-tab]"); if (!b) return;
@@ -1359,8 +1456,8 @@ document.getElementById("btnLoad").addEventListener("click", () => {
 
 function renderAll(){
   const C = compute();
-  renderTiles(C); renderGoals(C); renderProjLevers(); renderProj(C); renderRollup(C);
-  renderSales(C); renderRaisePlanner(); renderStaff(C); renderExpenses(C);
+  renderTiles(C); renderGoals(C); renderProjLevers(); renderProj(C); renderRollup(C); renderGrowth(C);
+  renderSales(C); renderRaisePlanner(); renderStaff(C); renderExpenses(C); renderFixes();
 }
 
 renderAll();
