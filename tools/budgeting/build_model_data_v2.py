@@ -79,7 +79,10 @@ for acct, i, contact, debit, credit in records:
     if not c or not c[0].isdigit(): continue
     net = debit - credit
     if c in COGS: totals_ttm["cogs"][i] += net
-    elif c in PAYROLL_PL: totals_ttm["payroll"][i] += net
+    elif c in PAYROLL_PL:
+        totals_ttm["payroll"][i] += net
+        if c == "66000": totals_ttm["wages"][i] += net
+        elif c == "6529": totals_ttm["ptax"][i] += net
     elif is_opex(c):
         totals_ttm["opex"][i] += net
         v = re.sub(r"\s+"," ", contact.split("\n")[0]).strip()
@@ -218,6 +221,7 @@ model = dict(
         ttm_cogs=[round(x,2) for x in totals_ttm["cogs"]],
         ttm_payroll=[round(x,2) for x in totals_ttm["payroll"]]),
     staff=v1["staff"], sales=v1["sales"], ramps=v1["ramps"],
+    employer_tax_rate=round(sum(totals_ttm["ptax"]) / sum(totals_ttm["wages"]), 4),
     built="2026-08-21", actual_months=7)
 json.dump(model, open(os.path.join(HERE, "model_data_v2.json"), "w"))
 print("vendors:", len(vend_master), "missing:", len(missing))

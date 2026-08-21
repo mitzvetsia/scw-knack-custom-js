@@ -93,7 +93,7 @@ main section.tab{display:none} main section.tab.on{display:block}
 table.data{border-collapse:collapse;width:100%;font-size:12.5px}
 table.data th{position:sticky;top:0;background:var(--surface2);color:var(--ink2);text-align:right;
   font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;padding:7px 9px;white-space:nowrap;z-index:2}
-table.data th:first-child,table.data td:first-child{text-align:left;position:sticky;left:0;background:var(--surface);z-index:1}
+table.data th:first-child,table.data td:first-child{text-align:left;position:sticky;left:0;background:var(--surface);z-index:1;min-width:270px;max-width:320px}
 table.data th:first-child{background:var(--surface2);z-index:3}
 table.data td{padding:5px 9px;text-align:right;border-top:1px solid var(--grid);white-space:nowrap;
   font-variant-numeric:tabular-nums}
@@ -109,13 +109,23 @@ input.cell{width:74px;border:1px solid transparent;background:transparent;border
   text-align:right;font-variant-numeric:tabular-nums;color:var(--modest);font-weight:600}
 input.cell:hover{border-color:var(--border2)} input.cell:focus{border-color:var(--modest);background:var(--surface)}
 input.cell.wide{width:96px} input.cell.tiny{width:44px;text-align:center}
-input.cell.pos{width:210px;text-align:left}
+input.cell.pos{width:230px;text-align:left}
+input.cell.w56{width:60px} input.cell.w84{width:88px}
+.badge{display:inline-block;margin-left:6px;border-radius:999px;background:var(--modest-soft);color:var(--modest);
+  font-size:10px;font-weight:700;padding:1px 7px;vertical-align:middle;white-space:nowrap}
+td.hc-derived{text-align:center;color:var(--ink2);font-weight:600;background:color-mix(in srgb, var(--modest-soft) 40%, transparent)}
+tr.rowopen>td{background:color-mix(in srgb, var(--surface2) 60%, var(--surface))}
+.role-detail{display:flex;flex-wrap:wrap;gap:10px 40px;padding:8px 4px 10px;white-space:normal}
+.rd-block h4{margin:0 0 7px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.fld{display:inline-flex;flex-direction:column;gap:2px}
+.fld label{font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600}
 tr.ppl>td{background:var(--surface2);border-top:1px dashed var(--border2)}
 .ppl-grid{display:flex;flex-direction:column;gap:2px;padding:2px 0 4px}
-.ppl-row{display:flex;gap:8px;align-items:center;font-size:12px}
-.ppl-row .lab{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+.ppl-row{display:flex;gap:10px;align-items:flex-end;font-size:12px;flex-wrap:wrap}
 .btn.mini{padding:2px 8px;font-size:11px;border-radius:6px}
 .exp-toggle{border:none;background:none;cursor:pointer;color:var(--muted);font-size:11px;padding:0 4px}
+tr.deptsec td{cursor:default}
+tr.deptsec .exp-toggle{font-size:12px;color:var(--ink2)}
 .exp-toggle:hover{color:var(--ink)}
 select.cell{border:1px solid var(--border2);background:var(--surface);border-radius:6px;padding:3px 5px;
   color:var(--modest);font-weight:600;max-width:130px}
@@ -243,8 +253,10 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
 
 <section class="tab" id="tab-staff">
   <div class="card"><h2>Payroll: model vs booked</h2><p class="note">Bars are Xero booked payroll (wages + tax + benefits, commissions included). The line is this tab's fully-loaded model — expect it to sit under the bars in strong commission months.</p><figure class="chart" id="chartPayroll"></figure></div>
-  <div class="card"><h2>Department-wide raises</h2><p class="note">Applies on top of any per-role raise, from each role's effective month.</p><div class="levers" style="border:none;padding:0;margin:0" id="deptRaises"></div></div>
-  <div class="card"><h2>Roster &amp; headcount plan</h2><p class="note">Fully-loaded monthly cost = (salary/12 + $ raise + salary/12 × raise %) × (1 + tax%) + health + per-seat licenses. Set headcount by month to model hires and exits; blue cells are editable.</p>
+  <div class="card"><h2>Raise planner</h2><p class="note">Every planned raise in one list — pick who it covers (a whole department, one role, or a named person), how much (% or dollars), and when it starts. Raises stack: a person covered by a department raise and their own raise gets both.</p>
+    <div id="raisePlanner"></div>
+    <button class="btn addrow" id="addRaise">+ Plan a raise</button></div>
+  <div class="card"><h2>Roster &amp; headcount plan</h2><p class="note">Fully-loaded monthly cost = (salary/12 + planned raises) × (1 + tax&amp;match %) + health + per-seat licenses. Set headcount by month (later months follow), or open a role (▸) to name its people. Tax defaults to Xero's actual employer tax+match rate — <button class="btn mini" id="taxAll"></button> resets every role to it.</p>
     <div class="tablewrap tall" id="staffTable"></div>
     <button class="btn addrow" id="addRole">+ Add role</button>
   </div>
@@ -335,9 +347,10 @@ function defaultState(){
             /Account Manager/.test(s.role) ? 0.015 : /Senior Account/.test(s.role) ? 0.0175 : 0 })),
     ramps,
     staff: MODEL.staff.map((s, i) => ({ id: "p" + i, dept: s.dept || "Unassigned", position: s.position,
-      ote: s.ote, hdv: s.hdv, lic: s.lic, tax: s.tax, raiseD: 0, raiseP: 0, raiseM: 9,
-      hc: Array(NM).fill(s.hc) })),
-    deptRaise: Object.fromEntries(DEPTS.filter(d => d !== "Unassigned").map(d => [d, 0])),
+      ote: s.ote, hdv: s.hdv, lic: s.lic,
+      tax: (s.tax != null && s.tax >= 0.03) ? s.tax : MODEL.employer_tax_rate,
+      raiseD: 0, raiseP: 0, raiseM: 9, hc: Array(NM).fill(s.hc) })),
+    raises: [],
   };
 }
 let S = defaultState();
@@ -354,6 +367,17 @@ try {
   // migrate pre-15-month configs (12-month arrays / to==12 meaning "through end")
   for (const p of S.staff) while (p.hc.length < NM) p.hc.push(p.hc.at(-1) ?? 0);
   for (const e of S.exp) if (e.to === 12) e.to = NM;
+  // migrate legacy raise fields into raise events
+  if (!S.raises){
+    S.raises = [];
+    for (const p of S.staff){
+      if (p.raiseD) S.raises.push({ id: "r" + p.id + "d", scope: "role", target: p.id, kind: "mo", amount: p.raiseD, month: p.raiseM || 9 });
+      if (p.raiseP) S.raises.push({ id: "r" + p.id + "p", scope: "role", target: p.id, kind: "pct", amount: p.raiseP, month: p.raiseM || 9 });
+      p.raiseD = 0; p.raiseP = 0;
+    }
+    for (const [d, v] of Object.entries(S.deptRaise || {}))
+      if (v) S.raises.push({ id: "rd" + d, scope: "dept", target: d, kind: "pct", amount: v, month: 9 });
+  }
 } catch (e) {}
 function persist(){ try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) {} }
 
@@ -370,15 +394,27 @@ function repRevenue(rep, m, key){
   if (tenure < 1) return 0;
   return (ramp[Math.min(12, tenure) - 1] || 0) * (rep[key] || 0);
 }
+function raiseFor(role, personId, m){
+  let pct = 0, dmo = 0;
+  for (const ev of (S.raises || [])){
+    if (m < (ev.month || 1) || !ev.amount) continue;
+    const hit = (ev.scope === "dept" && ev.target === role.dept) ||
+                (ev.scope === "role" && ev.target === role.id) ||
+                (ev.scope === "person" && personId && ev.target === personId);
+    if (!hit) continue;
+    if (ev.kind === "pct") pct += ev.amount;
+    else if (ev.kind === "yr") dmo += ev.amount / 12;
+    else dmo += ev.amount;
+  }
+  return { pct, dmo };
+}
 function personCost(role, p, m){
   if (m < (p.from || 1) || m > (p.to || NM)) return 0;
   const baseSal = p.sal != null ? p.sal : role.ote;
   const sal = (p.sal2 != null && m >= (p.chgM || 1)) ? p.sal2 : baseSal;
   const labor = (sal || 0) / 12;
-  const dr = S.deptRaise[role.dept] || 0;
-  const raised = m >= (role.raiseM || 1);
-  const base = raised ? (labor + (role.raiseD || 0) + labor * ((role.raiseP || 0) + dr)) : labor;
-  return base * (1 + (role.tax || 0)) + (role.hdv || 0) + (role.lic || 0);
+  const r = raiseFor(role, p.id, m);
+  return (labor + r.dmo + labor * r.pct) * (1 + (role.tax || 0)) + (role.hdv || 0) + (role.lic || 0);
 }
 function staffHC(row, m){
   return (row.people && row.people.length)
@@ -389,11 +425,12 @@ function staffCost(row, m){
   if (row.people && row.people.length)
     return row.people.reduce((a, p) => a + personCost(row, p, m), 0);
   const labor = (row.ote || 0) / 12;
-  const dr = S.deptRaise[row.dept] || 0;
-  const cur = labor * (1 + (row.tax || 0)) + (row.hdv || 0) + (row.lic || 0);
-  const nw = (labor + (row.raiseD || 0) + labor * ((row.raiseP || 0) + dr)) * (1 + (row.tax || 0)) + (row.hdv || 0) + (row.lic || 0);
-  const hc = row.hc[m - 1] || 0;
-  return hc * (m >= (row.raiseM || 1) ? nw : cur);
+  const r = raiseFor(row, null, m);
+  return (row.hc[m - 1] || 0) * ((labor + r.dmo + labor * r.pct) * (1 + (row.tax || 0)) + (row.hdv || 0) + (row.lic || 0));
+}
+function headCost(row, m){
+  const labor = (row.ote || 0) / 12, r = raiseFor(row, null, m);
+  return (labor + r.dmo + labor * r.pct) * (1 + (row.tax || 0)) + (row.hdv || 0) + (row.lic || 0);
 }
 function compute(){
   const L = S.levers;
@@ -780,6 +817,57 @@ document.getElementById("repMoScn").addEventListener("click", ev => {
   renderRepMonths();
 });
 
+/* ---------- raise planner ---------- */
+function raiseTargets(){
+  const roles = S.staff.map(p => ({ v: p.id, t: p.dept.slice(0, 14) + " — " + p.position }));
+  const people = [];
+  for (const p of S.staff) for (const pp of (p.people || [])) people.push({ v: pp.id, t: pp.name + " (" + p.position + ")" });
+  return { dept: DEPTS.filter(d => d !== "Unassigned").map(d => ({ v: d, t: d })), role: roles, person: people };
+}
+function raiseImpact(ev){
+  let now = 0, aft = 0, heads = 0;
+  const m0 = Math.max(1, (ev.month || 1) - 1), m1 = Math.min(NM, ev.month || 1);
+  for (const p of S.staff){
+    const covers = (ev.scope === "dept" && ev.target === p.dept) || (ev.scope === "role" && ev.target === p.id) ||
+      (ev.scope === "person" && (p.people || []).some(x => x.id === ev.target));
+    if (!covers) continue;
+    if (ev.scope === "person"){
+      const pp = p.people.find(x => x.id === ev.target);
+      now += personCost(p, pp, m0) || personCost(p, pp, m1); aft += personCost(p, pp, m1); heads += 1;
+    } else {
+      now += staffCost(p, m0) || staffCost(p, m1); aft += staffCost(p, m1); heads += staffHC(p, m1);
+    }
+  }
+  return { delta: aft - now, heads };
+}
+function renderRaisePlanner(){
+  const T = raiseTargets();
+  const rows = [...(S.raises || [])].sort((a, b) => (a.month || 1) - (b.month || 1)).map(ev => {
+    const opts = T[ev.scope] || [];
+    const imp = raiseImpact(ev);
+    return `<div class="ppl-row raise-row">
+      <span class="fld"><label>Who</label><select class="cell" data-id="${ev.id}" data-k="rscope">
+        <option value="dept"${ev.scope === "dept" ? " selected" : ""}>Department</option>
+        <option value="role"${ev.scope === "role" ? " selected" : ""}>Role</option>
+        <option value="person"${ev.scope === "person" ? " selected" : ""}>Person</option></select></span>
+      <span class="fld"><label>${ev.scope === "person" ? "Named person" : ev.scope === "role" ? "Which role" : "Which department"}</label>
+        <select class="cell" style="max-width:250px" data-id="${ev.id}" data-k="rtarget">${
+          (opts.length ? opts : [{v: "", t: ev.scope === "person" ? "— name people on roles first —" : "—"}])
+          .map(o => `<option value="${esc(o.v)}"${o.v === ev.target ? " selected" : ""}>${esc(o.t)}</option>`).join("")}</select></span>
+      <span class="fld"><label>Amount</label><input class="cell w56" data-id="${ev.id}" data-k="ramount" value="${ev.kind === "pct" ? (ev.amount * 100).toFixed(1) : Math.round(ev.amount).toLocaleString("en-US")}"></span>
+      <span class="fld"><label>Unit</label><select class="cell" data-id="${ev.id}" data-k="rkind">
+        <option value="pct"${ev.kind === "pct" ? " selected" : ""}>%</option>
+        <option value="yr"${ev.kind === "yr" ? " selected" : ""}>$ / yr</option>
+        <option value="mo"${ev.kind === "mo" ? " selected" : ""}>$ / mo</option></select></span>
+      <span class="fld"><label>Starts</label><select class="cell" data-id="${ev.id}" data-k="rmonth">${
+        MONTHS.map((mn, i) => `<option value="${i + 1}"${(ev.month || 1) === i + 1 ? " selected" : ""}>${esc(mn)}${i < 12 ? " ’26" : ""}</option>`).join("")}</select></span>
+      <span class="fld"><label>&nbsp;</label><span class="subtle">${ev.target ? (imp.heads ? "+" + fmt$(imp.delta) + "/mo across " + imp.heads + " head" + (imp.heads > 1 ? "s" : "") : "covers nobody yet") : ""}</span></span>
+      <span class="fld"><label>&nbsp;</label><button class="btn mini" data-id="${ev.id}" data-k="rdel" title="Remove raise">✕</button></span>
+    </div>`;
+  }).join("");
+  document.getElementById("raisePlanner").innerHTML = rows ||
+    `<p class="subtle" style="margin:4px 0">No raises planned. “+ Plan a raise” to model one — e.g. Software Development +3% from Oct ’26, or one person +$5,000/yr from Jan ’27.</p>`;
+}
 /* ---------- staffing tab ---------- */
 function renderStaff(C){
   const booked = MODEL.totals.payroll.map((v, i) => i < ACT ? v : null);
@@ -787,12 +875,10 @@ function renderStaff(C){
     [{name:"Booked payroll (Xero)", color:"--aqua", vals:booked.concat().slice(0, 12), kind:"bar"},
      {name:"Staffing model", color:"--violet", vals:C.staffTotal}],
     {aria:"Payroll model vs booked", divider:true, w:980});
-  document.getElementById("deptRaises").innerHTML = Object.keys(S.deptRaise).map(d =>
-    `<div class="lever"><label>${esc(d.replace("03 - HR & Business Administration Manager", "HR & Business Admin"))}</label>
-     <input class="lever-in" data-id="${esc(d)}" data-k="deptraise" value="${(S.deptRaise[d] * 100).toFixed(1)}"><span class="unit">%</span></div>`).join("");
-  let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Health/mo</th><th>Lic/mo</th>
-    <th>Tax %</th><th>$ raise/mo</th><th>Raise %</th><th>Eff. mo</th><th>Cost/head</th>` +
-    MONTHS.map(m => `<th>${m}</th>`).join("") + `<th>FY cost</th><th></th></tr></thead><tbody>`;
+
+  const NCOL = 6 + NM + 2;   // pos, salary, health, lic, tax, cost/head + months + total + del
+  let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Health</th><th>Lic</th><th>Tax %</th><th>Cost/head</th>` +
+    MONTHS.map(m => `<th>${m}</th>`).join("") + `<th>15-mo cost</th><th></th></tr></thead><tbody>`;
   const dOrder = d => { const i = DEPTS.indexOf(d); return i < 0 ? DEPTS.length : i; };
   const sorted = [...S.staff].sort((a, b) => dOrder(a.dept) - dOrder(b.dept));
   const fyOf = new Map(), deptFy = new Map();
@@ -800,51 +886,67 @@ function renderStaff(C){
     let fy = 0; for (let m = 1; m <= NM; m++) fy += staffCost(p, m);
     fyOf.set(p.id, fy); deptFy.set(p.dept, (deptFy.get(p.dept) || 0) + fy);
   }
+  const deptN = new Map();
+  for (const p of sorted) deptN.set(p.dept, (deptN.get(p.dept) || 0) + 1);
   let lastDept = null;
   for (const p of sorted){
     if (p.dept !== lastDept){
       lastDept = p.dept;
-      h += `<tr class="sec"><td colspan="${9 + NM}">${esc(p.dept)}</td><td>${fmt$(deptFy.get(p.dept))}</td><td></td></tr>`;
+      const folded = collapsedDepts.has(p.dept);
+      h += `<tr class="sec deptsec"><td colspan="${NCOL - 2}"><button class="exp-toggle" data-dept="${esc(p.dept)}" data-k="deptfold" aria-expanded="${!folded}">${folded ? "▸" : "▾"}</button> ${esc(p.dept)} <span class="dim" style="font-weight:400">· ${deptN.get(p.dept)} role${deptN.get(p.dept) > 1 ? "s" : ""}${folded ? " (collapsed)" : ""}</span></td><td>${fmt$(deptFy.get(p.dept))}</td><td></td></tr>`;
     }
-    const labor = p.ote / 12, dr = S.deptRaise[p.dept] || 0;
-    const nw = (labor + p.raiseD + labor * (p.raiseP + dr)) * (1 + p.tax) + p.hdv + p.lic;
+    if (collapsedDepts.has(p.dept)) continue;
+    const cur = headCost(p, 1), nw = headCost(p, NM);
+    const hasRaise = Math.abs(nw - cur) > 0.5;
+    const roleRaises = (S.raises || []).filter(ev => (ev.scope === "role" && ev.target === p.id) ||
+      (ev.scope === "dept" && ev.target === p.dept)).length;
     const hasPpl = p.people && p.people.length, open = openRoles.has(p.id);
-    const fy = fyOf.get(p.id);
-    h += `<tr><td title="${esc(p.dept)} — ${esc(p.position)}"><select class="cell" style="font-size:10px;max-width:150px" data-id="${p.id}" data-k="dept" title="Department — changing it moves the role">${DEPTS.map(d => `<option${d === p.dept ? " selected" : ""}>${esc(d)}</option>`).join("")}</select><br>
-      <button class="exp-toggle" data-id="${p.id}" data-k="toggle" title="Name the specific people in this role">${open ? "▾" : "▸"}${hasPpl ? " " + p.people.length + "👤" : ""}</button><input class="cell pos" data-id="${p.id}" data-k="position" value="${esc(p.position)}"></td>
-      <td><input class="cell" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}"></td>
-      <td><input class="cell tiny" data-id="${p.id}" data-k="hdv" value="${p.hdv}"></td>
-      <td><input class="cell tiny" data-id="${p.id}" data-k="lic" value="${Math.round(p.lic)}"></td>
+    h += `<tr${open ? ' class="rowopen"' : ""}><td>
+      <button class="exp-toggle" data-id="${p.id}" data-k="toggle" aria-expanded="${open}" title="${open ? "Collapse" : "Open"} role details — people, department, raises">${open ? "▾" : "▸"}</button><input class="cell pos" data-id="${p.id}" data-k="position" value="${esc(p.position)}" title="${esc(p.dept)} — ${esc(p.position)}">${hasPpl ? `<span class="badge" title="${p.people.map(x => esc(x.name)).join(", ")}">${p.people.length} named</span>` : ""}</td>
+      <td><input class="cell w84" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}"></td>
+      <td><input class="cell w56" data-id="${p.id}" data-k="hdv" value="${p.hdv}"></td>
+      <td><input class="cell w56" data-id="${p.id}" data-k="lic" value="${Math.round(p.lic)}"></td>
       <td><input class="cell tiny" data-id="${p.id}" data-k="tax" value="${(p.tax * 100).toFixed(0)}"></td>
-      <td><input class="cell tiny" data-id="${p.id}" data-k="raiseD" value="${p.raiseD}"></td>
-      <td><input class="cell tiny" data-id="${p.id}" data-k="raiseP" value="${(p.raiseP * 100).toFixed(1)}"></td>
-      <td><input class="cell tiny" data-id="${p.id}" data-k="raiseM" value="${p.raiseM}"></td>
-      <td>${fmt$(nw)}</td>` +
+      <td title="${hasRaise ? `${fmt$(cur)}/head now → ${fmt$(nw)}/head by Mar ’27 (raise planner)` : "Fully-loaded monthly cost per head"}">${fmt$(cur)}${hasRaise ? ` <span class="dim">→ ${fmt$(nw)}</span>` : ""}</td>` +
       Array.from({length:NM}, (_, i) => hasPpl
-        ? `<td class="dim" title="Headcount comes from the named people below">${staffHC(p, i + 1)}</td>`
-        : `<td><input class="cell tiny" data-id="${p.id}" data-k="hc${i}" value="${p.hc[i]}"></td>`).join("") +
-      `<td>${fmt$(fy)}</td><td><button class="btn" data-id="${p.id}" data-k="del" title="Remove role">✕</button></td></tr>`;
+        ? `<td class="hc-derived" title="Derived from the ${p.people.length} named people below">${staffHC(p, i + 1) || "·"}</td>`
+        : `<td><input class="cell tiny" data-id="${p.id}" data-k="hc${i}" value="${p.hc[i]}" title="${MONTHS[i]} headcount — later months follow automatically"></td>`).join("") +
+      `<td><b>${fmt$(fyOf.get(p.id))}</b></td><td><button class="btn mini" data-id="${p.id}" data-k="del" title="Remove role">✕</button></td></tr>`;
     if (open){
-      const rows = (p.people || []).map(pp => {
+      const ppl = (p.people || []).map(pp => {
         const c0 = personCost(p, pp, Math.max(1, pp.from || 1));
         const cN = personCost(p, pp, Math.min(NM, pp.to || NM));
         const changed = pp.sal2 != null && cN !== c0;
-        const costTxt = c0 ? fmt$(c0) + "/mo" + (changed ? " → " + fmt$(cN) + "/mo from " + esc(MONTHS[Math.min(NM, Math.max(1, pp.chgM || 1)) - 1]) : " loaded") : "";
-        return `<div class="ppl-row"><span class="lab">who</span><input class="cell pos" data-id="${pp.id}" data-k="pname" value="${esc(pp.name)}">
-          <span class="lab">salary/yr</span><input class="cell" data-id="${pp.id}" data-k="psal" value="${pp.sal == null ? "" : Math.round(pp.sal).toLocaleString("en-US")}" placeholder="= role ${Math.round(p.ote / 1000)}K">
-          <span class="lab">new salary</span><input class="cell" data-id="${pp.id}" data-k="psal2" value="${pp.sal2 == null ? "" : Math.round(pp.sal2).toLocaleString("en-US")}" placeholder="—" title="Leave blank if no change">
-          <span class="lab">change mo</span><input class="cell tiny" data-id="${pp.id}" data-k="pchg" value="${pp.chgM || ""}" placeholder="—" title="1 = Jan 2026 … 15 = Mar 2027">
-          <span class="lab">starts</span><input class="cell tiny" data-id="${pp.id}" data-k="pfrom" value="${pp.from || 1}" title="Month # they start in this role: 1 = Jan 2026 … 15 = Mar 2027 (${esc(MONTHS[Math.min(NM, Math.max(1, pp.from || 1)) - 1])})">
-          <span class="lab">ends</span><input class="cell tiny" data-id="${pp.id}" data-k="pto" value="${pp.to || NM}" title="Last month in role (${esc(MONTHS[Math.min(NM, Math.max(1, pp.to || NM)) - 1])})">
-          <span class="subtle">${costTxt}</span>
-          <button class="btn mini" data-id="${pp.id}" data-k="pdel">✕</button></div>`;
+        const costTxt = c0 ? fmt$(c0) + "/mo" + (changed ? " → " + fmt$(cN) + "/mo from " + esc(MONTHS[Math.min(NM, Math.max(1, pp.chgM || 1)) - 1]) : "") : "";
+        return `<div class="ppl-row">
+          <span class="fld"><label>Person</label><input class="cell pos" data-id="${pp.id}" data-k="pname" value="${esc(pp.name)}"></span>
+          <span class="fld"><label>Salary/yr</label><input class="cell w84" data-id="${pp.id}" data-k="psal" value="${pp.sal == null ? "" : Math.round(pp.sal).toLocaleString("en-US")}" placeholder="role: ${Math.round(p.ote / 1000)}K"></span>
+          <span class="fld"><label>New salary</label><input class="cell w84" data-id="${pp.id}" data-k="psal2" value="${pp.sal2 == null ? "" : Math.round(pp.sal2).toLocaleString("en-US")}" placeholder="—"></span>
+          <span class="fld"><label>Change mo</label><input class="cell tiny" data-id="${pp.id}" data-k="pchg" value="${pp.chgM || ""}" placeholder="—" title="1 = Jan 2026 … 15 = Mar 2027"></span>
+          <span class="fld"><label>Starts</label><input class="cell tiny" data-id="${pp.id}" data-k="pfrom" value="${pp.from || 1}" title="${esc(MONTHS[Math.min(NM, Math.max(1, pp.from || 1)) - 1])}"></span>
+          <span class="fld"><label>Ends</label><input class="cell tiny" data-id="${pp.id}" data-k="pto" value="${pp.to || NM}" title="${esc(MONTHS[Math.min(NM, Math.max(1, pp.to || NM)) - 1])}"></span>
+          <span class="fld"><label>&nbsp;</label><span class="subtle">${costTxt}</span></span>
+          <span class="fld"><label>&nbsp;</label><button class="btn mini" data-id="${pp.id}" data-k="pdel" title="Remove person">✕</button></span>
+        </div>`;
       }).join("");
-      h += `<tr class="ppl"><td colspan="${11 + NM}"><div class="ppl-grid">${rows}
-        <div class="ppl-row"><button class="btn mini" data-id="${p.id}" data-k="padd">+ Add person</button>
-        <span class="subtle">Model each person: started month X at salary Y (blank = copy from role) · new salary + change mo = WHEN their raise lands (role-level raises still stack on top) · starts/ends = hire and exit months (1 = Jan 2026 … 15 = Mar 2027). Named people replace this role's headcount grid.</span></div></div></td></tr>`;
+      h += `<tr class="ppl"><td colspan="${NCOL}"><div class="role-detail">
+        <div class="rd-block">
+          <h4>Role settings</h4>
+          <div class="ppl-row">
+            <span class="fld"><label>Department</label><select class="cell" style="max-width:210px" data-id="${p.id}" data-k="dept">${DEPTS.map(d => `<option${d === p.dept ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></span>
+            <span class="fld"><label>&nbsp;</label><span class="subtle">Raises for this role live in the Raise planner above${roleRaises ? " — " + roleRaises + " currently apply" : ""}.</span></span>
+          </div>
+        </div>
+        <div class="rd-block">
+          <h4>People in this role ${hasPpl ? "" : "<span class='subtle' style='font-weight:400;text-transform:none'>— none named; the headcount grid drives this role</span>"}</h4>
+          <div class="ppl-grid">${ppl}
+          <div class="ppl-row"><button class="btn mini" data-id="${p.id}" data-k="padd">+ Add person</button>
+          <span class="subtle">Each person: started month X at salary Y (blank = role salary) · new salary + change mo = when their raise lands · naming people makes them drive this role's headcount.</span></div></div>
+        </div>
+      </div></td></tr>`;
     }
   }
-  h += `<tr class="tot"><td>TOTAL</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>` +
+  h += `<tr class="tot"><td>TOTAL</td><td></td><td></td><td></td><td></td><td></td>` +
     Array.from({length:NM}, (_, i) => `<td>${fmtK(C.staffTotal[i])}</td>`).join("") +
     `<td>${fmt$(C.staffTotal.reduce((a, b) => a + b, 0))}</td><td></td></tr>`;
   document.getElementById("staffTable").innerHTML = h + "</tbody></table>";
@@ -978,9 +1080,6 @@ delegate("staffTable", (id, k, val) => {
   else if (k === "hdv") p.hdv = num(val, p.hdv);
   else if (k === "lic") p.lic = num(val, p.lic);
   else if (k === "tax") p.tax = num(val, p.tax * 100) / 100;
-  else if (k === "raiseD") p.raiseD = num(val, 0);
-  else if (k === "raiseP") p.raiseP = num(val, 0) / 100;
-  else if (k === "raiseM") p.raiseM = Math.round(num(val, 9));
   else { const m = k.match(/^hc(\d+)$/);
     if (m){ const i = +m[1], v = num(val, 0);
       for (let j = i; j < NM; j++) p.hc[j] = v;   // fill forward: later months follow
@@ -1001,9 +1100,15 @@ delegate("staffTable", (id, k, val) => {
   }
 });
 const openRoles = new Set();
+const collapsedDepts = new Set();
 document.getElementById("staffTable").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-k]"); if (!b) return;
   const k = b.dataset.k, id = b.dataset.id;
+  if (k === "deptfold"){
+    const d = b.dataset.dept;
+    collapsedDepts.has(d) ? collapsedDepts.delete(d) : collapsedDepts.add(d);
+    renderAll(); return;
+  }
   if (k === "del"){ S.staff = S.staff.filter(r => r.id !== id); }
   else if (k === "toggle"){ openRoles.has(id) ? openRoles.delete(id) : openRoles.add(id); renderAll(); return; }
   else if (k === "padd"){
@@ -1018,7 +1123,26 @@ document.getElementById("staffTable").addEventListener("click", ev => {
   else return;
   persist(); scheduleRender();
 });
-delegate("deptRaises", (id, k, val) => { if (k === "deptraise") S.deptRaise[id] = num(val, 0) / 100; });
+delegate("raisePlanner", (id, k, val) => {
+  const ev = (S.raises || []).find(r => r.id === id); if (!ev) return;
+  if (k === "rscope"){ ev.scope = val; const t = raiseTargets()[val]; ev.target = t.length ? t[0].v : ""; }
+  else if (k === "rtarget") ev.target = val;
+  else if (k === "ramount") ev.amount = ev.kind === "pct" ? num(val, 0) / 100 : num(val, 0);
+  else if (k === "rkind"){
+    const shown = ev.kind === "pct" ? ev.amount * 100 : ev.amount;
+    ev.kind = val; ev.amount = val === "pct" ? shown / 100 : shown;
+  }
+  else if (k === "rmonth") ev.month = Math.min(NM, Math.max(1, Math.round(num(val, 1))));
+});
+document.getElementById("raisePlanner").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k=rdel]"); if (!b) return;
+  S.raises = S.raises.filter(r => r.id !== b.dataset.id); persist(); scheduleRender();
+});
+document.getElementById("addRaise").addEventListener("click", () => {
+  S.raises = S.raises || [];
+  S.raises.push({ id: "rz" + Date.now(), scope: "dept", target: DEPTS[0], kind: "pct", amount: 0.03, month: 10 });
+  persist(); scheduleRender();
+});
 delegate("expTable", (id, k, val) => {
   const e = S.exp.find(r => r.id === id); if (!e) return;
   if (k === "on") e.on = val;
@@ -1071,8 +1195,14 @@ document.getElementById("btnLoad").addEventListener("click", () => {
 function renderAll(){
   const C = compute();
   renderTiles(C); renderGoals(C); renderProjLevers(); renderProj(C);
-  renderSales(C); renderStaff(C); renderExpenses(C);
+  renderSales(C); renderRaisePlanner(); renderStaff(C); renderExpenses(C);
 }
+const taxBtn = document.getElementById("taxAll");
+taxBtn.textContent = "apply " + (MODEL.employer_tax_rate * 100).toFixed(1) + "% to all";
+taxBtn.addEventListener("click", () => {
+  for (const p of S.staff) p.tax = MODEL.employer_tax_rate;
+  persist(); scheduleRender();
+});
 renderAll();
 renderTrends();
 </script>
