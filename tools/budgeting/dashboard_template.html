@@ -112,6 +112,7 @@ input.cell.wide{width:96px} input.cell.tiny{width:44px;text-align:center}
 input.cell.pos{width:340px;text-align:left}
 input.cell.w56{width:62px} input.cell.w84{width:96px}
 .earn-to{color:var(--good-text);font-weight:700;font-size:12px;white-space:nowrap;cursor:help}
+.earn-to small{font-size:10px;font-weight:600;opacity:.85}
 .badge{display:inline-block;margin-left:6px;border-radius:999px;background:var(--modest-soft);color:var(--modest);
   font-size:10px;font-weight:700;padding:1px 7px;vertical-align:middle;white-space:nowrap}
 td.hc{text-align:center}
@@ -1017,7 +1018,7 @@ function renderStaff(C){
         const e0 = earningsAt(p, null, 1), eN = earningsAt(p, null, NM);
         const lifts = raisesOn(p, null);
         const arrow = Math.abs(eN - e0) > 1
-          ? ` <span class="earn-to" title="Planned raises bring this role to ${fmt$(eN)}/yr earnings${p.payType === "hourly" ? " (≈ $" + (eN / ((p.hrs || 40) * 52)).toFixed(2) + "/hr)" : ""}:\n${lifts.join("\n")}">→ ${Math.round(eN).toLocaleString("en-US")}</span>` : "";
+          ? ` <span class="earn-to" title="Planned raises bring this role to ${fmt$(eN)}/yr earnings (+${((eN - e0) / (e0 || 1) * 100).toFixed(1)}%)${p.payType === "hourly" ? " (≈ $" + (eN / ((p.hrs || 40) * 52)).toFixed(2) + "/hr)" : ""}:\n${lifts.join("\n")}">→ ${Math.round(eN).toLocaleString("en-US")} <small>+${((eN - e0) / (e0 || 1) * 100).toFixed(1)}%</small></span>` : "";
         return p.payType === "hourly"
           ? `<span title="Normalized: $${p.rate || 0}/hr × ${p.hrs || 40} h/wk × 52 wk">≈ ${Math.round(roleAnnual(p)).toLocaleString("en-US")} <span class="badge">hourly</span></span>${arrow}`
           : `<input class="cell w84" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}">${arrow}`;
@@ -1036,7 +1037,7 @@ function renderStaff(C){
         const cN = personCost(p, pp, Math.min(NM, pp.to || NM));
         const e0 = earningsAt(p, pp, Math.max(1, pp.from || 1)), eN = earningsAt(p, pp, Math.min(NM, pp.to || NM));
         const earnTxt = Math.abs(eN - e0) > 1
-          ? `<b>${fmt$(e0)} → ${fmt$(eN)}/yr</b>${p.payType === "hourly" ? " (≈ $" + (eN / (hrsOf(p, pp) * 52)).toFixed(2) + "/hr)" : ""} · `
+          ? `<b>${fmt$(e0)} → ${fmt$(eN)}/yr (+${((eN - e0) / (e0 || 1) * 100).toFixed(1)}%)</b>${p.payType === "hourly" ? " (≈ $" + (eN / (hrsOf(p, pp) * 52)).toFixed(2) + "/hr)" : ""} · `
           : (c0 ? `${fmt$(eN)}/yr · ` : "");
         const costTxt = c0 ? earnTxt + fmt$(c0) + "/mo" + (Math.abs(cN - c0) > 1 ? " → " + fmt$(cN) + "/mo loaded" : " loaded") : "";
         return `<div class="ppl-row">
