@@ -16,7 +16,14 @@
  *   field_2766  FLAG_agreement signed (Yes/No)         → pill
  *   field_1847  Xero Equipment Invoice Link (URL)      → button
  *   field_2767  SYS_signed agreement (file)            → button
+ *   field_2947  SYS_bid basis pdf (file)               → button
+ *   field_2948  SYS_xero estimate link (URL)           → button
  *   .kn-action-link "Create Questionnaire"             → primary button
+ *
+ * Document slots (agreement / bid-basis PDF / Xero invoice / Xero
+ * estimate) turn GREEN once populated — the card doubles as a
+ * completeness checklist. All four are editable in place: URL modal for
+ * the links, file picker + Knack asset upload for the PDFs.
  *
  * COLUMN GUARD: the card only takes over a view whose table actually has
  * the proposal column (th.field_2755) — otherwise the native table stays
@@ -36,7 +43,9 @@
     signed:    'field_2766',
     terms:     'field_2940',   // FLAG_approved for terms (Yes/No)
     xero:      'field_1847',
-    agreement: 'field_2767'
+    agreement: 'field_2767',
+    bidPdf:    'field_2947',   // SYS_bid basis pdf (file)
+    xeroEst:   'field_2948'    // SYS_xero estimate link (URL)
   };
 
   function esc(s) {
@@ -113,6 +122,11 @@
       '.scw-acpt-edit:hover { background: #eef2f7; border-color: #cbd5e1; color: #0f4c75; }',
       '.scw-acpt-btn--add { background: #fff; border: 1px dashed #cbd5e1; color: #64748b; }',
       '.scw-acpt-btn--add:hover { background: #f8fafc; border-color: #94a3b8; color: #334155; }',
+      // Completed document slot — green (same palette as the is-yes pill)
+      // so the row reads as a checklist at a glance. Declared after the
+      // ghost rules so the shared specificity resolves in green's favor.
+      '.scw-acpt-btn--done { background: #dcfce7; border-color: #86efac; color: #15803d; }',
+      '.scw-acpt-btn--done:hover { background: #bbf7d0; border-color: #4ade80; color: #14532d; }',
       '.scw-acpt-group { display: inline-flex; align-items: center; gap: 2px; }',
       // Compact list mode: ONE card, one row per acceptance record —
       // title | pills | actions on a single line (wraps on narrow).
@@ -237,15 +251,16 @@
     return { backdrop: backdrop, ok: ok, close: close };
   }
 
-  /** Xero invoice link (field_1847, Link field) — URL input modal. */
-  function openXeroEditor(viewKey, recId, currentUrl) {
+  /** Link-field editor (Xero invoice field_1847 / Xero estimate
+   *  field_2948) — URL input modal, PUT through the view. */
+  function openLinkEditor(viewKey, recId, fieldKey, title, currentUrl) {
     var body = document.createElement('div');
     body.innerHTML =
       '<input type="url" class="scw-acpt-m__input" placeholder="https://…">' +
       '<div class="scw-acpt-m__status" style="display:none"></div>';
     var input = body.querySelector('input');
     input.value = currentUrl || '';
-    var m = acptModal('Xero invoice link', body, 'Save link');
+    var m = acptModal(title, body, 'Save link');
     setTimeout(function () { input.focus(); input.select(); }, 30);
     var status = body.querySelector('.scw-acpt-m__status');
     function fail(msg) {
@@ -263,7 +278,7 @@
       status.classList.remove('is-err');
       status.textContent = 'Saving…';
       var fields = {};
-      fields[F.xero] = url;   // empty string clears the link
+      fields[fieldKey] = url;   // empty string clears the link
       putAcceptance(viewKey, recId, fields).then(function () {
         m.close();
         refreshAcptView(viewKey);
@@ -271,9 +286,10 @@
     });
   }
 
-  /** Signed agreement (field_2767, File field) — picker → Knack asset
-   *  upload with the session token → PUT the asset id. */
-  function openAgreementUpload(viewKey, recId) {
+  /** File-field editor (signed agreement field_2767 / bid basis PDF
+   *  field_2947) — picker → Knack asset upload with the session token →
+   *  PUT the asset id. */
+  function openFileUpload(viewKey, recId, fieldKey, title) {
     var input = document.createElement('input');
     input.type = 'file';
     input.accept = '.pdf,.doc,.docx,image/*,application/pdf';
@@ -285,7 +301,7 @@
       var body = document.createElement('div');
       body.innerHTML = '<div class="scw-acpt-m__status">Uploading ' +
         esc(file.name || 'file') + '…</div>';
-      var m = acptModal('Signed agreement', body, 'Close');
+      var m = acptModal(title, body, 'Close');
       m.ok.disabled = true;
       var status = body.querySelector('.scw-acpt-m__status');
 
@@ -312,7 +328,7 @@
           }
           status.textContent = 'Saving…';
           var fields = {};
-          fields[F.agreement] = assetId;
+          fields[fieldKey] = assetId;
           putAcceptance(viewKey, recId, fields).then(function () {
             m.close();
             refreshAcptView(viewKey);
@@ -346,9 +362,35 @@
     // When approved for terms, the initial-payment requirement is waived —
     // show an "Approved for terms" pill in place of the payment-received pill.
     var terms   = isYes(cellText(row, F.terms));
-    var xeroA   = cellAnchor(row, F.xero);
-    var fileA   = cellAnchor(row, F.agreement, 'a.kn-view-asset') || cellAnchor(row, F.agreement);
-    var actionA = row.querySelector('.kn-action-link') || row.querySelector('.kn-table-link a');
+    var xeroA    = cellAnchor(row, F.xero);
+    var xeroEstA = cellAnchor(row, F.xeroEst);
+    var fileA    = cellAnchor(row, F.agreement, 'a.kn-view-asset') || cellAnchor(row, F.agreement);
+    var bidPdfA  = cellAnchor(row, F.bidPdf, 'a.kn-view-asset') || cellAnchor(row, F.bidPdf);
+    var actionA  = row.querySelector('.kn-action-link') || row.querySelector('.kn-table-link a');
+
+    // One fixed-width slot per document. Populated → GREEN button (opens
+    // the doc) + pencil; empty → dashed "+ add" ghost that opens the
+    // editor directly.
+    function fileSlot(fk, label, anchor, editTitle) {
+      return '<span class="scw-acpt-slot">' +
+        (anchor
+          ? '<span class="scw-acpt-group">' +
+              '<a class="scw-acpt-btn scw-acpt-btn--ghost scw-acpt-btn--done" data-proxy-file="' + fk + '" href="javascript:void(0)">' + FILE_SVG + esc(label) + '</a>' +
+              '<button type="button" class="scw-acpt-edit" data-edit-field="' + fk + '" title="' + esc(editTitle) + '">' + PENCIL_SVG + '</button>' +
+            '</span>'
+          : '<button type="button" class="scw-acpt-btn scw-acpt-btn--add" data-edit-field="' + fk + '">' + PLUS_SVG + esc(label) + '</button>') +
+        '</span>';
+    }
+    function linkSlot(fk, label, anchor, editTitle) {
+      return '<span class="scw-acpt-slot">' +
+        (anchor
+          ? '<span class="scw-acpt-group">' +
+              '<a class="scw-acpt-btn scw-acpt-btn--ghost scw-acpt-btn--done" target="_blank" rel="noopener" href="' + esc(anchor.getAttribute('href') || '') + '">' + LINK_SVG + esc(label) + '</a>' +
+              '<button type="button" class="scw-acpt-edit" data-edit-field="' + fk + '" title="' + esc(editTitle) + '">' + PENCIL_SVG + '</button>' +
+            '</span>'
+          : '<button type="button" class="scw-acpt-btn scw-acpt-btn--add" data-edit-field="' + fk + '">' + PLUS_SVG + esc(label) + ' link</button>') +
+        '</span>';
+    }
 
     // Change-order acceptances (SOW number "SW####CO") have no initial
     // payment — the CO amount rides the final project invoice — so the
@@ -367,22 +409,10 @@
         pill(signed ? 'Agreement signed'         : 'Agreement not signed',    signed) +
       '</div>' +
       '<div class="scw-acpt-actions">' +
-        '<span class="scw-acpt-slot">' +
-        (fileA
-          ? '<span class="scw-acpt-group">' +
-              '<a class="scw-acpt-btn scw-acpt-btn--ghost" data-proxy="file" href="javascript:void(0)">' + FILE_SVG + 'Signed agreement</a>' +
-              '<button type="button" class="scw-acpt-edit" data-edit-field="' + F.agreement + '" title="Replace signed agreement">' + PENCIL_SVG + '</button>' +
-            '</span>'
-          : '<button type="button" class="scw-acpt-btn scw-acpt-btn--add" data-edit-field="' + F.agreement + '">' + PLUS_SVG + 'Signed agreement</button>') +
-        '</span>' +
-        '<span class="scw-acpt-slot">' +
-        (xeroA
-          ? '<span class="scw-acpt-group">' +
-              '<a class="scw-acpt-btn scw-acpt-btn--ghost" target="_blank" rel="noopener" href="' + esc(xeroA.getAttribute('href') || '') + '">' + LINK_SVG + 'Xero invoice</a>' +
-              '<button type="button" class="scw-acpt-edit" data-edit-field="' + F.xero + '" title="Edit Xero invoice link">' + PENCIL_SVG + '</button>' +
-            '</span>'
-          : '<button type="button" class="scw-acpt-btn scw-acpt-btn--add" data-edit-field="' + F.xero + '">' + PLUS_SVG + 'Xero invoice link</button>') +
-        '</span>' +
+        fileSlot(F.agreement, 'Signed agreement', fileA,    'Replace signed agreement') +
+        fileSlot(F.bidPdf,    'Bid basis PDF',    bidPdfA,  'Replace bid basis PDF') +
+        linkSlot(F.xero,      'Xero invoice',     xeroA,    'Edit Xero invoice link') +
+        linkSlot(F.xeroEst,   'Xero estimate',    xeroEstA, 'Edit Xero estimate link') +
         (actionA ? '<button type="button" class="scw-acpt-btn scw-acpt-btn--primary" data-proxy="action">Create Questionnaire</button>' : '') +
       '</div>';
 
@@ -390,10 +420,18 @@
     card.className = 'scw-acpt-row';
     card.innerHTML = html;
 
-    // Proxy clicks to the original (hidden) anchors so Knack's asset preview +
-    // action-rule handlers still run.
-    var fileBtn = card.querySelector('[data-proxy="file"]');
-    if (fileBtn && fileA) fileBtn.addEventListener('click', function (e) { e.preventDefault(); fileA.click(); });
+    // Proxy file-button clicks to the original (hidden) asset anchors so
+    // Knack's asset preview handlers still run.
+    var fileAnchors = {};
+    fileAnchors[F.agreement] = fileA;
+    fileAnchors[F.bidPdf]    = bidPdfA;
+    var fileBtns = card.querySelectorAll('[data-proxy-file]');
+    for (var fb = 0; fb < fileBtns.length; fb++) {
+      (function (btn) {
+        var a = fileAnchors[btn.getAttribute('data-proxy-file')];
+        if (a) btn.addEventListener('click', function (e) { e.preventDefault(); a.click(); });
+      })(fileBtns[fb]);
+    }
     var actBtn = card.querySelector('[data-proxy="action"]');
     if (actBtn && actionA) actBtn.addEventListener('click', function () { actionA.click(); });
 
@@ -404,9 +442,15 @@
       editBtns[eb].addEventListener('click', function () {
         var fk = this.getAttribute('data-edit-field');
         if (fk === F.xero) {
-          openXeroEditor(viewKey, recId, xeroA ? (xeroA.getAttribute('href') || '') : '');
+          openLinkEditor(viewKey, recId, F.xero, 'Xero invoice link',
+            xeroA ? (xeroA.getAttribute('href') || '') : '');
+        } else if (fk === F.xeroEst) {
+          openLinkEditor(viewKey, recId, F.xeroEst, 'Xero estimate link',
+            xeroEstA ? (xeroEstA.getAttribute('href') || '') : '');
         } else if (fk === F.agreement) {
-          openAgreementUpload(viewKey, recId);
+          openFileUpload(viewKey, recId, F.agreement, 'Signed agreement');
+        } else if (fk === F.bidPdf) {
+          openFileUpload(viewKey, recId, F.bidPdf, 'Bid basis PDF');
         }
       });
     }
