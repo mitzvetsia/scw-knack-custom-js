@@ -235,7 +235,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
     <div class="card"><h2>Monthly net profit</h2><p class="note">One bar per booked month; modeled months show modest and stretch side by side. Hover any month.</p><figure class="chart" id="chartNet"></figure></div>
     <div class="card"><h2>Cumulative net through Mar 2027</h2><p class="note">Running total of monthly net profit: booked through Jul, then each scenario.</p><figure class="chart" id="chartCum"></figure></div>
   </div>
-  <div class="card"><h2>P&amp;L by month</h2><p class="note">Shaded columns are Xero as booked (Jan–Jul). Later columns come from the Sales team, Staffing and Expenses tabs. Commissions sit inside booked payroll for actual months.</p>
+  <div class="card"><h2>P&amp;L by month <span class="scn-toggle" id="plScnT"><button class="btn on" data-s="mod">Modest</button><button class="btn" data-s="str">Stretch</button><button class="btn" data-s="both">Both</button></span></h2><p class="note">Shaded columns are Xero as booked (Jan–Jul). Later columns come from the Sales team, Staffing and Expenses tabs. Commissions sit inside booked payroll for actual months.</p>
     <div class="tablewrap" id="plTable"></div>
     <p class="footnote" id="plFoot"></p>
   </div>
@@ -264,7 +264,8 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
   <div class="card"><h2>Raise planner</h2><p class="note">Every planned raise in one list — pick who it covers (a whole department, one role, or a named person), how much (% or dollars), and when it starts. Raises stack: a person covered by a department raise and their own raise gets both.</p>
     <div id="raisePlanner"></div>
     <button class="btn addrow" id="addRaise">+ Plan a raise</button></div>
-  <div class="card"><h2>Roster &amp; headcount plan</h2><p class="note">Fully-loaded monthly cost = (salary/12 + planned raises) × (1 + tax&amp;match %) + health + per-seat licenses. Set headcount by month (later months follow), or open a role (▸) to name its people or switch it to hourly pay (rate × hrs/wk — shown normalized to $/yr and $/mo everywhere). Tax defaults to Xero's actual employer tax+match rate — <button class="btn mini" id="taxAll"></button> resets every role to it.</p>
+  <div class="card"><h2>Roster &amp; headcount plan</h2><p class="note">Fully-loaded monthly cost = (salary/12 + planned raises) × (1 + tax&amp;match) + health + per-seat licenses. The two rates below are entered once and apply to every eligible role — untick BEN or TAX on a row for 1099 contractors or coverage decliners. Set headcount by month (later months follow), or open a role (▸) to name its people or switch it to hourly.</p>
+    <div class="levers" style="margin-bottom:12px" id="payrollRates"></div>
     <div class="tablewrap tall" id="staffTable"></div>
     <button class="btn addrow" id="addRole">+ Add role</button>
   </div>
@@ -348,7 +349,8 @@ function defaultState(){
     exp: expenses,
     levers: { cogsPct: +( (MODEL.totals.cogs.reduce((a,b)=>a+b,0) / MODEL.totals.revenue.reduce((a,b)=>a+b,0)) ).toFixed(3),
       otherInc: 3000, laborHedge: 0, opexHedge: 0,
-      targetH1: 6350000, targetH2: 5700000, thrH1: 6350000, thrH2: 5700000, smRate: 0.015, dirRate: 0.035 },
+      targetH1: 6350000, targetH2: 5700000, thrH1: 6350000, thrH2: 5700000, smRate: 0.015, dirRate: 0.035,
+      hdvRate: 523.5, taxRate: MODEL.employer_tax_rate },
     sales: MODEL.sales.map((s, i) => ({ id: "s" + i, name: s.name, role: s.role, ramp: s.ramp,
       start: s.start_cal, modest: /Stu/.test(s.name) ? 1 : 0.8, stretch: 1,
       comm: /Account Executive/.test(s.role) && !/Senior/.test(s.role) ? 0.025 :
@@ -356,7 +358,7 @@ function defaultState(){
     ramps,
     staff: MODEL.staff.map((s, i) => ({ id: "p" + i, dept: s.dept || "Unassigned", position: s.position,
       ote: s.ote, hdv: s.hdv, lic: s.lic,
-      tax: (s.tax != null && s.tax >= 0.03) ? s.tax : MODEL.employer_tax_rate,
+      benOn: (s.hdv || 0) > 0, taxOn: true,
       raiseD: 0, raiseP: 0, raiseM: 9, hc: Array(NM).fill(s.hc) })),
     raises: [],
   };
@@ -375,6 +377,12 @@ try {
   // migrate pre-15-month configs (12-month arrays / to==12 meaning "through end")
   for (const p of S.staff) while (p.hc.length < NM) p.hc.push(p.hc.at(-1) ?? 0);
   for (const e of S.exp) if (e.to === 12) e.to = NM;
+  if (L0.hdvRate == null) L0.hdvRate = 523.5;
+  if (L0.taxRate == null) L0.taxRate = MODEL.employer_tax_rate;
+  for (const p of S.staff){
+    if (p.benOn === undefined) p.benOn = (p.hdv || 0) > 0;
+    if (p.taxOn === undefined) p.taxOn = (p.tax || 0) > 0.005;
+  }
   // migrate legacy raise fields into raise events
   if (!S.raises){
     S.raises = [];
@@ -422,6 +430,8 @@ function raiseFor(role, personId, m, hrs){
   }
   return { pct, dmo };
 }
+function hdvOf(role){ return role.benOn === false ? 0 : (S.levers.hdvRate || 0); }
+function taxOf(role){ return role.taxOn === false ? 0 : (S.levers.taxRate || 0); }
 function personCost(role, p, m){
   if (m < (p.from || 1) || m > (p.to || NM)) return 0;
   let labor;
@@ -435,7 +445,7 @@ function personCost(role, p, m){
     labor = ((p.sal2 != null && m >= (p.chgM || 1)) ? p.sal2 : baseSal || 0) / 12;
   }
   const r = raiseFor(role, p.id, m, hrs);
-  return (labor + r.dmo + labor * r.pct) * (1 + (role.tax || 0)) + (role.hdv || 0) + (role.lic || 0);
+  return (labor + r.dmo + labor * r.pct) * (1 + taxOf(role)) + hdvOf(role) + (role.lic || 0);
 }
 function staffHC(row, m){
   return (row.people && row.people.length)
@@ -444,7 +454,7 @@ function staffHC(row, m){
 }
 function headCost(row, m){
   const labor = roleAnnual(row) / 12, r = raiseFor(row, null, m, row.hrs);
-  return (labor + r.dmo + labor * r.pct) * (1 + (row.tax || 0)) + (row.hdv || 0) + (row.lic || 0);
+  return (labor + r.dmo + labor * r.pct) * (1 + taxOf(row)) + hdvOf(row) + (row.lic || 0);
 }
 function staffCost(row, m){
   if (row.people && row.people.length)
@@ -683,21 +693,27 @@ function renderProj(C){
      {name:"Cumulative — modest", color:"--modest", vals:cm.map((v, i) => i >= ACT - 1 ? v : null)},
      {name:"Cumulative — stretch", color:"--stretch", vals:cs.map((v, i) => i >= ACT - 1 ? v : null)}],
     {aria:"Cumulative net profit"});
-  // P&L table
+  // P&L table — one scenario at a time by default; "Both" interleaves
   const rows = [];
+  const both = plScn === "both";
+  const pick = (mod, str) => plScn === "str" ? [["str", str]] : plScn === "mod" ? [["mod", mod]] : [["mod", mod], ["str", str]];
+  const sfx = k => both ? (k === "mod" ? " — modest" : " — stretch") : "";
   const push = (label, vals, cls = "", fm = fmt$) => rows.push({label, vals, cls, fm});
-  push("Sales revenue — modest", C.rev.mod); push("Sales revenue — stretch", C.rev.str);
+  for (const [k, v] of pick(C.rev.mod, C.rev.str)) push("Sales revenue" + sfx(k), v);
   push("Other income", C.oth);
   push("COGS % of sales", C.cogsPct, "", v => fmtPct(v));
-  push("COGS — modest", C.cogs.mod); push("COGS — stretch", C.cogs.str);
-  push("Gross profit — modest", C.rev.mod.map((v, i) => v + C.oth[i] - C.cogs.mod[i]), "tot");
-  push("Gross profit — stretch", C.rev.str.map((v, i) => v + C.oth[i] - C.cogs.str[i]), "tot");
+  for (const [k, v] of pick(C.cogs.mod, C.cogs.str)) push("COGS" + sfx(k), v);
+  const gpM = C.rev.mod.map((v, i) => v + C.oth[i] - C.cogs.mod[i]);
+  const gpS = C.rev.str.map((v, i) => v + C.oth[i] - C.cogs.str[i]);
+  for (const [k, v] of pick(gpM, gpS)) push("Gross profit" + sfx(k), v, "tot");
   push("Payroll (staffing model)", C.pay);
-  push("Sales comp — modest (commissions + overrides)", C.comp.mod); push("Sales comp — stretch (commissions + overrides)", C.comp.str);
+  for (const [k, v] of pick(C.comp.mod, C.comp.str)) push("Sales comp (commissions + overrides)" + sfx(k), v);
   for (const d of DEPTS) if (C.dept[d].some(v => Math.abs(v) > 0.5)) push("Opex — " + d, C.dept[d], "dim");
   push("Total opex", C.opex, "tot");
   push("Break-even sales revenue", C.be, "dim");
-  push("NET — MODEST", C.net.mod, "tot"); push("NET — STRETCH", C.net.str, "tot");
+  for (const [k, v] of pick(C.net.mod, C.net.str)) push("NET" + (both ? sfx(k).toUpperCase() : ""), v, "tot");
+  if (!both)
+    push("Net under " + (plScn === "mod" ? "stretch" : "modest") + " (reference)", plScn === "mod" ? C.net.str : C.net.mod, "dim");
   const half = (vals, [a, b]) => vals.slice(a, b).reduce((x, y) => x + y, 0);
   let h = `<table class="data"><thead><tr><th>P&amp;L</th>` +
     MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}">${m}</th>`).join("") +
@@ -739,6 +755,13 @@ function delegate(rootId, handler){
 }
 
 /* ---------- department rollup ---------- */
+let plScn = "mod";
+document.getElementById("plScnT").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-s]"); if (!b) return;
+  plScn = b.dataset.s;
+  document.querySelectorAll("#plScnT .btn").forEach(x => x.classList.toggle("on", x === b));
+  renderAll();
+});
 let rollMetric = "total";
 function renderRollup(C){
   const half = (vals, [a, b]) => vals.slice(a, b).reduce((x, y) => x + y, 0);
@@ -988,7 +1011,12 @@ function renderStaff(C){
     {aria:"Payroll model vs booked", divider:true, w:1400});
 
   const NCOL = 6 + NM + 2;   // pos, salary, health, lic, tax, cost/head + months + total + del
-  let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Health</th><th>Lic</th><th>Tax %</th><th>Cost/head</th>` +
+  document.getElementById("payrollRates").innerHTML =
+    leverInput("lvHdv", "Health (HDV) $/mo per head", S.levers.hdvRate, "applies to BEN-ticked roles") +
+    leverInput("lvTax", "Employer tax & match %", (S.levers.taxRate * 100).toFixed(2), "added on top of pay — Xero actual " + (MODEL.employer_tax_rate * 100).toFixed(1) + "%");
+  bind("lvHdv", v => S.levers.hdvRate = num(v, 523.5));
+  bind("lvTax", v => S.levers.taxRate = num(v, MODEL.employer_tax_rate * 100) / 100);
+  let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Ben</th><th>Lic</th><th>Tax</th><th>Cost/head</th>` +
     MONTHS.map(m => `<th>${m}</th>`).join("") + `<th>15-mo cost</th><th></th></tr></thead><tbody>`;
   const dOrder = d => { const i = DEPTS.indexOf(d); return i < 0 ? DEPTS.length : i; };
   const sorted = [...S.staff].sort((a, b) => dOrder(a.dept) - dOrder(b.dept));
@@ -1023,9 +1051,9 @@ function renderStaff(C){
           ? `<span title="Normalized: $${p.rate || 0}/hr × ${p.hrs || 40} h/wk × 52 wk">≈ ${Math.round(roleAnnual(p)).toLocaleString("en-US")} <span class="badge">hourly</span></span>${arrow}`
           : `<input class="cell w84" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}">${arrow}`;
       })()}</td>
-      <td><input class="cell w56" data-id="${p.id}" data-k="hdv" value="${p.hdv}"></td>
+      <td style="text-align:center"><input type="checkbox" data-id="${p.id}" data-k="benOn"${p.benOn !== false ? " checked" : ""} title="Gets the ${fmt$(S.levers.hdvRate)}/mo health rate — untick for 1099s or coverage decliners"></td>
       <td><input class="cell w56" data-id="${p.id}" data-k="lic" value="${Math.round(p.lic)}"></td>
-      <td><input class="cell tiny" data-id="${p.id}" data-k="tax" value="${(p.tax * 100).toFixed(0)}"></td>
+      <td style="text-align:center"><input type="checkbox" data-id="${p.id}" data-k="taxOn"${p.taxOn !== false ? " checked" : ""} title="Employer tax & match (${(S.levers.taxRate * 100).toFixed(1)}%) added on top of pay — untick for 1099 contractors"></td>
       <td title="${hasRaise ? `${fmt$(cur)}/head now → ${fmt$(nw)}/head by Mar ’27 (raise planner)` : "Fully-loaded monthly cost per head"}">${fmt$(cur)}${hasRaise ? ` <span class="dim">→ ${fmt$(nw)}</span>` : ""}</td>` +
       Array.from({length:NM}, (_, i) => hasPpl
         ? `<td class="hc-derived" title="Derived from the ${p.people.length} named people below"><span class="hcv">${staffHC(p, i + 1) || "·"}</span></td>`
@@ -1213,9 +1241,9 @@ delegate("staffTable", (id, k, val) => {
   else if (k === "rate") p.rate = num(val, 0);
   else if (k === "hrs") p.hrs = Math.max(1, num(val, 40));
   else if (k === "ote") p.ote = num(val, p.ote);
-  else if (k === "hdv") p.hdv = num(val, p.hdv);
+  else if (k === "benOn") p.benOn = !!val;
   else if (k === "lic") p.lic = num(val, p.lic);
-  else if (k === "tax") p.tax = num(val, p.tax * 100) / 100;
+  else if (k === "taxOn") p.taxOn = !!val;
   else { const m = k.match(/^hc(\d+)$/);
     if (m){ const i = +m[1], v = num(val, 0);
       for (let j = i; j < NM; j++) p.hc[j] = v;   // fill forward: later months follow
@@ -1301,7 +1329,7 @@ document.getElementById("addRep").addEventListener("click", () => {
 });
 document.getElementById("addRole").addEventListener("click", () => {
   S.staff.push({ id: "p" + Date.now(), dept: "Technical Support", position: "New role", ote: 65000,
-    hdv: 523.5, lic: 75, tax: 0.1, raiseD: 0, raiseP: 0, raiseM: 9,
+    benOn: true, taxOn: true, lic: 75, raiseD: 0, raiseP: 0, raiseM: 9,
     hc: Array.from({length:NM}, (_, i) => i >= 8 ? 1 : 0) });
   persist(); scheduleRender();
 });
@@ -1334,12 +1362,7 @@ function renderAll(){
   renderTiles(C); renderGoals(C); renderProjLevers(); renderProj(C); renderRollup(C);
   renderSales(C); renderRaisePlanner(); renderStaff(C); renderExpenses(C);
 }
-const taxBtn = document.getElementById("taxAll");
-taxBtn.textContent = "apply " + (MODEL.employer_tax_rate * 100).toFixed(1) + "% to all";
-taxBtn.addEventListener("click", () => {
-  for (const p of S.staff) p.tax = MODEL.employer_tax_rate;
-  persist(); scheduleRender();
-});
+
 renderAll();
 renderTrends();
 </script>
