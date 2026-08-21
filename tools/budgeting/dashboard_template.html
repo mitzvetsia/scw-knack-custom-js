@@ -237,6 +237,10 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
     <div class="tablewrap" id="plTable"></div>
     <p class="footnote" id="plFoot"></p>
   </div>
+  <div class="card"><h2>Department budget rollup <span class="scn-toggle" id="rollMetric"><button class="btn on" data-m="total">Total cost</button><button class="btn" data-m="pay">Payroll</button><button class="btn" data-m="opex">Opex</button><button class="btn" data-m="hc">Headcount</button></span></h2>
+    <p class="note">Payroll and operating spend rolled up per department — booked figures through Jul (payroll splits from Xero's department tracking, 97% tagged; untagged lands in Unassigned), model after. Headcount is the staffing plan for all months. Sales commissions and COGS are company-level and not in this rollup.</p>
+    <figure class="chart" id="rollChart"></figure>
+    <div class="tablewrap" id="rollTable"></div></div>
   <details class="helper"><summary>How this model works</summary><div class="inner" id="notes"></div></details>
 </section>
 
@@ -448,8 +452,8 @@ function staffCost(row, m){
 function compute(){
   const L = S.levers;
   const out = { rev: {mod:[],str:[]}, oth:[], cogs:{mod:[],str:[]}, pay:[], comp:{mod:[],str:[]},
-    dept: {}, opex:[], net:{mod:[],str:[]}, cogsPct:[], team:{mod:[],str:[]}, staffTotal:[], commDetail:{} };
-  for (const d of DEPTS) out.dept[d] = [];
+    dept: {}, deptPay: {}, deptHC: {}, opex:[], net:{mod:[],str:[]}, cogsPct:[], team:{mod:[],str:[]}, staffTotal:[], commDetail:{} };
+  for (const d of DEPTS){ out.dept[d] = []; out.deptPay[d] = []; out.deptHC[d] = []; }
   // planned opex rows by dept (model, before hedge)
   for (let m = 1; m <= NM; m++){
     const i = m - 1, actual = m <= ACT;
@@ -461,9 +465,18 @@ function compute(){
     }
     out.team.mod.push(tm); out.team.str.push(ts);
     const compM = cm, compS = cs;
-    // staffing
-    let st = 0; for (const row of S.staff) st += staffCost(row, m);
+    // staffing (with per-department model splits)
+    let st = 0; const dpm = {}, dhc = {};
+    for (const row of S.staff){
+      const c = staffCost(row, m); st += c;
+      dpm[row.dept] = (dpm[row.dept] || 0) + c;
+      dhc[row.dept] = (dhc[row.dept] || 0) + staffHC(row, m);
+    }
     out.staffTotal.push(st);
+    for (const d of DEPTS){
+      out.deptPay[d].push(actual ? ((MODEL.dept_payroll_actual[d] || [])[i] || 0) : (dpm[d] || 0) * (1 + L.laborHedge));
+      out.deptHC[d].push(dhc[d] || 0);
+    }
     // expenses by dept
     const dm = {}; for (const d of DEPTS) dm[d] = 0;
     for (const e of S.exp){
@@ -723,6 +736,52 @@ function delegate(rootId, handler){
   });
 }
 
+/* ---------- department rollup ---------- */
+let rollMetric = "total";
+function renderRollup(C){
+  const half = (vals, [a, b]) => vals.slice(a, b).reduce((x, y) => x + y, 0);
+  const series = d => rollMetric === "pay" ? C.deptPay[d]
+    : rollMetric === "opex" ? C.dept[d]
+    : rollMetric === "hc" ? C.deptHC[d]
+    : C.deptPay[d].map((v, i) => v + C.dept[d][i]);
+  const isHC = rollMetric === "hc";
+  const fmv = isHC ? (v => v ? (Math.round(v * 10) / 10).toLocaleString("en-US") : "·") : fmt$;
+  const rows = DEPTS.map(d => ({ d, vals: series(d) })).filter(r => r.vals.some(v => Math.abs(v) > 0.05));
+  let h = `<table class="data"><thead><tr><th>Department</th>` +
+    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}">${m}</th>`).join("") +
+    (isHC ? `<th>Mar ’27</th>` : `<th>H1 Apr–Sep</th><th>H2 Oct–Mar</th><th>15 mo</th>`) + `</tr></thead><tbody>`;
+  for (const r of rows){
+    h += `<tr><td>${esc(r.d)}</td>` +
+      r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}">${fmv(v)}</td>`).join("") +
+      (isHC ? `<td><b>${fmv(r.vals[NM - 1])}</b></td>`
+            : `<td><b>${fmt$(half(r.vals, FH1))}</b></td><td><b>${fmt$(half(r.vals, FH2))}</b></td><td><b>${fmt$(r.vals.reduce((a, b) => a + b, 0))}</b></td>`) + `</tr>`;
+  }
+  const tot = Array.from({length:NM}, (_, i) => rows.reduce((a, r) => a + r.vals[i], 0));
+  h += `<tr class="tot"><td>TOTAL</td>` + tot.map((v, i) => `<td>${fmv(v)}</td>`).join("") +
+    (isHC ? `<td>${fmv(tot[NM - 1])}</td>`
+          : `<td>${fmt$(half(tot, FH1))}</td><td>${fmt$(half(tot, FH2))}</td><td>${fmt$(tot.reduce((a, b) => a + b, 0))}</td>`) + `</tr>`;
+  document.getElementById("rollTable").innerHTML = h + "</tbody></table>";
+  // horizontal bars: 15-mo total cost (payroll + opex) by dept
+  const bars = DEPTS.map(d => ({ d, v: C.deptPay[d].reduce((a, b) => a + b, 0) + C.dept[d].reduce((a, b) => a + b, 0) }))
+    .filter(x => x.v > 1).sort((a, b) => b.v - a.v);
+  const bh = 24, W = 1400, lw = 250, max = Math.max(...bars.map(x => x.v), 1);
+  let svg = "";
+  bars.forEach((x, i) => {
+    const y = i * bh, w = (W - lw - 130) * x.v / max;
+    svg += `<text x="${lw - 10}" y="${y + 15}" text-anchor="end" font-size="11.5" fill="var(--ink2)">${esc(x.d.replace("03 - HR & Business Administration Manager", "HR & Business Admin"))}</text>` +
+      `<rect x="${lw}" y="${y + 3}" width="${Math.max(2, w)}" height="16" rx="4" fill="var(--modest)" opacity=".85"/>` +
+      `<text x="${lw + w + 8}" y="${y + 15}" font-size="11.5" fill="var(--ink)" font-weight="600" style="font-variant-numeric:tabular-nums">${fmtK(x.v)}</text>`;
+  });
+  document.getElementById("rollChart").innerHTML =
+    `<svg viewBox="0 0 ${W} ${bars.length * bh + 4}" role="img" aria-label="15-month total cost by department">${svg}</svg>` +
+    `<div class="chart-legend"><span class="key"><i style="background:var(--modest)"></i>Payroll + opex, Jan ’26 – Mar ’27</span></div>`;
+}
+document.getElementById("rollMetric").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-m]"); if (!b) return;
+  rollMetric = b.dataset.m;
+  document.querySelectorAll("#rollMetric .btn").forEach(x => x.classList.toggle("on", x === b));
+  renderAll();
+});
 /* ---------- goals & break-even (Projections) ---------- */
 function goalHalf(C, [a, b, label], tKey, thrKey, ids){
   const L = S.levers;
@@ -837,8 +896,17 @@ function raiseTargets(){
   for (const p of S.staff) for (const pp of (p.people || [])) people.push({ v: pp.id, t: pp.name + " (" + p.position + ")" });
   return { dept: DEPTS.filter(d => d !== "Unassigned").map(d => ({ v: d, t: d })), role: roles, person: people };
 }
+function laborAt(role, p, m){
+  if (role.payType === "hourly"){
+    const base = p ? (p.sal != null ? p.sal : (role.rate || 0)) : (role.rate || 0);
+    const rate = (p && p.sal2 != null && m >= (p.chgM || 1)) ? p.sal2 : base;
+    return rate * hrsOf(role, p) * WK;
+  }
+  const baseSal = p ? (p.sal != null ? p.sal : role.ote) : role.ote;
+  return ((p && p.sal2 != null && m >= (p.chgM || 1)) ? p.sal2 : baseSal || 0) / 12;
+}
 function raiseImpact(ev){
-  let now = 0, aft = 0, heads = 0;
+  let now = 0, aft = 0, heads = 0, toAnnual = null, toRate = null;
   const m0 = Math.max(1, (ev.month || 1) - 1), m1 = Math.min(NM, ev.month || 1);
   for (const p of S.staff){
     const covers = (ev.scope === "dept" && ev.target === p.dept) || (ev.scope === "role" && ev.target === p.id) ||
@@ -847,11 +915,19 @@ function raiseImpact(ev){
     if (ev.scope === "person"){
       const pp = p.people.find(x => x.id === ev.target);
       now += personCost(p, pp, m0) || personCost(p, pp, m1); aft += personCost(p, pp, m1); heads += 1;
+      const lab = laborAt(p, pp, NM), r = raiseFor(p, pp.id, NM, hrsOf(p, pp));
+      toAnnual = (lab + r.dmo + lab * r.pct) * 12;
+      if (p.payType === "hourly") toRate = toAnnual / (hrsOf(p, pp) * 52);
     } else {
       now += staffCost(p, m0) || staffCost(p, m1); aft += staffCost(p, m1); heads += staffHC(p, m1);
+      if (ev.scope === "role"){
+        const lab = laborAt(p, null, NM), r = raiseFor(p, null, NM, p.hrs);
+        toAnnual = (lab + r.dmo + lab * r.pct) * 12;
+        if (p.payType === "hourly") toRate = toAnnual / ((p.hrs || 40) * 52);
+      }
     }
   }
-  return { delta: aft - now, heads };
+  return { delta: aft - now, heads, toAnnual, toRate };
 }
 function renderRaisePlanner(){
   const T = raiseTargets();
@@ -875,7 +951,10 @@ function renderRaisePlanner(){
         <option value="hr"${ev.kind === "hr" ? " selected" : ""}>$ / hr</option></select></span>
       <span class="fld"><label>Starts</label><select class="cell" data-id="${ev.id}" data-k="rmonth">${
         MONTHS.map((mn, i) => `<option value="${i + 1}"${(ev.month || 1) === i + 1 ? " selected" : ""}>${esc(mn)}${i < 12 ? " ’26" : ""}</option>`).join("")}</select></span>
-      <span class="fld"><label>&nbsp;</label><span class="subtle">${ev.target ? (imp.heads ? "+" + fmt$(imp.delta) + "/mo across " + imp.heads + " head" + (imp.heads > 1 ? "s" : "") : "covers nobody yet") : ""}</span></span>
+      <span class="fld"><label>&nbsp;</label><span class="subtle">${ev.target ? (imp.heads
+        ? "+" + fmt$(imp.delta) + "/mo across " + imp.heads + " head" + (imp.heads > 1 ? "s" : "")
+          + (imp.toAnnual != null ? " · brings earnings to <b>" + fmt$(imp.toAnnual) + "/yr</b>" + (imp.toRate != null ? " (≈ $" + imp.toRate.toFixed(2) + "/hr)" : "") + (ev.scope === "role" ? " per head" : "") : "")
+        : "covers nobody yet") : ""}</span></span>
       <span class="fld"><label>&nbsp;</label><button class="btn mini" data-id="${ev.id}" data-k="rdel" title="Remove raise">✕</button></span>
     </div>`;
   }).join("");
@@ -1225,7 +1304,7 @@ document.getElementById("btnLoad").addEventListener("click", () => {
 
 function renderAll(){
   const C = compute();
-  renderTiles(C); renderGoals(C); renderProjLevers(); renderProj(C);
+  renderTiles(C); renderGoals(C); renderProjLevers(); renderProj(C); renderRollup(C);
   renderSales(C); renderRaisePlanner(); renderStaff(C); renderExpenses(C);
 }
 const taxBtn = document.getElementById("taxAll");

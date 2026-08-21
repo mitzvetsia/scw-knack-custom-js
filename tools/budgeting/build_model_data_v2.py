@@ -23,6 +23,7 @@ A = dict(
     contracts="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/ccd2bd72-contractsexpenses.csv",
     allocations="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/47bec46b-allocations.csv",
     legacy="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/25b0d1bd-BUDGET_TEST_1774983468__Q2Q3_2026_JULY_REWORK.xlsx",
+    gl="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/7cf4d3fa-Security_Camera_Warehouse__INC__General_Ledger_Detail_2.xlsx",
     v1=os.path.join(HERE, "model_data.json"),
 )
 for arg in sys.argv[1:]:
@@ -200,6 +201,30 @@ for c, info in contracts.items():
     missing.append(dict(vendor=c, budget_monthly=info["monthly"], fixed_alloc=fixed, seat_monthly=seats,
         final_dept=bdept, purpose=info["purpose"]))
 
+# actual payroll by department (GL Detail carries the Departments tracking on payroll postings)
+glwb = openpyxl.load_workbook(A["gl"], read_only=True, data_only=True)
+glws = glwb.worksheets[0]
+GLSKIP = ("Total","Opening","Closing","Net movement","No transactions","Date","General Ledger","For the period")
+GLD2BD = {"Facilities":"Facillities","Administration":"03 - HR & Business Administration Manager",
+ "Fulfillment / Warehouse":"Purchasing & Fulfillment","Support":"Technical Support",
+ "Installation Services - National":"Installation Services","Installation Services - Asheville":"Installation Services",
+ "Installation Services - Triad":"Installation Services"}
+dept_payroll = collections.defaultdict(lambda: [0.0]*7)
+sec = None
+for row in glws.iter_rows(values_only=True):
+    a = row[0]
+    rest = [v for v in row[1:] if v not in (None, "")]
+    if isinstance(a, str) and not rest and not a.startswith(GLSKIP) and "period" not in a:
+        sec = a.strip(); continue
+    if isinstance(a, datetime) and a.year == 2026 and a.month <= 7:
+        c = code(sec)
+        if c not in PAYROLL_PL: continue
+        _, source, desc, ref, debit, credit, runbal, dept, proj, relacct = row[:10]
+        d = GLD2BD.get((dept or "").strip(), (dept or "").strip()) or "Unassigned"
+        dept_payroll[d][a.month - 1] += float(debit or 0) - float(credit or 0)
+glwb.close()
+dept_payroll = {k: [round(x, 2) for x in v] for k, v in dept_payroll.items()}
+
 # dept x month actuals for Jan-Jul 2026 (modeling year), residual -> Unassigned
 dept_actual = collections.defaultdict(lambda: [0.0]*7)
 for r in vend_master:
@@ -222,6 +247,7 @@ model = dict(
         ttm_payroll=[round(x,2) for x in totals_ttm["payroll"]]),
     staff=v1["staff"], sales=v1["sales"], ramps=v1["ramps"],
     employer_tax_rate=round(sum(totals_ttm["ptax"]) / sum(totals_ttm["wages"]), 4),
+    dept_payroll_actual=dept_payroll,
     built="2026-08-21", actual_months=7)
 json.dump(model, open(os.path.join(HERE, "model_data_v2.json"), "w"))
 print("vendors:", len(vend_master), "missing:", len(missing))
