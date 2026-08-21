@@ -1,0 +1,4811 @@
+{
+ "vend_master": [
+  {
+   "vendor": "Google Advertising",
+   "months": [
+    67965.99,
+    74488.85,
+    75192.73,
+    70130.95,
+    74113.69,
+    86113.69,
+    64763.78,
+    46828.46
+   ],
+   "ytd": 559598.14,
+   "account": "6715 - PPC Advertising",
+   "xero_dept": "Marketing",
+   "budget_dept": "Marketing",
+   "status": "STEADY",
+   "base": 74997.05,
+   "in_contracts": true,
+   "budget_monthly": 95000.0,
+   "cost_type": "Recurring (Variable)",
+   "purpose": "",
+   "fixed_alloc": {
+    "Marketing": 95000.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": false
+  },
+  {
+   "vendor": "Install Services Site Surveys",
+   "months": [
+    19402.0,
+    21716.0,
+    19224.0,
+    28657.0,
+    17444.0,
+    19233.0,
+    29499.0,
+    4984.0
+   ],
+   "ytd": 160159.0,
+   "account": "6738 - Site Surveys",
+   "xero_dept": "Installation Services",
+   "budget_dept": "Sales",
+   "status": "STEADY",
+   "base": 22058.67,
+   "in_contracts": true,
+   "budget_monthly": 16000.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Sales": 16000.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Sales",
+   "contradiction": true
+  },
+  {
+   "vendor": "Bing",
+   "months": [
+    22579.82,
+    17596.64,
+    22611.98,
+    25109.34,
+    15059.42,
+    12522.4,
+    20101.33,
+    20290.12
+   ],
+   "ytd": 155871.05,
+   "account": "6715 - PPC Advertising",
+   "xero_dept": "Marketing",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 15894.38,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": false
+  },
+  {
+   "vendor": "Bank & Credit Card Fees",
+   "months": [
+    16432.23,
+    17664.08,
+    13911.56,
+    17073.49,
+    13058.4,
+    16519.01,
+    17882.59,
+    0.0
+   ],
+   "ytd": 112541.36,
+   "account": "6482 - Bank & Credit Card Fees",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 15820.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Amazon Web Services",
+   "months": [
+    13481.26,
+    13427.92,
+    12321.45,
+    13193.38,
+    13121.08,
+    12836.22,
+    12707.15,
+    12756.81
+   ],
+   "ytd": 103845.27,
+   "account": "6735 - Research & Development",
+   "xero_dept": "Software Development",
+   "budget_dept": "Software Development",
+   "status": "STEADY",
+   "base": 12888.15,
+   "in_contracts": true,
+   "budget_monthly": 13000.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Software Development": 13000.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": false
+  },
+  {
+   "vendor": "Rent",
+   "months": [
+    10260.0,
+    10260.0,
+    10260.0,
+    10260.0,
+    10260.0,
+    10260.0,
+    10260.0,
+    10260.0
+   ],
+   "ytd": 82080.0,
+   "account": "6951 - Rent",
+   "xero_dept": "",
+   "budget_dept": "Facillities",
+   "status": "STEADY",
+   "base": 10260.0,
+   "in_contracts": true,
+   "budget_monthly": 2400.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Facillities": 2400.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Dillon Jones LLC",
+   "months": [
+    3769.23,
+    6538.46,
+    9307.69,
+    3769.23,
+    7000.0,
+    7000.0,
+    7000.0,
+    7000.0
+   ],
+   "ytd": 51384.61,
+   "account": "6728 - Subcontractors",
+   "xero_dept": "",
+   "budget_dept": "Marketing",
+   "status": "STEADY",
+   "base": 7000.0,
+   "in_contracts": true,
+   "budget_monthly": 1000.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Marketing": 1000.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": false
+  },
+  {
+   "vendor": "Nikoloz Shiomghvdlishvili",
+   "months": [
+    4800.0,
+    4800.0,
+    4800.0,
+    4800.0,
+    4800.0,
+    4800.0,
+    4800.0,
+    4800.0
+   ],
+   "ytd": 38400.0,
+   "account": "6728 - Subcontractors",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 4800.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Auto Owners Insurance",
+   "months": [
+    3393.0,
+    3815.92,
+    3794.0,
+    4098.0,
+    3794.0,
+    3794.0,
+    3794.0,
+    3794.0
+   ],
+   "ytd": 30276.92,
+   "account": "6950 - Business Insurance",
+   "xero_dept": "",
+   "budget_dept": "General Overhead",
+   "status": "STEADY",
+   "base": 3794.0,
+   "in_contracts": true,
+   "budget_monthly": 3394.42,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Auto, Umbrella, and General Liability Insurance",
+   "fixed_alloc": {
+    "Installation Services": 1211.76,
+    "General Overhead": 2182.67
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "General Overhead",
+   "contradiction": false
+  },
+  {
+   "vendor": "Hubspot",
+   "months": [
+    3753.93,
+    3940.03,
+    3940.03,
+    3940.03,
+    3940.03,
+    3940.03,
+    3940.03,
+    0.0
+   ],
+   "ytd": 27394.11,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Sales",
+   "budget_dept": "Marketing",
+   "status": "STEADY",
+   "base": 3940.03,
+   "in_contracts": true,
+   "budget_monthly": 3723.93,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Self Explanatory",
+   "fixed_alloc": {
+    "Sales": 1070.19,
+    "Marketing": 1986.98
+   },
+   "seat_monthly": 666.76,
+   "final_dept": "Marketing",
+   "contradiction": true
+  },
+  {
+   "vendor": "Gong.io Inc",
+   "months": [
+    3308.0,
+    3308.0,
+    3308.0,
+    3308.0,
+    3308.0,
+    3308.0,
+    3308.03,
+    3308.0
+   ],
+   "ytd": 26464.03,
+   "account": "6719 - Marketing Tools",
+   "xero_dept": "Sales",
+   "budget_dept": "Sales",
+   "status": "STEADY",
+   "base": 3308.01,
+   "in_contracts": true,
+   "budget_monthly": 3309.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Sales": 1009.23
+   },
+   "seat_monthly": 2299.77,
+   "final_dept": "Sales",
+   "contradiction": false
+  },
+  {
+   "vendor": "DMJPS Accounting",
+   "months": [
+    7590.0,
+    2000.0,
+    3925.0,
+    9925.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 23440.0,
+   "account": "6483 - Professional Fees",
+   "xero_dept": "",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "DROPPED",
+   "base": 0.0,
+   "in_contracts": true,
+   "budget_monthly": 2248.75,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 2248.75
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": false
+  },
+  {
+   "vendor": "Fox Rothschild",
+   "months": [
+    0.0,
+    3394.5,
+    10149.5,
+    1125.5,
+    850.0,
+    3619.0,
+    877.5,
+    0.0
+   ],
+   "ytd": 20016.0,
+   "account": "8310 - Legal Expenses (non routine)",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "DROPPING",
+   "base": 1782.17,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Mountain Air Mechanical",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    2879.37,
+    12827.0,
+    165.85,
+    0.0,
+    0.0
+   ],
+   "ytd": 15872.22,
+   "account": "6741 - Repair and Maintenance (one time)",
+   "xero_dept": "Facillities",
+   "budget_dept": "",
+   "status": "DROPPED",
+   "base": 0.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Rippling",
+   "months": [
+    1260.0,
+    1503.89,
+    3027.63,
+    1540.0,
+    1660.93,
+    1570.96,
+    1540.0,
+    1540.0
+   ],
+   "ytd": 13643.41,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "STEADY",
+   "base": 1590.63,
+   "in_contracts": true,
+   "budget_monthly": 1087.33,
+   "cost_type": "Recurring (Variable)",
+   "purpose": "HRIS System",
+   "fixed_alloc": {
+    "Technical Support": 5.16,
+    "03 - HR & Business Administration Manager": 95.49
+   },
+   "seat_monthly": 986.69,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "Capital One Rewards & Credits",
+   "months": [
+    -1193.26,
+    -1965.46,
+    -1740.16,
+    -1339.54,
+    -2535.6,
+    -1260.45,
+    -1882.72,
+    -1390.23
+   ],
+   "ytd": -13307.42,
+   "account": "6715 - PPC Advertising",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": -1892.92,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Zoom",
+   "months": [
+    1170.9,
+    1170.9,
+    1170.9,
+    1170.62,
+    1188.07,
+    1170.62,
+    1138.58,
+    1262.48
+   ],
+   "ytd": 9443.07,
+   "account": "6721 - Communications",
+   "xero_dept": "Sales",
+   "budget_dept": "Sales",
+   "status": "STEADY",
+   "base": 1165.76,
+   "in_contracts": true,
+   "budget_monthly": 1080.59,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "This is an unidentified additional account on James' card and needs to be cancelled",
+   "fixed_alloc": {
+    "Marketing": 57.5,
+    "03 - HR & Business Administration Manager": 195.54,
+    "Sales": 309.88
+   },
+   "seat_monthly": 517.68,
+   "final_dept": "Sales",
+   "contradiction": false
+  },
+  {
+   "vendor": "Knack",
+   "months": [
+    1200.0,
+    75.0,
+    2325.0,
+    1200.0,
+    75.0,
+    2325.0,
+    1200.0,
+    144.27
+   ],
+   "ytd": 8544.27,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Installation Services",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "STEADY",
+   "base": 1200.0,
+   "in_contracts": true,
+   "budget_monthly": 1307.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Inventory Management Platform",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 1307.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "ShipEdge",
+   "months": [
+    1043.0,
+    1043.0,
+    1043.0,
+    1043.0,
+    1043.0,
+    1043.0,
+    1043.0,
+    1043.0
+   ],
+   "ytd": 8344.0,
+   "account": "6720 - Dues & Subscriptions",
+   "xero_dept": "Purchasing & Fulfillment",
+   "budget_dept": "Purchasing & Fulfillment",
+   "status": "STEADY",
+   "base": 1043.0,
+   "in_contracts": true,
+   "budget_monthly": 1043.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Inventory Management Platform",
+   "fixed_alloc": {
+    "Purchasing & Fulfillment": 1043.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Purchasing & Fulfillment",
+   "contradiction": false
+  },
+  {
+   "vendor": "Buncombe County Property Tax",
+   "months": [
+    1334.0,
+    1334.0,
+    1334.0,
+    1334.0,
+    1334.0,
+    1334.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 8004.0,
+   "account": "6952 - Property Taxes",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "DROPPED",
+   "base": 0.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "LinkedIn",
+   "months": [
+    1995.0,
+    895.98,
+    929.82,
+    1400.41,
+    1061.76,
+    759.51,
+    416.88,
+    527.36
+   ],
+   "ytd": 7986.72,
+   "account": "6715 - PPC Advertising",
+   "xero_dept": "Marketing",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 746.05,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": false
+  },
+  {
+   "vendor": "Republic Services",
+   "months": [
+    882.84,
+    1008.37,
+    973.62,
+    1068.91,
+    1010.85,
+    1010.85,
+    1006.72,
+    961.96
+   ],
+   "ytd": 7924.12,
+   "account": "6487 - Utilities",
+   "xero_dept": "Facillities",
+   "budget_dept": "Facillities",
+   "status": "STEADY",
+   "base": 1009.47,
+   "in_contracts": true,
+   "budget_monthly": 656.66,
+   "cost_type": "Recurring (Variable)",
+   "purpose": "Facilities and garbage removal",
+   "fixed_alloc": {
+    "Facillities": 656.66
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Meghan Wright",
+   "months": [
+    0.0,
+    0.0,
+    7655.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 7655.0,
+   "account": "8310 - Legal Expenses (non routine)",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 997.08,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Spielberger Law Group",
+   "months": [
+    0.0,
+    0.0,
+    7345.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 7345.0,
+   "account": "8310 - Legal Expenses (non routine)",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 956.7,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "CoCoa Flex Center LLC",
+   "months": [
+    850.0,
+    850.0,
+    925.0,
+    925.0,
+    925.0,
+    925.0,
+    925.0,
+    925.0
+   ],
+   "ytd": 7250.0,
+   "account": "6951 - Rent",
+   "xero_dept": "Software Development",
+   "budget_dept": "Software Development",
+   "status": "STEADY",
+   "base": 925.0,
+   "in_contracts": true,
+   "budget_monthly": 875.5,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Software Development": 875.5
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": false
+  },
+  {
+   "vendor": "TaxJar",
+   "months": [
+    874.0,
+    1514.0,
+    314.0,
+    779.0,
+    314.0,
+    874.0,
+    1024.0,
+    1199.0
+   ],
+   "ytd": 6892.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "STEADY",
+   "base": 737.33,
+   "in_contracts": true,
+   "budget_monthly": 591.17,
+   "cost_type": "Recurring (Variable)",
+   "purpose": "Sales Tax Accounting Software",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 591.17
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "State of New York",
+   "months": [
+    0.0,
+    -2446.03,
+    -928.8,
+    -2380.58,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": -5755.41,
+   "account": "6490 - State Income, Franchise & Gross-Receipts Taxes",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "DROPPED",
+   "base": 0.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Duke Energy",
+   "months": [
+    650.01,
+    677.63,
+    652.5,
+    649.13,
+    717.71,
+    808.77,
+    1289.96,
+    0.0
+   ],
+   "ytd": 5445.71,
+   "account": "6487 - Utilities",
+   "xero_dept": "Facillities",
+   "budget_dept": "Facillities",
+   "status": "GROWING",
+   "base": 938.81,
+   "in_contracts": true,
+   "budget_monthly": 807.62,
+   "cost_type": "Recurring (Variable)",
+   "purpose": "Self Explanatory",
+   "fixed_alloc": {
+    "Facillities": 807.62
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "ERC of WNC",
+   "months": [
+    760.0,
+    760.0,
+    760.0,
+    760.0,
+    760.0,
+    760.0,
+    760.0,
+    0.0
+   ],
+   "ytd": 5320.0,
+   "account": "6487 - Utilities",
+   "xero_dept": "Facillities",
+   "budget_dept": "Facillities",
+   "status": "STEADY",
+   "base": 760.0,
+   "in_contracts": true,
+   "budget_monthly": 810.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Fiber line for Survail",
+   "fixed_alloc": {
+    "Facillities": 810.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Small Business Administration",
+   "months": [
+    731.0,
+    731.0,
+    731.0,
+    731.0,
+    731.0,
+    731.0,
+    731.0,
+    0.0
+   ],
+   "ytd": 5117.0,
+   "account": "6481 - Interest",
+   "xero_dept": "General Overhead",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "STEADY",
+   "base": 731.0,
+   "in_contracts": true,
+   "budget_monthly": 731.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 731.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "Amazon (supplies)",
+   "months": [
+    221.99,
+    298.32,
+    750.13,
+    814.28,
+    1060.19,
+    55.68,
+    1122.15,
+    361.81
+   ],
+   "ytd": 4684.55,
+   "account": "6716 - Office Supplies",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 746.01,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "OPENAI (Survail LLM)",
+   "months": [
+    100.0,
+    400.0,
+    50.0,
+    320.0,
+    800.0,
+    950.0,
+    570.51,
+    1070.47
+   ],
+   "ytd": 4260.98,
+   "account": "6735 - Research & Development",
+   "xero_dept": "Software Development",
+   "budget_dept": "",
+   "status": "GROWING",
+   "base": 773.5,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": false
+  },
+  {
+   "vendor": "Dun & Bradstreet",
+   "months": [
+    565.0,
+    485.0,
+    485.0,
+    485.0,
+    485.0,
+    485.0,
+    485.0,
+    485.0
+   ],
+   "ytd": 3960.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "STEADY",
+   "base": 485.0,
+   "in_contracts": true,
+   "budget_monthly": 465.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Credit Screening Service",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 465.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": false
+  },
+  {
+   "vendor": "Amtrust",
+   "months": [
+    921.0,
+    863.0,
+    863.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    882.6
+   ],
+   "ytd": 3529.6,
+   "account": "6950 - Business Insurance",
+   "xero_dept": "",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "PERIODIC",
+   "base": 459.74,
+   "in_contracts": true,
+   "budget_monthly": 860.67,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 860.67
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": false
+  },
+  {
+   "vendor": "Atlassian",
+   "months": [
+    481.05,
+    0.0,
+    981.22,
+    468.47,
+    438.1,
+    422.3,
+    437.51,
+    0.0
+   ],
+   "ytd": 3228.65,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Software Development",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "STEADY",
+   "base": 432.64,
+   "in_contracts": true,
+   "budget_monthly": 469.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 7.6
+   },
+   "seat_monthly": 461.4,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "Dominion Energy (PSNC)",
+   "months": [
+    829.01,
+    900.19,
+    841.73,
+    269.61,
+    95.45,
+    46.51,
+    26.3,
+    26.24
+   ],
+   "ytd": 3035.04,
+   "account": "6487 - Utilities",
+   "xero_dept": "Facillities",
+   "budget_dept": "Facillities",
+   "status": "DROPPING",
+   "base": 56.09,
+   "in_contracts": true,
+   "budget_monthly": 100.8,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Facillities": 100.8
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Indeed",
+   "months": [
+    500.01,
+    137.17,
+    204.38,
+    688.17,
+    61.83,
+    894.1,
+    172.31,
+    324.21
+   ],
+   "ytd": 2982.18,
+   "account": "208 - Recruitment",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 376.08,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "DivioTec Inc",
+   "months": [
+    0.0,
+    2969.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 2969.0,
+   "account": "6735 - Research & Development",
+   "xero_dept": "Software Development",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 386.72,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": false
+  },
+  {
+   "vendor": "Logmein (Go To Meeting)",
+   "months": [
+    319.0,
+    319.0,
+    319.0,
+    341.33,
+    341.33,
+    341.33,
+    341.33,
+    341.33
+   ],
+   "ytd": 2663.65,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Technical Support",
+   "budget_dept": "Technical Support",
+   "status": "STEADY",
+   "base": 341.33,
+   "in_contracts": true,
+   "budget_monthly": 319.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "",
+   "fixed_alloc": {
+    "Technical Support": 319.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Technical Support",
+   "contradiction": false
+  },
+  {
+   "vendor": "Mountain Lawn Care",
+   "months": [
+    0.0,
+    0.0,
+    500.0,
+    250.0,
+    500.0,
+    500.0,
+    250.0,
+    500.0
+   ],
+   "ytd": 2500.0,
+   "account": "6729 - Repair & Maintenance (routine)",
+   "xero_dept": "",
+   "budget_dept": "Facillities",
+   "status": "GROWING",
+   "base": 416.67,
+   "in_contracts": true,
+   "budget_monthly": 368.75,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Facillities": 368.75
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Adobe",
+   "months": [
+    293.14,
+    293.14,
+    293.14,
+    293.14,
+    293.14,
+    293.14,
+    293.14,
+    400.13
+   ],
+   "ytd": 2452.11,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "Marketing",
+   "status": "STEADY",
+   "base": 293.14,
+   "in_contracts": true,
+   "budget_monthly": 173.31,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Marketing Videos",
+   "fixed_alloc": {
+    "Sales": 21.39,
+    "Marketing": 151.92
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": true
+  },
+  {
+   "vendor": "Make.com",
+   "months": [
+    230.5,
+    279.85,
+    263.4,
+    337.42,
+    353.88,
+    312.74,
+    431.96,
+    203.08
+   ],
+   "ytd": 2412.83,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "STEADY",
+   "base": 366.19,
+   "in_contracts": true,
+   "budget_monthly": 283.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Software for building automations",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 283.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "Brown Investment Properties",
+   "months": [
+    280.0,
+    280.0,
+    330.4,
+    288.4,
+    288.4,
+    288.4,
+    288.4,
+    288.4
+   ],
+   "ytd": 2332.4,
+   "account": "6951 - Rent",
+   "xero_dept": "Installation Services",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 288.4,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Installation Services",
+   "contradiction": false
+  },
+  {
+   "vendor": "Verizon Wireless",
+   "months": [
+    238.29,
+    266.62,
+    266.62,
+    271.56,
+    336.07,
+    301.9,
+    301.9,
+    302.07
+   ],
+   "ytd": 2285.03,
+   "account": "6721 - Communications",
+   "xero_dept": "Installation Services",
+   "budget_dept": "Installation Services",
+   "status": "STEADY",
+   "base": 313.29,
+   "in_contracts": true,
+   "budget_monthly": 630.42,
+   "cost_type": "Recurring (Variable)",
+   "purpose": "",
+   "fixed_alloc": {
+    "Installation Services": 323.67,
+    "Exec": 306.75
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Installation Services",
+   "contradiction": false
+  },
+  {
+   "vendor": "Authorize.net",
+   "months": [
+    258.15,
+    249.15,
+    254.15,
+    259.2,
+    254.0,
+    515.8,
+    0.0,
+    248.95
+   ],
+   "ytd": 2039.4,
+   "account": "6482 - Bank & Credit Card Fees",
+   "xero_dept": "",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "STEADY",
+   "base": 256.6,
+   "in_contracts": true,
+   "budget_monthly": 261.3,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Payment Administration",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 261.3
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": false
+  },
+  {
+   "vendor": "West River Telecommunications",
+   "months": [
+    0.0,
+    -2000.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": -2000.0,
+   "account": "6488 - Travel-Other",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": -260.5,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "ClickUp",
+   "months": [
+    206.0,
+    206.0,
+    325.47,
+    361.18,
+    206.0,
+    206.0,
+    206.0,
+    257.81
+   ],
+   "ytd": 1974.46,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "",
+   "budget_dept": "Installation Services",
+   "status": "STEADY",
+   "base": 206.0,
+   "in_contracts": true,
+   "budget_monthly": 107.1,
+   "cost_type": "Recurring (Variable)",
+   "purpose": "Project & Task Management",
+   "fixed_alloc": {
+    "Installation Services": 7.65
+   },
+   "seat_monthly": 99.45,
+   "final_dept": "Installation Services",
+   "contradiction": false
+  },
+  {
+   "vendor": "HP",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    1949.97,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 1949.97,
+   "account": "6716 - Office Supplies",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 253.99,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Asheville Printing Company",
+   "months": [
+    0.0,
+    1888.71,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 1888.71,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "ONE-TIME",
+   "base": 246.01,
+   "in_contracts": true,
+   "budget_monthly": 83.73,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 83.73
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": false
+  },
+  {
+   "vendor": "Oteen Drywall LLC",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    80.0,
+    0.0,
+    1700.0
+   ],
+   "ytd": 1780.0,
+   "account": "6741 - Repair and Maintenance (one time)",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 40.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "CallRail",
+   "months": [
+    235.0,
+    0.0,
+    470.0,
+    0.0,
+    235.0,
+    250.0,
+    500.0,
+    0.0
+   ],
+   "ytd": 1690.0,
+   "account": "6719 - Marketing Tools",
+   "xero_dept": "Marketing",
+   "budget_dept": "Marketing",
+   "status": "GROWING",
+   "base": 328.33,
+   "in_contracts": true,
+   "budget_monthly": 235.0,
+   "cost_type": "Recurring (Variable)",
+   "purpose": "Call Tracking & Marketing Analytics",
+   "fixed_alloc": {
+    "Marketing": 235.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": false
+  },
+  {
+   "vendor": "Klevu",
+   "months": [
+    236.19,
+    236.19,
+    236.19,
+    236.19,
+    236.19,
+    236.19,
+    236.19,
+    0.0
+   ],
+   "ytd": 1653.33,
+   "account": "6060 - Web Media Expenses",
+   "xero_dept": "Marketing",
+   "budget_dept": "Marketing",
+   "status": "STEADY",
+   "base": 236.19,
+   "in_contracts": true,
+   "budget_monthly": 236.19,
+   "cost_type": "Recurring (Variable)",
+   "purpose": "E-Commerce & Conversion Platform",
+   "fixed_alloc": {
+    "Marketing": 236.19
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": false
+  },
+  {
+   "vendor": "ChatGPT (OpenAI subscriptions)",
+   "months": [
+    210.0,
+    241.63,
+    240.0,
+    180.68,
+    125.0,
+    246.0,
+    200.0,
+    200.0
+   ],
+   "ytd": 1643.31,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Software Development",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 190.33,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": false
+  },
+  {
+   "vendor": "Coverall Cleaning",
+   "months": [
+    855.4,
+    0.0,
+    364.0,
+    182.0,
+    218.4,
+    91.0,
+    -91.0,
+    0.0
+   ],
+   "ytd": 1619.8,
+   "account": "6729 - Repair & Maintenance (routine)",
+   "xero_dept": "Facillities",
+   "budget_dept": "Facillities",
+   "status": "DROPPING",
+   "base": 72.8,
+   "in_contracts": true,
+   "budget_monthly": 356.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "On-Site Cleaning Services",
+   "fixed_alloc": {
+    "Facillities": 356.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "City of Asheville",
+   "months": [
+    348.61,
+    0.0,
+    337.49,
+    0.0,
+    381.97,
+    0.0,
+    381.97,
+    0.0
+   ],
+   "ytd": 1450.04,
+   "account": "6487 - Utilities",
+   "xero_dept": "Facillities",
+   "budget_dept": "Facillities",
+   "status": "PERIODIC",
+   "base": 188.87,
+   "in_contracts": true,
+   "budget_monthly": 243.15,
+   "cost_type": "Recurring (Variable)",
+   "purpose": "Water Utility",
+   "fixed_alloc": {
+    "Facillities": 243.15
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Matthew Nederlanden",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1271.22,
+    0.0,
+    0.0
+   ],
+   "ytd": 1271.22,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Exec",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 635.61,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Exec",
+   "contradiction": false
+  },
+  {
+   "vendor": "Florida Power & Light",
+   "months": [
+    121.42,
+    130.35,
+    132.91,
+    139.75,
+    132.02,
+    157.63,
+    204.35,
+    207.66
+   ],
+   "ytd": 1226.09,
+   "account": "6487 - Utilities",
+   "xero_dept": "Facillities",
+   "budget_dept": "Software Development",
+   "status": "STEADY",
+   "base": 164.67,
+   "in_contracts": true,
+   "budget_monthly": 89.2,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Software Development": 89.2
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": true
+  },
+  {
+   "vendor": "BESTBUY.COM 00994 MN 55423 US",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1203.22
+   ],
+   "ytd": 1203.22,
+   "account": "6729 - Repair & Maintenance (routine)",
+   "xero_dept": "Facillities",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 1776.18,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Bonusly",
+   "months": [
+    16.47,
+    28.35,
+    497.07,
+    129.87,
+    221.4,
+    59.67,
+    216.54,
+    0.0
+   ],
+   "ytd": 1169.37,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "STEADY",
+   "base": 165.87,
+   "in_contracts": true,
+   "budget_monthly": 571.5,
+   "cost_type": "Recurring (Variable)",
+   "purpose": "Employee Recognition",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 12.7
+   },
+   "seat_monthly": 558.8,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "Delta Airlines",
+   "months": [
+    0.0,
+    0.0,
+    1148.41,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 1148.41,
+   "account": "6488 - Travel-Other",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 149.58,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Apex Pest Control",
+   "months": [
+    92.0,
+    92.0,
+    92.0,
+    92.0,
+    492.0,
+    92.0,
+    92.0,
+    92.0
+   ],
+   "ytd": 1136.0,
+   "account": "6729 - Repair & Maintenance (routine)",
+   "xero_dept": "Facillities",
+   "budget_dept": "Facillities",
+   "status": "STEADY",
+   "base": 225.33,
+   "in_contracts": true,
+   "budget_monthly": 92.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Facilities Maintenance",
+   "fixed_alloc": {
+    "Facillities": 92.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Snappy Gifts",
+   "months": [
+    0.0,
+    379.5,
+    0.0,
+    0.0,
+    0.0,
+    92.08,
+    0.0,
+    629.76
+   ],
+   "ytd": 1101.34,
+   "account": "6732 - Staff Development",
+   "xero_dept": "General Overhead",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "PERIODIC",
+   "base": 143.45,
+   "in_contracts": true,
+   "budget_monthly": 184.77,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 184.77
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "DigitalOcean.com",
+   "months": [
+    98.0,
+    98.0,
+    114.42,
+    122.0,
+    122.0,
+    122.0,
+    122.0,
+    122.0
+   ],
+   "ytd": 920.42,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Software Development",
+   "budget_dept": "Software Development",
+   "status": "STEADY",
+   "base": 122.0,
+   "in_contracts": true,
+   "budget_monthly": 98.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Software Development": 98.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": false
+  },
+  {
+   "vendor": "Figma Monthly",
+   "months": [
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    0.0
+   ],
+   "ytd": 840.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Software Development",
+   "budget_dept": "Software Development",
+   "status": "STEADY",
+   "base": 120.0,
+   "in_contracts": true,
+   "budget_monthly": 120.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Software Development": 120.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": false
+  },
+  {
+   "vendor": "Doppler Technologies",
+   "months": [
+    84.0,
+    121.4,
+    105.0,
+    105.0,
+    105.0,
+    105.0,
+    105.0,
+    105.0
+   ],
+   "ytd": 835.4,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Software Development",
+   "budget_dept": "Software Development",
+   "status": "STEADY",
+   "base": 105.0,
+   "in_contracts": true,
+   "budget_monthly": 84.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Software Development": 84.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": false
+  },
+  {
+   "vendor": "California Secretary of State",
+   "months": [
+    0.0,
+    0.0,
+    800.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 800.0,
+   "account": "6490 - State Income, Franchise & Gross-Receipts Taxes",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 104.2,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Arnold Green",
+   "months": [
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0
+   ],
+   "ytd": 800.0,
+   "account": "6951 - Rent",
+   "xero_dept": "",
+   "budget_dept": "Facillities",
+   "status": "STEADY",
+   "base": 100.0,
+   "in_contracts": true,
+   "budget_monthly": 100.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Facillities": 100.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Birdeye 2025-2026",
+   "months": [
+    192.0,
+    192.0,
+    192.0,
+    192.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 768.0,
+   "account": "6719 - Marketing Tools",
+   "xero_dept": "Marketing",
+   "budget_dept": "",
+   "status": "DROPPED",
+   "base": 0.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": false
+  },
+  {
+   "vendor": "Xero",
+   "months": [
+    109.25,
+    109.25,
+    109.25,
+    107.37,
+    109.25,
+    109.25,
+    109.25,
+    0.0
+   ],
+   "ytd": 762.87,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "STEADY",
+   "base": 109.25,
+   "in_contracts": true,
+   "budget_monthly": 95.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "enables paynow button in Xero to feed through to Authorize.net",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 95.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "Fraud / Disputed Charges",
+   "months": [
+    -3747.13,
+    0.0,
+    3040.42,
+    0.0,
+    0.0,
+    0.0,
+    1455.18,
+    0.0
+   ],
+   "ytd": 748.47,
+   "account": "8309 - Fraud",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "PERIODIC",
+   "base": 97.49,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Docker, Inc",
+   "months": [
+    91.0,
+    91.0,
+    91.0,
+    91.0,
+    91.0,
+    91.0,
+    91.0,
+    91.0
+   ],
+   "ytd": 728.0,
+   "account": "6735 - Research & Development",
+   "xero_dept": "Software Development",
+   "budget_dept": "Software Development",
+   "status": "STEADY",
+   "base": 91.0,
+   "in_contracts": true,
+   "budget_monthly": 91.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "This is an open source platform that helps developers build, share, run, and verify applications anywhere",
+   "fixed_alloc": {
+    "Software Development": 91.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": false
+  },
+  {
+   "vendor": "Mountain Valley Spring Water",
+   "months": [
+    67.43,
+    149.97,
+    82.22,
+    89.61,
+    123.61,
+    89.28,
+    119.77,
+    0.0
+   ],
+   "ytd": 721.89,
+   "account": "6716 - Office Supplies",
+   "xero_dept": "General Overhead",
+   "budget_dept": "Facillities",
+   "status": "STEADY",
+   "base": 110.89,
+   "in_contracts": true,
+   "budget_monthly": 89.69,
+   "cost_type": "Recurring (Variable)",
+   "purpose": "Drinking Water",
+   "fixed_alloc": {
+    "Facillities": 89.69
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": true
+  },
+  {
+   "vendor": "Cobot",
+   "months": [
+    88.0,
+    88.0,
+    88.0,
+    88.0,
+    88.0,
+    88.0,
+    88.0,
+    88.0
+   ],
+   "ytd": 704.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Facillities",
+   "budget_dept": "Facillities",
+   "status": "STEADY",
+   "base": 88.0,
+   "in_contracts": true,
+   "budget_monthly": 88.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "AVL Focus Platform",
+   "fixed_alloc": {
+    "Facillities": 88.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Anthropic",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    125.0,
+    125.0,
+    125.0,
+    323.29
+   ],
+   "ytd": 698.29,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 125.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "General Overhead",
+   "contradiction": false
+  },
+  {
+   "vendor": "Sliger",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    679.45
+   ],
+   "ytd": 679.45,
+   "account": "6735 - Research & Development",
+   "xero_dept": "Software Development",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 1003.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": false
+  },
+  {
+   "vendor": "Birdeye Monthly",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    202.0,
+    202.0,
+    202.0
+   ],
+   "ytd": 606.0,
+   "account": "6717 - Marketing",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 202.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "GitHub",
+   "months": [
+    82.0,
+    0.0,
+    82.0,
+    82.0,
+    82.0,
+    82.0,
+    82.0,
+    110.13
+   ],
+   "ytd": 602.13,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Software Development",
+   "budget_dept": "Software Development",
+   "status": "STEADY",
+   "base": 82.0,
+   "in_contracts": true,
+   "budget_monthly": 82.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "GitHub is a developer platform that allows developers to create, store, manage and share their code.",
+   "fixed_alloc": {
+    "Software Development": 82.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": false
+  },
+  {
+   "vendor": "Staples",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    579.99,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 579.99,
+   "account": "6716 - Office Supplies",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 75.54,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Mississippi Secretary of State",
+   "months": [
+    562.04,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 562.04,
+   "account": "6491 - Business Registrations & Registered Agent",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 73.21,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Apollo.io",
+   "months": [
+    59.0,
+    59.0,
+    59.0,
+    59.0,
+    149.0,
+    59.0,
+    59.0,
+    59.0
+   ],
+   "ytd": 562.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Marketing",
+   "budget_dept": "Marketing",
+   "status": "STEADY",
+   "base": 89.0,
+   "in_contracts": true,
+   "budget_monthly": 59.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Marketing": 59.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": false
+  },
+  {
+   "vendor": "PaidNice",
+   "months": [
+    69.0,
+    69.0,
+    69.0,
+    69.0,
+    69.0,
+    69.0,
+    69.0,
+    69.0
+   ],
+   "ytd": 552.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "STEADY",
+   "base": 69.0,
+   "in_contracts": true,
+   "budget_monthly": 69.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 69.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "Hilton Garden Inn",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    203.06,
+    346.54,
+    0.0
+   ],
+   "ytd": 549.6,
+   "account": "6486 - Travel - Marketing or Tradeouts",
+   "xero_dept": "Sales",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 274.8,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Sales",
+   "contradiction": false
+  },
+  {
+   "vendor": "Tango",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    528.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 528.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "NEW",
+   "base": 176.0,
+   "in_contracts": true,
+   "budget_monthly": 40.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "SOP Creation Tool",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 40.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "SCW",
+   "months": [
+    0.0,
+    0.0,
+    116.0,
+    116.0,
+    86.0,
+    86.0,
+    116.0,
+    0.0
+   ],
+   "ytd": 520.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 96.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "General Overhead",
+   "contradiction": false
+  },
+  {
+   "vendor": "American Express",
+   "months": [
+    505.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 505.0,
+   "account": "6482 - Bank & Credit Card Fees",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 65.78,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "OWYN Safety Management Platform",
+   "months": [
+    497.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 497.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Installation Services",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 64.74,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Installation Services",
+   "contradiction": false
+  },
+  {
+   "vendor": "Corporate Filings LLC",
+   "months": [
+    0.0,
+    0.0,
+    378.0,
+    58.0,
+    49.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 485.0,
+   "account": "6491 - Business Registrations & Registered Agent",
+   "xero_dept": "",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "DROPPED",
+   "base": 0.0,
+   "in_contracts": true,
+   "budget_monthly": 122.17,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "DE Registered Agent Services",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 122.15
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": false
+  },
+  {
+   "vendor": "Mural",
+   "months": [
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0
+   ],
+   "ytd": 480.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "STEADY",
+   "base": 60.0,
+   "in_contracts": true,
+   "budget_monthly": 60.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 0.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "Maidpro",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    460.0
+   ],
+   "ytd": 460.0,
+   "account": "6729 - Repair & Maintenance (routine)",
+   "xero_dept": "Facillities",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 679.05,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "United States Treasury",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    445.44,
+    0.0
+   ],
+   "ytd": 445.44,
+   "account": "6490 - State Income, Franchise & Gross-Receipts Taxes",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 445.44,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "NC Secretary of State",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    440.0,
+    0.0
+   ],
+   "ytd": 440.0,
+   "account": "6491 - Business Registrations & Registered Agent",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 440.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Vimeo",
+   "months": [
+    0.0,
+    0.0,
+    399.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 399.0,
+   "account": "6717 - Marketing",
+   "xero_dept": "",
+   "budget_dept": "Marketing",
+   "status": "ONE-TIME",
+   "base": 51.97,
+   "in_contracts": true,
+   "budget_monthly": 33.25,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "",
+   "fixed_alloc": {
+    "Marketing": 33.25
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": false
+  },
+  {
+   "vendor": "Jotform Inc",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    390.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 390.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "NEW",
+   "base": 195.0,
+   "in_contracts": true,
+   "budget_monthly": 32.5,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 32.5
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "Shopper Approved",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    319.4,
+    0.0,
+    0.0
+   ],
+   "ytd": 319.4,
+   "account": "6719 - Marketing Tools",
+   "xero_dept": "",
+   "budget_dept": "Marketing",
+   "status": "NEW",
+   "base": 159.7,
+   "in_contracts": true,
+   "budget_monthly": 26.62,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Marketing": 26.62
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": false
+  },
+  {
+   "vendor": "Sentry",
+   "months": [
+    36.49,
+    39.0,
+    39.0,
+    39.0,
+    34.65,
+    35.24,
+    36.73,
+    35.26
+   ],
+   "ytd": 295.37,
+   "account": "6060 - Web Media Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "Software Development",
+   "status": "STEADY",
+   "base": 35.54,
+   "in_contracts": true,
+   "budget_monthly": 39.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Software Development": 39.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": true
+  },
+  {
+   "vendor": "ubiquiti",
+   "months": [
+    0.0,
+    0.0,
+    288.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 288.0,
+   "account": "6716 - Office Supplies",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 37.51,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "SendGrid",
+   "months": [
+    34.95,
+    34.95,
+    34.95,
+    34.95,
+    34.95,
+    34.95,
+    34.95,
+    34.95
+   ],
+   "ytd": 279.6,
+   "account": "6717 - Marketing",
+   "xero_dept": "Software Development",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 34.95,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": false
+  },
+  {
+   "vendor": "Cobblestone Inn",
+   "months": [
+    0.0,
+    0.0,
+    277.18,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 277.18,
+   "account": "6488 - Travel-Other",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 36.1,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "TN DOR",
+   "months": [
+    277.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 277.0,
+   "account": "6490 - State Income, Franchise & Gross-Receipts Taxes",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 36.08,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Checkr",
+   "months": [
+    59.98,
+    0.0,
+    59.98,
+    0.0,
+    29.99,
+    59.98,
+    0.0,
+    59.98
+   ],
+   "ytd": 269.91,
+   "account": "208 - Recruitment",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 29.99,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Shell Oil",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    136.21,
+    56.37,
+    74.98
+   ],
+   "ytd": 267.56,
+   "account": "6484 - Vehicle Expense",
+   "xero_dept": "Exec",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 96.29,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Exec",
+   "contradiction": false
+  },
+  {
+   "vendor": "Blue Planet Plumbing",
+   "months": [
+    248.67,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 248.67,
+   "account": "6729 - Repair & Maintenance (routine)",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 32.39,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "EZ-Access",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    232.19,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 232.19,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Facillities",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 77.4,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Pye Barker Fire & Safety",
+   "months": [
+    230.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 230.0,
+   "account": "6729 - Repair & Maintenance (routine)",
+   "xero_dept": "Facillities",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 29.96,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Enterprise rent a car",
+   "months": [
+    0.0,
+    0.0,
+    229.62,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 229.62,
+   "account": "6488 - Travel-Other",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 29.91,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Cloudflare",
+   "months": [
+    25.0,
+    25.0,
+    31.77,
+    35.0,
+    35.0,
+    35.0,
+    39.84,
+    0.0
+   ],
+   "ytd": 226.61,
+   "account": "6060 - Web Media Expenses",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 36.61,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Name-Cheap.com",
+   "months": [
+    18.68,
+    18.68,
+    37.36,
+    0.0,
+    74.72,
+    56.64,
+    18.68,
+    0.0
+   ],
+   "ytd": 224.76,
+   "account": "6060 - Web Media Expenses",
+   "xero_dept": "Marketing",
+   "budget_dept": "Marketing",
+   "status": "STEADY",
+   "base": 50.01,
+   "in_contracts": true,
+   "budget_monthly": 38.24,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Marketing": 38.24
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": false
+  },
+  {
+   "vendor": "UPS Supply Chain Solutions Continuous bond 5/1/26",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    56.0,
+    53.0,
+    53.0,
+    53.0
+   ],
+   "ytd": 215.0,
+   "account": "6950 - Business Insurance",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 54.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Birdeye Annual",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    209.01,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 209.01,
+   "account": "6717 - Marketing",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 69.67,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "ESignatures.io",
+   "months": [
+    0.0,
+    50.0,
+    0.0,
+    50.0,
+    50.0,
+    50.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 200.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "03 - HR & Business Administration Manager",
+   "status": "PERIODIC",
+   "base": 26.05,
+   "in_contracts": true,
+   "budget_monthly": 33.33,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Platform for install agreements and misc. HR agreements etc.",
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 33.33
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "contradiction": true
+  },
+  {
+   "vendor": "Uber Eats",
+   "months": [
+    50.0,
+    0.0,
+    25.0,
+    50.0,
+    0.0,
+    50.0,
+    25.0,
+    0.0
+   ],
+   "ytd": 200.0,
+   "account": "8264 - Meals and Entertainment",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 25.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Alarm Systems Licensing Board",
+   "months": [
+    96.37,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    96.37,
+    0.0,
+    0.0
+   ],
+   "ytd": 192.74,
+   "account": "6492 - Occupational Licenses & Certifications",
+   "xero_dept": "Installation Services",
+   "budget_dept": "",
+   "status": "PERIODIC",
+   "base": 25.1,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Installation Services",
+   "contradiction": false
+  },
+  {
+   "vendor": "Crydermans BBQ",
+   "months": [
+    0.0,
+    172.76,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 172.76,
+   "account": "8264 - Meals and Entertainment",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 22.5,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "FastSigns of Asheville",
+   "months": [
+    165.09,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 165.09,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Facillities",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 21.5,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "contradiction": false
+  },
+  {
+   "vendor": "Avigilon",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    165.0,
+    0.0
+   ],
+   "ytd": 165.0,
+   "account": "6735 - Research & Development",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 165.0,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Anytime Mailbox",
+   "months": [
+    16.0,
+    8.0,
+    0.0,
+    0.0,
+    11.25,
+    23.6,
+    51.0,
+    52.2
+   ],
+   "ytd": 162.05,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 28.62,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "General Overhead",
+   "contradiction": false
+  },
+  {
+   "vendor": "Vercel",
+   "months": [
+    20.0,
+    20.0,
+    20.0,
+    20.0,
+    20.0,
+    20.0,
+    20.0,
+    20.0
+   ],
+   "ytd": 160.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "Software Development",
+   "budget_dept": "Software Development",
+   "status": "STEADY",
+   "base": 20.0,
+   "in_contracts": true,
+   "budget_monthly": 8.33,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Software Development": 8.33
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "contradiction": false
+  },
+  {
+   "vendor": "Amasty",
+   "months": [
+    0.0,
+    155.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 155.0,
+   "account": "6060 - Web Media Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 20.19,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "General Overhead",
+   "contradiction": false
+  },
+  {
+   "vendor": "GoDaddy.com",
+   "months": [
+    0.0,
+    72.57,
+    0.0,
+    0.0,
+    23.19,
+    0.0,
+    0.0,
+    46.38
+   ],
+   "ytd": 142.14,
+   "account": "6060 - Web Media Expenses",
+   "xero_dept": "",
+   "budget_dept": "Marketing",
+   "status": "PERIODIC",
+   "base": 18.51,
+   "in_contracts": true,
+   "budget_monthly": 26.37,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {
+    "Marketing": 26.38
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": false
+  },
+  {
+   "vendor": "A Class Academy",
+   "months": [
+    0.0,
+    0.0,
+    138.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 138.0,
+   "account": "6492 - Occupational Licenses & Certifications",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 17.97,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "VA Dept of Criminal Justice",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    34.0,
+    100.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 134.0,
+   "account": "6492 - Occupational Licenses & Certifications",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 17.45,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Criminal Record Check",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    127.5,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 127.5,
+   "account": "6492 - Occupational Licenses & Certifications",
+   "xero_dept": "General Overhead",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 42.5,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "General Overhead",
+   "contradiction": false
+  },
+  {
+   "vendor": "Integration Fox",
+   "months": [
+    15.0,
+    15.0,
+    15.0,
+    15.0,
+    15.0,
+    15.0,
+    15.0,
+    15.0
+   ],
+   "ytd": 120.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "",
+   "budget_dept": "Marketing",
+   "status": "STEADY",
+   "base": 15.0,
+   "in_contracts": true,
+   "budget_monthly": 15.0,
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "",
+   "fixed_alloc": {
+    "Marketing": 15.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "contradiction": false
+  },
+  {
+   "vendor": "West Virginia State Tax Department",
+   "months": [
+    -117.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": -117.0,
+   "account": "8307 - ASK MY ACCOUNTANT",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": -15.24,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "KY DOR",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    115.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 115.0,
+   "account": "6491 - Business Registrations & Registered Agent",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 57.5,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "Claude.AI",
+   "months": [
+    0.0,
+    103.31,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ytd": 103.31,
+   "account": "6717 - Marketing",
+   "xero_dept": "",
+   "budget_dept": "",
+   "status": "ONE-TIME",
+   "base": 13.46,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Unassigned",
+   "contradiction": false
+  },
+  {
+   "vendor": "NCBEEC",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    102.5
+   ],
+   "ytd": 102.5,
+   "account": "6492 - Occupational Licenses & Certifications",
+   "xero_dept": "Installation Services",
+   "budget_dept": "",
+   "status": "NEW",
+   "base": 151.31,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "Installation Services",
+   "contradiction": false
+  },
+  {
+   "vendor": "Notarize Inc",
+   "months": [
+    0.0,
+    0.0,
+    0.0,
+    30.0,
+    30.0,
+    0.0,
+    40.0,
+    0.0
+   ],
+   "ytd": 100.0,
+   "account": "6725 - Office Expenses",
+   "xero_dept": "General Overhead",
+   "budget_dept": "",
+   "status": "STEADY",
+   "base": 23.33,
+   "in_contracts": false,
+   "budget_monthly": 0.0,
+   "cost_type": "",
+   "purpose": "",
+   "fixed_alloc": {},
+   "seat_monthly": 0.0,
+   "final_dept": "General Overhead",
+   "contradiction": false
+  }
+ ],
+ "missing": [
+  {
+   "vendor": "Amazon Prime",
+   "budget_monthly": 41.58,
+   "fixed_alloc": {
+    "General Overhead": 0.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "General Overhead",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "BETTER BUSINESS BUREAU",
+   "budget_monthly": 0.0,
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 0.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "BirdEye Inc",
+   "budget_monthly": 192.94,
+   "fixed_alloc": {
+    "Marketing": 192.94
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Reputation Management & Social Presence Platform"
+  },
+  {
+   "vendor": "Commonwealth of Virginia",
+   "budget_monthly": 7.94,
+   "fixed_alloc": {
+    "Sales": 7.94,
+    "03 - HR & Business Administration Manager": 0.01
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Sales",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Compliance Serv",
+   "budget_monthly": 0.0,
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 0.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Payment Services"
+  },
+  {
+   "vendor": "CraftMyPDF",
+   "budget_monthly": 35.0,
+   "fixed_alloc": {
+    "Installation Services": 35.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Installation Services",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": ""
+  },
+  {
+   "vendor": "Digital River",
+   "budget_monthly": 0.0,
+   "fixed_alloc": {
+    "Software Development": 0.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "API service for validating addresses"
+  },
+  {
+   "vendor": "DKL Investments, LLC",
+   "budget_monthly": 280.0,
+   "fixed_alloc": {
+    "Installation Services": 280.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Installation Services",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Elementor",
+   "budget_monthly": 4.08,
+   "fixed_alloc": {
+    "Facillities": 4.08
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Franchise Tax Board",
+   "budget_monthly": 194.3,
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 194.3
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Gartner",
+   "budget_monthly": 0.0,
+   "fixed_alloc": {
+    "Exec": 0.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Exec",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "General Office Expenses",
+   "budget_monthly": 1000.0,
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 1000.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Google (Rippling)",
+   "budget_monthly": 1259.08,
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 431.08
+   },
+   "seat_monthly": 828.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": ""
+  },
+  {
+   "vendor": "Heroku",
+   "budget_monthly": 8.0,
+   "fixed_alloc": {
+    "Software Development": 8.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "IPVM Video Surveillance",
+   "budget_monthly": 16.58,
+   "fixed_alloc": {
+    "Marketing": 16.58
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": ""
+  },
+  {
+   "vendor": "ISNetworld",
+   "budget_monthly": 106.25,
+   "fixed_alloc": {
+    "Installation Services": 106.25
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Installation Services",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Compliance & Safety Administration"
+  },
+  {
+   "vendor": "JB Sales OnDemand",
+   "budget_monthly": 0.0,
+   "fixed_alloc": {
+    "Sales": 0.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Sales",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": ""
+  },
+  {
+   "vendor": "Mailboxvalid",
+   "budget_monthly": 29.95,
+   "fixed_alloc": {
+    "Marketing": 29.95
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "MB Haynes",
+   "budget_monthly": 212.5,
+   "fixed_alloc": {
+    "Facillities": 212.5
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Microsoft",
+   "budget_monthly": 9.92,
+   "fixed_alloc": {
+    "Product": 8.25,
+    "03 - HR & Business Administration Manager": 1.67
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Product",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Misc Repairs & Maintenance",
+   "budget_monthly": 940.0,
+   "fixed_alloc": {
+    "Facillities": 940.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Facillities",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Misc Warehouse Supplies",
+   "budget_monthly": 150.0,
+   "fixed_alloc": {
+    "Purchasing & Fulfillment": 0.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Purchasing & Fulfillment",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Money Management International",
+   "budget_monthly": -83.33,
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": -83.33
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "FSP (Financial Solution Benefit Program)"
+  },
+  {
+   "vendor": "Myfax",
+   "budget_monthly": 12.0,
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 12.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": ""
+  },
+  {
+   "vendor": "Netvendor.com",
+   "budget_monthly": 9.92,
+   "fixed_alloc": {
+    "Sales": 9.92
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Sales",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Neverbounce",
+   "budget_monthly": 25.35,
+   "fixed_alloc": {
+    "Marketing": 0.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "No-IP",
+   "budget_monthly": 3.99,
+   "fixed_alloc": {
+    "Technical Support": 3.99
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Technical Support",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Onvif, Inc",
+   "budget_monthly": 335.0,
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 335.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "ONVIF membership, allows us to say we\u2019re ONVIF compliant"
+  },
+  {
+   "vendor": "PDF4me",
+   "budget_monthly": 6.0,
+   "fixed_alloc": {
+    "Installation Services": 6.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Installation Services",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "QT Company",
+   "budget_monthly": 329.17,
+   "fixed_alloc": {
+    "Software Development": 329.17
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Qt is a cross-platform application development framework for creating graphical user interfaces as well as cross-platform applications that run on various software and hardware platforms"
+  },
+  {
+   "vendor": "Realpage Vendor",
+   "budget_monthly": 9.08,
+   "fixed_alloc": {
+    "Sales": 9.08
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Sales",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Credentialing Service"
+  },
+  {
+   "vendor": "Rev.com",
+   "budget_monthly": 10.0,
+   "fixed_alloc": {
+    "Marketing": 10.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Shit I've missed",
+   "budget_monthly": 5000.0,
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 5000.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Slack",
+   "budget_monthly": 340.75,
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 7.25
+   },
+   "seat_monthly": 333.5,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Internal communication"
+  },
+  {
+   "vendor": "Society for HR Management",
+   "budget_monthly": 22.0,
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 22.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "HR Resource"
+  },
+  {
+   "vendor": "Statcounter.com",
+   "budget_monthly": 4.08,
+   "fixed_alloc": {
+    "Marketing": 4.08
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Sticker Giant",
+   "budget_monthly": 101.65,
+   "fixed_alloc": {
+    "Marketing": 101.65
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Survail Website",
+   "budget_monthly": 0.0,
+   "fixed_alloc": {
+    "Marketing": 0.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "cost_type": "",
+   "purpose": "Website for Survail"
+  },
+  {
+   "vendor": "Twilio",
+   "budget_monthly": 24.5,
+   "fixed_alloc": {
+    "Software Development": 24.5
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Software Development",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "UCollect",
+   "budget_monthly": 15.0,
+   "fixed_alloc": {
+    "03 - HR & Business Administration Manager": 15.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "03 - HR & Business Administration Manager",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Enables paynow button in Xero to feed through to Authorize"
+  },
+  {
+   "vendor": "UPS Capital Insurance Agency, Inc",
+   "budget_monthly": 550.0,
+   "fixed_alloc": {
+    "Purchasing & Fulfillment": 550.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Purchasing & Fulfillment",
+   "cost_type": "Recurring (Fixed)",
+   "purpose": "Insurance"
+  },
+  {
+   "vendor": "Vehicle Expenses",
+   "budget_monthly": 2000.0,
+   "fixed_alloc": {
+    "Installation Services": 2000.0
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Installation Services",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Vendorply.com",
+   "budget_monthly": 9.92,
+   "fixed_alloc": {
+    "Sales": 9.92
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Sales",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Vendor Shield",
+   "budget_monthly": 8.33,
+   "fixed_alloc": {
+    "Sales": 8.33
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Sales",
+   "cost_type": "",
+   "purpose": ""
+  },
+  {
+   "vendor": "Yext Powerlistings",
+   "budget_monthly": 41.58,
+   "fixed_alloc": {
+    "Marketing": 41.58
+   },
+   "seat_monthly": 0.0,
+   "final_dept": "Marketing",
+   "cost_type": "",
+   "purpose": ""
+  }
+ ],
+ "dept_actual": {
+  "Marketing": [
+   101112.98,
+   104346.54,
+   113683.94,
+   105145.29,
+   102201.14,
+   111565.0,
+   97344.03,
+   75166.45
+  ],
+  "Sales": [
+   23880.9,
+   26194.9,
+   23702.9,
+   33135.62,
+   21940.07,
+   23914.68,
+   34292.15,
+   9554.48
+  ],
+  "Unassigned": [
+   20046.46,
+   21603.25,
+   49688.47,
+   24996.78,
+   19300.85,
+   26848.19,
+   26078.03,
+   6221.19
+  ],
+  "Software Development": [
+   15329.12,
+   18543.25,
+   14275.73,
+   15372.76,
+   15712.7,
+   15725.04,
+   15218.69,
+   16357.73
+  ],
+  "Facillities": [
+   15328.39,
+   14036.16,
+   15051.56,
+   16688.63,
+   27807.18,
+   14012.26,
+   14283.72,
+   13691.42
+  ],
+  "General Overhead": [
+   3409.0,
+   3978.92,
+   3910.0,
+   4244.0,
+   4173.75,
+   4028.6,
+   4126.0,
+   4169.49
+  ],
+  "03 - HR & Business Administration Manager": [
+   14365.42,
+   10285.7,
+   14282.72,
+   16199.33,
+   5398.56,
+   8066.8,
+   6304.26,
+   5461.66
+  ],
+  "Purchasing & Fulfillment": [
+   1043.0,
+   1043.0,
+   1043.0,
+   1043.0,
+   1043.0,
+   1043.0,
+   1043.0,
+   1043.0
+  ],
+  "Technical Support": [
+   319.0,
+   319.0,
+   319.0,
+   341.33,
+   341.33,
+   341.33,
+   341.33,
+   341.33
+  ],
+  "Installation Services": [
+   1317.66,
+   752.62,
+   922.49,
+   921.14,
+   830.47,
+   892.67,
+   796.3,
+   950.78
+  ],
+  "Exec": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   1407.43,
+   56.37,
+   74.98
+  ]
+ },
+ "totals": {
+  "opex": [
+   196151.93,
+   201103.34,
+   236879.81,
+   218087.88,
+   198749.05,
+   207845.0,
+   199883.88,
+   133032.51,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "revenue": [
+   1040301.84,
+   962653.48,
+   807402.94,
+   1266520.82,
+   1375720.78,
+   1116661.77,
+   1363598.29,
+   613411.73,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "other_income": [
+   129229.59,
+   613.42,
+   15629.36,
+   1233.33,
+   3051.67,
+   3744.51,
+   11390.34,
+   2355.34,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "cogs": [
+   528763.75,
+   454951.57,
+   374528.5,
+   627997.63,
+   695120.27,
+   514709.89,
+   232223.79,
+   94104.8,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "payroll": [
+   340010.78,
+   306521.04,
+   338404.82,
+   356191.85,
+   302930.9,
+   232740.43,
+   285805.48,
+   267791.52,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ]
+ },
+ "staff": [
+  {
+   "dept": "Installation Services",
+   "position": "Installation Operations Assistant",
+   "ote": 27040.0,
+   "hdv": 0.0,
+   "lic": 79.298,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Technical Support",
+   "position": "Tech Support Manager",
+   "ote": 60000.0,
+   "hdv": 523.5,
+   "lic": 182.725,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Technical Support",
+   "position": "Technical Support Team Member - Level II",
+   "ote": 46800.0,
+   "hdv": 523.5,
+   "lic": 171.638,
+   "tax": 0.01,
+   "hc": 4.0
+  },
+  {
+   "dept": "Technical Support",
+   "position": "Technical Support Team Member - Level I",
+   "ote": 43680.0,
+   "hdv": 523.5,
+   "lic": 219.498,
+   "tax": 0.01,
+   "hc": 3.0
+  },
+  {
+   "dept": "Installation Services",
+   "position": "Installation Services Director",
+   "ote": 90000.0,
+   "hdv": 523.5,
+   "lic": 74.135,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Installation Services",
+   "position": "Senior Project Manager",
+   "ote": 78000.0,
+   "hdv": 523.5,
+   "lic": 74.135,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Installation Services",
+   "position": "Project Manager",
+   "ote": 75000.0,
+   "hdv": 523.5,
+   "lic": 74.135,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Installation Services",
+   "position": "Junior Project Manager",
+   "ote": 62000.0,
+   "hdv": 523.5,
+   "lic": 121.995,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Installation Services",
+   "position": "Project Coordinator",
+   "ote": 50000.0,
+   "hdv": 523.5,
+   "lic": 74.135,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Sales",
+   "position": "Sales Director - Ben LaRue",
+   "ote": 175000.0,
+   "hdv": 523.5,
+   "lic": 235.495,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Sales",
+   "position": "Senior Account Executive - Stu Moore",
+   "ote": 68000.0,
+   "hdv": 523.5,
+   "lic": 219.245,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Sales",
+   "position": "Account Executive - RAMP",
+   "ote": 60000.0,
+   "hdv": 523.5,
+   "lic": 219.245,
+   "tax": 0.01,
+   "hc": 8.0
+  },
+  {
+   "dept": "Sales",
+   "position": "Account Manager - 55K Base",
+   "ote": 55000.0,
+   "hdv": 523.5,
+   "lic": 219.245,
+   "tax": 0.01,
+   "hc": 2.0
+  },
+  {
+   "dept": "Sales",
+   "position": "Inbound BDR",
+   "ote": 40000.0,
+   "hdv": 523.5,
+   "lic": 219.245,
+   "tax": 0.01,
+   "hc": 3.0
+  },
+  {
+   "dept": "Sales",
+   "position": "Sales Manager",
+   "ote": 85000.0,
+   "hdv": 523.5,
+   "lic": 226.895,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Product",
+   "position": "Technical Solutions - Senior",
+   "ote": 85000.0,
+   "hdv": 523.5,
+   "lic": 74.135,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Marketing",
+   "position": "PPC Manager - Dillon Jones",
+   "ote": 72000.0,
+   "hdv": 0.0,
+   "lic": 54.4117,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "03 - HR & Business Administration Manager",
+   "position": "HR & Business Administration Manager",
+   "ote": 90000.0,
+   "hdv": 523.5,
+   "lic": 74.135,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "03 - HR & Business Administration Manager",
+   "position": "Finance Coordinator",
+   "ote": 51000.0,
+   "hdv": 523.5,
+   "lic": 95.705,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Purchasing & Fulfillment",
+   "position": "Purchasing & Warehouse Manager",
+   "ote": 75000.0,
+   "hdv": 523.5,
+   "lic": 66.485,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Purchasing & Fulfillment",
+   "position": "Warehouse Team Member",
+   "ote": 45760.0,
+   "hdv": 523.5,
+   "lic": 71.648,
+   "tax": 0.01,
+   "hc": 2.0
+  },
+  {
+   "dept": "Exec",
+   "position": "Chief Operating Officer",
+   "ote": 100000.0,
+   "hdv": 523.5,
+   "lic": 135.505,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Exec",
+   "position": "Chief Executive Officer",
+   "ote": 95400.0,
+   "hdv": 523.5,
+   "lic": 135.505,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Software Development",
+   "position": "Chief Technology Officer",
+   "ote": 192000.0,
+   "hdv": 523.5,
+   "lic": 75.085,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Software Development",
+   "position": "UI Engineer - Ryan",
+   "ote": 110000.0,
+   "hdv": 523.5,
+   "lic": 75.085,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Software Development",
+   "position": "Cloud Engineer - Cooper Brown",
+   "ote": 132000.0,
+   "hdv": 523.5,
+   "lic": 75.085,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Software Development",
+   "position": "Principal Software Engineer - Adam Nichols",
+   "ote": 160000.0,
+   "hdv": 523.5,
+   "lic": 75.085,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Software Development",
+   "position": "Linux Software Engineer - Kerry Starr",
+   "ote": 150000.0,
+   "hdv": 523.5,
+   "lic": 75.085,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Software Development",
+   "position": "Senior Embedded Systems Engineer",
+   "ote": 130000.0,
+   "hdv": 523.5,
+   "lic": 75.085,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Software Development",
+   "position": "CONTRACTOR - M2 + Floorplan",
+   "ote": 57600.0,
+   "hdv": 0.0,
+   "lic": 41.45,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Software Development",
+   "position": "DESIGN INTERN - Emilee Morris",
+   "ote": 40000.0,
+   "hdv": 523.5,
+   "lic": 75.085,
+   "tax": 0.01,
+   "hc": 1.0
+  },
+  {
+   "dept": "Software Development",
+   "position": "Machine Learning Engineer - Michael Kazzi",
+   "ote": 85020.0,
+   "hdv": 523.5,
+   "lic": 75.085,
+   "tax": 0.01,
+   "hc": 1.0
+  }
+ ],
+ "sales": [
+  {
+   "role": "Senior Account Executive - Stu Moore",
+   "name": "Senior Account Executive - Stu Moore",
+   "ramp": "STU",
+   "start_cal": -8,
+   "ach": 1.0
+  },
+  {
+   "role": "Account Executive - RAMP",
+   "name": "Danny Mize",
+   "ramp": "AM -> AE",
+   "start_cal": -8,
+   "ach": 1.0
+  },
+  {
+   "role": "Account Executive - RAMP",
+   "name": "Sam Childers",
+   "ramp": "NEW AE",
+   "start_cal": -8,
+   "ach": 1.0
+  },
+  {
+   "role": "Account Executive - RAMP",
+   "name": "Zach Schiff",
+   "ramp": "NEW AE",
+   "start_cal": -8,
+   "ach": 1.0
+  },
+  {
+   "role": "Account Executive - RAMP",
+   "name": "Kenny Hester",
+   "ramp": "NEW AE",
+   "start_cal": -4,
+   "ach": 1.0
+  },
+  {
+   "role": "Account Executive - RAMP",
+   "name": "Brian Burke",
+   "ramp": "NEW AE",
+   "start_cal": -1,
+   "ach": 1.0
+  },
+  {
+   "role": "Account Executive - RAMP",
+   "name": "Jonathan Pierce",
+   "ramp": "NEW AE",
+   "start_cal": 3,
+   "ach": 1.0
+  },
+  {
+   "role": "Account Executive - RAMP",
+   "name": "Cory Anderson",
+   "ramp": "NEW AE",
+   "start_cal": 3,
+   "ach": 1.0
+  },
+  {
+   "role": "Account Executive - RAMP",
+   "name": "Justin Atherton",
+   "ramp": "NEW AE",
+   "start_cal": -1,
+   "ach": 1.0
+  },
+  {
+   "role": "Account Executive - RAMP",
+   "name": "TBD",
+   "ramp": "NEW AE",
+   "start_cal": 6,
+   "ach": 1.0
+  },
+  {
+   "role": "Account Executive - RAMP",
+   "name": "TBD",
+   "ramp": "NEW AE",
+   "start_cal": 6,
+   "ach": 1.0
+  },
+  {
+   "role": "Account Manager - 55K Base",
+   "name": "Coalter Wilson",
+   "ramp": "NEW AM",
+   "start_cal": -8,
+   "ach": 1.0
+  },
+  {
+   "role": "Account Manager - 55K Base",
+   "name": "Matt Hefflin",
+   "ramp": "NEW AM",
+   "start_cal": -8,
+   "ach": 1.0
+  },
+  {
+   "role": "Account Manager - 55K Base",
+   "name": "Graham",
+   "ramp": "NEW AM",
+   "start_cal": -8,
+   "ach": 1.0
+  },
+  {
+   "role": "BEN",
+   "name": "BEN",
+   "ramp": "BEN",
+   "start_cal": -8,
+   "ach": 1.0
+  },
+  {
+   "role": "MARKETING",
+   "name": "MARKETING",
+   "ramp": "MARKETING",
+   "start_cal": -8,
+   "ach": 1.0
+  }
+ ],
+ "ramps": [
+  {
+   "name": "NEW AE",
+   "vals": [
+    0.0,
+    30000.0,
+    40000.0,
+    40000.0,
+    45000.0,
+    45000.0,
+    50000.0,
+    55000.0,
+    70000.0,
+    83333.0,
+    83333.0,
+    83334.0
+   ]
+  },
+  {
+   "name": "AM -> AE",
+   "vals": [
+    25000.0,
+    30000.0,
+    40000.0,
+    50000.0,
+    50000.0,
+    50000.0,
+    66600.0,
+    66700.0,
+    66700.0,
+    83333.0,
+    83333.0,
+    83334.0
+   ]
+  },
+  {
+   "name": "NEW AM",
+   "vals": [
+    0.0,
+    40000.0,
+    50000.0,
+    60000.0,
+    70000.0,
+    80000.0,
+    100000.0,
+    100000.0,
+    100000.0,
+    100000.0,
+    100000.0,
+    100000.0
+   ]
+  },
+  {
+   "name": "AE -> AM",
+   "vals": [
+    28000.0,
+    42000.0,
+    70000.0,
+    83000.0,
+    83000.0,
+    84000.0,
+    100000.0,
+    100000.0,
+    100000.0,
+    100000.0,
+    100000.0,
+    100000.0
+   ]
+  },
+  {
+   "name": "STU",
+   "vals": [
+    330000.0,
+    330000.0,
+    330000.0,
+    330000.0,
+    330000.0,
+    330000.0,
+    330000.0,
+    330000.0,
+    330000.0,
+    330000.0,
+    330000.0,
+    330000.0
+   ]
+  },
+  {
+   "name": "MARKETING",
+   "vals": [
+    40000.0,
+    40000.0,
+    40000.0,
+    40000.0,
+    40000.0,
+    40000.0,
+    40000.0,
+    40000.0,
+    40000.0,
+    40000.0,
+    40000.0,
+    40000.0
+   ]
+  },
+  {
+   "name": "BEN",
+   "vals": [
+    44000.0,
+    44000.0,
+    44000.0,
+    44000.0,
+    44000.0,
+    44000.0,
+    44000.0,
+    44000.0,
+    44000.0,
+    44000.0,
+    44000.0,
+    44000.0
+   ]
+  }
+ ],
+ "seat_alloc": {
+  "Atlassian": 461.4,
+  "Rippling": 986.69,
+  "Hubspot": 666.76,
+  "Zoom": 517.68,
+  "Slack": 333.5,
+  "Google (Rippling)": 828.0,
+  "ClickUp": 99.45,
+  "Bonusly": 558.8,
+  "Gong.io Inc": 2299.77
+ },
+ "cutoff": "2026-08-21"
+}
