@@ -115,19 +115,38 @@
       '.scw-acpt-btn--primary { background: #0f4c75; border: 1px solid #0a3a63; color: #fff;',
       '  margin-left: auto; }',
       '.scw-acpt-btn--primary:hover { background: #0a3a63; }',
-      // Edit pencil beside a populated value + "add" ghost when empty.
-      '.scw-acpt-edit { display: inline-flex; align-items: center; justify-content: center;',
-      '  width: 26px; height: 26px; border-radius: 6px; cursor: pointer; color: #64748b;',
-      '  background: transparent; border: 1px solid transparent; padding: 0; }',
-      '.scw-acpt-edit:hover { background: #eef2f7; border-color: #cbd5e1; color: #0f4c75; }',
-      '.scw-acpt-btn--add { background: #fff; border: 1px dashed #cbd5e1; color: #64748b; }',
-      '.scw-acpt-btn--add:hover { background: #f8fafc; border-color: #94a3b8; color: #334155; }',
-      // Completed document slot — green (same palette as the is-yes pill)
-      // so the row reads as a checklist at a glance. Declared after the
-      // ghost rules so the shared specificity resolves in green's favor.
-      '.scw-acpt-btn--done { background: #dcfce7; border-color: #86efac; color: #15803d; }',
-      '.scw-acpt-btn--done:hover { background: #bbf7d0; border-color: #4ade80; color: #14532d; }',
-      '.scw-acpt-group { display: inline-flex; align-items: center; gap: 2px; }',
+      // ── Document tiles ─────────────────────────────────────────
+      // One uniform tile per document. DONE: soft green tile — the main
+      // zone opens the doc, a bordered pencil zone on the right edits it.
+      // MISSING: dashed ghost tile, whole thing opens the editor. Fixed
+      // width so the four tiles read as an aligned checklist.
+      '.scw-acpt-doc { display: inline-flex; align-items: stretch; width: 168px;',
+      '  border-radius: 8px; border: 1px solid #bbf7d0; background: #f0fdf4;',
+      '  overflow: hidden; }',
+      '.scw-acpt-doc__open { flex: 1; min-width: 0; display: inline-flex; align-items: center;',
+      '  gap: 7px; padding: 8px 10px; color: #15803d !important; cursor: pointer;',
+      '  font: 600 12px/1.2 system-ui, sans-serif; text-decoration: none !important; }',
+      '.scw-acpt-doc__open:hover { background: #dcfce7; text-decoration: none !important; }',
+      '.scw-acpt-doc__open svg { flex: none; }',
+      '.scw-acpt-doc__lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+      '.scw-acpt-doc__check { margin-left: auto; flex: none; color: #16a34a;',
+      '  display: inline-flex; }',
+      '.scw-acpt-doc__edit { flex: none; width: 26px; display: inline-flex; align-items: center;',
+      '  justify-content: center; border: none; border-left: 1px solid #bbf7d0;',
+      '  background: transparent; color: #15803d; cursor: pointer; opacity: .5;',
+      '  transition: opacity .12s, background .12s; padding: 0; }',
+      '.scw-acpt-doc__edit:hover { opacity: 1; background: #dcfce7; }',
+      'button.scw-acpt-doc--missing { width: 168px; box-sizing: border-box;',
+      '  display: inline-flex; align-items: center; gap: 7px; padding: 8px 10px;',
+      '  border-radius: 8px; border: 1.5px dashed #cbd5e1; background: #fff;',
+      '  color: #64748b; cursor: pointer; font: 600 12px/1.2 system-ui, sans-serif;',
+      '  text-align: left; transition: border-color .12s, color .12s, background .12s; }',
+      'button.scw-acpt-doc--missing:hover { border-color: #0f4c75; color: #0f4c75;',
+      '  background: #f8fafc; }',
+      'button.scw-acpt-doc--missing svg { flex: none; }',
+      // The agreement/invoice tiles and the bid-PDF/estimate tiles are
+      // mirror pairs — cluster tightly within a pair, breathe between.
+      '.scw-acpt-pair { display: inline-flex; gap: 6px; }',
       // Compact list mode: ONE card, one row per acceptance record —
       // title | pills | actions on a single line (wraps on narrow).
       // Accordion-header rollup badge (signed tally) — sits before the count
@@ -138,23 +157,21 @@
       '  border: 1px solid transparent; white-space: nowrap; }',
       '.scw-acpt-rollup--warn { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
       '.scw-acpt-rollup--ok   { background: #dcfce7; border-color: #86efac; color: #15803d; }',
-      '.scw-acpt-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;',
-      '  padding: 8px 2px; }',
+      '.scw-acpt-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;',
+      '  padding: 10px 2px; }',
       '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #eef2f7; }',
-      // Fixed title column — base SOW numbers (SW1145) are shorter than CO
-      // numbers (SW1418CO), so an auto-width title staggered the pills.
-      '.scw-acpt-row .scw-acpt-title { font-size: 13px; flex: 0 0 320px;',
-      '  overflow-wrap: anywhere; }',
+      // Fixed identity column — base SOW numbers (SW1145) are shorter than
+      // CO numbers (SW1418CO), so an auto-width title staggered the pills.
+      // The proposal id renders as a muted sub-line instead of riding in
+      // the title (the " | 20260807-11068" tail was pure noise up there).
+      '.scw-acpt-id { flex: 0 0 280px; min-width: 0; }',
+      '.scw-acpt-id .scw-acpt-title { font-size: 13.5px; overflow-wrap: anywhere; }',
+      '.scw-acpt-sub { font: 500 11px/1.3 system-ui, sans-serif; color: #94a3b8;',
+      '  margin-top: 1px; }',
       '.scw-acpt-row .scw-acpt-status { margin: 0; gap: 6px; }',
       '.scw-acpt-row .scw-acpt-pill { padding: 3px 9px; font-size: 11px; }',
-      '.scw-acpt-row .scw-acpt-actions { margin-left: auto; gap: 6px; }',
-      '.scw-acpt-row .scw-acpt-btn { padding: 5px 10px; font-size: 11.5px; }',
-      '.scw-acpt-row .scw-acpt-edit { width: 22px; height: 22px; }',
-      // Fixed-width action slots so the agreement / Xero buttons form
-      // straight columns whether a row shows the "+ add" ghost or the
-      // populated link + pencil pair.
-      '.scw-acpt-slot { display: inline-flex; align-items: center; gap: 2px;',
-      '  width: 178px; }',
+      '.scw-acpt-row .scw-acpt-actions { margin-left: auto; gap: 14px; align-items: center; }',
+      '.scw-acpt-row .scw-acpt-btn { padding: 6px 12px; font-size: 11.5px; }',
       // Own mini-modal (link editor / upload progress).
       '.scw-acpt-m-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.55);',
       '  z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 18px; }',
@@ -368,28 +385,34 @@
     var bidPdfA  = cellAnchor(row, F.bidPdf, 'a.kn-view-asset') || cellAnchor(row, F.bidPdf);
     var actionA  = row.querySelector('.kn-action-link') || row.querySelector('.kn-table-link a');
 
-    // One fixed-width slot per document. Populated → GREEN button (opens
-    // the doc) + pencil; empty → dashed "+ add" ghost that opens the
-    // editor directly.
+    // One uniform tile per document. DONE → soft green tile with a check:
+    // the main zone opens the doc, the bordered pencil zone edits it.
+    // MISSING → dashed ghost tile; the whole tile opens the editor.
     function fileSlot(fk, label, anchor, editTitle) {
-      return '<span class="scw-acpt-slot">' +
-        (anchor
-          ? '<span class="scw-acpt-group">' +
-              '<a class="scw-acpt-btn scw-acpt-btn--ghost scw-acpt-btn--done" data-proxy-file="' + fk + '" href="javascript:void(0)">' + FILE_SVG + esc(label) + '</a>' +
-              '<button type="button" class="scw-acpt-edit" data-edit-field="' + fk + '" title="' + esc(editTitle) + '">' + PENCIL_SVG + '</button>' +
-            '</span>'
-          : '<button type="button" class="scw-acpt-btn scw-acpt-btn--add" data-edit-field="' + fk + '">' + PLUS_SVG + esc(label) + '</button>') +
-        '</span>';
+      if (!anchor) {
+        return '<button type="button" class="scw-acpt-doc--missing" data-edit-field="' + fk + '">' +
+          PLUS_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span></button>';
+      }
+      return '<span class="scw-acpt-doc">' +
+        '<a class="scw-acpt-doc__open" data-proxy-file="' + fk + '" href="javascript:void(0)" title="Open ' + esc(label) + '">' +
+          FILE_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span>' +
+          '<span class="scw-acpt-doc__check">' + CHECK_SVG + '</span>' +
+        '</a>' +
+        '<button type="button" class="scw-acpt-doc__edit" data-edit-field="' + fk + '" title="' + esc(editTitle) + '">' + PENCIL_SVG + '</button>' +
+      '</span>';
     }
     function linkSlot(fk, label, anchor, editTitle) {
-      return '<span class="scw-acpt-slot">' +
-        (anchor
-          ? '<span class="scw-acpt-group">' +
-              '<a class="scw-acpt-btn scw-acpt-btn--ghost scw-acpt-btn--done" target="_blank" rel="noopener" href="' + esc(anchor.getAttribute('href') || '') + '">' + LINK_SVG + esc(label) + '</a>' +
-              '<button type="button" class="scw-acpt-edit" data-edit-field="' + fk + '" title="' + esc(editTitle) + '">' + PENCIL_SVG + '</button>' +
-            '</span>'
-          : '<button type="button" class="scw-acpt-btn scw-acpt-btn--add" data-edit-field="' + fk + '">' + PLUS_SVG + esc(label) + ' link</button>') +
-        '</span>';
+      if (!anchor) {
+        return '<button type="button" class="scw-acpt-doc--missing" data-edit-field="' + fk + '">' +
+          PLUS_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + ' link</span></button>';
+      }
+      return '<span class="scw-acpt-doc">' +
+        '<a class="scw-acpt-doc__open" target="_blank" rel="noopener" href="' + esc(anchor.getAttribute('href') || '') + '" title="Open ' + esc(label) + '">' +
+          LINK_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span>' +
+          '<span class="scw-acpt-doc__check">' + CHECK_SVG + '</span>' +
+        '</a>' +
+        '<button type="button" class="scw-acpt-doc__edit" data-edit-field="' + fk + '" title="' + esc(editTitle) + '">' + PENCIL_SVG + '</button>' +
+      '</span>';
     }
 
     // Change-order acceptances (SOW number "SW####CO") have no initial
@@ -397,10 +420,19 @@
     // payment pill is noise there. Signature is the only gate.
     var isCo = /\bSW\d+CO\b/i.test(propTxt);
 
+    // "61507493933-SW1347 | 20260807-11068" → bold deal-SOW title with the
+    // proposal id as a muted sub-line (the pipe tail was noise in the title).
+    var propMain = propTxt, propSub = '';
+    var pSplit = propTxt.split(/\s*\|\s*/);
+    if (pSplit.length === 2 && pSplit[1]) { propMain = pSplit[0]; propSub = pSplit[1]; }
+
     var html =
-      (propHref
-        ? '<a class="scw-acpt-title" href="' + esc(propHref) + '">' + esc(propTxt) + '</a>'
-        : '<div class="scw-acpt-title">' + esc(propTxt) + '</div>') +
+      '<div class="scw-acpt-id">' +
+        (propHref
+          ? '<a class="scw-acpt-title" href="' + esc(propHref) + '">' + esc(propMain) + '</a>'
+          : '<div class="scw-acpt-title">' + esc(propMain) + '</div>') +
+        (propSub ? '<div class="scw-acpt-sub">Proposal ' + esc(propSub) + '</div>' : '') +
+      '</div>' +
       '<div class="scw-acpt-status">' +
         (isCo ? '' :
           (terms
@@ -409,12 +441,16 @@
         pill(signed ? 'Agreement signed'         : 'Agreement not signed',    signed) +
       '</div>' +
       '<div class="scw-acpt-actions">' +
-        fileSlot(F.agreement, 'Signed agreement', fileA,    'Replace signed agreement') +
-        linkSlot(F.xero,      'Xero invoice',     xeroA,    'Edit Xero invoice link') +
-        // Estimate pair — the bid basis PDF and the Xero estimate are
-        // mirrors of the same document, so they sit adjacent.
-        fileSlot(F.bidPdf,    'Bid basis PDF',    bidPdfA,  'Replace bid basis PDF') +
-        linkSlot(F.xeroEst,   'Xero estimate',    xeroEstA, 'Edit Xero estimate link') +
+        // Two mirror pairs: the signed agreement with its invoice, and the
+        // bid basis PDF with its Xero estimate.
+        '<span class="scw-acpt-pair">' +
+          fileSlot(F.agreement, 'Signed agreement', fileA,    'Replace signed agreement') +
+          linkSlot(F.xero,      'Xero invoice',     xeroA,    'Edit Xero invoice link') +
+        '</span>' +
+        '<span class="scw-acpt-pair">' +
+          fileSlot(F.bidPdf,    'Bid basis PDF',    bidPdfA,  'Replace bid basis PDF') +
+          linkSlot(F.xeroEst,   'Xero estimate',    xeroEstA, 'Edit Xero estimate link') +
+        '</span>' +
         (actionA ? '<button type="button" class="scw-acpt-btn scw-acpt-btn--primary" data-proxy="action">Create Questionnaire</button>' : '') +
       '</div>';
 
