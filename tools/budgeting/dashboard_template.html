@@ -108,6 +108,14 @@ input.cell{width:74px;border:1px solid transparent;background:transparent;border
   text-align:right;font-variant-numeric:tabular-nums;color:var(--modest);font-weight:600}
 input.cell:hover{border-color:var(--border2)} input.cell:focus{border-color:var(--modest);background:var(--surface)}
 input.cell.wide{width:96px} input.cell.tiny{width:44px;text-align:center}
+input.cell.pos{width:210px;text-align:left}
+tr.ppl>td{background:var(--surface2);border-top:1px dashed var(--border2)}
+.ppl-grid{display:flex;flex-direction:column;gap:2px;padding:2px 0 4px}
+.ppl-row{display:flex;gap:8px;align-items:center;font-size:12px}
+.ppl-row .lab{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+.btn.mini{padding:2px 8px;font-size:11px;border-radius:6px}
+.exp-toggle{border:none;background:none;cursor:pointer;color:var(--muted);font-size:11px;padding:0 4px}
+.exp-toggle:hover{color:var(--ink)}
 select.cell{border:1px solid var(--border2);background:var(--surface);border-radius:6px;padding:3px 5px;
   color:var(--modest);font-weight:600;max-width:130px}
 .switch{appearance:none;width:34px;height:20px;border-radius:12px;background:var(--baseline);position:relative;
@@ -164,13 +172,28 @@ details.helper summary{cursor:pointer;padding:10px 16px;font-weight:600;font-siz
 details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);line-height:1.55;max-width:70ch}
 .addrow{margin-top:10px}
 .subtle{color:var(--muted)}
+.scn-toggle{margin-left:10px;display:inline-flex;gap:4px;vertical-align:middle}
+.scn-toggle .btn{padding:2px 10px;font-size:11px}
+.scn-toggle .btn.on{background:var(--modest);border-color:var(--modest);color:#fff}
+.goals{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:860px){.goals{grid-template-columns:1fr}}
+.goal-half{border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--surface)}
+.goal-half h3{margin:0 0 8px;font-size:13px}
+.goal-half .grid{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12.5px;align-items:center}
+.goal-half .grid .lab{color:var(--ink2)}
+.goal-half input{border:1px solid var(--border2);background:var(--surface);border-radius:7px;padding:4px 8px;width:120px;font-variant-numeric:tabular-nums;color:var(--modest);font-weight:600}
+.goal-half .be{font-weight:700}
+.goal-half .beM{color:var(--crit)}
+.pill{display:inline-block;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700}
+.pill.ok{background:var(--chip-good);color:var(--good-text)}
+.pill.short{background:var(--chip-crit);color:var(--crit)}
 .vname{display:inline-block;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .right{text-align:right}
 </style>
 
 <div class="wrap">
 <header class="top">
-  <div class="brand"><h1>SCW Money Model</h1><span class="sub">2026 budget &amp; projections · Xero accrual actuals through Jul 2026</span></div>
+  <div class="brand"><h1>SCW Money Model</h1><span class="sub">Jan 2026 – Mar 2027 · Xero accrual actuals through Jul 2026 · goal period Oct–Mar</span></div>
   <div class="top-actions">
     <span class="legend-key"><span class="key mod"><i></i>Modest</span><span class="key str"><i></i>Stretch</span></span>
     <button class="btn" id="btnCopy" title="Copy every edited setting as JSON to share or back up">Copy config</button>
@@ -191,10 +214,11 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
 
 <main>
 <section class="tab on" id="tab-proj">
+  <div class="card" id="goalsCard"></div>
   <div class="levers" id="projLevers"></div>
   <div class="cards2">
-    <div class="card"><h2>Monthly net profit</h2><p class="note">Bars left of the divider are booked; right are modeled. Hover any month.</p><figure class="chart" id="chartNet"></figure></div>
-    <div class="card"><h2>Cumulative net, 2026</h2><p class="note">Running total of monthly net profit under each scenario.</p><figure class="chart" id="chartCum"></figure></div>
+    <div class="card"><h2>Monthly net profit</h2><p class="note">One bar per booked month; modeled months show modest and stretch side by side. Hover any month.</p><figure class="chart" id="chartNet"></figure></div>
+    <div class="card"><h2>Cumulative net through Mar 2027</h2><p class="note">Running total of monthly net profit: booked through Jul, then each scenario.</p><figure class="chart" id="chartCum"></figure></div>
   </div>
   <div class="card"><h2>P&amp;L by month</h2><p class="note">Shaded columns are Xero as booked (Jan–Jul). Later columns come from the Sales team, Staffing and Expenses tabs. Commissions sit inside booked payroll for actual months.</p>
     <div class="tablewrap" id="plTable"></div>
@@ -204,12 +228,14 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
 </section>
 
 <section class="tab" id="tab-sales">
-  <div class="levers" id="salesLevers"></div>
-  <div class="card"><h2>Team revenue by month</h2><p class="note">Each rep's ramp × attainment, summed. The gray line is the monthly slice of the annual target.</p><figure class="chart" id="chartTeam"></figure></div>
+  <div class="card"><h2>Team revenue by month</h2><p class="note">Each rep's ramp × attainment, summed, against booked revenue. Dashed lines: the half's target and break-even per month. Targets &amp; thresholds are set on the Projections tab.</p><figure class="chart" id="chartTeam"></figure></div>
   <div class="card"><h2>Reps</h2><p class="note">Attainment is per person per scenario — e.g. Zach 80% modest / 100% stretch. Commission % pays on attained revenue; Sales Manager and Director overrides are in the levers above.</p>
     <div class="tablewrap" id="salesTable"></div>
     <button class="btn addrow" id="addRep">+ Add rep</button>
   </div>
+  <div class="card"><h2>Monthly revenue by rep <span class="scn-toggle" id="repMoScn"><button class="btn on" data-scn="modest">Modest</button><button class="btn" data-scn="stretch">Stretch</button></span></h2>
+    <p class="note">Each rep's modeled month-over-month revenue — ramp value for their tenure month × attainment. Use it to check people are plugged into the right curve and start month.</p>
+    <div class="tablewrap" id="repMoTable"></div></div>
   <div class="card"><details><summary style="cursor:pointer;font-weight:600">Ramp schedules (monthly run-rate by tenure month)</summary>
     <div class="tablewrap" style="margin-top:10px" id="rampTable"></div></details></div>
 </section>
@@ -252,7 +278,10 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
 const MODEL = /*__MODEL__*/;
 
 /* ---------- constants ---------- */
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan\u201927","Feb\u201927","Mar\u201927"];
+const NM = 15;                                 // Jan 2026 .. Mar 2027
+const FH1 = [3, 9,  "Apr\u2013Sep 2026"];       // fiscal H1 slice bounds [from,to)
+const FH2 = [9, 15, "Oct 2026\u2013Mar 2027"];  // the goal-setting period (their Q3+Q4)
 const ACT = MODEL.actual_months;              // 7 -> Jan..Jul are booked
 const DEPTS = ["Sales","Marketing","Software Development","Installation Services","Technical Support",
   "Purchasing & Fulfillment","03 - HR & Business Administration Manager","Facillities","Exec","Product",
@@ -274,7 +303,7 @@ function defaultState(){
       id: "x" + (id++), vendor: v.vendor, dept, share, budget,
       xero: Math.round(baseAdj * share * 100) / 100,
       status: v.status, seat, ttm: v.ttm, purpose: v.purpose, conflict: v.contradiction,
-      use: "XERO", override: null, adj: 0, from: 1, to: 12,
+      use: "XERO", override: null, adj: 0, from: 1, to: NM,
       on: !(v.status === "DROPPED" || v.status === "ONE-TIME")});
     if (keys.length > 1){
       const tot = keys.reduce((s, k) => s + fixed[k], 0) || 1;
@@ -288,7 +317,7 @@ function defaultState(){
     const mk = (dept, budget) => expenses.push({
       id: "b" + (id++), vendor: m.vendor, dept, share: 1, budget,
       xero: null, status: "NOT IN XERO", seat: m.seat_monthly || 0, ttm: null, purpose: m.purpose,
-      conflict: false, use: "BUDGET", override: null, adj: 0, from: 1, to: 12, on: false});
+      conflict: false, use: "BUDGET", override: null, adj: 0, from: 1, to: NM, on: false});
     if (keys.length > 1) for (const k of keys) mk(k, fixed[k]);
     else mk(m.final_dept, keys.length ? fixed[keys[0]] : m.budget_monthly);
   }
@@ -297,7 +326,8 @@ function defaultState(){
   return {
     exp: expenses,
     levers: { cogsPct: +( (MODEL.totals.cogs.reduce((a,b)=>a+b,0) / MODEL.totals.revenue.reduce((a,b)=>a+b,0)) ).toFixed(3),
-      otherInc: 3000, laborHedge: 0, opexHedge: 0, target: 12050000, smRate: 0.015, dirRate: 0.035 },
+      otherInc: 3000, laborHedge: 0, opexHedge: 0,
+      targetH1: 6350000, targetH2: 5700000, thrH1: 6350000, thrH2: 5700000, smRate: 0.015, dirRate: 0.035 },
     sales: MODEL.sales.map((s, i) => ({ id: "s" + i, name: s.name, role: s.role, ramp: s.ramp,
       start: s.start_cal, modest: /Stu/.test(s.name) ? 1 : 0.8, stretch: 1,
       comm: /Account Executive/.test(s.role) && !/Senior/.test(s.role) ? 0.025 :
@@ -305,7 +335,7 @@ function defaultState(){
     ramps,
     staff: MODEL.staff.map((s, i) => ({ id: "p" + i, dept: s.dept || "Unassigned", position: s.position,
       ote: s.ote, hdv: s.hdv, lic: s.lic, tax: s.tax, raiseD: 0, raiseP: 0, raiseM: 9,
-      hc: Array(12).fill(s.hc) })),
+      hc: Array(NM).fill(s.hc) })),
     deptRaise: Object.fromEntries(DEPTS.filter(d => d !== "Unassigned").map(d => [d, 0])),
   };
 }
@@ -313,6 +343,16 @@ let S = defaultState();
 try {
   const saved = JSON.parse(localStorage.getItem(LS_KEY) || "null");
   if (saved && saved.levers && saved.exp && saved.staff) S = saved;
+  // migrate configs saved before half-year targets/thresholds
+  const L0 = S.levers;
+  if (L0.targetH1 == null) L0.targetH1 = L0.target ? Math.round(L0.target * 6350 / 12050) : 6350000;
+  if (L0.targetH2 == null) L0.targetH2 = L0.target ? L0.target - L0.targetH1 : 5700000;
+  if (L0.thrH1 == null) L0.thrH1 = L0.targetH1;
+  if (L0.thrH2 == null) L0.thrH2 = L0.targetH2;
+  delete L0.target;
+  // migrate pre-15-month configs (12-month arrays / to==12 meaning "through end")
+  for (const p of S.staff) while (p.hc.length < NM) p.hc.push(p.hc.at(-1) ?? 0);
+  for (const e of S.exp) if (e.to === 12) e.to = NM;
 } catch (e) {}
 function persist(){ try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) {} }
 
@@ -329,7 +369,22 @@ function repRevenue(rep, m, key){
   if (tenure < 1) return 0;
   return (ramp[Math.min(12, tenure) - 1] || 0) * (rep[key] || 0);
 }
+function personCost(role, p, m){
+  if (m < (p.from || 1) || m > (p.to || NM)) return 0;
+  const labor = ((p.sal != null ? p.sal : role.ote) || 0) / 12;
+  const dr = S.deptRaise[role.dept] || 0;
+  const raised = m >= (role.raiseM || 1);
+  const base = raised ? (labor + (role.raiseD || 0) + labor * ((role.raiseP || 0) + dr)) : labor;
+  return base * (1 + (role.tax || 0)) + (role.hdv || 0) + (role.lic || 0);
+}
+function staffHC(row, m){
+  return (row.people && row.people.length)
+    ? row.people.filter(p => m >= (p.from || 1) && m <= (p.to || NM)).length
+    : (row.hc[m - 1] || 0);
+}
 function staffCost(row, m){
+  if (row.people && row.people.length)
+    return row.people.reduce((a, p) => a + personCost(row, p, m), 0);
   const labor = (row.ote || 0) / 12;
   const dr = S.deptRaise[row.dept] || 0;
   const cur = labor * (1 + (row.tax || 0)) + (row.hdv || 0) + (row.lic || 0);
@@ -343,25 +398,23 @@ function compute(){
     dept: {}, opex:[], net:{mod:[],str:[]}, cogsPct:[], team:{mod:[],str:[]}, staffTotal:[], commDetail:{} };
   for (const d of DEPTS) out.dept[d] = [];
   // planned opex rows by dept (model, before hedge)
-  for (let m = 1; m <= 12; m++){
+  for (let m = 1; m <= NM; m++){
     const i = m - 1, actual = m <= ACT;
-    // sales
+    // sales — rep commissions are monthly; SM/Director overrides are added per half below
     let tm = 0, ts = 0, cm = 0, cs = 0;
     for (const r of S.sales){
       const rm = repRevenue(r, m, "modest"), rs = repRevenue(r, m, "stretch");
       tm += rm; ts += rs; cm += rm * (r.comm || 0); cs += rs * (r.comm || 0);
     }
-    const smM = L.smRate * tm, smS = L.smRate * ts;
-    const dirM = L.dirRate * Math.max(0, tm - L.target / 12), dirS = L.dirRate * Math.max(0, ts - L.target / 12);
     out.team.mod.push(tm); out.team.str.push(ts);
-    const compM = cm + smM + dirM, compS = cs + smS + dirS;
+    const compM = cm, compS = cs;
     // staffing
     let st = 0; for (const row of S.staff) st += staffCost(row, m);
     out.staffTotal.push(st);
     // expenses by dept
     const dm = {}; for (const d of DEPTS) dm[d] = 0;
     for (const e of S.exp){
-      if (m >= (e.from || 1) && m <= (e.to || 12)) dm[e.dept] = (dm[e.dept] || 0) + expensePlanned(e);
+      if (m >= (e.from || 1) && m <= (e.to || NM)) dm[e.dept] = (dm[e.dept] || 0) + expensePlanned(e);
     }
     // assemble month
     const rev = actual ? MODEL.totals.revenue[i] : null;
@@ -381,6 +434,27 @@ function compute(){
     out.opex.push(ot);
     out.net.mod.push(out.rev.mod[i] + out.oth[i] - out.cogs.mod[i] - out.pay[i] - out.comp.mod[i] - ot);
     out.net.str.push(out.rev.str[i] + out.oth[i] - out.cogs.str[i] - out.pay[i] - out.comp.str[i] - ot);
+  }
+  // monthly break-even sales revenue: (payroll + opex - other income) / gross margin, excl. variable comp
+  out.be = out.pay.map((p, i) => Math.max(0, (p + out.opex[i] - out.oth[i]) / Math.max(0.05, 1 - out.cogsPct[i])));
+  // SM + Director overrides: % of the HALF's sales revenue above the agreed threshold
+  // (actual revenue for booked months + scenario revenue for modeled months),
+  // charged to the half's modeled months; a fully-booked half is assumed already inside booked payroll.
+  out.override = {};
+  for (const scn of ["mod", "str"]){
+    out.override[scn] = [0, 0];
+    [[FH1[0], FH1[1], L.thrH1], [FH2[0], FH2[1], L.thrH2]].forEach(([a, b, thr], hi) => {
+      const halfRev = out.rev[scn].slice(a, b).reduce((x, y) => x + y, 0);
+      const over = Math.max(0, halfRev - thr);
+      const comp = (L.smRate + L.dirRate) * over;
+      out.override[scn][hi] = comp;
+      const modeled = []; for (let m = a + 1; m <= b; m++) if (m > ACT) modeled.push(m - 1);
+      if (!modeled.length || comp === 0) return;
+      for (const i of modeled){
+        out.comp[scn][i] += comp / modeled.length;
+        out.net[scn][i] -= comp / modeled.length;
+      }
+    });
   }
   return out;
 }
@@ -428,11 +502,11 @@ function monthChart(el, series, opts = {}){
   const ticks = niceTicks(lo0, hi0, 4, opts.zero === false);
   const lo = ticks[0], hi = ticks[ticks.length - 1] || 1;
   const y = v => mT + ih - (v - lo) / (hi - lo) * ih;
-  const bandW = iw / 12, x = i => mL + bandW * (i + 0.5);
+  const bandW = iw / NM, x = i => mL + bandW * (i + 0.5);
   let g = "";
   for (const t of ticks) g += `<line x1="${mL}" x2="${W - mR}" y1="${y(t)}" y2="${y(t)}" stroke="var(${t === 0 ? "--baseline" : "--grid"})" stroke-width="1"/>` +
     `<text x="${mL - 7}" y="${y(t) + 3.5}" text-anchor="end" font-size="10" fill="var(--muted)" style="font-variant-numeric:tabular-nums">${fmtK(t)}</text>`;
-  for (let i = 0; i < 12; i++) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${MONTHS[i]}</text>`;
+  for (let i = 0; i < NM; i++) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${MONTHS[i]}</text>`;
   if (opts.divider !== false){
     const dx = mL + bandW * ACT;
     g += `<line x1="${dx}" x2="${dx}" y1="${mT}" y2="${mT + ih}" stroke="var(--border2)" stroke-width="1"/>` +
@@ -441,11 +515,13 @@ function monthChart(el, series, opts = {}){
   }
   const bars = series.filter(s => s.kind === "bar"), lines = series.filter(s => s.kind !== "bar");
   let marks = "";
-  const bw = Math.min(24, (bandW - 6) / (bars.length || 1) - 2);
-  bars.forEach((s, bi) => {
+  const maxConc = Math.max(1, ...Array.from({length:NM}, (_, i) => bars.filter(b => b.vals[i] != null).length));
+  const bw = Math.min(24, (bandW - 6) / maxConc - 2);
+  bars.forEach(s => {
     s.vals.forEach((v, i) => {
       if (v == null) return;
-      const cx = x(i) - ((bars.length * (bw + 2) - 2) / 2) + bi * (bw + 2);
+      const present = bars.filter(b => b.vals[i] != null), bi = present.indexOf(s), n = present.length;
+      const cx = x(i) - ((n * (bw + 2) - 2) / 2) + bi * (bw + 2);
       const y0 = y(0), y1 = y(v), top = Math.min(y0, y1), hgt = Math.max(1, Math.abs(y0 - y1));
       const rx = 4, up = v >= 0;
       marks += `<path d="${up
@@ -454,9 +530,12 @@ function monthChart(el, series, opts = {}){
         fill="var(${s.color})" opacity="${i < ACT || !opts.fadeProj ? 1 : 0.55}"/>`;
     });
   });
-  for (const ln of (opts.extraLines || []))
-    marks += `<line x1="${mL}" x2="${W - mR}" y1="${y(ln.v)}" y2="${y(ln.v)}" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="5 4"/>` +
-      `<text x="${W - mR - 2}" y="${y(ln.v) - 4}" text-anchor="end" font-size="9.5" fill="var(--muted)">${ln.label}</text>`;
+  for (const ln of (opts.extraLines || [])){
+    const lx1 = ln.x0 == null ? mL : mL + bandW * ln.x0, lx2 = ln.x1 == null ? W - mR : mL + bandW * (ln.x1 + 1);
+    const col = ln.color || "--muted";
+    marks += `<line x1="${lx1}" x2="${lx2}" y1="${y(ln.v)}" y2="${y(ln.v)}" stroke="var(${col})" stroke-width="1.5" stroke-dasharray="5 4" opacity=".85"/>` +
+      `<text x="${lx2 - 2}" y="${y(ln.v) + (ln.below ? 11 : -4)}" text-anchor="end" font-size="9.5" fill="var(${col})">${ln.label}</text>`;
+  }
   [...lines].reverse().forEach(s => {
     let d = "";
     s.vals.forEach((v, i) => { if (v != null) d += (d ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1); });
@@ -465,7 +544,7 @@ function monthChart(el, series, opts = {}){
     if (lv != null) marks += `<circle cx="${x(lastI)}" cy="${y(lv)}" r="4" fill="var(${s.color})" stroke="var(--surface)" stroke-width="2"/>`;
   });
   let hov = "";
-  for (let i = 0; i < 12; i++)
+  for (let i = 0; i < NM; i++)
     hov += `<rect data-i="${i}" x="${mL + bandW * i}" y="${mT}" width="${bandW}" height="${ih}" fill="transparent"/>`;
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.aria || "chart")}">${g}${marks}${hov}</svg>` +
     (series.length > 1 ? `<div class="chart-legend">${series.map(s =>
@@ -474,7 +553,7 @@ function monthChart(el, series, opts = {}){
   svg.addEventListener("pointermove", ev => {
     const t = ev.target.closest("rect[data-i]"); if (!t) { hideTip(); return; }
     const i = +t.dataset.i;
-    showTip(ev.clientX, ev.clientY, `<div class="t">${MONTHS[i]} 2026 · ${i < ACT ? "booked" : "model"}</div>` +
+    showTip(ev.clientX, ev.clientY, `<div class="t">${MONTHS[i]}${i < 12 ? " 2026" : ""} · ${i < ACT ? "booked" : "model"}</div>` +
       series.map(s => s.vals[i] == null ? "" :
         `<div class="row"><span><i style="background:var(${s.color})"></i>${esc(s.name)}</span><b>${fmt$(s.vals[i])}</b></div>`).join(""));
   });
@@ -490,17 +569,18 @@ function spark(vals, color = "--modest", w = 96, h = 24){
 
 /* ---------- tiles ---------- */
 function renderTiles(C){
-  const fyNetM = C.net.mod.reduce((a, b) => a + b, 0), fyNetS = C.net.str.reduce((a, b) => a + b, 0);
-  const fyRevM = C.rev.mod.reduce((a, b) => a + b, 0) + C.oth.reduce((a, b) => a + b, 0);
-  const fyRevS = C.rev.str.reduce((a, b) => a + b, 0) + C.oth.reduce((a, b) => a + b, 0);
+  const gp = a => a.slice(FH2[0], FH2[1]).reduce((x, y) => x + y, 0);
+  const gpNetM = gp(C.net.mod), gpNetS = gp(C.net.str);
+  const gpRevM = gp(C.rev.mod), gpRevS = gp(C.rev.str);
   const ytd = C.net.mod.slice(0, ACT).reduce((a, b) => a + b, 0);
-  const payMo = C.staffTotal[11], opexMo = C.opex[11];
+  const payMo = C.staffTotal[NM - 1], opexMo = C.opex[NM - 1];
+  const tgt = S.levers.targetH2;
   document.getElementById("tiles").innerHTML = `
-  <div class="tile"><div class="lbl">FY 2026 net — modest</div><div class="val">${fmtK(fyNetM)}</div>${spark(C.net.mod, "--modest")}</div>
-  <div class="tile"><div class="lbl">FY 2026 net — stretch</div><div class="val">${fmtK(fyNetS)}</div>${spark(C.net.str, "--stretch")}</div>
-  <div class="tile"><div class="lbl">FY revenue M / S</div><div class="val">${fmtK(fyRevM)} <small>/ ${fmtK(fyRevS)}</small></div><div class="sub">incl. other income</div></div>
+  <div class="tile"><div class="lbl">Goal period net — modest</div><div class="val">${fmtK(gpNetM)}</div><div class="sub">Oct 2026 – Mar 2027</div>${spark(C.net.mod.slice(FH2[0], FH2[1]), "--modest")}</div>
+  <div class="tile"><div class="lbl">Goal period net — stretch</div><div class="val">${fmtK(gpNetS)}</div><div class="sub">Oct 2026 – Mar 2027</div>${spark(C.net.str.slice(FH2[0], FH2[1]), "--stretch")}</div>
+  <div class="tile"><div class="lbl">Goal period revenue M / S</div><div class="val">${fmtK(gpRevM)} <small>/ ${fmtK(gpRevS)}</small></div><div class="sub">target ${fmtK(tgt)} — modest lands ${Math.round(tgt ? gpRevM / tgt * 100 : 0)}%</div></div>
   <div class="tile"><div class="lbl">Net booked Jan–Jul</div><div class="val">${fmtK(ytd)}</div><div class="sub">Xero actuals, accrual</div></div>
-  <div class="tile"><div class="lbl">Dec run-rate</div><div class="val">${fmtK(payMo)} <small>payroll</small></div><div class="sub">${fmtK(opexMo)}/mo opex planned</div></div>`;
+  <div class="tile"><div class="lbl">Mar ’27 run-rate</div><div class="val">${fmtK(payMo)} <small>payroll</small></div><div class="sub">${fmtK(opexMo)}/mo opex planned</div></div>`;
 }
 
 /* ---------- projections tab ---------- */
@@ -521,14 +601,19 @@ function renderProjLevers(){
   bind("lvOpx", v => S.levers.opexHedge = num(v, 0) / 100);
 }
 function renderProj(C){
+  const actOnly = a => a.map((v, i) => i < ACT ? v : null);
+  const projOnly = a => a.map((v, i) => i < ACT ? null : v);
   monthChart(document.getElementById("chartNet"),
-    [{name:"Net — modest", color:"--modest", vals:C.net.mod, kind:"bar"},
-     {name:"Net — stretch", color:"--stretch", vals:C.net.str, kind:"bar"}],
-    {aria:"Monthly net profit, modest vs stretch"});
+    [{name:"Actual (booked)", color:"--aqua", vals:actOnly(C.net.mod), kind:"bar"},
+     {name:"Net — modest", color:"--modest", vals:projOnly(C.net.mod), kind:"bar"},
+     {name:"Net — stretch", color:"--stretch", vals:projOnly(C.net.str), kind:"bar"}],
+    {aria:"Monthly net profit: booked, then modest vs stretch"});
   const cum = a => a.reduce((acc, v) => (acc.push((acc.at(-1) || 0) + v), acc), []);
+  const cm = cum(C.net.mod), cs = cum(C.net.str);
   monthChart(document.getElementById("chartCum"),
-    [{name:"Cumulative — modest", color:"--modest", vals:cum(C.net.mod)},
-     {name:"Cumulative — stretch", color:"--stretch", vals:cum(C.net.str)}],
+    [{name:"Actual (booked)", color:"--aqua", vals:cm.map((v, i) => i < ACT ? v : null)},
+     {name:"Cumulative — modest", color:"--modest", vals:cm.map((v, i) => i >= ACT - 1 ? v : null)},
+     {name:"Cumulative — stretch", color:"--stretch", vals:cs.map((v, i) => i >= ACT - 1 ? v : null)}],
     {aria:"Cumulative net profit"});
   // P&L table
   const rows = [];
@@ -540,25 +625,27 @@ function renderProj(C){
   push("Gross profit — modest", C.rev.mod.map((v, i) => v + C.oth[i] - C.cogs.mod[i]), "tot");
   push("Gross profit — stretch", C.rev.str.map((v, i) => v + C.oth[i] - C.cogs.str[i]), "tot");
   push("Payroll (staffing model)", C.pay);
-  push("Sales comp — modest", C.comp.mod); push("Sales comp — stretch", C.comp.str);
+  push("Sales comp — modest (commissions + overrides)", C.comp.mod); push("Sales comp — stretch (commissions + overrides)", C.comp.str);
   for (const d of DEPTS) if (C.dept[d].some(v => Math.abs(v) > 0.5)) push("Opex — " + d, C.dept[d], "dim");
   push("Total opex", C.opex, "tot");
+  push("Break-even sales revenue", C.be, "dim");
   push("NET — MODEST", C.net.mod, "tot"); push("NET — STRETCH", C.net.str, "tot");
+  const half = (vals, [a, b]) => vals.slice(a, b).reduce((x, y) => x + y, 0);
   let h = `<table class="data"><thead><tr><th>P&amp;L</th>` +
-    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}">${m}</th>`).join("") + `<th>FY</th></tr></thead><tbody>`;
+    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}">${m}</th>`).join("") +
+    `<th>H1 Apr–Sep</th><th>H2 Oct–Mar</th><th>15 mo</th></tr></thead><tbody>`;
   for (const r of rows){
-    const fy = r.fm === fmt$ ? r.vals.reduce((a, b) => a + b, 0) : null;
+    const sums = r.fm === fmt$ ? [half(r.vals, FH1), half(r.vals, FH2), r.vals.reduce((a, b) => a + b, 0)] : null;
     h += `<tr class="${r.cls}"><td class="${r.cls === "dim" ? "dim" : ""}">${esc(r.label)}</td>` +
       r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}${/NET/.test(r.label) && v < 0 ? " neg" : ""}">${r.fm(v)}</td>`).join("") +
-      `<td>${fy == null ? "" : fmt$(fy)}</td></tr>`;
+      (sums ? sums.map(v => `<td><b>${fmt$(v)}</b></td>`).join("") : "<td></td><td></td><td></td>") + `</tr>`;
   }
   document.getElementById("plTable").innerHTML = h + "</tbody></table>";
   document.getElementById("plFoot").textContent =
-    "Break-even sales revenue (Dec, modest inputs): " +
-    fmt$((C.pay[11] + C.opex[11] - S.levers.otherInc) / (1 - S.levers.cogsPct)) +
-    "/mo — payroll + opex less other income, divided by gross margin.";
+    "Break-even row: monthly sales revenue needed to cover payroll + opex less other income at that month's gross margin (excl. overrides). " +
+    "SM/Director override comp is charged to each half's modeled months; halves fully booked carry it inside booked payroll.";
   document.getElementById("notes").innerHTML =
-    `Built ${MODEL.built} from the Xero <b>Account Transactions</b> export (accrual, Aug 2025–Jul 2026 — expenses, COGS, payroll), the Xero GL Detail (revenue, department tags), and the budgeting-tool exports (allocations, roster, ramps). Jan–Jul 2026 are booked figures; Aug–Dec are modeled. Where the budgeting tool allocated a vendor to a different department than Xero, the budgeting tool wins (${MODEL.vend_master.filter(v=>v.contradiction).length} conflicts — see Trends). Per-seat licenses ride headcount on Staffing. Commission defaults from the legacy tool: AE 2.5%, AM 1.5%, Sr AE 1.75%, SM override 1.5%, Director 3.5% above target. Edits save in this browser only — use Copy config to share.`;
+    `Built ${MODEL.built} from the Xero <b>Account Transactions</b> export (accrual, Aug 2025–Jul 2026 — expenses, COGS, payroll), the Xero GL Detail (revenue, department tags), and the budgeting-tool exports (allocations, roster, ramps). Horizon: Jan 2026 – Mar 2027. Jan–Jul 2026 are booked; Aug–Sep are bridge months you can budget/staff; Oct 2026–Mar 2027 is the goal-setting half (fiscal Q3+Q4). Where the budgeting tool allocated a vendor to a different department than Xero, the budgeting tool wins (${MODEL.vend_master.filter(v=>v.contradiction).length} conflicts — see Trends). Per-seat licenses ride headcount on Staffing. Rep commissions (defaults AE 2.5% / AM 1.5% / Sr AE 1.75%) pay monthly on attained revenue; SM + Director overrides pay on each half's revenue above its comp threshold. Edits save in this browser only — use Copy config to share.`;
 }
 </script>
 <script>
@@ -577,31 +664,64 @@ function delegate(rootId, handler){
   });
 }
 
-/* ---------- sales tab ---------- */
-function renderSalesLevers(){
+/* ---------- goals & break-even (Projections) ---------- */
+function goalHalf(C, [a, b, label], tKey, thrKey, ids){
   const L = S.levers;
-  document.getElementById("salesLevers").innerHTML =
-    leverInput("lvTgt", "Annual revenue target", L.target.toLocaleString("en-US"), "$ — director paid above this") +
-    leverInput("lvSm", "Sales Manager override", (L.smRate * 100).toFixed(2), "% of all sales") +
-    leverInput("lvDir", "Director override", (L.dirRate * 100).toFixed(2), "% above target");
-  bind("lvTgt", v => S.levers.target = num(v, 12050000));
+  const sum = arr => arr.slice(a, b).reduce((x, y) => x + y, 0);
+  const revM = sum(C.rev.mod), revS = sum(C.rev.str), be = sum(C.be);
+  const booked = Math.min(Math.max(0, ACT - a), b - a), modeled = (b - a) - booked;
+  const pill = v => { const pct = L[tKey] ? v / L[tKey] : 0;
+    return `<span class="pill ${pct >= 1 ? "ok" : "short"}">${Math.round(pct * 100)}% of target</span>`; };
+  return `<div class="goal-half"><h3>${label} <span class="subtle" style="font-weight:400">· ${booked} booked + ${modeled} modeled mo</span></h3>
+    <div class="grid">
+      <span class="lab">Revenue target</span><span><input id="${ids[0]}" value="${L[tKey].toLocaleString("en-US")}"></span>
+      <span class="lab">Comp threshold <span class="subtle">(overrides pay above)</span></span><span><input id="${ids[1]}" value="${L[thrKey].toLocaleString("en-US")}"> ${L[thrKey] === L[tKey] ? `<span class="subtle">= modest goal</span>` : ""}</span>
+      <span class="lab be beM">Break-even revenue</span><span class="be beM">${fmt$(be)} <span class="subtle" style="font-weight:400">(${fmtK(be / (b - a))}/mo, excl. overrides)</span></span>
+      <span class="lab">Projected — modest</span><span>${fmt$(revM)} ${pill(revM)}</span>
+      <span class="lab">Projected — stretch</span><span>${fmt$(revS)} ${pill(revS)}</span>
+      <span class="lab">Override comp M / S</span><span>${fmtK(C.override.mod[a === FH1[0] ? 0 : 1])} / ${fmtK(C.override.str[a === FH1[0] ? 0 : 1])}</span>
+    </div></div>`;
+}
+function renderGoals(C){
+  const L = S.levers;
+  document.getElementById("goalsCard").innerHTML =
+    `<h2>Goals &amp; break-even</h2>
+     <p class="note">Half-year goal setting. Sales Manager (<input id="lvSm" class="cell tiny" value="${(L.smRate * 100).toFixed(2)}">%)
+     and Director (<input id="lvDir" class="cell tiny" value="${(L.dirRate * 100).toFixed(2)}">%) overrides pay on the half's revenue above its comp threshold —
+     historically the threshold is the modest goal; edit it to let comp start earlier or later.</p>
+     <div class="goals">` +
+    goalHalf(C, FH1, "targetH1", "thrH1", ["gTg1", "gTh1"]) +
+    goalHalf(C, FH2, "targetH2", "thrH2", ["gTg2", "gTh2"]) + `</div>`;
+  bind("gTg1", v => S.levers.targetH1 = num(v, 6350000));
+  bind("gTg2", v => S.levers.targetH2 = num(v, 5700000));
+  bind("gTh1", v => S.levers.thrH1 = num(v, S.levers.targetH1));
+  bind("gTh2", v => S.levers.thrH2 = num(v, S.levers.targetH2));
   bind("lvSm", v => S.levers.smRate = num(v, 1.5) / 100);
   bind("lvDir", v => S.levers.dirRate = num(v, 3.5) / 100);
 }
+/* ---------- sales tab ---------- */
 function renderSales(C){
+  const L = S.levers;
+  const beH1 = C.be.slice(FH1[0], FH1[1]).reduce((a, b) => a + b, 0) / 6;
+  const beH2 = C.be.slice(FH2[0], FH2[1]).reduce((a, b) => a + b, 0) / 6;
   monthChart(document.getElementById("chartTeam"),
-    [{name:"Team revenue — modest", color:"--modest", vals:C.team.mod},
+    [{name:"Booked revenue", color:"--aqua", vals:MODEL.totals.revenue.slice(0, ACT)},
+     {name:"Team revenue — modest", color:"--modest", vals:C.team.mod},
      {name:"Team revenue — stretch", color:"--stretch", vals:C.team.str}],
-    {aria:"Team revenue by month", divider:false, w:980, zero:false,
-     extraLines:[{v:S.levers.target / 12, label:"target /mo " + fmtK(S.levers.target / 12)}]});
+    {aria:"Team revenue by month vs booked, target and break-even", divider:true, w:980, zero:false,
+     extraLines:[
+       {v:L.targetH1 / 6, x0:FH1[0], x1:FH1[1] - 1, label:"H1 target " + fmtK(L.targetH1 / 6) + "/mo"},
+       {v:L.targetH2 / 6, x0:FH2[0], x1:FH2[1] - 1, label:"H2 target " + fmtK(L.targetH2 / 6) + "/mo"},
+       {v:beH1, x0:FH1[0], x1:FH1[1] - 1, label:"break-even " + fmtK(beH1) + "/mo", color:"--crit", below:true},
+       {v:beH2, x0:FH2[0], x1:FH2[1] - 1, label:"break-even " + fmtK(beH2) + "/mo", color:"--crit", below:true}]});
   const rampNames = Object.keys(S.ramps);
   let h = `<table class="data"><thead><tr><th>Rep</th><th>Role</th><th>Ramp</th><th>Start mo</th>
-    <th>Modest %</th><th>Stretch %</th><th>Comm %</th><th>FY modest</th><th>FY stretch</th><th>FY comm M/S</th><th></th></tr></thead><tbody>`;
+    <th>Modest %</th><th>Stretch %</th><th>Comm %</th><th>15-mo modest</th><th>15-mo stretch</th><th>Comm M/S</th><th></th></tr></thead><tbody>`;
   for (const r of S.sales){
     let fm = 0, fs = 0;
-    for (let m = 1; m <= 12; m++){ fm += repRevenue(r, m, "modest"); fs += repRevenue(r, m, "stretch"); }
-    h += `<tr><td><input class="cell wide" style="text-align:left" data-id="${r.id}" data-k="name" value="${esc(r.name)}"></td>
-      <td><input class="cell wide" style="text-align:left" data-id="${r.id}" data-k="role" value="${esc(r.role)}"></td>
+    for (let m = 1; m <= NM; m++){ fm += repRevenue(r, m, "modest"); fs += repRevenue(r, m, "stretch"); }
+    h += `<tr><td><input class="cell pos" data-id="${r.id}" data-k="name" value="${esc(r.name)}"></td>
+      <td><input class="cell pos" data-id="${r.id}" data-k="role" value="${esc(r.role)}"></td>
       <td><select class="cell" data-id="${r.id}" data-k="ramp">${rampNames.map(n => `<option${n === r.ramp ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></td>
       <td><input class="cell tiny" data-id="${r.id}" data-k="start" value="${r.start}" title="Calendar month selling starts; 0 or negative = ramped before 2026"></td>
       <td><input class="cell tiny" data-id="${r.id}" data-k="modest" value="${Math.round(r.modest * 100)}"></td>
@@ -623,7 +743,33 @@ function renderSales(C){
       `<td>${fmt$(S.ramps[n].reduce((a, b) => a + b, 0))}</td></tr>`;
   }
   document.getElementById("rampTable").innerHTML = rh + "</tbody></table>";
+  renderRepMonths();
 }
+let repMoScn = "modest";
+function renderRepMonths(){
+  let h = `<table class="data"><thead><tr><th>Rep</th>` + MONTHS.map((m, i) =>
+    `<th class="${i < ACT ? "actual" : ""}">${m}</th>`).join("") + `<th>Total</th></tr></thead><tbody>`;
+  const tot = Array(NM).fill(0);
+  for (const r of S.sales){
+    let sum = 0;
+    h += `<tr><td>${esc(r.name)} <span class="dim">· ${esc(r.ramp)} @ ${Math.round((r[repMoScn] || 0) * 100)}%</span></td>`;
+    for (let m = 1; m <= NM; m++){
+      const v = repRevenue(r, m, repMoScn); sum += v; tot[m - 1] += v;
+      const tenure = m - r.start + 1;
+      h += `<td class="${m <= ACT ? "actual" : ""}" title="tenure month ${tenure < 1 ? "—" : Math.min(12, tenure) + (tenure > 12 ? " (capped)" : "")}">${v ? fmt$(v) : `<span class="dim">—</span>`}</td>`;
+    }
+    h += `<td><b>${fmt$(sum)}</b></td></tr>`;
+  }
+  h += `<tr class="tot"><td>TEAM</td>` + tot.map(v => `<td>${fmt$(v)}</td>`).join("") +
+    `<td>${fmt$(tot.reduce((a, b) => a + b, 0))}</td></tr>`;
+  document.getElementById("repMoTable").innerHTML = h + "</tbody></table>";
+}
+document.getElementById("repMoScn").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-scn]"); if (!b) return;
+  repMoScn = b.dataset.scn;
+  document.querySelectorAll("#repMoScn .btn").forEach(x => x.classList.toggle("on", x === b));
+  renderRepMonths();
+});
 
 /* ---------- staffing tab ---------- */
 function renderStaff(C){
@@ -641,9 +787,10 @@ function renderStaff(C){
   for (const p of S.staff){
     const labor = p.ote / 12, dr = S.deptRaise[p.dept] || 0;
     const nw = (labor + p.raiseD + labor * (p.raiseP + dr)) * (1 + p.tax) + p.hdv + p.lic;
-    let fy = 0; for (let m = 1; m <= 12; m++) fy += staffCost(p, m);
-    h += `<tr><td title="${esc(p.dept)}"><span class="dim" style="font-size:10px">${esc(p.dept.slice(0, 14))}</span><br>
-      <input class="cell wide" style="text-align:left" data-id="${p.id}" data-k="position" value="${esc(p.position)}"></td>
+    const hasPpl = p.people && p.people.length, open = openRoles.has(p.id);
+    let fy = 0; for (let m = 1; m <= NM; m++) fy += staffCost(p, m);
+    h += `<tr><td title="${esc(p.dept)} — ${esc(p.position)}"><span class="dim" style="font-size:10px">${esc(p.dept.slice(0, 16))}</span><br>
+      <button class="exp-toggle" data-id="${p.id}" data-k="toggle" title="Name the specific people in this role">${open ? "▾" : "▸"}${hasPpl ? " " + p.people.length + "👤" : ""}</button><input class="cell pos" data-id="${p.id}" data-k="position" value="${esc(p.position)}"></td>
       <td><input class="cell" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}"></td>
       <td><input class="cell tiny" data-id="${p.id}" data-k="hdv" value="${p.hdv}"></td>
       <td><input class="cell tiny" data-id="${p.id}" data-k="lic" value="${Math.round(p.lic)}"></td>
@@ -652,11 +799,28 @@ function renderStaff(C){
       <td><input class="cell tiny" data-id="${p.id}" data-k="raiseP" value="${(p.raiseP * 100).toFixed(1)}"></td>
       <td><input class="cell tiny" data-id="${p.id}" data-k="raiseM" value="${p.raiseM}"></td>
       <td>${fmt$(nw)}</td>` +
-      p.hc.map((c, i) => `<td><input class="cell tiny" data-id="${p.id}" data-k="hc${i}" value="${c}"></td>`).join("") +
+      Array.from({length:NM}, (_, i) => hasPpl
+        ? `<td class="dim" title="Headcount comes from the named people below">${staffHC(p, i + 1)}</td>`
+        : `<td><input class="cell tiny" data-id="${p.id}" data-k="hc${i}" value="${p.hc[i]}"></td>`).join("") +
       `<td>${fmt$(fy)}</td><td><button class="btn" data-id="${p.id}" data-k="del" title="Remove role">✕</button></td></tr>`;
+    if (open){
+      const rows = (p.people || []).map(pp => {
+        const active = Array.from({length:NM}, (_, i) => personCost(p, pp, i + 1)).filter(v => v > 0);
+        const moCost = active[active.length - 1] || personCost(p, pp, NM) || 0;
+        return `<div class="ppl-row"><span class="lab">who</span><input class="cell pos" data-id="${pp.id}" data-k="pname" value="${esc(pp.name)}">
+          <span class="lab">salary/yr</span><input class="cell" data-id="${pp.id}" data-k="psal" value="${pp.sal == null ? "" : Math.round(pp.sal).toLocaleString("en-US")}" placeholder="= role ${Math.round(p.ote / 1000)}K">
+          <span class="lab">from mo</span><input class="cell tiny" data-id="${pp.id}" data-k="pfrom" value="${pp.from || 1}">
+          <span class="lab">to mo</span><input class="cell tiny" data-id="${pp.id}" data-k="pto" value="${pp.to || NM}">
+          <span class="subtle">${moCost ? fmt$(moCost) + "/mo loaded" : ""}</span>
+          <button class="btn mini" data-id="${pp.id}" data-k="pdel">✕</button></div>`;
+      }).join("");
+      h += `<tr class="ppl"><td colspan="${11 + NM}"><div class="ppl-grid">${rows}
+        <div class="ppl-row"><button class="btn mini" data-id="${p.id}" data-k="padd">+ Add person</button>
+        <span class="subtle">salary blank = copy from role; set from/to months for hires and exits. Named people replace this role's headcount grid.</span></div></div></td></tr>`;
+    }
   }
   h += `<tr class="tot"><td>TOTAL</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>` +
-    Array.from({length:12}, (_, i) => `<td>${fmtK(C.staffTotal[i])}</td>`).join("") +
+    Array.from({length:NM}, (_, i) => `<td>${fmtK(C.staffTotal[i])}</td>`).join("") +
     `<td>${fmt$(C.staffTotal.reduce((a, b) => a + b, 0))}</td><td></td></tr>`;
   document.getElementById("staffTable").innerHTML = h + "</tbody></table>";
 }
@@ -793,9 +957,35 @@ delegate("staffTable", (id, k, val) => {
   else if (k === "raiseM") p.raiseM = Math.round(num(val, 9));
   else { const m = k.match(/^hc(\d+)$/); if (m) p.hc[+m[1]] = num(val, 0); }
 });
+delegate("staffTable", (id, k, val) => {
+  if (!/^p(name|sal|from|to)$/.test(k)) return;
+  for (const role of S.staff){
+    const pp = (role.people || []).find(x => x.id === id);
+    if (!pp) continue;
+    if (k === "pname") pp.name = val;
+    else if (k === "psal") pp.sal = String(val).trim() === "" ? null : num(val, null);
+    else if (k === "pfrom") pp.from = Math.min(NM, Math.max(1, Math.round(num(val, 1))));
+    else if (k === "pto") pp.to = Math.min(NM, Math.max(1, Math.round(num(val, NM))));
+    return;
+  }
+});
+const openRoles = new Set();
 document.getElementById("staffTable").addEventListener("click", ev => {
-  const b = ev.target.closest("button[data-k=del]"); if (!b) return;
-  S.staff = S.staff.filter(r => r.id !== b.dataset.id); persist(); renderAll();
+  const b = ev.target.closest("button[data-k]"); if (!b) return;
+  const k = b.dataset.k, id = b.dataset.id;
+  if (k === "del"){ S.staff = S.staff.filter(r => r.id !== id); }
+  else if (k === "toggle"){ openRoles.has(id) ? openRoles.delete(id) : openRoles.add(id); renderAll(); return; }
+  else if (k === "padd"){
+    const role = S.staff.find(r => r.id === id); if (!role) return;
+    role.people = role.people || [];
+    role.people.push({ id: "pp" + Date.now(), name: "Name", sal: null, from: 1, to: NM });
+    openRoles.add(id);
+  }
+  else if (k === "pdel"){
+    for (const role of S.staff) if (role.people) role.people = role.people.filter(pp => pp.id !== id);
+  }
+  else return;
+  persist(); renderAll();
 });
 delegate("deptRaises", (id, k, val) => { if (k === "deptraise") S.deptRaise[id] = num(val, 0) / 100; });
 delegate("expTable", (id, k, val) => {
@@ -805,8 +995,8 @@ delegate("expTable", (id, k, val) => {
   else if (k === "vendor") e.vendor = val;
   else if (k === "override") e.override = String(val).trim() === "" ? null : num(val, null);
   else if (k === "adj") e.adj = num(val, 0) / 100;
-  else if (k === "from") e.from = Math.min(12, Math.max(1, Math.round(num(val, 1))));
-  else if (k === "to") e.to = Math.min(12, Math.max(1, Math.round(num(val, 12))));
+  else if (k === "from") e.from = Math.min(NM, Math.max(1, Math.round(num(val, 1))));
+  else if (k === "to") e.to = Math.min(NM, Math.max(1, Math.round(num(val, NM))));
 });
 document.getElementById("expSearch").addEventListener("input", ev => { expFilter.q = ev.target.value; renderExpenses(); });
 document.getElementById("expDept").addEventListener("change", ev => { expFilter.dept = ev.target.value; renderExpenses(); });
@@ -820,13 +1010,13 @@ document.getElementById("addRep").addEventListener("click", () => {
 document.getElementById("addRole").addEventListener("click", () => {
   S.staff.push({ id: "p" + Date.now(), dept: "Technical Support", position: "New role", ote: 65000,
     hdv: 523.5, lic: 75, tax: 0.1, raiseD: 0, raiseP: 0, raiseM: 9,
-    hc: Array.from({length:12}, (_, i) => i >= 8 ? 1 : 0) });
+    hc: Array.from({length:NM}, (_, i) => i >= 8 ? 1 : 0) });
   persist(); renderAll();
 });
 document.getElementById("addExp").addEventListener("click", () => {
   S.exp.push({ id: "m" + Date.now(), vendor: "New expense", dept: expFilter.dept || "General Overhead",
     share: 1, budget: null, xero: null, status: "NOT IN XERO", seat: 0, ttm: null, purpose: "added by hand",
-    conflict: false, manual: true, use: "BUDGET", override: 500, adj: 0, from: 9, to: 12, on: true });
+    conflict: false, manual: true, use: "BUDGET", override: 500, adj: 0, from: 9, to: NM, on: true });
   persist(); renderAll();
 });
 document.getElementById("btnReset").addEventListener("click", () => {
@@ -849,8 +1039,8 @@ document.getElementById("btnLoad").addEventListener("click", () => {
 
 function renderAll(){
   const C = compute();
-  renderTiles(C); renderProjLevers(); renderProj(C);
-  renderSalesLevers(); renderSales(C); renderStaff(C); renderExpenses(C);
+  renderTiles(C); renderGoals(C); renderProjLevers(); renderProj(C);
+  renderSales(C); renderStaff(C); renderExpenses(C);
 }
 renderAll();
 renderTrends();
