@@ -1135,10 +1135,25 @@ function renderStaff(C){
     h += `<tr${open ? ' class="rowopen"' : ""}><td>
       <button class="exp-toggle" data-id="${p.id}" data-k="toggle" aria-expanded="${open}" title="${open ? "Collapse" : "Open"} role details — people, department, raises">${open ? "▾" : "▸"}</button><input class="cell pos" data-id="${p.id}" data-k="position" value="${esc(p.position)}" title="${esc(p.dept)} — ${esc(p.position)}">${hasPpl ? `<span class="badge" title="${p.people.map(x => esc(x.name)).join(", ")}">${p.people.length} named</span>` : ""}</td>
       <td>${(() => {
-        const e0 = earningsAt(p, null, 1), eN = earningsAt(p, null, NM);
-        const lifts = raisesOn(p, null);
-        const arrow = Math.abs(eN - e0) > 1
-          ? ` <span class="earn-to" title="Planned raises bring this role to ${fmt$(eN)}/yr earnings (+${((eN - e0) / (e0 || 1) * 100).toFixed(1)}%)${p.payType === "hourly" ? " (≈ $" + (eN / ((p.hrs || 40) * 52)).toFixed(2) + "/hr)" : ""}:\n${lifts.join("\n")}">→ ${Math.round(eN).toLocaleString("en-US")} <small>+${((eN - e0) / (e0 || 1) * 100).toFixed(1)}%</small></span>` : "";
+        let arrow = "";
+        if (hasPpl){
+          // people drive this role — surface their raises (person-scoped, plus role/dept raises they inherit)
+          const chs = p.people.map(pp => ({ pp,
+            e0: earningsAt(p, pp, Math.max(1, pp.from || 1)),
+            eN: earningsAt(p, pp, Math.min(NM, pp.to || NM)) }))
+            .filter(x => Math.abs(x.eN - x.e0) > 1);
+          if (chs.length){
+            const tip = chs.map(x => `${x.pp.name}: ${fmt$(x.e0)} → ${fmt$(x.eN)}/yr (+${((x.eN - x.e0) / (x.e0 || 1) * 100).toFixed(1)}%)`).join("\n");
+            arrow = chs.length === 1
+              ? ` <span class="earn-to" title="${esc(tip)}">→ ${Math.round(chs[0].eN).toLocaleString("en-US")} <small>+${((chs[0].eN - chs[0].e0) / (chs[0].e0 || 1) * 100).toFixed(1)}%</small></span>`
+              : ` <span class="earn-to" title="${esc(tip)}">↗ ${chs.length} raises</span>`;
+          }
+        } else {
+          const e0 = earningsAt(p, null, 1), eN = earningsAt(p, null, NM);
+          const lifts = raisesOn(p, null);
+          if (Math.abs(eN - e0) > 1)
+            arrow = ` <span class="earn-to" title="Planned raises bring this role to ${fmt$(eN)}/yr earnings (+${((eN - e0) / (e0 || 1) * 100).toFixed(1)}%)${p.payType === "hourly" ? " (≈ $" + (eN / ((p.hrs || 40) * 52)).toFixed(2) + "/hr)" : ""}:\n${lifts.join("\n")}">→ ${Math.round(eN).toLocaleString("en-US")} <small>+${((eN - e0) / (e0 || 1) * 100).toFixed(1)}%</small></span>`;
+        }
         return p.payType === "hourly"
           ? `<span title="Normalized: $${p.rate || 0}/hr × ${p.hrs || 40} h/wk × 52 wk">≈ ${Math.round(roleAnnual(p)).toLocaleString("en-US")} <span class="badge">hourly</span></span>${arrow}`
           : `<input class="cell w84" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}">${arrow}`;
