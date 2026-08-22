@@ -284,7 +284,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
     <button class="btn addrow" id="addRole">+ Add role</button>
     <span id="restoreWrap" style="margin-left:10px"></span>
   </div>
-  <div class="card"><h2>Pay bands <span class="scn-toggle" id="bandViewT"><button class="btn on" data-bv="before">Current pay</button><button class="btn" data-bv="after">After planned raises</button></span></h2><p class="note">Annual earnings per role (hourly annualized); hollow dots are named people. Toggle between today's pay and where planned raises land everyone. Level tiers always show every role; a split-out department is an extra lens — its roles appear both in their tier and in the department's own bucket row.</p><div class="toolbar" style="margin-bottom:4px"><span class="subtle" style="font-size:12px">Own bucket:</span><span id="bandSplitChips" class="scn-toggle"></span></div>
+  <div class="card"><h2>Pay bands <span class="scn-toggle" id="bandViewT"><button class="btn on" data-bv="before">Current pay</button><button class="btn" data-bv="after">After planned raises</button></span></h2><p class="note">Annual earnings (hourly annualized). Roles with named people plot the people (hollow) instead of the role seat, so nobody appears twice. A split-out department keeps its roles in its own bucket row, out of the shared tiers — unsplit its chip to compare those roles org-wide. Toggle between today's pay and where planned raises land everyone.</p><div class="toolbar" style="margin-bottom:4px"><span class="subtle" style="font-size:12px">Own bucket:</span><span id="bandSplitChips" class="scn-toggle"></span></div>
     <figure class="chart" id="payBands"></figure>
     <details id="lvlAssign"><summary style="cursor:pointer;font-weight:600;font-size:13px">Assign role levels</summary>
     <div id="lvlList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:4px 20px;padding:10px 2px 4px"></div></details></div>
@@ -1428,21 +1428,26 @@ function renderPayBands(){
     `<button class="btn${split.has(d) ? " on" : ""}" data-band="${esc(d)}">${esc(d.replace("03 - HR & Business Administration Manager", "HR & Admin"))}</button>`).join("");
   document.querySelectorAll("#bandViewT .btn").forEach(b => b.classList.toggle("on", b.dataset.bv === bandView));
   const pts = [];
+  const grpOf = r => split.has(r.dept) ? r.dept : (r.level || "Mid");
   for (const r of S.staff){
     if (!r.position || (!r.ote && !r.rate)) continue;
-    const base = { dept: r.dept, level: r.level || "Mid" };
-    pts.push({ ...base, v0: earningsAt(r, null, 1), v: earningsAt(r, null, NM),
-      label: r.position + " · " + r.dept, hc: r.hc[NM - 1] || 0, person: false });
-    for (const pp of (r.people || []))
-      pts.push({ ...base, v0: earningsAt(r, pp, Math.max(1, pp.from || 1)), v: earningsAt(r, pp, Math.min(NM, pp.to || NM)),
-        label: pp.name + " — " + r.position, person: true });
+    const grp = grpOf(r);
+    if (r.people && r.people.length){
+      // named people ARE this role's roster — plot them instead of the role seat
+      for (const pp of r.people)
+        pts.push({ grp, roleId: r.id, v0: earningsAt(r, pp, Math.max(1, pp.from || 1)), v: earningsAt(r, pp, Math.min(NM, pp.to || NM)),
+          label: pp.name + " — " + r.position, person: true });
+    } else {
+      pts.push({ grp, roleId: r.id, v0: earningsAt(r, null, 1), v: earningsAt(r, null, NM),
+        label: r.position + " · " + r.dept, hc: r.hc[NM - 1] || 0, person: false });
+    }
   }
   if (!pts.length){ document.getElementById("payBands").innerHTML = ""; return; }
   const val = p => bandView === "before" ? p.v0 : p.v;
-  const groups = LEVELS.filter(l => pts.some(p => p.level === l))
-    .map(l => ({ key: l, isDept: false, members: pts.filter(p => p.level === l) }))
-    .concat(DEPTS.filter(d => split.has(d) && pts.some(p => p.dept === d))
-      .map(d => ({ key: d, isDept: true, members: pts.filter(p => p.dept === d) })));
+  const groups = LEVELS.filter(l => pts.some(p => p.grp === l))
+    .map(l => ({ key: l, isDept: false, members: pts.filter(p => p.grp === l) }))
+    .concat(DEPTS.filter(d => split.has(d) && pts.some(p => p.grp === d))
+      .map(d => ({ key: d, isDept: true, members: pts.filter(p => p.grp === d) })));
   const allV = pts.map(val);
   const lo = Math.min(...allV) * 0.93, hi = Math.max(...allV) * 1.05;
   const W = 1400, lw = 190, rh = 46, H = groups.length * rh + 26;
@@ -1456,10 +1461,11 @@ function renderPayBands(){
   }
   groups.forEach((grp, i) => {
     const y = 8 + i * rh + rh / 2, mine = grp.members;
-    const vals = mine.filter(p => !p.person).map(val).sort((a, b) => a - b);
+    const vals = mine.map(val).sort((a, b) => a - b);
     const med = vals.length ? vals[Math.floor(vals.length / 2)] : null;
+    const roleN = new Set(mine.map(p => p.roleId)).size;
     g += `<text x="${lw - 12}" y="${y + 4}" text-anchor="end" font-size="12" font-weight="600" fill="${grp.isDept ? "var(--modest)" : "var(--ink2)"}">${esc(grp.key.replace("03 - HR & Business Administration Manager", "HR & Admin"))}</text>` +
-      `<text x="${lw - 12}" y="${y + 17}" text-anchor="end" font-size="9.5" fill="var(--muted)">${vals.length} role${vals.length === 1 ? "" : "s"}${med ? " · med " + fmtK(med) : ""}</text>`;
+      `<text x="${lw - 12}" y="${y + 17}" text-anchor="end" font-size="9.5" fill="var(--muted)">${roleN} role${roleN === 1 ? "" : "s"}${med ? " · med " + fmtK(med) : ""}</text>`;
     if (vals.length > 1){
       const x0 = x(vals[0]), x1 = x(vals[vals.length - 1]);
       g += `<rect x="${x0}" y="${y - 4}" width="${Math.max(2, x1 - x0)}" height="8" rx="4" fill="var(--grid)"/>`;
