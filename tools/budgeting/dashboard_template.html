@@ -102,6 +102,9 @@ table.data tr.tot td{border-top:2px solid var(--baseline);font-weight:700}
 table.data tr.actual-col{}
 td.neg{color:var(--crit)} td.pos{color:var(--good-text)}
 table.data td.actual, table.data th.actual{background:color-mix(in srgb, var(--surface2) 55%, var(--surface))}
+table.data td.qb, table.data th.qb{border-right:2px solid var(--border2)}
+tr.netrow td{background:color-mix(in srgb, var(--chip-good) 45%, transparent)}
+tr.netrow td.actual{background:color-mix(in srgb, var(--chip-good) 30%, var(--surface2))}
 table.data td:first-child{font-weight:600}
 table.data .dim{color:var(--muted);font-weight:400}
 
@@ -251,6 +254,8 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
   <div class="card"><h2>Growth &amp; scenario gap</h2>
     <p class="note">Modest vs stretch as growth: month-over-month, fiscal quarter-over-quarter (FY starts April), and the one true year-over-year inside the horizon — Jan–Mar 2027 vs Jan–Mar 2026 booked. Sales revenue and net profit; booked months are identical under both scenarios.</p>
     <div class="tablewrap" id="growthQ"></div>
+    <div class="tablewrap" style="margin-top:12px" id="growthC"></div>
+    <p class="note" style="margin:8px 0 0">Cost history before 2026 comes from the accrual export (Aug ’25 onward). Revenue before Jan ’26 isn’t in the current exports — add a FY25 export that includes the revenue (4xxx) accounts and revenue YoY will backfill.</p>
     <div class="tablewrap" style="margin-top:12px" id="growthM"></div></div>
   <details class="helper"><summary>How this model works</summary><div class="inner" id="notes"></div></details>
 </section>
@@ -277,7 +282,9 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
     <div class="levers" style="margin-bottom:12px" id="payrollRates"></div>
     <div class="tablewrap tall" id="staffTable"></div>
     <button class="btn addrow" id="addRole">+ Add role</button>
+    <span id="restoreWrap" style="margin-left:10px"></span>
   </div>
+  <div class="card"><h2>Pay bands</h2><p class="note">Every role plotted by annual earnings after planned raises (hourly roles annualized) — solid dots are roles, hollow dots are named people. Set a role's level in its detail panel (▸ → Role settings). Use it to see how leadership and manager pay sits against senior/mid/entry bands.</p><figure class="chart" id="payBands"></figure></div>
 </section>
 
 <section class="tab" id="tab-exp">
@@ -322,6 +329,16 @@ const DEPTS = ["Sales","Marketing","Software Development","Installation Services
 const STATUS_CHIP = {"STEADY":"steady","GROWING":"growing","DROPPING":"dropping","DROPPED":"dropped",
   "NEW":"new","PERIODIC":"periodic","ONE-TIME":"onetime","NOT IN XERO":"notinxero"};
 const LS_KEY = "scw-money-model-v1";
+const LEVELS = ["Leadership","Manager","Senior","Mid","Entry"];
+function guessLevel(pos){
+  const p = (pos || "").toLowerCase();
+  if (/chief|director|ceo|coo|cto|vp/.test(p)) return "Leadership";
+  if (/account manager/.test(p)) return "Mid";
+  if (/manager|team lead/.test(p)) return "Manager";
+  if (/senior|principal/.test(p)) return "Senior";
+  if (/intern|junior|assistant|coordinator|bdr|team member|warehouse team/.test(p)) return "Entry";
+  return "Mid";
+}
 
 /* ---------- default state from MODEL ---------- */
 function defaultState(){
@@ -370,7 +387,7 @@ function defaultState(){
     ramps,
     staff: MODEL.staff.map((s, i) => ({ id: "p" + i, dept: s.dept || "Unassigned", position: s.position,
       ote: s.ote, hdv: s.hdv, lic: s.lic,
-      benOn: (s.hdv || 0) > 0, taxOn: true,
+      benOn: (s.hdv || 0) > 0, taxOn: true, level: guessLevel(s.position),
       raiseD: 0, raiseP: 0, raiseM: 9, hc: Array(NM).fill(s.hc) })),
     raises: [],
   };
@@ -394,6 +411,7 @@ try {
   for (const p of S.staff){
     if (p.benOn === undefined) p.benOn = (p.hdv || 0) > 0;
     if (p.taxOn === undefined) p.taxOn = (p.tax || 0) > 0.005;
+    if (!p.level) p.level = guessLevel(p.position);
   }
   // migrate legacy raise fields into raise events
   if (!S.fixes) S.fixes = {};
@@ -712,29 +730,37 @@ function renderProj(C){
   const pick = (mod, str) => plScn === "str" ? [["str", str]] : plScn === "mod" ? [["mod", mod]] : [["mod", mod], ["str", str]];
   const sfx = k => both ? (k === "mod" ? " — modest" : " — stretch") : "";
   const push = (label, vals, cls = "", fm = fmt$) => rows.push({label, vals, cls, fm});
+  const pushSec = label => rows.push({section: label});
+  pushSec("REVENUE");
   for (const [k, v] of pick(C.rev.mod, C.rev.str)) push("Sales revenue" + sfx(k), v);
   push("Other income", C.oth);
+  pushSec("COST OF SALES");
   push("COGS % of sales", C.cogsPct, "", v => fmtPct(v));
   for (const [k, v] of pick(C.cogs.mod, C.cogs.str)) push("COGS" + sfx(k), v);
   const gpM = C.rev.mod.map((v, i) => v + C.oth[i] - C.cogs.mod[i]);
   const gpS = C.rev.str.map((v, i) => v + C.oth[i] - C.cogs.str[i]);
   for (const [k, v] of pick(gpM, gpS)) push("Gross profit" + sfx(k), v, "tot");
+  pushSec("OPERATING COSTS");
   push("Payroll (staffing model)", C.pay);
   for (const [k, v] of pick(C.comp.mod, C.comp.str)) push("Sales comp (commissions + overrides)" + sfx(k), v);
-  for (const d of DEPTS) if (C.dept[d].some(v => Math.abs(v) > 0.5)) push("Opex — " + d, C.dept[d], "dim");
-  push("Total opex", C.opex, "tot");
+  const opexDepts = DEPTS.filter(d => C.dept[d].some(v => Math.abs(v) > 0.5));
+  if (plOpexOpen) for (const d of opexDepts) push("Opex — " + d, C.dept[d], "dim");
+  push(`Total opex <button class="exp-toggle" data-k="plopex">${plOpexOpen ? "▾ hide" : "▸ show"} ${opexDepts.length} depts</button>`, C.opex, "tot");
   push("Break-even sales revenue", C.be, "dim");
-  for (const [k, v] of pick(C.net.mod, C.net.str)) push("NET" + (both ? sfx(k).toUpperCase() : ""), v, "tot");
+  pushSec("BOTTOM LINE");
+  for (const [k, v] of pick(C.net.mod, C.net.str)) push("NET" + (both ? sfx(k).toUpperCase() : ""), v, "tot netrow");
   if (!both)
     push("Net under " + (plScn === "mod" ? "stretch" : "modest") + " (reference)", plScn === "mod" ? C.net.str : C.net.mod, "dim");
   const half = (vals, [a, b]) => vals.slice(a, b).reduce((x, y) => x + y, 0);
+  const qb = i => (i % 3 === 2 ? " qb" : "");
   let h = `<table class="data"><thead><tr><th>P&amp;L</th>` +
-    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}">${m}</th>`).join("") +
+    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${qb(i)}">${m}</th>`).join("") +
     `<th>H1 Apr–Sep</th><th>H2 Oct–Mar</th><th>15 mo</th></tr></thead><tbody>`;
   for (const r of rows){
+    if (r.section){ h += `<tr class="sec"><td colspan="19">${esc(r.section)}</td></tr>`; continue; }
     const sums = r.fm === fmt$ ? [half(r.vals, FH1), half(r.vals, FH2), r.vals.reduce((a, b) => a + b, 0)] : null;
-    h += `<tr class="${r.cls}"><td class="${r.cls === "dim" ? "dim" : ""}">${esc(r.label)}</td>` +
-      r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}${/NET/.test(r.label) && v < 0 ? " neg" : ""}">${r.fm(v)}</td>`).join("") +
+    h += `<tr class="${r.cls}"><td class="${r.cls === "dim" ? "dim" : ""}">${r.label}</td>` +
+      r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}${qb(i)}${/NET/.test(r.label) && v < 0 ? " neg" : ""}">${r.fm(v)}</td>`).join("") +
       (sums ? sums.map(v => `<td><b>${fmt$(v)}</b></td>`).join("") : "<td></td><td></td><td></td>") + `</tr>`;
   }
   document.getElementById("plTable").innerHTML = h + "</tbody></table>";
@@ -768,7 +794,11 @@ function delegate(rootId, handler){
 }
 
 /* ---------- department rollup ---------- */
-let plScn = "mod";
+let plScn = "mod", plOpexOpen = false;
+document.getElementById("plTable").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k=plopex]"); if (!b) return;
+  plOpexOpen = !plOpexOpen; renderAll();
+});
 document.getElementById("plScnT").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-s]"); if (!b) return;
   plScn = b.dataset.s;
@@ -851,6 +881,23 @@ function renderGrowth(C){
   m += `<tr class="tot"><td>Stretch premium /mo (revenue)</td>${C.rev.str.map((v, i) => `<td>${fmt$(v - C.rev.mod[i])}</td>`).join("")}</tr>`;
   m += `<tr class="tot"><td>Stretch premium /mo (net)</td>${C.net.str.map((v, i) => `<td>${fmt$(v - C.net.mod[i])}</td>`).join("")}</tr>`;
   document.getElementById("growthM").innerHTML = m + "</tbody></table>";
+  // cost trajectory: booked Oct'25 onward from the accrual export, model after Jul'26
+  const T = MODEL.totals;
+  const cost26 = i => C.pay[i] + C.opex[i] + C.comp.mod[i];            // modest comp in modeled months
+  const CQ = [
+    ["Oct–Dec ’25", "booked", [2, 3, 4].reduce((a, i) => a + T.ttm_payroll[i] + T.ttm_opex[i], 0)],
+    ["Jan–Mar ’26", "booked", [0, 1, 2].reduce((a, i) => a + cost26(i), 0)],
+    ["Apr–Jun ’26", "booked", [3, 4, 5].reduce((a, i) => a + cost26(i), 0)],
+    ["Jul–Sep ’26", "Jul booked", [6, 7, 8].reduce((a, i) => a + cost26(i), 0)],
+    ["Oct–Dec ’26", "model", [9, 10, 11].reduce((a, i) => a + cost26(i), 0)],
+    ["Jan–Mar ’27", "model", [12, 13, 14].reduce((a, i) => a + cost26(i), 0)]];
+  let cq = `<table class="data" style="margin-top:0"><thead><tr><th>Operating cost trajectory</th>` +
+    CQ.map(x => `<th>${x[0]}<br><span style="font-weight:400">${x[1]}</span></th>`).join("") + `</tr></thead><tbody>`;
+  cq += `<tr><td>Payroll + opex (+ modest comp)</td>${CQ.map(x => `<td>${fmt$(x[2])}</td>`).join("")}</tr>`;
+  cq += `<tr class="dim"><td class="dim">QoQ</td>${CQ.map((x, i) => `<td>${i ? g(x[2] / (CQ[i - 1][2] || 1) - 1) : `<span class="dim">—</span>`}</td>`).join("")}</tr>`;
+  cq += `<tr class="dim"><td class="dim">YoY (vs same quarter booked)</td>${CQ.map((x, i) =>
+    `<td>${i === 4 ? g(x[2] / (CQ[0][2] || 1) - 1) : i === 5 ? g(x[2] / (CQ[1][2] || 1) - 1) : `<span class="dim">—</span>`}</td>`).join("")}</tr>`;
+  document.getElementById("growthC").innerHTML = cq + "</tbody></table>";
 }
 /* ---------- goals & break-even (Projections) ---------- */
 function goalHalf(C, [a, b, label], tKey, thrKey, ids){
@@ -1133,6 +1180,7 @@ function renderStaff(C){
           <h4>Role settings</h4>
           <div class="ppl-row">
             <span class="fld"><label>Department</label><select class="cell" style="max-width:210px" data-id="${p.id}" data-k="dept">${DEPTS.map(d => `<option${d === p.dept ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></span>
+            <span class="fld"><label>Level</label><select class="cell" data-id="${p.id}" data-k="level">${LEVELS.map(l => `<option${(p.level || "Mid") === l ? " selected" : ""}>${l}</option>`).join("")}</select></span>
             <span class="fld"><label>Pay basis</label><select class="cell" data-id="${p.id}" data-k="paytype">
               <option value="salary"${p.payType !== "hourly" ? " selected" : ""}>Salary</option>
               <option value="hourly"${p.payType === "hourly" ? " selected" : ""}>Hourly</option></select></span>
@@ -1177,11 +1225,14 @@ function renderExpenses(C){
   let h = `<table class="data"><thead><tr><th>On</th><th>Expense</th><th>Status</th><th>12-mo trend</th>
     <th>Xero sugg/mo</th><th>Budget/mo</th><th>Use</th><th>Override</th><th>Adj %</th><th>From</th><th>To</th><th>Planned/mo</th></tr></thead><tbody>`;
   let shown = 0, totPlanned = 0;
+  const filterActive = !!(q || expFilter.dept || expFilter.status);
   for (const d of DEPTS){
     const rows = S.exp.filter(e => e.dept === d && match(e));
     if (!rows.length) continue;
+    const folded = !filterActive && expFold.has(d);
     const sub = rows.reduce((a, e) => a + expensePlanned(e), 0);
-    h += `<tr class="sec"><td colspan="11">${esc(d)}</td><td>${fmt$(sub)}</td></tr>`;
+    h += `<tr class="sec deptsec"><td colspan="11"><button class="exp-toggle" data-k="efold" data-dept="${esc(d)}" aria-expanded="${!folded}">${folded ? "▸" : "▾"}</button> ${esc(d)} <span class="dim" style="font-weight:400">· ${rows.length} expense${rows.length > 1 ? "s" : ""}${rows.filter(e => e.on).length < rows.length ? " (" + rows.filter(e => e.on).length + " on)" : ""}</span></td><td>${fmt$(sub)}</td></tr>`;
+    if (folded){ shown += rows.length; totPlanned += sub; continue; }
     for (const e of rows.sort((a, b) => Math.abs(expensePlanned(b) || b.xero || b.budget || 0) - Math.abs(expensePlanned(a) || a.xero || a.budget || 0))){
       shown++; const pl = expensePlanned(e); totPlanned += pl;
       h += `<tr><td><input type="checkbox" class="switch" data-id="${e.id}" data-k="on"${e.on ? " checked" : ""} aria-label="Include ${esc(e.vendor)}"></td>
@@ -1307,6 +1358,47 @@ document.getElementById("copyFixes").addEventListener("click", async ev => {
   catch (e) { prompt("Copy this checklist:", txt); }
   setTimeout(() => ev.target.textContent = "Copy checklist", 1600);
 });
+/* ---------- pay bands ---------- */
+function renderPayBands(){
+  const pts = [];
+  for (const r of S.staff){
+    if (!r.position || (!r.ote && !r.rate)) continue;
+    const lvl = r.level || "Mid";
+    pts.push({ lvl, v: earningsAt(r, null, NM), label: r.position + " · " + r.dept, hc: r.hc[NM - 1] || 0, person: false });
+    for (const pp of (r.people || []))
+      pts.push({ lvl, v: earningsAt(r, pp, Math.min(NM, pp.to || NM)), label: pp.name + " — " + r.position, person: true });
+  }
+  if (!pts.length){ document.getElementById("payBands").innerHTML = ""; return; }
+  const lo = Math.min(...pts.map(p => p.v)) * 0.93, hi = Math.max(...pts.map(p => p.v)) * 1.05;
+  const W = 1400, lw = 150, rh = 46, levels = LEVELS.filter(l => pts.some(p => p.lvl === l));
+  const H = levels.length * rh + 26;
+  const x = v => lw + (W - lw - 30) * (v - lo) / (hi - lo || 1);
+  const ticks = niceTicks(lo, hi, 5, true);
+  let g = "";
+  for (const t of ticks){
+    if (t < lo || t > hi) continue;
+    g += `<line x1="${x(t)}" x2="${x(t)}" y1="8" y2="${H - 18}" stroke="var(--grid)"/>` +
+      `<text x="${x(t)}" y="${H - 5}" text-anchor="middle" font-size="10" fill="var(--muted)">${fmtK(t)}</text>`;
+  }
+  levels.forEach((lvl, i) => {
+    const y = 8 + i * rh + rh / 2, mine = pts.filter(p => p.lvl === lvl);
+    const vals = mine.filter(p => !p.person).map(p => p.v).sort((a, b) => a - b);
+    const med = vals.length ? vals[Math.floor(vals.length / 2)] : null;
+    g += `<text x="${lw - 12}" y="${y + 4}" text-anchor="end" font-size="12" font-weight="600" fill="var(--ink2)">${lvl}</text>` +
+      `<text x="${lw - 12}" y="${y + 17}" text-anchor="end" font-size="9.5" fill="var(--muted)">${vals.length} role${vals.length === 1 ? "" : "s"}${med ? " · med " + fmtK(med) : ""}</text>`;
+    if (vals.length > 1)
+      g += `<rect x="${x(vals[0])}" y="${y - 4}" width="${Math.max(2, x(vals[vals.length - 1]) - x(vals[0]))}" height="8" rx="4" fill="var(--grid)"/>`;
+    if (med != null) g += `<line x1="${x(med)}" x2="${x(med)}" y1="${y - 9}" y2="${y + 9}" stroke="var(--ink2)" stroke-width="2"/>`;
+    for (const p of mine){
+      g += p.person
+        ? `<circle cx="${x(p.v)}" cy="${y}" r="4" fill="var(--surface)" stroke="var(--stretch)" stroke-width="2"><title>${esc(p.label)} — ${fmt$(p.v)}/yr</title></circle>`
+        : `<circle cx="${x(p.v)}" cy="${y}" r="5.5" fill="var(--modest)" stroke="var(--surface)" stroke-width="2"><title>${esc(p.label)} — ${fmt$(p.v)}/yr${p.hc > 1 ? " × " + p.hc + " heads" : ""}</title></circle>`;
+    }
+  });
+  document.getElementById("payBands").innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pay bands by level">${g}</svg>` +
+    `<div class="chart-legend"><span class="key bar"><i style="background:var(--modest)"></i>Role</span><span class="key bar"><i style="background:var(--surface);border:2px solid var(--stretch);width:7px;height:7px"></i>Named person</span><span class="key"><i style="background:var(--ink2);width:2px;height:12px"></i>Median</span></div>`;
+}
 /* ---------- events & init ---------- */
 document.getElementById("tabs").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-tab]"); if (!b) return;
@@ -1334,6 +1426,7 @@ delegate("staffTable", (id, k, val) => {
   const p = S.staff.find(r => r.id === id); if (!p) return;
   if (k === "position") p.position = val;
   else if (k === "dept") p.dept = val;
+  else if (k === "level") p.level = val;
   else if (k === "paytype"){ p.payType = val; if (val === "hourly"){ p.rate = p.rate ?? Math.round((p.ote || 0) / (52 * (p.hrs || 40))); p.hrs = p.hrs ?? 40; } }
   else if (k === "rate") p.rate = num(val, 0);
   else if (k === "hrs") p.hrs = Math.max(1, num(val, 40));
@@ -1415,6 +1508,13 @@ delegate("expTable", (id, k, val) => {
   else if (k === "from") e.from = Math.min(NM, Math.max(1, Math.round(num(val, 1))));
   else if (k === "to") e.to = Math.min(NM, Math.max(1, Math.round(num(val, NM))));
 });
+const expFold = new Set(DEPTS);
+document.getElementById("expTable").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k=efold]"); if (!b) return;
+  const d = b.dataset.dept;
+  expFold.has(d) ? expFold.delete(d) : expFold.add(d);
+  renderExpenses();
+});
 document.getElementById("expSearch").addEventListener("input", ev => { expFilter.q = ev.target.value; renderExpenses(); });
 document.getElementById("expDept").addEventListener("change", ev => { expFilter.dept = ev.target.value; renderExpenses(); });
 document.getElementById("expStatus").addEventListener("change", ev => { expFilter.status = ev.target.value; renderExpenses(); });
@@ -1424,9 +1524,23 @@ document.getElementById("addRep").addEventListener("click", () => {
     ramp: Object.keys(S.ramps)[0] || "NEW AE", start: 9, modest: 0.8, stretch: 1, comm: 0.025 });
   persist(); scheduleRender();
 });
+const SEED_STAFF = defaultState().staff;
+document.getElementById("restoreWrap").addEventListener("change", ev => {
+  if (ev.target.id !== "restoreSel" || !ev.target.value) return;
+  const seed = SEED_STAFF.find(r => r.position === ev.target.value);
+  if (seed) S.staff.push({ ...seed, id: "p" + Date.now(), hc: seed.hc.slice() });
+  persist(); scheduleRender();
+});
+function renderRestore(){
+  const have = new Set(S.staff.map(r => r.position.trim().toLowerCase()));
+  const missing = SEED_STAFF.filter(r => !have.has(r.position.trim().toLowerCase()));
+  document.getElementById("restoreWrap").innerHTML = missing.length
+    ? `<select id="restoreSel" class="btn" title="Bring back a role you removed, with its original salary and headcount"><option value="">↩ Restore deleted role…</option>${missing.map(r => `<option>${esc(r.position)}</option>`).join("")}</select>`
+    : "";
+}
 document.getElementById("addRole").addEventListener("click", () => {
   S.staff.push({ id: "p" + Date.now(), dept: "Technical Support", position: "New role", ote: 65000,
-    benOn: true, taxOn: true, lic: 75, raiseD: 0, raiseP: 0, raiseM: 9,
+    benOn: true, taxOn: true, level: "Mid", lic: 75, raiseD: 0, raiseP: 0, raiseM: 9,
     hc: Array.from({length:NM}, (_, i) => i >= 8 ? 1 : 0) });
   persist(); scheduleRender();
 });
@@ -1457,7 +1571,7 @@ document.getElementById("btnLoad").addEventListener("click", () => {
 function renderAll(){
   const C = compute();
   renderTiles(C); renderGoals(C); renderProjLevers(); renderProj(C); renderRollup(C); renderGrowth(C);
-  renderSales(C); renderRaisePlanner(); renderStaff(C); renderExpenses(C); renderFixes();
+  renderSales(C); renderRaisePlanner(); renderStaff(C); renderExpenses(C); renderFixes(); renderRestore(); renderPayBands();
 }
 
 renderAll();
