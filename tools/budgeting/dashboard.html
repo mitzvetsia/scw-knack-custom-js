@@ -284,7 +284,8 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
     <button class="btn addrow" id="addRole">+ Add role</button>
     <span id="restoreWrap" style="margin-left:10px"></span>
   </div>
-  <div class="card"><h2>Pay bands</h2><p class="note">Every role plotted by annual earnings after planned raises (hourly roles annualized) — solid dots are roles, hollow dots are named people. Set a role's level in its detail panel (▸ → Role settings). Use it to see how leadership and manager pay sits against senior/mid/entry bands.</p><figure class="chart" id="payBands"></figure>
+  <div class="card"><h2>Pay bands</h2><p class="note">Every role plotted by annual earnings after planned raises (hourly roles annualized) — solid dots are roles, hollow dots are named people. Set a role's level in its detail panel (▸ → Role settings). Use it to see how leadership and manager pay sits against senior/mid/entry bands.</p><div class="toolbar" style="margin-bottom:4px"><span class="subtle" style="font-size:12px">Own bucket:</span><span id="bandSplitChips" class="scn-toggle"></span></div>
+    <figure class="chart" id="payBands"></figure>
     <details id="lvlAssign"><summary style="cursor:pointer;font-weight:600;font-size:13px">Assign role levels</summary>
     <div id="lvlList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:4px 20px;padding:10px 2px 4px"></div></details></div>
 </section>
@@ -334,9 +335,10 @@ const DEPTS = ["Sales","Marketing","Software Development","Installation Services
 const STATUS_CHIP = {"STEADY":"steady","GROWING":"growing","DROPPING":"dropping","DROPPED":"dropped",
   "NEW":"new","PERIODIC":"periodic","ONE-TIME":"onetime","NOT IN XERO":"notinxero"};
 const LS_KEY = "scw-money-model-v1";
-const LEVELS = ["Leadership","Dept Manager","Manager","Senior","Mid","Entry"];
+const LEVELS = ["Leadership","Dept Manager","Manager","Senior","Mid","Entry","Contractor"];
 function guessLevel(pos){
   const p = (pos || "").toLowerCase();
+  if (/contractor|1099/.test(p)) return "Contractor";
   if (/chief|director|ceo|coo|cto|vp/.test(p)) return "Leadership";
   if (/account manager|project manager/.test(p)) return "Mid";
   if (/manager/.test(p)) return "Dept Manager";
@@ -398,6 +400,7 @@ function defaultState(){
       benOn: (s.hdv || 0) > 0, taxOn: true, level: guessLevel(s.position),
       raiseD: 0, raiseP: 0, raiseM: 9, hc: Array(NM).fill(s.hc) })),
     raises: [],
+    bandSplit: ["Software Development", "Sales"],
   };
 }
 let S = defaultState();
@@ -421,9 +424,11 @@ try {
     if (p.benOn === undefined) p.benOn = (p.hdv || 0) > 0;
     if (p.taxOn === undefined) p.taxOn = (p.tax || 0) > 0.005;
     if (!p.level) p.level = guessLevel(p.position);
+    if (/contractor|1099/i.test(p.position || "") && p.level === "Mid") p.level = "Contractor";
   }
   // migrate legacy raise fields into raise events
   if (!S.fixes) S.fixes = {};
+  if (!S.bandSplit) S.bandSplit = ["Software Development", "Sales"];
   if (!S.raises){
     S.raises = [];
     for (const p of S.staff){
@@ -1417,17 +1422,23 @@ document.getElementById("copyFixes").addEventListener("click", async ev => {
 });
 /* ---------- pay bands ---------- */
 function renderPayBands(){
+  const split = new Set(S.bandSplit || []);
+  const staffDepts = [...new Set(S.staff.map(r => r.dept))];
+  document.getElementById("bandSplitChips").innerHTML = DEPTS.filter(d => staffDepts.includes(d)).map(d =>
+    `<button class="btn${split.has(d) ? " on" : ""}" data-band="${esc(d)}">${esc(d.replace("03 - HR & Business Administration Manager", "HR & Admin"))}</button>`).join("");
   const pts = [];
   for (const r of S.staff){
     if (!r.position || (!r.ote && !r.rate)) continue;
-    const lvl = r.level || "Mid";
+    const lvl = split.has(r.dept) ? r.dept : (r.level || "Mid");
     pts.push({ lvl, v: earningsAt(r, null, NM), label: r.position + " · " + r.dept, hc: r.hc[NM - 1] || 0, person: false });
     for (const pp of (r.people || []))
       pts.push({ lvl, v: earningsAt(r, pp, Math.min(NM, pp.to || NM)), label: pp.name + " — " + r.position, person: true });
   }
   if (!pts.length){ document.getElementById("payBands").innerHTML = ""; return; }
   const lo = Math.min(...pts.map(p => p.v)) * 0.93, hi = Math.max(...pts.map(p => p.v)) * 1.05;
-  const W = 1400, lw = 150, rh = 46, levels = LEVELS.filter(l => pts.some(p => p.lvl === l));
+  const W = 1400, lw = 190, rh = 46;
+  const levels = LEVELS.filter(l => pts.some(p => p.lvl === l))
+    .concat(DEPTS.filter(d => split.has(d) && pts.some(p => p.lvl === d)));
   const H = levels.length * rh + 26;
   const x = v => lw + (W - lw - 30) * (v - lo) / (hi - lo || 1);
   const ticks = niceTicks(lo, hi, 5, true);
@@ -1441,7 +1452,7 @@ function renderPayBands(){
     const y = 8 + i * rh + rh / 2, mine = pts.filter(p => p.lvl === lvl);
     const vals = mine.filter(p => !p.person).map(p => p.v).sort((a, b) => a - b);
     const med = vals.length ? vals[Math.floor(vals.length / 2)] : null;
-    g += `<text x="${lw - 12}" y="${y + 4}" text-anchor="end" font-size="12" font-weight="600" fill="var(--ink2)">${lvl}</text>` +
+    g += `<text x="${lw - 12}" y="${y + 4}" text-anchor="end" font-size="12" font-weight="600" fill="${split.has(lvl) ? "var(--modest)" : "var(--ink2)"}">${esc(lvl.replace("03 - HR & Business Administration Manager", "HR & Admin"))}</text>` +
       `<text x="${lw - 12}" y="${y + 17}" text-anchor="end" font-size="9.5" fill="var(--muted)">${vals.length} role${vals.length === 1 ? "" : "s"}${med ? " · med " + fmtK(med) : ""}</text>`;
     if (vals.length > 1)
       g += `<rect x="${x(vals[0])}" y="${y - 4}" width="${Math.max(2, x(vals[vals.length - 1]) - x(vals[0]))}" height="8" rx="4" fill="var(--grid)"/>`;
@@ -1601,6 +1612,12 @@ function renderRestore(){
     ? `<select id="restoreSel" class="btn" title="Bring back a role you removed, with its original salary and headcount"><option value="">↩ Restore deleted role…</option>${missing.map(r => `<option>${esc(r.position)}</option>`).join("")}</select>`
     : "";
 }
+document.getElementById("bandSplitChips").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-band]"); if (!b) return;
+  const d = b.dataset.band, i = (S.bandSplit || []).indexOf(d);
+  if (i >= 0) S.bandSplit.splice(i, 1); else (S.bandSplit = S.bandSplit || []).push(d);
+  persist(); scheduleRender();
+});
 delegate("lvlAssign", (id, k, val) => {
   if (k !== "level") return;
   const r = S.staff.find(x => x.id === id); if (r) r.level = val;
