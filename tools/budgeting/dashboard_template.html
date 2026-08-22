@@ -284,7 +284,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
     <button class="btn addrow" id="addRole">+ Add role</button>
     <span id="restoreWrap" style="margin-left:10px"></span>
   </div>
-  <div class="card"><h2>Pay bands <label class="subtle" style="font-weight:400;font-size:12.5px;margin-left:12px">as of <select id="bandAsOf" class="cell"></select></label></h2><p class="note">Annual earnings (hourly annualized) as the org stands in the chosen month: eliminated roles (headcount zero) and ended people drop off, and raises count only once they've landed. Click any dot to exclude that role or person outright; restore from the Excluded list below the chart. Jan ’26 = before everything; Mar ’27 = the full plan. Roles with named people plot the people (hollow) so nobody appears twice; split-out departments keep their roles in their own bucket row.</p><div class="toolbar" style="margin-bottom:4px"><span class="subtle" style="font-size:12px">Own bucket:</span><span id="bandSplitChips" class="scn-toggle"></span></div>
+  <div class="card"><h2>Pay bands <label class="subtle" style="font-weight:400;font-size:12.5px;margin-left:12px">as of <select id="bandAsOf" class="cell"></select></label></h2><p class="note">Annual earnings (hourly annualized) as the org stands in the chosen month: eliminated roles (headcount zero) and ended people drop off, and raises count only once they've landed. Click any dot to exclude that role or person outright; restore from the Excluded list below the chart. Jan ’26 = before everything; Mar ’27 = the full plan. One dot per role — the number inside is its headcount; a role with named people sits at their median, with each person's figure in the tooltip. Split-out departments keep their roles in their own bucket row.</p><div class="toolbar" style="margin-bottom:4px"><span class="subtle" style="font-size:12px">Own bucket:</span><span id="bandSplitChips" class="scn-toggle"></span></div>
     <figure class="chart" id="payBands"></figure>
     <details id="lvlAssign"><summary style="cursor:pointer;font-weight:600;font-size:13px">Assign role levels</summary>
     <div id="lvlList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:4px 20px;padding:10px 2px 4px"></div></details></div>
@@ -1438,17 +1438,20 @@ function renderPayBands(){
   for (const r of S.staff){
     if (!r.position || (!r.ote && !r.rate)) continue;
     const grp = grpOf(r);
+    if (S.bandHide[r.id]) continue;                            // explicitly excluded
+    const medOf = a => { const v = [...a].sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : 0; };
     if (r.people && r.people.length){
-      // named people ARE this role's roster — plot the ones active in the as-of month
-      for (const pp of r.people){
-        if (S.bandHide[pp.id] || M0 < (pp.from || 1) || M0 > (pp.to || NM)) continue;
-        pts.push({ grp, roleId: r.id, hid: pp.id, v: earningsAt(r, pp, M0), vEnd: earningsAt(r, pp, Math.min(NM, pp.to || NM)),
-          label: pp.name + " — " + r.position, person: true });
-      }
+      const act = r.people.filter(pp => M0 >= (pp.from || 1) && M0 <= (pp.to || NM));
+      if (!act.length) continue;                               // everyone gone by this month
+      pts.push({ grp, roleId: r.id, hid: r.id,
+        v: medOf(act.map(pp => earningsAt(r, pp, M0))),
+        vEnd: medOf(act.map(pp => earningsAt(r, pp, Math.min(NM, pp.to || NM)))),
+        hc: act.length, label: r.position + " · " + r.dept,
+        ppl: act.map(pp => ({ n: pp.name, v: earningsAt(r, pp, M0) })) });
     } else {
-      if (S.bandHide[r.id] || !(r.hc[M0 - 1] > 0)) continue;   // excluded, or eliminated by this month
+      if (!(r.hc[M0 - 1] > 0)) continue;                       // eliminated by this month
       pts.push({ grp, roleId: r.id, hid: r.id, v: earningsAt(r, null, M0), vEnd: earningsAt(r, null, NM),
-        label: r.position + " · " + r.dept, hc: r.hc[M0 - 1] || 0, person: false });
+        label: r.position + " · " + r.dept, hc: r.hc[M0 - 1] || 0, ppl: null });
     }
   }
   if (!pts.length){ document.getElementById("payBands").innerHTML = ""; return; }
@@ -1472,9 +1475,9 @@ function renderPayBands(){
     const y = 8 + i * rh + rh / 2, mine = grp.members;
     const vals = mine.map(val).sort((a, b) => a - b);
     const med = vals.length ? vals[Math.floor(vals.length / 2)] : null;
-    const roleN = new Set(mine.map(p => p.roleId)).size;
+    const roleN = mine.length, headN = mine.reduce((a, p) => a + (p.hc || 1), 0);
     g += `<text x="${lw - 12}" y="${y + 4}" text-anchor="end" font-size="12" font-weight="600" fill="${grp.isDept ? "var(--modest)" : "var(--ink2)"}">${esc(grp.key.replace("03 - HR & Business Administration Manager", "HR & Admin"))}</text>` +
-      `<text x="${lw - 12}" y="${y + 17}" text-anchor="end" font-size="9.5" fill="var(--muted)">${roleN} role${roleN === 1 ? "" : "s"}${med ? " · med " + fmtK(med) : ""}</text>`;
+      `<text x="${lw - 12}" y="${y + 17}" text-anchor="end" font-size="9.5" fill="var(--muted)">${roleN} role${roleN === 1 ? "" : "s"} · ${headN} head${headN === 1 ? "" : "s"}${med ? " · med " + fmtK(med) : ""}</text>`;
     if (vals.length > 1){
       const x0 = x(vals[0]), x1 = x(vals[vals.length - 1]);
       g += `<rect x="${x0}" y="${y - 4}" width="${Math.max(2, x1 - x0)}" height="8" rx="4" fill="var(--grid)"/>`;
@@ -1485,11 +1488,12 @@ function renderPayBands(){
     if (med != null) g += `<line x1="${x(med)}" x2="${x(med)}" y1="${y - 9}" y2="${y + 9}" stroke="var(--ink2)" stroke-width="2"/>`;
     for (const p of mine){
       const differs = Math.abs(p.vEnd - p.v) > 1;
-      const tip = `<div class=&quot;t&quot;>${esc(p.label)}</div><div class=&quot;row&quot;><span>As of ${esc(MONTHS[M0 - 1])}</span><b>${fmt$(p.v)}/yr</b></div>${differs ? `<div class=&quot;row&quot;><span>By ${esc(MONTHS[NM - 1])} (all raises)</span><b>${fmt$(p.vEnd)}/yr</b></div>` : ""}${p.hc > 1 ? `<div class=&quot;row&quot;><span>Heads</span><b>${p.hc}</b></div>` : ""}<div class=&quot;row&quot;><span class=&quot;subtle&quot;>click dot to exclude from bands</span></div>`;
-      g += p.person
-        ? `<circle cx="${x(val(p))}" cy="${y}" r="4" fill="var(--surface)" stroke="var(--stretch)" stroke-width="2"/>`
-        : `<circle cx="${x(val(p))}" cy="${y}" r="5.5" fill="var(--modest)" stroke="var(--surface)" stroke-width="2"/>`;
-      g += `<circle cx="${x(val(p))}" cy="${y}" r="13" fill="transparent" style="cursor:pointer" data-hid="${esc(p.hid)}" data-tip="${tip}"/>`;
+      const brk = p.ppl ? p.ppl.slice(0, 6).map(q => `<div class=&quot;row&quot;><span>${esc(q.n)}</span><b>${fmt$(q.v)}/yr</b></div>`).join("") + (p.ppl.length > 6 ? `<div class=&quot;row&quot;><span class=&quot;subtle&quot;>… ${p.ppl.length - 6} more</span></div>` : "") : "";
+      const tip = `<div class=&quot;t&quot;>${esc(p.label)}</div><div class=&quot;row&quot;><span>As of ${esc(MONTHS[M0 - 1])}${p.ppl && p.hc > 1 ? " (median)" : ""}</span><b>${fmt$(p.v)}/yr</b></div>${differs ? `<div class=&quot;row&quot;><span>By ${esc(MONTHS[NM - 1])} (all raises)</span><b>${fmt$(p.vEnd)}/yr</b></div>` : ""}<div class=&quot;row&quot;><span>Heads</span><b>${p.hc}</b></div>${brk}<div class=&quot;row&quot;><span class=&quot;subtle&quot;>click dot to exclude from bands</span></div>`;
+      const R = p.hc > 1 ? 8.5 : 5.5;
+      g += `<circle cx="${x(val(p))}" cy="${y}" r="${R}" fill="var(--modest)" stroke="var(--surface)" stroke-width="2"/>`;
+      if (p.hc > 1) g += `<text x="${x(val(p))}" y="${y + 3.2}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff">${p.hc}</text>`;
+      g += `<circle cx="${x(val(p))}" cy="${y}" r="${Math.max(13, R + 5)}" fill="transparent" style="cursor:pointer" data-hid="${esc(p.hid)}" data-tip="${tip}"/>`;
     }
   });
   document.getElementById("lvlAssign").open = lvlOpen;
@@ -1499,13 +1503,10 @@ function renderPayBands(){
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.dept)}">${esc(r.position)}</span>
       <select class="cell" data-id="${r.id}" data-k="level">${LEVELS.map(l => `<option${(r.level || "Mid") === l ? " selected" : ""}>${l}</option>`).join("")}</select></label>`).join("");
   const hidden = [];
-  for (const r of S.staff){
-    if (S.bandHide[r.id]) hidden.push({ id: r.id, label: r.position });
-    for (const pp of (r.people || [])) if (S.bandHide[pp.id]) hidden.push({ id: pp.id, label: pp.name });
-  }
+  for (const r of S.staff) if (S.bandHide[r.id]) hidden.push({ id: r.id, label: r.position });
   document.getElementById("payBands").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pay bands as of ${MONTHS[M0 - 1]}">${g}</svg>` +
-    `<div class="chart-legend"><span class="key bar"><i style="background:var(--modest)"></i>Role</span><span class="key bar"><i style="background:var(--surface);border:2px solid var(--stretch);width:7px;height:7px"></i>Named person</span><span class="key"><i style="background:var(--ink2);width:2px;height:12px"></i>Median</span>${hidden.length ? `<span class="subtle" style="margin-left:14px">Excluded:</span>` + hidden.map(h => `<button class="btn mini" data-unhide="${esc(h.id)}" title="Bring back into the bands">${esc(h.label)} ✕</button>`).join("") : ""}</div>`;
+    `<div class="chart-legend"><span class="key bar"><i style="background:var(--modest)"></i>Role — number in the dot = headcount</span><span class="key"><i style="background:var(--ink2);width:2px;height:12px"></i>Median</span>${hidden.length ? `<span class="subtle" style="margin-left:14px">Excluded:</span>` + hidden.map(h => `<button class="btn mini" data-unhide="${esc(h.id)}" title="Bring back into the bands">${esc(h.label)} ✕</button>`).join("") : ""}</div>`;
 }
 /* ---------- events & init ---------- */
 document.getElementById("tabs").addEventListener("click", ev => {
