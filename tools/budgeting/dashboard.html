@@ -284,7 +284,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
     <button class="btn addrow" id="addRole">+ Add role</button>
     <span id="restoreWrap" style="margin-left:10px"></span>
   </div>
-  <div class="card"><h2>Pay bands</h2><p class="note">Every role plotted by annual earnings after planned raises (hourly roles annualized) — solid dots are roles, hollow dots are named people. Set a role's level in its detail panel (▸ → Role settings). Use it to see how leadership and manager pay sits against senior/mid/entry bands.</p><div class="toolbar" style="margin-bottom:4px"><span class="subtle" style="font-size:12px">Own bucket:</span><span id="bandSplitChips" class="scn-toggle"></span></div>
+  <div class="card"><h2>Pay bands</h2><p class="note">Each role shows its current salary (gray dot) and where planned raises land it (solid dot), connected in green — hourly roles annualized, hollow dots are named people. Medians show before → after when raises move a band. Assign levels below; split whole departments into their own bucket with the chips.</p><div class="toolbar" style="margin-bottom:4px"><span class="subtle" style="font-size:12px">Own bucket:</span><span id="bandSplitChips" class="scn-toggle"></span></div>
     <figure class="chart" id="payBands"></figure>
     <details id="lvlAssign"><summary style="cursor:pointer;font-weight:600;font-size:13px">Assign role levels</summary>
     <div id="lvlList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:4px 20px;padding:10px 2px 4px"></div></details></div>
@@ -1430,12 +1430,13 @@ function renderPayBands(){
   for (const r of S.staff){
     if (!r.position || (!r.ote && !r.rate)) continue;
     const lvl = split.has(r.dept) ? r.dept : (r.level || "Mid");
-    pts.push({ lvl, v: earningsAt(r, null, NM), label: r.position + " · " + r.dept, hc: r.hc[NM - 1] || 0, person: false });
+    pts.push({ lvl, v0: earningsAt(r, null, 1), v: earningsAt(r, null, NM), label: r.position + " · " + r.dept, hc: r.hc[NM - 1] || 0, person: false });
     for (const pp of (r.people || []))
-      pts.push({ lvl, v: earningsAt(r, pp, Math.min(NM, pp.to || NM)), label: pp.name + " — " + r.position, person: true });
+      pts.push({ lvl, v0: earningsAt(r, pp, Math.max(1, pp.from || 1)), v: earningsAt(r, pp, Math.min(NM, pp.to || NM)), label: pp.name + " — " + r.position, person: true });
   }
   if (!pts.length){ document.getElementById("payBands").innerHTML = ""; return; }
-  const lo = Math.min(...pts.map(p => p.v)) * 0.93, hi = Math.max(...pts.map(p => p.v)) * 1.05;
+  const allV = pts.flatMap(p => [p.v0, p.v]);
+  const lo = Math.min(...allV) * 0.93, hi = Math.max(...allV) * 1.05;
   const W = 1400, lw = 190, rh = 46;
   const levels = LEVELS.filter(l => pts.some(p => p.lvl === l))
     .concat(DEPTS.filter(d => split.has(d) && pts.some(p => p.lvl === d)));
@@ -1450,17 +1451,34 @@ function renderPayBands(){
   }
   levels.forEach((lvl, i) => {
     const y = 8 + i * rh + rh / 2, mine = pts.filter(p => p.lvl === lvl);
-    const vals = mine.filter(p => !p.person).map(p => p.v).sort((a, b) => a - b);
-    const med = vals.length ? vals[Math.floor(vals.length / 2)] : null;
+    const roleAfter = mine.filter(p => !p.person).map(p => p.v).sort((a, b) => a - b);
+    const roleBefore = mine.filter(p => !p.person).map(p => p.v0).sort((a, b) => a - b);
+    const med = roleAfter.length ? roleAfter[Math.floor(roleAfter.length / 2)] : null;
+    const med0 = roleBefore.length ? roleBefore[Math.floor(roleBefore.length / 2)] : null;
+    const moved = med != null && med0 != null && Math.abs(med - med0) > 1;
     g += `<text x="${lw - 12}" y="${y + 4}" text-anchor="end" font-size="12" font-weight="600" fill="${split.has(lvl) ? "var(--modest)" : "var(--ink2)"}">${esc(lvl.replace("03 - HR & Business Administration Manager", "HR & Admin"))}</text>` +
-      `<text x="${lw - 12}" y="${y + 17}" text-anchor="end" font-size="9.5" fill="var(--muted)">${vals.length} role${vals.length === 1 ? "" : "s"}${med ? " · med " + fmtK(med) : ""}</text>`;
-    if (vals.length > 1)
-      g += `<rect x="${x(vals[0])}" y="${y - 4}" width="${Math.max(2, x(vals[vals.length - 1]) - x(vals[0]))}" height="8" rx="4" fill="var(--grid)"/>`;
+      `<text x="${lw - 12}" y="${y + 17}" text-anchor="end" font-size="9.5" fill="var(--muted)">${roleAfter.length} role${roleAfter.length === 1 ? "" : "s"}${med ? " · med " + (moved ? fmtK(med0) + " → " + fmtK(med) : fmtK(med)) : ""}</text>`;
+    const span = roleBefore.concat(roleAfter).sort((a, b) => a - b);
+    if (span.length > 1){
+      const x0 = x(span[0]), x1 = x(span[span.length - 1]);
+      g += `<rect x="${x0}" y="${y - 4}" width="${Math.max(2, x1 - x0)}" height="8" rx="4" fill="var(--grid)"/>`;
+      if (x1 - x0 > 70)
+        g += `<text x="${x0 - 7}" y="${y - 9}" text-anchor="end" font-size="9.5" fill="var(--muted)" style="font-variant-numeric:tabular-nums">${fmtK(span[0])}</text>` +
+          `<text x="${x1 + 7}" y="${y - 9}" font-size="9.5" fill="var(--muted)" style="font-variant-numeric:tabular-nums">${fmtK(span[span.length - 1])}</text>`;
+    }
+    if (moved) g += `<line x1="${x(med0)}" x2="${x(med0)}" y1="${y - 9}" y2="${y + 9}" stroke="var(--baseline)" stroke-width="2"/>`;
     if (med != null) g += `<line x1="${x(med)}" x2="${x(med)}" y1="${y - 9}" y2="${y + 9}" stroke="var(--ink2)" stroke-width="2"/>`;
     for (const p of mine){
+      const raised = Math.abs(p.v - p.v0) > 1;
+      const tip = `<div class=&quot;t&quot;>${esc(p.label)}</div><div class=&quot;row&quot;><span>${raised ? "Before → after raises" : "Annual earnings"}</span><b>${raised ? fmt$(p.v0) + " → " + fmt$(p.v) : fmt$(p.v)}/yr</b></div>${p.hc > 1 ? `<div class=&quot;row&quot;><span>Heads</span><b>${p.hc}</b></div>` : ""}`;
+      if (raised)
+        g += `<line x1="${x(p.v0)}" x2="${x(p.v)}" y1="${y}" y2="${y}" stroke="var(--good)" stroke-width="2" opacity=".65"/>` +
+          `<circle cx="${x(p.v0)}" cy="${y}" r="3.5" fill="var(--baseline)" stroke="var(--surface)" stroke-width="1.5"/>`;
       g += p.person
-        ? `<circle cx="${x(p.v)}" cy="${y}" r="4" fill="var(--surface)" stroke="var(--stretch)" stroke-width="2"><title>${esc(p.label)} — ${fmt$(p.v)}/yr</title></circle>`
-        : `<circle cx="${x(p.v)}" cy="${y}" r="5.5" fill="var(--modest)" stroke="var(--surface)" stroke-width="2"><title>${esc(p.label)} — ${fmt$(p.v)}/yr${p.hc > 1 ? " × " + p.hc + " heads" : ""}</title></circle>`;
+        ? `<circle cx="${x(p.v)}" cy="${y}" r="4" fill="var(--surface)" stroke="var(--stretch)" stroke-width="2"/>`
+        : `<circle cx="${x(p.v)}" cy="${y}" r="5.5" fill="var(--modest)" stroke="var(--surface)" stroke-width="2"/>`;
+      g += `<circle cx="${x(p.v)}" cy="${y}" r="13" fill="transparent" data-tip="${tip}"/>`;
+      if (raised) g += `<circle cx="${x(p.v0)}" cy="${y}" r="10" fill="transparent" data-tip="${tip}"/>`;
     }
   });
   document.getElementById("lvlAssign").open = lvlOpen;
@@ -1470,8 +1488,8 @@ function renderPayBands(){
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.dept)}">${esc(r.position)}</span>
       <select class="cell" data-id="${r.id}" data-k="level">${LEVELS.map(l => `<option${(r.level || "Mid") === l ? " selected" : ""}>${l}</option>`).join("")}</select></label>`).join("");
   document.getElementById("payBands").innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pay bands by level">${g}</svg>` +
-    `<div class="chart-legend"><span class="key bar"><i style="background:var(--modest)"></i>Role</span><span class="key bar"><i style="background:var(--surface);border:2px solid var(--stretch);width:7px;height:7px"></i>Named person</span><span class="key"><i style="background:var(--ink2);width:2px;height:12px"></i>Median</span></div>`;
+    `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pay bands by level, before and after planned raises">${g}</svg>` +
+    `<div class="chart-legend"><span class="key bar"><i style="background:var(--baseline);width:8px;height:8px;border-radius:50%"></i>Before raises</span><span class="key"><i style="background:var(--good);height:2px"></i>Raise</span><span class="key bar"><i style="background:var(--modest)"></i>Role (after)</span><span class="key bar"><i style="background:var(--surface);border:2px solid var(--stretch);width:7px;height:7px"></i>Named person</span><span class="key"><i style="background:var(--ink2);width:2px;height:12px"></i>Median after</span><span class="key"><i style="background:var(--baseline);width:2px;height:12px"></i>Median before</span></div>`;
 }
 /* ---------- events & init ---------- */
 document.getElementById("tabs").addEventListener("click", ev => {
@@ -1624,6 +1642,12 @@ delegate("lvlAssign", (id, k, val) => {
 });
 let lvlOpen = false;
 document.getElementById("lvlAssign").addEventListener("toggle", ev => { lvlOpen = ev.target.open; });
+document.getElementById("payBands").addEventListener("pointermove", ev => {
+  const t = ev.target.closest("circle[data-tip]");
+  if (!t) return hideTip();
+  showTip(ev.clientX, ev.clientY, t.dataset.tip);
+});
+document.getElementById("payBands").addEventListener("pointerleave", hideTip);
 document.getElementById("addRole").addEventListener("click", () => {
   S.staff.push({ id: "p" + Date.now(), dept: "Technical Support", position: "New role", ote: 65000,
     benOn: true, taxOn: true, level: "Mid", lic: 75, raiseD: 0, raiseP: 0, raiseM: 9,
