@@ -75,11 +75,14 @@ def is_opex(c):
 opex_vm = collections.defaultdict(lambda: [0.0]*12)   # vendor -> ttm months
 opex_va = collections.defaultdict(collections.Counter)
 totals_ttm = collections.defaultdict(lambda: [0.0]*12)
+cogs_accounts = collections.defaultdict(lambda: [0.0]*12)
 for acct, i, contact, debit, credit in records:
     c = code(acct)
     if not c or not c[0].isdigit(): continue
     net = debit - credit
-    if c in COGS: totals_ttm["cogs"][i] += net
+    if c in COGS:
+        totals_ttm["cogs"][i] += net
+        cogs_accounts[acct][i] += net
     elif c in PAYROLL_PL:
         totals_ttm["payroll"][i] += net
         if c == "66000": totals_ttm["wages"][i] += net
@@ -247,6 +250,8 @@ model = dict(
         ttm_payroll=[round(x,2) for x in totals_ttm["payroll"]]),
     staff=v1["staff"], sales=v1["sales"], ramps=v1["ramps"],
     employer_tax_rate=round(sum(totals_ttm["ptax"]) / sum(totals_ttm["wages"]), 4),
+    cogs_accounts={k: [round(x, 2) for x in v] for k, v in cogs_accounts.items() if abs(sum(v)) > 500},
+    provisional_cogs_months=[7],   # user-confirmed: July 2026 COGS entry not yet made in Xero
     dept_payroll_actual=dept_payroll,
     built="2026-08-21", actual_months=7)
 json.dump(model, open(os.path.join(HERE, "model_data_v2.json"), "w"))

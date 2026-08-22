@@ -284,7 +284,9 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
     <button class="btn addrow" id="addRole">+ Add role</button>
     <span id="restoreWrap" style="margin-left:10px"></span>
   </div>
-  <div class="card"><h2>Pay bands</h2><p class="note">Every role plotted by annual earnings after planned raises (hourly roles annualized) — solid dots are roles, hollow dots are named people. Set a role's level in its detail panel (▸ → Role settings). Use it to see how leadership and manager pay sits against senior/mid/entry bands.</p><figure class="chart" id="payBands"></figure></div>
+  <div class="card"><h2>Pay bands</h2><p class="note">Every role plotted by annual earnings after planned raises (hourly roles annualized) — solid dots are roles, hollow dots are named people. Set a role's level in its detail panel (▸ → Role settings). Use it to see how leadership and manager pay sits against senior/mid/entry bands.</p><figure class="chart" id="payBands"></figure>
+    <details id="lvlAssign"><summary style="cursor:pointer;font-weight:600;font-size:13px">Assign role levels</summary>
+    <div id="lvlList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:4px 20px;padding:10px 2px 4px"></div></details></div>
 </section>
 
 <section class="tab" id="tab-exp">
@@ -302,6 +304,9 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
 
 <section class="tab" id="tab-trend">
   <div class="card"><h2>Operating expense, trailing 12 months</h2><p class="note">As booked (accrual), Aug 2025 – Jul 2026. Hover for the month's total.</p><figure class="chart" id="chartTTM"></figure></div>
+  <div class="card"><h2>COGS history — what cost of sales has been</h2>
+    <p class="note">As booked (accrual), Aug 2025 – Jul 2026, grouped by cost family. Jul ’26 is incomplete — the month-end product-COGS entry (5258) hasn’t been made yet, which is why it shows near zero.</p>
+    <div class="tablewrap" id="cogsHist"></div></div>
   <div class="attn" id="attnCards"></div>
   <div class="card"><h2>Accounting correction checklist <span class="pillcount" id="fixCount"></span> <button class="btn mini" id="copyFixes" style="margin-left:10px">Copy checklist</button></h2>
     <p class="note">Every vendor whose department in this model differs from Xero's current tagging — the budget-tool overrides plus any reassignment you make on the Expenses tab. Tick items as they're recategorized in Xero; the list is the worklist for your bookkeeper.</p>
@@ -329,12 +334,13 @@ const DEPTS = ["Sales","Marketing","Software Development","Installation Services
 const STATUS_CHIP = {"STEADY":"steady","GROWING":"growing","DROPPING":"dropping","DROPPED":"dropped",
   "NEW":"new","PERIODIC":"periodic","ONE-TIME":"onetime","NOT IN XERO":"notinxero"};
 const LS_KEY = "scw-money-model-v1";
-const LEVELS = ["Leadership","Manager","Senior","Mid","Entry"];
+const LEVELS = ["Leadership","Dept Manager","Manager","Senior","Mid","Entry"];
 function guessLevel(pos){
   const p = (pos || "").toLowerCase();
   if (/chief|director|ceo|coo|cto|vp/.test(p)) return "Leadership";
-  if (/account manager/.test(p)) return "Mid";
-  if (/manager|team lead/.test(p)) return "Manager";
+  if (/account manager|project manager/.test(p)) return "Mid";
+  if (/manager/.test(p)) return "Dept Manager";
+  if (/team lead|lead tech/.test(p)) return "Manager";
   if (/senior|principal/.test(p)) return "Senior";
   if (/intern|junior|assistant|coordinator|bdr|team member|warehouse team/.test(p)) return "Entry";
   return "Mid";
@@ -376,7 +382,9 @@ function defaultState(){
   return {
     exp: expenses,
     fixes: {},
-    levers: { cogsPct: +( (MODEL.totals.cogs.reduce((a,b)=>a+b,0) / MODEL.totals.revenue.reduce((a,b)=>a+b,0)) ).toFixed(3),
+    levers: { cogsPct: +((() => { const P = new Set(MODEL.provisional_cogs_months || []);
+        let c = 0, r = 0; MODEL.totals.cogs.forEach((v, i) => { if (!P.has(i + 1)){ c += v; r += MODEL.totals.revenue[i]; } });
+        return c / (r || 1); })()).toFixed(3), estProv: true,
       otherInc: 3000, laborHedge: 0, opexHedge: 0,
       targetH1: 6350000, targetH2: 5700000, thrH1: 6350000, thrH2: 5700000, smRate: 0.015, dirRate: 0.035,
       hdvRate: 523.5, taxRate: MODEL.employer_tax_rate },
@@ -406,6 +414,7 @@ try {
   // migrate pre-15-month configs (12-month arrays / to==12 meaning "through end")
   for (const p of S.staff) while (p.hc.length < NM) p.hc.push(p.hc.at(-1) ?? 0);
   for (const e of S.exp) if (e.to === 12) e.to = NM;
+  if (L0.estProv == null) L0.estProv = true;
   if (L0.hdvRate == null) L0.hdvRate = 523.5;
   if (L0.taxRate == null) L0.taxRate = MODEL.employer_tax_rate;
   for (const p of S.staff){
@@ -529,10 +538,12 @@ function compute(){
     const rev = actual ? MODEL.totals.revenue[i] : null;
     out.rev.mod.push(actual ? rev : tm); out.rev.str.push(actual ? rev : ts);
     out.oth.push(actual ? MODEL.totals.other_income[i] : L.otherInc);
-    const cp = actual ? (MODEL.totals.cogs[i] / (rev || 1)) : L.cogsPct;
+    const prov = actual && (MODEL.provisional_cogs_months || []).includes(m) && L.estProv;
+    const bookedCogs = prov ? (rev || 0) * L.cogsPct : MODEL.totals.cogs[i];
+    const cp = actual ? (bookedCogs / (rev || 1)) : L.cogsPct;
     out.cogsPct.push(cp);
-    out.cogs.mod.push(actual ? MODEL.totals.cogs[i] : tm * L.cogsPct);
-    out.cogs.str.push(actual ? MODEL.totals.cogs[i] : ts * L.cogsPct);
+    out.cogs.mod.push(actual ? bookedCogs : tm * L.cogsPct);
+    out.cogs.str.push(actual ? bookedCogs : ts * L.cogsPct);
     out.pay.push(actual ? MODEL.totals.payroll[i] : st * (1 + L.laborHedge));
     out.comp.mod.push(actual ? 0 : compM); out.comp.str.push(actual ? 0 : compS);
     let ot = 0;
@@ -700,14 +711,19 @@ function leverInput(id, label, val, unit, step, title){
 function renderProjLevers(){
   const L = S.levers;
   document.getElementById("projLevers").innerHTML =
-    leverInput("lvCogs", "COGS % fwd", (L.cogsPct * 100).toFixed(1), "% of sales — YTD actual " + fmtPct(MODEL.totals.cogs.reduce((a,b)=>a+b,0) / MODEL.totals.revenue.reduce((a,b)=>a+b,0))) +
+    leverInput("lvCogs", "COGS % fwd", (L.cogsPct * 100).toFixed(1), "% of sales — complete booked months run " + fmtPct((() => { const P = new Set(MODEL.provisional_cogs_months || []); let c = 0, r = 0; MODEL.totals.cogs.forEach((v, i) => { if (!P.has(i + 1)){ c += v; r += MODEL.totals.revenue[i]; } }); return c / (r || 1); })())) +
     leverInput("lvOth", "Other income fwd", L.otherInc, "$/mo (rent, interest)") +
     leverInput("lvLab", "Labor hedge", (L.laborHedge * 100).toFixed(1), "% on modeled payroll") +
-    leverInput("lvOpx", "Opex hedge", (L.opexHedge * 100).toFixed(1), "% on planned expenses");
+    leverInput("lvOpx", "Opex hedge", (L.opexHedge * 100).toFixed(1), "% on planned expenses") +
+    `<div class="lever"><label for="lvProv">Jul COGS (not yet entered)</label><select id="lvProv" class="lever-in">
+      <option value="est"${L.estProv ? " selected" : ""}>Estimate at COGS % fwd</option>
+      <option value="booked"${!L.estProv ? " selected" : ""}>As booked ($232K · 17%)</option></select>
+      <span class="unit">Xero entry pending — booked 5258 is $0 for Jul</span></div>`;
   bind("lvCogs", v => S.levers.cogsPct = num(v, 43) / 100);
   bind("lvOth", v => S.levers.otherInc = num(v, 3000));
   bind("lvLab", v => S.levers.laborHedge = num(v, 0) / 100);
   bind("lvOpx", v => S.levers.opexHedge = num(v, 0) / 100);
+  bind("lvProv", v => S.levers.estProv = v === "est");
 }
 function renderProj(C){
   const actOnly = a => a.map((v, i) => i < ACT ? v : null);
@@ -753,8 +769,9 @@ function renderProj(C){
     push("Net under " + (plScn === "mod" ? "stretch" : "modest") + " (reference)", plScn === "mod" ? C.net.str : C.net.mod, "dim");
   const half = (vals, [a, b]) => vals.slice(a, b).reduce((x, y) => x + y, 0);
   const qb = i => (i % 3 === 2 ? " qb" : "");
+  const provSet = new Set(S.levers.estProv ? (MODEL.provisional_cogs_months || []) : []);
   let h = `<table class="data"><thead><tr><th>P&amp;L</th>` +
-    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${qb(i)}">${m}</th>`).join("") +
+    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${qb(i)}"${provSet.has(i + 1) ? ` title="COGS estimated — the ${m} COGS entry hasn’t been made in Xero yet"` : ""}>${m}${provSet.has(i + 1) ? "*" : ""}</th>`).join("") +
     `<th>H1 Apr–Sep</th><th>H2 Oct–Mar</th><th>15 mo</th></tr></thead><tbody>`;
   for (const r of rows){
     if (r.section){ h += `<tr class="sec"><td colspan="19">${esc(r.section)}</td></tr>`; continue; }
@@ -765,6 +782,7 @@ function renderProj(C){
   }
   document.getElementById("plTable").innerHTML = h + "</tbody></table>";
   document.getElementById("plFoot").textContent =
+    (S.levers.estProv && (MODEL.provisional_cogs_months || []).length ? "* Jul COGS estimated at the forward COGS % — the month-end COGS entry isn’t in Xero yet (booked shows only $232K, with product COGS at $0). " : "") +
     "Break-even row: monthly sales revenue needed to cover payroll + opex less other income at that month's gross margin (excl. overrides). " +
     "SM/Director override comp is charged to each half's modeled months; halves fully booked carry it inside booked payroll.";
   document.getElementById("notes").innerHTML =
@@ -859,19 +877,26 @@ function renderGrowth(C){
   const revQ = { mod: QTRS.map(([a, b]) => sum(C.rev.mod, a, b)), str: QTRS.map(([a, b]) => sum(C.rev.str, a, b)) };
   const netQ = { mod: QTRS.map(([a, b]) => sum(C.net.mod, a, b)), str: QTRS.map(([a, b]) => sum(C.net.str, a, b)) };
   const qoq = arr => arr.map((v, i) => i ? v / (arr[i - 1] || 1) - 1 : null);
+  const qTgt = [null, S.levers.targetH1 / 2, S.levers.targetH1 / 2, S.levers.targetH2 / 2, S.levers.targetH2 / 2];
+  const fyRev = { mod: sum(C.rev.mod, 3, 15), str: sum(C.rev.str, 3, 15) };
+  const fyTgt = S.levers.targetH1 + S.levers.targetH2;
   let h = `<table class="data"><thead><tr><th>Fiscal quarters</th>` +
     QTRS.map(q => `<th>${q[2]}<br><span style="font-weight:400">${q[3]} · ${q[4]}</span></th>`).join("") +
-    `<th>YoY Q4 vs Q4</th></tr></thead><tbody>`;
+    `<th>FY26 Apr–Mar</th><th>YoY Q4 vs Q4</th></tr></thead><tbody>`;
   const yoyR = { mod: revQ.mod[4] / (revQ.mod[0] || 1) - 1, str: revQ.str[4] / (revQ.str[0] || 1) - 1 };
   const yoyN = { mod: netQ.mod[4] / (netQ.mod[0] || 1) - 1, str: netQ.str[4] / (netQ.str[0] || 1) - 1 };
-  h += `<tr><td>Revenue — modest</td>${revQ.mod.map(v => `<td>${fmt$(v)}</td>`).join("")}<td rowspan="2" style="vertical-align:middle">${g(yoyR.mod)} M<br>${g(yoyR.str)} S</td></tr>`;
-  h += `<tr class="dim"><td class="dim">QoQ — modest</td>${qoq(revQ.mod).map(v => `<td>${g(v)}</td>`).join("")}</tr>`;
-  h += `<tr><td>Revenue — stretch</td>${revQ.str.map(v => `<td>${fmt$(v)}</td>`).join("")}<td></td></tr>`;
-  h += `<tr class="dim"><td class="dim">QoQ — stretch</td>${qoq(revQ.str).map(v => `<td>${g(v)}</td>`).join("")}<td></td></tr>`;
-  h += `<tr class="tot"><td>Stretch premium (revenue)</td>${revQ.str.map((v, i) => `<td>${fmt$(v - revQ.mod[i])}${revQ.mod[i] ? ` <span class="dim">${((v / revQ.mod[i] - 1) * 100).toFixed(0)}%</span>` : ""}</td>`).join("")}<td></td></tr>`;
-  h += `<tr><td>Net — modest</td>${netQ.mod.map(v => `<td class="${v < 0 ? "neg" : ""}">${fmt$(v)}</td>`).join("")}<td rowspan="2" style="vertical-align:middle">${g(yoyN.mod)} M<br>${g(yoyN.str)} S</td></tr>`;
-  h += `<tr><td>Net — stretch</td>${netQ.str.map(v => `<td class="${v < 0 ? "neg" : ""}">${fmt$(v)}</td>`).join("")}</tr>`;
-  h += `<tr class="tot"><td>Stretch premium (net)</td>${netQ.str.map((v, i) => `<td>${fmt$(v - netQ.mod[i])}</td>`).join("")}<td></td></tr>`;
+  h += `<tr><td>Revenue — modest</td>${revQ.mod.map(v => `<td>${fmt$(v)}</td>`).join("")}<td><b>${fmt$(fyRev.mod)}</b></td><td rowspan="2" style="vertical-align:middle">${g(yoyR.mod)} M<br>${g(yoyR.str)} S</td></tr>`;
+  h += `<tr class="dim"><td class="dim">QoQ — modest</td>${qoq(revQ.mod).map(v => `<td>${g(v)}</td>`).join("")}<td></td></tr>`;
+  h += `<tr><td>Revenue — stretch</td>${revQ.str.map(v => `<td>${fmt$(v)}</td>`).join("")}<td><b>${fmt$(fyRev.str)}</b></td><td></td></tr>`;
+  h += `<tr class="dim"><td class="dim">QoQ — stretch</td>${qoq(revQ.str).map(v => `<td>${g(v)}</td>`).join("")}<td></td><td></td></tr>`;
+  h += `<tr class="dim"><td class="dim">Quarterly target (half ÷ 2)</td>${qTgt.map(t => `<td>${t ? fmt$(t) : `<span class="dim">prior FY</span>`}</td>`).join("")}<td>${fmt$(fyTgt)}</td><td></td></tr>`;
+  const att = (v, t) => t ? `<span class="${v >= t ? "pos" : "neg"}">${Math.round(v / t * 100)}%</span>` : `<span class="dim">—</span>`;
+  h += `<tr class="tot"><td>Attainment — modest</td>${qTgt.map((t, i) => `<td>${att(revQ.mod[i], t)}</td>`).join("")}<td>${att(fyRev.mod, fyTgt)}</td><td></td></tr>`;
+  h += `<tr class="tot"><td>Attainment — stretch</td>${qTgt.map((t, i) => `<td>${att(revQ.str[i], t)}</td>`).join("")}<td>${att(fyRev.str, fyTgt)}</td><td></td></tr>`;
+  h += `<tr class="tot"><td>Stretch premium (revenue)</td>${revQ.str.map((v, i) => `<td>${fmt$(v - revQ.mod[i])}${revQ.mod[i] ? ` <span class="dim">${((v / revQ.mod[i] - 1) * 100).toFixed(0)}%</span>` : ""}</td>`).join("")}<td>${fmt$(fyRev.str - fyRev.mod)}</td><td></td></tr>`;
+  h += `<tr><td>Net — modest</td>${netQ.mod.map(v => `<td class="${v < 0 ? "neg" : ""}">${fmt$(v)}</td>`).join("")}<td><b>${fmt$(sum(C.net.mod, 3, 15))}</b></td><td rowspan="2" style="vertical-align:middle">${g(yoyN.mod)} M<br>${g(yoyN.str)} S</td></tr>`;
+  h += `<tr><td>Net — stretch</td>${netQ.str.map(v => `<td class="${v < 0 ? "neg" : ""}">${fmt$(v)}</td>`).join("")}<td><b>${fmt$(sum(C.net.str, 3, 15))}</b></td></tr>`;
+  h += `<tr class="tot"><td>Stretch premium (net)</td>${netQ.str.map((v, i) => `<td>${fmt$(v - netQ.mod[i])}</td>`).join("")}<td>${fmt$(sum(C.net.str, 3, 15) - sum(C.net.mod, 3, 15))}</td><td></td></tr>`;
   document.getElementById("growthQ").innerHTML = h + "</tbody></table>";
   const mom = arr => arr.map((v, i) => i ? v / (arr[i - 1] || 1) - 1 : null);
   let m = `<table class="data"><thead><tr><th>Monthly</th>` +
@@ -1291,6 +1316,23 @@ function renderTrends(){
     showTip(ev.clientX, ev.clientY, `<div class="t">${MODEL.ttm_labels[i]}</div><div class="row"><span>Opex booked</span><b>${fmt$(vals[i])}</b></div>`);
   });
   svg.addEventListener("pointerleave", hideTip);
+  const CG = [["Product, freight & duties", ["5258","5259","5566","5567","5568","5569","5570","5571"]],
+    ["Install subcontractors & materials", ["6734","6737","6730"]],
+    ["Recurring service costs", ["5257","5260"]]];
+  const acctRow = codes => Array.from({length:12}, (_, i) =>
+    Object.entries(MODEL.cogs_accounts).reduce((a, [k, v]) => a + (codes.includes(k.split(" - ")[0].trim()) ? v[i] : 0), 0));
+  let ch = `<table class="data"><thead><tr><th>Cost family</th>` +
+    MODEL.ttm_labels.map((l, i) => `<th${i === 11 ? ` title="Incomplete — COGS entry pending"` : ""}>${l}${i === 11 ? "*" : ""}</th>`).join("") + `<th>TTM</th></tr></thead><tbody>`;
+  const cgTot = Array(12).fill(0);
+  for (const [label, codes] of CG){
+    const r = acctRow(codes); r.forEach((v, i) => cgTot[i] += v);
+    ch += `<tr><td>${label}</td>${r.map(v => `<td>${fmt$(v)}</td>`).join("")}<td><b>${fmt$(r.reduce((a, b) => a + b, 0))}</b></td></tr>`;
+  }
+  ch += `<tr class="tot"><td>Total COGS</td>${cgTot.map(v => `<td>${fmt$(v)}</td>`).join("")}<td>${fmt$(cgTot.reduce((a, b) => a + b, 0))}</td></tr>`;
+  ch += `<tr class="dim"><td class="dim">% of sales revenue (2026)</td>${cgTot.map((v, i) => {
+    const ri = i - 5; const rv = ri >= 0 && ri < 7 ? MODEL.totals.revenue[ri] : null;
+    return `<td>${rv ? (v / rv * 100).toFixed(1) + "%" + (i === 11 ? " *" : "") : `<span class="dim">—</span>`}</td>`; }).join("")}<td>—</td></tr>`;
+  document.getElementById("cogsHist").innerHTML = ch + "</tbody></table>";
   const by = st => MODEL.vend_master.filter(v => v.status === st);
   const li = v => `<li><b title="${esc(v.vendor)}">${esc(v.vendor)}</b><span>${v.status === "DROPPED" ? "was " + fmtK(v.ttm_total / 12) + "/mo" : fmtK(v.base) + "/mo"}</span></li>`;
   document.getElementById("attnCards").innerHTML = `
@@ -1410,6 +1452,12 @@ function renderPayBands(){
         : `<circle cx="${x(p.v)}" cy="${y}" r="5.5" fill="var(--modest)" stroke="var(--surface)" stroke-width="2"><title>${esc(p.label)} — ${fmt$(p.v)}/yr${p.hc > 1 ? " × " + p.hc + " heads" : ""}</title></circle>`;
     }
   });
+  document.getElementById("lvlAssign").open = lvlOpen;
+  document.getElementById("lvlList").innerHTML = [...S.staff]
+    .sort((a, b) => LEVELS.indexOf(a.level || "Mid") - LEVELS.indexOf(b.level || "Mid"))
+    .map(r => `<label style="display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:12.5px;border-top:1px solid var(--grid);padding:3px 0">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.dept)}">${esc(r.position)}</span>
+      <select class="cell" data-id="${r.id}" data-k="level">${LEVELS.map(l => `<option${(r.level || "Mid") === l ? " selected" : ""}>${l}</option>`).join("")}</select></label>`).join("");
   document.getElementById("payBands").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pay bands by level">${g}</svg>` +
     `<div class="chart-legend"><span class="key bar"><i style="background:var(--modest)"></i>Role</span><span class="key bar"><i style="background:var(--surface);border:2px solid var(--stretch);width:7px;height:7px"></i>Named person</span><span class="key"><i style="background:var(--ink2);width:2px;height:12px"></i>Median</span></div>`;
@@ -1553,6 +1601,12 @@ function renderRestore(){
     ? `<select id="restoreSel" class="btn" title="Bring back a role you removed, with its original salary and headcount"><option value="">↩ Restore deleted role…</option>${missing.map(r => `<option>${esc(r.position)}</option>`).join("")}</select>`
     : "";
 }
+delegate("lvlAssign", (id, k, val) => {
+  if (k !== "level") return;
+  const r = S.staff.find(x => x.id === id); if (r) r.level = val;
+});
+let lvlOpen = false;
+document.getElementById("lvlAssign").addEventListener("toggle", ev => { lvlOpen = ev.target.open; });
 document.getElementById("addRole").addEventListener("click", () => {
   S.staff.push({ id: "p" + Date.now(), dept: "Technical Support", position: "New role", ote: 65000,
     benOn: true, taxOn: true, level: "Mid", lic: 75, raiseD: 0, raiseP: 0, raiseM: 9,
