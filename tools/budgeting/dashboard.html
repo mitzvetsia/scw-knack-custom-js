@@ -225,6 +225,16 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
   </div>
 </header>
 
+<div class="card" id="cfgPanel" style="display:none;margin-bottom:14px">
+  <h2 id="cfgTitle">Config JSON</h2>
+  <p class="note" id="cfgMsg"></p>
+  <textarea id="cfgText" spellcheck="false" style="width:100%;min-height:130px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--surface);color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:8px;box-sizing:border-box"></textarea>
+  <div class="toolbar" style="margin:8px 0 0;justify-content:flex-end">
+    <button class="btn" id="cfgClose">Close</button>
+    <button class="btn on" id="cfgApply">Apply config</button>
+  </div>
+</div>
+
 <div class="tiles" id="tiles"></div>
 
 <nav class="tabs" id="tabs">
@@ -266,7 +276,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
     <div class="tablewrap" id="salesTable"></div>
     <button class="btn addrow" id="addRep">+ Add rep</button>
   </div>
-  <div class="card"><h2>Monthly revenue by rep <span class="scn-toggle" id="repMoScn"><button class="btn on" data-scn="modest">Modest</button><button class="btn" data-scn="stretch">Stretch</button><button class="btn" data-scn="upside">Upside</button></span></h2>
+  <div class="card"><h2>Monthly revenue by rep <span class="scn-toggle" id="repMoScn"><button class="btn on" data-scn="modest">Modest</button><button class="btn" data-scn="stretch">Stretch</button><button class="btn" data-scn="upside">Upside</button><button class="btn" data-scn="comm">Commissions</button></span></h2>
     <p class="note">Each rep's modeled month-over-month revenue — ramp value for their tenure month × attainment. Use it to check people are plugged into the right curve and start month.</p>
     <div class="tablewrap tall" id="repMoTable"></div></div>
   <div class="card"><details><summary style="cursor:pointer;font-weight:600">Ramp schedules (monthly run-rate by tenure month)</summary>
@@ -986,10 +996,12 @@ function renderSales(C){
        {v:beH2, x0:FH2[0], x1:FH2[1] - 1, label:"break-even " + fmtK(beH2) + "/mo", color:"--crit", below:true}]});
   const rampNames = Object.keys(S.ramps);
   let h = `<table class="data"><thead><tr><th>Rep</th><th>Role</th><th>Ramp</th><th>Start mo</th>
-    <th>Modest %</th><th>Stretch %</th><th>Comm %</th><th>15-mo modest</th><th>15-mo stretch</th><th>Upside</th><th>Comm M/S</th><th></th></tr></thead><tbody>`;
+    <th>Modest %</th><th>Stretch %</th><th>Comm %</th><th>15-mo modest</th><th>15-mo stretch</th><th>Upside</th><th>Comm (modest)</th><th>Comm (stretch)</th><th></th></tr></thead><tbody>`;
+  let cmRep = 0, csRep = 0;
   for (const r of S.sales){
     let fm = 0, fs = 0;
     for (let m = 1; m <= NM; m++){ fm += repRevenue(r, m, "modest"); fs += repRevenue(r, m, "stretch"); }
+    cmRep += fm * (r.comm || 0); csRep += fs * (r.comm || 0);
     h += `<tr><td><input class="cell pos" data-id="${r.id}" data-k="name" value="${esc(r.name)}"></td>
       <td><input class="cell pos" data-id="${r.id}" data-k="role" value="${esc(r.role)}"></td>
       <td><select class="cell" data-id="${r.id}" data-k="ramp">${rampNames.map(n => `<option${n === r.ramp ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></td>
@@ -999,13 +1011,15 @@ function renderSales(C){
       <td><input class="cell tiny" data-id="${r.id}" data-k="comm" value="${(r.comm * 100).toFixed(2)}"></td>
       <td>${fmt$(fm)}</td><td>${fmt$(fs)}</td>
       <td class="pos" title="Stretch minus modest — the additional revenue if this rep hits stretch"><b>${fmt$(fs - fm)}</b></td>
-      <td class="dim">${fmtK(fm * r.comm)} / ${fmtK(fs * r.comm)}</td>
+      <td title="Expected commission at modest — ${(r.comm * 100).toFixed(2)}% of ${fmtK(fm)}">${fmt$(fm * r.comm)}</td>
+      <td title="Expected commission at stretch — ${(r.comm * 100).toFixed(2)}% of ${fmtK(fs)}">${fmt$(fs * r.comm)}</td>
       <td><button class="btn" data-id="${r.id}" data-k="del" title="Remove rep">✕</button></td></tr>`;
   }
   const tm = C.team.mod.reduce((a, b) => a + b, 0), ts = C.team.str.reduce((a, b) => a + b, 0);
   const cm = C.comp.mod.reduce((a, b) => a + b, 0), cs = C.comp.str.reduce((a, b) => a + b, 0);
+  const compTip = `Rep commissions across all 15 months. The P&L charges ${fmtK(cm)} modest / ${fmtK(cs)} stretch — modeled months only, plus SM &amp; Director overrides from Goals.`;
   h += `<tr class="tot"><td>TEAM</td><td></td><td></td><td></td><td></td><td></td><td></td>
-    <td>${fmt$(tm)}</td><td>${fmt$(ts)}</td><td class="pos"><b>${fmt$(ts - tm)}</b></td><td>comp ${fmtK(cm)} / ${fmtK(cs)}</td><td></td></tr>`;
+    <td>${fmt$(tm)}</td><td>${fmt$(ts)}</td><td class="pos"><b>${fmt$(ts - tm)}</b></td><td title="${compTip}"><b>${fmt$(cmRep)}</b></td><td title="${compTip}"><b>${fmt$(csRep)}</b></td><td></td></tr>`;
   document.getElementById("salesTable").innerHTML = h + "</tbody></table>";
   let rh = `<table class="data"><thead><tr><th>Curve</th>${Array.from({length:12}, (_, i) => `<th>M${i + 1}</th>`).join("")}<th>YR1</th></tr></thead><tbody>`;
   for (const n of Object.keys(S.ramps)){
@@ -1023,10 +1037,13 @@ function renderRepMonths(){
   const tot = Array(NM).fill(0);
   for (const r of S.sales){
     let sum = 0;
-    const up = repMoScn === "upside";
-    h += `<tr><td>${esc(r.name)} <span class="dim">· ${esc(r.ramp)}${up ? " · stretch − modest" : " @ " + Math.round((r[repMoScn] || 0) * 100) + "%"}</span></td>`;
+    const up = repMoScn === "upside", isComm = repMoScn === "comm";
+    const scnNote = up ? " · stretch − modest" : isComm ? " · " + ((r.comm || 0) * 100).toFixed(2) + "% of modest revenue" : " @ " + Math.round((r[repMoScn] || 0) * 100) + "%";
+    h += `<tr><td>${esc(r.name)} <span class="dim">· ${esc(r.ramp)}${scnNote}</span></td>`;
     for (let m = 1; m <= NM; m++){
-      const v = up ? repRevenue(r, m, "stretch") - repRevenue(r, m, "modest") : repRevenue(r, m, repMoScn);
+      const v = up ? repRevenue(r, m, "stretch") - repRevenue(r, m, "modest")
+        : isComm ? repRevenue(r, m, "modest") * (r.comm || 0)
+        : repRevenue(r, m, repMoScn);
       sum += v; tot[m - 1] += v;
       const tenure = m - r.start + 1;
       h += `<td class="${m <= ACT ? "actual" : ""}" title="tenure month ${tenure < 1 ? "—" : Math.min(12, tenure) + (tenure > 12 ? " (capped)" : "")}">${v ? fmt$(v) : `<span class="dim">—</span>`}</td>`;
@@ -1164,12 +1181,12 @@ function renderStaff(C){
       const folded = collapsedDepts.has(p.dept);
       const dRoles = sorted.filter(r => r.dept === p.dept);
       const heads = dRoles.reduce((a, r) => a + staffHC(r, NM), 0);
-      const reps = dRoles.map(r => (r.people && r.people.length)
-        ? (() => { const v = r.people.map(pp => earningsAt(r, pp, Math.min(NM, pp.to || NM))).sort((x, y) => x - y); return v[Math.floor(v.length / 2)]; })()
-        : earningsAt(r, null, NM)).sort((x, y) => x - y);
-      const medSal = reps.length ? reps[Math.floor(reps.length / 2)] : 0;
+      const headVals = dRoles.flatMap(r => (r.people && r.people.length)
+        ? r.people.filter(pp => NM >= (pp.from || 1) && NM <= (pp.to || NM)).map(pp => earningsAt(r, pp, NM))
+        : Array(Math.max(0, Math.round(r.hc[NM - 1] || 0))).fill(earningsAt(r, null, NM))).sort((x, y) => x - y);
+      const medSal = headVals.length ? headVals[Math.floor(headVals.length / 2)] : 0;
       const budMo = (C.deptPay[p.dept] ? C.deptPay[p.dept][NM - 1] : 0) + (C.dept[p.dept] ? C.dept[p.dept][NM - 1] : 0);
-      h += `<tr class="sec deptsec"><td colspan="${NCOL - 2}"><button class="exp-toggle" data-dept="${esc(p.dept)}" data-k="deptfold" aria-expanded="${!folded}">${folded ? "▸" : "▾"}</button> ${esc(dn(p.dept))} <button class="exp-toggle" data-dept="${esc(p.dept)}" data-k="deptrename" title="Rename this department (display only — data keeps its key)">✎</button> <span class="dim" style="font-weight:400">· ${deptN.get(p.dept)} role${deptN.get(p.dept) > 1 ? "s" : ""} · ${heads} head${heads === 1 ? "" : "s"} · med salary ${fmtK(medSal)} · budget ${fmtK(budMo)}/mo pay+opex${folded ? " · (collapsed)" : ""}</span></td><td title="15-month payroll cost">${fmt$(deptFy.get(p.dept))}</td><td></td></tr>`;
+      h += `<tr class="sec deptsec"><td colspan="${NCOL - 2}"><button class="exp-toggle" data-dept="${esc(p.dept)}" data-k="deptfold" aria-expanded="${!folded}">${folded ? "▸" : "▾"}</button> ${renameDept === p.dept ? `<input class="cell pos" style="width:220px" data-id="${esc(p.dept)}" data-k="deptname" value="${esc(dn(p.dept))}" title="Type the new display name, then press Enter (Esc cancels; blank restores the original)">` : `${esc(dn(p.dept))} <button class="exp-toggle" data-dept="${esc(p.dept)}" data-k="deptrename" title="Rename this department (display only — data keeps its key)">✎</button>`} <span class="dim" style="font-weight:400">· ${deptN.get(p.dept)} role${deptN.get(p.dept) > 1 ? "s" : ""} · ${heads} head${heads === 1 ? "" : "s"} · med salary ${fmtK(medSal)} · budget ${fmtK(budMo)}/mo pay+opex${folded ? " · (collapsed)" : ""}</span></td><td title="15-month payroll cost">${fmt$(deptFy.get(p.dept))}</td><td></td></tr>`;
     }
     if (collapsedDepts.has(p.dept)) continue;
     const cur = headCost(p, 1), nw = headCost(p, NM);
@@ -1433,7 +1450,7 @@ document.getElementById("copyFixes").addEventListener("click", async ev => {
       (i.key === "__payroll" ? i.to : "from \"" + i.from + "\" to \"" + i.to + "\"") +
       (i.permo ? " (~" + fmt$(Math.abs(i.permo)) + "/mo)" : "")).join("\n");
   try { await navigator.clipboard.writeText(txt); ev.target.textContent = "Copied ✓"; }
-  catch (e) { prompt("Copy this checklist:", txt); }
+  catch (e) { openCfg("copy", txt, "Clipboard is blocked here — select everything and copy manually (Ctrl/Cmd-C)."); }
   setTimeout(() => ev.target.textContent = "Copy checklist", 1600);
 });
 /* ---------- pay bands ---------- */
@@ -1488,12 +1505,12 @@ function renderPayBands(){
   }
   groups.forEach((grp, i) => {
     const y = 8 + i * rh + rh / 2, mine = grp.members;
-    const vals = mine.map(val).sort((a, b) => a - b);
+    const vals = mine.flatMap(p => p.ppl ? p.ppl.map(q => q.v) : Array(Math.max(1, Math.round(p.hc || 1))).fill(p.v)).sort((a, b) => a - b);
     const med = vals.length ? vals[Math.floor(vals.length / 2)] : null;
     const roleN = mine.length, headN = mine.reduce((a, p) => a + (p.hc || 1), 0);
     g += `<text x="${lw - 12}" y="${y + 4}" text-anchor="end" font-size="12" font-weight="600" fill="${grp.isDept ? "var(--modest)" : "var(--ink2)"}">${esc(grp.isDept ? dn(grp.key) : grp.key)}</text>` +
       `<text x="${lw - 12}" y="${y + 17}" text-anchor="end" font-size="9.5" fill="var(--muted)">${roleN} role${roleN === 1 ? "" : "s"} · ${headN} head${headN === 1 ? "" : "s"}${med ? " · med " + fmtK(med) : ""}</text>`;
-    if (vals.length > 1){
+    if (vals.length > 1 && vals[vals.length - 1] - vals[0] > 1){
       const x0 = x(vals[0]), x1 = x(vals[vals.length - 1]);
       g += `<rect x="${x0}" y="${y - 4}" width="${Math.max(2, x1 - x0)}" height="8" rx="4" fill="var(--grid)"/>`;
       if (x1 - x0 > 70)
@@ -1552,6 +1569,12 @@ delegate("rampTable", (id, k, val) => {
   S.ramps[id][+m[1]] = num(val, 0);
 });
 delegate("staffTable", (id, k, val) => {
+  if (k === "deptname"){
+    const t = String(val).trim();
+    if (!t || t === id) delete S.deptNames[id]; else S.deptNames[id] = t;
+    renameDept = null;
+    return;
+  }
   const p = S.staff.find(r => r.id === id); if (!p) return;
   if (k === "position") p.position = val;
   else if (k === "dept") p.dept = val;
@@ -1585,6 +1608,7 @@ delegate("staffTable", (id, k, val) => {
 });
 const openRoles = new Set();
 const collapsedDepts = new Set();
+let renameDept = null;
 document.getElementById("staffTable").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-k]"); if (!b) return;
   const k = b.dataset.k, id = b.dataset.id;
@@ -1594,9 +1618,10 @@ document.getElementById("staffTable").addEventListener("click", ev => {
     renderAll(); return;
   }
   if (k === "deptrename"){
-    const d = b.dataset.dept;
-    const nv = prompt("Display name for this department:", dn(d));
-    if (nv != null){ const t = nv.trim(); if (!t || t === d) delete S.deptNames[d]; else S.deptNames[d] = t; persist(); renderAll(); }
+    renameDept = b.dataset.dept;
+    renderAll();
+    const inp = document.querySelector('#staffTable input[data-k="deptname"]');
+    if (inp){ inp.focus(); inp.select(); }
     return;
   }
   if (k === "del"){ S.staff = S.staff.filter(r => r.id !== id); }
@@ -1612,6 +1637,17 @@ document.getElementById("staffTable").addEventListener("click", ev => {
   }
   else return;
   persist(); scheduleRender();
+});
+document.getElementById("staffTable").addEventListener("keydown", ev => {
+  const t = ev.target;
+  if (!t.matches || !t.matches('input[data-k="deptname"]')) return;
+  if (ev.key === "Enter"){ ev.preventDefault(); t.blur(); }
+  else if (ev.key === "Escape"){ renameDept = null; renderAll(); }
+});
+document.getElementById("staffTable").addEventListener("focusout", ev => {
+  const t = ev.target;
+  if (!t.matches || !t.matches('input[data-k="deptname"]')) return;
+  setTimeout(() => { if (renameDept != null){ renameDept = null; scheduleRender(); } }, 0);
 });
 delegate("raisePlanner", (id, k, val) => {
   const ev = (S.raises || []).find(r => r.id === id); if (!ev) return;
@@ -1715,22 +1751,55 @@ document.getElementById("addExp").addEventListener("click", () => {
     conflict: false, manual: true, use: "BUDGET", override: 500, adj: 0, from: 9, to: NM, on: true });
   persist(); scheduleRender();
 });
-document.getElementById("btnReset").addEventListener("click", () => {
-  if (!confirm("Discard every edit and return to the imported defaults?")) return;
+let resetArmedAt = 0;
+document.getElementById("btnReset").addEventListener("click", ev => {
+  const now = Date.now();
+  if (now - resetArmedAt > 3000){
+    resetArmedAt = now;
+    ev.target.textContent = "Click again to reset";
+    ev.target.style.color = "var(--crit)";
+    setTimeout(() => { if (Date.now() - resetArmedAt >= 2900){ ev.target.textContent = "Reset"; ev.target.style.color = ""; } }, 3100);
+    return;
+  }
+  resetArmedAt = 0;
+  ev.target.textContent = "Reset"; ev.target.style.color = "";
   try { localStorage.removeItem(LS_KEY); } catch (e) {}
   S = defaultState(); renderAll();
+});
+function openCfg(mode, txt, msg){
+  const panel = document.getElementById("cfgPanel");
+  document.getElementById("cfgTitle").textContent = mode === "copy" ? "Copy this config JSON" : "Load a config JSON";
+  document.getElementById("cfgMsg").textContent = msg || "";
+  const ta = document.getElementById("cfgText");
+  ta.value = txt || "";
+  document.getElementById("cfgApply").style.display = mode === "copy" ? "none" : "";
+  panel.style.display = "";
+  panel.scrollIntoView({ block: "nearest" });
+  ta.focus(); if (mode === "copy") ta.select();
+}
+document.getElementById("cfgClose").addEventListener("click", () => {
+  document.getElementById("cfgPanel").style.display = "none";
+});
+document.getElementById("cfgApply").addEventListener("click", () => {
+  const txt = document.getElementById("cfgText").value.trim();
+  if (!txt){ document.getElementById("cfgMsg").textContent = "Paste a config JSON first."; return; }
+  try {
+    const p = JSON.parse(txt);
+    if (p.levers && p.exp && p.staff){
+      S = p; persist();
+      document.getElementById("cfgPanel").style.display = "none";
+      scheduleRender();
+    } else document.getElementById("cfgMsg").textContent = "That doesn't look like a Money Model config — expected levers, exp and staff.";
+  } catch (e) { document.getElementById("cfgMsg").textContent = "Couldn't parse that JSON: " + e.message; }
 });
 document.getElementById("btnCopy").addEventListener("click", async ev => {
   const txt = JSON.stringify(S);
   try { await navigator.clipboard.writeText(txt); ev.target.textContent = "Copied ✓"; }
-  catch (e) { prompt("Copy this config JSON:", txt); }
+  catch (e) { openCfg("copy", txt, "Clipboard is blocked here — select everything and copy manually (Ctrl/Cmd-C)."); }
   setTimeout(() => ev.target.textContent = "Copy config", 1600);
 });
 document.getElementById("btnLoad").addEventListener("click", () => {
-  const txt = prompt("Paste a config JSON copied from this dashboard:");
-  if (!txt) return;
-  try { const p = JSON.parse(txt); if (p.levers && p.exp && p.staff){ S = p; persist(); scheduleRender(); } else alert("That doesn't look like a Money Model config."); }
-  catch (e) { alert("Couldn't parse that JSON."); }
+  openCfg("load", "", "Paste a config JSON copied from this dashboard, then Apply.");
 });
 
 function renderAll(){
