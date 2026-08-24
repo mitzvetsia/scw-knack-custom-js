@@ -386,6 +386,32 @@ footer b{color:var(--ink-2); font-weight:600}
 @media (prefers-reduced-motion:reduce){*{transition:none !important; animation:none !important}}
 :focus-visible{outline:2px solid var(--brand); outline-offset:2px}
 
+/* ---------- holiday list ---------- */
+.hol-grid{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(196px,1fr)); gap:1px;
+  background:var(--rule); border:1px solid var(--rule); border-radius:3px; overflow:hidden;
+}
+.hol{background:var(--surface); padding:9px 12px 10px; display:flex; align-items:flex-start; gap:9px}
+.hol label{display:flex; align-items:flex-start; gap:9px; cursor:pointer; font-size:12.5px; width:100%}
+.hol input{width:15px; height:15px; accent-color:var(--deep); margin:2px 0 0; flex:none}
+.hol .d{
+  display:block; font-family:"IBM Plex Mono",monospace; font-size:10.5px;
+  color:var(--muted); margin-top:3px; letter-spacing:.03em;
+}
+.hol.here{background:var(--brand-wash)}
+.hol.here .d{color:var(--brand-ink); font-weight:500}
+.hol-extra{margin-top:12px}
+.hol-extra input{
+  width:100%; border:1px solid var(--border); border-radius:3px; background:var(--surface);
+  color:var(--ink); padding:9px 11px; font-family:"IBM Plex Mono",monospace; font-size:12px;
+}
+.hol-extra input:focus{outline:2px solid var(--deep); outline-offset:-1px}
+.hol-sum{
+  margin-top:10px; font-size:12.5px; color:var(--ink-2);
+  padding-top:10px; border-top:1px solid var(--grid);
+}
+.hol-sum b{color:var(--ink)}
+
 /* ---------- topline strip ---------- */
 .topline{
   display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--rule);
@@ -551,6 +577,16 @@ textarea.json{
           <div class="inrow"><span class="pre">$</span><input id="mGoal2" type="number" step="1000" value="1360000" inputmode="decimal"></div>
           <div class="hint" id="hGoal2"></div></div>
       </div>
+    </div>
+
+    <div class="grp">
+      <span class="eyebrow">Holidays we observe <span class="unit">&mdash; drives the business-day count</span></span>
+      <div class="hol-grid" id="holGrid"></div>
+      <div class="hol-extra">
+        <label for="holExtra" class="eyebrow" style="display:block; margin-bottom:6px">Other days closed &mdash; one-off dates</label>
+        <input id="holExtra" type="text" spellcheck="false" placeholder="2026-08-14, 2026-12-28 &mdash; comma separated, YYYY-MM-DD or M/D/YYYY">
+      </div>
+      <div class="hol-sum" id="holSum"></div>
     </div>
 
     <div class="grp">
@@ -812,7 +848,7 @@ textarea.json{
       <p><b>Colour means pacing, everywhere on this page.</b> Red is well behind the modest goal (under 85% of it), amber is behind (85&ndash;90%), blue is near modest (90&ndash;100% &mdash; within reach, deliberately neutral rather than a warning), green clears modest, and green with a <span class="medal">&#9733;</span> gold star is stretch territory &mdash; within 10% of the stretch goal or past it. Every coloured figure also carries an icon and a word, so colour is never doing the work on its own.</p>
       <p><b>How the goal maps.</b> The $6.65M / $7.85M targets cover the whole <b>Apr&ndash;Sep window</b> &mdash; the &ldquo;Q2&nbsp;/&nbsp;Q3&rdquo; column in the source sheet, which is why this board calls it Q2&nbsp;&amp;&nbsp;Q3 rather than Q2. The stretch figure is an exact match to the sheet&rsquo;s own stretch scenario ($1.4M in Aug and Sep), which confirms the mapping.</p>
       <p><b>Part 1 formulas</b> (reproduced from the Daily KPIs sheet). Revenue to date = Install + eCommerce. Adjusted daily average = (revenue to date &minus; big deal) &divide; business days elapsed. Pacing to = adjusted daily average &times; business days in month, with the big deal added back &mdash; so a single outsized deal lands in the total without inflating the run rate. &ldquo;With pending&rdquo; adds pending eCommerce and pending install to revenue to date <em>before</em> run-rating, matching the sheet&rsquo;s $1,196,356.</p>
-      <p><b>Business days count themselves.</b> Days elapsed defaults to the weekdays in the current month through the end of yesterday, minus company holidays (New Year&rsquo;s, Memorial Day, July&nbsp;4 observed, Labor Day, Thanksgiving + the Friday after, Dec&nbsp;24/25/31) &mdash; the same convention as the sheet. The &plusmn;&frac12; buttons and direct edits are manual adjustments: enter 12.5 mid-day when 12 is the auto count. An adjustment holds only for the day it was made, then the count snaps back to auto. The days-in-month total works the same way, per month.</p>
+      <p><b>Business days count themselves.</b> Days elapsed defaults to the weekdays in the current month through the end of yesterday, minus the holidays you have ticked in Backstage. Each holiday is a rule, not a fixed date, so it recomputes correctly every year; date-fixed ones shift off weekends the usual way. Untick anything SCW works, tick anything it doesn&rsquo;t (MLK, Presidents&rsquo;, Good Friday, Juneteenth, Indigenous Peoples&rsquo;, Veterans Day ship off by default), and add shutdown days or floating holidays as one-off dates. Holidays travel with the JSON export. The &plusmn;&frac12; buttons and direct edits are manual adjustments: enter 12.5 mid-day when 12 is the auto count. An adjustment holds only for the day it was made, then the count snaps back to auto. The days-in-month total works the same way, per month.</p>
       <p><b>Period totals are derived from the monthly grid</b>, so the table is always self-consistent with the charts. Because the monthly figures are reported rounded to the nearest $10K or so, these totals run slightly under the source sheet&rsquo;s own stated totals &mdash; up to about $80K on the 2025 window. Paste exact figures into the editor above and the difference disappears.</p>
       <p><b>The window&rsquo;s August.</b> With &ldquo;use this month&rsquo;s live pacing&rdquo; switched on (the default), the Q2&nbsp;&amp;&nbsp;Q3 window takes its August from Part&nbsp;1&rsquo;s live month pacing and only September from the baseline pace. Mind the caveat below &mdash; Part&nbsp;1 paces total company revenue while the window is booked revenue &mdash; so treat the blended figure as directional, and flip the toggle off for a booked-only view.</p>
       <p><b>Two different revenue measures.</b> Part 2 is booked revenue from the YoY Sales Metrics sheet ($11.6M in 2025). Parts 1 and 3 are total company revenue &mdash; Install services from Xero plus eCommerce &mdash; from the Daily KPIs sheet ($13.5M in 2025). They are not the same number and should not be added together. For 2022 and 2023 the two reconcile almost exactly once October is added back; for 2024 and 2025 a gap remains that is worth confirming before either figure is quoted as the company total.</p>
@@ -951,7 +987,7 @@ textarea.json{
       '2025': [747, 766, 1100, 1800, 1200, 834, 1000, 925, 1060],
       '2026': [1000, 963, 804, 1240, 1500, 1110, 1220, null, null]
     },
-    pace: 1200, stretchPace: 1400, modest: 6650, stretch: 7850,
+    pace: 1200, stretchPace: 1400, modest: 6650, stretch: 7850, holidays: null,
     decade: { '2016': 6846976, '2017': 7721318, '2018': 8069797, '2019': 8031927, '2020': 8350386,
               '2021': 9060154, '2022': 10557746, '2023': 11448245, '2024': 11871000, '2025': 13500000 }
   };
@@ -1383,6 +1419,50 @@ textarea.json{
   function restoreHistory() {
     var v; try { v = JSON.parse(localStorage.getItem(HSTORE) || 'null'); } catch (e) { v = null; }
     if (v && v.months && v.decade) DATA = v;
+    if (!DATA.holidays || !DATA.holidays.observed) DATA.holidays = defaultHolidays();
+  }
+  function buildHolidays() {
+    var y = NOW.getFullYear(), m = NOW.getMonth(), H = holidaysOf(), html = '';
+    HOLIDAY_DEFS.forEach(function (def) {
+      var at = def.at(y), dt = new Date(y, at[0], at[1]);
+      var weekend = dt.getDay() % 6 === 0, here = at[0] === m;
+      html += '<div class="hol' + (here && H.observed[def.id] && !weekend ? ' here' : '') + '">' +
+        '<label><input type="checkbox" data-hol="' + def.id + '"' + (H.observed[def.id] ? ' checked' : '') + '>' +
+        '<span>' + def.name + '<span class="d">' + MONTH_NAMES[at[0]].slice(0, 3) + ' ' + at[1] + ', ' + y +
+        (weekend ? ' · weekend' : (here ? ' · this month' : '')) + '</span></span></label></div>';
+    });
+    el('holGrid').innerHTML = html;
+    el('holExtra').value = fmtExtra(H.extra);
+    el('holGrid').querySelectorAll('input').forEach(function (inp) {
+      inp.addEventListener('change', pullHolidays);
+    });
+    el('holExtra').addEventListener('change', pullHolidays);
+    el('holExtra').addEventListener('blur', pullHolidays);
+  }
+  function holidaySummary() {
+    var names = AUTO_HOL.names || {};
+    var list = AUTO_HOL.slice().sort(function (a, b) { return a - b; }).map(function (d) {
+      return (names[d] || 'Custom') + ' (' + MONTH_NAMES[NOW.getMonth()].slice(0, 3) + ' ' + d + ')';
+    });
+    put('holSum', '<b>' + AUTO_BT + '</b> business days in ' + MONTH_NAMES[NOW.getMonth()] +
+      (list.length ? ', after excluding ' + andList(list) : ' — no observed holidays fall on a weekday this month') +
+      '. <b>' + AUTO_BD + '</b> elapsed through yesterday.');
+  }
+  function pullHolidays() {
+    var prevBD = AUTO_BD, prevBT = AUTO_BT;
+    var H = { observed: {}, extra: parseExtra(el('holExtra').value) };
+    el('holGrid').querySelectorAll('input[data-hol]').forEach(function (inp) {
+      H.observed[inp.getAttribute('data-hol')] = inp.checked;
+    });
+    DATA.holidays = H;
+    try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
+    refreshAuto();
+    // Day counts that were still on auto follow the new calendar; manual overrides stay put.
+    if (parseFloat(el('mDaysTD').value) === prevBD) el('mDaysTD').value = AUTO_BD;
+    if (parseFloat(el('mDaysTotal').value) === prevBT) el('mDaysTotal').value = AUTO_BT;
+    el('holExtra').value = fmtExtra(H.extra);
+    buildHolidays();
+    renderMonth(); renderQ2(); holidaySummary();
   }
   function edMsg(txt, ok) {
     var m = el('edMsg'); if (!m) return;
@@ -1403,33 +1483,109 @@ textarea.json{
       try { v = JSON.parse(el('edJson').value); } catch (e) { edMsg('That is not valid JSON.', false); return; }
       if (!v || !v.months || !v.decade) { edMsg('JSON is missing months or decade.', false); return; }
       DATA = v;
+      if (!DATA.holidays || !DATA.holidays.observed) DATA.holidays = defaultHolidays();
       try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
-      buildEditor(); renderQ2(); edMsg('Applied.');
+      refreshAuto(); buildHolidays(); buildEditor(); renderMonth(); renderQ2(); edMsg('Applied.');
     });
     el('edReset').addEventListener('click', function () {
-      DATA = clone(BASE);
+      DATA = clone(BASE); DATA.holidays = defaultHolidays();
       try { localStorage.removeItem(HSTORE); } catch (e) {}
-      buildEditor(); renderQ2(); edMsg('Reset to original figures.');
+      refreshAuto(); buildHolidays(); buildEditor(); renderMonth(); renderQ2();
+      edMsg('Reset to original figures.');
     });
   }
 
   /* ================= BUSINESS-DAY CALENDAR ================= */
-  // The sheet's convention: "business days elapsed" counts weekdays through the
-  // END OF YESTERDAY, minus company holidays (12 on Aug 19 2026 = Aug 3-18).
+  // "Business days elapsed" counts weekdays through the END OF YESTERDAY, minus
+  // observed holidays (12 on Aug 19 2026 = Aug 3-18). Which holidays count is
+  // yours to set: each rule below recomputes its own date every year, so the
+  // list never goes stale, and one-off dates cover anything the rules can't.
+  function nthWeekday(y, m, wd, nth) {
+    var d = new Date(y, m, 1);
+    while (d.getDay() !== wd) d.setDate(d.getDate() + 1);
+    d.setDate(d.getDate() + (nth - 1) * 7);
+    return [d.getMonth(), d.getDate()];
+  }
+  function lastWeekday(y, m, wd) {
+    var d = new Date(y, m + 1, 0);
+    while (d.getDay() !== wd) d.setDate(d.getDate() - 1);
+    return [d.getMonth(), d.getDate()];
+  }
+  function observed(y, m, day) {
+    var d = new Date(y, m, day), w = d.getDay();
+    if (w === 6) d.setDate(d.getDate() - 1);
+    else if (w === 0) d.setDate(d.getDate() + 1);
+    return [d.getMonth(), d.getDate()];
+  }
+  var HOLIDAY_DEFS = [
+    { id: 'newyear',    name: "New Year's Day",         def: true,  at: function (y) { return observed(y, 0, 1); } },
+    { id: 'mlk',        name: 'MLK Day',                def: false, at: function (y) { return nthWeekday(y, 0, 1, 3); } },
+    { id: 'presidents', name: "Presidents' Day",        def: false, at: function (y) { return nthWeekday(y, 1, 1, 3); } },
+    { id: 'goodfri',    name: 'Good Friday',            def: false, at: function (y) { return easterFriday(y); } },
+    { id: 'memorial',   name: 'Memorial Day',           def: true,  at: function (y) { return lastWeekday(y, 4, 1); } },
+    { id: 'juneteenth', name: 'Juneteenth',             def: false, at: function (y) { return observed(y, 5, 19); } },
+    { id: 'july4',      name: 'Independence Day',       def: true,  at: function (y) { return observed(y, 6, 4); } },
+    { id: 'labor',      name: 'Labor Day',              def: true,  at: function (y) { return nthWeekday(y, 8, 1, 1); } },
+    { id: 'columbus',   name: 'Indigenous Peoples\u2019 Day', def: false, at: function (y) { return nthWeekday(y, 9, 1, 2); } },
+    { id: 'veterans',   name: 'Veterans Day',           def: false, at: function (y) { return observed(y, 10, 11); } },
+    { id: 'thanks',     name: 'Thanksgiving',           def: true,  at: function (y) { return nthWeekday(y, 10, 4, 4); } },
+    { id: 'thanksfri',  name: 'Day after Thanksgiving', def: true,  at: function (y) { var t = nthWeekday(y, 10, 4, 4); return [t[0], t[1] + 1]; } },
+    { id: 'xmaseve',    name: 'Christmas Eve',          def: true,  at: function (y) { return observed(y, 11, 24); } },
+    { id: 'xmas',       name: 'Christmas Day',          def: true,  at: function (y) { return observed(y, 11, 25); } },
+    { id: 'nye',        name: "New Year's Eve",         def: true,  at: function (y) { return observed(y, 11, 31); } }
+  ];
+  function easterFriday(y) {
+    var a = y % 19, b = Math.floor(y / 100), c = y % 100;
+    var d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+    var g = Math.floor((b - f + 1) / 3), i = (19 * a + b - d - g + 15) % 30;
+    var k = Math.floor(c / 4), l = c % 4, m = (32 + 2 * e + 2 * k - i - l) % 7;
+    var n = Math.floor((a + 11 * i + 22 * m) / 451);
+    var mo = Math.floor((i + m - 7 * n + 114) / 31) - 1, da = ((i + m - 7 * n + 114) % 31) + 1;
+    var dt = new Date(y, mo, da); dt.setDate(dt.getDate() - 2);
+    return [dt.getMonth(), dt.getDate()];
+  }
+  function defaultHolidays() {
+    var o = { observed: {}, extra: [] };
+    HOLIDAY_DEFS.forEach(function (d) { o.observed[d.id] = d.def; });
+    return o;
+  }
+  function holidaysOf() { return (DATA && DATA.holidays) || defaultHolidays(); }
+  function parseExtra(str) {
+    var out = [];
+    (str || '').split(/[,\n;]+/).forEach(function (raw) {
+      var t = raw.trim(); if (!t) return;
+      var m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (m) { out.push(m[1] + '-' + (+m[2]) + '-' + (+m[3])); return; }
+      m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (m) out.push(m[3] + '-' + (+m[1]) + '-' + (+m[2]));
+    });
+    return out.sort(function (a, b) {
+      var x = a.split('-'), z = b.split('-');
+      return (x[0] - z[0]) || (x[1] - z[1]) || (x[2] - z[2]);
+    });
+  }
+  function andList(a) {
+    return a.length < 2 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+  }
+  function fmtExtra(list) {
+    return (list || []).map(function (s) {
+      var p = s.split('-');
+      return p[0] + '-' + ('0' + p[1]).slice(-2) + '-' + ('0' + p[2]).slice(-2);
+    }).join(', ');
+  }
+  // Days of `m` (0-based) in year `y` that are observed holidays.
   function monthHolidays(y, m) {
-    var days = [], d;
-    function add(mm, dd) { if (mm === m) days.push(dd); }
-    add(0, 1);                                                          // New Year's Day
-    d = new Date(y, 4, 31); while (d.getDay() !== 1) d.setDate(d.getDate() - 1);
-    add(4, d.getDate());                                                // Memorial Day
-    d = new Date(y, 6, 4);                                              // July 4, observed
-    add(6, d.getDay() === 6 ? 3 : (d.getDay() === 0 ? 5 : 4));
-    d = new Date(y, 8, 1); while (d.getDay() !== 1) d.setDate(d.getDate() + 1);
-    add(8, d.getDate());                                                // Labor Day
-    d = new Date(y, 10, 1); while (d.getDay() !== 4) d.setDate(d.getDate() + 1);
-    d.setDate(d.getDate() + 21);
-    add(10, d.getDate()); add(10, d.getDate() + 1);                     // Thanksgiving + Friday
-    add(11, 24); add(11, 25); add(11, 31);                              // Christmas Eve/Day, NYE
+    var H = holidaysOf(), days = [], names = {};
+    HOLIDAY_DEFS.forEach(function (def) {
+      if (!H.observed[def.id]) return;
+      var at = def.at(y);
+      if (at[0] === m) { days.push(at[1]); names[at[1]] = def.name; }
+    });
+    (H.extra || []).forEach(function (s) {
+      var p = s.split('-');
+      if (+p[0] === y && +p[1] - 1 === m) { days.push(+p[2]); names[+p[2]] = names[+p[2]] || 'Custom'; }
+    });
+    days.names = names;
     return days;
   }
   function isBizDay(y, m, day, hol) {
@@ -1437,17 +1593,18 @@ textarea.json{
     return w !== 0 && w !== 6 && hol.indexOf(day) === -1;
   }
   var NOW = new Date();
-  var AUTO_BD = (function () {
-    var y = NOW.getFullYear(), m = NOW.getMonth(), hol = monthHolidays(y, m), n = 0;
-    for (var day = 1; day < NOW.getDate(); day++) if (isBizDay(y, m, day, hol)) n++;
-    return Math.max(0.5, n);
-  })();
-  var AUTO_BT = (function () {
-    var y = NOW.getFullYear(), m = NOW.getMonth(), hol = monthHolidays(y, m), n = 0;
-    var last = new Date(y, m + 1, 0).getDate();
-    for (var day = 1; day <= last; day++) if (isBizDay(y, m, day, hol)) n++;
-    return n;
-  })();
+  var AUTO_BD = 1, AUTO_BT = 20, AUTO_HOL = [];
+  function refreshAuto() {
+    var y = NOW.getFullYear(), m = NOW.getMonth(), hol = monthHolidays(y, m);
+    var last = new Date(y, m + 1, 0).getDate(), bd = 0, bt = 0;
+    for (var day = 1; day <= last; day++) {
+      if (!isBizDay(y, m, day, hol)) continue;
+      bt++; if (day < NOW.getDate()) bd++;
+    }
+    AUTO_HOL = hol.filter(function (d) { return new Date(y, m, d).getDay() % 6 !== 0; });
+    AUTO_HOL.names = hol.names;
+    AUTO_BD = Math.max(0.5, bd); AUTO_BT = bt;
+  }
   var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
                      'August', 'September', 'October', 'November', 'December'];
   function todayStamp() { return NOW.getFullYear() + '-' + (NOW.getMonth() + 1) + '-' + NOW.getDate(); }
@@ -1624,6 +1781,7 @@ textarea.json{
       : dayWord(m.bd) + ' — manually adjusted (auto: ' + AUTO_BD + '). Resets to auto tomorrow.');
     put('hDaysTotal', (m.daysLeft > 0 ? dayWord(m.daysLeft) + ' still to work' : 'month complete') +
       (m.bt !== AUTO_BT ? ' — adjusted (auto: ' + AUTO_BT + ')' : ''));
+    holidaySummary();
     put('hGoal1', usd(g1) + ' · ' + usd(m.g1Daily) + ' per business day');
     put('hGoal2', usd(g2) + ' · ' + usd(m.g2Daily) + ' per business day');
 
@@ -1688,7 +1846,9 @@ textarea.json{
   var AUG_LIVE = true;
   try { AUG_LIVE = localStorage.getItem('scw-board-auglive-v1') !== '0'; } catch (e) {}
   restoreHistory();
+  refreshAuto();
   restoreMonth();
+  buildHolidays();
   buildEditor();
   wireEditor();
   var augCb = el('qAugLive');
