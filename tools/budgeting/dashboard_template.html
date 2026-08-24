@@ -273,7 +273,8 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
 
 <section class="tab" id="tab-sales">
   <div class="card"><h2>Team revenue by month</h2><p class="note">Each rep's ramp × attainment, summed, against booked revenue. Dashed lines: the half's target and break-even per month. Targets &amp; thresholds are set on the Projections tab.</p><figure class="chart" id="chartTeam"></figure></div>
-  <div class="card"><h2>Reps</h2><p class="note">Attainment is per person per scenario — e.g. Zach 80% modest / 100% stretch. Commission % pays on attained revenue; Sales Manager and Director overrides are in the levers above. Someone leaving sales — or moving into a different role — gets a <b>Last mo</b>: their revenue and commissions stop after that month (for a role change, add the new role on the Staffing tab so their pay continues there).</p>
+  <div class="card"><h2>Reps</h2><p class="note">Attainment is per person per scenario — e.g. Zach 80% modest / 100% stretch. Base salaries live on Staffing; commissions pay on attained revenue. Leave <b>Comm %</b> blank and the rep pays from the tier table below at the rate their attainment earns (so modest and stretch can pay different rates); type a % for a flat override. Sales Manager and Director overrides are in the levers above. Someone leaving sales — or moving into a different role — gets a <b>Last mo</b>: their revenue and commissions stop after that month (for a role change, add the new role on the Staffing tab so their pay continues there).</p>
+    <div id="commTierBar"></div>
     <div class="tablewrap" id="salesTable"></div>
     <button class="btn addrow" id="addRep">+ Add rep</button>
   </div>
@@ -478,6 +479,19 @@ function repRevenue(rep, m, key){
   if (tenure < 1) return 0;
   return (ramp[Math.min(12, tenure) - 1] || 0) * (rep[key] || 0);
 }
+// 5-tier commission table: attainment >= at -> rate. Seeded example — replace with the real plan.
+const DEFAULT_COMM_TIERS = [
+  { at: 0.0, rate: 0.010 }, { at: 0.6, rate: 0.015 }, { at: 0.8, rate: 0.020 },
+  { at: 1.0, rate: 0.025 }, { at: 1.2, rate: 0.030 }];
+const tiersOf = () => (S.commTiers && S.commTiers.length ? S.commTiers : DEFAULT_COMM_TIERS);
+function commRate(rep, scn){
+  if (rep.comm != null) return rep.comm || 0;         // typed % overrides the tiers
+  const a = rep[scn] || 0;
+  let rate = 0;
+  for (const t of [...tiersOf()].sort((x, y) => x.at - y.at))
+    if (t && t.rate != null && a >= t.at - 1e-9) rate = t.rate;
+  return rate;
+}
 const WK = 52 / 12;   // weeks per month for hourly annualization
 function hrsOf(role, p){ return (p && p.phrs) || role.hrs || 40; }
 function roleAnnual(role){
@@ -541,7 +555,7 @@ function compute(){
     let tm = 0, ts = 0, cm = 0, cs = 0;
     for (const r of S.sales){
       const rm = repRevenue(r, m, "modest"), rs = repRevenue(r, m, "stretch");
-      tm += rm; ts += rs; cm += rm * (r.comm || 0); cs += rs * (r.comm || 0);
+      tm += rm; ts += rs; cm += rm * commRate(r, "modest"); cs += rs * commRate(r, "stretch");
     }
     out.team.mod.push(tm); out.team.str.push(ts);
     const compM = cm, compS = cs;
@@ -852,7 +866,7 @@ function renderProj(C){
     "Break-even row: monthly sales revenue needed to cover payroll + opex less other income at that month's gross margin (excl. overrides). " +
     "SM/Director override comp is charged to each half's modeled months; halves fully booked carry it inside booked payroll.";
   document.getElementById("notes").innerHTML =
-    `Built ${MODEL.built} from the Xero <b>Account Transactions</b> export (accrual, Aug 2025–Jul 2026 — expenses, COGS, payroll), the Xero GL Detail (revenue, department tags), and the budgeting-tool exports (allocations, roster, ramps). Horizon: Jan 2026 – Mar 2027. Jan–Jul 2026 are booked; Aug–Sep are bridge months you can budget/staff; Oct 2026–Mar 2027 is the goal-setting half (fiscal Q3+Q4). Where the budgeting tool allocated a vendor to a different department than Xero, the budgeting tool wins (${MODEL.vend_master.filter(v=>v.contradiction).length} conflicts — see Trends). Per-seat licenses ride headcount on Staffing. Rep commissions (defaults AE 2.5% / AM 1.5% / Sr AE 1.75%) pay monthly on attained revenue; SM + Director overrides pay on each half's revenue above its comp threshold. Edits save in this browser only — use Copy config to share.`;
+    `Built ${MODEL.built} from the Xero <b>Account Transactions</b> export (accrual, Aug 2025–Jul 2026 — expenses, COGS, payroll), the Xero GL Detail (revenue, department tags), and the budgeting-tool exports (allocations, roster, ramps). Horizon: Jan 2026 – Mar 2027. Jan–Jul 2026 are booked; Aug–Sep are bridge months you can budget/staff; Oct 2026–Mar 2027 is the goal-setting half (fiscal Q3+Q4). Where the budgeting tool allocated a vendor to a different department than Xero, the budgeting tool wins (${MODEL.vend_master.filter(v=>v.contradiction).length} conflicts — see Trends). Per-seat licenses ride headcount on Staffing. Rep commissions pay monthly on attained revenue — a blank Comm % pays from the 5-tier attainment table on the Sales tab, a typed % is a flat override; SM + Director overrides pay on each half's revenue above its comp threshold. Edits save in this browser only — use Copy config to share.`;
 }
 </script>
 <script>
@@ -1043,12 +1057,13 @@ function renderSales(C){
        {v:beH2, x0:FH2[0], x1:FH2[1] - 1, label:"break-even " + fmtK(beH2) + "/mo", color:"--crit", below:true}]});
   const rampNames = Object.keys(S.ramps);
   let h = `<table class="data"><thead><tr><th>Rep</th><th>Role</th><th>Ramp</th><th>Start mo</th><th>Last mo</th>
-    <th>Modest %</th><th>Stretch %</th><th>Comm %</th><th>15-mo modest</th><th>15-mo stretch</th><th>Upside</th><th>Comm (modest)</th><th>Comm (stretch)</th><th></th></tr></thead><tbody>`;
+    <th>Modest %</th><th>Stretch %</th><th title="Blank = pay from the commission tiers by attainment; a typed % is a flat override">Comm %</th><th>15-mo modest</th><th>15-mo stretch</th><th>Upside</th><th>Comm (modest)</th><th>Comm (stretch)</th><th></th></tr></thead><tbody>`;
   let cmRep = 0, csRep = 0;
   for (const r of S.sales){
     let fm = 0, fs = 0;
     for (let m = 1; m <= NM; m++){ fm += repRevenue(r, m, "modest"); fs += repRevenue(r, m, "stretch"); }
-    cmRep += fm * (r.comm || 0); csRep += fs * (r.comm || 0);
+    const rM = commRate(r, "modest"), rS = commRate(r, "stretch"), tiered = r.comm == null;
+    cmRep += fm * rM; csRep += fs * rS;
     h += `<tr><td><input class="cell pos" data-id="${r.id}" data-k="name" value="${esc(r.name)}"></td>
       <td><input class="cell pos" data-id="${r.id}" data-k="role" value="${esc(r.role)}"></td>
       <td><select class="cell" data-id="${r.id}" data-k="ramp">${rampNames.map(n => `<option${n === r.ramp ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></td>
@@ -1056,11 +1071,11 @@ function renderSales(C){
       <td><input class="cell tiny" data-id="${r.id}" data-k="end" value="${r.end || ""}" placeholder="—" title="Last calendar month this rep sells (1–15; blank = through Mar ’27). Revenue and commissions stop after it — model a departure, or a move into another role (add the new role on the Staffing tab so their pay continues there)"></td>
       <td><input class="cell tiny" data-id="${r.id}" data-k="modest" value="${Math.round(r.modest * 100)}"></td>
       <td><input class="cell tiny" data-id="${r.id}" data-k="stretch" value="${Math.round(r.stretch * 100)}"></td>
-      <td><input class="cell tiny" data-id="${r.id}" data-k="comm" value="${(r.comm * 100).toFixed(2)}"></td>
+      <td><input class="cell tiny" data-id="${r.id}" data-k="comm" value="${tiered ? "" : (r.comm * 100).toFixed(2)}" placeholder="auto" title="${tiered ? `Auto from the tiers: ${(rM * 100).toFixed(2)}% at modest attainment, ${(rS * 100).toFixed(2)}% at stretch. Type a % to override.` : "Flat override — clear to pay from the commission tiers by attainment"}"></td>
       <td>${fmt$(fm)}</td><td>${fmt$(fs)}</td>
       <td class="pos" title="Stretch minus modest — the additional revenue if this rep hits stretch"><b>${fmt$(fs - fm)}</b></td>
-      <td title="Expected commission at modest — ${(r.comm * 100).toFixed(2)}% of ${fmtK(fm)}">${fmt$(fm * r.comm)}</td>
-      <td title="Expected commission at stretch — ${(r.comm * 100).toFixed(2)}% of ${fmtK(fs)}">${fmt$(fs * r.comm)}</td>
+      <td title="Expected commission at modest — ${(rM * 100).toFixed(2)}%${tiered ? " (tier)" : ""} of ${fmtK(fm)}">${fmt$(fm * rM)}</td>
+      <td title="Expected commission at stretch — ${(rS * 100).toFixed(2)}%${tiered ? " (tier)" : ""} of ${fmtK(fs)}">${fmt$(fs * rS)}</td>
       <td><button class="btn" data-id="${r.id}" data-k="del" title="Remove rep">✕</button></td></tr>`;
   }
   const tm = C.team.mod.reduce((a, b) => a + b, 0), ts = C.team.str.reduce((a, b) => a + b, 0);
@@ -1069,6 +1084,13 @@ function renderSales(C){
   h += `<tr class="tot"><td>TEAM</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
     <td>${fmt$(tm)}</td><td>${fmt$(ts)}</td><td class="pos"><b>${fmt$(ts - tm)}</b></td><td title="${compTip}"><b>${fmt$(cmRep)}</b></td><td title="${compTip}"><b>${fmt$(csRep)}</b></td><td></td></tr>`;
   document.getElementById("salesTable").innerHTML = h + "</tbody></table>";
+  const tiers = [...tiersOf()].sort((a, b) => a.at - b.at);
+  document.getElementById("commTierBar").innerHTML =
+    `<div class="toolbar" style="gap:6px;align-items:center;margin:2px 0 6px">
+      <span class="subtle" style="font-size:12px;font-weight:700">Commission tiers</span>
+      <span class="subtle" style="font-size:12px">attainment ≥ → rate:</span>` +
+    tiers.map((t, i) => `<span style="display:inline-flex;align-items:center;gap:3px;border:1px solid var(--border2);border-radius:8px;padding:2px 8px;font-size:12px"><input class="cell tiny" style="width:42px" data-id="t${i}" data-k="tat" value="${Math.round(t.at * 100)}" title="Tier floor — applies at or above this attainment">% → <input class="cell tiny" style="width:48px" data-id="t${i}" data-k="trate" value="${(t.rate * 100).toFixed(2)}" title="Commission rate paid at this tier">%</span>`).join("") +
+    `<span class="subtle" style="font-size:11.5px">${S.commTiers ? "" : "seeded example — set your real plan. "}Applies to reps with a blank Comm %.</span></div>`;
   let rh = `<table class="data"><thead><tr><th>Curve</th>${Array.from({length:12}, (_, i) => `<th>M${i + 1}</th>`).join("")}<th>YR1</th></tr></thead><tbody>`;
   for (const n of Object.keys(S.ramps)){
     rh += `<tr><td>${esc(n)}</td>` + S.ramps[n].map((v, i) =>
@@ -1086,12 +1108,12 @@ function renderRepMonths(){
   for (const r of S.sales){
     let sum = 0;
     const up = repMoScn === "upside", isComm = repMoScn === "comm";
-    const scnNote = up ? " · stretch − modest" : isComm ? " · " + ((r.comm || 0) * 100).toFixed(2) + "% of modest revenue" : " @ " + Math.round((r[repMoScn] || 0) * 100) + "%";
+    const scnNote = up ? " · stretch − modest" : isComm ? " · " + (commRate(r, "modest") * 100).toFixed(2) + "%" + (r.comm == null ? " (tier)" : "") + " of modest revenue" : " @ " + Math.round((r[repMoScn] || 0) * 100) + "%";
     const endNote = r.end && r.end < NM ? " · thru " + MONTHS[r.end - 1] + (r.end <= 12 ? " ’26" : " ’27") : "";
     h += `<tr><td>${esc(r.name)} <span class="dim">· ${esc(r.ramp)}${scnNote}${endNote}</span></td>`;
     for (let m = 1; m <= NM; m++){
       const v = up ? repRevenue(r, m, "stretch") - repRevenue(r, m, "modest")
-        : isComm ? repRevenue(r, m, "modest") * (r.comm || 0)
+        : isComm ? repRevenue(r, m, "modest") * commRate(r, "modest")
         : repRevenue(r, m, repMoScn);
       sum += v; tot[m - 1] += v;
       const tenure = m - r.start + 1;
@@ -1608,11 +1630,19 @@ delegate("salesTable", (id, k, val) => {
   else if (k === "end") r.end = String(val).trim() === "" ? null : Math.min(NM, Math.max(1, Math.round(num(val, NM))));
   else if (k === "modest") r.modest = num(val, 80) / 100;
   else if (k === "stretch") r.stretch = num(val, 100) / 100;
-  else if (k === "comm") r.comm = num(val, 0) / 100;
+  else if (k === "comm") r.comm = String(val).trim() === "" ? null : num(val, 0) / 100;
 });
 document.getElementById("salesTable").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-k=del]"); if (!b) return;
   S.sales = S.sales.filter(r => r.id !== b.dataset.id); persist(); scheduleRender();
+});
+delegate("commTierBar", (id, k, val) => {
+  const i = +String(id).slice(1);
+  const t = [...tiersOf()].sort((a, b) => a.at - b.at).map(x => ({ at: x.at, rate: x.rate }));
+  if (!t[i]) return;
+  if (k === "tat") t[i].at = Math.max(0, num(val, 0)) / 100;
+  else if (k === "trate") t[i].rate = Math.max(0, num(val, 0)) / 100;
+  S.commTiers = t;
 });
 delegate("rampTable", (id, k, val) => {
   const m = k.match(/^ramp(\d+)$/); if (!m || !S.ramps[id]) return;
@@ -1743,7 +1773,7 @@ document.getElementById("expStatus").addEventListener("change", ev => { expFilte
 document.getElementById("trSearch").addEventListener("input", ev => { trQ = ev.target.value; renderTrendTable(); });
 document.getElementById("addRep").addEventListener("click", () => {
   S.sales.push({ id: "s" + Date.now(), name: "New rep", role: "Account Executive - RAMP",
-    ramp: Object.keys(S.ramps)[0] || "NEW AE", start: 9, modest: 0.8, stretch: 1, comm: 0.025 });
+    ramp: Object.keys(S.ramps)[0] || "NEW AE", start: 9, modest: 0.8, stretch: 1, comm: null });
   persist(); scheduleRender();
 });
 const SEED_STAFF = defaultState().staff;
