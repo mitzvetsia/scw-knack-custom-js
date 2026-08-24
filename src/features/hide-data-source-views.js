@@ -79,6 +79,16 @@
     // column.js and bid-review/init.js (revision card prefill) via
     // DOM scrape of the rendered grid.
     'view_3842',
+    // 'view_4153' — BID_revision requests. Not consumed by anything in the
+    // bundle; it's on the scene as the request-level companion to view_4154.
+    // Nothing to read, nothing for the user to do with it — hidden outright.
+    'view_4153',
+    // 'view_4154' — BID_revision line items, UNFILTERED. view_3842 renders
+    // only revisions awaiting Ops triage, so the Revision Requests panel
+    // reads this one for accepted/rejected/forwarded history (sales-revision-
+    // column.js CFG.revisionViews). MUST stay rendered — the panel scrapes
+    // its rows out of the DOM.
+    'view_4154',
     // 'view_3918' — Scopes of Work grid; bid-review's "next step"
     // surface reads/writes through this view (config.nextStepViewKey
     // + surveyCostsWriteView). Kept rendered for model access.
