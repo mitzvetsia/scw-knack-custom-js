@@ -82,6 +82,13 @@
     // hint next to each option, NOT used to auto-select.
     completeStatusRe: /complete|submit|final|received|done/i,
 
+    // ── "Request a K2 bid" action ──────────────────────────────────────
+    // An ACTION item on the basis-bid picker, not a basis choice: picking it
+    // POSTs the SOW id to Make and immediately restores the previously-saved
+    // basis, so it can never be persisted as field_2942. Blank disables the
+    // option entirely.
+    requestK2Webhook: 'https://hook.us1.make.com/h3dxxy818kqqeos18cux32x1sx41xcdv',
+
     // ── Diff tiers ─────────────────────────────────────────────────────
     // Severity ladder. Nothing is ever hidden — noise is demoted, not
     // deleted. Colors follow the repo warning convention (amber = material,

@@ -150,6 +150,14 @@
   // ships subBidBasisId 'K1' + subBidIsK1 true so Make can branch on it.
   var K1_ID = 'K1';
 
+  // ACTION sentinel on the same picker — "Request a K2 bid". Deliberately not
+  // a bid id: the change handler intercepts it before writeBasis ever sees it
+  // and restores the prior selection, so it can never reach field_2942 or the
+  // snapshot blob. Prefixed/suffixed with __ so it can't collide with a Knack
+  // 24-hex record id.
+  var REQ_K2_ID = '__request_k2__';
+  var requestingK2 = {};   // sowId -> true while its POST is in flight
+
   function basisFor(sowId) {
     // An explicit session choice — INCLUDING the cleared '' option — wins over
     // the persisted value, so toggling back to "— choose —" actually clears
@@ -840,6 +848,14 @@
       '<option value="' + K1_ID + '"' + (selId === K1_ID ? ' selected' : '') +
         '>K1 Bid — no subcontractor bid (self-perform)</option>' +
       pkgs.map(function (p) { return pkgOption(p, selId); }).join('');
+    // Action item, pinned last under its own rule so it never reads as one of
+    // the bids above. Never carries `selected` — it's a verb, not a state.
+    if (C.requestK2Webhook) {
+      opts += '<option disabled>──────────</option>' +
+        '<option value="' + REQ_K2_ID + '">' +
+        (requestingK2[grid.sowId] ? 'Requesting a K2 bid…' : '⤴ Request a K2 bid') +
+        '</option>';
+    }
     var note;
     if (savingGrid[grid.sowId]) {
       note = '<span class="scw-sbd-baseline__meta">saving…</span>';
@@ -857,6 +873,7 @@
     return '<div class="scw-sbd-baseline">' +
       '<label>Basis bid:</label>' +
       '<select data-scw-sbd-basis data-sow-id="' + esc(grid.sowId) + '"' +
+        ' data-sow-name="' + esc(grid.sowName || '') + '"' +
         (savingGrid[grid.sowId] ? ' disabled' : '') + '>' + opts + '</select>' +
       note + '</div>';
   }
@@ -1173,6 +1190,64 @@
     }
   }
 
+  // ── "Request a K2 bid" ──────────────────────────────────────────────────
+  // Fires the SOW id at Make so a K2 (internal/self-perform) bid gets raised
+  // for this SOW. Deliberately NOT routed through SCW.knackAjax: that helper
+  // attaches the user's Knack session token, which has no business being sent
+  // to a third-party webhook host.
+  function sbdToast(msg, type) {
+    try {
+      var br = window.SCW && window.SCW.bidReview;
+      if (br && typeof br.renderToast === 'function') { br.renderToast(msg, type); return; }
+    } catch (e) { /* fall through */ }
+    if (type === 'error') console.warn('[SubBidDiff] ' + msg);
+  }
+
+  function requestK2Bid(sowId, sowName) {
+    if (!sowId || !C.requestK2Webhook) return;
+    if (requestingK2[sowId]) return;               // one in-flight per SOW
+    var label = sowName ? ('SOW ' + sowName) : 'this SOW';
+    if (!window.confirm('Request a K2 bid for ' + label + '?')) return;
+
+    requestingK2[sowId] = true;
+    render();                                      // option reads "Requesting…"
+
+    var body = {
+      actionType: 'request_k2_bid',
+      sowId:      sowId,
+      sowName:    sowName || '',
+      timestamp:  new Date().toISOString()
+    };
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) body.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) { /* user attrs unavailable */ }
+
+    function done(ok, msg) {
+      delete requestingK2[sowId];
+      render();
+      sbdToast(msg, ok ? 'success' : 'error');
+    }
+
+    $.ajax({
+      url:         C.requestK2Webhook,
+      type:        'POST',
+      contentType: 'application/json',
+      data:        JSON.stringify(body),
+      timeout:     30000,
+      success: function () { done(true, 'K2 bid requested for ' + label); },
+      error: function (xhr) {
+        // Make's hook host answers cross-origin without CORS headers, so a
+        // delivered POST still surfaces as status 0 — treated as sent, the
+        // same convention revision-accept-reject.js uses.
+        if (xhr && xhr.status === 0) { done(true, 'K2 bid requested for ' + label); return; }
+        console.error('[SubBidDiff] Request K2 bid failed:',
+                      xhr && xhr.status, xhr && xhr.responseText);
+        done(false, 'Could not request a K2 bid — please try again');
+      }
+    });
+  }
+
   function bindOnce() {
     if (document.documentElement.hasAttribute('data-scw-sbd-bound')) return;
     document.documentElement.setAttribute('data-scw-sbd-bound', '1');
@@ -1182,6 +1257,15 @@
         var bsow = sel.getAttribute('data-sow-id');
         if (!bsow) return;
         var pkgId = sel.value || '';
+        // "Request a K2 bid" is an ACTION, not a basis choice. Snap the picker
+        // back to the real basis FIRST — before the confirm, so declining (or
+        // a failed POST) can't leave the control misreporting the basis — then
+        // fire. Nothing below this runs, so field_2942 is never touched.
+        if (pkgId === REQ_K2_ID) {
+          sel.value = basisFor(bsow) || '';
+          requestK2Bid(bsow, sel.getAttribute('data-sow-name') || '');
+          return;
+        }
         selectedByGrid[bsow] = pkgId;          // optimistic — diff shows immediately
         // ONE PUT persists basis + snapshot together (set or cleared) — see
         // writeBasis. Never split across writes, so they can't drift apart.
