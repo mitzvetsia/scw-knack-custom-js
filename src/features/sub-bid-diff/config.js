@@ -89,6 +89,21 @@
     // option entirely.
     requestK2Webhook: 'https://hook.us1.make.com/h3dxxy818kqqeos18cux32x1sx41xcdv',
 
+    // The option is offered ONLY when the project has no survey connected.
+    // scene_1155 carries no Surveys grid, so the check is derived from the
+    // survey line items already loaded in view_3680: each row's REL_survey
+    // request (field_2360) names its survey, so any populated value means a
+    // survey exists.
+    //
+    // KNOWN LIMIT of deriving it this way: a survey request that exists but
+    // has no line items yet (not walked) is invisible here, and the option
+    // would still be offered. To make the check authoritative, add a hidden
+    // Surveys grid for the project to scene_1155 and point surveyGateView at
+    // it with surveyGateField '' — records-exist then means surveys-exist,
+    // and no other code changes.
+    surveyGateView:  'view_3680',
+    surveyGateField: 'field_2360',   // '' = the view's records ARE the surveys
+
     // ── Diff tiers ─────────────────────────────────────────────────────
     // Severity ladder. Nothing is ever hidden — noise is demoted, not
     // deleted. Colors follow the repo warning convention (amber = material,

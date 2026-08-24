@@ -181,6 +181,41 @@
     return false;
   }
 
+  /** Does this project have any survey connected? Gates the "Request a K2
+   *  bid" option, which is only meaningful when there's no survey.
+   *
+   *  Fails CLOSED — an unreadable or not-yet-loaded gate view returns true
+   *  (treat as "has a survey", hide the option). The rule is "offer it ONLY
+   *  when there are no surveys", so the option needs positive evidence of
+   *  zero; an empty read during load is not that evidence, and showing it
+   *  then would flash the option on every page load of a surveyed project. */
+  function projectHasSurvey() {
+    if (!C.surveyGateView) return false;      // gate unconfigured → don't gate
+    var recs;
+    try { recs = readView(C.surveyGateView) || []; } catch (e) { return true; }
+
+    if (!recs.length) {
+      // Zero records is the load-bearing case, and it is AMBIGUOUS: a project
+      // with no survey has no survey line items either, so "empty" is exactly
+      // what we're looking for — but it's also what a not-yet-fetched view
+      // looks like. Knack renders an explicit no-data row once a grid has
+      // loaded empty, so that marker is the difference. No marker = still
+      // loading = unknown, and unknown hides the option (the rule is "offer it
+      // ONLY when there are no surveys", which needs positive evidence).
+      var el = document.getElementById(C.surveyGateView);
+      return !(el && el.querySelector('tr.kn-tr-nodata'));
+    }
+
+    if (!C.surveyGateField) return true;      // records ARE surveys, and there are some
+    for (var i = 0; i < recs.length; i++) {
+      var raw = recs[i] && recs[i][C.surveyGateField + '_raw'];
+      if (Array.isArray(raw) ? raw.length : (raw && raw.id)) return true;
+      // Fall back to the display value for views whose model lacks _raw.
+      if (!raw && recs[i] && String(recs[i][C.surveyGateField] || '').trim()) return true;
+    }
+    return false;
+  }
+
   // ── Auto-pick: exact-match basis ────────────────────────────────────────
   // "No default — the user must choose" has one carve-out: when a bid EXACTLY
   // matches the SOW (zero diff exceptions AND zero raw total delta), there is
@@ -850,7 +885,9 @@
       pkgs.map(function (p) { return pkgOption(p, selId); }).join('');
     // Action item, pinned last under its own rule so it never reads as one of
     // the bids above. Never carries `selected` — it's a verb, not a state.
-    if (C.requestK2Webhook) {
+    // Offered only while the project has no survey connected: with a survey
+    // in hand the work goes out to subs, so a K2 request doesn't apply.
+    if (C.requestK2Webhook && !projectHasSurvey()) {
       opts += '<option disabled>──────────</option>' +
         '<option value="' + REQ_K2_ID + '">' +
         (requestingK2[grid.sowId] ? 'Requesting a K2 bid…' : '⤴ Request a K2 bid') +
@@ -1206,6 +1243,14 @@
   function requestK2Bid(sowId, sowName) {
     if (!sowId || !C.requestK2Webhook) return;
     if (requestingK2[sowId]) return;               // one in-flight per SOW
+    // Re-check the gate at fire time: a survey can land between render and
+    // click (the option sits in DOM Knack re-renders on its own schedule), and
+    // this is the last point before the POST.
+    if (projectHasSurvey()) {
+      sbdToast('This project already has a survey — a K2 bid request no longer applies', 'error');
+      render();
+      return;
+    }
     var label = sowName ? ('SOW ' + sowName) : 'this SOW';
     if (!window.confirm('Request a K2 bid for ' + label + '?')) return;
 
