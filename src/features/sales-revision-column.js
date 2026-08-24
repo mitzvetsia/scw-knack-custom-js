@@ -239,8 +239,13 @@
 
       var status = ($tr.find('td.' + CFG.statusField).text() || '').replace(/[\u00a0\s]+/g, ' ').trim();
 
-      // Skip rejected/accepted items
-      if (/^rejected$/i.test(status) || /^accepted$/i.test(status)) return;
+      // Normalized status bucket. Accepted/rejected rows are KEPT now \u2014
+      // the summary panel renders them as history; the inline grid cards
+      // stay pending-only via revisionsBySowItem's filter. Anything that
+      // isn't accepted/rejected (Pending, blank, \u2026) counts as live.
+      var statusNorm = /^accepted$/i.test(status) ? 'accepted'
+                     : /^rejected$/i.test(status) ? 'rejected'
+                     : 'pending';
 
       var $htmlCell = $tr.find('td.' + CFG.htmlField);
       var htmlContent = '';
@@ -258,6 +263,7 @@
         sowItemId:        sowItemId,
         parentRequestId:  parentRequestId,
         status:           status,
+        statusNorm:       statusNorm,
         html:             htmlContent,
         json:             jsonData,
       });
@@ -273,10 +279,13 @@
   // ═══════════════════════════════════════════════════════════
 
   function revisionsBySowItem() {
+    // PENDING only — inline grid cards (V1 column + V2 SOW-cell blocks)
+    // never show history; that lives in the summary panel.
     var map = {};
     for (var i = 0; i < _revisionData.length; i++) {
       var r = _revisionData[i];
       if (!r.sowItemId) continue;
+      if (r.statusNorm && r.statusNorm !== 'pending') continue;
       if (!map[r.sowItemId]) map[r.sowItemId] = [];
       map[r.sowItemId].push(r);
     }
@@ -1091,11 +1100,18 @@
   // doesn't reliably re-render view_3842 (Known Issue #2) — so without this the
   // card lingers until a manual refresh. The 1.5s fetch below still runs as the
   // authoritative reconcile.
-  function dropRevisionFromData(revId) {
+  function dropRevisionFromData(revId, newStatus) {
     if (!revId) return;
+    // Flip the item's status locally (instead of splicing it away) so it
+    // MOVES to the summary panel's history immediately; the 1.5s
+    // authoritative refetch replaces it with the server-stamped copy.
     for (var i = _revisionData.length - 1; i >= 0; i--) {
-      if (_revisionData[i] && _revisionData[i].id === revId) _revisionData.splice(i, 1);
+      if (_revisionData[i] && _revisionData[i].id === revId) {
+        _revisionData[i].statusNorm = newStatus || 'accepted';
+        _revisionData[i].status = (newStatus === 'rejected') ? 'Rejected' : 'Accepted';
+      }
     }
+    try { renderRevisionsPanel(); } catch (eP) { /* best-effort */ }
     try {
       // Remove the actioned card from both grids (V1 column + V2 SOW cell).
       // Every action button on the card carries data-rev-id, so one query
@@ -1119,7 +1135,7 @@
   function afterAccept(btn, revId) {
     btn.textContent = 'Accepted ✓';
     btn.style.opacity = '0.6';
-    dropRevisionFromData(revId);
+    dropRevisionFromData(revId, 'accepted');
     setTimeout(function () {
       if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
         Knack.views[CFG.revisionView].model.fetch();
@@ -1130,7 +1146,7 @@
   function afterReject(btn, revId) {
     btn.textContent = 'Rejected \u2713';
     btn.style.opacity = '0.6';
-    dropRevisionFromData(revId);
+    dropRevisionFromData(revId, 'rejected');
     // Refresh revision data view — its view-render event triggers
     // loadRevisions() + injectColumn(), and scw-bid-review-rendered
     // re-injects the column after any grid rebuild.
@@ -1779,7 +1795,13 @@
 
   function injectIntoV2Debounced() {
     if (_v2InjectTimer) clearTimeout(_v2InjectTimer);
-    _v2InjectTimer = setTimeout(injectIntoV2, 60);
+    _v2InjectTimer = setTimeout(function () {
+      injectIntoV2();
+      // The first grid render can land after view_3842 loaded — mount the
+      // summary panel if it isn't there yet. Never RE-render from here:
+      // grid rebuilds fire constantly and would churn open action menus.
+      if (!document.getElementById(PANEL_ID)) renderRevisionsPanel();
+    }, 60);
   }
 
   /** Watch the V2 grid body so revisions re-inject after every rebuild.
@@ -1798,15 +1820,201 @@
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  REVISIONS SUMMARY PANEL — pending roll-up + history
+  //
+  //  Mounted directly ABOVE the V2 comparison grid (outside its mount,
+  //  so grid rebuilds never wipe it). Two sections:
+  //    PENDING — every live revision, with the SAME action cards as the
+  //      inline SOW-cell blocks (Accept / Reject / Forward, built by
+  //      buildRevisionItemV2) — including revisions whose SOW item has
+  //      no row on the grid, which were previously invisible.
+  //    HISTORY — accepted + rejected revisions (collapsed by default),
+  //      rendered from their stored field_2695 card (which carries the
+  //      accept/reject stamp performAccept/performReject wrote).
+  // ═══════════════════════════════════════════════════════════
+
+  var PANEL_ID       = 'scw-sr-panel';
+  var PANEL_STYLE_ID = 'scw-sr-panel-css';
+  var HIST_LS        = 'scwSrPanelHistOpen';
+
+  function injectPanelStyles() {
+    if (document.getElementById(PANEL_STYLE_ID)) return;
+    var css = [
+      '#' + PANEL_ID + ' {',
+      '  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;',
+      '  box-shadow: 0 1px 2px rgba(15,23,42,.04); padding: 14px 16px;',
+      '  margin: 0 0 12px;',
+      '  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;',
+      '  color: #0f172a;',
+      '}',
+      '.scw-sr-panel__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }',
+      '.scw-sr-panel__title { font: 700 13.5px/1.2 system-ui, sans-serif; color: #0c4a6e; }',
+      '.scw-sr-panel__pill { display: inline-flex; align-items: center; padding: 3px 10px;',
+      '  border-radius: 999px; border: 1px solid transparent;',
+      '  font: 700 11px/1.2 system-ui, sans-serif; white-space: nowrap; }',
+      '.scw-sr-panel__pill--pending { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
+      '.scw-sr-panel__pill--clear   { background: #dcfce7; border-color: #86efac; color: #15803d; }',
+      '.scw-sr-panel__hist-toggle { margin-left: auto; border: none; background: transparent;',
+      '  color: #0f4c75; font: 600 12px/1.2 system-ui, sans-serif; cursor: pointer;',
+      '  padding: 4px 6px; border-radius: 5px; }',
+      '.scw-sr-panel__hist-toggle:hover { background: #eef2f7; }',
+      '.scw-sr-panel__list { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start;',
+      '  margin-top: 12px; }',
+      '.scw-sr-panel__pitem { flex: 0 1 320px; min-width: 260px; }',
+      // The reused inline card (scw-sr-col-item) sizes to its container.
+      '.scw-sr-panel__pitem .' + P + '-item { margin: 0; }',
+      '.scw-sr-panel__pitem .' + P + '-item > div { max-width: 100% !important; }',
+      '.scw-sr-panel__empty { margin-top: 10px; color: #64748b;',
+      '  font: 500 12.5px/1.4 system-ui, sans-serif; }',
+      // History
+      '.scw-sr-panel__hist { margin-top: 12px; border-top: 1px solid #eef2f7;',
+      '  padding-top: 12px; display: flex; flex-wrap: wrap; gap: 10px;',
+      '  align-items: flex-start; }',
+      '.scw-sr-panel__hitem { flex: 0 1 320px; min-width: 260px;',
+      '  border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;',
+      '  padding: 8px 10px; }',
+      '.scw-sr-panel__hitem--accepted { border-color: #bbf7d0; background: #f0fdf4; }',
+      '.scw-sr-panel__hitem--rejected { border-color: #fecdd3; background: #fff1f2; }',
+      '.scw-sr-panel__chip { display: inline-flex; align-items: center; padding: 2px 9px;',
+      '  border-radius: 999px; border: 1px solid transparent; margin-bottom: 6px;',
+      '  font: 700 10.5px/1.4 system-ui, sans-serif; letter-spacing: .02em; }',
+      '.scw-sr-panel__chip--accepted { background: #dcfce7; border-color: #86efac; color: #15803d; }',
+      '.scw-sr-panel__chip--rejected { background: #fff1f2; border-color: #fecdd3; color: #be123c; }',
+      '.scw-sr-panel__hbody { font-size: 12px; }',
+      '.scw-sr-panel__hbody > div { max-width: 100% !important; }',
+      '.scw-sr-panel__hbody > div > div { max-width: 100% !important; }'
+    ].join('\n');
+    var s = document.createElement('style');
+    s.id = PANEL_STYLE_ID;
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  function histOpen() {
+    try { return localStorage.getItem(HIST_LS) === '1'; } catch (e) { return false; }
+  }
+  function setHistOpen(open) {
+    try { localStorage.setItem(HIST_LS, open ? '1' : '0'); } catch (e) { /* ignore */ }
+  }
+
+  function renderRevisionsPanel() {
+    var mount = getV2Mount();
+    if (!mount || !mount.parentNode) return;
+    var prior = document.getElementById(PANEL_ID);
+    if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
+    if (!_revisionData.length) return;
+
+    var pending = [], hist = [];
+    for (var i = 0; i < _revisionData.length; i++) {
+      ((_revisionData[i].statusNorm === 'pending') ? pending : hist).push(_revisionData[i]);
+    }
+
+    injectStyles();
+    injectPanelStyles();
+
+    var panel = document.createElement('div');
+    panel.id = PANEL_ID;
+
+    // ── Head: title + pending pill + history toggle ──
+    var head = document.createElement('div');
+    head.className = 'scw-sr-panel__head';
+    var title = document.createElement('span');
+    title.className = 'scw-sr-panel__title';
+    title.textContent = 'Sales Revisions';
+    head.appendChild(title);
+    var pill = document.createElement('span');
+    pill.className = 'scw-sr-panel__pill ' +
+      (pending.length ? 'scw-sr-panel__pill--pending' : 'scw-sr-panel__pill--clear');
+    pill.textContent = pending.length
+      ? (pending.length + ' pending')
+      : 'none pending';
+    head.appendChild(pill);
+    if (hist.length) {
+      var tog = document.createElement('button');
+      tog.type = 'button';
+      tog.className = 'scw-sr-panel__hist-toggle';
+      tog.textContent = (histOpen() ? 'Hide history' : 'Show history') +
+        ' (' + hist.length + ')';
+      tog.addEventListener('click', function () {
+        setHistOpen(!histOpen());
+        renderRevisionsPanel();
+      });
+      head.appendChild(tog);
+    }
+    panel.appendChild(head);
+
+    // ── Pending — full action cards, identical to the inline blocks.
+    // Items whose SOW item has no grid row (previously invisible) render
+    // here too; their on-bid state falls back to false, which keeps the
+    // Forward menu's add-variant available.
+    if (pending.length) {
+      var list = document.createElement('div');
+      list.className = 'scw-sr-panel__list';
+      var packages = getV2Packages(null);
+      for (var p = 0; p < pending.length; p++) {
+        var rev = pending[p];
+        var rowEl = rev.sowItemId
+          ? mount.querySelector('tr[data-sow-item-id="' + rev.sowItemId + '"]')
+          : null;
+        var onBid = rowEl ? isRowOnBidV2(rowEl) : false;
+        var wrap = document.createElement('div');
+        wrap.className = 'scw-sr-panel__pitem';
+        try {
+          wrap.appendChild(buildRevisionItemV2(rev, packages, onBid));
+        } catch (eB) { continue; }
+        list.appendChild(wrap);
+      }
+      panel.appendChild(list);
+    } else {
+      var empty = document.createElement('div');
+      empty.className = 'scw-sr-panel__empty';
+      empty.textContent = 'No pending revisions — everything has been triaged.';
+      panel.appendChild(empty);
+    }
+
+    // ── History — accepted / rejected, collapsed by default ──
+    if (hist.length && histOpen()) {
+      var histWrap = document.createElement('div');
+      histWrap.className = 'scw-sr-panel__hist';
+      for (var h = 0; h < hist.length; h++) {
+        var hr = hist[h];
+        var item = document.createElement('div');
+        item.className = 'scw-sr-panel__hitem scw-sr-panel__hitem--' + hr.statusNorm;
+        var chip = document.createElement('span');
+        chip.className = 'scw-sr-panel__chip scw-sr-panel__chip--' + hr.statusNorm;
+        chip.textContent = hr.statusNorm === 'accepted' ? 'Accepted' : 'Rejected';
+        item.appendChild(chip);
+        var body = document.createElement('div');
+        body.className = 'scw-sr-panel__hbody';
+        if (hr.html) {
+          // The stored field_2695 card — carries the accept/reject stamp
+          // performAccept/performReject wrote into it.
+          body.innerHTML = hr.html;
+        } else {
+          var j = hr.json || {};
+          body.textContent = (j.displayLabel || j.productName || 'Revision') +
+            (j.action ? ' — ' + j.action : '');
+        }
+        item.appendChild(body);
+        histWrap.appendChild(item);
+      }
+      panel.appendChild(histWrap);
+    }
+
+    mount.parentNode.insertBefore(panel, mount);
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  EVENT BINDINGS
   // ═══════════════════════════════════════════════════════════
 
   SCW.onViewRender(CFG.revisionView, function () {
     setTimeout(function () {
       loadRevisions();
-      injectColumn();    // V1 grid (#bid-review-matrix)
-      observeV2Grid();   // V2 grid — attach the re-inject watchdog once
-      injectIntoV2();    // V2 grid — inline SOW-cell cards
+      injectColumn();          // V1 grid (#bid-review-matrix)
+      observeV2Grid();         // V2 grid — attach the re-inject watchdog once
+      injectIntoV2();          // V2 grid — inline SOW-cell cards
+      renderRevisionsPanel();  // pending roll-up + history above the grid
     }, 300);
   }, CFG.eventNs);
 
@@ -1817,7 +2025,11 @@
   $(document).on('knack-scene-render.scene_1155' + CFG.eventNs, function () {
     setTimeout(function () {
       observeV2Grid();
-      if (_revisionData.length) { injectColumn(); injectIntoV2(); }
+      if (_revisionData.length) {
+        injectColumn();
+        injectIntoV2();
+        renderRevisionsPanel();
+      }
     }, 1000);
   });
 
