@@ -633,12 +633,41 @@
       }
       var raw = rec ? rec.field_1964_raw : null;
       var cur = (typeof raw === 'number') ? raw
-              : parseFloat((rec && rec.field_1964 || '1').toString().replace(/[^0-9.\-]/g, ''));
+              : parseFloat((rec && rec.field_1964 || '').toString().replace(/[^0-9.\-]/g, ''));
+      var qtyEl = step.parentNode && step.parentNode.querySelector('.scw-ws-v2-mh-qty');
+      // Fall back to the RENDERED qty when the record isn't in this view's
+      // loaded set. Previously `cur` defaulted to 1 in that case, which made
+      // every "down" click a silent no-op (next === cur → early return) while
+      // "up" still appeared to work — the "can't decrease at all" symptom. The
+      // rendered number came from the card's own record read, so it's the
+      // better source when the handler's lookup comes up empty.
+      if (!isFinite(cur) && qtyEl) {
+        cur = parseFloat((qtyEl.textContent || '').replace(/[^0-9.\-]/g, ''));
+      }
       if (!isFinite(cur) || cur < 1) cur = 1;
-      var next = dir === 'up' ? cur + 1 : Math.max(1, cur - 1);
+
+      // Stepping below 1 removes the accessory. Confirm, then hand off to the
+      // trash button's own click handler rather than reimplementing deletion —
+      // that path owns the pending-delete registry, Knack's native FE delete,
+      // the Make webhook fallback and the poll-until-gone refetch. If no trash
+      // button is rendered (no parent, or a read-only panel) there's nothing to
+      // delegate to, so the step is simply refused.
+      if (dir === 'down' && cur <= 1) {
+        var chipWrap = step.closest('.scw-ws-v2-mh-chip-wrap');
+        var delBtn   = chipWrap && chipWrap.querySelector('[data-scw-ws-v2-mh-del]');
+        if (!delBtn) return;
+        var chipEl = chipWrap.querySelector('.scw-ws-v2-mh-chip');
+        var chipLabel = (chipEl && (chipEl.textContent || '').trim()) || 'this accessory';
+        if (!window.confirm(
+              'Remove "' + chipLabel + '" from this device?\n\n' +
+              'This deletes the accessory line item.')) return;
+        delBtn.click();
+        return;
+      }
+
+      var next = dir === 'up' ? cur + 1 : cur - 1;
       if (next === cur) return;
       // Optimistic UI — update the visible qty immediately.
-      var qtyEl = step.parentNode && step.parentNode.querySelector('.scw-ws-v2-mh-qty');
       if (qtyEl) qtyEl.textContent = next;
       // PUT through SCW.knackAjax + refetch via the existing data layer.
       try {

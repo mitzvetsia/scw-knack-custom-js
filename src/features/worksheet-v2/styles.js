@@ -1842,6 +1842,12 @@
     '  border-radius: 4px !important;',
     '}',
     '.scw-ws-v2-mh-step:disabled { opacity: 0.25 !important; cursor: not-allowed !important; }',
+    /* At qty 1 the minus removes the accessory (confirmed first), so it reads
+       destructive on hover instead of looking like another decrement. */
+    '.scw-ws-v2-mh-step--del:hover {',
+    '  color: #be123c !important;',
+    '  background: #ffe4e6 !important;',
+    '}',
     '.scw-ws-v2-mh-qty {',
     '  min-width: 16px !important;',
     '  text-align: center !important;',

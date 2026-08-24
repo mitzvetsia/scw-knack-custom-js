@@ -1526,11 +1526,20 @@
           : '';
         var canMulti = accRec ? !isQtyLocked(accRec) : false;
         var curQty  = accRec ? (parseFloat(readNum(accRec, 'field_1964')) || 1) : 1;
+        // At qty 1 the minus is no longer a dead stop: it becomes "remove this
+        // accessory", confirmed and then handed to the trash button's own
+        // handler (init.js). It only stays disabled when there is no delete
+        // affordance to hand off to — the same `chip.id && parentId` condition
+        // that governs whether delX below is rendered at all.
+        var minusDeletes  = curQty <= 1 && !!(chip.id && parentId);
+        var minusDisabled = curQty <= 1 && !minusDeletes;
         var stepperHtml = canMulti
           ? '<span class="scw-ws-v2-mh-stepper" data-scw-ws-v2-acc-id="' + escapeHtml(chip.id) + '">' +
-              '<button type="button" class="scw-ws-v2-mh-step" ' +
+              '<button type="button" class="scw-ws-v2-mh-step' +
+                (minusDeletes ? ' scw-ws-v2-mh-step--del' : '') + '" ' +
                 'data-scw-ws-v2-acc-step="down" data-scw-ws-v2-acc-id="' + escapeHtml(chip.id) + '" ' +
-                'title="Decrease quantity"' + (curQty <= 1 ? ' disabled' : '') + '>&minus;</button>' +
+                'title="' + (minusDeletes ? 'Remove this accessory' : 'Decrease quantity') + '"' +
+                (minusDisabled ? ' disabled' : '') + '>&minus;</button>' +
               '<span class="scw-ws-v2-mh-qty">' + curQty + '</span>' +
               '<button type="button" class="scw-ws-v2-mh-step" ' +
                 'data-scw-ws-v2-acc-step="up" data-scw-ws-v2-acc-id="' + escapeHtml(chip.id) + '" ' +
