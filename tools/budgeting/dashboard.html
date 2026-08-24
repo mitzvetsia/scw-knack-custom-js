@@ -779,7 +779,7 @@ function renderProj(C){
   const both = plScn === "both";
   const pick = (mod, str) => plScn === "str" ? [["str", str]] : plScn === "mod" ? [["mod", mod]] : [["mod", mod], ["str", str]];
   const sfx = k => both ? (k === "mod" ? " — modest" : " — stretch") : "";
-  const push = (label, vals, cls = "", fm = fmt$) => rows.push({label, vals, cls, fm});
+  const push = (label, vals, cls = "", fm = fmt$, tips = null) => rows.push({label, vals, cls, fm, tips});
   const pushSec = label => rows.push({section: label});
   pushSec("REVENUE");
   for (const [k, v] of pick(C.rev.mod, C.rev.str)) push("Sales revenue" + sfx(k), v);
@@ -791,7 +791,39 @@ function renderProj(C){
   const gpS = C.rev.str.map((v, i) => v + C.oth[i] - C.cogs.str[i]);
   for (const [k, v] of pick(gpM, gpS)) push("Gross profit" + sfx(k), v, "tot");
   pushSec("OPERATING COSTS");
-  push("Payroll (staffing model)", C.pay);
+  push(`Payroll (staffing model) <button class="exp-toggle" data-k="plpay">${plPayOpen ? "▾ hide why" : "▸ why it moves"}</button>`, C.pay);
+  if (plPayOpen){
+    const hedge = 1 + (S.levers.laborHedge || 0);
+    const dHeads = Array(NM).fill(0), dComp = Array(NM).fill(0), dBasis = Array(NM).fill(0);
+    const nH = Array.from({length: NM}, () => []), nC = Array.from({length: NM}, () => []);
+    for (let m = ACT + 1; m <= NM; m++){
+      const i = m - 1;
+      for (const r of S.staff){
+        if (r.people && r.people.length){
+          for (const pp of r.people){
+            const now = m >= (pp.from || 1) && m <= (pp.to || NM);
+            const was = (m - 1) >= (pp.from || 1) && (m - 1) <= (pp.to || NM);
+            if (now && !was){ const c = personCost(r, pp, m) * hedge; dHeads[i] += c; nH[i].push(`+ ${pp.name} (${r.position}) ${fmtK(c)}/mo`); }
+            else if (!now && was){ const c = personCost(r, pp, m - 1) * hedge; dHeads[i] -= c; nH[i].push(`− ${pp.name} (${r.position}) ${fmtK(c)}/mo`); }
+            else if (now && was){ const d = (personCost(r, pp, m) - personCost(r, pp, m - 1)) * hedge;
+              if (Math.abs(d) > 0.5){ dComp[i] += d; nC[i].push(`${pp.name} (${r.position}) ${d > 0 ? "+" : "−"}${fmtK(Math.abs(d))}/mo`); } }
+          }
+        } else {
+          const h0 = r.hc[m - 2] || 0, h1 = r.hc[m - 1] || 0;
+          if (h1 !== h0){ const d = (h1 - h0) * headCost(r, m) * hedge; dHeads[i] += d;
+            nH[i].push(`${h1 > h0 ? "+" : "−"}${Math.abs(h1 - h0)} ${r.position} ${fmtK(Math.abs(d))}/mo`); }
+          if (h0 > 0){ const d = h0 * (headCost(r, m) - headCost(r, m - 1)) * hedge;
+            if (Math.abs(d) > 0.5){ dComp[i] += d; nC[i].push(`${r.position} ${d > 0 ? "+" : "−"}${fmtK(Math.abs(d))}/mo`); } }
+        }
+      }
+    }
+    let julModel = 0; for (const r of S.staff) julModel += staffCost(r, ACT);
+    dBasis[ACT] = julModel * hedge - C.pay[ACT - 1];
+    const dFm = v => Math.abs(v) < 0.5 ? "" : (v > 0 ? "+" : "") + fmt$(v);
+    push(`<span title="The step between Jul booked payroll and the same modeled roster at full cost (salary + benefits + employer tax + licenses; no vacancies, no payroll timing). This is the model taking over — not hires.">· model takes over — full-cost basis vs Jul booked</span>`, dBasis, "dim", dFm);
+    push(`<span title="Headcount starting or ending vs the prior month. Hover a cell to see who.">· heads added / removed</span>`, dHeads, "dim", dFm, nH.map(a => a.join("\n")));
+    push(`<span title="Raises landing and per-person pay changes vs the prior month. Hover a cell to see who.">· raises &amp; comp changes</span>`, dComp, "dim", dFm, nC.map(a => a.join("\n")));
+  }
   for (const [k, v] of pick(C.comp.mod, C.comp.str)) push("Sales comp (commissions + overrides)" + sfx(k), v);
   const opexDepts = DEPTS.filter(d => C.dept[d].some(v => Math.abs(v) > 0.5));
   if (plOpexOpen) for (const d of opexDepts) push("Opex — " + dn(d), C.dept[d], "dim");
@@ -811,7 +843,7 @@ function renderProj(C){
     if (r.section){ h += `<tr class="sec"><td colspan="19">${esc(r.section)}</td></tr>`; continue; }
     const sums = r.fm === fmt$ ? [half(r.vals, FH1), half(r.vals, FH2), r.vals.reduce((a, b) => a + b, 0)] : null;
     h += `<tr class="${r.cls}"><td class="${r.cls === "dim" ? "dim" : ""}">${r.label}</td>` +
-      r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}${qb(i)}${/NET/.test(r.label) && v < 0 ? " neg" : ""}">${r.fm(v)}</td>`).join("") +
+      r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}${qb(i)}${/NET/.test(r.label) && v < 0 ? " neg" : ""}"${r.tips && r.tips[i] ? ` title="${esc(r.tips[i])}"` : ""}>${r.fm(v)}</td>`).join("") +
       (sums ? sums.map(v => `<td><b>${fmt$(v)}</b></td>`).join("") : "<td></td><td></td><td></td>") + `</tr>`;
   }
   document.getElementById("plTable").innerHTML = h + "</tbody></table>";
@@ -846,10 +878,11 @@ function delegate(rootId, handler){
 }
 
 /* ---------- department rollup ---------- */
-let plScn = "mod", plOpexOpen = false;
+let plScn = "mod", plOpexOpen = false, plPayOpen = false;
 document.getElementById("plTable").addEventListener("click", ev => {
-  const b = ev.target.closest("button[data-k=plopex]"); if (!b) return;
-  plOpexOpen = !plOpexOpen; renderAll();
+  const b = ev.target.closest("button[data-k=plopex],button[data-k=plpay]"); if (!b) return;
+  if (b.dataset.k === "plopex") plOpexOpen = !plOpexOpen; else plPayOpen = !plPayOpen;
+  renderAll();
 });
 document.getElementById("plScnT").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-s]"); if (!b) return;
