@@ -470,7 +470,7 @@ textarea.json{
       </div>
     </div>
     <div class="mast-meta">
-      <div><span class="eyebrow">As of</span><b>19 Aug 2026</b></div>
+      <div><span class="eyebrow">As of</span><b id="asOfDate">&mdash;</b></div>
       <div><span class="eyebrow">Actuals through</span><b>July</b></div>
       <div><span class="eyebrow">Pacing key</span><b style="font-size:12.5px;font-weight:500;color:var(--ink-2)"><span style="color:var(--crit-ink)">&#9679;</span> well behind &nbsp;<span style="color:var(--warn-ink)">&#9679;</span> behind &nbsp;<span style="color:var(--near-ink)">&#9679;</span> near modest &nbsp;<span style="color:var(--good-ink)">&#9679;</span> clears modest &nbsp;<span class="medal">&#9733;</span> beating stretch</b></div>
     </div>
@@ -482,7 +482,7 @@ textarea.json{
   <!-- ============ TOPLINE: the whole meeting in one band ============ -->
   <section class="topline" aria-label="Topline summary">
     <div class="tl">
-      <span class="eyebrow">August &mdash; pacing to</span>
+      <span class="eyebrow"><span id="pMonthShort">August</span> &mdash; pacing to</span>
       <div class="tl-row"><span class="tl-v bandnum" id="tAugV" data-band="none">&mdash;</span><span class="pill" id="tAugP" data-band="none">&mdash;</span></div>
       <div class="tl-n" id="tAugN"></div>
     </div>
@@ -563,7 +563,7 @@ textarea.json{
   <!-- ============ PART 1: THIS MONTH ============ -->
   <div class="part" style="margin-top:0">
     <span class="part-n">Part 1</span>
-    <h2>This month &mdash; August 2026</h2>
+    <h2>This month &mdash; <span id="pMonthFull">August 2026</span></h2>
     <span class="rule"></span>
     <span class="sub">Where we&rsquo;re pacing right now.</span>
   </div>
@@ -812,7 +812,7 @@ textarea.json{
       <p><b>Colour means pacing, everywhere on this page.</b> Red is well behind the modest goal (under 85% of it), amber is behind (85&ndash;90%), blue is near modest (90&ndash;100% &mdash; within reach, deliberately neutral rather than a warning), green clears modest, and green with a <span class="medal">&#9733;</span> gold star is stretch territory &mdash; within 10% of the stretch goal or past it. Every coloured figure also carries an icon and a word, so colour is never doing the work on its own.</p>
       <p><b>How the goal maps.</b> The $6.65M / $7.85M targets cover the whole <b>Apr&ndash;Sep window</b> &mdash; the &ldquo;Q2&nbsp;/&nbsp;Q3&rdquo; column in the source sheet, which is why this board calls it Q2&nbsp;&amp;&nbsp;Q3 rather than Q2. The stretch figure is an exact match to the sheet&rsquo;s own stretch scenario ($1.4M in Aug and Sep), which confirms the mapping.</p>
       <p><b>Part 1 formulas</b> (reproduced from the Daily KPIs sheet). Revenue to date = Install + eCommerce. Adjusted daily average = (revenue to date &minus; big deal) &divide; business days elapsed. Pacing to = adjusted daily average &times; business days in month, with the big deal added back &mdash; so a single outsized deal lands in the total without inflating the run rate. &ldquo;With pending&rdquo; adds pending eCommerce and pending install to revenue to date <em>before</em> run-rating, matching the sheet&rsquo;s $1,196,356.</p>
-      <p><b>Business days elapsed accepts halves.</b> The sheet&rsquo;s 12 counts through end of yesterday; enter 12.5 if you are posting mid-day, or 13 for a completed day. Everything downstream moves with it.</p>
+      <p><b>Business days count themselves.</b> Days elapsed defaults to the weekdays in the current month through the end of yesterday, minus company holidays (New Year&rsquo;s, Memorial Day, July&nbsp;4 observed, Labor Day, Thanksgiving + the Friday after, Dec&nbsp;24/25/31) &mdash; the same convention as the sheet. The &plusmn;&frac12; buttons and direct edits are manual adjustments: enter 12.5 mid-day when 12 is the auto count. An adjustment holds only for the day it was made, then the count snaps back to auto. The days-in-month total works the same way, per month.</p>
       <p><b>Period totals are derived from the monthly grid</b>, so the table is always self-consistent with the charts. Because the monthly figures are reported rounded to the nearest $10K or so, these totals run slightly under the source sheet&rsquo;s own stated totals &mdash; up to about $80K on the 2025 window. Paste exact figures into the editor above and the difference disappears.</p>
       <p><b>The window&rsquo;s August.</b> With &ldquo;use this month&rsquo;s live pacing&rdquo; switched on (the default), the Q2&nbsp;&amp;&nbsp;Q3 window takes its August from Part&nbsp;1&rsquo;s live month pacing and only September from the baseline pace. Mind the caveat below &mdash; Part&nbsp;1 paces total company revenue while the window is booked revenue &mdash; so treat the blended figure as directional, and flip the toggle off for a booked-only view.</p>
       <p><b>Two different revenue measures.</b> Part 2 is booked revenue from the YoY Sales Metrics sheet ($11.6M in 2025). Parts 1 and 3 are total company revenue &mdash; Install services from Xero plus eCommerce &mdash; from the Daily KPIs sheet ($13.5M in 2025). They are not the same number and should not be added together. For 2022 and 2023 the two reconcile almost exactly once October is added back; for 2024 and 2025 a gap remains that is worth confirming before either figure is quoted as the company total.</p>
@@ -833,9 +833,10 @@ textarea.json{
   function usd(v) { return (v < 0 ? '−$' : '$') + Math.round(Math.abs(v)).toLocaleString('en-US'); }
   function usdC(v) {
     var a = Math.abs(v), sg = v < 0 ? '−' : '';
-    if (a >= 1e6) return sg + '$' + (a / 1e6).toFixed(2) + 'M';
-    if (a >= 1000) return sg + '$' + Math.round(a / 1000) + 'K';
-    return sg + '$' + Math.round(a);
+    if (a < 1000) return sg + '$' + Math.round(a);
+    // Round to thousands FIRST: $999,700 must read $1.00M, never $1000K.
+    var k = Math.round(a / 1000);
+    return k >= 1000 ? sg + '$' + (a / 1e6).toFixed(2) + 'M' : sg + '$' + k + 'K';
   }
   function num(v) { return Math.round(v).toLocaleString('en-US'); }
   function pctS(v) { return (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1) + '%'; }
@@ -1412,6 +1413,46 @@ textarea.json{
     });
   }
 
+  /* ================= BUSINESS-DAY CALENDAR ================= */
+  // The sheet's convention: "business days elapsed" counts weekdays through the
+  // END OF YESTERDAY, minus company holidays (12 on Aug 19 2026 = Aug 3-18).
+  function monthHolidays(y, m) {
+    var days = [], d;
+    function add(mm, dd) { if (mm === m) days.push(dd); }
+    add(0, 1);                                                          // New Year's Day
+    d = new Date(y, 4, 31); while (d.getDay() !== 1) d.setDate(d.getDate() - 1);
+    add(4, d.getDate());                                                // Memorial Day
+    d = new Date(y, 6, 4);                                              // July 4, observed
+    add(6, d.getDay() === 6 ? 3 : (d.getDay() === 0 ? 5 : 4));
+    d = new Date(y, 8, 1); while (d.getDay() !== 1) d.setDate(d.getDate() + 1);
+    add(8, d.getDate());                                                // Labor Day
+    d = new Date(y, 10, 1); while (d.getDay() !== 4) d.setDate(d.getDate() + 1);
+    d.setDate(d.getDate() + 21);
+    add(10, d.getDate()); add(10, d.getDate() + 1);                     // Thanksgiving + Friday
+    add(11, 24); add(11, 25); add(11, 31);                              // Christmas Eve/Day, NYE
+    return days;
+  }
+  function isBizDay(y, m, day, hol) {
+    var w = new Date(y, m, day).getDay();
+    return w !== 0 && w !== 6 && hol.indexOf(day) === -1;
+  }
+  var NOW = new Date();
+  var AUTO_BD = (function () {
+    var y = NOW.getFullYear(), m = NOW.getMonth(), hol = monthHolidays(y, m), n = 0;
+    for (var day = 1; day < NOW.getDate(); day++) if (isBizDay(y, m, day, hol)) n++;
+    return Math.max(0.5, n);
+  })();
+  var AUTO_BT = (function () {
+    var y = NOW.getFullYear(), m = NOW.getMonth(), hol = monthHolidays(y, m), n = 0;
+    var last = new Date(y, m + 1, 0).getDate();
+    for (var day = 1; day <= last; day++) if (isBizDay(y, m, day, hol)) n++;
+    return n;
+  })();
+  var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+                     'August', 'September', 'October', 'November', 'December'];
+  function todayStamp() { return NOW.getFullYear() + '-' + (NOW.getMonth() + 1) + '-' + NOW.getDate(); }
+  function monthStamp() { return NOW.getFullYear() + '-' + (NOW.getMonth() + 1); }
+
   /* ================= MONTH ENGINE ================= */
   var SHEET = {
     mInstall: 102632, mMagento: 281000, mBigDeal: 0, mPendM2: 0, mPendInstall: 300000,
@@ -1423,11 +1464,17 @@ textarea.json{
     for (var k in SHEET) { var e = el(k); var v = e ? parseFloat(e.value) : NaN; o[k] = isFinite(v) ? v : 0; }
     return o;
   }
-  function saveMonth(v) { try { localStorage.setItem(STORE, JSON.stringify(v)); } catch (e) {} }
+  function saveMonth(v) {
+    v.dayStamp = todayStamp(); v.monthStamp = monthStamp();
+    try { localStorage.setItem(STORE, JSON.stringify(v)); } catch (e) {}
+  }
+  // Day counts default to the computed calendar. A manual +/- holds only for the
+  // day it was made (stamped), then snaps back to auto on the next visit.
   function restoreMonth() {
     var v; try { v = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { v = null; }
-    if (!v) return;
-    for (var k in SHEET) if (el(k) && isFinite(v[k])) el(k).value = v[k];
+    if (v) for (var k in SHEET) if (el(k) && isFinite(v[k])) el(k).value = v[k];
+    if (!v || v.dayStamp !== todayStamp()) el('mDaysTD').value = AUTO_BD;
+    if (!v || v.monthStamp !== monthStamp()) el('mDaysTotal').value = AUTO_BT;
   }
   function compute() {
     var v = readInputs();
@@ -1572,9 +1619,11 @@ textarea.json{
       : 'Not in revenue to date. Feeds the “with pending” case only.');
     put('hPendInstall', m.v.mPendInstall > 0 ? usd(m.v.mPendInstall) + ' · prior month was $168,286.'
       : 'Prior month pending was $168,286.');
-    put('hDays', dayWord(m.bd) + ' counted' + (m.bd % 1 ? ' — including half of today' : '') +
-      '. Drop ½ if you are entering part-way through a day.');
-    put('hDaysTotal', m.daysLeft > 0 ? dayWord(m.daysLeft) + ' still to work' : 'month complete');
+    put('hDays', m.bd === AUTO_BD
+      ? dayWord(m.bd) + ' — auto-counted through yesterday. +½ if entering mid-day.'
+      : dayWord(m.bd) + ' — manually adjusted (auto: ' + AUTO_BD + '). Resets to auto tomorrow.');
+    put('hDaysTotal', (m.daysLeft > 0 ? dayWord(m.daysLeft) + ' still to work' : 'month complete') +
+      (m.bt !== AUTO_BT ? ' — adjusted (auto: ' + AUTO_BT + ')' : ''));
     put('hGoal1', usd(g1) + ' · ' + usd(m.g1Daily) + ' per business day');
     put('hGoal2', usd(g2) + ' · ' + usd(m.g2Daily) + ' per business day');
 
@@ -1669,8 +1718,14 @@ textarea.json{
   var rst = el('mReset');
   if (rst) rst.addEventListener('click', function () {
     for (var k in SHEET) if (el(k)) el(k).value = SHEET[k];
+    el('mDaysTD').value = AUTO_BD;
+    el('mDaysTotal').value = AUTO_BT;
     onMonthInput();
   });
+
+  put('asOfDate', NOW.getDate() + ' ' + MONTH_NAMES[NOW.getMonth()].slice(0, 3) + ' ' + NOW.getFullYear());
+  put('pMonthShort', MONTH_NAMES[NOW.getMonth()]);
+  put('pMonthFull', MONTH_NAMES[NOW.getMonth()] + ' ' + NOW.getFullYear());
 
   var rt;
   window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(renderAll, 150); });
