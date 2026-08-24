@@ -427,7 +427,7 @@ function defaultState(){
       // UniView rebate credit notes. Ex-January the run rate is ~$5.9K/mo (rebate $6.8K less
       // non-routine legal), which is the defensible forward assumption — $3K understated
       // break-even relief by ~$5.6K/mo.
-      otherInc: 5900, laborHedge: 0, opexHedge: 0,
+      otherInc: 5900, laborHedge: 0, opexHedge: 0, bdayWeight: true,
       targetH1: 6350000, targetH2: 5700000, thrH1: 6350000, thrH2: 5700000, smRate: 0.015, dirRate: 0.035,
       hdvRate: 523.5, taxRate: MODEL.employer_tax_rate },
     sales: MODEL.sales.map((s, i) => ({ id: "s" + i, name: s.name, role: s.role, ramp: s.ramp,
@@ -474,6 +474,7 @@ try {
   if (L0.hdvRate == null) L0.hdvRate = 523.5;
   if (L0.taxRate == null) L0.taxRate = MODEL.employer_tax_rate;
   if (L0.ovrInBase != null) delete L0.ovrInBase;   // retired: salaries are base-only
+  if (L0.bdayWeight == null) L0.bdayWeight = true;
   for (const p of S.staff){
     if (p.benOn === undefined) p.benOn = (p.hdv || 0) > 0;
     if (p.taxOn === undefined) p.taxOn = (p.tax || 0) > 0.005;
@@ -530,6 +531,29 @@ function commRate(rep, scn){
   return rate;
 }
 const WK = 52 / 12;   // weeks per month for hourly annualization
+// Business days (Mon-Fri) per horizon month. Payroll is accrued DAILY against days worked and
+// reversed on the pay date, so a month's labor cost tracks business days, not a flat 1/12 —
+// that is exactly what smooths the three-payrolls-in-one-month problem out of the P&L. A flat
+// model month therefore misstates: Feb carries 20 days (-7.7%), Jul/Dec/Mar '27 carry 23
+// (+6.2%). Weighting the modeled months the same way is what makes them comparable to booked
+// ones. Mon-Fri only — tested against Jan-Jul actuals, a US-holiday calendar fit slightly WORSE
+// (5.18% vs 5.04% residual variation), so no holiday assumptions are baked in.
+const BDAYS = (() => {
+  const out = [];
+  for (let i = 0; i < NM; i++){
+    const y = 2026 + Math.floor(i / 12), mo = i % 12;
+    let n = 0, d = new Date(Date.UTC(y, mo, 1));
+    while (d.getUTCMonth() === mo){ const w = d.getUTCDay(); if (w >= 1 && w <= 5) n++; d.setUTCDate(d.getUTCDate() + 1); }
+    out.push(n);
+  }
+  return out;
+})();
+const BD_AVG = BDAYS.reduce((a, b) => a + b, 0) / NM;
+// weight for month m (1-based). Benefits, licences and flat-dollar raises are monthly amounts
+// and stay unweighted — only the labor itself scales with days worked.
+function bdayW(m){
+  return S.levers.bdayWeight === false ? 1 : BDAYS[Math.min(NM, Math.max(1, m)) - 1] / BD_AVG;
+}
 function hrsOf(role, p){ return (p && p.phrs) || role.hrs || 40; }
 function roleAnnual(role){
   return role.payType === "hourly" ? (role.rate || 0) * (role.hrs || 40) * 52 : (role.ote || 0);
@@ -564,6 +588,7 @@ function personCost(role, p, m){
     labor = ((p.sal2 != null && m >= (p.chgM || 1)) ? p.sal2 : baseSal || 0) / 12;
   }
   const r = raiseFor(role, p.id, m, hrs);
+  labor *= bdayW(m);
   return (labor + r.dmo + labor * r.pct) * (1 + taxOf(role)) + hdvOf(role) + (role.lic || 0);
 }
 function staffHC(row, m){
@@ -572,7 +597,7 @@ function staffHC(row, m){
     : (row.hc[m - 1] || 0);
 }
 function headCost(row, m){
-  const labor = roleAnnual(row) / 12, r = raiseFor(row, null, m, row.hrs);
+  const labor = roleAnnual(row) / 12 * bdayW(m), r = raiseFor(row, null, m, row.hrs);
   return (labor + r.dmo + labor * r.pct) * (1 + taxOf(row)) + hdvOf(row) + (row.lic || 0);
 }
 function staffCost(row, m){
@@ -1308,6 +1333,11 @@ function renderStaff(C){
   document.getElementById("payrollRates").innerHTML =
     leverInput("lvHdv", "Health (HDV) $/mo per head", S.levers.hdvRate, "applies to BEN-ticked roles") +
     leverInput("lvTax", "Employer tax & match %", (S.levers.taxRate * 100).toFixed(2), "added on top of pay — Xero actual " + (MODEL.employer_tax_rate * 100).toFixed(1) + "%");
+  document.getElementById("payrollRates").innerHTML +=
+    `<div class="lever" title="Your books accrue labor daily against days worked, so a month's cost follows its business days rather than a flat twelfth. Leaving this on matches the modeled months to that basis."><label for="lvBd">Month basis</label>
+      <select id="lvBd" class="lever-in"><option value="bd"${S.levers.bdayWeight !== false ? " selected" : ""}>Business days</option><option value="flat"${S.levers.bdayWeight === false ? " selected" : ""}>Flat 1/12</option></select>
+      <span class="unit">${MONTHS[ACT]} ${BDAYS[ACT]}d · ${((BDAYS[ACT] / BD_AVG - 1) * 100).toFixed(1)}% vs flat</span></div>`;
+  bind("lvBd", v => S.levers.bdayWeight = v === "bd");
   bind("lvHdv", v => S.levers.hdvRate = num(v, 523.5));
   bind("lvTax", v => S.levers.taxRate = num(v, MODEL.employer_tax_rate * 100) / 100);
   renderPayCal(C);
@@ -1622,7 +1652,8 @@ function renderPayCal(C){
   const loM = MONTHS[bookedBase.indexOf(lo)], hiM = MONTHS[bookedBase.indexOf(hi)];
   const drift = (T.accrual_drift || []).slice(0, n);
   const driftSum = drift.reduce((x, y) => x + y, 0);
-  const mBase = C.pay[ACT];                    // first modeled month, base salaries only
+  // de-weight the modeled month back to a flat-equivalent so it compares to a 7-month average
+  const mBase = C.pay[ACT] / bdayW(ACT + 1);
   const gap = mBase - bBase, pct = bBase ? gap / bBase * 100 : 0;
   const sev = Math.abs(pct) < 3 ? "good" : (Math.abs(pct) < 8 ? "warn" : "crit");
   const col = sev === "good" ? "var(--good-text)" : sev === "warn" ? "#b45309" : "var(--crit)";
@@ -1640,7 +1671,7 @@ function renderPayCal(C){
         <span class="subtle">(range ${fmtK(lo)} ${esc(loM)} – ${fmtK(hi)} ${esc(hiM)})</span>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px 26px;margin-top:4px;font-size:12.5px;font-variant-numeric:tabular-nums">
-        <span>Roster base, ${esc(MONTHS[ACT])} <b>${fmt$(mBase)}</b>/mo</span>
+        <span title="Averaged over the horizon business-day count, so it lines up with a seven-month booked average instead of one month day count">Roster base, typical month <b>${fmt$(mBase)}</b></span>
         <span style="color:${col}">gap <b>${(gap >= 0 ? "+" : "") + fmt$(gap)}</b> (${(pct >= 0 ? "+" : "") + pct.toFixed(1)}%) — roster ${verdict}</span>
       </div>
       ${drift.length ? `<div style="margin-top:9px">
