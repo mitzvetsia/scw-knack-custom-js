@@ -279,7 +279,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
     <button class="btn addrow" id="addRep">+ Add rep</button>
   </div>
   <div class="card"><h2>Monthly revenue by rep <span class="scn-toggle" id="repMoScn"><button class="btn on" data-scn="modest">Modest</button><button class="btn" data-scn="stretch">Stretch</button><button class="btn" data-scn="upside">Upside</button><button class="btn" data-scn="comm">Commissions</button></span></h2>
-    <p class="note">Each rep's modeled month-over-month revenue — ramp value for their tenure month × attainment. Use it to check people are plugged into the right curve and start month.</p>
+    <p class="note">Each rep's modeled month-over-month revenue — ramp value for their tenure month × attainment. Use it to check people are plugged into the right curve and start month. Shaded columns are already closed: the P&amp;L takes their revenue straight from Xero, so the ramp figures there are a modelling check only, and <b>Upside is blank across them</b> — there is no upside left to win in a month that already happened.</p>
     <div class="tablewrap tall" id="repMoTable"></div></div>
   <div class="card"><details><summary style="cursor:pointer;font-weight:600">Ramp schedules (monthly run-rate by tenure month)</summary>
     <div class="tablewrap" style="margin-top:10px" id="rampTable"></div></details></div>
@@ -1110,11 +1110,16 @@ function renderSales(C){
        {v:beH2, x0:FH2[0], x1:FH2[1] - 1, label:"break-even " + fmtK(beH2) + "/mo", color:"--crit", below:true}]});
   const rampNames = Object.keys(S.ramps);
   let h = `<table class="data"><thead><tr><th>Rep</th><th>Role</th><th>Ramp</th><th>Start mo</th><th>Last mo</th>
-    <th>Modest %</th><th>Stretch %</th><th title="Blank = pay from the commission tiers by attainment; a typed % is a flat override">Comm %</th><th>15-mo modest</th><th>15-mo stretch</th><th>Upside</th><th>Comm (modest)</th><th>Comm (stretch)</th><th></th></tr></thead><tbody>`;
-  let cmRep = 0, csRep = 0;
+    <th>Modest %</th><th>Stretch %</th><th title="Blank = pay from the commission tiers by attainment; a typed % is a flat override">Comm %</th><th title="Modeled production across all 15 months — booked months included, so this is the ramp model, not what Xero booked">15-mo modest</th><th title="Same, at stretch attainment">15-mo stretch</th><th title="Stretch minus modest over the OPEN months only — closed months carry no upside">Upside (open mo)</th><th>Comm (modest)</th><th>Comm (stretch)</th><th></th></tr></thead><tbody>`;
+  let cmRep = 0, csRep = 0, tuRep = 0;
   for (const r of S.sales){
-    let fm = 0, fs = 0;
-    for (let m = 1; m <= NM; m++){ fm += repRevenue(r, m, "modest"); fs += repRevenue(r, m, "stretch"); }
+    let fm = 0, fs = 0, fu = 0;
+    for (let m = 1; m <= NM; m++){
+      const rm = repRevenue(r, m, "modest"), rs = repRevenue(r, m, "stretch");
+      fm += rm; fs += rs;
+      if (m > ACT) fu += rs - rm;   // upside only exists in months that are still open
+    }
+    tuRep += fu;
     const rM = commRate(r, "modest"), rS = commRate(r, "stretch"), tiered = r.comm == null;
     cmRep += fm * rM; csRep += fs * rS;
     h += `<tr><td><input class="cell pos" data-id="${r.id}" data-k="name" value="${esc(r.name)}"></td>
@@ -1126,7 +1131,7 @@ function renderSales(C){
       <td><input class="cell tiny" data-id="${r.id}" data-k="stretch" value="${Math.round(r.stretch * 100)}"></td>
       <td><input class="cell tiny" data-id="${r.id}" data-k="comm" value="${tiered ? "" : (r.comm * 100).toFixed(2)}" placeholder="auto" title="${tiered ? `Auto from the tiers: ${(rM * 100).toFixed(2)}% at modest attainment, ${(rS * 100).toFixed(2)}% at stretch. Type a % to override.` : "Flat override — clear to pay from the commission tiers by attainment"}"></td>
       <td>${fmt$(fm)}</td><td>${fmt$(fs)}</td>
-      <td class="pos" title="Stretch minus modest — the additional revenue if this rep hits stretch"><b>${fmt$(fs - fm)}</b></td>
+      <td class="pos" title="Additional revenue if this rep hits stretch instead of modest, counted over the OPEN months only (${MONTHS[ACT]} ’26 – ${MONTHS[NM - 1]} ’27). Jan–${MONTHS[ACT - 1]} are closed — the P&amp;L takes their revenue from Xero, so no upside remains in them."><b>${fmt$(fu)}</b></td>
       <td title="Expected commission at modest — ${(rM * 100).toFixed(2)}%${tiered ? " (tier)" : ""} of ${fmtK(fm)}">${fmt$(fm * rM)}</td>
       <td title="Expected commission at stretch — ${(rS * 100).toFixed(2)}%${tiered ? " (tier)" : ""} of ${fmtK(fs)}">${fmt$(fs * rS)}</td>
       <td><button class="btn" data-id="${r.id}" data-k="del" title="Remove rep">✕</button></td></tr>`;
@@ -1135,7 +1140,7 @@ function renderSales(C){
   const cm = C.comp.mod.reduce((a, b) => a + b, 0), cs = C.comp.str.reduce((a, b) => a + b, 0);
   const compTip = `Rep commissions across all 15 months. The P&L charges ${fmtK(cm)} modest / ${fmtK(cs)} stretch — modeled months only, plus SM &amp; Director overrides from Goals.`;
   h += `<tr class="tot"><td>TEAM</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-    <td>${fmt$(tm)}</td><td>${fmt$(ts)}</td><td class="pos"><b>${fmt$(ts - tm)}</b></td><td title="${compTip}"><b>${fmt$(cmRep)}</b></td><td title="${compTip}"><b>${fmt$(csRep)}</b></td><td></td></tr>`;
+    <td>${fmt$(tm)}</td><td>${fmt$(ts)}</td><td class="pos" title="Open months only"><b>${fmt$(tuRep)}</b></td><td title="${compTip}"><b>${fmt$(cmRep)}</b></td><td title="${compTip}"><b>${fmt$(csRep)}</b></td><td></td></tr>`;
   document.getElementById("salesTable").innerHTML = h + "</tbody></table>";
   const tiers = [...tiersOf()].sort((a, b) => a.at - b.at);
   document.getElementById("commTierBar").innerHTML =
@@ -1161,11 +1166,11 @@ function renderRepMonths(){
   for (const r of S.sales){
     let sum = 0;
     const up = repMoScn === "upside", isComm = repMoScn === "comm";
-    const scnNote = up ? " · stretch − modest" : isComm ? " · " + (commRate(r, "modest") * 100).toFixed(2) + "%" + (r.comm == null ? " (tier)" : "") + " of modest revenue" : " @ " + Math.round((r[repMoScn] || 0) * 100) + "%";
+    const scnNote = up ? " · stretch − modest, open months only" : isComm ? " · " + (commRate(r, "modest") * 100).toFixed(2) + "%" + (r.comm == null ? " (tier)" : "") + " of modest revenue" : " @ " + Math.round((r[repMoScn] || 0) * 100) + "%";
     const endNote = r.end && r.end < NM ? " · thru " + MONTHS[r.end - 1] + (r.end <= 12 ? " ’26" : " ’27") : "";
     h += `<tr><td>${esc(r.name)} <span class="dim">· ${esc(r.ramp)}${scnNote}${endNote}</span></td>`;
     for (let m = 1; m <= NM; m++){
-      const v = up ? repRevenue(r, m, "stretch") - repRevenue(r, m, "modest")
+      const v = up ? (m <= ACT ? 0 : repRevenue(r, m, "stretch") - repRevenue(r, m, "modest"))
         : isComm ? repRevenue(r, m, "modest") * commRate(r, "modest")
         : repRevenue(r, m, repMoScn);
       sum += v; tot[m - 1] += v;
