@@ -296,7 +296,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
   </div>
   <div class="card"><h2>Pay bands <label class="subtle" style="font-weight:400;font-size:12.5px;margin-left:12px">as of <select id="bandAsOf" class="cell"></select></label></h2><p class="note">Annual earnings (hourly annualized) as the org stands in the chosen month: eliminated roles (headcount zero) and ended people drop off, and raises count only once they've landed. Click any dot to exclude that role or person outright; restore from the Excluded list below the chart. Jan ’26 = before everything; Mar ’27 = the full plan. One dot per role — the number inside is its headcount; a role with named people sits at their median, with each person's figure in the tooltip. Split-out departments keep their roles in their own bucket row.</p><div class="toolbar" style="margin-bottom:4px"><span class="subtle" style="font-size:12px">Own bucket:</span><span id="bandSplitChips" class="scn-toggle"></span></div>
     <figure class="chart" id="payBands"></figure>
-    <details id="lvlAssign"><summary style="cursor:pointer;font-weight:600;font-size:13px">Assign role levels</summary>
+    <details id="lvlAssign"><summary style="cursor:pointer;font-weight:600;font-size:13px">Assign role levels <span class="subtle" style="font-weight:400">— scope of ownership: Task → Outcome → System → Business, plus Manager / Dept Manager / Leadership and Contractor</span></summary>
     <div id="lvlList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:4px 20px;padding:10px 2px 4px"></div></details></div>
 </section>
 
@@ -346,17 +346,21 @@ const STATUS_CHIP = {"STEADY":"steady","GROWING":"growing","DROPPING":"dropping"
   "NEW":"new","PERIODIC":"periodic","ONE-TIME":"onetime","NOT IN XERO":"notinxero"};
 const LS_KEY = "scw-money-model-v1";
 const dn = d => (S.deptNames && S.deptNames[d]) || d;
-const LEVELS = ["Leadership","Dept Manager","Manager","Senior","Mid","Entry","Contractor"];
+const LEVELS = ["Leadership","Dept Manager","Manager","Business","System","Outcome","Task","Contractor"];
+const LEVEL_MIGRATE = { Entry: "Task", Mid: "Outcome", Senior: "System" };   // pre-scope-tier saves
+function fixLevels(st){
+  for (const p of st.staff || []) if (LEVEL_MIGRATE[p.level]) p.level = LEVEL_MIGRATE[p.level];
+}
 function guessLevel(pos){
   const p = (pos || "").toLowerCase();
   if (/contractor|1099/.test(p)) return "Contractor";
   if (/chief|director|ceo|coo|cto|vp/.test(p)) return "Leadership";
-  if (/account manager|project manager/.test(p)) return "Mid";
+  if (/account manager|project manager/.test(p)) return "Outcome";
   if (/manager/.test(p)) return "Dept Manager";
   if (/team lead|lead tech/.test(p)) return "Manager";
-  if (/senior|principal/.test(p)) return "Senior";
-  if (/intern|junior|assistant|coordinator|bdr|team member|warehouse team/.test(p)) return "Entry";
-  return "Mid";
+  if (/senior|principal/.test(p)) return "System";
+  if (/intern|junior|assistant|coordinator|bdr|team member|warehouse team/.test(p)) return "Task";
+  return "Outcome";
 }
 
 /* ---------- default state from MODEL ---------- */
@@ -437,7 +441,8 @@ try {
     if (p.benOn === undefined) p.benOn = (p.hdv || 0) > 0;
     if (p.taxOn === undefined) p.taxOn = (p.tax || 0) > 0.005;
     if (!p.level) p.level = guessLevel(p.position);
-    if (/contractor|1099/i.test(p.position || "") && p.level === "Mid") p.level = "Contractor";
+    if (LEVEL_MIGRATE[p.level]) p.level = LEVEL_MIGRATE[p.level];
+    if (/contractor|1099/i.test(p.position || "") && p.level === "Outcome") p.level = "Contractor";
   }
   // migrate legacy raise fields into raise events
   if (!S.fixes) S.fixes = {};
@@ -1257,7 +1262,7 @@ function renderStaff(C){
           <h4>Role settings</h4>
           <div class="ppl-row">
             <span class="fld"><label>Department</label><select class="cell" style="max-width:210px" data-id="${p.id}" data-k="dept">${DEPTS.map(d => `<option value="${esc(d)}"${d === p.dept ? " selected" : ""}>${esc(dn(d))}</option>`).join("")}</select></span>
-            <span class="fld"><label>Level</label><select class="cell" data-id="${p.id}" data-k="level">${LEVELS.map(l => `<option${(p.level || "Mid") === l ? " selected" : ""}>${l}</option>`).join("")}</select></span>
+            <span class="fld"><label>Level</label><select class="cell" data-id="${p.id}" data-k="level">${LEVELS.map(l => `<option${(p.level || "Outcome") === l ? " selected" : ""}>${l}</option>`).join("")}</select></span>
             <span class="fld"><label>Pay basis</label><select class="cell" data-id="${p.id}" data-k="paytype">
               <option value="salary"${p.payType !== "hourly" ? " selected" : ""}>Salary</option>
               <option value="hourly"${p.payType === "hourly" ? " selected" : ""}>Hourly</option></select></span>
@@ -1465,7 +1470,7 @@ function renderPayBands(){
   sel.value = String(bandMonth);
   const M0 = bandMonth;
   const pts = [];
-  const grpOf = r => split.has(r.dept) ? r.dept : (r.level || "Mid");
+  const grpOf = r => split.has(r.dept) ? r.dept : (r.level || "Outcome");
   for (const r of S.staff){
     if (!r.position || (!r.ote && !r.rate)) continue;
     const grp = grpOf(r);
@@ -1535,10 +1540,10 @@ function renderPayBands(){
   });
   document.getElementById("lvlAssign").open = lvlOpen;
   document.getElementById("lvlList").innerHTML = [...S.staff]
-    .sort((a, b) => LEVELS.indexOf(a.level || "Mid") - LEVELS.indexOf(b.level || "Mid"))
+    .sort((a, b) => LEVELS.indexOf(a.level || "Outcome") - LEVELS.indexOf(b.level || "Outcome"))
     .map(r => `<label style="display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:12.5px;border-top:1px solid var(--grid);padding:3px 0">
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.dept)}">${esc(r.position)}</span>
-      <select class="cell" data-id="${r.id}" data-k="level">${LEVELS.map(l => `<option${(r.level || "Mid") === l ? " selected" : ""}>${l}</option>`).join("")}</select></label>`).join("");
+      <select class="cell" data-id="${r.id}" data-k="level">${LEVELS.map(l => `<option${(r.level || "Outcome") === l ? " selected" : ""}>${l}</option>`).join("")}</select></label>`).join("");
   const hidden = [];
   for (const r of S.staff) if (S.bandHide[r.id]) hidden.push({ id: r.id, label: r.position });
   document.getElementById("payBands").innerHTML =
@@ -1741,7 +1746,7 @@ document.getElementById("payBands").addEventListener("pointermove", ev => {
 document.getElementById("payBands").addEventListener("pointerleave", hideTip);
 document.getElementById("addRole").addEventListener("click", () => {
   S.staff.push({ id: "p" + Date.now(), dept: "Technical Support", position: "New role", ote: 65000,
-    benOn: true, taxOn: true, level: "Mid", lic: 75, raiseD: 0, raiseP: 0, raiseM: 9,
+    benOn: true, taxOn: true, level: "Outcome", lic: 75, raiseD: 0, raiseP: 0, raiseM: 9,
     hc: Array.from({length:NM}, (_, i) => i >= 8 ? 1 : 0) });
   persist(); scheduleRender();
 });
@@ -1786,7 +1791,7 @@ document.getElementById("cfgApply").addEventListener("click", () => {
   try {
     const p = JSON.parse(txt);
     if (p.levers && p.exp && p.staff){
-      S = p; persist();
+      S = p; fixLevels(S); persist();
       document.getElementById("cfgPanel").style.display = "none";
       scheduleRender();
     } else document.getElementById("cfgMsg").textContent = "That doesn't look like a Money Model config — expected levers, exp and staff.";
