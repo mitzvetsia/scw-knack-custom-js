@@ -349,6 +349,12 @@ const STATUS_CHIP = {"STEADY":"steady","GROWING":"growing","DROPPING":"dropping"
   "NEW":"new","PERIODIC":"periodic","ONE-TIME":"onetime","NOT IN XERO":"notinxero"};
 const LS_KEY = "scw-money-model-v1";
 const dn = d => (S.deptNames && S.deptNames[d]) || d;
+// Vendors that are PEOPLE already budgeted as roles on the Staffing tab. Their Xero spend
+// (6728 Subcontractors) would otherwise be counted twice — once in opex, once in payroll.
+// Confirmed 2026-08-24: these are the company's only two contractors.
+//   Dillon Jones LLC            $7,000/mo  <-> "PPC Manager - Dillon Jones"      ($72,000/yr)
+//   Nikoloz Shiomghvdlishvili   $4,800/mo  <-> "CONTRACTOR - M2 + Floorplan"     ($57,600/yr)
+const STAFF_CARRIED = new Set(["Dillon Jones LLC", "Nikoloz Shiomghvdlishvili"]);
 const LEVELS = ["Leadership","Dept Manager","Manager","Business","System","Outcome","Task","Contractor"];
 const LEVEL_MIGRATE = { Entry: "Task", Mid: "Outcome", Senior: "System" };   // pre-scope-tier saves
 function fixLevels(st){
@@ -379,7 +385,7 @@ function defaultState(){
       id: "x" + (id++), vendor: v.vendor, dept, share, budget,
       xero: Math.round(baseAdj * share * 100) / 100,
       status: v.status, seat, ttm: v.ttm, purpose: v.purpose, conflict: v.contradiction,
-      use: "XERO", override: null, adj: 0, from: 1, to: NM,
+      use: STAFF_CARRIED.has(v.vendor) ? "STAFFING" : "XERO", override: null, adj: 0, from: 1, to: NM,
       on: !(v.status === "DROPPED" || v.status === "ONE-TIME")});
     if (keys.length > 1){
       const tot = keys.reduce((s, k) => s + fixed[k], 0) || 1;
@@ -405,7 +411,11 @@ function defaultState(){
     levers: { cogsPct: +((() => { const P = new Set(MODEL.provisional_cogs_months || []);
         let c = 0, r = 0; MODEL.totals.cogs.forEach((v, i) => { if (!P.has(i + 1)){ c += v; r += MODEL.totals.revenue[i]; } });
         return c / (r || 1); })()).toFixed(3), estProv: true,
-      otherInc: 3000, laborHedge: 0, opexHedge: 0,
+      // Booked Jan–Jul other income averages $23.6K/mo, but January alone carries $125.5K of
+      // UniView rebate credit notes. Ex-January the run rate is ~$5.9K/mo (rebate $6.8K less
+      // non-routine legal), which is the defensible forward assumption — $3K understated
+      // break-even relief by ~$5.6K/mo.
+      otherInc: 5900, laborHedge: 0, opexHedge: 0,
       targetH1: 6350000, targetH2: 5700000, thrH1: 6350000, thrH2: 5700000, smRate: 0.015, dirRate: 0.035,
       hdvRate: 523.5, taxRate: MODEL.employer_tax_rate },
     sales: MODEL.sales.map((s, i) => ({ id: "s" + i, name: s.name, role: s.role, ramp: s.ramp,
@@ -437,6 +447,11 @@ try {
   // migrate pre-15-month configs (12-month arrays / to==12 meaning "through end")
   for (const p of S.staff) while (p.hc.length < NM) p.hc.push(p.hc.at(-1) ?? 0);
   for (const e of S.exp) if (e.to === 12) e.to = NM;
+  // migrate saves made before contractor rows were flagged as carried on Staffing
+  if (!L0.staffCarriedFix){
+    for (const e of S.exp) if (STAFF_CARRIED.has(e.vendor)) e.use = "STAFFING";
+    L0.staffCarriedFix = 1;
+  }
   if (L0.estProv == null) L0.estProv = true;
   if (L0.hdvRate == null) L0.hdvRate = 523.5;
   if (L0.taxRate == null) L0.taxRate = MODEL.employer_tax_rate;
@@ -467,7 +482,7 @@ function persist(){ try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } cat
 
 /* ---------- compute ---------- */
 function expensePlanned(e){
-  if (!e.on) return 0;
+  if (!e.on || e.use === "STAFFING") return 0;   // the person is a role on Staffing, counted there
   const base = e.override != null ? e.override : (e.use === "BUDGET" ? (e.budget || 0) : (e.xero || 0));
   return base * (1 + (e.adj || 0));
 }
@@ -1387,13 +1402,13 @@ function renderExpenses(C){
     for (const e of rows.sort((a, b) => Math.abs(expensePlanned(b) || b.xero || b.budget || 0) - Math.abs(expensePlanned(a) || a.xero || a.budget || 0))){
       shown++; const pl = expensePlanned(e); totPlanned += pl;
       h += `<tr><td><input type="checkbox" class="switch" data-id="${e.id}" data-k="on"${e.on ? " checked" : ""} aria-label="Include ${esc(e.vendor)}"></td>
-        <td title="${esc(e.vendor)}${e.purpose ? " — " + esc(e.purpose) : ""}">${e.manual ? `<input class="cell wide" style="text-align:left" data-id="${e.id}" data-k="vendor" value="${esc(e.vendor)}">` : `<span class="vname">${esc(e.vendor)}</span>`}${e.share < 1 ? ` <span class="dim">(${Math.round(e.share * 100)}% share)</span>` : ""}${e.seat > 0 ? ` <span class="dim" title="Per-seat portion carried on Staffing licenses">seats→Staffing</span>` : ""}</td>
+        <td title="${esc(e.vendor)}${e.purpose ? " — " + esc(e.purpose) : ""}">${e.manual ? `<input class="cell wide" style="text-align:left" data-id="${e.id}" data-k="vendor" value="${esc(e.vendor)}">` : `<span class="vname">${esc(e.vendor)}</span>`}${e.share < 1 ? ` <span class="dim">(${Math.round(e.share * 100)}% share)</span>` : ""}${e.seat > 0 ? ` <span class="dim" title="Per-seat portion carried on Staffing licenses">seats→Staffing</span>` : ""}${e.use === "STAFFING" ? ` <span class="dim" style="color:var(--modest)" title="Budgeted as a role on the Staffing tab — counted there, not here, so it isn't double-counted">→Staffing</span>` : ""}</td>
         <td><select class="cell" style="max-width:120px;font-size:11px" data-id="${e.id}" data-k="dept" title="Move this expense to another department">${DEPTS.map(d2 => `<option value="${esc(d2)}"${d2 === e.dept ? " selected" : ""}>${esc(dn(d2))}</option>`).join("")}</select></td>
         <td>${chip(e.status, e.conflict)}</td>
         <td>${e.ttm ? spark(e.ttm, "--modest", 84, 20) : `<span class="dim">—</span>`}</td>
         <td>${e.xero == null ? `<span class="dim">—</span>` : fmt$(e.xero)}</td>
         <td>${e.budget == null ? `<span class="dim">—</span>` : fmt$(e.budget)}</td>
-        <td><select class="cell" data-id="${e.id}" data-k="use"><option${e.use === "XERO" ? " selected" : ""}>XERO</option><option${e.use === "BUDGET" ? " selected" : ""}>BUDGET</option></select></td>
+        <td><select class="cell" data-id="${e.id}" data-k="use" title="Where this row's monthly figure comes from — or STAFFING if the cost is a person budgeted on the Staffing tab (then it counts there, not here)"><option${e.use === "XERO" ? " selected" : ""}>XERO</option><option${e.use === "BUDGET" ? " selected" : ""}>BUDGET</option><option${e.use === "STAFFING" ? " selected" : ""}>STAFFING</option></select></td>
         <td><input class="cell" data-id="${e.id}" data-k="override" value="${e.override == null ? "" : e.override}" placeholder="—"></td>
         <td><input class="cell tiny" data-id="${e.id}" data-k="adj" value="${(e.adj * 100).toFixed(0)}"></td>
         <td><input class="cell tiny" data-id="${e.id}" data-k="from" value="${e.from}"></td>

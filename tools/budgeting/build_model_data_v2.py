@@ -20,6 +20,7 @@ import openpyxl
 HERE = os.path.dirname(os.path.abspath(__file__))
 A = dict(
     at="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/c384c446-Security_Camera_Warehouse__INC__Account_Transactions_13.xlsx",
+    at2="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/bcc7e877-Security_Camera_Warehouse__INC__Account_Transactions_14.xlsx",
     contracts="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/ccd2bd72-contractsexpenses.csv",
     allocations="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/47bec46b-allocations.csv",
     legacy="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/25b0d1bd-BUDGET_TEST_1774983468__Q2Q3_2026_JULY_REWORK.xlsx",
@@ -46,25 +47,41 @@ def money(s):
     return -v if neg else v
 
 # ---------------- Account Transactions (TTM accrual) ----------------
-wb = openpyxl.load_workbook(A["at"], read_only=True, data_only=True)
-ws = wb.worksheets[0]
+# Two exports are merged. AT#13 (Aug 2025-Jul 2026) is the only source for the 2025 half of
+# the TTM window; AT#14 (calendar 2026, pulled 2026-08-24) supersedes it for every 2026 month.
+# They disagree on May-Jul 2026 because Xero books DAILY payroll-liability accruals
+# ("Payroll Liabilities - Monday/Tuesday/...") that are later reversed in a lump
+# ("Reversal of Payroll Liabilities"). AT#13 caught those pairs mid-cycle, understating
+# Jun ($233K) and Jul ($286K); the fully-posted figures are $313K and $321K, in line with
+# every other month. Always prefer the newest export for a month it covers.
 SKIP = ("Total","Opening Balance","Closing Balance","Net movement","No transactions","Date","Account Transactions","Security Camera","For the period","Accrual Basis","Account Type")
-records, section = [], None
-for row in ws.iter_rows(values_only=True):
-    a = row[0]
-    rest = [v for v in row[1:] if v not in (None, "")]
-    if isinstance(a, str) and not rest:
-        s = a.strip()
-        if not any(s.startswith(k) for k in SKIP):
-            section = s.lstrip("- ").strip()
-        continue
-    if isinstance(a, datetime):
-        _, contact, desc, ref, gross, debit, credit, runbal, rel = row[:9]
-        i = ttm_idx(a.year, a.month)
-        if i is None: continue
-        records.append((section, i, (contact or "").strip() or (desc or "").strip(),
+def read_at(path, keep):
+    """keep(year, month) -> bool. Returns [(account, ttm_idx, contact, debit, credit)]."""
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb.worksheets[0]
+    out, section = [], None
+    for row in ws.iter_rows(values_only=True):
+        a = row[0]
+        rest = [v for v in row[1:] if v not in (None, "")]
+        if isinstance(a, str) and not rest:
+            s = a.strip()
+            if not any(s.startswith(k) for k in SKIP):
+                section = s.lstrip("- ").strip()
+            continue
+        if isinstance(a, datetime):
+            _, contact, desc, ref, gross, debit, credit, runbal, rel = row[:9]
+            i = ttm_idx(a.year, a.month)
+            if i is None or not keep(a.year, a.month): continue
+            out.append((section, i, (contact or "").strip() or (desc or "").strip(),
                         float(debit or 0), float(credit or 0)))
-wb.close()
+    wb.close()
+    return out
+
+records = read_at(A["at"], lambda y, m: y == 2025)          # Aug-Dec 2025 only
+if A.get("at2"):
+    records += read_at(A["at2"], lambda y, m: y == 2026)    # Jan-Jul 2026 (ttm_idx caps at Jul)
+else:
+    records += read_at(A["at"], lambda y, m: y == 2026)
 
 def code(acct): return acct.split(" - ")[0].strip() if acct else ""
 PAYROLL_PL = {"66000","6529","6727","6189"}
@@ -226,6 +243,19 @@ for row in glws.iter_rows(values_only=True):
         d = GLD2BD.get((dept or "").strip(), (dept or "").strip()) or "Unassigned"
         dept_payroll[d][a.month - 1] += float(debit or 0) - float(credit or 0)
 glwb.close()
+# The GL Detail export predates AT#14, so its month totals carry the same mid-cycle
+# payroll-accrual understatement. Keep its DEPARTMENT MIX (the only source of dept tags on
+# payroll) but scale each month to the authoritative AT#14 total, so the department rollup
+# ties to the P&L payroll row. The deltas are company-wide accrual/reversal lumps, so a
+# proportional spread is the right allocation.
+pay26 = totals_ttm["payroll"][5:12]
+pay_scale = []
+for i in range(7):
+    gl_tot = sum(v[i] for v in dept_payroll.values())
+    s = (pay26[i] / gl_tot) if abs(gl_tot) > 1 else 1.0
+    pay_scale.append(round(s, 4))
+    if abs(gl_tot) > 1:
+        for v in dept_payroll.values(): v[i] *= s
 dept_payroll = {k: [round(x, 2) for x in v] for k, v in dept_payroll.items()}
 
 # dept x month actuals for Jan-Jul 2026 (modeling year), residual -> Unassigned
@@ -251,9 +281,12 @@ model = dict(
     staff=v1["staff"], sales=v1["sales"], ramps=v1["ramps"],
     employer_tax_rate=round(sum(totals_ttm["ptax"]) / sum(totals_ttm["wages"]), 4),
     cogs_accounts={k: [round(x, 2) for x in v] for k, v in cogs_accounts.items() if abs(sum(v)) > 500},
-    provisional_cogs_months=[7],   # user-confirmed: July 2026 COGS entry not yet made in Xero
+    provisional_cogs_months=[7],   # user-confirmed 2026-08-24: July COGS entry still not made
     dept_payroll_actual=dept_payroll,
-    built="2026-08-21", actual_months=7)
+    # August 2026 is deliberately EXCLUDED (actual_months stays 7). AT#14 carries Aug data but
+    # the month is incomplete on every line — payroll posts only through Aug 17 ($112K wages vs
+    # $280K in Jul), COGS $94K vs $232K, opex $141K vs $206K, revenue $613K vs ~$1.2M.
+    built="2026-08-24", actual_months=7)
 json.dump(model, open(os.path.join(HERE, "model_data_v2.json"), "w"))
 print("vendors:", len(vend_master), "missing:", len(missing))
 print("statuses:", dict(collections.Counter(r["status"] for r in vend_master)))
