@@ -248,7 +248,8 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
 <main>
 <section class="tab on" id="tab-proj">
   <div class="card" id="goalsCard"></div>
-  <div class="levers" id="projLevers"></div>
+  <div class="card"><h2>Model levers</h2><p class="note">The dials the whole model runs on. <b>COGS % fwd</b> is the margin dial — it sets cost of sales for every modeled month (and the pending Jul estimate) and moves break-even everywhere. Hedges pad modeled payroll and planned expenses; other income covers rent &amp; interest.</p>
+  <div class="levers" id="projLevers" style="border:0;padding:0;margin:0;background:transparent"></div></div>
   <div class="cards2">
     <div class="card"><h2>Monthly net profit</h2><p class="note">One bar per booked month; modeled months show modest and stretch side by side. Hover any month.</p><figure class="chart" id="chartNet"></figure></div>
     <div class="card"><h2>Cumulative net through Mar 2027</h2><p class="note">Running total of monthly net profit: booked through Jul, then each scenario.</p><figure class="chart" id="chartCum"></figure></div>
@@ -317,6 +318,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
   <div class="card"><h2>Operating expense, trailing 12 months</h2><p class="note">As booked (accrual), Aug 2025 – Jul 2026. Hover for the month's total.</p><figure class="chart" id="chartTTM"></figure></div>
   <div class="card"><h2>COGS history — what cost of sales has been</h2>
     <p class="note">As booked (accrual), Aug 2025 – Jul 2026, grouped by cost family. Jul ’26 is incomplete — the month-end product-COGS entry (5258) hasn’t been made yet, which is why it shows near zero.</p>
+    <div class="levers" id="cogsHistLever" style="border:0;padding:0;margin:0 0 10px;background:transparent"></div>
     <div class="tablewrap" id="cogsHist"></div></div>
   <div class="attn" id="attnCards"></div>
   <div class="card"><h2>Accounting correction checklist <span class="pillcount" id="fixCount"></span> <button class="btn mini" id="copyFixes" style="margin-left:10px">Copy checklist</button></h2>
@@ -750,6 +752,12 @@ function renderProjLevers(){
   bind("lvLab", v => S.levers.laborHedge = num(v, 0) / 100);
   bind("lvOpx", v => S.levers.opexHedge = num(v, 0) / 100);
   bind("lvProv", v => S.levers.estProv = v === "est");
+  const cl2 = document.getElementById("cogsHistLever");
+  if (cl2){
+    cl2.innerHTML = leverInput("lvCogs2", "COGS % fwd", (L.cogsPct * 100).toFixed(1),
+      "% of sales for modeled months (Aug ’26 on) + the Jul estimate — same dial as Model levers on Projections");
+    bind("lvCogs2", v => S.levers.cogsPct = num(v, 43) / 100);
+  }
 }
 function renderProj(C){
   const actOnly = a => a.map((v, i) => i < ACT ? v : null);
