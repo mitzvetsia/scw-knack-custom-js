@@ -1620,6 +1620,8 @@ function renderPayCal(C){
   const bBase = avg(bookedBase), bAll = avg(bookedAll), bComm = avg(vc.slice(0, n));
   const lo = Math.min(...bookedBase), hi = Math.max(...bookedBase);
   const loM = MONTHS[bookedBase.indexOf(lo)], hiM = MONTHS[bookedBase.indexOf(hi)];
+  const drift = (T.accrual_drift || []).slice(0, n);
+  const driftSum = drift.reduce((x, y) => x + y, 0);
   const mBase = C.pay[ACT];                    // first modeled month, base salaries only
   const gap = mBase - bBase, pct = bBase ? gap / bBase * 100 : 0;
   const sev = Math.abs(pct) < 3 ? "good" : (Math.abs(pct) < 8 ? "warn" : "crit");
@@ -1641,7 +1643,12 @@ function renderPayCal(C){
         <span>Roster base, ${esc(MONTHS[ACT])} <b>${fmt$(mBase)}</b>/mo</span>
         <span style="color:${col}">gap <b>${(gap >= 0 ? "+" : "") + fmt$(gap)}</b> (${(pct >= 0 ? "+" : "") + pct.toFixed(1)}%) — roster ${verdict}</span>
       </div>
-      <p class="note" style="margin:8px 0 0">Base-salary months swing ${fmtK(hi - lo)} between ${esc(loM)} and ${esc(hiM)} on a steady roster — Xero's daily payroll accruals and their reversals don't always net inside one calendar month, so judge against the <b>average</b>, never a single month. A persistent gap means the salary figures or seat counts below are off, not that a month was unusual.</p>
+      ${drift.length ? `<div style="margin-top:9px">
+        <div style="font-size:12px"><b>Why single months mislead — accrual timing</b> <span class="subtle">wages accrue daily but reverse on the biweekly PAY DATE, not at month-end, so each month closes holding a stub of accrued-but-unreversed days. The change in that stub lands in the month:</span></div>
+        <table class="data" style="margin-top:5px"><thead><tr><th>Month</th>${drift.map((_, i) => `<th>${esc(MONTHS[i])}</th>`).join("")}<th>net</th></tr></thead>
+        <tbody><tr><td>Accrual carried in / out</td>${drift.map(v => `<td style="color:${Math.abs(v) < 2000 ? "var(--muted)" : (v > 0 ? "#b45309" : "var(--good-text)")}">${Math.abs(v) < 500 ? "—" : (v > 0 ? "+" : "") + fmtK(v)}</td>`).join("")}<td><b>${(driftSum >= 0 ? "+" : "") + fmtK(driftSum)}</b></td></tr></tbody></table>
+        <p class="note" style="margin:6px 0 0">It nets to ${fmtK(driftSum)} across the whole stretch — real accrual accounting, self-correcting over time — but a single month can carry ${fmtK(Math.max(...drift.map(Math.abs)))} of it. That, plus commission timing, is why base months swing ${fmtK(hi - lo)} (${esc(loM)} ${fmtK(lo)} → ${esc(hiM)} ${fmtK(hi)}) on a steady roster. <b>Judge the roster against the average, never one month.</b> A persistent gap means the salary figures or seat counts below are off. To make months directly comparable, the Xero-side fix is a month-end true-up: reverse the outstanding stub on the last day and re-accrue on the first.</p>
+      </div>` : `<p class="note" style="margin:8px 0 0">Base months swing ${fmtK(hi - lo)} between ${esc(loM)} and ${esc(hiM)} — judge against the average, never a single month.</p>`}
     </div>`;
 }
 /* ---------- pay bands ---------- */

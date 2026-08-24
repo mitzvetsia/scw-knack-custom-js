@@ -85,6 +85,8 @@ else:
 
 def code(acct): return acct.split(" - ")[0].strip() if acct else ""
 VARCOMP_RE = re.compile(r"variable comp|commission|bonus|spiff", re.I)
+ACCRUAL_RE = re.compile(r"payroll liabilit", re.I)
+REVERSAL_RE = re.compile(r"reversal", re.I)
 PAYROLL_PL = {"66000","6529","6727","6189"}
 COGS = {"5257","5258","5259","5260","5566","5567","5568","5569","5570","5571","6734","6737","6730"}
 def is_opex(c):
@@ -109,6 +111,14 @@ for acct, i, contact, debit, credit in records:
         # already total comp cost. Split it out so the dashboard can compare its base-salary
         # model against a like-for-like base figure.
         if VARCOMP_RE.search(contact): totals_ttm["varcomp"][i] += net
+        # Payroll-liability accruals post daily and are reversed on the PAY DATE (biweekly),
+        # not at month-end, so each calendar month closes with a stub of accrued-but-unreversed
+        # days. The residual below is that stub's month-over-month change: it is real accrual
+        # accounting, but it makes any SINGLE month a noisy benchmark (Jan -$106K, Jul +$37K,
+        # summing to only +$10K over Jan-Jul). Track it so the dashboard can show why.
+        if c == "66000":
+            if REVERSAL_RE.search(contact): totals_ttm["accrual_rev"][i] += net
+            elif ACCRUAL_RE.search(contact): totals_ttm["accrual_acc"][i] += net
     elif is_opex(c):
         totals_ttm["opex"][i] += net
         v = re.sub(r"\s+"," ", contact.split("\n")[0]).strip()
@@ -284,7 +294,9 @@ model = dict(
         ttm_cogs=[round(x,2) for x in totals_ttm["cogs"]],
         ttm_payroll=[round(x,2) for x in totals_ttm["payroll"]],
         varcomp=[round(x,2) for x in totals_ttm["varcomp"][5:12]],
-        wages=[round(x,2) for x in totals_ttm["wages"][5:12]]),
+        wages=[round(x,2) for x in totals_ttm["wages"][5:12]],
+        accrual_drift=[round(totals_ttm["accrual_acc"][i] + totals_ttm["accrual_rev"][i], 2)
+                       for i in range(5, 12)]),
     staff=v1["staff"], sales=v1["sales"], ramps=v1["ramps"],
     employer_tax_rate=round(sum(totals_ttm["ptax"]) / sum(totals_ttm["wages"]), 4),
     cogs_accounts={k: [round(x, 2) for x in v] for k, v in cogs_accounts.items() if abs(sum(v)) > 500},
