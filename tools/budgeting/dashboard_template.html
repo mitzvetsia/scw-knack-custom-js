@@ -355,6 +355,17 @@ const dn = d => (S.deptNames && S.deptNames[d]) || d;
 //   Dillon Jones LLC            $7,000/mo  <-> "PPC Manager - Dillon Jones"      ($72,000/yr)
 //   Nikoloz Shiomghvdlishvili   $4,800/mo  <-> "CONTRACTOR - M2 + Floorplan"     ($57,600/yr)
 const STAFF_CARRIED = new Set(["Dillon Jones LLC", "Nikoloz Shiomghvdlishvili"]);
+// Headcount changes the imported STAFFING grid predates. Confirmed 2026-08-24: the Inbound BDR
+// bench ran 3 seats early in 2026 and has semi-permanently settled at 2 — the third is not being
+// backfilled. Stepped from month 8 (Aug '26), the first modeled month: Jan–Jul payroll comes from
+// Xero actuals, so a step earlier than that changes the roster display but not the P&L.
+const HC_STEPS = { "Inbound BDR": [{ from: 8, hc: 2 }] };
+function seedHc(position, base){
+  const a = Array(NM).fill(base);
+  for (const st of (HC_STEPS[position] || []))
+    for (let m = st.from; m <= NM; m++) a[m - 1] = st.hc;
+  return a;
+}
 const LEVELS = ["Leadership","Dept Manager","Manager","Business","System","Outcome","Task","Contractor"];
 const LEVEL_MIGRATE = { Entry: "Task", Mid: "Outcome", Senior: "System" };   // pre-scope-tier saves
 function fixLevels(st){
@@ -426,7 +437,7 @@ function defaultState(){
     staff: MODEL.staff.map((s, i) => ({ id: "p" + i, dept: s.dept || "Unassigned", position: s.position,
       ote: s.ote, hdv: s.hdv, lic: s.lic,
       benOn: (s.hdv || 0) > 0, taxOn: true, level: guessLevel(s.position),
-      raiseD: 0, raiseP: 0, raiseM: 9, hc: Array(NM).fill(s.hc) })),
+      raiseD: 0, raiseP: 0, raiseM: 9, hc: seedHc(s.position, s.hc) })),
     raises: [],
     bandSplit: ["Software Development", "Sales"],
     bandHide: {},
@@ -448,6 +459,12 @@ try {
   for (const p of S.staff) while (p.hc.length < NM) p.hc.push(p.hc.at(-1) ?? 0);
   for (const e of S.exp) if (e.to === 12) e.to = NM;
   // migrate saves made before contractor rows were flagged as carried on Staffing
+  if (!L0.bdrHcFix){
+    for (const p of S.staff)
+      for (const st of (HC_STEPS[p.position] || []))
+        for (let m = st.from; m <= NM; m++) p.hc[m - 1] = st.hc;
+    L0.bdrHcFix = 1;
+  }
   if (!L0.staffCarriedFix){
     for (const e of S.exp) if (STAFF_CARRIED.has(e.vendor)) e.use = "STAFFING";
     L0.staffCarriedFix = 1;
