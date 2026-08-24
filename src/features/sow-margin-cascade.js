@@ -16,15 +16,21 @@
  *   project 30 of 104 items sat on both SW-1187 and SW-1285. Those items hold
  *   ONE margin, so two SOWs cannot price them differently, and a naive
  *   cascade lets whichever SOW was saved last silently reprice the other's
- *   items. Rather than pick a rule, the apply dialog names the blast radius
+ *   items. Rather than pick a rule, the override modal names the blast radius
  *   and makes the user choose:
  *     - Independent only — items owned solely by this SOW. No cross-SOW
- *       effect. The safe default (primary button).
+ *       effect. The safe default (pre-selected).
  *     - All items — includes shared ones, which changes what the OTHER SOWs
  *       charge for them. Spelled out by name and count before it runs.
  *   If a shared item genuinely needs two different margins, the answer is to
  *   un-share it (duplicate the line item so each SOW owns one) — no client-
  *   side rule can make one field hold two numbers.
+ *
+ * NOTHING WRITES FROM THE GRID ITSELF. The bar is a read-only summary plus an
+ * "Override margin" button; the number is typed inside the modal, next to a
+ * live "when you submit" callout that restates the exact scope, count and
+ * before → after. A control that can reprice a hundred line items should not
+ * sit one stray click away on the page.
  *
  * Reads : SCW.bidReviewV2.data (view_3921 model)
  * Writes: field_2152 PUTs through view_3921, concurrency-capped + retried.
@@ -251,20 +257,15 @@
       '  color: #475569;',
       '}',
       '.' + P + '-label { font-weight: 600; color: #475569; }',
-      '.' + P + '-input {',
-      '  width: 68px; padding: 4px 6px; text-align: right;',
-      '  border: 1px solid #cbd5e1; border-radius: 5px;',
-      '  font: 600 12px/1.2 system-ui, sans-serif; color: #0f172a;',
+      '.' + P + '-value {',
+      '  font: 700 13px/1.2 system-ui, sans-serif; color: #0f172a;',
       '}',
-      '.' + P + '-input:focus { outline: 2px solid #93c5fd; outline-offset: 0; }',
-      '.' + P + '-suffix { color: #64748b; margin-left: -4px; }',
-      '.' + P + '-apply {',
-      '  padding: 4px 12px; border: none; border-radius: 5px;',
-      '  background: #0f4c75; color: #fff; cursor: pointer;',
+      '.' + P + '-open {',
+      '  padding: 4px 12px; border: 1px solid #cbd5e1; border-radius: 5px;',
+      '  background: #fff; color: #0f4c75; cursor: pointer;',
       '  font: 600 12px/1.2 system-ui, sans-serif;',
       '}',
-      '.' + P + '-apply:hover { filter: brightness(1.12); }',
-      '.' + P + '-apply:disabled { opacity: .45; cursor: not-allowed; }',
+      '.' + P + '-open:hover { background: #f1f5f9; border-color: #94a3b8; }',
       '.' + P + '-meta { color: #64748b; }',
       '.' + P + '-meta--mixed { color: #b45309; font-weight: 600; }',
       '.' + P + '-shared {',
@@ -285,9 +286,52 @@
       '  font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;',
       '  color: #0f172a;',
       '}',
-      '.' + P + '-modal h3 { margin: 0 0 10px; font: 700 15px/1.3 system-ui, sans-serif;',
+      '.' + P + '-modal h3 { margin: 0 0 4px; font: 700 15px/1.3 system-ui, sans-serif;',
       '  color: #0c4a6e; }',
       '.' + P + '-modal p { margin: 0 0 10px; }',
+      '.' + P + '-sub { margin: 0 0 16px; color: #64748b; font-size: 12.5px; }',
+      // Margin input row
+      '.' + P + '-row {',
+      '  display: flex; align-items: center; gap: 8px; margin: 0 0 16px;',
+      '}',
+      '.' + P + '-input {',
+      '  width: 82px; padding: 7px 9px; text-align: right;',
+      '  border: 1px solid #cbd5e1; border-radius: 6px;',
+      '  font: 700 14px/1.2 system-ui, sans-serif; color: #0f172a;',
+      '}',
+      '.' + P + '-input:focus { outline: 2px solid #93c5fd; outline-offset: 0; }',
+      '.' + P + '-input--bad { border-color: #fda4af; background: #fff1f2; }',
+      '.' + P + '-suffix { color: #64748b; font-weight: 600; }',
+      '.' + P + '-cur { color: #64748b; font-size: 12.5px; margin-left: 4px; }',
+      // Scope options
+      '.' + P + '-scopes { display: flex; flex-direction: column; gap: 8px; margin: 0 0 16px; }',
+      '.' + P + '-scope {',
+      '  display: flex; gap: 9px; align-items: flex-start;',
+      '  padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px;',
+      '  cursor: pointer; background: #fff;',
+      '}',
+      '.' + P + '-scope:hover { background: #f8fafc; }',
+      '.' + P + '-scope--on { border-color: #0f4c75; background: #f0f7fc; }',
+      '.' + P + '-scope input { margin-top: 2px; flex-shrink: 0; }',
+      '.' + P + '-scope-t { font-weight: 700; color: #0f172a; }',
+      '.' + P + '-scope-d { color: #64748b; font-size: 12px; margin-top: 2px; }',
+      '.' + P + '-scope-d--warn { color: #92400e; font-weight: 600; }',
+      // "When you submit" callout
+      '.' + P + '-callout {',
+      '  border: 1px solid #bae6fd; background: #f0f9ff; border-radius: 8px;',
+      '  padding: 12px 14px; margin: 0;',
+      '}',
+      '.' + P + '-callout--warn { border-color: #fde68a; background: #fffbeb; }',
+      '.' + P + '-callout--bad  { border-color: #fecdd3; background: #fff1f2; }',
+      '.' + P + '-callout-h {',
+      '  font: 700 11px/1.2 system-ui, sans-serif; letter-spacing: .04em;',
+      '  text-transform: uppercase; color: #0369a1; margin: 0 0 7px;',
+      '}',
+      '.' + P + '-callout--warn .' + P + '-callout-h { color: #92400e; }',
+      '.' + P + '-callout--bad  .' + P + '-callout-h { color: #be123c; }',
+      '.' + P + '-callout ul { margin: 0; padding-left: 18px; }',
+      '.' + P + '-callout li { margin: 0 0 4px; }',
+      '.' + P + '-callout li:last-child { margin-bottom: 0; }',
       '.' + P + '-warn {',
       '  background: #fffbeb; border: 1px solid #fde68a; border-radius: 7px;',
       '  padding: 10px 12px; margin: 0 0 12px; color: #92400e;',
@@ -312,128 +356,269 @@
     document.head.appendChild(s);
   }
 
-  // ── Apply dialog ────────────────────────────────────────────────────────
+  // ── Override modal ──────────────────────────────────────────────────────
+  // Everything that can change money lives in here: the number is typed in
+  // the modal, the scope is picked in the modal, and a live callout restates
+  // the exact effect before the single Apply button becomes meaningful.
 
   function closeModal() {
     var b = document.querySelector('.' + P + '-back');
     if (b && b.parentNode) b.parentNode.removeChild(b);
   }
 
-  /** Ask which items to write. Buttons follow the repo convention: negative
-   *  first, primary (the safe scope) last. */
-  function askScope(sowName, pct, part, onPick) {
-    injectStyles();
-    closeModal();
-
-    var ownN = part.own.length, sharedN = part.shared.length;
-
-    var body = '<h3>Set margin to ' + esc(pct) + '% on ' + esc(sowName) + '</h3>';
-    if (sharedN) {
-      body +=
-        '<div class="' + P + '-warn">' +
-          '<strong>' + sharedN + ' of these line items ' +
-          (sharedN === 1 ? 'is' : 'are') + ' also on ' +
-          esc(part.otherSowNames.join(', ') || 'another SOW') + '.</strong><br>' +
-          'A line item carries one margin, so changing it here changes what ' +
-          (part.otherSowNames.length === 1 ? 'that SOW' : 'those SOWs') +
-          ' charges for the same work. To price them differently, duplicate ' +
-          'the item so each SOW owns its own copy.' +
-        '</div>' +
-        '<p>Apply to:</p>';
-    } else {
-      body += '<p>This writes the margin to all ' + ownN + ' line item' +
-        (ownN === 1 ? '' : 's') + ' on this SOW. None of them are shared with ' +
-        'another SOW.</p>';
-    }
-
-    var actions = '<div class="' + P + '-actions">' +
-      '<button type="button" class="' + P + '-btn ' + P + '-btn--cancel" ' +
-        'data-scope="cancel">Cancel</button>';
-    if (sharedN) {
-      actions +=
-        '<button type="button" class="' + P + '-btn ' + P + '-btn--all" ' +
-          'data-scope="all">All ' + (ownN + sharedN) + ' items</button>' +
-        '<button type="button" class="' + P + '-btn ' + P + '-btn--own" ' +
-          'data-scope="own">Independent only (' + ownN + ')</button>';
-    } else {
-      actions +=
-        '<button type="button" class="' + P + '-btn ' + P + '-btn--own" ' +
-          'data-scope="own">Apply to ' + ownN + ' item' +
-          (ownN === 1 ? '' : 's') + '</button>';
-    }
-    actions += '</div>';
-
-    var back = document.createElement('div');
-    back.className = P + '-back';
-    back.innerHTML = '<div class="' + P + '-modal" role="dialog" aria-modal="true">' +
-      body + actions + '</div>';
-
-    back.addEventListener('click', function (e) {
-      if (e.target === back) { closeModal(); return; }
-      var btn = e.target.closest && e.target.closest('[data-scope]');
-      if (!btn) return;
-      var scope = btn.getAttribute('data-scope');
-      if (scope === 'cancel') { closeModal(); return; }
-      // Disable the whole set so a double-click can't launch two cascades.
-      var all = back.querySelectorAll('[data-scope]');
-      for (var i = 0; i < all.length; i++) all[i].disabled = true;
-      btn.textContent = 'Applying…';
-      onPick(scope, back);
-    });
-    document.body.appendChild(back);
+  function scopeRow(id, checked, title, desc, warn) {
+    return '<label class="' + P + '-scope' + (checked ? ' ' + P + '-scope--on' : '') +
+        '" data-scope-row="' + id + '">' +
+      '<input type="radio" name="scw-margin-scope" value="' + id + '"' +
+        (checked ? ' checked' : '') + '>' +
+      '<span>' +
+        '<span class="' + P + '-scope-t">' + title + '</span>' +
+        '<span class="' + P + '-scope-d' + (warn ? ' ' + P + '-scope-d--warn' : '') +
+          '" style="display:block">' + desc + '</span>' +
+      '</span>' +
+    '</label>';
   }
 
-  // ── Apply ───────────────────────────────────────────────────────────────
+  /** The "when you submit" block. Rebuilt on every keystroke / scope change so
+   *  it always describes what the Apply button is about to do right now. */
+  function calloutHtml(state) {
+    var dec = state.dec, part = state.part, scope = state.scope;
+    var targets = (scope === 'all') ? part.own.length + part.shared.length
+                                    : part.own.length;
 
-  function applyMargin(sowId, sowName, dec, input) {
+    if (dec == null) {
+      return '<div class="' + P + '-callout ' + P + '-callout--bad">' +
+        '<div class="' + P + '-callout-h">When you submit</div>' +
+        'Enter a margin between 0 and 99% first (type <strong>15</strong> for 15%).' +
+      '</div>';
+    }
+    if (!targets) {
+      return '<div class="' + P + '-callout ' + P + '-callout--bad">' +
+        '<div class="' + P + '-callout-h">When you submit</div>' +
+        'Nothing would change — every line item on this SOW is shared with ' +
+        esc(part.otherSowNames.join(', ')) + '. Choose <em>All items</em>, or ' +
+        'duplicate the items you want priced differently.' +
+      '</div>';
+    }
+
+    var pct = toPct(dec);
+    var curList = distinctMargins(
+      scope === 'all' ? part.own.concat(part.shared) : part.own);
+    var fromTxt;
+    if (curList.length === 1) {
+      fromTxt = (curList[0] == null)
+        ? ' (they have no margin set today)'
+        : ' (from ' + toPct(curList[0]) + '%)';
+    } else {
+      fromTxt = ' (they currently range across ' + curList.length + ' different values)';
+    }
+
+    var bits = [
+      '<li><strong>' + targets + ' line item' + (targets === 1 ? '' : 's') +
+        '</strong> on ' + esc(state.sowName) + ' will have their margin set to ' +
+        '<strong>' + esc(pct) + '%</strong>' + fromTxt + '.</li>',
+      '<li>Each of those items’ install fee recalculates from its sub bid — ' +
+        'the SOW total will move.</li>'
+    ];
+    var warn = false;
+    if (scope === 'all' && part.shared.length) {
+      warn = true;
+      bits.push('<li><strong>' + part.shared.length + ' of them are shared with ' +
+        esc(part.otherSowNames.join(', ')) + '</strong>, so ' +
+        (part.otherSowNames.length === 1 ? 'that SOW’s' : 'those SOWs’') +
+        ' price for the same work changes too.</li>');
+    } else if (part.shared.length) {
+      bits.push('<li>' + part.shared.length + ' shared item' +
+        (part.shared.length === 1 ? '' : 's') + ' (also on ' +
+        esc(part.otherSowNames.join(', ')) + ') ' +
+        (part.shared.length === 1 ? 'is' : 'are') + ' <strong>left unchanged</strong>.</li>');
+    }
+
+    return '<div class="' + P + '-callout' + (warn ? ' ' + P + '-callout--warn' : '') + '">' +
+      '<div class="' + P + '-callout-h">When you submit</div>' +
+      '<ul>' + bits.join('') + '</ul>' +
+    '</div>';
+  }
+
+  function applyLabel(state) {
+    var n = (state.scope === 'all')
+      ? state.part.own.length + state.part.shared.length
+      : state.part.own.length;
+    return 'Apply to ' + n + ' item' + (n === 1 ? '' : 's');
+  }
+
+  function openModal(sowId, sowName) {
     var part = partition(sowId);
     if (!part.own.length && !part.shared.length) {
       toast('No line items found for this SOW', 'error');
       return;
     }
+    injectStyles();
+    closeModal();
 
-    askScope(sowName, toPct(dec), part, function (scope, back) {
-      var targets = (scope === 'all')
-        ? part.own.concat(part.shared)
-        : part.own;
-      if (!targets.length) {
-        closeModal();
-        toast('Nothing to update — every item on this SOW is shared', 'error');
-        return;
+    var all = part.own.concat(part.shared);
+    var curMargins = distinctMargins(all);
+    var state = {
+      sowId: sowId, sowName: sowName, part: part,
+      // Pre-seed with the SOW's current margin when it has exactly one, so the
+      // common "nudge it up two points" edit starts from the real number.
+      dec: (curMargins.length === 1 ? curMargins[0] : null),
+      // Safe scope pre-selected: no cross-SOW effect unless explicitly chosen.
+      scope: 'own'
+    };
+    if (!part.shared.length) state.scope = 'own';
+
+    var curTxt = (curMargins.length === 1)
+      ? (curMargins[0] == null ? 'no margin set today'
+                               : 'currently ' + toPct(curMargins[0]) + '%')
+      : 'currently mixed across ' + all.length + ' items';
+
+    var scopes = '';
+    if (part.shared.length) {
+      scopes = '<div class="' + P + '-scopes">' +
+        scopeRow('own', true, 'Independent items only — ' + part.own.length,
+          'Items that live on this SOW alone. No other SOW is affected.', false) +
+        scopeRow('all', false, 'All items on this SOW — ' + all.length,
+          'Includes ' + part.shared.length + ' item' +
+            (part.shared.length === 1 ? '' : 's') + ' shared with ' +
+            esc(part.otherSowNames.join(', ')) +
+            ' — this reprices the same work on ' +
+            (part.otherSowNames.length === 1 ? 'that SOW' : 'those SOWs') + '.', true) +
+      '</div>';
+    }
+
+    var back = document.createElement('div');
+    back.className = P + '-back';
+    back.innerHTML =
+      '<div class="' + P + '-modal" role="dialog" aria-modal="true" ' +
+           'aria-label="Override install margin">' +
+        '<h3>Override install margin</h3>' +
+        '<p class="' + P + '-sub">' + esc(sowName) + ' — ' + all.length +
+          ' line item' + (all.length === 1 ? '' : 's') + ', ' + esc(curTxt) + '.</p>' +
+        '<div class="' + P + '-row">' +
+          '<label class="' + P + '-label" for="scw-margin-input">New margin</label>' +
+          '<input id="scw-margin-input" type="text" class="' + P + '-input" ' +
+            'data-scw-margin-field value="' +
+            esc(state.dec == null ? '' : toPct(state.dec)) + '" ' +
+            'placeholder="15" inputmode="decimal" autocomplete="off">' +
+          '<span class="' + P + '-suffix">%</span>' +
+        '</div>' +
+        scopes +
+        '<div data-scw-margin-callout>' + calloutHtml(state) + '</div>' +
+        '<div class="' + P + '-actions">' +
+          '<button type="button" class="' + P + '-btn ' + P + '-btn--cancel" ' +
+            'data-scw-margin-act="cancel">Cancel</button>' +
+          '<button type="button" class="' + P + '-btn ' + P + '-btn--own" ' +
+            'data-scw-margin-act="apply">' + applyLabel(state) + '</button>' +
+        '</div>' +
+      '</div>';
+
+    var input    = back.querySelector('[data-scw-margin-field]');
+    var calloutH = back.querySelector('[data-scw-margin-callout]');
+    var applyBtn = back.querySelector('[data-scw-margin-act="apply"]');
+
+    function refresh() {
+      calloutH.innerHTML = calloutHtml(state);
+      applyBtn.textContent = applyLabel(state);
+      var targets = (state.scope === 'all')
+        ? state.part.own.length + state.part.shared.length
+        : state.part.own.length;
+      applyBtn.disabled = (state.dec == null || !targets);
+      // The destructive styling follows the CHOICE, not the button's identity —
+      // Apply is only "dangerous" while it would reach into another SOW.
+      applyBtn.className = P + '-btn ' +
+        ((state.scope === 'all' && state.part.shared.length)
+          ? P + '-btn--all' : P + '-btn--own');
+      input.classList.toggle(P + '-input--bad',
+        !!(input.value || '').trim() && state.dec == null);
+    }
+
+    input.addEventListener('input', function () {
+      state.dec = toDecimal(input.value);
+      refresh();
+    });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !applyBtn.disabled) { e.preventDefault(); submit(); }
+    });
+
+    back.addEventListener('change', function (e) {
+      var r = e.target.closest && e.target.closest('input[name="scw-margin-scope"]');
+      if (!r) return;
+      state.scope = r.value;
+      var rows = back.querySelectorAll('[data-scope-row]');
+      for (var i = 0; i < rows.length; i++) {
+        rows[i].classList.toggle(P + '-scope--on',
+          rows[i].getAttribute('data-scope-row') === state.scope);
       }
+      refresh();
+    });
+
+    function submit() {
+      var targets = (state.scope === 'all')
+        ? state.part.own.concat(state.part.shared)
+        : state.part.own;
+      if (state.dec == null || !targets.length) return;
+
       var ids = [];
       for (var i = 0; i < targets.length; i++) ids.push(targets[i].id);
 
-      var btn = back.querySelector('[data-scope="' + scope + '"]');
-      cascade(ids, dec, function (doneN, total) {
-        if (btn) btn.textContent = 'Applying… ' + doneN + '/' + total;
+      // Lock the whole modal so a second click can't launch a second cascade.
+      var ctrls = back.querySelectorAll('button, input');
+      for (var c = 0; c < ctrls.length; c++) ctrls[c].disabled = true;
+      applyBtn.textContent = 'Applying… 0/' + ids.length;
+
+      cascade(ids, state.dec, function (doneN, total) {
+        applyBtn.textContent = 'Applying… ' + doneN + '/' + total;
       }, function (results) {
         closeModal();
         var okN = 0;
         for (var r = 0; r < results.length; r++) if (results[r].ok) okN++;
         var failN = results.length - okN;
         if (!failN) {
-          toast('Margin set to ' + toPct(dec) + '% on ' + okN + ' line item' +
+          toast('Margin set to ' + toPct(state.dec) + '% on ' + okN + ' line item' +
                 (okN === 1 ? '' : 's'), 'success');
         } else if (okN) {
           toast(okN + ' of ' + results.length + ' updated — ' + failN +
-                ' failed. Re-apply to retry the rest.', 'error');
+                ' failed. Re-open Override margin to retry the rest.', 'error');
         } else {
           toast('Margin update failed — no line items were changed', 'error');
         }
-        // Install fee (field_2151 / field_2028) is a Knack equation over
-        // field_2152, so it recomputes server-side. Refetch so the grid and
-        // the sub-bid diff both show the new fees.
+        // field_2151 / field_2028 are Knack equations over field_2152, so the
+        // fees recompute server-side; refetch so the grid and the sub-bid diff
+        // both show the new numbers.
         try {
           var d = window.SCW && SCW.bidReviewV2 && SCW.bidReviewV2.data;
           if (d && typeof d.refetchAll === 'function') setTimeout(d.refetchAll, 600);
-        } catch (e) { /* grid refreshes on the next render anyway */ }
-        if (input) input.blur();
+        } catch (e) { /* the next render picks it up anyway */ }
       });
+    }
+
+    back.addEventListener('click', function (e) {
+      if (e.target === back) { closeModal(); return; }
+      var act = e.target.closest && e.target.closest('[data-scw-margin-act]');
+      if (!act || act.disabled) return;
+      if (act.getAttribute('data-scw-margin-act') === 'cancel') { closeModal(); return; }
+      submit();
     });
+
+    document.body.appendChild(back);
+    refresh();
+    try { input.focus(); input.select(); } catch (e) { /* non-fatal */ }
   }
 
+  // Escape closes the modal — but never mid-cascade, when the controls are
+  // disabled and writes are still landing.
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var back = document.querySelector('.' + P + '-back');
+    if (!back) return;
+    var apply = back.querySelector('[data-scw-margin-act="apply"]');
+    if (apply && apply.disabled && /Applying/.test(apply.textContent || '')) return;
+    closeModal();
+  });
+
   // ── Mount ───────────────────────────────────────────────────────────────
+  // Read-only summary + a button that opens the modal. Nothing here writes.
 
   function barHtml(sowId) {
     var part = partition(sowId);
@@ -444,12 +629,15 @@
     var mixed = margins.length > 1;
     var cur = mixed ? null : margins[0];
 
-    var meta = mixed
-      ? '<span class="' + P + '-meta ' + P + '-meta--mixed">mixed across ' +
-          all.length + ' items</span>'
-      : '<span class="' + P + '-meta">' + all.length + ' line item' +
-          (all.length === 1 ? '' : 's') +
-          (cur == null ? ' — no margin set' : '') + '</span>';
+    var value = mixed
+      ? '<span class="' + P + '-value ' + P + '-meta--mixed">mixed</span>'
+      : '<span class="' + P + '-value">' +
+          (cur == null ? '—' : esc(toPct(cur)) + '%') + '</span>';
+
+    var meta = '<span class="' + P + '-meta">' + all.length + ' line item' +
+      (all.length === 1 ? '' : 's') +
+      (mixed ? ' across ' + margins.length + ' different margins' : '') +
+      (!mixed && cur == null ? ' — no margin set' : '') + '</span>';
 
     var sharedChip = part.shared.length
       ? '<span class="' + P + '-shared" title="Also on ' +
@@ -460,14 +648,9 @@
       : '';
 
     return '<div class="' + P + '-bar" data-scw-sow-margin-bar="' + esc(sowId) + '">' +
-      '<span class="' + P + '-label">Install margin:</span>' +
-      '<input type="text" class="' + P + '-input" data-scw-sow-margin-input ' +
-        'value="' + esc(mixed ? '' : toPct(cur)) + '" ' +
-        'placeholder="' + (mixed ? 'mixed' : '12') + '" ' +
-        'inputmode="decimal" aria-label="Install fee margin percent">' +
-      '<span class="' + P + '-suffix">%</span>' +
-      '<button type="button" class="' + P + '-apply" data-scw-sow-margin-apply>' +
-        'Apply to SOW</button>' +
+      '<span class="' + P + '-label">Install margin:</span>' + value +
+      '<button type="button" class="' + P + '-open" data-scw-sow-margin-open>' +
+        'Override margin…</button>' +
       meta + sharedChip +
     '</div>';
   }
@@ -477,38 +660,35 @@
     if (!sections.length) return;
     injectStyles();
 
-    var active = document.activeElement;
     for (var s = 0; s < sections.length; s++) {
       var sec = sections[s];
       var sowId = sec.getAttribute('data-sow-id');
       if (!sowId) continue;
 
       var bar = sec.querySelector(':scope > [data-scw-sow-margin-bar]');
-      // Never rebuild while the user is mid-edit in this bar.
-      if (bar && active && bar.contains(active)) continue;
-
       var html = barHtml(sowId);
       if (!html) {
         if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
         continue;
       }
 
+      var holder = document.createElement('div');
+      holder.innerHTML = html;
+      var fresh = holder.firstChild;
+
       if (!bar) {
-        var holder = document.createElement('div');
-        holder.innerHTML = html;
-        bar = holder.firstChild;
-        // Sit below the sub-bid-diff block when it exists, else directly
-        // under the header. Both modules insert idempotently and neither
-        // moves an existing block, so the order converges either way.
+        // Sit below the sub-bid-diff block when it exists, else directly under
+        // the header. Both modules insert idempotently and neither moves an
+        // existing block, so the order converges either way.
         var sbd = sec.querySelector(':scope > .scw-sbd-inline');
         var hdr = sec.querySelector('.scw-bid-review-v2__sow-header');
-        if (sbd) sbd.insertAdjacentElement('afterend', bar);
-        else if (hdr) hdr.insertAdjacentElement('afterend', bar);
-        else sec.insertBefore(bar, sec.firstChild);
-      } else {
-        var fresh = document.createElement('div');
-        fresh.innerHTML = html;
-        bar.parentNode.replaceChild(fresh.firstChild, bar);
+        if (sbd) sbd.insertAdjacentElement('afterend', fresh);
+        else if (hdr) hdr.insertAdjacentElement('afterend', fresh);
+        else sec.insertBefore(fresh, sec.firstChild);
+      } else if (bar.innerHTML !== fresh.innerHTML) {
+        // Only touch the DOM when the summary actually changed — the grid
+        // re-renders constantly and a blind replace would fight the observer.
+        bar.parentNode.replaceChild(fresh, bar);
       }
     }
   }
@@ -518,48 +698,28 @@
     return (n && (n.textContent || '').trim()) || 'this SOW';
   }
 
-  function commitFrom(el) {
-    var bar = el.closest('[data-scw-sow-margin-bar]');
-    if (!bar) return;
-    var sowId = bar.getAttribute('data-scw-sow-margin-bar');
-    var input = bar.querySelector('[data-scw-sow-margin-input]');
-    var dec = toDecimal(input && input.value);
-    if (dec == null) {
-      toast('Enter a margin between 0 and 99% (e.g. 12)', 'error');
-      if (input) input.focus();
-      return;
-    }
-    applyMargin(sowId, sowNameOf(bar.closest('.scw-bid-review-v2__sow')), dec, input);
-  }
-
   // ── Bindings ────────────────────────────────────────────────────────────
+  // NOTE: there is deliberately NO capture-phase listener here. An earlier
+  // version added one on `document` to stop bar clicks folding the SOW
+  // section — but stopPropagation() during CAPTURE at the document level ends
+  // the dispatch before it ever reaches the target, so the delegated handler
+  // below never ran and the button was dead. The bar is a SIBLING of the
+  // header (not a descendant), so header clicks were never a risk anyway.
 
   if (!document.documentElement.hasAttribute('data-scw-sow-margin-bound')) {
     document.documentElement.setAttribute('data-scw-sow-margin-bound', '1');
 
     document.addEventListener('click', function (e) {
-      var apply = e.target && e.target.closest &&
-                  e.target.closest('[data-scw-sow-margin-apply]');
-      if (!apply || apply.disabled) return;
-      // The SOW header is role="button" and toggles the section — keep the
-      // click from reaching it.
+      var open = e.target && e.target.closest &&
+                 e.target.closest('[data-scw-sow-margin-open]');
+      if (!open || open.disabled) return;
       e.preventDefault();
-      e.stopPropagation();
-      commitFrom(apply);
+      e.stopPropagation();   // bubble-phase only — safe
+      var bar = open.closest('[data-scw-sow-margin-bar]');
+      if (!bar) return;
+      openModal(bar.getAttribute('data-scw-sow-margin-bar'),
+                sowNameOf(bar.closest('.scw-bid-review-v2__sow')));
     });
-
-    // Enter commits; clicks inside the bar must not fold the SOW section.
-    document.addEventListener('keydown', function (e) {
-      var input = e.target && e.target.closest &&
-                  e.target.closest('[data-scw-sow-margin-input]');
-      if (!input) return;
-      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commitFrom(input); }
-      if (e.key === 'Escape') { input.blur(); }
-    });
-    document.addEventListener('click', function (e) {
-      var inBar = e.target && e.target.closest && e.target.closest('.' + P + '-bar');
-      if (inBar) e.stopPropagation();
-    }, true);
   }
 
   var _t = null, _suppress = false, _observer = null;
@@ -594,6 +754,8 @@
   SCW.onSceneRender(CFG.sceneKey, boot, CFG.eventNs);
   SCW.onViewRender(CFG.itemsViewKey, boot, CFG.eventNs);
 
-  SCW.sowMarginCascade = { mount: mount, partition: partition, CONFIG: CFG };
+  SCW.sowMarginCascade = {
+    mount: mount, partition: partition, open: openModal, CONFIG: CFG
+  };
 })();
 /*** END SOW MARGIN CASCADE **************************************************/
