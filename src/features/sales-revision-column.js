@@ -22,12 +22,26 @@
   'use strict';
 
   var CFG = {
+    // WRITE target. Accept/Reject/Apply PUT through this view, so it must
+    // stay a cell-editable grid of the revision-line-item object.
     revisionView:    'view_3842',
+    // READ sources, in priority order. view_3842 is filtered server-side
+    // (it only ever renders revisions still awaiting Ops triage), so it can
+    // never supply the accepted/rejected/forwarded rows the history section
+    // is made of — on a project whose revisions are all triaged it renders
+    // "No data" and the whole panel used to disappear. view_4154 is the
+    // unfiltered, project-scoped grid of the same object and carries every
+    // column this module reads, so it supplies history. Rows are merged by
+    // record id; a row present in the editable view wins (it is writable).
+    // Views absent from a scene are skipped, so this list is safe to carry
+    // everywhere the module runs.
+    revisionViews:   ['view_3842', 'view_4154'],
     sowItemField:    'field_2708',
     parentReqField:  'field_2643',
     htmlField:       'field_2695',
     jsonField:       'field_2696',
     statusField:     'field_2645',
+    originField:     'field_2721',   // "Revision Origin" — Sales | Ops
 
     colHeaderText:   'Sales Revisions',
     mountSelector:   '#bid-review-matrix',
@@ -214,16 +228,51 @@
   //  LOAD REVISION DATA FROM view_3842
   // ═══════════════════════════════════════════════════════════
 
+  /** Status bucket. The stored vocabulary is mixed-case and wider than
+   *  Accept/Reject: Make writes lowercase ("accepted"), this module writes
+   *  "Accepted"/"Rejected", and the forward-to-sub flow writes "submitted to
+   *  sub contractor". Only rows still awaiting Ops triage may be 'pending' —
+   *  anything already actioned is history, so a forwarded revision never
+   *  reappears with Accept/Reject buttons on it. */
+  function normalizeStatus(status) {
+    var s = String(status || '').toLowerCase();
+    if (/^accepted$/.test(s)) return 'accepted';
+    if (/^rejected$/.test(s)) return 'rejected';
+    if (s.indexOf('sub') !== -1) return 'forwarded';
+    return 'pending';
+  }
+
   function loadRevisions() {
-    var $view = $('#' + CFG.revisionView);
-    if (!$view.length) return;
+    var views = CFG.revisionViews || [CFG.revisionView];
+    var present = [];
+    for (var v = 0; v < views.length; v++) {
+      if ($('#' + views[v]).length) present.push(views[v]);
+    }
+    if (!present.length) return;
 
     _revisionData = [];
+    var seen = {};
+
+    for (var pv = 0; pv < present.length; pv++) readRevisionView(present[pv], seen);
+
+    if (window.SCW && SCW.bidReview && SCW.bidReview.CONFIG && SCW.bidReview.CONFIG.debug) {
+      SCW.debug('[SalesRevCol] Loaded', _revisionData.length, 'revision records from', present.join(', '));
+    }
+  }
+
+  /** Scrape one grid of revision line items into _revisionData. Rows already
+   *  collected from an earlier (higher-priority) view are skipped, so the
+   *  editable view's copy is the one that keeps `writable`. */
+  function readRevisionView(viewId, seen) {
+    var $view = $('#' + viewId);
+    if (!$view.length) return;
+    var writable = (viewId === CFG.revisionView);
 
     $view.find('tbody tr[id]').each(function () {
       var $tr = $(this);
       var id  = $tr.attr('id');
-      if (!id) return;
+      if (!id || seen[id]) return;
+      seen[id] = true;
 
       var $sowCell = $tr.find('td.' + CFG.sowItemField);
       var sowSpan  = $sowCell.length
@@ -239,13 +288,12 @@
 
       var status = ($tr.find('td.' + CFG.statusField).text() || '').replace(/[\u00a0\s]+/g, ' ').trim();
 
-      // Normalized status bucket. Accepted/rejected rows are KEPT now \u2014
-      // the summary panel renders them as history; the inline grid cards
-      // stay pending-only via revisionsBySowItem's filter. Anything that
-      // isn't accepted/rejected (Pending, blank, \u2026) counts as live.
-      var statusNorm = /^accepted$/i.test(status) ? 'accepted'
-                     : /^rejected$/i.test(status) ? 'rejected'
-                     : 'pending';
+      // Accepted/rejected/forwarded rows are KEPT \u2014 the summary panel renders
+      // them as history; the inline grid cards stay pending-only via
+      // revisionsBySowItem's filter.
+      var statusNorm = normalizeStatus(status);
+
+      var origin = ($tr.find('td.' + CFG.originField).text() || '').replace(/[\u00a0\s]+/g, ' ').trim();
 
       var $htmlCell = $tr.find('td.' + CFG.htmlField);
       var htmlContent = '';
@@ -264,14 +312,15 @@
         parentRequestId:  parentRequestId,
         status:           status,
         statusNorm:       statusNorm,
+        origin:           origin,
+        // Accept/Reject PUT through CFG.revisionView, so only rows that view
+        // actually renders can be actioned. History rows sourced from the
+        // read-only view render without action buttons.
+        writable:         writable,
         html:             htmlContent,
         json:             jsonData,
       });
     });
-
-    if (window.SCW && SCW.bidReview && SCW.bidReview.CONFIG && SCW.bidReview.CONFIG.debug) {
-      SCW.debug('[SalesRevCol] Loaded', _revisionData.length, 'revision records');
-    }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1132,29 +1181,32 @@
     } catch (e) { /* best-effort UI prune */ }
   }
 
+  /** Refetch every read source. An actioned row LEAVES the filtered editable
+   *  view and ENTERS the history view, so refetching only one of the two would
+   *  make the card vanish instead of moving into history. */
+  function refetchRevisionViews() {
+    var views = CFG.revisionViews || [CFG.revisionView];
+    for (var i = 0; i < views.length; i++) {
+      var v = Knack.views[views[i]];
+      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+    }
+  }
+
   function afterAccept(btn, revId) {
     btn.textContent = 'Accepted ✓';
     btn.style.opacity = '0.6';
     dropRevisionFromData(revId, 'accepted');
-    setTimeout(function () {
-      if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
-        Knack.views[CFG.revisionView].model.fetch();
-      }
-    }, 1500);
+    setTimeout(refetchRevisionViews, 1500);
   }
 
   function afterReject(btn, revId) {
     btn.textContent = 'Rejected \u2713';
     btn.style.opacity = '0.6';
     dropRevisionFromData(revId, 'rejected');
-    // Refresh revision data view — its view-render event triggers
+    // Refresh revision data views — their view-render events trigger
     // loadRevisions() + injectColumn(), and scw-bid-review-rendered
     // re-injects the column after any grid rebuild.
-    setTimeout(function () {
-      if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
-        Knack.views[CFG.revisionView].model.fetch();
-      }
-    }, 1500);
+    setTimeout(refetchRevisionViews, 1500);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1243,7 +1295,7 @@
       setTimeout(function () {
         if (Knack.views[SOW_VIEW] && Knack.views[SOW_VIEW].model) Knack.views[SOW_VIEW].model.fetch();
         if (Knack.views[SURVEY_VIEW] && Knack.views[SURVEY_VIEW].model) Knack.views[SURVEY_VIEW].model.fetch();
-        if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) Knack.views[CFG.revisionView].model.fetch();
+        refetchRevisionViews();
       }, 1500);
     }
 
@@ -1611,9 +1663,11 @@
 
     var header = document.createElement('div');
     header.className = 'scw-bid-cr-card__header';
-    header.textContent = action === 'remove' ? 'Sales: Remove'
-                       : action === 'add'    ? 'Sales: Add'
-                       :                       'Sales: Revise';
+    // The panel now also surfaces Ops-raised revisions (they live in the same
+    // object and only differ by field_2721), so the header names the real
+    // author rather than assuming Sales.
+    header.textContent = (rev.origin || 'Sales') + ': ' +
+      (action === 'remove' ? 'Remove' : action === 'add' ? 'Add' : 'Revise');
     card.appendChild(header);
 
     var cardProduct = json.productName || '';
@@ -1685,7 +1739,11 @@
     })(rev);
     item.appendChild(card);
 
-    // Ops actions — identical handlers to the V1 column.
+    // Ops actions — identical handlers to the V1 column. Rows that only exist
+    // in the read-only history view can't be PUT through CFG.revisionView, so
+    // they render as a card with no actions rather than buttons that 404.
+    if (rev.writable === false) return item;
+
     var actions = document.createElement('div');
     actions.className = 'scw-bid-review__action-menus';
     var revJsonStr = JSON.stringify(rev.json || {});
@@ -1873,13 +1931,17 @@
       '.scw-sr-panel__hitem { flex: 0 1 320px; min-width: 260px;',
       '  border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;',
       '  padding: 8px 10px; }',
-      '.scw-sr-panel__hitem--accepted { border-color: #bbf7d0; background: #f0fdf4; }',
-      '.scw-sr-panel__hitem--rejected { border-color: #fecdd3; background: #fff1f2; }',
+      '.scw-sr-panel__hitem--accepted  { border-color: #bbf7d0; background: #f0fdf4; }',
+      '.scw-sr-panel__hitem--rejected  { border-color: #fecdd3; background: #fff1f2; }',
+      '.scw-sr-panel__hitem--forwarded { border-color: #c7d2fe; background: #eef2ff; }',
       '.scw-sr-panel__chip { display: inline-flex; align-items: center; padding: 2px 9px;',
       '  border-radius: 999px; border: 1px solid transparent; margin-bottom: 6px;',
       '  font: 700 10.5px/1.4 system-ui, sans-serif; letter-spacing: .02em; }',
-      '.scw-sr-panel__chip--accepted { background: #dcfce7; border-color: #86efac; color: #15803d; }',
-      '.scw-sr-panel__chip--rejected { background: #fff1f2; border-color: #fecdd3; color: #be123c; }',
+      '.scw-sr-panel__chip--accepted  { background: #dcfce7; border-color: #86efac; color: #15803d; }',
+      '.scw-sr-panel__chip--rejected  { background: #fff1f2; border-color: #fecdd3; color: #be123c; }',
+      '.scw-sr-panel__chip--forwarded { background: #e0e7ff; border-color: #c7d2fe; color: #4338ca; }',
+      '.scw-sr-panel__chip--origin    { background: #f1f5f9; border-color: #e2e8f0; color: #475569;',
+      '  margin-left: 6px; }',
       '.scw-sr-panel__hbody { font-size: 12px; }',
       '.scw-sr-panel__hbody > div { max-width: 100% !important; }',
       '.scw-sr-panel__hbody > div > div { max-width: 100% !important; }'
@@ -1920,7 +1982,9 @@
     head.className = 'scw-sr-panel__head';
     var title = document.createElement('span');
     title.className = 'scw-sr-panel__title';
-    title.textContent = 'Sales Revisions';
+    // Not "Sales Revisions" any more: history is read from the unfiltered
+    // view, which carries Ops-raised revisions too. Each card names its origin.
+    title.textContent = 'Revision Requests';
     head.appendChild(title);
     var pill = document.createElement('span');
     pill.className = 'scw-sr-panel__pill ' +
@@ -1982,8 +2046,17 @@
         item.className = 'scw-sr-panel__hitem scw-sr-panel__hitem--' + hr.statusNorm;
         var chip = document.createElement('span');
         chip.className = 'scw-sr-panel__chip scw-sr-panel__chip--' + hr.statusNorm;
-        chip.textContent = hr.statusNorm === 'accepted' ? 'Accepted' : 'Rejected';
+        chip.textContent = hr.statusNorm === 'accepted'  ? 'Accepted'
+                         : hr.statusNorm === 'rejected'  ? 'Rejected'
+                         : hr.statusNorm === 'forwarded' ? 'Sent to sub'
+                         : (hr.status || 'Triaged');
         item.appendChild(chip);
+        if (hr.origin) {
+          var oc = document.createElement('span');
+          oc.className = 'scw-sr-panel__chip scw-sr-panel__chip--origin';
+          oc.textContent = hr.origin;
+          item.appendChild(oc);
+        }
         var body = document.createElement('div');
         body.className = 'scw-sr-panel__hbody';
         if (hr.html) {
@@ -2008,15 +2081,23 @@
   //  EVENT BINDINGS
   // ═══════════════════════════════════════════════════════════
 
-  SCW.onViewRender(CFG.revisionView, function () {
-    setTimeout(function () {
-      loadRevisions();
-      injectColumn();          // V1 grid (#bid-review-matrix)
-      observeV2Grid();         // V2 grid — attach the re-inject watchdog once
-      injectIntoV2();          // V2 grid — inline SOW-cell cards
-      renderRevisionsPanel();  // pending roll-up + history above the grid
-    }, 300);
-  }, CFG.eventNs);
+  // Bind every READ source: the editable view and the history view render
+  // independently, and either can land second. loadRevisions() re-merges all
+  // present views on each tick, so re-running is idempotent.
+  (function () {
+    var views = CFG.revisionViews || [CFG.revisionView];
+    for (var i = 0; i < views.length; i++) {
+      SCW.onViewRender(views[i], function () {
+        setTimeout(function () {
+          loadRevisions();
+          injectColumn();          // V1 grid (#bid-review-matrix)
+          observeV2Grid();         // V2 grid — attach the re-inject watchdog once
+          injectIntoV2();          // V2 grid — inline SOW-cell cards
+          renderRevisionsPanel();  // pending roll-up + history above the grid
+        }, 300);
+      }, CFG.eventNs);
+    }
+  })();
 
   $(document).on('scw-bid-review-rendered' + CFG.eventNs, function () {
     setTimeout(injectColumn, 100);
