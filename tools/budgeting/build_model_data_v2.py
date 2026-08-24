@@ -96,6 +96,8 @@ opex_vm = collections.defaultdict(lambda: [0.0]*12)   # vendor -> ttm months
 opex_va = collections.defaultdict(collections.Counter)
 totals_ttm = collections.defaultdict(lambda: [0.0]*12)
 cogs_accounts = collections.defaultdict(lambda: [0.0]*12)
+cogs_vendors = collections.defaultdict(lambda: collections.defaultdict(lambda: [0.0]*12))
+cogs_big = []          # individual postings large enough to explain a month on their own
 for acct, i, contact, debit, credit in records:
     c = code(acct)
     if not c or not c[0].isdigit(): continue
@@ -103,6 +105,14 @@ for acct, i, contact, debit, credit in records:
     if c in COGS:
         totals_ttm["cogs"][i] += net
         cogs_accounts[acct][i] += net
+        # Vendor detail for COGS. The opex vendor master deliberately excludes COGS accounts,
+        # so without this a spike like Jul-26's single $26.5K Avigilon line in 5257 is invisible
+        # from the dashboard — the COGS history shows the jump but never says who caused it.
+        v = re.sub(r"\s+", " ", contact.split("\n")[0]).strip()
+        if v.startswith("Payment: "): v = v[9:]
+        if not v: v = "(unlabelled)"
+        if len(v) > 60: v = v[:57].rstrip() + "\u2026"
+        cogs_vendors[c][v][i] += net
     elif c in PAYROLL_PL:
         totals_ttm["payroll"][i] += net
         if c == "66000": totals_ttm["wages"][i] += net
@@ -125,6 +135,38 @@ for acct, i, contact, debit, credit in records:
         if v.startswith("Payment: "): v = v[9:]
         opex_vm[v][i] += net
         opex_va[v][acct] += abs(net)
+
+# Single COGS postings that make a month look unlike its neighbours. Ranking by raw size is
+# useless here: the list fills with the routine month-end 5258 COG-adjustment journals (the
+# normal mechanism) and with install-subcontractor draws that are simply lumpy by nature. What
+# matters is a line that DOMINATES its account-month AND lands in a month running well above
+# that account's own median — which is how Jul-26's $26.5K Avigilon charge in 5257 (5x a normal
+# month for that account) surfaces while a $106K Secure Vision draw in a typical 6734 month does
+# not. Routine adjustment journals are excluded outright.
+ROUTINE_RE = re.compile(r"cog[s]? adjustment", re.I)
+BIG_ABS = 5000.0
+def _median(xs):
+    xs = sorted(x for x in xs if x > 0)
+    return xs[len(xs) // 2] if xs else 0.0
+acct_median = {a: _median(v) for a, v in cogs_accounts.items()}
+for acct, i, contact, debit, credit in records:
+    c = code(acct)
+    if c not in COGS: continue
+    net = debit - credit
+    if net < BIG_ABS: continue
+    v = re.sub(r"\s+", " ", contact.split("\n")[0]).strip() or "(unlabelled)"
+    if ROUTINE_RE.search(v): continue
+    month_tot = cogs_accounts[acct][i]
+    med = acct_median.get(acct, 0.0)
+    if not month_tot or not med: continue
+    share = net / month_tot
+    lift = month_tot / med                       # how far this month runs above a normal one
+    if share < 0.4 or lift < 1.4: continue       # must dominate its month AND inflate it
+    if len(v) > 60: v = v[:57].rstrip() + "\u2026"
+    cogs_big.append(dict(code=c, account=acct, month=i, vendor=v, amount=round(net, 2),
+                         share=round(share, 3), lift=round(lift, 2),
+                         month_total=round(month_tot, 2), typical=round(med, 2)))
+cogs_big.sort(key=lambda r: -(r["amount"] * r["share"]))
 
 # ---------------- contracts + allocations (as v1) ----------------
 contracts = {}
@@ -300,6 +342,9 @@ model = dict(
     staff=v1["staff"], sales=v1["sales"], ramps=v1["ramps"],
     employer_tax_rate=round(sum(totals_ttm["ptax"]) / sum(totals_ttm["wages"]), 4),
     cogs_accounts={k: [round(x, 2) for x in v] for k, v in cogs_accounts.items() if abs(sum(v)) > 500},
+    cogs_vendors={c: {v: [round(x, 2) for x in mo] for v, mo in vs.items() if abs(sum(mo)) > 250}
+                  for c, vs in cogs_vendors.items()},
+    cogs_big=cogs_big[:40],
     provisional_cogs_months=[7],   # user-confirmed 2026-08-24: July COGS entry still not made
     dept_payroll_actual=dept_payroll,
     # August 2026 is deliberately EXCLUDED (actual_months stays 7). AT#14 carries Aug data but

@@ -319,7 +319,8 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
 <section class="tab" id="tab-trend">
   <div class="card"><h2>Operating expense, trailing 12 months</h2><p class="note">As booked (accrual), Aug 2025 – Jul 2026. Hover for the month's total.</p><figure class="chart" id="chartTTM"></figure></div>
   <div class="card"><h2>COGS history — what cost of sales has been</h2>
-    <p class="note">As booked (accrual), Aug 2025 – Jul 2026, grouped by cost family. Jul ’26 is incomplete — the month-end product-COGS entry (5258) hasn’t been made yet, which is why it shows near zero.</p>
+    <p class="note">As booked (accrual), Aug 2025 – Jul 2026, grouped by cost family. Jul ’26 is incomplete — the month-end product-COGS entry (5258) hasn’t been made yet, which is why it shows near zero. Open a row (▸) for the vendors behind it; an <b style="color:#b45309">▲</b> marks a month running well clear of that family's typical one, and the vendor causing it is highlighted in the same colour.</p>
+    <div id="cogsBig"></div>
     <div class="levers" id="cogsHistLever" style="border:0;padding:0;margin:0 0 10px;background:transparent"></div>
     <div class="tablewrap" id="cogsHist"></div></div>
   <div class="attn" id="attnCards"></div>
@@ -1518,6 +1519,13 @@ function renderExpenses(C){
 }
 
 /* ---------- trends tab ---------- */
+const cogsOpen = new Set();
+document.getElementById("cogsHist").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k=cogsfam]"); if (!b) return;
+  const f = b.dataset.fam;
+  cogsOpen.has(f) ? cogsOpen.delete(f) : cogsOpen.add(f);
+  renderTrends();
+});
 function renderTrends(){
   const el = document.getElementById("chartTTM");
   const W = 1400, H = 260, mL = 56, mR = 12, mT = 12, mB = 26, iw = W - mL - mR, ih = H - mT - mB;
@@ -1544,18 +1552,68 @@ function renderTrends(){
     ["Recurring service costs", ["5257","5260"]]];
   const acctRow = codes => Array.from({length:12}, (_, i) =>
     Object.entries(MODEL.cogs_accounts).reduce((a, [k, v]) => a + (codes.includes(k.split(" - ")[0].trim()) ? v[i] : 0), 0));
+  // vendors inside a cost family, merged across its accounts, biggest first
+  const famVendors = codes => {
+    const merged = {};
+    for (const c of codes){
+      const vs = (MODEL.cogs_vendors || {})[c]; if (!vs) continue;
+      for (const [v, mo] of Object.entries(vs)){
+        if (!merged[v]) merged[v] = Array(12).fill(0);
+        for (let i = 0; i < 12; i++) merged[v][i] += mo[i];
+      }
+    }
+    return Object.entries(merged).map(([v, mo]) => ({ vendor: v, mo, tot: mo.reduce((a, b) => a + b, 0) }))
+      .sort((a, b) => Math.abs(b.tot) - Math.abs(a.tot));
+  };
+  // a month is called out when it runs well clear of the family's own typical month
+  const spikeIdx = r => {
+    const pos = r.filter(v => v > 0).slice().sort((a, b) => a - b);
+    if (pos.length < 4) return new Set();
+    const med = pos[Math.floor(pos.length / 2)];
+    return new Set(r.map((v, i) => (v > med * 1.6 && v - med > 8000) ? i : -1).filter(i => i >= 0));
+  };
   let ch = `<table class="data"><thead><tr><th>Cost family</th>` +
     MODEL.ttm_labels.map((l, i) => `<th${i === 11 ? ` title="Incomplete — COGS entry pending"` : ""}>${l}${i === 11 ? "*" : ""}</th>`).join("") + `<th>TTM</th></tr></thead><tbody>`;
   const cgTot = Array(12).fill(0);
   for (const [label, codes] of CG){
     const r = acctRow(codes); r.forEach((v, i) => cgTot[i] += v);
-    ch += `<tr><td>${label}</td>${r.map(v => `<td>${fmt$(v)}</td>`).join("")}<td><b>${fmt$(r.reduce((a, b) => a + b, 0))}</b></td></tr>`;
+    const key = codes.join(","), open = cogsOpen.has(key), sp = spikeIdx(r);
+    ch += `<tr><td><button class="exp-toggle" data-k="cogsfam" data-fam="${esc(key)}" aria-expanded="${open}" title="${open ? "Hide" : "Show"} the vendors behind this line">${open ? "▾" : "▸"}</button> ${label}</td>` +
+      r.map((v, i) => `<td${sp.has(i) ? ` style="color:#b45309;font-weight:600" title="Runs well above this family's typical month — open the row to see which vendor"` : ""}>${fmt$(v)}${sp.has(i) ? " ▲" : ""}</td>`).join("") +
+      `<td><b>${fmt$(r.reduce((a, b) => a + b, 0))}</b></td></tr>`;
+    if (open){
+      const vs = famVendors(codes);
+      if (!vs.length) ch += `<tr class="dim"><td colspan="14" class="dim">No vendor detail captured for this family.</td></tr>`;
+      for (const v of vs.slice(0, 12)){
+        ch += `<tr class="dim"><td class="dim" style="padding-left:26px" title="${esc(v.vendor)}"><span class="vname">${esc(v.vendor)}</span></td>` +
+          v.mo.map((x, i) => {
+            const share = r[i] ? x / r[i] : 0;
+            const hot = sp.has(i) && share > 0.4;
+            return `<td${hot ? ` style="color:#b45309;font-weight:600"` : ""}${x ? ` title="${esc(v.vendor)} · ${esc(MODEL.ttm_labels[i])} · ${fmt$(x)}${r[i] ? " · " + Math.round(share * 100) + "% of the family that month" : ""}"` : ""}>${Math.abs(x) < 1 ? `<span class="dim">—</span>` : fmt$(x)}</td>`;
+          }).join("") + `<td>${fmt$(v.tot)}</td></tr>`;
+      }
+      if (vs.length > 12) ch += `<tr class="dim"><td colspan="14" class="dim" style="padding-left:26px">…and ${vs.length - 12} smaller vendors</td></tr>`;
+    }
   }
   ch += `<tr class="tot"><td>Total COGS</td>${cgTot.map(v => `<td>${fmt$(v)}</td>`).join("")}<td>${fmt$(cgTot.reduce((a, b) => a + b, 0))}</td></tr>`;
   ch += `<tr class="dim"><td class="dim">% of sales revenue (2026)</td>${cgTot.map((v, i) => {
     const ri = i - 5; const rv = ri >= 0 && ri < 7 ? MODEL.totals.revenue[ri] : null;
     return `<td>${rv ? (v / rv * 100).toFixed(1) + "%" + (i === 11 ? " *" : "") : `<span class="dim">—</span>`}</td>`; }).join("")}<td>—</td></tr>`;
   document.getElementById("cogsHist").innerHTML = ch + "</tbody></table>";
+  // Single postings that dominate their account-month AND inflate it well past that account's
+  // typical month. Routine month-end COGS adjustment journals are filtered out upstream.
+  const oneOffs = (MODEL.cogs_big || []).slice(0, 6);
+  document.getElementById("cogsBig").innerHTML = oneOffs.length
+    ? `<div style="border:1px solid var(--border);border-radius:9px;padding:9px 12px;margin:0 0 10px;background:var(--surface2)">
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:2px">One posting explains the month</div>
+        <div class="subtle" style="font-size:11.5px;margin-bottom:5px">Lines that both dominate their account-month and push it clear of that account's normal month. Routine month-end COGS journals excluded.</div>
+        ${oneOffs.map(r => `<div style="font-size:12.5px;display:flex;gap:10px;justify-content:space-between;border-top:1px solid var(--grid);padding:4px 0">
+          <span><b>${esc(r.vendor)}</b> <span class="subtle">· ${esc(MODEL.ttm_labels[r.month])} · ${esc(r.account)}</span></span>
+          <span style="font-variant-numeric:tabular-nums;text-align:right"><b>${fmt$(r.amount)}</b>
+            <span class="subtle">${Math.round(r.share * 100)}% of the month · pushed it to ${fmtK(r.month_total)} against a typical ${fmtK(r.typical)} (${r.lift}×)</span></span></div>`).join("")}
+        <p class="note" style="margin:6px 0 0">A line this shape is usually an annual or bulk renewal booked whole. If it covers a term, it belongs in prepaid and amortised across that term — leaving it here overstates one month's cost of sales and understates the rest.</p>
+      </div>`
+    : "";
   const by = st => MODEL.vend_master.filter(v => v.status === st);
   const li = v => `<li><b title="${esc(v.vendor)}">${esc(v.vendor)}</b><span>${v.status === "DROPPED" ? "was " + fmtK(v.ttm_total / 12) + "/mo" : fmtK(v.base) + "/mo"}</span></li>`;
   document.getElementById("attnCards").innerHTML = `
