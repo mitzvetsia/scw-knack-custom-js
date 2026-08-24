@@ -417,6 +417,12 @@ function defaultState(){
       // break-even relief by ~$5.6K/mo.
       otherInc: 5900, laborHedge: 0, opexHedge: 0,
       targetH1: 6350000, targetH2: 5700000, thrH1: 6350000, thrH2: 5700000, smRate: 0.015, dirRate: 0.035,
+      // Booked payroll Jan-Jul carries variable comp for "AMs & AEs" and "BDRs" only - there is
+      // NO director/manager override line in seven months, and Sales books just $88K/mo total,
+      // which cannot cover Ben's $175K base PLUS ~$127K/yr of override. So the Staffing rows for
+      // Sales Director / Sales Manager are read as OTE (override already inside). Flip the
+      // control on the Goals card if those salaries are base-only.
+      ovrInBase: true,
       hdvRate: 523.5, taxRate: MODEL.employer_tax_rate },
     sales: MODEL.sales.map((s, i) => ({ id: "s" + i, name: s.name, role: s.role, ramp: s.ramp,
       start: s.start_cal, modest: /Stu/.test(s.name) ? 1 : 0.8, stretch: 1,
@@ -455,6 +461,7 @@ try {
   if (L0.estProv == null) L0.estProv = true;
   if (L0.hdvRate == null) L0.hdvRate = 523.5;
   if (L0.taxRate == null) L0.taxRate = MODEL.employer_tax_rate;
+  if (L0.ovrInBase == null) L0.ovrInBase = true;
   for (const p of S.staff){
     if (p.benOn === undefined) p.benOn = (p.hdv || 0) > 0;
     if (p.taxOn === undefined) p.taxOn = (p.tax || 0) > 0.005;
@@ -628,6 +635,9 @@ function compute(){
       const over = Math.max(0, halfRev - thr);
       const comp = (L.smRate + L.dirRate) * over;
       out.override[scn][hi] = comp;
+      // When the SM/Director override is already inside their Staffing salaries (OTE rows),
+      // charging it again here would double-count it — keep the figure for reference only.
+      if (L.ovrInBase) return;
       const modeled = []; for (let m = a + 1; m <= b; m++) if (m > ACT) modeled.push(m - 1);
       if (!modeled.length || comp === 0) return;
       for (const i of modeled){
@@ -856,7 +866,10 @@ function renderProj(C){
     push(`<span title="Headcount starting or ending vs the prior month. Hover a cell to see who.">· heads added / removed</span>`, dHeads, "dim", dFm, nH.map(a => a.join("\n")));
     push(`<span title="Raises landing and per-person pay changes vs the prior month. Hover a cell to see who.">· raises &amp; comp changes</span>`, dComp, "dim", dFm, nC.map(a => a.join("\n")));
   }
-  for (const [k, v] of pick(C.comp.mod, C.comp.str)) push("Sales comp (commissions + overrides)" + sfx(k), v);
+  const compLbl = S.levers.ovrInBase
+    ? `<span title="Rep commissions only. The SM/Director override is set to 'already inside the Staffing salaries' on the Goals card, so it is not charged again here. Booked months carry their commissions inside the Payroll row above (~$17K/mo), which is why this row is blank before Aug.">Sales comp (rep commissions)</span>`
+    : `<span title="Rep commissions plus the SM/Director override spread across the half's modeled months. Booked months carry their commissions inside the Payroll row above (~$17K/mo), which is why this row is blank before Aug.">Sales comp (commissions + overrides)</span>`;
+  for (const [k, v] of pick(C.comp.mod, C.comp.str)) push(compLbl + sfx(k), v);
   const opexDepts = DEPTS.filter(d => C.dept[d].some(v => Math.abs(v) > 0.5));
   if (plOpexOpen) for (const d of opexDepts) push("Opex — " + dn(d), C.dept[d], "dim");
   push(`Total opex <button class="exp-toggle" data-k="plopex">${plOpexOpen ? "▾ hide" : "▸ show"} ${opexDepts.length} depts</button>`, C.opex, "tot");
@@ -1047,7 +1060,12 @@ function renderGoals(C){
     `<h2>Goals &amp; break-even</h2>
      <p class="note">Half-year goal setting. Sales Manager (<input id="lvSm" class="cell tiny" value="${(L.smRate * 100).toFixed(2)}">%)
      and Director (<input id="lvDir" class="cell tiny" value="${(L.dirRate * 100).toFixed(2)}">%) overrides pay on the half's revenue above its comp threshold —
-     historically the threshold is the modest goal; edit it to let comp start earlier or later.</p>
+     historically the threshold is the modest goal; edit it to let comp start earlier or later.
+     Those overrides are
+     <select id="lvOvrB" class="cell" style="width:auto;font-size:11.5px"><option value="in"${L.ovrInBase ? " selected" : ""}>already inside the Staffing salaries (OTE)</option><option value="on"${L.ovrInBase ? "" : " selected"}>paid on top of the Staffing salaries</option></select>
+     — booked payroll shows variable comp for AMs/AEs and BDRs only, with no separate
+     director or manager override line, so OTE is the default. Reference figure either way:
+     <b>${fmtK(C.override ? C.override.mod[0] + C.override.mod[1] : 0)}</b> modest across both halves.</p>
      <div class="goals">` +
     goalHalf(C, FH1, "targetH1", "thrH1", ["gTg1", "gTh1"]) +
     goalHalf(C, FH2, "targetH2", "thrH2", ["gTg2", "gTh2"]) + `</div>`;
@@ -1057,6 +1075,7 @@ function renderGoals(C){
   bind("gTh2", v => S.levers.thrH2 = num(v, S.levers.targetH2));
   bind("lvSm", v => S.levers.smRate = num(v, 1.5) / 100);
   bind("lvDir", v => S.levers.dirRate = num(v, 3.5) / 100);
+  bind("lvOvrB", v => S.levers.ovrInBase = v === "in");
 }
 /* ---------- sales tab ---------- */
 function renderSales(C){
