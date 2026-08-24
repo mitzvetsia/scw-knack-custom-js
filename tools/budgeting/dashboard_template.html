@@ -286,11 +286,12 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
 </section>
 
 <section class="tab" id="tab-staff">
-  <div class="card"><h2>Payroll: model vs booked</h2><p class="note">Bars are Xero booked payroll (wages + tax + benefits, commissions included). The line is this tab's fully-loaded model — expect it to sit under the bars in strong commission months.</p><figure class="chart" id="chartPayroll"></figure></div>
+  <div class="card"><h2>Payroll: model vs booked</h2><p class="note">Bars are Xero booked payroll (wages + tax + benefits, commissions included). The line is this tab's fully-loaded model — expect it to sit under the bars in strong commission months.</p><figure class="chart" id="chartPayroll"></figure>
+    <div id="payCal"></div></div>
   <div class="card"><h2>Raise planner</h2><p class="note">Every planned raise in one list — pick who it covers (a whole department, one role, or a named person), how much (% or dollars), and when it starts. Raises stack: a person covered by a department raise and their own raise gets both.</p>
     <div id="raisePlanner"></div>
     <button class="btn addrow" id="addRaise">+ Plan a raise</button></div>
-  <div class="card"><h2>Roster &amp; headcount plan</h2><p class="note">Fully-loaded monthly cost = (salary/12 + planned raises) × (1 + tax&amp;match) + health + per-seat licenses. The two rates below are entered once and apply to every eligible role — untick BEN or TAX on a row for 1099 contractors or coverage decliners. Set headcount by month (later months follow), or open a role (▸) to name its people or switch it to hourly.</p>
+  <div class="card"><h2>Roster &amp; headcount plan</h2><p class="note">Fully-loaded monthly cost = (salary/12 + planned raises) × (1 + tax&amp;match) + health + per-seat licenses. The two rates below are entered once and apply to every eligible role — untick BEN or TAX on a row for 1099 contractors or coverage decliners. Set headcount by month (later months follow), or open a role (▸) to name its people or switch it to hourly. Each department header carries its own headcount by month, and the HEADCOUNT row at the foot totals the whole company — shaded months are booked, where payroll comes from Xero rather than this plan.</p>
     <div class="levers" style="margin-bottom:12px" id="payrollRates"></div>
     <div class="tablewrap tall" id="staffTable"></div>
     <button class="btn addrow" id="addRole">+ Add role</button>
@@ -1309,6 +1310,7 @@ function renderStaff(C){
     leverInput("lvTax", "Employer tax & match %", (S.levers.taxRate * 100).toFixed(2), "added on top of pay — Xero actual " + (MODEL.employer_tax_rate * 100).toFixed(1) + "%");
   bind("lvHdv", v => S.levers.hdvRate = num(v, 523.5));
   bind("lvTax", v => S.levers.taxRate = num(v, MODEL.employer_tax_rate * 100) / 100);
+  renderPayCal(C);
   let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Ben</th><th>Lic</th><th>Tax</th><th>Cost/head</th>` +
     MONTHS.map(m => `<th>${m}</th>`).join("") + `<th>15-mo cost</th><th></th></tr></thead><tbody>`;
   const dOrder = d => { const i = DEPTS.indexOf(d); return i < 0 ? DEPTS.length : i; };
@@ -1332,7 +1334,10 @@ function renderStaff(C){
         : Array(Math.max(0, Math.round(r.hc[NM - 1] || 0))).fill(earningsAt(r, null, NM))).sort((x, y) => x - y);
       const medSal = headVals.length ? headVals[Math.floor(headVals.length / 2)] : 0;
       const budMo = (C.deptPay[p.dept] ? C.deptPay[p.dept][NM - 1] : 0) + (C.dept[p.dept] ? C.dept[p.dept][NM - 1] : 0);
-      h += `<tr class="sec deptsec"><td colspan="${NCOL - 2}"><button class="exp-toggle" data-dept="${esc(p.dept)}" data-k="deptfold" aria-expanded="${!folded}">${folded ? "▸" : "▾"}</button> ${renameDept === p.dept ? `<input class="cell pos" style="width:220px" data-id="${esc(p.dept)}" data-k="deptname" value="${esc(dn(p.dept))}" title="Type the new display name, then press Enter (Esc cancels; blank restores the original)">` : `${esc(dn(p.dept))} <button class="exp-toggle" data-dept="${esc(p.dept)}" data-k="deptrename" title="Rename this department (display only — data keeps its key)">✎</button>`} <span class="dim" style="font-weight:400">· ${deptN.get(p.dept)} role${deptN.get(p.dept) > 1 ? "s" : ""} · ${heads} head${heads === 1 ? "" : "s"} · med salary ${fmtK(medSal)} · budget ${fmtK(budMo)}/mo pay+opex${folded ? " · (collapsed)" : ""}</span></td><td title="15-month payroll cost">${fmt$(deptFy.get(p.dept))}</td><td></td></tr>`;
+      const dHc = Array.from({length: NM}, (_, i) => dRoles.reduce((a, r) => a + staffHC(r, i + 1), 0));
+      h += `<tr class="sec deptsec"><td colspan="6"><button class="exp-toggle" data-dept="${esc(p.dept)}" data-k="deptfold" aria-expanded="${!folded}">${folded ? "▸" : "▾"}</button> ${renameDept === p.dept ? `<input class="cell pos" style="width:220px" data-id="${esc(p.dept)}" data-k="deptname" value="${esc(dn(p.dept))}" title="Type the new display name, then press Enter (Esc cancels; blank restores the original)">` : `${esc(dn(p.dept))} <button class="exp-toggle" data-dept="${esc(p.dept)}" data-k="deptrename" title="Rename this department (display only — data keeps its key)">✎</button>`} <span class="dim" style="font-weight:400">· ${deptN.get(p.dept)} role${deptN.get(p.dept) > 1 ? "s" : ""} · med salary ${fmtK(medSal)} · budget ${fmtK(budMo)}/mo pay+opex${folded ? " · (collapsed)" : ""}</span></td>` +
+        dHc.map((v, i) => `<td class="${i < ACT ? "actual" : ""}" title="${esc(dn(p.dept))} headcount in ${MONTHS[i]}${i < ACT ? " (booked month — payroll comes from Xero, not this plan)" : ""}">${v ? (Math.round(v * 10) / 10) : `<span class="dim">—</span>`}</td>`).join("") +
+        `<td title="15-month payroll cost">${fmt$(deptFy.get(p.dept))}</td><td></td></tr>`;
     }
     if (collapsedDepts.has(p.dept)) continue;
     const cur = headCost(p, 1), nw = headCost(p, NM);
@@ -1423,7 +1428,11 @@ function renderStaff(C){
       </div></td></tr>`;
     }
   }
-  h += `<tr class="tot"><td>TOTAL</td><td></td><td></td><td></td><td></td><td></td>` +
+  const totHc = Array.from({length: NM}, (_, i) => S.staff.reduce((a, r) => a + staffHC(r, i + 1), 0));
+  h += `<tr class="tot"><td title="Every seat on the plan, month by month — named people count on their own start/end months, seat rows count their headcount figure">HEADCOUNT</td><td></td><td></td><td></td><td></td><td></td>` +
+    totHc.map((v, i) => `<td class="${i < ACT ? "actual" : ""}" title="${MONTHS[i]}${i < ACT ? " ’26 (booked)" : (i < 12 ? " ’26" : " ’27")}: ${Math.round(v * 10) / 10} heads">${Math.round(v * 10) / 10}</td>`).join("") +
+    `<td title="Peak ${Math.max(...totHc)} · ending ${Math.round(totHc[NM - 1] * 10) / 10}">${Math.round(totHc[NM - 1] * 10) / 10} end</td><td></td></tr>` +
+    `<tr class="tot"><td>TOTAL COST</td><td></td><td></td><td></td><td></td><td></td>` +
     Array.from({length:NM}, (_, i) => `<td>${fmtK(C.staffTotal[i])}</td>`).join("") +
     `<td>${fmt$(C.staffTotal.reduce((a, b) => a + b, 0))}</td><td></td></tr>`;
   document.getElementById("staffTable").innerHTML = h + "</tbody></table>";
@@ -1599,6 +1608,42 @@ document.getElementById("copyFixes").addEventListener("click", async ev => {
   catch (e) { openCfg("copy", txt, "Clipboard is blocked here — select everything and copy manually (Ctrl/Cmd-C)."); }
   setTimeout(() => ev.target.textContent = "Copy checklist", 1600);
 });
+/* ---------- payroll calibration: does the roster reconcile to Xero? ---------- */
+function renderPayCal(C){
+  const el = document.getElementById("payCal"); if (!el) return;
+  const T = MODEL.totals, vc = T.varcomp || [];
+  if (!vc.length){ el.innerHTML = ""; return; }
+  const n = Math.min(T.payroll.length, vc.length);
+  const bookedBase = [], bookedAll = [];
+  for (let i = 0; i < n; i++){ bookedBase.push(T.payroll[i] - vc[i]); bookedAll.push(T.payroll[i]); }
+  const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const bBase = avg(bookedBase), bAll = avg(bookedAll), bComm = avg(vc.slice(0, n));
+  const lo = Math.min(...bookedBase), hi = Math.max(...bookedBase);
+  const loM = MONTHS[bookedBase.indexOf(lo)], hiM = MONTHS[bookedBase.indexOf(hi)];
+  const mBase = C.pay[ACT];                    // first modeled month, base salaries only
+  const gap = mBase - bBase, pct = bBase ? gap / bBase * 100 : 0;
+  const sev = Math.abs(pct) < 3 ? "good" : (Math.abs(pct) < 8 ? "warn" : "crit");
+  const col = sev === "good" ? "var(--good-text)" : sev === "warn" ? "#b45309" : "var(--crit)";
+  const verdict = sev === "good" ? "reconciles" : sev === "warn" ? "runs a little rich" : "runs rich";
+  el.innerHTML =
+    `<div style="border-top:1px solid var(--grid);margin-top:10px;padding-top:10px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px 26px;align-items:baseline">
+        <b style="font-size:13px">Does the roster reconcile?</b>
+        <span class="subtle" style="font-size:12px">Booked months already carry commissions inside payroll, so the like-for-like test is base against base.</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 26px;margin-top:8px;font-size:12.5px;font-variant-numeric:tabular-nums">
+        <span>Booked all-in <b>${fmt$(bAll)}</b>/mo</span>
+        <span class="subtle">− commissions ${fmt$(bComm)}</span>
+        <span>= booked <b>base ${fmt$(bBase)}</b>/mo</span>
+        <span class="subtle">(range ${fmtK(lo)} ${esc(loM)} – ${fmtK(hi)} ${esc(hiM)})</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 26px;margin-top:4px;font-size:12.5px;font-variant-numeric:tabular-nums">
+        <span>Roster base, ${esc(MONTHS[ACT])} <b>${fmt$(mBase)}</b>/mo</span>
+        <span style="color:${col}">gap <b>${(gap >= 0 ? "+" : "") + fmt$(gap)}</b> (${(pct >= 0 ? "+" : "") + pct.toFixed(1)}%) — roster ${verdict}</span>
+      </div>
+      <p class="note" style="margin:8px 0 0">Base-salary months swing ${fmtK(hi - lo)} between ${esc(loM)} and ${esc(hiM)} on a steady roster — Xero's daily payroll accruals and their reversals don't always net inside one calendar month, so judge against the <b>average</b>, never a single month. A persistent gap means the salary figures or seat counts below are off, not that a month was unusual.</p>
+    </div>`;
+}
 /* ---------- pay bands ---------- */
 function renderPayBands(){
   const split = new Set(S.bandSplit || []);

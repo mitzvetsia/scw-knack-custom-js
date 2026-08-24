@@ -84,6 +84,7 @@ else:
     records += read_at(A["at"], lambda y, m: y == 2026)
 
 def code(acct): return acct.split(" - ")[0].strip() if acct else ""
+VARCOMP_RE = re.compile(r"variable comp|commission|bonus|spiff", re.I)
 PAYROLL_PL = {"66000","6529","6727","6189"}
 COGS = {"5257","5258","5259","5260","5566","5567","5568","5569","5570","5571","6734","6737","6730"}
 def is_opex(c):
@@ -104,6 +105,10 @@ for acct, i, contact, debit, credit in records:
         totals_ttm["payroll"][i] += net
         if c == "66000": totals_ttm["wages"][i] += net
         elif c == "6529": totals_ttm["ptax"][i] += net
+        # Variable comp (AE/AM/BDR commissions) is booked INSIDE payroll, so booked months are
+        # already total comp cost. Split it out so the dashboard can compare its base-salary
+        # model against a like-for-like base figure.
+        if VARCOMP_RE.search(contact): totals_ttm["varcomp"][i] += net
     elif is_opex(c):
         totals_ttm["opex"][i] += net
         v = re.sub(r"\s+"," ", contact.split("\n")[0]).strip()
@@ -277,7 +282,9 @@ model = dict(
         opex=[round(x,2) for x in opex26],
         ttm_opex=[round(x,2) for x in totals_ttm["opex"]],
         ttm_cogs=[round(x,2) for x in totals_ttm["cogs"]],
-        ttm_payroll=[round(x,2) for x in totals_ttm["payroll"]]),
+        ttm_payroll=[round(x,2) for x in totals_ttm["payroll"]],
+        varcomp=[round(x,2) for x in totals_ttm["varcomp"][5:12]],
+        wages=[round(x,2) for x in totals_ttm["wages"][5:12]]),
     staff=v1["staff"], sales=v1["sales"], ramps=v1["ramps"],
     employer_tax_rate=round(sum(totals_ttm["ptax"]) / sum(totals_ttm["wages"]), 4),
     cogs_accounts={k: [round(x, 2) for x in v] for k, v in cogs_accounts.items() if abs(sum(v)) > 500},
