@@ -196,7 +196,7 @@
     var names = [];
     for (var k in otherSows) names.push(otherSows[k]);
     names.sort();
-    return { own: own, shared: shared, otherSowNames: names };
+    return { sowId: sowId, own: own, shared: shared, otherSowNames: names };
   }
 
   /** Distinct margins currently in force across a set of records. */
@@ -316,6 +316,44 @@
       '.' + P + '-scope-t { font-weight: 700; color: #0f172a; }',
       '.' + P + '-scope-d { color: #64748b; font-size: 12px; margin-top: 2px; }',
       '.' + P + '-scope-d--warn { color: #92400e; font-weight: 600; }',
+      // Shared-item checklist
+      '.' + P + '-shead {',
+      '  display: flex; align-items: center; gap: 10px;',
+      '  margin: 6px 0 2px;',
+      '}',
+      '.' + P + '-sbulk { margin-left: auto; display: inline-flex; gap: 4px; }',
+      '.' + P + '-sbulk button {',
+      '  border: 1px solid #cbd5e1; background: #fff; border-radius: 5px;',
+      '  padding: 2px 9px; cursor: pointer; color: #0f4c75;',
+      '  font: 600 11px/1.4 system-ui, sans-serif;',
+      '}',
+      '.' + P + '-sbulk button:hover { background: #f1f5f9; }',
+      '.' + P + '-list {',
+      '  margin-top: 8px; max-height: 260px; overflow-y: auto;',
+      '  border: 1px solid #e2e8f0; border-radius: 8px; padding: 4px;',
+      '  background: #fff;',
+      '}',
+      '.' + P + '-grp {',
+      '  position: sticky; top: -4px; z-index: 1;',
+      '  background: #f8fafc; border-bottom: 1px solid #e2e8f0;',
+      '  padding: 5px 8px; margin: 2px -4px 3px;',
+      '  font: 700 10.5px/1.3 system-ui, sans-serif; letter-spacing: .03em;',
+      '  text-transform: uppercase; color: #475569;',
+      '}',
+      '.' + P + '-item {',
+      '  display: grid; grid-template-columns: auto 1fr auto; gap: 4px 9px;',
+      '  align-items: center; padding: 5px 8px; border-radius: 6px;',
+      '  cursor: pointer;',
+      '}',
+      '.' + P + '-item:hover { background: #f8fafc; }',
+      '.' + P + '-item--on { background: #fffbeb; }',
+      '.' + P + '-item--on:hover { background: #fef3c7; }',
+      '.' + P + '-item input { margin: 0; }',
+      '.' + P + '-item-l { font-size: 12.5px; color: #0f172a; min-width: 0;',
+      '  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+      '.' + P + '-item-m { font: 600 11.5px/1.2 system-ui, sans-serif; color: #475569;',
+      '  white-space: nowrap; }',
+      '.' + P + '-item-s { grid-column: 2 / -1; font-size: 11px; color: #92400e; }',
       // "When you submit" callout
       '.' + P + '-callout {',
       '  border: 1px solid #bae6fd; background: #f0f9ff; border-radius: 8px;',
@@ -366,25 +404,137 @@
     if (b && b.parentNode) b.parentNode.removeChild(b);
   }
 
-  function scopeRow(id, checked, title, desc, warn) {
-    return '<label class="' + P + '-scope' + (checked ? ' ' + P + '-scope--on' : '') +
-        '" data-scope-row="' + id + '">' +
-      '<input type="radio" name="scw-margin-scope" value="' + id + '"' +
-        (checked ? ' checked' : '') + '>' +
-      '<span>' +
-        '<span class="' + P + '-scope-t">' + title + '</span>' +
-        '<span class="' + P + '-scope-d' + (warn ? ' ' + P + '-scope-d--warn' : '') +
-          '" style="display:block">' + desc + '</span>' +
-      '</span>' +
-    '</label>';
+  /** Display label for a SOW line item — the drop label (field_1950) with the
+   *  product (field_1949) as the qualifier, matching how the worksheet names
+   *  rows. Falls back to the record id so a row is never anonymous. */
+  function itemLabel(rec) {
+    var lbl  = String(readPlain(rec, 'field_1950') || '').trim();
+    var prod = String(readPlain(rec, 'field_1949') || '').trim();
+    if (lbl && prod && prod !== lbl) return lbl + ' · ' + prod;
+    return lbl || prod || (rec && rec.id) || 'Line item';
+  }
+
+  function readPlain(rec, key) {
+    if (!rec) return '';
+    var raw = rec[key + '_raw'];
+    if (Array.isArray(raw)) {
+      return raw.length && raw[0] ? String(raw[0].identifier || '') : '';
+    }
+    if (raw && typeof raw === 'object') return String(raw.identifier || '');
+    var v = (raw != null && raw !== '') ? raw : rec[key];
+    return String(v == null ? '' : v).replace(/<[^>]*>/g, '');
+  }
+
+  /** Group + sort records the canonical way — MDF/IDF groups, each sorted by
+   *  field_2218 then natural label. Reuses worksheet-v2's exported helpers so
+   *  this checklist matches the worksheet's order (CLAUDE.md picker rule).
+   *  Falls back to one flat, label-sorted group if worksheet-v2 isn't loaded. */
+  function groupItems(recs) {
+    var pk = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.picker;
+    var groupBy = pk && pk.groupByMdfIdf;
+    var cmp = (pk && typeof pk.canonicalItemSort === 'function')
+      ? pk.canonicalItemSort(itemLabel)
+      : function (a, b) {
+          return String(itemLabel(a)).localeCompare(String(itemLabel(b)),
+            undefined, { numeric: true, sensitivity: 'base' });
+        };
+    if (typeof groupBy !== 'function') {
+      return [{ id: '__all', label: '', items: recs.slice().sort(cmp) }];
+    }
+    var map = Object.create(null), order = [];
+    for (var i = 0; i < recs.length; i++) {
+      var g = groupBy(recs[i]) || { id: '__unknown', label: 'No MDF / IDF' };
+      if (!map[g.id]) { map[g.id] = { id: g.id, label: g.label || '', items: [] }; order.push(g.id); }
+      map[g.id].items.push(recs[i]);
+    }
+    var out = [];
+    for (var o = 0; o < order.length; o++) {
+      var grp = map[order[o]];
+      grp.items.sort(cmp);
+      out.push(grp);
+    }
+    // No-MDF sinks last; everything else natural-ascending by label.
+    out.sort(function (a, b) {
+      var au = a.id === '__unknown' ? 1 : 0, bu = b.id === '__unknown' ? 1 : 0;
+      if (au !== bu) return au - bu;
+      return String(a.label).localeCompare(String(b.label),
+        undefined, { numeric: true, sensitivity: 'base' });
+    });
+    return out;
+  }
+
+  /** The per-item checklist of shared line items. Each row names the OTHER
+   *  SOWs it sits on and its current margin, because that is exactly what the
+   *  user is deciding about when they tick it. */
+  function sharedListHtml(part, selected) {
+    var groups = groupItems(part.shared);
+    var html = '';
+    for (var g = 0; g < groups.length; g++) {
+      var grp = groups[g];
+      if (grp.label) {
+        html += '<div class="' + P + '-grp">' + esc(grp.label) + '</div>';
+      }
+      for (var i = 0; i < grp.items.length; i++) {
+        var rec = grp.items[i];
+        var on = !!selected[rec.id];
+        var m = marginOf(rec);
+        var others = [];
+        var sows = sowsOf(rec);
+        for (var s = 0; s < sows.length; s++) {
+          if (sows[s] && sows[s].id !== part.sowId) {
+            others.push(String(sows[s].identifier || '').trim() || sows[s].id);
+          }
+        }
+        html += '<label class="' + P + '-item' + (on ? ' ' + P + '-item--on' : '') +
+            '" data-item-row="' + esc(rec.id) + '">' +
+          '<input type="checkbox" data-scw-margin-item="' + esc(rec.id) + '"' +
+            (on ? ' checked' : '') + '>' +
+          '<span class="' + P + '-item-l">' + esc(itemLabel(rec)) + '</span>' +
+          '<span class="' + P + '-item-m">' +
+            (m == null ? 'no margin' : esc(toPct(m)) + '%') + '</span>' +
+          '<span class="' + P + '-item-s">also on ' + esc(others.join(', ')) + '</span>' +
+        '</label>';
+      }
+    }
+    return html;
   }
 
   /** The "when you submit" block. Rebuilt on every keystroke / scope change so
    *  it always describes what the Apply button is about to do right now. */
+  /** Records the current selection targets: independent items when included,
+   *  plus exactly the shared items that are ticked. */
+  function targetsOf(state) {
+    var out = state.includeOwn ? state.part.own.slice() : [];
+    for (var i = 0; i < state.part.shared.length; i++) {
+      var rec = state.part.shared[i];
+      if (state.selected[rec.id]) out.push(rec);
+    }
+    return out;
+  }
+
+  /** Other SOWs actually touched by the CURRENT selection — only the SOWs of
+   *  the shared items that are ticked, not every SOW this one overlaps. */
+  function affectedSows(state) {
+    var seen = Object.create(null), out = [];
+    for (var i = 0; i < state.part.shared.length; i++) {
+      var rec = state.part.shared[i];
+      if (!state.selected[rec.id]) continue;
+      var sows = sowsOf(rec);
+      for (var s = 0; s < sows.length; s++) {
+        var o = sows[s];
+        if (!o || !o.id || o.id === state.part.sowId || seen[o.id]) continue;
+        seen[o.id] = 1;
+        out.push(String(o.identifier || '').trim() || o.id);
+      }
+    }
+    out.sort();
+    return out;
+  }
+
   function calloutHtml(state) {
-    var dec = state.dec, part = state.part, scope = state.scope;
-    var targets = (scope === 'all') ? part.own.length + part.shared.length
-                                    : part.own.length;
+    var dec = state.dec, part = state.part;
+    var targets = targetsOf(state);
+    var sharedOn = targets.length - (state.includeOwn ? part.own.length : 0);
 
     if (dec == null) {
       return '<div class="' + P + '-callout ' + P + '-callout--bad">' +
@@ -392,18 +542,16 @@
         'Enter a margin between 0 and 99% first (type <strong>15</strong> for 15%).' +
       '</div>';
     }
-    if (!targets) {
+    if (!targets.length) {
       return '<div class="' + P + '-callout ' + P + '-callout--bad">' +
         '<div class="' + P + '-callout-h">When you submit</div>' +
-        'Nothing would change — every line item on this SOW is shared with ' +
-        esc(part.otherSowNames.join(', ')) + '. Choose <em>All items</em>, or ' +
-        'duplicate the items you want priced differently.' +
+        'Nothing is selected, so nothing would change. Tick the independent ' +
+        'items, one or more shared items, or both.' +
       '</div>';
     }
 
     var pct = toPct(dec);
-    var curList = distinctMargins(
-      scope === 'all' ? part.own.concat(part.shared) : part.own);
+    var curList = distinctMargins(targets);
     var fromTxt;
     if (curList.length === 1) {
       fromTxt = (curList[0] == null)
@@ -414,24 +562,31 @@
     }
 
     var bits = [
-      '<li><strong>' + targets + ' line item' + (targets === 1 ? '' : 's') +
-        '</strong> on ' + esc(state.sowName) + ' will have their margin set to ' +
-        '<strong>' + esc(pct) + '%</strong>' + fromTxt + '.</li>',
+      '<li><strong>' + targets.length + ' line item' +
+        (targets.length === 1 ? '' : 's') + '</strong> on ' + esc(state.sowName) +
+        ' will have their margin set to <strong>' + esc(pct) + '%</strong>' +
+        fromTxt + '.</li>',
       '<li>Each of those items’ install fee recalculates from its sub bid — ' +
         'the SOW total will move.</li>'
     ];
+
     var warn = false;
-    if (scope === 'all' && part.shared.length) {
+    var hit = affectedSows(state);
+    if (sharedOn > 0) {
       warn = true;
-      bits.push('<li><strong>' + part.shared.length + ' of them are shared with ' +
-        esc(part.otherSowNames.join(', ')) + '</strong>, so ' +
-        (part.otherSowNames.length === 1 ? 'that SOW’s' : 'those SOWs’') +
+      bits.push('<li><strong>' + sharedOn + ' of them ' +
+        (sharedOn === 1 ? 'is' : 'are') + ' shared with ' + esc(hit.join(', ')) +
+        '</strong>, so ' + (hit.length === 1 ? 'that SOW’s' : 'those SOWs’') +
         ' price for the same work changes too.</li>');
-    } else if (part.shared.length) {
-      bits.push('<li>' + part.shared.length + ' shared item' +
-        (part.shared.length === 1 ? '' : 's') + ' (also on ' +
-        esc(part.otherSowNames.join(', ')) + ') ' +
-        (part.shared.length === 1 ? 'is' : 'are') + ' <strong>left unchanged</strong>.</li>');
+    }
+    var untouched = part.shared.length - sharedOn;
+    if (untouched > 0) {
+      bits.push('<li>' + untouched + ' shared item' + (untouched === 1 ? '' : 's') +
+        ' left <strong>unchanged</strong>.</li>');
+    }
+    if (!state.includeOwn && part.own.length) {
+      bits.push('<li>' + part.own.length + ' independent item' +
+        (part.own.length === 1 ? '' : 's') + ' left <strong>unchanged</strong>.</li>');
     }
 
     return '<div class="' + P + '-callout' + (warn ? ' ' + P + '-callout--warn' : '') + '">' +
@@ -441,9 +596,7 @@
   }
 
   function applyLabel(state) {
-    var n = (state.scope === 'all')
-      ? state.part.own.length + state.part.shared.length
-      : state.part.own.length;
+    var n = targetsOf(state).length;
     return 'Apply to ' + n + ' item' + (n === 1 ? '' : 's');
   }
 
@@ -463,10 +616,11 @@
       // Pre-seed with the SOW's current margin when it has exactly one, so the
       // common "nudge it up two points" edit starts from the real number.
       dec: (curMargins.length === 1 ? curMargins[0] : null),
-      // Safe scope pre-selected: no cross-SOW effect unless explicitly chosen.
-      scope: 'own'
+      // Independent items are safe, so they start included. Shared items start
+      // UNticked — reaching into another SOW is always an explicit act.
+      includeOwn: true,
+      selected: Object.create(null)
     };
-    if (!part.shared.length) state.scope = 'own';
 
     var curTxt = (curMargins.length === 1)
       ? (curMargins[0] == null ? 'no margin set today'
@@ -474,18 +628,37 @@
       : 'currently mixed across ' + all.length + ' items';
 
     var scopes = '';
-    if (part.shared.length) {
-      scopes = '<div class="' + P + '-scopes">' +
-        scopeRow('own', true, 'Independent items only — ' + part.own.length,
-          'Items that live on this SOW alone. No other SOW is affected.', false) +
-        scopeRow('all', false, 'All items on this SOW — ' + all.length,
-          'Includes ' + part.shared.length + ' item' +
-            (part.shared.length === 1 ? '' : 's') + ' shared with ' +
-            esc(part.otherSowNames.join(', ')) +
-            ' — this reprices the same work on ' +
-            (part.otherSowNames.length === 1 ? 'that SOW' : 'those SOWs') + '.', true) +
-      '</div>';
+    if (part.own.length) {
+      scopes += '<label class="' + P + '-scope ' + P + '-scope--on" data-own-row>' +
+        '<input type="checkbox" data-scw-margin-own checked>' +
+        '<span>' +
+          '<span class="' + P + '-scope-t">Independent items — ' +
+            part.own.length + '</span>' +
+          '<span class="' + P + '-scope-d" style="display:block">' +
+            'Live on this SOW alone. Nothing else is affected.</span>' +
+        '</span>' +
+      '</label>';
     }
+    if (part.shared.length) {
+      scopes +=
+        '<div class="' + P + '-shead">' +
+          '<span class="' + P + '-scope-t">Shared items — ' + part.shared.length +
+            '</span>' +
+          '<span class="' + P + '-sbulk">' +
+            '<button type="button" data-scw-margin-bulk="none">None</button>' +
+            '<button type="button" data-scw-margin-bulk="all">All</button>' +
+          '</span>' +
+        '</div>' +
+        '<div class="' + P + '-scope-d ' + P + '-scope-d--warn">' +
+          'Each also sits on ' + esc(part.otherSowNames.join(', ')) +
+          '. Ticking one reprices that same work on the other SOW too — ' +
+          'pick only the ones that should move.' +
+        '</div>' +
+        '<div class="' + P + '-list" data-scw-margin-list>' +
+          sharedListHtml(part, state.selected) +
+        '</div>';
+    }
+    if (scopes) scopes = '<div class="' + P + '-scopes">' + scopes + '</div>';
 
     var back = document.createElement('div');
     back.className = P + '-back';
@@ -517,18 +690,23 @@
     var calloutH = back.querySelector('[data-scw-margin-callout]');
     var applyBtn = back.querySelector('[data-scw-margin-act="apply"]');
 
+    function sharedOnCount() {
+      var n = 0;
+      for (var i = 0; i < state.part.shared.length; i++) {
+        if (state.selected[state.part.shared[i].id]) n++;
+      }
+      return n;
+    }
+
     function refresh() {
       calloutH.innerHTML = calloutHtml(state);
       applyBtn.textContent = applyLabel(state);
-      var targets = (state.scope === 'all')
-        ? state.part.own.length + state.part.shared.length
-        : state.part.own.length;
-      applyBtn.disabled = (state.dec == null || !targets);
-      // The destructive styling follows the CHOICE, not the button's identity —
+      var n = targetsOf(state).length;
+      applyBtn.disabled = (state.dec == null || !n);
+      // Destructive styling follows the SELECTION, not the button's identity —
       // Apply is only "dangerous" while it would reach into another SOW.
       applyBtn.className = P + '-btn ' +
-        ((state.scope === 'all' && state.part.shared.length)
-          ? P + '-btn--all' : P + '-btn--own');
+        (sharedOnCount() ? P + '-btn--all' : P + '-btn--own');
       input.classList.toggle(P + '-input--bad',
         !!(input.value || '').trim() && state.dec == null);
     }
@@ -542,21 +720,49 @@
     });
 
     back.addEventListener('change', function (e) {
-      var r = e.target.closest && e.target.closest('input[name="scw-margin-scope"]');
-      if (!r) return;
-      state.scope = r.value;
-      var rows = back.querySelectorAll('[data-scope-row]');
-      for (var i = 0; i < rows.length; i++) {
-        rows[i].classList.toggle(P + '-scope--on',
-          rows[i].getAttribute('data-scope-row') === state.scope);
+      var t = e.target;
+      if (!t) return;
+      if (t.hasAttribute && t.hasAttribute('data-scw-margin-own')) {
+        state.includeOwn = !!t.checked;
+        var ownRow = back.querySelector('[data-own-row]');
+        if (ownRow) ownRow.classList.toggle(P + '-scope--on', state.includeOwn);
+        refresh();
+        return;
+      }
+      var id = t.getAttribute && t.getAttribute('data-scw-margin-item');
+      if (!id) return;
+      if (t.checked) state.selected[id] = true;
+      else delete state.selected[id];
+      var row = back.querySelector('[data-item-row="' + id + '"]');
+      if (row) row.classList.toggle(P + '-item--on', !!t.checked);
+      refresh();
+    });
+
+    // Select-all / none over the shared list.
+    back.addEventListener('click', function (e) {
+      var bulk = e.target.closest && e.target.closest('[data-scw-margin-bulk]');
+      if (!bulk || bulk.disabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var on = bulk.getAttribute('data-scw-margin-bulk') === 'all';
+      state.selected = Object.create(null);
+      if (on) {
+        for (var i = 0; i < state.part.shared.length; i++) {
+          state.selected[state.part.shared[i].id] = true;
+        }
+      }
+      var boxes = back.querySelectorAll('[data-scw-margin-item]');
+      for (var b = 0; b < boxes.length; b++) {
+        var bid = boxes[b].getAttribute('data-scw-margin-item');
+        boxes[b].checked = !!state.selected[bid];
+        var r = back.querySelector('[data-item-row="' + bid + '"]');
+        if (r) r.classList.toggle(P + '-item--on', boxes[b].checked);
       }
       refresh();
     });
 
     function submit() {
-      var targets = (state.scope === 'all')
-        ? state.part.own.concat(state.part.shared)
-        : state.part.own;
+      var targets = targetsOf(state);
       if (state.dec == null || !targets.length) return;
 
       var ids = [];

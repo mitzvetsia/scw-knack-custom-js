@@ -1325,7 +1325,13 @@
     open:          open,
     // Canonical MDF/IDF groupBy — exported so callers can pass it explicitly,
     // though open() already uses it by default for record pickers.
-    groupByMdfIdf: groupByMdfIdf
+    groupByMdfIdf: groupByMdfIdf,
+    // Canonical item comparator factory (field_2218 asc → label natural → id).
+    // Exported for surfaces that present SOW line-item records in their OWN
+    // chrome rather than through open() — e.g. the per-item shared-line-item
+    // checklist in sow-margin-cascade.js — so those lists still match the
+    // worksheet's grouping + order instead of hand-rolling a sort.
+    canonicalItemSort: canonicalItemSort
   };
 })();
 /*** END WORKSHEET V2 — PICKER ************************************************/
