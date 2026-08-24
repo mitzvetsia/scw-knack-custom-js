@@ -479,10 +479,13 @@ function repRevenue(rep, m, key){
   if (tenure < 1) return 0;
   return (ramp[Math.min(12, tenure) - 1] || 0) * (rep[key] || 0);
 }
-// 5-tier commission table: attainment >= at -> rate. Seeded example — replace with the real plan.
+// 5-tier commission table: attainment >= at -> rate. Seeded from observed AE payouts in the
+// comp-plan export (effective 2.16%–2.58% across 38%–86% attainment; new 5-tier plans paying
+// 2.50% base) — replace with the real plan's breakpoints. AMs (~1.5–1.8%) and Stu (~1.25%)
+// use flat per-rep overrides instead.
 const DEFAULT_COMM_TIERS = [
-  { at: 0.0, rate: 0.010 }, { at: 0.6, rate: 0.015 }, { at: 0.8, rate: 0.020 },
-  { at: 1.0, rate: 0.025 }, { at: 1.2, rate: 0.030 }];
+  { at: 0.0, rate: 0.022 }, { at: 0.6, rate: 0.024 }, { at: 0.8, rate: 0.025 },
+  { at: 1.0, rate: 0.026 }, { at: 1.2, rate: 0.027 }];
 const tiersOf = () => (S.commTiers && S.commTiers.length ? S.commTiers : DEFAULT_COMM_TIERS);
 function commRate(rep, scn){
   if (rep.comm != null) return rep.comm || 0;         // typed % overrides the tiers
