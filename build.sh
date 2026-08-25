@@ -88,6 +88,7 @@ cat \
   src/features/sub-bid-diff/pdf-html.js \
   src/features/sub-bid-diff/init.js \
   src/features/sow-margin-cascade.js \
+  src/features/sow-item-tray.js \
   src/features/sales-revision-column.js \
   src/features/group-collapse.js \
   src/features/sow-filter-pills.js \
