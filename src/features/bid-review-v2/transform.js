@@ -1479,8 +1479,26 @@
         bidOnlyRows.length ? displayRows.concat(bidOnlyRows) : displayRows,
         removedRowsGrid
       );
-      // "Belong to another SOW" stays at the BOTTOM.
-      if (otherSowRows.length) {
+      // "Belong to another SOW" stays at the BOTTOM — but only while there is
+      // a visible bid column to justify it. These rows are here for exactly
+      // one reason: the displayed bid carries an item whose SOW line item
+      // lives on a DIFFERENT SOW. With every bid column hidden (no basis, or
+      // K1 self-perform — see basisFilter 'all' mode) the header reads "On
+      // these bids" next to no bids at all, over a row that isn't on this SOW
+      // either. Nothing left to say, so the group is dropped; picking a basis
+      // (or Show bids) brings it straight back.
+      var pkgIdsForGate = [];
+      for (var pg = 0; pg < packages.length; pg++) {
+        if (packages[pg] && packages[pg].id) pkgIdsForGate.push(packages[pg].id);
+      }
+      var gateHidden = (ns.basisFilter && typeof ns.basisFilter.hiddenFor === 'function')
+        ? ns.basisFilter.hiddenFor(sow.id, pkgIdsForGate)
+        : null;
+      var everyPkgHidden = !!(gateHidden && pkgIdsForGate.length);
+      for (var eh = 0; everyPkgHidden && eh < pkgIdsForGate.length; eh++) {
+        if (!gateHidden[pkgIdsForGate[eh]]) everyPkgHidden = false;
+      }
+      if (otherSowRows.length && !everyPkgHidden) {
         groups.push({
           key:           '__other_sow_items__',
           label:         'On these bids — belong to another SOW',
