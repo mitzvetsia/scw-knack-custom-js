@@ -1924,16 +1924,56 @@
       '.scw-sr-panel__pitem .' + P + '-item > div { max-width: 100% !important; }',
       '.scw-sr-panel__empty { margin-top: 10px; color: #64748b;',
       '  font: 500 12.5px/1.4 system-ui, sans-serif; }',
-      // History
+      // History — a vertical timeline of request blocks. It used to be a
+      // flex-wrap row of 320px cards, which is what made 26 items unreadable:
+      // side-by-side columns destroy any sense of order.
       '.scw-sr-panel__hist { margin-top: 12px; border-top: 1px solid #eef2f7;',
-      '  padding-top: 12px; display: flex; flex-wrap: wrap; gap: 10px;',
-      '  align-items: flex-start; }',
-      '.scw-sr-panel__hitem { flex: 0 1 320px; min-width: 260px;',
-      '  border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;',
-      '  padding: 8px 10px; }',
-      '.scw-sr-panel__hitem--accepted  { border-color: #bbf7d0; background: #f0fdf4; }',
-      '.scw-sr-panel__hitem--rejected  { border-color: #fecdd3; background: #fff1f2; }',
-      '.scw-sr-panel__hitem--forwarded { border-color: #c7d2fe; background: #eef2ff; }',
+      '  padding-top: 6px; display: block; }',
+      // ── Grouped history: one block per REQUEST ──
+      '.scw-sr-req { border: 1px solid #e2e8f0; border-radius: 9px;',
+      '  background: #fff; margin-top: 10px; overflow: hidden; }',
+      '.scw-sr-req__head {',
+      '  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;',
+      '  padding: 8px 12px; background: #f8fafc;',
+      '  border-bottom: 1px solid #eef2f7;',
+      '}',
+      '.scw-sr-req__when { font: 700 12px/1.2 system-ui, sans-serif; color: #0f172a; }',
+      '.scw-sr-req__dir {',
+      '  display: inline-flex; align-items: center; padding: 2px 9px;',
+      '  border-radius: 999px; border: 1px solid transparent;',
+      '  font: 700 10.5px/1.5 system-ui, sans-serif; white-space: nowrap;',
+      '}',
+      '.scw-sr-req__dir--sales   { background: #e0f2fe; border-color: #bae6fd; color: #075985; }',
+      '.scw-sr-req__dir--ops     { background: #ede9fe; border-color: #ddd6fe; color: #5b21b6; }',
+      '.scw-sr-req__dir--unknown { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }',
+      '.scw-sr-req__count { margin-left: auto; color: #64748b; font-size: 11.5px; }',
+      '.scw-sr-req__items { padding: 2px 0; }',
+      // Item rows — one line each, not a card
+      '.scw-sr-hitem { padding: 5px 12px; border-top: 1px solid #f8fafc; }',
+      '.scw-sr-hitem:first-child { border-top: 0; }',
+      '.scw-sr-hitem__line { display: flex; align-items: center; gap: 8px; }',
+      '.scw-sr-hitem__act {',
+      '  flex: 0 0 auto; font: 700 10px/1.5 system-ui, sans-serif;',
+      '  letter-spacing: .04em; padding: 1px 6px; border-radius: 4px;',
+      '}',
+      '.scw-sr-hitem__act--remove { background: #fee2e2; color: #991b1b; }',
+      '.scw-sr-hitem__act--add    { background: #dcfce7; color: #166534; }',
+      '.scw-sr-hitem__act--revise { background: #dbeafe; color: #1e40af; }',
+      '.scw-sr-hitem__text {',
+      '  flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: #0f172a;',
+      '  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+      '}',
+      '.scw-sr-hitem__more {',
+      '  flex: 0 0 auto; border: 0; background: transparent; cursor: pointer;',
+      '  color: #0f4c75; font: 600 11px/1.4 system-ui, sans-serif;',
+      '  padding: 2px 5px; border-radius: 4px;',
+      '}',
+      '.scw-sr-hitem__more:hover { background: #eef2f7; }',
+      '.scw-sr-hitem__detail { display: none; margin: 6px 0 2px; }',
+      '.scw-sr-hitem__detail--open { display: block; }',
+      '.scw-sr-hitem__detail > div { max-width: 100% !important; }',
+      '.scw-sr-hitem__notes { margin: 2px 0 0 0; padding-left: 2px;',
+      '  color: #64748b; font-size: 11.5px; font-style: italic; }',
       '.scw-sr-panel__chip { display: inline-flex; align-items: center; padding: 2px 9px;',
       '  border-radius: 999px; border: 1px solid transparent; margin-bottom: 6px;',
       '  font: 700 10.5px/1.4 system-ui, sans-serif; letter-spacing: .02em; }',
@@ -1942,9 +1982,7 @@
       '.scw-sr-panel__chip--forwarded { background: #e0e7ff; border-color: #c7d2fe; color: #4338ca; }',
       '.scw-sr-panel__chip--origin    { background: #f1f5f9; border-color: #e2e8f0; color: #475569;',
       '  margin-left: 6px; }',
-      '.scw-sr-panel__hbody { font-size: 12px; }',
-      '.scw-sr-panel__hbody > div { max-width: 100% !important; }',
-      '.scw-sr-panel__hbody > div > div { max-width: 100% !important; }'
+      '.scw-sr-hitem__detail > div > div { max-width: 100% !important; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = PANEL_STYLE_ID;
@@ -1957,6 +1995,202 @@
   }
   function setHistOpen(open) {
     try { localStorage.setItem(HIST_LS, open ? '1' : '0'); } catch (e) { /* ignore */ }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  HISTORY — grouped by request + direction, newest first
+  //
+  //  A flat wall of one card per revision LINE ITEM was unreadable: 26 pink
+  //  blocks with no sense of which ask they belonged to or what order any of
+  //  it happened in. History is really a log of REQUESTS, each carrying a few
+  //  items, so that's how it renders now — one block per request, headed with
+  //  when it went out and which way it flowed, items listed compactly beneath.
+  //
+  //  Chronology with no date field: Knack record ids are Mongo ObjectIds, so
+  //  the leading 8 hex chars ARE the creation time in Unix seconds. Verified
+  //  against this project — 6a62406e → 2026-07-23, matching its survey date.
+  //  That gives real ordering for both requests and the items inside them
+  //  without adding a data source or depending on a column being on a view.
+  // ═══════════════════════════════════════════════════════════
+
+  function objectIdTime(id) {
+    if (!id || !/^[0-9a-f]{24}$/i.test(id)) return null;
+    var secs = parseInt(id.slice(0, 8), 16);
+    if (!isFinite(secs) || secs <= 0) return null;
+    return new Date(secs * 1000);
+  }
+
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun',
+                'Jul','Aug','Sep','Oct','Nov','Dec'];
+  function fmtWhen(d) {
+    if (!d) return '';
+    var h = d.getHours(), ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12; if (!h) h = 12;
+    var m = d.getMinutes(); if (m < 10) m = '0' + m;
+    return MONTHS[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear() +
+           ' · ' + h + ':' + m + ' ' + ampm;
+  }
+
+  /** Direction of travel for a request, from its origin. Sales raises a
+   *  revision for Ops to triage; Ops raises one for the subcontractor to
+   *  re-price. Origin is uniform within a request (checked against live
+   *  data), so it belongs in the request header, not on every item. */
+  function directionOf(origin) {
+    var o = String(origin || '').toLowerCase();
+    if (o === 'sales') return { label: 'Sales → Ops', mod: 'sales' };
+    if (o === 'ops')   return { label: 'Ops → Sub',   mod: 'ops'   };
+    return { label: origin || 'Unknown direction', mod: 'unknown' };
+  }
+
+  function statusLabel(norm, raw) {
+    return norm === 'accepted'  ? 'Accepted'
+         : norm === 'rejected'  ? 'Rejected'
+         : norm === 'forwarded' ? 'Sent to sub'
+         : (raw || 'Triaged');
+  }
+
+  /** Compact one-line summary of a revision item, from its stored JSON.
+   *  The full field_2695 card stays available behind a per-item toggle —
+   *  it carries the accept/reject stamp and the before/after detail. */
+  function itemSummary(rev) {
+    var j = rev.json || {};
+    var action = j.removeFromBid ? 'remove'
+               : j.addToBid ? 'add'
+               : (j.action || 'revise');
+    var label = String(j.displayLabel || '').trim();
+    var prod  = String(j.productName || '').trim();
+    var text = (label && prod && prod !== label) ? (label + ' — ' + prod)
+             : (label || prod || 'Line item');
+    return { action: action, text: text, notes: String(j.changeNotes || '').trim() };
+  }
+
+  function buildHistory(hist) {
+    // Group by parent request. Items with no parent collect under one
+    // "unlinked" bucket rather than vanishing.
+    var byReq = Object.create(null), order = [];
+    for (var i = 0; i < hist.length; i++) {
+      var rev = hist[i];
+      var key = rev.parentRequestId || '__none__';
+      if (!byReq[key]) {
+        byReq[key] = { id: rev.parentRequestId || '', items: [], origins: {} };
+        order.push(key);
+      }
+      byReq[key].items.push(rev);
+      if (rev.origin) byReq[key].origins[rev.origin] = true;
+    }
+
+    // Requests newest first; items inside oldest first, so each block reads
+    // as the sequence in which that request's lines were raised.
+    var groups = [];
+    for (var o = 0; o < order.length; o++) {
+      var g = byReq[order[o]];
+      g.when = objectIdTime(g.id);
+      g.items.sort(function (a, b) {
+        var ta = objectIdTime(a.id), tb = objectIdTime(b.id);
+        return (ta ? ta.getTime() : 0) - (tb ? tb.getTime() : 0);
+      });
+      groups.push(g);
+    }
+    groups.sort(function (a, b) {
+      var ta = a.when ? a.when.getTime() : 0, tb = b.when ? b.when.getTime() : 0;
+      return tb - ta;
+    });
+
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-sr-panel__hist';
+
+    for (var q = 0; q < groups.length; q++) {
+      var grp = groups[q];
+      var originKeys = [];
+      for (var ok in grp.origins) originKeys.push(ok);
+      var dir = directionOf(originKeys.length === 1 ? originKeys[0] : '');
+
+      var block = document.createElement('div');
+      block.className = 'scw-sr-req';
+
+      var head = document.createElement('div');
+      head.className = 'scw-sr-req__head';
+
+      var when = document.createElement('span');
+      when.className = 'scw-sr-req__when';
+      when.textContent = grp.when ? fmtWhen(grp.when) : 'Date unknown';
+      head.appendChild(when);
+
+      var dirEl = document.createElement('span');
+      dirEl.className = 'scw-sr-req__dir scw-sr-req__dir--' + dir.mod;
+      dirEl.textContent = dir.label;
+      head.appendChild(dirEl);
+
+      var count = document.createElement('span');
+      count.className = 'scw-sr-req__count';
+      count.textContent = grp.items.length + ' item' +
+        (grp.items.length === 1 ? '' : 's');
+      head.appendChild(count);
+
+      block.appendChild(head);
+
+      var list = document.createElement('div');
+      list.className = 'scw-sr-req__items';
+      for (var k = 0; k < grp.items.length; k++) {
+        list.appendChild(buildHistItem(grp.items[k]));
+      }
+      block.appendChild(list);
+      wrap.appendChild(block);
+    }
+    return wrap;
+  }
+
+  function buildHistItem(rev) {
+    var sum = itemSummary(rev);
+    var row = document.createElement('div');
+    row.className = 'scw-sr-hitem scw-sr-hitem--' + rev.statusNorm;
+
+    var line = document.createElement('div');
+    line.className = 'scw-sr-hitem__line';
+
+    var st = document.createElement('span');
+    st.className = 'scw-sr-panel__chip scw-sr-panel__chip--' + rev.statusNorm;
+    st.textContent = statusLabel(rev.statusNorm, rev.status);
+    line.appendChild(st);
+
+    var act = document.createElement('span');
+    act.className = 'scw-sr-hitem__act scw-sr-hitem__act--' + sum.action;
+    act.textContent = sum.action.toUpperCase();
+    line.appendChild(act);
+
+    var txt = document.createElement('span');
+    txt.className = 'scw-sr-hitem__text';
+    txt.textContent = sum.text;
+    txt.title = sum.text;
+    line.appendChild(txt);
+
+    // The stored card is the audit trail — keep it reachable, just not
+    // occupying the whole panel by default.
+    if (rev.html) {
+      var tog = document.createElement('button');
+      tog.type = 'button';
+      tog.className = 'scw-sr-hitem__more';
+      tog.textContent = 'detail';
+      line.appendChild(tog);
+      var det = document.createElement('div');
+      det.className = 'scw-sr-hitem__detail';
+      det.innerHTML = rev.html;
+      tog.addEventListener('click', function (d) {
+        return function () { d.classList.toggle('scw-sr-hitem__detail--open'); };
+      }(det));
+      row.appendChild(line);
+      row.appendChild(det);
+    } else {
+      row.appendChild(line);
+    }
+
+    if (sum.notes) {
+      var n = document.createElement('div');
+      n.className = 'scw-sr-hitem__notes';
+      n.textContent = '“' + sum.notes + '”';
+      row.appendChild(n);
+    }
+    return row;
   }
 
   function renderRevisionsPanel() {
@@ -2036,42 +2270,9 @@
       panel.appendChild(empty);
     }
 
-    // ── History — accepted / rejected, collapsed by default ──
+    // ── History — grouped by request, newest first ──
     if (hist.length && histOpen()) {
-      var histWrap = document.createElement('div');
-      histWrap.className = 'scw-sr-panel__hist';
-      for (var h = 0; h < hist.length; h++) {
-        var hr = hist[h];
-        var item = document.createElement('div');
-        item.className = 'scw-sr-panel__hitem scw-sr-panel__hitem--' + hr.statusNorm;
-        var chip = document.createElement('span');
-        chip.className = 'scw-sr-panel__chip scw-sr-panel__chip--' + hr.statusNorm;
-        chip.textContent = hr.statusNorm === 'accepted'  ? 'Accepted'
-                         : hr.statusNorm === 'rejected'  ? 'Rejected'
-                         : hr.statusNorm === 'forwarded' ? 'Sent to sub'
-                         : (hr.status || 'Triaged');
-        item.appendChild(chip);
-        if (hr.origin) {
-          var oc = document.createElement('span');
-          oc.className = 'scw-sr-panel__chip scw-sr-panel__chip--origin';
-          oc.textContent = hr.origin;
-          item.appendChild(oc);
-        }
-        var body = document.createElement('div');
-        body.className = 'scw-sr-panel__hbody';
-        if (hr.html) {
-          // The stored field_2695 card — carries the accept/reject stamp
-          // performAccept/performReject wrote into it.
-          body.innerHTML = hr.html;
-        } else {
-          var j = hr.json || {};
-          body.textContent = (j.displayLabel || j.productName || 'Revision') +
-            (j.action ? ' — ' + j.action : '');
-        }
-        item.appendChild(body);
-        histWrap.appendChild(item);
-      }
-      panel.appendChild(histWrap);
+      panel.appendChild(buildHistory(hist));
     }
 
     mount.parentNode.insertBefore(panel, mount);
