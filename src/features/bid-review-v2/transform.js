@@ -1479,36 +1479,25 @@
         bidOnlyRows.length ? displayRows.concat(bidOnlyRows) : displayRows,
         removedRowsGrid
       );
-      // "Belong to another SOW" stays at the BOTTOM — but only while there is
-      // a visible bid column to justify it. These rows are here for exactly
-      // one reason: the displayed bid carries an item whose SOW line item
-      // lives on a DIFFERENT SOW. With every bid column hidden (no basis, or
-      // K1 self-perform — see basisFilter 'all' mode) the header reads "On
-      // these bids" next to no bids at all, over a row that isn't on this SOW
-      // either. Nothing left to say, so the group is dropped; picking a basis
-      // (or Show bids) brings it straight back.
-      var pkgIdsForGate = [];
-      for (var pg = 0; pg < packages.length; pg++) {
-        if (packages[pg] && packages[pg].id) pkgIdsForGate.push(packages[pg].id);
-      }
-      var gateHidden = (ns.basisFilter && typeof ns.basisFilter.hiddenFor === 'function')
-        ? ns.basisFilter.hiddenFor(sow.id, pkgIdsForGate)
-        : null;
-      var everyPkgHidden = !!(gateHidden && pkgIdsForGate.length);
-      for (var eh = 0; everyPkgHidden && eh < pkgIdsForGate.length; eh++) {
-        if (!gateHidden[pkgIdsForGate[eh]]) everyPkgHidden = false;
-      }
-      if (otherSowRows.length && !everyPkgHidden) {
-        groups.push({
-          key:           '__other_sow_items__',
-          label:         'On these bids — belong to another SOW',
-          mdfIdfId:      '',
-          level:         1,
-          rows:          otherSowRows,
-          subgroups:     [],
-          otherBidItems: true
-        });
-      }
+      // NOTE: there is deliberately NO "On these bids — belong to another SOW"
+      // group any more.
+      //
+      // It put rows for line items that are NOT on this SOW into this SOW's
+      // grid, and every framing of that was wrong somewhere. With no basis
+      // picked the bid columns are hidden, so "On these bids" sat beside no
+      // bids at all; and the row itself belongs to a different SOW, so the
+      // grid was asserting two things the page was visibly contradicting.
+      // Gating it on the bid columns being visible only fixed half of that —
+      // the row still didn't belong to this SOW.
+      //
+      // Items not on this SOW now live in the collapsed tray below the grid
+      // (sow-item-tray.js), which is built for exactly this: grouped by the
+      // SOW they DO belong to, badged when they're on this section's bid, and
+      // offering "+ Add to this SOW". The bid record itself still renders in
+      // full in the grid of the SOW it actually belongs to.
+      //
+      // otherSowRows is still computed above — it feeds `otherRows` for the
+      // column totals, which must keep counting the sub's priced lines.
 
       sowGrids.push({
         sowId:    sow.id,

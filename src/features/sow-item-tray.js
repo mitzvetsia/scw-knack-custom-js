@@ -39,6 +39,12 @@
   var CFG = {
     sceneKey:     'scene_1155',
     itemsViewKey: 'view_3921',
+    // Bid records — used only to answer "is this line item on this section's
+    // bid?". field_2404 is the join to the SOW line item (multi-valued),
+    // field_2415 names the bid package the line belongs to.
+    bidViewKey:   'view_3680',
+    bidToSowLine: 'field_2404',
+    bidToPackage: 'field_2415',
     sowConnField: 'field_2154',
     labelField:   'field_1950',
     productField: 'field_1949',
@@ -70,14 +76,66 @@
 
   // ── Data ────────────────────────────────────────────────────────────────
 
-  function records() {
+  function readView(viewKey) {
     try {
       var d = window.SCW && SCW.bidReviewV2 && SCW.bidReviewV2.data;
       if (d && typeof d.readRecords === 'function') {
-        return d.readRecords(CFG.itemsViewKey) || [];
+        return d.readRecords(viewKey) || [];
       }
     } catch (e) { /* fall through */ }
     return [];
+  }
+
+  function records() { return readView(CFG.itemsViewKey); }
+
+  function connIds(rec, key) {
+    var raw = rec && rec[key + '_raw'];
+    var out = [];
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) {
+        if (raw[i] && raw[i].id) out.push(raw[i].id);
+      }
+    } else if (raw && raw.id) {
+      out.push(raw.id);
+    }
+    return out;
+  }
+
+  /** sowItemId → { packageId: true } across every loaded bid record.
+   *
+   *  This used to be answered by looking for the row in the section's DOM,
+   *  which worked only while the grid still rendered an "other SOW" row for
+   *  it. That group is gone (transform.js), so the question has to be asked
+   *  of the DATA: does any bid line point at this item, and does that line
+   *  belong to a package this section shows? */
+  function bidIndex() {
+    var recs = readView(CFG.bidViewKey);
+    var idx = Object.create(null);
+    for (var i = 0; i < recs.length; i++) {
+      var rec = recs[i];
+      if (!rec) continue;
+      var items = connIds(rec, CFG.bidToSowLine);
+      if (!items.length) continue;
+      var pkgs = connIds(rec, CFG.bidToPackage);
+      if (!pkgs.length) continue;
+      for (var it = 0; it < items.length; it++) {
+        var bucket = idx[items[it]] || (idx[items[it]] = Object.create(null));
+        for (var p = 0; p < pkgs.length; p++) bucket[pkgs[p]] = true;
+      }
+    }
+    return idx;
+  }
+
+  /** The bid packages this SOW section renders as columns. */
+  function sectionPackages(section) {
+    var out = [], seen = Object.create(null);
+    if (!section) return out;
+    var cells = section.querySelectorAll('[data-pkg-id]');
+    for (var i = 0; i < cells.length; i++) {
+      var id = cells[i].getAttribute('data-pkg-id');
+      if (id && !seen[id]) { seen[id] = 1; out.push(id); }
+    }
+    return out;
   }
 
   function sowsOf(rec) {
@@ -162,16 +220,21 @@
       groups.push(g);
     }
 
-    // "On this bid" = the item already renders somewhere in this section (as
-    // an off-SOW / other-SOW row), which only happens when a bid carries it.
+    // "On this bid" — asked of the bid records, not the DOM: a bid line
+    // points at this item AND belongs to one of this section's packages.
+    var idx = bidIndex();
+    var pkgs = sectionPackages(section);
     for (var gi = 0; gi < groups.length; gi++) {
       var grp = groups[gi];
       grp.onBid = 0;
       for (var it = 0; it < grp.items.length; it++) {
-        var rid = grp.items[it].id;
-        var hit = section && section.querySelector('[data-sow-item-id="' + rid + '"]');
-        grp.items[it]._onBid = !!hit;
-        if (hit) grp.onBid++;
+        var bucket = idx[grp.items[it].id];
+        var on = false;
+        for (var p = 0; bucket && !on && p < pkgs.length; p++) {
+          if (bucket[pkgs[p]]) on = true;
+        }
+        grp.items[it]._onBid = on;
+        if (on) grp.onBid++;
       }
     }
     return groups;
