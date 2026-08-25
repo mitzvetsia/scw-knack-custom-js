@@ -779,6 +779,20 @@
         '</svg>' +
         '<span class="scw-ws-v2-bulk-delete-label">Delete</span>' +
       '</button>' +
+      // Sales CR surface only: once the SOW is locked the per-row trash is
+      // replaced by "request removal", and doing that one row at a time is
+      // the whole complaint. Hidden unless salesCR is live on this page AND
+      // the selection actually contains rows the CR path owns.
+      '<button type="button" class="scw-ws-v2-bulk-request-removal" ' +
+        'style="display:none !important" disabled>' +
+        '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'stroke-linejoin="round">' +
+          '<circle cx="12" cy="12" r="9"></circle>' +
+          '<line x1="8" y1="12" x2="16" y2="12"></line>' +
+        '</svg>' +
+        '<span class="scw-ws-v2-bulk-request-removal-label">Request removal</span>' +
+      '</button>' +
       '<button type="button" class="scw-ws-v2-bulk-clear">Clear</button>';
     document.body.appendChild(toolbar);
 
@@ -826,7 +840,40 @@
       if (!ids.length) return;
       openBulkDeleteConfirm(ids, _sourceViewKey || sourceViewKey);
     });
+    var rrBtn = toolbar.querySelector('.scw-ws-v2-bulk-request-removal');
+    if (rrBtn) rrBtn.addEventListener('click', function () {
+      // Only the CR-owned rows — a mixed selection sends the deletable ones
+      // to Delete and the locked ones here, rather than silently doing the
+      // wrong thing to half of them.
+      var ids = crLockedSelection();
+      if (!ids.length) return;
+      try {
+        SCW.salesCR.openBulkRemove(ids);
+      } catch (e) {
+        console.warn('[scw-ws-v2] bulk request-removal failed to open', e);
+      }
+    });
     return toolbar;
+  }
+
+  /** Is the sales change-request surface live on this page? When it is, the
+   *  per-row trash is gone and removal happens by request instead. */
+  function salesCrLive() {
+    try {
+      var cr = window.SCW && SCW.salesCR;
+      return !!(cr && typeof cr.openBulkRemove === 'function' &&
+                cr._state && typeof cr._state.onPage === 'function' &&
+                cr._state.onPage());
+    } catch (e) { return false; }
+  }
+
+  /** Selected ids that can't be deleted here — exactly the set the CR
+   *  "request removal" path owns (same partition the Delete button uses). */
+  function crLockedSelection() {
+    if (!salesCrLive()) return [];
+    var ids = selList();
+    if (!ids.length) return [];
+    return partitionDeletable(ids, _sourceViewKey).blocked;
   }
 
   /** Does the active view's object lack an accessory relationship? (config
@@ -912,6 +959,32 @@
       if (noAcc) raBtn.style.setProperty('display', 'none', 'important');
       else       raBtn.style.removeProperty('display');
       raBtn.disabled = (n === 0);
+    }
+
+    // Request removal — only where the CR surface owns removal, and only
+    // while the selection holds rows it owns. Counts the CR-locked subset,
+    // not the whole selection, so a mixed pick reads honestly: Delete (3)
+    // beside Request removal (5).
+    var rrBtn = toolbar.querySelector('.scw-ws-v2-bulk-request-removal');
+    if (rrBtn) {
+      var rrIds = (n === 0) ? [] : crLockedSelection();
+      var rrLabel = rrBtn.querySelector('.scw-ws-v2-bulk-request-removal-label');
+      if (!salesCrLive()) {
+        rrBtn.style.setProperty('display', 'none', 'important');
+        rrBtn.disabled = true;
+      } else {
+        rrBtn.style.removeProperty('display');
+        rrBtn.disabled = (rrIds.length === 0);
+        rrBtn.title = rrIds.length
+          ? 'Add a removal request for ' + rrIds.length + ' locked line item' +
+            (rrIds.length === 1 ? '' : 's')
+          : 'None of the selected items are locked — use Delete instead';
+        if (rrLabel) {
+          rrLabel.textContent = rrIds.length
+            ? ('Request removal (' + rrIds.length + ')')
+            : 'Request removal';
+        }
+      }
     }
   }
 
@@ -2627,6 +2700,13 @@
     mount:            mount,
     syncDomFromState: syncDomFromState,
     refreshToolbar:   refreshToolbar,
+    /** Drop the selection + repaint. Used by the sales-CR bulk removal modal
+     *  so N rows aren't left ticked after they've all been marked. */
+    clear: function () {
+      clearAll();
+      try { syncDomFromState(); } catch (e) { /* toolbar still refreshes */ }
+      refreshToolbar();
+    },
     // FE-only delete primitives — callers must pass the view to DELETE through.
     deleteRecordFE:   deleteRecordFE,
     queuedDeleteFE:   queuedDeleteFE

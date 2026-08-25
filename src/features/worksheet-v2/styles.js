@@ -2166,6 +2166,23 @@
     '  color: #991b1b !important;',
     '}',
     '.scw-ws-v2-bulk-delete svg { flex: 0 0 auto !important; }',
+    /* Request removal (sales CR surface) — amber, not red: it does not      */
+    /* destroy anything, it queues a request for someone else to approve.    */
+    /* The inline display:none it ships with is cleared by refreshToolbar.   */
+    '.scw-ws-v2-bulk-toolbar button.scw-ws-v2-bulk-request-removal {',
+    '  display: inline-flex !important;',
+    '  align-items: center !important;',
+    '  gap: 6px !important;',
+    '  background: #fef3c7 !important;',
+    '  color: #92400e !important;',
+    '  border: 1px solid #fde68a !important;',
+    '}',
+    '.scw-ws-v2-bulk-toolbar button.scw-ws-v2-bulk-request-removal:hover:not(:disabled) {',
+    '  background: #fde68a !important;',
+    '  border-color: #fbbf24 !important;',
+    '  color: #78350f !important;',
+    '}',
+    '.scw-ws-v2-bulk-request-removal svg { flex: 0 0 auto !important; }',
     /* Remove accessories — purple like the rest (only Delete is red);    */
     /* layout rules keep the trash icon + label aligned.                   */
     '.scw-ws-v2-bulk-remove-acc {',

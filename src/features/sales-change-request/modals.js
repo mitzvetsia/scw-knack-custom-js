@@ -195,6 +195,126 @@
     setTimeout(function () { ta.focus(); }, 50);
   }
 
+  // ── Bulk removal request (worksheet bulk selection) ──
+  // Once the CR surface is live the per-row trash is gone and removal only
+  // happens through a request — which made clearing out N items an N-modal
+  // chore. This is openRemoveModal over a set: one shared reason, one entry
+  // written per row into the SAME pending map, so the CR panel, the payload
+  // builder and the submit path all see them as ordinary removals with no
+  // special-casing anywhere downstream.
+
+  function openBulkRemoveModal(recordIds) {
+    var ids = [];
+    for (var i = 0; i < (recordIds || []).length; i++) {
+      if (recordIds[i]) ids.push(recordIds[i]);
+    }
+    if (!ids.length) return;
+
+    ns.injectStyles();
+    closeModal();
+
+    var pending = S.pending();
+    var already = 0;
+    for (var a = 0; a < ids.length; a++) {
+      var ex = pending[ids[a]];
+      if (ex && ex.action === 'remove') already++;
+    }
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title', 'Request Removal'));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle',
+      ids.length + ' line item' + (ids.length === 1 ? '' : 's') + ' selected'));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '×');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = H.el('div', P + '-modal__body');
+    body.appendChild(H.el('div', P + '-modal__hint',
+      'Request that these line items be removed. The reason below applies to ' +
+      'all of them; you can edit any one afterwards from the change-request panel.'));
+
+    // Name every row. Blind bulk removal on a priced SOW is not something to
+    // confirm from a count alone.
+    var list = H.el('div', P + '-modal__bulklist');
+    for (var n = 0; n < ids.length; n++) {
+      var id = resolveIdentity(ids[n]);
+      var text = id.label && id.product ? (id.label + ' — ' + id.product)
+               : (id.label || id.product || ids[n]);
+      var row = H.el('div', P + '-modal__bulkitem', text);
+      var exi = pending[ids[n]];
+      if (exi && exi.action === 'remove') {
+        row.appendChild(H.el('span', P + '-modal__bulkflag', 'already requested'));
+      }
+      list.appendChild(row);
+    }
+    body.appendChild(list);
+
+    if (already) {
+      body.appendChild(H.el('div', P + '-modal__hint',
+        already + ' of these already ' + (already === 1 ? 'has' : 'have') +
+        ' a removal request — submitting will overwrite ' +
+        (already === 1 ? 'its reason' : 'their reasons') + ' with the note below.'));
+    }
+
+    body.appendChild(H.el('label', P + '-modal__label', 'Reason (optional)'));
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.placeholder = 'Why should these items be removed…';
+    ta.rows = 3;
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+
+    var removeBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--remove',
+      'Request removal of ' + ids.length);
+    removeBtn.addEventListener('click', function () {
+      var note = ta.value.trim();
+      var p = S.pending();
+      for (var k = 0; k < ids.length; k++) {
+        var ident = resolveIdentity(ids[k]);
+        p[ids[k]] = {
+          rowId:        ids[k],
+          displayLabel: ident.label,
+          productName:  ident.product,
+          action:       'remove',
+          current:      {},
+          requested:    {},
+          changeNotes:  note,
+        };
+      }
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      // Drop the worksheet selection — leaving N rows ticked after they've
+      // all been marked for removal invites a second accidental pass.
+      try {
+        var b = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.bulk;
+        if (b && typeof b.clear === 'function') b.clear();
+      } catch (eSel) { /* selection is cosmetic here */ }
+      ns.showToast(ids.length + ' removal' + (ids.length === 1 ? '' : 's') +
+        ' added to change request', 'success');
+    });
+    footer.appendChild(removeBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
   // ── Per-row note (tied to a specific line item) ─────
 
   function openRowNoteModal(recordId) {
@@ -484,6 +604,7 @@
   ns.openRowNote        = openRowNoteModal;
   ns.openAddNote        = openAddNoteModal;
   ns.openRemove         = openRemoveModal;
+  ns.openBulkRemove     = openBulkRemoveModal;
   ns.openEditGlobalNote = openEditGlobalNoteModal;
   ns.openEditReviseNote = openEditReviseNoteModal;
 
