@@ -7,8 +7,20 @@
  * column's title band brings the others back (persisted per SOW in
  * localStorage), and "Show basis only" re-hides them.
  *
- * No basis chosen (or the K1 "no subcontractor bid" sentinel, or a basis
- * that isn't one of this grid's packages) → nothing hides, no toggle.
+ * NO basis chosen, or the K1 "no subcontractor bid" sentinel → EVERY bid
+ * column hides. K1 means self-perform, so a subcontractor column is showing
+ * numbers that do not apply to this SOW; and with no basis designated at all,
+ * the columns were reading as though one of them were already the price. Both
+ * states confused reviewers, so the sub-bid side of the grid goes away and the
+ * toggle (parked in the SOW column's title band, since there's no basis column
+ * to hang it on) reads "Show bids (N)" to bring them back.
+ *
+ * A basis that isn't one of this grid's packages → nothing hides, no toggle.
+ *
+ * Three modes, all honouring the same per-SOW "show all" opt-in:
+ *   'all'   — no basis / K1: hide every bid column.
+ *   'basis' — valid basis + 2+ columns: hide every column except the basis.
+ *   'none'  — nothing to filter.
  *
  * DOM contract (set by card.js): every bid column cell — the four header
  * band <th>s and each body <td> — carries .scw-bid-review-v2__pkg-col +
@@ -26,6 +38,10 @@
   if (!ns) return;
 
   var K1_ID = 'K1';
+  // Synthetic grid id from transform.js — read through the namespace so the
+  // two can't drift, with the literal as the fallback if transform hasn't
+  // published yet.
+  var NO_SOW = (ns.transform && ns.transform.NO_SOW) || '__no_sow__';
   var HIDE_CLS   = 'scw-bid-review-v2__pkg-col--basis-hidden';
   var TOGGLE_CLS = 'scw-bid-review-v2__basis-toggle';
 
@@ -78,19 +94,43 @@
     return document.querySelector('.scw-bid-review-v2__sow[data-sow-id="' + sowId + '"]');
   }
 
-  /** Pkg id → true for every bid column the filter currently hides for this
-   *  SOW, or null when no filtering applies (no valid basis, K1 sentinel,
-   *  "show all" opted in, or fewer than 2 columns). Pure read, same rules as
-   *  applyToSection — transform.buildState uses it to bucket rows whose only
-   *  bid cells sit on hidden columns into the Removed subgroup. */
-  function hiddenFor(sowId, pkgIds) {
-    if (!sowId || !pkgIds || pkgIds.length < 2) return null;
+  /** Which filtering mode applies to this SOW right now — the single place
+   *  the rules live, so applyToSection and hiddenFor can never disagree.
+   *  Returns { mode: 'all'|'basis'|'none', basis }. */
+  function modeFor(sowId, pkgIds) {
+    // The synthetic "Bid items (no matching SOW)" grid (transform.js NO_SOW)
+    // is ALL bid columns and has no SOW record, so it can never have a basis.
+    // 'all' mode would hide every column and empty the one grid whose entire
+    // job is making sure orphan bid items are never silently dropped.
+    if (!sowId || sowId === NO_SOW) return { mode: 'none', basis: '' };
+
     var basis = basisOf(sowId);
-    if (!basis || basis === K1_ID || pkgIds.indexOf(basis) === -1) return null;
+    // No basis designated, or K1 (self-perform — no subcontractor bid exists
+    // for this SOW): the whole sub-bid side of the grid is inapplicable.
+    if (!basis || basis === K1_ID) {
+      return { mode: pkgIds.length ? 'all' : 'none', basis: basis };
+    }
+    // A basis that isn't a column here — nothing to single out, leave as-is.
+    if (pkgIds.indexOf(basis) === -1) return { mode: 'none', basis: basis };
+    // One column that IS the basis: already showing only the basis.
+    if (pkgIds.length < 2) return { mode: 'none', basis: basis };
+    return { mode: 'basis', basis: basis };
+  }
+
+  /** Pkg id → true for every bid column the filter currently hides for this
+   *  SOW, or null when no filtering applies. Pure read, same rules as
+   *  applyToSection — transform.buildState uses it to bucket rows whose only
+   *  bid cells sit on hidden columns into the Removed subgroup. In 'all' mode
+   *  that means bid-only rows collapse into Removed too, which is the point:
+   *  with no applicable sub bid they have nothing left to show. */
+  function hiddenFor(sowId, pkgIds) {
+    if (!sowId || !pkgIds || !pkgIds.length) return null;
+    var m = modeFor(sowId, pkgIds);
+    if (m.mode === 'none') return null;
     if (userShowAll(sowId)) return null;
     var out = Object.create(null);
     for (var i = 0; i < pkgIds.length; i++) {
-      if (pkgIds[i] !== basis) out[pkgIds[i]] = true;
+      if (m.mode === 'all' || pkgIds[i] !== m.basis) out[pkgIds[i]] = true;
     }
     return out;
   }
@@ -130,17 +170,20 @@
     if (!section || !sowId) return;
     if (!pkgIds || !pkgIds.length) pkgIds = collectPkgIds(section);
 
-    var basis = basisOf(sowId);
-    var valid = !!basis && basis !== K1_ID && pkgIds.indexOf(basis) !== -1;
-    // Filtering is only meaningful with a valid basis and 2+ bid columns.
-    var canFilter = valid && pkgIds.length >= 2;
+    var m = modeFor(sowId, pkgIds);
+    var basis = m.basis;
+    var hideAll = (m.mode === 'all');
+    var canFilter = (m.mode !== 'none');
     var filtering = canFilter && !userShowAll(sowId);
 
     var cells = section.querySelectorAll('.scw-bid-review-v2__pkg-col[data-pkg-id]');
     for (var i = 0; i < cells.length; i++) {
       var pid = cells[i].getAttribute('data-pkg-id');
-      cells[i].classList.toggle(HIDE_CLS, filtering && pid !== basis);
+      cells[i].classList.toggle(HIDE_CLS,
+        filtering && (hideAll || pid !== basis));
     }
+    // Let CSS/other features know the sub-bid side is gone for this SOW.
+    section.classList.toggle('scw-bid-review-v2__sow--no-bids', filtering && hideAll);
 
     // Full-width rows (docs band, L1/L2 group headers) declare
     // colspan = packages + 3. Under table-layout:fixed the colspan defines
@@ -151,7 +194,7 @@
     // original when the filter lifts (cells are rebuilt each render, so
     // stamps never go stale).
     var fullSpan = pkgIds.length + 3;
-    var hiddenN = filtering ? (pkgIds.length - 1) : 0;
+    var hiddenN = filtering ? (hideAll ? pkgIds.length : pkgIds.length - 1) : 0;
     var spans = section.querySelectorAll('td[colspan], th[colspan]');
     for (var sp = 0; sp < spans.length; sp++) {
       var sc = spans[sp];
@@ -169,16 +212,39 @@
     var old = section.querySelectorAll('.' + TOGGLE_CLS);
     for (var o = 0; o < old.length; o++) old[o].parentNode.removeChild(old[o]);
     if (!canFilter) return;
-    var th = section.querySelector(
-      '.scw-bid-review-v2__head-cell--title[data-pkg-id="' + basis + '"]');
+    // In 'all' mode there is no basis column to hang the pill on, so it parks
+    // in the SOW column's title band — the only header cell guaranteed to be
+    // visible. Without this the hidden bids would be unreachable, which
+    // matters most in the no-basis state: those columns are exactly what a
+    // reviewer reads to CHOOSE a basis.
+    var th = hideAll
+      ? section.querySelector(
+          '.scw-bid-review-v2__th--sow.scw-bid-review-v2__head-cell--title')
+      : section.querySelector(
+          '.scw-bid-review-v2__head-cell--title[data-pkg-id="' + basis + '"]');
     if (!th) return;
-    var others = pkgIds.length - 1;
+    var n = pkgIds.length;
+    var others = n - 1;
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = TOGGLE_CLS +
       (filtering ? ' ' + TOGGLE_CLS + '--filtering' : '');
     btn.setAttribute('data-scw-br-v2-basis-toggle', sowId);
-    if (filtering) {
+    if (hideAll) {
+      var why = (basis === K1_ID)
+        ? 'K1 Bid is the basis — this SOW is self-performed, so no ' +
+          'subcontractor bid applies.'
+        : 'No basis bid has been chosen for this SOW yet.';
+      if (filtering) {
+        btn.textContent = 'Show bid' + (n === 1 ? '' : 's') + ' (' + n + ')';
+        btn.title = why + ' ' + n + ' bid column' + (n === 1 ? ' is' : 's are') +
+          ' hidden. Click to show ' + (n === 1 ? 'it' : 'them') + '.';
+      } else {
+        btn.textContent = 'Hide bid' + (n === 1 ? '' : 's');
+        btn.title = why + ' Click to hide the bid column' +
+          (n === 1 ? '' : 's') + ' again.';
+      }
+    } else if (filtering) {
       btn.textContent = 'Show all bids (+' + others + ')';
       btn.title = 'This is the basis bid — ' + others + ' other bid column' +
         (others === 1 ? ' is' : 's are') + ' hidden. Click to show all bids.';
