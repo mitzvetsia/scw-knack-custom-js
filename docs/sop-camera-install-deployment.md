@@ -1,35 +1,34 @@
-# SOP — Camera Install & Deployment (Day 1 → Closeout)
+# SOP — Camera Install & Deployment (Day 1 to Handover)
 
-> **Confluence note:** paste this page as Markdown. The flowchart below is
-> [Mermaid](https://mermaid.js.org/) — wrap it in the **Mermaid Diagrams for Confluence**
-> macro (or Confluence Cloud's native `/mermaid` code-block renderer) to render it.
-> If your space has no Mermaid macro, use the **Flowchart** section as a numbered
-> procedure and attach the rendered PNG.
-
----
-
-## 1. Purpose & scope
-
-This SOP covers a camera system deployment from the moment the tech is on site with the
-NVR through final system signoff. It defines who does what, in what order, what must be
-true before each hand-off, and what the tech must have in the truck before they arrive.
-
-**In scope:** NVR setup, network connection, antenna pairing, bench testing, camera
-install/aim/rename, photo capture, QA, and the Final Configuration Call.
-
-**Out of scope:** pre-site design, the customer questionnaire itself (an input here, not a
-step), and any billing or change-order flow.
+> **Confluence note:** paste this page as Markdown. The flowchart below is written in
+> [Mermaid](https://mermaid.js.org/). Wrap it in the **Mermaid Diagrams for Confluence**
+> macro, or use Confluence Cloud's `/mermaid` code block, to make it draw. If your space
+> has no Mermaid macro, use the steps below as the procedure and attach a picture of the chart.
 
 ---
 
-## 2. Roles
+## 1. What this covers
 
-| Role | Who it is | Owns |
+This guide covers a camera install. It starts when the tech gets to the site with the NVR.
+It ends when the system is handed over. It tells you who does each step, in what order, and
+what has to be done before you move on.
+
+**This guide covers:** setting up the NVR, hooking it to the network, antennas, bench testing,
+hanging and aiming cameras, renaming them, taking photos, QA, and the Final Configuration Call.
+
+**This guide does not cover:** the system design, the customer questionnaire (that comes in as
+an input, not a step), or billing and change orders.
+
+---
+
+## 2. Who does what
+
+| Role | Who it is | What they do |
 |---|---|---|
-| **Tech** | On-site field technician (SVS) | NVR setup, network, antennas, bench test, physical install, aim, rename, install photos |
-| **SCW Support** | SCW remote support desk | Initial Setup call, remote access, bench-test walkthrough, antenna programming, troubleshooting calls |
-| **SVS PM** | Deploying partner's project manager | Uploads installed photos + view screenshots to the Deployment Dashboard; joint QA |
-| **SCW PM** | SCW project manager | Joint QA against system design, NVR screenshots, Final Configuration Call |
+| **Tech** | The installer on site (SVS) | Sets up the NVR, hooks up the network, plugs in antennas, bench tests, hangs and aims cameras, renames them, takes photos |
+| **SCW Support** | The SCW help desk | Runs the Initial Setup call, checks remote access, walks the tech through bench testing, programs antennas, takes help calls, runs the Final Configuration Call |
+| **SVS PM** | The partner's project manager | Uploads install photos and view screenshots to the Deployment Dashboard, helps with QA |
+| **SCW PM** | The SCW project manager | Checks cameras against the design, saves NVR screenshots, checks the work at handover |
 
 ---
 
@@ -44,23 +43,23 @@ flowchart TD
 
   subgraph P1["PHASE 1 — DAY 1 INSTALL"]
     direction TB
-    A1["Set up NVR"]:::tech
-    A2["Physically connect<br/>to the network"]:::tech
-    A3["Plug up antennas —<br/>prepare to program &amp; pair"]:::tech
-    A4["Program antennas<br/>(if applicable)"]:::support
+    A1["Set up the NVR"]:::tech
+    A2["Plug the NVR into<br/>the network"]:::tech
+    A3["Plug in antennas —<br/>get ready to program and pair"]:::tech
+    A4["Program the antennas<br/>(if this site has them)"]:::support
     A5["Call Support for<br/>&quot;Initial Setup&quot;"]:::support
     A1 --> A2 --> A3 --> A4 --> A5
   end
 
   A5 --> B1
 
-  subgraph P2["PHASE 2 — BEYOND DAY 1"]
+  subgraph P2["PHASE 2 — AFTER DAY 1"]
     direction TB
-    B1{"Bench Test"}:::gate
+    B1{"Bench test"}:::gate
     B2["Call Support"]:::support
-    B3["Install, Aim &amp;<br/>Rename Cameras"]:::tech
-    B4["Photo of every installed<br/>camera → SVS to SCW"]:::tech
-    B1 -->|Issues identified| B2
+    B3["Hang, aim, and<br/>rename cameras"]:::tech
+    B4["Photo of every camera —<br/>SVS sends them to SCW"]:::tech
+    B1 -->|Found a problem| B2
     B2 --> B3
     B1 -->|All good| B3
     B3 --> B4
@@ -68,158 +67,161 @@ flowchart TD
 
   B4 --> C1
 
-  subgraph P3["PHASE 3 — QA &amp; CLOSEOUT"]
+  subgraph P3["PHASE 3 — QA AND HANDOVER"]
     direction TB
-    C1["SVS uploads installed photos<br/>&amp; view screenshots to<br/>Deployment Dashboard"]:::tech
-    C2["SCW &amp; SVS PM QA installed<br/>cameras as they go +<br/>screenshot from NVR"]:::qa
-    C3["Remediate any issues"]:::tech
+    C1["SVS uploads install photos<br/>and view screenshots to the<br/>Deployment Dashboard"]:::tech
+    C2["SCW and SVS PM check<br/>cameras as they go +<br/>save an NVR screenshot"]:::qa
+    C3["Fix any problems"]:::tech
     C4["Final Configuration Call"]:::support
-    C5["Remediate any issues"]:::tech
+    C5["Fix any problems"]:::tech
     C1 --> C2
-    C2 -->|Issues identified| C3
+    C2 -->|Found a problem| C3
     C3 --> C2
-    C2 -->|Clean| C4
-    C4 -->|Issues identified| C5
+    C2 -->|All clear| C4
+    C4 -->|Found a problem| C5
     C5 --> C4
   end
 ```
 
----
-
-## 4. Before you go — pre-arrival prep
-
-Do not roll a truck until all of these are true.
-
-- [ ] **Questionnaire is complete**, including whether IT has selected or required a static IP.
-      *(Open item — see §8.1.)*
-- [ ] **Network answer is known:** DHCP or static, and whether the NVR will be reachable from
-      outside the client network for remote access.
-- [ ] **Camera naming schema is confirmed** for this site (`E-001`, `I-002`, …).
-- [ ] **Tech has a laptop.** If there is no cell service on site, the laptop is the only way in.
-- [ ] **Tech has a monitor.** If there is no network at all, a monitor is mandatory — there is no
-      remote path to the NVR.
-- [ ] **All parties have reviewed the system design** and agree the site is ready.
-- [ ] **Tech has SCW access / credentials** for the system (subject to what the client network allows).
+The fix-it steps loop back. If QA or the Final Configuration Call finds a problem, the work goes
+back to the same check after the fix. Nothing moves forward with a known problem.
 
 ---
 
-## 5. Phase 1 — Day 1 Install
+## 4. Before you go
 
-### 5.1 Set up NVR — *Tech*
+Do not leave for the site until every line below is true. Each one has cost us a trip back.
 
-1. Rack or place the NVR and power it up.
-2. **Be prepared to iterate on WHERE the NVR is installed and what it's plugged into.** The
-   planned location frequently loses to reality; expect to move it.
-3. **Connect at least one camera to the NVR** before you call Support, so Support can walk you
-   through bench testing if it becomes necessary.
+- [ ] **The questionnaire is filled out.** That includes whether IT picked an IP address we have
+      to use. *(This one is still open — see §8.)*
+- [ ] **You know the network answer.** DHCP or a static IP. You also know if the NVR has to be
+      reachable from outside the client's network.
+- [ ] **You know the camera naming rule for this site.** For example: `E-001`, `I-002`.
+- [ ] **The tech has a laptop.** If there is no cell service, the laptop is the only way in.
+- [ ] **The tech has a monitor.** If there is no network at all, you need one. There is no other
+      way to reach the NVR.
+- [ ] **Everyone has looked at the system design** and agrees the site is ready.
+- [ ] **The tech can log in to SCW and the system**, as far as the client's network allows.
 
-### 5.2 Physically connect to the network — *Tech*
+---
 
-1. Patch the NVR to the client network per the questionnaire (DHCP or the assigned static IP).
-2. Confirm the NVR pulls/holds an address before moving on.
+## 5. Phase 1 — Day 1 install
 
-### 5.3 Antennas — *Tech → SCW Support*
+### 5.1 Set up the NVR — *Tech*
 
-1. **Tech:** plug up antennas and prepare to program and pair.
-2. **SCW Support:** program the antennas, if applicable to this site.
+1. Put the NVR where it goes and power it on.
+2. **Be ready to move it.** The spot in the plan often does not work once you see the site. You
+   may have to try a different place, or plug it into something else. Expect this.
+3. **Hook up at least one camera before you call Support.** Then Support can walk you through a
+   bench test if you need one.
+
+### 5.2 Plug the NVR into the network — *Tech*
+
+1. Plug the NVR into the client's network. Use DHCP or the static IP from the questionnaire.
+2. Make sure the NVR gets an address and keeps it before you move on.
+
+### 5.3 Antennas — *Tech, then SCW Support*
+
+1. **Tech:** plug in the antennas. Get them ready to program and pair.
+2. **SCW Support:** program the antennas if this site has them.
 
 ### 5.4 Call Support for "Initial Setup" — *SCW Support*
 
-Support drives this call. Work the list top to bottom:
+Support runs this call. Go down the list in order.
 
-- [ ] **Remote access.** Confirm the NVR is reachable from the outside world. Check the
-      questionnaire and confirm the addressing method (DHCP or static).
-- [ ] **Bench testing procedures.** Review them with the tech if needed.
-- [ ] **System access.** Confirm the tech has access to SCW and to the system — as far as the
-      client network permits.
-- [ ] **Camera naming.** Confirm the tech knows how to name cameras in the app, *and* that they
-      know the schema they must follow (`E-001`, `I-002`, …).
-- [ ] **Alerts.** Confirm the tech knows about alerts and that they **must turn alerts off during
-      bench testing.**
+- [ ] **Remote access.** Make sure you can reach the NVR from outside the client's network. Check
+      the questionnaire for DHCP or a static IP.
+- [ ] **Bench test steps.** Go over them with the tech if the tech needs it.
+- [ ] **System access.** Make sure the tech can get into SCW and the system. The client's network
+      may limit this.
+- [ ] **Camera names.** Make sure the tech knows how to rename cameras in the app. Also make sure
+      the tech knows the naming rule for this site (`E-001`, `I-002`).
+- [ ] **Alerts.** Make sure the tech knows about alerts. The tech **has to turn alerts off during
+      the bench test.**
 
-**Exit criteria:** NVR is powered, addressed, reachable, at least one camera attached, antennas
-programmed, alerts off, tech knows the naming schema.
+**Done when:** the NVR is on, has an address, and can be reached. At least one camera is hooked
+up. Antennas are programmed. Alerts are off. The tech knows the naming rule.
 
 ---
 
-## 6. Phase 2 — Beyond Day 1
+## 6. Phase 2 — After day 1
 
-### 6.1 Bench Test — *Tech* (decision point)
+### 6.1 Bench test — *Tech* (this is a decision point)
 
-Bench test the system with alerts off.
+Bench test the system with alerts turned off.
 
-- **All good →** proceed to install (§6.2).
-- **Issues identified →** **Call Support.** Do not start hanging cameras on a system that failed
-  bench test. Resolve with Support, then proceed to install.
+- **All good →** go hang cameras (§6.2).
+- **Found a problem →** **call Support.** Do not hang cameras on a system that failed the bench
+  test. Fix it with Support first. Then install.
 
-### 6.2 Install, Aim & Rename Cameras — *Tech*
+### 6.2 Hang, aim, and rename cameras — *Tech*
 
-1. Install and physically aim each camera to the system design.
-2. **Rename each camera to the agreed schema** (`E-001`, `I-002`, …) as you go — not at the end.
+1. Hang and aim each camera the way the system design shows.
+2. **Rename each camera as you go.** Do not wait until the end of the day.
 
-**Field contingencies:**
+**If something goes wrong on site:**
 
-| Condition | What to do |
+| What's happening | What to do |
 |---|---|
 | No cell service | Use your laptop. |
-| No network at all | You need the monitor you brought — there is no remote path. |
-| Design doesn't match the site | Stop and get all parties on the design before continuing. |
+| No network at all | Use the monitor you brought. There is no other way to reach the NVR. |
+| The design does not match the site | Stop. Get everyone back on the design before you keep going. |
 
-### 6.3 Install photos — *Tech → SVS → SCW*
+### 6.3 Photos — *Tech, then SVS, then SCW*
 
-Take a photo of **every** installed camera and provide it to SVS, who provides it to SCW.
-Photos are the evidence QA runs on; a missing photo is a missing camera as far as QA is concerned.
+Take a photo of **every** camera you install. Send the photos to SVS. SVS sends them to SCW.
+QA works from these photos. If a camera has no photo, QA treats it as not installed.
 
-**Exit criteria:** every camera installed, aimed, renamed to schema, and photographed.
+**Done when:** every camera is hung, aimed, renamed, and photographed.
 
 ---
 
-## 7. Phase 3 — QA & Closeout
+## 7. Phase 3 — QA and handover
 
 ### 7.1 Upload to the Deployment Dashboard — *SVS PM*
 
-SVS uploads to the Deployment Dashboard:
+SVS uploads two things:
 
-- installed photos, and
-- **view screenshots** (what the camera actually sees).
+- the install photos, and
+- the **view screenshots** — what each camera actually sees.
 
-### 7.2 QA as you go — *SCW PM + SVS PM*
+### 7.2 Check cameras as you go — *SCW PM and SVS PM*
 
-SCW and the SVS PM QA installed cameras **as they go** — not in one pass at the end — and pull a
-screenshot from the NVR for each.
+SCW and the SVS PM check installed cameras **as they go**. Do not wait and check them all at the
+end. Save a screenshot from the NVR for each camera.
 
-- **Issues identified →** remediate, then re-QA the affected cameras.
-- **Clean →** schedule the Final Configuration Call.
+- **Found a problem →** fix it, then check that camera again.
+- **All clear →** set up the Final Configuration Call.
 
-### 7.3 Final Configuration Call — *SCW Support + Tech + PMs*
+### 7.3 Final Configuration Call — *SCW Support, the tech, and the PMs*
 
-- [ ] **Test hard drives.**
-- [ ] **Full system health check.**
-- [ ] **Verify camera naming, IP addresses, and system questionnaire details are all correct.**
+- [ ] **Test the hard drives.**
+- [ ] **Do a full system health check.**
+- [ ] **Check that camera names, IP addresses, and questionnaire details are all right.**
 
-Anything found here goes back through remediation and returns to this call. The call is not
-complete until all three checks pass.
+Anything you find on this call goes back for a fix. Then it comes back here. The call is not done
+until all three checks pass.
 
-**Exit criteria:** hard drives tested, health check clean, naming/IP/questionnaire verified —
-system is handed over.
+**Done when:** hard drives are tested, the health check is clean, and names, IPs, and the
+questionnaire have all been checked. The system is handed over.
 
 ---
 
-## 8. Open items
+## 8. Open questions
 
-### 8.1 Static IP ownership — **unresolved**
+### 8.1 Who picks the IP address? — **still open**
 
-> The **PM** needs to identify whether an IT-selected / IT-required IP is necessary. Today this is
-> being sent to SVS. **Action:** make sure this is captured on the questionnaire so it arrives with
-> the job instead of chasing it on install day.
+> The **PM** has to find out if IT picked an IP address we have to use. Right now this goes to
+> SVS. **What to do:** put this question on the questionnaire. Then the answer comes in with the
+> job, instead of us chasing it on install day.
 
 **Owner:** PM · **Status:** open
 
 ### 8.2 To confirm
 
-- Whether **antenna programming** is always Support-side or can be tech-side on some sites.
-- The escalation path and target response time when a tech "Calls Support" mid-install.
-- Whether "SVS uploads" (§7.1) is the SVS PM or the tech.
+- Does Support always program the antennas? Or can the tech do it at some sites?
+- Who does the tech call for help during an install, and how fast should we answer?
+- Who uploads to the Deployment Dashboard (§7.1) — the SVS PM or the tech?
 
 ---
 
@@ -227,4 +229,4 @@ system is handed over.
 
 | Date | Change | By |
 |---|---|---|
-| 2026-08-25 | Initial SOP transcribed from the install-process whiteboard; remediation loops made explicit. | — |
+| 2026-08-25 | First version. Written from the install whiteboard. Fix-it loops drawn in. Plain language pass. | — |
