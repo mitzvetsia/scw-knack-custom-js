@@ -110,7 +110,12 @@
       '  padding: 3px 10px; cursor: pointer; color: #0f4c75;',
       '  font: 600 11.5px/1.4 system-ui, sans-serif;',
       '}',
-      '.' + P + '-tools button:hover { background: #f1f5f9; }',
+      '.' + P + '-tools button:hover:not(:disabled) { background: #f1f5f9; }',
+      // Visibly inert rather than absent — it stays discoverable, and the
+      // greyed state is itself the explanation that nothing has changed yet.
+      '.' + P + '-tools button:disabled {',
+      '  opacity: .45; cursor: not-allowed; color: #64748b;',
+      '}',
       '.' + P + '-tally { margin-left: auto; color: #475569; font-size: 12px; }',
       '.' + P + '-tally b { color: #0f172a; }',
       '.' + P + '-body { padding: 6px 22px 14px; overflow-y: auto; flex: 1 1 auto; }',
@@ -135,7 +140,7 @@
       // One line per item. The product used to print twice — once as a
       // sub-line, once as the dropdown's own value — and the mode pill took
       // a second row on EVERY item. Both gone: the select is the product,
-      // and only the exceptional state (duplicated) says anything.
+      // and only the exceptional state (duplicate) says anything.
       '.' + P + '-row {',
       '  display: flex; align-items: center; gap: 10px;',
       '  padding: 4px 2px; border-bottom: 1px solid #f8fafc;',
@@ -416,17 +421,16 @@
 
     var tools = document.createElement('div');
     tools.className = P + '-tools';
-    // "Reset models" was the right control with the wrong name — it says what
-    // it operates on, not what you get. This one names the outcome: every row
-    // back on the model it already has, which is also every row back to
-    // Shared. Hidden until at least one row has actually been changed, so it
-    // only shows up when there is something to undo.
+    // Always present, DISABLED when there is nothing to undo — hiding it
+    // until a model changed made it un-findable, which is worse than the
+    // vague name it started with. A greyed control still teaches what it
+    // does and where it lives; a missing one teaches nothing.
     tools.innerHTML =
       '<button type="button" data-alt-all>Select all</button>' +
       '<button type="button" data-alt-none>Select none</button>' +
-      '<button type="button" data-alt-reset style="display:none" ' +
-        'title="Put every model back to the one the item already uses, so ' +
-        'nothing is duplicated">Keep all current models</button>' +
+      '<button type="button" data-alt-reset disabled ' +
+        'title="Put every model back to the one the item uses on this SOW, ' +
+        'so nothing is duplicated">Reset to original models</button>' +
       '<span class="' + P + '-tally" data-alt-tally></span>';
     modal.appendChild(tools);
 
@@ -437,7 +441,7 @@
     legend.innerHTML =
       '<span><b>Shared</b> — one record on both SOWs, edits affect both ' +
         '(the default)</span>' +
-      '<span><b>Duplicated</b> — each SOW edits its own copy ' +
+      '<span><b>Duplicate</b> — each SOW edits its own copy ' +
         '(when you change the model)</span>';
     modal.appendChild(legend);
 
@@ -519,7 +523,7 @@
         if (mode) {
           var showMode = st.on && st.changed;
           mode.style.display = showMode ? '' : 'none';
-          mode.title = showMode ? 'Duplicated — each SOW edits its own copy' : '';
+          mode.title = showMode ? 'Duplicate — each SOW edits its own copy' : '';
         }
         var was = rs[i].querySelector('[data-alt-was]');
         if (was) {
@@ -535,7 +539,7 @@
       }
       tally.innerHTML = '<b>' + on + '</b> of ' + rs.length + ' item' +
         (rs.length === 1 ? '' : 's') +
-        (clones ? (' · <b>' + clones + '</b> duplicated') : '');
+        (clones ? (' · <b>' + clones + '</b> duplicate') : '');
       // Only offer the undo once a model has actually been changed —
       // otherwise it sits there inviting the "what does this do?" it exists
       // to answer. Counts changed rows whether selected or not, so a change
@@ -544,7 +548,7 @@
       for (var c = 0; c < rs.length && !anyChanged; c++) {
         if (readRow(rs[c]).changed) anyChanged = true;
       }
-      if (resetBtn) resetBtn.style.display = anyChanged ? '' : 'none';
+      if (resetBtn) resetBtn.disabled = !anyChanged;
 
       // Group tallies — a collapsed section still has to report what's ticked
       // inside it, or collapsing hides decisions instead of just rows.
@@ -561,7 +565,7 @@
         var n = heads[gi].querySelector('[data-alt-grp-n]');
         if (n) {
           n.textContent = gOn + ' of ' + grs.length +
-            (gDup ? (' · ' + gDup + ' duplicated') : '');
+            (gDup ? (' · ' + gDup + ' duplicate') : '');
         }
       }
       goBtn.disabled = (on === 0);
@@ -587,7 +591,9 @@
         gh.classList.toggle(P + '-grp--closed');
         return;
       }
-      if (t.closest('[data-alt-reset]')) {
+      var rb = t.closest('[data-alt-reset]');
+      if (rb) {
+        if (rb.disabled) return;   // belt-and-braces; native disabled already blocks
         var rr = rows();
         for (var k = 0; k < rr.length; k++) {
           var rsel = rr[k].querySelector('select');
@@ -665,7 +671,7 @@
         '<span class="' + P + '-was" data-alt-was style="display:none"></span>' +
       '</span>' +
       '<select class="' + P + '-sel" aria-label="Model on the alternate SOW">' + optHtml + '</select>' +
-      '<span class="' + P + '-mode" data-alt-mode style="display:none">Duplicated</span>';
+      '<span class="' + P + '-mode" data-alt-mode style="display:none">Duplicate</span>';
     return row;
   }
 
