@@ -4,13 +4,42 @@
  * view_3869. Visible only after the Initiate Install step has fired
  * (field_1199 populated on the SOW detail view_3827).
  *
- * Click fires SCW.CONFIG.MAKE_DUPLICATE_SOW_WEBHOOK with:
- *   { sourceRecordId: <SOW record id>, triggeredBy: { id, name, email } }
+ * WHY THERE IS A MODAL NOW:
+ *   The button used to fire straight at Make with EVERY line item id on the
+ *   SOW, and a fully-populated duplicate SOW appeared with no warning and no
+ *   choices. Nobody could tell what it was about to do, which is the whole
+ *   complaint. Clicking now opens a picker: which items go on the alternate,
+ *   and what model each one uses there.
  *
- * Make creates a new SOW + appends its ID to field_2154 on each line
- * item / license / recurring service (many-to-many SOW connection),
- * then returns { success, newSowId, newSowUrl }. Client redirects to
- * newSowUrl on success.
+ * PARENT ITEMS ONLY:
+ *   Accessories (a populated field_2464 parent) are deliberately absent —
+ *   mounting boxes and brackets ride along with the device they hang off,
+ *   and listing them turns a 12-row decision into a 40-row scroll. The
+ *   automation is expected to carry a parent's accessories with it.
+ *
+ * LINK vs CLONE — the distinction the whole feature exists for:
+ *   Leave a row's model alone and the SAME line item is shared onto the new
+ *   SOW (field_2154 is a multi-connection) — one record, two SOWs, edits
+ *   track both. Change the model and it must instead be CLONED, because the
+ *   alternate needs a different product and the original has to keep its
+ *   own. The payload says which per item; it never asks Make to guess.
+ *
+ * Payload:
+ *   {
+ *     sourceRecordId, triggeredBy,
+ *     sowLineItemIds:      [ ids to LINK ],        // back-compat, link-only
+ *     linkIds:             [ ids to LINK ],
+ *     cloneItems:          [ { sourceItemId, productId, productName,
+ *                              fromProductId, fromProductName } ],
+ *     licenseRecurringIds: [ ids ]
+ *   }
+ *   Response: { success: true, newSowId, newSowUrl } | { success:false, error }
+ *
+ * ⚠️ sowLineItemIds carries ONLY the link-mode ids. Until the Make scenario
+ *   grows a cloneItems branch, a model-changed row is simply absent from the
+ *   new SOW — omitted, never linked with the wrong product. Failing by
+ *   omission is recoverable; failing by quietly attaching the wrong model to
+ *   a quote is not.
  */
 (function () {
   'use strict';
@@ -18,9 +47,21 @@
   var TARGET_VIEW    = 'view_3869';
   var GATE_VIEW      = 'view_3827';   // SOW detail view supplying field_1199 + record id
   var GATE_FIELD     = 'field_1199';  // Install Project populated -> show button
+  var ITEMS_VIEW     = 'view_3586';   // SOW line items
+  var LICENSE_VIEW   = 'view_3471';   // Licenses / recurring services
   var BTN_MARKER     = 'scw-create-sow-option-btn';
   var BTN_LABEL      = 'Create Alternate SOW';
   var EVENT_NS       = '.scwCreateSowOption';
+
+  var F = {
+    product:  'field_1949',   // REL_product (single connection)
+    label:    'field_1950',   // display label
+    parent:   'field_2464',   // accessory → parent line item
+    bucket:   'field_2219',   // proposal bucket
+    mdfIdf:   'field_1946'    // MDF/IDF location
+  };
+
+  var P = 'scw-alt-sow';
 
   var COPY_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
@@ -33,28 +74,101 @@
     'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
     'stroke-linejoin="round" class="scw-create-sow-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
 
-  // Inject the spinner keyframes once.
+  // ── Styles ───────────────────────────────────────────────
   (function injectStyles() {
     if (document.getElementById('scw-create-sow-option-css')) return;
     var s = document.createElement('style');
     s.id = 'scw-create-sow-option-css';
-    s.textContent =
-      '.' + BTN_MARKER + '.is-loading { pointer-events: none; opacity: 0.75; cursor: wait; }' +
-      '.' + BTN_MARKER + '.is-loading svg { animation: scw-create-sow-spin 0.8s linear infinite; }' +
-      '@keyframes scw-create-sow-spin { to { transform: rotate(360deg); } }';
+    s.textContent = [
+      '.' + BTN_MARKER + '.is-loading { pointer-events: none; opacity: 0.75; cursor: wait; }',
+      '.' + BTN_MARKER + '.is-loading svg { animation: scw-create-sow-spin 0.8s linear infinite; }',
+      '@keyframes scw-create-sow-spin { to { transform: rotate(360deg); } }',
+      '.' + P + '-back {',
+      '  position: fixed; inset: 0; background: rgba(15,23,42,.45);',
+      '  z-index: 10060; display: flex; align-items: center; justify-content: center;',
+      '}',
+      '.' + P + '-modal {',
+      '  background: #fff; border-radius: 10px; display: flex; flex-direction: column;',
+      '  width: min(860px, calc(100vw - 32px)); max-height: 86vh;',
+      '  box-shadow: 0 12px 32px rgba(15,23,42,.25);',
+      '  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: #0f172a;',
+      '}',
+      '.' + P + '-head { padding: 18px 22px 12px; border-bottom: 1px solid #eef2f7; }',
+      '.' + P + '-title { margin: 0 0 4px; font: 700 16px/1.3 system-ui, sans-serif; color: #0c4a6e; }',
+      '.' + P + '-sub { margin: 0; color: #64748b; font-size: 12.5px; }',
+      '.' + P + '-tools {',
+      '  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;',
+      '  padding: 10px 22px; border-bottom: 1px solid #eef2f7; background: #f8fafc;',
+      '}',
+      '.' + P + '-tools button {',
+      '  border: 1px solid #cbd5e1; background: #fff; border-radius: 5px;',
+      '  padding: 3px 10px; cursor: pointer; color: #0f4c75;',
+      '  font: 600 11.5px/1.4 system-ui, sans-serif;',
+      '}',
+      '.' + P + '-tools button:hover { background: #f1f5f9; }',
+      '.' + P + '-tally { margin-left: auto; color: #475569; font-size: 12px; }',
+      '.' + P + '-tally b { color: #0f172a; }',
+      '.' + P + '-body { padding: 6px 22px 14px; overflow-y: auto; flex: 1 1 auto; }',
+      '.' + P + '-grp {',
+      '  position: sticky; top: 0; z-index: 1; background: #fff;',
+      '  padding: 10px 0 5px; margin: 0;',
+      '  font: 700 10.5px/1.3 system-ui, sans-serif; letter-spacing: .04em;',
+      '  text-transform: uppercase; color: #475569;',
+      '  border-bottom: 1px solid #eef2f7;',
+      '}',
+      '.' + P + '-row {',
+      '  display: grid; grid-template-columns: auto 1fr 280px; gap: 10px;',
+      '  align-items: center; padding: 7px 0; border-bottom: 1px solid #f8fafc;',
+      '}',
+      '.' + P + '-row--off { opacity: .45; }',
+      '.' + P + '-row input[type=checkbox] { margin: 0; }',
+      '.' + P + '-name { min-width: 0; }',
+      '.' + P + '-name-l { font-weight: 600; }',
+      '.' + P + '-name-p { color: #64748b; font-size: 11.5px;',
+      '  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+      '.' + P + '-sel {',
+      '  width: 100%; padding: 5px 7px; border: 1px solid #cbd5e1;',
+      '  border-radius: 5px; font: inherit; font-size: 12px; background: #fff;',
+      '  color: #0f172a;',
+      '}',
+      '.' + P + '-sel:disabled { background: #f1f5f9; color: #94a3b8; }',
+      // A changed model is the thing that turns a share into a copy — say so
+      // on the row, not just in a summary the user has to go find.
+      '.' + P + '-sel--changed { border-color: #fbbf24; background: #fffbeb; }',
+      '.' + P + '-mode {',
+      '  grid-column: 3; justify-self: start; margin-top: 3px;',
+      '  padding: 1px 7px; border-radius: 999px;',
+      '  font: 700 10px/1.5 system-ui, sans-serif; white-space: nowrap;',
+      '}',
+      '.' + P + '-mode--link  { background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569; }',
+      '.' + P + '-mode--clone { background: #fef3c7; border: 1px solid #fde68a; color: #92400e; }',
+      '.' + P + '-foot {',
+      '  display: flex; gap: 8px; justify-content: flex-end; align-items: center;',
+      '  padding: 14px 22px; border-top: 1px solid #eef2f7; flex-wrap: wrap;',
+      '}',
+      '.' + P + '-btn {',
+      '  padding: 8px 15px; border-radius: 6px; cursor: pointer;',
+      '  border: 1px solid transparent; font: 600 13px/1.2 system-ui, sans-serif;',
+      '}',
+      '.' + P + '-btn--cancel { background: #f1f5f9; border-color: #e2e8f0; color: #334155; }',
+      '.' + P + '-btn--go { background: #0f4c75; color: #fff; }',
+      '.' + P + '-btn:hover:not(:disabled) { filter: brightness(1.08); }',
+      '.' + P + '-btn:disabled { opacity: .5; cursor: not-allowed; }',
+      '.' + P + '-empty { padding: 24px 4px; color: #64748b; }'
+    ].join('\n');
     document.head.appendChild(s);
   })();
 
-  // ── Read field_1199 from the SOW detail view DOM ─────────
+  // ── Reads ────────────────────────────────────────────────
+
   function getGateFieldValue() {
     var view = document.getElementById(GATE_VIEW);
     if (!view) return '';
     var cell = view.querySelector('.kn-detail.' + GATE_FIELD + ' .kn-detail-body');
     if (!cell) return '';
-    return (cell.textContent || '').replace(/\u00a0/g, ' ').trim();
+    return (cell.textContent || '').replace(/ /g, ' ').trim();
   }
 
-  // ── Current SOW record id (pulled from view_3827's model) ─
   function getSourceSowId() {
     try {
       var v = Knack.views && Knack.views[GATE_VIEW];
@@ -75,87 +189,418 @@
     return null;
   }
 
-  // ── Collect line-item record IDs from a Knack table view's model ──
-  // Used so Make doesn't need a round-trip to query existing items;
-  // the client already has them loaded in memory.
-  function collectRecordIdsFromView(viewId) {
+  function viewRecords(viewId) {
     var out = [];
     try {
       var v = Knack && Knack.views && Knack.views[viewId];
-      var data = v && v.model && v.model.data;
-      var models = data && data.models;
-      if (!models || !models.length) return out;
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (!models) return out;
       for (var i = 0; i < models.length; i++) {
-        var attrs = models[i].attributes;
-        if (attrs && typeof attrs.id === 'string' && /^[a-f0-9]{24}$/.test(attrs.id)) {
-          out.push(attrs.id);
-        }
+        var a = models[i].attributes;
+        if (a && typeof a.id === 'string' && /^[a-f0-9]{24}$/.test(a.id)) out.push(a);
       }
     } catch (e) { /* ignore */ }
     return out;
   }
 
-  // ── Safety net: force a fresh fetch on a view's model ────
-  // Guards against the click firing before a view (esp. one inside a
-  // collapsed accordion or briefly re-fetched) has populated its
-  // model.data.models. Resolves on success OR failure so a single
-  // slow/broken view can't block the webhook entirely.
+  function collectRecordIdsFromView(viewId) {
+    var recs = viewRecords(viewId), out = [];
+    for (var i = 0; i < recs.length; i++) out.push(recs[i].id);
+    return out;
+  }
+
   function refreshView(viewId) {
     return new Promise(function (resolve) {
       try {
         var v = Knack && Knack.views && Knack.views[viewId];
-        if (!v || !v.model || typeof v.model.fetch !== 'function') {
-          resolve(); return;
-        }
-        v.model.fetch({
-          success: function () { resolve(); },
-          error:   function () { resolve(); }   // fall through with whatever's cached
-        });
+        if (!v || !v.model || typeof v.model.fetch !== 'function') { resolve(); return; }
+        v.model.fetch({ success: function () { resolve(); },
+                        error:   function () { resolve(); } });
       } catch (e) { resolve(); }
     });
   }
 
+  function conn(rec, key) {
+    var raw = rec && rec[key + '_raw'];
+    if (Array.isArray(raw)) return raw.length && raw[0] ? raw[0] : null;
+    if (raw && raw.id) return raw;
+    return null;
+  }
+
+  function plain(rec, key) {
+    var c = conn(rec, key);
+    if (c) return String(c.identifier || '').replace(/<[^>]*>/g, '').trim();
+    var v = rec && (rec[key + '_raw'] != null ? rec[key + '_raw'] : rec[key]);
+    return String(v == null ? '' : v).replace(/<[^>]*>/g, '').trim();
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;',
+               '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // ── Product catalog ──────────────────────────────────────
+  // Same sources and the same "no bucket data anywhere → universal" rule the
+  // worksheet's own product picker uses, so the two offer the same models for
+  // a given bucket. Falls back to the products actually in use on this SOW
+  // when the Builder maps aren't deployed on this scene — degraded, but a
+  // usable list beats a dead dropdown.
+
+  function productsForBucket(bucketId, records) {
+    var pmap = (window.SCW && SCW.productMap) || null;
+    var bmap = (window.SCW && SCW.productBucketMap) || null;
+    var out = [], seen = Object.create(null);
+
+    function allowed(pid, p) {
+      if (!bucketId) return true;
+      var known = false, hit = false;
+      if (p && Array.isArray(p.buckets) && p.buckets.length) {
+        known = true;
+        if (p.buckets.indexOf(bucketId) !== -1) hit = true;
+      }
+      if (!hit && bmap) {
+        var bl = bmap[pid];
+        if (bl && bl.length) {
+          known = true;
+          if (bl.indexOf(bucketId) !== -1) hit = true;
+        }
+      }
+      return known ? hit : true;
+    }
+
+    if (pmap) {
+      for (var pid in pmap) {
+        var p = pmap[pid];
+        if (!allowed(pid, p)) continue;
+        var nm = (p && p.name) || '';
+        if (!nm) continue;
+        if (seen[pid]) continue;
+        seen[pid] = 1;
+        out.push({ id: pid, label: nm });
+      }
+    }
+
+    if (!out.length) {
+      // In-use fallback: every product paired with THIS bucket somewhere on
+      // the SOW. Derived from the rows themselves, so the ids line up.
+      for (var r = 0; r < records.length; r++) {
+        var rec = records[r];
+        var pc = conn(rec, F.product);
+        if (!pc || !pc.id || seen[pc.id]) continue;
+        var rb = conn(rec, F.bucket);
+        if (bucketId && rb && rb.id && rb.id !== bucketId) continue;
+        seen[pc.id] = 1;
+        out.push({ id: pc.id, label: String(pc.identifier || pc.id).replace(/<[^>]*>/g, '').trim() });
+      }
+    }
+
+    out.sort(function (a, b) {
+      return String(a.label).localeCompare(String(b.label), undefined,
+        { numeric: true, sensitivity: 'base' });
+    });
+    return out;
+  }
+
+  // ── Candidate rows ───────────────────────────────────────
+
+  /** Parent line items only — anything with a field_2464 parent is an
+   *  accessory that travels with its device. Grouped + sorted the canonical
+   *  way (CLAUDE.md picker rule) via worksheet-v2's exported helpers. */
+  function candidateGroups() {
+    var recs = viewRecords(ITEMS_VIEW);
+    var parents = [];
+    for (var i = 0; i < recs.length; i++) {
+      if (conn(recs[i], F.parent)) continue;   // accessory — skip
+      parents.push(recs[i]);
+    }
+
+    var pk = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.picker;
+    function itemLabel(rec) {
+      var l = plain(rec, F.label), p = plain(rec, F.product);
+      if (l && p && p !== l) return l + ' · ' + p;
+      return l || p || rec.id;
+    }
+    var cmp = (pk && typeof pk.canonicalItemSort === 'function')
+      ? pk.canonicalItemSort(itemLabel)
+      : function (a, b) {
+          return String(itemLabel(a)).localeCompare(String(itemLabel(b)),
+            undefined, { numeric: true, sensitivity: 'base' });
+        };
+    var groupBy = (pk && pk.groupByMdfIdf) || function (rec) {
+      var m = conn(rec, F.mdfIdf);
+      return m && m.id ? { id: m.id, label: String(m.identifier || 'MDF / IDF') }
+                       : { id: '__unknown', label: 'No MDF / IDF' };
+    };
+
+    var map = Object.create(null), order = [];
+    for (var q = 0; q < parents.length; q++) {
+      var g = groupBy(parents[q]) || { id: '__unknown', label: 'No MDF / IDF' };
+      if (!map[g.id]) { map[g.id] = { id: g.id, label: g.label || '', items: [] }; order.push(g.id); }
+      map[g.id].items.push(parents[q]);
+    }
+    var groups = [];
+    for (var o = 0; o < order.length; o++) {
+      map[order[o]].items.sort(cmp);
+      groups.push(map[order[o]]);
+    }
+    groups.sort(function (a, b) {
+      var au = a.id === '__unknown' ? 1 : 0, bu = b.id === '__unknown' ? 1 : 0;
+      if (au !== bu) return au - bu;
+      return String(a.label).localeCompare(String(b.label), undefined,
+        { numeric: true, sensitivity: 'base' });
+    });
+    return { groups: groups, all: parents, itemLabel: itemLabel };
+  }
+
+  // ── Modal ────────────────────────────────────────────────
+
+  function closeModal() {
+    var b = document.querySelector('.' + P + '-back');
+    if (b && b.parentNode) b.parentNode.removeChild(b);
+  }
+
+  function openModal(btn) {
+    var built = candidateGroups();
+    if (!built.all.length) {
+      alert('No line items found on this SOW to build an alternate from.');
+      setBtnLoading(btn, false);
+      return;
+    }
+    var allRecs = viewRecords(ITEMS_VIEW);
+
+    closeModal();
+    var back = document.createElement('div');
+    back.className = P + '-back';
+    back.addEventListener('click', function (e) { if (e.target === back) closeModal(); });
+
+    var modal = document.createElement('div');
+    modal.className = P + '-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+
+    var head = document.createElement('div');
+    head.className = P + '-head';
+    head.innerHTML =
+      '<h3 class="' + P + '-title">Create Alternate SOW</h3>' +
+      '<p class="' + P + '-sub">Pick the items the alternate carries, and the model each ' +
+        'one uses there. Leave a model as-is and that line item is <strong>shared</strong> ' +
+        'with the new SOW; change it and the item is <strong>copied</strong> so this SOW ' +
+        'keeps its own. Accessories travel with their device and aren’t listed.</p>';
+    modal.appendChild(head);
+
+    var tools = document.createElement('div');
+    tools.className = P + '-tools';
+    tools.innerHTML =
+      '<button type="button" data-alt-all>Select all</button>' +
+      '<button type="button" data-alt-none>Select none</button>' +
+      '<button type="button" data-alt-reset>Reset models</button>' +
+      '<span class="' + P + '-tally" data-alt-tally></span>';
+    modal.appendChild(tools);
+
+    var body = document.createElement('div');
+    body.className = P + '-body';
+
+    for (var g = 0; g < built.groups.length; g++) {
+      var grp = built.groups[g];
+      if (grp.label) {
+        var h = document.createElement('div');
+        h.className = P + '-grp';
+        h.textContent = grp.label;
+        body.appendChild(h);
+      }
+      for (var i = 0; i < grp.items.length; i++) {
+        body.appendChild(buildRow(grp.items[i], allRecs));
+      }
+    }
+    modal.appendChild(body);
+
+    var foot = document.createElement('div');
+    foot.className = P + '-foot';
+    foot.innerHTML =
+      '<button type="button" class="' + P + '-btn ' + P + '-btn--cancel" data-alt-cancel>Cancel</button>' +
+      '<button type="button" class="' + P + '-btn ' + P + '-btn--go" data-alt-go>Create alternate SOW</button>';
+    modal.appendChild(foot);
+
+    back.appendChild(modal);
+    document.body.appendChild(back);
+    setBtnLoading(btn, false);
+
+    var tally  = tools.querySelector('[data-alt-tally]');
+    var goBtn  = foot.querySelector('[data-alt-go]');
+
+    function rows() { return body.querySelectorAll('[data-alt-row]'); }
+
+    function readRow(row) {
+      var cb  = row.querySelector('input[type=checkbox]');
+      var sel = row.querySelector('select');
+      var from = row.getAttribute('data-from-id') || '';
+      var to   = sel ? sel.value : from;
+      return {
+        id:      row.getAttribute('data-alt-row'),
+        on:      !!(cb && cb.checked),
+        fromId:  from,
+        toId:    to,
+        changed: !!(to && from && to !== from),
+        fromName: row.getAttribute('data-from-name') || '',
+        toName:  sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].textContent : ''
+      };
+    }
+
+    function repaint() {
+      var rs = rows(), on = 0, clones = 0;
+      for (var i = 0; i < rs.length; i++) {
+        var st = readRow(rs[i]);
+        rs[i].classList.toggle(P + '-row--off', !st.on);
+        var sel = rs[i].querySelector('select');
+        if (sel) {
+          sel.disabled = !st.on;
+          sel.classList.toggle(P + '-sel--changed', st.on && st.changed);
+        }
+        var mode = rs[i].querySelector('[data-alt-mode]');
+        if (mode) {
+          if (!st.on) { mode.style.display = 'none'; }
+          else {
+            mode.style.display = '';
+            mode.className = P + '-mode ' + P + '-mode--' + (st.changed ? 'clone' : 'link');
+            mode.textContent = st.changed ? 'copied — new model' : 'shared';
+          }
+        }
+        if (st.on) { on++; if (st.changed) clones++; }
+      }
+      tally.innerHTML = '<b>' + on + '</b> of ' + rs.length + ' item' +
+        (rs.length === 1 ? '' : 's') +
+        (clones ? (' · <b>' + clones + '</b> copied with a new model') : '');
+      goBtn.disabled = (on === 0);
+      goBtn.textContent = on ? ('Create alternate SOW (' + on + ')') : 'Create alternate SOW';
+    }
+
+    back.addEventListener('change', repaint);
+    back.addEventListener('click', function (e) {
+      var t = e.target;
+      if (!t || !t.closest) return;
+      if (t.closest('[data-alt-cancel]')) { closeModal(); return; }
+      if (t.closest('[data-alt-all]') || t.closest('[data-alt-none]')) {
+        var on = !!t.closest('[data-alt-all]');
+        var rs = rows();
+        for (var i = 0; i < rs.length; i++) {
+          var cb = rs[i].querySelector('input[type=checkbox]');
+          if (cb) cb.checked = on;
+        }
+        repaint(); return;
+      }
+      if (t.closest('[data-alt-reset]')) {
+        var rr = rows();
+        for (var k = 0; k < rr.length; k++) {
+          var sel = rr[k].querySelector('select');
+          if (sel) sel.value = rr[k].getAttribute('data-from-id') || '';
+        }
+        repaint(); return;
+      }
+      if (t.closest('[data-alt-go]') && !goBtn.disabled) submit();
+    });
+
+    function submit() {
+      var linkIds = [], cloneItems = [];
+      var rs = rows();
+      for (var i = 0; i < rs.length; i++) {
+        var st = readRow(rs[i]);
+        if (!st.on) continue;
+        if (st.changed) {
+          cloneItems.push({
+            sourceItemId:    st.id,
+            productId:       st.toId,
+            productName:     st.toName,
+            fromProductId:   st.fromId,
+            fromProductName: st.fromName
+          });
+        } else {
+          linkIds.push(st.id);
+        }
+      }
+      var ctrls = modal.querySelectorAll('button, input, select');
+      for (var c = 0; c < ctrls.length; c++) ctrls[c].disabled = true;
+      goBtn.textContent = 'Creating…';
+      fireWebhook(btn, linkIds, cloneItems);
+    }
+
+    repaint();
+  }
+
+  function buildRow(rec, allRecs) {
+    var pc = conn(rec, F.product);
+    var fromId = pc && pc.id ? pc.id : '';
+    var fromName = pc ? String(pc.identifier || '').replace(/<[^>]*>/g, '').trim() : '';
+    var bucket = conn(rec, F.bucket);
+    var opts = productsForBucket(bucket && bucket.id, allRecs);
+
+    // The current product must always be offered even when the catalog
+    // filter wouldn't have produced it — otherwise the select silently
+    // lands on a DIFFERENT model and a share turns into a copy nobody asked
+    // for. This is the one option that must never be missing.
+    var haveCurrent = false;
+    for (var o = 0; o < opts.length; o++) if (opts[o].id === fromId) { haveCurrent = true; break; }
+    if (fromId && !haveCurrent) opts.unshift({ id: fromId, label: fromName || '(current model)' });
+
+    var row = document.createElement('div');
+    row.className = P + '-row';
+    row.setAttribute('data-alt-row', rec.id);
+    row.setAttribute('data-from-id', fromId);
+    row.setAttribute('data-from-name', fromName);
+
+    var label = plain(rec, F.label);
+    var optHtml = '';
+    for (var q = 0; q < opts.length; q++) {
+      optHtml += '<option value="' + esc(opts[q].id) + '"' +
+        (opts[q].id === fromId ? ' selected' : '') + '>' + esc(opts[q].label) + '</option>';
+    }
+    if (!opts.length) optHtml = '<option value="">(no models available)</option>';
+
+    row.innerHTML =
+      '<input type="checkbox" checked aria-label="Include on the alternate SOW">' +
+      '<span class="' + P + '-name">' +
+        '<span class="' + P + '-name-l">' + esc(label || '(unlabelled)') + '</span>' +
+        '<span class="' + P + '-name-p" style="display:block" title="' + esc(fromName) + '">' +
+          esc(fromName || '—') + '</span>' +
+      '</span>' +
+      '<select class="' + P + '-sel" aria-label="Model on the alternate SOW">' + optHtml + '</select>' +
+      '<span class="' + P + '-mode ' + P + '-mode--link" data-alt-mode>shared</span>';
+    return row;
+  }
+
   // ── Fire the duplicate-SOW webhook ───────────────────────
-  function fireWebhook(btn) {
+
+  function fireWebhook(btn, linkIds, cloneItems) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DUPLICATE_SOW_WEBHOOK) || '';
     if (!url || /PLACEHOLDER/.test(url)) {
       alert('Duplicate-SOW webhook URL is not configured.');
-      return;
+      closeModal(); return;
     }
     var sourceRecordId = getSourceSowId();
     if (!sourceRecordId) {
       alert('Could not determine current SOW record ID.');
-      return;
+      closeModal(); return;
     }
 
     setBtnLoading(btn, true);
 
-    // Re-fetch both line-item grids before reading IDs. view_3471
-    // (Licenses / Recurring Services) sits in a collapsed accordion by
-    // default — on some page loads its data may be stale or not yet
-    // populated when the user clicks. view_3586 is usually loaded
-    // already, but a fresh fetch also catches the rare case where an
-    // item was added elsewhere (e.g. another tab) since last render.
-    Promise.all([
-      refreshView('view_3586'),
-      refreshView('view_3471')
-    ]).then(function () {
-      var sowLineItemIds      = collectRecordIdsFromView('view_3586');
-      var licenseRecurringIds = collectRecordIdsFromView('view_3471');
-
+    refreshView(LICENSE_VIEW).then(function () {
       return fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sourceRecordId:      sourceRecordId,
-          sowLineItemIds:      sowLineItemIds,
-          licenseRecurringIds: licenseRecurringIds,
+          // Link-mode ONLY — see the header note. A clone-mode row must not
+          // ride this list, or the scenario attaches the original product.
+          sowLineItemIds:      linkIds,
+          linkIds:             linkIds,
+          cloneItems:          cloneItems,
+          licenseRecurringIds: collectRecordIdsFromView(LICENSE_VIEW),
           triggeredBy:         getTriggeredBy()
         })
       });
     }).then(function (resp) {
-      // Read as text first so we can log whatever came back even if
-      // the scenario hasn't been configured to return JSON yet.
       return resp.text().then(function (body) {
         var data = null;
         try { data = body ? JSON.parse(body) : null; } catch (e) { /* not JSON */ }
@@ -168,8 +613,8 @@
         return;
       }
       setBtnLoading(btn, false);
+      closeModal();
 
-      // Surface the real reason so it's easier to fix the Make scenario.
       var msg;
       if (!resp.ok) {
         msg = 'Webhook returned HTTP ' + resp.status + '. Response:\n\n' + (resp.body || '(empty)');
@@ -188,6 +633,7 @@
       alert(msg);
     }).catch(function (err) {
       setBtnLoading(btn, false);
+      closeModal();
       alert('Webhook error: ' + (err && err.message ? err.message : err));
     });
   }
@@ -204,11 +650,19 @@
     }
   }
 
+  /** Open the picker. Refresh the items grid first — it may sit in a
+   *  collapsed accordion, and the whole modal is built from its model. */
+  function startPicker(btn) {
+    setBtnLoading(btn, true);
+    var ready = (window.SCW && SCW.productMapReady &&
+                 typeof SCW.productMapReady.then === 'function')
+      ? SCW.productMapReady : Promise.resolve();
+    Promise.all([refreshView(ITEMS_VIEW), ready])
+      .then(function () { openModal(btn); })
+      .catch(function () { openModal(btn); });
+  }
+
   // ── Inject / remove the button based on gate + presence ──
-  // Mounts inside the accordion BODY (above view_3869), matching the
-  // accordion-menu-inject pattern. Buttons live in the same spatial frame
-  // as the data they act on; hide automatically when the accordion
-  // collapses.
   function syncButton() {
     var targetEl = document.getElementById(TARGET_VIEW);
     if (!targetEl) return;
@@ -224,8 +678,6 @@
       if (existing) {
         var oldHost = existing.parentElement;
         existing.remove();
-        // Tear down our action bar if it's now empty (don't clobber other
-        // tools' buttons that may share the same .scw-acc-actions host).
         if (oldHost && oldHost.classList.contains('scw-acc-actions') &&
             !oldHost.children.length) {
           oldHost.remove();
@@ -233,10 +685,8 @@
       }
       return;
     }
-    if (existing) return;   // already injected, nothing to do
+    if (existing) return;
 
-    // Reuse an existing action-bar in this body if accordion-menu-inject
-    // already put one there; otherwise create our own.
     var actions = body.querySelector(':scope > .scw-acc-actions');
     if (!actions) {
       actions = document.createElement('div');
@@ -248,13 +698,12 @@
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'scw-acc-action-btn ' + BTN_MARKER;
-    btn.title = 'Create a second SOW option on this project';
+    btn.title = 'Choose which items and models go on a second SOW option';
 
     var iconSpan = document.createElement('span');
     iconSpan.className = 'scw-create-sow-icon';
     iconSpan.innerHTML = COPY_SVG;
     btn.appendChild(iconSpan);
-
     btn.appendChild(document.createTextNode(BTN_LABEL));
 
     btn.addEventListener('click', function (e) {
@@ -262,11 +711,21 @@
       e.stopPropagation();
       e.stopImmediatePropagation();
       if (btn.classList.contains('is-loading')) return;
-      fireWebhook(btn);
+      startPicker(btn);
     });
 
     actions.appendChild(btn);
   }
+
+  // Escape closes the picker (never mid-submit — controls are disabled then).
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var back = document.querySelector('.' + P + '-back');
+    if (!back) return;
+    var go = back.querySelector('[data-alt-go]');
+    if (go && go.disabled && /Creating/.test(go.textContent || '')) return;
+    closeModal();
+  });
 
   // ── Bindings ─────────────────────────────────────────────
   function bind() {
