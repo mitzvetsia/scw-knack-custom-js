@@ -208,6 +208,104 @@
     document.head.appendChild(s);
   }
 
+  // ── Greenlight check ────────────────────────────────────────────
+  // Asks Make whether the deal is ready to greenlight for install. ALWAYS
+  // opt-in: offered after a signed-agreement upload (the user can decline)
+  // and available on demand from the row. Never fires on its own.
+  function greenlightUrl() {
+    var u = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_GREENLIGHT_CHECK_WEBHOOK) || '';
+    return (!u || /PLACEHOLDER/i.test(u)) ? '' : u;
+  }
+  function triggeredBy() {
+    try {
+      var u = Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u && typeof u === 'object') {
+        return { id: u.id || '', name: u.name || '', email: u.email || '' };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  /** POST the greenlight check. Resolves { ok, data, status }, never rejects
+   *  — callers render the outcome. Deliberately a BARE fetch: this is a
+   *  third-party host, so no Knack session token rides along (same rule as
+   *  the other Make posts in the bundle). */
+  function postGreenlight(payload) {
+    var url = greenlightUrl();
+    if (!url) return Promise.resolve({ ok: false, data: null, status: 0, unconfigured: true });
+    return fetch(url, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload)
+    }).then(function (resp) {
+      return resp.text().then(function (body) {
+        var data = null;
+        try { data = body ? JSON.parse(body) : null; } catch (e) { /* Make's "Accepted" */ }
+        return { ok: resp.ok, data: data, status: resp.status };
+      });
+    }).catch(function (err) {
+      return { ok: false, data: null, status: 0, error: (err && err.message) || 'network error' };
+    });
+  }
+
+  /** Build the payload from a row's already-scraped state. */
+  function greenlightPayload(recId, info, source) {
+    return {
+      acceptanceRecordId: recId,
+      proposalId:         info.proposalId || '',
+      proposalLabel:      info.proposalLabel || '',
+      agreementSigned:    !!info.signed,
+      paymentReceived:    !!info.paid,
+      approvedForTerms:   !!info.terms,
+      source:             source,
+      pageUrl:            (window.location && window.location.href) || '',
+      triggeredBy:        triggeredBy()
+    };
+  }
+
+  /** Run the check and report into an existing modal status element.
+   *  `onDone` fires after the view refetch is queued. */
+  function runGreenlight(viewKey, recId, info, source, statusEl, btn) {
+    if (statusEl) {
+      statusEl.style.display = '';
+      statusEl.classList.remove('is-err');
+      statusEl.textContent = 'Checking…';
+    }
+    if (btn) btn.disabled = true;
+    return postGreenlight(greenlightPayload(recId, info, source)).then(function (r) {
+      var explicitError = r.data && (r.data.success === false || r.data.error);
+      if (r.unconfigured) {
+        if (statusEl) {
+          statusEl.classList.add('is-err');
+          statusEl.textContent = 'Greenlight check isn\'t configured yet.';
+        }
+        if (btn) btn.disabled = false;
+        return false;
+      }
+      if (!r.ok || explicitError) {
+        if (statusEl) {
+          statusEl.classList.add('is-err');
+          statusEl.textContent = (r.data && (r.data.error || r.data.message)) ||
+            (r.status ? 'Check failed (HTTP ' + r.status + ')' : 'Check failed — network error');
+        }
+        if (btn) btn.disabled = false;
+        return false;
+      }
+      // Success. Make may answer with a verdict, or just ack (HTTP 200 +
+      // "Accepted") while the scenario keeps running past its 40s window —
+      // both are fine, so say what we actually know and let the refetch
+      // surface whatever flags the scenario flips.
+      if (statusEl) {
+        statusEl.textContent = (r.data && r.data.message) ||
+          (r.data && typeof r.data.greenlit === 'boolean'
+            ? (r.data.greenlit ? 'Ready to greenlight.' : 'Not ready to greenlight yet.')
+            : 'Greenlight check sent — this panel updates when it finishes.');
+      }
+      setTimeout(function () { refreshAcptView(viewKey); }, 2500);
+      return true;
+    });
+  }
+
   function pill(label, yes) {
     return '<span class="scw-acpt-pill ' + (yes ? 'is-yes' : 'is-no') + '">' +
       (yes ? CHECK_SVG : CLOCK_SVG) + '<span>' + esc(label) + '</span></span>';
@@ -314,7 +412,8 @@
   /** File-field editor (signed agreement field_2767 / bid basis PDF
    *  field_2947) — picker → Knack asset upload with the session token →
    *  PUT the asset id. */
-  function openFileUpload(viewKey, recId, fieldKey, title) {
+  function openFileUpload(viewKey, recId, fieldKey, title, opts) {
+    opts = opts || {};
     var input = document.createElement('input');
     input.type = 'file';
     input.accept = '.pdf,.doc,.docx,image/*,application/pdf';
@@ -355,6 +454,14 @@
           var fields = {};
           fields[fieldKey] = assetId;
           putAcceptance(viewKey, recId, fields).then(function () {
+            // The file is saved either way. If this was the signed
+            // agreement and the check is configured, OFFER the greenlight
+            // check rather than running it — declining is a first-class
+            // outcome, so "Skip" just closes and the upload still stands.
+            if (opts.offerGreenlight && greenlightUrl()) {
+              offerGreenlight(m, status, viewKey, recId, opts.info || {});
+              return;
+            }
             m.close();
             refreshAcptView(viewKey);
           }).catch(function (err) {
@@ -375,6 +482,73 @@
     input.click();
   }
 
+  /** Post-upload step: the agreement is already saved, so this is a pure
+   *  offer — "Skip" is a normal ending, not a cancel. Rewrites the open
+   *  upload modal in place (Skip | Check greenlight, primary rightmost per
+   *  the repo's button-order convention). */
+  function offerGreenlight(m, status, viewKey, recId, info) {
+    status.classList.remove('is-err');
+    status.textContent = 'Signed agreement saved.';
+
+    var ask = document.createElement('div');
+    ask.style.marginTop = '10px';
+    ask.style.color = '#475569';
+    ask.textContent = 'Check whether this deal is ready to greenlight for install?';
+    status.parentNode.appendChild(ask);
+
+    var cancel = m.backdrop.querySelector('.scw-acpt-m__btn--cancel');
+    if (cancel) cancel.textContent = 'Skip';
+
+    // Strip the "Close" handler bound by the upload flow before rebinding.
+    var ok = m.ok;
+    var fresh = ok.cloneNode(true);
+    fresh.textContent = 'Check greenlight';
+    fresh.disabled = false;
+    ok.parentNode.replaceChild(fresh, ok);
+    m.ok = fresh;
+
+    fresh.addEventListener('click', function () {
+      ask.style.display = 'none';
+      runGreenlight(viewKey, recId, info, 'agreement-upload', status, fresh)
+        .then(function (sent) {
+          if (!sent) return;                    // failed — leave the modal open
+          // Swap the button to a plain Close (clone-replace drops the
+          // run handler so a second click can't re-fire the check).
+          var done = fresh.cloneNode(true);
+          done.textContent = 'Close';
+          done.disabled = false;
+          fresh.parentNode.replaceChild(done, fresh);
+          m.ok = done;
+          done.addEventListener('click', function () { m.close(); refreshAcptView(viewKey); });
+        });
+    });
+
+    // Skipping still refreshes — the upload landed.
+    if (cancel) cancel.addEventListener('click', function () { refreshAcptView(viewKey); });
+  }
+
+  /** Standalone greenlight check (row button). Own small modal so the
+   *  result has somewhere to land. */
+  function openGreenlightCheck(viewKey, recId, info) {
+    var body = document.createElement('div');
+    body.innerHTML =
+      '<div>Ask Make whether this deal is ready to greenlight for install?</div>' +
+      '<div class="scw-acpt-m__status" style="display:none"></div>';
+    var m = acptModal('Greenlight check', body, 'Run check');
+    var status = body.querySelector('.scw-acpt-m__status');
+    m.ok.addEventListener('click', function () {
+      runGreenlight(viewKey, recId, info, 'manual', status, m.ok).then(function (sent) {
+        if (!sent) return;
+        m.ok.textContent = 'Close';
+        m.ok.disabled = false;
+        var fresh = m.ok.cloneNode(true);
+        m.ok.parentNode.replaceChild(fresh, m.ok);
+        m.ok = fresh;
+        fresh.addEventListener('click', m.close);
+      });
+    });
+  }
+
   /** One compact list row for one acceptance record. All anchors/editors
    *  bind to THIS row's record. */
   function buildCard(viewKey, row) {
@@ -392,6 +566,17 @@
     var fileA    = cellAnchor(row, F.agreement, 'a.kn-view-asset') || cellAnchor(row, F.agreement);
     var bidPdfA  = cellAnchor(row, F.bidPdf, 'a.kn-view-asset') || cellAnchor(row, F.bidPdf);
     var actionA  = row.querySelector('.kn-action-link') || row.querySelector('.kn-table-link a');
+
+    // Connected proposal's record id — the 24-hex class on the connection
+    // span (see CLAUDE.md "Reading Connection Fields from Table DOM"),
+    // falling back to a hex run in the link href.
+    var propId = '';
+    var propSpan = row.querySelector('td.' + F.proposal + ' span[data-kn="connection-value"]');
+    if (propSpan) propId = (propSpan.className || '').trim();
+    if (!/^[a-f0-9]{24}$/i.test(propId)) {
+      var hrefHex = propHref.match(/[a-f0-9]{24}/i);
+      propId = hrefHex ? hrefHex[0] : '';
+    }
 
     // One tile per document. DONE → green tile, leading check; the main
     // zone opens the doc, the hover-revealed pencil edits it. MISSING →
@@ -467,6 +652,13 @@
             linkSlot(F.xeroEst,   'Xero estimate', 'Xero estimate link', xeroEstA, 'Edit Xero estimate link') +
           '</span>' +
         '</span>' +
+        // Re-run the greenlight check without touching the agreement.
+        // Only once there's an agreement on file (nothing to check before
+        // that) and only when the scenario is configured.
+        ((fileA && greenlightUrl())
+          ? '<button type="button" class="scw-acpt-btn scw-acpt-btn--ghost" data-greenlight="1" ' +
+            'title="Check whether this deal is ready to greenlight for install">Check greenlight</button>'
+          : '') +
         (actionA ? '<button type="button" class="scw-acpt-btn scw-acpt-btn--primary" data-proxy="action">Create Questionnaire</button>' : '') +
       '</div>';
 
@@ -489,6 +681,21 @@
     var actBtn = card.querySelector('[data-proxy="action"]');
     if (actBtn && actionA) actBtn.addEventListener('click', function () { actionA.click(); });
 
+    // Row state the greenlight payload carries, snapshotted at build time.
+    var glInfo = {
+      proposalId:    propId,
+      proposalLabel: propTxt,
+      signed:        signed,
+      paid:          paid,
+      terms:         terms
+    };
+    var glBtn = card.querySelector('[data-greenlight]');
+    if (glBtn) {
+      glBtn.addEventListener('click', function () {
+        openGreenlightCheck(viewKey, recId, glInfo);
+      });
+    }
+
     // Edit / add affordances → the card's own editors (view-based PUT
     // against THIS row's record id).
     var editBtns = card.querySelectorAll('[data-edit-field]');
@@ -502,7 +709,8 @@
           openLinkEditor(viewKey, recId, F.xeroEst, 'Xero estimate link',
             xeroEstA ? (xeroEstA.getAttribute('href') || '') : '');
         } else if (fk === F.agreement) {
-          openFileUpload(viewKey, recId, F.agreement, 'Signed agreement');
+          openFileUpload(viewKey, recId, F.agreement, 'Signed agreement',
+            { offerGreenlight: true, info: glInfo });
         } else if (fk === F.bidPdf) {
           openFileUpload(viewKey, recId, F.bidPdf, 'Bid basis PDF');
         }
