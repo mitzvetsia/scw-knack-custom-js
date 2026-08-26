@@ -119,17 +119,26 @@
       '.' + P + '-tally { margin-left: auto; color: #475569; font-size: 12px; }',
       '.' + P + '-tally b { color: #0f172a; }',
       '.' + P + '-body { padding: 6px 22px 14px; overflow-y: auto; flex: 1 1 auto; }',
-      // Group header — a real button so MDF/IDF sections collapse. Sticky so
-      // you always know which location you're scrolled into.
+      // Group header. A wrapper rather than one big button, because it holds
+      // TWO controls with different jobs: a checkbox that takes the whole
+      // MDF/IDF in or out in one click, and a collapse toggle. Nesting a
+      // checkbox inside a button is invalid and makes the two fight over the
+      // click. Sticky so you always know which location you're scrolled into.
       '.' + P + '-grp {',
       '  position: sticky; top: 0; z-index: 2; width: 100%;',
       '  display: flex; align-items: center; gap: 8px;',
-      '  background: #fff; border: 0; border-bottom: 1px solid #eef2f7;',
-      '  padding: 9px 2px 5px; margin: 0; cursor: pointer; text-align: left;',
+      '  background: #fff; border-bottom: 1px solid #eef2f7;',
+      '  padding: 9px 2px 5px; margin: 0;',
+      '}',
+      '.' + P + '-grp-cb { margin: 0; flex: 0 0 auto; cursor: pointer; }',
+      '.' + P + '-grp-btn {',
+      '  flex: 1 1 auto; min-width: 0; display: flex; align-items: center;',
+      '  gap: 8px; background: transparent; border: 0; padding: 0; margin: 0;',
+      '  cursor: pointer; text-align: left;',
       '  font: 700 10.5px/1.3 system-ui, sans-serif; letter-spacing: .04em;',
       '  text-transform: uppercase; color: #475569;',
       '}',
-      '.' + P + '-grp:hover { color: #0f172a; }',
+      '.' + P + '-grp-btn:hover { color: #0f172a; }',
       '.' + P + '-grp-chev { display: inline-flex; transition: transform 120ms ease;',
       '  color: #94a3b8; }',
       '.' + P + '-grp--closed .' + P + '-grp-chev { transform: rotate(-90deg); }',
@@ -479,13 +488,16 @@
 
     for (var g = 0; g < built.groups.length; g++) {
       var grp = built.groups[g];
-      var h = document.createElement('button');
-      h.type = 'button';
+      var h = document.createElement('div');
       h.className = P + '-grp';
-      h.setAttribute('data-alt-grp', String(g));
       h.innerHTML =
-        '<span class="' + P + '-grp-chev">' + CHEV + '</span>' +
-        '<span>' + esc(grp.label || 'Unassigned') + '</span>' +
+        '<input type="checkbox" class="' + P + '-grp-cb" data-alt-grp-cb checked ' +
+          'title="Take this whole MDF/IDF in or out" ' +
+          'aria-label="Select every item in ' + esc(grp.label || 'this group') + '">' +
+        '<button type="button" class="' + P + '-grp-btn" data-alt-grp>' +
+          '<span class="' + P + '-grp-chev">' + CHEV + '</span>' +
+          '<span>' + esc(grp.label || 'Unassigned') + '</span>' +
+        '</button>' +
         '<span class="' + P + '-grp-n" data-alt-grp-n></span>';
       body.appendChild(h);
 
@@ -577,7 +589,9 @@
 
       // Group tallies — a collapsed section still has to report what's ticked
       // inside it, or collapsing hides decisions instead of just rows.
-      var heads = body.querySelectorAll('[data-alt-grp]');
+      // Query the WRAPPER, not the collapse button — data-alt-grp sits on the
+      // button now, and its nextElementSibling is the count span, not the rows.
+      var heads = body.querySelectorAll('.' + P + '-grp');
       for (var gi = 0; gi < heads.length; gi++) {
         var wrap = heads[gi].nextElementSibling;
         if (!wrap) continue;
@@ -592,12 +606,39 @@
           n.textContent = gOn + ' of ' + grs.length +
             (gDup ? (' · ' + gDup + ' duplicate') : '');
         }
+        // Reflect the rows back onto the group box, including the partial
+        // case — ticking rows individually until a section is full should
+        // leave its header ticked, and Select none should clear it. Without
+        // indeterminate, a half-selected group reads as fully in or fully
+        // out, which is exactly the wrong thing for a one-click control.
+        var gcbEl = heads[gi].querySelector('[data-alt-grp-cb]');
+        if (gcbEl) {
+          gcbEl.checked = (gOn > 0 && gOn === grs.length);
+          gcbEl.indeterminate = (gOn > 0 && gOn < grs.length);
+        }
       }
       goBtn.disabled = (on === 0);
       goBtn.textContent = on ? ('Create alternate SOW (' + on + ')') : 'Create alternate SOW';
     }
 
-    back.addEventListener('change', repaint);
+    back.addEventListener('change', function (e) {
+      // A group checkbox drives its whole section, then the normal repaint
+      // recomputes every tally from the rows — so the header count and the
+      // footer total can't drift from what's actually ticked.
+      var gcb = e.target && e.target.closest && e.target.closest('[data-alt-grp-cb]');
+      if (gcb) {
+        var wrapEl = gcb.closest('.' + P + '-grp');
+        var rowsWrap = wrapEl && wrapEl.nextElementSibling;
+        if (rowsWrap) {
+          var grs = rowsWrap.querySelectorAll('[data-alt-row]');
+          for (var i = 0; i < grs.length; i++) {
+            var cb = grs[i].querySelector('input[type=checkbox]');
+            if (cb) cb.checked = gcb.checked;
+          }
+        }
+      }
+      repaint();
+    });
     back.addEventListener('click', function (e) {
       var t = e.target;
       if (!t || !t.closest) return;
@@ -613,7 +654,8 @@
       }
       var gh = t.closest('[data-alt-grp]');
       if (gh) {
-        gh.classList.toggle(P + '-grp--closed');
+        var wrapEl = gh.closest('.' + P + '-grp');
+        if (wrapEl) wrapEl.classList.toggle(P + '-grp--closed');
         return;
       }
       var rb = t.closest('[data-alt-reset]');
