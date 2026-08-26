@@ -188,12 +188,37 @@
 
   // ── Reads ────────────────────────────────────────────────
 
+  /** Gate value, MODEL first. The DOM read alone was a flakiness source: it
+   *  needs view_3827 to have painted its detail cell, so a sync firing while
+   *  that view is mid-render sees '' and silently concludes the button isn't
+   *  wanted. The model carries the value as soon as the view has fetched,
+   *  whatever the paint is doing. DOM stays as the fallback. */
   function getGateFieldValue() {
+    try {
+      var v = Knack && Knack.views && Knack.views[GATE_VIEW];
+      var a = v && v.model && v.model.attributes;
+      if (a) {
+        var raw = a[GATE_FIELD + '_raw'];
+        if (Array.isArray(raw)) {
+          if (raw.length && raw[0]) return String(raw[0].identifier || raw[0].id || '').trim();
+        } else if (raw && typeof raw === 'object') {
+          var one = String(raw.identifier || raw.id || '').trim();
+          if (one) return one;
+        } else if (raw != null && String(raw).trim()) {
+          return String(raw).replace(/<[^>]*>/g, '').trim();
+        }
+        var pv = a[GATE_FIELD];
+        if (pv != null && String(pv).trim()) {
+          return String(pv).replace(/<[^>]*>/g, '').trim();
+        }
+      }
+    } catch (e) { /* fall through to the DOM read */ }
+
     var view = document.getElementById(GATE_VIEW);
     if (!view) return '';
     var cell = view.querySelector('.kn-detail.' + GATE_FIELD + ' .kn-detail-body');
     if (!cell) return '';
-    return (cell.textContent || '').replace(/ /g, ' ').trim();
+    return (cell.textContent || '').replace(/\u00a0/g, ' ').trim();
   }
 
   function getSourceSowId() {
@@ -833,24 +858,84 @@
     closeModal();
   });
 
+  // ── Mounting: retry, don't hope ──────────────────────────
+  // The button "sometimes doesn't load" because syncButton was called ONCE
+  // per render on a fixed delay and bails silently on any prerequisite that
+  // isn't ready yet — the KTL accordion not having wrapped view_3869, or the
+  // gate view not having its value. Whichever of those loses the race, the
+  // button never appears, because nothing tried again.
+  //
+  // So: every trigger starts a bounded poll instead of a single shot, and it
+  // stops the moment the button is up (or the gate says it isn't wanted).
+
+  var POLL_MS = 300, POLL_FOR = 12000;
+  var _pollTimer = null, _pollUntil = 0;
+
+  /** true once the outcome is settled — mounted, or definitively not wanted. */
+  function trySync() {
+    try { syncButton(); } catch (e) {
+      console.warn('[scw-create-alt-sow] syncButton threw', e);
+      return true;   // don't spin on a real error
+    }
+    var targetEl = document.getElementById(TARGET_VIEW);
+    if (!targetEl) return false;                       // view not here yet
+    var accordion = targetEl.closest('.scw-ktl-accordion');
+    if (!accordion) return false;                      // accordion not built yet
+    // An empty gate is ambiguous — the SOW genuinely has no install project,
+    // OR view_3827 just hasn't loaded. We can't tell them apart, so keep
+    // polling and let the window expire. Costs a few idle ticks on a SOW that
+    // will never show the button; the alternative is giving up on a gate that
+    // was simply late, which is the bug being fixed.
+    if (!getGateFieldValue()) return false;
+    return !!accordion.querySelector('.' + BTN_MARKER);
+  }
+
+  function scheduleSync() {
+    _pollUntil = Date.now() + POLL_FOR;
+    if (_pollTimer) return;                            // already polling
+    _pollTimer = setInterval(function () {
+      if (trySync() || Date.now() > _pollUntil) {
+        clearInterval(_pollTimer);
+        _pollTimer = null;
+      }
+    }, POLL_MS);
+    trySync();                                         // and take the first shot now
+  }
+
+  /** Re-inject if something rebuilds the accordion body out from under us —
+   *  a render that replaces it would otherwise take the button with it and
+   *  leave nothing to notice. Debounced; our own insert is idempotent, so a
+   *  self-triggered pass is a no-op rather than a loop. */
+  var _obs = null, _obsT = null;
+  function observeHost() {
+    if (_obs) return;
+    var host = document.getElementById('kn-scene') || document.body;
+    if (!host) return;
+    _obs = new MutationObserver(function () {
+      if (_obsT) clearTimeout(_obsT);
+      _obsT = setTimeout(function () { trySync(); }, 250);
+    });
+    _obs.observe(host, { childList: true, subtree: true });
+  }
+
   // ── Bindings ─────────────────────────────────────────────
   function bind() {
     $(document)
       .off('knack-view-render.' + TARGET_VIEW + EVENT_NS)
       .on('knack-view-render.' + TARGET_VIEW + EVENT_NS, function () {
-        setTimeout(syncButton, 500);
+        scheduleSync(); observeHost();
       });
 
     $(document)
       .off('knack-view-render.' + GATE_VIEW + EVENT_NS)
       .on('knack-view-render.' + GATE_VIEW + EVENT_NS, function () {
-        setTimeout(syncButton, 500);
+        scheduleSync(); observeHost();
       });
 
     $(document)
       .off('knack-scene-render.any' + EVENT_NS)
       .on('knack-scene-render.any' + EVENT_NS, function () {
-        setTimeout(syncButton, 1500);
+        scheduleSync(); observeHost();
       });
   }
 
