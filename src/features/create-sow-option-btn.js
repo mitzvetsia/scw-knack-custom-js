@@ -782,6 +782,14 @@
       });
     }).then(function (resp) {
       if (resp.data && resp.data.success && resp.data.newSowUrl) {
+        // Tear the modal down BEFORE navigating. Knack is a hash-router SPA
+        // and newSowUrl is a #… route on this same document, so assigning it
+        // is a SAME-DOCUMENT navigation: nothing unloads, no teardown fires,
+        // and the modal just sits there over the new scene still saying
+        // "Creating…" with every control disabled. Only a full cross-document
+        // load would have cleaned it up on its own, and this never is one.
+        setBtnLoading(btn, false);
+        closeModal();
         window.location.href = resp.data.newSowUrl;
         return;
       }
