@@ -61,6 +61,11 @@
     mdfIdf:   'field_1946'    // MDF/IDF location
   };
 
+  // Proposal-wide assumption rows carry no product, so a model dropdown on
+  // them is meaningless — they're excluded from the picker entirely. Same
+  // bucket id worksheet-v2's bucketCategoryOf uses for 'assumptions'.
+  var ASSUMPTIONS_BUCKET = '697b7a023a31502ec68b3303';
+
   var P = 'scw-alt-sow';
 
   var COPY_SVG =
@@ -137,8 +142,8 @@
       '.' + P + '-sel--changed { border-color: #fbbf24; background: #fffbeb; }',
       '.' + P + '-mode {',
       '  grid-column: 3; justify-self: start; margin-top: 3px;',
-      '  padding: 1px 7px; border-radius: 999px;',
-      '  font: 700 10px/1.5 system-ui, sans-serif; white-space: nowrap;',
+      '  padding: 2px 8px; border-radius: 999px; max-width: 100%;',
+      '  font: 700 10px/1.5 system-ui, sans-serif;',
       '}',
       '.' + P + '-mode--link  { background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569; }',
       '.' + P + '-mode--clone { background: #fef3c7; border: 1px solid #fde68a; color: #92400e; }',
@@ -306,13 +311,16 @@
   // ── Candidate rows ───────────────────────────────────────
 
   /** Parent line items only — anything with a field_2464 parent is an
-   *  accessory that travels with its device. Grouped + sorted the canonical
-   *  way (CLAUDE.md picker rule) via worksheet-v2's exported helpers. */
+   *  accessory that travels with its device, and assumption rows have no
+   *  model to choose. Grouped + sorted the canonical way (CLAUDE.md picker
+   *  rule) via worksheet-v2's exported helpers. */
   function candidateGroups() {
     var recs = viewRecords(ITEMS_VIEW);
     var parents = [];
     for (var i = 0; i < recs.length; i++) {
-      if (conn(recs[i], F.parent)) continue;   // accessory — skip
+      if (conn(recs[i], F.parent)) continue;              // accessory — skip
+      var b = conn(recs[i], F.bucket);
+      if (b && b.id === ASSUMPTIONS_BUCKET) continue;     // assumption — no model
       parents.push(recs[i]);
     }
 
@@ -385,9 +393,10 @@
     head.innerHTML =
       '<h3 class="' + P + '-title">Create Alternate SOW</h3>' +
       '<p class="' + P + '-sub">Pick the items the alternate carries, and the model each ' +
-        'one uses there. Leave a model as-is and that line item is <strong>shared</strong> ' +
-        'with the new SOW; change it and the item is <strong>copied</strong> so this SOW ' +
-        'keeps its own. Accessories travel with their device and aren’t listed.</p>';
+        'one uses there. Leave a model as-is and the item is <strong>shared</strong> — one ' +
+        'record on both SOWs, so editing it changes both. Change the model and it is ' +
+        '<strong>duplicated</strong>, giving each SOW its own copy to edit. Accessories ' +
+        'travel with their device, and assumptions aren’t listed.</p>';
     modal.appendChild(head);
 
     var tools = document.createElement('div');
@@ -395,7 +404,6 @@
     tools.innerHTML =
       '<button type="button" data-alt-all>Select all</button>' +
       '<button type="button" data-alt-none>Select none</button>' +
-      '<button type="button" data-alt-reset>Reset models</button>' +
       '<span class="' + P + '-tally" data-alt-tally></span>';
     modal.appendChild(tools);
 
@@ -464,14 +472,20 @@
           else {
             mode.style.display = '';
             mode.className = P + '-mode ' + P + '-mode--' + (st.changed ? 'clone' : 'link');
-            mode.textContent = st.changed ? 'copied — new model' : 'shared';
+            // Say what happens to the ITEM, not what the automation does.
+            // "Shared"/"Duplicated" alone doesn't tell you the thing that
+            // actually matters later: whether editing it here also changes
+            // it there.
+            mode.textContent = st.changed
+              ? 'Duplicated — each SOW edits its own copy'
+              : 'Shared — edits affect both SOWs';
           }
         }
         if (st.on) { on++; if (st.changed) clones++; }
       }
       tally.innerHTML = '<b>' + on + '</b> of ' + rs.length + ' item' +
         (rs.length === 1 ? '' : 's') +
-        (clones ? (' · <b>' + clones + '</b> copied with a new model') : '');
+        (clones ? (' · <b>' + clones + '</b> duplicated') : '');
       goBtn.disabled = (on === 0);
       goBtn.textContent = on ? ('Create alternate SOW (' + on + ')') : 'Create alternate SOW';
     }
@@ -487,14 +501,6 @@
         for (var i = 0; i < rs.length; i++) {
           var cb = rs[i].querySelector('input[type=checkbox]');
           if (cb) cb.checked = on;
-        }
-        repaint(); return;
-      }
-      if (t.closest('[data-alt-reset]')) {
-        var rr = rows();
-        for (var k = 0; k < rr.length; k++) {
-          var sel = rr[k].querySelector('select');
-          if (sel) sel.value = rr[k].getAttribute('data-from-id') || '';
         }
         repaint(); return;
       }
