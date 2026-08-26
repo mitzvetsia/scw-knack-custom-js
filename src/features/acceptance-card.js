@@ -73,6 +73,10 @@
   var FILE_SVG =
     '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
+  var UPLOAD_SVG =
+    '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>' +
+    '<polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>';
   var LINK_SVG =
     '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>';
@@ -201,7 +205,37 @@
       '  font: 600 12.5px/1.2 system-ui, sans-serif; border: 1px solid transparent; }',
       '.scw-acpt-m__btn--cancel { background: #fff; color: #475569; border-color: #cbd5e1; }',
       '.scw-acpt-m__btn--ok { background: #0f4c75; color: #fff; }',
-      '.scw-acpt-m__btn--ok:disabled { background: #cbd5e1; cursor: not-allowed; }'
+      '.scw-acpt-m__btn--ok:disabled { background: #cbd5e1; cursor: not-allowed; }',
+      // ── Uploader: drop zone → file chip → optional check ───────
+      // The zone and the chosen-file chip are the same slot in two
+      // states, so the modal never grows a second empty target.
+      '.scw-acpt-drop { display: flex; flex-direction: column; align-items: center;',
+      '  justify-content: center; gap: 4px; padding: 22px 14px; cursor: pointer;',
+      '  border: 2px dashed #cbd5e1; border-radius: 9px; background: #f8fafc;',
+      '  color: #64748b; text-align: center;',
+      '  transition: border-color .12s, background .12s, color .12s; }',
+      '.scw-acpt-drop:hover, .scw-acpt-drop:focus-visible { border-color: #0f4c75;',
+      '  color: #0f4c75; background: #f1f5f9; outline: none; }',
+      '.scw-acpt-drop.is-over { border-color: #0f4c75; background: #e6f0f7;',
+      '  color: #0f4c75; border-style: solid; }',
+      '.scw-acpt-drop svg { color: inherit; }',
+      '.scw-acpt-drop__t { font: 600 13px/1.3 system-ui, sans-serif; }',
+      '.scw-acpt-drop__s { font: 500 11.5px/1.3 system-ui, sans-serif; color: #94a3b8; }',
+      '.scw-acpt-file { display: flex; align-items: center; gap: 8px;',
+      '  padding: 10px 10px 10px 12px; border: 1px solid #bbf7d0; border-radius: 9px;',
+      '  background: #f0fdf4; color: #15803d; font: 600 12.5px/1.3 system-ui, sans-serif; }',
+      '.scw-acpt-file[hidden] { display: none; }',
+      '.scw-acpt-file svg { flex: none; color: #16a34a; }',
+      '.scw-acpt-file__nm { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }',
+      '.scw-acpt-file__sz { flex: none; font-weight: 500; color: #4ade80; }',
+      '.scw-acpt-file__x { flex: none; border: none; background: transparent;',
+      '  color: #15803d; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px;',
+      '  opacity: .6; }',
+      '.scw-acpt-file__x:hover { opacity: 1; }',
+      '.scw-acpt-chk { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px;',
+      '  cursor: pointer; font: 500 12.5px/1.4 system-ui, sans-serif; color: #334155; }',
+      '.scw-acpt-chk input { margin: 1px 0 0; width: 15px; height: 15px; flex: none;',
+      '  accent-color: #0f4c75; cursor: pointer; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID; s.textContent = css;
@@ -410,27 +444,147 @@
   }
 
   /** File-field editor (signed agreement field_2767 / bid basis PDF
-   *  field_2947) — picker → Knack asset upload with the session token →
-   *  PUT the asset id. */
+   *  field_2947). MODAL FIRST, action last: drop or browse to a file, tick
+   *  or untick the greenlight check, then one Upload click does everything.
+   *
+   *  Replaces the old picker-first flow (OS dialog → upload starts
+   *  immediately → offer the check afterwards), where the post-upload offer
+   *  landed under a cursor already moving and got dismissed unread. Here the
+   *  choice sits in front of the user BEFORE anything fires, and nothing
+   *  happens until they commit.
+   *
+   *  opts: { offerGreenlight: bool, info: {...}, greenlightLabel: string } */
   function openFileUpload(viewKey, recId, fieldKey, title, opts) {
     opts = opts || {};
+    var wantsGreenlight = !!(opts.offerGreenlight && greenlightUrl());
+
+    var body = document.createElement('div');
+    body.innerHTML =
+      '<div class="scw-acpt-drop" tabindex="0" role="button" ' +
+           'aria-label="Drop a file here or click to browse">' +
+        UPLOAD_SVG +
+        '<div class="scw-acpt-drop__t">Drop the file here</div>' +
+        '<div class="scw-acpt-drop__s">or click to browse</div>' +
+      '</div>' +
+      '<div class="scw-acpt-file" hidden>' +
+        FILE_SVG +
+        '<span class="scw-acpt-file__nm"></span>' +
+        '<span class="scw-acpt-file__sz"></span>' +
+        '<button type="button" class="scw-acpt-file__x" title="Choose a different file">&times;</button>' +
+      '</div>' +
+      (wantsGreenlight
+        ? '<label class="scw-acpt-chk">' +
+            '<input type="checkbox" checked>' +
+            '<span>' + esc(opts.greenlightLabel ||
+              'Check whether this deal is ready to greenlight') + '</span>' +
+          '</label>'
+        : '') +
+      '<div class="scw-acpt-m__status" style="display:none"></div>';
+
+    var m       = acptModal(title, body, 'Upload');
+    var drop    = body.querySelector('.scw-acpt-drop');
+    var chip    = body.querySelector('.scw-acpt-file');
+    var chipNm  = body.querySelector('.scw-acpt-file__nm');
+    var chipSz  = body.querySelector('.scw-acpt-file__sz');
+    var chipX   = body.querySelector('.scw-acpt-file__x');
+    var glCheck = body.querySelector('.scw-acpt-chk input');
+    var status  = body.querySelector('.scw-acpt-m__status');
+    var chosen  = null;
+
+    m.ok.disabled = true;   // nothing to upload yet
+
+    // Hidden native input — the dropzone's click/keyboard path.
     var input = document.createElement('input');
     input.type = 'file';
     input.accept = '.pdf,.doc,.docx,image/*,application/pdf';
     input.style.display = 'none';
+    body.appendChild(input);
+
+    function fmtSize(n) {
+      if (!n && n !== 0) return '';
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+      return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+    function setFile(file) {
+      chosen = file || null;
+      if (!chosen) {
+        chip.hidden = true;
+        drop.hidden = false;
+        m.ok.disabled = true;
+        return;
+      }
+      chipNm.textContent = chosen.name || 'file';
+      chipSz.textContent = fmtSize(chosen.size);
+      chip.hidden = false;
+      drop.hidden = true;          // the chip IS the state — no duplicate zone
+      m.ok.disabled = false;
+      status.style.display = 'none';
+      status.classList.remove('is-err');
+    }
+
+    drop.addEventListener('click', function () { input.click(); });
+    drop.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
+    });
     input.addEventListener('change', function () {
-      var file = input.files && input.files[0];
-      document.body.removeChild(input);
-      if (!file) return;
-      var body = document.createElement('div');
-      body.innerHTML = '<div class="scw-acpt-m__status">Uploading ' +
-        esc(file.name || 'file') + '…</div>';
-      var m = acptModal(title, body, 'Close');
+      setFile(input.files && input.files[0]);
+    });
+    chipX.addEventListener('click', function () {
+      input.value = '';
+      setFile(null);
+    });
+
+    // Drag + drop. dragover MUST preventDefault or the browser navigates to
+    // the file instead of firing drop.
+    ['dragenter', 'dragover'].forEach(function (evt) {
+      drop.addEventListener(evt, function (e) {
+        e.preventDefault(); e.stopPropagation();
+        drop.classList.add('is-over');
+      });
+    });
+    ['dragleave', 'dragend'].forEach(function (evt) {
+      drop.addEventListener(evt, function (e) {
+        e.preventDefault(); e.stopPropagation();
+        drop.classList.remove('is-over');
+      });
+    });
+    drop.addEventListener('drop', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      drop.classList.remove('is-over');
+      var dt = e.dataTransfer;
+      if (dt && dt.files && dt.files.length) setFile(dt.files[0]);
+    });
+    // A miss anywhere else in the modal must not hand the page to the file.
+    ['dragover', 'drop'].forEach(function (evt) {
+      m.backdrop.addEventListener(evt, function (e) {
+        if (drop.contains(e.target)) return;
+        e.preventDefault();
+      });
+    });
+
+    function fail(msg) {
+      status.style.display = '';
+      status.classList.add('is-err');
+      status.textContent = msg;
+      m.ok.disabled = false;
+      m.ok.textContent = 'Upload';
+    }
+    function say(msg) {
+      status.style.display = '';
+      status.classList.remove('is-err');
+      status.textContent = msg;
+    }
+
+    m.ok.addEventListener('click', function () {
+      if (!chosen) return;
+      var runCheck = !!(glCheck && glCheck.checked);
       m.ok.disabled = true;
-      var status = body.querySelector('.scw-acpt-m__status');
+      m.ok.textContent = 'Uploading…';
+      say('Uploading ' + (chosen.name || 'file') + '…');
 
       var fd = new FormData();
-      fd.append('files', file, file.name || 'agreement.pdf');
+      fd.append('files', chosen, chosen.name || 'agreement.pdf');
       $.ajax({
         url: Knack.api_url + '/v1/applications/' + Knack.application_id + '/assets/file/upload',
         type: 'POST',
@@ -444,87 +598,49 @@
         },
         success: function (res) {
           var assetId = res && (res.id || (res.asset && res.asset.id));
-          if (!assetId) {
-            status.classList.add('is-err');
-            status.textContent = 'Upload failed — no asset id returned.';
-            m.ok.disabled = false;
-            return;
-          }
-          status.textContent = 'Saving…';
+          if (!assetId) return fail('Upload failed — no asset id returned.');
+          say('Saving…');
           var fields = {};
           fields[fieldKey] = assetId;
           putAcceptance(viewKey, recId, fields).then(function () {
-            // The file is saved either way. If this was the signed
-            // agreement and the check is configured, OFFER the greenlight
-            // check rather than running it — declining is a first-class
-            // outcome, so "Skip" just closes and the upload still stands.
-            if (opts.offerGreenlight && greenlightUrl()) {
-              offerGreenlight(m, status, viewKey, recId, opts.info || {});
+            // File is on the record. The check is a SEPARATE promise —
+            // a webhook failure must never read as a failed upload.
+            if (!runCheck) {
+              m.close();
+              refreshAcptView(viewKey);
               return;
             }
-            m.close();
-            refreshAcptView(viewKey);
+            say('Checking greenlight…');
+            runGreenlight(viewKey, recId, opts.info || {}, 'agreement-upload', status, null)
+              .then(function (sent) {
+                if (sent) {
+                  // runGreenlight already queued the refetch and wrote the
+                  // outcome into status — leave it up briefly so the answer
+                  // is readable, then get out of the way.
+                  m.ok.textContent = 'Close';
+                  m.ok.disabled = false;
+                  m.ok.onclick = function () { m.close(); };
+                  return;
+                }
+                // Upload succeeded, check didn't. Say exactly that.
+                status.classList.add('is-err');
+                status.textContent = 'File saved, but the greenlight check ' +
+                  'failed to send. Use “Check greenlight” on the row to retry.';
+                m.ok.textContent = 'Close';
+                m.ok.disabled = false;
+                m.ok.onclick = function () { m.close(); refreshAcptView(viewKey); };
+              });
           }).catch(function (err) {
-            status.classList.add('is-err');
-            status.textContent = (err && err.message) || 'Save failed';
-            m.ok.disabled = false;
+            fail((err && err.message) || 'Save failed');
           });
         },
         error: function (xhr) {
-          status.classList.add('is-err');
-          status.textContent = 'Upload failed (' + (xhr && xhr.status) + ')';
-          m.ok.disabled = false;
+          fail('Upload failed (' + (xhr && xhr.status) + ')');
         }
       });
-      m.ok.addEventListener('click', m.close);
-    });
-    document.body.appendChild(input);
-    input.click();
-  }
-
-  /** Post-upload step: the agreement is already saved, so this is a pure
-   *  offer — "Skip" is a normal ending, not a cancel. Rewrites the open
-   *  upload modal in place (Skip | Check greenlight, primary rightmost per
-   *  the repo's button-order convention). */
-  function offerGreenlight(m, status, viewKey, recId, info) {
-    status.classList.remove('is-err');
-    status.textContent = 'Signed agreement saved.';
-
-    var ask = document.createElement('div');
-    ask.style.marginTop = '10px';
-    ask.style.color = '#475569';
-    ask.textContent = 'Check whether this deal is ready to greenlight for install?';
-    status.parentNode.appendChild(ask);
-
-    var cancel = m.backdrop.querySelector('.scw-acpt-m__btn--cancel');
-    if (cancel) cancel.textContent = 'Skip';
-
-    // Strip the "Close" handler bound by the upload flow before rebinding.
-    var ok = m.ok;
-    var fresh = ok.cloneNode(true);
-    fresh.textContent = 'Check greenlight';
-    fresh.disabled = false;
-    ok.parentNode.replaceChild(fresh, ok);
-    m.ok = fresh;
-
-    fresh.addEventListener('click', function () {
-      ask.style.display = 'none';
-      runGreenlight(viewKey, recId, info, 'agreement-upload', status, fresh)
-        .then(function (sent) {
-          if (!sent) return;                    // failed — leave the modal open
-          // Swap the button to a plain Close (clone-replace drops the
-          // run handler so a second click can't re-fire the check).
-          var done = fresh.cloneNode(true);
-          done.textContent = 'Close';
-          done.disabled = false;
-          fresh.parentNode.replaceChild(done, fresh);
-          m.ok = done;
-          done.addEventListener('click', function () { m.close(); refreshAcptView(viewKey); });
-        });
     });
 
-    // Skipping still refreshes — the upload landed.
-    if (cancel) cancel.addEventListener('click', function () { refreshAcptView(viewKey); });
+    setTimeout(function () { drop.focus(); }, 30);
   }
 
   /** Standalone greenlight check (row button). Own small modal so the
@@ -709,10 +825,13 @@
           openLinkEditor(viewKey, recId, F.xeroEst, 'Xero estimate link',
             xeroEstA ? (xeroEstA.getAttribute('href') || '') : '');
         } else if (fk === F.agreement) {
-          openFileUpload(viewKey, recId, F.agreement, 'Signed agreement',
-            { offerGreenlight: true, info: glInfo });
+          openFileUpload(viewKey, recId, F.agreement, 'Upload signed agreement', {
+            offerGreenlight: true,
+            info: glInfo,
+            greenlightLabel: 'Also check whether this deal is ready to greenlight'
+          });
         } else if (fk === F.bidPdf) {
-          openFileUpload(viewKey, recId, F.bidPdf, 'Bid basis PDF');
+          openFileUpload(viewKey, recId, F.bidPdf, 'Upload bid basis PDF');
         }
       });
     }

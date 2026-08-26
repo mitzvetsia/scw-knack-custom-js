@@ -243,8 +243,9 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // Fires from the Agreements & Invoices panel (acceptance-card.js) to ask
   // Make whether the deal is ready to greenlight for install. Two entry
   // points, both OPTIONAL — nothing fires unless the user asks for it:
-  //   1. offered right after a signed-agreement upload succeeds
-  //      (source: 'agreement-upload'), and
+  //   1. a checkbox in the signed-agreement uploader — ticked by default,
+  //      shown BEFORE anything runs, fires as part of the same Upload
+  //      click (source: 'agreement-upload'), and
   //   2. the row's standalone "Check greenlight" button
   //      (source: 'manual'), shown once an agreement is on file.
   // Payload:
@@ -256,10 +257,9 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // A bare HTTP 200 (Make's "Accepted" ack when the scenario runs past the
   // 40s webhook-response window) counts as "check started" — the panel
   // refetches so any flags the scenario flips show up on their own.
-  // ⚠️ PLACEHOLDER — paste the real scenario URL here. The button hides and
-  // the post-upload offer is skipped entirely while this is blank/PLACEHOLDER,
-  // so shipping it unconfigured changes nothing for users.
-  MAKE_GREENLIGHT_CHECK_WEBHOOK: "PLACEHOLDER",
+  // Blank/PLACEHOLDER hides the row button and drops the uploader's
+  // checkbox, so the panel degrades to a plain file upload.
+  MAKE_GREENLIGHT_CHECK_WEBHOOK: "https://hook.us1.make.com/zlxkei9ro9iaxjri5e5yf2f4fqzi89xl",
   // ⚠️ RETIRED FROM CODE 2026-08-02 (docs/project-stage-workflow.md): the
   // standalone "Request SOW validated as ready for Survey" stepper button
   // was removed — both remaining sales actions (the renamed initiate form
