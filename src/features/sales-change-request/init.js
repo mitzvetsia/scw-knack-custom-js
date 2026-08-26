@@ -148,10 +148,19 @@
     ns.injectStyles();
     ns.buildBaseline();
 
-    // Detect SOW record ID from URL and rehydrate from Knack (once per page)
+    // Re-detect the SOW id on EVERY activation — never gate this behind
+    // _rehydrated. In-app navigation between two SOWs' pages is the same
+    // scene (only the record id in the hash changes), so the scene-change
+    // teardown below can't see it; before this ran unconditionally, every
+    // CR submitted after such a hop carried the FIRST SOW's id. state.js
+    // flushes the old SOW's draft and swaps per-SOW state on a change;
+    // here we only need to notice the change and rehydrate fresh.
+    var sowBefore = S.sowRecordId();
+    ns.detectSowRecordId();
+    if (S.sowRecordId() !== sowBefore) _rehydrated = false;
+
     if (!_rehydrated) {
       _rehydrated = true;
-      ns.detectSowRecordId();
       ns.rehydrateFromKnack();
     }
 
@@ -280,9 +289,13 @@
         S.setOnPage(true);
         ns.injectStyles();
         ns.buildBaseline();
+        // Same unconditional re-detect as activateModule — a SOW switch
+        // must reset the rehydrate gate (see the comment there).
+        var sowBefore = S.sowRecordId();
+        ns.detectSowRecordId();
+        if (S.sowRecordId() !== sowBefore) _rehydrated = false;
         if (!_rehydrated) {
           _rehydrated = true;
-          ns.detectSowRecordId();
           ns.rehydrateFromKnack();
         }
         refresh();

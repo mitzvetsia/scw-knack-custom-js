@@ -36,24 +36,32 @@
   var _onPage = false;
 
   // ── SessionStorage persistence (write-through cache) ───
+  // Keys are scoped PER SOW (base key + ':' + record id): one tab can
+  // visit several SOWs on a project, and an un-scoped key let SOW A's
+  // draft resurface as SOW B's. Before the id is known the key has no
+  // suffix — nothing is loaded or saved until detectSowRecordId adopts
+  // an id, so the legacy un-scoped slot is simply abandoned.
+  function skey() {
+    return CFG.storageKey + (_sowRecordId ? ':' + _sowRecordId : '');
+  }
   function ssave() {
-    try { sessionStorage.setItem(CFG.storageKey, JSON.stringify(_pending)); } catch (e) {}
+    try { sessionStorage.setItem(skey(), JSON.stringify(_pending)); } catch (e) {}
   }
   function sload() {
     try {
-      var r = sessionStorage.getItem(CFG.storageKey);
+      var r = sessionStorage.getItem(skey());
       if (r) _pending = JSON.parse(r);
     } catch (e) {}
   }
   function ssaveDismissed() {
     try {
-      sessionStorage.setItem(CFG.storageKey + '_dismissed',
+      sessionStorage.setItem(skey() + '_dismissed',
         JSON.stringify(_dismissed));
     } catch (e) {}
   }
   function sloadDismissed() {
     try {
-      var r = sessionStorage.getItem(CFG.storageKey + '_dismissed');
+      var r = sessionStorage.getItem(skey() + '_dismissed');
       if (r) _dismissed = JSON.parse(r) || {};
     } catch (e) {}
   }
@@ -82,15 +90,40 @@
 
   function setDraftRecordId(id) { _sowRecordId = id; }
 
-  /** Extract the SOW record ID from the URL hash.
-   *  URL pattern: #.../scope-of-work-details/<sowId>/... */
-  function detectSowRecordId() {
+  /** Parse the SOW record id out of the current URL hash (pure read).
+   *  '' when the hash isn't a scope-of-work-details route. */
+  function sowIdFromHash() {
     var hash = window.location.hash || '';
     var match = hash.match(/scope-of-work-details\/([a-f0-9]{24})/i);
-    if (match) {
-      _sowRecordId = match[1];
-      if (CFG.debug) SCW.debug('[SalesCR] SOW record ID:', _sowRecordId);
+    return match ? match[1] : '';
+  }
+
+  /** Extract the SOW record ID from the URL hash and adopt it.
+   *  URL pattern: #.../scope-of-work-details/<sowId>/...
+   *
+   *  In-app navigation between two SOWs' pages is the SAME Knack scene
+   *  (only the record id in the hash changes) and never reloads the
+   *  bundle, so this is the one place a SOW switch can be seen. When the
+   *  hash names a DIFFERENT SOW than the one in state:
+   *    1. flush the old SOW's unsaved draft to ITS field_2707 first
+   *       (the debounce timer must not fire under the new id), then
+   *    2. swap the per-SOW state — pending + dismissed drop to the new
+   *       SOW's sessionStorage slate, so nothing leaks across records.
+   *  Callers that need the new SOW's Knack-side draft still have to run
+   *  rehydrateFromKnack afterwards (init resets its _rehydrated gate
+   *  when it sees the id change). */
+  function detectSowRecordId() {
+    var id = sowIdFromHash();
+    if (!id || id === _sowRecordId) return;
+    if (_sowRecordId && (_saveTimer || Object.keys(_pending).length)) {
+      forceSaveDraft();   // writes under the OLD id — before the swap
     }
+    _sowRecordId = id;
+    _pending = {};
+    _dismissed = {};
+    sload();
+    sloadDismissed();
+    if (CFG.debug) SCW.debug('[SalesCR] SOW record ID:', _sowRecordId);
   }
 
   function readDraftField() {
@@ -268,8 +301,10 @@
   //  REHYDRATE ON LOAD
   // ═══════════════════════════════════════════════════════════
 
-  sload();
-  sloadDismissed();
+  // No sessionStorage load here: storage is scoped per SOW, and the id
+  // isn't known until detectSowRecordId adopts it — which also loads
+  // that SOW's slate. Loading the un-suffixed key at boot would drag a
+  // legacy (pre-scoping) draft into whichever SOW activates first.
 
   // Force-save to Knack on tab close so no changes are lost. Also flush
   // when there's a pending debounce timer even if _pending is empty —
