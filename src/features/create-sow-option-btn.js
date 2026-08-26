@@ -114,39 +114,56 @@
       '.' + P + '-tally { margin-left: auto; color: #475569; font-size: 12px; }',
       '.' + P + '-tally b { color: #0f172a; }',
       '.' + P + '-body { padding: 6px 22px 14px; overflow-y: auto; flex: 1 1 auto; }',
+      // Group header — a real button so MDF/IDF sections collapse. Sticky so
+      // you always know which location you're scrolled into.
       '.' + P + '-grp {',
-      '  position: sticky; top: 0; z-index: 1; background: #fff;',
-      '  padding: 10px 0 5px; margin: 0;',
+      '  position: sticky; top: 0; z-index: 2; width: 100%;',
+      '  display: flex; align-items: center; gap: 8px;',
+      '  background: #fff; border: 0; border-bottom: 1px solid #eef2f7;',
+      '  padding: 9px 2px 5px; margin: 0; cursor: pointer; text-align: left;',
       '  font: 700 10.5px/1.3 system-ui, sans-serif; letter-spacing: .04em;',
       '  text-transform: uppercase; color: #475569;',
-      '  border-bottom: 1px solid #eef2f7;',
       '}',
+      '.' + P + '-grp:hover { color: #0f172a; }',
+      '.' + P + '-grp-chev { display: inline-flex; transition: transform 120ms ease;',
+      '  color: #94a3b8; }',
+      '.' + P + '-grp--closed .' + P + '-grp-chev { transform: rotate(-90deg); }',
+      // Collapsed groups still have to report what's ticked inside them.
+      '.' + P + '-grp-n { margin-left: auto; text-transform: none;',
+      '  letter-spacing: 0; font-weight: 600; color: #64748b; font-size: 11px; }',
+      '.' + P + '-grp--closed + .' + P + '-rows { display: none; }',
+      // One line per item. The product used to print twice — once as a
+      // sub-line, once as the dropdown's own value — and the mode pill took
+      // a second row on EVERY item. Both gone: the select is the product,
+      // and only the exceptional state (duplicated) says anything.
       '.' + P + '-row {',
-      '  display: grid; grid-template-columns: auto 1fr 280px; gap: 10px;',
-      '  align-items: center; padding: 7px 0; border-bottom: 1px solid #f8fafc;',
+      '  display: flex; align-items: center; gap: 10px;',
+      '  padding: 4px 2px; border-bottom: 1px solid #f8fafc;',
       '}',
       '.' + P + '-row--off { opacity: .45; }',
-      '.' + P + '-row input[type=checkbox] { margin: 0; }',
-      '.' + P + '-name { min-width: 0; }',
-      '.' + P + '-name-l { font-weight: 600; }',
-      '.' + P + '-name-p { color: #64748b; font-size: 11.5px;',
+      '.' + P + '-row input[type=checkbox] { margin: 0; flex: 0 0 auto; }',
+      '.' + P + '-name { flex: 1 1 auto; min-width: 0; display: flex;',
+      '  align-items: baseline; gap: 7px; }',
+      '.' + P + '-name-l { font-weight: 600; white-space: nowrap; }',
+      '.' + P + '-was { color: #92400e; font-size: 11px; min-width: 0;',
       '  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
       '.' + P + '-sel {',
-      '  width: 100%; padding: 5px 7px; border: 1px solid #cbd5e1;',
-      '  border-radius: 5px; font: inherit; font-size: 12px; background: #fff;',
-      '  color: #0f172a;',
+      '  flex: 0 0 268px; max-width: 268px; padding: 4px 7px;',
+      '  border: 1px solid #cbd5e1; border-radius: 5px;',
+      '  font: inherit; font-size: 12px; background: #fff; color: #0f172a;',
       '}',
       '.' + P + '-sel:disabled { background: #f1f5f9; color: #94a3b8; }',
-      // A changed model is the thing that turns a share into a copy — say so
-      // on the row, not just in a summary the user has to go find.
+      // A changed model is what turns a share into a copy — flag it on the
+      // control the user just touched.
       '.' + P + '-sel--changed { border-color: #fbbf24; background: #fffbeb; }',
       '.' + P + '-mode {',
-      '  grid-column: 3; justify-self: start; margin-top: 3px;',
-      '  padding: 2px 8px; border-radius: 999px; max-width: 100%;',
-      '  font: 700 10px/1.5 system-ui, sans-serif;',
+      '  flex: 0 0 auto; padding: 2px 8px; border-radius: 999px;',
+      '  font: 700 10px/1.5 system-ui, sans-serif; white-space: nowrap;',
+      '  background: #fef3c7; border: 1px solid #fde68a; color: #92400e;',
       '}',
-      '.' + P + '-mode--link  { background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569; }',
-      '.' + P + '-mode--clone { background: #fef3c7; border: 1px solid #fde68a; color: #92400e; }',
+      '.' + P + '-legend { display: flex; gap: 14px; flex-wrap: wrap;',
+      '  padding: 8px 22px 0; color: #64748b; font-size: 11.5px; }',
+      '.' + P + '-legend b { color: #475569; }',
       '.' + P + '-foot {',
       '  display: flex; gap: 8px; justify-content: flex-end; align-items: center;',
       '  padding: 14px 22px; border-top: 1px solid #eef2f7; flex-wrap: wrap;',
@@ -393,10 +410,8 @@
     head.innerHTML =
       '<h3 class="' + P + '-title">Create Alternate SOW</h3>' +
       '<p class="' + P + '-sub">Pick the items the alternate carries, and the model each ' +
-        'one uses there. Leave a model as-is and the item is <strong>shared</strong> — one ' +
-        'record on both SOWs, so editing it changes both. Change the model and it is ' +
-        '<strong>duplicated</strong>, giving each SOW its own copy to edit. Accessories ' +
-        'travel with their device, and assumptions aren’t listed.</p>';
+        'one uses there. Accessories travel with their device, and assumptions aren’t ' +
+        'listed.</p>';
     modal.appendChild(head);
 
     var tools = document.createElement('div');
@@ -415,20 +430,42 @@
       '<span class="' + P + '-tally" data-alt-tally></span>';
     modal.appendChild(tools);
 
+    // The two states, stated once. They used to be repeated as a pill on
+    // every row, which is what pushed each item onto two lines.
+    var legend = document.createElement('div');
+    legend.className = P + '-legend';
+    legend.innerHTML =
+      '<span><b>Shared</b> — one record on both SOWs, edits affect both ' +
+        '(the default)</span>' +
+      '<span><b>Duplicated</b> — each SOW edits its own copy ' +
+        '(when you change the model)</span>';
+    modal.appendChild(legend);
+
     var body = document.createElement('div');
     body.className = P + '-body';
 
+    var CHEV = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+      'stroke="currentColor" stroke-width="3" stroke-linecap="round" ' +
+      'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+
     for (var g = 0; g < built.groups.length; g++) {
       var grp = built.groups[g];
-      if (grp.label) {
-        var h = document.createElement('div');
-        h.className = P + '-grp';
-        h.textContent = grp.label;
-        body.appendChild(h);
-      }
+      var h = document.createElement('button');
+      h.type = 'button';
+      h.className = P + '-grp';
+      h.setAttribute('data-alt-grp', String(g));
+      h.innerHTML =
+        '<span class="' + P + '-grp-chev">' + CHEV + '</span>' +
+        '<span>' + esc(grp.label || 'Unassigned') + '</span>' +
+        '<span class="' + P + '-grp-n" data-alt-grp-n></span>';
+      body.appendChild(h);
+
+      var rowsWrap = document.createElement('div');
+      rowsWrap.className = P + '-rows';
       for (var i = 0; i < grp.items.length; i++) {
-        body.appendChild(buildRow(grp.items[i], allRecs));
+        rowsWrap.appendChild(buildRow(grp.items[i], allRecs));
       }
+      body.appendChild(rowsWrap);
     }
     modal.appendChild(body);
 
@@ -475,19 +512,23 @@
           sel.disabled = !st.on;
           sel.classList.toggle(P + '-sel--changed', st.on && st.changed);
         }
+        // Only the exceptional state speaks. Shared is the default and was
+        // being restated on every single row; the legend carries its meaning
+        // once, and silence on a row means shared.
         var mode = rs[i].querySelector('[data-alt-mode]');
         if (mode) {
-          if (!st.on) { mode.style.display = 'none'; }
-          else {
-            mode.style.display = '';
-            mode.className = P + '-mode ' + P + '-mode--' + (st.changed ? 'clone' : 'link');
-            // Say what happens to the ITEM, not what the automation does.
-            // "Shared"/"Duplicated" alone doesn't tell you the thing that
-            // actually matters later: whether editing it here also changes
-            // it there.
-            mode.textContent = st.changed
-              ? 'Duplicated — each SOW edits its own copy'
-              : 'Shared — edits affect both SOWs';
+          var showMode = st.on && st.changed;
+          mode.style.display = showMode ? '' : 'none';
+          mode.title = showMode ? 'Duplicated — each SOW edits its own copy' : '';
+        }
+        var was = rs[i].querySelector('[data-alt-was]');
+        if (was) {
+          if (st.on && st.changed && st.fromName) {
+            was.style.display = '';
+            was.textContent = 'was ' + st.fromName;
+            was.title = 'This SOW keeps ' + st.fromName;
+          } else {
+            was.style.display = 'none';
           }
         }
         if (st.on) { on++; if (st.changed) clones++; }
@@ -504,6 +545,25 @@
         if (readRow(rs[c]).changed) anyChanged = true;
       }
       if (resetBtn) resetBtn.style.display = anyChanged ? '' : 'none';
+
+      // Group tallies — a collapsed section still has to report what's ticked
+      // inside it, or collapsing hides decisions instead of just rows.
+      var heads = body.querySelectorAll('[data-alt-grp]');
+      for (var gi = 0; gi < heads.length; gi++) {
+        var wrap = heads[gi].nextElementSibling;
+        if (!wrap) continue;
+        var grs = wrap.querySelectorAll('[data-alt-row]');
+        var gOn = 0, gDup = 0;
+        for (var gr = 0; gr < grs.length; gr++) {
+          var gst = readRow(grs[gr]);
+          if (gst.on) { gOn++; if (gst.changed) gDup++; }
+        }
+        var n = heads[gi].querySelector('[data-alt-grp-n]');
+        if (n) {
+          n.textContent = gOn + ' of ' + grs.length +
+            (gDup ? (' · ' + gDup + ' duplicated') : '');
+        }
+      }
       goBtn.disabled = (on === 0);
       goBtn.textContent = on ? ('Create alternate SOW (' + on + ')') : 'Create alternate SOW';
     }
@@ -521,6 +581,11 @@
           if (cb) cb.checked = on;
         }
         repaint(); return;
+      }
+      var gh = t.closest('[data-alt-grp]');
+      if (gh) {
+        gh.classList.toggle(P + '-grp--closed');
+        return;
       }
       if (t.closest('[data-alt-reset]')) {
         var rr = rows();
@@ -589,15 +654,18 @@
     }
     if (!opts.length) optHtml = '<option value="">(no models available)</option>';
 
+    // No product sub-line: the dropdown already shows it, and printing it
+    // twice per row was most of the wasted height. When the model IS changed
+    // the original reappears as "was …", which is the only time it isn't
+    // already on screen.
     row.innerHTML =
       '<input type="checkbox" checked aria-label="Include on the alternate SOW">' +
       '<span class="' + P + '-name">' +
         '<span class="' + P + '-name-l">' + esc(label || '(unlabelled)') + '</span>' +
-        '<span class="' + P + '-name-p" style="display:block" title="' + esc(fromName) + '">' +
-          esc(fromName || '—') + '</span>' +
+        '<span class="' + P + '-was" data-alt-was style="display:none"></span>' +
       '</span>' +
       '<select class="' + P + '-sel" aria-label="Model on the alternate SOW">' + optHtml + '</select>' +
-      '<span class="' + P + '-mode ' + P + '-mode--link" data-alt-mode>shared</span>';
+      '<span class="' + P + '-mode" data-alt-mode style="display:none">Duplicated</span>';
     return row;
   }
 
