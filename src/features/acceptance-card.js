@@ -793,6 +793,12 @@
     // payment pill is noise there. Signature is the only gate.
     var isCo = /\bSW\d+CO\b/i.test(propTxt);
 
+    // Already greenlit: agreement signed AND (payment received OR approved
+    // for terms) — signature alone for COs, matching the pill logic above.
+    // Once true there's nothing left to check, so every greenlight-check
+    // affordance (row button + the uploader's checkbox) disappears.
+    var greenlit = signed && (isCo || paid || terms);
+
     // "61507493933-SW1347 | 20260807-11068" → bold deal-SOW title with the
     // proposal id as a muted sub-line (the pipe tail was noise in the title).
     var propMain = propTxt, propSub = '';
@@ -834,8 +840,9 @@
         '</span>' +
         // Re-run the greenlight check without touching the agreement.
         // Only once there's an agreement on file (nothing to check before
-        // that) and only when the scenario is configured.
-        ((fileA && greenlightUrl())
+        // that), only while the deal is NOT already greenlit, and only
+        // when the scenario is configured.
+        ((fileA && !greenlit && greenlightUrl())
           ? '<button type="button" class="scw-acpt-btn scw-acpt-btn--ghost" data-greenlight="1" ' +
             'title="Check whether this deal is ready to greenlight for install">Check greenlight</button>'
           : '') +
@@ -878,7 +885,7 @@
             xeroEstA ? (xeroEstA.getAttribute('href') || '') : '');
         } else if (fk === F.agreement) {
           openFileUpload(viewKey, recId, F.agreement, 'Signed agreement', {
-            offerGreenlight: true,
+            offerGreenlight: !greenlit,
             info: glInfo,
             greenlightLabel: 'Also check whether this deal is ready to greenlight',
             current: fileA ? { name: (fileA.textContent || '').replace(/\s+/g, ' ').trim(),
