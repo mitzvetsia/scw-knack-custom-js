@@ -421,16 +421,16 @@
 
     var tools = document.createElement('div');
     tools.className = P + '-tools';
-    // Always present, DISABLED when there is nothing to undo — hiding it
-    // until a model changed made it un-findable, which is worse than the
-    // vague name it started with. A greyed control still teaches what it
-    // does and where it lives; a missing one teaches nothing.
+    // Hidden until at least one model differs — there is nothing to revert
+    // before then, and an always-on control invites the "what does this do?"
+    // that got it renamed twice. The name now says the destination: back to
+    // the models these items already use on this SOW.
     tools.innerHTML =
       '<button type="button" data-alt-all>Select all</button>' +
       '<button type="button" data-alt-none>Select none</button>' +
-      '<button type="button" data-alt-reset disabled ' +
+      '<button type="button" data-alt-reset style="display:none" ' +
         'title="Put every model back to the one the item uses on this SOW, ' +
-        'so nothing is duplicated">Reset to original models</button>' +
+        'so nothing is duplicated">Revert to current models</button>' +
       '<span class="' + P + '-tally" data-alt-tally></span>';
     modal.appendChild(tools);
 
@@ -548,7 +548,7 @@
       for (var c = 0; c < rs.length && !anyChanged; c++) {
         if (readRow(rs[c]).changed) anyChanged = true;
       }
-      if (resetBtn) resetBtn.disabled = !anyChanged;
+      if (resetBtn) resetBtn.style.display = anyChanged ? '' : 'none';
 
       // Group tallies — a collapsed section still has to report what's ticked
       // inside it, or collapsing hides decisions instead of just rows.
