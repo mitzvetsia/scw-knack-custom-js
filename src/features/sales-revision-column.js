@@ -2320,10 +2320,17 @@
         var tid = trs[t].getAttribute('data-sow-item-id');
         if (tid) idSet[tid] = true;
       }
+      // Two match paths, because row-presence alone loses exactly the
+      // revisions that changed the SOW most: an accepted REMOVE deletes
+      // its item, so no row ever renders for it again. The stored payload
+      // (field_2696 JSON) carries the SOW the request was raised from —
+      // match on that too, so history survives its item leaving the grid.
       var revs = [];
       for (var i = 0; i < _revisionData.length; i++) {
         var r = _revisionData[i];
-        if (r.sowItemId && idSet[r.sowItemId]) revs.push(r);
+        var byRow = r.sowItemId && idSet[r.sowItemId];
+        var bySowId = r.json && r.json.sowId && r.json.sowId === sowId;
+        if (byRow || bySowId) revs.push(r);
       }
       if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
       if (!revs.length) continue;
