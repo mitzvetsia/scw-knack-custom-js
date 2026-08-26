@@ -7,6 +7,37 @@
   var SCENE_ID = 'scene_1116';
   var SOURCE_VIEW = 'view_3827';
 
+  // ── Project-level "a bid already came back" rollup ───────
+  // Sibling of field_2728 (project SOWs with survey requested) and
+  // field_2917 (project SOWs with survey validated): a PROJECT-level
+  // count of SOWs that already have a subcontractor bid returned.
+  //
+  // Why it exists: the alternative-proposal ask reads very differently
+  // depending on whether the survey round is still open. While it's
+  // open, "add this SOW to the survey as an alternative bid" is exactly
+  // right. Once a bid is BACK on any SOW in the project, the survey is
+  // closed — sales isn't joining a survey any more, they're asking for
+  // the alternative to be priced against what came back. Same action,
+  // same webhook; only the copy changes (see the dynamicLabel /
+  // subText / promptCopy entries on 'request-alternative-proposal').
+  //
+  // ⚠️ TBD — set this to the Builder rollup's field key once it exists
+  // and is projected onto view_3827. Until then it stays '', readField
+  // returns '', every `gt: 0` test fails, and every bid-back copy entry
+  // falls through to today's wording. Nothing to un-ship if the field
+  // never lands.
+  var BID_BACK_FIELD = '';   // e.g. 'field_29XX' — project SOWs with a bid returned
+
+  // True when a subcontractor bid has come back on ANY SOW on this
+  // project (including this one). Guarded so an unconfigured or
+  // unprojected field reads as "no bids back" rather than throwing.
+  function bidIsBack() {
+    if (!BID_BACK_FIELD) return false;
+    return conditionMet({ field: BID_BACK_FIELD, gt: 0 });
+  }
+  var BID_BACK    = { fn: bidIsBack };
+  var NO_BID_BACK = { not: { fn: bidIsBack } };
+
   // ── Step definitions ─────────────────────────────────────
   var STEPS = [
     {
@@ -219,11 +250,42 @@
       type: 'action',
       id: 'request-alternative-proposal',
       label: 'Request Alternative Proposal',
-      // Validation state decides how much the ask claims to do.
+      // Two axes decide the copy — the ACTION and the webhook are the
+      // same in every case:
+      //   1. Has a bid already come back on the project (BID_BACK)? If
+      //      so the survey round is closed, so "add to the survey" is
+      //      the wrong picture — the ask is to get this alternative
+      //      priced against what came back.
+      //   2. Is THIS SOW validated (field_2723)? Decides whether the
+      //      ask also carries the validation request.
+      // First match wins, so the bid-back pair must come first. Both
+      // bid-back entries are inert until BID_BACK_FIELD is configured.
       dynamicLabel: [
+        { when: { all: [ BID_BACK, { field: 'field_2723', notValue: 'Yes' } ] },
+          label: 'Request Validation & Bid on This Alternative' },
+        { when: BID_BACK,
+          label: 'Request Bid on This Alternative' },
         { when: { field: 'field_2723', notValue: 'Yes' },
           label: 'Request Validation & Add as Alternative Bid to Survey' },
         { label: 'Request Addition to Survey as Alternative Bid' }
+      ],
+      // Only the bid-back states need explaining — the survey-open
+      // labels already say what happens. Renders on active states only.
+      subText: [
+        { when: BID_BACK,
+          text: 'Bids are already back on this project — Ops will get this alternative priced against them.' }
+      ],
+      // Modal copy tracks the label, so the ask reads the same way in
+      // the step and in the prompt it opens. Falls back to the
+      // survey-open wording in the handler when nothing matches.
+      promptCopy: [
+        {
+          when: BID_BACK,
+          title:       'Request Bid on This Alternative',
+          intro:       'Bids are already back on this project. What should the bid team know about pricing this alternative?',
+          placeholder: 'e.g. Same scope as SW-1601 but with the cheaper NVR — price it against the returned bid',
+          submitLabel: 'Submit Request'
+        }
       ],
       insertAfterStepId: 'review-site-survey',
       webhookAction: 'requestAlternativeProposal',
@@ -605,6 +667,10 @@
     if (Array.isArray(cond.any)) return cond.any.some(conditionMet);
     // Negation: passes when the wrapped condition does NOT match
     if (cond.not) return !conditionMet(cond.not);
+    // Predicate escape hatch, for signals that aren't a plain field read
+    // on SOURCE_VIEW (e.g. bidIsBack, which no-ops until its rollup field
+    // is configured). Composes with all/any/not like any other condition.
+    if (typeof cond.fn === 'function') return !!cond.fn();
 
     var val = readField(cond.field);
     if (cond.hasValue)  return val.length > 0;
@@ -880,11 +946,14 @@
         alert('Could not determine current SOW record ID.');
         return;
       }
+      // State-dependent copy (see the step's promptCopy) with the
+      // survey-open wording as the default.
+      var copy = resolvePromptCopy(step);
       openNotesPromptModal({
-        title:         'Request Alternative Proposal',
-        intro:         'Give our bid team some context — what should they know about this alternative bid?',
-        placeholder:   'e.g. Budget option — fewer cameras in the parking lot, cheaper NVR',
-        submitLabel:   'Submit Request',
+        title:         copy.title       || 'Request Alternative Proposal',
+        intro:         copy.intro       || 'Give our bid team some context — what should they know about this alternative bid?',
+        placeholder:   copy.placeholder || 'e.g. Budget option — fewer cameras in the parking lot, cheaper NVR',
+        submitLabel:   copy.submitLabel || 'Submit Request',
         onSubmit: function (notes, setSubmitting, onError) {
           setSubmitting(true);
           setStepLoading(el, true);
@@ -904,7 +973,11 @@
               // docs/project-stage-workflow.md). Additive: existing
               // scenario branches ignore unknown keys.
               stepId:         step.id,
-              actionLabel:    step.label || '',
+              // Resolved label, not the static one — it tells Ops WHICH
+              // ask was made (join the open survey vs. price this
+              // alternative against bids already back), which the copy
+              // variants above are the whole point of.
+              actionLabel:    resolveDynamicLabel(step) || step.label || '',
               notes:          notes,
               account:        account,
               project:        project,
@@ -1276,6 +1349,19 @@
       if (!d.when || conditionMet(d.when)) return d.label || null;
     }
     return null;
+  }
+
+  // Resolve step.promptCopy — state-dependent copy for the notes-prompt
+  // modal a webhook step opens, same first-match-wins shape as
+  // dynamicLabel. Returns {} when nothing matches, so callers can spread
+  // their own defaults underneath with `|| fallback` per key.
+  function resolvePromptCopy(step) {
+    if (!step || !step.promptCopy) return {};
+    for (var i = 0; i < step.promptCopy.length; i++) {
+      var p = step.promptCopy[i];
+      if (!p.when || conditionMet(p.when)) return p;
+    }
+    return {};
   }
 
   function renderHeaderMessage(hdr, step, stepKey, isCompleted, baseDisabled) {
