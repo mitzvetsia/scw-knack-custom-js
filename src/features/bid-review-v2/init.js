@@ -602,6 +602,15 @@
     flex.appendChild(cardCol);
     flex.appendChild(buildBidDetailsColumn(row));
     panel.appendChild(flex);
+    // Revision history for THIS item — the "looking at one line item"
+    // surface, collapsed at the bottom of the panel. sales-revision-column
+    // owns the data + renderer; null when the item has none (or the
+    // revision views haven't loaded yet — the next open picks them up).
+    try {
+      var srHist = (window.SCW && SCW.salesRevHistory && sowItemId)
+        ? SCW.salesRevHistory.blockForItem(sowItemId) : null;
+      if (srHist) panel.appendChild(srHist);
+    } catch (eSrh) { /* non-fatal */ }
     td.appendChild(panel);
 
     expand.appendChild(td);
