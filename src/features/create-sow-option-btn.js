@@ -401,9 +401,17 @@
 
     var tools = document.createElement('div');
     tools.className = P + '-tools';
+    // "Reset models" was the right control with the wrong name — it says what
+    // it operates on, not what you get. This one names the outcome: every row
+    // back on the model it already has, which is also every row back to
+    // Shared. Hidden until at least one row has actually been changed, so it
+    // only shows up when there is something to undo.
     tools.innerHTML =
       '<button type="button" data-alt-all>Select all</button>' +
       '<button type="button" data-alt-none>Select none</button>' +
+      '<button type="button" data-alt-reset style="display:none" ' +
+        'title="Put every model back to the one the item already uses, so ' +
+        'nothing is duplicated">Keep all current models</button>' +
       '<span class="' + P + '-tally" data-alt-tally></span>';
     modal.appendChild(tools);
 
@@ -435,8 +443,9 @@
     document.body.appendChild(back);
     setBtnLoading(btn, false);
 
-    var tally  = tools.querySelector('[data-alt-tally]');
-    var goBtn  = foot.querySelector('[data-alt-go]');
+    var tally    = tools.querySelector('[data-alt-tally]');
+    var resetBtn = tools.querySelector('[data-alt-reset]');
+    var goBtn    = foot.querySelector('[data-alt-go]');
 
     function rows() { return body.querySelectorAll('[data-alt-row]'); }
 
@@ -486,6 +495,15 @@
       tally.innerHTML = '<b>' + on + '</b> of ' + rs.length + ' item' +
         (rs.length === 1 ? '' : 's') +
         (clones ? (' · <b>' + clones + '</b> duplicated') : '');
+      // Only offer the undo once a model has actually been changed —
+      // otherwise it sits there inviting the "what does this do?" it exists
+      // to answer. Counts changed rows whether selected or not, so a change
+      // parked on an unticked row is still reachable.
+      var anyChanged = false;
+      for (var c = 0; c < rs.length && !anyChanged; c++) {
+        if (readRow(rs[c]).changed) anyChanged = true;
+      }
+      if (resetBtn) resetBtn.style.display = anyChanged ? '' : 'none';
       goBtn.disabled = (on === 0);
       goBtn.textContent = on ? ('Create alternate SOW (' + on + ')') : 'Create alternate SOW';
     }
@@ -501,6 +519,14 @@
         for (var i = 0; i < rs.length; i++) {
           var cb = rs[i].querySelector('input[type=checkbox]');
           if (cb) cb.checked = on;
+        }
+        repaint(); return;
+      }
+      if (t.closest('[data-alt-reset]')) {
+        var rr = rows();
+        for (var k = 0; k < rr.length; k++) {
+          var rsel = rr[k].querySelector('select');
+          if (rsel) rsel.value = rr[k].getAttribute('data-from-id') || '';
         }
         repaint(); return;
       }
