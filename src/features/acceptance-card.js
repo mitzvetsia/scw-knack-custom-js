@@ -6,9 +6,11 @@
  * first-row-only render hid every CO acceptance). Each card: the proposal as
  * the title, Yes/No flags as status pills, and the document links + the
  * "Create Questionnaire" action rendered as buttons. The native table is
- * hidden (kept in the DOM) and the buttons proxy clicks to their own row's
- * original anchors so Knack's asset/action handlers still fire; the editors
- * PUT against their own row's record id.
+ * hidden (kept in the DOM); the questionnaire button proxies its row's
+ * original action link so Knack's handler still fires. File tiles do NOT
+ * proxy to Knack's asset viewer — clicking anywhere on one opens the
+ * card's own uploader modal (current file + replace + greenlight check),
+ * and the editors PUT against their own row's record id.
  *
  * Columns:
  *   field_2755  REL proposal (connection link)        → title
@@ -235,7 +237,29 @@
       '.scw-acpt-chk { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px;',
       '  cursor: pointer; font: 500 12.5px/1.4 system-ui, sans-serif; color: #334155; }',
       '.scw-acpt-chk input { margin: 1px 0 0; width: 15px; height: 15px; flex: none;',
-      '  accent-color: #0f4c75; cursor: pointer; }'
+      '  accent-color: #0f4c75; cursor: pointer; }',
+      // Current-file block at the top of the uploader.
+      '.scw-acpt-cur { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }',
+      '.scw-acpt-cur__cap { font: 700 9.5px/1 system-ui, sans-serif; letter-spacing: .08em;',
+      '  text-transform: uppercase; color: #94a3b8; }',
+      '.scw-acpt-cur__file { display: flex; align-items: center; gap: 8px;',
+      '  padding: 10px 12px; border: 1px solid #bbf7d0; border-radius: 9px;',
+      '  background: #f0fdf4; color: #15803d !important;',
+      '  font: 600 12.5px/1.3 system-ui, sans-serif; text-decoration: none !important; }',
+      'a.scw-acpt-cur__file:hover { background: #dcfce7; }',
+      '.scw-acpt-cur__file svg { flex: none; color: #16a34a; }',
+      '.scw-acpt-cur__nm { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }',
+      '.scw-acpt-cur__hint { flex: none; font: 600 10px/1 system-ui, sans-serif;',
+      '  letter-spacing: .06em; text-transform: uppercase; color: #4ade80; }',
+      // Outcome toast (uploader auto-closes; results land here).
+      '.scw-acpt-toast { position: fixed; left: 50%; bottom: 28px;',
+      '  transform: translate(-50%, 10px); z-index: 100001; pointer-events: none;',
+      '  background: #0f4c75; color: #fff; padding: 11px 20px; border-radius: 999px;',
+      '  font: 600 12.5px/1.45 system-ui, -apple-system, sans-serif;',
+      '  box-shadow: 0 10px 28px rgba(15,23,42,.35); max-width: min(560px, 92vw);',
+      '  text-align: center; opacity: 0; transition: opacity .25s, transform .25s; }',
+      '.scw-acpt-toast.is-in { opacity: 1; transform: translate(-50%, 0); }',
+      '.scw-acpt-toast.is-err { background: #be123c; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID; s.textContent = css;
@@ -300,28 +324,33 @@
   /** Run the check and report into an existing modal status element.
    *  `onDone` fires after the view refetch is queued. */
   function runGreenlight(viewKey, recId, info, source, statusEl, btn) {
-    if (statusEl) {
-      statusEl.style.display = '';
-      statusEl.classList.remove('is-err');
-      statusEl.textContent = 'Checking…';
+    // With a statusEl the outcome renders inline (a modal is still open);
+    // without one the caller has already closed its modal, so outcomes
+    // land as toasts instead.
+    function report(msg, isErr) {
+      if (statusEl) {
+        statusEl.style.display = '';
+        statusEl.classList.toggle('is-err', !!isErr);
+        statusEl.textContent = msg;
+      } else {
+        toast(msg, isErr);
+      }
     }
+    if (statusEl) report('Checking…');
     if (btn) btn.disabled = true;
     return postGreenlight(greenlightPayload(recId, info, source)).then(function (r) {
       var explicitError = r.data && (r.data.success === false || r.data.error);
       if (r.unconfigured) {
-        if (statusEl) {
-          statusEl.classList.add('is-err');
-          statusEl.textContent = 'Greenlight check isn\'t configured yet.';
-        }
+        report('Greenlight check isn\'t configured yet.', true);
         if (btn) btn.disabled = false;
         return false;
       }
       if (!r.ok || explicitError) {
-        if (statusEl) {
-          statusEl.classList.add('is-err');
-          statusEl.textContent = (r.data && (r.data.error || r.data.message)) ||
-            (r.status ? 'Check failed (HTTP ' + r.status + ')' : 'Check failed — network error');
-        }
+        var msg = (r.data && (r.data.error || r.data.message)) ||
+          (r.status ? 'Greenlight check failed (HTTP ' + r.status + ')'
+                    : 'Greenlight check failed — network error');
+        // Toast mode has no modal to retry from — point at the row button.
+        report(statusEl ? msg : msg + '. Use “Check greenlight” on the row to retry.', true);
         if (btn) btn.disabled = false;
         return false;
       }
@@ -329,15 +358,32 @@
       // "Accepted") while the scenario keeps running past its 40s window —
       // both are fine, so say what we actually know and let the refetch
       // surface whatever flags the scenario flips.
-      if (statusEl) {
-        statusEl.textContent = (r.data && r.data.message) ||
-          (r.data && typeof r.data.greenlit === 'boolean'
-            ? (r.data.greenlit ? 'Ready to greenlight.' : 'Not ready to greenlight yet.')
-            : 'Greenlight check sent — this panel updates when it finishes.');
-      }
+      report((r.data && r.data.message) ||
+        (r.data && typeof r.data.greenlit === 'boolean'
+          ? (r.data.greenlit ? 'Ready to greenlight.' : 'Not ready to greenlight yet.')
+          : 'Greenlight check sent — this panel updates when it finishes.'));
       setTimeout(function () { refreshAcptView(viewKey); }, 2500);
       return true;
     });
+  }
+
+  // Bottom-center toast — the uploader closes itself on submit, so async
+  // outcomes need somewhere to land that isn't a modal. One at a time;
+  // a new toast replaces the current one. Errors linger longer.
+  var TOAST_ID = 'scw-acpt-toast';
+  function toast(msg, isErr) {
+    var t = document.getElementById(TOAST_ID);
+    if (t) t.remove();
+    t = document.createElement('div');
+    t.id = TOAST_ID;
+    t.className = 'scw-acpt-toast' + (isErr ? ' is-err' : '');
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function () { t.classList.add('is-in'); }, 20);
+    setTimeout(function () {
+      t.classList.remove('is-in');
+      setTimeout(function () { if (t.parentNode) t.remove(); }, 300);
+    }, isErr ? 8000 : 4500);
   }
 
   function pill(label, yes) {
@@ -444,26 +490,43 @@
   }
 
   /** File-field editor (signed agreement field_2767 / bid basis PDF
-   *  field_2947). MODAL FIRST, action last: drop or browse to a file, tick
-   *  or untick the greenlight check, then one Upload click does everything.
+   *  field_2947). ONE modal for the whole slot — clicking anywhere on a
+   *  populated tile lands here, so there's no viewer/editor split:
+   *    - shows the CURRENT file (opens in a new tab),
+   *    - takes a replacement by drop or browse,
+   *    - carries the greenlight-check option (agreement only).
+   *  One submit does everything, then the modal closes ITSELF — outcomes
+   *  land as toasts, so there's nothing left to click through.
    *
-   *  Replaces the old picker-first flow (OS dialog → upload starts
-   *  immediately → offer the check afterwards), where the post-upload offer
-   *  landed under a cursor already moving and got dismissed unread. Here the
-   *  choice sits in front of the user BEFORE anything fires, and nothing
-   *  happens until they commit.
-   *
-   *  opts: { offerGreenlight: bool, info: {...}, greenlightLabel: string } */
+   *  opts: { offerGreenlight: bool, info: {...}, greenlightLabel: string,
+   *          current: { name, href } | null } */
   function openFileUpload(viewKey, recId, fieldKey, title, opts) {
     opts = opts || {};
     var wantsGreenlight = !!(opts.offerGreenlight && greenlightUrl());
+    var current = opts.current || null;
 
     var body = document.createElement('div');
     body.innerHTML =
+      // Current file — visible the moment the modal opens, clicks out to
+      // a new tab (no z-index fight with Knack's lightbox under our modal).
+      (current
+        ? '<div class="scw-acpt-cur">' +
+            '<div class="scw-acpt-cur__cap">Current file</div>' +
+            (current.href
+              ? '<a class="scw-acpt-cur__file" target="_blank" rel="noopener" href="' + esc(current.href) + '" ' +
+                   'title="Open ' + esc(current.name || 'file') + ' in a new tab">' +
+                  FILE_SVG + '<span class="scw-acpt-cur__nm">' + esc(current.name || 'file') + '</span>' +
+                  '<span class="scw-acpt-cur__hint">view</span>' +
+                '</a>'
+              : '<span class="scw-acpt-cur__file">' + FILE_SVG +
+                  '<span class="scw-acpt-cur__nm">' + esc(current.name || 'file') + '</span></span>') +
+          '</div>'
+        : '') +
       '<div class="scw-acpt-drop" tabindex="0" role="button" ' +
-           'aria-label="Drop a file here or click to browse">' +
+           'aria-label="' + (current ? 'Drop a replacement here or click to browse'
+                                     : 'Drop a file here or click to browse') + '">' +
         UPLOAD_SVG +
-        '<div class="scw-acpt-drop__t">Drop the file here</div>' +
+        '<div class="scw-acpt-drop__t">' + (current ? 'Drop a replacement here' : 'Drop the file here') + '</div>' +
         '<div class="scw-acpt-drop__s">or click to browse</div>' +
       '</div>' +
       '<div class="scw-acpt-file" hidden>' +
@@ -491,14 +554,25 @@
     var status  = body.querySelector('.scw-acpt-m__status');
     var chosen  = null;
 
-    m.ok.disabled = true;   // nothing to upload yet
-
     // Hidden native input — the dropzone's click/keyboard path.
     var input = document.createElement('input');
     input.type = 'file';
     input.accept = '.pdf,.doc,.docx,image/*,application/pdf';
     input.style.display = 'none';
     body.appendChild(input);
+
+    // The primary button says exactly what submit will do: a replacement
+    // chosen → "Upload"; nothing chosen but the check ticked on an
+    // already-populated slot → "Run check"; otherwise there's nothing to
+    // submit and it stays disabled.
+    function updateOk() {
+      if (chosen) { m.ok.textContent = 'Upload'; m.ok.disabled = false; return; }
+      if (current && wantsGreenlight && glCheck && glCheck.checked) {
+        m.ok.textContent = 'Run check'; m.ok.disabled = false; return;
+      }
+      m.ok.textContent = 'Upload';
+      m.ok.disabled = true;
+    }
 
     function fmtSize(n) {
       if (!n && n !== 0) return '';
@@ -511,16 +585,15 @@
       if (!chosen) {
         chip.hidden = true;
         drop.hidden = false;
-        m.ok.disabled = true;
-        return;
+      } else {
+        chipNm.textContent = chosen.name || 'file';
+        chipSz.textContent = fmtSize(chosen.size);
+        chip.hidden = false;
+        drop.hidden = true;        // the chip IS the state — no duplicate zone
+        status.style.display = 'none';
+        status.classList.remove('is-err');
       }
-      chipNm.textContent = chosen.name || 'file';
-      chipSz.textContent = fmtSize(chosen.size);
-      chip.hidden = false;
-      drop.hidden = true;          // the chip IS the state — no duplicate zone
-      m.ok.disabled = false;
-      status.style.display = 'none';
-      status.classList.remove('is-err');
+      updateOk();
     }
 
     drop.addEventListener('click', function () { input.click(); });
@@ -534,6 +607,8 @@
       input.value = '';
       setFile(null);
     });
+    if (glCheck) glCheck.addEventListener('change', updateOk);
+    updateOk();
 
     // Drag + drop. dragover MUST preventDefault or the browser navigates to
     // the file instead of firing drop.
@@ -577,8 +652,18 @@
     }
 
     m.ok.addEventListener('click', function () {
-      if (!chosen) return;
-      var runCheck = !!(glCheck && glCheck.checked);
+      var runCheck = !!(wantsGreenlight && glCheck && glCheck.checked);
+
+      // Check-only submit (populated slot, no replacement chosen): fire
+      // and close — the outcome arrives as a toast.
+      if (!chosen) {
+        if (!runCheck) return;
+        m.close();
+        toast('Checking greenlight…');
+        runGreenlight(viewKey, recId, opts.info || {}, 'manual', null, null);
+        return;
+      }
+
       m.ok.disabled = true;
       m.ok.textContent = 'Uploading…';
       say('Uploading ' + (chosen.name || 'file') + '…');
@@ -603,33 +688,18 @@
           var fields = {};
           fields[fieldKey] = assetId;
           putAcceptance(viewKey, recId, fields).then(function () {
-            // File is on the record. The check is a SEPARATE promise —
-            // a webhook failure must never read as a failed upload.
-            if (!runCheck) {
-              m.close();
-              refreshAcptView(viewKey);
-              return;
+            // Saved — close immediately and report by toast. The check is
+            // a separate promise: if it fails, the toast says the file
+            // still landed. Failures BEFORE this point keep the modal open
+            // (an error the user must retry can't auto-dismiss).
+            m.close();
+            refreshAcptView(viewKey);
+            if (runCheck) {
+              toast('Uploaded — checking greenlight…');
+              runGreenlight(viewKey, recId, opts.info || {}, 'agreement-upload', null, null);
+            } else {
+              toast(title + ' uploaded.');
             }
-            say('Checking greenlight…');
-            runGreenlight(viewKey, recId, opts.info || {}, 'agreement-upload', status, null)
-              .then(function (sent) {
-                if (sent) {
-                  // runGreenlight already queued the refetch and wrote the
-                  // outcome into status — leave it up briefly so the answer
-                  // is readable, then get out of the way.
-                  m.ok.textContent = 'Close';
-                  m.ok.disabled = false;
-                  m.ok.onclick = function () { m.close(); };
-                  return;
-                }
-                // Upload succeeded, check didn't. Say exactly that.
-                status.classList.add('is-err');
-                status.textContent = 'File saved, but the greenlight check ' +
-                  'failed to send. Use “Check greenlight” on the row to retry.';
-                m.ok.textContent = 'Close';
-                m.ok.disabled = false;
-                m.ok.onclick = function () { m.close(); refreshAcptView(viewKey); };
-              });
           }).catch(function (err) {
             fail((err && err.message) || 'Save failed');
           });
@@ -643,25 +713,16 @@
     setTimeout(function () { drop.focus(); }, 30);
   }
 
-  /** Standalone greenlight check (row button). Own small modal so the
-   *  result has somewhere to land. */
+  /** Standalone greenlight check (row button): confirm, fire, close —
+   *  the outcome lands as a toast. */
   function openGreenlightCheck(viewKey, recId, info) {
     var body = document.createElement('div');
-    body.innerHTML =
-      '<div>Ask Make whether this deal is ready to greenlight for install?</div>' +
-      '<div class="scw-acpt-m__status" style="display:none"></div>';
+    body.innerHTML = '<div>Ask Make whether this deal is ready to greenlight for install?</div>';
     var m = acptModal('Greenlight check', body, 'Run check');
-    var status = body.querySelector('.scw-acpt-m__status');
     m.ok.addEventListener('click', function () {
-      runGreenlight(viewKey, recId, info, 'manual', status, m.ok).then(function (sent) {
-        if (!sent) return;
-        m.ok.textContent = 'Close';
-        m.ok.disabled = false;
-        var fresh = m.ok.cloneNode(true);
-        m.ok.parentNode.replaceChild(fresh, m.ok);
-        m.ok = fresh;
-        fresh.addEventListener('click', m.close);
-      });
+      m.close();
+      toast('Checking greenlight…');
+      runGreenlight(viewKey, recId, info, 'manual', null, null);
     });
   }
 
@@ -704,8 +765,11 @@
         return '<button type="button" class="scw-acpt-doc--missing" data-edit-field="' + fk + '" title="Add ' + esc(full) + '">' +
           PLUS_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span></button>';
       }
+      // Populated: the WHOLE tile (main zone and pencil alike) opens the
+      // uploader modal, which shows the current file and takes a
+      // replacement — one behavior, no viewer/editor split.
       return '<span class="scw-acpt-doc">' +
-        '<a class="scw-acpt-doc__open" data-proxy-file="' + fk + '" href="javascript:void(0)" title="Open ' + esc(full) + '">' +
+        '<a class="scw-acpt-doc__open" data-edit-field="' + fk + '" href="javascript:void(0)" title="View or replace ' + esc(full) + '">' +
           CHECK_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span>' +
         '</a>' +
         '<button type="button" class="scw-acpt-doc__edit" data-edit-field="' + fk + '" title="' + esc(editTitle) + '">' + PENCIL_SVG + '</button>' +
@@ -782,18 +846,6 @@
     card.className = 'scw-acpt-row';
     card.innerHTML = html;
 
-    // Proxy file-button clicks to the original (hidden) asset anchors so
-    // Knack's asset preview handlers still run.
-    var fileAnchors = {};
-    fileAnchors[F.agreement] = fileA;
-    fileAnchors[F.bidPdf]    = bidPdfA;
-    var fileBtns = card.querySelectorAll('[data-proxy-file]');
-    for (var fb = 0; fb < fileBtns.length; fb++) {
-      (function (btn) {
-        var a = fileAnchors[btn.getAttribute('data-proxy-file')];
-        if (a) btn.addEventListener('click', function (e) { e.preventDefault(); a.click(); });
-      })(fileBtns[fb]);
-    }
     var actBtn = card.querySelector('[data-proxy="action"]');
     if (actBtn && actionA) actBtn.addEventListener('click', function () { actionA.click(); });
 
@@ -825,13 +877,18 @@
           openLinkEditor(viewKey, recId, F.xeroEst, 'Xero estimate link',
             xeroEstA ? (xeroEstA.getAttribute('href') || '') : '');
         } else if (fk === F.agreement) {
-          openFileUpload(viewKey, recId, F.agreement, 'Upload signed agreement', {
+          openFileUpload(viewKey, recId, F.agreement, 'Signed agreement', {
             offerGreenlight: true,
             info: glInfo,
-            greenlightLabel: 'Also check whether this deal is ready to greenlight'
+            greenlightLabel: 'Also check whether this deal is ready to greenlight',
+            current: fileA ? { name: (fileA.textContent || '').replace(/\s+/g, ' ').trim(),
+                              href: fileA.getAttribute('href') || '' } : null
           });
         } else if (fk === F.bidPdf) {
-          openFileUpload(viewKey, recId, F.bidPdf, 'Upload bid basis PDF');
+          openFileUpload(viewKey, recId, F.bidPdf, 'Bid basis PDF', {
+            current: bidPdfA ? { name: (bidPdfA.textContent || '').replace(/\s+/g, ' ').trim(),
+                                href: bidPdfA.getAttribute('href') || '' } : null
+          });
         }
       });
     }
