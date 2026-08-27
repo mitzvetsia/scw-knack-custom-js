@@ -65,6 +65,11 @@
     '.scw-sbd-collapse:hover .scw-sbd-chevron { color: #0f172a; }',
     '.scw-sbd-inline--collapsed .scw-sbd-chevron { transform: rotate(-90deg); }',
     '.scw-sbd-inline--collapsed .scw-sbd-inline-body { display: none; }',
+    /* coverage-gap chip on the bar — the fold must never hide a gap */
+    '.scw-sbd-bargap { display: inline-flex; align-items: center;',
+    '  font: 700 11px/1.4 system-ui, sans-serif; color: #be123c;',
+    '  background: #fff1f2; border: 1px solid #fecdd3; border-radius: 999px;',
+    '  padding: 2px 9px; white-space: nowrap; }',
     /* when collapsed, the bar is the panel\'s bottom edge — drop the heavy rule */
     '.scw-sbd-inline--collapsed .scw-sbd-inline-bar { border-bottom: none; }',
     '.scw-sbd-inline .scw-sbd-tally { border-bottom: none; }',
