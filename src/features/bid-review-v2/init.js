@@ -577,7 +577,22 @@
     expand.className = 'scw-bid-review-v2__expand-row';
     expand.setAttribute('data-expand-for', stateKey);
     var td = document.createElement('td');
-    td.colSpan = row.children.length;
+    // Span the VISIBLE cells only. The table is table-layout:fixed, so the
+    // largest colspan in it declares the column count — spanning the full
+    // cell list while basis-filter has bid columns display:none'd re-opens
+    // a phantom column per hidden bid and shoves the whole grid sideways
+    // on every expand. Stamp the full count as data-scw-orig-colspan so
+    // basis-filter's colspan fixer keeps this cell in sync if the filter
+    // changes while the panel is open (same contract as the docs band and
+    // group-header rows).
+    var fullCells = row.children.length;
+    var visCells = 0;
+    for (var ci = 0; ci < fullCells; ci++) {
+      var cst = window.getComputedStyle ? getComputedStyle(row.children[ci]) : null;
+      if (!cst || cst.display !== 'none') visCells++;
+    }
+    td.colSpan = Math.max(1, visCells);
+    td.setAttribute('data-scw-orig-colspan', String(fullCells));
     td.className = 'scw-bid-review-v2__expand-cell';
 
     // Panel layout. The data row is hidden while open (CSS keyed on
