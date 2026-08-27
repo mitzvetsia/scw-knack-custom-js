@@ -68,6 +68,24 @@
     catch (e) {}
   }
 
+  // Quiet layout (2026-08-27 UX triage): the diff panel defaults FOLDED —
+  // the bar (chevron + basis picker + readiness + gap chip) stays standing,
+  // the body only opens when the diff needs eyes (coverage gaps / missing
+  // note) or the user opens it. An explicit toggle always wins and persists
+  // per SOW; the toolbar's Classic-layout switch restores default-open.
+  function brClassic() {
+    try { return localStorage.getItem('scwBrLayoutClassic') === '1'; }
+    catch (e) { return false; }
+  }
+  var attentionBySow = {};   // sowId → diff currently needs eyes (set by inlineHtml)
+  function resolveCollapsed(sowId) {
+    if (Object.prototype.hasOwnProperty.call(collapsedBySow, sowId)) {
+      return !!collapsedBySow[sowId];
+    }
+    if (brClassic()) return false;
+    return !attentionBySow[sowId];
+  }
+
   /** Persist the basis bid on the SOW (field_2942, single connection) via the
    *  SOW write view. The diff snapshot (field_2941) rides in the SAME PUT so
    *  the two fields can never diverge: relying on the debounced auto-save to
@@ -1195,10 +1213,20 @@
         'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
         '<polyline points="6 9 12 15 18 9"></polyline></svg>' +
       '<span class="scw-sbd-pill">sub-bid diff</span></button>';
+    // Signals the folded bar must carry: attention state (drives the quiet
+    // default-open) and a gap chip so a collapsed panel can't hide a
+    // coverage problem.
+    var gaps = (res && res.coverageGaps) || 0;
+    attentionBySow[sowId] = !!(gaps > 0 || needsNote);
+    var gapChip = gaps > 0
+      ? '<span class="scw-sbd-bargap" title="SOW lines needing a bid, or bid lines off this SOW">⚠ ' +
+          gaps + ' gap' + (gaps === 1 ? '' : 's') + '</span>'
+      : '';
     var bar = '<div class="scw-sbd-inline-bar">' +
       toggle +
       selector(grid, selId, persisted) +
       '<span class="scw-sbd-ready scw-sbd-ready--' + rd.state + '">' + esc(rd.label) + '</span>' +
+      gapChip +
       '</div>';
     var body;
     if (!selId) {
@@ -1314,8 +1342,9 @@
         else sec.insertBefore(block, sec.firstChild);
       }
       block.innerHTML = inlineHtml(grid);
-      // Re-apply the independent collapse state (survives this rebuild).
-      block.classList.toggle('scw-sbd-inline--collapsed', !!collapsedBySow[sowId]);
+      // Re-apply the collapse state (survives this rebuild). inlineHtml just
+      // stashed attentionBySow, so the quiet default resolves correctly.
+      block.classList.toggle('scw-sbd-inline--collapsed', resolveCollapsed(sowId));
 
       // Keep field_2941 in lockstep with whatever the diff currently shows —
       // any data change, basis pick, or note edit re-persists (debounced).
@@ -1453,7 +1482,10 @@
       if (ct) {
         var csow = ct.getAttribute('data-sow-id');
         if (csow) {
-          collapsedBySow[csow] = !collapsedBySow[csow];
+          // Flip from the RESOLVED state, not the raw map — under the quiet
+          // default a SOW with no stored entry renders collapsed, and its
+          // first click must open it (storing the choice explicitly).
+          collapsedBySow[csow] = !resolveCollapsed(csow);
           saveCollapsed();
           var blk = ct.closest('.scw-sbd-inline');
           if (blk) blk.classList.toggle('scw-sbd-inline--collapsed', !!collapsedBySow[csow]);

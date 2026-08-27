@@ -70,6 +70,11 @@
     '  border-radius: 5px; padding: 3px 10px; cursor: pointer; margin-left: 6px;',
     '  font: 600 11px/1.5 system-ui, sans-serif; white-space: nowrap; }',
     '.scw-sbd-savedef:hover { background: #0a3a63; }',
+    /* coverage-gap chip on the bar — the fold must never hide a gap */
+    '.scw-sbd-bargap { display: inline-flex; align-items: center;',
+    '  font: 700 11px/1.4 system-ui, sans-serif; color: #be123c;',
+    '  background: #fff1f2; border: 1px solid #fecdd3; border-radius: 999px;',
+    '  padding: 2px 9px; white-space: nowrap; }',
     /* when collapsed, the bar is the panel\'s bottom edge — drop the heavy rule */
     '.scw-sbd-inline--collapsed .scw-sbd-inline-bar { border-bottom: none; }',
     '.scw-sbd-inline .scw-sbd-tally { border-bottom: none; }',
