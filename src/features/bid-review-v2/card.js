@@ -1174,19 +1174,11 @@
               escapeHtml(fmtMoney(sd.equipmentTotal)) + '</span>' +
           '</div>';
       }
-      if (sd.installFee) {
-        labelHtml +=
-          '<div class="scw-bid-review-v2__row-total scw-bid-review-v2__row-total--install">' +
-            '<span class="scw-bid-review-v2__row-total-label">Install</span>' +
-            '<span class="scw-bid-review-v2__row-total-value">' +
-              escapeHtml(fmtMoney(sd.installFee)) + '</span>' +
-          '</div>';
-      }
-      // Money riding this row's ACCESSORIES (transform's field_2464
-      // rollup). Out of the norm — accessories usually carry no fees —
-      // but when they do it must be visible, or the row totals read
-      // short against the SOW header (which counts every line item).
-      // Rendered amber so it registers as "extra money here".
+      // Accessory money (transform's field_2464 rollup) renders directly
+      // under its kind — equipment figures grouped together, then labor —
+      // so the cell reads as two money families, not four disjoint lines.
+      // Accessories usually carry no fees; the "+ Acc" lines only render
+      // when nonzero, and without them the cell is unchanged.
       if (sd.accEquip) {
         labelHtml +=
           '<div class="scw-bid-review-v2__row-total scw-bid-review-v2__row-total--acc" ' +
@@ -1194,6 +1186,14 @@
             '<span class="scw-bid-review-v2__row-total-label">+ Acc Equip</span>' +
             '<span class="scw-bid-review-v2__row-total-value">' +
               escapeHtml(fmtMoney(sd.accEquip)) + '</span>' +
+          '</div>';
+      }
+      if (sd.installFee) {
+        labelHtml +=
+          '<div class="scw-bid-review-v2__row-total scw-bid-review-v2__row-total--install">' +
+            '<span class="scw-bid-review-v2__row-total-label">Install</span>' +
+            '<span class="scw-bid-review-v2__row-total-value">' +
+              escapeHtml(fmtMoney(sd.installFee)) + '</span>' +
           '</div>';
       }
       if (sd.accInstall) {
