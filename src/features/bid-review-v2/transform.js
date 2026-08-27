@@ -693,6 +693,25 @@
         }
       }
     })();
+    // Deterministic section order: by the SOW's increment number, low →
+    // high. Without this, sections rendered in ENCOUNTER order — whatever
+    // order the bid records loaded in — which could shuffle between page
+    // loads. Key = the digits of the SW#### token (fallback: the last
+    // number in the identifier); a CO lands right after its base SOW via
+    // the string tiebreak; no number at all sinks to the end. The
+    // synthetic "Bid items (no matching SOW)" grid is pushed AFTER this
+    // sort, so it always stays last.
+    function sowIncrement(name) {
+      var s = String(name || '');
+      var m = s.match(/SW-?(\d+)/i);
+      if (!m) m = s.match(/(\d+)(?!.*\d)/);
+      return m ? parseInt(m[1], 10) : Infinity;
+    }
+    sows.sort(function (a, b) {
+      var ka = sowIncrement(a.name), kb = sowIncrement(b.name);
+      if (ka !== kb) return ka - kb;
+      return String(a.name).localeCompare(String(b.name));
+    });
     // bid record id → its SOW line item id (field_2404 relatedSowItem). Lets
     // the connected-device / connected-to diff resolve a bid record's
     // connections (field_2380/2381 point at OTHER bid records) to SOW line
