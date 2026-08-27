@@ -956,6 +956,29 @@
       };
     }
 
+    // Accessory money rollup — each parent's attached accessories'
+    // equipment + install fee, aggregated from the CHILDREN's own
+    // field_2464 back-pointer (authoritative per CLAUDE.md Known Issue
+    // #12 — the parent's forward field_2207 list can go stale).
+    // Accessories never render as rows on this grid (they ride their
+    // parents), so this is how their money surfaces on the parent row
+    // (card.js renders "+ Acc Equip / + Acc Install" from these). The
+    // SOW header Install total is unaffected — it already sums every
+    // item from the index individually, accessories included.
+    if (SFK.accessoryParent) {
+      for (var ari = 0; ari < sowItemList.length; ari++) {
+        var arec = sowItemList[ari];
+        if (!arec || !arec.id) continue;
+        var apId = connectionId(arec, SFK.accessoryParent);
+        if (!apId || !sowItemIndex[apId]) continue;
+        var aEntry = sowItemIndex[arec.id];
+        if (!aEntry) continue;
+        var apar = sowItemIndex[apId];
+        apar.accEquip   = (apar.accEquip   || 0) + (aEntry.equipmentTotal || 0);
+        apar.accInstall = (apar.accInstall || 0) + (aEntry.installFee || 0);
+      }
+    }
+
     // SOW items that aren't on any bid → synthesized "NOT SURVEYED" rows,
     // keyed by SOW. Merged into each SOW grid below.
     var noBidBySow = buildNoBidRows(sowItemList);

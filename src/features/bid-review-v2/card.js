@@ -1164,7 +1164,7 @@
     // Per-row SOW totals — Equipment Total above Install Fee, mirroring
     // v1's leftmost column. Read from the SOW item snapshot.
     var sd = row.sowItemData;
-    if (sd && (sd.equipmentTotal || sd.installFee)) {
+    if (sd && (sd.equipmentTotal || sd.installFee || sd.accEquip || sd.accInstall)) {
       labelHtml += '<div class="scw-bid-review-v2__row-totals">';
       if (sd.equipmentTotal) {
         labelHtml +=
@@ -1180,6 +1180,29 @@
             '<span class="scw-bid-review-v2__row-total-label">Install</span>' +
             '<span class="scw-bid-review-v2__row-total-value">' +
               escapeHtml(fmtMoney(sd.installFee)) + '</span>' +
+          '</div>';
+      }
+      // Money riding this row's ACCESSORIES (transform's field_2464
+      // rollup). Out of the norm — accessories usually carry no fees —
+      // but when they do it must be visible, or the row totals read
+      // short against the SOW header (which counts every line item).
+      // Rendered amber so it registers as "extra money here".
+      if (sd.accEquip) {
+        labelHtml +=
+          '<div class="scw-bid-review-v2__row-total scw-bid-review-v2__row-total--acc" ' +
+            'title="Equipment on this item’s accessories (not shown as rows)">' +
+            '<span class="scw-bid-review-v2__row-total-label">+ Acc Equip</span>' +
+            '<span class="scw-bid-review-v2__row-total-value">' +
+              escapeHtml(fmtMoney(sd.accEquip)) + '</span>' +
+          '</div>';
+      }
+      if (sd.accInstall) {
+        labelHtml +=
+          '<div class="scw-bid-review-v2__row-total scw-bid-review-v2__row-total--acc" ' +
+            'title="Install fees on this item’s accessories (not shown as rows)">' +
+            '<span class="scw-bid-review-v2__row-total-label">+ Acc Install</span>' +
+            '<span class="scw-bid-review-v2__row-total-value">' +
+              escapeHtml(fmtMoney(sd.accInstall)) + '</span>' +
           '</div>';
       }
       labelHtml += '</div>';

@@ -965,6 +965,14 @@
     '  font: 700 9px/1.2 system-ui, -apple-system, sans-serif;',
     '  text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8;',
     '}',
+    /* Accessory money riding the parent row — amber, per the repo's
+       warning color convention: out of the norm, must not be missed. */
+    '.scw-bid-review-v2__row-total--acc .scw-bid-review-v2__row-total-label {',
+    '  color: #b45309;',
+    '}',
+    '.scw-bid-review-v2__row-total--acc .scw-bid-review-v2__row-total-value {',
+    '  color: #b45309; font-weight: 700;',
+    '}',
     '.scw-bid-review-v2__row-total-value {',
     '  font-size: 12px; font-weight: 600; color: #0f172a;',
     '}',
