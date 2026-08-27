@@ -1443,7 +1443,22 @@
         var sdat = allRows[sr].sowItemData;
         if (sdat && !allRows[sr].offSow) {
           sowSub     += sdat.fee || 0;
-          sowInstall += sdat.installFee || 0;
+        }
+      }
+      // Install total: Σ installFee over EVERY view_3921 record whose OWN
+      // field_2154 names this SOW — walked from the item INDEX, not the
+      // grid rows. Accessory line items never render as rows here (they
+      // ride their parents), so the old row-based sum silently dropped
+      // their install fees and the header under-read the SOW's real
+      // Install Total (field_2161) by exactly the accessories' install.
+      // Sub Bid deliberately STAYS row-based: it's compared against the
+      // bid columns' totals for the "matches SOW" delta, and bids price
+      // parent rows only — an index-based Sub Bid would break the match
+      // the moment an accessory carried a fee.
+      for (var itKey in sowItemIndex) {
+        var itIdx = sowItemIndex[itKey];
+        if (itIdx && itIdx.sowIds && itIdx.sowIds[sow.id]) {
+          sowInstall += itIdx.installFee || 0;
         }
       }
       for (var pi = 0; pi < packages.length; pi++) {
