@@ -604,7 +604,16 @@
        for it, so SOW/bid data isn't shown twice. */
     '.scw-bid-review-v2__row[aria-expanded="true"] { display: none !important; }',
     /* ── Expand panel ──────────────────────────────────────── */
-    '.scw-bid-review-v2__panel { width: 100%; }',
+    /* width:0 + min-width:100% is the don't-widen-the-table containment
+       trick. The expand td spans every column, and table intrinsic sizing
+       treats a WRAPPED flex container's max-content as everything-on-one-
+       line — so a panel with several bid cards (6 bids = editor + 6×320px
+       cards) used to set the whole TABLE's width, opening dead space over
+       the hidden bid columns and jumping the layout on every expand.
+       width:0 keeps the panel out of the intrinsic pass entirely; the
+       percentage min-width then stretches it to the cell's settled width
+       after layout, and the flex content wraps inside instead of pushing. */
+    '.scw-bid-review-v2__panel { width: 0; min-width: 100%; }',
     '.scw-bid-review-v2__panel-header {',
     '  display: flex; align-items: center; gap: 10px;',
     '  padding: 4px 4px 12px; cursor: pointer;',
