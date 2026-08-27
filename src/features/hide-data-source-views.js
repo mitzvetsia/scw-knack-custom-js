@@ -43,8 +43,15 @@
     // request as draftView for SOW record API calls.
     'view_3841',
     // 'view_3876' — workflow-stepper reads field_2329 here to build
-    // the action link href.
+    // the action link href; survey-request-cards renders its rows as
+    // cards and workflow-stepper ships the latest row as the
+    // lastSurveyRequestInfo payload snapshot.
     'view_3876',
+    // 'view_4155' — SURVEY_requests rounds for the project on the sales
+    // build-SOW page (scene_1116). workflow-stepper's bidIsBack() reads
+    // field_2955 from its model (drives the alt-proposal step's bid-back
+    // copy) and the alt-proposal payload ships its rounds as context.
+    'view_4155',
     // 'view_3913' — hidden grid of all SOW line items on the project,
     // scraped by import-unique-items-btn for the sowId → lineItemIds
     // index (and itemId → label map). change-record-limit pumps it

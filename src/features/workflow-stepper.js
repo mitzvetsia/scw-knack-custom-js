@@ -7,11 +7,7 @@
   var SCENE_ID = 'scene_1116';
   var SOURCE_VIEW = 'view_3827';
 
-  // ── Project-level "a bid already came back" rollup ───────
-  // Sibling of field_2728 (project SOWs with survey requested) and
-  // field_2917 (project SOWs with survey validated): a PROJECT-level
-  // count of SOWs that already have a subcontractor bid returned.
-  //
+  // ── Project-level "a bid already came back" signal ───────
   // Why it exists: the alternative-proposal ask reads very differently
   // depending on whether the survey round is still open. While it's
   // open, "add this SOW to the survey as an alternative bid" is exactly
@@ -21,19 +17,55 @@
   // same webhook; only the copy changes (see the dynamicLabel /
   // subText / promptCopy entries on 'request-alternative-proposal').
   //
-  // ⚠️ TBD — set this to the Builder rollup's field key once it exists
-  // and is projected onto view_3827. Until then it stays '', readField
-  // returns '', every `gt: 0` test fails, and every bid-back copy entry
-  // falls through to today's wording. Nothing to un-ship if the field
-  // never lands.
-  var BID_BACK_FIELD = '';   // e.g. 'field_29XX' — project SOWs with a bid returned
+  // Source of truth: the SURVEY_requests grid (view_4155, project-wide
+  // survey rounds, hidden by hide-data-source-views). A round with
+  // DATE_first-bid-submitted (field_2955) set means a bid came back.
+  // Fallback union: field_2996 on the SOW header (bids connected to
+  // THIS SOW) > 0 — definitionally "a bid is back" even while view_4155
+  // is still loading or absent. Legacy rounds run outside the
+  // SURVEY_requests architecture have no REQ row; the fallback is what
+  // catches those when this SOW itself carries the bid.
+  var SURVEY_REQS_VIEW   = 'view_4155';  // SURVEY_requests grid (project rounds)
+  var REQ_FIRST_BID_DATE = 'field_2955'; // DATE first bid submitted (on the REQ)
+  var REQ_FIELDS = {                     // payload context for the Ops card
+    reqId:     'field_2345',             // REQ_ID (e.g. 61052838674-SR121)
+    status:    'field_2349',             // FLAG_survey status
+    requested: 'field_2351',             // DATE_requested
+    scheduled: 'field_2352',             // DATE_scheduled
+    occurred:  'field_2353'              // DATE_occured
+  };
+  var SOW_BID_COUNT = 'field_2996';      // bids connected to THIS SOW (view_3827)
+
+  function stripHtml(v) {
+    if (v == null) return '';
+    return String(v).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  // Raw attribute maps of every survey round loaded in view_4155.
+  // Empty array when the view is absent/not yet populated — callers
+  // must treat that as "no evidence", not "no rounds exist".
+  function surveyRounds() {
+    var out = [];
+    try {
+      var v = Knack.views && Knack.views[SURVEY_REQS_VIEW];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i].attributes || models[i];
+        if (a && a.id) out.push(a);
+      }
+    } catch (e) { /* view absent — no evidence */ }
+    return out;
+  }
 
   // True when a subcontractor bid has come back on ANY SOW on this
-  // project (including this one). Guarded so an unconfigured or
-  // unprojected field reads as "no bids back" rather than throwing.
+  // project (including this one). Guarded so a missing view / field
+  // reads as "no bids back" rather than throwing.
   function bidIsBack() {
-    if (!BID_BACK_FIELD) return false;
-    return conditionMet({ field: BID_BACK_FIELD, gt: 0 });
+    var rounds = surveyRounds();
+    for (var i = 0; i < rounds.length; i++) {
+      if (stripHtml(rounds[i][REQ_FIRST_BID_DATE])) return true;
+    }
+    return conditionMet({ field: SOW_BID_COUNT, gt: 0 });
   }
   var BID_BACK    = { fn: bidIsBack };
   var NO_BID_BACK = { not: { fn: bidIsBack } };
@@ -258,8 +290,9 @@
       //      priced against what came back.
       //   2. Is THIS SOW validated (field_2723)? Decides whether the
       //      ask also carries the validation request.
-      // First match wins, so the bid-back pair must come first. Both
-      // bid-back entries are inert until BID_BACK_FIELD is configured.
+      // First match wins, so the bid-back pair must come first. BID_BACK
+      // reads the view_4155 survey rounds (field_2955 first-bid date),
+      // falling back to field_2996 (bids on THIS SOW) — see bidIsBack().
       dynamicLabel: [
         { when: { all: [ BID_BACK, { field: 'field_2723', notValue: 'Yes' } ] },
           label: 'Request Validation & Bid on This Alternative' },
@@ -668,8 +701,8 @@
     // Negation: passes when the wrapped condition does NOT match
     if (cond.not) return !conditionMet(cond.not);
     // Predicate escape hatch, for signals that aren't a plain field read
-    // on SOURCE_VIEW (e.g. bidIsBack, which no-ops until its rollup field
-    // is configured). Composes with all/any/not like any other condition.
+    // on SOURCE_VIEW (e.g. bidIsBack, which reads the view_4155 survey
+    // rounds). Composes with all/any/not like any other condition.
     if (typeof cond.fn === 'function') return !!cond.fn();
 
     var val = readField(cond.field);
@@ -963,6 +996,30 @@
           var account = readConnectionFromView('view_3491', 'field_2119');
           var project = readConnectionFromView('view_3491', 'field_6');
           var projectName = readFieldFromView('view_3491', 'field_1456');
+          // Survey-round history (view_4155) trimmed to the fields Ops
+          // cares about, so a second-round ask lands on the ClickUp card
+          // with the prior rounds attached.
+          var roundsCtx = surveyRounds().map(function (a) {
+            var o = { id: a.id, firstBidSubmitted: stripHtml(a[REQ_FIRST_BID_DATE]) };
+            for (var k in REQ_FIELDS) o[k] = stripHtml(a[REQ_FIELDS[k]]);
+            return o;
+          });
+          // Latest submitted survey-request DTO (project-wide view_3876,
+          // via survey-request-cards' public API): the POC / badging /
+          // PPE snapshot Ops confirms against on a second round — sales
+          // just asks for the bid; re-confirming site access is Ops's
+          // call, made from this context instead of a bounce to sales.
+          var lastReq = null;
+          try {
+            var reqs = (SCW.surveyRequests && SCW.surveyRequests.getRecords &&
+                        SCW.surveyRequests.getRecords()) || [];
+            for (var ri = 0; ri < reqs.length; ri++) {
+              if (!lastReq) { lastReq = reqs[ri]; continue; }
+              var tNew = Date.parse(reqs[ri].requested || '') || 0;
+              var tOld = Date.parse(lastReq.requested || '') || 0;
+              if (tNew >= tOld) lastReq = reqs[ri];
+            }
+          } catch (e2) { /* cards module absent — omit the snapshot */ }
           fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -973,6 +1030,14 @@
               // docs/project-stage-workflow.md). Additive: existing
               // scenario branches ignore unknown keys.
               stepId:         step.id,
+              // Second-round context (all additive — existing branches
+              // ignore what they don't map): whether a bid is already
+              // back, the project's survey rounds, and the last known
+              // site-access snapshot for Ops to confirm.
+              bidIsBack:      bidIsBack(),
+              sowBidCount:    readField(SOW_BID_COUNT) || '0',
+              surveyRounds:   roundsCtx,
+              lastSurveyRequestInfo: lastReq,
               // Resolved label, not the static one — it tells Ops WHICH
               // ask was made (join the open survey vs. price this
               // alternative against bids already back), which the copy
@@ -1942,6 +2007,14 @@
         setTimeout(applySteps, 200);
       }, NS);
     });
+
+    // bidIsBack() reads the SURVEY_requests grid, which isn't a config-
+    // declared dependency view — re-evaluate once its model lands (it
+    // typically renders after SOURCE_VIEW, so the first applySteps pass
+    // ran with zero rounds and showed the NO_BID_BACK copy).
+    SCW.onViewRender(SURVEY_REQS_VIEW, function () {
+      setTimeout(applySteps, 200);
+    }, NS);
   }
 
   $(document).on('knack-scene-render.' + SCENE_ID + NS, function () {
