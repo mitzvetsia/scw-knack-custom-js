@@ -767,11 +767,8 @@
     }
 
     var cells = rowTr.children;
+    var stubs = [];   // {label, badge, btn} — one-fact cells, consolidated below
     for (var i = 3; i < cells.length; i++) {
-      var card = document.createElement('div');
-      card.className = 'scw-bid-review-v2__bid-card';
-      var lbl = document.createElement('div');
-      lbl.className = 'scw-bid-review-v2__bid-card-label';
       // Prefer the column's title text (the sub/bid name pkgTitleCell
       // renders) — the raw th.textContent concatenates the collapse
       // chevrons + eyebrow + basis-toggle text into garbage like
@@ -782,14 +779,43 @@
         var tEl = lblTh.querySelector('.scw-bid-review-v2__head-title');
         if (tEl) lblTxt = (tEl.textContent || '').replace(/\s+/g, ' ').trim();
       }
-      lbl.textContent = lblTxt || labels[i] || ('Bid ' + (i - 2));
-      card.appendChild(lbl);
+      lblTxt = lblTxt || labels[i] || ('Bid ' + (i - 2));
+
       var body = document.createElement('div');
       body.className = 'scw-bid-review-v2__bid-card-body';
       // Clone the cell's children (not the <td> itself) so the original
       // row keeps its cells intact for re-renders.
       var clone = cells[i].cloneNode(true);
       while (clone.firstChild) body.appendChild(clone.firstChild);
+
+      // Stub cells — "Removed from bid + Reinstate" / "Not surveyed +
+      // Add to bid" with NO detail snapshot and NO survey note — carry
+      // one fact each. As full cards they out-weigh the real bids (six
+      // removed bids = six near-empty cards); collect them into ONE
+      // compact strip after the loop instead. A cutout WITH a product
+      // snapshot or a survey note keeps its full card — that content
+      // must not get buried in a chip.
+      if (cells[i].classList.contains('scw-bid-review-v2__cell--no-bid-cutout') &&
+          !body.querySelector('.scw-bid-review-v2__cell-product') &&
+          !body.querySelector('.scw-bid-review-v2__cell-survey-note')) {
+        var badgeEl = body.querySelector('.scw-bid-review-v2__no-bid-badge');
+        stubs.push({
+          label: lblTxt,
+          badge: badgeEl ? (badgeEl.textContent || '').trim() : 'Not on this bid',
+          // The live button node, data attributes intact — the CR
+          // dispatch handlers are document-delegated, so it works from
+          // the strip exactly as it does from the cell.
+          btn: body.querySelector('.scw-bid-review-v2__cell-actions button')
+        });
+        continue;
+      }
+
+      var card = document.createElement('div');
+      card.className = 'scw-bid-review-v2__bid-card';
+      var lbl = document.createElement('div');
+      lbl.className = 'scw-bid-review-v2__bid-card-label';
+      lbl.textContent = lblTxt;
+      card.appendChild(lbl);
       // Re-link lives in the OPEN panel only (CSS hides it in the grid
       // row): relocate the primary cell's pill from the cloned action
       // stack up into the card's label strip, top-right. Dupe blocks
@@ -800,6 +826,35 @@
       if (relinkBtn) lbl.appendChild(relinkBtn);
       card.appendChild(body);
       col.appendChild(card);
+    }
+
+    // One quiet full-width strip for every stub: "Removed from bid (5):
+    // 305 [+ Reinstate] · 307 [+ Reinstate] …". Real cards always sit
+    // before it.
+    if (stubs.length) {
+      var strip = document.createElement('div');
+      strip.className = 'scw-bid-review-v2__bid-card scw-bid-review-v2__bid-card--stubs';
+      var slbl = document.createElement('div');
+      slbl.className = 'scw-bid-review-v2__bid-card-label';
+      var allRemoved = stubs.every(function (s) { return /removed/i.test(s.badge); });
+      slbl.textContent = (allRemoved ? 'Removed from bid' : 'Not on this bid') +
+        ' (' + stubs.length + ')';
+      strip.appendChild(slbl);
+      var chips = document.createElement('div');
+      chips.className = 'scw-bid-review-v2__stub-chips';
+      stubs.forEach(function (s) {
+        var chip = document.createElement('span');
+        chip.className = 'scw-bid-review-v2__stub-chip';
+        chip.title = s.badge;
+        var nm = document.createElement('span');
+        nm.className = 'scw-bid-review-v2__stub-chip-name';
+        nm.textContent = s.label;
+        chip.appendChild(nm);
+        if (s.btn) chip.appendChild(s.btn);
+        chips.appendChild(chip);
+      });
+      strip.appendChild(chips);
+      col.appendChild(strip);
     }
     return col;
   }

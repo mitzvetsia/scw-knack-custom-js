@@ -656,6 +656,16 @@
     '  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;',
     '  padding: 12px 14px; align-self: flex-start;',
     '}',
+    /* Stub strip — every "removed from bid / not surveyed" cell as one
+       quiet full-width row of chips instead of N near-empty cards. */
+    '.scw-bid-review-v2__bid-card--stubs { flex: 1 1 100%; max-width: none;',
+    '  background: #f8fafc; }',
+    '.scw-bid-review-v2__stub-chips { display: flex; flex-wrap: wrap;',
+    '  gap: 8px 18px; align-items: center; }',
+    '.scw-bid-review-v2__stub-chip { display: inline-flex; align-items: center;',
+    '  gap: 7px; }',
+    '.scw-bid-review-v2__stub-chip-name { font-size: 12px; font-weight: 700;',
+    '  color: #475569; font-variant-numeric: tabular-nums; }',
     '.scw-bid-review-v2__bid-card-label {',
     '  font-size: 11px; font-weight: 700; text-transform: uppercase;',
     '  letter-spacing: 0.04em; color: #295f91;',
