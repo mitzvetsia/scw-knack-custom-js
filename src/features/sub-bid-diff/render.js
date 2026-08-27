@@ -176,6 +176,60 @@
   var REQ_K2_ID = '__request_k2__';
   var requestingK2 = {};   // sowId -> true while its POST is in flight
 
+  // ── Builder-assigned bid → soft default ─────────────────────────────
+  // A bid package can carry REL_SOW (field_2387) in Builder. When it names
+  // this SOW and NOTHING is chosen or persisted yet, the compare defaults
+  // to that bid on first load — a VIEW default only. It deliberately does
+  // NOT write field_2942 or the field_2941 snapshot (see the autoSave
+  // guard): the basis pick is the award moment and must stay a human
+  // gesture, so a defaulted-but-unsaved bid can never open the publish
+  // gate. Every persistence path (saved basis, session pick, K1 snapshot)
+  // outranks it, so remembered selections behave exactly as before.
+
+  /** pkgId → [{id, identifier}] of the SOWs its REL_SOW names. */
+  function pkgSowLinks() {
+    var out = Object.create(null);
+    if (!(C.f && C.f.pkgToSow)) return out;
+    var pkgs = readView(C.bidPkgViewKey);
+    for (var i = 0; i < pkgs.length; i++) {
+      var p = pkgs[i];
+      if (!p || !p.id) continue;
+      var raw = p[C.f.pkgToSow + '_raw'];
+      var list = [];
+      if (Array.isArray(raw)) {
+        for (var j = 0; j < raw.length; j++) if (raw[j] && raw[j].id) list.push(raw[j]);
+      } else if (raw && raw.id) {
+        list.push(raw);
+      }
+      if (list.length) out[p.id] = list;
+    }
+    return out;
+  }
+
+  /** First bid package (view_3573 order) whose REL_SOW names this SOW. */
+  function assignedDefaultFor(sowId) {
+    var links = pkgSowLinks();
+    var pkgs = readView(C.bidPkgViewKey);
+    for (var i = 0; i < pkgs.length; i++) {
+      var p = pkgs[i];
+      if (!p || !p.id || !links[p.id]) continue;
+      for (var j = 0; j < links[p.id].length; j++) {
+        if (links[p.id][j].id === sowId) return p.id;
+      }
+    }
+    return '';
+  }
+
+  /** True while the CURRENT selection is only the soft REL_SOW default —
+   *  nothing chosen this session, nothing persisted. */
+  function isDefaulted(sowId) {
+    if (sowId in selectedByGrid) return false;
+    if (persistedBasis(sowId)) return false;
+    var snap = persistedSnapshot(sowId);
+    if (snap && snap.basisBidId === K1_ID) return false;
+    return !!assignedDefaultFor(sowId);
+  }
+
   function basisFor(sowId) {
     // An explicit session choice — INCLUDING the cleared '' option — wins over
     // the persisted value, so toggling back to "— choose —" actually clears
@@ -186,6 +240,14 @@
     // K1 persists only in the snapshot blob (no connection to read).
     var snap = persistedSnapshot(sowId);
     if (snap && snap.basisBidId === K1_ID) return K1_ID;
+    // Soft default, last: the Builder-assigned bid (REL_SOW → this SOW).
+    // Guard on the SOW record being loaded — persistedBasis reads '' both
+    // when empty and when the model hasn't populated, and defaulting in
+    // that window would flash the wrong bid over a real saved basis.
+    if (sowRecordLoaded(sowId)) {
+      var def = assignedDefaultFor(sowId);
+      if (def) return def;
+    }
     return '';
   }
 
@@ -500,6 +562,11 @@
     if (!C.snapshotField || !grid) return;
     var sowId = grid.sowId;
     if (!basisFor(sowId)) return;
+    // Soft REL_SOW default: never snapshot it. A field_2941 blob with a
+    // basisBidId reads as "basis chosen" downstream (ops publish gate), and
+    // a Builder connection nobody confirmed must not open that gate. The
+    // moment the user picks (or Save-as-basis promotes it), this clears.
+    if (isDefaulted(sowId)) return;
     var blob = buildBlobWith(grid);
     if (!blob) return;
     var sig = blobSig(blob);
@@ -885,22 +952,46 @@
   }
 
   // ── HTML builders ───────────────────────────────────────────────────────
-  function pkgOption(p, selId) {
+  /** Short display for a SOW identifier — the SW#### token when present,
+   *  else the (tag-stripped, trimmed) identifier itself. */
+  function shortSowName(identifier) {
+    var s = stripTags(identifier || '');
+    var m = s.match(/SW-?\d+(?:CO)?/i);
+    if (m) return m[0];
+    return s.length > 20 ? s.slice(0, 18) + '…' : s;
+  }
+
+  function pkgOption(p, selId, ctx) {
     var bits = [p.bidName || p.name || 'Bid'];
     if (p.bidStatus) bits.push(p.bidStatus);
     var n = p.onSowItemCount || 0;
     bits.push(n ? (n + ' on SOW') : 'no items on this SOW');
+    // REL_SOW marks: say plainly which SOW each bid is assigned to in
+    // Builder — ★ when it's THIS one. Informational only; any bid stays
+    // pickable.
+    var star = '';
+    if (ctx && ctx.links && ctx.links[p.id]) {
+      var mine = false, others = [];
+      for (var li = 0; li < ctx.links[p.id].length; li++) {
+        var lk = ctx.links[p.id][li];
+        if (lk.id === ctx.sowId) mine = true;
+        else others.push(shortSowName(lk.identifier));
+      }
+      if (mine) { star = '★ '; bits.push('assigned to this SOW'); }
+      else if (others.length) bits.push('assigned to ' + others.join(', '));
+    }
     return '<option value="' + esc(p.id) + '"' + (p.id === selId ? ' selected' : '') +
-      '>' + esc(bits.join(' · ')) + '</option>';
+      '>' + star + esc(bits.join(' · ')) + '</option>';
   }
 
   function selector(grid, selId, persisted) {
     var pkgs = basisCandidates(grid);
+    var optCtx = { sowId: grid.sowId, links: pkgSowLinks() };
     var opts = '<option value="">— choose the basis bid —</option>' +
       // Sentinel: no subcontractor bid exists for this SOW (self-perform).
       '<option value="' + K1_ID + '"' + (selId === K1_ID ? ' selected' : '') +
         '>K1 Bid — no subcontractor bid (self-perform)</option>' +
-      pkgs.map(function (p) { return pkgOption(p, selId); }).join('');
+      pkgs.map(function (p) { return pkgOption(p, selId, optCtx); }).join('');
     // Action item, pinned last under its own rule so it never reads as one of
     // the bids above. Never carries `selected` — it's a verb, not a state.
     // Offered only while the project has no survey connected: with a survey
@@ -914,6 +1005,14 @@
     var note;
     if (savingGrid[grid.sowId]) {
       note = '<span class="scw-sbd-baseline__meta">saving…</span>';
+    } else if (selId && isDefaulted(grid.sowId)) {
+      // Soft REL_SOW default: shown, compared, but deliberately unsaved.
+      // The button is the explicit award gesture (re-selecting the same
+      // option in a native <select> fires no change event).
+      note = '<span class="scw-sbd-baseline__meta">★ shown by default — assigned to this SOW · not saved as basis</span>' +
+        '<button type="button" class="scw-sbd-savedef" data-scw-sbd-savedef ' +
+          'data-sow-id="' + esc(grid.sowId) + '" data-pkg-id="' + esc(selId) + '"' +
+          ' title="Save this bid as the basis for this SOW → proposal">Save as basis</button>';
     } else if (selId === K1_ID && (persisted || savedByGrid[grid.sowId])) {
       note = '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--saved">✓ saved — K1 Bid (no sub bid for this SOW)</span>';
     } else if (selId && (persisted || savedByGrid[grid.sowId])) {
@@ -1364,6 +1463,19 @@
       if (sowId) noteByGrid[sowId] = n.value;
     });
     document.addEventListener('click', function (e) {
+      // "Save as basis" on a soft REL_SOW default — the explicit award
+      // gesture. Routes through the SAME writeBasis path as a manual pick,
+      // so field_2942 + snapshot + downstream gates behave identically.
+      var sd = e.target.closest && e.target.closest('[data-scw-sbd-savedef]');
+      if (sd) {
+        var dsow = sd.getAttribute('data-sow-id');
+        var dpkg = sd.getAttribute('data-pkg-id');
+        if (dsow && dpkg) {
+          selectedByGrid[dsow] = dpkg;   // now the user's choice, not a default
+          writeBasis(dsow, dpkg);
+        }
+        return;
+      }
       // Independent collapse toggle — fold just this SOW's diff panel, no
       // re-render needed (CSS drives body visibility + chevron rotation).
       var ct = e.target.closest && e.target.closest('[data-scw-sbd-collapse]');

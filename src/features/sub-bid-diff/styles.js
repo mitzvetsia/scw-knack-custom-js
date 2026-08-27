@@ -65,6 +65,11 @@
     '.scw-sbd-collapse:hover .scw-sbd-chevron { color: #0f172a; }',
     '.scw-sbd-inline--collapsed .scw-sbd-chevron { transform: rotate(-90deg); }',
     '.scw-sbd-inline--collapsed .scw-sbd-inline-body { display: none; }',
+    /* Save-as-basis on a soft REL_SOW default */
+    '.scw-sbd-savedef { border: 1px solid #0f4c75; background: #0f4c75; color: #fff;',
+    '  border-radius: 5px; padding: 3px 10px; cursor: pointer; margin-left: 6px;',
+    '  font: 600 11px/1.5 system-ui, sans-serif; white-space: nowrap; }',
+    '.scw-sbd-savedef:hover { background: #0a3a63; }',
     /* coverage-gap chip on the bar — the fold must never hide a gap */
     '.scw-sbd-bargap { display: inline-flex; align-items: center;',
     '  font: 700 11px/1.4 system-ui, sans-serif; color: #be123c;',
