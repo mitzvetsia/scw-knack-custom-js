@@ -42,11 +42,11 @@ already renders).
 > days, this milestone is deemed reached on the date of that notice.
 >
 > **4. Completion sign-off — remaining 20% of Installation.** Invoiced at
-> Client sign-off, which may not be unreasonably withheld, and may not be
-> withheld over minor punch-list items (which Contractor will complete
-> promptly). If Client neither signs off nor provides a written list of
-> specific deficiencies within [5] business days of Contractor's completion
-> notice, the project is deemed complete and the final invoice is payable.
+> Client sign-off, once all work — including all punch-list items — is
+> complete. Sign-off may not be unreasonably withheld. If Client neither
+> signs off nor provides a written list of specific remaining deficiencies
+> within [5] business days of Contractor's completion notice, the project is
+> deemed complete and the final invoice is payable.
 >
 > Invoices are due [net 30]. If a milestone is delayed by Client or by site
 > unavailability, Contractor may invoice it once Contractor is ready to
@@ -64,7 +64,10 @@ already renders).
 - **"Shipped," not "delivered"** — Ben's trigger, and the earlier cash.
   Partial shipments and warehouse staging count, so one backordered camera
   doesn't hold 40% of labor.
-- **Deemed sign-off** protects the 20% holdback from a non-responsive client.
+- **Punch list divides milestones 3 and 4**: open punch items don't delay the
+  second 40%, but the final 20% requires every punch item complete. Deemed
+  sign-off still protects the holdback from a *non-responsive* client —
+  their remedy is listing what's left, not silence.
 - **Change orders stay outside the split** — the locked CO design
   (docs/change-orders.md) invoices a CO at its own signature.
 
