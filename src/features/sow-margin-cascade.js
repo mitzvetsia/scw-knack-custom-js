@@ -268,9 +268,6 @@
       '.' + P + '-open:hover { background: #f1f5f9; border-color: #94a3b8; }',
       '.' + P + '-meta { color: #64748b; }',
       '.' + P + '-meta--mixed { color: #b45309; font-weight: 600; }',
-      // Quiet layout: pill-scale bar, count-meta hidden (modal has it all).
-      '.' + P + '-bar--quiet { padding: 4px 12px 6px; font-size: 11.5px; }',
-      '.' + P + '-bar--quiet .' + P + '-meta { display: none; }',
       '.' + P + '-shared {',
       '  display: inline-flex; align-items: center; gap: 5px;',
       '  padding: 2px 9px; border-radius: 999px;',
@@ -856,23 +853,12 @@
           esc(part.otherSowNames.join(', ')) + '</span>'
       : '';
 
-    // Quiet layout (2026-08-27 UX triage): the bar renders pill-scale —
-    // label + value + Override + the shared-items chip (that one is a real
-    // cross-SOW warning and stays). The line-item-count meta folds away;
-    // the override modal carries the full detail. Classic layout keeps it.
-    var quiet = !brClassic();
-    return '<div class="' + P + '-bar' + (quiet ? ' ' + P + '-bar--quiet' : '') +
-      '" data-scw-sow-margin-bar="' + esc(sowId) + '">' +
+    return '<div class="' + P + '-bar" data-scw-sow-margin-bar="' + esc(sowId) + '">' +
       '<span class="' + P + '-label">Install margin:</span>' + value +
       '<button type="button" class="' + P + '-open" data-scw-sow-margin-open>' +
         'Override margin…</button>' +
       meta + sharedChip +
     '</div>';
-  }
-
-  function brClassic() {
-    try { return localStorage.getItem('scwBrLayoutClassic') === '1'; }
-    catch (e) { return false; }
   }
 
   function mount() {

@@ -1935,12 +1935,7 @@
       '  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;',
       '  color: #0f172a;',
       '}',
-      '.scw-sr-panel__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;',
-      '  cursor: pointer; border-radius: 6px; }',
-      '.scw-sr-panel__head:focus-visible { outline: 2px solid #0f4c75; outline-offset: 2px; }',
-      '.scw-sr-panel__caret { font-size: 11px; color: #64748b; }',
-      '.scw-sr-panel__closedmeta { color: #94a3b8; font: 500 12px/1.3 system-ui, sans-serif; }',
-      '#scw-sr-panel.scw-sr-panel--closed { padding: 9px 16px; }',
+      '.scw-sr-panel__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }',
       '.scw-sr-panel__title { font: 700 13.5px/1.2 system-ui, sans-serif; color: #0c4a6e; }',
       '.scw-sr-panel__pill { display: inline-flex; align-items: center; padding: 3px 10px;',
       '  border-radius: 999px; border: 1px solid transparent;',
@@ -2055,27 +2050,6 @@
   }
   function setHistOpen(open) {
     try { localStorage.setItem(HIST_LS, open ? '1' : '0'); } catch (e) { /* ignore */ }
-  }
-
-  // Quiet layout (2026-08-27 UX triage): the whole panel is a DRAWER — the
-  // head (title + pending pill) stands, the card list opens on click. The
-  // pending work itself stays always-visible on the grid rows, so a closed
-  // drawer hides nothing actionable. Classic layout restores default-open.
-  var PANEL_OPEN_LS = 'scwSrPanelBodyOpen';
-  function brClassic() {
-    try { return localStorage.getItem('scwBrLayoutClassic') === '1'; }
-    catch (e) { return false; }
-  }
-  function panelOpen() {
-    try {
-      var v = localStorage.getItem(PANEL_OPEN_LS);
-      if (v === '1') return true;
-      if (v === '0') return false;
-    } catch (e) { /* fall through */ }
-    return brClassic();
-  }
-  function setPanelOpen(open) {
-    try { localStorage.setItem(PANEL_OPEN_LS, open ? '1' : '0'); } catch (e) { /* ignore */ }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -2418,20 +2392,10 @@
 
     var panel = document.createElement('div');
     panel.id = PANEL_ID;
-    var isOpen = panelOpen();
-    panel.classList.toggle('scw-sr-panel--closed', !isOpen);
 
-    // ── Head: drawer handle — title + pending pill (+ history toggle
-    //    while open). Click anywhere on it to open/close the panel body.
+    // ── Head: title + pending pill + history toggle ──
     var head = document.createElement('div');
     head.className = 'scw-sr-panel__head';
-    head.setAttribute('role', 'button');
-    head.setAttribute('tabindex', '0');
-    head.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-    var caret = document.createElement('span');
-    caret.className = 'scw-sr-panel__caret';
-    caret.textContent = isOpen ? '▾' : '▸';
-    head.appendChild(caret);
     var title = document.createElement('span');
     title.className = 'scw-sr-panel__title';
     // Not "Sales Revisions" any more: history is read from the unfiltered
@@ -2445,38 +2409,19 @@
       ? (pending.length + ' pending')
       : 'none pending';
     head.appendChild(pill);
-    if (hist.length && !isOpen) {
-      var hint = document.createElement('span');
-      hint.className = 'scw-sr-panel__closedmeta';
-      hint.textContent = hist.length + ' in history';
-      head.appendChild(hint);
-    }
-    if (hist.length && isOpen) {
+    if (hist.length) {
       var tog = document.createElement('button');
       tog.type = 'button';
       tog.className = 'scw-sr-panel__hist-toggle';
       tog.textContent = (histOpen() ? 'Hide history' : 'Show history') +
         ' (' + hist.length + ')';
-      tog.addEventListener('click', function (e) {
-        e.stopPropagation();   // must not also toggle the drawer
+      tog.addEventListener('click', function () {
         setHistOpen(!histOpen());
         renderRevisionsPanel();
       });
       head.appendChild(tog);
     }
-    function toggleDrawer() {
-      setPanelOpen(!panelOpen());
-      renderRevisionsPanel();
-    }
-    head.addEventListener('click', toggleDrawer);
-    head.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleDrawer(); }
-    });
     panel.appendChild(head);
-    if (!isOpen) {
-      mount.parentNode.insertBefore(panel, mount);
-      return;
-    }
 
     // ── Pending — full action cards, identical to the inline blocks.
     // Items whose SOW item has no grid row (previously invisible) render
