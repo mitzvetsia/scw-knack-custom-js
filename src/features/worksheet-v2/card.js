@@ -535,10 +535,19 @@
       el.classList.add('scw-ws-v2-locked-ctl');
       setLockTooltip(el);
     }
-    // Boolean chips (cabling), accessory add/remove/qty, and the per-row
-    // trash button. keepAccessoryAdd exempts the "+ Add" only.
+    // Boolean chips (cabling), accessory remove/qty controls, and the
+    // per-row trash button. keepAccessoryAdd exempts the "+ Add" only.
+    //
+    // The accessory CHIP (.scw-ws-v2-mh-chip — the link to the accessory's
+    // own edit page) is deliberately NOT locked: the accessory's Custom
+    // Disc % lives on that page and nowhere else, and the lock's stated
+    // policy is that Custom Disc % stays editable (it's a sales-side
+    // pricing knob — it changes nothing the surveyor sees). Locking the
+    // chip made an accessory's discount unreachable on any surveyed SOW
+    // while the parent's stayed editable. Quantity/structure stay
+    // protected: the − / + steppers, unlink, and delete remain locked.
     var ctlSel = '[data-scw-ws-v2-chip], .scw-ws-v2-mh-del, ' +
-      '.scw-ws-v2-mh-unlink, .scw-ws-v2-mh-step, .scw-ws-v2-mh-chip';
+      '.scw-ws-v2-mh-unlink, .scw-ws-v2-mh-step';
     if (!(opts && opts.keepAccessoryAdd)) ctlSel += ', .scw-ws-v2-mh-add';
     var ctls = card.querySelectorAll(ctlSel);
     for (i = 0; i < ctls.length; i++) {
