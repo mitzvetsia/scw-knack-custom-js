@@ -47,8 +47,14 @@
     xero:      'field_1847',
     agreement: 'field_2767',
     bidPdf:    'field_2947',   // SYS_bid basis pdf (file)
-    xeroEst:   'field_2948'    // SYS_xero estimate link (URL)
+    xeroEst:   'field_2948',   // SYS_xero estimate link (URL)
+    contract:  'field_1843'    // esignatures.com contract id (uuid)
   };
+
+  // eSignatures contract page — the id in field_1843 appended verbatim.
+  // Display-only reference (Make writes the id); when the column isn't on
+  // the view or the cell is blank, no tile renders.
+  var ESIGN_URL_PREFIX = 'https://esignatures.com/contracts/';
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -154,6 +160,16 @@
       'button.scw-acpt-doc--missing:hover { border-color: #0f4c75; color: #0f4c75;',
       '  background: #f8fafc; }',
       'button.scw-acpt-doc--missing svg { flex: none; }',
+      // Reference tile — a plain outbound link (eSignatures contract).
+      // Neutral slate, no check/plus state glyphs: it isn\'t a checklist
+      // slot, just a jump to the contract page.
+      'a.scw-acpt-ref { display: inline-flex; align-items: center; gap: 7px;',
+      '  padding: 7px 12px 7px 10px; border-radius: 8px; border: 1px solid #cbd5e1;',
+      '  background: #f8fafc; color: #334155 !important; cursor: pointer;',
+      '  font: 600 12px/1.2 system-ui, sans-serif; text-decoration: none !important;',
+      '  white-space: nowrap; transition: background .12s, border-color .12s; }',
+      'a.scw-acpt-ref:hover { background: #eef2f7; border-color: #94a3b8; }',
+      'a.scw-acpt-ref svg { flex: none; color: #64748b; }',
       // Mirror pairs (agreement·invoice / bid-PDF·estimate): a micro-
       // caption names the pair so the tiles inside can use short labels.
       '.scw-acpt-pair { display: inline-flex; flex-direction: column; gap: 3px; }',
@@ -740,6 +756,7 @@
     var terms   = isYes(cellText(row, F.terms));
     var xeroA    = cellAnchor(row, F.xero);
     var xeroEstA = cellAnchor(row, F.xeroEst);
+    var contractId = cellText(row, F.contract);
     var fileA    = cellAnchor(row, F.agreement, 'a.kn-view-asset') || cellAnchor(row, F.agreement);
     var bidPdfA  = cellAnchor(row, F.bidPdf, 'a.kn-view-asset') || cellAnchor(row, F.bidPdf);
     var actionA  = row.querySelector('.kn-action-link') || row.querySelector('.kn-table-link a');
@@ -829,6 +846,14 @@
           '<span class="scw-acpt-pair__tiles">' +
             fileSlot(F.agreement, 'Signed PDF',   'signed agreement',   fileA,    'Replace signed agreement') +
             linkSlot(F.xero,      'Xero invoice', 'Xero invoice link',  xeroA,    'Edit Xero invoice link') +
+            // eSignatures contract page — display-only reference, present
+            // only when the row carries a contract id.
+            (contractId
+              ? '<a class="scw-acpt-ref" target="_blank" rel="noopener" href="' +
+                  esc(ESIGN_URL_PREFIX + encodeURIComponent(contractId)) + '" ' +
+                  'title="Open the eSignatures contract in a new tab">' +
+                  LINK_SVG + '<span class="scw-acpt-doc__lbl">eSign contract</span></a>'
+              : '') +
           '</span>' +
         '</span>' +
         '<span class="scw-acpt-pair">' +

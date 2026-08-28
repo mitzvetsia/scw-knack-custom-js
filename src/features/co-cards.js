@@ -27,8 +27,15 @@
     status: 'field_2953',   // FLAG_change order status
     basis:  'field_2942',   // REL_proposal basis (connection)
     exp:    'field_2135',   // INPUT_expiration date
-    name:   'field_2126'    // INPUT: sow friendly name
+    name:   'field_2126',   // INPUT: sow friendly name
+    contract: 'field_1843'  // esignatures.com contract id (uuid)
   };
+
+  // eSignatures contract page — the id in field_1843 appended verbatim.
+  // Renders only when the grid carries the column AND the cell has a
+  // value, so a view without the column (e.g. the sub dashboard) simply
+  // never shows the link.
+  var ESIGN_URL_PREFIX = 'https://esignatures.com/contracts/';
 
   // Status pill palette — one entry per CO Status option (docs/change-orders).
   // Unknown/blank statuses fall back to the Draft slate.
@@ -119,6 +126,15 @@
       '  font: 600 12px/1.3 system-ui, -apple-system, sans-serif;',
       '}',
       '.scw-co-card__open:hover { background: #0d3f61; border-color: #0d3f61; }',
+      // Ghost sibling of the Open button — outbound eSignatures link.
+      '.scw-co-card__esign {',
+      '  display: inline-flex; align-items: center; gap: 6px;',
+      '  padding: 6px 14px; border-radius: 7px; white-space: nowrap;',
+      '  background: #fff; color: #334155 !important; text-decoration: none !important;',
+      '  border: 1px solid #cbd5e1;',
+      '  font: 600 12px/1.3 system-ui, -apple-system, sans-serif;',
+      '}',
+      '.scw-co-card__esign:hover { background: #f1f5f9; border-color: #94a3b8; }',
       '.scw-co-card--empty {',
       '  box-shadow: none; border-style: dashed; justify-content: center;',
       '  color: #94a3b8; font: 500 12.5px/1.4 system-ui, sans-serif;',
@@ -142,6 +158,7 @@
     var status = cellText(tr, F.status);
     var exp    = cellText(tr, F.exp);
     var basis  = cellText(tr, F.basis);
+    var contractId = cellText(tr, F.contract);
     var link   = tr.querySelector('td.kn-table-link a.kn-link-page');
     var href   = link ? link.getAttribute('href') : '';
     var col    = statusColors(status);
@@ -166,6 +183,13 @@
           : '') +
         (basis ? '<span class="scw-co-card__basis">Basis: ' + esc(basis) + '</span>' : '') +
       '</div>' +
+      // eSignatures contract link before Open (primary action stays
+      // rightmost, per the repo button-ordering convention).
+      (contractId
+        ? '<a class="scw-co-card__esign" target="_blank" rel="noopener" href="' +
+            esc(ESIGN_URL_PREFIX + encodeURIComponent(contractId)) + '" ' +
+            'title="Open the eSignatures contract in a new tab">eSign contract</a>'
+        : '') +
       (href ? '<a class="scw-co-card__open" href="' + esc(href) + '">Open</a>' : '');
     return card;
   }
