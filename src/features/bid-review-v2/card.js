@@ -729,22 +729,59 @@
     '</div>';
   }
 
-  // One stacked DUPLICATE bid item — a second (third, …) bid line item
-  // on the SAME bid that maps to the same SOW item as the primary cell.
+  // Labels of the OTHER bids a stacked dupe record is connected to.
+  // Empty array = a true same-bid duplicate (the record lives only on
+  // the bid being rendered).
+  function dupeOtherBids(d, pkgId) {
+    var out = [];
+    if (d && d.packages) {
+      for (var i = 0; i < d.packages.length; i++) {
+        var p = d.packages[i];
+        if (p && p.id && p.id !== pkgId) out.push(p.label || 'another bid');
+      }
+    }
+    return out;
+  }
+
+  var LAYERS_SVG =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>' +
+    '<polyline points="2 17 12 22 22 17"></polyline>' +
+    '<polyline points="2 12 12 17 22 12"></polyline></svg>';
+
+  // One stacked EXTRA bid item — a second (third, …) bid line item
+  // mapping to the same SOW item as the primary cell. Two flavors:
+  //   • true same-bid duplicate (the record lives only on THIS bid) —
+  //     amber defect tag + the full fix-it action set;
+  //   • the record is (also) on a DIFFERENT bid — neutral slate tag
+  //     naming that bid, dimmed, Remove only (it's reference noise for
+  //     this comparison, and Remove just clears its link to THIS bid).
   // Rendered beneath the primary inside the bid cell, full values shown
-  // (they may differ), tagged, with a Remove that targets THIS bid
-  // record (data-bid-record-id override consumed by v1 handleRemoveFromBid).
+  // (they may differ), with a Remove that targets THIS bid record
+  // (data-bid-record-id override consumed by v1 handleRemoveFromBid).
   function stackedDupeHtml(d, row, pkgId, sowId) {
     var descTxt = ns.transform.stripHtml(d.laborDesc || '');
     var qtyTxt  = d.qty  ? String(d.qty) : '—';
     var rateTxt = d.rate ? fmtMoney(d.rate) : '—';
     var extTxt  = d.labor ? fmtMoney(d.labor) : '—';
     var showExt = (Number(d.qty) || 0) > 1;
-    return '<div class="scw-bid-review-v2__bid-item scw-bid-review-v2__bid-item--dupe">' +
-      '<div class="scw-bid-review-v2__bid-dupe-tag" title="A second bid line item ' +
-        'on this bid is linked to the same SOW item. Usually the extra should be ' +
-        'removed or re-mapped to its own SOW item.">' +
-        WARN_TRI_SVG + '<span>2nd bid item → same SOW item</span></div>' +
+    var others  = dupeOtherBids(d, pkgId);
+    var isOtherBid = others.length > 0;
+    var othersTxt  = others.join(', ');
+    var tagHtml = isOtherBid
+      ? '<div class="scw-bid-review-v2__bid-dupe-tag scw-bid-review-v2__bid-dupe-tag--otherbid" ' +
+          'title="This bid item lives on a different bid (' + escapeHtml(othersTxt) + ') and ' +
+          'points at the same SOW item. It has no effect on this bid’s comparison — manage ' +
+          'it on its own bid. Remove clears its link to THIS bid only (use it if that link is stale).">' +
+          LAYERS_SVG + '<span>On a different bid → ' + escapeHtml(othersTxt) + '</span></div>'
+      : '<div class="scw-bid-review-v2__bid-dupe-tag" title="A second bid line item ' +
+          'on this bid is linked to the same SOW item. Usually the extra should be ' +
+          'removed or re-mapped to its own SOW item.">' +
+          WARN_TRI_SVG + '<span>2nd bid item → same SOW item</span></div>';
+    return '<div class="scw-bid-review-v2__bid-item scw-bid-review-v2__bid-item--dupe' +
+      (isOtherBid ? ' scw-bid-review-v2__bid-item--otherbid' : '') + '">' +
+      tagHtml +
       (d.productName ?
         '<div class="scw-bid-review-v2__cell-product" title="' + escapeHtml(d.productName) + '">' +
           escapeHtml(d.productName) + '</div>' : '') +
@@ -758,6 +795,11 @@
         '<div class="scw-bid-review-v2__cell-desc" title="' + escapeHtml(descTxt) + '">' +
           escapeHtml(descTxt) + '</div>' : '') +
       '<div class="scw-bid-review-v2__cell-actions">' +
+        // Same-bid duplicates get the full fix-it set. An item that lives
+        // on a DIFFERENT bid gets Remove only — splitting it onto a new
+        // SOW item or re-pointing its field_2404 from here would mutate
+        // the OTHER bid's mapping.
+        (isOtherBid ? '' :
         // Keep both → split this duplicate onto its OWN new SOW line item.
         '<button type="button" class="scw-bid-review__cell-action ' +
           'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
@@ -775,7 +817,7 @@
           'data-bid-record-id="' + escapeHtml(d.id) + '" ' +
           'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
           'title="Point this bid item at a different SOW line item (source of truth)"' +
-          '>Re-link</button>' +
+          '>Re-link</button>') +
         '<button type="button" class="scw-bid-review__cell-action ' +
           'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
           crAttrs('cell_remove_from_bid', row.id, pkgId, sowId) +
@@ -948,7 +990,18 @@
     var diffs = ns.transform.getMismatches(row, cell);
     var DIFF = ' scw-bid-review-v2__field-diff';
     if (diffs && diffs.any) td.classList.add('scw-bid-review-v2__cell--mismatch');
-    if (cell.dupes && cell.dupes.length) td.classList.add('scw-bid-review-v2__cell--dupe-bid');
+    if (cell.dupes && cell.dupes.length) {
+      // Amber defect marker only when at least one stacked item is a TRUE
+      // same-bid duplicate; a stack made purely of different-bid items
+      // gets the quiet slate marker instead.
+      var anySameBid = false;
+      for (var cdi = 0; cdi < cell.dupes.length; cdi++) {
+        if (!dupeOtherBids(cell.dupes[cdi], pkgId).length) { anySameBid = true; break; }
+      }
+      td.classList.add(anySameBid
+        ? 'scw-bid-review-v2__cell--dupe-bid'
+        : 'scw-bid-review-v2__cell--dupe-otherbid');
+    }
     // Numeric fields (fee) still flag the whole value — there's no sub-token
     // to pinpoint. Text fields (product / desc) underline only the differing
     // WORDS via markWordDiff below, so they don't carry the whole-field pill.

@@ -306,7 +306,15 @@
             qty:       num(rec, FK.qty),
             rate:      num(rec, FK.rate),
             labor:     num(rec, FK.labor),
-            laborDesc: rawHtml(rec, FK.laborDesc)
+            laborDesc: rawHtml(rec, FK.laborDesc),
+            // EVERY bid package this record is connected to — lets the
+            // card tell a true same-bid duplicate (both records live only
+            // on this bid → amber defect) from a record that (also)
+            // belongs to a DIFFERENT bid, which is reference noise for
+            // this bid's comparison, not a defect in it.
+            packages:  pkgs.map(function (pk) {
+              return { id: pk.id, label: stripHtml(pk.identifier || '') };
+            })
           });
           continue;
         }

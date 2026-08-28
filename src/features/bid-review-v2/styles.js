@@ -1155,6 +1155,17 @@
     '  text-transform: uppercase; letter-spacing: 0.03em;',
     '}',
     '.scw-bid-review-v2__bid-dupe-tag svg { flex: 0 0 auto; }',
+    /* Variant: the stacked item is (also) on a DIFFERENT bid — reference
+       noise for this bid\'s comparison, not a defect in it. Neutral slate
+       instead of amber, dimmed until hovered. */
+    '.scw-bid-review-v2__cell--dupe-otherbid { box-shadow: inset 3px 0 0 #94a3b8; }',
+    '.scw-bid-review-v2__bid-item--otherbid { opacity: .68; border-top-color: #cbd5e1; }',
+    '.scw-bid-review-v2__bid-item--otherbid:hover,',
+    '.scw-bid-review-v2__bid-item--otherbid:focus-within { opacity: 1; }',
+    '.scw-bid-review-v2__bid-dupe-tag--otherbid {',
+    '  background: #f8fafc; border-color: #cbd5e1; color: #475569;',
+    '  text-transform: none; letter-spacing: 0;',
+    '}',
     /* ── Bid-vs-SOW mismatch states (v1 parity) ───────────────── */
     /* On-bid-but-not-on-this-SOW: blue dashed cut-out on the SOW cell. */
     '.scw-bid-review-v2__sow-cell--off-sow {',
