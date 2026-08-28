@@ -628,9 +628,12 @@
   // exception to the remember-open/closed persistence: on every page load
   // (refresh / navigation) they ALWAYS start collapsed, regardless of how
   // the user left them last session. The user can still open them during a
-  // session. This is applied on the page-load restore path only (see
-  // loadPersistedState); the post-edit in-memory snapshot path is untouched
-  // so an inline edit elsewhere doesn't slam an open step closed.
+  // session. Applied ONLY where loadPersistedState is consulted — the
+  // document-ready and scene-render restore paths. The post-edit snapshot
+  // path AND the mid-session view-render path (applySavedState's
+  // liveFallback mode) never touch it, so a background refetch — the
+  // worksheet-v2 poll, a cross-view refresh — can't slam an open step
+  // closed while someone is typing in it (2026-08-28 complaint).
   var ALWAYS_COLLAPSED_ON_LOAD = { view_2924: true, view_3853: true };
 
   /** Read persisted state from localStorage. */
@@ -679,12 +682,29 @@
     log('snapshotState', _savedCollapsed);
   }
 
-  function applySavedState() {
+  function applySavedState(opts) {
     // Use in-memory snapshot if available (post-edit flow),
-    // otherwise fall back to sessionStorage (page refresh).
-    var saved = _savedCollapsed || loadPersistedState();
+    // otherwise fall back to storage (page refresh).
+    var saved = _savedCollapsed;
     var isPostEdit = !!_savedCollapsed;   // in-memory snapshot = post-edit
     _savedCollapsed = null;
+
+    if (!saved) {
+      if (opts && opts.liveFallback) {
+        // MID-SESSION pass (the knack-view-render storm: background
+        // refetches, worksheet-v2 poll ticks, cross-view refreshes).
+        // There is no coordinator snapshot, and the wrappers' live DOM
+        // state IS the truth — falling back to loadPersistedState here
+        // re-applied ALWAYS_COLLAPSED_ON_LOAD and slammed the step
+        // accordions (view_2924 / view_3853) shut every poll tick while
+        // sales was typing in them (2026-08-28 install-ops complaint).
+        // Do NOT restore anything; just refresh the persisted map so a
+        // real page load still applies the load rule.
+        persistCurrentState();
+        return;
+      }
+      saved = loadPersistedState();
+    }
 
     if (!saved) return;
 
@@ -1245,7 +1265,12 @@
       _enhanceTimer = setTimeout(function () {
         _enhanceTimer = 0;
         enhance();
-        applySavedState();
+        // liveFallback: without a coordinator snapshot this pass must
+        // not restore from storage — view-render fires for background
+        // refetches (worksheet-v2 poll, cross-view refreshes) where the
+        // live DOM state is already correct. Scene-render and initial
+        // load keep the full restore (incl. ALWAYS_COLLAPSED_ON_LOAD).
+        applySavedState({ liveFallback: true });
       }, 80);
     });
 
