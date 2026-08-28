@@ -163,13 +163,25 @@
     var href   = link ? link.getAttribute('href') : '';
     var col    = statusColors(status);
 
+    // Identity: friendly name when the grid carries field_2126; otherwise
+    // split the "{project#}-{SW####CO}" id so the card leads with the CO
+    // number and keeps the full id as the muted sub-line — a bare
+    // 20-character id as the title reads as unscannable noise on views
+    // without the name column (e.g. view_4076 on the ops deploy page).
+    var main = name || number || 'Change Order';
+    var sub  = (name && number) ? number : '';
+    if (!name && number) {
+      var idm = number.match(/^\d+-(.+)$/);
+      if (idm) { main = idm[1]; sub = number; }
+    }
+
     var card = document.createElement('div');
     card.className = 'scw-co-card';
     card.style.setProperty('--scw-co-accent', col.fg);
     card.innerHTML =
       '<div class="scw-co-card__main">' +
-        '<div class="scw-co-card__name">' + esc(name || number || 'Change Order') + '</div>' +
-        (name && number ? '<div class="scw-co-card__num">' + esc(number) + '</div>' : '') +
+        '<div class="scw-co-card__name">' + esc(main) + '</div>' +
+        (sub ? '<div class="scw-co-card__num">' + esc(sub) + '</div>' : '') +
       '</div>' +
       '<div class="scw-co-card__meta">' +
         (status
