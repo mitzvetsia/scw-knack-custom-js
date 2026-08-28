@@ -755,8 +755,9 @@
   //   • true same-bid duplicate (the record lives only on THIS bid) —
   //     amber defect tag + the full fix-it action set;
   //   • the record is (also) on a DIFFERENT bid — neutral slate tag
-  //     naming that bid, dimmed, Remove only (it's reference noise for
-  //     this comparison, and Remove just clears its link to THIS bid).
+  //     naming that bid, dimmed, ONE action: "Unlink from this SOW item"
+  //     (cell_unlink_bid_sowitem clears its field_2404 pointer at this
+  //     SOW item; the record and its own bid membership are untouched).
   // Rendered beneath the primary inside the bid cell, full values shown
   // (they may differ), with a Remove that targets THIS bid record
   // (data-bid-record-id override consumed by v1 handleRemoveFromBid).
@@ -772,8 +773,8 @@
     var tagHtml = isOtherBid
       ? '<div class="scw-bid-review-v2__bid-dupe-tag scw-bid-review-v2__bid-dupe-tag--otherbid" ' +
           'title="This bid item lives on a different bid (' + escapeHtml(othersTxt) + ') and ' +
-          'points at the same SOW item. It has no effect on this bid’s comparison — manage ' +
-          'it on its own bid. Remove clears its link to THIS bid only (use it if that link is stale).">' +
+          'points at the same SOW item. It has no effect on this bid’s comparison — Unlink ' +
+          'clears its pointer at this SOW item so it stops stacking here (the item stays on its own bid).">' +
           LAYERS_SVG + '<span>On a different bid → ' + escapeHtml(othersTxt) + '</span></div>'
       : '<div class="scw-bid-review-v2__bid-dupe-tag" title="A second bid line item ' +
           'on this bid is linked to the same SOW item. Usually the extra should be ' +
@@ -796,34 +797,42 @@
           escapeHtml(descTxt) + '</div>' : '') +
       '<div class="scw-bid-review-v2__cell-actions">' +
         // Same-bid duplicates get the full fix-it set. An item that lives
-        // on a DIFFERENT bid gets Remove only — splitting it onto a new
-        // SOW item or re-pointing its field_2404 from here would mutate
-        // the OTHER bid's mapping.
-        (isOtherBid ? '' :
-        // Keep both → split this duplicate onto its OWN new SOW line item.
-        '<button type="button" class="scw-bid-review__cell-action ' +
-          'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
-          'data-action="cell_create_sow_from_bid" ' +
-          'data-bid-record-id="' + escapeHtml(d.id) + '" ' +
-          'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
-          'title="Keep both — create a separate SOW line item for this bid item">' +
-          '+ New SOW item</button>' +
-        // Duplicates are the prime criss-cross case — the 2nd bid item
-        // usually belongs to a DIFFERENT existing SOW item. Re-link points
-        // THIS dupe record's field_2404 at the one the user picks.
-        '<button type="button" class="scw-bid-review__cell-action ' +
-          'scw-bid-review__cell-action--relink scw-bid-review-v2__cell-action" ' +
-          'data-action="cell_relink_bid" ' +
-          'data-bid-record-id="' + escapeHtml(d.id) + '" ' +
-          'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
-          'title="Point this bid item at a different SOW line item (source of truth)"' +
-          '>Re-link</button>') +
-        '<button type="button" class="scw-bid-review__cell-action ' +
-          'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
-          crAttrs('cell_remove_from_bid', row.id, pkgId, sowId) +
-          ' data-bid-record-id="' + escapeHtml(d.id) + '"' +
-          ' data-bid-product="' + escapeHtml(ns.transform.stripHtml(d.productName || '')) +
-          '">Remove</button>' +
+        // on a DIFFERENT bid gets ONE remedy: unlink it from this SOW
+        // item (clear its field_2404 pointer). Remove/Re-link/+New would
+        // touch the OTHER bid's membership or mapping from a page that
+        // isn't about that bid.
+        (isOtherBid
+          ? '<button type="button" class="scw-bid-review__cell-action ' +
+              'scw-bid-review__cell-action--relink scw-bid-review-v2__cell-action" ' +
+              'data-action="cell_unlink_bid_sowitem" ' +
+              'data-bid-record-id="' + escapeHtml(d.id) + '" ' +
+              'data-sow-item-id="' + escapeHtml((row && row.sowItem) || '') + '" ' +
+              'data-bid-product="' + escapeHtml(ns.transform.stripHtml(d.productName || '')) + '" ' +
+              'title="Clear this bid item’s pointer at this SOW item — the item itself stays on its own bid">' +
+              'Unlink from this SOW item</button>'
+          // Keep both → split this duplicate onto its OWN new SOW line
+          // item; Re-link re-points its field_2404; Remove takes it off
+          // this bid.
+          : '<button type="button" class="scw-bid-review__cell-action ' +
+              'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+              'data-action="cell_create_sow_from_bid" ' +
+              'data-bid-record-id="' + escapeHtml(d.id) + '" ' +
+              'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
+              'title="Keep both — create a separate SOW line item for this bid item">' +
+              '+ New SOW item</button>' +
+            '<button type="button" class="scw-bid-review__cell-action ' +
+              'scw-bid-review__cell-action--relink scw-bid-review-v2__cell-action" ' +
+              'data-action="cell_relink_bid" ' +
+              'data-bid-record-id="' + escapeHtml(d.id) + '" ' +
+              'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
+              'title="Point this bid item at a different SOW line item (source of truth)"' +
+              '>Re-link</button>' +
+            '<button type="button" class="scw-bid-review__cell-action ' +
+              'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
+              crAttrs('cell_remove_from_bid', row.id, pkgId, sowId) +
+              ' data-bid-record-id="' + escapeHtml(d.id) + '"' +
+              ' data-bid-product="' + escapeHtml(ns.transform.stripHtml(d.productName || '')) +
+              '">Remove</button>') +
       '</div>' +
     '</div>';
   }
