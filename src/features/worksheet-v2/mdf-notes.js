@@ -51,6 +51,19 @@
   if (!core) return;
   var F = core.FIELDS;
 
+  // ── MDF photo delete — per-scene DOC_photos view for the REST DELETE ──
+  // Keyed by the MANAGE view (cfg.viewKey), because that's what identifies
+  // the scene. The named view must be a same-scene DOC_photos view with a
+  // Delete link enabled in Builder (the delete link is what authorizes the
+  // session-scoped REST DELETE — same plumbing as photos.js
+  // PHOTO_GRID_FALLBACK_VIEWS and bid-review-v2 MDF_PHOTO_DELETE_GRID).
+  // Scenes NOT listed render no delete affordance at all (sales, survey,
+  // sub portal — ops surfaces only).
+  var MDF_PHOTO_DELETE_VIEWS = {
+    view_3932: 'view_3937',   // deploy scene_1311 — qa-popover's DOC_photos save view
+    view_3577: 'view_3584'    // build-SOW scene — its delete-enabled DOC_photos grid
+  };
+
   var PENCIL_SVG =
     '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
     'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -155,6 +168,19 @@
       '  overflow: hidden; border: 1px solid #e2e8f0; background: #f8fafc; flex: none; }',
       '.' + P + '-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }',
       '.' + P + '-thumb:hover { border-color: #0f4c81; }',
+      /* Hover-revealed per-photo delete (ops scenes only — see
+         MDF_PHOTO_DELETE_VIEWS). Red is reserved for destructive actions. */
+      '.' + P + '-thumbwrap { position: relative; flex: none; }',
+      '.' + P + '-thumb-del { position: absolute; top: -6px; right: -6px;',
+      '  width: 20px; height: 20px; border-radius: 50%; padding: 0;',
+      '  border: 1px solid #fecaca; background: #fff; color: #dc2626;',
+      '  font: 700 13px/1 system-ui, sans-serif; cursor: pointer;',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  box-shadow: 0 1px 3px rgba(15,23,42,.25); opacity: 0; z-index: 2;',
+      '  transition: opacity .12s, background .12s; }',
+      '.' + P + '-thumbwrap:hover .' + P + '-thumb-del,',
+      '.' + P + '-thumb-del:focus-visible { opacity: 1; }',
+      '.' + P + '-thumb-del:hover { background: #dc2626; color: #fff; border-color: #dc2626; }',
       '.' + P + '-addphoto { display: inline-flex; flex-direction: column;',
       '  align-items: center; justify-content: center; gap: 4px;',
       '  width: 74px; height: 74px; border: 2px dashed #cbd5e1; border-radius: 8px;',
@@ -433,6 +459,10 @@
     var sNotes = attrs ? fieldText(attrs, nc.calloutField) : '';
     var notes  = attrs ? fieldText(attrs, nc.editField) : '';
 
+    // Per-photo delete only on scenes with a delete-authorizing DOC_photos
+    // view (ops surfaces). The photo record id is the last 24-hex segment
+    // of its edit-page href.
+    var delView = MDF_PHOTO_DELETE_VIEWS[cfg.viewKey] || '';
     var photosHtml = '';
     for (var p = 0; p < photos.length; p++) {
       // The manage grid renders field_771 at /original/ size — swap the
@@ -441,12 +471,24 @@
       var pFull = photos[p].full || photos[p].thumb;
       var pDisp = (window.SCW && SCW.knackImgThumb)
         ? SCW.knackImgThumb(photos[p].thumb) : photos[p].thumb;
-      photosHtml += '<a class="' + P + '-thumb" href="' + esc(photos[p].href) + '" ' +
+      var thumbA = '<a class="' + P + '-thumb" href="' + esc(photos[p].href) + '" ' +
         'data-scw-mdf-photo-full="' + esc(pFull) + '" ' +
         'title="Open photo"><img src="' + esc(pDisp) + '" alt="" loading="lazy" ' +
         (pDisp !== photos[p].thumb
           ? 'onerror="this.onerror=null;this.src=\'' + esc(photos[p].thumb) + '\'"'
           : '') + '></a>';
+      var hrefIds = String(photos[p].href || '').match(/[a-f0-9]{24}/gi);
+      var photoId = hrefIds ? hrefIds[hrefIds.length - 1] : '';
+      photosHtml += (delView && photoId)
+        ? '<span class="' + P + '-thumbwrap">' + thumbA +
+            '<button type="button" class="' + P + '-thumb-del" ' +
+              'data-scw-ws-v2-mdf-photo-del="' + esc(photoId) + '" ' +
+              'data-scw-ws-v2-view="' + esc(sourceViewKey) + '" ' +
+              'data-scw-thumb="' + esc(pDisp) + '" ' +
+              'title="Delete this photo permanently" aria-label="Delete this photo">' +
+              '&times;</button>' +
+          '</span>'
+        : thumbA;
     }
     photosHtml += '<button type="button" class="' + P + '-addphoto" ' +
       'data-scw-ws-v2-mdf-add="' + esc(l1.id) + '" ' +
@@ -702,6 +744,79 @@
     });
   }
 
+  /** Delete ONE MDF/IDF photo (DOC_photos record) — big loud confirm, then
+   *  a view-scoped REST DELETE through the scene's delete-authorizing
+   *  DOC_photos view (MDF_PHOTO_DELETE_VIEWS). Optimistic thumb removal;
+   *  the manage view refetches so the band's next sweep agrees. */
+  function deleteMdfPhoto(btn) {
+    var photoId = btn.getAttribute('data-scw-ws-v2-mdf-photo-del');
+    var sourceViewKey = btn.getAttribute('data-scw-ws-v2-view');
+    var cfg = manageCfg(sourceViewKey);
+    var delView = cfg ? (MDF_PHOTO_DELETE_VIEWS[cfg.viewKey] || '') : '';
+    if (!photoId || !delView) return;
+
+    var block = btn.closest('.scw-ws-v2-l1');
+    var lblEl = block && block.querySelector('.scw-ws-v2-l1-label');
+    var locLabel = (lblEl && lblEl.textContent.trim()) || 'this MDF/IDF';
+    var thumbUrl = btn.getAttribute('data-scw-thumb') || '';
+
+    function doDelete() {
+      armScrollGuard();
+      var wrap = btn.closest('.' + P + '-thumbwrap');
+      if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);   // optimistic
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(delView, photoId),
+        type: 'DELETE',
+        success: function () {
+          // Refetch the manage view — the band strip scrapes ITS rendered
+          // row, so this is what makes the deletion stick on next sweep.
+          try {
+            var mv = Knack.views && Knack.views[cfg.viewKey];
+            if (mv && mv.model && typeof mv.model.fetch === 'function') mv.model.fetch();
+          } catch (e) { /* best-effort */ }
+        },
+        error: function (xhr) {
+          var status = xhr && xhr.status;
+          console.warn('[scw-ws-v2-mdf] photo delete failed via ' + delView, {
+            photoId: photoId, status: status, response: xhr && xhr.responseText
+          });
+          alert('Couldn’t delete that photo (status ' + status + ').' +
+            (status === 403 || status === 404
+              ? ' ' + delView + ' may need a Delete link enabled in Knack Builder.'
+              : ''));
+          // Refetch either way — if the delete landed despite the error,
+          // the strip catches up; if not, the thumb comes back.
+          try {
+            var mv2 = Knack.views && Knack.views[cfg.viewKey];
+            if (mv2 && mv2.model && typeof mv2.model.fetch === 'function') mv2.model.fetch();
+          } catch (e2) { /* best-effort */ }
+        }
+      });
+    }
+
+    // The requested "are you SURE!?!?" — loud copy, the photo shown in the
+    // modal so there's no ambiguity about WHICH one dies, destructive-red
+    // confirm button (ns.confirmModal styles it via …-confirm-delete).
+    if (ns.confirmModal && typeof ns.confirmModal === 'function') {
+      ns.confirmModal({
+        title: 'Delete this photo — are you SURE?',
+        body:
+          '<div style="display:flex;gap:12px;align-items:center;text-align:left;">' +
+            (thumbUrl
+              ? '<img src="' + esc(thumbUrl) + '" alt="" style="width:64px;height:64px;' +
+                'object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;flex:none;">'
+              : '') +
+            '<span>This <b>permanently deletes</b> the photo from ' +
+            '<b>&ldquo;' + esc(locLabel) + '&rdquo;</b>. There is no undo.</span>' +
+          '</div>',
+        okLabel: 'Yes — delete it forever',
+        cancelLabel: 'Keep photo'
+      }).then(function (ok) { if (ok) doDelete(); });
+    } else if (window.confirm('Permanently delete this photo? There is no undo.')) {
+      doDelete();
+    }
+  }
+
   function openPanel(btn) {
     var l1Id = btn.getAttribute('data-scw-ws-v2-mdf-notes');
     var sourceViewKey = btn.getAttribute('data-scw-ws-v2-view');
@@ -890,6 +1005,16 @@
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-mdf-notes-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-mdf-notes-bound', '1');
     document.addEventListener('click', function (e) {
+      // Per-photo delete × — checked FIRST (it sits beside the thumb
+      // anchor; never fall through into the lightbox).
+      var pdel = e.target && e.target.closest &&
+        e.target.closest('[data-scw-ws-v2-mdf-photo-del]');
+      if (pdel) {
+        e.preventDefault();
+        e.stopPropagation();
+        deleteMdfPhoto(pdel);
+        return;
+      }
       // Photo thumb → same in-place lightbox viewer as the line-item photo
       // strips (photos.js openLightbox), flipping between THIS location's
       // photos. Knack's edit-photo page stays reachable via the lightbox's
