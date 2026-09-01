@@ -101,13 +101,35 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // CO Action = Remove, Target install item → the install record, connected
   // to the CO via field_2154). The install record's own `Removed by CO` flip
   // defers to signature. Expected:
-  //   Request body:  { changeOrderId: <CO SOW id>, installItemIds: [<install rec ids>],
-  //                    removal: true, triggeredBy: {...} }
+  //   Request body:  {
+  //     changeOrderId:           <CO SOW id>,
+  //     installItemIds:          [<DEVICE install rec ids — acted-on rows ONLY>],
+  //     accessoryInstallItemIds: [<accessory install rec ids approved to ride>],
+  //     items: [ { id: <device id>, accessoryIds: [<its approved accessories>] } ],
+  //     removal: true, swap?: true, triggeredBy: {...}
+  //   }
   //   Response body: { success: true, created?: <count>, message?: "..." }
   //             or:  { success: false, error: "<message>" }
-  // Single-item and bulk removal fire the SAME payload shape (co-remove.js
-  // fireRemove builds it once): installItemIds is ALWAYS an array (one id or
-  // many), so Make can parse one way regardless of how many were selected.
+  // ⚠ Shape change 2026-09-01: accessories are NO LONGER mixed into
+  // installItemIds — the flat array lost which parent each accessory
+  // belonged to, so their Remove lines couldn't carry the parent
+  // connection. The scenario should now use ONE of:
+  //   A (recommended, no searches): iterate `items[]` → create the device's
+  //     Remove line → iterate that bundle's `accessoryIds` → create each
+  //     accessory Remove line parented to the device's (field_2464 on the
+  //     created line → the device Remove line, same as the old per-camera
+  //     loop produced).
+  //   B (matches the old loop): iterate `installItemIds` (devices) → search
+  //     each device's accessories from Knack (install field_2853 = device)
+  //     → FILTER to ids present in `accessoryInstallItemIds` → create their
+  //     Remove lines inside the device's loop pass (parent preserved).
+  // Either way accessories NOT in the approved set are left alone (the
+  // remove confirm's checkbox unchecked = empty arrays). Single, bulk and
+  // swap removes all fire this SAME shape (swap: true is informational —
+  // the swap pairing lives on the created lines' field_2966 targets).
+  // ⚠ The scenario must NOT also create Remove lines from the ADD webhook's
+  // swap branch — the client always follows a swap's Add call with this
+  // remove call; an add-scenario remove doubles every credit line.
   MAKE_CO_REMOVE_ITEMS_WEBHOOK: "https://hook.us1.make.com/yw3x0othv8k4guke6qx91iyo3q5hgnyy",
   // Change-order PRODUCT SWAP (worksheet-v2/co-remove.js fireSwapBatch) — NO
   // dedicated webhook: the gesture (single row or bulk) opens the bucket-
@@ -133,13 +155,14 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //            — swap accessories come ONLY through swapAccessories; an
   //            untargeted accessory Add would double the mount at apply).
   //   2. MAKE_CO_REMOVE_ITEMS_WEBHOOK — ONE call for the whole batch,
-  //      identical payload to a plain removal, installItemIds = every
-  //      successfully-added device + its accessories (+ an informational
-  //      swap:true); the remove scenario needs NO change — it already
-  //      iterates the array. Add fires first because a lone target-linked
-  //      Add is apply-safe, while a lone Remove would actually remove the
-  //      item; an item whose Add failed is left OUT of the remove call so
-  //      it stays live and untouched.
+  //      identical STRUCTURED payload to a plain removal (see the removal
+  //      contract above): installItemIds = the successfully-added devices,
+  //      each device's accessories under it in `items[]` /
+  //      accessoryInstallItemIds, plus an informational swap:true. Add
+  //      fires first because a lone target-linked Add is apply-safe, while
+  //      a lone Remove would actually remove the item; an item whose Add
+  //      failed is left OUT of the remove call so it stays live and
+  //      untouched.
   // At SIGNATURE the apply scenario routes on "CO Action = Add AND
   // field_2966 populated" → IN-PLACE UPDATE of the targeted install
   // record's PRODUCT (nothing else — product-only at this stage; never

@@ -904,7 +904,14 @@
   }
 
   // ── Removal write (Make webhook) — single + bulk share this ─────────
-  function fireRemove(ids, viewKey, ui) {
+  // ids    = the ACTED-ON install items (devices / top-level rows) only.
+  // accMap = deviceId → [accessory install ids] approved to ride along
+  //          (null/empty when the confirm checkbox was unchecked or the
+  //          devices have no accessories). Accessories are NEVER mixed into
+  //          installItemIds — the payload keeps the parent relationship so
+  //          Make can create each accessory's Remove line with its proper
+  //          parent connection (see the contract comment in src/config.js).
+  function fireRemove(ids, viewKey, ui, accMap) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_REMOVE_ITEMS_WEBHOOK) || '';
     if (!url || /PLACEHOLDER/.test(url)) {
       alert('The change-order removal webhook is not configured yet.\n\n' +
@@ -920,6 +927,18 @@
 
     ui.busy();
 
+    // Structured payload: `items` pairs each device with ITS approved
+    // accessories (nested-iterator pattern — no Make-side searches);
+    // `accessoryInstallItemIds` is the same set flattened (search-and-filter
+    // pattern for scenarios that loop a device's accessories from Knack).
+    var items = [], accFlat = [];
+    for (var bi = 0; bi < ids.length; bi++) {
+      var aIds = (accMap && accMap[ids[bi]]) || [];
+      items.push({ id: ids[bi], accessoryIds: aIds.slice() });
+      accFlat.push.apply(accFlat, aIds);
+    }
+    var allIds = ids.concat(accFlat);   // optimistic-flip set (below)
+
     // Create one Remove line per install item on the CO. Make owns the record
     // creation (CO Action = Remove, Target install item → install id, connect
     // to the CO via field_2154). The install record's `Removed by CO` flip is
@@ -928,10 +947,12 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        changeOrderId:  coId,
-        installItemIds: ids,        // always an array (1..N) — single & bulk identical
-        removal:        true,
-        triggeredBy:    getTriggeredBy()
+        changeOrderId:           coId,
+        installItemIds:          ids,      // acted-on devices ONLY (1..N)
+        accessoryInstallItemIds: accFlat,  // approved riders, flat
+        items:                   items,    // [{ id, accessoryIds: [...] }]
+        removal:                 true,
+        triggeredBy:             getTriggeredBy()
       })
     }).then(function (resp) {
       // Make's Webhook Response module is inconsistent — depending on how the
@@ -950,17 +971,18 @@
       var data = r.data;
       var explicitFail = !!(data && (data.success === false || data.error));
       if (r.ok && !explicitFail) {
-        // Optimistic flip to the Flagged state; the refetches below make it
-        // durable (and land the Remove lines on the CO worksheet).
+        // Optimistic flip to the Flagged state (devices + included
+        // accessories); the refetches below make it durable (and land the
+        // Remove lines on the CO worksheet).
         var container = document.getElementById('scw-ws-v2-' + viewKey);
-        for (var k = 0; k < ids.length; k++) {
-          delete _sel[ids[k]];
-          _flaggedOptimistic[ids[k]] = true;   // survive rebuilds until field_2967 lands
+        for (var k = 0; k < allIds.length; k++) {
+          delete _sel[allIds[k]];
+          _flaggedOptimistic[allIds[k]] = true;   // survive rebuilds until field_2967 lands
           if (!container) continue;
           var card = container.querySelector(
-            '.scw-ws-v2-card[data-scw-ws-v2-record="' + ids[k] + '"]');
+            '.scw-ws-v2-card[data-scw-ws-v2-record="' + allIds[k] + '"]');
           var row = card && card.querySelector('.scw-ws-v2-row');
-          if (row) setRowState(row, ids[k], viewKey, 'removed');
+          if (row) setRowState(row, allIds[k], viewKey, 'removed');
         }
         updateBulkToolbar(viewKey);
         // Repatch the install grid — the refetch repopulates field_2967 so the
@@ -987,13 +1009,16 @@
   // swap's remove side (fireSwapBatch) — the replacement may need different
   // mounting and the paired Add side re-covers it.
   function confirmRemove(ids, viewKey, ui) {
-    var accIds = [], seen = {};
+    // Per-device accessory map — the payload keeps each accessory under ITS
+    // parent so Make can preserve the relationship on the created lines.
+    var accMap = {}, accIds = [], seen = {};
     for (var i = 0; i < ids.length; i++) {
       var kids = accessoryChildren(viewKey, ids[i]);
       for (var k = 0; k < kids.length; k++) {
         var aid = kids[k] && kids[k].id;
         if (aid && !seen[aid] && ids.indexOf(aid) === -1) {
           seen[aid] = 1; accIds.push(aid);
+          (accMap[ids[i]] || (accMap[ids[i]] = [])).push(aid);
         }
       }
     }
@@ -1011,7 +1036,7 @@
             ' included.)'
           : '');
       if (!window.confirm(msg)) return;
-      fireRemove(ids.concat(accIds), viewKey, ui);
+      fireRemove(ids, viewKey, ui, accMap);
       return;
     }
     var includeAccs = true;   // default: the mounting goes with the device
@@ -1036,7 +1061,7 @@
       cancelLabel: 'Cancel'
     }).then(function (ok) {
       if (!ok) return;
-      fireRemove(includeAccs ? ids.concat(accIds) : ids, viewKey, ui);
+      fireRemove(ids, viewKey, ui, includeAccs ? accMap : null);
     });
     // The overlay is in the DOM the moment confirmModal returns — track the
     // checkbox live so the state is known before the modal tears down.
@@ -1419,22 +1444,27 @@
           (work.length > 1 ? 's' : '') + ' — nothing was created or removed.');
         return null;
       }
-      // Adds landed → the credit lines, one call for the whole batch.
-      // Payload identical to a plain removal (devices + their accessory
-      // children in one array — the scenario already iterates it) plus the
-      // swap flag (informational; the remove scenario needs no branch — the
-      // pairing lives on the Adds' field_2966 targets).
-      var installIds = [];
+      // Adds landed → the credit lines, one call for the whole batch. Same
+      // structured shape as a plain removal — devices in installItemIds,
+      // each device's accessories under it in `items` (and flattened in
+      // accessoryInstallItemIds) so the scenario keeps the parent
+      // relationship on the accessory Remove lines — plus the swap flag
+      // (informational; the pairing lives on the field_2966 targets).
+      var remIds = [], remItems = [], remAccFlat = [];
       for (var k = 0; k < okWork.length; k++) {
-        installIds.push(okWork[k].rid);
-        installIds.push.apply(installIds, okWork[k].accInstallIds);
+        remIds.push(okWork[k].rid);
+        remItems.push({ id: okWork[k].rid,
+                        accessoryIds: okWork[k].accInstallIds.slice() });
+        remAccFlat.push.apply(remAccFlat, okWork[k].accInstallIds);
       }
       return postHook(remUrl, {
-        changeOrderId:  coId,
-        installItemIds: installIds,
-        removal:        true,
-        swap:           true,
-        triggeredBy:    getTriggeredBy()
+        changeOrderId:           coId,
+        installItemIds:          remIds,
+        accessoryInstallItemIds: remAccFlat,
+        items:                   remItems,
+        removal:                 true,
+        swap:                    true,
+        triggeredBy:             getTriggeredBy()
       }).then(function (remR) {
         if (!remR.ok) {
           ui.fail();
