@@ -659,6 +659,9 @@
     }
   });
 
+  var _anySwappable = false;
+  var _noSwapWarned = {};
+
   function decorate(vcfg) {
     var viewKey = vcfg.sourceViewKey;
     var container = document.getElementById('scw-ws-v2-' + viewKey);
@@ -702,11 +705,22 @@
         // flag OR exactly one targeting CO line (a drafted Remove).
         state = 'removed';
       }
-      // Product-only swaps: no product on the record (services/assumptions)
-      // → nothing to swap, no button.
-      var canSwap = !!(Fv.product && rec[Fv.product] &&
-        String(rec[Fv.product]).replace(/<[^>]*>/g, '').trim());
+      // Product-only swaps: no product CONNECTION on the record (services /
+      // assumptions) → nothing to swap, no button. Keyed off the _raw id —
+      // the exact thing fireSwap's payload needs.
+      var canSwap = !!readConn(rec, Fv.product).id;
+      if (canSwap) _anySwappable = true;
       setRowState(row, rid, viewKey, state, canSwap);
+    }
+    // Every row unswappable while rows exist = the product field isn't
+    // readable here (column missing on the view, or a stale bundle without
+    // the field map) — say so once, actionably.
+    if (!_anySwappable && cards.length && !_noSwapWarned[viewKey]) {
+      _noSwapWarned[viewKey] = true;
+      console.warn(LOG_PREFIX, 'no rows are swappable on', viewKey,
+        '— product field', (Fv.product || '(unmapped)'),
+        'returned no connection id for any record. Check that the product',
+        'column is on the view and the pinned bundle is current.');
     }
 
     // Keyboard belt for the readOnly lockdown (our own checkboxes stay live).
