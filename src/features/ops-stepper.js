@@ -96,12 +96,23 @@
   // When a survey request is pending, the Mark Ready modal surfaces the
   // request's details prefilled + EDITABLE so Ops can correct them before
   // the send. Source + write path: a hidden grid of SOW_OPS_site survey
-  // requests CONNECTED to this page's SOW on scene_1096, with the fields
-  // below as columns and inline editing ON (view-based PUT rides the
-  // user's session — same mechanic as the CO recipient picker's
-  // write-back). Same view shape as view_3876 on the sales scene.
+  // requests on scene_1096, with the fields below as columns and inline
+  // editing ON (view-based PUT rides the user's session — same mechanic
+  // as the CO recipient picker's write-back). Same view shape as
+  // view_3876 on the sales scene.
   // Unconfigured → fail open: no editor renders, modal behaves as today.
-  var PENDING_REQ_VIEW = 'view_4141';  // hidden connected grid on scene_1096 (added 2026-08-03)
+  //
+  // ⚠️ Builder: the view's source must be PROJECT-WIDE (requests whose
+  // REL_installation project = this page SOW's project), matching
+  // view_3876 on the sales scene — NOT "connected to this page's SOW"
+  // via field_2329. The view_3853 capture form leaves the request's
+  // REL_scope of work (field_2329) BLANK, so a SOW-connected source
+  // renders No data even while a PENDING request exists (observed live
+  // 2026-09-01: sales page showed the pending card, this view was
+  // empty). Rows may therefore span sibling SOWs — the readers below
+  // scope by field_2329 where it's populated and treat unattributed
+  // rows as this project's request (one survey request per project).
+  var PENDING_REQ_VIEW = 'view_4141';  // hidden requests grid on scene_1096 (added 2026-08-03)
   // Field map = the SOW_OPS_site survey request capture record. NOTE the
   // POC lives in the INPUT fields (what the view_3853 form writes) — the
   // REL_poc contact connection (field_1197) is typically BLANK on these
@@ -118,6 +129,10 @@
     notes:          'field_1194',  // "anything else" text (editable)
     status:         'field_2992'   // FLAG_status (PENDING/…, read-only; row pick)
   };
+  // Request → SOW connection (usually BLANK — the capture form doesn't set
+  // it). Read separately from the editor fields purely to scope rows when
+  // it IS populated: an explicit sibling-SOW row must not arm THIS SOW.
+  var PENDING_REQ_SOW_FIELD = 'field_2329';
 
   var NS         = '.scwOpsStepper';
   var BLOCK_CLS  = 'scw-ops-stepper';
@@ -859,19 +874,32 @@
   }
 
   /** Count of armed survey requests on this SOW.
-   *  Preferred source: the Builder rollup (ARMED_REQ_COUNT_FIELD) once it
-   *  exists on view_3861. Until then, DERIVED from the flags already on
-   *  the view: field_2706 flips at submit regardless of validation
-   *  (confirmed 2026-08-02), so 2706 = Yes while 2723 = No means a
-   *  request was captured but the survey hasn't been sent — armed. The
-   *  derived form can't count multiples; it reports 1. Legacy-safe: this
-   *  state was unreachable before the stepper ungated pre-validation
-   *  submits. */
+   *  Source order:
+   *    1. The Builder rollup (ARMED_REQ_COUNT_FIELD) once it exists on
+   *       view_3861.
+   *    2. PENDING capture rows in PENDING_REQ_VIEW — the same signal the
+   *       sales page derives its "Pending" cards from (survey-request-
+   *       cards.js: "real status field wins"). The rows are fresher than
+   *       the SOW flags: field_2706's flip rides an async Make step and
+   *       can lag or miss entirely (observed live 2026-09-01 — capture
+   *       row FLAG_status = PENDING while 2706 still read No, so the
+   *       sales page showed the pending request and this stepper said
+   *       "validation only"). Explicit sibling-SOW rows are excluded.
+   *    3. Flag fallback (view empty / not yet showing rows): field_2706
+   *       flips at submit regardless of validation (confirmed
+   *       2026-08-02), so 2706 = Yes while 2723 = No means captured but
+   *       not sent — armed. Can't count multiples; reports 1. */
   function armedSurveyCount() {
     if (ARMED_REQ_COUNT_FIELD && fieldPresent(ARMED_REQ_COUNT_FIELD)) {
       var n = parseFloat(readField(ARMED_REQ_COUNT_FIELD));
       return (isFinite(n) && n > 0) ? n : 0;
     }
+    var rows = eligibleRequestRows();
+    var pending = 0;
+    for (var i = 0; i < rows.length; i++) {
+      if (rowIsPending(rows[i])) pending++;
+    }
+    if (pending > 0) return pending;
     if (conditionMet({ field: 'field_2706', value: 'Yes' }) &&
         conditionMet({ field: 'field_2723', value: 'No' })) {
       return 1;
@@ -924,24 +952,15 @@
     return out;
   }
 
-  /** The SOW's pending survey-request capture record from
-   *  PENDING_REQ_VIEW's model (DOM-scrape fallback) — { id, values } with
-   *  plain-text display values per PENDING_REQ_FIELDS logical name, or
-   *  null when the view is unconfigured / has no rows (fail open). The
-   *  view is connected to the page SOW, so its rows ARE this SOW's
-   *  requests; the row whose status reads pending wins, else the first. */
-  function readPendingRequest() {
-    if (!PENDING_REQ_VIEW) return null;
+  /** All survey-request capture rows from PENDING_REQ_VIEW (model first,
+   *  DOM-scrape fallback) — each { id, values, nameRaw, sowId } with
+   *  plain-text display values per PENDING_REQ_FIELDS logical name and
+   *  sowId = the request's field_2329 connection id ('' when blank, the
+   *  usual case). [] when the view is unconfigured / has no rows. */
+  function readPendingRequestRows() {
+    if (!PENDING_REQ_VIEW) return [];
     var F = PENDING_REQ_FIELDS;
-    // Prefer the row whose status reads pending — the view may also carry
-    // already-sent requests. No status match → first row (fail open).
-    function pickPending(list) {
-      for (var i = 0; i < list.length; i++) {
-        if (/pending/i.test(list[i].values.status || '')) return list[i];
-      }
-      return list[0] || null;
-    }
-    function firstFromModel() {
+    function fromModel() {
       var v = Knack.views && Knack.views[PENDING_REQ_VIEW];
       var models = (v && v.model && v.model.data && v.model.data.models) || [];
       var out = [];
@@ -953,14 +972,18 @@
         // Raw person-name shape ({first,last,…}) — the write-back must
         // match it (same contract as the recipient picker).
         var nameRaw = a[F.pocName + '_raw'];
+        var sowRaw = a[PENDING_REQ_SOW_FIELD + '_raw'];
+        var sowId = '';
+        if (Array.isArray(sowRaw) && sowRaw[0] && sowRaw[0].id) sowId = sowRaw[0].id;
+        else if (sowRaw && typeof sowRaw === 'object' && sowRaw.id) sowId = sowRaw.id;
         out.push({
-          id: a.id, values: values,
+          id: a.id, values: values, sowId: String(sowId || ''),
           nameRaw: (nameRaw && typeof nameRaw === 'object') ? nameRaw : null
         });
       }
-      return pickPending(out);
+      return out;
     }
-    function firstFromDom() {
+    function fromDom() {
       var out = [];
       var viewEl = document.getElementById(PENDING_REQ_VIEW);
       var rows = viewEl ? viewEl.querySelectorAll('tbody tr[id]') : [];
@@ -973,12 +996,56 @@
             ? (td.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
             : '';
         }
-        out.push({ id: rows[r].id, values: values, nameRaw: null });
+        var sowSpan = rows[r].querySelector(
+          'td.' + PENDING_REQ_SOW_FIELD + ' span[data-kn="connection-value"]');
+        var sowCls = sowSpan ? String(sowSpan.className || '').trim() : '';
+        out.push({
+          id: rows[r].id, values: values, nameRaw: null,
+          sowId: /^[0-9a-f]{24}$/i.test(sowCls) ? sowCls : ''
+        });
       }
-      return pickPending(out);
+      return out;
     }
-    try { return firstFromModel() || firstFromDom(); }
-    catch (e) { return firstFromDom(); }
+    var list;
+    try { list = fromModel(); } catch (e) { list = []; }
+    if (!list.length) { try { list = fromDom(); } catch (e2) { list = []; } }
+    return list;
+  }
+
+  // Rows that can belong to THIS SOW: unattributed (blank field_2329 —
+  // the capture form doesn't set it) or explicitly connected to the page
+  // SOW. A row explicitly connected to a SIBLING SOW is excluded — its
+  // validation/send belongs to that SOW's Mark Ready, not this one's.
+  function eligibleRequestRows() {
+    var rows = readPendingRequestRows();
+    var sowId = getSourceRecordId();
+    var out = [];
+    for (var i = 0; i < rows.length; i++) {
+      if (!rows[i].sowId || !sowId || rows[i].sowId === sowId) out.push(rows[i]);
+    }
+    return out;
+  }
+
+  function rowIsPending(row) {
+    return /pending/i.test((row.values && row.values.status) || '');
+  }
+
+  /** The pending survey-request capture record to review/send —
+   *  { id, values, nameRaw, sowId } or null (fail open). Preference:
+   *  pending row explicitly on this SOW → any pending row → first
+   *  eligible row (rows predating the status column read '' — fail
+   *  open on the first, matching the pre-status behavior). */
+  function readPendingRequest() {
+    var rows = eligibleRequestRows();
+    var sowId = getSourceRecordId();
+    var i;
+    for (i = 0; i < rows.length; i++) {
+      if (rowIsPending(rows[i]) && sowId && rows[i].sowId === sowId) return rows[i];
+    }
+    for (i = 0; i < rows.length; i++) {
+      if (rowIsPending(rows[i])) return rows[i];
+    }
+    return rows[0] || null;
   }
 
   /** Record id of the SOW's basis-bid connection (field_2942) as rendered on
