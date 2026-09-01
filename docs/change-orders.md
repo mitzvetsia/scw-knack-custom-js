@@ -568,18 +568,24 @@ have nothing to swap), and the apply writes the product and nothing else. A
 broader field-level swap is a future decision, not an extension of this one.
 
 - **Drafting**: ONE gesture — "⇄ Swap Product" on the removal panel
-  (`co-remove.js fireSwap` → `MAKE_CO_SWAP_ITEMS_WEBHOOK`, contract
-  documented in `src/config.js`). Make creates the Remove line AND an Add
-  line cloned from the install item's config, BOTH with `field_2966` → the
-  install record (an Add carrying a target IS the pair marker — no new CO
-  Action values). The user then changes the Add line's product to the
-  replacement on the CO worksheet — the one field a swap may change.
-- **Accessories**: each accessory child (install back-pointer `field_2853`,
-  the `field_2464` analogue — this answers the detection-source audit in the
-  open questions above) gets its own Remove + cloned Add pair, the Add
-  parented (`field_2464`) to the new device Add — so the accessory-mismatch
-  warning evaluates the mount against the replacement model and the sub sees
-  the real price line.
+  (`co-remove.js fireSwap`) — through the two EXISTING scenarios, no
+  dedicated swap hook (contract documented in `src/config.js`):
+  `MAKE_CO_ADD_ITEMS_WEBHOOK` first with the install item's config cloned
+  into the normal add payload + `swap: true` + `targetInstallItemId` (the
+  add scenario maps it → `field_2966`; an Add carrying a target IS the pair
+  marker — no new CO Action values), then `MAKE_CO_REMOVE_ITEMS_WEBHOOK`
+  exactly as a plain removal. Add fires first: a lone target-linked Add is
+  apply-safe (pricing gap only), a lone Remove would remove the item. The
+  user then changes the Add line's product to the replacement on the CO
+  worksheet — the one field a swap may change.
+- **Accessories (v1: untouched)**: the swap does NOT pair or clone accessory
+  children — they stay in install scope as-is (the add payload ships
+  `accessoryIds: []`, and the add scenario must skip default-accessory
+  auto-adds when `swap: true`, or the mount doubles at apply). If the
+  replacement product needs different mounting, that's a normal separate
+  add + remove on the CO. (The install-side accessory back-pointer is
+  `field_2853`, the `field_2464` analogue — answers the detection-source
+  audit in the open questions above.)
 - **Apply (signature)**: an Add with a `field_2966` target is an IN-PLACE
   UPDATE of that install record's PRODUCT — and nothing else (product-only
   at this stage) — never remove + create. `Removed by CO` (`field_2967`) is

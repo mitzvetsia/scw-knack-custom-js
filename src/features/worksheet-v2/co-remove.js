@@ -19,13 +19,17 @@
  * changes the product ONLY; every other field carries over verbatim and the
  * button renders only on rows that carry a product (services/assumptions
  * have nothing to swap). "⇄ Swap Product" drafts a LINKED Remove + Add pair
- * in one click — Make clones the install item's config into the Add line
- * and targets BOTH lines at the install record via field_2966; accessory
- * children (install field_2853) get their own pairs, parented to the new
- * Add. At signature the apply scenario treats a target-linked Add as an
- * IN-PLACE update of the install record's PRODUCT, so photos / QA / history
- * keep their identity — the fix for "remove+add severs the item's history".
- * Contract: MAKE_CO_SWAP_ITEMS_WEBHOOK in config.js.
+ * in one click through the two EXISTING scenarios (no dedicated swap hook):
+ * the ADD hook gets the normal add payload with the install item's config
+ * cloned in + `swap: true` + `targetInstallItemId` (which the scenario maps
+ * to field_2966 on the created line), then the REMOVE hook fires exactly as
+ * a plain removal (its scenario already targets field_2966). Add first,
+ * remove second — a lone target-linked Add is apply-safe; a lone Remove is
+ * not. Accessory children stay UNTOUCHED at this stage (a different mount
+ * is a separate add/remove on the CO). At signature the apply scenario
+ * treats a target-linked Add as an IN-PLACE update of the install record's
+ * PRODUCT, so photos / QA / history keep their identity — the fix for
+ * "remove+add severs the item's history".
  *
  * The write runs in Make (MAKE_CO_REMOVE_ITEMS_WEBHOOK) so the client never
  * creates/mutates records directly.
@@ -826,19 +830,60 @@
     });
   }
 
-  // ── Swap write (Make webhook) — drafts a linked Remove + Add pair ──────
-  // The "model change" gesture: the install item stays in scope (photos, QA
-  // and history keep their identity — at signature the pair applies IN PLACE
-  // to the install record), Make clones its config into an Add line, creates
-  // the Remove, targets both at the install record via field_2966, and pairs
-  // the accessory children the same way. Contract documented at
-  // MAKE_CO_SWAP_ITEMS_WEBHOOK in config.js.
+  // ── Swap write — drafts the pair through the two EXISTING scenarios ────
+  // No dedicated swap scenario: the gesture fires the ADD hook
+  // (MAKE_CO_ADD_ITEMS_WEBHOOK) with the install item's config cloned into
+  // the normal add payload + `swap: true` + `targetInstallItemId`, then the
+  // REMOVE hook (MAKE_CO_REMOVE_ITEMS_WEBHOOK) exactly as a plain removal.
+  // Make-side deltas: the ADD scenario maps targetInstallItemId →
+  // field_2966 on the created line (and must skip any default-accessory
+  // auto-adds when swap=true); the REMOVE scenario needs no change.
+  //
+  // ORDER MATTERS — ADD first, REMOVE second: a lone target-linked Add is
+  // apply-safe (product PUT + a missing credit line, pricing-only gap),
+  // while a lone Remove would actually REMOVE the install item at
+  // signature. Never risk the second.
+  function readConn(rec, fk) {
+    var raw = fk ? rec[fk + '_raw'] : null;
+    var one = Array.isArray(raw) ? raw[0] : raw;
+    return {
+      id:    (one && one.id) || '',
+      label: one ? String(one.identifier || '').replace(/<[^>]*>/g, '').trim() : ''
+    };
+  }
+  function readTxt(rec, fk) {
+    var v = fk ? rec[fk] : null;
+    return v == null ? ''
+      : String(v).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')
+          .replace(/\s+/g, ' ').trim();
+  }
+  function readYes(rec, fk) {
+    return /^(yes|true)$/i.test(readTxt(rec, fk));
+  }
+
+  function postHook(url, payload) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (resp) {
+      // Status-keyed success (same read as fireRemove) — Make's ack body
+      // shape varies; only an explicit {success:false}/{error} is a failure.
+      var ok = resp.ok;
+      return resp.text().then(function (txt) {
+        var body = null;
+        try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
+        var explicitFail = !!(body && (body.success === false || body.error));
+        return { ok: ok && !explicitFail, data: body };
+      });
+    });
+  }
+
   function fireSwap(rid, viewKey, ui) {
-    var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_SWAP_ITEMS_WEBHOOK) || '';
-    if (!url || /PLACEHOLDER/.test(url)) {
-      alert('The change-order swap webhook is not configured yet.\n\n' +
-        'Build the Make scenario (the contract is documented at ' +
-        'MAKE_CO_SWAP_ITEMS_WEBHOOK in src/config.js) and paste its URL.');
+    var addUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_ADD_ITEMS_WEBHOOK) || '';
+    var remUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_REMOVE_ITEMS_WEBHOOK) || '';
+    if (!addUrl || /PLACEHOLDER/.test(addUrl) || !remUrl || /PLACEHOLDER/.test(remUrl)) {
+      alert('The change-order add/remove webhooks are not both configured — the swap needs both.');
       return;
     }
     var coId = getCoSowId();
@@ -846,28 +891,82 @@
       alert('Could not determine the change order record id from the URL.');
       return;
     }
+    var rec = recordIndex(viewKey)[rid];
+    if (!rec) {
+      alert('Install item not loaded yet — try again in a moment.');
+      return;
+    }
+    var Fv = (ns.cfg && typeof ns.cfg.fields === 'function')
+      ? (ns.cfg.fields(viewKey) || {}) : {};
+    var product = readConn(rec, Fv.product);
+    var bucket  = readConn(rec, Fv.bucket);
+    var mdf     = readConn(rec, Fv.mdfIdf);
+    var prefix  = readConn(rec, Fv.dropPrefix);
+
+    // The ADD scenario's normal payload (co-add-item-form.js shape) with the
+    // install item's values cloned in, plus the swap extras. accessoryIds is
+    // DELIBERATELY empty — at this stage accessories stay untouched in
+    // install scope (an unpaired accessory add would double the mount at
+    // apply); if the new product needs a different mount, that's a separate
+    // add/remove on the CO.
+    var addPayload = {
+      coSowId:         coId,
+      bucketId:        bucket.id,
+      bucketName:      bucket.label,
+      productIds:      [product.id],
+      accessoryIds:    [],
+      mdfIds:          mdf.id ? [mdf.id] : [],
+      qty:             readTxt(rec, Fv.qty) || '1',
+      prefixId:        prefix.id,
+      prefix:          prefix.label,
+      startNumber:     readTxt(rec, Fv.dropNumber),
+      existingCabling: readYes(rec, Fv.existCabling),
+      exterior:        readYes(rec, Fv.exterior),
+      plenum:          readYes(rec, Fv.plenum),
+      serviceCost:     '',
+      description:     readTxt(rec, Fv.laborDesc),
+      notes:           readTxt(rec, Fv.scwNotes),
+      triggeredBy:     getTriggeredBy(),
+      origin:          'ops',
+      originPage:      viewKey,
+      originView:      viewKey,
+      originScene:     (typeof Knack !== 'undefined' && Knack.router &&
+                        Knack.router.current_scene_key) || '',
+      // ── Swap extras — the add scenario maps these:
+      swap:                true,
+      targetInstallItemId: rid,       // → field_2966 on the created Add line
+      // Extra config the form never collects, included so the scenario can
+      // clone it too if mapped (additive keys — unmapped is harmless).
+      dropLength:          readTxt(rec, Fv.dropLength),
+      conduit:             readTxt(rec, Fv.conduit)
+    };
+
     ui.busy();
-    fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    postHook(addUrl, addPayload).then(function (addR) {
+      if (!addR.ok) {
+        ui.fail();
+        alert((addR.data && (addR.data.error || addR.data.message)) ||
+          'Failed to draft the swap’s Add line — nothing was created.');
+        return null;
+      }
+      // Add landed → the credit line. Payload identical to a plain removal
+      // plus the swap flag (informational; the remove scenario needs no
+      // branch — the pairing lives on the Add's field_2966 target).
+      return postHook(remUrl, {
         changeOrderId:  coId,
-        installItemIds: [rid],   // array for payload symmetry with removal
+        installItemIds: [rid],
+        removal:        true,
         swap:           true,
         triggeredBy:    getTriggeredBy()
-      })
-    }).then(function (resp) {
-      // Same status-keyed success read as fireRemove — Make's ack body shape
-      // varies; only an explicit {success:false}/{error} counts as failure.
-      var ok = resp.ok;
-      return resp.text().then(function (txt) {
-        var body = null;
-        try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
-        return { ok: ok, data: body };
-      });
-    }).then(function (r) {
-      var explicitFail = !!(r.data && (r.data.success === false || r.data.error));
-      if (r.ok && !explicitFail) {
+      }).then(function (remR) {
+        if (!remR.ok) {
+          ui.fail();
+          alert('The swap’s Add (charge) line was drafted, but the Remove ' +
+            '(credit) line failed.\n\nClick “− Remove” on this install item ' +
+            'to complete the pair — do NOT click Swap again (that would ' +
+            'draft a second Add).');
+          return null;
+        }
         delete _sel[rid];
         _swappedOptimistic[rid] = true;   // survives rebuilds this session
         var container = document.getElementById('scw-ws-v2-' + viewKey);
@@ -878,11 +977,8 @@
         updateBulkToolbar(viewKey);
         refetchAfterRemove(viewKey);   // lands the pair on the CO worksheet
         ui.done();
-        return;
-      }
-      ui.fail();
-      alert((r.data && (r.data.error || r.data.message)) ||
-        'Failed to draft the swap pair.');
+        return true;
+      });
     }).catch(function (err) {
       ui.fail();
       alert('Webhook error: ' + (err && err.message ? err.message : err));
@@ -980,10 +1076,10 @@
         '(credit for <b>' + escHtml(prod || 'the current product') + '</b>) and ' +
         'an <b>Add</b> — pick the replacement product on the new CO line.' +
         (accN
-          ? '<br><br>Its ' + accN + ' accessor' + (accN === 1 ? 'y comes' : 'ies come') +
-            ' along as paired lines too — if the new product needs a different ' +
-            'mount, swap that product on its CO line (the mismatch warning ' +
-            'will flag it).'
+          ? '<br><br>Its ' + accN + ' accessor' + (accN === 1 ? 'y stays' : 'ies stay') +
+            ' in place, untouched. If the replacement product needs different ' +
+            'mounting, add the new mount and remove the old one on this CO ' +
+            'separately.'
           : '') +
         '<br><br>On signature the product change applies <b>in place</b> to ' +
         'the existing install record.';
