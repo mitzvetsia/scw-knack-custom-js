@@ -15,6 +15,15 @@
  * happens at SIGNATURE (Make), never client-side: per docs/change-orders.md,
  * "nothing mutates install scope until signature."
  *
+ * ACCESSORIES (2026-09-01): each row shows its accessory children as chips
+ * under the product name (child-side truth: install field_2853 back-
+ * pointers — requires view_4086 to LOAD the accessory records + that
+ * column). A REMOVE asks whether the accessories ride along (checkbox in
+ * the confirm, default CHECKED — uncheck to leave the mount installed for
+ * a future device). A SWAP always includes them on its remove side (no
+ * choice): the replacement may need different mounting, and the paired Add
+ * side re-covers it.
+ *
  * SWAP (added 2026-09-01; picker-first + bulk 2026-09-01): the PRODUCT-swap
  * gesture — at this stage a swap changes the product ONLY; every other field
  * carries over verbatim and the button renders only on rows that carry a
@@ -251,6 +260,35 @@
       '.scw-co-remove-desc {',
       '  font: 400 11px/1.45 system-ui, -apple-system, sans-serif;',
       '  color: #64748b; white-space: normal; overflow-wrap: anywhere;',
+      '}',
+
+      // Accessory summary — visible on the ROW (no expand needed) so ops can
+      // see exactly what mounting rides a remove/swap. Neutral slate chips;
+      // the rose/indigo palettes stay reserved for the actions.
+      '.scw-co-remove-accs {',
+      '  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;',
+      '  font: 500 10.5px/1.3 system-ui, -apple-system, sans-serif;',
+      '  color: #64748b;',
+      '}',
+      '.scw-co-remove-accs-lbl { font-weight: 600; color: #94a3b8; }',
+      '.scw-co-remove-acc-chip {',
+      '  display: inline-flex; align-items: center; padding: 1px 7px;',
+      '  background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 999px;',
+      '  color: #475569; white-space: nowrap;',
+      '}',
+
+      // Accessory-inclusion choice inside the remove confirm modal.
+      '.scw-co-remove-accopt {',
+      '  display: flex; align-items: flex-start; gap: 8px; cursor: pointer;',
+      '  margin-top: 12px; text-align: left;',
+      '}',
+      '.scw-co-remove-accopt input {',
+      '  width: 14px; height: 14px; margin: 2px 0 0; flex: 0 0 auto;',
+      '  accent-color: #be123c; cursor: pointer;',
+      '}',
+      '.scw-co-remove-accopt-note {',
+      '  display: block; margin: 6px 0 0 22px; font-size: 11px;',
+      '  color: #64748b; text-align: left;',
       '}',
 
       // Checkbox column
@@ -523,6 +561,44 @@
     prodCell.appendChild(d);
   }
 
+  // Accessory summary chips under the product name — the removal panel's
+  // rows must show what mounting rides a remove/swap WITHOUT expanding the
+  // card (the detail panel's read-only Mounting Hardware block only shows
+  // once expanded). Reads the same child-side truth as everything else:
+  // records whose parent back-pointer (install field_2853) names this row.
+  // ⚠ Renders only what view_4086 actually loads — if the Builder view
+  // filters accessory records out (or lacks the field_2853 column), there
+  // is nothing to scan; diagnoseMissingFields calls that out in console.
+  function injectAccessorySummary(card, rid, viewKey) {
+    var prodCell = card.querySelector('.scw-ws-v2-cell--product');
+    if (!prodCell) return;
+    if (!prodCell.querySelector('.scw-ws-v2-product-name')) return;  // prose rows
+    var Fv = (ns.cfg && typeof ns.cfg.fields === 'function')
+      ? (ns.cfg.fields(viewKey) || {}) : {};
+    var accs = accessoryChildren(viewKey, rid);
+    var existing = prodCell.querySelector('.scw-co-remove-accs');
+    if (!accs.length) {
+      if (existing) existing.parentNode.removeChild(existing);
+      return;
+    }
+    var chips = '';
+    for (var i = 0; i < accs.length; i++) {
+      var aRec = accs[i];
+      if (!aRec || !aRec.id) continue;
+      var lbl = readTxt(aRec, Fv.productName) ||
+                readConn(aRec, Fv.product).label || '(accessory)';
+      var q = parseFloat(readTxt(aRec, Fv.qty));
+      if (isFinite(q) && q > 1) lbl += ' ×' + q;
+      chips += '<span class="scw-co-remove-acc-chip" title="' + escHtml(lbl) +
+        '">' + escHtml(lbl) + '</span>';
+    }
+    if (!chips) { if (existing) existing.parentNode.removeChild(existing); return; }
+    var d = existing || document.createElement('div');
+    d.className = 'scw-co-remove-accs';
+    d.innerHTML = '<span class="scw-co-remove-accs-lbl">Accessories:</span>' + chips;
+    if (!existing) prodCell.appendChild(d);
+  }
+
   // ── Row restructure + control state ──────────────────────────────────
   // One-time per row: prepend the checkbox cell, append the action cell. The
   // trash cell is display:none'd by the readOnly lockdown, so the visible cell
@@ -718,6 +794,7 @@
       if (!row || !rec) continue;
       restructureRow(row, rid, viewKey);
       injectDesc(card, rec, vcfg);   // stack labor description under product (read-only)
+      injectAccessorySummary(card, rid, viewKey);   // accessory chips on the row
       var state = 'live';
       if (_swappedOptimistic[rid] || (tc && tc[rid] >= 2)) {
         state = 'swapped';
@@ -900,6 +977,71 @@
       ui.fail();
       alert('Webhook error: ' + (err && err.message ? err.message : err));
     });
+  }
+
+  // ── Remove confirm (single + bulk) — with the accessory choice ────────
+  // A device's accessory children DEFAULT to riding the removal (checkbox,
+  // checked — removing a camera usually removes its mount), but ops can
+  // uncheck to leave them installed (e.g. the mount stays for a future
+  // device). SWAP has no such choice by design: accessories ALWAYS ride the
+  // swap's remove side (fireSwapBatch) — the replacement may need different
+  // mounting and the paired Add side re-covers it.
+  function confirmRemove(ids, viewKey, ui) {
+    var accIds = [], seen = {};
+    for (var i = 0; i < ids.length; i++) {
+      var kids = accessoryChildren(viewKey, ids[i]);
+      for (var k = 0; k < kids.length; k++) {
+        var aid = kids[k] && kids[k].id;
+        if (aid && !seen[aid] && ids.indexOf(aid) === -1) {
+          seen[aid] = 1; accIds.push(aid);
+        }
+      }
+    }
+    var n = ids.length;
+    var one = n === 1;
+    if (!accIds.length ||
+        !(ns.confirmModal && typeof ns.confirmModal === 'function')) {
+      // No accessories involved (or no modal to host the choice — then
+      // accessories ride along by default, stated in the prompt).
+      var msg = 'Flag ' + (one ? 'this install item' : n + ' selected install items') +
+        ' for removal on the change order?' +
+        (accIds.length
+          ? '\n\n(' + (one ? 'Its ' : 'Their ') + accIds.length +
+            ' associated accessor' + (accIds.length === 1 ? 'y is' : 'ies are') +
+            ' included.)'
+          : '');
+      if (!window.confirm(msg)) return;
+      fireRemove(ids.concat(accIds), viewKey, ui);
+      return;
+    }
+    var includeAccs = true;   // default: the mounting goes with the device
+    var accWord = 'accessor' + (accIds.length === 1 ? 'y' : 'ies');
+    var body =
+      'This drafts a <b>Remove</b> line on the change order for each item — ' +
+      'nothing leaves install scope until the CO is signed.' +
+      '<label class="scw-co-remove-accopt">' +
+        '<input type="checkbox" id="scw-co-remove-incacc" checked>' +
+        '<span>Also remove ' + (one ? 'its' : 'their') + ' <b>' +
+          accIds.length + ' associated ' + accWord + '</b> ' +
+          '(the mounting hardware is credited on the CO too)</span>' +
+      '</label>' +
+      '<span class="scw-co-remove-accopt-note">Uncheck to leave the ' +
+        accWord + ' installed — e.g. when the mount stays in place for a ' +
+        'future device.</span>';
+    ns.confirmModal({
+      title: one ? 'Flag this install item for removal?'
+                 : 'Flag ' + n + ' install items for removal?',
+      body: body,
+      okLabel: 'Flag for removal',
+      cancelLabel: 'Cancel'
+    }).then(function (ok) {
+      if (!ok) return;
+      fireRemove(includeAccs ? ids.concat(accIds) : ids, viewKey, ui);
+    });
+    // The overlay is in the DOM the moment confirmModal returns — track the
+    // checkbox live so the state is known before the modal tears down.
+    var cb = document.getElementById('scw-co-remove-incacc');
+    if (cb) cb.addEventListener('change', function () { includeAccs = cb.checked; });
   }
 
   // ── Swap write — drafts the pair through the two EXISTING scenarios ────
@@ -1379,8 +1521,7 @@
       e.stopPropagation();
       var rid = btn.getAttribute('data-scw-co-remove');
       var vk  = btn.getAttribute('data-scw-co-remove-view');
-      if (!window.confirm('Flag this install item for removal on the change order?')) return;
-      fireRemove([rid], vk, {
+      confirmRemove([rid], vk, {
         busy: function () {
           btn.disabled = true;
           btn.innerHTML = '<span class="scw-co-remove-spin"></span> Removing…';
@@ -1417,10 +1558,8 @@
       e.stopPropagation();
       var ids = Object.keys(_sel);
       if (!ids.length) return;
-      if (!window.confirm('Flag ' + ids.length + ' selected install item' +
-          (ids.length === 1 ? '' : 's') + ' for removal on this change order?')) return;
       var vkB = bulk.getAttribute('data-scw-co-remove-bulk');
-      fireRemove(ids, vkB, {
+      confirmRemove(ids, vkB, {
         busy: function () {
           bulk.disabled = true;
           bulk.innerHTML = '<span class="scw-co-remove-spin"></span> Removing…';
