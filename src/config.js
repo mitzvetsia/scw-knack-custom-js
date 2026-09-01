@@ -109,13 +109,18 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // fireRemove builds it once): installItemIds is ALWAYS an array (one id or
   // many), so Make can parse one way regardless of how many were selected.
   MAKE_CO_REMOVE_ITEMS_WEBHOOK: "https://hook.us1.make.com/yw3x0othv8k4guke6qx91iyo3q5hgnyy",
-  // Change-order PRODUCT SWAP (worksheet-v2/co-remove.js fireSwap) — NO
-  // dedicated webhook: the gesture drafts its linked Remove + Add pair
-  // through the two EXISTING hooks, in this order:
-  //   1. MAKE_CO_ADD_ITEMS_WEBHOOK — the normal add payload with the install
-  //      item's config cloned in (productIds = the CURRENT product; the user
-  //      swaps it on the CO worksheet after) PLUS the swap extras. The ADD
-  //      scenario must, when swap=true:
+  // Change-order PRODUCT SWAP (worksheet-v2/co-remove.js fireSwapBatch) — NO
+  // dedicated webhook: the gesture (single row or bulk) opens the bucket-
+  // filtered product picker for the REPLACEMENT first, then drafts a linked
+  // Remove + Add pair PER ITEM through the two EXISTING hooks, in this order:
+  //   1. MAKE_CO_ADD_ITEMS_WEBHOOK — one call per item (sequential): the
+  //      normal add payload with the install item's config cloned in and
+  //      productIds = the REPLACEMENT product the user picked (the Add line
+  //      is created with it directly — no post-edit step). The credited
+  //      current product rides along as swapFromProductId /
+  //      swapFromProductName (informational — the credit itself is the
+  //      Remove line). PLUS the swap extras. The ADD scenario must, when
+  //      swap=true:
   //        (a) map targetInstallItemId → field_2966 on the created device
   //            line — an Add carrying a target IS the pair marker;
   //        (b) iterate `swapAccessories` [{productId, productName,
@@ -127,12 +132,14 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //        (c) skip any default-accessory auto-adds (accessoryIds arrives []
   //            — swap accessories come ONLY through swapAccessories; an
   //            untargeted accessory Add would double the mount at apply).
-  //   2. MAKE_CO_REMOVE_ITEMS_WEBHOOK — identical payload to a plain
-  //      removal, installItemIds = [device, ...its accessories] (+ an
-  //      informational swap:true); the remove scenario needs NO change —
-  //      it already iterates the array. Add fires first because a lone
-  //      target-linked Add is apply-safe, while a lone Remove would
-  //      actually remove the item.
+  //   2. MAKE_CO_REMOVE_ITEMS_WEBHOOK — ONE call for the whole batch,
+  //      identical payload to a plain removal, installItemIds = every
+  //      successfully-added device + its accessories (+ an informational
+  //      swap:true); the remove scenario needs NO change — it already
+  //      iterates the array. Add fires first because a lone target-linked
+  //      Add is apply-safe, while a lone Remove would actually remove the
+  //      item; an item whose Add failed is left OUT of the remove call so
+  //      it stays live and untouched.
   // At SIGNATURE the apply scenario routes on "CO Action = Add AND
   // field_2966 populated" → IN-PLACE UPDATE of the targeted install
   // record's PRODUCT (nothing else — product-only at this stage; never

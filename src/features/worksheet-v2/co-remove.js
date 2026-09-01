@@ -15,25 +15,36 @@
  * happens at SIGNATURE (Make), never client-side: per docs/change-orders.md,
  * "nothing mutates install scope until signature."
  *
- * SWAP (added 2026-09-01): the PRODUCT-swap gesture — at this stage a swap
- * changes the product ONLY; every other field carries over verbatim and the
- * button renders only on rows that carry a product (services/assumptions
- * have nothing to swap). "⇄ Swap Product" drafts a LINKED Remove + Add pair
- * in one click through the two EXISTING scenarios (no dedicated swap hook):
- * the ADD hook gets the normal add payload with the install item's config
- * cloned in + `swap: true` + `targetInstallItemId` (which the scenario maps
- * to field_2966 on the created line), then the REMOVE hook fires exactly as
+ * SWAP (added 2026-09-01; picker-first + bulk 2026-09-01): the PRODUCT-swap
+ * gesture — at this stage a swap changes the product ONLY; every other field
+ * carries over verbatim and the button renders only on rows that carry a
+ * product (services/assumptions have nothing to swap). "⇄ Swap Product"
+ * opens the bucket-filtered product picker FIRST (pickOnly — the same
+ * catalog the CO add-item modal uses), confirms, then drafts a LINKED
+ * Remove + Add pair per item through the two EXISTING scenarios (no
+ * dedicated swap hook): the ADD hook gets the normal add payload with the
+ * install item's config cloned in, `productIds` = the REPLACEMENT product
+ * the user picked (the Add line is born with it — no post-edit step),
+ * `swapFromProductId/Name` = the credited current product, plus
+ * `swap: true` + `targetInstallItemId` (which the scenario maps to
+ * field_2966 on the created line); then the REMOVE hook fires exactly as
  * a plain removal (its scenario already targets field_2966). Add first,
  * remove second — a lone target-linked Add is apply-safe; a lone Remove is
- * not. Accessory children (install field_2853) ride as their OWN pairs so
- * the CO shows the mounting being credited/re-added: the add payload's
- * `swapAccessories` array carries {productId, targetInstallItemId, qty}
- * per accessory (created as field_2464 children of the device Add, each
- * targeting its own install record), and their install ids join the
- * remove call's installItemIds. At signature the apply scenario treats a
- * target-linked Add as an IN-PLACE update of the install record's
- * PRODUCT, so photos / QA / history keep their identity — the fix for
- * "remove+add severs the item's history".
+ * not. BULK: the floating toolbar's "⇄ Swap Product" applies ONE picked
+ * replacement across every selected swappable row (they must share one
+ * product category, since the picker filters by bucket) — Adds fire
+ * sequentially, then a single Remove call covers every successfully-added
+ * device; an item whose Add failed is left out of the Remove entirely, so
+ * it stays live and untouched. Accessory children (install field_2853)
+ * ride as their OWN pairs so the CO shows the mounting being
+ * credited/re-added: the add payload's `swapAccessories` array carries
+ * {productId, targetInstallItemId, qty} per accessory (created as
+ * field_2464 children of the device Add, each targeting its own install
+ * record), and their install ids join the remove call's installItemIds.
+ * At signature the apply scenario treats a target-linked Add as an
+ * IN-PLACE update of the install record's PRODUCT, so photos / QA /
+ * history keep their identity — the fix for "remove+add severs the
+ * item's history".
  *
  * The write runs in Make (MAKE_CO_REMOVE_ITEMS_WEBHOOK) so the client never
  * creates/mutates records directly.
@@ -93,7 +104,7 @@
   // to clear an id here; not built yet — self-heals on reload.)
   var _flaggedOptimistic = {};
 
-  // Same idea for freshly-drafted SWAP pairs (fireSwap): install id → true
+  // Same idea for freshly-drafted SWAP pairs (fireSwapBatch): install id → true
   // from the moment the swap webhook ACKs, so the row reads "⇄ Swap drafted"
   // through the Make-write gap. Durable cross-reload detection comes from
   // coTargetCounts (2+ CO lines targeting the id) once field_2966 is a
@@ -356,6 +367,16 @@
       '}',
       '.scw-co-remove-toolbar .scw-co-remove-clear:hover {',
       '  background: rgba(190, 18, 60, 0.35) !important;',
+      '}',
+      // Bulk swap — indigo, matching the row button's palette.
+      '.scw-co-remove-toolbar .scw-co-swap-bulk {',
+      '  background: #4f46e5 !important; border-color: #4f46e5 !important;',
+      '}',
+      '.scw-co-remove-toolbar .scw-co-swap-bulk:hover:not([disabled]) {',
+      '  background: #4338ca !important;',
+      '}',
+      '.scw-co-remove-toolbar .scw-co-swap-bulk[disabled] {',
+      '  opacity: 0.55; cursor: default;',
       '}'
     ].join('\n');
     document.head.appendChild(s);
@@ -563,7 +584,7 @@
       delete _sel[rid];
       act.innerHTML = '<span class="scw-co-swap-flagged" ' +
         'title="A product-swap pair for this item is drafted on this ' +
-        'change order — pick the replacement product on the new CO line">' +
+        'change order — the new CO line carries the replacement product">' +
         '⇄ Product swap drafted</span>';
       lockCheck();
       if (card) {
@@ -583,9 +604,10 @@
             ? '<button type="button" class="scw-co-swap-btn" ' +
               'data-scw-co-swap="' + rid + '" ' +
               'data-scw-co-remove-view="' + viewKey + '" ' +
-              'title="Swap the product on this install item — drafts a linked Remove + Add ' +
-              'pair; everything else carries over and the item keeps its photos, QA and ' +
-              'history (applies in place at signature)">⇄ Swap Product</button>'
+              'title="Swap the product on this install item — pick the replacement, then ' +
+              'a linked Remove + Add pair is drafted; everything else carries over and ' +
+              'the item keeps its photos, QA and history (applies in place at ' +
+              'signature)">⇄ Swap Product</button>'
             : '');
       }
       if (check) {
@@ -707,7 +729,7 @@
       }
       // Product-only swaps: no product CONNECTION on the record (services /
       // assumptions) → nothing to swap, no button. Keyed off the _raw id —
-      // the exact thing fireSwap's payload needs.
+      // the exact thing fireSwapBatch's payload needs.
       var canSwap = !!readConn(rec, Fv.product).id;
       if (canSwap) _anySwappable = true;
       setRowState(row, rid, viewKey, state, canSwap);
@@ -748,10 +770,27 @@
       '<span class="scw-ws-v2-bulk-count">0 selected</span>' +
       '<button type="button" class="' + BULK_CLS + '" ' +
         'data-scw-co-remove-bulk="' + viewKey + '">Remove from Change Order</button>' +
+      '<button type="button" class="scw-co-swap-bulk" ' +
+        'data-scw-co-swap-bulk="' + viewKey + '">⇄ Swap Product</button>' +
       '<button type="button" class="scw-co-remove-clear" ' +
         'data-scw-co-remove-clear="' + viewKey + '">Clear</button>';
     document.body.appendChild(_toolbar);
     return _toolbar;
+  }
+
+  // Ids in the current selection that carry a product connection (the only
+  // rows a product swap applies to — services/assumptions can't swap).
+  function swappableSelection(viewKey) {
+    var byId = recordIndex(viewKey);
+    var Fv = (ns.cfg && typeof ns.cfg.fields === 'function')
+      ? (ns.cfg.fields(viewKey) || {}) : {};
+    var out = [];
+    for (var rid in _sel) {
+      if (!Object.prototype.hasOwnProperty.call(_sel, rid)) continue;
+      var rec = byId[rid];
+      if (rec && readConn(rec, Fv.product).id) out.push(rid);
+    }
+    return out;
   }
 
   function updateBulkToolbar(viewKey) {
@@ -759,6 +798,21 @@
     var bar = ensureBulkToolbar(viewKey);
     var count = bar.querySelector('.scw-ws-v2-bulk-count');
     if (count) count.textContent = n + ' selected';
+    // Swap applies to the swappable subset — show its count when it differs
+    // from the selection, disable at 0. Skipped while a batch is drafting so
+    // a mid-batch re-render can't clobber the progress label.
+    var sw = bar.querySelector('.scw-co-swap-bulk');
+    if (sw && !sw.hasAttribute('data-scw-co-swap-busy')) {
+      var swN = n ? swappableSelection(viewKey).length : 0;
+      sw.disabled = !swN;
+      sw.textContent = (swN && swN !== n)
+        ? '⇄ Swap Product (' + swN + ')'
+        : '⇄ Swap Product';
+      sw.title = swN
+        ? 'Swap the product on the selected item' + (swN === 1 ? '' : 's') +
+          ' — pick one replacement; each gets a linked Remove + Add pair'
+        : 'None of the selected rows has a product to swap';
+    }
     bar.classList.toggle('scw-ws-v2-bulk-toolbar--active', n > 0);
   }
 
@@ -897,7 +951,223 @@
     });
   }
 
-  function fireSwap(rid, viewKey, ui) {
+  // Bucket-filtered replacement-product candidates — same sources + rules as
+  // the CO add-item modal (SCW.productMap names, SCW.productBucketMap /
+  // productMap.buckets membership; no bucket data anywhere = universal). Falls
+  // back to the products in use on THIS view when the catalog snippet is
+  // absent (Known Issue #17) so the picker still opens.
+  function swapProductCandidates(bucketId, viewKey, Fv) {
+    var pmap = (window.SCW && SCW.productMap) || {};
+    var bmap = (window.SCW && SCW.productBucketMap) || null;
+    function allowed(pid, p) {
+      if (!bucketId) return true;
+      var known = false, hit = false;
+      if (p && Array.isArray(p.buckets) && p.buckets.length) {
+        known = true; if (p.buckets.indexOf(bucketId) !== -1) hit = true;
+      }
+      if (!hit && bmap && bmap[pid] && bmap[pid].length) {
+        known = true; if (bmap[pid].indexOf(bucketId) !== -1) hit = true;
+      }
+      return known ? hit : true;
+    }
+    var out = [], id, p;
+    for (id in pmap) {
+      if (!Object.prototype.hasOwnProperty.call(pmap, id)) continue;
+      p = pmap[id];
+      if (p && allowed(id, p)) {
+        out.push({ id: id, name: p.name || '(unnamed)', sub: p.sku || '' });
+      }
+    }
+    if (!out.length) {
+      var seen = Object.create(null);
+      var recs = (ns.data && typeof ns.data.readRecords === 'function')
+        ? ns.data.readRecords(viewKey) : [];
+      for (var i = 0; i < recs.length; i++) {
+        var c = readConn(recs[i] || {}, Fv.product);
+        if (c.id && !seen[c.id]) {
+          seen[c.id] = 1;
+          out.push({ id: c.id, name: c.label || c.id });
+        }
+      }
+      if (out.length) {
+        console.warn(LOG_PREFIX, 'SCW.productMap unavailable — swap picker ' +
+          'shows in-use products only (' + out.length + ').');
+      }
+    }
+    out.sort(function (a, b) {
+      return String(a.name).localeCompare(String(b.name), undefined,
+        { numeric: true, sensitivity: 'base' });
+    });
+    return out;
+  }
+
+  // ── Swap gesture: pick the replacement → confirm → draft the pairs ────
+  // Shared by the single-row button (rids = [rid]) and the bulk toolbar.
+  function openSwapPicker(rids, viewKey, ui) {
+    if (!ns.picker || typeof ns.picker.open !== 'function') {
+      alert('The record picker module is not loaded — cannot open the product list.');
+      return;
+    }
+    var byId = recordIndex(viewKey);
+    var Fv = (ns.cfg && typeof ns.cfg.fields === 'function')
+      ? (ns.cfg.fields(viewKey) || {}) : {};
+    var jobs = [], skippedNoProduct = 0;
+    for (var i = 0; i < rids.length; i++) {
+      var rec = byId[rids[i]];
+      var prod = rec ? readConn(rec, Fv.product) : { id: '' };
+      if (!rec || !prod.id) { skippedNoProduct++; continue; }   // services/assumptions
+      jobs.push({ rid: rids[i], rec: rec, product: prod,
+                  bucket: readConn(rec, Fv.bucket) });
+    }
+    if (!jobs.length) {
+      alert('None of the selected items has a product to swap — services and ' +
+        'assumption rows can only be removed.');
+      return;
+    }
+    // ONE replacement serves the whole batch, and the picker filters by
+    // bucket — so a bulk swap must stay within one product category.
+    var buckets = {};
+    for (var b = 0; b < jobs.length; b++) {
+      if (jobs[b].bucket.id) buckets[jobs[b].bucket.id] = jobs[b].bucket.label;
+    }
+    var bucketIds = Object.keys(buckets);
+    if (bucketIds.length > 1) {
+      var names = bucketIds.map(function (k) { return buckets[k] || k; });
+      alert('The selected items span more than one product category (' +
+        names.join(', ') + ') — one replacement product can’t fit them ' +
+        'all.\n\nSwap one category at a time.');
+      return;
+    }
+    var bucketId = bucketIds[0] || '';
+
+    function openIt() {
+      var candidates = swapProductCandidates(bucketId, viewKey, Fv);
+      if (!candidates.length) {
+        alert('The product catalog hasn’t loaded yet, so there are no ' +
+          'products to choose from. Refresh the page and try again.');
+        return;
+      }
+      ns.picker.open({
+        sourceViewKey: viewKey,
+        putViewKey:    viewKey,
+        recordId:      jobs[0].rid,
+        fieldKey:      'scwswap',      // pickOnly — never written anywhere
+        label:         jobs.length === 1
+          ? 'Replacement product · now ' + (jobs[0].product.label || '—')
+          : 'Replacement product · ' + jobs.length + ' items',
+        selectedIds:   [],
+        candidates:    candidates,
+        itemLabel:     function (c) { return c.name || c.id; },
+        multi:         false,
+        allowClear:    false,
+        pickOnly:      true,
+        onChoose:      function (ids) {
+          if (!ids || !ids.length) return;
+          var pid = ids[0], pname = pid;
+          for (var c = 0; c < candidates.length; c++) {
+            if (candidates[c].id === pid) { pname = candidates[c].name; break; }
+          }
+          confirmSwap(jobs, viewKey, { id: pid, name: pname },
+            skippedNoProduct, ui);
+        }
+      });
+    }
+
+    // Wait briefly for the product catalog (same race the worksheet's product
+    // picker handles) so a cold click doesn't open an empty list.
+    if (window.SCW && SCW.productMap && Object.keys(SCW.productMap).length) {
+      openIt();
+    } else if (window.SCW && SCW.productMapReady &&
+               typeof SCW.productMapReady.then === 'function') {
+      var opened = false;
+      var openOnce = function () { if (!opened) { opened = true; openIt(); } };
+      var t = setTimeout(openOnce, 1500);
+      SCW.productMapReady.then(
+        function () { clearTimeout(t); openOnce(); },
+        function () { clearTimeout(t); openOnce(); });
+    } else {
+      openIt();
+    }
+  }
+
+  function confirmSwap(jobs, viewKey, replacement, skippedNoProduct, ui) {
+    // Swapping an item to the product it already has is a no-op pair —
+    // drop those instead of drafting noise on the CO.
+    var run = [], alreadyN = 0;
+    for (var i = 0; i < jobs.length; i++) {
+      if (jobs[i].product.id === replacement.id) alreadyN++;
+      else run.push(jobs[i]);
+    }
+    if (!run.length) {
+      alert(jobs.length === 1
+        ? 'That is already this item’s product — pick a different replacement.'
+        : 'Every selected item already has that product — nothing to swap.');
+      return;
+    }
+    var accTotal = 0;
+    for (var a = 0; a < run.length; a++) {
+      accTotal += accessoryChildren(viewKey, run[a].rid).length;
+    }
+    var single = run.length === 1;
+    var body =
+      'This swaps the <b>product only</b> — ' +
+      (single ? 'the item stays' : 'each item stays') +
+      ' installed at the same drop with its photos, QA and install history, ' +
+      'and everything else (location, cabling, config) carries over unchanged.' +
+      '<br><br>It drafts a linked pair on the change order' +
+      (single ? '' : ' for each item') + ': a <b>Remove</b> (credit for ' +
+      (single
+        ? '<b>' + escHtml(run[0].product.label || 'the current product') + '</b>'
+        : 'its current product') +
+      ') and an <b>Add</b> for <b>' + escHtml(replacement.name) + '</b>.' +
+      (accTotal
+        ? '<br><br>' + (single ? 'Its ' : 'Their ') + accTotal + ' accessor' +
+          (accTotal === 1 ? 'y comes' : 'ies come') +
+          ' along as paired lines too, so the CO shows the mounting being ' +
+          'credited and re-added — if the replacement needs a different ' +
+          'mount, swap that product on its CO line (the mismatch warning ' +
+          'will flag it).'
+        : '') +
+      ((alreadyN || skippedNoProduct)
+        ? '<br><br><i>' +
+          (alreadyN
+            ? alreadyN + ' selected item' + (alreadyN === 1 ? ' already has' : 's already have') +
+              ' this product — skipped. '
+            : '') +
+          (skippedNoProduct
+            ? skippedNoProduct + ' selected row' + (skippedNoProduct === 1 ? ' has' : 's have') +
+              ' no product (services/assumptions) — skipped.'
+            : '') +
+          '</i>'
+        : '') +
+      '<br><br>On signature the product change applies <b>in place</b> to ' +
+      'the existing install record' + (single ? '' : 's') + '.';
+    var title = single
+      ? 'Swap the product on this install item?'
+      : 'Draft product swaps for ' + run.length + ' install items?';
+    var go = function () { fireSwapBatch(run, viewKey, replacement, ui); };
+    if (ns.confirmModal && typeof ns.confirmModal === 'function') {
+      ns.confirmModal({
+        title: title,
+        body: body,
+        okLabel: single ? 'Draft product swap' : 'Draft ' + run.length + ' product swaps',
+        cancelLabel: 'Cancel'
+      }).then(function (ok) { if (ok) go(); });
+    } else if (window.confirm(title + ' This drafts a linked Remove + Add ' +
+        'pair per item on the change order, with ' + replacement.name +
+        ' on the Add line' + (single ? '' : 's') + '.')) {
+      go();
+    }
+  }
+
+  // jobs: [{rid, rec, product}] — already swappable and not-already-the-
+  // replacement. Fires ONE add per item (sequential — keeps the created CO
+  // lines in selection order and Make's queue happy), then ONE remove call
+  // covering every successfully-added device + its accessories. ADD first,
+  // REMOVE second (a lone target-linked Add is apply-safe; a lone Remove is
+  // not) — and an item whose Add failed is left OUT of the remove entirely,
+  // so it stays live and untouched (still selected, retryable).
+  function fireSwapBatch(jobs, viewKey, replacement, ui) {
     var addUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_ADD_ITEMS_WEBHOOK) || '';
     var remUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_REMOVE_ITEMS_WEBHOOK) || '';
     if (!addUrl || /PLACEHOLDER/.test(addUrl) || !remUrl || /PLACEHOLDER/.test(remUrl)) {
@@ -909,120 +1179,151 @@
       alert('Could not determine the change order record id from the URL.');
       return;
     }
-    var rec = recordIndex(viewKey)[rid];
-    if (!rec) {
-      alert('Install item not loaded yet — try again in a moment.');
-      return;
-    }
     var Fv = (ns.cfg && typeof ns.cfg.fields === 'function')
       ? (ns.cfg.fields(viewKey) || {}) : {};
-    var product = readConn(rec, Fv.product);
-    var bucket  = readConn(rec, Fv.bucket);
-    var mdf     = readConn(rec, Fv.mdfIdf);
-    var prefix  = readConn(rec, Fv.dropPrefix);
 
-    // Accessory children ride the swap as their OWN pairs, so the CO shows
-    // exactly what mounting is being credited and re-added (and the sub can
-    // price it). Each entry carries the accessory's PRODUCT (what the Add
-    // line is created with) and its own INSTALL record id (what the created
-    // line's field_2966 must target). Their Remove lines join the device's
-    // in the single remove-hook call below.
-    var accs = accessoryChildren(viewKey, rid);
-    var swapAccessories = [];
-    var accInstallIds = [];
-    for (var ai = 0; ai < accs.length; ai++) {
-      var aRec = accs[ai];
-      var aProd = readConn(aRec, Fv.product);
-      if (!aRec || !aRec.id || !aProd.id) continue;   // no product → nothing to pair
-      accInstallIds.push(aRec.id);
-      swapAccessories.push({
-        productId:           aProd.id,
-        productName:         aProd.label,
-        targetInstallItemId: aRec.id,
-        qty:                 readTxt(aRec, Fv.qty) || '1'
+    // Build every payload up front — records can re-render mid-batch.
+    var work = [];
+    for (var i = 0; i < jobs.length; i++) {
+      var job = jobs[i];
+      var rec = job.rec;
+      // Accessory children ride the swap as their OWN pairs, so the CO shows
+      // exactly what mounting is being credited and re-added (and the sub
+      // can price it). Each entry carries the accessory's PRODUCT (what its
+      // Add line is created with — accessories keep their CURRENT product;
+      // only the device gets the replacement) and its own INSTALL record id
+      // (what the created line's field_2966 must target). Their Remove lines
+      // join the device's in the single remove-hook call below.
+      var accs = accessoryChildren(viewKey, job.rid);
+      var swapAccessories = [], accInstallIds = [];
+      for (var ai = 0; ai < accs.length; ai++) {
+        var aRec = accs[ai];
+        var aProd = readConn(aRec, Fv.product);
+        if (!aRec || !aRec.id || !aProd.id) continue;   // no product → nothing to pair
+        accInstallIds.push(aRec.id);
+        swapAccessories.push({
+          productId:           aProd.id,
+          productName:         aProd.label,
+          targetInstallItemId: aRec.id,
+          qty:                 readTxt(aRec, Fv.qty) || '1'
+        });
+      }
+      var bucket = readConn(rec, Fv.bucket);
+      var mdf    = readConn(rec, Fv.mdfIdf);
+      var prefix = readConn(rec, Fv.dropPrefix);
+      // The ADD scenario's normal payload (co-add-item-form.js shape) with
+      // the install item's values cloned in, plus the swap extras.
+      // accessoryIds stays [] on purpose — the scenario's normal accessory
+      // path can't target field_2966, so swap accessories go through
+      // `swapAccessories` (see the contract comment in src/config.js).
+      work.push({
+        rid: job.rid,
+        accInstallIds: accInstallIds,
+        payload: {
+          coSowId:         coId,
+          bucketId:        bucket.id,
+          bucketName:      bucket.label,
+          // The REPLACEMENT the user picked — the Add line is born with it.
+          productIds:      [replacement.id],
+          accessoryIds:    [],
+          mdfIds:          mdf.id ? [mdf.id] : [],
+          qty:             readTxt(rec, Fv.qty) || '1',
+          prefixId:        prefix.id,
+          prefix:          prefix.label,
+          startNumber:     readTxt(rec, Fv.dropNumber),
+          existingCabling: readYes(rec, Fv.existCabling),
+          exterior:        readYes(rec, Fv.exterior),
+          plenum:          readYes(rec, Fv.plenum),
+          serviceCost:     '',
+          description:     readTxt(rec, Fv.laborDesc),
+          notes:           readTxt(rec, Fv.scwNotes),
+          triggeredBy:     getTriggeredBy(),
+          origin:          'ops',
+          originPage:      viewKey,
+          originView:      viewKey,
+          originScene:     (typeof Knack !== 'undefined' && Knack.router &&
+                            Knack.router.current_scene_key) || '',
+          // ── Swap extras — the add scenario maps these:
+          swap:                true,
+          targetInstallItemId: job.rid,   // → field_2966 on the created Add line
+          // The credited (current) product — informational context for the
+          // scenario / notifications; the credit itself is the Remove line.
+          swapFromProductId:   job.product.id,
+          swapFromProductName: job.product.label,
+          swapAccessories:     swapAccessories,
+          // Extra config the form never collects, included so the scenario
+          // can clone it too if mapped (additive keys — unmapped is harmless).
+          dropLength:          readTxt(rec, Fv.dropLength),
+          conduit:             readTxt(rec, Fv.conduit)
+        }
       });
     }
 
-    // The ADD scenario's normal payload (co-add-item-form.js shape) with the
-    // install item's values cloned in, plus the swap extras. accessoryIds
-    // stays [] on purpose — the scenario's normal accessory path can't
-    // target field_2966, so swap accessories go through `swapAccessories`
-    // (see the contract comment in src/config.js).
-    var addPayload = {
-      coSowId:         coId,
-      bucketId:        bucket.id,
-      bucketName:      bucket.label,
-      productIds:      [product.id],
-      accessoryIds:    [],
-      mdfIds:          mdf.id ? [mdf.id] : [],
-      qty:             readTxt(rec, Fv.qty) || '1',
-      prefixId:        prefix.id,
-      prefix:          prefix.label,
-      startNumber:     readTxt(rec, Fv.dropNumber),
-      existingCabling: readYes(rec, Fv.existCabling),
-      exterior:        readYes(rec, Fv.exterior),
-      plenum:          readYes(rec, Fv.plenum),
-      serviceCost:     '',
-      description:     readTxt(rec, Fv.laborDesc),
-      notes:           readTxt(rec, Fv.scwNotes),
-      triggeredBy:     getTriggeredBy(),
-      origin:          'ops',
-      originPage:      viewKey,
-      originView:      viewKey,
-      originScene:     (typeof Knack !== 'undefined' && Knack.router &&
-                        Knack.router.current_scene_key) || '',
-      // ── Swap extras — the add scenario maps these:
-      swap:                true,
-      targetInstallItemId: rid,       // → field_2966 on the created Add line
-      // Accessory pairs: create one child Add line per entry (parented via
-      // field_2464 to the device Add, same as the normal accessory path)
-      // with field_2966 = its targetInstallItemId — so the CO shows exactly
-      // what mounting is credited/re-added and the mismatch warning can
-      // judge it against the replacement product.
-      swapAccessories:     swapAccessories,
-      // Extra config the form never collects, included so the scenario can
-      // clone it too if mapped (additive keys — unmapped is harmless).
-      dropLength:          readTxt(rec, Fv.dropLength),
-      conduit:             readTxt(rec, Fv.conduit)
-    };
-
     ui.busy();
-    postHook(addUrl, addPayload).then(function (addR) {
-      if (!addR.ok) {
+    var okWork = [], failN = 0;
+    var chain = Promise.resolve();
+    work.forEach(function (w, idx) {
+      chain = chain.then(function () {
+        if (typeof ui.progress === 'function') ui.progress(idx + 1, work.length);
+        return postHook(addUrl, w.payload).then(function (r) {
+          if (r.ok) okWork.push(w); else failN++;
+        }, function () { failN++; });   // one item's error must not stop the batch
+      });
+    });
+    chain.then(function () {
+      if (!okWork.length) {
         ui.fail();
-        alert((addR.data && (addR.data.error || addR.data.message)) ||
-          'Failed to draft the swap’s Add line — nothing was created.');
+        alert('Failed to draft the swap’s Add line' +
+          (work.length > 1 ? 's' : '') + ' — nothing was created or removed.');
         return null;
       }
-      // Add landed → the credit lines. Payload identical to a plain removal
-      // (device + its accessory children in one array — the scenario already
-      // iterates it) plus the swap flag (informational; the remove scenario
-      // needs no branch — the pairing lives on the Adds' field_2966 targets).
+      // Adds landed → the credit lines, one call for the whole batch.
+      // Payload identical to a plain removal (devices + their accessory
+      // children in one array — the scenario already iterates it) plus the
+      // swap flag (informational; the remove scenario needs no branch — the
+      // pairing lives on the Adds' field_2966 targets).
+      var installIds = [];
+      for (var k = 0; k < okWork.length; k++) {
+        installIds.push(okWork[k].rid);
+        installIds.push.apply(installIds, okWork[k].accInstallIds);
+      }
       return postHook(remUrl, {
         changeOrderId:  coId,
-        installItemIds: [rid].concat(accInstallIds),
+        installItemIds: installIds,
         removal:        true,
         swap:           true,
         triggeredBy:    getTriggeredBy()
       }).then(function (remR) {
         if (!remR.ok) {
           ui.fail();
-          alert('The swap’s Add (charge) line was drafted, but the Remove ' +
-            '(credit) line failed.\n\nClick “− Remove” on this install item ' +
-            'to complete the pair — do NOT click Swap again (that would ' +
-            'draft a second Add).');
+          alert('The swap’s Add (charge) line' +
+            (okWork.length > 1 ? 's were' : ' was') + ' drafted, but the ' +
+            'Remove (credit) call failed.\n\nSelect the affected item' +
+            (okWork.length > 1 ? 's' : '') + ' and use “Remove from ' +
+            'Change Order” to complete the pair' +
+            (okWork.length > 1 ? 's' : '') + ' — do NOT Swap again (that ' +
+            'would draft duplicate Add lines).');
           return null;
         }
-        delete _sel[rid];
-        _swappedOptimistic[rid] = true;   // survives rebuilds this session
         var container = document.getElementById('scw-ws-v2-' + viewKey);
-        var card = container && container.querySelector(
-          '.scw-ws-v2-card[data-scw-ws-v2-record="' + rid + '"]');
-        var row = card && card.querySelector('.scw-ws-v2-row');
-        if (row) setRowState(row, rid, viewKey, 'swapped');
+        for (var m = 0; m < okWork.length; m++) {
+          var rid = okWork[m].rid;
+          delete _sel[rid];
+          _swappedOptimistic[rid] = true;   // survives rebuilds this session
+          var card = container && container.querySelector(
+            '.scw-ws-v2-card[data-scw-ws-v2-record="' + rid + '"]');
+          var row = card && card.querySelector('.scw-ws-v2-row');
+          if (row) setRowState(row, rid, viewKey, 'swapped');
+        }
         updateBulkToolbar(viewKey);
-        refetchAfterRemove(viewKey);   // lands the pair on the CO worksheet
+        refetchAfterRemove(viewKey);   // lands the pairs on the CO worksheet
         ui.done();
+        if (failN) {
+          alert(failN + ' of ' + work.length + ' swap' +
+            (work.length === 1 ? '' : 's') + ' failed to draft and ' +
+            (failN === 1 ? 'was' : 'were') + ' left untouched — ' +
+            (failN === 1 ? 'it stays' : 'they stay') + ' selected; try again.');
+        }
         return true;
       });
     }).catch(function (err) {
@@ -1089,7 +1390,8 @@
       });
       return;
     }
-    // Single-row "⇄ Swap" — drafts the linked Remove + Add pair (model change).
+    // Single-row "⇄ Swap" — pick the replacement product, confirm, then the
+    // linked Remove + Add pair is drafted with the replacement on the Add.
     var swapBtn = e.target && e.target.closest &&
       e.target.closest('.scw-co-swap-btn[data-scw-co-swap]');
     if (swapBtn && !swapBtn.disabled) {
@@ -1097,51 +1399,14 @@
       e.stopPropagation();
       var srid = swapBtn.getAttribute('data-scw-co-swap');
       var svk  = swapBtn.getAttribute('data-scw-co-remove-view');
-      var rec  = recordIndex(svk)[srid];
-      var Fv   = (ns.cfg && typeof ns.cfg.fields === 'function')
-        ? (ns.cfg.fields(svk) || {}) : {};
-      var prod = '';
-      try {
-        prod = String((rec && Fv.product && rec[Fv.product]) || '')
-          .replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-      } catch (eP) { /* name is a nicety */ }
-      var accN = accessoryChildren(svk, srid).length;
-      var swapUi = {
+      openSwapPicker([srid], svk, {
         busy: function () {
           swapBtn.disabled = true;
           swapBtn.innerHTML = '<span class="scw-co-remove-spin"></span> Drafting…';
         },
-        done: function () { /* row flipped to Product swap drafted by fireSwap */ },
+        done: function () { /* row flipped to Product swap drafted */ },
         fail: function () { swapBtn.disabled = false; swapBtn.textContent = '⇄ Swap Product'; }
-      };
-      var body =
-        'This swaps the <b>product only</b> — the item stays installed at the ' +
-        'same drop with its photos, QA and install history, and everything ' +
-        'else (location, cabling, config) carries over unchanged.' +
-        '<br><br>It drafts a linked pair on the change order: a <b>Remove</b> ' +
-        '(credit for <b>' + escHtml(prod || 'the current product') + '</b>) and ' +
-        'an <b>Add</b> — pick the replacement product on the new CO line.' +
-        (accN
-          ? '<br><br>Its ' + accN + ' accessor' + (accN === 1 ? 'y comes' : 'ies come') +
-            ' along as paired lines too, so the CO shows the mounting being ' +
-            'credited and re-added — if the replacement product needs a ' +
-            'different mount, swap that product on its CO line (the mismatch ' +
-            'warning will flag it).'
-          : '') +
-        '<br><br>On signature the product change applies <b>in place</b> to ' +
-        'the existing install record.';
-      if (ns.confirmModal && typeof ns.confirmModal === 'function') {
-        ns.confirmModal({
-          title: 'Swap the product on this install item?',
-          body: body,
-          okLabel: 'Draft product swap',
-          cancelLabel: 'Cancel'
-        }).then(function (ok) { if (ok) fireSwap(srid, svk, swapUi); });
-      } else if (window.confirm(
-        'Swap the product on this install item? This drafts a linked ' +
-        'Remove + Add pair on the change order.')) {
-        fireSwap(srid, svk, swapUi);
-      }
+      });
       return;
     }
     // Bulk "Remove from Change Order" in the floating toolbar.
@@ -1169,6 +1434,40 @@
           bulk.disabled = false;
           bulk.textContent = 'Remove from Change Order';
           updateBulkToolbar(vkB);
+        }
+      });
+      return;
+    }
+    // Bulk "⇄ Swap Product" — one picked replacement across the selection.
+    var bulkSwap = e.target && e.target.closest &&
+      e.target.closest('.scw-co-swap-bulk[data-scw-co-swap-bulk]');
+    if (bulkSwap && !bulkSwap.disabled) {
+      e.preventDefault();
+      e.stopPropagation();
+      var vkS  = bulkSwap.getAttribute('data-scw-co-swap-bulk');
+      var idsS = Object.keys(_sel);
+      if (!idsS.length) return;
+      openSwapPicker(idsS, vkS, {
+        busy: function () {
+          bulkSwap.disabled = true;
+          bulkSwap.setAttribute('data-scw-co-swap-busy', '1');
+          bulkSwap.innerHTML = '<span class="scw-co-remove-spin"></span> Drafting…';
+        },
+        progress: function (done, total) {
+          bulkSwap.innerHTML = '<span class="scw-co-remove-spin"></span> ' +
+            'Drafting ' + done + ' / ' + total + '…';
+        },
+        done: function () {
+          bulkSwap.disabled = false;
+          bulkSwap.removeAttribute('data-scw-co-swap-busy');
+          bulkSwap.textContent = '⇄ Swap Product';
+          updateBulkToolbar(vkS);
+        },
+        fail: function () {
+          bulkSwap.disabled = false;
+          bulkSwap.removeAttribute('data-scw-co-swap-busy');
+          bulkSwap.textContent = '⇄ Swap Product';
+          updateBulkToolbar(vkS);
         }
       });
       return;
