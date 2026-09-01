@@ -485,3 +485,28 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // Payload shape: { sowId, productId, productName, parentRecordIds, parentLabels, sourceViewId, triggeredBy }
   MAKE_BULK_ADD_MOUNTING_BOX_WEBHOOK: "https://hook.us1.make.com/g43gvnp10lyo4xrcjkrdsv7fvmwmdb2b"
 };
+
+// ─────────────────────────────────────────────────────────────
+// Build stamp + boot log
+// ─────────────────────────────────────────────────────────────
+// Printed once per page load so the LOADED bundle self-identifies —
+// including the exact CDN URL (with the pinned git SHA) it was loaded
+// from. When "is the page running the build I just pushed?" comes up,
+// open the console and read this line instead of fingerprinting the
+// DOM. Bump the stamp when shipping something you need to verify live.
+(function () {
+  'use strict';
+  window.SCW.BUILD = '2026-09-01 co-product-swap';
+  try {
+    var src = (document.currentScript && document.currentScript.src) || '';
+    if (!src) {
+      var scripts = document.getElementsByTagName('script');
+      for (var i = scripts.length - 1; i >= 0; i--) {
+        if (scripts[i].src && scripts[i].src.indexOf('knack-bundle') !== -1) {
+          src = scripts[i].src; break;
+        }
+      }
+    }
+    console.info('[SCW] bundle build:', window.SCW.BUILD, src ? '· ' + src : '');
+  } catch (e) { /* logging is a nicety — never block boot */ }
+})();
