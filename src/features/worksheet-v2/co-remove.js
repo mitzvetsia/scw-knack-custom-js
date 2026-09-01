@@ -25,9 +25,13 @@
  * to field_2966 on the created line), then the REMOVE hook fires exactly as
  * a plain removal (its scenario already targets field_2966). Add first,
  * remove second — a lone target-linked Add is apply-safe; a lone Remove is
- * not. Accessory children stay UNTOUCHED at this stage (a different mount
- * is a separate add/remove on the CO). At signature the apply scenario
- * treats a target-linked Add as an IN-PLACE update of the install record's
+ * not. Accessory children (install field_2853) ride as their OWN pairs so
+ * the CO shows the mounting being credited/re-added: the add payload's
+ * `swapAccessories` array carries {productId, targetInstallItemId, qty}
+ * per accessory (created as field_2464 children of the device Add, each
+ * targeting its own install record), and their install ids join the
+ * remove call's installItemIds. At signature the apply scenario treats a
+ * target-linked Add as an IN-PLACE update of the install record's
  * PRODUCT, so photos / QA / history keep their identity — the fix for
  * "remove+add severs the item's history".
  *
@@ -903,12 +907,33 @@
     var mdf     = readConn(rec, Fv.mdfIdf);
     var prefix  = readConn(rec, Fv.dropPrefix);
 
+    // Accessory children ride the swap as their OWN pairs, so the CO shows
+    // exactly what mounting is being credited and re-added (and the sub can
+    // price it). Each entry carries the accessory's PRODUCT (what the Add
+    // line is created with) and its own INSTALL record id (what the created
+    // line's field_2966 must target). Their Remove lines join the device's
+    // in the single remove-hook call below.
+    var accs = accessoryChildren(viewKey, rid);
+    var swapAccessories = [];
+    var accInstallIds = [];
+    for (var ai = 0; ai < accs.length; ai++) {
+      var aRec = accs[ai];
+      var aProd = readConn(aRec, Fv.product);
+      if (!aRec || !aRec.id || !aProd.id) continue;   // no product → nothing to pair
+      accInstallIds.push(aRec.id);
+      swapAccessories.push({
+        productId:           aProd.id,
+        productName:         aProd.label,
+        targetInstallItemId: aRec.id,
+        qty:                 readTxt(aRec, Fv.qty) || '1'
+      });
+    }
+
     // The ADD scenario's normal payload (co-add-item-form.js shape) with the
-    // install item's values cloned in, plus the swap extras. accessoryIds is
-    // DELIBERATELY empty — at this stage accessories stay untouched in
-    // install scope (an unpaired accessory add would double the mount at
-    // apply); if the new product needs a different mount, that's a separate
-    // add/remove on the CO.
+    // install item's values cloned in, plus the swap extras. accessoryIds
+    // stays [] on purpose — the scenario's normal accessory path can't
+    // target field_2966, so swap accessories go through `swapAccessories`
+    // (see the contract comment in src/config.js).
     var addPayload = {
       coSowId:         coId,
       bucketId:        bucket.id,
@@ -935,6 +960,12 @@
       // ── Swap extras — the add scenario maps these:
       swap:                true,
       targetInstallItemId: rid,       // → field_2966 on the created Add line
+      // Accessory pairs: create one child Add line per entry (parented via
+      // field_2464 to the device Add, same as the normal accessory path)
+      // with field_2966 = its targetInstallItemId — so the CO shows exactly
+      // what mounting is credited/re-added and the mismatch warning can
+      // judge it against the replacement product.
+      swapAccessories:     swapAccessories,
       // Extra config the form never collects, included so the scenario can
       // clone it too if mapped (additive keys — unmapped is harmless).
       dropLength:          readTxt(rec, Fv.dropLength),
@@ -949,12 +980,13 @@
           'Failed to draft the swap’s Add line — nothing was created.');
         return null;
       }
-      // Add landed → the credit line. Payload identical to a plain removal
-      // plus the swap flag (informational; the remove scenario needs no
-      // branch — the pairing lives on the Add's field_2966 target).
+      // Add landed → the credit lines. Payload identical to a plain removal
+      // (device + its accessory children in one array — the scenario already
+      // iterates it) plus the swap flag (informational; the remove scenario
+      // needs no branch — the pairing lives on the Adds' field_2966 targets).
       return postHook(remUrl, {
         changeOrderId:  coId,
-        installItemIds: [rid],
+        installItemIds: [rid].concat(accInstallIds),
         removal:        true,
         swap:           true,
         triggeredBy:    getTriggeredBy()
@@ -1076,10 +1108,11 @@
         '(credit for <b>' + escHtml(prod || 'the current product') + '</b>) and ' +
         'an <b>Add</b> — pick the replacement product on the new CO line.' +
         (accN
-          ? '<br><br>Its ' + accN + ' accessor' + (accN === 1 ? 'y stays' : 'ies stay') +
-            ' in place, untouched. If the replacement product needs different ' +
-            'mounting, add the new mount and remove the old one on this CO ' +
-            'separately.'
+          ? '<br><br>Its ' + accN + ' accessor' + (accN === 1 ? 'y comes' : 'ies come') +
+            ' along as paired lines too, so the CO shows the mounting being ' +
+            'credited and re-added — if the replacement product needs a ' +
+            'different mount, swap that product on its CO line (the mismatch ' +
+            'warning will flag it).'
           : '') +
         '<br><br>On signature the product change applies <b>in place</b> to ' +
         'the existing install record.';

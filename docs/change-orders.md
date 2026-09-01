@@ -578,14 +578,20 @@ broader field-level swap is a future decision, not an extension of this one.
   apply-safe (pricing gap only), a lone Remove would remove the item. The
   user then changes the Add line's product to the replacement on the CO
   worksheet — the one field a swap may change.
-- **Accessories (v1: untouched)**: the swap does NOT pair or clone accessory
-  children — they stay in install scope as-is (the add payload ships
-  `accessoryIds: []`, and the add scenario must skip default-accessory
-  auto-adds when `swap: true`, or the mount doubles at apply). If the
-  replacement product needs different mounting, that's a normal separate
-  add + remove on the CO. (The install-side accessory back-pointer is
+- **Accessories ride as their own pairs** — the CO must show what mounting
+  is being credited and re-added (the sub prices it off the CO). The add
+  payload's `swapAccessories` array carries `{productId, productName,
+  targetInstallItemId, qty}` per accessory child (install back-pointer
   `field_2853`, the `field_2464` analogue — answers the detection-source
-  audit in the open questions above.)
+  audit in the open questions above); the add scenario creates each as a
+  `field_2464` child of the device Add with `field_2966` → its own install
+  record, and their install ids join the remove call's `installItemIds`.
+  `accessoryIds` still ships `[]` — swap accessories come ONLY through
+  `swapAccessories`, and the scenario must skip default-accessory
+  auto-adds on swap (an untargeted accessory Add would double the mount at
+  apply). At accept each accessory Add applies in place exactly like the
+  device: product PUT on its own install record; unchanged mount = no-op
+  PUT, changed mount = the real price lines the CO already showed.
 - **Apply (signature)**: an Add with a `field_2966` target is an IN-PLACE
   UPDATE of that install record's PRODUCT — and nothing else (product-only
   at this stage) — never remove + create. `Removed by CO` (`field_2967`) is

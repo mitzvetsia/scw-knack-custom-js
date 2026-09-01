@@ -114,17 +114,25 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // through the two EXISTING hooks, in this order:
   //   1. MAKE_CO_ADD_ITEMS_WEBHOOK — the normal add payload with the install
   //      item's config cloned in (productIds = the CURRENT product; the user
-  //      swaps it on the CO worksheet after) PLUS `swap: true` and
-  //      `targetInstallItemId`. The ADD scenario must (a) map
-  //      targetInstallItemId → field_2966 on the created line — an Add
-  //      carrying a target IS the pair marker — and (b) skip any
-  //      default-accessory auto-adds when swap=true (an unpaired accessory
-  //      Add would double the mount at apply). accessoryIds arrives [] —
-  //      accessories stay untouched at this stage.
+  //      swaps it on the CO worksheet after) PLUS the swap extras. The ADD
+  //      scenario must, when swap=true:
+  //        (a) map targetInstallItemId → field_2966 on the created device
+  //            line — an Add carrying a target IS the pair marker;
+  //        (b) iterate `swapAccessories` [{productId, productName,
+  //            targetInstallItemId, qty}] creating one child Add line per
+  //            entry — same creation steps as the normal accessory path
+  //            (parented via field_2464 to the device Add) plus field_2966 =
+  //            that entry's targetInstallItemId — so the CO shows the
+  //            mounting being credited/re-added and the sub can price it;
+  //        (c) skip any default-accessory auto-adds (accessoryIds arrives []
+  //            — swap accessories come ONLY through swapAccessories; an
+  //            untargeted accessory Add would double the mount at apply).
   //   2. MAKE_CO_REMOVE_ITEMS_WEBHOOK — identical payload to a plain
-  //      removal (+ an informational swap:true); the remove scenario needs
-  //      NO change. Add fires first because a lone target-linked Add is
-  //      apply-safe, while a lone Remove would actually remove the item.
+  //      removal, installItemIds = [device, ...its accessories] (+ an
+  //      informational swap:true); the remove scenario needs NO change —
+  //      it already iterates the array. Add fires first because a lone
+  //      target-linked Add is apply-safe, while a lone Remove would
+  //      actually remove the item.
   // At SIGNATURE the apply scenario routes on "CO Action = Add AND
   // field_2966 populated" → IN-PLACE UPDATE of the targeted install
   // record's PRODUCT (nothing else — product-only at this stage; never
