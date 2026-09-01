@@ -386,6 +386,23 @@ footer b{color:var(--ink-2); font-weight:600}
 @media (prefers-reduced-motion:reduce){*{transition:none !important; animation:none !important}}
 :focus-visible{outline:2px solid var(--brand); outline-offset:2px}
 
+/* ---------- month navigator ---------- */
+.mnav{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:12px 0 4px;
+  padding:11px 14px; background:var(--surface); border:1px solid var(--rule); border-radius:3px;
+}
+.mnav-label{
+  font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:22px;
+  min-width:9ch; text-align:center;
+}
+.mnav .btn{padding:5px 10px}
+.selnote{
+  margin-bottom:16px; padding:11px 16px; border-radius:3px;
+  background:var(--warn-wash); color:var(--warn-ink); font-size:13px;
+  border:1px solid var(--border); display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+}
+.selnote b{font-weight:700}
+
 /* ---------- holiday list ---------- */
 .hol-grid{
   display:grid; grid-template-columns:repeat(auto-fit,minmax(196px,1fr)); gap:1px;
@@ -531,6 +548,13 @@ textarea.json{
       <span class="chev"></span>
     </summary>
     <div class="ed-body">
+    <div class="mnav">
+      <button class="btn" type="button" id="mPrev">&larr; Prev</button>
+      <span class="mnav-label" id="mNavLabel">&mdash;</span>
+      <button class="btn" type="button" id="mNext">Next &rarr;</button>
+      <button class="btn" type="button" id="mBackToday" hidden></button>
+      <span class="unit" style="margin-left:auto">Each month keeps its own entries</span>
+    </div>
     <div class="deck-top" style="margin-top:12px">
       <p><b>Enter the numbers, the board updates.</b> Install comes from the Xero Install Services report, eCommerce from the M2 Cost&nbsp;of&nbsp;Goods report, Pending from the M2 Pending report. Entries are saved in this browser only &mdash; they are not shared with anyone else viewing this page.</p>
       <button class="btn" id="mReset" type="button">Reset to sheet values</button>
@@ -595,6 +619,8 @@ textarea.json{
     </div>
     </div>
   </details>
+
+  <div class="selnote" id="selNote" hidden></div>
 
   <!-- ============ PART 1: THIS MONTH ============ -->
   <div class="part" style="margin-top:0">
@@ -737,8 +763,8 @@ textarea.json{
   </section>
 
   <section class="callout">
-    <span class="eyebrow">What it takes &mdash; the only two months left</span>
-    <h2>Aug and Sep decide which goal we hit</h2>
+    <span class="eyebrow" id="askEyebrow">What it takes</span>
+    <h2 id="askTitle">What is left to close</h2>
     <div class="asks">
       <div class="ask" id="askModest" data-band="good">
         <div class="lab" id="askModestLab"></div>
@@ -794,7 +820,7 @@ textarea.json{
       <p class="card-note" style="margin-top:12px">Change any figure here and every chart, table and sentence in Parts&nbsp;2 and&nbsp;3 recalculates &mdash; no rebuild needed. Quarter, window and Aug+Sep totals are all derived from the monthly grid, so they stay internally consistent. Edits are saved in this browser; use the JSON box at the bottom to carry them to another machine or hand them back to me.</p>
 
       <div class="ed-sec">
-        <span class="eyebrow">Monthly booked revenue <span class="unit">&mdash; $ thousands</span></span>
+        <span class="eyebrow">Monthly booked revenue <span class="unit">&mdash; $ thousands · leave a 2026 month blank while it is still a forecast</span></span>
         <div class="ed-scroll"><table class="ed-tbl" id="edMonths"></table></div>
       </div>
 
@@ -999,10 +1025,17 @@ textarea.json{
   // Everything in Parts 2 and 3 is derived here, so the editor is the single source of truth.
   function derive() {
     var d = { q: {}, window: {}, augSep: {}, months: DATA.months };
-    // The window's August can ride Part 1's live month pacing; September stays on the baseline.
-    d.augLive = AUG_LIVE ? compute().projected / 1000 : null;
-    d.aug26 = d.augLive != null ? d.augLive : DATA.pace;
-    d.sep26 = DATA.pace;
+    // Each of Aug/Sep 2026 resolves in order: a closed actual, then the tracker's live
+    // pacing if that is the month being tracked, then the flat baseline pace.
+    var a7 = DATA.months['2026'][7], a8 = DATA.months['2026'][8];
+    var mNow = compute();
+    var liveOK = AUG_LIVE && mNow.rev > 0 && mNow.bd >= 3;
+    var liveK = liveOK ? mNow.projected / 1000 : null;
+    var tIdx = (SEL.y === 2026 && SEL.m <= 8) ? SEL.m : -1;
+    d.aug26 = a7 != null ? a7 : (liveK != null && tIdx === 7 ? liveK : DATA.pace);
+    d.sep26 = a8 != null ? a8 : (liveK != null && tIdx === 8 ? liveK : DATA.pace);
+    d.augActual = a7 != null; d.sepActual = a8 != null;
+    d.augLive = (a7 == null && tIdx === 7 && liveK != null) || (a8 == null && tIdx === 8 && liveK != null) ? liveK : null;
     YEARS.forEach(function (y) {
       var m = DATA.months[y] || [];
       var mm = m.slice();
@@ -1011,13 +1044,17 @@ textarea.json{
       d.window[y] = d.q[y][1] + d.q[y][2];
       d.augSep[y] = (mm[7] || 0) + (mm[8] || 0);
     });
-    d.booked26 = sum((DATA.months['2026'] || []).slice(3, 7));
-    d.q3Stretch = (DATA.months['2026'][6] || 0) + DATA.stretchPace * 2;
+    // Booked grows as months close, so the remaining ask shrinks with it.
+    d.booked26 = sum((DATA.months['2026'] || []).slice(3, 7)) + (a7 || 0) + (a8 || 0);
+    d.openMonths = (a7 == null ? 1 : 0) + (a8 == null ? 1 : 0);
+    d.remLabel = a7 == null && a8 == null ? 'Aug + Sep' : (a7 == null ? 'Aug' : (a8 == null ? 'Sep' : 'the window'));
+    d.q3Stretch = (DATA.months['2026'][6] || 0) + (a7 != null ? a7 : DATA.stretchPace) + (a8 != null ? a8 : DATA.stretchPace);
     d.windowStretch = d.q['2026'][1] + d.q3Stretch;
     d.modest = DATA.modest; d.stretch = DATA.stretch;
     d.needModest = DATA.modest - d.booked26;
     d.needStretch = DATA.stretch - d.booked26;
     d.paceAugSep = d.aug26 + d.sep26;
+    d.perOpen = function (v) { return v / Math.max(1, d.openMonths); };
     d.bestAugSep = Math.max(d.augSep['2022'], d.augSep['2023'], d.augSep['2024'], d.augSep['2025']);
     d.bestAugSepYear = ['2022', '2023', '2024', '2025'].reduce(function (a, y) { return d.augSep[y] > d.augSep[a] ? y : a; }, '2022');
     return d;
@@ -1090,9 +1127,9 @@ textarea.json{
       { k: '2023', v: d.augSep['2023'], c: 'var(--y23)' },
       { k: '2024', v: d.augSep['2024'], c: 'var(--y24)' },
       { k: '2025', v: d.augSep['2025'], c: 'var(--y25)' },
-      { k: 'Modest needs', v: d.needModest, c: 'var(--good)', gap: true },
+      { k: 'Modest needs', v: Math.max(0, d.needModest), c: 'var(--good)', gap: true },
       { k: 'Current pace', v: d.paceAugSep, c: 'var(--y26)' },
-      { k: 'Stretch needs', v: d.needStretch, c: 'var(--goal2)' }
+      { k: 'Stretch needs', v: Math.max(0, d.needStretch), c: 'var(--goal2)' }
     ];
     var W = Math.max(320, host.clientWidth), m = { t: 34, r: 74, b: 34, l: 112 };
     var rh = 34, gapPx = 30, H = m.t + m.b + rows.length * rh + gapPx;
@@ -1280,7 +1317,8 @@ textarea.json{
     pill('qPill', b);
     put('qCap', 'Four months in, we are <strong>' + Math.round(d.booked26 / d.modest * 100) +
       '% of the way to modest</strong> and <strong>' + Math.round(d.booked26 / d.stretch * 100) +
-      '% of the way to stretch</strong> — with two months on the board. At the current pace the window lands at <strong>' +
+      '% of the way to stretch</strong> — with ' + (d.openMonths === 1 ? 'one month' : d.openMonths + ' months') +
+      ' still open. At the current pace the window lands at <strong>' +
       kC(w26) + '</strong>, ' + (w26 >= d.modest ? 'clear of modest and ' : 'short of modest at ') +
       '<strong>' + Math.round(w26 / d.stretch * 100) + '% of stretch</strong>.');
 
@@ -1294,7 +1332,8 @@ textarea.json{
     pill('qtModestPill', { key: bM.key === 'best' ? 'good' : bM.key, label: w26 >= d.modest ? 'Clears at pace' : 'Short at pace' });
     put('qtModest', kC(d.needModest));
     var beatCount = ['2022', '2023', '2024', '2025'].filter(function (y) { return d.augSep[y] > d.needModest; }).length;
-    put('qtModestSub', 'Aug + Sep have beaten that in <b>' + beatCount + ' of the last 4 years</b>.');
+    put('qtModestSub', d.openMonths ? 'Aug + Sep have beaten that in <b>' + beatCount + ' of the last 4 years</b>.'
+      : 'The window is closed.');
 
     el('qtStretchTile').setAttribute('data-band', b.key);
     pill('qtStretchPill', b, Math.round(w26 / d.stretch * 100) + '% at pace');
@@ -1302,8 +1341,9 @@ textarea.json{
     put('qtStretchSub', '<b>' + pctS((d.needStretch - d.bestAugSep) / d.bestAugSep) + '</b> vs our best-ever Aug + Sep (' +
       kC(d.bestAugSep) + ', ' + d.bestAugSepYear + '). This is the real ask.');
 
-    put('qtRate', kC(d.needModest / 2) + ' <span style="color:var(--muted);font-weight:400">/</span> ' + kC(d.needStretch / 2));
-    put('qtRateSub', 'Per month in Aug &amp; Sep &mdash; <b>modest</b> vs <b>stretch</b>. Aug is pacing to ' + kC(d.aug26) + ' today.');
+    put('qtRate', kC(d.perOpen(d.needModest)) + ' <span style="color:var(--muted);font-weight:400">/</span> ' + kC(d.perOpen(d.needStretch)));
+    put('qtRateSub', 'Per month in ' + d.remLabel + ' &mdash; <b>modest</b> vs <b>stretch</b>. ' +
+      (d.augActual ? 'Aug closed at ' + kC(d.aug26) + '.' : 'Aug is pacing to ' + kC(d.aug26) + '.'));
 
     put('qWindowNote', 'At the current pace the window lands at <b>' + kC(w26) + '</b> &mdash; ' +
       (w26 >= d.modest ? 'clear of modest, ' : 'short of modest, ') + '<b>' + pctS((w26 - w25) / w25) +
@@ -1323,12 +1363,13 @@ textarea.json{
 
     var asks = [
       { id: 'askModest', lab: 'Modest &mdash; ' + kC(d.modest), num: kC(d.needModest / 2), band: 'good',
-        txt: 'Per month &mdash; below every Aug&ndash;Sep since 2022. Normal pace gets us here.' },
+        txt: 'Per open month. Normal pace gets us here.' },
       { id: 'askPace', lab: 'Current pace &mdash; ' + kC(w26), num: kC(d.paceAugSep / 2), band: b.key === 'best' ? 'best' : b.key,
-        txt: 'Aug ' + kC(d.aug26) + (d.augLive != null ? ' (live)' : '') + ' · Sep ' + kC(d.sep26) + ' &mdash; ' +
+        txt: 'Aug ' + kC(d.aug26) + (d.augActual ? ' (closed)' : (d.augLive != null && SEL.m === 7 ? ' (live)' : '')) +
+             ' · Sep ' + kC(d.sep26) + (d.sepActual ? ' (closed)' : '') + ' &mdash; ' +
              (w26 >= d.modest ? 'clears modest by ' + kC(w26 - d.modest) : 'short of modest by ' + kC(d.modest - w26)) + '.' },
       { id: 'askStretch', lab: 'Stretch &mdash; ' + kC(d.stretch), num: kC(d.needStretch / 2), band: 'none',
-        txt: 'Per month &mdash; <b>' + kC(d.needStretch / 2 - DATA.pace) + '/mo</b> above current pace. That is the gap.' }
+        txt: 'Per open month &mdash; <b>' + kC(d.perOpen(d.needStretch) - DATA.pace) + '/mo</b> above current pace. That is the gap.' }
     ];
     asks.forEach(function (a) {
       el(a.id).setAttribute('data-band', a.band);
@@ -1357,28 +1398,36 @@ textarea.json{
       var host = el(c[0]); if (!host) return;
       host.innerHTML = ''; c[1](host, d);
     });
-    put('qAugLiveLab', 'Use this month&rsquo;s live pacing (' + kC(compute().projected / 1000) +
-      ') for the window&rsquo;s August &mdash; off keeps the flat ' + kC(DATA.pace) + ' baseline. Note: Part 1 paces total revenue, the window is booked revenue.');
+    var mL = compute(), liveReady = mL.rev > 0 && mL.bd >= 3;
+    put('qAugLiveLab', 'Use the tracked month&rsquo;s live pacing for that month in the window &mdash; off keeps the flat ' +
+      kC(DATA.pace) + ' baseline. ' + (liveReady ? 'Currently ' + kC(mL.projected / 1000) + ' from ' + selLabel() + '.'
+        : '<b>Inactive</b> until that month has revenue entered and at least 3 business days elapsed.') +
+      ' Note: Part 1 paces total revenue, the window is booked revenue.');
     setB('tWinV', b); put('tWinV', kC(w26));
     pill('tWinP', b);
     put('tWinN', kC(d.booked26) + ' booked Apr–Jul · modest ' + kC(d.modest) + ' · stretch ' + kC(d.stretch));
-    put('tAskV', kC(d.needStretch / 2) + '<span style="font-size:22px;color:var(--muted)">/mo</span>');
-    put('tAskN', 'Aug &amp; Sep each, to hit stretch · modest needs ' + kC(d.needModest / 2) + '/mo');
+    put('tAskV', kC(d.perOpen(d.needStretch)) + '<span style="font-size:22px;color:var(--muted)">/mo</span>');
+    put('tAskN', d.openMonths > 1 ? d.remLabel + ' each, to hit stretch · modest needs ' + kC(d.perOpen(d.needModest)) + '/mo'
+      : (d.openMonths === 1 ? d.remLabel + ' alone, to hit stretch · modest needs ' + kC(d.needModest) : 'window closed'));
+    put('askEyebrow', d.openMonths ? 'What it takes &mdash; ' + (d.openMonths > 1 ? 'the only two months left' : 'the last month') : 'Window closed');
+    put('askTitle', d.openMonths ? d.remLabel + ' decide' + (d.openMonths > 1 ? '' : 's') + ' which goal we hit' : 'The window is closed');
     var jt = el('edJson');
     if (jt && document.activeElement !== jt) jt.value = JSON.stringify(DATA);
   }
 
   /* ================= HISTORY EDITOR ================= */
-  function inputCell(id, val, step) {
-    return '<td><input id="' + id + '" type="number" step="' + (step || 1) + '" value="' + val + '" inputmode="decimal"></td>';
+  function inputCell(id, val, step, ph) {
+    return '<td><input id="' + id + '" type="number" step="' + (step || 1) + '" value="' + val +
+      '" placeholder="' + (ph || '') + '" inputmode="decimal"></td>';
   }
+  function nOrNull(id) { var e = el(id); if (!e || e.value.trim() === '') return null; var v = parseFloat(e.value); return isFinite(v) ? v : null; }
   function buildEditor() {
     var h = '<thead><tr><th>Year</th>' + MON.map(function (m) { return '<th>' + m + '</th>'; }).join('') + '</tr></thead><tbody>';
     YEARS.forEach(function (y) {
       h += '<tr><td>' + y + '</td>';
       for (var i = 0; i < 9; i++) {
-        h += (y === '2026' && i > 6) ? '<td style="text-align:center;color:var(--muted);font-size:11px">below</td>'
-                                     : inputCell('ed-m-' + y + '-' + i, DATA.months[y][i], 1);
+        var v = DATA.months[y][i];
+        h += inputCell('ed-m-' + y + '-' + i, v == null ? '' : v, 1);
       }
       h += '</tr>';
     });
@@ -1404,8 +1453,9 @@ textarea.json{
   function pullEditor() {
     YEARS.forEach(function (y) {
       for (var i = 0; i < 9; i++) {
-        if (y === '2026' && i > 6) continue;
-        DATA.months[y][i] = n('ed-m-' + y + '-' + i, DATA.months[y][i]);
+        // A blank 2026 cell means "not closed yet" — those months stay on the pace scenario.
+        DATA.months[y][i] = (y === '2026') ? nOrNull('ed-m-' + y + '-' + i)
+                                           : n('ed-m-' + y + '-' + i, DATA.months[y][i]);
       }
     });
     DATA.pace = n('ed-pace', DATA.pace);
@@ -1442,11 +1492,11 @@ textarea.json{
   function holidaySummary() {
     var names = AUTO_HOL.names || {};
     var list = AUTO_HOL.slice().sort(function (a, b) { return a - b; }).map(function (d) {
-      return (names[d] || 'Custom') + ' (' + MONTH_NAMES[NOW.getMonth()].slice(0, 3) + ' ' + d + ')';
+      return (names[d] || 'Custom') + ' (' + MONTH_NAMES[SEL.m].slice(0, 3) + ' ' + d + ')';
     });
-    put('holSum', '<b>' + AUTO_BT + '</b> business days in ' + MONTH_NAMES[NOW.getMonth()] +
-      (list.length ? ', after excluding ' + andList(list) : ' — no observed holidays fall on a weekday this month') +
-      '. <b>' + AUTO_BD + '</b> elapsed through yesterday.');
+    put('holSum', '<b>' + AUTO_BT + '</b> business days in ' + MONTH_NAMES[SEL.m] +
+      (list.length ? ', after excluding ' + andList(list) : ' — no observed holidays fall on a weekday that month') +
+      '. <b>' + AUTO_BD + '</b> ' + (isPastMonth() ? 'in total — the month is closed.' : 'elapsed through yesterday.'));
   }
   function pullHolidays() {
     var prevBD = AUTO_BD, prevBT = AUTO_BT;
@@ -1593,13 +1643,22 @@ textarea.json{
     return w !== 0 && w !== 6 && hol.indexOf(day) === -1;
   }
   var NOW = new Date();
+  // The tracker follows the clock by default but can be pointed at any month, so a
+  // month that has just rolled over is still editable.
+  var SEL = { y: NOW.getFullYear(), m: NOW.getMonth() };
+  var SELSTORE = 'scw-board-selmonth-v1';
+  function isCurrentMonth() { return SEL.y === NOW.getFullYear() && SEL.m === NOW.getMonth(); }
+  function isPastMonth() { return SEL.y < NOW.getFullYear() || (SEL.y === NOW.getFullYear() && SEL.m < NOW.getMonth()); }
+  function monthKey() { return SEL.y + '-' + (SEL.m + 1); }
+  function selLabel() { return MONTH_NAMES[SEL.m] + ' ' + SEL.y; }
   var AUTO_BD = 1, AUTO_BT = 20, AUTO_HOL = [];
   function refreshAuto() {
-    var y = NOW.getFullYear(), m = NOW.getMonth(), hol = monthHolidays(y, m);
-    var last = new Date(y, m + 1, 0).getDate(), bd = 0, bt = 0;
+    var y = SEL.y, m = SEL.m, hol = monthHolidays(y, m);
+    var last = new Date(y, m + 1, 0).getDate(), bd = 0, bt = 0, cur = isCurrentMonth(), past = isPastMonth();
     for (var day = 1; day <= last; day++) {
       if (!isBizDay(y, m, day, hol)) continue;
-      bt++; if (day < NOW.getDate()) bd++;
+      bt++;
+      if (past || (cur && day < NOW.getDate())) bd++;   // a closed month is fully elapsed
     }
     AUTO_HOL = hol.filter(function (d) { return new Date(y, m, d).getDay() % 6 !== 0; });
     AUTO_HOL.names = hol.names;
@@ -1608,30 +1667,72 @@ textarea.json{
   var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
                      'August', 'September', 'October', 'November', 'December'];
   function todayStamp() { return NOW.getFullYear() + '-' + (NOW.getMonth() + 1) + '-' + NOW.getDate(); }
-  function monthStamp() { return NOW.getFullYear() + '-' + (NOW.getMonth() + 1); }
+  function monthStamp() { return monthKey(); }
 
   /* ================= MONTH ENGINE ================= */
   var SHEET = {
     mInstall: 102632, mMagento: 281000, mBigDeal: 0, mPendM2: 0, mPendInstall: 300000,
     mDaysTD: 12, mDaysTotal: 21, mGoal1: 1170000, mGoal2: 1360000
   };
-  var STORE = 'scw-q2-board-v1';
+  var STORE = 'scw-q2-board-v2';   // { 'YYYY-M': {…} } — one entry set per month
   function readInputs() {
     var o = {};
     for (var k in SHEET) { var e = el(k); var v = e ? parseFloat(e.value) : NaN; o[k] = isFinite(v) ? v : 0; }
     return o;
   }
+  function allMonths() {
+    var all; try { all = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { all = null; }
+    if (!all || typeof all !== 'object') {
+      all = {};
+      // Migrate the old single-month record into its own stamped slot.
+      var old; try { old = JSON.parse(localStorage.getItem('scw-q2-board-v1') || 'null'); } catch (e) { old = null; }
+      if (old && old.monthStamp) all[old.monthStamp] = old;
+    }
+    return all;
+  }
   function saveMonth(v) {
-    v.dayStamp = todayStamp(); v.monthStamp = monthStamp();
-    try { localStorage.setItem(STORE, JSON.stringify(v)); } catch (e) {}
+    v.dayStamp = todayStamp(); v.monthStamp = monthKey();
+    var all = allMonths(); all[monthKey()] = v;
+    try { localStorage.setItem(STORE, JSON.stringify(all)); } catch (e) {}
   }
   // Day counts default to the computed calendar. A manual +/- holds only for the
   // day it was made (stamped), then snaps back to auto on the next visit.
+  var SEED_MONTH = '2026-8';   // the month the uploaded Daily KPIs sheet describes
+  var REV_KEYS = ['mInstall', 'mMagento', 'mBigDeal', 'mPendM2', 'mPendInstall'];
+  function defaultsFor(key) {
+    if (key === SEED_MONTH) return SHEET;
+    var o = {}; for (var k in SHEET) o[k] = SHEET[k];
+    REV_KEYS.forEach(function (r) { o[r] = 0; });   // goals carry over, money does not
+    return o;
+  }
   function restoreMonth() {
-    var v; try { v = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { v = null; }
-    if (v) for (var k in SHEET) if (el(k) && isFinite(v[k])) el(k).value = v[k];
-    if (!v || v.dayStamp !== todayStamp()) el('mDaysTD').value = AUTO_BD;
-    if (!v || v.monthStamp !== monthStamp()) el('mDaysTotal').value = AUTO_BT;
+    var v = allMonths()[monthKey()] || null, def = defaultsFor(monthKey());
+    for (var k in SHEET) if (el(k)) el(k).value = (v && isFinite(v[k])) ? v[k] : def[k];
+    if (!v || v.dayStamp !== todayStamp() || !isCurrentMonth()) el('mDaysTD').value = AUTO_BD;
+    if (!v || v.monthStamp !== monthKey()) el('mDaysTotal').value = AUTO_BT;
+  }
+  function gotoMonth(y, m) {
+    saveMonth(readInputs());
+    SEL = { y: y, m: m };
+    try { localStorage.setItem(SELSTORE, monthKey()); } catch (e) {}
+    refreshAuto(); restoreMonth(); buildHolidays(); applyMonthLabels();
+    renderMonth(); renderQ2();
+  }
+  function applyMonthLabels() {
+    put('pMonthShort', MONTH_NAMES[SEL.m]);
+    put('pMonthFull', selLabel());
+    put('mNavLabel', selLabel());
+    var back = el('mBackToday');
+    if (back) {
+      back.hidden = isCurrentMonth();
+      back.textContent = 'Jump to ' + MONTH_NAMES[NOW.getMonth()];
+    }
+    var note = el('selNote');
+    if (note) {
+      note.hidden = isCurrentMonth();
+      note.innerHTML = 'Showing <b>' + selLabel() + '</b>' + (isPastMonth() ? ' — a closed month' : '') +
+        '. The current month is ' + MONTH_NAMES[NOW.getMonth()] + '.';
+    }
   }
   function compute() {
     var v = readInputs();
@@ -1846,6 +1947,10 @@ textarea.json{
   var AUG_LIVE = true;
   try { AUG_LIVE = localStorage.getItem('scw-board-auglive-v1') !== '0'; } catch (e) {}
   restoreHistory();
+  try {
+    var savedSel = localStorage.getItem(SELSTORE);
+    if (savedSel) { var sp = savedSel.split('-'); SEL = { y: +sp[0], m: +sp[1] - 1 }; }
+  } catch (e) {}
   refreshAuto();
   restoreMonth();
   buildHolidays();
@@ -1884,8 +1989,14 @@ textarea.json{
   });
 
   put('asOfDate', NOW.getDate() + ' ' + MONTH_NAMES[NOW.getMonth()].slice(0, 3) + ' ' + NOW.getFullYear());
-  put('pMonthShort', MONTH_NAMES[NOW.getMonth()]);
-  put('pMonthFull', MONTH_NAMES[NOW.getMonth()] + ' ' + NOW.getFullYear());
+  applyMonthLabels();
+  el('mPrev').addEventListener('click', function () {
+    var m = SEL.m - 1, y = SEL.y; if (m < 0) { m = 11; y--; } gotoMonth(y, m);
+  });
+  el('mNext').addEventListener('click', function () {
+    var m = SEL.m + 1, y = SEL.y; if (m > 11) { m = 0; y++; } gotoMonth(y, m);
+  });
+  el('mBackToday').addEventListener('click', function () { gotoMonth(NOW.getFullYear(), NOW.getMonth()); });
 
   var rt;
   window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(renderAll, 150); });
