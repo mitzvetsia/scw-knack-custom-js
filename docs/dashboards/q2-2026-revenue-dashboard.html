@@ -113,6 +113,11 @@ h1 em{font-style:normal; color:var(--brand-ink)}
   line-height:.86; letter-spacing:-.015em; color:var(--brand-ink);
 }
 .hero-cap{max-width:34ch; color:var(--ink-2); font-size:14.5px}
+.hero-incl{
+  margin:12px 0 0; font-size:12.5px; color:var(--ink-2); max-width:44ch;
+  padding-left:11px; border-left:2px solid var(--rule);
+}
+.hero-incl b{color:var(--ink); font-weight:600}
 .hero-cap strong{color:var(--ink); font-weight:600}
 
 .track{position:relative; padding:0 0 62px}
@@ -569,12 +574,12 @@ textarea.json{
         <div class="fld"><label for="mMagento">eCommerce (M2)</label>
           <div class="inrow"><span class="pre">$</span><input id="mMagento" type="number" step="1" value="281000" inputmode="decimal"></div>
           <div class="hint" id="hMagento"></div></div>
+        <div class="fld"><label for="mCheckMO">Check + money order</label>
+          <div class="inrow"><span class="pre">$</span><input id="mCheckMO" type="number" step="1" value="0" inputmode="decimal"></div>
+          <div class="hint" id="hCheckMO"></div></div>
         <div class="fld"><label for="mBigDeal">Big deal &mdash; pulled from avg</label>
           <div class="inrow"><span class="pre">$</span><input id="mBigDeal" type="number" step="1" value="0" inputmode="decimal"></div>
           <div class="hint" id="hBigDeal"></div></div>
-        <div class="fld"><label for="mPendM2">Pending &mdash; eCommerce</label>
-          <div class="inrow"><span class="pre">$</span><input id="mPendM2" type="number" step="1" value="0" inputmode="decimal"></div>
-          <div class="hint" id="hPendM2"></div></div>
         <div class="fld"><label for="mPendInstall">Pending &mdash; Install</label>
           <div class="inrow"><span class="pre">$</span><input id="mPendInstall" type="number" step="1" value="300000" inputmode="decimal"></div>
           <div class="hint" id="hPendInstall"></div></div>
@@ -638,6 +643,7 @@ textarea.json{
           <span class="hero-num" id="oProjected" data-band="none">&mdash;</span>
           <span class="pill" id="oProjPill" data-band="none">&mdash;</span>
         </div>
+        <p class="hero-incl" id="oIncl" hidden></p>
       </div>
       <p class="hero-cap" id="oProjCap"></p>
     </div>
@@ -873,7 +879,7 @@ textarea.json{
     <footer>
       <p><b>Colour means pacing, everywhere on this page.</b> Red is well behind the modest goal (under 85% of it), amber is behind (85&ndash;90%), blue is near modest (90&ndash;100% &mdash; within reach, deliberately neutral rather than a warning), green clears modest, and green with a <span class="medal">&#9733;</span> gold star is stretch territory &mdash; within 10% of the stretch goal or past it. Every coloured figure also carries an icon and a word, so colour is never doing the work on its own.</p>
       <p><b>How the goal maps.</b> The $6.65M / $7.85M targets cover the whole <b>Apr&ndash;Sep window</b> &mdash; the &ldquo;Q2&nbsp;/&nbsp;Q3&rdquo; column in the source sheet, which is why this board calls it Q2&nbsp;&amp;&nbsp;Q3 rather than Q2. The stretch figure is an exact match to the sheet&rsquo;s own stretch scenario ($1.4M in Aug and Sep), which confirms the mapping.</p>
-      <p><b>Part 1 formulas</b> (reproduced from the Daily KPIs sheet). Revenue to date = Install + eCommerce. Adjusted daily average = (revenue to date &minus; big deal) &divide; business days elapsed. Pacing to = adjusted daily average &times; business days in month, with the big deal added back &mdash; so a single outsized deal lands in the total without inflating the run rate. &ldquo;With pending&rdquo; adds pending eCommerce and pending install to revenue to date <em>before</em> run-rating, matching the sheet&rsquo;s $1,196,356.</p>
+      <p><b>Part 1 formulas</b> (reproduced from the Daily KPIs sheet). Revenue to date = Install + eCommerce + check&nbsp;/&nbsp;money order &mdash; cheques and money orders are money already received, so they count as revenue and drive the pacing figure, not the &ldquo;with pending&rdquo; case. Adjusted daily average = (revenue to date &minus; big deal) &divide; business days elapsed. Pacing to = adjusted daily average &times; business days in month, with the big deal added back &mdash; so a single outsized deal lands in the total without inflating the run rate. &ldquo;With pending&rdquo; adds pending install to revenue to date <em>before</em> run-rating &mdash; matching the sheet&rsquo;s $1,196,356 at its own inputs, where no check&nbsp;/&nbsp;money order amount was recorded.</p>
       <p><b>Business days count themselves.</b> Days elapsed defaults to the weekdays in the current month through the end of yesterday, minus the holidays you have ticked in Backstage. Each holiday is a rule, not a fixed date, so it recomputes correctly every year; date-fixed ones shift off weekends the usual way. Untick anything SCW works, tick anything it doesn&rsquo;t (MLK, Presidents&rsquo;, Good Friday, Juneteenth, Indigenous Peoples&rsquo;, Veterans Day ship off by default), and add shutdown days or floating holidays as one-off dates. Holidays travel with the JSON export. The &plusmn;&frac12; buttons and direct edits are manual adjustments: enter 12.5 mid-day when 12 is the auto count. An adjustment holds only for the day it was made, then the count snaps back to auto. The days-in-month total works the same way, per month.</p>
       <p><b>Period totals are derived from the monthly grid</b>, so the table is always self-consistent with the charts. Because the monthly figures are reported rounded to the nearest $10K or so, these totals run slightly under the source sheet&rsquo;s own stated totals &mdash; up to about $80K on the 2025 window. Paste exact figures into the editor above and the difference disappears.</p>
       <p><b>The window&rsquo;s August.</b> With &ldquo;use this month&rsquo;s live pacing&rdquo; switched on (the default), the Q2&nbsp;&amp;&nbsp;Q3 window takes its August from Part&nbsp;1&rsquo;s live month pacing and only September from the baseline pace. Mind the caveat below &mdash; Part&nbsp;1 paces total company revenue while the window is booked revenue &mdash; so treat the blended figure as directional, and flip the toggle off for a booked-only view.</p>
@@ -1671,7 +1677,7 @@ textarea.json{
 
   /* ================= MONTH ENGINE ================= */
   var SHEET = {
-    mInstall: 102632, mMagento: 281000, mBigDeal: 0, mPendM2: 0, mPendInstall: 300000,
+    mInstall: 102632, mMagento: 281000, mCheckMO: 0, mBigDeal: 0, mPendInstall: 300000,
     mDaysTD: 12, mDaysTotal: 21, mGoal1: 1170000, mGoal2: 1360000
   };
   var STORE = 'scw-q2-board-v2';   // { 'YYYY-M': {…} } — one entry set per month
@@ -1698,7 +1704,7 @@ textarea.json{
   // Day counts default to the computed calendar. A manual +/- holds only for the
   // day it was made (stamped), then snaps back to auto on the next visit.
   var SEED_MONTH = '2026-8';   // the month the uploaded Daily KPIs sheet describes
-  var REV_KEYS = ['mInstall', 'mMagento', 'mBigDeal', 'mPendM2', 'mPendInstall'];
+  var REV_KEYS = ['mInstall', 'mMagento', 'mCheckMO', 'mBigDeal', 'mPendInstall'];
   function defaultsFor(key) {
     if (key === SEED_MONTH) return SHEET;
     var o = {}; for (var k in SHEET) o[k] = SHEET[k];
@@ -1707,6 +1713,8 @@ textarea.json{
   }
   function restoreMonth() {
     var v = allMonths()[monthKey()] || null, def = defaultsFor(monthKey());
+    // Value entered under the old "Pending — eCommerce" name follows the rename.
+    if (v && v.mCheckMO == null && isFinite(v.mPendM2)) v.mCheckMO = v.mPendM2;
     for (var k in SHEET) if (el(k)) el(k).value = (v && isFinite(v[k])) ? v[k] : def[k];
     if (!v || v.dayStamp !== todayStamp() || !isCurrentMonth()) el('mDaysTD').value = AUTO_BD;
     if (!v || v.monthStamp !== monthKey()) el('mDaysTotal').value = AUTO_BT;
@@ -1737,8 +1745,10 @@ textarea.json{
   function compute() {
     var v = readInputs();
     var bd = Math.max(0.5, v.mDaysTD), bt = Math.max(bd, v.mDaysTotal || 1);
-    var rev = v.mInstall + v.mMagento, big = Math.min(v.mBigDeal, rev);
-    var adj = (rev - big) / bd, pend = v.mPendM2 + v.mPendInstall, daysLeft = Math.max(0, bt - bd);
+    // Check + money order is money already received, so it counts in revenue to date
+    // and flows through the daily average and the pacing figure like any other revenue.
+    var rev = v.mInstall + v.mMagento + v.mCheckMO, big = Math.min(v.mBigDeal, rev);
+    var adj = (rev - big) / bd, pend = v.mPendInstall, daysLeft = Math.max(0, bt - bd);
     return {
       v: v, bd: bd, bt: bt, rev: rev, big: big, adj: adj, pend: pend, daysLeft: daysLeft,
       projected: adj * bt + big,
@@ -1873,8 +1883,8 @@ textarea.json{
     put('hMagento', usd(m.v.mMagento) + ' · ' + usd(m.v.mMagento / m.bd) + ' per business day');
     put('hBigDeal', m.big > 0 ? usd(m.big) + ' held out of the daily average, added back to the projection.'
       : 'Counted in the total, pulled out of the daily average so it can’t skew the pacing.');
-    put('hPendM2', m.v.mPendM2 > 0 ? usd(m.v.mPendM2) + ' · feeds the “with pending” case only.'
-      : 'Not in revenue to date. Feeds the “with pending” case only.');
+    put('hCheckMO', m.v.mCheckMO > 0 ? usd(m.v.mCheckMO) + ' · counted in revenue to date, same as any other revenue.'
+      : 'Money already received. Counts in revenue to date and in the pacing figure.');
     put('hPendInstall', m.v.mPendInstall > 0 ? usd(m.v.mPendInstall) + ' · prior month was $168,286.'
       : 'Prior month pending was $168,286.');
     put('hDays', m.bd === AUTO_BD
@@ -1898,7 +1908,9 @@ textarea.json{
         : '. The month is complete.'));
 
     put('oRevTD', usdC(m.rev));
-    put('nRevTD', usdC(m.v.mInstall) + ' install + ' + usdC(m.v.mMagento) + ' eCommerce' + (m.big > 0 ? ' · incl. ' + usdC(m.big) + ' big deal' : ''));
+    put('nRevTD', usdC(m.v.mInstall) + ' install + ' + usdC(m.v.mMagento) + ' eCommerce' +
+      (m.v.mCheckMO > 0 ? ' + ' + usdC(m.v.mCheckMO) + ' check/MO' : '') +
+      (m.big > 0 ? ' · incl. ' + usdC(m.big) + ' big deal' : ''));
     put('oAdjDaily', usd(m.adj));
     put('nAdjDaily', 'across ' + dayWord(m.bd) + (m.big > 0 ? ', big deal removed' : ''));
 
@@ -1911,7 +1923,13 @@ textarea.json{
 
     var bP = band(m.withPending, g1, g2);
     setB('oWithPending', bP); put('oWithPending', (bP.key === 'best' ? '★ ' : '') + usdC(m.withPending));
-    put('nWithPending', m.pend > 0 ? 'run-rated with ' + usdC(m.pend) + ' pending' : 'no pending entered');
+    put('nWithPending', m.pend > 0 ? 'run-rated with ' + usdC(m.pend) + ' pending install' : 'no pending install entered');
+
+    var incl = el('oIncl');
+    if (incl) {
+      incl.hidden = !(m.v.mCheckMO > 0);
+      incl.innerHTML = 'Includes <b>' + usd(m.v.mCheckMO) + '</b> in check + money order payments, counted as revenue received.';
+    }
 
     // Month thermometer — same visual grammar as the window's goal track.
     var tMax = Math.max(g2, m.projected, m.withPending) * 1.07 || 1;
