@@ -109,10 +109,12 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // fireRemove builds it once): installItemIds is ALWAYS an array (one id or
   // many), so Make can parse one way regardless of how many were selected.
   MAKE_CO_REMOVE_ITEMS_WEBHOOK: "https://hook.us1.make.com/yw3x0othv8k4guke6qx91iyo3q5hgnyy",
-  // Change-order SWAP (worksheet-v2/co-remove.js fireSwap): ONE gesture drafts
-  // a linked Remove + Add PAIR for an install item — the "model change" case
-  // where the physical install (drop, photos, QA, history) continues and only
-  // the device changes. Payload (same shape as removal + the swap flag):
+  // Change-order PRODUCT SWAP (worksheet-v2/co-remove.js fireSwap): ONE
+  // gesture drafts a linked Remove + Add PAIR for an install item — the
+  // "product change" case where the physical install (drop, photos, QA,
+  // history) continues and ONLY THE PRODUCT changes. At this stage a swap is
+  // product-only by design: every other field carries over verbatim, and the
+  // apply must never rewrite them. Payload (same shape as removal + flag):
   //   { changeOrderId, installItemIds: [..], swap: true, triggeredBy }
   // Make, per install item:
   //   1. Remove line — identical to the removal scenario (CO Action = Remove,
@@ -120,16 +122,19 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   2. Add line — a CLONE of the install item's config (product, MDF,
   //      prefix, drop #, length, conduit, chips, labor description),
   //      field_2966 → the SAME install item (Add + target = the pair
-  //      marker), field_2154 → the CO. The user then changes the product on
-  //      the CO worksheet to the replacement model.
+  //      marker), field_2154 → the CO. The user then changes the PRODUCT on
+  //      the CO worksheet to the replacement — that's the one field a swap
+  //      is allowed to change.
   //   3. Each accessory child (install field_2853 → this item): its own
   //      Remove line + a cloned Add line parented (field_2464) to the new
   //      Add from step 2, field_2966 → the accessory's own install record —
   //      so the existing accessory-mismatch warning evaluates the mount
-  //      against the newly chosen model and the sub sees the real price line.
+  //      against the newly chosen product and the sub sees the real price
+  //      line (accessory swaps are product swaps too).
   // At SIGNATURE the apply scenario must treat a target-linked Add as an
-  // IN-PLACE UPDATE of the targeted install record (never remove + create —
-  // that's what keeps photos/QA/history attached by identity). See
+  // IN-PLACE UPDATE of the targeted install record's PRODUCT (and nothing
+  // else — product-only at this stage; never remove + create). That identity
+  // preservation is what keeps photos/QA/history attached. See
   // docs/change-orders.md.
   MAKE_CO_SWAP_ITEMS_WEBHOOK: "PLACEHOLDER_MAKE_CO_SWAP_ITEMS_WEBHOOK",
   // Change-order ADD item (worksheet-v2/co-add-item-form.js): the custom

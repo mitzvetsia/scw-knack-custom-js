@@ -15,14 +15,17 @@
  * happens at SIGNATURE (Make), never client-side: per docs/change-orders.md,
  * "nothing mutates install scope until signature."
  *
- * SWAP (added 2026-09-01): the model-change gesture. "⇄ Swap" drafts a
- * LINKED Remove + Add pair in one click — Make clones the install item's
- * config into the Add line and targets BOTH lines at the install record via
- * field_2966; accessory children (install field_2853) get their own pairs,
- * parented to the new Add. At signature the apply scenario treats a
- * target-linked Add as an IN-PLACE update of the install record, so photos /
- * QA / history keep their identity — the fix for "remove+add severs the
- * item's history". Contract: MAKE_CO_SWAP_ITEMS_WEBHOOK in config.js.
+ * SWAP (added 2026-09-01): the PRODUCT-swap gesture — at this stage a swap
+ * changes the product ONLY; every other field carries over verbatim and the
+ * button renders only on rows that carry a product (services/assumptions
+ * have nothing to swap). "⇄ Swap Product" drafts a LINKED Remove + Add pair
+ * in one click — Make clones the install item's config into the Add line
+ * and targets BOTH lines at the install record via field_2966; accessory
+ * children (install field_2853) get their own pairs, parented to the new
+ * Add. At signature the apply scenario treats a target-linked Add as an
+ * IN-PLACE update of the install record's PRODUCT, so photos / QA / history
+ * keep their identity — the fix for "remove+add severs the item's history".
+ * Contract: MAKE_CO_SWAP_ITEMS_WEBHOOK in config.js.
  *
  * The write runs in Make (MAKE_CO_REMOVE_ITEMS_WEBHOOK) so the client never
  * creates/mutates records directly.
@@ -157,7 +160,7 @@
       '    minmax(0px, auto)     /* flag chits (RO, only-if-true) */',
       '    minmax(0px, 1.2fr)    /* SCW Notes (read-only here) */',
       '    28px                  /* warning */',
-      '    200px                 /* actions ("− Remove ⇄ Swap" / state pills) */ !important;',
+      '    215px                 /* actions ("− Remove ⇄ Swap Product" / pills) */ !important;',
       '}',
 
       // Non-cam install rows hide the (blank) label + flag cells and pin the
@@ -526,9 +529,11 @@
     }
   }
 
-  // state: 'live' (both action buttons) | 'removed' (rose pill) |
+  // state: 'live' (action buttons) | 'removed' (rose pill) |
   //        'swapped' (indigo pill — a linked Remove+Add pair is drafted).
-  function setRowState(row, rid, viewKey, state) {
+  // canSwap: swaps are PRODUCT swaps at this stage — the button renders only
+  // on rows that carry a product (services/assumptions have nothing to swap).
+  function setRowState(row, rid, viewKey, state, canSwap) {
     var act = row.querySelector('.scw-co-remove-actioncell');
     var check = row.querySelector('.' + CHECK_CLS);
     var card = row.closest ? row.closest('.scw-ws-v2-card') : null;
@@ -549,27 +554,31 @@
     } else if (state === 'swapped') {
       delete _sel[rid];
       act.innerHTML = '<span class="scw-co-swap-flagged" ' +
-        'title="A linked Remove + Add pair for this item is drafted on this ' +
-        'change order — set the replacement model on the new CO line">' +
-        '⇄ Swap drafted</span>';
+        'title="A product-swap pair for this item is drafted on this ' +
+        'change order — pick the replacement product on the new CO line">' +
+        '⇄ Product swap drafted</span>';
       lockCheck();
       if (card) {
         card.classList.add('scw-co-swap-card--drafted');
         card.classList.remove('scw-co-remove-card--flagged');
       }
     } else {
-      if (!act.querySelector('.' + BTN_CLS) || !act.querySelector('.scw-co-swap-btn')) {
+      var haveRemove = !!act.querySelector('.' + BTN_CLS);
+      var haveSwap   = !!act.querySelector('.scw-co-swap-btn');
+      if (!haveRemove || haveSwap !== !!canSwap) {
         // Destructive action first, per the repo button-ordering convention.
         act.innerHTML = '<button type="button" class="' + BTN_CLS + '" ' +
           'data-scw-co-remove="' + rid + '" ' +
           'data-scw-co-remove-view="' + viewKey + '" ' +
           'title="Flag this install item for removal on the change order">− Remove</button>' +
-          '<button type="button" class="scw-co-swap-btn" ' +
-          'data-scw-co-swap="' + rid + '" ' +
-          'data-scw-co-remove-view="' + viewKey + '" ' +
-          'title="Change the device model — drafts a linked Remove + Add pair that ' +
-          'keeps this install item’s photos, QA and history (applies in place at signature)">' +
-          '⇄ Swap</button>';
+          (canSwap
+            ? '<button type="button" class="scw-co-swap-btn" ' +
+              'data-scw-co-swap="' + rid + '" ' +
+              'data-scw-co-remove-view="' + viewKey + '" ' +
+              'title="Swap the product on this install item — drafts a linked Remove + Add ' +
+              'pair; everything else carries over and the item keeps its photos, QA and ' +
+              'history (applies in place at signature)">⇄ Swap Product</button>'
+            : '');
       }
       if (check) {
         check.disabled = false;
@@ -661,6 +670,8 @@
     restructureHeaders(container);
 
     var byId = recordIndex(viewKey);
+    var Fv = (ns.cfg && typeof ns.cfg.fields === 'function')
+      ? (ns.cfg.fields(viewKey) || {}) : {};
     // CO-line target counts (durable draft-state): 2+ lines targeting an
     // install id = swap pair, 1 = plain remove. null until field_2966 is a
     // column on the CO view — then optimistic sets + field_2967 carry it.
@@ -683,7 +694,11 @@
         // flag OR exactly one targeting CO line (a drafted Remove).
         state = 'removed';
       }
-      setRowState(row, rid, viewKey, state);
+      // Product-only swaps: no product on the record (services/assumptions)
+      // → nothing to swap, no button.
+      var canSwap = !!(Fv.product && rec[Fv.product] &&
+        String(rec[Fv.product]).replace(/<[^>]*>/g, '').trim());
+      setRowState(row, rid, viewKey, state, canSwap);
     }
 
     // Keyboard belt for the readOnly lockdown (our own checkboxes stay live).
@@ -954,31 +969,34 @@
           swapBtn.disabled = true;
           swapBtn.innerHTML = '<span class="scw-co-remove-spin"></span> Drafting…';
         },
-        done: function () { /* row flipped to Swap drafted by fireSwap */ },
-        fail: function () { swapBtn.disabled = false; swapBtn.textContent = '⇄ Swap'; }
+        done: function () { /* row flipped to Product swap drafted by fireSwap */ },
+        fail: function () { swapBtn.disabled = false; swapBtn.textContent = '⇄ Swap Product'; }
       };
       var body =
-        '<b>' + escHtml(prod || 'This device') + '</b> stays installed and keeps ' +
-        'its photos, QA and install history. This drafts a linked pair on the ' +
-        'change order: a <b>Remove</b> (credit) and an <b>Add</b> carrying over ' +
-        'its configuration — change the product on the new CO line to the ' +
-        'replacement model.' +
+        'This swaps the <b>product only</b> — the item stays installed at the ' +
+        'same drop with its photos, QA and install history, and everything ' +
+        'else (location, cabling, config) carries over unchanged.' +
+        '<br><br>It drafts a linked pair on the change order: a <b>Remove</b> ' +
+        '(credit for <b>' + escHtml(prod || 'the current product') + '</b>) and ' +
+        'an <b>Add</b> — pick the replacement product on the new CO line.' +
         (accN
           ? '<br><br>Its ' + accN + ' accessor' + (accN === 1 ? 'y comes' : 'ies come') +
-            ' along as paired lines too — if the new model needs a different ' +
-            'mount, swap it on the CO line (the mismatch warning will flag it).'
+            ' along as paired lines too — if the new product needs a different ' +
+            'mount, swap that product on its CO line (the mismatch warning ' +
+            'will flag it).'
           : '') +
-        '<br><br>On signature the change applies <b>in place</b> to the ' +
-        'existing install record.';
+        '<br><br>On signature the product change applies <b>in place</b> to ' +
+        'the existing install record.';
       if (ns.confirmModal && typeof ns.confirmModal === 'function') {
         ns.confirmModal({
-          title: 'Swap this device on the change order?',
+          title: 'Swap the product on this install item?',
           body: body,
-          okLabel: 'Draft swap pair',
+          okLabel: 'Draft product swap',
           cancelLabel: 'Cancel'
         }).then(function (ok) { if (ok) fireSwap(srid, svk, swapUi); });
       } else if (window.confirm(
-        'Draft a linked Remove + Add pair for this device on the change order?')) {
+        'Swap the product on this install item? This drafts a linked ' +
+        'Remove + Add pair on the change order.')) {
         fireSwap(srid, svk, swapUi);
       }
       return;
