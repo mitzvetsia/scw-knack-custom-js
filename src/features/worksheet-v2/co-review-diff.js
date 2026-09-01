@@ -59,6 +59,8 @@
       '#' + BANNER_ID + ' .scw-co-rd-chip--changed{color:#92400e;background:#fef3c7;border:1px solid #fde68a;}',
       '#' + BANNER_ID + ' .scw-co-rd-chip--new{color:#0c4a6e;background:#e0f2fe;border:1px solid #bae6fd;}',
       '#' + BANNER_ID + ' .scw-co-rd-chip--removed{color:#9f1239;background:#ffe4e6;border:1px solid #fecdd3;}',
+      '#' + BANNER_ID + ' .scw-co-rd-legend{flex-basis:100%;',
+      'font:500 11px/1.45 system-ui,-apple-system,sans-serif;color:#a16207;}',
       // per-line flags (same family as the REMOVE flag)
       '.scw-ws-v2-co-flag--changed{display:block;width:-moz-fit-content;width:fit-content;',
       'margin:0 0 3px 0;font:700 8.5px/1 system-ui,-apple-system,sans-serif;letter-spacing:.06em;',
@@ -165,7 +167,8 @@
           d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       }
     }
-    var bits = ['<span>Sub pricing review' + esc(when) + ':</span>'];
+    var bits = ['<span>Changes since this CO was sent to the sub for pricing' +
+      esc(when) + ':</span>'];
     bits.push('<span class="scw-co-rd-chip scw-co-rd-chip--changed">' +
       changed + ' changed</span>');
     if (added) {
@@ -178,8 +181,16 @@
         removedNames.length + ' removed</span>');
     }
     if (changed === 0 && !added && !removedNames.length) {
-      bits = ['<span>Sub pricing review' + esc(when) +
-        ': no changes from the sub — pricing came back as sent.</span>'];
+      bits = ['<span>No changes since this CO was sent to the sub for pricing' +
+        esc(when) + ' — it came back exactly as sent.</span>'];
+    } else {
+      // The flags read as absolutes ("NEW") without this anchor — spell out
+      // the reference point once, on the banner every flag sits under.
+      bits.push('<span class="scw-co-rd-legend">' +
+        'NEW = added after that send (no sub pricing yet) &middot; ' +
+        'CHANGED = differs from what was sent &mdash; hover a flag for the ' +
+        'exact deltas &middot; REMOVE = credit line (item leaves scope at ' +
+        'signature)</span>');
     }
     banner.innerHTML = bits.join('');
     // Above the grand summary, below the toolbar/banner strip.
@@ -212,6 +223,17 @@
     }
     injectCss();
 
+    // "(Jul 15)" — appended to the per-line flag tooltips so the reference
+    // point (the last send to the sub) is explicit right where the flag is.
+    var sentWhen = '';
+    if (snap.sentAt) {
+      var sd = new Date(snap.sentAt);
+      if (!isNaN(+sd)) {
+        sentWhen = ' (' +
+          sd.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ')';
+      }
+    }
+
     var ws = window.SCW && SCW.worksheetV2;
     var recs = (ws && ws.data && typeof ws.data.readRecords === 'function')
       ? ws.data.readRecords(VIEW) : [];
@@ -231,8 +253,11 @@
       var base = snap.lines[rec.id];
       if (!base) {
         addedCount++;
+        // Neutral wording: anything drafted after the send lands here — the
+        // sub's additions AND ops' own post-submission adds/swap pairs alike.
         flagCard(card, 'scw-ws-v2-co-flag--new', 'NEW',
-          'Added by the sub after the CO was sent for pricing.');
+          'Added since the CO was last sent to the sub for pricing' +
+          sentWhen + ' — the sub has NOT priced this line.');
         continue;
       }
 
@@ -256,7 +281,9 @@
         annotateInput(card, deltas[d].spec.field,
           deltas[d].old, deltas[d].spec.money);
       }
-      flagCard(card, 'scw-ws-v2-co-flag--changed', 'CHANGED', parts.join(' · '));
+      flagCard(card, 'scw-ws-v2-co-flag--changed', 'CHANGED',
+        'Changed since the CO was sent to the sub' + sentWhen + ': ' +
+        parts.join(' · '));
     }
 
     var removedNames = [];

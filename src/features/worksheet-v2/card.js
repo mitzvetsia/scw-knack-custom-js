@@ -2486,7 +2486,9 @@
       var _labelCell = card.querySelector('.scw-ws-v2-row .scw-ws-v2-cell--label');
       if (_labelCell) {
         _labelCell.insertAdjacentHTML('afterbegin',
-          '<span class="scw-ws-v2-co-flag scw-ws-v2-co-flag--remove">REMOVE</span>');
+          '<span class="scw-ws-v2-co-flag scw-ws-v2-co-flag--remove" ' +
+          'title="Remove line — credits this install item back on the change ' +
+          'order. The item leaves install scope when the CO is signed.">REMOVE</span>');
       }
     }
     // Sub CO page: badge the rows the sub created — theirs to delete. SCW
