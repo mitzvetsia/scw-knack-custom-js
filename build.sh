@@ -40,6 +40,7 @@ cat \
   src/features/accordion-menu-inject.js \
   src/features/workflow-stepper.js \
   src/features/survey-request-cards.js \
+  src/features/survey-request-sow-link.js \
   src/features/step-form-draft-guard.js \
   src/features/accordion-section-icons.js \
   src/features/ratking/modal-backdrop-click-disable.js \

@@ -102,17 +102,16 @@
   // view_3876 on the sales scene.
   // Unconfigured → fail open: no editor renders, modal behaves as today.
   //
-  // ⚠️ Builder: the view's source must be PROJECT-WIDE (requests whose
-  // REL_installation project = this page SOW's project), matching
-  // view_3876 on the sales scene — NOT "connected to this page's SOW"
-  // via field_2329. The view_3853 capture form leaves the request's
-  // REL_scope of work (field_2329) BLANK, so a SOW-connected source
-  // renders No data even while a PENDING request exists (observed live
-  // 2026-09-01: sales page showed the pending card, this view was
-  // empty). Rows may therefore span sibling SOWs — the readers below
-  // scope by field_2329 where it's populated and treat unattributed
-  // rows as this project's request (one survey request per project).
-  var PENDING_REQ_VIEW = 'view_4141';  // hidden requests grid on scene_1096 (added 2026-08-03)
+  // The view stays CONNECTED to this page's SOW (via the request's
+  // field_2329) — deliberately. A wider (project-wide) source would let
+  // a request captured for a SIBLING SOW arm THIS SOW's Mark Ready and
+  // release the survey against a SOW that was never validated. The
+  // matching requirement is that capture records actually CARRY the SOW
+  // connection: survey-request-sow-link.js prefills field_2329 on the
+  // view_3853 form (once the input is added to the form in Builder).
+  // Legacy/unattributed records (blank field_2329) never appear in this
+  // view and never arm — backfill field_2329 by hand to surface one.
+  var PENDING_REQ_VIEW = 'view_4141';  // hidden SOW-connected requests grid on scene_1096 (added 2026-08-03)
   // Field map = the SOW_OPS_site survey request capture record. NOTE the
   // POC lives in the INPUT fields (what the view_3853 form writes) — the
   // REL_poc contact connection (field_1197) is typically BLANK on these
@@ -879,27 +878,46 @@
    *       view_3861.
    *    2. PENDING capture rows in PENDING_REQ_VIEW — the same signal the
    *       sales page derives its "Pending" cards from (survey-request-
-   *       cards.js: "real status field wins"). The rows are fresher than
-   *       the SOW flags: field_2706's flip rides an async Make step and
-   *       can lag or miss entirely (observed live 2026-09-01 — capture
-   *       row FLAG_status = PENDING while 2706 still read No, so the
-   *       sales page showed the pending request and this stepper said
-   *       "validation only"). Explicit sibling-SOW rows are excluded.
-   *    3. Flag fallback (view empty / not yet showing rows): field_2706
-   *       flips at submit regardless of validation (confirmed
-   *       2026-08-02), so 2706 = Yes while 2723 = No means captured but
-   *       not sent — armed. Can't count multiples; reports 1. */
+   *       cards.js: "real status field wins"). The rows are the truth
+   *       under the always-pending redesign: the field_2706 flip moved
+   *       behind Make's promote (docs/project-stage-workflow.md), so a
+   *       pre-validation submit no longer flips it at all (observed live
+   *       2026-09-01 — capture row FLAG_status = PENDING while 2706
+   *       still read No, so the sales page showed the pending request
+   *       and this stepper said "validation only"). Only rows EXPLICITLY
+   *       attributed to this SOW (field_2329 match) count — sibling and
+   *       unattributed rows never arm this SOW's Mark Ready.
+   *    3. Flag fallback (view empty / not yet showing rows): under the
+   *       pre-redesign record rule field_2706 flipped at submit
+   *       (confirmed 2026-08-02), so 2706 = Yes while 2723 = No means
+   *       captured but not sent — armed. Kept for records that predate
+   *       the redesign. Can't count multiples; reports 1. */
   function armedSurveyCount() {
     if (ARMED_REQ_COUNT_FIELD && fieldPresent(ARMED_REQ_COUNT_FIELD)) {
       var n = parseFloat(readField(ARMED_REQ_COUNT_FIELD));
       return (isFinite(n) && n > 0) ? n : 0;
     }
     var rows = eligibleRequestRows();
-    var pending = 0;
+    var sowId = getSourceRecordId();
+    var pending = 0, unattributed = 0;
     for (var i = 0; i < rows.length; i++) {
-      if (rowIsPending(rows[i])) pending++;
+      if (!rowIsPending(rows[i])) continue;
+      // Arm ONLY on explicit this-SOW attribution. An unattributed row
+      // (blank field_2329) must not arm: were the view ever sourced wider
+      // than the SOW connection, it could belong to a sibling SOW, and
+      // arming here would release that survey against a SOW that was
+      // never validated. (In the SOW-connected view such rows can't
+      // appear at all — this guard is defense in depth.)
+      if (sowId && rows[i].sowId === sowId) pending++;
+      else if (!rows[i].sowId) unattributed++;
     }
     if (pending > 0) return pending;
+    if (unattributed > 0) {
+      console.warn('[scw-ops-stepper] ' + unattributed + ' PENDING survey ' +
+        'request(s) visible in ' + PENDING_REQ_VIEW + ' with NO SOW ' +
+        'connection (field_2329 blank) — not arming Mark Ready. Backfill ' +
+        'the request’s REL_scope of work to attribute it.');
+    }
     if (conditionMet({ field: 'field_2706', value: 'Yes' }) &&
         conditionMet({ field: 'field_2723', value: 'No' })) {
       return 1;
