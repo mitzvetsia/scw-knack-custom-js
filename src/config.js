@@ -329,6 +329,23 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // the initiate + survey scenarios carry the ping (cleanup step 8 in the
   // design doc).
   MAKE_REQUEST_SOW_VALIDATION_WEBHOOK: "https://hook.us1.make.com/os586ruwyb1p2o3j31xoju3v7togumfy",
+  // Custom survey-request form (survey-request-form.js, DORMANT until wired
+  // in). Replaces the view_3853 Knack form: the record is created by MAKE,
+  // not a Knack form insert — the copied form's page connection never
+  // executed on create, so the scenario receives everything and writes the
+  // SOW_OPS_site survey request itself: connect REL_scope of work
+  // (field_2329) + project, set the correct status (Pending Validation vs
+  // fire-now per the validated flag — docs/project-stage-workflow.md branch
+  // table), resolve/create the contacts, notify per the existing flow.
+  //   Request body: { action: 'survey-request-create', sowId, sowName,
+  //     projectId, companyId, validated, surveyRequested,
+  //     installContact:  { mode: 'existing', id, name, email, phone } |
+  //                      { mode: 'new', first, last, email, phone },
+  //     billingContact:  same shape or null,
+  //     pocAuthorized, badging, badgingDetails, ppe, notes,
+  //     requestedBy: { id, name, email }, submittedAt }
+  //   Response: { success: true } (or bare Make "Accepted")
+  MAKE_SURVEY_REQUEST_FORM_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_SURVEY_REQUEST_FORM",
   // Ops-side stepper actions (view_3345 on the proposal page). Each fires on
   // button click with a notes modal. Payload shape:
   //   Request body:  { sourceRecordId, notes, sowFields, sowLineItemIds,

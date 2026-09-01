@@ -52,6 +52,11 @@
     // field_2955 from its model (drives the alt-proposal step's bid-back
     // copy) and the alt-proposal payload ships its rounds as context.
     'view_4155',
+    // 'view_4156' — CORE_contacts candidates on the sales build-SOW page
+    // (scene_1116): the contact-picker source for the custom survey-request
+    // form (survey-request-form.js, dormant until wired in). Hidden now so
+    // the raw grid doesn't sit on the page while that form is parked.
+    'view_4156',
     // 'view_3913' — hidden grid of all SOW line items on the project,
     // scraped by import-unique-items-btn for the sowId → lineItemIds
     // index (and itemId → label map). change-record-limit pumps it
