@@ -15,6 +15,15 @@
  * happens at SIGNATURE (Make), never client-side: per docs/change-orders.md,
  * "nothing mutates install scope until signature."
  *
+ * SWAP (added 2026-09-01): the model-change gesture. "⇄ Swap" drafts a
+ * LINKED Remove + Add pair in one click — Make clones the install item's
+ * config into the Add line and targets BOTH lines at the install record via
+ * field_2966; accessory children (install field_2853) get their own pairs,
+ * parented to the new Add. At signature the apply scenario treats a
+ * target-linked Add as an IN-PLACE update of the install record, so photos /
+ * QA / history keep their identity — the fix for "remove+add severs the
+ * item's history". Contract: MAKE_CO_SWAP_ITEMS_WEBHOOK in config.js.
+ *
  * The write runs in Make (MAKE_CO_REMOVE_ITEMS_WEBHOOK) so the client never
  * creates/mutates records directly.
  *
@@ -73,6 +82,13 @@
   // to clear an id here; not built yet — self-heals on reload.)
   var _flaggedOptimistic = {};
 
+  // Same idea for freshly-drafted SWAP pairs (fireSwap): install id → true
+  // from the moment the swap webhook ACKs, so the row reads "⇄ Swap drafted"
+  // through the Make-write gap. Durable cross-reload detection comes from
+  // coTargetCounts (2+ CO lines targeting the id) once field_2966 is a
+  // column on the CO worksheet view.
+  var _swappedOptimistic = {};
+
   // ── Config ────────────────────────────────────────────────────────────
   function removeViews() {
     var out = [];
@@ -96,6 +112,12 @@
       if (/^[a-f0-9]{24}$/i.test(segs[i])) return segs[i];
     }
     return '';
+  }
+
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c];
+    });
   }
 
   function getTriggeredBy() {
@@ -135,7 +157,7 @@
       '    minmax(0px, auto)     /* flag chits (RO, only-if-true) */',
       '    minmax(0px, 1.2fr)    /* SCW Notes (read-only here) */',
       '    28px                  /* warning */',
-      '    150px                 /* remove action (fits "− Slated for removal") */ !important;',
+      '    200px                 /* actions ("− Remove ⇄ Swap" / state pills) */ !important;',
       '}',
 
       // Non-cam install rows hide the (blank) label + flag cells and pin the
@@ -254,6 +276,34 @@
       '  font: 600 11px/1.3 system-ui, -apple-system, sans-serif;',
       '}',
 
+      // ── Swap (model change) — indigo, distinct from the rose remove ────
+      '.scw-co-remove-actioncell { gap: 4px; }',
+      '.scw-co-swap-btn {',
+      '  display: inline-flex; align-items: center; gap: 4px;',
+      '  padding: 4px 9px; white-space: nowrap;',
+      '  background: #fff; color: #4338ca;',
+      '  border: 1px solid #c7d2fe; border-radius: 5px;',
+      '  font: 600 11px/1.3 system-ui, -apple-system, sans-serif;',
+      '  cursor: pointer;',
+      '  transition: background 0.15s ease, color 0.15s ease;',
+      '}',
+      '.scw-co-swap-btn:hover { background: #4338ca; color: #fff; border-color: #4338ca; }',
+      '.scw-co-swap-btn[disabled] { opacity: 0.6; cursor: default; }',
+      '.scw-co-swap-flagged {',
+      '  display: inline-flex; align-items: center; gap: 4px;',
+      '  padding: 4px 9px; white-space: nowrap;',
+      '  background: #eef2ff; color: #4338ca;',
+      '  border: 1px solid #c7d2fe; border-radius: 5px;',
+      '  font: 600 11px/1.3 system-ui, -apple-system, sans-serif;',
+      '}',
+      // Whole-card indigo state for a drafted swap — the item stays visible
+      // (it isn\'t leaving install scope; only its model is changing).
+      '.scw-ws-v2-card.scw-co-swap-card--drafted {',
+      '  background: #f5f6ff !important;',
+      '  border-color: #c7d2fe !important;',
+      '  box-shadow: inset 4px 0 0 #6366f1 !important;',
+      '}',
+
       // Whole-card red state for an item slated for removal on THIS CO — kept
       // in the grid (not hidden) so ops can see what will be dropped, but the
       // Remove control + bulk checkbox are disabled so it can\'t be re-removed.
@@ -309,6 +359,44 @@
       if (recs[i] && recs[i].id) byId[recs[i].id] = recs[i];
     }
     return byId;
+  }
+
+  // Durable draft-state detection off the CO worksheet's own lines: install
+  // id → how many CO lines target it via field_2966. ONE targeting line =
+  // a plain Remove drafted; TWO+ = a swap pair (the Remove + the cloned
+  // Add). Requires field_2966 exposed as a column on the CO view — until
+  // Builder adds it this returns null ("unknown") and the session-optimistic
+  // sets carry the state alone.
+  var TARGET_FIELD = 'field_2966';
+  function coTargetCounts(viewKey) {
+    var counts = Object.create(null);
+    var sawField = false;
+    var recs = (ns.data && typeof ns.data.readRecords === 'function')
+      ? ns.data.readRecords(coViewFor(viewKey)) : [];
+    for (var i = 0; i < recs.length; i++) {
+      var r = recs[i];
+      if (!r) continue;
+      if ((TARGET_FIELD in r) || ((TARGET_FIELD + '_raw') in r)) sawField = true;
+      var raw = r[TARGET_FIELD + '_raw'];
+      var id = Array.isArray(raw) ? (raw[0] && raw[0].id) : (raw && raw.id);
+      if (id) counts[id] = (counts[id] || 0) + 1;
+    }
+    return sawField ? counts : null;
+  }
+
+  // Accessory children of an install item — install-object parent pointer is
+  // field_2853 (the field_2464 analogue; see bulk.js accParentKeyFor).
+  var INSTALL_ACC_PARENT = 'field_2853';
+  function accessoryChildren(viewKey, rid) {
+    var out = [];
+    var recs = (ns.data && typeof ns.data.readRecords === 'function')
+      ? ns.data.readRecords(viewKey) : [];
+    for (var i = 0; i < recs.length; i++) {
+      var raw = recs[i] && recs[i][INSTALL_ACC_PARENT + '_raw'];
+      var pid = Array.isArray(raw) ? (raw[0] && raw[0].id) : (raw && raw.id);
+      if (pid === rid) out.push(recs[i]);
+    }
+    return out;
   }
 
   // ── TEMPORARY DIAGNOSTIC ─────────────────────────────────────────────
@@ -438,32 +526,60 @@
     }
   }
 
-  function setRowState(row, rid, viewKey, flagged) {
+  // state: 'live' (both action buttons) | 'removed' (rose pill) |
+  //        'swapped' (indigo pill — a linked Remove+Add pair is drafted).
+  function setRowState(row, rid, viewKey, state) {
     var act = row.querySelector('.scw-co-remove-actioncell');
     var check = row.querySelector('.' + CHECK_CLS);
     var card = row.closest ? row.closest('.scw-ws-v2-card') : null;
     if (!act) return;
-    if (flagged) {
+    function lockCheck() {
+      if (check) { check.checked = false; check.disabled = true; check.style.visibility = 'hidden'; }
+    }
+    if (state === 'removed') {
       delete _sel[rid];
       act.innerHTML = '<span class="' + PILL_CLS + '" ' +
         'title="This install item is slated for removal on this change order">' +
         '− Slated for removal</span>';
-      // Disable + hide the bulk checkbox so a flagged item can\'t be re-removed.
-      if (check) { check.checked = false; check.disabled = true; check.style.visibility = 'hidden'; }
-      if (card) card.classList.add('scw-co-remove-card--flagged');
+      lockCheck();
+      if (card) {
+        card.classList.add('scw-co-remove-card--flagged');
+        card.classList.remove('scw-co-swap-card--drafted');
+      }
+    } else if (state === 'swapped') {
+      delete _sel[rid];
+      act.innerHTML = '<span class="scw-co-swap-flagged" ' +
+        'title="A linked Remove + Add pair for this item is drafted on this ' +
+        'change order — set the replacement model on the new CO line">' +
+        '⇄ Swap drafted</span>';
+      lockCheck();
+      if (card) {
+        card.classList.add('scw-co-swap-card--drafted');
+        card.classList.remove('scw-co-remove-card--flagged');
+      }
     } else {
-      if (!act.querySelector('.' + BTN_CLS)) {
+      if (!act.querySelector('.' + BTN_CLS) || !act.querySelector('.scw-co-swap-btn')) {
+        // Destructive action first, per the repo button-ordering convention.
         act.innerHTML = '<button type="button" class="' + BTN_CLS + '" ' +
           'data-scw-co-remove="' + rid + '" ' +
           'data-scw-co-remove-view="' + viewKey + '" ' +
-          'title="Flag this install item for removal on the change order">− Remove</button>';
+          'title="Flag this install item for removal on the change order">− Remove</button>' +
+          '<button type="button" class="scw-co-swap-btn" ' +
+          'data-scw-co-swap="' + rid + '" ' +
+          'data-scw-co-remove-view="' + viewKey + '" ' +
+          'title="Change the device model — drafts a linked Remove + Add pair that ' +
+          'keeps this install item’s photos, QA and history (applies in place at signature)">' +
+          '⇄ Swap</button>';
       }
       if (check) {
         check.disabled = false;
         check.style.visibility = '';
         check.checked = !!_sel[rid];
       }
-      if (card) card.classList.remove('scw-co-remove-card--flagged');
+      if (card) {
+        card.classList.remove('scw-co-remove-card--flagged');
+        card.classList.remove('scw-co-swap-card--drafted');
+      }
     }
   }
 
@@ -545,6 +661,10 @@
     restructureHeaders(container);
 
     var byId = recordIndex(viewKey);
+    // CO-line target counts (durable draft-state): 2+ lines targeting an
+    // install id = swap pair, 1 = plain remove. null until field_2966 is a
+    // column on the CO view — then optimistic sets + field_2967 carry it.
+    var tc = coTargetCounts(viewKey);
     var cards = container.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
     for (var i = 0; i < cards.length; i++) {
       var card = cards[i];
@@ -554,9 +674,16 @@
       if (!row || !rec) continue;
       restructureRow(row, rid, viewKey);
       injectDesc(card, rec, vcfg);   // stack labor description under product (read-only)
-      // field_2967 (durable) OR the session-optimistic flag (covers the gap
-      // before Make writes field_2967 after a fresh removal).
-      setRowState(row, rid, viewKey, isFlagged(rec, vcfg) || !!_flaggedOptimistic[rid]);
+      var state = 'live';
+      if (_swappedOptimistic[rid] || (tc && tc[rid] >= 2)) {
+        state = 'swapped';
+      } else if (isFlagged(rec, vcfg) || _flaggedOptimistic[rid] ||
+                 (tc && tc[rid] === 1)) {
+        // field_2967 (durable, flips at signature) OR the session-optimistic
+        // flag OR exactly one targeting CO line (a drafted Remove).
+        state = 'removed';
+      }
+      setRowState(row, rid, viewKey, state);
     }
 
     // Keyboard belt for the readOnly lockdown (our own checkboxes stay live).
@@ -665,7 +792,7 @@
           var card = container.querySelector(
             '.scw-ws-v2-card[data-scw-ws-v2-record="' + ids[k] + '"]');
           var row = card && card.querySelector('.scw-ws-v2-row');
-          if (row) setRowState(row, ids[k], viewKey, true);
+          if (row) setRowState(row, ids[k], viewKey, 'removed');
         }
         updateBulkToolbar(viewKey);
         // Repatch the install grid — the refetch repopulates field_2967 so the
@@ -678,6 +805,69 @@
       ui.fail();
       alert((data && (data.error || data.message)) ||
         'Failed to flag the item' + (ids.length > 1 ? 's' : '') + ' for removal.');
+    }).catch(function (err) {
+      ui.fail();
+      alert('Webhook error: ' + (err && err.message ? err.message : err));
+    });
+  }
+
+  // ── Swap write (Make webhook) — drafts a linked Remove + Add pair ──────
+  // The "model change" gesture: the install item stays in scope (photos, QA
+  // and history keep their identity — at signature the pair applies IN PLACE
+  // to the install record), Make clones its config into an Add line, creates
+  // the Remove, targets both at the install record via field_2966, and pairs
+  // the accessory children the same way. Contract documented at
+  // MAKE_CO_SWAP_ITEMS_WEBHOOK in config.js.
+  function fireSwap(rid, viewKey, ui) {
+    var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_SWAP_ITEMS_WEBHOOK) || '';
+    if (!url || /PLACEHOLDER/.test(url)) {
+      alert('The change-order swap webhook is not configured yet.\n\n' +
+        'Build the Make scenario (the contract is documented at ' +
+        'MAKE_CO_SWAP_ITEMS_WEBHOOK in src/config.js) and paste its URL.');
+      return;
+    }
+    var coId = getCoSowId();
+    if (!coId) {
+      alert('Could not determine the change order record id from the URL.');
+      return;
+    }
+    ui.busy();
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        changeOrderId:  coId,
+        installItemIds: [rid],   // array for payload symmetry with removal
+        swap:           true,
+        triggeredBy:    getTriggeredBy()
+      })
+    }).then(function (resp) {
+      // Same status-keyed success read as fireRemove — Make's ack body shape
+      // varies; only an explicit {success:false}/{error} counts as failure.
+      var ok = resp.ok;
+      return resp.text().then(function (txt) {
+        var body = null;
+        try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
+        return { ok: ok, data: body };
+      });
+    }).then(function (r) {
+      var explicitFail = !!(r.data && (r.data.success === false || r.data.error));
+      if (r.ok && !explicitFail) {
+        delete _sel[rid];
+        _swappedOptimistic[rid] = true;   // survives rebuilds this session
+        var container = document.getElementById('scw-ws-v2-' + viewKey);
+        var card = container && container.querySelector(
+          '.scw-ws-v2-card[data-scw-ws-v2-record="' + rid + '"]');
+        var row = card && card.querySelector('.scw-ws-v2-row');
+        if (row) setRowState(row, rid, viewKey, 'swapped');
+        updateBulkToolbar(viewKey);
+        refetchAfterRemove(viewKey);   // lands the pair on the CO worksheet
+        ui.done();
+        return;
+      }
+      ui.fail();
+      alert((r.data && (r.data.error || r.data.message)) ||
+        'Failed to draft the swap pair.');
     }).catch(function (err) {
       ui.fail();
       alert('Webhook error: ' + (err && err.message ? err.message : err));
@@ -740,6 +930,57 @@
         done: function () { /* row flipped to Flagged by fireRemove */ },
         fail: function () { btn.disabled = false; btn.textContent = '− Remove'; }
       });
+      return;
+    }
+    // Single-row "⇄ Swap" — drafts the linked Remove + Add pair (model change).
+    var swapBtn = e.target && e.target.closest &&
+      e.target.closest('.scw-co-swap-btn[data-scw-co-swap]');
+    if (swapBtn && !swapBtn.disabled) {
+      e.preventDefault();
+      e.stopPropagation();
+      var srid = swapBtn.getAttribute('data-scw-co-swap');
+      var svk  = swapBtn.getAttribute('data-scw-co-remove-view');
+      var rec  = recordIndex(svk)[srid];
+      var Fv   = (ns.cfg && typeof ns.cfg.fields === 'function')
+        ? (ns.cfg.fields(svk) || {}) : {};
+      var prod = '';
+      try {
+        prod = String((rec && Fv.product && rec[Fv.product]) || '')
+          .replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      } catch (eP) { /* name is a nicety */ }
+      var accN = accessoryChildren(svk, srid).length;
+      var swapUi = {
+        busy: function () {
+          swapBtn.disabled = true;
+          swapBtn.innerHTML = '<span class="scw-co-remove-spin"></span> Drafting…';
+        },
+        done: function () { /* row flipped to Swap drafted by fireSwap */ },
+        fail: function () { swapBtn.disabled = false; swapBtn.textContent = '⇄ Swap'; }
+      };
+      var body =
+        '<b>' + escHtml(prod || 'This device') + '</b> stays installed and keeps ' +
+        'its photos, QA and install history. This drafts a linked pair on the ' +
+        'change order: a <b>Remove</b> (credit) and an <b>Add</b> carrying over ' +
+        'its configuration — change the product on the new CO line to the ' +
+        'replacement model.' +
+        (accN
+          ? '<br><br>Its ' + accN + ' accessor' + (accN === 1 ? 'y comes' : 'ies come') +
+            ' along as paired lines too — if the new model needs a different ' +
+            'mount, swap it on the CO line (the mismatch warning will flag it).'
+          : '') +
+        '<br><br>On signature the change applies <b>in place</b> to the ' +
+        'existing install record.';
+      if (ns.confirmModal && typeof ns.confirmModal === 'function') {
+        ns.confirmModal({
+          title: 'Swap this device on the change order?',
+          body: body,
+          okLabel: 'Draft swap pair',
+          cancelLabel: 'Cancel'
+        }).then(function (ok) { if (ok) fireSwap(srid, svk, swapUi); });
+      } else if (window.confirm(
+        'Draft a linked Remove + Add pair for this device on the change order?')) {
+        fireSwap(srid, svk, swapUi);
+      }
       return;
     }
     // Bulk "Remove from Change Order" in the floating toolbar.

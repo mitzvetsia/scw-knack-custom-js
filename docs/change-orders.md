@@ -552,3 +552,38 @@ but never got installed (not part of a greenlit SOW).
    documents, statuses, and chips.
 6. **Awarded-sub auto-assign mechanic** (Project connection stamped at apply
    vs filtered dropdown) — see Sub assignment chain.
+
+## Swap pairs — model changes apply IN PLACE (locked 2026-09-01)
+
+The adds+removes ledger stays, but a **model change on an existing install
+item is a linked PAIR, not two independent lines** — a swap's physical
+install (drop, photos, QA, the install record itself) continues, and a
+naive remove+create severed that history (the problem that triggered this
+decision).
+
+- **Drafting**: ONE gesture — "⇄ Swap" on the removal panel (`co-remove.js
+  fireSwap` → `MAKE_CO_SWAP_ITEMS_WEBHOOK`, contract documented in
+  `src/config.js`). Make creates the Remove line AND an Add line cloned from
+  the install item's config, BOTH with `field_2966` → the install record
+  (an Add carrying a target IS the pair marker — no new CO Action values).
+  The user then changes the Add line's product to the replacement model on
+  the CO worksheet.
+- **Accessories**: each accessory child (install back-pointer `field_2853`,
+  the `field_2464` analogue — this answers the detection-source audit in the
+  open questions above) gets its own Remove + cloned Add pair, the Add
+  parented (`field_2464`) to the new device Add — so the accessory-mismatch
+  warning evaluates the mount against the replacement model and the sub sees
+  the real price line.
+- **Apply (signature)**: an Add with a `field_2966` target is an IN-PLACE
+  UPDATE of that install record (product + changed config fields) — never
+  remove + create. `Removed by CO` (`field_2967`) is NOT flipped for paired
+  removes. Photos / QA / acceptance / topology keep their identity because
+  the record persists. Unpaired adds and removes keep today's behavior
+  exactly.
+- **Document**: the signed CO still prices the pair as credit + charge lines
+  (pricing transparency unchanged); rendering a pair as one "Changed: X → Y"
+  block is a later cosmetic option, not a data-model change.
+- **Why not a MODIFY action type**: it reopens the adds+removes ledger and
+  drags delta-pricing + e-sign presentation questions with it. The pair
+  keeps every locked property — nothing mutates until signature, Make is the
+  single writer, the CO lines stay an immutable audit trail.

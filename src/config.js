@@ -109,6 +109,29 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // fireRemove builds it once): installItemIds is ALWAYS an array (one id or
   // many), so Make can parse one way regardless of how many were selected.
   MAKE_CO_REMOVE_ITEMS_WEBHOOK: "https://hook.us1.make.com/yw3x0othv8k4guke6qx91iyo3q5hgnyy",
+  // Change-order SWAP (worksheet-v2/co-remove.js fireSwap): ONE gesture drafts
+  // a linked Remove + Add PAIR for an install item — the "model change" case
+  // where the physical install (drop, photos, QA, history) continues and only
+  // the device changes. Payload (same shape as removal + the swap flag):
+  //   { changeOrderId, installItemIds: [..], swap: true, triggeredBy }
+  // Make, per install item:
+  //   1. Remove line — identical to the removal scenario (CO Action = Remove,
+  //      field_2966 target → the install item, field_2154 → the CO).
+  //   2. Add line — a CLONE of the install item's config (product, MDF,
+  //      prefix, drop #, length, conduit, chips, labor description),
+  //      field_2966 → the SAME install item (Add + target = the pair
+  //      marker), field_2154 → the CO. The user then changes the product on
+  //      the CO worksheet to the replacement model.
+  //   3. Each accessory child (install field_2853 → this item): its own
+  //      Remove line + a cloned Add line parented (field_2464) to the new
+  //      Add from step 2, field_2966 → the accessory's own install record —
+  //      so the existing accessory-mismatch warning evaluates the mount
+  //      against the newly chosen model and the sub sees the real price line.
+  // At SIGNATURE the apply scenario must treat a target-linked Add as an
+  // IN-PLACE UPDATE of the targeted install record (never remove + create —
+  // that's what keeps photos/QA/history attached by identity). See
+  // docs/change-orders.md.
+  MAKE_CO_SWAP_ITEMS_WEBHOOK: "PLACEHOLDER_MAKE_CO_SWAP_ITEMS_WEBHOOK",
   // Change-order ADD item (worksheet-v2/co-add-item-form.js): the custom
   // "Add line item(s)" modal fires this INSTEAD of the native DTO form. Make
   // creates SOW Line Item records DIRECTLY from the payload (no DTO staging
