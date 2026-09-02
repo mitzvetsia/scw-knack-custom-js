@@ -601,26 +601,57 @@
 
     // ── actions (ops only — the sub strip renders no buttons) ────────────
     function sendToSub() {
-      confirmThen('Send to sub for pricing?',
-        'Send this change order to the subcontractor for pricing? Current ' +
-        'line pricing is snapshotted as the baseline, and the sub is notified.',
-        'Send to Sub',
-        function () {
-          var doc = buildRequestDoc();
-          fireWebhook('send', {
-            snapshot:    buildSnapshot(),
-            coNumber:    doc.coNumber,
-            coName:      doc.coName,
-            requestHtml: doc.html,
-            requestText: doc.text
-          }, function () {
-            _optimistic = 'Pending Sub Pricing';
-            setPillText('Pending Sub Pricing');
-            render();
-            managePoll();
-            refreshLocks();
-          });
+      // Confirm + optional note in one modal. The note is FOLDED INTO the
+      // request document (requestHtml/requestText) that already rides the
+      // webhook, so the existing Make scenario forwards it to the sub with
+      // zero re-mapping — and it's attributed to the sender by name.
+      var wsNs = window.SCW && window.SCW.worksheetV2;
+      var ask = (wsNs && typeof wsNs.promptNote === 'function')
+        ? wsNs.promptNote({
+            title: 'Send to sub for pricing?',
+            body: 'Current line pricing is snapshotted as the baseline, and ' +
+                  'the sub is notified. Add a note for the subcontractor ' +
+                  '(optional) — it appears at the top of the pricing request ' +
+                  'they receive.',
+            placeholder: 'e.g. Please price by Friday — client wants to sign next week',
+            okLabel: 'Send to Sub',
+            optional: true
+          })
+        : Promise.resolve(window.prompt(
+            'Send this change order to the subcontractor for pricing?\n\n' +
+            'Note for the subcontractor (optional):', ''));
+      ask.then(function (note) {
+        if (note === null || note === undefined) return;   // cancelled
+        note = String(note).trim();
+        var doc  = buildRequestDoc();
+        var html = doc.html;
+        var text = doc.text;
+        if (note) {
+          var who = (getTriggeredBy().name || '').trim() || 'SCW Ops';
+          html = '<div style="margin:0 0 14px;padding:10px 14px;' +
+            'background:#fffbeb;border:1px solid #fde68a;border-radius:8px;' +
+            'font-size:14px;line-height:1.5;">' +
+            '<b>Note from ' + esc(who) + ' (SCW):</b> ' + esc(note) +
+            '</div>' + html;
+          text = 'NOTE FROM ' + who.toUpperCase() + ' (SCW): ' + note +
+            '\n\n' + text;
+        }
+        fireWebhook('send', {
+          snapshot:    buildSnapshot(),
+          coNumber:    doc.coNumber,
+          coName:      doc.coName,
+          requestHtml: html,
+          requestText: text,
+          // Also a first-class key, in case Make ever wants it separately.
+          note:        note
+        }, function () {
+          _optimistic = 'Pending Sub Pricing';
+          setPillText('Pending Sub Pricing');
+          render();
+          managePoll();
+          refreshLocks();
         });
+      });
     }
 
     function nudgeSub() {

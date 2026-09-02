@@ -118,7 +118,11 @@
   ns.confirmModal = confirmModal;
 
   /** Shared one-shot note prompt (textarea) → Promise<string|null> (null on
-   *  cancel). Reuses bulk.js's modal CSS. opts: { title, body(html), placeholder }. */
+   *  cancel). Reuses bulk.js's modal CSS.
+   *  opts: { title, body(html), placeholder, okLabel, cancelLabel,
+   *          optional } — optional:true keeps the OK button live with an
+   *  empty box and resolves '' (the modal then doubles as a confirm with
+   *  an optional note, e.g. the CO Send-to-Sub gesture). */
   function promptNote(opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
@@ -140,8 +144,11 @@
               'style="width:100%;box-sizing:border-box;font:inherit;padding:8px;border:1px solid #cbd5e1;border-radius:6px;resize:vertical;"></textarea>' +
           '</div>' +
           '<div class="scw-ws-v2-bulk-modal-actions">' +
-            '<button type="button" class="scw-ws-v2-bulk-modal-cancel">Cancel</button>' +
-            '<button type="button" class="scw-ws-v2-bulk-modal-confirm-delete" disabled>Save with note</button>' +
+            '<button type="button" class="scw-ws-v2-bulk-modal-cancel">' +
+              esc(opts.cancelLabel || 'Cancel') + '</button>' +
+            '<button type="button" class="scw-ws-v2-bulk-modal-confirm-delete"' +
+              (opts.optional ? '' : ' disabled') + '>' +
+              esc(opts.okLabel || 'Save with note') + '</button>' +
           '</div>' +
         '</div>';
       document.body.appendChild(ov);
@@ -149,9 +156,14 @@
       var okB = ov.querySelector('.scw-ws-v2-bulk-modal-confirm-delete');
       var caB = ov.querySelector('.scw-ws-v2-bulk-modal-cancel');
       function done(v) { if (ov.parentNode) ov.parentNode.removeChild(ov); resolve(v); }
-      ta.addEventListener('input', function () { okB.disabled = !ta.value.trim(); });
+      if (!opts.optional) {
+        ta.addEventListener('input', function () { okB.disabled = !ta.value.trim(); });
+      }
       caB.addEventListener('click', function () { done(null); });
-      okB.addEventListener('click', function () { var v = ta.value.trim(); if (v) done(v); });
+      okB.addEventListener('click', function () {
+        var v = ta.value.trim();
+        if (v || opts.optional) done(v);
+      });
       ov.addEventListener('click', function (e) { if (e.target === ov) done(null); });
       setTimeout(function () { ta.focus(); }, 30);
     });
