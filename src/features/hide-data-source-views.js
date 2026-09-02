@@ -159,6 +159,12 @@
     // install-as-quoted-panel.js reads its model for the As Quoted
     // panels; subs have no business seeing the raw grid.
     'view_4151',
+    // 'view_4157' — published proposals for the project on the ops deploy
+    // scene (scene_1311), carrying field_2671 (the publish-time `json`
+    // snapshot). install-as-quoted-panel.js parses it for the immutable
+    // quote-history sections. OPS SCENE ONLY — the blob includes SCW-side
+    // money and must never ride a sub-visible scene.
+    'view_4157',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the

@@ -368,6 +368,134 @@
     return idx;
   }
 
+  // ── published-proposal snapshots (the immutable history source) ─
+  // A hidden grid on the ops deploy scene lists the project's PUBLISHED
+  // PROPOSAL records with field_2671 = the publish-time `json` snapshot
+  // (buildJsonSnapshot: { view_key: [record dumps] } — record ids + every
+  // field, exactly what the client saw). Detection is by COLUMN, not view
+  // id, so the grid can be rebuilt in Builder freely; the module hides it
+  // (it's a data source, bottom of the page). Ops scene ONLY — the blob
+  // carries SCW-side money and must never ride a sub-visible scene.
+  var SNAPSHOT_FIELD = 'field_2671';
+  var SNAPSHOT_VIEWS = ['view_4157'];     // known snapshot grids (scene_1311)
+  var _snapCache = Object.create(null);   // record id → { len, parsed }
+
+  /** View keys carrying the snapshot column: the pinned list plus any
+   *  rendered grid whose header shows field_2671 (so a rebuilt/renamed
+   *  Builder view keeps working without a code change). */
+  function snapshotViewKeys() {
+    var keys = {}, out = [], i;
+    for (i = 0; i < SNAPSHOT_VIEWS.length; i++) keys[SNAPSHOT_VIEWS[i]] = 1;
+    var tables = document.querySelectorAll('.kn-table.kn-view');
+    for (i = 0; i < tables.length; i++) {
+      if (tables[i].id && tables[i].querySelector('thead th.' + SNAPSHOT_FIELD)) {
+        keys[tables[i].id] = 1;
+      }
+    }
+    for (var k in keys) out.push(k);
+    return out;
+  }
+  function snapshotViewEls() {
+    var out = [], keys = snapshotViewKeys();
+    for (var i = 0; i < keys.length; i++) {
+      var el = document.getElementById(keys[i]);
+      if (el) out.push(el);
+    }
+    return out;
+  }
+  function hideSnapshotViews() {
+    var els = snapshotViewEls();
+    for (var i = 0; i < els.length; i++) {
+      els[i].style.setProperty('display', 'none', 'important');
+      var acc = els[i].closest('.scw-ktl-accordion');
+      if (acc) acc.style.setProperty('display', 'none', 'important');
+    }
+  }
+  function parseSnapshot(recId, raw) {
+    var s = String(raw == null ? '' : raw);
+    if (!s) return null;
+    var hit = _snapCache[recId];
+    if (hit && hit.len === s.length) return hit.parsed;
+    var parsed = null;
+    try {
+      // Model values are verbatim; a DOM-scraped value may carry entities.
+      parsed = JSON.parse(s);
+    } catch (e) {
+      try { parsed = JSON.parse(stripHtml(s)); } catch (e2) { parsed = null; }
+    }
+    _snapCache[recId] = { len: s.length, parsed: parsed };
+    return parsed;
+  }
+
+  /** Publications, in grid order (sort the Builder view oldest-first):
+   *  [{ id, label, isCo, quote, signed, lines: {lineId: attrs},
+   *     byLabel: {normLabel: attrs} }]. label/isCo come from the SOW
+   *  header record INSIDE the snapshot (it carries field_2122/2126);
+   *  quote/signed join through the acceptance index by proposal id. */
+  function buildPublications(acceptIdx) {
+    var pubs = [];
+    var viewKeys = snapshotViewKeys();
+    // quote/signed by proposal record id (acceptIdx is keyed by SOW token).
+    var byProposal = Object.create(null);
+    for (var t in acceptIdx) {
+      if (acceptIdx[t] && acceptIdx[t].proposalId) byProposal[acceptIdx[t].proposalId] = acceptIdx[t];
+    }
+    for (var v = 0; v < viewKeys.length; v++) {
+      var models = viewModels(viewKeys[v]);
+      for (var m = 0; m < models.length; m++) {
+        var a = models[m] && models[m].attributes;
+        if (!a || !a.id) continue;
+        var snap = parseSnapshot(a.id, a[SNAPSHOT_FIELD]);
+        if (!snap || typeof snap !== 'object') continue;
+        var pub = { id: a.id, label: '', isCo: false, quote: '', signed: false,
+                    lines: Object.create(null), byLabel: Object.create(null) };
+        var acc = byProposal[a.id];
+        if (acc) { pub.quote = acc.quote; pub.signed = acc.signed; }
+        var keys = Object.keys(snap);
+        for (var k = 0; k < keys.length; k++) {
+          var arr = snap[keys[k]];
+          if (!Array.isArray(arr)) {
+            // single-record views dump as a bare record object
+            if (arr && typeof arr === 'object' && arr.id) arr = [arr];
+            else continue;
+          }
+          for (var r = 0; r < arr.length; r++) {
+            var rec = arr[r];
+            if (!rec || !rec.id) continue;
+            pub.lines[rec.id] = rec;
+            var lbl = stripHtml(rec['field_1950'] || '');
+            if (lbl) pub.byLabel[normToken(lbl)] = pub.byLabel[normToken(lbl)] || rec;
+            // SOW header record inside the snapshot names the publication.
+            if (!pub.label && rec['field_2122'] != null) {
+              var idTxt = stripHtml(rec['field_2122']);
+              var segs = idTxt.split('-');
+              pub.label = segs[segs.length - 1] || idTxt;
+              pub.isCo = /CO$/i.test(normToken(pub.label));
+            }
+          }
+        }
+        pubs.push(pub);
+      }
+    }
+    // Oldest → newest when every publication has a (date-prefixed) quote
+    // number; otherwise trust the Builder view's sort (set it to publish
+    // date ascending).
+    var allQuoted = pubs.length > 0;
+    for (var q = 0; q < pubs.length; q++) if (!pubs[q].quote) { allQuoted = false; break; }
+    if (allQuoted) pubs.sort(function (a, b) { return a.quote < b.quote ? -1 : 1; });
+    return pubs;
+  }
+
+  /** Compact value signature over the rendered groups — used to drop
+   *  consecutive publications where the line didn't change. */
+  function lineSignature(attrs) {
+    var bits = [];
+    for (var i = 0; i < GROUPS.length; i++) {
+      bits.push(normToken(readVal(attrs, PF[GROUPS[i].key]) || ''));
+    }
+    return bits.join('|');
+  }
+
   // ── provenance resolution ───────────────────────────────────────
   function normToken(s) {
     return stripHtml(s).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
@@ -630,7 +758,13 @@
         var entry = ogChain[s];
         var lbl = firstSowLabel(entry.a);
         var text;
-        if (entry.credit) {
+        if (entry.pub) {
+          // Published-snapshot section — name the publication + quote.
+          var pl = entry.pub.label || (entry.pub.isCo ? 'a change order' : 'the SOW');
+          text = (s === 0 ? 'As quoted on ' : 'As changed by ') + pl +
+            (entry.pub.quote ? ' · Quote ' + entry.pub.quote : '') +
+            (entry.pub.signed ? ' · signed' : '');
+        } else if (entry.credit) {
           text = 'Swapped out — as configured before ' +
             (lbl || 'this change order') + ' (from its credit line)';
         } else {
@@ -717,6 +851,7 @@
 
   var _warnedNoSow = false;
   var _warnedNoTarget = false;
+  var _warnedNoSnap = false;
   function merge() {
     var linkIdx = buildInstallLinkIndex();
     var ids = Object.keys(linkIdx);
@@ -766,6 +901,18 @@
     var hash = computeHash(linkIdx);
     if (hash === _lastHash) return;   // reset by invalidate() on any rebuild
     _lastHash = hash;
+
+    hideSnapshotViews();
+    var pubs = buildPublications(acceptIdx);
+    if (!pubs.length && !_warnedNoSnap && snapshotViewKeys().some(function (k) {
+      return viewModels(k).length > 0;
+    })) {
+      _warnedNoSnap = true;
+      console.warn('[scw-as-quoted] snapshot grid has records but no ' +
+        SNAPSHOT_FIELD + ' blob parsed — check the column is on the view ' +
+        'and Make writes the publish payload `json` verbatim into it. ' +
+        'Falling back to live-record history.');
+    }
 
     _selfMutating = true;
     var missing = [];
@@ -849,7 +996,43 @@
           var touch = creditLineFor(ids[i], pa);
           if (touch) origins = mergeOrigins(origins, resolveOrigins(touch, acceptIdx));
         }
-        injectPanel(ids[i], pa, origins, installIdx[ids[i]], connCtx, chain);
+        // ── Published-snapshot history (immutable, preferred) ──────────
+        // Join each publication by record id (this line + every line the
+        // swap chain reached) with a drop-label fallback, drop the
+        // generations where nothing changed, and drop the newest when it
+        // matches the live line (the live section renders last with the
+        // installed diff). Falls back to the live chain/credit story when
+        // no publication matches.
+        var story = chain;
+        if (pubs.length) {
+          var candidates = {}; candidates[pa.id] = 1;
+          for (var ce = 0; ce < chain.length; ce++) candidates[chain[ce].a.id] = 1;
+          var paLbl = normToken(stripHtml(pa['field_1950'] || ''));
+          var snapSecs = [], lastSig = null;
+          for (var p = 0; p < pubs.length; p++) {
+            var line = null;
+            for (var cid in candidates) {
+              if (pubs[p].lines[cid]) { line = pubs[p].lines[cid]; break; }
+            }
+            if (!line && paLbl && pubs[p].byLabel[paLbl]) line = pubs[p].byLabel[paLbl];
+            if (!line) continue;
+            var sig = lineSignature(line);
+            if (sig === lastSig) continue;    // unchanged in this publication
+            lastSig = sig;
+            snapSecs.push({ a: line, credit: false, pub: pubs[p] });
+            origins = mergeOrigins(origins, [{
+              label: pubs[p].label || (pubs[p].isCo ? 'CO' : 'SOW'),
+              isCo: pubs[p].isCo, quote: pubs[p].quote,
+              proposalId: pubs[p].id, signed: pubs[p].signed
+            }]);
+          }
+          if (snapSecs.length &&
+              lineSignature(pa) === lineSignature(snapSecs[snapSecs.length - 1].a)) {
+            snapSecs.pop();   // newest publication IS the live line
+          }
+          if (snapSecs.length) story = snapSecs;
+        }
+        injectPanel(ids[i], pa, origins, installIdx[ids[i]], connCtx, story);
       }
     } finally {
       setTimeout(function () { _selfMutating = false; }, 0);
@@ -989,6 +1172,13 @@
     ACCEPT_VIEWS.forEach(function (avk) {
       window.SCW.onViewRender(avk, function () {
         invalidate(); stagger();
+      }, 'scwAsQuoted');
+    });
+    // The snapshot grid usually renders LAST (bottom of the page) — hide
+    // it the moment it lands and re-merge so the published history joins.
+    SNAPSHOT_VIEWS.forEach(function (sv) {
+      window.SCW.onViewRender(sv, function () {
+        hideSnapshotViews(); invalidate(); stagger();
       }, 'scwAsQuoted');
     });
   }
