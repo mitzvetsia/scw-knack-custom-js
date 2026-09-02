@@ -144,6 +144,7 @@
   // edit still saves immediately; we only delay the disruptive rebuild.
   var _pendingRender = Object.create(null);   // viewKey -> vcfg (presence = pending)
   var _flushTimer    = null;
+  var _lastSearchQ   = Object.create(null);   // viewKey -> query the body was last painted with
 
   function gridInputFocused(viewKey) {
     var el = document.activeElement;
@@ -152,7 +153,15 @@
     var editable = tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
     if (!editable) return false;
     var grid = document.getElementById('scw-ws-v2-' + viewKey);
-    return !!(grid && grid.contains(el));
+    if (!grid || !grid.contains(el)) return false;
+    // Only inputs inside the BODY are destroyed by a rebuild — renderView
+    // swaps .scw-ws-v2-body wholesale and leaves the panel chrome (search
+    // box, pill strips, banner) untouched. Deferring on chrome focus is not
+    // just unnecessary, it's harmful: typing in the SEARCH box held this
+    // very deferral, so the search's own notify-driven re-render never ran
+    // and the list never filtered until focus left the panel.
+    var body = grid.querySelector('.scw-ws-v2-body');
+    return !!(body && body.contains(el));
   }
 
   function applyRender(key, records, vcfg) {
@@ -175,6 +184,14 @@
       }
     } catch (e) { /* fall through and render */ }
 
+    // A SEARCH-QUERY change dirties no record but absolutely needs a repaint
+    // — the search box routes its re-render through notify (to coalesce with
+    // edit renders), which lands exactly here. Compare against the query the
+    // body was last painted with; a mismatch overrides the idle-churn skip.
+    var _q = (ns.search && typeof ns.search.queryOf === 'function')
+      ? (ns.search.queryOf(key) || '') : '';
+    if (_skipRender && _q !== (_lastSearchQ[key] || '')) _skipRender = false;
+
     // Skip ONLY the expensive DOM rebuild when nothing changed — the toolbar /
     // sort / filter / bulk mounts below are idempotent (early-return when
     // already mounted) and must still run so the first notify after mount wires
@@ -187,6 +204,7 @@
     // (and a heavy forced-reflow / rAF source) on the common edit case.
     if (!_skipRender) {
       ns.render.renderView(key, records);
+      _lastSearchQ[key] = _q;
     }
     if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(key);
     // Mode/photos toolbar — mount idempotently above the L1 list.
