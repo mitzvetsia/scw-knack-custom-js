@@ -1396,13 +1396,18 @@ textarea.json{
       var tail = dec - head * 1000, r = 0, c = 0;
       for (j = 3; j < startM; j++) { r += mm[j]; c++; }
       r = r / c * 1000;
-      if (r > 0 && tail > 0) ratios.push(tail / (r * remaining));
+      if (r > 0 && tail > 0) ratios.push({ y: y, r: tail / (r * remaining) });
     });
-    var f = ratios.length ? ratios.reduce(function (a, b) { return a + b; }, 0) / ratios.length : 1;
+    // The bump case uses only the years that actually bumped; a year that finished
+    // BELOW its own run rate is not evidence of a seasonal lift.
+    var up = ratios.filter(function (x) { return x.r >= 1; });
+    var f = up.length ? up.reduce(function (a, b) { return a + b.r; }, 0) / up.length : 1;
     return {
       banked: banked * 1000, months: lastIdx + 1, remaining: remaining, rate: rate * 1000,
       runRate: (banked + rate * remaining) * 1000,
-      seasonal: (banked + rate * remaining * f) * 1000, factor: f, n: ratios.length
+      seasonal: (banked + rate * remaining * f) * 1000, factor: f,
+      bumpYears: up.map(function (x) { return x.y; }),
+      flatYears: ratios.filter(function (x) { return x.r < 1; }).map(function (x) { return x.y; })
     };
   }
   function chartDecade(host) {
@@ -1410,14 +1415,16 @@ textarea.json{
     var m = { t: 46, r: 14, b: 40, l: 56 };
     var iw = W - m.l - m.r, ih = H - m.t - m.b;
     var rows = DEC_YEARS.map(function (y) { return { yr: y, v: DATA.decade[y] || 0 }; });
-    var pr = proj2026(), yt = ytd2026();
+    var pr = proj2026(), yt = ytd2026(), base25 = DATA.decade['2025'];
     if (pr) {
-      rows.push({ yr: '2026', v: pr.runRate, ytd: pr.banked, months: pr.months, proj: true,
-                  seasonal: pr.seasonal, rate: pr.rate, remaining: pr.remaining });
+      rows.push({ yr: '2026', sub: 'run rate', v: pr.runRate, ytd: pr.banked, months: pr.months,
+                  proj: true, base: base25, rate: pr.rate, remaining: pr.remaining, pr: pr });
+      rows.push({ yr: '2026', sub: 'Q4 bump', v: pr.seasonal, ytd: pr.banked, months: pr.months,
+                  proj: true, base: base25, rate: pr.rate, remaining: pr.remaining, pr: pr, bump: true });
     } else if (yt && yt.months <= 12) {
       rows.push({ yr: '2026', v: yt.amount / yt.months * 12, ytd: yt.amount, months: yt.months, proj: true });
     }
-    var vals = rows.map(function (r) { return Math.max(r.v, r.seasonal || 0); });
+    var vals = rows.map(function (r) { return r.v; });
     var ax = niceAxis(Math.max.apply(null, vals) * 1.12, 3);
     var maxY = ax.max;
     var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
@@ -1433,7 +1440,8 @@ textarea.json{
     var defs = s('defs'); defs.appendChild(hatch('hdec', 'var(--y26)')); svg.appendChild(defs);
     var bandw = iw / rows.length, bw = Math.min(56, bandw * 0.6);
     rows.forEach(function (r, i) {
-      var v = r.v, cx = m.l + bandw * i + bandw / 2, last = i ? rows[i - 1].v : null;
+      var v = r.v, cx = m.l + bandw * i + bandw / 2;
+      var last = r.base != null ? r.base : (i ? rows[i - 1].v : null);
       var isLast = i === rows.length - 1;
       if (r.proj) {
         // Solid to the money actually banked, hatched to the straight-line projection.
@@ -1444,30 +1452,21 @@ textarea.json{
         svg.appendChild(s('rect', { x: cx - bw / 2, y: Y(v), width: bw, height: Math.max(1, Y(0) - Y(v)), rx: 3,
           style: 'fill:' + (isLast ? 'var(--y26)' : 'var(--y23)') }));
       }
-      if (r.seasonal) {
-        // Where the same rate lands once Sep-Dec seasonality is applied. The two 2026
-        // figures sit within a few pixels of each other, so stack their labels.
-        svg.appendChild(s('line', { x1: cx - bw / 2 - 5, x2: cx + bw / 2 + 5, y1: Y(r.seasonal), y2: Y(r.seasonal),
-          style: 'stroke:var(--goal2);stroke-width:2.5;stroke-dasharray:4 3' }));
-        var yRun = Y(v) - 8, ySea = Y(r.seasonal) - 7;
-        if (yRun - ySea < 19) ySea = yRun - 19;
-        if (Math.abs(ySea + 7 - Y(r.seasonal)) > 3) {
-          svg.appendChild(s('line', { x1: cx + bw / 2 + 5, y1: Y(r.seasonal), x2: cx + bw / 2 + 9, y2: ySea - 4,
-            style: 'stroke:var(--goal2);stroke-width:1;opacity:.5' }));
-        }
-        svg.appendChild(valText(cx, ySea, usdC(r.seasonal), 'middle', 'var(--goal2-ink)', 13, 700));
-      }
-      // Every year carries its own total; the year-over-year delta sits under it when
-      // the bars are wide enough to hold both without colliding.
+      // Every bar carries its own total, with year-over-year underneath. Projected
+      // bars measure against 2025, not against each other.
       var tight = bandw < 74;
-      svg.appendChild(valText(cx, Y(v) - (r.seasonal ? 8 : (last && !tight ? 24 : 10)), usdC(v), 'middle',
-        'var(--ink)', tight ? 13 : (isLast ? 16 : 15), 700));
-      if (last && !tight && !r.seasonal) {
+      svg.appendChild(valText(cx, Y(v) - (last && !tight ? 24 : 10), usdC(v), 'middle',
+        'var(--ink)', tight ? 13 : 15, 700));
+      if (last && !tight) {
         var dd = (v - last) / last;
         svg.appendChild(t('text', { x: cx, y: Y(v) - 9, 'text-anchor': 'middle',
           style: 'font-family:' + LAB.ff + ';font-size:10px;fill:' + (dd >= 0 ? 'var(--good-ink)' : 'var(--crit-ink)') }, pctS(dd)));
       }
-      svg.appendChild(axisText(cx, H - 14, r.yr + (r.proj ? ' proj' : '')));
+      if (r.sub) {
+        svg.appendChild(axisText(cx, H - 24, r.yr));
+        svg.appendChild(t('text', { x: cx, y: H - 12, 'text-anchor': 'middle',
+          style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;fill:var(--brand-ink)' }, r.sub));
+      } else svg.appendChild(axisText(cx, H - 14, r.yr));
       var hit = s('rect', { x: cx - bandw / 2, y: m.t, width: bandw, height: ih, style: 'fill:transparent' });
       hit.addEventListener('mousemove', function (e) {
         var b = host.getBoundingClientRect();
@@ -1475,8 +1474,9 @@ textarea.json{
           ? [{ k: 'Banked so far', v: usd(r.ytd), c: 'var(--y26)' },
              { k: 'Through', v: r.months + ' month' + (r.months === 1 ? '' : 's'), dim: true }]
             .concat(r.rate ? [{ k: 'Apr-onward rate', v: usd(r.rate) + '/mo', dim: true }] : [])
-            .concat([{ k: 'At this year’s rate', v: usd(v) }])
-            .concat(r.seasonal ? [{ k: 'With Q4 seasonality', v: usd(r.seasonal), c: 'var(--goal2)' }] : [])
+            .concat([{ k: r.bump ? 'With a Q4 bump' : 'At this year’s rate', v: usd(v) }])
+            .concat(r.bump && r.pr ? [{ k: 'Bump factor', v: r.pr.factor.toFixed(2) + '× (' + r.pr.bumpYears.join(', ') + ')', dim: true }] : [])
+            .concat(r.base ? [{ k: 'vs 2025', v: pctS((v - r.base) / r.base), dim: true }] : [])
           : [{ k: 'Total revenue', v: usd(v), c: isLast ? 'var(--y26)' : 'var(--y23)' }];
         if (last) rr.push({ k: 'vs prior year', v: usd(v - last), dim: true });
         rr.push({ k: 'vs ' + rows[0].yr, v: '×' + (v / (rows[0].v || 1)).toFixed(2), dim: true });
@@ -1487,10 +1487,8 @@ textarea.json{
     });
     host.appendChild(svg);
     if (rows[rows.length - 1].proj) {
-      var lg2 = [{ k: 'Actual', c: 'var(--y23)' }, { k: 'Banked so far in 2026', c: 'var(--y26)' },
-                 { k: 'Rest of year at this year’s Apr-onward rate', c: 'var(--y26)', hatch: true }];
-      if (rows[rows.length - 1].seasonal) lg2.push({ k: 'Same rate, with Q4 seasonality', c: 'var(--goal2)', dash: true });
-      legend(host, lg2);
+      legend(host, [{ k: 'Actual', c: 'var(--y23)' }, { k: 'Banked so far in 2026', c: 'var(--y26)' },
+                    { k: 'Rest of year, projected', c: 'var(--y26)', hatch: true }]);
     }
   }
 
@@ -1585,11 +1583,13 @@ textarea.json{
     var prn = proj2026(), ytn = ytd2026();
     if (prn) {
       decNote += ' <b>' + usdC(prn.banked) + '</b> is banked through ' + prn.months + ' months, running at <b>' +
-        usdC(prn.rate) + '/month</b> since April. Hold that for the last ' + prn.remaining +
-        ' months and 2026 lands at <b>' + usdC(prn.runRate) + '</b> (' + pctS((prn.runRate - d9) / d9) +
-        ' on 2025). Q4 has historically run <b>' + prn.factor.toFixed(2) + '×</b> a flat rate across ' + prn.n +
-        ' prior years, which would put it at <b>' + usdC(prn.seasonal) + '</b> (' + pctS((prn.seasonal - d9) / d9) +
-        '). Deliberately excludes a soft Q1, which a whole-year straight line would drag in.';
+        usdC(prn.rate) + '/month</b> since April — so the two 2026 bars are: hold that rate for the last ' +
+        prn.remaining + ' months and land at <b>' + usdC(prn.runRate) + '</b> (' + pctS((prn.runRate - d9) / d9) +
+        ' on 2025), or add the Q4 lift that showed up in <b>' + (prn.bumpYears.join(', ') || 'no prior year') +
+        '</b> — averaging <b>' + prn.factor.toFixed(2) + '×</b> a flat rate — and land at <b>' + usdC(prn.seasonal) +
+        '</b> (' + pctS((prn.seasonal - d9) / d9) + ').' +
+        (prn.flatYears.length ? ' <b>' + prn.flatYears.join(', ') + '</b> finished below its own run rate and is left out of that average.' : '') +
+        ' Both start from April, so neither drags in a soft Q1.';
     } else if (ytn) {
       var pj = ytn.amount / ytn.months * 12;
       decNote += ' 2026 is projecting <b>' + usdC(pj) + '</b> from <b>' + usdC(ytn.amount) + '</b> banked through ' +
