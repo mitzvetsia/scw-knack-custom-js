@@ -482,11 +482,18 @@
   // the Knack add-photo page). Decided 2026-08-12.
   var QA_CHIT_VIEWS = { view_4093: 1 };
 
-  // Surfaces where the photo QA / classify modal must NEVER open — even
-  // from the attr-independent empty-card click path. openPhotoQaModal
-  // returns false for these, so callers fall through to native behavior
-  // (empty card → Knack add-photo navigation; filled card → lightbox).
-  var QA_MODAL_DISABLED_VIEWS = { view_4056: 1 };
+  // Surfaces where the photo modal opens RESTRICTED: upload / view /
+  // replace only — no Photo Type or Required editors (subs can't
+  // reclassify; buildClassifyBar is deploy-save-view-only already and
+  // snapshot.lockClassify is the belt) and no QA sidebar (QA is an ops
+  // function; the QA columns aren't on these views anyway).
+  // ⚠️ ACTIVATION REQUIRES a DOC_photos save view ON that scene mapped in
+  // photo-edit-panel.js SAVE_VIEWS — view-based PUTs are same-scene only,
+  // so until the mapping exists the modal could open but never save.
+  // Unmapped ⇒ this returns false and callers keep the native fallback
+  // (empty card → Knack add-photo navigation; filled card → lightbox),
+  // exactly the pre-2026-09-02 behavior.
+  var QA_MODAL_RESTRICTED_VIEWS = { view_4056: 1 };
 
   function qaChitState(p) {
     if (!p.completed) return 'missing';
@@ -1128,10 +1135,15 @@
                 el.closest('.scw-ws-v2-card').querySelector('[data-scw-ws-v2-view]'));
     if (host) viewKey = host.getAttribute('data-scw-ws-v2-view') || '';
 
-    // Sub-dashboard (and any other opted-out surface): no QA / classify
-    // modal at all — returning false lets the caller fall through to the
-    // native path (add-photo navigation / lightbox).
-    if (viewKey && QA_MODAL_DISABLED_VIEWS[viewKey]) return false;
+    // Sub-facing surfaces open the modal RESTRICTED (upload/view only) —
+    // and only once a same-scene save view is mapped, since without one
+    // the upload pane's PUT can never succeed. Unmapped → native path.
+    var restricted = !!(viewKey && QA_MODAL_RESTRICTED_VIEWS[viewKey]);
+    if (restricted) {
+      var svMap = window.SCW && SCW.photoEditPanel && SCW.photoEditPanel.SAVE_VIEWS;
+      if (!svMap || !svMap[viewKey]) return false;
+      needsQa = false;   // QA is ops-only — no sidebar on sub surfaces
+    }
 
     var resolvedImg = imgUrl || el.getAttribute('data-qa-img') || '';
     var snapshot = {
@@ -1152,7 +1164,10 @@
         var reqEl = (el.closest && el.closest('[data-photo-required]')) || el;
         return reqEl.getAttribute('data-photo-required') === 'true';
       })(),
-      viewKey:       viewKey
+      viewKey:       viewKey,
+      // Restricted surfaces: hard-lock the Type/Required editors even if a
+      // future save-view change would otherwise let the classify bar render.
+      lockClassify:  restricted
     };
 
     SCW.qaPopover.openAnchor(el, photoId, snapshot, function () {

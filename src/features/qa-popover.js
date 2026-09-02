@@ -856,6 +856,9 @@
    *  catalog, scene-scrape fallback). onTypeChanged(label) lets the
    *  modal retitle itself when the type is reassigned. */
   function buildClassifyBar(photo, onTypeChanged) {
+    // Restricted surfaces (sub deployment dashboard): subs may upload into
+    // a slot but never reclassify it — no Type/Required editors, period.
+    if (photo.lockClassify) return null;
     var u = pepUtil();
     var saveView = pepSaveView(photo.viewKey);
     if (!u || saveView !== PIC_SAVE_VIEW) return null;
@@ -1623,7 +1626,10 @@
       // Photo-add support (photo-edit-panel.js machinery): viewKey
       // resolves the per-scene DOC_photos save view for upload/clear PUTs.
       required:      !!snapshot.required,
-      viewKey:       snapshot.viewKey || ''
+      viewKey:       snapshot.viewKey || '',
+      // Restricted surfaces (sub deployment dashboard): upload/view only —
+      // never render the Photo Type / Required editors.
+      lockClassify:  !!snapshot.lockClassify
     };
 
     _photoId = photoId;
