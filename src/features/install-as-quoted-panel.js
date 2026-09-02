@@ -668,6 +668,9 @@
       // Single-quantity line types (flag-capped at 1) leave Qty blank —
       // a "Qty —" cell is dead weight, drop it entirely.
       if (g.key === 'qty' && !val) continue;
+      // Unset booleans dump as blank in the json but MEAN No — say so
+      // instead of "—", which read as "not in the snapshot".
+      if (g.kind === 'flag' && !val) val = 'No';
       var cell = document.createElement('div');
       cell.className = PANEL_CLS + '-cell ' + PANEL_CLS + '-cell--' + g.key;
       var nowHtml = '';
@@ -704,10 +707,15 @@
     return { frag: frag, diffCount: diffCount };
   }
 
-  function sectionLabelEl(text) {
+  function sectionLabelEl(text, href) {
     var el = document.createElement('div');
     el.className = PANEL_CLS + '-seclabel';
-    el.textContent = text;
+    if (href) {
+      el.innerHTML = '<a href="' + esc(href) + '" ' +
+        'title="Open this published proposal">' + esc(text) + '</a>';
+    } else {
+      el.textContent = text;
+    }
     return el;
   }
 
@@ -755,71 +763,48 @@
     var body = document.createElement('div');
     body.className = PANEL_CLS + '-body';
 
-    // Origin block — names the specific SOW/CO and its accepted quote,
-    // linking through to the published proposal record.
-    if (origins.length) {
-      var ohtml = '';
-      for (var oi = 0; oi < origins.length; oi++) {
-        var o = origins[oi];
-        var text = esc(o.label) + ' — ' + (o.isCo ? 'Change Order' : 'Base scope') +
-          (o.quote ? ' · Quote ' + esc(o.quote) +
-            (o.signed ? ' <span class="scw-aq-signed">signed</span>' : '') : '');
-        var href = proposalHref(o.proposalId);
-        ohtml += '<div class="scw-aq-origin-line">' +
-          (href ? '<a href="' + esc(href) + '">' + text + '</a>' : text) +
-        '</div>';
-      }
-      var ob = document.createElement('div');
-      ob.className = 'scw-aq-origin-block';
-      ob.innerHTML =
-        '<div class="' + PANEL_CLS + '-label">Origin</div>' + ohtml;
-      body.appendChild(ob);
-    }
+    // (Origin block removed 2026-09-02 — redundant with the head chips +
+    // section labels, which now carry the published-proposal links.)
 
     var diffCount = 0;
     if (ogChain && ogChain.length) {
-      // Swap story, base first: "As quoted on SW####" (what was sold),
-      // then one "As changed by ####CO" per swap generation, ending on
-      // the CURRENT line. A credit-line entry is the replaced config as
-      // carried on the swap's Remove half — label it as such (its money
-      // and qty are the signed credit values). Installed-vs-quoted
-      // diffing runs against the current section only.
+      // NEWEST FIRST: the top section is the operative quote (it carries
+      // the installed-vs-quoted diff), older generations follow, ending
+      // on the original. Snapshot mode renders json sections only; chain
+      // mode (unpublished drafts) leads with the live line. Section
+      // labels link through to the published proposal when known. A
+      // credit-line entry is the replaced config as carried on the
+      // swap's Remove half (signed credit values).
+      if (!snapshotOnly) {
+        body.appendChild(sectionLabelEl(
+          'As quoted on ' + (firstSowLabel(pa) || 'the change order')));
+        var liveSec = buildSection(pa, ia, ctx);
+        diffCount = liveSec.diffCount;
+        body.appendChild(liveSec.frag);
+      }
       for (var s = 0; s < ogChain.length; s++) {
         var entry = ogChain[s];
-        var lbl = firstSowLabel(entry.a);
-        var text;
-        if (entry.pub) {
-          // Published-snapshot section — name it with the SAME identifier
-          // the origin chips use (the line's own SOW connection), falling
-          // back to the snapshot header parse, then generic wording.
-          var pl = firstSowLabel(entry.a) || entry.pub.label;
-          text = (s === 0 ? 'As quoted on ' : 'As changed by ') +
-            (pl || (s === 0 ? 'the original SOW' : 'a change order')) +
-            (entry.pub.quote ? ' · Quote ' + entry.pub.quote : '') +
-            (entry.pub.signed ? ' · signed' : '');
-        } else if (entry.credit) {
+        var last = s === ogChain.length - 1;
+        var lbl = firstSowLabel(entry.a) || (entry.pub && entry.pub.label) || '';
+        var text, href = '';
+        if (entry.credit) {
           text = 'Swapped out — as configured before ' +
             (lbl || 'this change order') + ' (from its credit line)';
         } else {
-          text = s === 0
-            ? 'As quoted on ' + (lbl || 'the original SOW')
-            : 'As changed by ' + (lbl || 'a change order');
+          var role = (snapshotOnly && s === 0) ? 'As quoted on '
+                   : (last ? 'Originally on ' : 'Previously on ');
+          text = role + (lbl || (last ? 'the original SOW' : 'a change order'));
+          if (entry.pub) {
+            if (entry.pub.quote)  text += ' · Quote ' + entry.pub.quote;
+            if (entry.pub.signed) text += ' · signed';
+            href = proposalHref(entry.pub.proposalId);
+          }
         }
-        body.appendChild(sectionLabelEl(text));
-        // Snapshot-only mode: the json IS the record — the newest
-        // publication's section carries the installed-vs-quoted diff and
-        // the live (mutable) line adds no section of its own.
-        var secIa = (snapshotOnly && s === ogChain.length - 1) ? ia : null;
+        body.appendChild(sectionLabelEl(text, href));
+        var secIa = (snapshotOnly && s === 0) ? ia : null;
         var secR = buildSection(entry.a, secIa, ctx);
         if (secIa) diffCount = secR.diffCount;
         body.appendChild(secR.frag);
-      }
-      if (!snapshotOnly) {
-        body.appendChild(sectionLabelEl(
-          'As changed by ' + (firstSowLabel(pa) || 'the change order')));
-        var coSec = buildSection(pa, ia, ctx);
-        diffCount = coSec.diffCount;
-        body.appendChild(coSec.frag);
       }
     } else {
       var sec = buildSection(pa, ia, ctx);
@@ -1029,7 +1014,8 @@
           }
           break;
         }
-        chain.reverse();   // base/oldest first, then each CO generation
+        // chain stays in walk order — NEWEST generation first (the display
+        // reads current → older → original, per 2026-09-02 decision).
         // Reverse: MY install record is targeted by a CO line (slated for
         // removal / swapped away) — surface that CO in the origin chips so
         // the base item reads "quoted on SW#### · touched by ####CO".
@@ -1081,9 +1067,20 @@
             snapSecs.push({ a: line, credit: false, pub: pubs[p] });
           }
           if (snapSecs.length) {
+            // Newest first — the display reads current → older → original.
+            snapSecs.reverse();
+            snapOrigins.reverse();
             story = snapSecs;
             snapshotOnly = true;
-            origins = mergeOrigins(snapOrigins, []);
+            // Ordered dedupe (no base-first re-sort — keep newest first).
+            var seenO = {}, ordered = [];
+            for (var so = 0; so < snapOrigins.length; so++) {
+              var ok = normToken(snapOrigins[so].label);
+              if (seenO[ok]) continue;
+              seenO[ok] = 1;
+              ordered.push(snapOrigins[so]);
+            }
+            origins = ordered;
           }
         }
         injectPanel(ids[i], pa, origins, installIdx[ids[i]], connCtx, story, snapshotOnly);
@@ -1163,6 +1160,8 @@
       // Product names deserve the room — the product cell spans two
       // tracks so part numbers don't wrap while Qty hogs an equal column.
       P + '-cell--product { grid-column: span 2; }',
+      P + '-seclabel a { color: #1d4ed8; text-decoration: none; }',
+      P + '-seclabel a:hover { text-decoration: underline; }',
       P + '-cell--qty .scw-aq-val, ' + P + '-cell--qty { font-variant-numeric: tabular-nums; }',
       P + '-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));',
       '  gap: 8px 16px; }',
