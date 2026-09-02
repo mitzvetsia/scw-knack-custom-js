@@ -1416,10 +1416,14 @@ textarea.json{
         svg.appendChild(s('rect', { x: cx - bw / 2, y: Y(v), width: bw, height: Math.max(1, Y(0) - Y(v)), rx: 3,
           style: 'fill:' + (isLast ? 'var(--y26)' : 'var(--y23)') }));
       }
-      if (isLast || i === 0) svg.appendChild(valText(cx, Y(v) - 22, usdC(v), 'middle', 'var(--ink)', 16, 700));
-      if (last) {
+      // Every year carries its own total; the year-over-year delta sits under it when
+      // the bars are wide enough to hold both without colliding.
+      var tight = bandw < 74;
+      svg.appendChild(valText(cx, Y(v) - (last && !tight ? 24 : 10), usdC(v), 'middle',
+        'var(--ink)', tight ? 13 : (isLast ? 16 : 15), 700));
+      if (last && !tight) {
         var dd = (v - last) / last;
-        svg.appendChild(t('text', { x: cx, y: Y(v) - 8, 'text-anchor': 'middle',
+        svg.appendChild(t('text', { x: cx, y: Y(v) - 9, 'text-anchor': 'middle',
           style: 'font-family:' + LAB.ff + ';font-size:10px;fill:' + (dd >= 0 ? 'var(--good-ink)' : 'var(--crit-ink)') }, pctS(dd)));
       }
       svg.appendChild(axisText(cx, H - 14, r.yr + (r.proj ? ' proj' : '')));
