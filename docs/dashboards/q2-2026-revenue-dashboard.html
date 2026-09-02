@@ -632,7 +632,7 @@ textarea.json{
     <div class="grp">
       <span class="eyebrow">2026 year to date <span class="unit">&mdash; puts the projected 2026 bar on the ten-year chart</span></span>
       <div class="deck-grid">
-        <div class="fld"><label for="mYtdAmount">2026 revenue to date</label>
+        <div class="fld"><label for="mYtdAmount">2026 revenue to date &mdash; override</label>
           <div class="inrow"><span class="pre">$</span><input id="mYtdAmount" type="number" step="1000" inputmode="decimal" placeholder="0"></div>
           <div class="hint" id="hYtd"></div></div>
         <div class="fld"><label for="mYtdMonths">&hellip; through how many months</label>
@@ -872,7 +872,7 @@ textarea.json{
       </div>
 
       <div class="ed-sec">
-        <span class="eyebrow">2026 year to date <span class="unit">&mdash; drives the projected bar on the ten-year chart</span></span>
+        <span class="eyebrow">2026 year to date <span class="unit">&mdash; auto-summed from the 2026 monthly row; fill these only to override</span></span>
         <div class="ed-scroll"><table class="ed-tbl" id="edYtd"></table></div>
       </div>
 
@@ -1258,9 +1258,10 @@ textarea.json{
     var iw = W - m.l - m.r, ih = H - m.t - m.b;
     var all = [];
     YEARS.forEach(function (y) { (d.months[y] || []).forEach(function (v) { if (v != null) all.push(v); }); });
-    var needM = Math.max(0, d.perOpen(d.needModest)), needS = Math.max(0, d.perOpen(d.needStretch));
-    all.push(d.aug26, d.sep26);
-    if (d.assumed) all.push(needM, needS);
+    // The window goals spread across their six months (Apr-Sep) give a monthly bar
+    // every month on this chart can be read against.
+    var modestPM = d.modest / 6, stretchPM = d.stretch / 6;
+    all.push(d.aug26, d.sep26, modestPM, stretchPM);
     var y0 = Math.max(0, Math.floor((Math.min.apply(null, all) * 0.9) / 100) * 100);
     var y1 = Math.ceil((Math.max.apply(null, all) * 1.06) / 100) * 100;
     var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
@@ -1295,34 +1296,35 @@ textarea.json{
     d26.forEach(function (v, i) {
       svg.appendChild(s('circle', { cx: X(i), cy: Y(v), r: 3.6, style: 'fill:var(--y26);stroke:var(--surface);stroke-width:2' }));
     });
-    var asum = assumedIdxOf(d), lastAct = d26[la];
+    var asum = assumedIdxOf(d), lastAct = d26[la], ends = [];
+    // Monthly goal levels, drawn across the months the window goals actually cover.
+    [{ v: stretchPM, c: 'var(--goal2)', ci: 'var(--goal2-ink)', n: 'Stretch pace' },
+     { v: modestPM, c: 'var(--good)', ci: 'var(--good-ink)', n: 'Modest pace' }].forEach(function (g) {
+      svg.appendChild(s('line', { x1: X(3), x2: X(8), y1: Y(g.v), y2: Y(g.v),
+        style: 'stroke:' + g.c + ';stroke-width:1.5;stroke-dasharray:2 4;opacity:.85' }));
+      ends.push({ y: Y(g.v), val: g.v, ci: g.ci, n: g.n });
+    });
+    // One forward line: what the remaining month(s) are pacing toward.
     if (asum.length) {
-      var endIdx = asum[asum.length - 1], ends = [];
-      // Each remaining month gets three reference points: what modest still needs per
-      // month, what we are actually pacing at, and what stretch still needs.
-      [{ vf: function () { return needS; }, c: 'var(--goal2)', ci: 'var(--goal2-ink)', n: 'Stretch needs' },
-       { vf: function (i) { return i === 7 ? d.aug26 : d.sep26; }, c: 'var(--y26)', ci: 'var(--brand-ink)', n: 'Pacing at', flag: true },
-       { vf: function () { return needM; }, c: 'var(--good)', ci: 'var(--good-ink)', n: 'Modest needs' }
-      ].forEach(function (f) {
-        var pts = [X(la) + ',' + Y(lastAct)].concat(asum.map(function (i) { return X(i) + ',' + Y(f.vf(i)); }));
-        svg.appendChild(s('polyline', { points: pts.join(' '), fill: 'none',
-          style: 'stroke:' + f.c + ';stroke-width:2.5;stroke-dasharray:6 5;stroke-linecap:round' }));
-        asum.forEach(function (i) {
-          // A closed month with no actual gets an amber ring: a guess about the past.
-          var isStale = f.flag && d.stale.indexOf(i) !== -1;
-          svg.appendChild(s('circle', { cx: X(i), cy: Y(f.vf(i)), r: isStale ? 5 : 3.6,
-            style: 'fill:var(--surface);stroke:' + (isStale ? 'var(--warn)' : f.c) + ';stroke-width:' + (isStale ? 3 : 2.5) }));
-        });
-        ends.push({ y: Y(f.vf(endIdx)), val: f.vf(endIdx), ci: f.ci, n: f.n });
+      var endIdx = asum[asum.length - 1];
+      var pts = [X(la) + ',' + Y(lastAct)].concat(asum.map(function (i) { return X(i) + ',' + Y(i === 7 ? d.aug26 : d.sep26); }));
+      svg.appendChild(s('polyline', { points: pts.join(' '), fill: 'none',
+        style: 'stroke:var(--y26);stroke-width:2.5;stroke-dasharray:6 5;stroke-linecap:round' }));
+      asum.forEach(function (i) {
+        var isStale = d.stale.indexOf(i) !== -1, v = i === 7 ? d.aug26 : d.sep26;
+        svg.appendChild(s('circle', { cx: X(i), cy: Y(v), r: isStale ? 5 : 3.6,
+          style: 'fill:var(--surface);stroke:' + (isStale ? 'var(--warn)' : 'var(--y26)') + ';stroke-width:' + (isStale ? 3 : 2.5) }));
       });
-      declutter(ends, 34, m.t + 12, m.t + ih).forEach(function (f) {
-        if (Math.abs(f.ay - f.y) > 3) svg.appendChild(s('line', { x1: X(endIdx) + 4, y1: f.y, x2: X(endIdx) + 10, y2: f.ay - 7,
-          style: 'stroke:' + f.ci + ';stroke-width:1;opacity:.45' }));
-        svg.appendChild(t('text', { x: X(endIdx) + 12, y: f.ay - 4,
-          style: 'font-family:' + LAB.ff + ';font-size:10px;letter-spacing:.1em;text-transform:uppercase;fill:' + f.ci }, f.n));
-        svg.appendChild(valText(X(endIdx) + 12, f.ay + 13, kC(f.val), 'start', f.ci, 17, 700));
-      });
+      ends.push({ y: Y(endIdx === 7 ? d.aug26 : d.sep26), val: endIdx === 7 ? d.aug26 : d.sep26,
+                  ci: 'var(--brand-ink)', n: MON[endIdx] + ' pacing' });
     }
+    declutter(ends, 34, m.t + 12, m.t + ih).forEach(function (f) {
+      if (Math.abs(f.ay - f.y) > 3) svg.appendChild(s('line', { x1: X(8) + 4, y1: f.y, x2: X(8) + 10, y2: f.ay - 7,
+        style: 'stroke:' + f.ci + ';stroke-width:1;opacity:.45' }));
+      svg.appendChild(t('text', { x: X(8) + 12, y: f.ay - 4,
+        style: 'font-family:' + LAB.ff + ';font-size:10px;letter-spacing:.1em;text-transform:uppercase;fill:' + f.ci }, f.n));
+      svg.appendChild(valText(X(8) + 12, f.ay + 13, kC(f.val), 'start', f.ci, 17, 700));
+    });
     var cross = s('line', { y1: m.t, y2: m.t + ih, style: 'stroke:var(--ink-2);stroke-width:1;stroke-dasharray:3 3;opacity:0' });
     svg.appendChild(cross);
     var hit = s('rect', { x: m.l - iw / 16, y: m.t, width: iw + iw / 8, height: ih, style: 'fill:transparent' });
@@ -1345,11 +1347,9 @@ textarea.json{
     svg.appendChild(hit);
     host.appendChild(svg);
     var lg = YEARS.map(function (yr) { return { k: yr, c: YCOL[yr] }; });
-    if (d.assumed) {
-      lg.push({ k: 'Pacing at', c: 'var(--y26)', dash: true });
-      lg.push({ k: 'Modest needs', c: 'var(--good)', dash: true });
-      lg.push({ k: 'Stretch needs', c: 'var(--goal2)', dash: true });
-    }
+    if (d.assumed) lg.push({ k: 'Pacing toward', c: 'var(--y26)', dash: true });
+    lg.push({ k: 'Modest pace', c: 'var(--good)', dash: true });
+    lg.push({ k: 'Stretch pace', c: 'var(--goal2)', dash: true });
     if (d.stale.length) lg.push({ k: 'Closed month, still assumed', c: 'var(--warn)' });
     legend(host, lg);
   }
@@ -1361,6 +1361,12 @@ textarea.json{
     if (DATA.ytdAmount > 0 && DATA.ytdMonths > 0) {
       return { amount: DATA.ytdAmount, months: DATA.ytdMonths, src: 'entered' };
     }
+    // The 2026 monthly row is the most complete 2026 source on the board — sum whatever
+    // months are filled in. It is booked revenue rather than total, but the two track
+    // closely enough at year scale to beat having no bar at all.
+    var g = DATA.months['2026'] || [], gTot = 0, gCnt = 0;
+    for (var gi = 0; gi < 9; gi++) if (g[gi] != null) { gTot += g[gi]; gCnt++; }
+    if (gCnt >= 3) return { amount: gTot * 1000, months: gCnt, src: 'grid' };
     var all = allMonths(), total = 0, cnt = 0;
     for (var k in all) {
       var pr = k.split('-'); if (+pr[0] !== 2026) continue;
@@ -1372,7 +1378,7 @@ textarea.json{
       var rev = (+v.mInstall || 0) + (+v.mMagento || 0) + (+cmo || 0);
       if (rev > 0) { total += rev; cnt++; }
     }
-    return cnt >= 2 ? { amount: total, months: cnt, src: 'tracker' } : null;
+    return cnt >= 3 ? { amount: total, months: cnt, src: 'tracker' } : null;
   }
   function chartDecade(host) {
     var W = Math.max(340, host.clientWidth), H = 330;
@@ -1516,11 +1522,9 @@ textarea.json{
       return (i === 7 ? 'Aug ' + kC(d.aug26) : 'Sep ' + kC(d.sep26)) + (d.augLive != null && SEL.m === i ? ' — live from Part 1' : '');
     });
     put('qMonthlyNote', '2026 is booked through ' + d.actualThrough + '. ' +
-      (assumedIdxOf(d).length
-        ? 'From there it forks three ways per remaining month: what <b>modest</b> still needs (' +
-          kC(Math.max(0, d.perOpen(d.needModest))) + '), what we are <b>pacing at</b> (' + paceBits.join(', ') +
-          '), and what <b>stretch</b> still needs (' + kC(Math.max(0, d.perOpen(d.needStretch))) + '). '
-        : 'Every month in the window is now entered &mdash; no fork left to draw. ') +
+      (assumedIdxOf(d).length ? 'The dashed blue line is what ' + paceBits.join(' and ') + ' is pacing toward. ' : '') +
+      'The flat green and purple lines are the monthly rate each window goal implies across Apr&ndash;Sep &mdash; <b>' +
+      kC(d.modest / 6) + '</b> for modest, <b>' + kC(d.stretch / 6) + '</b> for stretch &mdash; so every month can be read against them. ' +
       'For scale, our biggest month on record is ' + kC(1800) + ' in Apr 2025, and we already booked ' + kC(1500) + ' in May.');
     var d0 = DATA.decade[DEC_YEARS[0]], d9 = DATA.decade[DEC_YEARS[9]];
     var cagr = Math.pow(d9 / d0, 1 / 9) - 1, ups = 0;
@@ -1533,11 +1537,11 @@ textarea.json{
       var pj = ytn.amount / ytn.months * 12;
       decNote += ' 2026 is projecting <b>' + usdC(pj) + '</b> from <b>' + usdC(ytn.amount) + '</b> banked through ' +
         ytn.months + ' month' + (ytn.months === 1 ? '' : 's') +
-        (ytn.src === 'tracker' ? ' (summed from the months entered in Backstage)' : '') +
+        (ytn.src === 'grid' ? ' (summed from the 2026 monthly row — booked revenue, a close proxy)'
+          : ytn.src === 'tracker' ? ' (summed from the months entered in Backstage)' : '') +
         ' — <b>' + pctS((pj - d9) / d9) + '</b> on 2025. Straight-line, so it under-reads a back-half weighted year.';
     } else {
-      decNote += ' <b>No 2026 bar yet:</b> enter 2026 revenue to date under <em>Edit the historical numbers &rarr; 2026 year to date</em>, ' +
-        'or capture at least two completed months in Backstage and it will sum them for you.';
+      decNote += ' <b>No 2026 bar yet:</b> fill in at least three months of the 2026 monthly row, or enter a figure under <em>2026 year to date</em>.';
     }
     put('qDecadeNote', decNote);
 
@@ -1680,9 +1684,10 @@ textarea.json{
     if (el('ed-ytdMonths')) el('ed-ytdMonths').value = DATA.ytdMonths == null ? '' : DATA.ytdMonths;
     var yt = ytd2026();
     put('hYtd', yt
-      ? usd(yt.amount) + ' over ' + yt.months + ' month' + (yt.months === 1 ? '' : 's') + ' → ' +
-        usdC(yt.amount / yt.months * 12) + ' projected for 2026.'
-      : 'The ten-year chart cannot derive this — it needs one figure the board does not hold.');
+      ? (yt.src === 'entered' ? 'Override in use. ' : 'Auto: ' + (yt.src === 'grid' ? '2026 monthly row' : 'Backstage months') + '. ') +
+        usd(yt.amount) + ' over ' + yt.months + ' month' + (yt.months === 1 ? '' : 's') + ' → ' +
+        usdC(yt.amount / yt.months * 12) + ' projected. Leave blank to keep the auto figure.'
+      : 'Nothing to derive from yet — fill in the 2026 monthly row or enter a figure here.');
   }
   function pullYtd() {
     DATA.ytdAmount = nOrNull('mYtdAmount');
