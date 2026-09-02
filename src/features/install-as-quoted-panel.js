@@ -502,6 +502,12 @@
       // Qty is blank on single-quantity line types (flag-capped at 1) —
       // blank vs a value there is a representation gap, not a change.
       if (GROUPS[i].key === 'qty' && (!va || !vb)) continue;
+      // Knack renders an unset boolean blank; semantically it's No —
+      // blank vs "No" must not read as a change between captures.
+      if (GROUPS[i].kind === 'flag') {
+        va = va === 'YES' ? 'YES' : 'NO';
+        vb = vb === 'YES' ? 'YES' : 'NO';
+      }
       if (va !== vb) return true;
     }
     return false;
@@ -724,7 +730,7 @@
   // `ogChain` (swap story) = the replaced quoted lines, BASE FIRST, one
   // per swap generation — each renders as its own labeled section above
   // the current CO section.
-  function buildPanel(pa, origins, ia, ctx, ogChain) {
+  function buildPanel(pa, origins, ia, ctx, ogChain, snapshotOnly) {
     origins = origins || [];
     var panel = document.createElement('div');
     panel.className = PANEL_CLS;
@@ -800,13 +806,21 @@
             : 'As changed by ' + (lbl || 'a change order');
         }
         body.appendChild(sectionLabelEl(text));
-        body.appendChild(buildSection(entry.a, null, ctx).frag);
+        // Snapshot-only mode: the json IS the record — the newest
+        // publication's section carries the installed-vs-quoted diff and
+        // the live (mutable) line adds no section of its own.
+        var secIa = (snapshotOnly && s === ogChain.length - 1) ? ia : null;
+        var secR = buildSection(entry.a, secIa, ctx);
+        if (secIa) diffCount = secR.diffCount;
+        body.appendChild(secR.frag);
       }
-      body.appendChild(sectionLabelEl(
-        'As changed by ' + (firstSowLabel(pa) || 'the change order')));
-      var coSec = buildSection(pa, ia, ctx);
-      diffCount = coSec.diffCount;
-      body.appendChild(coSec.frag);
+      if (!snapshotOnly) {
+        body.appendChild(sectionLabelEl(
+          'As changed by ' + (firstSowLabel(pa) || 'the change order')));
+        var coSec = buildSection(pa, ia, ctx);
+        diffCount = coSec.diffCount;
+        body.appendChild(coSec.frag);
+      }
     } else {
       var sec = buildSection(pa, ia, ctx);
       diffCount = sec.diffCount;
@@ -838,7 +852,7 @@
   }
 
   // ── inject ──────────────────────────────────────────────────────
-  function injectPanel(installId, proposedAttrs, origins, installAttrs, ctx, ogChain) {
+  function injectPanel(installId, proposedAttrs, origins, installAttrs, ctx, ogChain, snapshotOnly) {
     for (var v = 0; v < INSTALL_VIEWS.length; v++) {
       var container = document.getElementById('scw-ws-v2-' + INSTALL_VIEWS[v]);
       if (!container) continue;
@@ -850,7 +864,7 @@
         if (!detail) continue;
         var prior = detail.querySelector(':scope > .' + PANEL_CLS);
         if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
-        detail.appendChild(buildPanel(proposedAttrs, origins, installAttrs, ctx, ogChain));
+        detail.appendChild(buildPanel(proposedAttrs, origins, installAttrs, ctx, ogChain, snapshotOnly));
 
         // Row-level origin chip(s) in the Flags cell — base vs CO is
         // scannable without expanding the card. Idempotent per rebuild.
@@ -1023,19 +1037,22 @@
           var touch = creditLineFor(ids[i], pa);
           if (touch) origins = mergeOrigins(origins, resolveOrigins(touch, acceptIdx));
         }
-        // ── Published-snapshot history (immutable, preferred) ──────────
+        // ── Published-snapshot history (immutable — the record) ────────
         // Join each publication by record id (this line + every line the
-        // swap chain reached) with a drop-label fallback, drop the
-        // generations where nothing changed, and drop the newest when it
-        // matches the live line (the live section renders last with the
-        // installed diff). Falls back to the live chain/credit story when
-        // no publication matches.
-        var story = chain;
+        // swap chain reached) with a drop-label fallback, and drop the
+        // generations where nothing changed. When ANY publication matches
+        // the story is SNAPSHOT-ONLY: every section (and every origin
+        // chip) comes from the json — the live mutable line contributes
+        // nothing, so the panel can't half-merge two representations of
+        // the same SOW into a phantom "as changed by" pair. The newest
+        // snapshot section carries the installed-vs-quoted diff. Live
+        // chain/credit story remains the fallback for unpublished drafts.
+        var story = chain, snapshotOnly = false;
         if (pubs.length) {
           var candidates = {}; candidates[pa.id] = 1;
           for (var ce = 0; ce < chain.length; ce++) candidates[chain[ce].a.id] = 1;
           var paLbl = normToken(stripHtml(pa['field_1950'] || ''));
-          var snapSecs = [];
+          var snapSecs = [], snapOrigins = [];
           for (var p = 0; p < pubs.length; p++) {
             var line = null;
             for (var cid in candidates) {
@@ -1043,24 +1060,33 @@
             }
             if (!line && paLbl && pubs[p].byLabel[paLbl]) line = pubs[p].byLabel[paLbl];
             if (!line) continue;
-            // unchanged since the previous kept publication → skip
-            // (compares only fields both snapshots captured)
+            // Chip label from the line's own SOW connection (chip
+            // vocabulary), snapshot-header parse as fallback.
+            var secLbl = firstSowLabel(line) || pubs[p].label;
+            snapOrigins.push({
+              label: secLbl || 'SOW',
+              isCo:  /CO$/i.test(normToken(secLbl || '')) || pubs[p].isCo,
+              quote: pubs[p].quote, proposalId: pubs[p].id,
+              signed: pubs[p].signed
+            });
+            // Unchanged since the previous kept publication → no new
+            // section; keep whichever capture carries MORE fields (a full
+            // dump renders more cells than a slim one).
             if (snapSecs.length &&
-                !linesDiffer(line, snapSecs[snapSecs.length - 1].a)) continue;
+                !linesDiffer(line, snapSecs[snapSecs.length - 1].a)) {
+              var kept = snapSecs[snapSecs.length - 1];
+              if (Object.keys(line).length > Object.keys(kept.a).length) kept.a = line;
+              continue;
+            }
             snapSecs.push({ a: line, credit: false, pub: pubs[p] });
-            origins = mergeOrigins(origins, [{
-              label: pubs[p].label || (pubs[p].isCo ? 'CO' : 'SOW'),
-              isCo: pubs[p].isCo, quote: pubs[p].quote,
-              proposalId: pubs[p].id, signed: pubs[p].signed
-            }]);
           }
-          if (snapSecs.length &&
-              !linesDiffer(pa, snapSecs[snapSecs.length - 1].a)) {
-            snapSecs.pop();   // newest publication IS the live line
+          if (snapSecs.length) {
+            story = snapSecs;
+            snapshotOnly = true;
+            origins = mergeOrigins(snapOrigins, []);
           }
-          if (snapSecs.length) story = snapSecs;
         }
-        injectPanel(ids[i], pa, origins, installIdx[ids[i]], connCtx, story);
+        injectPanel(ids[i], pa, origins, installIdx[ids[i]], connCtx, story, snapshotOnly);
       }
     } finally {
       setTimeout(function () { _selfMutating = false; }, 0);
