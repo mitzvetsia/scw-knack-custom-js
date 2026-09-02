@@ -271,7 +271,11 @@
             esc(ESIGN_URL_PREFIX + encodeURIComponent(contractId)) + '" ' +
             'title="Open the eSignatures contract in a new tab">eSign contract</a>'
         : '') +
-      (href ? '<a class="scw-co-card__open" href="' + esc(href) + '">Open</a>' : '');
+      // New tab: opening a CO is a drill-down work session — keep the
+      // deploy dashboard where it was. (A hash href resolves against the
+      // current URL, so _blank lands the new tab on the CO page.)
+      (href ? '<a class="scw-co-card__open" target="_blank" rel="noopener" href="' +
+        esc(href) + '">Open</a>' : '');
     return card;
   }
 
