@@ -1262,10 +1262,7 @@ textarea.json{
     var iw = W - m.l - m.r, ih = H - m.t - m.b;
     var all = [];
     YEARS.forEach(function (y) { (d.months[y] || []).forEach(function (v) { if (v != null) all.push(v); }); });
-    // The window goals spread across their six months (Apr-Sep) give a monthly bar
-    // every month on this chart can be read against.
-    var modestPM = d.modest / 6, stretchPM = d.stretch / 6;
-    all.push(d.aug26, d.sep26, modestPM, stretchPM);
+    all.push(d.aug26, d.sep26);
     var y0 = Math.max(0, Math.floor((Math.min.apply(null, all) * 0.9) / 100) * 100);
     var y1 = Math.ceil((Math.max.apply(null, all) * 1.06) / 100) * 100;
     var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
@@ -1301,14 +1298,7 @@ textarea.json{
       svg.appendChild(s('circle', { cx: X(i), cy: Y(v), r: 3.6, style: 'fill:var(--y26);stroke:var(--surface);stroke-width:2' }));
     });
     var asum = assumedIdxOf(d), lastAct = d26[la], ends = [];
-    // Monthly goal levels, drawn across the months the window goals actually cover.
-    [{ v: stretchPM, c: 'var(--goal2)', ci: 'var(--goal2-ink)', n: 'Stretch pace' },
-     { v: modestPM, c: 'var(--good)', ci: 'var(--good-ink)', n: 'Modest pace' }].forEach(function (g) {
-      svg.appendChild(s('line', { x1: X(3), x2: X(8), y1: Y(g.v), y2: Y(g.v),
-        style: 'stroke:' + g.c + ';stroke-width:1.5;stroke-dasharray:2 4;opacity:.85' }));
-      ends.push({ y: Y(g.v), val: g.v, ci: g.ci, n: g.n });
-    });
-    // One forward line: what the remaining month(s) are pacing toward.
+    // Months and one forward point. Goal lines live on the goal track, not here.
     if (asum.length) {
       var endIdx = asum[asum.length - 1];
       var pts = [X(la) + ',' + Y(lastAct)].concat(asum.map(function (i) { return X(i) + ',' + Y(i === 7 ? d.aug26 : d.sep26); }));
@@ -1351,9 +1341,8 @@ textarea.json{
     svg.appendChild(hit);
     host.appendChild(svg);
     var lg = YEARS.map(function (yr) { return { k: yr, c: YCOL[yr] }; });
-    if (d.assumed) lg.push({ k: 'Pacing toward', c: 'var(--y26)', dash: true });
-    lg.push({ k: 'Modest pace', c: 'var(--good)', dash: true });
-    lg.push({ k: 'Stretch pace', c: 'var(--goal2)', dash: true });
+    if (d.assumed) lg.push({ k: 'Not yet booked', c: 'var(--y26)', dash: true });
+    if (d.stale.length) lg.push({ k: 'Closed month, still assumed', c: 'var(--warn)' });
     if (d.stale.length) lg.push({ k: 'Closed month, still assumed', c: 'var(--warn)' });
     legend(host, lg);
   }
@@ -1582,10 +1571,11 @@ textarea.json{
       return (i === 7 ? 'Aug ' + kC(d.aug26) : 'Sep ' + kC(d.sep26)) + (d.augLive != null && SEL.m === i ? ' — live from Part 1' : '');
     });
     put('qMonthlyNote', '2026 is booked through ' + d.actualThrough + '. ' +
-      (assumedIdxOf(d).length ? 'The dashed blue line is what ' + paceBits.join(' and ') + ' is pacing toward. ' : '') +
-      'The flat green and purple lines are the monthly rate each window goal implies across Apr&ndash;Sep &mdash; <b>' +
-      kC(d.modest / 6) + '</b> for modest, <b>' + kC(d.stretch / 6) + '</b> for stretch &mdash; so every month can be read against them. ' +
-      'For scale, our biggest month on record is ' + kC(1800) + ' in Apr 2025, and we already booked ' + kC(1500) + ' in May.');
+      (assumedIdxOf(d).length
+        ? 'The dashed segment is ' + paceBits.join(' and ') + ' &mdash; not booked yet, so it carries the ' +
+          (d.augLive != null ? 'live figure from Part&nbsp;1' : 'baseline figure you set in Backstage') + '. '
+        : 'Every month in the window is booked. ') +
+      'Goal tracking lives on the goal track above; this chart is monthly shape against the last four years.');
     var d0 = DATA.decade[DEC_YEARS[0]], d9 = DATA.decade[DEC_YEARS[9]];
     var cagr = Math.pow(d9 / d0, 1 / 9) - 1, ups = 0;
     for (var i = 1; i < DEC_YEARS.length; i++) if (DATA.decade[DEC_YEARS[i]] > DATA.decade[DEC_YEARS[i - 1]]) ups++;
