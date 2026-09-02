@@ -552,12 +552,26 @@
     return el;
   }
 
+  // Head hint — say what the panel actually holds: "original proposal"
+  // was a lie on a CO-born item (the panel showed a change order).
+  function hintText(origins, ogChain) {
+    if (ogChain && ogChain.length) return 'quote history';
+    var anyCo = false, anyBase = false;
+    for (var i = 0; i < (origins || []).length; i++) {
+      if (origins[i].isCo) anyCo = true; else anyBase = true;
+    }
+    if (anyCo && anyBase) return 'quote history';
+    if (anyCo) return 'change order';
+    return 'original proposal';
+  }
+
   // `ia` = the install record's attributes — when present, each quoted
   // value is diffed against the corresponding install field and mismatches
   // get the amber "differs" treatment (+ a count chip in the head).
-  // `ogPa` (swap story) = the ORIGINAL quoted line the CO line replaced —
-  // renders as its own labeled section above the CO section.
-  function buildPanel(pa, origins, ia, ctx, ogPa) {
+  // `ogChain` (swap story) = the replaced quoted lines, BASE FIRST, one
+  // per swap generation — each renders as its own labeled section above
+  // the current CO section.
+  function buildPanel(pa, origins, ia, ctx, ogChain) {
     origins = origins || [];
     var panel = document.createElement('div');
     panel.className = PANEL_CLS;
@@ -576,7 +590,7 @@
         '<polyline points="9 6 15 12 9 18"></polyline></svg></span>' +
       '<span class="' + PANEL_CLS + '-title">As Quoted</span>' +
       headChips +
-      '<span class="' + PANEL_CLS + '-hint">original proposal</span>';
+      '<span class="' + PANEL_CLS + '-hint">' + esc(hintText(origins, ogChain)) + '</span>';
     panel.appendChild(head);
 
     var body = document.createElement('div');
@@ -604,13 +618,18 @@
     }
 
     var diffCount = 0;
-    if (ogPa) {
-      // Swap story: the ORIGINAL quote first ("this is what was sold"),
-      // then the CO line that replaced it. Installed-vs-quoted diffing
-      // runs against the CO section only — that's the operative spec.
-      body.appendChild(sectionLabelEl(
-        'As quoted on ' + (firstSowLabel(ogPa) || 'the original SOW')));
-      body.appendChild(buildSection(ogPa, null, ctx).frag);
+    if (ogChain && ogChain.length) {
+      // Swap story, base first: "As quoted on SW####" (what was sold),
+      // then one "As changed by ####CO" per swap generation, ending on
+      // the CURRENT line. Installed-vs-quoted diffing runs against the
+      // current section only — that's the operative spec.
+      for (var s = 0; s < ogChain.length; s++) {
+        var lbl = firstSowLabel(ogChain[s]);
+        body.appendChild(sectionLabelEl(s === 0
+          ? 'As quoted on ' + (lbl || 'the original SOW')
+          : 'As changed by ' + (lbl || 'a change order')));
+        body.appendChild(buildSection(ogChain[s], null, ctx).frag);
+      }
       body.appendChild(sectionLabelEl(
         'As changed by ' + (firstSowLabel(pa) || 'the change order')));
       var coSec = buildSection(pa, ia, ctx);
@@ -647,7 +666,7 @@
   }
 
   // ── inject ──────────────────────────────────────────────────────
-  function injectPanel(installId, proposedAttrs, origins, installAttrs, ctx, ogPa) {
+  function injectPanel(installId, proposedAttrs, origins, installAttrs, ctx, ogChain) {
     for (var v = 0; v < INSTALL_VIEWS.length; v++) {
       var container = document.getElementById('scw-ws-v2-' + INSTALL_VIEWS[v]);
       if (!container) continue;
@@ -659,7 +678,7 @@
         if (!detail) continue;
         var prior = detail.querySelector(':scope > .' + PANEL_CLS);
         if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
-        detail.appendChild(buildPanel(proposedAttrs, origins, installAttrs, ctx, ogPa));
+        detail.appendChild(buildPanel(proposedAttrs, origins, installAttrs, ctx, ogChain));
 
         // Row-level origin chip(s) in the Flags cell — base vs CO is
         // scannable without expanding the card. Idempotent per rebuild.
@@ -686,6 +705,7 @@
   function invalidate() { _lastHash = ''; }
 
   var _warnedNoSow = false;
+  var _warnedNoTarget = false;
   function merge() {
     var linkIdx = buildInstallLinkIndex();
     var ids = Object.keys(linkIdx);
@@ -708,6 +728,26 @@
           console.warn('[scw-as-quoted] no ' + PF.sow + ' (SOW connection) on any ' +
             proposedViewName() + ' record — add it as a column in Builder to get ' +
             'origin (base vs CO / quote) chips.');
+        }
+      }
+    }
+    // Same diagnostic for the swap-history hop: without field_2966 as a
+    // column on the proposed grid, swapped items can only ever show the CO
+    // that created them — no "As quoted on SW#### → changed by ####CO"
+    // chain, no full history.
+    if (!_warnedNoTarget) {
+      var pidsT = Object.keys(propIdx);
+      if (pidsT.length) {
+        var anyTgt = false;
+        for (var pt = 0; pt < pidsT.length; pt++) {
+          if (Array.isArray(propIdx[pidsT[pt]][PF.target + '_raw'])) { anyTgt = true; break; }
+        }
+        if (!anyTgt) {
+          _warnedNoTarget = true;
+          console.warn('[scw-as-quoted] no ' + PF.target + ' (Target install item) ' +
+            'on any ' + proposedViewName() + ' record — add it as a column in ' +
+            'Builder to unlock the swap history (original SOW quote + each CO ' +
+            'generation) on swapped items.');
         }
       }
     }
@@ -746,23 +786,32 @@
         var pa = propIdx[linkIdx[ids[i]]];
         if (!pa) { missing.push(ids[i] + ' → ' + linkIdx[ids[i]]); continue; }
         var origins = resolveOrigins(pa, acceptIdx);
-        // Swap provenance: my linked line is a CO line acting on another
-        // install record → that record's own linked line is the ORIGINAL
-        // quote. Render both stories (OG section + CO section).
-        var ogPa = null;
-        var tgt = rawIds(pa, PF.target)[0] || '';
-        if (tgt && linkIdx[tgt] && propIdx[linkIdx[tgt]] &&
-            propIdx[linkIdx[tgt]].id !== pa.id) {
-          ogPa = propIdx[linkIdx[tgt]];
-          origins = mergeOrigins(resolveOrigins(ogPa, acceptIdx), origins);
+        // Swap provenance — walk the WHOLE chain: my linked line is a CO
+        // line acting on another install record → that record's linked
+        // line is what it replaced; that line may itself be a CO line from
+        // an earlier swap → keep hopping until the base quote (cycle
+        // guard + depth cap). Renders one section per generation.
+        var chain = [], seen = {};
+        seen[pa.id] = 1;
+        var cur = pa, guard = 0;
+        while (guard++ < 6) {
+          var tgt = rawIds(cur, PF.target)[0] || '';
+          if (!tgt || !linkIdx[tgt] || !propIdx[linkIdx[tgt]]) break;
+          var prev = propIdx[linkIdx[tgt]];
+          if (seen[prev.id]) break;
+          seen[prev.id] = 1;
+          chain.push(prev);
+          origins = mergeOrigins(resolveOrigins(prev, acceptIdx), origins);
+          cur = prev;
         }
+        chain.reverse();   // base quote first, then each CO generation
         // Reverse: MY install record is targeted by a CO line (slated for
         // removal / swapped away) — surface that CO in the origin chips so
         // the base item reads "quoted on SW#### · touched by ####CO".
-        if (!ogPa && targetIdx[ids[i]] && targetIdx[ids[i]].id !== pa.id) {
+        if (!chain.length && targetIdx[ids[i]] && targetIdx[ids[i]].id !== pa.id) {
           origins = mergeOrigins(origins, resolveOrigins(targetIdx[ids[i]], acceptIdx));
         }
-        injectPanel(ids[i], pa, origins, installIdx[ids[i]], connCtx, ogPa);
+        injectPanel(ids[i], pa, origins, installIdx[ids[i]], connCtx, chain);
       }
     } finally {
       setTimeout(function () { _selfMutating = false; }, 0);
