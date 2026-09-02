@@ -143,6 +143,11 @@
       'color:#334155;margin-bottom:12px;}',
       '.scw-co-skip-file{display:block;margin-top:5px;font:400 12px/1.3 system-ui,sans-serif;',
       'color:#334155;width:100%;}',
+      '.scw-co-skip-nobid{display:flex;align-items:flex-start;gap:8px;cursor:pointer;',
+      'font:400 12px/1.45 system-ui,-apple-system,sans-serif;color:#334155;',
+      'margin:-4px 0 12px;}',
+      '.scw-co-skip-nobid input{width:14px;height:14px;margin:1px 0 0;flex:0 0 auto;',
+      'accent-color:#0f4c75;cursor:pointer;}',
       '.scw-co-skip-note{display:block;margin-top:5px;width:100%;box-sizing:border-box;',
       'border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;resize:vertical;',
       'font:400 12.5px/1.45 system-ui,-apple-system,sans-serif;color:#1e293b;}',
@@ -777,7 +782,10 @@
     // Ops sometimes already has the sub's number in hand (bid arrived by
     // email / phone) — let them jump straight to Preview & Issue. Gated:
     // the bid PDF (stored on the CO via SKIP_PDF_FIELD, exposed on
-    // view_4092) and a reason note are both REQUIRED. Status flips
+    // view_4092) and a reason note are both REQUIRED — EXCEPT when ops
+    // declares the CO has $0 labor change (nothing for the sub to price):
+    // the no-bid checkbox waives the PDF and the note alone carries the
+    // audit trail (the webhook flags noBid:true). Status flips
     // directly (same session-authed PUT as Recall); a notify-only webhook
     // (mode 'skip-pricing') carries the note + asset id for ClickUp/audit
     // — fired silently until a Make branch exists for it.
@@ -841,10 +849,14 @@
           '<div class="scw-co-skip-body">This jumps the change order straight ' +
             'to Ops Review / Preview &amp; Issue without the subcontractor ' +
             'pricing round-trip. Attach the bid you already have and note ' +
-            'why — both are required.</div>' +
+            'why — or, if this CO changes no labor, tick the box instead.</div>' +
           '<label class="scw-co-skip-lbl">Sub bid PDF' +
             '<input type="file" class="scw-co-skip-file" ' +
               'accept="application/pdf,.pdf"></label>' +
+          '<label class="scw-co-skip-nobid">' +
+            '<input type="checkbox" class="scw-co-skip-nobid-cb">' +
+            '<span>No sub bid to attach — this CO has <b>$0 labor change</b>, ' +
+              'so there was nothing for the sub to price</span></label>' +
           '<label class="scw-co-skip-lbl">Why are we skipping sub pricing?' +
             '<textarea class="scw-co-skip-note" rows="3" placeholder=' +
               '"e.g. Sub priced via email 7/15 — bid attached."></textarea></label>' +
@@ -858,12 +870,29 @@
         '</div>';
       document.body.appendChild(ovl);
 
-      var fileIn = ovl.querySelector('.scw-co-skip-file');
-      var noteIn = ovl.querySelector('.scw-co-skip-note');
-      var errEl  = ovl.querySelector('.scw-co-skip-err');
-      var goBtn  = ovl.querySelector('[data-skip="go"]');
+      var fileIn  = ovl.querySelector('.scw-co-skip-file');
+      var noBidCb = ovl.querySelector('.scw-co-skip-nobid-cb');
+      var noteIn  = ovl.querySelector('.scw-co-skip-note');
+      var errEl   = ovl.querySelector('.scw-co-skip-err');
+      var goBtn   = ovl.querySelector('[data-skip="go"]');
       function err(msg) { errEl.hidden = !msg; errEl.textContent = msg || ''; }
       function close() { ovl.remove(); }
+
+      // $0-labor declaration: the PDF row hides (nothing to attach) and the
+      // note — still required — is seeded with the standard reason so the
+      // audit trail states it explicitly. Seed only an EMPTY note; whatever
+      // ops typed themselves is never overwritten (and never cleared on
+      // untick — they can edit either way).
+      noBidCb.addEventListener('change', function () {
+        var lbl = fileIn.closest ? fileIn.closest('label') : null;
+        if (lbl) lbl.style.display = noBidCb.checked ? 'none' : '';
+        if (noBidCb.checked) {
+          err('');
+          if (!(noteIn.value || '').trim()) {
+            noteIn.value = '$0 labor change — no sub pricing required.';
+          }
+        }
+      });
 
       ovl.addEventListener('click', function (e) {
         if (e.target === ovl) { close(); return; }
@@ -871,18 +900,24 @@
         if (!b) return;
         if (b.getAttribute('data-skip') === 'cancel') { close(); return; }
 
-        var file = fileIn.files && fileIn.files[0];
-        var note = (noteIn.value || '').trim();
-        if (!file) { err('Attach the sub bid PDF.'); return; }
+        var noBid = !!noBidCb.checked;
+        var file  = fileIn.files && fileIn.files[0];
+        var note  = (noteIn.value || '').trim();
+        if (!noBid && !file) {
+          err('Attach the sub bid PDF — or tick "No sub bid to attach" if ' +
+            'this CO has no labor change.');
+          return;
+        }
         if (!note) { err('Add a note explaining why sub pricing is being skipped.'); return; }
 
         err('');
         goBtn.setAttribute('disabled', 'disabled');
-        goBtn.textContent = 'Uploading…';
-        uploadSkipPdf(file).then(function (assetId) {
+        goBtn.textContent = noBid ? 'Saving…' : 'Uploading…';
+        var step = noBid ? Promise.resolve(null) : uploadSkipPdf(file);
+        step.then(function (assetId) {
           goBtn.textContent = 'Saving…';
           var fields = {};
-          fields[SKIP_PDF_FIELD] = assetId;
+          if (assetId) fields[SKIP_PDF_FIELD] = assetId;
           fields[STATUS_FIELD]   = 'Ops Review';
           if (SKIP_NOTE_FIELD) fields[SKIP_NOTE_FIELD] = note;
           putFields(fields, function (ok) {
@@ -910,7 +945,8 @@
                     changeOrderId: getCoSowId(),
                     mode: 'skip-pricing',
                     skipNote: note,
-                    bidPdfAssetId: assetId,
+                    noBid: noBid,               // $0 labor change — PDF waived
+                    bidPdfAssetId: assetId || null,
                     coNumber: readHeaderValue('field_2123'),
                     coName:   readHeaderValue('field_2126'),
                     triggeredBy: getTriggeredBy()
@@ -1078,7 +1114,8 @@
           '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
           'data-scw-co-act="skip">Skip Sub Pricing &rarr;</button>' +
           '<span class="scw-co-stage-note">Sends the CO to the subcontractor to price ' +
-          '— or skip straight to review with a bid PDF on file.</span>';
+          '— or skip straight to review with a bid PDF on file (none needed ' +
+          'when the CO has $0 labor change).</span>';
       }
       if (cur === 1) {
         // Recall = the ops escape hatch while the ball is in the sub's court —
