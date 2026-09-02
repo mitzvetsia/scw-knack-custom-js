@@ -68,6 +68,14 @@
     exterior:         'field_1984',    // Exterior
     plenum:           'field_1983',    // Plenum
     sow:              'field_2154',    // SOW connection(s) — the provenance hop
+    // Target install item — set on a CO line (swap/remove) that acts on an
+    // existing install record. The swap-provenance hop: a swapped-in item's
+    // linked line is the CO ADD line; its target names the REPLACED install
+    // record, whose own field_2819 link reaches the ORIGINAL SOW line — so
+    // the panel can tell the whole story (quoted on SW#### → changed by
+    // ####CO). ⚠️ Builder: field_2966 must be a column on view_4072 /
+    // view_4151 or the hop fails open (CO-only story, today's behavior).
+    target:           'field_2966',
     bucket:           'field_2219',    // proposal bucket (connection)
     mapConn:          'field_2231',    // FLAG_map camera or reader connections
     // Sub bid (the sub's own per-line price — sub-safe money, fine on the
@@ -434,55 +442,19 @@
   }
 
   // ── panel markup ────────────────────────────────────────────────
-  // `ia` = the install record's attributes — when present, each quoted
-  // value is diffed against the corresponding install field and mismatches
-  // get the amber "differs" treatment (+ a count chip in the head).
-  function buildPanel(pa, origins, ia, ctx) {
-    origins = origins || [];
-    var panel = document.createElement('div');
-    panel.className = PANEL_CLS;
+  /** First SOW identifier on a proposed line ("SW1715" / "1715CO"). */
+  function firstSowLabel(attrs) {
+    var raw = attrs && attrs[PF.sow + '_raw'];
+    var r = Array.isArray(raw) ? raw[0] : null;
+    return r ? stripHtml(r.identifier || '') : '';
+  }
 
-    var headChips = '';
-    for (var oc = 0; oc < origins.length; oc++) headChips += originChipHtml(origins[oc]);
-
-    var head = document.createElement('button');
-    head.type = 'button';
-    head.className = PANEL_CLS + '-head';
-    head.setAttribute('aria-expanded', 'false');
-    head.innerHTML =
-      '<span class="' + PANEL_CLS + '-caret" aria-hidden="true">' +
-        '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
-        'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
-        '<polyline points="9 6 15 12 9 18"></polyline></svg></span>' +
-      '<span class="' + PANEL_CLS + '-title">As Quoted</span>' +
-      headChips +
-      '<span class="' + PANEL_CLS + '-hint">original proposal</span>';
-    panel.appendChild(head);
-
-    var body = document.createElement('div');
-    body.className = PANEL_CLS + '-body';
-
-    // Origin block — names the specific SOW/CO and its accepted quote,
-    // linking through to the published proposal record.
-    if (origins.length) {
-      var ohtml = '';
-      for (var oi = 0; oi < origins.length; oi++) {
-        var o = origins[oi];
-        var text = esc(o.label) + ' — ' + (o.isCo ? 'Change Order' : 'Base scope') +
-          (o.quote ? ' · Quote ' + esc(o.quote) +
-            (o.signed ? ' <span class="scw-aq-signed">signed</span>' : '') : '');
-        var href = proposalHref(o.proposalId);
-        ohtml += '<div class="scw-aq-origin-line">' +
-          (href ? '<a href="' + esc(href) + '">' + text + '</a>' : text) +
-        '</div>';
-      }
-      var ob = document.createElement('div');
-      ob.className = 'scw-aq-origin-block';
-      ob.innerHTML =
-        '<div class="' + PANEL_CLS + '-label">Origin</div>' + ohtml;
-      body.appendChild(ob);
-    }
-
+  /** One quoted-values section (field grid + survey notes) for one
+   *  proposed line. `ia` null → no installed-vs-quoted diffing (used for
+   *  the OG section of a swap story — the operative spec to diff against
+   *  is the CO line, not the replaced quote). */
+  function buildSection(pa, ia, ctx) {
+    var frag = document.createDocumentFragment();
     var grid = document.createElement('div');
     grid.className = PANEL_CLS + '-grid';
     var diffCount = 0;
@@ -559,7 +531,96 @@
         '</div>' + nowHtml;
       grid.appendChild(cell);
     }
-    body.appendChild(grid);
+    frag.appendChild(grid);
+
+    var sn = readVal(pa, PF.surveyNotes);
+    if (sn) {
+      var notes = document.createElement('div');
+      notes.className = PANEL_CLS + '-notes';
+      notes.innerHTML =
+        '<div class="' + PANEL_CLS + '-label">Survey Notes</div>' +
+        '<div class="' + PANEL_CLS + '-notes-val">' + esc(sn) + '</div>';
+      frag.appendChild(notes);
+    }
+    return { frag: frag, diffCount: diffCount };
+  }
+
+  function sectionLabelEl(text) {
+    var el = document.createElement('div');
+    el.className = PANEL_CLS + '-seclabel';
+    el.textContent = text;
+    return el;
+  }
+
+  // `ia` = the install record's attributes — when present, each quoted
+  // value is diffed against the corresponding install field and mismatches
+  // get the amber "differs" treatment (+ a count chip in the head).
+  // `ogPa` (swap story) = the ORIGINAL quoted line the CO line replaced —
+  // renders as its own labeled section above the CO section.
+  function buildPanel(pa, origins, ia, ctx, ogPa) {
+    origins = origins || [];
+    var panel = document.createElement('div');
+    panel.className = PANEL_CLS;
+
+    var headChips = '';
+    for (var oc = 0; oc < origins.length; oc++) headChips += originChipHtml(origins[oc]);
+
+    var head = document.createElement('button');
+    head.type = 'button';
+    head.className = PANEL_CLS + '-head';
+    head.setAttribute('aria-expanded', 'false');
+    head.innerHTML =
+      '<span class="' + PANEL_CLS + '-caret" aria-hidden="true">' +
+        '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
+        'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<polyline points="9 6 15 12 9 18"></polyline></svg></span>' +
+      '<span class="' + PANEL_CLS + '-title">As Quoted</span>' +
+      headChips +
+      '<span class="' + PANEL_CLS + '-hint">original proposal</span>';
+    panel.appendChild(head);
+
+    var body = document.createElement('div');
+    body.className = PANEL_CLS + '-body';
+
+    // Origin block — names the specific SOW/CO and its accepted quote,
+    // linking through to the published proposal record.
+    if (origins.length) {
+      var ohtml = '';
+      for (var oi = 0; oi < origins.length; oi++) {
+        var o = origins[oi];
+        var text = esc(o.label) + ' — ' + (o.isCo ? 'Change Order' : 'Base scope') +
+          (o.quote ? ' · Quote ' + esc(o.quote) +
+            (o.signed ? ' <span class="scw-aq-signed">signed</span>' : '') : '');
+        var href = proposalHref(o.proposalId);
+        ohtml += '<div class="scw-aq-origin-line">' +
+          (href ? '<a href="' + esc(href) + '">' + text + '</a>' : text) +
+        '</div>';
+      }
+      var ob = document.createElement('div');
+      ob.className = 'scw-aq-origin-block';
+      ob.innerHTML =
+        '<div class="' + PANEL_CLS + '-label">Origin</div>' + ohtml;
+      body.appendChild(ob);
+    }
+
+    var diffCount = 0;
+    if (ogPa) {
+      // Swap story: the ORIGINAL quote first ("this is what was sold"),
+      // then the CO line that replaced it. Installed-vs-quoted diffing
+      // runs against the CO section only — that's the operative spec.
+      body.appendChild(sectionLabelEl(
+        'As quoted on ' + (firstSowLabel(ogPa) || 'the original SOW')));
+      body.appendChild(buildSection(ogPa, null, ctx).frag);
+      body.appendChild(sectionLabelEl(
+        'As changed by ' + (firstSowLabel(pa) || 'the change order')));
+      var coSec = buildSection(pa, ia, ctx);
+      diffCount = coSec.diffCount;
+      body.appendChild(coSec.frag);
+    } else {
+      var sec = buildSection(pa, ia, ctx);
+      diffCount = sec.diffCount;
+      body.appendChild(sec.frag);
+    }
 
     // Head chip: N field(s) drifted from the quote — visible without
     // expanding. Amber = warning per the repo convention.
@@ -571,16 +632,6 @@
       dchip.textContent = diffCount + ' differ' + (diffCount === 1 ? 's' : '');
       var hintEl = head.querySelector('.' + PANEL_CLS + '-hint');
       head.insertBefore(dchip, hintEl);
-    }
-
-    var sn = readVal(pa, PF.surveyNotes);
-    if (sn) {
-      var notes = document.createElement('div');
-      notes.className = PANEL_CLS + '-notes';
-      notes.innerHTML =
-        '<div class="' + PANEL_CLS + '-label">Survey Notes</div>' +
-        '<div class="' + PANEL_CLS + '-notes-val">' + esc(sn) + '</div>';
-      body.appendChild(notes);
     }
 
     panel.appendChild(body);
@@ -596,7 +647,7 @@
   }
 
   // ── inject ──────────────────────────────────────────────────────
-  function injectPanel(installId, proposedAttrs, origins, installAttrs, ctx) {
+  function injectPanel(installId, proposedAttrs, origins, installAttrs, ctx, ogPa) {
     for (var v = 0; v < INSTALL_VIEWS.length; v++) {
       var container = document.getElementById('scw-ws-v2-' + INSTALL_VIEWS[v]);
       if (!container) continue;
@@ -608,7 +659,7 @@
         if (!detail) continue;
         var prior = detail.querySelector(':scope > .' + PANEL_CLS);
         if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
-        detail.appendChild(buildPanel(proposedAttrs, origins, installAttrs, ctx));
+        detail.appendChild(buildPanel(proposedAttrs, origins, installAttrs, ctx, ogPa));
 
         // Row-level origin chip(s) in the Flags cell — base vs CO is
         // scannable without expanding the card. Idempotent per rebuild.
@@ -669,11 +720,49 @@
     var missing = [];
     var installIdx = buildInstallAttrsIndex();
     var connCtx = buildConnCtx(propIdx, installIdx, linkIdx);
+    // install record id → a CO line that TARGETS it (field_2966: the
+    // swap/remove half acting on that record). A swap has two such lines
+    // (Add + Remove) — either serves; they share the CO, and origins
+    // dedupe by label.
+    var targetIdx = Object.create(null);
+    for (var tp in propIdx) {
+      var tid = rawIds(propIdx[tp], PF.target)[0];
+      if (tid && !targetIdx[tid]) targetIdx[tid] = propIdx[tp];
+    }
+    function mergeOrigins(a, b) {
+      var out = [], seen = {};
+      var all = (a || []).concat(b || []);
+      for (var m = 0; m < all.length; m++) {
+        var k = normToken(all[m].label);
+        if (seen[k]) continue;
+        seen[k] = 1;
+        out.push(all[m]);
+      }
+      out.sort(function (x, y) { return (x.isCo ? 1 : 0) - (y.isCo ? 1 : 0); });
+      return out;
+    }
     try {
       for (var i = 0; i < ids.length; i++) {
         var pa = propIdx[linkIdx[ids[i]]];
-        if (pa) injectPanel(ids[i], pa, resolveOrigins(pa, acceptIdx), installIdx[ids[i]], connCtx);
-        else missing.push(ids[i] + ' → ' + linkIdx[ids[i]]);
+        if (!pa) { missing.push(ids[i] + ' → ' + linkIdx[ids[i]]); continue; }
+        var origins = resolveOrigins(pa, acceptIdx);
+        // Swap provenance: my linked line is a CO line acting on another
+        // install record → that record's own linked line is the ORIGINAL
+        // quote. Render both stories (OG section + CO section).
+        var ogPa = null;
+        var tgt = rawIds(pa, PF.target)[0] || '';
+        if (tgt && linkIdx[tgt] && propIdx[linkIdx[tgt]] &&
+            propIdx[linkIdx[tgt]].id !== pa.id) {
+          ogPa = propIdx[linkIdx[tgt]];
+          origins = mergeOrigins(resolveOrigins(ogPa, acceptIdx), origins);
+        }
+        // Reverse: MY install record is targeted by a CO line (slated for
+        // removal / swapped away) — surface that CO in the origin chips so
+        // the base item reads "quoted on SW#### · touched by ####CO".
+        if (!ogPa && targetIdx[ids[i]] && targetIdx[ids[i]].id !== pa.id) {
+          origins = mergeOrigins(origins, resolveOrigins(targetIdx[ids[i]], acceptIdx));
+        }
+        injectPanel(ids[i], pa, origins, installIdx[ids[i]], connCtx, ogPa);
       }
     } finally {
       setTimeout(function () { _selfMutating = false; }, 0);
@@ -741,6 +830,12 @@
       '  font-style: italic; }',
       P + '-body { display: none; padding: 4px 12px 12px; }',
       P + '--open ' + P + '-body { display: block; }',
+      // Swap-story section labels ("As quoted on SW1715" / "As changed by
+      // 1715CO") — CO label reads amber to match the CO origin chip family.
+      P + '-seclabel { font: 700 10px/1.3 system-ui, sans-serif;',
+      '  letter-spacing: .06em; text-transform: uppercase; color: #64748b;',
+      '  margin: 10px 0 2px; padding-top: 8px; border-top: 1px dashed #e2e8f0; }',
+      P + '-seclabel:first-child { margin-top: 0; padding-top: 0; border-top: 0; }',
       P + '-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));',
       '  gap: 8px 16px; }',
       P + '-label { font: 700 10px/1.2 system-ui, sans-serif; text-transform: uppercase;',

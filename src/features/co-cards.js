@@ -21,14 +21,30 @@
   var STYLE_ID = 'scw-co-cards-css';
   var ON_CLS   = 'scw-co-cards-on';
 
-  // CO (SOW-object) field keys — same on every CO grid.
+  // CO (SOW-object) field keys — same on every CO grid. Every entry is
+  // fail-open: a card element renders only when the grid actually carries
+  // the column, so add the field as a (hidden-ok) column in Builder to
+  // light it up on that view.
   var F = {
     number: 'field_2122',   // CALC_sow id ("60236777605-SW1638CO")
     status: 'field_2953',   // FLAG_change order status
     basis:  'field_2942',   // REL_proposal basis (connection)
     exp:    'field_2135',   // INPUT_expiration date
     name:   'field_2126',   // INPUT: sow friendly name
-    contract: 'field_1843'  // esignatures.com contract id (uuid)
+    notes:  'field_2198',   // INPUT_notes (the CO header card's textarea)
+    contract: 'field_1843', // esignatures.com contract id (uuid)
+    // ── Net total ──
+    // Preferred: ONE stored grand-total column (equation on the SOW object
+    // = equipment rollup + installation rollup). CO lines carry signed
+    // money (removes are negative), so the stored rollups sum to the CO's
+    // NET by themselves. No such field key is known to the bundle yet —
+    // fill it in when it exists in Builder.
+    netTotal:   '',           // TBD — single grand-total column (wins when set)
+    // Fallback pair: net = equipTotal + installTotal when BOTH columns are
+    // on the grid. field_2161 is the known Installation Total rollup; the
+    // equipment-total rollup's key is TBD.
+    equipTotal:   '',         // TBD — SOW equipment total rollup
+    installTotal: 'field_2161' // SOW Installation Total rollup
   };
 
   // eSignatures contract page — the id in field_1843 appended verbatim.
@@ -63,6 +79,23 @@
     var td = tr.querySelector('td.' + fieldKey);
     if (!td) return '';
     return String(td.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  /** Money cell → number, or null when the column is absent / blank /
+   *  unparsable. Handles "$1,234.56", "-$550", "−$550.00", "($550)". */
+  function cellMoney(tr, fieldKey) {
+    if (!fieldKey) return null;
+    var td = tr.querySelector('td.' + fieldKey);
+    if (!td) return null;
+    var t = String(td.textContent || '').replace(/ /g, ' ').trim();
+    if (!t) return null;
+    var neg = /^[-−(]/.test(t) || t.indexOf('-$') !== -1 || t.indexOf('−$') !== -1;
+    var n = parseFloat(t.replace(/[^0-9.]/g, ''));
+    if (!isFinite(n)) return null;
+    return neg ? -n : n;
+  }
+  function fmtMoney(v) {
+    return (v < 0 ? '−' : '') + '$' + Math.abs(v)
+      .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
   /** MM/DD/YYYY → true when strictly before today (local). */
   function isPastDate(s) {
@@ -101,6 +134,24 @@
       '  font: 500 11px/1.4 system-ui, sans-serif; color: #94a3b8;',
       '  letter-spacing: .02em; margin-top: 1px;',
       '}',
+      '.scw-co-card__notes {',
+      '  font: 400 12px/1.45 system-ui, sans-serif; color: #64748b;',
+      '  margin-top: 3px; overflow: hidden; display: -webkit-box;',
+      '  -webkit-line-clamp: 2; -webkit-box-orient: vertical;',
+      '}',
+      '.scw-co-card__net {',
+      '  display: flex; flex-direction: column; align-items: flex-end;',
+      '  flex: 0 0 auto; min-width: 86px;',
+      '}',
+      '.scw-co-card__net-lbl {',
+      '  font: 700 9.5px/1.2 system-ui, sans-serif; letter-spacing: .06em;',
+      '  text-transform: uppercase; color: #94a3b8;',
+      '}',
+      '.scw-co-card__net-val {',
+      '  font: 700 14px/1.3 system-ui, sans-serif; color: #0f172a;',
+      '  font-variant-numeric: tabular-nums;',
+      '}',
+      '.scw-co-card__net-val--neg { color: #be123c; }',
       '.scw-co-card__meta {',
       '  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;',
       '  flex: 0 1 auto;',
@@ -158,7 +209,16 @@
     var status = cellText(tr, F.status);
     var exp    = cellText(tr, F.exp);
     var basis  = cellText(tr, F.basis);
+    var notes  = cellText(tr, F.notes);
     var contractId = cellText(tr, F.contract);
+    // Net: the grand-total column when configured/present, else the sum of
+    // the equipment + installation rollups when BOTH columns are on the
+    // grid (CO line money is signed, so the rollups sum to the net).
+    var net = cellMoney(tr, F.netTotal);
+    if (net == null) {
+      var eq = cellMoney(tr, F.equipTotal), inst = cellMoney(tr, F.installTotal);
+      if (eq != null && inst != null) net = eq + inst;
+    }
     var link   = tr.querySelector('td.kn-table-link a.kn-link-page');
     var href   = link ? link.getAttribute('href') : '';
     var col    = statusColors(status);
@@ -182,7 +242,16 @@
       '<div class="scw-co-card__main">' +
         '<div class="scw-co-card__name">' + esc(main) + '</div>' +
         (sub ? '<div class="scw-co-card__num">' + esc(sub) + '</div>' : '') +
+        (notes ? '<div class="scw-co-card__notes" title="' + esc(notes) + '">' +
+          esc(notes) + '</div>' : '') +
       '</div>' +
+      (net != null
+        ? '<div class="scw-co-card__net" title="Net change (equipment + installation, signed)">' +
+            '<span class="scw-co-card__net-lbl">Net</span>' +
+            '<span class="scw-co-card__net-val' + (net < 0 ? ' scw-co-card__net-val--neg' : '') +
+              '">' + esc(fmtMoney(net)) + '</span>' +
+          '</div>'
+        : '') +
       '<div class="scw-co-card__meta">' +
         (status
           ? '<span class="scw-co-card__pill" style="background:' + col.bg +
