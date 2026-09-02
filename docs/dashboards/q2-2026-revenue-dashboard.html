@@ -919,7 +919,7 @@ textarea.json{
       <p><b>Business days count themselves.</b> Days elapsed defaults to the weekdays in the current month through the end of yesterday, minus the holidays you have ticked in Backstage. Each holiday is a rule, not a fixed date, so it recomputes correctly every year; date-fixed ones shift off weekends the usual way. Untick anything SCW works, tick anything it doesn&rsquo;t (MLK, Presidents&rsquo;, Good Friday, Juneteenth, Indigenous Peoples&rsquo;, Veterans Day ship off by default), and add shutdown days or floating holidays as one-off dates. Holidays travel with the JSON export. The &plusmn;&frac12; buttons and direct edits are manual adjustments: enter 12.5 mid-day when 12 is the auto count. An adjustment holds only for the day it was made, then the count snaps back to auto. The days-in-month total works the same way, per month.</p>
       <p><b>Period totals are derived from the monthly grid</b>, so the table is always self-consistent with the charts. Because the monthly figures are reported rounded to the nearest $10K or so, these totals run slightly under the source sheet&rsquo;s own stated totals &mdash; up to about $80K on the 2025 window. Paste exact figures into the editor above and the difference disappears.</p>
       <p><b>The window&rsquo;s August.</b> With &ldquo;use this month&rsquo;s live pacing&rdquo; switched on (the default), the Q2&nbsp;&amp;&nbsp;Q3 window takes its August from Part&nbsp;1&rsquo;s live month pacing and only September from the baseline pace. Mind the caveat below &mdash; Part&nbsp;1 paces total company revenue while the window is booked revenue &mdash; so treat the blended figure as directional, and flip the toggle off for a booked-only view.</p>
-      <p><b>Two different revenue measures.</b> Part 2 is booked revenue from the YoY Sales Metrics sheet ($11.6M in 2025). Parts 1 and 3 are total company revenue &mdash; Install services from Xero plus eCommerce &mdash; from the Daily KPIs sheet ($13.5M in 2025). They are not the same number and should not be added together. For 2022 and 2023 the two reconcile almost exactly once October is added back; for 2024 and 2025 a gap remains that is worth confirming before either figure is quoted as the company total.</p>
+      <p><b>The monthly and annual figures are one measure, now reconciled.</b> An accounting export of Total Income by month (Aug&nbsp;2020 &ndash; Jul&nbsp;2026) confirmed that the monthly sheet figures and the annual company totals are the same measure &mdash; the sheet was simply displaying them rounded. Every monthly figure from 2022 onward, and every annual total from 2021 to 2025, has been replaced with the exact amount. Two annual figures were materially overstated and are now corrected: <b>2024 from $11.87M to $11.33M</b> (&minus;$545K) and <b>2025 from $13.50M to $12.75M</b> (&minus;$748K). 2016&ndash;2020 predate the export and stand as previously held. August&nbsp;2026 is still the booked entry, not an accounting figure.</p>
       <p><b>Not carried over.</b> The Daily KPIs sheet also holds a Jul&nbsp;/&nbsp;Aug&nbsp;/&nbsp;Sep quarter block whose August goal ($1,030,000) contradicts the current-month goal ($1,170,000), and a cautious&nbsp;/&nbsp;optimistic pair on a third basis. Both look stale, so neither is shown here.</p>
     </footer>
     </div>
@@ -1048,17 +1048,21 @@ textarea.json{
   var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
   var DEC_YEARS = ['2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024', '2025'];
   var BASE = {
+    // Actual Total Income by month (accounting export, Aug 2020 - Jul 2026). These
+    // replace the sheet's display-rounded figures; Aug 2026 is still the booked entry.
     months: {
-      '2022': [698, 656, 1000, 744, 837, 827, 939, 967, 848],
-      '2023': [655, 1100, 1200, 775, 906, 1100, 839, 897, 795],
-      '2024': [1100, 866, 891, 911, 901, 842, 813, 1000, 856],
-      '2025': [747, 766, 1100, 1800, 1200, 834, 1000, 925, 1060],
-      '2026': [1000, 963, 804, 1240, 1500, 1110, 1220, null, null]
+      '2022': [698, 656, 1043, 744, 837, 827, 940, 968, 848],
+      '2023': [655, 1066, 1226, 775, 906, 1061, 839, 897, 795],
+      '2024': [1087, 866, 891, 911, 902, 838, 816, 1035, 856],
+      '2025': [749, 766, 1058, 1822, 1254, 834, 1016, 925, 1058],
+      '2026': [1044, 963, 804, 1240, 1347, 1079, 1219, null, null]
     },
     pace: 1200, stretchPace: 1400, modest: 6650, stretch: 7850, holidays: null,
-    ytdAmount: null, ytdMonths: null,
+    ytdAmount: null, ytdMonths: null, dataVersion: 2,
+    // 2021-2025 are actual full-year Total Income. 2016-2020 remain as previously held
+    // (the accounting export begins Aug 2020, so those years cannot be verified here).
     decade: { '2016': 6846976, '2017': 7721318, '2018': 8069797, '2019': 8031927, '2020': 8350386,
-              '2021': 9060154, '2022': 10557746, '2023': 11448245, '2024': 11871000, '2025': 13500000 }
+              '2021': 9003467, '2022': 10489698, '2023': 11393842, '2024': 11325969, '2025': 12752059 }
   };
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   var DATA = clone(BASE);
@@ -1541,7 +1545,7 @@ textarea.json{
       var pj = ytn.amount / ytn.months * 12;
       decNote += ' 2026 is projecting <b>' + usdC(pj) + '</b> from <b>' + usdC(ytn.amount) + '</b> banked through ' +
         ytn.months + ' month' + (ytn.months === 1 ? '' : 's') +
-        (ytn.src === 'grid' ? ' (summed from the 2026 monthly row — booked revenue, a close proxy)'
+        (ytn.src === 'grid' ? ' (summed from the 2026 monthly row)'
           : ytn.src === 'tracker' ? ' (summed from the months entered in Backstage)' : '') +
         ' — <b>' + pctS((pj - d9) / d9) + '</b> on 2025. Straight-line, so it under-reads a back-half weighted year.';
     } else {
@@ -1679,6 +1683,21 @@ textarea.json{
   function restoreHistory() {
     var v; try { v = JSON.parse(localStorage.getItem(HSTORE) || 'null'); } catch (e) { v = null; }
     if (v && v.months && v.decade) DATA = v;
+    // A stored copy predating the accounting import still holds the rounded figures;
+    // refresh the historical series while keeping anything the user set themselves.
+    if (DATA.dataVersion !== BASE.dataVersion) {
+      var prev = DATA.months || {};
+      DATA.months = clone(BASE.months);
+      // Keep months the export does not reach — Aug 2026 onward is still hand-entered.
+      Object.keys(DATA.months).forEach(function (y) {
+        for (var i = 0; i < 9; i++) {
+          if (DATA.months[y][i] == null && prev[y] && prev[y][i] != null) DATA.months[y][i] = prev[y][i];
+        }
+      });
+      DATA.decade = clone(BASE.decade);
+      DATA.dataVersion = BASE.dataVersion;
+      try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
+    }
     if (!DATA.holidays || !DATA.holidays.observed) DATA.holidays = defaultHolidays();
   }
   function syncYtdInputs() {
