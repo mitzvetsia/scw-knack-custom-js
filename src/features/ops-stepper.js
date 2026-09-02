@@ -475,6 +475,12 @@
         intro:       'Publishes the change-order document, creates the ' +
                      'e-signature contract, and sends it to the chosen ' +
                      'contact. Line items lock once issued.',
+        // Optional client PO # — rides on payload.poNumber for Make to
+        // stamp on the CO / invoice reference. Never blocks Issue.
+        po: {
+          label:       'Client PO # (optional)',
+          placeholder: 'e.g. PO-48211 — referenced on the CO and invoice'
+        },
         placeholder: 'e.g. CO-1410: 2 cameras added at dock, 1 removed at cash register',
         submitLabel: 'Issue Change Order'
       },
@@ -665,6 +671,16 @@
       '.scw-ops-modal-banner--warn {' +
       '  background: rgba(245,158,11,0.10); color: #b45309;' +
       '  border: 1px solid rgba(245,158,11,0.35);' +
+      '}' +
+      /* Optional single-line extra input (client PO # on Issue) */
+      '.scw-ops-modal-po { margin-top: 12px; }' +
+      '.scw-ops-modal-po__lbl {' +
+      '  display: block; font-size: 12.5px; font-weight: 600; color: #1f2937;' +
+      '}' +
+      '.scw-ops-modal-po__input {' +
+      '  width: 100%; box-sizing: border-box; display: block; margin-top: 4px;' +
+      '  padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;' +
+      '  font-family: inherit; font-size: 13px; background: #fff; color: #1f2937;' +
       '}' +
       /* Recipient single-select (issue-change-order) */
       '.scw-ops-modal-recipient {' +
@@ -2331,6 +2347,28 @@
     var submissionGroup = buildRadioGroup(opts.submission);
     if (submissionGroup) card.appendChild(submissionGroup.element);
 
+    // Optional single-line extra input — opts.po = { label, placeholder }
+    // (issue-change-order: the client's PO #). Never required, never
+    // gates submit; the trimmed value rides on ctx.po ('' when blank,
+    // null when the modal has no PO field at all).
+    var poInput = null;
+    if (opts.po) {
+      var poWrap = document.createElement('div');
+      poWrap.className = 'scw-ops-modal-po';
+      var poLbl = document.createElement('label');
+      poLbl.className = 'scw-ops-modal-po__lbl';
+      poLbl.textContent = opts.po.label || 'Client PO # (optional)';
+      poInput = document.createElement('input');
+      poInput.type = 'text';
+      poInput.className = 'scw-ops-modal-po__input';
+      poInput.placeholder = opts.po.placeholder || '';
+      poInput.setAttribute('maxlength', '80');
+      poInput.setAttribute('autocomplete', 'off');
+      poLbl.appendChild(poInput);
+      poWrap.appendChild(poLbl);
+      card.appendChild(poWrap);
+    }
+
     // Note input — placed AFTER submission. When a submission group
     // exists, hide by default ("No" is the default selection) and
     // toggle visibility as the operator picks a real submit option.
@@ -2466,7 +2504,8 @@
         clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
         recipient:     gate.recipient || null,
         branches:      bGate.branches || [],
-        surveyRequest: requestEditor ? requestEditor.getValue() : null
+        surveyRequest: requestEditor ? requestEditor.getValue() : null,
+        po:            poInput ? (poInput.value || '').trim() : null
       });
     });
     if (secondaryBtn) {
@@ -2485,7 +2524,8 @@
           clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
           recipient:     gate.recipient || null,
           branches:      bGate.branches || [],
-          surveyRequest: requestEditor ? requestEditor.getValue() : null
+          surveyRequest: requestEditor ? requestEditor.getValue() : null,
+          po:            poInput ? (poInput.value || '').trim() : null
         });
       });
     }
@@ -2817,6 +2857,10 @@
       // Make resolves the full contact record from the id; label/email are
       // convenience copies of what the picker showed.
       if (ctx.recipient)              payload.recipient = ctx.recipient;
+      // Client PO # (issue-change-order's optional input). Included even
+      // when blank IF the modal had the field — a stable key ('' vs
+      // missing) keeps the Make mapping unconditional.
+      if (ctx.po != null)             payload.poNumber = ctx.po;
       if (ctx.submission)             payload.submission = ctx.submission;
       else if (step.forceSubmission)  payload.submission = step.forceSubmission;
       // Pending-survey context (mark-ready): how many Pending Validation

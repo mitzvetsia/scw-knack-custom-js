@@ -257,7 +257,11 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // (sourceRecordId, stepId:'issue-change-order', notes, sowFields,
   // sowLineItemIds, html/htmlPdf/json/totals/proposalAccessToken/Url, …)
   // plus changeOrderId (alias of sourceRecordId, matching the other CO
-  // webhooks). ⚠️ Requires field_2952 on view_3861 for CO mode to activate.
+  // webhooks), recipient { id, name, label, email, phone }, and poNumber —
+  // the OPTIONAL client PO # typed in the Issue modal ('' when left blank;
+  // key present only on issue-change-order, whose modal has the input).
+  // Make maps it onto the CO / invoice reference wherever needed.
+  // ⚠️ Requires field_2952 on view_3861 for CO mode to activate.
   //   Response body: { success: true } or { success: false, error: "..." }
   // ⚠️ SHARED by TWO stepper actions — the scenario must route on
   // payload.stepId as its first step:
