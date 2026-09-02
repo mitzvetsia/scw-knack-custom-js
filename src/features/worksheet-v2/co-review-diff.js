@@ -370,10 +370,16 @@
   // refetch). Same-task re-annotation means no intermediate frame exists.
   (function () {
     var ws = window.SCW && SCW.worksheetV2;
-    if (ws && ws.data && typeof ws.data.subscribe === 'function') {
-      ws.data.subscribe(VIEW, function () {
+    // POST-RENDER hook (see co-remove.js): re-flag only once the panel DOM
+    // is final for the pass — a notify-time apply could annotate old cards
+    // when the rebuild was deferred (focused input), and the rebuild then
+    // wiped every flag/was-note.
+    if (ws && ws.data && typeof ws.data.subscribeRendered === 'function') {
+      ws.data.subscribeRendered(VIEW, function () {
         try { apply(); } catch (e) { schedule(); }
       });
+    } else if (ws && ws.data && typeof ws.data.subscribe === 'function') {
+      ws.data.subscribe(VIEW, schedule);
     }
   })();
   $(document).off('knack-view-render.' + VIEW + EVENT_NS)

@@ -102,7 +102,12 @@
     anchor.insertAdjacentElement('afterend', panel);
     if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(vcfg.sourceViewKey);
     // Initial paint — v1 may have already loaded the records by now.
-    if (ns.data) ns.render.renderView(vcfg.sourceViewKey, ns.data.readRecords(vcfg.sourceViewKey));
+    if (ns.data) {
+      ns.render.renderView(vcfg.sourceViewKey, ns.data.readRecords(vcfg.sourceViewKey));
+      if (typeof ns.data.notifyRendered === 'function') {
+        ns.data.notifyRendered(vcfg.sourceViewKey);
+      }
+    }
   }
 
   // Full cutover views hide their native source view AND its KTL accordion
@@ -225,6 +230,15 @@
         ns.bulk && typeof ns.bulk.mount === 'function' &&
         document.getElementById('scw-ws-v2-' + key)) {
       ns.bulk.mount(key);
+    }
+    // The panel DOM for this view is final for this pass — let the
+    // decorator modules (co-remove checkcells/actions, swap chips,
+    // review-diff flags) re-apply onto the REAL cards. This fires even on
+    // the _skipRender path: decorators are idempotent, and a skipped
+    // rebuild may still follow an earlier DEFERRED rebuild that wiped
+    // them (requestRender holds rebuilds while a grid input is focused).
+    if (ns.data && typeof ns.data.notifyRendered === 'function') {
+      ns.data.notifyRendered(key);
     }
   }
 
@@ -431,6 +445,9 @@
       } else if (ns.data && ns.render) {
         // Block not in the DOM (shouldn't happen) — fall back to a full render.
         ns.render.renderView(sourceKey, ns.data.readRecords(sourceKey));
+        if (typeof ns.data.notifyRendered === 'function') {
+          ns.data.notifyRendered(sourceKey);
+        }
       }
     });
   }

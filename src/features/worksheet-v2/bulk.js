@@ -1062,9 +1062,17 @@
     return true;
   }
 
+  // Real modifier state at mousedown — a click synthesized from a label
+  // or re-dispatched by other handlers can reach the box without shiftKey.
+  var _shiftDownAtMousedown = false;
+
   function wireGlobalDelegates(sourceViewKey) {
     if (document.documentElement.hasAttribute('data-scw-ws-v2-bulk-bound')) return;
     document.documentElement.setAttribute('data-scw-ws-v2-bulk-bound', '1');
+
+    document.addEventListener('mousedown', function (e) {
+      _shiftDownAtMousedown = !!e.shiftKey;
+    }, true);
 
     // Capture shift-state at mousedown — by the time `change` fires the
     // modifier keys aren\'t on the event. We hijack the click on the row
@@ -1083,7 +1091,7 @@
       // Stop the click bubbling to the card\'s expand handler.
       e.stopPropagation();
 
-      if (e.shiftKey && lastAnchorId) {
+      if ((e.shiftKey || _shiftDownAtMousedown) && lastAnchorId) {
         // Range mode: the box\'s checked state already flipped via the
         // browser default; use the new state as the "on/off" for the
         // whole range. Then refresh DOM.

@@ -557,9 +557,37 @@
     }
   }
 
+  // Post-RENDER subscribers — fired by init.js AFTER the panel DOM for a
+  // view has actually been (re)built. The correct hook for modules that
+  // DECORATE rendered cards (co-remove checkcells/actions, swap chips,
+  // review-diff flags): a plain data subscriber can fire while the rebuild
+  // is DEFERRED (requestRender holds rebuilds while a grid input is
+  // focused), so anything it painted landed on the OLD DOM and the later
+  // rebuild destroyed it — the "checkboxes just disappeared" bug. Direct
+  // renderView call sites (sort / filter / search) fire this too.
+  var renderedSubs = Object.create(null);
+  function subscribeRendered(sourceViewKey, handler) {
+    if (!renderedSubs[sourceViewKey]) renderedSubs[sourceViewKey] = [];
+    renderedSubs[sourceViewKey].push(handler);
+  }
+  function notifyRendered(sourceViewKey) {
+    var list = renderedSubs[sourceViewKey] || [];
+    for (var i = 0; i < list.length; i++) {
+      // One throwing decorator must not block the rest.
+      try { list[i](sourceViewKey); } catch (e) {
+        if (window.console && console.warn) {
+          console.warn('[scw-ws-v2] rendered-subscriber failed on ' +
+            sourceViewKey, e);
+        }
+      }
+    }
+  }
+
   ns.data = {
     readRecords: readRecords,
     subscribe:   subscribe,
+    subscribeRendered: subscribeRendered,
+    notifyRendered:    notifyRendered,
     notify:      notify,
     notifyNow:   notifyNow,
     refetchAndNotify: refetchAndNotify,

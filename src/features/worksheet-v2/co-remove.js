@@ -1541,16 +1541,18 @@
   if (!views.length) return;
 
   views.forEach(function (vcfg) {
-    if (ns.data && typeof ns.data.subscribe === 'function') {
-      // SYNC decorate on rebuild notifies: init.js rebuilds the panel
-      // before this subscriber runs (build.sh order), and a deferred
-      // decorate let one frame paint WITHOUT the prepended checkbox
-      // column — the whole grid shifted a column on every refetch (part
-      // of the "page jumping" complaint). Same-task decoration leaves no
-      // intermediate frame; the timeout stays as the error fallback.
-      ns.data.subscribe(vcfg.sourceViewKey, function () {
+    // POST-RENDER hook, not the raw data notify: init.js DEFERS rebuilds
+    // while a grid input is focused, so a notify-time decorate painted the
+    // OLD cards and the later rebuild destroyed every checkcell/action
+    // ("all my checkboxes just went away"). subscribeRendered fires after
+    // the panel DOM is actually final for the pass — same-task, so no
+    // undecorated frame paints either (the earlier jumping fix holds).
+    if (ns.data && typeof ns.data.subscribeRendered === 'function') {
+      ns.data.subscribeRendered(vcfg.sourceViewKey, function () {
         try { decorate(vcfg); } catch (e) { decorateSoon(vcfg); }
       });
+    } else if (ns.data && typeof ns.data.subscribe === 'function') {
+      ns.data.subscribe(vcfg.sourceViewKey, function () { decorateSoon(vcfg); });
     }
     $(document).on('knack-view-render.' + vcfg.sourceViewKey + '.scwCoRemove',
       function () { decorateSoon(vcfg); });
@@ -1562,13 +1564,20 @@
   // visible, not locked by a drafted remove/swap). The anchor stays put so
   // consecutive shift-clicks extend from the origin (Gmail/Finder).
   var _lastCheckAnchor = null;
+  // Real modifier state captured at mousedown — the click that reaches the
+  // input after a click on its wrapping <label> is browser-synthesized and
+  // can arrive without shiftKey.
+  var _shiftHeld = false;
+  document.addEventListener('mousedown', function (e) {
+    _shiftHeld = !!e.shiftKey;
+  }, true);
   document.addEventListener('click', function (e) {
     var box = e.target;
     if (!box || !box.classList || !box.classList.contains(CHECK_CLS)) return;
     var rid = box.getAttribute('data-scw-co-remove-check');
     var vk  = box.getAttribute('data-scw-co-remove-view');
     if (!rid) return;
-    if (e.shiftKey && _lastCheckAnchor) {
+    if ((e.shiftKey || _shiftHeld) && _lastCheckAnchor) {
       var all = document.querySelectorAll('.' + CHECK_CLS +
         '[data-scw-co-remove-view="' + vk + '"]');
       var boxes = [];

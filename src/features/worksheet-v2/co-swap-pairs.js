@@ -186,13 +186,15 @@
     if (window.SCW && typeof SCW.onViewRender === 'function') {
       SCW.onViewRender(vk, schedule, EVENT_NS);
     }
-    if (ns.data && typeof ns.data.subscribe === 'function') {
-      // SYNC on rebuild notifies (the cards were just rebuilt bare) — a
-      // debounced re-apply painted a chip-less frame first, adding to the
-      // post-refetch layout jumping. Debounce stays for view renders.
-      ns.data.subscribe(vk, function () {
+    // POST-RENDER hook (see co-remove.js): decorate only once the panel
+    // DOM is final — a notify-time apply could land on the old cards when
+    // the rebuild was deferred, and the rebuild then wiped the chips.
+    if (ns.data && typeof ns.data.subscribeRendered === 'function') {
+      ns.data.subscribeRendered(vk, function () {
         try { apply(vk); } catch (e) { schedule(); }
       });
+    } else if (ns.data && typeof ns.data.subscribe === 'function') {
+      ns.data.subscribe(vk, schedule);
     }
   });
 })();
