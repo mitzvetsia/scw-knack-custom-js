@@ -8,11 +8,17 @@
  *   - a summary banner above the worksheet: "N changed · M added ·
  *     K removed since sent ⟨date⟩" (removed lines named in the tooltip —
  *     they have no card to badge)
- *   - an amber CHANGED flag in the label cell of each edited line, whose
- *     tooltip lists every delta ("Sub bid $350 → $425 · +Hrs 0 → 2")
+ *   - an amber CHANGED flag under the Sub bid input of each edited line,
+ *     whose tooltip lists every delta ("Sub bid $350 → $425 · +Hrs 0 → 2")
  *   - an amber ring on each changed input + a small "was ⟨old⟩" note under
  *     it, so the specific number that moved is obvious at a glance
- *   - a sky NEW flag on lines that didn't exist at send time (sub-added)
+ *   - a sky NEW flag under the Sub bid input of lines that didn't exist at
+ *     send time (sub-added)
+ *
+ * Placement: both baseline flags live in the SUB-PRICING cluster (with the
+ * "was" notes), NOT in the label cell — their context is "since we sent to
+ * the sub", so they belong next to the sub's numbers. The label cell keeps
+ * the ACTION chips (SWAP / REMOVE), which describe what the line is.
  *
  * Diffed fields: Sub bid, +Hrs, +Mat, Qty, Drop # — whatever the
  * snapshot line actually carries (older snapshots without qty/item just
@@ -68,6 +74,8 @@
       '.scw-ws-v2-co-flag--new{display:block;width:-moz-fit-content;width:fit-content;',
       'margin:0 0 3px 0;font:700 8.5px/1 system-ui,-apple-system,sans-serif;letter-spacing:.06em;',
       'padding:2px 6px;border-radius:4px;color:#0c4a6e;background:#e0f2fe;white-space:nowrap;}',
+      // anchored under the Sub bid input (centered, after any "was" note)
+      '.scw-ws-v2-co-flag--under-bid{margin:3px auto 0;}',
       // changed input ring + "was" note
       '.scw-ws-v2-input.scw-ws-v2-diff-changed{',
       'border-color:#f59e0b !important;box-shadow:0 0 0 2px rgba(245,158,11,.28) !important;}',
@@ -136,14 +144,24 @@
       ((base.prefix || '') && (base.prefix + (base.number || ''))) || '(line)';
   }
 
+  // Baseline flags anchor to the SUB BID input — "new/changed since we
+  // sent to the sub" belongs with the sub's numbers (same cluster as the
+  // "was ⟨old⟩" notes), not in the label cell where the action chips
+  // (SWAP / REMOVE) live. Label cell is the fallback only when a card
+  // variant has no sub-bid input, so the flag never silently vanishes.
   function flagCard(card, cls, text, title) {
-    var cell = card.querySelector('.scw-ws-v2-row .scw-ws-v2-cell--label');
-    if (!cell) return;
     var flag = document.createElement('span');
     flag.className = 'scw-ws-v2-co-flag ' + cls;
     flag.textContent = text;
     if (title) flag.title = title;
-    cell.insertBefore(flag, cell.firstChild);
+    var bid = card.querySelector('[data-scw-ws-v2-field="' + FIELDS[0].field + '"]');
+    if (bid && bid.parentNode) {
+      flag.classList.add('scw-ws-v2-co-flag--under-bid');
+      bid.parentNode.appendChild(flag);   // after the input (and its "was" note)
+      return;
+    }
+    var cell = card.querySelector('.scw-ws-v2-row .scw-ws-v2-cell--label');
+    if (cell) cell.insertBefore(flag, cell.firstChild);
   }
 
   function annotateInput(card, fieldKey, oldVal, money) {
