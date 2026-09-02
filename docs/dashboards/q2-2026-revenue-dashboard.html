@@ -113,6 +113,17 @@ h1 em{font-style:normal; color:var(--brand-ink)}
   line-height:.86; letter-spacing:-.015em; color:var(--brand-ink);
 }
 .hero-cap{max-width:34ch; color:var(--ink-2); font-size:14.5px}
+.hero-pair{display:flex; flex-wrap:wrap; gap:16px 40px; align-items:flex-start}
+.fig-sub{padding-left:24px; border-left:1px solid var(--rule)}
+.hero-num-sm{
+  display:block; margin-top:5px; color:var(--ink);
+  font-family:"Barlow Condensed",sans-serif; font-weight:700;
+  font-size:clamp(32px,5vw,46px); line-height:.92; letter-spacing:-.01em;
+}
+.fig-note{display:block; margin-top:7px; font-size:12.5px; color:var(--ink-2); max-width:26ch}
+@media (max-width:700px){
+  .fig-sub{padding-left:0; border-left:none; padding-top:14px; border-top:1px solid var(--rule); width:100%}
+}
 .hero-incl{
   margin:12px 0 0; font-size:12.5px; color:var(--ink-2); max-width:44ch;
   padding-left:11px; border-left:2px solid var(--rule);
@@ -619,6 +630,18 @@ textarea.json{
     </div>
 
     <div class="grp">
+      <span class="eyebrow">2026 year to date <span class="unit">&mdash; puts the projected 2026 bar on the ten-year chart</span></span>
+      <div class="deck-grid">
+        <div class="fld"><label for="mYtdAmount">2026 revenue to date</label>
+          <div class="inrow"><span class="pre">$</span><input id="mYtdAmount" type="number" step="1000" inputmode="decimal" placeholder="0"></div>
+          <div class="hint" id="hYtd"></div></div>
+        <div class="fld"><label for="mYtdMonths">&hellip; through how many months</label>
+          <div class="inrow"><input id="mYtdMonths" type="number" step="1" min="1" max="12" inputmode="numeric" placeholder="0"></div>
+          <div class="hint">Complete months only. Total revenue, Install + eCommerce &mdash; the same measure as the ten-year chart.</div></div>
+      </div>
+    </div>
+
+    <div class="grp">
       <span class="eyebrow">Window link</span>
       <div class="livelink" style="margin-top:6px"><label><input type="checkbox" id="qAugLive"><span id="qAugLiveLab">Use this month&rsquo;s live pacing for the window&rsquo;s August</span></label></div>
     </div>
@@ -702,11 +725,18 @@ textarea.json{
 
   <section class="hero">
     <div class="hero-top">
-      <div>
-        <span class="eyebrow" id="qBookedEyebrow">Booked 2026</span>
-        <div class="hero-fig">
-          <span class="hero-num" id="qBooked" data-band="none">&mdash;</span>
-          <span class="pill" id="qPill" data-band="none">&mdash;</span>
+      <div class="hero-pair">
+        <div>
+          <span class="eyebrow">Pacing to &mdash; Apr&ndash;Sep window</span>
+          <div class="hero-fig">
+            <span class="hero-num" id="qProjected" data-band="none">&mdash;</span>
+            <span class="pill" id="qPill" data-band="none">&mdash;</span>
+          </div>
+        </div>
+        <div class="fig-sub">
+          <span class="eyebrow" id="qBookedEyebrow">Booked 2026</span>
+          <span class="hero-num-sm" id="qBooked">&mdash;</span>
+          <span class="fig-note" id="qBookedNote"></span>
         </div>
       </div>
       <p class="hero-cap" id="qCap"></p>
@@ -1228,7 +1258,9 @@ textarea.json{
     var iw = W - m.l - m.r, ih = H - m.t - m.b;
     var all = [];
     YEARS.forEach(function (y) { (d.months[y] || []).forEach(function (v) { if (v != null) all.push(v); }); });
-    all.push(DATA.stretchPace, d.aug26, d.sep26);
+    var needM = Math.max(0, d.perOpen(d.needModest)), needS = Math.max(0, d.perOpen(d.needStretch));
+    all.push(d.aug26, d.sep26);
+    if (d.assumed) all.push(needM, needS);
     var y0 = Math.max(0, Math.floor((Math.min.apply(null, all) * 0.9) / 100) * 100);
     var y1 = Math.ceil((Math.max.apply(null, all) * 1.06) / 100) * 100;
     var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
@@ -1265,9 +1297,12 @@ textarea.json{
     });
     var asum = assumedIdxOf(d), lastAct = d26[la];
     if (asum.length) {
-      var endIdx = asum[asum.length - 1];
-      [{ vf: function () { return DATA.stretchPace; }, c: 'var(--goal2)', ci: 'var(--goal2-ink)', n: 'Stretch' },
-       { vf: function (i) { return i === 7 ? d.aug26 : d.sep26; }, c: 'var(--y26)', ci: 'var(--brand-ink)', n: 'Pacing', flag: true }
+      var endIdx = asum[asum.length - 1], ends = [];
+      // Each remaining month gets three reference points: what modest still needs per
+      // month, what we are actually pacing at, and what stretch still needs.
+      [{ vf: function () { return needS; }, c: 'var(--goal2)', ci: 'var(--goal2-ink)', n: 'Stretch needs' },
+       { vf: function (i) { return i === 7 ? d.aug26 : d.sep26; }, c: 'var(--y26)', ci: 'var(--brand-ink)', n: 'Pacing at', flag: true },
+       { vf: function () { return needM; }, c: 'var(--good)', ci: 'var(--good-ink)', n: 'Modest needs' }
       ].forEach(function (f) {
         var pts = [X(la) + ',' + Y(lastAct)].concat(asum.map(function (i) { return X(i) + ',' + Y(f.vf(i)); }));
         svg.appendChild(s('polyline', { points: pts.join(' '), fill: 'none',
@@ -1278,10 +1313,14 @@ textarea.json{
           svg.appendChild(s('circle', { cx: X(i), cy: Y(f.vf(i)), r: isStale ? 5 : 3.6,
             style: 'fill:var(--surface);stroke:' + (isStale ? 'var(--warn)' : f.c) + ';stroke-width:' + (isStale ? 3 : 2.5) }));
         });
-        var ev = f.vf(endIdx);
-        svg.appendChild(t('text', { x: X(endIdx) + 12, y: Y(ev) - 4,
+        ends.push({ y: Y(f.vf(endIdx)), val: f.vf(endIdx), ci: f.ci, n: f.n });
+      });
+      declutter(ends, 34, m.t + 12, m.t + ih).forEach(function (f) {
+        if (Math.abs(f.ay - f.y) > 3) svg.appendChild(s('line', { x1: X(endIdx) + 4, y1: f.y, x2: X(endIdx) + 10, y2: f.ay - 7,
+          style: 'stroke:' + f.ci + ';stroke-width:1;opacity:.45' }));
+        svg.appendChild(t('text', { x: X(endIdx) + 12, y: f.ay - 4,
           style: 'font-family:' + LAB.ff + ';font-size:10px;letter-spacing:.1em;text-transform:uppercase;fill:' + f.ci }, f.n));
-        svg.appendChild(valText(X(endIdx) + 12, Y(ev) + 13, kC(ev), 'start', f.ci, 17, 700));
+        svg.appendChild(valText(X(endIdx) + 12, f.ay + 13, kC(f.val), 'start', f.ci, 17, 700));
       });
     }
     var cross = s('line', { y1: m.t, y2: m.t + ih, style: 'stroke:var(--ink-2);stroke-width:1;stroke-dasharray:3 3;opacity:0' });
@@ -1306,7 +1345,11 @@ textarea.json{
     svg.appendChild(hit);
     host.appendChild(svg);
     var lg = YEARS.map(function (yr) { return { k: yr, c: YCOL[yr] }; });
-    if (d.assumed) lg.push({ k: 'Assumed — not yet entered', c: 'var(--muted)', dash: true });
+    if (d.assumed) {
+      lg.push({ k: 'Pacing at', c: 'var(--y26)', dash: true });
+      lg.push({ k: 'Modest needs', c: 'var(--good)', dash: true });
+      lg.push({ k: 'Stretch needs', c: 'var(--goal2)', dash: true });
+    }
     if (d.stale.length) lg.push({ k: 'Closed month, still assumed', c: 'var(--warn)' });
     legend(host, lg);
   }
@@ -1421,16 +1464,22 @@ textarea.json{
         kC(w26 - d.booked26) + ' still assumed</span>' : '<span style="color:var(--good-ink)">Every month entered</span>') +
       '<span style="color:var(--muted)">Scale 0&ndash;' + kC(trackMax) + '</span>');
 
-    setB('qBooked', b); put('qBooked', kC(d.booked26));
+    setB('qProjected', b); put('qProjected', kC(w26));
     pill('qPill', b);
+    put('qBooked', kC(d.booked26));
+    put('qBookedNote', d.assumed
+      ? 'Banked. ' + kC(w26 - d.booked26) + ' more assumed for ' + d.remLabel + '.'
+      : 'Banked &mdash; every month in the window is entered.');
     put('qBookedEyebrow', 'Booked ' + d.bookedLabel + ' 2026');
     put('actualThrough', d.actualThrough);
-    put('qCap', d.bookedWord + ' months in, we are <strong>' + Math.round(d.booked26 / d.modest * 100) +
-      '% of the way to modest</strong> and <strong>' + Math.round(d.booked26 / d.stretch * 100) +
-      '% of the way to stretch</strong> — with ' + (d.assumed === 1 ? 'one month' : d.assumed + ' months') +
-      ' still to account for. At the current pace the window lands at <strong>' +
-      kC(w26) + '</strong>, ' + (w26 >= d.modest ? 'clear of modest and ' : 'short of modest at ') +
-      '<strong>' + Math.round(w26 / d.stretch * 100) + '% of stretch</strong>.');
+    put('qCap', d.bookedWord + ' months in, <strong>' + kC(d.booked26) + '</strong> is banked — <strong>' +
+      Math.round(d.booked26 / d.modest * 100) + '% of modest</strong>. ' +
+      (d.assumed
+        ? (d.assumed === 1 ? '<strong>' + d.remLabel + '</strong> is the only month still to account for. '
+                           : '<strong>' + d.remLabel + '</strong> are still to account for. ') +
+          'At the current pace the window ' + (w26 >= d.modest ? 'clears modest and reaches ' : 'falls short of modest at ') +
+          '<strong>' + Math.round(w26 / d.stretch * 100) + '% of stretch</strong>.'
+        : 'Every month is in — the window closed at <strong>' + Math.round(w26 / d.stretch * 100) + '% of stretch</strong>.'));
 
     put('qtBooked', kC(d.booked26));
     var prev4 = ['2022', '2023', '2024', '2025'].map(function (y) { return sum((d.months[y] || []).slice(3, d.lastActIdx + 1)); });
@@ -1467,9 +1516,10 @@ textarea.json{
       return (i === 7 ? 'Aug ' + kC(d.aug26) : 'Sep ' + kC(d.sep26)) + (d.augLive != null && SEL.m === i ? ' — live from Part 1' : '');
     });
     put('qMonthlyNote', '2026 is booked through ' + d.actualThrough + '. ' +
-      (paceBits.length
-        ? 'From there the line forks: the <b>current pace</b> (' + paceBits.join(', ') + ') against what <b>stretch</b> needs (' +
-          kC(DATA.stretchPace) + (paceBits.length > 1 ? ' in both' : '') + '). '
+      (assumedIdxOf(d).length
+        ? 'From there it forks three ways per remaining month: what <b>modest</b> still needs (' +
+          kC(Math.max(0, d.perOpen(d.needModest))) + '), what we are <b>pacing at</b> (' + paceBits.join(', ') +
+          '), and what <b>stretch</b> still needs (' + kC(Math.max(0, d.perOpen(d.needStretch))) + '). '
         : 'Every month in the window is now entered &mdash; no fork left to draw. ') +
       'For scale, our biggest month on record is ' + kC(1800) + ' in Apr 2025, and we already booked ' + kC(1500) + ' in May.');
     var d0 = DATA.decade[DEC_YEARS[0]], d9 = DATA.decade[DEC_YEARS[9]];
@@ -1552,6 +1602,7 @@ textarea.json{
       : (d.openMonths === 1 ? d.remLabel + ' alone, to hit stretch · modest needs ' + kC(d.needModest) : 'window closed'));
     put('askEyebrow', d.assumed ? 'What it takes &mdash; ' + (d.assumed > 1 ? 'the months still open' : 'the last month') : 'Window closed');
     put('askTitle', d.openMonths ? d.remLabel + ' decide' + (d.openMonths > 1 ? '' : 's') + ' which goal we hit' : 'The window is closed');
+    if (el('mYtdAmount') && document.activeElement !== el('mYtdAmount') && document.activeElement !== el('mYtdMonths')) syncYtdInputs();
     var jt = el('edJson');
     if (jt && document.activeElement !== jt) jt.value = JSON.stringify(DATA);
   }
@@ -1613,6 +1664,7 @@ textarea.json{
     DEC_YEARS.forEach(function (y) { DATA.decade[y] = n('ed-d-' + y, DATA.decade[y]); });
     DATA.ytdAmount = nOrNull('ed-ytdAmount');
     DATA.ytdMonths = nOrNull('ed-ytdMonths');
+    syncYtdInputs();
     try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
     renderQ2();
   }
@@ -1620,6 +1672,23 @@ textarea.json{
     var v; try { v = JSON.parse(localStorage.getItem(HSTORE) || 'null'); } catch (e) { v = null; }
     if (v && v.months && v.decade) DATA = v;
     if (!DATA.holidays || !DATA.holidays.observed) DATA.holidays = defaultHolidays();
+  }
+  function syncYtdInputs() {
+    if (el('mYtdAmount')) el('mYtdAmount').value = DATA.ytdAmount == null ? '' : DATA.ytdAmount;
+    if (el('mYtdMonths')) el('mYtdMonths').value = DATA.ytdMonths == null ? '' : DATA.ytdMonths;
+    if (el('ed-ytdAmount')) el('ed-ytdAmount').value = DATA.ytdAmount == null ? '' : DATA.ytdAmount;
+    if (el('ed-ytdMonths')) el('ed-ytdMonths').value = DATA.ytdMonths == null ? '' : DATA.ytdMonths;
+    var yt = ytd2026();
+    put('hYtd', yt
+      ? usd(yt.amount) + ' over ' + yt.months + ' month' + (yt.months === 1 ? '' : 's') + ' → ' +
+        usdC(yt.amount / yt.months * 12) + ' projected for 2026.'
+      : 'The ten-year chart cannot derive this — it needs one figure the board does not hold.');
+  }
+  function pullYtd() {
+    DATA.ytdAmount = nOrNull('mYtdAmount');
+    DATA.ytdMonths = nOrNull('mYtdMonths');
+    try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
+    syncYtdInputs(); renderQ2();
   }
   function buildHolidays() {
     var y = NOW.getFullYear(), m = NOW.getMonth(), H = holidaysOf(), html = '';
@@ -1638,6 +1707,13 @@ textarea.json{
     });
     el('holExtra').addEventListener('change', pullHolidays);
     el('holExtra').addEventListener('blur', pullHolidays);
+    ['mYtdAmount', 'mYtdMonths'].forEach(function (id) {
+      var e = el(id); if (!e || e.dataset.wired) return;
+      e.dataset.wired = '1';
+      e.addEventListener('input', pullYtd);
+      e.addEventListener('change', pullYtd);
+    });
+    syncYtdInputs();
   }
   function holidaySummary() {
     var names = AUTO_HOL.names || {};
