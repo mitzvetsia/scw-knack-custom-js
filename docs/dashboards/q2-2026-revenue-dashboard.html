@@ -2041,15 +2041,28 @@ textarea.json{
     put('hGoal2', usd(g2) + ' · ' + usd(m.g2Daily) + ' per business day');
 
     var bJ = band(m.projected, g1, g2);
-    setB('oProjected', bJ); put('oProjected', usdC(m.projected));
-    pill('oProjPill', bJ);
+    // One or two days of data times a whole month is noise, not a projection — say so
+    // rather than dressing it up with a celebratory band.
+    var thin = m.rev > 0 && m.bd < 3;
+    var bShow = thin ? { key: 'none', label: 'Too early to call' } : bJ;
+    setB('oProjected', bShow); put('oProjected', usdC(m.projected));
+    pill('oProjPill', bShow);
+
+    var run = '<strong>' + usd(m.adj) + '</strong> a day we are running at';
+    var tail;
+    if (m.daysLeft <= 0) tail = '. The month is complete.';
+    else if (m.reqDaily <= 0) tail = ', with ' + dayWord(m.daysLeft) + ' left to work. The modest goal is already banked.';
+    else if (m.projected >= g1) {
+      // Ahead of pace: the required rate is a floor to hold, not a gap to close.
+      tail = ', with ' + dayWord(m.daysLeft) + ' left to work. Holding modest needs only <strong>' +
+        usd(m.reqDaily) + ' a day</strong> from here, well under the ' + run + '.';
+    } else {
+      tail = ', with ' + dayWord(m.daysLeft) + ' left to work. Closing the gap needs <strong>' +
+        usd(m.reqDaily) + ' a day</strong> from here, against the ' + run + '.';
+    }
     put('oProjCap', 'At today’s run rate the month lands at <strong>' + usdC(m.projected) + '</strong> — <strong>' +
-      (g1 ? Math.round(m.projected / g1 * 100) : 0) + '% of the modest goal</strong>' +
-      (m.daysLeft > 0
-        ? ', with ' + dayWord(m.daysLeft) + ' left to work. ' +
-          (m.reqDaily > 0 ? 'Closing the gap needs <strong>' + usd(m.reqDaily) + ' a day</strong> from here, against the <strong>' +
-            usd(m.adj) + '</strong> a day we are running at.' : 'The modest goal is already banked.')
-        : '. The month is complete.'));
+      (g1 ? Math.round(m.projected / g1 * 100) : 0) + '% of the modest goal</strong>' + tail +
+      (thin ? ' <em>Only ' + dayWord(m.bd) + ' of data so far, so treat the projection as provisional.</em>' : ''));
 
     put('oRevTD', usdC(m.rev));
     put('nRevTD', usdC(m.v.mInstall) + ' install + ' + usdC(m.v.mMagento) + ' eCommerce' +
