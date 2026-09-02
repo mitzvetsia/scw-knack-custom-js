@@ -1077,8 +1077,12 @@ textarea.json{
     // pacing if that is the month being tracked, then the flat baseline pace.
     var a7 = DATA.months['2026'][7], a8 = DATA.months['2026'][8];
     var mNow = compute();
-    var liveOK = AUG_LIVE && mNow.rev > 0 && mNow.bd >= 3;
+    // One full business day of revenue is enough to quote the pacing figure. Below
+    // three days it is provisional — say so, rather than quietly showing a different number.
+    var liveOK = AUG_LIVE && mNow.rev > 0 && mNow.bd >= 1;
     var liveK = liveOK ? mNow.projected / 1000 : null;
+    d.liveThin = liveOK && mNow.bd < 3;
+    d.liveDays = mNow.bd;
     var tIdx = (SEL.y === 2026 && SEL.m <= 8) ? SEL.m : -1;
     d.aug26 = a7 != null ? a7 : (liveK != null && tIdx === 7 ? liveK : DATA.pace);
     d.sep26 = a8 != null ? a8 : (liveK != null && tIdx === 8 ? liveK : DATA.pace);
@@ -1309,8 +1313,10 @@ textarea.json{
         svg.appendChild(s('circle', { cx: X(i), cy: Y(v), r: isStale ? 5 : 3.6,
           style: 'fill:var(--surface);stroke:' + (isStale ? 'var(--warn)' : 'var(--y26)') + ';stroke-width:' + (isStale ? 3 : 2.5) }));
       });
+      var isLive = d.augLive != null && SEL.m === endIdx;
       ends.push({ y: Y(endIdx === 7 ? d.aug26 : d.sep26), val: endIdx === 7 ? d.aug26 : d.sep26,
-                  ci: 'var(--brand-ink)', n: MON[endIdx] + ' pacing' });
+                  ci: 'var(--brand-ink)',
+                  n: MON[endIdx] + (isLive ? (d.liveThin ? ' pacing · prov.' : ' pacing') : ' assumed') });
     }
     declutter(ends, 34, m.t + 12, m.t + ih).forEach(function (f) {
       if (Math.abs(f.ay - f.y) > 3) svg.appendChild(s('line', { x1: X(8) + 4, y1: f.y, x2: X(8) + 10, y2: f.ay - 7,
@@ -1521,7 +1527,9 @@ textarea.json{
     pill('qPill', b);
     put('qBooked', kC(d.booked26));
     put('qBookedNote', d.assumed
-      ? 'Banked. ' + kC(w26 - d.booked26) + ' more assumed for ' + d.remLabel + '.'
+      ? 'Banked. ' + kC(w26 - d.booked26) + ' more ' + (d.augLive != null ? 'pacing' : 'assumed') +
+        ' for ' + d.remLabel + '.' +
+        (d.liveThin ? ' <em>' + halfNum(d.liveDays) + ' business days of ' + d.remLabel + ' so far &mdash; provisional.</em>' : '')
       : 'Banked &mdash; every month in the window is entered.');
     put('qBookedEyebrow', 'Booked ' + d.bookedLabel + ' 2026');
     put('actualThrough', d.actualThrough);
@@ -1566,12 +1574,14 @@ textarea.json{
       '</b> every ' + d.cmpLabel + ' we have booked. Stretch sits <b>' + pctS((d.needStretch - d.bestRem) / d.bestRem) +
       '</b> against the best one.');
     var paceBits = assumedIdxOf(d).map(function (i) {
-      return (i === 7 ? 'Aug ' + kC(d.aug26) : 'Sep ' + kC(d.sep26)) + (d.augLive != null && SEL.m === i ? ' — live from Part 1' : '');
+      return (i === 7 ? 'Aug ' : 'Sep ') + kC(i === 7 ? d.aug26 : d.sep26);
     });
     put('qMonthlyNote', '2026 is booked through ' + d.actualThrough + '. ' +
       (assumedIdxOf(d).length
         ? 'The dashed segment is ' + paceBits.join(' and ') + ' &mdash; not booked yet, so it carries the ' +
-          (d.augLive != null ? 'live figure from Part&nbsp;1' : 'baseline figure you set in Backstage') + '. '
+          (d.augLive != null
+            ? 'live pacing figure from Part&nbsp;1' + (d.liveThin ? ', provisional on ' + halfNum(d.liveDays) + ' business days so far' : '')
+            : 'baseline figure you set in Backstage') + '. '
         : 'Every month in the window is booked. ') +
       'Goal tracking lives on the goal track above; this chart is monthly shape against the last four years.');
     var d0 = DATA.decade[DEC_YEARS[0]], d9 = DATA.decade[DEC_YEARS[9]];
@@ -1639,10 +1649,10 @@ textarea.json{
       var host = el(c[0]); if (!host) return;
       host.innerHTML = ''; c[1](host, d);
     });
-    var mL = compute(), liveReady = mL.rev > 0 && mL.bd >= 3;
+    var mL = compute(), liveReady = mL.rev > 0 && mL.bd >= 1;
     put('qAugLiveLab', 'Use the tracked month&rsquo;s live pacing for that month in the window &mdash; off keeps the flat ' +
       kC(DATA.pace) + ' baseline. ' + (liveReady ? 'Currently ' + kC(mL.projected / 1000) + ' from ' + selLabel() + '.'
-        : '<b>Inactive</b> until that month has revenue entered and at least 3 business days elapsed.') +
+        : '<b>Inactive</b> until that month has revenue entered and at least one full business day elapsed.') +
       ' Note: Part 1 paces total revenue, the window is booked revenue.');
     var sn = el('staleNote');
     if (sn) {
@@ -2164,6 +2174,7 @@ textarea.json{
   }
 
   /* ================= MONTH READOUTS ================= */
+  function halfNum(v) { var f = Math.floor(v); return f + (v - f >= 0.5 ? '\u00bd' : ''); }
   function dayWord(v) {
     var full = Math.floor(v), half = v - full >= 0.5;
     return full + (half ? '½' : '') + ' business day' + (v === 1 ? '' : 's');
