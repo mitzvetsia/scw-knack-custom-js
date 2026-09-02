@@ -1748,7 +1748,7 @@
        killed here; co-adopt.js hard-disables the inputs after each render
        so keyboard tab-and-type can\'t commit either. The card expand
        chevron and the adopt button stay live. */
-    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check),',
+    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check):not(.scw-co-remove-check),',
     '.scw-ws-v2--readonly .scw-ws-v2-card textarea,',
     '.scw-ws-v2--readonly .scw-ws-v2-card select,',
     '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-conn],',
@@ -1760,7 +1760,7 @@
     '}',
     /* Inputs READ as plain text — no edit chrome at all (border/background
        gone, placeholders blanked), values stay fully readable. */
-    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check),',
+    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check):not(.scw-co-remove-check),',
     '.scw-ws-v2--readonly .scw-ws-v2-card textarea {',
     '  background: transparent !important;',
     '  border-color: transparent !important;',

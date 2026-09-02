@@ -876,6 +876,32 @@
     return out;
   }
 
+  // L1 head "select all in group" — render.js builds the box on every panel,
+  // but bulk.js's wiring intentionally skips readonly panels, so on the
+  // removal panel co-remove owns it (otherwise it's dead UI): checked state
+  // mirrors the group's live remove checkboxes (indeterminate on a partial
+  // selection), and the change handler below fans a toggle out to them.
+  function syncL1Selects(viewKey) {
+    var container = document.getElementById('scw-ws-v2-' + viewKey);
+    if (!container) return;
+    var heads = container.querySelectorAll('[data-scw-ws-v2-l1-select]');
+    for (var i = 0; i < heads.length; i++) {
+      var l1sel = heads[i];
+      var block = l1sel.closest ? l1sel.closest('[data-scw-ws-v2-l1]') : null;
+      if (!block) continue;
+      var boxes = block.querySelectorAll('.' + CHECK_CLS);
+      var live = 0, on = 0;
+      for (var j = 0; j < boxes.length; j++) {
+        if (boxes[j].disabled || boxes[j].style.visibility === 'hidden') continue;
+        live++;
+        if (boxes[j].checked) on++;
+      }
+      l1sel.disabled = !live;   // whole group already flagged/swapped
+      l1sel.checked = !!live && on === live;
+      l1sel.indeterminate = on > 0 && on < live;
+    }
+  }
+
   function updateBulkToolbar(viewKey) {
     var n = selCount();
     var bar = ensureBulkToolbar(viewKey);
@@ -898,6 +924,7 @@
     }
     bar.classList.toggle('scw-ws-v2-bulk-toolbar--active', n > 0);
     syncToolbarLift();
+    syncL1Selects(viewKey);   // group headers reflect the new selection
   }
 
   // When the CO worksheet's own bulk bar is ALSO active, lift this toolbar
@@ -1539,6 +1566,8 @@
   // ── Wiring ────────────────────────────────────────────────────────────
   var views = removeViews();
   if (!views.length) return;
+  var _removeViewSet = {};
+  views.forEach(function (v) { _removeViewSet[v.sourceViewKey] = true; });
 
   views.forEach(function (vcfg) {
     // POST-RENDER hook, not the raw data notify: init.js DEFERS rebuilds
@@ -1563,20 +1592,46 @@
   // state to every selectable box between anchor and target (same panel,
   // visible, not locked by a drafted remove/swap). The anchor stays put so
   // consecutive shift-clicks extend from the origin (Gmail/Finder).
+  //
+  // ⚠ Two click paths reach a box, and BOTH are handled off the REAL event:
+  //   1. Directly on the input — possible because styles.js's readonly
+  //      pointer-events lockdown excludes this class (same as the adopt box;
+  //      without the exclusion the input is hit-transparent and can NEVER
+  //      receive a direct click).
+  //   2. On the wrapping checkcell <label> around it. The label's native
+  //      behavior forwards a browser-SYNTHESIZED click to the input, and
+  //      that synthetic event can arrive without the shift modifier — so
+  //      label clicks are fully handled HERE off the genuine event instead:
+  //      preventDefault suppresses the forward and this handler owns the
+  //      toggle + selection bookkeeping.
   var _lastCheckAnchor = null;
-  // Real modifier state captured at mousedown — the click that reaches the
-  // input after a click on its wrapping <label> is browser-synthesized and
-  // can arrive without shiftKey.
+  // Belt for any synthesized path that still lands on the input directly:
+  // real modifier state captured at mousedown.
   var _shiftHeld = false;
   document.addEventListener('mousedown', function (e) {
     _shiftHeld = !!e.shiftKey;
   }, true);
   document.addEventListener('click', function (e) {
-    var box = e.target;
-    if (!box || !box.classList || !box.classList.contains(CHECK_CLS)) return;
+    var t = e.target;
+    var box = null, viaLabel = false;
+    if (t && t.classList && t.classList.contains(CHECK_CLS)) {
+      box = t;
+    } else if (t && t.closest) {
+      var cell = t.closest('.scw-co-remove-checkcell');
+      if (cell) {
+        box = cell.querySelector('.' + CHECK_CLS);
+        viaLabel = true;
+      }
+    }
+    if (!box || box.disabled || box.style.visibility === 'hidden') return;
     var rid = box.getAttribute('data-scw-co-remove-check');
     var vk  = box.getAttribute('data-scw-co-remove-view');
     if (!rid) return;
+    // Label-path clicks are handled entirely here — kill the native
+    // label→input forward so the box can't double-toggle (and so the
+    // modifier-less synthetic click never re-enters this handler).
+    if (viaLabel) e.preventDefault();
+
     if ((e.shiftKey || _shiftHeld) && _lastCheckAnchor) {
       var all = document.querySelectorAll('.' + CHECK_CLS +
         '[data-scw-co-remove-view="' + vk + '"]');
@@ -1593,7 +1648,9 @@
         if (ti === -1 && bid === rid) ti = j;
       }
       if (ai !== -1 && ti !== -1) {
-        var on = !!box.checked;   // the browser default already flipped it
+        // Direct input hit: the browser already flipped it pre-click.
+        // Label hit: the forward was suppressed above, so the flip is ours.
+        var on = viaLabel ? !box.checked : !!box.checked;
         var lo = Math.min(ai, ti), hi = Math.max(ai, ti);
         for (var k = lo; k <= hi; k++) {
           var b = boxes[k], kid = b.getAttribute('data-scw-co-remove-check');
@@ -1601,10 +1658,17 @@
           if (on) _sel[kid] = true; else delete _sel[kid];
         }
         updateBulkToolbar(vk);
-        return;
+        return;   // anchor stays put — the range origin
       }
       // Anchor no longer selectable (row got flagged / re-rendered away) —
       // fall through so this click still lands as the new anchor.
+    }
+    if (viaLabel) {
+      // Plain label click: the suppressed forward would have toggled the
+      // box — do it here with the same bookkeeping the change handler does.
+      box.checked = !box.checked;
+      if (box.checked) _sel[rid] = true; else delete _sel[rid];
+      updateBulkToolbar(vk);
     }
     _lastCheckAnchor = rid;
   }, true);
@@ -1613,6 +1677,29 @@
   document.addEventListener('change', function (e) {
     var box = e.target;
     if (!box || !box.classList) return;
+    // L1 "select all in group" INSIDE a removal panel is ours — bulk.js
+    // deliberately skips readonly panels, so without this the head box is
+    // dead UI. Fan the toggle out to every live remove checkbox in the
+    // group (flagged/swapped rows stay untouched).
+    if (box.hasAttribute && box.hasAttribute('data-scw-ws-v2-l1-select')) {
+      var panelL = box.closest ? box.closest('.scw-ws-v2') : null;
+      var vkL = panelL && panelL.id ? panelL.id.replace(/^scw-ws-v2-/, '') : '';
+      if (vkL && _removeViewSet[vkL]) {
+        var blockL = box.closest('[data-scw-ws-v2-l1]');
+        var boxesL = blockL ? blockL.querySelectorAll('.' + CHECK_CLS) : [];
+        for (var bi = 0; bi < boxesL.length; bi++) {
+          var bL = boxesL[bi];
+          if (bL.disabled || bL.style.visibility === 'hidden') continue;
+          bL.checked = box.checked;
+          var kidL = bL.getAttribute('data-scw-co-remove-check');
+          if (!kidL) continue;
+          if (box.checked) _sel[kidL] = true; else delete _sel[kidL];
+        }
+        box.indeterminate = false;
+        updateBulkToolbar(vkL);
+        return;
+      }
+    }
     // The CO worksheet's standard checkboxes toggle ITS bulk bar — re-run
     // the lift check a tick later (bulk.js flips --active in its own
     // handler) so the two toolbars never stack when both are active.
