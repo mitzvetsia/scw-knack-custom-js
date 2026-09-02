@@ -734,6 +734,19 @@
     '  box-shadow: inset 4px 0 0 #e11d48 !important;',
     '  background: #fff5f6 !important;',
     '}',
+    /* The base zebra (.scw-ws-v2-card:nth-child(even), specificity 0,2,0)
+       out-ranks the plain --co-remove class, so even-positioned removals
+       went gray — red/gray/red striping read as three different states.
+       Every removal must stay in the red family: zebra survives as two
+       rose shades, and hover stays rose too (the base even:hover rule
+       would otherwise gray it back out). */
+    '.scw-ws-v2-card--co-remove:nth-child(even) {',
+    '  background: #ffeef0 !important;',
+    '}',
+    '.scw-ws-v2-card--co-remove:hover,',
+    '.scw-ws-v2-card--co-remove:nth-child(even):hover {',
+    '  background: #ffe4e6 !important;',
+    '}',
     // "REMOVE" flag in the DROP/label cell — stacked ABOVE the label on its
     // own line (inline beside it truncated the drop label in the narrow
     // column: "REMOVE E-…").
