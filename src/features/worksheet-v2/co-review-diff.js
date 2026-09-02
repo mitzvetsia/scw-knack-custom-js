@@ -223,12 +223,24 @@
     _timer = setTimeout(apply, 180);
   }
 
+  // Signature of the last rendered pass. A re-run whose plan matches AND
+  // whose annotations are still in the DOM is a no-op — poll-driven
+  // view_4109 re-renders used to clear + rebuild every flag each tick,
+  // and every worksheet rebuild left the rows flag-less for the 180ms
+  // debounce (heights collapsing then re-growing — the page "jumping").
+  var _lastSig = '';
+
   function apply() {
     var panel = document.getElementById('scw-ws-v2-' + VIEW);
-    clearAnnotations(panel);
-    if (!panel || !inOpsReview()) return;
+    if (!panel || !inOpsReview()) {
+      _lastSig = '';
+      clearAnnotations(panel);
+      return;
+    }
     var snap = getSnapshot();
     if (!snap || !snap.lines) {
+      _lastSig = '';
+      clearAnnotations(panel);
       // Loud when dormant-in-review: the #1 setup gap is the snapshot not
       // being readable (field_2972 missing from view_4109, or Make's send
       // branch not writing payload.snapshot verbatim).
@@ -239,8 +251,6 @@
         snap);
       return;
     }
-    injectCss();
-
     // "(Jul 15)" — appended to the per-line flag tooltips so the reference
     // point (the last send to the sub) is explicit right where the flag is.
     var sentWhen = '';
@@ -255,10 +265,12 @@
     var ws = window.SCW && SCW.worksheetV2;
     var recs = (ws && ws.data && typeof ws.data.readRecords === 'function')
       ? ws.data.readRecords(VIEW) : [];
-    if (!recs.length) return;
+    if (!recs.length) { _lastSig = ''; clearAnnotations(panel); return; }
 
+    // ── PASS 1: read-only plan (no DOM writes) ──────────────────────────
     var liveIds = {};
-    var changedCount = 0, addedCount = 0;
+    var plan = [], sigBits = [];
+    var changedCount = 0, addedCount = 0, wasCount = 0;
 
     for (var i = 0; i < recs.length; i++) {
       var rec = recs[i];
@@ -271,11 +283,8 @@
       var base = snap.lines[rec.id];
       if (!base) {
         addedCount++;
-        // Neutral wording: anything drafted after the send lands here — the
-        // sub's additions AND ops' own post-submission adds/swap pairs alike.
-        flagCard(card, 'scw-ws-v2-co-flag--new', 'NEW',
-          'Added since the CO was last sent to the sub for pricing' +
-          sentWhen + ' — the sub has NOT priced this line.');
+        plan.push({ card: card, type: 'new' });
+        sigBits.push(rec.id + ':new');
         continue;
       }
 
@@ -291,22 +300,58 @@
       if (!deltas.length) continue;
 
       changedCount++;
-      var parts = [];
-      for (var d = 0; d < deltas.length; d++) {
-        parts.push(deltas[d].spec.label + ' ' +
-          fmt(deltas[d].old, deltas[d].spec.money) + ' → ' +
-          fmt(deltas[d].live, deltas[d].spec.money));
-        annotateInput(card, deltas[d].spec.field,
-          deltas[d].old, deltas[d].spec.money);
-      }
-      flagCard(card, 'scw-ws-v2-co-flag--changed', 'CHANGED',
-        'Changed since the CO was sent to the sub' + sentWhen + ': ' +
-        parts.join(' · '));
+      wasCount += deltas.length;
+      plan.push({ card: card, type: 'changed', deltas: deltas });
+      sigBits.push(rec.id + ':' + deltas.map(function (d) {
+        return d.spec.key + '=' + d.old + '>' + d.live;
+      }).join(','));
     }
 
     var removedNames = [];
     for (var id in snap.lines) {
       if (!liveIds[id]) removedNames.push(lineName(snap.lines[id]));
+    }
+
+    // ── Idempotence gate ────────────────────────────────────────────────
+    // Same plan as last pass AND the annotations are still in the DOM →
+    // leave everything alone. Poll re-renders become free; only real data
+    // changes or a worksheet rebuild (which wipes the flags) touch the DOM.
+    var sig = (snap.sentAt || '') + '|' + removedNames.join(',') + '|' +
+      sigBits.join(';');
+    var haveFlags = panel.querySelectorAll(
+      '.scw-ws-v2-co-flag--new, .scw-ws-v2-co-flag--changed').length;
+    var haveWas = panel.querySelectorAll('.scw-ws-v2-diff-was').length;
+    if (sig === _lastSig && document.getElementById(BANNER_ID) &&
+        haveFlags === (addedCount + changedCount) && haveWas === wasCount) {
+      return;
+    }
+    _lastSig = sig;
+
+    // ── PASS 2: render from the plan ────────────────────────────────────
+    clearAnnotations(panel);
+    injectCss();
+
+    for (var p = 0; p < plan.length; p++) {
+      var item = plan[p];
+      if (item.type === 'new') {
+        // Neutral wording: anything drafted after the send lands here — the
+        // sub's additions AND ops' own post-submission adds/swap pairs alike.
+        flagCard(item.card, 'scw-ws-v2-co-flag--new', 'NEW',
+          'Added since the CO was last sent to the sub for pricing' +
+          sentWhen + ' — the sub has NOT priced this line.');
+        continue;
+      }
+      var parts = [];
+      for (var d = 0; d < item.deltas.length; d++) {
+        parts.push(item.deltas[d].spec.label + ' ' +
+          fmt(item.deltas[d].old, item.deltas[d].spec.money) + ' → ' +
+          fmt(item.deltas[d].live, item.deltas[d].spec.money));
+        annotateInput(item.card, item.deltas[d].spec.field,
+          item.deltas[d].old, item.deltas[d].spec.money);
+      }
+      flagCard(item.card, 'scw-ws-v2-co-flag--changed', 'CHANGED',
+        'Changed since the CO was sent to the sub' + sentWhen + ': ' +
+        parts.join(' · '));
     }
 
     renderBanner(panel, changedCount, addedCount, removedNames, snap.sentAt);
@@ -317,11 +362,18 @@
     SCW.onViewRender(STATUS_VIEW, schedule, EVENT_NS);
   }
   // Worksheet rebuilds fire data notifies, not knack-view-render — re-apply
-  // after each (same hook the CO locks use).
+  // after each (same hook the CO locks use). SYNCHRONOUSLY, not through the
+  // debounce: init.js's rebuild subscriber runs first (build.sh order), so
+  // by the time this fires the cards are rebuilt WITHOUT their flags — a
+  // deferred re-apply painted a flag-less frame first (rows shrank, then
+  // re-grew 180ms later: the "mad jumping" after every inline-edit
+  // refetch). Same-task re-annotation means no intermediate frame exists.
   (function () {
     var ws = window.SCW && SCW.worksheetV2;
     if (ws && ws.data && typeof ws.data.subscribe === 'function') {
-      ws.data.subscribe(VIEW, schedule);
+      ws.data.subscribe(VIEW, function () {
+        try { apply(); } catch (e) { schedule(); }
+      });
     }
   })();
   $(document).off('knack-view-render.' + VIEW + EVENT_NS)

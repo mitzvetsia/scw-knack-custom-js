@@ -2520,7 +2520,13 @@
     // Leading bulk-select checkbox — absolutely positioned INSIDE the
     // row so it vertically centers with the row\'s actual height
     // (multi-line labor desc rows are taller than single-line ones).
-    var rowEl = card.querySelector('.scw-ws-v2-row');
+    // NOT on readOnly panels (CO adopt/remove sources): bulk never mounts
+    // there, so the box was an inert decoy that overlapped co-remove's own
+    // selection checkbox and fed nothing — its clicks either died or bled
+    // into the CO worksheet's bulk bar, serving the wrong options.
+    var vcRO = ns.cfg && typeof ns.cfg.viewCfg === 'function'
+      ? ns.cfg.viewCfg(sourceViewKey) : null;
+    var rowEl = (vcRO && vcRO.readOnly) ? null : card.querySelector('.scw-ws-v2-row');
     if (rowEl) {
       var sel = document.createElement('input');
       sel.type = 'checkbox';

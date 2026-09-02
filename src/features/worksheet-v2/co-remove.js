@@ -415,6 +415,12 @@
       '}',
       '.scw-co-remove-toolbar .scw-co-swap-bulk[disabled] {',
       '  opacity: 0.55; cursor: default;',
+      '}',
+      // Both floating toolbars (this one + the CO worksheet's bulk bar) pin
+      // to the same bottom-center spot — when both are active, lift this one
+      // above the other so neither set of actions is buried.
+      '.scw-ws-v2-bulk-toolbar--lifted {',
+      '  bottom: 84px !important;',
       '}'
     ].join('\n');
     document.head.appendChild(s);
@@ -891,6 +897,17 @@
         : 'None of the selected rows has a product to swap';
     }
     bar.classList.toggle('scw-ws-v2-bulk-toolbar--active', n > 0);
+    syncToolbarLift();
+  }
+
+  // When the CO worksheet's own bulk bar is ALSO active, lift this toolbar
+  // above it — both pin to the same fixed bottom-center spot otherwise.
+  function syncToolbarLift() {
+    if (!_toolbar) return;
+    var other = document.querySelector(
+      '.scw-ws-v2-bulk-toolbar--active:not(.scw-co-remove-toolbar)');
+    _toolbar.classList.toggle('scw-ws-v2-bulk-toolbar--lifted',
+      _toolbar.classList.contains('scw-ws-v2-bulk-toolbar--active') && !!other);
   }
 
   function clearSelection(viewKey) {
@@ -1525,16 +1542,77 @@
 
   views.forEach(function (vcfg) {
     if (ns.data && typeof ns.data.subscribe === 'function') {
-      ns.data.subscribe(vcfg.sourceViewKey, function () { decorateSoon(vcfg); });
+      // SYNC decorate on rebuild notifies: init.js rebuilds the panel
+      // before this subscriber runs (build.sh order), and a deferred
+      // decorate let one frame paint WITHOUT the prepended checkbox
+      // column — the whole grid shifted a column on every refetch (part
+      // of the "page jumping" complaint). Same-task decoration leaves no
+      // intermediate frame; the timeout stays as the error fallback.
+      ns.data.subscribe(vcfg.sourceViewKey, function () {
+        try { decorate(vcfg); } catch (e) { decorateSoon(vcfg); }
+      });
     }
     $(document).on('knack-view-render.' + vcfg.sourceViewKey + '.scwCoRemove',
       function () { decorateSoon(vcfg); });
   });
 
+  // Shift-click range select — same anchor semantics as bulk.js: a plain
+  // click sets the anchor, a shift-click applies the clicked box's new
+  // state to every selectable box between anchor and target (same panel,
+  // visible, not locked by a drafted remove/swap). The anchor stays put so
+  // consecutive shift-clicks extend from the origin (Gmail/Finder).
+  var _lastCheckAnchor = null;
+  document.addEventListener('click', function (e) {
+    var box = e.target;
+    if (!box || !box.classList || !box.classList.contains(CHECK_CLS)) return;
+    var rid = box.getAttribute('data-scw-co-remove-check');
+    var vk  = box.getAttribute('data-scw-co-remove-view');
+    if (!rid) return;
+    if (e.shiftKey && _lastCheckAnchor) {
+      var all = document.querySelectorAll('.' + CHECK_CLS +
+        '[data-scw-co-remove-view="' + vk + '"]');
+      var boxes = [];
+      for (var i = 0; i < all.length; i++) {
+        if (all[i].disabled || all[i].offsetParent === null) continue;
+        if (all[i].style.visibility === 'hidden') continue;   // lockCheck'd
+        boxes.push(all[i]);
+      }
+      var ai = -1, ti = -1;
+      for (var j = 0; j < boxes.length; j++) {
+        var bid = boxes[j].getAttribute('data-scw-co-remove-check');
+        if (ai === -1 && bid === _lastCheckAnchor) ai = j;
+        if (ti === -1 && bid === rid) ti = j;
+      }
+      if (ai !== -1 && ti !== -1) {
+        var on = !!box.checked;   // the browser default already flipped it
+        var lo = Math.min(ai, ti), hi = Math.max(ai, ti);
+        for (var k = lo; k <= hi; k++) {
+          var b = boxes[k], kid = b.getAttribute('data-scw-co-remove-check');
+          b.checked = on;
+          if (on) _sel[kid] = true; else delete _sel[kid];
+        }
+        updateBulkToolbar(vk);
+        return;
+      }
+      // Anchor no longer selectable (row got flagged / re-rendered away) —
+      // fall through so this click still lands as the new anchor.
+    }
+    _lastCheckAnchor = rid;
+  }, true);
+
   // Selection tracking — delegated so re-rendered checkboxes keep working.
   document.addEventListener('change', function (e) {
     var box = e.target;
-    if (!box || !box.classList || !box.classList.contains(CHECK_CLS)) return;
+    if (!box || !box.classList) return;
+    // The CO worksheet's standard checkboxes toggle ITS bulk bar — re-run
+    // the lift check a tick later (bulk.js flips --active in its own
+    // handler) so the two toolbars never stack when both are active.
+    if (box.hasAttribute && (box.hasAttribute('data-scw-ws-v2-select') ||
+        box.hasAttribute('data-scw-ws-v2-l1-select'))) {
+      setTimeout(syncToolbarLift, 0);
+      return;
+    }
+    if (!box.classList.contains(CHECK_CLS)) return;
     var rid = box.getAttribute('data-scw-co-remove-check');
     var vk  = box.getAttribute('data-scw-co-remove-view');
     if (!rid) return;

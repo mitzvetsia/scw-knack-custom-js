@@ -1036,6 +1036,7 @@
       var id = all[i].getAttribute('data-scw-ws-v2-select');
       if (!id || seen[id]) continue;
       if (all[i].offsetParent === null) continue;
+      if (all[i].closest && all[i].closest('.scw-ws-v2--readonly')) continue;
       seen[id] = true;
       out.push(all[i]);
     }
@@ -1073,6 +1074,11 @@
       var t = e.target;
       if (!t || !t.hasAttribute) return;
       if (!t.hasAttribute('data-scw-ws-v2-select')) return;
+      // Boxes inside readOnly panels (CO adopt/remove sources) never feed
+      // the bulk selection — those panels have their own selection flows
+      // (co-remove checkboxes) and their own toolbars. card.js no longer
+      // renders the box there; this guards any straggler.
+      if (t.closest && t.closest('.scw-ws-v2--readonly')) return;
 
       // Stop the click bubbling to the card\'s expand handler.
       e.stopPropagation();
@@ -1103,6 +1109,7 @@
     document.addEventListener('change', function (e) {
       var t = e.target;
       if (!t) return;
+      if (t.closest && t.closest('.scw-ws-v2--readonly')) return;
       if (t.hasAttribute && t.hasAttribute('data-scw-ws-v2-select')) {
         // Shift-click was handled in the click listener above; here we
         // only catch the plain toggle. If shift was held, the click

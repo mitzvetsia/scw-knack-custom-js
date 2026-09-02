@@ -187,7 +187,12 @@
       SCW.onViewRender(vk, schedule, EVENT_NS);
     }
     if (ns.data && typeof ns.data.subscribe === 'function') {
-      ns.data.subscribe(vk, schedule);
+      // SYNC on rebuild notifies (the cards were just rebuilt bare) — a
+      // debounced re-apply painted a chip-less frame first, adding to the
+      // post-refetch layout jumping. Debounce stays for view renders.
+      ns.data.subscribe(vk, function () {
+        try { apply(vk); } catch (e) { schedule(); }
+      });
     }
   });
 })();
