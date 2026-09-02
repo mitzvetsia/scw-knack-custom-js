@@ -76,6 +76,7 @@
     // ####CO). ⚠️ Builder: field_2966 must be a column on view_4072 /
     // view_4151 or the hop fails open (CO-only story, today's behavior).
     target:           'field_2966',
+    action:           'field_2965',    // CO action (Remove on credit lines)
     bucket:           'field_2219',    // proposal bucket (connection)
     mapConn:          'field_2231',    // FLAG_map camera or reader connections
     // Sub bid (the sub's own per-line price — sub-safe money, fine on the
@@ -621,14 +622,24 @@
     if (ogChain && ogChain.length) {
       // Swap story, base first: "As quoted on SW####" (what was sold),
       // then one "As changed by ####CO" per swap generation, ending on
-      // the CURRENT line. Installed-vs-quoted diffing runs against the
-      // current section only — that's the operative spec.
+      // the CURRENT line. A credit-line entry is the replaced config as
+      // carried on the swap's Remove half — label it as such (its money
+      // and qty are the signed credit values). Installed-vs-quoted
+      // diffing runs against the current section only.
       for (var s = 0; s < ogChain.length; s++) {
-        var lbl = firstSowLabel(ogChain[s]);
-        body.appendChild(sectionLabelEl(s === 0
-          ? 'As quoted on ' + (lbl || 'the original SOW')
-          : 'As changed by ' + (lbl || 'a change order')));
-        body.appendChild(buildSection(ogChain[s], null, ctx).frag);
+        var entry = ogChain[s];
+        var lbl = firstSowLabel(entry.a);
+        var text;
+        if (entry.credit) {
+          text = 'Swapped out — as configured before ' +
+            (lbl || 'this change order') + ' (from its credit line)';
+        } else {
+          text = s === 0
+            ? 'As quoted on ' + (lbl || 'the original SOW')
+            : 'As changed by ' + (lbl || 'a change order');
+        }
+        body.appendChild(sectionLabelEl(text));
+        body.appendChild(buildSection(entry.a, null, ctx).frag);
       }
       body.appendChild(sectionLabelEl(
         'As changed by ' + (firstSowLabel(pa) || 'the change order')));
@@ -760,14 +771,27 @@
     var missing = [];
     var installIdx = buildInstallAttrsIndex();
     var connCtx = buildConnCtx(propIdx, installIdx, linkIdx);
-    // install record id → a CO line that TARGETS it (field_2966: the
-    // swap/remove half acting on that record). A swap has two such lines
-    // (Add + Remove) — either serves; they share the CO, and origins
-    // dedupe by label.
+    // install record id → the CO lines that TARGET it (field_2966: the
+    // swap/remove halves acting on that record). A swap contributes two
+    // (Add + Remove); the Remove/credit half carries the REPLACED
+    // product+config, which makes it the before-picture of last resort.
     var targetIdx = Object.create(null);
     for (var tp in propIdx) {
       var tid = rawIds(propIdx[tp], PF.target)[0];
-      if (tid && !targetIdx[tid]) targetIdx[tid] = propIdx[tp];
+      if (!tid) continue;
+      (targetIdx[tid] = targetIdx[tid] || []).push(propIdx[tp]);
+    }
+    // The credit half among lines targeting `installId` (excluding
+    // `notLine`): prefer an explicit Remove action, else any other line.
+    function creditLineFor(installId, notLine) {
+      var list = targetIdx[installId] || [];
+      var pick = null;
+      for (var c = 0; c < list.length; c++) {
+        if (notLine && list[c].id === notLine.id) continue;
+        if (!pick) pick = list[c];
+        if (/remove/i.test(stripHtml(list[c][PF.action] || ''))) return list[c];
+      }
+      return pick;
     }
     function mergeOrigins(a, b) {
       var out = [], seen = {};
@@ -791,25 +815,39 @@
         // line is what it replaced; that line may itself be a CO line from
         // an earlier swap → keep hopping until the base quote (cycle
         // guard + depth cap). Renders one section per generation.
-        var chain = [], seen = {};
+        var chain = [], seen = {};   // entries: { a: attrs, credit: bool }
         seen[pa.id] = 1;
         var cur = pa, guard = 0;
         while (guard++ < 6) {
           var tgt = rawIds(cur, PF.target)[0] || '';
-          if (!tgt || !linkIdx[tgt] || !propIdx[linkIdx[tgt]]) break;
-          var prev = propIdx[linkIdx[tgt]];
-          if (seen[prev.id]) break;
-          seen[prev.id] = 1;
-          chain.push(prev);
-          origins = mergeOrigins(resolveOrigins(prev, acceptIdx), origins);
-          cur = prev;
+          if (!tgt) break;
+          var prev = linkIdx[tgt] ? propIdx[linkIdx[tgt]] : null;
+          if (prev && !seen[prev.id]) {
+            seen[prev.id] = 1;
+            chain.push({ a: prev, credit: false });
+            origins = mergeOrigins(resolveOrigins(prev, acceptIdx), origins);
+            cur = prev;
+            continue;
+          }
+          // Record-hop dead: the replaced install record isn't loaded, its
+          // field_2819 link was repointed, or the swap re-used this very
+          // record. The swap's CREDIT line still carries the replaced
+          // product + config — terminal before-picture of last resort.
+          var credit = creditLineFor(tgt, cur);
+          if (credit && !seen[credit.id]) {
+            seen[credit.id] = 1;
+            chain.push({ a: credit, credit: true });
+            origins = mergeOrigins(resolveOrigins(credit, acceptIdx), origins);
+          }
+          break;
         }
-        chain.reverse();   // base quote first, then each CO generation
+        chain.reverse();   // base/oldest first, then each CO generation
         // Reverse: MY install record is targeted by a CO line (slated for
         // removal / swapped away) — surface that CO in the origin chips so
         // the base item reads "quoted on SW#### · touched by ####CO".
-        if (!chain.length && targetIdx[ids[i]] && targetIdx[ids[i]].id !== pa.id) {
-          origins = mergeOrigins(origins, resolveOrigins(targetIdx[ids[i]], acceptIdx));
+        if (!chain.length) {
+          var touch = creditLineFor(ids[i], pa);
+          if (touch) origins = mergeOrigins(origins, resolveOrigins(touch, acceptIdx));
         }
         injectPanel(ids[i], pa, origins, installIdx[ids[i]], connCtx, chain);
       }
