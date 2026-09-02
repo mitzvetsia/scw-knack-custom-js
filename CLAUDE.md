@@ -816,3 +816,36 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Fix shape (small)**: acceptance flows through the accept-SOW DTO / Make scenario — add a write-back at the moment the install-acceptance record is created (or on the e-signature SIGNED webhook, matching the CO design where signature is the gate): PUT the parent SOW's `FLAG_accepted = Yes` and stamp the REAL date into `SYS_accepted date` (or a new dedicated date field if the auto-fill default must stay). One step fixes both holes.
 - **Follow-up audit**: after the write-back lands, sweep everything that currently READS `FLAG_accepted` (views, filters, Make scenarios, bundle features) — those consumers have only ever seen "No", so their behavior/reporting has been silently understated and may need re-checking once the flag starts flipping.
 - **Related nice-to-have**: keep project `REL_company` mandatory (98% populated today) — it is what makes client-level analysis (and the full "Testies" test-project sweep) possible; the legacy quote-era Contact field is only 22% populated and the legacy Company field is empty (3/7,617).
+
+### 22. Install-record create (object_128) 500s with a bare `DataError` when the source SOW line item was deleted after publish
+- **Diagnosed 2026-09-02** after a long false trail (blank number/currency fields, empty
+  connection arrays, product default labor hours, the view_3896→view_4140 snapshot swap —
+  all ruled out by diffing a failing publish blob against a successful one). The real
+  cause: the acceptance Make scenario creates object_128 records from the **publish JSON
+  snapshot** (`buildJsonSnapshot` → `extractGridRecords`, a raw `model.toJSON()` dump of
+  view_4140 keyed `view_3896`). That blob is frozen at publish; acceptance runs later. If a
+  SOW line item is **deleted in between**, the create still maps
+  `REL_SOURCE_SOW_proposed line item` = `{{7.id}}` → Knack rejects a connection to a
+  nonexistent record with **`500 Internal Server Error / Code: DataError`** and no body.
+  Make surfaces nothing more, so it looks like a mapping bug. Accessories hit it first
+  because their ids churn most (worksheet-v2's camera delete cascades to `field_2464`
+  accessories — `worksheet-v2/init.js` ~1140 — and mount swaps delete + recreate them).
+- **Handled Make-side (not in this repo)**: error handler on the Create Record module →
+  fallback Create without the source connection + `Resume` returning the new id (zero
+  extra ops on the happy path; only the deleted-source row pays for the retry). A `Get a
+  record` pre-check per row was rejected — ~140 wasted ops per acceptance for a rare case.
+- **Bundle contract to preserve**: the DURABLE install→proposed link is the TEXT field
+  **`field_2819`** (proposed record id), not the connection. `install-as-quoted-panel.js`
+  resolves it client-side against the hidden grid `view_4072`; it never reads the
+  connection. Make should always write `field_2819` = `{{7.id}}` (text never 500s) and
+  treat the connection as best-effort. Don't build new features on the connection.
+- **Debugging pattern that finally worked** (reuse it): export module-7 output bundles
+  from a FAILING and a SUCCESSFUL run, diff key sets (were identical), then compare the
+  failing row against rows of the same class that succeeded — the `id`/`field_2116_raw`
+  pair is the row's own id; grep the failing connection id across both blobs. Make will
+  not show Knack's error body; `curl -i` against `objects/object_128/records` will.
+- **Follow-up (optional, not built)**: block SOW line-item deletes in worksheet-v2 once
+  the SOW has a published proposal / acceptance in flight — extend `card.js
+  isDeleteBlocked` (the existing `field_2586 > 0` / `field_2404` pattern). Needs a
+  header-level "published" signal that isn't on the line-item record today; client-side
+  only, so a speed bump, not a wall. The Make error route stays the real safety net.
