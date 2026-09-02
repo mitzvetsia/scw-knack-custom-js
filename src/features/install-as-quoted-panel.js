@@ -486,14 +486,22 @@
     return pubs;
   }
 
-  /** Compact value signature over the rendered groups — used to drop
-   *  consecutive publications where the line didn't change. */
-  function lineSignature(attrs) {
-    var bits = [];
+  /** Do two line records genuinely differ? Compares ONLY fields BOTH
+   *  records actually carry — older/slim snapshots omit fields entirely,
+   *  and treating an uncaptured field as "was blank" invented phantom
+   *  changes ("Qty — → 1") between publications. */
+  function hasField(attrs, key) {
+    return !!attrs && !!key && (key in attrs || (key + '_raw') in attrs);
+  }
+  function linesDiffer(a, b) {
     for (var i = 0; i < GROUPS.length; i++) {
-      bits.push(normToken(readVal(attrs, PF[GROUPS[i].key]) || ''));
+      var k = PF[GROUPS[i].key];
+      if (!hasField(a, k) || !hasField(b, k)) continue;   // unknown ≠ changed
+      if (normToken(readVal(a, k) || '') !== normToken(readVal(b, k) || '')) {
+        return true;
+      }
     }
-    return bits.join('|');
+    return false;
   }
 
   // ── provenance resolution ───────────────────────────────────────
@@ -591,6 +599,13 @@
                    bucketIdOfAttrs(pa, PF.bucket) === CAM_READER_BUCKET;
     for (var i = 0; i < GROUPS.length; i++) {
       var g = GROUPS[i];
+      // A field the record doesn't carry AT ALL (older/slim snapshot
+      // dumps) is UNKNOWN, not blank — rendering it as "—" read as "was
+      // empty" and invented changes between publications. Skip the cell.
+      // (Live model attrs always carry every projected column, so this
+      // only ever trims snapshot sections.)
+      if (PF[g.key] && !hasField(pa, PF[g.key]) &&
+          g.key !== 'connectedDevices' && g.key !== 'connectedTo') continue;
       // Bucket-rule gating (matches the worksheet cards): Connected Devices
       // only on map-connections products; Connected To only on cam/reader
       // rows; the cabling flags (Existing / Exterior / Plenum) only on
@@ -639,11 +654,14 @@
       } else {
         val = readVal(pa, PF[g.key]);
       }
+      // Identifier formulas can leave empty "()" tails — pure noise.
+      if (val) val = String(val).replace(/\s*\(\s*\)/g, '').trim();
       var cell = document.createElement('div');
       cell.className = PANEL_CLS + '-cell';
       var nowHtml = '';
       if (ia && IF[g.key]) {
         var curVal = readVal(ia, IF[g.key]);
+        if (curVal) curVal = String(curVal).replace(/\s*\(\s*\)/g, '').trim();
         if (differs === null ? valuesDiffer(g.kind, val, curVal) : differs) {
           diffCount++;
           cell.className += ' ' + PANEL_CLS + '-cell--diff';
@@ -759,9 +777,12 @@
         var lbl = firstSowLabel(entry.a);
         var text;
         if (entry.pub) {
-          // Published-snapshot section — name the publication + quote.
-          var pl = entry.pub.label || (entry.pub.isCo ? 'a change order' : 'the SOW');
-          text = (s === 0 ? 'As quoted on ' : 'As changed by ') + pl +
+          // Published-snapshot section — name it with the SAME identifier
+          // the origin chips use (the line's own SOW connection), falling
+          // back to the snapshot header parse, then generic wording.
+          var pl = firstSowLabel(entry.a) || entry.pub.label;
+          text = (s === 0 ? 'As quoted on ' : 'As changed by ') +
+            (pl || (s === 0 ? 'the original SOW' : 'a change order')) +
             (entry.pub.quote ? ' · Quote ' + entry.pub.quote : '') +
             (entry.pub.signed ? ' · signed' : '');
         } else if (entry.credit) {
@@ -1008,7 +1029,7 @@
           var candidates = {}; candidates[pa.id] = 1;
           for (var ce = 0; ce < chain.length; ce++) candidates[chain[ce].a.id] = 1;
           var paLbl = normToken(stripHtml(pa['field_1950'] || ''));
-          var snapSecs = [], lastSig = null;
+          var snapSecs = [];
           for (var p = 0; p < pubs.length; p++) {
             var line = null;
             for (var cid in candidates) {
@@ -1016,9 +1037,10 @@
             }
             if (!line && paLbl && pubs[p].byLabel[paLbl]) line = pubs[p].byLabel[paLbl];
             if (!line) continue;
-            var sig = lineSignature(line);
-            if (sig === lastSig) continue;    // unchanged in this publication
-            lastSig = sig;
+            // unchanged since the previous kept publication → skip
+            // (compares only fields both snapshots captured)
+            if (snapSecs.length &&
+                !linesDiffer(line, snapSecs[snapSecs.length - 1].a)) continue;
             snapSecs.push({ a: line, credit: false, pub: pubs[p] });
             origins = mergeOrigins(origins, [{
               label: pubs[p].label || (pubs[p].isCo ? 'CO' : 'SOW'),
@@ -1027,7 +1049,7 @@
             }]);
           }
           if (snapSecs.length &&
-              lineSignature(pa) === lineSignature(snapSecs[snapSecs.length - 1].a)) {
+              !linesDiffer(pa, snapSecs[snapSecs.length - 1].a)) {
             snapSecs.pop();   // newest publication IS the live line
           }
           if (snapSecs.length) story = snapSecs;
