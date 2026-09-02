@@ -626,6 +626,7 @@ textarea.json{
   </details>
 
   <div class="selnote" id="selNote" hidden></div>
+  <div class="selnote" id="staleNote" hidden></div>
 
   <!-- ============ PART 1: THIS MONTH ============ -->
   <div class="part" style="margin-top:0">
@@ -840,6 +841,11 @@ textarea.json{
         <div class="ed-scroll"><table class="ed-tbl" id="edDecade"></table></div>
       </div>
 
+      <div class="ed-sec">
+        <span class="eyebrow">2026 year to date <span class="unit">&mdash; drives the projected bar on the ten-year chart</span></span>
+        <div class="ed-scroll"><table class="ed-tbl" id="edYtd"></table></div>
+      </div>
+
       <div class="ed-actions">
         <button class="btn" type="button" id="edCopy">Copy all data as JSON</button>
         <button class="btn" type="button" id="edApply">Apply pasted JSON</button>
@@ -1020,6 +1026,7 @@ textarea.json{
       '2026': [1000, 963, 804, 1240, 1500, 1110, 1220, null, null]
     },
     pace: 1200, stretchPace: 1400, modest: 6650, stretch: 7850, holidays: null,
+    ytdAmount: null, ytdMonths: null,
     decade: { '2016': 6846976, '2017': 7721318, '2018': 8069797, '2019': 8031927, '2020': 8350386,
               '2021': 9060154, '2022': 10557746, '2023': 11448245, '2024': 11871000, '2025': 13500000 }
   };
@@ -1041,6 +1048,16 @@ textarea.json{
     d.aug26 = a7 != null ? a7 : (liveK != null && tIdx === 7 ? liveK : DATA.pace);
     d.sep26 = a8 != null ? a8 : (liveK != null && tIdx === 8 ? liveK : DATA.pace);
     d.augActual = a7 != null; d.sepActual = a8 != null;
+    // A 2026 month is closed once the calendar has passed it. Closed-but-unentered is
+    // NOT the same as "still to play for" — the result exists, the board just lacks it.
+    d.curIdx = NOW.getFullYear() > 2026 ? 12 : (NOW.getFullYear() === 2026 ? NOW.getMonth() : -1);
+    d.stale = []; d.open = [];
+    [7, 8].forEach(function (i) {
+      if ((i === 7 ? a7 : a8) != null) return;
+      (i < d.curIdx ? d.stale : d.open).push(i);
+    });
+    d.lastActIdx = 6;
+    for (var li = 8; li >= 0; li--) if (DATA.months['2026'][li] != null) { d.lastActIdx = li; break; }
     d.augLive = (a7 == null && tIdx === 7 && liveK != null) || (a8 == null && tIdx === 8 && liveK != null) ? liveK : null;
     YEARS.forEach(function (y) {
       var m = DATA.months[y] || [];
@@ -1052,8 +1069,14 @@ textarea.json{
     });
     // Booked grows as months close, so the remaining ask shrinks with it.
     d.booked26 = sum((DATA.months['2026'] || []).slice(3, 7)) + (a7 || 0) + (a8 || 0);
-    d.openMonths = (a7 == null ? 1 : 0) + (a8 == null ? 1 : 0);
-    d.remLabel = a7 == null && a8 == null ? 'Aug + Sep' : (a7 == null ? 'Aug' : (a8 == null ? 'Sep' : 'the window'));
+    var MLBL = { 7: 'Aug', 8: 'Sep' };
+    // The ask spans every month still carried at an assumption. A closed-but-unentered
+    // month is unknown, not zero, so it stays in the divisor.
+    var assumedIdx = d.stale.concat(d.open).sort();
+    d.assumed = assumedIdx.length;
+    d.openMonths = d.assumed;
+    d.remLabel = d.assumed ? assumedIdx.map(function (i) { return MLBL[i]; }).join(' + ') : 'the window';
+    d.staleLabel = d.stale.map(function (i) { return MLBL[i]; }).join(' and ');
     d.q3Stretch = (DATA.months['2026'][6] || 0) + (a7 != null ? a7 : DATA.stretchPace) + (a8 != null ? a8 : DATA.stretchPace);
     d.windowStretch = d.q['2026'][1] + d.q3Stretch;
     d.modest = DATA.modest; d.stretch = DATA.stretch;
@@ -1108,7 +1131,7 @@ textarea.json{
       svg.appendChild(valText(cx, labY, kC(tot), 'middle', yr === '2026' ? BANDI[bb.key] : 'var(--ink)', yr === '2026' ? 20 : 17, 700));
       if (yr === '2026') svg.appendChild(t('text', { x: cx + 1, y: labY - 17, 'text-anchor': 'middle',
         style: 'font-size:13px;fill:var(--gold)' }, bb.key === 'best' ? '★' : ''));
-      svg.appendChild(axisText(cx, H - 14, yr + (yr === '2026' ? ' pacing' : '')));
+      svg.appendChild(axisText(cx, H - 14, yr + (yr === '2026' && d.assumed ? ' pacing' : '')));
       var hit = s('rect', { x: cx - bandw / 2, y: m.t, width: bandw, height: ih, style: 'fill:transparent' });
       hit.addEventListener('mousemove', function (e) {
         var b = host.getBoundingClientRect();
@@ -1204,9 +1227,13 @@ textarea.json{
       svg.appendChild(axisText(m.l - 10, Y(gv) + 3.5, kC(gv), 'end'));
     }
     MON.forEach(function (mo, i) { svg.appendChild(axisText(X(i), H - 14, mo)); });
-    svg.appendChild(s('rect', { x: X(6) + iw / 16, y: m.t, width: iw - (iw / 8) * 6 - iw / 16, height: ih, style: 'fill:var(--ink);opacity:.035' }));
-    svg.appendChild(t('text', { x: X(7) + 10, y: m.t + 14, 'text-anchor': 'middle',
-      style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' }, 'Pacing'));
+    var shadeFrom = Math.min(8, Math.max(0, d.curIdx));
+    if (d.curIdx <= 8) {
+      var sx = X(shadeFrom) - iw / 16;
+      svg.appendChild(s('rect', { x: sx, y: m.t, width: Math.max(0, m.l + iw - sx), height: ih, style: 'fill:var(--ink);opacity:.035' }));
+      svg.appendChild(t('text', { x: (sx + m.l + iw) / 2, y: m.t + 14, 'text-anchor': 'middle',
+        style: 'font-family:' + LAB.ff + ';font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)' }, 'Pacing'));
+    }
 
     ['2022', '2023', '2024', '2025'].forEach(function (yr) {
       var pts = (d.months[yr] || []).map(function (v, i) { return X(i) + ',' + Y(v); }).join(' ');
@@ -1221,11 +1248,14 @@ textarea.json{
     });
     var lastAct = d26[6];
     [{ a: DATA.stretchPace, b: DATA.stretchPace, c: 'var(--goal2)', ci: 'var(--goal2-ink)', n: 'Stretch' },
-     { a: d.aug26, b: d.sep26, c: 'var(--y26)', ci: 'var(--brand-ink)', n: 'Pacing' }].forEach(function (f) {
+     { a: d.aug26, b: d.sep26, c: 'var(--y26)', ci: 'var(--brand-ink)', n: 'Pacing', flag: true }].forEach(function (f) {
       svg.appendChild(s('polyline', { points: [X(6) + ',' + Y(lastAct), X(7) + ',' + Y(f.a), X(8) + ',' + Y(f.b)].join(' '),
         fill: 'none', style: 'stroke:' + f.c + ';stroke-width:2.5;stroke-dasharray:6 5;stroke-linecap:round' }));
       [[7, f.a], [8, f.b]].forEach(function (pt) {
-        svg.appendChild(s('circle', { cx: X(pt[0]), cy: Y(pt[1]), r: 3.6, style: 'fill:var(--surface);stroke:' + f.c + ';stroke-width:2.5' }));
+        // A closed month with no actual gets an amber ring: this figure is a guess about the past.
+        var isStale = f.flag && d.stale.indexOf(pt[0]) !== -1;
+        svg.appendChild(s('circle', { cx: X(pt[0]), cy: Y(pt[1]), r: isStale ? 5 : 3.6,
+          style: 'fill:var(--surface);stroke:' + (isStale ? 'var(--warn)' : f.c) + ';stroke-width:' + (isStale ? 3 : 2.5) }));
       });
       svg.appendChild(t('text', { x: X(8) + 12, y: Y(f.b) - 4,
         style: 'font-family:' + LAB.ff + ';font-size:10px;letter-spacing:.1em;text-transform:uppercase;fill:' + f.ci }, f.n));
@@ -1243,7 +1273,8 @@ textarea.json{
         return v == null ? null : { k: yr, v: kC(v), c: YCOL[yr] };
       }).filter(Boolean);
       if (i > 6) {
-        rows.push({ k: '2026 at pace', v: kC(i === 7 ? d.aug26 : d.sep26), c: 'var(--y26)' });
+        rows.push({ k: d.stale.indexOf(i) !== -1 ? '2026 — assumed, month closed' : '2026 at pace',
+                    v: kC(i === 7 ? d.aug26 : d.sep26), c: d.stale.indexOf(i) !== -1 ? 'var(--warn)' : 'var(--y26)' });
         rows.push({ k: '2026 at stretch', v: kC(DATA.stretchPace), c: 'var(--goal2)' });
       }
       tip.show(tipRows(MON[i] + (i > 6 ? ' — pacing' : ''), rows), px, e.clientY - b.top);
@@ -1251,7 +1282,10 @@ textarea.json{
     hit.addEventListener('mouseleave', function () { cross.setAttribute('opacity', 0); tip.hide(); });
     svg.appendChild(hit);
     host.appendChild(svg);
-    legend(host, YEARS.map(function (yr) { return { k: yr, c: YCOL[yr] }; }).concat([{ k: 'Aug–Sep pacing', c: 'var(--muted)', dash: true }]));
+    var lg = YEARS.map(function (yr) { return { k: yr, c: YCOL[yr] }; });
+    if (d.assumed) lg.push({ k: 'Assumed — not yet entered', c: 'var(--muted)', dash: true });
+    if (d.stale.length) lg.push({ k: 'Closed month, still assumed', c: 'var(--warn)' });
+    legend(host, lg);
   }
 
   /* ================= CHART: ten-year revenue ================= */
@@ -1259,7 +1293,12 @@ textarea.json{
     var W = Math.max(340, host.clientWidth), H = 330;
     var m = { t: 46, r: 14, b: 40, l: 56 };
     var iw = W - m.l - m.r, ih = H - m.t - m.b;
-    var vals = DEC_YEARS.map(function (y) { return DATA.decade[y] || 0; });
+    var rows = DEC_YEARS.map(function (y) { return { yr: y, v: DATA.decade[y] || 0 }; });
+    var ytdA = DATA.ytdAmount, ytdM = DATA.ytdMonths;
+    if (ytdA > 0 && ytdM > 0 && ytdM <= 12) {
+      rows.push({ yr: '2026', v: ytdA / ytdM * 12, ytd: ytdA, months: ytdM, proj: true });
+    }
+    var vals = rows.map(function (r) { return r.v; });
     var ax = niceAxis(Math.max.apply(null, vals) * 1.12, 3);
     var maxY = ax.max;
     var svg = s('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img',
@@ -1272,31 +1311,47 @@ textarea.json{
         style: 'stroke:' + (g === 0 ? 'var(--rule)' : 'var(--grid)') + ';stroke-width:1' }));
       svg.appendChild(axisText(m.l - 10, Y(gv) + 3.5, usdC(gv), 'end'));
     }
-    var bandw = iw / DEC_YEARS.length, bw = Math.min(56, bandw * 0.6);
-    DEC_YEARS.forEach(function (yr, i) {
-      var v = DATA.decade[yr] || 0, cx = m.l + bandw * i + bandw / 2, last = i ? DATA.decade[DEC_YEARS[i - 1]] : null;
-      var isLast = i === DEC_YEARS.length - 1;
-      svg.appendChild(s('rect', { x: cx - bw / 2, y: Y(v), width: bw, height: Math.max(1, Y(0) - Y(v)), rx: 3,
-        style: 'fill:' + (isLast ? 'var(--y26)' : 'var(--y23)') }));
+    var defs = s('defs'); defs.appendChild(hatch('hdec', 'var(--y26)')); svg.appendChild(defs);
+    var bandw = iw / rows.length, bw = Math.min(56, bandw * 0.6);
+    rows.forEach(function (r, i) {
+      var v = r.v, cx = m.l + bandw * i + bandw / 2, last = i ? rows[i - 1].v : null;
+      var isLast = i === rows.length - 1;
+      if (r.proj) {
+        // Solid to the money actually banked, hatched to the straight-line projection.
+        svg.appendChild(s('rect', { x: cx - bw / 2, y: Y(r.ytd), width: bw, height: Math.max(1, Y(0) - Y(r.ytd)), rx: 3, style: 'fill:var(--y26)' }));
+        svg.appendChild(s('rect', { x: cx - bw / 2, y: Y(v), width: bw, height: Math.max(1, Y(r.ytd) - Y(v)), rx: 3,
+          style: 'fill:url(#hdec);stroke:var(--y26);stroke-width:1;stroke-opacity:.5' }));
+      } else {
+        svg.appendChild(s('rect', { x: cx - bw / 2, y: Y(v), width: bw, height: Math.max(1, Y(0) - Y(v)), rx: 3,
+          style: 'fill:' + (isLast ? 'var(--y26)' : 'var(--y23)') }));
+      }
       if (isLast || i === 0) svg.appendChild(valText(cx, Y(v) - 22, usdC(v), 'middle', 'var(--ink)', 16, 700));
       if (last) {
         var dd = (v - last) / last;
         svg.appendChild(t('text', { x: cx, y: Y(v) - 8, 'text-anchor': 'middle',
           style: 'font-family:' + LAB.ff + ';font-size:10px;fill:' + (dd >= 0 ? 'var(--good-ink)' : 'var(--crit-ink)') }, pctS(dd)));
       }
-      svg.appendChild(axisText(cx, H - 14, yr));
+      svg.appendChild(axisText(cx, H - 14, r.yr + (r.proj ? ' proj' : '')));
       var hit = s('rect', { x: cx - bandw / 2, y: m.t, width: bandw, height: ih, style: 'fill:transparent' });
       hit.addEventListener('mousemove', function (e) {
         var b = host.getBoundingClientRect();
-        var rr = [{ k: 'Total revenue', v: usd(v), c: isLast ? 'var(--y26)' : 'var(--y23)' }];
+        var rr = r.proj
+          ? [{ k: 'Banked so far', v: usd(r.ytd), c: 'var(--y26)' },
+             { k: 'Through', v: r.months + ' month' + (r.months === 1 ? '' : 's'), dim: true },
+             { k: 'Projected year', v: usd(v) }]
+          : [{ k: 'Total revenue', v: usd(v), c: isLast ? 'var(--y26)' : 'var(--y23)' }];
         if (last) rr.push({ k: 'vs prior year', v: usd(v - last), dim: true });
-        rr.push({ k: 'vs ' + DEC_YEARS[0], v: '×' + (v / (DATA.decade[DEC_YEARS[0]] || 1)).toFixed(2), dim: true });
-        tip.show(tipRows(yr, rr), e.clientX - b.left, e.clientY - b.top);
+        rr.push({ k: 'vs ' + rows[0].yr, v: '×' + (v / (rows[0].v || 1)).toFixed(2), dim: true });
+        tip.show(tipRows(r.yr + (r.proj ? ' — projected' : ''), rr), e.clientX - b.left, e.clientY - b.top);
       });
       hit.addEventListener('mouseleave', tip.hide);
       svg.appendChild(hit);
     });
     host.appendChild(svg);
+    if (rows[rows.length - 1].proj) {
+      legend(host, [{ k: 'Actual', c: 'var(--y23)' }, { k: 'Banked so far in 2026', c: 'var(--y26)' },
+                    { k: 'Straight-line projection', c: 'var(--y26)', hatch: true }]);
+    }
   }
 
   /* ================= PART 2 + 3 TEXT, TRACK, TILES, TABLE ================= */
@@ -1323,8 +1378,8 @@ textarea.json{
     pill('qPill', b);
     put('qCap', 'Four months in, we are <strong>' + Math.round(d.booked26 / d.modest * 100) +
       '% of the way to modest</strong> and <strong>' + Math.round(d.booked26 / d.stretch * 100) +
-      '% of the way to stretch</strong> — with ' + (d.openMonths === 1 ? 'one month' : d.openMonths + ' months') +
-      ' still open. At the current pace the window lands at <strong>' +
+      '% of the way to stretch</strong> — with ' + (d.assumed === 1 ? 'one month' : d.assumed + ' months') +
+      ' still to account for. At the current pace the window lands at <strong>' +
       kC(w26) + '</strong>, ' + (w26 >= d.modest ? 'clear of modest and ' : 'short of modest at ') +
       '<strong>' + Math.round(w26 / d.stretch * 100) + '% of stretch</strong>.');
 
@@ -1363,9 +1418,18 @@ textarea.json{
     var d0 = DATA.decade[DEC_YEARS[0]], d9 = DATA.decade[DEC_YEARS[9]];
     var cagr = Math.pow(d9 / d0, 1 / 9) - 1, ups = 0;
     for (var i = 1; i < DEC_YEARS.length; i++) if (DATA.decade[DEC_YEARS[i]] > DATA.decade[DEC_YEARS[i - 1]]) ups++;
-    put('qDecadeNote', ups + ' growth years out of ' + (DEC_YEARS.length - 1) + ', compounding at about <b>' +
+    var decNote = ups + ' growth years out of ' + (DEC_YEARS.length - 1) + ', compounding at about <b>' +
       (cagr * 100).toFixed(1) + '% a year</b>. ' + DEC_YEARS[9] + ' was <b>' +
-      pctS((d9 - DATA.decade[DEC_YEARS[8]]) / DATA.decade[DEC_YEARS[8]]) + '</b>.');
+      pctS((d9 - DATA.decade[DEC_YEARS[8]]) / DATA.decade[DEC_YEARS[8]]) + '</b>.';
+    if (DATA.ytdAmount > 0 && DATA.ytdMonths > 0) {
+      var pj = DATA.ytdAmount / DATA.ytdMonths * 12;
+      decNote += ' 2026 is projecting <b>' + usdC(pj) + '</b> from <b>' + usdC(DATA.ytdAmount) + '</b> banked through ' +
+        DATA.ytdMonths + ' month' + (DATA.ytdMonths === 1 ? '' : 's') + ' — <b>' + pctS((pj - d9) / d9) +
+        '</b> on 2025. Straight-line, so it under-reads a year that is back-half weighted.';
+    } else {
+      decNote += ' Add 2026 revenue to date in the editor to project the current year.';
+    }
+    put('qDecadeNote', decNote);
 
     var asks = [
       { id: 'askModest', lab: 'Modest &mdash; ' + kC(d.modest), num: kC(d.needModest / 2), band: 'good',
@@ -1389,7 +1453,7 @@ textarea.json{
       var yoy = pw ? pctS((d.window[yr] - pw) / pw) : '&mdash;';
       var cls = pw ? (d.window[yr] >= pw ? 'up' : 'dn') : '';
       var full = DATA.decade[yr] ? usdC(DATA.decade[yr]) : '&mdash;';
-      var lbl = yr === '2026' ? '2026 at pace' : yr;
+      var lbl = yr === '2026' ? (d.assumed ? '2026 at pace' : '2026') : yr;
       rows += '<tr' + (yr === '2026' ? ' class="now"' : '') + '><td><span class="yr"><i style="background:' + YCOL[yr] + '"></i>' +
         lbl + '</span></td><td>' + kC(d.q[yr][0]) + '</td><td>' + kC(d.q[yr][1]) + '</td><td>' + kC(d.q[yr][2]) +
         '</td><td>' + kC(d.window[yr]) + '</td><td class="delta ' + cls + '">' + yoy + '</td><td>' + full + '</td></tr>';
@@ -1409,13 +1473,21 @@ textarea.json{
       kC(DATA.pace) + ' baseline. ' + (liveReady ? 'Currently ' + kC(mL.projected / 1000) + ' from ' + selLabel() + '.'
         : '<b>Inactive</b> until that month has revenue entered and at least 3 business days elapsed.') +
       ' Note: Part 1 paces total revenue, the window is booked revenue.');
+    var sn = el('staleNote');
+    if (sn) {
+      sn.hidden = !d.stale.length;
+      if (d.stale.length) sn.innerHTML = '<b>' + d.staleLabel + ' ' +
+        (d.stale.length > 1 ? 'have' : 'has') + ' closed, but no booked figure is entered.</b> ' +
+        'The window is still carrying ' + (d.stale.length > 1 ? 'them' : 'it') + ' at the assumed ' + kC(DATA.pace) +
+        ' pace. Enter the actual under <em>Numbers &amp; methodology &rarr; Edit the historical numbers</em> to make these figures real.';
+    }
     setB('tWinV', b); put('tWinV', kC(w26));
     pill('tWinP', b);
     put('tWinN', kC(d.booked26) + ' booked Apr–Jul · modest ' + kC(d.modest) + ' · stretch ' + kC(d.stretch));
     put('tAskV', kC(d.perOpen(d.needStretch)) + '<span style="font-size:22px;color:var(--muted)">/mo</span>');
     put('tAskN', d.openMonths > 1 ? d.remLabel + ' each, to hit stretch · modest needs ' + kC(d.perOpen(d.needModest)) + '/mo'
       : (d.openMonths === 1 ? d.remLabel + ' alone, to hit stretch · modest needs ' + kC(d.needModest) : 'window closed'));
-    put('askEyebrow', d.openMonths ? 'What it takes &mdash; ' + (d.openMonths > 1 ? 'the only two months left' : 'the last month') : 'Window closed');
+    put('askEyebrow', d.assumed ? 'What it takes &mdash; ' + (d.assumed > 1 ? 'the months still open' : 'the last month') : 'Window closed');
     put('askTitle', d.openMonths ? d.remLabel + ' decide' + (d.openMonths > 1 ? '' : 's') + ' which goal we hit' : 'The window is closed');
     var jt = el('edJson');
     if (jt && document.activeElement !== jt) jt.value = JSON.stringify(DATA);
@@ -1446,6 +1518,13 @@ textarea.json{
       '<tr><td>Stretch goal, Apr&ndash;Sep window</td>' + inputCell('ed-stretch', DATA.stretch, 10) + '</tr>' +
       '</tbody>';
 
+    el('edYtd').innerHTML = '<tbody>' +
+      '<tr><td>2026 total revenue to date <span class="unit">&mdash; whole dollars, Install + eCommerce</span></td>' +
+        inputCell('ed-ytdAmount', DATA.ytdAmount == null ? '' : DATA.ytdAmount, 1000, 'leave blank to hide') + '</tr>' +
+      '<tr><td>&hellip; through how many complete months</td>' +
+        inputCell('ed-ytdMonths', DATA.ytdMonths == null ? '' : DATA.ytdMonths, 1, 'e.g. 8') + '</tr>' +
+      '</tbody>';
+
     var d1 = '<thead><tr>' + DEC_YEARS.map(function (y) { return '<th>' + y + '</th>'; }).join('') + '</tr></thead><tbody><tr>' +
       DEC_YEARS.map(function (y) { return inputCell('ed-d-' + y, DATA.decade[y], 1000); }).join('') + '</tr></tbody>';
     el('edDecade').innerHTML = d1;
@@ -1469,6 +1548,8 @@ textarea.json{
     DATA.modest = n('ed-modest', DATA.modest);
     DATA.stretch = n('ed-stretch', DATA.stretch);
     DEC_YEARS.forEach(function (y) { DATA.decade[y] = n('ed-d-' + y, DATA.decade[y]); });
+    DATA.ytdAmount = nOrNull('ed-ytdAmount');
+    DATA.ytdMonths = nOrNull('ed-ytdMonths');
     try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
     renderQ2();
   }
