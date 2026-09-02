@@ -497,9 +497,12 @@
     for (var i = 0; i < GROUPS.length; i++) {
       var k = PF[GROUPS[i].key];
       if (!hasField(a, k) || !hasField(b, k)) continue;   // unknown ≠ changed
-      if (normToken(readVal(a, k) || '') !== normToken(readVal(b, k) || '')) {
-        return true;
-      }
+      var va = normToken(readVal(a, k) || '');
+      var vb = normToken(readVal(b, k) || '');
+      // Qty is blank on single-quantity line types (flag-capped at 1) —
+      // blank vs a value there is a representation gap, not a change.
+      if (GROUPS[i].key === 'qty' && (!va || !vb)) continue;
+      if (va !== vb) return true;
     }
     return false;
   }
@@ -656,8 +659,11 @@
       }
       // Identifier formulas can leave empty "()" tails — pure noise.
       if (val) val = String(val).replace(/\s*\(\s*\)/g, '').trim();
+      // Single-quantity line types (flag-capped at 1) leave Qty blank —
+      // a "Qty —" cell is dead weight, drop it entirely.
+      if (g.key === 'qty' && !val) continue;
       var cell = document.createElement('div');
-      cell.className = PANEL_CLS + '-cell';
+      cell.className = PANEL_CLS + '-cell ' + PANEL_CLS + '-cell--' + g.key;
       var nowHtml = '';
       if (ia && IF[g.key]) {
         var curVal = readVal(ia, IF[g.key]);
@@ -1128,6 +1134,10 @@
       '  letter-spacing: .06em; text-transform: uppercase; color: #64748b;',
       '  margin: 10px 0 2px; padding-top: 8px; border-top: 1px dashed #e2e8f0; }',
       P + '-seclabel:first-child { margin-top: 0; padding-top: 0; border-top: 0; }',
+      // Product names deserve the room — the product cell spans two
+      // tracks so part numbers don't wrap while Qty hogs an equal column.
+      P + '-cell--product { grid-column: span 2; }',
+      P + '-cell--qty .scw-aq-val, ' + P + '-cell--qty { font-variant-numeric: tabular-nums; }',
       P + '-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));',
       '  gap: 8px 16px; }',
       P + '-label { font: 700 10px/1.2 system-ui, sans-serif; text-transform: uppercase;',
