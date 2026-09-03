@@ -480,7 +480,10 @@
   // view_4056 (sub dashboard) deliberately EXCLUDED — photo QA is an ops
   // surface; subs see plain photo strips (thumbnails → lightbox, "+ Add" →
   // the Knack add-photo page). Decided 2026-08-12.
-  var QA_CHIT_VIEWS = { view_4093: 1 };
+  // view_4056 (sub deployment dashboard) joined 2026-09-03: subs SEE the
+  // QA chit + status (the QA columns are exposed on that view), but their
+  // modal renders QA read-only (QA_MODAL_RESTRICTED_VIEWS below).
+  var QA_CHIT_VIEWS = { view_4093: 1, view_4056: 1 };
 
   // Surfaces where the photo modal opens RESTRICTED: upload / view /
   // replace only — no Photo Type or Required editors (subs can't
@@ -1135,14 +1138,14 @@
                 el.closest('.scw-ws-v2-card').querySelector('[data-scw-ws-v2-view]'));
     if (host) viewKey = host.getAttribute('data-scw-ws-v2-view') || '';
 
-    // Sub-facing surfaces open the modal RESTRICTED (upload/view only) —
-    // and only once a same-scene save view is mapped, since without one
-    // the upload pane's PUT can never succeed. Unmapped → native path.
+    // Sub-facing surfaces open the modal RESTRICTED (upload/view only,
+    // QA sidebar read-only) — and only once a same-scene save view is
+    // mapped, since without one the upload pane's PUT can never succeed.
+    // Unmapped → native path.
     var restricted = !!(viewKey && QA_MODAL_RESTRICTED_VIEWS[viewKey]);
     if (restricted) {
       var svMap = window.SCW && SCW.photoEditPanel && SCW.photoEditPanel.SAVE_VIEWS;
       if (!svMap || !svMap[viewKey]) return false;
-      needsQa = false;   // QA is ops-only — no sidebar on sub surfaces
     }
 
     var resolvedImg = imgUrl || el.getAttribute('data-qa-img') || '';
@@ -1166,8 +1169,11 @@
       })(),
       viewKey:       viewKey,
       // Restricted surfaces: hard-lock the Type/Required editors even if a
-      // future save-view change would otherwise let the classify bar render.
-      lockClassify:  restricted
+      // future save-view change would otherwise let the classify bar render,
+      // and render the QA sidebar read-only (subs see SCW's verdict; a Pass
+      // also freezes replace/remove in the viewer bar).
+      lockClassify:  restricted,
+      qaReadOnly:    restricted
     };
 
     SCW.qaPopover.openAnchor(el, photoId, snapshot, function () {

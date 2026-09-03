@@ -296,6 +296,23 @@
          max-height so it fills the sidebar column. */
       '.scw-qa-modal__sidebar .scw-qa-popover__body { max-height: none; flex: 1 1 auto; }',
       '.scw-qa-modal__sidebar .scw-qa-popover__actions { flex: 0 0 auto; }',
+      /* Read-only QA sidebar (sub surfaces) — static values, no controls. */
+      '.scw-qa-popover__ro-val {',
+      '  display: inline-flex; align-items: center; padding: 4px 12px;',
+      '  border-radius: 999px; font: 600 12px/1.2 system-ui, sans-serif;',
+      '  background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0;',
+      '}',
+      '.scw-qa-popover__ro-val--pass { background: #dcfce7; color: #15803d; border-color: #86efac; }',
+      '.scw-qa-popover__ro-val--fail { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }',
+      '.scw-qa-popover__ro-val--pending { background: #ede9fe; color: #6d28d9; border-color: #c4b5fd; }',
+      '.scw-qa-popover__ro-text {',
+      '  font: 400 12.5px/1.5 system-ui, sans-serif; color: #374151;',
+      '  white-space: pre-wrap; overflow-wrap: anywhere;',
+      '}',
+      '.scw-qa-popover__ro-note {',
+      '  margin-top: 12px; font: 500 11.5px/1.4 system-ui, sans-serif;',
+      '  color: #94a3b8;',
+      '}',
       /* No-QA (preview-only) modal — no sidebar, viewer fills full width. */
       '.scw-qa-modal--noqa .scw-qa-modal__viewer { flex: 1 1 100%; }'
     ].join('\n');
@@ -759,8 +776,17 @@
     var bar = document.createElement('div');
     bar.className = 'scw-qa-modal__viewer-bar';
 
-    var locked = photo.needsQa !== false && isFullyComplete(photo.status, photo.client);
-    var lockTitle = 'QA is signed off — set it back to Pending or Fail first.';
+    // Restricted surfaces (subs): a photo that PASSED SCW QA is frozen —
+    // no replace, no remove — regardless of client signoff. Ops surfaces
+    // keep the softer rule (locked only once fully signed off, and ops can
+    // always unlock by flipping the status back).
+    var subPassLock = !!photo.qaReadOnly &&
+      String(photo.status || '').toLowerCase() === 'pass';
+    var locked = subPassLock ||
+      (photo.needsQa !== false && isFullyComplete(photo.status, photo.client));
+    var lockTitle = subPassLock
+      ? 'This photo passed SCW QA — it can no longer be replaced or removed.'
+      : 'QA is signed off — set it back to Pending or Fail first.';
 
     function swapToUploadPane() {
       // Keep the classify bar (Type/Required editors) across the swap.
@@ -958,11 +984,81 @@
    * treat as _popover (it owns .scw-qa-popover__body / __actions and the
    * is-saving toggle via .scw-qa-modal.is-saving).
    */
+  /** Read-only QA summary for restricted surfaces (sub deployment page):
+   *  the sub sees SCW's verdict — status, client signoff, notes, sign-off
+   *  metadata, history — with no controls, so no save routine is ever
+   *  reachable. Mirrors the editable sidebar's sections visually. */
+  function buildReadOnlyQaSidebar(photo) {
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-qa-popover__body';
+
+    function section(label, node) {
+      var sec = document.createElement('div');
+      sec.className = 'scw-qa-popover__section';
+      var lbl = document.createElement('div');
+      lbl.className = 'scw-qa-popover__label';
+      lbl.textContent = label;
+      sec.appendChild(lbl);
+      sec.appendChild(node);
+      wrap.appendChild(sec);
+    }
+
+    var st = String(photo.status || 'Pending');
+    var stEl = document.createElement('span');
+    stEl.className = 'scw-qa-popover__ro-val scw-qa-popover__ro-val--' +
+      (/^pass$/i.test(st) ? 'pass' : (/^fail$/i.test(st) ? 'fail' : 'pending'));
+    stEl.textContent = st;
+    section('QA Status (SCW)', stEl);
+
+    if (isClientGateActive(photo.client)) {
+      var cl = document.createElement('span');
+      cl.className = 'scw-qa-popover__ro-val';
+      cl.textContent = photo.client || 'N/A';
+      section('Client signoff', cl);
+    }
+
+    if (photo.notes && String(photo.notes).trim()) {
+      var nt = document.createElement('div');
+      nt.className = 'scw-qa-popover__ro-text';
+      nt.textContent = photo.notes;
+      section('QA Notes', nt);
+    }
+
+    if (isFullyComplete(photo.status, photo.client) &&
+        (photo.completedBy || photo.completedDate)) {
+      var foot = document.createElement('div');
+      foot.className = 'scw-qa-popover__signoff';
+      foot.innerHTML =
+        'Signed off by <strong>' + escapeHtml(photo.completedBy || '—') +
+        '</strong> on <strong>' + escapeHtml(photo.completedDate || '—') + '</strong>';
+      wrap.appendChild(foot);
+    }
+
+    var hist = document.createElement('div');
+    hist.className = 'scw-qa-popover__history';
+    if (photo.history && String(photo.history).trim()) {
+      hist.innerHTML = photo.history;   // same paragraph-text render as the editable path
+    } else {
+      hist.className += ' scw-qa-popover__history-empty';
+      hist.textContent = 'No QA history yet.';
+    }
+    section('History', hist);
+
+    var note = document.createElement('div');
+    note.className = 'scw-qa-popover__ro-note';
+    note.textContent = 'QA is completed by SCW — read-only here.';
+    wrap.appendChild(note);
+    return wrap;
+  }
+
   function buildModal(photo) {
     var alreadySignedOff = isFullyComplete(photo.status, photo.client);
     // needsQa=false → plain big-photo viewer: no QA sidebar, no QA controls
     // built at all (so the save routines are never reachable for this photo).
     var showQa = (photo.needsQa !== false);
+    // Restricted surfaces show the QA sidebar READ-ONLY (see
+    // buildReadOnlyQaSidebar) — the editable controls are never built.
+    var qaRO = !!photo.qaReadOnly;
 
     var overlay = document.createElement('div');
     overlay.className = 'scw-qa-modal__overlay';
@@ -977,7 +1073,7 @@
     // mount them in the sidebar. `src` is a throwaway container. Skipped
     // entirely when the photo doesn't need QA (preview-only modal).
     var body = null, actions = null;
-    if (showQa) {
+    if (showQa && !qaRO) {
       var src = buildPopover(photo, dialog);
       body    = src.querySelector('.scw-qa-popover__body');
       actions = src.querySelector('.scw-qa-popover__actions');
@@ -994,7 +1090,9 @@
     typeEl.title = photo.type || 'Photo';
     var subEl = document.createElement('div');
     subEl.className = 'scw-qa-modal__sub';
-    subEl.textContent = !showQa ? 'Photo' : (alreadySignedOff ? 'Signed off' : 'QA review');
+    subEl.textContent = !showQa ? 'Photo'
+      : qaRO ? ('QA: ' + (photo.status || 'Pending'))
+      : (alreadySignedOff ? 'Signed off' : 'QA review');
     meta.appendChild(typeEl);
     meta.appendChild(subEl);
     head.appendChild(meta);
@@ -1059,8 +1157,12 @@
     if (showQa) {
       var sidebar = document.createElement('div');
       sidebar.className = 'scw-qa-modal__sidebar';
-      if (body)    sidebar.appendChild(body);     // reused QA controls
-      if (actions) sidebar.appendChild(actions);  // reused footer buttons
+      if (qaRO) {
+        sidebar.appendChild(buildReadOnlyQaSidebar(photo));
+      } else {
+        if (body)    sidebar.appendChild(body);     // reused QA controls
+        if (actions) sidebar.appendChild(actions);  // reused footer buttons
+      }
       splitBody.appendChild(sidebar);
     }
 
@@ -1069,7 +1171,8 @@
     // The footer was populated by buildPopover while it still lived in the
     // throwaway `src`; now that it's mounted under `dialog`, re-run so any
     // later updateActions(dialog,…) calls (chip/notes edits) keep resolving.
-    if (showQa) updateActions(dialog, photo);
+    // (Read-only sidebars have no footer — nothing to populate.)
+    if (showQa && !qaRO) updateActions(dialog, photo);
 
     overlay.appendChild(dialog);
     return { overlay: overlay, dialog: dialog };
@@ -1629,7 +1732,10 @@
       viewKey:       snapshot.viewKey || '',
       // Restricted surfaces (sub deployment dashboard): upload/view only —
       // never render the Photo Type / Required editors.
-      lockClassify:  !!snapshot.lockClassify
+      lockClassify:  !!snapshot.lockClassify,
+      // Restricted surfaces: QA sidebar renders READ-ONLY (subs see SCW's
+      // verdict but can't touch it), and Pass freezes replace/remove.
+      qaReadOnly:    !!snapshot.qaReadOnly
     };
 
     _photoId = photoId;
