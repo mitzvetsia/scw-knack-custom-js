@@ -57,6 +57,12 @@
     // form (survey-request-form.js, dormant until wired in). Hidden now so
     // the raw grid doesn't sit on the page while that form is parked.
     'view_4156',
+    // 'view_4158' — DOC_photos grid on the SUB deployment dashboard
+    // (scene_1353): the same-scene save view for the restricted photo
+    // modal's uploads (photo-edit-panel.js SAVE_VIEWS view_4056 →
+    // view_4158; field_771 inline-editable). PUTs are URL-based, so
+    // display:none is safe — subs never need to see the raw grid.
+    'view_4158',
     // 'view_3913' — hidden grid of all SOW line items on the project,
     // scraped by import-unique-items-btn for the sowId → lineItemIds
     // index (and itemId → label map). change-record-limit pumps it

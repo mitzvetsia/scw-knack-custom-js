@@ -38,9 +38,8 @@
     // is the only way to fill a required slot). ⚠️ TO ACTIVATE: add a
     // DOC_photos grid to the SUB deployment scene with field_771
     // inline-editable (view-based PUTs are same-scene only — view_3937
-    // 404s from there) and fill its view key in below. While unmapped,
-    // photos.js keeps the native fallback so nothing half-works.
-    // view_4056: 'view_41XX',
+    // 404s from there). view_4158 is that grid (added 2026-09-03).
+    view_4056: 'view_4158',  // sub deployment scene DOC_photos grid
     view_3962: 'view_3584',   // build-SOW scene DOC_photos grid
     view_3505: 'view_4070'    // survey scene DOC_photos grid
   };
