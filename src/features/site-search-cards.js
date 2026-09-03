@@ -91,7 +91,11 @@
       '.scw-ssc-co-head {',
       '  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;',
       '  padding: 12px 16px; background: #0f4c75;',
+      '  cursor: pointer; user-select: none;',
       '}',
+      '.scw-ssc-co-head .scw-ssc-caret { color: rgba(255,255,255,0.75); }',
+      '.scw-ssc-co-head.is-collapsed .scw-ssc-caret { transform: rotate(-90deg); }',
+      '.scw-ssc-co-body[hidden] { display: none !important; }',
       '.scw-ssc-co-name {',
       '  flex: 1 1 auto; min-width: 160px;',
       '  font: 700 15px/1.3 system-ui, -apple-system, sans-serif; color: #fff;',
@@ -154,7 +158,14 @@
       '}',
       '.scw-ssc-name a { color: #0f4c75; text-decoration: none; }',
       '.scw-ssc-name a:hover { text-decoration: underline; }',
-      '.scw-ssc-type { color: #64748b; font-size: 12px; margin-top: 1px; }',
+      // Muted meta line (project type, SC meta/notes) — clamped to two
+      // lines so a long note can never take over the page; the full text
+      // rides in the title tooltip.
+      '.scw-ssc-type {',
+      '  color: #64748b; font-size: 12px; margin-top: 1px;',
+      '  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;',
+      '  overflow: hidden; overflow-wrap: anywhere;',
+      '}',
       '.scw-ssc-links { flex: 0 0 auto; display: flex; gap: 6px; flex-wrap: wrap; }',
 
       // Service-call card — deliberately stripped down.
@@ -383,12 +394,15 @@
   function serviceCallCardHtml(sc) {
     var metaHtml = '';
     if (sc.meta && sc.meta.length) {
-      var bits = [];
+      var bits = [], plain = [];
       for (var i = 0; i < sc.meta.length; i++) {
-        bits.push((sc.meta[i].label ? esc(sc.meta[i].label) + ': ' : '') +
-          esc(sc.meta[i].value));
+        var lbl = sc.meta[i].label ? sc.meta[i].label + ': ' : '';
+        bits.push(esc(lbl) + esc(sc.meta[i].value));
+        plain.push(lbl + sc.meta[i].value);
       }
-      metaHtml = '<div class="scw-ssc-type">' + bits.join(' · ') + '</div>';
+      // Clamped to two lines by CSS — full text in the tooltip.
+      metaHtml = '<div class="scw-ssc-type" title="' + esc(plain.join(' · ')) +
+        '">' + bits.join(' · ') + '</div>';
     }
     return '<div class="scw-ssc-card scw-ssc-card--sc">' +
       '<span class="scw-ssc-sc-tag">Service Call</span>' +
@@ -479,11 +493,15 @@
     return html + '</div>';
   }
 
-  // Delegated group toggle — click or Enter/Space on a header collapses /
-  // expands its card list and remembers the choice for this session.
+  // Delegated toggle — click or Enter/Space on a status-group header OR a
+  // company header collapses/expands the block that follows it and
+  // remembers the choice for this session. Clicks on links inside a
+  // header (the HubSpot Company chip) never toggle.
+  var TOGGLE_SEL = '.scw-ssc-group--toggle, .scw-ssc-co-head--toggle';
   function toggleGroup(hdr) {
     var body = hdr.nextElementSibling;
-    if (!body || !body.classList.contains('scw-ssc-list')) return;
+    if (!body || !(body.classList.contains('scw-ssc-list') ||
+                   body.classList.contains('scw-ssc-co-body'))) return;
     var collapsed = !body.hidden;
     body.hidden = collapsed;
     hdr.classList.toggle('is-collapsed', collapsed);
@@ -494,28 +512,41 @@
   if (!document.documentElement.hasAttribute('data-scw-ssc-toggle-bound')) {
     document.documentElement.setAttribute('data-scw-ssc-toggle-bound', '1');
     document.addEventListener('click', function (e) {
-      var hdr = e.target.closest && e.target.closest('.scw-ssc-group--toggle');
+      if (e.target.closest && e.target.closest('a')) return;   // chips navigate
+      var hdr = e.target.closest && e.target.closest(TOGGLE_SEL);
       if (hdr) toggleGroup(hdr);
     });
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Enter' && e.key !== ' ') return;
-      var hdr = e.target.closest && e.target.closest('.scw-ssc-group--toggle');
-      if (hdr) { e.preventDefault(); toggleGroup(hdr); }
+      var hdr = e.target.closest && e.target.closest(TOGGLE_SEL);
+      if (hdr && !(e.target.closest && e.target.closest('a'))) {
+        e.preventDefault();
+        toggleGroup(hdr);
+      }
     });
   }
 
   function companyHtml(co) {
+    // Collapsible like the status groups — default EXPANDED; the session
+    // toggle (keyed on the client) survives search re-renders.
+    var key = 'co|' + (co.key || co.clientName || '');
+    var collapsed = Object.prototype.hasOwnProperty.call(_collapsed, key)
+      ? _collapsed[key] : false;
     var html =
       '<div class="scw-ssc-co">' +
-        '<div class="scw-ssc-co-head">' +
+        '<div class="scw-ssc-co-head scw-ssc-co-head--toggle' +
+          (collapsed ? ' is-collapsed' : '') + '" data-scw-ssc-key="' + esc(key) +
+          '" role="button" tabindex="0" aria-expanded="' + (!collapsed) + '">' +
+          '<span class="scw-ssc-caret">' + caretSvg() + '</span>' +
           '<div class="scw-ssc-co-name">' + esc(co.clientName || 'Company') + '</div>' +
           (co.hsCoHref
             ? '<a class="scw-ssc-chip scw-ssc-chip--hs" target="_blank" rel="noopener" ' +
               'href="' + esc(co.hsCoHref) + '">HubSpot Company &#8599;</a>'
             : '') +
-        '</div>';
+        '</div>' +
+        '<div class="scw-ssc-co-body"' + (collapsed ? ' hidden' : '') + '>';
     for (var i = 0; i < co.sites.length; i++) html += siteHtml(co.sites[i]);
-    return html + '</div>';
+    return html + '</div></div>';
   }
 
   // ── Transform ─────────────────────────────────────────────────────────
@@ -538,8 +569,8 @@
       var site = parseRow(rows[i]);
       var key = site.clientId || site.clientName || ('row-' + i);
       if (!byClient[key]) {
-        byClient[key] = { clientName: site.clientName, hsCoHref: site.hsCoHref,
-                          sites: [] };
+        byClient[key] = { key: key, clientName: site.clientName,
+                          hsCoHref: site.hsCoHref, sites: [] };
         companies.push(byClient[key]);
       }
       if (!byClient[key].hsCoHref && site.hsCoHref) {
