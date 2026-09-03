@@ -438,7 +438,9 @@
   // ── Printable document (Make → PDF). Built fresh from the page data as a
   //    clean, branded document modeled on the Location Approval Form PDF —
   //    NOT a clone of the editable scene (which renders as ugly input boxes). ──
-  var SCW_LOGO = 'https://www.getscw.com/media/logo/stores/1/logo-scw.jpeg';
+  // /pub/media — the bare /media/... path started returning 403 AccessDenied
+  // from the site CDN (observed 2026-09-03); /pub/media/... still serves.
+  var SCW_LOGO = 'https://www.getscw.com/pub/media/logo/stores/1/logo-scw.jpeg';
   function _txt(el) { return el ? el.textContent.replace(/\s+/g, ' ').trim() : ''; }
   function _today() {
     var d = new Date(); function p(n) { return (n < 10 ? '0' : '') + n; }
