@@ -252,6 +252,7 @@ cat \
   src/features/co-cards.js \
   src/features/other-files-gallery.js \
   src/features/resend-credentials-btn.js \
+  src/features/site-search-cards.js \
   > "$TMP_BUNDLE"
 
 UNMIN_BYTES=$(wc -c < "$TMP_BUNDLE" | tr -d ' ')
