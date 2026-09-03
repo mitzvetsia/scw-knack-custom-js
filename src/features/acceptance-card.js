@@ -224,6 +224,12 @@
       '.scw-acpt-m__btn--cancel { background: #fff; color: #475569; border-color: #cbd5e1; }',
       '.scw-acpt-m__btn--ok { background: #0f4c75; color: #fff; }',
       '.scw-acpt-m__btn--ok:disabled { background: #cbd5e1; cursor: not-allowed; }',
+      // Destructive action — pinned LEFT of Cancel/OK (repo button-order
+      // convention: destructive first, primary last).
+      '.scw-acpt-m__btn--danger { background: #fff; color: #be123c;',
+      '  border-color: #fca5a5; margin-right: auto; }',
+      '.scw-acpt-m__btn--danger:hover { background: #fee2e2; }',
+      '.scw-acpt-m__btn--danger:disabled { opacity: .6; cursor: not-allowed; }',
       // ── Uploader: drop zone → file chip → optional check ───────
       // The zone and the chosen-file chip are the same slot in two
       // states, so the modal never grows a second empty target.
@@ -434,6 +440,20 @@
       if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
     } catch (e) { /* best-effort */ }
   }
+  /** Clear a file field on the acceptance. Prefers photo-edit-panel's
+   *  clearFileField (it verifies the PUT and retries with '' when Knack
+   *  silently ignores null — the file-field quirk); falls back to a plain
+   *  null PUT when that module isn't loaded. */
+  function clearAcptFile(viewKey, recId, fieldKey) {
+    var u = window.SCW && SCW.photoEditPanel && SCW.photoEditPanel.util;
+    if (u && typeof u.clearFileField === 'function') {
+      return u.clearFileField(viewKey, recId, fieldKey, {});
+    }
+    var f = {};
+    f[fieldKey] = null;
+    return putAcceptance(viewKey, recId, f);
+  }
+
   function putAcceptance(viewKey, recId, fields) {
     return new Promise(function (resolve, reject) {
       if (!recId) return reject(new Error('no acceptance record on the page'));
@@ -569,6 +589,37 @@
       '<div class="scw-acpt-m__status" style="display:none"></div>';
 
     var m       = acptModal(title, body, 'Upload');
+
+    // Remove file — only when a file is on record. Clears the field (the
+    // slot returns to its empty "+ add" state); the previously uploaded
+    // asset itself isn't destroyed, and NO webhook fires on removal (the
+    // greenlight/CO fire is strictly tied to an upload).
+    if (current) {
+      var rmBtn = document.createElement('button');
+      rmBtn.type = 'button';
+      rmBtn.className = 'scw-acpt-m__btn scw-acpt-m__btn--danger';
+      rmBtn.textContent = 'Remove file';
+      var foot = m.backdrop.querySelector('.scw-acpt-m__foot');
+      foot.insertBefore(rmBtn, foot.firstChild);
+      rmBtn.addEventListener('click', function () {
+        if (!window.confirm('Remove "' + (current.name || 'this file') +
+              '" from this record?\n\nThe slot goes back to empty — you can ' +
+              'upload a new file any time.')) return;
+        rmBtn.disabled = true;
+        rmBtn.textContent = 'Removing…';
+        m.ok.disabled = true;
+        clearAcptFile(viewKey, recId, fieldKey).then(function () {
+          m.close();
+          refreshAcptView(viewKey);
+          toast(title + ' removed.');
+        }).catch(function (err) {
+          rmBtn.disabled = false;
+          rmBtn.textContent = 'Remove file';
+          fail((err && err.message) || 'Remove failed');
+        });
+      });
+    }
+
     var drop    = body.querySelector('.scw-acpt-drop');
     var chip    = body.querySelector('.scw-acpt-file');
     var chipNm  = body.querySelector('.scw-acpt-file__nm');
