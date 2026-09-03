@@ -118,6 +118,31 @@
       '.scw-ssc-site-sub { color: #64748b; margin-top: 1px; overflow-wrap: anywhere; }',
       '.scw-ssc-site-links { flex: 0 0 auto; display: flex; gap: 6px; flex-wrap: wrap; }',
 
+      // Section bands — the KIND-level signposts inside a site: PROJECTS
+      // (slate/blue, briefcase) vs SERVICE CALLS (teal, wrench). Heavier
+      // than the status-group pills nested beneath, and collapsible.
+      '.scw-ssc-sec {',
+      '  display: flex; align-items: center; gap: 8px; margin: 14px 0 8px;',
+      '  padding: 7px 10px; border-radius: 8px; cursor: pointer; user-select: none;',
+      '  font: 700 11.5px/1.2 system-ui, sans-serif; letter-spacing: 0.07em;',
+      '  text-transform: uppercase;',
+      '}',
+      '.scw-ssc-sec .scw-ssc-caret { color: currentColor; opacity: 0.6; }',
+      '.scw-ssc-sec.is-collapsed .scw-ssc-caret { transform: rotate(-90deg); }',
+      '.scw-ssc-sec-ic { display: inline-flex; }',
+      '.scw-ssc-sec-ic svg { width: 13px; height: 13px; }',
+      '.scw-ssc-sec-count { font-weight: 600; opacity: 0.75; }',
+      '.scw-ssc-sec--proj { background: #eef2f7; color: #0f4c75; border: 1px solid #dbe3ea; }',
+      '.scw-ssc-sec--sc { background: #ecfeff; color: #0e7490; border: 1px solid #a5f3fc; }',
+      // Nesting rail under each band so the contents read as belonging to it.
+      '.scw-ssc-sec-body {',
+      '  padding-left: 12px; border-left: 2px solid #e2e8f0; margin-left: 5px;',
+      '}',
+      '.scw-ssc-sec-body--sc { border-left-color: #a5f3fc; }',
+      '.scw-ssc-sec-body[hidden] { display: none !important; }',
+      '.scw-ssc-sec-body .scw-ssc-group:first-child { margin-top: 6px; }',
+      '.scw-ssc-sec-body > .scw-ssc-list { margin-top: 6px; }',
+
       // Status group header — a collapsible toggle, tinted like the old
       // status pill; the cards beneath don't repeat the status.
       '.scw-ssc-group {',
@@ -306,6 +331,36 @@
       'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
       '<path d="M6 9l6 6 6-6"></path></svg>';
   }
+  function briefcaseSvg() {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<rect x="2" y="7" width="20" height="14" rx="2"></rect>' +
+      '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>';
+  }
+  function wrenchSvg() {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77' +
+      'a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91' +
+      'a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>';
+  }
+
+  // Section band (PROJECTS / SERVICE CALLS) + its rail-indented body.
+  // Collapsible like everything else; both default EXPANDED.
+  function sectionBlockHtml(siteId, slug, label, icon, cls, bodyCls, innerHtml, count) {
+    var key = siteId + '|sec:' + slug;
+    var collapsed = Object.prototype.hasOwnProperty.call(_collapsed, key)
+      ? _collapsed[key] : false;
+    return '<div class="scw-ssc-sec ' + cls + ' scw-ssc-sec--toggle' +
+        (collapsed ? ' is-collapsed' : '') + '" data-scw-ssc-key="' + esc(key) +
+        '" role="button" tabindex="0" aria-expanded="' + (!collapsed) + '">' +
+        '<span class="scw-ssc-caret">' + caretSvg() + '</span>' +
+        '<span class="scw-ssc-sec-ic">' + icon + '</span>' +
+        '<span>' + esc(label) + '</span>' +
+        '<span class="scw-ssc-sec-count">(' + count + ')</span></div>' +
+      '<div class="scw-ssc-sec-body ' + bodyCls + '"' + (collapsed ? ' hidden' : '') +
+        '>' + innerHtml + '</div>';
+  }
 
   // ── Row parsing ───────────────────────────────────────────────────────
   function parseRow(tr) {
@@ -471,23 +526,31 @@
       return r !== 0 ? r : String(a.status).localeCompare(String(b.status));
     });
 
-    for (var g = 0; g < groups.length; g++) {
-      var grp = groups[g];
-      var cardsHtml = '';
-      for (var pi = 0; pi < grp.items.length; pi++) {
-        cardsHtml += projectCardHtml(grp.items[pi]);
+    if (s.projects.length) {
+      var projInner = '';
+      for (var g = 0; g < groups.length; g++) {
+        var grp = groups[g];
+        var cardsHtml = '';
+        for (var pi = 0; pi < grp.items.length; pi++) {
+          cardsHtml += projectCardHtml(grp.items[pi]);
+        }
+        projInner += groupBlockHtml(s.siteId, grp.status || 'No status',
+          statusClass(grp.status), cardsHtml, grp.items.length);
       }
-      html += groupBlockHtml(s.siteId, grp.status || 'No status',
-        statusClass(grp.status), cardsHtml, grp.items.length);
+      html += sectionBlockHtml(s.siteId, 'projects', 'Projects',
+        briefcaseSvg(), 'scw-ssc-sec--proj', 'scw-ssc-sec-body--proj',
+        projInner, s.projects.length);
     }
 
     if (s.svcCalls.length) {
-      var scHtml = '';
+      var scHtml = '<div class="scw-ssc-list">';
       for (var sc = 0; sc < s.svcCalls.length; sc++) {
         scHtml += serviceCallCardHtml(s.svcCalls[sc]);
       }
-      html += groupBlockHtml(s.siteId, 'Service Calls', '', scHtml,
-        s.svcCalls.length);
+      scHtml += '</div>';
+      html += sectionBlockHtml(s.siteId, 'service-calls', 'Service Calls',
+        wrenchSvg(), 'scw-ssc-sec--sc', 'scw-ssc-sec-body--sc',
+        scHtml, s.svcCalls.length);
     }
 
     return html + '</div>';
@@ -497,11 +560,13 @@
   // company header collapses/expands the block that follows it and
   // remembers the choice for this session. Clicks on links inside a
   // header (the HubSpot Company chip) never toggle.
-  var TOGGLE_SEL = '.scw-ssc-group--toggle, .scw-ssc-co-head--toggle';
+  var TOGGLE_SEL = '.scw-ssc-group--toggle, .scw-ssc-co-head--toggle, ' +
+                   '.scw-ssc-sec--toggle';
   function toggleGroup(hdr) {
     var body = hdr.nextElementSibling;
     if (!body || !(body.classList.contains('scw-ssc-list') ||
-                   body.classList.contains('scw-ssc-co-body'))) return;
+                   body.classList.contains('scw-ssc-co-body') ||
+                   body.classList.contains('scw-ssc-sec-body'))) return;
     var collapsed = !body.hidden;
     body.hidden = collapsed;
     hdr.classList.toggle('is-collapsed', collapsed);
