@@ -50,9 +50,20 @@
       cuTask:      'field_1199',  // per-project ClickUp task id
       hsDealId:    'field_1622'   // per-project HubSpot deal id
     },
+    // Extra per-SERVICE-CALL columns (id-correlated: the column's spans
+    // carry the WO record id, exactly like the project columns). Fill in
+    // as the Builder columns land, e.g.
+    //   { field: 'field_XXXX', label: 'Status' },
+    //   { field: 'field_YYYY', label: 'Scheduled' },
+    scMeta: [],
     hubspotDealUrl: 'https://app.hubspot.com/contacts/5417380/record/0-3/',
     clickupUrl:     'https://app.clickup.com/t/8530675/'
   };
+
+  // Session memory for group toggles — keyed siteId|group label, survives
+  // re-renders (every search re-fires knack-view-render) but resets on a
+  // fresh page load so the defaults reapply.
+  var _collapsed = Object.create(null);
 
   var STYLE_ID = 'scw-site-search-cards-css';
   var NS       = '.scwSiteSearchCards';
@@ -103,22 +114,31 @@
       '.scw-ssc-site-sub { color: #64748b; margin-top: 1px; overflow-wrap: anywhere; }',
       '.scw-ssc-site-links { flex: 0 0 auto; display: flex; gap: 6px; flex-wrap: wrap; }',
 
-      // Status group header — tinted like the old status pill; the cards
-      // beneath don't repeat the status.
+      // Status group header — a collapsible toggle, tinted like the old
+      // status pill; the cards beneath don't repeat the status.
       '.scw-ssc-group {',
       '  display: flex; align-items: center; gap: 8px; margin: 12px 0 6px;',
+      '  cursor: pointer; user-select: none;',
       '}',
+      '.scw-ssc-caret {',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  width: 14px; height: 14px; flex: 0 0 auto; color: #94a3b8;',
+      '  transition: transform 0.15s ease;',
+      '}',
+      '.scw-ssc-caret svg { width: 12px; height: 12px; }',
+      '.scw-ssc-group.is-collapsed .scw-ssc-caret { transform: rotate(-90deg); }',
       '.scw-ssc-group-lbl {',
       '  display: inline-flex; align-items: center; padding: 3px 10px;',
       '  border-radius: 999px; white-space: nowrap;',
       '  font: 600 11px/1.2 system-ui, sans-serif;',
       '  background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;',
       '}',
-      '.scw-ssc-group-lbl--good { background: #dcfce7; color: #15803d; border-color: #86efac; }',
-      '.scw-ssc-group-lbl--active { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }',
-      '.scw-ssc-group-lbl--hold { background: #fef3c7; color: #b45309; border-color: #fcd34d; }',
-      '.scw-ssc-group-lbl--dead { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }',
+      '.scw-ssc-group-lbl--green { background: #dcfce7; color: #15803d; border-color: #86efac; }',
+      '.scw-ssc-group-lbl--blue { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }',
+      '.scw-ssc-group-lbl--amber { background: #fef3c7; color: #b45309; border-color: #fcd34d; }',
+      '.scw-ssc-group-lbl--red { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }',
       '.scw-ssc-group-rule { flex: 1 1 auto; height: 1px; background: #e2e8f0; }',
+      '.scw-ssc-list[hidden] { display: none !important; }',
 
       // One-column card list.
       '.scw-ssc-list { display: flex; flex-direction: column; gap: 6px; }',
@@ -240,24 +260,40 @@
   }
 
   // ── Status grouping ───────────────────────────────────────────────────
+  // Tints (locked 2026-09-03): Greenlit = GREEN, Completed = BLUE, survey /
+  // waiting states amber, dead states red, everything else (incl. New
+  // Lead) neutral slate.
   function statusClass(txt) {
     var t = String(txt || '').toLowerCase();
     if (!t) return '';
-    if (/complet|won|closed|deployed|done/.test(t)) return ' scw-ssc-group-lbl--good';
-    if (/greenlit|active|progress|install|schedul|sold/.test(t)) return ' scw-ssc-group-lbl--active';
-    if (/hold|pending|paus|wait/.test(t)) return ' scw-ssc-group-lbl--hold';
-    if (/dead|lost|cancel|void|declin/.test(t)) return ' scw-ssc-group-lbl--dead';
+    if (/greenlit|active|progress|installing|schedul|sold/.test(t)) return ' scw-ssc-group-lbl--green';
+    if (/complet|won|closed|deployed|done/.test(t)) return ' scw-ssc-group-lbl--blue';
+    if (/survey|hold|pending|paus|wait/.test(t)) return ' scw-ssc-group-lbl--amber';
+    if (/dead|lost|cancel|void|declin/.test(t)) return ' scw-ssc-group-lbl--red';
     return '';
   }
-  // Group order: work in flight first, then pipeline, then finished, then
-  // everything else, no-status last.
+  // Group order (locked 2026-09-03): New Lead ALWAYS first; Site Survey
+  // Requested right behind it; Greenlit and Completed always the LAST two
+  // (in that order); everything else in between, no-status at the middle's
+  // end, alpha within a rank.
   function statusRank(txt) {
     var t = String(txt || '').toLowerCase();
-    if (!t) return 9;
-    if (/greenlit|schedul|progress|installing|active|sold/.test(t)) return 0;
-    if (/lead|quote|propos|pending|hold|survey/.test(t)) return 1;
-    if (/complet|closed|won|deployed|done/.test(t)) return 2;
-    return 3;
+    if (/new lead/.test(t)) return 0;
+    if (/survey/.test(t)) return 10;
+    if (/lead|quote|propos/.test(t)) return 20;   // other early-pipeline
+    if (/greenlit/.test(t)) return 90;
+    if (/complet|closed|won|deployed|done/.test(t)) return 95;
+    if (!t) return 55;                            // no status — after the middle
+    return 50;
+  }
+  // Default collapse state: New Lead starts closed (it's the noisiest
+  // group), everything else — Site Survey Requested, Greenlit, Completed,
+  // Service Calls — starts open. Session toggles override per site+group.
+  function defaultCollapsed(label) { return /new lead/i.test(String(label || '')); }
+  function caretSvg() {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M6 9l6 6 6-6"></path></svg>';
   }
 
   // ── Row parsing ───────────────────────────────────────────────────────
@@ -281,7 +317,27 @@
       };
     });
 
+    // Extra per-SC columns (CONFIG.scMeta) — id-correlated like everything
+    // else: each configured column's spans carry the WO record id.
+    var scMetaMaps = [];
+    for (var m = 0; m < CONFIG.scMeta.length; m++) {
+      scMetaMaps.push({
+        label: CONFIG.scMeta[m].label || '',
+        map:   valuesById(cellFor(tr, CONFIG.scMeta[m].field))
+      });
+    }
+    var svcCalls = linksIn(cellFor(tr, F.serviceCall)).map(function (sc) {
+      var meta = [];
+      for (var mi = 0; mi < scMetaMaps.length; mi++) {
+        var v = sc.id ? (scMetaMaps[mi].map[sc.id] || '') : '';
+        if (v) meta.push({ label: scMetaMaps[mi].label, value: v });
+      }
+      sc.meta = meta;
+      return sc;
+    });
+
     return {
+      siteId:     tr.id || '',
       clientId:   (clientLinks[0] && clientLinks[0].id) || '',
       clientName: (clientLinks[0] && clientLinks[0].label) ||
                   cellText(cellFor(tr, F.client)),
@@ -290,7 +346,7 @@
       address:    cellTextWithBreaks(cellFor(tr, F.siteAddress)),
       dashHref:   siteDashboardHref(tr),
       projects:   projects,
-      svcCalls:   linksIn(cellFor(tr, F.serviceCall))
+      svcCalls:   svcCalls
     };
   }
 
@@ -325,6 +381,15 @@
   }
 
   function serviceCallCardHtml(sc) {
+    var metaHtml = '';
+    if (sc.meta && sc.meta.length) {
+      var bits = [];
+      for (var i = 0; i < sc.meta.length; i++) {
+        bits.push((sc.meta[i].label ? esc(sc.meta[i].label) + ': ' : '') +
+          esc(sc.meta[i].value));
+      }
+      metaHtml = '<div class="scw-ssc-type">' + bits.join(' · ') + '</div>';
+    }
     return '<div class="scw-ssc-card scw-ssc-card--sc">' +
       '<span class="scw-ssc-sc-tag">Service Call</span>' +
       '<div class="scw-ssc-card-main"><div class="scw-ssc-name">' +
@@ -332,15 +397,26 @@
           ? '<a href="' + esc(sc.href) + '" title="Open the work order">' +
             esc(sc.label) + '</a>'
           : esc(sc.label)) +
-      '</div></div>' +
+      '</div>' + metaHtml + '</div>' +
     '</div>';
   }
 
-  function groupHeaderHtml(label, cls, count) {
-    return '<div class="scw-ssc-group">' +
-      '<span class="scw-ssc-group-lbl' + cls + '">' + esc(label) +
-        ' (' + count + ')</span>' +
-      '<span class="scw-ssc-group-rule"></span></div>';
+  // Collapsible group: tinted header (caret + label + count + rule) and
+  // its card list. Collapse state = session toggle if the user touched
+  // this site+group, else the default (New Lead closed, the rest open).
+  function groupBlockHtml(siteId, label, cls, cardsHtml, count) {
+    var key = siteId + '|' + String(label).toLowerCase();
+    var collapsed = Object.prototype.hasOwnProperty.call(_collapsed, key)
+      ? _collapsed[key] : defaultCollapsed(label);
+    return '<div class="scw-ssc-group scw-ssc-group--toggle' +
+        (collapsed ? ' is-collapsed' : '') + '" data-scw-ssc-key="' + esc(key) +
+        '" role="button" tabindex="0" aria-expanded="' + (!collapsed) + '">' +
+        '<span class="scw-ssc-caret">' + caretSvg() + '</span>' +
+        '<span class="scw-ssc-group-lbl' + cls + '">' + esc(label) +
+          ' (' + count + ')</span>' +
+        '<span class="scw-ssc-group-rule"></span></div>' +
+      '<div class="scw-ssc-list"' + (collapsed ? ' hidden' : '') + '>' +
+        cardsHtml + '</div>';
   }
 
   function siteHtml(s) {
@@ -383,25 +459,49 @@
 
     for (var g = 0; g < groups.length; g++) {
       var grp = groups[g];
-      html += groupHeaderHtml(grp.status || 'No status',
-        statusClass(grp.status), grp.items.length);
-      html += '<div class="scw-ssc-list">';
+      var cardsHtml = '';
       for (var pi = 0; pi < grp.items.length; pi++) {
-        html += projectCardHtml(grp.items[pi]);
+        cardsHtml += projectCardHtml(grp.items[pi]);
       }
-      html += '</div>';
+      html += groupBlockHtml(s.siteId, grp.status || 'No status',
+        statusClass(grp.status), cardsHtml, grp.items.length);
     }
 
     if (s.svcCalls.length) {
-      html += groupHeaderHtml('Service Calls', '', s.svcCalls.length);
-      html += '<div class="scw-ssc-list">';
+      var scHtml = '';
       for (var sc = 0; sc < s.svcCalls.length; sc++) {
-        html += serviceCallCardHtml(s.svcCalls[sc]);
+        scHtml += serviceCallCardHtml(s.svcCalls[sc]);
       }
-      html += '</div>';
+      html += groupBlockHtml(s.siteId, 'Service Calls', '', scHtml,
+        s.svcCalls.length);
     }
 
     return html + '</div>';
+  }
+
+  // Delegated group toggle — click or Enter/Space on a header collapses /
+  // expands its card list and remembers the choice for this session.
+  function toggleGroup(hdr) {
+    var body = hdr.nextElementSibling;
+    if (!body || !body.classList.contains('scw-ssc-list')) return;
+    var collapsed = !body.hidden;
+    body.hidden = collapsed;
+    hdr.classList.toggle('is-collapsed', collapsed);
+    hdr.setAttribute('aria-expanded', String(!collapsed));
+    var key = hdr.getAttribute('data-scw-ssc-key');
+    if (key) _collapsed[key] = collapsed;
+  }
+  if (!document.documentElement.hasAttribute('data-scw-ssc-toggle-bound')) {
+    document.documentElement.setAttribute('data-scw-ssc-toggle-bound', '1');
+    document.addEventListener('click', function (e) {
+      var hdr = e.target.closest && e.target.closest('.scw-ssc-group--toggle');
+      if (hdr) toggleGroup(hdr);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var hdr = e.target.closest && e.target.closest('.scw-ssc-group--toggle');
+      if (hdr) { e.preventDefault(); toggleGroup(hdr); }
+    });
   }
 
   function companyHtml(co) {
