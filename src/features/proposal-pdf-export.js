@@ -2817,7 +2817,7 @@
     'proposalAccessToken', 'proposalAccessUrl',
     'plaintext', 'plaintextJsonEscaped',
     'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
-    'isChangeOrder', 'coNetChange', 'coChangeSummary',
+    'isChangeOrder', 'coNetChange', 'coChangeSummary', 'coSubBidHtml',
     'tokens', 'publishAsTbd',
     'subBidBidHtml', 'subBidDiffHtml', 'subBidDiffDocHtml', 'subBidReviewHtml',
     'subBidBasis', 'subBidBasisId', 'subBidBasisSubId',
@@ -4805,6 +4805,112 @@
     return elements;
   }
 
+  // ── CO sub pricing sheet (INTERNAL — subcontractor cost data) ──────────
+  // A change order has no separate sub bid record: the sub prices the CO
+  // directly on the SOW line items (field_2203 per row). So the subBid*
+  // keys below (built from the bid-review field_2941 blob) ride EMPTY on
+  // CO publishes and there is no sub-facing document to PDF. This builds
+  // one: a complete standalone HTML doc (getPdfCss inlined, same
+  // l1/l2/product-table fragment classes as the bid PDF) itemizing every
+  // CO line the sub priced — qty × sub cost, signed (Remove lines carry
+  // negative qty), grouped MDF/IDF → bucket in snapshot row order.
+  // Ships as payload.coSubBidHtml on CO publishes ONLY. Make feeds it to
+  // an HTML→PDF step and stamps the file wherever the CO's sub agreement
+  // should live. NOT spliced into the client html/htmlPdf — sub cost
+  // never reaches the customer document.
+  function buildCoSubBidDoc(jsonSnapshot, sowId) {
+    if (!jsonSnapshot || typeof jsonSnapshot !== 'object') return '';
+    var lineItems = [];
+    var snapKeys = Object.keys(jsonSnapshot);
+    for (var ki = 0; ki < snapKeys.length; ki++) {
+      var v = jsonSnapshot[snapKeys[ki]];
+      if (Array.isArray(v) && v.length && v[0] && v[0].field_2219_raw !== undefined) {
+        lineItems = lineItems.concat(v);
+      }
+    }
+    if (!lineItems.length) return '';
+
+    function num(x) { var n = parseFloat(x); return isNaN(n) ? 0 : n; }
+    function round2(n) { return Math.round(n * 100) / 100; }
+    function money(n) {
+      var neg = (n || 0) < 0;
+      return (neg ? '-$' : '$') + Math.abs(n || 0)
+        .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // L1 = MDF/IDF in first-seen (grid) order; rows without an MDF sink
+    // to a trailing "No MDF / IDF" group (picker convention).
+    var NO_MDF = 'No MDF / IDF';
+    var l1s = [], l1ByLabel = {}, grand = 0;
+    for (var i = 0; i < lineItems.length; i++) {
+      var row  = lineItems[i] || {};
+      var qty  = num(row.field_1964_raw) || 1;   // negative on Remove lines
+      var cost = num(row.field_2203_raw);        // per-row sub cost
+      var amt  = round2(qty * cost);
+      if (!amt) continue;                        // nothing sub-priced
+      var mdfArr = row.field_1946_raw;
+      var mdf = (mdfArr && mdfArr[0] && mdfArr[0].identifier) || NO_MDF;
+      var bucketArr = row.field_2219_raw;
+      var bucket = (bucketArr && bucketArr[0] && bucketArr[0].identifier) || '';
+      var label = (row.field_1958_raw || row.field_1963_raw || '').toString().trim() || 'Line item';
+      if (/^remove$/i.test((row.field_2965_raw || '').toString())) label += ' — removal';
+      var l1 = l1ByLabel[mdf];
+      if (!l1) {
+        l1 = l1ByLabel[mdf] = { label: mdf, buckets: [], bucketByLabel: {}, total: 0 };
+        l1s.push(l1);
+      }
+      var bk = l1.bucketByLabel[bucket];
+      if (!bk) {
+        bk = l1.bucketByLabel[bucket] = { label: bucket, items: [] };
+        l1.buckets.push(bk);
+      }
+      bk.items.push({ label: label, qty: qty, amt: amt });
+      l1.total = round2(l1.total + amt);
+      grand = round2(grand + amt);
+    }
+    if (!l1s.length) return '';
+    l1s.sort(function (a, b) {
+      return (a.label === NO_MDF ? 1 : 0) - (b.label === NO_MDF ? 1 : 0);
+    });
+
+    var h = [];
+    h.push('<div class="view-title">Change Order — Sub Pricing' +
+           (sowId ? ' <span style="font-weight:600;color:#64748b;">(' + esc(sowId) + ')</span>' : '') +
+           '</div>');
+    for (var g = 0; g < l1s.length; g++) {
+      var sec = l1s[g];
+      h.push('<div class="l1-section">');
+      h.push('<div class="l1-header">' + esc(sec.label) + '</div>');
+      for (var b = 0; b < sec.buckets.length; b++) {
+        var bkt = sec.buckets[b];
+        if (bkt.label) h.push('<div class="l2-header">' + esc(bkt.label) + '</div>');
+        h.push('<table class="product-table">');
+        h.push('<thead><tr><th class="col-desc"></th><th class="col-qty">Qty</th>' +
+               '<th class="col-cost">Sub Cost</th></tr></thead>');
+        h.push('<tbody>');
+        for (var k = 0; k < bkt.items.length; k++) {
+          var it = bkt.items[k];
+          h.push('<tr class="l3-row"><td>' + esc(it.label) + '</td>' +
+                 '<td class="col-qty">' + esc(it.qty) + '</td>' +
+                 '<td class="col-cost">' + money(it.amt) + '</td></tr>');
+        }
+        h.push('</tbody></table>');
+      }
+      h.push('<div class="l1-footer"><div class="l1-footer-line l1-line--final">' +
+             '<span class="l1-footer-label">Sub Cost Subtotal</span>' +
+             '<span class="l1-footer-value">' + money(sec.total) + '</span></div></div>');
+      h.push('</div>');
+    }
+    h.push('<div class="project-totals"><div class="pt-line pt-line--final">' +
+           '<span class="pt-label">CO Sub Total</span>' +
+           '<span class="pt-value">' + money(grand) + '</span></div></div>');
+
+    return ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
+      '<title>CO Sub Pricing' + (sowId ? ' — ' + esc(sowId) : '') + '</title>',
+      '<style>', getPdfCss(), '</style>', '</head><body>', bodyLevelCss(),
+      h.join('\n'), '</body></html>'].join('\n');
+  }
+
   // ── Sub-bid review (bid + diff) for the published-proposal record ──────
   // The sub-bid diff is computed on the Bid Review page and stamped onto the
   // SOW's field_2941 (JSON blob) by sub-bid-diff/pdf-html.js. That blob carries
@@ -5003,6 +5109,10 @@
     var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
     var plaintextStr  = htmlToPlaintext(htmlStr);
     var subBid        = buildSubBidReview();
+    // CO publishes only: the sub-facing pricing document (no separate sub
+    // bid record exists for a CO — pricing lives on the SOW rows).
+    var coSubBidHtml  = payload.isChangeOrder
+      ? buildCoSubBidDoc(jsonSnapshot, summary.sowId) : '';
     // Tech group — field_2954 lives on the BID; view_3861 shows it through
     // a chain (SOW -> bids -> tech group), which renders NESTED
     // connection spans fanned out per intermediate record:
@@ -5064,6 +5174,14 @@
       isChangeOrder:         payload.isChangeOrder || false,
       coNetChange:           payload.coChangeSummary ? payload.coChangeSummary.net : '',
       coChangeSummary:       payload.coChangeSummary || undefined,
+      // ── CO sub pricing (INTERNAL — subcontractor cost data) ──────────
+      // Complete standalone HTML doc itemizing the sub's CO pricing
+      // (qty × field_2203 per line, signed; MDF/IDF → bucket grouping).
+      // Present on CO publishes only. Make feeds this to an HTML→PDF
+      // step and stamps the file wherever the CO's sub agreement should
+      // live — never into the client-facing field_2680. See
+      // buildCoSubBidDoc.
+      coSubBidHtml:          coSubBidHtml || undefined,
       // Tokenized public link, minted client-side at publish time.
       // Make should write these to field_2904 and field_2908 on the
       // proposal record so the public snippet finds them on first
