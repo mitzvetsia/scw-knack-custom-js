@@ -331,6 +331,10 @@
       agreementSigned:    !!info.signed,
       paymentReceived:    !!info.paid,
       approvedForTerms:   !!info.terms,
+      // CO acceptance (SW####CO) — the scenario branches on this: change
+      // orders skip the ready-to-greenlight question and go straight to
+      // the CO apply path.
+      changeOrder:        !!info.changeOrder,
       source:             source,
       pageUrl:            (window.location && window.location.href) || '',
       triggeredBy:        triggeredBy()
@@ -514,11 +518,15 @@
    *  One submit does everything, then the modal closes ITSELF — outcomes
    *  land as toasts, so there's nothing left to click through.
    *
-   *  opts: { offerGreenlight: bool, info: {...}, greenlightLabel: string,
-   *          current: { name, href } | null } */
+   *  opts: { offerGreenlight: bool, autoGreenlight: bool, info: {...},
+   *          greenlightLabel: string, current: { name, href } | null }
+   *  autoGreenlight (change orders): no checkbox — a successful upload
+   *  ALWAYS fires the greenlight webhook (payload.changeOrder tells the
+   *  scenario to take the CO branch). */
   function openFileUpload(viewKey, recId, fieldKey, title, opts) {
     opts = opts || {};
-    var wantsGreenlight = !!(opts.offerGreenlight && greenlightUrl());
+    var autoGl = !!(opts.autoGreenlight && greenlightUrl());
+    var wantsGreenlight = !!(opts.offerGreenlight && greenlightUrl()) && !autoGl;
     var current = opts.current || null;
 
     var body = document.createElement('div');
@@ -668,12 +676,14 @@
     }
 
     m.ok.addEventListener('click', function () {
-      var runCheck = !!(wantsGreenlight && glCheck && glCheck.checked);
+      var manualCheck = !!(wantsGreenlight && glCheck && glCheck.checked);
+      var runCheck = manualCheck || autoGl;
 
       // Check-only submit (populated slot, no replacement chosen): fire
-      // and close — the outcome arrives as a toast.
+      // and close — the outcome arrives as a toast. Manual mode only; the
+      // auto (CO) fire is tied to an actual upload.
       if (!chosen) {
-        if (!runCheck) return;
+        if (!manualCheck) return;
         m.close();
         toast('Checking greenlight…');
         runGreenlight(viewKey, recId, opts.info || {}, 'manual', null, null);
@@ -711,8 +721,11 @@
             m.close();
             refreshAcptView(viewKey);
             if (runCheck) {
-              toast('Uploaded — checking greenlight…');
-              runGreenlight(viewKey, recId, opts.info || {}, 'agreement-upload', null, null);
+              toast(autoGl ? 'Uploaded — sending the signed change order to Make…'
+                           : 'Uploaded — checking greenlight…');
+              runGreenlight(viewKey, recId, opts.info || {},
+                autoGl ? 'co-agreement-upload-auto' : 'agreement-upload',
+                null, null);
             } else {
               toast(title + ' uploaded.');
             }
@@ -887,7 +900,8 @@
       proposalLabel: propTxt,
       signed:        signed,
       paid:          paid,
-      terms:         terms
+      terms:         terms,
+      changeOrder:   isCo
     };
     var glBtn = card.querySelector('[data-greenlight]');
     if (glBtn) {
@@ -910,7 +924,12 @@
             xeroEstA ? (xeroEstA.getAttribute('href') || '') : '');
         } else if (fk === F.agreement) {
           openFileUpload(viewKey, recId, F.agreement, 'Signed agreement', {
-            offerGreenlight: !greenlit,
+            // Change orders don't ASK — a CO's signed agreement always
+            // fires the webhook (Make's scenario branches on
+            // payload.changeOrder into the CO apply path), so the opt-in
+            // checkbox is base-scope only.
+            offerGreenlight: !greenlit && !isCo,
+            autoGreenlight:  isCo,
             info: glInfo,
             greenlightLabel: 'Also check whether this deal is ready to greenlight',
             current: fileA ? { name: (fileA.textContent || '').replace(/\s+/g, ' ').trim(),
