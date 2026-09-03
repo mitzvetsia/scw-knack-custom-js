@@ -50,11 +50,13 @@
       cuTask:      'field_1199',  // per-project ClickUp task id
       hsDealId:    'field_1622'   // per-project HubSpot deal id
     },
-    // Extra per-SERVICE-CALL columns (id-correlated: the column's spans
-    // carry the WO record id, exactly like the project columns). Fill in
-    // as the Builder columns land, e.g.
+    // Explicit per-SERVICE-CALL columns with custom labels — rendered
+    // FIRST on the SC cards. Optional: every OTHER grid column whose
+    // connection spans carry service-call (or project) record ids is
+    // AUTO-DETECTED and rendered as meta with its Builder header as the
+    // label, so newly-added columns show up with zero config. Long values
+    // clamp to two lines (full text in the tooltip).
     //   { field: 'field_XXXX', label: 'Status' },
-    //   { field: 'field_YYYY', label: 'Scheduled' },
     scMeta: [],
     hubspotDealUrl: 'https://app.hubspot.com/contacts/5417380/record/0-3/',
     clickupUrl:     'https://app.clickup.com/t/8530675/'
@@ -191,6 +193,7 @@
       '  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;',
       '  overflow: hidden; overflow-wrap: anywhere;',
       '}',
+      '.scw-ssc-type b { font-weight: 600; color: #475569; }',
       '.scw-ssc-links { flex: 0 0 auto; display: flex; gap: 6px; flex-wrap: wrap; }',
 
       // Service-call card — deliberately stripped down.
@@ -295,6 +298,39 @@
     return a ? a.getAttribute('href') : '';
   }
 
+  // Grid columns from the header row: [{ fk, label }] in grid order.
+  function headerColumns(table) {
+    var out = [];
+    var ths = table.querySelectorAll('thead th');
+    for (var i = 0; i < ths.length; i++) {
+      var m = (ths[i].className || '').match(/field_\d+/);
+      if (!m) continue;
+      out.push({ fk: m[0], label: (ths[i].textContent || '').trim() });
+    }
+    return out;
+  }
+  // Columns NOT already consumed by the known field map / explicit scMeta —
+  // candidates for id-correlated auto meta.
+  function extraColumns(table) {
+    var known = {};
+    for (var k in CONFIG.fields) {
+      if (CONFIG.fields[k]) known[CONFIG.fields[k]] = 1;
+    }
+    for (var s = 0; s < CONFIG.scMeta.length; s++) {
+      if (CONFIG.scMeta[s].field) known[CONFIG.scMeta[s].field] = 1;
+    }
+    var cols = headerColumns(table);
+    var out = [];
+    for (var i = 0; i < cols.length; i++) {
+      if (!known[cols[i].fk]) out.push(cols[i]);
+    }
+    return out;
+  }
+  // Display labels: strip the Builder naming prefix (DOC_/INPUT_/SYS_/…).
+  function prettyLabel(label) {
+    return String(label || '').replace(/^[A-Z]{2,10}_\s*/, '');
+  }
+
   // ── Status grouping ───────────────────────────────────────────────────
   // Tints (locked 2026-09-03): Greenlit = GREEN, Completed = BLUE, survey /
   // waiting states amber, dead states red, everything else (incl. New
@@ -363,7 +399,7 @@
   }
 
   // ── Row parsing ───────────────────────────────────────────────────────
-  function parseRow(tr) {
+  function parseRow(tr, extras) {
     var F = CONFIG.fields;
     var clientLinks = linksIn(cellFor(tr, F.client));
     var statusMap = valuesById(cellFor(tr, F.status));
@@ -379,28 +415,39 @@
         status: p.id ? (statusMap[p.id] || '') : '',
         type:   p.id ? (typeMap[p.id]   || '') : '',
         cuId:   p.id ? (cuMap[p.id]     || '') : '',
-        dealId: p.id ? (dealMap[p.id]   || '') : ''
+        dealId: p.id ? (dealMap[p.id]   || '') : '',
+        meta:   []
       };
     });
-
-    // Extra per-SC columns (CONFIG.scMeta) — id-correlated like everything
-    // else: each configured column's spans carry the WO record id.
-    var scMetaMaps = [];
-    for (var m = 0; m < CONFIG.scMeta.length; m++) {
-      scMetaMaps.push({
-        label: CONFIG.scMeta[m].label || '',
-        map:   valuesById(cellFor(tr, CONFIG.scMeta[m].field))
-      });
-    }
     var svcCalls = linksIn(cellFor(tr, F.serviceCall)).map(function (sc) {
-      var meta = [];
-      for (var mi = 0; mi < scMetaMaps.length; mi++) {
-        var v = sc.id ? (scMetaMaps[mi].map[sc.id] || '') : '';
-        if (v) meta.push({ label: scMetaMaps[mi].label, value: v });
-      }
-      sc.meta = meta;
+      sc.meta = [];
       return sc;
     });
+
+    // Explicit scMeta first (custom labels), then every auto-detected
+    // extra column. Purely id-driven: whichever project / service-call
+    // record a span's id names gets that value on ITS card — no column
+    // classification, no index pairing, and client-id spans (e.g. the
+    // HubSpot Company cell) simply match nothing.
+    function distribute(fieldKey, label) {
+      var map = valuesById(cellFor(tr, fieldKey));
+      var any = false;
+      for (var pi = 0; pi < projects.length; pi++) {
+        var pv = projects[pi].id && map[projects[pi].id];
+        if (pv) { projects[pi].meta.push({ label: label, value: pv }); any = true; }
+      }
+      for (var si = 0; si < svcCalls.length; si++) {
+        var sv = svcCalls[si].id && map[svcCalls[si].id];
+        if (sv) { svcCalls[si].meta.push({ label: label, value: sv }); any = true; }
+      }
+      return any;
+    }
+    for (var m = 0; m < CONFIG.scMeta.length; m++) {
+      distribute(CONFIG.scMeta[m].field, CONFIG.scMeta[m].label || '');
+    }
+    for (var x = 0; x < (extras || []).length; x++) {
+      distribute(extras[x].fk, prettyLabel(extras[x].label));
+    }
 
     return {
       siteId:     tr.id || '',
@@ -417,6 +464,35 @@
   }
 
   // ── Render ────────────────────────────────────────────────────────────
+  // Meta lines: short values share one dot-separated line; long /
+  // notes-like values each get their OWN line — every line clamps to two
+  // rows via .scw-ssc-type with the full text in its tooltip, so a
+  // paragraph field can never take over the page.
+  var META_LONG_CHARS = 60;
+  var META_LONG_LABEL = /note|desc|issue|detail|summary|scope|resolution|comment/i;
+  function metaLinesHtml(meta) {
+    if (!meta || !meta.length) return '';
+    var inline = [], inlinePlain = [], rows = '';
+    for (var i = 0; i < meta.length; i++) {
+      var m = meta[i];
+      var lbl = m.label ? String(m.label) : '';
+      if (String(m.value).length > META_LONG_CHARS || META_LONG_LABEL.test(lbl)) {
+        rows += '<div class="scw-ssc-type" title="' +
+          esc((lbl ? lbl + ': ' : '') + m.value) + '">' +
+          (lbl ? '<b>' + esc(lbl) + ':</b> ' : '') + esc(m.value) + '</div>';
+      } else {
+        inline.push((lbl ? '<b>' + esc(lbl) + ':</b> ' : '') + esc(m.value));
+        inlinePlain.push((lbl ? lbl + ': ' : '') + m.value);
+      }
+    }
+    var out = '';
+    if (inline.length) {
+      out = '<div class="scw-ssc-type" title="' + esc(inlinePlain.join(' · ')) +
+        '">' + inline.join(' · ') + '</div>';
+    }
+    return out + rows;
+  }
+
   function projectCardHtml(p) {
     var dealDigits = String(p.dealId || '').replace(/\D+/g, '');
     return '<div class="scw-ssc-card">' +
@@ -428,6 +504,7 @@
             : esc(p.label)) +
         '</div>' +
         (p.type ? '<div class="scw-ssc-type">' + esc(p.type) + '</div>' : '') +
+        metaLinesHtml(p.meta) +
       '</div>' +
       ((dealDigits || p.cuId)
         ? '<div class="scw-ssc-links">' +
@@ -447,18 +524,6 @@
   }
 
   function serviceCallCardHtml(sc) {
-    var metaHtml = '';
-    if (sc.meta && sc.meta.length) {
-      var bits = [], plain = [];
-      for (var i = 0; i < sc.meta.length; i++) {
-        var lbl = sc.meta[i].label ? sc.meta[i].label + ': ' : '';
-        bits.push(esc(lbl) + esc(sc.meta[i].value));
-        plain.push(lbl + sc.meta[i].value);
-      }
-      // Clamped to two lines by CSS — full text in the tooltip.
-      metaHtml = '<div class="scw-ssc-type" title="' + esc(plain.join(' · ')) +
-        '">' + bits.join(' · ') + '</div>';
-    }
     return '<div class="scw-ssc-card scw-ssc-card--sc">' +
       '<span class="scw-ssc-sc-tag">Service Call</span>' +
       '<div class="scw-ssc-card-main"><div class="scw-ssc-name">' +
@@ -466,7 +531,7 @@
           ? '<a href="' + esc(sc.href) + '" title="Open the work order">' +
             esc(sc.label) + '</a>'
           : esc(sc.label)) +
-      '</div>' + metaHtml + '</div>' +
+      '</div>' + metaLinesHtml(sc.meta) + '</div>' +
     '</div>';
   }
 
@@ -627,11 +692,12 @@
     // order, keyed by client record id (name fallback) so a company with
     // many matched sites renders its header exactly once.
     var companies = [], byClient = Object.create(null);
+    var extras = extraColumns(table);   // auto-detected meta columns
     var rows = table.querySelectorAll('tbody tr');
     for (var i = 0; i < rows.length; i++) {
       if (rows[i].querySelector('td.kn-td-nodata')) continue;
       if (!rows[i].id) continue;
-      var site = parseRow(rows[i]);
+      var site = parseRow(rows[i], extras);
       var key = site.clientId || site.clientName || ('row-' + i);
       if (!byClient[key]) {
         byClient[key] = { key: key, clientName: site.clientName,
