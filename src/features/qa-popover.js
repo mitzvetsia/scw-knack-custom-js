@@ -1034,15 +1034,20 @@
       wrap.appendChild(foot);
     }
 
-    var hist = document.createElement('div');
-    hist.className = 'scw-qa-popover__history';
-    if (photo.history && String(photo.history).trim()) {
-      hist.innerHTML = photo.history;   // same paragraph-text render as the editable path
-    } else {
-      hist.className += ' scw-qa-popover__history-empty';
-      hist.textContent = 'No QA history yet.';
+    // History — REQUIRED photos only. Non-required photos don't get QA
+    // served, so a history block there is noise even when residual QA data
+    // exists (e.g. a photo whose Required flag was later unchecked).
+    if (photo.required) {
+      var hist = document.createElement('div');
+      hist.className = 'scw-qa-popover__history';
+      if (photo.history && String(photo.history).trim()) {
+        hist.innerHTML = photo.history;   // same paragraph-text render as the editable path
+      } else {
+        hist.className += ' scw-qa-popover__history-empty';
+        hist.textContent = 'No QA history yet.';
+      }
+      section('History', hist);
     }
-    section('History', hist);
 
     var note = document.createElement('div');
     note.className = 'scw-qa-popover__ro-note';
