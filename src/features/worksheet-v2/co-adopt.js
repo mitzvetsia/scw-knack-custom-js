@@ -780,11 +780,19 @@
       var rec = byId[ids[i]];
       if (!rec || isOnCo(rec, coId)) continue;   // unknown / already adopted
       pending++;
+      // field_2965 = 'Add': every CO line must carry a CO Action (locked
+      // CO design — Adds + Removes only). Without the stamp the CO's
+      // "What's Changing" manifest doesn't render, the publish payload's
+      // isChangeOrder rides false, and 13.06b silently applies NOTHING at
+      // signature (every route filters on Add/Remove). The unlink handler
+      // (init.js data-scw-ws-v2-unlink) clears it symmetrically.
       (function (rid, body) {
         queuedPut(SCW.knackRecordUrl(putView, rid), body, function (err) {
           settle(rid, err);
         });
-      })(ids[i], (function (r) { return { field_2154: plusCo(r) }; })(rec));
+      })(ids[i], (function (r) {
+        return { field_2154: plusCo(r), field_2965: 'Add' };
+      })(rec));
     }
 
     if (!pending) {   // everything selected was already on the CO

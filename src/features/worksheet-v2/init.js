@@ -1138,10 +1138,13 @@
             setTimeout(function () { ns.data.refetchAndNotify(viewId); }, 1500);
           }
         }
+        // field_2965: '' — clear the CO Action stamp co-adopt.js writes on
+        // adoption. The record returns to being a plain base-scope line; a
+        // stale 'Add' would tint it as a CO add on other surfaces.
         SCW.knackAjax({
           url:  SCW.knackRecordUrl(viewId, rowId),
           type: 'PUT',
-          data: JSON.stringify({ field_2154: remaining }),
+          data: JSON.stringify({ field_2154: remaining, field_2965: '' }),
           success: settle,
           error: function (xhr) {
             console.warn('[scw-ws-v2] CO unlink PUT failed for ' + rowId, xhr && xhr.status);
@@ -1153,7 +1156,7 @@
           SCW.knackAjax({
             url:  SCW.knackRecordUrl(viewId, job.id),
             type: 'PUT',
-            data: JSON.stringify({ field_2154: job.remaining }),
+            data: JSON.stringify({ field_2154: job.remaining, field_2965: '' }),
             success: settle,
             error: function (xhr) {
               console.warn('[scw-ws-v2] CO unlink PUT failed for accessory ' +
