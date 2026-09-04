@@ -225,6 +225,37 @@
     return m[2] + '/' + m[3] + '/' + m[1];
   }
 
+  // Same semantics as published-quote-info.js isExpired(): strictly before
+  // today (calendar-day boundary); blank / unparseable = not expired. Kept
+  // identical so this row and the blob can never disagree on expired-ness.
+  function isExpired(mdy) {
+    if (!mdy) return false;
+    var d = new Date(mdy);
+    if (isNaN(d.getTime())) return false;
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return d < today;
+  }
+
+  // Toggle the loud expired treatment (row tint + red date + EXPIRED pill)
+  // to match `mdy`. Idempotent — safe on every render and after every save.
+  function applyExpiredState(row, mdy) {
+    var expired = isExpired(mdy);
+    row.classList.toggle('scw-preview-exp--expired', expired);
+    var badge = row.querySelector('.scw-exp-expired-badge');
+    if (expired && !badge) {
+      var bSpan = row.querySelector('.kn-detail-body > span');
+      if (bSpan) {
+        badge = document.createElement('span');
+        badge.className = 'scw-exp-expired-badge';
+        badge.textContent = 'Expired';
+        bSpan.insertBefore(badge, bSpan.querySelector('.scw-exp-edit-btn'));
+      }
+    } else if (!expired && badge && badge.parentNode) {
+      badge.parentNode.removeChild(badge);
+    }
+  }
+
   function injectCss() {
     if (document.getElementById(CSS_ID)) return;
     var s = document.createElement('style');
@@ -240,7 +271,19 @@
       '  border: 1px solid #cbd5e1; background: #fff; cursor: pointer; font: inherit; }',
       '.' + MARKER + ' .scw-exp-editor button.scw-exp-save { background: #07467c;',
       '  border-color: #07467c; color: #fff; }',
-      '.' + MARKER + ' .scw-exp-err { color: #b45309; font-size: 11px; margin-left: 8px; }'
+      '.' + MARKER + ' .scw-exp-err { color: #b45309; font-size: 11px; margin-left: 8px; }',
+      // Expired = loud. Red-tinted row + bold red date + solid EXPIRED pill
+      // (red is the error/expired color here, matching .scw-pq-exp--past /
+      // .scw-pq-pdf__badge in published-quote-info.js — not a warning amber).
+      '.' + MARKER + '.scw-preview-exp--expired { background: #fef2f2 !important;',
+      '  box-shadow: inset 4px 0 0 #dc2626; }',
+      '.' + MARKER + '.scw-preview-exp--expired .scw-exp-value {',
+      '  color: #b91c1c; font-weight: 700; }',
+      '.' + MARKER + ' .scw-exp-expired-badge { display: inline-block;',
+      '  margin-left: 10px; padding: 4px 12px; background: #dc2626; color: #fff;',
+      '  border-radius: 5px; font: 800 13px/1.2 system-ui, sans-serif;',
+      '  letter-spacing: 0.08em; text-transform: uppercase;',
+      '  vertical-align: middle; }'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -282,6 +325,7 @@
 
     row.appendChild(label);
     row.appendChild(body);
+    applyExpiredState(row, value);
     return row;
   }
 
@@ -338,6 +382,7 @@
       }
       function committed() {
         if (valueEl) valueEl.textContent = mdy;
+        applyExpiredState(row, mdy);
         close();
         // Refresh the hidden SOW-header details model so the next publish
         // payload (summary.expirationDate reads live views) carries it.
@@ -420,6 +465,7 @@
       if (value && !existing.querySelector('.scw-exp-editor')) {
         var ve = existing.querySelector('.scw-exp-value');
         if (ve && ve.textContent.trim() !== value) ve.textContent = value;
+        applyExpiredState(existing, value);
       }
       return;
     }
