@@ -4845,7 +4845,10 @@
     for (var i = 0; i < lineItems.length; i++) {
       var row  = lineItems[i] || {};
       var qty  = num(row.field_1964_raw) || 1;   // negative on Remove lines
-      var cost = num(row.field_2203_raw);        // per-row sub cost
+      // field_2150 = INPUT sub bid (the sub's unit number). NOT field_2203
+      // — that's the client-facing unit sell total; putting it on a
+      // sub-facing document would leak margin.
+      var cost = num(row.field_2150_raw);
       var amt  = round2(qty * cost);
       if (!amt) continue;                        // nothing sub-priced
       var mdfArr = row.field_1946_raw;
@@ -5111,7 +5114,20 @@
     var subBid        = buildSubBidReview();
     // CO publishes only: the sub-facing pricing document (no separate sub
     // bid record exists for a CO — pricing lives on the SOW rows).
-    var coSubBidHtml  = payload.isChangeOrder
+    // Gate on the SOW header's Type field (field_2952, projected on the
+    // hidden view_3861 details) rather than payload.isChangeOrder alone:
+    // isChangeOrder derives from the "What's Changing" manifest, which
+    // doesn't render when the CO's lines carry no CO Action (field_2965)
+    // — e.g. floorplan-imported lines — but the sub pricing sheet should
+    // still ship for any change-order SOW.
+    var sowTypeIsCo = false;
+    try {
+      var typeEl = document.querySelector(
+        '#view_3861 .kn-detail.field_2952 .kn-detail-body');
+      sowTypeIsCo = !!typeEl &&
+        /change\s*order/i.test(String(typeEl.textContent || ''));
+    } catch (e) { sowTypeIsCo = false; }
+    var coSubBidHtml  = (payload.isChangeOrder || sowTypeIsCo)
       ? buildCoSubBidDoc(jsonSnapshot, summary.sowId) : '';
     // Tech group — field_2954 lives on the BID; view_3861 shows it through
     // a chain (SOW -> bids -> tech group), which renders NESTED
