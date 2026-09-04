@@ -1525,6 +1525,12 @@
             // agreement (use INSTEAD of grandTotal on COs), and
             // coChangeSummary is the structured adds/removes manifest.
             'isChangeOrder', 'coNetChange', 'coChangeSummary',
+            // Sub-facing CO pricing document (qty × field_2150 per line)
+            // — present on CO publishes only. Same silent-drop trap as
+            // the subBid* keys below: any NEW buildPublishPayload key
+            // must be added HERE or the ops-stepper webhooks never
+            // carry it.
+            'coSubBidHtml',
             'json', 'jsonString',
             'invoiceItems', 'invoiceItemsString',
             // Tokenized public link, minted at publish time by
