@@ -1607,6 +1607,29 @@
         if (window.SCW && SCW.knackImgThumbInto) SCW.knackImgThumbInto(thumb, photos[pi].url);
         else thumb.src = photos[pi].url;
         a.appendChild(thumb);
+        // Click → the same in-place lightbox viewer the worksheet photo
+        // strips use, flipping through THIS location's photos. The plain
+        // href (new tab) stays as the fallback when the v2 viewer isn't
+        // loaded, and delete-button clicks pass through untouched to
+        // mdf-manage's delegated [data-scw-mdf-photo-del] handler.
+        (function (startIdx) {
+          a.addEventListener('click', function (e) {
+            if (e.target && e.target.closest &&
+                e.target.closest('[data-scw-mdf-photo-del]')) return;
+            var wsv2 = window.SCW && SCW.worksheetV2;
+            var lb = wsv2 && wsv2.photos && wsv2.photos.openLightbox;
+            if (!lb) return;
+            e.preventDefault();
+            var items = [];
+            for (var ii = 0; ii < photos.length; ii++) {
+              items.push({
+                url:  photos[ii].url,
+                type: label ? (label + ' — photo') : 'MDF/IDF photo'
+              });
+            }
+            lb(items, startIdx);
+          });
+        })(pi);
         if (photos[pi].id) {
           var delBtn = document.createElement('button');
           delBtn.type = 'button';
