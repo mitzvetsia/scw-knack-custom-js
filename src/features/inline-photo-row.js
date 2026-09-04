@@ -1596,6 +1596,40 @@
     } else if (action === 'edit') {
       var photoId = target.getAttribute('data-photo-id');
       if (!photoId) return;
+      // MDF/IDF card strips: clicking a FILLED photo opens the same
+      // in-place lightbox viewer the worksheet-v2 line-item strips use
+      // (flip through this location's photos) instead of tearing out to
+      // Knack's edit-photo page. The edit page stays reachable via the
+      // lightbox's "Edit" link. Empty/upload slots keep the classic
+      // navigation, and everything falls through to it when the viewer
+      // isn't available. Scoped to .scw-mdf-card__photos on purpose —
+      // other strips (sub deploy, v1 worksheets) keep click-to-edit.
+      if (target.getAttribute('data-photo-has-image') === 'true' &&
+          target.closest('.scw-mdf-card__photos')) {
+        var wsv2 = window.SCW && SCW.worksheetV2;
+        var lb = wsv2 && wsv2.photos && wsv2.photos.openLightbox;
+        var lbStrip = target.closest('.' + STRIP_CLS);
+        if (lb && lbStrip) {
+          var lbCards = lbStrip.querySelectorAll(
+            '.' + CARD_CLS + '[data-photo-has-image="true"]');
+          var lbItems = [], lbIdx = 0;
+          for (var li = 0; li < lbCards.length; li++) {
+            var lbImg = lbCards[li].querySelector('img.' + IMG_CLS);
+            var lbUrl = lbImg && (lbImg.currentSrc || lbImg.src);
+            if (!lbUrl) continue;
+            var lbId = lbCards[li].getAttribute('data-photo-id') || '';
+            var lbHash = lbId ? editPhotoHash(lbId, viewEl.id) : '';
+            if (lbCards[li] === target) lbIdx = lbItems.length;
+            lbItems.push({
+              url:      toOriginalUrl(lbUrl),
+              type:     lbCards[li].getAttribute('data-photo-type') || 'MDF/IDF photo',
+              req:      lbCards[li].getAttribute('data-photo-required') === 'true' ? 'done' : '',
+              editHref: lbHash ? ('#' + lbHash) : ''
+            });
+          }
+          if (lbItems.length) { lb(lbItems, lbIdx); return; }
+        }
+      }
       var editH = editPhotoHash(photoId, viewEl.id);
       if (editH) navigateToHash(editH);
     }
