@@ -20,16 +20,34 @@
  *
  * EDITING (added 2026-09-04 — "no place to update a CO's expiration"): the
  * row carries a pencil; clicking it swaps the value for a date input +
- * Save/Cancel and PUTs `field_2135` on the SOW record. scene_1096 has no
- * editable SOW view, so the write goes through `view_3325` (the build-SOW
- * SOW list — the same field_2135-capable write view the expiration mirror
- * uses). knackRecordUrl pins URLs to the CURRENT scene, so we resolve
- * view_3325's own scene key from the Knack schema at runtime and build the
- * cross-scene URL directly — a view-scoped PUT works from any page as long
- * as the logged-in role can access that scene. Base SOWs get the same
- * editor; the gap it closes is COs, which have no other surface for
- * field_2135. When the field is blank the row still renders ("—") so the
- * pencil stays reachable.
+ * Save/Cancel. WHAT the save writes depends on publish state, because after
+ * publishing the date actually in effect is `field_2659` on the PUBLISHED
+ * PROPOSAL record (what the top-right blob shows and what the customer link
+ * honors) — not the SOW's `field_2135`:
+ *
+ *   — PUBLISHED (view_3886 has a record): write `field_2659` on the proposal
+ *     record through view_3886 (same scene → plain knackRecordUrl), then
+ *     mirror `field_2135` onto the SOW best-effort — the same primary/mirror
+ *     split pq-expiration-edit.js uses on scene_1085/1155. This is what lets
+ *     an expiration be EXTENDED without re-publishing. The blob's "Expires:"
+ *     line is patched in place and view_3886 refetched so the widget
+ *     repaints from server truth.
+ *   — NOT published: write `field_2135` on the SOW only; it carries into the
+ *     proposal at publish time.
+ *
+ * scene_1096 has no editable SOW view, so the field_2135 write goes through
+ * `view_3325` (the build-SOW SOW list — the same field_2135-capable write
+ * view the expiration mirror uses). knackRecordUrl pins URLs to the CURRENT
+ * scene, so we resolve view_3325's own scene key from the Knack schema at
+ * runtime and build the cross-scene URL directly — a view-scoped PUT works
+ * from any page as long as the logged-in role can access that scene. Base
+ * SOWs get the same editor; the gap it closes is COs, which have no other
+ * surface for their expiration. When the field is blank the row still
+ * renders ("—") so the pencil stays reachable.
+ *
+ * DISPLAY follows the same rule: when published, the row shows the
+ * proposal's `field_2659` (the in-effect date), so the row and the blob can
+ * never disagree; otherwise it shows the SOW-side value.
  ****************************************************************************/
 (function () {
   'use strict';
@@ -38,9 +56,11 @@
   var ID_VIEW    = 'view_3339';                    // SOW identity host
   var ANCHOR_FLD = 'field_2122';                   // SW# item to insert after
   var EXP_FIELDS = ['field_2135', 'field_2659'];   // SOW expiration, then proposal
-  var EXP_FIELD  = 'field_2135';                   // the field the editor writes
+  var EXP_FIELD  = 'field_2135';                   // SOW-side expiration
   var WRITE_VIEW = 'view_3325';                    // field_2135-capable SOW view
   var MODEL_VIEW = 'view_3861';                    // refetched after a save
+  var PQ_VIEW      = 'view_3886';                  // published proposals grid (this scene)
+  var PQ_EXP_FIELD = 'field_2659';                 // in-effect expiration on the proposal
   var MARKER     = 'scw-preview-exp';
   var CSS_ID     = 'scw-preview-exp-css';
   var NS         = '.scwPreviewExp';
@@ -97,6 +117,17 @@
     return '';
   }
 
+  // ── Published proposal on this scene (null when not yet published) ──
+  function readPublished() {
+    try {
+      if (window.SCW && SCW.publishedQuoteInfo) {
+        var p = SCW.publishedQuoteInfo.read({ sourceView: PQ_VIEW });
+        if (p && p.recordId) return p;
+      }
+    } catch (e) { /* fail soft */ }
+    return null;
+  }
+
   // ── Cross-scene record URL for the write view ───────────────────────
   // knackRecordUrl uses Knack.router.current_scene_key, but view_3325
   // lives on the build-SOW scene — find that scene in the app schema.
@@ -145,6 +176,41 @@
           (xhr && xhr.status ? ' (' + xhr.status + ')' : '')));
       }
     });
+  }
+
+  // field_2659 on the published-proposal record, through this scene's own
+  // published-proposals grid — the date the blob + customer link honor.
+  function savePublishedExp(proposalId, mdy, cb) {
+    var body = {};
+    body[PQ_EXP_FIELD] = mdy;
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(PQ_VIEW, proposalId),
+      type: 'PUT',
+      data: JSON.stringify(body),
+      success: function () { cb(null); },
+      error: function (xhr) {
+        var status = xhr && xhr.status;
+        var msg = 'Save failed' + (status ? ' (' + status + ')' : '');
+        if (status === 401 || status === 403) {
+          msg = 'Save denied (' + status + ') — ' + PQ_VIEW + ' needs ' +
+                PQ_EXP_FIELD + ' editable (inline edit / update rights).';
+        }
+        console.warn('[scw-preview-exp] field_2659 save failed',
+          xhr && xhr.responseText);
+        cb(new Error(msg));
+      }
+    });
+  }
+
+  // In-place ack on the blob after a field_2659 save; the view_3886 refetch
+  // that follows rebuilds it fully (expired badge/note, etc.).
+  function patchBlob(proposalId, mdy) {
+    var els = document.querySelectorAll(
+      '.scw-pq-info[data-proposal-record-id="' + proposalId + '"] .scw-pq-exp');
+    for (var i = 0; i < els.length; i++) {
+      els[i].textContent = 'Expires: ' + mdy;
+      els[i].classList.remove('scw-pq-exp--past');
+    }
   }
 
   // ── mm/dd/yyyy helpers ──────────────────────────────────────────────
@@ -264,13 +330,13 @@
       if (!mdy) { err.textContent = 'Pick a date.'; return; }
       save.disabled = true;
       save.textContent = 'Saving…';
-      saveExpiration(sowId, mdy, function (saveErr) {
-        if (saveErr) {
-          err.textContent = saveErr.message || 'Save failed';
-          save.disabled = false;
-          save.textContent = 'Save';
-          return;
-        }
+
+      function fail(saveErr) {
+        err.textContent = saveErr.message || 'Save failed';
+        save.disabled = false;
+        save.textContent = 'Save';
+      }
+      function committed() {
         if (valueEl) valueEl.textContent = mdy;
         close();
         // Refresh the hidden SOW-header details model so the next publish
@@ -281,7 +347,39 @@
             mv.model.fetch();
           }
         } catch (e) { /* non-fatal */ }
-      });
+      }
+
+      var pub = readPublished();
+      if (pub) {
+        // Published — field_2659 on the proposal record is the date in
+        // effect. Write it first; on success mirror field_2135 onto the
+        // SOW best-effort (same split as pq-expiration-edit.js). This is
+        // the extend-without-republishing path.
+        savePublishedExp(pub.recordId, mdy, function (pErr) {
+          if (pErr) { fail(pErr); return; }
+          saveExpiration(sowId, mdy, function (mErr) {
+            if (mErr) {
+              console.warn('[scw-preview-exp] field_2135 mirror failed ' +
+                '(field_2659 saved) — SOW', sowId, mErr.message);
+            }
+          });
+          patchBlob(pub.recordId, mdy);
+          try {
+            var pv = Knack.views[PQ_VIEW];
+            if (pv && pv.model && typeof pv.model.fetch === 'function') {
+              pv.model.fetch();
+            }
+          } catch (e2) { /* non-fatal */ }
+          committed();
+        });
+      } else {
+        // Not published yet — the SOW field is the only copy; it feeds the
+        // proposal at publish time.
+        saveExpiration(sowId, mdy, function (saveErr) {
+          if (saveErr) { fail(saveErr); return; }
+          committed();
+        });
+      }
     });
   }
 
@@ -308,7 +406,11 @@
     var scene = document.getElementById('kn-' + SCENE_ID);
     if (!scene) return;
 
-    var value = readExpiration();
+    // Published → the proposal's field_2659 is the date in effect (keeps
+    // this row agreeing with the blob); otherwise the SOW-side value.
+    var pub   = readPublished();
+    var value = (pub && pub.expDate) ? String(pub.expDate).trim()
+                                     : readExpiration();
 
     // Idempotent — one expiration row on the scene. If a later data load
     // surfaces a value the placeholder row missed, update it in place
