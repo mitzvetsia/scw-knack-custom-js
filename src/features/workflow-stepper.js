@@ -172,9 +172,14 @@
         // Validate-first path in flight (validation requested, Ops hasn't
         // flipped field_2723 yet): neutral label — the step is locked
         // below with "Waiting on Ops to validate", so the header must not
-        // read as an offer to validate again.
+        // read as an offer to validate again. Guarded on field_2917 = 0
+        // to match the lock below — on an alternate SOW (validated
+        // sibling exists) the inherited field_1199 doesn't mean a
+        // validation is in flight, so fall through to the validate-offer
+        // label instead.
         { when: { all: [ { field: 'field_1199', hasValue: true },
-                         { field: 'field_2723', notValue: 'Yes' } ] },
+                         { field: 'field_2723', notValue: 'Yes' },
+                         { not: { field: 'field_2917', gt: 0 } } ] },
           label: 'Request Site Survey' },
         { when: { field: 'field_2723', notValue: 'Yes' }, label: 'Validate SOW & Straight to Survey' },
         { label: 'Request Survey' }
@@ -230,11 +235,20 @@
       //      itself soft-hides). Unlocks automatically when field_2723
       //      flips. NOTE the pre-decision "Validate SOW & Straight to
       //      Survey" submit stays ungated — Make branches on field_2723.
+      //      ⚠️ Guarded on field_2917 = 0 (no validated SOW on the project
+      //      yet): field_1199 is PROJECT-level, so an alternate SOW
+      //      created after a sibling was set up inherits it — without the
+      //      guard the alternate deadlocks (Validate step hidden-as-done
+      //      + survey locked "waiting on Ops" for a validation nobody
+      //      requested). With a validated sibling the proxy is void; the
+      //      step stays active as "Validate SOW & Straight to Survey",
+      //      whose Make branch validates + skips project setup.
       disabled: [
         { when: { field: 'field_2724', notValue: 'Yes' },
           message: 'Complete the Project Playbook first' },
         { when: { all: [ { field: 'field_1199', hasValue: true },
-                         { field: 'field_2723', notValue: 'Yes' } ] },
+                         { field: 'field_2723', notValue: 'Yes' },
+                         { not: { field: 'field_2917', gt: 0 } } ] },
           message: 'Waiting on Ops to validate the SOW — this unlocks automatically' }
       ],
       // TODO(pending-REQ rollup): once the Builder rollup field (count of
