@@ -128,6 +128,14 @@ td.hc-derived{text-align:center;color:var(--ink2);font-weight:600;background:col
 td.hc-derived .hcv,td.hc .hcv{display:inline-block;width:44px;text-align:center}
 tr.rowopen>td{background:color-mix(in srgb, var(--surface2) 60%, var(--surface))}
 .role-detail{display:flex;flex-wrap:wrap;gap:10px 40px;padding:8px 4px 10px;white-space:normal}
+.ppl-row{align-items:flex-end}
+.ppl-row>.fld{flex:0 0 auto}
+/* The people list reads as a table: column labels once, on the first row, then plain rows
+   with a hairline between them. Repeating every label on every person was the noise. */
+.ppl-grid .ppl-row:not(:first-child) .fld label{display:none}
+.ppl-grid .ppl-row + .ppl-row{border-top:1px solid var(--border);padding-top:5px;margin-top:5px}
+.ppl-grid .ppl-row:last-child{border-top:0;padding-top:8px;margin-top:4px}
+.ppl-grid select[data-k="pfrom"]{width:118px}
 .rd-block h4{margin:0 0 7px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .fld{display:inline-flex;flex-direction:column;gap:2px}
 .fld label{font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600}
@@ -299,7 +307,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <button class="btn addrow" id="addRep">+ Add rep</button>
   </div>
   <div class="card"><h2>Monthly revenue by rep <span class="scn-toggle" id="repMoScn"><button class="btn on" data-scn="modest">Modest</button><button class="btn" data-scn="stretch">Stretch</button></span></h2>
-    <p class="note">Each rep's modeled month-over-month revenue — ramp value for their tenure month × attainment. Use it to check people are plugged into the right curve and start month. Shaded columns are already closed: the P&amp;L takes their revenue straight from Xero, so the ramp figures there are a modelling check only.</p>
+    <p class="note">Each rep's modeled month-over-month revenue — the ramp value for their tenure month × their attainment. These are <b>not</b> quota figures: a fully-ramped AE carries $83K/mo, and at 80% modest attainment this grid shows $67K. The quota itself is the <b>Full rate</b> column on the ramp curves below. Shaded columns are already closed: the P&amp;L takes their revenue straight from Xero, so the ramp figures there are a modelling check only.</p>
     <div class="tablewrap tall" id="repMoTable"></div></div>
   <div class="card"><details><summary style="cursor:pointer;font-weight:600">Ramp schedules (monthly run-rate by tenure month)</summary>
     <div class="tablewrap" style="margin-top:10px" id="rampTable"></div></details></div>
@@ -1221,8 +1229,12 @@ function monthSel(attrs, value, o){
   let h = `<select class="cell mo" ${attrs}${o.title ? ` title="${esc(o.title)}"` : ""}>`;
   if (o.blank) h += `<option value=""${v === "" ? " selected" : ""}>${esc(o.blank)}</option>`;
   // a leading option outside the month range — "fully ramped", "no change", and the like
-  if (o.first) h += `<option value="${o.first.value}"${v === o.first.value ? " selected" : ""}>${esc(o.first.label)}</option>`;
-  let seen = false;
+  let seenFirst = false;
+  if (o.first){
+    seenFirst = v === o.first.value;
+    h += `<option value="${o.first.value}"${seenFirst ? " selected" : ""}>${esc(o.first.label)}</option>`;
+  }
+  let seen = seenFirst;
   for (let i = min; i <= max; i++){
     if (i === v) seen = true;
     h += `<option value="${i}"${i === v ? " selected" : ""}>${esc(monthName(i))}</option>`;
@@ -1670,8 +1682,9 @@ function goalHalf(C, [a, b, label], tKey, thrKey, ids){
       <span class="lab">Revenue target</span><span><input id="${ids[0]}" value="${L[tKey].toLocaleString("en-US")}"></span>
       <span class="lab">Comp threshold <span class="subtle">(overrides pay above)</span></span><span><input id="${ids[1]}" value="${L[thrKey].toLocaleString("en-US")}"> ${L[thrKey] === L[tKey] ? `<span class="subtle">= modest goal</span>` : ""}</span>
       <span class="lab be beM">Break-even revenue</span><span class="be beM">${fmt$(be)} <span class="subtle" style="font-weight:400">(${fmtK(be / (b - a))}/mo, excl. overrides)</span></span>
-      <span class="lab">Projected — modest</span><span>${fmt$(revM)} ${pill(revM)}</span>
-      <span class="lab">Projected — stretch</span><span>${fmt$(revS)} ${pill(revS)}</span>
+      <span class="lab">Projected — modest</span><span title="${booked ? `${booked} of these ${b - a} months are closed, so their revenue is Xero's, identical under both scenarios. ` : ""}The ${modeled} modeled month${modeled === 1 ? " comes" : "s come"} from Sales projections: each rep's ramp value for their tenure month, times their Modest %, summed.">${fmt$(revM)} ${pill(revM)}</span>
+      <span class="lab">Projected — stretch</span><span title="${booked ? `Same ${booked} closed month${booked === 1 ? "" : "s"} from Xero — a closed month has no upside left. ` : ""}The ${modeled} modeled month${modeled === 1 ? " uses" : "s use"} each rep's Stretch % instead of Modest %.">${fmt$(revS)} ${pill(revS)}</span>
+      <span class="lab">of which</span><span class="subtle">${booked ? `${fmtK(sum(C.rev.mod.map((v, i) => i < ACT ? v : 0)))} booked in Xero + ` : ""}${fmtK(sum(C.rev.mod.map((v, i) => i < ACT ? 0 : v)))} modeled${booked ? " (modest)" : ""}</span>
       <span class="lab">Override comp M / S</span><span>${fmtK(C.override.mod[a === FH1[0] ? 0 : 1])} / ${fmtK(C.override.str[a === FH1[0] ? 0 : 1])}</span>
     </div></div>`;
 }
@@ -1811,11 +1824,17 @@ function renderSales(C){
   bind("lvComm", v => S.levers.commPct = String(v).trim() === "" ? null : Math.max(0, num(v, 0)) / 100);
   const cr = document.getElementById("commReset");
   if (cr) cr.addEventListener("click", ev => { ev.preventDefault(); S.levers.commPct = null; persist(); scheduleRender(); });
-  let rh = `<table class="data"><thead><tr><th>Curve</th>${Array.from({length:12}, (_, i) => `<th>M${i + 1}</th>`).join("")}<th>YR1</th></tr></thead><tbody>`;
+  // Two different numbers get confused constantly: the QUOTA a fully-ramped rep carries, and
+  // what the first year adds up to while they are still climbing. Show both, named.
+  let rh = `<table class="data"><thead><tr><th>Curve</th>${Array.from({length:12}, (_, i) => `<th>M${i + 1}</th>`).join("")}` +
+    `<th title="What this curve is worth once someone is fully ramped — the month-12 rate, annualised. This is the quota, before attainment.">Full rate</th>` +
+    `<th title="What the first twelve months add up to while they are still ramping. Lower than the full rate x 12, and not the quota.">Ramping yr 1</th></tr></thead><tbody>`;
   for (const n of Object.keys(S.ramps)){
-    rh += `<tr><td>${esc(n)}</td>` + S.ramps[n].map((v, i) =>
+    const curve = S.ramps[n], full = curve[curve.length - 1] || 0;
+    rh += `<tr><td>${esc(n)}</td>` + curve.map((v, i) =>
       `<td><input class="cell" data-id="${esc(n)}" data-k="ramp${i}" value="${Math.round(v)}"></td>`).join("") +
-      `<td>${fmt$(S.ramps[n].reduce((a, b) => a + b, 0))}</td></tr>`;
+      `<td><b>${fmtK(full * 12)}</b><span class="dim"> /yr · ${fmt$(full)}/mo</span></td>` +
+      `<td class="dim">${fmt$(curve.reduce((a, b) => a + b, 0))}</td></tr>`;
   }
   document.getElementById("rampTable").innerHTML = rh + "</tbody></table>";
   renderRepMonths();
@@ -1827,7 +1846,9 @@ function renderRepMonths(){
   const tot = Array(NM).fill(0);
   for (const r of S.sales){
     let sum = 0;
-    const scnNote = " @ " + Math.round((r[repMoScn] || 0) * 100) + "%";
+    // name the quota the percentage is a percentage OF, so the two are never read as one number
+    const fullRate = (S.ramps[r.ramp] || []).slice(-1)[0] || 0;
+    const scnNote = " @ " + Math.round((r[repMoScn] || 0) * 100) + "% of " + fmtK(fullRate) + "/mo";
     const endNote = r.end && r.end < NM ? " · thru " + MONTHS[r.end - 1] + (r.end <= 12 ? " ’26" : " ’27") : "";
     h += `<tr><td>${esc(r.name)} <span class="dim">· ${esc(r.ramp)}${scnNote}${endNote}</span></td>`;
     for (let m = 1; m <= NM; m++){
@@ -2038,6 +2059,8 @@ function renderStaff(C){
           ? `<b>${fmt$(e0)} → ${fmt$(eN)}/yr (+${((eN - e0) / (e0 || 1) * 100).toFixed(1)}%)</b>${p.payType === "hourly" ? " (≈ $" + (eN / (hrsOf(p, pp) * 52)).toFixed(2) + "/hr)" : ""} · `
           : (c0 ? `${fmt$(eN)}/yr · ` : "");
         const costTxt = c0 ? earnTxt + fmt$(c0) + "/mo" + (Math.abs(cN - c0) > 1 ? " → " + fmt$(cN) + "/mo loaded" : " loaded") : "";
+        const cr = isSelling(p) ? rampCredit(pp) : 0;
+        const crTxt = cr > 0 ? ` · <b>${cr >= RAMP_LEN ? "fully ramped" : cr + " mo into ramp"}</b> at ${MONTHS[0]} \u201926` : "";
         return `<div class="ppl-row">
           <span class="fld"><label>Person</label><input class="cell pos" data-id="${pp.id}" data-k="pname" value="${esc(pp.name)}"></span>
           ${p.payType === "hourly" ? `
@@ -2047,9 +2070,9 @@ function renderStaff(C){
           <span class="fld"><label>Salary/yr</label><input class="cell w84" data-id="${pp.id}" data-k="psal" value="${pp.sal == null ? "" : Math.round(pp.sal).toLocaleString("en-US")}" placeholder="role: ${Math.round(p.ote / 1000)}K"></span>
           <span class="fld"><label>New salary</label><input class="cell w84" data-id="${pp.id}" data-k="psal2" value="${pp.sal2 == null ? "" : Math.round(pp.sal2).toLocaleString("en-US")}" placeholder="—"></span>`}
           <span class="fld"><label>Change mo</label>${monthSel(`data-id="${pp.id}" data-k="pchg"`, pp.chgM || "", { blank: "\u2014 no change", title: "Month the new salary takes effect." })}</span>
-          <span class="fld"><label>Starts</label>${monthSel(`data-id="${pp.id}" data-k="pfrom"`, startOf(pp), { min: START_MIN, first: { value: FULLY_RAMPED, label: "fully ramped" }, title: "When they started, not when the window opens. Months before Jan \u201926 mean they were already ramping — payroll still runs from Jan, and on a selling role the months already served become ramp credit. Earlier than " + monthName(START_MIN) + ", pick fully ramped." })}${rampCredit(pp) > 0 ? ` <span class="subtle" style="margin-left:5px">${rampCredit(pp) >= RAMP_LEN ? "fully ramped" : rampCredit(pp) + " mo of ramp served"}</span>` : ""}</span>
+          <span class="fld"><label>Starts</label>${monthSel(`data-id="${pp.id}" data-k="pfrom"`, startOf(pp), { min: START_MIN, first: { value: FULLY_RAMPED, label: "fully ramped" }, title: "When they started, not when the window opens. Months before Jan \u201926 mean they were already ramping — payroll still runs from Jan, and on a selling role the months already served become ramp credit. Earlier than " + monthName(START_MIN) + ", pick fully ramped." })}</span>
           <span class="fld"><label>Ends</label>${monthSel(`data-id="${pp.id}" data-k="pto"`, pp.to || NM, { title: "Last month on payroll. End someone here and start them on another role next month to model a role change." })}</span>
-          <span class="fld"><label>&nbsp;</label><span class="subtle">${costTxt}</span></span>
+          <span class="fld" style="flex:1 1 auto;min-width:0"><label>&nbsp;</label><span class="subtle" style="white-space:nowrap">${costTxt}${crTxt}</span></span>
           <span class="fld"><label>&nbsp;</label><button class="btn mini" data-id="${pp.id}" data-k="pdel" title="Remove person">✕</button></span>
         </div>`;
       }).join("");
