@@ -533,7 +533,7 @@ textarea.json{
       <div class="mark-glyph">SCW</div>
       <div>
         <div class="eyebrow">Field update &mdash; revenue board</div>
-        <h1>Where we&rsquo;re pacing &mdash; <em>Aug &middot; Q2 &amp; Q3 &middot; 2026</em></h1>
+        <h1>Where we&rsquo;re pacing &mdash; <em><span id="hMonth">&mdash;</span> &middot; Q2 &amp; Q3 &middot; <span id="hYear">&mdash;</span></em></h1>
       </div>
     </div>
     <div class="mast-meta">
@@ -2061,6 +2061,8 @@ textarea.json{
     renderMonth(); renderQ2();
   }
   function applyMonthLabels() {
+    put('hMonth', MONTH_NAMES[SEL.m].slice(0, 3));
+    put('hYear', SEL.y);
     put('pMonthShort', MONTH_NAMES[SEL.m]);
     put('pMonthFull', selLabel());
     put('mNavLabel', selLabel());
