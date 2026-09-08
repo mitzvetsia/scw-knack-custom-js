@@ -282,7 +282,9 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
 
 <section class="tab" id="tab-sales">
   <div class="card"><h2>Team revenue by month</h2><p class="note">Each rep's ramp × attainment, summed, against booked revenue. Dashed lines: the half's target and break-even per month. Targets &amp; thresholds are set on the Projections tab.</p><figure class="chart" id="chartTeam"></figure></div>
-  <div class="card"><h2>Reps</h2><p class="note">Attainment is per person per scenario — e.g. Zach 80% modest / 100% stretch. Base salaries live on Staffing; commissions pay on attained revenue. Leave <b>Comm %</b> blank and the rep pays from the tier table below at the rate their attainment earns (so modest and stretch can pay different rates); type a % for a flat override. Sales Manager and Director overrides are in the levers above. Someone leaving sales — or moving into a different role — gets a <b>Last mo</b>: their revenue and commissions stop after that month (for a role change, add the new role on the Staffing tab so their pay continues there).</p>
+  <div class="card"><h2>Reps</h2><p class="note">Attainment is per person per scenario — e.g. Zach 80% modest / 100% stretch. Base salaries live on Staffing; commissions pay on attained revenue. Leave <b>Comm %</b> blank and the rep pays from the tier table below at the rate their attainment earns (so modest and stretch can pay different rates); type a % for a flat override. Sales Manager and Director overrides are in the levers above.</p>
+    <p class="note" style="margin:-4px 0 10px"><b>Who is on this list comes from the staffing plan.</b> Name someone on a Sales role there — a real name or a TBD — and they appear here, ramping from the month they join and stopping when they leave. Move someone between roles (end them on one, start them on the next) and each stint gets its own row on the right curve; an AM→AE move picks up the transition ramp automatically. What you set here stays yours: ramp, attainment, commission, and <b>Ramped mo</b> — months of ramp already behind them, which is how someone already at full rate in Jan ’26 avoids being modelled as a new hire.</p>
+    <div id="rosterLink"></div>
     <div id="commTierBar"></div>
     <div class="tablewrap" id="salesTable"></div>
     <button class="btn addrow" id="addRep">+ Add rep</button>
@@ -488,6 +490,31 @@ function migrateState(st){
     if (L0.taxRate == null) L0.taxRate = MODEL.employer_tax_rate;
     if (L0.ovrInBase != null) delete L0.ovrInBase;   // retired: salaries are base-only
     if (L0.bdayWeight == null) L0.bdayWeight = true;
+  if (!L0.salesLinkFix){
+    // Existing reps predate the link. Bind each to the staffing stint with the same name and keep
+    // their current start by deriving RAMPED MO from it, so nothing shifts and no duplicate is
+    // created for a person who is already on the list.
+    try {
+      const taken = new Set(st.sales.filter(r => r.link).map(r => r.link));
+      for (const rep of st.sales){
+        if (rep.link) continue;
+        const nm = (rep.name || "").trim().toLowerCase();
+        if (!nm) continue;
+        for (const r of st.staff){
+          if (!isSelling(r)) continue;
+          const person = (r.people || []).find(p => (p.name || "").trim().toLowerCase() === nm &&
+            !taken.has(r.id + "|" + p.id));
+          if (!person) continue;
+          rep.link = r.id + "|" + person.id;
+          taken.add(rep.link);
+          rep.from = Math.max(1, person.from || 1);
+          rep.pre = Math.max(0, rep.from - (rep.start || 1));
+          break;
+        }
+      }
+    } catch (e) {}
+    L0.salesLinkFix = 1;
+  }
     for (const p of st.staff){
       if (p.benOn === undefined) p.benOn = (p.hdv || 0) > 0;
       if (p.taxOn === undefined) p.taxOn = (p.tax || 0) > 0.005;
@@ -626,10 +653,99 @@ function expensePlanned(e){
   const base = e.override != null ? e.override : (e.use === "BUDGET" ? (e.budget || 0) : (e.xero || 0));
   return base * (1 + (e.adj || 0));
 }
+/* ---------- the sales roster is the staffing plan ----------
+   Reps are DERIVED from named people on selling roles in the staffing plan, so adding someone
+   there (a real name or a "TBD") makes them a rep starting the month they join, and ending the
+   month they leave. Each stint is its own row, which is what makes a role change work: end the
+   person on the AM role in month X, start them on the AE role in X+1, and they get an AM segment
+   and an AE segment with the right curve for each — the ramp list already carries "AM -> AE" and
+   "AE -> AM" for exactly this, and a detected transition picks it automatically.
+   What stays yours per rep: the ramp curve, attainment, commission, and RAMPED MO — how many
+   months of ramp they had already completed when they joined, so someone fully productive at the
+   window start is not modelled as a new hire. Rows with no link (BEN, MARKETING) are untouched. */
+const SELL_RE = /account executive|account manager/i;
+function isSelling(row){ return row.sells != null ? !!row.sells : SELL_RE.test(row.position || ""); }
+function roleKind(role){
+  const t = (role || "").toLowerCase();
+  if (/account manager/.test(t)) return "AM";
+  if (/account executive/.test(t)) return "AE";
+  return "";
+}
+function rampFor(role, priorRole){
+  const kind = roleKind(role), prior = roleKind(priorRole);
+  if (prior && kind && prior !== kind){
+    const t = prior + " -> " + kind;                       // "AM -> AE" / "AE -> AM"
+    if (S.ramps && S.ramps[t]) return t;
+  }
+  if (kind === "AM" && S.ramps["NEW AM"]) return "NEW AM";
+  if (S.ramps["NEW AE"]) return "NEW AE";
+  return Object.keys(S.ramps)[0] || "";
+}
+// One entry per person-stint on a selling role, in start order.
+function salesTargets(){
+  const out = [];
+  for (const r of S.staff){
+    if (!isSelling(r)) continue;
+    for (const p of (r.people || [])){
+      if (!p || !p.id) continue;
+      out.push({ key: r.id + "|" + p.id, name: (p.name || "").trim() || "(unnamed)", role: r.position,
+                 start: Math.max(1, p.from || 1), end: (p.to && p.to < NM) ? p.to : null });
+    }
+  }
+  out.sort((a, b) => a.start - b.start);
+  // a stint that picks up where the same person's other selling stint left off is a role change
+  for (const t of out){
+    const prior = out.find(o => o !== t && o.name.toLowerCase() === t.name.toLowerCase() &&
+      o.end != null && o.end < t.start && t.start - o.end <= 2);
+    if (prior && roleKind(prior.role) && roleKind(prior.role) !== roleKind(t.role)){
+      t.priorRole = prior.role; t.transition = true;
+    }
+  }
+  return out;
+}
+// Reconcile S.sales against the plan. Adds what is missing, keeps per-rep tuning, follows start
+// and end months, and flags a rep whose staffing stint has gone rather than deleting their setup.
+function syncSales(){
+  const targets = salesTargets();
+  const byKey = new Map(targets.map(t => [t.key, t]));
+  let changed = false;
+  for (const rep of S.sales){
+    if (!rep.link) continue;
+    const t = byKey.get(rep.link);
+    if (!t){ if (!rep.orphan){ rep.orphan = true; changed = true; } continue; }
+    byKey.delete(rep.link);
+    if (rep.orphan){ delete rep.orphan; changed = true; }
+    if (rep.name !== t.name){ rep.name = t.name; changed = true; }
+    if (rep.role !== t.role){ rep.role = t.role; changed = true; }
+    if (rep.transition !== !!t.transition){ rep.transition = !!t.transition; changed = true; }
+    if (rep.from !== t.start){ rep.from = t.start; changed = true; }
+    const wantStart = t.start - (rep.pre || 0);
+    if (rep.start !== wantStart){ rep.start = wantStart; changed = true; }
+    const wantEnd = t.end;
+    if ((rep.end || null) !== wantEnd){ rep.end = wantEnd; changed = true; }
+  }
+  for (const t of byKey.values()){
+    S.sales.push({ id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      link: t.key, name: t.name, role: t.role, transition: !!t.transition,
+      ramp: rampFor(t.role, t.priorRole), from: t.start, start: t.start, end: t.end, pre: 0,
+      modest: 0.8, stretch: 1, comm: null });
+    changed = true;
+  }
+  return changed;
+}
+// Selling roles carrying headcount but nobody named — they cannot project revenue until the
+// people exist, so the Reps card offers to create them as TBDs on the staffing row.
+function unnamedSellingRoles(){
+  return S.staff.filter(r => isSelling(r) && !(r.people && r.people.length) && staffHC(r, NM) > 0);
+}
 function repRevenue(rep, m, key){
   const ramp = S.ramps[rep.ramp];
   if (!ramp) return 0;
   if (rep.end && m > rep.end) return 0;   // left sales / moved into another role
+  // `from` is when they actually join and can sell; `start` is only the tenure anchor, which
+  // RAMPED MO pushes back so an experienced joiner lands mid-curve. Without this guard, a
+  // fully-ramped joiner would produce revenue in the months before they arrived.
+  if (rep.from != null && m < rep.from) return 0;
   const tenure = m - rep.start + 1;
   if (tenure < 1) return 0;
   return (ramp[Math.min(12, tenure) - 1] || 0) * (rep[key] || 0);
@@ -1272,7 +1388,7 @@ function renderSales(C){
        {v:beH1, x0:FH1[0], x1:FH1[1] - 1, label:"break-even " + fmtK(beH1) + "/mo", color:"--crit", below:true},
        {v:beH2, x0:FH2[0], x1:FH2[1] - 1, label:"break-even " + fmtK(beH2) + "/mo", color:"--crit", below:true}]});
   const rampNames = Object.keys(S.ramps);
-  let h = `<table class="data"><thead><tr><th>Rep</th><th>Role</th><th>Ramp</th><th>Start mo</th><th>Last mo</th>
+  let h = `<table class="data"><thead><tr><th>Rep</th><th>Role</th><th>Ramp</th><th title="First month selling. Derived from the staffing plan for linked reps — change it there.">Start mo</th><th title="Months of ramp already completed when they started. 0 = brand new. Set this for anyone already producing at the start of the window so they are not modelled as a new hire.">Ramped mo</th><th>Last mo</th>
     <th>Modest %</th><th>Stretch %</th><th title="Blank = pay from the commission tiers by attainment; a typed % is a flat override">Comm %</th><th title="Modeled production across all 15 months — booked months included, so this is the ramp model, not what Xero booked">15-mo modest</th><th title="Same, at stretch attainment">15-mo stretch</th><th title="Stretch minus modest over the OPEN months only — closed months carry no upside">Upside (open mo)</th><th>Comm (modest)</th><th>Comm (stretch)</th><th></th></tr></thead><tbody>`;
   let cmRep = 0, csRep = 0, tuRep = 0;
   for (const r of S.sales){
@@ -1285,11 +1401,20 @@ function renderSales(C){
     tuRep += fu;
     const rM = commRate(r, "modest"), rS = commRate(r, "stretch"), tiered = r.comm == null;
     cmRep += fm * rM; csRep += fs * rS;
-    h += `<tr><td><input class="cell pos" data-id="${r.id}" data-k="name" value="${esc(r.name)}"></td>
-      <td><input class="cell pos" data-id="${r.id}" data-k="role" value="${esc(r.role)}"></td>
+    const linked = !!r.link, orph = !!r.orphan;
+    const startMo = r.from != null ? r.from : r.start + (r.pre || 0);
+    h += `<tr${orph ? ' style="opacity:.62"' : ""}><td>${linked
+        ? `<span class="vname" title="From the staffing plan — rename on the Staffing tab">${esc(r.name)}</span>${r.transition ? ` <span class="badge" title="Picks up where this person's previous selling role ended — a role change, on the transition ramp">role change</span>` : ""}${orph ? ` <span class="badge" title="This person no longer has a stint on a selling role in the staffing plan. Their setup is kept — restore them there, or delete this row.">not in plan</span>` : ""}`
+        : `<input class="cell pos" data-id="${r.id}" data-k="name" value="${esc(r.name)}">`}</td>
+      <td>${linked ? `<span class="vname" title="Staffing role">${esc(r.role)}</span>` : `<input class="cell pos" data-id="${r.id}" data-k="role" value="${esc(r.role)}">`}</td>
       <td><select class="cell" data-id="${r.id}" data-k="ramp">${rampNames.map(n => `<option${n === r.ramp ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></td>
-      <td><input class="cell tiny" data-id="${r.id}" data-k="start" value="${r.start}" title="Calendar month selling starts; 0 or negative = ramped before 2026"></td>
-      <td><input class="cell tiny" data-id="${r.id}" data-k="end" value="${r.end || ""}" placeholder="—" title="Last calendar month this rep sells (1–15; blank = through Mar ’27). Revenue and commissions stop after it — model a departure, or a move into another role (add the new role on the Staffing tab so their pay continues there)"></td>
+      <td>${linked
+        ? `<span class="dim" title="They join the plan in ${esc(MONTHS[Math.min(NM, Math.max(1, startMo)) - 1])}. Change the start date on the Staffing tab.">${startMo}</span>`
+        : `<input class="cell tiny" data-id="${r.id}" data-k="start" value="${r.start}" title="Calendar month selling starts; 0 or negative = ramped before 2026">`}</td>
+      <td><input class="cell tiny" data-id="${r.id}" data-k="pre" value="${r.pre || 0}" title="Months of ramp already behind them when they started — 0 is a brand-new seller, 12 is fully ramped. Someone producing at full rate in Jan '26 should read 12." placeholder="0"></td>
+      <td>${linked
+        ? `<span class="dim" title="${r.end ? "Last month on a selling role in the plan." : "In the plan through the end of the horizon."}">${r.end || "—"}</span>`
+        : `<input class="cell tiny" data-id="${r.id}" data-k="end" value="${r.end || ""}" placeholder="—" title="Last calendar month this rep sells (blank = through Mar ’27)">`}</td>
       <td><input class="cell tiny" data-id="${r.id}" data-k="modest" value="${Math.round(r.modest * 100)}"></td>
       <td><input class="cell tiny" data-id="${r.id}" data-k="stretch" value="${Math.round(r.stretch * 100)}"></td>
       <td><input class="cell tiny" data-id="${r.id}" data-k="comm" value="${tiered ? "" : (r.comm * 100).toFixed(2)}" placeholder="auto" title="${tiered ? `Auto from the tiers: ${(rM * 100).toFixed(2)}% at modest attainment, ${(rS * 100).toFixed(2)}% at stretch. Type a % to override.` : "Flat override — clear to pay from the commission tiers by attainment"}"></td>
@@ -1302,9 +1427,19 @@ function renderSales(C){
   const tm = C.team.mod.reduce((a, b) => a + b, 0), ts = C.team.str.reduce((a, b) => a + b, 0);
   const cm = C.comp.mod.reduce((a, b) => a + b, 0), cs = C.comp.str.reduce((a, b) => a + b, 0);
   const compTip = `Rep commissions across all 15 months. The P&L charges ${fmtK(cm)} modest / ${fmtK(cs)} stretch — modeled months only, plus SM &amp; Director overrides from Goals.`;
-  h += `<tr class="tot"><td>TEAM</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+  h += `<tr class="tot"><td>TEAM</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
     <td>${fmt$(tm)}</td><td>${fmt$(ts)}</td><td class="pos" title="Open months only"><b>${fmt$(tuRep)}</b></td><td title="${compTip}"><b>${fmt$(cmRep)}</b></td><td title="${compTip}"><b>${fmt$(csRep)}</b></td><td></td></tr>`;
   document.getElementById("salesTable").innerHTML = h + "</tbody></table>";
+  const un = unnamedSellingRoles();
+  const nLinked = S.sales.filter(r => r.link).length;
+  document.getElementById("rosterLink").innerHTML = un.length
+    ? `<div style="border:1px solid var(--border);border-radius:9px;padding:9px 12px;margin:0 0 10px;background:var(--surface2);font-size:12.5px">
+        <b>${un.length} selling role${un.length > 1 ? "s carry" : " carries"} headcount but nobody named</b>
+        <span class="subtle">— a seat can't project revenue until it's a person, so these aren't on the list:</span>
+        <div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:6px">
+          ${un.map(r => `<button class="btn mini" data-k="nameseats" data-id="${r.id}" title="Creates ${Math.round(staffHC(r, NM))} people named TBD on this staffing role. They appear here immediately, ramping from the month the role's headcount starts — rename them on Staffing as you hire.">Name ${Math.round(staffHC(r, NM))} on ${esc(r.position)}</button>`).join("")}
+        </div></div>`
+    : (nLinked ? "" : `<p class="note" style="margin:0 0 10px">No rep here is linked to the staffing plan yet — name people on the Sales roles on the Staffing tab and they will appear automatically.</p>`);
   const tiers = [...tiersOf()].sort((a, b) => a.at - b.at);
   document.getElementById("commTierBar").innerHTML =
     `<div class="toolbar" style="gap:6px;align-items:center;margin:2px 0 6px">
@@ -1960,12 +2095,30 @@ document.getElementById("tabs").addEventListener("click", ev => {
 delegate("salesTable", (id, k, val) => {
   const i = S.sales.findIndex(r => r.id === id); if (i < 0) return;
   const r = S.sales[i];
-  if (k === "name") r.name = val; else if (k === "role") r.role = val; else if (k === "ramp") r.ramp = val;
-  else if (k === "start") r.start = Math.round(num(val, r.start));
-  else if (k === "end") r.end = String(val).trim() === "" ? null : Math.min(NM, Math.max(1, Math.round(num(val, NM))));
+  if (k === "name"){ if (!r.link) r.name = val; }
+  else if (k === "role"){ if (!r.link) r.role = val; }
+  else if (k === "ramp") r.ramp = val;
+  else if (k === "pre"){
+    r.pre = Math.max(0, Math.round(num(val, 0)));
+    const join = r.from != null ? r.from : r.start;   // the join month never moves
+    r.start = join - r.pre;                           // only the tenure anchor slides back
+    if (r.from == null) r.from = join;
+  }
+  else if (k === "start"){ if (!r.link) r.start = Math.round(num(val, r.start)); }
+  else if (k === "end"){ if (!r.link) r.end = String(val).trim() === "" ? null : Math.min(NM, Math.max(1, Math.round(num(val, NM)))); }
   else if (k === "modest") r.modest = num(val, 80) / 100;
   else if (k === "stretch") r.stretch = num(val, 100) / 100;
   else if (k === "comm") r.comm = String(val).trim() === "" ? null : num(val, 0) / 100;
+});
+document.getElementById("rosterLink").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k=nameseats]"); if (!b) return;
+  const r = S.staff.find(x => x.id === b.dataset.id); if (!r) return;
+  let from = 1; for (let m = 1; m <= NM; m++){ if ((r.hc[m - 1] || 0) > 0){ from = m; break; } }
+  const n = Math.round(staffHC(r, NM));
+  r.people = r.people || [];
+  for (let i = 0; i < n; i++)
+    r.people.push({ id: "pp" + Date.now().toString(36) + i, name: "TBD " + (i + 1), sal: null, from: from, to: NM });
+  persist(); scheduleRender();
 });
 document.getElementById("salesTable").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-k=del]"); if (!b) return;
@@ -2225,6 +2378,7 @@ document.getElementById("btnLoad").addEventListener("click", () => {
 });
 
 function renderAll(){
+  if (syncSales()) persist();     // the plan is the source of truth for who sells and when
   const C = compute();
   renderTiles(C); renderGoals(C); renderProjLevers(); renderProj(C); renderRollup(C); renderGrowth(C);
   renderSales(C); renderRaisePlanner(); renderStaff(C); renderExpenses(C); renderFixes(); renderRestore(); renderPayBands();
