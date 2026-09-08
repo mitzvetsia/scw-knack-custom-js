@@ -227,6 +227,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
   <div class="top-actions">
     <span class="legend-key"><span class="key mod"><i></i>Modest</span><span class="key str"><i></i>Stretch</span></span>
     <span class="sync" id="syncBadge" data-state="local">connecting…</span>
+    <button class="btn" id="restoreBak" hidden title="This browser held a different scenario before the shared copy loaded. Opens it in the config panel so you can compare and apply it.">Restore local backup</button>
     <button class="btn" id="btnCopy" title="Copy every edited setting as JSON to share or back up">Copy config</button>
     <button class="btn" id="btnLoad" title="Paste a config JSON copied from this dashboard">Load</button>
     <button class="btn" id="btnReset" title="Discard all edits and return to the imported defaults">Reset</button>
@@ -554,14 +555,34 @@ function setSync(state, label){
     ? "This browser only — the shared store is not available in this view, so edits stay on this machine."
     : "Scenario is stored with the artifact: it survives a cleared cache, follows you between machines, and Claude can read or edit it from any chat.";
 }
+// Before the shared copy overwrites what is in this browser, stash the local scenario. The
+// first machine to open the page seeds the store, so a machine opened later adopts that copy —
+// if the seeding browser was the untuned one, hours of work would vanish silently. The stash
+// makes that recoverable: a Restore button appears whenever the backup differs from what is
+// loaded, and hands the old scenario back through the normal config panel.
+const LS_BAK = LS_KEY + "-prev";
+function stashLocal(){
+  try {
+    const cur = localStorage.getItem(LS_KEY);
+    if (cur && cur.length > 200) localStorage.setItem(LS_BAK, cur);
+  } catch (e) {}
+}
+function refreshRestoreBtn(){
+  const el = document.getElementById("restoreBak"); if (!el) return;
+  let bak = null;
+  try { bak = localStorage.getItem(LS_BAK); } catch (e) {}
+  el.hidden = !(bak && bak !== JSON.stringify(S));
+}
 function adoptRemote(json){
   try {
     const parsed = JSON.parse(json);
     if (!parsed || !parsed.levers || !parsed.exp || !parsed.staff) return;
+    stashLocal();
     S = migrateState(parsed);
     persistLocal();
     renderAll();
     setSync("live", "updated elsewhere");
+    refreshRestoreBtn();
   } catch (e) {}
 }
 function focusedInApp(){
@@ -2193,6 +2214,12 @@ document.getElementById("btnCopy").addEventListener("click", async ev => {
   catch (e) { openCfg("copy", txt, "Clipboard is blocked here — select everything and copy manually (Ctrl/Cmd-C)."); }
   setTimeout(() => ev.target.textContent = "Copy config", 1600);
 });
+document.getElementById("restoreBak").addEventListener("click", () => {
+  let bak = null;
+  try { bak = localStorage.getItem(LS_BAK); } catch (e) {}
+  if (!bak) return;
+  openCfg("load", bak, "This is the scenario this browser held before the shared copy loaded. Apply it to make it the shared one, or close to keep what is loaded now.");
+});
 document.getElementById("btnLoad").addEventListener("click", () => {
   openCfg("load", "", "Paste a config JSON copied from this dashboard, then Apply.");
 });
@@ -2205,5 +2232,6 @@ function renderAll(){
 
 renderAll();
 renderTrends();
+refreshRestoreBtn();
 initShared();
 </script>
