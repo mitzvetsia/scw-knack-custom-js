@@ -285,7 +285,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <div class="card"><h2>Cumulative net through Mar 2027</h2><p class="note">Running total of monthly net profit: booked through <span class="js-actmo"></span>, then each scenario.</p><figure class="chart" id="chartCum"></figure></div>
   </div>
   <div class="card"><h2>Incentive programs</h2>
-    <p class="note">Money a period earns that the books have not seen — the operations bonus is not paid until the six months close, and the Sales Director bonus has never been calculated at all. Each accrues against where its half is <b>pacing</b>. A program pays either <b>a set amount</b> earned proportionally across a revenue range (nothing below the floor, all of it at the cap) or <b>a % of every dollar above a threshold</b>, uncapped. Its cost sits evenly across the period, or lands only on the months carrying the revenue that earns it — so a month contributing nothing carries none of the expense. Use <b>+ accrued</b> on the P&amp;L above to see the loaded picture.</p>
+    <p class="note">Money a period earns that the books have not seen — the operations bonus is not paid until the six months close, and the Sales Director bonus has never been calculated at all. Each accrues against where its half is <b>pacing</b>. A program pays either <b>a set amount</b> earned proportionally across a revenue range (nothing below the floor, all of it at the cap) or <b>a % of every dollar above a threshold</b>, uncapped. Its cost accrues <b>by pacing</b> — every month carries its revenue-weighted share of the projected payout, so as the running total crosses each percent of the goal that month picks up its slice — or evenly, or only once the threshold is actually crossed. Use <b>+ accrued</b> on the P&amp;L above to see the loaded picture.</p>
     <div id="incSummary"></div>
     <div id="incList"></div>
     <button class="btn addrow" id="addProgram">+ Add a program</button></div>
@@ -294,7 +294,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <p class="footnote" id="plFoot"></p>
   </div>
   <div class="card"><h2>Period summaries</h2>
-    <p class="note">The same P&amp;L rolled up by fiscal quarter (the year starts in July: Q1 Jul–Sep, Q2 Oct–Dec, Q3 Jan–Mar, Q4 Apr–Jun), by half — <b>Q4+Q1</b> Apr–Sep and <b>Q2+Q3</b> Oct–Mar — by calendar year, and across the whole horizon. Follows the Modest / Stretch choice above; booked months are identical under both.</p>
+    <p class="note">The same P&amp;L rolled up by fiscal quarter (the year starts in July: Q1 Jul–Sep, Q2 Oct–Dec, Q3 Jan–Mar, Q4 Apr–Jun), by half — <b>Q4+Q1</b> Apr–Sep and <b>Q2+Q3</b> Oct–Mar — and by calendar year (2026 is the one full year inside the horizon; monthly is the P&amp;L above). Follows the Modest / Stretch choice above; booked months are identical under both.</p>
     <div class="tablewrap" id="periodSum"></div></div>
   <div class="card"><h2>Department budget rollup <span class="scn-toggle" id="rollMetric"><button class="btn on" data-m="total">Total cost</button><button class="btn" data-m="pay">Payroll</button><button class="btn" data-m="opex">Opex</button><button class="btn" data-m="hc">Headcount</button></span></h2>
     <p class="note">Payroll and operating spend rolled up per department — booked figures through <span class="js-actmo"></span> (payroll splits from Xero's department tracking, 97% tagged; untagged lands in Unassigned), model after. Headcount is the staffing plan for all months. Sales commissions and COGS are company-level and not in this rollup.</p>
@@ -491,7 +491,7 @@ function defaultState(){
       // UniView rebate is typed Other Income in Xero and is absent from the Expense/Revenue
       // export, so it is not in that figure; it was a $117K January credit being drawn down.)
       otherInc: 11000, laborHedge: 0, opexHedge: 0, bdayWeight: true,
-      targetH1: 6350000, targetH2: 5700000, thrH1: 6350000, thrH2: 5700000, smRate: 0.015, dirRate: 0,
+      targetH1: 6350000, targetH2: 5700000,
       hdvRate: 523.5, taxRate: MODEL.employer_tax_rate },
     sales: MODEL.sales.map((s, i) => ({ id: "s" + i, name: s.name, role: s.role, ramp: s.ramp,
       start: s.start_cal, modest: /Stu/.test(s.name) ? 1 : 0.8, stretch: 1,
@@ -512,11 +512,11 @@ function defaultState(){
       // $6.65M-$7.85M — nothing below, capped above. Director: 3.5% of every dollar over $6.35M.
       { id: "pgOps", name: "Operations bonus", on: true, basis: "band", scope: "depts",
         roles: [], depts: ["Installation Services"], per: "head", amount: 1500,
-        half: 2, thr: 6650000, cap: 7850000, alloc: "earned" },
+        half: 2, thr: 6650000, cap: 7850000, alloc: "pacing" },
       { id: "pgSd", name: "Sales Director bonus", on: true, basis: "rate", scope: "roles",
         roles: MODEL.staff.map((s, i) => ({ id: "p" + i, pos: s.position })).filter(x => /sales director/i.test(x.pos)).map(x => x.id),
         depts: [], per: "pool", amount: 0, pct: 0.035,
-        half: 2, thr: 6350000, cap: 0, alloc: "earned" }
+        half: 2, thr: 6350000, cap: 0, alloc: "pacing" }
     ],
     bandSplit: ["Software Development", "Sales"],
     bandHide: {},
@@ -534,8 +534,9 @@ function migrateState(st){
     const L0 = st.levers;
     if (L0.targetH1 == null) L0.targetH1 = L0.target ? Math.round(L0.target * 6350 / 12050) : 6350000;
     if (L0.targetH2 == null) L0.targetH2 = L0.target ? L0.target - L0.targetH1 : 5700000;
-    if (L0.thrH1 == null) L0.thrH1 = L0.targetH1;
-    if (L0.thrH2 == null) L0.thrH2 = L0.targetH2;
+    // the Sales Manager / Director override that used to live on Goals is gone — the Director
+    // is an incentive program and the manager upside is not modelled for now
+    delete L0.thrH1; delete L0.thrH2; delete L0.smRate; delete L0.dirRate; delete L0.sdMovedToPrograms;
     delete L0.target;
     // migrate pre-15-month configs (12-month arrays / to==12 meaning "through end")
     for (const p of st.staff) while (p.hc.length < NM) p.hc.push(p.hc.at(-1) ?? 0);
@@ -557,7 +558,6 @@ function migrateState(st){
     if (L0.ovrInBase != null) delete L0.ovrInBase;   // retired: salaries are base-only
     if (L0.bdayWeight == null) L0.bdayWeight = true;
     if (L0.estPartialPay == null) L0.estPartialPay = true;
-    if (!L0.contractorFix) L0.contractorFix = 1;   // set after the loop above has run once
     // Per-rep commission projection is gone: one measured blended rate replaces the tiers, the
     // per-role rates and the per-rep overrides. Nothing here was ever read off a comp document.
     if (L0.commPct === undefined) L0.commPct = null;   // null = follow the measured rate
@@ -590,15 +590,12 @@ function migrateState(st){
       delete pg.payee;
     }
     if (!pg.basis) pg.basis = "band";
+    // "on the months that earn it" charged nothing until the band was crossed; pacing is the
+    // accrual people expect, so saved programs move to it once
+    if (!L0.pacingFix && pg.alloc === "earned") pg.alloc = "pacing";
     if (pg.cap == null) pg.cap = 0;
     if (pg.pct == null) pg.pct = 0;
     delete pg.scale;
-  }
-  if (!L0.sdMovedToPrograms){
-    // The Director override used to be a rate in Goals AND a pool here, so it was counted twice.
-    // It is one program now; Goals keeps the Sales Manager override only.
-    if (L0.dirRate) L0.dirRate = 0;
-    L0.sdMovedToPrograms = 1;
   }
   if (!st.salesDrop) st.salesDrop = [];
   // The one-shot name-binding migration that used to live here is gone: syncSales now claims
@@ -628,6 +625,8 @@ function migrateState(st){
       for (const [d, v] of Object.entries(st.deptRaise || {}))
         if (v) st.raises.push({ id: "rd" + d, scope: "dept", target: d, kind: "pct", amount: v, month: 9 });
     }
+    // one-shot fixes above have now had their pass — mark them done AFTER, never before
+    L0.contractorFix = 1; L0.pacingFix = 1;
   } catch (e) {}
   return st;
 }
@@ -1070,7 +1069,7 @@ function compute(){
   // planned opex rows by dept (model, before hedge)
   for (let m = 1; m <= NM; m++){
     const i = m - 1, actual = m <= ACT;
-    // sales — commissions are one blended rate on revenue; SM/Director overrides per half below
+    // sales — commissions are one blended rate on commissionable revenue
     let tm = 0, ts = 0, tmC = 0, tsC = 0;
     for (const r of S.sales){
       const rm = repRevenue(r, m, "modest"), rs = repRevenue(r, m, "stretch");
@@ -1120,47 +1119,6 @@ function compute(){
   }
   // monthly break-even sales revenue: (payroll + opex - other income) / gross margin, excl. variable comp
   out.be = out.pay.map((p, i) => Math.max(0, (p + out.opex[i] - out.oth[i]) / Math.max(0.05, 1 - out.cogsPct[i])));
-  // SM + Director overrides: % of the HALF's sales revenue above the agreed threshold
-  // (actual revenue for booked months + scenario revenue for modeled months).
-  //
-  // These are NOT inside the Staffing salaries — the salary table is base-only, no upside —
-  // and unlike AE/AM commissions they are NOT inside booked payroll either, because the
-  // calculation hasn't been run yet. So every dollar here is incremental to both.
-  //
-  // Allocation: a month earns override only to the extent it pushes the half PAST the
-  // threshold. Revenue accumulates through the half; the slice of each month's revenue lying
-  // above the running threshold is that month's share. Early months (still under threshold)
-  // carry none; the month that crosses carries only its portion above the line. The shares
-  // sum to (half revenue − threshold), so the half total is unchanged — only its timing.
-  //
-  // A share landing on a BOOKED month is a real liability that never reached Xero. Charging
-  // it would misstate a closed month, so it is tallied into out.overrideUnbooked and
-  // surfaced on the Goals card instead of silently altering actuals.
-  out.override = {};          // [H1, H2] half totals
-  out.overrideMo = {};        // per-month allocation across the full horizon
-  out.overrideUnbooked = {};  // share that fell on booked months (accrued, not in Xero)
-  for (const scn of ["mod", "str"]){
-    out.override[scn] = [0, 0];
-    out.overrideMo[scn] = Array(NM).fill(0);
-    out.overrideUnbooked[scn] = 0;
-    const rate = L.smRate + L.dirRate;
-    [[FH1[0], FH1[1], L.thrH1], [FH2[0], FH2[1], L.thrH2]].forEach(([a, b, thr], hi) => {
-      let cum = 0;
-      for (let m = a + 1; m <= b; m++){
-        const i = m - 1;
-        const before = cum;
-        cum += out.rev[scn][i];
-        // the part of THIS month's revenue that sits above the threshold line
-        const pushedOver = Math.max(0, cum - thr) - Math.max(0, before - thr);
-        if (pushedOver <= 0) continue;
-        const amt = rate * pushedOver;
-        out.override[scn][hi] += amt;
-        out.overrideMo[scn][i] = amt;
-        if (m > ACT){ out.comp[scn][i] += amt; out.net[scn][i] -= amt; }
-        else out.overrideUnbooked[scn] += amt;   // booked month — accrued but never posted
-      }
-    });
-  }
   /* ---------- incentive programs earned over a half, paid after it closes ----------
      These never appear in booked months: the operations bonus is not paid until the six-month
      period completes and closes, and the Sales Director bonus has not been calculated at all.
@@ -1177,10 +1135,11 @@ function compute(){
 
      RATE (the Sales Director). A percentage of every dollar above a threshold, uncapped — 3.5%
      over $6.35M. There is no "full amount" to pace against; the amount IS the revenue.
-
-     Cost lands either evenly across the period, or only on the months carrying the revenue that
-     earns it — for a band, the revenue falling INSIDE the band; for a rate, everything above the
-     threshold. Either way a month that contributes nothing carries none of the expense. */
+     Cost lands one of three ways. BY PACING (the default): the period is projected to pay $X,
+     and every month carries its share of $X in proportion to the revenue it brings in — so as the
+     running total crosses each percent of the goal, that month accrues its slice. EVENLY: $X / n.
+     ONLY ONCE CROSSED: the strict reading, where a month carries cost only for the revenue it
+     pushes into the paying band — nothing at all until the threshold is reached. */
   // What a bonus costs the company is the bonus plus employer payroll taxes on it. incentHalf
   // holds what is EARNED (what the people see); incent / incentLoaded carry the loaded cost,
   // which is what reaches the P&L.
@@ -1221,7 +1180,7 @@ function compute(){
       out.incentHalf[scn][hi] += total;
       out.incentLoaded[scn][hi] += total * incLoad;
       if (pg.alloc === "earned" && inBand > 0){
-        // charge each month for the revenue it pushed into the paying band
+        // strict: charge each month only for the revenue it pushed into the paying band
         let cum = 0;
         for (let m = a + 1; m <= b; m++){
           const i = m - 1, before = cum;
@@ -1230,17 +1189,17 @@ function compute(){
                          (Math.min(cum, lo) - Math.min(before, lo));
           if (pushed > 0) out.incent[scn][i] += total * incLoad * (pushed / inBand);
         }
-      } else {
+      } else if (pg.alloc === "even"){
         const n = Math.max(1, b - a);
         for (let m = a + 1; m <= b; m++) out.incent[scn][m - 1] += total * incLoad / n;
+      } else {
+        // by pacing: each month's share of the projected payout is its share of the revenue
+        for (let m = a + 1; m <= b; m++) out.incent[scn][m - 1] += total * incLoad * (rev > 0 ? out.rev[scn][m - 1] / rev : 0);
       }
     }
   }
-  // the SM/Director override is the same kind of liability — earned, never posted
-  for (const scn of ["mod", "str"]){
+  for (const scn of ["mod", "str"])
     for (let i = 0; i < NM; i++) if (i < ACT) out.incentUnbooked[scn] += out.incent[scn][i];
-    out.incentUnbooked[scn] += out.overrideUnbooked[scn];
-  }
   out.netAll = { mod: out.net.mod.map((v, i) => v - out.incent.mod[i]),
                  str: out.net.str.map((v, i) => v - out.incent.str[i]) };
   return out;
@@ -1529,14 +1488,8 @@ function renderProj(C){
     push(`<span title="Headcount starting or ending vs the prior month. Hover a cell to see who.">· heads added / removed</span>`, dHeads, "dim", dFm, nH.map(a => a.join("\n")));
     push(`<span title="Raises landing and per-person pay changes vs the prior month. Hover a cell to see who.">· raises &amp; comp changes</span>`, dComp, "dim", dFm, nC.map(a => a.join("\n")));
   }
-  const compLbl = `<span title="Booked months: the variable comp Xero actually posted (commission / bonus / spiff lines inside payroll), split out of the Payroll row so the two rows read alike across the horizon. Modeled months: the measured commission rate on commissionable revenue, plus the Sales Manager override in the months that push the half past its threshold.">Sales comp (commissions + overrides)</span>`;
+  const compLbl = `<span title="Booked months: the variable comp Xero actually posted (commission / bonus / spiff lines inside payroll), split out of the Payroll row so the two rows read alike across the horizon. Modeled months: the measured commission rate on commissionable revenue. Bonus programs are accrued separately below the line.">Sales commissions</span>`;
   for (const [k, v] of pick(C.comp.mod, C.comp.str)) push(compLbl + sfx(k), v);
-  if (plPayOpen){
-    const ovr = C.overrideMo ? C.overrideMo[plScn === "str" ? "str" : "mod"] : null;
-    if (ovr && ovr.some(v => v > 0.5))
-      push(`<span title="The SM/Director slice of the row above, by month. Zero until the half's cumulative revenue reaches its threshold, then sized to how much each month carries past it.">· of which SM &amp; Director override</span>`,
-        ovr, "dim", v => Math.abs(v) < 0.5 ? "" : fmt$(v));
-  }
   const opexDepts = DEPTS.filter(d => C.dept[d].some(v => Math.abs(v) > 0.5));
   if (plOpexOpen) for (const d of opexDepts) push("Opex — " + dn(d), C.dept[d], "dim");
   push(`Total opex <button class="exp-toggle" data-k="plopex">${plOpexOpen ? "▾ hide" : "▸ show"} ${opexDepts.length} depts</button>`, C.opex, "tot");
@@ -1550,6 +1503,12 @@ function renderProj(C){
   }
   const netM = loaded ? C.netAll.mod : C.net.mod, netS = loaded ? C.netAll.str : C.net.str;
   for (const [k, v] of pick(netM, netS)) push("NET" + (loaded ? " — with accruals" : "") + (both ? sfx(k).toUpperCase() : ""), v, "tot netrow");
+  // margin: net over sales revenue, with the period columns computed on the sums, not averaged
+  for (const [k, v] of pick(netM, netS)){
+    const revK = C.rev[k], m = v.map((n, i) => revK[i] ? n / revK[i] : 0);
+    const pr = (x, y) => { const n = v.slice(x, y).reduce((a, b) => a + b, 0), d = revK.slice(x, y).reduce((a, b) => a + b, 0); return d ? n / d : 0; };
+    rows.push({ label: "&nbsp;&nbsp;net margin" + sfx(k), vals: m, cls: "dim", fm: fmtPct, sums: [pr(FH1[0], FH1[1]), pr(FH2[0], FH2[1]), pr(0, NM)] });
+  }
   if (!both)
     push("Net under " + (plScn === "mod" ? "stretch" : "modest") + " (reference)", plScn === "mod" ? netS : netM, "dim");
   if (loaded && !both)
@@ -1562,10 +1521,10 @@ function renderProj(C){
     `<th>H1 Apr–Sep</th><th>H2 Oct–Mar</th><th>15 mo</th></tr></thead><tbody>`;
   for (const r of rows){
     if (r.section){ h += `<tr class="sec"><td colspan="19">${esc(r.section)}</td></tr>`; continue; }
-    const sums = r.fm === fmt$ ? [half(r.vals, FH1), half(r.vals, FH2), r.vals.reduce((a, b) => a + b, 0)] : null;
+    const sums = r.sums ? r.sums : r.fm === fmt$ ? [half(r.vals, FH1), half(r.vals, FH2), r.vals.reduce((a, b) => a + b, 0)] : null;
     h += `<tr class="${r.cls}"><td class="${r.cls === "dim" ? "dim" : ""}">${r.label}</td>` +
       r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}${qb(i)}${/NET/.test(r.label) && v < 0 ? " neg" : ""}"${r.tips && r.tips[i] ? ` title="${esc(r.tips[i])}"` : ""}>${r.fm(v)}</td>`).join("") +
-      (sums ? sums.map(v => `<td><b>${fmt$(v)}</b></td>`).join("") : "<td></td><td></td><td></td>") + `</tr>`;
+      (sums ? sums.map(v => `<td><b>${(r.sums ? r.fm : fmt$)(v)}</b></td>`).join("") : "<td></td><td></td><td></td>") + `</tr>`;
   }
   document.getElementById("plTable").innerHTML = h + "</tbody></table>";
   document.getElementById("plFoot").textContent =
@@ -1576,10 +1535,9 @@ function renderProj(C){
           ? " has not closed — its payroll is estimated at the closed months' rate per business day, not taken as booked. "
           : " payroll is shown as booked, which runs light: the daily accruals stop mid-month. ")
       : "") +
-    "Break-even row: monthly sales revenue needed to cover base payroll + opex less other income at that month's gross margin (excl. commissions and overrides). " +
-    "SM/Director override comp is charged to each half's modeled months; halves fully booked carry it inside booked payroll.";
+    "Break-even row: monthly sales revenue needed to cover base payroll + opex less other income at that month's gross margin (excl. commissions and bonus programs).";
   document.getElementById("notes").innerHTML =
-    `Built ${MODEL.built} from the Xero <b>Account Transactions</b> export (accrual, ${esc(MODEL.ttm_labels[0])}\u2013${esc(MODEL.ttm_labels[MODEL.ttm_labels.length - 1])} \u2014 expenses, COGS, payroll), the Xero GL Detail (revenue, department tags), and the budgeting-tool exports (allocations, roster, ramps). Horizon: Jan 2026 – Mar 2027. ${esc(ACT_RANGE)} 2026 ${ACT === 1 ? "is" : "are"} booked; ${esc(BRIDGE_LABEL)} ${BRIDGE_N === 1 ? "is a bridge month" : "are bridge months"} you can budget/staff; Oct 2026–Mar 2027 is the goal-setting half (fiscal Q2+Q3 — the year starts in July). Where the budgeting tool allocated a vendor to a different department than Xero, the budgeting tool wins (${MODEL.vend_master.filter(v=>v.contradiction).length} conflicts — see Trends). Per-seat licenses ride headcount on Staffing. Rep commissions pay monthly on attained revenue — a blank Comm % pays from the role rate, or the attainment tiers, on the Sales projections tab, a typed % is a flat override; SM + Director overrides pay on each half's revenue above its comp threshold. Edits save in this browser only — use Copy config to share.`;
+    `Built ${MODEL.built} from the Xero <b>Account Transactions</b> export (accrual, ${esc(MODEL.ttm_labels[0])}\u2013${esc(MODEL.ttm_labels[MODEL.ttm_labels.length - 1])} \u2014 expenses, COGS, payroll), the Xero GL Detail (revenue, department tags), and the budgeting-tool exports (allocations, roster, ramps). Horizon: Jan 2026 – Mar 2027. ${esc(ACT_RANGE)} 2026 ${ACT === 1 ? "is" : "are"} booked; ${esc(BRIDGE_LABEL)} ${BRIDGE_N === 1 ? "is a bridge month" : "are bridge months"} you can budget/staff; Oct 2026–Mar 2027 is the goal-setting half (fiscal Q2+Q3 — the year starts in July). Where the budgeting tool allocated a vendor to a different department than Xero, the budgeting tool wins (${MODEL.vend_master.filter(v=>v.contradiction).length} conflicts — see Trends). Per-seat licenses ride headcount on Staffing. Commissions are one measured rate on commissionable revenue (Sales projections tab); bonus programs are accrued on Projections. Edits save in this browser only — use Copy config to share.`;
 }
 </script>
 <script>
@@ -1674,7 +1632,7 @@ document.getElementById("rollMetric").addEventListener("click", ev => {
 const QTRS = [[0,3,"Q3 FY26","Jan–Mar 26","booked"],[3,6,"Q4 FY26","Apr–Jun 26","booked"],
   [6,9,"Q1 FY27","Jul–Sep 26","Jul–Aug booked"],[9,12,"Q2 FY27","Oct–Dec 26","model"],[12,15,"Q3 FY27","Jan–Mar 27","model"]];
 const PERIODS = QTRS.map(q => [q[0], q[1], q[2], q[3]]).concat([
-  [3, 9, "Q4+Q1", "Apr–Sep 26"], [9, 15, "Q2+Q3", "Oct 26–Mar 27"], [0, 12, "CY 2026", "Jan–Dec 26"], [0, 15, "15 months", "Jan 26–Mar 27"]]);
+  [3, 9, "Q4+Q1", "Apr–Sep 26"], [9, 15, "Q2+Q3", "Oct 26–Mar 27"], [0, 12, "CY 2026", "Jan–Dec 26"]]);
 function renderPeriods(C){
   const el = document.getElementById("periodSum"); if (!el) return;
   const sum = (a, x, y) => a.slice(x, y).reduce((p, q) => p + q, 0);
@@ -1683,6 +1641,7 @@ function renderPeriods(C){
   const gp = k => C.rev[k].map((v, i) => v + C.oth[i] - C.cogs[k][i]);
   const rows = [];
   const push = (label, vals, cls = "") => rows.push({ label, vals, cls });
+  const pushPct = (label, num, den) => rows.push({ label, num, den, cls: "dim", pct: true });
   for (const k of scns) push("Sales revenue" + sfx(k), C.rev[k]);
   push("Other income", C.oth, "dim");
   for (const k of scns) push("Gross profit" + sfx(k), gp(k), "tot");
@@ -1690,13 +1649,17 @@ function renderPeriods(C){
   for (const k of scns) push("Sales comp" + sfx(k), C.comp[k]);
   push("Total opex", C.opex);
   for (const k of scns) push("NET as booked" + sfx(k), C.net[k], "tot");
+  for (const k of scns) pushPct("net margin" + sfx(k), C.net[k], C.rev[k]);
   for (const k of scns) push("Accrued programs" + sfx(k), C.incent[k], "dim");
   for (const k of scns) push("NET with programs" + sfx(k), C.netAll[k], "tot netrow");
+  for (const k of scns) pushPct("net margin" + sfx(k), C.netAll[k], C.rev[k]);
   let h = `<table class="data"><thead><tr><th>${both ? "Modest and stretch" : plScn === "str" ? "Stretch" : "Modest"}</th>` +
     PERIODS.map((q, i) => `<th${i === 5 || i === 7 ? ' class="qb"' : ""}>${esc(q[2])}<br><span style="font-weight:400">${esc(q[3])}</span></th>`).join("") + `</tr></thead><tbody>`;
   for (const r of rows)
-    h += `<tr class="${r.cls}"><td class="${r.cls === "dim" ? "dim" : ""}">${r.label}</td>` +
-      PERIODS.map((q, i) => { const v = sum(r.vals, q[0], q[1]); return `<td${i === 5 || i === 7 ? ' class="qb"' : ""}${/NET/.test(r.label) && v < 0 ? ' class="neg"' : ""}>${fmt$(v)}</td>`; }).join("") + `</tr>`;
+    h += `<tr class="${r.cls}"><td class="${r.cls === "dim" ? "dim" : ""}">${r.pct ? "&nbsp;&nbsp;" : ""}${r.label}</td>` +
+      PERIODS.map((q, i) => {
+        if (r.pct){ const n = sum(r.num, q[0], q[1]), d = sum(r.den, q[0], q[1]); return `<td class="${i === 5 || i === 7 ? "qb " : ""}${n < 0 ? "neg" : ""}">${d ? fmtPct(n / d) : "—"}</td>`; }
+        const v = sum(r.vals, q[0], q[1]); return `<td${i === 5 || i === 7 ? ' class="qb"' : ""}${/NET/.test(r.label) && v < 0 ? ' class="neg"' : ""}>${fmt$(v)}</td>`; }).join("") + `</tr>`;
   el.innerHTML = h + "</tbody></table>";
 }
 function renderGrowth(C){
@@ -1753,7 +1716,7 @@ function renderGrowth(C){
   document.getElementById("growthC").innerHTML = cq + "</tbody></table>";
 }
 /* ---------- goals & break-even (Projections) ---------- */
-function goalHalf(C, [a, b, label], tKey, thrKey, ids){
+function goalHalf(C, [a, b, label], tKey, ids){
   const L = S.levers;
   const sum = arr => arr.slice(a, b).reduce((x, y) => x + y, 0);
   const revM = sum(C.rev.mod), revS = sum(C.rev.str), be = sum(C.be);
@@ -1763,35 +1726,22 @@ function goalHalf(C, [a, b, label], tKey, thrKey, ids){
   return `<div class="goal-half"><h3>${label} <span class="subtle" style="font-weight:400">· ${booked} booked + ${modeled} modeled mo</span></h3>
     <div class="grid">
       <span class="lab">Revenue target</span><span><input id="${ids[0]}" value="${L[tKey].toLocaleString("en-US")}"></span>
-      <span class="lab">Comp threshold <span class="subtle">(overrides pay above)</span></span><span><input id="${ids[1]}" value="${L[thrKey].toLocaleString("en-US")}"> ${L[thrKey] === L[tKey] ? `<span class="subtle">= modest goal</span>` : ""}</span>
-      <span class="lab be beM">Break-even revenue</span><span class="be beM">${fmt$(be)} <span class="subtle" style="font-weight:400">(${fmtK(be / (b - a))}/mo, excl. overrides)</span></span>
+      <span class="lab be beM">Break-even revenue</span><span class="be beM">${fmt$(be)} <span class="subtle" style="font-weight:400">(${fmtK(be / (b - a))}/mo, excl. commissions)</span></span>
       <span class="lab">Projected — modest</span><span title="${booked ? `${booked} of these ${b - a} months are closed, so their revenue is Xero's, identical under both scenarios. ` : ""}The ${modeled} modeled month${modeled === 1 ? " comes" : "s come"} from Sales projections: each rep's ramp value for their tenure month, times their Modest %, summed.">${fmt$(revM)} ${pill(revM)}</span>
       <span class="lab">Projected — stretch</span><span title="${booked ? `Same ${booked} closed month${booked === 1 ? "" : "s"} from Xero — a closed month has no upside left. ` : ""}The ${modeled} modeled month${modeled === 1 ? " uses" : "s use"} each rep's Stretch % instead of Modest %.">${fmt$(revS)} ${pill(revS)}</span>
       <span class="lab">of which</span><span class="subtle">${booked ? `${fmtK(sum(C.rev.mod.map((v, i) => i < ACT ? v : 0)))} booked in Xero + ` : ""}${fmtK(sum(C.rev.mod.map((v, i) => i < ACT ? 0 : v)))} modeled${booked ? " (modest)" : ""}</span>
-      <span class="lab">Override comp M / S</span><span>${fmtK(C.override.mod[a === FH1[0] ? 0 : 1])} / ${fmtK(C.override.str[a === FH1[0] ? 0 : 1])}</span>
     </div></div>`;
 }
 function renderGoals(C){
   const L = S.levers;
   document.getElementById("goalsCard").innerHTML =
     `<h2>Goals &amp; break-even</h2>
-     <p class="note">Half-year goal setting. The Sales Manager override (<input id="lvSm" class="cell tiny" value="${(L.smRate * 100).toFixed(2)}">%${L.dirRate ? `, plus a Director rate of <input id="lvDir" class="cell tiny" value="${(L.dirRate * 100).toFixed(2)}">%` : `<input type="hidden" id="lvDir" value="0">`}) pays on the half's revenue above its comp threshold —
-     historically the threshold is the modest goal; edit it to let comp start earlier or later.
-     Override lands in the months that actually push the half past its threshold, sized to how far
-     each one pushes it — not smeared evenly — so it stays out of the early months and concentrates
-     where the upside is earned. Salaries are base-only, and booked payroll carries AE/AM commissions
-     but no director/manager override, so this is incremental to both.
-     The <b>Sales Director bonus lives in Incentive programs</b>, not here — it is a rate above its own threshold, accrued there alongside the ops bonus.
-     Modest total <b>${fmtK(C.override ? C.override.mod[0] + C.override.mod[1] : 0)}</b> across both halves${C.overrideUnbooked && C.overrideUnbooked.mod > 500 ? `, of which <b>${fmtK(C.overrideUnbooked.mod)}</b> falls on already-booked months — earned, never posted to Xero, and not charged to those closed months here` : ""}.</p>
+     <p class="note">Half-year goal setting. Each half's revenue target drives the attainment pills here and on Sales projections; break-even is the fixed hurdle — base payroll and opex less other income at the month's gross margin. Bonus programs and the Sales Director's rate live in <b>Incentive programs</b>, accrued against where each half is pacing.</p>
      <div class="goals">` +
-    goalHalf(C, FH1, "targetH1", "thrH1", ["gTg1", "gTh1"]) +
-    goalHalf(C, FH2, "targetH2", "thrH2", ["gTg2", "gTh2"]) + `</div>`;
+    goalHalf(C, FH1, "targetH1", ["gTg1"]) +
+    goalHalf(C, FH2, "targetH2", ["gTg2"]) + `</div>`;
   bind("gTg1", v => S.levers.targetH1 = num(v, 6350000));
   bind("gTg2", v => S.levers.targetH2 = num(v, 5700000));
-  bind("gTh1", v => S.levers.thrH1 = num(v, S.levers.targetH1));
-  bind("gTh2", v => S.levers.thrH2 = num(v, S.levers.targetH2));
-  bind("lvSm", v => S.levers.smRate = num(v, 1.5) / 100);
-  bind("lvDir", v => S.levers.dirRate = num(v, 3.5) / 100);
 }
 /* ---------- sales tab ---------- */
 function renderSales(C){
@@ -1918,7 +1868,7 @@ function renderSales(C){
       <span class="subtle" style="font-size:12px;font-weight:700">Commission rate</span>
       <input class="cell tiny" style="width:56px" id="lvComm" value="${S.levers.commPct != null ? (S.levers.commPct * 100).toFixed(2) : ""}" placeholder="${(cMeas * 100).toFixed(2)}" title="Blank follows the measured rate as the mix changes. Type a % to pin it.">%
       <span class="subtle" style="font-size:11.5px">of <b>commissionable</b> revenue — measured, not assumed: ${fmtK(COMM_BOOKED)} of variable comp booked inside payroll over ${fmtK(cBase)} of commissionable sales, ${esc(ACT_RANGE)} = <b>${(cMeas * 100).toFixed(2)}%</b>${noCommN ? ` &middot; ${noCommN} line${noCommN > 1 ? "s" : ""} marked no-commission ${Math.round((1 - cShare) * 100)}% of revenue, excluded from both sides` : ""}${S.levers.commPct != null ? ` &middot; <a href="#" id="commReset">use measured</a>` : ""}</span>
-      <span class="subtle" style="font-size:11.5px">Charges ${fmtK(C.comp.mod.slice(ACT).reduce((a, b) => a + b, 0))} modest / ${fmtK(C.comp.str.slice(ACT).reduce((a, b) => a + b, 0))} stretch to the modeled months, including the Sales Manager override from Goals; booked months show what Xero posted.</span>
+      <span class="subtle" style="font-size:11.5px">Charges ${fmtK(C.comp.mod.slice(ACT).reduce((a, b) => a + b, 0))} modest / ${fmtK(C.comp.str.slice(ACT).reduce((a, b) => a + b, 0))} stretch to the modeled months; booked months show what Xero posted.</span>
     </div>`;
   bind("lvComm", v => S.levers.commPct = String(v).trim() === "" ? null : Math.max(0, num(v, 0)) / 100);
   const cr = document.getElementById("commReset");
@@ -2555,16 +2505,16 @@ function renderIncentives(C){
           <option value="1"${pg.half === 1 ? " selected" : ""}>${esc(FH1[2])}</option>
           <option value="2"${pg.half !== 1 ? " selected" : ""}>${esc(FH2[2])}</option></select></span>
         <span class="pg-sep"></span>
-        <span class="fld"><label>Cost lands</label><select class="cell" style="width:220px" data-id="${pg.id}" data-k="pgalloc" title="Evenly across the period, or only on the months carrying the revenue that earns it.">
-          <option value="even"${pg.alloc === "earned" ? "" : " selected"}>evenly across the period</option>
-          <option value="earned"${pg.alloc === "earned" ? " selected" : ""}>on the months that earn it</option></select></span>
+        <span class="fld"><label>Cost lands</label><select class="cell" style="width:250px" data-id="${pg.id}" data-k="pgalloc" title="By pacing: every month carries its revenue-weighted share of the projected payout, so as the running total crosses each percent of the goal that month accrues its slice. Evenly: the same amount each month. Only once crossed: nothing until the threshold is reached, then only the months pushing revenue into the paying band.">
+          <option value="pacing"${pg.alloc === "even" || pg.alloc === "earned" ? "" : " selected"}>by pacing — each month its share</option>
+          <option value="even"${pg.alloc === "even" ? " selected" : ""}>evenly across the period</option>
+          <option value="earned"${pg.alloc === "earned" ? " selected" : ""}>only once the threshold is crossed</option></select></span>
       </div>
     </div>`;
   }).join("") || `<p class="subtle" style="margin:4px 0">No programs yet.</p>`;
 
   const ub = C.incentUnbooked.mod, h1 = C.incentLoaded.mod[0], h2 = C.incentLoaded.mod[1];
   const e1 = C.incentHalf.mod[0], e2 = C.incentHalf.mod[1];
-  const ovr = C.override.mod[0] + C.override.mod[1];
   const sum = (a, [x, y]) => a.slice(x, y).reduce((p, q) => p + q, 0);
   // where each half sits on the books, and where it sits once the programs are loaded in
   const halfRow = (lbl, rng) => {
@@ -2574,16 +2524,15 @@ function renderIncentives(C){
   document.getElementById("incSummary").innerHTML =
     `<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin:0 0 10px;background:var(--surface2);font-size:12.5px">
       <div style="display:flex;flex-wrap:wrap;gap:6px 26px;font-variant-numeric:tabular-nums">
-        <span>Not on the books <b style="color:#b45309">${fmt$(h1 + h2 + ovr)}</b></span>
+        <span>Not on the books <b style="color:#b45309">${fmt$(h1 + h2)}</b></span>
         ${ub > 500 ? `<span class="subtle">already earned in closed months ${fmtK(ub)}</span>` : ""}
         <span class="subtle">${esc(FH1[2])} programs ${fmtK(h1)}${e1 > 0 ? ` <span title="earned by the people, before employer taxes">(${fmtK(e1)} earned)</span>` : ""}</span>
         <span class="subtle">${esc(FH2[2])} programs ${fmtK(h2)}${e2 > 0 ? ` <span title="earned by the people, before employer taxes">(${fmtK(e2)} earned)</span>` : ""}</span>
-        <span class="subtle">SM &amp; Director override ${fmtK(ovr)}</span>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px 26px;font-variant-numeric:tabular-nums;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
         ${halfRow(FH1[2], FH1)}${halfRow(FH2[2], FH2)}${halfRow("15 mo", [0, NM])}
       </div>
-      <p class="note" style="margin:6px 0 0">The top figure is every program, loaded with employer payroll taxes, plus the SM/Director override across the horizon — none of it is in Xero. Contractors are outside every program. ${ub > 500 ? `Of that, <b>${fmtK(ub)}</b> has already been earned in months Xero has closed (${esc(MONTHS[0])}–${esc(MONTHS[ACT - 1])}) and is a liability the P&amp;L does not show. ` : ""}The half rows read as booked → loaded: the first is what Xero will report, the second is the same months with these programs charged to them. Everything here stays out of break-even, which measures the fixed hurdle and deliberately excludes revenue-driven pay.</p>
+      <p class="note" style="margin:6px 0 0">The top figure is every program across the horizon, loaded with employer payroll taxes — none of it is in Xero. Contractors are outside every program. ${ub > 500 ? `Of that, <b>${fmtK(ub)}</b> has already been earned in months Xero has closed (${esc(MONTHS[0])}–${esc(MONTHS[ACT - 1])}) and is a liability the P&amp;L does not show. ` : ""}The half rows read as booked → loaded: the first is what Xero will report, the second is the same months with these programs charged to them. Everything here stays out of break-even, which measures the fixed hurdle and deliberately excludes revenue-driven pay.</p>
     </div>`;
 }
 /* ---------- pay bands ---------- */
@@ -2741,7 +2690,7 @@ document.getElementById("incList").addEventListener("change", ev => {
   else if (k === "pghalf") pg.half = num(val, 2) === 1 ? 1 : 2;
   else if (k === "pgthr") pg.thr = Math.max(0, num(val, 0));
 
-  else if (k === "pgalloc") pg.alloc = val === "earned" ? "earned" : "even";
+  else if (k === "pgalloc") pg.alloc = val === "earned" ? "earned" : val === "even" ? "even" : "pacing";
   else return;
   persist(); scheduleRender();
 });
@@ -2772,7 +2721,7 @@ document.getElementById("addProgram").addEventListener("click", () => {
   S.programs = S.programs || [];
   S.programs.push({ id: "pg" + Date.now().toString(36), name: "New program", on: true, scope: "depts",
     basis: "band", roles: [], depts: [], per: "head", amount: 1000, pct: 0,
-    half: 2, thr: 0, cap: 0, alloc: "even" });
+    half: 2, thr: 0, cap: 0, alloc: "pacing" });
   persist(); scheduleRender();
 });
 delegate("rampTable", (id, k, val) => {
