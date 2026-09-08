@@ -212,6 +212,9 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
 .pill.short{background:var(--chip-crit);color:var(--crit)}
 .vname{display:inline-block;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .right{text-align:right}
+.cell.mo{width:88px;padding-right:2px}
+.yr{font-size:9.5px;color:var(--muted);font-weight:600;letter-spacing:.02em}
+th.yb,td.yb{border-left:2px solid var(--border2)}
 .sync{font-size:11.5px;color:var(--muted);border:1px solid var(--border2);border-radius:999px;
   padding:3px 10px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .sync::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--muted)}
@@ -942,6 +945,38 @@ function compute(){
 }
 
 /* ---------- formatting ---------- */
+/* ---------- month naming ----------
+   The horizon runs Jan 2026 into Mar 2027, so a bare index (1..15) is unreadable — "12" and
+   "13" are a year apart. Every month control names its month and year instead. monthName works
+   for indexes outside the window too (0 and below are 2025), which is how a seller who was
+   already ramping before Jan '26 is expressed. */
+const MON3 = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function monthName(i){
+  const n = Math.round(Number(i) || 0) - 1;
+  const y = 2026 + Math.floor(n / 12), mo = ((n % 12) + 12) % 12;
+  return MON3[mo] + " \u2019" + String(y).slice(2);
+}
+// Column header for month index i (0-based): the short name, with the year pinned on each
+// January and a divider drawn where 2027 starts, so a 15-wide grid never leaves you counting.
+function mhead(i){
+  const nm = MON3[((i % 12) + 12) % 12];
+  return nm + ((i === 0 || i === 12) ? ` <span class="yr">\u2019${i < 12 ? "26" : "27"}</span>` : "");
+}
+const ybCls = i => (i === 12 ? " yb" : "");
+function monthSel(attrs, value, o){
+  o = o || {};
+  const min = o.min == null ? 1 : o.min, max = o.max == null ? NM : o.max;
+  const v = (value === "" || value == null) ? "" : Math.round(Number(value));
+  let h = `<select class="cell mo" ${attrs}${o.title ? ` title="${esc(o.title)}"` : ""}>`;
+  if (o.blank) h += `<option value=""${v === "" ? " selected" : ""}>${esc(o.blank)}</option>`;
+  let seen = false;
+  for (let i = min; i <= max; i++){
+    if (i === v) seen = true;
+    h += `<option value="${i}"${i === v ? " selected" : ""}>${esc(monthName(i))}</option>`;
+  }
+  if (v !== "" && !seen) h += `<option value="${v}" selected>${esc(monthName(v))}</option>`;
+  return h + "</select>";
+}
 const fmt$ = v => (v < 0 ? "−$" : "$") + Math.round(Math.abs(v)).toLocaleString("en-US");
 const fmtK = v => { const a = Math.abs(v), s = v < 0 ? "−" : "";
   if (a >= 1e6) return s + "$" + (a/1e6).toFixed(2).replace(/\.?0+$/,"") + "M";
@@ -1178,7 +1213,7 @@ function renderProj(C){
   const qb = i => (i % 3 === 2 ? " qb" : "");
   const provSet = new Set(S.levers.estProv ? (MODEL.provisional_cogs_months || []) : []);
   let h = `<table class="data"><thead><tr><th>P&amp;L</th>` +
-    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${qb(i)}"${provSet.has(i + 1) ? ` title="COGS estimated — the ${m} COGS entry hasn’t been made in Xero yet"` : ""}>${m}${provSet.has(i + 1) ? "*" : ""}</th>`).join("") +
+    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${qb(i)}${ybCls(i)}"${provSet.has(i + 1) ? ` title="COGS estimated — the ${m} COGS entry hasn’t been made in Xero yet"` : ""}>${mhead(i)}${provSet.has(i + 1) ? "*" : ""}</th>`).join("") +
     `<th>H1 Apr–Sep</th><th>H2 Oct–Mar</th><th>15 mo</th></tr></thead><tbody>`;
   for (const r of rows){
     if (r.section){ h += `<tr class="sec"><td colspan="19">${esc(r.section)}</td></tr>`; continue; }
@@ -1242,7 +1277,7 @@ function renderRollup(C){
   const fmv = isHC ? (v => v ? (Math.round(v * 10) / 10).toLocaleString("en-US") : "·") : fmt$;
   const rows = DEPTS.map(d => ({ d, vals: series(d) })).filter(r => r.vals.some(v => Math.abs(v) > 0.05));
   let h = `<table class="data"><thead><tr><th>Department</th>` +
-    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}">${m}</th>`).join("") +
+    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}">${mhead(i)}</th>`).join("") +
     (isHC ? `<th>Mar ’27</th>` : `<th>H1 Apr–Sep</th><th>H2 Oct–Mar</th><th>15 mo</th>`) + `</tr></thead><tbody>`;
   for (const r of rows){
     h += `<tr><td>${esc(dn(r.d))}</td>` +
@@ -1308,7 +1343,7 @@ function renderGrowth(C){
   document.getElementById("growthQ").innerHTML = h + "</tbody></table>";
   const mom = arr => arr.map((v, i) => i ? v / (arr[i - 1] || 1) - 1 : null);
   let m = `<table class="data"><thead><tr><th>Monthly</th>` +
-    MONTHS.map((mn, i) => `<th class="${i < ACT ? "actual" : ""}">${mn}</th>`).join("") + `</tr></thead><tbody>`;
+    MONTHS.map((mn, i) => `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}">${mhead(i)}</th>`).join("") + `</tr></thead><tbody>`;
   m += `<tr><td>Revenue MoM — modest</td>${mom(C.rev.mod).map((v, i) => `<td class="${i < ACT ? "actual" : ""}">${g(v)}</td>`).join("")}</tr>`;
   m += `<tr><td>Revenue MoM — stretch</td>${mom(C.rev.str).map((v, i) => `<td class="${i < ACT ? "actual" : ""}">${g(v)}</td>`).join("")}</tr>`;
   m += `<tr class="tot"><td>Stretch premium /mo (revenue)</td>${C.rev.str.map((v, i) => `<td>${fmt$(v - C.rev.mod[i])}</td>`).join("")}</tr>`;
@@ -1388,7 +1423,7 @@ function renderSales(C){
        {v:beH1, x0:FH1[0], x1:FH1[1] - 1, label:"break-even " + fmtK(beH1) + "/mo", color:"--crit", below:true},
        {v:beH2, x0:FH2[0], x1:FH2[1] - 1, label:"break-even " + fmtK(beH2) + "/mo", color:"--crit", below:true}]});
   const rampNames = Object.keys(S.ramps);
-  let h = `<table class="data"><thead><tr><th>Rep</th><th>Role</th><th>Ramp</th><th title="First month selling. Derived from the staffing plan for linked reps — change it there.">Start mo</th><th title="Months of ramp already completed when they started. 0 = brand new. Set this for anyone already producing at the start of the window so they are not modelled as a new hire.">Ramped mo</th><th>Last mo</th>
+  let h = `<table class="data"><thead><tr><th>Rep</th><th>Role</th><th>Ramp</th><th title="First month selling. Derived from the staffing plan for linked reps — change it there.">Start mo</th><th title="How far into their ramp they already were when they joined — a duration, not a month. Set it for anyone already producing at the start of the window so they are not modelled as a new hire.">Ramp credit</th><th>Last mo</th>
     <th>Modest %</th><th>Stretch %</th><th title="Blank = pay from the commission tiers by attainment; a typed % is a flat override">Comm %</th><th title="Modeled production across all 15 months — booked months included, so this is the ramp model, not what Xero booked">15-mo modest</th><th title="Same, at stretch attainment">15-mo stretch</th><th title="Stretch minus modest over the OPEN months only — closed months carry no upside">Upside (open mo)</th><th>Comm (modest)</th><th>Comm (stretch)</th><th></th></tr></thead><tbody>`;
   let cmRep = 0, csRep = 0, tuRep = 0;
   for (const r of S.sales){
@@ -1409,12 +1444,18 @@ function renderSales(C){
       <td>${linked ? `<span class="vname" title="Staffing role">${esc(r.role)}</span>` : `<input class="cell pos" data-id="${r.id}" data-k="role" value="${esc(r.role)}">`}</td>
       <td><select class="cell" data-id="${r.id}" data-k="ramp">${rampNames.map(n => `<option${n === r.ramp ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></td>
       <td>${linked
-        ? `<span class="dim" title="They join the plan in ${esc(MONTHS[Math.min(NM, Math.max(1, startMo)) - 1])}. Change the start date on the Staffing tab.">${startMo}</span>`
-        : `<input class="cell tiny" data-id="${r.id}" data-k="start" value="${r.start}" title="Calendar month selling starts; 0 or negative = ramped before 2026">`}</td>
-      <td><input class="cell tiny" data-id="${r.id}" data-k="pre" value="${r.pre || 0}" title="Months of ramp already behind them when they started — 0 is a brand-new seller, 12 is fully ramped. Someone producing at full rate in Jan '26 should read 12." placeholder="0"></td>
+        ? `<span class="dim" title="They join the plan in ${esc(monthName(startMo))}. Change the start date on the Staffing tab.">${esc(monthName(startMo))}</span>`
+        : monthSel(`data-id="${r.id}" data-k="start"`, r.start, { min: -11, title: "First month this line produces revenue. Months before Jan \u201926 mean it was already ramping when the window opened." })}</td>
+      <td>${(() => {
+        const v = Math.max(0, Math.min(12, Math.round(r.pre || 0)));
+        let o = `<select class="cell mo" data-id="${r.id}" data-k="pre" title="How far into their ramp they already were on their first month here — a DURATION, not a month. 0 is a brand-new seller; 12 means they were already at full rate.">`;
+        for (let i = 0; i <= 12; i++)
+          o += `<option value="${i}"${i === v ? " selected" : ""}>${i === 0 ? "new" : i === 12 ? "12 mo \u00b7 full" : i + " mo"}</option>`;
+        return o + "</select>";
+      })()}</td>
       <td>${linked
-        ? `<span class="dim" title="${r.end ? "Last month on a selling role in the plan." : "In the plan through the end of the horizon."}">${r.end || "—"}</span>`
-        : `<input class="cell tiny" data-id="${r.id}" data-k="end" value="${r.end || ""}" placeholder="—" title="Last calendar month this rep sells (blank = through Mar ’27)">`}</td>
+        ? `<span class="dim" title="${r.end ? "Last month on a selling role in the plan." : "In the plan through the end of the horizon."}">${r.end ? esc(monthName(r.end)) : "—"}</span>`
+        : monthSel(`data-id="${r.id}" data-k="end"`, r.end || "", { blank: "\u2014 through " + monthName(NM), title: "Last month this line sells. Revenue and commissions stop after it." })}</td>
       <td><input class="cell tiny" data-id="${r.id}" data-k="modest" value="${Math.round(r.modest * 100)}"></td>
       <td><input class="cell tiny" data-id="${r.id}" data-k="stretch" value="${Math.round(r.stretch * 100)}"></td>
       <td><input class="cell tiny" data-id="${r.id}" data-k="comm" value="${tiered ? "" : (r.comm * 100).toFixed(2)}" placeholder="auto" title="${tiered ? `Auto from the tiers: ${(rM * 100).toFixed(2)}% at modest attainment, ${(rS * 100).toFixed(2)}% at stretch. Type a % to override.` : "Flat override — clear to pay from the commission tiers by attainment"}"></td>
@@ -1459,7 +1500,7 @@ function renderSales(C){
 let repMoScn = "modest";
 function renderRepMonths(){
   let h = `<table class="data"><thead><tr><th>Rep</th>` + MONTHS.map((m, i) =>
-    `<th class="${i < ACT ? "actual" : ""}">${m}</th>`).join("") + `<th>Total</th></tr></thead><tbody>`;
+    `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}">${mhead(i)}</th>`).join("") + `<th>Total</th></tr></thead><tbody>`;
   const tot = Array(NM).fill(0);
   for (const r of S.sales){
     let sum = 0;
@@ -1564,8 +1605,7 @@ function renderRaisePlanner(){
         <option value="yr"${ev.kind === "yr" ? " selected" : ""}>$ / yr</option>
         <option value="mo"${ev.kind === "mo" ? " selected" : ""}>$ / mo</option>
         <option value="hr"${ev.kind === "hr" ? " selected" : ""}>$ / hr</option></select></span>
-      <span class="fld"><label>Starts</label><select class="cell" data-id="${ev.id}" data-k="rmonth">${
-        MONTHS.map((mn, i) => `<option value="${i + 1}"${(ev.month || 1) === i + 1 ? " selected" : ""}>${esc(mn)}${i < 12 ? " ’26" : ""}</option>`).join("")}</select></span>
+      <span class="fld"><label>Starts</label>${monthSel(`data-id="${ev.id}" data-k="rmonth"`, ev.month || 1, { title: "Month the raise takes effect." })}</span>
       <span class="fld"><label>&nbsp;</label><span class="subtle">${ev.target ? (imp.heads
         ? "+" + fmt$(imp.delta) + "/mo across " + imp.heads + " head" + (imp.heads > 1 ? "s" : "")
           + (imp.toAnnual != null ? " · brings earnings to <b>" + fmt$(imp.toAnnual) + "/yr</b>" + (imp.toRate != null ? " (≈ $" + imp.toRate.toFixed(2) + "/hr)" : "") + (ev.scope === "role" ? " per head" : "") : "")
@@ -1597,7 +1637,7 @@ function renderStaff(C){
   bind("lvTax", v => S.levers.taxRate = num(v, MODEL.employer_tax_rate * 100) / 100);
   renderPayCal(C);
   let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Ben</th><th>Lic</th><th>Tax</th><th>Cost/head</th>` +
-    MONTHS.map(m => `<th>${m}</th>`).join("") + `<th>15-mo cost</th><th></th></tr></thead><tbody>`;
+    MONTHS.map((m, i) => `<th class="${ybCls(i).trim()}">${mhead(i)}</th>`).join("") + `<th>15-mo cost</th><th></th></tr></thead><tbody>`;
   const dOrder = d => { const i = DEPTS.indexOf(d); return i < 0 ? DEPTS.length : i; };
   const sorted = [...S.staff].sort((a, b) => dOrder(a.dept) - dOrder(b.dept));
   const fyOf = new Map(), deptFy = new Map();
@@ -1681,9 +1721,9 @@ function renderStaff(C){
           <span class="fld"><label>New rate</label><input class="cell w56" data-id="${pp.id}" data-k="psal2" value="${pp.sal2 == null ? "" : pp.sal2}" placeholder="—"></span>` : `
           <span class="fld"><label>Salary/yr</label><input class="cell w84" data-id="${pp.id}" data-k="psal" value="${pp.sal == null ? "" : Math.round(pp.sal).toLocaleString("en-US")}" placeholder="role: ${Math.round(p.ote / 1000)}K"></span>
           <span class="fld"><label>New salary</label><input class="cell w84" data-id="${pp.id}" data-k="psal2" value="${pp.sal2 == null ? "" : Math.round(pp.sal2).toLocaleString("en-US")}" placeholder="—"></span>`}
-          <span class="fld"><label>Change mo</label><input class="cell tiny" data-id="${pp.id}" data-k="pchg" value="${pp.chgM || ""}" placeholder="—" title="1 = Jan 2026 … 15 = Mar 2027"></span>
-          <span class="fld"><label>Starts</label><input class="cell tiny" data-id="${pp.id}" data-k="pfrom" value="${pp.from || 1}" title="${esc(MONTHS[Math.min(NM, Math.max(1, pp.from || 1)) - 1])}"></span>
-          <span class="fld"><label>Ends</label><input class="cell tiny" data-id="${pp.id}" data-k="pto" value="${pp.to || NM}" title="${esc(MONTHS[Math.min(NM, Math.max(1, pp.to || NM)) - 1])}"></span>
+          <span class="fld"><label>Change mo</label>${monthSel(`data-id="${pp.id}" data-k="pchg"`, pp.chgM || "", { blank: "\u2014 no change", title: "Month the new salary takes effect." })}</span>
+          <span class="fld"><label>Starts</label>${monthSel(`data-id="${pp.id}" data-k="pfrom"`, pp.from || 1, { title: "First month on payroll. On a selling role this is also when their ramp begins." })}</span>
+          <span class="fld"><label>Ends</label>${monthSel(`data-id="${pp.id}" data-k="pto"`, pp.to || NM, { title: "Last month on payroll. End someone here and start them on another role next month to model a role change." })}</span>
           <span class="fld"><label>&nbsp;</label><span class="subtle">${costTxt}</span></span>
           <span class="fld"><label>&nbsp;</label><button class="btn mini" data-id="${pp.id}" data-k="pdel" title="Remove person">✕</button></span>
         </div>`;
@@ -1762,8 +1802,8 @@ function renderExpenses(C){
         <td><select class="cell" data-id="${e.id}" data-k="use" title="Where this row's monthly figure comes from — or STAFFING if the cost is a person budgeted on the Staffing tab (then it counts there, not here)"><option${e.use === "XERO" ? " selected" : ""}>XERO</option><option${e.use === "BUDGET" ? " selected" : ""}>BUDGET</option><option${e.use === "STAFFING" ? " selected" : ""}>STAFFING</option></select></td>
         <td><input class="cell" data-id="${e.id}" data-k="override" value="${e.override == null ? "" : e.override}" placeholder="—"></td>
         <td><input class="cell tiny" data-id="${e.id}" data-k="adj" value="${(e.adj * 100).toFixed(0)}"></td>
-        <td><input class="cell tiny" data-id="${e.id}" data-k="from" value="${e.from}"></td>
-        <td><input class="cell tiny" data-id="${e.id}" data-k="to" value="${e.to}"></td>
+        <td>${monthSel(`data-id="${e.id}" data-k="from"`, e.from, { title: "First month this expense is charged." })}</td>
+        <td>${monthSel(`data-id="${e.id}" data-k="to"`, e.to, { title: "Last month this expense is charged." })}</td>
         <td><b>${fmt$(pl)}</b></td></tr>`;
     }
   }
@@ -2002,7 +2042,7 @@ function renderPayBands(){
     `<button class="btn${split.has(d) ? " on" : ""}" data-band="${esc(d)}">${esc(dn(d))}</button>`).join("");
   const sel = document.getElementById("bandAsOf");
   if (!sel.options.length)
-    sel.innerHTML = MONTHS.map((m, i) => `<option value="${i + 1}">${m}${i < 12 ? " ’26" : ""}</option>`).join("");
+    sel.innerHTML = MONTHS.map((m, i) => `<option value="${i + 1}">${esc(monthName(i + 1))}</option>`).join("");
   sel.value = String(bandMonth);
   const M0 = bandMonth;
   const pts = [];
