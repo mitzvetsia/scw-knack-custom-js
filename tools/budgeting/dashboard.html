@@ -756,7 +756,8 @@ function salesTargets(){
     for (const p of (r.people || [])){
       if (!p || !p.id) continue;
       out.push({ key: r.id + "|" + p.id, name: (p.name || "").trim() || "(unnamed)", role: r.position,
-                 start: Math.max(1, p.from || 1), end: (p.to && p.to < NM) ? p.to : null });
+                 start: joinMonth(p), pre: rampCredit(p),
+                 end: (p.to && p.to < NM) ? p.to : null });
     }
   }
   out.sort((a, b) => a.start - b.start);
@@ -797,6 +798,8 @@ function syncSales(){
     if (rep.role !== t.role){ rep.role = t.role; changed = true; }
     if (rep.transition !== !!t.transition){ rep.transition = !!t.transition; changed = true; }
     if (rep.from !== t.start){ rep.from = t.start; changed = true; }
+    // A start before Jan '26 IS the ramp credit — it is not something to tune here.
+    if (t.pre > 0 && rep.pre !== t.pre){ rep.pre = t.pre; changed = true; }
     const wantStart = t.start - (rep.pre || 0);
     if (rep.start !== wantStart){ rep.start = wantStart; changed = true; }
     const wantEnd = t.end;
@@ -838,7 +841,8 @@ function syncSales(){
   for (const t of byKey.values()){
     S.sales.push({ id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       link: t.key, name: t.name, role: t.role, transition: !!t.transition,
-      ramp: rampFor(t.role, t.priorRole), from: t.start, start: t.start, end: t.end, pre: 0,
+      ramp: rampFor(t.role, t.priorRole), from: t.start, start: t.start - (t.pre || 0),
+      end: t.end, pre: t.pre || 0,
       modest: 0.8, stretch: 1, comm: null });
     changed = true;
   }
@@ -971,7 +975,7 @@ function raiseFor(role, personId, m, hrs){
 function hdvOf(role){ return role.benOn === false ? 0 : (S.levers.hdvRate || 0); }
 function taxOf(role){ return role.taxOn === false ? 0 : (S.levers.taxRate || 0); }
 function personCost(role, p, m){
-  if (m < (p.from || 1) || m > (p.to || NM)) return 0;
+  if (m < joinMonth(p) || m > (p.to || NM)) return 0;
   let labor;
   const hrs = hrsOf(role, p);
   if (role.payType === "hourly"){
@@ -988,7 +992,7 @@ function personCost(role, p, m){
 }
 function staffHC(row, m){
   return (row.people && row.people.length)
-    ? row.people.filter(p => m >= (p.from || 1) && m <= (p.to || NM)).length
+    ? row.people.filter(p => m >= joinMonth(p) && m <= (p.to || NM)).length
     : (row.hc[m - 1] || 0);
 }
 function headCost(row, m){
@@ -1186,6 +1190,18 @@ function compute(){
    for indexes outside the window too (0 and below are 2025), which is how a seller who was
    already ramping before Jan '26 is expressed. */
 const MON3 = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+/* People who joined before the window opened. A rep who started in Jul '25 is six months into
+   their ramp by Jan '26 and must not be modelled as a new hire; one who started before the ramp
+   is long enough to matter is simply fully ramped. START_MIN goes back a full ramp length, and
+   FULLY_RAMPED is the sentinel for anything earlier — payroll treats both as present from month
+   one, and the sales model turns the difference into ramp credit. */
+const RAMP_LEN = 12;
+const START_MIN = 1 - (RAMP_LEN - 1);        // Feb '25: Jan '26 is their 12th month
+const FULLY_RAMPED = -99;
+const startOf = p => (p && p.from != null) ? p.from : 1;      // may be <= 0
+const joinMonth = p => Math.max(1, startOf(p));               // first month inside the window
+// months of ramp already served when the window opened
+const rampCredit = p => Math.max(0, Math.min(RAMP_LEN, 1 - startOf(p)));
 function monthName(i){
   const n = Math.round(Number(i) || 0) - 1;
   const y = 2026 + Math.floor(n / 12), mo = ((n % 12) + 12) % 12;
@@ -1204,6 +1220,8 @@ function monthSel(attrs, value, o){
   const v = (value === "" || value == null) ? "" : Math.round(Number(value));
   let h = `<select class="cell mo" ${attrs}${o.title ? ` title="${esc(o.title)}"` : ""}>`;
   if (o.blank) h += `<option value=""${v === "" ? " selected" : ""}>${esc(o.blank)}</option>`;
+  // a leading option outside the month range — "fully ramped", "no change", and the like
+  if (o.first) h += `<option value="${o.first.value}"${v === o.first.value ? " selected" : ""}>${esc(o.first.label)}</option>`;
   let seen = false;
   for (let i = min; i <= max; i++){
     if (i === v) seen = true;
@@ -1421,8 +1439,8 @@ function renderProj(C){
       for (const r of S.staff){
         if (r.people && r.people.length){
           for (const pp of r.people){
-            const now = m >= (pp.from || 1) && m <= (pp.to || NM);
-            const was = (m - 1) >= (pp.from || 1) && (m - 1) <= (pp.to || NM);
+            const now = m >= joinMonth(pp) && m <= (pp.to || NM);
+            const was = (m - 1) >= joinMonth(pp) && (m - 1) <= (pp.to || NM);
             if (now && !was){ const c = personCost(r, pp, m) * hedge; dHeads[i] += c; nH[i].push(`+ ${pp.name} (${r.position}) ${fmtK(c)}/mo`); }
             else if (!now && was){ const c = personCost(r, pp, m - 1) * hedge; dHeads[i] -= c; nH[i].push(`− ${pp.name} (${r.position}) ${fmtK(c)}/mo`); }
             else if (now && was){ const d = (personCost(r, pp, m) - personCost(r, pp, m - 1)) * hedge;
@@ -1695,6 +1713,7 @@ function renderSales(C){
        {v:beH1, x0:FH1[0], x1:FH1[1] - 1, label:"break-even " + fmtK(beH1) + "/mo", color:"--crit", below:true},
        {v:beH2, x0:FH2[0], x1:FH2[1] - 1, label:"break-even " + fmtK(beH2) + "/mo", color:"--crit", below:true}]});
   const rampNames = Object.keys(S.ramps);
+  const tgt = new Map(salesTargets().map(t => [t.key, t]));
   let h = `<table class="data"><thead><tr><th>Rep</th><th>Role</th><th>Ramp</th><th title="First month selling. Derived from the staffing plan for linked reps — change it there.">Start mo</th><th title="How far into their ramp they already were when they joined — a duration, not a month. Set it for anyone already producing at the start of the window so they are not modelled as a new hire.">Ramp credit</th><th>Last mo</th>
     <th>Modest %</th><th>Stretch %</th><th title="Does this line pay commission? House revenue (BEN, MARKETING) earns none, so it is left out of both the measured rate and the budget.">Comm</th><th title="Modeled production across all 15 months — booked months included, so this is the ramp model, not what Xero booked">15-mo modest</th><th title="Same, at stretch attainment">15-mo stretch</th><th></th></tr></thead><tbody>`;
   for (const r of S.sales){
@@ -1714,9 +1733,14 @@ function renderSales(C){
         : monthSel(`data-id="${r.id}" data-k="start"`, r.start, { min: -11, title: "First month this line produces revenue. Months before Jan \u201926 mean it was already ramping when the window opened." })}</td>
       <td>${(() => {
         const v = Math.max(0, Math.min(12, Math.round(r.pre || 0)));
+        const lbl = i => i === 0 ? "new" : i === 12 ? "12 mo \u00b7 full" : i + " mo";
+        // When the staffing start predates the window the credit IS that start — showing an
+        // editable control here would just be overwritten on the next sync.
+        const derived = linked && (tgt.get(r.link) || {}).pre > 0;
+        if (derived) return `<span class="dim" title="They started ${esc(monthName(r.start))}, so by ${esc(MONTHS[0])} \u201926 they had already served this much of their ramp. Change their start date on the Staffing tab.">${esc(lbl(v))}</span>`;
         let o = `<select class="cell mo" data-id="${r.id}" data-k="pre" title="How far into their ramp they already were on their first month here — a DURATION, not a month. 0 is a brand-new seller; 12 means they were already at full rate.">`;
         for (let i = 0; i <= 12; i++)
-          o += `<option value="${i}"${i === v ? " selected" : ""}>${i === 0 ? "new" : i === 12 ? "12 mo \u00b7 full" : i + " mo"}</option>`;
+          o += `<option value="${i}"${i === v ? " selected" : ""}>${esc(lbl(i))}</option>`;
         return o + "</select>";
       })()}</td>
       <td>${linked
@@ -1956,7 +1980,7 @@ function renderStaff(C){
       const dRoles = sorted.filter(r => r.dept === p.dept);
       const heads = dRoles.reduce((a, r) => a + staffHC(r, NM), 0);
       const headVals = dRoles.flatMap(r => (r.people && r.people.length)
-        ? r.people.filter(pp => NM >= (pp.from || 1) && NM <= (pp.to || NM)).map(pp => earningsAt(r, pp, NM))
+        ? r.people.filter(pp => NM >= joinMonth(pp) && NM <= (pp.to || NM)).map(pp => earningsAt(r, pp, NM))
         : Array(Math.max(0, Math.round(r.hc[NM - 1] || 0))).fill(earningsAt(r, null, NM))).sort((x, y) => x - y);
       const medSal = headVals.length ? headVals[Math.floor(headVals.length / 2)] : 0;
       const budMo = (C.deptPay[p.dept] ? C.deptPay[p.dept][NM - 1] : 0) + (C.dept[p.dept] ? C.dept[p.dept][NM - 1] : 0);
@@ -1978,7 +2002,7 @@ function renderStaff(C){
         if (hasPpl){
           // people drive this role — surface their raises (person-scoped, plus role/dept raises they inherit)
           const chs = p.people.map(pp => ({ pp,
-            e0: earningsAt(p, pp, Math.max(1, pp.from || 1)),
+            e0: earningsAt(p, pp, joinMonth(pp)),
             eN: earningsAt(p, pp, Math.min(NM, pp.to || NM)) }))
             .filter(x => Math.abs(x.eN - x.e0) > 1);
           if (chs.length){
@@ -2007,9 +2031,9 @@ function renderStaff(C){
       `<td><b>${fmt$(fyOf.get(p.id))}</b></td><td><button class="btn mini" data-id="${p.id}" data-k="del" title="Remove role">✕</button></td></tr>`;
     if (open){
       const ppl = (p.people || []).map(pp => {
-        const c0 = personCost(p, pp, Math.max(1, pp.from || 1));
+        const c0 = personCost(p, pp, joinMonth(pp));
         const cN = personCost(p, pp, Math.min(NM, pp.to || NM));
-        const e0 = earningsAt(p, pp, Math.max(1, pp.from || 1)), eN = earningsAt(p, pp, Math.min(NM, pp.to || NM));
+        const e0 = earningsAt(p, pp, joinMonth(pp)), eN = earningsAt(p, pp, Math.min(NM, pp.to || NM));
         const earnTxt = Math.abs(eN - e0) > 1
           ? `<b>${fmt$(e0)} → ${fmt$(eN)}/yr (+${((eN - e0) / (e0 || 1) * 100).toFixed(1)}%)</b>${p.payType === "hourly" ? " (≈ $" + (eN / (hrsOf(p, pp) * 52)).toFixed(2) + "/hr)" : ""} · `
           : (c0 ? `${fmt$(eN)}/yr · ` : "");
@@ -2023,7 +2047,7 @@ function renderStaff(C){
           <span class="fld"><label>Salary/yr</label><input class="cell w84" data-id="${pp.id}" data-k="psal" value="${pp.sal == null ? "" : Math.round(pp.sal).toLocaleString("en-US")}" placeholder="role: ${Math.round(p.ote / 1000)}K"></span>
           <span class="fld"><label>New salary</label><input class="cell w84" data-id="${pp.id}" data-k="psal2" value="${pp.sal2 == null ? "" : Math.round(pp.sal2).toLocaleString("en-US")}" placeholder="—"></span>`}
           <span class="fld"><label>Change mo</label>${monthSel(`data-id="${pp.id}" data-k="pchg"`, pp.chgM || "", { blank: "\u2014 no change", title: "Month the new salary takes effect." })}</span>
-          <span class="fld"><label>Starts</label>${monthSel(`data-id="${pp.id}" data-k="pfrom"`, pp.from || 1, { title: "First month on payroll. On a selling role this is also when their ramp begins." })}</span>
+          <span class="fld"><label>Starts</label>${monthSel(`data-id="${pp.id}" data-k="pfrom"`, startOf(pp), { min: START_MIN, first: { value: FULLY_RAMPED, label: "fully ramped" }, title: "When they started, not when the window opens. Months before Jan \u201926 mean they were already ramping — payroll still runs from Jan, and on a selling role the months already served become ramp credit. Earlier than " + monthName(START_MIN) + ", pick fully ramped." })}${rampCredit(pp) > 0 ? ` <span class="subtle" style="margin-left:5px">${rampCredit(pp) >= RAMP_LEN ? "fully ramped" : rampCredit(pp) + " mo of ramp served"}</span>` : ""}</span>
           <span class="fld"><label>Ends</label>${monthSel(`data-id="${pp.id}" data-k="pto"`, pp.to || NM, { title: "Last month on payroll. End someone here and start them on another role next month to model a role change." })}</span>
           <span class="fld"><label>&nbsp;</label><span class="subtle">${costTxt}</span></span>
           <span class="fld"><label>&nbsp;</label><button class="btn mini" data-id="${pp.id}" data-k="pdel" title="Remove person">✕</button></span>
@@ -2432,7 +2456,7 @@ function renderPayBands(){
     if (S.bandHide[r.id]) continue;                            // explicitly excluded
     const medOf = a => { const v = [...a].sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : 0; };
     if (r.people && r.people.length){
-      const act = r.people.filter(pp => M0 >= (pp.from || 1) && M0 <= (pp.to || NM));
+      const act = r.people.filter(pp => M0 >= joinMonth(pp) && M0 <= (pp.to || NM));
       if (!act.length) continue;                               // everyone gone by this month
       const pv = act.map(pp => earningsAt(r, pp, M0));
       pts.push({ grp, roleId: r.id, hid: r.id,
@@ -2622,7 +2646,10 @@ delegate("staffTable", (id, k, val) => {
     else if (k === "psal2") pp.sal2 = String(val).trim() === "" ? null : num(val, null);
     else if (k === "pchg") pp.chgM = String(val).trim() === "" ? null : Math.min(NM, Math.max(1, Math.round(num(val, 1))));
     else if (k === "phrs") pp.phrs = String(val).trim() === "" ? null : Math.max(1, num(val, 40));
-    else if (k === "pfrom") pp.from = Math.min(NM, Math.max(1, Math.round(num(val, 1))));
+    else if (k === "pfrom"){
+      const v = Math.round(num(val, 1));
+      pp.from = v === FULLY_RAMPED ? FULLY_RAMPED : Math.min(NM, Math.max(START_MIN, v));
+    }
     else if (k === "pto") pp.to = Math.min(NM, Math.max(1, Math.round(num(val, NM))));
     return;
   }
