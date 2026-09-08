@@ -102,9 +102,17 @@
       // pollAfterClick exit) on that stamp instead of field_1199.
       // field_2723 = Yes also completes it — Ops validating makes the
       // request moot.
+      // Partial mitigation until the per-SOW stamp exists: the field_1199
+      // proxy only counts when the project has NO validated SOW yet
+      // (field_2917 = 0) — otherwise this SOW is an alternate that merely
+      // inherited the project link, and treating that as "validation
+      // requested" deadlocks the whole stepper (hidden-as-done here +
+      // survey locked "waiting on Ops"). Same guard on softHideWhen and
+      // on the survey step's wait lock.
       completed: {
         any: [
-          { field: 'field_1199', hasValue: true },
+          { all: [ { field: 'field_1199', hasValue: true },
+                   { not: { field: 'field_2917', gt: 0 } } ] },
           { field: 'field_2723', value: 'Yes' }
         ]
       },
@@ -118,7 +126,8 @@
       // this is a CSS soft-hide, never a showWhen removal.
       softHideWhen: {
         any: [
-          { field: 'field_1199', hasValue: true },   // validate-only fired
+          { all: [ { field: 'field_1199', hasValue: true },       // validate-only fired…
+                   { not: { field: 'field_2917', gt: 0 } } ] },   // …and not an inherited link
           { field: 'field_2723', value: 'Yes' },     // already validated
           { field: 'field_2706', value: 'Yes' },     // survey path taken
           { field: 'field_2728', gt: 0 }             // sibling owns the survey
@@ -1680,7 +1689,14 @@
         { field: 'field_2723', notValue: 'Yes' },
         { field: 'field_2706', notValue: 'Yes' },
         { not: { field: 'field_2728', gt: 0 } },
-        { not: { field: 'field_1199', hasValue: true } }
+        // "Validation not yet requested" — but a project-level field_1199
+        // inherited by an alternate SOW (validated sibling exists,
+        // field_2917 > 0) doesn't count as a request for THIS SOW, so the
+        // choice re-opens there. Mirrors the guards on the two steps.
+        { any: [
+          { not: { field: 'field_1199', hasValue: true } },
+          { field: 'field_2917', gt: 0 }
+        ] }
       ]
     });
   }
