@@ -1951,14 +1951,14 @@
     if (cat === 'assumptions') {
       laborCell = empty('scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor');
     } else if (subBidNo) {
-      var laborVal = readNum(rec, F.labor || 'field_2400');
-      laborCell = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency scw-ws-v2-cell--labor-na" ' +
-          'title="Require Sub Bid is No — no sub bid needed for this item">' +
-          '<span class="scw-ws-v2-currency-glyph">$</span>' +
-          '<input type="number" step="any" class="scw-ws-v2-input scw-ws-v2-input--num" ' +
-            'readonly tabindex="-1" aria-label="Labor (no sub bid required)" ' +
-            'value="' + escapeHtml(laborVal) + '">' +
-        '</div>';
+      // Require Sub Bid = No → the Labor field AND its number are hidden
+      // outright (2026-09-09: the old read-only "$ N/A" box still read as a
+      // zero price). Blank cell keeps the grid aligned; the tooltip is the
+      // only trace. Ext hides below for the same reason ($0.00 on a line
+      // that owes no bid reads as a price, not an exemption).
+      laborCell = '<div class="scw-ws-v2-cell scw-ws-v2-cell--blank ' +
+          'scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor" ' +
+          'title="Require Sub Bid is No — no sub bid needed for this item"></div>';
     } else {
       var laborWarn = surveyWarnClass(rec, F.labor || 'field_2400', 'danger', 'warning');
       laborCell = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency ' + laborWarn + '">' +
@@ -1966,7 +1966,7 @@
           numInput(rec, viewKey, F.labor || 'field_2400', readNum(rec, F.labor || 'field_2400'), 'Labor') +
         '</div>';
     }
-    var extCell = (isCam || cat === 'assumptions')
+    var extCell = (isCam || cat === 'assumptions' || subBidNo)
       ? empty('scw-ws-v2-cell--survey-ext')
       : ro(readField(rec, F.extended || 'field_2401'), 'scw-ws-v2-cell--survey-ext', 'Extended');
     var bidCell = surveyBidCell(rec, viewKey, F.bid || 'field_2415');
