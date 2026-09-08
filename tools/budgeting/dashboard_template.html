@@ -797,9 +797,13 @@ function hrsOf(role, p){ return (p && p.phrs) || role.hrs || 40; }
 function roleAnnual(role){
   return role.payType === "hourly" ? (role.rate || 0) * (role.hrs || 40) * 52 : (role.ote || 0);
 }
+// When set, raiseFor ignores this one event — used to price a month with and without a single
+// raise so its impact can be isolated from everything else happening that month.
+let raiseSkipId = null;
 function raiseFor(role, personId, m, hrs){
   let pct = 0, dmo = 0;
   for (const ev of (S.raises || [])){
+    if (raiseSkipId && ev.id === raiseSkipId) continue;
     if (m < (ev.month || 1) || !ev.amount) continue;
     const hit = (ev.scope === "dept" && ev.target === role.dept) ||
                 (ev.scope === "role" && ev.target === role.id) ||
@@ -1563,19 +1567,24 @@ function raisesOn(role, p){
 }
 function raiseImpact(ev){
   let now = 0, aft = 0, heads = 0, toAnnual = null, toRate = null;
-  const m0 = Math.max(1, (ev.month || 1) - 1), m1 = Math.min(NM, ev.month || 1);
+  // Price the SAME month with and without this raise. Comparing the month before to the month
+  // after would fold in everything else that changes between them — above all the calendar,
+  // since labor is charged by business day: a 22-day October against a 21-day November moves a
+  // $72K salary by ~$276, which swamps a $250 raise and flips the sign.
+  const m1 = Math.min(NM, Math.max(1, ev.month || 1));
+  const without = fn => { raiseSkipId = ev.id; try { return fn(); } finally { raiseSkipId = null; } };
   for (const p of S.staff){
     const covers = (ev.scope === "dept" && ev.target === p.dept) || (ev.scope === "role" && ev.target === p.id) ||
       (ev.scope === "person" && (p.people || []).some(x => x.id === ev.target));
     if (!covers) continue;
     if (ev.scope === "person"){
       const pp = p.people.find(x => x.id === ev.target);
-      now += personCost(p, pp, m0) || personCost(p, pp, m1); aft += personCost(p, pp, m1); heads += 1;
+      now += without(() => personCost(p, pp, m1)); aft += personCost(p, pp, m1); heads += 1;
       const lab = laborAt(p, pp, NM), r = raiseFor(p, pp.id, NM, hrsOf(p, pp));
       toAnnual = (lab + r.dmo + lab * r.pct) * 12;
       if (p.payType === "hourly") toRate = toAnnual / (hrsOf(p, pp) * 52);
     } else {
-      now += staffCost(p, m0) || staffCost(p, m1); aft += staffCost(p, m1); heads += staffHC(p, m1);
+      now += without(() => staffCost(p, m1)); aft += staffCost(p, m1); heads += staffHC(p, m1);
       if (ev.scope === "role"){
         const lab = laborAt(p, null, NM), r = raiseFor(p, null, NM, p.hrs);
         toAnnual = (lab + r.dmo + lab * r.pct) * 12;
@@ -1607,7 +1616,7 @@ function renderRaisePlanner(){
         <option value="hr"${ev.kind === "hr" ? " selected" : ""}>$ / hr</option></select></span>
       <span class="fld"><label>Starts</label>${monthSel(`data-id="${ev.id}" data-k="rmonth"`, ev.month || 1, { title: "Month the raise takes effect." })}</span>
       <span class="fld"><label>&nbsp;</label><span class="subtle">${ev.target ? (imp.heads
-        ? "+" + fmt$(imp.delta) + "/mo across " + imp.heads + " head" + (imp.heads > 1 ? "s" : "")
+        ? `<span title="Fully-loaded monthly payroll cost this raise adds in ${esc(monthName(ev.month || 1))} — the raise itself plus employer tax and match. A $3,000/yr raise is $250/mo of pay, so this reads a little higher.">${imp.delta >= 0 ? "+" : ""}${fmt$(imp.delta)}/mo across ${imp.heads} head${imp.heads > 1 ? "s" : ""}</span>`
           + (imp.toAnnual != null ? " · brings earnings to <b>" + fmt$(imp.toAnnual) + "/yr</b>" + (imp.toRate != null ? " (≈ $" + imp.toRate.toFixed(2) + "/hr)" : "") + (ev.scope === "role" ? " per head" : "") : "")
         : "covers nobody yet") : ""}</span></span>
       <span class="fld"><label>&nbsp;</label><button class="btn mini" data-id="${ev.id}" data-k="rdel" title="Remove raise">✕</button></span>
