@@ -499,11 +499,11 @@ function defaultState(){
     programs: [
       // Both as described by the company. Ops: $1,500 a head, earned proportionally across
       // $6.65M-$7.85M — nothing below, capped above. Director: 3.5% of every dollar over $6.35M.
-      { id: "pgOps", name: "Operations bonus", on: true, basis: "band", scope: "dept",
-        target: "Installation Services", roles: [], per: "head", amount: 1500,
+      { id: "pgOps", name: "Operations bonus", on: true, basis: "band", scope: "depts",
+        depts: ["Installation Services"], per: "head", amount: 1500,
         half: 2, thr: 6650000, cap: 7850000, alloc: "earned" },
-      { id: "pgSd", name: "Sales Director bonus", on: true, basis: "rate", scope: "role",
-        target: "", roles: [], per: "pool", amount: 0, pct: 0.035,
+      { id: "pgSd", name: "Sales Director bonus", on: true, basis: "rate", scope: "all",
+        depts: [], per: "pool", amount: 0, pct: 0.035,
         half: 2, thr: 6350000, cap: 0, alloc: "earned" }
     ],
     bandSplit: ["Software Development", "Sales"],
@@ -557,6 +557,16 @@ function migrateState(st){
   // Programs predating the band/rate split: a flat amount above a threshold is a band with no
   // cap, which is exactly what the old "pays nothing below" meant.
   for (const pg of st.programs){
+    // Roles were the wrong unit — forty chips for one bonus. A program now names departments.
+    // A single department carries over as a set of one; chosen roles collapse to the
+    // departments they sat in.
+    if (!pg.depts){
+      if (pg.scope === "dept") pg.depts = pg.target ? [pg.target] : [];
+      else if (pg.scope === "role") pg.depts = [...new Set((pg.roles || []).map(id => (st.staff.find(r => r.id === id) || {}).dept).filter(Boolean))];
+      else pg.depts = [];
+      pg.scope = pg.scope === "all" ? "all" : "depts";
+      delete pg.target; delete pg.roles;
+    }
     if (!pg.basis) pg.basis = "band";
     if (pg.cap == null) pg.cap = 0;
     if (pg.pct == null) pg.pct = 0;
@@ -1145,10 +1155,8 @@ function compute(){
     const isRate = pg.basis === "rate";
     let heads = 0;
     for (const r of S.staff){
-      const hit = pg.scope === "dept" ? (r.dept === pg.target)
-        : pg.scope === "role" ? ((pg.roles || []).indexOf(r.id) >= 0)
-        : true;
-      if (hit) heads += staffHC(r, b);
+      if (pg.scope !== "all" && (pg.depts || []).indexOf(r.dept) < 0) continue;
+      heads += staffHC(r, b);
     }
     const gross = pg.per === "pool" ? (+pg.amount || 0) : (+pg.amount || 0) * heads;
     if (!isRate && !gross) continue;
@@ -2392,11 +2400,9 @@ function renderPayCal(C){
 /* ---------- incentive programs ---------- */
 function renderIncentives(C){
   const el = document.getElementById("incList"); if (!el) return;
-  const roleOpts = S.staff.slice().sort((a, b) => a.dept.localeCompare(b.dept) || a.position.localeCompare(b.position));
   el.innerHTML = (S.programs || []).map(pg => {
     const hi = pg.half === 1 ? 0 : 1;
-    const heads = S.staff.reduce((n, r) => n + ((pg.scope === "dept" ? r.dept === pg.target
-      : pg.scope === "role" ? (pg.roles || []).indexOf(r.id) >= 0 : true) ? staffHC(r, (hi ? FH2 : FH1)[1]) : 0), 0);
+    const heads = S.staff.reduce((n, r) => n + ((pg.scope === "all" || (pg.depts || []).indexOf(r.dept) >= 0) ? staffHC(r, (hi ? FH2 : FH1)[1]) : 0), 0);
     const [pa, pb] = hi === 0 ? FH1 : FH2;
     const prev = C.rev.mod.slice(pa, pb).reduce((x, y) => x + y, 0);
     const pace = (+pg.thr || 0) > 0 ? prev / pg.thr : 1;
@@ -2412,11 +2418,13 @@ function renderIncentives(C){
       <span class="fld"><label>On</label><input type="checkbox" class="switch" data-id="${pg.id}" data-k="pgon"${pg.on === false ? "" : " checked"}></span>
       <span class="fld"><label>Program</label><input class="cell pos" data-id="${pg.id}" data-k="pgname" value="${esc(pg.name || "")}"></span>
       ${!needsWho ? "" : `<span class="fld"><label>Who</label><select class="cell" data-id="${pg.id}" data-k="pgscope">
-        <option value="dept"${pg.scope === "dept" ? " selected" : ""}>Department</option>
-        <option value="role"${pg.scope === "role" ? " selected" : ""}>Chosen roles</option>
+        <option value="depts"${pg.scope !== "all" ? " selected" : ""}>Departments</option>
         <option value="all"${pg.scope === "all" ? " selected" : ""}>Everyone</option></select></span>`}
-      ${!needsWho ? "" : pg.scope === "dept" ? `<span class="fld"><label>Which</label><select class="cell" style="max-width:180px" data-id="${pg.id}" data-k="pgtarget">${DEPTS.map(d => `<option value="${esc(d)}"${d === pg.target ? " selected" : ""}>${esc(dn(d))}</option>`).join("")}</select></span>`
-        : pg.scope === "role" ? `<span class="fld"><label>Roles</label><span style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;max-width:460px">${(pg.roles || []).map(id => { const r = S.staff.find(x => x.id === id); return r ? `<span class="tag" title="${esc(dn(r.dept))}">${esc(r.position)}<button data-id="${pg.id}" data-k="pgroledel" data-role="${r.id}" title="Remove">✕</button></span>` : ""; }).join("")}<select class="cell" style="max-width:190px" data-id="${pg.id}" data-k="pgroleadd"><option value="">+ add a role\u2026</option>${DEPTS.map(d => { const rs = roleOpts.filter(r => r.dept === d && (pg.roles || []).indexOf(r.id) < 0); return rs.length ? `<optgroup label="${esc(dn(d))}"><option value="dept:${esc(d)}">\u2731 every ${esc(dn(d))} role (${rs.length})</option>${rs.map(r => `<option value="${r.id}">${esc(r.position)}</option>`).join("")}</optgroup>` : ""; }).join("")}</select></span></span>` : ""}
+      ${!needsWho || pg.scope === "all" ? "" : (() => {
+        const chosen = pg.depts || [];
+        const left = DEPTS.filter(d => chosen.indexOf(d) < 0 && S.staff.some(r => r.dept === d));
+        return `<span class="fld"><label>Which</label><span style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;max-width:520px">${chosen.map(d => `<span class="tag">${esc(dn(d))}<button data-id="${pg.id}" data-k="pgdeptdel" data-dept="${esc(d)}" title="Remove">✕</button></span>`).join("")}${left.length ? `<select class="cell" style="max-width:190px" data-id="${pg.id}" data-k="pgdeptadd"><option value="">+ add a department\u2026</option>${left.map(d => `<option value="${esc(d)}">${esc(dn(d))} (${Math.round(S.staff.filter(r => r.dept === d).reduce((n, r) => n + staffHC(r, (hi ? FH2 : FH1)[1]), 0))})</option>`).join("")}</select>` : ""}</span></span>`;
+      })()}
       <span class="fld"><label>Pays</label><select class="cell" data-id="${pg.id}" data-k="pgbasis" title="A set amount earned across a revenue range, or a rate on every dollar above a threshold.">
         <option value="band"${isRate ? "" : " selected"}>a set amount</option>
         <option value="rate"${isRate ? " selected" : ""}>a % of revenue</option></select></span>
@@ -2608,14 +2616,8 @@ document.getElementById("incList").addEventListener("change", ev => {
   const val = t.type === "checkbox" ? t.checked : t.value;
   if (k === "pgon") pg.on = !!val;
   else if (k === "pgname") pg.name = String(val);
-  else if (k === "pgscope"){ pg.scope = val; if (val === "dept" && !pg.target) pg.target = DEPTS[0]; }
-  else if (k === "pgtarget") pg.target = val;
-  else if (k === "pgroleadd"){
-    if (!val) return;
-    // "dept:<name>" adds every role in that department in one go
-    const ids = String(val).startsWith("dept:") ? S.staff.filter(r => r.dept === val.slice(5)).map(r => r.id) : [val];
-    pg.roles = [...new Set([...(pg.roles || []), ...ids])];
-  }
+  else if (k === "pgscope") pg.scope = val === "all" ? "all" : "depts";
+  else if (k === "pgdeptadd"){ if (!val) return; pg.depts = [...new Set([...(pg.depts || []), val])]; }
   else if (k === "pgbasis") pg.basis = val === "rate" ? "rate" : "band";
   else if (k === "pgpct") pg.pct = Math.max(0, num(val, 0)) / 100;
   else if (k === "pgcap") pg.cap = String(val).trim() === "" ? 0 : Math.max(0, num(val, 0));
@@ -2629,10 +2631,10 @@ document.getElementById("incList").addEventListener("change", ev => {
   persist(); scheduleRender();
 });
 document.getElementById("incList").addEventListener("click", ev => {
-  const rd = ev.target.closest("button[data-k=pgroledel]");
+  const rd = ev.target.closest("button[data-k=pgdeptdel]");
   if (rd){
     const pg = (S.programs || []).find(x => x.id === rd.dataset.id);
-    if (pg) pg.roles = (pg.roles || []).filter(r => r !== rd.dataset.role);
+    if (pg) pg.depts = (pg.depts || []).filter(d => d !== rd.dataset.dept);
     persist(); scheduleRender(); return;
   }
   const b = ev.target.closest("button[data-k=pgdel]"); if (!b) return;
@@ -2641,8 +2643,8 @@ document.getElementById("incList").addEventListener("click", ev => {
 });
 document.getElementById("addProgram").addEventListener("click", () => {
   S.programs = S.programs || [];
-  S.programs.push({ id: "pg" + Date.now().toString(36), name: "New program", on: true, scope: "dept",
-    basis: "band", target: DEPTS[0], roles: [], per: "head", amount: 1000, pct: 0,
+  S.programs.push({ id: "pg" + Date.now().toString(36), name: "New program", on: true, scope: "depts",
+    basis: "band", depts: [], per: "head", amount: 1000, pct: 0,
     half: 2, thr: 0, cap: 0, alloc: "even" });
   persist(); scheduleRender();
 });
