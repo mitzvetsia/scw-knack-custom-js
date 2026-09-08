@@ -292,6 +292,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
   <div class="card"><h2>Team revenue by month</h2><p class="note">Each rep's ramp × attainment, summed, against booked revenue. Dashed lines: the half's target and break-even per month. Targets &amp; thresholds are set on the Projections tab.</p><figure class="chart" id="chartTeam"></figure></div>
   <div class="card"><h2>Reps</h2><p class="note">Attainment is per person per scenario — e.g. Zach 80% modest / 100% stretch. Base salaries live on Staffing; commissions pay on attained revenue. Leave <b>Comm %</b> blank and the rep pays from the tier table below at the rate their attainment earns (so modest and stretch can pay different rates); type a % for a flat override. Sales Manager and Director overrides are in the levers above.</p>
     <p class="note" style="margin:-4px 0 10px"><b>Who is on this list comes from the staffing plan.</b> Name someone on a Sales role there — a real name or a TBD — and they appear here, ramping from the month they join and stopping when they leave. Move someone between roles (end them on one, start them on the next) and each stint gets its own row on the right curve; an AM→AE move picks up the transition ramp automatically. What you set here stays yours: ramp, attainment, commission, and <b>Ramped mo</b> — months of ramp already behind them, which is how someone already at full rate in Jan ’26 avoids being modelled as a new hire.</p>
+    <div id="rosterDrop"></div>
     <div id="rosterLink"></div>
     <div id="commTierBar"></div>
     <div class="tablewrap" id="salesTable"></div>
@@ -442,7 +443,7 @@ function defaultState(){
     fixes: {},
     levers: { cogsPct: +((() => { const P = new Set(MODEL.provisional_cogs_months || []);
         let c = 0, r = 0; MODEL.totals.cogs.forEach((v, i) => { if (!P.has(i + 1)){ c += v; r += MODEL.totals.revenue[i]; } });
-        return c / (r || 1); })()).toFixed(3), estProv: true,
+        return c / (r || 1); })()).toFixed(3), estProv: true, estPartialPay: true,
       // Booked other income now reads straight from the incidental revenue accounts — interest
       // earned, rental income and late fees — and runs a steady $10-12K/mo across Jan-Aug. (The
       // UniView rebate is typed Other Income in Xero and is absent from the Expense/Revenue
@@ -452,14 +453,27 @@ function defaultState(){
       hdvRate: 523.5, taxRate: MODEL.employer_tax_rate },
     sales: MODEL.sales.map((s, i) => ({ id: "s" + i, name: s.name, role: s.role, ramp: s.ramp,
       start: s.start_cal, modest: /Stu/.test(s.name) ? 1 : 0.8, stretch: 1,
-      comm: /Account Executive/.test(s.role) && !/Senior/.test(s.role) ? 0.025 :
-            /Account Manager/.test(s.role) ? 0.015 : /Senior Account/.test(s.role) ? 0.0175 : 0 })),
+      comm: null })),
+    commRoles: (() => {
+      // Placeholders, and labelled as such in the UI. They are the only commission numbers in
+      // the model that were not read off a real document: the AE tiers came from observed
+      // payouts, these did not. One entry per role so a correction is made once, not per person.
+      const out = {};
+      for (const s of MODEL.sales){
+        const r = s.role || "";
+        if (out[r] !== undefined) continue;
+        out[r] = /Account Manager/.test(r) ? 0.015 : /Senior Account/.test(r) ? 0.0175
+               : /Account Executive/.test(r) ? null : 0;   // null = pay from the tier table
+      }
+      return out;
+    })(),
     ramps,
     staff: MODEL.staff.map((s, i) => ({ id: "p" + i, dept: s.dept || "Unassigned", position: s.position,
       ote: s.ote, hdv: s.hdv, lic: s.lic,
       benOn: (s.hdv || 0) > 0, taxOn: true, level: guessLevel(s.position),
       raiseD: 0, raiseP: 0, raiseM: 9, hc: seedHc(s.position, s.hc) })),
     raises: [],
+    salesDrop: [],
     // The two programs described: an operations bonus for a department, paid only once the half
     // closes, and the Sales Director bonus, which pays nothing below its threshold and is carried
     // by the months that clear it. Amounts are placeholders — set the real ones on Projections.
@@ -507,32 +521,28 @@ function migrateState(st){
     if (L0.taxRate == null) L0.taxRate = MODEL.employer_tax_rate;
     if (L0.ovrInBase != null) delete L0.ovrInBase;   // retired: salaries are base-only
     if (L0.bdayWeight == null) L0.bdayWeight = true;
+    if (L0.estPartialPay == null) L0.estPartialPay = true;
   if (!st.programs) st.programs = (defaultState().programs || []);
-  if (!L0.salesLinkFix){
-    // Existing reps predate the link. Bind each to the staffing stint with the same name and keep
-    // their current start by deriving RAMPED MO from it, so nothing shifts and no duplicate is
-    // created for a person who is already on the list.
-    try {
-      const taken = new Set(st.sales.filter(r => r.link).map(r => r.link));
-      for (const rep of st.sales){
-        if (rep.link) continue;
-        const nm = (rep.name || "").trim().toLowerCase();
-        if (!nm) continue;
-        for (const r of st.staff){
-          if (!isSelling(r)) continue;
-          const person = (r.people || []).find(p => (p.name || "").trim().toLowerCase() === nm &&
-            !taken.has(r.id + "|" + p.id));
-          if (!person) continue;
-          rep.link = r.id + "|" + person.id;
-          taken.add(rep.link);
-          rep.from = Math.max(1, person.from || 1);
-          rep.pre = Math.max(0, rep.from - (rep.start || 1));
-          break;
-        }
-      }
-    } catch (e) {}
-    L0.salesLinkFix = 1;
+  if (!st.salesDrop) st.salesDrop = [];
+  if (!st.commRoles){
+    // Rates used to be stamped on every rep, so the same guess appeared a dozen times and
+    // reading one told you nothing about where it came from. Lift each role's rate up when
+    // every rep on that role agrees; leave genuinely per-person rates where they are.
+    st.commRoles = {};
+    const byRole = {};
+    for (const r of st.sales) (byRole[r.role || ""] = byRole[r.role || ""] || []).push(r);
+    for (const [role, reps] of Object.entries(byRole)){
+      const typed = reps.filter(r => r.comm != null).map(r => r.comm);
+      if (!typed.length || typed.length !== reps.length) continue;
+      if (typed.some(v => Math.abs(v - typed[0]) > 1e-9)) continue;
+      st.commRoles[role] = typed[0];
+      for (const r of reps) r.comm = null;
+    }
   }
+  // The one-shot name-binding migration that used to live here is gone: syncSales now claims
+  // free stints by name on every pass, which is what the one-shot was trying to do before the
+  // staffing seats had names.
+  delete L0.salesLinkFix;
     for (const p of st.staff){
       if (p.benOn === undefined) p.benOn = (p.hdv || 0) > 0;
       if (p.taxOn === undefined) p.taxOn = (p.tax || 0) > 0.005;
@@ -743,10 +753,21 @@ function salesTargets(){
 }
 // Reconcile S.sales against the plan. Adds what is missing, keeps per-rep tuning, follows start
 // and end months, and flags a rep whose staffing stint has gone rather than deleting their setup.
+// "TBD", "TBD 2", "(unnamed)" are placeholders, not identities: two seats both called TBD are
+// two different seats. Never match, adopt or de-duplicate on one.
+const PLACEHOLDER_RE = /^(\(unnamed\)|tbd(\s*\d+)?|new\s*hire(\s*\d+)?|open(\s*\d+)?)$/i;
+function repIdent(name){
+  const n = (name || "").trim();
+  return (!n || PLACEHOLDER_RE.test(n)) ? "" : n.toLowerCase();
+}
 function syncSales(){
   const targets = salesTargets();
   const byKey = new Map(targets.map(t => [t.key, t]));
+  const dropped = new Set(S.salesDrop || []);
   let changed = false;
+  // A stint the user has deleted off this list stays deleted. Without this, deleting a derived
+  // row just re-created it on the next render — the row was underivable, not removable.
+  for (const k of dropped) byKey.delete(k);
   for (const rep of S.sales){
     if (!rep.link) continue;
     const t = byKey.get(rep.link);
@@ -762,6 +783,39 @@ function syncSales(){
     const wantEnd = t.end;
     if ((rep.end || null) !== wantEnd){ rep.end = wantEnd; changed = true; }
   }
+  // Claim free stints for rows that predate the link, by name. This runs on EVERY sync, not
+  // once behind a migration flag: the original one-shot ran before the staffing seats had been
+  // named, matched nothing, and every seat then arrived a second time as a derived row — so the
+  // same person was on the list twice and their revenue counted twice. Adopting keeps the older
+  // row's ramp, attainment and commission instead of creating a rival for the same person.
+  const freeByName = new Map();
+  for (const t of byKey.values()){
+    const nm = repIdent(t.name);
+    if (!nm) continue;
+    if (!freeByName.has(nm)) freeByName.set(nm, []);
+    freeByName.get(nm).push(t);
+  }
+  for (const rep of S.sales){
+    if (rep.link) continue;
+    const nm = repIdent(rep.name);
+    const pool = nm ? freeByName.get(nm) : null;
+    if (!pool || !pool.length) continue;
+    const t = pool.shift();
+    byKey.delete(t.key);
+    rep.link = t.key; rep.name = t.name; rep.role = t.role;
+    rep.transition = !!t.transition;
+    rep.from = t.start;
+    rep.pre = Math.max(0, Math.min(12, t.start - (rep.start || t.start)));
+    rep.start = t.start - rep.pre;
+    rep.end = t.end;
+    changed = true;
+  }
+  // Anything still unlinked that shares a name with a linked row is the leftover half of that
+  // same double count — the linked row is the one the staffing plan drives, so it wins.
+  const linkedNames = new Set(S.sales.filter(r => r.link).map(r => repIdent(r.name)).filter(Boolean));
+  const before = S.sales.length;
+  S.sales = S.sales.filter(r => r.link || !repIdent(r.name) || !linkedNames.has(repIdent(r.name)));
+  if (S.sales.length !== before) changed = true;
   for (const t of byKey.values()){
     S.sales.push({ id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       link: t.key, name: t.name, role: t.role, transition: !!t.transition,
@@ -796,8 +850,16 @@ const DEFAULT_COMM_TIERS = [
   { at: 0.0, rate: 0.022 }, { at: 0.6, rate: 0.024 }, { at: 0.8, rate: 0.025 },
   { at: 1.0, rate: 0.026 }, { at: 1.2, rate: 0.027 }];
 const tiersOf = () => (S.commTiers && S.commTiers.length ? S.commTiers : DEFAULT_COMM_TIERS);
+function roleCommRate(role){
+  const m = S.commRoles || {};
+  return Object.prototype.hasOwnProperty.call(m, role) ? m[role] : undefined;
+}
+// A rate is looked up in one order and one order only: a % typed on the rep beats the rep's
+// role, and a role with no rate of its own pays from the attainment tiers.
 function commRate(rep, scn){
-  if (rep.comm != null) return rep.comm || 0;         // typed % overrides the tiers
+  if (rep.comm != null) return rep.comm || 0;         // typed % overrides everything
+  const rr = roleCommRate(rep.role);
+  if (rr != null) return rr || 0;                     // role's own flat rate
   const a = rep[scn] || 0;
   let rate = 0;
   for (const t of [...tiersOf()].sort((x, y) => x.at - y.at))
@@ -825,6 +887,30 @@ const BDAYS = (() => {
 const BD_AVG = BDAYS.reduce((a, b) => a + b, 0) / NM;
 // weight for month m (1-based). Benefits, licences and flat-dollar raises are monthly amounts
 // and stay unweighted — only the labor itself scales with days worked.
+/* A booked month whose payroll is only PART posted. Xero accrues payroll daily and reverses on
+   the pay date; when an export is pulled before the month has closed, the accruals simply stop
+   partway and the month reads light — August 2026 has ten accrual days (Aug 3-14) and nothing
+   for the eleven business days after, so its $296K is a floor, not the month's cost.
+   The estimate keeps the books' own basis: dollars per business day from the booked months that
+   ARE complete, applied to this month's business days. Payroll does not follow revenue, so a
+   percent-of-sales estimate (the right tool for COGS) would be the wrong one here. */
+function payPerBday(){
+  const partial = new Set(MODEL.payroll_partial_months || []);
+  let $ = 0, d = 0;
+  for (let m = 1; m <= ACT; m++){
+    if (partial.has(m)) continue;
+    $ += MODEL.totals.payroll[m - 1] || 0;
+    d += BDAYS[m - 1] || 0;
+  }
+  return d ? $ / d : 0;
+}
+function bookedPay(m){
+  const booked = MODEL.totals.payroll[m - 1] || 0;
+  if (S.levers.estPartialPay === false) return booked;
+  if (!(MODEL.payroll_partial_months || []).includes(m)) return booked;
+  // never talk a month DOWN — the posted figure is money that really was spent
+  return Math.max(booked, payPerBday() * (BDAYS[m - 1] || 0));
+}
 function bdayW(m){
   return S.levers.bdayWeight === false ? 1 : BDAYS[Math.min(NM, Math.max(1, m)) - 1] / BD_AVG;
 }
@@ -926,7 +1012,7 @@ function compute(){
     out.cogsPct.push(cp);
     out.cogs.mod.push(actual ? bookedCogs : tm * L.cogsPct);
     out.cogs.str.push(actual ? bookedCogs : ts * L.cogsPct);
-    out.pay.push(actual ? MODEL.totals.payroll[i] : st * (1 + L.laborHedge));
+    out.pay.push(actual ? bookedPay(m) : st * (1 + L.laborHedge));
     out.comp.mod.push(actual ? 0 : compM); out.comp.str.push(actual ? 0 : compS);
     let ot = 0;
     for (const d of DEPTS){
@@ -1214,13 +1300,22 @@ function renderProjLevers(){
     leverInput("lvOpx", "Opex hedge", (L.opexHedge * 100).toFixed(1), "% on planned expenses") +
     `<div class="lever"><label for="lvProv">Jul COGS (not yet entered)</label><select id="lvProv" class="lever-in">
       <option value="est"${L.estProv ? " selected" : ""}>Estimate at COGS % fwd</option>
-      <option value="booked"${!L.estProv ? " selected" : ""}>As booked ($232K · 17%)</option></select>
-      <span class="unit">Xero entry pending — booked 5258 is $0 for Jul</span></div>`;
+      <option value="booked"${!L.estProv ? " selected" : ""}>As booked</option></select>
+      <span class="unit">month-end COGS entry not made yet for ${(MODEL.provisional_cogs_months || []).map(m => MONTHS[m - 1]).join(" or ")}</span></div>` +
+    ((MODEL.payroll_partial_months || []).length ? (() => {
+      const pm = (MODEL.payroll_partial_months || [])[0];
+      const bk = MODEL.totals.payroll[pm - 1] || 0, est = payPerBday() * (BDAYS[pm - 1] || 0);
+      return `<div class="lever"><label for="lvPartPay">${MONTHS[pm - 1]} payroll (month not closed)</label><select id="lvPartPay" class="lever-in">
+        <option value="est"${L.estPartialPay !== false ? " selected" : ""}>Estimate — ${fmtK(est)}</option>
+        <option value="booked"${L.estPartialPay === false ? " selected" : ""}>As booked — ${fmtK(bk)}</option></select>
+        <span class="unit">accruals stop mid-month; estimate is ${fmt$(payPerBday())}/business day from the closed months × ${BDAYS[pm - 1]} days (+${fmtK(est - bk)})</span></div>`;
+    })() : "");
   bind("lvCogs", v => S.levers.cogsPct = num(v, 43) / 100);
   bind("lvOth", v => S.levers.otherInc = num(v, 3000));
   bind("lvLab", v => S.levers.laborHedge = num(v, 0) / 100);
   bind("lvOpx", v => S.levers.opexHedge = num(v, 0) / 100);
   bind("lvProv", v => S.levers.estProv = v === "est");
+  bind("lvPartPay", v => S.levers.estPartialPay = v === "est");
   const cl2 = document.getElementById("cogsHistLever");
   if (cl2){
     cl2.innerHTML = leverInput("lvCogs2", "COGS % fwd", (L.cogsPct * 100).toFixed(1),
@@ -1261,9 +1356,12 @@ function renderProj(C){
   for (const [k, v] of pick(gpM, gpS)) push("Gross profit" + sfx(k), v, "tot");
   pushSec("OPERATING COSTS");
   const partial = new Set(MODEL.payroll_partial_months || []);
+  const estPay = S.levers.estPartialPay !== false;
   push(`Payroll (staffing model) <button class="exp-toggle" data-k="plpay">${plPayOpen ? "▾ hide why" : "▸ why it moves"}</button>`, C.pay,
     "", fmt$, C.pay.map((v, i) => partial.has(i + 1)
-      ? `${MONTHS[i]} is booked light — Xero's daily payroll accruals stop mid-month, so the last stretch of the month has no accrual behind it. Treat it as a floor, not the month's true cost.`
+      ? (estPay
+        ? `${MONTHS[i]} has not closed — its daily payroll accruals stop mid-month, so Xero shows only ${fmtK(MODEL.totals.payroll[i] || 0)}. Estimated here at ${fmt$(payPerBday())}/business day from the closed months. Switch to as-booked on Model levers.`
+        : `${MONTHS[i]} is booked light — the daily payroll accruals stop mid-month, so the rest of the month has no accrual behind it. This is a floor, not the month's cost.`)
       : null));
   if (plPayOpen){
     const hedge = 1 + (S.levers.laborHedge || 0);
@@ -1338,7 +1436,12 @@ function renderProj(C){
   document.getElementById("plTable").innerHTML = h + "</tbody></table>";
   document.getElementById("plFoot").textContent =
     (S.levers.estProv && (MODEL.provisional_cogs_months || []).length ? "* " + (MODEL.provisional_cogs_months || []).map(m => MONTHS[m - 1]).join(" and ") + " COGS estimated at the forward COGS % — the month-end COGS entry isn’t in Xero yet. " : "") +
-    ((MODEL.payroll_partial_months || []).length ? (MODEL.payroll_partial_months || []).map(m => MONTHS[m - 1]).join(" and ") + " payroll is booked light: the daily accruals stop mid-month, so that month reads as a floor. " : "") +
+    ((MODEL.payroll_partial_months || []).length
+      ? (MODEL.payroll_partial_months || []).map(m => MONTHS[m - 1]).join(" and ") +
+        (S.levers.estPartialPay !== false
+          ? " has not closed — its payroll is estimated at the closed months' rate per business day, not taken as booked. "
+          : " payroll is shown as booked, which runs light: the daily accruals stop mid-month. ")
+      : "") +
     "Break-even row: monthly sales revenue needed to cover payroll + opex less other income at that month's gross margin (excl. overrides). " +
     "SM/Director override comp is charged to each half's modeled months; halves fully booked carry it inside booked payroll.";
   document.getElementById("notes").innerHTML =
@@ -1578,11 +1681,11 @@ function renderSales(C){
         : monthSel(`data-id="${r.id}" data-k="end"`, r.end || "", { blank: "\u2014 through " + monthName(NM), title: "Last month this line sells. Revenue and commissions stop after it." })}</td>
       <td><input class="cell tiny" data-id="${r.id}" data-k="modest" value="${Math.round(r.modest * 100)}"></td>
       <td><input class="cell tiny" data-id="${r.id}" data-k="stretch" value="${Math.round(r.stretch * 100)}"></td>
-      <td><input class="cell tiny" data-id="${r.id}" data-k="comm" value="${tiered ? "" : (r.comm * 100).toFixed(2)}" placeholder="auto" title="${tiered ? `Auto from the tiers: ${(rM * 100).toFixed(2)}% at modest attainment, ${(rS * 100).toFixed(2)}% at stretch. Type a % to override.` : "Flat override — clear to pay from the commission tiers by attainment"}"></td>
+      <td><input class="cell tiny" data-id="${r.id}" data-k="comm" value="${tiered ? "" : (r.comm * 100).toFixed(2)}" placeholder="${roleCommRate(r.role) != null ? "role" : "tiers"}" title="${tiered ? (roleCommRate(r.role) != null ? `Inherited from the flat rate set for ${esc(r.role)} above: ${(rM * 100).toFixed(2)}%. Type a % to override just this rep.` : `From the attainment tiers: ${(rM * 100).toFixed(2)}% at modest, ${(rS * 100).toFixed(2)}% at stretch. Type a % to override just this rep.`) : "Override for this rep only — clear it to fall back to the role's rate, or the tiers"}"></td>
       <td>${fmt$(fm)}</td><td>${fmt$(fs)}</td>
       <td class="pos" title="Additional revenue if this rep hits stretch instead of modest, counted over the OPEN months only (${MONTHS[ACT]} ’26 – ${MONTHS[NM - 1]} ’27). Jan–${MONTHS[ACT - 1]} are closed — the P&amp;L takes their revenue from Xero, so no upside remains in them."><b>${fmt$(fu)}</b></td>
-      <td title="Expected commission at modest — ${(rM * 100).toFixed(2)}%${tiered ? " (tier)" : ""} of ${fmtK(fm)}">${fmt$(fm * rM)}</td>
-      <td title="Expected commission at stretch — ${(rS * 100).toFixed(2)}%${tiered ? " (tier)" : ""} of ${fmtK(fs)}">${fmt$(fs * rS)}</td>
+      <td title="Expected commission at modest — ${(rM * 100).toFixed(2)}% ${tiered ? (roleCommRate(r.role) != null ? "(role rate)" : "(tier)") : "(typed on this rep)"} of ${fmtK(fm)}">${fmt$(fm * rM)}</td>
+      <td title="Expected commission at stretch — ${(rS * 100).toFixed(2)}% ${tiered ? (roleCommRate(r.role) != null ? "(role rate)" : "(tier)") : "(typed on this rep)"} of ${fmtK(fs)}">${fmt$(fs * rS)}</td>
       <td><button class="btn" data-id="${r.id}" data-k="del" title="Remove rep">✕</button></td></tr>`;
   }
   const tm = C.team.mod.reduce((a, b) => a + b, 0), ts = C.team.str.reduce((a, b) => a + b, 0);
@@ -1593,6 +1696,35 @@ function renderSales(C){
   document.getElementById("salesTable").innerHTML = h + "</tbody></table>";
   const un = unnamedSellingRoles();
   const nLinked = S.sales.filter(r => r.link).length;
+  // Reps taken off this list by hand. They are still on the staffing plan (and still cost
+  // payroll) — they just carry no quota here. Shown so a deletion is reversible.
+  const dropped = (S.salesDrop || []).map(k => {
+    const t = salesTargets().find(x => x.key === k);
+    return t ? { key: k, label: t.name + " · " + t.role } : null;
+  }).filter(Boolean);
+  // Two rows for one person double-counts their revenue. The sync collapses the cases it can
+  // resolve; a residual name collision it cannot is worth saying out loud.
+  const seen = new Map(), dupes = [];
+  for (const r of S.sales){
+    const nm = repIdent(r.name); if (!nm) continue;
+    if (seen.has(nm)){ if (dupes.indexOf(r.name) < 0) dupes.push(r.name); } else seen.set(nm, r);
+  }
+  // A row with no name still carries a ramp and still produces revenue. It cannot be matched
+  // to anyone, so it can only be identified by saying it is there.
+  const nameless = S.sales.filter(r => !r.link && !(r.name || "").trim());
+  document.getElementById("rosterDrop").innerHTML =
+    (nameless.length ? `<div style="border:1px solid #f0c9a0;border-radius:9px;padding:9px 12px;margin:0 0 10px;background:#fdf6ee;font-size:12.5px">
+      <b style="color:#b45309">${nameless.length} row${nameless.length > 1 ? "s have" : " has"} no name</b>
+      <span class="subtle">— ${nameless.length > 1 ? "they are" : "it is"} still producing ${fmtK(nameless.reduce((a, r) => { let t = 0; for (let m = 1; m <= NM; m++) t += repRevenue(r, m, "modest"); return a + t; }, 0))} of modest revenue. Name ${nameless.length > 1 ? "them" : "it"} to match ${nameless.length > 1 ? "them" : "it"} to the staffing plan, or delete.</span></div>` : "") +
+    (dupes.length ? `<div style="border:1px solid #f0c9a0;border-radius:9px;padding:9px 12px;margin:0 0 10px;background:#fdf6ee;font-size:12.5px">
+      <b style="color:#b45309">${dupes.length} name appear${dupes.length > 1 ? "" : "s"} on more than one row</b>
+      <span class="subtle">— ${esc(dupes.join(", "))}. Each row produces its own revenue and commission, so a person listed twice is counted twice. Delete the row you do not want.</span></div>` : "") +
+    (dropped.length ? `<div style="border:1px solid var(--border);border-radius:9px;padding:9px 12px;margin:0 0 10px;background:var(--surface2);font-size:12.5px">
+      <b>${dropped.length} on the staffing plan but off this list</b>
+      <span class="subtle">— they still cost payroll; they just carry no quota here.</span>
+      <div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:6px">
+        ${dropped.map(d => `<button class="btn mini" data-k="undrop" data-key="${esc(d.key)}" title="Put them back on the sales roster">↩ ${esc(d.label)}</button>`).join("")}
+      </div></div>` : "");
   document.getElementById("rosterLink").innerHTML = un.length
     ? `<div style="border:1px solid var(--border);border-radius:9px;padding:9px 12px;margin:0 0 10px;background:var(--surface2);font-size:12.5px">
         <b>${un.length} selling role${un.length > 1 ? "s carry" : " carries"} headcount but nobody named</b>
@@ -1607,7 +1739,24 @@ function renderSales(C){
       <span class="subtle" style="font-size:12px;font-weight:700">Commission tiers</span>
       <span class="subtle" style="font-size:12px">attainment ≥ → rate:</span>` +
     tiers.map((t, i) => `<span style="display:inline-flex;align-items:center;gap:3px;border:1px solid var(--border2);border-radius:8px;padding:2px 8px;font-size:12px"><input class="cell tiny" style="width:42px" data-id="t${i}" data-k="tat" value="${Math.round(t.at * 100)}" title="Tier floor — applies at or above this attainment">% → <input class="cell tiny" style="width:48px" data-id="t${i}" data-k="trate" value="${(t.rate * 100).toFixed(2)}" title="Commission rate paid at this tier">%</span>`).join("") +
-    `<span class="subtle" style="font-size:11.5px">${S.commTiers ? "" : "seeded example — set your real plan. "}Applies to reps with a blank Comm %.</span></div>`;
+    `<span class="subtle" style="font-size:11.5px">${S.commTiers ? "" : "read off observed AE payouts — confirm against the real plan. "}Pays any role with no flat rate below.</span></div>` +
+    // Roles actually on the list, each with one rate. Blank means "pay from the tiers above".
+    (() => {
+      const roles = [...new Set(S.sales.map(r => r.role || "").filter(Boolean))].sort();
+      if (!roles.length) return "";
+      const m = S.commRoles || {};
+      const guess = roles.some(r => m[r] != null);
+      return `<div class="toolbar" style="gap:6px;align-items:center;margin:2px 0 8px;flex-wrap:wrap">
+        <span class="subtle" style="font-size:12px;font-weight:700">Flat rate by role</span>
+        <span class="subtle" style="font-size:12px">blank = pay from the tiers:</span>` +
+        roles.map(r => {
+          const v = m[r];
+          const reps = S.sales.filter(x => (x.role || "") === r).length;
+          return `<span style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border2);border-radius:8px;padding:2px 8px;font-size:12px" title="${esc(r)} — ${reps} rep${reps === 1 ? "" : "s"}"><span class="subtle">${esc(r.length > 26 ? r.slice(0, 25) + "\u2026" : r)}</span><input class="cell tiny" style="width:46px" data-id="${esc(r)}" data-k="crate" value="${v == null ? "" : (v * 100).toFixed(2)}" placeholder="tiers">%</span>`;
+        }).join("") +
+        (guess ? `<span class="subtle" style="font-size:11.5px;color:#b45309">the non-AE rates here are placeholders, not read from a comp document — replace them</span>` : "") +
+        `</div>`;
+    })();
   let rh = `<table class="data"><thead><tr><th>Curve</th>${Array.from({length:12}, (_, i) => `<th>M${i + 1}</th>`).join("")}<th>YR1</th></tr></thead><tbody>`;
   for (const n of Object.keys(S.ramps)){
     rh += `<tr><td>${esc(n)}</td>` + S.ramps[n].map((v, i) =>
@@ -2351,9 +2500,22 @@ document.getElementById("rosterLink").addEventListener("click", ev => {
 });
 document.getElementById("salesTable").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-k=del]"); if (!b) return;
-  S.sales = S.sales.filter(r => r.id !== b.dataset.id); persist(); scheduleRender();
+  const r = S.sales.find(x => x.id === b.dataset.id);
+  if (r && r.link){ S.salesDrop = [...new Set([...(S.salesDrop || []), r.link])]; }
+  S.sales = S.sales.filter(x => x.id !== b.dataset.id); persist(); scheduleRender();
+});
+document.getElementById("rosterDrop").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k=undrop]"); if (!b) return;
+  S.salesDrop = (S.salesDrop || []).filter(k => k !== b.dataset.key);
+  persist(); scheduleRender();
 });
 delegate("commTierBar", (id, k, val) => {
+  if (k === "crate"){
+    S.commRoles = S.commRoles || {};
+    const t = String(val).trim();
+    if (t === "") S.commRoles[id] = null; else S.commRoles[id] = Math.max(0, num(val, 0)) / 100;
+    return;
+  }
   const i = +String(id).slice(1);
   const t = [...tiersOf()].sort((a, b) => a.at - b.at).map(x => ({ at: x.at, rate: x.rate }));
   if (!t[i]) return;
