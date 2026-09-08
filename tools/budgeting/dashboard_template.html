@@ -212,6 +212,13 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
 .pill.short{background:var(--chip-crit);color:var(--crit)}
 .vname{display:inline-block;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .right{text-align:right}
+.sync{font-size:11.5px;color:var(--muted);border:1px solid var(--border2);border-radius:999px;
+  padding:3px 10px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.sync::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.sync[data-state="live"]{color:var(--good-text);border-color:var(--good)}
+.sync[data-state="live"]::before{background:var(--good)}
+.sync[data-state="warn"]{color:#b45309;border-color:#b45309}
+.sync[data-state="warn"]::before{background:#b45309}
 </style>
 
 <div class="wrap">
@@ -219,6 +226,7 @@ details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);lin
   <div class="brand"><h1>SCW Money Model</h1><span class="sub">Jan 2026 – Mar 2027 · Xero accrual actuals through Jul 2026 · goal period Oct–Mar</span></div>
   <div class="top-actions">
     <span class="legend-key"><span class="key mod"><i></i>Modest</span><span class="key str"><i></i>Stretch</span></span>
+    <span class="sync" id="syncBadge" data-state="local">connecting…</span>
     <button class="btn" id="btnCopy" title="Copy every edited setting as JSON to share or back up">Copy config</button>
     <button class="btn" id="btnLoad" title="Paste a config JSON copied from this dashboard">Load</button>
     <button class="btn" id="btnReset" title="Discard all edits and return to the imported defaults">Reset</button>
@@ -447,59 +455,149 @@ function defaultState(){
   };
 }
 let S = defaultState();
+
+// Every saved scenario runs through this on the way in — from localStorage, from the shared
+// store, or from a pasted config — so an old shape is upgraded exactly once wherever it came
+// from. Mutates and returns st.
+function migrateState(st){
+  try {
+    // migrate configs saved before half-year targets/thresholds
+    const L0 = st.levers;
+    if (L0.targetH1 == null) L0.targetH1 = L0.target ? Math.round(L0.target * 6350 / 12050) : 6350000;
+    if (L0.targetH2 == null) L0.targetH2 = L0.target ? L0.target - L0.targetH1 : 5700000;
+    if (L0.thrH1 == null) L0.thrH1 = L0.targetH1;
+    if (L0.thrH2 == null) L0.thrH2 = L0.targetH2;
+    delete L0.target;
+    // migrate pre-15-month configs (12-month arrays / to==12 meaning "through end")
+    for (const p of st.staff) while (p.hc.length < NM) p.hc.push(p.hc.at(-1) ?? 0);
+    for (const e of st.exp) if (e.to === 12) e.to = NM;
+    // migrate saves made before contractor rows were flagged as carried on Staffing
+    if (!L0.bdrHcFix){
+      for (const p of st.staff)
+        for (const st of (HC_STEPS[p.position] || []))
+          for (let m = st.from; m <= NM; m++) p.hc[m - 1] = st.hc;
+      L0.bdrHcFix = 1;
+    }
+    if (!L0.staffCarriedFix){
+      for (const e of st.exp) if (STAFF_CARRIED.has(e.vendor)) e.use = "STAFFING";
+      L0.staffCarriedFix = 1;
+    }
+    if (L0.estProv == null) L0.estProv = true;
+    if (L0.hdvRate == null) L0.hdvRate = 523.5;
+    if (L0.taxRate == null) L0.taxRate = MODEL.employer_tax_rate;
+    if (L0.ovrInBase != null) delete L0.ovrInBase;   // retired: salaries are base-only
+    if (L0.bdayWeight == null) L0.bdayWeight = true;
+    for (const p of st.staff){
+      if (p.benOn === undefined) p.benOn = (p.hdv || 0) > 0;
+      if (p.taxOn === undefined) p.taxOn = (p.tax || 0) > 0.005;
+      if (!p.level) p.level = guessLevel(p.position);
+      if (LEVEL_MIGRATE[p.level]) p.level = LEVEL_MIGRATE[p.level];
+      if (/contractor|1099/i.test(p.position || "") && p.level === "Outcome") p.level = "Contractor";
+    }
+    // migrate legacy raise fields into raise events
+    if (!st.fixes) st.fixes = {};
+    if (!st.bandSplit) st.bandSplit = ["Software Development", "Sales"];
+    if (!st.bandHide) st.bandHide = {};
+    if (!st.deptNames) st.deptNames = { "03 - HR & Business Administration Manager": "HR & Business Admin", "Facillities": "Facilities" };
+    if (!st.raises){
+      st.raises = [];
+      for (const p of st.staff){
+        if (p.raiseD) st.raises.push({ id: "r" + p.id + "d", scope: "role", target: p.id, kind: "mo", amount: p.raiseD, month: p.raiseM || 9 });
+        if (p.raiseP) st.raises.push({ id: "r" + p.id + "p", scope: "role", target: p.id, kind: "pct", amount: p.raiseP, month: p.raiseM || 9 });
+        p.raiseD = 0; p.raiseP = 0;
+      }
+      for (const [d, v] of Object.entries(st.deptRaise || {}))
+        if (v) st.raises.push({ id: "rd" + d, scope: "dept", target: d, kind: "pct", amount: v, month: 9 });
+    }
+  } catch (e) {}
+  return st;
+}
 try {
   const saved = JSON.parse(localStorage.getItem(LS_KEY) || "null");
   if (saved && saved.levers && saved.exp && saved.staff) S = saved;
-  // migrate configs saved before half-year targets/thresholds
-  const L0 = S.levers;
-  if (L0.targetH1 == null) L0.targetH1 = L0.target ? Math.round(L0.target * 6350 / 12050) : 6350000;
-  if (L0.targetH2 == null) L0.targetH2 = L0.target ? L0.target - L0.targetH1 : 5700000;
-  if (L0.thrH1 == null) L0.thrH1 = L0.targetH1;
-  if (L0.thrH2 == null) L0.thrH2 = L0.targetH2;
-  delete L0.target;
-  // migrate pre-15-month configs (12-month arrays / to==12 meaning "through end")
-  for (const p of S.staff) while (p.hc.length < NM) p.hc.push(p.hc.at(-1) ?? 0);
-  for (const e of S.exp) if (e.to === 12) e.to = NM;
-  // migrate saves made before contractor rows were flagged as carried on Staffing
-  if (!L0.bdrHcFix){
-    for (const p of S.staff)
-      for (const st of (HC_STEPS[p.position] || []))
-        for (let m = st.from; m <= NM; m++) p.hc[m - 1] = st.hc;
-    L0.bdrHcFix = 1;
-  }
-  if (!L0.staffCarriedFix){
-    for (const e of S.exp) if (STAFF_CARRIED.has(e.vendor)) e.use = "STAFFING";
-    L0.staffCarriedFix = 1;
-  }
-  if (L0.estProv == null) L0.estProv = true;
-  if (L0.hdvRate == null) L0.hdvRate = 523.5;
-  if (L0.taxRate == null) L0.taxRate = MODEL.employer_tax_rate;
-  if (L0.ovrInBase != null) delete L0.ovrInBase;   // retired: salaries are base-only
-  if (L0.bdayWeight == null) L0.bdayWeight = true;
-  for (const p of S.staff){
-    if (p.benOn === undefined) p.benOn = (p.hdv || 0) > 0;
-    if (p.taxOn === undefined) p.taxOn = (p.tax || 0) > 0.005;
-    if (!p.level) p.level = guessLevel(p.position);
-    if (LEVEL_MIGRATE[p.level]) p.level = LEVEL_MIGRATE[p.level];
-    if (/contractor|1099/i.test(p.position || "") && p.level === "Outcome") p.level = "Contractor";
-  }
-  // migrate legacy raise fields into raise events
-  if (!S.fixes) S.fixes = {};
-  if (!S.bandSplit) S.bandSplit = ["Software Development", "Sales"];
-  if (!S.bandHide) S.bandHide = {};
-  if (!S.deptNames) S.deptNames = { "03 - HR & Business Administration Manager": "HR & Business Admin", "Facillities": "Facilities" };
-  if (!S.raises){
-    S.raises = [];
-    for (const p of S.staff){
-      if (p.raiseD) S.raises.push({ id: "r" + p.id + "d", scope: "role", target: p.id, kind: "mo", amount: p.raiseD, month: p.raiseM || 9 });
-      if (p.raiseP) S.raises.push({ id: "r" + p.id + "p", scope: "role", target: p.id, kind: "pct", amount: p.raiseP, month: p.raiseM || 9 });
-      p.raiseD = 0; p.raiseP = 0;
-    }
-    for (const [d, v] of Object.entries(S.deptRaise || {}))
-      if (v) S.raises.push({ id: "rd" + d, scope: "dept", target: d, kind: "pct", amount: v, month: 9 });
-  }
+  migrateState(S);
 } catch (e) {}
-function persist(){ try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) {} }
+/* ---------- persistence: local cache + shared store ----------
+   localStorage is the fast local cache and the offline fallback. When the `db` capability is
+   granted, the scenario also lives in ONE shared document (scenario/current), so the plan
+   survives a cleared cache, follows you between machines, and can be read or edited by Claude
+   from any chat. The state is stored as a JSON STRING in that doc: it sidesteps the store's
+   key-name and nesting rules, keeps the write atomic, and at ~65 KiB sits well inside the
+   256 KiB per-document limit.
+   Writes are debounced; last writer wins. A remote change is adopted only when it is newer and
+   came from a different tab, and never while a field is focused — it waits for blur so an edit
+   in progress is not yanked out from under the cursor. */
+const SCEN_DOC = "scenario/current";
+const TAB_ID = "t" + Math.random().toString(36).slice(2, 9);
+let dbStore = null, myRev = 0, pendingRemote = null, syncTimer = null;
+
+function persistLocal(){ try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) {} }
+function persist(){
+  persistLocal();
+  if (!dbStore) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(pushScenario, 700);
+}
+function pushScenario(){
+  if (!dbStore) return;
+  myRev = Date.now();
+  dbStore.doc(SCEN_DOC).set({ json: JSON.stringify(S), rev: myRev, by: TAB_ID, at: new Date().toISOString() })
+    .then(() => setSync("live", "saved · shared"))
+    .catch(e => setSync("warn", "save failed (" + ((e && e.code) || "error") + ")"));
+}
+function setSync(state, label){
+  const el = document.getElementById("syncBadge");
+  if (!el) return;
+  el.dataset.state = state;
+  el.textContent = label;
+  el.title = state === "local"
+    ? "This browser only — the shared store is not available in this view, so edits stay on this machine."
+    : "Scenario is stored with the artifact: it survives a cleared cache, follows you between machines, and Claude can read or edit it from any chat.";
+}
+function adoptRemote(json){
+  try {
+    const parsed = JSON.parse(json);
+    if (!parsed || !parsed.levers || !parsed.exp || !parsed.staff) return;
+    S = migrateState(parsed);
+    persistLocal();
+    renderAll();
+    setSync("live", "updated elsewhere");
+  } catch (e) {}
+}
+function focusedInApp(){
+  const a = document.activeElement;
+  return !!(a && a !== document.body && a.matches && a.matches("input,select,textarea"));
+}
+document.addEventListener("focusout", () => {
+  if (!pendingRemote) return;
+  setTimeout(() => {
+    if (pendingRemote && !focusedInApp()){ const j = pendingRemote; pendingRemote = null; adoptRemote(j); }
+  }, 0);
+});
+function initShared(){
+  const useFn = window.claude && typeof window.claude.use === "function" ? window.claude.use("db") : Promise.resolve(null);
+  useFn.then(db => {
+    if (!db){ setSync("local", "this browser only"); return; }
+    dbStore = db;
+    setSync("live", "shared");
+    db.doc(SCEN_DOC).get().then(snap => {
+      if (snap && snap.exists && snap.data() && snap.data().json){
+        myRev = snap.data().rev || 0;
+        if (snap.data().by !== TAB_ID) adoptRemote(snap.data().json);
+      } else {
+        pushScenario();                       // first run: seed the store from what is here
+      }
+      db.doc(SCEN_DOC).onSnapshot(s2 => {
+        if (!s2 || !s2.exists) return;
+        const d = s2.data() || {};
+        if (!d.json || d.by === TAB_ID || !(d.rev > myRev)) return;
+        myRev = d.rev;
+        if (focusedInApp()) { pendingRemote = d.json; setSync("live", "update waiting — finish editing"); }
+        else adoptRemote(d.json);
+      }, err => setSync("warn", "sync lost (" + ((err && err.code) || "error") + ")"));
+    }).catch(() => setSync("warn", "could not load the shared scenario"));
+  }).catch(() => setSync("local", "this browser only"));
+}
 
 /* ---------- compute ---------- */
 function expensePlanned(e){
@@ -2061,6 +2159,7 @@ document.getElementById("btnReset").addEventListener("click", ev => {
   ev.target.textContent = "Reset"; ev.target.style.color = "";
   try { localStorage.removeItem(LS_KEY); } catch (e) {}
   S = defaultState(); renderAll();
+  if (dbStore) pushScenario();        // the shared copy resets too, or it would flow straight back
 });
 function openCfg(mode, txt, msg){
   const panel = document.getElementById("cfgPanel");
@@ -2082,7 +2181,7 @@ document.getElementById("cfgApply").addEventListener("click", () => {
   try {
     const p = JSON.parse(txt);
     if (p.levers && p.exp && p.staff){
-      S = p; fixLevels(S); persist();
+      S = migrateState(p); fixLevels(S); persist();
       document.getElementById("cfgPanel").style.display = "none";
       scheduleRender();
     } else document.getElementById("cfgMsg").textContent = "That doesn't look like a Money Model config — expected levers, exp and staff.";
@@ -2106,4 +2205,5 @@ function renderAll(){
 
 renderAll();
 renderTrends();
+initShared();
 </script>
