@@ -562,7 +562,15 @@ const SCEN_DOC = "scenario/current";
 const TAB_ID = "t" + Math.random().toString(36).slice(2, 9);
 let dbStore = null, myRev = 0, pendingRemote = null, syncTimer = null;
 
-function persistLocal(){ try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) {} }
+const LS_AT = LS_KEY + "-at";
+function persistLocal(){
+  try { localStorage.setItem(LS_KEY, JSON.stringify(S)); localStorage.setItem(LS_AT, new Date().toISOString()); } catch (e) {}
+}
+// What this browser held when the page opened, captured before any render can touch it. The
+// shared copy is only allowed to replace it when it is genuinely newer — otherwise a reload
+// during the save debounce, or after a write that never landed, would pull an older snapshot
+// over edits this browser has and the store does not.
+const BOOT_LOCAL_AT = (() => { try { return localStorage.getItem(LS_AT) || ""; } catch (e) { return ""; } })();
 function persist(){
   persistLocal();
   if (!dbStore) return;
@@ -581,9 +589,11 @@ function setSync(state, label){
   if (!el) return;
   el.dataset.state = state;
   el.textContent = label;
-  el.title = state === "local"
+  let when = "";
+  try { const t = localStorage.getItem(LS_AT); if (t) when = "\nLast saved " + new Date(t).toLocaleString(); } catch (e) {}
+  el.title = (state === "local"
     ? "This browser only — the shared store is not available in this view, so edits stay on this machine."
-    : "Scenario is stored with the artifact: it survives a cleared cache, follows you between machines, and Claude can read or edit it from any chat.";
+    : "Scenario is stored with the artifact: it survives a cleared cache, follows you between machines, and Claude can read or edit it from any chat. Nothing is replaced by an older copy — the newer save always wins.") + when;
 }
 // Before the shared copy overwrites what is in this browser, stash the local scenario. The
 // first machine to open the page seeds the store, so a machine opened later adopts that copy —
@@ -603,7 +613,7 @@ function refreshRestoreBtn(){
   try { bak = localStorage.getItem(LS_BAK); } catch (e) {}
   el.hidden = !(bak && bak !== JSON.stringify(S));
 }
-function adoptRemote(json){
+function adoptRemote(json, why){
   try {
     const parsed = JSON.parse(json);
     if (!parsed || !parsed.levers || !parsed.exp || !parsed.staff) return;
@@ -611,7 +621,7 @@ function adoptRemote(json){
     S = migrateState(parsed);
     persistLocal();
     renderAll();
-    setSync("live", "updated elsewhere");
+    setSync("live", why || "updated elsewhere");
     refreshRestoreBtn();
   } catch (e) {}
 }
@@ -632,9 +642,19 @@ function initShared(){
     dbStore = db;
     setSync("live", "shared");
     db.doc(SCEN_DOC).get().then(snap => {
-      if (snap && snap.exists && snap.data() && snap.data().json){
-        myRev = snap.data().rev || 0;
-        if (snap.data().by !== TAB_ID) adoptRemote(snap.data().json);
+      const d = (snap && snap.exists) ? (snap.data() || {}) : null;
+      if (d && d.json){
+        myRev = d.rev || 0;
+        // Opening the page is not someone else editing it: a fresh tab always has a new TAB_ID,
+        // so comparing ids here called every ordinary reload an outside change. Compare SAVE
+        // TIMES instead, and keep whichever copy is newer.
+        const remoteAt = d.at || "";
+        if (!BOOT_LOCAL_AT || (remoteAt && remoteAt > BOOT_LOCAL_AT)){
+          adoptRemote(d.json, "loaded \u00b7 shared");
+        } else {
+          setSync("live", "shared");
+          pushScenario();                     // this browser was ahead — send it up, do not lose it
+        }
       } else {
         pushScenario();                       // first run: seed the store from what is here
       }
