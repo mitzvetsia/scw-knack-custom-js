@@ -159,6 +159,9 @@ select.cell{border:1px solid var(--border2);background:var(--surface);border-rad
 .chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 9px 2px 7px;
   font-size:10.5px;font-weight:700;letter-spacing:.03em;white-space:nowrap}
 .chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.tag{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border2);border-radius:999px;padding:1px 4px 1px 9px;font-size:11.5px;background:var(--surface2);white-space:nowrap}
+.tag button{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:11px;line-height:1;padding:2px 4px;border-radius:999px}
+.tag button:hover{background:var(--border);color:var(--ink)}
 .chip.steady{background:var(--chip-neutral);color:var(--ink2)}
 .chip.growing{background:var(--chip-good);color:var(--good-text)}
 .chip.dropping{background:var(--chip-serious);color:var(--serious)}
@@ -2398,6 +2401,7 @@ function renderIncentives(C){
     const prev = C.rev.mod.slice(pa, pb).reduce((x, y) => x + y, 0);
     const pace = (+pg.thr || 0) > 0 ? prev / pg.thr : 1;
     const isRate = pg.basis === "rate";
+    const needsWho = !isRate && pg.per !== "pool";
     const gross = pg.per === "pool" ? (+pg.amount || 0) : (+pg.amount || 0) * heads;
     const thr = +pg.thr || 0, cap = (!isRate && +pg.cap > thr) ? +pg.cap : 0;
     const inBand = Math.max(0, Math.min(prev, cap || Infinity) - thr);
@@ -2407,17 +2411,17 @@ function renderIncentives(C){
     return `<div class="ppl-row raise-row"${pg.on === false ? ' style="opacity:.55"' : ""}>
       <span class="fld"><label>On</label><input type="checkbox" class="switch" data-id="${pg.id}" data-k="pgon"${pg.on === false ? "" : " checked"}></span>
       <span class="fld"><label>Program</label><input class="cell pos" data-id="${pg.id}" data-k="pgname" value="${esc(pg.name || "")}"></span>
-      <span class="fld"><label>Who</label><select class="cell" data-id="${pg.id}" data-k="pgscope">
+      ${!needsWho ? "" : `<span class="fld"><label>Who</label><select class="cell" data-id="${pg.id}" data-k="pgscope">
         <option value="dept"${pg.scope === "dept" ? " selected" : ""}>Department</option>
         <option value="role"${pg.scope === "role" ? " selected" : ""}>Chosen roles</option>
-        <option value="all"${pg.scope === "all" ? " selected" : ""}>Everyone</option></select></span>
-      ${pg.scope === "dept" ? `<span class="fld"><label>Which</label><select class="cell" style="max-width:180px" data-id="${pg.id}" data-k="pgtarget">${DEPTS.map(d => `<option value="${esc(d)}"${d === pg.target ? " selected" : ""}>${esc(dn(d))}</option>`).join("")}</select></span>`
-        : pg.scope === "role" ? `<span class="fld"><label>Roles</label><select class="cell" style="max-width:210px" multiple size="3" data-id="${pg.id}" data-k="pgroles">${roleOpts.map(r => `<option value="${r.id}"${(pg.roles || []).indexOf(r.id) >= 0 ? " selected" : ""}>${esc(r.position)}</option>`).join("")}</select></span>` : ""}
+        <option value="all"${pg.scope === "all" ? " selected" : ""}>Everyone</option></select></span>`}
+      ${!needsWho ? "" : pg.scope === "dept" ? `<span class="fld"><label>Which</label><select class="cell" style="max-width:180px" data-id="${pg.id}" data-k="pgtarget">${DEPTS.map(d => `<option value="${esc(d)}"${d === pg.target ? " selected" : ""}>${esc(dn(d))}</option>`).join("")}</select></span>`
+        : pg.scope === "role" ? `<span class="fld"><label>Roles</label><span style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;max-width:460px">${(pg.roles || []).map(id => { const r = S.staff.find(x => x.id === id); return r ? `<span class="tag" title="${esc(dn(r.dept))}">${esc(r.position)}<button data-id="${pg.id}" data-k="pgroledel" data-role="${r.id}" title="Remove">✕</button></span>` : ""; }).join("")}<select class="cell" style="max-width:190px" data-id="${pg.id}" data-k="pgroleadd"><option value="">+ add a role\u2026</option>${DEPTS.map(d => { const rs = roleOpts.filter(r => r.dept === d && (pg.roles || []).indexOf(r.id) < 0); return rs.length ? `<optgroup label="${esc(dn(d))}"><option value="dept:${esc(d)}">\u2731 every ${esc(dn(d))} role (${rs.length})</option>${rs.map(r => `<option value="${r.id}">${esc(r.position)}</option>`).join("")}</optgroup>` : ""; }).join("")}</select></span></span>` : ""}
       <span class="fld"><label>Pays</label><select class="cell" data-id="${pg.id}" data-k="pgbasis" title="A set amount earned across a revenue range, or a rate on every dollar above a threshold.">
         <option value="band"${isRate ? "" : " selected"}>a set amount</option>
         <option value="rate"${isRate ? " selected" : ""}>a % of revenue</option></select></span>
       ${isRate
-        ? `<span class="fld"><label>Rate</label><input class="cell tiny" data-id="${pg.id}" data-k="pgpct" value="${((+pg.pct || 0) * 100).toFixed(2)}" title="Paid on every dollar of period revenue above the threshold. No cap.">%</span>`
+        ? `<span class="fld"><label>Rate</label><span style="white-space:nowrap"><input class="cell tiny" data-id="${pg.id}" data-k="pgpct" value="${((+pg.pct || 0) * 100).toFixed(2)}" title="Paid on every dollar of period revenue above the threshold. No cap.">%</span></span>`
         : `<span class="fld"><label>Amount</label><input class="cell w56" data-id="${pg.id}" data-k="pgamount" value="${Math.round(+pg.amount || 0).toLocaleString("en-US")}"></span>
       <span class="fld"><label>Per</label><select class="cell" data-id="${pg.id}" data-k="pgper">
         <option value="head"${pg.per === "head" ? " selected" : ""}>per head</option>
@@ -2425,8 +2429,8 @@ function renderIncentives(C){
       <span class="fld"><label>Period</label><select class="cell" data-id="${pg.id}" data-k="pghalf">
         <option value="1"${pg.half === 1 ? " selected" : ""}>${esc(FH1[2])}</option>
         <option value="2"${pg.half !== 1 ? " selected" : ""}>${esc(FH2[2])}</option></select></span>
-      <span class="fld"><label>${isRate ? "Above" : "From"}</label><input class="cell w56" data-id="${pg.id}" data-k="pgthr" value="${Math.round(thr).toLocaleString("en-US")}" title="${isRate ? "Nothing is paid on revenue below this." : "Period revenue where the bonus starts earning. Below it, nothing."}"></span>
-      ${isRate ? "" : `<span class="fld"><label>Up to</label><input class="cell w56" data-id="${pg.id}" data-k="pgcap" value="${(+pg.cap || 0) ? Math.round(+pg.cap).toLocaleString("en-US") : ""}" placeholder="no cap" title="Revenue at which it pays in full. Between the two it pays proportionally. Blank = it pays in full the moment the floor is reached."></span>`}
+      <span class="fld"><label>${isRate ? "Above" : "From"}</label><input class="cell w56" data-id="${pg.id}" data-k="pgthr" style="width:84px" value="${Math.round(thr).toLocaleString("en-US")}" title="${isRate ? "Nothing is paid on revenue below this." : "Period revenue where the bonus starts earning. Below it, nothing."}"></span>
+      ${isRate ? "" : `<span class="fld"><label>Up to</label><input class="cell w56" data-id="${pg.id}" data-k="pgcap" style="width:84px" value="${(+pg.cap || 0) ? Math.round(+pg.cap).toLocaleString("en-US") : ""}" placeholder="no cap" title="Revenue at which it pays in full. Between the two it pays proportionally. Blank = it pays in full the moment the floor is reached."></span>`}
       <span class="fld"><label>Cost lands</label><select class="cell" data-id="${pg.id}" data-k="pgalloc" title="Evenly across the period, or only on the months that carry revenue past the threshold.">
         <option value="even"${pg.alloc === "earned" ? "" : " selected"}>evenly</option>
         <option value="earned"${pg.alloc === "earned" ? " selected" : ""}>as earned</option></select></span>
@@ -2606,7 +2610,12 @@ document.getElementById("incList").addEventListener("change", ev => {
   else if (k === "pgname") pg.name = String(val);
   else if (k === "pgscope"){ pg.scope = val; if (val === "dept" && !pg.target) pg.target = DEPTS[0]; }
   else if (k === "pgtarget") pg.target = val;
-  else if (k === "pgroles") pg.roles = [...t.selectedOptions].map(o => o.value);
+  else if (k === "pgroleadd"){
+    if (!val) return;
+    // "dept:<name>" adds every role in that department in one go
+    const ids = String(val).startsWith("dept:") ? S.staff.filter(r => r.dept === val.slice(5)).map(r => r.id) : [val];
+    pg.roles = [...new Set([...(pg.roles || []), ...ids])];
+  }
   else if (k === "pgbasis") pg.basis = val === "rate" ? "rate" : "band";
   else if (k === "pgpct") pg.pct = Math.max(0, num(val, 0)) / 100;
   else if (k === "pgcap") pg.cap = String(val).trim() === "" ? 0 : Math.max(0, num(val, 0));
@@ -2620,6 +2629,12 @@ document.getElementById("incList").addEventListener("change", ev => {
   persist(); scheduleRender();
 });
 document.getElementById("incList").addEventListener("click", ev => {
+  const rd = ev.target.closest("button[data-k=pgroledel]");
+  if (rd){
+    const pg = (S.programs || []).find(x => x.id === rd.dataset.id);
+    if (pg) pg.roles = (pg.roles || []).filter(r => r !== rd.dataset.role);
+    persist(); scheduleRender(); return;
+  }
   const b = ev.target.closest("button[data-k=pgdel]"); if (!b) return;
   S.programs = (S.programs || []).filter(x => x.id !== b.dataset.id);
   persist(); scheduleRender();
