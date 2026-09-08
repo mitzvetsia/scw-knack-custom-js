@@ -159,6 +159,13 @@ select.cell{border:1px solid var(--border2);background:var(--surface);border-rad
 .chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 9px 2px 7px;
   font-size:10.5px;font-weight:700;letter-spacing:.03em;white-space:nowrap}
 .chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pg-card{border:1px solid var(--border);border-radius:10px;padding:9px 12px 11px;margin:0 0 10px;background:var(--surface)}
+.pg-head{display:flex;align-items:center;gap:10px;padding-bottom:7px;border-bottom:1px solid var(--border)}
+.pg-head .pg-name{width:220px;font-weight:700}
+.pg-head .pg-result{flex:1 1 auto;min-width:0;font-size:12.5px;color:var(--ink2);text-align:right;font-variant-numeric:tabular-nums}
+.pg-line{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 14px;margin-top:8px}
+.pg-sep{width:1px;align-self:stretch;background:var(--border);margin:0 2px}
+.pg-chips{display:flex;flex-wrap:wrap;gap:4px;align-items:center;max-width:720px}
 .tag{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border2);border-radius:999px;padding:1px 4px 1px 9px;font-size:11.5px;background:var(--surface2);white-space:nowrap}
 .tag button{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:11px;line-height:1;padding:2px 4px;border-radius:999px}
 .tag button:hover{background:var(--border);color:var(--ink)}
@@ -503,7 +510,7 @@ function defaultState(){
         depts: ["Installation Services"], per: "head", amount: 1500,
         half: 2, thr: 6650000, cap: 7850000, alloc: "earned" },
       { id: "pgSd", name: "Sales Director bonus", on: true, basis: "rate", scope: "all",
-        depts: [], per: "pool", amount: 0, pct: 0.035,
+        depts: [], payee: "Sales Director", per: "pool", amount: 0, pct: 0.035,
         half: 2, thr: 6350000, cap: 0, alloc: "earned" }
     ],
     bandSplit: ["Software Development", "Sales"],
@@ -568,6 +575,7 @@ function migrateState(st){
       delete pg.target; delete pg.roles;
     }
     if (!pg.basis) pg.basis = "band";
+    if (pg.payee == null) pg.payee = /director/i.test(pg.name || "") ? "Sales Director" : "";
     if (pg.cap == null) pg.cap = 0;
     if (pg.pct == null) pg.pct = 0;
     delete pg.scale;
@@ -2414,38 +2422,49 @@ function renderIncentives(C){
     const earned = isRate ? (+pg.pct || 0) * inBand
       : cap ? gross * (inBand / (cap - thr)) : (prev >= thr ? gross : 0);
     const attain = cap ? Math.max(0, Math.min(1, (prev - thr) / (cap - thr))) : (prev >= thr ? 1 : 0);
-    return `<div class="ppl-row raise-row"${pg.on === false ? ' style="opacity:.55"' : ""}>
-      <span class="fld"><label>On</label><input type="checkbox" class="switch" data-id="${pg.id}" data-k="pgon"${pg.on === false ? "" : " checked"}></span>
-      <span class="fld"><label>Program</label><input class="cell pos" data-id="${pg.id}" data-k="pgname" value="${esc(pg.name || "")}"></span>
-      ${!needsWho ? "" : `<span class="fld"><label>Who</label><select class="cell" data-id="${pg.id}" data-k="pgscope">
-        <option value="depts"${pg.scope !== "all" ? " selected" : ""}>Departments</option>
-        <option value="all"${pg.scope === "all" ? " selected" : ""}>Everyone</option></select></span>`}
-      ${!needsWho || pg.scope === "all" ? "" : (() => {
-        const chosen = pg.depts || [];
-        const left = DEPTS.filter(d => chosen.indexOf(d) < 0 && S.staff.some(r => r.dept === d));
-        return `<span class="fld"><label>Which</label><span style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;max-width:520px">${chosen.map(d => `<span class="tag">${esc(dn(d))}<button data-id="${pg.id}" data-k="pgdeptdel" data-dept="${esc(d)}" title="Remove">✕</button></span>`).join("")}${left.length ? `<select class="cell" style="max-width:190px" data-id="${pg.id}" data-k="pgdeptadd"><option value="">+ add a department\u2026</option>${left.map(d => `<option value="${esc(d)}">${esc(dn(d))} (${Math.round(S.staff.filter(r => r.dept === d).reduce((n, r) => n + staffHC(r, (hi ? FH2 : FH1)[1]), 0))})</option>`).join("")}</select>` : ""}</span></span>`;
-      })()}
-      <span class="fld"><label>Pays</label><select class="cell" data-id="${pg.id}" data-k="pgbasis" title="A set amount earned across a revenue range, or a rate on every dollar above a threshold.">
-        <option value="band"${isRate ? "" : " selected"}>a set amount</option>
-        <option value="rate"${isRate ? " selected" : ""}>a % of revenue</option></select></span>
-      ${isRate
-        ? `<span class="fld"><label>Rate</label><span style="white-space:nowrap"><input class="cell tiny" data-id="${pg.id}" data-k="pgpct" value="${((+pg.pct || 0) * 100).toFixed(2)}" title="Paid on every dollar of period revenue above the threshold. No cap.">%</span></span>`
-        : `<span class="fld"><label>Amount</label><input class="cell w56" data-id="${pg.id}" data-k="pgamount" value="${Math.round(+pg.amount || 0).toLocaleString("en-US")}"></span>
-      <span class="fld"><label>Per</label><select class="cell" data-id="${pg.id}" data-k="pgper">
-        <option value="head"${pg.per === "head" ? " selected" : ""}>per head</option>
-        <option value="pool"${pg.per === "pool" ? " selected" : ""}>total pool</option></select></span>`}
-      <span class="fld"><label>Period</label><select class="cell" data-id="${pg.id}" data-k="pghalf">
-        <option value="1"${pg.half === 1 ? " selected" : ""}>${esc(FH1[2])}</option>
-        <option value="2"${pg.half !== 1 ? " selected" : ""}>${esc(FH2[2])}</option></select></span>
-      <span class="fld"><label>${isRate ? "Above" : "From"}</label><input class="cell w56" data-id="${pg.id}" data-k="pgthr" style="width:84px" value="${Math.round(thr).toLocaleString("en-US")}" title="${isRate ? "Nothing is paid on revenue below this." : "Period revenue where the bonus starts earning. Below it, nothing."}"></span>
-      ${isRate ? "" : `<span class="fld"><label>Up to</label><input class="cell w56" data-id="${pg.id}" data-k="pgcap" style="width:84px" value="${(+pg.cap || 0) ? Math.round(+pg.cap).toLocaleString("en-US") : ""}" placeholder="no cap" title="Revenue at which it pays in full. Between the two it pays proportionally. Blank = it pays in full the moment the floor is reached."></span>`}
-      <span class="fld"><label>Cost lands</label><select class="cell" data-id="${pg.id}" data-k="pgalloc" title="Evenly across the period, or only on the months that carry revenue past the threshold.">
-        <option value="even"${pg.alloc === "earned" ? "" : " selected"}>evenly</option>
-        <option value="earned"${pg.alloc === "earned" ? " selected" : ""}>as earned</option></select></span>
-      <span class="fld"><label>&nbsp;</label><span class="subtle">${isRate
-        ? `${fmtK(prev)} projected \u2192 ${fmtK(inBand)} over ${fmtK(thr)} \u00d7 ${((+pg.pct || 0) * 100).toFixed(2)}% = <b style="color:${earned > 0 ? "var(--good-text)" : "#b45309"}">${fmtK(earned)}</b>${earned > 0 ? "" : " \u2014 not above the threshold yet"}`
-        : `${pg.per === "head" ? heads + " head" + (heads === 1 ? "" : "s") + " \u00b7 " : ""}${fmtK(gross)} at full \u00b7 ${fmtK(prev)} projected \u2192 <b style="color:${earned > 0 ? "var(--good-text)" : "#b45309"}">${Math.round(attain * 100)}%</b> of the ${cap ? fmtK(thr) + "\u2013" + fmtK(cap) + " range" : "threshold"} = <b>${fmtK(earned)}</b>${earned > 0 ? "" : " \u2014 pays nothing yet"}`}</span></span>
-      <span class="fld"><label>&nbsp;</label><button class="btn mini" data-id="${pg.id}" data-k="pgdel" title="Remove program">✕</button></span>
+    const thrIn = `<span class="fld"><label>${isRate ? "Above" : "From"}</label><input class="cell" style="width:96px" data-id="${pg.id}" data-k="pgthr" value="${Math.round(thr).toLocaleString("en-US")}" title="${isRate ? "Nothing is paid on revenue below this." : "Period revenue where the bonus starts earning. Below it, nothing."}"></span>`;
+    const capIn = isRate ? "" : `<span class="fld"><label>Up to</label><input class="cell" style="width:96px" data-id="${pg.id}" data-k="pgcap" value="${(+pg.cap || 0) ? Math.round(+pg.cap).toLocaleString("en-US") : ""}" placeholder="no cap" title="Revenue at which it pays in full. Between the two it pays proportionally. Blank = it pays in full the moment the floor is reached."></span>`;
+    const result = isRate
+      ? `${fmtK(prev)} projected \u2192 ${fmtK(inBand)} over ${fmtK(thr)} \u00d7 ${((+pg.pct || 0) * 100).toFixed(2)}% = <b style="color:${earned > 0 ? "var(--good-text)" : "#b45309"}">${fmtK(earned)}</b>${earned > 0 ? "" : " \u2014 not above the threshold yet"}`
+      : `${pg.per === "head" ? heads + " head" + (heads === 1 ? "" : "s") + " \u00b7 " : ""}${fmtK(gross)} at full \u00b7 ${fmtK(prev)} projected \u2192 ${Math.round(attain * 100)}% of ${cap ? "the " + fmtK(thr) + "\u2013" + fmtK(cap) + " range" : "the threshold"} = <b style="color:${earned > 0 ? "var(--good-text)" : "#b45309"}">${fmtK(earned)}</b>${earned > 0 ? "" : " \u2014 pays nothing yet"}`;
+    const who = !needsWho
+      ? `<span class="fld"><label>Paid to</label><input class="cell pos" style="width:170px" data-id="${pg.id}" data-k="pgpayee" value="${esc(pg.payee || "")}" placeholder="e.g. Sales Director" title="Who receives it. ${isRate ? "A rate on revenue" : "A pool"} is the same money whoever it goes to, so this is the label, not a head count."></span>`
+      : `<span class="fld"><label>Who</label><select class="cell" style="width:150px" data-id="${pg.id}" data-k="pgscope">
+          <option value="depts"${pg.scope !== "all" ? " selected" : ""}>Departments</option>
+          <option value="all"${pg.scope === "all" ? " selected" : ""}>Everyone</option></select></span>` +
+        (pg.scope === "all" ? `<span class="fld"><label>&nbsp;</label><span class="subtle">every head on the staffing plan</span></span>` : (() => {
+          const chosen = pg.depts || [];
+          const left = DEPTS.filter(d => chosen.indexOf(d) < 0 && S.staff.some(r => r.dept === d));
+          return `<span class="fld"><label>Which</label><span class="pg-chips">${chosen.map(d => `<span class="tag">${esc(dn(d))}<button data-id="${pg.id}" data-k="pgdeptdel" data-dept="${esc(d)}" title="Remove">✕</button></span>`).join("")}${left.length ? `<select class="cell" style="max-width:200px" data-id="${pg.id}" data-k="pgdeptadd"><option value="">+ add a department\u2026</option>${left.map(d => `<option value="${esc(d)}">${esc(dn(d))} (${Math.round(S.staff.filter(r => r.dept === d).reduce((n, r) => n + staffHC(r, (hi ? FH2 : FH1)[1]), 0))})</option>`).join("")}</select>` : ""}</span></span>`;
+        })());
+    return `<div class="pg-card"${pg.on === false ? ' style="opacity:.55"' : ""}>
+      <div class="pg-head">
+        <input type="checkbox" class="switch" data-id="${pg.id}" data-k="pgon"${pg.on === false ? "" : " checked"} title="On / off">
+        <input class="cell pos pg-name" data-id="${pg.id}" data-k="pgname" value="${esc(pg.name || "")}">
+        <span class="pg-result">${result}</span>
+        <button class="btn mini" data-id="${pg.id}" data-k="pgdel" title="Remove program">✕</button>
+      </div>
+      <div class="pg-line">${who}</div>
+      <div class="pg-line">
+        <span class="fld"><label>Pays</label><select class="cell" style="width:150px" data-id="${pg.id}" data-k="pgbasis" title="A set amount earned across a revenue range, or a rate on every dollar above a threshold.">
+          <option value="band"${isRate ? "" : " selected"}>a set amount</option>
+          <option value="rate"${isRate ? " selected" : ""}>a % of revenue</option></select></span>
+        ${isRate
+          ? `<span class="fld"><label>Rate</label><span style="white-space:nowrap"><input class="cell tiny" data-id="${pg.id}" data-k="pgpct" value="${((+pg.pct || 0) * 100).toFixed(2)}" title="Paid on every dollar of period revenue above the threshold. No cap.">%</span></span>`
+          : `<span class="fld"><label>Amount</label><input class="cell" style="width:72px" data-id="${pg.id}" data-k="pgamount" value="${Math.round(+pg.amount || 0).toLocaleString("en-US")}"></span>
+        <span class="fld"><label>Per</label><select class="cell" data-id="${pg.id}" data-k="pgper">
+          <option value="head"${pg.per === "head" ? " selected" : ""}>per head</option>
+          <option value="pool"${pg.per === "pool" ? " selected" : ""}>total pool</option></select></span>`}
+        <span class="pg-sep"></span>
+        ${thrIn}${capIn}
+        <span class="fld"><label>Period</label><select class="cell" style="width:170px" data-id="${pg.id}" data-k="pghalf">
+          <option value="1"${pg.half === 1 ? " selected" : ""}>${esc(FH1[2])}</option>
+          <option value="2"${pg.half !== 1 ? " selected" : ""}>${esc(FH2[2])}</option></select></span>
+        <span class="pg-sep"></span>
+        <span class="fld"><label>Cost lands</label><select class="cell" style="width:220px" data-id="${pg.id}" data-k="pgalloc" title="Evenly across the period, or only on the months carrying the revenue that earns it.">
+          <option value="even"${pg.alloc === "earned" ? "" : " selected"}>evenly across the period</option>
+          <option value="earned"${pg.alloc === "earned" ? " selected" : ""}>on the months that earn it</option></select></span>
+      </div>
     </div>`;
   }).join("") || `<p class="subtle" style="margin:4px 0">No programs yet.</p>`;
 
@@ -2617,6 +2636,7 @@ document.getElementById("incList").addEventListener("change", ev => {
   if (k === "pgon") pg.on = !!val;
   else if (k === "pgname") pg.name = String(val);
   else if (k === "pgscope") pg.scope = val === "all" ? "all" : "depts";
+  else if (k === "pgpayee") pg.payee = String(val).trim();
   else if (k === "pgdeptadd"){ if (!val) return; pg.depts = [...new Set([...(pg.depts || []), val])]; }
   else if (k === "pgbasis") pg.basis = val === "rate" ? "rate" : "band";
   else if (k === "pgpct") pg.pct = Math.max(0, num(val, 0)) / 100;
