@@ -21,6 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 A = dict(
     at="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/c384c446-Security_Camera_Warehouse__INC__Account_Transactions_13.xlsx",
     at2="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/bcc7e877-Security_Camera_Warehouse__INC__Account_Transactions_14.xlsx",
+    at3="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/1cc63c99-Security_Camera_Warehouse__INC__Account_Transactions_15.xlsx",
     contracts="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/ccd2bd72-contractsexpenses.csv",
     allocations="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/47bec46b-allocations.csv",
     legacy="/root/.claude/uploads/77ac7e98-f266-57ce-b2c5-93304bdfc682/25b0d1bd-BUDGET_TEST_1774983468__Q2Q3_2026_JULY_REWORK.xlsx",
@@ -30,10 +31,13 @@ A = dict(
 for arg in sys.argv[1:]:
     k, _, v = arg.partition("="); A[k] = v
 
-# TTM month index: 0 = Aug 2025 ... 11 = Jul 2026
-TTM_LABELS = ["Aug 25","Sep 25","Oct 25","Nov 25","Dec 25","Jan 26","Feb 26","Mar 26","Apr 26","May 26","Jun 26","Jul 26"]
+# TTM month index: 0 = Sep 2025 ... 11 = Aug 2026. The window ends on the last CLOSED month —
+# AT#15 (Jan-Aug 2026, pulled Sep) shows August fully posted, so it rolls forward one.
+TTM_LABELS = ["Sep 25","Oct 25","Nov 25","Dec 25","Jan 26","Feb 26","Mar 26","Apr 26","May 26","Jun 26","Jul 26","Aug 26"]
+Y26_FROM = 4          # index of Jan 2026 in the TTM window
+ACTUAL_MONTHS = 8     # Jan..Aug 2026 are booked
 def ttm_idx(y, m):
-    i = (y - 2025) * 12 + m - 8
+    i = (y - 2025) * 12 + m - 9
     return i if 0 <= i <= 11 else None
 
 def money(s):
@@ -77,16 +81,23 @@ def read_at(path, keep):
     wb.close()
     return out
 
-records = read_at(A["at"], lambda y, m: y == 2025)          # Aug-Dec 2025 only
-if A.get("at2"):
-    records += read_at(A["at2"], lambda y, m: y == 2026)    # Jan-Jul 2026 (ttm_idx caps at Jul)
-else:
-    records += read_at(A["at"], lambda y, m: y == 2026)
+# AT#13 is still the only source for the 2025 tail; AT#15 (Jan-Aug 2026, Expense AND Revenue)
+# supersedes both earlier exports for every 2026 month and makes the GL Detail redundant for
+# revenue — it disagrees with the older GL parse by up to $46K in a month, and the fresher,
+# accrual-basis figures win.
+records = read_at(A["at"], lambda y, m: y == 2025)
+newest = A.get("at3") or A.get("at2") or A["at"]
+records += read_at(newest, lambda y, m: y == 2026)
 
 def code(acct): return acct.split(" - ")[0].strip() if acct else ""
 VARCOMP_RE = re.compile(r"variable comp|commission|bonus|spiff", re.I)
 ACCRUAL_RE = re.compile(r"payroll liabilit", re.I)
 REVERSAL_RE = re.compile(r"reversal", re.I)
+OTHER_INC = {"4050", "4051", "4057"}   # interest earned, rental income, late fees
+# NOTE: 8311 UniView Rebate is typed Other Income in Xero, so the AT#15 export ("Expense,
+# Revenue") does not carry it — booked other income here is interest + rent + late fees only.
+# The rebate ran roughly $6-9K/mo against a $117K January credit being drawn down; the forward
+# assumption lives in the dashboard's Other-income lever rather than being inferred from here.
 PAYROLL_PL = {"66000","6529","6727","6189"}
 COGS = {"5257","5258","5259","5260","5566","5567","5568","5569","5570","5571","6734","6737","6730"}
 def is_opex(c):
@@ -102,6 +113,11 @@ for acct, i, contact, debit, credit in records:
     c = code(acct)
     if not c or not c[0].isdigit(): continue
     net = debit - credit
+    if c.startswith("4"):
+        # Split operating sales from the incidental lines. Interest, rent and late fees are not
+        # sales and must not inflate the revenue the whole model paces against.
+        (totals_ttm["rebate"] if c in OTHER_INC else totals_ttm["revenue"])[i] -= net
+        continue
     if c in COGS:
         totals_ttm["cogs"][i] += net
         cogs_accounts[acct][i] += net
@@ -259,7 +275,7 @@ for cv, m in sorted(merged.items(), key=lambda kv: -abs(sum(kv[1]["months"]))):
     bdept = max(fixed, key=fixed.get) if fixed else ""
     final = bdept or contracts.get(cv, {}).get("unalloc_dept", "") or xdept or "Unassigned"
     vend_master.append(dict(vendor=cv, ttm=[round(x, 2) for x in m["months"]], ttm_total=round(tot, 2),
-        y26=[round(x, 2) for x in m["months"][5:12]],
+        y26=[round(x, 2) for x in m["months"][Y26_FROM:12]],
         account=m["accounts"].most_common(1)[0][0], xero_dept=xdept, budget_dept=bdept,
         status=status, base=base, in_contracts=cv in contracts,
         budget_monthly=contracts.get(cv, {}).get("monthly", 0.0),
@@ -286,14 +302,14 @@ GLD2BD = {"Facilities":"Facillities","Administration":"03 - HR & Business Admini
  "Fulfillment / Warehouse":"Purchasing & Fulfillment","Support":"Technical Support",
  "Installation Services - National":"Installation Services","Installation Services - Asheville":"Installation Services",
  "Installation Services - Triad":"Installation Services"}
-dept_payroll = collections.defaultdict(lambda: [0.0]*7)
+dept_payroll = collections.defaultdict(lambda: [0.0]*ACTUAL_MONTHS)
 sec = None
 for row in glws.iter_rows(values_only=True):
     a = row[0]
     rest = [v for v in row[1:] if v not in (None, "")]
     if isinstance(a, str) and not rest and not a.startswith(GLSKIP) and "period" not in a:
         sec = a.strip(); continue
-    if isinstance(a, datetime) and a.year == 2026 and a.month <= 7:
+    if isinstance(a, datetime) and a.year == 2026 and a.month <= ACTUAL_MONTHS:
         c = code(sec)
         if c not in PAYROLL_PL: continue
         _, source, desc, ref, debit, credit, runbal, dept, proj, relacct = row[:10]
@@ -305,9 +321,9 @@ glwb.close()
 # payroll) but scale each month to the authoritative AT#14 total, so the department rollup
 # ties to the P&L payroll row. The deltas are company-wide accrual/reversal lumps, so a
 # proportional spread is the right allocation.
-pay26 = totals_ttm["payroll"][5:12]
+pay26 = totals_ttm["payroll"][Y26_FROM:12]
 pay_scale = []
-for i in range(7):
+for i in range(ACTUAL_MONTHS):
     gl_tot = sum(v[i] for v in dept_payroll.values())
     s = (pay26[i] / gl_tot) if abs(gl_tot) > 1 else 1.0
     pay_scale.append(round(s, 4))
@@ -316,11 +332,11 @@ for i in range(7):
 dept_payroll = {k: [round(x, 2) for x in v] for k, v in dept_payroll.items()}
 
 # dept x month actuals for Jan-Jul 2026 (modeling year), residual -> Unassigned
-dept_actual = collections.defaultdict(lambda: [0.0]*7)
+dept_actual = collections.defaultdict(lambda: [0.0]*ACTUAL_MONTHS)
 for r in vend_master:
-    for i in range(7): dept_actual[r["final_dept"]][i] += r["y26"][i]
-opex26 = totals_ttm["opex"][5:12]
-for i in range(7):
+    for i in range(ACTUAL_MONTHS): dept_actual[r["final_dept"]][i] += r["y26"][i]
+opex26 = totals_ttm["opex"][Y26_FROM:12]
+for i in range(ACTUAL_MONTHS):
     dept_actual["Unassigned"][i] += opex26[i] - sum(v[i] for v in dept_actual.values())
 dept_actual = {k: [round(x, 2) for x in v] for k, v in dept_actual.items()}
 
@@ -328,33 +344,38 @@ model = dict(
     ttm_labels=TTM_LABELS,
     vend_master=vend_master, missing=missing, dept_actual=dept_actual,
     totals=dict(
-        revenue=v1["totals"]["revenue"][:7], other_income=v1["totals"]["other_income"][:7],
-        cogs=[round(x,2) for x in totals_ttm["cogs"][5:12]],
-        payroll=[round(x,2) for x in totals_ttm["payroll"][5:12]],
+        revenue=[round(x,2) for x in totals_ttm["revenue"][Y26_FROM:12]],
+        other_income=[round(x,2) for x in totals_ttm["rebate"][Y26_FROM:12]],
+        cogs=[round(x,2) for x in totals_ttm["cogs"][Y26_FROM:12]],
+        payroll=[round(x,2) for x in totals_ttm["payroll"][Y26_FROM:12]],
         opex=[round(x,2) for x in opex26],
         ttm_opex=[round(x,2) for x in totals_ttm["opex"]],
         ttm_cogs=[round(x,2) for x in totals_ttm["cogs"]],
         ttm_payroll=[round(x,2) for x in totals_ttm["payroll"]],
-        varcomp=[round(x,2) for x in totals_ttm["varcomp"][5:12]],
-        wages=[round(x,2) for x in totals_ttm["wages"][5:12]],
+        varcomp=[round(x,2) for x in totals_ttm["varcomp"][Y26_FROM:12]],
+        wages=[round(x,2) for x in totals_ttm["wages"][Y26_FROM:12]],
         accrual_drift=[round(totals_ttm["accrual_acc"][i] + totals_ttm["accrual_rev"][i], 2)
-                       for i in range(5, 12)]),
+                       for i in range(Y26_FROM, 12)]),
     staff=v1["staff"], sales=v1["sales"], ramps=v1["ramps"],
     employer_tax_rate=round(sum(totals_ttm["ptax"]) / sum(totals_ttm["wages"]), 4),
     cogs_accounts={k: [round(x, 2) for x in v] for k, v in cogs_accounts.items() if abs(sum(v)) > 500},
     cogs_vendors={c: {v: [round(x, 2) for x in mo] for v, mo in vs.items() if abs(sum(mo)) > 250}
                   for c, vs in cogs_vendors.items()},
     cogs_big=cogs_big[:40],
-    provisional_cogs_months=[7],   # user-confirmed 2026-08-24: July COGS entry still not made
+    provisional_cogs_months=[7, 8],   # 5258 reads $0 for BOTH Jul and Aug — entries still pending
+    # Daily payroll accruals stop on Aug 14: August carries 10 accrual days (Aug 3-14) against
+    # July's 23, with no postings for the 11 business days from Aug 17. The month's cash pay is
+    # all there ($359K, three pay runs) but the back half is not accrued, so August payroll runs
+    # light — $10.6K per business day against $12.1K in July.
+    payroll_partial_months=[8],
     dept_payroll_actual=dept_payroll,
-    # August 2026 is deliberately EXCLUDED (actual_months stays 7). AT#14 carries Aug data but
-    # the month is incomplete on every line — payroll posts only through Aug 17 ($112K wages vs
-    # $280K in Jul), COGS $94K vs $232K, opex $141K vs $206K, revenue $613K vs ~$1.2M.
-    built="2026-08-24", actual_months=7)
+    # August is now CLOSED and included: AT#15 shows it fully posted (payroll $296K, opex $197K,
+    # revenue $1.07M, all in line with prior months). Only its COGS entry is still outstanding.
+    built="2026-09-08", actual_months=ACTUAL_MONTHS)
 json.dump(model, open(os.path.join(HERE, "model_data_v2.json"), "w"))
 print("vendors:", len(vend_master), "missing:", len(missing))
 print("statuses:", dict(collections.Counter(r["status"] for r in vend_master)))
 print("conflicts:", sum(1 for r in vend_master if r["contradiction"]))
-print("jan-jul opex ties:", [round(sum(v[i] for v in dept_actual.values()) - opex26[i], 2) for i in range(7)])
+print("jan-aug opex ties:", [round(sum(v[i] for v in dept_actual.values()) - opex26[i], 2) for i in range(ACTUAL_MONTHS)])
 print("TTM opex by month:", [round(x/1000,1) for x in totals_ttm["opex"]])
 print("size KB:", os.path.getsize(os.path.join(HERE, "model_data_v2.json"))//1024)

@@ -266,10 +266,15 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <div class="card"><h2>Monthly net profit</h2><p class="note">One bar per booked month; modeled months show modest and stretch side by side. Hover any month.</p><figure class="chart" id="chartNet"></figure></div>
     <div class="card"><h2>Cumulative net through Mar 2027</h2><p class="note">Running total of monthly net profit: booked through Jul, then each scenario.</p><figure class="chart" id="chartCum"></figure></div>
   </div>
-  <div class="card"><h2>P&amp;L by month <span class="scn-toggle" id="plScnT"><button class="btn on" data-s="mod">Modest</button><button class="btn" data-s="str">Stretch</button><button class="btn" data-s="both">Both</button></span></h2><p class="note">Shaded columns are Xero as booked (Jan–Jul). Later columns come from the Sales team, Staffing and Expenses tabs. Commissions sit inside booked payroll for actual months.</p>
+  <div class="card"><h2>P&amp;L by month <span class="scn-toggle" id="plScnT"><button class="btn on" data-s="mod">Modest</button><button class="btn" data-s="str">Stretch</button><button class="btn" data-s="both">Both</button></span><span class="scn-toggle" id="plBasisT" style="margin-left:8px"><button class="btn on" data-b="booked">As booked</button><button class="btn" data-b="all">+ accrued</button></span></h2><p class="note">Shaded columns are Xero as booked (Jan–Jul). Later columns come from the Sales team, Staffing and Expenses tabs. Commissions sit inside booked payroll for actual months. <b>As booked</b> is what Xero shows; <b>+ accrued</b> loads in the incentive programs below — money the period has earned that has not been paid or posted.</p>
     <div class="tablewrap" id="plTable"></div>
     <p class="footnote" id="plFoot"></p>
   </div>
+  <div class="card"><h2>Incentive programs</h2>
+    <p class="note">Money a period earns that the books have not seen — an operations bonus that only pays once the six months close, and the Sales Director bonus, which has never been calculated. Each accrues against where its half is <b>pacing</b>. A program pays flat once its threshold is met, or scales below it; its cost sits evenly across the period, or lands only on the months that carry revenue past the threshold, so a month contributing nothing carries none of it. Use <b>+ accrued</b> on the P&amp;L above to see the loaded picture.</p>
+    <div id="incSummary"></div>
+    <div id="incList"></div>
+    <button class="btn addrow" id="addProgram">+ Add a program</button></div>
   <div class="card"><h2>Department budget rollup <span class="scn-toggle" id="rollMetric"><button class="btn on" data-m="total">Total cost</button><button class="btn" data-m="pay">Payroll</button><button class="btn" data-m="opex">Opex</button><button class="btn" data-m="hc">Headcount</button></span></h2>
     <p class="note">Payroll and operating spend rolled up per department — booked figures through Jul (payroll splits from Xero's department tracking, 97% tagged; untagged lands in Unassigned), model after. Headcount is the staffing plan for all months. Sales commissions and COGS are company-level and not in this rollup.</p>
     <figure class="chart" id="rollChart"></figure>
@@ -438,11 +443,11 @@ function defaultState(){
     levers: { cogsPct: +((() => { const P = new Set(MODEL.provisional_cogs_months || []);
         let c = 0, r = 0; MODEL.totals.cogs.forEach((v, i) => { if (!P.has(i + 1)){ c += v; r += MODEL.totals.revenue[i]; } });
         return c / (r || 1); })()).toFixed(3), estProv: true,
-      // Booked Jan–Jul other income averages $23.6K/mo, but January alone carries $125.5K of
-      // UniView rebate credit notes. Ex-January the run rate is ~$5.9K/mo (rebate $6.8K less
-      // non-routine legal), which is the defensible forward assumption — $3K understated
-      // break-even relief by ~$5.6K/mo.
-      otherInc: 5900, laborHedge: 0, opexHedge: 0, bdayWeight: true,
+      // Booked other income now reads straight from the incidental revenue accounts — interest
+      // earned, rental income and late fees — and runs a steady $10-12K/mo across Jan-Aug. (The
+      // UniView rebate is typed Other Income in Xero and is absent from the Expense/Revenue
+      // export, so it is not in that figure; it was a $117K January credit being drawn down.)
+      otherInc: 11000, laborHedge: 0, opexHedge: 0, bdayWeight: true,
       targetH1: 6350000, targetH2: 5700000, thrH1: 6350000, thrH2: 5700000, smRate: 0.015, dirRate: 0.035,
       hdvRate: 523.5, taxRate: MODEL.employer_tax_rate },
     sales: MODEL.sales.map((s, i) => ({ id: "s" + i, name: s.name, role: s.role, ramp: s.ramp,
@@ -455,6 +460,15 @@ function defaultState(){
       benOn: (s.hdv || 0) > 0, taxOn: true, level: guessLevel(s.position),
       raiseD: 0, raiseP: 0, raiseM: 9, hc: seedHc(s.position, s.hc) })),
     raises: [],
+    // The two programs described: an operations bonus for a department, paid only once the half
+    // closes, and the Sales Director bonus, which pays nothing below its threshold and is carried
+    // by the months that clear it. Amounts are placeholders — set the real ones on Projections.
+    programs: [
+      { id: "pgOps", name: "Operations bonus", on: true, scope: "dept", target: "Installation Services",
+        roles: [], per: "head", amount: 2500, half: 2, thr: 5700000, scale: false, alloc: "even" },
+      { id: "pgSd", name: "Sales Director bonus", on: true, scope: "role", target: "", roles: [],
+        per: "pool", amount: 60000, half: 2, thr: 5700000, scale: false, alloc: "earned" }
+    ],
     bandSplit: ["Software Development", "Sales"],
     bandHide: {},
     deptNames: { "03 - HR & Business Administration Manager": "HR & Business Admin", "Facillities": "Facilities" },
@@ -493,6 +507,7 @@ function migrateState(st){
     if (L0.taxRate == null) L0.taxRate = MODEL.employer_tax_rate;
     if (L0.ovrInBase != null) delete L0.ovrInBase;   // retired: salaries are base-only
     if (L0.bdayWeight == null) L0.bdayWeight = true;
+  if (!st.programs) st.programs = (defaultState().programs || []);
   if (!L0.salesLinkFix){
     // Existing reps predate the link. Bind each to the staffing stint with the same name and keep
     // their current start by deriving RAMPED MO from it, so nothing shifts and no duplicate is
@@ -965,6 +980,67 @@ function compute(){
       }
     });
   }
+  /* ---------- incentive programs earned over a half, paid after it closes ----------
+     These never appear in booked months: an operations bonus is not paid until the six-month
+     period completes and closes, and the Sales Director bonus has not been calculated at all.
+     So the books understate what the period actually costs, and by the time the cash lands the
+     period is over. Each program is accrued here against where the half is PACING, and kept out
+     of out.net — out.netAll carries the loaded view — so "on the books" and "what this period
+     really costs" can be read side by side.
+
+     A program can pay flat once its threshold is met, or scale with pacing below it. Its cost
+     lands either evenly across the period (you earn it by serving the period) or on the months
+     that actually carry revenue past the threshold — the same shape the SM/Director override
+     uses, so a month that contributes nothing carries no expense. */
+  out.incent = { mod: Array(NM).fill(0), str: Array(NM).fill(0) };
+  out.incentUnbooked = { mod: 0, str: 0 };
+  out.incentHalf = { mod: [0, 0], str: [0, 0] };
+  out.incentPace = { mod: [0, 0], str: [0, 0] };
+  for (const pg of (S.programs || [])){
+    if (!pg || pg.on === false) continue;
+    const hi = (pg.half === 1) ? 0 : 1;
+    const [a, b] = hi === 0 ? FH1 : FH2;
+    let heads = 0;
+    for (const r of S.staff){
+      const hit = pg.scope === "dept" ? (r.dept === pg.target)
+        : pg.scope === "role" ? ((pg.roles || []).indexOf(r.id) >= 0)
+        : true;
+      if (hit) heads += staffHC(r, b);
+    }
+    const gross = pg.per === "pool" ? (+pg.amount || 0) : (+pg.amount || 0) * heads;
+    if (!gross) continue;
+    for (const scn of ["mod", "str"]){
+      const rev = out.rev[scn].slice(a, b).reduce((x, y) => x + y, 0);
+      const thr = +pg.thr || 0;
+      const pace = thr > 0 ? rev / thr : 1;
+      out.incentPace[scn][hi] = pace;
+      let frac = 1;
+      if (thr > 0) frac = rev >= thr ? 1 : (pg.scale ? Math.max(0, pace) : 0);
+      const total = gross * frac;
+      if (!total) continue;
+      out.incentHalf[scn][hi] += total;
+      const over = Math.max(0, rev - thr);
+      if (pg.alloc === "earned" && thr > 0 && over > 0){
+        let cum = 0;
+        for (let m = a + 1; m <= b; m++){
+          const i = m - 1, before = cum;
+          cum += out.rev[scn][i];
+          const pushed = Math.max(0, cum - thr) - Math.max(0, before - thr);
+          if (pushed > 0) out.incent[scn][i] += total * (pushed / over);
+        }
+      } else {
+        const n = Math.max(1, b - a);
+        for (let m = a + 1; m <= b; m++) out.incent[scn][m - 1] += total / n;
+      }
+    }
+  }
+  // the SM/Director override is the same kind of liability — earned, never posted
+  for (const scn of ["mod", "str"]){
+    for (let i = 0; i < NM; i++) if (i < ACT) out.incentUnbooked[scn] += out.incent[scn][i];
+    out.incentUnbooked[scn] += out.overrideUnbooked[scn];
+  }
+  out.netAll = { mod: out.net.mod.map((v, i) => v - out.incent.mod[i]),
+                 str: out.net.str.map((v, i) => v - out.incent.str[i]) };
   return out;
 }
 
@@ -1184,7 +1260,11 @@ function renderProj(C){
   const gpS = C.rev.str.map((v, i) => v + C.oth[i] - C.cogs.str[i]);
   for (const [k, v] of pick(gpM, gpS)) push("Gross profit" + sfx(k), v, "tot");
   pushSec("OPERATING COSTS");
-  push(`Payroll (staffing model) <button class="exp-toggle" data-k="plpay">${plPayOpen ? "▾ hide why" : "▸ why it moves"}</button>`, C.pay);
+  const partial = new Set(MODEL.payroll_partial_months || []);
+  push(`Payroll (staffing model) <button class="exp-toggle" data-k="plpay">${plPayOpen ? "▾ hide why" : "▸ why it moves"}</button>`, C.pay,
+    "", fmt$, C.pay.map((v, i) => partial.has(i + 1)
+      ? `${MONTHS[i]} is booked light — Xero's daily payroll accruals stop mid-month, so the last stretch of the month has no accrual behind it. Treat it as a floor, not the month's true cost.`
+      : null));
   if (plPayOpen){
     const hedge = 1 + (S.levers.laborHedge || 0);
     const dHeads = Array(NM).fill(0), dComp = Array(NM).fill(0), dBasis = Array(NM).fill(0);
@@ -1230,9 +1310,18 @@ function renderProj(C){
   push(`Total opex <button class="exp-toggle" data-k="plopex">${plOpexOpen ? "▾ hide" : "▸ show"} ${opexDepts.length} depts</button>`, C.opex, "tot");
   push("Break-even sales revenue", C.be, "dim");
   pushSec("BOTTOM LINE");
-  for (const [k, v] of pick(C.net.mod, C.net.str)) push("NET" + (both ? sfx(k).toUpperCase() : ""), v, "tot netrow");
+  const loaded = plBasis === "all" && C.incent && (C.incent.mod.some(v => v > 0.5) || C.incent.str.some(v => v > 0.5));
+  if (loaded){
+    const zf = v => Math.abs(v) < 0.5 ? "" : fmt$(v);
+    for (const [k, v] of pick(C.incent.mod, C.incent.str))
+      push(`<span title="Incentive programs accrued to the months that earn them. None of this is in Xero: an operations bonus is not paid until its six months close, and the Sales Director bonus has never been calculated. Booked months carry it too — that is the liability the books do not show.">Accrued incentives (not yet booked)</span>` + sfx(k), v, "dim", zf);
+  }
+  const netM = loaded ? C.netAll.mod : C.net.mod, netS = loaded ? C.netAll.str : C.net.str;
+  for (const [k, v] of pick(netM, netS)) push("NET" + (loaded ? " — with accruals" : "") + (both ? sfx(k).toUpperCase() : ""), v, "tot netrow");
   if (!both)
-    push("Net under " + (plScn === "mod" ? "stretch" : "modest") + " (reference)", plScn === "mod" ? C.net.str : C.net.mod, "dim");
+    push("Net under " + (plScn === "mod" ? "stretch" : "modest") + " (reference)", plScn === "mod" ? netS : netM, "dim");
+  if (loaded && !both)
+    push(`<span title="The same months with the incentive programs left out — what Xero will actually report.">Net as booked (reference)</span>`, plScn === "str" ? C.net.str : C.net.mod, "dim");
   const half = (vals, [a, b]) => vals.slice(a, b).reduce((x, y) => x + y, 0);
   const qb = i => (i % 3 === 2 ? " qb" : "");
   const provSet = new Set(S.levers.estProv ? (MODEL.provisional_cogs_months || []) : []);
@@ -1248,7 +1337,8 @@ function renderProj(C){
   }
   document.getElementById("plTable").innerHTML = h + "</tbody></table>";
   document.getElementById("plFoot").textContent =
-    (S.levers.estProv && (MODEL.provisional_cogs_months || []).length ? "* Jul COGS estimated at the forward COGS % — the month-end COGS entry isn’t in Xero yet (booked shows only $232K, with product COGS at $0). " : "") +
+    (S.levers.estProv && (MODEL.provisional_cogs_months || []).length ? "* " + (MODEL.provisional_cogs_months || []).map(m => MONTHS[m - 1]).join(" and ") + " COGS estimated at the forward COGS % — the month-end COGS entry isn’t in Xero yet. " : "") +
+    ((MODEL.payroll_partial_months || []).length ? (MODEL.payroll_partial_months || []).map(m => MONTHS[m - 1]).join(" and ") + " payroll is booked light: the daily accruals stop mid-month, so that month reads as a floor. " : "") +
     "Break-even row: monthly sales revenue needed to cover payroll + opex less other income at that month's gross margin (excl. overrides). " +
     "SM/Director override comp is charged to each half's modeled months; halves fully booked carry it inside booked payroll.";
   document.getElementById("notes").innerHTML =
@@ -1278,7 +1368,7 @@ function delegate(rootId, handler){
 }
 
 /* ---------- department rollup ---------- */
-let plScn = "mod", plOpexOpen = false, plPayOpen = false;
+let plScn = "mod", plBasis = "booked", plOpexOpen = false, plPayOpen = false;
 document.getElementById("plTable").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-k=plopex],button[data-k=plpay]"); if (!b) return;
   if (b.dataset.k === "plopex") plOpexOpen = !plOpexOpen; else plPayOpen = !plPayOpen;
@@ -1288,6 +1378,12 @@ document.getElementById("plScnT").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-s]"); if (!b) return;
   plScn = b.dataset.s;
   document.querySelectorAll("#plScnT .btn").forEach(x => x.classList.toggle("on", x === b));
+  renderAll();
+});
+document.getElementById("plBasisT").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-b]"); if (!b) return;
+  plBasis = b.dataset.b;
+  document.querySelectorAll("#plBasisT .btn").forEach(x => x.classList.toggle("on", x === b));
   renderAll();
 });
 let rollMetric = "total";
@@ -2063,6 +2159,70 @@ function renderPayCal(C){
       </div>` : `<p class="note" style="margin:8px 0 0">Base months swing ${fmtK(hi - lo)} between ${esc(loM)} and ${esc(hiM)} — judge against the average, never a single month.</p>`}
     </div>`;
 }
+/* ---------- incentive programs ---------- */
+function renderIncentives(C){
+  const el = document.getElementById("incList"); if (!el) return;
+  const roleOpts = S.staff.slice().sort((a, b) => a.dept.localeCompare(b.dept) || a.position.localeCompare(b.position));
+  el.innerHTML = (S.programs || []).map(pg => {
+    const hi = pg.half === 1 ? 0 : 1;
+    const heads = S.staff.reduce((n, r) => n + ((pg.scope === "dept" ? r.dept === pg.target
+      : pg.scope === "role" ? (pg.roles || []).indexOf(r.id) >= 0 : true) ? staffHC(r, (hi ? FH2 : FH1)[1]) : 0), 0);
+    const [pa, pb] = hi === 0 ? FH1 : FH2;
+    const prev = C.rev.mod.slice(pa, pb).reduce((x, y) => x + y, 0);
+    const pace = (+pg.thr || 0) > 0 ? prev / pg.thr : 1;
+    const gross = pg.per === "pool" ? (+pg.amount || 0) : (+pg.amount || 0) * heads;
+    const met = !pg.thr || pace >= 1;
+    return `<div class="ppl-row raise-row"${pg.on === false ? ' style="opacity:.55"' : ""}>
+      <span class="fld"><label>On</label><input type="checkbox" class="switch" data-id="${pg.id}" data-k="pgon"${pg.on === false ? "" : " checked"}></span>
+      <span class="fld"><label>Program</label><input class="cell pos" data-id="${pg.id}" data-k="pgname" value="${esc(pg.name || "")}"></span>
+      <span class="fld"><label>Who</label><select class="cell" data-id="${pg.id}" data-k="pgscope">
+        <option value="dept"${pg.scope === "dept" ? " selected" : ""}>Department</option>
+        <option value="role"${pg.scope === "role" ? " selected" : ""}>Chosen roles</option>
+        <option value="all"${pg.scope === "all" ? " selected" : ""}>Everyone</option></select></span>
+      ${pg.scope === "dept" ? `<span class="fld"><label>Which</label><select class="cell" style="max-width:180px" data-id="${pg.id}" data-k="pgtarget">${DEPTS.map(d => `<option value="${esc(d)}"${d === pg.target ? " selected" : ""}>${esc(dn(d))}</option>`).join("")}</select></span>`
+        : pg.scope === "role" ? `<span class="fld"><label>Roles</label><select class="cell" style="max-width:210px" multiple size="3" data-id="${pg.id}" data-k="pgroles">${roleOpts.map(r => `<option value="${r.id}"${(pg.roles || []).indexOf(r.id) >= 0 ? " selected" : ""}>${esc(r.position)}</option>`).join("")}</select></span>` : ""}
+      <span class="fld"><label>Amount</label><input class="cell w56" data-id="${pg.id}" data-k="pgamount" value="${Math.round(+pg.amount || 0).toLocaleString("en-US")}"></span>
+      <span class="fld"><label>Per</label><select class="cell" data-id="${pg.id}" data-k="pgper">
+        <option value="head"${pg.per === "head" ? " selected" : ""}>per head</option>
+        <option value="pool"${pg.per === "pool" ? " selected" : ""}>total pool</option></select></span>
+      <span class="fld"><label>Period</label><select class="cell" data-id="${pg.id}" data-k="pghalf">
+        <option value="1"${pg.half === 1 ? " selected" : ""}>${esc(FH1[2])}</option>
+        <option value="2"${pg.half !== 1 ? " selected" : ""}>${esc(FH2[2])}</option></select></span>
+      <span class="fld"><label>Pays above</label><input class="cell w56" data-id="${pg.id}" data-k="pgthr" value="${Math.round(+pg.thr || 0).toLocaleString("en-US")}" title="Period revenue that must be reached. 0 = always pays."></span>
+      <span class="fld"><label>Below it</label><select class="cell" data-id="${pg.id}" data-k="pgscale" title="At the threshold it pays in full. Below it, either nothing at all or pro-rata with pacing.">
+        <option value="0"${pg.scale ? "" : " selected"}>pays nothing</option>
+        <option value="1"${pg.scale ? " selected" : ""}>scales with pacing</option></select></span>
+      <span class="fld"><label>Cost lands</label><select class="cell" data-id="${pg.id}" data-k="pgalloc" title="Evenly across the period, or only on the months that carry revenue past the threshold.">
+        <option value="even"${pg.alloc === "earned" ? "" : " selected"}>evenly</option>
+        <option value="earned"${pg.alloc === "earned" ? " selected" : ""}>as earned</option></select></span>
+      <span class="fld"><label>&nbsp;</label><span class="subtle">${pg.per === "head" ? heads + " head" + (heads === 1 ? "" : "s") + " · " : ""}${fmtK(gross)} at full${pg.thr ? ` · pacing <b style="color:${met ? "var(--good-text)" : "#b45309"}">${Math.round(pace * 100)}%</b> of ${fmtK(pg.thr)}${met ? "" : (pg.scale ? " — scaled" : " — pays nothing yet")}` : ""}</span></span>
+      <span class="fld"><label>&nbsp;</label><button class="btn mini" data-id="${pg.id}" data-k="pgdel" title="Remove program">✕</button></span>
+    </div>`;
+  }).join("") || `<p class="subtle" style="margin:4px 0">No programs yet.</p>`;
+
+  const ub = C.incentUnbooked.mod, h1 = C.incentHalf.mod[0], h2 = C.incentHalf.mod[1];
+  const ovr = C.override.mod[0] + C.override.mod[1];
+  const sum = (a, [x, y]) => a.slice(x, y).reduce((p, q) => p + q, 0);
+  // where each half sits on the books, and where it sits once the programs are loaded in
+  const halfRow = (lbl, rng) => {
+    const bk = sum(C.net.mod, rng), ld = sum(C.netAll.mod, rng), d = bk - ld;
+    return `<span>${esc(lbl)} net <b>${fmtK(bk)}</b> on the books → <b style="color:${ld < 0 ? "var(--bad-text)" : "inherit"}">${fmtK(ld)}</b> loaded${d > 500 ? ` <span class="subtle">(−${fmtK(d)})</span>` : ""}</span>`;
+  };
+  document.getElementById("incSummary").innerHTML =
+    `<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin:0 0 10px;background:var(--surface2);font-size:12.5px">
+      <div style="display:flex;flex-wrap:wrap;gap:6px 26px;font-variant-numeric:tabular-nums">
+        <span>Not on the books <b style="color:#b45309">${fmt$(h1 + h2 + ovr)}</b></span>
+        ${ub > 500 ? `<span class="subtle">already earned in closed months ${fmtK(ub)}</span>` : ""}
+        <span class="subtle">${esc(FH1[2])} programs ${fmtK(h1)}</span>
+        <span class="subtle">${esc(FH2[2])} programs ${fmtK(h2)}</span>
+        <span class="subtle">SM &amp; Director override ${fmtK(ovr)}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 26px;font-variant-numeric:tabular-nums;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+        ${halfRow(FH1[2], FH1)}${halfRow(FH2[2], FH2)}${halfRow("15 mo", [0, NM])}
+      </div>
+      <p class="note" style="margin:6px 0 0">The top figure is every program plus the SM/Director override across the horizon — none of it is in Xero. ${ub > 500 ? `Of that, <b>${fmtK(ub)}</b> has already been earned in months Xero has closed (${esc(MONTHS[0])}–${esc(MONTHS[ACT - 1])}) and is a liability the P&amp;L does not show. ` : ""}The half rows read as booked → loaded: the first is what Xero will report, the second is the same months with these programs charged to them. Everything here stays out of break-even, which measures the fixed hurdle and deliberately excludes revenue-driven pay.</p>
+    </div>`;
+}
 /* ---------- pay bands ---------- */
 function renderPayBands(){
   const split = new Set(S.bandSplit || []);
@@ -2200,6 +2360,36 @@ delegate("commTierBar", (id, k, val) => {
   if (k === "tat") t[i].at = Math.max(0, num(val, 0)) / 100;
   else if (k === "trate") t[i].rate = Math.max(0, num(val, 0)) / 100;
   S.commTiers = t;
+});
+document.getElementById("incList").addEventListener("change", ev => {
+  const t = ev.target, k = t.dataset.k, id = t.dataset.id;
+  if (!k || !id) return;
+  const pg = (S.programs || []).find(x => x.id === id); if (!pg) return;
+  const val = t.type === "checkbox" ? t.checked : t.value;
+  if (k === "pgon") pg.on = !!val;
+  else if (k === "pgname") pg.name = String(val);
+  else if (k === "pgscope"){ pg.scope = val; if (val === "dept" && !pg.target) pg.target = DEPTS[0]; }
+  else if (k === "pgtarget") pg.target = val;
+  else if (k === "pgroles") pg.roles = [...t.selectedOptions].map(o => o.value);
+  else if (k === "pgamount") pg.amount = Math.max(0, num(val, 0));
+  else if (k === "pgper") pg.per = val;
+  else if (k === "pghalf") pg.half = num(val, 2) === 1 ? 1 : 2;
+  else if (k === "pgthr") pg.thr = Math.max(0, num(val, 0));
+  else if (k === "pgscale") pg.scale = val === "1";
+  else if (k === "pgalloc") pg.alloc = val === "earned" ? "earned" : "even";
+  else return;
+  persist(); scheduleRender();
+});
+document.getElementById("incList").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k=pgdel]"); if (!b) return;
+  S.programs = (S.programs || []).filter(x => x.id !== b.dataset.id);
+  persist(); scheduleRender();
+});
+document.getElementById("addProgram").addEventListener("click", () => {
+  S.programs = S.programs || [];
+  S.programs.push({ id: "pg" + Date.now().toString(36), name: "New program", on: true, scope: "dept",
+    target: DEPTS[0], roles: [], per: "head", amount: 1000, half: 2, thr: 0, scale: false, alloc: "even" });
+  persist(); scheduleRender();
 });
 delegate("rampTable", (id, k, val) => {
   const m = k.match(/^ramp(\d+)$/); if (!m || !S.ramps[id]) return;
@@ -2450,7 +2640,7 @@ function renderAll(){
   if (syncSales()) persist();     // the plan is the source of truth for who sells and when
   const C = compute();
   renderTiles(C); renderGoals(C); renderProjLevers(); renderProj(C); renderRollup(C); renderGrowth(C);
-  renderSales(C); renderRaisePlanner(); renderStaff(C); renderExpenses(C); renderFixes(); renderRestore(); renderPayBands();
+  renderSales(C); renderIncentives(C); renderRaisePlanner(); renderStaff(C); renderExpenses(C); renderFixes(); renderRestore(); renderPayBands();
 }
 
 renderAll();
