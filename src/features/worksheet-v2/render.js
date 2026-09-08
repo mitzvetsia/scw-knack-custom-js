@@ -637,9 +637,81 @@
   // and expand individual devices on demand.
   var _cardsSeeded = Object.create(null);   // sourceViewKey → true once persisted state applied
 
+  // ── Qty-one repair (survey deployments) ─────────────────────────────
+  // FLAG_limit-to-quantity-one rows hide the Qty input and treat qty as
+  // "implicitly 1" — but that's display-only. When the record's ACTUAL qty
+  // (field_2399) is 0/blank (the survey-creation scenario left it unset),
+  // every consumer that multiplies — the extended calc, the bid doc, Make
+  // totals — gets $0 while the worksheet shows nothing wrong (the $0 HDMI
+  // bid line, 2026-09-08). Persist the implied 1 so the data matches the
+  // UI. Unlocked rows only — a finalized/submitted bid is never silently
+  // mutated (those get fixed by hand). One attempt per record per session;
+  // sequential PUTs so a big survey can't trip Knack's ~10 req/s limit.
+  var qtyRepairTried = {};
+
+  function repairQtyOne(sourceViewKey, records) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function'
+        ? ns.cfg.viewCfg(sourceViewKey) : null;
+      if (!vc || vc.moneyMode !== 'survey' || vc.readOnly) return;
+      if (!(window.SCW && typeof SCW.knackAjax === 'function' &&
+            typeof SCW.knackRecordUrl === 'function')) return;
+      var F = (ns.cfg && typeof ns.cfg.fields === 'function')
+        ? ns.cfg.fields(sourceViewKey) : {};
+      var qtyKey = (F && F.qty)    || 'field_2399';
+      var oneKey = (F && F.qtyOne) || 'field_2373';
+      var lockFn = ns.card && ns.card.isCrLocked;
+
+      function boolYes(rec, key) {
+        var raw = rec[key + '_raw'];
+        if (raw === true || raw === 'Yes' || raw === 1) return true;
+        var s = String(rec[key] == null ? '' : rec[key])
+          .replace(/<[^>]*>/g, '').trim().toLowerCase();
+        return s === 'yes' || s === 'true' || s === '1';
+      }
+
+      var queue = [];
+      for (var i = 0; i < records.length; i++) {
+        var rec = records[i];
+        if (!rec || !rec.id || qtyRepairTried[rec.id]) continue;
+        if (!boolYes(rec, oneKey)) continue;
+        var q = parseFloat(rec[qtyKey + '_raw']);
+        if (isFinite(q) && q > 0) continue;               // real qty present
+        if (lockFn && lockFn(rec, sourceViewKey)) continue; // finalized — hands off
+        queue.push(rec);
+      }
+      if (!queue.length) return;
+
+      (function next() {
+        var r = queue.shift();
+        if (!r) return;
+        qtyRepairTried[r.id] = true;
+        var body = {};
+        body[qtyKey] = 1;
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(sourceViewKey, r.id),
+          type: 'PUT',
+          data: JSON.stringify(body),
+          success: function () {
+            r[qtyKey + '_raw'] = 1;
+            r[qtyKey] = '1';
+            console.log('[scw-ws-v2] qty-one repair: qty 0/blank → 1 on', r.id);
+            setTimeout(next, 300);
+          },
+          error: function (xhr) {
+            console.warn('[scw-ws-v2] qty-one repair failed on', r.id,
+              '(HTTP ' + (xhr && xhr.status) + ')');
+            setTimeout(next, 300);
+          }
+        });
+      })();
+    } catch (e) { /* repair is best-effort — never break the render */ }
+  }
+
   function renderView(sourceViewKey, records) {
     var container = document.getElementById('scw-ws-v2-' + sourceViewKey);
     if (!container) return;
+    repairQtyOne(sourceViewKey, records);
 
     // New render cycle → invalidate card.js's per-render record indexes so a
     // changed back-pointer (connection edit) can't be served stale from cache.

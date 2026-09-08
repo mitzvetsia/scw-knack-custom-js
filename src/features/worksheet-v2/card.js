@@ -1903,11 +1903,19 @@
     var surveyNotesCell = surveyFill(rec, viewKey, F.surveyNotes || 'field_2412',
       'Survey notes', 'scw-ws-v2-cell--survey-notes');
     // Description of Work (field_2409): when no sub bid is required here, the
-    // field is HIDDEN entirely (an empty grid cell keeps the columns aligned).
-    // Otherwise v1 parity — empty Description → danger (red).
+    // sub isn't asked to FILL it — but the text is still content (for
+    // assumptions/services it IS the row), and hiding it rendered these as
+    // bare "empty" cards on the sub page (2026-09-08 report). Show it
+    // read-only via the install-descro pattern; only a genuinely blank
+    // description keeps the empty grid cell. Otherwise v1 parity — empty
+    // Description → danger (red).
     var laborDescCell;
     if (subBidNo) {
-      laborDescCell = empty('scw-ws-v2-cell--labor-desc');
+      var roDesc = readField(rec, F.laborDesc || 'field_2409');
+      laborDescCell = roDesc
+        ? '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc scw-ws-v2-cell--install-descro" ' +
+            'title="' + escapeHtml(roDesc) + '">' + escapeHtml(roDesc) + '</div>'
+        : empty('scw-ws-v2-cell--labor-desc');
     } else {
       var laborDescWarn = surveyWarnClass(rec, F.laborDesc || 'field_2409', 'danger', null);
       laborDescCell = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
