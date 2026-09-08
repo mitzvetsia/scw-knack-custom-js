@@ -582,6 +582,7 @@ textarea.json{
     <div class="deck-top" style="margin-top:12px">
       <p><b>Enter the numbers, the board updates.</b> Install comes from the Xero Install Services report, eCommerce from the M2 Cost&nbsp;of&nbsp;Goods report, Pending from the M2 Pending report. Entries are saved in this browser only &mdash; they are not shared with anyone else viewing this page.</p>
       <button class="btn" id="mReset" type="button">Reset to sheet values</button>
+      <span class="unit" id="dbStatus" style="flex-basis:100%">Checking shared storage&hellip;</span>
     </div>
 
     <div class="grp">
@@ -1759,7 +1760,7 @@ textarea.json{
     DATA.ytdAmount = nOrNull('ed-ytdAmount');
     DATA.ytdMonths = nOrNull('ed-ytdMonths');
     syncYtdInputs();
-    try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
+    persistHistory();
     renderQ2();
   }
   function restoreHistory() {
@@ -1797,7 +1798,7 @@ textarea.json{
   function pullYtd() {
     DATA.ytdAmount = nOrNull('mYtdAmount');
     DATA.ytdMonths = nOrNull('mYtdMonths');
-    try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
+    persistHistory();
     syncYtdInputs(); renderQ2();
   }
   function buildHolidays() {
@@ -1841,7 +1842,7 @@ textarea.json{
       H.observed[inp.getAttribute('data-hol')] = inp.checked;
     });
     DATA.holidays = H;
-    try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
+    persistHistory();
     refreshAuto();
     // Day counts that were still on auto follow the new calendar; manual overrides stay put.
     if (parseFloat(el('mDaysTD').value) === prevBD) el('mDaysTD').value = AUTO_BD;
@@ -1870,12 +1871,13 @@ textarea.json{
       if (!v || !v.months || !v.decade) { edMsg('JSON is missing months or decade.', false); return; }
       DATA = v;
       if (!DATA.holidays || !DATA.holidays.observed) DATA.holidays = defaultHolidays();
-      try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
+      persistHistory();
       refreshAuto(); buildHolidays(); buildEditor(); renderMonth(); renderQ2(); edMsg('Applied.');
     });
     el('edReset').addEventListener('click', function () {
       DATA = clone(BASE); DATA.holidays = defaultHolidays();
       try { localStorage.removeItem(HSTORE); } catch (e) {}
+      persistHistory();
       refreshAuto(); buildHolidays(); buildEditor(); renderMonth(); renderQ2();
       edMsg('Reset to original figures.');
     });
@@ -2017,6 +2019,7 @@ textarea.json{
     return o;
   }
   function allMonths() {
+    if (MONTHS_MEM) return MONTHS_MEM;
     var all; try { all = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { all = null; }
     if (!all || typeof all !== 'object') {
       all = {};
@@ -2030,6 +2033,7 @@ textarea.json{
     v.dayStamp = todayStamp(); v.monthStamp = monthKey();
     var all = allMonths(); all[monthKey()] = v;
     try { localStorage.setItem(STORE, JSON.stringify(all)); } catch (e) {}
+    persistMonth(monthKey(), v);
   }
   // Day counts default to the computed calendar. A manual +/- holds only for the
   // day it was made (stamped), then snaps back to auto on the next visit.
@@ -2210,7 +2214,6 @@ textarea.json{
   function dayWord(v) { return fracNum(v) + ' business day' + (v === 1 ? '' : 's'); }
   function renderMonth() {
     var m = compute();
-    saveMonth(readInputs());
     var g1 = m.v.mGoal1, g2 = m.v.mGoal2;
 
     put('hInstall', usd(m.v.mInstall) + ' · ' + usd(m.v.mInstall / m.bd) + ' per business day');
@@ -2305,6 +2308,54 @@ textarea.json{
     renderLastMonth();
   }
 
+  /* ================= SHARED STORAGE ================= */
+  // localStorage stays the offline cache and the fallback when db is unavailable;
+  // when db resolves it becomes the source of truth and every viewer sees the same numbers.
+  var DBH = null, MONTHS_MEM = null;
+  function anyInputFocused() {
+    var a = document.activeElement;
+    return !!(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA'));
+  }
+  function dbStatus(txt, ok) {
+    var e = el('dbStatus');
+    if (e) { e.innerHTML = txt; e.style.color = ok ? 'var(--good-ink)' : 'var(--muted)'; }
+  }
+  function persistHistory() {
+    try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
+    if (DBH) DBH.doc('board/history').set(JSON.parse(JSON.stringify(DATA))).catch(function () {});
+  }
+  function persistMonth(key, v) {
+    if (DBH) DBH.collection('months').doc(key).set(JSON.parse(JSON.stringify(v))).catch(function () {});
+  }
+  function attachDb() {
+    var offline = 'Local only &mdash; entries stay in this browser.';
+    if (!window.claude || typeof claude.use !== 'function') { dbStatus(offline); return; }
+    claude.use('db').then(function (db) {
+      if (!db) { dbStatus(offline); return; }
+      DBH = db;
+      dbStatus('Shared &mdash; everyone with the link sees these numbers.', true);
+      db.doc('board/history').onSnapshot(function (snap) {
+        if (!snap.exists) return;
+        var inc = snap.data();
+        if (!inc || !inc.months || !inc.decade) return;
+        if (JSON.stringify(inc) === JSON.stringify(DATA)) return;
+        DATA = JSON.parse(JSON.stringify(inc));
+        if (!DATA.holidays || !DATA.holidays.observed) DATA.holidays = defaultHolidays();
+        try { localStorage.setItem(HSTORE, JSON.stringify(DATA)); } catch (e) {}
+        if (!anyInputFocused()) { buildEditor(); buildHolidays(); }
+        refreshAuto(); renderQ2(); renderMonth();
+      }, function (e) { dbStatus('Shared storage stopped (' + e.code + ') &mdash; using this browser.'); });
+      db.collection('months').onSnapshot(function (snap) {
+        var m = {};
+        snap.docs.forEach(function (d) { m[d.id] = d.data(); });
+        MONTHS_MEM = m;
+        try { localStorage.setItem(STORE, JSON.stringify(m)); } catch (e) {}
+        if (!anyInputFocused()) restoreMonth();
+        renderMonth(); renderQ2();
+      }, function () {});
+    }).catch(function () { dbStatus(offline); });
+  }
+
   /* ================= LAST MONTH ================= */
   function prevOf(y, m) { var pm = m - 1, py = y; if (pm < 0) { pm = 11; py--; } return { y: py, m: pm }; }
   function renderLastMonth() {
@@ -2373,7 +2424,9 @@ textarea.json{
     });
   }
   // Month edits feed the window's live August, so both parts re-render.
-  function onMonthInput() { renderMonth(); renderQ2(); }
+  // Saving lives here, not in renderMonth — a snapshot-driven render must not
+  // write back to the store and retrigger itself.
+  function onMonthInput() { saveMonth(readInputs()); renderMonth(); renderQ2(); }
   Object.keys(SHEET).forEach(function (k) {
     var e = el(k); if (!e) return;
     e.addEventListener('input', onMonthInput);
@@ -2409,5 +2462,6 @@ textarea.json{
   window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(renderAll, 150); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(renderAll);
   renderAll();
+  attachDb();
 })();
 </script>
