@@ -570,85 +570,222 @@
   // ── Save ────────────────────────────────────────────────────────
 
   // ── Project record id (QA-fail payload) ─────────────────────────
-  // Sources, most direct first:
-  //   1. The photo record's OWN Project connection (DOC_photos field_675)
-  //      when a view model on the page holds the photo row (the hidden
-  //      DOC_photos save grid usually does).
-  //   2. The `project-dashboard/<id>` hash segment. Every dashboard route
-  //      is keyed by the Project record — including the internal deploy
-  //      page, whose route is …/project-dashboard/<proj>/deploy/<proj>
-  //      (the deploy scene is keyed directly off the Project record, see
-  //      worksheet-v2/photos.js getProjectIdFromHash + bulk-upload.js).
-  //   3. The SOW→project connection (field_2119) on any rendered view —
-  //      model scan (details views + grid rows), then the connection-span
-  //      DOM pattern. The deploy scene renders NO view carrying field_2119
-  //      (this was the only source before 2026-09-09 and shipped empty
-  //      projectIds), so it's the fallback for other hosts only.
-  // Returns '' when nothing matches.
+  // DATA FIRST. Every source below reads the Project record id out of
+  // records Knack has already loaded on the page (or out of the QA save's
+  // own PUT response); the URL is the last resort, not the plan. Every
+  // route that hosts this popover is keyed off the Project record, so any
+  // Project connection rendered anywhere on the scene IS the page's
+  // project — the chain simply prefers the most direct link:
+  //
+  //   1. lineItem        the failed photo's own install line item (the
+  //                      worksheet row it sits in) → its Project connection,
+  //                      whichever field that is on the install object
+  //                      (resolved from the app schema — see projectSchema).
+  //   2. photo:put       the QA save's PUT response — the photo record's
+  //                      own Project connection (DOC_photos field_675),
+  //                      when the save view projects that column.
+  //   3. photo:row       the same field, read off the photo's row in any
+  //                      loaded view model (the hidden DOC_photos grids).
+  //   4. project:details a details view OF the Project record → model.id.
+  //   5. page            any Project connection on any loaded row/details
+  //                      view — accepted only when every row on the page
+  //                      agrees, so a stray unscoped grid can't mislead it.
+  //   6. dom             connection-value spans for those same fields
+  //                      (views whose models aren't populated).
+  //   7. hash            the project-dashboard/<id> route segment.
+  //
+  // "Project connection" fields are discovered from Knack.objects — the
+  // app schema Knack ships to the browser (connected-records.js reads the
+  // same collection): the Project object key is whatever field_675 points
+  // at, and every connection field on every object targeting that key
+  // counts. A Builder column change on any one grid therefore can't
+  // silently drop this back to the URL. The known keys are seeded in case
+  // the schema isn't reachable.
+  //
+  // resolveProjectRef({ photoId, lineItemId, putResp }) → { id, source }.
+  // Exposed as SCW.qaPopover.resolveProjectId for DevTools checks — run it
+  // on a deploy page with a line item id to see which source answers.
   var PHOTO_PROJECT_CONN = 'field_675';   // DOC_photos → Project
   var SOW_PROJECT_CONN   = 'field_2119';  // SOW → Project
+  var PROJECT_CONN_SEEDS = [
+    PHOTO_PROJECT_CONN,
+    SOW_PROJECT_CONN,
+    'field_1770',   // System-setup questionnaire → Installation Project
+    'field_2181'    // Survey bid item → REL_project
+  ];
+  var HEX24 = /^[a-f0-9]{24}$/i;
 
-  function firstConnId(raw) {
-    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
-    if (raw && raw.id) return raw.id;
+  /** A single connected id from a connection `_raw` value — '' when empty
+   *  or when the field lists several records (ambiguous, skip it). */
+  function singleConnId(raw) {
+    if (Array.isArray(raw)) {
+      return (raw.length === 1 && raw[0] && raw[0].id) ? String(raw[0].id) : '';
+    }
+    return (raw && raw.id) ? String(raw.id) : '';
+  }
+
+  /** { objectKey, keys } — the Project object key + every connection field
+   *  (any object) that points at it. Memoized once the schema read
+   *  succeeds; Knack.objects is static for the app session. */
+  var _projSchema = null;
+  function projectSchema() {
+    if (_projSchema) return _projSchema;
+    var objectKey = '';
+    var keys = PROJECT_CONN_SEEDS.slice();
+    try {
+      var objs = window.Knack && Knack.objects && Knack.objects.models;
+      var i, j, f, fields;
+      // Pass 1 — which object does the photo's Project connection target?
+      for (i = 0; objs && i < objs.length && !objectKey; i++) {
+        fields = objs[i] && objs[i].attributes && objs[i].attributes.fields;
+        for (j = 0; fields && j < fields.length; j++) {
+          f = fields[j];
+          if (f && f.key === PHOTO_PROJECT_CONN && f.relationship &&
+              f.relationship.object) {
+            objectKey = String(f.relationship.object);
+            break;
+          }
+        }
+      }
+      // Pass 2 — every connection field, on any object, pointing at it.
+      for (i = 0; objectKey && objs && i < objs.length; i++) {
+        fields = objs[i] && objs[i].attributes && objs[i].attributes.fields;
+        for (j = 0; fields && j < fields.length; j++) {
+          f = fields[j];
+          if (f && f.type === 'connection' && f.relationship &&
+              f.relationship.object === objectKey && keys.indexOf(f.key) === -1) {
+            keys.push(f.key);
+          }
+        }
+      }
+    } catch (e) { /* seeds only */ }
+    var out = { objectKey: objectKey, keys: keys };
+    if (objectKey) _projSchema = out;   // cache complete reads only
+    return out;
+  }
+
+  /** First Project connection on a record's attributes, over `keys`. */
+  function projectIdFromAttrs(attrs, keys) {
+    if (!attrs) return '';
+    for (var k = 0; k < keys.length; k++) {
+      var id = singleConnId(attrs[keys[k] + '_raw']);
+      if (id && HEX24.test(id)) return id;
+    }
     return '';
   }
 
-  function resolveProjectId(photoId) {
+  /** fn(viewKey, model) over every loaded Knack view; return true to stop. */
+  function eachLoadedView(fn) {
     var views = window.Knack && Knack.views;
-    var vk, mdl, rows, i, id;
-    // 1. The photo record's own Project connection.
-    if (photoId) {
-      try {
-        for (vk in views) {
-          if (!Object.prototype.hasOwnProperty.call(views, vk)) continue;
-          mdl = views[vk] && views[vk].model;
-          rows = mdl && mdl.data && mdl.data.models;
-          if (!rows) continue;
-          for (i = 0; i < rows.length; i++) {
-            var row = rows[i];
-            if (!row || row.id !== photoId) continue;
-            id = firstConnId(row.attributes && row.attributes[PHOTO_PROJECT_CONN + '_raw']);
-            if (id) return id;
-          }
-        }
-      } catch (e0) { /* fall through */ }
+    for (var vk in views) {
+      if (!Object.prototype.hasOwnProperty.call(views, vk)) continue;
+      var mdl = views[vk] && views[vk].model;
+      if (!mdl) continue;
+      if (fn(vk, mdl) === true) return true;
     }
-    // 2. The project-keyed dashboard route.
-    try {
-      var hm = (window.location.hash || '').match(/project-dashboard\/([a-f0-9]{24})/i);
-      if (hm) return hm[1];
-    } catch (e1) { /* fall through */ }
-    // 3. SOW→project on any rendered view (model, then DOM).
-    try {
-      for (vk in views) {
-        if (!Object.prototype.hasOwnProperty.call(views, vk)) continue;
-        mdl = views[vk] && views[vk].model;
-        if (!mdl) continue;
-        id = firstConnId(mdl.attributes && mdl.attributes[SOW_PROJECT_CONN + '_raw']);
-        if (id) return id;
-        rows = mdl.data && mdl.data.models;
-        if (rows) {
-          for (i = 0; i < rows.length; i++) {
-            id = firstConnId(rows[i] && rows[i].attributes &&
-              rows[i].attributes[SOW_PROJECT_CONN + '_raw']);
-            if (id) return id;
-          }
+    return false;
+  }
+
+  /** Project id off a specific record's row in any loaded grid model. */
+  function projectIdFromRow(recordId, keys) {
+    var found = '';
+    if (!recordId) return '';
+    eachLoadedView(function (vk, mdl) {
+      var rows = mdl.data && mdl.data.models;
+      for (var i = 0; rows && i < rows.length; i++) {
+        if (rows[i] && rows[i].id === recordId) {
+          found = projectIdFromAttrs(rows[i].attributes, keys);
+          if (found) return true;
         }
       }
-    } catch (e2) { /* fall through to DOM */ }
+    });
+    return found;
+  }
+
+  function resolveProjectRef(ctx) {
+    ctx = ctx || {};
+    var schema = projectSchema();
+    var keys = schema.keys;
+    var found = '';
+
+    // 1. The failed photo's own install line item row.
+    try { found = projectIdFromRow(ctx.lineItemId, keys); } catch (e1) { found = ''; }
+    if (found) return { id: found, source: 'lineItem' };
+
+    // 2. The QA save's PUT response — the photo record as stored.
     try {
-      var spans = document.querySelectorAll(
-        '.kn-detail.' + SOW_PROJECT_CONN + ' span[data-kn="connection-value"], ' +
-        'td.' + SOW_PROJECT_CONN + ' span[data-kn="connection-value"]');
+      var rec = ctx.putResp && (ctx.putResp.record || ctx.putResp);
+      found = projectIdFromAttrs(rec, [PHOTO_PROJECT_CONN]);
+    } catch (e2) { found = ''; }
+    if (found) return { id: found, source: 'photo:put' };
+
+    // 3. The photo's row in any loaded view model.
+    try { found = projectIdFromRow(ctx.photoId, [PHOTO_PROJECT_CONN]); } catch (e3) { found = ''; }
+    if (found) return { id: found, source: 'photo:row' };
+
+    // 4. A details view of the Project record itself.
+    if (schema.objectKey) {
+      try {
+        found = '';
+        eachLoadedView(function (vk, mdl) {
+          var src = mdl.view && mdl.view.source;
+          if (src && src.object === schema.objectKey &&
+              !(mdl.data && mdl.data.models) &&
+              mdl.id && HEX24.test(String(mdl.id))) {
+            found = String(mdl.id);
+            return true;
+          }
+        });
+      } catch (e4) { found = ''; }
+      if (found) return { id: found, source: 'project:details' };
+    }
+
+    // 5. Any Project connection anywhere on the page — unanimous only.
+    try {
+      var seen = {}, count = 0;
+      var note = function (id) { if (id && !seen[id]) { seen[id] = 1; count++; } };
+      eachLoadedView(function (vk, mdl) {
+        note(projectIdFromAttrs(mdl.attributes, keys));
+        var rows = mdl.data && mdl.data.models;
+        for (var i = 0; rows && i < rows.length; i++) {
+          note(projectIdFromAttrs(rows[i] && rows[i].attributes, keys));
+        }
+      });
+      found = '';
+      if (count === 1) { for (var only in seen) { if (seen[only]) found = only; } }
+      else if (count > 1) {
+        console.warn('[scw-qa] projectId: loaded rows disagree on the project — ' +
+          Object.keys(seen).join(', '));
+      }
+    } catch (e5) { found = ''; }
+    if (found) return { id: found, source: 'page' };
+
+    // 6. DOM connection-value spans for those fields (unpopulated models).
+    try {
+      var sel = [];
+      for (var k = 0; k < keys.length; k++) {
+        sel.push('.kn-detail.' + keys[k] + ' span[data-kn="connection-value"]');
+        sel.push('td.' + keys[k] + ' span[data-kn="connection-value"]');
+      }
+      var spans = document.querySelectorAll(sel.join(', '));
+      var seenDom = {}, countDom = 0;
       for (var s = 0; s < spans.length; s++) {
         var cls = (spans[s].className || '').trim();
-        if (/^[a-f0-9]{24}$/i.test(cls)) return cls;
         var idAttr = (spans[s].id || '').trim();
-        if (/^[a-f0-9]{24}$/i.test(idAttr)) return idAttr;
+        var cand = HEX24.test(cls) ? cls : (HEX24.test(idAttr) ? idAttr : '');
+        if (cand && !seenDom[cand]) { seenDom[cand] = 1; countDom++; }
       }
-    } catch (e3) { /* give up */ }
-    return '';
+      found = '';
+      if (countDom === 1) { for (var onlyDom in seenDom) { if (seenDom[onlyDom]) found = onlyDom; } }
+    } catch (e6) { found = ''; }
+    if (found) return { id: found, source: 'dom' };
+
+    // 7. The project-keyed route — last resort.
+    try {
+      var hm = (window.location.hash || '').match(/project-dashboard\/([a-f0-9]{24})/i);
+      if (hm) return { id: hm[1], source: 'hash' };
+    } catch (e7) { /* nothing left */ }
+    return { id: '', source: 'none' };
   }
 
   // ── QA-fail notification ────────────────────────────────────────
@@ -658,7 +795,7 @@
   // refire). Fire-and-forget POST to Make, which resolves the photo record
   // → line item → project → sub and sends the actual notification. Never
   // blocks or fails the QA save itself.
-  function notifyQaFail(fields) {
+  function notifyQaFail(fields, putResp) {
     try {
       var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_QA_FAIL_WEBHOOK) || '';
       if (!url || /PLACEHOLDER/.test(url)) {
@@ -671,6 +808,19 @@
       // replace is local-only and useless to Make.
       var imgUrl = /^https?:/i.test(p.imgUrl || '') ? p.imgUrl : '';
       var deployM = (window.location.hash || '').match(/\/deploy\/([a-f0-9]{24})/i);
+      var proj = resolveProjectRef({
+        photoId: _photoId, lineItemId: p.lineItemId || '', putResp: putResp
+      });
+      if (!proj.id || proj.source === 'hash') {
+        // Loud on purpose: a data source went missing (a Builder column
+        // dropped, a view renamed) and we're back on the URL / empty.
+        console.warn('[scw-qa] projectId resolved via "' + proj.source + '" — ' +
+          'no loaded record on this page carries a Project connection. ' +
+          'Expose one on a view here (e.g. ' + PHOTO_PROJECT_CONN + ' on ' +
+          PIC_SAVE_VIEW + ').');
+      } else {
+        console.info('[scw-qa] projectId ' + proj.id + ' via ' + proj.source);
+      }
       fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -691,7 +841,11 @@
           product:    p.product    || '',
           // CORE_project record id — the hop Make needs: project →
           // field_1199 (SCW CU task) → subcontractor task → comment.
-          projectId:  resolveProjectId(_photoId),
+          // projectIdSource names which loaded record answered (see
+          // resolveProjectRef) so a Make bundle shows the provenance;
+          // "hash" means every data source came up empty.
+          projectId:       proj.id,
+          projectIdSource: proj.source,
           // The id in the …/deploy/<id> route segment. On the internal
           // deploy page this is the SAME Project record id (the scene is
           // keyed off the project), so it's context, not a hop — use
@@ -718,10 +872,12 @@
       url: SCW.knackRecordUrl(PIC_SAVE_VIEW, _photoId),
       type: 'PUT',
       data: JSON.stringify(fields),
-      success: function () {
+      success: function (resp) {
         // Every QA write funnels through here — the one hook that sees
         // every path that can set Fail (explicit save, close-autosave).
-        if (fields && fields[F.status] === 'Fail') notifyQaFail(fields);
+        // The PUT response is the stored photo record — handed to the
+        // notifier so it can read the photo's own Project connection.
+        if (fields && fields[F.status] === 'Fail') notifyQaFail(fields, resp);
         onDone && onDone(null);
       },
       error: function (xhr) {
@@ -2168,6 +2324,10 @@
   SCW.qaPopover = {
     open:       openForChit,     // V1 chit path (reads worksheet source <tr>)
     openAnchor: openForAnchor,   // host-agnostic path (V2 install photo strip)
-    close:      function () { closePopover(true); }
+    close:      function () { closePopover(true); },
+    // DevTools check for the QA-fail payload's project resolution:
+    //   SCW.qaPopover.resolveProjectId({ lineItemId: '<install row id>' })
+    // → { id, source } — see resolveProjectRef for the source chain.
+    resolveProjectId: resolveProjectRef
   };
 })();
