@@ -767,9 +767,10 @@
         '<line x1="15" y1="9" x2="9" y2="15"/>' +
         '<line x1="9" y1="9" x2="15" y2="15"/></svg></span>' +
       '<span class="scw-ws-v2-qafail-alert-text"><strong>' +
-        failed.length + ' line item' + (failed.length === 1 ? '' : 's') +
-        ' failed photo QA</strong> — rework required. Open the item, read ' +
-        'the QA notes, and replace the photo:</span>' +
+        'Photo QA flagged ' + failed.length + ' line item' +
+        (failed.length === 1 ? '' : 's') + '</strong> — we’ve identified an ' +
+        'issue and left notes. Please take a look and swap in an updated ' +
+        'photo so we can re-review together:</span>' +
       '<span class="scw-ws-v2-qafail-alert-items">' + chipsHtml + '</span>';
   }
 
