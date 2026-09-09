@@ -323,6 +323,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
   <button data-tab="staff">Staffing</button>
   <button data-tab="exp">Expenses</button>
   <button data-tab="trend">Trends</button>
+  <button data-tab="cmp">Plan vs actual</button>
 </nav>
 
 <main>
@@ -371,6 +372,23 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
       <div class="tablewrap" style="margin-top:12px" id="growthM"></div>
       <p class="footnote" style="margin:8px 0 0">Cost history before 2026 comes from the accrual export (Aug ’25 onward). Revenue before Jan ’26 isn’t in the current exports — add a FY25 export with the revenue (4xxx) accounts and revenue YoY will backfill.</p></div></details>
   <details class="helper" id="notesD"><summary>How this model works</summary><div class="inner" id="notes"></div></details>
+</section>
+
+<section class="tab" id="tab-cmp">
+  <div class="card"><div class="eyebrow">Plan</div><h2>Locked plans</h2>
+    <p class="note">A locked plan is the whole P&amp;L — every month, every department, every vendor — frozen as it stood. Lock one when the plan is agreed; later imports compare against it, and the live model keeps moving underneath.</p>
+    <div id="planList"></div>
+    <div class="toolbar" style="margin-top:8px"><input id="planLabel" class="cell pos" style="width:260px" placeholder="Label — e.g. Q4+Q1 plan as approved"><button class="btn" id="lockPlan">Lock the current plan</button></div></div>
+  <div class="card"><div class="eyebrow">Actuals</div><h2>Import a Xero export</h2>
+    <p class="note">Drop an <b>Account Transactions</b> export (accrual basis, account types Expense &amp; Revenue, any date range) here. It is read in this browser — nothing is uploaded. Vendors are normalised the same way the model's own history was; months the export covers become actuals for the comparison, and every vendor's last-billed date updates.</p>
+    <div id="dropZone" style="border:2px dashed var(--border2);border-radius:12px;padding:22px;text-align:center;color:var(--muted);font-size:13px">Drop the .xlsx here, or <label style="color:var(--modest);cursor:pointer;text-decoration:underline">choose a file<input type="file" id="actFile" accept=".xlsx" style="display:none"></label></div>
+    <div id="actStatus" class="subtle" style="margin-top:8px;font-size:12.5px"></div></div>
+  <div class="card" id="cmpCard"><div class="eyebrow">Compare</div><h2>Plan vs actual <span class="scn-toggle" id="cmpPlanT"></span></h2>
+    <p class="note">Months the import covers, against the locked plan. Δ is actual minus plan; costs above plan and revenue below plan read red.</p>
+    <div class="tablewrap" id="cmpTable"></div>
+    <h3 style="font-size:13px;margin:16px 0 6px">Vendor deviations</h3>
+    <p class="note">Every vendor where the months imported differ from plan by more than 15% and $100, plus vendors that appeared or went quiet. <b>Accept</b> makes the actual run-rate the vendor's budget from the next modeled month.</p>
+    <div class="tablewrap" id="cmpVendors"></div></div>
 </section>
 
 <section class="tab" id="tab-sales">
@@ -576,6 +594,7 @@ function defaultState(){
     raises: [],
     salesDrop: [],
     licenses: licSeedFromModel(),
+    plans: [], actuals: null,
     // The two programs described: an operations bonus for a department, paid only once the half
     // closes, and the Sales Director bonus, which pays nothing below its threshold and is carried
     // by the months that clear it. Amounts are placeholders — set the real ones on Projections.
@@ -673,6 +692,8 @@ function migrateState(st){
     delete pg.scale;
   }
   if (!st.salesDrop) st.salesDrop = [];
+  if (!st.plans) st.plans = [];
+  if (st.actuals === undefined) st.actuals = null;
   if (!st.licenses){
     // Licenses become rules. The per-head $ typed on roles was the Knack app's seat allocation
     // for that position; whatever the rules now explain comes off it, the rest stays as "other".
@@ -1351,6 +1372,152 @@ function compute(){
   return out;
 }
 
+/* ---------- plan lock, actuals import, compare ----------
+   A locked plan freezes the P&L as it stands — months, departments, vendors — so a later import
+   is compared to what was agreed, not to whatever the live model has drifted to. The import
+   reads a Xero Account Transactions workbook in the browser (SheetJS) and buckets it exactly as
+   the builder does: account code → revenue / other income / COGS / payroll / opex, vendor names
+   through the same aliases, one figure per calendar month. Nothing leaves the browser. */
+function lockPlan(label){
+  const C = compute();
+  const vendors = {};
+  for (const e of S.exp){
+    if (!e.on || e.use === "STAFFING") continue;
+    const arr = vendors[e.vendor] || (vendors[e.vendor] = Array(NM).fill(0));
+    for (let m = 1; m <= NM; m++) if (m >= (e.from || 1) && m <= (e.to || NM)) arr[m - 1] += expensePlanned(e);
+  }
+  const dept = {}; for (const d of DEPTS) dept[d] = C.dept[d].map(v => Math.round(v));
+  const r = a => a.map(v => Math.round(v));
+  const plan = { id: "pl" + Date.now().toString(36), label: label || ("Plan locked " + new Date().toISOString().slice(0, 10)),
+    at: new Date().toISOString(), act: ACT, scn: "mod",
+    rev: r(C.rev.mod), oth: r(C.oth), cogs: r(C.cogs.mod), pay: r(C.pay), comp: r(C.comp.mod), opex: r(C.opex),
+    net: r(C.net.mod), netAll: r(C.netAll.mod), dept, vendors: Object.fromEntries(Object.entries(vendors).map(([k, v]) => [k, r(v)])) };
+  S.plans = S.plans || []; S.plans.push(plan);
+  persist(); scheduleRender();
+  return plan;
+}
+let sheetJsLoading = null;
+function loadSheetJs(){
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (sheetJsLoading) return sheetJsLoading;
+  sheetJsLoading = new Promise((res, rej) => {
+    const sc = document.createElement("script");
+    sc.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    sc.onload = () => res(window.XLSX); sc.onerror = () => rej(new Error("Could not load the spreadsheet reader from the CDN"));
+    document.head.appendChild(sc);
+  });
+  return sheetJsLoading;
+}
+// the builder's canon(), ported: exact aliases, prefixes, then a contract name match
+function canonVendor(v){
+  const A = MODEL.vendor_aliases || { exact: {}, prefix: [], contracts: [] };
+  const k = String(v || "").toLowerCase().trim();
+  if (A.exact[k]) return A.exact[k];
+  for (const [p, c] of A.prefix) if (k.startsWith(p)) return c;
+  for (const c of A.contracts) if (c.toLowerCase() === k) return c;
+  const s = String(v || "");
+  return s.length > 60 ? s.slice(0, 57).replace(/\s+$/, "") + "…" : s;
+}
+function parseXeroWorkbook(wb){
+  const X = window.XLSX, B = MODEL.account_buckets || {};
+  const PAY = new Set(B.payroll || []), COGS = new Set(B.cogs || []), OTH = new Set(B.other_income || []);
+  const VAR = new RegExp(B.varcomp_re || "variable comp|commission|bonus|spiff", "i");
+  const SKIP = ["Total", "Opening Balance", "Closing Balance", "Net movement", "No transactions", "Date", "Account Transactions", "Security Camera", "For the period", "Accrual Basis", "Account Type"];
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = X.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+  const toDate = v => v instanceof Date ? v : (typeof v === "number" ? new Date(Math.round((v - 25569) * 86400000)) : (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? new Date(v.slice(0, 10) + "T00:00:00Z") : null));
+  const idx = d => (d.getUTCFullYear() - 2026) * 12 + d.getUTCMonth();   // 0 = Jan 2026
+  const mk = () => Array(NM).fill(0);
+  const out = { rev: mk(), oth: mk(), cogs: mk(), pay: mk(), varcomp: mk(), opex: mk(), vendors: {}, lastBilled: {}, months: new Set(), rows: 0, first: null, last: null };
+  let section = null;
+  for (const row of rows){
+    const a = row[0];
+    const rest = row.slice(1).some(v => v !== null && v !== "");
+    if (typeof a === "string" && !rest){
+      const t = a.trim();
+      if (!SKIP.some(k => t.startsWith(k))) section = t.replace(/^[-\s]+/, "");
+      continue;
+    }
+    const d = toDate(a); if (!d || !section) continue;
+    const code = section.split(" - ")[0].trim(); if (!/^\d/.test(code)) continue;
+    const contact = String(row[1] || row[2] || "").trim();
+    const net = (+row[5] || 0) - (+row[6] || 0);
+    const iso = d.toISOString().slice(0, 10);
+    out.rows++; if (!out.first || iso < out.first) out.first = iso; if (!out.last || iso > out.last) out.last = iso;
+    const i = idx(d); if (i < 0 || i >= NM) continue;
+    out.months.add(i);
+    if (code.startsWith("4")){ (OTH.has(code) ? out.oth : out.rev)[i] -= net; continue; }
+    if (COGS.has(code)){ out.cogs[i] += net; continue; }
+    if (PAY.has(code)){ out.pay[i] += net; if (VAR.test(contact)) out.varcomp[i] += net; continue; }
+    const isOpex = (code.startsWith("6") || code.startsWith("8") || code === "208") && code !== "8311";
+    if (!isOpex) continue;
+    out.opex[i] += net;
+    let v = contact.split("\n")[0].replace(/\s+/g, " ").trim(); if (v.startsWith("Payment: ")) v = v.slice(9);
+    const cv = canonVendor(v || "(unlabelled)");
+    (out.vendors[cv] || (out.vendors[cv] = mk()))[i] += net;
+    if (iso > (out.lastBilled[cv] || "")) out.lastBilled[cv] = iso;
+  }
+  out.months = [...out.months].sort((a, b) => a - b);
+  return out;
+}
+async function importActuals(file){
+  const st = document.getElementById("actStatus");
+  st.textContent = "Reading " + file.name + "…";
+  try {
+    const X = await loadSheetJs();
+    const buf = await file.arrayBuffer();
+    const wb = X.read(buf, { type: "array", cellDates: true });
+    const r = parseXeroWorkbook(wb);
+    if (!r.rows) throw new Error("No dated transaction rows found — is this an Account Transactions export?");
+    const vendors = {}; for (const [k, v] of Object.entries(r.vendors)) vendors[k] = v.map(x => Math.round(x * 100) / 100);
+    S.actuals = { at: new Date().toISOString(), source: file.name, first: r.first, last: r.last, months: r.months,
+      rev: r.rev, oth: r.oth, cogs: r.cogs, pay: r.pay, varcomp: r.varcomp, opex: r.opex, vendors, lastBilled: r.lastBilled };
+    persist(); scheduleRender();
+    st.textContent = `Imported ${file.name}: ${r.rows.toLocaleString()} postings, ${r.first} → ${r.last}, ${r.months.length} month${r.months.length === 1 ? "" : "s"} inside the horizon, ${Object.keys(vendors).length} vendors.`;
+  } catch (e){ st.innerHTML = `<span class="warn">${esc(String(e.message || e))}</span>`; }
+}
+let cmpPlanId = null;
+function renderCompare(C){
+  const pl = document.getElementById("planList"); if (!pl) return;
+  const plans = S.plans || [];
+  pl.innerHTML = plans.length ? `<table class="data"><thead><tr><th>Plan</th><th>Locked</th><th>Booked then</th><th>${FH2[3]} net</th><th>${BOTH[3]} net</th><th></th></tr></thead><tbody>` +
+    plans.map(p => `<tr><td><input class="cell pos" style="width:240px" data-id="${p.id}" data-k="planlabel" value="${esc(p.label)}"></td><td>${esc(p.at.slice(0, 10))}</td><td>through ${MONTHS[p.act - 1]}</td><td>${fmt$(p.net.slice(FH2[0], FH2[1]).reduce((a, b) => a + b, 0))}</td><td>${fmt$(p.net.slice(BOTH[0], BOTH[1]).reduce((a, b) => a + b, 0))}</td><td><button class="btn mini" data-id="${p.id}" data-k="plandel" title="Remove this locked plan">✕</button></td></tr>`).join("") + `</tbody></table>`
+    : `<p class="subtle">No plan locked yet.</p>`;
+  const A = S.actuals;
+  const chosen = plans.find(p => p.id === cmpPlanId) || plans[plans.length - 1];
+  document.getElementById("cmpPlanT").innerHTML = plans.length > 1 ? plans.map(p => `<button class="btn${chosen && p.id === chosen.id ? " on" : ""}" data-plan="${p.id}">${esc(p.label.slice(0, 28))}</button>`).join("") : "";
+  const tbl = document.getElementById("cmpTable"), vt = document.getElementById("cmpVendors");
+  if (!chosen || !A){
+    tbl.innerHTML = `<p class="subtle" style="margin:0">${!chosen ? "Lock a plan" : "Import an export"}${!chosen && !A ? " and import an export" : ""} to compare.</p>`; vt.innerHTML = ""; return;
+  }
+  const months = A.months.filter(i => i < NM);
+  const lines = [["Sales revenue", chosen.rev, A.rev, "rev"], ["Other income", chosen.oth, A.oth, "rev"], ["COGS", chosen.cogs, A.cogs, "cost"],
+    ["Payroll (base)", chosen.pay, A.pay.map((v, i) => v - A.varcomp[i]), "cost"], ["Sales commissions", chosen.comp, A.varcomp, "cost"], ["Total opex", chosen.opex, A.opex, "cost"]];
+  const netPlan = chosen.net, netAct = months.map(() => 0);
+  const cell = (plan, act, kind) => { const d = act - plan; const bad = kind === "rev" ? d < 0 : d > 0; const tol = Math.max(100, Math.abs(plan) * 0.05);
+    return `<td>${fmt$(plan)}</td><td>${fmt$(act)}</td><td class="${Math.abs(d) < tol ? "dim" : bad ? "neg" : "pos"}">${d >= 0 ? "+" : ""}${fmt$(d)}</td>`; };
+  let h = `<table class="data"><thead><tr><th>${esc(chosen.label)}</th>` + months.map(i => `<th colspan="3" class="${i < ACT ? "actual" : ""}">${mhead(i)}<span class="sub">plan · actual · Δ</span></th>`).join("") + `<th colspan="3">${months.length} month${months.length === 1 ? "" : "s"}<span class="sub">plan · actual · Δ</span></th></tr></thead><tbody>`;
+  const sumOver = arr => months.reduce((a, i) => a + (arr[i] || 0), 0);
+  for (const [lbl, plan, act, kind] of lines)
+    h += `<tr><td>${lbl}</td>` + months.map(i => cell(plan[i] || 0, act[i] || 0, kind)).join("") + cell(sumOver(plan), sumOver(act), kind) + `</tr>`;
+  const actNet = i => (A.rev[i] || 0) + (A.oth[i] || 0) - (A.cogs[i] || 0) - (A.pay[i] || 0) - (A.opex[i] || 0);
+  h += `<tr class="tot netrow"><td>NET</td>` + months.map(i => cell(netPlan[i] || 0, actNet(i), "rev")).join("") + cell(sumOver(netPlan), months.reduce((a, i) => a + actNet(i), 0), "rev") + `</tr>`;
+  tbl.innerHTML = h + "</tbody></table>";
+  // vendor deviations over the imported months
+  const names = new Set([...Object.keys(chosen.vendors), ...Object.keys(A.vendors)]);
+  const devs = [];
+  for (const v of names){
+    const p = chosen.vendors[v] || Array(NM).fill(0), a = A.vendors[v] || Array(NM).fill(0);
+    const ps = sumOver(p), as = sumOver(a), d = as - ps, n = months.length;
+    const kind = !chosen.vendors[v] ? "new" : !A.vendors[v] || Math.abs(as) < 1 ? (Math.abs(ps) > 1 ? "quiet" : null) : (Math.abs(d) > Math.max(100 * n, Math.abs(ps) * 0.15) ? (d > 0 ? "over" : "under") : null);
+    if (kind) devs.push({ v, ps, as, d, kind, n });
+  }
+  devs.sort((x, y) => Math.abs(y.d) - Math.abs(x.d));
+  const tag = k => ({ new: `<span class="chip new">NEW</span>`, quiet: `<span class="chip dropped">QUIET</span>`, over: `<span class="chip serious">OVER</span>`, under: `<span class="chip growing">UNDER</span>` })[k];
+  vt.innerHTML = devs.length ? `<table class="data"><thead><tr><th>Vendor</th><th></th><th>Plan, ${months.length} mo</th><th>Actual</th><th>Δ</th><th>Actual run-rate /mo</th><th></th></tr></thead><tbody>` +
+    devs.map(x => `<tr><td>${esc(x.v)}</td><td>${tag(x.kind)}</td><td>${fmt$(x.ps)}</td><td>${fmt$(x.as)}</td><td class="${x.d > 0 ? "neg" : "pos"}">${x.d >= 0 ? "+" : ""}${fmt$(x.d)}</td><td>${fmt$(x.as / x.n)}</td><td>${x.kind === "quiet" ? `<button class="btn mini" data-k="cmpoff" data-v="${esc(x.v)}" title="Switch this vendor's rows off from the next modeled month">Switch off</button>` : `<button class="btn mini" data-k="cmpaccept" data-v="${esc(x.v)}" data-rate="${(x.as / x.n).toFixed(2)}" title="Make ${fmt$(x.as / x.n)}/mo this vendor's budget from ${MONTHS[ACT]} on — split across its department rows as they are today">Accept as budget</button>`}</td></tr>`).join("") + `</tbody></table>`
+    : `<p class="subtle" style="margin:0">No vendor is off plan by more than 15% and $100 over the imported months.</p>`;
+}
 /* ---------- formatting ---------- */
 /* ---------- month naming ----------
    The horizon runs Jan 2026 into Mar 2027, so a bare index (1..15) is unreadable — "12" and
@@ -2415,13 +2582,16 @@ function chip(status, conflict){
 }
 // Most recent posting per vendor in the Xero export — "last billed". Looked up by vendor name
 // at render time, so rows saved before the field existed pick it up without a migration.
-const LAST_BILLED = Object.fromEntries((MODEL.vend_master || []).map(v => [v.vendor, v.last_billed || ""]));
-const EXPORT_DAY = new Date((MODEL.built || "2026-01-01") + "T00:00:00");
+const LAST_BILLED_MODEL = Object.fromEntries((MODEL.vend_master || []).map(v => [v.vendor, v.last_billed || ""]));
+// the import's dates win where it has them; the builder's dates fill the rest
+const LAST_BILLED = new Proxy({}, { get: (_, v) => ((S.actuals && S.actuals.lastBilled && S.actuals.lastBilled[v]) || LAST_BILLED_MODEL[v] || "") });
+const EXPORT_DAY_MODEL = new Date((MODEL.built || "2026-01-01") + "T00:00:00");
+const exportDay = () => S.actuals && S.actuals.last ? new Date(S.actuals.last + "T00:00:00") : EXPORT_DAY_MODEL;
 function lastBilledCell(e){
   const iso = LAST_BILLED[e.vendor];
   if (!iso) return `<td class="dim" title="${e.manual ? "Added here — not in the Xero export" : "No posting for this vendor in the export"}">—</td>`;
   const d = new Date(iso + "T00:00:00");
-  const days = Math.round((EXPORT_DAY - d) / 86400000);
+  const days = Math.round((exportDay() - d) / 86400000);
   const label = MON3[d.getMonth()] + " " + d.getDate() + " \u2019" + String(d.getFullYear()).slice(2);
   // the two cases worth a second look when deciding on/off: on but gone quiet, off but still billing
   let cls = "", tip = `Last posting ${iso} — ${days} day${days === 1 ? "" : "s"} before the export`;
@@ -2444,7 +2614,8 @@ function renderLicenses(C){
     const rule = (s0 + short0) * (L.price || 0);
     const xero = xeroOf(L.vendor);
     const rows = (S.licenses || []).filter(x => x.vendor === L.vendor);
-    const vendorRule = rows.reduce((a, x) => a + (Math.max(licSeats(x, now), x.minSeats || 0)) * (x.price || 0), 0);
+    const flat = S.exp.filter(e => e.vendor === L.vendor && e.on).reduce((a, e) => a + expensePlanned(e), 0);
+    const vendorRule = rows.reduce((a, x) => a + (Math.max(licSeats(x, now), x.minSeats || 0)) * (x.price || 0), 0) + flat;
     const gap = xero != null && vendorRule ? (xero - vendorRule) / vendorRule : null;
     const chips = Object.entries(L.roles || {}).map(([rid, per]) => { const r = licRoleFor(rid); return r ? `<span class="tag" title="${esc(dn(r.dept))} · ${Math.round(staffHC(r, now))} head${Math.round(staffHC(r, now)) === 1 ? "" : "s"} now">${esc(r.position)} ×${per}<button data-id="${L.id}" data-k="licroledel" data-role="${rid}" title="Remove">✕</button></span>` : ""; }).join("") +
       ((L.unmatched || []).length ? `<span class="subtle" title="Positions in the old allocation that are not on the staffing plan">+${L.unmatched.length} not on staffing</span>` : "");
@@ -2459,7 +2630,7 @@ function renderLicenses(C){
       <td><input class="cell tiny" style="width:52px" data-id="${L.id}" data-k="licmin" value="${L.minSeats || ""}" placeholder="—"></td>
       <td><select class="cell" style="max-width:170px" data-id="${L.id}" data-k="licdept"><option value="">—</option>${DEPTS.map(d => `<option value="${esc(d)}"${d === L.overflowDept ? " selected" : ""}>${esc(dn(d))}</option>`).join("")}</select></td>
       <td style="white-space:nowrap" title="${Math.round(s0)} assigned${short0 ? ` + ${Math.round(short0)} short of the minimum (${fmt$(short0 * L.price)} to ${esc(dn(L.overflowDept || "—"))})` : ""} × ${fmt$(L.price)}">${fmt$(rule)}${short0 ? ` <span class="warn" title="Seats below the minimum">+${Math.round(short0)}</span>` : ""}</td>
-      <td style="white-space:nowrap" class="${gap != null && Math.abs(gap) > 0.1 ? "warn" : "dim"}" title="${xero == null ? "Not in the Xero export" : `Xero ${fmt$(xero)}/mo vs ${fmt$(vendorRule)}/mo across this vendor's rules${gap != null ? ` — ${gap > 0 ? "+" : ""}${Math.round(gap * 100)}%` : ""}`}">${xero == null ? "—" : fmtK(xero)}${gap != null && Math.abs(gap) > 0.1 ? ` <small>${gap > 0 ? "+" : ""}${Math.round(gap * 100)}%</small>` : ""}</td>
+      <td style="white-space:nowrap" class="${gap != null && Math.abs(gap) > 0.1 ? "warn" : "dim"}" title="${xero == null ? "Not in the Xero export under this name" : `Xero ${fmt$(xero)}/mo vs ${fmt$(vendorRule)}/mo for this vendor — every seat rule plus its flat department rows${flat ? ` (${fmt$(flat)} flat)` : ""}${gap != null ? ` — ${gap > 0 ? "+" : ""}${Math.round(gap * 100)}%` : ""}`}">${xero == null ? "—" : fmtK(xero)}${gap != null && Math.abs(gap) > 0.1 ? ` <small>${gap > 0 ? "+" : ""}${Math.round(gap * 100)}%</small>` : ""}</td>
       <td><button class="btn mini" data-id="${L.id}" data-k="licdel" title="Remove rule">✕</button></td></tr>`;
     if (openLics.has(L.id))
       h += `<tr class="dim"><td></td><td colspan="10"><span class="pg-chips" style="max-width:none;padding:2px 0 6px">${chips}${left.length ? `<select class="cell" style="max-width:200px" data-id="${L.id}" data-k="licroleadd"><option value="">+ add a role…</option>${DEPTS.map(d => { const rs = left.filter(r => r.dept === d); return rs.length ? `<optgroup label="${esc(dn(d))}">${rs.map(r => `<option value="${r.id}">${esc(r.position)}</option>`).join("")}</optgroup>` : ""; }).join("")}</select>` : ""}</span></td></tr>`;
@@ -3188,6 +3359,43 @@ document.getElementById("licList").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-k=licdel]"); if (!b) return;
   S.licenses = (S.licenses || []).filter(x => x.id !== b.dataset.id); persist(); scheduleRender();
 });
+document.getElementById("lockPlan").addEventListener("click", () => {
+  const inp = document.getElementById("planLabel"); lockPlan(inp.value.trim()); inp.value = "";
+});
+document.getElementById("planList").addEventListener("change", ev => {
+  const t = ev.target; if (t.dataset.k !== "planlabel") return;
+  const p = (S.plans || []).find(x => x.id === t.dataset.id); if (p){ p.label = t.value.trim() || p.label; persist(); scheduleRender(); }
+});
+document.getElementById("planList").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k=plandel]"); if (!b) return;
+  S.plans = (S.plans || []).filter(x => x.id !== b.dataset.id); persist(); scheduleRender();
+});
+document.getElementById("cmpPlanT").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-plan]"); if (!b) return; cmpPlanId = b.dataset.plan; renderAll();
+});
+document.getElementById("actFile").addEventListener("change", ev => { const f = ev.target.files && ev.target.files[0]; if (f) importActuals(f); ev.target.value = ""; });
+(() => { const z = document.getElementById("dropZone");
+  z.addEventListener("dragover", ev => { ev.preventDefault(); z.style.borderColor = "var(--modest)"; });
+  z.addEventListener("dragleave", () => { z.style.borderColor = "var(--border2)"; });
+  z.addEventListener("drop", ev => { ev.preventDefault(); z.style.borderColor = "var(--border2)"; const f = ev.dataTransfer.files && ev.dataTransfer.files[0]; if (f) importActuals(f); });
+})();
+document.getElementById("cmpVendors").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k=cmpaccept],button[data-k=cmpoff]"); if (!b) return;
+  const rows = S.exp.filter(e => e.vendor === b.dataset.v);
+  if (b.dataset.k === "cmpoff"){ for (const e of rows) e.on = false; }
+  else {
+    const rate = +b.dataset.rate || 0;
+    if (!rows.length){
+      S.exp.push({ id: "m" + Date.now(), vendor: b.dataset.v, dept: "General Overhead", share: 1, budget: rate, xero: rate, status: "NEW", seat: 0, ttm: null, purpose: "from import",
+        conflict: false, manual: true, use: "BUDGET", override: rate, adj: 0, from: ACT + 1, to: NM, on: true });
+    } else {
+      // split the run-rate across the vendor's rows in their current proportions
+      const tot = rows.reduce((a, e) => a + Math.abs(expensePlanned(e) || e.budget || e.xero || 0), 0);
+      for (const e of rows){ const w = tot ? Math.abs(expensePlanned(e) || e.budget || e.xero || 0) / tot : 1 / rows.length; e.override = Math.round(rate * w * 100) / 100; e.adj = 0; e.on = true; }
+    }
+  }
+  persist(); scheduleRender();
+});
 document.getElementById("addLic").addEventListener("click", () => {
   S.licenses = S.licenses || [];
   const nid = "L" + Date.now().toString(36);
@@ -3319,7 +3527,7 @@ function renderAll(){
   const C = compute();
   renderTiles(C); renderGoals(C); renderProjLevers(); renderProj(C); renderPeriods(C); renderRollup(C); renderGrowth(C);
   fillMonthLabels();
-  renderSales(C); renderIncentives(C); renderRaisePlanner(); renderStaff(C); renderLicenses(C); renderExpenses(C); renderFixes(); renderRestore(); renderPayBands();
+  renderSales(C); renderIncentives(C); renderRaisePlanner(); renderStaff(C); renderLicenses(C); renderExpenses(C); renderCompare(C); renderFixes(); renderRestore(); renderPayBands();
 }
 
 renderAll();

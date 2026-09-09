@@ -369,6 +369,10 @@ dept_actual = {k: [round(x, 2) for x in v] for k, v in dept_actual.items()}
 model = dict(
     ttm_labels=TTM_LABELS,
     vend_master=vend_master, missing=missing, dept_actual=dept_actual, licenses=licenses,
+    # the same vendor-name normalisation the dashboard's own import applies, so a browser-side
+    # export lands on the same canonical names this builder produced
+    vendor_aliases=dict(exact=EXACT, prefix=[list(x) for x in PREFIX], contracts=sorted(contracts.keys())),
+    account_buckets=dict(payroll=sorted(PAYROLL_PL), cogs=sorted(COGS), other_income=sorted(OTHER_INC), varcomp_re=VARCOMP_RE.pattern),
     totals=dict(
         revenue=[round(x,2) for x in totals_ttm["revenue"][Y26_FROM:12]],
         other_income=[round(x,2) for x in totals_ttm["rebate"][Y26_FROM:12]],
