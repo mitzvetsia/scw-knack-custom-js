@@ -231,6 +231,9 @@
         rowId:        id,
         displayLabel: base._label || '',
         productName:  base._product || '',
+        // Custom text (Labor Description) — identity for designator-less
+        // rows (Other Services etc.) in every downstream rendering.
+        descText:     base[CFG.descField] || '',
         bucketId:     base._bucketId || '',
         bucketName:   base._bucketName || '',
         laborHours:   base._laborHours || 0,

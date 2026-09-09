@@ -88,6 +88,13 @@
     var itemName = H.readableVal(item.displayLabel) || H.readableVal(item.productName) || '';
     if (itemName && itemName.indexOf('[object') === -1) {
       headerEl.textContent += ' \u2014 ' + itemName;
+      // Designator-less rows (Other Services etc.): the product name
+      // alone identifies nothing \u2014 append the item's custom text.
+      var descTxt = H.readableVal(item.descText);
+      if (descTxt && !H.readableVal(item.displayLabel)) {
+        headerEl.textContent += ' \u2014 \u201c' +
+          (descTxt.length > 70 ? descTxt.slice(0, 67) + '\u2026' : descTxt) + '\u201d';
+      }
     }
     card.appendChild(headerEl);
 

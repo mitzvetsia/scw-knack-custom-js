@@ -17,7 +17,10 @@
 
   var MODAL_ID = P + '-overlay';
 
-  /** Resolve display label + product for a record from pending, baseline, or DOM. */
+  /** Resolve display label + product + custom text for a record from
+   *  pending, baseline, or DOM. `desc` (Labor Description, CFG.descField)
+   *  is the only distinguishing identity a designator-less row has —
+   *  "REMOVE — Other Services" is meaningless to Ops without it. */
   function resolveIdentity(recordId) {
     var pending = S.pending();
     var item = pending[recordId] || pending['note_' + recordId];
@@ -25,10 +28,12 @@
 
     var label = H.readableVal((item && item.displayLabel) || base._label || '');
     var product = H.readableVal((item && item.productName) || base._product || '');
+    var desc = H.readableVal((item && item.descText) || base[CFG.descField] || '');
 
     // Sanitize any leftover [object Object] from stale sessionStorage
     if (label.indexOf('[object') !== -1) label = '';
     if (product.indexOf('[object') !== -1) product = '';
+    if (desc.indexOf('[object') !== -1) desc = '';
 
     // Fallback: read from the DOM card
     if (!label && !product) {
@@ -40,8 +45,26 @@
         if ($prodTd.length) product = H.stripHtml($prodTd.text());
       }
     }
+    if (!desc) {
+      var $row2 = $('#' + recordId);
+      var $descTd = $row2.length &&
+        $row2.find('td[data-field-key="' + CFG.descField + '"]');
+      if ($descTd && $descTd.length) desc = H.stripHtml($descTd.text());
+    }
 
-    return { label: label, product: product };
+    return { label: label, product: product, desc: desc };
+  }
+
+  /** One-line identity for modal subtitles / bulk lists: "E-003 — Product",
+   *  with the custom text appended for designator-less rows. */
+  function identityText(id, fallback) {
+    var text = id.label && id.product ? (id.label + ' — ' + id.product)
+             : (id.label || id.product || fallback || 'Item');
+    if (!id.label && id.desc) {
+      var d = id.desc.length > 90 ? id.desc.slice(0, 87) + '…' : id.desc;
+      text += ' — “' + d + '”';
+    }
+    return text;
   }
 
   function closeModal() {
@@ -142,9 +165,7 @@
     var hLeft = H.el('div');
     hLeft.appendChild(H.el('div', P + '-modal__title',
       isEdit ? 'Edit Removal Request' : 'Request Removal'));
-    var subtitle = product || label || 'Item';
-    if (label && product) subtitle = label + ' \u2014 ' + product;
-    hLeft.appendChild(H.el('div', P + '-modal__subtitle', subtitle));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', identityText(id)));
     header.appendChild(hLeft);
     var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
     closeBtn.addEventListener('click', closeModal);
@@ -177,6 +198,7 @@
         rowId: recordId,
         displayLabel: label,
         productName: product,
+        descText: id.desc || '',
         action: 'remove',
         current: {},
         requested: {},
@@ -247,9 +269,7 @@
     var list = H.el('div', P + '-modal__bulklist');
     for (var n = 0; n < ids.length; n++) {
       var id = resolveIdentity(ids[n]);
-      var text = id.label && id.product ? (id.label + ' — ' + id.product)
-               : (id.label || id.product || ids[n]);
-      var row = H.el('div', P + '-modal__bulkitem', text);
+      var row = H.el('div', P + '-modal__bulkitem', identityText(id, ids[n]));
       var exi = pending[ids[n]];
       if (exi && exi.action === 'remove') {
         row.appendChild(H.el('span', P + '-modal__bulkflag', 'already requested'));
@@ -289,6 +309,7 @@
           rowId:        ids[k],
           displayLabel: ident.label,
           productName:  ident.product,
+          descText:     ident.desc || '',
           action:       'remove',
           current:      {},
           requested:    {},
@@ -338,9 +359,7 @@
     var hLeft = H.el('div');
     hLeft.appendChild(H.el('div', P + '-modal__title',
       existing ? 'Edit Note' : 'Add Note'));
-    var subtitle = product || label || 'Item';
-    if (label && product) subtitle = label + ' \u2014 ' + product;
-    hLeft.appendChild(H.el('div', P + '-modal__subtitle', subtitle));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', identityText(id)));
     header.appendChild(hLeft);
     var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
     closeBtn.addEventListener('click', closeModal);
@@ -376,6 +395,7 @@
         rowId: recordId,
         displayLabel: label,
         productName: product,
+        descText: id.desc || '',
         action: 'note',
         current: {},
         requested: {},
@@ -417,9 +437,7 @@
     var hLeft = H.el('div');
     hLeft.appendChild(H.el('div', P + '-modal__title',
       existing ? 'Edit Add Request' : 'Add to Change Request'));
-    var addSubtitle = product || label || 'Item';
-    if (label && product) addSubtitle = label + ' \u2014 ' + product;
-    hLeft.appendChild(H.el('div', P + '-modal__subtitle', addSubtitle));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', identityText(id)));
     header.appendChild(hLeft);
     var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
     closeBtn.addEventListener('click', closeModal);
@@ -463,6 +481,7 @@
         rowId: recordId,
         displayLabel: label,
         productName: product,
+        descText: id.desc || base[CFG.descField] || '',
         bucketId: base._bucketId || '',
         bucketName: base._bucketName || '',
         laborHours: base._laborHours || 0,
@@ -550,7 +569,8 @@
     if (!item) return;
 
     var id = resolveIdentity(recordId);
-    var label = id.product || id.label || item.displayLabel || item.productName || 'Item';
+    var label = identityText(id,
+      item.displayLabel || item.productName || 'Item');
 
     var overlay = H.el('div', P + '-overlay');
     overlay.id = MODAL_ID;

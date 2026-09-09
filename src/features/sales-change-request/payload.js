@@ -184,6 +184,15 @@
     }
     h.push('</div>');
 
+    // Custom text — a designator-less row (Other Services / General
+    // Assumptions) is indistinguishable by product name alone; show the
+    // line item's actual text so Ops knows WHICH one this is.
+    var descTxt = H.readableVal(item.descText);
+    if (descTxt && !H.readableVal(item.displayLabel)) {
+      h.push('<div style="font-size:12px;color:#334155;margin:-2px 0 6px;">' +
+        esc(descTxt) + '</div>');
+    }
+
     if (action === 'remove') {
       if (item.changeNotes) {
         h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
@@ -243,6 +252,14 @@
     header += forSowSuffix();
     lines.push(header);
 
+    // Custom text for designator-less rows (Other Services etc.) — the
+    // product name alone doesn't identify the item.
+    var descTxt = H.readableVal(item.descText);
+    if (descTxt && !H.readableVal(item.displayLabel)) {
+      lines.push('  ' + (descTxt.length > 140
+        ? descTxt.slice(0, 137) + '…' : descTxt));
+    }
+
     if (action === 'REMOVE') {
       if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
       else lines.push('  Requesting removal');
@@ -288,6 +305,7 @@
         sowItemId:    it.action !== 'add' ? (it.rowId || '') : '',
         displayLabel: H.readableVal(it.displayLabel) || '',
         productName:  H.readableVal(it.productName) || '',
+        descText:     H.readableVal(it.descText) || '',
         changeNotes:  it.changeNotes || '',
         bucketId:     it.bucketId || '',
         bucketName:   it.bucketName || '',
