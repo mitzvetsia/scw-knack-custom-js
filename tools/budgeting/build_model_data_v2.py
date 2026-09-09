@@ -105,6 +105,8 @@ def is_opex(c):
 
 opex_vm = collections.defaultdict(lambda: [0.0]*12)   # vendor -> ttm months
 opex_va = collections.defaultdict(collections.Counter)
+opex_vam = collections.defaultdict(lambda: collections.defaultdict(lambda: [0.0]*12))   # raw vendor -> account -> ttm months
+acct_ttm = collections.defaultdict(lambda: [0.0]*12)                                   # every opex account -> ttm months
 totals_ttm = collections.defaultdict(lambda: [0.0]*12)
 cogs_accounts = collections.defaultdict(lambda: [0.0]*12)
 cogs_vendors = collections.defaultdict(lambda: collections.defaultdict(lambda: [0.0]*12))
@@ -152,6 +154,8 @@ for acct, i, contact, debit, credit, day in records:
         if v.startswith("Payment: "): v = v[9:]
         opex_vm[v][i] += net
         opex_va[v][acct] += abs(net)
+        opex_vam[v][acct][i] += net
+        acct_ttm[acct][i] += net
         if day > opex_last.get(v, ""): opex_last[v] = day
 
 # Single COGS postings that make a month look unlike its neighbours. Ranking by raw size is
@@ -258,12 +262,17 @@ def canon(v):
         if c.lower() == k: return c
     return (v[:57].rstrip() + "…") if len(v) > 60 else v
 
-merged = collections.defaultdict(lambda: {"months":[0.0]*12, "accounts":collections.Counter(), "last":""})
+merged = collections.defaultdict(lambda: {"months":[0.0]*12, "accounts":collections.Counter(), "last":"",
+                                          "by_acct": collections.defaultdict(lambda: [0.0]*12)})
 for v, months in opex_vm.items():
     cv = canon(v); m = merged[cv]
     for i in range(12): m["months"][i] += months[i]
     m["accounts"][opex_va[v].most_common(1)[0][0]] += abs(sum(months))
     if opex_last.get(v, "") > m["last"]: m["last"] = opex_last[v]
+    # every account the vendor was booked to, by month — the dashboard shows "booked to" per
+    # vendor against the account it SHOULD go to, and budgets one-off spend per account
+    for acct, mo in opex_vam[v].items():
+        for i in range(12): m["by_acct"][acct][i] += mo[i]
 
 # xero dept per canonical vendor: reuse v1 (parsed from GL Detail's Departments column)
 v1 = json.load(open(A["v1"]))
@@ -307,6 +316,7 @@ for cv, m in sorted(merged.items(), key=lambda kv: -abs(sum(kv[1]["months"]))):
         purpose=contracts.get(cv, {}).get("purpose", ""),
         fixed_alloc=fixed, seat_monthly=seats, final_dept=final,
         last_billed=m["last"], cadence=contracts.get(cv, {}).get("cadence", ""), per_bill=contracts.get(cv, {}).get("per_bill", 0.0),
+        accounts={a: [round(x, 2) for x in mo] for a, mo in m["by_acct"].items() if abs(sum(mo)) > 1},
         contradiction=bool(bdept) and bool(xdept) and bdept != xdept))
 
 xnames = {r["vendor"] for r in vend_master}
@@ -373,6 +383,9 @@ model = dict(
     # export lands on the same canonical names this builder produced
     vendor_aliases=dict(exact=EXACT, prefix=[list(x) for x in PREFIX], contracts=sorted(contracts.keys())),
     account_buckets=dict(payroll=sorted(PAYROLL_PL), cogs=sorted(COGS), other_income=sorted(OTHER_INC), varcomp_re=VARCOMP_RE.pattern),
+    # every operating-expense account with postings in the window, by month — the account picker
+    # on Expenses, and the history behind a department's budget for an account (one-off spend)
+    accounts=[dict(name=a, ttm=[round(x, 2) for x in mo]) for a, mo in sorted(acct_ttm.items(), key=lambda kv: code(kv[0]))],
     totals=dict(
         revenue=[round(x,2) for x in totals_ttm["revenue"][Y26_FROM:12]],
         other_income=[round(x,2) for x in totals_ttm["rebate"][Y26_FROM:12]],

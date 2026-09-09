@@ -100,8 +100,13 @@ table.data td{padding:5px 9px;text-align:right;border-top:1px solid var(--grid);
   font-variant-numeric:tabular-nums}
 table.data tr.sec td{background:var(--surface2);font-weight:700;color:var(--ink)}
 table.data tr.tot td{border-top:2px solid var(--baseline);font-weight:700}
-table.data tr.bill td{border-top:1px dashed var(--border2);color:var(--ink2);font-size:11.5px;background:color-mix(in srgb, var(--surface2) 40%, var(--surface))}
-table.data tr.bill td:first-child{background:color-mix(in srgb, var(--surface2) 40%, var(--surface))}
+table.data.lic th:first-child,table.data.lic td:first-child{min-width:236px}
+table.data tr.bill td{border-top:1px solid var(--border2);background:color-mix(in srgb, var(--surface2) 55%, var(--surface))}
+table.data tr.bill td:first-child{background:color-mix(in srgb, var(--surface2) 55%, var(--surface))}
+table.data tr.bill.off td{opacity:.6}
+table.data tr.rule td{font-size:12px}
+table.data tr.rule.off td{opacity:.55}
+table.data tr.alloc td{color:var(--ink2)}
 table.data tr.actual-col{}
 td.neg{color:var(--crit)} td.pos{color:var(--good-text)} td.warn{color:var(--warn-text);font-weight:600}
 table.data td.actual, table.data th.actual{background:color-mix(in srgb, var(--surface2) 55%, var(--surface))}
@@ -231,6 +236,7 @@ select.cell{border:1px solid var(--border2);background:var(--surface);border-rad
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .chip.periodic{color:var(--warn)}}
 .chip.onetime{background:var(--chip-neutral);color:var(--muted)}
 .chip.notinxero{background:var(--chip-neutral);color:var(--muted)}
+.chip.account{background:var(--chip-new);color:var(--modest)}
 .chip.conflict{background:var(--chip-crit);color:var(--crit)}
 
 .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
@@ -431,7 +437,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
 
 <section class="tab" id="tab-exp">
   <div class="card" id="licCard"><div class="eyebrow">Rules</div><h2>Licenses &amp; seats</h2>
-    <p class="note">Per-seat software, one rule per vendor tier. Seats assigned to roles ride each head on Staffing; seats bought below the minimum land on the overflow department. Xero's trailing average sits beside each vendor's bill — one line per bill, even when a bill covers several rules — so a gap is visible. <a class="how" href="#notes">How it works ↗</a></p>
+    <p class="note">One bill per vendor. Open a bill (▸) for its seat rules and department allocations, and add either from the bill line. Seats assigned to roles ride each head on Staffing; a rule scoped to every role follows the staffing plan as it changes; seats bought below a minimum land on the overflow department. Xero's trailing average sits beside each bill — every rule and allocation on it, compared once. <a class="how" href="#notes">How it works ↗</a></p>
     <div class="tablewrap" id="licList"></div>
     <button class="btn addrow" id="addLic" style="margin-top:8px">+ Add a license</button></div>
   <div class="toolbar">
@@ -441,10 +447,11 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <select id="expOn" aria-label="Show on or off expenses"><option value="">On and off</option><option value="on">On only</option><option value="off">Off only</option></select>
     <span class="pillcount" id="expCount"></span>
     <span class="spacer"></span>
+    <button class="btn" id="addEnv" title="Set money aside for one-off and small spend booked to a Xero account — office supplies, travel — in one department">+ Budget an account</button>
     <button class="btn" id="addExp">+ Add expense</button>
   </div>
   <div class="card"><div class="tablewrap tall" id="expTable"></div>
-  <p class="footnote">Planned $/mo = override if set, else the chosen source (Xero suggestion or budget-tool figure) × (1 + adj), months FROM–TO, when the switch is on. Per-seat license costs (Slack, Google, Bonusly, seat portions of Hubspot/Gong/Zoom/Atlassian/Rippling/ClickUp) ride headcount on the Staffing tab, not here. Where the budgeting tool's department disagreed with Xero, the budgeting tool's wins.</p></div>
+  <p class="footnote">Planned $/mo = override if set, else the chosen source (Xero suggestion or budget-tool figure) × (1 + adj), months FROM–TO, when the switch is on. ONE-OFF rows plan nothing here: they draw on the department's <b>account budget</b> for their account (an “Account budget” row, added with + Budget an account), whose Xero suggestion is what vendors without a planned row booked to that account over the trailing year. Per-seat license costs ride headcount on the Staffing tab, not here. Where the budgeting tool's department disagreed with Xero, the budgeting tool's wins.</p></div>
 </section>
 
 <section class="tab" id="tab-trend">
@@ -500,7 +507,7 @@ const DEPTS = ["Sales","Marketing","Software Development","Installation Services
   "Purchasing & Fulfillment","03 - HR & Business Administration Manager","Facillities","Exec","Product",
   "General Overhead","Unassigned"];
 const STATUS_CHIP = {"STEADY":"steady","GROWING":"growing","DROPPING":"dropping","DROPPED":"dropped",
-  "NEW":"new","PERIODIC":"periodic","ONE-TIME":"onetime","NOT IN XERO":"notinxero"};
+  "NEW":"new","PERIODIC":"periodic","ONE-TIME":"onetime","NOT IN XERO":"notinxero","ACCOUNT":"account"};
 const LS_KEY = "scw-money-model-v1";
 const dn = d => (S.deptNames && S.deptNames[d]) || d;
 // Vendors that are PEOPLE already budgeted as roles on the Staffing tab. Their Xero spend
@@ -550,8 +557,8 @@ function defaultState(){
     const mk = (dept, share, budget) => expenses.push({
       id: "x" + (id++), vendor: v.vendor, dept, share, budget,
       xero: Math.round(Math.max(0, baseAdj * share - (un && un.unalloc > 0 && dept === un.unalloc_dept ? un.unalloc : 0)) * 100) / 100,
-      status: v.status, seat, ttm: v.ttm, purpose: v.purpose, conflict: v.contradiction,
-      use: STAFF_CARRIED.has(v.vendor) ? "STAFFING" : "XERO", override: null, adj: 0, from: 1, to: NM,
+      status: v.status, seat, ttm: v.ttm, purpose: v.purpose, conflict: v.contradiction, account: v.account || "",
+      use: STAFF_CARRIED.has(v.vendor) ? "STAFFING" : v.status === "ONE-TIME" ? "ONEOFF" : "XERO", override: null, adj: 0, from: 1, to: NM,
       on: !(v.status === "DROPPED" || v.status === "ONE-TIME")});
     if (keys.length > 1){
       const tot = keys.reduce((s, k) => s + fixed[k], 0) || 1;
@@ -564,7 +571,7 @@ function defaultState(){
     const fixed = m.fixed_alloc || {}; const keys = Object.keys(fixed);
     const mk = (dept, budget) => expenses.push({
       id: "b" + (id++), vendor: m.vendor, dept, share: 1, budget,
-      xero: null, status: "NOT IN XERO", seat: m.seat_monthly || 0, ttm: null, purpose: m.purpose,
+      xero: null, status: "NOT IN XERO", seat: m.seat_monthly || 0, ttm: null, purpose: m.purpose, account: "",
       conflict: false, use: "BUDGET", override: null, adj: 0, from: 1, to: NM, on: false});
     if (keys.length > 1) for (const k of keys) mk(k, fixed[k]);
     else mk(m.final_dept, keys.length ? fixed[keys[0]] : m.budget_monthly);
@@ -705,6 +712,16 @@ function migrateState(st){
     }
   }
   if (st.actuals === undefined) st.actuals = null;
+  // rows saved before expected accounts: take the account Xero has mostly used; one-time vendors
+  // that were simply switched off become ONE-OFF, covered by an account budget if one exists
+  if (!L0.acctFix){
+    for (const e of st.exp){
+      if (e.account === undefined){ const vm = MODEL.vend_master.find(v => v.vendor === e.vendor); e.account = vm ? (vm.account || "") : ""; }
+      if (e.status === "ONE-TIME" && e.use === "XERO" && !e.on) e.use = "ONEOFF";
+    }
+    L0.acctFix = 1;
+  }
+  for (const L of (st.licenses || [])){ if (!L.scope) L.scope = "roles"; if (!L.depts) L.depts = []; if (!L.exclude) L.exclude = {}; }
   if (!st.licenses){
     // Licenses become rules. The per-head $ typed on roles was the Knack app's seat allocation
     // for that position; whatever the rules now explain comes off it, the rest stays as "other".
@@ -905,20 +922,32 @@ function licSeedFromModel(){
       out.push({ id: "L" + out.length, vendor: L.vendor, on: true,
         name: L.vendor + (tiers.length > 1 ? " · " + (tierName && tierName.toLowerCase() !== L.vendor.toLowerCase() ? tierName : "$" + t.pepm.toFixed(2) + "/seat") : ""),
         price: t.pepm, roles, unmatched, minSeats: min, minSource, overflowDept: min ? (L.unalloc_dept || "") : "",
-        cadence: L.cadence || "monthly" });
+        cadence: L.cadence || "monthly", scope: "roles", depts: [], exclude: {} });
     });
   }
   return out;
 }
 const licRoleFor = id => S.staff.find(x => x.id === id);
+/* A rule's scope decides who it covers. "roles" is an explicit list; "all" is every role on the
+   staffing plan and "depts" every role in the named departments — both follow the plan, so a
+   role added on Staffing later is covered without being re-picked. Exclusions carve one role
+   out of a following rule; the roles map still carries a seats-per-head override where set. */
+function licCovers(L, r){
+  if (!r || (L.exclude && L.exclude[r.id])) return 0;
+  const per = L.roles && L.roles[r.id] != null ? +L.roles[r.id] : null;
+  if (L.scope === "all") return per == null ? 1 : per;
+  if (L.scope === "depts") return (L.depts || []).includes(r.dept) ? (per == null ? 1 : per) : 0;
+  return per == null ? 0 : per;
+}
+const licCovered = (L, staff) => (staff || S.staff).map(r => ({ r, per: licCovers(L, r) })).filter(x => x.per > 0);
 function licSeats(lic, m){
   let n = 0;
-  for (const [rid, per] of Object.entries(lic.roles || {})){ const r = licRoleFor(rid); if (r) n += (per || 0) * staffHC(r, m); }
+  for (const { r, per } of licCovered(lic)) n += per * staffHC(r, m);
   return n;
 }
 function licPerHeadIn(licenses, role){
   let d = 0;
-  for (const L of (licenses || [])) if (L.on !== false && L.roles && L.roles[role.id]) d += (L.roles[role.id] || 0) * (L.price || 0);
+  for (const L of (licenses || [])) if (L.on !== false) d += licCovers(L, role) * (L.price || 0);
   return d;
 }
 const licPerHead = role => licPerHeadIn(S.licenses, role);
@@ -933,7 +962,7 @@ function licShortfall(m){
   return out;
 }
 function expensePlanned(e){
-  if (!e.on || e.use === "STAFFING") return 0;   // the person is a role on Staffing, counted there
+  if (!e.on || e.use === "STAFFING" || e.use === "ONEOFF") return 0;   // counted on Staffing, or covered by an account budget
   const base = e.override != null ? e.override : (e.use === "BUDGET" ? (e.budget || 0) : (e.xero || 0));
   return base * (1 + (e.adj || 0));
 }
@@ -1395,12 +1424,20 @@ function lockPlan(label){
   // a vendor's plan is its whole bill: the flat department rows plus, for a license vendor,
   // the seats its rules put on heads and any shortfall below the minimum — so the comparison
   // is bill against bill. Vendors carried on Staffing are compared on the payroll line instead.
-  const vendors = {}, onPayroll = [];
+  const vendors = {}, onPayroll = [], accounts = {}, vendorAccounts = {};
   for (const e of S.exp){
+    if (isEnvelope(e)){
+      // a department's account budget: compared against what unplanned vendors book to the account
+      if (!e.on || !e.account) continue;
+      const arr = accounts[e.account] || (accounts[e.account] = Array(NM).fill(0));
+      for (let m = 1; m <= NM; m++) if (m >= (e.from || 1) && m <= (e.to || NM)) arr[m - 1] += expensePlanned(e);
+      continue;
+    }
     if (e.use === "STAFFING"){ if (onPayroll.indexOf(e.vendor) < 0) onPayroll.push(e.vendor); continue; }
-    if (!e.on) continue;
+    if (!e.on || e.use === "ONEOFF") continue;   // a one-off draws on its account budget instead
     const arr = vendors[e.vendor] || (vendors[e.vendor] = Array(NM).fill(0));
     for (let m = 1; m <= NM; m++) if (m >= (e.from || 1) && m <= (e.to || NM)) arr[m - 1] += expensePlanned(e);
+    if (e.account){ const l = vendorAccounts[e.vendor] || (vendorAccounts[e.vendor] = []); if (!l.includes(e.account)) l.push(e.account); }
   }
   for (const L of (S.licenses || [])){
     if (L.on === false) continue;
@@ -1412,7 +1449,8 @@ function lockPlan(label){
   const plan = { id: "pl" + Date.now().toString(36), label: label || ("Plan locked " + new Date().toISOString().slice(0, 10)),
     at: new Date().toISOString(), act: ACT, scn: "mod",
     rev: r(C.rev.mod), oth: r(C.oth), cogs: r(C.cogs.mod), pay: r(C.pay), comp: r(C.comp.mod), opex: r(C.opex),
-    net: r(C.net.mod), netAll: r(C.netAll.mod), dept, onPayroll, vendors: Object.fromEntries(Object.entries(vendors).map(([k, v]) => [k, r(v)])) };
+    net: r(C.net.mod), netAll: r(C.netAll.mod), dept, onPayroll, vendors: Object.fromEntries(Object.entries(vendors).map(([k, v]) => [k, r(v)])),
+    accounts: Object.fromEntries(Object.entries(accounts).map(([k, v]) => [k, r(v)])), vendorAccounts };
   S.plans = S.plans || []; S.plans.push(plan);
   persist(); scheduleRender();
   return plan;
@@ -1449,7 +1487,7 @@ function parseXeroWorkbook(wb){
   const toDate = v => v instanceof Date ? v : (typeof v === "number" ? new Date(Math.round((v - 25569) * 86400000)) : (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? new Date(v.slice(0, 10) + "T00:00:00Z") : null));
   const idx = d => (d.getUTCFullYear() - 2026) * 12 + d.getUTCMonth();   // 0 = Jan 2026
   const mk = () => Array(NM).fill(0);
-  const out = { rev: mk(), oth: mk(), cogs: mk(), pay: mk(), varcomp: mk(), opex: mk(), vendors: {}, lastBilled: {}, months: new Set(), rows: 0, first: null, last: null };
+  const out = { rev: mk(), oth: mk(), cogs: mk(), pay: mk(), varcomp: mk(), opex: mk(), vendors: {}, lastBilled: {}, accounts: {}, vendAcct: {}, months: new Set(), rows: 0, first: null, last: null };
   let section = null;
   for (const row of rows){
     const a = row[0];
@@ -1476,6 +1514,9 @@ function parseXeroWorkbook(wb){
     let v = contact.split("\n")[0].replace(/\s+/g, " ").trim(); if (v.startsWith("Payment: ")) v = v.slice(9);
     const cv = canonVendor(v || "(unlabelled)");
     (out.vendors[cv] || (out.vendors[cv] = mk()))[i] += net;
+    (out.accounts[section] || (out.accounts[section] = mk()))[i] += net;
+    const va = out.vendAcct[cv] || (out.vendAcct[cv] = {});
+    (va[section] || (va[section] = mk()))[i] += net;
     if (iso > (out.lastBilled[cv] || "")) out.lastBilled[cv] = iso;
   }
   out.months = [...out.months].sort((a, b) => a - b);
@@ -1490,9 +1531,12 @@ async function importActuals(file){
     const wb = X.read(buf, { type: "array", cellDates: true });
     const r = parseXeroWorkbook(wb);
     if (!r.rows) throw new Error("No dated transaction rows found — is this an Account Transactions export?");
-    const vendors = {}; for (const [k, v] of Object.entries(r.vendors)) vendors[k] = v.map(x => Math.round(x * 100) / 100);
+    const r2 = v => v.map(x => Math.round(x * 100) / 100);
+    const vendors = {}; for (const [k, v] of Object.entries(r.vendors)) vendors[k] = r2(v);
+    const accounts = {}; for (const [k, v] of Object.entries(r.accounts)) accounts[k] = r2(v);
+    const vendAcct = {}; for (const [k, va] of Object.entries(r.vendAcct)){ vendAcct[k] = {}; for (const [a, v] of Object.entries(va)) vendAcct[k][a] = r2(v); }
     S.actuals = { at: new Date().toISOString(), source: file.name, first: r.first, last: r.last, months: r.months,
-      rev: r.rev, oth: r.oth, cogs: r.cogs, pay: r.pay, varcomp: r.varcomp, opex: r.opex, vendors, lastBilled: r.lastBilled };
+      rev: r.rev, oth: r.oth, cogs: r.cogs, pay: r.pay, varcomp: r.varcomp, opex: r.opex, vendors, lastBilled: r.lastBilled, accounts, vendAcct };
     persist(); scheduleRender();
     st.textContent = `Imported ${file.name}: ${r.rows.toLocaleString()} postings, ${r.first} → ${r.last}, ${r.months.length} month${r.months.length === 1 ? "" : "s"} inside the horizon, ${Object.keys(vendors).length} vendors.`;
   } catch (e){ st.innerHTML = `<span class="warn">${esc(String(e.message || e))}</span>`; }
@@ -1511,7 +1555,14 @@ function renderCompare(C){
   if (!chosen || !A){
     tbl.innerHTML = `<p class="subtle" style="margin:0">${!chosen ? "Lock a plan" : "Import an export"}${!chosen && !A ? " and import an export" : ""} to compare.</p>`; vt.innerHTML = ""; return;
   }
-  const months = A.months.filter(i => i < NM);
+  // only months the plan was forecasting count: anything already booked when it was locked is
+  // history the plan carried, not a call it made. Until a later export arrives, show that
+  // history against the export, and say so.
+  const allMonths = A.months.filter(i => i < NM);
+  let months = allMonths.filter(i => i >= (chosen.act || 0));
+  const hist = !months.length;
+  if (hist) months = allMonths;
+  const caveat = hist ? `<p class="subtle" style="margin:0 0 8px;font-size:12px"><b>Nothing forecast to check yet.</b> Every imported month was already booked when this plan was locked (through ${MONTHS[(chosen.act || 1) - 1]}), so this is the plan's history against the export — vendor rows are compared at their planned run-rate. Import an export covering ${MONTHS[chosen.act] || "later months"} onward to check the plan itself.</p>` : "";
   const lines = [["Sales revenue", chosen.rev, A.rev, "rev"], ["Other income", chosen.oth, A.oth, "rev"], ["COGS", chosen.cogs, A.cogs, "cost"],
     ["Payroll (base)", chosen.pay, A.pay.map((v, i) => v - A.varcomp[i]), "cost"], ["Sales commissions", chosen.comp, A.varcomp, "cost"], ["Total opex", chosen.opex, A.opex, "cost"]];
   const netPlan = chosen.net, netAct = months.map(() => 0);
@@ -1523,23 +1574,68 @@ function renderCompare(C){
     h += `<tr><td>${lbl}</td>` + months.map(i => cell(plan[i] || 0, act[i] || 0, kind)).join("") + cell(sumOver(plan), sumOver(act), kind) + `</tr>`;
   const actNet = i => (A.rev[i] || 0) + (A.oth[i] || 0) - (A.cogs[i] || 0) - (A.pay[i] || 0) - (A.opex[i] || 0);
   h += `<tr class="tot netrow"><td>NET</td>` + months.map(i => cell(netPlan[i] || 0, actNet(i), "rev")).join("") + cell(sumOver(netPlan), months.reduce((a, i) => a + actNet(i), 0), "rev") + `</tr>`;
-  tbl.innerHTML = h + "</tbody></table>";
-  // vendor deviations over the imported months
+  tbl.innerHTML = caveat + h + "</tbody></table>";
+  // vendor deviations over the imported months. A vendor with no planned row draws first on the
+  // account budgets for whatever it was booked to; only what those do not cover is NEW.
   const names = new Set([...Object.keys(chosen.vendors), ...Object.keys(A.vendors)]);
   const payrollVendors = new Set(chosen.onPayroll || []);
-  const devs = [];
+  const planAcc = chosen.accounts || {}, VA = A.vendAcct || {};
+  const envAct = {}, drawers = {}, devs = [], misbooked = [];
+  const n = months.length;
   for (const v of names){
     if (payrollVendors.has(v)) continue;   // a contractor carried on Staffing — compared on the payroll line
-    const p = chosen.vendors[v] || Array(NM).fill(0), a = A.vendors[v] || Array(NM).fill(0);
-    const ps = sumOver(p), as = sumOver(a), d = as - ps, n = months.length;
-    const kind = !chosen.vendors[v] ? "new" : !A.vendors[v] || Math.abs(as) < 1 ? (Math.abs(ps) > 1 ? "quiet" : null) : (Math.abs(d) > Math.max(100 * n, Math.abs(ps) * 0.15) ? (d > 0 ? "over" : "under") : null);
+    const p = chosen.vendors[v], a = A.vendors[v] || Array(NM).fill(0);
+    const va = VA[v] || {};
+    if (!p){
+      let rest = sumOver(a), drew = 0, restAcct = null, restMax = 0;
+      for (const [acct, mo] of Object.entries(va)){
+        const sa = sumOver(mo);
+        if (planAcc[acct]){ drew += sa; rest -= sa; const e = envAct[acct] || (envAct[acct] = Array(NM).fill(0)); months.forEach(i => e[i] += mo[i] || 0); (drawers[acct] || (drawers[acct] = [])).push({ v, amt: sa }); }
+        else if (Math.abs(sa) > restMax){ restMax = Math.abs(sa); restAcct = acct; }
+      }
+      if (Math.abs(rest) > 100 * n) devs.push({ v, ps: 0, as: rest, d: rest, kind: "new", n, drew, acct: restAcct });
+      continue;
+    }
+    const ps = sumOver(p), as = sumOver(a), d = as - ps;
+    const kind = !A.vendors[v] || Math.abs(as) < 1 ? (Math.abs(ps) > 1 ? "quiet" : null) : (Math.abs(d) > Math.max(100 * n, Math.abs(ps) * 0.15) ? (d > 0 ? "over" : "under") : null);
     if (kind) devs.push({ v, ps, as, d, kind, n });
+    // booked to an account other than the one expected
+    const exp = (chosen.vendorAccounts || {})[v];
+    if (exp && exp.length){
+      const off = Object.entries(va).map(([acct, mo]) => [acct, sumOver(mo)]).filter(([acct, sa]) => !exp.includes(acct) && Math.abs(sa) >= Math.max(50, Math.abs(as) * 0.05)).sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
+      if (off.length) misbooked.push({ v, exp, off, as });
+    }
   }
   devs.sort((x, y) => Math.abs(y.d) - Math.abs(x.d));
   const tag = k => ({ new: `<span class="chip new">NEW</span>`, quiet: `<span class="chip dropped">QUIET</span>`, over: `<span class="chip serious">OVER</span>`, under: `<span class="chip growing">UNDER</span>` })[k];
-  vt.innerHTML = devs.length ? `<table class="data"><thead><tr><th>Vendor</th><th></th><th>Plan, ${months.length} mo</th><th>Actual</th><th>Δ</th><th>Actual run-rate /mo</th><th></th></tr></thead><tbody>` +
-    devs.map(x => `<tr><td>${esc(x.v)}</td><td>${tag(x.kind)}</td><td>${fmt$(x.ps)}</td><td>${fmt$(x.as)}</td><td class="${x.d > 0 ? "neg" : "pos"}">${x.d >= 0 ? "+" : ""}${fmt$(x.d)}</td><td>${fmt$(x.as / x.n)}</td><td>${x.kind === "quiet" ? `<button class="btn mini" data-k="cmpoff" data-v="${esc(x.v)}" title="Switch this vendor's rows off from the next modeled month">Switch off</button>` : `<button class="btn mini" data-k="cmpaccept" data-v="${esc(x.v)}" data-rate="${(x.as / x.n).toFixed(2)}" title="Make ${fmt$(x.as / x.n)}/mo this vendor's budget from ${MONTHS[ACT]} on — split across its department rows as they are today">Accept as budget</button>`}</td></tr>`).join("") + `</tbody></table>`
+  let vh = devs.length ? `<table class="data"><thead><tr><th>Vendor</th><th></th><th>Plan, ${n} mo</th><th>Actual</th><th>Δ</th><th>Actual run-rate /mo</th><th></th></tr></thead><tbody>` +
+    devs.map(x => `<tr><td>${esc(x.v)}${x.kind === "new" && x.acct ? ` <span class="dim" title="Where Xero booked it">· ${esc(acctShort(x.acct))}</span>` : ""}${x.drew ? ` <span class="dim" title="Postings to accounts that have a budget — counted against those budgets below, not here">(+${fmt$(x.drew)} from account budgets)</span>` : ""}</td><td>${tag(x.kind)}</td><td>${fmt$(x.ps)}</td><td>${fmt$(x.as)}</td><td class="${x.d > 0 ? "neg" : "pos"}">${x.d >= 0 ? "+" : ""}${fmt$(x.d)}</td><td>${fmt$(x.as / x.n)}</td><td style="white-space:nowrap">${x.kind === "quiet" ? `<button class="btn mini" data-k="cmpoff" data-v="${esc(x.v)}" title="Switch this vendor's rows off from the next modeled month">Switch off</button>` : `<button class="btn mini" data-k="cmpaccept" data-v="${esc(x.v)}" data-rate="${(x.as / x.n).toFixed(2)}" title="Make ${fmt$(x.as / x.n)}/mo this vendor's budget from ${MONTHS[ACT]} on — split across its department rows as they are today">Accept as budget</button>${x.kind === "new" && x.acct ? ` <button class="btn mini" data-k="cmpenv" data-acct="${esc(x.acct)}" data-rate="${(x.as / x.n).toFixed(2)}" title="Not a vendor to plan on its own: set ${fmt$(x.as / x.n)}/mo aside for ${esc(acctShort(x.acct))} as an account budget (General Overhead — move it on Expenses)">Budget the account</button>` : ""}`}</td></tr>`).join("") + `</tbody></table>`
     : `<p class="subtle" style="margin:0">No vendor is off plan by more than 15% and $100 over the imported months.</p>`;
+  if (!A.vendAcct) vh += `<p class="subtle" style="margin:6px 0 0">This import predates account detail — import the export again to see account budgets and mis-booked vendors.</p>`;
+  // account budgets: the department envelopes against what unplanned vendors booked to the account
+  const accts = [...new Set([...Object.keys(planAcc), ...Object.keys(envAct)])];
+  if (accts.length){
+    const rows = accts.map(acct => {
+      const ps = planAcc[acct] ? sumOver(planAcc[acct]) : 0, as = envAct[acct] ? sumOver(envAct[acct]) : 0, d = as - ps;
+      const kind = Math.abs(d) > Math.max(100 * n, Math.abs(ps) * 0.15) ? (d > 0 ? "over" : "under") : null;
+      const who = envelopesFor(acct).map(e => dn(e.dept));
+      const top = (drawers[acct] || []).sort((x, y) => Math.abs(y.amt) - Math.abs(x.amt));
+      return { acct, ps, as, d, kind, who, top };
+    }).sort((x, y) => Math.abs(y.d) - Math.abs(x.d));
+    vh += `<h3 style="font-size:13px;margin:16px 0 6px">Account budgets</h3>
+      <p class="note">Each account a department budgets, against what vendors <i>without a planned row of their own</i> booked to it over the imported months — the one-offs and small names the budget exists for. The export carries no department, so an account shared by several departments is compared as one.</p>
+      <table class="data"><thead><tr><th>Account</th><th>Budgeted by</th><th>Plan, ${n} mo</th><th>Actual, unplanned vendors</th><th>Δ</th><th>Run-rate /mo</th><th>Drawn by</th><th></th></tr></thead><tbody>` +
+      rows.map(x => `<tr><td>${esc(acctShort(x.acct))}</td><td>${esc(x.who.join(", ") || "—")}${!x.who.length ? ` <span class="dim">(not in the live model any more)</span>` : ""}</td><td>${fmt$(x.ps)}</td><td>${fmt$(x.as)}</td><td class="${x.kind ? (x.d > 0 ? "neg" : "pos") : "dim"}">${x.d >= 0 ? "+" : ""}${fmt$(x.d)}${x.kind ? ` ${x.kind === "over" ? `<span class="chip serious">OVER</span>` : `<span class="chip growing">UNDER</span>`}` : ""}</td><td>${fmt$(x.as / n)}</td><td class="dim" title="${esc(x.top.map(t => `${t.v} ${fmt$(t.amt)}`).join("\n"))}">${esc(x.top.slice(0, 3).map(t => t.v).join(", "))}${x.top.length > 3 ? ` +${x.top.length - 3}` : ""}</td><td>${x.who.length ? `<button class="btn mini" data-k="cmpacceptacct" data-acct="${esc(x.acct)}" data-rate="${(x.as / n).toFixed(2)}" title="Make ${fmt$(x.as / n)}/mo the budget for this account from ${MONTHS[ACT]} on — split across the departments budgeting it as they are today">Accept as budget</button>` : ""}</td></tr>`).join("") + `</tbody></table>`;
+  }
+  // planned vendors booked to a different account than the one expected
+  if (misbooked.length){
+    misbooked.sort((x, y) => Math.abs(y.off[0][1]) - Math.abs(x.off[0][1]));
+    vh += `<h3 style="font-size:13px;margin:16px 0 6px">Booked to a different account</h3>
+      <p class="note">Planned vendors whose postings landed somewhere other than the account expected for them. These are on the bookkeeper's checklist (Trends) as well.</p>
+      <table class="data"><thead><tr><th>Vendor</th><th>Expected</th><th>Booked to</th></tr></thead><tbody>` +
+      misbooked.map(x => `<tr><td>${esc(x.v)}</td><td>${esc(x.exp.map(acctShort).join(" or "))}</td><td class="warn">${esc(x.off.map(([a, sa]) => `${acctShort(a)} ${fmt$(sa)}`).join(" · "))}</td></tr>`).join("") + `</tbody></table>`;
+  }
+  vt.innerHTML = vh;
 }
 /* ---------- formatting ---------- */
 /* ---------- month naming ----------
@@ -1897,7 +1993,8 @@ function renderProj(C){
     <h4>Incentive programs</h4>Money a period earns that the books have not seen — the operations bonus is not paid until the six months close, and the Sales Director bonus has never been calculated. A program pays either a set amount earned proportionally across a revenue range (nothing below the floor, all of it at the cap) or a percentage of every dollar above a threshold, uncapped. Its cost accrues <b>by pacing</b> — every month carries its revenue-weighted share of the projected payout, so as the running total crosses each percent of the goal that month picks up its slice — or evenly, or only once the threshold is actually crossed. Costs are loaded with employer payroll taxes; contractors are outside every program.
     <h4>P&amp;L conventions</h4>Shaded columns are Xero as booked; later columns come from the Sales projections, Staffing and Expenses tabs. Payroll is base pay in every column — Xero's commission lines are split out onto the commissions row so booked and modeled months read alike. <b>As booked</b> is what Xero shows; <b>+ programs</b> charges the incentive programs to the months that earn them.
     <h4>By period</h4>Calendar quarters (Q1 is Jan–Mar); the planning cycles that straddle the year are Q2+Q3 (Apr–Sep) and Q4+Q1 (Oct–Mar). 2026 is the one full calendar year inside the horizon. Margins are computed on the period sums, not averaged.
-    <h4>Licenses &amp; seats</h4>Per-seat software is a rule per vendor tier: a price per seat, the roles it covers with seats per head, a minimum seat count with the department that carries the shortfall, and a billing cadence. Seats assigned to roles ride each head on Staffing (the Licenses /head column), so a hire raises the cost where the hire is made; seats bought below the minimum land on the overflow department's opex and follow headcount live; the flat platform portions are the department-split rows on Expenses. The rules were seeded once from the Knack budgeting app's contracts and allocations exports; this is where they are maintained now.
+    <h4>Licenses &amp; seats</h4>Each vendor is one bill, and each bill carries seat rules and department allocations. A rule is a price per seat, the roles it covers with seats per head, a minimum seat count with the department that carries the shortfall, and a billing cadence; a rule scoped to every role (or every role in a department) follows the staffing plan, so a role added there later is covered without being re-picked, and single roles can be left out. Seats assigned to roles ride each head on Staffing (the Licenses /head column), so a hire raises the cost where the hire is made; seats bought below the minimum land on the overflow department's opex and follow headcount live; allocations are flat monthly amounts on a department — the same rows the Expenses table shows. Xero's trailing average is compared once per bill, against every rule and allocation on it. The rules were seeded once from the Knack budgeting app's contracts and allocations exports; this is where they are maintained now.
+    <h4>Accounts &amp; one-offs</h4>Every expense row names the Xero account it should be booked to, and shows in amber any account it has actually been booked to instead (the trailing year, plus imported months) — those land on the bookkeeper's checklist on Trends. Spend that is not a vendor to plan month by month is handled the other way round: a department sets a budget for an account (office supplies, travel), and vendors marked ONE-OFF, along with any vendor without a planned row, draw on that budget when actuals are compared. The export carries no department, so an account budgeted by several departments is compared as one.
     <h4>Department budget</h4>Payroll splits from Xero's department tracking (97% tagged; untagged lands in Unassigned) for booked months, the staffing and expense plans after. Commissions and COGS are company-level and not in the rollup.`;
 }
 </script>
@@ -2624,60 +2721,101 @@ function lastBilledCell(e){
   return `<td class="${cls}" title="${esc(tip)}" style="white-space:nowrap">${label}</td>`;
 }
 // which license rules show their role chips — UI state only, never persisted
-const openLics = new Set();
+const openLics = new Set();     // rules whose roles tray is open
+const openBills = new Set();    // vendors whose rules tray is open
+// A department allocation on a vendor's bill: an ordinary expense row, on the vendor's name, so
+// it shows on Expenses too. Carries the vendor's Xero history and account when there is one.
+function newExpRow(vendor, dept, amount, extra){
+  const vm = XVEND.get(vendor);
+  return Object.assign({ id: "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), vendor, dept, share: 1, budget: amount, xero: null,
+    status: vm ? vm.status : "NOT IN XERO", seat: 0, ttm: vm ? vm.ttm : null, purpose: "allocation", conflict: false, manual: !vm,
+    account: vm ? vm.account : "", use: "BUDGET", override: null, adj: 0, from: Math.min(NM, ACT + 1), to: NM, on: true }, extra || {});
+}
 function renderLicenses(C){
   const el = document.getElementById("licList"); if (!el) return;
   const now = Math.min(NM, ACT + 1), end = NM;
   const xeroOf = v => { const r = (MODEL.vend_master || []).find(x => x.vendor === v); return r ? r.base : null; };
   const roleOpts = S.staff.slice().sort((a, b) => a.dept.localeCompare(b.dept) || a.position.localeCompare(b.position));
   const billed = (L, m) => Math.max(licSeats(L, m), L.minSeats || 0) * (L.price || 0);
-  let h = `<table class="data"><thead><tr><th>On</th><th>License</th><th>$/seat</th><th>Billed</th><th>Roles · seats per head</th><th title="Seats the roles' headcount assigns, first modeled month → Mar ’27">Seats now → Mar ’27</th><th title="Seats paid for regardless of headcount. Empty means none: the rule bills exactly the assigned seats.">Min seats</th><th title="Department that carries seats below the minimum">Overflow dept</th><th title="Assigned seats × price, first modeled month">Rule $/mo</th><th title="Xero's trailing monthly average for this vendor — the whole bill. When one bill covers several rules it is compared once, on the vendor's bill line, against all of them plus any flat rows.">Xero avg</th><th></th></tr></thead><tbody>`;
-  // one Xero bill per vendor: rules sharing a vendor are listed together and compared as one bill
+  const hcNow = r => Math.round(staffHC(r, now));
+  let h = `<table class="data lic"><thead><tr><th>Bill</th><th>License · allocation</th><th>$/seat</th><th>Billed</th><th title="Roles the rule covers, with seats per head">Roles</th><th title="Seats the roles' headcount assigns: first modeled month → Mar ’27">Seats now → Mar ’27</th><th title="Seats paid for regardless of headcount. Empty means none: the rule bills exactly the assigned seats.">Min</th><th title="Department that carries seats below the minimum">Overflow</th><th title="Whole bill on the vendor line: every rule's seats plus its department allocations, first modeled month. Each rule's own seats × price beneath.">$/mo</th><th title="Xero's trailing monthly average for the vendor — the whole bill, compared once per vendor against every rule plus its allocations">Xero avg</th><th></th></tr></thead><tbody>`;
+  // one Xero bill per vendor: the vendor line is the bill; its rules and allocations sit in a tray
   const vendors = []; for (const L of (S.licenses || [])) if (!vendors.includes(L.vendor)) vendors.push(L.vendor);
   for (const vendor of vendors){
     const rows = (S.licenses || []).filter(x => x.vendor === vendor);
     const xero = xeroOf(vendor);
-    const flatRows = S.exp.filter(e => e.vendor === vendor && e.on);
-    const flat = flatRows.reduce((a, e) => a + expensePlanned(e), 0);
-    const vendorRule = rows.reduce((a, x) => a + billed(x, now), 0) + flat;
+    const allocs = S.exp.filter(e => e.vendor === vendor && e.kind !== "envelope");
+    const flat = allocs.filter(e => e.on).reduce((a, e) => a + expensePlanned(e), 0);
+    const vendorRule = rows.reduce((a, x) => a + (x.on === false ? 0 : billed(x, now)), 0) + flat;
+    const plan1 = rows.reduce((a, x) => a + (x.on === false ? 0 : billed(x, end)), 0) + flat;
     const gap = xero != null && vendorRule ? (xero - vendorRule) / vendorRule : null;
-    const shared = rows.length > 1 || flat > 0;
     const gapCell = `${xero == null ? "—" : fmtK(xero)}${gap != null && Math.abs(gap) > 0.1 ? ` <small>${gap > 0 ? "+" : ""}${Math.round(gap * 100)}%</small>` : ""}`;
-    const gapTitle = xero == null ? "Not in the Xero export under this name" : `Xero ${fmt$(xero)}/mo vs ${fmt$(vendorRule)}/mo planned for ${vendor} — ${rows.length} seat rule${rows.length === 1 ? "" : "s"}${flat ? ` plus ${fmt$(flat)} of flat department rows` : ""}${gap != null ? ` — ${gap > 0 ? "+" : ""}${Math.round(gap * 100)}%` : ""}`;
+    const gapTitle = xero == null ? "Not in the Xero export under this name" : `Xero ${fmt$(xero)}/mo vs ${fmt$(vendorRule)}/mo planned for ${vendor} — ${rows.length} seat rule${rows.length === 1 ? "" : "s"}${flat ? ` plus ${fmt$(flat)} of department allocations` : ""}${gap != null ? ` — ${gap > 0 ? "+" : ""}${Math.round(gap * 100)}%` : ""}`;
     const gapClass = gap != null && Math.abs(gap) > 0.1 ? "warn" : "dim";
+    const open = openBills.has(vendor);
+    const one = rows.length === 1 ? rows[0] : null;
+    const heads = new Set(); for (const L of rows) for (const { r } of licCovered(L)) heads.add(r.id);
+    const anyOn = rows.some(x => x.on !== false);
+    h += `<tr class="bill${anyOn ? "" : " off"}" data-vendor="${esc(vendor)}">
+      <td style="white-space:nowrap"><button class="exp-toggle" data-k="billfold" data-vendor="${esc(vendor)}" aria-expanded="${open}" title="${open ? "Hide" : "Show"} this bill's rules and allocations">${open ? "▾" : "▸"}</button> <input class="cell pos" style="width:200px;font-weight:600;text-align:left" data-k="billvendor" data-vendor="${esc(vendor)}" value="${esc(vendor)}" title="The vendor as Xero names it — renaming moves every rule and allocation on this bill"></td>
+      <td style="white-space:nowrap" class="dim" title="${rows.map(x => x.name).join("\n")}${allocs.length ? "\n" + allocs.map(e => `${dn(e.dept)}: ${fmt$(expensePlanned(e))}/mo${e.on ? "" : " (off)"}`).join("\n") : ""}">${rows.length} rule${rows.length === 1 ? "" : "s"}${allocs.length ? ` · ${allocs.length} allocation${allocs.length === 1 ? "" : "s"}` : ""}</td>
+      <td>${one ? (+one.price || 0).toFixed(2) : `<span class="dim" title="${rows.map(x => `${x.name}: ${fmt$(x.price)}/seat`).join("\n")}">${rows.length} prices</span>`}</td>
+      <td class="dim">${esc(one ? (one.cadence || "monthly") : (rows[0].cadence || "monthly"))}</td>
+      <td style="white-space:nowrap">${heads.size} role${heads.size === 1 ? "" : "s"}</td>
+      <td style="white-space:nowrap">${one ? `${Math.round(licSeats(one, now))} → ${Math.round(licSeats(one, end))}` : ""}</td>
+      <td class="dim">${one && one.minSeats ? one.minSeats : ""}</td>
+      <td class="dim">${one && one.minSeats && one.overflowDept ? esc(dn(one.overflowDept)) : ""}</td>
+      <td style="white-space:nowrap;font-weight:600" title="Whole bill at ${MONTHS[now - 1]}: ${rows.map(x => `${x.name} ${fmt$(x.on === false ? 0 : billed(x, now))}`).join(" + ")}${flat ? ` + ${fmt$(flat)} allocations` : ""} · ${fmt$(plan1)} by Mar ’27">${fmt$(vendorRule)}</td>
+      <td style="white-space:nowrap" class="${gapClass}" title="${esc(gapTitle)}">${gapCell}</td>
+      <td style="white-space:nowrap"><button class="btn mini" data-k="billaddlic" data-vendor="${esc(vendor)}" title="Add another seat rule to this bill — a second tier or product on the same vendor">+ license</button> <button class="btn mini" data-k="billaddalloc" data-vendor="${esc(vendor)}" title="Add a flat monthly allocation to a department on this bill — a platform fee, a shared block, anything not per seat">+ allocation</button></td></tr>`;
+    if (!open) continue;
     for (const L of rows){
       const s0 = licSeats(L, now), s1 = licSeats(L, end);
       const short0 = Math.max(0, (L.minSeats || 0) - s0);
       const rule = (s0 + short0) * (L.price || 0);
-      const chips = Object.entries(L.roles || {}).map(([rid, per]) => { const r = licRoleFor(rid); return r ? `<span class="tag" title="${esc(dn(r.dept))} · ${Math.round(staffHC(r, now))} head${Math.round(staffHC(r, now)) === 1 ? "" : "s"} now">${esc(r.position)} ×${per}<button data-id="${L.id}" data-k="licroledel" data-role="${rid}" title="Remove">✕</button></span>` : ""; }).join("") +
-        ((L.unmatched || []).length ? `<span class="subtle" title="Positions in the old allocation that are not on the staffing plan">+${L.unmatched.length} not on staffing</span>` : "");
-      const left = roleOpts.filter(r => !(L.roles && L.roles[r.id] != null));
-      const leftDepts = DEPTS.filter(d => left.some(r => r.dept === d));
-      h += `<tr${L.on === false ? ' style="opacity:.55"' : ""}>
-        <td><input type="checkbox" class="switch" data-id="${L.id}" data-k="licon"${L.on === false ? "" : " checked"}></td>
-        <td><input class="cell pos" style="width:190px" data-id="${L.id}" data-k="licname" value="${esc(L.name || "")}" title="Vendor: ${esc(L.vendor)}"></td>
+      const covered = licCovered(L);
+      const scopeLabel = L.scope === "all" ? `every role (${covered.length})` : L.scope === "depts" ? `every role in ${(L.depts || []).map(dn).join(", ") || "…"} (${covered.length})` : `${covered.length} role${covered.length === 1 ? "" : "s"}`;
+      h += `<tr class="rule${L.on === false ? " off" : ""}">
+        <td style="padding-left:26px"><input type="checkbox" class="switch" data-id="${L.id}" data-k="licon"${L.on === false ? "" : " checked"} title="Rule on or off"></td>
+        <td><input class="cell pos" style="width:190px" data-id="${L.id}" data-k="licname" value="${esc(L.name || "")}" title="This rule's name — a tier or product on the ${esc(L.vendor)} bill"></td>
         <td><input class="cell tiny" style="width:64px" data-id="${L.id}" data-k="licprice" value="${(+L.price || 0).toFixed(2)}"></td>
         <td><select class="cell" data-id="${L.id}" data-k="liccad">${["monthly", "quarterly", "annual"].map(c => `<option value="${c}"${(L.cadence || "monthly") === c ? " selected" : ""}>${c}</option>`).join("")}</select></td>
-        <td style="white-space:nowrap" title="${esc(Object.entries(L.roles || {}).map(([rid, per]) => { const r = licRoleFor(rid); return r ? `${r.position} ×${per}` : ""; }).filter(Boolean).join("\n") || "No roles yet")}">${Object.keys(L.roles || {}).length} role${Object.keys(L.roles || {}).length === 1 ? "" : "s"}${(L.unmatched || []).length ? ` <span class="subtle" title="${esc(L.unmatched.join(", "))}">+${L.unmatched.length} not on staffing</span>` : ""} <button class="btn mini${openLics.has(L.id) ? " on" : ""}" data-id="${L.id}" data-k="licroles" title="Show or hide the roles this rule covers">${openLics.has(L.id) ? "▾" : "▸"} roles</button></td>
+        <td style="white-space:nowrap" title="${esc(covered.map(({ r, per }) => `${r.position} ×${per}`).join("\n") || "No roles yet")}">${scopeLabel} <button class="btn mini${openLics.has(L.id) ? " on" : ""}" data-id="${L.id}" data-k="licroles" title="Show or hide the roles this rule covers${(L.unmatched || []).length ? ` (${L.unmatched.length} position${L.unmatched.length === 1 ? "" : "s"} from the old allocation not on staffing: ${esc(L.unmatched.join(", "))})` : ""}">${openLics.has(L.id) ? "▾" : "▸"} roles</button></td>
         <td style="white-space:nowrap">${Math.round(s0)} → ${Math.round(s1)}</td>
         <td><input class="cell tiny" style="width:56px" data-id="${L.id}" data-k="licmin" value="${L.minSeats || ""}" placeholder="none" title="${L.minSeats ? `${L.minSeats} seats are paid for regardless of headcount${L.minSource === "contract" ? " (the contract's seat count)" : L.minSource === "inferred" ? " (assigned seats plus what the unallocated dollars bought)" : ""}. Clear it for no minimum.` : "No minimum — this rule bills exactly the seats its roles assign. Type a number to set one."}"></td>
-        <td><select class="cell" style="max-width:170px" data-id="${L.id}" data-k="licdept"><option value="">—</option>${DEPTS.map(d => `<option value="${esc(d)}"${d === L.overflowDept ? " selected" : ""}>${esc(dn(d))}</option>`).join("")}</select></td>
+        <td><select class="cell" style="max-width:140px" data-id="${L.id}" data-k="licdept"><option value="">—</option>${DEPTS.map(d => `<option value="${esc(d)}"${d === L.overflowDept ? " selected" : ""}>${esc(dn(d))}</option>`).join("")}</select></td>
         <td style="white-space:nowrap" title="${Math.round(s0)} assigned${short0 ? ` + ${Math.round(short0)} short of the ${L.minSeats}-seat minimum (${fmt$(short0 * L.price)} to ${esc(dn(L.overflowDept || "—"))})` : L.minSeats ? ` — at or above the ${L.minSeats}-seat minimum` : " — no minimum, bills assigned seats"} × ${fmt$(L.price)}">${fmt$(rule)}${short0 ? ` <span class="warn" title="Seats below the minimum">+${Math.round(short0)}</span>` : ""}</td>
-        ${shared
-          ? `<td class="dim" style="white-space:nowrap" title="${esc(vendor)} is one Xero bill covering ${rows.length > 1 ? `${rows.length} rules` : "this rule"}${flat ? " and flat department rows" : ""} — compared on the bill line below">same bill ↓</td>`
-          : `<td style="white-space:nowrap" class="${gapClass}" title="${esc(gapTitle)}">${gapCell}</td>`}
-        <td><button class="btn mini" data-id="${L.id}" data-k="licdel" title="Remove rule">✕</button></td></tr>`;
-      if (openLics.has(L.id))
-        h += `<tr class="dim"><td></td><td colspan="10"><span class="pg-chips" style="max-width:none;padding:2px 0 6px">${chips}${left.length ? `<select class="cell" style="max-width:220px" data-id="${L.id}" data-k="licroleadd"><option value="">+ add a role…</option><option value="*">✱ every role (${left.length})</option>${leftDepts.length > 1 ? `<optgroup label="Every role in…">${leftDepts.map(d => `<option value="dept:${esc(d)}">${esc(dn(d))} (${left.filter(r => r.dept === d).length})</option>`).join("")}</optgroup>` : ""}${leftDepts.map(d => { const rs = left.filter(r => r.dept === d); return `<optgroup label="${esc(dn(d))}">${rs.map(r => `<option value="${r.id}">${esc(r.position)}</option>`).join("")}</optgroup>`; }).join("")}</select>` : ""}</span></td></tr>`;
+        <td class="dim" style="white-space:nowrap" title="Compared on the ${esc(vendor)} bill line above, together with every rule and allocation on it">in the bill ↑</td>
+        <td style="white-space:nowrap"><select class="cell" style="max-width:96px;font-size:11px" data-id="${L.id}" data-k="licbill" title="Move this rule to another vendor's bill, or onto a new bill of its own"><option value="">move to…</option>${vendors.filter(v => v !== vendor).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("")}<option value="__new">a new bill</option></select> <button class="btn mini" data-id="${L.id}" data-k="licdel" title="Remove rule">✕</button></td></tr>`;
+      if (openLics.has(L.id)){
+        const following = L.scope === "all" || L.scope === "depts";
+        const chips = covered.map(({ r, per }) => `<span class="tag" title="${esc(dn(r.dept))} · ${hcNow(r)} head${hcNow(r) === 1 ? "" : "s"} now">${esc(r.position)} ×${per}<button data-id="${L.id}" data-k="${following ? "licexclude" : "licroledel"}" data-role="${r.id}" title="${following ? "Leave this role out of the rule" : "Remove"}">✕</button></span>`).join("") +
+          ((L.unmatched || []).length ? `<span class="subtle" title="Positions in the old allocation that are not on the staffing plan">+${L.unmatched.length} not on staffing</span>` : "");
+        const excluded = Object.keys(L.exclude || {}).map(licRoleFor).filter(Boolean);
+        const left = roleOpts.filter(r => !licCovers(L, r) && !(L.exclude && L.exclude[r.id]));
+        const leftDepts = DEPTS.filter(d => left.some(r => r.dept === d));
+        const scopeSel = `<select class="cell" style="max-width:220px" data-id="${L.id}" data-k="licscope" title="Who this rule covers. Every-role and every-role-in-a-department rules follow the staffing plan: a role added there later is covered automatically."><option value="roles"${L.scope !== "all" && L.scope !== "depts" ? " selected" : ""}>roles picked one by one</option><option value="all"${L.scope === "all" ? " selected" : ""}>✱ every role on the plan</option><optgroup label="every role in…">${DEPTS.map(d => `<option value="dept:${esc(d)}"${L.scope === "depts" && (L.depts || []).includes(d) ? " disabled" : ""}>${esc(dn(d))}${L.scope === "depts" ? " (add)" : ""}</option>`).join("")}</optgroup></select>`;
+        const deptChips = L.scope === "depts" ? (L.depts || []).map(d => `<span class="tag" style="font-weight:600">${esc(dn(d))}<button data-id="${L.id}" data-k="licdeptdel" data-dept="${esc(d)}" title="Drop this department from the rule">✕</button></span>`).join("") : "";
+        const addSel = !following && left.length ? `<select class="cell" style="max-width:220px" data-id="${L.id}" data-k="licroleadd"><option value="">+ add a role…</option>${leftDepts.map(d => `<optgroup label="${esc(dn(d))}">${left.filter(r => r.dept === d).map(r => `<option value="${r.id}">${esc(r.position)}</option>`).join("")}</optgroup>`).join("")}</select>` : "";
+        const exChips = excluded.length ? `<span class="subtle" style="margin-left:6px">left out:</span>` + excluded.map(r => `<span class="tag" style="text-decoration:line-through;opacity:.7">${esc(r.position)}<button data-id="${L.id}" data-k="licinclude" data-role="${r.id}" title="Cover this role again">↩</button></span>`).join("") : "";
+        h += `<tr class="dim"><td></td><td colspan="10"><div class="pg-chips" style="max-width:none;padding:2px 0 6px;align-items:center">${scopeSel}${deptChips}${addSel}</div><div class="pg-chips" style="max-width:none;padding:0 0 6px">${chips || `<span class="subtle">${following ? "No role on the plan matches" : "No roles yet — pick one, or switch to every role"}</span>`}${exChips}</div></td></tr>`;
+      }
     }
-    if (shared){
-      const plan1 = rows.reduce((a, x) => a + billed(x, end), 0) + flat;
-      h += `<tr class="bill" data-vendor="${esc(vendor)}"><td></td><td style="white-space:nowrap">${esc(vendor)} — whole bill</td><td colspan="3">${rows.length > 1 ? `${rows.length} rules` : "1 rule"}${flat ? ` + ${fmt$(flat)} flat${flatRows.length > 1 ? ` (${flatRows.length} rows)` : ""}` : ""}</td><td colspan="3"></td><td style="white-space:nowrap" title="Every ${esc(vendor)} rule billed at ${MONTHS[now - 1]}${flat ? ` plus ${fmt$(flat)} of flat department rows` : ""} · ${fmt$(plan1)} by Mar ’27">${fmt$(vendorRule)}</td><td style="white-space:nowrap" class="${gapClass}" title="${esc(gapTitle)}">${gapCell}</td><td></td></tr>`;
+    for (const e of allocs){
+      h += `<tr class="rule alloc${e.on ? "" : " off"}">
+        <td style="padding-left:26px"><input type="checkbox" class="switch" data-id="${e.id}" data-k="allocon"${e.on ? " checked" : ""} title="Allocation on or off"></td>
+        <td style="white-space:nowrap"><span class="dim">allocation ·</span> ${esc(e.purpose && e.purpose !== "allocation" ? e.purpose : "flat")}${e.share < 1 ? ` <span class="dim">(${Math.round(e.share * 100)}% share)</span>` : ""}</td>
+        <td colspan="2" class="dim" title="A flat monthly amount — not per seat. It is also a row on the Expenses table below.">flat /mo</td>
+        <td><select class="cell" style="max-width:140px" data-id="${e.id}" data-k="allocdept" title="Department this allocation is charged to">${DEPTS.map(d => `<option value="${esc(d)}"${d === e.dept ? " selected" : ""}>${esc(dn(d))}</option>`).join("")}</select></td>
+        <td colspan="3" class="dim" style="white-space:nowrap">${e.from > 1 || (e.to || NM) < NM ? `${monthName(e.from || 1)} → ${monthName(e.to || NM)}` : ""}${e.use === "STAFFING" ? "counted on Staffing" : e.use === "XERO" && e.override == null ? "Xero run-rate" : ""}</td>
+        <td><input class="cell tiny" style="width:72px" data-id="${e.id}" data-k="allocamt" value="${Math.round(expensePlanned(e) || e.override || e.budget || e.xero || 0)}" title="Monthly amount — sets this row's override on Expenses"></td>
+        <td class="dim" style="white-space:nowrap">in the bill ↑</td>
+        <td><button class="btn mini" data-id="${e.id}" data-k="allocdel" title="Remove this allocation (the Expenses row goes with it)">✕</button></td></tr>`;
     }
   }
   const tot0 = (S.licenses || []).reduce((a, L) => a + (L.on === false ? 0 : billed(L, now)), 0);
   const tot1 = (S.licenses || []).reduce((a, L) => a + (L.on === false ? 0 : billed(L, end)), 0);
-  h += `<tr class="tot"><td colspan="8">TOTAL — ${MONTHS[now - 1]} → Mar ’27</td><td colspan="3">${fmt$(tot0)} → ${fmt$(tot1)} /mo</td></tr>`;
+  h += `<tr class="tot"><td colspan="8">SEAT RULES — ${MONTHS[now - 1]} → Mar ’27 <span class="dim" style="font-weight:400">(allocations are counted on Expenses)</span></td><td colspan="3">${fmt$(tot0)} → ${fmt$(tot1)} /mo</td></tr>`;
   el.innerHTML = h + "</tbody></table>";
 }
 function renderExpenses(C){
@@ -2687,31 +2825,67 @@ function renderExpenses(C){
     selSt.innerHTML = `<option value="">All statuses</option>` + Object.keys(STATUS_CHIP).map(s => `<option>${esc(s)}</option>`).join("");
   }
   const q = expFilter.q.toLowerCase();
-  const match = e => (!q || e.vendor.toLowerCase().includes(q) || (e.purpose || "").toLowerCase().includes(q)) &&
+  const match = e => (!q || e.vendor.toLowerCase().includes(q) || (e.purpose || "").toLowerCase().includes(q) || (e.account || "").toLowerCase().includes(q)) &&
     (!expFilter.dept || e.dept === expFilter.dept) && (!expFilter.status || e.status === expFilter.status) &&
     (!expFilter.on || (expFilter.on === "on") === !!e.on);
-  let h = `<table class="data"><thead><tr><th>On</th><th>Expense</th><th>Dept</th><th>Status</th><th title="Most recent posting for this vendor in the Xero export. Amber: on but quiet for 90+ days, or off but billed within 60 days.">Last billed</th><th>12-mo trend</th>
-    <th>Xero sugg/mo</th><th>Budget/mo</th><th>Use</th><th>Override</th><th>Adj %</th><th>From</th><th>To</th><th>Planned/mo</th></tr></thead><tbody>`;
+  let h = `<table class="data"><thead><tr><th>On</th><th>Expense</th><th>Dept</th><th title="The Xero account this should be booked to. Beneath it, in amber, any account it has actually been booked to instead.">Account</th><th>Status</th><th title="Most recent posting for this vendor in the Xero export. Amber: on but quiet for 90+ days, or off but billed within 60 days.">Last billed</th><th>12-mo trend</th>
+    <th>Xero sugg/mo</th><th>Budget/mo</th><th title="Where the monthly figure comes from. ONE-OFF: not planned month by month — covered by the department's budget for its account. STAFFING: a person counted on the Staffing tab.">Use</th><th>Override</th><th>Adj %</th><th>From</th><th>To</th><th>Planned/mo</th></tr></thead><tbody>`;
   let shown = 0, totPlanned = 0;
+  const planned = plannedVendorSet();
+  const acctCell = e => {
+    const list = isEnvelope(e) ? [] : bookedList(e.vendor), mism = acctMismatch(e);
+    const sel = `<select class="cell" style="max-width:150px;font-size:11px" data-id="${e.id}" data-k="account" title="${isEnvelope(e) ? "The Xero account this budget covers" : "The Xero account this expense SHOULD be booked to"}${list.length ? "&#10;Booked to: " + esc(list.map(([a, v]) => `${acctShort(a)} ${fmt$(v)}`).join(" · ")) : ""}"><option value="">—</option>${ACCOUNTS.map(a => `<option value="${esc(a)}"${a === e.account ? " selected" : ""}>${esc(acctShort(a))}</option>`).join("")}${e.account && !ACCOUNTS.includes(e.account) ? `<option value="${esc(e.account)}" selected>${esc(acctShort(e.account))}</option>` : ""}</select>`;
+    let note = "";
+    if (mism.length) note = `<div class="warn booked" style="font-size:10.5px;white-space:nowrap" title="Booked to ${esc(mism.map(([a, v]) => `${acctShort(a)} (${fmt$(v)})`).join(", "))} — expected ${esc(acctShort(e.account))}. On the bookkeeper's checklist (Trends).">booked to ${esc(acctShort(mism[0][0]))}${mism.length > 1 ? ` +${mism.length - 1}` : ""}</div>`;
+    else if (!e.account && list.length) note = `<div class="dim booked" style="font-size:10.5px;white-space:nowrap" title="No expected account set. Booked to ${esc(list.map(([a, v]) => `${acctShort(a)} (${fmt$(v)})`).join(", "))}">booked to ${esc(acctShort(list[0][0]))}${list.length > 1 ? ` +${list.length - 1}` : ""}</div>`;
+    return `<td>${sel}${note}</td>`;
+  };
   const filterActive = !!(q || expFilter.dept || expFilter.status || expFilter.on);
   for (const d of DEPTS){
     const rows = S.exp.filter(e => e.dept === d && match(e));
     if (!rows.length) continue;
     const folded = !filterActive && expFold.has(d);
     const sub = rows.reduce((a, e) => a + expensePlanned(e), 0);
-    h += `<tr class="sec deptsec"><td colspan="13"><button class="exp-toggle" data-k="efold" data-dept="${esc(d)}" aria-expanded="${!folded}">${folded ? "▸" : "▾"}</button> ${esc(dn(d))} <span class="dim" style="font-weight:400">· ${rows.length} expense${rows.length > 1 ? "s" : ""}${rows.filter(e => e.on).length < rows.length ? " (" + rows.filter(e => e.on).length + " on)" : ""}</span></td><td>${fmt$(sub)}</td></tr>`;
+    h += `<tr class="sec deptsec"><td colspan="14"><button class="exp-toggle" data-k="efold" data-dept="${esc(d)}" aria-expanded="${!folded}">${folded ? "▸" : "▾"}</button> ${esc(dn(d))} <span class="dim" style="font-weight:400">· ${rows.length} expense${rows.length > 1 ? "s" : ""}${rows.filter(e => e.on).length < rows.length ? " (" + rows.filter(e => e.on).length + " on)" : ""}</span></td><td>${fmt$(sub)}</td></tr>`;
     if (folded){ shown += rows.length; totPlanned += sub; continue; }
-    for (const e of rows.sort((a, b) => Math.abs(expensePlanned(b) || b.xero || b.budget || 0) - Math.abs(expensePlanned(a) || a.xero || a.budget || 0))){
+    for (const e of rows.sort((a, b) => (isEnvelope(b) - isEnvelope(a)) || Math.abs(expensePlanned(b) || b.xero || b.budget || 0) - Math.abs(expensePlanned(a) || a.xero || a.budget || 0))){
       shown++; const pl = expensePlanned(e); totPlanned += pl;
+      if (isEnvelope(e)){
+        // a department's budget for an account: the Xero suggestion is what vendors without a
+        // planned row of their own booked to that account, company-wide
+        const un = e.account ? unplannedAcctTtm(e.account, planned) : null;
+        const unAvg = un ? un.reduce((a, b) => a + b, 0) / 12 : null;
+        h += `<tr class="env"><td><input type="checkbox" class="switch" data-id="${e.id}" data-k="on"${e.on ? " checked" : ""} aria-label="Include this account budget"></td>
+          <td title="Money set aside in ${esc(dn(e.dept))} for one-off and small spend booked to ${esc(acctShort(e.account) || "this account")}. Vendors marked ONE-OFF, and any vendor without a planned row, draw on it when actuals are compared."><span class="vname">Account budget</span> <span class="dim">· ${esc(acctShort(e.account) || "pick an account")}</span></td>
+          <td><select class="cell" style="max-width:120px;font-size:11px" data-id="${e.id}" data-k="dept" title="Department this budget belongs to">${DEPTS.map(d2 => `<option value="${esc(d2)}"${d2 === e.dept ? " selected" : ""}>${esc(dn(d2))}</option>`).join("")}</select></td>
+          ${acctCell(e)}
+          <td>${chip("ACCOUNT", false)}</td>
+          <td class="dim">—</td>
+          <td>${un ? spark(un, "--modest", 84, 20) : `<span class="dim">—</span>`}</td>
+          <td title="${un ? `Trailing 12 months booked to ${esc(acctShort(e.account))} by vendors without a planned row of their own — all departments, since the export carries no department: ${fmt$(un.reduce((a, b) => a + b, 0))} over the year` : "Pick an account"}">${unAvg == null ? `<span class="dim">—</span>` : fmt$(unAvg)}</td>
+          <td><input class="cell" data-id="${e.id}" data-k="budget" value="${e.budget == null ? "" : e.budget}" placeholder="—" title="Budget per month for this account in this department"></td>
+          <td class="dim" title="An account budget is always its own figure">BUDGET</td>
+          <td><input class="cell" data-id="${e.id}" data-k="override" value="${e.override == null ? "" : e.override}" placeholder="—"></td>
+          <td><input class="cell tiny" data-id="${e.id}" data-k="adj" value="${(e.adj * 100).toFixed(0)}"></td>
+          <td>${monthSel(`data-id="${e.id}" data-k="from"`, e.from, { title: "First month this budget applies." })}</td>
+          <td>${monthSel(`data-id="${e.id}" data-k="to"`, e.to, { title: "Last month this budget applies." })}</td>
+          <td><b>${fmt$(pl)}</b></td></tr>`;
+        continue;
+      }
+      const cover = e.use === "ONEOFF" ? (e.account ? envelopesFor(e.account, e.dept) : []) : null;
+      const oneOffTag = e.use !== "ONEOFF" ? "" : cover && cover.length
+        ? ` <span class="dim" style="color:var(--modest)" title="One-off — covered by the ${esc(dn(e.dept))} account budget for ${esc(acctShort(e.account))} (${fmt$(cover.reduce((a, x) => a + expensePlanned(x), 0))}/mo), not planned month by month">→ account budget</span>`
+        : ` <span class="warn" title="One-off, but ${esc(dn(e.dept))} has no budget for ${e.account ? esc(acctShort(e.account)) : "its account (none set)"} yet — add one with “+ Budget an account”, or plan it here with BUDGET and an override">→ no account budget yet</span>`;
       h += `<tr><td><input type="checkbox" class="switch" data-id="${e.id}" data-k="on"${e.on ? " checked" : ""} aria-label="Include ${esc(e.vendor)}"></td>
-        <td title="${esc(e.vendor)}${e.purpose ? " — " + esc(e.purpose) : ""}">${e.manual ? `<input class="cell wide" style="text-align:left" data-id="${e.id}" data-k="vendor" value="${esc(e.vendor)}">` : `<span class="vname">${esc(e.vendor)}</span>`}${e.share < 1 ? ` <span class="dim">(${Math.round(e.share * 100)}% share)</span>` : ""}${e.seat > 0 ? ` <span class="dim" title="Per-seat portion carried on Staffing licenses">seats→Staffing</span>` : ""}${e.use === "STAFFING" ? ` <span class="dim" style="color:var(--modest)" title="Budgeted as a role on the Staffing tab — counted there, not here, so it isn't double-counted">→Staffing</span>` : ""}</td>
+        <td title="${esc(e.vendor)}${e.purpose ? " — " + esc(e.purpose) : ""}">${e.manual ? `<input class="cell wide" style="text-align:left" data-id="${e.id}" data-k="vendor" value="${esc(e.vendor)}">` : `<span class="vname">${esc(e.vendor)}</span>`}${e.share < 1 ? ` <span class="dim">(${Math.round(e.share * 100)}% share)</span>` : ""}${e.seat > 0 ? ` <span class="dim" title="Per-seat portion carried on Staffing licenses">seats→Staffing</span>` : ""}${e.use === "STAFFING" ? ` <span class="dim" style="color:var(--modest)" title="Budgeted as a role on the Staffing tab — counted there, not here, so it isn't double-counted">→Staffing</span>` : ""}${oneOffTag}</td>
         <td><select class="cell" style="max-width:120px;font-size:11px" data-id="${e.id}" data-k="dept" title="Move this expense to another department">${DEPTS.map(d2 => `<option value="${esc(d2)}"${d2 === e.dept ? " selected" : ""}>${esc(dn(d2))}</option>`).join("")}</select></td>
+        ${acctCell(e)}
         <td>${chip(e.status, e.conflict)}</td>
         ${lastBilledCell(e)}
         <td>${e.ttm ? spark(e.ttm, "--modest", 84, 20) : `<span class="dim">—</span>`}</td>
         <td>${e.xero == null ? `<span class="dim">—</span>` : fmt$(e.xero)}</td>
         <td>${e.budget == null ? `<span class="dim">—</span>` : fmt$(e.budget)}</td>
-        <td><select class="cell" data-id="${e.id}" data-k="use" title="Where this row's monthly figure comes from — or STAFFING if the cost is a person budgeted on the Staffing tab (then it counts there, not here)"><option${e.use === "XERO" ? " selected" : ""}>XERO</option><option${e.use === "BUDGET" ? " selected" : ""}>BUDGET</option><option${e.use === "STAFFING" ? " selected" : ""}>STAFFING</option></select></td>
+        <td><select class="cell" data-id="${e.id}" data-k="use" title="Where this row's monthly figure comes from. ONE-OFF: not planned month by month, covered by the department's budget for its account. STAFFING: a person budgeted on the Staffing tab (counted there, not here)."><option${e.use === "XERO" ? " selected" : ""}>XERO</option><option${e.use === "BUDGET" ? " selected" : ""}>BUDGET</option><option value="ONEOFF"${e.use === "ONEOFF" ? " selected" : ""}>ONE-OFF</option><option${e.use === "STAFFING" ? " selected" : ""}>STAFFING</option></select></td>
         <td><input class="cell" data-id="${e.id}" data-k="override" value="${e.override == null ? "" : e.override}" placeholder="—"></td>
         <td><input class="cell tiny" data-id="${e.id}" data-k="adj" value="${(e.adj * 100).toFixed(0)}"></td>
         <td>${monthSel(`data-id="${e.id}" data-k="from"`, e.from, { title: "First month this expense is charged." })}</td>
@@ -2719,7 +2893,7 @@ function renderExpenses(C){
         <td><b>${fmt$(pl)}</b></td></tr>`;
     }
   }
-  h += `<tr class="tot"><td colspan="13">TOTAL PLANNED (full-month rows)</td><td>${fmt$(totPlanned)}</td></tr>`;
+  h += `<tr class="tot"><td colspan="14">TOTAL PLANNED (full-month rows)</td><td>${fmt$(totPlanned)}</td></tr>`;
   document.getElementById("expTable").innerHTML = h + "</tbody></table>";
   document.getElementById("expCount").textContent = shown + " of " + S.exp.length + " rows";
 }
@@ -2849,6 +3023,51 @@ function renderTrendTable(){
 
 /* ---------- accounting correction checklist ---------- */
 const XVEND = new Map(MODEL.vend_master.map(v => [v.vendor, v]));
+/* ---------- Xero accounts: where a thing SHOULD be booked vs where it HAS been ----------
+   Every expense row names the account it belongs in. The model carries each vendor's postings
+   by account for the trailing year, and an import adds the months beyond it, so a row can show
+   the accounts it was actually booked to and flag the ones that differ. */
+const ACCOUNTS = (MODEL.accounts || []).map(a => a.name);
+const ACCT_TTM = Object.fromEntries((MODEL.accounts || []).map(a => [a.name, a.ttm]));
+const VEND_ACCT = Object.fromEntries((MODEL.vend_master || []).map(v => [v.vendor, v.accounts || {}]));
+const acctShort = a => String(a || "").replace(/^(\d+)\s*-\s*/, "$1 ");
+function bookedAccounts(vendor){
+  const out = {};
+  for (const [a, mo] of Object.entries(VEND_ACCT[vendor] || {})) out[a] = (out[a] || 0) + mo.reduce((x, y) => x + y, 0);
+  const A = S.actuals && S.actuals.vendAcct && S.actuals.vendAcct[vendor];
+  if (A) for (const [a, mo] of Object.entries(A)) for (let i = ACT; i < NM; i++) out[a] = (out[a] || 0) + (mo[i] || 0);
+  return out;   // account -> net $ booked (trailing year + imported months past the booked window)
+}
+const bookedList = vendor => Object.entries(bookedAccounts(vendor)).sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
+// accounts a row's vendor was booked to other than the expected one, big enough to matter
+function acctMismatch(e){
+  if (!e.account || e.kind === "envelope") return [];
+  const b = bookedAccounts(e.vendor), tot = Object.values(b).reduce((x, y) => x + Math.abs(y), 0);
+  return Object.entries(b).filter(([a, v]) => a !== e.account && Math.abs(v) >= Math.max(50, tot * 0.05)).sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
+}
+/* ---------- account budgets ----------
+   Money a department sets aside for an account — office supplies, travel — to cover the one-off
+   and small spend that never gets a vendor row of its own. A vendor marked ONE-OFF is covered by
+   the budget for its account instead of being planned month by month. */
+const isEnvelope = e => e.kind === "envelope";
+function plannedVendorSet(){
+  const out = new Set();
+  for (const e of S.exp) if (!isEnvelope(e) && e.on && e.use !== "ONEOFF") out.add(e.vendor);
+  for (const L of (S.licenses || [])) if (L.on !== false) out.add(L.vendor);
+  return out;
+}
+// trailing 12 months booked to an account by vendors WITHOUT a planned row of their own
+function unplannedAcctTtm(acct, planned){
+  planned = planned || plannedVendorSet();
+  const tot = (ACCT_TTM[acct] || Array(12).fill(0)).slice();
+  for (const [v, accts] of Object.entries(VEND_ACCT)) if (planned.has(v) && accts[acct]) for (let i = 0; i < 12; i++) tot[i] -= accts[acct][i];
+  return tot;
+}
+const envelopesFor = (acct, dept) => S.exp.filter(e => isEnvelope(e) && e.account === acct && (!dept || e.dept === dept));
+function newEnvelope(dept, account, amount){
+  return { id: "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), kind: "envelope", vendor: "Account budget", account, dept, share: 1,
+    budget: amount, xero: null, status: "ACCOUNT", seat: 0, ttm: null, purpose: "", conflict: false, manual: false, use: "BUDGET", override: null, adj: 0, from: Math.min(NM, ACT + 1), to: NM, on: true };
+}
 function acctFixItems(){
   const byVend = new Map();
   for (const e of S.exp){
@@ -2872,6 +3091,19 @@ function acctFixItems(){
       permo: vm.base, status: vm.status,
       minor: Math.abs(vm.base) < 100 && !["STEADY","GROWING","DROPPING","PERIODIC","NEW"].includes(vm.status) });
   }
+  // vendors booked to an account other than the one expected for them
+  const seenAcct = new Set();
+  for (const e of S.exp){
+    if (isEnvelope(e) || !e.on || !e.account || e.use === "ONEOFF" || seenAcct.has(e.vendor)) continue;
+    seenAcct.add(e.vendor);
+    const expected = [...new Set(S.exp.filter(x => x.vendor === e.vendor && x.account).map(x => x.account))];
+    const b = bookedAccounts(e.vendor), tot = Object.values(b).reduce((x, y) => x + Math.abs(y), 0);
+    const off = Object.entries(b).filter(([a, v]) => !expected.includes(a) && Math.abs(v) >= Math.max(50, tot * 0.05)).sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
+    if (!off.length) continue;
+    const amt = off.reduce((x, [, v]) => x + Math.abs(v), 0);
+    items.push({ key: "acct:" + e.vendor, vendor: e.vendor, kind: "account", from: off.map(([a, v]) => `${acctShort(a)} (${fmt$(v)})`).join(", "), to: expected.map(acctShort).join(" or "),
+      permo: amt / 12, minor: amt < 600 });
+  }
   items.sort((a, b) => (a.minor - b.minor) || Math.abs(b.permo) - Math.abs(a.permo));
   items.push({ key: "__payroll", vendor: "Untagged payroll journals", from: "no department tag",
     to: "tag department on payroll journals in Xero", permo: 60988 / 7 });
@@ -2885,7 +3117,7 @@ function renderFixes(){
   const row = i => `
     <div class="fix-row${S.fixes[i.key] ? " done" : ""}">
       <input type="checkbox" data-id="${esc(i.key)}" data-k="fixdone"${S.fixes[i.key] ? " checked" : ""} aria-label="Corrected in Xero: ${esc(i.vendor)}">
-      <span class="fix-body"><b>${esc(i.vendor)}</b> — ${i.key === "__payroll" ? esc(i.to) : `retag from <i>${esc(i.from)}</i> to <b>${esc(i.to)}</b>`}</span>
+      <span class="fix-body"><b>${esc(i.vendor)}</b> — ${i.key === "__payroll" ? esc(i.to) : i.kind === "account" ? `rebook from <i>${esc(i.from)}</i> to <b>${esc(i.to)}</b>` : `retag from <i>${esc(i.from)}</i> to <b>${esc(i.to)}</b>`}</span>
       <span class="subtle">${i.permo ? "~" + fmt$(Math.abs(i.permo)) + "/mo" : ""}</span>
     </div>`;
   document.getElementById("fixList").innerHTML =
@@ -2896,7 +3128,7 @@ delegate("fixList", (id, k, val) => { if (k === "fixdone"){ if (val) S.fixes[id]
 document.getElementById("copyFixes").addEventListener("click", async ev => {
   const txt = "SCW accounting corrections — recategorize in Xero (" + MODEL.built + " model)\n" +
     acctFixItems().map(i => (S.fixes[i.key] ? "[x] " : "[ ] ") + i.vendor + " — " +
-      (i.key === "__payroll" ? i.to : "from \"" + i.from + "\" to \"" + i.to + "\"") +
+      (i.key === "__payroll" ? i.to : (i.kind === "account" ? "rebook from \"" : "from \"") + i.from + "\" to \"" + i.to + "\"") +
       (i.permo ? " (~" + fmt$(Math.abs(i.permo)) + "/mo)" : "")).join("\n");
   try { await navigator.clipboard.writeText(txt); ev.target.textContent = "Copied ✓"; }
   catch (e) { openCfg("copy", txt, "Clipboard is blocked here — select everything and copy manually (Ctrl/Cmd-C)."); }
@@ -3360,6 +3592,8 @@ delegate("expTable", (id, k, val) => {
   if (k === "on") e.on = val;
   else if (k === "dept") e.dept = val;
   else if (k === "use") e.use = val;
+  else if (k === "account") e.account = val;
+  else if (k === "budget") e.budget = String(val).trim() === "" ? null : Math.max(0, num(val, 0));
   else if (k === "vendor") e.vendor = val;
   else if (k === "override") e.override = String(val).trim() === "" ? null : num(val, null);
   else if (k === "adj") e.adj = num(val, 0) / 100;
@@ -3378,19 +3612,56 @@ document.getElementById("expDept").addEventListener("change", ev => { expFilter.
 document.getElementById("expStatus").addEventListener("change", ev => { expFilter.status = ev.target.value; renderExpenses(); });
 document.getElementById("expOn").addEventListener("change", ev => { expFilter.on = ev.target.value; renderExpenses(); });
 document.getElementById("licList").addEventListener("change", ev => {
-  const t = ev.target, k = t.dataset.k, L = (S.licenses || []).find(x => x.id === t.dataset.id);
-  if (!k || !L) return;
+  const t = ev.target, k = t.dataset.k;
+  if (!k) return;
   const val = t.type === "checkbox" ? t.checked : t.value;
+  if (k === "billvendor"){
+    const from = t.dataset.vendor, to = String(val).trim();
+    if (!to || to === from) return;
+    for (const L of (S.licenses || [])) if (L.vendor === from){ L.vendor = to; if (!L.name || L.name === from || L.name.startsWith(from + " · ")) L.name = to + L.name.slice(from.length); }
+    for (const e of S.exp) if (e.vendor === from && e.kind !== "envelope") e.vendor = to;
+    if (openBills.delete(from)) openBills.add(to);
+    persist(); scheduleRender(); return;
+  }
+  if (k.startsWith("alloc")){
+    const e = S.exp.find(x => x.id === t.dataset.id); if (!e) return;
+    if (k === "allocon") e.on = !!val;
+    else if (k === "allocdept") e.dept = val;
+    else if (k === "allocamt"){ e.override = Math.max(0, num(val, 0)); e.adj = 0; if (e.use === "STAFFING") e.use = "BUDGET"; }
+    persist(); scheduleRender(); return;
+  }
+  const L = (S.licenses || []).find(x => x.id === t.dataset.id);
+  if (!L) return;
   if (k === "licon") L.on = !!val;
   else if (k === "licname") L.name = String(val).trim();
   else if (k === "licprice") L.price = Math.max(0, num(val, 0));
   else if (k === "liccad") L.cadence = val;
   else if (k === "licmin"){ L.minSeats = String(val).trim() === "" ? 0 : Math.max(0, Math.round(num(val, 0))); L.minSource = L.minSeats ? "manual" : "none"; }
   else if (k === "licdept") L.overflowDept = val;
-  else if (k === "licroleadd"){
-    if (!val) return; L.roles = L.roles || {};
-    const add = val === "*" ? S.staff : String(val).startsWith("dept:") ? S.staff.filter(r => r.dept === String(val).slice(5)) : S.staff.filter(r => r.id === val);
-    for (const r of add) if (L.roles[r.id] == null) L.roles[r.id] = 1;
+  else if (k === "licroleadd"){ if (!val) return; L.roles = L.roles || {}; if (L.roles[val] == null) L.roles[val] = 1; }
+  else if (k === "licbill"){
+    if (!val) return;
+    const from = L.vendor;
+    let to = val;
+    if (val === "__new"){ to = "New bill"; let i = 2; while ((S.licenses || []).some(x => x.vendor === to)) to = "New bill " + (i++); }
+    L.vendor = to;
+    // keep the name readable: swap the old bill's prefix for the new one
+    if (!L.name || L.name === from) L.name = to;
+    else if (L.name.startsWith(from + " · ")) L.name = to + L.name.slice(from.length);
+    openBills.add(to);
+  }
+  else if (k === "licscope"){
+    if (!val) return;
+    if (val === "roles"){
+      // freeze what the rule covers today into an explicit list
+      const roles = {}; for (const { r, per } of licCovered(L)) roles[r.id] = per;
+      L.roles = roles; L.scope = "roles"; L.depts = []; L.exclude = {};
+    } else if (val === "all"){ L.scope = "all"; L.depts = []; }
+    else if (String(val).startsWith("dept:")){
+      const d = String(val).slice(5);
+      if (L.scope !== "depts"){ L.scope = "depts"; L.depts = []; }
+      if (!L.depts.includes(d)) L.depts.push(d);
+    }
   }
   else return;
   persist(); scheduleRender();
@@ -3400,6 +3671,27 @@ document.getElementById("licList").addEventListener("click", ev => {
   if (tg){ openLics.has(tg.dataset.id) ? openLics.delete(tg.dataset.id) : openLics.add(tg.dataset.id); renderAll(); return; }
   const rd = ev.target.closest("button[data-k=licroledel]");
   if (rd){ const L = (S.licenses || []).find(x => x.id === rd.dataset.id); if (L && L.roles) delete L.roles[rd.dataset.role]; persist(); scheduleRender(); return; }
+  const ex = ev.target.closest("button[data-k=licexclude],button[data-k=licinclude]");
+  if (ex){ const L = (S.licenses || []).find(x => x.id === ex.dataset.id); if (L){ L.exclude = L.exclude || {}; if (ex.dataset.k === "licexclude") L.exclude[ex.dataset.role] = 1; else delete L.exclude[ex.dataset.role]; } persist(); scheduleRender(); return; }
+  const dd = ev.target.closest("button[data-k=licdeptdel]");
+  if (dd){ const L = (S.licenses || []).find(x => x.id === dd.dataset.id); if (L) L.depts = (L.depts || []).filter(d => d !== dd.dataset.dept); persist(); scheduleRender(); return; }
+  const bf = ev.target.closest("button[data-k=billfold]");
+  if (bf){ openBills.has(bf.dataset.vendor) ? openBills.delete(bf.dataset.vendor) : openBills.add(bf.dataset.vendor); renderAll(); return; }
+  const bl = ev.target.closest("button[data-k=billaddlic]");
+  if (bl){
+    const vendor = bl.dataset.vendor, sib = (S.licenses || []).find(x => x.vendor === vendor);
+    const nid = "L" + Date.now().toString(36);
+    S.licenses.push({ id: nid, vendor, name: vendor + " · new tier", on: true, price: sib ? sib.price : 10, roles: {}, unmatched: [], minSeats: 0, minSource: "none", overflowDept: "", cadence: sib ? (sib.cadence || "monthly") : "monthly", scope: "roles", depts: [], exclude: {} });
+    openBills.add(vendor); openLics.add(nid); persist(); scheduleRender(); return;
+  }
+  const ba = ev.target.closest("button[data-k=billaddalloc]");
+  if (ba){
+    const vendor = ba.dataset.vendor, sib = (S.licenses || []).find(x => x.vendor === vendor);
+    S.exp.push(newExpRow(vendor, (sib && sib.overflowDept) || "General Overhead", 100, { override: 100 }));
+    openBills.add(vendor); persist(); scheduleRender(); return;
+  }
+  const ad = ev.target.closest("button[data-k=allocdel]");
+  if (ad){ S.exp = S.exp.filter(e => e.id !== ad.dataset.id); persist(); scheduleRender(); return; }
   const b = ev.target.closest("button[data-k=licdel]"); if (!b) return;
   S.licenses = (S.licenses || []).filter(x => x.id !== b.dataset.id); persist(); scheduleRender();
 });
@@ -3424,13 +3716,27 @@ document.getElementById("actFile").addEventListener("change", ev => { const f = 
   z.addEventListener("drop", ev => { ev.preventDefault(); z.style.borderColor = "var(--border2)"; const f = ev.dataTransfer.files && ev.dataTransfer.files[0]; if (f) importActuals(f); });
 })();
 document.getElementById("cmpVendors").addEventListener("click", ev => {
+  const ba = ev.target.closest("button[data-k=cmpacceptacct],button[data-k=cmpenv]");
+  if (ba){
+    const rate = +ba.dataset.rate || 0, acct = ba.dataset.acct;
+    const env = envelopesFor(acct);
+    if (ba.dataset.k === "cmpenv" || !env.length){ S.exp.push(newEnvelope("General Overhead", acct, Math.round(rate * 100) / 100)); }
+    else {
+      // split the run-rate across the departments budgeting this account, in their current proportions
+      const tot = env.reduce((a, e) => a + Math.abs(expensePlanned(e) || e.budget || 0), 0);
+      for (const e of env){ const w = tot ? Math.abs(expensePlanned(e) || e.budget || 0) / tot : 1 / env.length; e.budget = Math.round(rate * w * 100) / 100; e.override = null; e.adj = 0; e.on = true; }
+    }
+    persist(); scheduleRender(); return;
+  }
   const b = ev.target.closest("button[data-k=cmpaccept],button[data-k=cmpoff]"); if (!b) return;
-  const rows = S.exp.filter(e => e.vendor === b.dataset.v);
+  const rows = S.exp.filter(e => e.vendor === b.dataset.v && !isEnvelope(e));
   if (b.dataset.k === "cmpoff"){ for (const e of rows) e.on = false; }
   else {
     const rate = +b.dataset.rate || 0;
     if (!rows.length){
-      S.exp.push({ id: "m" + Date.now(), vendor: b.dataset.v, dept: "General Overhead", share: 1, budget: rate, xero: rate, status: "NEW", seat: 0, ttm: null, purpose: "from import",
+      const va = (S.actuals && S.actuals.vendAcct && S.actuals.vendAcct[b.dataset.v]) || {};
+      const acct = Object.entries(va).sort((x, y) => Math.abs(y[1].reduce((a, c) => a + c, 0)) - Math.abs(x[1].reduce((a, c) => a + c, 0))).map(x => x[0])[0] || "";
+      S.exp.push({ id: "m" + Date.now(), vendor: b.dataset.v, dept: "General Overhead", share: 1, budget: rate, xero: rate, status: "NEW", seat: 0, ttm: null, purpose: "from import", account: acct,
         conflict: false, manual: true, use: "BUDGET", override: rate, adj: 0, from: ACT + 1, to: NM, on: true });
     } else {
       // split the run-rate across the vendor's rows in their current proportions
@@ -3444,7 +3750,8 @@ document.getElementById("addLic").addEventListener("click", () => {
   S.licenses = S.licenses || [];
   const nid = "L" + Date.now().toString(36);
   openLics.add(nid);
-  S.licenses.push({ id: nid, vendor: "New license", name: "New license", on: true, price: 10, roles: {}, unmatched: [], minSeats: 0, overflowDept: "", cadence: "monthly" });
+  S.licenses.push({ id: nid, vendor: "New license", name: "New license", on: true, price: 10, roles: {}, unmatched: [], minSeats: 0, minSource: "none", overflowDept: "", cadence: "monthly", scope: "roles", depts: [], exclude: {} });
+  openBills.add("New license");
   persist(); scheduleRender();
 });
 document.getElementById("trSearch").addEventListener("input", ev => { trQ = ev.target.value; renderTrendTable(); });
@@ -3502,9 +3809,15 @@ document.getElementById("addRole").addEventListener("click", () => {
     hc: Array.from({length:NM}, (_, i) => i >= 8 ? 1 : 0) });
   persist(); scheduleRender();
 });
+document.getElementById("addEnv").addEventListener("click", () => {
+  const acct = ACCOUNTS.find(a => /office supplies/i.test(a)) || ACCOUNTS[0] || "";
+  S.exp.push(newEnvelope(expFilter.dept || "General Overhead", acct, 500));
+  expFold.delete(expFilter.dept || "General Overhead");
+  persist(); scheduleRender();
+});
 document.getElementById("addExp").addEventListener("click", () => {
   S.exp.push({ id: "m" + Date.now(), vendor: "New expense", dept: expFilter.dept || "General Overhead",
-    share: 1, budget: null, xero: null, status: "NOT IN XERO", seat: 0, ttm: null, purpose: "added by hand",
+    share: 1, budget: null, xero: null, status: "NOT IN XERO", seat: 0, ttm: null, purpose: "added by hand", account: "",
     conflict: false, manual: true, use: "BUDGET", override: 500, adj: 0, from: 9, to: NM, on: true });
   persist(); scheduleRender();
 });
