@@ -557,6 +557,48 @@
 
   // ── Save ────────────────────────────────────────────────────────
 
+  // ── Project record id (QA-fail payload) ─────────────────────────
+  // The deploy scenes surface the SOW→project connection (field_2119) on
+  // at least one rendered view. Scan the view models first (details views
+  // + grid rows), then fall back to the connection-span DOM pattern (the
+  // inner span's class/id is the connected record id). Returns '' when
+  // nothing on the page carries it — Make can still hop deployId → SOW →
+  // project in that case.
+  function resolveProjectId() {
+    var KEY = 'field_2119';
+    try {
+      var views = window.Knack && Knack.views;
+      for (var vk in views) {
+        if (!Object.prototype.hasOwnProperty.call(views, vk)) continue;
+        var mdl = views[vk] && views[vk].model;
+        if (!mdl) continue;
+        var a = mdl.attributes;
+        var raw = a && a[KEY + '_raw'];
+        if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
+        var rows = mdl.data && mdl.data.models;
+        if (rows) {
+          for (var i = 0; i < rows.length; i++) {
+            var ra = rows[i] && rows[i].attributes;
+            var rraw = ra && ra[KEY + '_raw'];
+            if (Array.isArray(rraw) && rraw[0] && rraw[0].id) return rraw[0].id;
+          }
+        }
+      }
+    } catch (e) { /* fall through to DOM */ }
+    try {
+      var spans = document.querySelectorAll(
+        '.kn-detail.' + KEY + ' span[data-kn="connection-value"], ' +
+        'td.' + KEY + ' span[data-kn="connection-value"]');
+      for (var s = 0; s < spans.length; s++) {
+        var cls = (spans[s].className || '').trim();
+        if (/^[a-f0-9]{24}$/i.test(cls)) return cls;
+        var idAttr = (spans[s].id || '').trim();
+        if (/^[a-f0-9]{24}$/i.test(idAttr)) return idAttr;
+      }
+    } catch (e2) { /* give up */ }
+    return '';
+  }
+
   // ── QA-fail notification ────────────────────────────────────────
   // Fired once per save that WRITES status = Fail (the fields diff carries
   // F.status only when it changed, so this is exactly the Pending/Pass →
@@ -595,6 +637,9 @@
           lineItemId: p.lineItemId || '',
           lineLabel:  p.lineLabel  || '',
           product:    p.product    || '',
+          // CORE_project record id — the hop Make needs: project →
+          // field_1199 (SCW CU task) → subcontractor task → comment.
+          projectId:  resolveProjectId(),
           deployId:   deployM ? deployM[1] : '',
           viewKey:    p.viewKey || '',
           pageHash:   window.location.hash || ''
