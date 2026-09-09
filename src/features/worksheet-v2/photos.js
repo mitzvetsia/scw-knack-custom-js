@@ -736,7 +736,7 @@
             ' data-photo-required="true"' +
             ' title="' + escapeHtml('QA feedback' +
                 (qaMeta ? ' — ' + qaMeta : '') + '\n\n' + p.qaNotes +
-                '\n\n(click to review / swap in an updated photo)') + '">' +
+                '\n\n(click to review and respond)') + '">' +
             '<div class="scw-ws-v2-photo-qanote-head">' + QA_ICONS.fail +
               '<span>QA feedback</span></div>' +
             '<div class="scw-ws-v2-photo-qanote-body">' +

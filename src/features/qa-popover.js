@@ -529,8 +529,20 @@
     var hist = (photo && photo.history && String(photo.history).trim())
       ? String(photo.history) : '';
     var upLine = up ? escapeHtml(up + ' — Photo uploaded') : '';
-    if (hist && upLine) return hist + '<br>' + upLine;
-    return hist || upLine;
+    if (hist && upLine) return linkifyHistory(hist + '<br>' + upLine);
+    return linkifyHistory(hist || upLine);
+  }
+
+  /** Render raw URLs in history entries as compact links. The only URLs
+   *  ever written into the history field are prior-version asset URLs
+   *  (REPLACED/REMOVED events preserve the outgoing image's URL — Knack
+   *  keeps overwritten assets alive at their original address, so the
+   *  link IS the photo archive). */
+  function linkifyHistory(html) {
+    return String(html || '').replace(/(https?:\/\/[^\s<]+)/g, function (url) {
+      return '<a href="' + url + '" target="_blank" rel="noopener" ' +
+        'class="scw-qa-popover__hist-link">view photo</a>';
+    });
   }
 
   /** Best-effort audit write: prepend "<stamp> — <user> — <event>" to the
@@ -539,11 +551,11 @@
    *  field_2865 must never fail the upload/replace/remove itself. Advances
    *  photo.history locally so a second event in the same modal session
    *  stacks instead of overwriting. */
-  function logPhotoEvent(photo, saveView, event) {
+  function logPhotoEvent(photo, saveView, event, detail) {
     try {
       var u = pepUtil();
       if (!u || !saveView || !photo || !photo.id) return;
-      var newHist = prependHistory(photo.history || '', event);
+      var newHist = prependHistory(photo.history || '', event, detail);
       var body = {};
       body[F.history] = newHist;
       u.putRecord(saveView, photo.id, body).then(function () {
@@ -790,12 +802,17 @@
     notesSec.appendChild(hint);
     body.appendChild(notesSec);
 
-    // Sign-off metadata summary (read-only) — matches closeout __signoff.
-    if (alreadySignedOff && (photo.completedBy || photo.completedDate)) {
+    // Verdict metadata summary (read-only) — matches closeout __signoff.
+    // Also shown for FAILS: field_2862/63 now stamp on every verdict save,
+    // so the author of a fail is visible without digging through history.
+    var isFailedState = String(photo.status || '').toLowerCase() === 'fail';
+    if ((alreadySignedOff || isFailedState) &&
+        (photo.completedBy || photo.completedDate)) {
       var foot = document.createElement('div');
       foot.className = 'scw-qa-popover__signoff';
       foot.innerHTML =
-        'Last signed off by <strong>' + escapeHtml(photo.completedBy || '—') +
+        (isFailedState ? 'Failed by' : 'Last signed off by') +
+        ' <strong>' + escapeHtml(photo.completedBy || '—') +
         '</strong> on <strong>' + escapeHtml(photo.completedDate || '—') + '</strong>';
       body.appendChild(foot);
     }
@@ -980,6 +997,13 @@
       if (repB.disabled) return;
       pickImage(function (file) {
         if ((file.type || '').indexOf('image/') !== 0) { alert('Not an image file.'); return; }
+        // Preserve the outgoing photo: Knack keeps the overwritten asset
+        // alive at its original URL, so logging that URL into the history
+        // makes every prior version recoverable (rendered as a "view
+        // photo" link). A blob: URL (second replace in one session) is
+        // local-only — skip it; the real server version was already
+        // linked by the first replace's entry.
+        var prevUrl = /^https?:/i.test(photo.imgUrl || '') ? photo.imgUrl : '';
         repB.disabled = true;
         repB.textContent = 'Replacing…';
         u.downscale(file).then(function (blob) {
@@ -995,7 +1019,8 @@
             photo.imgUrl = url;
             repB.disabled = locked;
             repB.textContent = 'Replace photo';
-            logPhotoEvent(photo, saveView, 'REPLACED PHOTO');
+            logPhotoEvent(photo, saveView, 'REPLACED PHOTO',
+              prevUrl ? 'previous version ' + prevUrl : '');
             notifyHostSaved(photo);
           });
         }).catch(function (err) {
@@ -1018,6 +1043,9 @@
             'The photo slot stays — only the image is cleared.')) return;
       remB.disabled = true;
       remB.textContent = 'Removing…';
+      // Same preservation as replace — the cleared asset stays alive at
+      // its URL; the history link is the only remaining pointer to it.
+      var prevUrl = /^https?:/i.test(photo.imgUrl || '') ? photo.imgUrl : '';
       var extra = {};
       extra[F.completed] = 'No';
       // clearFileField verifies against the PUT response and retries with ''
@@ -1025,7 +1053,8 @@
       u.clearFileField(saveView, photo.id, F.img, extra).then(function () {
         photo.imgUrl = '';
         photo.completed = false;
-        logPhotoEvent(photo, saveView, 'REMOVED PHOTO');
+        logPhotoEvent(photo, saveView, 'REMOVED PHOTO',
+          prevUrl ? 'removed version ' + prevUrl : '');
         swapToUploadPane();
         notifyHostSaved(photo);
       }).catch(function (err) {
@@ -1189,12 +1218,14 @@
       section('QA Notes', nt);
     }
 
-    if (isFullyComplete(photo.status, photo.client) &&
+    var roFailed = String(photo.status || '').toLowerCase() === 'fail';
+    if ((isFullyComplete(photo.status, photo.client) || roFailed) &&
         (photo.completedBy || photo.completedDate)) {
       var foot = document.createElement('div');
       foot.className = 'scw-qa-popover__signoff';
       foot.innerHTML =
-        'Signed off by <strong>' + escapeHtml(photo.completedBy || '—') +
+        (roFailed ? 'Failed by' : 'Signed off by') +
+        ' <strong>' + escapeHtml(photo.completedBy || '—') +
         '</strong> on <strong>' + escapeHtml(photo.completedDate || '—') + '</strong>';
       wrap.appendChild(foot);
     }
@@ -1487,6 +1518,22 @@
       fields[F.client] = client;
     }
     if (notes !== _initialState.notes) fields[F.notes] = notes;
+    // A status change is a QA verdict — stamp WHO + WHEN (field_2862/63)
+    // and log the event to history, so a Fail carries its author
+    // (2026-09-09: only the Sign Off path stamped these; a Fail saved via
+    // Save/autosave showed no author anywhere). Pending clears the stamp
+    // — nobody has "completed" QA on a pending photo. The Fail entry
+    // captures the notes AT FAIL TIME, since the notes field itself is
+    // mutable and gets overwritten by later reviews.
+    if (fields[F.status] != null) {
+      var isVerdict = (status === 'Pass' || status === 'Fail');
+      fields[F.completedBy]   = isVerdict ? currentUserId() : '';
+      fields[F.completedDate] = isVerdict ? todayForKnack() : '';
+      fields[F.history] = prependHistory(photo.history || '',
+        status === 'Fail' ? 'QA FAILED'
+          : status === 'Pass' ? 'QA PASSED' : 'QA RESET TO PENDING',
+        status === 'Fail' ? (notes || '').trim() : '');
+    }
     if (!Object.keys(fields).length) { setSaveStatus(pop, '', ''); return; }
 
     _isSaving = true;
@@ -1506,6 +1553,13 @@
       if (fields[F.client] != null) _initialState.client = client;
       if (fields[F.notes]  != null) { _initialState.notes = notes; photo.notes = notes; }
       photo.status = status; photo.client = client;
+      // Advance the local history so a second event in this modal session
+      // (another verdict, a replace) stacks instead of overwriting.
+      if (fields[F.history] != null) {
+        photo.history = fields[F.history];
+        photo.completedBy   = fields[F.completedBy]   ? currentUserName() : '';
+        photo.completedDate = fields[F.completedDate] || '';
+      }
       _hasUnsavedChanges = false;
       if (_refreshHandler) _refreshHandler(fields, photo);
       else if (chit) refreshChitAndCells(chit, photo, fields);
@@ -1601,6 +1655,18 @@
       fields[F.client] = client;
     }
     if (notes !== _initialState.notes) fields[F.notes] = notes;
+    // Same verdict stamping as saveDirty — close-autosave is the other
+    // path that can commit a status change without Sign Off.
+    if (fields[F.status] != null) {
+      var isVerdict2 = (status === 'Pass' || status === 'Fail');
+      fields[F.completedBy]   = isVerdict2 ? currentUserId() : '';
+      fields[F.completedDate] = isVerdict2 ? todayForKnack() : '';
+      fields[F.history] = prependHistory(
+        (_currentPhoto && _currentPhoto.history) || '',
+        status === 'Fail' ? 'QA FAILED'
+          : status === 'Pass' ? 'QA PASSED' : 'QA RESET TO PENDING',
+        status === 'Fail' ? (notes || '').trim() : '');
+    }
 
     if (!Object.keys(fields).length) {
       onDone && onDone();

@@ -813,8 +813,9 @@
       '<span class="scw-ws-v2-qafail-alert-text"><strong>' +
         'Photo QA flagged ' + failed.length + ' line item' +
         (failed.length === 1 ? '' : 's') + '</strong> — we’ve identified an ' +
-        'issue and left notes. Please take a look and swap in an updated ' +
-        'photo so we can re-review together:</span>' +
+        'issue and left notes on each. Please review: remediate the work and ' +
+        'post a new photo, or share photos/documentation showing it’s correct ' +
+        'as-is — we’ll re-review together:</span>' +
       '<span class="scw-ws-v2-qafail-alert-items' +
         (wasExpanded ? ' is-expanded' : '') + '">' + chipsHtml + '</span>';
   }
