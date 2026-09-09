@@ -226,7 +226,7 @@ for name, c in contracts.items():
         main = max(tiers, key=lambda t: t["licenses"])
         assigned = sum(t["licenses"] for t in tiers)
         min_seats = int(c["seats"]) if c["seats"] else (assigned + (round(c["unalloc"] / main["pepm"]) if main["pepm"] else 0))
-        licenses.append(dict(vendor=name, tiers=tiers, min_seats=min_seats, per_seat=c["per_seat"],
+        licenses.append(dict(vendor=name, tiers=tiers, min_seats=min_seats, contract_seats=int(c["seats"] or 0), per_seat=c["per_seat"],
             unalloc=round(c["unalloc"], 2), unalloc_dept=c["unalloc_dept"], cadence=c["cadence"],
             per_bill=round(c["per_bill"], 2), monthly=c["monthly"]))
     elif c["unalloc"] and c["unalloc_dept"]:
