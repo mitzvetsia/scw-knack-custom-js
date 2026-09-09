@@ -233,6 +233,7 @@ cat \
   src/features/worksheet-v2/co-ops-lock.js \
   src/features/worksheet-v2/co-review-diff.js \
   src/features/worksheet-v2/co-swap-pairs.js \
+  src/features/worksheet-v2/focus-link.js \
   src/features/accessory-edit-modal.js \
   src/features/survey-report-photo-lightbox.js \
   src/features/sales-change-request/render-v2.js \

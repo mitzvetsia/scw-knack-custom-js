@@ -58,6 +58,11 @@
   // Currently open popover state.
   var _popover = null;          // DOM element
   var _photoId = null;          // PIC record id currently being edited
+  // Snapshot of the photo the popover/modal is editing — line-item context
+  // for the QA-fail webhook payload. Deliberately NOT cleared on close: the
+  // close-autosave PUT resolves after the popover is gone and notifyQaFail
+  // still needs it.
+  var _currentPhoto = null;
   var _initialState = null;     // snapshot at open time, used to detect changes
   var _hasUnsavedChanges = false;
   var _isSaving = false;
@@ -421,6 +426,7 @@
     var rawClient = readSpanText(F.client);
     return {
       id:         photoId,
+      lineItemId: (tr && tr.id) || '',   // the source row IS the line item
       type:       readType(),
       status:     normalizeOption(rawStatus, STATUS_OPTIONS) || 'Pending',
       client:     normalizeOption(rawClient, ['N/A'].concat(CLIENT_OPTIONS)) || 'N/A',
@@ -566,17 +572,32 @@
           'configured — no sub notification sent.');
         return;
       }
+      var p = _currentPhoto || {};
+      // Only real asset URLs travel — a blob: preview after an in-modal
+      // replace is local-only and useless to Make.
+      var imgUrl = /^https?:/i.test(p.imgUrl || '') ? p.imgUrl : '';
+      var deployM = (window.location.hash || '').match(/\/deploy\/([a-f0-9]{24})/i);
       fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          photoId:  _photoId,
-          status:   'Fail',
-          notes:    fields[F.notes] != null ? fields[F.notes]
-                    : (_initialState && _initialState.notes) || '',
-          failedBy: { id: currentUserId(), name: currentUserName() },
-          failedAt: nowStamp(),
-          pageHash: window.location.hash || ''
+          photoId:    _photoId,
+          status:     'Fail',
+          notes:      fields[F.notes] != null ? fields[F.notes]
+                      : (_initialState && _initialState.notes) || '',
+          failedBy:   { id: currentUserId(), name: currentUserName() },
+          failedAt:   nowStamp(),
+          // Line-item + page context so Make can write a human message and
+          // build the sub deep link without extra Knack hops. lineItemId is
+          // the line record id — pairs with the ?scwItem= focus link.
+          photoType:  p.type || '',
+          photoUrl:   imgUrl,
+          lineItemId: p.lineItemId || '',
+          lineLabel:  p.lineLabel  || '',
+          product:    p.product    || '',
+          deployId:   deployM ? deployM[1] : '',
+          viewKey:    p.viewKey || '',
+          pageHash:   window.location.hash || ''
         })
       }).catch(function (err) {
         console.warn('[scw-qa] QA-fail webhook failed:',
@@ -1779,6 +1800,7 @@
     }
 
     _photoId = photoId;
+    _currentPhoto = photo;
     _initialState = {
       status: photo.status,
       client: photo.client,
@@ -1835,6 +1857,11 @@
       // resolves the per-scene DOC_photos save view for upload/clear PUTs.
       required:      !!snapshot.required,
       viewKey:       snapshot.viewKey || '',
+      // Line-item context (QA-fail webhook payload) — supplied by the v2
+      // photo-strip host (photos.js) when it opened the modal.
+      lineItemId:    snapshot.lineItemId || '',
+      lineLabel:     snapshot.lineLabel  || '',
+      product:       snapshot.product    || '',
       // Restricted surfaces (sub deployment dashboard): upload/view only —
       // never render the Photo Type / Required editors.
       lockClassify:  !!snapshot.lockClassify,
@@ -1844,6 +1871,7 @@
     };
 
     _photoId = photoId;
+    _currentPhoto = photo;
     _initialState = {
       status:  photo.status,
       client:  photo.client,

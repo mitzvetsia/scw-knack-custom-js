@@ -1168,6 +1168,25 @@
         return reqEl.getAttribute('data-photo-required') === 'true';
       })(),
       viewKey:       viewKey,
+      // Line-item context for the QA-fail notification payload: the chit
+      // lives inside the card's photo strip (data-scw-ws-v2-photos = the
+      // line record id); label + product read off the owning card.
+      lineItemId: (function () {
+        var strip = el.closest && el.closest('[data-scw-ws-v2-photos]');
+        if (strip) return strip.getAttribute('data-scw-ws-v2-photos') || '';
+        var card0 = el.closest && el.closest('[data-scw-ws-v2-record]');
+        return card0 ? (card0.getAttribute('data-scw-ws-v2-record') || '') : '';
+      })(),
+      lineLabel: (function () {
+        var card1 = el.closest && el.closest('.scw-ws-v2-card');
+        var lab = card1 && card1.querySelector('.scw-ws-v2-cell--label');
+        return lab ? (lab.textContent || '').trim() : '';
+      })(),
+      product: (function () {
+        var card2 = el.closest && el.closest('.scw-ws-v2-card');
+        var pn = card2 && card2.querySelector('.scw-ws-v2-product-name');
+        return pn ? (pn.textContent || '').trim() : '';
+      })(),
       // Restricted surfaces: hard-lock the Type/Required editors even if a
       // future save-view change would otherwise let the classify bar render,
       // and render the QA sidebar read-only (subs see SCW's verdict; a Pass
