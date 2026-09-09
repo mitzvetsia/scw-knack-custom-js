@@ -82,7 +82,11 @@
     // Sub bid (the sub's own per-line price — sub-safe money, fine on the
     // sub portal). ⚠️ Builder: field_2150 must be a column on the proposed
     // grids (view_4072 / view_4151) or the group silently stays hidden.
-    subBid:           'field_2150'
+    subBid:           'field_2150',
+    // Conduit linear feet. ⚠️ Builder: field_2035 must be a column on the
+    // proposed grids (view_4072 / view_4151) for LIVE sections to show it
+    // (published-snapshot sections carry it regardless — full record dumps).
+    conduit:          'field_2035'
   };
 
   // Corresponding fields on the INSTALL record (view_4093/view_4056 object)
@@ -98,7 +102,8 @@
     exterior:         'field_2805',
     plenum:           'field_2806',
     bucket:           'field_2822',    // REL_CONFIG_proposal bucket
-    mapConn:          'field_2795'     // PRODUCT STORED FLAG_map cam/reader conns
+    mapConn:          'field_2795',    // PRODUCT STORED FLAG_map cam/reader conns
+    conduit:          'field_2803'     // conduit linear feet (install side)
   };
 
   // Proposal-bucket gating for the connection columns — the SAME rules the
@@ -135,7 +140,8 @@
     { label: 'Connected To',      key: 'connectedTo' },
     { label: 'Existing',          key: 'existCabling', kind: 'flag' },
     { label: 'Exterior',          key: 'exterior',     kind: 'flag' },
-    { label: 'Plenum',            key: 'plenum',       kind: 'flag' }
+    { label: 'Plenum',            key: 'plenum',       kind: 'flag' },
+    { label: 'Conduit (ft)',      key: 'conduit' }
   ];
 
   var PANEL_CLS = 'scw-as-quoted';
@@ -635,6 +641,14 @@
       if (g.key === 'subBid') {
         var sbNum = parseFloat(String(readVal(pa, PF.subBid)).replace(/[$,\s]/g, ''));
         if (isNaN(sbNum) || sbNum === 0) continue;
+      }
+      // Conduit renders only when EITHER side carries footage — 0/blank on
+      // both is noise. A non-zero INSTALL value always shows (drift guard:
+      // quoted 0 → installed 80 must not hide).
+      if (g.key === 'conduit') {
+        var cq = parseFloat(String(readVal(pa, PF.conduit)).replace(/[$,\s]/g, ''));
+        var ci = ia ? parseFloat(String(readVal(ia, IF.conduit)).replace(/[$,\s]/g, '')) : NaN;
+        if ((isNaN(cq) || cq === 0) && (isNaN(ci) || ci === 0)) continue;
       }
       var val, differs = null;   // null → default label-based compare
       if (ctx && g.key === 'connectedDevices') {
