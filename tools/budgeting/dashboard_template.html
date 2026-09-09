@@ -101,7 +101,7 @@ table.data td{padding:5px 9px;text-align:right;border-top:1px solid var(--grid);
 table.data tr.sec td{background:var(--surface2);font-weight:700;color:var(--ink)}
 table.data tr.tot td{border-top:2px solid var(--baseline);font-weight:700}
 table.data tr.actual-col{}
-td.neg{color:var(--crit)} td.pos{color:var(--good-text)}
+td.neg{color:var(--crit)} td.pos{color:var(--good-text)} td.warn{color:var(--warn-text);font-weight:600}
 table.data td.actual, table.data th.actual{background:color-mix(in srgb, var(--surface2) 55%, var(--surface))}
 table.data td.qb, table.data th.qb{border-right:2px solid var(--border2)}
 /* the bottom line is a rule, not a colour — green is reserved for "clears target" */
@@ -414,6 +414,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <input type="search" id="expSearch" placeholder="Search expenses…" aria-label="Search expenses">
     <select id="expDept" aria-label="Filter by department"></select>
     <select id="expStatus" aria-label="Filter by status"></select>
+    <select id="expOn" aria-label="Show on or off expenses"><option value="">On and off</option><option value="on">On only</option><option value="off">Off only</option></select>
     <span class="pillcount" id="expCount"></span>
     <span class="spacer"></span>
     <button class="btn" id="addExp">+ Add expense</button>
@@ -2323,11 +2324,28 @@ function renderStaff(C){
 }
 
 /* ---------- expenses tab ---------- */
-const expFilter = { q: "", dept: "", status: "" };
+const expFilter = { q: "", dept: "", status: "", on: "" };
 function chip(status, conflict){
   const cls = STATUS_CHIP[status] || "steady";
   return `<span class="chip ${cls}" title="${status === "PERIODIC" ? "Quarterly/annual cadence — planned as YTD ÷ 12" : ""}">${esc(status)}</span>` +
     (conflict ? ` <span class="chip conflict" title="Budget tool dept overrides Xero">DEPT</span>` : "");
+}
+// Most recent posting per vendor in the Xero export — "last billed". Looked up by vendor name
+// at render time, so rows saved before the field existed pick it up without a migration.
+const LAST_BILLED = Object.fromEntries((MODEL.vend_master || []).map(v => [v.vendor, v.last_billed || ""]));
+const EXPORT_DAY = new Date((MODEL.built || "2026-01-01") + "T00:00:00");
+function lastBilledCell(e){
+  const iso = LAST_BILLED[e.vendor];
+  if (!iso) return `<td class="dim" title="${e.manual ? "Added here — not in the Xero export" : "No posting for this vendor in the export"}">—</td>`;
+  const d = new Date(iso + "T00:00:00");
+  const days = Math.round((EXPORT_DAY - d) / 86400000);
+  const label = MON3[d.getMonth()] + " " + d.getDate() + " \u2019" + String(d.getFullYear()).slice(2);
+  // the two cases worth a second look when deciding on/off: on but gone quiet, off but still billing
+  let cls = "", tip = `Last posting ${iso} — ${days} day${days === 1 ? "" : "s"} before the export`;
+  if (e.on && days > 90){ cls = "warn"; tip += ". Still ON, but nothing has been billed in over three months."; }
+  else if (!e.on && days <= 60){ cls = "warn"; tip += ". Switched OFF, but this vendor billed within the last two months."; }
+  else if (days > 90) cls = "dim";
+  return `<td class="${cls}" title="${esc(tip)}" style="white-space:nowrap">${label}</td>`;
 }
 function renderExpenses(C){
   const selDept = document.getElementById("expDept"), selSt = document.getElementById("expStatus");
@@ -2337,17 +2355,18 @@ function renderExpenses(C){
   }
   const q = expFilter.q.toLowerCase();
   const match = e => (!q || e.vendor.toLowerCase().includes(q) || (e.purpose || "").toLowerCase().includes(q)) &&
-    (!expFilter.dept || e.dept === expFilter.dept) && (!expFilter.status || e.status === expFilter.status);
-  let h = `<table class="data"><thead><tr><th>On</th><th>Expense</th><th>Dept</th><th>Status</th><th>12-mo trend</th>
+    (!expFilter.dept || e.dept === expFilter.dept) && (!expFilter.status || e.status === expFilter.status) &&
+    (!expFilter.on || (expFilter.on === "on") === !!e.on);
+  let h = `<table class="data"><thead><tr><th>On</th><th>Expense</th><th>Dept</th><th>Status</th><th title="Most recent posting for this vendor in the Xero export. Amber: on but quiet for 90+ days, or off but billed within 60 days.">Last billed</th><th>12-mo trend</th>
     <th>Xero sugg/mo</th><th>Budget/mo</th><th>Use</th><th>Override</th><th>Adj %</th><th>From</th><th>To</th><th>Planned/mo</th></tr></thead><tbody>`;
   let shown = 0, totPlanned = 0;
-  const filterActive = !!(q || expFilter.dept || expFilter.status);
+  const filterActive = !!(q || expFilter.dept || expFilter.status || expFilter.on);
   for (const d of DEPTS){
     const rows = S.exp.filter(e => e.dept === d && match(e));
     if (!rows.length) continue;
     const folded = !filterActive && expFold.has(d);
     const sub = rows.reduce((a, e) => a + expensePlanned(e), 0);
-    h += `<tr class="sec deptsec"><td colspan="12"><button class="exp-toggle" data-k="efold" data-dept="${esc(d)}" aria-expanded="${!folded}">${folded ? "▸" : "▾"}</button> ${esc(dn(d))} <span class="dim" style="font-weight:400">· ${rows.length} expense${rows.length > 1 ? "s" : ""}${rows.filter(e => e.on).length < rows.length ? " (" + rows.filter(e => e.on).length + " on)" : ""}</span></td><td>${fmt$(sub)}</td></tr>`;
+    h += `<tr class="sec deptsec"><td colspan="13"><button class="exp-toggle" data-k="efold" data-dept="${esc(d)}" aria-expanded="${!folded}">${folded ? "▸" : "▾"}</button> ${esc(dn(d))} <span class="dim" style="font-weight:400">· ${rows.length} expense${rows.length > 1 ? "s" : ""}${rows.filter(e => e.on).length < rows.length ? " (" + rows.filter(e => e.on).length + " on)" : ""}</span></td><td>${fmt$(sub)}</td></tr>`;
     if (folded){ shown += rows.length; totPlanned += sub; continue; }
     for (const e of rows.sort((a, b) => Math.abs(expensePlanned(b) || b.xero || b.budget || 0) - Math.abs(expensePlanned(a) || a.xero || a.budget || 0))){
       shown++; const pl = expensePlanned(e); totPlanned += pl;
@@ -2355,6 +2374,7 @@ function renderExpenses(C){
         <td title="${esc(e.vendor)}${e.purpose ? " — " + esc(e.purpose) : ""}">${e.manual ? `<input class="cell wide" style="text-align:left" data-id="${e.id}" data-k="vendor" value="${esc(e.vendor)}">` : `<span class="vname">${esc(e.vendor)}</span>`}${e.share < 1 ? ` <span class="dim">(${Math.round(e.share * 100)}% share)</span>` : ""}${e.seat > 0 ? ` <span class="dim" title="Per-seat portion carried on Staffing licenses">seats→Staffing</span>` : ""}${e.use === "STAFFING" ? ` <span class="dim" style="color:var(--modest)" title="Budgeted as a role on the Staffing tab — counted there, not here, so it isn't double-counted">→Staffing</span>` : ""}</td>
         <td><select class="cell" style="max-width:120px;font-size:11px" data-id="${e.id}" data-k="dept" title="Move this expense to another department">${DEPTS.map(d2 => `<option value="${esc(d2)}"${d2 === e.dept ? " selected" : ""}>${esc(dn(d2))}</option>`).join("")}</select></td>
         <td>${chip(e.status, e.conflict)}</td>
+        ${lastBilledCell(e)}
         <td>${e.ttm ? spark(e.ttm, "--modest", 84, 20) : `<span class="dim">—</span>`}</td>
         <td>${e.xero == null ? `<span class="dim">—</span>` : fmt$(e.xero)}</td>
         <td>${e.budget == null ? `<span class="dim">—</span>` : fmt$(e.budget)}</td>
@@ -2366,7 +2386,7 @@ function renderExpenses(C){
         <td><b>${fmt$(pl)}</b></td></tr>`;
     }
   }
-  h += `<tr class="tot"><td colspan="12">TOTAL PLANNED (full-month rows)</td><td>${fmt$(totPlanned)}</td></tr>`;
+  h += `<tr class="tot"><td colspan="13">TOTAL PLANNED (full-month rows)</td><td>${fmt$(totPlanned)}</td></tr>`;
   document.getElementById("expTable").innerHTML = h + "</tbody></table>";
   document.getElementById("expCount").textContent = shown + " of " + S.exp.length + " rows";
 }
@@ -3016,6 +3036,7 @@ document.getElementById("expTable").addEventListener("click", ev => {
 document.getElementById("expSearch").addEventListener("input", ev => { expFilter.q = ev.target.value; renderExpenses(); });
 document.getElementById("expDept").addEventListener("change", ev => { expFilter.dept = ev.target.value; renderExpenses(); });
 document.getElementById("expStatus").addEventListener("change", ev => { expFilter.status = ev.target.value; renderExpenses(); });
+document.getElementById("expOn").addEventListener("change", ev => { expFilter.on = ev.target.value; renderExpenses(); });
 document.getElementById("trSearch").addEventListener("input", ev => { trQ = ev.target.value; renderTrendTable(); });
 document.getElementById("addRep").addEventListener("click", () => {
   S.sales.push({ id: "s" + Date.now(), name: "New rep", role: "Account Executive - RAMP",

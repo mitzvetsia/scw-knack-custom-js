@@ -60,7 +60,7 @@ def money(s):
 # every other month. Always prefer the newest export for a month it covers.
 SKIP = ("Total","Opening Balance","Closing Balance","Net movement","No transactions","Date","Account Transactions","Security Camera","For the period","Accrual Basis","Account Type")
 def read_at(path, keep):
-    """keep(year, month) -> bool. Returns [(account, ttm_idx, contact, debit, credit)]."""
+    """keep(year, month) -> bool. Returns [(account, ttm_idx, contact, debit, credit, iso_date)]."""
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     ws = wb.worksheets[0]
     out, section = [], None
@@ -77,7 +77,7 @@ def read_at(path, keep):
             i = ttm_idx(a.year, a.month)
             if i is None or not keep(a.year, a.month): continue
             out.append((section, i, (contact or "").strip() or (desc or "").strip(),
-                        float(debit or 0), float(credit or 0)))
+                        float(debit or 0), float(credit or 0), a.date().isoformat()))
     wb.close()
     return out
 
@@ -109,7 +109,8 @@ totals_ttm = collections.defaultdict(lambda: [0.0]*12)
 cogs_accounts = collections.defaultdict(lambda: [0.0]*12)
 cogs_vendors = collections.defaultdict(lambda: collections.defaultdict(lambda: [0.0]*12))
 cogs_big = []          # individual postings large enough to explain a month on their own
-for acct, i, contact, debit, credit in records:
+opex_last = {}          # raw vendor name -> most recent posting date (ISO) — "last billed"
+for acct, i, contact, debit, credit, day in records:
     c = code(acct)
     if not c or not c[0].isdigit(): continue
     net = debit - credit
@@ -151,6 +152,7 @@ for acct, i, contact, debit, credit in records:
         if v.startswith("Payment: "): v = v[9:]
         opex_vm[v][i] += net
         opex_va[v][acct] += abs(net)
+        if day > opex_last.get(v, ""): opex_last[v] = day
 
 # Single COGS postings that make a month look unlike its neighbours. Ranking by raw size is
 # useless here: the list fills with the routine month-end 5258 COG-adjustment journals (the
@@ -165,7 +167,7 @@ def _median(xs):
     xs = sorted(x for x in xs if x > 0)
     return xs[len(xs) // 2] if xs else 0.0
 acct_median = {a: _median(v) for a, v in cogs_accounts.items()}
-for acct, i, contact, debit, credit in records:
+for acct, i, contact, debit, credit, _day in records:
     c = code(acct)
     if c not in COGS: continue
     net = debit - credit
@@ -234,11 +236,12 @@ def canon(v):
         if c.lower() == k: return c
     return (v[:57].rstrip() + "…") if len(v) > 60 else v
 
-merged = collections.defaultdict(lambda: {"months":[0.0]*12, "accounts":collections.Counter()})
+merged = collections.defaultdict(lambda: {"months":[0.0]*12, "accounts":collections.Counter(), "last":""})
 for v, months in opex_vm.items():
     cv = canon(v); m = merged[cv]
     for i in range(12): m["months"][i] += months[i]
     m["accounts"][opex_va[v].most_common(1)[0][0]] += abs(sum(months))
+    if opex_last.get(v, "") > m["last"]: m["last"] = opex_last[v]
 
 # xero dept per canonical vendor: reuse v1 (parsed from GL Detail's Departments column)
 v1 = json.load(open(A["v1"]))
@@ -281,6 +284,7 @@ for cv, m in sorted(merged.items(), key=lambda kv: -abs(sum(kv[1]["months"]))):
         budget_monthly=contracts.get(cv, {}).get("monthly", 0.0),
         purpose=contracts.get(cv, {}).get("purpose", ""),
         fixed_alloc=fixed, seat_monthly=seats, final_dept=final,
+        last_billed=m["last"],
         contradiction=bool(bdept) and bool(xdept) and bdept != xdept))
 
 xnames = {r["vendor"] for r in vend_master}
