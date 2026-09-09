@@ -551,6 +551,40 @@
 
   // ── Save ────────────────────────────────────────────────────────
 
+  // ── QA-fail notification ────────────────────────────────────────
+  // Fired once per save that WRITES status = Fail (the fields diff carries
+  // F.status only when it changed, so this is exactly the Pending/Pass →
+  // Fail transition — re-saving notes on an already-failed photo doesn't
+  // refire). Fire-and-forget POST to Make, which resolves the photo record
+  // → line item → project → sub and sends the actual notification. Never
+  // blocks or fails the QA save itself.
+  function notifyQaFail(fields) {
+    try {
+      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_QA_FAIL_WEBHOOK) || '';
+      if (!url || /PLACEHOLDER/.test(url)) {
+        console.warn('[scw-qa] QA failed but MAKE_QA_FAIL_WEBHOOK is not ' +
+          'configured — no sub notification sent.');
+        return;
+      }
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          photoId:  _photoId,
+          status:   'Fail',
+          notes:    fields[F.notes] != null ? fields[F.notes]
+                    : (_initialState && _initialState.notes) || '',
+          failedBy: { id: currentUserId(), name: currentUserName() },
+          failedAt: nowStamp(),
+          pageHash: window.location.hash || ''
+        })
+      }).catch(function (err) {
+        console.warn('[scw-qa] QA-fail webhook failed:',
+          (err && err.message) || err);
+      });
+    } catch (e) { /* notification is best-effort */ }
+  }
+
   function saveFields(fields, onDone) {
     if (typeof SCW === 'undefined' ||
         typeof SCW.knackAjax !== 'function' ||
@@ -562,7 +596,12 @@
       url: SCW.knackRecordUrl(PIC_SAVE_VIEW, _photoId),
       type: 'PUT',
       data: JSON.stringify(fields),
-      success: function () { onDone && onDone(null); },
+      success: function () {
+        // Every QA write funnels through here — the one hook that sees
+        // every path that can set Fail (explicit save, close-autosave).
+        if (fields && fields[F.status] === 'Fail') notifyQaFail(fields);
+        onDone && onDone(null);
+      },
       error: function (xhr) {
         onDone && onDone(new Error('PUT ' + xhr.status));
       }

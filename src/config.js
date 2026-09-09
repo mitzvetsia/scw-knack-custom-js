@@ -324,6 +324,15 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // Blank/PLACEHOLDER hides the row button and drops the uploader's
   // checkbox, so the panel degrades to a plain file upload.
   MAKE_GREENLIGHT_CHECK_WEBHOOK: "https://hook.us1.make.com/zlxkei9ro9iaxjri5e5yf2f4fqzi89xl",
+  // QA-fail notification: qa-popover POSTs here whenever a save WRITES a
+  // photo's QA status to Fail (the fields diff carries the status only on
+  // change, so this fires exactly on the transition). Payload:
+  //   { photoId, status: "Fail", notes, failedBy: {id,name}, failedAt,
+  //     pageHash }
+  // Make resolves photoId → photo record → line item → project → sub and
+  // sends the actual notification. Fire-and-forget: a webhook failure
+  // console.warns and never blocks the QA save itself.
+  MAKE_QA_FAIL_WEBHOOK: "https://hook.us1.make.com/ti9u45iyxdc9j4qfro68m2lwo6noktmt",
   // ⚠️ RETIRED FROM CODE 2026-08-02 (docs/project-stage-workflow.md): the
   // standalone "Request SOW validated as ready for Survey" stepper button
   // was removed — both remaining sales actions (the renamed initiate form

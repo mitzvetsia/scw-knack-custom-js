@@ -42,13 +42,14 @@
   var ns = window.SCW && window.SCW.worksheetV2;
   if (!ns) return;
 
-  var TYPES  = ['photos', 'disconnected', 'bracket', 'notes', 'surveyAdded'];
+  var TYPES  = ['photos', 'disconnected', 'bracket', 'notes', 'surveyAdded', 'qaFail'];
   var LABELS = {
     photos:       'missing photos',
     disconnected: 'disconnected',
     bracket:      'wrong accessory',
     notes:        'has SCW notes',
-    surveyAdded:  'missing model selection'
+    surveyAdded:  'missing model selection',
+    qaFail:       'failed QA'
   };
 
   // Per-issue-type inline SVG. Picked to match v1\'s vocabulary —
@@ -109,7 +110,17 @@
       'stroke-linejoin="round">' +
       '<rect x="8" y="2" width="8" height="4" rx="1"/>' +
       '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>' +
-      '<path d="M9 14h6"/><path d="M12 11v6"/></svg>'
+      '<path d="M9 14h6"/><path d="M12 11v6"/></svg>',
+    // X in a circle — a photo on this item FAILED SCW QA. Gets the one
+    // SOLID-red chip (styles.js): it's an error state needing rework, not
+    // a warning, so it must outrank every amber/rose chip at a glance.
+    qaFail:
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+      'stroke-linejoin="round">' +
+      '<circle cx="12" cy="12" r="10"/>' +
+      '<line x1="15" y1="9" x2="9" y2="15"/>' +
+      '<line x1="9" y1="9" x2="15" y2="15"/></svg>'
   };
 
   // Per-view cache of the last analyze() result. analyze() is cheap
@@ -295,6 +306,27 @@
     return false;
   }
 
+  /** Any photo on this record has QA status = Fail. Reads the source row's
+   *  per-photo QA-status connection spans (field_2859, one span per PIC
+   *  record — same signal the photo-strip chit shows). Views that don't
+   *  project the column simply never flag (SOW/sales/bid surfaces). NOT
+   *  memoized: one cell read per record on the shared tr map, and QA flips
+   *  Pass↔Fail with no photo add/remove to invalidate a cache. */
+  function hasFailedQaPhoto(rec) {
+    try {
+      var tr = _trMap ? _trMap[rec.id] : null;
+      if (!tr) return false;
+      var key = F().photoQaStatus || F().qaStatus || 'field_2859';
+      var cell = tr.querySelector('td[data-field-key="' + key + '"], td.' + key);
+      if (!cell) return false;
+      var spans = cell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var i = 0; i < spans.length; i++) {
+        if ((spans[i].textContent || '').trim().toLowerCase() === 'fail') return true;
+      }
+    } catch (e) { /* DOM not ready yet — skip */ }
+    return false;
+  }
+
   /** SCW Notes (logical `scwNotes`) is non-blank. Plain-text/textarea field —
    *  read the record directly (no DOM scrape needed, unlike photos). */
   function hasScwNotesText(rec) {
@@ -418,6 +450,7 @@
       if (bracketParents[rec.id])                  issues.push('bracket');
       if (hasScwNotesText(rec))                    issues.push('notes');
       if (isSurveyAddedProduct(rec))               issues.push('surveyAdded');
+      if (hasFailedQaPhoto(rec))                   issues.push('qaFail');
       if (issues.length) byRecord[rec.id] = issues;
     }
 

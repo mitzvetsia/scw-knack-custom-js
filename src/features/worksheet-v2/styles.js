@@ -3264,6 +3264,15 @@
     '  color: #a21caf !important; background: #fdf4ff !important;',
     '  border-color: #f0abfc !important;',
     '}',
+    /* qaFail — the ONE solid-filled chip: a photo failed SCW QA, i.e. an
+       error state needing rework (red is reserved for errors, per repo
+       convention), and it must outrank the tinted warning chips at a
+       glance on the sub deployment page. */
+    '.scw-ws-v2-warn-chit[data-issue-type="qaFail"],',
+    '.scw-ws-v2-warn-chip[data-issue-type="qaFail"] {',
+    '  color: #fff !important; background: #dc2626 !important;',
+    '  border-color: #b91c1c !important;',
+    '}',
     /* Card-flash animation triggered when a warning chip is clicked
        — amber pulse on the matching cards so the user sees them at
        a glance after scrolling. */
