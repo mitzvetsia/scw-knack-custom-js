@@ -11,7 +11,7 @@
   --chip-good:rgba(12,163,12,.12); --chip-warn:rgba(250,178,25,.16); --chip-serious:rgba(236,131,90,.16);
   --chip-crit:rgba(208,59,59,.13); --chip-neutral:rgba(11,11,11,.06); --chip-new:rgba(42,120,214,.12);
   --shadow:0 1px 2px rgba(11,11,11,.05),0 4px 16px rgba(11,11,11,.05);
-  --focus:#2a78d6;
+  --focus:#2a78d6; --warn-text:#b45309; --goal-bg:rgba(42,120,214,.07);
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -23,6 +23,7 @@
     --chip-good:rgba(12,163,12,.18); --chip-warn:rgba(250,178,25,.16); --chip-serious:rgba(236,131,90,.18);
     --chip-crit:rgba(208,59,59,.22); --chip-neutral:rgba(255,255,255,.08); --chip-new:rgba(57,135,229,.2);
     --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.3);
+    --warn-text:#f0a24a; --goal-bg:rgba(57,135,229,.14);
   }
 }
 :root[data-theme="dark"]{
@@ -103,8 +104,57 @@ table.data tr.actual-col{}
 td.neg{color:var(--crit)} td.pos{color:var(--good-text)}
 table.data td.actual, table.data th.actual{background:color-mix(in srgb, var(--surface2) 55%, var(--surface))}
 table.data td.qb, table.data th.qb{border-right:2px solid var(--border2)}
-tr.netrow td{background:color-mix(in srgb, var(--chip-good) 45%, transparent)}
-tr.netrow td.actual{background:color-mix(in srgb, var(--chip-good) 30%, var(--surface2))}
+/* the bottom line is a rule, not a colour — green is reserved for "clears target" */
+tr.netrow td{background:var(--surface2);border-top:2px solid var(--ink)}
+tr.netrow td.actual{background:color-mix(in srgb, var(--surface2) 70%, var(--surface))}
+/* the goal cycle is the visual anchor: Oct–Mar columns carry a tint wherever months appear */
+table.data td.goal, table.data th.goal{background:var(--goal-bg)}
+table.data tr.grp th{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center;padding:5px 6px 2px;border-bottom:0;background:var(--surface)}
+table.data tr.grp th.booked{background:color-mix(in srgb, var(--surface2) 55%, var(--surface))}
+table.data th .sub{display:block;font-weight:400;font-size:10px;color:var(--muted);letter-spacing:0;text-transform:none}
+table.data.pl th:first-child, table.data.pl td:first-child{position:sticky;left:0;z-index:1;background:var(--surface);min-width:210px}
+table.data.pl tr.sec td:first-child{background:var(--surface2)}
+table.data.compact td, table.data.compact th{padding:4px 9px}
+/* projections tab: eyebrow → title → one-line note, and a single control strip for the whole tab */
+.eyebrow{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 0 3px}
+.proj-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;font-size:12px}
+.proj-controls .ctl-lbl{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.proj-controls .ctl-lbl + .scn-toggle{margin-left:0;margin-right:10px}
+.proj-controls .ctl-note{margin-left:auto;color:var(--muted)}
+.scn-toggle .btn.on{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+#plScnT .btn.on[data-s="mod"]{background:var(--modest);border-color:var(--modest);color:#fff}
+#plScnT .btn.on[data-s="str"]{background:var(--stretch);border-color:var(--stretch);color:#fff}
+.plan-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 24px;margin:6px 0 12px}
+@media (max-width:900px){.plan-grid{grid-template-columns:1fr}}
+.plan-grid .lab{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.plan-val{font-family:"Archivo",system-ui,sans-serif;font-size:22px;font-weight:700;letter-spacing:-.01em;margin-top:2px;font-variant-numeric:tabular-nums;line-height:1.2}
+.plan-val small{font-size:12.5px;font-weight:600;color:var(--ink2);letter-spacing:0}
+.plan-sub{font-size:12px;color:var(--ink2);margin-top:4px;line-height:1.45}
+.plan-row{display:flex;flex-wrap:wrap;gap:12px 28px;align-items:flex-start;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.assume{display:flex;flex-wrap:wrap;gap:6px 8px;font-size:12px;color:var(--ink2);margin:10px 0 2px}
+.assume .a{border:1px solid var(--border);border-radius:999px;padding:2px 9px;background:var(--surface2);white-space:nowrap}
+.assume .a b{color:var(--ink);font-weight:600}
+details.fold{margin-top:10px;border-top:1px solid var(--border);padding-top:6px}
+details.fold summary{cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink2);padding:4px 0;list-style:none}
+details.fold summary::-webkit-details-marker{display:none}
+details.fold summary::before{content:"▸ ";color:var(--muted)}
+details.fold[open] summary::before{content:"▾ "}
+details.fold .fold-body{padding:8px 0 2px}
+details.card.diag{padding:0}
+details.card.diag > summary{list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:12px;padding:14px 18px;flex-wrap:wrap}
+details.card.diag > summary::-webkit-details-marker{display:none}
+details.card.diag > summary::before{content:"▸";color:var(--muted);font-size:12px}
+details.card.diag[open] > summary::before{content:"▾"}
+details.card.diag > summary h2{margin:0}
+details.card.diag > summary .eyebrow{margin:0}
+details.card.diag > summary .sum{color:var(--ink2);font-size:12.5px;font-variant-numeric:tabular-nums}
+details.card.diag .fold-body{padding:0 18px 16px}
+a.how{color:var(--muted);font-size:11.5px;text-decoration:none;margin-left:6px;white-space:nowrap}
+a.how:hover{color:var(--ink)}
+.inc-stats{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:12.5px;padding:8px 12px;border:1px solid var(--border);border-radius:9px;background:var(--surface2);margin:0 0 10px;font-variant-numeric:tabular-nums}
+.warn{color:var(--warn-text)}
+.pg-body[hidden]{display:none}
+.pg-head .btn.mini.on{background:var(--surface2)}
 table.data td:first-child{font-weight:600}
 table.data .dim{color:var(--muted);font-weight:400}
 
@@ -277,36 +327,50 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
 
 <main>
 <section class="tab on" id="tab-proj">
-  <div class="card" id="goalsCard"></div>
-  <div class="card"><h2>Model levers</h2><p class="note">The dials the whole model runs on. <b>COGS % fwd</b> is the margin dial — it sets cost of sales for every modeled month (and the pending Jul estimate) and moves break-even everywhere. Hedges pad modeled payroll and planned expenses; other income covers rent &amp; interest.</p>
-  <div class="levers" id="projLevers" style="border:0;padding:0;margin:0;background:transparent"></div></div>
-  <div class="cards2">
-    <div class="card"><h2>Monthly net profit</h2><p class="note">One bar per booked month; modeled months show modest and stretch side by side. Hover any month.</p><figure class="chart" id="chartNet"></figure></div>
-    <div class="card"><h2>Cumulative net through Mar 2027</h2><p class="note">Running total of monthly net profit: booked through <span class="js-actmo"></span>, then each scenario.</p><figure class="chart" id="chartCum"></figure></div>
+  <div class="proj-controls" id="projControls">
+    <span class="ctl-lbl">Scenario</span><span class="scn-toggle" id="plScnT"><button class="btn on" data-s="mod">Modest</button><button class="btn" data-s="str">Stretch</button><button class="btn" data-s="both">Both</button></span>
+    <span class="ctl-lbl">Basis</span><span class="scn-toggle" id="plBasisT"><button class="btn" data-b="booked">As booked</button><button class="btn on" data-b="all">+ programs</button></span>
+    <span class="ctl-note">Booked Jan–<span class="js-actmo"></span> · <span class="js-bridge"></span> bridge · Oct–Mar goal cycle</span>
   </div>
-  <div class="card"><h2>Incentive programs</h2>
-    <p class="note">Money a period earns that the books have not seen — the operations bonus is not paid until the six months close, and the Sales Director bonus has never been calculated at all. Each accrues against where its half is <b>pacing</b>. A program pays either <b>a set amount</b> earned proportionally across a revenue range (nothing below the floor, all of it at the cap) or <b>a % of every dollar above a threshold</b>, uncapped. Its cost accrues <b>by pacing</b> — every month carries its revenue-weighted share of the projected payout, so as the running total crosses each percent of the goal that month picks up its slice — or evenly, or only once the threshold is actually crossed. Use <b>+ accrued</b> on the P&amp;L above to see the loaded picture.</p>
-    <div id="incSummary"></div>
-    <div id="incList"></div>
-    <button class="btn addrow" id="addProgram">+ Add a program</button></div>
-  <div class="card"><h2>P&amp;L by month <span class="scn-toggle" id="plScnT"><button class="btn on" data-s="mod">Modest</button><button class="btn" data-s="str">Stretch</button><button class="btn" data-s="both">Both</button></span><span class="scn-toggle" id="plBasisT" style="margin-left:8px"><button class="btn" data-b="booked">As booked</button><button class="btn on" data-b="all">+ accrued</button></span></h2><p class="note">Shaded columns are Xero as booked (<span class="js-actrange"></span>). Later columns come from the Sales projections, Staffing and Expenses tabs. Payroll is base pay in every column — Xero's commission lines are split out onto the Sales comp row so booked and modeled months read alike. <b>As booked</b> is what Xero shows; <b>+ accrued</b> charges the incentive programs above to the months that earn them — money the period has earned that has not been paid or posted.</p>
+  <div class="card" id="goalsCard">
+    <div class="eyebrow">Results</div><h2>The plan: Q4+Q1 · Oct 2026 – Mar 2027</h2>
+    <div id="goalsBody"></div>
+    <details class="fold" id="tuneD"><summary>Set targets &amp; tune the model</summary>
+      <div class="fold-body"><div id="goalTargets"></div>
+      <div class="levers" id="projLevers" style="border:0;padding:0;margin:0;background:transparent"></div></div></details>
+    <p class="footnote" id="dataStatus" style="margin:8px 0 0"></p>
+  </div>
+  <div class="cards2">
+    <div class="card"><div class="eyebrow">Results</div><h2>Net by month</h2><p class="note">Booked months as bars; modeled months show modest and stretch side by side.</p><figure class="chart" id="chartNet" title="Hover any month for the figures"></figure></div>
+    <div class="card"><div class="eyebrow">Results</div><h2>Cumulative net through Mar 2027</h2><p class="note">Running total: booked through <span class="js-actmo"></span>, then each scenario.</p><figure class="chart" id="chartCum" title="Hover any month for the figures"></figure></div>
+  </div>
+  <div class="card"><div class="eyebrow">Results</div><h2>By period</h2>
+    <p class="note">The same P&amp;L rolled up — the goal cycle first, then the closing cycle, the calendar year, and each quarter. Follows the scenario strip above. <a class="how" href="#notes">How it works ↗</a></p>
+    <div class="tablewrap" id="periodSum"></div></div>
+  <div class="card"><div class="eyebrow">Workings</div><h2>P&amp;L by month</h2>
+    <p class="note">Shaded = Xero as booked (<span class="js-actrange"></span>); <span class="js-bridge"></span> is a bridge month; Oct–Mar is the goal cycle. Payroll is base pay; commissions sit on their own row. Month cells round to $K — hover for the exact figure. <a class="how" href="#notes">How it works ↗</a></p>
     <div class="tablewrap" id="plTable"></div>
     <p class="footnote" id="plFoot"></p>
   </div>
-  <div class="card"><h2>Period summaries</h2>
-    <p class="note">The same P&amp;L rolled up by calendar quarter, by planning cycle — <b>Q2+Q3</b> Apr–Sep and <b>Q4+Q1</b> Oct–Mar — and by calendar year (2026 is the one full year inside the horizon; monthly is the P&amp;L above). Follows the Modest / Stretch choice above; booked months are identical under both.</p>
-    <div class="tablewrap" id="periodSum"></div></div>
-  <div class="card"><h2>Department budget rollup <span class="scn-toggle" id="rollMetric"><button class="btn on" data-m="total">Total cost</button><button class="btn" data-m="pay">Payroll</button><button class="btn" data-m="opex">Opex</button><button class="btn" data-m="hc">Headcount</button></span></h2>
-    <p class="note">Payroll and operating spend rolled up per department — booked figures through <span class="js-actmo"></span> (payroll splits from Xero's department tracking, 97% tagged; untagged lands in Unassigned), model after. Headcount is the staffing plan for all months. Sales commissions and COGS are company-level and not in this rollup.</p>
-    <figure class="chart" id="rollChart"></figure>
-    <div class="tablewrap" id="rollTable"></div></div>
-  <div class="card"><h2>Growth &amp; scenario gap</h2>
-    <p class="note">Modest vs stretch as growth: month-over-month, calendar quarter-over-quarter, and the one true year-over-year inside the horizon — Jan–Mar 2027 vs Jan–Mar 2026 booked. Sales revenue and net profit; booked months are identical under both scenarios.</p>
-    <div class="tablewrap" id="growthQ"></div>
-    <div class="tablewrap" style="margin-top:12px" id="growthC"></div>
-    <p class="note" style="margin:8px 0 0">Cost history before 2026 comes from the accrual export (Aug ’25 onward). Revenue before Jan ’26 isn’t in the current exports — add a FY25 export that includes the revenue (4xxx) accounts and revenue YoY will backfill.</p>
-    <div class="tablewrap" style="margin-top:12px" id="growthM"></div></div>
-  <details class="helper"><summary>How this model works</summary><div class="inner" id="notes"></div></details>
+  <div class="card" id="incCard"><div class="eyebrow">Results · modifier</div><h2>Incentive programs</h2>
+    <p class="note">Bonuses accrue against each cycle's pacing; none of this is in Xero. <a class="how" href="#notes">How it works ↗</a></p>
+    <div id="incSummary"></div>
+    <div id="incList"></div>
+    <button class="btn addrow" id="addProgram">+ Add a program</button></div>
+  <details class="card diag" id="rollD"><summary><span class="eyebrow">Diagnostics</span><h2>Department budget</h2><span class="sum" id="rollSum"></span></summary>
+    <div class="fold-body">
+      <div style="margin:4px 0 8px"><span class="scn-toggle" id="rollMetric" style="margin-left:0"><button class="btn on" data-m="total">Total cost</button><button class="btn" data-m="pay">Payroll</button><button class="btn" data-m="opex">Opex</button><button class="btn" data-m="hc">Headcount</button></span></div>
+      <p class="note">Per department: Xero's department tags through <span class="js-actmo"></span> (97% tagged; untagged lands in Unassigned), the staffing and expense plans after. Commissions and COGS are company-level and not here.</p>
+      <figure class="chart" id="rollChart"></figure>
+      <div class="tablewrap" id="rollTable"></div></div></details>
+  <details class="card diag" id="growD"><summary><span class="eyebrow">Diagnostics</span><h2>Growth math</h2><span class="sum" id="growSum"></span></summary>
+    <div class="fold-body">
+      <p class="note">Modest vs stretch as growth: quarter over quarter, the one true year over year inside the horizon (Jan–Mar 2027 vs Jan–Mar 2026), and month over month.</p>
+      <div class="tablewrap" id="growthQ"></div>
+      <div class="tablewrap" style="margin-top:12px" id="growthC"></div>
+      <div class="tablewrap" style="margin-top:12px" id="growthM"></div>
+      <p class="footnote" style="margin:8px 0 0">Cost history before 2026 comes from the accrual export (Aug ’25 onward). Revenue before Jan ’26 isn’t in the current exports — add a FY25 export with the revenue (4xxx) accounts and revenue YoY will backfill.</p></div></details>
+  <details class="helper" id="notesD"><summary>How this model works</summary><div class="inner" id="notes"></div></details>
 </section>
 
 <section class="tab" id="tab-sales">
@@ -972,7 +1036,10 @@ const BRIDGE_LABEL = BRIDGE_N === 0 ? "no" : BRIDGE_N === 1 ? MONTHS[ACT]
 function fillMonthLabels(){
   for (const e of document.querySelectorAll(".js-actmo")) e.textContent = ACT_MO;
   for (const e of document.querySelectorAll(".js-actrange")) e.textContent = ACT_RANGE;
+  for (const e of document.querySelectorAll(".js-bridge")) e.textContent = BRIDGE_LABEL;
 }
+// one decimal, always — for margins and the headline, where "6%" next to "6.7%" reads as two precisions
+const fmtPct1 = v => (v * 100).toFixed(1) + "%";
 // weight for month m (1-based). Benefits, licences and flat-dollar raises are monthly amounts
 // and stay unweighted — only the labor itself scales with days worked.
 /* A booked month whose payroll is only PART posted. Xero accrues payroll daily and reverses on
@@ -1306,11 +1373,17 @@ function monthChart(el, series, opts = {}){
   for (const t of ticks) g += `<line x1="${mL}" x2="${W - mR}" y1="${y(t)}" y2="${y(t)}" stroke="var(${t === 0 ? "--baseline" : "--grid"})" stroke-width="1"/>` +
     `<text x="${mL - 7}" y="${y(t) + 3.5}" text-anchor="end" font-size="10" fill="var(--muted)" style="font-variant-numeric:tabular-nums">${fmtK(t)}</text>`;
   for (let i = 0; i < NM; i++) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${MONTHS[i]}</text>`;
+  if (opts.band){
+    // the goal cycle, tinted behind the months it covers, captioned once
+    const bx = mL + bandW * opts.band[0], bw2 = bandW * (opts.band[1] - opts.band[0]);
+    g = `<rect x="${bx}" y="${mT}" width="${bw2}" height="${ih}" fill="var(--goal-bg)"/>` + g +
+      `<text x="${bx + bw2 / 2}" y="11" text-anchor="middle" font-size="9" letter-spacing=".08em" fill="var(--muted)">GOAL CYCLE</text>`;
+  }
   if (opts.divider !== false){
     const dx = mL + bandW * ACT;
     g += `<line x1="${dx}" x2="${dx}" y1="${mT}" y2="${mT + ih}" stroke="var(--border2)" stroke-width="1"/>` +
       `<text x="${dx - 5}" y="11" text-anchor="end" font-size="9" letter-spacing=".08em" fill="var(--muted)">BOOKED</text>` +
-      `<text x="${dx + 5}" y="11" font-size="9" letter-spacing=".08em" fill="var(--muted)">MODEL</text>`;
+      (opts.band ? "" : `<text x="${dx + 5}" y="11" font-size="9" letter-spacing=".08em" fill="var(--muted)">MODEL</text>`);
   }
   const bars = series.filter(s => s.kind === "bar"), lines = series.filter(s => s.kind !== "bar");
   let marks = "";
@@ -1375,10 +1448,10 @@ function renderTiles(C){
   const payMo = C.staffTotal[NM - 1], opexMo = C.opex[NM - 1];
   const tgt = S.levers.targetH2;
   document.getElementById("tiles").innerHTML = `
-  <div class="tile"><div class="lbl">Goal period net — modest</div><div class="val">${fmtK(gpNetM)}</div><div class="sub">Oct 2026 – Mar 2027</div>${spark(C.net.mod.slice(FH2[0], FH2[1]), "--modest")}</div>
-  <div class="tile"><div class="lbl">Goal period net — stretch</div><div class="val">${fmtK(gpNetS)}</div><div class="sub">Oct 2026 – Mar 2027</div>${spark(C.net.str.slice(FH2[0], FH2[1]), "--stretch")}</div>
-  <div class="tile"><div class="lbl">Goal period revenue M / S</div><div class="val">${fmtK(gpRevM)} <small>/ ${fmtK(gpRevS)}</small></div><div class="sub">target ${fmtK(tgt)} — modest lands ${Math.round(tgt ? gpRevM / tgt * 100 : 0)}%</div></div>
-  <div class="tile"><div class="lbl">Net booked ${esc(ACT_RANGE)}</div><div class="val">${fmtK(ytd)}</div><div class="sub">Xero actuals, accrual</div></div>
+  <div class="tile"><div class="lbl">${FH2[3]} net — modest</div><div class="val">${fmtK(gpNetM)} <small>${fmtPct1(gpRevM ? gpNetM / gpRevM : 0)}</small></div><div class="sub">Oct 2026 – Mar 2027</div>${spark(C.net.mod.slice(FH2[0], FH2[1]), "--modest")}</div>
+  <div class="tile"><div class="lbl">${FH2[3]} net — stretch</div><div class="val">${fmtK(gpNetS)} <small>${fmtPct1(gpRevS ? gpNetS / gpRevS : 0)}</small></div><div class="sub">Oct 2026 – Mar 2027</div>${spark(C.net.str.slice(FH2[0], FH2[1]), "--stretch")}</div>
+  <div class="tile"><div class="lbl">${FH2[3]} revenue M / S</div><div class="val">${fmtK(gpRevM)} <small>/ ${fmtK(gpRevS)}</small></div><div class="sub">target ${fmtK(tgt)} — modest ${Math.round(tgt ? gpRevM / tgt * 100 : 0)}% · stretch ${Math.round(tgt ? gpRevS / tgt * 100 : 0)}%</div></div>
+  <div class="tile"><div class="lbl">Net booked ${esc(ACT_RANGE)} (Xero)</div><div class="val">${fmtK(ytd)}</div></div>
   <div class="tile"><div class="lbl">Mar ’27 run-rate</div><div class="val">${fmtK(payMo)} <small>payroll</small></div><div class="sub">${fmtK(opexMo)}/mo opex planned</div></div>`;
 }
 
@@ -1426,14 +1499,14 @@ function renderProj(C){
     [{name:"Actual (booked)", color:"--aqua", vals:actOnly(C.net.mod), kind:"bar"},
      {name:"Net — modest", color:"--modest", vals:projOnly(C.net.mod), kind:"bar"},
      {name:"Net — stretch", color:"--stretch", vals:projOnly(C.net.str), kind:"bar"}],
-    {aria:"Monthly net profit: booked, then modest vs stretch"});
+    {aria:"Monthly net profit: booked, then modest vs stretch", band:[FH2[0], FH2[1]]});
   const cum = a => a.reduce((acc, v) => (acc.push((acc.at(-1) || 0) + v), acc), []);
   const cm = cum(C.net.mod), cs = cum(C.net.str);
   monthChart(document.getElementById("chartCum"),
     [{name:"Actual (booked)", color:"--aqua", vals:cm.map((v, i) => i < ACT ? v : null)},
      {name:"Cumulative — modest", color:"--modest", vals:cm.map((v, i) => i >= ACT - 1 ? v : null)},
      {name:"Cumulative — stretch", color:"--stretch", vals:cs.map((v, i) => i >= ACT - 1 ? v : null)}],
-    {aria:"Cumulative net profit"});
+    {aria:"Cumulative net profit", band:[FH2[0], FH2[1]]});
   // P&L table — one scenario at a time by default; "Both" interleaves
   const rows = [];
   const both = plScn === "both";
@@ -1502,15 +1575,15 @@ function renderProj(C){
   if (loaded){
     const zf = v => Math.abs(v) < 0.5 ? "" : fmt$(v);
     for (const [k, v] of pick(C.incent.mod, C.incent.str))
-      push(`<span title="Incentive programs accrued to the months that earn them. None of this is in Xero: an operations bonus is not paid until its six months close, and the Sales Director bonus has never been calculated. Booked months carry it too — that is the liability the books do not show.">Accrued incentives (not yet booked)</span>` + sfx(k), v, "dim", zf);
+      push(`<span title="Incentive programs accrued to the months that earn them, loaded with employer taxes. None of this is in Xero: an operations bonus is not paid until its six months close, and the Sales Director bonus has never been calculated. Booked months carry it too — that is the liability the books do not show.">Accrued programs</span>` + sfx(k), v, "dim", zf);
   }
   const netM = loaded ? C.netAll.mod : C.net.mod, netS = loaded ? C.netAll.str : C.net.str;
-  for (const [k, v] of pick(netM, netS)) push("NET" + (loaded ? " — with accruals" : "") + (both ? sfx(k).toUpperCase() : ""), v, "tot netrow");
+  for (const [k, v] of pick(netM, netS)) push("NET" + (loaded ? " with programs" : "") + (both ? sfx(k).toUpperCase() : ""), v, "tot netrow");
   // margin: net over sales revenue, with the period columns computed on the sums, not averaged
   for (const [k, v] of pick(netM, netS)){
     const revK = C.rev[k], m = v.map((n, i) => revK[i] ? n / revK[i] : 0);
     const pr = (x, y) => { const n = v.slice(x, y).reduce((a, b) => a + b, 0), d = revK.slice(x, y).reduce((a, b) => a + b, 0); return d ? n / d : 0; };
-    rows.push({ label: "&nbsp;&nbsp;net margin" + sfx(k), vals: m, cls: "dim", fm: fmtPct, sums: [pr(FH1[0], FH1[1]), pr(FH2[0], FH2[1]), pr(0, NM)] });
+    rows.push({ label: "&nbsp;&nbsp;net margin" + sfx(k), vals: m, cls: "dim", fm: fmtPct1, sums: [pr(FH2[0], FH2[1]), pr(FH1[0], FH1[1]), pr(0, NM)] });
   }
   if (!both)
     push("Net under " + (plScn === "mod" ? "stretch" : "modest") + " (reference)", plScn === "mod" ? netS : netM, "dim");
@@ -1519,15 +1592,27 @@ function renderProj(C){
   const half = (vals, [a, b]) => vals.slice(a, b).reduce((x, y) => x + y, 0);
   const qb = i => (i % 3 === 2 ? " qb" : "");
   const provSet = new Set(S.levers.estProv ? (MODEL.provisional_cogs_months || []) : []);
-  let h = `<table class="data"><thead><tr><th>P&amp;L</th>` +
-    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${qb(i)}${ybCls(i)}"${provSet.has(i + 1) ? ` title="COGS estimated — the ${m} COGS entry hasn’t been made in Xero yet"` : ""}>${mhead(i)}${provSet.has(i + 1) ? "*" : ""}</th>`).join("") +
-    `<th>H1 Apr–Sep</th><th>H2 Oct–Mar</th><th>15 mo</th></tr></thead><tbody>`;
+  const goalCls = i => (i >= FH2[0] && i < FH2[1]) ? " goal" : "";
+  const bridgeN = Math.max(0, FH2[0] - ACT);
+  let h = `<table class="data pl"><thead>` +
+    `<tr class="grp"><th></th><th colspan="3">Totals</th><th class="booked" colspan="${Math.min(ACT, NM)}">Booked ${esc(ACT_RANGE)}</th>` +
+    (bridgeN ? `<th colspan="${bridgeN}">Bridge</th>` : "") + `<th class="goal" colspan="${FH2[1] - FH2[0]}">Goal cycle Oct–Mar</th></tr>` +
+    `<tr><th>P&amp;L</th><th class="goal">${FH2[3]}<span class="sub">Oct–Mar</span></th><th>${FH1[3]}<span class="sub">Apr–Sep</span></th><th>15 mo<span class="sub">Jan 26–Mar 27</span></th>` +
+    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${qb(i)}${ybCls(i)}${goalCls(i)}"${provSet.has(i + 1) ? ` title="COGS estimated — the ${m} COGS entry hasn’t been made in Xero yet"` : ""}>${mhead(i)}${provSet.has(i + 1) ? "*" : ""}</th>`).join("") +
+    `</tr></thead><tbody>`;
   for (const r of rows){
-    if (r.section){ h += `<tr class="sec"><td colspan="19">${esc(r.section)}</td></tr>`; continue; }
-    const sums = r.sums ? r.sums : r.fm === fmt$ ? [half(r.vals, FH1), half(r.vals, FH2), r.vals.reduce((a, b) => a + b, 0)] : null;
+    if (r.section){ h += `<tr class="sec"><td colspan="${NM + 4}">${esc(r.section)}</td></tr>`; continue; }
+    const isNet = /NET/.test(r.label);
+    const sums = r.sums ? r.sums : r.fm === fmt$ ? [half(r.vals, FH2), half(r.vals, FH1), r.vals.reduce((a, b) => a + b, 0)] : null;
+    const sumFm = r.sums ? r.fm : fmt$;
+    // a cell's own caveat (the August payroll estimate, the "who moved" notes) outranks the
+    // exact-figure hover; when both exist the figure rides inside the caveat
+    const cell = (v, i) => r.fm === fmt$
+      ? `<td class="${i < ACT ? "actual" : ""}${qb(i)}${goalCls(i)}${isNet && v < 0 ? " neg" : ""}" title="${r.tips && r.tips[i] ? esc(fmt$(v) + " — " + r.tips[i]) : fmt$(v)}">${fmtK(v)}</td>`
+      : `<td class="${i < ACT ? "actual" : ""}${qb(i)}${goalCls(i)}${isNet && v < 0 ? " neg" : ""}"${r.tips && r.tips[i] ? ` title="${esc(r.tips[i])}"` : ""}>${r.fm(v)}</td>`;
     h += `<tr class="${r.cls}"><td class="${r.cls === "dim" ? "dim" : ""}">${r.label}</td>` +
-      r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}${qb(i)}${/NET/.test(r.label) && v < 0 ? " neg" : ""}"${r.tips && r.tips[i] ? ` title="${esc(r.tips[i])}"` : ""}>${r.fm(v)}</td>`).join("") +
-      (sums ? sums.map(v => `<td><b>${(r.sums ? r.fm : fmt$)(v)}</b></td>`).join("") : "<td></td><td></td><td></td>") + `</tr>`;
+      (sums ? sums.map((v, k) => `<td class="${k === 0 ? "goal" : ""}${isNet && v < 0 ? " neg" : ""}"><b>${sumFm(v)}</b></td>`).join("") : "<td class=\"goal\"></td><td></td><td></td>") +
+      r.vals.map(cell).join("") + `</tr>`;
   }
   document.getElementById("plTable").innerHTML = h + "</tbody></table>";
   document.getElementById("plFoot").textContent =
@@ -1540,7 +1625,13 @@ function renderProj(C){
       : "") +
     "Break-even row: monthly sales revenue needed to cover base payroll + opex less other income at that month's gross margin (excl. commissions and bonus programs).";
   document.getElementById("notes").innerHTML =
-    `Built ${MODEL.built} from the Xero <b>Account Transactions</b> export (accrual, ${esc(MODEL.ttm_labels[0])}\u2013${esc(MODEL.ttm_labels[MODEL.ttm_labels.length - 1])} \u2014 expenses, COGS, payroll), the Xero GL Detail (revenue, department tags), and the budgeting-tool exports (allocations, roster, ramps). Horizon: Jan 2026 – Mar 2027. ${esc(ACT_RANGE)} 2026 ${ACT === 1 ? "is" : "are"} booked; ${esc(BRIDGE_LABEL)} ${BRIDGE_N === 1 ? "is a bridge month" : "are bridge months"} you can budget/staff; Oct 2026–Mar 2027 is the goal-setting cycle (Q4+Q1). Where the budgeting tool allocated a vendor to a different department than Xero, the budgeting tool wins (${MODEL.vend_master.filter(v=>v.contradiction).length} conflicts — see Trends). Per-seat licenses ride headcount on Staffing. Commissions are one measured rate on commissionable revenue (Sales projections tab); bonus programs are accrued on Projections. Edits save in this browser only — use Copy config to share.`;
+    `Built ${MODEL.built} from the Xero <b>Account Transactions</b> export (accrual, ${esc(MODEL.ttm_labels[0])}\u2013${esc(MODEL.ttm_labels[MODEL.ttm_labels.length - 1])} \u2014 expenses, COGS, payroll), the Xero GL Detail (revenue, department tags), and the budgeting-tool exports (allocations, roster, ramps). Horizon: Jan 2026 – Mar 2027. ${esc(ACT_RANGE)} 2026 ${ACT === 1 ? "is" : "are"} booked; ${esc(BRIDGE_LABEL)} ${BRIDGE_N === 1 ? "is a bridge month" : "are bridge months"} you can budget/staff; Oct 2026–Mar 2027 is the goal-setting cycle (Q4+Q1). Where the budgeting tool allocated a vendor to a different department than Xero, the budgeting tool wins (${MODEL.vend_master.filter(v=>v.contradiction).length} conflicts — see Trends). Per-seat licenses ride headcount on Staffing. Commissions are one measured rate on commissionable revenue (Sales projections tab); bonus programs are accrued on Projections. Edits save in this browser only — use Copy config to share.
+    <h4>The plan card</h4>Each cycle's revenue target drives the attainment pills here and on Sales projections. Break-even is the fixed hurdle: base payroll and opex less other income, at the month's gross margin — commissions and bonus programs are excluded because they only exist when revenue does. "With programs" is the same months with the incentive programs charged to them.
+    <h4>Model levers</h4><b>COGS % fwd</b> is the margin dial — it sets cost of sales for every modeled month (and the pending Jul/Aug estimates) and moves break-even everywhere. Hedges pad modeled payroll and planned expenses; other income covers rent and interest. August has not closed, so its payroll is estimated at the closed months' rate per business day unless switched to as-booked.
+    <h4>Incentive programs</h4>Money a period earns that the books have not seen — the operations bonus is not paid until the six months close, and the Sales Director bonus has never been calculated. A program pays either a set amount earned proportionally across a revenue range (nothing below the floor, all of it at the cap) or a percentage of every dollar above a threshold, uncapped. Its cost accrues <b>by pacing</b> — every month carries its revenue-weighted share of the projected payout, so as the running total crosses each percent of the goal that month picks up its slice — or evenly, or only once the threshold is actually crossed. Costs are loaded with employer payroll taxes; contractors are outside every program.
+    <h4>P&amp;L conventions</h4>Shaded columns are Xero as booked; later columns come from the Sales projections, Staffing and Expenses tabs. Payroll is base pay in every column — Xero's commission lines are split out onto the commissions row so booked and modeled months read alike. <b>As booked</b> is what Xero shows; <b>+ programs</b> charges the incentive programs to the months that earn them.
+    <h4>By period</h4>Calendar quarters (Q1 is Jan–Mar); the planning cycles that straddle the year are Q2+Q3 (Apr–Sep) and Q4+Q1 (Oct–Mar). 2026 is the one full calendar year inside the horizon. Margins are computed on the period sums, not averaged.
+    <h4>Department budget</h4>Payroll splits from Xero's department tracking (97% tagged; untagged lands in Unassigned) for booked months, the staffing and expense plans after. Commissions and COGS are company-level and not in the rollup.`;
 }
 </script>
 <script>
@@ -1593,35 +1684,45 @@ function renderRollup(C){
     : C.deptPay[d].map((v, i) => v + C.dept[d][i]);
   const isHC = rollMetric === "hc";
   const fmv = isHC ? (v => v ? (Math.round(v * 10) / 10).toLocaleString("en-US") : "·") : fmt$;
+  const fmk = isHC ? fmv : (v => fmtK(v));
   const rows = DEPTS.map(d => ({ d, vals: series(d) })).filter(r => r.vals.some(v => Math.abs(v) > 0.05));
-  let h = `<table class="data"><thead><tr><th>Department</th>` +
-    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}">${mhead(i)}</th>`).join("") +
-    (isHC ? `<th>Mar ’27</th>` : `<th>H1 Apr–Sep</th><th>H2 Oct–Mar</th><th>15 mo</th>`) + `</tr></thead><tbody>`;
+  const goalCls = i => (i >= FH2[0] && i < FH2[1]) ? " goal" : "";
+  const bridgeN = Math.max(0, FH2[0] - ACT);
+  const cyc = r => isHC ? r.vals[NM - 1] : half(r.vals, FH2);
+  let h = `<table class="data"><thead>` +
+    `<tr class="grp"><th></th><th colspan="${isHC ? 1 : 3}">Totals</th><th class="booked" colspan="${Math.min(ACT, NM)}">Booked ${esc(ACT_RANGE)}</th>` +
+    (bridgeN ? `<th colspan="${bridgeN}">Bridge</th>` : "") + `<th class="goal" colspan="${FH2[1] - FH2[0]}">Goal cycle Oct–Mar</th></tr>` +
+    `<tr><th>Department</th>` +
+    (isHC ? `<th class="goal">Mar ’27</th>` : `<th class="goal">${FH2[3]}<span class="sub">Oct–Mar</span></th><th>${FH1[3]}<span class="sub">Apr–Sep</span></th><th>15 mo</th>`) +
+    MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}${goalCls(i)}">${mhead(i)}</th>`).join("") + `</tr></thead><tbody>`;
+  const tots = r => isHC ? `<td class="goal"><b>${fmv(r.vals[NM - 1])}</b></td>`
+    : `<td class="goal${half(r.vals, FH2) < 0 ? " neg" : ""}"><b>${fmt$(half(r.vals, FH2))}</b></td><td><b>${fmt$(half(r.vals, FH1))}</b></td><td><b>${fmt$(r.vals.reduce((a, b) => a + b, 0))}</b></td>`;
   for (const r of rows){
-    h += `<tr><td>${esc(dn(r.d))}</td>` +
-      r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}">${fmv(v)}</td>`).join("") +
-      (isHC ? `<td><b>${fmv(r.vals[NM - 1])}</b></td>`
-            : `<td><b>${fmt$(half(r.vals, FH1))}</b></td><td><b>${fmt$(half(r.vals, FH2))}</b></td><td><b>${fmt$(r.vals.reduce((a, b) => a + b, 0))}</b></td>`) + `</tr>`;
+    h += `<tr><td>${esc(dn(r.d))}</td>` + tots(r) +
+      r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}${goalCls(i)}${v < -0.5 ? " neg" : ""}"${isHC ? "" : ` title="${fmt$(v)}"`}>${fmk(v)}</td>`).join("") + `</tr>`;
   }
   const tot = Array.from({length:NM}, (_, i) => rows.reduce((a, r) => a + r.vals[i], 0));
-  h += `<tr class="tot"><td>TOTAL</td>` + tot.map((v, i) => `<td>${fmv(v)}</td>`).join("") +
-    (isHC ? `<td>${fmv(tot[NM - 1])}</td>`
-          : `<td>${fmt$(half(tot, FH1))}</td><td>${fmt$(half(tot, FH2))}</td><td>${fmt$(tot.reduce((a, b) => a + b, 0))}</td>`) + `</tr>`;
+  h += `<tr class="tot"><td>TOTAL</td>` + tots({ vals: tot }) + tot.map((v, i) => `<td class="${goalCls(i).trim()}">${fmk(v)}</td>`).join("") + `</tr>`;
   document.getElementById("rollTable").innerHTML = h + "</tbody></table>";
-  // horizontal bars: 15-mo total cost (payroll + opex) by dept
-  const bars = DEPTS.map(d => ({ d, v: C.deptPay[d].reduce((a, b) => a + b, 0) + C.dept[d].reduce((a, b) => a + b, 0) }))
-    .filter(x => x.v > 1).sort((a, b) => b.v - a.v);
-  const bh = 24, W = 1400, lw = 250, max = Math.max(...bars.map(x => x.v), 1);
+  // bars: the metric on the toggle, over the goal cycle (headcount: where it stands in Mar ’27)
+  const bars = rows.map(r => ({ d: r.d, v: cyc(r) })).filter(x => x.v > 0.05).sort((a, b) => b.v - a.v);
+  const bh = 20, W = 1400, lw = 250, max = Math.max(...bars.map(x => x.v), 1);
   let svg = "";
   bars.forEach((x, i) => {
     const y = i * bh, w = (W - lw - 130) * x.v / max;
-    svg += `<text x="${lw - 10}" y="${y + 15}" text-anchor="end" font-size="11.5" fill="var(--ink2)">${esc(dn(x.d))}</text>` +
-      `<rect x="${lw}" y="${y + 3}" width="${Math.max(2, w)}" height="16" rx="4" fill="var(--modest)" opacity=".85"/>` +
-      `<text x="${lw + w + 8}" y="${y + 15}" font-size="11.5" fill="var(--ink)" font-weight="600" style="font-variant-numeric:tabular-nums">${fmtK(x.v)}</text>`;
+    svg += `<text x="${lw - 10}" y="${y + 14}" text-anchor="end" font-size="11.5" fill="var(--ink2)">${esc(dn(x.d))}</text>` +
+      `<rect x="${lw}" y="${y + 3}" width="${Math.max(2, w)}" height="13" rx="3" fill="var(--ink2)" opacity=".45"/>` +
+      `<text x="${lw + w + 8}" y="${y + 14}" font-size="11.5" fill="var(--ink)" font-weight="600" style="font-variant-numeric:tabular-nums">${fmk(x.v)}</text>`;
   });
+  const metricLabel = rollMetric === "pay" ? "Payroll" : rollMetric === "opex" ? "Opex" : isHC ? "Headcount" : "Payroll + opex";
   document.getElementById("rollChart").innerHTML =
-    `<svg viewBox="0 0 ${W} ${bars.length * bh + 4}" role="img" aria-label="15-month total cost by department">${svg}</svg>` +
-    `<div class="chart-legend"><span class="key"><i style="background:var(--modest)"></i>Payroll + opex, Jan ’26 – Mar ’27</span></div>`;
+    `<svg viewBox="0 0 ${W} ${bars.length * bh + 4}" role="img" aria-label="${metricLabel} by department, ${FH2[3]}">${svg}</svg>` +
+    `<div class="chart-legend"><span class="key"><i style="background:var(--ink2);opacity:.45"></i>${metricLabel}, ${FH2[3]} · Oct ’26 – Mar ’27${isHC ? " (Mar ’27)" : ""}</span></div>`;
+  // the closed summary line: always total-cost basis, so it reads the same whatever the toggle says
+  const costRows = DEPTS.map(d => ({ d, v: half(C.deptPay[d].map((v, i) => v + C.dept[d][i]), FH2) })).filter(x => x.v > 1).sort((a, b) => b.v - a.v);
+  const totC = costRows.reduce((a, x) => a + x.v, 0);
+  const rs = document.getElementById("rollSum");
+  if (rs) rs.innerHTML = `${FH2[3]} payroll + opex <b>${fmtK(totC)}</b> across ${costRows.length} departments — largest ${costRows.slice(0, 3).map(x => `${esc(dn(x.d))} ${fmtK(x.v)}`).join(", ")}`;
 }
 document.getElementById("rollMetric").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-m]"); if (!b) return;
@@ -1656,13 +1757,17 @@ function renderPeriods(C){
   for (const k of scns) push("Accrued programs" + sfx(k), C.incent[k], "dim");
   for (const k of scns) push("NET with programs" + sfx(k), C.netAll[k], "tot netrow");
   for (const k of scns) pushPct("net margin" + sfx(k), C.netAll[k], C.rev[k]);
+  // display order: goal cycle, closing cycle, calendar year, then the quarters — PERIODS itself is untouched
+  const ORDER = [6, 5, 7, 0, 1, 2, 3, 4];
+  const colCls = (oi, pos) => (oi === 6 ? " goal" : "") + (pos === 2 ? " qb" : "");
+  const tag = oi => oi < QTRS.length ? `<span class="sub">${esc(QTRS[oi][4])}</span>` : "";
   let h = `<table class="data"><thead><tr><th>${both ? "Modest and stretch" : plScn === "str" ? "Stretch" : "Modest"}</th>` +
-    PERIODS.map((q, i) => `<th${i === 5 || i === 7 ? ' class="qb"' : ""}>${esc(q[2])}<br><span style="font-weight:400">${esc(q[3])}</span></th>`).join("") + `</tr></thead><tbody>`;
+    ORDER.map((oi, pos) => { const q = PERIODS[oi]; return `<th class="${colCls(oi, pos).trim()}">${esc(q[2])}<span class="sub">${esc(q[3])}</span>${tag(oi)}</th>`; }).join("") + `</tr></thead><tbody>`;
   for (const r of rows)
     h += `<tr class="${r.cls}"><td class="${r.cls === "dim" ? "dim" : ""}">${r.pct ? "&nbsp;&nbsp;" : ""}${r.label}</td>` +
-      PERIODS.map((q, i) => {
-        if (r.pct){ const n = sum(r.num, q[0], q[1]), d = sum(r.den, q[0], q[1]); return `<td class="${i === 5 || i === 7 ? "qb " : ""}${n < 0 ? "neg" : ""}">${d ? fmtPct(n / d) : "—"}</td>`; }
-        const v = sum(r.vals, q[0], q[1]); return `<td${i === 5 || i === 7 ? ' class="qb"' : ""}${/NET/.test(r.label) && v < 0 ? ' class="neg"' : ""}>${fmt$(v)}</td>`; }).join("") + `</tr>`;
+      ORDER.map((oi, pos) => { const q = PERIODS[oi];
+        if (r.pct){ const n = sum(r.num, q[0], q[1]), d = sum(r.den, q[0], q[1]); return `<td class="${colCls(oi, pos)}${n < 0 ? " neg" : ""}">${d ? fmtPct1(n / d) : "—"}</td>`; }
+        const v = sum(r.vals, q[0], q[1]); return `<td class="${colCls(oi, pos)}${v < 0 ? " neg" : ""}">${fmt$(v)}</td>`; }).join("") + `</tr>`;
   el.innerHTML = h + "</tbody></table>";
 }
 function renderGrowth(C){
@@ -1677,9 +1782,11 @@ function renderGrowth(C){
   let h = `<table class="data"><thead><tr><th>Quarters</th>` +
     QTRS.map(q => `<th>${q[2]}<br><span style="font-weight:400">${q[3]} · ${q[4]}</span></th>`).join("") +
     `<th>Apr 26–Mar 27</th><th>YoY Q1 vs Q1</th></tr></thead><tbody>`;
-  const yoyR = { mod: revQ.mod[4] / (revQ.mod[0] || 1) - 1, str: revQ.str[4] / (revQ.str[0] || 1) - 1 };
-  const yoyN = { mod: netQ.mod[4] / (netQ.mod[0] || 1) - 1, str: netQ.str[4] / (netQ.str[0] || 1) - 1 };
-  h += `<tr><td>Revenue — modest</td>${revQ.mod.map(v => `<td>${fmt$(v)}</td>`).join("")}<td><b>${fmt$(fyRev.mod)}</b></td><td rowspan="2" style="vertical-align:middle">${g(yoyR.mod)} M<br>${g(yoyR.str)} S</td></tr>`;
+  const yoy = (a, base) => base > 0 ? a / base - 1 : null;      // a ratio against a non-positive base means nothing
+  const yoyR = { mod: yoy(revQ.mod[4], revQ.mod[0]), str: yoy(revQ.str[4], revQ.str[0]) };
+  const yoyN = { mod: yoy(netQ.mod[4], netQ.mod[0]), str: yoy(netQ.str[4], netQ.str[0]) };
+  const gy = (v, baseLabel) => v == null ? `<span class="dim" title="${baseLabel} was not positive, so a year-over-year percentage is not meaningful">n/m</span>` : g(v);
+  h += `<tr><td>Revenue — modest</td>${revQ.mod.map(v => `<td>${fmt$(v)}</td>`).join("")}<td><b>${fmt$(fyRev.mod)}</b></td><td rowspan="2" style="vertical-align:middle">${gy(yoyR.mod, "Q1 2026 revenue")} M<br>${gy(yoyR.str, "Q1 2026 revenue")} S</td></tr>`;
   h += `<tr class="dim"><td class="dim">QoQ — modest</td>${qoq(revQ.mod).map(v => `<td>${g(v)}</td>`).join("")}<td></td></tr>`;
   h += `<tr><td>Revenue — stretch</td>${revQ.str.map(v => `<td>${fmt$(v)}</td>`).join("")}<td><b>${fmt$(fyRev.str)}</b></td><td></td></tr>`;
   h += `<tr class="dim"><td class="dim">QoQ — stretch</td>${qoq(revQ.str).map(v => `<td>${g(v)}</td>`).join("")}<td></td><td></td></tr>`;
@@ -1688,18 +1795,24 @@ function renderGrowth(C){
   h += `<tr class="tot"><td>Attainment — modest</td>${qTgt.map((t, i) => `<td>${att(revQ.mod[i], t)}</td>`).join("")}<td>${att(fyRev.mod, fyTgt)}</td><td></td></tr>`;
   h += `<tr class="tot"><td>Attainment — stretch</td>${qTgt.map((t, i) => `<td>${att(revQ.str[i], t)}</td>`).join("")}<td>${att(fyRev.str, fyTgt)}</td><td></td></tr>`;
   h += `<tr class="tot"><td>Stretch premium (revenue)</td>${revQ.str.map((v, i) => `<td>${fmt$(v - revQ.mod[i])}${revQ.mod[i] ? ` <span class="dim">${((v / revQ.mod[i] - 1) * 100).toFixed(0)}%</span>` : ""}</td>`).join("")}<td>${fmt$(fyRev.str - fyRev.mod)}</td><td></td></tr>`;
-  h += `<tr><td>Net — modest</td>${netQ.mod.map(v => `<td class="${v < 0 ? "neg" : ""}">${fmt$(v)}</td>`).join("")}<td><b>${fmt$(sum(C.net.mod, 3, 15))}</b></td><td rowspan="2" style="vertical-align:middle">${g(yoyN.mod)} M<br>${g(yoyN.str)} S</td></tr>`;
+  h += `<tr><td>Net — modest</td>${netQ.mod.map(v => `<td class="${v < 0 ? "neg" : ""}">${fmt$(v)}</td>`).join("")}<td><b>${fmt$(sum(C.net.mod, 3, 15))}</b></td><td rowspan="2" style="vertical-align:middle">${gy(yoyN.mod, "Q1 2026 net")} M<br>${gy(yoyN.str, "Q1 2026 net")} S</td></tr>`;
   h += `<tr><td>Net — stretch</td>${netQ.str.map(v => `<td class="${v < 0 ? "neg" : ""}">${fmt$(v)}</td>`).join("")}<td><b>${fmt$(sum(C.net.str, 3, 15))}</b></td></tr>`;
   h += `<tr class="tot"><td>Stretch premium (net)</td>${netQ.str.map((v, i) => `<td>${fmt$(v - netQ.mod[i])}</td>`).join("")}<td>${fmt$(sum(C.net.str, 3, 15) - sum(C.net.mod, 3, 15))}</td><td></td></tr>`;
   document.getElementById("growthQ").innerHTML = h + "</tbody></table>";
   const mom = arr => arr.map((v, i) => i ? v / (arr[i - 1] || 1) - 1 : null);
+  const goalCls = i => (i >= FH2[0] && i < FH2[1]) ? " goal" : "";
   let m = `<table class="data"><thead><tr><th>Monthly</th>` +
-    MONTHS.map((mn, i) => `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}">${mhead(i)}</th>`).join("") + `</tr></thead><tbody>`;
+    MONTHS.map((mn, i) => `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}${goalCls(i)}">${mhead(i)}</th>`).join("") + `</tr></thead><tbody>`;
   m += `<tr><td>Revenue MoM — modest</td>${mom(C.rev.mod).map((v, i) => `<td class="${i < ACT ? "actual" : ""}">${g(v)}</td>`).join("")}</tr>`;
   m += `<tr><td>Revenue MoM — stretch</td>${mom(C.rev.str).map((v, i) => `<td class="${i < ACT ? "actual" : ""}">${g(v)}</td>`).join("")}</tr>`;
   m += `<tr class="tot"><td>Stretch premium /mo (revenue)</td>${C.rev.str.map((v, i) => `<td>${fmt$(v - C.rev.mod[i])}</td>`).join("")}</tr>`;
   m += `<tr class="tot"><td>Stretch premium /mo (net)</td>${C.net.str.map((v, i) => `<td>${fmt$(v - C.net.mod[i])}</td>`).join("")}</tr>`;
   document.getElementById("growthM").innerHTML = m + "</tbody></table>";
+  const gs = document.getElementById("growSum");
+  if (gs){
+    const attM = fyTgt ? Math.round(sum(C.rev.mod, FH2[0], FH2[1]) / S.levers.targetH2 * 100) : 0, attS = fyTgt ? Math.round(sum(C.rev.str, FH2[0], FH2[1]) / S.levers.targetH2 * 100) : 0;
+    gs.innerHTML = `stretch adds <b>${fmtK(fyRev.str - fyRev.mod)}</b> revenue / <b>${fmtK(sum(C.net.str, 3, 15) - sum(C.net.mod, 3, 15))}</b> net over Apr ’26–Mar ’27 · ${FH2[3]} attainment ${attM}% modest / ${attS}% stretch`;
+  }
   // cost trajectory: booked Oct'25 onward from the accrual export, model after Jul'26
   const T = MODEL.totals;
   const cost26 = i => C.pay[i] + C.opex[i] + C.comp.mod[i];            // modest comp in modeled months
@@ -1719,32 +1832,71 @@ function renderGrowth(C){
   document.getElementById("growthC").innerHTML = cq + "</tbody></table>";
 }
 /* ---------- goals & break-even (Projections) ---------- */
-function goalHalf(C, [a, b, label], tKey, ids){
-  const L = S.levers;
-  const sum = arr => arr.slice(a, b).reduce((x, y) => x + y, 0);
-  const revM = sum(C.rev.mod), revS = sum(C.rev.str), be = sum(C.be);
-  const booked = Math.min(Math.max(0, ACT - a), b - a), modeled = (b - a) - booked;
-  const pill = v => { const pct = L[tKey] ? v / L[tKey] : 0;
-    return `<span class="pill ${pct >= 1 ? "ok" : "short"}">${Math.round(pct * 100)}% of target</span>`; };
-  return `<div class="goal-half"><h3>${label} <span class="subtle" style="font-weight:400">· ${booked} booked + ${modeled} modeled mo</span></h3>
-    <div class="grid">
-      <span class="lab">Revenue target</span><span><input id="${ids[0]}" value="${L[tKey].toLocaleString("en-US")}"></span>
-      <span class="lab be beM">Break-even revenue</span><span class="be beM">${fmt$(be)} <span class="subtle" style="font-weight:400">(${fmtK(be / (b - a))}/mo, excl. commissions)</span></span>
-      <span class="lab">Projected — modest</span><span title="${booked ? `${booked} of these ${b - a} months are closed, so their revenue is Xero's, identical under both scenarios. ` : ""}The ${modeled} modeled month${modeled === 1 ? " comes" : "s come"} from Sales projections: each rep's ramp value for their tenure month, times their Modest %, summed.">${fmt$(revM)} ${pill(revM)}</span>
-      <span class="lab">Projected — stretch</span><span title="${booked ? `Same ${booked} closed month${booked === 1 ? "" : "s"} from Xero — a closed month has no upside left. ` : ""}The ${modeled} modeled month${modeled === 1 ? " uses" : "s use"} each rep's Stretch % instead of Modest %.">${fmt$(revS)} ${pill(revS)}</span>
-      <span class="lab">of which</span><span class="subtle">${booked ? `${fmtK(sum(C.rev.mod.map((v, i) => i < ACT ? v : 0)))} booked in Xero + ` : ""}${fmtK(sum(C.rev.mod.map((v, i) => i < ACT ? 0 : v)))} modeled${booked ? " (modest)" : ""}</span>
-    </div></div>`;
+function cycleFacts(C, rng, tgt){
+  const sum = a => a.slice(rng[0], rng[1]).reduce((x, y) => x + y, 0);
+  const booked = Math.min(Math.max(0, ACT - rng[0]), rng[1] - rng[0]);
+  return { tgt, booked, modeled: (rng[1] - rng[0]) - booked, n: rng[1] - rng[0],
+    revM: sum(C.rev.mod), revS: sum(C.rev.str), be: sum(C.be),
+    bkRev: sum(C.rev.mod.map((v, i) => i < ACT ? v : 0)),
+    netM: sum(C.net.mod), netS: sum(C.net.str), allM: sum(C.netAll.mod), allS: sum(C.netAll.str),
+    incM: sum(C.incent.mod), incS: sum(C.incent.str) };
 }
+// The first screen answers one question: will Q4+Q1 make money, on what assumptions, and what
+// would move it. Everything editable sits behind the fold below it.
 function renderGoals(C){
   const L = S.levers;
-  document.getElementById("goalsCard").innerHTML =
-    `<h2>Goals &amp; break-even</h2>
-     <p class="note">Half-year goal setting. Each half's revenue target drives the attainment pills here and on Sales projections; break-even is the fixed hurdle — base payroll and opex less other income at the month's gross margin. Bonus programs and the Sales Director's rate live in <b>Incentive programs</b>, accrued against where each half is pacing.</p>
-     <div class="goals">` +
-    goalHalf(C, FH1, "targetH1", ["gTg1"]) +
-    goalHalf(C, FH2, "targetH2", ["gTg2"]) + `</div>`;
+  const g = cycleFacts(C, FH2, L.targetH2), p = cycleFacts(C, FH1, L.targetH1);
+  const pill = (v, t) => `<span class="pill ${v >= t ? "ok" : "short"}" title="${fmt$(v)} against a ${fmt$(t)} target">${Math.round(t ? v / t * 100 : 0)}%</span>`;
+  const mg = (n, d) => d ? fmtPct1(n / d) : "—";
+  const clear = g.revM - g.be;
+  const progLine = g.incM > 0.5 || g.incS > 0.5
+    ? `with programs <b>${fmtK(g.allM)}</b> modest · <b>${fmtK(g.allS)}</b> stretch`
+    : `with programs: same — <span class="warn">no program pays out in this cycle</span>`;
+  const row = (lbl, m, st, cls = "", fm = fmt$) => `<tr class="${cls}"><td>${lbl}</td><td class="${m < 0 ? "neg" : ""}">${fm(m)}</td><td class="${st < 0 ? "neg" : ""}">${fm(st)}</td></tr>`;
+  document.getElementById("goalsBody").innerHTML =
+    `<div class="plan-grid">
+      <div><div class="lab">Revenue</div>
+        <div class="plan-val">${fmtK(g.revM)} <small>modest</small> · ${fmtK(g.revS)} <small>stretch</small></div>
+        <div class="plan-sub">${pill(g.revM, g.tgt)} / ${pill(g.revS, g.tgt)} of the ${fmtK(g.tgt)} target · ${g.booked ? `${fmtK(g.bkRev)} booked + ` : ""}${fmtK(g.revM - g.bkRev)} modeled</div></div>
+      <div><div class="lab">Break-even revenue <span style="font-weight:400;text-transform:none;letter-spacing:0">(the fixed hurdle)</span></div>
+        <div class="plan-val">${fmtK(g.be)} <small>${fmtK(g.be / g.n)}/mo</small></div>
+        <div class="plan-sub" title="Base payroll and opex less other income, at the cycle's gross margin. Commissions and bonus programs are excluded — they only exist when revenue does.">modest ${clear >= 0 ? "clears it by" : `<span class="warn">falls short by</span>`} <b>${fmtK(Math.abs(clear))}</b> · stretch by ${fmtK(g.revS - g.be)}</div></div>
+      <div><div class="lab">Net</div>
+        <div class="plan-val">${fmtK(g.netM)} <small>${mg(g.netM, g.revM)}</small> · ${fmtK(g.netS)} <small>${mg(g.netS, g.revS)}</small></div>
+        <div class="plan-sub">as booked, modest · stretch — ${progLine}</div></div>
+    </div>
+    <div class="plan-row">
+      <table class="data compact" style="width:auto;min-width:300px"><thead><tr><th>${FH2[3]} · Oct–Mar</th><th>Modest</th><th>Stretch</th></tr></thead><tbody>
+        ${row("NET as booked", g.netM, g.netS, "tot")}
+        ${row("Accrued programs", -g.incM, -g.incS, "dim", v => Math.abs(v) < 0.5 ? "—" : fmt$(v))}
+        ${row("NET with programs", g.allM, g.allS, "tot netrow")}
+        ${row("net margin", g.revM ? g.allM / g.revM : 0, g.revS ? g.allS / g.revS : 0, "dim", fmtPct1)}
+      </tbody></table>
+      <div style="flex:1 1 320px;min-width:0">
+        <div class="lab" style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700">Assumptions</div>
+        <div class="assume">
+          <span class="a">COGS <b>${(L.cogsPct * 100).toFixed(1)}%</b> of sales</span>
+          <span class="a">commissions <b>${(commPctOf() * 100).toFixed(2)}%</b> measured</span>
+          <span class="a">other income <b>${fmtK(L.otherInc)}</b>/mo</span>
+          <span class="a">labor hedge <b>${(L.laborHedge * 100).toFixed(1)}%</b></span>
+          <span class="a">opex hedge <b>${(L.opexHedge * 100).toFixed(1)}%</b></span>
+          <span class="a">Mar ’27 run-rate <b>${fmtK(C.staffTotal[NM - 1])}</b> payroll + <b>${fmtK(C.opex[NM - 1])}</b> opex</span>
+        </div>
+        <div class="plan-sub" style="margin-top:8px"><b>${FH1[3]} · Apr–Sep 2026</b> <span class="subtle">(${p.booked} booked + ${p.modeled} modeled):</span> ${fmtK(p.revM)} / ${fmtK(p.revS)} vs ${fmtK(p.tgt)} target ${pill(p.revM, p.tgt)} / ${pill(p.revS, p.tgt)} · break-even ${fmtK(p.be)} · net ${fmtK(p.netM)} as booked, ${fmtK(p.allM)} with programs</div>
+      </div>
+    </div>`;
+  document.getElementById("goalTargets").innerHTML =
+    leverInput("gTg2", FH2[3] + " revenue target", L.targetH2.toLocaleString("en-US"), "$ · Oct 2026 – Mar 2027 — drives the attainment pills here and on Sales projections") +
+    leverInput("gTg1", FH1[3] + " revenue target", L.targetH1.toLocaleString("en-US"), "$ · Apr–Sep 2026");
   bind("gTg1", v => S.levers.targetH1 = num(v, 6350000));
   bind("gTg2", v => S.levers.targetH2 = num(v, 5700000));
+  // data status: what in the booked months is an estimate rather than a posting
+  const prov = S.levers.estProv ? (MODEL.provisional_cogs_months || []) : [];
+  const pm = (MODEL.payroll_partial_months || [])[0];
+  const bits = [];
+  if (prov.length) bits.push(`${prov.map(m => MONTHS[m - 1]).join(" & ")} COGS estimated at ${(L.cogsPct * 100).toFixed(1)}% — month-end entry not posted in Xero`);
+  if (pm && S.levers.estPartialPay !== false) bits.push(`${MONTHS[pm - 1]} payroll estimated at ${fmt$(payPerBday())}/business day (+${fmtK(payPerBday() * BDAYS[pm - 1] - basePayOf(pm))}) — the month has not closed`);
+  document.getElementById("dataStatus").innerHTML = bits.length ? "* " + bits.join(" · ") : "";
 }
 /* ---------- sales tab ---------- */
 function renderSales(C){
@@ -2440,6 +2592,8 @@ function renderPayCal(C){
     </div>`;
 }
 /* ---------- incentive programs ---------- */
+// which programs show their terms — UI state only, never persisted (S is pushed to the shared store)
+const openPrograms = new Set();
 function renderIncentives(C){
   const el = document.getElementById("incList"); if (!el) return;
   el.innerHTML = (S.programs || []).map(pg => {
@@ -2460,11 +2614,16 @@ function renderIncentives(C){
     const thrIn = `<span class="fld"><label>${isRate ? "Above" : "From"}</label><input class="cell" style="width:96px" data-id="${pg.id}" data-k="pgthr" value="${Math.round(thr).toLocaleString("en-US")}" title="${isRate ? "Nothing is paid on revenue below this." : "Period revenue where the bonus starts earning. Below it, nothing."}"></span>`;
     const capIn = isRate ? "" : `<span class="fld"><label>Up to</label><input class="cell" style="width:96px" data-id="${pg.id}" data-k="pgcap" value="${(+pg.cap || 0) ? Math.round(+pg.cap).toLocaleString("en-US") : ""}" placeholder="no cap" title="Revenue at which it pays in full. Between the two it pays proportionally. Blank = it pays in full the moment the floor is reached."></span>`;
     const load = C.incentLoad || 1, loaded = earned * load;
-    const costTxt = earned > 0 ? ` \u00b7 <span title="What it costs the company: the bonus plus ${((load - 1) * 100).toFixed(1)}% employer payroll taxes on it. This is the figure charged to the P&L.">costs <b>${fmtK(loaded)}</b> with employer taxes</span>` : "";
     const nContr = pg.per === "head" && !isRate ? S.staff.filter(r => isContractor(r) && (pg.scope === "all" || (pg.scope === "roles" ? (pg.roles || []).indexOf(r.id) >= 0 : (pg.depts || []).indexOf(r.dept) >= 0))).reduce((n, r) => n + Math.round(staffHC(r, endMo)), 0) : 0;
-    const result = isRate
-      ? `${fmtK(prev)} projected \u2192 ${fmtK(inBand)} over ${fmtK(thr)} \u00d7 ${((+pg.pct || 0) * 100).toFixed(2)}% = <b style="color:${earned > 0 ? "var(--good-text)" : "#b45309"}">${fmtK(earned)}</b>${earned > 0 ? "" : " \u2014 not above the threshold yet"}${costTxt}`
-      : `${pg.per === "head" ? heads + " head" + (heads === 1 ? "" : "s") + (nContr ? ` <span class="subtle" title="Contractors do not take part in incentive programs.">(${nContr} contractor${nContr === 1 ? "" : "s"} excluded)</span>` : "") + " \u00b7 " + fmt$(+pg.amount || 0) + "/head" : fmtK(gross)} at full \u00b7 ${fmtK(prev)} projected \u2192 ${Math.round(attain * 100)}% of ${cap ? "the " + fmtK(thr) + "\u2013" + fmtK(cap) + " range" : "the threshold"} = <b style="color:${earned > 0 ? "var(--good-text)" : "#b45309"}">${pg.per === "head" && heads > 0 ? fmt$(earned / heads) + "/head \u00b7 " : ""}${fmtK(earned)}</b>${earned > 0 ? "" : " \u2014 pays nothing yet"}${costTxt}`;
+    // outcome first, mechanics second
+    const outcome = earned > 0
+      ? `<b>${fmtK(earned)} earned${pg.per === "head" && heads > 0 && !isRate ? ` (${fmt$(earned / heads)}/head)` : ""} · costs ${fmtK(loaded)}</b>`
+      : `<b class="warn">${isRate ? "nothing yet — not above the threshold" : "nothing yet — below the floor"}</b>`;
+    const how = isRate
+      ? `${fmtK(prev)} projected → ${fmtK(inBand)} over ${fmtK(thr)} × ${((+pg.pct || 0) * 100).toFixed(2)}%`
+      : `${pg.per === "head" ? heads + " head" + (heads === 1 ? "" : "s") + (nContr ? ` (${nContr} contractor${nContr === 1 ? "" : "s"} excluded)` : "") + " · " + fmt$(+pg.amount || 0) + "/head" : fmtK(gross)} at full · ${fmtK(prev)} projected → ${Math.round(attain * 100)}% of ${cap ? "the " + fmtK(thr) + "–" + fmtK(cap) + " range" : "the threshold"}`;
+    const result = `${outcome} <span class="subtle" title="${earned > 0 ? `Cost includes ${((load - 1) * 100).toFixed(1)}% employer payroll taxes; the loaded figure is what reaches the P&L.` : ""}">· ${how}</span>`;
+    const isOpen = openPrograms.has(pg.id);
     const roleOpts = S.staff.slice().sort((a, b) => a.dept.localeCompare(b.dept) || a.position.localeCompare(b.position));
     const chosenRoles = pg.roles || [], chosenDepts = pg.depts || [];
     const which = pg.scope === "all"
@@ -2488,9 +2647,11 @@ function renderIncentives(C){
         <input type="checkbox" class="switch" data-id="${pg.id}" data-k="pgon"${pg.on === false ? "" : " checked"} title="On / off">
         <input class="cell pos pg-name" data-id="${pg.id}" data-k="pgname" value="${esc(pg.name || "")}">
         <span class="pg-result">${result}</span>
+        <button class="btn mini${isOpen ? " on" : ""}" data-id="${pg.id}" data-k="pgedit" title="Show or hide this program's terms">${isOpen ? "▾ terms" : "▸ terms"}</button>
         <button class="btn mini" data-id="${pg.id}" data-k="pgclone" title="Duplicate this program — same terms, same people — as a starting point for a variant">⧉ clone</button>
         <button class="btn mini" data-id="${pg.id}" data-k="pgdel" title="Remove program">✕</button>
       </div>
+      <div class="pg-body"${isOpen ? "" : " hidden"}>
       <div class="pg-line">${who}</div>
       <div class="pg-line">
         <span class="fld"><label>Pays</label><select class="cell" style="width:150px" data-id="${pg.id}" data-k="pgbasis" title="A set amount earned across a revenue range, or a rate on every dollar above a threshold.">
@@ -2513,29 +2674,20 @@ function renderIncentives(C){
           <option value="even"${pg.alloc === "even" ? " selected" : ""}>evenly across the period</option>
           <option value="earned"${pg.alloc === "earned" ? " selected" : ""}>only once the threshold is crossed</option></select></span>
       </div>
+      </div>
     </div>`;
   }).join("") || `<p class="subtle" style="margin:4px 0">No programs yet.</p>`;
 
   const ub = C.incentUnbooked.mod, h1 = C.incentLoaded.mod[0], h2 = C.incentLoaded.mod[1];
   const e1 = C.incentHalf.mod[0], e2 = C.incentHalf.mod[1];
   const sum = (a, [x, y]) => a.slice(x, y).reduce((p, q) => p + q, 0);
-  // where each half sits on the books, and where it sits once the programs are loaded in
-  const halfRow = (lbl, rng) => {
-    const bk = sum(C.net.mod, rng), ld = sum(C.netAll.mod, rng), d = bk - ld;
-    return `<span>${esc(lbl)} net <b>${fmtK(bk)}</b> on the books → <b style="color:${ld < 0 ? "var(--bad-text)" : "inherit"}">${fmtK(ld)}</b> loaded${d > 500 ? ` <span class="subtle">(−${fmtK(d)})</span>` : ""}</span>`;
-  };
+  const bk1 = sum(C.net.mod, FH1), ld1 = sum(C.netAll.mod, FH1), bk2 = sum(C.net.mod, FH2), ld2 = sum(C.netAll.mod, FH2);
   document.getElementById("incSummary").innerHTML =
-    `<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin:0 0 10px;background:var(--surface2);font-size:12.5px">
-      <div style="display:flex;flex-wrap:wrap;gap:6px 26px;font-variant-numeric:tabular-nums">
-        <span>Not on the books <b style="color:#b45309">${fmt$(h1 + h2)}</b></span>
-        ${ub > 500 ? `<span class="subtle">already earned in closed months ${fmtK(ub)}</span>` : ""}
-        <span class="subtle">${esc(FH1[2])} programs ${fmtK(h1)}${e1 > 0 ? ` <span title="earned by the people, before employer taxes">(${fmtK(e1)} earned)</span>` : ""}</span>
-        <span class="subtle">${esc(FH2[2])} programs ${fmtK(h2)}${e2 > 0 ? ` <span title="earned by the people, before employer taxes">(${fmtK(e2)} earned)</span>` : ""}</span>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px 26px;font-variant-numeric:tabular-nums;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
-        ${halfRow(FH1[2], FH1)}${halfRow(FH2[2], FH2)}${halfRow("15 mo", [0, NM])}
-      </div>
-      <p class="note" style="margin:6px 0 0">The top figure is every program across the horizon, loaded with employer payroll taxes — none of it is in Xero. Contractors are outside every program. ${ub > 500 ? `Of that, <b>${fmtK(ub)}</b> has already been earned in months Xero has closed (${esc(MONTHS[0])}–${esc(MONTHS[ACT - 1])}) and is a liability the P&amp;L does not show. ` : ""}The half rows read as booked → loaded: the first is what Xero will report, the second is the same months with these programs charged to them. Everything here stays out of break-even, which measures the fixed hurdle and deliberately excludes revenue-driven pay.</p>
+    `<div class="inc-stats">
+      <span><b>${FH2[3]} · Oct–Mar:</b> ${h2 > 0.5 ? `${fmtK(h2)} accrues — net ${fmtK(bk2)} as booked → <b>${fmtK(ld2)}</b> with programs` : `<span class="warn">no program pays out in this cycle</span>`}</span>
+      <span><b>${FH1[3]} · Apr–Sep:</b> ${h1 > 0.5 ? `${fmtK(h1)} accrues — net ${fmtK(bk1)} as booked → <b>${fmtK(ld1)}</b> with programs` : "nothing accrues"}</span>
+      <span title="Every program across the horizon, loaded with employer payroll taxes${e1 + e2 > 0.5 ? ` (${fmtK(e1 + e2)} earned by the people)` : ""}. None of it is in Xero; contractors are outside every program.">Not on the books <b class="warn">${fmt$(h1 + h2)}</b></span>
+      ${ub > 500 ? `<span title="Accrued to months Xero has already closed (${esc(MONTHS[0])}–${esc(MONTHS[ACT - 1])}) — a liability the books do not show.">already earned in closed months <b class="warn">${fmtK(ub)}</b></span>` : ""}
     </div>`;
 }
 /* ---------- pay bands ---------- */
@@ -2698,6 +2850,8 @@ document.getElementById("incList").addEventListener("change", ev => {
   persist(); scheduleRender();
 });
 document.getElementById("incList").addEventListener("click", ev => {
+  const ed = ev.target.closest("button[data-k=pgedit]");
+  if (ed){ openPrograms.has(ed.dataset.id) ? openPrograms.delete(ed.dataset.id) : openPrograms.add(ed.dataset.id); renderAll(); return; }
   const rd = ev.target.closest("button[data-k=pgdeptdel],button[data-k=pgroledel]");
   if (rd){
     const pg = (S.programs || []).find(x => x.id === rd.dataset.id);
@@ -2714,6 +2868,7 @@ document.getElementById("incList").addEventListener("click", ev => {
     copy.id = "pg" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     copy.name = (src.name || "Program").replace(/\s*\(copy( \d+)?\)$/, "") + " (copy)";
     S.programs.splice(i + 1, 0, copy);
+    openPrograms.add(copy.id);
     persist(); scheduleRender(); return;
   }
   const b = ev.target.closest("button[data-k=pgdel]"); if (!b) return;
@@ -2722,7 +2877,9 @@ document.getElementById("incList").addEventListener("click", ev => {
 });
 document.getElementById("addProgram").addEventListener("click", () => {
   S.programs = S.programs || [];
-  S.programs.push({ id: "pg" + Date.now().toString(36), name: "New program", on: true, scope: "depts",
+  const nid = "pg" + Date.now().toString(36);
+  openPrograms.add(nid);
+  S.programs.push({ id: nid, name: "New program", on: true, scope: "depts",
     basis: "band", roles: [], depts: [], per: "head", amount: 1000, pct: 0,
     half: 2, thr: 0, cap: 0, alloc: "pacing" });
   persist(); scheduleRender();
