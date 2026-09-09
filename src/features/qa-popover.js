@@ -570,44 +570,84 @@
   // ── Save ────────────────────────────────────────────────────────
 
   // ── Project record id (QA-fail payload) ─────────────────────────
-  // The deploy scenes surface the SOW→project connection (field_2119) on
-  // at least one rendered view. Scan the view models first (details views
-  // + grid rows), then fall back to the connection-span DOM pattern (the
-  // inner span's class/id is the connected record id). Returns '' when
-  // nothing on the page carries it — Make can still hop deployId → SOW →
-  // project in that case.
-  function resolveProjectId() {
-    var KEY = 'field_2119';
+  // Sources, most direct first:
+  //   1. The photo record's OWN Project connection (DOC_photos field_675)
+  //      when a view model on the page holds the photo row (the hidden
+  //      DOC_photos save grid usually does).
+  //   2. The `project-dashboard/<id>` hash segment. Every dashboard route
+  //      is keyed by the Project record — including the internal deploy
+  //      page, whose route is …/project-dashboard/<proj>/deploy/<proj>
+  //      (the deploy scene is keyed directly off the Project record, see
+  //      worksheet-v2/photos.js getProjectIdFromHash + bulk-upload.js).
+  //   3. The SOW→project connection (field_2119) on any rendered view —
+  //      model scan (details views + grid rows), then the connection-span
+  //      DOM pattern. The deploy scene renders NO view carrying field_2119
+  //      (this was the only source before 2026-09-09 and shipped empty
+  //      projectIds), so it's the fallback for other hosts only.
+  // Returns '' when nothing matches.
+  var PHOTO_PROJECT_CONN = 'field_675';   // DOC_photos → Project
+  var SOW_PROJECT_CONN   = 'field_2119';  // SOW → Project
+
+  function firstConnId(raw) {
+    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
+    if (raw && raw.id) return raw.id;
+    return '';
+  }
+
+  function resolveProjectId(photoId) {
+    var views = window.Knack && Knack.views;
+    var vk, mdl, rows, i, id;
+    // 1. The photo record's own Project connection.
+    if (photoId) {
+      try {
+        for (vk in views) {
+          if (!Object.prototype.hasOwnProperty.call(views, vk)) continue;
+          mdl = views[vk] && views[vk].model;
+          rows = mdl && mdl.data && mdl.data.models;
+          if (!rows) continue;
+          for (i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            if (!row || row.id !== photoId) continue;
+            id = firstConnId(row.attributes && row.attributes[PHOTO_PROJECT_CONN + '_raw']);
+            if (id) return id;
+          }
+        }
+      } catch (e0) { /* fall through */ }
+    }
+    // 2. The project-keyed dashboard route.
     try {
-      var views = window.Knack && Knack.views;
-      for (var vk in views) {
+      var hm = (window.location.hash || '').match(/project-dashboard\/([a-f0-9]{24})/i);
+      if (hm) return hm[1];
+    } catch (e1) { /* fall through */ }
+    // 3. SOW→project on any rendered view (model, then DOM).
+    try {
+      for (vk in views) {
         if (!Object.prototype.hasOwnProperty.call(views, vk)) continue;
-        var mdl = views[vk] && views[vk].model;
+        mdl = views[vk] && views[vk].model;
         if (!mdl) continue;
-        var a = mdl.attributes;
-        var raw = a && a[KEY + '_raw'];
-        if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
-        var rows = mdl.data && mdl.data.models;
+        id = firstConnId(mdl.attributes && mdl.attributes[SOW_PROJECT_CONN + '_raw']);
+        if (id) return id;
+        rows = mdl.data && mdl.data.models;
         if (rows) {
-          for (var i = 0; i < rows.length; i++) {
-            var ra = rows[i] && rows[i].attributes;
-            var rraw = ra && ra[KEY + '_raw'];
-            if (Array.isArray(rraw) && rraw[0] && rraw[0].id) return rraw[0].id;
+          for (i = 0; i < rows.length; i++) {
+            id = firstConnId(rows[i] && rows[i].attributes &&
+              rows[i].attributes[SOW_PROJECT_CONN + '_raw']);
+            if (id) return id;
           }
         }
       }
-    } catch (e) { /* fall through to DOM */ }
+    } catch (e2) { /* fall through to DOM */ }
     try {
       var spans = document.querySelectorAll(
-        '.kn-detail.' + KEY + ' span[data-kn="connection-value"], ' +
-        'td.' + KEY + ' span[data-kn="connection-value"]');
+        '.kn-detail.' + SOW_PROJECT_CONN + ' span[data-kn="connection-value"], ' +
+        'td.' + SOW_PROJECT_CONN + ' span[data-kn="connection-value"]');
       for (var s = 0; s < spans.length; s++) {
         var cls = (spans[s].className || '').trim();
         if (/^[a-f0-9]{24}$/i.test(cls)) return cls;
         var idAttr = (spans[s].id || '').trim();
         if (/^[a-f0-9]{24}$/i.test(idAttr)) return idAttr;
       }
-    } catch (e2) { /* give up */ }
+    } catch (e3) { /* give up */ }
     return '';
   }
 
@@ -651,7 +691,11 @@
           product:    p.product    || '',
           // CORE_project record id — the hop Make needs: project →
           // field_1199 (SCW CU task) → subcontractor task → comment.
-          projectId:  resolveProjectId(),
+          projectId:  resolveProjectId(_photoId),
+          // The id in the …/deploy/<id> route segment. On the internal
+          // deploy page this is the SAME Project record id (the scene is
+          // keyed off the project), so it's context, not a hop — use
+          // projectId above.
           deployId:   deployM ? deployM[1] : '',
           viewKey:    p.viewKey || '',
           pageHash:   window.location.hash || ''
