@@ -195,19 +195,41 @@ with open(A["contracts"]) as f:
         monthly = money(row["Monthly Cost"]) or money(row["Annual Cost"]) / 12.0
         contracts[name] = dict(monthly=round(monthly,2), unalloc=money(row["Unallocated Amount (monthly)"]),
             unalloc_dept=row["Bill Unallocated Licenses To What Department?"].strip(),
-            cost_type=row["Cost Type (drop down)"].strip(), purpose=row["Purpose (short text)"].strip())
+            cost_type=row["Cost Type (drop down)"].strip(), purpose=row["Purpose (short text)"].strip(),
+            seats=money(row["Number of Seats"]), per_seat=money(row["Per Seat Cost"]),
+            cadence=("monthly" if money(row["Monthly Cost"]) else "annual" if money(row["Annual Cost"]) else "quarterly" if money(row["Quarterly Cost"]) else "monthly"),
+            per_bill=(money(row["Monthly Cost"]) or money(row["Annual Cost"]) or money(row["Quarterly Cost"])))
 fixed_alloc = collections.defaultdict(lambda: collections.defaultdict(float))
 seat_alloc = collections.defaultdict(float)
-with open(A["allocations"]) as f:
+# Per-position licensing, one tier per (vendor, price per seat): the roles it covers and how
+# many licenses the Knack app had assigned. The dashboard turns these into license rules.
+lic_tiers = collections.defaultdict(list)
+with open(A["allocations"], encoding="utf-8-sig") as f:   # the export carries a BOM on its first column
     for row in csv.DictReader(f):
         vend = row["Contracts & Expense"].strip()
         if not vend: continue
         amt = money(row["Allocation Amount"])
         dept, poss = row["Department"].strip(), row["Position(s)"].strip()
-        if poss and not dept: seat_alloc[vend] += amt
+        if poss and not dept:
+            seat_alloc[vend] += amt
+            lic_tiers[vend].append(dict(pepm=round(money(row["PEPM"]), 2),
+                positions=[p.strip() for p in poss.split(",") if p.strip()],
+                licenses=int(money(row["Licenses Allocated"]) or money(row["Allocated to Headcount"]) or 0),
+                name=row["Allocation Name"].strip()))
         elif dept: fixed_alloc[vend][dept] += amt
+licenses = []
 for name, c in contracts.items():
-    if c["unalloc"] and c["unalloc_dept"]:
+    tiers = lic_tiers.get(name)
+    if tiers:
+        # unallocated seat dollars become a live minimum-seat shortfall on the license rule,
+        # not a static budget line — so they follow headcount and cannot be counted twice
+        main = max(tiers, key=lambda t: t["licenses"])
+        assigned = sum(t["licenses"] for t in tiers)
+        min_seats = int(c["seats"]) if c["seats"] else (assigned + (round(c["unalloc"] / main["pepm"]) if main["pepm"] else 0))
+        licenses.append(dict(vendor=name, tiers=tiers, min_seats=min_seats, per_seat=c["per_seat"],
+            unalloc=round(c["unalloc"], 2), unalloc_dept=c["unalloc_dept"], cadence=c["cadence"],
+            per_bill=round(c["per_bill"], 2), monthly=c["monthly"]))
+    elif c["unalloc"] and c["unalloc_dept"]:
         fixed_alloc[name][c["unalloc_dept"]] += c["unalloc"]
 
 EXACT = {"hubspot":"Hubspot","shipedge":"ShipEdge","adjust ppc spend to match month":"Google Advertising",
@@ -284,7 +306,7 @@ for cv, m in sorted(merged.items(), key=lambda kv: -abs(sum(kv[1]["months"]))):
         budget_monthly=contracts.get(cv, {}).get("monthly", 0.0),
         purpose=contracts.get(cv, {}).get("purpose", ""),
         fixed_alloc=fixed, seat_monthly=seats, final_dept=final,
-        last_billed=m["last"],
+        last_billed=m["last"], cadence=contracts.get(cv, {}).get("cadence", ""), per_bill=contracts.get(cv, {}).get("per_bill", 0.0),
         contradiction=bool(bdept) and bool(xdept) and bdept != xdept))
 
 xnames = {r["vendor"] for r in vend_master}
@@ -346,7 +368,7 @@ dept_actual = {k: [round(x, 2) for x in v] for k, v in dept_actual.items()}
 
 model = dict(
     ttm_labels=TTM_LABELS,
-    vend_master=vend_master, missing=missing, dept_actual=dept_actual,
+    vend_master=vend_master, missing=missing, dept_actual=dept_actual, licenses=licenses,
     totals=dict(
         revenue=[round(x,2) for x in totals_ttm["revenue"][Y26_FROM:12]],
         other_income=[round(x,2) for x in totals_ttm["rebate"][Y26_FROM:12]],

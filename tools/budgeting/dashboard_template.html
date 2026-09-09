@@ -410,6 +410,10 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
 </section>
 
 <section class="tab" id="tab-exp">
+  <div class="card" id="licCard"><div class="eyebrow">Rules</div><h2>Licenses &amp; seats</h2>
+    <p class="note">Per-seat software, one rule per vendor tier. Seats assigned to roles ride each head on Staffing; seats bought below the minimum land on the overflow department. Xero's trailing average sits beside each rule so a gap is visible. <a class="how" href="#notes">How it works ↗</a></p>
+    <div class="tablewrap" id="licList"></div>
+    <button class="btn addrow" id="addLic" style="margin-top:8px">+ Add a license</button></div>
   <div class="toolbar">
     <input type="search" id="expSearch" placeholder="Search expenses…" aria-label="Search expenses">
     <select id="expDept" aria-label="Filter by department"></select>
@@ -522,9 +526,10 @@ function defaultState(){
     const keys = Object.keys(fixed);
     const seat = v.seat_monthly || 0;
     const baseAdj = seat > 0 ? Math.max(0, v.base - seat) : v.base;
+    const un = (MODEL.licenses || []).find(L => L.vendor === v.vendor);
     const mk = (dept, share, budget) => expenses.push({
       id: "x" + (id++), vendor: v.vendor, dept, share, budget,
-      xero: Math.round(baseAdj * share * 100) / 100,
+      xero: Math.round(Math.max(0, baseAdj * share - (un && un.unalloc > 0 && dept === un.unalloc_dept ? un.unalloc : 0)) * 100) / 100,
       status: v.status, seat, ttm: v.ttm, purpose: v.purpose, conflict: v.contradiction,
       use: STAFF_CARRIED.has(v.vendor) ? "STAFFING" : "XERO", override: null, adj: 0, from: 1, to: NM,
       on: !(v.status === "DROPPED" || v.status === "ONE-TIME")});
@@ -570,6 +575,7 @@ function defaultState(){
       raiseD: 0, raiseP: 0, raiseM: 9, hc: seedHc(s.position, s.hc) })),
     raises: [],
     salesDrop: [],
+    licenses: licSeedFromModel(),
     // The two programs described: an operations bonus for a department, paid only once the half
     // closes, and the Sales Director bonus, which pays nothing below its threshold and is carried
     // by the months that clear it. Amounts are placeholders — set the real ones on Projections.
@@ -667,6 +673,21 @@ function migrateState(st){
     delete pg.scale;
   }
   if (!st.salesDrop) st.salesDrop = [];
+  if (!st.licenses){
+    // Licenses become rules. The per-head $ typed on roles was the Knack app's seat allocation
+    // for that position; whatever the rules now explain comes off it, the rest stays as "other".
+    st.licenses = licSeedFromModel();
+    for (const p of st.staff) p.lic = Math.max(0, (p.lic || 0) - licPerHeadIn(st.licenses, p));
+    // the static unallocated-seat dollars that used to sit in a department's budget are the live
+    // shortfall now — take them back out of the row that carried them
+    for (const L of (MODEL.licenses || [])){
+      if (!(L.unalloc > 0) || !L.unalloc_dept) continue;
+      const row = st.exp.find(e => e.vendor === L.vendor && e.dept === L.unalloc_dept) || st.exp.find(e => e.vendor === L.vendor);
+      if (!row) continue;
+      if (row.budget != null && row.budget >= L.unalloc) row.budget = Math.round((row.budget - L.unalloc) * 100) / 100;
+      if (row.xero != null && row.xero >= L.unalloc) row.xero = Math.round((row.xero - L.unalloc) * 100) / 100;
+    }
+  }
   // The one-shot name-binding migration that used to live here is gone: syncSales now claims
   // free stints by name on every pass, which is what the one-shot was trying to do before the
   // staffing seats had names.
@@ -827,6 +848,57 @@ function initShared(){
 }
 
 /* ---------- compute ---------- */
+/* ---------- license rules ----------
+   A license rule is one vendor tier: a price per seat, the roles it covers with seats per head,
+   a minimum seat count and the department that eats the shortfall, and a billing cadence.
+   Assigned seats ride each head on Staffing, so a hire raises the cost where the hire is made;
+   the shortfall below the minimum lands on the overflow department's opex and follows headcount
+   live; the flat platform portions stay as the department rows on Expenses. */
+const CADENCE_MONTHS = { monthly: 1, quarterly: 3, annual: 12 };
+function licSeedFromModel(){
+  const byPos = new Map(MODEL.staff.map((s, i) => [(s.position || "").toLowerCase(), "p" + i]));
+  const out = [];
+  for (const L of (MODEL.licenses || [])){
+    const tiers = L.tiers.slice().sort((a, b) => b.licenses - a.licenses);
+    tiers.forEach((t, ti) => {
+      const roles = {}, unmatched = [];
+      for (const pos of t.positions){ const id = byPos.get(pos.toLowerCase()); if (id) roles[id] = 1; else unmatched.push(pos); }
+      // a minimum belongs to ONE tier: the contract's seat count when there is one tier, else
+      // the main tier's assigned seats plus whatever the unallocated dollars were buying
+      let min = 0;
+      if (tiers.length === 1 && L.min_seats) min = L.min_seats;
+      else if (ti === 0 && L.unalloc > 0 && t.pepm) min = t.licenses + Math.round(L.unalloc / t.pepm);
+      const tierName = (t.name || "").replace(new RegExp("^" + L.vendor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*:?\\s*", "i"), "").trim();
+      out.push({ id: "L" + out.length, vendor: L.vendor, on: true,
+        name: L.vendor + (tiers.length > 1 ? " · " + (tierName && tierName.toLowerCase() !== L.vendor.toLowerCase() ? tierName : "$" + t.pepm.toFixed(2) + "/seat") : ""),
+        price: t.pepm, roles, unmatched, minSeats: min, overflowDept: ti === 0 ? (L.unalloc_dept || "") : "",
+        cadence: L.cadence || "monthly" });
+    });
+  }
+  return out;
+}
+const licRoleFor = id => S.staff.find(x => x.id === id);
+function licSeats(lic, m){
+  let n = 0;
+  for (const [rid, per] of Object.entries(lic.roles || {})){ const r = licRoleFor(rid); if (r) n += (per || 0) * staffHC(r, m); }
+  return n;
+}
+function licPerHeadIn(licenses, role){
+  let d = 0;
+  for (const L of (licenses || [])) if (L.on !== false && L.roles && L.roles[role.id]) d += (L.roles[role.id] || 0) * (L.price || 0);
+  return d;
+}
+const licPerHead = role => licPerHeadIn(S.licenses, role);
+const licOf = role => licPerHead(role) + (role.lic || 0);
+function licShortfall(m){
+  const out = {};
+  for (const L of (S.licenses || [])){
+    if (L.on === false || !L.minSeats || !L.overflowDept) continue;
+    const short = Math.max(0, L.minSeats - licSeats(L, m));
+    if (short > 0) out[L.overflowDept] = (out[L.overflowDept] || 0) + short * (L.price || 0);
+  }
+  return out;
+}
 function expensePlanned(e){
   if (!e.on || e.use === "STAFFING") return 0;   // the person is a role on Staffing, counted there
   const base = e.override != null ? e.override : (e.use === "BUDGET" ? (e.budget || 0) : (e.xero || 0));
@@ -1117,7 +1189,7 @@ function personCost(role, p, m){
   }
   const r = raiseFor(role, p.id, m, hrs);
   labor *= bdayW(m);
-  return (labor + r.dmo + labor * r.pct) * (1 + taxOf(role)) + hdvOf(role) + (role.lic || 0);
+  return (labor + r.dmo + labor * r.pct) * (1 + taxOf(role)) + hdvOf(role) + licOf(role);
 }
 function staffHC(row, m){
   return (row.people && row.people.length)
@@ -1126,7 +1198,7 @@ function staffHC(row, m){
 }
 function headCost(row, m){
   const labor = roleAnnual(row) / 12 * bdayW(m), r = raiseFor(row, null, m, row.hrs);
-  return (labor + r.dmo + labor * r.pct) * (1 + taxOf(row)) + hdvOf(row) + (row.lic || 0);
+  return (labor + r.dmo + labor * r.pct) * (1 + taxOf(row)) + hdvOf(row) + licOf(row);
 }
 function staffCost(row, m){
   if (row.people && row.people.length)
@@ -1168,6 +1240,8 @@ function compute(){
     for (const e of S.exp){
       if (m >= (e.from || 1) && m <= (e.to || NM)) dm[e.dept] = (dm[e.dept] || 0) + expensePlanned(e);
     }
+    // seats bought but not assigned to a head: the minimum-seat shortfall, live against headcount
+    for (const [d, v] of Object.entries(licShortfall(m))) dm[d] = (dm[d] || 0) + v;
     // assemble month
     const rev = actual ? MODEL.totals.revenue[i] : null;
     out.rev.mod.push(actual ? rev : tm); out.rev.str.push(actual ? rev : ts);
@@ -1633,6 +1707,7 @@ function renderProj(C){
     <h4>Incentive programs</h4>Money a period earns that the books have not seen — the operations bonus is not paid until the six months close, and the Sales Director bonus has never been calculated. A program pays either a set amount earned proportionally across a revenue range (nothing below the floor, all of it at the cap) or a percentage of every dollar above a threshold, uncapped. Its cost accrues <b>by pacing</b> — every month carries its revenue-weighted share of the projected payout, so as the running total crosses each percent of the goal that month picks up its slice — or evenly, or only once the threshold is actually crossed. Costs are loaded with employer payroll taxes; contractors are outside every program.
     <h4>P&amp;L conventions</h4>Shaded columns are Xero as booked; later columns come from the Sales projections, Staffing and Expenses tabs. Payroll is base pay in every column — Xero's commission lines are split out onto the commissions row so booked and modeled months read alike. <b>As booked</b> is what Xero shows; <b>+ programs</b> charges the incentive programs to the months that earn them.
     <h4>By period</h4>Calendar quarters (Q1 is Jan–Mar); the planning cycles that straddle the year are Q2+Q3 (Apr–Sep) and Q4+Q1 (Oct–Mar). 2026 is the one full calendar year inside the horizon. Margins are computed on the period sums, not averaged.
+    <h4>Licenses &amp; seats</h4>Per-seat software is a rule per vendor tier: a price per seat, the roles it covers with seats per head, a minimum seat count with the department that carries the shortfall, and a billing cadence. Seats assigned to roles ride each head on Staffing (the Licenses /head column), so a hire raises the cost where the hire is made; seats bought below the minimum land on the overflow department's opex and follow headcount live; the flat platform portions are the department-split rows on Expenses. The rules were seeded once from the Knack budgeting app's contracts and allocations exports; this is where they are maintained now.
     <h4>Department budget</h4>Payroll splits from Xero's department tracking (97% tagged; untagged lands in Unassigned) for booked months, the staffing and expense plans after. Commissions and COGS are company-level and not in the rollup.`;
 }
 </script>
@@ -2190,7 +2265,7 @@ function renderStaff(C){
   bind("lvHdv", v => S.levers.hdvRate = num(v, 523.5));
   bind("lvTax", v => S.levers.taxRate = num(v, MODEL.employer_tax_rate * 100) / 100);
   renderPayCal(C);
-  let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Ben</th><th>Lic</th><th>Tax</th><th>Cost/head</th>` +
+  let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Ben</th><th title="Per-head licenses: what the license rules on Expenses assign to this role, plus any other per-head $/mo typed here">Licenses /head</th><th>Tax</th><th>Cost/head</th>` +
     MONTHS.map((m, i) => `<th class="${ybCls(i).trim()}">${mhead(i)}</th>`).join("") + `<th>${BOTH[3]}<span class="sub">Apr 26–Mar 27</span></th><th></th></tr></thead><tbody>`;
   const dOrder = d => { const i = DEPTS.indexOf(d); return i < 0 ? DEPTS.length : i; };
   const sorted = [...S.staff].sort((a, b) => dOrder(a.dept) - dOrder(b.dept));
@@ -2251,7 +2326,7 @@ function renderStaff(C){
           : `<input class="cell w84" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}">${arrow}`;
       })()}</td>
       <td style="text-align:center"><input type="checkbox" data-id="${p.id}" data-k="benOn"${p.benOn !== false ? " checked" : ""} title="Gets the ${fmt$(S.levers.hdvRate)}/mo health rate — untick for 1099s or coverage decliners"></td>
-      <td><input class="cell w56" data-id="${p.id}" data-k="lic" value="${Math.round(p.lic)}"></td>
+      <td style="white-space:nowrap" title="${esc((S.licenses || []).filter(L => L.on !== false && L.roles && L.roles[p.id]).map(L => `${L.name}: ${L.roles[p.id]} × ${fmt$(L.price)}`).join("\n") || "No license rule covers this role")}"><b>${fmt$(licPerHead(p))}</b><span class="dim"> + </span><input class="cell tiny" data-id="${p.id}" data-k="lic" value="${Math.round(p.lic || 0)}" title="Other per-head $/mo not covered by a license rule"></td>
       <td style="text-align:center"><input type="checkbox" data-id="${p.id}" data-k="taxOn"${p.taxOn !== false ? " checked" : ""} title="Employer tax & match (${(S.levers.taxRate * 100).toFixed(1)}%) added on top of pay — untick for 1099 contractors"></td>
       <td title="${hasRaise ? `${fmt$(cur)}/head now → ${fmt$(nw)}/head by Mar ’27 (raise planner)` : "Fully-loaded monthly cost per head"}">${fmt$(cur)}${hasRaise ? ` <span class="dim">→ ${fmt$(nw)}</span>` : ""}</td>` +
       Array.from({length:NM}, (_, i) => hasPpl
@@ -2305,6 +2380,14 @@ function renderStaff(C){
           </div>
         </div>
         <div class="rd-block">
+          <h4>Licenses</h4>
+          <div class="ppl-row" style="align-items:center">${(() => {
+            const mine = (S.licenses || []).filter(L => L.roles && L.roles[p.id] != null);
+            const others = (S.licenses || []).filter(L => !(L.roles && L.roles[p.id] != null));
+            return mine.map(L => `<span class="tag" title="${fmt$(L.price)} per seat · ${L.on === false ? "rule is off" : "on"}">${esc(L.name)} <input class="cell tiny" style="width:34px;margin:0 2px" data-id="${p.id}" data-k="licseats" data-lic="${L.id}" value="${L.roles[p.id]}" title="Seats per head on this role"> × ${fmt$(L.price)}<button data-id="${p.id}" data-k="licroledrop" data-lic="${L.id}" title="This role no longer carries this license">✕</button></span>`).join("") +
+              (others.length ? `<select class="cell" style="max-width:220px" data-id="${p.id}" data-k="licroleadd"><option value="">+ add a license…</option>${others.map(L => `<option value="${L.id}">${esc(L.name)} — ${fmt$(L.price)}/seat</option>`).join("")}</select>` : "") +
+              `<span class="subtle" style="margin-left:8px">${fmt$(licPerHead(p))}/head from rules${p.lic ? ` + ${fmt$(p.lic)} other` : ""}</span>`;
+          })()}</div>
           <h4>People in this role ${hasPpl ? "" : "<span class='subtle' style='font-weight:400;text-transform:none'>— none named; the headcount grid drives this role</span>"}</h4>
           <div class="ppl-grid">${ppl}
           <div class="ppl-row"><button class="btn mini" data-id="${p.id}" data-k="padd">+ Add person</button>
@@ -2346,6 +2429,41 @@ function lastBilledCell(e){
   else if (!e.on && days <= 60){ cls = "warn"; tip += ". Switched OFF, but this vendor billed within the last two months."; }
   else if (days > 90) cls = "dim";
   return `<td class="${cls}" title="${esc(tip)}" style="white-space:nowrap">${label}</td>`;
+}
+function renderLicenses(C){
+  const el = document.getElementById("licList"); if (!el) return;
+  const now = Math.min(NM, ACT + 1), end = NM;
+  const xeroOf = v => { const r = (MODEL.vend_master || []).find(x => x.vendor === v); return r ? r.base : null; };
+  const roleOpts = S.staff.slice().sort((a, b) => a.dept.localeCompare(b.dept) || a.position.localeCompare(b.position));
+  let h = `<table class="data"><thead><tr><th>On</th><th>License</th><th>$/seat</th><th>Billed</th><th>Roles · seats per head</th><th title="Seats the roles' headcount assigns, first modeled month → Mar ’27">Seats now → Mar ’27</th><th title="Seats bought regardless of headcount">Min seats</th><th title="Department that carries seats below the minimum">Overflow dept</th><th title="Assigned seats × price, first modeled month">Rule $/mo</th><th title="Xero's trailing monthly average for this vendor — the whole bill, all seats and any platform fee">Xero avg</th><th></th></tr></thead><tbody>`;
+  for (const L of (S.licenses || [])){
+    const s0 = licSeats(L, now), s1 = licSeats(L, end);
+    const short0 = Math.max(0, (L.minSeats || 0) - s0);
+    const rule = (s0 + short0) * (L.price || 0);
+    const xero = xeroOf(L.vendor);
+    const rows = (S.licenses || []).filter(x => x.vendor === L.vendor);
+    const vendorRule = rows.reduce((a, x) => a + (Math.max(licSeats(x, now), x.minSeats || 0)) * (x.price || 0), 0);
+    const gap = xero != null && vendorRule ? (xero - vendorRule) / vendorRule : null;
+    const chips = Object.entries(L.roles || {}).map(([rid, per]) => { const r = licRoleFor(rid); return r ? `<span class="tag" title="${esc(dn(r.dept))} · ${Math.round(staffHC(r, now))} head${Math.round(staffHC(r, now)) === 1 ? "" : "s"} now">${esc(r.position)} ×${per}<button data-id="${L.id}" data-k="licroledel" data-role="${rid}" title="Remove">✕</button></span>` : ""; }).join("") +
+      ((L.unmatched || []).length ? `<span class="subtle" title="Positions in the old allocation that are not on the staffing plan">+${L.unmatched.length} not on staffing</span>` : "");
+    const left = roleOpts.filter(r => !(L.roles && L.roles[r.id] != null));
+    h += `<tr${L.on === false ? ' style="opacity:.55"' : ""}>
+      <td><input type="checkbox" class="switch" data-id="${L.id}" data-k="licon"${L.on === false ? "" : " checked"}></td>
+      <td><input class="cell pos" style="width:190px" data-id="${L.id}" data-k="licname" value="${esc(L.name || "")}" title="Vendor: ${esc(L.vendor)}"></td>
+      <td><input class="cell tiny" style="width:64px" data-id="${L.id}" data-k="licprice" value="${(+L.price || 0).toFixed(2)}"></td>
+      <td><select class="cell" data-id="${L.id}" data-k="liccad">${["monthly", "quarterly", "annual"].map(c => `<option value="${c}"${(L.cadence || "monthly") === c ? " selected" : ""}>${c}</option>`).join("")}</select></td>
+      <td><span class="pg-chips" style="max-width:520px">${chips}${left.length ? `<select class="cell" style="max-width:200px" data-id="${L.id}" data-k="licroleadd"><option value="">+ add a role…</option>${DEPTS.map(d => { const rs = left.filter(r => r.dept === d); return rs.length ? `<optgroup label="${esc(dn(d))}">${rs.map(r => `<option value="${r.id}">${esc(r.position)}</option>`).join("")}</optgroup>` : ""; }).join("")}</select>` : ""}</span></td>
+      <td style="white-space:nowrap">${Math.round(s0)} → ${Math.round(s1)}</td>
+      <td><input class="cell tiny" style="width:52px" data-id="${L.id}" data-k="licmin" value="${L.minSeats || ""}" placeholder="—"></td>
+      <td><select class="cell" style="max-width:170px" data-id="${L.id}" data-k="licdept"><option value="">—</option>${DEPTS.map(d => `<option value="${esc(d)}"${d === L.overflowDept ? " selected" : ""}>${esc(dn(d))}</option>`).join("")}</select></td>
+      <td style="white-space:nowrap" title="${Math.round(s0)} assigned${short0 ? ` + ${Math.round(short0)} short of the minimum (${fmt$(short0 * L.price)} to ${esc(dn(L.overflowDept || "—"))})` : ""} × ${fmt$(L.price)}">${fmt$(rule)}${short0 ? ` <span class="warn" title="Seats below the minimum">+${Math.round(short0)}</span>` : ""}</td>
+      <td style="white-space:nowrap" class="${gap != null && Math.abs(gap) > 0.1 ? "warn" : "dim"}" title="${xero == null ? "Not in the Xero export" : `Xero ${fmt$(xero)}/mo vs ${fmt$(vendorRule)}/mo across this vendor's rules${gap != null ? ` — ${gap > 0 ? "+" : ""}${Math.round(gap * 100)}%` : ""}`}">${xero == null ? "—" : fmtK(xero)}${gap != null && Math.abs(gap) > 0.1 ? ` <small>${gap > 0 ? "+" : ""}${Math.round(gap * 100)}%</small>` : ""}</td>
+      <td><button class="btn mini" data-id="${L.id}" data-k="licdel" title="Remove rule">✕</button></td></tr>`;
+  }
+  const tot0 = (S.licenses || []).reduce((a, L) => a + (L.on === false ? 0 : Math.max(licSeats(L, now), L.minSeats || 0) * (L.price || 0)), 0);
+  const tot1 = (S.licenses || []).reduce((a, L) => a + (L.on === false ? 0 : Math.max(licSeats(L, end), L.minSeats || 0) * (L.price || 0)), 0);
+  h += `<tr class="tot"><td colspan="8">TOTAL — ${MONTHS[now - 1]} → Mar ’27</td><td colspan="3">${fmt$(tot0)} → ${fmt$(tot1)} /mo</td></tr>`;
+  el.innerHTML = h + "</tbody></table>";
 }
 function renderExpenses(C){
   const selDept = document.getElementById("expDept"), selSt = document.getElementById("expStatus");
@@ -2838,6 +2956,11 @@ document.getElementById("rosterLink").addEventListener("click", ev => {
     r.people.push({ id: "pp" + Date.now().toString(36) + i, name: "TBD " + (i + 1), sal: null, from: from, to: NM });
   persist(); scheduleRender();
 });
+document.getElementById("staffTable").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k=licroledrop]"); if (!b) return;
+  const L = (S.licenses || []).find(x => x.id === b.dataset.lic); if (L && L.roles) delete L.roles[b.dataset.id];
+  persist(); scheduleRender();
+});
 document.getElementById("salesTable").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-k=del]"); if (!b) return;
   const r = S.sales.find(x => x.id === b.dataset.id);
@@ -2928,6 +3051,8 @@ delegate("staffTable", (id, k, val) => {
   else if (k === "ote") p.ote = num(val, p.ote);
   else if (k === "benOn") p.benOn = !!val;
   else if (k === "lic") p.lic = num(val, p.lic);
+  else if (k === "licseats"){ const L = (S.licenses || []).find(x => x.id === t.dataset.lic); if (L){ L.roles = L.roles || {}; L.roles[p.id] = Math.max(0, num(val, 1)); } }
+  else if (k === "licroleadd"){ if (!val) return; const L = (S.licenses || []).find(x => x.id === val); if (L){ L.roles = L.roles || {}; L.roles[p.id] = 1; } }
   else if (k === "taxOn") p.taxOn = !!val;
   else { const m = k.match(/^hc(\d+)$/);
     if (m){ const i = +m[1], v = num(val, 0);
@@ -3037,6 +3162,31 @@ document.getElementById("expSearch").addEventListener("input", ev => { expFilter
 document.getElementById("expDept").addEventListener("change", ev => { expFilter.dept = ev.target.value; renderExpenses(); });
 document.getElementById("expStatus").addEventListener("change", ev => { expFilter.status = ev.target.value; renderExpenses(); });
 document.getElementById("expOn").addEventListener("change", ev => { expFilter.on = ev.target.value; renderExpenses(); });
+document.getElementById("licList").addEventListener("change", ev => {
+  const t = ev.target, k = t.dataset.k, L = (S.licenses || []).find(x => x.id === t.dataset.id);
+  if (!k || !L) return;
+  const val = t.type === "checkbox" ? t.checked : t.value;
+  if (k === "licon") L.on = !!val;
+  else if (k === "licname") L.name = String(val).trim();
+  else if (k === "licprice") L.price = Math.max(0, num(val, 0));
+  else if (k === "liccad") L.cadence = val;
+  else if (k === "licmin") L.minSeats = String(val).trim() === "" ? 0 : Math.max(0, Math.round(num(val, 0)));
+  else if (k === "licdept") L.overflowDept = val;
+  else if (k === "licroleadd"){ if (!val) return; L.roles = L.roles || {}; L.roles[val] = 1; }
+  else return;
+  persist(); scheduleRender();
+});
+document.getElementById("licList").addEventListener("click", ev => {
+  const rd = ev.target.closest("button[data-k=licroledel]");
+  if (rd){ const L = (S.licenses || []).find(x => x.id === rd.dataset.id); if (L && L.roles) delete L.roles[rd.dataset.role]; persist(); scheduleRender(); return; }
+  const b = ev.target.closest("button[data-k=licdel]"); if (!b) return;
+  S.licenses = (S.licenses || []).filter(x => x.id !== b.dataset.id); persist(); scheduleRender();
+});
+document.getElementById("addLic").addEventListener("click", () => {
+  S.licenses = S.licenses || [];
+  S.licenses.push({ id: "L" + Date.now().toString(36), vendor: "New license", name: "New license", on: true, price: 10, roles: {}, unmatched: [], minSeats: 0, overflowDept: "", cadence: "monthly" });
+  persist(); scheduleRender();
+});
 document.getElementById("trSearch").addEventListener("input", ev => { trQ = ev.target.value; renderTrendTable(); });
 document.getElementById("addRep").addEventListener("click", () => {
   S.sales.push({ id: "s" + Date.now(), name: "New rep", role: "Account Executive - RAMP",
@@ -3161,7 +3311,7 @@ function renderAll(){
   const C = compute();
   renderTiles(C); renderGoals(C); renderProjLevers(); renderProj(C); renderPeriods(C); renderRollup(C); renderGrowth(C);
   fillMonthLabels();
-  renderSales(C); renderIncentives(C); renderRaisePlanner(); renderStaff(C); renderExpenses(C); renderFixes(); renderRestore(); renderPayBands();
+  renderSales(C); renderIncentives(C); renderRaisePlanner(); renderStaff(C); renderLicenses(C); renderExpenses(C); renderFixes(); renderRestore(); renderPayBands();
 }
 
 renderAll();
