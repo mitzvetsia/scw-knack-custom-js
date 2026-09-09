@@ -3296,6 +3296,8 @@
     '  border-radius: 999px; border: 1.5px solid #dc2626;',
     '  background: #fff; color: #b91c1c; cursor: pointer;',
     '  transition: background 120ms ease, color 120ms ease;',
+    '  max-width: 340px; overflow: hidden; text-overflow: ellipsis;',
+    '  white-space: nowrap;',
     '}',
     '.scw-ws-v2-qafail-alert-item:hover { background: #dc2626; color: #fff; }',
     /* Full-row error treatment on the failed card: red edge stripe + row

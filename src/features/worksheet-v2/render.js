@@ -741,13 +741,39 @@
       return;
     }
 
+    // Chip text: "Designator · Product" (E-03 · Informant Dual Vision) —
+    // designator omitted when the row has none (headend gear, services);
+    // never the raw record id. Reads per-view logical fields so the same
+    // code serves install, SOW and survey deployments.
+    var Fq = (ns.cfg && typeof ns.cfg.fields === 'function')
+      ? (ns.cfg.fields(sourceViewKey) || {}) : {};
+    function readTxt(rec, key) {
+      if (!rec || !key) return '';
+      var raw = rec[key + '_raw'];
+      if (Array.isArray(raw)) {
+        return raw.map(function (r) {
+          return (r && (r.identifier != null ? r.identifier : '')) || '';
+        }).filter(Boolean).join(', ').replace(/<[^>]*>/g, '').trim();
+      }
+      var v = (raw != null && typeof raw !== 'object') ? raw : rec[key];
+      if (v == null) return '';
+      return String(v).replace(/<[^>]*>/g, '').trim();
+    }
+    function chipText(rec) {
+      var desig = readTxt(rec, Fq.displayLabel) || readTxt(rec, Fq.labelAlt);
+      var prod  = readTxt(rec, Fq.productName)  || readTxt(rec, Fq.product);
+      // Knack-synthesized "<24hex> (label)" identifiers → drop the id part.
+      desig = desig.replace(/[a-f0-9]{24}/ig, '').replace(/\(\s*\)/g, '').trim();
+      if (desig && prod) return desig + ' · ' + prod;
+      if (desig || prod) return desig || prod;
+      return (ns.card && typeof ns.card.labelLineItem === 'function' &&
+              ns.card.labelLineItem(rec)) || 'Line item';
+    }
     var chipsHtml = '';
     for (var c = 0; c < failed.length; c++) {
-      var lbl = (ns.card && typeof ns.card.labelLineItem === 'function' &&
-                 ns.card.labelLineItem(failed[c])) || failed[c].id;
       chipsHtml += '<button type="button" class="scw-ws-v2-qafail-alert-item" ' +
         'data-scw-qafail-goto="' + escapeHtml(failed[c].id) + '" ' +
-        'title="Jump to this line item">' + escapeHtml(lbl) + '</button>';
+        'title="Jump to this line item">' + escapeHtml(chipText(failed[c])) + '</button>';
     }
     if (!banner) {
       banner = document.createElement('div');
