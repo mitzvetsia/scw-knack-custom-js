@@ -3292,20 +3292,68 @@
     '.scw-ws-v2-qafail-alert-items { display: inline-flex; flex-wrap: wrap;',
     '  gap: 6px; }',
     '.scw-ws-v2-qafail-alert-item {',
-    '  font: 700 12px/1.2 system-ui, sans-serif; padding: 6px 13px;',
-    '  border-radius: 999px; border: 1.5px solid #dc2626;',
+    '  font: 700 12px/1.3 system-ui, sans-serif; padding: 6px 13px;',
+    '  border-radius: 14px; border: 1.5px solid #dc2626;',
     '  background: #fff; color: #b91c1c; cursor: pointer;',
     '  transition: background 120ms ease, color 120ms ease;',
-    '  max-width: 340px; overflow: hidden; text-overflow: ellipsis;',
-    '  white-space: nowrap;',
+    '  max-width: 340px; text-align: left; white-space: normal;',
     '}',
     '.scw-ws-v2-qafail-alert-item:hover { background: #dc2626; color: #fff; }',
+    /* Scale guard: past MAX_CHIPS (render.js) the remaining chips collapse
+       behind a "+N more" toggle so a big fail batch does not wall the
+       banner in red pills. */
+    '.scw-ws-v2-qafail-alert-items:not(.is-expanded)',
+    '  .scw-ws-v2-qafail-alert-item--extra { display: none; }',
+    '.scw-ws-v2-qafail-alert-more {',
+    '  font: 700 12px/1.3 system-ui, sans-serif; padding: 6px 13px;',
+    '  border-radius: 14px; border: 1.5px dashed #dc2626;',
+    '  background: transparent; color: #b91c1c; cursor: pointer;',
+    '}',
+    '.scw-ws-v2-qafail-alert-more:hover { background: #fee2e2; }',
     /* Full-row error treatment on the failed card: red edge stripe + row
-       tint so the item pops mid-scroll without expanding anything. */
-    '.scw-ws-v2-card--qafail { border-left: 5px solid #dc2626 !important;',
-    '  border-radius: 8px; }',
+       tint so the item pops mid-scroll without expanding anything. The
+       stripe is an INSET box-shadow, not a border — a border added width
+       to the card and clipped/offset its right edge against the flush
+       list layout (cards are square, border-bottom-separated rows). */
+    '.scw-ws-v2-card--qafail {',
+    '  box-shadow: inset 6px 0 0 #dc2626 !important;',
+    '}',
     '.scw-ws-v2-card--qafail > .scw-ws-v2-row {',
     '  background: #fef2f2 !important;',
+    '}',
+    /* Inline QA-feedback card — flex sibling rendered to the RIGHT of a
+       FAILED photo in the strip (photos.js) so the reviewer notes are
+       visible without opening anything. align-self:stretch matches the
+       photo card height; max-height caps its own content contribution
+       BELOW a failed photo card natural footprint (200px img + type +
+       REQUIRED badge + chit) so a long note can never grow the strip
+       vertically — the body clips, the tooltip + QA modal carry the
+       full text. Whole card is a click target for the QA modal (same
+       [data-scw-ws-v2-photo-qa] hook as the chit). */
+    '.scw-ws-v2-photo-qanote {',
+    '  flex: 0 1 260px; min-width: 190px; max-width: 280px;',
+    '  align-self: stretch; max-height: 256px;',
+    '  display: flex; flex-direction: column; gap: 6px;',
+    '  padding: 10px 12px; box-sizing: border-box;',
+    '  background: #fef2f2; border: 1.5px solid #fecaca;',
+    '  border-left: 4px solid #dc2626; border-radius: 8px;',
+    '  cursor: pointer; overflow: hidden;',
+    '  transition: border-color 120ms ease;',
+    '}',
+    '.scw-ws-v2-photo-qanote:hover { border-color: #dc2626; }',
+    '.scw-ws-v2-photo-qanote-head {',
+    '  display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;',
+    '  font: 800 11px/1 system-ui, sans-serif; color: #b91c1c;',
+    '  text-transform: uppercase; letter-spacing: 0.04em;',
+    '}',
+    '.scw-ws-v2-photo-qanote-body {',
+    '  flex: 1 1 auto; min-height: 0; overflow: hidden;',
+    '  font: 500 12px/1.5 system-ui, sans-serif; color: #7f1d1d;',
+    '  white-space: pre-wrap; overflow-wrap: anywhere;',
+    '}',
+    '.scw-ws-v2-photo-qanote-meta {',
+    '  flex: 0 0 auto; font: 600 10.5px/1.3 system-ui, sans-serif;',
+    '  color: #b91c1c; opacity: 0.85;',
     '}',
     /* Card-flash animation triggered when a warning chip is clicked
        — amber pulse on the matching cards so the user sees them at

@@ -769,11 +769,29 @@
       return (ns.card && typeof ns.card.labelLineItem === 'function' &&
               ns.card.labelLineItem(rec)) || 'Line item';
     }
+    // Scale guard: past MAX_CHIPS the remaining chips collapse behind a
+    // "+N more" toggle (styles.js hides .--extra until .is-expanded) so a
+    // big fail batch doesn't wall the page in red pills. The expanded
+    // state is re-read off the old banner before the innerHTML rebuild so
+    // a background re-render doesn't snap the list shut mid-read.
+    var MAX_CHIPS = 6;
+    var wasExpanded = false;
+    if (banner) {
+      var prevItems = banner.querySelector('.scw-ws-v2-qafail-alert-items');
+      wasExpanded = !!(prevItems && prevItems.classList.contains('is-expanded'));
+    }
     var chipsHtml = '';
     for (var c = 0; c < failed.length; c++) {
-      chipsHtml += '<button type="button" class="scw-ws-v2-qafail-alert-item" ' +
+      chipsHtml += '<button type="button" class="scw-ws-v2-qafail-alert-item' +
+        (c >= MAX_CHIPS ? ' scw-ws-v2-qafail-alert-item--extra' : '') + '" ' +
         'data-scw-qafail-goto="' + escapeHtml(failed[c].id) + '" ' +
         'title="Jump to this line item">' + escapeHtml(chipText(failed[c])) + '</button>';
+    }
+    var extraCount = failed.length - MAX_CHIPS;
+    if (extraCount > 0) {
+      chipsHtml += '<button type="button" class="scw-ws-v2-qafail-alert-more" ' +
+        'data-scw-qafail-more="' + extraCount + '">' +
+        (wasExpanded ? 'Show fewer' : '+ ' + extraCount + ' more') + '</button>';
     }
     if (!banner) {
       banner = document.createElement('div');
@@ -797,13 +815,27 @@
         (failed.length === 1 ? '' : 's') + '</strong> — we’ve identified an ' +
         'issue and left notes. Please take a look and swap in an updated ' +
         'photo so we can re-review together:</span>' +
-      '<span class="scw-ws-v2-qafail-alert-items">' + chipsHtml + '</span>';
+      '<span class="scw-ws-v2-qafail-alert-items' +
+        (wasExpanded ? ' is-expanded' : '') + '">' + chipsHtml + '</span>';
   }
 
-  // Click-to-jump for the alert chips — delegated once, document-wide.
+  // Click-to-jump for the alert chips + the "+N more" collapse toggle —
+  // delegated once, document-wide.
   if (!document.documentElement.hasAttribute('data-scw-qafail-goto-bound')) {
     document.documentElement.setAttribute('data-scw-qafail-goto-bound', '1');
     document.addEventListener('click', function (e) {
+      var m = e.target && e.target.closest && e.target.closest('[data-scw-qafail-more]');
+      if (m) {
+        e.preventDefault();
+        var wrap = m.closest('.scw-ws-v2-qafail-alert-items');
+        if (wrap) {
+          var open = wrap.classList.toggle('is-expanded');
+          m.textContent = open
+            ? 'Show fewer'
+            : '+ ' + m.getAttribute('data-scw-qafail-more') + ' more';
+        }
+        return;
+      }
       var b = e.target && e.target.closest && e.target.closest('[data-scw-qafail-goto]');
       if (!b) return;
       e.preventDefault();

@@ -707,11 +707,51 @@
       // modal, just without the QA sidebar).
       var qaChit = (qaEnabled && p.id && p.imgUrl && photoNeedsQa(p))
         ? qaChitHtml(p) : '';
+      // Inline QA-feedback card — rendered AFTER the anchor (flex sibling →
+      // sits to the photo's RIGHT in the strip) whenever the photo FAILED
+      // QA and the reviewer left notes, so the sub reads the feedback
+      // without opening anything. Carries the same [data-scw-ws-v2-photo-qa]
+      // hook + data-qa-* snapshot as the chit, so the existing delegated
+      // handler opens the identical QA modal from a click anywhere on it.
+      // (data-photo-required rides directly on it — the modal's `required`
+      // resolve uses closest(), and this card is OUTSIDE the anchor; a
+      // fail verdict only exists on required/needs-QA photos.)
+      var qaNote = '';
+      if (qaChit && qaChitState(p) === 'fail' && p.qaNotes) {
+        var qaMetaBits = [];
+        if (p.qaCompletedBy)   qaMetaBits.push(p.qaCompletedBy);
+        if (p.qaCompletedDate) qaMetaBits.push(p.qaCompletedDate);
+        var qaMeta = qaMetaBits.join(' · ');
+        qaNote =
+          '<div class="scw-ws-v2-photo-qanote"' +
+            ' data-scw-ws-v2-photo-qa="' + escapeHtml(p.id) + '"' +
+            ' data-qa-status="'  + escapeHtml(p.qaStatus || 'Fail')    + '"' +
+            ' data-qa-client="'  + escapeHtml(p.qaClient || 'N/A')     + '"' +
+            ' data-qa-notes="'   + escapeHtml(p.qaNotes || '')         + '"' +
+            ' data-qa-history="' + escapeHtml(p.qaHistory || '')       + '"' +
+            ' data-qa-by="'      + escapeHtml(p.qaCompletedBy || '')   + '"' +
+            ' data-qa-date="'    + escapeHtml(p.qaCompletedDate || '') + '"' +
+            ' data-qa-type="'    + escapeHtml(p.type || 'Photo')       + '"' +
+            ' data-qa-img="'     + escapeHtml(p.imgUrl || '')          + '"' +
+            ' data-photo-required="true"' +
+            ' title="' + escapeHtml('QA feedback' +
+                (qaMeta ? ' — ' + qaMeta : '') + '\n\n' + p.qaNotes +
+                '\n\n(click to review / swap in an updated photo)') + '">' +
+            '<div class="scw-ws-v2-photo-qanote-head">' + QA_ICONS.fail +
+              '<span>QA feedback</span></div>' +
+            '<div class="scw-ws-v2-photo-qanote-body">' +
+              escapeHtml(p.qaNotes) + '</div>' +
+            (qaMeta
+              ? '<div class="scw-ws-v2-photo-qanote-meta">' +
+                  escapeHtml(qaMeta) + '</div>'
+              : '') +
+          '</div>';
+      }
       html +=
         '<a class="' + cls + '"' + openAttrs + dataAttrs + draggableAttr +
             ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
           thumb + typeHtml + reqHtml + noteHtml + qaChit + delBtn + unlinkBtn +
-        '</a>';
+        '</a>' + qaNote;
     }
 
     if (addHref) {
