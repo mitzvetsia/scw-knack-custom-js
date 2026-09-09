@@ -453,7 +453,8 @@
         if (!a || !a.id) continue;
         var snap = parseSnapshot(a.id, a[SNAPSHOT_FIELD]);
         if (!snap || typeof snap !== 'object') continue;
-        var pub = { id: a.id, label: '', isCo: false, quote: '', signed: false,
+        var pub = { id: a.id, proposalId: a.id, label: '', isCo: false,
+                    quote: '', signed: false,
                     lines: Object.create(null), byLabel: Object.create(null) };
         var acc = byProposal[a.id];
         if (acc) { pub.quote = acc.quote; pub.signed = acc.signed; }
@@ -479,6 +480,21 @@
               pub.isCo = /CO$/i.test(normToken(pub.label));
             }
           }
+        }
+        // Acceptance join fallback — byProposal misses when the acceptance
+        // points at a different proposal record than this snapshot row
+        // (re-published proposals) — join by SOW token instead, from the
+        // publication label or any line's SOW connection.
+        if (!pub.quote) {
+          var tok = normToken(pub.label || '');
+          if (!tok) {
+            for (var lf in pub.lines) {
+              tok = normToken(firstSowLabel(pub.lines[lf]) || '');
+              if (tok) break;
+            }
+          }
+          var acc2 = acceptFor(acceptIdx, tok);
+          if (acc2) { pub.quote = acc2.quote; pub.signed = acc2.signed; }
         }
         pubs.push(pub);
       }
@@ -555,6 +571,17 @@
     }
     return idx;
   }
+  /** Token-tolerant acceptance lookup: SOW identifiers render both with
+   *  and without the "SW" prefix depending on the surface ("SW1706CO" on
+   *  acceptance identifiers vs "1706CO" on SOW connections) — try exact,
+   *  then the SW-stripped / SW-prefixed alias. */
+  function acceptFor(idx, token) {
+    if (!idx || !token) return null;
+    if (idx[token]) return idx[token];
+    if (/^SW/.test(token) && idx[token.slice(2)]) return idx[token.slice(2)];
+    if (idx['SW' + token]) return idx['SW' + token];
+    return null;
+  }
   /** Origins for one OG line item: [{ label, isCo, quote, proposalId,
    *  signed }] — one entry per SOW the item connects to. */
   function resolveOrigins(pa, acceptIdx) {
@@ -565,7 +592,7 @@
       if (!raw[i] || !raw[i].id) continue;
       var label = stripHtml(raw[i].identifier || '') || raw[i].id;
       var token = normToken(label);
-      var acc = (acceptIdx && acceptIdx[token]) || null;
+      var acc = acceptFor(acceptIdx, token);
       out.push({
         label:      label,
         isCo:       /CO$/.test(token),
@@ -811,7 +838,9 @@
           if (entry.pub) {
             if (entry.pub.quote)  text += ' · Quote ' + entry.pub.quote;
             if (entry.pub.signed) text += ' · signed';
-            href = proposalHref(entry.pub.proposalId);
+            // pub.proposalId (the snapshot row IS the published proposal
+            // record) — .id fallback for pre-fix cached objects.
+            href = proposalHref(entry.pub.proposalId || entry.pub.id);
           }
         }
         body.appendChild(sectionLabelEl(text, href));
@@ -1221,6 +1250,94 @@
     s.textContent = css;
     document.head.appendChild(s);
   }
+
+  // ── console diagnostic ──────────────────────────────────────────
+  // Run SCW.asQuotedDebug() on a deploy page — optionally with one install
+  // record id — to see exactly how the publication history joined: which
+  // snapshot blobs parsed, what the acceptance index holds, and per line
+  // which publications matched by record id / by label / were deduped as
+  // unchanged / didn't match at all. Read-only; safe to run any time.
+  window.SCW = window.SCW || {};
+  window.SCW.asQuotedDebug = function (onlyInstallId) {
+    var linkIdx = buildInstallLinkIndex();
+    var propIdx = buildProposedIndex();
+    var acceptIdx = buildAcceptanceIndex();
+    var pubs = buildPublications(acceptIdx);
+    console.group('[scw-as-quoted] diagnostic');
+    console.log('install records linked:', Object.keys(linkIdx).length,
+      '| OG records loaded (' + proposedViewName() + '):',
+      Object.keys(propIdx).length);
+    console.log('snapshot views detected:',
+      snapshotViewKeys().join(', ') || '(none)');
+    console.log('publications parsed from ' + SNAPSHOT_FIELD + ':', pubs.length);
+    for (var pi = 0; pi < pubs.length; pi++) {
+      var pp = pubs[pi];
+      console.log('  pub#' + pi, '| proposal record', pp.id,
+        '| label', pp.label || '(no SOW header in blob)',
+        '| quote', pp.quote || '(NO acceptance join)',
+        '| signed', pp.signed, '| lines in blob', Object.keys(pp.lines).length);
+    }
+    var toks = [];
+    for (var t in acceptIdx) {
+      toks.push(t + '→' + acceptIdx[t].quote +
+        (acceptIdx[t].signed ? '(signed)' : ''));
+    }
+    console.log('acceptance tokens:', toks.join('  ') ||
+      '(none — are ' + ACCEPT_VIEWS.join('/') + ' loaded with ' +
+      ACCEPT_PROPOSAL + '?)');
+    var ids = onlyInstallId ? [onlyInstallId] : Object.keys(linkIdx);
+    for (var di = 0; di < ids.length; di++) {
+      var iid = ids[di];
+      var ogId = linkIdx[iid] || '';
+      var pa = ogId ? propIdx[ogId] : null;
+      console.group('install ' + iid + ' → OG ' +
+        (ogId || '(no ' + LINK_FIELD + ' link)'));
+      if (!pa) {
+        console.log(ogId
+          ? 'OG record NOT loaded in ' + proposedViewName() +
+            ' — check its Builder filters / record cap.'
+          : 'no link — nothing to join.');
+        console.groupEnd();
+        continue;
+      }
+      console.log('OG label:', stripHtml(pa['field_1950'] || '') || '(blank)',
+        '| SOW conn:', readVal(pa, PF.sow) || '(field_2154 NOT projected)',
+        '| swap target:', rawIds(pa, PF.target)[0] || '(none)');
+      var paLbl = normToken(stripHtml(pa['field_1950'] || ''));
+      var prevKept = null;
+      for (var p2 = 0; p2 < pubs.length; p2++) {
+        var pub = pubs[p2];
+        var byId = !!pub.lines[pa.id];
+        var byLb = !byId && !!(paLbl && pub.byLabel[paLbl]);
+        var line = byId ? pub.lines[pa.id]
+                 : (byLb ? pub.byLabel[paLbl] : null);
+        var verdict, extra = '';
+        if (!line) {
+          verdict = 'NO MATCH — record id not in this blob' +
+            (paLbl ? ', label "' + paLbl + '" not in it either' : '');
+        } else {
+          extra = '| conduit(2035): ' +
+            (hasField(line, PF.conduit)
+              ? JSON.stringify(readVal(line, PF.conduit)) : '(not captured)') +
+            ' | connTo(2197): ' +
+            (hasField(line, PF.connectedTo)
+              ? JSON.stringify(readVal(line, PF.connectedTo)) : '(not captured)');
+          if (prevKept && !linesDiffer(line, prevKept)) {
+            verdict = (byId ? 'matched by id' : 'matched by LABEL') +
+              ' — DEDUPED (unchanged vs previous section)';
+          } else {
+            verdict = (byId ? 'matched by id' : 'matched by LABEL') +
+              ' — renders a SECTION';
+            prevKept = line;
+          }
+        }
+        console.log('  pub#' + p2, (pub.label || pub.id) + ':', verdict, extra);
+      }
+      console.groupEnd();
+    }
+    console.groupEnd();
+    return 'done — paste this output back for analysis';
+  };
 
   // ── init ────────────────────────────────────────────────────────
   function init() {
