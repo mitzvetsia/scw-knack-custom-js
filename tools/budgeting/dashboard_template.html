@@ -449,6 +449,7 @@ const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov
 const NM = 15;                                 // Jan 2026 .. Mar 2027
 const FH1 = [3, 9,  "Apr\u2013Sep 2026", "Q2+Q3"];       // planning cycle slice bounds [from,to), label, quarters
 const FH2 = [9, 15, "Oct 2026\u2013Mar 2027", "Q4+Q1"];  // the goal-setting cycle
+const BOTH = [3, 15, "Apr 2026\u2013Mar 2027", "Both cycles"];   // Q2+Q3 and Q4+Q1 together — never the 15-month horizon
 const ACT = MODEL.actual_months;              // how many months Xero has booked
 /* Variable comp booked inside payroll (commission / bonus / spiff lines on 66000) over booked
    sales revenue: what the company ACTUALLY paid out per dollar sold, blended across AE, AM and
@@ -1583,7 +1584,7 @@ function renderProj(C){
   for (const [k, v] of pick(netM, netS)){
     const revK = C.rev[k], m = v.map((n, i) => revK[i] ? n / revK[i] : 0);
     const pr = (x, y) => { const n = v.slice(x, y).reduce((a, b) => a + b, 0), d = revK.slice(x, y).reduce((a, b) => a + b, 0); return d ? n / d : 0; };
-    rows.push({ label: "&nbsp;&nbsp;net margin" + sfx(k), vals: m, cls: "dim", fm: fmtPct1, sums: [pr(FH1[0], FH1[1]), pr(FH2[0], FH2[1]), pr(0, NM)] });
+    rows.push({ label: "&nbsp;&nbsp;net margin" + sfx(k), vals: m, cls: "dim", fm: fmtPct1, sums: [pr(FH1[0], FH1[1]), pr(FH2[0], FH2[1]), pr(BOTH[0], BOTH[1])] });
   }
   if (!both)
     push("Net under " + (plScn === "mod" ? "stretch" : "modest") + " (reference)", plScn === "mod" ? netS : netM, "dim");
@@ -1597,13 +1598,13 @@ function renderProj(C){
   let h = `<table class="data pl"><thead>` +
     `<tr class="grp"><th></th><th colspan="3">Totals</th><th class="booked" colspan="${Math.min(ACT, NM)}">Booked ${esc(ACT_RANGE)}</th>` +
     (bridgeN ? `<th colspan="${bridgeN}">Bridge</th>` : "") + `<th class="goal" colspan="${FH2[1] - FH2[0]}">Goal cycle Oct–Mar</th></tr>` +
-    `<tr><th>P&amp;L</th><th>${FH1[3]}<span class="sub">Apr–Sep</span></th><th class="goal">${FH2[3]}<span class="sub">Oct–Mar</span></th><th>15 mo<span class="sub">Jan 26–Mar 27</span></th>` +
+    `<tr><th>P&amp;L</th><th>${FH1[3]}<span class="sub">Apr–Sep</span></th><th class="goal">${FH2[3]}<span class="sub">Oct–Mar</span></th><th>${BOTH[3]}<span class="sub">Apr 26–Mar 27</span></th>` +
     MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${qb(i)}${ybCls(i)}${goalCls(i)}"${provSet.has(i + 1) ? ` title="COGS estimated — the ${m} COGS entry hasn’t been made in Xero yet"` : ""}>${mhead(i)}${provSet.has(i + 1) ? "*" : ""}</th>`).join("") +
     `</tr></thead><tbody>`;
   for (const r of rows){
     if (r.section){ h += `<tr class="sec"><td colspan="${NM + 4}">${esc(r.section)}</td></tr>`; continue; }
     const isNet = /NET/.test(r.label);
-    const sums = r.sums ? r.sums : r.fm === fmt$ ? [half(r.vals, FH1), half(r.vals, FH2), r.vals.reduce((a, b) => a + b, 0)] : null;
+    const sums = r.sums ? r.sums : r.fm === fmt$ ? [half(r.vals, FH1), half(r.vals, FH2), half(r.vals, BOTH)] : null;
     const sumFm = r.sums ? r.fm : fmt$;
     // a cell's own caveat (the August payroll estimate, the "who moved" notes) outranks the
     // exact-figure hover; when both exist the figure rides inside the caveat
@@ -1693,10 +1694,10 @@ function renderRollup(C){
     `<tr class="grp"><th></th><th colspan="${isHC ? 1 : 3}">Totals</th><th class="booked" colspan="${Math.min(ACT, NM)}">Booked ${esc(ACT_RANGE)}</th>` +
     (bridgeN ? `<th colspan="${bridgeN}">Bridge</th>` : "") + `<th class="goal" colspan="${FH2[1] - FH2[0]}">Goal cycle Oct–Mar</th></tr>` +
     `<tr><th>Department</th>` +
-    (isHC ? `<th class="goal">Mar ’27</th>` : `<th>${FH1[3]}<span class="sub">Apr–Sep</span></th><th class="goal">${FH2[3]}<span class="sub">Oct–Mar</span></th><th>15 mo</th>`) +
+    (isHC ? `<th class="goal">Mar ’27</th>` : `<th>${FH1[3]}<span class="sub">Apr–Sep</span></th><th class="goal">${FH2[3]}<span class="sub">Oct–Mar</span></th><th>${BOTH[3]}<span class="sub">Apr 26–Mar 27</span></th>`) +
     MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}${goalCls(i)}">${mhead(i)}</th>`).join("") + `</tr></thead><tbody>`;
   const tots = r => isHC ? `<td class="goal"><b>${fmv(r.vals[NM - 1])}</b></td>`
-    : `<td class="${half(r.vals, FH1) < 0 ? "neg" : ""}"><b>${fmt$(half(r.vals, FH1))}</b></td><td class="goal${half(r.vals, FH2) < 0 ? " neg" : ""}"><b>${fmt$(half(r.vals, FH2))}</b></td><td><b>${fmt$(r.vals.reduce((a, b) => a + b, 0))}</b></td>`;
+    : `<td class="${half(r.vals, FH1) < 0 ? "neg" : ""}"><b>${fmt$(half(r.vals, FH1))}</b></td><td class="goal${half(r.vals, FH2) < 0 ? " neg" : ""}"><b>${fmt$(half(r.vals, FH2))}</b></td><td><b>${fmt$(half(r.vals, BOTH))}</b></td>`;
   for (const r of rows){
     h += `<tr><td>${esc(dn(r.d))}</td>` + tots(r) +
       r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}${goalCls(i)}${v < -0.5 ? " neg" : ""}"${isHC ? "" : ` title="${fmt$(v)}"`}>${fmk(v)}</td>`).join("") + `</tr>`;
@@ -1928,14 +1929,14 @@ function renderSales(C){
     };
     document.getElementById("salesTotals").innerHTML =
       `<div style="display:flex;flex-wrap:wrap;gap:10px 28px;border:1px solid var(--border);border-radius:9px;padding:9px 12px;margin:0 0 10px;background:var(--surface2);font-size:12.5px">
-        ${cell(FH1[2] + " (" + FH1[3] + ")", FH1[0], FH1[1], L.targetH1)}${cell(FH2[2] + " (" + FH2[3] + ")", FH2[0], FH2[1], L.targetH2)}${cell("15 months", 0, NM, 0)}
+        ${cell(FH1[2] + " (" + FH1[3] + ")", FH1[0], FH1[1], L.targetH1)}${cell(FH2[2] + " (" + FH2[3] + ")", FH2[0], FH2[1], L.targetH2)}${cell(BOTH[3] + " · Apr 26–Mar 27", BOTH[0], BOTH[1], L.targetH1 + L.targetH2)}
         <div class="subtle" style="align-self:center;max-width:360px;font-size:11.5px">Booked months come from Xero and are the same under both; modeled months are the roster below at each rep's Modest % or Stretch %.</div></div>`;
   })();
   let h = `<table class="data"><thead><tr><th>Rep</th><th>Role</th><th>Ramp</th><th title="First month selling. Derived from the staffing plan for linked reps — change it there.">Start mo</th><th title="How far into their ramp they already were when they joined — a duration, not a month. Set it for anyone already producing at the start of the window so they are not modelled as a new hire.">Ramp credit</th><th>Last mo</th>
-    <th>Modest %</th><th>Stretch %</th><th title="Does this line pay commission? House revenue (BEN, MARKETING) earns none, so it is left out of both the measured rate and the budget.">Comm</th><th title="Modeled production across all 15 months — booked months included, so this is the ramp model, not what Xero booked">15-mo modest</th><th title="Same, at stretch attainment">15-mo stretch</th><th></th></tr></thead><tbody>`;
+    <th>Modest %</th><th>Stretch %</th><th title="Does this line pay commission? House revenue (BEN, MARKETING) earns none, so it is left out of both the measured rate and the budget.">Comm</th><th title="Modeled production across both planning cycles, Apr 2026–Mar 2027 — booked months included, so this is the ramp model, not what Xero booked">Apr–Mar modest</th><th title="Same, at stretch attainment">Apr–Mar stretch</th><th></th></tr></thead><tbody>`;
   for (const r of S.sales){
     let fm = 0, fs = 0;
-    for (let m = 1; m <= NM; m++){
+    for (let m = BOTH[0] + 1; m <= BOTH[1]; m++){
       fm += repRevenue(r, m, "modest"); fs += repRevenue(r, m, "stretch");
     }
     const linked = !!r.link, orph = !!r.orphan;
@@ -1969,7 +1970,7 @@ function renderSales(C){
       <td>${fmt$(fm)}</td><td>${fmt$(fs)}</td>
       <td><button class="btn" data-id="${r.id}" data-k="del" title="Remove rep">✕</button></td></tr>`;
   }
-  const tm = C.team.mod.reduce((a, b) => a + b, 0), ts = C.team.str.reduce((a, b) => a + b, 0);
+  const tm = C.team.mod.slice(BOTH[0], BOTH[1]).reduce((a, b) => a + b, 0), ts = C.team.str.slice(BOTH[0], BOTH[1]).reduce((a, b) => a + b, 0);
   h += `<tr class="tot"><td>TEAM</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
     <td>${fmt$(tm)}</td><td>${fmt$(ts)}</td><td></td></tr>`;
   document.getElementById("salesTable").innerHTML = h + "</tbody></table>";
@@ -2046,7 +2047,7 @@ function renderSales(C){
 let repMoScn = "modest";
 function renderRepMonths(){
   let h = `<table class="data"><thead><tr><th>Rep</th>` + MONTHS.map((m, i) =>
-    `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}">${mhead(i)}</th>`).join("") + `<th>Total</th></tr></thead><tbody>`;
+    `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}">${mhead(i)}</th>`).join("") + `<th>${BOTH[3]}<span class="sub">Apr 26–Mar 27</span></th></tr></thead><tbody>`;
   const tot = Array(NM).fill(0);
   for (const r of S.sales){
     let sum = 0;
@@ -2057,14 +2058,15 @@ function renderRepMonths(){
     h += `<tr><td>${esc(r.name)} <span class="dim">· ${esc(r.ramp)}${scnNote}${endNote}</span></td>`;
     for (let m = 1; m <= NM; m++){
       const v = repRevenue(r, m, repMoScn);
-      sum += v; tot[m - 1] += v;
+      if (m > BOTH[0] && m <= BOTH[1]) sum += v;
+      tot[m - 1] += v;
       const tenure = m - r.start + 1;
       h += `<td class="${m <= ACT ? "actual" : ""}" title="tenure month ${tenure < 1 ? "—" : Math.min(12, tenure) + (tenure > 12 ? " (capped)" : "")}">${v ? fmt$(v) : `<span class="dim">—</span>`}</td>`;
     }
     h += `<td><b>${fmt$(sum)}</b></td></tr>`;
   }
   h += `<tr class="tot"><td>TEAM</td>` + tot.map(v => `<td>${fmt$(v)}</td>`).join("") +
-    `<td>${fmt$(tot.reduce((a, b) => a + b, 0))}</td></tr>`;
+    `<td>${fmt$(tot.slice(BOTH[0], BOTH[1]).reduce((a, b) => a + b, 0))}</td></tr>`;
   document.getElementById("repMoTable").innerHTML = h + "</tbody></table>";
 }
 document.getElementById("repMoScn").addEventListener("click", ev => {
@@ -2188,12 +2190,12 @@ function renderStaff(C){
   bind("lvTax", v => S.levers.taxRate = num(v, MODEL.employer_tax_rate * 100) / 100);
   renderPayCal(C);
   let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Ben</th><th>Lic</th><th>Tax</th><th>Cost/head</th>` +
-    MONTHS.map((m, i) => `<th class="${ybCls(i).trim()}">${mhead(i)}</th>`).join("") + `<th>15-mo cost</th><th></th></tr></thead><tbody>`;
+    MONTHS.map((m, i) => `<th class="${ybCls(i).trim()}">${mhead(i)}</th>`).join("") + `<th>${BOTH[3]}<span class="sub">Apr 26–Mar 27</span></th><th></th></tr></thead><tbody>`;
   const dOrder = d => { const i = DEPTS.indexOf(d); return i < 0 ? DEPTS.length : i; };
   const sorted = [...S.staff].sort((a, b) => dOrder(a.dept) - dOrder(b.dept));
   const fyOf = new Map(), deptFy = new Map();
   for (const p of sorted){
-    let fy = 0; for (let m = 1; m <= NM; m++) fy += staffCost(p, m);
+    let fy = 0; for (let m = BOTH[0] + 1; m <= BOTH[1]; m++) fy += staffCost(p, m);   // both cycles, Apr–Mar
     fyOf.set(p.id, fy); deptFy.set(p.dept, (deptFy.get(p.dept) || 0) + fy);
   }
   const deptN = new Map();
@@ -2213,7 +2215,7 @@ function renderStaff(C){
       const dHc = Array.from({length: NM}, (_, i) => dRoles.reduce((a, r) => a + staffHC(r, i + 1), 0));
       h += `<tr class="sec deptsec"><td colspan="6"><button class="exp-toggle" data-dept="${esc(p.dept)}" data-k="deptfold" aria-expanded="${!folded}">${folded ? "▸" : "▾"}</button> ${renameDept === p.dept ? `<input class="cell pos" style="width:220px" data-id="${esc(p.dept)}" data-k="deptname" value="${esc(dn(p.dept))}" title="Type the new display name, then press Enter (Esc cancels; blank restores the original)">` : `${esc(dn(p.dept))} <button class="exp-toggle" data-dept="${esc(p.dept)}" data-k="deptrename" title="Rename this department (display only — data keeps its key)">✎</button>`} <span class="dim" style="font-weight:400">· ${deptN.get(p.dept)} role${deptN.get(p.dept) > 1 ? "s" : ""} · med salary ${fmtK(medSal)} · budget ${fmtK(budMo)}/mo pay+opex${folded ? " · (collapsed)" : ""}</span></td>` +
         dHc.map((v, i) => `<td class="${i < ACT ? "actual" : ""}" title="${esc(dn(p.dept))} headcount in ${MONTHS[i]}${i < ACT ? " (booked month — payroll comes from Xero, not this plan)" : ""}">${v ? (Math.round(v * 10) / 10) : `<span class="dim">—</span>`}</td>`).join("") +
-        `<td title="15-month payroll cost">${fmt$(deptFy.get(p.dept))}</td><td></td></tr>`;
+        `<td title="Payroll cost over both planning cycles, Apr 2026–Mar 2027">${fmt$(deptFy.get(p.dept))}</td><td></td></tr>`;
     }
     if (collapsedDepts.has(p.dept)) continue;
     const cur = headCost(p, 1), nw = headCost(p, NM);
