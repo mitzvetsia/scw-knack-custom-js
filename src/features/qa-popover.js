@@ -495,6 +495,60 @@
     return safe + '<br>' + existing;
   }
 
+  /** When the photo RECORD was created — i.e. the original upload —
+   *  derived from the Knack record id (Mongo-style: first 8 hex chars are
+   *  unix seconds). Available for EVERY photo, past or future, with no
+   *  Builder field. Rendered in the viewer's local timezone. '' on a
+   *  malformed id. */
+  function uploadedStampFromId(id) {
+    var s = String(id || '');
+    if (!/^[a-f0-9]{24}$/i.test(s)) return '';
+    var secs = parseInt(s.slice(0, 8), 16);
+    if (!secs) return '';
+    var d = new Date(secs * 1000);
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+      ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  /** History block innerHTML with the synthesized "Photo uploaded" line at
+   *  the BOTTOM (entries stack newest-first, and the upload is by
+   *  definition the oldest event). The uploader's NAME isn't derivable
+   *  client-side for photos created outside the modal (no Created-By field
+   *  on the photos object); in-modal uploads/replaces/removes log their own
+   *  attributed entries via logPhotoEvent. Returns '' when there's nothing
+   *  to show. */
+  function historyHtmlWithUpload(photo) {
+    var up = uploadedStampFromId(photo && photo.id);
+    var hist = (photo && photo.history && String(photo.history).trim())
+      ? String(photo.history) : '';
+    var upLine = up ? escapeHtml(up + ' — Photo uploaded') : '';
+    if (hist && upLine) return hist + '<br>' + upLine;
+    return hist || upLine;
+  }
+
+  /** Best-effort audit write: prepend "<stamp> — <user> — <event>" to the
+   *  photo's QA history in its OWN PUT after the primary image operation
+   *  succeeded. Separate on purpose — a save view that doesn't carry
+   *  field_2865 must never fail the upload/replace/remove itself. Advances
+   *  photo.history locally so a second event in the same modal session
+   *  stacks instead of overwriting. */
+  function logPhotoEvent(photo, saveView, event) {
+    try {
+      var u = pepUtil();
+      if (!u || !saveView || !photo || !photo.id) return;
+      var newHist = prependHistory(photo.history || '', event);
+      var body = {};
+      body[F.history] = newHist;
+      u.putRecord(saveView, photo.id, body).then(function () {
+        photo.history = newHist;
+      }).catch(function (err) {
+        console.warn('[scw-qa] history log skipped (' + event + '):',
+          (err && err.message) || err);
+      });
+    } catch (e) { /* audit only — never break the image flow */ }
+  }
+
   // ── Save ────────────────────────────────────────────────────────
 
   function saveFields(fields, onDone) {
@@ -650,9 +704,12 @@
     histSec.appendChild(histLbl);
     var hist = document.createElement('div');
     hist.className = 'scw-qa-popover__history';
-    if (photo.history && photo.history.trim()) {
-      // history is paragraph-text innerHTML (newlines as <br>) — render as-is.
-      hist.innerHTML = photo.history;
+    // history is paragraph-text innerHTML (newlines as <br>) — rendered
+    // as-is, with the record-created "Photo uploaded" stamp appended as
+    // the oldest line (derived from the record id — no Builder field).
+    var histHtml = historyHtmlWithUpload(photo);
+    if (histHtml) {
+      hist.innerHTML = histHtml;
     } else {
       hist.className += ' scw-qa-popover__history-empty';
       hist.textContent = 'No QA history yet.';
@@ -746,6 +803,7 @@
           drop.parentNode.replaceChild(img, drop);
           photo.imgUrl = url;
           photo.completed = true;
+          logPhotoEvent(photo, saveView, 'UPLOADED PHOTO');
           notifyHostSaved(photo);
         });
       }).catch(function (err) {
@@ -832,6 +890,7 @@
             photo.imgUrl = url;
             repB.disabled = locked;
             repB.textContent = 'Replace photo';
+            logPhotoEvent(photo, saveView, 'REPLACED PHOTO');
             notifyHostSaved(photo);
           });
         }).catch(function (err) {
@@ -861,6 +920,7 @@
       u.clearFileField(saveView, photo.id, F.img, extra).then(function () {
         photo.imgUrl = '';
         photo.completed = false;
+        logPhotoEvent(photo, saveView, 'REMOVED PHOTO');
         swapToUploadPane();
         notifyHostSaved(photo);
       }).catch(function (err) {
@@ -1040,8 +1100,9 @@
     if (photo.required) {
       var hist = document.createElement('div');
       hist.className = 'scw-qa-popover__history';
-      if (photo.history && String(photo.history).trim()) {
-        hist.innerHTML = photo.history;   // same paragraph-text render as the editable path
+      var roHistHtml = historyHtmlWithUpload(photo);   // same render as editable path
+      if (roHistHtml) {
+        hist.innerHTML = roHistHtml;
       } else {
         hist.className += ' scw-qa-popover__history-empty';
         hist.textContent = 'No QA history yet.';
