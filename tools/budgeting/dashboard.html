@@ -294,14 +294,14 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <p class="footnote" id="plFoot"></p>
   </div>
   <div class="card"><h2>Period summaries</h2>
-    <p class="note">The same P&amp;L rolled up by fiscal quarter (the year starts in July: Q1 Jul–Sep, Q2 Oct–Dec, Q3 Jan–Mar, Q4 Apr–Jun), by half — <b>Q4+Q1</b> Apr–Sep and <b>Q2+Q3</b> Oct–Mar — and by calendar year (2026 is the one full year inside the horizon; monthly is the P&amp;L above). Follows the Modest / Stretch choice above; booked months are identical under both.</p>
+    <p class="note">The same P&amp;L rolled up by calendar quarter, by planning cycle — <b>Q2+Q3</b> Apr–Sep and <b>Q4+Q1</b> Oct–Mar — and by calendar year (2026 is the one full year inside the horizon; monthly is the P&amp;L above). Follows the Modest / Stretch choice above; booked months are identical under both.</p>
     <div class="tablewrap" id="periodSum"></div></div>
   <div class="card"><h2>Department budget rollup <span class="scn-toggle" id="rollMetric"><button class="btn on" data-m="total">Total cost</button><button class="btn" data-m="pay">Payroll</button><button class="btn" data-m="opex">Opex</button><button class="btn" data-m="hc">Headcount</button></span></h2>
     <p class="note">Payroll and operating spend rolled up per department — booked figures through <span class="js-actmo"></span> (payroll splits from Xero's department tracking, 97% tagged; untagged lands in Unassigned), model after. Headcount is the staffing plan for all months. Sales commissions and COGS are company-level and not in this rollup.</p>
     <figure class="chart" id="rollChart"></figure>
     <div class="tablewrap" id="rollTable"></div></div>
   <div class="card"><h2>Growth &amp; scenario gap</h2>
-    <p class="note">Modest vs stretch as growth: month-over-month, fiscal quarter-over-quarter (the fiscal year starts in July), and the one true year-over-year inside the horizon — Jan–Mar 2027 vs Jan–Mar 2026 booked. Sales revenue and net profit; booked months are identical under both scenarios.</p>
+    <p class="note">Modest vs stretch as growth: month-over-month, calendar quarter-over-quarter, and the one true year-over-year inside the horizon — Jan–Mar 2027 vs Jan–Mar 2026 booked. Sales revenue and net profit; booked months are identical under both scenarios.</p>
     <div class="tablewrap" id="growthQ"></div>
     <div class="tablewrap" style="margin-top:12px" id="growthC"></div>
     <p class="note" style="margin:8px 0 0">Cost history before 2026 comes from the accrual export (Aug ’25 onward). Revenue before Jan ’26 isn’t in the current exports — add a FY25 export that includes the revenue (4xxx) accounts and revenue YoY will backfill.</p>
@@ -383,8 +383,8 @@ const MODEL = {"ttm_labels":["Sep 25","Oct 25","Nov 25","Dec 25","Jan 26","Feb 2
 /* ---------- constants ---------- */
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan\u201927","Feb\u201927","Mar\u201927"];
 const NM = 15;                                 // Jan 2026 .. Mar 2027
-const FH1 = [3, 9,  "Apr\u2013Sep 2026"];       // fiscal H1 slice bounds [from,to)
-const FH2 = [9, 15, "Oct 2026\u2013Mar 2027"];  // the goal-setting period (their Q3+Q4)
+const FH1 = [3, 9,  "Apr\u2013Sep 2026", "Q2+Q3"];       // planning cycle slice bounds [from,to), label, quarters
+const FH2 = [9, 15, "Oct 2026\u2013Mar 2027", "Q4+Q1"];  // the goal-setting cycle
 const ACT = MODEL.actual_months;              // how many months Xero has booked
 /* Variable comp booked inside payroll (commission / bonus / spiff lines on 66000) over booked
    sales revenue: what the company ACTUALLY paid out per dollar sold, blended across AE, AM and
@@ -512,11 +512,11 @@ function defaultState(){
       // $6.65M-$7.85M — nothing below, capped above. Director: 3.5% of every dollar over $6.35M.
       { id: "pgOps", name: "Operations bonus", on: true, basis: "band", scope: "depts",
         roles: [], depts: ["Installation Services"], per: "head", amount: 1500,
-        half: 2, thr: 6650000, cap: 7850000, alloc: "pacing" },
+        half: 1, thr: 6650000, cap: 7850000, alloc: "pacing" },
       { id: "pgSd", name: "Sales Director bonus", on: true, basis: "rate", scope: "roles",
         roles: MODEL.staff.map((s, i) => ({ id: "p" + i, pos: s.position })).filter(x => /sales director/i.test(x.pos)).map(x => x.id),
         depts: [], per: "pool", amount: 0, pct: 0.035,
-        half: 2, thr: 6350000, cap: 0, alloc: "pacing" }
+        half: 1, thr: 6350000, cap: 0, alloc: "pacing" }
     ],
     bandSplit: ["Software Development", "Sales"],
     bandHide: {},
@@ -593,6 +593,9 @@ function migrateState(st){
     // "on the months that earn it" charged nothing until the band was crossed; pacing is the
     // accrual people expect, so saved programs move to it once
     if (!L0.pacingFix && pg.alloc === "earned") pg.alloc = "pacing";
+    // The seeded "2026 Q2 & Q3" programs were placed on Oct–Mar under a July-fiscal-year
+    // reading; Q2+Q3 is Apr–Sep. Move a program still on the seeded terms, once.
+    if (!L0.cycleFix && pg.half === 2 && ((pg.id === "pgOps" && +pg.thr === 6650000) || (pg.id === "pgSd" && +pg.thr === 6350000))) pg.half = 1;
     if (pg.cap == null) pg.cap = 0;
     if (pg.pct == null) pg.pct = 0;
     delete pg.scale;
@@ -626,7 +629,7 @@ function migrateState(st){
         if (v) st.raises.push({ id: "rd" + d, scope: "dept", target: d, kind: "pct", amount: v, month: 9 });
     }
     // one-shot fixes above have now had their pass — mark them done AFTER, never before
-    L0.contractorFix = 1; L0.pacingFix = 1;
+    L0.contractorFix = 1; L0.pacingFix = 1; L0.cycleFix = 1;
   } catch (e) {}
   return st;
 }
@@ -1537,7 +1540,7 @@ function renderProj(C){
       : "") +
     "Break-even row: monthly sales revenue needed to cover base payroll + opex less other income at that month's gross margin (excl. commissions and bonus programs).";
   document.getElementById("notes").innerHTML =
-    `Built ${MODEL.built} from the Xero <b>Account Transactions</b> export (accrual, ${esc(MODEL.ttm_labels[0])}\u2013${esc(MODEL.ttm_labels[MODEL.ttm_labels.length - 1])} \u2014 expenses, COGS, payroll), the Xero GL Detail (revenue, department tags), and the budgeting-tool exports (allocations, roster, ramps). Horizon: Jan 2026 – Mar 2027. ${esc(ACT_RANGE)} 2026 ${ACT === 1 ? "is" : "are"} booked; ${esc(BRIDGE_LABEL)} ${BRIDGE_N === 1 ? "is a bridge month" : "are bridge months"} you can budget/staff; Oct 2026–Mar 2027 is the goal-setting half (fiscal Q2+Q3 — the year starts in July). Where the budgeting tool allocated a vendor to a different department than Xero, the budgeting tool wins (${MODEL.vend_master.filter(v=>v.contradiction).length} conflicts — see Trends). Per-seat licenses ride headcount on Staffing. Commissions are one measured rate on commissionable revenue (Sales projections tab); bonus programs are accrued on Projections. Edits save in this browser only — use Copy config to share.`;
+    `Built ${MODEL.built} from the Xero <b>Account Transactions</b> export (accrual, ${esc(MODEL.ttm_labels[0])}\u2013${esc(MODEL.ttm_labels[MODEL.ttm_labels.length - 1])} \u2014 expenses, COGS, payroll), the Xero GL Detail (revenue, department tags), and the budgeting-tool exports (allocations, roster, ramps). Horizon: Jan 2026 – Mar 2027. ${esc(ACT_RANGE)} 2026 ${ACT === 1 ? "is" : "are"} booked; ${esc(BRIDGE_LABEL)} ${BRIDGE_N === 1 ? "is a bridge month" : "are bridge months"} you can budget/staff; Oct 2026–Mar 2027 is the goal-setting cycle (Q4+Q1). Where the budgeting tool allocated a vendor to a different department than Xero, the budgeting tool wins (${MODEL.vend_master.filter(v=>v.contradiction).length} conflicts — see Trends). Per-seat licenses ride headcount on Staffing. Commissions are one measured rate on commissionable revenue (Sales projections tab); bonus programs are accrued on Projections. Edits save in this browser only — use Copy config to share.`;
 }
 </script>
 <script>
@@ -1627,12 +1630,12 @@ document.getElementById("rollMetric").addEventListener("click", ev => {
   renderAll();
 });
 /* ---------- growth & scenario gap ---------- */
-// Fiscal year starts in July: Q1 Jul–Sep, Q2 Oct–Dec, Q3 Jan–Mar, Q4 Apr–Jun. So the goal
-// half (Oct–Mar) is Q2+Q3 and the half before it (Apr–Sep) is Q4+Q1.
-const QTRS = [[0,3,"Q3 FY26","Jan–Mar 26","booked"],[3,6,"Q4 FY26","Apr–Jun 26","booked"],
-  [6,9,"Q1 FY27","Jul–Sep 26","Jul–Aug booked"],[9,12,"Q2 FY27","Oct–Dec 26","model"],[12,15,"Q3 FY27","Jan–Mar 27","model"]];
+// Calendar quarters — Q1 is Jan–Mar. Planning and budgeting run in half-year cycles that
+// straddle the year: Q2+Q3 (Apr–Sep) and Q4+Q1 (Oct–Mar).
+const QTRS = [[0,3,"Q1 2026","Jan–Mar 26","booked"],[3,6,"Q2 2026","Apr–Jun 26","booked"],
+  [6,9,"Q3 2026","Jul–Sep 26","Jul–Aug booked"],[9,12,"Q4 2026","Oct–Dec 26","model"],[12,15,"Q1 2027","Jan–Mar 27","model"]];
 const PERIODS = QTRS.map(q => [q[0], q[1], q[2], q[3]]).concat([
-  [3, 9, "Q4+Q1", "Apr–Sep 26"], [9, 15, "Q2+Q3", "Oct 26–Mar 27"], [0, 12, "CY 2026", "Jan–Dec 26"]]);
+  [3, 9, "Q2+Q3", "Apr–Sep 26"], [9, 15, "Q4+Q1", "Oct 26–Mar 27"], [0, 12, "CY 2026", "Jan–Dec 26"]]);
 function renderPeriods(C){
   const el = document.getElementById("periodSum"); if (!el) return;
   const sum = (a, x, y) => a.slice(x, y).reduce((p, q) => p + q, 0);
@@ -1671,9 +1674,9 @@ function renderGrowth(C){
   const qTgt = [null, S.levers.targetH1 / 2, S.levers.targetH1 / 2, S.levers.targetH2 / 2, S.levers.targetH2 / 2];
   const fyRev = { mod: sum(C.rev.mod, 3, 15), str: sum(C.rev.str, 3, 15) };
   const fyTgt = S.levers.targetH1 + S.levers.targetH2;
-  let h = `<table class="data"><thead><tr><th>Fiscal quarters</th>` +
+  let h = `<table class="data"><thead><tr><th>Quarters</th>` +
     QTRS.map(q => `<th>${q[2]}<br><span style="font-weight:400">${q[3]} · ${q[4]}</span></th>`).join("") +
-    `<th>Apr 26–Mar 27</th><th>YoY Q3 vs Q3</th></tr></thead><tbody>`;
+    `<th>Apr 26–Mar 27</th><th>YoY Q1 vs Q1</th></tr></thead><tbody>`;
   const yoyR = { mod: revQ.mod[4] / (revQ.mod[0] || 1) - 1, str: revQ.str[4] / (revQ.str[0] || 1) - 1 };
   const yoyN = { mod: netQ.mod[4] / (netQ.mod[0] || 1) - 1, str: netQ.str[4] / (netQ.str[0] || 1) - 1 };
   h += `<tr><td>Revenue — modest</td>${revQ.mod.map(v => `<td>${fmt$(v)}</td>`).join("")}<td><b>${fmt$(fyRev.mod)}</b></td><td rowspan="2" style="vertical-align:middle">${g(yoyR.mod)} M<br>${g(yoyR.str)} S</td></tr>`;
@@ -1773,7 +1776,7 @@ function renderSales(C){
     };
     document.getElementById("salesTotals").innerHTML =
       `<div style="display:flex;flex-wrap:wrap;gap:10px 28px;border:1px solid var(--border);border-radius:9px;padding:9px 12px;margin:0 0 10px;background:var(--surface2);font-size:12.5px">
-        ${cell(FH1[2] + " (Q4+Q1)", FH1[0], FH1[1], L.targetH1)}${cell(FH2[2] + " (Q2+Q3)", FH2[0], FH2[1], L.targetH2)}${cell("15 months", 0, NM, 0)}
+        ${cell(FH1[2] + " (" + FH1[3] + ")", FH1[0], FH1[1], L.targetH1)}${cell(FH2[2] + " (" + FH2[3] + ")", FH2[0], FH2[1], L.targetH2)}${cell("15 months", 0, NM, 0)}
         <div class="subtle" style="align-self:center;max-width:360px;font-size:11.5px">Booked months come from Xero and are the same under both; modeled months are the roster below at each rep's Modest % or Stretch %.</div></div>`;
   })();
   let h = `<table class="data"><thead><tr><th>Rep</th><th>Role</th><th>Ramp</th><th title="First month selling. Derived from the staffing plan for linked reps — change it there.">Start mo</th><th title="How far into their ramp they already were when they joined — a duration, not a month. Set it for anyone already producing at the start of the window so they are not modelled as a new hire.">Ramp credit</th><th>Last mo</th>
@@ -2502,8 +2505,8 @@ function renderIncentives(C){
         <span class="pg-sep"></span>
         ${thrIn}${capIn}
         <span class="fld"><label>Period</label><select class="cell" style="width:170px" data-id="${pg.id}" data-k="pghalf">
-          <option value="1"${pg.half === 1 ? " selected" : ""}>${esc(FH1[2])}</option>
-          <option value="2"${pg.half !== 1 ? " selected" : ""}>${esc(FH2[2])}</option></select></span>
+          <option value="1"${pg.half === 1 ? " selected" : ""}>${esc(FH1[3] + " \u00b7 " + FH1[2])}</option>
+          <option value="2"${pg.half !== 1 ? " selected" : ""}>${esc(FH2[3] + " \u00b7 " + FH2[2])}</option></select></span>
         <span class="pg-sep"></span>
         <span class="fld"><label>Cost lands</label><select class="cell" style="width:250px" data-id="${pg.id}" data-k="pgalloc" title="By pacing: every month carries its revenue-weighted share of the projected payout, so as the running total crosses each percent of the goal that month accrues its slice. Evenly: the same amount each month. Only once crossed: nothing until the threshold is reached, then only the months pushing revenue into the paying band.">
           <option value="pacing"${pg.alloc === "even" || pg.alloc === "earned" ? "" : " selected"}>by pacing — each month its share</option>
