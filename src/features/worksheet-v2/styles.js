@@ -3273,6 +3273,38 @@
     '  color: #fff !important; background: #dc2626 !important;',
     '  border-color: #b91c1c !important;',
     '}',
+    /* ── QA-fail alert banner (render.js applyQaFailSurfacing) ─────────
+       An ERROR banner, deliberately outside the chip vocabulary: pinned
+       under the worksheet banner, red field + heavy accent, one
+       click-to-jump chip per failed line item. */
+    '.scw-ws-v2-qafail-alert {',
+    '  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;',
+    '  margin: 8px 0 2px; padding: 11px 14px;',
+    '  background: #fef2f2; border: 1px solid #fecaca;',
+    '  border-left: 6px solid #dc2626; border-radius: 10px;',
+    '}',
+    '.scw-ws-v2-qafail-alert-ic { display: inline-flex; flex: 0 0 auto;',
+    '  color: #dc2626; }',
+    '.scw-ws-v2-qafail-alert-text { flex: 1 1 auto; min-width: 220px;',
+    '  font: 500 13px/1.45 system-ui, sans-serif; color: #7f1d1d; }',
+    '.scw-ws-v2-qafail-alert-text strong { color: #991b1b; font-weight: 800;',
+    '  font-size: 14px; }',
+    '.scw-ws-v2-qafail-alert-items { display: inline-flex; flex-wrap: wrap;',
+    '  gap: 6px; }',
+    '.scw-ws-v2-qafail-alert-item {',
+    '  font: 700 12px/1.2 system-ui, sans-serif; padding: 6px 13px;',
+    '  border-radius: 999px; border: 1.5px solid #dc2626;',
+    '  background: #fff; color: #b91c1c; cursor: pointer;',
+    '  transition: background 120ms ease, color 120ms ease;',
+    '}',
+    '.scw-ws-v2-qafail-alert-item:hover { background: #dc2626; color: #fff; }',
+    /* Full-row error treatment on the failed card: red edge stripe + row
+       tint so the item pops mid-scroll without expanding anything. */
+    '.scw-ws-v2-card--qafail { border-left: 5px solid #dc2626 !important;',
+    '  border-radius: 8px; }',
+    '.scw-ws-v2-card--qafail > .scw-ws-v2-row {',
+    '  background: #fef2f2 !important;',
+    '}',
     /* Card-flash animation triggered when a warning chip is clicked
        — amber pulse on the matching cards so the user sees them at
        a glance after scrolling. */

@@ -708,6 +708,84 @@
     } catch (e) { /* repair is best-effort — never break the render */ }
   }
 
+  // ── QA-fail surfacing (alert banner + row treatment) ────────────────
+  // A failed QA is an ERROR — rework required — not another warning. As a
+  // chip in the chip row it reads as peer-severity with "missing photos"
+  // and gets skimmed past (2026-09-09). Two treatments, both applied per
+  // render from the warnings cache:
+  //   1. A red alert banner pinned directly under the worksheet banner
+  //      listing every failed line item as a click-to-jump chip
+  //      (ns.focusRecord: opens the group, expands the card, scrolls +
+  //      pulses — same mechanics as the ?scwItem= deep link).
+  //   2. Full-row error treatment on each failed card (red edge stripe +
+  //      row tint, .scw-ws-v2-card--qafail) so the item pops mid-scroll.
+  function applyQaFailSurfacing(container, sourceViewKey, records) {
+    var banner = container.querySelector('.scw-ws-v2-qafail-alert');
+    var failed = [];
+    if (ns.warnings && typeof ns.warnings.getIssuesFor === 'function') {
+      for (var i = 0; i < records.length; i++) {
+        var rec = records[i];
+        if (!rec || !rec.id) continue;
+        if (ns.warnings.getIssuesFor(sourceViewKey, rec.id).indexOf('qaFail') !== -1) {
+          failed.push(rec);
+        }
+      }
+    }
+    for (var f = 0; f < failed.length; f++) {
+      var fc = container.querySelector(
+        '.scw-ws-v2-card[data-scw-ws-v2-record="' + failed[f].id + '"]');
+      if (fc) fc.classList.add('scw-ws-v2-card--qafail');
+    }
+    if (!failed.length) {
+      if (banner) banner.remove();
+      return;
+    }
+
+    var chipsHtml = '';
+    for (var c = 0; c < failed.length; c++) {
+      var lbl = (ns.card && typeof ns.card.labelLineItem === 'function' &&
+                 ns.card.labelLineItem(failed[c])) || failed[c].id;
+      chipsHtml += '<button type="button" class="scw-ws-v2-qafail-alert-item" ' +
+        'data-scw-qafail-goto="' + escapeHtml(failed[c].id) + '" ' +
+        'title="Jump to this line item">' + escapeHtml(lbl) + '</button>';
+    }
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.className = 'scw-ws-v2-qafail-alert';
+      var anchor = container.querySelector('.scw-ws-v2-banner');
+      if (anchor && anchor.parentNode) {
+        anchor.parentNode.insertBefore(banner, anchor.nextSibling);
+      } else {
+        container.insertBefore(banner, container.firstChild);
+      }
+    }
+    banner.innerHTML =
+      '<span class="scw-ws-v2-qafail-alert-ic" aria-hidden="true">' +
+        '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" ' +
+        'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" ' +
+        'stroke-linejoin="round"><circle cx="12" cy="12" r="10"/>' +
+        '<line x1="15" y1="9" x2="9" y2="15"/>' +
+        '<line x1="9" y1="9" x2="15" y2="15"/></svg></span>' +
+      '<span class="scw-ws-v2-qafail-alert-text"><strong>' +
+        failed.length + ' line item' + (failed.length === 1 ? '' : 's') +
+        ' failed photo QA</strong> — rework required. Open the item, read ' +
+        'the QA notes, and replace the photo:</span>' +
+      '<span class="scw-ws-v2-qafail-alert-items">' + chipsHtml + '</span>';
+  }
+
+  // Click-to-jump for the alert chips — delegated once, document-wide.
+  if (!document.documentElement.hasAttribute('data-scw-qafail-goto-bound')) {
+    document.documentElement.setAttribute('data-scw-qafail-goto-bound', '1');
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest && e.target.closest('[data-scw-qafail-goto]');
+      if (!b) return;
+      e.preventDefault();
+      if (typeof ns.focusRecord === 'function') {
+        ns.focusRecord(b.getAttribute('data-scw-qafail-goto'));
+      }
+    });
+  }
+
   function renderView(sourceViewKey, records) {
     var container = document.getElementById('scw-ws-v2-' + sourceViewKey);
     if (!container) return;
@@ -1069,6 +1147,11 @@
     if (ns.sowFilter && typeof ns.sowFilter.applyRowColors === 'function') {
       ns.sowFilter.applyRowColors(sourceViewKey);
     }
+
+    // QA-fail surfacing — banner + full-row error treatment. Runs after
+    // the rebuild so the fresh cards get their classes.
+    try { applyQaFailSurfacing(container, sourceViewKey, effectiveRecords); }
+    catch (eqf) { console.warn('[scw-ws-v2] qa-fail surfacing failed', eqf); }
 
     if (_PF) {
       var _tot = SCW._now() - _pf0;

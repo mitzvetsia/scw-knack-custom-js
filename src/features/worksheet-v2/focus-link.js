@@ -1,32 +1,31 @@
-/*** WORKSHEET V2 — FOCUS LINK (?scwItem=<recordId>) *************************
+/*** WORKSHEET V2 — FOCUS RECORD + FOCUS LINK (?scwItem=<recordId>) **********
  *
- * Deep link to ONE line-item card on any v2 worksheet page. External
- * surfaces (the QA-fail ClickUp comment, emails, chat) link with
- * `?scwItem=<24-hex line record id>` in the URL SEARCH — BEFORE the #hash,
- * e.g.:
+ * Two things:
  *
- *   https://…/installationservices?scwItem=6aa01624…#subcontractor-portal/…
+ * 1. `SCW.worksheetV2.focusRecord(recId)` — jump to one line-item card on
+ *    the current page: open its MDF/IDF group, expand the card's detail
+ *    panel, scroll it to center, pulse a red highlight ring. Returns true
+ *    when the card was found. Used by the QA-fail alert banner's
+ *    click-to-jump chips (render.js) and the URL deep link below.
  *
- * Knack's hash router ignores location.search entirely, so the param rides
- * through login redirects and scene navigation untouched. When a v2
- * worksheet renders the card for that record: open its MDF/IDF group,
- * expand the card's detail panel, scroll it to center, and pulse a red
- * highlight ring (the QA-fail vocabulary — this link's primary sender).
+ * 2. Deep link: external surfaces (the QA-fail ClickUp comment, emails,
+ *    chat) link with `?scwItem=<24-hex line record id>` in the URL SEARCH —
+ *    BEFORE the #hash, e.g.:
  *
- * Retries until the card exists (cards render late, and the target scene
- * may be a click away when the app lands on a menu page first), then runs
- * exactly once per page load.
+ *      https://…/installationservices?scwItem=6aa01624…#subcontractor-portal/…
+ *
+ *    Knack's hash router ignores location.search entirely, so the param
+ *    rides through login redirects and scene navigation untouched. Retries
+ *    until the card exists (cards render late, and the target scene may be
+ *    a click away when the app lands on a menu page first), then runs
+ *    exactly once per page load.
  ****************************************************************************/
 (function () {
   'use strict';
 
-  var m = (window.location.search || '').match(/[?&]scwItem=([a-f0-9]{24})/i);
-  if (!m) return;
-  var recId = m[1];
-
-  var done = false;
-  var tries = 0;
-  var MAX_TRIES = 60;   // 60 × 500ms ≈ 30s of patience, then give up quietly
+  window.SCW = window.SCW || {};
+  window.SCW.worksheetV2 = window.SCW.worksheetV2 || {};
+  var ns = window.SCW.worksheetV2;
 
   var CSS_ID = 'scw-ws-v2-focus-link-css';
   function injectCss() {
@@ -42,16 +41,13 @@
     document.head.appendChild(s);
   }
 
-  function attempt() {
-    if (done) return;
-    tries++;
+  /** Open group → expand card → scroll to center → pulse. True when the
+   *  card exists on the page (and the jump ran), false otherwise. */
+  ns.focusRecord = function (recId) {
+    if (!recId) return false;
     var card = document.querySelector(
       '.scw-ws-v2-card[data-scw-ws-v2-record="' + recId + '"]');
-    if (!card) {
-      if (tries < MAX_TRIES) setTimeout(attempt, 500);
-      return;
-    }
-    done = true;
+    if (!card) return false;
     injectCss();
 
     // Open the containing MDF/IDF group if collapsed.
@@ -78,6 +74,23 @@
         card.classList.remove('scw-ws-v2-card--focus', 'scw-ws-v2-card--focus-fade');
       }, 4600);
     }, 300);
+    return true;
+  };
+
+  // ── URL deep link (?scwItem=…) ──────────────────────────────────────
+  var m = (window.location.search || '').match(/[?&]scwItem=([a-f0-9]{24})/i);
+  if (!m) return;
+  var recId = m[1];
+
+  var done = false;
+  var tries = 0;
+  var MAX_TRIES = 60;   // 60 × 500ms ≈ 30s of patience, then give up quietly
+
+  function attempt() {
+    if (done) return;
+    tries++;
+    if (ns.focusRecord(recId)) { done = true; return; }
+    if (tries < MAX_TRIES) setTimeout(attempt, 500);
   }
 
   // Scene renders (including late navigation to the worksheet page) retry
@@ -89,4 +102,4 @@
     });
   setTimeout(attempt, 800);
 })();
-/*** END WORKSHEET V2 — FOCUS LINK *******************************************/
+/*** END WORKSHEET V2 — FOCUS RECORD + FOCUS LINK ****************************/
