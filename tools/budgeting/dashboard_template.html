@@ -237,6 +237,15 @@ select.cell{border:1px solid var(--border2);background:var(--surface);border-rad
 .chip.onetime{background:var(--chip-neutral);color:var(--muted)}
 .chip.notinxero{background:var(--chip-neutral);color:var(--muted)}
 .chip.account{background:var(--chip-new);color:var(--modest)}
+table.data.exp td.src{font-size:11.5px;line-height:1.35;white-space:nowrap}
+table.data.exp select.mo{width:84px;max-width:84px;font-size:11px;padding-left:4px;padding-right:14px}
+table.data.exp th:first-child,table.data.exp td:first-child{min-width:280px;max-width:300px;white-space:normal!important}
+table.data.exp td:first-child .chip{font-size:9.5px;padding:1px 6px 1px 5px;margin-left:2px;vertical-align:middle}
+table.data.exp td:first-child .vname{max-width:170px;vertical-align:middle}
+table.data.exp td select.cell{font-size:11px}
+table.data.exp td.src{font-size:11px}
+@keyframes scwflash{0%{background:var(--chip-warn)}100%{background:transparent}}
+table.data tr.flash td{animation:scwflash 2.8s ease-out}
 .chip.conflict{background:var(--chip-crit);color:var(--crit)}
 
 .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
@@ -449,6 +458,19 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <span class="spacer"></span>
     <button class="btn" id="addEnv" title="Set money aside for one-off and small spend booked to a Xero account — office supplies, travel — in one department">+ Budget an account</button>
     <button class="btn" id="addExp">+ Add expense</button>
+  </div>
+  <div class="card" id="expAddPanel" hidden style="padding:10px 14px 12px">
+    <div class="toolbar" style="margin:0;gap:12px;align-items:flex-end;flex-wrap:wrap">
+      <b id="expAddTitle" style="font-size:13px;align-self:center"></b>
+      <label class="subtle" id="expAddVendorWrap" style="font-size:11px">Name<br><input id="expAddVendor" class="cell pos" style="width:200px;text-align:left" placeholder="Vendor or purpose"></label>
+      <label class="subtle" style="font-size:11px">Department<br><select id="expAddDept" class="cell"></select></label>
+      <label class="subtle" style="font-size:11px">Xero account<br><select id="expAddAcct" class="cell" style="max-width:230px"></select></label>
+      <label class="subtle" style="font-size:11px">$ per month<br><input id="expAddAmt" class="cell tiny" style="width:80px" value="500"></label>
+      <label class="subtle" style="font-size:11px">From<br><span id="expAddFromWrap"></span></label>
+      <span class="spacer"></span>
+      <button class="btn" id="expAddCancel">Cancel</button><button class="btn on" id="expAddOk">Add</button>
+    </div>
+    <p class="note" id="expAddNote" style="margin:8px 0 0"></p>
   </div>
   <div class="card"><div class="tablewrap tall" id="expTable"></div>
   <p class="footnote">Planned $/mo = override if set, else the chosen source (Xero suggestion or budget-tool figure) × (1 + adj), months FROM–TO, when the switch is on. ONE-OFF rows plan nothing here: they draw on the department's <b>account budget</b> for their account (an “Account budget” row, added with + Budget an account), whose Xero suggestion is what vendors without a planned row booked to that account over the trailing year. Per-seat license costs ride headcount on the Staffing tab, not here. Where the budgeting tool's department disagreed with Xero, the budgeting tool's wins.</p></div>
@@ -1477,30 +1499,52 @@ function canonVendor(v){
   const s = String(v || "");
   return s.length > 60 ? s.slice(0, 57).replace(/\s+$/, "") + "…" : s;
 }
+// the builder's vendor_name(), ported: one contact can carry several bills (Rippling also bills
+// Google Workspace and pays out reimbursements), and a manual journal has no contact at all —
+// the vendor is a word inside its description
+function vendorOf(contact, desc){
+  const A = MODEL.vendor_aliases || {};
+  contact = String(contact || "").split("\n")[0].replace(/\s+/g, " ").trim(); if (contact.startsWith("Payment: ")) contact = contact.slice(9);
+  desc = String(desc || "").split("\n")[0].replace(/\s+/g, " ").trim();
+  for (const [crx, drx, name] of (A.splits || [])) if (new RegExp(crx, "i").test(contact) && new RegExp(drx, "i").test(desc)) return name;
+  if (contact) return contact;
+  const own = desc.length > 60 ? desc.slice(0, 57).replace(/\s+$/, "") + "…" : desc;
+  if (canonVendor(desc) === own){
+    const low = desc.toLowerCase();
+    for (const [kw, name] of (A.contains || [])) if (low.includes(kw)) return name;
+  }
+  return desc;
+}
 function parseXeroWorkbook(wb){
-  const X = window.XLSX, B = MODEL.account_buckets || {};
+  const X = window.XLSX, B = MODEL.account_buckets || {}, AL = MODEL.vendor_aliases || {};
   const PAY = new Set(B.payroll || []), COGS = new Set(B.cogs || []), OTH = new Set(B.other_income || []);
   const VAR = new RegExp(B.varcomp_re || "variable comp|commission|bonus|spiff", "i");
+  const OVR = (AL.opex_overrides || []).map(([c, rx]) => [c, new RegExp(rx, "i")]);
   const SKIP = ["Total", "Opening Balance", "Closing Balance", "Net movement", "No transactions", "Date", "Account Transactions", "Security Camera", "For the period", "Accrual Basis", "Account Type"];
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = X.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
   const toDate = v => v instanceof Date ? v : (typeof v === "number" ? new Date(Math.round((v - 25569) * 86400000)) : (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? new Date(v.slice(0, 10) + "T00:00:00Z") : null));
   const idx = d => (d.getUTCFullYear() - 2026) * 12 + d.getUTCMonth();   // 0 = Jan 2026
   const mk = () => Array(NM).fill(0);
-  const out = { rev: mk(), oth: mk(), cogs: mk(), pay: mk(), varcomp: mk(), opex: mk(), vendors: {}, lastBilled: {}, accounts: {}, vendAcct: {}, months: new Set(), rows: 0, first: null, last: null };
-  let section = null;
+  const out = { rev: mk(), oth: mk(), cogs: mk(), pay: mk(), varcomp: mk(), opex: mk(), vendors: {}, lastBilled: {}, accounts: {}, vendAcct: {}, mj: {}, months: new Set(), rows: 0, first: null, last: null, hasSource: false };
+  let section = null, H = null;   // H: column index by header name — Xero's newer layout adds Source / Departments / Related account
+  const col = (row, name, pos) => H && H[name] != null ? row[H[name]] : (pos < 0 ? null : row[pos]);
   for (const row of rows){
     const a = row[0];
     const rest = row.slice(1).some(v => v !== null && v !== "");
+    if (a === "Date"){ H = {}; row.forEach((n, i) => { if (n) H[String(n).trim()] = i; }); continue; }
     if (typeof a === "string" && !rest){
       const t = a.trim();
       if (!SKIP.some(k => t.startsWith(k))) section = t.replace(/^[-\s]+/, "");
       continue;
     }
     const d = toDate(a); if (!d || !section) continue;
-    const code = section.split(" - ")[0].trim(); if (!/^\d/.test(code)) continue;
-    const contact = String(row[1] || row[2] || "").trim();
-    const net = (+row[5] || 0) - (+row[6] || 0);
+    let code = section.split(" - ")[0].trim(); if (!/^\d/.test(code)) continue;
+    const contactRaw = String(col(row, "Contact", 1) || "").trim(), desc = String(col(row, "Description", 2) || "").trim();
+    const source = String(col(row, "Source", -1) || "").trim(); if (source) out.hasSource = true;
+    const contact = contactRaw || desc;
+    const net = (+col(row, "Debit", 5) || 0) - (+col(row, "Credit", 6) || 0);
+    if (PAY.has(code) && OVR.some(([c, rx]) => c === code && rx.test(contactRaw + " " + desc))) code = "OPEX";   // a vendor bill parked in a payroll account
     const iso = d.toISOString().slice(0, 10);
     out.rows++; if (!out.first || iso < out.first) out.first = iso; if (!out.last || iso > out.last) out.last = iso;
     const i = idx(d); if (i < 0 || i >= NM) continue;
@@ -1508,12 +1552,13 @@ function parseXeroWorkbook(wb){
     if (code.startsWith("4")){ (OTH.has(code) ? out.oth : out.rev)[i] -= net; continue; }
     if (COGS.has(code)){ out.cogs[i] += net; continue; }
     if (PAY.has(code)){ out.pay[i] += net; if (VAR.test(contact)) out.varcomp[i] += net; continue; }
-    const isOpex = (code.startsWith("6") || code.startsWith("8") || code === "208") && code !== "8311";
+    const isOpex = code === "OPEX" || ((code.startsWith("6") || code.startsWith("8") || code === "208") && code !== "8311");
     if (!isOpex) continue;
     out.opex[i] += net;
-    let v = contact.split("\n")[0].replace(/\s+/g, " ").trim(); if (v.startsWith("Payment: ")) v = v.slice(9);
+    let v = vendorOf(contactRaw, desc); if (v.startsWith("Payment: ")) v = v.slice(9);
     const cv = canonVendor(v || "(unlabelled)");
     (out.vendors[cv] || (out.vendors[cv] = mk()))[i] += net;
+    if (source === "Manual Journal") out.mj[cv] = (out.mj[cv] || 0) + net;
     (out.accounts[section] || (out.accounts[section] = mk()))[i] += net;
     const va = out.vendAcct[cv] || (out.vendAcct[cv] = {});
     (va[section] || (va[section] = mk()))[i] += net;
@@ -1536,7 +1581,7 @@ async function importActuals(file){
     const accounts = {}; for (const [k, v] of Object.entries(r.accounts)) accounts[k] = r2(v);
     const vendAcct = {}; for (const [k, va] of Object.entries(r.vendAcct)){ vendAcct[k] = {}; for (const [a, v] of Object.entries(va)) vendAcct[k][a] = r2(v); }
     S.actuals = { at: new Date().toISOString(), source: file.name, first: r.first, last: r.last, months: r.months,
-      rev: r.rev, oth: r.oth, cogs: r.cogs, pay: r.pay, varcomp: r.varcomp, opex: r.opex, vendors, lastBilled: r.lastBilled, accounts, vendAcct };
+      rev: r.rev, oth: r.oth, cogs: r.cogs, pay: r.pay, varcomp: r.varcomp, opex: r.opex, vendors, lastBilled: r.lastBilled, accounts, vendAcct, mj: r.mj, hasSource: r.hasSource };
     persist(); scheduleRender();
     st.textContent = `Imported ${file.name}: ${r.rows.toLocaleString()} postings, ${r.first} → ${r.last}, ${r.months.length} month${r.months.length === 1 ? "" : "s"} inside the horizon, ${Object.keys(vendors).length} vendors.`;
   } catch (e){ st.innerHTML = `<span class="warn">${esc(String(e.message || e))}</span>`; }
@@ -1558,11 +1603,18 @@ function renderCompare(C){
   // only months the plan was forecasting count: anything already booked when it was locked is
   // history the plan carried, not a call it made. Until a later export arrives, show that
   // history against the export, and say so.
-  const allMonths = A.months.filter(i => i < NM);
+  // an export pulled mid-month carries a partial month: anything from the month it was imported
+  // in (or later) is not over yet and is left out of the comparison
+  const atD = A.at ? new Date(A.at) : null;
+  const importIdx = atD ? (atD.getFullYear() - 2026) * 12 + atD.getMonth() : NM;
+  const partial = A.months.filter(i => i < NM && i >= importIdx);
+  const allMonths = A.months.filter(i => i < NM && i < importIdx);
   let months = allMonths.filter(i => i >= (chosen.act || 0));
   const hist = !months.length;
   if (hist) months = allMonths;
-  const caveat = hist ? `<p class="subtle" style="margin:0 0 8px;font-size:12px"><b>Nothing forecast to check yet.</b> Every imported month was already booked when this plan was locked (through ${MONTHS[(chosen.act || 1) - 1]}), so this is the plan's history against the export — vendor rows are compared at their planned run-rate. Import an export covering ${MONTHS[chosen.act] || "later months"} onward to check the plan itself.</p>` : "";
+  const caveat = (hist ? `<p class="subtle" style="margin:0 0 8px;font-size:12px"><b>Nothing forecast to check yet.</b> Every imported month was already booked when this plan was locked (through ${MONTHS[(chosen.act || 1) - 1]}), so this is the plan's history against the export — vendor rows are compared at their planned run-rate. Import an export covering ${MONTHS[chosen.act] || "later months"} onward to check the plan itself.</p>` : "") +
+    (partial.length ? `<p class="subtle" style="margin:0 0 8px;font-size:12px">${partial.map(i => MONTHS[i]).join(", ")} ${partial.length === 1 ? "is" : "are"} in the export but the month was not over when it was imported — not compared.</p>` : "");
+  if (!months.length){ tbl.innerHTML = caveat || `<p class="subtle" style="margin:0">The import has no complete month to compare.</p>`; vt.innerHTML = ""; return; }
   const lines = [["Sales revenue", chosen.rev, A.rev, "rev"], ["Other income", chosen.oth, A.oth, "rev"], ["COGS", chosen.cogs, A.cogs, "cost"],
     ["Payroll (base)", chosen.pay, A.pay.map((v, i) => v - A.varcomp[i]), "cost"], ["Sales commissions", chosen.comp, A.varcomp, "cost"], ["Total opex", chosen.opex, A.opex, "cost"]];
   const netPlan = chosen.net, netAct = months.map(() => 0);
@@ -2828,13 +2880,13 @@ function renderExpenses(C){
   const match = e => (!q || e.vendor.toLowerCase().includes(q) || (e.purpose || "").toLowerCase().includes(q) || (e.account || "").toLowerCase().includes(q)) &&
     (!expFilter.dept || e.dept === expFilter.dept) && (!expFilter.status || e.status === expFilter.status) &&
     (!expFilter.on || (expFilter.on === "on") === !!e.on);
-  let h = `<table class="data"><thead><tr><th>On</th><th>Expense</th><th>Dept</th><th title="The Xero account this should be booked to. Beneath it, in amber, any account it has actually been booked to instead.">Account</th><th>Status</th><th title="Most recent posting for this vendor in the Xero export. Amber: on but quiet for 90+ days, or off but billed within 60 days.">Last billed</th><th>12-mo trend</th>
-    <th>Xero sugg/mo</th><th>Budget/mo</th><th title="Where the monthly figure comes from. ONE-OFF: not planned month by month — covered by the department's budget for its account. STAFFING: a person counted on the Staffing tab.">Use</th><th>Override</th><th>Adj %</th><th>From</th><th>To</th><th>Planned/mo</th></tr></thead><tbody>`;
+  let h = `<table class="data exp"><thead><tr><th>Expense</th><th>Dept</th><th title="The Xero account this should be booked to. Beneath it, in amber, any account it has actually been booked to instead.">Account</th><th title="Most recent posting for this vendor in the Xero export. Amber: on but quiet for 90+ days, or off but billed within 60 days.">Last billed</th><th>12-mo trend</th>
+    <th title="The two figures a row can plan from: Xero's trailing average (or, for an account budget, what unplanned vendors booked to the account) and the budget-tool figure. The one in use is bold.">Xero · budget /mo</th><th title="Where the monthly figure comes from. ONE-OFF: not planned month by month — covered by the department's budget for its account. STAFFING: a person counted on the Staffing tab.">Use</th><th title="A typed monthly figure replaces the source; the adjustment is a percentage on top">Override · adj %</th><th>Months</th><th>Planned/mo</th></tr></thead><tbody>`;
   let shown = 0, totPlanned = 0;
   const planned = plannedVendorSet();
   const acctCell = e => {
     const list = isEnvelope(e) ? [] : bookedList(e.vendor), mism = acctMismatch(e);
-    const sel = `<select class="cell" style="max-width:150px;font-size:11px" data-id="${e.id}" data-k="account" title="${isEnvelope(e) ? "The Xero account this budget covers" : "The Xero account this expense SHOULD be booked to"}${list.length ? "&#10;Booked to: " + esc(list.map(([a, v]) => `${acctShort(a)} ${fmt$(v)}`).join(" · ")) : ""}"><option value="">—</option>${ACCOUNTS.map(a => `<option value="${esc(a)}"${a === e.account ? " selected" : ""}>${esc(acctShort(a))}</option>`).join("")}${e.account && !ACCOUNTS.includes(e.account) ? `<option value="${esc(e.account)}" selected>${esc(acctShort(e.account))}</option>` : ""}</select>`;
+    const sel = `<select class="cell" style="max-width:138px;font-size:11px" data-id="${e.id}" data-k="account" title="${isEnvelope(e) ? "The Xero account this budget covers" : "The Xero account this expense SHOULD be booked to"}${list.length ? "&#10;Booked to: " + esc(list.map(([a, v]) => `${acctShort(a)} ${fmt$(v)}`).join(" · ")) : ""}"><option value="">—</option>${ACCOUNTS.map(a => `<option value="${esc(a)}"${a === e.account ? " selected" : ""}>${esc(acctShort(a))}</option>`).join("")}${e.account && !ACCOUNTS.includes(e.account) ? `<option value="${esc(e.account)}" selected>${esc(acctShort(e.account))}</option>` : ""}</select>`;
     let note = "";
     if (mism.length) note = `<div class="warn booked" style="font-size:10.5px;white-space:nowrap" title="Booked to ${esc(mism.map(([a, v]) => `${acctShort(a)} (${fmt$(v)})`).join(", "))} — expected ${esc(acctShort(e.account))}. On the bookkeeper's checklist (Trends).">booked to ${esc(acctShort(mism[0][0]))}${mism.length > 1 ? ` +${mism.length - 1}` : ""}</div>`;
     else if (!e.account && list.length) note = `<div class="dim booked" style="font-size:10.5px;white-space:nowrap" title="No expected account set. Booked to ${esc(list.map(([a, v]) => `${acctShort(a)} (${fmt$(v)})`).join(", "))}">booked to ${esc(acctShort(list[0][0]))}${list.length > 1 ? ` +${list.length - 1}` : ""}</div>`;
@@ -2846,7 +2898,7 @@ function renderExpenses(C){
     if (!rows.length) continue;
     const folded = !filterActive && expFold.has(d);
     const sub = rows.reduce((a, e) => a + expensePlanned(e), 0);
-    h += `<tr class="sec deptsec"><td colspan="14"><button class="exp-toggle" data-k="efold" data-dept="${esc(d)}" aria-expanded="${!folded}">${folded ? "▸" : "▾"}</button> ${esc(dn(d))} <span class="dim" style="font-weight:400">· ${rows.length} expense${rows.length > 1 ? "s" : ""}${rows.filter(e => e.on).length < rows.length ? " (" + rows.filter(e => e.on).length + " on)" : ""}</span></td><td>${fmt$(sub)}</td></tr>`;
+    h += `<tr class="sec deptsec"><td colspan="9"><button class="exp-toggle" data-k="efold" data-dept="${esc(d)}" aria-expanded="${!folded}">${folded ? "▸" : "▾"}</button> ${esc(dn(d))} <span class="dim" style="font-weight:400">· ${rows.length} expense${rows.length > 1 ? "s" : ""}${rows.filter(e => e.on).length < rows.length ? " (" + rows.filter(e => e.on).length + " on)" : ""}</span></td><td>${fmt$(sub)}</td></tr>`;
     if (folded){ shown += rows.length; totPlanned += sub; continue; }
     for (const e of rows.sort((a, b) => (isEnvelope(b) - isEnvelope(a)) || Math.abs(expensePlanned(b) || b.xero || b.budget || 0) - Math.abs(expensePlanned(a) || a.xero || a.budget || 0))){
       shown++; const pl = expensePlanned(e); totPlanned += pl;
@@ -2855,20 +2907,15 @@ function renderExpenses(C){
         // planned row of their own booked to that account, company-wide
         const un = e.account ? unplannedAcctTtm(e.account, planned) : null;
         const unAvg = un ? un.reduce((a, b) => a + b, 0) / 12 : null;
-        h += `<tr class="env"><td><input type="checkbox" class="switch" data-id="${e.id}" data-k="on"${e.on ? " checked" : ""} aria-label="Include this account budget"></td>
-          <td title="Money set aside in ${esc(dn(e.dept))} for one-off and small spend booked to ${esc(acctShort(e.account) || "this account")}. Vendors marked ONE-OFF, and any vendor without a planned row, draw on it when actuals are compared."><span class="vname">Account budget</span> <span class="dim">· ${esc(acctShort(e.account) || "pick an account")}</span></td>
+        h += `<tr class="env" data-row="${e.id}"><td style="white-space:nowrap" title="Money set aside in ${esc(dn(e.dept))} for one-off and small spend booked to ${esc(acctShort(e.account) || "this account")}. Vendors marked ONE-OFF, and any vendor without a planned row, draw on it when actuals are compared."><input type="checkbox" class="switch" data-id="${e.id}" data-k="on"${e.on ? " checked" : ""} aria-label="Include this account budget"> <span class="vname">Account budget</span> <span class="dim">· ${esc(acctShort(e.account) || "pick an account")}</span> ${chip("ACCOUNT", false)}</td>
           <td><select class="cell" style="max-width:120px;font-size:11px" data-id="${e.id}" data-k="dept" title="Department this budget belongs to">${DEPTS.map(d2 => `<option value="${esc(d2)}"${d2 === e.dept ? " selected" : ""}>${esc(dn(d2))}</option>`).join("")}</select></td>
           ${acctCell(e)}
-          <td>${chip("ACCOUNT", false)}</td>
           <td class="dim">—</td>
-          <td>${un ? spark(un, "--modest", 84, 20) : `<span class="dim">—</span>`}</td>
-          <td title="${un ? `Trailing 12 months booked to ${esc(acctShort(e.account))} by vendors without a planned row of their own — all departments, since the export carries no department: ${fmt$(un.reduce((a, b) => a + b, 0))} over the year` : "Pick an account"}">${unAvg == null ? `<span class="dim">—</span>` : fmt$(unAvg)}</td>
-          <td><input class="cell" data-id="${e.id}" data-k="budget" value="${e.budget == null ? "" : e.budget}" placeholder="—" title="Budget per month for this account in this department"></td>
+          <td>${un ? spark(un, "--modest", 70, 20) : `<span class="dim">—</span>`}</td>
+          <td class="src" title="${un ? `Trailing 12 months booked to ${esc(acctShort(e.account))} by vendors without a planned row of their own — all departments, since the export carries no department: ${fmt$(un.reduce((a, b) => a + b, 0))} over the year` : "Pick an account"}"><span class="dim">Xero</span> ${unAvg == null ? `<span class="dim">—</span>` : fmt$(unAvg)}<br><span class="dim">Budget</span> <input class="cell tiny" style="width:64px" data-id="${e.id}" data-k="budget" value="${e.budget == null ? "" : e.budget}" placeholder="—" title="Budget per month for this account in this department"></td>
           <td class="dim" title="An account budget is always its own figure">BUDGET</td>
-          <td><input class="cell" data-id="${e.id}" data-k="override" value="${e.override == null ? "" : e.override}" placeholder="—"></td>
-          <td><input class="cell tiny" data-id="${e.id}" data-k="adj" value="${(e.adj * 100).toFixed(0)}"></td>
-          <td>${monthSel(`data-id="${e.id}" data-k="from"`, e.from, { title: "First month this budget applies." })}</td>
-          <td>${monthSel(`data-id="${e.id}" data-k="to"`, e.to, { title: "Last month this budget applies." })}</td>
+          <td style="white-space:nowrap"><input class="cell tiny" style="width:58px" data-id="${e.id}" data-k="override" value="${e.override == null ? "" : e.override}" placeholder="—" title="Override $/mo"> <input class="cell tiny" style="width:34px" data-id="${e.id}" data-k="adj" value="${(e.adj * 100).toFixed(0)}" title="Adjustment %">%</td>
+          <td style="white-space:nowrap">${monthSel(`data-id="${e.id}" data-k="from"`, e.from, { title: "First month this budget applies." })} → ${monthSel(`data-id="${e.id}" data-k="to"`, e.to, { title: "Last month this budget applies." })}</td>
           <td><b>${fmt$(pl)}</b></td></tr>`;
         continue;
       }
@@ -2876,24 +2923,21 @@ function renderExpenses(C){
       const oneOffTag = e.use !== "ONEOFF" ? "" : cover && cover.length
         ? ` <span class="dim" style="color:var(--modest)" title="One-off — covered by the ${esc(dn(e.dept))} account budget for ${esc(acctShort(e.account))} (${fmt$(cover.reduce((a, x) => a + expensePlanned(x), 0))}/mo), not planned month by month">→ account budget</span>`
         : ` <span class="warn" title="One-off, but ${esc(dn(e.dept))} has no budget for ${e.account ? esc(acctShort(e.account)) : "its account (none set)"} yet — add one with “+ Budget an account”, or plan it here with BUDGET and an override">→ no account budget yet</span>`;
-      h += `<tr><td><input type="checkbox" class="switch" data-id="${e.id}" data-k="on"${e.on ? " checked" : ""} aria-label="Include ${esc(e.vendor)}"></td>
-        <td title="${esc(e.vendor)}${e.purpose ? " — " + esc(e.purpose) : ""}">${e.manual ? `<input class="cell wide" style="text-align:left" data-id="${e.id}" data-k="vendor" value="${esc(e.vendor)}">` : `<span class="vname">${esc(e.vendor)}</span>`}${e.share < 1 ? ` <span class="dim">(${Math.round(e.share * 100)}% share)</span>` : ""}${e.seat > 0 ? ` <span class="dim" title="Per-seat portion carried on Staffing licenses">seats→Staffing</span>` : ""}${e.use === "STAFFING" ? ` <span class="dim" style="color:var(--modest)" title="Budgeted as a role on the Staffing tab — counted there, not here, so it isn't double-counted">→Staffing</span>` : ""}${oneOffTag}</td>
+      const vm = XVEND.get(e.vendor);
+      const mjNote = vm && vm.mj && Math.abs(vm.mj) > 0.5 * Math.abs(vm.ttm_total || 0) && Math.abs(vm.mj) > 500 ? ` <span class="dim" title="${fmt$(vm.mj)} of this vendor's ${fmt$(vm.ttm_total)} over the trailing year arrived as manual journals — reclassed from prepaid, with no contact on the line. Matched by the journal's description.">via journals</span>` : "";
+      h += `<tr data-row="${e.id}"><td style="white-space:nowrap" title="${esc(e.vendor)}${e.purpose ? " — " + esc(e.purpose) : ""}"><input type="checkbox" class="switch" data-id="${e.id}" data-k="on"${e.on ? " checked" : ""} aria-label="Include ${esc(e.vendor)}"> ${e.manual ? `<input class="cell wide" style="text-align:left;width:170px" data-id="${e.id}" data-k="vendor" value="${esc(e.vendor)}">` : `<span class="vname" style="max-width:190px">${esc(e.vendor)}</span>`}${e.share < 1 ? ` <span class="dim">(${Math.round(e.share * 100)}%)</span>` : ""}${e.seat > 0 ? ` <span class="dim" title="This row is the flat part of the bill; the per-seat part rides headcount on Staffing (Licenses card)">flat part</span>` : ""}${e.use === "STAFFING" ? ` <span class="dim" style="color:var(--modest)" title="Budgeted as a role on the Staffing tab — counted there, not here, so it isn't double-counted">→Staffing</span>` : ""}${oneOffTag}${mjNote} ${chip(e.status, e.conflict)}</td>
         <td><select class="cell" style="max-width:120px;font-size:11px" data-id="${e.id}" data-k="dept" title="Move this expense to another department">${DEPTS.map(d2 => `<option value="${esc(d2)}"${d2 === e.dept ? " selected" : ""}>${esc(dn(d2))}</option>`).join("")}</select></td>
         ${acctCell(e)}
-        <td>${chip(e.status, e.conflict)}</td>
         ${lastBilledCell(e)}
-        <td>${e.ttm ? spark(e.ttm, "--modest", 84, 20) : `<span class="dim">—</span>`}</td>
-        <td>${e.xero == null ? `<span class="dim">—</span>` : fmt$(e.xero)}</td>
-        <td>${e.budget == null ? `<span class="dim">—</span>` : fmt$(e.budget)}</td>
+        <td>${e.ttm ? spark(e.ttm, "--modest", 70, 20) : `<span class="dim">—</span>`}</td>
+        <td class="src" style="white-space:nowrap"><span class="dim">Xero</span> ${e.xero == null ? `<span class="dim">—</span>` : (e.use === "XERO" ? `<b>${fmt$(e.xero)}</b>` : fmt$(e.xero))}<br><span class="dim">Budget</span> ${e.budget == null ? `<span class="dim">—</span>` : (e.use === "BUDGET" ? `<b>${fmt$(e.budget)}</b>` : fmt$(e.budget))}</td>
         <td><select class="cell" data-id="${e.id}" data-k="use" title="Where this row's monthly figure comes from. ONE-OFF: not planned month by month, covered by the department's budget for its account. STAFFING: a person budgeted on the Staffing tab (counted there, not here)."><option${e.use === "XERO" ? " selected" : ""}>XERO</option><option${e.use === "BUDGET" ? " selected" : ""}>BUDGET</option><option value="ONEOFF"${e.use === "ONEOFF" ? " selected" : ""}>ONE-OFF</option><option${e.use === "STAFFING" ? " selected" : ""}>STAFFING</option></select></td>
-        <td><input class="cell" data-id="${e.id}" data-k="override" value="${e.override == null ? "" : e.override}" placeholder="—"></td>
-        <td><input class="cell tiny" data-id="${e.id}" data-k="adj" value="${(e.adj * 100).toFixed(0)}"></td>
-        <td>${monthSel(`data-id="${e.id}" data-k="from"`, e.from, { title: "First month this expense is charged." })}</td>
-        <td>${monthSel(`data-id="${e.id}" data-k="to"`, e.to, { title: "Last month this expense is charged." })}</td>
+        <td style="white-space:nowrap"><input class="cell tiny" style="width:58px" data-id="${e.id}" data-k="override" value="${e.override == null ? "" : e.override}" placeholder="—" title="Override $/mo"> <input class="cell tiny" style="width:34px" data-id="${e.id}" data-k="adj" value="${(e.adj * 100).toFixed(0)}" title="Adjustment %">%</td>
+        <td style="white-space:nowrap">${monthSel(`data-id="${e.id}" data-k="from"`, e.from, { title: "First month this expense is charged." })} → ${monthSel(`data-id="${e.id}" data-k="to"`, e.to, { title: "Last month this expense is charged." })}</td>
         <td><b>${fmt$(pl)}</b></td></tr>`;
     }
   }
-  h += `<tr class="tot"><td colspan="14">TOTAL PLANNED (full-month rows)</td><td>${fmt$(totPlanned)}</td></tr>`;
+  h += `<tr class="tot"><td colspan="9">TOTAL PLANNED (full-month rows)</td><td>${fmt$(totPlanned)}</td></tr>`;
   document.getElementById("expTable").innerHTML = h + "</tbody></table>";
   document.getElementById("expCount").textContent = shown + " of " + S.exp.length + " rows";
 }
@@ -3809,17 +3853,52 @@ document.getElementById("addRole").addEventListener("click", () => {
     hc: Array.from({length:NM}, (_, i) => i >= 8 ? 1 : 0) });
   persist(); scheduleRender();
 });
-document.getElementById("addEnv").addEventListener("click", () => {
-  const acct = ACCOUNTS.find(a => /office supplies/i.test(a)) || ACCOUNTS[0] || "";
-  S.exp.push(newEnvelope(expFilter.dept || "General Overhead", acct, 500));
-  expFold.delete(expFilter.dept || "General Overhead");
-  persist(); scheduleRender();
-});
-document.getElementById("addExp").addEventListener("click", () => {
-  S.exp.push({ id: "m" + Date.now(), vendor: "New expense", dept: expFilter.dept || "General Overhead",
-    share: 1, budget: null, xero: null, status: "NOT IN XERO", seat: 0, ttm: null, purpose: "added by hand", account: "",
-    conflict: false, manual: true, use: "BUDGET", override: 500, adj: 0, from: 9, to: NM, on: true });
-  persist(); scheduleRender();
+/* Adding a row used to drop it into a folded department at the bottom of the table — nothing
+   visibly happened. Now a small form asks for the essentials, then the new row is unfolded,
+   scrolled into view and flashed. */
+let expAddMode = null;
+function openExpAdd(mode){
+  expAddMode = mode;
+  const P = document.getElementById("expAddPanel");
+  document.getElementById("expAddTitle").textContent = mode === "account" ? "New account budget" : "New expense";
+  document.getElementById("expAddVendorWrap").hidden = mode === "account";
+  document.getElementById("expAddDept").innerHTML = DEPTS.map(d => `<option value="${esc(d)}"${d === (expFilter.dept || "General Overhead") ? " selected" : ""}>${esc(dn(d))}</option>`).join("");
+  document.getElementById("expAddAcct").innerHTML = (mode === "account" ? "" : `<option value="">—</option>`) + ACCOUNTS.map(a => `<option value="${esc(a)}"${mode === "account" && /office supplies/i.test(a) ? " selected" : ""}>${esc(acctShort(a))}</option>`).join("");
+  document.getElementById("expAddFromWrap").innerHTML = monthSel(`id="expAddFrom"`, Math.min(NM, ACT + 1));
+  document.getElementById("expAddAmt").value = "500";
+  document.getElementById("expAddVendor").value = "";
+  document.getElementById("expAddNote").textContent = mode === "account"
+    ? "Money set aside for one-off and small spend booked to this account in this department. Vendors marked ONE-OFF, and any vendor without a planned row, draw on it when actuals are compared."
+    : "A planned monthly amount on a vendor or purpose that is not in Xero yet. Pick the account it should be booked to so a mis-booking shows up later.";
+  P.hidden = false; P.scrollIntoView({ block: "nearest" });
+  (mode === "account" ? document.getElementById("expAddAmt") : document.getElementById("expAddVendor")).focus();
+}
+function revealExpRow(id){
+  const tr = document.querySelector(`#expTable tr[data-row="${id}"]`); if (!tr) return;
+  tr.scrollIntoView({ block: "center" }); tr.classList.add("flash");
+}
+document.getElementById("addEnv").addEventListener("click", () => openExpAdd("account"));
+document.getElementById("addExp").addEventListener("click", () => openExpAdd("expense"));
+document.getElementById("expAddCancel").addEventListener("click", () => { document.getElementById("expAddPanel").hidden = true; });
+document.getElementById("expAddOk").addEventListener("click", () => {
+  const dept = document.getElementById("expAddDept").value || "General Overhead", acct = document.getElementById("expAddAcct").value || "";
+  const amt = Math.max(0, num(document.getElementById("expAddAmt").value, 0)), from = Math.min(NM, Math.max(1, Math.round(num(document.getElementById("expAddFrom").value, ACT + 1))));
+  let row;
+  if (expAddMode === "account"){ row = newEnvelope(dept, acct, amt); row.from = from; }
+  else {
+    const name = document.getElementById("expAddVendor").value.trim() || "New expense";
+    row = { id: "m" + Date.now(), vendor: name, dept, share: 1, budget: null, xero: null, status: "NOT IN XERO", seat: 0, ttm: null, purpose: "added by hand", account: acct,
+      conflict: false, manual: true, use: "BUDGET", override: amt, adj: 0, from, to: NM, on: true };
+  }
+  S.exp.push(row);
+  // make sure the row can be seen: its department open, and no filter hiding it
+  expFold.delete(dept);
+  if (expFilter.dept && expFilter.dept !== dept){ expFilter.dept = dept; document.getElementById("expDept").value = dept; }
+  if (expFilter.status){ expFilter.status = ""; document.getElementById("expStatus").value = ""; }
+  if (expFilter.on === "off"){ expFilter.on = ""; document.getElementById("expOn").value = ""; }
+  if (expFilter.q){ expFilter.q = ""; document.getElementById("expSearch").value = ""; }
+  document.getElementById("expAddPanel").hidden = true;
+  persist(); renderAll(); revealExpRow(row.id);
 });
 let resetArmedAt = 0;
 document.getElementById("btnReset").addEventListener("click", ev => {
