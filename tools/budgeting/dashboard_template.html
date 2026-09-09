@@ -2430,6 +2430,8 @@ function lastBilledCell(e){
   else if (days > 90) cls = "dim";
   return `<td class="${cls}" title="${esc(tip)}" style="white-space:nowrap">${label}</td>`;
 }
+// which license rules show their role chips — UI state only, never persisted
+const openLics = new Set();
 function renderLicenses(C){
   const el = document.getElementById("licList"); if (!el) return;
   const now = Math.min(NM, ACT + 1), end = NM;
@@ -2452,13 +2454,15 @@ function renderLicenses(C){
       <td><input class="cell pos" style="width:190px" data-id="${L.id}" data-k="licname" value="${esc(L.name || "")}" title="Vendor: ${esc(L.vendor)}"></td>
       <td><input class="cell tiny" style="width:64px" data-id="${L.id}" data-k="licprice" value="${(+L.price || 0).toFixed(2)}"></td>
       <td><select class="cell" data-id="${L.id}" data-k="liccad">${["monthly", "quarterly", "annual"].map(c => `<option value="${c}"${(L.cadence || "monthly") === c ? " selected" : ""}>${c}</option>`).join("")}</select></td>
-      <td><span class="pg-chips" style="max-width:520px">${chips}${left.length ? `<select class="cell" style="max-width:200px" data-id="${L.id}" data-k="licroleadd"><option value="">+ add a role…</option>${DEPTS.map(d => { const rs = left.filter(r => r.dept === d); return rs.length ? `<optgroup label="${esc(dn(d))}">${rs.map(r => `<option value="${r.id}">${esc(r.position)}</option>`).join("")}</optgroup>` : ""; }).join("")}</select>` : ""}</span></td>
+      <td style="white-space:nowrap" title="${esc(Object.entries(L.roles || {}).map(([rid, per]) => { const r = licRoleFor(rid); return r ? `${r.position} ×${per}` : ""; }).filter(Boolean).join("\n") || "No roles yet")}">${Object.keys(L.roles || {}).length} role${Object.keys(L.roles || {}).length === 1 ? "" : "s"}${(L.unmatched || []).length ? ` <span class="subtle" title="${esc(L.unmatched.join(", "))}">+${L.unmatched.length} not on staffing</span>` : ""} <button class="btn mini${openLics.has(L.id) ? " on" : ""}" data-id="${L.id}" data-k="licroles" title="Show or hide the roles this rule covers">${openLics.has(L.id) ? "▾" : "▸"} roles</button></td>
       <td style="white-space:nowrap">${Math.round(s0)} → ${Math.round(s1)}</td>
       <td><input class="cell tiny" style="width:52px" data-id="${L.id}" data-k="licmin" value="${L.minSeats || ""}" placeholder="—"></td>
       <td><select class="cell" style="max-width:170px" data-id="${L.id}" data-k="licdept"><option value="">—</option>${DEPTS.map(d => `<option value="${esc(d)}"${d === L.overflowDept ? " selected" : ""}>${esc(dn(d))}</option>`).join("")}</select></td>
       <td style="white-space:nowrap" title="${Math.round(s0)} assigned${short0 ? ` + ${Math.round(short0)} short of the minimum (${fmt$(short0 * L.price)} to ${esc(dn(L.overflowDept || "—"))})` : ""} × ${fmt$(L.price)}">${fmt$(rule)}${short0 ? ` <span class="warn" title="Seats below the minimum">+${Math.round(short0)}</span>` : ""}</td>
       <td style="white-space:nowrap" class="${gap != null && Math.abs(gap) > 0.1 ? "warn" : "dim"}" title="${xero == null ? "Not in the Xero export" : `Xero ${fmt$(xero)}/mo vs ${fmt$(vendorRule)}/mo across this vendor's rules${gap != null ? ` — ${gap > 0 ? "+" : ""}${Math.round(gap * 100)}%` : ""}`}">${xero == null ? "—" : fmtK(xero)}${gap != null && Math.abs(gap) > 0.1 ? ` <small>${gap > 0 ? "+" : ""}${Math.round(gap * 100)}%</small>` : ""}</td>
       <td><button class="btn mini" data-id="${L.id}" data-k="licdel" title="Remove rule">✕</button></td></tr>`;
+    if (openLics.has(L.id))
+      h += `<tr class="dim"><td></td><td colspan="10"><span class="pg-chips" style="max-width:none;padding:2px 0 6px">${chips}${left.length ? `<select class="cell" style="max-width:200px" data-id="${L.id}" data-k="licroleadd"><option value="">+ add a role…</option>${DEPTS.map(d => { const rs = left.filter(r => r.dept === d); return rs.length ? `<optgroup label="${esc(dn(d))}">${rs.map(r => `<option value="${r.id}">${esc(r.position)}</option>`).join("")}</optgroup>` : ""; }).join("")}</select>` : ""}</span></td></tr>`;
   }
   const tot0 = (S.licenses || []).reduce((a, L) => a + (L.on === false ? 0 : Math.max(licSeats(L, now), L.minSeats || 0) * (L.price || 0)), 0);
   const tot1 = (S.licenses || []).reduce((a, L) => a + (L.on === false ? 0 : Math.max(licSeats(L, end), L.minSeats || 0) * (L.price || 0)), 0);
@@ -3177,6 +3181,8 @@ document.getElementById("licList").addEventListener("change", ev => {
   persist(); scheduleRender();
 });
 document.getElementById("licList").addEventListener("click", ev => {
+  const tg = ev.target.closest("button[data-k=licroles]");
+  if (tg){ openLics.has(tg.dataset.id) ? openLics.delete(tg.dataset.id) : openLics.add(tg.dataset.id); renderAll(); return; }
   const rd = ev.target.closest("button[data-k=licroledel]");
   if (rd){ const L = (S.licenses || []).find(x => x.id === rd.dataset.id); if (L && L.roles) delete L.roles[rd.dataset.role]; persist(); scheduleRender(); return; }
   const b = ev.target.closest("button[data-k=licdel]"); if (!b) return;
@@ -3184,7 +3190,9 @@ document.getElementById("licList").addEventListener("click", ev => {
 });
 document.getElementById("addLic").addEventListener("click", () => {
   S.licenses = S.licenses || [];
-  S.licenses.push({ id: "L" + Date.now().toString(36), vendor: "New license", name: "New license", on: true, price: 10, roles: {}, unmatched: [], minSeats: 0, overflowDept: "", cadence: "monthly" });
+  const nid = "L" + Date.now().toString(36);
+  openLics.add(nid);
+  S.licenses.push({ id: nid, vendor: "New license", name: "New license", on: true, price: 10, roles: {}, unmatched: [], minSeats: 0, overflowDept: "", cadence: "monthly" });
   persist(); scheduleRender();
 });
 document.getElementById("trSearch").addEventListener("input", ev => { trQ = ev.target.value; renderTrendTable(); });
