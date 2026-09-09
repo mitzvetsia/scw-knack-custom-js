@@ -345,7 +345,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <div class="card"><div class="eyebrow">Results</div><h2>Cumulative net through Mar 2027</h2><p class="note">Running total: booked through <span class="js-actmo"></span>, then each scenario.</p><figure class="chart" id="chartCum" title="Hover any month for the figures"></figure></div>
   </div>
   <div class="card"><div class="eyebrow">Results</div><h2>By period</h2>
-    <p class="note">The same P&amp;L rolled up — the goal cycle first, then the closing cycle, the calendar year, and each quarter. Follows the scenario strip above. <a class="how" href="#notes">How it works ↗</a></p>
+    <p class="note">The same P&amp;L rolled up — the two planning cycles in date order, the calendar year, and each quarter; the goal cycle is tinted. Follows the scenario strip above. <a class="how" href="#notes">How it works ↗</a></p>
     <div class="tablewrap" id="periodSum"></div></div>
   <div class="card"><div class="eyebrow">Workings</div><h2>P&amp;L by month</h2>
     <p class="note">Shaded = Xero as booked (<span class="js-actrange"></span>); <span class="js-bridge"></span> is a bridge month; Oct–Mar is the goal cycle. Payroll is base pay; commissions sit on their own row. Month cells round to $K — hover for the exact figure. <a class="how" href="#notes">How it works ↗</a></p>
@@ -1583,7 +1583,7 @@ function renderProj(C){
   for (const [k, v] of pick(netM, netS)){
     const revK = C.rev[k], m = v.map((n, i) => revK[i] ? n / revK[i] : 0);
     const pr = (x, y) => { const n = v.slice(x, y).reduce((a, b) => a + b, 0), d = revK.slice(x, y).reduce((a, b) => a + b, 0); return d ? n / d : 0; };
-    rows.push({ label: "&nbsp;&nbsp;net margin" + sfx(k), vals: m, cls: "dim", fm: fmtPct1, sums: [pr(FH2[0], FH2[1]), pr(FH1[0], FH1[1]), pr(0, NM)] });
+    rows.push({ label: "&nbsp;&nbsp;net margin" + sfx(k), vals: m, cls: "dim", fm: fmtPct1, sums: [pr(FH1[0], FH1[1]), pr(FH2[0], FH2[1]), pr(0, NM)] });
   }
   if (!both)
     push("Net under " + (plScn === "mod" ? "stretch" : "modest") + " (reference)", plScn === "mod" ? netS : netM, "dim");
@@ -1597,13 +1597,13 @@ function renderProj(C){
   let h = `<table class="data pl"><thead>` +
     `<tr class="grp"><th></th><th colspan="3">Totals</th><th class="booked" colspan="${Math.min(ACT, NM)}">Booked ${esc(ACT_RANGE)}</th>` +
     (bridgeN ? `<th colspan="${bridgeN}">Bridge</th>` : "") + `<th class="goal" colspan="${FH2[1] - FH2[0]}">Goal cycle Oct–Mar</th></tr>` +
-    `<tr><th>P&amp;L</th><th class="goal">${FH2[3]}<span class="sub">Oct–Mar</span></th><th>${FH1[3]}<span class="sub">Apr–Sep</span></th><th>15 mo<span class="sub">Jan 26–Mar 27</span></th>` +
+    `<tr><th>P&amp;L</th><th>${FH1[3]}<span class="sub">Apr–Sep</span></th><th class="goal">${FH2[3]}<span class="sub">Oct–Mar</span></th><th>15 mo<span class="sub">Jan 26–Mar 27</span></th>` +
     MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${qb(i)}${ybCls(i)}${goalCls(i)}"${provSet.has(i + 1) ? ` title="COGS estimated — the ${m} COGS entry hasn’t been made in Xero yet"` : ""}>${mhead(i)}${provSet.has(i + 1) ? "*" : ""}</th>`).join("") +
     `</tr></thead><tbody>`;
   for (const r of rows){
     if (r.section){ h += `<tr class="sec"><td colspan="${NM + 4}">${esc(r.section)}</td></tr>`; continue; }
     const isNet = /NET/.test(r.label);
-    const sums = r.sums ? r.sums : r.fm === fmt$ ? [half(r.vals, FH2), half(r.vals, FH1), r.vals.reduce((a, b) => a + b, 0)] : null;
+    const sums = r.sums ? r.sums : r.fm === fmt$ ? [half(r.vals, FH1), half(r.vals, FH2), r.vals.reduce((a, b) => a + b, 0)] : null;
     const sumFm = r.sums ? r.fm : fmt$;
     // a cell's own caveat (the August payroll estimate, the "who moved" notes) outranks the
     // exact-figure hover; when both exist the figure rides inside the caveat
@@ -1611,7 +1611,7 @@ function renderProj(C){
       ? `<td class="${i < ACT ? "actual" : ""}${qb(i)}${goalCls(i)}${isNet && v < 0 ? " neg" : ""}" title="${r.tips && r.tips[i] ? esc(fmt$(v) + " — " + r.tips[i]) : fmt$(v)}">${fmtK(v)}</td>`
       : `<td class="${i < ACT ? "actual" : ""}${qb(i)}${goalCls(i)}${isNet && v < 0 ? " neg" : ""}"${r.tips && r.tips[i] ? ` title="${esc(r.tips[i])}"` : ""}>${r.fm(v)}</td>`;
     h += `<tr class="${r.cls}"><td class="${r.cls === "dim" ? "dim" : ""}">${r.label}</td>` +
-      (sums ? sums.map((v, k) => `<td class="${k === 0 ? "goal" : ""}${isNet && v < 0 ? " neg" : ""}"><b>${sumFm(v)}</b></td>`).join("") : "<td class=\"goal\"></td><td></td><td></td>") +
+      (sums ? sums.map((v, k) => `<td class="${k === 1 ? "goal" : ""}${isNet && v < 0 ? " neg" : ""}"><b>${sumFm(v)}</b></td>`).join("") : "<td></td><td class=\"goal\"></td><td></td>") +
       r.vals.map(cell).join("") + `</tr>`;
   }
   document.getElementById("plTable").innerHTML = h + "</tbody></table>";
@@ -1693,10 +1693,10 @@ function renderRollup(C){
     `<tr class="grp"><th></th><th colspan="${isHC ? 1 : 3}">Totals</th><th class="booked" colspan="${Math.min(ACT, NM)}">Booked ${esc(ACT_RANGE)}</th>` +
     (bridgeN ? `<th colspan="${bridgeN}">Bridge</th>` : "") + `<th class="goal" colspan="${FH2[1] - FH2[0]}">Goal cycle Oct–Mar</th></tr>` +
     `<tr><th>Department</th>` +
-    (isHC ? `<th class="goal">Mar ’27</th>` : `<th class="goal">${FH2[3]}<span class="sub">Oct–Mar</span></th><th>${FH1[3]}<span class="sub">Apr–Sep</span></th><th>15 mo</th>`) +
+    (isHC ? `<th class="goal">Mar ’27</th>` : `<th>${FH1[3]}<span class="sub">Apr–Sep</span></th><th class="goal">${FH2[3]}<span class="sub">Oct–Mar</span></th><th>15 mo</th>`) +
     MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}${goalCls(i)}">${mhead(i)}</th>`).join("") + `</tr></thead><tbody>`;
   const tots = r => isHC ? `<td class="goal"><b>${fmv(r.vals[NM - 1])}</b></td>`
-    : `<td class="goal${half(r.vals, FH2) < 0 ? " neg" : ""}"><b>${fmt$(half(r.vals, FH2))}</b></td><td><b>${fmt$(half(r.vals, FH1))}</b></td><td><b>${fmt$(r.vals.reduce((a, b) => a + b, 0))}</b></td>`;
+    : `<td class="${half(r.vals, FH1) < 0 ? "neg" : ""}"><b>${fmt$(half(r.vals, FH1))}</b></td><td class="goal${half(r.vals, FH2) < 0 ? " neg" : ""}"><b>${fmt$(half(r.vals, FH2))}</b></td><td><b>${fmt$(r.vals.reduce((a, b) => a + b, 0))}</b></td>`;
   for (const r of rows){
     h += `<tr><td>${esc(dn(r.d))}</td>` + tots(r) +
       r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}${goalCls(i)}${v < -0.5 ? " neg" : ""}"${isHC ? "" : ` title="${fmt$(v)}"`}>${fmk(v)}</td>`).join("") + `</tr>`;
@@ -1757,8 +1757,8 @@ function renderPeriods(C){
   for (const k of scns) push("Accrued programs" + sfx(k), C.incent[k], "dim");
   for (const k of scns) push("NET with programs" + sfx(k), C.netAll[k], "tot netrow");
   for (const k of scns) pushPct("net margin" + sfx(k), C.netAll[k], C.rev[k]);
-  // display order: goal cycle, closing cycle, calendar year, then the quarters — PERIODS itself is untouched
-  const ORDER = [6, 5, 7, 0, 1, 2, 3, 4];
+  // display order: the two cycles in date order, the calendar year, then the quarters — PERIODS itself is untouched
+  const ORDER = [5, 6, 7, 0, 1, 2, 3, 4];
   const colCls = (oi, pos) => (oi === 6 ? " goal" : "") + (pos === 2 ? " qb" : "");
   const tag = oi => oi < QTRS.length ? `<span class="sub">${esc(QTRS[oi][4])}</span>` : "";
   let h = `<table class="data"><thead><tr><th>${both ? "Modest and stretch" : plScn === "str" ? "Stretch" : "Modest"}</th>` +
