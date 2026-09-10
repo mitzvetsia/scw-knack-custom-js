@@ -167,6 +167,7 @@ cat \
   src/features/files-gallery.js \
   src/features/photo-grid-manager.js \
   src/features/survey-request-header.js \
+  src/features/build-sow-project-header.js \
   src/features/ops-stepper.js \
   src/features/sales-stepper.js \
   src/features/published-quote-on-proposal-page.js \

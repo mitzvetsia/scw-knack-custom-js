@@ -171,6 +171,13 @@
     // quote-history sections. OPS SCENE ONLY — the blob includes SCW-side
     // money and must never ride a sub-visible scene.
     'view_4157',
+    // 'view_4159' — SURVEY_requests grid for the project on the ops Build
+    // SOWs page (scene_1085). build-sow-project-header.js reads its model
+    // (DOM fallback) for the survey subcontract ClickUp task links
+    // (field_2631 / field_2918) labeled by assigned tech group (field_2347)
+    // and renders them in the project header card — nobody needs the raw
+    // 30-column grid at the bottom of the page.
+    'view_4159',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the
