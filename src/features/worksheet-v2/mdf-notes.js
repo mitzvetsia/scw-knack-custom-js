@@ -82,6 +82,15 @@
   // gets the soft affordance (delete wins). Falls back to photo-edit-panel's
   // SAVE_VIEWS (keyed by the worksheet SOURCE view) so a new deployment
   // that has a photo save view gets the remove for free.
+  //
+  // ⚠ The save view must actually CONTAIN the MDF/IDF photo records — a
+  // view-scoped PUT is a 403 for anything outside the view's result set.
+  // view_4070 on the survey scene is sourced from the LINE-ITEM photo slots
+  // (survey → line items → photos), so today it does NOT hold the location
+  // photos; removeMdfPhoto() detects that (photoInView) and tells the user
+  // instead of failing. Builder: widen view_4070's source (or add a hidden
+  // DOC_photos grid of survey → MDF/IDFs → photos with field_771 inline-
+  // editable) and point the entry at it. Same check applies to view_4158.
   var MDF_PHOTO_REMOVE_VIEWS = {
     view_3617: 'view_4070',   // survey/bid scene — DOC_photos grid, field_771 inline-editable
     view_4060: 'view_4158'    // sub deployment dashboard — DOC_photos grid, field_771 inline-editable
@@ -385,16 +394,60 @@
     var imgs = cell.querySelectorAll('img');
     for (var i = 0; i < imgs.length; i++) {
       var a = imgs[i].closest('a[href]');
+      var href = (a && a.getAttribute('href')) || '';
+      // Photo RECORD id. The manage grid renders each photo one of two ways:
+      //   ops scenes   — an edit-page link  <a href="…/edit-photo/<photoId>">
+      //   survey scene — an image-gallery anchor (href="#") wrapping
+      //                  <span id="<photoId>" data-kn="connection-value">
+      // Read both; the id is what the per-photo delete / remove PUTs target.
+      var pid = '';
+      if (href && href !== '#') {
+        var hrefIds = href.match(/[a-f0-9]{24}/gi);
+        if (hrefIds) pid = hrefIds[hrefIds.length - 1];
+      }
+      if (!pid) {
+        var sp = imgs[i].closest('span[data-kn="connection-value"]');
+        var sid = sp ? (sp.getAttribute('id') || sp.className || '') : '';
+        var sm = String(sid).match(/[a-f0-9]{24}/i);
+        if (sm) pid = sm[0];
+      }
       out.push({
         thumb: imgs[i].getAttribute('src') || '',
         // Full-size asset for the lightbox stage — Knack stamps the gallery
         // URL on grid images; fall back to the thumb src when absent.
         full:  imgs[i].getAttribute('data-kn-img-gallery') ||
                imgs[i].getAttribute('src') || '',
-        href: (a && a.getAttribute('href')) || ''
+        href:  href,
+        id:    pid
       });
     }
     return out;
+  }
+
+  /** Is the photo record inside a same-scene DOC_photos view's result set?
+   *  Knack's view-scoped PUT/DELETE only succeeds for records the view can
+   *  see, so a photo missing from the view = a guaranteed 403. Reads the
+   *  view's model then its rendered rows; when the view is paginated past
+   *  what's loaded the answer is unknowable client-side → null (proceed). */
+  function photoInView(viewKey, photoId) {
+    var el = document.getElementById(viewKey);
+    if (!el || !photoId) return null;
+    try {
+      var v = Knack.views && Knack.views[viewKey];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (models) {
+        for (var i = 0; i < models.length; i++) {
+          if (models[i] && models[i].id === photoId) return true;
+        }
+      }
+    } catch (e) { /* fall through to the DOM */ }
+    if (el.querySelector('tbody tr[id="' + photoId + '"]')) return true;
+    var loaded = el.querySelectorAll('tbody tr[id]').length;
+    var sum = el.querySelector('.kn-entries-summary');
+    var m = sum ? String(sum.textContent || '').match(/of\s+([\d,]+)/i) : null;
+    var total = m ? parseInt(m[1].replace(/,/g, ''), 10) : NaN;
+    if (!isFinite(total)) return null;
+    return loaded >= total ? false : null;   // fully loaded and absent → not in the view
   }
 
   /** Content signature for a band — retrofit skips the rebuild+replaceChild
@@ -531,8 +584,11 @@
         (pDisp !== photos[p].thumb
           ? 'onerror="this.onerror=null;this.src=\'' + esc(photos[p].thumb) + '\'"'
           : '') + '></a>';
-      var hrefIds = String(photos[p].href || '').match(/[a-f0-9]{24}/gi);
-      var photoId = hrefIds ? hrefIds[hrefIds.length - 1] : '';
+      var photoId = photos[p].id || '';
+      if (!photoId) {
+        var hrefIds = String(photos[p].href || '').match(/[a-f0-9]{24}/gi);
+        photoId = hrefIds ? hrefIds[hrefIds.length - 1] : '';
+      }
       if (delView && photoId) {
         photosHtml += '<span class="' + P + '-thumbwrap">' + thumbA +
             '<button type="button" class="' + P + '-thumb-del" ' +
@@ -906,6 +962,21 @@
     var locLabel = (lblEl && lblEl.textContent.trim()) || 'this MDF/IDF';
     var thumbUrl = btn.getAttribute('data-scw-thumb') || '';
     var fullUrl  = btn.getAttribute('data-scw-full') || thumbUrl;
+
+    // A view-scoped PUT only lands on records the save view can see. On the
+    // survey scene view_4070 is sourced from the LINE-ITEM photo slots, so an
+    // MDF/IDF photo isn't in it until Builder widens the source — say so up
+    // front instead of optimistically removing the thumb and then failing.
+    if (photoInView(remView, photoId) === false) {
+      console.warn('[scw-ws-v2-mdf] photo ' + photoId + ' is not in ' + remView +
+        '’s result set — the remove PUT would be rejected. Builder: the ' +
+        'DOC_photos view on this scene must include photos connected to the ' +
+        'survey’s MDF/IDFs (or point MDF_PHOTO_REMOVE_VIEWS at one that does).');
+      alert('This photo can’t be removed from here yet — it isn’t in this ' +
+        'page’s photo list (' + remView + '), so Knack would reject the change. ' +
+        'Please ask SCW to remove it.');
+      return;
+    }
 
     function refetchManage() {
       try {
