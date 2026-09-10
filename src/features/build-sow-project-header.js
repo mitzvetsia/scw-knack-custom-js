@@ -387,6 +387,60 @@
     }
     return out;
   }
+  // Link-type fields beyond HubSpot / ClickUp (e.g. the Slack project thread)
+  // — any OTHER detail field whose whole value is one external URL renders
+  // as a chip in the links row, not as a label/value row. Flavored by host
+  // so Slack / HubSpot / ClickUp keep their brand tint; anything else is
+  // neutral. A URL embedded in prose is NOT a link field — that stays a row.
+  function chipFlavor(href) {
+    var h = String(href || '').toLowerCase();
+    if (h.indexOf('slack.com') !== -1)   return 'slack';
+    if (h.indexOf('hubspot.com') !== -1) return 'hs';
+    if (h.indexOf('clickup.com') !== -1) return 'cu';
+    return '';
+  }
+  // "LINK_slack thread" / "REL_company" → drop the SCREAMING_ prefix.
+  function cleanLabel(s) {
+    return String(s || '').replace(/^[A-Z]{2,}_\s*/, '').replace(/\s+/g, ' ').trim();
+  }
+  function isUrl(s) { return /^https?:\/\//i.test(String(s || '').trim()); }
+  function linkChips(view, skip) {
+    var out = '', used = Object.create(null);
+    var dets = view.querySelectorAll('.kn-detail');
+    for (var d = 0; d < dets.length; d++) {
+      var det = dets[d];
+      var fk = '', parts = (det.className || '').split(/\s+/);
+      for (var c = 0; c < parts.length; c++) {
+        if (/^field_\d+$/.test(parts[c])) { fk = parts[c]; break; }
+      }
+      if (!fk || skip[fk]) continue;
+      var bod = det.querySelector('.kn-detail-body');
+      if (!bod) continue;
+      var text  = stripTags(bod.innerHTML);
+      var a     = bod.querySelector('a[href^="http"], a[href^="//"]');
+      var aText = a ? stripTags(a.innerHTML) : '';
+      var href  = a ? (a.getAttribute('href') || '') : firstUrl(text);
+      if (!href) continue;
+      if (a && text !== aText) continue;                 // link inside prose → row
+      if (!a && text !== href) continue;                 // URL inside prose → row
+      var lab   = det.querySelector('.kn-detail-label');
+      var label = cleanLabel(lab ? lab.textContent : '');
+      // Chip text: the link's own text when it has one, else the field label,
+      // else the host — never a raw URL.
+      var name = (aText && !isUrl(aText)) ? aText : label;
+      if (!name || isUrl(name)) {
+        var hm = String(href).match(/^(?:https?:)?\/\/(?:www\.)?([^/:?#]+)/i);
+        name = hm ? hm[1] : 'Link';
+      }
+      var flavor = chipFlavor(href);
+      used[fk] = true;
+      out += '<a class="scw-bsh-chip' + (flavor ? ' scw-bsh-chip--' + flavor : '') +
+        '" href="' + esc(href) + '" target="_blank" rel="noopener" title="' + esc(label || name) + '">' +
+        esc(name) + extIcon() + '</a>';
+    }
+    return { html: out, used: used };
+  }
+
   function fact(label, valueHtml) {
     if (!valueHtml) return '';
     return '<div class="scw-bsh-fact"><span class="scw-bsh-fact-label">' + esc(label) +
@@ -417,6 +471,10 @@
 
     var skip = Object.create(null);
     for (var k in H) skip[H[k]] = true;
+    // Extra link fields (Slack project thread, …) → chips; everything else
+    // left on the view → generic rows under Playbook.
+    var lc = linkChips(view, skip);
+    for (var u in lc.used) skip[u] = true;
     var extra = extraDetailRows(view, skip);
 
     var crumb = '';
@@ -441,6 +499,7 @@
       links += '<a class="scw-bsh-chip scw-bsh-chip--cu" href="' + esc(clickup) +
         '" target="_blank" rel="noopener">SCW ClickUp Task' + extIcon() + '</a>';
     }
+    links += lc.html;
 
     var flags = flag('Multi-state', multiSt) + flag('Multiple buildings', multiBl);
     var playbook = '';
@@ -486,10 +545,17 @@
       view.insertBefore(card, view.firstChild);
     }
     // Only rebuild when the HTML actually changed (Knack re-renders these
-    // views several times on load; identical rebuilds just flicker).
-    if (card.getAttribute('data-scw-bsh-html') === innerHtml) return;
-    card.setAttribute('data-scw-bsh-html', innerHtml);
+    // views several times on load; identical rebuilds just flicker). Compare
+    // a short signature, not the whole markup — keeps the DOM light.
+    var sig = hashStr(innerHtml);
+    if (card.getAttribute('data-scw-bsh-sig') === sig) return;
+    card.setAttribute('data-scw-bsh-sig', sig);
     card.innerHTML = innerHtml;
+  }
+  function hashStr(s) {
+    var h = 5381;
+    for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36) + ':' + s.length;
   }
   function transformHeader() {
     var els = document.querySelectorAll('#' + CONFIG.headerView);
@@ -561,6 +627,8 @@
       '.scw-bsh-chip:hover { text-decoration: none; filter: brightness(.96); }',
       '.scw-bsh-chip--hs { background: #fff1eb; color: #d3502a; border-color: #fdd4c2; }',
       '.scw-bsh-chip--cu { background: #efecfd; color: #5a48d6; border-color: #d6cffb; }',
+      /* Slack aubergine — the project thread link. */
+      '.scw-bsh-chip--slack { background: #f6eef7; color: #4a154b; border-color: #e3cfe5; }',
       '.scw-bsh-ext { flex: 0 0 auto; opacity: .8; }',
       '.scw-bsh-facts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 18px; }',
       '.scw-bsh-fact { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }',
