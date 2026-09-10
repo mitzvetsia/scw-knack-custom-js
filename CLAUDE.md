@@ -816,3 +816,22 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Fix shape (small)**: acceptance flows through the accept-SOW DTO / Make scenario — add a write-back at the moment the install-acceptance record is created (or on the e-signature SIGNED webhook, matching the CO design where signature is the gate): PUT the parent SOW's `FLAG_accepted = Yes` and stamp the REAL date into `SYS_accepted date` (or a new dedicated date field if the auto-fill default must stay). One step fixes both holes.
 - **Follow-up audit**: after the write-back lands, sweep everything that currently READS `FLAG_accepted` (views, filters, Make scenarios, bundle features) — those consumers have only ever seen "No", so their behavior/reporting has been silently understated and may need re-checking once the flag starts flipping.
 - **Related nice-to-have**: keep project `REL_company` mandatory (98% populated today) — it is what makes client-level analysis (and the full "Testies" test-project sweep) possible; the legacy quote-era Contact field is only 22% populated and the legacy Company field is empty (3/7,617).
+
+### 22. Product retirement cascade + "where is this product quoted?" — INERT until Builder keys are filled
+- **Shipped 2026-09-10** as `src/features/product-lifecycle.js` with a `CONFIG` of Builder TBDs
+  that all fail open (one console warning naming what's missing). Full design, rules, and the
+  Builder checklist: **`docs/product-retirement.md`**.
+- **What it does once configured**: saving a product as Disabled (edit form / grid inline edit on
+  the Products page) opens an impact modal and, on confirm, flips a new `FLAG_is disabled` on every
+  SOW line item carrying that product whose SOW was quoted in the last 12 months (or never quoted
+  but created in the last 12 months); the product details view gets a "Where is this product
+  quoted?" panel listing SOWs with a proposal in the last 6 months (window selectable). Writes go
+  through a capped retry queue; already-flagged items are skipped.
+- **Builder work needed**: `FLAG_is disabled` on SOW Line Item; `SYS_latest proposal date` (Max
+  formula over published proposals) on the SOW header; hidden all-records grids of SOW Line Items
+  (flag inline-editable) and SOW headers on the Products page; then fill `sceneKey`,
+  `productDetailView`, `productStatusViews`, `lineItemsView`, `sowsView`, `lineItem.disabled`,
+  `sow.created`, `sow.latestProposal` (+ optional `sow.project`).
+- **Do NOT reuse `field_2912`** for the flag — it is derived from the product (Yes = still active)
+  and flips for every line item ever created, which is exactly the noise the 12-month rule avoids.
+  Follow-up once the flag exists: OR it into the worksheet "discontinued" badge.
