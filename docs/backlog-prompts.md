@@ -62,3 +62,80 @@ it and never adopted it. The task is to make them converge on the bulk pattern.
 **Sibling to copy from:** `worksheet-v2/bulk.js` (`doDeleteWithRetry`,
 `runJobQueue`, `collectAccessoryIds`, `partitionDeletable`) — it already does
 everything the other paths are missing.
+
+---
+
+## 2. Product retirement — disable cascade + "where is this product quoted?" (ops Priority #2)
+
+**Status:** bundle scaffold shipped 2026-09-10 (`src/features/product-lifecycle.js`,
+commit `69222b9`) but **INERT** — every Builder-dependent key in its `CONFIG` is
+blank and the module fails open with one console warning. Nothing runs in
+production until the Builder work below lands and the keys are filled. Full
+design + rationale: `docs/product-retirement.md`; tracked as CLAUDE.md Known
+Issue #22.
+
+**The ask (ops, 2026-09-10):** whenever a product is moved to **Disabled**,
+(a) find every SOW line item carrying that product on a SOW with an associated
+quote **less than 12 months old** and flip its "is disabled" flag, and (b) do
+the same for line items on SOWs with **no** proposal whose SOW is itself
+**less than 12 months old**. Separately, ops wants to pick a product that is
+**running low** and see every SOW carrying it where a proposal is **less than
+6 months old** (impact check).
+
+**What already exists (do not rebuild):**
+
+- Rules, pure and unit-testable on `SCW.productLifecycle._rules`:
+  `cascade` = item qualifies if ANY connected SOW (`field_2154`, multi) has
+  `latestProposal >= today − 12 mo` OR (`latestProposal` blank AND
+  `created >= today − 12 mo`); `impact` = SOW qualifies if
+  `latestProposal >= today − 6 mo` (window selectable 6 / 12 / 24 / All).
+  Already-flagged items are skipped (idempotent re-runs); items on no SOW are
+  counted separately as orphans.
+- Data path: paginated view-based GETs (session token, no REST key — Known
+  Issue #17) of the product's line items + all SOW headers, joined by SOW id
+  in memory; SOW headers cached 5 min.
+- Writes: concurrency-capped (4) retry-with-backoff, settle-don't-reject
+  queue (`flagItems`), full / partial / total-failure reporting, per-record
+  failures in the console.
+- UX: auto-trigger on `knack-form-submit` / `knack-cell-update` /
+  `knack-record-update` for `productStatusViews` → impact modal pre-filtered to
+  the 12-month rule ("Product X is now Disabled — N line items on M SOWs …
+  [Skip] [Flag N line items]"; `autoApply:true` skips the modal); on-demand
+  "Where is this product quoted?" button on the product details view.
+
+**Builder work (the actual TODO — all on the Products page scene):**
+
+| # | Object | What | `CONFIG` key |
+|---|--------|------|--------------|
+| 1 | SOW Line Item | new **`FLAG_is disabled`** Yes/No, default No. **Do NOT reuse `field_2912`** — it is derived from the product with inverted polarity (Yes = still active) and flips for every line item ever created, which is exactly the noise the 12-month rule exists to avoid. | `lineItem.disabled` |
+| 2 | SOW header | new **`SYS_latest proposal date`** — Max formula over the SOW's proposals' create date filtered to Status = Published. Blank = never quoted. | `sow.latestProposal` |
+| 3 | SOW header | existing `SYS_create date` key (auto-stamped at creation; Known Issue #18) | `sow.created` |
+| 4 | SOW header | SOW → Project connection key (optional; panel omits the link without it) | `sow.project` |
+| 5 | Products page | hidden **all-records grid of SOW Line Items** (no page connection): product `field_1949`, SOW `field_2154`, qty `field_1964`, flag #1 **inline-editable** (the cascade PUTs through this view). 1000 rows/page; the module pages. | `lineItemsView` |
+| 6 | Products page | hidden **all-records grid of SOW headers**: `field_2122`, `field_2126`, #2, #3, #4 | `sowsView` |
+| 7 | Products page | scene key, the product **details** view (panel mounts under it), the view(s) where `field_956` is edited (edit form and/or products grid with inline edit) | `sceneKey`, `productDetailView`, `productStatusViews` |
+
+Then: add #5 and #6 to `hide-data-source-views.js`, fill the keys, `bash
+build.sh`, push, pin the SHA, and verify on the live Products page:
+(a) disable a test product → modal lists only SOWs quoted/created in the last
+12 months, older SOWs listed separately as skipped; confirm → flags land and a
+re-run reports 0 to flag; (b) "Where is this product quoted?" on a stocked
+product → SOW list matches a manual filter of proposals in the last 6 months.
+
+**Open questions for ops (decide before flipping on):**
+
+1. Which `field_956` values count as disabled? Module matches Disabled /
+   Discontinued / Inactive / Retired case-insensitively — trim
+   `disabledStatusValues` if the picklist differs.
+2. Should re-enabling a product clear the flags? Not implemented (one-way
+   "this SOW needs attention" mark today).
+3. Do survey line items (`field_2627` product) need the same treatment?
+   Out of scope for the first cut.
+4. Follow-up once the flag exists: OR it into the worksheet "Product
+   discontinued" badge (`field_2912 == No || FLAG_is disabled == Yes`) so a
+   flagged item is loud on recent SOWs even if `field_2912` lags.
+
+**Sibling to copy from:** `mirror-connection-sync.js` (`knackPutKeepalive`
+queue) / `bid-review/init.js` `handleReopenBid` for the capped-retry PUT
+pattern the module already mirrors; `product-lifecycle.js` `CONFIG` is the
+only thing that should need editing for the first live run.
