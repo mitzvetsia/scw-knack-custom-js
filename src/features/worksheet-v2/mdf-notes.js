@@ -85,14 +85,14 @@
   //
   // ⚠ The save view must actually CONTAIN the MDF/IDF photo records — a
   // view-scoped PUT is a 403 for anything outside the view's result set.
-  // view_4070 on the survey scene is sourced from the LINE-ITEM photo slots
-  // (survey → line items → photos), so today it does NOT hold the location
-  // photos; removeMdfPhoto() detects that (photoInView) and tells the user
-  // instead of failing. Builder: widen view_4070's source (or add a hidden
-  // DOC_photos grid of survey → MDF/IDFs → photos with field_771 inline-
-  // editable) and point the entry at it. Same check applies to view_4158.
+  // On the survey scene that is NOT view_4070 (the line-item photo-slot
+  // grid photos.js deletes through — survey → line items → photos); it is
+  // view_4160, a DOC_photos grid sourced from the survey's MDF/IDFs (added
+  // 2026-09-10, hidden by hide-data-source-views). removeMdfPhoto() still
+  // checks the save view first (photoInView) and tells the user instead of
+  // failing when a photo isn't in it. Same check applies to view_4158.
   var MDF_PHOTO_REMOVE_VIEWS = {
-    view_3617: 'view_4070',   // survey/bid scene — DOC_photos grid, field_771 inline-editable
+    view_3617: 'view_4160',   // survey/bid scene — MDF/IDF DOC_photos grid, field_771 inline-editable
     view_4060: 'view_4158'    // sub deployment dashboard — DOC_photos grid, field_771 inline-editable
   };
   var PHOTO_IMG_FIELD     = 'field_771';
@@ -963,10 +963,10 @@
     var thumbUrl = btn.getAttribute('data-scw-thumb') || '';
     var fullUrl  = btn.getAttribute('data-scw-full') || thumbUrl;
 
-    // A view-scoped PUT only lands on records the save view can see. On the
-    // survey scene view_4070 is sourced from the LINE-ITEM photo slots, so an
-    // MDF/IDF photo isn't in it until Builder widens the source — say so up
-    // front instead of optimistically removing the thumb and then failing.
+    // A view-scoped PUT only lands on records the save view can see. If the
+    // scene's DOC_photos save view doesn't include this MDF/IDF photo (wrong
+    // source, filter, or the wrong view mapped) say so up front instead of
+    // optimistically removing the thumb and then failing.
     if (photoInView(remView, photoId) === false) {
       console.warn('[scw-ws-v2-mdf] photo ' + photoId + ' is not in ' + remView +
         '’s result set — the remove PUT would be rejected. Builder: the ' +

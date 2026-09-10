@@ -178,6 +178,13 @@
     // and renders them in the project header card — nobody needs the raw
     // 30-column grid at the bottom of the page.
     'view_4159',
+    // 'view_4160' — DOC_photos grid on the survey/bid scene (scene_1140)
+    // sourced from the survey's MDF/IDF photos: the same-scene save view
+    // the worksheet-v2 MDF/IDF band's soft photo REMOVE PUTs through
+    // (mdf-notes.js MDF_PHOTO_REMOVE_VIEWS view_3617 → view_4160; field_771
+    // + field_2865 inline-editable). URL-based PUTs, so display:none is
+    // safe — subs never need the raw grid.
+    'view_4160',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the
