@@ -64,6 +64,58 @@
     view_3577: 'view_3584'    // build-SOW scene — its delete-enabled DOC_photos grid
   };
 
+  // ── MDF photo REMOVE (soft) — the sub-facing scenes ──────────────────
+  // The survey/bid scene (view_3505 → manage view_3617) and the sub-portal
+  // deployment dashboard (view_4056 → view_4060) deliberately carry no hard
+  // delete (above), which left subs with NO way out of a mis-upload —
+  // photos from another site dropped on the wrong headend (SVS, 2026-09-10).
+  // Those scenes get a SOFT remove instead: the image (field_771) is
+  // cleared through the scene's DOC_photos save view (the same view
+  // photo-edit-panel PUTs replacements through — field_771 inline-editable
+  // there), the record stays, and the outgoing asset URL is logged into
+  // its history (field_2865) exactly like qa-popover's Remove photo. Knack
+  // keeps the asset alive at that URL, so SCW can restore it; nothing is
+  // permanently gone. An image-less record renders no <img> in the manage
+  // grid, so it drops out of the strip on the next sweep.
+  //
+  // Keyed by the MANAGE view like the delete map; a hard-delete scene never
+  // gets the soft affordance (delete wins). Falls back to photo-edit-panel's
+  // SAVE_VIEWS (keyed by the worksheet SOURCE view) so a new deployment
+  // that has a photo save view gets the remove for free.
+  var MDF_PHOTO_REMOVE_VIEWS = {
+    view_3617: 'view_4070',   // survey/bid scene — DOC_photos grid, field_771 inline-editable
+    view_4060: 'view_4158'    // sub deployment dashboard — DOC_photos grid, field_771 inline-editable
+  };
+  var PHOTO_IMG_FIELD     = 'field_771';
+  var PHOTO_HISTORY_FIELD = 'field_2865';
+  function photoRemoveView(cfg, sourceViewKey) {
+    if (!cfg) return '';
+    if (MDF_PHOTO_DELETE_VIEWS[cfg.viewKey]) return '';
+    if (MDF_PHOTO_REMOVE_VIEWS[cfg.viewKey]) return MDF_PHOTO_REMOVE_VIEWS[cfg.viewKey];
+    var sv = window.SCW && SCW.photoEditPanel && SCW.photoEditPanel.SAVE_VIEWS;
+    return (sv && sourceViewKey && sv[sourceViewKey]) || '';
+  }
+  function photoUtil() {
+    var u = window.SCW && SCW.photoEditPanel && SCW.photoEditPanel.util;
+    return (u && typeof u.clearFileField === 'function' && typeof u.putRecord === 'function') ? u : null;
+  }
+  // History stamp — same shape as qa-popover's prependHistory so the two
+  // audits read as one log on the photo record.
+  function nowStamp() {
+    var d = new Date();
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+      ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function currentUserName() {
+    try {
+      var u = Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u && u.name) return u.name;
+      if (u && u.values && u.values.name) return u.values.name;
+    } catch (e) { /* ignore */ }
+    return 'Unknown user';
+  }
+
   var PENCIL_SVG =
     '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
     'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -459,10 +511,12 @@
     var sNotes = attrs ? fieldText(attrs, nc.calloutField) : '';
     var notes  = attrs ? fieldText(attrs, nc.editField) : '';
 
-    // Per-photo delete only on scenes with a delete-authorizing DOC_photos
-    // view (ops surfaces). The photo record id is the last 24-hex segment
-    // of its edit-page href.
+    // Per-photo ×: a hard DELETE on scenes with a delete-authorizing
+    // DOC_photos view (ops surfaces), a soft REMOVE (image cleared, record
+    // + history kept) on the sub-facing scenes — see the two maps above.
+    // The photo record id is the last 24-hex segment of its edit-page href.
     var delView = MDF_PHOTO_DELETE_VIEWS[cfg.viewKey] || '';
+    var remView = photoRemoveView(cfg, sourceViewKey);
     var photosHtml = '';
     for (var p = 0; p < photos.length; p++) {
       // The manage grid renders field_771 at /original/ size — swap the
@@ -479,16 +533,28 @@
           : '') + '></a>';
       var hrefIds = String(photos[p].href || '').match(/[a-f0-9]{24}/gi);
       var photoId = hrefIds ? hrefIds[hrefIds.length - 1] : '';
-      photosHtml += (delView && photoId)
-        ? '<span class="' + P + '-thumbwrap">' + thumbA +
+      if (delView && photoId) {
+        photosHtml += '<span class="' + P + '-thumbwrap">' + thumbA +
             '<button type="button" class="' + P + '-thumb-del" ' +
               'data-scw-ws-v2-mdf-photo-del="' + esc(photoId) + '" ' +
               'data-scw-ws-v2-view="' + esc(sourceViewKey) + '" ' +
               'data-scw-thumb="' + esc(pDisp) + '" ' +
               'title="Delete this photo permanently" aria-label="Delete this photo">' +
               '&times;</button>' +
-          '</span>'
-        : thumbA;
+          '</span>';
+      } else if (remView && photoId) {
+        photosHtml += '<span class="' + P + '-thumbwrap">' + thumbA +
+            '<button type="button" class="' + P + '-thumb-del" ' +
+              'data-scw-ws-v2-mdf-photo-rem="' + esc(photoId) + '" ' +
+              'data-scw-ws-v2-view="' + esc(sourceViewKey) + '" ' +
+              'data-scw-thumb="' + esc(pDisp) + '" ' +
+              'data-scw-full="' + esc(pFull) + '" ' +
+              'title="Remove this photo from this MDF/IDF" aria-label="Remove this photo">' +
+              '&times;</button>' +
+          '</span>';
+      } else {
+        photosHtml += thumbA;
+      }
     }
     photosHtml += '<button type="button" class="' + P + '-addphoto" ' +
       'data-scw-ws-v2-mdf-add="' + esc(l1.id) + '" ' +
@@ -817,6 +883,114 @@
     }
   }
 
+  /** Soft-REMOVE one MDF/IDF photo (sub-facing scenes — MDF_PHOTO_REMOVE_VIEWS):
+   *  confirm, clear the image through the scene's DOC_photos save view (the
+   *  record stays), then log the outgoing asset URL into the photo's history
+   *  so SCW can restore it. Optimistic thumb removal; the manage view
+   *  refetches so the band's next sweep agrees (an image-less record renders
+   *  no <img>, so it simply drops out of the strip). */
+  function removeMdfPhoto(btn) {
+    var photoId = btn.getAttribute('data-scw-ws-v2-mdf-photo-rem');
+    var sourceViewKey = btn.getAttribute('data-scw-ws-v2-view');
+    var cfg = manageCfg(sourceViewKey);
+    var remView = photoRemoveView(cfg, sourceViewKey);
+    if (!photoId || !remView) return;
+    var u = photoUtil();
+    if (!u) {
+      alert('The photo tools haven’t finished loading — refresh the page and try again.');
+      return;
+    }
+
+    var block = btn.closest('.scw-ws-v2-l1');
+    var lblEl = block && block.querySelector('.scw-ws-v2-l1-label');
+    var locLabel = (lblEl && lblEl.textContent.trim()) || 'this MDF/IDF';
+    var thumbUrl = btn.getAttribute('data-scw-thumb') || '';
+    var fullUrl  = btn.getAttribute('data-scw-full') || thumbUrl;
+
+    function refetchManage() {
+      try {
+        var mv = Knack.views && Knack.views[cfg.viewKey];
+        if (mv && mv.model && typeof mv.model.fetch === 'function') mv.model.fetch();
+      } catch (e) { /* best-effort */ }
+    }
+    // Audit trail — mirrors qa-popover's "REMOVED PHOTO" entry. Read the
+    // record through the save view first and prepend; only write when the
+    // view actually projects the history column (a PUT of history alone
+    // would otherwise wipe what's there). Never blocks the removal.
+    function logRemoval() {
+      try {
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(remView, photoId),
+          type: 'GET',
+          success: function (rec) {
+            if (!rec || !Object.prototype.hasOwnProperty.call(rec, PHOTO_HISTORY_FIELD)) {
+              console.warn('[scw-ws-v2-mdf] photo history not on ' + remView +
+                ' — removal of ' + photoId + ' not logged (image was ' + fullUrl + ')');
+              return;
+            }
+            var line = nowStamp() + ' — ' + currentUserName() + ' — REMOVED FROM MDF/IDF' +
+              (locLabel ? ' “' + locLabel + '”' : '') +
+              (/^https?:/i.test(fullUrl) ? ': removed version ' + fullUrl : '');
+            line = line.replace(/[<>]/g, function (c) { return c === '<' ? '&lt;' : '&gt;'; });
+            var existing = String(rec[PHOTO_HISTORY_FIELD] || '');
+            var body = {};
+            body[PHOTO_HISTORY_FIELD] = existing ? line + '<br>' + existing : line;
+            u.putRecord(remView, photoId, body).catch(function (err) {
+              console.warn('[scw-ws-v2-mdf] photo history log skipped:',
+                (err && err.message) || err);
+            });
+          },
+          error: function () {
+            console.warn('[scw-ws-v2-mdf] could not read photo ' + photoId +
+              ' via ' + remView + ' — removal not logged (image was ' + fullUrl + ')');
+          }
+        });
+      } catch (e) { /* audit only */ }
+    }
+    function doRemove() {
+      armScrollGuard();
+      var wrap = btn.closest('.' + P + '-thumbwrap');
+      if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);   // optimistic
+      // clearFileField verifies against the PUT response and retries with
+      // '' when null is silently ignored (Knack file-field quirk).
+      u.clearFileField(remView, photoId, PHOTO_IMG_FIELD, {}).then(function () {
+        logRemoval();
+        refetchManage();
+      }).catch(function (err) {
+        var msg = (err && err.message) || 'unknown error';
+        console.warn('[scw-ws-v2-mdf] photo remove failed via ' + remView, {
+          photoId: photoId, error: msg
+        });
+        alert('Couldn’t remove that photo (' + msg + ').' +
+          (/40[34]/.test(msg)
+            ? ' ' + remView + ' may need the photo field inline-editable in Knack Builder.'
+            : ''));
+        refetchManage();   // the thumb comes back if nothing changed
+      });
+    }
+
+    var confirmBody =
+      '<div style="display:flex;gap:12px;align-items:center;text-align:left;">' +
+        (thumbUrl
+          ? '<img src="' + esc(thumbUrl) + '" alt="" style="width:64px;height:64px;' +
+            'object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;flex:none;">'
+          : '') +
+        '<span>This removes the photo from <b>&ldquo;' + esc(locLabel) + '&rdquo;</b>. ' +
+        'SCW keeps a copy on file, so it can be restored if this was a mistake.</span>' +
+      '</div>';
+    if (ns.confirmModal && typeof ns.confirmModal === 'function') {
+      ns.confirmModal({
+        title: 'Remove this photo?',
+        body: confirmBody,
+        okLabel: 'Remove photo',
+        cancelLabel: 'Keep photo'
+      }).then(function (ok) { if (ok) doRemove(); });
+    } else if (window.confirm('Remove this photo from ' + locLabel + '?\n\n' +
+        'SCW keeps a copy on file, so it can be restored if this was a mistake.')) {
+      doRemove();
+    }
+  }
+
   function openPanel(btn) {
     var l1Id = btn.getAttribute('data-scw-ws-v2-mdf-notes');
     var sourceViewKey = btn.getAttribute('data-scw-ws-v2-view');
@@ -1013,6 +1187,15 @@
         e.preventDefault();
         e.stopPropagation();
         deleteMdfPhoto(pdel);
+        return;
+      }
+      // Per-photo soft remove × (sub-facing scenes) — same precedence.
+      var prem = e.target && e.target.closest &&
+        e.target.closest('[data-scw-ws-v2-mdf-photo-rem]');
+      if (prem) {
+        e.preventDefault();
+        e.stopPropagation();
+        removeMdfPhoto(prem);
         return;
       }
       // Photo thumb → same in-place lightbox viewer as the line-item photo
