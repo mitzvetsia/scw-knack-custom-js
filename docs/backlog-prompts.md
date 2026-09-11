@@ -139,3 +139,77 @@ product → SOW list matches a manual filter of proposals in the last 6 months.
 queue) / `bid-review/init.js` `handleReopenBid` for the capped-retry PUT
 pattern the module already mirrors; `product-lifecycle.js` `CONFIG` is the
 only thing that should need editing for the first live run.
+
+---
+
+## 3. Change-order restocking fee → `CO Action = Adjustment` lines (decided 2026-09-11)
+
+**Status:** decided, nothing built. Bundle half is ~a day once the Builder check
+below passes; Builder + Make halves are on ops.
+
+**Context / why:** returning an item on a change order needs a restocking fee
+(e.g. 30%) that is visible on the CO document and the invoice. Two ways were
+tried and rejected on 2026-09-11:
+- **Custom discount on the Remove line** — there is ONE discount slot per line
+  (`field_2261` / `field_2262`), so a fee typed there REPLACES the discount the
+  item originally sold with instead of stacking; and a fee is a charge, not a
+  discount, so it hides inside the credit on the document and the invoice. The
+  CO worksheet's pricing strip now hides the discount inputs on Remove lines
+  (read-only Unit Price / Original discount / Credit).
+- **An Other Services line attached to the returned item** (worksheet-v2
+  `serviceParent`, shipped) — the fee flows through Sub Bid → labor markup
+  ($86.15 became $98.00), lands under Installation, shows as an added service,
+  and Make would create an install item for it at signature. The parent link
+  + "Fees on returned items" band line stay in the bundle for any service that
+  legitimately rides on an item, but they are NOT the fee mechanism.
+
+**The design:** the CO design (`docs/change-orders.md` decision 1) already
+reserves the third value of CO Action `field_2965`: **Add / Remove /
+Adjustment** — "price-only change → a money-only adjustment line (also needed
+for invoice credits)". A restocking fee is exactly that: an ordinary SOW line
+item with `CO Action = Adjustment`, no product, a description ("Restocking fee
+(30%) — Informant Dual Vision"), the fee as a FLAT equipment amount in
+`field_1960` (no labor markup), and `field_2966` (Target install item) → the
+install item being returned, so it renders under the Remove line the same way
+swap pairs pair up. No new line-item type / bucket.
+
+**Builder (do first — gates everything):**
+1. Confirm `field_2965` (CO Action) has the **Adjustment** option. The design doc
+   lists it; add it if missing.
+2. Optional: `CO adjustment reason` text on the SOW line item (design doc lists
+   it; used for the fee's "why" if wanted).
+
+**Make:**
+1. The CO add-line scenario (the one `co-add-item-form.js` / `co-remove.js` post
+   to) accepts `coAction: 'Adjustment'` + `targetInstallItemId` + `amount` +
+   `description`, creates the SOW line item on the CO's SOW with
+   `field_2965 = Adjustment`, `field_2966` = the target, `field_1960` = amount,
+   qty 1, no product, MDF/IDF copied from the target.
+2. **Signature apply:** Adjustment lines are MONEY-ONLY — no install record is
+   created and nothing on the install object changes. Today an Add carrying
+   `field_2966` is treated as a REPLACEMENT (carry-over copy → fresh install
+   item), which would spawn an install item for the fee. Branch on CO Action.
+3. Invoice: Adjustment lines invoice as their own line (equipment side, no
+   labor lump).
+
+**Bundle (after Builder #1):**
+- worksheet-v2 CO worksheet (`view_4079`): "Add restocking fee…" on the Remove
+  line's kebab + the bulk toolbar (co-remove.js is the sibling — it already
+  owns the Remove-line drafting flow and the webhook contract). Prompt for a
+  percentage (default 30), compute `round(|credit| × pct)` from the Remove
+  line's net credit (`field_2269`), post the Adjustment payload above, optimistic
+  row while Make works.
+- Cards: Adjustment rows get their own flag chip ("FEE" / "ADJUSTMENT"), pair
+  with their Remove line via `field_2966` (extend `co-swap-pairs.js`: Remove +
+  Adjustment on one target is a fee pair, not a swap), and `co-value.js` sums
+  them as charges.
+- `proposal-grid-v2.js`: Adjustment lines render beneath the returned item
+  (same slot the parented-service rows use today) and feed the existing
+  "Fees on returned items" band line from EQUIPMENT money; `coEquipmentLines`
+  grows a "Fees on returned items" line so Equipment Net reconciles with the
+  sections; the publish payload / PDF mirror it.
+
+**Verify:** on a test CO, return one discounted item and add a 30% fee →
+document shows credit at what was paid, the fee beneath it, band + Change
+Order Totals agree; sign → no new install item; invoice carries credit + fee
+as separate lines.

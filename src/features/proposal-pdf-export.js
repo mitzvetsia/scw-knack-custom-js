@@ -1798,6 +1798,13 @@
             esc(bucket.label) + '</div>');
           continue;
         }
+        if (bucket.coBandNote) {
+          // Caption beneath the removed band's credit (proposal-grid-v2
+          // rmCreditNote): the credit is net of the original discount.
+          html.push('<div class="co-band-note co-band-note--' + bucket.kind + '">' +
+            esc(bucket.label) + '</div>');
+          continue;
+        }
         if (bucket.coBandTotal) {
           // coBandDisc / coBandNet: the added band's own "Discount on added
           // items" line and net total (proposal-grid-v2 emitPubBands).
@@ -2454,6 +2461,9 @@
       '.co-band-total--fee { color: #163C6E; }',
       '.co-band-total--rm.co-band-total--fee .co-band-total-value { color: #163C6E; }',
       '.co-band-total--net { border-top: 0; margin-top: 0; }',
+      '.co-band-total--fee { margin-bottom: 12px; }',
+      '.co-band-note { text-align: right; font-style: italic; font-size: 11px; color: #5f6b7a; padding: 3px 10px; margin: 0 0 12px; }',
+      '.co-band-note + .co-band-total--fee { margin-top: -10px; }',
       /* Service line riding under a product (restocking fee on a returned
          item): a positive charge inside the removed band is not credit-red. */
       'table.product-table.co-band--rm tbody tr.l4-svc td.col-cost { color: #07467c; }',
@@ -4621,6 +4631,11 @@
             bandText += ' (credit)';
           }
           pushHeader(3, bandText);
+          continue;
+        }
+        if (cCls && cCls.contains('co-band-note')) {
+          flushTable();
+          pushNormal(cleanText(child.textContent));
           continue;
         }
         if (cCls && cCls.contains('co-band-total')) {
