@@ -1520,9 +1520,19 @@
     var accAttrsById = recById(viewKey);
     var accKids = backIndex(viewKey, 'field_2464')[parentId] || [];
 
+    // Service lines attached to this parent (config serviceParent — e.g. a
+    // restocking fee on a CO Remove line) are NOT mounting hardware: they
+    // list separately below as "Related services" chips — no qty stepper,
+    // no wrong-accessory mark, no delete (each keeps its own card).
+    var svcKids = [];
+
     for (var ai = 0; ai < accKids.length; ai++) {
       var arec = accKids[ai];
       if (!arec || !arec.id) continue;
+      if (bucketCategoryOf(arec.attributes || arec, viewKey) === 'services') {
+        svcKids.push(arec);
+        continue;
+      }
       // Label = the accessory's connection identifier (its field_1950 display
       // label, e.g. "… (MDF)"), matching how Knack lists it under a parent;
       // fall back to labelLineItem's "drop · product" composite only when
@@ -1655,11 +1665,38 @@
         'data-scw-ws-v2-add-accessory="' + escapeHtml(parentId) + '" ' +
         'title="Add accessory">+ Add</a>';
 
+    // Related services — one inert chip per attached service line, labelled
+    // by its description (field_2020) so "30% restocking fee …" reads as
+    // itself. Click scrolls to the service's own card (init.js focus-link
+    // handles data-scw-ws-v2-goto).
+    var svcHtml = '';
+    if (svcKids.length) {
+      var svcChips = '';
+      for (var si = 0; si < svcKids.length; si++) {
+        var srec = svcKids[si];
+        var sA   = srec.attributes || srec;
+        var slbl = (readMultiline(sA, 'field_2020') || '').replace(/\s+/g, ' ').trim() ||
+                   labelLineItem(srec) || srec.id;
+        var sShort = slbl.length > 60 ? slbl.slice(0, 57) + '…' : slbl;
+        svcChips += '<span class="scw-ws-v2-mh-chip-wrap scw-ws-v2-mh-chip-wrap--svc">' +
+          '<button type="button" class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--svc" ' +
+            'data-scw-ws-v2-goto="' + escapeHtml(srec.id) + '" ' +
+            'title="' + escapeHtml(slbl) + ' — attached service line (click to jump to it)">' +
+            escapeHtml(sShort) +
+          '</button>' +
+        '</span>';
+      }
+      svcHtml = '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--svc-kids">' +
+        '<div class="scw-ws-v2-detail-label">Related services</div>' +
+        '<div class="scw-ws-v2-mh-list">' + svcChips + '</div>' +
+      '</div>';
+    }
+
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--mh">' +
       '<div class="scw-ws-v2-detail-label">Mounting Hardware</div>' +
       '<div class="scw-ws-v2-mh-list">' + chipsHtml + '</div>' +
       (addHtml ? '<div class="scw-ws-v2-mh-addrow">' + addHtml + '</div>' : '') +
-    '</div>';
+    '</div>' + svcHtml;
   }
 
   function buildDetail_cam(rec, viewKey) {
@@ -1718,11 +1755,25 @@
     '</div>';
   }
 
+  /** True when the view lets service lines carry a parent line item
+   *  (config serviceParent — build-SOW + ops CO worksheets). */
+  function hasServiceParent(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.serviceParent);
+    } catch (e) { return false; }
+  }
+
   function buildDetail_services(rec, viewKey) {
+    // Parent (field_2464) on a service line — opt-in per view; always
+    // shown once a parent is set so it can be changed or cleared. The
+    // same picker + field_2207 cascade as accessory parenting (init.js).
+    var showParent = hasServiceParent(viewKey) || !!readParentRef(rec);
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones scw-ws-v2-detail-zones--no-identity">' +
         salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
+          (showParent ? detailConnection(rec, viewKey, 'field_2464', 'Parent') : '') +
           detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
@@ -2444,9 +2495,15 @@
     // Promoted-bracket marker: the bracket has a parent (field_2464
     // resolves) but is showing as its own row because Require Sub
     // Bid (field_2479) isn\'t No/false. Used by CSS for the amber
-    // left accent + the inline attached-to chip.
+    // left accent + the inline attached-to chip. Service lines with a
+    // parent (config serviceParent) are NOT brackets — they keep their
+    // normal card styling and just carry the "↳ parent" caption.
     if (readParentRef(rec)) {
-      card.classList.add('scw-ws-v2-card--promoted-bracket');
+      if (bucketCategoryOf(rec, sourceViewKey) === 'services') {
+        card.classList.add('scw-ws-v2-card--child-service');
+      } else {
+        card.classList.add('scw-ws-v2-card--promoted-bracket');
+      }
     }
 
     // CO worksheet: visually separate ADD rows from REMOVAL rows by the CO

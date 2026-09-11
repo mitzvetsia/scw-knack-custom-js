@@ -1799,7 +1799,11 @@
           continue;
         }
         if (bucket.coBandTotal) {
-          html.push('<div class="co-band-total co-band-total--' + bucket.kind + '">' +
+          // coBandDisc / coBandNet: the added band's own "Discount on added
+          // items" line and net total (proposal-grid-v2 emitPubBands).
+          html.push('<div class="co-band-total co-band-total--' + bucket.kind +
+            (bucket.coBandDisc ? ' co-band-total--disc' : '') +
+            (bucket.coBandNet ? ' co-band-total--net' : '') + '">' +
             '<span class="co-band-total-label">' + esc(bucket.label) + '</span>' +
             '<span class="co-band-total-value">' + esc(bucket.cost) + '</span></div>');
           continue;
@@ -1946,22 +1950,25 @@
       }
 
       if (section.footer && section.footer.lines.length) {
-        html.push('<div class="l1-footer">');
-        html.push('<div class="l1-footer-title">' + esc(section.footer.title) + '</div>');
-        for (var fl = 0; fl < section.footer.lines.length; fl++) {
-          var line = section.footer.lines[fl];
-          // On a CO the per-section "Total" line duplicates the Change
-          // Order Total directly beneath it (single-section COs are the
-          // norm) — drop it. Subtotal/Discount lines, if any, stay.
-          if (isChangeOrder && line.type === 'final' && /^total$/i.test(line.label || '')) {
-            continue;
+        // On a CO the per-section "Total" line duplicates the Change Order
+        // Total directly beneath it (single-section COs are the norm) — drop
+        // it. Subtotal/Discount lines, if any, stay. A footer left with no
+        // lines is skipped whole (no orphan title).
+        var footerLines = section.footer.lines.filter(function (line) {
+          return !(isChangeOrder && line.type === 'final' && /^total$/i.test(line.label || ''));
+        });
+        if (footerLines.length) {
+          html.push('<div class="l1-footer">');
+          html.push('<div class="l1-footer-title">' + esc(section.footer.title) + '</div>');
+          for (var fl = 0; fl < footerLines.length; fl++) {
+            var line = footerLines[fl];
+            html.push('<div class="l1-footer-line l1-line--' + line.type + ' l1-line--' + labelSlug(line.label) + '">');
+            html.push('<span class="l1-footer-label">' + esc(line.label) + '</span>');
+            html.push('<span class="l1-footer-value">' + esc(line.value) + '</span>');
+            html.push('</div>');
           }
-          html.push('<div class="l1-footer-line l1-line--' + line.type + ' l1-line--' + labelSlug(line.label) + '">');
-          html.push('<span class="l1-footer-label">' + esc(line.label) + '</span>');
-          html.push('<span class="l1-footer-value">' + esc(line.value) + '</span>');
           html.push('</div>');
         }
-        html.push('</div>');
       }
 
       html.push('</div>');
@@ -2432,6 +2439,12 @@
       '.co-band-total--add { background: #dcfce7; color: #065f46; border-top: 2px solid #059669; }',
       '.co-band-total--rm  { background: #eef2f7; color: #334155; border-top: 2px solid #64748b; }',
       '.co-band-total--rm .co-band-total-value { color: #be123c; }',
+      /* Added band: subtotal (list) · discount on added items · total read as
+         one block — the subtotal drops its bottom gap, the discount line is
+         a quiet orange sub-line, the net total closes the block. */
+      '.co-band-total--add + .co-band-total--disc { margin-top: -12px; }',
+      '.co-band-total--disc { background: #f7fdf9; color: #d97706; font-weight: 700; border-top: 0; margin: 0; padding-top: 4px; padding-bottom: 4px; }',
+      '.co-band-total--net { border-top: 0; margin-top: 0; }',
       '',
       '/* ── Report / BOM Table ── */',
       '.report-table-wrap { margin-top: 30px; }',

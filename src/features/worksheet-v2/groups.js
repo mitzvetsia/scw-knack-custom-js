@@ -63,6 +63,10 @@
   // with no money to adjust, so there's nothing to promote a row for.
   var ACC_ALWAYS_ATTACH          = false;
   var MOUNTING_HARDWARE_BUCKET   = '594a94536877675816984cb9';
+  // Service lines may carry a parent (config serviceParent — e.g. a CO
+  // restocking fee attached to its Remove line) but are never "attached
+  // and hidden": they always render as their own row.
+  var SERVICES_BUCKET            = '6977caa7f246edf67b52cbcd';
   var SYNTHETIC_ORPHAN_BRACKETS_LABEL = 'Orphaned Accessories';
 
   function bucketIdOf(rec) {
@@ -96,10 +100,13 @@
     for (var j = 0; j < records.length; j++) {
       var rec = records[j];
       if (!rec || !rec.id) continue;
-      // No bucket check — any record (any bucket) is "attached and
-      // hidden" when it has a parent AND its Require Sub Bid flag is
-      // explicitly No/false. Otherwise it shows as its own line item.
-      // ACC_ALWAYS_ATTACH (install) skips the promote rule entirely.
+      // Any non-service record (any bucket) is "attached and hidden" when
+      // it has a parent AND its Require Sub Bid flag is explicitly
+      // No/false. Otherwise it shows as its own line item. Service lines
+      // with a parent always keep their own row (the parent lists them
+      // as "Related services" chips instead). ACC_ALWAYS_ATTACH (install)
+      // skips the promote rule entirely.
+      if (bucketIdOf(rec) === SERVICES_BUCKET) continue;
       if (!ACC_ALWAYS_ATTACH && !isRequireSubBidNoOrFalse(rec)) continue;
       var raw = rec[ACCESSORY_PARENT_FIELD + '_raw'];
       if (!Array.isArray(raw)) continue;

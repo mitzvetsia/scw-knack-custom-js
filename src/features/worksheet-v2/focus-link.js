@@ -77,6 +77,21 @@
     return true;
   };
 
+  // ── In-page jump chips ──────────────────────────────────────────────
+  // Any element carrying data-scw-ws-v2-goto="<record id>" (e.g. the
+  // "Related services" chips under a parent card) jumps to that card.
+  // Capture-phase so the card's own expand/collapse handlers don't fire.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-goto-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-goto-bound', '1');
+    document.addEventListener('click', function (e) {
+      var t = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-goto]');
+      if (!t) return;
+      e.preventDefault();
+      e.stopPropagation();
+      ns.focusRecord(t.getAttribute('data-scw-ws-v2-goto'));
+    }, true);
+  }
+
   // ── URL deep link (?scwItem=…) ──────────────────────────────────────
   var m = (window.location.search || '').match(/[?&]scwItem=([a-f0-9]{24})/i);
   if (!m) return;

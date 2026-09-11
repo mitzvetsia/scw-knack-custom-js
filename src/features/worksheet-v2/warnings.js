@@ -371,9 +371,39 @@
     return '';
   }
 
+  /** Ids of the SERVICES-bucket records loaded on the view. A service line
+   *  attached to a parent (config serviceParent — e.g. a CO restocking fee
+   *  on its Remove line) is not mounting hardware, so Knack's per-accessory
+   *  match check (field_2244) saying "No" for it must not raise the
+   *  wrong-accessory warning on the parent. */
+  function servicesIdSet(viewKey) {
+    var set = Object.create(null);
+    try {
+      var SVC = (ns.cfg && typeof ns.cfg.bucket === 'function' && ns.cfg.bucket('services', viewKey)) ||
+                (ns.card && ns.card.SERVICES_BUCKET) || '6977caa7f246edf67b52cbcd';
+      var bf = (ns.cfg && ns.cfg.fields(viewKey).bucket) || 'field_2219';
+      var kv = window.Knack && Knack.views && Knack.views[viewKey];
+      var models = (kv && kv.model && kv.model.data && kv.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var m = models[i]; if (!m || !m.id) continue;
+        var a = m.attributes || m;
+        var raw = a[bf + '_raw'];
+        var id = Array.isArray(raw) ? (raw[0] && raw[0].id) : (raw && raw.id);
+        if (id === SVC) set[m.id] = true;
+      }
+    } catch (e) { /* best-effort */ }
+    return set;
+  }
+
   function buildBracketMaps(viewKey) {
     var byAccessory = Object.create(null);
     var byParent = Object.create(null);
+    var svc = servicesIdSet(viewKey);
+    function flag(accId, parentId) {
+      if (!accId || svc[accId]) return;   // attached SERVICE line — not a bracket
+      byAccessory[accId] = true;
+      if (parentId) byParent[parentId] = true;
+    }
 
     // (1) connected-records' computed warnings (the correct, parent-derived
     //     signal). Document-wide so it works regardless of which SOW-item
@@ -383,9 +413,7 @@
       var rem = warns[w].querySelector('.scw-cr-remove[data-record-id]');
       var aId = rem ? (rem.getAttribute('data-record-id') || '').trim() : '';
       if (!aId) continue;
-      byAccessory[aId] = true;
-      var pId = ownerRecordId(warns[w]);
-      if (pId) byParent[pId] = true;
+      flag(aId, ownerRecordId(warns[w]));
     }
 
     // (2) Raw per-accessory field_2244 spans on the source view (covers
@@ -403,10 +431,7 @@
         for (var s = 0; s < spans.length; s++) {
           var accId = (spans[s].id || '').trim();
           var v = (spans[s].textContent || '').trim().toLowerCase();
-          if (accId && (v === 'no' || v === 'false')) {
-            byAccessory[accId] = true;
-            if (parentId) byParent[parentId] = true;
-          }
+          if (accId && (v === 'no' || v === 'false')) flag(accId, parentId);
         }
       }
     }

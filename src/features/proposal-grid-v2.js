@@ -334,13 +334,17 @@
     }
 
     // Split accessories (field_2464 → a parent that's IN this record set).
+    // SERVICE lines can carry a parent too (worksheet-v2 serviceParent —
+    // e.g. a restocking fee attached to the item it applies to) but they
+    // are not mounting hardware: they stay main records in their own
+    // Services bucket / CO band, priced and described as themselves.
     var accByParent = Object.create(null);
     var mainRecs = [];
     for (i = 0; i < records.length; i++) {
       r = records[i];
       if (!r || !r.id) continue;
       var pConn = connFirst(r, F.accessoryParent);
-      if (pConn && pConn.id !== r.id && byId[pConn.id]) {
+      if (pConn && pConn.id !== r.id && byId[pConn.id] && !isServicesRec(r)) {
         (accByParent[pConn.id] = accByParent[pConn.id] || []).push(r);
       } else {
         mainRecs.push(r);
@@ -539,6 +543,58 @@
     c = connFirst(rec, CONFIG.fields.bucketSort);
     return !!(c && c.id === CONFIG.camReaderBucketId);
   }
+  function isServicesRec(rec) {
+    var c = connFirst(rec, CONFIG.fields.bucket);
+    if (c && CONFIG.servicesBucketIds.indexOf(c.id) !== -1) return true;
+    c = connFirst(rec, CONFIG.fields.bucketSort);
+    if (c && CONFIG.servicesBucketIds.indexOf(c.id) !== -1) return true;
+    return norm(readText(rec, CONFIG.fields.bucket)).toLowerCase() === 'services';
+  }
+  // ── CO money helpers ───────────────────────────────────────────────
+  // A change order carries two kinds of line discount that pull in opposite
+  // directions: a concession on ADDED gear (money off) and the discount the
+  // REMOVED gear originally sold with (the credit is what the customer PAID,
+  // not list). Netting the two into one "Discount" line per section produced
+  // a sign-flipped total (abs of a negative net) and a number nobody could
+  // read once the rates differed. So on a CO:
+  //   - Removed band lines + totals show the NET credit (list − own discount).
+  //   - Added band shows list, with its own "Discount on added items" line
+  //     and a band total beneath.
+  //   - Section footers show one net Total; the Change Order Totals block
+  //     breaks equipment into added / discount / removed-credit / net.
+  // Base proposals only carry positive discounts and keep their layout.
+  function discSum(recs) { return sumRecs(recs, CONFIG.fields.lineDiscount); }
+  /** Equipment (hardware) sum — net of the line discounts when `net`. */
+  function hardwareSum(recs, net) {
+    var h = sumRecs(recs, CONFIG.fields.hardware);
+    return net ? h - discSum(recs) : h;
+  }
+  /** Change Order Totals equipment breakdown (shared by the on-page render
+   *  and the publish payload): [{type, label, value}] in display order —
+   *  'sub' Equipment added (list) · 'disc' Discount on added items ·
+   *  'sub' Equipment removed (credit, net). Lines that would be $0 or that
+   *  have no records behind them are omitted. `fmt` formats money. */
+  function coEquipmentLines(records, fmt) {
+    fmt = fmt || money;
+    var addRecs = [], rmRecs = [];
+    for (var i = 0; i < records.length; i++) {
+      (coActionOf(records[i]) === 'remove' ? rmRecs : addRecs).push(records[i]);
+    }
+    var equipAdd   = hardwareSum(addRecs, false);
+    var discAdd    = discSum(addRecs);
+    var equipRmNet = hardwareSum(rmRecs, true);
+    var lines = [];
+    if (addRecs.length && Math.abs(equipAdd) > 0.004) {
+      lines.push({ type: 'sub', label: 'Equipment added', value: fmt(equipAdd) });
+    }
+    if (Math.abs(discAdd) > 0.004) {
+      lines.push({ type: 'disc', label: 'Discount on added items', value: (discAdd < 0 ? '+' : '-') + fmt(Math.abs(discAdd)) });
+    }
+    if (rmRecs.length && Math.abs(equipRmNet) > 0.004) {
+      lines.push({ type: 'sub', label: 'Equipment removed (credit)', value: fmt(equipRmNet) });
+    }
+    return lines;
+  }
 
   // ── render ────────────────────────────────────────────────────────
   function tbd() { return '<span class="scw-pg2-tbd">TBD</span>'; }
@@ -577,11 +633,13 @@
 
     function emitProductBlock(product, accessories, bctx, tint, first) {
       var tintCls = tint ? ' scw-pg2-co-' + tint : '';
+      // Removed band on a CO: equipment credits at what the customer paid.
+      var netRm = isCO && tint === 'rm';
 
       // L3 product line — qty/cost of PARENT devices only.
       if (!bctx.hideL3 && !isBlankish(product.label)) {
         var pQty = sumRecs(product.items, F.qty);
-        var pHardware = sumRecs(product.items, F.hardware);
+        var pHardware = hardwareSum(product.items, netRm);
         pushRow('scw-pg2-l3' + (first ? ' scw-pg2-l3--first' : '') + tintCls, [
           { html: esc(product.label) },
           { html: '<strong>' + Math.round(pQty) + '</strong>' },
@@ -655,7 +713,7 @@
         order.forEach(function (name) {
           var grp = byProduct[name];
           var gQty = sumRecs(grp, F.qty);
-          var gHardware = sumRecs(grp, F.hardware);
+          var gHardware = hardwareSum(grp, netRm);
           var gLabor = sumRecs(grp, F.labor);
           // Parent designators — cam/reader parents only (v1 parity).
           var parentRecs = [];
@@ -719,29 +777,47 @@
         pushRow('scw-pg2-band scw-pg2-band--' + band, [
           { html: esc(bandLabel) }, { html: '' }, { html: '' }
         ]);
-        var bandQty = 0, bandCost = 0;
+        // Removed band: every line and total is the NET credit (what was
+        // paid). Added band: list, then the band's own discount + total.
+        var bandQty = 0, bandCost = 0, bandDisc = 0;
         inBand.forEach(function (e) {
           if (!sectionPromoted) emitBucketHeaderRow(e.bctx, false, false);
-          var q = 0, c = 0;
+          var q = 0, c = 0, d = 0;
           e.prs.forEach(function (pr, pi) {
             emitProductBlock(pr.product, pr.accessories, e.bctx, band, pi === 0);
             pr.product.items.concat(pr.accessories).forEach(function (r) {
               q += readNum(r, F.qty);
-              c += readNum(r, F.cost);
+              var disc = readNum(r, F.lineDiscount);
+              c += readNum(r, F.cost) - (band === 'rm' ? disc : 0);
+              if (band === 'add') d += disc;
             });
           });
-          bandQty += q; bandCost += c;
+          bandQty += q; bandCost += c; bandDisc += d;
           pushRow('scw-pg2-band-sub scw-pg2-band-sub--' + band, [
             { html: '<strong>' + esc(e.bctx.displayLabel) + '</strong>', cls: 'scw-pg2-l2foot-label' },
             { html: '<strong>' + Math.round(q) + '</strong>' },
             { html: '<strong>' + esc(bandMoney(c)) + '</strong>' }
           ]);
         });
-        pushRow('scw-pg2-band-total scw-pg2-band-total--' + band, [
-          { html: '<strong>' + esc(bandLabel + ' — subtotal') + '</strong>', cls: 'scw-pg2-l2foot-label' },
+        var hasBandDisc = band === 'add' && Math.abs(bandDisc) > 0.004;
+        pushRow('scw-pg2-band-total scw-pg2-band-total--' + band +
+                (hasBandDisc ? ' scw-pg2-band-total--has-disc' : ''), [
+          { html: '<strong>' + esc(bandLabel + (band === 'rm' ? ' — credit' : ' — subtotal')) + '</strong>', cls: 'scw-pg2-l2foot-label' },
           { html: '<strong>' + Math.round(bandQty) + '</strong>' },
           { html: '<strong>' + esc(bandMoney(bandCost)) + '</strong>' }
         ]);
+        if (hasBandDisc) {
+          pushRow('scw-pg2-band-disc scw-pg2-band-disc--' + band, [
+            { html: 'Discount on added items', cls: 'scw-pg2-l2foot-label' },
+            { html: '' },
+            { html: esc((bandDisc < 0 ? '+' : '–') + money(Math.abs(bandDisc))) }
+          ]);
+          pushRow('scw-pg2-band-total scw-pg2-band-total--' + band + ' scw-pg2-band-net', [
+            { html: '<strong>' + esc(bandLabel + ' — total') + '</strong>', cls: 'scw-pg2-l2foot-label' },
+            { html: '' },
+            { html: '<strong>' + esc(bandMoney(bandCost - bandDisc)) + '</strong>' }
+          ]);
+        }
       });
     }
 
@@ -851,12 +927,18 @@
       var labor = laborSum(recs);
       var subtotal = hardware + labor;
       if (Math.abs(subtotal) < 0.01) return;
-      var discount = Math.abs(sumRecs(recs, F.lineDiscount));
-      var hasDiscount = discount > 0.004;
+      // SIGNED sum — on a CO the Removed band's discounts are negative (the
+      // credit shrinks to what was paid) and must ADD to the total; abs()
+      // subtracted them and shorted the section by twice the net discount.
+      var discount = sumRecs(recs, F.lineDiscount);
+      var hasDiscount = Math.abs(discount) > 0.004;
       rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--title', title: title });
-      if (hasDiscount) {
+      if (isCO) {
+        // The bands above already explain the money per side; one net Total.
+        rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--final scw-pg2-l1foot--last', label: 'Total', value: money(subtotal - discount) });
+      } else if (hasDiscount) {
         rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--sub', label: 'Subtotal', value: money(subtotal) });
-        rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--disc', label: 'Discount', value: '–' + money(discount) });
+        rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--disc', label: 'Discount', value: (discount < 0 ? '+' : '–') + money(Math.abs(discount)) });
         rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--final scw-pg2-l1foot--last', label: 'Total', value: money(subtotal - discount) });
       } else {
         rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--final scw-pg2-l1foot--last', label: 'Total', value: money(subtotal) });
@@ -876,10 +958,15 @@
 
       rows.push({ cls: 'scw-pg2-pt scw-pg2-l1foot--title scw-pg2-pt--first',
         title: isCO ? 'Change Order Totals' : 'Project Totals' });
-      if (hasAnyDiscount) {
+      if (isCO) {
+        // Added (list) / discount on added / removed credit (net) → net.
+        coEquipmentLines(tree.allRecords).forEach(function (ln) {
+          rows.push({ cls: 'scw-pg2-pt scw-pg2-l1foot--' + ln.type + ' scw-pg2-pt--tight', label: ln.label, value: ln.value });
+        });
+      } else if (hasAnyDiscount) {
         rows.push({ cls: 'scw-pg2-pt scw-pg2-l1foot--sub scw-pg2-pt--tight', label: 'Equipment Subtotal', value: money(equipmentSubtotal) });
         if (lineItemDiscounts !== 0) {
-          rows.push({ cls: 'scw-pg2-pt scw-pg2-l1foot--disc scw-pg2-pt--tight', label: 'Line Item Discounts', value: '–' + money(Math.abs(lineItemDiscounts)) });
+          rows.push({ cls: 'scw-pg2-pt scw-pg2-l1foot--disc scw-pg2-pt--tight', label: 'Line Item Discounts', value: (lineItemDiscounts < 0 ? '+' : '–') + money(Math.abs(lineItemDiscounts)) });
         }
       }
       rows.push({ cls: 'scw-pg2-pt scw-pg2-l1foot--final scw-pg2-pt--equipment', label: isCO ? 'Equipment Net' : 'Equipment Total', value: money(equipmentTotal) });
@@ -1204,12 +1291,15 @@
     function l1FooterData(title, recs) {
       var subtotal = sumRecs(recs, F.hardware) + sumRecs(recs, F.labor);
       if (Math.abs(subtotal) < 0.01) return null;
-      var discount = Math.abs(sumRecs(recs, F.lineDiscount));
-      var hasDiscount = discount > 0.004;
+      // SIGNED (see pushL1Footer): a CO's removed-side discounts are negative.
+      var discount = sumRecs(recs, F.lineDiscount);
+      var hasDiscount = Math.abs(discount) > 0.004;
       var lines = [];
-      if (hasDiscount) {
+      if (isCO) {
+        lines.push({ type: 'final', label: 'Total', value: pubMoney(subtotal - discount) });
+      } else if (hasDiscount) {
         lines.push({ type: 'sub', label: 'Subtotal', value: pubMoney(subtotal) });
-        lines.push({ type: 'disc', label: 'Discount', value: '-' + pubMoney(discount) });
+        lines.push({ type: 'disc', label: 'Discount', value: (discount < 0 ? '+' : '-') + pubMoney(Math.abs(discount)) });
         lines.push({ type: 'final', label: 'Total', value: pubMoney(subtotal - discount) });
       } else {
         lines.push({ type: 'final', label: 'Total', value: pubMoney(subtotal) });
@@ -1225,6 +1315,8 @@
       var synth = null;
       prs.forEach(function (pr) {
         var product = pr.product, accessories = pr.accessories;
+        // Removed band on a CO: equipment credits at what the customer paid.
+        var netRm = isCO && pr.band === 'rm';
         var prod = null;
         if (!bctx.hideL3 && !isBlankish(product.label)) {
           var cd = connDevicesOf(product.items);
@@ -1251,7 +1343,7 @@
           prod = {
             level: 3, label: product.label,
             qty: Math.round(sumRecs(product.items, F.qty)),
-            cost: pubMoney(sumRecs(product.items, F.hardware)),
+            cost: pubMoney(hardwareSum(product.items, netRm)),
             rate: '', hideCost: false,
             connectedDevices: cd.list,
             connectedDevicesCount: cd.count,
@@ -1304,7 +1396,7 @@
             prod.lineItems.push({
               level: 4, label: nm, description: '',
               qty: Math.round(sumRecs(grp, F.qty)),
-              cost: pubMoney(sumRecs(grp, F.hardware)),
+              cost: pubMoney(hardwareSum(grp, netRm)),
               cameraList: designatorList(parentRecs),
               // Relocated EQUIPMENT accessory — must NOT be TBD-masked.
               isEquipment: true,
@@ -1344,16 +1436,20 @@
         if (!inBand.length) return;
         var bandLabel = band === 'add' ? 'Items to be Added' : 'Items to be Removed';
         sec.buckets.push({ level: 2, coBandHeader: true, kind: band, label: bandLabel, products: [], footer: null });
-        var bandCost = 0;
+        // Same money rules as the on-page render (emitBands): removed band
+        // at the NET credit; added band at list + its own discount/total.
+        var bandCost = 0, bandDisc = 0;
         inBand.forEach(function (e) {
-          var q = 0, c = 0;
+          var q = 0, c = 0, d = 0;
           e.prs.forEach(function (pr) {
             pr.product.items.concat(pr.accessories).forEach(function (r) {
               q += readNum(r, F.qty);
-              c += readNum(r, F.cost);
+              var disc = readNum(r, F.lineDiscount);
+              c += readNum(r, F.cost) - (band === 'rm' ? disc : 0);
+              if (band === 'add') d += disc;
             });
           });
-          bandCost += c;
+          bandCost += c; bandDisc += d;
           sec.buckets.push({
             level: 2, label: e.bctx.displayLabel, isPromoted: promotedSec,
             coBand: band,
@@ -1361,7 +1457,17 @@
             footer: { label: e.bctx.displayLabel, qty: Math.round(q), cost: bandMoney(c), coBand: band },
           });
         });
-        sec.buckets.push({ level: 2, coBandTotal: true, kind: band, label: bandLabel + ' — subtotal', cost: bandMoney(bandCost), products: [], footer: null });
+        sec.buckets.push({ level: 2, coBandTotal: true, kind: band,
+          label: bandLabel + (band === 'rm' ? ' — credit' : ' — subtotal'),
+          cost: bandMoney(bandCost), products: [], footer: null });
+        if (band === 'add' && Math.abs(bandDisc) > 0.004) {
+          sec.buckets.push({ level: 2, coBandTotal: true, coBandDisc: true, kind: band,
+            label: 'Discount on added items',
+            cost: (bandDisc < 0 ? '+' : '-') + pubMoney(Math.abs(bandDisc)), products: [], footer: null });
+          sec.buckets.push({ level: 2, coBandTotal: true, coBandNet: true, kind: band,
+            label: bandLabel + ' — total',
+            cost: bandMoney(bandCost - bandDisc), products: [], footer: null });
+        }
       });
     }
 
@@ -1455,9 +1561,13 @@
       var installationTotal = sumRecs(tree.allRecords, F.labor);
       var grandTotal = equipmentTotal + installationTotal - proposalDiscount;
       projectTotals = { title: isCO ? 'Change Order Totals' : 'Project Totals', lines: [] };
-      if (lineItemDiscounts !== 0 || proposalDiscount !== 0) {
+      if (isCO) {
+        coEquipmentLines(tree.allRecords, pubMoney).forEach(function (ln) {
+          projectTotals.lines.push(ln);
+        });
+      } else if (lineItemDiscounts !== 0 || proposalDiscount !== 0) {
         projectTotals.lines.push({ type: 'sub', label: 'Equipment Subtotal', value: pubMoney(equipmentSubtotal) });
-        if (lineItemDiscounts !== 0) projectTotals.lines.push({ type: 'disc', label: 'Line Item Discounts', value: '-' + pubMoney(Math.abs(lineItemDiscounts)) });
+        if (lineItemDiscounts !== 0) projectTotals.lines.push({ type: 'disc', label: 'Line Item Discounts', value: (lineItemDiscounts < 0 ? '+' : '-') + pubMoney(Math.abs(lineItemDiscounts)) });
       }
       projectTotals.lines.push({ type: 'final', label: isCO ? 'Equipment Net' : 'Equipment Total', value: pubMoney(equipmentTotal) });
       projectTotals.lines.push({ type: 'final', label: isCO ? 'Installation Net' : 'Installation Total', value: pubMoney(installationTotal) });
@@ -1559,6 +1669,12 @@
       '.scw-pg2-band-total--add td { background: #dcfce7; color: #065f46; border-top: 2px solid #059669; }',
       '.scw-pg2-band-total--rm td { background: #eef2f7; color: #334155; border-top: 2px solid #64748b; }',
       '.scw-pg2-table .scw-pg2-band-sub--rm td:nth-child(3), .scw-pg2-table .scw-pg2-band-total--rm td:nth-child(3) { color: #be123c; }',
+      /* Added band with a discount: subtotal (list) · discount · total. The
+         subtotal loses its bottom gap so the three read as one block. */
+      '.scw-pg2-band-total--has-disc td { border-bottom: 0; }',
+      '.scw-pg2-band-disc td { background: #f7fdf9; background-clip: padding-box; color: orange; font-weight: 700; padding-top: 4px; padding-bottom: 4px; }',
+      '.scw-pg2-band-disc td:first-child { text-align: right; }',
+      '.scw-pg2-band-net td { border-top: 0 !important; }',
       // Missing-columns notice
       '.scw-pg2-notice { margin: 10px 0; padding: 10px 14px; border: 1px solid #f5d199; border-radius: 8px; background: #fff9ec; color: #7a4a09; font: 13px/1.5 system-ui, sans-serif; }',
       '.scw-pg2-notice code { font-size: 12px; color: #92400e; }',

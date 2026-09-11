@@ -112,6 +112,9 @@
       {
         // Build-SOW page (internal). The canonical deployment.
         sourceViewKey:    'view_3962',
+        // Service lines may be attached to a parent line item (field_2464)
+        // — same opt-in as the CO worksheet (see the view_4079 entry).
+        serviceParent:    true,
         // Mount directly after view_3369 so the panel lands as the last child
         // of its layout group (group 7), where end users expect the worksheet.
         // (view_3610, the retired v1 grid, has been removed from the scene.)
@@ -621,6 +624,14 @@
         // The same logical keys feed edit.js RECALC_DEPS (a discount edit
         // refetches the record so the CALC cells refresh).
         pricingDetail:      true,
+        // Service lines can be attached to a parent line item (field_2464)
+        // — e.g. a restocking fee attached to the Remove line it applies
+        // to. The service keeps its own card (never folds into the
+        // parent's mounting-hardware chips) and lists under the parent as
+        // a "Related services" chip. ⚠ Builder: the parent cascade PUTs
+        // field_2207 on the parent through this view (already required
+        // for accessory parenting).
+        serviceParent:      true,
         fields:  {
           retailPrice:     'field_1960', // PRODUCT STORED_price (unit list price)
           lineDiscPct:     'field_2261', // INPUT line discount % (editable)

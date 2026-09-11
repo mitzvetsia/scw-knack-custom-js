@@ -1588,6 +1588,25 @@
     '  background: #dbeafe !important;',
     '  border-color: #93c5fd !important;',
     '}',
+    /* "Related services" chips under a parent (service lines attached via
+       field_2464 — config serviceParent). Slate instead of the blue hardware
+       tint so they don't read as brackets; the chip is a button that jumps
+       to the service's own card. */
+    '.scw-ws-v2-mh-chip-wrap--svc {',
+    '  background: #f1f5f9 !important;',
+    '  border-color: #cbd5e1 !important;',
+    '  padding: 3px 10px !important;',
+    '}',
+    '.scw-ws-v2-mh-chip-wrap--svc:hover {',
+    '  background: #e2e8f0 !important;',
+    '  border-color: #94a3b8 !important;',
+    '}',
+    '.scw-ws-v2-mh-chip--svc {',
+    '  cursor: pointer !important;',
+    '  color: #334155 !important;',
+    '  max-width: 320px !important;',
+    '  overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;',
+    '}',
     /* Wrong-bracket accessory — amber chip + inline "wrong bracket" marker. */
     '.scw-ws-v2-mh-chip-wrap--warn {',
     '  background: #fffbeb !important;',
