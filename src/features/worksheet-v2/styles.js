@@ -341,6 +341,42 @@
     '.scw-ws-v2-cell--net {',
     '  font-weight: 600 !important; color: #0f172a !important;',
     '}',
+    /* Custom-discount pricing strip (config pricingDetail — ops CO worksheet).
+       Spans the full detail-zones grid as a single wrapping row above the
+       identity / connections zones: Unit Price · Custom Disc % · Custom Disc
+       $ each · Applied Discount · Net unit · Total · Discount reason. Money
+       values right-align; the reason box takes the remaining width. */
+    '.scw-ws-v2-detail-zone--pricing-co {',
+    '  grid-column: 1 / -1 !important;',
+    '  display: flex !important;',
+    '  flex-wrap: wrap !important;',
+    '  gap: 8px 18px !important;',
+    '  align-items: flex-end !important;',
+    '  padding: 0 0 10px !important;',
+    '  margin: 0 0 10px !important;',
+    '  border-bottom: 1px solid #e2e8f0 !important;',
+    '}',
+    '.scw-ws-v2-detail-zone--pricing-co > .scw-ws-v2-detail-field {',
+    '  flex: 0 0 auto !important;',
+    '  min-width: 88px !important;',
+    '}',
+    '.scw-ws-v2-detail-zone--pricing-co .scw-ws-v2-input--num {',
+    '  width: 96px !important;',
+    '  text-align: right !important;',
+    '}',
+    '.scw-ws-v2-detail-zone--pricing-co .scw-ws-v2-detail-field--ro .scw-ws-v2-display {',
+    '  text-align: right !important;',
+    '  min-width: 88px !important;',
+    '}',
+    '.scw-ws-v2-pricing-reason {',
+    '  flex: 1 1 220px !important;',
+    '  min-width: 180px !important;',
+    '}',
+    '.scw-ws-v2-pricing-reason .scw-ws-v2-detail-field,',
+    '.scw-ws-v2-pricing-reason .scw-ws-v2-input--text {',
+    '  width: 100% !important;',
+    '  box-sizing: border-box !important;',
+    '}',
     /* Equip assumptions: the base rule spans desc 3/10 (tuned to the
        12-track SOW grid, where sow/warn/kebab then autoplace at 10-12).
        This grid has no sow track but adds equip + net, so respan the desc

@@ -604,9 +604,32 @@
         // (view_4112, laborOnly) never renders SCW-side money, and the
         // laborOnly gate keeps this flag inert if the entry is ever cloned.
         // ⚠ Builder dependency: field_1960 must be an inline-editable column
-        // on view_4079 or the view-based PUT silently drops the edit.
+        // on view_4079 or the view-based PUT silently drops the edit (edit.js
+        // now detects the 200-but-unchanged response and toasts the cause).
         equipmentField:     'field_1960',
-        fields:  {},
+        // Custom discount on the CO card's detail panel (card.js
+        // pricingDetail zone): Custom Disc % (field_2261) + Custom Disc $ each
+        // (field_2262) + reason (field_2263) editable, Applied Discount
+        // (field_2303) / Net unit (field_2268) / Total (field_2269) read-only.
+        // Pricing a CO line through the discount fields is the supported path
+        // when a rule re-stamps the unit price from the product — and it's
+        // how a REMOVE line credits at the price the item was bought for:
+        // the removal's discount fields stack ON TOP of the unit price the
+        // line was created with, so an extra line-level credit/fee is just
+        // a value in Custom Disc $ each. ⚠ Builder dependency: field_2261 /
+        // field_2262 / field_2263 inline-editable columns on view_4079.
+        // The same logical keys feed edit.js RECALC_DEPS (a discount edit
+        // refetches the record so the CALC cells refresh).
+        pricingDetail:      true,
+        fields:  {
+          retailPrice:     'field_1960', // PRODUCT STORED_price (unit list price)
+          lineDiscPct:     'field_2261', // INPUT line discount % (editable)
+          lineDiscAmt:     'field_2262', // INPUT line discount $ each (editable)
+          lineDiscReason:  'field_2263', // discount reason notes (editable)
+          appliedDiscount: 'field_2303', // CALC extended discount (read-only)
+          netUnit:         'field_2268', // CALC unit price after discounts (read-only)
+          total:           'field_2269'  // CALC line total (read-only)
+        },
         buckets: {}
       }
 

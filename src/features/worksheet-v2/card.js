@@ -650,15 +650,54 @@
   }
 
   /** Sales-only detail zone — Retail Price (ro), Discount % (editable),
-   *  Applied Discount (ro), Total (ro). Empty string for non-sales views. */
+   *  Applied Discount (ro), Total (ro). Empty string for non-sales views.
+   *
+   *  Views with config pricingDetail:true (the ops CO worksheet, view_4079)
+   *  get the fuller custom-discount zone instead: Unit Price (ro — it's the
+   *  editable Equip $ stack on the summary row), Custom Disc % + Custom
+   *  Disc $ each + reason (editable), Applied Discount / Net unit / Total
+   *  (ro). Field keys resolve through the view's `fields` map so the zone
+   *  is config-driven; a logical key the view doesn't map is skipped. */
   function salesPricingDetail(rec, viewKey) {
-    if (!isSalesMoney(viewKey)) return '';
-    return '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--pricing">' +
-      detailReadOnly(rec,          'field_1960', 'Retail Price') +
-      detailField(rec,    viewKey, 'field_2261', 'Custom Disc %', 'number') +
-      detailReadOnly(rec,          'field_2303', 'Applied Discount') +
-      detailReadOnly(rec,          'field_2269', 'Total') +
+    if (isSalesMoney(viewKey)) {
+      return '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--pricing">' +
+        detailReadOnly(rec,          'field_1960', 'Retail Price') +
+        detailField(rec,    viewKey, 'field_2261', 'Custom Disc %', 'number') +
+        detailReadOnly(rec,          'field_2303', 'Applied Discount') +
+        detailReadOnly(rec,          'field_2269', 'Total') +
+      '</div>';
+    }
+    if (!hasPricingDetail(viewKey)) return '';
+    var F = (ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(viewKey)) || {};
+    var out = '';
+    if (F.retailPrice)     out += detailReadOnly(rec, F.retailPrice, 'Unit Price');
+    if (F.lineDiscPct)     out += detailField(rec, viewKey, F.lineDiscPct, 'Custom Disc %', 'number');
+    if (F.lineDiscAmt)     out += detailField(rec, viewKey, F.lineDiscAmt, 'Custom Disc $ each', 'number');
+    if (F.appliedDiscount) out += detailReadOnly(rec, F.appliedDiscount, 'Applied Discount');
+    // Net unit (field_2268) is only rendered when the view actually carries
+    // the column — a blank "Net unit" on a view without it reads as $0.
+    if (F.netUnit && rec && (rec[F.netUnit] != null || rec[F.netUnit + '_raw'] != null)) {
+      out += detailReadOnly(rec, F.netUnit, 'Net unit');
+    }
+    if (F.total)           out += detailReadOnly(rec, F.total, 'Total');
+    if (F.lineDiscReason) {
+      out += '<div class="scw-ws-v2-pricing-reason">' +
+        detailField(rec, viewKey, F.lineDiscReason, 'Discount reason', 'text') +
+      '</div>';
+    }
+    if (!out) return '';
+    return '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--pricing scw-ws-v2-detail-zone--pricing-co">' +
+      out +
     '</div>';
+  }
+
+  /** True when the view renders the custom-discount pricing zone in the
+   *  detail panel (config pricingDetail — the ops CO worksheet). */
+  function hasPricingDetail(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.pricingDetail);
+    } catch (e) { return false; }
   }
 
   /** True when the view shows LABOR money only (config laborOnly — the sub

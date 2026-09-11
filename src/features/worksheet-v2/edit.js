@@ -34,12 +34,12 @@
    *  genuinely failing PUT indistinguishable from a stale-render revert — the
    *  user just saw their edit "disappear". Errors get red (repo convention). */
   var ERR_TOAST_ID = 'scw-ws-v2-save-error-toast';
-  function showSaveErrorToast(xhr) {
+  function showSaveErrorToast(xhr, msgOverride, holdMs) {
     try {
       var status = xhr && xhr.status;
-      var msg = (status === 403)
+      var msg = msgOverride || ((status === 403)
         ? 'Save failed (403 — field not editable on this view?). Change reverted.'
-        : 'Save failed' + (status ? ' (HTTP ' + status + ')' : '') + '. Change reverted.';
+        : 'Save failed' + (status ? ' (HTTP ' + status + ')' : '') + '. Change reverted.');
       var old = document.getElementById(ERR_TOAST_ID);
       if (old && old.parentNode) old.parentNode.removeChild(old);
       var el = document.createElement('div');
@@ -49,12 +49,130 @@
         'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);' +
         'background:#b91c1c;color:#fff;padding:10px 18px;border-radius:8px;' +
         'font:600 13px/1.3 system-ui,sans-serif;z-index:100001;' +
-        'box-shadow:0 4px 12px rgba(0,0,0,.25);';
+        'box-shadow:0 4px 12px rgba(0,0,0,.25);max-width:min(640px,92vw);';
       document.body.appendChild(el);
       setTimeout(function () {
         if (el.parentNode) el.parentNode.removeChild(el);
-      }, 6000);
+      }, holdMs || 6000);
     } catch (e) { /* ignore */ }
+  }
+
+  // ── Dropped-write detection ─────────────────────────────────────────────
+  // A view-scoped PUT can come back 200 with the record UNCHANGED: the column
+  // isn't inline-editable on that view (Knack ignores the field instead of
+  // 403ing in some configurations), or a Knack rule on the object re-stamps
+  // the field the moment it's saved (e.g. a "PRODUCT STORED_" price copied
+  // back from the product). Before this check the success path adopted the
+  // server's (old) value silently — the card flashed green, then the edit
+  // "went away" on the next rebuild with no error anywhere. Now the success
+  // handler compares what came back with what was sent; when the server
+  // still holds the PREVIOUS value the write was dropped and the user gets a
+  // red toast naming the likely Builder cause.
+
+  /** Sign-preserving numeric parse of a Knack raw/display/input value.
+   *  NaN for blank / non-numeric. */
+  function numOf(v) {
+    if (typeof v === 'number') return v;
+    if (v == null) return NaN;
+    var s = String(v).trim();
+    if (!s) return NaN;
+    var neg = /^\(.*\)$/.test(s) || /-\s*$/.test(s) || /^\s*-/.test(s) || /^\$\s*-/.test(s);
+    s = s.replace(/[^0-9.]/g, '');
+    if (!s) return NaN;
+    var n = parseFloat(s);
+    if (isNaN(n)) return NaN;
+    return neg ? -Math.abs(n) : n;
+  }
+
+  /** Two values are "the same number" when both are blank/non-numeric or
+   *  differ by less than half a cent. */
+  function sameNum(a, b) {
+    var x = numOf(a), y = numOf(b);
+    if (isNaN(x) && isNaN(y)) return true;
+    if (isNaN(x) || isNaN(y)) return false;
+    return Math.abs(x - y) < 0.005;
+  }
+
+  /** True when the server's returned raw value for the edited field still
+   *  equals the PREVIOUS value and not the value we sent — i.e. the PUT was
+   *  acknowledged but the field never changed. Numeric inputs compare as
+   *  numbers (Knack may reformat "150" as 150 / "150.00"); text inputs
+   *  compare trimmed strings; textareas are skipped (Knack normalizes their
+   *  HTML, so a strict compare would false-positive). Deliberately requires
+   *  raw === prev: a server that returns a THIRD value (rounding, a formula
+   *  normalizing the input) is a normalization, not a drop. */
+  function wasWriteDropped(input, serverRaw, newValue, prevValue) {
+    if (!input || input.tagName === 'TEXTAREA') return false;
+    if (serverRaw && typeof serverRaw === 'object') return false;   // connections etc.
+    if (input.type === 'number') {
+      return sameNum(serverRaw, prevValue) && !sameNum(serverRaw, newValue);
+    }
+    var s = String(serverRaw == null ? '' : serverRaw).trim();
+    var p = String(prevValue == null ? '' : prevValue).trim();
+    var n = String(newValue == null ? '' : newValue).trim();
+    return s === p && s !== n;
+  }
+
+  /** Live view-schema introspection of the view-scoped PUT preconditions
+   *  (same read as mdf-edit-core.js diagnoseError): is fieldKey an
+   *  inline-editable column on viewKey AS THIS PAGE LOADED IT? Returns
+   *  { ok, problem } or null when the schema isn't inspectable. Used for
+   *  MESSAGING only — never to block a save (the read is best-effort). */
+  function inspectEditability(viewKey, fieldKey) {
+    try {
+      var kv = window.Knack && Knack.views && Knack.views[viewKey];
+      var vv = kv && kv.model && kv.model.view;
+      if (!vv) return null;
+      if (vv.type && vv.type !== 'table') {
+        return { ok: false, problem: viewKey + ' is a "' + vv.type + '" view — ' +
+          'record PUTs need an inline-editable grid (table).' };
+      }
+      if (!(vv.options && vv.options.cell_editor)) {
+        return { ok: false, problem: 'inline editing (cell editor) is OFF on ' + viewKey +
+          ' as this page loaded it — enable it in Builder, then hard-refresh.' };
+      }
+      var cols = vv.columns || [];
+      for (var ci = 0; ci < cols.length; ci++) {
+        var col = cols[ci] || {};
+        var cf = (col.field && col.field.key) || col.id;
+        if (cf !== fieldKey) continue;
+        if (col.ignore_edit) {
+          return { ok: false, problem: fieldKey + '’s column on ' + viewKey +
+            ' has inline editing disabled (column setting in Builder).' };
+        }
+        return { ok: true, problem: '' };
+      }
+      return { ok: false, problem: fieldKey + ' is not a column on ' + viewKey +
+        ' — add it to the grid in Builder (inline-editable).' };
+    } catch (e) { return null; }
+  }
+  ns.inspectEditability = inspectEditability;
+
+  /** Human-readable explanation for a dropped write, from the schema read. */
+  function droppedWriteReason(viewKey, fieldKey) {
+    var info = inspectEditability(viewKey, fieldKey);
+    if (info && !info.ok) return info.problem;
+    if (info && info.ok) {
+      return 'The column IS inline-editable on ' + viewKey + ', so a Knack rule on ' +
+        'the object is most likely re-stamping ' + fieldKey + ' on every save ' +
+        '(e.g. a conditional rule copying the product price back). Change the ' +
+        'rule in Builder, or price the line through its discount fields instead.';
+    }
+    return 'Check in Builder that ' + fieldKey + ' is an inline-editable column on ' +
+      viewKey + ' and that no rule on the object overwrites it on save.';
+  }
+
+  /** Warn once per view+field about a Builder precondition the schema read
+   *  says will make the PUT a no-op. Message-only. */
+  var _auditWarned = Object.create(null);
+  function auditBeforeSave(viewKey, fieldKey) {
+    var k = viewKey + '|' + fieldKey;
+    if (_auditWarned[k]) return;
+    var info = inspectEditability(viewKey, fieldKey);
+    if (!info || info.ok) return;
+    _auditWarned[k] = true;
+    console.warn('[scw-ws-v2] ' + fieldKey + ' on ' + viewKey + ' does not look ' +
+      'inline-editable — the save is likely to be ignored by Knack. ' + info.problem);
   }
 
   /** Send the PUT. Returns a thenable. */
@@ -286,6 +404,19 @@
     // Ext (field_2401); refetch so the Ext total under the Labor input
     // refreshes. No `labor` logical key on the SOW object → no-op there.
     if (EF.labor) RECALC_DEPS[EF.labor] = 1;
+    // Ops CO worksheet (config equipmentField, view_4079): the unit equipment
+    // price feeds the extended equipment (field_2201) and net total
+    // (field_2269) CALCs shown on the same row.
+    try {
+      var _eqVc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      if (_eqVc && _eqVc.equipmentField) RECALC_DEPS[_eqVc.equipmentField] = 1;
+    } catch (e) { /* ignore */ }
+
+    // Console heads-up when the view schema says this field can't take a
+    // view-scoped PUT (once per view+field). The save still runs — the
+    // schema read is best-effort and the dropped-write check below is the
+    // authoritative signal.
+    auditBeforeSave(viewKey, fieldKey);
 
     // Two-arg .then(onOk, onErr) — NOT .then().catch(). $.Deferred promises
     // (and any fetch polyfill in the wrapper chain) may not expose .catch,
@@ -293,6 +424,22 @@
     // the save's error handling in some users' environments.
     savePut(viewKey, recordId, fieldKey, newValue)
       .then(function (resp) {
+        // Dropped-write check: a 200 whose record still carries the PREVIOUS
+        // value means Knack acknowledged the PUT but never applied the field
+        // (column not inline-editable on this view, or a rule re-stamped it).
+        // Treat it exactly like a failed save — visible toast, revert — instead
+        // of silently adopting the old value (which is what made CO equipment
+        // price edits "save then go away").
+        try {
+          var _r = (resp && resp.record && typeof resp.record === 'object' && resp.record.id)
+            ? resp.record : resp;
+          if (_r && typeof _r === 'object' &&
+              Object.prototype.hasOwnProperty.call(_r, fieldKey + '_raw') &&
+              wasWriteDropped(input, _r[fieldKey + '_raw'], newValue, prevValue)) {
+            onDroppedWrite(input, fieldKey, recordId, viewKey, newValue, prevValue, resp);
+            return;
+          }
+        } catch (e) { /* fall through to the normal success path */ }
         // SCW.knackAjax doesn\'t auto-fire knack-cell-update like
         // Knack\'s native inline edit does. Patch the local model
         // with whatever the server returned and notify subscribers
@@ -372,6 +519,42 @@
       });
   }
 
+  /** A PUT that came back 200 with the field unchanged. Same UI outcome as
+   *  a rejected save (toast + revert), but the copy names the real cause so
+   *  the fix lands in Builder instead of being chased in the bundle. */
+  function onDroppedWrite(input, fieldKey, recordId, viewKey, newValue, prevValue, resp) {
+    var label  = input.getAttribute('aria-label') || fieldKey;
+    var reason = droppedWriteReason(viewKey, fieldKey);
+    console.warn('[scw-ws-v2] save IGNORED by Knack (200, field unchanged)', {
+      viewKey: viewKey, recordId: recordId, fieldKey: fieldKey,
+      sent: newValue, serverStillHas: prevValue, why: reason,
+      schema: inspectEditability(viewKey, fieldKey), resp: resp
+    });
+    showSaveErrorToast(null,
+      'Knack didn’t keep your change to ' + label + ' — the value reverted' +
+      (prevValue !== '' && prevValue != null ? ' to ' + prevValue : '') + '. ' + reason,
+      11000);
+    // The write didn't land: drop the optimistic overlay + model patch so
+    // the server's value is what renders.
+    try {
+      if (ns.data && typeof ns.data.clearPendingWrite === 'function') {
+        ns.data.clearPendingWrite(viewKey, recordId, fieldKey);
+      }
+    } catch (e) { /* ignore */ }
+    try {
+      if (typeof SCW.syncKnackModel === 'function') {
+        // resp carries the server's real (old) raw — syncKnackModel prefers it
+        // over the sent value, so the model ends up truthful either way.
+        SCW.syncKnackModel(viewKey, recordId, resp || {}, fieldKey, prevValue);
+      }
+    } catch (e) { /* ignore */ }
+    input.classList.remove(SAV_CLS);
+    input.classList.add(ERR_CLS);
+    input.value = prevValue;
+    input._scwWsV2Prev = prevValue;
+    if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
+  }
+
   /**
    * Wire the delegated handlers. Idempotent — guarded so reloads
    * don't stack listeners.
@@ -411,6 +594,11 @@
     }, true);
   }
 
-  ns.edit = { wire: wire };
+  ns.edit = {
+    wire: wire,
+    // Exposed for diagnostics / tests: schema read + the dropped-write rule.
+    inspectEditability: inspectEditability,
+    wasWriteDropped: wasWriteDropped
+  };
 })();
 /*** END WORKSHEET V2 — EDIT **************************************************/
