@@ -566,10 +566,14 @@
     var qtyTxt  = sowItemData.qty ? String(sowItemData.qty) : '—';
     var feeTxt  = sowItemData.fee ? fmtMoney(sowItemData.fee) : '—';
     // SOW-item issue chips (missing photos / disconnected / wrong accessory /
-    // has SCW notes). Computed from the SOW item only — never the bid side.
+    // has SCW notes / missing model selection). Computed from the SOW item
+    // only — never the bid side — and ONLY for items actually on THIS SOW:
+    // an off-SOW twin or a "Removed — no longer on any SOW or bid" orphan
+    // (e.g. a survey-added placeholder whose bid item was re-linked to the
+    // real SOW item) is dead paper, so its warnings would be noise here.
     // The actual note text is passed through so the "notes" chip's hover
     // shows the note itself instead of just a generic label.
-    var warnHtml = (ns.warnings && row && row.sowItem)
+    var warnHtml = (ns.warnings && row && row.sowItem && !row.offSow && !row.removed)
       ? ns.warnings.chipsHtml(row.sowItem, sowItemData.scwNotes) : '';
     // Modifier replaces the old :has(.__warn-chips) CSS lookup.
     if (warnHtml) td.classList.add('scw-bid-review-v2__sow-cell--has-warns');
@@ -1292,12 +1296,18 @@
     return tr;
   }
 
-  // Every SOW item id under an MDF/IDF group (direct rows + subgroup rows).
+  // Every SOW item id under an MDF/IDF group (direct rows + subgroup rows)
+  // that is actually ON this SOW. Off-SOW twins and "Removed" orphans are
+  // skipped so the header summary chips only count real SOW items — the
+  // same rule buildSowCell applies to the per-row chips.
+  function onThisSow(row) {
+    return !!(row && row.sowItem && !row.offSow && !row.removed);
+  }
   function collectGroupSowIds(group) {
     var ids = [];
     function add(rows) {
       for (var i = 0; rows && i < rows.length; i++) {
-        if (rows[i] && rows[i].sowItem) ids.push(rows[i].sowItem);
+        if (onThisSow(rows[i])) ids.push(rows[i].sowItem);
       }
     }
     add(group && group.rows);
@@ -1316,7 +1326,7 @@
     }
     if (!ids.length && grid && grid.rows) {
       for (var r = 0; r < grid.rows.length; r++) {
-        if (grid.rows[r] && grid.rows[r].sowItem) ids.push(grid.rows[r].sowItem);
+        if (onThisSow(grid.rows[r])) ids.push(grid.rows[r].sowItem);
       }
     }
     return ids;

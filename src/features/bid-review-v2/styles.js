@@ -908,6 +908,16 @@
     '  white-space: nowrap;',
     '}',
     '.scw-bid-review-v2__warn-chip-n { font-weight: 700; font-variant-numeric: tabular-nums; }',
+    /* Summary chips are clickable (warnings.js wireChipClicks): reveal +
+       flash the affected rows. Hover ring so they read as controls; the
+       flash reuses sub-bid-diff's amber "jump" cue so the two feel alike. */
+    '.scw-bid-review-v2__warn-chip--sum { cursor: pointer; }',
+    '.scw-bid-review-v2__warn-chip--sum:hover,',
+    '.scw-bid-review-v2__warn-chip--sum:focus-visible {',
+    '  box-shadow: 0 0 0 2px rgba(15, 23, 42, .12); outline: none;',
+    '}',
+    '@keyframes scw-br-v2-warn-flash { 0% { background: #fde68a; } 100% { background: transparent; } }',
+    '.scw-bid-review-v2__row--warn-flash > td { animation: scw-br-v2-warn-flash 2s ease-out; }',
     /* Line-item label cell (E-001, etc) */
     /* Caret gutter on the left; checkbox / label / totals stack with a
        clean gap so nothing is crammed together. */

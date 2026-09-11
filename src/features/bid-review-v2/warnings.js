@@ -189,8 +189,12 @@
       var k = TYPES[t];
       var n = counts[k];
       if (!n) continue;
+      // Clickable (see wireChipClicks below): the title says so, like the
+      // worksheet-v2 summary chips.
+      var title = (LABELS[k] || k) + ' — click to highlight the ' + n +
+                  ' affected row' + (n === 1 ? '' : 's');
       parts.push('<span class="scw-bid-review-v2__warn-chip scw-bid-review-v2__warn-chip--sum" ' +
-        'data-issue-type="' + k + '" title="' + esc(LABELS[k] || k) + '">' +
+        'data-issue-type="' + k + '" role="button" tabindex="0" title="' + esc(title) + '">' +
         (ICONS[k] || '') +
         '<span class="scw-bid-review-v2__warn-chip-n">' + n + '</span>' +
         '<span class="scw-bid-review-v2__warn-chip-l">' + esc(LABELS[k] || k) + '</span>' +
@@ -202,11 +206,117 @@
       : '';
   }
 
+  // ── Summary-chip click → reveal + flash the affected rows ─────────
+  // Mirrors worksheet-v2's highlightIssueType. Scope = the MDF/IDF group
+  // whose header row holds the chip, or the whole SOW section for the
+  // SOW-header chip. A matching row can be hidden by a collapsed subgroup
+  // AND a collapsed L1 group (and the SOW section itself) — expand each by
+  // clicking its header so init.js's persisted collapse state stays honest,
+  // then scroll the first match into view and flash all of them.
+
+  /** The grid rows a summary chip speaks for. */
+  function scopeRows(chip) {
+    var rows = [];
+    var grpHead = chip.closest('tr.scw-bid-review-v2__group-header');
+    if (grpHead) {
+      var n = grpHead.nextElementSibling;
+      while (n && !n.classList.contains('scw-bid-review-v2__group-header')) {
+        if (n.classList.contains('scw-bid-review-v2__row')) rows.push(n);
+        n = n.nextElementSibling;
+      }
+      return rows;
+    }
+    var sec = chip.closest('.scw-bid-review-v2__sow');
+    var all = sec ? sec.querySelectorAll('tr.scw-bid-review-v2__row') : [];
+    for (var i = 0; i < all.length; i++) rows.push(all[i]);
+    return rows;
+  }
+
+  /** Expand whatever is folding `row` away: the SOW section, then the
+   *  row's own subgroup (if it sits in one), then its L1 group — each by
+   *  clicking the header so init.js's walkers + persisted state do the
+   *  work. Innermost first on purpose: the L1 walker reads each subgroup's
+   *  --collapsed flag as it opens, so un-folding the subgroup before the L1
+   *  leaves every sibling row in a consistent state. (Stopping as soon as
+   *  the row itself loses --hidden is not enough — a subgroup expand
+   *  un-hides its rows even while the L1 above is still collapsed.) */
+  function revealRow(row) {
+    var sec = row.closest('.scw-bid-review-v2__sow');
+    if (sec && sec.classList.contains('scw-bid-review-v2__sow--collapsed')) {
+      var hdr = sec.querySelector('.scw-bid-review-v2__sow-header');
+      if (hdr) hdr.click();
+    }
+    var subDone = !row.classList.contains('scw-bid-review-v2__row--in-subgroup');
+    var prev = row.previousElementSibling;
+    while (prev) {
+      if (!subDone && prev.classList.contains('scw-bid-review-v2__subgroup-header')) {
+        if (prev.classList.contains('scw-bid-review-v2__subgroup-header--collapsed')) prev.click();
+        subDone = true;
+      } else if (prev.classList.contains('scw-bid-review-v2__group-header')) {
+        if (prev.classList.contains('scw-bid-review-v2__group-header--collapsed')) prev.click();
+        break;
+      }
+      prev = prev.previousElementSibling;
+    }
+  }
+
+  function highlightIssueType(chip) {
+    var type = chip.getAttribute('data-issue-type');
+    if (!type) return [];
+    var rows = scopeRows(chip);
+    var matches = [];
+    var sel = '.scw-bid-review-v2__sow-cell .scw-bid-review-v2__warn-chip[data-issue-type="' + type + '"]';
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].querySelector(sel)) matches.push(rows[i]);
+    }
+    if (!matches.length) return matches;
+    revealRow(matches[0]);
+    try { matches[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* jsdom */ }
+    for (var m = 0; m < matches.length; m++) {
+      (function (tr) {
+        tr.classList.remove('scw-bid-review-v2__row--warn-flash');
+        void tr.offsetWidth;          // restart the animation
+        tr.classList.add('scw-bid-review-v2__row--warn-flash');
+        setTimeout(function () { tr.classList.remove('scw-bid-review-v2__row--warn-flash'); }, 2200);
+      })(matches[m]);
+    }
+    return matches;
+  }
+
+  /** Bound once, in the CAPTURE phase: the chips sit inside the L1 header
+   *  row and the SOW header, whose bubble-phase click handlers (init.js)
+   *  would otherwise fold the group / section on the same click. */
+  function wireChipClicks() {
+    if (document.documentElement.hasAttribute('data-scw-br-v2-warnchip-bound')) return;
+    document.documentElement.setAttribute('data-scw-br-v2-warnchip-bound', '1');
+    function chipOf(e) {
+      return e.target && e.target.closest &&
+             e.target.closest('.scw-bid-review-v2__warn-chip--sum[data-issue-type]');
+    }
+    document.addEventListener('click', function (e) {
+      var chip = chipOf(e);
+      if (!chip) return;
+      e.preventDefault();
+      e.stopPropagation();
+      highlightIssueType(chip);
+    }, true);
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var chip = chipOf(e);
+      if (!chip || e.target !== chip) return;
+      e.preventDefault();
+      e.stopPropagation();
+      highlightIssueType(chip);
+    }, true);
+  }
+  wireChipClicks();
+
   ns.warnings = {
-    analyze:          analyze,
-    issuesFor:        issuesFor,
-    chipsHtml:        chipsHtml,
-    summaryChipsHtml: summaryChipsHtml
+    analyze:            analyze,
+    issuesFor:          issuesFor,
+    chipsHtml:          chipsHtml,
+    summaryChipsHtml:   summaryChipsHtml,
+    highlightIssueType: highlightIssueType
   };
 })();
 /*** END BID REVIEW V2 — WARNINGS ********************************************/
