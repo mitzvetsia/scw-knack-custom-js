@@ -561,16 +561,22 @@
   // read once the rates differed. So on a CO each band explains itself:
   //   - Added band: list, then "Discount on added items", then the band
   //     total.
-  //   - Removed band: list, then "Original discount on returned items" (the
-  //     discount the gear sold with, which SHRINKS the credit — shown with a
-  //     plus sign so subtotal + line = credit), then the credit at what the
-  //     customer paid.
+  //   - Removed band: every line and total is the credit at what the
+  //     customer PAID (list minus the discount the gear sold with, folded
+  //     into the line amount — decided 2026-09-11: a "+$102 discount"
+  //     line against a credit read as noise). Service charges riding on a
+  //     returned item (restocking fees) are the one extra line: "Fees on
+  //     returned items", above the credit.
   //   - Section footers show one net Total; the Change Order Totals block
   //     breaks equipment out the same way.
   // Base proposals only carry positive discounts and keep their layout.
   function discSum(recs) { return sumRecs(recs, CONFIG.fields.lineDiscount); }
+  /** Equipment (hardware) sum — net of the line discounts when `net`. */
+  function hardwareSum(recs, net) {
+    var h = sumRecs(recs, CONFIG.fields.hardware);
+    return net ? h - discSum(recs) : h;
+  }
   var LBL_DISC_ADD = 'Discount on added items';
-  var LBL_DISC_RM  = 'Original discount on returned items';
   var LBL_FEES_RM  = 'Fees on returned items';
   /** A service line riding under a parent that is NOT itself a credit —
    *  in the Removed band that's a charge (restocking fee, …) sitting inside
@@ -579,16 +585,23 @@
     return isServicesRec(rec) && !!connFirst(rec, CONFIG.fields.accessoryParent) &&
            coActionOf(rec) !== 'remove';
   }
-  /** Band money for one CO band: { qty, cost, disc, fees } — `fees` only
-   *  accrues in the Removed band (service charges riding on credits). */
+  /** Band money for one CO band: { qty, cost, disc, fees }. Added band:
+   *  cost at list, `disc` = the discounts to show beneath. Removed band:
+   *  cost is the NET credit (own discount folded in, `disc` stays 0) and
+   *  `fees` collects service charges riding on the returned items. */
   function bandSums(recs, band) {
     var s = { qty: 0, cost: 0, disc: 0, fees: 0 };
     for (var i = 0; i < recs.length; i++) {
       var r = recs[i];
       if (band === 'rm' && isServiceCharge(r)) { s.fees += readNum(r, CONFIG.fields.cost); continue; }
-      s.qty  += readNum(r, CONFIG.fields.qty);
-      s.cost += readNum(r, CONFIG.fields.cost);
-      s.disc += readNum(r, CONFIG.fields.lineDiscount);
+      s.qty += readNum(r, CONFIG.fields.qty);
+      var disc = readNum(r, CONFIG.fields.lineDiscount);
+      if (band === 'rm') {
+        s.cost += readNum(r, CONFIG.fields.cost) - disc;   // credit at what was paid
+      } else {
+        s.cost += readNum(r, CONFIG.fields.cost);
+        s.disc += disc;
+      }
     }
     return s;
   }
@@ -602,18 +615,17 @@
   /** Change Order Totals equipment breakdown (shared by the on-page render
    *  and the publish payload): [{type, label, value}] in display order —
    *  Equipment added (list) · Discount on added items · Equipment removed
-   *  (list) · Original discount on returned items. Lines that would be $0
-   *  or have no records behind them are omitted. `fmt` formats money. */
+   *  (credit, net of what was paid). Lines that would be $0 or have no
+   *  records behind them are omitted. `fmt` formats money. */
   function coEquipmentLines(records, fmt, dash) {
     fmt = fmt || money; dash = dash || '–';
     var addRecs = [], rmRecs = [];
     for (var i = 0; i < records.length; i++) {
       (coActionOf(records[i]) === 'remove' ? rmRecs : addRecs).push(records[i]);
     }
-    var equipAdd = sumRecs(addRecs, CONFIG.fields.hardware);
-    var discAdd  = discSum(addRecs);
-    var equipRm  = sumRecs(rmRecs, CONFIG.fields.hardware);
-    var discRm   = discSum(rmRecs);
+    var equipAdd   = hardwareSum(addRecs, false);
+    var discAdd    = discSum(addRecs);
+    var equipRmNet = hardwareSum(rmRecs, true);
     var lines = [];
     if (addRecs.length && Math.abs(equipAdd) > 0.004) {
       lines.push({ type: 'sub', label: 'Equipment added', value: fmt(equipAdd) });
@@ -621,11 +633,8 @@
     if (Math.abs(discAdd) > 0.004) {
       lines.push({ type: 'disc', label: LBL_DISC_ADD, value: discDelta(discAdd, fmt, dash) });
     }
-    if (rmRecs.length && Math.abs(equipRm) > 0.004) {
-      lines.push({ type: 'sub', label: 'Equipment removed', value: fmt(equipRm) });
-    }
-    if (Math.abs(discRm) > 0.004) {
-      lines.push({ type: 'disc', label: LBL_DISC_RM, value: discDelta(discRm, fmt, dash) });
+    if (rmRecs.length && Math.abs(equipRmNet) > 0.004) {
+      lines.push({ type: 'sub', label: 'Equipment removed (credit)', value: fmt(equipRmNet) });
     }
     return lines;
   }
@@ -667,13 +676,15 @@
 
     function emitProductBlock(product, accessories, bctx, tint, first) {
       var tintCls = tint ? ' scw-pg2-co-' + tint : '';
+      // Removed band on a CO: equipment credits at what the customer paid
+      // (the line's own discount folded in). Added band shows list; its
+      // discount is the band's own line beneath (emitBands).
+      var netRm = isCO && tint === 'rm';
 
-      // L3 product line — qty/cost of PARENT devices only. Both CO bands
-      // show LIST here; each band's own discount line (emitBands) carries
-      // the money off / the original discount on returned items.
+      // L3 product line — qty/cost of PARENT devices only.
       if (!bctx.hideL3 && !isBlankish(product.label)) {
         var pQty = sumRecs(product.items, F.qty);
-        var pHardware = sumRecs(product.items, F.hardware);
+        var pHardware = hardwareSum(product.items, netRm);
         pushRow('scw-pg2-l3' + (first ? ' scw-pg2-l3--first' : '') + tintCls, [
           { html: esc(product.label) },
           { html: '<strong>' + Math.round(pQty) + '</strong>' },
@@ -752,7 +763,7 @@
         order.forEach(function (name) {
           var grp = byProduct[name];
           var gQty = sumRecs(grp, F.qty);
-          var gHardware = sumRecs(grp, F.hardware);
+          var gHardware = hardwareSum(grp, netRm);
           var gLabor = sumRecs(grp, F.labor);
           // Parent designators — cam/reader parents only (v1 parity).
           var parentRecs = [];
@@ -831,10 +842,9 @@
         pushRow('scw-pg2-band scw-pg2-band--' + band, [
           { html: esc(bandLabel) }, { html: '' }, { html: '' }
         ]);
-        // Both bands: lines at list → band subtotal → the band's own discount
-        // line (→ fees riding on returned items) → band total (added) /
-        // credit (removed). Line discounts are signed (+ on adds, − on
-        // removes), so subtotal − discount is the right total on both sides.
+        // Added band: lines at list → subtotal → "Discount on added items" →
+        // total. Removed band: lines at the NET credit → subtotal → (fees
+        // riding on returned items) → credit. See bandSums.
         var tot = { qty: 0, cost: 0, disc: 0, fees: 0 };
         inBand.forEach(function (e) {
           if (!sectionPromoted) emitBucketHeaderRow(e.bctx, false, false);
@@ -864,7 +874,7 @@
         ]);
         if (hasBandDisc) {
           pushRow('scw-pg2-band-disc scw-pg2-band-disc--' + band, [
-            { html: esc(isRm ? LBL_DISC_RM : LBL_DISC_ADD), cls: 'scw-pg2-l2foot-label' },
+            { html: esc(LBL_DISC_ADD), cls: 'scw-pg2-l2foot-label' },
             { html: '' },
             { html: esc(discDelta(tot.disc, money, '–')) }
           ]);
@@ -1381,6 +1391,8 @@
       var synth = null;
       prs.forEach(function (pr) {
         var product = pr.product, accessories = pr.accessories;
+        // Removed band on a CO: equipment credits at what the customer paid.
+        var netRm = isCO && pr.band === 'rm';
         var prod = null;
         if (!bctx.hideL3 && !isBlankish(product.label)) {
           var cd = connDevicesOf(product.items);
@@ -1407,7 +1419,7 @@
           prod = {
             level: 3, label: product.label,
             qty: Math.round(sumRecs(product.items, F.qty)),
-            cost: pubMoney(sumRecs(product.items, F.hardware)),
+            cost: pubMoney(hardwareSum(product.items, netRm)),
             rate: '', hideCost: false,
             connectedDevices: cd.list,
             connectedDevicesCount: cd.count,
@@ -1462,7 +1474,7 @@
             prod.lineItems.push({
               level: 4, label: nm, description: '',
               qty: Math.round(sumRecs(grp, F.qty)),
-              cost: pubMoney(sumRecs(grp, F.hardware)),
+              cost: pubMoney(hardwareSum(grp, netRm)),
               cameraList: designatorList(parentRecs),
               // Relocated EQUIPMENT accessory — must NOT be TBD-masked.
               isEquipment: true,
@@ -1518,9 +1530,9 @@
         if (!inBand.length) return;
         var bandLabel = band === 'add' ? 'Items to be Added' : 'Items to be Removed';
         sec.buckets.push({ level: 2, coBandHeader: true, kind: band, label: bandLabel, products: [], footer: null });
-        // Same money rules as the on-page render (emitBands): lines at list,
-        // band subtotal, the band's own discount line, fees riding on
-        // returned items, band total / credit.
+        // Same money rules as the on-page render (emitBands / bandSums):
+        // added at list + its discount line; removed at the net credit
+        // (+ fees riding on returned items).
         var tot = { qty: 0, cost: 0, disc: 0, fees: 0 };
         inBand.forEach(function (e) {
           var recs = [];
@@ -1544,7 +1556,7 @@
           cost: bandMoney(tot.cost), products: [], footer: null });
         if (hasBandDisc) {
           sec.buckets.push({ level: 2, coBandTotal: true, coBandDisc: true, kind: band,
-            label: isRm ? LBL_DISC_RM : LBL_DISC_ADD,
+            label: LBL_DISC_ADD,
             cost: discDelta(tot.disc, pubMoney, '-'), products: [], footer: null });
         }
         if (hasFees) {
