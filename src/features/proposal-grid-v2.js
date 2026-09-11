@@ -661,7 +661,7 @@
    *                   it out and Equipment Net takes it in (no double count).
    *  lines: Equipment added · Discount on added items · Returned items
    *  (credit). Lines that would be $0 / have no records are omitted. */
-  function coMoney(records, fmt, dash) {
+  function coTotalsMoney(records, fmt, dash) {
     fmt = fmt || money; dash = dash || '–';
     var byId = Object.create(null), i, r;
     for (i = 0; i < records.length; i++) { if (records[i] && records[i].id) byId[records[i].id] = records[i]; }
@@ -1089,7 +1089,7 @@
       // CO: fees riding on returned items are part of the returned items'
       // credit (as the Removed band prints them), so their labor money moves
       // from Installation Net into Equipment Net. Grand total unchanged.
-      var co = isCO ? coMoney(tree.allRecords, money, '–') : null;
+      var co = isCO ? coTotalsMoney(tree.allRecords, money, "–") : null;
       var equipmentTotal = equipmentSubtotal - lineItemDiscounts + (co ? co.feeLabor : 0);
       var installationTotal = sumRecs(tree.allRecords, F.labor) - (co ? co.feeLabor : 0);
       var grandTotal = equipmentTotal + installationTotal - proposalDiscount;
@@ -1722,8 +1722,8 @@
       var equipmentSubtotal = sumRecs(tree.allRecords, F.hardware);
       var lineItemDiscounts = sumRecs(tree.allRecords, F.lineDiscount);
       var proposalDiscount = Math.abs(readDetailNum('2302'));
-      // Same fee treatment as the on-page render (see coMoney).
-      var co = isCO ? coMoney(tree.allRecords, pubMoney, '-') : null;
+      // Same fee treatment as the on-page render (see coTotalsMoney).
+      var co = isCO ? coTotalsMoney(tree.allRecords, pubMoney, "-") : null;
       var equipmentTotal = equipmentSubtotal - lineItemDiscounts + (co ? co.feeLabor : 0);
       var installationTotal = sumRecs(tree.allRecords, F.labor) - (co ? co.feeLabor : 0);
       var grandTotal = equipmentTotal + installationTotal - proposalDiscount;
@@ -2078,12 +2078,12 @@
           var tPropDisc = Math.abs(readDetailNum('2302'));
           // CO: fee lines riding on returned items count inside the
           // returned items' credit (equipment side), not Installation —
-          // the same split the rendered totals block shows (coMoney).
+          // the same split the rendered totals block shows (coTotalsMoney).
           var tIsCO = false;
           for (var tci = 0; tci < tree.allRecords.length; tci++) {
             if (coActionOf(tree.allRecords[tci])) { tIsCO = true; break; }
           }
-          var tFeeLabor = tIsCO ? coMoney(tree.allRecords).feeLabor : 0;
+          var tFeeLabor = tIsCO ? coTotalsMoney(tree.allRecords).feeLabor : 0;
           var tEquip = tEquipSub - tLineDisc + tFeeLabor;
           var tInstall = sumRecs(tree.allRecords, CONFIG.fields.labor) - tFeeLabor;
           window.SCW.proposalGridTotals = {
