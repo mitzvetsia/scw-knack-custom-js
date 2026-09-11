@@ -1811,7 +1811,6 @@
           html.push('<div class="co-band-total co-band-total--' + bucket.kind +
             (bucket.coBandOpen ? ' co-band-total--open' : '') +
             (bucket.coBandDisc ? ' co-band-total--disc' : '') +
-            (bucket.coBandFee ? ' co-band-total--fee' : '') +
             (bucket.coBandNet ? ' co-band-total--net' : '') + '">' +
             '<span class="co-band-total-label">' + esc(bucket.label) + '</span>' +
             '<span class="co-band-total-value">' + esc(bucket.cost) + '</span></div>');
@@ -2449,21 +2448,14 @@
       '.co-band-total--add { background: #dcfce7; color: #065f46; border-top: 2px solid #059669; }',
       '.co-band-total--rm  { background: #eef2f7; color: #334155; border-top: 2px solid #64748b; }',
       '.co-band-total--rm .co-band-total-value { color: #be123c; }',
-      /* Band with follow-on lines: subtotal (list) · discount · fees on
-         returned items · total/credit read as one block — the open subtotal
-         drops its bottom gap, the discount/fee lines are quiet sub-lines,
-         the closing total/credit has no top rule. */
+      /* Added band with a discount: subtotal (list) · discount · total read
+         as one block — the open subtotal drops its bottom gap, the discount
+         is a quiet orange sub-line, the total has no top rule. The removed
+         band's credit is followed by its caption the same way. */
       '.co-band-total--open { margin-bottom: 0; }',
-      '.co-band-total--disc, .co-band-total--fee { font-weight: 700; border-top: 0; margin: 0; padding-top: 4px; padding-bottom: 4px; }',
-      '.co-band-total--disc { color: #d97706; }',
-      '.co-band-total--add.co-band-total--disc { background: #f7fdf9; }',
-      '.co-band-total--rm.co-band-total--disc, .co-band-total--fee { background: #f4f7fa; }',
-      '.co-band-total--fee { color: #163C6E; }',
-      '.co-band-total--rm.co-band-total--fee .co-band-total-value { color: #163C6E; }',
+      '.co-band-total--disc { background: #f7fdf9; color: #d97706; font-weight: 700; border-top: 0; margin: 0; padding-top: 4px; padding-bottom: 4px; }',
       '.co-band-total--net { border-top: 0; margin-top: 0; }',
-      '.co-band-total--fee { margin-bottom: 12px; }',
       '.co-band-note { text-align: right; font-style: italic; font-size: 11px; color: #5f6b7a; padding: 3px 10px; margin: 0 0 12px; }',
-      '.co-band-note + .co-band-total--fee { margin-top: -10px; }',
       /* Service line riding under a product (restocking fee on a returned
          item): a positive charge inside the removed band is not credit-red. */
       'table.product-table.co-band--rm tbody tr.l4-svc td.col-cost { color: #07467c; }',
