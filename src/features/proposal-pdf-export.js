@@ -1802,7 +1802,9 @@
           // coBandDisc / coBandNet: the added band's own "Discount on added
           // items" line and net total (proposal-grid-v2 emitPubBands).
           html.push('<div class="co-band-total co-band-total--' + bucket.kind +
+            (bucket.coBandOpen ? ' co-band-total--open' : '') +
             (bucket.coBandDisc ? ' co-band-total--disc' : '') +
+            (bucket.coBandFee ? ' co-band-total--fee' : '') +
             (bucket.coBandNet ? ' co-band-total--net' : '') + '">' +
             '<span class="co-band-total-label">' + esc(bucket.label) + '</span>' +
             '<span class="co-band-total-value">' + esc(bucket.cost) + '</span></div>');
@@ -1894,7 +1896,8 @@
               // (Accessory rollup lines deliberately NOT bolded — only the
               // true L3 product header row gets the bold treatment, so the
               // parent product stands out over its children; 2026-07-17.)
-              html.push('<tr class="' + l4Class + (item.isEquipment ? ' l4-acc' : '') + '">');
+              html.push('<tr class="' + l4Class + (item.isEquipment ? ' l4-acc' : '') +
+                (item.isServiceChild ? ' l4-svc' : '') + '">');
               var l4Content = item.description
                 ? item.description
                     .replace(/<b>/gi, '<span style="font-weight:700">')
@@ -2439,12 +2442,22 @@
       '.co-band-total--add { background: #dcfce7; color: #065f46; border-top: 2px solid #059669; }',
       '.co-band-total--rm  { background: #eef2f7; color: #334155; border-top: 2px solid #64748b; }',
       '.co-band-total--rm .co-band-total-value { color: #be123c; }',
-      /* Added band: subtotal (list) · discount on added items · total read as
-         one block — the subtotal drops its bottom gap, the discount line is
-         a quiet orange sub-line, the net total closes the block. */
-      '.co-band-total--add + .co-band-total--disc { margin-top: -12px; }',
-      '.co-band-total--disc { background: #f7fdf9; color: #d97706; font-weight: 700; border-top: 0; margin: 0; padding-top: 4px; padding-bottom: 4px; }',
+      /* Band with follow-on lines: subtotal (list) · discount · fees on
+         returned items · total/credit read as one block — the open subtotal
+         drops its bottom gap, the discount/fee lines are quiet sub-lines,
+         the closing total/credit has no top rule. */
+      '.co-band-total--open { margin-bottom: 0; }',
+      '.co-band-total--disc, .co-band-total--fee { font-weight: 700; border-top: 0; margin: 0; padding-top: 4px; padding-bottom: 4px; }',
+      '.co-band-total--disc { color: #d97706; }',
+      '.co-band-total--add.co-band-total--disc { background: #f7fdf9; }',
+      '.co-band-total--rm.co-band-total--disc, .co-band-total--fee { background: #f4f7fa; }',
+      '.co-band-total--fee { color: #163C6E; }',
+      '.co-band-total--rm.co-band-total--fee .co-band-total-value { color: #163C6E; }',
       '.co-band-total--net { border-top: 0; margin-top: 0; }',
+      /* Service line riding under a product (restocking fee on a returned
+         item): a positive charge inside the removed band is not credit-red. */
+      'table.product-table.co-band--rm tbody tr.l4-svc td.col-cost { color: #07467c; }',
+      'tr.l4-svc td { color: #5f6b7a; }',
       '',
       '/* ── Report / BOM Table ── */',
       '.report-table-wrap { margin-top: 30px; }',

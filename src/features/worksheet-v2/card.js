@@ -669,26 +669,47 @@
     }
     if (!hasPricingDetail(viewKey)) return '';
     var F = (ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(viewKey)) || {};
+    // CO Remove lines credit the item at the price it SOLD for: the discount
+    // it carried is displayed (it's what the proposal's "Original discount on
+    // returned items" line sums) but never edited here — a restocking fee or
+    // partial credit is its own service line, not a tweak to the credit.
+    var isRemove = isCoRemoveLine(rec);
     var out = '';
     if (F.retailPrice)     out += detailReadOnly(rec, F.retailPrice, 'Unit Price');
-    if (F.lineDiscPct)     out += detailField(rec, viewKey, F.lineDiscPct, 'Custom Disc %', 'number');
-    if (F.lineDiscAmt)     out += detailField(rec, viewKey, F.lineDiscAmt, 'Custom Disc $ each', 'number');
-    if (F.appliedDiscount) out += detailReadOnly(rec, F.appliedDiscount, 'Applied Discount');
+    if (isRemove) {
+      if (F.appliedDiscount) out += detailReadOnly(rec, F.appliedDiscount, 'Original discount');
+    } else {
+      if (F.lineDiscPct)     out += detailField(rec, viewKey, F.lineDiscPct, 'Custom Disc %', 'number');
+      if (F.lineDiscAmt)     out += detailField(rec, viewKey, F.lineDiscAmt, 'Custom Disc $ each', 'number');
+      if (F.appliedDiscount) out += detailReadOnly(rec, F.appliedDiscount, 'Applied Discount');
+    }
     // Net unit (field_2268) is only rendered when the view actually carries
     // the column — a blank "Net unit" on a view without it reads as $0.
     if (F.netUnit && rec && (rec[F.netUnit] != null || rec[F.netUnit + '_raw'] != null)) {
-      out += detailReadOnly(rec, F.netUnit, 'Net unit');
+      out += detailReadOnly(rec, F.netUnit, isRemove ? 'Credit per unit' : 'Net unit');
     }
-    if (F.total)           out += detailReadOnly(rec, F.total, 'Total');
+    if (F.total)           out += detailReadOnly(rec, F.total, isRemove ? 'Credit' : 'Total');
     if (F.lineDiscReason) {
-      out += '<div class="scw-ws-v2-pricing-reason">' +
-        detailField(rec, viewKey, F.lineDiscReason, 'Discount reason', 'text') +
-      '</div>';
+      if (!isRemove) {
+        out += '<div class="scw-ws-v2-pricing-reason">' +
+          detailField(rec, viewKey, F.lineDiscReason, 'Discount reason', 'text') +
+        '</div>';
+      } else if (readField(rec, F.lineDiscReason)) {
+        out += '<div class="scw-ws-v2-pricing-reason">' +
+          detailReadOnly(rec, F.lineDiscReason, 'Discount reason') +
+        '</div>';
+      }
     }
     if (!out) return '';
     return '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--pricing scw-ws-v2-detail-zone--pricing-co">' +
       out +
     '</div>';
+  }
+
+  /** True for a change-order REMOVE line (CO Action field_2965 = Remove —
+   *  the lines co-remove.js drafts to credit an install item back). */
+  function isCoRemoveLine(rec) {
+    return /remove/i.test(String(readField(rec, 'field_2965') || ''));
   }
 
   /** True when the view renders the custom-discount pricing zone in the
