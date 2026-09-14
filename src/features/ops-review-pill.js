@@ -402,10 +402,56 @@
   // $0 is a valid answer ("no survey costs") and clears the gate. Zero and
   // blank are distinguishable because a real 0 reads as "0" while an empty
   // field reads as "".
+  // Read survey costs from the row we were HANDED — DOM cell first, model
+  // attributes only as a fallback.
+  //
+  // Why not the generic readText(): it resolves model attributes from
+  // view_3325 (this feature's own grid) no matter which view the row came
+  // from, and returns that value even when it's empty. The bid-review
+  // status bar passes a view_3918 row, so a view_3325 that is absent,
+  // stale, or simply doesn't carry field_2750 made every SOW read as
+  // "blank" — the gate then never cleared however many times $0 was saved.
+  // The row's own cell is the same value the status bar prints, so the
+  // gate and the displayed number can no longer disagree.
+  //
+  // Returns null for "can't tell" (no row, or the field isn't a column on
+  // the row's view) — the caller fails OPEN on null rather than blocking a
+  // workflow on a field it can't see.
+  function readSurveyCostsText(tr) {
+    if (!tr) return null;
+    var td = tr.querySelector('td.' + SURVEY_COSTS_FIELD +
+      ', td[data-field-key="' + SURVEY_COSTS_FIELD + '"]');
+    if (td) return (td.textContent || '').replace(/\s+/g, ' ').trim();
+    var a = getRowAttrs(tr);
+    if (a) {
+      if (Object.prototype.hasOwnProperty.call(a, SURVEY_COSTS_FIELD + '_raw')) {
+        var raw = a[SURVEY_COSTS_FIELD + '_raw'];
+        return (raw == null || typeof raw === 'object') ? '' : String(raw).trim();
+      }
+      if (Object.prototype.hasOwnProperty.call(a, SURVEY_COSTS_FIELD)) {
+        var v = a[SURVEY_COSTS_FIELD];
+        return v == null ? '' : String(v).replace(/<[^>]*>/g, '').trim();
+      }
+    }
+    return null;
+  }
+
+  var _warnedNoSurveyCol = false;
   function surveyCostsBlank(tr) {
     if (!tr) return false;
-    var raw = String(readText(tr, SURVEY_COSTS_FIELD) || '').trim();
-    return raw === '';
+    var txt = readSurveyCostsText(tr);
+    if (txt === null) {
+      // Field isn't exposed on this row's view: fail open (don't gate) and
+      // say once what's missing, instead of silently blocking Preview.
+      if (!_warnedNoSurveyCol && window.console && console.warn) {
+        _warnedNoSurveyCol = true;
+        console.warn('[OpsReview] ' + SURVEY_COSTS_FIELD + ' (survey costs) is not a ' +
+          'column on the row\'s view — the Preview Proposal gate can\'t be evaluated ' +
+          'and is being left OPEN. Add it as a column in Builder.', tr.id || tr);
+      }
+      return false;
+    }
+    return txt === '';
   }
 
   var SURVEY_GATE_TIP =
@@ -450,6 +496,54 @@
 
   function gatePillForSurvey(pill, tr) {
     return applySurveyGate(pill, surveyCostsBlank(tr));
+  }
+
+  /** Reflect a just-SAVED survey-costs answer in place, without waiting for
+   *  a re-render: the bid-review status bar is only rebuilt when one of the
+   *  v2 grid's source views re-renders, and view_3918 (where Survey Costs
+   *  lives) isn't one of them — so after typing $0 the red "enter survey
+   *  costs" note and the gated Preview pill used to sit there until the
+   *  next unrelated refresh. `num` is the saved number, or null when the
+   *  field was cleared (gate goes back ON). Touches only the SOW section
+   *  the input lives in. */
+  var SURVEY_MISSING_NOTE = 'Enter survey costs (enter $0 if none) to enable Preview Proposal.';
+  function applySurveyCostsAnswer(input, num) {
+    if (!input) return;
+    var blank = (num === null || num === undefined || !isFinite(num));
+    input.value = blank ? '' : ('$' + Number(num).toFixed(2));
+    var wrap = input.closest ? input.closest('.scw-bid-review__sow-metric') : null;
+    if (wrap) {
+      wrap.classList.toggle('scw-bid-review__sow-metric--missing', blank);
+      var warn = wrap.querySelector('.scw-bid-review__sow-metric-warn');
+      if (blank && !warn) {
+        warn = document.createElement('span');
+        warn.className = 'scw-bid-review__sow-metric-warn';
+        warn.textContent = SURVEY_MISSING_NOTE;
+        wrap.appendChild(warn);
+      } else if (!blank && warn && warn.parentNode) {
+        warn.parentNode.removeChild(warn);
+      }
+    }
+    var pills = surveyPillsFor(input);
+    for (var i = 0; i < pills.length; i++) applySurveyGate(pills[i], blank);
+  }
+
+  /** The Preview pill(s) belonging to the SOW a survey-costs input edits.
+   *  Scoped to that input's own header/section — in v2 the input sits in
+   *  the SOW header's details band and the pill in the actions band of the
+   *  same <thead>. Never widened to the document: with several SOWs on the
+   *  page (or view_3325's own pills present) a document-wide lookup un-gates
+   *  whichever pill happens to come first, which is rarely the right one. */
+  function surveyPillsFor(input) {
+    if (!input || !input.closest) return [];
+    var sowId = input.getAttribute('data-sow-id');
+    var scope = input.closest('thead') ||
+                input.closest('.scw-bid-review-v2__sow') ||
+                input.closest('.scw-bid-review__sow-section') ||
+                (sowId ? document.querySelector(
+                  '.scw-bid-review-v2__sow[data-sow-id="' + sowId + '"]') : null);
+    if (!scope) return [];
+    return scope.querySelectorAll('.scw-ops-pill');
   }
 
   // Flag the survey-costs cell red in view_3325 when blank.
@@ -840,10 +934,8 @@
         !input.classList.contains('scw-bid-review__sow-metric-input') ||
         input.getAttribute('data-action') !== 'sow_survey_costs') return;
     var blank = String(input.value == null ? '' : input.value).trim() === '';
-    var head = input.closest('thead') ||
-               input.closest('.scw-bid-review__sow-section') || document;
-    var pill = head.querySelector('.scw-ops-pill');
-    if (pill) applySurveyGate(pill, blank);
+    var pills = surveyPillsFor(input);
+    for (var i = 0; i < pills.length; i++) applySurveyGate(pills[i], blank);
     var wrap = input.closest('.scw-bid-review__sow-metric');
     if (wrap) wrap.classList.toggle('scw-bid-review__sow-metric--missing', blank);
   }
@@ -1280,6 +1372,7 @@
   SCW.opsReview.buildPillForRow            = buildPillForRow;
   SCW.opsReview.surveyCostsBlank           = surveyCostsBlank;
   SCW.opsReview.applySurveyGate            = applySurveyGate;
+  SCW.opsReview.applySurveyCostsAnswer     = applySurveyCostsAnswer;
   SCW.opsReview.buildMarginWarningForRow   = buildMarginWarningForRow;
   SCW.opsReview.buildProposalBlockForRow   = buildProposalBlockForRow;
 })();
