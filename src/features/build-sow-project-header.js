@@ -59,11 +59,11 @@
     // the survey-tasks strip is omitted there (not rendered empty).
     scenes: [
       { sceneId: 'scene_1085',           // ops K2: Build SOWs
-        headerView: 'view_3901', surveyView: 'view_4159' },
+        headerView: 'view_3901', profile: 'project', surveyView: 'view_4159' },
       { sceneId: 'scene_1116',           // sales Build SOW
-        // ⚠ Builder: name the project details view here to kill the
-        // one-frame native flash (scene_1116 has the load veil, so it's
-        // masked today). Surveys: the sales page's rounds grid.
+        // Its details view is a SOW record, so the 'sow' profile picks it
+        // up. ⚠ Builder: naming the view id here kills the one-frame
+        // native flash (scene_1116's load veil masks it today).
         headerView: '',          surveyView: 'view_4155' },
       { sceneId: 'scene_1155',           // K2: Reconcile Bids
         headerView: '',          surveyView: '' },
@@ -73,19 +73,40 @@
     // ClickUp task URL base (same workspace as site-search-cards.js). Used
     // only when a row has a task id but neither link field resolves.
     clickupUrl:  'https://app.clickup.com/t/8530675/',
-    header: {
-      title:      'field_4',     // project name (rendered as <h1> by Knack)
-      company:    'field_6',     // REL_company (connection link)
-      site:       'field_1259',  // Site (connection link)
-      branch:     'field_673',   // Branch (connection, plain)
-      ae:         'field_451',   // Account Executive Name
-      address:    'field_22',    // Address (multi-line)
-      hubspot:    'field_1735',  // Hubspot Deal (link)
-      clickup:    'field_2685',  // Clickup Task (link) — the PROJECT task
-      multiState: 'field_1751',  // PLAYBOOK: Multi-State (Yes/No)
-      multiBldg:  'field_1752',  // PLAYBOOK: Multiple Buildings? (Yes/No)
-      playbook:   'field_1802'   // PLAYBOOK: Notes (rich text)
-    },
+    // ── Record shapes the header can be built from ────────────────────
+    // Same card, two sources. Some pages lead with the PROJECT record and
+    // some with a SOW (the sales SOW page's details view is a SOW, whose
+    // company / HubSpot / ClickUp columns are the same field keys because
+    // they resolve through the project). `identity` is what makes a view
+    // that shape — every key must be present, or the profile doesn't
+    // apply. Most-specific profile first; the best-scoring (view, profile)
+    // pair on a scene wins.
+    profiles: [
+      { id: 'project', eyebrow: 'Project', identity: ['field_4'], fields: {
+          title:      'field_4',     // project name (rendered as <h1> by Knack)
+          company:    'field_6',     // REL_company (connection link)
+          site:       'field_1259',  // Site (connection link)
+          branch:     'field_673',   // Branch (connection, plain)
+          ae:         'field_451',   // Account Executive Name
+          address:    'field_22',    // Address (multi-line)
+          hubspot:    'field_1735',  // Hubspot Deal (link)
+          clickup:    'field_2685',  // Clickup Task (link) — the PROJECT task
+          multiState: 'field_1751',  // PLAYBOOK: Multi-State (Yes/No)
+          multiBldg:  'field_1752',  // PLAYBOOK: Multiple Buildings? (Yes/No)
+          playbook:   'field_1802'   // PLAYBOOK: Notes (rich text)
+        } },
+      // A SOW record. The card still leads with the PROJECT so the pages
+      // read alike; the SOW itself renders as its own labelled line
+      // (SW#### + name) under the crumb.
+      { id: 'sow', eyebrow: 'Project', identity: ['field_2127'], fields: {
+          title:      'field_2119',  // Project (connection) — the headline
+          sowId:      'field_2127',  // "64239831407-SW1698 | <sow name>"
+          sowName:    'field_2126',  // SOW Name
+          company:    'field_6',     // Company (through the project)
+          hubspot:    'field_1735',  // Hubspot Deal Link
+          clickup:    'field_2685'   // SCW Clickup Task
+        } }
+    ],
     survey: {
       seq:         'field_2343', // SYS_auto increment (chronological sort)
       reqId:       'field_2345', // REQ_ID (e.g. 62610818596-SR168)
@@ -116,6 +137,9 @@
       .replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
   }
   function bodyEl(view, fk) {
+    // A profile that doesn't map a slot passes undefined — not a miss to
+    // go looking for.
+    if (!fk) return null;
     return view.querySelector('.kn-detail.' + fk + ' .kn-detail-body') ||
            view.querySelector('.' + fk + ' .kn-detail-body');
   }
@@ -499,8 +523,8 @@
       '<span class="scw-bsh-flag-dot"></span>' + esc(label) + ': ' + esc(value) + '</span>';
   }
 
-  function buildHeader(view) {
-    var H = CONFIG.header;
+  function buildHeader(view, profile) {
+    var H = profile.fields;
     var title    = txt(view, H.title);
     var company  = txt(view, H.company),  companyHref = hrefOf(view, H.company);
     var site     = txt(view, H.site),     siteHref    = hrefOf(view, H.site);
@@ -514,6 +538,23 @@
     var notes    = htmlOf(view, H.playbook);
     if (!stripTags(addrHtml)) addrHtml = '';
     if (!stripTags(notes))    notes    = '';
+
+    // The SOW this header is for, when the record IS a SOW. field_2127
+    // reads "<project#>-SW#### | <sow name>" — the same shape every other
+    // surface parses (install-as-quoted-panel, the acceptance card) — so
+    // take the SOW number off the left and prefer the dedicated name field
+    // for the right.
+    var sowNo = '', sowName = '';
+    if (H.sowId || H.sowName) {
+      var sowIdent = txt(view, H.sowId);
+      var halves   = sowIdent.split('|');
+      var segs     = String(halves[0] || '').trim().split('-');
+      sowNo   = (segs[segs.length - 1] || '').trim();
+      sowName = txt(view, H.sowName) || String(halves[1] || '').trim();
+      // A title that's really the SOW identifier (no separate project
+      // column) shouldn't repeat under itself.
+      if (sowName && sowName === title) sowName = '';
+    }
 
     var skip = Object.create(null);
     for (var k in H) skip[H[k]] = true;
@@ -564,10 +605,20 @@
     return '' +
       '<div class="scw-bsh-top">' +
         '<div class="scw-bsh-top-main">' +
-          '<div class="scw-bsh-eyebrow scw-bsh-eyebrow--project">Project</div>' +
+          '<div class="scw-bsh-eyebrow scw-bsh-eyebrow--project">' +
+            esc(profile.eyebrow || 'Project') + '</div>' +
           '<div class="scw-bsh-title">' + esc(title || 'Project') + '</div>' +
           (crumb ? '<div class="scw-bsh-crumb">' + crumb + '</div>' : '') +
           (addrHtml ? '<div class="scw-bsh-addr">' + pinIcon() + '<span>' + addrHtml + '</span></div>' : '') +
+          // The SOW this page is scoped to — its number reads as a tag,
+          // its name as the sentence beside it.
+          ((sowNo || sowName)
+            ? '<div class="scw-bsh-sow">' +
+                '<span class="scw-bsh-sow-lbl">Scope of work</span>' +
+                (sowNo ? '<span class="scw-bsh-sow-no">' + esc(sowNo) + '</span>' : '') +
+                (sowName ? '<span class="scw-bsh-sow-name">' + esc(sowName) + '</span>' : '') +
+              '</div>'
+            : '') +
         '</div>' +
         '<div class="scw-bsh-top-side">' +
           (links ? '<div class="scw-bsh-links">' + links + '</div>' : '') +
@@ -603,31 +654,53 @@
     for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
     return (h >>> 0).toString(36) + ':' + s.length;
   }
-  /** How much of the project does this details view actually carry? Counts
-   *  the mapped project columns present, and returns 0 without the project
-   *  NAME field — the one column every real project header has (view_3901,
-   *  and the sub scene's own view_4065). That plus the >= 2 floor below is
-   *  what keeps us off a SOW or proposal details view that merely shows a
-   *  connected project: those carry their own name field, not field_4. */
-  function scoreView(view) {
-    var H = CONFIG.header, n = 0;
-    if (!bodyEl(view, H.title)) return 0;
+  function profileById(id) {
+    for (var i = 0; i < CONFIG.profiles.length; i++) {
+      if (CONFIG.profiles[i].id === id) return CONFIG.profiles[i];
+    }
+    return CONFIG.profiles[0];
+  }
+  /** How much of this profile does the view actually carry? 0 unless
+   *  every `identity` column is present — that's what makes a view this
+   *  record shape (the project's own name field; a SOW's display id).
+   *  Without it, a details view that merely shows a CONNECTED project or
+   *  SOW would pass, and we'd take over somebody else's view. */
+  function scoreView(view, profile) {
+    var H = profile.fields, i, n = 0;
+    for (i = 0; i < profile.identity.length; i++) {
+      if (!bodyEl(view, profile.identity[i])) return 0;
+    }
     for (var k in H) if (bodyEl(view, H[k])) n++;
     return n;
   }
-  /** The project details view on this scene: the configured id when there
-   *  is one, else the best-scoring details view. Two mapped project fields
-   *  is the floor for claiming a view we weren't told about — below that,
-   *  render nothing and let someone name the view id in CONFIG.scenes. */
+  /** The header source on this scene as { view, profile }: the configured
+   *  id when there is one, else the best-scoring (view, profile) pair. Two
+   *  mapped columns is the floor for claiming a view we weren't told
+   *  about — below that, render nothing and let someone name the view id
+   *  in CONFIG.scenes. */
   function findHeaderView(sceneEl, cfg) {
-    if (cfg.headerView) return document.getElementById(cfg.headerView);
-    var views = sceneEl.querySelectorAll('.kn-details.kn-view');
-    var best = null, bestScore = 0;
-    for (var i = 0; i < views.length; i++) {
-      var s = scoreView(views[i]);
-      if (s > bestScore) { best = views[i]; bestScore = s; }
+    if (cfg.headerView) {
+      var el = document.getElementById(cfg.headerView);
+      if (!el) return null;
+      // A named view still picks the profile that fits it, unless the
+      // entry pins one.
+      if (cfg.profile) return { view: el, profile: profileById(cfg.profile) };
+      var bestP = null, bestPS = 0;
+      for (var p = 0; p < CONFIG.profiles.length; p++) {
+        var ps = scoreView(el, CONFIG.profiles[p]);
+        if (ps > bestPS) { bestP = CONFIG.profiles[p]; bestPS = ps; }
+      }
+      return { view: el, profile: bestP || profileById(cfg.profile) };
     }
-    return bestScore >= 2 ? best : null;
+    var views = sceneEl.querySelectorAll('.kn-details.kn-view');
+    var best = null, bestScore = 0, bestProfile = null;
+    for (var i = 0; i < views.length; i++) {
+      for (var j = 0; j < CONFIG.profiles.length; j++) {
+        var s = scoreView(views[i], CONFIG.profiles[j]);
+        if (s > bestScore) { best = views[i]; bestScore = s; bestProfile = CONFIG.profiles[j]; }
+      }
+    }
+    return bestScore >= 2 ? { view: best, profile: bestProfile } : null;
   }
 
   var _bound = Object.create(null);
@@ -636,8 +709,9 @@
       var cfg = CONFIG.scenes[i];
       var sceneEl = document.getElementById('kn-' + cfg.sceneId);
       if (!sceneEl) continue;                 // scene not rendered
-      var view = findHeaderView(sceneEl, cfg);
-      if (!view) continue;                    // no project details view (yet)
+      var found = findHeaderView(sceneEl, cfg);
+      if (!found || !found.view) continue;    // no header source (yet)
+      var view = found.view;
       // Hide the native markup + strip the view/column chrome. Id-based
       // rules already cover a configured view from first paint; a
       // discovered one is claimed here, one frame later.
@@ -650,7 +724,7 @@
       if (view.id && !_bound[view.id]) { _bound[view.id] = 1; bind(view.id); }
       // Scope the survey strip to THIS scene's grid before building.
       _surveyView = cfg.surveyView || '';
-      var inner = buildHeader(view);
+      var inner = buildHeader(view, found.profile);
       var acts  = actionLinks(view);
       if (acts) inner = inner.replace('<div class="scw-bsh-top-side">',
         '<div class="scw-bsh-top-side"><div class="scw-bsh-actions">' + acts + '</div>');
@@ -716,6 +790,17 @@
       '.scw-bsh-crumb-link { color: #1d4ed8; text-decoration: none; }',
       '.scw-bsh-crumb-link:hover { text-decoration: underline; }',
       '.scw-bsh-crumb-sep { color: #cbd5e1; font-weight: 400; }',
+      /* Scope-of-work line — the SOW number as a tag, its name beside it.
+         Only on pages whose record IS a SOW (the 'sow' profile). */
+      '.scw-bsh-sow { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 8px;',
+      '  margin-top: 9px; }',
+      '.scw-bsh-sow-lbl { font: 700 9.5px/1.2 system-ui, sans-serif; letter-spacing: .08em;',
+      '  text-transform: uppercase; color: #94a3b8; }',
+      '.scw-bsh-sow-no { font: 700 11.5px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;',
+      '  color: #0f4c81; background: #eef4fa; border: 1px solid #dbe4ee;',
+      '  border-radius: 5px; padding: 2px 7px; letter-spacing: .02em; }',
+      '.scw-bsh-sow-name { font: 600 13px/1.35 system-ui, sans-serif; color: #334155;',
+      '  overflow-wrap: anywhere; }',
       '.scw-bsh-addr { display: flex; align-items: flex-start; gap: 7px; margin-top: 8px;',
       '  font-size: 13px; color: #475569; line-height: 1.4; }',
       '.scw-bsh-addr .scw-bsh-pin { color: #2f5f91; flex: 0 0 auto; margin-top: 1px; }',
