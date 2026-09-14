@@ -503,19 +503,28 @@
     };
   }
 
-  /** LABOR POSITION — the one number that says whether we're ahead or
-   *  behind. What SCW bills the client for install, minus what SCW pays
-   *  the sub for it (the sub's bid IS the labor; equipment isn't theirs).
-   *  Positive = ahead. Null when either half is unknown, so the card
-   *  shows what it has and passes no verdict it can't support.
+  // Target labor margin. The retained share of what we bill the client
+  // for install, after the sub's bid — at or above this is on target.
+  var LABOR_TARGET_PCT = 12;
+
+  /** LABOR MARGIN — what we billed the client for install against what
+   *  that work cost us (the sub's bid IS the labor cost; equipment isn't
+   *  theirs, so it never enters this): (billed − cost) ÷ billed.
    *
-   *  Works signed, which matters on a credit CO: install billed -$454
-   *  against a -$400 sub credit is -$54 — we credited the client more
-   *  than the sub credited us, so we're BEHIND by $54 on that change. */
-  function laborGap(installBilled, subAmount) {
+   *  A RATE, deliberately, never a net dollar figure. A net number invites
+   *  "we made $4k, where's my cut" — it reads as a prize instead of a rate
+   *  to hold. The rate is also sign-invariant, so a credit line rates the
+   *  same as the equivalent add (-54 / -454 is the same 12% as 54 / 454).
+   *
+   *  Rounds once and compares the ROUNDED value, so the figure shown and
+   *  the verdict beside it can never disagree (11.9% shows as 12% and is
+   *  on target, not "12% below target"). Null when a half is missing or
+   *  there's nothing billed to take a share of. */
+  function laborMargin(installBilled, subAmount) {
     if (installBilled == null || subAmount == null) return null;
-    var delta = installBilled - subAmount;
-    return { delta: delta, ahead: delta >= 0 };
+    if (!installBilled) return null;   // no billing → no share of it
+    var pct = Math.round((installBilled - subAmount) / installBilled * 100);
+    return { pct: pct, onTarget: pct >= LABOR_TARGET_PCT };
   }
 
   /** One money column. Empty value → no column at all, so a row never
@@ -528,41 +537,44 @@
       (sub || '') + '</span>';
   }
 
-  /** The ahead/behind figure, signed and worded. `$0` is even, not a win. */
-  function gapHtml(gap) {
-    var cls = gap.delta === 0 ? 'even' : (gap.ahead ? 'ahead' : 'behind');
-    var word = gap.delta === 0 ? 'even' : (gap.ahead ? 'ahead' : 'behind');
-    return '<span class="scw-acpt-gap scw-acpt-gap--' + cls + '">' +
-      esc((gap.delta > 0 ? '+' : '') + money(gap.delta)) +
-      '<span class="scw-acpt-gap__word">' + esc(word) + '</span></span>';
+  /** The margin percentage with its verdict against target. */
+  function marginHtml(m) {
+    return '<span class="scw-acpt-gap scw-acpt-gap--' +
+      (m.onTarget ? 'on' : 'under') + '" title="' +
+      esc('Share of install billing retained after the subcontractor\'s bid. ' +
+          'Target ' + LABOR_TARGET_PCT + '%.') + '">' +
+      esc(m.pct + '%') +
+      '<span class="scw-acpt-gap__word">' +
+      (m.onTarget ? 'on target' : 'below target') + '</span></span>';
   }
 
-  /** The LABOR column. Headline is the position (ahead/behind) when both
-   *  halves are known — that's the at-a-glance question. Otherwise it's
-   *  whichever half we have, honestly labelled, with no verdict. */
-  function laborStat(installBilled, amt, isCo) {
+  /** The LABOR column. A MARGIN RATE when both halves are known — that's
+   *  the at-a-glance question, and a rate rather than a net dollar figure
+   *  on purpose (see laborMargin). Otherwise whichever half we have,
+   *  relabelled to match, with no verdict.
+   *
+   *  Deliberately does NOT print billed-vs-sub side by side: two figures
+   *  one subtraction apart is the net number back again. Both live
+   *  elsewhere on the card already — billed in its own column, the sub's
+   *  in the bid + change-order tally. */
+  function laborStat(installBilled, amt) {
     var subAmt = amt ? amt.amount : null;
     var derived = !!(amt && amt.source === 'derived');
-    var subCls = 'scw-acpt-stat__sub' + (derived ? ' scw-acpt-stat__sub--help' : '');
-    var subTip = derived ? ' title="' + esc(DERIVED_NOTE) + '"' : '';
-    var gap = laborGap(installBilled, subAmt);
-    if (gap) {
-      return stat('Labor', gapHtml(gap),
-        '<span class="' + subCls + '"' + subTip + '>' +
-          esc(money(installBilled)) + ' billed · ' + esc(money(subAmt)) +
-          (isCo ? ' CO to sub' : ' to sub') + (derived ? ' (line items)' : '') +
-        '</span>',
-        'scw-acpt-stat--labor');
-    }
+    var note = derived
+      ? '<span class="scw-acpt-stat__sub scw-acpt-stat__sub--help" title="' +
+          esc(DERIVED_NOTE) + '">from line items</span>'
+      : '';
+    var m = laborMargin(installBilled, subAmt);
+    if (m) return stat('Labor margin', marginHtml(m), note, 'scw-acpt-stat--labor');
+    // Can't rate it — show the half we have under its own name, so the
+    // column never implies a margin it couldn't compute.
     if (installBilled != null) {
-      return stat('Labor', esc(money(installBilled)),
-        '<span class="scw-acpt-stat__sub">billed · no sub bid on file</span>',
+      return stat('Labor billed', esc(money(installBilled)),
+        '<span class="scw-acpt-stat__sub">no sub bid on file</span>',
         'scw-acpt-stat--labor');
     }
     if (subAmt != null) {
-      return stat('Labor', esc(money(subAmt)),
-        '<span class="' + subCls + '"' + subTip + '>' +
-          (isCo ? 'CO to sub' : 'to sub') + (derived ? ' (line items)' : '') + '</span>',
+      return stat('Labor to sub', esc(money(subAmt)), note,
         'scw-acpt-stat--labor');
     }
     return '';
@@ -893,19 +905,18 @@
       '.scw-acpt-stat--equip  { min-width: 92px; }',
       '.scw-acpt-stat--labor  { min-width: 150px; }',
       '.scw-acpt-stat--total  { min-width: 104px; }',
-      // ── Ahead / behind on labor ────────────────────────────────
-      // This one IS a verdict, unlike a change order's sign: billing more
-      // for install than the sub charges is ahead, less is behind. Green
-      // for ahead, AMBER for behind (repo convention — amber warns, red is
-      // for errors and destructive actions).
+      // ── Labor margin vs target ─────────────────────────────────
+      // This one IS a verdict, unlike a change order\'s sign: a rate at or
+      // above target is on target, under it isn\'t. Green for on, AMBER for
+      // under (repo convention — amber warns, red is for errors and
+      // destructive actions).
       '.scw-acpt-gap { display: inline-flex; align-items: baseline; gap: 5px;',
-      '  font: 700 16px/1.15 system-ui, sans-serif; font-variant-numeric: tabular-nums; }',
+      '  font: 700 16px/1.15 system-ui, sans-serif; font-variant-numeric: tabular-nums;',
+      '  cursor: help; }',
       '.scw-acpt-gap__word { font: 700 9.5px/1 system-ui, sans-serif;',
       '  letter-spacing: .06em; text-transform: uppercase; }',
-      '.scw-acpt-gap--ahead  { color: #047857; }',
-      '.scw-acpt-gap--behind { color: #b45309; }',
-      // Even money is neither — don\'t paint it.
-      '.scw-acpt-gap--even { color: #475569; }',
+      '.scw-acpt-gap--on    { color: #047857; }',
+      '.scw-acpt-gap--under { color: #b45309; }',
       // ── Project footer: the same three columns, summed ──────────
       // Sits directly under the rows and reuses their column widths, so
       // the project figure lands beneath the per-row figures it sums.
@@ -1763,7 +1774,7 @@
         ? '<div class="scw-acpt-money scw-acpt-money--cols">' +
             stat('Equipment', billed.equip != null ? money(billed.equip) : '', '',
                  'scw-acpt-stat--equip') +
-            laborStat(billed.install, amt, isCo) +
+            laborStat(billed.install, amt) +
             // Only a STORED project total, or both halves to add, is
             // "billed to client". One half alone is already its own
             // column — claiming it as the total would overstate it.
@@ -2047,7 +2058,7 @@
       '<span class="scw-acpt-foot__cap">Project</span>' +
       stat('Equipment', eq != null ? money(eq) : '', '', 'scw-acpt-stat--equip') +
       laborStat(inst, sub == null ? null : { amount: sub,
-        source: derived ? 'derived' : 'quoted' }, false) +
+        source: derived ? 'derived' : 'quoted' }) +
       stat('Project total', (totOk && tot != null) ? money(tot) : '', '',
            'scw-acpt-stat--total');
     return el;
