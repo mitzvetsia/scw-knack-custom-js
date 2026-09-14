@@ -102,13 +102,12 @@
     // The bid total above is what SCW PAYS the sub. These are what SCW
     // BILLS, as stored on the published proposal — so the row shows both
     // sides of the deal. OPS ONLY: never render these on a sub surface.
-    // ⚠ Builder: expose them on view_3914 as connected columns through
-    // field_2755 (same as field_2943/2944/2960 already are). pubEquip is
-    // blank because the proposal's equipment-total field key isn't known
-    // here — fill it in and the billed block completes itself; with only
-    // the install total it shows just that, labelled.
-    pubEquip:   '',
-    pubInstall: 'field_2668'   // published proposal's stored install total
+    // ⚠ Builder: expose them on a view as connected columns through
+    // field_2755 (same as field_2943/2944/2960 already are) and the billed
+    // block fills itself in. Absent, no block renders — nothing breaks.
+    pubEquip:   'field_2669',  // TOTALS_equipment total
+    pubInstall: 'field_2668',  // TOTALS_install total
+    pubGrand:   'field_2670'   // TOTALS_project total (authoritative)
   };
 
   // eSignatures contract page — the id in field_1843 appended verbatim.
@@ -448,16 +447,20 @@
     try { w.focus(); } catch (e3) { /* ignore */ }
   }
 
-  /** Which columns on this view hold the proposal's money, found by their
-   *  HEADER LABEL rather than a hardcoded key — so adding "equipment
-   *  total" / "labor total" / "project total" in Builder is all it takes.
-   *  Same detect-by-column approach install-as-quoted-panel uses for the
-   *  publish snapshot. A label must say "total" and must NOT be one of the
-   *  link/PDF/JSON columns (SYS_Xero EQUIPMENT Invoice Link would
-   *  otherwise match on "equip"). F.pubEquip / F.pubInstall override. */
+  /** Which columns on this view hold the proposal's money. The three keys
+   *  in F (pubEquip / pubInstall / pubGrand) are the answer; the header-
+   *  label pass below only fills a slot a key didn't, so a view that
+   *  exposes the totals under different keys still reads. A label must say
+   *  "total" and must NOT be one of the link/PDF/JSON columns (SYS_Xero
+   *  EQUIPMENT Invoice Link would otherwise match on "equip"). A slot with
+   *  no column stays empty and its figure simply doesn't render. */
   var _moneyColsWarned = false;
   function moneyColsOf(viewEl) {
-    var out = { equip: F.pubEquip || '', install: F.pubInstall || '', grand: '' };
+    var out = {
+      equip:   F.pubEquip || '',
+      install: F.pubInstall || '',
+      grand:   F.pubGrand || ''
+    };
     if (!viewEl) return out;
     var ths = viewEl.querySelectorAll('thead th');
     for (var i = 0; i < ths.length; i++) {
