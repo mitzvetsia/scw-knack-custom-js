@@ -154,12 +154,15 @@
     // model to decide the page-wide edit window.
     'view_4122',
     // 'view_4066' — ACCEPTANCE grid on the sub deployment dashboard
-    // (scene_1353). Hidden from subs entirely (decided 2026-08-12) —
-    // agreements/invoices are an ops surface. Kept rendered because
-    // regenerate-closeout-docs.js reads its first row for the
-    // AcceptanceID webhook payload (and install-as-quoted-panel.js reads
-    // it as the sub-scene acceptance source for origin/quote chips).
-    'view_4066',
+    // (scene_1353). NO LONGER HIDDEN (2026-09-14): acceptance-card.js
+    // renders a read-only sub variant over it — the bid the SOW is priced
+    // from, that bid's total, and the terms/signature pills — and hides
+    // the native grid itself (unconditionally for sub views, so a failed
+    // guard can't leak the raw table). The rest of the acceptance record
+    // (Xero links, uploaders, greenlight, questionnaire) stays ops-only.
+    // Its other consumers still read the same rendered rows:
+    // regenerate-closeout-docs.js (AcceptanceID webhook payload) and
+    // install-as-quoted-panel.js (origin/quote chips).
     // 'view_4151' — SOW_proposed line items grid on the sub deployment
     // dashboard (scene_1353): the sub-scene analogue of view_4072.
     // install-as-quoted-panel.js reads its model for the As Quoted

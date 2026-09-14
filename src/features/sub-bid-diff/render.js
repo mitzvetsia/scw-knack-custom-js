@@ -471,6 +471,8 @@
         savedAt: new Date().toISOString(),
         laborDelta: 0, counts: { material: 0, spec: 0, added: 0, orphan: 0 },
         coverageGaps: 0, total: 0, exceptions: [],
+        // No bid package to total — the uploaded PDF below IS the bid.
+        basisTotal: null,
         note: currentNote(sowId),
         // The uploaded bid PDF this SOW is priced from — REQUIRED for K1.
         // Read by the ops-stepper publish gate + the publish payload.
@@ -519,6 +521,13 @@
       savedAt: new Date().toISOString(),
       laborDelta: res.laborDelta, counts: res.counts, coverageGaps: res.coverageGaps,
       total: res.total,
+      // The basis bid's own total — Σ(basis cell labor), the same number
+      // bidHtml prints as "Sub Bid Total". Carried as a FIRST-CLASS number
+      // so readers don't have to scrape the HTML fragment: the sub-facing
+      // acceptance card (acceptance-card.js) shows it, and the publish
+      // payload can ship it. `total` above is the exception COUNT, not
+      // money — do not confuse the two.
+      basisTotal: res.basisTotal,
       exceptions: res.exceptions.map(function (e) {
         return { tier: e.tier, label: e.label, product: e.product, fields: e.fields || [],
                  sowFee: e.sowFee, bidLabor: e.bidLabor, delta: e.delta, jumpId: e.jumpId || '' };

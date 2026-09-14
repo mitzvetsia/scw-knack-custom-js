@@ -27,16 +27,40 @@
  * completeness checklist. All four are editable in place: URL modal for
  * the links, file picker + Knack asset upload for the PDFs.
  *
- * COLUMN GUARD: the card only takes over a view whose table actually has
- * the proposal column (th.field_2755) — otherwise the native table stays
- * visible untouched. The sub-dashboard ACCEPTANCE grid (view_4066) is
- * deliberately NOT listed: acceptances are an ops surface, and the sub's
- * grid is hidden outright (hide-data-source-views.js; decided 2026-08-12).
+ * COLUMN GUARD: the ops card only takes over a view whose table actually
+ * has the proposal column (th.field_2755) — otherwise the native table
+ * stays visible untouched.
+ *
+ * SUB VARIANT (view_4066, 2026-09-14 — reverses the 2026-08-12 "hide it
+ * outright" call): the subcontractor dashboard shows a READ-ONLY card with
+ * exactly three things, because that is what a sub needs to see and all a
+ * sub is entitled to see:
+ *   1. the bid this SOW is priced from  (basis name + the bid PDF)
+ *   2. that bid's total                 (see BID TOTAL below)
+ *   3. approved-for-terms / initial-payment + agreement-signed pills
+ * Nothing else renders: no Xero invoice or estimate links, no eSignatures
+ * reference, no uploaders/editors, no greenlight check, no questionnaire
+ * button. The native grid is hidden for sub views unconditionally, so a
+ * failed guard can never leak the raw table to a sub.
+ *
+ * BID TOTAL — two sources, in order:
+ *   a) F.bidTotal — a currency field on the acceptance record itself.
+ *      PREFERRED: one number, nothing else rides along. ⚠ Builder TBD.
+ *   b) the SOW's field_2941 sub-bid snapshot, if a snapshot-shaped blob is
+ *      exposed on the row (any column — we scan for it). Only basisTotal
+ *      and basisBidName are read. ⚠ EXPOSURE: that blob ALSO carries the
+ *      diff (exceptions[].sowFee = SCW-side money) and diffHtml, and a sub
+ *      can read the whole thing out of the page regardless of what this
+ *      code touches. Prefer (a); don't put field_2941 on a sub view unless
+ *      you've accepted that.
+ * Neither available → the total line is omitted (fail open, no error).
  ****************************************************************************/
 (function () {
   'use strict';
 
-  var VIEWS    = ['view_3914'];  // ops deploy scene only
+  var VIEWS    = ['view_3914', 'view_4066'];
+  // Sub-facing views get the read-only variant (see SUB VARIANT above).
+  var SUB_VIEWS = { view_4066: 1 };   // subcontractor deployment dashboard
   var STYLE_ID = 'scw-acpt-css';
   var EVENT_NS = '.scwAcceptanceCard';
   var F = {
@@ -46,9 +70,22 @@
     terms:     'field_2940',   // FLAG_approved for terms (Yes/No)
     xero:      'field_1847',
     agreement: 'field_2767',
-    bidPdf:    'field_2947',   // SYS_bid basis pdf (file)
+    bidPdf:    'field_2947',   // SYS_bid basis pdf (file) — "Matching Bid"
     xeroEst:   'field_2948',   // SYS_xero estimate link (URL)
-    contract:  'field_1843'    // esignatures.com contract id (uuid)
+    contract:  'field_1843',   // esignatures.com contract id (uuid)
+    // ── Sub card only ────────────────────────────────────────────
+    // Bid total on the acceptance record. ⚠ Builder TBD: add a currency
+    // field (e.g. "SYS_bid basis total"), have Make stamp it when it
+    // creates the acceptance — it already has the snapshot server-side,
+    // same place it gets the bid-basis PDF — then put the key here and
+    // expose it as a column on view_4066. Blank = fall back to the
+    // snapshot blob (see below), then to no total line at all.
+    bidTotal:  '',
+    // The SOW's field_2941 sub-bid snapshot, IF you deliberately expose it
+    // on the acceptance row. Blank = auto-detect: any column whose value
+    // parses as a snapshot is used. Only basisBidName + basisTotal are
+    // read from it; the diff/exception data is never rendered.
+    snapshot:  ''
   };
 
   // eSignatures contract page — the id in field_1843 appended verbatim.
@@ -70,6 +107,102 @@
     return td ? td.querySelector(sel || 'a[href]') : null;
   }
   function isYes(v) { return /^(yes|true)$/i.test(String(v || '').trim()); }
+  function money(n) {
+    var v = Number(n);
+    if (!isFinite(v)) return '';
+    var neg = v < 0, p = Math.abs(v).toFixed(2).split('.');
+    return (neg ? '-$' : '$') +
+      p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + p[1];
+  }
+  /** A number out of a displayed currency cell ("$10,150.00" → 10150).
+   *  Returns null for blank/unparseable so callers can fall through. */
+  function numFromText(s) {
+    var t = String(s == null ? '' : s).replace(/[^0-9.\-]/g, '');
+    if (t === '' || t === '-' || t === '.') return null;
+    var n = parseFloat(t);
+    return isFinite(n) ? n : null;
+  }
+
+  /** This row's Knack model attributes — the verbatim stored values. The
+   *  sub-bid snapshot embeds bidHtml/diffHtml, which Knack renders as real
+   *  elements in the cell, so DOM textContent strips the tags and corrupts
+   *  the JSON (same trap ops-stepper.js documents). The model holds it
+   *  exactly as it was PUT. */
+  function rowAttrs(viewKey, recId) {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[viewKey];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (!models) return null;
+      for (var i = 0; i < models.length; i++) {
+        if (models[i] && models[i].id === recId) return models[i].attributes;
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+  /** Tolerant JSON parse: direct, then entity-decoded, then tag-stripped. */
+  function parseLooseJson(s) {
+    if (s == null) return null;
+    var t = String(s).trim();
+    if (!t) return null;
+    try { return JSON.parse(t); } catch (e) {}
+    try {
+      var ta = document.createElement('textarea');
+      ta.innerHTML = t;
+      return JSON.parse(ta.value.trim());
+    } catch (e) {}
+    try { return JSON.parse(t.replace(/<[^>]*>/g, '').trim()); } catch (e) {}
+    return null;
+  }
+  function isSnapshot(o) {
+    return !!(o && typeof o === 'object' && !Array.isArray(o) &&
+      ('basisBidId' in o || 'basisBidName' in o));
+  }
+  /** The SOW's field_2941 sub-bid snapshot as seen from this acceptance
+   *  row: the configured column if F.snapshot names one, else ANY column
+   *  whose value parses into a snapshot — so exposing the blob in Builder
+   *  is enough, whatever key or connection it arrives under. Model first,
+   *  DOM last. Returns null when there's nothing snapshot-shaped. */
+  function readSnapshot(viewKey, row) {
+    var attrs = rowAttrs(viewKey, row.id);
+    if (F.snapshot) {
+      var one = parseLooseJson(
+        (attrs && (attrs[F.snapshot] != null ? attrs[F.snapshot] : attrs[F.snapshot + '_raw'])) ||
+        cellText(row, F.snapshot));
+      if (isSnapshot(one)) return one;
+    }
+    if (attrs) {
+      for (var k in attrs) {
+        if (!/^field_\d+$/.test(k)) continue;
+        var val = attrs[k];
+        if (typeof val !== 'string' || val.indexOf('basisBid') === -1) continue;
+        var snap = parseLooseJson(val);
+        if (isSnapshot(snap)) return snap;
+      }
+    }
+    return null;
+  }
+
+  /** The bid total for the sub card. Acceptance-level currency field
+   *  first (F.bidTotal — the clean source), then the snapshot's
+   *  basisTotal, then the "Sub Bid Total" the snapshot's bidHtml prints
+   *  (snapshots stamped before basisTotal was carried). '' = omit. */
+  function bidTotalOf(row, snap) {
+    if (F.bidTotal) {
+      var direct = numFromText(cellText(row, F.bidTotal));
+      if (direct != null) return money(direct);
+    }
+    if (snap) {
+      if (snap.basisTotal != null && isFinite(Number(snap.basisTotal))) {
+        return money(snap.basisTotal);
+      }
+      var m = String(snap.bidHtml || '').match(/class="pt-value"[^>]*>([^<]+)</);
+      if (m) {
+        var scraped = numFromText(m[1]);
+        if (scraped != null) return money(scraped);
+      }
+    }
+    return '';
+  }
 
   var CHECK_SVG =
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
@@ -97,9 +230,14 @@
     // native table.
     var hideSel = [];
     for (var hv = 0; hv < VIEWS.length; hv++) {
-      hideSel.push('#' + VIEWS[hv] + '.scw-acpt-on .view-header',
-                   '#' + VIEWS[hv] + '.scw-acpt-on .kn-records-nav',
-                   '#' + VIEWS[hv] + '.scw-acpt-on .kn-table-wrapper');
+      // Sub views: hide the native grid UNCONDITIONALLY. The card is the
+      // only sanctioned view of an acceptance for a subcontractor, so a
+      // guard that fails (columns pulled in Builder, model not populated)
+      // must leave an empty section, never the raw table.
+      var gate = SUB_VIEWS[VIEWS[hv]] ? '' : '.scw-acpt-on';
+      hideSel.push('#' + VIEWS[hv] + gate + ' .view-header',
+                   '#' + VIEWS[hv] + gate + ' .kn-records-nav',
+                   '#' + VIEWS[hv] + gate + ' .kn-table-wrapper');
     }
     var css = [
       hideSel.join(',\n') + ' { display: none !important; }',
@@ -187,6 +325,22 @@
       '  border: 1px solid transparent; white-space: nowrap; }',
       '.scw-acpt-rollup--warn { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
       '.scw-acpt-rollup--ok   { background: #dcfce7; border-color: #86efac; color: #15803d; }',
+      // ── Sub variant ────────────────────────────────────────────
+      // Three things, left to right: what we're paying against (bid name
+      // + PDF), what it totals, and where the paperwork stands. The total
+      // is the one number on the card, so it gets tabular figures and
+      // sits in its own labelled block rather than inline in prose.
+      '.scw-acpt-row--sub { align-items: flex-start; gap: 18px; }',
+      '.scw-acpt-row--sub .scw-acpt-id { flex: 1 1 260px; }',
+      '.scw-acpt-basis { display: flex; flex-direction: column; gap: 5px;',
+      '  align-items: flex-start; }',
+      '.scw-acpt-total { flex: 0 0 auto; display: flex; flex-direction: column;',
+      '  gap: 2px; padding: 2px 0; }',
+      '.scw-acpt-total__lbl { font: 700 9.5px/1 system-ui, sans-serif;',
+      '  letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; }',
+      '.scw-acpt-total__val { font: 700 16px/1.15 system-ui, sans-serif;',
+      '  color: #0f172a; font-variant-numeric: tabular-nums; }',
+      '.scw-acpt-row--sub .scw-acpt-status { margin-left: auto; }',
       '.scw-acpt-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;',
       '  padding: 10px 2px; }',
       '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #eef2f7; }',
@@ -997,8 +1151,130 @@
     return card;
   }
 
+  /** SUB VARIANT — one read-only row per acceptance: the bid we're paying
+   *  against, its total, and the paperwork pills. Nothing here writes,
+   *  proxies a Knack action, or renders the snapshot's diff. */
+  function buildSubRow(viewKey, row) {
+    var snap = readSnapshot(viewKey, row);
+    // The bid PDF cell ("Matching Bid", field_2947) — reuse Knack's own
+    // asset href so the file opens through Knack's viewer as usual.
+    var bidPdfA = cellAnchor(row, F.bidPdf, 'a.kn-view-asset') || cellAnchor(row, F.bidPdf);
+    var pdfName = bidPdfA
+      ? (bidPdfA.getAttribute('data-file-name') ||
+         (bidPdfA.textContent || '').replace(/\s+/g, ' ').trim())
+      : '';
+    // Name the bid: the snapshot's basis name is the real designation
+    // ("BD-2", or the K1 label); the file name is the honest fallback.
+    var basisName = String((snap && snap.basisBidName) || '').trim() || pdfName ||
+      'Not designated yet';
+    var total  = bidTotalOf(row, snap);
+    var paid   = isYes(cellText(row, F.payment));
+    var signed = isYes(cellText(row, F.signed));
+    var terms  = isYes(cellText(row, F.terms));
+    // Proposal identifier embeds the SOW number ("<project#>-<SOW#> | <quote#>")
+    // — when the column is exposed, lead with the SOW so a project with a
+    // base SOW plus change orders is readable. Fail quiet when it isn't.
+    var propTxt = cellText(row, F.proposal);
+    var sowNo   = (propTxt.split(/\s*\|\s*/)[0] || '').trim();
+    var isCo    = /\bSW\d+CO\b/i.test(propTxt);
+
+    var html =
+      '<div class="scw-acpt-id">' +
+        '<div class="scw-acpt-pair__cap">' +
+          (sowNo ? esc(sowNo) : 'Priced from') + '</div>' +
+        '<div class="scw-acpt-basis">' +
+          '<div class="scw-acpt-title">' + esc(basisName) + '</div>' +
+          (bidPdfA
+            ? '<a class="scw-acpt-ref" href="' + esc(bidPdfA.getAttribute('href') || '') + '" ' +
+                'title="Open ' + esc(pdfName || 'the bid PDF') + '">' + FILE_SVG +
+                '<span class="scw-acpt-doc__lbl">Bid PDF</span></a>'
+            : '') +
+        '</div>' +
+      '</div>' +
+      (total
+        ? '<div class="scw-acpt-total">' +
+            '<span class="scw-acpt-total__lbl">Bid total</span>' +
+            '<span class="scw-acpt-total__val">' + esc(total) + '</span>' +
+          '</div>'
+        : '') +
+      '<div class="scw-acpt-status">' +
+        // A change order carries no initial payment (it rides the final
+        // project invoice), so signature is its only gate — same rule the
+        // ops card uses.
+        (isCo ? '' :
+          (terms
+            ? pill('Approved for terms', true)
+            : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid))) +
+        pill(signed ? 'Agreement signed' : 'Agreement not signed', signed) +
+      '</div>';
+
+    var el = document.createElement('div');
+    el.className = 'scw-acpt-row scw-acpt-row--sub';
+    el.innerHTML = html;
+    return el;
+  }
+
+  function renderSubView(VIEW) {
+    var viewEl = document.getElementById(VIEW);
+    if (!viewEl) return;
+    injectCss();
+    viewEl.classList.add('scw-acpt-on');
+
+    var prior = viewEl.querySelector(':scope > .scw-acpt-card');
+    if (prior) prior.remove();
+
+    // COLUMN GUARD — needs at least one of the things the card shows.
+    // Unlike the ops card this doesn't fall back to the native table
+    // (it's hidden unconditionally for sub views); it just renders
+    // nothing, same as an empty section.
+    var hasAny = !!(viewEl.querySelector('thead th.' + F.bidPdf) ||
+                    viewEl.querySelector('thead th.' + F.terms) ||
+                    viewEl.querySelector('thead th.' + F.payment) ||
+                    viewEl.querySelector('thead th.' + F.signed));
+    var rows = viewEl.querySelectorAll('tbody tr[id]');
+    if (!hasAny || !rows.length) return;
+
+    var card = document.createElement('div');
+    card.className = 'scw-acpt-card scw-acpt-card--sub';
+    card.innerHTML = '<div class="scw-acpt-eyebrow">Bid basis &amp; agreement</div>';
+    var signedCount = 0;
+    for (var ri = 0; ri < rows.length; ri++) {
+      if (isYes(cellText(rows[ri], F.signed))) signedCount++;
+      card.appendChild(buildSubRow(VIEW, rows[ri]));
+    }
+    viewEl.appendChild(card);
+    rollup(viewEl, rows.length - signedCount);
+  }
+
+  /** Accordion-header tally: "N awaiting signature" (amber) / "all signed"
+   *  (green), plus the attention flag the deploy nav's amber dot reads.
+   *  Shared by both variants. */
+  function rollup(viewEl, pending) {
+    var acc = viewEl.closest('.scw-ktl-accordion');
+    if (!acc) return;
+    acc.toggleAttribute && acc.toggleAttribute('data-scw-attention', pending > 0);
+    var head = acc.querySelector('.scw-ktl-accordion__header');
+    if (!head) return;
+    var countEl = head.querySelector('.scw-acc-count');
+    var roll = head.querySelector('.scw-acpt-rollup');
+    if (!roll) {
+      roll = document.createElement('span');
+      roll.className = 'scw-acpt-rollup';
+      if (countEl) head.insertBefore(roll, countEl);
+      else head.appendChild(roll);
+    }
+    roll.classList.toggle('scw-acpt-rollup--warn', pending > 0);
+    roll.classList.toggle('scw-acpt-rollup--ok', pending === 0);
+    roll.textContent = pending > 0
+      ? (pending + ' awaiting signature')
+      : 'all signed';
+  }
+
   function render() {
-    for (var vi = 0; vi < VIEWS.length; vi++) renderView(VIEWS[vi]);
+    for (var vi = 0; vi < VIEWS.length; vi++) {
+      if (SUB_VIEWS[VIEWS[vi]]) renderSubView(VIEWS[vi]);
+      else renderView(VIEWS[vi]);
+    }
   }
 
   function renderView(VIEW) {
@@ -1055,30 +1331,9 @@
     }
     viewEl.appendChild(card);
 
-    // Rollup badge in the accordion header bar: "N awaiting signature"
-    // (amber) or "all signed" (green) — visible without expanding, and the
-    // attention attribute feeds the deploy page nav's amber dot.
-    var pending = rows.length - signedCount;
-    var acc = viewEl.closest('.scw-ktl-accordion');
-    if (acc) {
-      acc.toggleAttribute && acc.toggleAttribute('data-scw-attention', pending > 0);
-      var head = acc.querySelector('.scw-ktl-accordion__header');
-      var countEl = head && head.querySelector('.scw-acc-count');
-      if (head) {
-        var roll = head.querySelector('.scw-acpt-rollup');
-        if (!roll) {
-          roll = document.createElement('span');
-          roll.className = 'scw-acpt-rollup';
-          if (countEl) head.insertBefore(roll, countEl);
-          else head.appendChild(roll);
-        }
-        roll.classList.toggle('scw-acpt-rollup--warn', pending > 0);
-        roll.classList.toggle('scw-acpt-rollup--ok', pending === 0);
-        roll.textContent = pending > 0
-          ? (pending + ' awaiting signature')
-          : 'all signed';
-      }
-    }
+    // Rollup badge in the accordion header bar — visible without
+    // expanding; the attention attribute feeds the deploy nav's amber dot.
+    rollup(viewEl, rows.length - signedCount);
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {

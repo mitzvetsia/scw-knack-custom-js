@@ -63,7 +63,14 @@
     { match: /^system setup questionnaire/i,
       sub: "Client's configuration preferences, captured at project start." },
     { match: /^acceptance$/i, rename: 'Agreements & Invoices',
-      sub: 'Issued paperwork per SOW / proposal — agreement + invoice status.' },
+      sub: 'Issued paperwork per SOW / proposal — agreement + invoice status.',
+      // The sub's card shows the bid the SOW is priced from and its
+      // signature status — no invoices, no Xero links (acceptance-card.js
+      // sub variant), so the ops title would promise things it omits.
+      bySceneId: {
+        scene_1353: { rename: 'Bid Basis & Agreement',
+          sub: 'The bid this scope is priced from, and its signature status.' }
+      } },
     { match: /^closeout$/i, rename: 'Closeout Deliverables',
       sub: 'Documents required before closeout + Certificate of Completion.' }
   ];
@@ -311,6 +318,12 @@
       if (!acc.hasAttribute('data-scw-orig-title')) {
         acc.setAttribute('data-scw-orig-title', ot);
       }
+      // Per-scene override: the same Builder section can mean different
+      // things to ops and to a subcontractor (see the acceptance entry).
+      var ov = sec.bySceneId &&
+        sec.bySceneId[String(scene.id || '').replace(/^kn-/, '')];
+      if (ov) sec = { match: sec.match, rename: ov.rename || sec.rename,
+                      sub: ov.sub || sec.sub };
       var name = sec.rename || ot;
       acc.setAttribute('data-scw-nav-label', name);
       var titleEl = acc.querySelector('.scw-acc-title');
