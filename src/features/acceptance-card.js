@@ -89,7 +89,15 @@
     //     is signed (a net credit reads negative). Same formula the
     //     send-to-sub document uses (co-stage-strip buildRequestDoc).
     // Blank = auto-detect any column that parses into either shape.
-    snapshot:  'field_2946'
+    snapshot:  'field_2946',
+    // ── Ops: the frozen bid, carried on the PROPOSAL ─────────────
+    // These come through the proposal connection (field_2755-field_29xx)
+    // and are the STRONGEST source there is — the bid document as it was
+    // when the proposal was published, not a live sum.
+    bidBasis:  'field_2960',   // SYS_bid basis — the bid's number ("183")
+    bidDoc:    'field_2944',   // SYS_bid snapshot HTML — carries Grand Total
+    bidDiff:   'field_2943',   // SYS_bid snapshot with diff — OPS ONLY
+    po:        'field_1343'    // PO# — OPS ONLY
   };
 
   // eSignatures contract page — the id in field_1843 appended verbatim.
@@ -315,6 +323,58 @@
     return out;
   }
 
+  /** Grand total out of the stored bid document (F.bidDoc). The fragment
+   *  our own PDF builder wrote carries classed totals, so prefer the
+   *  grand-total line and fall back to the last project total. */
+  function totalFromBidDoc(row) {
+    if (!F.bidDoc) return null;
+    var cell = row.querySelector('td.' + F.bidDoc);
+    if (!cell) return null;
+    var el = cell.querySelector('.pt-line--grand-total .pt-value');
+    if (!el) {
+      var all = cell.querySelectorAll('.project-totals .pt-value, .pt-value');
+      el = all.length ? all[all.length - 1] : null;
+    }
+    return el ? numFromText(el.textContent) : null;
+  }
+
+  /** OPS ONLY — the bid-vs-SOW diff the proposal stored (F.bidDiff), as a
+   *  one-line summary. Counts the diff table's rows by their own status
+   *  label (real elements, so no HTML parsing) and picks up the labor
+   *  delta when the fragment carries it. Material here because ops is
+   *  about to pay this bid: it says whether the sub priced what we scoped.
+   *  Never rendered on the sub card — the SOW-side figures in that
+   *  fragment are SCW's. */
+  var DIFF_PLURAL = /change$/i;      // "spec change" → "spec changes"
+  function diffSummary(row) {
+    if (!F.bidDiff) return null;
+    var cell = row.querySelector('td.' + F.bidDiff);
+    if (!cell) return null;
+    var rows = cell.querySelectorAll('table.product-table tbody tr');
+    var counts = Object.create(null), order = [];
+    for (var i = 0; i < rows.length; i++) {
+      var lab = rows[i].querySelector('td span');
+      var tier = lab ? (lab.textContent || '').replace(/\s+/g, ' ').trim() : '';
+      if (!tier) continue;
+      if (!(tier in counts)) { counts[tier] = 0; order.push(tier); }
+      counts[tier]++;
+    }
+    var parts = [];
+    for (var o = 0; o < order.length; o++) {
+      var n = counts[order[o]], lbl = order[o].toLowerCase();
+      parts.push(n + ' ' + lbl + (n === 1 || !DIFF_PLURAL.test(lbl) ? '' : 's'));
+    }
+    // The tally prints the delta BEFORE its label ("$0.00 labor Δ …").
+    var dm = (cell.textContent || '').match(/\$\s*(-?[\d,]+(?:\.\d+)?)\s*labor\s*Δ/i);
+    var delta = dm ? dm[1] : '';
+    if (!parts.length && !delta) return null;      // column present but empty
+    return {
+      n: rows.length,
+      text: parts.length ? parts.join(' · ') : 'Matches the SOW',
+      delta: delta
+    };
+  }
+
   /** The money for one acceptance row: { amount, source } or null.
    *
    *  PROVENANCE MATTERS, so the source travels with the number and the
@@ -332,6 +392,12 @@
       var direct = numFromText(cellText(row, F.bidTotal));
       if (direct != null) return { amount: direct, source: 'quoted' };
     }
+    // The stored bid DOCUMENT, if that column is on the view. Knack renders
+    // the fragment as real elements, so the grand total is a class lookup
+    // rather than an HTML parse. This is the bid as published — the
+    // strongest figure available.
+    var docTotal = totalFromBidDoc(row);
+    if (docTotal != null) return { amount: docTotal, source: 'quoted' };
     if (snap) {
       if (snap.basisTotal != null && isFinite(Number(snap.basisTotal))) {
         return { amount: Number(snap.basisTotal), source: 'quoted' };
@@ -588,17 +654,31 @@
       '  .scw-acpt-tally { justify-content: flex-start; }',
       '  .scw-acpt-tally__note { margin-right: 0; }',
       '}',
-      '.scw-acpt-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;',
+      // Top-aligned: the identity column is now multi-line (title, proposal,
+      // context tags) and centring it left the pills floating mid-row.
+      '.scw-acpt-row { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap;',
       '  padding: 10px 2px; }',
       '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #eef2f7; }',
       // Fixed identity column — base SOW numbers (SW1145) are shorter than
       // CO numbers (SW1418CO), so an auto-width title staggered the pills.
       // The proposal id renders as a muted sub-line instead of riding in
       // the title (the " | 20260807-11068" tail was pure noise up there).
-      '.scw-acpt-id { flex: 0 0 280px; min-width: 0; }',
+      // Wider than the 280px it was: the identity column now carries the
+      // bid number, PO and diff summary under the title. Still FIXED —
+      // that's what keeps the money column at one x across rows.
+      '.scw-acpt-id { flex: 0 0 320px; min-width: 0; }',
       '.scw-acpt-id .scw-acpt-title { font-size: 13.5px; overflow-wrap: anywhere; }',
       '.scw-acpt-sub { font: 500 11px/1.3 system-ui, sans-serif; color: #94a3b8;',
       '  margin-top: 1px; }',
+      // Context tags: which bid, which PO, how the bid compared to the
+      // SOW. Neutral slate — none of these are good or bad news, and the
+      // detail rides in the tooltip so the row stays one glance.
+      '.scw-acpt-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }',
+      '.scw-acpt-tag { display: inline-flex; align-items: center;',
+      '  padding: 2px 7px; border-radius: 4px; background: #f1f5f9;',
+      '  border: 1px solid #e2e8f0; color: #475569;',
+      '  font: 600 10px/1.4 system-ui, sans-serif; white-space: nowrap;',
+      '  max-width: 100%; overflow: hidden; text-overflow: ellipsis; cursor: help; }',
       '.scw-acpt-row .scw-acpt-status { margin: 0; gap: 6px; }',
       '.scw-acpt-row .scw-acpt-pill { padding: 3px 9px; font-size: 11px; }',
       '.scw-acpt-row .scw-acpt-actions { margin-left: auto; gap: 14px; align-items: center; }',
@@ -1281,6 +1361,32 @@
     var amt      = bidAmountOf(row, snap, bySow);
     var total    = amt ? money(amt.amount) : '';
     var totalLbl = isCo ? 'Change order total' : 'Bid total';
+    // Ops context that belongs on a paperwork row: WHICH bid was priced,
+    // the PO it's billed against, and whether the sub priced what we
+    // scoped. Each is omitted when its column is absent or blank — the
+    // meta line only appears when it has something to say.
+    var basisNo  = cellText(row, F.bidBasis);
+    var poNo     = cellText(row, F.po);
+    var diff     = diffSummary(row);
+    var meta = '';
+    if (basisNo) {
+      meta += '<span class="scw-acpt-tag" title="Priced from bid ' + esc(basisNo) + '">' +
+        'Bid ' + esc(basisNo) + '</span>';
+    }
+    if (poNo) {
+      meta += '<span class="scw-acpt-tag" title="Purchase order">PO ' + esc(poNo) + '</span>';
+    }
+    if (diff) {
+      meta += '<span class="scw-acpt-tag" title="' +
+        esc(diff.n
+          ? 'The sub’s bid differed from the SOW on ' + diff.n +
+            ' line item' + (diff.n === 1 ? '' : 's') +
+            '. Full comparison lives on the bid review page.'
+          : 'The sub priced the SOW as scoped.') + '">' +
+        esc(diff.text) +
+        (diff.delta ? ' · labor Δ $' + esc(diff.delta) : '') +
+      '</span>';
+    }
 
     // Already greenlit: agreement signed AND (payment received OR approved
     // for terms) — signature alone for COs, matching the pill logic above.
@@ -1300,6 +1406,7 @@
           ? '<a class="scw-acpt-title" href="' + esc(propHref) + '">' + esc(propMain) + '</a>'
           : '<div class="scw-acpt-title">' + esc(propMain) + '</div>') +
         (propSub ? '<div class="scw-acpt-sub">Proposal ' + esc(propSub) + '</div>' : '') +
+        (meta ? '<div class="scw-acpt-meta">' + meta + '</div>' : '') +
       '</div>' +
       // Money sits between the two fixed-width columns (identity, money)
       // so it lands at the same x in every row — the pills and action
