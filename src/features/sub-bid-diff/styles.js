@@ -57,8 +57,6 @@
     'a.scw-sbd-k1-link:hover { text-decoration: underline; }',
     '.scw-sbd-k1-cur__cap { font-size: 11px; color: #047857; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }',
     '.scw-sbd-k1-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }',
-    '.scw-sbd-k1-pick { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #475569; font-weight: 600; }',
-    '.scw-sbd-k1-file { font-size: 12px; max-width: 320px; }',
     '.scw-sbd-k1-upload { border: 1px solid #0f4c75; background: #0f4c75; color: #fff;',
     '  border-radius: 5px; padding: 4px 12px; cursor: pointer;',
     '  font: 600 12px/1.5 system-ui, sans-serif; white-space: nowrap; }',

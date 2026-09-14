@@ -17,6 +17,7 @@ cat \
   src/features/patch-jquery-delegate-matching.js \
   src/features/session-timeout.js \
   src/features/_design-tokens.js \
+  src/features/_file-upload-modal.js \
   src/features/sow-color.js \
   src/features/_render-totals-guard.js \
   src/features/_toolbar-registry.js \

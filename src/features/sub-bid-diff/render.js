@@ -1299,7 +1299,7 @@
     var busy = !!k1Uploading[sowId];
     var st = k1UploadMsg[sowId];
     var status = busy
-      ? '<span class="scw-sbd-savemsg">' + esc(k1UploadMsg[sowId] && k1UploadMsg[sowId].text || 'Uploading…') + '</span>'
+      ? '<span class="scw-sbd-savemsg">' + esc((st && st.text) || 'Uploading…') + '</span>'
       : (st ? '<span class="scw-sbd-savemsg' + (st.ok ? ' scw-sbd-savemsg--ok' : ' scw-sbd-savemsg--err') + '">' + esc(st.text) + '</span>' : '');
     var fileHtml = cur
       ? '<div class="scw-sbd-k1-cur">' +
@@ -1309,6 +1309,9 @@
           '<span class="scw-sbd-k1-cur__cap">on file</span>' +
         '</div>'
       : '';
+    // ONE button. It opens the app's shared upload modal (drop zone → file
+    // chip → Upload) — the same uploader the acceptance card uses — so there
+    // is no separate "choose a file" step to explain.
     return '<div class="scw-sbd-k1' + (needsPdf ? ' scw-sbd-k1--req' : '') + '">' +
       '<div class="scw-sbd-k1__lead">' + esc(K1_LABEL) + ' — this SOW → proposal is priced from ' +
         'a bid document instead of a subcontractor bid package. ' +
@@ -1318,30 +1321,54 @@
       '</div>' +
       fileHtml +
       '<div class="scw-sbd-k1-row">' +
-        '<label class="scw-sbd-k1-pick">' +
-          '<span class="scw-sbd-k1-pick__lbl">' + (cur ? 'Replace the bid PDF' : 'Sub bid PDF') + '</span>' +
-          '<input type="file" class="scw-sbd-k1-file" data-scw-sbd-k1-file data-sow-id="' + esc(sowId) + '" ' +
-            'accept="application/pdf,.pdf"' + (busy ? ' disabled' : '') + '>' +
-        '</label>' +
-        '<button type="button" class="scw-sbd-k1-upload" data-scw-sbd-k1-upload data-sow-id="' + esc(sowId) + '"' +
-          (busy ? ' disabled' : '') + '>' + (busy ? 'Uploading…' : (cur ? 'Upload replacement' : 'Upload bid PDF')) + '</button>' +
+        '<button type="button" class="scw-sbd-k1-upload" data-scw-sbd-k1-open data-sow-id="' + esc(sowId) + '"' +
+          (busy ? ' disabled' : '') + '>' + (busy ? 'Uploading…' : (cur ? 'Replace bid PDF' : 'Upload bid PDF')) + '</button>' +
         status +
       '</div>' +
     '</div>';
+  }
+
+  /** Open the shared uploader for a SOW's K1 bid PDF. The modal owns the
+   *  choose/validate/progress states; uploadK1Pdf below does the work. */
+  function openK1PdfModal(sowId) {
+    var fum = window.SCW && window.SCW.fileUploadModal;
+    if (!fum || typeof fum.open !== 'function') {
+      console.warn('[scw-sub-bid-diff] SCW.fileUploadModal is not loaded — build order?');
+      return;
+    }
+    var cur = currentK1Pdf(sowId);
+    fum.open({
+      title:   cur ? 'Replace the sub bid PDF' : 'Sub bid PDF',
+      accept:  'application/pdf,.pdf',
+      current: cur ? { name: cur.name || 'bid.pdf', href: cur.url || '' } : null,
+      hint:    'The bid document this SOW → proposal is priced from. It is saved on the ' +
+               'SOW and carried by the proposal and the ops review.',
+      okLabel: 'Upload',
+      validate: function (file) {
+        var isPdf = /\.pdf$/i.test(file.name || '') || (file.type || '') === 'application/pdf';
+        return isPdf ? '' : 'Please choose a PDF.';
+      },
+      onUpload: function (file, say) { return uploadK1Pdf(sowId, file, say); }
+    });
   }
 
   /** Upload the chosen file to Knack assets, then ONE PUT through the SOW
    *  write view: the file field (field_2981) + the field_2941 snapshot that
    *  now carries k1Pdf. The snapshot copy is what the publish gate reads, so
    *  even if the file field isn't exposed on the write view the choice
-   *  still records (and the panel says the field needs adding). */
-  function uploadK1Pdf(sowId, file) {
-    if (!sowId || !file || k1Uploading[sowId]) return;
-    if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) return;
-    if (!/pdf$/i.test(file.name || '') && (file.type || '') !== 'application/pdf') {
-      k1UploadMsg[sowId] = { ok: false, text: 'Please choose a PDF.' };
-      render();
-      return;
+   *  still records (and the panel says the field needs adding).
+   *  Returns a promise: resolves once the PUT lands, rejects on any failure
+   *  (the modal shows the error and offers a retry). `say` is the modal's
+   *  progress line (optional). */
+  function uploadK1Pdf(sowId, file, say) {
+    say = typeof say === 'function' ? say : function () {};
+    if (!sowId || !file) return Promise.reject(new Error('no file chosen'));
+    if (k1Uploading[sowId]) return Promise.reject(new Error('an upload is already running'));
+    if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) {
+      return Promise.reject(new Error('Knack session helpers unavailable'));
+    }
+    if (!/\.pdf$/i.test(file.name || '') && (file.type || '') !== 'application/pdf') {
+      return Promise.reject(new Error('Please choose a PDF.'));
     }
     k1Uploading[sowId] = true;
     k1UploadMsg[sowId] = { ok: true, text: 'Uploading ' + (file.name || 'bid.pdf') + '…' };
@@ -1350,7 +1377,11 @@
     var fd = new FormData();
     fd.append('files', file, file.name || 'bid.pdf');
     var uploaded = null;
-    $.ajax({
+    // Remember the session's current file so a failed replacement can put
+    // it back (the local model isn't refetched after our PUTs, so the
+    // session copy is the only record of the last successful upload).
+    var prevSession = k1PdfByGrid[sowId] || null;
+    return Promise.resolve($.ajax({
       url: Knack.api_url + '/v1/applications/' + Knack.application_id + '/assets/file/upload',
       type: 'POST', data: fd, processData: false, contentType: false,
       headers: {
@@ -1358,7 +1389,7 @@
         'x-knack-rest-api-key': 'knack',
         'Authorization': Knack.getUserToken()
       }
-    }).then(function (res) {
+    })).then(function (res) {
       var asset = res && (res.asset && typeof res.asset === 'object' ? res.asset : res);
       var assetId = asset && (asset.id || asset.asset_id);
       if (!assetId) throw new Error('no asset id in the upload response');
@@ -1369,6 +1400,7 @@
       };
       k1PdfByGrid[sowId] = uploaded;
       k1UploadMsg[sowId] = { ok: true, text: 'Saving…' };
+      say('Saving to the SOW…');
       render();
       // Snapshot with the PDF + the file field, one PUT (same shape as
       // writeBasis so basis/snapshot/file can't drift apart).
@@ -1378,10 +1410,10 @@
       var blob = buildBlob(sowId);
       var sig = '';
       if (C.snapshotField && blob) { sig = blobSig(blob); body[C.snapshotField] = JSON.stringify(blob); }
-      return SCW.knackAjax({
+      return Promise.resolve(SCW.knackAjax({
         url: SCW.knackRecordUrl(C.basisBidView, sowId),
         type: 'PUT', data: JSON.stringify(body)
-      }).then(function (resp) {
+      })).then(function (resp) {
         k1Uploading[sowId] = false;
         savedByGrid[sowId] = true;
         if (sig) { savedSnap[sowId] = true; lastWrittenSig[sowId] = sig; }
@@ -1409,8 +1441,11 @@
         : (err && err.status ? 'HTTP ' + err.status : 'upload failed');
       console.warn('[scw-sub-bid-diff] K1 bid PDF upload failed', sowId, err);
       k1UploadMsg[sowId] = { ok: false, text: 'Upload failed — ' + msg + '. Try again.' };
-      if (!uploaded) delete k1PdfByGrid[sowId];
+      // Roll the session copy back to whatever was on record before this
+      // attempt (the new asset never reached the SOW).
+      if (prevSession) k1PdfByGrid[sowId] = prevSession; else delete k1PdfByGrid[sowId];
       render();
+      throw (err instanceof Error ? err : new Error(msg));
     });
   }
 
@@ -1501,11 +1536,9 @@
       for (var k = 0; k < kids.length; k++) {
         if (kids[k].className && kids[k].className.indexOf('scw-sbd-inline') !== -1) { block = kids[k]; break; }
       }
-      // Don't clobber a note being typed inside this block, or a file picker
-      // the reviewer has just used (a rebuild would drop the chosen file).
+      // Don't clobber a note being typed inside this block.
       if (block && ae && block.contains(ae) && ae.getAttribute &&
-          (ae.getAttribute('data-scw-sbd-note') != null ||
-           ae.getAttribute('data-scw-sbd-k1-file') != null)) continue;
+          ae.getAttribute('data-scw-sbd-note') != null) continue;
 
       if (!block) {
         block = document.createElement('div');
@@ -1636,20 +1669,11 @@
       if (sowId) noteByGrid[sowId] = n.value;
     });
     document.addEventListener('click', function (e) {
-      // K1 bid PDF upload — the file comes from the picker in the same row.
-      var up = e.target.closest && e.target.closest('[data-scw-sbd-k1-upload]');
+      // K1 bid PDF — one button opens the shared upload modal.
+      var up = e.target.closest && e.target.closest('[data-scw-sbd-k1-open]');
       if (up) {
         var usow = up.getAttribute('data-sow-id');
-        var row = up.closest('.scw-sbd-k1-row');
-        var fin = row && row.querySelector('[data-scw-sbd-k1-file]');
-        var f = fin && fin.files && fin.files[0];
-        if (!usow) return;
-        if (!f) {
-          k1UploadMsg[usow] = { ok: false, text: 'Choose the bid PDF first.' };
-          render();
-          return;
-        }
-        uploadK1Pdf(usow, f);
+        if (usow && !k1Uploading[usow]) openK1PdfModal(usow);
         return;
       }
       // "Save as basis" on a soft REL_SOW default — the explicit award
@@ -1703,6 +1727,6 @@
                 // K1 bid PDF: current file for a SOW (session / snapshot /
                 // SOW file field) + the upload entry point (tests, tooling).
                 currentK1Pdf: currentK1Pdf, uploadK1Pdf: uploadK1Pdf,
-                K1_LABEL: K1_LABEL };
+                openK1PdfModal: openK1PdfModal, K1_LABEL: K1_LABEL };
 })();
 /*** END SUB-BID DIFF — RENDER ***********************************************/
