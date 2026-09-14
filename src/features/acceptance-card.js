@@ -519,6 +519,14 @@
       '.scw-acpt-row--sub .scw-acpt-id { flex: 1 1 auto; min-width: 0; }',
       '.scw-acpt-money { flex: 0 0 auto; display: flex; justify-content: flex-end;',
       '  min-width: 150px; }',
+      // Ops rows are denser (pills + document tiles + buttons), so money
+      // is a FIXED column right after the fixed identity column — that's
+      // what makes it land at the same x in every row.
+      '.scw-acpt-row:not(.scw-acpt-row--sub) .scw-acpt-money { flex: 0 0 150px; }',
+      '.scw-acpt-tally--left { justify-content: flex-start; }',
+      '.scw-acpt-tally--left .scw-acpt-tally__cell { align-items: flex-start;',
+      '  text-align: left; }',
+      '.scw-acpt-tally--left .scw-acpt-tally__note { margin-right: 0; margin-left: auto; }',
       '.scw-acpt-basis { display: flex; flex-direction: column; gap: 2px;',
       '  align-items: flex-start; }',
       // The bid name doubles as the link to its PDF: leading file glyph,
@@ -1201,7 +1209,7 @@
 
   /** One compact list row for one acceptance record. All anchors/editors
    *  bind to THIS row's record. */
-  function buildCard(viewKey, row) {
+  function buildCard(viewKey, row, bySow) {
     var recId   = row.id;
     var propA   = cellAnchor(row, F.proposal, 'a[data-kn="connection-link"]') || cellAnchor(row, F.proposal);
     var propTxt = propA ? propA.textContent.replace(/\s+/g, ' ').trim() : (cellText(row, F.proposal) || 'Proposal');
@@ -1265,7 +1273,14 @@
     // Change-order acceptances (SOW number "SW####CO") have no initial
     // payment — the CO amount rides the final project invoice — so the
     // payment pill is noise there. Signature is the only gate.
-    var isCo = /\bSW\d+CO\b/i.test(propTxt);
+    var snap  = readSnapshot(viewKey, row);
+    var isCo  = /\bSW\d+CO\b/i.test(propTxt) || isCoSnapshot(snap);
+    // Same money as the sub card, same sources and same priority — ops
+    // reads the figures it's asking the sub to agree to, so the two
+    // surfaces can't quietly disagree. Provenance travels with it.
+    var amt      = bidAmountOf(row, snap, bySow);
+    var total    = amt ? money(amt.amount) : '';
+    var totalLbl = isCo ? 'Change order total' : 'Bid total';
 
     // Already greenlit: agreement signed AND (payment received OR approved
     // for terms) — signature alone for COs, matching the pill logic above.
@@ -1285,6 +1300,22 @@
           ? '<a class="scw-acpt-title" href="' + esc(propHref) + '">' + esc(propMain) + '</a>'
           : '<div class="scw-acpt-title">' + esc(propMain) + '</div>') +
         (propSub ? '<div class="scw-acpt-sub">Proposal ' + esc(propSub) + '</div>' : '') +
+      '</div>' +
+      // Money sits between the two fixed-width columns (identity, money)
+      // so it lands at the same x in every row — the pills and action
+      // tiles that follow vary in width. Rendered even when empty to hold
+      // the column.
+      '<div class="scw-acpt-money">' +
+        (total
+          ? '<div class="scw-acpt-total">' +
+              '<span class="scw-acpt-total__lbl">' + esc(totalLbl) + '</span>' +
+              '<span class="scw-acpt-total__val">' + esc(total) + '</span>' +
+              (amt.source === 'derived'
+                ? '<span class="scw-acpt-total__src" title="' + esc(DERIVED_NOTE) + '">' +
+                    'from line items</span>'
+                : '') +
+            '</div>'
+          : '') +
       '</div>' +
       '<div class="scw-acpt-status">' +
         (isCo ? '' :
@@ -1387,7 +1418,8 @@
         }
       });
     }
-    return card;
+    return { el: card, isCo: isCo, amount: amt ? amt.amount : null,
+             source: amt ? amt.source : '' };
   }
 
   /** SUB VARIANT — one read-only row per acceptance: the bid we're paying
@@ -1654,9 +1686,29 @@
 
     var card = document.createElement('div');
     card.className = 'scw-acpt-card';
-    card.innerHTML = '<div class="scw-acpt-eyebrow">Acceptance</div>';
+    card.innerHTML =
+      '<div class="scw-acpt-cardhead">' +
+        '<div class="scw-acpt-eyebrow">Acceptance</div>' +
+        // Same caveat as the sub card — it's the same newly derived money.
+        (SUB_BETA_NOTE
+          ? '<div class="scw-acpt-beta">' + INFO_SVG +
+              '<b>Beta</b><span>' + esc(SUB_BETA_NOTE) + '</span></div>'
+          : '') +
+      '</div>';
+    var bySow = proposedSubBidBySow();
+    var built = [];
     for (var ei = 0; ei < entries.length; ei++) {
-      card.appendChild(buildCard(VIEW, entries[ei].row));
+      var made = buildCard(VIEW, entries[ei].row, bySow);
+      built.push(made);
+      card.appendChild(made.el);
+    }
+    // Running tally — the same footer the sub sees, so the two surfaces
+    // show one story. Left-aligned here: this card's right edge is action
+    // buttons, and flush-right numbers would read as part of that cluster.
+    var opsTally = buildTally(built);
+    if (opsTally) {
+      opsTally.classList.add('scw-acpt-tally--left');
+      card.appendChild(opsTally);
     }
     viewEl.appendChild(card);
 
