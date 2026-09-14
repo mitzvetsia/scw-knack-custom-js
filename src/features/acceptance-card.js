@@ -74,18 +74,22 @@
     xeroEst:   'field_2948',   // SYS_xero estimate link (URL)
     contract:  'field_1843',   // esignatures.com contract id (uuid)
     // ── Sub card only ────────────────────────────────────────────
-    // Bid total on the acceptance record. ⚠ Builder TBD: add a currency
-    // field (e.g. "SYS_bid basis total"), have Make stamp it when it
-    // creates the acceptance — it already has the snapshot server-side,
-    // same place it gets the bid-basis PDF — then put the key here and
-    // expose it as a column on view_4066. Blank = fall back to the
-    // snapshot blob (see below), then to no total line at all.
+    // Bid total on the acceptance record. Optional: a currency field, so
+    // the card doesn't have to total the snapshot itself. Blank = derive
+    // it from the snapshot below.
     bidTotal:  '',
-    // The SOW's field_2941 sub-bid snapshot, IF you deliberately expose it
-    // on the acceptance row. Blank = auto-detect: any column whose value
-    // parses as a snapshot is used. Only basisBidName + basisTotal are
-    // read from it; the diff/exception data is never rendered.
-    snapshot:  ''
+    // SYS_bid basis json snapshot — the acceptance's own copy of whatever
+    // priced it. Two shapes arrive here and both are handled:
+    //   · base scope — the SOW's sub-bid diff blob (basisBidName +
+    //     basisTotal, or the "Sub Bid Total" inside bidHtml)
+    //   · change order — the CO sub-pricing snapshot Make stored when the
+    //     CO went to the sub: { sentAt, sentBy, lines{ id: {qty, subBid,
+    //     action, …} } }. Its total is Σ(qty × subBid) — field_2150 is
+    //     PER-UNIT and a Remove line carries negative qty, so a CO total
+    //     is signed (a net credit reads negative). Same formula the
+    //     send-to-sub document uses (co-stage-strip buildRequestDoc).
+    // Blank = auto-detect any column that parses into either shape.
+    snapshot:  'field_2946'
   };
 
   // eSignatures contract page — the id in field_1843 appended verbatim.
@@ -153,9 +157,41 @@
     try { return JSON.parse(t.replace(/<[^>]*>/g, '').trim()); } catch (e) {}
     return null;
   }
+  /** Either snapshot shape: the SOW sub-bid diff blob, or a CO
+   *  sub-pricing snapshot (a `lines` map keyed by record id). */
   function isSnapshot(o) {
-    return !!(o && typeof o === 'object' && !Array.isArray(o) &&
-      ('basisBidId' in o || 'basisBidName' in o));
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return false;
+    return ('basisBidId' in o || 'basisBidName' in o) ||
+      !!(o.lines && typeof o.lines === 'object' && !Array.isArray(o.lines));
+  }
+  /** A change-order pricing snapshot (vs. a base-scope bid basis). */
+  function isCoSnapshot(o) {
+    return !!(o && o.lines && typeof o.lines === 'object' && !Array.isArray(o.lines));
+  }
+  /** Σ(qty × subBid) over a CO snapshot's lines. field_2150 is the
+   *  PER-UNIT sub bid and a Remove line carries negative qty, so the sum
+   *  is signed — exactly what co-stage-strip's send document totals.
+   *  Returns null when there are no usable lines. */
+  function linesTotal(snap) {
+    if (!isCoSnapshot(snap)) return null;
+    var sum = 0, seen = false;
+    for (var id in snap.lines) {
+      var ln = snap.lines[id];
+      if (!ln || typeof ln !== 'object') continue;
+      var bid = Number(ln.subBid);
+      if (!isFinite(bid)) continue;
+      var qty = Number(ln.qty);
+      if (!isFinite(qty) || qty === 0) qty = 1;
+      sum += qty * bid;
+      seen = true;
+    }
+    return seen ? sum : null;
+  }
+  function shortDate(v) {
+    if (!v) return '';
+    var d = new Date(v);
+    if (isNaN(+d)) return '';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   }
   /** The SOW's field_2941 sub-bid snapshot as seen from this acceptance
    *  row: the configured column if F.snapshot names one, else ANY column
@@ -174,7 +210,8 @@
       for (var k in attrs) {
         if (!/^field_\d+$/.test(k)) continue;
         var val = attrs[k];
-        if (typeof val !== 'string' || val.indexOf('basisBid') === -1) continue;
+        if (typeof val !== 'string') continue;
+        if (val.indexOf('basisBid') === -1 && val.indexOf('"lines"') === -1) continue;
         var snap = parseLooseJson(val);
         if (isSnapshot(snap)) return snap;
       }
@@ -200,6 +237,8 @@
         var scraped = numFromText(m[1]);
         if (scraped != null) return money(scraped);
       }
+      var lt = linesTotal(snap);
+      if (lt != null) return money(lt);
     }
     return '';
   }
@@ -332,14 +371,25 @@
       // sits in its own labelled block rather than inline in prose.
       '.scw-acpt-row--sub { align-items: flex-start; gap: 18px; }',
       '.scw-acpt-row--sub .scw-acpt-id { flex: 1 1 260px; }',
-      '.scw-acpt-basis { display: flex; flex-direction: column; gap: 5px;',
+      '.scw-acpt-basis { display: flex; flex-direction: column; gap: 2px;',
       '  align-items: flex-start; }',
+      // The bid name doubles as the link to its PDF: leading file glyph,
+      // underline on the text only (not the icon) so it still reads as a
+      // title rather than a button.
+      'a.scw-acpt-title--doc { display: inline-flex; align-items: center; gap: 6px;',
+      '  text-decoration: none !important; }',
+      'a.scw-acpt-title--doc svg { flex: none; color: #64748b; }',
+      'a.scw-acpt-title--doc:hover span { text-decoration: underline; }',
+      '.scw-acpt-row--sub .scw-acpt-sub { overflow-wrap: anywhere; }',
       '.scw-acpt-total { flex: 0 0 auto; display: flex; flex-direction: column;',
       '  gap: 2px; padding: 2px 0; }',
       '.scw-acpt-total__lbl { font: 700 9.5px/1 system-ui, sans-serif;',
       '  letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; }',
       '.scw-acpt-total__val { font: 700 16px/1.15 system-ui, sans-serif;',
       '  color: #0f172a; font-variant-numeric: tabular-nums; }',
+      // A net credit (removes outweigh adds) reads green, matching the
+      // CO proposal convention: negative = money back.
+      '.scw-acpt-total__val--credit { color: #047857; }',
       '.scw-acpt-row--sub .scw-acpt-status { margin-left: auto; }',
       '.scw-acpt-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;',
       '  padding: 10px 2px; }',
@@ -1163,45 +1213,72 @@
       ? (bidPdfA.getAttribute('data-file-name') ||
          (bidPdfA.textContent || '').replace(/\s+/g, ' ').trim())
       : '';
-    // Name the bid: the snapshot's basis name is the real designation
-    // ("BD-2", or the K1 label); the file name is the honest fallback.
-    var basisName = String((snap && snap.basisBidName) || '').trim() || pdfName ||
-      'Not designated yet';
-    var total  = bidTotalOf(row, snap);
-    var paid   = isYes(cellText(row, F.payment));
-    var signed = isYes(cellText(row, F.signed));
-    var terms  = isYes(cellText(row, F.terms));
+    // ONE representation of the bid. The snapshot's basis name is the real
+    // designation ("BD-2", or the K1 label); the file name stands in when
+    // there isn't one. Whatever ends up as the name IS the link to the PDF
+    // — never a name plus a separate button that opens the same document.
+    // The file name only repeats as a sub-line when it isn't already the
+    // name (i.e. when we have a real designation to lead with).
     // Proposal identifier embeds the SOW number ("<project#>-<SOW#> | <quote#>")
     // — when the column is exposed, lead with the SOW so a project with a
     // base SOW plus change orders is readable. Fail quiet when it isn't.
     var propTxt = cellText(row, F.proposal);
     var sowNo   = (propTxt.split(/\s*\|\s*/)[0] || '').trim();
-    var isCo    = /\bSW\d+CO\b/i.test(propTxt);
+    // A change order: the SOW number's CO suffix when we can see it, else
+    // the snapshot's own shape — a CO acceptance carries the sub-pricing
+    // snapshot, which a base-scope one never does. Matters because a CO
+    // has no initial payment (it rides the final project invoice), so the
+    // payment pill is noise on it.
+    var isCoRow = /\bSW\d+CO\b/i.test(propTxt) || isCoSnapshot(snap);
+
+    var basisName = String((snap && snap.basisBidName) || '').trim() || pdfName ||
+      (isCoRow ? 'Change order pricing' : 'Not designated yet');
+    var pdfHref  = bidPdfA ? (bidPdfA.getAttribute('href') || '') : '';
+    var fileSub  = (pdfName && pdfName !== basisName) ? pdfName : '';
+    // No document to name a CO's pricing by — say when it was submitted
+    // and by whom instead of leaving the row bare.
+    if (!fileSub && isCoSnapshot(snap)) {
+      var when = shortDate(snap.sentAt);
+      var who  = String((snap.sentBy && snap.sentBy.name) || '').trim();
+      if (when || who) {
+        fileSub = 'Submitted' + (when ? ' ' + when : '') + (who ? ' by ' + who : '');
+      }
+    }
+    var nameHtml = pdfHref
+      ? '<a class="scw-acpt-title scw-acpt-title--doc" href="' + esc(pdfHref) + '" ' +
+          'title="Open ' + esc(pdfName || 'the bid PDF') + '">' + FILE_SVG +
+          '<span>' + esc(basisName) + '</span></a>'
+      : '<div class="scw-acpt-title">' + esc(basisName) + '</div>';
+    var total  = bidTotalOf(row, snap);
+    // A CO total is a signed CHANGE (removes credit back), so it can't
+    // wear the same label as a base-scope bid total.
+    var totalLbl = isCoRow ? 'Change order total' : 'Bid total';
+    var paid   = isYes(cellText(row, F.payment));
+    var signed = isYes(cellText(row, F.signed));
+    var terms  = isYes(cellText(row, F.terms));
 
     var html =
       '<div class="scw-acpt-id">' +
         '<div class="scw-acpt-pair__cap">' +
           (sowNo ? esc(sowNo) : 'Priced from') + '</div>' +
         '<div class="scw-acpt-basis">' +
-          '<div class="scw-acpt-title">' + esc(basisName) + '</div>' +
-          (bidPdfA
-            ? '<a class="scw-acpt-ref" href="' + esc(bidPdfA.getAttribute('href') || '') + '" ' +
-                'title="Open ' + esc(pdfName || 'the bid PDF') + '">' + FILE_SVG +
-                '<span class="scw-acpt-doc__lbl">Bid PDF</span></a>'
-            : '') +
+          nameHtml +
+          (fileSub ? '<div class="scw-acpt-sub">' + esc(fileSub) + '</div>' : '') +
         '</div>' +
       '</div>' +
       (total
         ? '<div class="scw-acpt-total">' +
-            '<span class="scw-acpt-total__lbl">Bid total</span>' +
-            '<span class="scw-acpt-total__val">' + esc(total) + '</span>' +
+            '<span class="scw-acpt-total__lbl">' + esc(totalLbl) + '</span>' +
+            '<span class="scw-acpt-total__val' +
+              (/^-/.test(total) ? ' scw-acpt-total__val--credit' : '') + '">' +
+              esc(total) + '</span>' +
           '</div>'
         : '') +
       '<div class="scw-acpt-status">' +
         // A change order carries no initial payment (it rides the final
         // project invoice), so signature is its only gate — same rule the
         // ops card uses.
-        (isCo ? '' :
+        (isCoRow ? '' :
           (terms
             ? pill('Approved for terms', true)
             : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid))) +

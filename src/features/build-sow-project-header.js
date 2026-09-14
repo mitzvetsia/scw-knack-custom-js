@@ -1,4 +1,4 @@
-/*** BUILD SOW PROJECT HEADER — view_3901 card + survey subcontract ClickUp tasks ****
+/*** PROJECT HEADER CARD — one header across every K2 project page **********
  *
  * The ops "K2: Build SOWs" page (scene_1085) leads with the native project
  * kn-details view (view_3901): a raw two-column label/value dump (REL_company,
@@ -6,6 +6,30 @@
  * has. We hide that native markup from first paint (CSS) and render one
  * STABLE header card in its place, scraping the values straight out of the
  * (hidden) native DOM — the same approach as survey-request-header.js.
+ *
+ * SAME CARD ON EVERY PROJECT PAGE (2026-09-14). One header, four scenes:
+ *   scene_1085  ops K2: Build SOWs        (view_3901 + surveys view_4159)
+ *   scene_1116  sales Build SOW           (surveys view_4155)
+ *   scene_1155  K2: Reconcile Bids
+ *   scene_1311  K2: Manage Deployment
+ * The card is built from whatever project columns that scene's details view
+ * actually carries, and every block is conditional — a scene missing the
+ * address, playbook, AE or survey rows simply doesn't render those parts.
+ * So the pages agree where they hold the same data instead of each growing
+ * its own header. Add a project column in Builder and it appears (unmapped
+ * fields fall through to generic rows / link chips).
+ *
+ * The SUB deployment dashboard (scene_1353) is deliberately NOT in the list:
+ * this card carries HubSpot/ClickUp links, branch, AE and playbook notes —
+ * internal context. The sub scene keeps its own thin project view.
+ *
+ * FINDING THE VIEW: an entry may name its details view id (first-paint CSS
+ * hide, no flash) or leave headerView '' to DISCOVER it — the details view
+ * on that scene carrying the most project fields, which must include the
+ * project name or company (see findHeaderView). Discovery costs one frame
+ * of native markup on scenes without a load veil; filling the id in removes
+ * it. Either way the first successful discovery wires that view's own
+ * knack-view-render binding, so later Knack re-renders rebuild the card.
  *
  *   view_3901 → project header card: title · Company › Site · address ·
  *               Branch / AE facts · HubSpot Deal + SCW ClickUp Task chips ·
@@ -29,9 +53,23 @@
   'use strict';
 
   var CONFIG = {
-    sceneId:     'scene_1085',
-    headerView:  'view_3901',   // project kn-details (the card source)
-    surveyView:  'view_4159',   // SURVEY_requests grid (hidden data source)
+    // One entry per scene that carries the header card, most-specific
+    // first. headerView '' = discover the project details view on that
+    // scene; surveyView '' = that scene has no SURVEY_requests grid, so
+    // the survey-tasks strip is omitted there (not rendered empty).
+    scenes: [
+      { sceneId: 'scene_1085',           // ops K2: Build SOWs
+        headerView: 'view_3901', surveyView: 'view_4159' },
+      { sceneId: 'scene_1116',           // sales Build SOW
+        // ⚠ Builder: name the project details view here to kill the
+        // one-frame native flash (scene_1116 has the load veil, so it's
+        // masked today). Surveys: the sales page's rounds grid.
+        headerView: '',          surveyView: 'view_4155' },
+      { sceneId: 'scene_1155',           // K2: Reconcile Bids
+        headerView: '',          surveyView: '' },
+      { sceneId: 'scene_1311',           // K2: Manage Deployment (ops)
+        headerView: '',          surveyView: '' }
+    ],
     // ClickUp task URL base (same workspace as site-search-cards.js). Used
     // only when a row has a task id but neither link field resolves.
     clickupUrl:  'https://app.clickup.com/t/8530675/',
@@ -183,7 +221,8 @@
   }
   function readRowsFromModel() {
     try {
-      var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[CONFIG.surveyView] : null;
+      var v = (typeof Knack !== 'undefined' && Knack.views && _surveyView)
+        ? Knack.views[_surveyView] : null;
       var models = v && v.model && v.model.data && v.model.data.models;
       if (!models || !models.length) return [];
       var out = [];
@@ -242,7 +281,14 @@
     }
     return out;
   }
-  function surveyViewEl() { return document.getElementById(CONFIG.surveyView); }
+  // The survey grid for the scene being transformed right now. Set by
+  // transformHeader before it builds a card; '' on scenes that have no
+  // SURVEY_requests grid, which makes readSurveyRows return null and the
+  // whole tasks strip disappear (rather than claiming "no tasks yet").
+  var _surveyView = '';
+  function surveyViewEl() {
+    return _surveyView ? document.getElementById(_surveyView) : null;
+  }
   // Has the grid actually rendered (table or "no data" marker present)?
   // Before that, "no rows" means "not loaded yet", not "no survey requests".
   function surveyViewRendered(el) {
@@ -557,10 +603,53 @@
     for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
     return (h >>> 0).toString(36) + ':' + s.length;
   }
+  /** How much of the project does this details view actually carry? Counts
+   *  the mapped project columns present, and returns 0 without the project
+   *  NAME field — the one column every real project header has (view_3901,
+   *  and the sub scene's own view_4065). That plus the >= 2 floor below is
+   *  what keeps us off a SOW or proposal details view that merely shows a
+   *  connected project: those carry their own name field, not field_4. */
+  function scoreView(view) {
+    var H = CONFIG.header, n = 0;
+    if (!bodyEl(view, H.title)) return 0;
+    for (var k in H) if (bodyEl(view, H[k])) n++;
+    return n;
+  }
+  /** The project details view on this scene: the configured id when there
+   *  is one, else the best-scoring details view. Two mapped project fields
+   *  is the floor for claiming a view we weren't told about — below that,
+   *  render nothing and let someone name the view id in CONFIG.scenes. */
+  function findHeaderView(sceneEl, cfg) {
+    if (cfg.headerView) return document.getElementById(cfg.headerView);
+    var views = sceneEl.querySelectorAll('.kn-details.kn-view');
+    var best = null, bestScore = 0;
+    for (var i = 0; i < views.length; i++) {
+      var s = scoreView(views[i]);
+      if (s > bestScore) { best = views[i]; bestScore = s; }
+    }
+    return bestScore >= 2 ? best : null;
+  }
+
+  var _bound = Object.create(null);
   function transformHeader() {
-    var els = document.querySelectorAll('#' + CONFIG.headerView);
-    for (var i = 0; i < els.length; i++) {
-      var view  = els[i];
+    for (var i = 0; i < CONFIG.scenes.length; i++) {
+      var cfg = CONFIG.scenes[i];
+      var sceneEl = document.getElementById('kn-' + cfg.sceneId);
+      if (!sceneEl) continue;                 // scene not rendered
+      var view = findHeaderView(sceneEl, cfg);
+      if (!view) continue;                    // no project details view (yet)
+      // Hide the native markup + strip the view/column chrome. Id-based
+      // rules already cover a configured view from first paint; a
+      // discovered one is claimed here, one frame later.
+      view.setAttribute('data-scw-bsh-host', '1');
+      var col = view.closest ? view.closest('.view-column') : null;
+      if (col && col.children.length === 1) col.setAttribute('data-scw-bsh-wrap', '1');
+      // A view we discovered has no per-view binding yet — wire it now so
+      // Knack's later re-renders (inline edits, refreshes) rebuild the card
+      // instead of leaving the native dump behind. onViewRender dedupes.
+      if (view.id && !_bound[view.id]) { _bound[view.id] = 1; bind(view.id); }
+      // Scope the survey strip to THIS scene's grid before building.
+      _surveyView = cfg.surveyView || '';
       var inner = buildHeader(view);
       var acts  = actionLinks(view);
       if (acts) inner = inner.replace('<div class="scw-bsh-top-side">',
@@ -572,15 +661,33 @@
   // ── styles ──────────────────────────────────────────────────
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
-    var hv = '#' + CONFIG.headerView;
+    // Every host the card can take over: the ids we were given (hidden
+    // from FIRST PAINT) plus the attribute transformHeader stamps on a
+    // view it discovered (hidden as soon as the JS runs).
+    var hostSel = ['[data-scw-bsh-host]'];
+    for (var si = 0; si < CONFIG.scenes.length; si++) {
+      if (CONFIG.scenes[si].headerView) hostSel.push('#' + CONFIG.scenes[si].headerView);
+    }
+    var hv = hostSel.join(', ');
+    // The column/group wrapper chrome. :has() is kept to the CONFIGURED
+    // ids only (it has to beat first paint there); a discovered host gets
+    // its wrapper stamped in JS instead, so no extra :has() rides on every
+    // style recalc.
+    var wrapSel = ['[data-scw-bsh-wrap]'];
+    for (var wi = 0; wi < CONFIG.scenes.length; wi++) {
+      var id = CONFIG.scenes[wi].headerView;
+      if (!id) continue;
+      wrapSel.push('.view-column:has(> #' + id + ')', '.view-group:has(#' + id + ')');
+    }
     var css = [
       // Hide EVERY native child of the header view from first paint — our
       // card is the only thing that shows. Strip the view/column chrome.
-      hv + ' > *:not(.' + CARD_CLS + ') { display: none !important; }',
+      hostSel.map(function (h) { return h + ' > *:not(.' + CARD_CLS + ')'; }).join(',\n') +
+        ' { display: none !important; }',
       hv + ' { background: transparent !important; box-shadow: none !important;',
       '  border: none !important; border-radius: 0 !important; padding: 0 !important;',
       '  margin: 0 0 14px !important; overflow: visible !important; }',
-      '.view-column:has(> ' + hv + '), .view-group:has(' + hv + ') { border: none !important;',
+      wrapSel.join(',\n') + ' { border: none !important;',
       '  border-radius: 0 !important; box-shadow: none !important; outline: none !important;',
       '  background: transparent !important; }',
 
@@ -731,12 +838,27 @@
   }
 
   injectStyles();
-  bind(CONFIG.headerView);
-  // The survey grid renders later in scene order (and re-renders after inline
-  // edits / refreshes) — each render re-runs the header so the task strip
-  // reflects the rows that just landed.
-  bind(CONFIG.surveyView);
-  if (document.getElementById(CONFIG.headerView)) setTimeout(transformHeader, 50);
+  for (var bi = 0; bi < CONFIG.scenes.length; bi++) {
+    var bcfg = CONFIG.scenes[bi];
+    if (bcfg.headerView) { _bound[bcfg.headerView] = 1; bind(bcfg.headerView); }
+    // The survey grid renders later in scene order (and re-renders after
+    // inline edits / refreshes) — each render re-runs the header so the
+    // task strip reflects the rows that just landed.
+    if (bcfg.surveyView) bind(bcfg.surveyView);
+  }
+  // Scenes whose details view we have to DISCOVER give us no per-view
+  // render event to hang off, so sweep after the scene settles. Staggered
+  // because the details view populates on its own schedule; mountCard is
+  // change-detected, so repeat passes are free and don't flicker. The first
+  // pass that finds the view binds it for every render after this.
+  function sweep() {
+    transformHeader();
+    setTimeout(transformHeader, 250);
+    setTimeout(transformHeader, 800);
+  }
+  $(document).off('knack-scene-render.any' + EVENT_NS)
+    .on('knack-scene-render.any' + EVENT_NS, function () { setTimeout(sweep, 60); });
+  setTimeout(sweep, 50);
 
   // Public refresh hook (other features can force a re-scrape).
   window.SCW = window.SCW || {};
