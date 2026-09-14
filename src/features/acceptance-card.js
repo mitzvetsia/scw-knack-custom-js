@@ -389,18 +389,114 @@
     };
   }
 
-  /** OPS ONLY — what the CLIENT is billed for this proposal, as stored on
-   *  the proposal record. Returns null when neither column is on the view,
-   *  so the block simply doesn't appear. The bid figure is what SCW pays;
-   *  this is what SCW bills, and having both on one row is the point. */
-  function billedOf(row) {
-    var eq = F.pubEquip ? numFromText(cellText(row, F.pubEquip)) : null;
-    var inst = F.pubInstall ? numFromText(cellText(row, F.pubInstall)) : null;
-    if (eq == null && inst == null) return null;
+  /** The stored bid DOCUMENT as HTML (F.bidDoc), unwrapped from Knack's
+   *  connection span. Rich text, so innerHTML — textContent would strip
+   *  the tables that are the whole point (see CLAUDE.md on reading
+   *  rich-text cells). '' when the column is absent or blank. */
+  function bidDocHtml(row) {
+    if (!F.bidDoc) return '';
+    var cell = row.querySelector('td.' + F.bidDoc);
+    if (!cell) return '';
+    var inner = cell.querySelector('span[data-kn="connection-value"]') ||
+                cell.querySelector('span[class^="col-"]') || cell;
+    var html = (inner.innerHTML || '').trim();
+    // A blank Knack cell is &nbsp; / whitespace, not empty.
+    return html.replace(/<[^>]*>/g, '').replace(/[\s ]/g, '') ? html : '';
+  }
+
+  /** Open a stored bid document in its own tab, styled with the SAME
+   *  stylesheet the published PDF uses (SCW.pdfExport.getCss), so it reads
+   *  as the document it is — and can be printed or saved as a PDF, which
+   *  is the point when no PDF was ever attached. A new tab rather than a
+   *  modal: this is a full proposal-length document with wide tables, and
+   *  the card's modal is 420px. */
+  function openBidDoc(html, title) {
+    if (!html) return;
+    var css = '';
+    try {
+      if (window.SCW && SCW.pdfExport && typeof SCW.pdfExport.getCss === 'function') {
+        css = SCW.pdfExport.getCss() || '';
+      }
+    } catch (e) { css = ''; }
+    var w = null;
+    try { w = window.open('', '_blank'); } catch (e2) { w = null; }
+    if (!w) {
+      toast('Allow pop-ups for this site to open the bid document.', true);
+      return;
+    }
+    // Minimal page scaffold when the PDF stylesheet isn't in scope — the
+    // fragment carries its own inline styles for the diff tables, but the
+    // bid document leans on classes.
+    var fallback = css ? '' : [
+      'body{font:13px/1.5 Arial,Helvetica,sans-serif;color:#0f172a;margin:0;padding:28px;}',
+      'table{width:100%;border-collapse:collapse;margin:8px 0;}',
+      'th,td{padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:left;',
+      'vertical-align:top;font-size:12px;}',
+      '.col-qty,.col-cost{text-align:right;white-space:nowrap;}',
+      '.l1-header{font-weight:800;font-size:14px;color:#0f4c75;margin:18px 0 4px;}',
+      '.l2-header{font-weight:700;font-size:12px;color:#475569;margin:12px 0 2px;}',
+      '.pt-value,.l1-footer-value{font-weight:800;}'
+    ].join('');
+    w.document.write('<!doctype html><html><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<title>' + esc(title || 'Bid document') + '</title><style>' +
+      (css || fallback) +
+      // Give the printed page a sane wrapper whichever stylesheet applied.
+      ' .scw-bid-doc{max-width:900px;margin:0 auto;padding:24px 16px;}' +
+      '</style></head><body><div class="scw-bid-doc">' + html + '</div></body></html>');
+    w.document.close();
+    try { w.focus(); } catch (e3) { /* ignore */ }
+  }
+
+  /** Which columns on this view hold the proposal's money, found by their
+   *  HEADER LABEL rather than a hardcoded key — so adding "equipment
+   *  total" / "labor total" / "project total" in Builder is all it takes.
+   *  Same detect-by-column approach install-as-quoted-panel uses for the
+   *  publish snapshot. A label must say "total" and must NOT be one of the
+   *  link/PDF/JSON columns (SYS_Xero EQUIPMENT Invoice Link would
+   *  otherwise match on "equip"). F.pubEquip / F.pubInstall override. */
+  var _moneyColsWarned = false;
+  function moneyColsOf(viewEl) {
+    var out = { equip: F.pubEquip || '', install: F.pubInstall || '', grand: '' };
+    if (!viewEl) return out;
+    var ths = viewEl.querySelectorAll('thead th');
+    for (var i = 0; i < ths.length; i++) {
+      var fk = (String(ths[i].className || '').match(/field_\d+/) || [''])[0];
+      if (!fk) continue;
+      var lbl = (ths[i].textContent || '').replace(/\s+/g, ' ').trim();
+      if (!/total/i.test(lbl)) continue;
+      if (/(link|pdf|json|snapshot|html|id\b)/i.test(lbl)) continue;
+      if (!out.equip && /equip/i.test(lbl))                       { out.equip = fk; continue; }
+      if (!out.install && /(install|labor)/i.test(lbl))            { out.install = fk; continue; }
+      if (!out.grand && /(project|grand|proposal|contract)/i.test(lbl)) { out.grand = fk; continue; }
+    }
+    if (!_moneyColsWarned && window.console && console.log &&
+        (out.equip || out.install || out.grand) && window.SCW && SCW.DEBUG) {
+      _moneyColsWarned = true;
+      console.log('[AcceptanceCard] proposal money columns:', out);
+    }
+    return out;
+  }
+
+  /** OPS ONLY — what the CLIENT is billed for this proposal. A stored
+   *  project total is authoritative; otherwise equipment + install is the
+   *  sum. Returns null when none of the columns are on the view, so the
+   *  block simply doesn't appear. The bid figure is what SCW PAYS; this is
+   *  what SCW BILLS, and having both on one row is the point. */
+  function billedOf(row, cols) {
+    if (!cols) return null;
+    var eq = cols.equip ? numFromText(cellText(row, cols.equip)) : null;
+    var inst = cols.install ? numFromText(cellText(row, cols.install)) : null;
+    var grand = cols.grand ? numFromText(cellText(row, cols.grand)) : null;
+    if (eq == null && inst == null && grand == null) return null;
+    var sum = (eq == null ? 0 : eq) + (inst == null ? 0 : inst);
     return {
       equip: eq, install: inst,
-      total: (eq == null ? 0 : eq) + (inst == null ? 0 : inst),
-      partial: eq == null || inst == null
+      total: grand != null ? grand : sum,
+      stored: grand != null,
+      // Only worth printing the split when BOTH halves are there; one half
+      // alone is already the total above it.
+      split: eq != null && inst != null
     };
   }
 
@@ -537,13 +633,22 @@
       // disclosure (hidden until tile hover / keyboard focus, fixed
       // width so nothing shifts). Pair captions carry the shared context
       // so the tile labels stay short.
+      // A PRESENT document is quiet: the checklist's job is to show what's
+      // MISSING, and five filled-green chips per row shouted over the
+      // money and the title. Done = white with a muted check; the dashed
+      // "+" tiles below are what the eye should catch.
       '.scw-acpt-doc { display: inline-flex; align-items: stretch;',
-      '  border-radius: 8px; border: 1px solid #bbf7d0; background: #f0fdf4;',
+      '  border-radius: 8px; border: 1px solid #e2e8f0; background: #fff;',
       '  overflow: hidden; }',
+      '.scw-acpt-doc:hover { border-color: #cbd5e1; }',
+      // A stored-HTML document isn't the PDF the checklist wants, so its
+      // glyph stays slate rather than the done-green check.
+      '.scw-acpt-doc--html .scw-acpt-doc__open svg { color: #64748b; }',
       '.scw-acpt-doc__open { display: inline-flex; align-items: center;',
-      '  gap: 7px; padding: 7px 4px 7px 10px; color: #15803d !important; cursor: pointer;',
+      '  gap: 7px; padding: 7px 4px 7px 10px; color: #334155 !important; cursor: pointer;',
       '  font: 600 12px/1.2 system-ui, sans-serif; text-decoration: none !important; }',
-      '.scw-acpt-doc__open:hover { background: #dcfce7; text-decoration: none !important; }',
+      '.scw-acpt-doc__open svg { color: #16a34a; }',
+      '.scw-acpt-doc__open:hover { background: #f8fafc; text-decoration: none !important; }',
       '.scw-acpt-doc__open svg { flex: none; color: #16a34a; }',
       '.scw-acpt-doc__lbl { white-space: nowrap; }',
       '.scw-acpt-doc__edit { flex: none; width: 24px; display: inline-flex; align-items: center;',
@@ -679,9 +784,16 @@
       '.scw-acpt-tally--left .scw-acpt-tally__cell { align-items: flex-start;',
       '  text-align: left; }',
       '.scw-acpt-tally--left .scw-acpt-tally__note { margin-right: 0; margin-left: auto; }',
-      // Equipment/install breakdown under the billed figure — the split is
-      // supporting detail, so it stays small and muted.
-      '.scw-acpt-total--billed { padding-bottom: 2px; }',
+      // Two figures in the money column, deliberately unequal: the lead
+      // (what the client is billed) is the headline, what we pay the sub
+      // reads as its subordinate. Equal weight is what made the eye
+      // wander.
+      '.scw-acpt-total--lead .scw-acpt-total__val { font-size: 19px; }',
+      '.scw-acpt-total--sub { padding-top: 8px; border-top: 1px solid #eef2f7;',
+      '  width: 100%; }',
+      '.scw-acpt-total--sub .scw-acpt-total__val { font-size: 14px; color: #475569; }',
+      // Equipment/install breakdown under the billed figure — supporting
+      // detail, so small and muted.
       '.scw-acpt-total__split { font: 600 10px/1.3 system-ui, sans-serif;',
       '  color: #94a3b8; font-variant-numeric: tabular-nums; }',
       // Narrow: let the money column drop under the identity instead of
@@ -705,26 +817,27 @@
       //   <=860px  one column, stacked
       // Columns are declared once, so they line up row to row by
       // construction rather than by matching fixed widths.
+      // TWO columns, one hierarchy. Left: what this is, how it stands,
+      // and its documents. Right: the money, right-aligned — the only
+      // thing over there, so the eye lands on it, and the tally footer
+      // continues the same axis. Documents sit on their own band under a
+      // hairline: they're a checklist, not the headline, and five tiles
+      // beside the title was what made the row read as noise.
       '.scw-acpt-row { display: grid; align-items: start;',
-      '  grid-template-columns: minmax(0, 320px) minmax(150px, auto) minmax(0, 1fr);',
-      '  grid-template-areas: "id money status" "actions actions actions";',
-      '  column-gap: 16px; row-gap: 10px; padding: 12px 2px; }',
+      '  grid-template-columns: minmax(0, 1fr) auto;',
+      '  grid-template-areas: "id money" "actions actions";',
+      '  column-gap: 32px; row-gap: 12px; padding: 16px 2px; }',
       '.scw-acpt-row > .scw-acpt-id      { grid-area: id; }',
       '.scw-acpt-row > .scw-acpt-money   { grid-area: money; }',
-      '.scw-acpt-row > .scw-acpt-status  { grid-area: status; }',
-      '.scw-acpt-row > .scw-acpt-actions { grid-area: actions; }',
-      '@media (min-width: 1600px) {',
-      '  .scw-acpt-row { grid-template-columns: 320px minmax(150px, auto)',
-      '    minmax(0, 1fr) auto;',
-      '    grid-template-areas: "id money status actions"; }',
-      '}',
+      '.scw-acpt-row > .scw-acpt-actions { grid-area: actions;',
+      '  border-top: 1px dashed #eef2f7; padding-top: 12px; }',
       '@media (max-width: 860px) {',
       '  .scw-acpt-row { grid-template-columns: minmax(0, 1fr);',
-      '    grid-template-areas: "id" "money" "status" "actions"; }',
+      '    grid-template-areas: "id" "money" "actions"; }',
       '  .scw-acpt-row .scw-acpt-total { align-items: flex-start; text-align: left; }',
-      '  .scw-acpt-row .scw-acpt-money { justify-content: flex-start; }',
+      '  .scw-acpt-row .scw-acpt-money { align-items: flex-start; }',
       '}',
-      '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #eef2f7; }',
+      '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #e2e8f0; }',
       // The identity column: base SOW numbers (SW1145) are shorter than CO
       // numbers (SW1418CO), so an auto width staggered everything beside
       // them. The proposal id renders as a muted sub-line instead of riding
@@ -1358,7 +1471,7 @@
 
   /** One compact list row for one acceptance record. All anchors/editors
    *  bind to THIS row's record. */
-  function buildCard(viewKey, row, bySow) {
+  function buildCard(viewKey, row, bySow, moneyCols) {
     var recId   = row.id;
     var propA   = cellAnchor(row, F.proposal, 'a[data-kn="connection-link"]') || cellAnchor(row, F.proposal);
     var propTxt = propA ? propA.textContent.replace(/\s+/g, ' ').trim() : (cellText(row, F.proposal) || 'Proposal');
@@ -1392,6 +1505,20 @@
     // `full` is the untruncated document name (tooltips + aria); `label`
     // is the short on-tile text (the pair caption carries the context).
     function fileSlot(fk, label, full, anchor, editTitle) {
+      // No file, but the document EXISTS as stored HTML: offer the thing
+      // itself rather than only an upload placeholder. Neutral styling —
+      // it's a document to read, not a satisfied checklist item — with the
+      // pencil still there to attach the PDF.
+      if (!anchor && fk === F.bidPdf && docHtml) {
+        return '<span class="scw-acpt-doc scw-acpt-doc--html">' +
+          '<a class="scw-acpt-doc__open" data-bid-doc="1" href="javascript:void(0)" ' +
+            'title="Open the stored bid document (no PDF attached)">' + FILE_SVG +
+            '<span class="scw-acpt-doc__lbl">Bid document</span>' +
+          '</a>' +
+          '<button type="button" class="scw-acpt-doc__edit" data-edit-field="' + fk + '" ' +
+            'title="Attach a bid PDF">' + PENCIL_SVG + '</button>' +
+        '</span>';
+      }
       if (!anchor) {
         return '<button type="button" class="scw-acpt-doc--missing" data-edit-field="' + fk + '" title="Add ' + esc(full) + '">' +
           PLUS_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span></button>';
@@ -1437,7 +1564,8 @@
     var basisNo  = cellText(row, F.bidBasis);
     var poNo     = cellText(row, F.po);
     var diff     = diffSummary(row);
-    var billed   = billedOf(row);
+    var billed   = billedOf(row, moneyCols);
+    var docHtml  = bidDocHtml(row);
     var meta = '';
     if (basisNo) {
       meta += '<span class="scw-acpt-tag" title="Priced from bid ' + esc(basisNo) + '">' +
@@ -1478,30 +1606,38 @@
           : '<div class="scw-acpt-title">' + esc(propMain) + '</div>') +
         (propSub ? '<div class="scw-acpt-sub">Proposal ' + esc(propSub) + '</div>' : '') +
         (meta ? '<div class="scw-acpt-meta">' + meta + '</div>' : '') +
+        // Status belongs under the thing it describes, and keeps the top
+        // line to just name + figure.
+        '<div class="scw-acpt-status">' +
+          (isCo ? '' :
+            (terms
+              ? pill('Approved for terms', true)
+              : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid))) +
+          pill(signed ? 'Agreement signed' : 'Agreement not signed', signed) +
+        '</div>' +
       '</div>' +
-      // Money sits between the two fixed-width columns (identity, money)
-      // so it lands at the same x in every row — the pills and action
-      // tiles that follow vary in width. Rendered even when empty to hold
-      // the column.
+      // ONE money axis: the only thing in the right column, right-aligned,
+      // and the tally footer lands under it. BILLED leads — it's the
+      // client-facing number and the bigger one; what we pay the sub sits
+      // beneath it.
       '<div class="scw-acpt-money">' +
-        // What we're BILLING, when the proposal's totals are on the view.
-        // First because it's the bigger number and the client-facing one;
-        // the sub bid under it is what we pay out of it.
         (billed
-          ? '<div class="scw-acpt-total scw-acpt-total--billed">' +
+          ? '<div class="scw-acpt-total scw-acpt-total--lead">' +
               '<span class="scw-acpt-total__lbl">' +
-                (billed.partial ? (billed.install != null ? 'Install billed' : 'Equipment billed')
-                                : 'Billed to client') + '</span>' +
+                (billed.split || billed.stored ? 'Billed to client'
+                  : (billed.install != null ? 'Install billed' : 'Equipment billed')) + '</span>' +
               '<span class="scw-acpt-total__val">' + esc(money(billed.total)) + '</span>' +
-              (billed.partial ? '' :
-                '<span class="scw-acpt-total__split">Equip ' + esc(money(billed.equip)) +
-                  ' · Install ' + esc(money(billed.install)) + '</span>') +
+              (billed.split
+                ? '<span class="scw-acpt-total__split">Equip ' + esc(money(billed.equip)) +
+                    ' · Install ' + esc(money(billed.install)) + '</span>'
+                : '') +
             '</div>'
           : '') +
         (total
-          ? '<div class="scw-acpt-total">' +
+          ? '<div class="scw-acpt-total' +
+              (billed ? ' scw-acpt-total--sub' : ' scw-acpt-total--lead') + '">' +
               '<span class="scw-acpt-total__lbl">' +
-                esc(billed ? (isCo ? 'Change order — sub' : 'Sub bid') : totalLbl) +
+                esc(billed ? (isCo ? 'Change order — sub' : 'Paid to sub') : totalLbl) +
               '</span>' +
               '<span class="scw-acpt-total__val">' + esc(total) + '</span>' +
               (amt.source === 'derived'
@@ -1510,13 +1646,6 @@
                 : '') +
             '</div>'
           : '') +
-      '</div>' +
-      '<div class="scw-acpt-status">' +
-        (isCo ? '' :
-          (terms
-            ? pill('Approved for terms', true)
-            : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid))) +
-        pill(signed ? 'Agreement signed'         : 'Agreement not signed',    signed) +
       '</div>' +
       '<div class="scw-acpt-actions">' +
         // Two captioned mirror pairs: the signed agreement with its
@@ -1576,6 +1705,15 @@
     if (glBtn) {
       glBtn.addEventListener('click', function () {
         openGreenlightCheck(viewKey, recId, glInfo);
+      });
+    }
+
+    // Stored bid document → its own tab, printable.
+    var docBtns = card.querySelectorAll('[data-bid-doc]');
+    for (var db = 0; db < docBtns.length; db++) {
+      docBtns[db].addEventListener('click', function (e) {
+        e.preventDefault();
+        openBidDoc(docHtml, 'Bid document — ' + propMain);
       });
     }
 
@@ -1649,6 +1787,9 @@
     var basisName = String((snap && snap.basisBidName) || '').trim() || pdfName ||
       (isCoRow ? 'Change order pricing' : 'Not designated yet');
     var pdfHref  = bidPdfA ? (bidPdfA.getAttribute('href') || '') : '';
+    // No PDF but the document is stored as HTML — the name opens THAT, so
+    // the sub can still read (and print) the bid it's working from.
+    var subDocHtml = pdfHref ? '' : bidDocHtml(row);
     var fileSub  = (pdfName && pdfName !== basisName) ? pdfName : '';
     // No document to name a CO's pricing by — say when it was submitted
     // and by whom instead of leaving the row bare.
@@ -1659,11 +1800,18 @@
         fileSub = 'Submitted' + (when ? ' ' + when : '') + (who ? ' by ' + who : '');
       }
     }
-    var nameHtml = pdfHref
-      ? '<a class="scw-acpt-title scw-acpt-title--doc" href="' + esc(pdfHref) + '" ' +
-          'title="Open ' + esc(pdfName || 'the bid PDF') + '">' + FILE_SVG +
-          '<span>' + esc(basisName) + '</span></a>'
-      : '<div class="scw-acpt-title">' + esc(basisName) + '</div>';
+    var nameHtml;
+    if (pdfHref) {
+      nameHtml = '<a class="scw-acpt-title scw-acpt-title--doc" href="' + esc(pdfHref) + '" ' +
+        'title="Open ' + esc(pdfName || 'the bid PDF') + '">' + FILE_SVG +
+        '<span>' + esc(basisName) + '</span></a>';
+    } else if (subDocHtml) {
+      nameHtml = '<a class="scw-acpt-title scw-acpt-title--doc" data-bid-doc="1" ' +
+        'href="javascript:void(0)" title="Open the bid document">' + FILE_SVG +
+        '<span>' + esc(basisName) + '</span></a>';
+    } else {
+      nameHtml = '<div class="scw-acpt-title">' + esc(basisName) + '</div>';
+    }
     var amt    = bidAmountOf(row, snap, bySow);
     var total  = amt ? money(amt.amount) : '';
     // A CO total is a signed CHANGE (removes credit back), so it can't
@@ -1713,6 +1861,13 @@
     var el = document.createElement('div');
     el.className = 'scw-acpt-row scw-acpt-row--sub';
     el.innerHTML = html;
+    var subDocBtns = el.querySelectorAll('[data-bid-doc]');
+    for (var sd = 0; sd < subDocBtns.length; sd++) {
+      subDocBtns[sd].addEventListener('click', function (e) {
+        e.preventDefault();
+        openBidDoc(subDocHtml, 'Bid document — ' + (sowNo || basisName));
+      });
+    }
     return { el: el, isCo: isCoRow, amount: amt ? amt.amount : null,
              source: amt ? amt.source : '' };
   }
@@ -1890,20 +2045,20 @@
           : '') +
       '</div>';
     var bySow = proposedSubBidBySow();
+    var moneyCols = moneyColsOf(viewEl);
     var built = [];
     for (var ei = 0; ei < entries.length; ei++) {
-      var made = buildCard(VIEW, entries[ei].row, bySow);
+      var made = buildCard(VIEW, entries[ei].row, bySow, moneyCols);
       built.push(made);
       card.appendChild(made.el);
     }
     // Running tally — the same footer the sub sees, so the two surfaces
     // show one story. Left-aligned here: this card's right edge is action
     // buttons, and flush-right numbers would read as part of that cluster.
+    // Right-aligned like the sub card's, so every figure on this card —
+    // footer included — sits on the same money axis.
     var opsTally = buildTally(built);
-    if (opsTally) {
-      opsTally.classList.add('scw-acpt-tally--left');
-      card.appendChild(opsTally);
-    }
+    if (opsTally) card.appendChild(opsTally);
     viewEl.appendChild(card);
 
     // Rollup badge in the accordion header bar — visible without
