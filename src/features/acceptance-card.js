@@ -97,7 +97,18 @@
     bidBasis:  'field_2960',   // SYS_bid basis — the bid's number ("183")
     bidDoc:    'field_2944',   // SYS_bid snapshot HTML — carries Grand Total
     bidDiff:   'field_2943',   // SYS_bid snapshot with diff — OPS ONLY
-    po:        'field_1343'    // PO# — OPS ONLY
+    po:        'field_1343',   // PO# — OPS ONLY
+    // ── Ops: what the CLIENT is billed ───────────────────────────
+    // The bid total above is what SCW PAYS the sub. These are what SCW
+    // BILLS, as stored on the published proposal — so the row shows both
+    // sides of the deal. OPS ONLY: never render these on a sub surface.
+    // ⚠ Builder: expose them on view_3914 as connected columns through
+    // field_2755 (same as field_2943/2944/2960 already are). pubEquip is
+    // blank because the proposal's equipment-total field key isn't known
+    // here — fill it in and the billed block completes itself; with only
+    // the install total it shows just that, labelled.
+    pubEquip:   '',
+    pubInstall: 'field_2668'   // published proposal's stored install total
   };
 
   // eSignatures contract page — the id in field_1843 appended verbatim.
@@ -370,8 +381,26 @@
     if (!parts.length && !delta) return null;      // column present but empty
     return {
       n: rows.length,
-      text: parts.length ? parts.join(' · ') : 'Matches the SOW',
+      text: rows.length
+        ? rows.length + ' bid difference' + (rows.length === 1 ? '' : 's')
+        : 'Matches the SOW',
+      breakdown: parts.join(', '),
       delta: delta
+    };
+  }
+
+  /** OPS ONLY — what the CLIENT is billed for this proposal, as stored on
+   *  the proposal record. Returns null when neither column is on the view,
+   *  so the block simply doesn't appear. The bid figure is what SCW pays;
+   *  this is what SCW bills, and having both on one row is the point. */
+  function billedOf(row) {
+    var eq = F.pubEquip ? numFromText(cellText(row, F.pubEquip)) : null;
+    var inst = F.pubInstall ? numFromText(cellText(row, F.pubInstall)) : null;
+    if (eq == null && inst == null) return null;
+    return {
+      equip: eq, install: inst,
+      total: (eq == null ? 0 : eq) + (inst == null ? 0 : inst),
+      partial: eq == null || inst == null
     };
   }
 
@@ -581,18 +610,17 @@
       '.scw-acpt-beta b { font: 800 9.5px/1 system-ui, sans-serif; letter-spacing: .08em;',
       '  text-transform: uppercase; padding: 3px 6px; border-radius: 4px;',
       '  background: #fef3c7; }',
-      '.scw-acpt-row--sub { align-items: flex-start; gap: 16px 24px; flex-wrap: nowrap; }',
-      '.scw-acpt-row--sub .scw-acpt-id { flex: 1 1 auto; min-width: 0; }',
-      '.scw-acpt-money { flex: 0 0 auto; display: flex; justify-content: flex-end;',
-      '  min-width: 150px; }',
-      // Ops rows are denser (pills + document tiles + buttons), so money
-      // is a FIXED column right after the fixed identity column — that's
-      // what makes it land at the same x in every row.
-      '.scw-acpt-row:not(.scw-acpt-row--sub) .scw-acpt-money { flex: 0 0 150px; }',
-      '.scw-acpt-tally--left { justify-content: flex-start; }',
-      '.scw-acpt-tally--left .scw-acpt-tally__cell { align-items: flex-start;',
-      '  text-align: left; }',
-      '.scw-acpt-tally--left .scw-acpt-tally__note { margin-right: 0; margin-left: auto; }',
+      // Sub row: identity then money, one right edge for every figure.
+      // Grid (not flex) so the two columns agree row to row, and the money
+      // column drops below the identity on a narrow screen.
+      '.scw-acpt-row--sub { grid-template-columns: minmax(0, 1fr) auto;',
+      '  grid-template-areas: "id money"; column-gap: 24px; }',
+      '@media (max-width: 760px) {',
+      '  .scw-acpt-row--sub { grid-template-columns: minmax(0, 1fr);',
+      '    grid-template-areas: "id" "money"; }',
+      '}',
+      '.scw-acpt-money { display: flex; flex-direction: column; gap: 10px;',
+      '  align-items: flex-end; justify-content: flex-start; }',
       '.scw-acpt-basis { display: flex; flex-direction: column; gap: 2px;',
       '  align-items: flex-start; }',
       // The bid name doubles as the link to its PDF: leading file glyph,
@@ -645,28 +673,63 @@
       '.scw-acpt-tally__note { margin-right: auto; align-self: center;',
       '  font: 600 10px/1.3 system-ui, sans-serif; color: #94a3b8; cursor: help;',
       '  border-bottom: 1px dotted #cbd5e1; }',
+      // MUST follow the base rules above — same specificity, so source
+      // order decides. Declared earlier it silently lost to flex-end.
+      '.scw-acpt-tally--left { justify-content: flex-start; }',
+      '.scw-acpt-tally--left .scw-acpt-tally__cell { align-items: flex-start;',
+      '  text-align: left; }',
+      '.scw-acpt-tally--left .scw-acpt-tally__note { margin-right: 0; margin-left: auto; }',
+      // Equipment/install breakdown under the billed figure — the split is
+      // supporting detail, so it stays small and muted.
+      '.scw-acpt-total--billed { padding-bottom: 2px; }',
+      '.scw-acpt-total__split { font: 600 10px/1.3 system-ui, sans-serif;',
+      '  color: #94a3b8; font-variant-numeric: tabular-nums; }',
       // Narrow: let the money column drop under the identity instead of
       // squeezing both.
+      // Narrow: the money column has dropped below the identity (grid
+      // areas above), so every figure left-aligns with the text instead of
+      // hanging off a right edge that no longer exists. The tally follows.
       '@media (max-width: 760px) {',
-      '  .scw-acpt-row--sub { flex-wrap: wrap; }',
-      '  .scw-acpt-money { min-width: 0; width: 100%; justify-content: flex-start; }',
+      '  .scw-acpt-money { align-items: flex-start; }',
       '  .scw-acpt-total, .scw-acpt-tally__cell { align-items: flex-start; text-align: left; }',
       '  .scw-acpt-tally { justify-content: flex-start; }',
-      '  .scw-acpt-tally__note { margin-right: 0; }',
+      '  .scw-acpt-tally__note { margin-right: 0; width: 100%; }',
       '}',
-      // Top-aligned: the identity column is now multi-line (title, proposal,
-      // context tags) and centring it left the pills floating mid-row.
-      '.scw-acpt-row { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap;',
-      '  padding: 10px 2px; }',
+      // ── Ops row: GRID, not a wrapping flex line ────────────────
+      // As flex with margin-left:auto on the actions, the tile cluster
+      // wrapped to its own line but stayed pinned right, leaving a void
+      // under the identity column. A grid puts each part in a named area
+      // and reflows in deliberate steps:
+      //   default  id | money | status   /   actions across the bottom
+      //   >=1600px everything on one line
+      //   <=860px  one column, stacked
+      // Columns are declared once, so they line up row to row by
+      // construction rather than by matching fixed widths.
+      '.scw-acpt-row { display: grid; align-items: start;',
+      '  grid-template-columns: minmax(0, 320px) minmax(150px, auto) minmax(0, 1fr);',
+      '  grid-template-areas: "id money status" "actions actions actions";',
+      '  column-gap: 16px; row-gap: 10px; padding: 12px 2px; }',
+      '.scw-acpt-row > .scw-acpt-id      { grid-area: id; }',
+      '.scw-acpt-row > .scw-acpt-money   { grid-area: money; }',
+      '.scw-acpt-row > .scw-acpt-status  { grid-area: status; }',
+      '.scw-acpt-row > .scw-acpt-actions { grid-area: actions; }',
+      '@media (min-width: 1600px) {',
+      '  .scw-acpt-row { grid-template-columns: 320px minmax(150px, auto)',
+      '    minmax(0, 1fr) auto;',
+      '    grid-template-areas: "id money status actions"; }',
+      '}',
+      '@media (max-width: 860px) {',
+      '  .scw-acpt-row { grid-template-columns: minmax(0, 1fr);',
+      '    grid-template-areas: "id" "money" "status" "actions"; }',
+      '  .scw-acpt-row .scw-acpt-total { align-items: flex-start; text-align: left; }',
+      '  .scw-acpt-row .scw-acpt-money { justify-content: flex-start; }',
+      '}',
       '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #eef2f7; }',
-      // Fixed identity column — base SOW numbers (SW1145) are shorter than
-      // CO numbers (SW1418CO), so an auto-width title staggered the pills.
-      // The proposal id renders as a muted sub-line instead of riding in
-      // the title (the " | 20260807-11068" tail was pure noise up there).
-      // Wider than the 280px it was: the identity column now carries the
-      // bid number, PO and diff summary under the title. Still FIXED —
-      // that's what keeps the money column at one x across rows.
-      '.scw-acpt-id { flex: 0 0 320px; min-width: 0; }',
+      // The identity column: base SOW numbers (SW1145) are shorter than CO
+      // numbers (SW1418CO), so an auto width staggered everything beside
+      // them. The proposal id renders as a muted sub-line instead of riding
+      // in the title, with the bid/PO/diff tags under that.
+      '.scw-acpt-id { min-width: 0; }',
       '.scw-acpt-id .scw-acpt-title { font-size: 13.5px; overflow-wrap: anywhere; }',
       '.scw-acpt-sub { font: 500 11px/1.3 system-ui, sans-serif; color: #94a3b8;',
       '  margin-top: 1px; }',
@@ -681,7 +744,13 @@
       '  max-width: 100%; overflow: hidden; text-overflow: ellipsis; cursor: help; }',
       '.scw-acpt-row .scw-acpt-status { margin: 0; gap: 6px; }',
       '.scw-acpt-row .scw-acpt-pill { padding: 3px 9px; font-size: 11px; }',
-      '.scw-acpt-row .scw-acpt-actions { margin-left: auto; gap: 14px; align-items: center; }',
+      // Grid places the cluster; margin-left:auto would re-pin it right
+      // inside its own full-width area, which is the void we just removed.
+      '.scw-acpt-row .scw-acpt-actions { margin-left: 0; gap: 14px;',
+      '  align-items: flex-start; flex-wrap: wrap; }',
+      '@media (min-width: 1600px) {',
+      '  .scw-acpt-row .scw-acpt-actions { justify-content: flex-end; }',
+      '}',
       '.scw-acpt-row .scw-acpt-btn { padding: 6px 12px; font-size: 11.5px; }',
       // Own mini-modal (link editor / upload progress).
       '.scw-acpt-m-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.55);',
@@ -1368,6 +1437,7 @@
     var basisNo  = cellText(row, F.bidBasis);
     var poNo     = cellText(row, F.po);
     var diff     = diffSummary(row);
+    var billed   = billedOf(row);
     var meta = '';
     if (basisNo) {
       meta += '<span class="scw-acpt-tag" title="Priced from bid ' + esc(basisNo) + '">' +
@@ -1377,11 +1447,12 @@
       meta += '<span class="scw-acpt-tag" title="Purchase order">PO ' + esc(poNo) + '</span>';
     }
     if (diff) {
+      // The COUNT and the money delta are the signal; the tier breakdown
+      // is detail, so it rides in the tooltip. Spelling all four tiers
+      // inline made a tag wider than the column it sits in.
       meta += '<span class="scw-acpt-tag" title="' +
         esc(diff.n
-          ? 'The sub’s bid differed from the SOW on ' + diff.n +
-            ' line item' + (diff.n === 1 ? '' : 's') +
-            '. Full comparison lives on the bid review page.'
+          ? diff.breakdown + '. Full comparison lives on the bid review page.'
           : 'The sub priced the SOW as scoped.') + '">' +
         esc(diff.text) +
         (diff.delta ? ' · labor Δ $' + esc(diff.delta) : '') +
@@ -1413,9 +1484,25 @@
       // tiles that follow vary in width. Rendered even when empty to hold
       // the column.
       '<div class="scw-acpt-money">' +
+        // What we're BILLING, when the proposal's totals are on the view.
+        // First because it's the bigger number and the client-facing one;
+        // the sub bid under it is what we pay out of it.
+        (billed
+          ? '<div class="scw-acpt-total scw-acpt-total--billed">' +
+              '<span class="scw-acpt-total__lbl">' +
+                (billed.partial ? (billed.install != null ? 'Install billed' : 'Equipment billed')
+                                : 'Billed to client') + '</span>' +
+              '<span class="scw-acpt-total__val">' + esc(money(billed.total)) + '</span>' +
+              (billed.partial ? '' :
+                '<span class="scw-acpt-total__split">Equip ' + esc(money(billed.equip)) +
+                  ' · Install ' + esc(money(billed.install)) + '</span>') +
+            '</div>'
+          : '') +
         (total
           ? '<div class="scw-acpt-total">' +
-              '<span class="scw-acpt-total__lbl">' + esc(totalLbl) + '</span>' +
+              '<span class="scw-acpt-total__lbl">' +
+                esc(billed ? (isCo ? 'Change order — sub' : 'Sub bid') : totalLbl) +
+              '</span>' +
               '<span class="scw-acpt-total__val">' + esc(total) + '</span>' +
               (amt.source === 'derived'
                 ? '<span class="scw-acpt-total__src" title="' + esc(DERIVED_NOTE) + '">' +
