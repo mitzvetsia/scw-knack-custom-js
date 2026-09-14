@@ -357,6 +357,18 @@
   var DERIVED_NOTE = 'Summed from the current line items on this scope — ' +
     'not a figure read off a signed bid document.';
 
+  // Beta notice on the SUB card. The money on it is newly derived (see
+  // bidAmountOf) and some of it is summed rather than quoted, so say so
+  // plainly while it's being trusted for the first time. Set to '' to
+  // retire the notice — that's the whole switch.
+  var SUB_BETA_NOTE = 'These totals are new. If a number looks wrong, ' +
+    'please flag it to Micah.';
+  var INFO_SVG =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<circle cx="12" cy="12" r="9"></circle><line x1="12" y1="11" x2="12" y2="16"></line>' +
+    '<line x1="12" y1="8" x2="12.01" y2="8"></line></svg>';
+
   var CHECK_SVG =
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
     'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
@@ -490,6 +502,19 @@
       // pills vary in width and would otherwise push each row's figure to
       // a different place. The money cell renders even when empty to hold
       // the column.
+      // Card head: section eyebrow left, beta notice right. Amber because
+      // it asks for caution, not because anything is broken (red stays for
+      // errors) — and it sits ABOVE the figures it's about.
+      '.scw-acpt-cardhead { display: flex; align-items: center;',
+      '  justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }',
+      '.scw-acpt-beta { display: inline-flex; align-items: center; gap: 7px;',
+      '  padding: 5px 10px; border-radius: 6px; background: #fffbeb;',
+      '  border: 1px solid #fde68a; color: #b45309;',
+      '  font: 600 11.5px/1.3 system-ui, sans-serif; }',
+      '.scw-acpt-beta svg { flex: none; }',
+      '.scw-acpt-beta b { font: 800 9.5px/1 system-ui, sans-serif; letter-spacing: .08em;',
+      '  text-transform: uppercase; padding: 3px 6px; border-radius: 4px;',
+      '  background: #fef3c7; }',
       '.scw-acpt-row--sub { align-items: flex-start; gap: 16px 24px; flex-wrap: nowrap; }',
       '.scw-acpt-row--sub .scw-acpt-id { flex: 1 1 auto; min-width: 0; }',
       '.scw-acpt-money { flex: 0 0 auto; display: flex; justify-content: flex-end;',
@@ -1527,7 +1552,14 @@
 
     var card = document.createElement('div');
     card.className = 'scw-acpt-card scw-acpt-card--sub';
-    card.innerHTML = '<div class="scw-acpt-eyebrow">Bid basis &amp; agreement</div>';
+    card.innerHTML =
+      '<div class="scw-acpt-cardhead">' +
+        '<div class="scw-acpt-eyebrow">Bid basis &amp; agreement</div>' +
+        (SUB_BETA_NOTE
+          ? '<div class="scw-acpt-beta">' + INFO_SVG +
+              '<b>Beta</b><span>' + esc(SUB_BETA_NOTE) + '</span></div>'
+          : '') +
+      '</div>';
     // Per-SOW sub-bid sums, resolved ONCE for the whole card.
     var bySow = proposedSubBidBySow();
     var signedCount = 0, entries = [];
