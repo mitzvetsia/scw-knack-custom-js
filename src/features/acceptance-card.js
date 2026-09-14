@@ -400,9 +400,13 @@
       '  font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }',
       '.scw-acpt-eyebrow { font: 700 10px/1.2 system-ui, sans-serif; letter-spacing: .07em;',
       '  text-transform: uppercase; color: #94a3b8; margin-bottom: 3px; }',
-      '.scw-acpt-title { font: 700 15px/1.35 system-ui, sans-serif; color: #0f4c75;',
+      // Titles come in two flavours and must not look alike: an ANCHOR is
+      // navy and underlines on hover, a plain title is ink and does
+      // neither. Nothing that can't be clicked gets to look clickable.
+      '.scw-acpt-title { font: 700 15px/1.35 system-ui, sans-serif; color: #0f172a;',
       '  text-decoration: none; display: inline-block; }',
-      '.scw-acpt-title:hover { text-decoration: underline; }',
+      'a.scw-acpt-title { color: #0f4c75; }',
+      'a.scw-acpt-title:hover { text-decoration: underline; }',
       '.scw-acpt-status { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }',
       '.scw-acpt-pill { display: inline-flex; align-items: center; gap: 6px;',
       '  padding: 5px 11px; border-radius: 999px; font: 600 12px/1 system-ui, sans-serif;',
@@ -479,12 +483,17 @@
       '.scw-acpt-rollup--warn { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
       '.scw-acpt-rollup--ok   { background: #dcfce7; border-color: #86efac; color: #15803d; }',
       // ── Sub variant ────────────────────────────────────────────
-      // Three things, left to right: what we're paying against (bid name
-      // + PDF), what it totals, and where the paperwork stands. The total
-      // is the one number on the card, so it gets tabular figures and
-      // sits in its own labelled block rather than inline in prose.
-      '.scw-acpt-row--sub { align-items: flex-start; gap: 18px; }',
-      '.scw-acpt-row--sub .scw-acpt-id { flex: 1 1 260px; }',
+      // TWO columns: everything identifying the scope on the left (name,
+      // document, status pills), the money on the right. Money is the one
+      // column that has to line up row to row and with the tally footer,
+      // so it's the LAST column in every one of them and right-aligned —
+      // pills vary in width and would otherwise push each row's figure to
+      // a different place. The money cell renders even when empty to hold
+      // the column.
+      '.scw-acpt-row--sub { align-items: flex-start; gap: 16px 24px; flex-wrap: nowrap; }',
+      '.scw-acpt-row--sub .scw-acpt-id { flex: 1 1 auto; min-width: 0; }',
+      '.scw-acpt-money { flex: 0 0 auto; display: flex; justify-content: flex-end;',
+      '  min-width: 150px; }',
       '.scw-acpt-basis { display: flex; flex-direction: column; gap: 2px;',
       '  align-items: flex-start; }',
       // The bid name doubles as the link to its PDF: leading file glyph,
@@ -495,41 +504,57 @@
       'a.scw-acpt-title--doc svg { flex: none; color: #64748b; }',
       'a.scw-acpt-title--doc:hover span { text-decoration: underline; }',
       '.scw-acpt-row--sub .scw-acpt-sub { overflow-wrap: anywhere; }',
+      // Money block — right-aligned inside the money column so every
+      // figure on the card shares one right edge.
       '.scw-acpt-total { flex: 0 0 auto; display: flex; flex-direction: column;',
-      '  gap: 2px; padding: 2px 0; }',
+      '  gap: 2px; padding: 2px 0; align-items: flex-end; text-align: right; }',
       '.scw-acpt-total__lbl { font: 700 9.5px/1 system-ui, sans-serif;',
-      '  letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; }',
+      '  letter-spacing: .08em; text-transform: uppercase; color: #94a3b8;',
+      '  white-space: nowrap; }',
+      // NEUTRAL. A change order that nets negative isn\'t bad news and one
+      // that nets positive isn\'t good news — it\'s a change. The sign is
+      // the whole story; colour would editorialise. (Green/amber stay for
+      // the yes/no status pills, where they mean done / not done.)
       '.scw-acpt-total__val { font: 700 16px/1.15 system-ui, sans-serif;',
       '  color: #0f172a; font-variant-numeric: tabular-nums; }',
-      // A net credit (removes outweigh adds) reads green, matching the
-      // CO proposal convention: negative = money back.
-      '.scw-acpt-total__val--credit { color: #047857; }',
       // Provenance caption. A figure summed off the live line items is
       // weaker than one off a bid document, so it never sits there
       // unqualified — dotted underline invites the tooltip.
       '.scw-acpt-total__src { font: 600 9.5px/1.2 system-ui, sans-serif;',
       '  color: #94a3b8; letter-spacing: .02em; cursor: help;',
-      '  border-bottom: 1px dotted #cbd5e1; align-self: flex-start; }',
+      '  border-bottom: 1px dotted #cbd5e1; }',
       // Running tally: original bid + change orders = total. Sits under
-      // the rows it sums, separated by a rule so it reads as a footer.
+      // the rows it sums, separated by a rule so it reads as a footer, and
+      // ends flush right so its Total lands under the rows\' figures.
       '.scw-acpt-tally { display: flex; align-items: flex-end; flex-wrap: wrap;',
-      '  gap: 6px 16px; margin-top: 4px; padding: 12px 2px 2px;',
-      '  border-top: 2px solid #e2e8f0; }',
-      '.scw-acpt-tally__cell { display: flex; flex-direction: column; gap: 2px; }',
+      '  justify-content: flex-end; gap: 6px 16px; margin-top: 4px;',
+      '  padding: 12px 2px 2px; border-top: 2px solid #e2e8f0; }',
+      '.scw-acpt-tally__cell { display: flex; flex-direction: column; gap: 2px;',
+      '  align-items: flex-end; text-align: right; }',
       '.scw-acpt-tally__lbl { font: 700 9.5px/1 system-ui, sans-serif;',
-      '  letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; }',
+      '  letter-spacing: .08em; text-transform: uppercase; color: #94a3b8;',
+      '  white-space: nowrap; }',
       '.scw-acpt-tally__val { font: 700 15px/1.15 system-ui, sans-serif;',
       '  color: #0f172a; font-variant-numeric: tabular-nums; }',
       '.scw-acpt-tally__op { font: 600 14px/1 system-ui, sans-serif; color: #cbd5e1;',
       '  padding-bottom: 2px; }',
       // The total is the figure the sub is looking for — give it the
       // emphasis and let the inputs read as inputs.
-      '.scw-acpt-tally__cell:last-of-type .scw-acpt-tally__lbl { color: #475569; }',
-      '.scw-acpt-tally__cell:last-of-type .scw-acpt-tally__val { font-size: 18px; }',
-      '.scw-acpt-tally__note { margin-left: auto; align-self: center;',
+      '.scw-acpt-tally__cell--total .scw-acpt-tally__lbl { color: #475569; }',
+      '.scw-acpt-tally__cell--total .scw-acpt-tally__val { font-size: 18px; }',
+      // Caveat rides on the LEFT so the numbers keep the right edge.
+      '.scw-acpt-tally__note { margin-right: auto; align-self: center;',
       '  font: 600 10px/1.3 system-ui, sans-serif; color: #94a3b8; cursor: help;',
       '  border-bottom: 1px dotted #cbd5e1; }',
-      '.scw-acpt-row--sub .scw-acpt-status { margin-left: auto; }',
+      // Narrow: let the money column drop under the identity instead of
+      // squeezing both.
+      '@media (max-width: 760px) {',
+      '  .scw-acpt-row--sub { flex-wrap: wrap; }',
+      '  .scw-acpt-money { min-width: 0; width: 100%; justify-content: flex-start; }',
+      '  .scw-acpt-total, .scw-acpt-tally__cell { align-items: flex-start; text-align: left; }',
+      '  .scw-acpt-tally { justify-content: flex-start; }',
+      '  .scw-acpt-tally__note { margin-right: 0; }',
+      '}',
       '.scw-acpt-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;',
       '  padding: 10px 2px; }',
       '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #eef2f7; }',
@@ -1397,6 +1422,11 @@
     var signed = isYes(cellText(row, F.signed));
     var terms  = isYes(cellText(row, F.terms));
 
+    // Identity column carries everything that describes the scope —
+    // including its status pills, which belong under the thing they
+    // describe. The money column is last and right-aligned in every row
+    // (and in the tally), so all the figures share one edge; it renders
+    // even when empty so a row without a total doesn't shift the others.
     var html =
       '<div class="scw-acpt-id">' +
         '<div class="scw-acpt-pair__cap">' +
@@ -1405,28 +1435,28 @@
           nameHtml +
           (fileSub ? '<div class="scw-acpt-sub">' + esc(fileSub) + '</div>' : '') +
         '</div>' +
+        '<div class="scw-acpt-status">' +
+          // A change order carries no initial payment (it rides the final
+          // project invoice), so signature is its only gate — same rule
+          // the ops card uses.
+          (isCoRow ? '' :
+            (terms
+              ? pill('Approved for terms', true)
+              : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid))) +
+          pill(signed ? 'Agreement signed' : 'Agreement not signed', signed) +
+        '</div>' +
       '</div>' +
-      (total
-        ? '<div class="scw-acpt-total">' +
-            '<span class="scw-acpt-total__lbl">' + esc(totalLbl) + '</span>' +
-            '<span class="scw-acpt-total__val' +
-              (/^-/.test(total) ? ' scw-acpt-total__val--credit' : '') + '">' +
-              esc(total) + '</span>' +
-            (amt.source === 'derived'
-              ? '<span class="scw-acpt-total__src" title="' + esc(DERIVED_NOTE) + '">' +
-                  'from line items</span>'
-              : '') +
-          '</div>'
-        : '') +
-      '<div class="scw-acpt-status">' +
-        // A change order carries no initial payment (it rides the final
-        // project invoice), so signature is its only gate — same rule the
-        // ops card uses.
-        (isCoRow ? '' :
-          (terms
-            ? pill('Approved for terms', true)
-            : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid))) +
-        pill(signed ? 'Agreement signed' : 'Agreement not signed', signed) +
+      '<div class="scw-acpt-money">' +
+        (total
+          ? '<div class="scw-acpt-total">' +
+              '<span class="scw-acpt-total__lbl">' + esc(totalLbl) + '</span>' +
+              '<span class="scw-acpt-total__val">' + esc(total) + '</span>' +
+              (amt.source === 'derived'
+                ? '<span class="scw-acpt-total__src" title="' + esc(DERIVED_NOTE) + '">' +
+                    'from line items</span>'
+                : '') +
+            '</div>'
+          : '') +
       '</div>';
 
     var el = document.createElement('div');
@@ -1451,25 +1481,27 @@
       else { base += e.amount; baseN++; }
     }
     if (!coN || !baseN) return null;
-    function cell(lbl, val, credit) {
-      return '<span class="scw-acpt-tally__cell">' +
+    function cell(lbl, val, mod) {
+      return '<span class="scw-acpt-tally__cell' + (mod ? ' ' + mod : '') + '">' +
         '<span class="scw-acpt-tally__lbl">' + esc(lbl) + '</span>' +
-        '<span class="scw-acpt-tally__val' + (credit ? ' scw-acpt-total__val--credit' : '') +
-          '">' + esc(val) + '</span></span>';
+        '<span class="scw-acpt-tally__val">' + esc(val) + '</span></span>';
     }
     var el = document.createElement('div');
     el.className = 'scw-acpt-tally';
     el.innerHTML =
-      cell(baseN > 1 ? 'Original bids' : 'Original bid', money(base)) +
-      '<span class="scw-acpt-tally__op" aria-hidden="true">+</span>' +
-      cell(coN > 1 ? coN + ' change orders' : 'Change order',
-           (co > 0 ? '+' : '') + money(co), co < 0) +
-      '<span class="scw-acpt-tally__op" aria-hidden="true">=</span>' +
-      cell('Total', money(base + co)) +
+      // Caveat first so the figures keep the card's right edge.
       (derived
         ? '<span class="scw-acpt-tally__note" title="' + esc(DERIVED_NOTE) + '">' +
             'Includes amounts summed from line items</span>'
-        : '');
+        : '') +
+      cell(baseN > 1 ? 'Original bids' : 'Original bid', money(base)) +
+      '<span class="scw-acpt-tally__op" aria-hidden="true">+</span>' +
+      // Signed, not coloured: the sign says which way the scope moved and
+      // that's all it means.
+      cell(coN > 1 ? coN + ' change orders' : 'Change order',
+           (co > 0 ? '+' : '') + money(co)) +
+      '<span class="scw-acpt-tally__op" aria-hidden="true">=</span>' +
+      cell('Total', money(base + co), 'scw-acpt-tally__cell--total');
     return el;
   }
 
