@@ -45,6 +45,26 @@
     '.scw-sbd-ready--needs-review { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }',
     '.scw-sbd-ready--needs-note { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }',
     '.scw-sbd-ready--stale { background: #fff1f2; color: ' + T.added.color + '; border: 1px solid #fecdd3; }',
+    '.scw-sbd-ready--needs-pdf { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }',
+    '.scw-sbd-baseline__meta--req { color: #b45309; font-weight: 600; }',
+
+    /* K1 bid PDF block (required upload when the K1 sentinel is the basis) */
+    '.scw-sbd-k1 { padding: 12px 14px; border-top: 1px solid #f1f5f9; background: #fafbfc; }',
+    '.scw-sbd-k1--req { background: #fffbeb; border-top-color: #fde68a; }',
+    '.scw-sbd-k1__lead { font-size: 13px; color: #334155; line-height: 1.45; margin-bottom: 8px; }',
+    '.scw-sbd-k1-cur { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }',
+    '.scw-sbd-k1-link { font-weight: 600; color: #0f4c75; text-decoration: none; }',
+    'a.scw-sbd-k1-link:hover { text-decoration: underline; }',
+    '.scw-sbd-k1-cur__cap { font-size: 11px; color: #047857; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }',
+    '.scw-sbd-k1-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }',
+    '.scw-sbd-k1-pick { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #475569; font-weight: 600; }',
+    '.scw-sbd-k1-file { font-size: 12px; max-width: 320px; }',
+    '.scw-sbd-k1-upload { border: 1px solid #0f4c75; background: #0f4c75; color: #fff;',
+    '  border-radius: 5px; padding: 4px 12px; cursor: pointer;',
+    '  font: 600 12px/1.5 system-ui, sans-serif; white-space: nowrap; }',
+    '.scw-sbd-k1-upload:hover { background: #0a3a63; }',
+    '.scw-sbd-k1-upload[disabled] { opacity: .6; cursor: default; }',
+    '.scw-sbd-savemsg--err { color: #b91c1c; font-weight: 600; }',
 
     /* per-SOW inline block (lives inside each v2 SOW section, under header) */
     '.scw-sbd-inline { border-bottom: 2px solid #e2e8f0; background: #fff;',

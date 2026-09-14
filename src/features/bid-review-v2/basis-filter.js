@@ -232,8 +232,8 @@
     btn.setAttribute('data-scw-br-v2-basis-toggle', sowId);
     if (hideAll) {
       var why = (basis === K1_ID)
-        ? 'K1 Bid is the basis — this SOW is self-performed, so no ' +
-          'subcontractor bid applies.'
+        ? '“K1 Bid OR no subcontractor bid” is the basis — no subcontractor ' +
+          'bid package applies to this SOW.'
         : 'No basis bid has been chosen for this SOW yet.';
       if (filtering) {
         btn.textContent = 'Show bid' + (n === 1 ? '' : 's') + ' (' + n + ')';

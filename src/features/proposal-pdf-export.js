@@ -4968,7 +4968,8 @@
     // blob (stamped at bid review); subId/subName ride the same blob once
     // sub-bid-diff's pkgSub config key is set (bid package → sub connection).
     var empty = { bidHtml: '', diffHtml: '', diffDocHtml: '', reviewHtml: '',
-      basis: '', basisId: '', subId: '', subName: '', hasDiff: false, note: '' };
+      basis: '', basisId: '', subId: '', subName: '', hasDiff: false, note: '',
+      k1PdfAssetId: '', k1PdfName: '', k1PdfUrl: '' };
     function finishSubBid(snap) {
       if (!snap) return empty;
       // The blob's embedded HTML fragments can come back TAG-STRIPPED: when
@@ -5010,10 +5011,15 @@
           '<style>', getPdfCss(), '</style>', '</head><body>', bodyLevelCss(),
           d, PAGEBREAK, '</body></html>'].join('\n');
       }
+      var k1 = (snap.k1Pdf && typeof snap.k1Pdf === 'object') ? snap.k1Pdf : {};
       return { bidHtml: b, diffHtml: d, diffDocHtml: dd, reviewHtml: rv,
         basis: snap.basisBidName || '', basisId: snap.basisBidId || '',
         subId: snap.basisSubId || '', subName: snap.basisSubName || '',
-        hasDiff: Number(snap.total) > 0, note: snap.note || '' };
+        hasDiff: Number(snap.total) > 0, note: snap.note || '',
+        // K1 basis: the uploaded bid PDF the SOW is priced from (also on the
+        // SOW's field_2981 when the write view exposes it).
+        k1PdfAssetId: String(k1.assetId || ''), k1PdfName: String(k1.name || ''),
+        k1PdfUrl: String(k1.url || '') };
     }
     function readSnapshotReview() {
       // Prefer the Knack MODEL value (verbatim JSON) — Knack renders the embedded
@@ -5277,6 +5283,12 @@
       // literal string 'K1' (not a 24-hex record id); this flag lets Make
       // branch without string-sniffing.
       subBidIsK1:            subBid.basisId === 'K1',
+      // K1 basis only: the bid PDF the reviewer uploaded on the Bid Review
+      // page (Knack asset id + filename + URL). Make should attach / stamp
+      // this where it would otherwise use the basis bid package's field_2626.
+      subBidK1PdfAssetId:    subBid.k1PdfAssetId,
+      subBidK1PdfName:       subBid.k1PdfName,
+      subBidK1PdfUrl:        subBid.k1PdfUrl,
       subBidHasDiff:         subBid.hasDiff,
       subBidNote:            subBid.note,
       plaintext:             plaintextStr,

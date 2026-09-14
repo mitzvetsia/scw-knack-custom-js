@@ -1145,13 +1145,22 @@
    *  the SOW — a reviewer note must be present. Basis + note ⇒ unblocked.
    *  Fails open when field_2941 isn't projected onto view_3861. */
   function publishFinalBlockReason() {
+    var snap = readSubBidSnapshot();
+    // "K1 Bid OR no subcontractor bid" was chosen as the basis: the reviewer
+    // asserted the SOW is priced from a bid document, so that PDF must be on
+    // file (snapshot k1Pdf — uploaded on the Bid Review page) before Publish
+    // Final. Checked before the no-bids shortcut: a K1 choice is explicit
+    // regardless of how many bid requests the SOW has.
+    if (snap && snap.basisBidId === 'K1' && !(snap.k1Pdf && snap.k1Pdf.assetId)) {
+      return '“K1 Bid OR no subcontractor bid” is the basis, but the sub bid PDF ' +
+             'hasn’t been uploaded. Upload it on the Bid Review page, then publish.';
+    }
     // No subcontractor bids for this SOW → there's nothing to diff against, so
     // the sub-bid review doesn't apply and Publish Final is free. field_2728 is
     // the subcontractor survey/bid-request count — the same signal that gates
     // the Request/Update Subcontractor Bid steps, and that the publish-final
     // visibility gate used before it was disabled. Zero/absent ⇒ no bids.
     if (!conditionMet({ field: 'field_2728', gt: 0 })) return '';
-    var snap = readSubBidSnapshot();
 
     // The basis-bid CHOICE is the actual review decision, and it persists as a
     // connection on the SOW (field_2942) independently of the diff snapshot
@@ -1288,8 +1297,15 @@
     // exists for this SOW. Zero-count tally rows would just look broken;
     // state it plainly instead.
     if (snap.basisBidId === 'K1') {
-      html += '<div class="scw-ops-subbid__empty">K1 Bid — no subcontractor bid ' +
-              'applies to this SOW (self-perform).</div>';
+      var k1 = snap.k1Pdf && snap.k1Pdf.assetId ? snap.k1Pdf : null;
+      html += '<div class="scw-ops-subbid__empty">K1 Bid OR no subcontractor bid — ' +
+              'priced from the attached bid PDF' +
+              (k1
+                ? ': ' + (k1.url
+                    ? '<a href="' + escHtml(k1.url) + '" target="_blank" rel="noopener">' + escHtml(k1.name || 'bid.pdf') + '</a>'
+                    : escHtml(k1.name || 'bid.pdf')) + '.'
+                : ' — <b>not uploaded yet</b>. Upload it on the Bid Review page.') +
+              '</div>';
       if (snap.note && String(snap.note).trim()) {
         html += '<div class="scw-ops-subbid__note"><b>Reviewer note:</b> ' +
                 escHtml(String(snap.note).trim()) + '</div>';

@@ -78,6 +78,19 @@
     snapshotField: 'field_2941', // JSON blob: frozen diff + reviewer note (on SOW header)
     basisBidView:  'view_3918',  // SOW records write view on scene_1155 (must expose field_2942 + field_2941)
 
+    // ── "K1 Bid OR no subcontractor bid" → the bid PDF is REQUIRED ──────
+    // When the reviewer picks the K1 sentinel there is no bid package (and
+    // so no field_2626 PDF) to price from. They must upload the bid PDF the
+    // SOW → proposal is priced against instead. It lands in the SOW's own
+    // bid-PDF file field (the same field_2981 the CO "Skip Sub Pricing"
+    // flow fills) via the SOW write view, AND its {assetId, name, url}
+    // rides in the field_2941 snapshot as `k1Pdf` — that's what the ops
+    // stepper's publish gate and the publish payload read, so no extra
+    // column is needed on view_3861. ⚠ Builder: field_2981 must be an
+    // editable field on view_3918 or the file-field write is dropped (the
+    // panel warns; the snapshot copy still carries the asset).
+    k1PdfField:    'field_2981',
+
     // A package whose status text reads complete/submitted — surfaced as a
     // hint next to each option, NOT used to auto-select.
     completeStatusRe: /complete|submit|final|received|done/i,
