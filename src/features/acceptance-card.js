@@ -219,29 +219,143 @@
     return null;
   }
 
-  /** The bid total for the sub card. Acceptance-level currency field
-   *  first (F.bidTotal — the clean source), then the snapshot's
-   *  basisTotal, then the "Sub Bid Total" the snapshot's bidHtml prints
-   *  (snapshots stamped before basisTotal was carried). '' = omit. */
-  function bidTotalOf(row, snap) {
+  // ── Base-scope money ────────────────────────────────────────
+  // A base acceptance has no pricing snapshot to total — field_2946 only
+  // gets stamped for change orders — but the line items it was accepted
+  // against are already on the scene: the proposed-items grid carries the
+  // per-line sub bid and the SOW each line belongs to. Sum by SOW and the
+  // base row gets its number the same way the CO row does.
+  //
+  // field_2150 is the PER-UNIT sub bid, so the line amount is qty × bid —
+  // the same extension co-stage-strip's send document uses, and the one
+  // the legacy base path in buildInvoiceItems under-reports (Known Issue
+  // #21). This is the sub's own money, already shown to subs elsewhere
+  // (install-as-quoted-panel reads the same field on the same views).
+  var PROPOSED_VIEWS = ['view_4151', 'view_4072'];
+  var PF = {
+    subBid: 'field_2150',   // INSTALL FEE INPUT_sub bid (per unit)
+    sow:    'field_2154',   // REL_scope of work
+    qty:    'field_1964'    // PRODUCT INPUT_quantity
+  };
+  /** SOW identifiers arrive with and without the SW prefix depending on
+   *  the surface ("SW1347" on acceptance proposal identifiers, "1347" on
+   *  SOW connections), so compare both ways — same rule as
+   *  install-as-quoted-panel's acceptFor. */
+  function normToken(s) {
+    return String(s == null ? '' : s).replace(/<[^>]*>/g, '')
+      .replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  }
+  function tokenMatch(a, b) {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (a.indexOf('SW') === 0 && a.slice(2) === b) return true;
+    if (b.indexOf('SW') === 0 && b.slice(2) === a) return true;
+    return false;
+  }
+  /** This acceptance's SOW token, off the proposal identifier
+   *  ("61507493933-SW1347 | 20260807-11068" → "SW1347"). */
+  function sowTokenOf(row) {
+    var left = String(cellText(row, F.proposal) || '').split('|')[0] || '';
+    var segs = left.trim().split('-');
+    return normToken(segs[segs.length - 1]);
+  }
+  /** token → Σ(qty × sub bid) over the proposed line items on this scene.
+   *  Model first (connection identifiers live in _raw), DOM as a
+   *  fallback. Returns an empty map when no proposed grid is present, so
+   *  callers just find nothing rather than erroring. */
+  function proposedSubBidBySow() {
+    var out = Object.create(null);
+    for (var v = 0; v < PROPOSED_VIEWS.length; v++) {
+      var key = PROPOSED_VIEWS[v];
+      var el = document.getElementById(key);
+      if (!el) continue;
+      var models = null;
+      try {
+        var vw = window.Knack && Knack.views && Knack.views[key];
+        models = vw && vw.model && vw.model.data && vw.model.data.models;
+      } catch (e) { models = null; }
+      if (models && models.length) {
+        for (var i = 0; i < models.length; i++) {
+          var a = models[i] && models[i].attributes;
+          if (!a) continue;
+          var raw = a[PF.sow + '_raw'];
+          var refs = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+          if (!refs.length) continue;
+          var bid = numFromText(a[PF.subBid] != null ? a[PF.subBid] : a[PF.subBid + '_raw']);
+          if (bid == null) continue;
+          var q = numFromText(a[PF.qty] != null ? a[PF.qty] : a[PF.qty + '_raw']);
+          if (q == null || q === 0) q = 1;
+          // A line on several SOWs counts once per SOW — each SOW's total
+          // is what THAT SOW was accepted at.
+          for (var r = 0; r < refs.length; r++) {
+            var tok = normToken(refs[r] && refs[r].identifier);
+            if (!tok) continue;
+            out[tok] = (out[tok] || 0) + q * bid;
+          }
+        }
+        continue;                                  // model read succeeded
+      }
+      // DOM fallback — same shape, scraped.
+      var rows = el.querySelectorAll('tbody tr[id]');
+      for (var d = 0; d < rows.length; d++) {
+        var tr = rows[d];
+        var dbid = numFromText(cellText(tr, PF.subBid));
+        if (dbid == null) continue;
+        var dq = numFromText(cellText(tr, PF.qty));
+        if (dq == null || dq === 0) dq = 1;
+        var cell = tr.querySelector('td.' + PF.sow);
+        var spans = cell ? cell.querySelectorAll('span[data-kn="connection-value"]') : [];
+        for (var s = 0; s < spans.length; s++) {
+          var dtok = normToken(spans[s].textContent);
+          if (!dtok) continue;
+          out[dtok] = (out[dtok] || 0) + dq * dbid;
+        }
+      }
+    }
+    return out;
+  }
+
+  /** The money for one acceptance row: { amount, source } or null.
+   *
+   *  PROVENANCE MATTERS, so the source travels with the number and the
+   *  card says which one it is. Strongest first:
+   *    'quoted'  — a stamped total on the acceptance record, or the frozen
+   *                pricing snapshot: what the sub actually bid/submitted,
+   *                fixed at that moment. This is the agreed figure.
+   *    'derived' — summed from the CURRENT proposed line items for that
+   *                SOW. Real data, but NOT the same thing as a bid
+   *                document: it moves when the scope moves, and nobody
+   *                signed it. Always labelled as derived on the card.
+   */
+  function bidAmountOf(row, snap, bySow) {
     if (F.bidTotal) {
       var direct = numFromText(cellText(row, F.bidTotal));
-      if (direct != null) return money(direct);
+      if (direct != null) return { amount: direct, source: 'quoted' };
     }
     if (snap) {
       if (snap.basisTotal != null && isFinite(Number(snap.basisTotal))) {
-        return money(snap.basisTotal);
+        return { amount: Number(snap.basisTotal), source: 'quoted' };
       }
       var m = String(snap.bidHtml || '').match(/class="pt-value"[^>]*>([^<]+)</);
       if (m) {
         var scraped = numFromText(m[1]);
-        if (scraped != null) return money(scraped);
+        if (scraped != null) return { amount: scraped, source: 'quoted' };
       }
       var lt = linesTotal(snap);
-      if (lt != null) return money(lt);
+      if (lt != null) return { amount: lt, source: 'quoted' };
     }
-    return '';
+    if (bySow) {
+      var tok = sowTokenOf(row);
+      if (tok) {
+        for (var k in bySow) {
+          if (tokenMatch(tok, k)) return { amount: bySow[k], source: 'derived' };
+        }
+      }
+    }
+    return null;
   }
+  var DERIVED_NOTE = 'Summed from the current line items on this scope — ' +
+    'not a figure read off a signed bid document.';
 
   var CHECK_SVG =
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
@@ -390,6 +504,31 @@
       // A net credit (removes outweigh adds) reads green, matching the
       // CO proposal convention: negative = money back.
       '.scw-acpt-total__val--credit { color: #047857; }',
+      // Provenance caption. A figure summed off the live line items is
+      // weaker than one off a bid document, so it never sits there
+      // unqualified — dotted underline invites the tooltip.
+      '.scw-acpt-total__src { font: 600 9.5px/1.2 system-ui, sans-serif;',
+      '  color: #94a3b8; letter-spacing: .02em; cursor: help;',
+      '  border-bottom: 1px dotted #cbd5e1; align-self: flex-start; }',
+      // Running tally: original bid + change orders = total. Sits under
+      // the rows it sums, separated by a rule so it reads as a footer.
+      '.scw-acpt-tally { display: flex; align-items: flex-end; flex-wrap: wrap;',
+      '  gap: 6px 16px; margin-top: 4px; padding: 12px 2px 2px;',
+      '  border-top: 2px solid #e2e8f0; }',
+      '.scw-acpt-tally__cell { display: flex; flex-direction: column; gap: 2px; }',
+      '.scw-acpt-tally__lbl { font: 700 9.5px/1 system-ui, sans-serif;',
+      '  letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; }',
+      '.scw-acpt-tally__val { font: 700 15px/1.15 system-ui, sans-serif;',
+      '  color: #0f172a; font-variant-numeric: tabular-nums; }',
+      '.scw-acpt-tally__op { font: 600 14px/1 system-ui, sans-serif; color: #cbd5e1;',
+      '  padding-bottom: 2px; }',
+      // The total is the figure the sub is looking for — give it the
+      // emphasis and let the inputs read as inputs.
+      '.scw-acpt-tally__cell:last-of-type .scw-acpt-tally__lbl { color: #475569; }',
+      '.scw-acpt-tally__cell:last-of-type .scw-acpt-tally__val { font-size: 18px; }',
+      '.scw-acpt-tally__note { margin-left: auto; align-self: center;',
+      '  font: 600 10px/1.3 system-ui, sans-serif; color: #94a3b8; cursor: help;',
+      '  border-bottom: 1px dotted #cbd5e1; }',
       '.scw-acpt-row--sub .scw-acpt-status { margin-left: auto; }',
       '.scw-acpt-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;',
       '  padding: 10px 2px; }',
@@ -1204,7 +1343,7 @@
   /** SUB VARIANT — one read-only row per acceptance: the bid we're paying
    *  against, its total, and the paperwork pills. Nothing here writes,
    *  proxies a Knack action, or renders the snapshot's diff. */
-  function buildSubRow(viewKey, row) {
+  function buildSubRow(viewKey, row, bySow) {
     var snap = readSnapshot(viewKey, row);
     // The bid PDF cell ("Matching Bid", field_2947) — reuse Knack's own
     // asset href so the file opens through Knack's viewer as usual.
@@ -1249,7 +1388,8 @@
           'title="Open ' + esc(pdfName || 'the bid PDF') + '">' + FILE_SVG +
           '<span>' + esc(basisName) + '</span></a>'
       : '<div class="scw-acpt-title">' + esc(basisName) + '</div>';
-    var total  = bidTotalOf(row, snap);
+    var amt    = bidAmountOf(row, snap, bySow);
+    var total  = amt ? money(amt.amount) : '';
     // A CO total is a signed CHANGE (removes credit back), so it can't
     // wear the same label as a base-scope bid total.
     var totalLbl = isCoRow ? 'Change order total' : 'Bid total';
@@ -1272,6 +1412,10 @@
             '<span class="scw-acpt-total__val' +
               (/^-/.test(total) ? ' scw-acpt-total__val--credit' : '') + '">' +
               esc(total) + '</span>' +
+            (amt.source === 'derived'
+              ? '<span class="scw-acpt-total__src" title="' + esc(DERIVED_NOTE) + '">' +
+                  'from line items</span>'
+              : '') +
           '</div>'
         : '') +
       '<div class="scw-acpt-status">' +
@@ -1288,6 +1432,44 @@
     var el = document.createElement('div');
     el.className = 'scw-acpt-row scw-acpt-row--sub';
     el.innerHTML = html;
+    return { el: el, isCo: isCoRow, amount: amt ? amt.amount : null,
+             source: amt ? amt.source : '' };
+  }
+
+  /** Running tally for the sub: what the scope started at, what the change
+   *  orders moved it by, and where it stands. Only when there IS a change
+   *  order and a base figure to add it to — with one base row and nothing
+   *  else, the row's own total already says it, and a "total" that quietly
+   *  omits an unknown base would be worse than no total at all. */
+  function buildTally(entries) {
+    var base = 0, baseN = 0, co = 0, coN = 0, derived = false;
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      if (e.amount == null) continue;
+      if (e.source === 'derived') derived = true;
+      if (e.isCo) { co += e.amount; coN++; }
+      else { base += e.amount; baseN++; }
+    }
+    if (!coN || !baseN) return null;
+    function cell(lbl, val, credit) {
+      return '<span class="scw-acpt-tally__cell">' +
+        '<span class="scw-acpt-tally__lbl">' + esc(lbl) + '</span>' +
+        '<span class="scw-acpt-tally__val' + (credit ? ' scw-acpt-total__val--credit' : '') +
+          '">' + esc(val) + '</span></span>';
+    }
+    var el = document.createElement('div');
+    el.className = 'scw-acpt-tally';
+    el.innerHTML =
+      cell(baseN > 1 ? 'Original bids' : 'Original bid', money(base)) +
+      '<span class="scw-acpt-tally__op" aria-hidden="true">+</span>' +
+      cell(coN > 1 ? coN + ' change orders' : 'Change order',
+           (co > 0 ? '+' : '') + money(co), co < 0) +
+      '<span class="scw-acpt-tally__op" aria-hidden="true">=</span>' +
+      cell('Total', money(base + co)) +
+      (derived
+        ? '<span class="scw-acpt-tally__note" title="' + esc(DERIVED_NOTE) + '">' +
+            'Includes amounts summed from line items</span>'
+        : '');
     return el;
   }
 
@@ -1314,11 +1496,17 @@
     var card = document.createElement('div');
     card.className = 'scw-acpt-card scw-acpt-card--sub';
     card.innerHTML = '<div class="scw-acpt-eyebrow">Bid basis &amp; agreement</div>';
-    var signedCount = 0;
+    // Per-SOW sub-bid sums, resolved ONCE for the whole card.
+    var bySow = proposedSubBidBySow();
+    var signedCount = 0, entries = [];
     for (var ri = 0; ri < rows.length; ri++) {
       if (isYes(cellText(rows[ri], F.signed))) signedCount++;
-      card.appendChild(buildSubRow(VIEW, rows[ri]));
+      var entry = buildSubRow(VIEW, rows[ri], bySow);
+      entries.push(entry);
+      card.appendChild(entry.el);
     }
+    var tally = buildTally(entries);
+    if (tally) card.appendChild(tally);
     viewEl.appendChild(card);
     rollup(viewEl, rows.length - signedCount);
   }
