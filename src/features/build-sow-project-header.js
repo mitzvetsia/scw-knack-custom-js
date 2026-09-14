@@ -68,7 +68,13 @@
       { sceneId: 'scene_1155',           // K2: Reconcile Bids
         headerView: '',          surveyView: '' },
       { sceneId: 'scene_1311',           // K2: Manage Deployment (ops)
-        headerView: '',          surveyView: '' }
+        headerView: '',          surveyView: '' },
+      // VIEW-PINNED entry: sceneId '' means "wherever this view renders".
+      // Use it when the view id is known but the scene isn't — safer than
+      // letting discovery loose app-wide, which would put this internal
+      // card (HubSpot / ClickUp / AE / playbook) onto sub-facing scenes.
+      { sceneId: '',                     // ops project details
+        headerView: 'view_3938', surveyView: '' }
     ],
     // ClickUp task URL base (same workspace as site-search-cards.js). Used
     // only when a row has a task id but neither link field resolves.
@@ -86,9 +92,11 @@
           title:      'field_4',     // project name (rendered as <h1> by Knack)
           company:    'field_6',     // REL_company (connection link)
           site:       'field_1259',  // Site (connection link)
+          status:     'field_45',    // Project Status ("Project Greenlit")
           branch:     'field_673',   // Branch (connection, plain)
           ae:         'field_451',   // Account Executive Name
           address:    'field_22',    // Address (multi-line)
+          projectNotes: 'field_216', // Project Notes (multi-line)
           hubspot:    'field_1735',  // Hubspot Deal (link)
           clickup:    'field_2685',  // Clickup Task (link) — the PROJECT task
           multiState: 'field_1751',  // PLAYBOOK: Multi-State (Yes/No)
@@ -533,11 +541,14 @@
     var addrHtml = htmlOf(view, H.address);
     var hubspot  = hrefOf(view, H.hubspot);
     var clickup  = hrefOf(view, H.clickup);
+    var status   = txt(view, H.status);
     var multiSt  = txt(view, H.multiState);
     var multiBl  = txt(view, H.multiBldg);
     var notes    = htmlOf(view, H.playbook);
+    var projNote = htmlOf(view, H.projectNotes);
     if (!stripTags(addrHtml)) addrHtml = '';
     if (!stripTags(notes))    notes    = '';
+    if (!stripTags(projNote)) projNote = '';
 
     // The SOW this header is for, when the record IS a SOW. field_2127
     // reads "<project#>-SW#### | <sow name>" — the same shape every other
@@ -589,15 +600,24 @@
     links += lc.html;
 
     var flags = flag('Multi-state', multiSt) + flag('Multiple buildings', multiBl);
+    function notesBlock(label, html) {
+      if (!html) return '';
+      return '<details class="scw-bsh-notes" open>' +
+        '<summary class="scw-bsh-notes-toggle">' + esc(label) + '</summary>' +
+        '<div class="scw-bsh-notes-body">' + html + '</div>' +
+      '</details>';
+    }
     var playbook = '';
-    if (flags || notes || extra) {
+    if (flags || notes || projNote || extra) {
+      // Label the section for what it actually holds: "Playbook" only when
+      // there IS playbook content. A view carrying just project notes used
+      // to file them under a Playbook heading that meant nothing.
       playbook = '<div class="scw-bsh-section scw-bsh-playbook">' +
-        '<div class="scw-bsh-eyebrow">Playbook</div>' +
+        '<div class="scw-bsh-eyebrow">' +
+          ((flags || notes) ? 'Playbook' : 'Project details') + '</div>' +
         (flags ? '<div class="scw-bsh-flags">' + flags + '</div>' : '') +
-        (notes ? '<details class="scw-bsh-notes" open>' +
-                   '<summary class="scw-bsh-notes-toggle">Playbook notes</summary>' +
-                   '<div class="scw-bsh-notes-body">' + notes + '</div>' +
-                 '</details>' : '') +
+        notesBlock('Playbook notes', notes) +
+        notesBlock('Project notes', projNote) +
         (extra ? '<div class="scw-bsh-rows">' + extra + '</div>' : '') +
       '</div>';
     }
@@ -623,6 +643,9 @@
         '<div class="scw-bsh-top-side">' +
           (links ? '<div class="scw-bsh-links">' + links + '</div>' : '') +
           '<div class="scw-bsh-facts">' +
+            // Status leads — it's what gets scanned for. Plain text, no
+            // colour coding: these are lifecycle stages, not good/bad.
+            fact('Status', status ? esc(status) : '') +
             fact('Branch', branch ? esc(branch) : '') +
             fact('Account Executive', ae ? esc(ae) : '') +
           '</div>' +
@@ -707,7 +730,11 @@
   function transformHeader() {
     for (var i = 0; i < CONFIG.scenes.length; i++) {
       var cfg = CONFIG.scenes[i];
-      var sceneEl = document.getElementById('kn-' + cfg.sceneId);
+      // View-pinned entry (no sceneId): the view id IS the whole match, so
+      // it picks up wherever Knack renders it. Anything else needs its
+      // scene on the page.
+      var sceneEl = cfg.sceneId ? document.getElementById('kn-' + cfg.sceneId)
+                                : (cfg.headerView ? document : null);
       if (!sceneEl) continue;                 // scene not rendered
       var found = findHeaderView(sceneEl, cfg);
       if (!found || !found.view) continue;    // no header source (yet)
