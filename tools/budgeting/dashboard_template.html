@@ -1589,7 +1589,7 @@ function lockPlan(label){
   const dept = {}; for (const d of DEPTS) dept[d] = C.dept[d].map(v => Math.round(v));
   const r = a => a.map(v => Math.round(v));
   const plan = { id: "pl" + Date.now().toString(36), label: label || ("Plan locked " + new Date().toISOString().slice(0, 10)),
-    at: new Date().toISOString(), act: ACT, scn: "mod",
+    at: new Date().toISOString(), act: ACT, nm: NM, scn: "mod",
     rev: r(C.rev.mod), oth: r(C.oth), cogs: r(C.cogs.mod), pay: r(C.pay), comp: r(C.comp.mod), opex: r(C.opex),
     net: r(C.net.mod), netAll: r(C.netAll.mod), dept, onPayroll, vendors: Object.fromEntries(Object.entries(vendors).map(([k, v]) => [k, r(v)])),
     accounts: Object.fromEntries(Object.entries(accounts).map(([k, v]) => [k, r(v)])), vendorAccounts };
@@ -1728,7 +1728,9 @@ function renderCompare(C){
   const atD = A.at ? new Date(A.at) : null;
   const importIdx = atD ? (atD.getFullYear() - 2026) * 12 + atD.getMonth() : NM;
   const partial = A.months.filter(i => i < NM && i >= importIdx);
-  const allMonths = A.months.filter(i => i < NM && i < importIdx);
+  // a plan locked against a shorter horizon has nothing to say about months past its own end
+  const planNM = +chosen.nm || chosen.rev.length || NM;
+  const allMonths = A.months.filter(i => i < NM && i < importIdx && i < planNM);
   let months = allMonths.filter(i => i >= (chosen.act || 0));
   const hist = !months.length;
   if (hist) months = allMonths;
@@ -1938,7 +1940,7 @@ function monthChart(el, series, opts = {}){
     const lx1 = ln.x0 == null ? mL : mL + bandW * ln.x0, lx2 = ln.x1 == null ? W - mR : mL + bandW * (ln.x1 + 1);
     const col = ln.color || "--muted";
     marks += `<line x1="${lx1}" x2="${lx2}" y1="${y(ln.v)}" y2="${y(ln.v)}" stroke="var(${col})" stroke-width="1.5" stroke-dasharray="5 4" opacity=".85"/>` +
-      `<text x="${lx2 - 2}" y="${y(ln.v) + (ln.below ? 11 : -4)}" text-anchor="end" font-size="9.5" fill="var(${col})">${ln.label}</text>`;
+      `<text x="${ln.at === "start" ? lx1 + 3 : lx2 - 2}" y="${y(ln.v) + (ln.below ? 11 : -4)}" text-anchor="${ln.at === "start" ? "start" : "end"}" font-size="9.5" fill="var(${col})">${ln.label}</text>`;
   }
   [...lines].reverse().forEach(s => {
     let d = "";
@@ -2138,7 +2140,7 @@ function renderProj(C){
     MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${qb(i)}${ybCls(i)}${goalCls(i)}"${provSet.has(i + 1) ? ` title="COGS estimated — the ${m} COGS entry hasn’t been made in Xero yet"` : ""}>${mhead(i)}${provSet.has(i + 1) ? "*" : ""}</th>`).join("") +
     `</tr></thead><tbody>`;
   for (const r of rows){
-    if (r.section){ h += `<tr class="sec"><td colspan="${NM + 4}">${esc(r.section)}</td></tr>`; continue; }
+    if (r.section){ h += `<tr class="sec"><td colspan="${NM + CYCLES.length + 2}">${esc(r.section)}</td></tr>`; continue; }
     const isNet = /NET/.test(r.label);
     const sums = r.sums ? r.sums : r.fm === fmt$ ? CYCLES.map(c => half(r.vals, c)).concat([half(r.vals, BOTH)]) : null;
     const sumFm = r.sums ? r.fm : fmt$;
@@ -2371,13 +2373,10 @@ function renderGrowth(C){
   // cost trajectory: booked Oct'25 onward from the accrual export, model after Jul'26
   const T = MODEL.totals;
   const cost26 = i => C.pay[i] + C.opex[i] + C.comp.mod[i];            // modest comp in modeled months
-  const CQ = [
-    ["Oct–Dec ’25", "booked", [2, 3, 4].reduce((a, i) => a + T.ttm_payroll[i] + T.ttm_opex[i], 0)],
-    ["Jan–Mar ’26", "booked", [0, 1, 2].reduce((a, i) => a + cost26(i), 0)],
-    ["Apr–Jun ’26", "booked", [3, 4, 5].reduce((a, i) => a + cost26(i), 0)],
-    ["Jul–Sep ’26", "Jul booked", [6, 7, 8].reduce((a, i) => a + cost26(i), 0)],
-    ["Oct–Dec ’26", "model", [9, 10, 11].reduce((a, i) => a + cost26(i), 0)],
-    [QTRS[4] ? QTRS[4][3] : "Jan–Mar ’27", "model", [12, 13, 14].reduce((a, i) => a + cost26(i), 0)]];
+  // the quarter before the window opens comes from the trailing-year export; every quarter inside
+  // it is generated, so the ladder reaches the end of the horizon on its own
+  const CQ = [["Oct–Dec ’25", "booked", [2, 3, 4].reduce((a, i) => a + T.ttm_payroll[i] + T.ttm_opex[i], 0)]]
+    .concat(QTRS.map(q => [q[3], q[4], [q[0], q[0] + 1, q[0] + 2].reduce((a, i) => a + cost26(i), 0)]));
   let cq = `<table class="data" style="margin-top:0"><thead><tr><th>Operating cost trajectory</th>` +
     CQ.map(x => `<th>${x[0]}<br><span style="font-weight:400">${x[1]}</span></th>`).join("") + `</tr></thead><tbody>`;
   cq += `<tr><td>Payroll + opex (+ modest comp)</td>${CQ.map(x => `<td>${fmt$(x[2])}</td>`).join("")}</tr>`;
@@ -2491,7 +2490,7 @@ function renderSales(C){
     {aria:"Team revenue by month vs booked, target and break-even", divider:true, w:1400, zero:false,
      extraLines: CYCLES.flatMap((c, i) => {
        const n = c[1] - c[0], t = tgtOf(i, "mod") / n;
-       return [{v:t, x0:c[0], x1:c[1] - 1, label:c[3] + " target " + fmtK(t) + "/mo"},
+       return [{v:t, x0:c[0], x1:c[1] - 1, at:"start", label:c[3] + " target " + fmtK(t) + "/mo"},
                {v:cycBe[i], x0:c[0], x1:c[1] - 1, label:"break-even " + fmtK(cycBe[i]) + "/mo", color:"--crit", below:true}];
      })});
   const rampNames = Object.keys(S.ramps);
