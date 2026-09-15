@@ -70,7 +70,17 @@
     terms:     'field_2940',   // FLAG_approved for terms (Yes/No)
     xero:      'field_1847',
     agreement: 'field_2767',
-    bidPdf:    'field_2947',   // SYS_bid basis pdf (file) — "Matching Bid"
+    // SYS_bid basis pdf. TWO possible columns and the card accepts either,
+    // because they are different LAYERS, not a rename:
+    //   field_2947 — the acceptance's OWN stamped copy (editable here)
+    //   field_2945 — the same document read THROUGH the proposal
+    //                connection (th sorts as field_2755-field_2945)
+    // A grid revised to source the basis from the proposal drops 2947 and
+    // carries 2945; older grids carry 2947. Both render the same tile —
+    // but only 2947 is writable from this card, so the uploader is
+    // suppressed when the PDF arrives via the proposal (see fileSlot).
+    bidPdf:    'field_2947',
+    bidPdfProp:'field_2945',   // read-only: lives on the proposal
     xeroEst:   'field_2948',   // SYS_xero estimate link (URL)
     contract:  'field_1843',   // esignatures.com contract id (uuid)
     // ── Sub card only ────────────────────────────────────────────
@@ -89,7 +99,16 @@
     //     is signed (a net credit reads negative). Same formula the
     //     send-to-sub document uses (co-stage-strip buildRequestDoc).
     // Blank = auto-detect any column that parses into either shape.
+    //
+    // ⚠ field_2946 is the ACCEPTANCE'S OWN stamp — that is what makes it
+    // usable as the seal in basisDrift. field_2959 is the SAME json read
+    // through the proposal connection (SYS_bid basis json), so it is a
+    // DISPLAY source only: comparing it against the proposal's own
+    // field_2944 would be comparing the proposal to itself, and the drift
+    // detector would report agreement forever. signedBasisTotal reads
+    // ONLY the acceptance-side keys for exactly that reason.
     snapshot:  'field_2946',
+    snapshotProp: 'field_2959',  // read-only: lives on the proposal
     // ── Ops: the frozen bid, carried on the PROPOSAL ─────────────
     // These come through the proposal connection (field_2755-field_29xx)
     // and are the STRONGEST source there is — the bid document as it was
@@ -134,6 +153,19 @@
     return td ? td.querySelector(sel || 'a[href]') : null;
   }
   function isYes(v) { return /^(yes|true)$/i.test(String(v || '').trim()); }
+  /** The bid-basis PDF anchor from whichever column carries it — the
+   *  acceptance's own stamp (F.bidPdf) or the proposal-sourced column
+   *  (F.bidPdfProp). Returns { a, fk } so callers know which layer they
+   *  got: only the acceptance's own copy is writable from this card. */
+  function bidPdfAnchor(row) {
+    var keys = [F.bidPdf, F.bidPdfProp], i, a;
+    for (i = 0; i < keys.length; i++) {
+      if (!keys[i]) continue;
+      a = cellAnchor(row, keys[i], 'a.kn-view-asset') || cellAnchor(row, keys[i]);
+      if (a) return { a: a, fk: keys[i] };
+    }
+    return { a: null, fk: F.bidPdf };
+  }
   function money(n) {
     var v = Number(n);
     if (!isFinite(v)) return '';
@@ -223,10 +255,12 @@
    *  DOM last. Returns null when there's nothing snapshot-shaped. */
   function readSnapshot(viewKey, row) {
     var attrs = rowAttrs(viewKey, row.id);
-    if (F.snapshot) {
+    var named = [F.snapshot, F.snapshotProp];
+    for (var n = 0; n < named.length; n++) {
+      if (!named[n]) continue;
       var one = parseLooseJson(
-        (attrs && (attrs[F.snapshot] != null ? attrs[F.snapshot] : attrs[F.snapshot + '_raw'])) ||
-        cellText(row, F.snapshot));
+        (attrs && (attrs[named[n]] != null ? attrs[named[n]] : attrs[named[n] + '_raw'])) ||
+        cellText(row, named[n]));
       if (isSnapshot(one)) return one;
     }
     if (attrs) {
@@ -670,7 +704,7 @@
    *  than a rate to hold (see laborMargin). Each line drops out when its
    *  figure is unknown, so the column never implies a rate it couldn't
    *  compute. */
-  function laborStat(installBilled, amt, surveyCost) {
+  function laborStat(installBilled, amt, surveyCost, basis) {
     var subAmt  = amt ? amt.amount : null;
     var derived = !!(amt && amt.source === 'derived');
     if (installBilled == null && subAmt == null) {
@@ -683,9 +717,20 @@
     if (subAmt != null) {
       lines += line(esc(money(subAmt)),
         'billed by sub' + (derived ? ' <span class="scw-acpt-line__src" title="' +
-          esc(DERIVED_NOTE) + '">(line items)</span>' : ''));
+          esc(DERIVED_NOTE) + '">(line items)</span>' : ''),
+        '',
+        // RUNG 1 — the happy path stays visually silent; the tooltip is
+        // what makes the silence mean "checked" rather than "unchecked".
+        (basis && basis.agree) ? VERIFIED_NOTE : '');
     } else {
       lines += line('—', 'no sub bid on file');
+    }
+    // RUNG 3 — the figure the client actually signed against, next to the
+    // one the proposal now carries. Amber, not red: the signed number
+    // isn't an error, it's the one that governs.
+    if (basis && !basis.agree) {
+      lines += line(esc(money(basis.signed)), 'as signed',
+        'scw-acpt-line__val--signed', driftNote(basis));
     }
     // A recorded $0 survey is an answer, so it prints; a SOW with nothing
     // recorded shows no line and doesn't move the percent.
@@ -752,6 +797,88 @@
   var DERIVED_NOTE = 'Summed from the current line items on this scope — ' +
     'not a figure read off a signed bid document.';
 
+  /** ── BID BASIS: two freezes of the same bid, compared ──────────
+   *
+   *  The bid basis exists at three layers and only ONE of them is
+   *  mutable — which is the layer most likely to be mistaken for a
+   *  record:
+   *    · SOW header field_2941 — LIVING. sub-bid-diff/render.js
+   *      auto-saves it (debounced) on any data change, basis pick or note
+   *      edit, so it describes the diff as it stands RIGHT NOW. It is not
+   *      evidence of anything historical.
+   *    · Proposal F.bidDoc/F.bidBasis — frozen when the proposal was
+   *      published, which is what generated the PDF the client signed.
+   *      This is what the card DISPLAYS (see bidAmountOf's order).
+   *    · Acceptance F.bidTotal / the pricing snapshot — stamped at
+   *      signature. A copy of the proposal's freeze.
+   *
+   *  So the stamp is not a second source; it is a SEAL on the first. In
+   *  the happy path the two agree and the card says nothing (the figure
+   *  just carries a tooltip saying it was checked). When they disagree,
+   *  the proposal moved after the client signed — the exact class of
+   *  drift that goes unnoticed until someone is on site — so that gets an
+   *  amber tag and the signed figure alongside the current one.
+   *
+   *  Fails open: no comparison unless BOTH sides resolve, so a view
+   *  missing either column warns about nothing. */
+  /** The acceptance's OWN snapshot — F.snapshot only. Deliberately NOT
+   *  readSnapshot(): that also accepts the proposal-sourced json column
+   *  and auto-detects any snapshot-shaped blob on the row, either of
+   *  which would let the seal read the very thing it is meant to check. */
+  function readOwnSnapshot(viewKey, row) {
+    if (!F.snapshot) return null;
+    var attrs = rowAttrs(viewKey, row.id);
+    var one = parseLooseJson(
+      (attrs && (attrs[F.snapshot] != null ? attrs[F.snapshot] : attrs[F.snapshot + '_raw'])) ||
+      cellText(row, F.snapshot));
+    return isSnapshot(one) ? one : null;
+  }
+  function signedBasisTotal(viewKey, row) {
+    // The acceptance's OWN figure, in the same order bidAmountOf trusts
+    // it — but never falling through to the proposal or to line items,
+    // because the point here is what THIS record stamped.
+    if (F.bidTotal) {
+      var direct = numFromText(cellText(row, F.bidTotal));
+      if (direct != null) return direct;
+    }
+    var snap = readOwnSnapshot(viewKey, row);
+    if (snap) {
+      if (snap.basisTotal != null && isFinite(Number(snap.basisTotal))) {
+        return Number(snap.basisTotal);
+      }
+      var m = String(snap.bidHtml || '').match(/class="pt-value"[^>]*>([^<]+)</);
+      if (m) {
+        var scraped = numFromText(m[1]);
+        if (scraped != null) return scraped;
+      }
+      var lt = linesTotal(snap);
+      if (lt != null) return lt;
+    }
+    return null;
+  }
+  function basisDrift(viewKey, row) {
+    var signed   = signedBasisTotal(viewKey, row);
+    var proposal = totalFromBidDoc(row);
+    if (signed == null || proposal == null) return null;
+    var delta = proposal - signed;
+    // Cent tolerance — both sides are money parsed out of rendered text,
+    // so an exact === would flag rounding as tampering.
+    if (Math.abs(delta) < 0.005) {
+      return { agree: true, signed: signed, proposal: proposal, delta: 0 };
+    }
+    return { agree: false, signed: signed, proposal: proposal, delta: delta };
+  }
+  var VERIFIED_NOTE = 'Checked: matches the bid basis stamped on this ' +
+    'acceptance when the agreement was signed.';
+  function driftNote(d) {
+    return 'The proposal’s bid basis now totals ' + money(d.proposal) +
+      ', but ' + money(d.signed) + ' was stamped on this acceptance at ' +
+      'signature — a difference of ' + money(Math.abs(d.delta)) + '. ' +
+      'The proposal was re-published, or its bid basis changed, AFTER the ' +
+      'client signed. The stamped figure is the one that was agreed to; ' +
+      'reconcile before invoicing.';
+  }
+
   // Beta notice on the SUB card. The money on it is newly derived (see
   // bidAmountOf) and some of it is summed rather than quoted, so say so
   // plainly while it's being trusted for the first time. Set to '' to
@@ -771,6 +898,16 @@
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
     'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle>' +
     '<polyline points="12 7 12 12 15 14"></polyline></svg>';
+  // Standard warning triangle (see CLAUDE.md "Warning Icons in Card
+  // Headers") — same shape the worksheet cards use, sized for a tag.
+  var WARN_SVG =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      'stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+      '<line x1="12" y1="9" x2="12" y2="13"/>' +
+      '<line x1="12" y1="17" x2="12.01" y2="17"/>' +
+    '</svg>';
   var FILE_SVG =
     '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
@@ -965,6 +1102,16 @@
       '.scw-acpt-line__val--rate + .scw-acpt-line__lbl { font-size: 10.5px;',
       '  color: #64748b; }',
       '.scw-acpt-line__src { cursor: help; border-bottom: 1px dotted #cbd5e1; }',
+      // ── Bid-basis drift (rung 3) ─────────────────────────
+      // Amber, never red: a proposal that moved after signature is a
+      // reconciliation job, not a failure. Same #b45309 the margin
+      // under-target figure uses.
+      '.scw-acpt-line__val--signed { color: #b45309; cursor: help; }',
+      '.scw-acpt-line__val--signed + .scw-acpt-line__lbl { color: #b45309; }',
+      '.scw-acpt-tag--warn { background: #fef3c7; border-color: #fcd34d;',
+      '  color: #b45309; cursor: help; display: inline-flex; align-items: center;',
+      '  gap: 4px; }',
+      '.scw-acpt-tag--warn svg { flex: 0 0 auto; }',
       // ── Labor margin vs target ───────────────────
       // A verdict, unlike a change order\'s sign: at or above target is
       // fine, under it isn\'t. Green for on, AMBER for under (repo
@@ -1707,7 +1854,8 @@
     var xeroEstA = cellAnchor(row, F.xeroEst);
     var contractId = cellText(row, F.contract);
     var fileA    = cellAnchor(row, F.agreement, 'a.kn-view-asset') || cellAnchor(row, F.agreement);
-    var bidPdfA  = cellAnchor(row, F.bidPdf, 'a.kn-view-asset') || cellAnchor(row, F.bidPdf);
+    var bidPdfRef = bidPdfAnchor(row);
+    var bidPdfA   = bidPdfRef.a;
     var actionA  = row.querySelector('.kn-action-link') || row.querySelector('.kn-table-link a');
 
     // Connected proposal's record id — the 24-hex class on the connection
@@ -1793,10 +1941,22 @@
     var sowRef   = sowRefOf(viewKey, row);
     var svyCost  = surveyCostFor(sowRef, survey);
     var docHtml  = bidDocHtml(row);
+    // The acceptance's stamp vs. the proposal's freeze. OPS ONLY — the
+    // sub card never carries F.bidDoc, so this resolves null there and
+    // nothing renders (and the delta is SCW-side money regardless).
+    var drift    = basisDrift(viewKey, row);
     var meta = '';
     if (basisNo) {
       meta += '<span class="scw-acpt-tag" title="Priced from bid ' + esc(basisNo) + '">' +
         'Bid ' + esc(basisNo) + '</span>';
+    }
+    // RUNG 3 — say it in the identity column too, not just beside the
+    // money: the money cell answers "how much", this answers "trust
+    // which". Sits next to the Bid tag it contradicts.
+    if (drift && !drift.agree) {
+      meta += '<span class="scw-acpt-tag scw-acpt-tag--warn" title="' +
+        esc(driftNote(drift)) + '">' + WARN_SVG +
+        '<span>Proposal changed after signature</span></span>';
     }
     if (poNo) {
       meta += '<span class="scw-acpt-tag" title="Purchase order">PO ' + esc(poNo) + '</span>';
@@ -1851,17 +2011,24 @@
         ? equipCell(billed.equip != null ? money(billed.equip) : '') +
           // No total column: it\'s exactly equipment + labor billed, both
           // of which are right here.
-          laborStat(billed.install, amt, svyCost)
+          laborStat(billed.install, amt, svyCost, drift)
         // No billed columns on the view: nothing to compare against, so
         // the row keeps its single figure — what we pay the sub. It sits
         // in the labor track, since that is what it measures.
         : equipCell('') +
           '<span class="scw-acpt-col scw-acpt-col--labor">' +
             (total
-              ? line(esc(total), esc(totalLbl).toLowerCase()) +
+              ? line(esc(total), esc(totalLbl).toLowerCase(), '',
+                  (drift && drift.agree) ? VERIFIED_NOTE : '') +
                 (amt.source === 'derived'
                   ? line('', '<span class="scw-acpt-line__src" title="' +
                       esc(DERIVED_NOTE) + '">from line items</span>')
+                  : '') +
+                // Same drift line as laborStat renders, for the view that
+                // has no billed columns to hang it off.
+                ((drift && !drift.agree)
+                  ? line(esc(money(drift.signed)), 'as signed',
+                      'scw-acpt-line__val--signed', driftNote(drift))
                   : '')
               : '') +
           '</span>') +
@@ -1893,7 +2060,7 @@
         '<span class="scw-acpt-pair">' +
           '<span class="scw-acpt-pair__cap">Estimate</span>' +
           '<span class="scw-acpt-pair__tiles">' +
-            fileSlot(F.bidPdf,    'Bid PDF',       'bid basis PDF',      bidPdfA,  'Replace bid basis PDF') +
+            fileSlot(bidPdfRef.fk, 'Bid PDF',      'bid basis PDF',      bidPdfA,  'Replace bid basis PDF') +
             linkSlot(F.xeroEst,   'Xero estimate', 'Xero estimate link', xeroEstA, 'Edit Xero estimate link') +
           '</span>' +
         '</span>' +
@@ -1985,7 +2152,7 @@
     var snap = readSnapshot(viewKey, row);
     // The bid PDF cell ("Matching Bid", field_2947) — reuse Knack's own
     // asset href so the file opens through Knack's viewer as usual.
-    var bidPdfA = cellAnchor(row, F.bidPdf, 'a.kn-view-asset') || cellAnchor(row, F.bidPdf);
+    var bidPdfA = bidPdfAnchor(row).a;
     var pdfName = bidPdfA
       ? (bidPdfA.getAttribute('data-file-name') ||
          (bidPdfA.textContent || '').replace(/\s+/g, ' ').trim())
@@ -2021,7 +2188,12 @@
     // No PDF but the document is stored as HTML — the name opens THAT, so
     // the sub can still read (and print) the bid it's working from.
     var subDocHtml = pdfHref ? '' : bidDocHtml(row);
-    var fileSub  = (pdfName && pdfName !== basisName) ? pdfName : '';
+    // What the row actually LEADS with. basisName is only the fallback
+    // for when there's no SOW — comparing the file name against the
+    // fallback (rather than the rendered title) silently dropped the
+    // caption on grids that DO have a SOW, so the file name went nowhere.
+    var titleTxt = sowNo || basisName;
+    var fileSub  = (pdfName && pdfName !== titleTxt) ? pdfName : '';
     // No document to name a CO's pricing by — say when it was submitted
     // and by whom instead of leaving the row bare.
     if (!fileSub && isCoSnapshot(snap)) {
@@ -2080,12 +2252,12 @@
         // The SOW leads, same as the ops card. With no proposal column on
         // the view there's no SOW to lead with, so the bid's own
         // designation takes the title instead of a bare placeholder.
-        '<div class="scw-acpt-title">' + esc(sowNo || basisName) + '</div>' +
+        '<div class="scw-acpt-title">' + esc(titleTxt) + '</div>' +
         (propSub ? '<div class="scw-acpt-sub">Proposal ' + esc(propSub) + '</div>' : '') +
         // Which of their own bids this is priced from — the same tag, in
         // the same place, as the ops card. Suppressed when it IS the title
         // (nothing gains from saying it twice).
-        (basisTag && basisTag !== (sowNo || basisName)
+        (basisTag && basisTag !== titleTxt
           ? '<div class="scw-acpt-meta"><span class="scw-acpt-tag" ' +
               'title="Priced from bid ' + esc(basisTag) + '">Bid ' + esc(basisTag) +
               '</span></div>'
@@ -2128,7 +2300,7 @@
     for (var sd = 0; sd < subDocBtns.length; sd++) {
       subDocBtns[sd].addEventListener('click', function (e) {
         e.preventDefault();
-        openBidDoc(subDocHtml, 'Bid document — ' + (sowNo || basisName));
+        openBidDoc(subDocHtml, 'Bid document — ' + titleTxt);
       });
     }
     return { el: el, isCo: isCoRow, amount: amt ? amt.amount : null,
@@ -2252,6 +2424,7 @@
     // (it's hidden unconditionally for sub views); it just renders
     // nothing, same as an empty section.
     var hasAny = !!(viewEl.querySelector('thead th.' + F.bidPdf) ||
+                    (F.bidPdfProp && viewEl.querySelector('thead th.' + F.bidPdfProp)) ||
                     viewEl.querySelector('thead th.' + F.terms) ||
                     viewEl.querySelector('thead th.' + F.payment) ||
                     viewEl.querySelector('thead th.' + F.signed));
