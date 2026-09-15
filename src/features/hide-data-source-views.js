@@ -188,12 +188,6 @@
     // + field_2865 inline-editable). URL-based PUTs, so display:none is
     // safe — subs never need the raw grid.
     'view_4160',
-    // 'view_4161' — SOW grid on the ops deploy scene (scene_1311) carrying
-    // the site survey cost (field_2750). acceptance-card.js reads its model
-    // (DOM fallback) and folds the survey cost into the labor-margin
-    // calculation on the acceptance the SOW was accepted from. Data source
-    // only — the card is the surface.
-    'view_4161',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the

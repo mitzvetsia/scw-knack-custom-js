@@ -108,11 +108,11 @@
     pubEquip:   'field_2669',  // TOTALS_equipment total
     pubInstall: 'field_2668',  // TOTALS_install total
     pubGrand:   'field_2670',  // TOTALS_project total (authoritative)
-    // SOW connection on the acceptance — blank because sowRefOf
-    // DISCOVERS it (the connection column whose value is this row's own
-    // SOW), so it survives a Builder rename or reorder. Set it to pin
-    // the column explicitly.
-    sow:        ''
+    // REL_scope of work — the SOW this acceptance's proposal belongs
+    // to, which is how the survey cost finds its row. sowRefOf falls
+    // back to DISCOVERING the column (the connection whose value is this
+    // row's own SOW) if this key ever moves.
+    sow:        'field_2666'
   };
 
   // eSignatures contract page — the id in field_1843 appended verbatim.
@@ -283,12 +283,18 @@
     if (b.indexOf('SW') === 0 && b.slice(2) === a) return true;
     return false;
   }
-  /** This acceptance's SOW token, off the proposal identifier
-   *  ("61507493933-SW1347 | 20260807-11068" → "SW1347"). */
-  function sowTokenOf(row) {
-    var left = String(cellText(row, F.proposal) || '').split('|')[0] || '';
+  /** The SOW token out of a project-prefixed label — the proposal
+   *  identifier ("61507493933-SW1347 | 20260807-11068" → "SW1347") and the
+   *  SOW ID field ("61507493933-SW1347" → "SW1347") are the same shape, so
+   *  one reader serves both. */
+  function sowLabelToken(s) {
+    var left = String(s == null ? '' : s).split('|')[0] || '';
     var segs = left.trim().split('-');
     return normToken(segs[segs.length - 1]);
+  }
+  /** This acceptance's SOW token, off the proposal identifier. */
+  function sowTokenOf(row) {
+    return sowLabelToken(cellText(row, F.proposal));
   }
   /** This acceptance's SOW: { id, token }. Prefers the SOW connection
    *  column the ops grid carries (the span's class is the SOW record id —
@@ -350,7 +356,7 @@
           var cost = numFromText(a[SVF.cost] != null ? a[SVF.cost] : a[SVF.cost + '_raw']);
           if (cost == null) continue;
           if (models[i].id) out.byId[models[i].id] = cost;
-          var tok = normToken(a[SVF.sowId]);
+          var tok = sowLabelToken(a[SVF.sowId]);
           if (tok) out.byTok[tok] = cost;
         }
         continue;                                  // model read succeeded
@@ -362,7 +368,7 @@
         var dcost = numFromText(cellText(tr, SVF.cost));
         if (dcost == null) continue;
         if (tr.id) out.byId[tr.id] = dcost;
-        var dtok = normToken(cellText(tr, SVF.sowId));
+        var dtok = sowLabelToken(cellText(tr, SVF.sowId));
         if (dtok) out.byTok[dtok] = dcost;
       }
     }
