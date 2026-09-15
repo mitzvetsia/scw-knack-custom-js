@@ -1421,6 +1421,23 @@
     return sections;
   }
 
+
+  /** Is this SOW a change order, per its own Type field?
+   *
+   *  field_2952 ("base scope" / "change order") projected onto the hidden
+   *  view_3861 details. This is the AUTHORITATIVE answer — the CO
+   *  "What's Changing" manifest is a rendering that can be absent for
+   *  reasons that have nothing to do with whether the SOW is a CO. Fails
+   *  CLOSED (false) so a missing view can never mark a base proposal a
+   *  change order; the manifest still catches the CO case on its own. */
+  function sowTypeIsChangeOrder() {
+    try {
+      var typeEl = document.querySelector(
+        '#view_3861 .kn-detail.field_2952 .kn-detail-body');
+      return !!typeEl && /change\s*order/i.test(String(typeEl.textContent || ''));
+    } catch (e) { return false; }
+  }
+
   function scrapeAllViews(cfg, opts) {
     opts = opts || {};
     var result = { views: [], sceneId: cfg.sceneId, type: cfg.payloadType || '' };
@@ -1520,7 +1537,16 @@
     // so buildPdfHtml + buildSowDocumentElements can emit CO-specific
     // content, and so Make/e-sign templates can branch on isChangeOrder.
     result.coChangeSummary = scrapeCoChangeSummary(sceneEl);
-    result.isChangeOrder = !!result.coChangeSummary;
+    // A CO is a CO because the SOW SAYS SO (field_2952), not because a
+    // scraped DOM manifest happened to render. Deriving the flag from the
+    // manifest alone published a real change order with
+    // isChangeOrder:false — which sent buildInvoiceItems down the BASE
+    // path, flipping every Remove line positive and billing $1,110
+    // instead of the $170 net the document itself showed. The manifest
+    // can legitimately be absent (lines with no CO Action, floorplan
+    // imports, and whatever else stops it rendering), so it is now one of
+    // TWO signals rather than the only one.
+    result.isChangeOrder = !!result.coChangeSummary || sowTypeIsChangeOrder();
 
     // Image attachments to append at the END of the rendered PDF
     // (site maps, additional photos). buildPdfHtml emits a cover-page
@@ -5159,14 +5185,9 @@
     // doesn't render when the CO's lines carry no CO Action (field_2965)
     // — e.g. floorplan-imported lines — but the sub pricing sheet should
     // still ship for any change-order SOW.
-    var sowTypeIsCo = false;
-    try {
-      var typeEl = document.querySelector(
-        '#view_3861 .kn-detail.field_2952 .kn-detail-body');
-      sowTypeIsCo = !!typeEl &&
-        /change\s*order/i.test(String(typeEl.textContent || ''));
-    } catch (e) { sowTypeIsCo = false; }
-    var coSubBidHtml  = (payload.isChangeOrder || sowTypeIsCo)
+    // payload.isChangeOrder now already ORs in the SOW Type field (see
+    // where it is set), so this no longer needs its own copy of that read.
+    var coSubBidHtml  = payload.isChangeOrder
       ? buildCoSubBidDoc(jsonSnapshot, summary.sowId) : '';
     // Tech group — field_2954 lives on the BID; view_3861 shows it through
     // a chain (SOW -> bids -> tech group), which renders NESTED
@@ -5227,7 +5248,14 @@
       // coChangeSummary is the full structured manifest
       // { desc, adds[], addSubtotal, removes[], removeSubtotal, net }.
       isChangeOrder:         payload.isChangeOrder || false,
-      coNetChange:           payload.coChangeSummary ? payload.coChangeSummary.net : '',
+      // Falls back to the grand total on a CO whose manifest didn't
+      // render: for a change order the project total IS the net change
+      // (the document itself labels it "Change Order Total"), so shipping
+      // '' left the e-sign template with no headline amount at all.
+      coNetChange:           payload.coChangeSummary
+                               ? payload.coChangeSummary.net
+                               : (payload.isChangeOrder
+                                   ? (summary.grandTotal || '') : ''),
       coChangeSummary:       payload.coChangeSummary || undefined,
       // ── CO sub pricing (INTERNAL — subcontractor cost data) ──────────
       // Complete standalone HTML doc itemizing the sub's CO pricing
