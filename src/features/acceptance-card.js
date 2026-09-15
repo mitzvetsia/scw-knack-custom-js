@@ -537,47 +537,47 @@
       (sub || '') + '</span>';
   }
 
-  /** The margin percentage with its verdict against target. */
-  function marginHtml(m) {
-    return '<span class="scw-acpt-gap scw-acpt-gap--' +
-      (m.onTarget ? 'on' : 'under') + '" title="' +
-      esc('Share of install billing retained after the subcontractor\'s bid. ' +
-          'Target ' + LABOR_TARGET_PCT + '%.') + '">' +
-      esc(m.pct + '%') +
-      '<span class="scw-acpt-gap__word">' +
-      (m.onTarget ? 'on target' : 'below target') + '</span></span>';
+  /** One value + name line inside a stat's stacked block. */
+  function line(val, lbl, valMod, tip) {
+    return '<span class="scw-acpt-line__val' + (valMod ? ' ' + valMod : '') + '"' +
+      (tip ? ' title="' + esc(tip) + '"' : '') + '>' + val + '</span>' +
+      '<span class="scw-acpt-line__lbl">' + lbl + '</span>';
   }
 
-  /** The LABOR column. A MARGIN RATE when both halves are known — that's
-   *  the at-a-glance question, and a rate rather than a net dollar figure
-   *  on purpose (see laborMargin). Otherwise whichever half we have,
-   *  relabelled to match, with no verdict.
+  /** The LABOR column: what we billed the client, what the sub charged us
+   *  for that work, and the percent of the billing left over. Three lines,
+   *  numbers in one right-aligned column with their names beside them, and
+   *  the percent is the heavy one — it's the answer.
    *
-   *  Deliberately does NOT print billed-vs-sub side by side: two figures
-   *  one subtraction apart is the net number back again. Both live
-   *  elsewhere on the card already — billed in its own column, the sub's
-   *  in the bid + change-order tally. */
+   *  The percent, not a net dollar figure: a net reads as a prize rather
+   *  than a rate to hold (see laborMargin). Each line drops out when its
+   *  figure is unknown, so the column never implies a rate it couldn't
+   *  compute. */
   function laborStat(installBilled, amt) {
-    var subAmt = amt ? amt.amount : null;
+    var subAmt  = amt ? amt.amount : null;
     var derived = !!(amt && amt.source === 'derived');
-    var note = derived
-      ? '<span class="scw-acpt-stat__sub scw-acpt-stat__sub--help" title="' +
-          esc(DERIVED_NOTE) + '">from line items</span>'
-      : '';
-    var m = laborMargin(installBilled, subAmt);
-    if (m) return stat('Labor margin', marginHtml(m), note, 'scw-acpt-stat--labor');
-    // Can't rate it — show the half we have under its own name, so the
-    // column never implies a margin it couldn't compute.
+    if (installBilled == null && subAmt == null) return '';
+    var lines = '';
     if (installBilled != null) {
-      return stat('Labor billed', esc(money(installBilled)),
-        '<span class="scw-acpt-stat__sub">no sub bid on file</span>',
-        'scw-acpt-stat--labor');
+      lines += line(esc(money(installBilled)), 'billed to client');
     }
     if (subAmt != null) {
-      return stat('Labor to sub', esc(money(subAmt)), note,
-        'scw-acpt-stat--labor');
+      lines += line(esc(money(subAmt)),
+        'from sub' + (derived ? ' <span class="scw-acpt-line__src" title="' +
+          esc(DERIVED_NOTE) + '">(line items)</span>' : ''));
+    } else {
+      lines += line('—', 'no sub bid on file');
     }
-    return '';
+    var m = laborMargin(installBilled, subAmt);
+    if (m) {
+      lines += line(esc(m.pct + '%'), 'remaining',
+        'scw-acpt-line__val--rate scw-acpt-gap--' + (m.onTarget ? 'on' : 'under'),
+        'Percent of the labor billed to the client that is left after the ' +
+        'subcontractor\'s bill. Target ' + LABOR_TARGET_PCT + '%.');
+    }
+    return '<span class="scw-acpt-stat scw-acpt-stat--labor">' +
+      '<span class="scw-acpt-stat__lbl">Labor</span>' +
+      '<span class="scw-acpt-lines">' + lines + '</span></span>';
   }
 
   /** The money for one acceptance row: { amount, source } or null.
@@ -896,27 +896,35 @@
       '.scw-acpt-stat__sub { font: 600 10px/1.35 system-ui, sans-serif;',
       '  color: #94a3b8; font-variant-numeric: tabular-nums; white-space: nowrap; }',
       '.scw-acpt-stat__sub--help { cursor: help; border-bottom: 1px dotted #cbd5e1; }',
-      // The project total is what the row is worth — the biggest figure,
-      // and the rightmost, so it lands under the tally's Total.
-      '.scw-acpt-stat--total .scw-acpt-stat__lbl { color: #475569; }',
-      '.scw-acpt-stat--total .scw-acpt-stat__val { font-size: 19px; }',
-      // A minimum width per column so the three line up ACROSS rows —
+      // A minimum width per column so the two line up ACROSS rows —
       // without it each row self-sizes and the columns zig-zag.
-      '.scw-acpt-stat--equip  { min-width: 92px; }',
-      '.scw-acpt-stat--labor  { min-width: 150px; }',
-      '.scw-acpt-stat--total  { min-width: 104px; }',
+      '.scw-acpt-stat--equip { min-width: 96px; }',
+      '.scw-acpt-stat--labor { min-width: 188px; }',
+      // Labor\'s three lines: figures in one right-aligned column, their
+      // names beside them on the left. Reads as a small statement, and the
+      // numbers stack in a straight edge instead of ragging.
+      '.scw-acpt-lines { display: grid; grid-template-columns: auto auto;',
+      '  gap: 2px 7px; align-items: baseline; justify-content: end; }',
+      '.scw-acpt-line__val { text-align: right; color: #475569;',
+      '  font: 700 13px/1.25 system-ui, sans-serif;',
+      '  font-variant-numeric: tabular-nums; white-space: nowrap; }',
+      '.scw-acpt-line__lbl { text-align: left; color: #94a3b8;',
+      '  font: 600 10px/1.3 system-ui, sans-serif; white-space: nowrap; }',
+      // The percent is the answer — give it the weight and let the two
+      // figures above it read as the inputs they are.
+      '.scw-acpt-line__val--rate { font-size: 20px; }',
+      '.scw-acpt-line__val--rate + .scw-acpt-line__lbl { font-size: 10.5px;',
+      '  color: #64748b; }',
+      '.scw-acpt-line__src { cursor: help; border-bottom: 1px dotted #cbd5e1; }',
       // ── Labor margin vs target ─────────────────────────────────
       // This one IS a verdict, unlike a change order\'s sign: a rate at or
       // above target is on target, under it isn\'t. Green for on, AMBER for
       // under (repo convention — amber warns, red is for errors and
       // destructive actions).
-      '.scw-acpt-gap { display: inline-flex; align-items: baseline; gap: 5px;',
-      '  font: 700 16px/1.15 system-ui, sans-serif; font-variant-numeric: tabular-nums;',
-      '  cursor: help; }',
-      '.scw-acpt-gap__word { font: 700 9.5px/1 system-ui, sans-serif;',
-      '  letter-spacing: .06em; text-transform: uppercase; }',
+      // Colour only; the figure keeps the type set above it.
       '.scw-acpt-gap--on    { color: #047857; }',
       '.scw-acpt-gap--under { color: #b45309; }',
+      '.scw-acpt-line__val--rate { cursor: help; }',
       // ── Project footer: the same three columns, summed ──────────
       // Sits directly under the rows and reuses their column widths, so
       // the project figure lands beneath the per-row figures it sums.
@@ -928,8 +936,7 @@
       '  font: 700 10px/1 system-ui, sans-serif; letter-spacing: .1em;',
       '  text-transform: uppercase; color: #475569; }',
       '.scw-acpt-foot .scw-acpt-stat__val { font-size: 17px; }',
-      '.scw-acpt-foot .scw-acpt-gap { font-size: 17px; }',
-      '.scw-acpt-foot .scw-acpt-stat--total .scw-acpt-stat__val { font-size: 20px; }',
+      '.scw-acpt-foot .scw-acpt-line__val--rate { font-size: 21px; }',
       // The bid/CO tally follows the project band — one heavy rule per
       // footer, so the second band separates with a hairline.
       '.scw-acpt-foot + .scw-acpt-tally { margin-top: 0; padding-top: 10px;',
@@ -954,8 +961,9 @@
       '  .scw-acpt-money--cols { flex-direction: column; align-items: flex-start;',
       '    gap: 8px; }',
       '  .scw-acpt-stat { align-items: flex-start; text-align: left; }',
-      '  .scw-acpt-stat--equip, .scw-acpt-stat--labor, .scw-acpt-stat--total {',
-      '    min-width: 0; }',
+      '  .scw-acpt-stat--equip, .scw-acpt-stat--labor { min-width: 0; }',
+      '  .scw-acpt-lines { justify-content: start; }',
+      '  .scw-acpt-line__val { text-align: left; }',
       '}',
       // ── Ops row: GRID, not a wrapping flex line ────────────────
       // As flex with margin-left:auto on the actions, the tile cluster
@@ -1774,14 +1782,9 @@
         ? '<div class="scw-acpt-money scw-acpt-money--cols">' +
             stat('Equipment', billed.equip != null ? money(billed.equip) : '', '',
                  'scw-acpt-stat--equip') +
+            // No total column: it's exactly equipment + labor billed,
+            // both of which are right here.
             laborStat(billed.install, amt) +
-            // Only a STORED project total, or both halves to add, is
-            // "billed to client". One half alone is already its own
-            // column — claiming it as the total would overstate it.
-            ((billed.stored || billed.split)
-              ? stat('Billed to client', money(billed.total), '',
-                     'scw-acpt-stat--total')
-              : '') +
           '</div>'
         // No billed columns on the view: nothing to compare against, so
         // the row keeps its single figure — what we pay the sub.
@@ -2027,24 +2030,20 @@
    *  order and a base figure to add it to — with one base row and nothing
    *  else, the row's own total already says it, and a "total" that quietly
    *  omits an unknown base would be worse than no total at all. */
-  /** PROJECT ROLLUP — the three money columns summed across every
+  /** PROJECT ROLLUP — the same two money columns summed across every
    *  acceptance on the project (base scope + each change order), so the
-   *  labor position for the project overall reads in the same place the
+   *  labor rate for the project overall reads in the same place the
    *  per-row one does. Null for a single row: that row already IS the
    *  project, and a footer repeating it is noise. */
   function buildProjectMoney(entries) {
-    var eq = null, inst = null, tot = null, sub = null;
-    var billedRows = 0, derived = false, totOk = true;
+    var eq = null, inst = null, sub = null;
+    var billedRows = 0, derived = false;
     for (var i = 0; i < entries.length; i++) {
       var e = entries[i], b = e.billed;
       if (b) {
         billedRows++;
         if (b.equip   != null) eq   = (eq   == null ? 0 : eq)   + b.equip;
         if (b.install != null) inst = (inst == null ? 0 : inst) + b.install;
-        if (b.total   != null) tot  = (tot  == null ? 0 : tot)  + b.total;
-        // A row with only one half didn't have a real total to
-        // contribute, so the project sum isn't one either.
-        if (!(b.stored || b.split)) totOk = false;
       }
       if (e.amount != null) {
         sub = (sub == null ? 0 : sub) + e.amount;
@@ -2058,9 +2057,7 @@
       '<span class="scw-acpt-foot__cap">Project</span>' +
       stat('Equipment', eq != null ? money(eq) : '', '', 'scw-acpt-stat--equip') +
       laborStat(inst, sub == null ? null : { amount: sub,
-        source: derived ? 'derived' : 'quoted' }) +
-      stat('Project total', (totOk && tot != null) ? money(tot) : '', '',
-           'scw-acpt-stat--total');
+        source: derived ? 'derived' : 'quoted' });
     return el;
   }
 
