@@ -835,3 +835,87 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Do NOT reuse `field_2912`** for the flag — it is derived from the product (Yes = still active)
   and flips for every line item ever created, which is exactly the noise the 12-month rule avoids.
   Follow-up once the flag exists: OR it into the worksheet "discontinued" badge.
+
+### 23. CO product SWAP lands as "Removed by CO" — Make scenario 13.06b (HIGH URGENCY — DIAGNOSIS UNVERIFIED)
+
+⚠ **The analysis below was produced by Opus and has NOT been independently
+verified.** It is recorded so the work isn't lost, not because it is settled.
+Verify before acting — a Fable review was requested and could not run (Fable
+was out of usage credits). **Re-run that review before touching the scenario.**
+
+- **Symptom (seen 2026-09-15)**: install record `6a62981788f3ebe5858c08a1`
+  (`I-03`, Informant Dual Vision, project `69f0d4b567a35332e743cc27`) renders in
+  the worksheet's collapsible **Removed by CO** section with the chip
+  `Removed by CO Wall Mount Bra…` — when the change order (`1781CO`, quote
+  20260915-11613, signed) was meant to be a **product swap, not a removal**. The
+  card still lists BOTH mounts ("Wall Mount Bracket for The Deputy…" and
+  "Electrical Box Mount for the Informant 4.0 Dual Vision"), and its As-Quoted
+  panel does resolve the 1781CO line (`2 differ`: Connected To, Conduit) — so
+  the target-linked Add leg exists.
+- **Scenario**: `*13.06b | CHANGE ORDER | True Deployment Records based on
+  signed CO`. Relevant modules: router **[164]** (3 routes), **[161]** REMOVE,
+  **[219]** SWAP, **[92]** create install line, feeder **[87]** (iterates
+  `{{73.view_3896}}` = the CO's LINE ITEMS), **[11]** get SOW (= the CO header,
+  `object_106`, `record_id = {{9.field_2666_raw[].id}}`).
+
+**Claimed bug 1 — route 1 has no swap guard.** Router [164] filters:
+  - route 0 ADD: `field_2965_raw = "Add"` AND `field_2966_raw[].id` **notexist**
+  - route 1 REMOVE: `field_2965_raw = "Remove"` ← *only condition*
+  - route 2 SWAP: `field_2965_raw = "Add"` AND `field_2966_raw[].id` **exist**
+
+  A swap is a **linked pair** of CO lines (see the swap contract in
+  `worksheet-v2/co-remove.js`, header comment ~lines 27-57) and BOTH carry
+  `field_2966` pointing at the same install record. Feeder [87] processes both:
+  [219] sets `field_2967: {{null}}` (clears the flag), [161] sets
+  `field_2967: {{87.id}}` (re-flags it). They fight; the last one processed
+  wins, and the client fires Add-then-remove so the Remove tends to land last.
+  Route 0 got the analogous guard; route 1 didn't.
+  - **Fix shape**: `field_2966` exist/notexist CANNOT distinguish them (a plain
+    Remove needs it to know what to flag). Use the same test the client uses
+    (`co-remove.js` `coTargetCounts`: *one* targeting line = plain remove,
+    *two+* = swap pair): before feeder [87], aggregate install ids targeted by
+    `action = Add AND field_2966 exists` lines into a variable, then add to
+    route 1 `target install id NOT IN that set`. Modules **[303]/[304]** already
+    build this shape of map. Reordering routes will NOT fix it — feeder order
+    decides, not route order.
+  - ⚠ **Unconfirmed premise**: whether a Make BasicRouter runs *every* passing
+    route or only the first match, and whether that changes the analysis.
+
+**Claimed bug 2 — `field_2967` gets the CO LINE id, not the CO header.**
+  [161] maps `field_2967 = "{{87.id}}"`, but [87] iterates CO **line items**, so
+  the install record is connected to a SOW Line Item whose identifier is a
+  **product name** — hence the bracket text in the chip (`card.js` `shortCoLabel`
+  finds no CO digits and falls back to a 14-char truncation).
+  `config.js` (~line 232) declares `removedByCo: 'field_2967'` as
+  *"CO_REL_removed by co (**→ CO header**)"*.
+  - **Fix shape**: `field_2967 = {{11.id}}`. Note [92] does the analogous thing
+    correctly — `field_2819 = {{87.id}}` genuinely *is* the source CO line — so
+    [161] looks copy-pasted from it.
+  - **Builder check needed**: which object does `field_2967` actually connect
+    to? It accepted a line-item id and rendered a product name, suggesting it
+    points at SOW Line Items, not SOW. Either Builder is wrong or our
+    `config.js` comment is. The card's label logic assumes the header.
+
+**Not in this blueprint — upstream.** For the CAMERA's install record to be
+flagged by the BRACKET's CO line, that bracket Remove line's `field_2966` must
+point at the camera rather than at the bracket's own install record. This
+scenario only *consumes* `field_2966`; it's set by whatever handles
+`MAKE_CO_REMOVE_ITEMS_WEBHOOK` when the CO lines are created. The client sends
+each accessory its own target (`co-remove.js` ~line 1418,
+`targetInstallItemId: aRec.id`), so check whether that scenario applies the
+device's install id across every id in the call instead of per-id. Fixing bug 1
+makes this harmless for swaps but it would still mis-flag a plain accessory
+removal. **Also unexplained**: both mounts are still present, i.e. the bracket
+accessory was never actually removed.
+
+**Recovery for the affected record**: clear `field_2967` on
+`6a62981788f3ebe5858c08a1` (the durable flag — clearing it returns the item to
+active scope), confirm the product swap actually applied to the camera, and
+check whether the wall-bracket accessory still needs removing.
+
+**Optional client-side guard (not built)**: `card.js` already has the signal —
+flag when `field_2967` resolves to a record whose identifier carries no CO
+number, and when a removed item still has a target-linked Add. Render amber
+rather than presenting the bad state as fact. Same shape as the acceptance-card
+bid-basis seal (`acceptance-card.js` `basisDrift`). Useful after the Make fixes
+too, since it catches the next regression where someone is actually looking.
