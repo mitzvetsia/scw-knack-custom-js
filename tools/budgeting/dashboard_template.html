@@ -735,6 +735,14 @@ function migrateState(st){
        the same half of the year before it, which is the closest thing to evidence we have. */
     if (!Array.isArray(L0.targets))
       L0.targets = [{ mod: +L0.targetH1 || 0, str: 0 }, { mod: +L0.targetH2 || 0, str: 0 }];
+    else {
+      /* targetH1/H2 are kept as a shadow of the first two cycles for a build that still reads them.
+         The shadow is rewritten on every load, so if one of them now DISAGREES the only thing that
+         could have changed it is an older build — take its value rather than discarding the edit. */
+      const shadow = [+L0.targetH1 || 0, +L0.targetH2 || 0];
+      for (let i = 0; i < 2; i++)
+        if (L0.targets[i] && shadow[i] && shadow[i] !== (+L0.targets[i].mod || 0)) L0.targets[i].mod = shadow[i];
+    }
     while (L0.targets.length < CYCLES.length){
       const prior = L0.targets[L0.targets.length - 2] || L0.targets[L0.targets.length - 1] || { mod: 0, str: 0 };
       L0.targets.push({ mod: +prior.mod || 0, str: +prior.str || 0 });
@@ -749,11 +757,13 @@ function migrateState(st){
        config was written against; it is stamped at the bottom of this function, after every loop
        that reads it. */
     const oldNM = +L0.nm || 15;
+    const ends = new Set([oldNM]);
+    if (L0.nm == null) ends.add(12);      // only a save from before the stamp can mean "12 was the end"
     for (const p of st.staff){
       while (p.hc.length < NM) p.hc.push(p.hc.at(-1) ?? 0);
-      for (const pp of (p.people || [])) if (pp.to === oldNM || pp.to === 12) pp.to = NM;
+      for (const pp of (p.people || [])) if (ends.has(pp.to)) pp.to = NM;
     }
-    for (const e of st.exp) if (e.to === oldNM || e.to === 12) e.to = NM;
+    for (const e of st.exp) if (ends.has(e.to)) e.to = NM;
     // migrate saves made before contractor rows were flagged as carried on Staffing
     if (!L0.bdrHcFix){
       for (const p of st.staff)
@@ -816,7 +826,7 @@ function migrateState(st){
     if (pg.cycle == null) pg.cycle = pg.half === 1 ? 0 : 1;
     if (!L0.cycleFix && pg.cycle === 1 && ((pg.id === "pgOps" && +pg.thr === 6650000) || (pg.id === "pgSd" && +pg.thr === 6350000))) pg.cycle = 0;
     pg.cycle = Math.max(0, Math.min(CYCLES.length - 1, Math.round(+pg.cycle || 0)));
-    delete pg.half;
+    pg.half = pg.cycle === 0 ? 1 : 2;     // a shadow of the old field, for a build that still reads it
     // the seeded names now say what each one is; a name you edited is left alone
     if (pg.id === "pgOps" && pg.name === "Operations bonus") pg.name = "Ops bonus";
     if (pg.id === "pgSd" && pg.name === "Sales Director bonus") pg.name = "Sales Director comp";
@@ -825,7 +835,9 @@ function migrateState(st){
     delete pg.scale;
   }
   if (!st.salesDrop) st.salesDrop = [];
-  L0.nm = NM;                 // the horizon this config has now been migrated to
+  // the same shadow for the two retired target fields
+  L0.targetH1 = +((L0.targets[0] || {}).mod) || 0;
+  L0.targetH2 = +((L0.targets[1] || {}).mod) || 0;
   if (!st.plans) st.plans = [];
   if (st.licenses && st.licenses.some(L => L.minSource === undefined)){
     const seed = new Map(licSeedFromModel().map(L => [L.id, L]));
@@ -891,6 +903,7 @@ function migrateState(st){
     }
     // one-shot fixes above have now had their pass — mark them done AFTER, never before
     L0.contractorFix = 1; L0.pacingFix = 1; L0.cycleFix = 1;
+    L0.nm = NM;                 // the horizon this config has been migrated to — a number, so 21 -> 27 works later
   } catch (e) {}
   return st;
 }
@@ -1372,7 +1385,7 @@ function hdvRateAt(m){
   const L = S.levers, pct = +L.hdvStepPct || 0;
   return (L.hdvRate || 0) * (pct && m >= (L.hdvStepM || 0) ? 1 + pct : 1);
 }
-function hdvOf(role, m){ return (role.benOn === false || isContractor(role)) ? 0 : hdvRateAt(m == null ? 1 : m); }
+function hdvOf(role, m){ return (role.benOn === false || isContractor(role)) ? 0 : hdvRateAt(m); }
 function taxOf(role){ return (role.taxOn === false || isContractor(role)) ? 0 : (S.levers.taxRate || 0); }
 function personCost(role, p, m){
   if (m < joinMonth(p) || m > (p.to || NM)) return 0;
@@ -1711,7 +1724,9 @@ function renderCompare(C){
   const pl = document.getElementById("planList"); if (!pl) return;
   const plans = S.plans || [];
   pl.innerHTML = plans.length ? `<table class="data"><thead><tr><th>Plan</th><th>Locked</th><th>Booked then</th><th>${esc(GOAL[3])} net</th><th>${esc(BOTH[3])} net</th><th></th></tr></thead><tbody>` +
-    plans.map(p => `<tr><td><input class="cell pos" style="width:240px" data-id="${p.id}" data-k="planlabel" value="${esc(p.label)}"></td><td>${esc(p.at.slice(0, 10))}</td><td>through ${MONTHS[p.act - 1]}</td><td>${fmt$(p.net.slice(GOAL[0], GOAL[1]).reduce((a, b) => a + b, 0))}</td><td>${fmt$(p.net.slice(BOTH[0], BOTH[1]).reduce((a, b) => a + b, 0))}</td><td><button class="btn mini" data-id="${p.id}" data-k="plandel" title="Remove this locked plan">✕</button></td></tr>`).join("") + `</tbody></table>`
+    plans.map(p => `<tr><td><input class="cell pos" style="width:240px" data-id="${p.id}" data-k="planlabel" value="${esc(p.label)}"></td><td>${esc(p.at.slice(0, 10))}</td><td>through ${MONTHS[p.act - 1]}</td>${[GOAL, BOTH].map(([a, b]) => { const pnm = +p.nm || p.net.length;
+      return b <= pnm ? `<td>${fmt$(p.net.slice(a, b).reduce((x, y) => x + y, 0))}</td>`
+        : `<td class="dim" title="Locked before the horizon was extended — this plan made no call about these months">—</td>`; }).join("")}<td><button class="btn mini" data-id="${p.id}" data-k="plandel" title="Remove this locked plan">✕</button></td></tr>`).join("") + `</tbody></table>`
     : `<p class="subtle">No plan locked yet.</p>`;
   const A = S.actuals;
   const chosen = plans.find(p => p.id === cmpPlanId) || plans[plans.length - 1];
@@ -2132,7 +2147,7 @@ function renderProj(C){
   const goalCls = i => (i >= GOAL[0] && i < GOAL[1]) ? " goal" : "";
   const bridgeN = Math.max(0, GOAL[0] - ACT);
   let h = `<table class="data pl"><thead>` +
-    `<tr class="grp"><th></th><th colspan="3">Totals</th><th class="booked" colspan="${Math.min(ACT, NM)}">Booked ${esc(ACT_RANGE)}</th>` +
+    `<tr class="grp"><th></th><th colspan="${CYCLES.length + 1}">Totals</th><th class="booked" colspan="${Math.min(ACT, NM)}">Booked ${esc(ACT_RANGE)}</th>` +
     (bridgeN ? `<th colspan="${bridgeN}">Bridge</th>` : "") + `<th class="goal" colspan="${GOAL[1] - GOAL[0]}">Goal cycle ${esc(GOAL[2])}</th>` +
     (NM > GOAL[1] ? `<th colspan="${NM - GOAL[1]}">Beyond</th>` : "") + `</tr>` +
     `<tr><th>P&amp;L</th>` + CYCLES.map((c, k) => `<th class="${k === GOAL_I ? "goal" : ""}">${esc(c[3])}<span class="sub">${esc(c[2])}</span></th>`).join("") +
@@ -2840,7 +2855,7 @@ function renderStaff(C){
       <td title="${hasRaise ? `${fmt$(cur)}/head now → ${fmt$(nw)}/head by ${monthName(NM)} — planned raises and any health-rate increase` : "Fully-loaded monthly cost per head"}">${fmt$(cur)}${hasRaise ? ` <span class="dim">→ ${fmt$(nw)}</span>` : ""}</td>` +
       Array.from({length:NM}, (_, i) => hasPpl
         ? `<td class="hc-derived" title="Derived from the ${p.people.length} named people below"><span class="hcv">${staffHC(p, i + 1) || "·"}</span></td>`
-        : `<td class="hc"><input class="cell tiny" data-id="${p.id}" data-k="hc${i}" value="${p.hc[i]}" title="${MONTHS[i]} headcount — later months follow automatically"></td>`).join("") +
+        : `<td class="hc"><input class="cell tiny" data-id="${p.id}" data-k="hc${i}" value="${p.hc[i] ?? 0}" title="${MONTHS[i]} headcount — later months follow automatically"></td>`).join("") +
       `<td><b>${fmt$(fyOf.get(p.id))}</b></td><td><button class="btn mini" data-id="${p.id}" data-k="del" title="Remove role">✕</button></td></tr>`;
     if (open){
       const ppl = (p.people || []).map(pp => {
@@ -3191,7 +3206,9 @@ function renderTrends(){
   }
   ch += `<tr class="tot"><td>Total COGS</td>${cgTot.map(v => `<td>${fmt$(v)}</td>`).join("")}<td>${fmt$(cgTot.reduce((a, b) => a + b, 0))}</td></tr>`;
   ch += `<tr class="dim"><td class="dim">% of sales revenue (2026)</td>${cgTot.map((v, i) => {
-    const ri = i - 5; const rv = ri >= 0 && ri < 7 ? MODEL.totals.revenue[ri] : null;
+    // the trailing-12 window opens before the modeled one; y26_from is where Jan 2026 sits in it
+    const ri = i - (MODEL.y26_from != null ? MODEL.y26_from : 4);
+    const rv = ri >= 0 && ri < MODEL.totals.revenue.length ? MODEL.totals.revenue[ri] : null;
     return `<td>${rv ? (v / rv * 100).toFixed(1) + "%" + (i === 11 ? " *" : "") : `<span class="dim">—</span>`}</td>`; }).join("")}<td>—</td></tr>`;
   document.getElementById("cogsHist").innerHTML = ch + "</tbody></table>";
   // Single postings that dominate their account-month AND inflate it well past that account's
@@ -4135,8 +4152,9 @@ function renderAll(){
   renderSales(C); renderIncentives(C); renderRaisePlanner(); renderStaff(C); renderLicenses(C); renderExpenses(C); renderCompare(C); renderFixes(); renderRestore(); renderPayBands();
 }
 
-renderAll();
-renderTrends();
-refreshRestoreBtn();
-initShared();
+// A render that throws must not take the recovery button with it: that button is the only way back
+// to the last good config, and the bad one is already in localStorage by now.
+try { renderAll(); renderTrends(); }
+catch (e) { console.error("render failed", e); }
+finally { refreshRestoreBtn(); initShared(); }
 </script>

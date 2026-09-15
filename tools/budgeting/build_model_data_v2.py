@@ -491,6 +491,9 @@ model = dict(
     dept_payroll_actual=dept_payroll,
     # August is now CLOSED and included: AT#15 shows it fully posted (payroll $296K, opex $197K,
     # revenue $1.07M, all in line with prior months). Only its COGS entry is still outstanding.
+    # where Jan 2026 sits in the trailing-12 window, so the dashboard can line a TTM column up
+    # with the right modeled month instead of hardcoding the offset
+    y26_from=Y26_FROM,
     built="2026-09-09", actual_months=ACTUAL_MONTHS)
 json.dump(model, open(os.path.join(HERE, "model_data_v2.json"), "w"))
 print("vendors:", len(vend_master), "missing:", len(missing))
