@@ -612,7 +612,7 @@ function defaultState(){
       // export, so it is not in that figure; it was a $117K January credit being drawn down.)
       otherInc: 11000, laborHedge: 0, opexHedge: 0, bdayWeight: true,
       targetH1: 6350000, targetH2: 5700000,
-      hdvRate: 523.5, taxRate: MODEL.employer_tax_rate },
+      hdvRate: 523.5, hdvStepPct: 0, hdvStepM: 13, taxRate: MODEL.employer_tax_rate },
     sales: MODEL.sales.map((s, i) => ({ id: "s" + i, name: s.name, role: s.role, ramp: s.ramp,
       start: s.start_cal, modest: /Stu/.test(s.name) ? 1 : 0.8, stretch: 1,
 
@@ -632,10 +632,10 @@ function defaultState(){
     programs: [
       // Both as described by the company. Ops: $1,500 a head, earned proportionally across
       // $6.65M-$7.85M — nothing below, capped above. Director: 3.5% of every dollar over $6.35M.
-      { id: "pgOps", name: "Operations bonus", on: true, basis: "band", scope: "depts",
+      { id: "pgOps", name: "Ops bonus", on: true, basis: "band", scope: "depts",
         roles: [], depts: ["Installation Services"], per: "head", amount: 1500,
         half: 1, thr: 6650000, cap: 7850000, alloc: "pacing" },
-      { id: "pgSd", name: "Sales Director bonus", on: true, basis: "rate", scope: "roles",
+      { id: "pgSd", name: "Sales Director comp", on: true, basis: "rate", scope: "roles",
         roles: MODEL.staff.map((s, i) => ({ id: "p" + i, pos: s.position })).filter(x => /sales director/i.test(x.pos)).map(x => x.id),
         depts: [], per: "pool", amount: 0, pct: 0.035,
         half: 1, thr: 6350000, cap: 0, alloc: "pacing" }
@@ -676,6 +676,9 @@ function migrateState(st){
     }
     if (L0.estProv == null) L0.estProv = true;
     if (L0.hdvRate == null) L0.hdvRate = 523.5;
+    // the health rate can step up on renewal; default is no increase, primed at Jan '27
+    if (L0.hdvStepPct == null) L0.hdvStepPct = 0;
+    if (L0.hdvStepM == null) L0.hdvStepM = 13;
     if (L0.taxRate == null) L0.taxRate = MODEL.employer_tax_rate;
     if (L0.ovrInBase != null) delete L0.ovrInBase;   // retired: salaries are base-only
     if (L0.bdayWeight == null) L0.bdayWeight = true;
@@ -718,6 +721,9 @@ function migrateState(st){
     // The seeded "2026 Q2 & Q3" programs were placed on Oct–Mar under a July-fiscal-year
     // reading; Q2+Q3 is Apr–Sep. Move a program still on the seeded terms, once.
     if (!L0.cycleFix && pg.half === 2 && ((pg.id === "pgOps" && +pg.thr === 6650000) || (pg.id === "pgSd" && +pg.thr === 6350000))) pg.half = 1;
+    // the seeded names now say what each one is; a name you edited is left alone
+    if (pg.id === "pgOps" && pg.name === "Operations bonus") pg.name = "Ops bonus";
+    if (pg.id === "pgSd" && pg.name === "Sales Director bonus") pg.name = "Sales Director comp";
     if (pg.cap == null) pg.cap = 0;
     if (pg.pct == null) pg.pct = 0;
     delete pg.scale;
@@ -1257,7 +1263,14 @@ function raiseFor(role, personId, m, hrs){
 }
 // Contractors carry no benefits, no employer tax, and sit outside every incentive program.
 const isContractor = role => (role && role.level) === "Contractor";
-function hdvOf(role){ return (role.benOn === false || isContractor(role)) ? 0 : (S.levers.hdvRate || 0); }
+/* Health is a flat rate per covered head, and it renews. hdvRateAt() applies a planned percentage
+   increase from its month onward, so every per-head cost — payroll, the P&L, break-even, the
+   cost/head column — carries the higher rate in later months without anything else changing. */
+function hdvRateAt(m){
+  const L = S.levers, pct = +L.hdvStepPct || 0;
+  return (L.hdvRate || 0) * (pct && m >= (L.hdvStepM || 0) ? 1 + pct : 1);
+}
+function hdvOf(role, m){ return (role.benOn === false || isContractor(role)) ? 0 : hdvRateAt(m == null ? 1 : m); }
 function taxOf(role){ return (role.taxOn === false || isContractor(role)) ? 0 : (S.levers.taxRate || 0); }
 function personCost(role, p, m){
   if (m < joinMonth(p) || m > (p.to || NM)) return 0;
@@ -1273,7 +1286,7 @@ function personCost(role, p, m){
   }
   const r = raiseFor(role, p.id, m, hrs);
   labor *= bdayW(m);
-  return (labor + r.dmo + labor * r.pct) * (1 + taxOf(role)) + hdvOf(role) + licOf(role);
+  return (labor + r.dmo + labor * r.pct) * (1 + taxOf(role)) + hdvOf(role, m) + licOf(role);
 }
 function staffHC(row, m){
   return (row.people && row.people.length)
@@ -1282,7 +1295,7 @@ function staffHC(row, m){
 }
 function headCost(row, m){
   const labor = roleAnnual(row) / 12 * bdayW(m), r = raiseFor(row, null, m, row.hrs);
-  return (labor + r.dmo + labor * r.pct) * (1 + taxOf(row)) + hdvOf(row) + licOf(row);
+  return (labor + r.dmo + labor * r.pct) * (1 + taxOf(row)) + hdvOf(row, m) + licOf(row);
 }
 function staffCost(row, m){
   if (row.people && row.people.length)
@@ -1376,12 +1389,15 @@ function compute(){
   const incLoad = 1 + (L.taxRate || 0);
   out.incentLoad = incLoad;
   out.incent = { mod: Array(NM).fill(0), str: Array(NM).fill(0) };
+  out.incentBy = [];   // the same accrual, one entry per program, so the P&L can name what it is
   out.incentUnbooked = { mod: 0, str: 0 };
   out.incentHalf = { mod: [0, 0], str: [0, 0] };
   out.incentLoaded = { mod: [0, 0], str: [0, 0] };
   out.incentPace = { mod: [0, 0], str: [0, 0] };
   for (const pg of (S.programs || [])){
     if (!pg || pg.on === false) continue;
+    const by = { id: pg.id, name: pg.name || "Program", mod: Array(NM).fill(0), str: Array(NM).fill(0) };
+    const addInc = (scn, i, v) => { out.incent[scn][i] += v; by[scn][i] += v; };
     const hi = (pg.half === 1) ? 0 : 1;
     const [a, b] = hi === 0 ? FH1 : FH2;
     const isRate = pg.basis === "rate";
@@ -1417,16 +1433,17 @@ function compute(){
           cum += out.rev[scn][i];
           const pushed = (Math.min(cum, hiEdge) - Math.min(before, hiEdge)) -
                          (Math.min(cum, lo) - Math.min(before, lo));
-          if (pushed > 0) out.incent[scn][i] += total * incLoad * (pushed / inBand);
+          if (pushed > 0) addInc(scn, i, total * incLoad * (pushed / inBand));
         }
       } else if (pg.alloc === "even"){
         const n = Math.max(1, b - a);
-        for (let m = a + 1; m <= b; m++) out.incent[scn][m - 1] += total * incLoad / n;
+        for (let m = a + 1; m <= b; m++) addInc(scn, m - 1, total * incLoad / n);
       } else {
         // by pacing: each month's share of the projected payout is its share of the revenue
-        for (let m = a + 1; m <= b; m++) out.incent[scn][m - 1] += total * incLoad * (rev > 0 ? out.rev[scn][m - 1] / rev : 0);
+        for (let m = a + 1; m <= b; m++) addInc(scn, m - 1, total * incLoad * (rev > 0 ? out.rev[scn][m - 1] / rev : 0));
       }
     }
+    if (by.mod.some(v => v > 0.5) || by.str.some(v => v > 0.5)) out.incentBy.push(by);
   }
   for (const scn of ["mod", "str"])
     for (let i = 0; i < NM; i++) if (i < ACT) out.incentUnbooked[scn] += out.incent[scn][i];
@@ -1988,8 +2005,11 @@ function renderProj(C){
   const loaded = plBasis === "all" && C.incent && (C.incent.mod.some(v => v > 0.5) || C.incent.str.some(v => v > 0.5));
   if (loaded){
     const zf = v => Math.abs(v) < 0.5 ? "" : fmt$(v);
-    for (const [k, v] of pick(C.incent.mod, C.incent.str))
-      push(`<span title="Incentive programs accrued to the months that earn them, loaded with employer taxes. None of this is in Xero: an operations bonus is not paid until its six months close, and the Sales Director bonus has never been calculated. Booked months carry it too — that is the liability the books do not show.">Accrued programs</span>` + sfx(k), v, "dim", zf);
+    const incTip = "Accrued to the months that earn it, loaded with employer taxes. None of this is in Xero — the bonus is not paid until its cycle closes — so booked months carry it too. That is the liability the books do not show.";
+    const incRows = (C.incentBy || []).length ? C.incentBy : [{ name: "Accrued programs", mod: C.incent.mod, str: C.incent.str }];
+    for (const b of incRows)
+      for (const [k, v] of pick(b.mod, b.str))
+        push(`<span title="${esc(b.name + " — " + incTip)}">${esc(b.name)}</span>` + sfx(k), v, "dim", zf);
   }
   const netM = loaded ? C.netAll.mod : C.net.mod, netS = loaded ? C.netAll.str : C.net.str;
   for (const [k, v] of pick(netM, netS)) push("NET" + (loaded ? " with programs" : "") + (both ? sfx(k).toUpperCase() : ""), v, "tot netrow");
@@ -2170,7 +2190,8 @@ function renderPeriods(C){
   push("Total opex", C.opex);
   for (const k of scns) push("NET as booked" + sfx(k), C.net[k], "tot");
   for (const k of scns) pushPct("net margin" + sfx(k), C.net[k], C.rev[k]);
-  for (const k of scns) push("Accrued programs" + sfx(k), C.incent[k], "dim");
+  for (const b of ((C.incentBy || []).length ? C.incentBy : [{ name: "Accrued programs", mod: C.incent.mod, str: C.incent.str }]))
+    for (const k of scns) push(esc(b.name) + sfx(k), b[k], "dim");
   for (const k of scns) push("NET with programs" + sfx(k), C.netAll[k], "tot netrow");
   for (const k of scns) pushPct("net margin" + sfx(k), C.netAll[k], C.rev[k]);
   // display order: the two cycles in date order, the calendar year, then the quarters — PERIODS itself is untouched
@@ -2255,7 +2276,8 @@ function cycleFacts(C, rng, tgt){
     revM: sum(C.rev.mod), revS: sum(C.rev.str), be: sum(C.be),
     bkRev: sum(C.rev.mod.map((v, i) => i < ACT ? v : 0)),
     netM: sum(C.net.mod), netS: sum(C.net.str), allM: sum(C.netAll.mod), allS: sum(C.netAll.str),
-    incM: sum(C.incent.mod), incS: sum(C.incent.str) };
+    incM: sum(C.incent.mod), incS: sum(C.incent.str),
+    progs: (C.incentBy || []).map(p => ({ name: p.name, m: sum(p.mod), s: sum(p.str) })) };
 }
 // The first screen answers one question: will Q4+Q1 make money, on what assumptions, and what
 // would move it. Everything editable sits behind the fold below it.
@@ -2268,7 +2290,12 @@ function renderGoals(C){
   const progLine = g.incM > 0.5 || g.incS > 0.5
     ? `with programs <b>${fmtK(g.allM)}</b> modest · <b>${fmtK(g.allS)}</b> stretch`
     : `with programs: same — <span class="warn">no program pays out in this cycle</span>`;
-  const row = (lbl, m, st, cls = "", fm = fmt$) => `<tr class="${cls}"><td>${lbl}</td><td class="${m < 0 ? "neg" : ""}">${fm(m)}</td><td class="${st < 0 ? "neg" : ""}">${fm(st)}</td></tr>`;
+  // a cost is a negative number, not bad news: rows marked "cost" keep the minus sign and skip the
+  // red that marks a loss
+  const row = (lbl, m, st, cls = "", fm = fmt$) => {
+    const cost = /\bcost\b/.test(cls), c = v => (!cost && v < 0) ? ' class="neg"' : "";
+    return `<tr class="${cls}"><td>${lbl}</td><td${c(m)}>${fm(m)}</td><td${c(st)}>${fm(st)}</td></tr>`;
+  };
   document.getElementById("goalsBody").innerHTML =
     `<div class="plan-grid">
       <div><div class="lab">Revenue</div>
@@ -2284,7 +2311,9 @@ function renderGoals(C){
     <div class="plan-row">
       <table class="data compact" style="width:auto;min-width:300px"><thead><tr><th>${FH2[3]} · Oct–Mar</th><th>Modest</th><th>Stretch</th></tr></thead><tbody>
         ${row("NET as booked", g.netM, g.netS, "tot")}
-        ${row("Accrued programs", -g.incM, -g.incS, "dim", v => Math.abs(v) < 0.5 ? "—" : fmt$(v))}
+        ${(g.progs.length ? g.progs : [{ name: "Accrued programs", m: g.incM, s: g.incS }]).map(pr =>
+          row(`<span title="${esc(pr.name)} accrued across this cycle, loaded with employer taxes — a cost the books do not show yet.">${esc(pr.name)}</span>`,
+              -pr.m, -pr.s, "dim cost", v => Math.abs(v) < 0.5 ? "—" : fmt$(v))).join("")}
         ${row("NET with programs", g.allM, g.allS, "tot netrow")}
         ${row("net margin", g.revM ? g.allM / g.revM : 0, g.revS ? g.allS / g.revS : 0, "dim", fmtPct1)}
       </tbody></table>
@@ -2593,8 +2622,12 @@ function renderStaff(C){
     {aria:"Payroll model vs booked", divider:true, w:1400});
 
   const NCOL = 6 + NM + 2;   // pos, salary, health, lic, tax, cost/head + months + total + del
+  const hdvStep = +S.levers.hdvStepPct || 0, hdvStepM = S.levers.hdvStepM || 13;
   document.getElementById("payrollRates").innerHTML =
     leverInput("lvHdv", "Health (HDV) $/mo per head", S.levers.hdvRate, "applies to BEN-ticked roles") +
+    `<div class="lever" title="Health insurance renews: set the increase and the month it lands, and every covered head costs the higher rate from that month on — payroll, the P&amp;L, break-even and the cost/head column all follow."><label for="lvHdvStep">Health increase %</label>
+      <input id="lvHdvStep" class="lever-in" value="${(hdvStep * 100).toFixed(1)}">
+      <span class="unit">from ${monthSel(`id="lvHdvStepM"`, hdvStepM, { title: "First month the higher rate is charged." })}${hdvStep ? ` — ${fmt$(S.levers.hdvRate)} → <b>${fmt$(hdvRateAt(hdvStepM))}</b>/head` : " — none planned"}</span></div>` +
     leverInput("lvTax", "Employer tax & match %", (S.levers.taxRate * 100).toFixed(2), "added on top of pay — Xero actual " + (MODEL.employer_tax_rate * 100).toFixed(1) + "%");
   document.getElementById("payrollRates").innerHTML +=
     `<div class="lever" title="Your books accrue labor daily against days worked, so a month's cost follows its business days rather than a flat twelfth. Leaving this on matches the modeled months to that basis."><label for="lvBd">Month basis</label>
@@ -2602,6 +2635,8 @@ function renderStaff(C){
       <span class="unit">${MONTHS[ACT]} ${BDAYS[ACT]}d · ${((BDAYS[ACT] / BD_AVG - 1) * 100).toFixed(1)}% vs flat</span></div>`;
   bind("lvBd", v => S.levers.bdayWeight = v === "bd");
   bind("lvHdv", v => S.levers.hdvRate = num(v, 523.5));
+  bind("lvHdvStep", v => S.levers.hdvStepPct = num(v, 0) / 100);
+  bind("lvHdvStepM", v => S.levers.hdvStepM = Math.min(NM, Math.max(1, Math.round(num(v, 13)))));
   bind("lvTax", v => S.levers.taxRate = num(v, MODEL.employer_tax_rate * 100) / 100);
   renderPayCal(C);
   let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Ben</th><th title="Per-head licenses: what the license rules on Expenses assign to this role, plus any other per-head $/mo typed here">Licenses /head</th><th>Tax</th><th>Cost/head</th>` +
@@ -2664,10 +2699,10 @@ function renderStaff(C){
           ? `<span title="Normalized: $${p.rate || 0}/hr × ${p.hrs || 40} h/wk × 52 wk">≈ ${Math.round(roleAnnual(p)).toLocaleString("en-US")} <span class="badge">hourly</span></span>${arrow}`
           : `<input class="cell w84" data-id="${p.id}" data-k="ote" value="${Math.round(p.ote).toLocaleString("en-US")}">${arrow}`;
       })()}</td>
-      <td style="text-align:center"><input type="checkbox" data-id="${p.id}" data-k="benOn"${p.benOn !== false ? " checked" : ""} title="Gets the ${fmt$(S.levers.hdvRate)}/mo health rate — untick for 1099s or coverage decliners"></td>
+      <td style="text-align:center"><input type="checkbox" data-id="${p.id}" data-k="benOn"${p.benOn !== false ? " checked" : ""} title="Gets the ${fmt$(S.levers.hdvRate)}/mo health rate${(+S.levers.hdvStepPct || 0) ? `, rising to ${fmt$(hdvRateAt(S.levers.hdvStepM || 13))} from ${monthName(S.levers.hdvStepM || 13)}` : ""} — untick for 1099s or coverage decliners"></td>
       <td style="white-space:nowrap" title="${esc((S.licenses || []).filter(L => L.on !== false && L.roles && L.roles[p.id]).map(L => `${L.name}: ${L.roles[p.id]} × ${fmt$(L.price)}`).join("\n") || "No license rule covers this role")}"><b>${fmt$(licPerHead(p))}</b><span class="dim"> + </span><input class="cell tiny" data-id="${p.id}" data-k="lic" value="${Math.round(p.lic || 0)}" title="Other per-head $/mo not covered by a license rule"></td>
       <td style="text-align:center"><input type="checkbox" data-id="${p.id}" data-k="taxOn"${p.taxOn !== false ? " checked" : ""} title="Employer tax & match (${(S.levers.taxRate * 100).toFixed(1)}%) added on top of pay — untick for 1099 contractors"></td>
-      <td title="${hasRaise ? `${fmt$(cur)}/head now → ${fmt$(nw)}/head by Mar ’27 (raise planner)` : "Fully-loaded monthly cost per head"}">${fmt$(cur)}${hasRaise ? ` <span class="dim">→ ${fmt$(nw)}</span>` : ""}</td>` +
+      <td title="${hasRaise ? `${fmt$(cur)}/head now → ${fmt$(nw)}/head by ${monthName(NM)} — planned raises and any health-rate increase` : "Fully-loaded monthly cost per head"}">${fmt$(cur)}${hasRaise ? ` <span class="dim">→ ${fmt$(nw)}</span>` : ""}</td>` +
       Array.from({length:NM}, (_, i) => hasPpl
         ? `<td class="hc-derived" title="Derived from the ${p.people.length} named people below"><span class="hcv">${staffHC(p, i + 1) || "·"}</span></td>`
         : `<td class="hc"><input class="cell tiny" data-id="${p.id}" data-k="hc${i}" value="${p.hc[i]}" title="${MONTHS[i]} headcount — later months follow automatically"></td>`).join("") +
