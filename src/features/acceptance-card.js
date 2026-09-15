@@ -643,14 +643,31 @@
     return { pct: pct, onTarget: pct >= LABOR_TARGET_PCT };
   }
 
-  /** One money column. Empty value → no column at all, so a row never
-   *  carries a labelled blank. `sub` is the derivation line under it. */
-  function stat(lbl, val, sub, mod) {
-    if (!val) return '';
-    return '<span class="scw-acpt-stat' + (mod ? ' ' + mod : '') + '">' +
-      '<span class="scw-acpt-stat__lbl">' + esc(lbl) + '</span>' +
-      '<span class="scw-acpt-stat__val">' + val + '</span>' +
-      (sub || '') + '</span>';
+  /** Whether the paperwork bands on this view are open, remembered per
+   *  view the way group-collapse remembers its groups. ONE flag for the
+   *  card, not one per row: the bands are a uniform checklist and toggling
+   *  them individually down a 12-row card is busywork. Defaults CLOSED —
+   *  the money is what the card is for, and the badge says whether a band
+   *  is worth opening. Storage can throw (private window, blocked site
+   *  data), so both reads and writes fail quiet. */
+  var DOCS_KEY = 'scwAcptDocsOpen:';
+  function docsOpen(viewKey) {
+    try { return window.localStorage.getItem(DOCS_KEY + viewKey) === '1'; }
+    catch (e) { return false; }
+  }
+  function setDocsOpen(viewKey, open) {
+    try { window.localStorage.setItem(DOCS_KEY + viewKey, open ? '1' : '0'); }
+    catch (e) { /* ignore */ }
+  }
+
+  /** The equipment column — one figure, right-aligned in its width; the
+   *  column header names it. An EMPTY grid cell still has to exist or the
+   *  labor column slides left out of its track, so a missing figure
+   *  renders the cell blank rather than omitting it. */
+  function equipCell(val) {
+    return '<span class="scw-acpt-col scw-acpt-col--equip">' +
+      (val ? '<span class="scw-acpt-col__val">' + val + '</span>' : '') +
+      '</span>';
   }
 
   /** One value + name line inside a stat's stacked block. */
@@ -673,7 +690,9 @@
   function laborStat(installBilled, amt, surveyCost) {
     var subAmt  = amt ? amt.amount : null;
     var derived = !!(amt && amt.source === 'derived');
-    if (installBilled == null && subAmt == null) return '';
+    if (installBilled == null && subAmt == null) {
+      return '<span class="scw-acpt-col scw-acpt-col--labor"></span>';
+    }
     var lines = '';
     if (installBilled != null) {
       lines += line(esc(money(installBilled)), 'billed to client');
@@ -699,9 +718,7 @@
         (surveyCost != null ? ' and the survey cost' : '') +
         '. Target ' + LABOR_TARGET_PCT + '%.');
     }
-    return '<span class="scw-acpt-stat scw-acpt-stat--labor">' +
-      '<span class="scw-acpt-stat__lbl">Labor</span>' +
-      '<span class="scw-acpt-lines">' + lines + '</span></span>';
+    return '<span class="scw-acpt-col scw-acpt-col--labor">' + lines + '</span>';
   }
 
   /** The money for one acceptance row: { amount, source } or null.
@@ -988,107 +1005,74 @@
       '.scw-acpt-tally--left .scw-acpt-tally__cell { align-items: flex-start;',
       '  text-align: left; }',
       '.scw-acpt-tally--left .scw-acpt-tally__note { margin-right: 0; margin-left: auto; }',
-      // Two figures in the money column, deliberately unequal: the lead
-      // (what the client is billed) is the headline, what we pay the sub
-      // reads as its subordinate. Equal weight is what made the eye
-      // wander.
-      '.scw-acpt-total--lead .scw-acpt-total__val { font-size: 19px; }',
-      '.scw-acpt-total--sub { padding-top: 8px; border-top: 1px solid #eef2f7;',
-      '  width: 100%; }',
-      '.scw-acpt-total--sub .scw-acpt-total__val { font-size: 14px; color: #475569; }',
-      // Equipment/install breakdown under the billed figure — supporting
-      // detail, so small and muted.
-      '.scw-acpt-total__split { font: 600 10px/1.3 system-ui, sans-serif;',
-      '  color: #94a3b8; font-variant-numeric: tabular-nums; }',
-      // ── Three money columns: equipment | labor | project total ──
-      // Equipment and labor are different businesses — equipment is a
-      // margin on goods, labor is what we bill against what the sub
-      // charges. Stacking them hid the comparison; side by side, the eye
-      // reads DOWN a column across rows and the labor position is one
-      // glance.
-      '.scw-acpt-money--cols { flex-direction: row; align-items: flex-start;',
-      '  justify-content: flex-end; gap: 4px 22px; flex-wrap: wrap; }',
-      '.scw-acpt-stat { display: flex; flex-direction: column; gap: 3px;',
-      '  align-items: flex-end; text-align: right; }',
-      '.scw-acpt-stat__lbl { font: 700 9.5px/1 system-ui, sans-serif;',
+      // ── ONE money grid, shared by every band ─────────────
+      // The rows, the column header and the project footer all use the
+      // SAME fixed column widths, so every figure sits on the same axis by
+      // construction. min-width alignment (what this replaced) only lines
+      // up when the content happens to be the same width — -$454.00 and
+      // $11,735.00 are not, which is what made the edges rag.
+      '.scw-acpt-card { --acpt-equip: 112px; --acpt-num: 94px;',
+      '  --acpt-lbl: 98px; }',
+      '.scw-acpt-col { display: grid; grid-template-columns:',
+      '  var(--acpt-num) var(--acpt-lbl); gap: 2px 7px; align-items: baseline; }',
+      // Equipment is one figure, so it needs no label column of its own —
+      // it right-aligns in its width and the header names it.
+      '.scw-acpt-col--equip { display: block; text-align: right; }',
+      '.scw-acpt-col__val { color: #0f172a;',
+      '  font: 700 16px/1.2 system-ui, sans-serif;',
+      '  font-variant-numeric: tabular-nums; white-space: nowrap; }',
+      // ── Column header, stated once ───────────────────
+      // EQUIPMENT / LABOR sat on every row three times over. One header
+      // over the columns says it once, and LABOR lands over the FIGURES
+      // (not their names), which is where it was pointing wrong before.
+      '.scw-acpt-colhead { padding: 0 2px 6px; }',
+      '.scw-acpt-colhead__lbl { font: 700 9.5px/1 system-ui, sans-serif;',
       '  letter-spacing: .08em; text-transform: uppercase; color: #94a3b8;',
-      '  white-space: nowrap; }',
-      '.scw-acpt-stat__val { font: 700 16px/1.15 system-ui, sans-serif;',
-      '  color: #0f172a; font-variant-numeric: tabular-nums; white-space: nowrap; }',
-      // Derivation under a stat — the inputs that make it, muted so the
-      // figure above stays the headline.
-      '.scw-acpt-stat__sub { font: 600 10px/1.35 system-ui, sans-serif;',
-      '  color: #94a3b8; font-variant-numeric: tabular-nums; white-space: nowrap; }',
-      '.scw-acpt-stat__sub--help { cursor: help; border-bottom: 1px dotted #cbd5e1; }',
-      // A minimum width per column so the two line up ACROSS rows —
-      // without it each row self-sizes and the columns zig-zag.
-      '.scw-acpt-stat--equip { min-width: 96px; }',
-      '.scw-acpt-stat--labor { min-width: 188px; }',
-      // Labor\'s three lines: figures in one right-aligned column, their
-      // names beside them on the left. Reads as a small statement, and the
-      // numbers stack in a straight edge instead of ragging.
-      '.scw-acpt-lines { display: grid; grid-template-columns: auto auto;',
-      '  gap: 2px 7px; align-items: baseline; justify-content: end; }',
+      '  white-space: nowrap; text-align: right; }',
+      '.scw-acpt-colhead .scw-acpt-col--labor .scw-acpt-colhead__lbl:last-child {',
+      '  display: none; }',
+      // Labor\'s lines: figures in the number column, their names beside
+      // them. Same grid as the header, so they cannot drift.
       '.scw-acpt-line__val { text-align: right; color: #475569;',
       '  font: 700 13px/1.25 system-ui, sans-serif;',
       '  font-variant-numeric: tabular-nums; white-space: nowrap; }',
       '.scw-acpt-line__lbl { text-align: left; color: #94a3b8;',
       '  font: 600 10px/1.3 system-ui, sans-serif; white-space: nowrap; }',
-      // The percent is the answer — give it the weight and let the two
-      // figures above it read as the inputs they are.
-      '.scw-acpt-line__val--rate { font-size: 20px; }',
+      // The percent is the answer — give it the weight and let the figures
+      // above it read as the inputs they are.
+      '.scw-acpt-line__val--rate { font-size: 20px; cursor: help; }',
       '.scw-acpt-line__val--rate + .scw-acpt-line__lbl { font-size: 10.5px;',
       '  color: #64748b; }',
       '.scw-acpt-line__src { cursor: help; border-bottom: 1px dotted #cbd5e1; }',
-      // ── Labor margin vs target ─────────────────────────────────
-      // This one IS a verdict, unlike a change order\'s sign: a rate at or
-      // above target is on target, under it isn\'t. Green for on, AMBER for
-      // under (repo convention — amber warns, red is for errors and
-      // destructive actions).
+      // ── Labor margin vs target ───────────────────
+      // A verdict, unlike a change order\'s sign: at or above target is
+      // fine, under it isn\'t. Green for on, AMBER for under (repo
+      // convention — amber warns, red is errors and destructive actions).
       // Colour only; the figure keeps the type set above it.
       '.scw-acpt-gap--on    { color: #047857; }',
       '.scw-acpt-gap--under { color: #b45309; }',
-      '.scw-acpt-line__val--rate { cursor: help; }',
-      // ── Project footer: the same three columns, summed ──────────
-      // Sits directly under the rows and reuses their column widths, so
-      // the project figure lands beneath the per-row figures it sums.
-      // "Ahead or behind overall" is this band\'s labor column.
-      '.scw-acpt-foot { display: flex; align-items: flex-start; flex-wrap: wrap;',
-      '  justify-content: flex-end; gap: 4px 22px; margin-top: 4px;',
-      '  padding: 12px 2px 2px; border-top: 2px solid #e2e8f0; }',
-      '.scw-acpt-foot__cap { margin-right: auto; align-self: center;',
-      '  font: 700 10px/1 system-ui, sans-serif; letter-spacing: .1em;',
-      '  text-transform: uppercase; color: #475569; }',
-      '.scw-acpt-foot .scw-acpt-stat__val { font-size: 17px; }',
+      // ── Project footer ─────────────────────────
+      // Same grid as the rows, so each project figure lands directly under
+      // the per-row figures it sums — the point of a footer.
+      '.scw-acpt-foot { margin-top: 4px; padding: 12px 2px 2px;',
+      '  border-top: 2px solid #e2e8f0; }',
+      '.scw-acpt-foot__cap { font: 700 10px/1 system-ui, sans-serif;',
+      '  letter-spacing: .1em; text-transform: uppercase; color: #475569; }',
+      '.scw-acpt-foot .scw-acpt-col__val { font-size: 17px; }',
       '.scw-acpt-foot .scw-acpt-line__val--rate { font-size: 21px; }',
-      // The bid/CO tally follows the project band — one heavy rule per
-      // footer, so the second band separates with a hairline.
-      '.scw-acpt-foot + .scw-acpt-tally { margin-top: 0; padding-top: 10px;',
-      '  border-top: 1px solid #eef2f7; }',
-      '@media (max-width: 760px) {',
-      '  .scw-acpt-foot { flex-direction: column; align-items: flex-start; gap: 8px; }',
-      '  .scw-acpt-foot__cap { margin-right: 0; }',
-      '}',
-      // Narrow: let the money column drop under the identity instead of
-      // squeezing both.
-      // Narrow: the money column has dropped below the identity (grid
-      // areas above), so every figure left-aligns with the text instead of
-      // hanging off a right edge that no longer exists. The tally follows.
-      '@media (max-width: 760px) {',
-      '  .scw-acpt-money { align-items: flex-start; }',
-      '  .scw-acpt-total, .scw-acpt-tally__cell { align-items: flex-start; text-align: left; }',
-      '  .scw-acpt-tally { justify-content: flex-start; }',
-      '  .scw-acpt-tally__note { margin-right: 0; width: 100%; }',
-      // Three columns don\'t fit a phone: they become three stacked stats,
-      // left-aligned with the identity text above them. The min-widths go
-      // — they exist to align columns that no longer exist here.
-      '  .scw-acpt-money--cols { flex-direction: column; align-items: flex-start;',
-      '    gap: 8px; }',
-      '  .scw-acpt-stat { align-items: flex-start; text-align: left; }',
-      '  .scw-acpt-stat--equip, .scw-acpt-stat--labor { min-width: 0; }',
-      '  .scw-acpt-lines { justify-content: start; }',
-      '  .scw-acpt-line__val { text-align: left; }',
-      '}',
+      // The bid + change-order split rides in the footer\'s identity cell,
+      // beside the word PROJECT. It used to be a third band with its own
+      // layout, whose Total poked past every other right edge — and that
+      // Total is the same figure as the project\'s "billed by sub" one
+      // column over. As a line under PROJECT it EXPLAINS that figure
+      // instead of competing with it.
+      '.scw-acpt-split { display: flex; flex-wrap: wrap; align-items: baseline;',
+      '  gap: 2px 5px; margin-top: 5px;',
+      '  font: 600 10.5px/1.45 system-ui, sans-serif; color: #94a3b8;',
+      '  font-variant-numeric: tabular-nums; }',
+      '.scw-acpt-split__n { font-weight: 700; color: #64748b; }',
+      '.scw-acpt-split__op { color: #cbd5e1; }',
+      '.scw-acpt-split__note { cursor: help; border-bottom: 1px dotted #cbd5e1; }',
       // ── Ops row: GRID, not a wrapping flex line ────────────────
       // As flex with margin-left:auto on the actions, the tile cluster
       // wrapped to its own line but stayed pinned right, leaving a void
@@ -1105,19 +1089,37 @@
       // continues the same axis. Documents sit on their own band under a
       // hairline: they're a checklist, not the headline, and five tiles
       // beside the title was what made the row read as noise.
-      '.scw-acpt-row { display: grid; align-items: start;',
-      '  grid-template-columns: minmax(0, 1fr) auto;',
-      '  grid-template-areas: "id money" "actions actions";',
-      '  column-gap: 32px; row-gap: 12px; padding: 16px 2px; }',
-      '.scw-acpt-row > .scw-acpt-id      { grid-area: id; }',
-      '.scw-acpt-row > .scw-acpt-money   { grid-area: money; }',
-      '.scw-acpt-row > .scw-acpt-actions { grid-area: actions;',
-      '  border-top: 1px dashed #eef2f7; padding-top: 12px; }',
+      // THE grid: identity takes what\'s left, the two money columns are
+      // fixed. Declared identically on the row, the column header and the
+      // footer — that shared template is what puts every figure on one
+      // axis, header included.
+      '.scw-acpt-row, .scw-acpt-colhead, .scw-acpt-foot {',
+      '  display: grid; align-items: start;',
+      '  grid-template-columns: minmax(0, 1fr) var(--acpt-equip)',
+      '    calc(var(--acpt-num) + var(--acpt-lbl) + 7px);',
+      '  grid-template-areas: "id equip labor" "docs docs docs";',
+      '  column-gap: 26px; }',
+      '.scw-acpt-row { row-gap: 10px; padding: 16px 2px; }',
+      '.scw-acpt-row > .scw-acpt-id { grid-area: id; }',
+      '.scw-acpt-col--equip { grid-area: equip; }',
+      '.scw-acpt-col--labor { grid-area: labor; }',
+      '.scw-acpt-row > .scw-acpt-actions { grid-area: docs; }',
       '@media (max-width: 860px) {',
-      '  .scw-acpt-row { grid-template-columns: minmax(0, 1fr);',
-      '    grid-template-areas: "id" "money" "actions"; }',
-      '  .scw-acpt-row .scw-acpt-total { align-items: flex-start; text-align: left; }',
-      '  .scw-acpt-row .scw-acpt-money { align-items: flex-start; }',
+      '  .scw-acpt-row, .scw-acpt-colhead, .scw-acpt-foot {',
+      '    grid-template-columns: minmax(0, 1fr);',
+      '    grid-template-areas: "id" "equip" "labor" "docs"; }',
+      // Stacked, there is no right edge to hang from and no header above
+      // the columns, so each figure left-aligns and names itself again.
+      '  .scw-acpt-colhead { display: none; }',
+      '  .scw-acpt-col--equip { text-align: left; }',
+      '  .scw-acpt-col { grid-template-columns: auto auto; justify-content: start; }',
+      '  .scw-acpt-line__val { text-align: left; }',
+      '  .scw-acpt-col--equip::before, .scw-acpt-col--labor::before {',
+      '    display: block; font: 700 9.5px/1 system-ui, sans-serif;',
+      '    letter-spacing: .08em; text-transform: uppercase; color: #94a3b8;',
+      '    margin-bottom: 3px; }',
+      '  .scw-acpt-col--equip::before { content: "Equipment"; }',
+      '  .scw-acpt-col--labor::before { content: "Labor"; grid-column: 1 / -1; }',
       '}',
       '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #e2e8f0; }',
       // The identity column: base SOW numbers (SW1145) are shorter than CO
@@ -1146,6 +1148,32 @@
       '@media (min-width: 1600px) {',
       '  .scw-acpt-row .scw-acpt-actions { justify-content: flex-end; }',
       '}',
+      // ── Paperwork disclosure ──────────────────────
+      // The tiles are the tall half of a row and they repeat identically
+      // down the card, so on a project with a dozen acceptances they bury
+      // the money. Collapsing THEM (not the acceptance) keeps the figures
+      // and the signature state on screen for every row — the reason the
+      // card exists — and puts the checklist one click away.
+      '.scw-acpt-docs { grid-area: docs; }',
+      '.scw-acpt-docs__btn { display: inline-flex; align-items: center; gap: 6px;',
+      '  padding: 4px 8px 4px 4px; margin-left: -4px; background: none;',
+      '  border: 0; border-radius: 6px; cursor: pointer; color: #64748b;',
+      '  font: 700 9.5px/1 system-ui, sans-serif; letter-spacing: .08em;',
+      '  text-transform: uppercase; }',
+      '.scw-acpt-docs__btn:hover { background: #f1f5f9; color: #334155; }',
+      '.scw-acpt-docs__chev { display: inline-flex; transition: transform .15s ease; }',
+      '.scw-acpt-docs.is-open > .scw-acpt-docs__btn .scw-acpt-docs__chev {',
+      '  transform: rotate(90deg); }',
+      // A count of what is still outstanding, so a collapsed band still
+      // says whether it needs opening.
+      '.scw-acpt-docs__n { padding: 1px 6px; border-radius: 999px;',
+      '  background: #f1f5f9; border: 1px solid #e2e8f0; color: #64748b;',
+      '  font: 700 9.5px/1.4 system-ui, sans-serif; letter-spacing: 0; }',
+      '.scw-acpt-docs__n--todo { background: #fffbeb; border-color: #fde68a;',
+      '  color: #b45309; }',
+      '.scw-acpt-docs > .scw-acpt-actions { display: none;',
+      '  border-top: 1px dashed #eef2f7; padding-top: 12px; margin-top: 8px; }',
+      '.scw-acpt-docs.is-open > .scw-acpt-actions { display: flex; }',
       '.scw-acpt-row .scw-acpt-btn { padding: 6px 12px; font-size: 11.5px; }',
       // Own mini-modal (link editor / upload progress).
       '.scw-acpt-m-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.55);',
@@ -1903,32 +1931,43 @@
           pill(signed ? 'Agreement signed' : 'Agreement not signed', signed) +
         '</div>' +
       '</div>' +
-      // THREE money columns — equipment, labor, total — so the eye reads
-      // down a column across rows. Equipment is a margin on goods; labor
-      // is what we bill against what the sub charges, and that comparison
-      // is the whole reason the column exists.
+      // Two money columns, straight into the row\'s own grid tracks — no
+      // wrapper. A wrapper would size itself to its content and the
+      // columns would drift row to row; as grid children they inherit the
+      // card\'s fixed tracks, which is what holds the axis.
       (billed
-        ? '<div class="scw-acpt-money scw-acpt-money--cols">' +
-            stat('Equipment', billed.equip != null ? money(billed.equip) : '', '',
-                 'scw-acpt-stat--equip') +
-            // No total column: it's exactly equipment + labor billed,
-            // both of which are right here.
-            laborStat(billed.install, amt, svyCost) +
-          '</div>'
+        ? equipCell(billed.equip != null ? money(billed.equip) : '') +
+          // No total column: it\'s exactly equipment + labor billed, both
+          // of which are right here.
+          laborStat(billed.install, amt, svyCost)
         // No billed columns on the view: nothing to compare against, so
-        // the row keeps its single figure — what we pay the sub.
-        : '<div class="scw-acpt-money">' +
+        // the row keeps its single figure — what we pay the sub. It sits
+        // in the labor track, since that is what it measures.
+        : equipCell('') +
+          '<span class="scw-acpt-col scw-acpt-col--labor">' +
             (total
-              ? '<div class="scw-acpt-total scw-acpt-total--lead">' +
-                  '<span class="scw-acpt-total__lbl">' + esc(totalLbl) + '</span>' +
-                  '<span class="scw-acpt-total__val">' + esc(total) + '</span>' +
-                  (amt.source === 'derived'
-                    ? '<span class="scw-acpt-total__src" title="' + esc(DERIVED_NOTE) + '">' +
-                        'from line items</span>'
-                    : '') +
-                '</div>'
+              ? line(esc(total), esc(totalLbl).toLowerCase()) +
+                (amt.source === 'derived'
+                  ? line('', '<span class="scw-acpt-line__src" title="' +
+                      esc(DERIVED_NOTE) + '">from line items</span>')
+                  : '')
               : '') +
-          '</div>') +
+          '</span>') +
+      // Paperwork behind a disclosure: identity + money stay on screen for
+      // every row, the checklist is one click away. The badge counts what
+      // is still outstanding so a CLOSED band still tells you whether it
+      // needs opening.
+      '<div class="scw-acpt-docs" data-scw-acpt-docs="1">' +
+        '<button type="button" class="scw-acpt-docs__btn" data-scw-acpt-docs-toggle="1" ' +
+          'aria-expanded="false">' +
+          '<span class="scw-acpt-docs__chev">' +
+            '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" ' +
+            'stroke="currentColor" stroke-width="2.6" stroke-linecap="round" ' +
+            'stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>' +
+          '</span>' +
+          '<span>Paperwork</span>' +
+          '<span class="scw-acpt-docs__n" data-scw-acpt-docs-n="1"></span>' +
+        '</button>' +
       '<div class="scw-acpt-actions">' +
         // Two captioned mirror pairs: the signed agreement with its
         // invoice, and the bid basis PDF with its Xero estimate. The
@@ -1965,11 +2004,35 @@
             'title="Check whether this deal is ready to greenlight for install">Check greenlight</button>'
           : '') +
         (actionA ? '<button type="button" class="scw-acpt-btn scw-acpt-btn--primary" data-proxy="action">Create Questionnaire</button>' : '') +
-      '</div>';
+      '</div></div>';
 
     var card = document.createElement('div');
     card.className = 'scw-acpt-row';
     card.innerHTML = html;
+
+    // Paperwork badge, counted off the slots that actually rendered a
+    // placeholder — reading the DOM can't drift from what's on screen the
+    // way a parallel tally of the same conditions would.
+    var docsBox = card.querySelector('[data-scw-acpt-docs]');
+    var docsN   = card.querySelector('[data-scw-acpt-docs-n]');
+    if (docsBox && docsN) {
+      var missing = docsBox.querySelectorAll('.scw-acpt-doc--missing').length;
+      docsN.textContent = missing ? (missing + ' missing') : 'all on file';
+      docsN.classList.toggle('scw-acpt-docs__n--todo', missing > 0);
+      var docsBtn = card.querySelector('[data-scw-acpt-docs-toggle]');
+      if (docsBtn) {
+        docsBtn.addEventListener('click', function () {
+          var open = !docsBox.classList.contains('is-open');
+          docsBox.classList.toggle('is-open', open);
+          docsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          setDocsOpen(viewKey, open);
+        });
+      }
+      if (docsOpen(viewKey)) {
+        docsBox.classList.add('is-open');
+        if (docsBtn) docsBtn.setAttribute('aria-expanded', 'true');
+      }
+    }
 
     var actBtn = card.querySelector('[data-proxy="action"]');
     if (actBtn && actionA) actBtn.addEventListener('click', function () { actionA.click(); });
@@ -2188,17 +2251,63 @@
         svy = (svy == null ? 0 : svy) + e.survey;
       }
     }
-    if (billedRows < 2) return null;
+    // The footer earns its place when it SUMS something — two or more
+    // billed rows — or when there's a base-vs-CO split to explain. A view
+    // with no billed columns still has the split, which is the whole
+    // footer in that case.
+    var split = splitLine(entries);
+    if (billedRows < 2 && !split) return null;
     var el = document.createElement('div');
     el.className = 'scw-acpt-foot';
     el.innerHTML =
-      '<span class="scw-acpt-foot__cap">Project</span>' +
-      stat('Equipment', eq != null ? money(eq) : '', '', 'scw-acpt-stat--equip') +
+      '<span class="scw-acpt-id">' +
+        '<span class="scw-acpt-foot__cap">' +
+          (billedRows < 2 ? 'Project total' : 'Project') + '</span>' +
+        split +
+      '</span>' +
+      equipCell(eq != null ? money(eq) : '') +
       laborStat(inst, sub == null ? null : { amount: sub,
         source: derived ? 'derived' : 'quoted' }, svy);
     return el;
   }
 
+  /** The base-scope + change-order split, as a line under PROJECT. It
+   *  explains the project's "billed by sub" figure one column over — which
+   *  is the same number as this line's total — rather than restating it in
+   *  a band of its own. Only when there IS a change order and a base figure
+   *  to add it to: with one base row the row's own figure already says it,
+   *  and a total that quietly omits an unknown base is worse than none. */
+  function splitLine(entries) {
+    var base = 0, baseN = 0, co = 0, coN = 0, derived = false;
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      if (e.amount == null) continue;
+      if (e.source === 'derived') derived = true;
+      if (e.isCo) { co += e.amount; coN++; }
+      else { base += e.amount; baseN++; }
+    }
+    if (!coN || !baseN) return '';
+    function n(v) { return '<span class="scw-acpt-split__n">' + esc(v) + '</span>'; }
+    function op(v) { return '<span class="scw-acpt-split__op">' + v + '</span>'; }
+    return '<span class="scw-acpt-split">' +
+      n(money(base)) + '<span>' + (baseN > 1 ? 'original bids' : 'original bid') + '</span>' +
+      op('+') +
+      // Signed, not coloured: the sign says which way the scope moved and
+      // that's all it means.
+      n((co > 0 ? '+' : '') + money(co)) +
+      '<span>' + (coN > 1 ? coN + ' change orders' : 'change order') + '</span>' +
+      op('=') + n(money(base + co)) + '<span>to sub</span>' +
+      (derived
+        ? op('\u00b7') + '<span class="scw-acpt-split__note" title="' +
+            esc(DERIVED_NOTE) + '">includes line-item sums</span>'
+        : '') +
+      '</span>';
+  }
+
+  /** SUB CARD ONLY — the running tally band. The sub card keeps its
+   *  single-figure money column (it never sees equipment or the billed
+   *  side), so the ops card's folded split line has nothing to attach to
+   *  here; this stays its own band. */
   function buildTally(entries) {
     var base = 0, baseN = 0, co = 0, coN = 0, derived = false;
     for (var i = 0; i < entries.length; i++) {
@@ -2224,8 +2333,6 @@
         : '') +
       cell(baseN > 1 ? 'Original bids' : 'Original bid', money(base)) +
       '<span class="scw-acpt-tally__op" aria-hidden="true">+</span>' +
-      // Signed, not coloured: the sign says which way the scope moved and
-      // that's all it means.
       cell(coN > 1 ? coN + ' change orders' : 'Change order',
            (co > 0 ? '+' : '') + money(co)) +
       '<span class="scw-acpt-tally__op" aria-hidden="true">=</span>' +
@@ -2375,18 +2482,35 @@
       built.push(made);
       card.appendChild(made.el);
     }
-    // Running tally — the same footer the sub sees, so the two surfaces
-    // show one story. Left-aligned here: this card's right edge is action
-    // buttons, and flush-right numbers would read as part of that cluster.
-    // Right-aligned like the sub card's, so every figure on this card —
-    // footer included — sits on the same money axis.
-    // Project money first (the three columns summed), then the sub-side
-    // bid + change-order tally that explains where its labor figure came
-    // from.
+    // Column header, once, and only when a row actually rendered billed
+    // money — the keys in F are always set, so THEY can't answer whether
+    // the columns are on this view; the built rows can. EQUIPMENT / LABOR
+    // used to repeat on every row, with LABOR sitting over the figures'
+    // NAMES instead of the figures. Sharing the rows' grid puts each
+    // label on the column it names.
+    var anyBilled = false;
+    for (var bi = 0; bi < built.length; bi++) {
+      if (built[bi].billed) { anyBilled = true; break; }
+    }
+    if (anyBilled) {
+      var head = document.createElement('div');
+      head.className = 'scw-acpt-colhead';
+      head.innerHTML =
+        '<span></span>' +
+        '<span class="scw-acpt-col scw-acpt-col--equip">' +
+          '<span class="scw-acpt-colhead__lbl">Equipment</span></span>' +
+        '<span class="scw-acpt-col scw-acpt-col--labor">' +
+          '<span class="scw-acpt-colhead__lbl">Labor</span>' +
+          '<span class="scw-acpt-colhead__lbl"></span></span>';
+      card.insertBefore(head, built[0].el);
+    }
+
+    // Project footer: the same two columns summed, with the bid +
+    // change-order split folded into its identity cell. One band, one
+    // grid, one right edge — the separate tally band used to end further
+    // right than every figure above it.
     var projMoney = buildProjectMoney(built);
     if (projMoney) card.appendChild(projMoney);
-    var opsTally = buildTally(built);
-    if (opsTally) card.appendChild(opsTally);
     viewEl.appendChild(card);
 
     // Rollup badge in the accordion header bar — visible without
