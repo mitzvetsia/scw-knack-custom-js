@@ -5,8 +5,8 @@
 :root{
   --page:#f7f7f4; --surface:#fcfcfb; --surface2:#f1f1ed; --ink:#131311; --ink2:#52514e; --muted:#898781;
   --grid:#e3e2db; --baseline:#c3c2b7; --border:rgba(11,11,11,.10); --border2:rgba(11,11,11,.16);
-  --modest:#2a78d6; --stretch:#eb6834; --aqua:#1baf7a;
-  --modest-soft:rgba(42,120,214,.10); --stretch-soft:rgba(235,104,52,.10); --aqua-soft:rgba(27,175,122,.12);
+  --modest:#2a78d6; --stretch:#166534; --booked:#57534e;
+  --modest-soft:rgba(42,120,214,.10); --stretch-soft:rgba(22,101,52,.10); --booked-soft:rgba(87,83,78,.12);
   --good:#0ca30c; --good-text:#006300; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
   --chip-good:rgba(12,163,12,.12); --chip-warn:rgba(250,178,25,.16); --chip-serious:rgba(236,131,90,.16);
   --chip-crit:rgba(208,59,59,.13); --chip-neutral:rgba(11,11,11,.06); --chip-new:rgba(42,120,214,.12);
@@ -17,8 +17,8 @@
   :root:not([data-theme="light"]){
     --page:#0d0d0c; --surface:#1a1a19; --surface2:#232322; --ink:#f4f4f1; --ink2:#c3c2b7; --muted:#8b8a84;
     --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10); --border2:rgba(255,255,255,.18);
-    --modest:#3987e5; --stretch:#d95926; --aqua:#199e70;
-    --modest-soft:rgba(57,135,229,.16); --stretch-soft:rgba(217,89,38,.16); --aqua-soft:rgba(25,158,112,.18);
+    --modest:#3987e5; --stretch:#2f9e44; --booked:#a8a29e;
+    --modest-soft:rgba(57,135,229,.16); --stretch-soft:rgba(47,158,68,.16); --booked-soft:rgba(168,162,158,.18);
     --good:#0ca30c; --good-text:#0ca30c;
     --chip-good:rgba(12,163,12,.18); --chip-warn:rgba(250,178,25,.16); --chip-serious:rgba(236,131,90,.18);
     --chip-crit:rgba(208,59,59,.22); --chip-neutral:rgba(255,255,255,.08); --chip-new:rgba(57,135,229,.2);
@@ -29,8 +29,8 @@
 :root[data-theme="dark"]{
   --page:#0d0d0c; --surface:#1a1a19; --surface2:#232322; --ink:#f4f4f1; --ink2:#c3c2b7; --muted:#8b8a84;
   --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10); --border2:rgba(255,255,255,.18);
-  --modest:#3987e5; --stretch:#d95926; --aqua:#199e70;
-  --modest-soft:rgba(57,135,229,.16); --stretch-soft:rgba(217,89,38,.16); --aqua-soft:rgba(25,158,112,.18);
+  --modest:#3987e5; --stretch:#2f9e44; --booked:#a8a29e;
+  --modest-soft:rgba(57,135,229,.16); --stretch-soft:rgba(47,158,68,.16); --booked-soft:rgba(168,162,158,.18);
   --modest:#3987e5; --good:#0ca30c; --good-text:#0ca30c;
   --chip-good:rgba(12,163,12,.18); --chip-warn:rgba(250,178,25,.16); --chip-serious:rgba(236,131,90,.18);
   --chip-crit:rgba(208,59,59,.22); --chip-neutral:rgba(255,255,255,.08); --chip-new:rgba(57,135,229,.2);
@@ -555,9 +555,18 @@ const GOAL_I = Math.max(0, CYCLES.findIndex(c => c[0] >= ACT));
 const GOAL = CYCLES[GOAL_I] || CYCLES[CYCLES.length - 1];
 const PREV = CYCLES[GOAL_I - 1] || CYCLES[0];
 // Every period the summaries can total: the cycles, each COMPLETE calendar year, then the quarters.
+/* Every calendar year the window touches. A year the window only partly covers still earns a
+   column — "what does 2027 look like" is a question the plan should answer — but its label says
+   which months it actually holds, so nine months are never read as a year. */
 const YEARS = (() => {
   const out = [];
-  for (let s = 0; s + 12 <= NM; s++) if (mOf(s) === 0) out.push([s, s + 12, "CY " + yOf(s), "Jan\u2013Dec " + String(yOf(s)).slice(2)]);
+  for (let i = 0; i < NM; i++){
+    if (mOf(i) !== 0 && i !== 0) continue;                 // each January, plus the opening month
+    const y = yOf(i), end = Math.min(NM, i + 12 - mOf(i));
+    const whole = (end - i) === 12;
+    out.push([i, end, "CY " + y, whole ? "Jan\u2013Dec " + String(y).slice(2)
+      : MON3[mOf(i)] + "\u2013" + MON3[mOf(end - 1)] + " " + String(y).slice(2) + " \u00b7 " + (end - i) + " of 12 mo"]);
+  }
   return out;
 })();
 const PERIODS = QTRS.map(q => [q[0], q[1], q[2], q[3]])
@@ -1909,7 +1918,7 @@ function niceTicks(lo, hi, n = 4, keep){
 }
 /* series: [{name, color(css var), vals[12], kind:"line"|"bar", dash}] */
 function monthChart(el, series, opts = {}){
-  const W = opts.w || 640, H = opts.h || 250, mL = 52, mR = 12, mT = 20, mB = 26;
+  const W = opts.w || 640, H = opts.h || 250, mL = 52, mR = 12, mT = 20, mB = 36;
   const iw = W - mL - mR, ih = H - mT - mB;
   const all = series.flatMap(s => s.vals).concat(opts.extraLines ? opts.extraLines.map(l => l.v) : []).filter(v => v != null);
   const lo0 = opts.zero === false ? Math.min(...all) * 0.92 : Math.min(0, ...all);
@@ -1921,7 +1930,11 @@ function monthChart(el, series, opts = {}){
   let g = "";
   for (const t of ticks) g += `<line x1="${mL}" x2="${W - mR}" y1="${y(t)}" y2="${y(t)}" stroke="var(${t === 0 ? "--baseline" : "--grid"})" stroke-width="1"/>` +
     `<text x="${mL - 7}" y="${y(t) + 3.5}" text-anchor="end" font-size="10" fill="var(--muted)" style="font-variant-numeric:tabular-nums">${fmtK(t)}</text>`;
-  for (let i = 0; i < NM; i++) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${MONTHS[i]}</text>`;
+  // the axis names the month bare and pins the year on each January, the same way the table headers
+  // do — carrying the year on every month collides once the window spans more than a year
+  for (let i = 0; i < NM; i++)
+    g += `<text x="${x(i)}" y="${H - 19}" text-anchor="middle" font-size="10" fill="var(--muted)">${MON3[mOf(i)]}</text>` +
+      ((i === 0 || mOf(i) === 0) ? `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--muted)">${yy(i)}</text>` : "");
   if (opts.band){
     // the goal cycle, tinted behind the months it covers, captioned once
     const bx = mL + bandW * opts.band[0], bw2 = bandW * (opts.band[1] - opts.band[0]);
@@ -2045,14 +2058,14 @@ function renderProj(C){
   const actOnly = a => a.map((v, i) => i < ACT ? v : null);
   const projOnly = a => a.map((v, i) => i < ACT ? null : v);
   monthChart(document.getElementById("chartNet"),
-    [{name:"Actual (booked)", color:"--aqua", vals:actOnly(C.net.mod), kind:"bar"},
+    [{name:"Actual (booked)", color:"--booked", vals:actOnly(C.net.mod), kind:"bar"},
      {name:"Net — modest", color:"--modest", vals:projOnly(C.net.mod), kind:"bar"},
      {name:"Net — stretch", color:"--stretch", vals:projOnly(C.net.str), kind:"bar"}],
     {aria:"Monthly net profit: booked, then modest vs stretch", band:[GOAL[0], GOAL[1]]});
   const cum = a => a.reduce((acc, v) => (acc.push((acc.at(-1) || 0) + v), acc), []);
   const cm = cum(C.net.mod), cs = cum(C.net.str);
   monthChart(document.getElementById("chartCum"),
-    [{name:"Actual (booked)", color:"--aqua", vals:cm.map((v, i) => i < ACT ? v : null)},
+    [{name:"Actual (booked)", color:"--booked", vals:cm.map((v, i) => i < ACT ? v : null)},
      {name:"Cumulative — modest", color:"--modest", vals:cm.map((v, i) => i >= ACT - 1 ? v : null)},
      {name:"Cumulative — stretch", color:"--stretch", vals:cs.map((v, i) => i >= ACT - 1 ? v : null)}],
     {aria:"Cumulative net profit", band:[GOAL[0], GOAL[1]]});
@@ -2460,7 +2473,6 @@ function renderGoals(C){
           <span class="a">opex hedge <b>${(L.opexHedge * 100).toFixed(1)}%</b></span>
           <span class="a">${esc(monthName(NM))} run-rate <b>${fmtK(C.staffTotal[NM - 1])}</b> payroll + <b>${fmtK(C.opex[NM - 1])}</b> opex</span>
         </div>
-        <div class="plan-sub" style="margin-top:8px"><b>${esc(PREV[3])} · ${esc(PREV[2])}</b> <span class="subtle">(${p.booked} booked + ${p.modeled} modeled):</span> ${fmtK(p.revM)} / ${fmtK(p.revS)} vs ${fmtK(p.tgtM)} target ${pill(p.revM, p.tgtM)} / ${pill(p.revS, p.tgtS)} · break-even ${fmtK(p.be)} · net ${fmtK(p.netM)} as booked, ${fmtK(p.allM)} with programs</div>
       </div>
     </div>`;
   /* A target per cycle, and two of them: what the plan commits to and what it reaches for. Blank
@@ -2500,7 +2512,7 @@ function renderSales(C){
   const L = S.levers;
   const cycBe = CYCLES.map(c => C.be.slice(c[0], c[1]).reduce((a, b) => a + b, 0) / (c[1] - c[0]));
   monthChart(document.getElementById("chartTeam"),
-    [{name:"Booked revenue", color:"--aqua", vals:MODEL.totals.revenue.slice(0, ACT)},
+    [{name:"Booked revenue", color:"--booked", vals:MODEL.totals.revenue.slice(0, ACT)},
      {name:"Team revenue — modest", color:"--modest", vals:C.team.mod},
      {name:"Team revenue — stretch", color:"--stretch", vals:C.team.str}],
     {aria:"Team revenue by month vs booked, target and break-even", divider:true, w:1400, zero:false,
@@ -2768,7 +2780,7 @@ function renderStaff(C){
   // base pay only, to match the staffing model (which carries no commissions)
   const booked = MODEL.totals.payroll.map((v, i) => i < ACT ? v - varcompOf(i + 1) : null);
   monthChart(document.getElementById("chartPayroll"),
-    [{name:"Booked base payroll (Xero, less commissions)", color:"--aqua", vals:booked.concat().slice(0, 12), kind:"bar"},
+    [{name:"Booked base payroll (Xero, less commissions)", color:"--booked", vals:booked.concat().slice(0, 12), kind:"bar"},
      {name:"Staffing model", color:"--violet", vals:C.staffTotal}],
     {aria:"Payroll model vs booked", divider:true, w:1400});
 
