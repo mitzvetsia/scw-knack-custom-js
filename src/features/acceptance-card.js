@@ -92,9 +92,18 @@
     // priced it. Two shapes arrive here and both are handled:
     //   · base scope — the SOW's sub-bid diff blob (basisBidName +
     //     basisTotal, or the "Sub Bid Total" inside bidHtml)
-    //   · change order — the CO sub-pricing snapshot Make stored when the
-    //     CO went to the sub: { sentAt, sentBy, lines{ id: {qty, subBid,
-    //     action, …} } }. Its total is Σ(qty × subBid) — field_2150 is
+    //   · change order — a CO sub-pricing snapshot: { sentAt, sentBy,
+    //     lines{ id: {qty, subBid, action, …} } }.
+    //     ⚠ PROVENANCE (corrected 2026-09-15): the canonical home of this
+    //     blob is field_2972 on the CO SOW HEADER, written by
+    //     co-stage-strip.js when the CO goes to the sub — a
+    //     development-time artifact for managing that back-and-forth
+    //     ("the fixed record of WHAT WAS REQUESTED"), NOT the published
+    //     CO's record. A published CO is a proposal and carries the same
+    //     frozen basis fields as any other (field_2960/2944/2945/2959);
+    //     when those are populated the card reads THEM and this path is
+    //     just a fallback for COs published before they were.
+    //     Its total is Σ(qty × subBid) — field_2150 is
     //     PER-UNIT and a Remove line carries negative qty, so a CO total
     //     is signed (a net credit reads negative). Same formula the
     //     send-to-sub document uses (co-stage-strip buildRequestDoc).
@@ -109,6 +118,26 @@
     // ONLY the acceptance-side keys for exactly that reason.
     snapshot:  'field_2946',
     snapshotProp: 'field_2959',  // read-only: lives on the proposal
+    // ── RUNG 4: basis asserted AFTER signature ───────────────────
+    // For the legitimate case the stamp cannot serve: the proposal was
+    // published without a bid attached, and ops identifies the real basis
+    // later. That is a correction to the record, so it is recorded AS a
+    // correction rather than written over the stamp — an audit trail that
+    // permits no amendments just pushes people to overwrite the original,
+    // which is the actual chain-of-custody disaster.
+    //
+    // Two fields, because a PDF alone carries no attribution and, sitting
+    // in a tile, looks identical to the genuinely-stamped basis:
+    //   assertedPdf  — file. The document someone is now pointing at.
+    //   assertedJson — paragraph. { assertedAt, assertedBy: {id, name,
+    //                  email}, bidName, why } — same sentAt/sentBy shape
+    //                  co-stage-strip already uses.
+    // NEVER read by signedBasisTotal: an assertion is weaker than a stamp
+    // by construction, and letting it seal the record would launder a
+    // retroactive claim into the chain of custody.
+    // ⚠ Builder TBD — blank ships the feature off; nothing renders.
+    assertedPdf:  '',
+    assertedJson: '',
     // ── Ops: the frozen bid, carried on the PROPOSAL ─────────────
     // These come through the proposal connection (field_2755-field_29xx)
     // and are the STRONGEST source there is — the bid document as it was
@@ -814,10 +843,18 @@
    *
    *  So the stamp is not a second source; it is a SEAL on the first. In
    *  the happy path the two agree and the card says nothing (the figure
-   *  just carries a tooltip saying it was checked). When they disagree,
-   *  the proposal moved after the client signed — the exact class of
-   *  drift that goes unnoticed until someone is on site — so that gets an
-   *  amber tag and the signed figure alongside the current one.
+   *  just carries a tooltip saying it was checked).
+   *
+   *  WHAT DIVERGENCE MEANS (corrected 2026-09-15): published proposals
+   *  are NEVER rewritten in place — a revision mints a NEW proposal
+   *  record — so field_2944 cannot change under a signed acceptance. The
+   *  remaining mutation is the CONNECTION: field_2755 being re-pointed at
+   *  a different proposal after signature. That is a silent single-click
+   *  change with no audit trail of its own, and it is exactly the
+   *  after-the-fact re-basing ops legitimately wants to do, so it needs
+   *  to be visible rather than forbidden. The warning therefore states
+   *  the OBSERVATION (this isn't the bid that was signed) and leaves the
+   *  cause to the tooltip.
    *
    *  Fails open: no comparison unless BOTH sides resolve, so a view
    *  missing either column warns about nothing. */
@@ -870,12 +907,60 @@
   }
   var VERIFIED_NOTE = 'Checked: matches the bid basis stamped on this ' +
     'acceptance when the agreement was signed.';
+  /** RUNG 4 — the after-the-fact assertion, or null. Fails open on a
+   *  blank/unparseable blob: a PDF with no attribution beside it renders
+   *  as an assertion with an unknown author, never as a stamp. */
+  function readAsserted(viewKey, row) {
+    var pdf = F.assertedPdf
+      ? (cellAnchor(row, F.assertedPdf, 'a.kn-view-asset') ||
+         cellAnchor(row, F.assertedPdf))
+      : null;
+    var meta = null;
+    if (F.assertedJson) {
+      var attrs = rowAttrs(viewKey, row.id);
+      var blob = parseLooseJson(
+        (attrs && (attrs[F.assertedJson] != null
+          ? attrs[F.assertedJson] : attrs[F.assertedJson + '_raw'])) ||
+        cellText(row, F.assertedJson));
+      if (blob && typeof blob === 'object' && !Array.isArray(blob) &&
+          (blob.assertedAt || blob.assertedBy || blob.why || blob.bidName)) {
+        meta = blob;
+      }
+    }
+    if (!pdf && !meta) return null;
+    var by = meta && meta.assertedBy;
+    return {
+      pdf:  pdf,
+      href: pdf ? (pdf.getAttribute('href') || '') : '',
+      name: pdf ? (pdf.getAttribute('data-file-name') ||
+                   (pdf.textContent || '').replace(/\s+/g, ' ').trim()) : '',
+      when: shortDate(meta && meta.assertedAt),
+      who:  String((by && (by.name || by.email)) || (typeof by === 'string' ? by : '')).trim(),
+      why:  String((meta && meta.why) || '').trim(),
+      bid:  String((meta && meta.bidName) || '').trim()
+    };
+  }
+  function assertedNote(a) {
+    // The realistic trigger is an OFFLINE basis: the bid was emailed or
+    // quoted directly and never recorded as a bid, so there is no record
+    // to point at and the attached document IS the basis. Hence a file +
+    // attribution rather than a connection to a bid.
+    return 'Recorded AFTER the agreement was signed' +
+      (a.bid ? ' as ' + a.bid : '') + ', so it is not part of what the ' +
+      'client signed against \u2014 but where the bid never entered the ' +
+      'system, this document is the basis of record. ' +
+      (a.who ? 'Asserted by ' + a.who : 'Author not recorded') +
+      (a.when ? ' on ' + a.when : '') + '.' +
+      (a.why ? ' Reason: ' + a.why : ' No reason recorded.');
+  }
   function driftNote(d) {
-    return 'The proposal’s bid basis now totals ' + money(d.proposal) +
-      ', but ' + money(d.signed) + ' was stamped on this acceptance at ' +
-      'signature — a difference of ' + money(Math.abs(d.delta)) + '. ' +
-      'The proposal was re-published, or its bid basis changed, AFTER the ' +
-      'client signed. The stamped figure is the one that was agreed to; ' +
+    return 'The proposal this acceptance points at totals ' +
+      money(d.proposal) + ', but ' + money(d.signed) + ' was stamped here ' +
+      'when the agreement was signed — a difference of ' +
+      money(Math.abs(d.delta)) + '. Published proposals are never ' +
+      'rewritten in place, so the likely cause is that this acceptance was ' +
+      'connected to a DIFFERENT proposal after signature (a revision mints ' +
+      'a new record). The stamped figure is the one that was agreed to; ' +
       'reconcile before invoicing.';
   }
 
@@ -1112,6 +1197,16 @@
       '  color: #b45309; cursor: help; display: inline-flex; align-items: center;',
       '  gap: 4px; }',
       '.scw-acpt-tag--warn svg { flex: 0 0 auto; }',
+      // Asserted basis: amber everything, so it reads as a caveat at a
+      // glance and can never pass for the signed document beside it.
+      '.scw-acpt-pair--asserted .scw-acpt-pair__cap { color: #b45309; }',
+      '.scw-acpt-doc--asserted { background: #fffbeb; border-color: #fcd34d;',
+      '  color: #b45309; display: inline-flex; align-items: center; gap: 5px;',
+      '  cursor: help; }',
+      'a.scw-acpt-doc--asserted { cursor: pointer; text-decoration: none; }',
+      '.scw-acpt-doc--asserted .scw-acpt-doc__lbl { color: #b45309;',
+      '  max-width: 150px; overflow: hidden; text-overflow: ellipsis;',
+      '  white-space: nowrap; }',
       // ── Labor margin vs target ───────────────────
       // A verdict, unlike a change order\'s sign: at or above target is
       // fine, under it isn\'t. Green for on, AMBER for under (repo
@@ -1945,6 +2040,7 @@
     // sub card never carries F.bidDoc, so this resolves null there and
     // nothing renders (and the delta is SCW-side money regardless).
     var drift    = basisDrift(viewKey, row);
+    var asserted = readAsserted(viewKey, row);
     var meta = '';
     if (basisNo) {
       meta += '<span class="scw-acpt-tag" title="Priced from bid ' + esc(basisNo) + '">' +
@@ -1952,11 +2048,22 @@
     }
     // RUNG 3 — say it in the identity column too, not just beside the
     // money: the money cell answers "how much", this answers "trust
-    // which". Sits next to the Bid tag it contradicts.
+    // which". Sits next to the Bid tag it contradicts. Phrased as the
+    // observation, not a mechanism — see basisDrift's note on why
+    // "the proposal changed" is NOT what happened here.
     if (drift && !drift.agree) {
       meta += '<span class="scw-acpt-tag scw-acpt-tag--warn" title="' +
         esc(driftNote(drift)) + '">' + WARN_SVG +
-        '<span>Proposal changed after signature</span></span>';
+        '<span>Not the bid that was signed</span></span>';
+    }
+    // RUNG 4 — an assertion is not a discrepancy, so it never implies the
+    // signed record is wrong; it says this basis arrived late and by hand.
+    if (asserted) {
+      meta += '<span class="scw-acpt-tag scw-acpt-tag--warn" title="' +
+        esc(assertedNote(asserted)) + '">' + WARN_SVG +
+        '<span>Basis asserted after signature' +
+        (asserted.who ? ' \u00b7 ' + esc(asserted.who.split(/\s+/)[0]) : '') +
+        '</span></span>';
     }
     if (poNo) {
       meta += '<span class="scw-acpt-tag" title="Purchase order">PO ' + esc(poNo) + '</span>';
@@ -2064,6 +2171,30 @@
             linkSlot(F.xeroEst,   'Xero estimate', 'Xero estimate link', xeroEstA, 'Edit Xero estimate link') +
           '</span>' +
         '</span>' +
+        // Asserted basis rides in its OWN captioned pair, amber, so it
+        // can never be read as the document the client signed against.
+        // Absent entirely when nothing was asserted — no empty slot, no
+        // dashed "add this" (asserting a basis is a deliberate act, not
+        // a checklist gap).
+        (asserted
+          ? '<span class="scw-acpt-pair scw-acpt-pair--asserted">' +
+              '<span class="scw-acpt-pair__cap">Asserted basis</span>' +
+              '<span class="scw-acpt-pair__tiles">' +
+                (asserted.href
+                  ? '<a class="scw-acpt-doc scw-acpt-doc--asserted" target="_blank" ' +
+                      'rel="noopener" href="' + esc(asserted.href) + '" title="' +
+                      esc(assertedNote(asserted)) + '">' + WARN_SVG +
+                      '<span class="scw-acpt-doc__lbl">' +
+                      esc(asserted.name || 'Asserted PDF') + '</span></a>'
+                  : '<span class="scw-acpt-doc scw-acpt-doc--asserted" title="' +
+                      esc(assertedNote(asserted)) + '">' + WARN_SVG +
+                      '<span class="scw-acpt-doc__lbl">Asserted, no document</span></span>') +
+              '</span>' +
+              (asserted.when
+                ? '<span class="scw-acpt-sub">' + esc(asserted.when) + '</span>'
+                : '') +
+            '</span>'
+          : '') +
         // Re-run the greenlight check without touching the agreement.
         // Only once there's an agreement on file (nothing to check before
         // that), only while the deal is NOT already greenlit, and only
