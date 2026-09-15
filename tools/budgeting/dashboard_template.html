@@ -351,7 +351,9 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <span class="ctl-note">Booked Jan–<span class="js-actmo"></span> · <span class="js-bridge"></span> bridge · <span class="js-goal"></span> goal cycle</span>
   </div>
   <div class="card" id="goalsCard">
-    <div class="eyebrow">Results</div><h2>The plan: Q4+Q1 · Oct 2026 – Mar 2027</h2>
+    <div class="eyebrow">Results</div><h2>The plan: <span id="goalPeriodName"></span></h2>
+    <p class="note" style="margin:-2px 0 8px">Read any planning cycle, or a calendar year across them. Targets belong to a cycle, so a year shows what the plan produces without an attainment pill.</p>
+    <span class="scn-toggle" id="goalPeriodT" style="margin-bottom:10px"></span>
     <div id="goalsBody"></div>
     <details class="fold" id="tuneD"><summary>Set targets &amp; tune the model</summary>
       <div class="fold-body"><div id="goalTargets"></div>
@@ -362,6 +364,9 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <div class="card"><div class="eyebrow">Results</div><h2>Net by month</h2><p class="note">Booked months as bars; modeled months show modest and stretch side by side.</p><figure class="chart" id="chartNet" title="Hover any month for the figures"></figure></div>
     <div class="card"><div class="eyebrow">Results</div><h2>Cumulative net through <span class="js-last"></span></h2><p class="note">Running total: booked through <span class="js-actmo"></span>, then each scenario.</p><figure class="chart" id="chartCum" title="Hover any month for the figures"></figure></div>
   </div>
+  <div class="card"><div class="eyebrow">Plan</div><h2>What the staffing plan changes</h2>
+    <p class="note">Every role opening or closing, person moving role, and pay change the plan still controls — after <span class="js-actmo"></span>, in the order they land. $/mo is the change to fully-loaded monthly cost: pay, employer tax, benefits and per-head licenses. Edit any of it on the Staffing tab.</p>
+    <div class="tablewrap" id="planChanges"></div></div>
   <div class="card"><div class="eyebrow">Results</div><h2>By period</h2>
     <p class="note">The same P&amp;L rolled up — the two planning cycles in date order, the calendar year, and each quarter; the goal cycle is tinted. Follows the scenario strip above. <a class="how" href="#notes">How it works ↗</a></p>
     <div class="tablewrap" id="periodSum"></div></div>
@@ -2007,14 +2012,118 @@ function renderTiles(C){
   const gpNetM = gp(C.net.mod), gpNetS = gp(C.net.str);
   const gpRevM = gp(C.rev.mod), gpRevS = gp(C.rev.str);
   const ytd = C.net.mod.slice(0, ACT).reduce((a, b) => a + b, 0);
-  const payMo = C.staffTotal[NM - 1], opexMo = C.opex[NM - 1];
+  /* What the plan does to the monthly cost base. A lone end-of-horizon figure answers nothing —
+     what matters is how far it moves from the first month the plan actually controls, and what is
+     moving it. Both ends come from the model, so it is a like-for-like comparison. */
+  const b0 = Math.min(NM, ACT + 1) - 1, b1 = NM - 1;          // first modeled month, last month
+  const payMo = C.staffTotal[b1], opexMo = C.opex[b1];
+  const costNow = C.staffTotal[b0] + C.opex[b0], costEnd = payMo + opexMo;
+  const dCost = costEnd - costNow, dPct = costNow ? dCost / costNow : 0;
+  const hcAt = i => DEPTS.reduce((a, d) => a + (C.deptHC[d][i] || 0), 0);
+  const hc0 = Math.round(hcAt(b0)), hc1 = Math.round(hcAt(b1));
+  const costSeries = C.staffTotal.map((v, i) => v + C.opex[i]);
   const tM = tgtOf(GOAL_I, "mod"), tS = tgtOf(GOAL_I, "str");
   document.getElementById("tiles").innerHTML = `
   <div class="tile"><div class="lbl">${esc(GOAL[3])} net — modest</div><div class="val">${fmtK(gpNetM)} <small>${fmtPct1(gpRevM ? gpNetM / gpRevM : 0)}</small></div><div class="sub">${esc(GOAL[2])}</div>${spark(C.net.mod.slice(GOAL[0], GOAL[1]), "--modest")}</div>
   <div class="tile"><div class="lbl">${esc(GOAL[3])} net — stretch</div><div class="val">${fmtK(gpNetS)} <small>${fmtPct1(gpRevS ? gpNetS / gpRevS : 0)}</small></div><div class="sub">${esc(GOAL[2])}</div>${spark(C.net.str.slice(GOAL[0], GOAL[1]), "--stretch")}</div>
   <div class="tile"><div class="lbl">${esc(GOAL[3])} revenue M / S</div><div class="val">${fmtK(gpRevM)} <small>/ ${fmtK(gpRevS)}</small></div><div class="sub">${tS > tM ? `vs ${fmtK(tM)} / ${fmtK(tS)}` : `target ${fmtK(tM)}`} — modest ${Math.round(tM ? gpRevM / tM * 100 : 0)}% · stretch ${Math.round(tS ? gpRevS / tS * 100 : 0)}%</div></div>
   <div class="tile"><div class="lbl">Net booked ${esc(ACT_RANGE)} (Xero)</div><div class="val">${fmtK(ytd)}</div></div>
-  <div class="tile"><div class="lbl">${esc(monthName(NM))} run-rate</div><div class="val">${fmtK(payMo)} <small>payroll</small></div><div class="sub">${fmtK(opexMo)}/mo opex planned</div></div>`;
+  <div class="tile" title="Fully-loaded payroll plus planned opex, in the last month of the plan, against the first month the plan controls (${esc(monthName(b0 + 1))}). Both figures are the model, so the comparison is like for like; commissions and bonus programs are not in it.">
+    <div class="lbl">Monthly cost base — ${esc(monthName(NM))}</div>
+    <div class="val">${fmtK(costEnd)} <small>/mo</small></div>
+    <div class="sub">${Math.abs(dCost) < 500
+      ? `<b>unchanged</b> from ${esc(monthName(b0 + 1))} — this plan adds no cost`
+      : `<b>${dCost > 0 ? "+" : "−"}${fmtK(Math.abs(dCost))} (${dCost > 0 ? "+" : "−"}${Math.abs(dPct * 100).toFixed(0)}%)</b> vs ${esc(monthName(b0 + 1))}`} · payroll ${fmtK(payMo)} + opex ${fmtK(opexMo)} · ${hc1} head${hc1 === 1 ? "" : "s"}${hc1 !== hc0 ? ` <b>${hc1 > hc0 ? "+" : "−"}${Math.abs(hc1 - hc0)}</b>` : ""}</div>
+    ${spark(costSeries.slice(b0), "--booked")}</div>`;
+}
+
+/* ---------- what the staffing plan does ----------
+   The roster is a grid of headcount by month; this reads the changes out of it — roles opening and
+   closing, people moving between roles, and pay changes — so the plan can be read as a sequence of
+   decisions instead of a spreadsheet. Only months the plan still controls are listed; anything in a
+   booked month already happened. */
+function planChanges(){
+  const out = [], first = Math.max(2, ACT + 1);
+  const seats = new Map();        // person name -> the roles they sit on, to spot a move
+  const add = o => { if (o.m >= first && o.m <= NM) out.push(o); };
+  for (const r of S.staff){
+    const named = r.people && r.people.length;
+    if (named){
+      for (const pp of r.people){
+        const j = joinMonth(pp);
+        add({ m: j, kind: "in", n: 1, role: r, who: pp.name || r.position, cost: personCost(r, pp, Math.max(j, first)) });
+        if (pp.to && pp.to < NM) add({ m: pp.to + 1, kind: "out", n: 1, role: r, who: pp.name || r.position, cost: -personCost(r, pp, pp.to) });
+        if (pp.sal2 != null && pp.chgM){
+          const after = personCost(r, pp, pp.chgM), before = personCost(r, { ...pp, sal2: null }, pp.chgM);
+          if (Math.abs(after - before) > 1) add({ m: pp.chgM, kind: "pay", role: r, who: pp.name || r.position, cost: after - before, note: "new salary " + fmt$(pp.sal2 * (r.payType === "hourly" ? 1 : 1)) + (r.payType === "hourly" ? "/hr" : "/yr") });
+        }
+        const key = (pp.name || "").trim().toLowerCase();
+        if (key){ if (!seats.has(key)) seats.set(key, []); seats.get(key).push({ r, pp, from: j, to: pp.to || NM }); }
+      }
+    } else {
+      for (let m = first; m <= NM; m++){
+        const d = (r.hc[m - 1] || 0) - (r.hc[m - 2] || 0);
+        if (d) add({ m, kind: d > 0 ? "in" : "out", n: Math.abs(d), role: r, who: r.position, cost: d * headCost(r, m) });
+      }
+    }
+  }
+  // the same person leaving one role as they pick up another is a move, not a hire and a departure
+  const moves = [];
+  for (const [, seatList] of seats){
+    if (seatList.length < 2) continue;
+    const byStart = seatList.slice().sort((a, b) => a.from - b.from);
+    for (let i = 1; i < byStart.length; i++){
+      const prev = byStart[i - 1], next = byStart[i];
+      if (prev.r === next.r || next.from - prev.to > 2 || next.from < first) continue;
+      moves.push({ m: next.from, kind: "move", who: next.pp.name, from: prev.r, role: next.r,
+        cost: personCost(next.r, next.pp, next.from) - personCost(prev.r, { ...prev.pp, to: null }, next.from) });
+    }
+  }
+  const movedAt = new Set(moves.map(x => x.who.trim().toLowerCase() + "@" + x.m));
+  const kept = out.filter(o => !(o.kind !== "pay" && movedAt.has(String(o.who).trim().toLowerCase() + "@" + o.m))
+    && !(o.kind === "out" && moves.some(x => x.who.trim().toLowerCase() === String(o.who).trim().toLowerCase() && Math.abs(x.m - o.m) <= 2)));
+  for (const ev of (S.raises || [])){
+    const m = Math.max(1, Math.round(ev.month || 1));
+    if (m < first || m > NM) continue;
+    const imp = raiseImpact(ev);
+    if (!imp.heads) continue;
+    const T = raiseTargets()[ev.scope] || [];
+    const name = (T.find(o => o.v === ev.target) || {}).t || ev.target || "—";
+    const rDept = ev.scope === "dept" ? ev.target
+      : ev.scope === "role" ? ((S.staff.find(r => r.id === ev.target) || {}).dept || "")
+      : (S.staff.find(r => (r.people || []).some(pp => pp.id === ev.target)) || {}).dept || "";
+    kept.push({ m, kind: "raise", who: name, cost: imp.delta, heads: imp.heads, dept: rDept,
+      note: ev.kind === "pct" ? (ev.amount * 100).toFixed(1) + "%" : fmt$(ev.amount) + (ev.kind === "yr" ? "/yr" : ev.kind === "hr" ? "/hr" : "/mo") });
+  }
+  return kept.concat(moves).sort((a, b) => a.m - b.m || a.kind.localeCompare(b.kind));
+}
+function renderPlanChanges(C){
+  const el = document.getElementById("planChanges"); if (!el) return;
+  const ch = planChanges();
+  if (!ch.length){
+    el.innerHTML = `<p class="subtle" style="margin:0">The plan holds the roster flat: no role opens or closes, nobody changes role, and no pay change is scheduled after ${esc(ACT_MO)}. Changes made on the Staffing tab show up here.</p>`;
+    return;
+  }
+  const VERB = { in: ["Hire", "--stretch"], out: ["End", "--booked"], move: ["Move", "--modest"], pay: ["Pay", "--modest"], raise: ["Raise", "--modest"] };
+  const byM = new Map();
+  for (const c of ch){ if (!byM.has(c.m)) byM.set(c.m, []); byM.get(c.m).push(c); }
+  const total = ch.reduce((a, c) => a + (c.cost || 0), 0);
+  let h = `<table class="data"><thead><tr><th>When</th><th>What</th><th>Who</th><th>Department</th><th title="Change to fully-loaded monthly cost — pay, employer tax, benefits and per-head licenses">$/mo</th></tr></thead><tbody>`;
+  for (const [m, list] of [...byM.entries()].sort((a, b) => a[0] - b[0])){
+    for (const [k, c] of list.entries()){
+      const [verb, col] = VERB[c.kind] || ["Change", "--modest"];
+      const who = c.kind === "move" ? `${esc(c.who)} <span class="dim">${esc(c.from.position)} → ${esc(c.role.position)}</span>`
+        : c.kind === "raise" ? `${esc(c.who)} <span class="dim">${esc(c.note)}${c.heads > 1 ? ` · ${c.heads} heads` : ""}</span>`
+        : c.kind === "pay" ? `${esc(c.who)} <span class="dim">${esc(c.note || "")}</span>`
+        : `${c.n > 1 ? c.n + " × " : ""}${esc(c.role.position)}${c.who && c.who !== c.role.position ? ` <span class="dim">${esc(c.who)}</span>` : ""}`;
+      h += `<tr><td>${k === 0 ? esc(monthName(m)) : ""}</td>
+        <td><span class="tag" style="background:color-mix(in srgb, var(${col}) 14%, transparent);color:var(${col});font-weight:600">${verb}</span></td>
+        <td>${who}</td><td class="dim">${esc(dn(c.dept || (c.role || c.from || {}).dept || ""))}</td>
+        <td class="${c.cost > 0 ? "" : "pos"}">${Math.abs(c.cost) < 1 ? `<span class="dim">—</span>` : (c.cost > 0 ? "+" : "−") + fmt$(Math.abs(c.cost))}</td></tr>`;
+    }
+  }
+  h += `<tr class="tot"><td colspan="4">${ch.length} change${ch.length === 1 ? "" : "s"} after ${esc(ACT_MO)} — monthly cost by ${esc(monthName(NM))}</td><td><b>${total > 0 ? "+" : "−"}${fmt$(Math.abs(total))}</b></td></tr>`;
+  el.innerHTML = h + "</tbody></table>";
 }
 
 /* ---------- projections tab ---------- */
@@ -2233,6 +2342,10 @@ document.getElementById("plTable").addEventListener("click", ev => {
   if (b.dataset.k === "plopex") plOpexOpen = !plOpexOpen; else plPayOpen = !plPayOpen;
   renderAll();
 });
+document.getElementById("goalPeriodT").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-per]"); if (!b) return;
+  goalPeriodKey = b.dataset.per; renderAll();
+});
 document.getElementById("plScnT").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-s]"); if (!b) return;
   plScn = b.dataset.s;
@@ -2427,15 +2540,24 @@ function cycleFacts(C, rng, tgt){
 }
 // The first screen answers one question: will Q4+Q1 make money, on what assumptions, and what
 // would move it. Everything editable sits behind the fold below it.
+/* The periods the plan card can be read over: every planning cycle, then every calendar year the
+   window touches. A target belongs to a cycle, so a year is read without one. */
+const GOAL_PERIODS = CYCLES.map((c, i) => ({ key: "c" + i, rng: c, tag: c[3], span: c[2], ci: i }))
+  .concat(YEARS.map((y, i) => ({ key: "y" + i, rng: y, tag: y[2], span: y[3], ci: -1 })));
+let goalPeriodKey = (GOAL_PERIODS[GOAL_I] || GOAL_PERIODS[0]).key;
 function renderGoals(C){
   const L = S.levers;
-  const g = cycleFacts(C, GOAL, cycTgt(GOAL_I)), p = cycleFacts(C, PREV, cycTgt(Math.max(0, GOAL_I - 1)));
+  const per = GOAL_PERIODS.find(x => x.key === goalPeriodKey) || GOAL_PERIODS[0];
+  const g = cycleFacts(C, per.rng, per.ci >= 0 ? cycTgt(per.ci) : { mod: 0, str: 0 });
+  document.getElementById("goalPeriodName").textContent = per.tag + " \u00b7 " + per.span;
+  document.getElementById("goalPeriodT").innerHTML = GOAL_PERIODS.map(x =>
+    `<button class="btn${x.key === per.key ? " on" : ""}" data-per="${x.key}" title="${esc(x.span)}">${esc(x.tag)}${x.ci === GOAL_I ? " \u2605" : ""}</button>`).join("");
   const pill = (v, t) => `<span class="pill ${v >= t ? "ok" : "short"}" title="${fmt$(v)} against a ${fmt$(t)} target">${Math.round(t ? v / t * 100 : 0)}%</span>`;
   const mg = (n, d) => d ? fmtPct1(n / d) : "—";
   const clear = g.revM - g.be;
   const progLine = g.incM > 0.5 || g.incS > 0.5
     ? `with programs <b>${fmtK(g.allM)}</b> modest · <b>${fmtK(g.allS)}</b> stretch`
-    : `with programs: same — <span class="warn">no program pays out in this cycle</span>`;
+    : `with programs: same — <span class="warn">no program pays out in this period</span>`;
   // a cost is a negative number, not bad news: rows marked "cost" keep the minus sign and skip the
   // red that marks a loss
   const row = (lbl, m, st, cls = "", fm = fmt$) => {
@@ -2446,7 +2568,7 @@ function renderGoals(C){
     `<div class="plan-grid">
       <div><div class="lab">Revenue</div>
         <div class="plan-val">${fmtK(g.revM)} <small>modest</small> · ${fmtK(g.revS)} <small>stretch</small></div>
-        <div class="plan-sub">${pill(g.revM, g.tgtM)} / ${pill(g.revS, g.tgtS)} of ${g.tgtS > g.tgtM ? `${fmtK(g.tgtM)} modest · ${fmtK(g.tgtS)} stretch` : `the ${fmtK(g.tgtM)} target`} · ${g.booked ? `${fmtK(g.bkRev)} booked + ` : ""}${fmtK(g.revM - g.bkRev)} modeled</div></div>
+        <div class="plan-sub">${g.tgtM ? `${pill(g.revM, g.tgtM)} / ${pill(g.revS, g.tgtS)} of ${g.tgtS > g.tgtM ? `${fmtK(g.tgtM)} modest · ${fmtK(g.tgtS)} stretch` : `the ${fmtK(g.tgtM)} target`} · ` : `<span class="subtle" title="Targets are set per planning cycle; a calendar year cuts across them.">no target — a calendar year</span> · `}${g.booked ? `${fmtK(g.bkRev)} booked + ` : ""}${fmtK(g.revM - g.bkRev)} modeled</div></div>
       <div><div class="lab">Break-even revenue <span style="font-weight:400;text-transform:none;letter-spacing:0">(the fixed hurdle)</span></div>
         <div class="plan-val">${fmtK(g.be)} <small>${fmtK(g.be / g.n)}/mo</small></div>
         <div class="plan-sub" title="Base payroll and opex less other income, at the cycle's gross margin. Commissions and bonus programs are excluded — they only exist when revenue does.">modest ${clear >= 0 ? "clears it by" : `<span class="warn">falls short by</span>`} <b>${fmtK(Math.abs(clear))}</b> · stretch by ${fmtK(g.revS - g.be)}</div></div>
@@ -2455,7 +2577,7 @@ function renderGoals(C){
         <div class="plan-sub">as booked, modest · stretch — ${progLine}</div></div>
     </div>
     <div class="plan-row">
-      <table class="data compact" style="width:auto;min-width:300px"><thead><tr><th>${esc(GOAL[3])} · ${esc(GOAL[2])}</th><th>Modest</th><th>Stretch</th></tr></thead><tbody>
+      <table class="data compact" style="width:auto;min-width:300px"><thead><tr><th>${esc(per.tag)} · ${esc(per.span)}</th><th>Modest</th><th>Stretch</th></tr></thead><tbody>
         ${row("NET as booked", g.netM, g.netS, "tot")}
         ${(g.progs.length ? g.progs : [{ name: "Accrued programs", m: g.incM, s: g.incS }]).map(pr =>
           row(`<span title="${esc(pr.name)} accrued across this cycle, loaded with employer taxes — a cost the books do not show yet.">${esc(pr.name)}</span>`,
@@ -4160,7 +4282,7 @@ document.getElementById("btnLoad").addEventListener("click", () => {
 function renderAll(){
   if (syncSales()) persist();     // the plan is the source of truth for who sells and when
   const C = compute();
-  renderTiles(C); renderGoals(C); renderProjLevers(); renderProj(C); renderPeriods(C); renderRollup(C); renderGrowth(C);
+  renderTiles(C); renderGoals(C); renderPlanChanges(C); renderProjLevers(); renderProj(C); renderPeriods(C); renderRollup(C); renderGrowth(C);
   fillMonthLabels();
   renderSales(C); renderIncentives(C); renderRaisePlanner(); renderStaff(C); renderLicenses(C); renderExpenses(C); renderCompare(C); renderFixes(); renderRestore(); renderPayBands();
 }
