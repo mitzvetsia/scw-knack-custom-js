@@ -430,7 +430,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
 </section>
 
 <section class="tab" id="tab-sales">
-  <div class="card"><h2>Team revenue by month</h2><p class="note">Each rep's ramp × attainment, summed, against booked revenue. Dashed lines: the half's target and break-even per month. Targets &amp; thresholds are set on the Projections tab.</p><figure class="chart" id="chartTeam"></figure></div>
+  <div class="card"><h2>Team revenue by month</h2><p class="note">Each rep's ramp × attainment, summed, against booked revenue. Dashed lines: the half's target and break-even per month (the revenue at which net is zero, commission included). Targets &amp; thresholds are set on the Projections tab.</p><figure class="chart" id="chartTeam"></figure></div>
   <div class="card"><h2>Reps</h2><p class="note">Attainment is per person per scenario — e.g. Zach 80% modest / 100% stretch. Base salaries live on Staffing; commissions pay on attained revenue. Leave <b>Comm %</b> blank and the rep pays from the tier table below at the rate their attainment earns (so modest and stretch can pay different rates); type a % for a flat override. Sales Manager and Director overrides are in the levers above.</p>
     <p class="note" style="margin:-4px 0 10px"><b>Who is on this list comes from the staffing plan.</b> Name someone on a Sales role there — a real name or a TBD — and they appear here, ramping from the month they join and stopping when they leave. Move someone between roles (end them on one, start them on the next) and each stint gets its own row on the right curve; an AM→AE move picks up the transition ramp automatically. What you set here stays yours: ramp, attainment, commission, and <b>Ramped mo</b> — months of ramp already behind them, which is how someone already at full rate in Jan ’26 avoids being modelled as a new hire.</p>
     <div id="salesTotals"></div>
@@ -1452,7 +1452,7 @@ function staffCost(row, m){
 function compute(){
   const L = S.levers;
   const out = { rev: {mod:[],str:[]}, oth:[], cogs:{mod:[],str:[]}, pay:[], comp:{mod:[],str:[]},
-    dept: {}, deptPay: {}, deptHC: {}, opex:[], net:{mod:[],str:[]}, cogsPct:[], team:{mod:[],str:[]}, staffTotal:[], commDetail:{} };
+    dept: {}, deptPay: {}, deptHC: {}, opex:[], net:{mod:[],str:[]}, cogsPct:[], commRate:[], team:{mod:[],str:[]}, staffTotal:[], commDetail:{} };
   for (const d of DEPTS){ out.dept[d] = []; out.deptPay[d] = []; out.deptHC[d] = []; }
   // planned opex rows by dept (model, before hedge)
   for (let m = 1; m <= NM; m++){
@@ -1498,6 +1498,15 @@ function compute(){
     out.cogs.str.push(actual ? bookedCogs : ts * L.cogsPct);
     out.pay.push(actual ? bookedPay(m) : st * (1 + L.laborHedge));
     out.comp.mod.push(actual ? varcompOf(m) : compM); out.comp.str.push(actual ? varcompOf(m) : compS);
+    /* Commission as a rate on TOTAL revenue, not on the commissionable slice — because that is the
+       form break-even needs: comp = commRate × revenue, so it can sit in the margin beside COGS.
+       Booked months take the rate actually paid; modelled months the blended rate scaled by the
+       commissionable share of the mix, since house lines pay nobody. */
+    out.commRate.push(actual ? ((rev || 0) > 0 ? varcompOf(m) / rev : 0) : (tm > 0 ? cRate * (tmC / tm) : cRate));
+    /* One hurdle, built on the MODEST mix — break-even is a fact about the cost structure, not
+       something that should read differently depending on which scenario you are looking at.
+       Stretch carries a slightly different commissionable share, so its headroom converts to net
+       within about a tenth of a percent rather than exactly. Modest is exact. */
     let ot = 0;
     for (const d of DEPTS){
       const v = actual ? ((MODEL.dept_actual[d] || [])[i] || 0) : dm[d] * (1 + L.opexHedge);
@@ -1507,8 +1516,15 @@ function compute(){
     out.net.mod.push(out.rev.mod[i] + out.oth[i] - out.cogs.mod[i] - out.pay[i] - out.comp.mod[i] - ot);
     out.net.str.push(out.rev.str[i] + out.oth[i] - out.cogs.str[i] - out.pay[i] - out.comp.str[i] - ot);
   }
-  // monthly break-even sales revenue: (payroll + opex - other income) / gross margin, excl. variable comp
-  out.be = out.pay.map((p, i) => Math.max(0, (p + out.opex[i] - out.oth[i]) / Math.max(0.05, 1 - out.cogsPct[i])));
+  /* Monthly break-even sales revenue: the revenue at which net is actually ZERO.
+     (payroll + opex - other income) / contribution margin, where the contribution margin is
+     1 - COGS% - commission%. Commissions belong in the margin, not outside the hurdle: they are
+     paid on every deal from the first dollar, whatever the company earns, so revenue that "clears"
+     a hurdle computed without them has not covered its own selling cost. Leaving them out
+     understated break-even by ~$200K a cycle and made the hurdle unreconcilable with net.
+     Bonus programs stay out — those are conditional on hitting a target, not a cost of each sale. */
+  out.be = out.pay.map((p, i) => Math.max(0,
+    (p + out.opex[i] - out.oth[i]) / Math.max(0.05, 1 - out.cogsPct[i] - out.commRate[i])));
   /* ---------- incentive programs earned over a half, paid after it closes ----------
      These never appear in booked months: the operations bonus is not paid until the six-month
      period completes and closes, and the Sales Director bonus has not been calculated at all.
@@ -2440,11 +2456,11 @@ function renderProj(C){
           ? " has not closed — its payroll is estimated at the closed months' rate per business day, not taken as booked. "
           : " payroll is shown as booked, which runs light: the daily accruals stop mid-month. ")
       : "") +
-    "Break-even row: monthly sales revenue needed to cover base payroll + opex less other income at that month's gross margin (excl. commissions and bonus programs).";
+    "Break-even row: monthly sales revenue at which net is zero — base payroll + opex less other income, over that month's contribution margin (1 − COGS% − commission%). Commissions are in the margin because they are paid on every deal whatever the company earns; bonus programs are not, being conditional on hitting a target.";
   document.getElementById("notes").innerHTML =
     `Built ${MODEL.built} from the Xero <b>Account Transactions</b> export (accrual, ${esc(MODEL.ttm_labels[0])}\u2013${esc(MODEL.ttm_labels[MODEL.ttm_labels.length - 1])} \u2014 expenses, COGS, payroll), the Xero GL Detail (revenue, department tags), and the budgeting-tool exports (allocations, roster, ramps). Horizon: Jan 2026 – Mar 2027. ${esc(ACT_RANGE)} 2026 ${ACT === 1 ? "is" : "are"} booked; ${esc(BRIDGE_LABEL)} ${BRIDGE_N === 1 ? "is a bridge month" : "are bridge months"} you can budget/staff; Oct 2026–Mar 2027 is the goal-setting cycle (Q4+Q1). Where the budgeting tool allocated a vendor to a different department than Xero, the budgeting tool wins (${MODEL.vend_master.filter(v=>v.contradiction).length} conflicts — see Trends). Per-seat licenses ride headcount on Staffing. Commissions are one measured rate on commissionable revenue (Sales projections tab); bonus programs are accrued on Projections. Edits save in this browser only — use Copy config to share.
-    <h4>The plan card</h4>Each cycle's revenue target drives the attainment pills here and on Sales projections. Break-even is the fixed hurdle: base payroll and opex less other income, at the month's gross margin — commissions and bonus programs are excluded because they only exist when revenue does. "With programs" is the same months with the incentive programs charged to them.
-    <h4>Model levers</h4><b>COGS % fwd</b> is the margin dial — it sets cost of sales for every modeled month (and the pending Jul/Aug estimates) and moves break-even everywhere. Hedges pad modeled payroll and planned expenses; other income covers rent and interest. August has not closed, so its payroll is estimated at the closed months' rate per business day unless switched to as-booked.
+    <h4>The plan card</h4>Each cycle's revenue target drives the attainment pills here and on Sales projections. Break-even is the revenue at which net is zero: base payroll and opex less other income, over the month's contribution margin — what is left of a sales dollar after cost of sales <em>and</em> commission. Commission is in the margin because it is paid on every deal regardless of whether the company is profitable. Bonus programs are excluded, being conditional on hitting a target rather than a cost of each sale. "With programs" is the same months with the incentive programs charged to them.
+    <h4>Model levers</h4><b>COGS % fwd</b> is the margin dial — it sets cost of sales for every modeled month (and the pending Jul/Aug estimates) and moves break-even everywhere — as does the commission rate, since both sit in the contribution margin. Hedges pad modeled payroll and planned expenses; other income covers rent and interest. August has not closed, so its payroll is estimated at the closed months' rate per business day unless switched to as-booked.
     <h4>Incentive programs</h4>Money a period earns that the books have not seen — the operations bonus is not paid until the six months close, and the Sales Director bonus has never been calculated. A program pays either a set amount earned proportionally across a revenue range (nothing below the floor, all of it at the cap) or a percentage of every dollar above a threshold, uncapped. Its cost accrues <b>by pacing</b> — every month carries its revenue-weighted share of the projected payout, so as the running total crosses each percent of the goal that month picks up its slice — or evenly, or only once the threshold is actually crossed. Costs are loaded with employer payroll taxes; contractors are outside every program.
     <h4>P&amp;L conventions</h4>Shaded columns are Xero as booked; later columns come from the Sales projections, Staffing and Expenses tabs. Payroll is base pay in every column — Xero's commission lines are split out onto the commissions row so booked and modeled months read alike. <b>As booked</b> is what Xero shows; <b>+ programs</b> charges the incentive programs to the months that earn them.
     <h4>By period</h4>Calendar quarters (Q1 is Jan–Mar); the planning cycles that straddle the year are Q2+Q3 (Apr–Sep) and Q4+Q1 (Oct–Mar). 2026 is the one full calendar year inside the horizon. Margins are computed on the period sums, not averaged.
@@ -2680,8 +2696,7 @@ function cycleFacts(C, rng, tgt){
        period's blended margin is not a substitute: booked months carry their actual margin, so one
        multiplication against the blend misses by thousands over a mixed period. Summed per month
        this is exactly net + commissions, which is what makes the card's bridge tie. */
-    headGpM: (() => { let t = 0; for (let i = rng[0]; i < rng[1]; i++) t += (C.rev.mod[i] - C.be[i]) * (1 - C.cogsPct[i]); return t; })(),
-    headGpS: (() => { let t = 0; for (let i = rng[0]; i < rng[1]; i++) t += (C.rev.str[i] - C.be[i]) * (1 - C.cogsPct[i]); return t; })(),
+    cmPct: (() => { let r = 0, c = 0; for (let i = rng[0]; i < rng[1]; i++){ r += C.rev.mod[i]; c += C.rev.mod[i] * (1 - C.cogsPct[i] - C.commRate[i]); } return r ? c / r : 0; })(),
     incM: sum(C.incent.mod), incS: sum(C.incent.str),
     progs: (C.incentBy || []).map(p => ({ name: p.name, m: sum(p.mod), s: sum(p.str) })) };
 }
@@ -2706,12 +2721,13 @@ function renderGoals(C){
      through, and then commissions (deliberately outside the hurdle, since they only exist when
      revenue does) come off that. Printing the headroom next to a dollar net invited reading it as
      profit, so the card now carries the whole bridge: headroom → margin → less commissions → net. */
-  const bridge = (rev, cogs, comp, net, gp) => {
-    const gm = rev ? 1 - cogs / rev : 0;
-    return `${fmtK(rev - g.be)} of revenue above the hurdle, at each month's gross margin ` +
-      `(${(gm * 100).toFixed(0)}% blended) = ${fmtK(gp)} gross profit, less ${fmtK(comp)} of commissions ` +
-      `(outside the hurdle, because they only exist when revenue does) = ${fmtK(net)} net`;
-  };
+  /* Above a hurdle that already carries commissions, the contribution margin on the headroom IS
+     the net — there is no second step to explain. What the hover has to say is why the headroom is
+     so much bigger than the net: roughly half of every extra dollar goes to cost of sales and
+     commission before anything reaches the bottom line. */
+  const bridge = (rev, net) =>
+    `${fmtK(rev - g.be)} of revenue above break-even × ${(g.cmPct * 100).toFixed(0)}% contribution margin ` +
+    `(what is left of a sales dollar after cost of sales and commission) = ${fmtK(net)} net`;
   const progLine = g.incM > 0.5 || g.incS > 0.5
     ? `with programs <b>${fmtK(g.allM)}</b> modest · <b>${fmtK(g.allS)}</b> stretch`
     : `with programs: same — <span class="warn">no program pays out in this period</span>`;
@@ -2726,11 +2742,11 @@ function renderGoals(C){
       <div><div class="lab">Revenue</div>
         <div class="plan-val">${fmtK(g.revM)} <small>modest</small> · ${fmtK(g.revS)} <small>stretch</small></div>
         <div class="plan-sub">${g.tgtM ? `${pill(g.revM, g.tgtM)} / ${pill(g.revS, g.tgtS)} of ${g.tgtS > g.tgtM ? `${fmtK(g.tgtM)} modest · ${fmtK(g.tgtS)} stretch` : `the ${fmtK(g.tgtM)} target`} · ` : `<span class="subtle" title="Targets are set per planning cycle; a calendar year cuts across them.">no target — a calendar year</span> · `}${g.booked ? `${fmtK(g.bkRev)} booked + ` : ""}${fmtK(g.revM - g.bkRev)} modeled</div></div>
-      <div><div class="lab">Break-even revenue <span style="font-weight:400;text-transform:none;letter-spacing:0">(the fixed hurdle)</span></div>
+      <div><div class="lab">Break-even revenue <span style="font-weight:400;text-transform:none;letter-spacing:0">(where net is zero)</span></div>
         <div class="plan-val">${fmtK(g.be)} <small>${fmtK(g.be / g.n)}/mo</small></div>
-        <div class="plan-sub" title="Base payroll and opex less other income, at the cycle's gross margin. Commissions and bonus programs are excluded — they only exist when revenue does.">modest ${clear >= 0
-          ? `clears it by <b title="${esc(bridge(g.revM, g.cogsM, g.compM, g.netM, g.headGpM))}">${fmtK(clear)} of revenue</b> → <b>${fmtK(g.netM)}</b> net`
-          : `<span class="warn">falls short by</span> <b>${fmtK(Math.abs(clear))} of revenue</b> → <b>${fmtK(g.netM)}</b> net`} · stretch <b title="${esc(bridge(g.revS, g.cogsS, g.compS, g.netS, g.headGpS))}">${fmtK(g.revS - g.be)}</b> → ${fmtK(g.netS)}</div></div>
+        <div class="plan-sub" title="The revenue at which net is zero: base payroll and opex less other income, over the cycle's contribution margin (1 − COGS% − commission%). Commission sits in the margin because it is paid on every deal whatever the company earns. Bonus programs are excluded — those are conditional on hitting a target.">modest ${clear >= 0
+          ? `clears it by <b title="${esc(bridge(g.revM, g.netM))}">${fmtK(clear)} of revenue</b> → <b>${fmtK(g.netM)}</b> net`
+          : `<span class="warn">falls short by</span> <b>${fmtK(Math.abs(clear))} of revenue</b> → <b>${fmtK(g.netM)}</b> net`} · stretch <b title="${esc(bridge(g.revS, g.netS))}">${fmtK(g.revS - g.be)}</b> → ${fmtK(g.netS)}</div></div>
       <div><div class="lab">Net</div>
         <div class="plan-val">${fmtK(g.netM)} <small>${mg(g.netM, g.revM)}</small> · ${fmtK(g.netS)} <small>${mg(g.netS, g.revS)}</small></div>
         <div class="plan-sub">as booked, modest · stretch — ${progLine}</div></div>
