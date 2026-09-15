@@ -643,23 +643,6 @@
     return { pct: pct, onTarget: pct >= LABOR_TARGET_PCT };
   }
 
-  /** Whether the paperwork bands on this view are open, remembered per
-   *  view the way group-collapse remembers its groups. ONE flag for the
-   *  card, not one per row: the bands are a uniform checklist and toggling
-   *  them individually down a 12-row card is busywork. Defaults CLOSED —
-   *  the money is what the card is for, and the badge says whether a band
-   *  is worth opening. Storage can throw (private window, blocked site
-   *  data), so both reads and writes fail quiet. */
-  var DOCS_KEY = 'scwAcptDocsOpen:';
-  function docsOpen(viewKey) {
-    try { return window.localStorage.getItem(DOCS_KEY + viewKey) === '1'; }
-    catch (e) { return false; }
-  }
-  function setDocsOpen(viewKey, open) {
-    try { window.localStorage.setItem(DOCS_KEY + viewKey, open ? '1' : '0'); }
-    catch (e) { /* ignore */ }
-  }
-
   /** The equipment column — one figure, right-aligned in its width; the
    *  column header names it. An EMPTY grid cell still has to exist or the
    *  labor column slides left out of its track, so a missing figure
@@ -1095,10 +1078,18 @@
       // axis, header included.
       '.scw-acpt-row, .scw-acpt-colhead, .scw-acpt-foot {',
       '  display: grid; align-items: start;',
-      '  grid-template-columns: minmax(0, 1fr) var(--acpt-equip)',
-      '    calc(var(--acpt-num) + var(--acpt-lbl) + 7px);',
-      '  grid-template-areas: "id equip labor" "docs docs docs";',
+      '  grid-template-columns: minmax(240px, 440px) minmax(0, 1fr)',
+      '    var(--acpt-equip) calc(var(--acpt-num) + var(--acpt-lbl) + 7px);',
+      '  grid-template-areas: "id docs equip labor";',
       '  column-gap: 26px; }',
+      // Not enough room for four: the tiles take a band of their own again
+      // and the identity stretches back across the slack.
+      '@media (max-width: 1200px) {',
+      '  .scw-acpt-row, .scw-acpt-colhead, .scw-acpt-foot {',
+      '    grid-template-columns: minmax(0, 1fr) var(--acpt-equip)',
+      '      calc(var(--acpt-num) + var(--acpt-lbl) + 7px);',
+      '    grid-template-areas: "id equip labor" "docs docs docs"; }',
+      '}',
       '.scw-acpt-row { row-gap: 10px; padding: 16px 2px; }',
       '.scw-acpt-row > .scw-acpt-id { grid-area: id; }',
       '.scw-acpt-col--equip { grid-area: equip; }',
@@ -1139,41 +1130,24 @@
       '  border: 1px solid #e2e8f0; color: #475569;',
       '  font: 600 10px/1.4 system-ui, sans-serif; white-space: nowrap;',
       '  max-width: 100%; overflow: hidden; text-overflow: ellipsis; cursor: help; }',
-      '.scw-acpt-row .scw-acpt-status { margin: 0; gap: 6px; }',
+      '.scw-acpt-row .scw-acpt-status { margin: 6px 0 0; gap: 5px; }',
+      '.scw-acpt-row .scw-acpt-meta { margin-top: 5px; }',
       '.scw-acpt-row .scw-acpt-pill { padding: 3px 9px; font-size: 11px; }',
       // Grid places the cluster; margin-left:auto would re-pin it right
       // inside its own full-width area, which is the void we just removed.
       '.scw-acpt-row .scw-acpt-actions { margin-left: 0; gap: 14px;',
       '  align-items: flex-start; flex-wrap: wrap; }',
-      '@media (min-width: 1600px) {',
-      '  .scw-acpt-row .scw-acpt-actions { justify-content: flex-end; }',
+      // ── Paperwork column ───────────────────────
+      // Nothing hidden: the tiles moved INTO the gap between the identity
+      // and the money, which at desk width was ~900px of nothing while the
+      // same tiles doubled the row height from a band underneath.
+      '.scw-acpt-docs { grid-area: docs; min-width: 0; }',
+      // Only below 1200px, where the tiles fall back to their own band,
+      // does the hairline that separated them return.
+      '@media (max-width: 1200px) {',
+      '  .scw-acpt-docs > .scw-acpt-actions { border-top: 1px dashed #eef2f7;',
+      '    padding-top: 12px; }',
       '}',
-      // ── Paperwork disclosure ──────────────────────
-      // The tiles are the tall half of a row and they repeat identically
-      // down the card, so on a project with a dozen acceptances they bury
-      // the money. Collapsing THEM (not the acceptance) keeps the figures
-      // and the signature state on screen for every row — the reason the
-      // card exists — and puts the checklist one click away.
-      '.scw-acpt-docs { grid-area: docs; }',
-      '.scw-acpt-docs__btn { display: inline-flex; align-items: center; gap: 6px;',
-      '  padding: 4px 8px 4px 4px; margin-left: -4px; background: none;',
-      '  border: 0; border-radius: 6px; cursor: pointer; color: #64748b;',
-      '  font: 700 9.5px/1 system-ui, sans-serif; letter-spacing: .08em;',
-      '  text-transform: uppercase; }',
-      '.scw-acpt-docs__btn:hover { background: #f1f5f9; color: #334155; }',
-      '.scw-acpt-docs__chev { display: inline-flex; transition: transform .15s ease; }',
-      '.scw-acpt-docs.is-open > .scw-acpt-docs__btn .scw-acpt-docs__chev {',
-      '  transform: rotate(90deg); }',
-      // A count of what is still outstanding, so a collapsed band still
-      // says whether it needs opening.
-      '.scw-acpt-docs__n { padding: 1px 6px; border-radius: 999px;',
-      '  background: #f1f5f9; border: 1px solid #e2e8f0; color: #64748b;',
-      '  font: 700 9.5px/1.4 system-ui, sans-serif; letter-spacing: 0; }',
-      '.scw-acpt-docs__n--todo { background: #fffbeb; border-color: #fde68a;',
-      '  color: #b45309; }',
-      '.scw-acpt-docs > .scw-acpt-actions { display: none;',
-      '  border-top: 1px dashed #eef2f7; padding-top: 12px; margin-top: 8px; }',
-      '.scw-acpt-docs.is-open > .scw-acpt-actions { display: flex; }',
       '.scw-acpt-row .scw-acpt-btn { padding: 6px 12px; font-size: 11.5px; }',
       // Own mini-modal (link editor / upload progress).
       '.scw-acpt-m-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.55);',
@@ -1953,21 +1927,11 @@
                   : '')
               : '') +
           '</span>') +
-      // Paperwork behind a disclosure: identity + money stay on screen for
-      // every row, the checklist is one click away. The badge counts what
-      // is still outstanding so a CLOSED band still tells you whether it
-      // needs opening.
-      '<div class="scw-acpt-docs" data-scw-acpt-docs="1">' +
-        '<button type="button" class="scw-acpt-docs__btn" data-scw-acpt-docs-toggle="1" ' +
-          'aria-expanded="false">' +
-          '<span class="scw-acpt-docs__chev">' +
-            '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" ' +
-            'stroke="currentColor" stroke-width="2.6" stroke-linecap="round" ' +
-            'stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>' +
-          '</span>' +
-          '<span>Paperwork</span>' +
-          '<span class="scw-acpt-docs__n" data-scw-acpt-docs-n="1"></span>' +
-        '</button>' +
+      // Paperwork rides in the MIDDLE column, in the horizontal void that
+      // used to sit between the identity and the money. As its own
+      // full-width band underneath it doubled every row's height while
+      // ~900px beside it went unused — same tiles, half the rows.
+      '<div class="scw-acpt-docs">' +
       '<div class="scw-acpt-actions">' +
         // Two captioned mirror pairs: the signed agreement with its
         // invoice, and the bid basis PDF with its Xero estimate. The
@@ -2009,30 +1973,6 @@
     var card = document.createElement('div');
     card.className = 'scw-acpt-row';
     card.innerHTML = html;
-
-    // Paperwork badge, counted off the slots that actually rendered a
-    // placeholder — reading the DOM can't drift from what's on screen the
-    // way a parallel tally of the same conditions would.
-    var docsBox = card.querySelector('[data-scw-acpt-docs]');
-    var docsN   = card.querySelector('[data-scw-acpt-docs-n]');
-    if (docsBox && docsN) {
-      var missing = docsBox.querySelectorAll('.scw-acpt-doc--missing').length;
-      docsN.textContent = missing ? (missing + ' missing') : 'all on file';
-      docsN.classList.toggle('scw-acpt-docs__n--todo', missing > 0);
-      var docsBtn = card.querySelector('[data-scw-acpt-docs-toggle]');
-      if (docsBtn) {
-        docsBtn.addEventListener('click', function () {
-          var open = !docsBox.classList.contains('is-open');
-          docsBox.classList.toggle('is-open', open);
-          docsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-          setDocsOpen(viewKey, open);
-        });
-      }
-      if (docsOpen(viewKey)) {
-        docsBox.classList.add('is-open');
-        if (docsBtn) docsBtn.setAttribute('aria-expanded', 'true');
-      }
-    }
 
     var actBtn = card.querySelector('[data-proxy="action"]');
     if (actBtn && actionA) actBtn.addEventListener('click', function () { actionA.click(); });
@@ -2495,8 +2435,10 @@
     if (anyBilled) {
       var head = document.createElement('div');
       head.className = 'scw-acpt-colhead';
+      // Only the two money cells: grid areas need no child to hold their
+      // place, so the identity and paperwork columns simply stay empty
+      // here rather than carrying filler spans.
       head.innerHTML =
-        '<span></span>' +
         '<span class="scw-acpt-col scw-acpt-col--equip">' +
           '<span class="scw-acpt-colhead__lbl">Equipment</span></span>' +
         '<span class="scw-acpt-col scw-acpt-col--labor">' +
