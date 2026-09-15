@@ -2675,6 +2675,13 @@ function cycleFacts(C, rng, tgt){
     revM: sum(C.rev.mod), revS: sum(C.rev.str), be: sum(C.be),
     bkRev: sum(C.rev.mod.map((v, i) => i < ACT ? v : 0)),
     netM: sum(C.net.mod), netS: sum(C.net.str), allM: sum(C.netAll.mod), allS: sum(C.netAll.str),
+    cogsM: sum(C.cogs.mod), cogsS: sum(C.cogs.str), compM: sum(C.comp.mod), compS: sum(C.comp.str),
+    /* Gross profit on the revenue above the hurdle, accumulated at EACH MONTH's own margin. A
+       period's blended margin is not a substitute: booked months carry their actual margin, so one
+       multiplication against the blend misses by thousands over a mixed period. Summed per month
+       this is exactly net + commissions, which is what makes the card's bridge tie. */
+    headGpM: (() => { let t = 0; for (let i = rng[0]; i < rng[1]; i++) t += (C.rev.mod[i] - C.be[i]) * (1 - C.cogsPct[i]); return t; })(),
+    headGpS: (() => { let t = 0; for (let i = rng[0]; i < rng[1]; i++) t += (C.rev.str[i] - C.be[i]) * (1 - C.cogsPct[i]); return t; })(),
     incM: sum(C.incent.mod), incS: sum(C.incent.str),
     progs: (C.incentBy || []).map(p => ({ name: p.name, m: sum(p.mod), s: sum(p.str) })) };
 }
@@ -2695,6 +2702,16 @@ function renderGoals(C){
   const pill = (v, t) => `<span class="pill ${v >= t ? "ok" : "short"}" title="${fmt$(v)} against a ${fmt$(t)} target">${Math.round(t ? v / t * 100 : 0)}%</span>`;
   const mg = (n, d) => d ? fmtPct1(n / d) : "—";
   const clear = g.revM - g.be;
+  /* Clearing the hurdle is REVENUE headroom, not profit — only the gross margin on it drops
+     through, and then commissions (deliberately outside the hurdle, since they only exist when
+     revenue does) come off that. Printing the headroom next to a dollar net invited reading it as
+     profit, so the card now carries the whole bridge: headroom → margin → less commissions → net. */
+  const bridge = (rev, cogs, comp, net, gp) => {
+    const gm = rev ? 1 - cogs / rev : 0;
+    return `${fmtK(rev - g.be)} of revenue above the hurdle, at each month's gross margin ` +
+      `(${(gm * 100).toFixed(0)}% blended) = ${fmtK(gp)} gross profit, less ${fmtK(comp)} of commissions ` +
+      `(outside the hurdle, because they only exist when revenue does) = ${fmtK(net)} net`;
+  };
   const progLine = g.incM > 0.5 || g.incS > 0.5
     ? `with programs <b>${fmtK(g.allM)}</b> modest · <b>${fmtK(g.allS)}</b> stretch`
     : `with programs: same — <span class="warn">no program pays out in this period</span>`;
@@ -2711,7 +2728,9 @@ function renderGoals(C){
         <div class="plan-sub">${g.tgtM ? `${pill(g.revM, g.tgtM)} / ${pill(g.revS, g.tgtS)} of ${g.tgtS > g.tgtM ? `${fmtK(g.tgtM)} modest · ${fmtK(g.tgtS)} stretch` : `the ${fmtK(g.tgtM)} target`} · ` : `<span class="subtle" title="Targets are set per planning cycle; a calendar year cuts across them.">no target — a calendar year</span> · `}${g.booked ? `${fmtK(g.bkRev)} booked + ` : ""}${fmtK(g.revM - g.bkRev)} modeled</div></div>
       <div><div class="lab">Break-even revenue <span style="font-weight:400;text-transform:none;letter-spacing:0">(the fixed hurdle)</span></div>
         <div class="plan-val">${fmtK(g.be)} <small>${fmtK(g.be / g.n)}/mo</small></div>
-        <div class="plan-sub" title="Base payroll and opex less other income, at the cycle's gross margin. Commissions and bonus programs are excluded — they only exist when revenue does.">modest ${clear >= 0 ? "clears it by" : `<span class="warn">falls short by</span>`} <b>${fmtK(Math.abs(clear))}</b> · stretch by ${fmtK(g.revS - g.be)}</div></div>
+        <div class="plan-sub" title="Base payroll and opex less other income, at the cycle's gross margin. Commissions and bonus programs are excluded — they only exist when revenue does.">modest ${clear >= 0
+          ? `clears it by <b title="${esc(bridge(g.revM, g.cogsM, g.compM, g.netM, g.headGpM))}">${fmtK(clear)} of revenue</b> → <b>${fmtK(g.netM)}</b> net`
+          : `<span class="warn">falls short by</span> <b>${fmtK(Math.abs(clear))} of revenue</b> → <b>${fmtK(g.netM)}</b> net`} · stretch <b title="${esc(bridge(g.revS, g.cogsS, g.compS, g.netS, g.headGpS))}">${fmtK(g.revS - g.be)}</b> → ${fmtK(g.netS)}</div></div>
       <div><div class="lab">Net</div>
         <div class="plan-val">${fmtK(g.netM)} <small>${mg(g.netM, g.revM)}</small> · ${fmtK(g.netS)} <small>${mg(g.netS, g.revS)}</small></div>
         <div class="plan-sub">as booked, modest · stretch — ${progLine}</div></div>
