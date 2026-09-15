@@ -100,6 +100,10 @@ table.data td{padding:5px 9px;text-align:right;border-top:1px solid var(--grid);
   font-variant-numeric:tabular-nums}
 table.data tr.sec td{background:var(--surface2);font-weight:700;color:var(--ink)}
 table.data tr.tot td{border-top:2px solid var(--baseline);font-weight:700}
+/* the staffing-changes card: a narrow verb column, the subject reading left-to-right beside it */
+table.data.chg th:first-child,table.data.chg td:first-child{min-width:0;width:78px;padding-right:0}
+table.data.chg th:nth-child(2),table.data.chg td:nth-child(2){text-align:left;white-space:normal}
+table.data.chg th:last-child,table.data.chg td:last-child{width:104px}
 table.data.lic th:first-child,table.data.lic td:first-child{min-width:236px}
 table.data tr.bill td{border-top:1px solid var(--border2);background:color-mix(in srgb, var(--surface2) 55%, var(--surface))}
 table.data tr.bill td:first-child{background:color-mix(in srgb, var(--surface2) 55%, var(--surface))}
@@ -365,7 +369,8 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <div class="card"><div class="eyebrow">Results</div><h2>Cumulative net through <span class="js-last"></span></h2><p class="note">Running total: booked through <span class="js-actmo"></span>, then each scenario.</p><figure class="chart" id="chartCum" title="Hover any month for the figures"></figure></div>
   </div>
   <div class="card"><div class="eyebrow">Plan</div><h2>What the staffing plan changes</h2>
-    <p class="note">Every role opening or closing, person moving role, and pay change the plan still controls — after <span class="js-actmo"></span>, in the order they land. $/mo is the change to fully-loaded monthly cost: pay, employer tax, benefits and per-head licenses. Edit any of it on the Staffing tab.</p>
+    <p class="note">Every role opening or closing, seat changing hands, person moving role, and pay change the plan still controls — after <span class="js-actmo"></span>, in the order they land. $/mo is the change to fully-loaded monthly cost: pay, employer tax, benefits and per-head licenses. Edit any of it on the Staffing tab.</p>
+    <div id="planChangesSum"></div>
     <div class="tablewrap" id="planChanges"></div></div>
   <div class="card"><div class="eyebrow">Results</div><h2>By period</h2>
     <p class="note">The same P&amp;L rolled up — the two planning cycles in date order, the calendar year, and each quarter; the goal cycle is tinted. Follows the scenario strip above. <a class="how" href="#notes">How it works ↗</a></p>
@@ -2051,13 +2056,13 @@ function planChanges(){
     if (named){
       for (const pp of r.people){
         const j = joinMonth(pp);
-        add({ m: j, kind: "in", n: 1, role: r, who: pp.name || r.position, cost: personCost(r, pp, Math.max(j, first)) });
-        if (pp.to && pp.to < NM) add({ m: pp.to + 1, kind: "out", n: 1, role: r, who: pp.name || r.position, cost: -personCost(r, pp, pp.to) });
+        add({ m: j, kind: "in", n: 1, role: r, p: pp, who: pp.name || r.position, cost: personCost(r, pp, Math.max(j, first)) });
+        if (pp.to && pp.to < NM) add({ m: pp.to + 1, kind: "out", n: 1, role: r, p: pp, who: pp.name || r.position, cost: -personCost(r, pp, pp.to) });
         if (pp.sal2 != null && pp.chgM){
           const after = personCost(r, pp, pp.chgM), before = personCost(r, { ...pp, sal2: null }, pp.chgM);
           if (Math.abs(after - before) > 1) add({ m: pp.chgM, kind: "pay", role: r, who: pp.name || r.position, cost: after - before, note: "new salary " + fmt$(pp.sal2 * (r.payType === "hourly" ? 1 : 1)) + (r.payType === "hourly" ? "/hr" : "/yr") });
         }
-        const key = (pp.name || "").trim().toLowerCase();
+        const key = repIdent(pp.name);            // "" for TBD / new hire / open / unnamed
         if (key){ if (!seats.has(key)) seats.set(key, []); seats.get(key).push({ r, pp, from: j, to: pp.to || NM }); }
       }
     } else {
@@ -2079,50 +2084,101 @@ function planChanges(){
         cost: personCost(next.r, next.pp, next.from) - personCost(prev.r, { ...prev.pp, to: null }, next.from) });
     }
   }
-  const movedAt = new Set(moves.map(x => x.who.trim().toLowerCase() + "@" + x.m));
-  const kept = out.filter(o => !(o.kind !== "pay" && movedAt.has(String(o.who).trim().toLowerCase() + "@" + o.m))
-    && !(o.kind === "out" && moves.some(x => x.who.trim().toLowerCase() === String(o.who).trim().toLowerCase() && Math.abs(x.m - o.m) <= 2)));
+  const movedAt = new Set(moves.map(x => repIdent(x.who) + "@" + x.m));
+  const movedKey = new Set(moves.map(x => repIdent(x.who)));
+  // one seat in a role changing hands — someone's last month, then someone else's first — is a
+  // backfill: a single decision, and headcount never moves. Read that way it says what it costs to
+  // replace the person, instead of reading as an unrelated hire alongside an unrelated departure.
+  const backfills = [];
+  for (const r of S.staff){
+    const ppl = (r.people || []).slice().sort((a, b) => joinMonth(a) - joinMonth(b));
+    if (ppl.length < 2) continue;
+    const taken = new Set();
+    for (const nx of ppl){
+      const f = joinMonth(nx);
+      if (f < first) continue;
+      let prev = null;                                   // the seat that ends as this one starts
+      for (const pv of ppl){
+        if (pv === nx || taken.has(pv) || pv.to == null || pv.to >= NM) continue;
+        if (movedKey.has(repIdent(pv.name))) continue;   // they moved roles; that seat is already spoken for
+        const gap = f - pv.to;
+        if (gap < 0 || gap > 2) continue;
+        if (!prev || pv.to > prev.to) prev = pv;
+      }
+      if (!prev) continue;
+      taken.add(prev);
+      const payOf = pp => r.payType === "hourly" ? fmt$(pp.sal != null ? pp.sal : (r.rate || 0)) + "/hr"
+        : fmt$(pp.sal != null ? pp.sal : (r.ote || 0)) + "/yr";
+      backfills.push({ m: f, kind: "backfill", role: r, pIn: nx, pOut: prev,
+        who: nx.name || "", prev: prev.name || "", note: payOf(prev) + " → " + payOf(nx),
+        cost: personCost(r, nx, f) - personCost(r, prev, prev.to) });
+    }
+  }
+  const bfIn = new Set(backfills.map(x => x.pIn)), bfOut = new Set(backfills.map(x => x.pOut));
+  const kept = out.filter(o => !(o.kind !== "pay" && repIdent(o.who) && movedAt.has(repIdent(o.who) + "@" + o.m))
+    && !(o.kind === "out" && repIdent(o.who) && moves.some(x => repIdent(x.who) === repIdent(o.who) && Math.abs(x.m - o.m) <= 2))
+    && !(o.p && (o.kind === "in" ? bfIn : o.kind === "out" ? bfOut : new Set()).has(o.p)));
   for (const ev of (S.raises || [])){
     const m = Math.max(1, Math.round(ev.month || 1));
     if (m < first || m > NM) continue;
     const imp = raiseImpact(ev);
     if (!imp.heads) continue;
-    const T = raiseTargets()[ev.scope] || [];
-    const name = (T.find(o => o.v === ev.target) || {}).t || ev.target || "—";
+    const name = ev.scope === "dept" ? dn(ev.target)
+      : ev.scope === "role" ? ((S.staff.find(r => r.id === ev.target) || {}).position || ev.target)
+      : (() => { for (const r of S.staff) for (const pp of (r.people || [])) if (pp.id === ev.target) return pp.name; return ev.target; })();
     const rDept = ev.scope === "dept" ? ev.target
       : ev.scope === "role" ? ((S.staff.find(r => r.id === ev.target) || {}).dept || "")
       : (S.staff.find(r => (r.people || []).some(pp => pp.id === ev.target)) || {}).dept || "";
     kept.push({ m, kind: "raise", who: name, cost: imp.delta, heads: imp.heads, dept: rDept,
       note: ev.kind === "pct" ? (ev.amount * 100).toFixed(1) + "%" : fmt$(ev.amount) + (ev.kind === "yr" ? "/yr" : ev.kind === "hr" ? "/hr" : "/mo") });
   }
-  return kept.concat(moves).sort((a, b) => a.m - b.m || a.kind.localeCompare(b.kind));
+  return kept.concat(moves, backfills).sort((a, b) => a.m - b.m || a.kind.localeCompare(b.kind));
 }
 function renderPlanChanges(C){
   const el = document.getElementById("planChanges"); if (!el) return;
+  const sum = document.getElementById("planChangesSum");
   const ch = planChanges();
   if (!ch.length){
+    if (sum) sum.innerHTML = "";
     el.innerHTML = `<p class="subtle" style="margin:0">The plan holds the roster flat: no role opens or closes, nobody changes role, and no pay change is scheduled after ${esc(ACT_MO)}. Changes made on the Staffing tab show up here.</p>`;
     return;
   }
-  const VERB = { in: ["Hire", "--stretch"], out: ["End", "--booked"], move: ["Move", "--modest"], pay: ["Pay", "--modest"], raise: ["Raise", "--modest"] };
+  const VERB = { in: ["Hire", "--stretch"], backfill: ["Backfill", "--stretch"], out: ["End", "--booked"],
+    move: ["Move", "--modest"], pay: ["Pay", "--modest"], raise: ["Raise", "--modest"] };
+  const RANK = { in: 0, backfill: 1, move: 2, out: 3, pay: 4, raise: 5 };
+  const heads = ch.reduce((a, c) => a + (c.kind === "in" ? c.n : c.kind === "out" ? -c.n : 0), 0);
+  const total = ch.reduce((a, c) => a + (c.cost || 0), 0);
+  // the headline: what kind of decisions, how many heads, what it costs
+  if (sum){
+    const counts = ["in", "backfill", "move", "out", "pay", "raise"].map(k => [k, ch.filter(c => c.kind === k).length]).filter(x => x[1]);
+    const word = { in: "hire", backfill: "backfill", move: "role move", out: "ending", pay: "pay change", raise: "raise" };
+    sum.innerHTML = `<div class="inc-stats">
+      <span><b>${ch.length} change${ch.length === 1 ? "" : "s"}</b> after ${esc(ACT_MO)} — ${counts.map(([k, n]) => `${n} ${word[k]}${n === 1 ? "" : "s"}`).join(", ")}</span>
+      <span title="Headcount the plan adds or removes between ${esc(monthName(Math.min(NM, ACT + 1)))} and ${esc(monthName(NM))}">Headcount <b>${heads > 0 ? "+" : heads < 0 ? "−" : ""}${Math.abs(heads) || "unchanged"}</b></span>
+      <span title="Change to fully-loaded monthly cost once every change has landed">Monthly cost by ${esc(monthName(NM))} <b>${Math.abs(total) < 1 ? "unchanged" : (total > 0 ? "+" : "−") + fmt$(Math.abs(total))}</b></span>
+    </div>`;
+  }
   const byM = new Map();
   for (const c of ch){ if (!byM.has(c.m)) byM.set(c.m, []); byM.get(c.m).push(c); }
-  const total = ch.reduce((a, c) => a + (c.cost || 0), 0);
-  let h = `<table class="data"><thead><tr><th>When</th><th>What</th><th>Who</th><th>Department</th><th title="Change to fully-loaded monthly cost — pay, employer tax, benefits and per-head licenses">$/mo</th></tr></thead><tbody>`;
+  let h = `<table class="data chg"><thead><tr><th>What</th><th>Who</th><th title="Change to fully-loaded monthly cost — pay, employer tax, benefits and per-head licenses">$/mo</th></tr></thead><tbody>`;
   for (const [m, list] of [...byM.entries()].sort((a, b) => a[0] - b[0])){
-    for (const [k, c] of list.entries()){
+    const mTot = list.reduce((a, c) => a + (c.cost || 0), 0);
+    h += `<tr class="sec"><td colspan="2">${esc(monthName(m))} <span class="dim" style="font-weight:400">· ${list.length} change${list.length === 1 ? "" : "s"}</span></td>` +
+      `<td>${Math.abs(mTot) < 1 ? `<span class="dim">—</span>` : (mTot > 0 ? "+" : "−") + fmt$(Math.abs(mTot))}</td></tr>`;
+    for (const c of list.sort((a, b) => (RANK[a.kind] ?? 9) - (RANK[b.kind] ?? 9) || Math.abs(b.cost || 0) - Math.abs(a.cost || 0))){
       const [verb, col] = VERB[c.kind] || ["Change", "--modest"];
-      const who = c.kind === "move" ? `${esc(c.who)} <span class="dim">${esc(c.from.position)} → ${esc(c.role.position)}</span>`
-        : c.kind === "raise" ? `${esc(c.who)} <span class="dim">${esc(c.note)}${c.heads > 1 ? ` · ${c.heads} heads` : ""}</span>`
-        : c.kind === "pay" ? `${esc(c.who)} <span class="dim">${esc(c.note || "")}</span>`
-        : `${c.n > 1 ? c.n + " × " : ""}${esc(c.role.position)}${c.who && c.who !== c.role.position ? ` <span class="dim">${esc(c.who)}</span>` : ""}`;
-      h += `<tr><td>${k === 0 ? esc(monthName(m)) : ""}</td>
-        <td><span class="tag" style="background:color-mix(in srgb, var(${col}) 14%, transparent);color:var(${col});font-weight:600">${verb}</span></td>
-        <td>${who}</td><td class="dim">${esc(dn(c.dept || (c.role || c.from || {}).dept || ""))}</td>
-        <td class="${c.cost > 0 ? "" : "pos"}">${Math.abs(c.cost) < 1 ? `<span class="dim">—</span>` : (c.cost > 0 ? "+" : "−") + fmt$(Math.abs(c.cost))}</td></tr>`;
+      const dept = dn(c.dept || (c.role || c.from || {}).dept || "");
+      const who = c.kind === "backfill" ? `<b>${esc(c.role.position)}</b> <span class="dim">${esc(c.prev || "vacant")} → ${esc(c.who || "unfilled")}</span>`
+        : c.kind === "move" ? `<b>${esc(c.who)}</b> <span class="dim">${esc(c.from.position)} → ${esc(c.role.position)}</span>`
+        : c.kind === "raise" ? `<b>${esc(c.who)}</b> <span class="dim">${esc(c.note)}${c.heads > 1 ? ` · ${c.heads} heads` : ""}</span>`
+        : c.kind === "pay" ? `<b>${esc(c.who)}</b> <span class="dim">${esc(c.note || "")}</span>`
+        : `<b>${c.n > 1 ? c.n + " × " : ""}${esc(c.role.position)}</b>${c.who && c.who !== c.role.position ? ` <span class="dim">${esc(c.who)}</span>` : ""}`;
+      h += `<tr${c.note && c.kind === "backfill" ? ` title="${esc(c.note)}"` : ""}><td><span class="tag" style="background:color-mix(in srgb, var(${col}) 14%, transparent);color:var(${col});font-weight:600">${verb}</span></td>
+        <td>${who}${dept ? ` <span class="subtle">· ${esc(dept)}</span>` : ""}</td>
+        <td class="${c.cost < 0 ? "pos" : ""}">${Math.abs(c.cost) < 1 ? `<span class="dim">—</span>` : (c.cost > 0 ? "+" : "−") + fmt$(Math.abs(c.cost))}</td></tr>`;
     }
   }
-  h += `<tr class="tot"><td colspan="4">${ch.length} change${ch.length === 1 ? "" : "s"} after ${esc(ACT_MO)} — monthly cost by ${esc(monthName(NM))}</td><td><b>${total > 0 ? "+" : "−"}${fmt$(Math.abs(total))}</b></td></tr>`;
+  h += `<tr class="tot"><td colspan="2">Monthly cost by ${esc(monthName(NM))}</td><td><b>${Math.abs(total) < 1 ? "unchanged" : (total > 0 ? "+" : "−") + fmt$(Math.abs(total))}</b></td></tr>`;
   el.innerHTML = h + "</tbody></table>";
 }
 
