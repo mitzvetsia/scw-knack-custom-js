@@ -2113,18 +2113,25 @@ function planChanges(){
       let prev = null;                                   // the seat that ends as this one starts
       for (const pv of ppl){
         if (pv === nx || taken.has(pv) || pv.to == null || pv.to >= NM) continue;
-        if (movedKey.has(repIdent(pv.name))) continue;   // they moved roles; that seat is already spoken for
         const gap = f - pv.to;
         if (gap < 0 || gap > 2) continue;
         if (!prev || pv.to > prev.to) prev = pv;
       }
       if (!prev) continue;
       taken.add(prev);
+      // Whether the seat changed hands and what that costs are two different questions. It is a
+      // backfill either way — the seat was vacated and refilled. But if the person who vacated it
+      // MOVED to another role, their old cost has already come off the books on the move row, and
+      // the company still employs them: charge the seat at the new person's full cost, and count
+      // the head, or the move would subtract them twice and hide a real hire.
+      const away = movedKey.has(repIdent(prev.name));
       const payOf = pp => r.payType === "hourly" ? fmt$(pp.sal != null ? pp.sal : (r.rate || 0)) + "/hr"
         : fmt$(pp.sal != null ? pp.sal : (r.ote || 0)) + "/yr";
-      backfills.push({ m: f, kind: "backfill", role: r, pIn: nx, pOut: prev,
-        who: nx.name || "", prev: prev.name || "", note: payOf(prev) + " → " + payOf(nx),
-        cost: personCost(r, nx, f) - personCost(r, prev, prev.to) });
+      const movedTo = away ? (moves.find(x => repIdent(x.who) === repIdent(prev.name)) || {}).role : null;
+      backfills.push({ m: f, kind: "backfill", role: r, pIn: nx, pOut: prev, n: away ? 1 : 0,
+        who: nx.name || "", prev: prev.name || "", away: away,
+        note: payOf(prev) + " → " + payOf(nx) + (movedTo ? " · " + (prev.name || "they") + " moves to " + movedTo.position + ", carried on that row" : ""),
+        cost: personCost(r, nx, f) - (away ? 0 : personCost(r, prev, prev.to)) });
     }
   }
   const bfIn = new Set(backfills.map(x => x.pIn)), bfOut = new Set(backfills.map(x => x.pOut));
@@ -2159,7 +2166,7 @@ function renderPlanChanges(C){
   const VERB = { in: ["Hire", "--stretch"], backfill: ["Backfill", "--stretch"], out: ["End", "--booked"],
     move: ["Move", "--modest"], pay: ["Pay", "--modest"], raise: ["Raise", "--modest"] };
   const RANK = { in: 0, backfill: 1, move: 2, out: 3, pay: 4, raise: 5 };
-  const heads = ch.reduce((a, c) => a + (c.kind === "in" ? c.n : c.kind === "out" ? -c.n : 0), 0);
+  const heads = ch.reduce((a, c) => a + (c.kind === "in" || c.kind === "backfill" ? (c.n || 0) : c.kind === "out" ? -c.n : 0), 0);
   const total = ch.reduce((a, c) => a + (c.cost || 0), 0);
   // the headline: what kind of decisions, how many heads, what it costs
   if (sum){
@@ -2181,7 +2188,7 @@ function renderPlanChanges(C){
     for (const c of list.sort((a, b) => (RANK[a.kind] ?? 9) - (RANK[b.kind] ?? 9) || Math.abs(b.cost || 0) - Math.abs(a.cost || 0))){
       const [verb, col] = VERB[c.kind] || ["Change", "--modest"];
       const dept = dn(c.dept || (c.role || c.from || {}).dept || "");
-      const who = c.kind === "backfill" ? `<b>${esc(c.role.position)}</b> <span class="dim">${esc(c.prev || "vacant")} → ${esc(c.who || "unfilled")}</span>`
+      const who = c.kind === "backfill" ? `<b>${esc(c.role.position)}</b> <span class="dim">${esc(c.prev || "vacant")} → ${esc(c.who || "unfilled")}${c.away ? " · seat vacated by a move" : ""}</span>`
         : c.kind === "move" ? `<b>${esc(c.who)}</b> <span class="dim">${esc(c.from.position)} → ${esc(c.role.position)}</span>`
         : c.kind === "raise" ? `<b>${esc(c.who)}</b> <span class="dim">${esc(c.note)}${c.heads > 1 ? ` · ${c.heads} heads` : ""}</span>`
         : c.kind === "pay" ? `<b>${esc(c.who)}</b> <span class="dim">${esc(c.note || "")}</span>`
