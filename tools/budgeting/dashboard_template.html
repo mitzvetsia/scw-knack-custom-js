@@ -2464,8 +2464,9 @@ function renderGoals(C){
       </div>
     </div>`;
   /* A target per cycle, and two of them: what the plan commits to and what it reaches for. Blank
-     stretch means the same number for both, which is how a single target used to behave. */
-  const ord = CYCLES.map((c, i) => i).sort((a, b) => (a === GOAL_I ? -1 : b === GOAL_I ? 1 : a - b));
+     stretch means the same number for both, which is how a single target used to behave.
+     Cycles are listed in date order — the one being planned is marked, not moved. */
+  const ord = CYCLES.map((c, i) => i);
   const cycRev = (i, scn) => C.rev[scn].slice(CYCLES[i][0], CYCLES[i][1]).reduce((a, b) => a + b, 0);
   document.getElementById("goalTargets").innerHTML = ord.map(i => {
     const t = (L.targets || [])[i] || { mod: 0, str: 0 };
