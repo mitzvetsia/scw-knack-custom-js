@@ -43,17 +43,29 @@
  * button. The native grid is hidden for sub views unconditionally, so a
  * failed guard can never leak the raw table to a sub.
  *
- * BID TOTAL — two sources, in order:
- *   a) F.bidTotal — a currency field on the acceptance record itself.
- *      PREFERRED: one number, nothing else rides along. ⚠ Builder TBD.
- *   b) the SOW's field_2941 sub-bid snapshot, if a snapshot-shaped blob is
- *      exposed on the row (any column — we scan for it). Only basisTotal
- *      and basisBidName are read. ⚠ EXPOSURE: that blob ALSO carries the
- *      diff (exceptions[].sowFee = SCW-side money) and diffHtml, and a sub
- *      can read the whole thing out of the page regardless of what this
- *      code touches. Prefer (a); don't put field_2941 on a sub view unless
- *      you've accepted that.
- * Neither available → the total line is omitted (fail open, no error).
+ * BID TOTAL — READ ORDER (settled 2026-09-15). The published PROPOSAL is
+ * the source; the acceptance's own copy is a seal on it, not a rival:
+ *   1) THE PROPOSAL — F.bidDoc (field_2944) grand total, then the
+ *      proposal-sourced json (F.snapshotProp / field_2959). What the client
+ *      actually signed against. Silent on the card: this is the expected
+ *      case, and the figure carries the verified tooltip when a stamp
+ *      agrees with it (rung 1).
+ *   2) THE ASSERTED BASIS — F.assertedJson `total`, when the proposal
+ *      carries nothing. A CLAIM recorded by a person after signature, so it
+ *      is captioned in amber and never renders as quietly as (1).
+ *   3) THE ACCEPTANCE STAMP — F.bidTotal, then its own snapshot copy
+ *      (F.snapshot / field_2946). Frozen, but this layer is being RETIRED
+ *      as a source; captioned so its use is visible. ⚠ It used to rank
+ *      FIRST, which meant filling F.bidTotal in Builder would silently
+ *      outrank the signed proposal.
+ *   4) LIVE LINE ITEMS — summed per SOW. Real data, but it moves when the
+ *      scope moves and nobody signed it. Captioned.
+ * Nothing available → the total line is omitted (fail open, no error).
+ *
+ * ⚠ EXPOSURE on sub views: a sub-bid snapshot blob ALSO carries the diff
+ * (exceptions[].sowFee = SCW-side money) and diffHtml, and a sub can read
+ * the whole thing out of the page regardless of what this code touches.
+ * Don't put field_2941/field_2946 on a sub view unless you've accepted that.
  ****************************************************************************/
 (function () {
   'use strict';
@@ -284,13 +296,22 @@
    *  DOM last. Returns null when there's nothing snapshot-shaped. */
   function readSnapshot(viewKey, row) {
     var attrs = rowAttrs(viewKey, row.id);
-    var named = [F.snapshot, F.snapshotProp];
+    // PROPOSAL FIRST. field_2959 is the basis frozen on the published
+    // proposal — what the client signed against; field_2946 is the
+    // acceptance's own copy, which is being retired as a source. The
+    // returned blob carries __layer so bidAmountOf can label provenance
+    // instead of calling both 'quoted' and losing the distinction.
+    var named = [
+      { key: F.snapshotProp, layer: 'proposal' },
+      { key: F.snapshot,     layer: 'stamp' }
+    ];
     for (var n = 0; n < named.length; n++) {
-      if (!named[n]) continue;
+      if (!named[n].key) continue;
+      var k2 = named[n].key;
       var one = parseLooseJson(
-        (attrs && (attrs[named[n]] != null ? attrs[named[n]] : attrs[named[n] + '_raw'])) ||
-        cellText(row, named[n]));
-      if (isSnapshot(one)) return one;
+        (attrs && (attrs[k2] != null ? attrs[k2] : attrs[k2 + '_raw'])) ||
+        cellText(row, k2));
+      if (isSnapshot(one)) { one.__layer = named[n].layer; return one; }
     }
     if (attrs) {
       for (var k in attrs) {
@@ -299,7 +320,9 @@
         if (typeof val !== 'string') continue;
         if (val.indexOf('basisBid') === -1 && val.indexOf('"lines"') === -1) continue;
         var snap = parseLooseJson(val);
-        if (isSnapshot(snap)) return snap;
+        // Unattributable (found by shape, not by key) — treat as the weaker
+        // layer so it can never masquerade as the proposal's frozen basis.
+        if (isSnapshot(snap)) { snap.__layer = 'stamp'; return snap; }
       }
     }
     return null;
@@ -574,8 +597,14 @@
     var inner = cell.querySelector('span[data-kn="connection-value"]') ||
                 cell.querySelector('span[class^="col-"]') || cell;
     var html = (inner.innerHTML || '').trim();
-    // A blank Knack cell is &nbsp; / whitespace, not empty.
-    return html.replace(/<[^>]*>/g, '').replace(/[\s ]/g, '') ? html : '';
+    // EMPTINESS IS TESTED ON textContent, NOT innerHTML. A blank Knack cell
+    // holds &nbsp;, and innerHTML hands that back as the SIX LITERAL
+    // CHARACTERS "&nbsp;" — which no whitespace regex strips, so a blank
+    // cell read as populated and rendered a document tile that opened
+    // nothing. textContent decodes the entity to U+00A0, which \s matches.
+    var text = (inner.textContent || '').replace(/[\s ]/g, '');
+    if (!text && !inner.querySelector('*')) return '';
+    return html;
   }
 
   /** Open a stored bid document in its own tab, styled with the SAME
@@ -735,7 +764,6 @@
    *  compute. */
   function laborStat(installBilled, amt, surveyCost, basis) {
     var subAmt  = amt ? amt.amount : null;
-    var derived = !!(amt && amt.source === 'derived');
     if (installBilled == null && subAmt == null) {
       return '<span class="scw-acpt-col scw-acpt-col--labor"></span>';
     }
@@ -744,9 +772,12 @@
       lines += line(esc(money(installBilled)), 'billed to client');
     }
     if (subAmt != null) {
+      var sd = amt && SRC[amt.source];
       lines += line(esc(money(subAmt)),
-        'billed by sub' + (derived ? ' <span class="scw-acpt-line__src" title="' +
-          esc(DERIVED_NOTE) + '">(line items)</span>' : ''),
+        'billed by sub' + (sd ? ' <span class="scw-acpt-line__src' +
+          (sd.amber ? ' scw-acpt-line__src--claim' : '') + '" title="' +
+          esc(sd.note) + '">(' + esc(sd.lbl.replace(/^from /, '')) +
+          ')</span>' : ''),
         '',
         // RUNG 1 — the happy path stays visually silent; the tooltip is
         // what makes the silence mean "checked" rather than "unchecked".
@@ -790,29 +821,40 @@
    *                document: it moves when the scope moves, and nobody
    *                signed it. Always labelled as derived on the card.
    */
-  function bidAmountOf(row, snap, bySow) {
+  function bidAmountOf(row, snap, bySow, viewKey) {
+    // 1 ── THE PROPOSAL. What the client actually signed against: the bid
+    // document frozen when the proposal was published (Knack renders the
+    // fragment as real elements, so the grand total is a class lookup, not
+    // an HTML parse). This is the authoritative figure and it goes first.
+    var docTotal = totalFromBidDoc(row);
+    if (docTotal != null) return { amount: docTotal, source: 'proposal' };
+    // The proposal's own json, same layer. readSnapshot prefers the
+    // proposal-sourced column over the acceptance's copy.
+    var fromSnap = snapTotal(snap);
+    if (fromSnap != null && snap && snap.__layer === 'proposal') {
+      return { amount: fromSnap, source: 'proposal' };
+    }
+    // 2 ── THE ASSERTED BASIS. The proposal carries nothing, so fall back
+    // to what a human identified after the fact. A CLAIM, not a record —
+    // it is labelled as such wherever it surfaces (see SRC_NOTE).
+    if (viewKey) {
+      var a = readAsserted(viewKey, row);
+      if (a && a.total != null) return { amount: a.total, source: 'asserted' };
+    }
+    // 3 ── THE ACCEPTANCE'S OWN STAMP — either its currency field or its
+    // copy of the snapshot. Being retired as a source (it is the SEAL now,
+    // see basisDrift), but it outranks a live sum because it is at least
+    // frozen. Ranks BELOW the asserted basis on purpose: the agreed read
+    // order is proposal → asserted, and anything reached past that is a
+    // safety net, not a design. It used to rank FIRST, which meant filling
+    // F.bidTotal in Builder would have silently outranked the proposal.
     if (F.bidTotal) {
       var direct = numFromText(cellText(row, F.bidTotal));
-      if (direct != null) return { amount: direct, source: 'quoted' };
+      if (direct != null) return { amount: direct, source: 'stamp' };
     }
-    // The stored bid DOCUMENT, if that column is on the view. Knack renders
-    // the fragment as real elements, so the grand total is a class lookup
-    // rather than an HTML parse. This is the bid as published — the
-    // strongest figure available.
-    var docTotal = totalFromBidDoc(row);
-    if (docTotal != null) return { amount: docTotal, source: 'quoted' };
-    if (snap) {
-      if (snap.basisTotal != null && isFinite(Number(snap.basisTotal))) {
-        return { amount: Number(snap.basisTotal), source: 'quoted' };
-      }
-      var m = String(snap.bidHtml || '').match(/class="pt-value"[^>]*>([^<]+)</);
-      if (m) {
-        var scraped = numFromText(m[1]);
-        if (scraped != null) return { amount: scraped, source: 'quoted' };
-      }
-      var lt = linesTotal(snap);
-      if (lt != null) return { amount: lt, source: 'quoted' };
-    }
+    if (fromSnap != null) return { amount: fromSnap, source: 'stamp' };
+    // 4 ── LIVE LINE ITEMS. Real data, but it moves when the scope moves
+    // and nobody signed it.
     if (bySow) {
       var tok = sowTokenOf(row);
       if (tok) {
@@ -823,8 +865,57 @@
     }
     return null;
   }
+  /** Any total a snapshot blob can yield, strongest first. */
+  function snapTotal(snap) {
+    if (!snap) return null;
+    if (snap.basisTotal != null && isFinite(Number(snap.basisTotal))) {
+      return Number(snap.basisTotal);
+    }
+    var m = String(snap.bidHtml || '').match(/class="pt-value"[^>]*>([^<]+)</);
+    if (m) {
+      var scraped = numFromText(m[1]);
+      if (scraped != null) return scraped;
+    }
+    return linesTotal(snap);
+  }
   var DERIVED_NOTE = 'Summed from the current line items on this scope — ' +
     'not a figure read off a signed bid document.';
+
+  /** WHICH LAYER SUPPLIED THE FIGURE. The read order is proposal →
+   *  asserted → stamp → line items (see bidAmountOf), and every layer past
+   *  the first says so on the card. Without this, "no caption" meant both
+   *  "read off the signed proposal" AND "the proposal was empty and we
+   *  fell through" — the same absence-reads-as-confirmation problem the
+   *  verified tooltip exists to fix, one rung down.
+   *
+   *  'proposal' is the expected case and stays silent; the figure carries
+   *  the verified tooltip when a stamp agrees with it (rung 1). */
+  var SRC = {
+    asserted: {
+      lbl: 'asserted basis',
+      amber: true,
+      note: 'The published proposal carries no bid basis, so this figure ' +
+            'comes from a basis asserted AFTER signature — a claim recorded ' +
+            'by a person, not a figure the client signed against.'
+    },
+    stamp: {
+      lbl: 'from the acceptance stamp',
+      amber: false,
+      note: 'The published proposal carries no bid basis, so this figure ' +
+            'comes from the copy stamped on the acceptance record at ' +
+            'signature. Frozen, but the acceptance-side copy is being ' +
+            'retired as a source — the proposal is where this should live.'
+    },
+    derived: { lbl: 'from line items', amber: false, note: DERIVED_NOTE }
+  };
+  /** The caption line for a resolved amount, or '' for the silent case. */
+  function srcLine(amt) {
+    var d = amt && SRC[amt.source];
+    if (!d) return '';
+    return line('', '<span class="scw-acpt-line__src' +
+      (d.amber ? ' scw-acpt-line__src--claim' : '') +
+      '" title="' + esc(d.note) + '">' + esc(d.lbl) + '</span>');
+  }
 
   /** ── BID BASIS: two freezes of the same bid, compared ──────────
    *
@@ -937,7 +1028,12 @@
       when: shortDate(meta && meta.assertedAt),
       who:  String((by && (by.name || by.email)) || (typeof by === 'string' ? by : '')).trim(),
       why:  String((meta && meta.why) || '').trim(),
-      bid:  String((meta && meta.bidName) || '').trim()
+      bid:  String((meta && meta.bidName) || '').trim(),
+      // The asserted figure. Present only when the assertion records one —
+      // an assertion with a document but no total identifies the basis
+      // without pricing it, and must not invent a number.
+      total: (meta && meta.total != null && isFinite(Number(meta.total)))
+        ? Number(meta.total) : null
     };
   }
   function assertedNote(a) {
@@ -1187,6 +1283,9 @@
       '.scw-acpt-line__val--rate + .scw-acpt-line__lbl { font-size: 10.5px;',
       '  color: #64748b; }',
       '.scw-acpt-line__src { cursor: help; border-bottom: 1px dotted #cbd5e1; }',
+      // A figure sourced from an assertion is a CLAIM, not a record — it
+      // never renders as quietly as a frozen one.
+      '.scw-acpt-line__src--claim { color: #b45309; border-bottom-color: #fcd34d; }',
       // ── Bid-basis drift (rung 3) ─────────────────────────
       // Amber, never red: a proposal that moved after signature is a
       // reconciliation job, not a failure. Same #b45309 the margin
@@ -2019,7 +2118,7 @@
     // Same money as the sub card, same sources and same priority — ops
     // reads the figures it's asking the sub to agree to, so the two
     // surfaces can't quietly disagree. Provenance travels with it.
-    var amt      = bidAmountOf(row, snap, bySow);
+    var amt      = bidAmountOf(row, snap, bySow, viewKey);
     var total    = amt ? money(amt.amount) : '';
     var totalLbl = isCo ? 'Change order total' : 'Bid total';
     // Ops context that belongs on a paperwork row: WHICH bid was priced,
@@ -2127,10 +2226,7 @@
             (total
               ? line(esc(total), esc(totalLbl).toLowerCase(), '',
                   (drift && drift.agree) ? VERIFIED_NOTE : '') +
-                (amt.source === 'derived'
-                  ? line('', '<span class="scw-acpt-line__src" title="' +
-                      esc(DERIVED_NOTE) + '">from line items</span>')
-                  : '') +
+                srcLine(amt) +
                 // Same drift line as laborStat renders, for the view that
                 // has no billed columns to hang it off.
                 ((drift && !drift.agree)
@@ -2334,7 +2430,7 @@
         fileSub = 'Submitted' + (when ? ' ' + when : '') + (who ? ' by ' + who : '');
       }
     }
-    var amt    = bidAmountOf(row, snap, bySow);
+    var amt    = bidAmountOf(row, snap, bySow, viewKey);
     var total  = amt ? money(amt.amount) : '';
     // A CO total is a signed CHANGE (removes credit back), so it can't
     // wear the same label as a base-scope bid total.
@@ -2407,11 +2503,7 @@
       equipCell('') +
       '<span class="scw-acpt-col scw-acpt-col--labor">' +
         (total
-          ? line(esc(total), esc(totalLbl).toLowerCase()) +
-            (amt.source === 'derived'
-              ? line('', '<span class="scw-acpt-line__src" title="' +
-                  esc(DERIVED_NOTE) + '">from line items</span>')
-              : '')
+          ? line(esc(total), esc(totalLbl).toLowerCase()) + srcLine(amt)
           : '') +
       '</span>' +
       '<div class="scw-acpt-docs">' +
