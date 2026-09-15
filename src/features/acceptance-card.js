@@ -919,75 +919,13 @@
       '.scw-acpt-beta b { font: 800 9.5px/1 system-ui, sans-serif; letter-spacing: .08em;',
       '  text-transform: uppercase; padding: 3px 6px; border-radius: 4px;',
       '  background: #fef3c7; }',
-      // Sub row: identity then money, one right edge for every figure.
-      // Grid (not flex) so the two columns agree row to row, and the money
-      // column drops below the identity on a narrow screen.
-      '.scw-acpt-row--sub { grid-template-columns: minmax(0, 1fr) auto;',
-      '  grid-template-areas: "id money"; column-gap: 24px; }',
-      '@media (max-width: 760px) {',
-      '  .scw-acpt-row--sub { grid-template-columns: minmax(0, 1fr);',
-      '    grid-template-areas: "id" "money"; }',
-      '}',
-      '.scw-acpt-money { display: flex; flex-direction: column; gap: 10px;',
-      '  align-items: flex-end; justify-content: flex-start; }',
-      '.scw-acpt-basis { display: flex; flex-direction: column; gap: 2px;',
-      '  align-items: flex-start; }',
-      // The bid name doubles as the link to its PDF: leading file glyph,
-      // underline on the text only (not the icon) so it still reads as a
-      // title rather than a button.
-      'a.scw-acpt-title--doc { display: inline-flex; align-items: center; gap: 6px;',
-      '  text-decoration: none !important; }',
-      'a.scw-acpt-title--doc svg { flex: none; color: #64748b; }',
-      'a.scw-acpt-title--doc:hover span { text-decoration: underline; }',
-      '.scw-acpt-row--sub .scw-acpt-sub { overflow-wrap: anywhere; }',
-      // Money block — right-aligned inside the money column so every
-      // figure on the card shares one right edge.
-      '.scw-acpt-total { flex: 0 0 auto; display: flex; flex-direction: column;',
-      '  gap: 2px; padding: 2px 0; align-items: flex-end; text-align: right; }',
-      '.scw-acpt-total__lbl { font: 700 9.5px/1 system-ui, sans-serif;',
-      '  letter-spacing: .08em; text-transform: uppercase; color: #94a3b8;',
-      '  white-space: nowrap; }',
-      // NEUTRAL. A change order that nets negative isn\'t bad news and one
-      // that nets positive isn\'t good news — it\'s a change. The sign is
-      // the whole story; colour would editorialise. (Green/amber stay for
-      // the yes/no status pills, where they mean done / not done.)
-      '.scw-acpt-total__val { font: 700 16px/1.15 system-ui, sans-serif;',
-      '  color: #0f172a; font-variant-numeric: tabular-nums; }',
-      // Provenance caption. A figure summed off the live line items is
-      // weaker than one off a bid document, so it never sits there
-      // unqualified — dotted underline invites the tooltip.
-      '.scw-acpt-total__src { font: 600 9.5px/1.2 system-ui, sans-serif;',
-      '  color: #94a3b8; letter-spacing: .02em; cursor: help;',
-      '  border-bottom: 1px dotted #cbd5e1; }',
-      // Running tally: original bid + change orders = total. Sits under
-      // the rows it sums, separated by a rule so it reads as a footer, and
-      // ends flush right so its Total lands under the rows\' figures.
-      '.scw-acpt-tally { display: flex; align-items: flex-end; flex-wrap: wrap;',
-      '  justify-content: flex-end; gap: 6px 16px; margin-top: 4px;',
-      '  padding: 12px 2px 2px; border-top: 2px solid #e2e8f0; }',
-      '.scw-acpt-tally__cell { display: flex; flex-direction: column; gap: 2px;',
-      '  align-items: flex-end; text-align: right; }',
-      '.scw-acpt-tally__lbl { font: 700 9.5px/1 system-ui, sans-serif;',
-      '  letter-spacing: .08em; text-transform: uppercase; color: #94a3b8;',
-      '  white-space: nowrap; }',
-      '.scw-acpt-tally__val { font: 700 15px/1.15 system-ui, sans-serif;',
-      '  color: #0f172a; font-variant-numeric: tabular-nums; }',
-      '.scw-acpt-tally__op { font: 600 14px/1 system-ui, sans-serif; color: #cbd5e1;',
-      '  padding-bottom: 2px; }',
-      // The total is the figure the sub is looking for — give it the
-      // emphasis and let the inputs read as inputs.
-      '.scw-acpt-tally__cell--total .scw-acpt-tally__lbl { color: #475569; }',
-      '.scw-acpt-tally__cell--total .scw-acpt-tally__val { font-size: 18px; }',
-      // Caveat rides on the LEFT so the numbers keep the right edge.
-      '.scw-acpt-tally__note { margin-right: auto; align-self: center;',
-      '  font: 600 10px/1.3 system-ui, sans-serif; color: #94a3b8; cursor: help;',
-      '  border-bottom: 1px dotted #cbd5e1; }',
-      // MUST follow the base rules above — same specificity, so source
-      // order decides. Declared earlier it silently lost to flex-end.
-      '.scw-acpt-tally--left { justify-content: flex-start; }',
-      '.scw-acpt-tally--left .scw-acpt-tally__cell { align-items: flex-start;',
-      '  text-align: left; }',
-      '.scw-acpt-tally--left .scw-acpt-tally__note { margin-right: 0; margin-left: auto; }',
+      // The sub row is the SAME grid as the ops row — no variant. What it
+      // shows differs; where it shows it does not.
+      // A bid with nothing to open: stated, not offered. The sub can't
+      // attach one, so a dashed "add this" tile would be a dead end.
+      '.scw-acpt-doc--none { background: #f8fafc; border-color: #e2e8f0;',
+      '  color: #94a3b8; cursor: default; }',
+      '.scw-acpt-doc--none .scw-acpt-doc__lbl { color: #94a3b8; }',
       // ── ONE money grid, shared by every band ─────────────
       // The rows, the column header and the project footer all use the
       // SAME fixed column widths, so every figure sits on the same axis by
@@ -2052,17 +1990,22 @@
       ? (bidPdfA.getAttribute('data-file-name') ||
          (bidPdfA.textContent || '').replace(/\s+/g, ' ').trim())
       : '';
-    // ONE representation of the bid. The snapshot's basis name is the real
-    // designation ("BD-2", or the K1 label); the file name stands in when
-    // there isn't one. Whatever ends up as the name IS the link to the PDF
-    // — never a name plus a separate button that opens the same document.
-    // The file name only repeats as a sub-line when it isn't already the
-    // name (i.e. when we have a real designation to lead with).
+    // The row leads with the SOW, same as the ops card — the bid document
+    // is a tile in the paperwork column, not the row's title. basisName
+    // survives as the document's DIALOG title (and the fallback caption
+    // when there's no file name to show).
     // Proposal identifier embeds the SOW number ("<project#>-<SOW#> | <quote#>")
     // — when the column is exposed, lead with the SOW so a project with a
     // base SOW plus change orders is readable. Fail quiet when it isn't.
     var propTxt = cellText(row, F.proposal);
-    var sowNo   = (propTxt.split(/\s*\|\s*/)[0] || '').trim();
+    var pParts  = propTxt.split(/\s*\|\s*/);
+    var sowNo   = (pParts[0] || '').trim();
+    var propSub = (pParts.length === 2 ? (pParts[1] || '').trim() : '');
+    // Which of the sub's own bids this scope was priced from. view_4066
+    // carries no bid-basis column, so the snapshot's designation ("BD-2",
+    // the K1 label) stands in — the same tag, in the same place, as the
+    // ops card's "Bid 183".
+    var basisNo = cellText(row, F.bidBasis);
     // A change order: the SOW number's CO suffix when we can see it, else
     // the snapshot's own shape — a CO acceptance carries the sub-pricing
     // snapshot, which a base-scope one never does. Matters because a CO
@@ -2070,7 +2013,9 @@
     // payment pill is noise on it.
     var isCoRow = /\bSW\d+CO\b/i.test(propTxt) || isCoSnapshot(snap);
 
-    var basisName = String((snap && snap.basisBidName) || '').trim() || pdfName ||
+    var snapBasis = String((snap && snap.basisBidName) || '').trim();
+    var basisTag  = basisNo || snapBasis;
+    var basisName = snapBasis || pdfName ||
       (isCoRow ? 'Change order pricing' : 'Not designated yet');
     var pdfHref  = bidPdfA ? (bidPdfA.getAttribute('href') || '') : '';
     // No PDF but the document is stored as HTML — the name opens THAT, so
@@ -2086,18 +2031,6 @@
         fileSub = 'Submitted' + (when ? ' ' + when : '') + (who ? ' by ' + who : '');
       }
     }
-    var nameHtml;
-    if (pdfHref) {
-      nameHtml = '<a class="scw-acpt-title scw-acpt-title--doc" href="' + esc(pdfHref) + '" ' +
-        'title="Open ' + esc(pdfName || 'the bid PDF') + '">' + FILE_SVG +
-        '<span>' + esc(basisName) + '</span></a>';
-    } else if (subDocHtml) {
-      nameHtml = '<a class="scw-acpt-title scw-acpt-title--doc" data-bid-doc="1" ' +
-        'href="javascript:void(0)" title="Open the bid document">' + FILE_SVG +
-        '<span>' + esc(basisName) + '</span></a>';
-    } else {
-      nameHtml = '<div class="scw-acpt-title">' + esc(basisName) + '</div>';
-    }
     var amt    = bidAmountOf(row, snap, bySow);
     var total  = amt ? money(amt.amount) : '';
     // A CO total is a signed CHANGE (removes credit back), so it can't
@@ -2112,14 +2045,51 @@
     // describe. The money column is last and right-aligned in every row
     // (and in the tally), so all the figures share one edge; it renders
     // even when empty so a row without a total doesn't shift the others.
+    // SAME FOUR COLUMNS AS THE OPS CARD — identity, the bid document,
+    // an (empty) equipment track, the money — so a reader moving between
+    // the two pages finds the same thing in the same place. What differs
+    // is only what the sub is entitled to see: no equipment, no
+    // billed-to-client, no survey cost, no margin. Those columns are
+    // absent in content, not in position.
+    var bidTileLbl = pdfHref ? 'Bid PDF'
+      : (isCoRow ? 'Change order pricing'
+        : (subDocHtml ? 'Bid document' : 'No bid on file'));
+    var bidTileTip = pdfName ? ('Open ' + pdfName)
+      : (isCoRow ? 'Open the pricing you submitted' : 'Open the bid document');
+    var bidTile;
+    if (pdfHref) {
+      bidTile = '<span class="scw-acpt-doc">' +
+        '<a class="scw-acpt-doc__open" href="' + esc(pdfHref) + '" ' +
+          'title="' + esc(bidTileTip) + '">' + CHECK_SVG +
+          '<span class="scw-acpt-doc__lbl">' + esc(bidTileLbl) + '</span></a></span>';
+    } else if (subDocHtml) {
+      bidTile = '<span class="scw-acpt-doc scw-acpt-doc--html">' +
+        '<a class="scw-acpt-doc__open" data-bid-doc="1" href="javascript:void(0)" ' +
+          'title="' + esc(bidTileTip) + '">' + FILE_SVG +
+          '<span class="scw-acpt-doc__lbl">' + esc(bidTileLbl) + '</span></a></span>';
+    } else {
+      // Nothing to open. Stated plainly, NOT as a dashed "add this"
+      // placeholder — the sub can't attach it, so an affordance would be
+      // a dead end.
+      bidTile = '<span class="scw-acpt-doc scw-acpt-doc--none">' +
+        '<span class="scw-acpt-doc__lbl">' + esc(bidTileLbl) + '</span></span>';
+    }
+
     var html =
       '<div class="scw-acpt-id">' +
-        '<div class="scw-acpt-pair__cap">' +
-          (sowNo ? esc(sowNo) : 'Priced from') + '</div>' +
-        '<div class="scw-acpt-basis">' +
-          nameHtml +
-          (fileSub ? '<div class="scw-acpt-sub">' + esc(fileSub) + '</div>' : '') +
-        '</div>' +
+        // The SOW leads, same as the ops card. With no proposal column on
+        // the view there's no SOW to lead with, so the bid's own
+        // designation takes the title instead of a bare placeholder.
+        '<div class="scw-acpt-title">' + esc(sowNo || basisName) + '</div>' +
+        (propSub ? '<div class="scw-acpt-sub">Proposal ' + esc(propSub) + '</div>' : '') +
+        // Which of their own bids this is priced from — the same tag, in
+        // the same place, as the ops card. Suppressed when it IS the title
+        // (nothing gains from saying it twice).
+        (basisTag && basisTag !== (sowNo || basisName)
+          ? '<div class="scw-acpt-meta"><span class="scw-acpt-tag" ' +
+              'title="Priced from bid ' + esc(basisTag) + '">Bid ' + esc(basisTag) +
+              '</span></div>'
+          : '') +
         '<div class="scw-acpt-status">' +
           // A change order carries no initial payment (it rides the final
           // project invoice), so signature is its only gate — same rule
@@ -2131,21 +2101,28 @@
           pill(signed ? 'Agreement signed' : 'Agreement not signed', signed) +
         '</div>' +
       '</div>' +
-      '<div class="scw-acpt-money">' +
+      equipCell('') +
+      '<span class="scw-acpt-col scw-acpt-col--labor">' +
         (total
-          ? '<div class="scw-acpt-total">' +
-              '<span class="scw-acpt-total__lbl">' + esc(totalLbl) + '</span>' +
-              '<span class="scw-acpt-total__val">' + esc(total) + '</span>' +
-              (amt.source === 'derived'
-                ? '<span class="scw-acpt-total__src" title="' + esc(DERIVED_NOTE) + '">' +
-                    'from line items</span>'
-                : '') +
-            '</div>'
+          ? line(esc(total), esc(totalLbl).toLowerCase()) +
+            (amt.source === 'derived'
+              ? line('', '<span class="scw-acpt-line__src" title="' +
+                  esc(DERIVED_NOTE) + '">from line items</span>')
+              : '')
           : '') +
+      '</span>' +
+      '<div class="scw-acpt-docs">' +
+        '<div class="scw-acpt-actions">' +
+          '<span class="scw-acpt-pair">' +
+            '<span class="scw-acpt-pair__cap">Bid</span>' +
+            '<span class="scw-acpt-pair__tiles">' + bidTile + '</span>' +
+            (fileSub ? '<span class="scw-acpt-sub">' + esc(fileSub) + '</span>' : '') +
+          '</span>' +
+        '</div>' +
       '</div>';
 
     var el = document.createElement('div');
-    el.className = 'scw-acpt-row scw-acpt-row--sub';
+    el.className = 'scw-acpt-row';
     el.innerHTML = html;
     var subDocBtns = el.querySelectorAll('[data-bid-doc]');
     for (var sd = 0; sd < subDocBtns.length; sd++) {
@@ -2167,8 +2144,13 @@
    *  acceptance on the project (base scope + each change order), so the
    *  labor rate for the project overall reads in the same place the
    *  per-row one does. Null for a single row: that row already IS the
-   *  project, and a footer repeating it is noise. */
-  function buildProjectMoney(entries) {
+   *  project, and a footer repeating it is noise.
+   *
+   *  forSub renders the SAME footer, in the same columns, with only what
+   *  the sub is entitled to see: its own running total. No equipment, no
+   *  billed-to-client, no survey cost, no margin — the ops-only figures
+   *  are absent in content, not in position. */
+  function buildProjectMoney(entries, forSub) {
     var eq = null, inst = null, sub = null, svy = null;
     var billedRows = 0, derived = false;
     var seenSow = Object.create(null);
@@ -2195,7 +2177,10 @@
     // billed rows — or when there's a base-vs-CO split to explain. A view
     // with no billed columns still has the split, which is the whole
     // footer in that case.
-    var split = splitLine(entries);
+    var split = splitLine(entries, forSub);
+    // On the sub card the split line IS the footer's reason to exist (it
+    // never has a billed column to sum), so a lone base row gets nothing —
+    // its own row already says the total.
     if (billedRows < 2 && !split) return null;
     var el = document.createElement('div');
     el.className = 'scw-acpt-foot';
@@ -2205,9 +2190,15 @@
           (billedRows < 2 ? 'Project total' : 'Project') + '</span>' +
         split +
       '</span>' +
-      equipCell(eq != null ? money(eq) : '') +
-      laborStat(inst, sub == null ? null : { amount: sub,
-        source: derived ? 'derived' : 'quoted' }, svy);
+      equipCell(forSub ? '' : (eq != null ? money(eq) : '')) +
+      (forSub
+        ? '<span class="scw-acpt-col scw-acpt-col--labor">' +
+            (sub == null ? '' : line(esc(money(sub)), 'your total' +
+              (derived ? ' <span class="scw-acpt-line__src" title="' +
+                esc(DERIVED_NOTE) + '">(line items)</span>' : ''))) +
+          '</span>'
+        : laborStat(inst, sub == null ? null : { amount: sub,
+            source: derived ? 'derived' : 'quoted' }, svy));
     return el;
   }
 
@@ -2217,7 +2208,7 @@
    *  a band of its own. Only when there IS a change order and a base figure
    *  to add it to: with one base row the row's own figure already says it,
    *  and a total that quietly omits an unknown base is worse than none. */
-  function splitLine(entries) {
+  function splitLine(entries, forSub) {
     var base = 0, baseN = 0, co = 0, coN = 0, derived = false;
     for (var i = 0; i < entries.length; i++) {
       var e = entries[i];
@@ -2236,48 +2227,15 @@
       // that's all it means.
       n((co > 0 ? '+' : '') + money(co)) +
       '<span>' + (coN > 1 ? coN + ' change orders' : 'change order') + '</span>' +
-      op('=') + n(money(base + co)) + '<span>to sub</span>' +
+      // "to sub" is the ops reading of the same figure; on the sub's own
+      // page it's just the total.
+      op('=') + n(money(base + co)) +
+      '<span>' + (forSub ? 'total' : 'to sub') + '</span>' +
       (derived
         ? op('\u00b7') + '<span class="scw-acpt-split__note" title="' +
             esc(DERIVED_NOTE) + '">includes line-item sums</span>'
         : '') +
       '</span>';
-  }
-
-  /** SUB CARD ONLY — the running tally band. The sub card keeps its
-   *  single-figure money column (it never sees equipment or the billed
-   *  side), so the ops card's folded split line has nothing to attach to
-   *  here; this stays its own band. */
-  function buildTally(entries) {
-    var base = 0, baseN = 0, co = 0, coN = 0, derived = false;
-    for (var i = 0; i < entries.length; i++) {
-      var e = entries[i];
-      if (e.amount == null) continue;
-      if (e.source === 'derived') derived = true;
-      if (e.isCo) { co += e.amount; coN++; }
-      else { base += e.amount; baseN++; }
-    }
-    if (!coN || !baseN) return null;
-    function cell(lbl, val, mod) {
-      return '<span class="scw-acpt-tally__cell' + (mod ? ' ' + mod : '') + '">' +
-        '<span class="scw-acpt-tally__lbl">' + esc(lbl) + '</span>' +
-        '<span class="scw-acpt-tally__val">' + esc(val) + '</span></span>';
-    }
-    var el = document.createElement('div');
-    el.className = 'scw-acpt-tally';
-    el.innerHTML =
-      // Caveat first so the figures keep the card's right edge.
-      (derived
-        ? '<span class="scw-acpt-tally__note" title="' + esc(DERIVED_NOTE) + '">' +
-            'Includes amounts summed from line items</span>'
-        : '') +
-      cell(baseN > 1 ? 'Original bids' : 'Original bid', money(base)) +
-      '<span class="scw-acpt-tally__op" aria-hidden="true">+</span>' +
-      cell(coN > 1 ? coN + ' change orders' : 'Change order',
-           (co > 0 ? '+' : '') + money(co)) +
-      '<span class="scw-acpt-tally__op" aria-hidden="true">=</span>' +
-      cell('Total', money(base + co), 'scw-acpt-tally__cell--total');
-    return el;
   }
 
   function renderSubView(VIEW) {
@@ -2319,8 +2277,10 @@
       entries.push(entry);
       card.appendChild(entry.el);
     }
-    var tally = buildTally(entries);
-    if (tally) card.appendChild(tally);
+    // The SAME footer element the ops card uses, so the running total
+    // lands in the same column on both pages.
+    var foot = buildProjectMoney(entries, true);
+    if (foot) card.appendChild(foot);
     viewEl.appendChild(card);
     rollup(viewEl, rows.length - signedCount);
   }
