@@ -613,20 +613,28 @@
    *  is the point when no PDF was ever attached. A new tab rather than a
    *  modal: this is a full proposal-length document with wide tables, and
    *  the card's modal is 420px. */
-  function openBidDoc(html, title) {
-    if (!html) return;
+  /** The stored bid document, in an IN-PAGE MODAL.
+   *
+   *  Was a popup (`window.open` + document.write), which meant a
+   *  subcontractor with default browser settings got a toast telling them
+   *  to go change their pop-up blocker — on the one surface where the bid
+   *  they are working from is the whole point. No popup now.
+   *
+   *  The document renders inside an IFRAME rather than directly in the
+   *  modal. The fragment leans on the proposal/PDF stylesheet
+   *  (SCW.pdfExport.getCss()), which is page-wide CSS written for a
+   *  standalone document — dropping that into the live page would restyle
+   *  everything around it. An iframe gives complete style isolation for
+   *  free and lets the scaffold below stay byte-for-byte what the popup
+   *  used, including the print wrapper. */
+  var DOC_MODAL_ID = 'scw-acpt-doc-modal';
+  function bidDocPage(html, title) {
     var css = '';
     try {
       if (window.SCW && SCW.pdfExport && typeof SCW.pdfExport.getCss === 'function') {
         css = SCW.pdfExport.getCss() || '';
       }
     } catch (e) { css = ''; }
-    var w = null;
-    try { w = window.open('', '_blank'); } catch (e2) { w = null; }
-    if (!w) {
-      toast('Allow pop-ups for this site to open the bid document.', true);
-      return;
-    }
     // Minimal page scaffold when the PDF stylesheet isn't in scope — the
     // fragment carries its own inline styles for the diff tables, but the
     // bid document leans on classes.
@@ -640,15 +648,69 @@
       '.l2-header{font-weight:700;font-size:12px;color:#475569;margin:12px 0 2px;}',
       '.pt-value,.l1-footer-value{font-weight:800;}'
     ].join('');
-    w.document.write('<!doctype html><html><head><meta charset="utf-8">' +
+    return '<!doctype html><html><head><meta charset="utf-8">' +
       '<meta name="viewport" content="width=device-width,initial-scale=1">' +
       '<title>' + esc(title || 'Bid document') + '</title><style>' +
       (css || fallback) +
-      // Give the printed page a sane wrapper whichever stylesheet applied.
       ' .scw-bid-doc{max-width:900px;margin:0 auto;padding:24px 16px;}' +
-      '</style></head><body><div class="scw-bid-doc">' + html + '</div></body></html>');
-    w.document.close();
-    try { w.focus(); } catch (e3) { /* ignore */ }
+      '</style></head><body><div class="scw-bid-doc">' + html + '</div></body></html>';
+  }
+  function closeBidDoc() {
+    var prior = document.getElementById(DOC_MODAL_ID);
+    if (prior) prior.remove();
+    document.documentElement.style.overflow = '';
+    document.removeEventListener('keydown', bidDocKeydown, true);
+  }
+  function bidDocKeydown(e) {
+    if (e.key === 'Escape' || e.keyCode === 27) { closeBidDoc(); }
+  }
+  function openBidDoc(html, title) {
+    if (!html) return;
+    closeBidDoc();
+    var wrap = document.createElement('div');
+    wrap.id = DOC_MODAL_ID;
+    wrap.className = 'scw-acpt-docmodal';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-modal', 'true');
+    wrap.setAttribute('aria-label', title || 'Bid document');
+    wrap.innerHTML =
+      '<div class="scw-acpt-docmodal__box">' +
+        '<div class="scw-acpt-docmodal__head">' +
+          '<span class="scw-acpt-docmodal__ttl">' + esc(title || 'Bid document') + '</span>' +
+          '<button type="button" class="scw-acpt-docmodal__x" data-doc-close="1" ' +
+            'aria-label="Close">&times;</button>' +
+        '</div>' +
+        '<iframe class="scw-acpt-docmodal__frame" title="' +
+          esc(title || 'Bid document') + '"></iframe>' +
+        '<div class="scw-acpt-docmodal__foot">' +
+          // Dismissal first, action last (repo button order).
+          '<button type="button" class="scw-acpt-btn scw-acpt-btn--ghost" ' +
+            'data-doc-close="1">Close</button>' +
+          '<button type="button" class="scw-acpt-btn scw-acpt-btn--primary" ' +
+            'data-doc-print="1">Print</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    // srcdoc as a PROPERTY — no attribute escaping, and the document is
+    // parsed in the iframe's own context so its CSS can't leak out.
+    var frame = wrap.querySelector('iframe');
+    frame.srcdoc = bidDocPage(html, title);
+    // Backdrop click closes. Safe here in a way it isn't on Knack's own
+    // modals (see ratking/modal-backdrop-click-disable.js) — this document
+    // is read-only, so there is no input to lose.
+    wrap.addEventListener('click', function (e) {
+      if (e.target === wrap || (e.target.closest && e.target.closest('[data-doc-close]'))) {
+        closeBidDoc();
+        return;
+      }
+      if (e.target.closest && e.target.closest('[data-doc-print]')) {
+        try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+        catch (e2) { toast('Could not open the print dialog.', true); }
+      }
+    });
+    document.addEventListener('keydown', bidDocKeydown, true);
+    // Lock the page behind the modal, not the modal itself.
+    document.documentElement.style.overflow = 'hidden';
   }
 
   /** Which columns on this view hold the proposal's money. The three keys
@@ -1283,6 +1345,35 @@
       '.scw-acpt-line__val--rate + .scw-acpt-line__lbl { font-size: 10.5px;',
       '  color: #64748b; }',
       '.scw-acpt-line__src { cursor: help; border-bottom: 1px dotted #cbd5e1; }',
+      // ── Bid-document modal ───────────────────────────────
+      // Replaces the old popup. The document itself lives in an iframe, so
+      // none of the proposal/PDF stylesheet reaches the page around it.
+      '.scw-acpt-docmodal { position: fixed; inset: 0; z-index: 10050;',
+      '  background: rgba(15, 23, 42, 0.55); display: flex;',
+      '  align-items: center; justify-content: center; padding: 24px; }',
+      '.scw-acpt-docmodal__box { background: #fff; border-radius: 10px;',
+      '  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.35); width: 100%;',
+      '  max-width: 980px; height: 88vh; display: flex; flex-direction: column;',
+      '  overflow: hidden; }',
+      '.scw-acpt-docmodal__head { display: flex; align-items: center; gap: 12px;',
+      '  padding: 12px 16px; border-bottom: 1px solid #e2e8f0; flex: 0 0 auto; }',
+      '.scw-acpt-docmodal__ttl { font: 700 13.5px/1.3 system-ui, sans-serif;',
+      '  color: #0f172a; flex: 1 1 auto; overflow-wrap: anywhere; }',
+      '.scw-acpt-docmodal__x { flex: 0 0 auto; background: none; border: 0;',
+      '  font: 400 24px/1 system-ui, sans-serif; color: #64748b; cursor: pointer;',
+      '  padding: 0 4px; }',
+      '.scw-acpt-docmodal__x:hover { color: #0f172a; }',
+      // flex:1 + min-height:0 — without the min-height the iframe refuses
+      // to shrink inside the flex column and overflows the dialog.
+      '.scw-acpt-docmodal__frame { flex: 1 1 auto; min-height: 0; width: 100%;',
+      '  border: 0; background: #fff; }',
+      '.scw-acpt-docmodal__foot { display: flex; justify-content: flex-end;',
+      '  gap: 8px; padding: 10px 16px; border-top: 1px solid #e2e8f0;',
+      '  background: #f8fafc; flex: 0 0 auto; }',
+      '@media (max-width: 700px) {',
+      '  .scw-acpt-docmodal { padding: 0; }',
+      '  .scw-acpt-docmodal__box { height: 100%; max-width: none;',
+      '    border-radius: 0; } }',
       // A figure sourced from an assertion is a CLAIM, not a record — it
       // never renders as quietly as a frozen one.
       '.scw-acpt-line__src--claim { color: #b45309; border-bottom-color: #fcd34d; }',
