@@ -107,7 +107,12 @@
     // block fills itself in. Absent, no block renders — nothing breaks.
     pubEquip:   'field_2669',  // TOTALS_equipment total
     pubInstall: 'field_2668',  // TOTALS_install total
-    pubGrand:   'field_2670'   // TOTALS_project total (authoritative)
+    pubGrand:   'field_2670',  // TOTALS_project total (authoritative)
+    // SOW connection on the acceptance — blank because sowRefOf
+    // DISCOVERS it (the connection column whose value is this row's own
+    // SOW), so it survives a Builder rename or reorder. Set it to pin
+    // the column explicitly.
+    sow:        ''
   };
 
   // eSignatures contract page — the id in field_1843 appended verbatim.
@@ -249,6 +254,14 @@
   // the legacy base path in buildInvoiceItems under-reports (Known Issue
   // #21). This is the sub's own money, already shown to subs elsewhere
   // (install-as-quoted-panel reads the same field on the same views).
+  // SOW grid carrying the survey cost, read-only. Rows ARE SOW records,
+  // so the <tr> id is the SOW record id the acceptance's SOW connection
+  // points at. field_2122 (SOW ID) gives the token for the fallback match.
+  var SURVEY_VIEWS = ['view_4161'];
+  var SVF = {
+    cost:  'field_2750',   // INPUT_survey cost
+    sowId: 'field_2122'    // SOW ID ("1347") — token fallback
+  };
   var PROPOSED_VIEWS = ['view_4151', 'view_4072'];
   var PF = {
     subBid: 'field_2150',   // INSTALL FEE INPUT_sub bid (per unit)
@@ -277,6 +290,99 @@
     var segs = left.trim().split('-');
     return normToken(segs[segs.length - 1]);
   }
+  /** This acceptance's SOW: { id, token }. Prefers the SOW connection
+   *  column the ops grid carries (the span's class is the SOW record id —
+   *  an exact match beats a label match), falling back to the token parsed
+   *  off the proposal identifier.
+   *
+   *  The column is DISCOVERED rather than configured, and self-validates
+   *  while doing it: the SOW column is the connection column whose value
+   *  token-matches this row's own SOW. No dependence on Builder naming or
+   *  column order, and a wrong guess can't pass. Cached per view. */
+  var _sowColCache = Object.create(null);
+  function sowRefOf(viewKey, row) {
+    var tok = sowTokenOf(row);
+    function read(fk) {
+      var c = fk ? row.querySelector('td.' + fk) : null;
+      var sp = c ? c.querySelector('span[data-kn="connection-value"]') : null;
+      if (!sp) return null;
+      var id = String(sp.className || '').trim();
+      return { id: /^[a-f0-9]{24}$/i.test(id) ? id : '',
+               token: normToken(sp.textContent) || tok };
+    }
+    var known = read(F.sow || _sowColCache[viewKey]);
+    if (known) return known;
+    var cells = row.querySelectorAll('td[data-field-key]');
+    for (var i = 0; i < cells.length; i++) {
+      var fk = cells[i].getAttribute('data-field-key');
+      if (!fk || fk === F.proposal) continue;
+      var spans = cells[i].querySelectorAll('span[data-kn="connection-value"]');
+      for (var s = 0; s < spans.length; s++) {
+        var t = normToken(spans[s].textContent);
+        if (!t || !tokenMatch(tok, t)) continue;
+        var id = String(spans[s].className || '').trim();
+        if (!/^[a-f0-9]{24}$/i.test(id)) continue;   // not the connection itself
+        _sowColCache[viewKey] = fk;
+        return { id: id, token: t };
+      }
+    }
+    return { id: '', token: tok };
+  }
+
+  /** Survey cost per SOW, keyed by record id AND by SOW token so either
+   *  match works. A recorded $0 is a real answer and stays in the map —
+   *  only a SOW with nothing recorded is absent. */
+  function surveyCostBySow() {
+    var out = { byId: Object.create(null), byTok: Object.create(null) };
+    for (var v = 0; v < SURVEY_VIEWS.length; v++) {
+      var key = SURVEY_VIEWS[v];
+      var el = document.getElementById(key);
+      if (!el) continue;
+      var models = null;
+      try {
+        var vw = window.Knack && Knack.views && Knack.views[key];
+        models = vw && vw.model && vw.model.data && vw.model.data.models;
+      } catch (e) { models = null; }
+      if (models && models.length) {
+        for (var i = 0; i < models.length; i++) {
+          var a = models[i] && models[i].attributes;
+          if (!a) continue;
+          var cost = numFromText(a[SVF.cost] != null ? a[SVF.cost] : a[SVF.cost + '_raw']);
+          if (cost == null) continue;
+          if (models[i].id) out.byId[models[i].id] = cost;
+          var tok = normToken(a[SVF.sowId]);
+          if (tok) out.byTok[tok] = cost;
+        }
+        continue;                                  // model read succeeded
+      }
+      // DOM fallback — the <tr> id is the SOW record id.
+      var rows = el.querySelectorAll('tbody tr[id]');
+      for (var d = 0; d < rows.length; d++) {
+        var tr = rows[d];
+        var dcost = numFromText(cellText(tr, SVF.cost));
+        if (dcost == null) continue;
+        if (tr.id) out.byId[tr.id] = dcost;
+        var dtok = normToken(cellText(tr, SVF.sowId));
+        if (dtok) out.byTok[dtok] = dcost;
+      }
+    }
+    return out;
+  }
+
+  /** The survey cost for one acceptance row, or null when this SOW has
+   *  none recorded. Record id first, then the token (which tolerates the
+   *  SW-prefix difference between surfaces). */
+  function surveyCostFor(ref, survey) {
+    if (!ref || !survey) return null;
+    if (ref.id && survey.byId[ref.id] != null) return survey.byId[ref.id];
+    if (!ref.token) return null;
+    if (survey.byTok[ref.token] != null) return survey.byTok[ref.token];
+    for (var k in survey.byTok) {
+      if (tokenMatch(ref.token, k)) return survey.byTok[k];
+    }
+    return null;
+  }
+
   /** token → Σ(qty × sub bid) over the proposed line items on this scene.
    *  Model first (connection identifiers live in _raw), DOM as a
    *  fallback. Returns an empty map when no proposed grid is present, so
@@ -508,8 +614,11 @@
   var LABOR_TARGET_PCT = 12;
 
   /** LABOR MARGIN — what we billed the client for install against what
-   *  that work cost us (the sub's bid IS the labor cost; equipment isn't
-   *  theirs, so it never enters this): (billed − cost) ÷ billed.
+   *  that work cost us: the sub's bill PLUS the site survey cost, since
+   *  the survey is money spent on the sub side of this scope. Equipment
+   *  isn't theirs, so it never enters this.
+   *
+   *    (billed − sub − survey) ÷ billed
    *
    *  A RATE, deliberately, never a net dollar figure. A net number invites
    *  "we made $4k, where's my cut" — it reads as a prize instead of a rate
@@ -520,10 +629,11 @@
    *  the verdict beside it can never disagree (11.9% shows as 12% and is
    *  on target, not "12% below target"). Null when a half is missing or
    *  there's nothing billed to take a share of. */
-  function laborMargin(installBilled, subAmount) {
+  function laborMargin(installBilled, subAmount, surveyCost) {
     if (installBilled == null || subAmount == null) return null;
     if (!installBilled) return null;   // no billing → no share of it
-    var pct = Math.round((installBilled - subAmount) / installBilled * 100);
+    var cost = subAmount + (surveyCost || 0);
+    var pct = Math.round((installBilled - cost) / installBilled * 100);
     return { pct: pct, onTarget: pct >= LABOR_TARGET_PCT };
   }
 
@@ -544,16 +654,17 @@
       '<span class="scw-acpt-line__lbl">' + lbl + '</span>';
   }
 
-  /** The LABOR column: what we billed the client, what the sub charged us
-   *  for that work, and the percent of the billing left over. Three lines,
-   *  numbers in one right-aligned column with their names beside them, and
-   *  the percent is the heavy one — it's the answer.
+  /** The LABOR column: what we billed the client, what the sub billed us
+   *  for that work, the site survey cost, and the percent of the billing
+   *  left over after both. Numbers in one right-aligned column with their
+   *  names beside them, and the percent is the heavy one — it's the
+   *  answer.
    *
    *  The percent, not a net dollar figure: a net reads as a prize rather
    *  than a rate to hold (see laborMargin). Each line drops out when its
    *  figure is unknown, so the column never implies a rate it couldn't
    *  compute. */
-  function laborStat(installBilled, amt) {
+  function laborStat(installBilled, amt, surveyCost) {
     var subAmt  = amt ? amt.amount : null;
     var derived = !!(amt && amt.source === 'derived');
     if (installBilled == null && subAmt == null) return '';
@@ -563,17 +674,24 @@
     }
     if (subAmt != null) {
       lines += line(esc(money(subAmt)),
-        'from sub' + (derived ? ' <span class="scw-acpt-line__src" title="' +
+        'billed by sub' + (derived ? ' <span class="scw-acpt-line__src" title="' +
           esc(DERIVED_NOTE) + '">(line items)</span>' : ''));
     } else {
       lines += line('—', 'no sub bid on file');
     }
-    var m = laborMargin(installBilled, subAmt);
+    // A recorded $0 survey is an answer, so it prints; a SOW with nothing
+    // recorded shows no line and doesn't move the percent.
+    if (surveyCost != null) {
+      lines += line(esc(money(surveyCost)), 'survey cost');
+    }
+    var m = laborMargin(installBilled, subAmt, surveyCost);
     if (m) {
       lines += line(esc(m.pct + '%'), 'remaining',
         'scw-acpt-line__val--rate scw-acpt-gap--' + (m.onTarget ? 'on' : 'under'),
         'Percent of the labor billed to the client that is left after the ' +
-        'subcontractor\'s bill. Target ' + LABOR_TARGET_PCT + '%.');
+        'subcontractor\'s bill' +
+        (surveyCost != null ? ' and the survey cost' : '') +
+        '. Target ' + LABOR_TARGET_PCT + '%.');
     }
     return '<span class="scw-acpt-stat scw-acpt-stat--labor">' +
       '<span class="scw-acpt-stat__lbl">Labor</span>' +
@@ -1629,7 +1747,7 @@
 
   /** One compact list row for one acceptance record. All anchors/editors
    *  bind to THIS row's record. */
-  function buildCard(viewKey, row, bySow, moneyCols) {
+  function buildCard(viewKey, row, bySow, moneyCols, survey) {
     var recId   = row.id;
     var propA   = cellAnchor(row, F.proposal, 'a[data-kn="connection-link"]') || cellAnchor(row, F.proposal);
     var propTxt = propA ? propA.textContent.replace(/\s+/g, ' ').trim() : (cellText(row, F.proposal) || 'Proposal');
@@ -1723,6 +1841,11 @@
     var poNo     = cellText(row, F.po);
     var diff     = diffSummary(row);
     var billed   = billedOf(row, moneyCols);
+    // Survey cost travels with the SOW this acceptance's proposal was
+    // accepted from, so it lands on the right row when a project has a
+    // base SOW plus change-order SOWs.
+    var sowRef   = sowRefOf(viewKey, row);
+    var svyCost  = surveyCostFor(sowRef, survey);
     var docHtml  = bidDocHtml(row);
     var meta = '';
     if (basisNo) {
@@ -1784,7 +1907,7 @@
                  'scw-acpt-stat--equip') +
             // No total column: it's exactly equipment + labor billed,
             // both of which are right here.
-            laborStat(billed.install, amt) +
+            laborStat(billed.install, amt, svyCost) +
           '</div>'
         // No billed columns on the view: nothing to compare against, so
         // the row keeps its single figure — what we pay the sub.
@@ -1904,7 +2027,8 @@
       });
     }
     return { el: card, isCo: isCo, amount: amt ? amt.amount : null,
-             source: amt ? amt.source : '', billed: billed };
+             source: amt ? amt.source : '', billed: billed,
+             sowKey: sowRef.id || sowRef.token, survey: svyCost };
   }
 
   /** SUB VARIANT — one read-only row per acceptance: the bid we're paying
@@ -2036,8 +2160,9 @@
    *  per-row one does. Null for a single row: that row already IS the
    *  project, and a footer repeating it is noise. */
   function buildProjectMoney(entries) {
-    var eq = null, inst = null, sub = null;
+    var eq = null, inst = null, sub = null, svy = null;
     var billedRows = 0, derived = false;
+    var seenSow = Object.create(null);
     for (var i = 0; i < entries.length; i++) {
       var e = entries[i], b = e.billed;
       if (b) {
@@ -2049,6 +2174,13 @@
         sub = (sub == null ? 0 : sub) + e.amount;
         if (e.source === 'derived') derived = true;
       }
+      // ONCE PER SOW. Two acceptances against the same SOW (a re-issue,
+      // say) share its one survey — counting it twice would invent cost
+      // and understate the project rate.
+      if (e.survey != null && e.sowKey && !seenSow[e.sowKey]) {
+        seenSow[e.sowKey] = 1;
+        svy = (svy == null ? 0 : svy) + e.survey;
+      }
     }
     if (billedRows < 2) return null;
     var el = document.createElement('div');
@@ -2057,7 +2189,7 @@
       '<span class="scw-acpt-foot__cap">Project</span>' +
       stat('Equipment', eq != null ? money(eq) : '', '', 'scw-acpt-stat--equip') +
       laborStat(inst, sub == null ? null : { amount: sub,
-        source: derived ? 'derived' : 'quoted' });
+        source: derived ? 'derived' : 'quoted' }, svy);
     return el;
   }
 
@@ -2229,10 +2361,11 @@
           : '') +
       '</div>';
     var bySow = proposedSubBidBySow();
+    var survey = surveyCostBySow();
     var moneyCols = moneyColsOf(viewEl);
     var built = [];
     for (var ei = 0; ei < entries.length; ei++) {
-      var made = buildCard(VIEW, entries[ei].row, bySow, moneyCols);
+      var made = buildCard(VIEW, entries[ei].row, bySow, moneyCols, survey);
       built.push(made);
       card.appendChild(made.el);
     }
@@ -2256,7 +2389,10 @@
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
-    VIEWS.forEach(function (v) {
+    // The survey views feed the labor margin, so a render of one has to
+    // re-run the card — otherwise a survey grid that lands after
+    // view_3914 leaves the percent computed without its survey cost.
+    VIEWS.concat(SURVEY_VIEWS).forEach(function (v) {
       SCW.onViewRender(v, function () { setTimeout(render, 30); }, EVENT_NS);
     });
   }
