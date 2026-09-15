@@ -104,6 +104,13 @@ table.data tr.tot td{border-top:2px solid var(--baseline);font-weight:700}
 table.data.chg th:first-child,table.data.chg td:first-child{min-width:0;width:78px;padding-right:0}
 table.data.chg th:nth-child(2),table.data.chg td:nth-child(2){text-align:left;white-space:normal}
 table.data.chg th:last-child,table.data.chg td:last-child{width:104px}
+table.data.dch th:first-child,table.data.dch td:first-child{min-width:0;width:210px}
+table.data.dch tr.dch-flat{display:none}
+table.data.dch.open tr.dch-flat{display:table-row}
+table.data.dch tr.dch-fold{cursor:pointer}
+table.data.dch tr.dch-fold:hover td{background:var(--surface2);filter:brightness(.97)}
+.dch-chev{display:inline-block;width:14px;color:var(--muted);transition:transform .12s}
+table.data.dch.open .dch-chev{transform:rotate(90deg)}
 table.data.lic th:first-child,table.data.lic td:first-child{min-width:236px}
 table.data tr.bill td{border-top:1px solid var(--border2);background:color-mix(in srgb, var(--surface2) 55%, var(--surface))}
 table.data tr.bill td:first-child{background:color-mix(in srgb, var(--surface2) 55%, var(--surface))}
@@ -372,6 +379,10 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <p class="note">Every role opening or closing, seat changing hands, person moving role, and pay change the plan still controls — after <span class="js-actmo"></span>, in the order they land. $/mo is the change to fully-loaded monthly cost: pay, employer tax, benefits and per-head licenses. Edit any of it on the Staffing tab.</p>
     <div id="planChangesSum"></div>
     <div class="tablewrap" id="planChanges"></div></div>
+  <div class="card"><div class="eyebrow">Plan</div><h2>Where the cost change lands</h2>
+    <p class="note">The cost-base tile's move, split by department: fully-loaded payroll plus planned opex in <span class="js-costend"></span> against <span class="js-coststart"></span>, the first month the plan controls. Both ends are modelled, so the rows sum to the tile. Hover for the payroll/opex split &mdash; a department can move on opex alone when a headcount change elsewhere re-shares a fixed bill.</p>
+    <div id="deptChangeSum"></div>
+    <div class="tablewrap" id="deptChange"></div></div>
   <div class="card"><div class="eyebrow">Results</div><h2>By period</h2>
     <p class="note">The same P&amp;L rolled up — the two planning cycles in date order, the calendar year, and each quarter; the goal cycle is tinted. Follows the scenario strip above. <a class="how" href="#notes">How it works ↗</a></p>
     <div class="tablewrap" id="periodSum"></div></div>
@@ -1335,6 +1346,8 @@ function fillMonthLabels(){
   for (const e of document.querySelectorAll(".js-goal")) e.textContent = GOAL[2];
   for (const e of document.querySelectorAll(".js-horizon")) e.textContent = monthName(1) + " \u2013 " + monthName(NM);
   for (const e of document.querySelectorAll(".js-last")) e.textContent = monthName(NM);
+  for (const e of document.querySelectorAll(".js-costend")) e.textContent = monthName(NM);
+  for (const e of document.querySelectorAll(".js-coststart")) e.textContent = monthName(Math.min(NM, ACT + 1));
 }
 // one decimal, always — for margins and the headline, where "6%" next to "6.7%" reads as two precisions
 const fmtPct1 = v => (v * 100).toFixed(1) + "%";
@@ -2181,6 +2194,70 @@ function renderPlanChanges(C){
   h += `<tr class="tot"><td colspan="2">Monthly cost by ${esc(monthName(NM))}</td><td><b>${Math.abs(total) < 1 ? "unchanged" : (total > 0 ? "+" : "−") + fmt$(Math.abs(total))}</b></td></tr>`;
   el.innerHTML = h + "</tbody></table>";
 }
+
+/* ---------- where the cost change lands ----------
+   The tile says the monthly cost base moves by $X between the first month the plan controls and the
+   last. That figure is useless for deciding anything until you know WHICH departments move it, so
+   this splits the same two months the same way — payroll plus planned opex, both ends modeled — and
+   the rows sum back to the tile. Sorted by how far each department moves, not by how big it is:
+   a department that does not change has nothing to say here. */
+function renderDeptChange(C){
+  const el = document.getElementById("deptChange"); if (!el) return;
+  const b0 = Math.min(NM, ACT + 1) - 1, b1 = NM - 1;
+  const rows = DEPTS.map(d => {
+    const pay0 = C.deptPay[d][b0] || 0, pay1 = C.deptPay[d][b1] || 0;
+    const opx0 = C.dept[d][b0] || 0,    opx1 = C.dept[d][b1] || 0;
+    return { d, pay0, pay1, opx0, opx1, h0: C.deptHC[d][b0] || 0, h1: C.deptHC[d][b1] || 0,
+      now: pay0 + opx0, end: pay1 + opx1, dPay: pay1 - pay0, dOpx: opx1 - opx0, dv: (pay1 + opx1) - (pay0 + opx0) };
+  }).filter(r => Math.abs(r.now) > 0.5 || Math.abs(r.end) > 0.5)
+    .sort((a, b) => Math.abs(b.dv) - Math.abs(a.dv) || b.end - a.end);
+  const T = rows.reduce((a, r) => ({ now: a.now + r.now, end: a.end + r.end, h0: a.h0 + r.h0, h1: a.h1 + r.h1,
+    dPay: a.dPay + r.dPay, dOpx: a.dOpx + r.dOpx }), { now:0, end:0, h0:0, h1:0, dPay:0, dOpx:0 });
+  const dTot = T.end - T.now;
+  const hc = v => (Math.round(v * 10) / 10).toLocaleString("en-US");
+  const heads = (a, b) => Math.abs(a - b) < 0.05 ? `<span class="dim">${hc(b)}</span>` : `${hc(a)} → <b>${hc(b)}</b>`;
+  const money = v => Math.abs(v) < 1 ? `<span class="dim">—</span>`
+    : `<span class="${v < 0 ? "pos" : ""}">${v > 0 ? "+" : "−"}${fmt$(Math.abs(v))}</span>`;
+  const moved = rows.filter(r => Math.abs(r.dv) >= 1);
+  const up = moved.filter(r => r.dv > 0), down = moved.filter(r => r.dv < 0);
+  const sum = document.getElementById("deptChangeSum");
+  if (sum) sum.innerHTML = `<div class="inc-stats">
+    <span><b>${moved.length} of ${rows.length} department${rows.length === 1 ? "" : "s"}</b> move${moved.length === 1 ? "s" : ""} between ${esc(monthName(b0 + 1))} and ${esc(monthName(b1 + 1))}</span>
+    ${up.length ? `<span>Adds most <b>${esc(dn(up[0].d))}</b> +${fmt$(up[0].dv)}/mo</span>` : ""}
+    ${down.length ? `<span>Comes down most <b>${esc(dn(down[0].d))}</b> −${fmt$(Math.abs(down[0].dv))}/mo</span>` : ""}
+    <span>Total <b>${Math.abs(dTot) < 1 ? "unchanged" : (dTot > 0 ? "+" : "−") + fmt$(Math.abs(dTot)) + "/mo"}</b>${Math.abs(dTot) >= 1 && T.now ? ` (${dTot > 0 ? "+" : "−"}${Math.abs(dTot / T.now * 100) < 0.5 ? "<1" : Math.abs(dTot / T.now * 100).toFixed(0)}%)` : ""}</span>
+  </div>`;
+  const row = (label, r, cls) => {
+    const pct = r.now ? (r.dv / r.now * 100) : 0;
+    const tip = `Payroll ${r.dPay >= 0 ? "+" : "−"}${fmt$(Math.abs(r.dPay))}/mo · opex ${r.dOpx >= 0 ? "+" : "−"}${fmt$(Math.abs(r.dOpx))}/mo`;
+    return `<tr${cls ? ` class="${cls}"` : ""} title="${esc(tip)}"><td>${label}</td>` +
+      `<td>${heads(r.h0, r.h1)}</td><td>${fmt$(r.now)}</td><td>${fmt$(r.end)}</td>` +
+      `<td><b>${money(r.dv)}</b></td><td>${Math.abs(r.dv) < 1 || !r.now ? `<span class="dim">—</span>`
+        : `<span class="${r.dv < 0 ? "pos" : ""}">${pct > 0 ? "+" : "−"}${Math.abs(pct) < 0.5 ? "<1" : Math.abs(pct).toFixed(0)}%</span>`}</td></tr>`;
+  };
+  let h = `<table class="data dch"><thead><tr><th>Department</th><th title="Headcount at each end">Heads</th>` +
+    `<th>${esc(monthName(b0 + 1))} /mo</th><th>${esc(monthName(b1 + 1))} /mo</th>` +
+    `<th title="Change to fully-loaded monthly cost: payroll plus planned opex">Change /mo</th><th>%</th></tr></thead><tbody>`;
+  const flat = rows.filter(r => Math.abs(r.dv) < 1);
+  for (const r of rows) if (Math.abs(r.dv) >= 1) h += row(esc(dn(r.d)), r);
+  if (flat.length){
+    const fNow = flat.reduce((a, r) => a + r.now, 0), fH = flat.reduce((a, r) => a + r.h1, 0);
+    h += `<tr class="sec dch-fold" title="Show the departments the plan leaves flat"><td colspan="2">` +
+      `<span class="dch-chev">\u25B8</span>${flat.length} department${flat.length === 1 ? "" : "s"} unchanged` +
+      `<span class="dim" style="font-weight:400"> · ${hc(fH)} head${fH === 1 ? "" : "s"}, flat across the plan</span></td>` +
+      `<td>${fmt$(fNow)}</td><td>${fmt$(fNow)}</td><td><span class="dim">—</span></td><td><span class="dim">—</span></td></tr>`;
+    for (const r of flat) h += row(`<span class="dim">${esc(dn(r.d))}</span>`, r, "dch-flat");
+  }
+  h += row("TOTAL", { ...T, dv: dTot }, "tot");
+  el.innerHTML = h + "</tbody></table>";
+  if (dchOpen) el.querySelector("table").classList.add("open");
+}
+let dchOpen = false;
+document.addEventListener("click", ev => {
+  const row = ev.target.closest("#deptChange tr.dch-fold"); if (!row) return;
+  dchOpen = !dchOpen;
+  row.closest("table").classList.toggle("open", dchOpen);
+});
 
 /* ---------- projections tab ---------- */
 function leverInput(id, label, val, unit, step, title){
@@ -4338,7 +4415,7 @@ document.getElementById("btnLoad").addEventListener("click", () => {
 function renderAll(){
   if (syncSales()) persist();     // the plan is the source of truth for who sells and when
   const C = compute();
-  renderTiles(C); renderGoals(C); renderPlanChanges(C); renderProjLevers(); renderProj(C); renderPeriods(C); renderRollup(C); renderGrowth(C);
+  renderTiles(C); renderGoals(C); renderPlanChanges(C); renderDeptChange(C); renderProjLevers(); renderProj(C); renderPeriods(C); renderRollup(C); renderGrowth(C);
   fillMonthLabels();
   renderSales(C); renderIncentives(C); renderRaisePlanner(); renderStaff(C); renderLicenses(C); renderExpenses(C); renderCompare(C); renderFixes(); renderRestore(); renderPayBands();
 }
