@@ -311,7 +311,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
 
 <div class="wrap">
 <header class="top">
-  <div class="brand"><h1>SCW Money Model</h1><span class="sub">Jan 2026 – Mar 2027 · Xero accrual actuals through <span class="js-actmo"></span> 2026 · goal period Oct–Mar</span></div>
+  <div class="brand"><h1>SCW Money Model</h1><span class="sub"><span class="js-horizon"></span> · Xero accrual actuals through <span class="js-actmo"></span> 2026 · goal cycle <span class="js-goal"></span></span></div>
   <div class="top-actions">
     <span class="legend-key"><span class="key mod"><i></i>Modest</span><span class="key str"><i></i>Stretch</span></span>
     <span class="sync" id="syncBadge" data-state="local">connecting…</span>
@@ -348,7 +348,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
   <div class="proj-controls" id="projControls">
     <span class="ctl-lbl">Scenario</span><span class="scn-toggle" id="plScnT"><button class="btn on" data-s="mod">Modest</button><button class="btn" data-s="str">Stretch</button><button class="btn" data-s="both">Both</button></span>
     <span class="ctl-lbl">Basis</span><span class="scn-toggle" id="plBasisT"><button class="btn" data-b="booked">As booked</button><button class="btn on" data-b="all">+ programs</button></span>
-    <span class="ctl-note">Booked Jan–<span class="js-actmo"></span> · <span class="js-bridge"></span> bridge · Oct–Mar goal cycle</span>
+    <span class="ctl-note">Booked Jan–<span class="js-actmo"></span> · <span class="js-bridge"></span> bridge · <span class="js-goal"></span> goal cycle</span>
   </div>
   <div class="card" id="goalsCard">
     <div class="eyebrow">Results</div><h2>The plan: Q4+Q1 · Oct 2026 – Mar 2027</h2>
@@ -360,13 +360,13 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
   </div>
   <div class="cards2">
     <div class="card"><div class="eyebrow">Results</div><h2>Net by month</h2><p class="note">Booked months as bars; modeled months show modest and stretch side by side.</p><figure class="chart" id="chartNet" title="Hover any month for the figures"></figure></div>
-    <div class="card"><div class="eyebrow">Results</div><h2>Cumulative net through Mar 2027</h2><p class="note">Running total: booked through <span class="js-actmo"></span>, then each scenario.</p><figure class="chart" id="chartCum" title="Hover any month for the figures"></figure></div>
+    <div class="card"><div class="eyebrow">Results</div><h2>Cumulative net through <span class="js-last"></span></h2><p class="note">Running total: booked through <span class="js-actmo"></span>, then each scenario.</p><figure class="chart" id="chartCum" title="Hover any month for the figures"></figure></div>
   </div>
   <div class="card"><div class="eyebrow">Results</div><h2>By period</h2>
     <p class="note">The same P&amp;L rolled up — the two planning cycles in date order, the calendar year, and each quarter; the goal cycle is tinted. Follows the scenario strip above. <a class="how" href="#notes">How it works ↗</a></p>
     <div class="tablewrap" id="periodSum"></div></div>
   <div class="card"><div class="eyebrow">Workings</div><h2>P&amp;L by month</h2>
-    <p class="note">Shaded = Xero as booked (<span class="js-actrange"></span>); <span class="js-bridge"></span> is a bridge month; Oct–Mar is the goal cycle. Payroll is base pay; commissions sit on their own row. Month cells round to $K — hover for the exact figure. <a class="how" href="#notes">How it works ↗</a></p>
+    <p class="note">Shaded = Xero as booked (<span class="js-actrange"></span>); <span class="js-bridge"></span> is a bridge month; <span class="js-goal"></span> is the goal cycle. Payroll is base pay; commissions sit on their own row. Month cells round to $K — hover for the exact figure. <a class="how" href="#notes">How it works ↗</a></p>
     <div class="tablewrap" id="plTable"></div>
     <p class="footnote" id="plFoot"></p>
   </div>
@@ -438,7 +438,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <button class="btn addrow" id="addRole">+ Add role</button>
     <span id="restoreWrap" style="margin-left:10px"></span>
   </div>
-  <div class="card"><h2>Pay bands <label class="subtle" style="font-weight:400;font-size:12.5px;margin-left:12px">as of <select id="bandAsOf" class="cell"></select></label></h2><p class="note">Annual earnings (hourly annualized) as the org stands in the chosen month: eliminated roles (headcount zero) and ended people drop off, and raises count only once they've landed. Click any dot to exclude that role or person outright; restore from the Excluded list below the chart. Jan ’26 = before everything; Mar ’27 = the full plan. One dot per role — the number inside is its headcount; a role with named people sits at their median, with each person's figure in the tooltip. Split-out departments keep their roles in their own bucket row.</p><div class="toolbar" style="margin-bottom:4px"><span class="subtle" style="font-size:12px">Own bucket:</span><span id="bandSplitChips" class="scn-toggle"></span></div>
+  <div class="card"><h2>Pay bands <label class="subtle" style="font-weight:400;font-size:12.5px;margin-left:12px">as of <select id="bandAsOf" class="cell"></select></label></h2><p class="note">Annual earnings (hourly annualized) as the org stands in the chosen month: eliminated roles (headcount zero) and ended people drop off, and raises count only once they've landed. Click any dot to exclude that role or person outright; restore from the Excluded list below the chart. Jan ’26 = before everything; the last month = the full plan. One dot per role — the number inside is its headcount; a role with named people sits at their median, with each person's figure in the tooltip. Split-out departments keep their roles in their own bucket row.</p><div class="toolbar" style="margin-bottom:4px"><span class="subtle" style="font-size:12px">Own bucket:</span><span id="bandSplitChips" class="scn-toggle"></span></div>
     <figure class="chart" id="payBands"></figure>
     <details id="lvlAssign"><summary style="cursor:pointer;font-weight:600;font-size:13px">Assign role levels <span class="subtle" style="font-weight:400">— scope of ownership: Task → Outcome → System → Business, plus Manager / Dept Manager / Leadership and Contractor</span></summary>
     <div id="lvlList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:4px 20px;padding:10px 2px 4px"></div></details></div>
@@ -499,12 +499,85 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
 const MODEL = /*__MODEL__*/;
 
 /* ---------- constants ---------- */
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan\u201927","Feb\u201927","Mar\u201927"];
-const NM = 15;                                 // Jan 2026 .. Mar 2027
-const FH1 = [3, 9,  "Apr\u2013Sep 2026", "Q2+Q3"];       // planning cycle slice bounds [from,to), label, quarters
-const FH2 = [9, 15, "Oct 2026\u2013Mar 2027", "Q4+Q1"];  // the goal-setting cycle
-const BOTH = [3, 15, "Apr 2026\u2013Mar 2027", "Both cycles"];   // Q2+Q3 and Q4+Q1 together — never the 15-month horizon
+const MON3 = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+/* ---------- the horizon ----------
+   The window is a start month plus a length; everything below is DERIVED from those two numbers —
+   month labels, calendar quarters, the planning cycles, the fiscal year. Extending the model is a
+   one-line change to NM (saved configs are padded to match on load). Nothing here should ever be
+   written out by hand again. */
+const Y0 = 2026, M0 = 0;                       // the window opens Jan 2026
+const NM = 21;                                 // ...and runs this many months (through Sep 2027)
+const yOf = i => Y0 + Math.floor((M0 + i) / 12);          // calendar year of 0-based index i
+const mOf = i => (M0 + i) % 12;                           // calendar month (0-11) of index i
+const yy = i => "\u2019" + String(yOf(i)).slice(2);       // ’26
+// Months inside the opening year read bare ("Jan"); later years carry theirs ("Jan’27").
+const MONTHS = Array.from({ length: NM }, (_, i) => MON3[mOf(i)] + (yOf(i) === Y0 ? "" : yy(i)));
 const ACT = MODEL.actual_months;              // how many months Xero has booked
+// Calendar quarters — Q1 is Jan–Mar — every whole one inside the window, with how much of it Xero
+// has booked. Generated, so a longer horizon simply has more of them.
+const QTRS = (() => {
+  const out = [];
+  for (let s = 0; s + 3 <= NM; s += 3){
+    const y = yOf(s), booked = ACT >= s + 3 ? "booked" : ACT <= s ? "model" : MONTHS[s] + "\u2013" + MONTHS[ACT - 1] + " booked";
+    out.push([s, s + 3, "Q" + (Math.floor(mOf(s) / 3) + 1) + " " + y,
+      MON3[mOf(s)] + "\u2013" + MON3[mOf(s + 2)] + " " + String(y).slice(2), booked]);
+  }
+  return out;
+})();
+/* Planning and budgeting run in half-year cycles that straddle the year: Q2+Q3 (Apr–Sep) and
+   Q4+Q1 (Oct–Mar). Each entry is [from, to) label, tag — the same shape the old FH1/FH2 pair had,
+   so every existing slice keeps working. The tag carries the year because a longer horizon holds
+   more than one Q2+Q3. */
+const CYCLES = (() => {
+  const out = [];
+  let first = 0; while (first < NM && mOf(first) !== 3 && mOf(first) !== 9) first++;
+  for (let s = first; s + 6 <= NM; s += 6){
+    const a = yOf(s), b = yOf(s + 5);
+    out.push([s, s + 6,
+      a === b ? MON3[mOf(s)] + "\u2013" + MON3[mOf(s + 5)] + " " + a
+              : MON3[mOf(s)] + " " + a + "\u2013" + MON3[mOf(s + 5)] + " " + b,
+      (mOf(s) === 3 ? "Q2+Q3" : "Q4+Q1") + " " + yy(s)]);
+  }
+  return out;
+})();
+const FH1 = CYCLES[0], FH2 = CYCLES[1] || CYCLES[0];
+// The fiscal year is the Apr–Mar pair: two cycles, twelve months. Never the whole horizon.
+const BOTH = (() => {
+  const a = CYCLES.find(c => mOf(c[0]) === 3) || CYCLES[0];
+  const b = CYCLES.find(c => c[0] === a[1]);
+  if (!b) return a;
+  return [a[0], b[1], MON3[mOf(a[0])] + " " + yOf(a[0]) + "\u2013" + MON3[mOf(b[1] - 1)] + " " + yOf(b[1] - 1),
+    "FY " + String(yOf(a[0])).slice(2) + "\u2013" + String(yOf(b[1] - 1)).slice(2)];
+})();
+/* The cycle being planned: the first one no month of which is booked yet. It advances on its own
+   as Xero closes months, so nothing here needs a date typed into it. */
+const GOAL_I = Math.max(0, CYCLES.findIndex(c => c[0] >= ACT));
+const GOAL = CYCLES[GOAL_I] || CYCLES[CYCLES.length - 1];
+const PREV = CYCLES[GOAL_I - 1] || CYCLES[0];
+// Every period the summaries can total: the cycles, each COMPLETE calendar year, then the quarters.
+const YEARS = (() => {
+  const out = [];
+  for (let s = 0; s + 12 <= NM; s++) if (mOf(s) === 0) out.push([s, s + 12, "CY " + yOf(s), "Jan\u2013Dec " + String(yOf(s)).slice(2)]);
+  return out;
+})();
+const PERIODS = QTRS.map(q => [q[0], q[1], q[2], q[3]])
+  .concat(CYCLES.map(c => [c[0], c[1], c[3], c[2]]), YEARS);
+/* A cycle carries two revenue targets — what the plan commits to (modest) and what it reaches for
+   (stretch). One number per cycle was ambiguous the moment the model grew two scenarios. */
+// Which cycle a program is earned across. Saved configs (and anything built by hand) may still
+// carry the old two-valued half; read it rather than silently defaulting to the first cycle.
+const pgCycle = pg => {
+  const ci = pg && pg.cycle != null ? +pg.cycle : (pg && pg.half === 1 ? 0 : pg && pg.half === 2 ? 1 : 0);
+  return Math.max(0, Math.min(CYCLES.length - 1, Math.round(ci || 0)));
+};
+const tgtOf = (ci, scn) => {
+  const t = (S.levers.targets || [])[ci] || {}, m = +t.mod || 0;
+  return scn === "str" ? (+t.str || m) : m;
+};
+const cycTgt = ci => ({ mod: tgtOf(ci, "mod"), str: tgtOf(ci, "str") });
+// the cycles inside a span, for totalling their targets
+const cyclesIn = rng => CYCLES.map((c, i) => i).filter(i => CYCLES[i][0] >= rng[0] && CYCLES[i][1] <= rng[1]);
+const tgtSum = (rng, scn) => cyclesIn(rng).reduce((a, i) => a + tgtOf(i, scn), 0);
 /* Variable comp booked inside payroll (commission / bonus / spiff lines on 66000) over booked
    sales revenue: what the company ACTUALLY paid out per dollar sold, blended across AE, AM and
    everyone else on a variable plan. No plan document, no per-rep rate, no attainment assumption.
@@ -611,7 +684,8 @@ function defaultState(){
       // UniView rebate is typed Other Income in Xero and is absent from the Expense/Revenue
       // export, so it is not in that figure; it was a $117K January credit being drawn down.)
       otherInc: 11000, laborHedge: 0, opexHedge: 0, bdayWeight: true,
-      targetH1: 6350000, targetH2: 5700000,
+      // one entry per planning cycle, in cycle order; stretch blank means "same as modest"
+      targets: CYCLES.map((c, i) => ({ mod: i === 1 ? 5700000 : 6350000, str: 0 })),
       hdvRate: 523.5, hdvStepPct: 0, hdvStepM: 13, taxRate: MODEL.employer_tax_rate },
     sales: MODEL.sales.map((s, i) => ({ id: "s" + i, name: s.name, role: s.role, ramp: s.ramp,
       start: s.start_cal, modest: /Stu/.test(s.name) ? 1 : 0.8, stretch: 1,
@@ -634,11 +708,11 @@ function defaultState(){
       // $6.65M-$7.85M — nothing below, capped above. Director: 3.5% of every dollar over $6.35M.
       { id: "pgOps", name: "Ops bonus", on: true, basis: "band", scope: "depts",
         roles: [], depts: ["Installation Services"], per: "head", amount: 1500,
-        half: 1, thr: 6650000, cap: 7850000, alloc: "pacing" },
+        cycle: 0, thr: 6650000, cap: 7850000, alloc: "pacing" },
       { id: "pgSd", name: "Sales Director comp", on: true, basis: "rate", scope: "roles",
         roles: MODEL.staff.map((s, i) => ({ id: "p" + i, pos: s.position })).filter(x => /sales director/i.test(x.pos)).map(x => x.id),
         depts: [], per: "pool", amount: 0, pct: 0.035,
-        half: 1, thr: 6350000, cap: 0, alloc: "pacing" }
+        cycle: 0, thr: 6350000, cap: 0, alloc: "pacing" }
     ],
     bandSplit: ["Software Development", "Sales"],
     bandHide: {},
@@ -656,13 +730,30 @@ function migrateState(st){
     const L0 = st.levers;
     if (L0.targetH1 == null) L0.targetH1 = L0.target ? Math.round(L0.target * 6350 / 12050) : 6350000;
     if (L0.targetH2 == null) L0.targetH2 = L0.target ? L0.target - L0.targetH1 : 5700000;
+    /* Targets became per-cycle, each with a modest and a stretch number. The two saved halves move
+       across as the first two cycles' modest targets; a cycle added by a longer horizon starts from
+       the same half of the year before it, which is the closest thing to evidence we have. */
+    if (!Array.isArray(L0.targets))
+      L0.targets = [{ mod: +L0.targetH1 || 0, str: 0 }, { mod: +L0.targetH2 || 0, str: 0 }];
+    while (L0.targets.length < CYCLES.length){
+      const prior = L0.targets[L0.targets.length - 2] || L0.targets[L0.targets.length - 1] || { mod: 0, str: 0 };
+      L0.targets.push({ mod: +prior.mod || 0, str: +prior.str || 0 });
+    }
+    for (const t of L0.targets){ if (t.mod == null) t.mod = 0; if (t.str == null) t.str = 0; }
     // the Sales Manager / Director override that used to live on Goals is gone — the Director
     // is an incentive program and the manager upside is not modelled for now
     delete L0.thrH1; delete L0.thrH2; delete L0.smRate; delete L0.dirRate; delete L0.sdMovedToPrograms;
     delete L0.target;
-    // migrate pre-15-month configs (12-month arrays / to==12 meaning "through end")
-    for (const p of st.staff) while (p.hc.length < NM) p.hc.push(p.hc.at(-1) ?? 0);
-    for (const e of st.exp) if (e.to === 12) e.to = NM;
+    /* A config saved against a shorter horizon: headcount carries its last month forward, and
+       anything that ran "to the end" keeps running to the new end. L0.nm remembers the horizon the
+       config was written against; it is stamped at the bottom of this function, after every loop
+       that reads it. */
+    const oldNM = +L0.nm || 15;
+    for (const p of st.staff){
+      while (p.hc.length < NM) p.hc.push(p.hc.at(-1) ?? 0);
+      for (const pp of (p.people || [])) if (pp.to === oldNM || pp.to === 12) pp.to = NM;
+    }
+    for (const e of st.exp) if (e.to === oldNM || e.to === 12) e.to = NM;
     // migrate saves made before contractor rows were flagged as carried on Staffing
     if (!L0.bdrHcFix){
       for (const p of st.staff)
@@ -720,7 +811,12 @@ function migrateState(st){
     if (!L0.pacingFix && pg.alloc === "earned") pg.alloc = "pacing";
     // The seeded "2026 Q2 & Q3" programs were placed on Oct–Mar under a July-fiscal-year
     // reading; Q2+Q3 is Apr–Sep. Move a program still on the seeded terms, once.
-    if (!L0.cycleFix && pg.half === 2 && ((pg.id === "pgOps" && +pg.thr === 6650000) || (pg.id === "pgSd" && +pg.thr === 6350000))) pg.half = 1;
+    // a program used to name one of two halves; it now names a cycle by index, so a longer horizon
+    // simply offers more of them
+    if (pg.cycle == null) pg.cycle = pg.half === 1 ? 0 : 1;
+    if (!L0.cycleFix && pg.cycle === 1 && ((pg.id === "pgOps" && +pg.thr === 6650000) || (pg.id === "pgSd" && +pg.thr === 6350000))) pg.cycle = 0;
+    pg.cycle = Math.max(0, Math.min(CYCLES.length - 1, Math.round(+pg.cycle || 0)));
+    delete pg.half;
     // the seeded names now say what each one is; a name you edited is left alone
     if (pg.id === "pgOps" && pg.name === "Operations bonus") pg.name = "Ops bonus";
     if (pg.id === "pgSd" && pg.name === "Sales Director bonus") pg.name = "Sales Director comp";
@@ -729,6 +825,7 @@ function migrateState(st){
     delete pg.scale;
   }
   if (!st.salesDrop) st.salesDrop = [];
+  L0.nm = NM;                 // the horizon this config has now been migrated to
   if (!st.plans) st.plans = [];
   if (st.licenses && st.licenses.some(L => L.minSource === undefined)){
     const seed = new Map(licSeedFromModel().map(L => [L.id, L]));
@@ -1189,7 +1286,9 @@ const BDAYS = (() => {
   }
   return out;
 })();
-const BD_AVG = BDAYS.reduce((a, b) => a + b, 0) / NM;
+// A calendar year's average month — 21.75 business days. Using the window's own average would
+// make every modeled month's payroll shift a little each time the horizon is extended.
+const BD_AVG = BDAYS.slice(0, 12).reduce((a, b) => a + b, 0) / 12;
 // Booked-through labels. Every user-visible "through Jul" used to be typed by hand and went
 // stale the moment an export added a month; these follow ACT instead.
 const ACT_MO = MONTHS[ACT - 1];
@@ -1201,6 +1300,9 @@ function fillMonthLabels(){
   for (const e of document.querySelectorAll(".js-actmo")) e.textContent = ACT_MO;
   for (const e of document.querySelectorAll(".js-actrange")) e.textContent = ACT_RANGE;
   for (const e of document.querySelectorAll(".js-bridge")) e.textContent = BRIDGE_LABEL;
+  for (const e of document.querySelectorAll(".js-goal")) e.textContent = GOAL[2];
+  for (const e of document.querySelectorAll(".js-horizon")) e.textContent = monthName(1) + " \u2013 " + monthName(NM);
+  for (const e of document.querySelectorAll(".js-last")) e.textContent = monthName(NM);
 }
 // one decimal, always — for margins and the headline, where "6%" next to "6.7%" reads as two precisions
 const fmtPct1 = v => (v * 100).toFixed(1) + "%";
@@ -1391,15 +1493,16 @@ function compute(){
   out.incent = { mod: Array(NM).fill(0), str: Array(NM).fill(0) };
   out.incentBy = [];   // the same accrual, one entry per program, so the P&L can name what it is
   out.incentUnbooked = { mod: 0, str: 0 };
-  out.incentHalf = { mod: [0, 0], str: [0, 0] };
-  out.incentLoaded = { mod: [0, 0], str: [0, 0] };
-  out.incentPace = { mod: [0, 0], str: [0, 0] };
+  const perCycle = () => Array(CYCLES.length).fill(0);
+  out.incentHalf = { mod: perCycle(), str: perCycle() };       // what the people earn, by cycle
+  out.incentLoaded = { mod: perCycle(), str: perCycle() };     // what it costs, by cycle
+  out.incentPace = { mod: perCycle(), str: perCycle() };
   for (const pg of (S.programs || [])){
     if (!pg || pg.on === false) continue;
     const by = { id: pg.id, name: pg.name || "Program", mod: Array(NM).fill(0), str: Array(NM).fill(0) };
     const addInc = (scn, i, v) => { out.incent[scn][i] += v; by[scn][i] += v; };
-    const hi = (pg.half === 1) ? 0 : 1;
-    const [a, b] = hi === 0 ? FH1 : FH2;
+    const hi = pgCycle(pg);
+    const [a, b] = CYCLES[hi];
     const isRate = pg.basis === "rate";
     let heads = 0;
     for (const r of S.staff){
@@ -1607,8 +1710,8 @@ let cmpPlanId = null;
 function renderCompare(C){
   const pl = document.getElementById("planList"); if (!pl) return;
   const plans = S.plans || [];
-  pl.innerHTML = plans.length ? `<table class="data"><thead><tr><th>Plan</th><th>Locked</th><th>Booked then</th><th>${FH2[3]} net</th><th>${BOTH[3]} net</th><th></th></tr></thead><tbody>` +
-    plans.map(p => `<tr><td><input class="cell pos" style="width:240px" data-id="${p.id}" data-k="planlabel" value="${esc(p.label)}"></td><td>${esc(p.at.slice(0, 10))}</td><td>through ${MONTHS[p.act - 1]}</td><td>${fmt$(p.net.slice(FH2[0], FH2[1]).reduce((a, b) => a + b, 0))}</td><td>${fmt$(p.net.slice(BOTH[0], BOTH[1]).reduce((a, b) => a + b, 0))}</td><td><button class="btn mini" data-id="${p.id}" data-k="plandel" title="Remove this locked plan">✕</button></td></tr>`).join("") + `</tbody></table>`
+  pl.innerHTML = plans.length ? `<table class="data"><thead><tr><th>Plan</th><th>Locked</th><th>Booked then</th><th>${esc(GOAL[3])} net</th><th>${esc(BOTH[3])} net</th><th></th></tr></thead><tbody>` +
+    plans.map(p => `<tr><td><input class="cell pos" style="width:240px" data-id="${p.id}" data-k="planlabel" value="${esc(p.label)}"></td><td>${esc(p.at.slice(0, 10))}</td><td>through ${MONTHS[p.act - 1]}</td><td>${fmt$(p.net.slice(GOAL[0], GOAL[1]).reduce((a, b) => a + b, 0))}</td><td>${fmt$(p.net.slice(BOTH[0], BOTH[1]).reduce((a, b) => a + b, 0))}</td><td><button class="btn mini" data-id="${p.id}" data-k="plandel" title="Remove this locked plan">✕</button></td></tr>`).join("") + `</tbody></table>`
     : `<p class="subtle">No plan locked yet.</p>`;
   const A = S.actuals;
   const chosen = plans.find(p => p.id === cmpPlanId) || plans[plans.length - 1];
@@ -1712,7 +1815,6 @@ function renderCompare(C){
    "13" are a year apart. Every month control names its month and year instead. monthName works
    for indexes outside the window too (0 and below are 2025), which is how a seller who was
    already ramping before Jan '26 is expressed. */
-const MON3 = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 /* People who joined before the window opened. A rep who started in Jul '25 is six months into
    their ramp by Jan '26 and must not be modelled as a new hire; one who started before the ramp
    is long enough to matter is simply fully ramped. START_MIN goes back a full ramp length, and
@@ -1733,10 +1835,9 @@ function monthName(i){
 // Column header for month index i (0-based): the short name, with the year pinned on each
 // January and a divider drawn where 2027 starts, so a 15-wide grid never leaves you counting.
 function mhead(i){
-  const nm = MON3[((i % 12) + 12) % 12];
-  return nm + ((i === 0 || i === 12) ? ` <span class="yr">\u2019${i < 12 ? "26" : "27"}</span>` : "");
+  return MON3[mOf(i)] + ((i === 0 || mOf(i) === 0) ? ` <span class="yr">${yy(i)}</span>` : "");
 }
-const ybCls = i => (i === 12 ? " yb" : "");
+const ybCls = i => (i > 0 && mOf(i) === 0 ? " yb" : "");
 function monthSel(attrs, value, o){
   o = o || {};
   const min = o.min == null ? 1 : o.min, max = o.max == null ? NM : o.max;
@@ -1872,18 +1973,18 @@ function spark(vals, color = "--modest", w = 96, h = 24){
 
 /* ---------- tiles ---------- */
 function renderTiles(C){
-  const gp = a => a.slice(FH2[0], FH2[1]).reduce((x, y) => x + y, 0);
+  const gp = a => a.slice(GOAL[0], GOAL[1]).reduce((x, y) => x + y, 0);
   const gpNetM = gp(C.net.mod), gpNetS = gp(C.net.str);
   const gpRevM = gp(C.rev.mod), gpRevS = gp(C.rev.str);
   const ytd = C.net.mod.slice(0, ACT).reduce((a, b) => a + b, 0);
   const payMo = C.staffTotal[NM - 1], opexMo = C.opex[NM - 1];
-  const tgt = S.levers.targetH2;
+  const tM = tgtOf(GOAL_I, "mod"), tS = tgtOf(GOAL_I, "str");
   document.getElementById("tiles").innerHTML = `
-  <div class="tile"><div class="lbl">${FH2[3]} net — modest</div><div class="val">${fmtK(gpNetM)} <small>${fmtPct1(gpRevM ? gpNetM / gpRevM : 0)}</small></div><div class="sub">Oct 2026 – Mar 2027</div>${spark(C.net.mod.slice(FH2[0], FH2[1]), "--modest")}</div>
-  <div class="tile"><div class="lbl">${FH2[3]} net — stretch</div><div class="val">${fmtK(gpNetS)} <small>${fmtPct1(gpRevS ? gpNetS / gpRevS : 0)}</small></div><div class="sub">Oct 2026 – Mar 2027</div>${spark(C.net.str.slice(FH2[0], FH2[1]), "--stretch")}</div>
-  <div class="tile"><div class="lbl">${FH2[3]} revenue M / S</div><div class="val">${fmtK(gpRevM)} <small>/ ${fmtK(gpRevS)}</small></div><div class="sub">target ${fmtK(tgt)} — modest ${Math.round(tgt ? gpRevM / tgt * 100 : 0)}% · stretch ${Math.round(tgt ? gpRevS / tgt * 100 : 0)}%</div></div>
+  <div class="tile"><div class="lbl">${esc(GOAL[3])} net — modest</div><div class="val">${fmtK(gpNetM)} <small>${fmtPct1(gpRevM ? gpNetM / gpRevM : 0)}</small></div><div class="sub">${esc(GOAL[2])}</div>${spark(C.net.mod.slice(GOAL[0], GOAL[1]), "--modest")}</div>
+  <div class="tile"><div class="lbl">${esc(GOAL[3])} net — stretch</div><div class="val">${fmtK(gpNetS)} <small>${fmtPct1(gpRevS ? gpNetS / gpRevS : 0)}</small></div><div class="sub">${esc(GOAL[2])}</div>${spark(C.net.str.slice(GOAL[0], GOAL[1]), "--stretch")}</div>
+  <div class="tile"><div class="lbl">${esc(GOAL[3])} revenue M / S</div><div class="val">${fmtK(gpRevM)} <small>/ ${fmtK(gpRevS)}</small></div><div class="sub">${tS > tM ? `vs ${fmtK(tM)} / ${fmtK(tS)}` : `target ${fmtK(tM)}`} — modest ${Math.round(tM ? gpRevM / tM * 100 : 0)}% · stretch ${Math.round(tS ? gpRevS / tS * 100 : 0)}%</div></div>
   <div class="tile"><div class="lbl">Net booked ${esc(ACT_RANGE)} (Xero)</div><div class="val">${fmtK(ytd)}</div></div>
-  <div class="tile"><div class="lbl">Mar ’27 run-rate</div><div class="val">${fmtK(payMo)} <small>payroll</small></div><div class="sub">${fmtK(opexMo)}/mo opex planned</div></div>`;
+  <div class="tile"><div class="lbl">${esc(monthName(NM))} run-rate</div><div class="val">${fmtK(payMo)} <small>payroll</small></div><div class="sub">${fmtK(opexMo)}/mo opex planned</div></div>`;
 }
 
 /* ---------- projections tab ---------- */
@@ -1930,14 +2031,14 @@ function renderProj(C){
     [{name:"Actual (booked)", color:"--aqua", vals:actOnly(C.net.mod), kind:"bar"},
      {name:"Net — modest", color:"--modest", vals:projOnly(C.net.mod), kind:"bar"},
      {name:"Net — stretch", color:"--stretch", vals:projOnly(C.net.str), kind:"bar"}],
-    {aria:"Monthly net profit: booked, then modest vs stretch", band:[FH2[0], FH2[1]]});
+    {aria:"Monthly net profit: booked, then modest vs stretch", band:[GOAL[0], GOAL[1]]});
   const cum = a => a.reduce((acc, v) => (acc.push((acc.at(-1) || 0) + v), acc), []);
   const cm = cum(C.net.mod), cs = cum(C.net.str);
   monthChart(document.getElementById("chartCum"),
     [{name:"Actual (booked)", color:"--aqua", vals:cm.map((v, i) => i < ACT ? v : null)},
      {name:"Cumulative — modest", color:"--modest", vals:cm.map((v, i) => i >= ACT - 1 ? v : null)},
      {name:"Cumulative — stretch", color:"--stretch", vals:cs.map((v, i) => i >= ACT - 1 ? v : null)}],
-    {aria:"Cumulative net profit", band:[FH2[0], FH2[1]]});
+    {aria:"Cumulative net profit", band:[GOAL[0], GOAL[1]]});
   // P&L table — one scenario at a time by default; "Both" interleaves
   const rows = [];
   const both = plScn === "both";
@@ -2017,7 +2118,7 @@ function renderProj(C){
   for (const [k, v] of pick(netM, netS)){
     const revK = C.rev[k], m = v.map((n, i) => revK[i] ? n / revK[i] : 0);
     const pr = (x, y) => { const n = v.slice(x, y).reduce((a, b) => a + b, 0), d = revK.slice(x, y).reduce((a, b) => a + b, 0); return d ? n / d : 0; };
-    rows.push({ label: "&nbsp;&nbsp;net margin" + sfx(k), vals: m, cls: "dim", fm: fmtPct1, sums: [pr(FH1[0], FH1[1]), pr(FH2[0], FH2[1]), pr(BOTH[0], BOTH[1])] });
+    rows.push({ label: "&nbsp;&nbsp;net margin" + sfx(k), vals: m, cls: "dim", fm: fmtPct1, sums: CYCLES.map(c => pr(c[0], c[1])).concat([pr(BOTH[0], BOTH[1])]) });
   }
   if (!both)
     push("Net under " + (plScn === "mod" ? "stretch" : "modest") + " (reference)", plScn === "mod" ? netS : netM, "dim");
@@ -2026,18 +2127,20 @@ function renderProj(C){
   const half = (vals, [a, b]) => vals.slice(a, b).reduce((x, y) => x + y, 0);
   const qb = i => (i % 3 === 2 ? " qb" : "");
   const provSet = new Set(S.levers.estProv ? (MODEL.provisional_cogs_months || []) : []);
-  const goalCls = i => (i >= FH2[0] && i < FH2[1]) ? " goal" : "";
-  const bridgeN = Math.max(0, FH2[0] - ACT);
+  const goalCls = i => (i >= GOAL[0] && i < GOAL[1]) ? " goal" : "";
+  const bridgeN = Math.max(0, GOAL[0] - ACT);
   let h = `<table class="data pl"><thead>` +
     `<tr class="grp"><th></th><th colspan="3">Totals</th><th class="booked" colspan="${Math.min(ACT, NM)}">Booked ${esc(ACT_RANGE)}</th>` +
-    (bridgeN ? `<th colspan="${bridgeN}">Bridge</th>` : "") + `<th class="goal" colspan="${FH2[1] - FH2[0]}">Goal cycle Oct–Mar</th></tr>` +
-    `<tr><th>P&amp;L</th><th>${FH1[3]}<span class="sub">Apr–Sep</span></th><th class="goal">${FH2[3]}<span class="sub">Oct–Mar</span></th><th>${BOTH[3]}<span class="sub">Apr 26–Mar 27</span></th>` +
+    (bridgeN ? `<th colspan="${bridgeN}">Bridge</th>` : "") + `<th class="goal" colspan="${GOAL[1] - GOAL[0]}">Goal cycle ${esc(GOAL[2])}</th>` +
+    (NM > GOAL[1] ? `<th colspan="${NM - GOAL[1]}">Beyond</th>` : "") + `</tr>` +
+    `<tr><th>P&amp;L</th>` + CYCLES.map((c, k) => `<th class="${k === GOAL_I ? "goal" : ""}">${esc(c[3])}<span class="sub">${esc(c[2])}</span></th>`).join("") +
+    `<th>${esc(BOTH[3])}<span class="sub">${esc(BOTH[2])}</span></th>` +
     MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${qb(i)}${ybCls(i)}${goalCls(i)}"${provSet.has(i + 1) ? ` title="COGS estimated — the ${m} COGS entry hasn’t been made in Xero yet"` : ""}>${mhead(i)}${provSet.has(i + 1) ? "*" : ""}</th>`).join("") +
     `</tr></thead><tbody>`;
   for (const r of rows){
     if (r.section){ h += `<tr class="sec"><td colspan="${NM + 4}">${esc(r.section)}</td></tr>`; continue; }
     const isNet = /NET/.test(r.label);
-    const sums = r.sums ? r.sums : r.fm === fmt$ ? [half(r.vals, FH1), half(r.vals, FH2), half(r.vals, BOTH)] : null;
+    const sums = r.sums ? r.sums : r.fm === fmt$ ? CYCLES.map(c => half(r.vals, c)).concat([half(r.vals, BOTH)]) : null;
     const sumFm = r.sums ? r.fm : fmt$;
     // a cell's own caveat (the August payroll estimate, the "who moved" notes) outranks the
     // exact-figure hover; when both exist the figure rides inside the caveat
@@ -2045,7 +2148,8 @@ function renderProj(C){
       ? `<td class="${i < ACT ? "actual" : ""}${qb(i)}${goalCls(i)}${isNet && v < 0 ? " neg" : ""}" title="${r.tips && r.tips[i] ? esc(fmt$(v) + " — " + r.tips[i]) : fmt$(v)}">${fmtK(v)}</td>`
       : `<td class="${i < ACT ? "actual" : ""}${qb(i)}${goalCls(i)}${isNet && v < 0 ? " neg" : ""}"${r.tips && r.tips[i] ? ` title="${esc(r.tips[i])}"` : ""}>${r.fm(v)}</td>`;
     h += `<tr class="${r.cls}"><td class="${r.cls === "dim" ? "dim" : ""}">${r.label}</td>` +
-      (sums ? sums.map((v, k) => `<td class="${k === 1 ? "goal" : ""}${isNet && v < 0 ? " neg" : ""}"><b>${sumFm(v)}</b></td>`).join("") : "<td></td><td class=\"goal\"></td><td></td>") +
+      (sums ? sums.map((v, k) => `<td class="${k === GOAL_I ? "goal" : ""}${isNet && v < 0 ? " neg" : ""}"><b>${sumFm(v)}</b></td>`).join("")
+            : CYCLES.map((c, k) => `<td class="${k === GOAL_I ? "goal" : ""}"></td>`).join("") + "<td></td>") +
       r.vals.map(cell).join("") + `</tr>`;
   }
   document.getElementById("plTable").innerHTML = h + "</tbody></table>";
@@ -2122,17 +2226,22 @@ function renderRollup(C){
   const fmv = isHC ? (v => v ? (Math.round(v * 10) / 10).toLocaleString("en-US") : "·") : fmt$;
   const fmk = isHC ? fmv : (v => fmtK(v));
   const rows = DEPTS.map(d => ({ d, vals: series(d) })).filter(r => r.vals.some(v => Math.abs(v) > 0.05));
-  const goalCls = i => (i >= FH2[0] && i < FH2[1]) ? " goal" : "";
-  const bridgeN = Math.max(0, FH2[0] - ACT);
-  const cyc = r => isHC ? r.vals[NM - 1] : half(r.vals, FH2);
+  const goalCls = i => (i >= GOAL[0] && i < GOAL[1]) ? " goal" : "";
+  const bridgeN = Math.max(0, GOAL[0] - ACT);
+  const cyc = r => isHC ? r.vals[NM - 1] : half(r.vals, GOAL);
   let h = `<table class="data"><thead>` +
-    `<tr class="grp"><th></th><th colspan="${isHC ? 1 : 3}">Totals</th><th class="booked" colspan="${Math.min(ACT, NM)}">Booked ${esc(ACT_RANGE)}</th>` +
-    (bridgeN ? `<th colspan="${bridgeN}">Bridge</th>` : "") + `<th class="goal" colspan="${FH2[1] - FH2[0]}">Goal cycle Oct–Mar</th></tr>` +
+    `<tr class="grp"><th></th><th colspan="${isHC ? 1 : CYCLES.length + 1}">Totals</th><th class="booked" colspan="${Math.min(ACT, NM)}">Booked ${esc(ACT_RANGE)}</th>` +
+    (bridgeN ? `<th colspan="${bridgeN}">Bridge</th>` : "") + `<th class="goal" colspan="${GOAL[1] - GOAL[0]}">Goal cycle ${esc(GOAL[2])}</th>` +
+    (NM > GOAL[1] ? `<th colspan="${NM - GOAL[1]}">Beyond</th>` : "") + `</tr>` +
     `<tr><th>Department</th>` +
-    (isHC ? `<th class="goal">Mar ’27</th>` : `<th>${FH1[3]}<span class="sub">Apr–Sep</span></th><th class="goal">${FH2[3]}<span class="sub">Oct–Mar</span></th><th>${BOTH[3]}<span class="sub">Apr 26–Mar 27</span></th>`) +
+    (isHC ? `<th class="goal">${esc(monthName(NM))}</th>`
+          : CYCLES.map((c, k) => `<th class="${k === GOAL_I ? "goal" : ""}">${esc(c[3])}<span class="sub">${esc(c[2])}</span></th>`).join("") +
+            `<th>${esc(BOTH[3])}<span class="sub">${esc(BOTH[2])}</span></th>`) +
     MONTHS.map((m, i) => `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}${goalCls(i)}">${mhead(i)}</th>`).join("") + `</tr></thead><tbody>`;
   const tots = r => isHC ? `<td class="goal"><b>${fmv(r.vals[NM - 1])}</b></td>`
-    : `<td class="${half(r.vals, FH1) < 0 ? "neg" : ""}"><b>${fmt$(half(r.vals, FH1))}</b></td><td class="goal${half(r.vals, FH2) < 0 ? " neg" : ""}"><b>${fmt$(half(r.vals, FH2))}</b></td><td><b>${fmt$(half(r.vals, BOTH))}</b></td>`;
+    : CYCLES.map((c, k) => { const v = half(r.vals, c);
+        return `<td class="${k === GOAL_I ? "goal" : ""}${v < 0 ? " neg" : ""}"><b>${fmt$(v)}</b></td>`; }).join("") +
+      `<td><b>${fmt$(half(r.vals, BOTH))}</b></td>`;
   for (const r of rows){
     h += `<tr><td>${esc(dn(r.d))}</td>` + tots(r) +
       r.vals.map((v, i) => `<td class="${i < ACT ? "actual" : ""}${goalCls(i)}${v < -0.5 ? " neg" : ""}"${isHC ? "" : ` title="${fmt$(v)}"`}>${fmk(v)}</td>`).join("") + `</tr>`;
@@ -2152,13 +2261,13 @@ function renderRollup(C){
   });
   const metricLabel = rollMetric === "pay" ? "Payroll" : rollMetric === "opex" ? "Opex" : isHC ? "Headcount" : "Payroll + opex";
   document.getElementById("rollChart").innerHTML =
-    `<svg viewBox="0 0 ${W} ${bars.length * bh + 4}" role="img" aria-label="${metricLabel} by department, ${FH2[3]}">${svg}</svg>` +
-    `<div class="chart-legend"><span class="key"><i style="background:var(--ink2);opacity:.45"></i>${metricLabel}, ${FH2[3]} · Oct ’26 – Mar ’27${isHC ? " (Mar ’27)" : ""}</span></div>`;
+    `<svg viewBox="0 0 ${W} ${bars.length * bh + 4}" role="img" aria-label="${metricLabel} by department, ${esc(GOAL[3])}">${svg}</svg>` +
+    `<div class="chart-legend"><span class="key"><i style="background:var(--ink2);opacity:.45"></i>${metricLabel}, ${esc(GOAL[3])} · ${esc(GOAL[2])}${isHC ? ` (${esc(monthName(NM))})` : ""}</span></div>`;
   // the closed summary line: always total-cost basis, so it reads the same whatever the toggle says
-  const costRows = DEPTS.map(d => ({ d, v: half(C.deptPay[d].map((v, i) => v + C.dept[d][i]), FH2) })).filter(x => x.v > 1).sort((a, b) => b.v - a.v);
+  const costRows = DEPTS.map(d => ({ d, v: half(C.deptPay[d].map((v, i) => v + C.dept[d][i]), GOAL) })).filter(x => x.v > 1).sort((a, b) => b.v - a.v);
   const totC = costRows.reduce((a, x) => a + x.v, 0);
   const rs = document.getElementById("rollSum");
-  if (rs) rs.innerHTML = `${FH2[3]} payroll + opex <b>${fmtK(totC)}</b> across ${costRows.length} departments — largest ${costRows.slice(0, 3).map(x => `${esc(dn(x.d))} ${fmtK(x.v)}`).join(", ")}`;
+  if (rs) rs.innerHTML = `${esc(GOAL[3])} payroll + opex <b>${fmtK(totC)}</b> across ${costRows.length} departments — largest ${costRows.slice(0, 3).map(x => `${esc(dn(x.d))} ${fmtK(x.v)}`).join(", ")}`;
 }
 document.getElementById("rollMetric").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-m]"); if (!b) return;
@@ -2167,12 +2276,8 @@ document.getElementById("rollMetric").addEventListener("click", ev => {
   renderAll();
 });
 /* ---------- growth & scenario gap ---------- */
-// Calendar quarters — Q1 is Jan–Mar. Planning and budgeting run in half-year cycles that
-// straddle the year: Q2+Q3 (Apr–Sep) and Q4+Q1 (Oct–Mar).
-const QTRS = [[0,3,"Q1 2026","Jan–Mar 26","booked"],[3,6,"Q2 2026","Apr–Jun 26","booked"],
-  [6,9,"Q3 2026","Jul–Sep 26","Jul–Aug booked"],[9,12,"Q4 2026","Oct–Dec 26","model"],[12,15,"Q1 2027","Jan–Mar 27","model"]];
-const PERIODS = QTRS.map(q => [q[0], q[1], q[2], q[3]]).concat([
-  [3, 9, "Q2+Q3", "Apr–Sep 26"], [9, 15, "Q4+Q1", "Oct 26–Mar 27"], [0, 12, "CY 2026", "Jan–Dec 26"]]);
+// Calendar quarters, planning cycles and the periods they roll up into are defined with the
+// horizon, at the top of this script.
 function renderPeriods(C){
   const el = document.getElementById("periodSum"); if (!el) return;
   const sum = (a, x, y) => a.slice(x, y).reduce((p, q) => p + q, 0);
@@ -2195,8 +2300,11 @@ function renderPeriods(C){
   for (const k of scns) push("NET with programs" + sfx(k), C.netAll[k], "tot netrow");
   for (const k of scns) pushPct("net margin" + sfx(k), C.netAll[k], C.rev[k]);
   // display order: the two cycles in date order, the calendar year, then the quarters — PERIODS itself is untouched
-  const ORDER = [5, 6, 7, 0, 1, 2, 3, 4];
-  const colCls = (oi, pos) => (oi === 6 ? " goal" : "") + (pos === 2 ? " qb" : "");
+  // cycles first, in date order, then whole calendar years, then the quarters behind them
+  const LEAD = PERIODS.map((p, i) => i).filter(i => i >= QTRS.length);
+  const ORDER = LEAD.concat(PERIODS.map((p, i) => i).filter(i => i < QTRS.length));
+  const goalOi = QTRS.length + GOAL_I;
+  const colCls = (oi, pos) => (oi === goalOi ? " goal" : "") + (pos === LEAD.length - 1 ? " qb" : "");
   const tag = oi => oi < QTRS.length ? `<span class="sub">${esc(QTRS[oi][4])}</span>` : "";
   let h = `<table class="data"><thead><tr><th>${both ? "Modest and stretch" : plScn === "str" ? "Stretch" : "Modest"}</th>` +
     ORDER.map((oi, pos) => { const q = PERIODS[oi]; return `<th class="${colCls(oi, pos).trim()}">${esc(q[2])}<span class="sub">${esc(q[3])}</span>${tag(oi)}</th>`; }).join("") + `</tr></thead><tbody>`;
@@ -2213,31 +2321,40 @@ function renderGrowth(C){
   const revQ = { mod: QTRS.map(([a, b]) => sum(C.rev.mod, a, b)), str: QTRS.map(([a, b]) => sum(C.rev.str, a, b)) };
   const netQ = { mod: QTRS.map(([a, b]) => sum(C.net.mod, a, b)), str: QTRS.map(([a, b]) => sum(C.net.str, a, b)) };
   const qoq = arr => arr.map((v, i) => i ? v / (arr[i - 1] || 1) - 1 : null);
-  const qTgt = [null, S.levers.targetH1 / 2, S.levers.targetH1 / 2, S.levers.targetH2 / 2, S.levers.targetH2 / 2];
-  const fyRev = { mod: sum(C.rev.mod, 3, 15), str: sum(C.rev.str, 3, 15) };
-  const fyTgt = S.levers.targetH1 + S.levers.targetH2;
+  // a quarter's target is its cycle's, halved; a quarter before the first cycle has none
+  const qTgtOf = (qi, scn) => { const ci = CYCLES.findIndex(c => QTRS[qi][0] >= c[0] && QTRS[qi][1] <= c[1]);
+    return ci < 0 ? null : tgtOf(ci, scn) / 2; };
+  const qTgt = QTRS.map((q, i) => qTgtOf(i, "mod")), qTgtS = QTRS.map((q, i) => qTgtOf(i, "str"));
+  const fyRev = { mod: sum(C.rev.mod, BOTH[0], BOTH[1]), str: sum(C.rev.str, BOTH[0], BOTH[1]) };
+  const fyTgt = tgtSum(BOTH, "mod"), fyTgtS = tgtSum(BOTH, "str");
+  const fyNet = { mod: sum(C.net.mod, BOTH[0], BOTH[1]), str: sum(C.net.str, BOTH[0], BOTH[1]) };
+  const yoy = (a, base) => base > 0 ? a / base - 1 : null;      // a ratio against a non-positive base means nothing
+  // the latest quarter that has the same quarter a year earlier inside the window
+  const yq = QTRS.length > 4 ? QTRS.length - 1 : -1;
   let h = `<table class="data"><thead><tr><th>Quarters</th>` +
     QTRS.map(q => `<th>${q[2]}<br><span style="font-weight:400">${q[3]} · ${q[4]}</span></th>`).join("") +
-    `<th>Apr 26–Mar 27</th><th>YoY Q1 vs Q1</th></tr></thead><tbody>`;
-  const yoy = (a, base) => base > 0 ? a / base - 1 : null;      // a ratio against a non-positive base means nothing
-  const yoyR = { mod: yoy(revQ.mod[4], revQ.mod[0]), str: yoy(revQ.str[4], revQ.str[0]) };
-  const yoyN = { mod: yoy(netQ.mod[4], netQ.mod[0]), str: yoy(netQ.str[4], netQ.str[0]) };
+    `<th>${esc(BOTH[2])}</th><th>${yq > 3 ? `YoY ${esc(QTRS[yq][2])} vs ${esc(QTRS[yq - 4][2])}` : "YoY"}</th></tr></thead><tbody>`;
+  const yoyR = yq > 3 ? { mod: yoy(revQ.mod[yq], revQ.mod[yq - 4]), str: yoy(revQ.str[yq], revQ.str[yq - 4]) } : { mod: null, str: null };
+  const yoyN = yq > 3 ? { mod: yoy(netQ.mod[yq], netQ.mod[yq - 4]), str: yoy(netQ.str[yq], netQ.str[yq - 4]) } : { mod: null, str: null };
+  const yqLbl = yq > 3 ? QTRS[yq - 4][2] : "";
   const gy = (v, baseLabel) => v == null ? `<span class="dim" title="${baseLabel} was not positive, so a year-over-year percentage is not meaningful">n/m</span>` : g(v);
-  h += `<tr><td>Revenue — modest</td>${revQ.mod.map(v => `<td>${fmt$(v)}</td>`).join("")}<td><b>${fmt$(fyRev.mod)}</b></td><td rowspan="2" style="vertical-align:middle">${gy(yoyR.mod, "Q1 2026 revenue")} M<br>${gy(yoyR.str, "Q1 2026 revenue")} S</td></tr>`;
+  h += `<tr><td>Revenue — modest</td>${revQ.mod.map(v => `<td>${fmt$(v)}</td>`).join("")}<td><b>${fmt$(fyRev.mod)}</b></td><td rowspan="2" style="vertical-align:middle" title="${esc(yqLbl ? QTRS[yq][2] + " against " + yqLbl : "")}">${gy(yoyR.mod, yqLbl + " revenue")} M<br>${gy(yoyR.str, yqLbl + " revenue")} S</td></tr>`;
   h += `<tr class="dim"><td class="dim">QoQ — modest</td>${qoq(revQ.mod).map(v => `<td>${g(v)}</td>`).join("")}<td></td></tr>`;
   h += `<tr><td>Revenue — stretch</td>${revQ.str.map(v => `<td>${fmt$(v)}</td>`).join("")}<td><b>${fmt$(fyRev.str)}</b></td><td></td></tr>`;
   h += `<tr class="dim"><td class="dim">QoQ — stretch</td>${qoq(revQ.str).map(v => `<td>${g(v)}</td>`).join("")}<td></td><td></td></tr>`;
-  h += `<tr class="dim"><td class="dim">Quarterly target (half ÷ 2)</td>${qTgt.map(t => `<td>${t ? fmt$(t) : `<span class="dim">prior FY</span>`}</td>`).join("")}<td>${fmt$(fyTgt)}</td><td></td></tr>`;
+  h += `<tr class="dim"><td class="dim">Quarterly target — modest (cycle ÷ 2)</td>${qTgt.map(t => `<td>${t ? fmt$(t) : `<span class="dim">no cycle</span>`}</td>`).join("")}<td>${fmt$(fyTgt)}</td><td></td></tr>`;
+  if (qTgtS.some((t, i) => t && qTgt[i] && t !== qTgt[i]))
+    h += `<tr class="dim"><td class="dim">Quarterly target — stretch</td>${qTgtS.map(t => `<td>${t ? fmt$(t) : `<span class="dim">no cycle</span>`}</td>`).join("")}<td>${fmt$(fyTgtS)}</td><td></td></tr>`;
   const att = (v, t) => t ? `<span class="${v >= t ? "pos" : "neg"}">${Math.round(v / t * 100)}%</span>` : `<span class="dim">—</span>`;
   h += `<tr class="tot"><td>Attainment — modest</td>${qTgt.map((t, i) => `<td>${att(revQ.mod[i], t)}</td>`).join("")}<td>${att(fyRev.mod, fyTgt)}</td><td></td></tr>`;
-  h += `<tr class="tot"><td>Attainment — stretch</td>${qTgt.map((t, i) => `<td>${att(revQ.str[i], t)}</td>`).join("")}<td>${att(fyRev.str, fyTgt)}</td><td></td></tr>`;
+  h += `<tr class="tot"><td>Attainment — stretch</td>${qTgtS.map((t, i) => `<td>${att(revQ.str[i], t)}</td>`).join("")}<td>${att(fyRev.str, fyTgtS)}</td><td></td></tr>`;
   h += `<tr class="tot"><td>Stretch premium (revenue)</td>${revQ.str.map((v, i) => `<td>${fmt$(v - revQ.mod[i])}${revQ.mod[i] ? ` <span class="dim">${((v / revQ.mod[i] - 1) * 100).toFixed(0)}%</span>` : ""}</td>`).join("")}<td>${fmt$(fyRev.str - fyRev.mod)}</td><td></td></tr>`;
-  h += `<tr><td>Net — modest</td>${netQ.mod.map(v => `<td class="${v < 0 ? "neg" : ""}">${fmt$(v)}</td>`).join("")}<td><b>${fmt$(sum(C.net.mod, 3, 15))}</b></td><td rowspan="2" style="vertical-align:middle">${gy(yoyN.mod, "Q1 2026 net")} M<br>${gy(yoyN.str, "Q1 2026 net")} S</td></tr>`;
-  h += `<tr><td>Net — stretch</td>${netQ.str.map(v => `<td class="${v < 0 ? "neg" : ""}">${fmt$(v)}</td>`).join("")}<td><b>${fmt$(sum(C.net.str, 3, 15))}</b></td></tr>`;
-  h += `<tr class="tot"><td>Stretch premium (net)</td>${netQ.str.map((v, i) => `<td>${fmt$(v - netQ.mod[i])}</td>`).join("")}<td>${fmt$(sum(C.net.str, 3, 15) - sum(C.net.mod, 3, 15))}</td><td></td></tr>`;
+  h += `<tr><td>Net — modest</td>${netQ.mod.map(v => `<td class="${v < 0 ? "neg" : ""}">${fmt$(v)}</td>`).join("")}<td><b>${fmt$(fyNet.mod)}</b></td><td rowspan="2" style="vertical-align:middle" title="${esc(yqLbl ? QTRS[yq][2] + " against " + yqLbl : "")}">${gy(yoyN.mod, yqLbl + " net")} M<br>${gy(yoyN.str, yqLbl + " net")} S</td></tr>`;
+  h += `<tr><td>Net — stretch</td>${netQ.str.map(v => `<td class="${v < 0 ? "neg" : ""}">${fmt$(v)}</td>`).join("")}<td><b>${fmt$(fyNet.str)}</b></td></tr>`;
+  h += `<tr class="tot"><td>Stretch premium (net)</td>${netQ.str.map((v, i) => `<td>${fmt$(v - netQ.mod[i])}</td>`).join("")}<td>${fmt$(fyNet.str - fyNet.mod)}</td><td></td></tr>`;
   document.getElementById("growthQ").innerHTML = h + "</tbody></table>";
   const mom = arr => arr.map((v, i) => i ? v / (arr[i - 1] || 1) - 1 : null);
-  const goalCls = i => (i >= FH2[0] && i < FH2[1]) ? " goal" : "";
+  const goalCls = i => (i >= GOAL[0] && i < GOAL[1]) ? " goal" : "";
   let m = `<table class="data"><thead><tr><th>Monthly</th>` +
     MONTHS.map((mn, i) => `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}${goalCls(i)}">${mhead(i)}</th>`).join("") + `</tr></thead><tbody>`;
   m += `<tr><td>Revenue MoM — modest</td>${mom(C.rev.mod).map((v, i) => `<td class="${i < ACT ? "actual" : ""}">${g(v)}</td>`).join("")}</tr>`;
@@ -2247,8 +2364,9 @@ function renderGrowth(C){
   document.getElementById("growthM").innerHTML = m + "</tbody></table>";
   const gs = document.getElementById("growSum");
   if (gs){
-    const attM = fyTgt ? Math.round(sum(C.rev.mod, FH2[0], FH2[1]) / S.levers.targetH2 * 100) : 0, attS = fyTgt ? Math.round(sum(C.rev.str, FH2[0], FH2[1]) / S.levers.targetH2 * 100) : 0;
-    gs.innerHTML = `stretch adds <b>${fmtK(fyRev.str - fyRev.mod)}</b> revenue / <b>${fmtK(sum(C.net.str, 3, 15) - sum(C.net.mod, 3, 15))}</b> net over Apr ’26–Mar ’27 · ${FH2[3]} attainment ${attM}% modest / ${attS}% stretch`;
+    const gM = tgtOf(GOAL_I, "mod"), gS = tgtOf(GOAL_I, "str");
+    const attM = gM ? Math.round(sum(C.rev.mod, GOAL[0], GOAL[1]) / gM * 100) : 0, attS = gS ? Math.round(sum(C.rev.str, GOAL[0], GOAL[1]) / gS * 100) : 0;
+    gs.innerHTML = `stretch adds <b>${fmtK(fyRev.str - fyRev.mod)}</b> revenue / <b>${fmtK(fyNet.str - fyNet.mod)}</b> net over ${esc(BOTH[2])} · ${esc(GOAL[3])} attainment ${attM}% modest / ${attS}% stretch`;
   }
   // cost trajectory: booked Oct'25 onward from the accrual export, model after Jul'26
   const T = MODEL.totals;
@@ -2259,7 +2377,7 @@ function renderGrowth(C){
     ["Apr–Jun ’26", "booked", [3, 4, 5].reduce((a, i) => a + cost26(i), 0)],
     ["Jul–Sep ’26", "Jul booked", [6, 7, 8].reduce((a, i) => a + cost26(i), 0)],
     ["Oct–Dec ’26", "model", [9, 10, 11].reduce((a, i) => a + cost26(i), 0)],
-    ["Jan–Mar ’27", "model", [12, 13, 14].reduce((a, i) => a + cost26(i), 0)]];
+    [QTRS[4] ? QTRS[4][3] : "Jan–Mar ’27", "model", [12, 13, 14].reduce((a, i) => a + cost26(i), 0)]];
   let cq = `<table class="data" style="margin-top:0"><thead><tr><th>Operating cost trajectory</th>` +
     CQ.map(x => `<th>${x[0]}<br><span style="font-weight:400">${x[1]}</span></th>`).join("") + `</tr></thead><tbody>`;
   cq += `<tr><td>Payroll + opex (+ modest comp)</td>${CQ.map(x => `<td>${fmt$(x[2])}</td>`).join("")}</tr>`;
@@ -2270,9 +2388,10 @@ function renderGrowth(C){
 }
 /* ---------- goals & break-even (Projections) ---------- */
 function cycleFacts(C, rng, tgt){
+  tgt = (tgt && typeof tgt === "object") ? tgt : { mod: +tgt || 0, str: +tgt || 0 };
   const sum = a => a.slice(rng[0], rng[1]).reduce((x, y) => x + y, 0);
   const booked = Math.min(Math.max(0, ACT - rng[0]), rng[1] - rng[0]);
-  return { tgt, booked, modeled: (rng[1] - rng[0]) - booked, n: rng[1] - rng[0],
+  return { tgt: tgt.mod, tgtM: tgt.mod, tgtS: +tgt.str || tgt.mod, booked, modeled: (rng[1] - rng[0]) - booked, n: rng[1] - rng[0],
     revM: sum(C.rev.mod), revS: sum(C.rev.str), be: sum(C.be),
     bkRev: sum(C.rev.mod.map((v, i) => i < ACT ? v : 0)),
     netM: sum(C.net.mod), netS: sum(C.net.str), allM: sum(C.netAll.mod), allS: sum(C.netAll.str),
@@ -2283,7 +2402,7 @@ function cycleFacts(C, rng, tgt){
 // would move it. Everything editable sits behind the fold below it.
 function renderGoals(C){
   const L = S.levers;
-  const g = cycleFacts(C, FH2, L.targetH2), p = cycleFacts(C, FH1, L.targetH1);
+  const g = cycleFacts(C, GOAL, cycTgt(GOAL_I)), p = cycleFacts(C, PREV, cycTgt(Math.max(0, GOAL_I - 1)));
   const pill = (v, t) => `<span class="pill ${v >= t ? "ok" : "short"}" title="${fmt$(v)} against a ${fmt$(t)} target">${Math.round(t ? v / t * 100 : 0)}%</span>`;
   const mg = (n, d) => d ? fmtPct1(n / d) : "—";
   const clear = g.revM - g.be;
@@ -2300,7 +2419,7 @@ function renderGoals(C){
     `<div class="plan-grid">
       <div><div class="lab">Revenue</div>
         <div class="plan-val">${fmtK(g.revM)} <small>modest</small> · ${fmtK(g.revS)} <small>stretch</small></div>
-        <div class="plan-sub">${pill(g.revM, g.tgt)} / ${pill(g.revS, g.tgt)} of the ${fmtK(g.tgt)} target · ${g.booked ? `${fmtK(g.bkRev)} booked + ` : ""}${fmtK(g.revM - g.bkRev)} modeled</div></div>
+        <div class="plan-sub">${pill(g.revM, g.tgtM)} / ${pill(g.revS, g.tgtS)} of ${g.tgtS > g.tgtM ? `${fmtK(g.tgtM)} modest · ${fmtK(g.tgtS)} stretch` : `the ${fmtK(g.tgtM)} target`} · ${g.booked ? `${fmtK(g.bkRev)} booked + ` : ""}${fmtK(g.revM - g.bkRev)} modeled</div></div>
       <div><div class="lab">Break-even revenue <span style="font-weight:400;text-transform:none;letter-spacing:0">(the fixed hurdle)</span></div>
         <div class="plan-val">${fmtK(g.be)} <small>${fmtK(g.be / g.n)}/mo</small></div>
         <div class="plan-sub" title="Base payroll and opex less other income, at the cycle's gross margin. Commissions and bonus programs are excluded — they only exist when revenue does.">modest ${clear >= 0 ? "clears it by" : `<span class="warn">falls short by</span>`} <b>${fmtK(Math.abs(clear))}</b> · stretch by ${fmtK(g.revS - g.be)}</div></div>
@@ -2309,7 +2428,7 @@ function renderGoals(C){
         <div class="plan-sub">as booked, modest · stretch — ${progLine}</div></div>
     </div>
     <div class="plan-row">
-      <table class="data compact" style="width:auto;min-width:300px"><thead><tr><th>${FH2[3]} · Oct–Mar</th><th>Modest</th><th>Stretch</th></tr></thead><tbody>
+      <table class="data compact" style="width:auto;min-width:300px"><thead><tr><th>${esc(GOAL[3])} · ${esc(GOAL[2])}</th><th>Modest</th><th>Stretch</th></tr></thead><tbody>
         ${row("NET as booked", g.netM, g.netS, "tot")}
         ${(g.progs.length ? g.progs : [{ name: "Accrued programs", m: g.incM, s: g.incS }]).map(pr =>
           row(`<span title="${esc(pr.name)} accrued across this cycle, loaded with employer taxes — a cost the books do not show yet.">${esc(pr.name)}</span>`,
@@ -2325,16 +2444,34 @@ function renderGoals(C){
           <span class="a">other income <b>${fmtK(L.otherInc)}</b>/mo</span>
           <span class="a">labor hedge <b>${(L.laborHedge * 100).toFixed(1)}%</b></span>
           <span class="a">opex hedge <b>${(L.opexHedge * 100).toFixed(1)}%</b></span>
-          <span class="a">Mar ’27 run-rate <b>${fmtK(C.staffTotal[NM - 1])}</b> payroll + <b>${fmtK(C.opex[NM - 1])}</b> opex</span>
+          <span class="a">${esc(monthName(NM))} run-rate <b>${fmtK(C.staffTotal[NM - 1])}</b> payroll + <b>${fmtK(C.opex[NM - 1])}</b> opex</span>
         </div>
-        <div class="plan-sub" style="margin-top:8px"><b>${FH1[3]} · Apr–Sep 2026</b> <span class="subtle">(${p.booked} booked + ${p.modeled} modeled):</span> ${fmtK(p.revM)} / ${fmtK(p.revS)} vs ${fmtK(p.tgt)} target ${pill(p.revM, p.tgt)} / ${pill(p.revS, p.tgt)} · break-even ${fmtK(p.be)} · net ${fmtK(p.netM)} as booked, ${fmtK(p.allM)} with programs</div>
+        <div class="plan-sub" style="margin-top:8px"><b>${esc(PREV[3])} · ${esc(PREV[2])}</b> <span class="subtle">(${p.booked} booked + ${p.modeled} modeled):</span> ${fmtK(p.revM)} / ${fmtK(p.revS)} vs ${fmtK(p.tgtM)} target ${pill(p.revM, p.tgtM)} / ${pill(p.revS, p.tgtS)} · break-even ${fmtK(p.be)} · net ${fmtK(p.netM)} as booked, ${fmtK(p.allM)} with programs</div>
       </div>
     </div>`;
-  document.getElementById("goalTargets").innerHTML =
-    leverInput("gTg2", FH2[3] + " revenue target", L.targetH2.toLocaleString("en-US"), "$ · Oct 2026 – Mar 2027 — drives the attainment pills here and on Sales projections") +
-    leverInput("gTg1", FH1[3] + " revenue target", L.targetH1.toLocaleString("en-US"), "$ · Apr–Sep 2026");
-  bind("gTg1", v => S.levers.targetH1 = num(v, 6350000));
-  bind("gTg2", v => S.levers.targetH2 = num(v, 5700000));
+  /* A target per cycle, and two of them: what the plan commits to and what it reaches for. Blank
+     stretch means the same number for both, which is how a single target used to behave. */
+  const ord = CYCLES.map((c, i) => i).sort((a, b) => (a === GOAL_I ? -1 : b === GOAL_I ? 1 : a - b));
+  const cycRev = (i, scn) => C.rev[scn].slice(CYCLES[i][0], CYCLES[i][1]).reduce((a, b) => a + b, 0);
+  document.getElementById("goalTargets").innerHTML = ord.map(i => {
+    const t = (L.targets || [])[i] || { mod: 0, str: 0 };
+    const pm = cycRev(i, "mod"), ps = cycRev(i, "str");
+    return `<div class="lever" title="Revenue targets for ${esc(CYCLES[i][2])} — they drive the attainment pills here and on Sales projections."><label for="gTgM${i}">${esc(CYCLES[i][3])}${i === GOAL_I ? " target" : ""}</label>
+      <span style="display:flex;gap:6px;align-items:center"><input id="gTgM${i}" class="lever-in" style="width:96px" value="${(+t.mod || 0).toLocaleString("en-US")}" title="Modest — what the plan commits to">
+      <input id="gTgS${i}" class="lever-in" style="width:96px" value="${(+t.str || 0) ? (+t.str).toLocaleString("en-US") : ""}" placeholder="same" title="Stretch — what it reaches for. Blank uses the modest number."></span>
+      <span class="unit">modest · stretch — the sales plan projects <b>${fmtK(pm)}</b> / <b>${fmtK(ps)}</b>
+        <button class="btn mini" data-k="tgtuse" data-i="${i}" data-m="${Math.round(pm)}" data-s="${Math.round(ps)}" title="Start from what the reps on the staffing plan actually project for ${esc(CYCLES[i][2])} — ${fmt$(pm)} modest, ${fmt$(ps)} stretch — then edit.">use</button></span></div>`;
+  }).join("");
+  for (const i of ord){
+    bind("gTgM" + i, v => { (S.levers.targets[i] = S.levers.targets[i] || {}).mod = num(v, 0); });
+    bind("gTgS" + i, v => { (S.levers.targets[i] = S.levers.targets[i] || {}).str = num(v, 0); });
+  }
+  document.getElementById("goalTargets").onclick = ev => {
+    const b = ev.target.closest("button[data-k=tgtuse]"); if (!b) return;
+    const i = +b.dataset.i, t = (S.levers.targets[i] = S.levers.targets[i] || {});
+    t.mod = +b.dataset.m || 0; t.str = +b.dataset.s || 0;
+    persist(); scheduleRender();
+  };
   // data status: what in the booked months is an estimate rather than a posting
   const prov = S.levers.estProv ? (MODEL.provisional_cogs_months || []) : [];
   const pm = (MODEL.payroll_partial_months || [])[0];
@@ -2346,18 +2483,17 @@ function renderGoals(C){
 /* ---------- sales tab ---------- */
 function renderSales(C){
   const L = S.levers;
-  const beH1 = C.be.slice(FH1[0], FH1[1]).reduce((a, b) => a + b, 0) / 6;
-  const beH2 = C.be.slice(FH2[0], FH2[1]).reduce((a, b) => a + b, 0) / 6;
+  const cycBe = CYCLES.map(c => C.be.slice(c[0], c[1]).reduce((a, b) => a + b, 0) / (c[1] - c[0]));
   monthChart(document.getElementById("chartTeam"),
     [{name:"Booked revenue", color:"--aqua", vals:MODEL.totals.revenue.slice(0, ACT)},
      {name:"Team revenue — modest", color:"--modest", vals:C.team.mod},
      {name:"Team revenue — stretch", color:"--stretch", vals:C.team.str}],
     {aria:"Team revenue by month vs booked, target and break-even", divider:true, w:1400, zero:false,
-     extraLines:[
-       {v:L.targetH1 / 6, x0:FH1[0], x1:FH1[1] - 1, label:"H1 target " + fmtK(L.targetH1 / 6) + "/mo"},
-       {v:L.targetH2 / 6, x0:FH2[0], x1:FH2[1] - 1, label:"H2 target " + fmtK(L.targetH2 / 6) + "/mo"},
-       {v:beH1, x0:FH1[0], x1:FH1[1] - 1, label:"break-even " + fmtK(beH1) + "/mo", color:"--crit", below:true},
-       {v:beH2, x0:FH2[0], x1:FH2[1] - 1, label:"break-even " + fmtK(beH2) + "/mo", color:"--crit", below:true}]});
+     extraLines: CYCLES.flatMap((c, i) => {
+       const n = c[1] - c[0], t = tgtOf(i, "mod") / n;
+       return [{v:t, x0:c[0], x1:c[1] - 1, label:c[3] + " target " + fmtK(t) + "/mo"},
+               {v:cycBe[i], x0:c[0], x1:c[1] - 1, label:"break-even " + fmtK(cycBe[i]) + "/mo", color:"--crit", below:true}];
+     })});
   const rampNames = Object.keys(S.ramps);
   const tgt = new Map(salesTargets().map(t => [t.key, t]));
   // the totals that matter: each half and the horizon, modest against stretch, against target
@@ -2373,7 +2509,7 @@ function renderSales(C){
     };
     document.getElementById("salesTotals").innerHTML =
       `<div style="display:flex;flex-wrap:wrap;gap:10px 28px;border:1px solid var(--border);border-radius:9px;padding:9px 12px;margin:0 0 10px;background:var(--surface2);font-size:12.5px">
-        ${cell(FH1[2] + " (" + FH1[3] + ")", FH1[0], FH1[1], L.targetH1)}${cell(FH2[2] + " (" + FH2[3] + ")", FH2[0], FH2[1], L.targetH2)}${cell(BOTH[3] + " · Apr 26–Mar 27", BOTH[0], BOTH[1], L.targetH1 + L.targetH2)}
+        ${CYCLES.map((c, i) => cell(c[2] + " (" + c[3] + ")", c[0], c[1], tgtOf(i, "mod"))).join("")}${cell(BOTH[3] + " · " + BOTH[2], BOTH[0], BOTH[1], tgtSum(BOTH, "mod"))}
         <div class="subtle" style="align-self:center;max-width:360px;font-size:11.5px">Booked months come from Xero and are the same under both; modeled months are the roster below at each rep's Modest % or Stretch %.</div></div>`;
   })();
   let h = `<table class="data"><thead><tr><th>Rep</th><th>Role</th><th>Ramp</th><th title="First month selling. Derived from the staffing plan for linked reps — change it there.">Start mo</th><th title="How far into their ramp they already were when they joined — a duration, not a month. Set it for anyone already producing at the start of the window so they are not modelled as a new hire.">Ramp credit</th><th>Last mo</th>
@@ -3263,13 +3399,13 @@ const openPrograms = new Set();
 function renderIncentives(C){
   const el = document.getElementById("incList"); if (!el) return;
   el.innerHTML = (S.programs || []).map(pg => {
-    const hi = pg.half === 1 ? 0 : 1;
-    const heads = S.staff.reduce((n, r) => n + (pgCovers(pg, r) ? staffHC(r, (hi ? FH2 : FH1)[1]) : 0), 0);
-    const [pa, pb] = hi === 0 ? FH1 : FH2;
+    const hi = pgCycle(pg);
+    const heads = S.staff.reduce((n, r) => n + (pgCovers(pg, r) ? staffHC(r, CYCLES[hi][1]) : 0), 0);
+    const [pa, pb] = CYCLES[hi];
     const prev = C.rev.mod.slice(pa, pb).reduce((x, y) => x + y, 0);
     const pace = (+pg.thr || 0) > 0 ? prev / pg.thr : 1;
     const isRate = pg.basis === "rate";
-    const endMo = (hi ? FH2 : FH1)[1];
+    const endMo = CYCLES[hi][1];
     const needsWho = !isRate && pg.per !== "pool";
     const gross = pg.per === "pool" ? (+pg.amount || 0) : (+pg.amount || 0) * heads;
     const thr = +pg.thr || 0, cap = (!isRate && +pg.cap > thr) ? +pg.cap : 0;
@@ -3331,9 +3467,8 @@ function renderIncentives(C){
           <option value="pool"${pg.per === "pool" ? " selected" : ""}>total pool</option></select></span>`}
         <span class="pg-sep"></span>
         ${thrIn}${capIn}
-        <span class="fld"><label>Period</label><select class="cell" style="width:170px" data-id="${pg.id}" data-k="pghalf">
-          <option value="1"${pg.half === 1 ? " selected" : ""}>${esc(FH1[3] + " \u00b7 " + FH1[2])}</option>
-          <option value="2"${pg.half !== 1 ? " selected" : ""}>${esc(FH2[3] + " \u00b7 " + FH2[2])}</option></select></span>
+        <span class="fld"><label>Cycle</label><select class="cell" style="width:190px" data-id="${pg.id}" data-k="pgcycle" title="The planning cycle this program is earned across. Clone the program to run the same terms in another cycle.">
+          ${CYCLES.map((c, i) => `<option value="${i}"${i === hi ? " selected" : ""}>${esc(c[3] + " \u00b7 " + c[2])}</option>`).join("")}</select></span>
         <span class="pg-sep"></span>
         <span class="fld"><label>Cost lands</label><select class="cell" style="width:250px" data-id="${pg.id}" data-k="pgalloc" title="By pacing: every month carries its revenue-weighted share of the projected payout, so as the running total crosses each percent of the goal that month accrues its slice. Evenly: the same amount each month. Only once crossed: nothing until the threshold is reached, then only the months pushing revenue into the paying band.">
           <option value="pacing"${pg.alloc === "even" || pg.alloc === "earned" ? "" : " selected"}>by pacing — each month its share</option>
@@ -3344,15 +3479,15 @@ function renderIncentives(C){
     </div>`;
   }).join("") || `<p class="subtle" style="margin:4px 0">No programs yet.</p>`;
 
-  const ub = C.incentUnbooked.mod, h1 = C.incentLoaded.mod[0], h2 = C.incentLoaded.mod[1];
-  const e1 = C.incentHalf.mod[0], e2 = C.incentHalf.mod[1];
+  const ub = C.incentUnbooked.mod;
   const sum = (a, [x, y]) => a.slice(x, y).reduce((p, q) => p + q, 0);
-  const bk1 = sum(C.net.mod, FH1), ld1 = sum(C.netAll.mod, FH1), bk2 = sum(C.net.mod, FH2), ld2 = sum(C.netAll.mod, FH2);
+  const totLoad = C.incentLoaded.mod.reduce((a, b) => a + b, 0), totEarn = C.incentHalf.mod.reduce((a, b) => a + b, 0);
+  const ord = CYCLES.map((c, i) => i).sort((a, b) => (a === GOAL_I ? -1 : b === GOAL_I ? 1 : a - b));
   document.getElementById("incSummary").innerHTML =
     `<div class="inc-stats">
-      <span><b>${FH2[3]} · Oct–Mar:</b> ${h2 > 0.5 ? `${fmtK(h2)} accrues — net ${fmtK(bk2)} as booked → <b>${fmtK(ld2)}</b> with programs` : `<span class="warn">no program pays out in this cycle</span>`}</span>
-      <span><b>${FH1[3]} · Apr–Sep:</b> ${h1 > 0.5 ? `${fmtK(h1)} accrues — net ${fmtK(bk1)} as booked → <b>${fmtK(ld1)}</b> with programs` : "nothing accrues"}</span>
-      <span title="Every program across the horizon, loaded with employer payroll taxes${e1 + e2 > 0.5 ? ` (${fmtK(e1 + e2)} earned by the people)` : ""}. None of it is in Xero; contractors are outside every program.">Not on the books <b class="warn">${fmt$(h1 + h2)}</b></span>
+      ${ord.map(i => { const ld = C.incentLoaded.mod[i] || 0, bk = sum(C.net.mod, CYCLES[i]), la = sum(C.netAll.mod, CYCLES[i]);
+        return `<span><b>${esc(CYCLES[i][3])} · ${esc(CYCLES[i][2])}:</b> ${ld > 0.5 ? `${fmtK(ld)} accrues — net ${fmtK(bk)} as booked → <b>${fmtK(la)}</b> with programs` : (i === GOAL_I ? `<span class="warn">no program pays out in this cycle</span>` : "nothing accrues")}</span>`; }).join("")}
+      <span title="Every program across the horizon, loaded with employer payroll taxes${totEarn > 0.5 ? ` (${fmtK(totEarn)} earned by the people)` : ""}. None of it is in Xero; contractors are outside every program.">Not on the books <b class="warn">${fmt$(totLoad)}</b></span>
       ${ub > 500 ? `<span title="Accrued to months Xero has already closed (${esc(MONTHS[0])}–${esc(MONTHS[ACT - 1])}) — a liability the books do not show.">already earned in closed months <b class="warn">${fmtK(ub)}</b></span>` : ""}
     </div>`;
 }
@@ -3513,7 +3648,7 @@ document.getElementById("incList").addEventListener("change", ev => {
   else if (k === "pgcap") pg.cap = String(val).trim() === "" ? 0 : Math.max(0, num(val, 0));
   else if (k === "pgamount") pg.amount = Math.max(0, num(val, 0));
   else if (k === "pgper") pg.per = val;
-  else if (k === "pghalf") pg.half = num(val, 2) === 1 ? 1 : 2;
+  else if (k === "pgcycle") pg.cycle = Math.max(0, Math.min(CYCLES.length - 1, Math.round(num(val, 0))));
   else if (k === "pgthr") pg.thr = Math.max(0, num(val, 0));
 
   else if (k === "pgalloc") pg.alloc = val === "earned" ? "earned" : val === "even" ? "even" : "pacing";
