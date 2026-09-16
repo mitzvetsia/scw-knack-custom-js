@@ -3111,22 +3111,31 @@ function renderSummary(C){
   const b0 = GOAL[0], b1 = NM - 1, cost0 = C.pay[b0] + C.opex[b0], cost1 = C.pay[b1] + C.opex[b1];
   document.getElementById("sumProfitP").innerHTML = `Modest / stretch throughout. The bottom line moves because the cost base moves less than revenue: from the start of the goal cycle, fully-loaded payroll plus planned opex goes from <b>${fmtK(cost0)}/mo</b> in ${esc(monthName(b0 + 1))} to <b>${fmtK(cost1)}/mo</b> by ${esc(monthName(b1 + 1))} (${pct(cost1 / cost0 - 1)}), while monthly revenue goes ${pct(C.rev.mod[b1] / C.rev.mod[b0] - 1)} modest and ${pct(C.rev.str[b1] / C.rev.str[b0] - 1)} stretch over the same months. Bonus programs are charged on top where they pay.`;
   // ---- 4 how: the team we have
+  /* Who counts as a rep: a quota-carrying row on the sales plan — a house line (no commission)
+     is not one, nor is anyone whose stint has ended. "Still on their ramp" is read off the curve:
+     someone below its full rate in the first month the plan controls, whatever the calendar says
+     about their start — a rep who finished early sits at full rate and is not counted. */
   const onBoard = r => r.from == null || r.from <= ACT;
+  const isHouse = r => !!r.noComm || !S.ramps[r.ramp];
+  const activeAt = (r, m) => !r.orphan && !isHouse(r) && (r.from == null || r.from <= m) && !(r.end && m > r.end);
+  const m1 = ACT + 1;                                                    // the first month the plan controls
+  const fullRate = r => { const c = S.ramps[r.ramp] || []; return c[c.length - 1] || 0; };
+  const curveAt = (r, m) => { const c = S.ramps[r.ramp] || [], t = m - r.start + 1; return t < 1 ? 0 : (c[Math.min(RAMP_LEN, t) - 1] || 0); };
   const repSum = (r, rng, k) => { let t = 0; for (let m = rng[0] + 1; m <= rng[1]; m++) t += repRevenue(r, m, k); return t; };
   const win = y27 || [ACT, NM];
   const fromTeam = S.sales.filter(onBoard).reduce((a, r) => a + repSum(r, win, "modest"), 0), fromHires = S.sales.filter(r => !onBoard(r)).reduce((a, r) => a + repSum(r, win, "modest"), 0);
-  const hc = i => C.deptHC["Sales"] ? C.deptHC["Sales"][i] : 0, hc0 = hc(b0), hc1 = hc(b1);
-  // the mechanism: reps on board whose ramp is not done — they reach full rate inside the plan
-  const ramping = S.sales.filter(r => onBoard(r) && !r.orphan && S.ramps[r.ramp] && !/^(STU|MARKETING|BEN)$/.test(r.ramp))
-    .map(r => ({ name: r.name, full: r.start + RAMP_LEN - 1 })).filter(r => r.full > ACT).sort((a, b) => a.full - b.full);
-  const selling = S.sales.filter(r => onBoard(r) && !r.orphan && S.ramps[r.ramp] && !/^(STU|MARKETING|BEN)$/.test(r.ramp)).length;
-  const house = S.sales.filter(r => onBoard(r) && !r.orphan && /^(STU|MARKETING|BEN)$/.test(r.ramp)).length;
+  const reps = S.sales.filter(r => activeAt(r, m1)), selling = reps.length;
+  const house = S.sales.filter(r => !r.orphan && isHouse(r) && (r.from == null || r.from <= m1) && !(r.end && m1 > r.end)).length;
+  const hc0 = S.sales.filter(r => activeAt(r, b0 + 1)).length, hc1 = S.sales.filter(r => activeAt(r, b1 + 1)).length;
+  // the mechanism: reps below their curve's full rate today — they reach it inside the plan
+  const ramping = reps.filter(r => fullRate(r) > 0 && curveAt(r, m1) < fullRate(r) * 0.99)
+    .map(r => ({ name: r.name, full: r.start + RAMP_LEN - 1 })).sort((a, b) => a.full - b.full);
   const salesMoves = planChanges().filter(c => ((c.role || {}).dept === "Sales" || c.dept === "Sales") && ["in", "backfill", "move"].includes(c.kind));
   document.getElementById("sumTeamStats").innerHTML =
     tile(`${esc(y27 ? y27[2] : "The plan")} revenue from the team on board today`, fmtK(fromTeam), `${Math.round(fromTeam + fromHires ? fromTeam / (fromTeam + fromHires) * 100 : 0)}% of the sales plan · ${selling} reps${house ? ` and ${house} house line${house === 1 ? "" : "s"}` : ""}`) +
     tile(`…and from hires the plan makes`, fmtK(fromHires), salesMoves.length ? `${salesMoves.length} sales ${salesMoves.length === 1 ? "change" : "changes"}: ${esc(salesMoves.map(c => (c.role || {}).position + " " + monthName(c.m)).join(", "))}` : "no sales hires in the plan") +
-    tile(`Sales heads`, `${Math.round(hc0)} → ${Math.round(hc1)}`, `${esc(monthName(b0 + 1))} → ${esc(monthName(b1 + 1))}`) +
-    tile(`Reps still on their ramp`, `${ramping.length} <small>of ${selling}</small>`, ramping.length ? `reach full rate ${esc(monthName(ramping[0].full))}${ramping.length > 1 ? ` – ${esc(monthName(ramping[ramping.length - 1].full))}` : ""}: ${esc(ramping.map(r => r.name).join(", "))}` : "everyone selling is at full rate already");
+    tile(`Reps carrying a quota`, `${hc0} → ${hc1}`, `${esc(monthName(b0 + 1))} → ${esc(monthName(b1 + 1))} · house lines, BDRs and managers not counted`) +
+    tile(`Reps still on their ramp`, `${ramping.length} <small>of ${selling}</small>`, ramping.length ? `reach full rate ${esc(monthName(ramping[0].full))}${ramping.length > 1 ? ` – ${esc(monthName(ramping[ramping.length - 1].full))}` : ""}: ${esc(ramping.map(r => r.name).join(", "))}` : "everyone carrying a quota is at full rate already");
   document.getElementById("sumTeamP").innerHTML = `The growth in the plan is mostly the reps we already have moving up their ramp curves, not new seats. A new account executive costs the full loaded amount from day one and, on this model's curve, produces nothing in month one and reaches full rate in month ${esc(String(RAMP_LEN))}; in practice our recent starters have taken longer to first revenue. The plan adds sales capacity where the ramp is proven and holds the cost base — that is what the profit line above rests on.`;
   renderAeSandbox(C);
   // ---- 5 the plan
