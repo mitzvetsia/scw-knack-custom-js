@@ -3057,7 +3057,6 @@ function renderSummary(C){
   document.getElementById("sumProfitStats").innerHTML =
     tile(`${esc(GOAL[3])} net — the goal cycle`, `${fmtK(gf.netM)} <small>/ ${fmtK(gf.netS)}</small>`, `${fmtPct1(gf.revM ? gf.netM / gf.revM : 0)} / ${fmtPct1(gf.revS ? gf.netS / gf.revS : 0)} of revenue · modest / stretch`) +
     (y27 ? tile(`${esc(y27[2])} net`, `${fmtK(n27)} <small>/ ${fmtK(n27s)}</small>`, `${fmtPct1(r27 ? n27 / r27 : 0)} / ${fmtPct1(r27s ? n27s / r27s : 0)} of revenue`) : "") +
-    tile(`What each extra dollar of sales earns`, `${Math.round(cm * 100)}¢`, `after cost of sales and commission — the rest is fixed until we add cost`) +
     tile(`Break-even revenue, ${esc(GOAL[3])}`, fmtK(gf.be), `${fmtK(gf.be / gf.n)}/mo · the plan clears it by ${fmtK(gf.revM - gf.be)} modest, ${fmtK(gf.revS - gf.be)} stretch`);
   const pr = [];
   for (let ci = GOAL_I; ci < CYCLES.length; ci++){ const f = cycleFacts(C, CYCLES[ci], cycTgt(ci)); pr.push({ lbl: CYCLES[ci][3], sub: CYCLES[ci][2], f }); }
