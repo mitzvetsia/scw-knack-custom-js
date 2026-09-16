@@ -276,8 +276,12 @@
       if (!ln || typeof ln !== 'object') continue;
       var bid = Number(ln.subBid);
       if (!isFinite(bid)) continue;
-      var qty = Number(ln.qty);
-      if (!isFinite(qty) || qty === 0) qty = 1;
+      // MISSING qty → 1 (older snapshots never wrote it). An EXPLICIT 0
+      // is 0: a line quoted at zero quantity isn't being installed, so its
+      // per-unit bid must not count once. Test for missing BEFORE
+      // coercing — Number(null) and Number('') are both 0.
+      var qty = (ln.qty == null || ln.qty === '') ? 1 : Number(ln.qty);
+      if (!isFinite(qty)) qty = 1;
       sum += qty * bid;
       seen = true;
     }
@@ -500,7 +504,7 @@
           var bid = numFromText(a[PF.subBid] != null ? a[PF.subBid] : a[PF.subBid + '_raw']);
           if (bid == null) continue;
           var q = numFromText(a[PF.qty] != null ? a[PF.qty] : a[PF.qty + '_raw']);
-          if (q == null || q === 0) q = 1;
+          if (q == null) q = 1;   // missing → 1; an explicit 0 stays 0
           // A line on several SOWs counts once per SOW — each SOW's total
           // is what THAT SOW was accepted at.
           for (var r = 0; r < refs.length; r++) {
@@ -518,7 +522,7 @@
         var dbid = numFromText(cellText(tr, PF.subBid));
         if (dbid == null) continue;
         var dq = numFromText(cellText(tr, PF.qty));
-        if (dq == null || dq === 0) dq = 1;
+        if (dq == null) dq = 1;   // missing → 1; an explicit 0 stays 0
         var cell = tr.querySelector('td.' + PF.sow);
         var spans = cell ? cell.querySelectorAll('span[data-kn="connection-value"]') : [];
         for (var s = 0; s < spans.length; s++) {
