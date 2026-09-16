@@ -388,8 +388,10 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <div style="margin:0 0 10px"><span class="ctl-lbl">Scenario</span><span class="scn-toggle" id="perScnT"><button class="btn on" data-s="mod">Modest</button><button class="btn" data-s="str">Stretch</button><button class="btn" data-s="both">Both</button></span></div>
     <div class="tablewrap" id="periodSum"></div></div>
   <div class="card"><div class="eyebrow">Results</div><h2>Revenue growth</h2>
-    <p class="note">Projected sales revenue, modest and stretch, at every cadence the plan is read at: each period against the one before it, and against the same span a year earlier. Booked periods are Xero, so both scenarios read alike there.</p>
+    <p class="note">Projected sales revenue, modest and stretch, against the same span a year earlier — and for quarters and cycles, against the period before. Booked periods are Xero, so both scenarios read alike there; the model takes over from <span class="js-coststart"></span>.</p>
     <div style="margin:0 0 10px"><span class="ctl-lbl">Cadence</span><span class="scn-toggle" id="growCadT"></span></div>
+    <figure class="chart" id="revGrowthChart" hidden title="Hover any month for the figures"></figure>
+    <p class="note" id="revGrowthNote" hidden style="margin:6px 0 10px"></p>
     <div class="tablewrap" id="revGrowth"></div></div>
   <div class="card"><div class="eyebrow">Workings</div><h2>P&amp;L by month</h2>
     <p class="note">Shaded = Xero as booked (<span class="js-actrange"></span>); <span class="js-bridge"></span> is a bridge month; <span class="js-goal"></span> is the goal cycle. Payroll is base pay; commissions sit on their own row. Month cells round to $K — hover for the exact figure. <a class="how" href="#notes">How it works ↗</a></p>
@@ -1976,7 +1978,7 @@ function monthChart(el, series, opts = {}){
   const bandW = iw / NM, x = i => mL + bandW * (i + 0.5);
   let g = "";
   for (const t of ticks) g += `<line x1="${mL}" x2="${W - mR}" y1="${y(t)}" y2="${y(t)}" stroke="var(${t === 0 ? "--baseline" : "--grid"})" stroke-width="1"/>` +
-    `<text x="${mL - 7}" y="${y(t) + 3.5}" text-anchor="end" font-size="10" fill="var(--muted)" style="font-variant-numeric:tabular-nums">${fmtK(t)}</text>`;
+    `<text x="${mL - 7}" y="${y(t) + 3.5}" text-anchor="end" font-size="10" fill="var(--muted)" style="font-variant-numeric:tabular-nums">${(opts.fmt || fmtK)(t)}</text>`;
   // the axis names the month bare and pins the year on each January, the same way the table headers
   // do — carrying the year on every month collides once the window spans more than a year
   for (let i = 0; i < NM; i++)
@@ -2008,7 +2010,7 @@ function monthChart(el, series, opts = {}){
       marks += `<path d="${up
         ? `M${cx},${y0} L${cx},${top + rx} Q${cx},${top} ${cx + rx},${top} L${cx + bw - rx},${top} Q${cx + bw},${top} ${cx + bw},${top + rx} L${cx + bw},${y0} Z`
         : `M${cx},${y0} L${cx + bw},${y0} L${cx + bw},${top + hgt - rx} Q${cx + bw},${top + hgt} ${cx + bw - rx},${top + hgt} L${cx + rx},${top + hgt} Q${cx},${top + hgt} ${cx},${top + hgt - rx} Z`}"
-        fill="var(${s.color})" opacity="${i < ACT || !opts.fadeProj ? 1 : 0.55}"/>`;
+        fill="var(${s.color})" opacity="${(opts.fadeFrom != null && i >= opts.fadeFrom) || (opts.fadeProj && i >= ACT) ? 0.55 : 1}"/>`;
     });
   });
   for (const ln of (opts.extraLines || [])){
@@ -2034,9 +2036,9 @@ function monthChart(el, series, opts = {}){
   svg.addEventListener("pointermove", ev => {
     const t = ev.target.closest("rect[data-i]"); if (!t) { hideTip(); return; }
     const i = +t.dataset.i;
-    showTip(ev.clientX, ev.clientY, `<div class="t">${MONTHS[i]}${i < 12 ? " 2026" : ""} · ${i < ACT ? "booked" : "model"}</div>` +
+    showTip(ev.clientX, ev.clientY, `<div class="t">${opts.tipTitle ? opts.tipTitle(i) : `${MONTHS[i]}${i < 12 ? " 2026" : ""} · ${i < ACT ? "booked" : "model"}`}</div>` +
       series.map(s => s.vals[i] == null ? "" :
-        `<div class="row"><span><i style="background:var(${s.color})"></i>${esc(s.name)}</span><b>${fmt$(s.vals[i])}</b></div>`).join(""));
+        `<div class="row"><span><i style="background:var(${s.color})"></i>${esc(s.name)}</span><b>${(opts.tipFmt || fmt$)(s.vals[i])}</b></div>`).join(""));
   });
   svg.addEventListener("pointerleave", hideTip);
 }
@@ -2722,6 +2724,46 @@ function renderRevGrowth(C){
   const cad = CAD[growCad] || CAD.q;
   document.getElementById("growCadT").innerHTML = Object.entries(CAD).map(([k, c]) =>
     `<button class="btn${k === growCad ? " on" : ""}" data-cad="${k}">${c.name}</button>`).join("");
+  const fig = document.getElementById("revGrowthChart"), fnote = document.getElementById("revGrowthNote");
+  fig.hidden = fnote.hidden = growCad !== "m";
+  if (growCad === "m"){
+    /* Months are read as "the same month a year earlier", never month over month: MoM is mostly
+       the calendar (a 20-day month after a 23-day one) and, at the seam where the model takes over
+       from Xero, it reads the hand-off itself as a collapse. Year-earlier bars only exist where the
+       window holds the base month, and go paler once that base is itself modelled. */
+    const yoyOf = a => a.map((v, i) => i >= 12 && a[i - 12] > 0 ? v / a[i - 12] - 1 : null);
+    const firstModelBase = 12 + ACT;                          // from here the year-earlier month is the model's
+    const pc = v => (v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
+    monthChart(fig,
+      [{ name: "vs a year earlier — modest", color: "--modest", vals: yoyOf(C.rev.mod), kind: "bar" },
+       { name: "vs a year earlier — stretch", color: "--stretch", vals: yoyOf(C.rev.str), kind: "bar" }],
+      { aria: "Revenue growth by month against the same month a year earlier, modest and stretch", band: [GOAL[0], GOAL[1]], divider: false, w: 1400, h: 260,
+        fmt: v => Math.round(v * 100) + "%", tipFmt: pc, fadeFrom: firstModelBase,
+        tipTitle: i => `${MONTHS[i]}${i < 12 ? " 2026" : ""} vs ${MONTHS[i - 12]}${i - 12 < 12 ? " 2026" : ""} · ${i - 12 < ACT ? "booked" : "modelled"} base` });
+    fnote.innerHTML = `Bars start where the window holds the year-earlier month; none for ${esc(monthName(1))}–${esc(monthName(12))}, whose 2025 months are not in the model. ` +
+      `Paler bars (${esc(monthName(firstModelBase + 1))} on) compare a modelled month with a modelled base.`;
+    // the grid: one column per calendar month, a block per year, booked cells shaded and the seam ruled
+    const blocks = YEARS.map(y => ({ yr: yOf(y[0]), i0: y[0], i1: y[1] }));
+    const cellCls = i => (i < ACT ? " actual" : "") + (i === ACT ? " yb" : "");
+    const at = (a, blk, mo) => { const i = blk.i0 + mo - mOf(blk.i0); return (i >= blk.i0 && i < blk.i1) ? { i, v: a[i] } : null; };
+    let h = `<table class="data"><thead><tr><th>Revenue</th>${MON3.map(mn => `<th>${mn}</th>`).join("")}</tr></thead><tbody>`;
+    blocks.forEach((blk, bi) => {
+      const prev = blocks[bi - 1];
+      const booked = Math.max(0, Math.min(ACT, blk.i1) - blk.i0);
+      const span = booked === 0 ? "modelled" : booked >= blk.i1 - blk.i0 ? "booked"
+        : `${MON3[mOf(blk.i0)]}\u2013${MON3[mOf(blk.i0 + booked - 1)]} booked · ${MON3[mOf(blk.i0 + booked)]}\u2013${MON3[mOf(blk.i1 - 1)]} modelled`;
+      h += `<tr class="sec"><td colspan="13">${blk.yr} <span class="dim" style="font-weight:400">· ${span}${prev ? ` · growth is against ${prev.yr}` : " · no 2025 revenue in the model, so no year-earlier comparison"}</span></td></tr>`;
+      for (const [k, name] of [["mod", "modest"], ["str", "stretch"]]){
+        const a = C.rev[k];
+        h += `<tr><td><b>${name}</b></td>${MON3.map((_, mo) => { const c = at(a, blk, mo);
+          return c ? `<td class="${cellCls(c.i).trim()}">${fmtK(c.v)}</td>` : `<td class="dim">—</td>`; }).join("")}</tr>`;
+        if (prev) h += `<tr class="dim"><td class="dim">vs ${prev.yr} — ${name}</td>${MON3.map((_, mo) => { const c = at(a, blk, mo), b = at(a, prev, mo);
+          return c && b && b.v > 0 ? `<td class="${cellCls(c.i).trim()}">${g(c.v / b.v - 1)}</td>` : `<td class="dim">—</td>`; }).join("")}</tr>`;
+      }
+    });
+    el.innerHTML = h + "</tbody></table>";
+    return;
+  }
   const goalCls = (x, y) => (x >= GOAL[0] && y <= GOAL[1]) ? " goal" : "";
   let h = `<table class="data"><thead><tr><th>Revenue</th>` + cad.spans.map(([x, y, lbl, sub]) =>
     `<th class="${y <= ACT ? "actual" : ""}${goalCls(x, y)}">${lbl}${sub || growCad !== "m" ? `<span class="sub">${esc(sub || "")}${sub ? " · " : ""}${status(x, y)}</span>` : ""}</th>`).join("") + `</tr></thead><tbody>`;
