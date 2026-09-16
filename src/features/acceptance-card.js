@@ -2178,6 +2178,21 @@
         return '<button type="button" class="scw-acpt-doc--missing" data-edit-field="' + fk + '" title="Add ' + esc(full) + '">' +
           PLUS_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span></button>';
       }
+      // READ THROUGH THE PROPOSAL (fk is the proposal-sourced column, not
+      // the acceptance's own field): this card cannot write it, so it
+      // must not LOOK writable. A plain link to Knack's asset, no pencil,
+      // no data-edit-field. Previously this fell through to the editable
+      // tile below with fk=field_2945 — the click handler only knows
+      // F.bidPdf, so the pencil painted and the click did nothing.
+      if (fk !== F.bidPdf) {
+        return '<span class="scw-acpt-doc scw-acpt-doc--ro">' +
+          '<a class="scw-acpt-doc__open" target="_blank" rel="noopener" href="' +
+            esc(anchor.getAttribute('href') || '') + '" title="Open ' + esc(full) +
+            ' (from the published proposal)">' +
+            CHECK_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span>' +
+          '</a>' +
+        '</span>';
+      }
       // Populated: the WHOLE tile (main zone and pencil alike) opens the
       // uploader modal, which shows the current file and takes a
       // replacement — one behavior, no viewer/editor split.

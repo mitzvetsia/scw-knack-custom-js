@@ -836,12 +836,23 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   and flips for every line item ever created, which is exactly the noise the 12-month rule avoids.
   Follow-up once the flag exists: OR it into the worksheet "discontinued" badge.
 
-### 23. CO product SWAP lands as "Removed by CO" — Make scenario 13.06b (HIGH URGENCY — DIAGNOSIS UNVERIFIED)
+### 23. CO product SWAP lands as "Removed by CO" — Make scenario 13.06b (HIGH URGENCY — VERIFIED)
 
-⚠ **The analysis below was produced by Opus and has NOT been independently
-verified.** It is recorded so the work isn't lost, not because it is settled.
-Verify before acting — a Fable review was requested and could not run (Fable
-was out of usage credits). **Re-run that review before touching the scenario.**
+✅ **Independently verified 2026-09-16** by re-reading the blueprint JSON
+(router 164 filters and modules 161/219 mappers quoted verbatim below are
+exact) and confirmed against the live SW1781CO publish payload. That payload
+settles the last open question — WHY the bracket's line specifically won:
+feeder [87] emits the CO lines in `field_2173` order (30914 Deputy-Remove,
+30915 Informant-Add, **30916 Wall-Bracket-Remove targeting the CAMERA**,
+30917 EBM-Add). For the camera that is [161] set → [219] clear → [161] set,
+so the last writer is the bracket's Remove line, hence `field_2967` = that
+line and the chip shows a bracket name. Router semantics: a Make router runs
+*every* route whose filter passes, but the three filters are mutually
+exclusive per line — the fight is across LINES, and feeder order decides.
+Two corrections to the original read: (a) the EBM Add having no
+`field_2966` is CORRECT — it is a net-new accessory, a plain Add, not a
+swap leg; (b) the real upstream anomaly is the wall-bracket Remove targeting
+the camera's install record instead of its own.
 
 - **Symptom (seen 2026-09-15)**: install record `6a62981788f3ebe5858c08a1`
   (`I-03`, Informant Dual Vision, project `69f0d4b567a35332e743cc27`) renders in
