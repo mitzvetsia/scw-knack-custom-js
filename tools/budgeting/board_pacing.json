@@ -31,5 +31,7 @@
   "mGoal1": 1190000,
   "mGoal2": 1404002
  },
- "formula": "projected = (install + eCommerce + check/MO - min(bigDeal, that sum)) / businessDaysToDate * businessDaysInMonth + bigDeal \u2014 the board's own compute(), reproduced in the dashboard"
+ "formula": "projected = (install + eCommerce + check/MO - min(bigDeal, that sum)) / businessDaysToDate * businessDaysInMonth + bigDeal \u2014 the board's own compute(), reproduced in the dashboard",
+ "window": "2026-04..2026-09",
+ "window_note": "the cycle the board's goals and pace apply to"
 }

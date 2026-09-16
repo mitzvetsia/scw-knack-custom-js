@@ -286,6 +286,28 @@ figure.chart svg{display:block;width:100%;height:auto}
 .attn li b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .attn li span{color:var(--ink2);font-variant-numeric:tabular-nums;flex:none}
 .footnote{color:var(--muted);font-size:11.5px;margin-top:10px;line-height:1.5}
+/* a cycle against its targets: one bullet per cycle */
+.ct-row{display:grid;grid-template-columns:168px 1fr;gap:2px 18px;align-items:start;padding:12px 0;border-top:1px solid var(--grid)}
+.ct-row:first-child{border-top:0;padding-top:4px}
+.ct-lbl b{display:block;font-size:13.5px}
+.ct-lbl span{color:var(--muted);font-size:11.5px;line-height:1.4}
+.ct-track{position:relative;height:60px;margin:2px 0 0}
+.ct-track::before{content:"";position:absolute;left:0;right:0;top:26px;height:14px;background:var(--surface2);border-radius:4px}
+.ct-seg{position:absolute;top:26px;height:14px}
+.ct-seg.booked{background:var(--booked);border-radius:4px 0 0 4px}
+.ct-seg.model{background:var(--modest);opacity:.6}
+.ct-seg.stretch{background:var(--stretch);opacity:.4}
+.ct-seg.end{border-radius:0 4px 4px 0}
+.ct-mark{position:absolute;top:19px;width:0}
+.ct-mark i{display:block;width:2px;height:28px;margin-left:-1px;background:var(--ink)}
+.ct-mark.stretch i{background:var(--stretch)}
+.ct-mark.board i{background:transparent;border-left:2px dotted var(--stretch)}
+.ct-mark span{position:absolute;left:5px;top:-15px;white-space:nowrap;font-size:11px;color:var(--ink2)}
+.ct-mark.modest span{top:30px}
+.ct-mark.flip span{left:auto;right:5px}
+.ct-val{position:absolute;top:26px;margin-left:7px;font-size:12px;font-weight:700;white-space:nowrap;line-height:14px}
+.ct-val.in{margin-left:0;transform:translateX(calc(-100% - 6px));color:#fff}
+.ct-read{grid-column:2;font-size:12.5px;color:var(--ink2);line-height:1.55}
 details.helper{margin-bottom:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
 details.helper summary{cursor:pointer;padding:10px 16px;font-weight:600;font-size:13px;color:var(--ink2)}
 details.helper .inner{padding:0 16px 14px;font-size:12.5px;color:var(--ink2);line-height:1.55;max-width:70ch}
@@ -371,6 +393,9 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
       <div class="levers" id="projLevers" style="border:0;padding:0;margin:0;background:transparent"></div></div></details>
     <p class="footnote" id="dataStatus" style="margin:8px 0 0"></p>
   </div>
+  <div class="card"><div class="eyebrow">Results</div><h2>Against the targets</h2>
+    <p class="note">Where the cycle now closing landed against the modest and stretch targets set for it, and where the goal cycle is heading. Grey is booked in Xero; blue is the model to the modest figure, green the stretch beyond it. Targets are set in <em>Set targets &amp; tune the model</em> above.</p>
+    <div id="cycleTargets"></div></div>
   <div class="cards2">
     <div class="card"><div class="eyebrow">Results</div><h2>Net by month</h2><p class="note">Booked months as bars; modeled months show modest and stretch side by side.</p><figure class="chart" id="chartNet" title="Hover any month for the figures"></figure></div>
     <div class="card"><div class="eyebrow">Results</div><h2>Cumulative net through <span class="js-last"></span></h2><p class="note">Running total: booked through <span class="js-actmo"></span>, then each scenario.</p><figure class="chart" id="chartCum" title="Hover any month for the figures"></figure></div>
@@ -2870,6 +2895,62 @@ document.addEventListener("click", ev => {
   renderRevGrowth(compute());
 });
 
+/* ---------- cycles against their targets ----------
+   A bullet per cycle: the bar is what the cycle did — booked months solid, the modelled remainder
+   to the modest figure, stretch beyond it — and the ticks are the targets set for it. The cycle now
+   closing leads, as a result; the goal cycle follows, as a projection, in the same language. A
+   stretch target left blank reads as "same as modest" everywhere else; here, if the Push board
+   carries a stretch goal for that cycle, it is drawn dotted and offered, never adopted silently. */
+function renderCycleTargets(C){
+  const el = document.getElementById("cycleTargets"); if (!el) return;
+  const rows = [];
+  if (GOAL_I > 0) rows.push({ ci: GOAL_I - 1, kind: "last" });
+  rows.push({ ci: GOAL_I, kind: "goal" });
+  const boardWin = (() => { const w = BOARD && BOARD.window; if (!w) return null;
+    const idx = t => { const [y, m] = t.split("-").map(Number); return (y - Y0) * 12 + (m - 1) - M0; };
+    const [a, b] = w.split(".."); return [idx(a), idx(b) + 1]; })();
+  const pctOf = (v, t) => t ? Math.round(v / t * 100) : null;
+  const gap = (v, t) => `<span class="${v >= t ? "pos" : "neg"}">${v >= t ? "+" : "−"}${fmtK(Math.abs(v - t))}</span>`;
+  el.innerHTML = rows.map(({ ci, kind }) => {
+    const c = CYCLES[ci], g = cycleFacts(C, c, cycTgt(ci));
+    const tRaw = (S.levers.targets || [])[ci] || {}, tM = +tRaw.mod || 0, tS = +tRaw.str || 0;
+    const onBoard = boardWin && c[0] === boardWin[0] && c[1] === boardWin[1] && BOARD.goals_k;
+    const bS = onBoard ? (+BOARD.goals_k.stretch || 0) * 1000 : 0, bM = onBoard ? (+BOARD.goals_k.modest || 0) * 1000 : 0;
+    const boardOnly = !tS && bS && bS !== tM ? bS : 0;               // a stretch goal the board has and the model does not
+    const top = Math.max(g.revS, g.revM, tM, tS, boardOnly, 1) * 1.12, X = v => Math.max(0, Math.min(100, v / top * 100));
+    const bridged = ACT >= c[0] && ACT < c[1] && g.booked < g.n;
+    const src = bridged ? ((S.levers.bridgeSrc || "live") === "plan" ? "sales plan" : "Push board, " + ((S.levers.bridgeSrc || "live") === "live" && boardMonthIdx() === ACT ? "live pacing" : "baseline pace")) : "";
+    const bookedLbl = g.booked ? `${MON3[mOf(c[0])]}\u2013${MON3[mOf(c[0] + g.booked - 1)]}` : "";
+    const mark = (v, cls, lbl) => v ? `<div class="ct-mark ${cls}${X(v) > 82 ? " flip" : ""}" style="left:${X(v).toFixed(2)}%" title="${esc(lbl)}"><i></i><span>${esc(lbl)}</span></div>` : "";
+    const endV = Math.max(g.revM, g.revS);
+    const track = `<div class="ct-track">` +
+      (g.bkRev > 0 ? `<div class="ct-seg booked${g.revM <= g.bkRev + 1 && g.revS <= g.bkRev + 1 ? " end" : ""}" style="left:0;width:${X(g.bkRev).toFixed(2)}%" title="Booked ${esc(bookedLbl)}: ${fmt$(g.bkRev)}"></div>` : "") +
+      (g.revM > g.bkRev + 1 ? `<div class="ct-seg model${g.revS <= g.revM + 1 ? " end" : ""}" style="left:${X(g.bkRev).toFixed(2)}%;width:${(X(g.revM) - X(g.bkRev)).toFixed(2)}%" title="Modelled to modest: ${fmt$(g.revM - g.bkRev)}"></div>` : "") +
+      (g.revS > g.revM + 1 ? `<div class="ct-seg stretch end" style="left:${X(g.revM).toFixed(2)}%;width:${(X(g.revS) - X(g.revM)).toFixed(2)}%" title="Stretch beyond modest: ${fmt$(g.revS - g.revM)}"></div>` : "") +
+      mark(tM, "modest", `modest target ${fmtK(tM)}`) + mark(tS, "stretch", `stretch target ${fmtK(tS)}`) +
+      mark(boardOnly, "board stretch", `board stretch goal ${fmtK(boardOnly)} — not set here`) +
+      `<div class="ct-val${X(endV) > 88 ? " in" : ""}" style="left:${X(endV).toFixed(2)}%">${fmtK(g.revM)}${g.revS > g.revM + 1 ? ` <span style="font-weight:400">/ ${fmtK(g.revS)}</span>` : ""}</div></div>`;
+    const vs = (v, t, name) => t ? `<b>${pctOf(v, t)}%</b> of the ${fmtK(t)} ${name} (${gap(v, t)})` : "";
+    let read;
+    if (kind === "last"){
+      read = `<b>${g.booked >= g.n ? "Landed at" : "Landing at"} ${fmtK(g.revM)}</b>` +
+        (bridged ? ` — ${esc(bookedLbl)} booked ${fmtK(g.bkRev)} + ${esc(MONTHS[ACT])} ${fmtK(g.revM - g.bkRev)} <span class="dim">(${esc(src)})</span>` : "") +
+        ` · ${vs(g.revM, tM, "modest target")}` +
+        (tS ? ` · ${vs(g.revM, tS, "stretch target")}` : boardOnly ? ` · no stretch target set here — against the board's ${fmtK(bS)} stretch goal it is <b>${pctOf(g.revM, bS)}%</b> (${gap(g.revM, bS)}) <button class="btn mini" data-k="ctboard" data-i="${ci}" title="Set this cycle's targets to the Push board's window goals: ${fmtK(bM)} modest, ${fmtK(bS)} stretch">use the board's goals</button>` : ` · <span class="dim">no stretch target set</span>`);
+    } else {
+      read = `<b>Projected ${fmtK(g.revM)} modest</b> — ${vs(g.revM, tM, "modest target")}` +
+        ` · <b>${fmtK(g.revS)} stretch</b> — ${tS ? vs(g.revS, tS, "stretch target") : `<b>${pctOf(g.revS, tM)}%</b> of modest, <span class="dim">no stretch target set</span>`}`;
+    }
+    return `<div class="ct-row"><div class="ct-lbl"><b>${esc(c[3])}</b><span>${esc(c[2])} · ${kind === "last" ? (g.booked >= g.n ? "closed" : `${g.booked} of ${g.n} months booked`) : "the goal cycle · projected"}</span></div>${track}<div class="ct-read">${read}</div></div>`;
+  }).join("");
+}
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-k=ctboard]"); if (!b || !BOARD || !BOARD.goals_k) return;
+  const i = +b.dataset.i, t = (S.levers.targets[i] = S.levers.targets[i] || { mod: 0, str: 0 });
+  t.mod = (+BOARD.goals_k.modest || 0) * 1000; t.str = (+BOARD.goals_k.stretch || 0) * 1000;
+  persist(); renderAll();
+});
+
 /* ---------- goals & break-even (Projections) ---------- */
 function cycleFacts(C, rng, tgt){
   tgt = (tgt && typeof tgt === "object") ? tgt : { mod: +tgt || 0, str: +tgt || 0 };
@@ -4649,7 +4730,7 @@ document.getElementById("btnLoad").addEventListener("click", () => {
 function renderAll(){
   if (syncSales()) persist();     // the plan is the source of truth for who sells and when
   const C = compute();
-  renderTiles(C); renderGoals(C); renderPlanChanges(C); renderDeptChange(C); renderProjLevers(); renderProj(C); renderPeriods(C); renderRevGrowth(C); renderRollup(C); renderGrowth(C);
+  renderTiles(C); renderGoals(C); renderCycleTargets(C); renderPlanChanges(C); renderDeptChange(C); renderProjLevers(); renderProj(C); renderPeriods(C); renderRevGrowth(C); renderRollup(C); renderGrowth(C);
   fillMonthLabels();
   renderSales(C); renderIncentives(C); renderRaisePlanner(); renderStaff(C); renderLicenses(C); renderExpenses(C); renderCompare(C); renderFixes(); renderRestore(); renderPayBands();
 }
