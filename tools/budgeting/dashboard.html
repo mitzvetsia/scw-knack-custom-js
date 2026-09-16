@@ -286,6 +286,25 @@ figure.chart svg{display:block;width:100%;height:auto}
 .attn li b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .attn li span{color:var(--ink2);font-variant-numeric:tabular-nums;flex:none}
 .footnote{color:var(--muted);font-size:11.5px;margin-top:10px;line-height:1.5}
+/* the summary tab: few numbers, big; one visual per beat; a way in to every detail */
+.sum-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:6px 0 14px}
+.sum-stats .tile .val{font-size:26px}
+.sum-years{display:flex;align-items:flex-end;gap:8px;padding:6px 2px 0;min-height:230px}
+.sy{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-width:0}
+.sy .top{font-size:11.5px;font-weight:700;margin-bottom:3px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.sy .bars{width:100%;height:150px;display:flex;flex-direction:column;justify-content:flex-end}
+.sy .b{width:100%}
+.sy .b.hist{background:var(--booked);opacity:.55;border-radius:4px 4px 0 0}
+.sy .b.booked{background:var(--booked)}
+.sy .b.model{background:var(--modest);opacity:.75}
+.sy .b.stretch{background:var(--stretch);opacity:.45;border-radius:4px 4px 0 0}
+.sy .b.first{border-radius:4px 4px 0 0}
+.sy .yr{font-size:11.5px;color:var(--ink2);margin-top:5px;white-space:nowrap}
+.sy .yr b{color:var(--ink)}
+.sy .g{font-size:10.5px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.sy .g .pos,.sy .g .neg{font-weight:600}
+.sum-box{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin:10px 0 4px;background:color-mix(in srgb, var(--surface2) 40%, var(--surface))}
+.sum-list{margin:0;padding-left:18px;line-height:1.6;font-size:12.5px}
 /* a cycle against its targets: one bullet per cycle */
 .ct-row{display:grid;grid-template-columns:168px 1fr;gap:2px 18px;align-items:start;padding:12px 0;border-top:1px solid var(--grid)}
 .ct-row:first-child{border-top:0;padding-top:4px}
@@ -368,6 +387,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
 <div class="tiles" id="tiles"></div>
 
 <nav class="tabs" id="tabs">
+  <button data-tab="sum">Summary</button>
   <button data-tab="proj" class="on">Projections</button>
   <button data-tab="sales">Sales projections</button>
   <button data-tab="staff">Staffing</button>
@@ -377,6 +397,34 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
 </nav>
 
 <main>
+<section class="tab" id="tab-sum">
+  <div class="card"><div class="eyebrow">The pitch</div><h2 id="sumTitle">Revenue growth, and the plan that earns it</h2>
+    <p class="note" id="sumIdea"></p></div>
+  <div class="card"><div class="eyebrow">1 · Growth</div><h2 id="sumGrowthH"></h2>
+    <div class="sum-stats" id="sumGrowthStats"></div>
+    <div class="sum-years" id="sumYears"></div>
+    <p class="note" id="sumGrowthP" style="margin-top:10px"></p>
+    <p class="footnote"><a class="how" href="#" data-go="proj" data-to="revGrowth">Dive deeper → Revenue growth, at every cadence</a></p></div>
+  <div class="card"><div class="eyebrow">2 · Targets</div><h2>The cycles against their targets</h2>
+    <div id="sumTargets"></div>
+    <p class="footnote"><a class="how" href="#" data-go="proj" data-to="goalsBody">Dive deeper → The plan card, any cycle or year</a></p></div>
+  <div class="card"><div class="eyebrow">3 · Profit</div><h2 id="sumProfitH"></h2>
+    <div class="sum-stats" id="sumProfitStats"></div>
+    <div class="tablewrap" id="sumProfit"></div>
+    <p class="note" id="sumProfitP" style="margin-top:10px"></p>
+    <p class="footnote"><a class="how" href="#" data-go="proj" data-to="periodSum">Dive deeper → P&amp;L by period</a> · <a class="how" href="#" data-go="proj" data-to="plTable">by month</a></p></div>
+  <div class="card"><div class="eyebrow">4 · How</div><h2>The team we have, maturing</h2>
+    <div class="sum-stats" id="sumTeamStats"></div>
+    <p class="note" id="sumTeamP"></p>
+    <div class="sum-box"><div class="eyebrow">What more account executives would do</div>
+      <p class="note" style="margin:4px 0 10px">A sandbox on this model's own ramp curve and cost — nothing here changes the plan. The curve pays from the second month; our recent starters have taken longer, so the ramp delay is the honest dial.</p>
+      <div class="levers" id="sumAeLevers" style="border:0;padding:0;margin:0 0 8px;background:transparent"></div>
+      <div id="sumAeOut"></div></div>
+    <p class="footnote"><a class="how" href="#" data-go="proj" data-to="planChanges">Dive deeper → What the staffing plan changes</a> · <a class="how" href="#" data-go="sales" data-to="salesTable">the reps and their ramps</a> · <a class="how" href="#" data-go="staff" data-to="staffTable">the roster</a></p></div>
+  <div class="card"><div class="eyebrow">5 · The plan</div><h2>What the plan commits to</h2>
+    <div id="sumPlan"></div>
+    <p class="footnote"><a class="how" href="#" data-go="proj" data-to="goalTargets">Dive deeper → Set targets &amp; tune the model</a> · <a class="how" href="#" data-go="proj" data-to="incList">the incentive programs</a></p></div>
+</section>
 <section class="tab on" id="tab-proj">
   <div class="proj-controls" id="projControls">
     <span class="ctl-lbl">Scenario</span><span class="scn-toggle" id="plScnT"><button class="btn on" data-s="mod">Modest</button><button class="btn" data-s="str">Stretch</button><button class="btn" data-s="both">Both</button></span>
@@ -2901,8 +2949,8 @@ document.addEventListener("click", ev => {
    closing leads, as a result; the goal cycle follows, as a projection, in the same language. A
    stretch target left blank reads as "same as modest" everywhere else; here, if the Push board
    carries a stretch goal for that cycle, it is drawn dotted and offered, never adopted silently. */
-function renderCycleTargets(C){
-  const el = document.getElementById("cycleTargets"); if (!el) return;
+function renderCycleTargets(C, el){
+  el = el || document.getElementById("cycleTargets"); if (!el) return;
   const rows = [];
   if (GOAL_I > 0) rows.push({ ci: GOAL_I - 1, kind: "last" });
   rows.push({ ci: GOAL_I, kind: "goal" });
@@ -2949,6 +2997,154 @@ document.addEventListener("click", ev => {
   const i = +b.dataset.i, t = (S.levers.targets[i] = S.levers.targets[i] || { mod: 0, str: 0 });
   t.mod = (+BOARD.goals_k.modest || 0) * 1000; t.str = (+BOARD.goals_k.stretch || 0) * 1000;
   persist(); renderAll();
+});
+
+/* ---------- the summary tab ----------
+   The walk-through: revenue first, profit second, then how the plan earns it and what it commits
+   to. Every number is the model's; every beat has a way into the detail behind it. */
+let sumAe = { n: 0, start: null, delay: 0, att: null };
+function renderSummary(C){
+  if (!document.getElementById("sumGrowthStats")) return;
+  const sum = (a, [x, y]) => a.slice(x, y).reduce((p, q) => p + q, 0);
+  const pct = v => (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(v >= 0.095 || v <= -0.095 ? 0 : 1) + "%";
+  const gcls = v => v > 0.0005 ? "pos" : v < -0.0005 ? "neg" : "";
+  const g = v => v == null ? `<span class="dim">—</span>` : `<span class="${gcls(v)}">${pct(v)}</span>`;
+  const tile = (lbl, val, sub, col) => `<div class="tile"><div class="lbl">${lbl}</div><div class="val">${val}</div><div class="sub">${sub || ""}</div></div>`;
+  const y26 = YEARS[0], y27 = YEARS.find(y => yOf(y[0]) === Y0 + 1), yLast = YEARS[YEARS.length - 1];
+  const L = S.levers;
+  // ---- the idea
+  document.getElementById("sumIdea").innerHTML = `Every figure here comes from one model: Xero as booked through <b>${esc(ACT_MO)}</b>, then the sales plan (each rep on their ramp), the staffing plan and the planned expenses, at a measured cost of sales and commission rate. Two scenarios throughout — <b>modest</b> is the plan, <b>stretch</b> is what the same team reaches for. Targets are set per planning cycle; nothing below changes a number, and every section links to the working behind it.`;
+  // ---- 1 growth
+  const r26 = sum(C.rev.mod, y26), r26s = sum(C.rev.str, y26), h25 = histYear(Y0 - 1);
+  const yoy26 = h25 ? r26 / h25 - 1 : null, yoy26s = h25 ? r26s / h25 - 1 : null;
+  const r27 = y27 ? sum(C.rev.mod, y27) : null, r27s = y27 ? sum(C.rev.str, y27) : null;
+  const yoy27 = r27 != null ? r27 / r26 - 1 : null, yoy27s = r27s != null ? r27s / r26 - 1 : null;
+  const prevI = GOAL_I - 1, pf = prevI >= 0 ? cycleFacts(C, CYCLES[prevI], cycTgt(prevI)) : null;
+  document.getElementById("sumGrowthH").innerHTML = yoy26 != null && yoy27 != null
+    ? `${pct(yoy26)} this year — then ${pct(yoy27)} to ${pct(yoy27s)} next`
+    : `Revenue, year over year`;
+  document.getElementById("sumGrowthStats").innerHTML =
+    tile(`${esc(y26[2])} — landing`, `${fmtK(r26)}${r26s > r26 + 1 ? ` <small>/ ${fmtK(r26s)}</small>` : ""}`, yoy26 != null ? `${g(yoy26)}${r26s > r26 + 1 ? ` / ${g(yoy26s)}` : ""} on 2025's ${fmtK(h25)} · ${MON3[0]}–${MON3[mOf(ACT - 1)]} booked` : "no 2025 base in the model") +
+    (y27 ? tile(`${esc(y27[2])} — the plan`, `${fmtK(r27)} <small>/ ${fmtK(r27s)}</small>`, `${g(yoy27)} modest / ${g(yoy27s)} stretch on 2026`) : "") +
+    (pf ? tile(`${esc(CYCLES[prevI][3])} — the cycle now closing`, `${Math.round(pf.tgtM ? pf.revM / pf.tgtM * 100 : 0)}% <small>of target</small>`, `${fmtK(pf.revM)} against ${fmtK(pf.tgtM)} modest${pf.tgtS > pf.tgtM ? ` · ${fmtK(pf.tgtS)} stretch` : ""}`) : "");
+  // the years: history in grey, the window's years booked + modelled, stretch capped in green
+  const cols = [];
+  for (const yr of Object.keys((HIST && HIST.years) || {}).sort()) cols.push({ lbl: yr, v: histYear(+yr), hist: true });
+  for (const y of YEARS){ const bk = sum(C.rev.mod.map((v, i) => i < ACT ? v : 0), y); cols.push({ lbl: y[2].replace(/ \u00b7.*$/, ""), sub: y[1] - y[0] < 12 ? y[3] : "", v: sum(C.rev.mod, y), vs: sum(C.rev.str, y), bk, part: y[1] - y[0] < 12 }); }
+  const top = Math.max(...cols.map(c => Math.max(c.v || 0, c.vs || 0))) * 1.05;
+  const H = v => Math.max(0, (v || 0) / top * 150).toFixed(1);
+  document.getElementById("sumYears").innerHTML = cols.map((c, i) => {
+    const prev = cols[i - 1], yoy = prev && prev.v > 0 && !c.part ? c.v / prev.v - 1 : null, yoyS = prev && prev.v > 0 && !c.part && c.vs > c.v + 1 ? c.vs / prev.v - 1 : null;
+    const bars = c.hist ? `<div class="b hist" style="height:${H(c.v)}px"></div>`
+      : (c.vs > c.v + 1 ? `<div class="b stretch" style="height:${(H(c.vs) - H(c.v)).toFixed(1)}px" title="stretch ${fmtK(c.vs)}"></div>` : "") +
+        (c.v > c.bk + 1 ? `<div class="b model${c.vs > c.v + 1 ? "" : " first"}" style="height:${(H(c.v) - H(c.bk)).toFixed(1)}px" title="modelled ${fmtK(c.v - c.bk)}"></div>` : "") +
+        (c.bk > 0 ? `<div class="b booked${c.v > c.bk + 1 ? "" : " first"}" style="height:${H(c.bk)}px" title="booked ${fmtK(c.bk)}"></div>` : "");
+    return `<div class="sy" title="${esc(c.lbl)}${c.sub ? " · " + esc(c.sub) : ""}: ${fmtK(c.v)}${c.vs > c.v + 1 ? " modest / " + fmtK(c.vs) + " stretch" : ""}"><div class="top">${fmtK(c.v)}${c.vs > c.v + 1 ? `<span class="dim" style="display:block;font-weight:400;font-size:10.5px">${fmtK(c.vs)} stretch</span>` : ""}</div><div class="bars">${bars}</div>` +
+      `<div class="yr">${c.hist ? c.lbl : `<b>${esc(c.lbl)}</b>`}${c.sub ? `<span class="dim"> ${esc(c.sub)}</span>` : ""}</div><div class="g">${yoy == null ? (c.part ? "partial" : "") : g(yoy)}${yoyS != null ? ` <span class="pos">/ ${pct(yoyS)}</span>` : ""}</div></div>`;
+  }).join("");
+  const hg = (() => { const ys = Object.keys((HIST && HIST.years) || {}).sort(); if (ys.length < 2) return null;
+    const a = histYear(+ys[0]), b = histYear(+ys[ys.length - 1]); return { cagr: Math.pow(b / a, 1 / (ys.length - 1)) - 1, from: ys[0], to: ys[ys.length - 1], ups: ys.slice(1).filter((y, i) => histYear(+y) > histYear(+ys[i])).length, n: ys.length - 1 }; })();
+  document.getElementById("sumGrowthP").innerHTML = (hg ? `${hg.from}–${hg.to}: ${hg.ups} growth years out of ${hg.n}, compounding at about <b>${(hg.cagr * 100).toFixed(1)}%</b> a year. ` : "") +
+    (yoy26 != null ? `2026 lands at <b>${pct(yoy26)}</b>${r26s > r26 + 1 ? ` (${pct(yoy26s)} at stretch)` : ""} with ${MON3[0]}–${MON3[mOf(ACT - 1)]} booked. ` : "") +
+    (yoy27 != null ? `The plan puts 2027 at <b>${pct(yoy27)}</b> modest and <b>${pct(yoy27s)}</b> stretch — grey is booked, blue the model to the modest figure, green the stretch beyond it.` : "");
+  // ---- 2 targets
+  renderCycleTargets(C, document.getElementById("sumTargets"));
+  // ---- 3 profit
+  const gf = cycleFacts(C, GOAL, cycTgt(GOAL_I));
+  const n27 = y27 ? sum(C.net.mod, y27) : null, n27s = y27 ? sum(C.net.str, y27) : null;
+  const cm = (() => { let r = 0, c = 0; for (let i = GOAL[0]; i < GOAL[1]; i++){ r += C.rev.mod[i]; c += C.rev.mod[i] * (1 - C.cogsPct[i] - C.commRate[i]); } return r ? c / r : 0; })();
+  document.getElementById("sumProfitH").innerHTML = y27 ? `${fmtK(n27)} to ${fmtK(n27s)} of net in ${esc(y27[2])}` : `Net, by cycle`;
+  document.getElementById("sumProfitStats").innerHTML =
+    tile(`${esc(GOAL[3])} net — the goal cycle`, `${fmtK(gf.netM)} <small>/ ${fmtK(gf.netS)}</small>`, `${fmtPct1(gf.revM ? gf.netM / gf.revM : 0)} / ${fmtPct1(gf.revS ? gf.netS / gf.revS : 0)} of revenue · modest / stretch`) +
+    (y27 ? tile(`${esc(y27[2])} net`, `${fmtK(n27)} <small>/ ${fmtK(n27s)}</small>`, `${fmtPct1(r27 ? n27 / r27 : 0)} / ${fmtPct1(r27s ? n27s / r27s : 0)} of revenue`) : "") +
+    tile(`What each extra dollar of sales earns`, `${Math.round(cm * 100)}¢`, `after cost of sales and commission — the rest is fixed until we add cost`) +
+    tile(`Break-even revenue, ${esc(GOAL[3])}`, fmtK(gf.be), `${fmtK(gf.be / gf.n)}/mo · the plan clears it by ${fmtK(gf.revM - gf.be)} modest, ${fmtK(gf.revS - gf.be)} stretch`);
+  const pr = [];
+  for (let ci = GOAL_I; ci < CYCLES.length; ci++){ const f = cycleFacts(C, CYCLES[ci], cycTgt(ci)); pr.push({ lbl: CYCLES[ci][3], sub: CYCLES[ci][2], f }); }
+  for (const y of YEARS.filter(y => y[0] >= ACT || yOf(y[0]) > Y0)) pr.push({ lbl: y[2], sub: y[3], f: cycleFacts(C, y, { mod: 0, str: 0 }) });
+  document.getElementById("sumProfit").innerHTML = `<table class="data compact" style="width:auto;min-width:520px"><thead><tr><th>Period</th><th>Revenue</th><th>Net</th><th>Margin</th></tr></thead><tbody>` +
+    pr.map(({ lbl, sub, f }) => `<tr><td><b>${esc(lbl)}</b> <span class="dim">${esc(sub)}</span></td><td>${fmtK(f.revM)} <span class="dim">/ ${fmtK(f.revS)}</span></td><td class="${f.netM < 0 ? "neg" : ""}">${fmtK(f.netM)} <span class="dim">/ ${fmtK(f.netS)}</span></td><td>${fmtPct1(f.revM ? f.netM / f.revM : 0)} <span class="dim">/ ${fmtPct1(f.revS ? f.netS / f.revS : 0)}</span></td></tr>`).join("") +
+    `</tbody></table>`;
+  const b0 = GOAL[0], b1 = NM - 1, cost0 = C.pay[b0] + C.opex[b0], cost1 = C.pay[b1] + C.opex[b1];
+  document.getElementById("sumProfitP").innerHTML = `Modest / stretch throughout. The bottom line moves because the cost base moves less than revenue: from the start of the goal cycle, fully-loaded payroll plus planned opex goes from <b>${fmtK(cost0)}/mo</b> in ${esc(monthName(b0 + 1))} to <b>${fmtK(cost1)}/mo</b> by ${esc(monthName(b1 + 1))} (${pct(cost1 / cost0 - 1)}), while monthly revenue goes ${pct(C.rev.mod[b1] / C.rev.mod[b0] - 1)} modest and ${pct(C.rev.str[b1] / C.rev.str[b0] - 1)} stretch over the same months. Bonus programs are charged on top where they pay.`;
+  // ---- 4 how: the team we have
+  const onBoard = r => r.from == null || r.from <= ACT;
+  const repSum = (r, rng, k) => { let t = 0; for (let m = rng[0] + 1; m <= rng[1]; m++) t += repRevenue(r, m, k); return t; };
+  const win = y27 || [ACT, NM];
+  const fromTeam = S.sales.filter(onBoard).reduce((a, r) => a + repSum(r, win, "modest"), 0), fromHires = S.sales.filter(r => !onBoard(r)).reduce((a, r) => a + repSum(r, win, "modest"), 0);
+  const hc = i => C.deptHC["Sales"] ? C.deptHC["Sales"][i] : 0, hc0 = hc(b0), hc1 = hc(b1);
+  // the mechanism: reps on board whose ramp is not done — they reach full rate inside the plan
+  const ramping = S.sales.filter(r => onBoard(r) && !r.orphan && S.ramps[r.ramp] && !/^(STU|MARKETING|BEN)$/.test(r.ramp))
+    .map(r => ({ name: r.name, full: r.start + RAMP_LEN - 1 })).filter(r => r.full > ACT).sort((a, b) => a.full - b.full);
+  const selling = S.sales.filter(r => onBoard(r) && !r.orphan && S.ramps[r.ramp] && !/^(STU|MARKETING|BEN)$/.test(r.ramp)).length;
+  const house = S.sales.filter(r => onBoard(r) && !r.orphan && /^(STU|MARKETING|BEN)$/.test(r.ramp)).length;
+  const salesMoves = planChanges().filter(c => ((c.role || {}).dept === "Sales" || c.dept === "Sales") && ["in", "backfill", "move"].includes(c.kind));
+  document.getElementById("sumTeamStats").innerHTML =
+    tile(`${esc(y27 ? y27[2] : "The plan")} revenue from the team on board today`, fmtK(fromTeam), `${Math.round(fromTeam + fromHires ? fromTeam / (fromTeam + fromHires) * 100 : 0)}% of the sales plan · ${selling} reps${house ? ` and ${house} house line${house === 1 ? "" : "s"}` : ""}`) +
+    tile(`…and from hires the plan makes`, fmtK(fromHires), salesMoves.length ? `${salesMoves.length} sales ${salesMoves.length === 1 ? "change" : "changes"}: ${esc(salesMoves.map(c => (c.role || {}).position + " " + monthName(c.m)).join(", "))}` : "no sales hires in the plan") +
+    tile(`Sales heads`, `${Math.round(hc0)} → ${Math.round(hc1)}`, `${esc(monthName(b0 + 1))} → ${esc(monthName(b1 + 1))}`) +
+    tile(`Reps still on their ramp`, `${ramping.length} <small>of ${selling}</small>`, ramping.length ? `reach full rate ${esc(monthName(ramping[0].full))}${ramping.length > 1 ? ` – ${esc(monthName(ramping[ramping.length - 1].full))}` : ""}: ${esc(ramping.map(r => r.name).join(", "))}` : "everyone selling is at full rate already");
+  document.getElementById("sumTeamP").innerHTML = `The growth in the plan is mostly the reps we already have moving up their ramp curves, not new seats. A new account executive costs the full loaded amount from day one and, on this model's curve, produces nothing in month one and reaches full rate in month ${esc(String(RAMP_LEN))}; in practice our recent starters have taken longer to first revenue. The plan adds sales capacity where the ramp is proven and holds the cost base — that is what the profit line above rests on.`;
+  renderAeSandbox(C);
+  // ---- 5 the plan
+  const chg = planChanges(), heads = chg.reduce((a, c) => a + (c.kind === "in" || c.kind === "backfill" ? (c.n || 0) : c.kind === "out" ? -c.n : 0), 0), cost = chg.reduce((a, c) => a + (c.cost || 0), 0);
+  const kinds = ["in", "backfill", "move", "out", "pay", "raise"].map(k => [k, chg.filter(c => c.kind === k).length]).filter(x => x[1]);
+  const word = { in: "hire", backfill: "backfill", move: "role move", out: "ending", pay: "pay change", raise: "raise" };
+  const progs = (C.incentBy || []).map(p => ({ name: p.name, m: sum(p.mod, GOAL), s: sum(p.str, GOAL) })).filter(p => p.m > 0.5 || p.s > 0.5);
+  document.getElementById("sumPlan").innerHTML = `<ul class="sum-list">
+    <li><b>Targets by cycle</b> — ${CYCLES.map((c, i) => `${esc(c[3])} <b>${fmtK(tgtOf(i, "mod"))}</b>${tgtOf(i, "str") > tgtOf(i, "mod") ? ` / ${fmtK(tgtOf(i, "str"))} stretch` : ` <span class="dim">(no stretch set)</span>`}`).join(" · ")}</li>
+    <li><b>Staffing</b> — ${chg.length ? `${chg.length} change${chg.length === 1 ? "" : "s"} after ${esc(ACT_MO)}: ${kinds.map(([k, n]) => `${n} ${word[k]}${n === 1 ? "" : "s"}`).join(", ")} · headcount ${heads > 0 ? "+" : heads < 0 ? "−" : ""}${Math.abs(heads) || "unchanged"} · ${Math.abs(cost) < 1 ? "no change to" : (cost > 0 ? "+" : "−") + fmt$(Math.abs(cost)) + "/mo on"} the monthly cost base by ${esc(monthName(NM))}` : "the roster is held flat"}</li>
+    <li><b>Incentive programs in ${esc(GOAL[3])}</b> — ${progs.length ? progs.map(p => `${esc(p.name)} ${fmtK(p.m)} / ${fmtK(p.s)}`).join(" · ") : "none pay out"} <span class="dim">(modest / stretch, charged on top of the net above)</span></li>
+    <li><b>Assumptions</b> — cost of sales ${(L.cogsPct * 100).toFixed(1)}% · commission ${(commPctOf() * 100).toFixed(2)}% measured · other income ${fmtK(L.otherInc)}/mo${L.hdvStepPct ? ` · health insurance +${(L.hdvStepPct * 100).toFixed(0)}% from ${esc(monthName(L.hdvStepM || 13))}` : ""}${BOARD && (L.bridgeSrc || "live") !== "plan" && bridgeMonths()[1] > bridgeMonths()[0] ? ` · ${esc(MONTHS[bridgeMonths()[0]])} from the Push board` : ""}</li></ul>`;
+}
+/* The sandbox: extra account executives on this model's own ramp curve and loaded cost — revenue,
+   cost, commission and net over the plan, and the month their cumulative contribution turns
+   positive. A ramp delay pushes the whole curve back, which is what our recent starters did. */
+function renderAeSandbox(C){
+  const lv = document.getElementById("sumAeLevers"), out = document.getElementById("sumAeOut"); if (!lv || !out) return;
+  const role = S.staff.find(r => r.position === "Account Executive" && r.dept === "Sales") || S.staff.find(r => /Account Executive/.test(r.position));
+  const ramp = S.ramps["NEW AE"] || []; if (!role || !ramp.length){ lv.innerHTML = ""; out.innerHTML = `<p class="subtle">No Account Executive role or NEW AE ramp on the plan.</p>`; return; }
+  const aes = S.sales.filter(r => r.ramp === "NEW AE" && !r.orphan), attDef = aes.length ? aes.reduce((a, r) => a + (+r.modest || 0), 0) / aes.length : 0.8;
+  if (sumAe.start == null) sumAe.start = Math.min(NM - 1, ACT + 4);
+  if (sumAe.att == null) sumAe.att = Math.round(attDef * 100);
+  const opts = []; for (let i = ACT; i < NM; i++) opts.push(`<option value="${i}"${i === sumAe.start ? " selected" : ""}>${esc(monthName(i + 1))}</option>`);
+  lv.innerHTML = `<div class="lever"><label for="saN">Extra AEs</label><input id="saN" class="lever-in" type="text" inputmode="numeric" value="${sumAe.n}"><span class="unit">on top of the plan</span></div>
+    <div class="lever"><label for="saS">Starting</label><select id="saS" class="lever-in">${opts.join("")}</select><span class="unit">the month they join</span></div>
+    <div class="lever"><label for="saD">Ramp delay</label><input id="saD" class="lever-in" type="text" inputmode="numeric" value="${sumAe.delay}"><span class="unit">months before the curve starts</span></div>
+    <div class="lever"><label for="saA">Attainment</label><input id="saA" class="lever-in" type="text" inputmode="numeric" value="${sumAe.att}"><span class="unit">% of the curve · the AEs on the plan average ${Math.round(attDef * 100)}%</span></div>`;
+  const n = Math.max(0, Math.round(+sumAe.n || 0)), att = Math.max(0, +sumAe.att || 0) / 100, delay = Math.max(0, Math.round(+sumAe.delay || 0)), cRate = commPctOf(), cogs = S.levers.cogsPct;
+  const rows = []; let cum = 0, turn = null, cost1 = 0;
+  for (let i = sumAe.start; i < NM; i++){
+    const tenure = i - sumAe.start + 1 - delay, rev = tenure >= 1 ? (ramp[Math.min(RAMP_LEN, tenure) - 1] || 0) * att : 0;
+    const cost = headCost(role, i + 1), comm = rev * cRate, contrib = rev * (1 - cogs) - comm - cost;
+    cum += contrib; if (turn == null && cum > 0 && rev > 0) turn = i; if (i === sumAe.start) cost1 = cost;
+    rows.push({ i, rev, cost, comm, contrib, cum });
+  }
+  const over = (rng, k) => rows.filter(r => r.i >= rng[0] && r.i < rng[1]).reduce((a, r) => a + r[k], 0);
+  const y27 = YEARS.find(y => yOf(y[0]) === Y0 + 1), spans = [[GOAL, GOAL[3]], y27 ? [y27, y27[2]] : null, [[sumAe.start, NM], "to " + monthName(NM)]].filter(Boolean);
+  const cmNow = 1 - cogs - cRate;
+  out.innerHTML = n === 0
+    ? `<p class="note" style="margin:0">One AE costs <b>${fmtK(cost1)}/mo</b> fully loaded from the first day; at ${Math.round(att * 100)}% of the curve, with ${delay ? `a ${delay}-month delay` : "no delay"}, their cumulative contribution turns positive ${turn != null ? `in month <b>${turn - sumAe.start + 1}</b> (${esc(monthName(turn + 1))})` : "<b>not within the window</b>"}. Covering that cost takes <b>${fmtK(cost1 / cmNow)}/mo</b> of revenue at ${Math.round(cmNow * 100)}¢ on the dollar. Set a number of extra AEs to see the effect on the plan.</p>`
+    : `<table class="data compact" style="width:auto;min-width:560px"><thead><tr><th>${n} extra AE${n === 1 ? "" : "s"} from ${esc(monthName(sumAe.start + 1))}</th><th>Revenue</th><th>Loaded cost</th><th>Commission</th><th>Net effect</th></tr></thead><tbody>` +
+      spans.map(([rng, lbl]) => { const rv = over(rng, "rev") * n, co = over(rng, "cost") * n, cm = over(rng, "comm") * n, ne = over(rng, "contrib") * n;
+        return `<tr><td><b>${esc(lbl)}</b></td><td>+${fmtK(rv)}</td><td>+${fmtK(co)}</td><td>+${fmtK(cm)}</td><td class="${ne < 0 ? "neg" : "pos"}">${ne >= 0 ? "+" : "−"}${fmtK(Math.abs(ne))}</td></tr>`; }).join("") +
+      `</tbody></table><p class="note" style="margin:8px 0 0">Each costs <b>${fmtK(cost1)}/mo</b> loaded from day one; on this curve at ${Math.round(att * 100)}%${delay ? ` with a ${delay}-month delay` : ""}, cumulative contribution turns positive ${turn != null ? `in month <b>${turn - sumAe.start + 1}</b>` : "<b>not within the window</b>"}. Break-even revenue rises <b>${fmtK(cost1 * n / cmNow)}/mo</b> to carry them. Nothing here is saved to the plan.</p>`;
+}
+document.addEventListener("input", ev => {
+  const t = ev.target; if (!t || !/^sa[NSDA]$/.test(t.id)) return;
+  if (t.id === "saN") sumAe.n = num(t.value, 0); else if (t.id === "saS") sumAe.start = +t.value; else if (t.id === "saD") sumAe.delay = num(t.value, 0); else sumAe.att = num(t.value, 0);
+  if (t.tagName === "SELECT" || t.id !== "saS") renderAeSandbox(compute());
+});
+document.addEventListener("change", ev => { if (ev.target && ev.target.id === "saS"){ sumAe.start = +ev.target.value; renderAeSandbox(compute()); } });
+// a way into the detail: switch tab, then scroll to the card the element lives in
+document.addEventListener("click", ev => {
+  const a = ev.target.closest("[data-go]"); if (!a) return;
+  ev.preventDefault();
+  const tb = document.querySelector(`#tabs button[data-tab="${a.dataset.go}"]`); if (tb) tb.click();
+  const el = document.getElementById(a.dataset.to); if (!el) return;
+  let c = el; while (c && !c.classList.contains("card") && c.tagName !== "DETAILS") c = c.parentElement;
+  if (c && c.tagName === "DETAILS") c.open = true;
+  (c || el).scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
 /* ---------- goals & break-even (Projections) ---------- */
@@ -4730,7 +4926,7 @@ document.getElementById("btnLoad").addEventListener("click", () => {
 function renderAll(){
   if (syncSales()) persist();     // the plan is the source of truth for who sells and when
   const C = compute();
-  renderTiles(C); renderGoals(C); renderCycleTargets(C); renderPlanChanges(C); renderDeptChange(C); renderProjLevers(); renderProj(C); renderPeriods(C); renderRevGrowth(C); renderRollup(C); renderGrowth(C);
+  renderTiles(C); renderGoals(C); renderCycleTargets(C); renderSummary(C); renderPlanChanges(C); renderDeptChange(C); renderProjLevers(); renderProj(C); renderPeriods(C); renderRevGrowth(C); renderRollup(C); renderGrowth(C);
   fillMonthLabels();
   renderSales(C); renderIncentives(C); renderRaisePlanner(); renderStaff(C); renderLicenses(C); renderExpenses(C); renderCompare(C); renderFixes(); renderRestore(); renderPayBands();
 }
