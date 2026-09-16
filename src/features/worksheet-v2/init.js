@@ -2584,10 +2584,17 @@
       // by the Builder snippet (window.SCW.dropPrefixOptions; see CLAUDE.md
       // "Out-of-bundle Knack Builder snippets"). Each entry is
       // { id: <24-hex>, identifier: '<label>' }. SOW line items use field_2240;
-      // Survey line items (view_3505) use field_2361 — SAME catalog, so the
-      // picker is shared. Changing the prefix recomputes the drop LABEL
-      // (field_1950 on SOW / field_2365 on survey) server-side, so refetch on save.
-      if (fieldKey === 'field_2240' || fieldKey === 'field_2361') {
+      // Survey line items (view_3505) use field_2361; the install object
+      // (view_4093, designator-edit.js) maps its own key via config
+      // `dropPrefix` (field_2823) — SAME catalog, so the picker is shared.
+      // Changing the prefix recomputes the drop LABEL (field_1950 on SOW /
+      // field_2365 on survey / field_2802 on install) server-side, so refetch
+      // on save.
+      var _dpCfgKey = '';
+      try { _dpCfgKey = ((ns.cfg && ns.cfg.fields(viewKey)) || {}).dropPrefix || ''; }
+      catch (e) { _dpCfgKey = ''; }
+      if (fieldKey === 'field_2240' || fieldKey === 'field_2361' ||
+          (_dpCfgKey && fieldKey === _dpCfgKey)) {
         var dpRaw = (window.SCW && window.SCW.dropPrefixOptions) || [];
         var dpCandidates = [];
         // Survey/bid page (field_2361): only offer prefixes flagged
@@ -2613,6 +2620,7 @@
           // global is present.
           var dpSeen = Object.create(null);
           var dpConn = ['field_2240', 'field_2361'];
+          if (_dpCfgKey && dpConn.indexOf(_dpCfgKey) === -1) dpConn.push(_dpCfgKey);
           for (var dr = 0; dr < records.length; dr++) {
             var drec = records[dr];
             if (!drec) continue;

@@ -196,6 +196,17 @@
         // attach under it (hidden row + read-only chip on the parent card) —
         // no Require-Sub-Bid promote rule on the install side.
         accessoriesAlwaysAttach: true,
+        // Designator (prefix + number) editing on cam/reader rows — the ONE
+        // identity edit ops can make on a deployed item (worksheet-v2/
+        // designator-edit.js). Deliberately high-friction: a pencil on the
+        // label, a "are you SURE this matches the map" confirm, then an
+        // inline prefix picker (dropPrefix) + number input (dropNumber) that
+        // save through this view. Ops deploy page ONLY — the sub-portal
+        // (view_4056) and CO-removal (view_4086) clones strip it below.
+        // ⚠️ Builder: field_2823 + field_2798 must be inline-editable
+        // columns on view_4093 or the view-based PUT is dropped (edit.js
+        // surfaces that as a "Knack didn't keep your change" toast).
+        designatorEdit:   true,
         fields: {
           // identity / grouping
           product:        'field_2846',     // CORE_product (connection — for picker/edit)
@@ -728,6 +739,9 @@
     // field_1641/field_2458/field_1943/field_1643 (saves PUT through
     // it) and a Delete link for location delete to authorize.
     clone.mdfManage          = { viewKey: 'view_4060', notesField: 'field_1643' };
+    // Designator editing is an SCW-ops gesture (deploy page only) — the sub
+    // never re-labels installed items.
+    delete clone.designatorEdit;
     views.push(clone);
   })();
 
@@ -772,6 +786,7 @@
     delete clone.photoUploadView;
     delete clone.questionnaire;
     delete clone.bulkFields;
+    delete clone.designatorEdit;   // read-only removal source — no identity edits
     // Removal marker (co-remove.js selects views by this flag, mirroring the
     // `adopt` flag on view_4088).
     //   targetField    = field_2966 "Target install item" — on the SOW Line

@@ -266,6 +266,13 @@
     // laborOnly views render the fee cell BLANK — never repopulate it here.
     var laborOnly = !!(ns.card && ns.card.isLaborOnly &&
       ns.card.isLaborOnly(sourceViewKey));
+    // The drop label lives on a different field per object (SOW field_1950,
+    // survey field_2365, install field_2802 → labelAlt field_2801) — resolve
+    // it through config so a non-SOW view doesn't get its label blanked.
+    var LF = {};
+    try { LF = (ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(sourceViewKey)) || {}; }
+    catch (e) { LF = {}; }
+    var labelKey = LF.displayLabel || 'field_1950';
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
       if (!rec || !rec.id) continue;
@@ -275,7 +282,19 @@
       );
       if (!card) continue;
 
-      setCellText(card, '.scw-ws-v2-cell--label', readDerived(rec, 'field_1950'));
+      var labelText = readDerived(rec, labelKey);
+      var labelEl = card.querySelector('.scw-ws-v2-cell--label');
+      if (labelEl && labelEl.hasAttribute('data-scw-ws-v2-desig')) {
+        // Install designator cell: the text has its own span and the pencil /
+        // inline editor around it must survive (this path runs while the
+        // number input may be the focused field). Touch the span only, with
+        // the same displayLabel → labelAlt fallback the install card uses.
+        if (!labelText && LF.labelAlt) labelText = readDerived(rec, LF.labelAlt);
+        var valEl = labelEl.querySelector('.scw-ws-v2-desig-val');
+        if (valEl && valEl.textContent !== labelText) valEl.textContent = labelText;
+      } else {
+        setCellText(card, '.scw-ws-v2-cell--label', labelText);
+      }
       if (!laborOnly) {
         setCellText(card, '.scw-ws-v2-cell--fee', readDerived(rec, 'field_2028'));
       }

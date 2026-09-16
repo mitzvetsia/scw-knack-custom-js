@@ -2293,16 +2293,127 @@
       'title="' + escapeHtml(txt) + '">' + escapeHtml(txt) + '</div>';
   }
 
+  /** Display label for an install row: displayLabel (field_2802 LABEL_DISPLAY)
+   *  is often blank on install rows — fall back to labelAlt (field_2801 "set
+   *  label by bucket", e.g. AC-01). */
+  function installLabel(rec, F) {
+    return readField(rec, F.displayLabel || 'field_2802') ||
+           readField(rec, F.labelAlt || 'field_2801');
+  }
+
+  var PENCIL_SVG =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M12 20h9"/>' +
+    '<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
+
+  // The repo's standard warning triangle (CLAUDE.md "Warning Icons") — amber
+  // via CSS on the hint, never red.
+  var DESIG_WARN_SVG =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+    '<line x1="12" y1="9" x2="12" y2="13"/>' +
+    '<line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+  /** True when the view lets ops edit the designator (config designatorEdit)
+   *  AND the row is a live cam/reader (removed-by-CO rows are out of scope —
+   *  nothing to re-label). */
+  function designatorEditable(rec, viewKey, cat) {
+    if (cat !== 'cam') return false;
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      if (!vc || vc.designatorEdit !== true) return false;
+    } catch (e) { return false; }
+    return installRemovedBy(rec, viewKey) === null;
+  }
+
+  /**
+   * The install worksheet's DESIGNATOR cell (cam/reader rows). Two states,
+   * both keeping the .scw-ws-v2-cell--label class every label reader
+   * (photos captions, bulk chips, patchDerivedCells) keys on:
+   *
+   *   read  — the label text in its own span + a pencil
+   *           ([data-scw-ws-v2-desig-edit]). designator-edit.js owns the
+   *           click: it shows the "are you SURE this matches the map"
+   *           confirm and only then flips the record into edit mode.
+   *   edit  — (ns.designator.isEditing(rec.id)) a floating tray with the
+   *           Prefix picker button (data-scw-ws-v2-conn=dropPrefix → the
+   *           shared Drop Prefix catalog picker in init.js), the drop NUMBER
+   *           input (data-scw-ws-v2-field=dropNumber → edit.js blur/Enter
+   *           save; dropNumber is in RECALC_DEPS so the recomputed label
+   *           refetches), and a Done button. Edit mode lives in
+   *           designator-edit.js's per-record set, so the tray survives the
+   *           card rebuilds each save triggers until the user clicks Done.
+   *
+   * The pencil is an SVG-only button so the cell's textContent stays the
+   * bare label for those readers. Rows the view doesn't let ops re-label
+   * (config off, removed-by-CO, non-cam) render the plain read-only cell.
+   */
+  function installDesignatorCell(rec, viewKey, cat) {
+    var F     = fieldsFor(viewKey);
+    var label = installLabel(rec, F);
+    if (!designatorEditable(rec, viewKey, cat)) {
+      return ro(label, 'scw-ws-v2-cell--label', label);
+    }
+    var editing = !!(ns.designator && typeof ns.designator.isEditing === 'function' &&
+      ns.designator.isEditing(rec.id));
+    var idAttr = ' data-scw-ws-v2-desig="' + escapeHtml(rec.id) + '"' +
+                 ' data-scw-ws-v2-view="' + escapeHtml(viewKey) + '"';
+    if (!editing) {
+      return '<div class="scw-ws-v2-cell scw-ws-v2-cell--label scw-ws-v2-desig"' + idAttr +
+          ' title="' + escapeHtml(label) + '">' +
+        '<span class="scw-ws-v2-desig-val">' + escapeHtml(label) + '</span>' +
+        '<button type="button" class="scw-ws-v2-desig-edit" ' +
+          'data-scw-ws-v2-desig-edit="' + escapeHtml(rec.id) + '" ' +
+          'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+          'title="Edit designator (prefix / number) — only if you are sure it matches the map" ' +
+          'aria-label="Edit designator ' + escapeHtml(label) + '">' + PENCIL_SVG + '</button>' +
+      '</div>';
+    }
+    var prefixKey = F.dropPrefix || 'field_2823';
+    var numberKey = F.dropNumber || 'field_2798';
+    var prefix    = readField(rec, prefixKey);
+    var number    = readNum(rec, numberKey);
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--label scw-ws-v2-desig scw-ws-v2-desig--editing"' +
+        idAttr + ' title="Editing designator ' + escapeHtml(label) + '">' +
+      '<div class="scw-ws-v2-desig-tray" role="group" aria-label="Edit designator ' + escapeHtml(label) + '">' +
+        '<button type="button" class="scw-ws-v2-desig-prefix" ' +
+          'data-scw-ws-v2-conn="' + escapeHtml(prefixKey) + '" ' +
+          'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+          'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+          'data-scw-ws-v2-conn-label="Prefix" ' +
+          'title="Change prefix">' +
+          '<span class="scw-ws-v2-desig-prefix-val">' + escapeHtml(prefix || '—') + '</span>' +
+        '</button>' +
+        '<span class="scw-ws-v2-desig-dash" aria-hidden="true">-</span>' +
+        '<input type="number" min="0" step="1" inputmode="numeric" ' +
+          'class="scw-ws-v2-input scw-ws-v2-input--num scw-ws-v2-desig-num" ' +
+          'aria-label="Designator number" placeholder="#" ' +
+          'value="' + escapeHtml(number) + '"' + attrsFor(rec, viewKey, numberKey) + '>' +
+        '<button type="button" class="scw-ws-v2-desig-done" ' +
+          'data-scw-ws-v2-desig-done="' + escapeHtml(rec.id) + '" ' +
+          'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+          'title="Done editing the designator">Done</button>' +
+        '<span class="scw-ws-v2-desig-hint" title="Only change this if it matches the site map">' +
+          '<span class="scw-ws-v2-desig-hint-ic" aria-hidden="true">' + DESIG_WARN_SVG + '</span>' +
+          'Must match the map' +
+        '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
   function buildRow_install(rec, viewKey, cat) {
     var F     = fieldsFor(viewKey);
     var isCam = (cat === 'cam');
-    // displayLabel (field_2802 LABEL_DISPLAY) is often blank on install rows —
-    // fall back to labelAlt (field_2801 "set label by bucket", e.g. AC-01).
-    var label = readField(rec, F.displayLabel || 'field_2802') ||
-                readField(rec, F.labelAlt || 'field_2801');
 
+    // Cam/reader rows: the designator cell (read-only label, or label +
+    // pencil / inline editor on views with designatorEdit). Other rows keep
+    // a blank label track.
     var labelSlot = isCam
-      ? ro(label, 'scw-ws-v2-cell--label', label)
+      ? installDesignatorCell(rec, viewKey, cat)
       : empty('scw-ws-v2-cell--label');
 
     // services & assumptions show their labor/assumption text (read-only) in
@@ -2719,7 +2830,10 @@
     isLaborOnly:         isLaborOnly,
     // Reciprocal Connected-Devices fingerprint — folded into the render
     // signature so a parent rebuilds when a child's Connected To changes.
-    connDevicesSig:      connDevicesSig
+    connDevicesSig:      connDevicesSig,
+    // Install designator cell (read ↔ edit) — designator-edit.js re-renders
+    // just this cell when a row enters / leaves edit mode.
+    installDesignatorCell: installDesignatorCell
   };
 })();
 /*** END WORKSHEET V2 — CARD **************************************************/
