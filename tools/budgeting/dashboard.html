@@ -585,7 +585,9 @@ const YEARS = (() => {
     if (mOf(i) !== 0 && i !== 0) continue;                 // each January, plus the opening month
     const y = yOf(i), end = Math.min(NM, i + 12 - mOf(i));
     const whole = (end - i) === 12;
-    out.push([i, end, "CY " + y, whole ? "Jan\u2013Dec " + String(y).slice(2)
+    // a partial year carries its month count in the tag itself: "CY 2027" alone reads as a full
+    // year, and a nine-month total then looks like a bad year instead of a short one
+    out.push([i, end, "CY " + y + (whole ? "" : " \u00b7 " + (end - i) + " mo"), whole ? "Jan\u2013Dec " + String(y).slice(2)
       : MON3[mOf(i)] + "\u2013" + MON3[mOf(end - 1)] + " " + String(y).slice(2) + " \u00b7 " + (end - i) + " of 12 mo"]);
   }
   return out;
@@ -2741,7 +2743,7 @@ function renderGoals(C){
     `<div class="plan-grid">
       <div><div class="lab">Revenue</div>
         <div class="plan-val">${fmtK(g.revM)} <small>modest</small> · ${fmtK(g.revS)} <small>stretch</small></div>
-        <div class="plan-sub">${g.tgtM ? `${pill(g.revM, g.tgtM)} / ${pill(g.revS, g.tgtS)} of ${g.tgtS > g.tgtM ? `${fmtK(g.tgtM)} modest · ${fmtK(g.tgtS)} stretch` : `the ${fmtK(g.tgtM)} target`} · ` : `<span class="subtle" title="Targets are set per planning cycle; a calendar year cuts across them.">no target — a calendar year</span> · `}${g.booked ? `${fmtK(g.bkRev)} booked + ` : ""}${fmtK(g.revM - g.bkRev)} modeled</div></div>
+        <div class="plan-sub">${g.tgtM ? `${pill(g.revM, g.tgtM)} / ${pill(g.revS, g.tgtS)} of ${g.tgtS > g.tgtM ? `${fmtK(g.tgtM)} modest · ${fmtK(g.tgtS)} stretch` : `the ${fmtK(g.tgtM)} target`} · ` : `<span class="subtle" title="Targets are set per planning cycle; a calendar year cuts across them.">no target — a calendar year</span> · `}${g.booked ? `${fmtK(g.bkRev)} booked + ` : ""}${fmtK(g.revM - g.bkRev)} modeled${per.ci < 0 && g.n < 12 ? ` · <b>${g.n} of 12 months</b> — ${fmtK(g.revM / g.n)}/mo modest, ${fmtK(g.revS / g.n)}/mo stretch` : ""}</div></div>
       <div><div class="lab">Break-even revenue <span style="font-weight:400;text-transform:none;letter-spacing:0">(where net is zero)</span></div>
         <div class="plan-val">${fmtK(g.be)} <small>${fmtK(g.be / g.n)}/mo</small></div>
         <div class="plan-sub" title="The revenue at which net is zero: base payroll and opex less other income, over the cycle's contribution margin (1 − COGS% − commission%). Commission sits in the margin because it is paid on every deal whatever the company earns. Bonus programs are excluded — those are conditional on hitting a target.">modest ${clear >= 0
@@ -2749,7 +2751,7 @@ function renderGoals(C){
           : `<span class="warn">falls short by</span> <b>${fmtK(Math.abs(clear))} of revenue</b> → <b>${fmtK(g.netM)}</b> net`} · stretch <b title="${esc(bridge(g.revS, g.netS))}">${fmtK(g.revS - g.be)}</b> → ${fmtK(g.netS)}</div></div>
       <div><div class="lab">Net</div>
         <div class="plan-val"><span style="white-space:nowrap">${fmtK(g.netM)} <small>modest ${mg(g.netM, g.revM)}</small></span> · <span style="white-space:nowrap">${fmtK(g.netS)} <small>stretch ${mg(g.netS, g.revS)}</small></span></div>
-        <div class="plan-sub">as booked — ${progLine}</div></div>
+        <div class="plan-sub">as booked${per.ci < 0 && g.n < 12 ? ` · ${fmtK(g.netM / g.n)}/mo modest, ${fmtK(g.netS / g.n)}/mo stretch over ${g.n} months` : ""} — ${progLine}</div></div>
     </div>
     <div class="plan-row">
       <table class="data compact" style="width:auto;min-width:300px"><thead><tr><th>${esc(per.tag)} · ${esc(per.span)}</th><th>Modest</th><th>Stretch</th></tr></thead><tbody>
