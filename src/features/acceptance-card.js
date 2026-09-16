@@ -727,18 +727,12 @@
       install: F.pubInstall || '',
       grand:   F.pubGrand || ''
     };
-    if (!viewEl) return out;
-    var ths = viewEl.querySelectorAll('thead th');
-    for (var i = 0; i < ths.length; i++) {
-      var fk = (String(ths[i].className || '').match(/field_\d+/) || [''])[0];
-      if (!fk) continue;
-      var lbl = (ths[i].textContent || '').replace(/\s+/g, ' ').trim();
-      if (!/total/i.test(lbl)) continue;
-      if (/(link|pdf|json|snapshot|html|id\b)/i.test(lbl)) continue;
-      if (!out.equip && /equip/i.test(lbl))                       { out.equip = fk; continue; }
-      if (!out.install && /(install|labor)/i.test(lbl))            { out.install = fk; continue; }
-      if (!out.grand && /(project|grand|proposal|contract)/i.test(lbl)) { out.grand = fk; continue; }
-    }
+    // PINNED KEYS ONLY. A label-sniffing fallback used to fill any blank
+    // slot from header text ("…total" + equip/install/project). It was
+    // inert while all three keys are set, but it re-activated the moment
+    // one was blanked — and guessing which column is money is exactly
+    // the tolerance that was rejected (2026-09-14: "don't make it more
+    // tolerant"). A missing key now means a missing figure, plainly.
     if (!_moneyColsWarned && window.console && console.log &&
         (out.equip || out.install || out.grand) && window.SCW && SCW.DEBUG) {
       _moneyColsWarned = true;
