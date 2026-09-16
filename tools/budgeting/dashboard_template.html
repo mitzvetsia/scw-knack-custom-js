@@ -588,7 +588,7 @@ const YEARS = (() => {
     // a partial year carries its month count in the tag itself: "CY 2027" alone reads as a full
     // year, and a nine-month total then looks like a bad year instead of a short one
     out.push([i, end, "CY " + y + (whole ? "" : " \u00b7 " + (end - i) + " mo"), whole ? "Jan\u2013Dec " + String(y).slice(2)
-      : MON3[mOf(i)] + "\u2013" + MON3[mOf(end - 1)] + " " + String(y).slice(2) + " \u00b7 " + (end - i) + " of 12 mo"]);
+      : MON3[mOf(i)] + "\u2013" + MON3[mOf(end - 1)] + " " + String(y).slice(2)]);      // the tag already says "· 9 mo"
   }
   return out;
 })();
