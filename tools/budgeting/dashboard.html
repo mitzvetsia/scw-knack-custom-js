@@ -527,7 +527,7 @@ const MON3 = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov",
    one-line change to NM (saved configs are padded to match on load). Nothing here should ever be
    written out by hand again. */
 const Y0 = 2026, M0 = 0;                       // the window opens Jan 2026
-const NM = 21;                                 // ...and runs this many months (through Sep 2027)
+const NM = 27;                                 // ...and runs this many months (through Mar 2028: four planning cycles)
 const yOf = i => Y0 + Math.floor((M0 + i) / 12);          // calendar year of 0-based index i
 const mOf = i => (M0 + i) % 12;                           // calendar month (0-11) of index i
 const yy = i => "\u2019" + String(yOf(i)).slice(2);       // ’26
@@ -2470,7 +2470,9 @@ function renderProj(C){
     <h4>Model levers</h4><b>COGS % fwd</b> is the margin dial — it sets cost of sales for every modeled month (and the pending Jul/Aug estimates) and moves break-even everywhere — as does the commission rate, since both sit in the contribution margin. Hedges pad modeled payroll and planned expenses; other income covers rent and interest. August has not closed, so its payroll is estimated at the closed months' rate per business day unless switched to as-booked.
     <h4>Incentive programs</h4>Money a period earns that the books have not seen — the operations bonus is not paid until the six months close, and the Sales Director bonus has never been calculated. A program pays either a set amount earned proportionally across a revenue range (nothing below the floor, all of it at the cap) or a percentage of every dollar above a threshold, uncapped. Its cost accrues <b>by pacing</b> — every month carries its revenue-weighted share of the projected payout, so as the running total crosses each percent of the goal that month picks up its slice — or evenly, or only once the threshold is actually crossed. Costs are loaded with employer payroll taxes; contractors are outside every program.
     <h4>P&amp;L conventions</h4>Shaded columns are Xero as booked; later columns come from the Sales projections, Staffing and Expenses tabs. Payroll is base pay in every column — Xero's commission lines are split out onto the commissions row so booked and modeled months read alike. <b>As booked</b> is what Xero shows; <b>+ programs</b> charges the incentive programs to the months that earn them.
-    <h4>By period</h4>Calendar quarters (Q1 is Jan–Mar); the planning cycles that straddle the year are Q2+Q3 (Apr–Sep) and Q4+Q1 (Oct–Mar). 2026 is the one full calendar year inside the horizon; 2027 runs to ${esc(monthName(NM))}. Margins are computed on the period sums, not averaged.
+    <h4>By period</h4>Calendar quarters (Q1 is Jan–Mar); the planning cycles that straddle the year are Q2+Q3 (Apr–Sep) and Q4+Q1 (Oct–Mar). ${(() => { const w = YEARS.filter(y => y[1] - y[0] === 12).map(y => y[2]), pt = YEARS.filter(y => y[1] - y[0] < 12);
+      return w.join(" and ") + (w.length === 1 ? " is the full calendar year" : " are the full calendar years") + " inside the horizon" +
+        (pt.length ? "; " + pt.map(y => y[2].replace(/ \u00b7.*$/, "") + " holds " + (y[1] - y[0]) + " months (" + y[3] + ")").join(", ") : "") + "."; })()} Margins are computed on the period sums, not averaged.
     <h4>Licenses &amp; seats</h4>Each vendor is one bill, and each bill carries seat rules and department allocations. A rule is a price per seat, the roles it covers with seats per head, a minimum seat count with the department that carries the shortfall, and a billing cadence; a rule scoped to every role (or every role in a department) follows the staffing plan, so a role added there later is covered without being re-picked, and single roles can be left out. Seats assigned to roles ride each head on Staffing (the Licenses /head column), so a hire raises the cost where the hire is made; seats bought below the minimum land on the overflow department's opex and follow headcount live; allocations are flat monthly amounts on a department — the same rows the Expenses table shows. Xero's trailing average is compared once per bill, against every rule and allocation on it. The rules were seeded once from the Knack budgeting app's contracts and allocations exports; this is where they are maintained now.
     <h4>Accounts &amp; one-offs</h4>Every expense row names the Xero account it should be booked to, and shows in amber any account it has actually been booked to instead (the trailing year, plus imported months) — those land on the bookkeeper's checklist on Trends. Spend that is not a vendor to plan month by month is handled the other way round: a department sets a budget for an account (office supplies, travel), and vendors marked ONE-OFF, along with any vendor without a planned row, draw on that budget when actuals are compared. The export carries no department, so an account budgeted by several departments is compared as one.
     <h4>Department budget</h4>Payroll splits from Xero's department tracking (97% tagged; untagged lands in Unassigned) for booked months, the staffing and expense plans after. Commissions and COGS are company-level and not in the rollup.`;
@@ -2953,7 +2955,7 @@ function renderSales(C){
 let repMoScn = "modest";
 function renderRepMonths(){
   let h = `<table class="data"><thead><tr><th>Rep</th>` + MONTHS.map((m, i) =>
-    `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}">${mhead(i)}</th>`).join("") + `<th>${BOTH[3]}<span class="sub">Apr 26–Mar 27</span></th></tr></thead><tbody>`;
+    `<th class="${i < ACT ? "actual" : ""}${ybCls(i)}">${mhead(i)}</th>`).join("") + `<th>${BOTH[3]}<span class="sub">${esc(BOTH[2])}</span></th></tr></thead><tbody>`;
   const tot = Array(NM).fill(0);
   for (const r of S.sales){
     let sum = 0;
@@ -3102,7 +3104,7 @@ function renderStaff(C){
   bind("lvTax", v => S.levers.taxRate = num(v, MODEL.employer_tax_rate * 100) / 100);
   renderPayCal(C);
   let h = `<table class="data"><thead><tr><th>Dept / Position</th><th>Salary/yr</th><th>Ben</th><th title="Per-head licenses: what the license rules on Expenses assign to this role, plus any other per-head $/mo typed here">Licenses /head</th><th>Tax</th><th>Cost/head</th>` +
-    MONTHS.map((m, i) => `<th class="${ybCls(i).trim()}">${mhead(i)}</th>`).join("") + `<th>${BOTH[3]}<span class="sub">Apr 26–Mar 27</span></th><th></th></tr></thead><tbody>`;
+    MONTHS.map((m, i) => `<th class="${ybCls(i).trim()}">${mhead(i)}</th>`).join("") + `<th>${BOTH[3]}<span class="sub">${esc(BOTH[2])}</span></th><th></th></tr></thead><tbody>`;
   const dOrder = d => { const i = DEPTS.indexOf(d); return i < 0 ? DEPTS.length : i; };
   const sorted = [...S.staff].sort((a, b) => dOrder(a.dept) - dOrder(b.dept));
   const fyOf = new Map(), deptFy = new Map();
