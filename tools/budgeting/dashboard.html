@@ -305,6 +305,12 @@ figure.chart svg{display:block;width:100%;height:auto}
 .sy .g .pos,.sy .g .neg{font-weight:600}
 .sum-box{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin:10px 0 4px;background:color-mix(in srgb, var(--surface2) 40%, var(--surface))}
 .sum-list{margin:0;padding-left:18px;line-height:1.6;font-size:12.5px}
+.sum-staff-head{font-size:12.5px;color:var(--ink2);margin:4px 0 6px;line-height:1.55}
+table.sum-staff{width:100%;border-collapse:collapse;margin-top:4px;font-size:12.5px;table-layout:auto}
+table.sum-staff td{padding:6px 10px 6px 0;border-top:1px solid var(--border);vertical-align:top;line-height:1.5;text-align:left}
+table.sum-staff td.when{white-space:nowrap;font-weight:600;width:1%;padding-right:16px}
+table.sum-staff td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;width:1%;padding-right:0}
+table.sum-staff tr.tot td{font-weight:600;border-top:2px solid var(--border2)}
 /* a cycle against its targets: one bullet per cycle */
 .ct-row{display:grid;grid-template-columns:168px 1fr;gap:2px 18px;align-items:start;padding:12px 0;border-top:1px solid var(--grid)}
 .ct-row:first-child{border-top:0;padding-top:4px}
@@ -402,7 +408,8 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <p class="note" id="sumIdea"></p></div>
   <div class="card"><div class="eyebrow">1 · The plan</div><h2>What the plan commits to</h2>
     <div class="sum-stats" id="sumPlan"></div>
-    <p class="footnote"><a class="how" href="#" data-go="proj" data-to="goalTargets">Dive deeper → Set targets &amp; tune the model</a> · <a class="how" href="#" data-go="proj" data-to="planChanges">the staffing changes</a> · <a class="how" href="#" data-go="proj" data-to="incList">the incentive programs</a></p></div>
+    <div class="sum-box" id="sumStaff"></div>
+    <p class="footnote"><a class="how" href="#" data-go="proj" data-to="goalTargets">Dive deeper → Set targets &amp; tune the model</a> · <a class="how" href="#" data-go="proj" data-to="planChanges">every staffing change, with its cost</a> · <a class="how" href="#" data-go="proj" data-to="deptChange">where the cost lands by department</a> · <a class="how" href="#" data-go="proj" data-to="incList">the incentive programs</a></p></div>
   <div class="card"><div class="eyebrow">2 · Growth</div><h2 id="sumGrowthH"></h2>
     <div class="sum-stats" id="sumGrowthStats"></div>
     <div class="sum-years" id="sumYears"></div>
@@ -3151,6 +3158,54 @@ function renderSummary(C){
       chg.length ? `${chg.length} change${chg.length === 1 ? "" : "s"} after ${esc(ACT_MO)}: ${kinds.map(([k, n]) => `${n} ${word[k]}${n === 1 ? "" : "s"}`).join(", ")} · ${Math.abs(cost) < 1 ? "no change to" : (cost > 0 ? "+" : "−") + fmtK(Math.abs(cost)) + "/mo on"} the cost base by ${esc(monthName(NM))}` : "no role opens or closes after " + esc(ACT_MO)) +
     tile(`Incentive programs — ${esc(GOAL[3])}`, progs.length ? `${fmtK(progM)} <small>/ ${fmtK(progS)}</small>` : "none pay", progs.length ? `${esc(progs.map(p => p.name).join(" · "))} · modest / stretch, charged on top of net` : "no program pays out in the goal cycle") +
     tile(`Assumptions`, `${(L.cogsPct * 100).toFixed(0)}% <small>cost of sales</small>`, `commission ${(commPctOf() * 100).toFixed(2)}% measured · other income ${fmtK(L.otherInc)}/mo${L.hdvStepPct ? ` · health +${(L.hdvStepPct * 100).toFixed(0)}% from ${esc(monthName(L.hdvStepM || 13))}` : ""}${BOARD && (L.bridgeSrc || "live") !== "plan" && bridgeMonths()[1] > bridgeMonths()[0] ? ` · ${esc(MONTHS[bridgeMonths()[0]])} from the Push board` : ""}`);
+  // ---- the staffing plan at a glance: heads by department, then each month's decisions in words.
+  //      The same changes the Projections card itemises, rolled up to what a reader needs to hear:
+  //      hires, backfills and moves by name; a month's raises as one line.
+  const st = document.getElementById("sumStaff");
+  if (st){
+    const b0 = Math.min(NM, ACT + 1) - 1, b1 = NM - 1;
+    const hcOf = (d, i) => (C.deptHC[d] || [])[i] || 0;
+    const dRows = DEPTS.map(d => ({ d, h0: hcOf(d, b0), h1: hcOf(d, b1) })).filter(r => r.h0 > 0.05 || r.h1 > 0.05);
+    const dMoved = dRows.filter(r => Math.abs(r.h1 - r.h0) >= 0.05).sort((a, b) => (b.h1 - b.h0) - (a.h1 - a.h0));
+    const hT0 = dRows.reduce((a, r) => a + r.h0, 0), hT1 = dRows.reduce((a, r) => a + r.h1, 0), flat = dRows.length - dMoved.length;
+    const hc = v => (Math.round(v * 10) / 10).toLocaleString("en-US");
+    const money = v => Math.abs(v) < 1 ? `<span class="dim">—</span>` : `${v > 0 ? "+" : "−"}${fmtK(Math.abs(v))}/mo`;
+    const named = (who, pos) => who && who !== pos && !/^(tbd|open|new hire|vacant)$/i.test(who) ? ` <span class="dim">(${esc(who)})</span>` : "";
+    const phrase = c => {
+      const pos = ((c.role || {}).position || "").trim();
+      switch (c.kind){
+        case "in": return `<b>Hire</b> ${c.n > 1 ? c.n + " × " : ""}${esc(pos)}${named(c.who, pos)}`;
+        case "backfill": return `<b>Backfill</b> ${esc(pos)} <span class="dim">${esc(c.prev || "vacant")} → ${esc(c.who || "unfilled")}</span>`;
+        case "move": return `<b>${esc(c.who)}</b> moves ${esc((c.from || {}).position || "")} → ${esc(pos)}`;
+        case "out": return `<b>End</b> ${esc(pos)}${named(c.who, pos)}`;
+        case "pay": return `<b>Pay change</b> ${esc(c.who || pos)}`;
+        default: return "";
+      }
+    };
+    const RANK = { in: 0, backfill: 1, move: 2, out: 3, pay: 4 };
+    const byM = new Map();
+    for (const c of chg){ if (!byM.has(c.m)) byM.set(c.m, []); byM.get(c.m).push(c); }
+    const rows = [...byM.entries()].sort((a, b) => a[0] - b[0]).map(([m, list]) => {
+      // two unnamed hires into the same role in one month read as one decision: "2 × Account Manager"
+      const merged = [];
+      for (const c of list.filter(c => c.kind in RANK)){
+        const pos = (c.role || {}).position || "";
+        const twin = c.kind === "in" && !named(c.who, pos) && merged.find(o => o.kind === "in" && ((o.role || {}).position || "") === pos && !named(o.who, pos));
+        if (twin){ twin.n = (twin.n || 1) + (c.n || 1); twin.cost = (twin.cost || 0) + (c.cost || 0); } else merged.push({ ...c });
+      }
+      const main = merged.sort((a, b) => RANK[a.kind] - RANK[b.kind] || Math.abs(b.cost || 0) - Math.abs(a.cost || 0)).map(phrase);
+      const rs = list.filter(c => c.kind === "raise"), rHeads = rs.reduce((a, c) => a + (c.heads || 0), 0), rCost = rs.reduce((a, c) => a + (c.cost || 0), 0);
+      if (rs.length === 1) main.push(`<b>Raise</b> ${esc(rs[0].who || "")}${rHeads > 1 ? ` <span class="dim">· ${rHeads} heads</span>` : ""} <span class="dim">${money(rCost)}</span>`);
+      else if (rs.length) main.push(`<b>${rs.length} raises</b> across ${rHeads} head${rHeads === 1 ? "" : "s"} <span class="dim">${money(rCost)}</span>`);
+      return `<tr><td class="when">${esc(monthName(m))}</td><td>${main.join(" · ")}</td><td class="num">${money(list.reduce((a, c) => a + (c.cost || 0), 0))}</td></tr>`;
+    });
+    st.innerHTML = `<div class="eyebrow">The staffing plan</div>
+      <div class="sum-staff-head">${chg.length
+        ? `<b>${hc(hT0)} → ${hc(hT1)} heads</b>, ${esc(monthName(b0 + 1))} → ${esc(monthName(b1 + 1))}${dMoved.length ? ` · ${dMoved.map(r => `${esc(dn(r.d))} ${hc(r.h0)} → <b>${hc(r.h1)}</b>`).join(" · ")}` : ""}${flat ? ` · ${flat} department${flat === 1 ? "" : "s"} held flat` : ""}`
+        : `The roster is held flat after ${esc(ACT_MO)}: ${hc(hT1)} heads, no role opens or closes, and no pay change is scheduled.`}</div>
+      ${chg.length ? `<table class="sum-staff"><tbody>${rows.join("")}
+        <tr class="tot"><td class="when">By ${esc(monthName(NM))}</td><td>${heads > 0 ? "+" : heads < 0 ? "−" : ""}${Math.abs(heads)} head${Math.abs(heads) === 1 ? "" : "s"} · ${chg.length} change${chg.length === 1 ? "" : "s"}: ${kinds.map(([k, n]) => `${n} ${word[k]}${n === 1 ? "" : "s"}`).join(", ")}</td><td class="num">${money(cost)}</td></tr></tbody></table>` : ""}`;
+  }
 }
 /* The sandbox: extra account executives on this model's own ramp curve and loaded cost — revenue,
    cost, commission and net over the plan, and the month their cumulative contribution turns
