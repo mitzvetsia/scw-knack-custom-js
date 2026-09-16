@@ -1,0 +1,74 @@
+{
+ "source": "Q2 & Q3 Push board (claude.ai/artifact/833RMRs8EGj8nkTtYDGend), document board/history, version 25, updated 2026-09-09",
+ "basis": "Total Income by month and by year from the accounting export (Aug 2020 - Jul 2026). 2021-2025 year totals are actual full-year Total Income; 2016-2020 are as previously held on that board and cannot be verified from the export. Months are $ thousands, Jan-Sep only; each year's Q4 is derived in the dashboard as the year total less Jan-Sep.",
+ "caveat": "The model's booked 2026 months are GL sales revenue, a different cut from Total Income; the dashboard measures the gap on the months both hold and says so beside any growth read against this history.",
+ "years": {
+  "2016": 6846976,
+  "2017": 7721318,
+  "2018": 8069797,
+  "2019": 8031927,
+  "2020": 8350386,
+  "2021": 9003467,
+  "2022": 10489698,
+  "2023": 11393842,
+  "2024": 11325969,
+  "2025": 12752059
+ },
+ "months_k": {
+  "2022": [
+   698,
+   656,
+   1043,
+   744,
+   837,
+   827,
+   940,
+   968,
+   848
+  ],
+  "2023": [
+   655,
+   1066,
+   1226,
+   775,
+   906,
+   1061,
+   839,
+   897,
+   795
+  ],
+  "2024": [
+   1087,
+   866,
+   891,
+   911,
+   902,
+   838,
+   816,
+   1035,
+   856
+  ],
+  "2025": [
+   749,
+   766,
+   1058,
+   1822,
+   1254,
+   834,
+   1016,
+   925,
+   1058
+  ],
+  "2026": [
+   1044,
+   963,
+   804,
+   1240,
+   1347,
+   1079,
+   1219,
+   1189,
+   null
+  ]
+ }
+}

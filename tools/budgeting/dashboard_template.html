@@ -2699,16 +2699,51 @@ function renderGrowth(C){
     `<td>${i === 4 ? g(x[2] / (CQ[0][2] || 1) - 1) : i === 5 ? g(x[2] / (CQ[1][2] || 1) - 1) : `<span class="dim">—</span>`}</td>`).join("")}</tr>`;
   document.getElementById("growthC").innerHTML = cq + "</tbody></table>";
 }
+/* ---------- revenue history, before the window ----------
+   Ten years of Total Income from the Q2 & Q3 Push board (its board/history document), so a span in
+   the window can be read against the same span a year earlier even when that falls before Jan 2026.
+   Months are held Jan–Sep for 2022 on; a year's Q4 is the year total less those nine months, so a
+   span resolves only if it holds whole months the history has, or a whole Q4. Basis differs from
+   the model's booked months — Total Income there, GL sales revenue here — and the card says by how
+   much on the months both hold. */
+const HIST = MODEL.history || null;
+const histMonth = (y, m) => { const a = HIST && HIST.months_k && HIST.months_k[y]; const v = a ? a[m] : null; return v == null ? null : v * 1000; };
+const histYear = y => (HIST && HIST.years && HIST.years[y] != null) ? HIST.years[y] : null;
+const histQ4 = y => { const yr = histYear(y); if (yr == null) return null;
+  let t = 0; for (let m = 0; m < 9; m++){ const v = histMonth(y, m); if (v == null) return null; t += v; } return yr - t; };
+const calOf = i => { const k = M0 + i; return [Y0 + Math.floor(k / 12), ((k % 12) + 12) % 12]; };   // valid before the window too
+function spanSum(a, x, y){
+  let t = 0;
+  for (let i = Math.max(x, 0); i < y; i++) t += a[i] || 0;
+  if (x >= 0) return t;
+  const [y0, m0] = calOf(x);
+  if (m0 === 0 && y - x === 12 && y <= 0 && histYear(y0) != null) return histYear(y0);   // a whole history year
+  for (let i = x; i < Math.min(y, 0); ){
+    const [yr, m] = calOf(i);
+    if (m === 9 && i + 3 <= y){ const q = histQ4(yr); if (q == null) return null; t += q; i += 3; continue; }   // a whole Q4
+    const v = histMonth(yr, m); if (v == null) return null; t += v; i++;
+  }
+  return t;
+}
+// the model's booked months against the history's on the same months — the basis gap the card discloses
+const histBasisGap = (a) => { let mdl = 0, his = 0; for (let i = 0; i < ACT; i++){ const [yr, m] = calOf(i); const v = histMonth(yr, m); if (v == null) continue; mdl += a[i]; his += v; } return his > 0 ? mdl / his - 1 : null; };
+
 /* ---------- revenue growth ----------
    Growth at every cadence the plan is read at — month, quarter, cycle, year — for both scenarios,
    each period against the one before it and against the same span a year earlier. One helper does
    all of it: a span's revenue over the same-length span `lag` months back; a base that is not in
    the window, or not positive, gives no percentage rather than a misleading one. */
 let growCad = "q";
+function histNote(C){
+  if (!HIST) return "";
+  const gap = histBasisGap(C.rev.mod);
+  return `<p class="footnote" style="margin:8px 0 0" title="${esc(HIST.source)} · ${esc(HIST.basis)}">History before 2026: Total Income from the Q2 &amp; Q3 Push board — by year 2016–2025, by month Jan–Sep from 2022. ` +
+    `The model's booked months are GL sales revenue, a different cut${gap != null ? `, <b>${gap >= 0 ? "+" : "−"}${(Math.abs(gap) * 100).toFixed(1)}%</b> against the history on ${esc(monthName(1))}–${esc(monthName(ACT))}; growth read against 2025 carries that basis` : ""}.</p>`;
+}
 function renderRevGrowth(C){
   const el = document.getElementById("revGrowth"); if (!el) return;
   const sum = (a, x, y) => a.slice(x, y).reduce((p, q) => p + q, 0);
-  const ratio = (a, x, y, lag) => { if (x - lag < 0) return null; const base = sum(a, x - lag, y - lag); return base > 0 ? sum(a, x, y) / base - 1 : null; };
+  const ratio = (a, x, y, lag) => { const base = spanSum(a, x - lag, y - lag), cur = spanSum(a, x, y); return base != null && base > 0 && cur != null ? cur / base - 1 : null; };
   const g = v => v == null ? `<span class="dim">—</span>`
     : `<span class="${v > 0.0005 ? "pos" : v < -0.0005 ? "neg" : ""}">${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}%</span>`;
   const status = (x, y) => y <= ACT ? "booked" : x < ACT ? MON3[mOf(x)] + "\u2013" + MON3[mOf(ACT - 1)] + " booked" : "model";
@@ -2719,7 +2754,9 @@ function renderRevGrowth(C){
     m: { name: "Months",   lag: 1,  prev: "MoM",            spans: MONTHS.map((_, i) => [i, i + 1, mhead(i), ""]) },
     q: { name: "Quarters", lag: 3,  prev: "QoQ",            spans: QTRS.map(q => [q[0], q[1], q[2], q[3]]) },
     c: { name: "Cycles",   lag: 6,  prev: "Cycle over cycle", spans: CYCLES.map(c => [c[0], c[1], c[3], c[2]]) },
-    y: { name: "Years",    lag: 12, prev: null,             spans: YEARS.map(y => [y[0], y[1], y[2], y[3]]).concat(FYS) }
+    y: { name: "Years",    lag: 12, prev: null,
+         spans: Object.keys((HIST && HIST.years) || {}).sort().map(yr => { const x = (yr - Y0) * 12 - M0; return [x, x + 12, String(yr), ""]; })
+           .concat(YEARS.map(y => [y[0], y[1], y[2], y[3]]), FYS) }
   };
   const cad = CAD[growCad] || CAD.q;
   document.getElementById("growCadT").innerHTML = Object.entries(CAD).map(([k, c]) =>
@@ -2731,28 +2768,36 @@ function renderRevGrowth(C){
        the calendar (a 20-day month after a 23-day one) and, at the seam where the model takes over
        from Xero, it reads the hand-off itself as a collapse. Year-earlier bars only exist where the
        window holds the base month, and go paler once that base is itself modelled. */
-    const yoyOf = a => a.map((v, i) => i >= 12 && a[i - 12] > 0 ? v / a[i - 12] - 1 : null);
+    const yoyOf = (a, skipBooked) => a.map((v, i) => (skipBooked && i < ACT) ? null : ratio(a, i, i + 1, 12));
     const firstModelBase = 12 + ACT;                          // from here the year-earlier month is the model's
     const pc = v => (v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
     monthChart(fig,
-      [{ name: "vs a year earlier — modest", color: "--modest", vals: yoyOf(C.rev.mod), kind: "bar" },
-       { name: "vs a year earlier — stretch", color: "--stretch", vals: yoyOf(C.rev.str), kind: "bar" }],
+      [{ name: "vs a year earlier — modest (booked months: one bar)", color: "--modest", vals: yoyOf(C.rev.mod, false), kind: "bar" },
+       { name: "vs a year earlier — stretch", color: "--stretch", vals: yoyOf(C.rev.str, true), kind: "bar" }],
       { aria: "Revenue growth by month against the same month a year earlier, modest and stretch", band: [GOAL[0], GOAL[1]], divider: false, w: 1400, h: 260,
         fmt: v => Math.round(v * 100) + "%", tipFmt: pc, fadeFrom: firstModelBase,
-        tipTitle: i => `${MONTHS[i]}${i < 12 ? " 2026" : ""} vs ${MONTHS[i - 12]}${i - 12 < 12 ? " 2026" : ""} · ${i - 12 < ACT ? "booked" : "modelled"} base` });
-    fnote.innerHTML = `Bars start where the window holds the year-earlier month; none for ${esc(monthName(1))}–${esc(monthName(12))}, whose 2025 months are not in the model. ` +
-      `Paler bars (${esc(monthName(firstModelBase + 1))} on) compare a modelled month with a modelled base.`;
+        tipTitle: i => { const [by, bm] = calOf(i - 12); return `${MONTHS[i]}${i < 12 ? " 2026" : ""} vs ${MON3[bm]} ${by} · ${i - 12 < ACT ? "booked" : "modelled"} base`; } });
+    fnote.innerHTML = `A bar needs its year-earlier month: ${HIST ? "2025 comes from the revenue history (Jan–Sep; Oct–Dec only as a quarter, so those three 2026 months have no bar)" : "none before 2027, as no 2025 revenue is in the model"}. ` +
+      `Booked months carry one bar, since both scenarios are Xero there. Paler bars (${esc(monthName(firstModelBase + 1))} on) compare a modelled month with a modelled base.`;
     // the grid: one column per calendar month, a block per year, booked cells shaded and the seam ruled
-    const blocks = YEARS.map(y => ({ yr: yOf(y[0]), i0: y[0], i1: y[1] }));
+    const blocks = (HIST && histMonth(Y0 - 1, 0) != null ? [{ yr: Y0 - 1, i0: -12, i1: 0, hist: true }] : []).concat(YEARS.map(y => ({ yr: yOf(y[0]), i0: y[0], i1: y[1] })));
     const cellCls = i => (i < ACT ? " actual" : "") + (i === ACT ? " yb" : "");
-    const at = (a, blk, mo) => { const i = blk.i0 + mo - mOf(blk.i0); return (i >= blk.i0 && i < blk.i1) ? { i, v: a[i] } : null; };
+    const at = (a, blk, mo) => { const i = blk.i0 + mo - calOf(blk.i0)[1]; if (i < blk.i0 || i >= blk.i1) return null;
+      if (i < 0){ const v = histMonth(...calOf(i)); return v == null ? null : { i, v }; } return { i, v: a[i] }; };
     let h = `<table class="data"><thead><tr><th>Revenue</th>${MON3.map(mn => `<th>${mn}</th>`).join("")}</tr></thead><tbody>`;
     blocks.forEach((blk, bi) => {
       const prev = blocks[bi - 1];
       const booked = Math.max(0, Math.min(ACT, blk.i1) - blk.i0);
-      const span = booked === 0 ? "modelled" : booked >= blk.i1 - blk.i0 ? "booked"
+      const q4 = blk.hist ? histQ4(blk.yr) : null;
+      const span = blk.hist ? `revenue history · Jan–Sep booked · Oct–Dec as a quarter only${q4 != null ? ` (${fmtK(q4)})` : ""}`
+        : booked === 0 ? "modelled" : booked >= blk.i1 - blk.i0 ? "booked"
         : `${MON3[mOf(blk.i0)]}\u2013${MON3[mOf(blk.i0 + booked - 1)]} booked · ${MON3[mOf(blk.i0 + booked)]}\u2013${MON3[mOf(blk.i1 - 1)]} modelled`;
-      h += `<tr class="sec"><td colspan="13">${blk.yr} <span class="dim" style="font-weight:400">· ${span}${prev ? ` · growth is against ${prev.yr}` : " · no 2025 revenue in the model, so no year-earlier comparison"}</span></td></tr>`;
+      h += `<tr class="sec"><td colspan="13">${blk.yr} <span class="dim" style="font-weight:400">· ${span}${prev ? ` · growth is against ${prev.yr}` : blk.hist ? "" : " · no 2025 revenue in the model, so no year-earlier comparison"}</span></td></tr>`;
+      if (blk.hist){   // one row: the history is the same under either scenario
+        h += `<tr><td><b>booked</b></td>${MON3.map((_, mo) => { const c = at(C.rev.mod, blk, mo);
+          return c ? `<td class="actual">${fmtK(c.v)}</td>` : `<td class="dim">—</td>`; }).join("")}</tr>`;
+        return;
+      }
       for (const [k, name] of [["mod", "modest"], ["str", "stretch"]]){
         const a = C.rev[k];
         h += `<tr><td><b>${name}</b></td>${MON3.map((_, mo) => { const c = at(a, blk, mo);
@@ -2761,7 +2806,7 @@ function renderRevGrowth(C){
           return c && b && b.v > 0 ? `<td class="${cellCls(c.i).trim()}">${g(c.v / b.v - 1)}</td>` : `<td class="dim">—</td>`; }).join("")}</tr>`;
       }
     });
-    el.innerHTML = h + "</tbody></table>";
+    el.innerHTML = h + "</tbody></table>" + histNote(C);
     return;
   }
   const goalCls = (x, y) => (x >= GOAL[0] && y <= GOAL[1]) ? " goal" : "";
@@ -2769,13 +2814,14 @@ function renderRevGrowth(C){
     `<th class="${y <= ACT ? "actual" : ""}${goalCls(x, y)}">${lbl}${sub || growCad !== "m" ? `<span class="sub">${esc(sub || "")}${sub ? " · " : ""}${status(x, y)}</span>` : ""}</th>`).join("") + `</tr></thead><tbody>`;
   for (const [k, name] of [["mod", "modest"], ["str", "stretch"]]){
     const a = C.rev[k];
-    h += `<tr><td><b>${name}</b></td>${cad.spans.map(([x, y]) => `<td class="${y <= ACT ? "actual" : ""}${goalCls(x, y)}">${growCad === "m" ? fmtK(sum(a, x, y)) : fmt$(sum(a, x, y))}</td>`).join("")}</tr>`;
+    h += `<tr><td><b>${name}</b></td>${cad.spans.map(([x, y]) => { const v = spanSum(a, x, y);
+      return `<td class="${y <= ACT ? "actual" : ""}${goalCls(x, y)}">${v == null ? `<span class="dim">—</span>` : growCad === "m" || growCad === "y" ? fmtK(v) : fmt$(v)}</td>`; }).join("")}</tr>`;
     if (cad.prev) h += `<tr class="dim"><td class="dim">${cad.prev} — ${name}</td>${cad.spans.map(([x, y]) => `<td class="${y <= ACT ? "actual" : ""}${goalCls(x, y)}">${g(ratio(a, x, y, cad.lag))}</td>`).join("")}</tr>`;
     h += `<tr class="dim"><td class="dim">Year over year — ${name}<span class="sub" style="display:block;font-weight:400">same ${growCad === "y" ? "span" : cad.name.toLowerCase().replace(/s$/, "")} a year earlier</span></td>${cad.spans.map(([x, y]) => `<td class="${y <= ACT ? "actual" : ""}${goalCls(x, y)}">${g(ratio(a, x, y, 12))}</td>`).join("")}</tr>`;
   }
-  h += `<tr class="tot"><td>Stretch over modest</td>${cad.spans.map(([x, y]) => { const m = sum(C.rev.mod, x, y), s = sum(C.rev.str, x, y);
+  h += `<tr class="tot"><td>Stretch over modest</td>${cad.spans.map(([x, y]) => { const m = spanSum(C.rev.mod, x, y), s = spanSum(C.rev.str, x, y);
     return `<td class="${y <= ACT ? "actual" : ""}${goalCls(x, y)}">${m > 0 && s !== m ? g(s / m - 1) : `<span class="dim">—</span>`}</td>`; }).join("")}</tr>`;
-  el.innerHTML = h + "</tbody></table>";
+  el.innerHTML = h + "</tbody></table>" + histNote(C);
 }
 document.addEventListener("click", ev => {
   const b = ev.target.closest("#growCadT button[data-cad]"); if (!b) return;
