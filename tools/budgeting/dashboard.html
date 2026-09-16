@@ -384,8 +384,13 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
     <div id="deptChangeSum"></div>
     <div class="tablewrap" id="deptChange"></div></div>
   <div class="card"><div class="eyebrow">Results</div><h2>By period</h2>
-    <p class="note">The same P&amp;L rolled up — the planning cycles in date order, each calendar year, and each quarter; the goal cycle is tinted. Follows the scenario strip above. <a class="how" href="#notes">How it works ↗</a></p>
+    <p class="note">The same P&amp;L rolled up — the planning cycles in date order, each calendar year, and each quarter; the goal cycle is tinted. <a class="how" href="#notes">How it works ↗</a></p>
+    <div style="margin:0 0 10px"><span class="ctl-lbl">Scenario</span><span class="scn-toggle" id="perScnT"><button class="btn on" data-s="mod">Modest</button><button class="btn" data-s="str">Stretch</button><button class="btn" data-s="both">Both</button></span></div>
     <div class="tablewrap" id="periodSum"></div></div>
+  <div class="card"><div class="eyebrow">Results</div><h2>Revenue growth</h2>
+    <p class="note">Projected sales revenue, modest and stretch, at every cadence the plan is read at: each period against the one before it, and against the same span a year earlier. Booked periods are Xero, so both scenarios read alike there.</p>
+    <div style="margin:0 0 10px"><span class="ctl-lbl">Cadence</span><span class="scn-toggle" id="growCadT"></span></div>
+    <div class="tablewrap" id="revGrowth"></div></div>
   <div class="card"><div class="eyebrow">Workings</div><h2>P&amp;L by month</h2>
     <p class="note">Shaded = Xero as booked (<span class="js-actrange"></span>); <span class="js-bridge"></span> is a bridge month; <span class="js-goal"></span> is the goal cycle. Payroll is base pay; commissions sit on their own row. Month cells round to $K — hover for the exact figure. <a class="how" href="#notes">How it works ↗</a></p>
     <div class="tablewrap" id="plTable"></div>
@@ -2511,10 +2516,10 @@ document.getElementById("goalPeriodT").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-per]"); if (!b) return;
   goalPeriodKey = b.dataset.per; renderAll();
 });
-document.getElementById("plScnT").addEventListener("click", ev => {
+for (const id of ["plScnT", "perScnT"]) document.getElementById(id).addEventListener("click", ev => {
   const b = ev.target.closest("button[data-s]"); if (!b) return;
   plScn = b.dataset.s;
-  document.querySelectorAll("#plScnT .btn").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll("#plScnT .btn, #perScnT .btn").forEach(x => x.classList.toggle("on", x.dataset.s === plScn));
   renderAll();
 });
 document.getElementById("plBasisT").addEventListener("click", ev => {
@@ -2588,6 +2593,7 @@ document.getElementById("rollMetric").addEventListener("click", ev => {
 // horizon, at the top of this script.
 function renderPeriods(C){
   const el = document.getElementById("periodSum"); if (!el) return;
+  document.querySelectorAll("#perScnT .btn").forEach(x => x.classList.toggle("on", x.dataset.s === plScn));
   const sum = (a, x, y) => a.slice(x, y).reduce((p, q) => p + q, 0);
   const both = plScn === "both", scns = both ? ["mod", "str"] : [plScn === "str" ? "str" : "mod"];
   const sfx = k => both ? (k === "mod" ? " — modest" : " — stretch") : "";
@@ -2691,6 +2697,50 @@ function renderGrowth(C){
     `<td>${i === 4 ? g(x[2] / (CQ[0][2] || 1) - 1) : i === 5 ? g(x[2] / (CQ[1][2] || 1) - 1) : `<span class="dim">—</span>`}</td>`).join("")}</tr>`;
   document.getElementById("growthC").innerHTML = cq + "</tbody></table>";
 }
+/* ---------- revenue growth ----------
+   Growth at every cadence the plan is read at — month, quarter, cycle, year — for both scenarios,
+   each period against the one before it and against the same span a year earlier. One helper does
+   all of it: a span's revenue over the same-length span `lag` months back; a base that is not in
+   the window, or not positive, gives no percentage rather than a misleading one. */
+let growCad = "q";
+function renderRevGrowth(C){
+  const el = document.getElementById("revGrowth"); if (!el) return;
+  const sum = (a, x, y) => a.slice(x, y).reduce((p, q) => p + q, 0);
+  const ratio = (a, x, y, lag) => { if (x - lag < 0) return null; const base = sum(a, x - lag, y - lag); return base > 0 ? sum(a, x, y) / base - 1 : null; };
+  const g = v => v == null ? `<span class="dim">—</span>`
+    : `<span class="${v > 0.0005 ? "pos" : v < -0.0005 ? "neg" : ""}">${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}%</span>`;
+  const status = (x, y) => y <= ACT ? "booked" : x < ACT ? MON3[mOf(x)] + "\u2013" + MON3[mOf(ACT - 1)] + " booked" : "model";
+  // the Apr–Mar fiscal years the window holds in full, alongside the calendar years
+  const FYS = CYCLES.map((c, i) => [c, CYCLES[i + 1]]).filter(([a, b]) => b && mOf(a[0]) === 3 && b[0] === a[1])
+    .map(([a, b]) => [a[0], b[1], "FY " + String(yOf(a[0])).slice(2) + "\u2013" + String(yOf(b[1] - 1)).slice(2), a[2].replace(/\u2013.*$/, "") + "\u2013" + b[2].replace(/^.*\u2013/, "")]);
+  const CAD = {
+    m: { name: "Months",   lag: 1,  prev: "MoM",            spans: MONTHS.map((_, i) => [i, i + 1, mhead(i), ""]) },
+    q: { name: "Quarters", lag: 3,  prev: "QoQ",            spans: QTRS.map(q => [q[0], q[1], q[2], q[3]]) },
+    c: { name: "Cycles",   lag: 6,  prev: "Cycle over cycle", spans: CYCLES.map(c => [c[0], c[1], c[3], c[2]]) },
+    y: { name: "Years",    lag: 12, prev: null,             spans: YEARS.map(y => [y[0], y[1], y[2], y[3]]).concat(FYS) }
+  };
+  const cad = CAD[growCad] || CAD.q;
+  document.getElementById("growCadT").innerHTML = Object.entries(CAD).map(([k, c]) =>
+    `<button class="btn${k === growCad ? " on" : ""}" data-cad="${k}">${c.name}</button>`).join("");
+  const goalCls = (x, y) => (x >= GOAL[0] && y <= GOAL[1]) ? " goal" : "";
+  let h = `<table class="data"><thead><tr><th>Revenue</th>` + cad.spans.map(([x, y, lbl, sub]) =>
+    `<th class="${y <= ACT ? "actual" : ""}${goalCls(x, y)}">${lbl}${sub || growCad !== "m" ? `<span class="sub">${esc(sub || "")}${sub ? " · " : ""}${status(x, y)}</span>` : ""}</th>`).join("") + `</tr></thead><tbody>`;
+  for (const [k, name] of [["mod", "modest"], ["str", "stretch"]]){
+    const a = C.rev[k];
+    h += `<tr><td><b>${name}</b></td>${cad.spans.map(([x, y]) => `<td class="${y <= ACT ? "actual" : ""}${goalCls(x, y)}">${growCad === "m" ? fmtK(sum(a, x, y)) : fmt$(sum(a, x, y))}</td>`).join("")}</tr>`;
+    if (cad.prev) h += `<tr class="dim"><td class="dim">${cad.prev} — ${name}</td>${cad.spans.map(([x, y]) => `<td class="${y <= ACT ? "actual" : ""}${goalCls(x, y)}">${g(ratio(a, x, y, cad.lag))}</td>`).join("")}</tr>`;
+    h += `<tr class="dim"><td class="dim">Year over year — ${name}<span class="sub" style="display:block;font-weight:400">same ${growCad === "y" ? "span" : cad.name.toLowerCase().replace(/s$/, "")} a year earlier</span></td>${cad.spans.map(([x, y]) => `<td class="${y <= ACT ? "actual" : ""}${goalCls(x, y)}">${g(ratio(a, x, y, 12))}</td>`).join("")}</tr>`;
+  }
+  h += `<tr class="tot"><td>Stretch over modest</td>${cad.spans.map(([x, y]) => { const m = sum(C.rev.mod, x, y), s = sum(C.rev.str, x, y);
+    return `<td class="${y <= ACT ? "actual" : ""}${goalCls(x, y)}">${m > 0 && s !== m ? g(s / m - 1) : `<span class="dim">—</span>`}</td>`; }).join("")}</tr>`;
+  el.innerHTML = h + "</tbody></table>";
+}
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("#growCadT button[data-cad]"); if (!b) return;
+  growCad = b.dataset.cad;
+  renderRevGrowth(compute());
+});
+
 /* ---------- goals & break-even (Projections) ---------- */
 function cycleFacts(C, rng, tgt){
   tgt = (tgt && typeof tgt === "object") ? tgt : { mod: +tgt || 0, str: +tgt || 0 };
@@ -3743,17 +3793,25 @@ function renderIncentives(C){
     const earned = isRate ? (+pg.pct || 0) * inBand
       : cap ? gross * (inBand / (cap - thr)) : (prev >= thr ? gross : 0);
     const attain = cap ? Math.max(0, Math.min(1, (prev - thr) / (cap - thr))) : (prev >= thr ? 1 : 0);
+    // the same program under the stretch projection — a bonus that pays nothing at modest can pay
+    // in full at stretch, and the line has to say so rather than reading as one scenario
+    const prevS = C.rev.str.slice(pa, pb).reduce((x, y) => x + y, 0);
+    const inBandS = Math.max(0, Math.min(prevS, cap || Infinity) - thr);
+    const earnedS = isRate ? (+pg.pct || 0) * inBandS : cap ? gross * (inBandS / (cap - thr)) : (prevS >= thr ? gross : 0);
+    const attainS = cap ? Math.max(0, Math.min(1, (prevS - thr) / (cap - thr))) : (prevS >= thr ? 1 : 0);
     const thrIn = `<span class="fld"><label>${isRate ? "Above" : "From"}</label><input class="cell" style="width:96px" data-id="${pg.id}" data-k="pgthr" value="${Math.round(thr).toLocaleString("en-US")}" title="${isRate ? "Nothing is paid on revenue below this." : "Period revenue where the bonus starts earning. Below it, nothing."}"></span>`;
     const capIn = isRate ? "" : `<span class="fld"><label>Up to</label><input class="cell" style="width:96px" data-id="${pg.id}" data-k="pgcap" value="${(+pg.cap || 0) ? Math.round(+pg.cap).toLocaleString("en-US") : ""}" placeholder="no cap" title="Revenue at which it pays in full. Between the two it pays proportionally. Blank = it pays in full the moment the floor is reached."></span>`;
-    const load = C.incentLoad || 1, loaded = earned * load;
+    const load = C.incentLoad || 1, loaded = earned * load, loadedS = earnedS * load;
     const nContr = pg.per === "head" && !isRate ? S.staff.filter(r => isContractor(r) && (pg.scope === "all" || (pg.scope === "roles" ? (pg.roles || []).indexOf(r.id) >= 0 : (pg.depts || []).indexOf(r.dept) >= 0))).reduce((n, r) => n + Math.round(staffHC(r, endMo)), 0) : 0;
     // outcome first, mechanics second
-    const outcome = earned > 0
-      ? `<b>${fmtK(earned)} earned${pg.per === "head" && heads > 0 && !isRate ? ` (${fmt$(earned / heads)}/head)` : ""} · costs ${fmtK(loaded)}</b>`
-      : `<b class="warn">${isRate ? "nothing yet — not above the threshold" : "nothing yet — below the floor"}</b>`;
+    const none = isRate ? "nothing — not above the threshold" : "nothing — below the floor";
+    const outcome = earned > 0 || earnedS > 0
+      ? `<b>${earned > 0 ? fmtK(earned) + " earned" : `<span class="warn">${none}</span>`} modest · ${earnedS > 0 ? fmtK(earnedS) + " earned" : `<span class="warn">${none}</span>`} stretch</b>` +
+        `${pg.per === "head" && heads > 0 && !isRate && earned > 0 ? ` <span class="subtle">(${fmt$(earned / heads)}/head modest)</span>` : ""} · costs <b>${fmtK(loaded)} / ${fmtK(loadedS)}</b>`
+      : `<b class="warn">${none} under either scenario</b>`;
     const how = isRate
-      ? `${fmtK(prev)} projected → ${fmtK(inBand)} over ${fmtK(thr)} × ${((+pg.pct || 0) * 100).toFixed(2)}%`
-      : `${pg.per === "head" ? heads + " head" + (heads === 1 ? "" : "s") + (nContr ? ` (${nContr} contractor${nContr === 1 ? "" : "s"} excluded)` : "") + " · " + fmt$(+pg.amount || 0) + "/head" : fmtK(gross)} at full · ${fmtK(prev)} projected → ${Math.round(attain * 100)}% of ${cap ? "the " + fmtK(thr) + "–" + fmtK(cap) + " range" : "the threshold"}`;
+      ? `${fmtK(prev)} modest / ${fmtK(prevS)} stretch projected → ${fmtK(inBand)} / ${fmtK(inBandS)} over ${fmtK(thr)} × ${((+pg.pct || 0) * 100).toFixed(2)}%`
+      : `${pg.per === "head" ? heads + " head" + (heads === 1 ? "" : "s") + (nContr ? ` (${nContr} contractor${nContr === 1 ? "" : "s"} excluded)` : "") + " · " + fmt$(+pg.amount || 0) + "/head" : fmtK(gross)} at full · ${fmtK(prev)} modest / ${fmtK(prevS)} stretch projected → ${Math.round(attain * 100)}% / ${Math.round(attainS * 100)}% of ${cap ? "the " + fmtK(thr) + "–" + fmtK(cap) + " range" : "the threshold"}`;
     const result = `${outcome} <span class="subtle" title="${earned > 0 ? `Cost includes ${((load - 1) * 100).toFixed(1)}% employer payroll taxes; the loaded figure is what reaches the P&L.` : ""}">· ${how}</span>`;
     const isOpen = openPrograms.has(pg.id);
     const roleOpts = S.staff.slice().sort((a, b) => a.dept.localeCompare(b.dept) || a.position.localeCompare(b.position));
@@ -4461,7 +4519,7 @@ document.getElementById("btnLoad").addEventListener("click", () => {
 function renderAll(){
   if (syncSales()) persist();     // the plan is the source of truth for who sells and when
   const C = compute();
-  renderTiles(C); renderGoals(C); renderPlanChanges(C); renderDeptChange(C); renderProjLevers(); renderProj(C); renderPeriods(C); renderRollup(C); renderGrowth(C);
+  renderTiles(C); renderGoals(C); renderPlanChanges(C); renderDeptChange(C); renderProjLevers(); renderProj(C); renderPeriods(C); renderRevGrowth(C); renderRollup(C); renderGrowth(C);
   fillMonthLabels();
   renderSales(C); renderIncentives(C); renderRaisePlanner(); renderStaff(C); renderLicenses(C); renderExpenses(C); renderCompare(C); renderFixes(); renderRestore(); renderPayBands();
 }
