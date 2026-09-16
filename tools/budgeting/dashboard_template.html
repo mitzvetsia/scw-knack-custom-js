@@ -2748,8 +2748,8 @@ function renderGoals(C){
           ? `clears it by <b title="${esc(bridge(g.revM, g.netM))}">${fmtK(clear)} of revenue</b> → <b>${fmtK(g.netM)}</b> net`
           : `<span class="warn">falls short by</span> <b>${fmtK(Math.abs(clear))} of revenue</b> → <b>${fmtK(g.netM)}</b> net`} · stretch <b title="${esc(bridge(g.revS, g.netS))}">${fmtK(g.revS - g.be)}</b> → ${fmtK(g.netS)}</div></div>
       <div><div class="lab">Net</div>
-        <div class="plan-val">${fmtK(g.netM)} <small>${mg(g.netM, g.revM)}</small> · ${fmtK(g.netS)} <small>${mg(g.netS, g.revS)}</small></div>
-        <div class="plan-sub">as booked, modest · stretch — ${progLine}</div></div>
+        <div class="plan-val"><span style="white-space:nowrap">${fmtK(g.netM)} <small>modest ${mg(g.netM, g.revM)}</small></span> · <span style="white-space:nowrap">${fmtK(g.netS)} <small>stretch ${mg(g.netS, g.revS)}</small></span></div>
+        <div class="plan-sub">as booked — ${progLine}</div></div>
     </div>
     <div class="plan-row">
       <table class="data compact" style="width:auto;min-width:300px"><thead><tr><th>${esc(per.tag)} · ${esc(per.span)}</th><th>Modest</th><th>Stretch</th></tr></thead><tbody>
