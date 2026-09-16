@@ -8,6 +8,11 @@ model = json.load(open(os.path.join(HERE, "model_data_v2.json")))
 hist_path = os.path.join(HERE, "revenue_history.json")
 if os.path.exists(hist_path):
     model["history"] = json.load(open(hist_path))
+# The Q2 & Q3 Push board's pacing for the cycle now closing — its baseline pace and the live month
+# it is tracking — so the bridge month can follow the board instead of the sales plan.
+board_path = os.path.join(HERE, "board_pacing.json")
+if os.path.exists(board_path):
+    model["board"] = json.load(open(board_path))
 tpl = open(os.path.join(HERE, "dashboard_template.html")).read()
 payload = json.dumps(model, separators=(",", ":")).replace("</", "<\\/")
 out = tpl.replace("/*__MODEL__*/", payload, 1)

@@ -1,0 +1,35 @@
+{
+ "source": "Q2 & Q3 Push board (claude.ai/artifact/833RMRs8EGj8nkTtYDGend): document board/history v25 (2026-09-09) for the pace, stretch pace and window goals; document months/2026-9 v276 (2026-09-16T02:23Z) for the live month. Refresh by re-reading both documents.",
+ "fetched": "2026-09-16",
+ "pace_k": 1200,
+ "stretch_pace_k": 1400,
+ "goals_k": {
+  "modest": 6650,
+  "stretch": 7850
+ },
+ "months_k_2026": [
+  1044,
+  963,
+  804,
+  1240,
+  1347,
+  1079,
+  1219,
+  1189,
+  null
+ ],
+ "live": {
+  "month": "2026-09",
+  "dayStamp": "2026-9-15",
+  "mDaysTD": 10,
+  "mDaysTotal": 21,
+  "mInstall": 544386,
+  "mMagento": 372657.9,
+  "mCheckMO": 45860.7,
+  "mBigDeal": 175000,
+  "mPendInstall": 0,
+  "mGoal1": 1190000,
+  "mGoal2": 1404002
+ },
+ "formula": "projected = (install + eCommerce + check/MO - min(bigDeal, that sum)) / businessDaysToDate * businessDaysInMonth + bigDeal \u2014 the board's own compute(), reproduced in the dashboard"
+}

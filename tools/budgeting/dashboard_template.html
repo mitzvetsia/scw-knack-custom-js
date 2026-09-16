@@ -815,6 +815,7 @@ function migrateState(st){
       L0.staffCarriedFix = 1;
     }
     if (L0.estProv == null) L0.estProv = true;
+    if (L0.bridgeSrc == null) L0.bridgeSrc = "live";   // the bridge month follows the Push board's live pacing
     if (L0.hdvRate == null) L0.hdvRate = 523.5;
     // the health rate can step up on renewal; default is no increase, primed at Jan '27
     if (L0.hdvStepPct == null) L0.hdvStepPct = 0;
@@ -1474,6 +1475,10 @@ function compute(){
       if (!r.noComm){ tmC += rm; tsC += rs; }   // house lines pay nobody
     }
     out.team.mod.push(tm); out.team.str.push(ts);
+    // the bridge month may take the board's pacing; commissionable revenue scales with it
+    const bm = boardRev(i, "mod"), bs = boardRev(i, "str");
+    if (bm != null){ tmC = tm > 0 ? tmC * bm / tm : tmC; tm = bm; }
+    if (bs != null){ tsC = ts > 0 ? tsC * bs / ts : tsC; ts = bs; }
     const cRate = commPctOf();
     const compM = tmC * cRate, compS = tsC * cRate;
     // staffing (with per-department model splits)
@@ -2306,6 +2311,16 @@ function renderProjLevers(){
   document.getElementById("projLevers").innerHTML =
     leverInput("lvCogs", "COGS % fwd", (L.cogsPct * 100).toFixed(1), "% of sales — complete booked months run " + fmtPct((() => { const P = new Set(MODEL.provisional_cogs_months || []); let c = 0, r = 0; MODEL.totals.cogs.forEach((v, i) => { if (!P.has(i + 1)){ c += v; r += MODEL.totals.revenue[i]; } }); return c / (r || 1); })())) +
     leverInput("lvOth", "Other income fwd", L.otherInc, "$/mo (rent, interest)") +
+    (BOARD && bridgeMonths()[1] > bridgeMonths()[0] ? (() => {
+      const i = bridgeMonths()[0], v = BOARD.live || {}, live = boardMonthIdx() === i ? boardLiveProjected() : null;
+      const pace = (+BOARD.pace_k || 0) * 1000, sp = (+BOARD.stretch_pace_k || 0) * 1000;
+      const planM = S.sales.reduce((a, r) => a + repRevenue(r, i + 1, "modest"), 0), planS = S.sales.reduce((a, r) => a + repRevenue(r, i + 1, "stretch"), 0);
+      const mode = L.bridgeSrc || "live";
+      return `<div class="lever" title="The month between the last booked one and the end of the cycle now closing. The Q2 & Q3 Push board tracks it day by day; its live figure is banked revenue over business days elapsed, run to the month's end, with a one-off big deal held out of the daily average and added back once. The board is a snapshot taken ${esc(BOARD.fetched || "")}; the sales plan is this model's rep ramps."><label for="lvBridge">${esc(MONTHS[i])} revenue — the bridge month</label><select id="lvBridge" class="lever-in">
+        ${live != null ? `<option value="live"${mode === "live" ? " selected" : ""}>Push board, live pacing — ${fmtK(live)} (${esc(String(v.mDaysTD))} of ${esc(String(v.mDaysTotal))} business days, as of ${esc(String(v.dayStamp || ""))})</option>` : ""}
+        <option value="pace"${mode === "pace" || (mode === "live" && live == null) ? " selected" : ""}>Push board, baseline pace — ${fmtK(pace)} / ${fmtK(sp)} stretch</option>
+        <option value="plan"${mode === "plan" ? " selected" : ""}>Sales plan — ${fmtK(planM)} / ${fmtK(planS)} stretch</option></select>
+        <span class="unit">the board's cycle projection; stretch is never below it</span></div>`; })() : "") +
     leverInput("lvLab", "Labor hedge", (L.laborHedge * 100).toFixed(1), "% on modeled payroll") +
     leverInput("lvOpx", "Opex hedge", (L.opexHedge * 100).toFixed(1), "% on planned expenses") +
     `<div class="lever"><label for="lvProv">Jul COGS (not yet entered)</label><select id="lvProv" class="lever-in">
@@ -2322,6 +2337,7 @@ function renderProjLevers(){
     })() : "");
   bind("lvCogs", v => S.levers.cogsPct = num(v, 43) / 100);
   bind("lvOth", v => S.levers.otherInc = num(v, 3000));
+  bind("lvBridge", v => S.levers.bridgeSrc = v);
   bind("lvLab", v => S.levers.laborHedge = num(v, 0) / 100);
   bind("lvOpx", v => S.levers.opexHedge = num(v, 0) / 100);
   bind("lvProv", v => S.levers.estProv = v === "est");
@@ -2474,7 +2490,7 @@ function renderProj(C){
   document.getElementById("notes").innerHTML =
     `Built ${MODEL.built} from the Xero <b>Account Transactions</b> export (accrual, ${esc(MODEL.ttm_labels[0])}\u2013${esc(MODEL.ttm_labels[MODEL.ttm_labels.length - 1])} \u2014 expenses, COGS, payroll), the Xero GL Detail (revenue, department tags), and the budgeting-tool exports (allocations, roster, ramps). Horizon: ${esc(monthName(1))} – ${esc(monthName(NM))}. ${esc(ACT_RANGE)} 2026 ${ACT === 1 ? "is" : "are"} booked; ${esc(BRIDGE_LABEL)} ${BRIDGE_N === 1 ? "is a bridge month" : "are bridge months"} you can budget/staff; ${esc(GOAL[2])} is the goal-setting cycle (${esc(GOAL[3])}). Where the budgeting tool allocated a vendor to a different department than Xero, the budgeting tool wins (${MODEL.vend_master.filter(v=>v.contradiction).length} conflicts — see Trends). Per-seat licenses ride headcount on Staffing. Commissions are one measured rate on commissionable revenue (Sales projections tab); bonus programs are accrued on Projections. Edits are stored with the artifact and follow you between machines (the sync badge says when the shared copy has them); Copy config / Load move a snapshot by hand.
     <h4>The plan card</h4>Each cycle's revenue target drives the attainment pills here and on Sales projections. Break-even is the revenue at which net is zero: base payroll and opex less other income, over the month's contribution margin — what is left of a sales dollar after cost of sales <em>and</em> commission. Commission is in the margin because it is paid on every deal regardless of whether the company is profitable. Bonus programs are excluded, being conditional on hitting a target rather than a cost of each sale. "With programs" is the same months with the incentive programs charged to them.
-    <h4>Model levers</h4><b>COGS % fwd</b> is the margin dial — it sets cost of sales for every modeled month (and the pending Jul/Aug estimates) and moves break-even everywhere — as does the commission rate, since both sit in the contribution margin. Hedges pad modeled payroll and planned expenses; other income covers rent and interest. August has not closed, so its payroll is estimated at the closed months' rate per business day unless switched to as-booked.
+    <h4>Model levers</h4><b>COGS % fwd</b> is the margin dial — it sets cost of sales for every modeled month (and the pending Jul/Aug estimates) and moves break-even everywhere — as does the commission rate, since both sit in the contribution margin. The bridge month — between the last booked month and the end of the cycle now closing — can take the Q2 &amp; Q3 Push board's pacing instead of the sales plan: its live straight-line (banked revenue over business days elapsed, a big deal held out of the daily average and added back once) or its baseline pace per open month. Hedges pad modeled payroll and planned expenses; other income covers rent and interest. August has not closed, so its payroll is estimated at the closed months' rate per business day unless switched to as-booked.
     <h4>Incentive programs</h4>Money a period earns that the books have not seen — the operations bonus is not paid until the six months close, and the Sales Director bonus has never been calculated. A program pays either a set amount earned proportionally across a revenue range (nothing below the floor, all of it at the cap) or a percentage of every dollar above a threshold, uncapped. Its cost accrues <b>by pacing</b> — every month carries its revenue-weighted share of the projected payout, so as the running total crosses each percent of the goal that month picks up its slice — or evenly, or only once the threshold is actually crossed. Costs are loaded with employer payroll taxes; contractors are outside every program.
     <h4>P&amp;L conventions</h4>Shaded columns are Xero as booked; later columns come from the Sales projections, Staffing and Expenses tabs. Payroll is base pay in every column — Xero's commission lines are split out onto the commissions row so booked and modeled months read alike. <b>As booked</b> is what Xero shows; <b>+ programs</b> charges the incentive programs to the months that earn them.
     <h4>By period</h4>Calendar quarters (Q1 is Jan–Mar); the planning cycles that straddle the year are Q2+Q3 (Apr–Sep) and Q4+Q1 (Oct–Mar). ${(() => { const w = YEARS.filter(y => y[1] - y[0] === 12).map(y => y[2]), pt = YEARS.filter(y => y[1] - y[0] < 12);
@@ -2699,6 +2715,31 @@ function renderGrowth(C){
     `<td>${i === 4 ? g(x[2] / (CQ[0][2] || 1) - 1) : i === 5 ? g(x[2] / (CQ[1][2] || 1) - 1) : `<span class="dim">—</span>`}</td>`).join("")}</tr>`;
   document.getElementById("growthC").innerHTML = cq + "</tbody></table>";
 }
+/* ---------- the Q2 & Q3 Push board's pacing for the bridge month ----------
+   The month between the last booked one and the end of the cycle now closing is the one the board
+   is tracking day by day. Its projection can stand in for the sales plan there: LIVE is the board's
+   own straight-line — revenue banked so far over business days elapsed, a one-off big deal held out
+   of the daily average and added back once — PACE is its baseline per open month, PLAN is this
+   model's rep ramps. The board is a snapshot (board_pacing.json says when); the sales plan is live. */
+const BOARD = MODEL.board || null;
+function boardLiveProjected(){
+  const v = BOARD && BOARD.live; if (!v) return null;
+  const bd = Math.max(0.25, +v.mDaysTD || 0), bt = Math.max(bd, +v.mDaysTotal || 1);
+  const rev = (+v.mInstall || 0) + (+v.mMagento || 0) + (+v.mCheckMO || 0), big = Math.min(+v.mBigDeal || 0, rev);
+  return (rev - big) / bd * bt + big;
+}
+const boardMonthIdx = () => { const k = BOARD && BOARD.live && BOARD.live.month; if (!k) return -1;
+  const [y, m] = k.split("-").map(Number); return (y - Y0) * 12 + (m - 1) - M0; };
+const bridgeMonths = () => { const c = CYCLES.find(c => ACT >= c[0] && ACT < c[1]); return c ? [ACT, c[1]] : [ACT, ACT]; };
+function boardRev(i, scn){
+  const mode = (S.levers || {}).bridgeSrc || "live", [b0, b1] = bridgeMonths();
+  if (!BOARD || mode === "plan" || i < b0 || i >= b1) return null;
+  const pace = (+BOARD.pace_k || 0) * 1000, sp = (+BOARD.stretch_pace_k || 0) * 1000;
+  const live = mode === "live" && boardMonthIdx() === i ? boardLiveProjected() : null;
+  if (scn === "str") return live != null ? Math.max(live, sp) : sp;
+  return live != null ? live : pace;
+}
+
 /* ---------- revenue history, before the window ----------
    Ten years of Total Income from the Q2 & Q3 Push board (its board/history document), so a span in
    the window can be read against the same span a year earlier even when that falls before Jan 2026.
@@ -2908,6 +2949,7 @@ function renderGoals(C){
           <span class="a">COGS <b>${(L.cogsPct * 100).toFixed(1)}%</b> of sales</span>
           <span class="a">commissions <b>${(commPctOf() * 100).toFixed(2)}%</b> measured</span>
           <span class="a">other income <b>${fmtK(L.otherInc)}</b>/mo</span>
+          ${BOARD && (L.bridgeSrc || "live") !== "plan" && bridgeMonths()[1] > bridgeMonths()[0] ? `<span class="a" title="The bridge month takes the Q2 & Q3 Push board's ${(L.bridgeSrc || "live") === "live" ? "live pacing" : "baseline pace"} instead of the sales plan — Model levers, below.">${esc(MONTHS[bridgeMonths()[0]])} from the Push board <b>${fmtK(C.rev.mod[bridgeMonths()[0]])}</b></span>` : ""}
           <span class="a">labor hedge <b>${(L.laborHedge * 100).toFixed(1)}%</b></span>
           <span class="a">opex hedge <b>${(L.opexHedge * 100).toFixed(1)}%</b></span>
           <span class="a">${esc(monthName(NM))} run-rate <b>${fmtK(C.pay[NM - 1])}</b> payroll + <b>${fmtK(C.opex[NM - 1])}</b> opex</span>
