@@ -400,20 +400,24 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
 <section class="tab" id="tab-sum">
   <div class="card"><div class="eyebrow">The pitch</div><h2 id="sumTitle">Revenue growth, and the plan that earns it</h2>
     <p class="note" id="sumIdea"></p></div>
-  <div class="card"><div class="eyebrow">1 · Growth</div><h2 id="sumGrowthH"></h2>
+  <div class="card"><div class="eyebrow">1 · The plan</div><h2>What the plan commits to</h2>
+    <div class="sum-stats" id="sumPlan"></div>
+    <p class="footnote"><a class="how" href="#" data-go="proj" data-to="goalTargets">Dive deeper → Set targets &amp; tune the model</a> · <a class="how" href="#" data-go="proj" data-to="planChanges">the staffing changes</a> · <a class="how" href="#" data-go="proj" data-to="incList">the incentive programs</a></p></div>
+  <div class="card"><div class="eyebrow">2 · Growth</div><h2 id="sumGrowthH"></h2>
     <div class="sum-stats" id="sumGrowthStats"></div>
     <div class="sum-years" id="sumYears"></div>
     <p class="note" id="sumGrowthP" style="margin-top:10px"></p>
     <p class="footnote"><a class="how" href="#" data-go="proj" data-to="revGrowth">Dive deeper → Revenue growth, at every cadence</a></p></div>
-  <div class="card"><div class="eyebrow">2 · Targets</div><h2>The cycles against their targets</h2>
+  <div class="card"><div class="eyebrow">3 · Targets</div><h2>The cycles against their targets</h2>
     <div id="sumTargets"></div>
     <p class="footnote"><a class="how" href="#" data-go="proj" data-to="goalsBody">Dive deeper → The plan card, any cycle or year</a></p></div>
-  <div class="card"><div class="eyebrow">3 · Profit</div><h2 id="sumProfitH"></h2>
+  <div class="card"><div class="eyebrow">4 · Profit</div><h2 id="sumProfitH"></h2>
     <div class="sum-stats" id="sumProfitStats"></div>
     <div class="tablewrap" id="sumProfit"></div>
     <p class="note" id="sumProfitP" style="margin-top:10px"></p>
+    <div class="sum-box" id="sumRule"></div>
     <p class="footnote"><a class="how" href="#" data-go="proj" data-to="periodSum">Dive deeper → P&amp;L by period</a> · <a class="how" href="#" data-go="proj" data-to="plTable">by month</a></p></div>
-  <div class="card"><div class="eyebrow">4 · How</div><h2>The team we have, maturing</h2>
+  <div class="card"><div class="eyebrow">5 · How</div><h2>The team we have, maturing</h2>
     <div class="sum-stats" id="sumTeamStats"></div>
     <p class="note" id="sumTeamP"></p>
     <div class="sum-box"><div class="eyebrow">What more account executives would do</div>
@@ -421,9 +425,6 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
       <div class="levers" id="sumAeLevers" style="border:0;padding:0;margin:0 0 8px;background:transparent"></div>
       <div id="sumAeOut"></div></div>
     <p class="footnote"><a class="how" href="#" data-go="proj" data-to="planChanges">Dive deeper → What the staffing plan changes</a> · <a class="how" href="#" data-go="sales" data-to="salesTable">the reps and their ramps</a> · <a class="how" href="#" data-go="staff" data-to="staffTable">the roster</a></p></div>
-  <div class="card"><div class="eyebrow">5 · The plan</div><h2>What the plan commits to</h2>
-    <div id="sumPlan"></div>
-    <p class="footnote"><a class="how" href="#" data-go="proj" data-to="goalTargets">Dive deeper → Set targets &amp; tune the model</a> · <a class="how" href="#" data-go="proj" data-to="incList">the incentive programs</a></p></div>
 </section>
 <section class="tab on" id="tab-proj">
   <div class="proj-controls" id="projControls">
@@ -798,7 +799,8 @@ function defaultState(){
       otherInc: 11000, laborHedge: 0, opexHedge: 0, bdayWeight: true,
       // one entry per planning cycle, in cycle order; stretch blank means "same as modest"
       targets: CYCLES.map((c, i) => ({ mod: i === 1 ? 5700000 : 6350000, str: 0 })),
-      hdvRate: 523.5, hdvStepPct: 0, hdvStepM: 13, taxRate: MODEL.employer_tax_rate },
+      hdvRate: 523.5, hdvStepPct: 0, hdvStepM: 13, taxRate: MODEL.employer_tax_rate,
+      reinvest: { on: false, floorPct: 0.02 } },
     sales: MODEL.sales.map((s, i) => ({ id: "s" + i, name: s.name, role: s.role, ramp: s.ramp,
       start: s.start_cal, modest: /Stu/.test(s.name) ? 1 : 0.8, stretch: 1,
 
@@ -889,6 +891,9 @@ function migrateState(st){
     }
     if (L0.estProv == null) L0.estProv = true;
     if (L0.bridgeSrc == null) L0.bridgeSrc = "live";   // the bridge month follows the Push board's live pacing
+    // the hiring rule: shown always, applied to the numbers only when switched on
+    if (L0.reinvest == null || typeof L0.reinvest !== "object") L0.reinvest = { on: false, floorPct: 0.02 };
+    if (L0.reinvest.floorPct == null) L0.reinvest.floorPct = 0.02;
     if (L0.hdvRate == null) L0.hdvRate = 523.5;
     // the health rate can step up on renewal; default is no increase, primed at Jan '27
     if (L0.hdvStepPct == null) L0.hdvStepPct = 0;
@@ -1701,6 +1706,26 @@ function compute(){
     for (let i = 0; i < NM; i++) if (i < ACT) out.incentUnbooked[scn] += out.incent[scn][i];
   out.netAll = { mod: out.net.mod.map((v, i) => v - out.incent.mod[i]),
                  str: out.net.str.map((v, i) => v - out.incent.str[i]) };
+  /* ---------- the hiring rule ----------
+     The plan's numbers are what happens if nothing changes and the trends hold. In practice, where
+     a cycle's modest case clears a floor margin, the surplus is not banked — it becomes staffing
+     budget as the targets are beaten. The rule is measured for every cycle the plan controls
+     (surplus above the floor, on the modest case after programs) and, when switched on, charged
+     to that cycle's months as a line of its own. Cycles under the floor hold: nothing is
+     reinvested where modest is within a couple of points of break-even. Stretch carries the same
+     spend, so its upside is what is left after the hiring the modest case already funds. */
+  const RV = L.reinvest || {}, floor = +RV.floorPct || 0;
+  out.reinvest = Array(NM).fill(0); out.rule = [];
+  for (let ci = 0; ci < CYCLES.length; ci++){
+    const c = CYCLES[ci]; if (c[0] < ACT) continue;
+    let rev = 0, net = 0; for (let i = c[0]; i < c[1]; i++){ rev += out.rev.mod[i]; net += out.netAll.mod[i]; }
+    const surplus = Math.max(0, net - floor * rev);
+    out.rule.push({ ci, rev, net, margin: rev ? net / rev : 0, floor, surplus, perMonth: surplus / (c[1] - c[0]) });
+    if (RV.on && surplus > 0){
+      const per = surplus / (c[1] - c[0]);
+      for (let i = c[0]; i < c[1]; i++){ out.reinvest[i] = per; out.net.mod[i] -= per; out.net.str[i] -= per; out.netAll.mod[i] -= per; out.netAll.str[i] -= per; }
+    }
+  }
   return out;
 }
 
@@ -2394,6 +2419,11 @@ function renderProjLevers(){
         <option value="pace"${mode === "pace" || (mode === "live" && live == null) ? " selected" : ""}>Push board, baseline pace — ${fmtK(pace)} / ${fmtK(sp)} stretch</option>
         <option value="plan"${mode === "plan" ? " selected" : ""}>Sales plan — ${fmtK(planM)} / ${fmtK(planS)} stretch</option></select>
         <span class="unit">the board's cycle projection; stretch is never below it</span></div>`; })() : "") +
+    `<div class="lever" title="The plan's numbers are what happens if nothing changes and the trends hold. The hiring rule says what happens as modest targets are beaten: the surplus above a floor margin, after programs, becomes staffing budget for that cycle. Cycles under the floor hold. Switch it on to charge that budget to the P&L; off, it is shown but not spent."><label for="lvRvOn">Hiring rule</label><select id="lvRvOn" class="lever-in">
+      <option value="off"${(L.reinvest || {}).on ? "" : " selected"}>Show it — the numbers stay as if nothing changes</option>
+      <option value="on"${(L.reinvest || {}).on ? " selected" : ""}>Apply it — spend the surplus above the floor on staff</option></select>
+      <span class="unit">per cycle the plan controls; those under the floor hold</span></div>` +
+    leverInput("lvRvFloor", "Modest margin floor", (((L.reinvest || {}).floorPct || 0) * 100).toFixed(1), "% net at modest, after programs — the surplus above it is staffing budget") +
     leverInput("lvLab", "Labor hedge", (L.laborHedge * 100).toFixed(1), "% on modeled payroll") +
     leverInput("lvOpx", "Opex hedge", (L.opexHedge * 100).toFixed(1), "% on planned expenses") +
     `<div class="lever"><label for="lvProv">Jul COGS (not yet entered)</label><select id="lvProv" class="lever-in">
@@ -2411,6 +2441,8 @@ function renderProjLevers(){
   bind("lvCogs", v => S.levers.cogsPct = num(v, 43) / 100);
   bind("lvOth", v => S.levers.otherInc = num(v, 3000));
   bind("lvBridge", v => S.levers.bridgeSrc = v);
+  bind("lvRvOn", v => (S.levers.reinvest = S.levers.reinvest || { floorPct: 0.02 }).on = v === "on");
+  bind("lvRvFloor", v => (S.levers.reinvest = S.levers.reinvest || {}).floorPct = num(v, 2) / 100);
   bind("lvLab", v => S.levers.laborHedge = num(v, 0) / 100);
   bind("lvOpx", v => S.levers.opexHedge = num(v, 0) / 100);
   bind("lvProv", v => S.levers.estProv = v === "est");
@@ -2499,6 +2531,7 @@ function renderProj(C){
   const opexDepts = DEPTS.filter(d => C.dept[d].some(v => Math.abs(v) > 0.5));
   if (plOpexOpen) for (const d of opexDepts) push("Opex — " + dn(d), C.dept[d], "dim");
   push(`Total opex <button class="exp-toggle" data-k="plopex">${plOpexOpen ? "▾ hide" : "▸ show"} ${opexDepts.length} depts</button>`, C.opex, "tot");
+  if (C.reinvest.some(v => v > 0.5)) push(`<span title="The hiring rule, applied: the surplus above the modest margin floor, spent on staff across the cycle's months. Model levers switches it off.">Reinvested in staff — the hiring rule</span>`, C.reinvest, "dim");
   push("Break-even sales revenue", C.be, "dim");
   pushSec("BOTTOM LINE");
   const loaded = plBasis === "all" && C.incent && (C.incent.mod.some(v => v > 0.5) || C.incent.str.some(v => v > 0.5));
@@ -2698,6 +2731,7 @@ function renderPeriods(C){
   push("Payroll (base)", C.pay);
   for (const k of scns) push("Sales comp" + sfx(k), C.comp[k]);
   push("Total opex", C.opex);
+  if (C.reinvest.some(v => v > 0.5)) push("Reinvested in staff — the hiring rule", C.reinvest, "dim");
   for (const k of scns) push("NET as booked" + sfx(k), C.net[k], "tot");
   for (const k of scns) pushPct("net margin" + sfx(k), C.net[k], C.rev[k]);
   for (const b of ((C.incentBy || []).length ? C.incentBy : [{ name: "Accrued programs", mod: C.incent.mod, str: C.incent.str }]))
@@ -3064,6 +3098,16 @@ function renderSummary(C){
   document.getElementById("sumProfit").innerHTML = `<table class="data compact" style="width:auto;min-width:520px"><thead><tr><th>Period</th><th>Revenue</th><th>Net</th><th>Margin</th></tr></thead><tbody>` +
     pr.map(({ lbl, sub, f }) => `<tr><td><b>${esc(lbl)}</b> <span class="dim">${esc(sub)}</span></td><td>${fmtK(f.revM)} <span class="dim">/ ${fmtK(f.revS)}</span></td><td class="${f.netM < 0 ? "neg" : ""}">${fmtK(f.netM)} <span class="dim">/ ${fmtK(f.netS)}</span></td><td>${fmtPct1(f.revM ? f.netM / f.revM : 0)} <span class="dim">/ ${fmtPct1(f.revS ? f.netS / f.revS : 0)}</span></td></tr>`).join("") +
     `</tbody></table>`;
+  // the hiring rule, as a statement: these are the numbers if nothing changes; here is what changes as modest is beaten
+  const RV = L.reinvest || {}, headsAt = i => DEPTS.reduce((a, d) => a + (C.deptHC[d][i] || 0), 0);
+  const ruleRows = (C.rule || []).map(r => { const c = CYCLES[r.ci], hc = headsAt(c[0]), cph = hc ? C.pay[c[0]] / hc : 0;
+    return { tag: c[3], span: c[2], margin: r.margin, surplus: r.surplus, perMonth: r.perMonth, cph, heads: cph ? r.perMonth / cph : 0 }; });
+  const funded = ruleRows.filter(r => r.surplus > 0.5);
+  document.getElementById("sumRule").innerHTML = `<div class="eyebrow">The hiring rule</div>
+    <p class="note" style="margin:4px 0 10px"><b>These are the numbers if nothing changes and the trends hold.</b> Beyond the changes already in the plan, staffing is held flat. In practice it is not: where a cycle's modest case clears a <b>${(((RV.floorPct || 0)) * 100).toFixed(1)}%</b> margin after programs, the surplus above that floor becomes staffing budget as the targets are beaten — and a cycle under the floor holds, because that is a couple of points from break-even.${RV.on ? " <b>The rule is applied above</b>: the surplus is charged to each cycle as reinvestment, so modest holds the floor and stretch shows what is left." : " The numbers above bank that surplus; the rule says what it would fund."}</p>
+    <table class="data compact" style="width:auto;min-width:560px"><thead><tr><th>Cycle</th><th>Modest margin</th><th>Above the floor</th><th>Staffing budget</th><th>≈ heads</th></tr></thead><tbody>` +
+    ruleRows.map(r => `<tr><td><b>${esc(r.tag)}</b> <span class="dim">${esc(r.span)}</span></td><td>${fmtPct1(r.margin)}</td><td>${r.surplus > 0.5 ? fmtK(r.surplus) : `<span class="dim">holds — under the floor</span>`}</td><td>${r.surplus > 0.5 ? `<b>${fmtK(r.perMonth)}/mo</b>` : `<span class="dim">—</span>`}</td><td>${r.surplus > 0.5 ? `<b>${r.heads.toFixed(1)}</b> <span class="dim">at ${fmtK(r.cph)}/mo loaded</span>` : `<span class="dim">—</span>`}</td></tr>`).join("") +
+    `</tbody></table>${funded.length ? `<p class="note" style="margin:8px 0 0">Across the plan that is <b>${fmtK(funded.reduce((a, r) => a + r.surplus, 0))}</b> of staffing budget, roughly <b>${funded.reduce((a, r) => a + r.heads, 0).toFixed(0)} loaded heads</b> at the roster's average cost — hired as the numbers arrive, not before.</p>` : `<p class="note" style="margin:8px 0 0">No cycle in the plan clears the floor yet, so nothing is reinvested.</p>`}`;
   const b0 = GOAL[0], b1 = NM - 1, cost0 = C.pay[b0] + C.opex[b0], cost1 = C.pay[b1] + C.opex[b1];
   document.getElementById("sumProfitP").innerHTML = `Modest / stretch throughout. The bottom line moves because the cost base moves less than revenue: from the start of the goal cycle, fully-loaded payroll plus planned opex goes from <b>${fmtK(cost0)}/mo</b> in ${esc(monthName(b0 + 1))} to <b>${fmtK(cost1)}/mo</b> by ${esc(monthName(b1 + 1))} (${pct(cost1 / cost0 - 1)}), while monthly revenue goes ${pct(C.rev.mod[b1] / C.rev.mod[b0] - 1)} modest and ${pct(C.rev.str[b1] / C.rev.str[b0] - 1)} stretch over the same months. Bonus programs are charged on top where they pay.`;
   // ---- 4 how: the team we have
@@ -3090,11 +3134,14 @@ function renderSummary(C){
   const kinds = ["in", "backfill", "move", "out", "pay", "raise"].map(k => [k, chg.filter(c => c.kind === k).length]).filter(x => x[1]);
   const word = { in: "hire", backfill: "backfill", move: "role move", out: "ending", pay: "pay change", raise: "raise" };
   const progs = (C.incentBy || []).map(p => ({ name: p.name, m: sum(p.mod, GOAL), s: sum(p.str, GOAL) })).filter(p => p.m > 0.5 || p.s > 0.5);
-  document.getElementById("sumPlan").innerHTML = `<ul class="sum-list">
-    <li><b>Targets by cycle</b> — ${CYCLES.map((c, i) => `${esc(c[3])} <b>${fmtK(tgtOf(i, "mod"))}</b>${tgtOf(i, "str") > tgtOf(i, "mod") ? ` / ${fmtK(tgtOf(i, "str"))} stretch` : ` <span class="dim">(no stretch set)</span>`}`).join(" · ")}</li>
-    <li><b>Staffing</b> — ${chg.length ? `${chg.length} change${chg.length === 1 ? "" : "s"} after ${esc(ACT_MO)}: ${kinds.map(([k, n]) => `${n} ${word[k]}${n === 1 ? "" : "s"}`).join(", ")} · headcount ${heads > 0 ? "+" : heads < 0 ? "−" : ""}${Math.abs(heads) || "unchanged"} · ${Math.abs(cost) < 1 ? "no change to" : (cost > 0 ? "+" : "−") + fmt$(Math.abs(cost)) + "/mo on"} the monthly cost base by ${esc(monthName(NM))}` : "the roster is held flat"}</li>
-    <li><b>Incentive programs in ${esc(GOAL[3])}</b> — ${progs.length ? progs.map(p => `${esc(p.name)} ${fmtK(p.m)} / ${fmtK(p.s)}`).join(" · ") : "none pay out"} <span class="dim">(modest / stretch, charged on top of the net above)</span></li>
-    <li><b>Assumptions</b> — cost of sales ${(L.cogsPct * 100).toFixed(1)}% · commission ${(commPctOf() * 100).toFixed(2)}% measured · other income ${fmtK(L.otherInc)}/mo${L.hdvStepPct ? ` · health insurance +${(L.hdvStepPct * 100).toFixed(0)}% from ${esc(monthName(L.hdvStepM || 13))}` : ""}${BOARD && (L.bridgeSrc || "live") !== "plan" && bridgeMonths()[1] > bridgeMonths()[0] ? ` · ${esc(MONTHS[bridgeMonths()[0]])} from the Push board` : ""}</li></ul>`;
+  const goalT = cycTgt(GOAL_I), progM = progs.reduce((a, p) => a + p.m, 0), progS = progs.reduce((a, p) => a + p.s, 0);
+  document.getElementById("sumPlan").innerHTML =
+    tile(`Targets — ${esc(GOAL[3])}, the goal cycle`, `${fmtK(goalT.mod)}${goalT.str > goalT.mod ? ` <small>/ ${fmtK(goalT.str)}</small>` : ""}`,
+      `modest${goalT.str > goalT.mod ? " / stretch" : ""} · then ${CYCLES.filter((c, i) => i > GOAL_I).map((c, k) => { const i = GOAL_I + 1 + k; return `${esc(c[3])} ${fmtK(tgtOf(i, "mod"))}${tgtOf(i, "str") > tgtOf(i, "mod") ? ` / ${fmtK(tgtOf(i, "str"))}` : ""}`; }).join(" · ") || "no later cycle"}`) +
+    tile(`Staffing`, chg.length ? `${heads > 0 ? "+" : heads < 0 ? "−" : ""}${Math.abs(heads) || "0"} <small>heads</small>` : "held flat",
+      chg.length ? `${chg.length} change${chg.length === 1 ? "" : "s"} after ${esc(ACT_MO)}: ${kinds.map(([k, n]) => `${n} ${word[k]}${n === 1 ? "" : "s"}`).join(", ")} · ${Math.abs(cost) < 1 ? "no change to" : (cost > 0 ? "+" : "−") + fmtK(Math.abs(cost)) + "/mo on"} the cost base by ${esc(monthName(NM))}` : "no role opens or closes after " + esc(ACT_MO)) +
+    tile(`Incentive programs — ${esc(GOAL[3])}`, progs.length ? `${fmtK(progM)} <small>/ ${fmtK(progS)}</small>` : "none pay", progs.length ? `${esc(progs.map(p => p.name).join(" · "))} · modest / stretch, charged on top of net` : "no program pays out in the goal cycle") +
+    tile(`Assumptions`, `${(L.cogsPct * 100).toFixed(0)}% <small>cost of sales</small>`, `commission ${(commPctOf() * 100).toFixed(2)}% measured · other income ${fmtK(L.otherInc)}/mo${L.hdvStepPct ? ` · health +${(L.hdvStepPct * 100).toFixed(0)}% from ${esc(monthName(L.hdvStepM || 13))}` : ""}${BOARD && (L.bridgeSrc || "live") !== "plan" && bridgeMonths()[1] > bridgeMonths()[0] ? ` · ${esc(MONTHS[bridgeMonths()[0]])} from the Push board` : ""}`);
 }
 /* The sandbox: extra account executives on this model's own ramp curve and loaded cost — revenue,
    cost, commission and net over the plan, and the month their cumulative contribution turns
@@ -3154,7 +3201,7 @@ function cycleFacts(C, rng, tgt){
   return { tgt: tgt.mod, tgtM: tgt.mod, tgtS: +tgt.str || tgt.mod, booked, modeled: (rng[1] - rng[0]) - booked, n: rng[1] - rng[0],
     revM: sum(C.rev.mod), revS: sum(C.rev.str), be: sum(C.be),
     bkRev: sum(C.rev.mod.map((v, i) => i < ACT ? v : 0)),
-    netM: sum(C.net.mod), netS: sum(C.net.str), allM: sum(C.netAll.mod), allS: sum(C.netAll.str),
+    netM: sum(C.net.mod), netS: sum(C.net.str), allM: sum(C.netAll.mod), allS: sum(C.netAll.str), rvM: sum(C.reinvest || []),
     /* The period's blended contribution margin, revenue-weighted — a LABEL for the hover, not what
        ties the bridge. Per month, (revenue − break-even) × that month's margin sums exactly to net;
        one multiplication against this blend can miss by $10K over a period that mixes booked months
@@ -3216,6 +3263,7 @@ function renderGoals(C){
         ${(g.progs.length ? g.progs : [{ name: "Accrued programs", m: g.incM, s: g.incS }]).map(pr =>
           row(`<span title="${esc(pr.name)} accrued across this cycle, loaded with employer taxes — a cost the books do not show yet.">${esc(pr.name)}</span>`,
               -pr.m, -pr.s, "dim cost", v => Math.abs(v) < 0.5 ? "—" : fmt$(v))).join("")}
+        ${g.rvM > 0.5 ? row(`<span title="The hiring rule, applied: the surplus above the ${(((S.levers.reinvest || {}).floorPct || 0) * 100).toFixed(1)}% modest margin floor, spent on staff across this cycle.">Reinvested in staff — the hiring rule</span>`, -g.rvM, -g.rvM, "dim cost", v => Math.abs(v) < 0.5 ? "—" : fmt$(v)) : ""}
         ${row("NET with programs", g.allM, g.allS, "tot netrow")}
         ${row("net margin", g.revM ? g.allM / g.revM : 0, g.revS ? g.allS / g.revS : 0, "dim", fmtPct1)}
       </tbody></table>
