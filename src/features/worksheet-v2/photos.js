@@ -97,6 +97,14 @@
     history:   'field_2865',
     createdBy: 'field_3180'   // Knack system field — who created the photo record
   };
+  // Created By values that aren't a person: photos created through the REST
+  // API (Make bulk uploads) are stamped with the app's account-owner user.
+  // Show what the team reads it as. Matched case-insensitively.
+  var UPLOADER_LABELS = { 'account owner': 'via API' };
+  function uploaderLabel(name) {
+    var key = String(name || '').trim().toLowerCase();
+    return UPLOADER_LABELS.hasOwnProperty(key) ? UPLOADER_LABELS[key] : String(name || '').trim();
+  }
   (function injectQaSourceCss() {
     var STYLE_ID = 'scw-ws-v2-qa-source-css';
     if (document.getElementById(STYLE_ID)) return;
@@ -155,7 +163,7 @@
     v = qaSourceText(tr, F.by);        if (v !== null) rec.qaCompletedBy = v;
     v = qaSourceText(tr, F.date);      if (v !== null) rec.qaCompletedDate = v;
     v = qaSourceHtml(tr, F.history);   if (v !== null) rec.qaHistory = v;
-    v = qaSourceText(tr, F.createdBy); if (v) rec.uploadedBy = v;
+    v = qaSourceText(tr, F.createdBy); if (v) rec.uploadedBy = uploaderLabel(v);
   }
 
   /** Walk the source-view <tr> for this record and pull a list of

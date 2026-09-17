@@ -1040,7 +1040,8 @@
       hist.innerHTML = histHtml;
     } else {
       hist.className += ' scw-qa-popover__history-empty';
-      hist.textContent = 'No QA history yet.';
+      hist.textContent = (photo.completed === false)
+        ? 'No photo uploaded yet.' : 'No QA history yet.';
     }
     histSec.appendChild(hist);
     body.appendChild(histSec);
@@ -1447,14 +1448,16 @@
         hist.innerHTML = roHistHtml;
       } else {
         hist.className += ' scw-qa-popover__history-empty';
-        hist.textContent = 'No QA history yet.';
+        hist.textContent = (photo.completed === false)
+          ? 'No photo uploaded yet.' : 'No QA history yet.';
       }
       section('History', hist);
     }
 
     var note = document.createElement('div');
     note.className = 'scw-qa-popover__ro-note';
-    note.textContent = 'QA is completed by SCW — read-only here.';
+    // Read by subs AND sales — say who does it, not where it's editable.
+    note.textContent = 'QA is completed by the SCW Install team.';
     wrap.appendChild(note);
     return wrap;
   }
