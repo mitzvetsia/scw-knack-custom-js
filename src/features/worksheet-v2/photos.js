@@ -486,17 +486,33 @@
   var QA_CHIT_VIEWS = { view_4093: 1, view_4056: 1 };
 
   // Surfaces where the photo modal opens RESTRICTED: upload / view /
-  // replace only — no Photo Type or Required editors (subs can't
-  // reclassify; buildClassifyBar is deploy-save-view-only already and
-  // snapshot.lockClassify is the belt) and no QA sidebar (QA is an ops
-  // function; the QA columns aren't on these views anyway).
+  // replace / remove only — no Photo Type or Required editors (these
+  // audiences can't reclassify; buildClassifyBar is deploy-save-view-only
+  // already and snapshot.lockClassify is the belt). QA is an ops function,
+  // so the QA sidebar is never EDITABLE here — `qa` says what they see:
+  //   'readonly' — SCW's verdict, no controls (the sub needs to know
+  //                whether their photo passed; the QA columns are exposed
+  //                on view_4056). A Pass freezes replace/remove.
+  //   'none'     — no QA sidebar at all (sales: photo QA happens on the
+  //                install records at deploy time, the QA columns aren't on
+  //                view_3586, and sales never signs anything off).
+  // Filled cards on these surfaces open the SAME restricted modal (Replace /
+  // Remove) instead of the lightbox, so the audience can update photos
+  // without leaving the page — the "similar to the subcontractor actions"
+  // shape decided 2026-09-17 for sales.
   // ⚠️ ACTIVATION REQUIRES a DOC_photos save view ON that scene mapped in
   // photo-edit-panel.js SAVE_VIEWS — view-based PUTs are same-scene only,
   // so until the mapping exists the modal could open but never save.
-  // Unmapped ⇒ this returns false and callers keep the native fallback
-  // (empty card → Knack add-photo navigation; filled card → lightbox),
-  // exactly the pre-2026-09-02 behavior.
-  var QA_MODAL_RESTRICTED_VIEWS = { view_4056: 1 };
+  // Unmapped ⇒ openPhotoQaModal returns false and callers keep the native
+  // fallback (empty card → Knack add-photo navigation; filled card →
+  // lightbox), exactly the pre-2026-09-02 behavior.
+  var PHOTO_MODAL_POLICY = {
+    view_4056: { qa: 'readonly' },   // sub deployment dashboard (2026-09-02)
+    view_3586: { qa: 'none' }        // sales scope-of-work page (2026-09-17)
+  };
+  function modalPolicy(viewKey) {
+    return (viewKey && PHOTO_MODAL_POLICY[viewKey]) || null;
+  }
 
   function qaChitState(p) {
     if (!p.completed) return 'missing';
@@ -567,6 +583,13 @@
   // refreshStrips can reuse one scrape for both the sig check and the rebuild.
   function buildStripFromPhotos(photos, recordId, sourceViewKey) {
     var qaEnabled = !!QA_CHIT_VIEWS[sourceViewKey];
+    // Restricted surfaces (PHOTO_MODAL_POLICY) also route filled-card clicks
+    // into the modal — same data-* contract as the ops surface, minus the
+    // chit. A qa:'none' surface never serves QA, so its cards open as the
+    // plain viewer (needsqa=0) whatever the Required flag says.
+    var policy = modalPolicy(sourceViewKey);
+    var modalCards = qaEnabled || !!policy;
+    var noQa = !!(policy && policy.qa === 'none');
     var addHref = addPhotoHref(recordId);
     // When there are no photos AND no add route, there's nothing to
     // render. Otherwise keep the strip so the user always has a way
@@ -644,14 +667,15 @@
       // full-size url + identity so the delegated click handler can build
       // the viewer without re-scraping the source view.
       var reqState = p.required ? (p.completed ? 'done' : 'missing') : '';
-      var needsQa = photoNeedsQa(p);
-      // QA snapshot attrs on the card itself (install surface) so a click on
-      // the THUMBNAIL can open the same QA modal as the chit — without
-      // re-scraping the source view. needsQa drives whether the modal shows
-      // the QA sidebar (true) or opens as a plain big-photo viewer (false).
-      // (No p.imgUrl requirement — empty required photos need the QA
-      // snapshot too so the edit panel's QA button can open qa-popover.)
-      var qaCardAttrs = (qaEnabled && p.id)
+      var needsQa = noQa ? false : photoNeedsQa(p);
+      // QA snapshot attrs on the card itself (install + restricted surfaces)
+      // so a click on the THUMBNAIL can open the same modal as the chit —
+      // without re-scraping the source view. needsQa drives whether the
+      // modal shows the QA sidebar (true) or opens as a plain big-photo
+      // viewer (false). (No p.imgUrl requirement — empty required photos
+      // need the QA snapshot too so the edit panel's QA button can open
+      // qa-popover.)
+      var qaCardAttrs = (modalCards && p.id)
         ? ' data-scw-ws-v2-photo-needsqa="' + (needsQa ? '1' : '0') + '"' +
           ' data-qa-status="'  + escapeHtml(p.qaStatus || 'Pending') + '"' +
           ' data-qa-client="'  + escapeHtml(p.qaClient || 'N/A')     + '"' +
@@ -1178,15 +1202,18 @@
                 el.closest('.scw-ws-v2-card').querySelector('[data-scw-ws-v2-view]'));
     if (host) viewKey = host.getAttribute('data-scw-ws-v2-view') || '';
 
-    // Sub-facing surfaces open the modal RESTRICTED (upload/view only,
-    // QA sidebar read-only) — and only once a same-scene save view is
-    // mapped, since without one the upload pane's PUT can never succeed.
-    // Unmapped → native path.
-    var restricted = !!(viewKey && QA_MODAL_RESTRICTED_VIEWS[viewKey]);
+    // Non-ops surfaces (PHOTO_MODAL_POLICY) open the modal RESTRICTED
+    // (upload/view/replace/remove; QA sidebar read-only or absent) — and
+    // only once a same-scene save view is mapped, since without one the
+    // upload pane's PUT can never succeed. Unmapped → native path.
+    var policy = modalPolicy(viewKey);
+    var restricted = !!policy;
     if (restricted) {
       var svMap = window.SCW && SCW.photoEditPanel && SCW.photoEditPanel.SAVE_VIEWS;
       if (!svMap || !svMap[viewKey]) return false;
     }
+    // qa:'none' surfaces never see a QA sidebar, required photo or not.
+    if (policy && policy.qa === 'none') needsQa = false;
 
     var resolvedImg = imgUrl || el.getAttribute('data-qa-img') || '';
     var snapshot = {
@@ -1295,10 +1322,12 @@
         return;
       }
 
-      // Install surface (QA_CHIT_VIEWS marks cards with the needsqa attr):
-      // clicking a filled photo opens the QA modal — required photos with
-      // the QA sidebar, others as the big-photo viewer. Other surfaces
-      // (bid-review/sales/etc.) fall through to the lightbox unchanged.
+      // Install surface (QA_CHIT_VIEWS) and restricted surfaces
+      // (PHOTO_MODAL_POLICY) mark cards with the needsqa attr: clicking a
+      // filled photo opens the modal — required photos with the QA sidebar
+      // (editable on ops, read-only on the sub page, absent on sales),
+      // others as the big-photo viewer with Replace/Remove. Surfaces with
+      // no policy (bid-review etc.) fall through to the lightbox unchanged.
       if (card.hasAttribute('data-scw-ws-v2-photo-needsqa')) {
         var needsQa = card.getAttribute('data-scw-ws-v2-photo-needsqa') === '1';
         var opened = openPhotoQaModal(

@@ -962,3 +962,29 @@ too, since it catches the next regression where someone is actually looking.
   accepts ONE regex flag only (`g`). Fallback with zero escaping: a Text parser →
   Replace module (Pattern ` [a-zA-Z-]+="\\"`, New value empty, Global match yes)
   between the Get Record and the Parse JSON.
+
+### 25. Sales page photo modal (view_3586) — restricted, no QA; Builder activation pending
+- **Shipped 2026-09-17**: the worksheet-v2 photo modal now has a per-surface policy
+  (`worksheet-v2/photos.js` `PHOTO_MODAL_POLICY`): ops (view_4093) editable QA; sub
+  (view_4056) `qa:'readonly'`; **sales (view_3586) `qa:'none'`** — upload / view /
+  replace / remove only, never a QA sidebar, never Type/Required editors. Filled cards on
+  policy surfaces open the modal (Replace/Remove) instead of the lightbox. The save view
+  is mapped (`photo-edit-panel.js` SAVE_VIEWS: `view_3586 → view_3522`); before that the
+  upload pane fell back to the DEPLOY scene's grid (view_3937) and every PUT 403'd from
+  scene_1116. Unmapped/unready ⇒ the modal doesn't open and the card keeps its native
+  Knack href (empty slot → add-photo page; filled → lightbox).
+- **Builder (TO ACTIVATE uploads)**: on view_3522 "Additional Photos" (scene_1116) widen
+  the source filter from "Assign to SOW Item is blank" to every photo on this SOW, enable
+  inline editing on `field_771` (PIC) — plus `field_2447` (FLAG_complete) so "Remove
+  photo" clears the completed flag, `field_2865` optional (history). Give the grid a
+  large page size: the save PUT is keyed by record id so pagination never blocks it, but
+  hidden linked rows still count against the page, so a small page can leave the visible
+  section empty while unassigned photos sit on page 2.
+  `photo-grid-unlinked-filter.js` hides the rows whose `field_2342` is populated so the
+  section still shows only unassigned photos, fixes "Showing N of N", and stamps
+  `data-scw-acc-count` on the view (a new override `ktl-accordion.js` `computeCount`
+  honors ahead of the model count). Alternative with no client-side filtering: a separate
+  hidden all-photos DOC_photos grid (the view_3584 / view_4070 / view_4158 pattern) and
+  point the SAVE_VIEWS entry at it.
+- **Not changed**: the survey worksheet (view_3505) still opens the FULL editable QA modal
+  for the sub on empty required slots — same class of leak, decide separately.

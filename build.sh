@@ -167,6 +167,7 @@ cat \
   src/features/mdf-idf-cards.js \
   src/features/files-gallery.js \
   src/features/photo-grid-manager.js \
+  src/features/photo-grid-unlinked-filter.js \
   src/features/survey-request-header.js \
   src/features/build-sow-project-header.js \
   src/features/product-lifecycle.js \

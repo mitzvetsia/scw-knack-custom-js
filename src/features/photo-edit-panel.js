@@ -41,7 +41,20 @@
     // 404s from there). view_4158 is that grid (added 2026-09-03).
     view_4056: 'view_4158',  // sub deployment scene DOC_photos grid
     view_3962: 'view_3584',   // build-SOW scene DOC_photos grid
-    view_3505: 'view_4070'    // survey scene DOC_photos grid
+    view_3505: 'view_4070',   // survey scene DOC_photos grid
+    // view_3586 (sales scope-of-work page, scene_1116): the RESTRICTED
+    // modal with NO QA (photos.js PHOTO_MODAL_POLICY qa:'none'). Before this
+    // mapping the upload pane fell back to view_3937 — the DEPLOY scene's
+    // grid — and every PUT 403'd from the sales scene. view_3522 is the
+    // "Additional Photos" DOC_photos grid already on that scene.
+    // ⚠️ Builder (TO ACTIVATE): view_3522 must (a) include the photos being
+    // edited — widen its source filter from "not assigned to a SOW item" to
+    // every photo on this SOW (photo-grid-unlinked-filter.js keeps the
+    // visible section showing only the unassigned ones), and (b) have
+    // inline editing on field_771 (PIC). field_2447 (FLAG_complete) inline-
+    // editable too, or "Remove photo" clears the image but leaves the
+    // completed flag set; field_2865 (QA history) is optional (audit only).
+    view_3586: 'view_3522'    // sales scene DOC_photos grid ("Additional Photos")
   };
 
   var F = {

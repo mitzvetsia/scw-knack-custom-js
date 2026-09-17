@@ -457,6 +457,15 @@
     var viewEl = document.getElementById(viewKey);
     if (!viewEl) return null;
 
+    // Feature override — a module that hides rows client-side (e.g.
+    // photo-grid-unlinked-filter.js on the Additional Photos grid) stamps
+    // the VISIBLE count here so the pill doesn't advertise records the
+    // user can't see. Wins over the model count below.
+    var override = viewEl.getAttribute('data-scw-acc-count');
+    if (override !== null && override !== '' && !isNaN(parseInt(override, 10))) {
+      return parseInt(override, 10);
+    }
+
     // Knack model — preferred. Returns the true record count for the
     // view regardless of which accordion groups happen to be open. The
     // DOM walks below were undercounting on view_3610 / view_3586
