@@ -946,14 +946,19 @@ too, since it catches the next regression where someone is actually looking.
   forward: **the stored snapshot must never contain an HTML tag with attributes.**
 - **Make side (pending — needed for the 21 already-published snapshots)**: repair
   before parsing in each consumer, e.g. 11.04 module 6 JSON string:
-  `[{{replace(4.field_2671_raw; "/ [a-zA-Z-]+=\".\"/g"; emptystring)}}]`
+  `[{{replace(4.field_2671_raw; "/ [a-zA-Z-]+=[!-#].[!-#]/g"; emptystring)}}]`
   (13.06b module 73 uses `9.`, 11.06 module 84 uses `83.`). Drops the mangled
   attribute (`<ul class="\">` → `<ul>`); the attribute values are already lost and
-  nothing downstream needs them. Verified against all 21 broken snapshots.
+  nothing downstream needs them. Verified against all 21 broken snapshots (0 hits
+  in the 408 clean ones). Shipped for 11.04 as a textual blueprint patch
+  (2026-09-17); 13.06b / 11.06 still need the same edit.
   **Make formula gotchas** (learned the hard way): the regex MUST be a quoted
-  string — bare, the editor tokenizes `/ - + =` as arithmetic operators; a quote
-  inside the pattern is written `\"` (the only form proven to work in Make); the
-  `.` stands for the stray backslash so the formula doesn't depend on how Make
-  treats `\\`; Make's `replace()` accepts ONE regex flag only (`g`). Fallback with
-  zero escaping: a Text parser → Replace module (Pattern ` [a-zA-Z-]+="\\"`, New
-  value empty, Global match yes) between the Get Record and the Parse JSON.
+  string — bare, the editor tokenizes `/ - + =` as arithmetic operators. A literal
+  `"` cannot be put inside a Make string: typing `\"` in the editor CLOSES the
+  string and it auto-inserts `+` operators around the leftovers (seen in the
+  exported mapper). Hence the pattern spells the quote as the character range
+  `[!-#]` (`!`, `"`, `#`) and the stray backslash as `.` — no quotes, no
+  backslashes, nothing for the editor or IML to reinterpret. Make's `replace()`
+  accepts ONE regex flag only (`g`). Fallback with zero escaping: a Text parser →
+  Replace module (Pattern ` [a-zA-Z-]+="\\"`, New value empty, Global match yes)
+  between the Get Record and the Parse JSON.
