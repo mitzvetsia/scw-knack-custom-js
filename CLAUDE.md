@@ -975,20 +975,22 @@ too, since it catches the next regression where someone is actually looking.
   that the upload pane fell back to the DEPLOY scene's grid (view_3937) and every PUT
   403'd from scene_1116. Unmapped/unready ⇒ the modal doesn't open and the card keeps
   its native Knack href (empty slot → add-photo page; filled → lightbox).
-- **QA data self-activates**: the strip scrapes QA off the worksheet's SOURCE grid — the
-  DOC_photos fields shown THROUGH the photo connection as columns (`extractPhotoRecords`
-  reads `td[data-field-key=field_2859…]` → one `span[id=<photoId>]` per photo). Each
-  photo carries `qaColumns` (the QA status column exists on the row). On a `readonly`
-  surface without the columns nothing QA-ish renders (no chit, plain viewer) instead of
-  a misleading "Needs QA" everywhere; add the columns and the chit + sidebar appear.
-  **Builder (TO SHOW QA on sales)**: on view_3586 add the photo-connection columns
-  `field_2859` QA status, `field_2860` client signoff, `field_2861` QA notes,
-  `field_2862` completed by, `field_2863` completed date, `field_2865` QA history — the
-  same way `field_2445`/`2446`/`2447`/`114` already ride that grid. view_3586's native
-  table is `display:none` (v2 cutover, `worksheet-v2/styles.js`) so the columns never
-  show. Upload TIME needs no field (derived from the record id); the uploader's NAME is
-  only known for photos added through the modal (logged to `field_2865`) — bulk/Make
-  uploads have no created-by on DOC_photos.
+- **QA data self-activates — two sources**: (a) the worksheet's SOURCE grid, where the
+  DOC_photos fields ride THROUGH the photo connection as columns (`extractPhotoRecords`
+  reads `td[data-field-key=field_2859…]` → one `span[id=<photoId>]` per photo — the
+  ops/sub shape, view_4093/view_4056); or (b) when the source row has no QA status
+  column, a same-scene DOC_photos grid mapped in `photos.js` `QA_SOURCE_VIEWS`
+  (**sales: view_3586 → view_3522**, the "Additional Photos" grid) — one
+  `tr[id=<photoId>]` per photo, the PIC fields as plain cells, plus Knack's built-in
+  **Created By (`field_3180`)** as the UPLOADER for every photo (the modal's "Photo
+  uploaded" line names them; bulk/Make uploads read as the API user). Each photo carries
+  `qaColumns` (served); on a `readonly` surface an unserved photo gets no chit and opens
+  the plain viewer instead of a misleading "Needs QA". Source (b) serves a photo only
+  when its row is on the grid's current PAGE. The consumed columns are hidden on the
+  source grid by injected CSS (`scw-ws-v2-qa-source-css`); its render refreshes the
+  worksheet strips (QA state is in the strip signature), and a photo save refetches it.
+  **Builder (sales, done 2026-09-17)**: view_3522 carries `field_2859`/`2860`/`2861`/
+  `2862`/`2863`/`2865` + `field_3180`; set its page size to 1000 (it was 25).
 - **Builder (TO ACTIVATE uploads)**: on view_3522 "Additional Photos" (scene_1116) widen
   the source filter from "Assign to SOW Item is blank" to every photo on this SOW, enable
   inline editing on `field_771` (PIC) — plus `field_2447` (FLAG_complete) so "Remove

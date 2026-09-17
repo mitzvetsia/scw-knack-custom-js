@@ -73,6 +73,91 @@
     return i === -1 ? PHOTO_TYPE_PRIORITY.length : i;
   }
 
+  // ── Secondary QA source: a same-scene DOC_photos grid ──────────────
+  // A worksheet whose SOURCE grid doesn't expose the QA columns can read
+  // them off a DOC_photos grid on the same scene instead — one
+  // <tr id="<photoId>"> per photo, the PIC fields as plain cells. The sales
+  // page's "Additional Photos" grid (view_3522) is that grid: it already
+  // serves every photo on the SOW for the save path (photo-edit-panel.js
+  // SAVE_VIEWS), so the QA columns ride there instead of on the hidden
+  // line-item grid. It also yields the UPLOADER — Knack's built-in Created
+  // By (field_3180), which the line-item grid's connection columns can't
+  // carry — rendered into the modal's "Photo uploaded" history line.
+  // The consumed columns are hidden on that grid (CSS below), so the grid
+  // keeps showing what it always did. Per photo, QA counts as served only
+  // when its row is on the grid's current PAGE — give the grid a large page
+  // size, or photos past it open as the plain viewer.
+  var QA_SOURCE_VIEWS = { view_3586: 'view_3522' };   // worksheet → DOC_photos grid
+  var QA_SOURCE_FIELDS = {
+    status:    'field_2859',
+    client:    'field_2860',
+    notes:     'field_2861',
+    by:        'field_2862',
+    date:      'field_2863',
+    history:   'field_2865',
+    createdBy: 'field_3180'   // Knack system field — who created the photo record
+  };
+  (function injectQaSourceCss() {
+    var STYLE_ID = 'scw-ws-v2-qa-source-css';
+    if (document.getElementById(STYLE_ID)) return;
+    var sel = [];
+    for (var wk in QA_SOURCE_VIEWS) {
+      for (var f in QA_SOURCE_FIELDS) {
+        sel.push('#' + QA_SOURCE_VIEWS[wk] + ' th.' + QA_SOURCE_FIELDS[f]);
+        sel.push('#' + QA_SOURCE_VIEWS[wk] + ' td.' + QA_SOURCE_FIELDS[f]);
+      }
+    }
+    if (!sel.length) return;
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = sel.join(',\n') + ' { display: none !important; }';
+    (document.head || document.documentElement).appendChild(s);
+  })();
+
+  // Rows-by-photo-id index of a QA source grid, cached per <tbody> (a Knack
+  // re-render swaps the tbody, so the cache self-invalidates).
+  var _qaSourceCache = (typeof WeakMap === 'function') ? new WeakMap() : null;
+  function qaSourceIndex(viewKey) {
+    var view = viewKey ? document.getElementById(viewKey) : null;
+    var tbody = view && view.querySelector('table.kn-table tbody');
+    if (!tbody) return null;
+    var idx = _qaSourceCache && _qaSourceCache.get(tbody);
+    if (idx) return idx;
+    var table = tbody.parentNode;
+    var hasStatus = !!(table && table.querySelector('th.' + QA_SOURCE_FIELDS.status)) ||
+                    !!tbody.querySelector('td[data-field-key="' + QA_SOURCE_FIELDS.status + '"]');
+    var byId = Object.create(null);
+    var rows = tbody.querySelectorAll('tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      if (/^[a-f0-9]{24}$/i.test(rows[i].id)) byId[rows[i].id] = rows[i];
+    }
+    idx = { hasStatus: hasStatus, byId: byId };
+    if (_qaSourceCache) _qaSourceCache.set(tbody, idx);
+    return idx;
+  }
+  function qaSourceText(tr, fieldKey) {
+    var td = tr.querySelector('td[data-field-key="' + fieldKey + '"]');
+    if (!td) return null;                              // column not on the grid
+    return (td.textContent || '').replace(/ /g, ' ').trim();
+  }
+  function qaSourceHtml(tr, fieldKey) {
+    var td = tr.querySelector('td[data-field-key="' + fieldKey + '"]');
+    if (!td) return null;
+    var wrap = td.querySelector('span[class^="col-"]') || td;
+    var html = (wrap.innerHTML || '').trim();
+    return /^(?:&nbsp;|\s)*$/.test(html) ? '' : html;   // paragraph text keeps <br>
+  }
+  function applyQaFromSourceRow(rec, tr) {
+    var F = QA_SOURCE_FIELDS, v;
+    v = qaSourceText(tr, F.status);    if (v) { rec.qaStatus = v; rec.qaPresent = true; }
+    v = qaSourceText(tr, F.client);    if (v) rec.qaClient = v;
+    v = qaSourceText(tr, F.notes);     if (v !== null) rec.qaNotes = v;
+    v = qaSourceText(tr, F.by);        if (v !== null) rec.qaCompletedBy = v;
+    v = qaSourceText(tr, F.date);      if (v !== null) rec.qaCompletedDate = v;
+    v = qaSourceHtml(tr, F.history);   if (v !== null) rec.qaHistory = v;
+    v = qaSourceText(tr, F.createdBy); if (v) rec.uploadedBy = v;
+  }
+
   /** Walk the source-view <tr> for this record and pull a list of
    *  attached photo records: { id, imgUrl, type, required, completed, notes } */
   function extractPhotoRecords(sourceViewKey, recordId) {
@@ -97,7 +182,10 @@
           // says this photo has a non-blank status. Surfaces that show QA
           // read-only gate the chit + sidebar on this, so the feature
           // self-activates when the columns are added in Builder.
-          qaColumns: false
+          qaColumns: false,
+          // Who created the photo record (Knack Created By) — only a QA
+          // source grid carries it; shown on the "Photo uploaded" line.
+          uploadedBy: ''
         };
       }
       return map[rid];
@@ -211,7 +299,23 @@
     }
 
     var arr = [];
-    for (var k in map) { map[k].qaColumns = qaCols; arr.push(map[k]); }
+    for (var k in map) arr.push(map[k]);
+    if (qaCols) {
+      for (var q = 0; q < arr.length; q++) arr[q].qaColumns = true;
+    } else {
+      // No QA columns on the source row → secondary source (a same-scene
+      // DOC_photos grid, QA_SOURCE_VIEWS). Per photo: served only when its
+      // row is on that grid's current page, so a photo past the page size
+      // opens as the plain viewer instead of claiming "Needs QA".
+      var srcIdx = qaSourceIndex(QA_SOURCE_VIEWS[sourceViewKey]);
+      if (srcIdx && srcIdx.hasStatus) {
+        for (var s = 0; s < arr.length; s++) {
+          var srcRow = srcIdx.byId[arr[s].id];
+          arr[s].qaColumns = !!srcRow;
+          if (srcRow) applyQaFromSourceRow(arr[s], srcRow);
+        }
+      }
+    }
     // Sort: pinned types first (PHOTO_TYPE_PRIORITY), then required+incomplete,
     // then required, then by type, then id
     arr.sort(function (a, b) {
@@ -572,6 +676,7 @@
       ' data-qa-history="'  + escapeHtml(p.qaHistory || '')       + '"' +
       ' data-qa-by="'       + escapeHtml(p.qaCompletedBy || '')   + '"' +
       ' data-qa-date="'     + escapeHtml(p.qaCompletedDate || '') + '"' +
+      ' data-qa-uploaded-by="' + escapeHtml(p.uploadedBy || '')  + '"' +
       ' data-qa-type="'     + escapeHtml(p.type || 'Photo')       + '"' +
       ' data-qa-img="'      + escapeHtml(p.imgUrl || '')          + '"' +
       ' title="Photo QA — ' + escapeHtml(qaChitLabel(state)) + ' (click to review)">' +
@@ -588,7 +693,15 @@
   function stripSig(photos) {
     var s = photos.length + ':';
     for (var i = 0; i < photos.length; i++) {
-      s += photos[i].id + '#' + (photos[i].imgUrl ? '1' : '0') + '|';
+      var p = photos[i];
+      s += p.id + '#' + (p.imgUrl ? '1' : '0');
+      // QA state rides along so a QA-source grid render (or a verdict save)
+      // rebuilds the strip — the chit + modal snapshot live in the card attrs.
+      if (p.qaColumns) {
+        s += '~' + (p.qaStatus || '') + '/' + (p.qaClient || '') + '/' +
+             (p.qaHistory ? p.qaHistory.length : 0) + '/' + (p.uploadedBy || '');
+      }
+      s += '|';
     }
     return s;
   }
@@ -703,7 +816,8 @@
           ' data-qa-notes="'   + escapeHtml(p.qaNotes || '')         + '"' +
           ' data-qa-history="' + escapeHtml(p.qaHistory || '')       + '"' +
           ' data-qa-by="'      + escapeHtml(p.qaCompletedBy || '')   + '"' +
-          ' data-qa-date="'    + escapeHtml(p.qaCompletedDate || '') + '"'
+          ' data-qa-date="'    + escapeHtml(p.qaCompletedDate || '') + '"' +
+          ' data-qa-uploaded-by="' + escapeHtml(p.uploadedBy || '') + '"'
         : '';
       var dataAttrs =
         ' data-scw-ws-v2-photo-url="'  + escapeHtml(p.imgUrl || '') + '"' +
@@ -777,6 +891,7 @@
             ' data-qa-history="' + escapeHtml(p.qaHistory || '')       + '"' +
             ' data-qa-by="'      + escapeHtml(p.qaCompletedBy || '')   + '"' +
             ' data-qa-date="'    + escapeHtml(p.qaCompletedDate || '') + '"' +
+            ' data-qa-uploaded-by="' + escapeHtml(p.uploadedBy || '') + '"' +
             ' data-qa-type="'    + escapeHtml(p.type || 'Photo')       + '"' +
             ' data-qa-img="'     + escapeHtml(p.imgUrl || '')          + '"' +
             ' data-photo-required="true"' +
@@ -1250,6 +1365,7 @@
       history:       el.getAttribute('data-qa-history')  || '',
       completedBy:   el.getAttribute('data-qa-by')       || '',
       completedDate: el.getAttribute('data-qa-date')     || '',
+      uploadedBy:    el.getAttribute('data-qa-uploaded-by') || '',
       completed:     !!resolvedImg,
       needsQa:       !!needsQa,
       // Photo-add + classify support in the QA modal (qa-popover.js).
@@ -1293,6 +1409,17 @@
       if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
       if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
         setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 800);
+      }
+      // A QA source grid (QA_SOURCE_VIEWS) carries the QA + history this
+      // surface reads — refetch it too so the replace/remove events just
+      // logged to the history field show up (its render refreshes the strips).
+      var srcKey = QA_SOURCE_VIEWS[viewKey];
+      var srcView = srcKey && window.Knack && Knack.views && Knack.views[srcKey];
+      if (srcView && srcView.model && typeof srcView.model.fetch === 'function') {
+        setTimeout(function () {
+          try { srcView.model.fetch(); }
+          catch (e) { console.warn('[scw-ws-v2] QA source refetch failed for ' + srcKey, e); }
+        }, 800);
       }
     });
     return true;
@@ -1727,6 +1854,18 @@
         .off('knack-view-render.' + key + '.scwWsV2Photos')
         .on('knack-view-render.' + key + '.scwWsV2Photos', function () {
           scheduleStripRefresh(key);
+        });
+    });
+    // A QA source grid (QA_SOURCE_VIEWS) renders on its own schedule — after
+    // the worksheet on a cold load, and again after a photo save refetches
+    // it — so its render refreshes the worksheet's strips too (the QA state
+    // is part of the strip signature, so only changed strips rebuild).
+    Object.keys(QA_SOURCE_VIEWS).forEach(function (wsKey) {
+      var srcKey = QA_SOURCE_VIEWS[wsKey];
+      $(document)
+        .off('knack-view-render.' + srcKey + '.scwWsV2PhotosQaSrc')
+        .on('knack-view-render.' + srcKey + '.scwWsV2PhotosQaSrc', function () {
+          scheduleStripRefresh(wsKey);
         });
     });
   }

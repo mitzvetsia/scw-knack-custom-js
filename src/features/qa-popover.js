@@ -525,10 +525,16 @@
    *  attributed entries via logPhotoEvent. Returns '' when there's nothing
    *  to show. */
   function historyHtmlWithUpload(photo) {
-    var up = uploadedStampFromId(photo && photo.id);
+    // An image-less record (empty required slot) was created, not uploaded
+    // — only its logged events (if any) show.
+    var up = (photo && photo.completed !== false) ? uploadedStampFromId(photo.id) : '';
     var hist = (photo && photo.history && String(photo.history).trim())
       ? String(photo.history) : '';
-    var upLine = up ? escapeHtml(up + ' — Photo uploaded') : '';
+    // Uploader name when the host knows it (Knack's Created By via a QA
+    // source grid — worksheet-v2/photos.js); otherwise the bare stamp.
+    var who = (photo && photo.uploadedBy) ? String(photo.uploadedBy).trim() : '';
+    var upLine = up
+      ? escapeHtml(up + ' — ' + (who ? who + ' — ' : '') + 'Photo uploaded') : '';
     if (hist && upLine) return linkifyHistory(hist + '<br>' + upLine);
     return linkifyHistory(hist || upLine);
   }
@@ -2157,6 +2163,9 @@
       history:       snapshot.history || '',
       completedBy:   snapshot.completedBy   || '',
       completedDate: snapshot.completedDate || '',
+      // Who created the photo record (Knack Created By), when the host
+      // could read it — names the "Photo uploaded" history line.
+      uploadedBy:    snapshot.uploadedBy    || '',
       // If the host didn't tell us, assume the photo exists (it has a chit).
       completed:     (snapshot.completed != null) ? !!snapshot.completed : true,
       // Whether to render the QA sidebar. When false, the modal opens as a
