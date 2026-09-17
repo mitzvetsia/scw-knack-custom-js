@@ -756,7 +756,7 @@
        one sub-block. The product name indents slightly for a tree feel
        while every other column stays aligned with the parent. */
     '.scw-ws-v2-card--promoted-bracket {',
-    '  box-shadow: inset 3px 0 0 #94a3b8 !important;',
+    '  box-shadow: inset 3px 0 0 #64748b !important;',   /* same slate as the connector */
     '  background: #f8fafc !important;',
     '}',
     // CO worksheet: ADD vs REMOVE separation (field_2965). Adds read from the
@@ -1711,23 +1711,40 @@
     '  border-radius: 50% !important;',
     '  animation: scw-ws-v2-spin 700ms linear infinite !important;',
     '}',
-    /* Attached-to caption above the row for promoted accessories. Tight,
-       muted metadata line that hugs the row — "↳ <parent>" with the tick
-       carrying the connection and the parent name kept compact. */
+    /* Attached-to caption above the row for promoted accessories — the same
+       connector language as the bid compare grid's accessory rows: an elbow
+       drawn with borders drops from the card's top edge in the left gutter,
+       an arrowhead points into the ATTACHED TO pill, then the parent name.
+       Geometry: elbow at 30px (leg 2px, stub to 42px), arrowhead 40→47px,
+       text from 52px. The gutter is the row's 44px select-box lane; the
+       caption sits above the row so nothing collides. */
     '.scw-ws-v2-attached-caption {',
-    '  display: flex !important; align-items: baseline !important; gap: 5px !important;',
-    '  padding: 5px 14px 1px 44px !important;', /* match row padding-left */
-    '  font: 500 10.5px/1.2 system-ui, -apple-system, sans-serif !important;',
-    '  color: #64748b !important;',
+    '  position: relative !important;',
+    '  display: flex !important; align-items: center !important; gap: 7px !important;',
+    '  min-height: 24px !important;',
+    '  padding: 6px 14px 2px 52px !important;',
     '  white-space: nowrap !important;',
     '  overflow: hidden !important;',
     '}',
-    '.scw-ws-v2-attached-caption .scw-ws-v2-attached-tick {',
-    '  color: #94a3b8 !important; font-size: 12px !important; flex: 0 0 auto !important;',
+    '.scw-ws-v2-attached-caption::before {',
+    '  content: ""; position: absolute; left: 30px; top: -1px; width: 10px; height: 16px;',
+    '  border-left: 2px solid #64748b; border-bottom: 2px solid #64748b;',
+    '  border-bottom-left-radius: 7px;',
+    '}',
+    '.scw-ws-v2-attached-caption::after {',
+    '  content: ""; position: absolute; left: 40px; top: 10px; width: 0; height: 0;',
+    '  border-top: 5px solid transparent; border-bottom: 5px solid transparent;',
+    '  border-left: 7px solid #64748b;',
+    '}',
+    '.scw-ws-v2-attached-caption .scw-ws-v2-attached-tag {',
+    '  flex: 0 0 auto !important; padding: 2px 7px !important; border-radius: 4px !important;',
+    '  background: #64748b !important; color: #fff !important;',
+    '  font: 700 9.5px/1.3 system-ui, -apple-system, sans-serif !important;',
+    '  letter-spacing: .07em !important; text-transform: uppercase !important;',
     '}',
     '.scw-ws-v2-attached-caption .scw-ws-v2-attached-name {',
-    '  color: #475569 !important;',
-    '  font-weight: 600 !important;',
+    '  color: #334155 !important;',
+    '  font: 600 11.5px/1.3 system-ui, -apple-system, sans-serif !important;',
     '  overflow: hidden !important; text-overflow: ellipsis !important; min-width: 0 !important;',
     '}',
     /* Stepper baseline tweak — keep buttons on the chip\'s midline. */

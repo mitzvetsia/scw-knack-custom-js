@@ -1051,6 +1051,14 @@
     '  display: flex; align-items: center; gap: 7px; min-height: 18px;',
     '  margin-bottom: 7px; overflow: hidden;',
     '}',
+    /* Arrowhead where the elbow meets the pill — the stub ends at 46px, the
+       triangle runs 44→51px and points into the ATTACHED TO label. Absolute
+       against the (positioned) cell, so the caption's overflow can't clip it. */
+    '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__sow-attached::before {',
+    '  content: ""; position: absolute; left: 44px; top: 26px; width: 0; height: 0;',
+    '  border-top: 5px solid transparent; border-bottom: 5px solid transparent;',
+    '  border-left: 7px solid #64748b; z-index: 1;',
+    '}',
     '.scw-bid-review-v2__sow-attached-tag {',
     '  flex: 0 0 auto; padding: 2px 7px; border-radius: 4px;',
     '  background: #64748b; color: #fff;',

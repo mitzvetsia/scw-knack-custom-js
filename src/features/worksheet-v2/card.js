@@ -2707,18 +2707,19 @@
       det = sales ? buildDetail_sales(rec, sourceViewKey, cat) : buildDetail_default(rec, sourceViewKey);
     }
 
-    // Attached-to caption — small slate-gray line above the main row
-    // for any record that resolves a parent via field_2464. Replaces
-    // the previous amber label-slot chip (which truncated and read
-    // like an error). Lives inside the card so background tinting on
-    // open / selected propagates naturally.
+    // Attached-to caption — a line above the main row for any record that
+    // resolves a parent via field_2464: a drawn elbow + arrowhead (CSS on
+    // the caption, same language as the bid compare grid's accessory rows)
+    // pointing into an "ATTACHED TO" label pill and the parent name. Lives
+    // inside the card so background tinting on open / selected propagates
+    // naturally.
     var attachedCaption = '';
     var parentRefLabel  = readParentRef(rec);
     if (parentRefLabel) {
       attachedCaption =
         '<div class="scw-ws-v2-attached-caption" ' +
           'title="Attached to ' + escapeHtml(parentRefLabel) + '">' +
-          '<span class="scw-ws-v2-attached-tick" aria-hidden="true">↳</span>' +
+          '<span class="scw-ws-v2-attached-tag">Attached to</span>' +
           '<span class="scw-ws-v2-attached-name">' +
             escapeHtml(parentRefLabel) +
           '</span>' +
