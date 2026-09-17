@@ -946,7 +946,14 @@ too, since it catches the next regression where someone is actually looking.
   forward: **the stored snapshot must never contain an HTML tag with attributes.**
 - **Make side (pending — needed for the 21 already-published snapshots)**: repair
   before parsing in each consumer, e.g. 11.04 module 6 JSON string:
-  `[{{replace(4.field_2671_raw; / [a-zA-Z-]+=\x22\\\x22/g; "")}}]`
+  `[{{replace(4.field_2671_raw; "/ [a-zA-Z-]+=\".\"/g"; emptystring)}}]`
   (13.06b module 73 uses `9.`, 11.06 module 84 uses `83.`). Drops the mangled
   attribute (`<ul class="\">` → `<ul>`); the attribute values are already lost and
   nothing downstream needs them. Verified against all 21 broken snapshots.
+  **Make formula gotchas** (learned the hard way): the regex MUST be a quoted
+  string — bare, the editor tokenizes `/ - + =` as arithmetic operators; a quote
+  inside the pattern is written `\"` (the only form proven to work in Make); the
+  `.` stands for the stray backslash so the formula doesn't depend on how Make
+  treats `\\`; Make's `replace()` accepts ONE regex flag only (`g`). Fallback with
+  zero escaping: a Text parser → Replace module (Pattern ` [a-zA-Z-]+="\\"`, New
+  value empty, Global match yes) between the Get Record and the Parse JSON.
