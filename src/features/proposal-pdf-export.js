@@ -4105,24 +4105,31 @@
   //                                 falls back to bucket name)
   //   field_1963_raw                SKU
   //   field_1958_raw                product display name
-  //   field_2268_raw                equipment unit price AND per-row
-  //                                 amount, after per-line discounts
-  //                                 (locked-down field — keep these
-  //                                 in sync so qty × unitPrice = lineTotal
-  //                                 on the Xero invoice line)
-  //   field_2028_raw                labor value for this row (locked-down field)
+  //   field_1964_raw                row quantity (blank → 1; negative on
+  //                                 CO Remove lines)
+  //   field_2268_raw                net UNIT price after per-line discounts
+  //                                 (the invoice line's unit amount)
+  //   field_2269_raw                extended net = qty × net unit — the
+  //                                 same figure the proposal grid sums into
+  //                                 Equipment Total, so invoice equipment
+  //                                 lines reconcile to the proposal. Falls
+  //                                 back to qty × field_2268 when the
+  //                                 snapshot view doesn't project it.
+  //   field_2028_raw                labor value for this row (extended)
   //
   // Proposal-level discount: a separate "Proposal Discount" line appears
   // in payload.projectTotals (rendered as `scw-l1-line--disc`). Per
   // request, the proposal discount is subtracted from the LABOR lump,
   // not from equipment lines (which already reflect their per-line
   // discounts via field_2269).
-  // isChangeOrder: CO invoices carry SIGNED amounts — Remove lines are
-  // credits (negative qty × positive price under the CO qty-negation
-  // convention), so rows aggregate by their real qty (field_1964) and
-  // extended net (field_2269) instead of 1-per-row positive-only, and a
-  // net-negative labor lump survives instead of clamping to zero. The
-  // base-proposal path is byte-identical to before. A final xeroSafe pass
+  // Every row — base proposal or CO — aggregates by its REAL qty
+  // (field_1964) and extended net (field_2269). Until 2026-09-17 the base
+  // path counted each row once at the net unit price, which under-billed
+  // any SOW row with qty > 1 (Known Issue #21; INV-11795 audit). What
+  // still differs on a CO (isChangeOrder): Remove lines are credits
+  // (negative qty × positive price under the CO qty-negation convention),
+  // so non-zero rather than positive amounts are kept and a net-negative
+  // labor lump survives instead of clamping to zero. A final xeroSafe pass
   // then re-shapes CO lines for Xero (which rejects qty < 0): the sign
   // moves into the amounts — credit notes get positive lines, invoices
   // keep removes as positive-qty / negative-amount lines.
@@ -4169,18 +4176,16 @@
       // unitPrice while summing post-discount amounts produced
       // mismatched invoice math.
       var unitAmount = num(row.field_2268_raw);
-      var equipmentVal = unitAmount;
       var laborVal = num(row.field_2028_raw);
-      // CO rows: real qty (negative on Remove lines) + extended net amount.
-      // Base rows keep the historical 1-per-row unit-sum behavior.
-      var rowQty = 1;
-      var rowAmt = equipmentVal;
-      if (isChangeOrder) {
-        var coQty = num(row.field_1964_raw);
-        rowQty = coQty || 1;
-        var coExt = num(row.field_2269_raw);
-        rowAmt = coExt !== 0 ? coExt : round2(rowQty * unitAmount);
-      }
+      // Real row quantity: blank/unprojected → 1 (a line item is at least
+      // one unit); an explicit 0 stays 0 so the row bills nothing; negative
+      // on CO Remove lines. Row amount = extended net (field_2269 — what the
+      // proposal grid sums into Equipment Total), falling back to
+      // qty × net unit when the snapshot doesn't project field_2269.
+      var qtyRaw = row.field_1964_raw;
+      var rowQty = (qtyRaw === undefined || qtyRaw === null || qtyRaw === '') ? 1 : num(qtyRaw);
+      var extNet = num(row.field_2269_raw);
+      var rowAmt = extNet !== 0 ? extNet : round2(rowQty * unitAmount);
       // Bucket sort order from field_2218 if projected on the line-item
       // record; otherwise fall back to bucket name (so the output is at
       // least deterministic). Add field_2218 to view_3896 to get the
@@ -4196,8 +4201,13 @@
         bucketSort = isNaN(bs) ? Number.POSITIVE_INFINITY : bs;
       }
 
+      // Include gate: a CO keeps any non-zero amount (removes are negative);
+      // a base proposal bills positive amounts only (a $0 / qty-0 row is
+      // not an invoice line).
+      var billable = (sku || name) && (isChangeOrder ? rowAmt !== 0 : rowAmt > 0);
+
       if (/^license\b/i.test(bucket)) {
-        if ((sku || name) && (isChangeOrder ? rowAmt !== 0 : equipmentVal > 0)) {
+        if (billable) {
           // Aggregation key: bucket + sku + name + unitPrice. Same SKU
           // at different prices (e.g. tiered pricing) yields separate
           // invoice lines so qty × unitPrice always equals lineTotal.
@@ -4219,7 +4229,7 @@
         continue;
       }
 
-      if ((sku || name) && (isChangeOrder ? rowAmt !== 0 : equipmentVal > 0)) {
+      if (billable) {
         var equipmentKey = bucket + '␟' + sku + '␟' + name + '␟' + unitAmount;
         if (!equipmentBySku[equipmentKey]) {
           equipmentBySku[equipmentKey] = {

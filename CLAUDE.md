@@ -774,31 +774,29 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **The question**: rebuild the proposal grid from `Knack.views[x].model` data into our own DOM (like worksheet-v2 does) instead of layering ~3.5k lines of transforms on Knack's grid render (`proposal-grid.js` reorders, synthesized L2/L3/L4 headers, accessory relocation, subtotal/discount/total rows, label rewrites, TBD masking, CO tint/banner/manifest, 5 safety-net re-runs).
 - **Decision**: deferred. The pipeline encodes years of pricing-presentation behavior with no tests; a rebuild risks regressing the PUBLISHED PROPOSAL/PDF pipeline (`buildPublishPayload` scrapes this DOM). Revisit only if the layered approach becomes untenable (e.g. another render-race class of bugs like the CO row-moving failures). If attempted: worksheet-v2's model→DOM architecture is the sibling to copy; the publish payload contract is the compatibility bar.
 
-### 21. Collapse buildInvoiceItems' base/CO branch after one reconciliation check
+### 21. buildInvoiceItems base/CO branch — COLLAPSED 2026-09-17
 - **What forked (2026-07-17)**: `buildInvoiceItems` (proposal-pdf-export.js) grew an
-  `isChangeOrder` param. The CO path aggregates rows by REAL qty
-  (`field_1964_raw`, negative on Remove lines) × extended net (`field_2269_raw`),
-  keeps signed amounts, and lets the labor lump go negative; the base path was
-  kept byte-identical to its legacy behavior — 1-per-row counting, unit-price
-  sums (`field_2268_raw` once per row), positive-only gates.
-- **Why collapse it**: the CO math is simply the more correct math, and the base
-  path has a LATENT UNDERCOUNT for any line with qty > 1 (it adds the unit price
-  once per row regardless of qty). Two aggregation paths = two things to
-  maintain; the goal is one.
-- **The gate (do this before collapsing)**: publish one real BASE proposal and
-  reconcile `invoiceItems` — equipment lineTotals should sum to the proposal's
-  Equipment Total and labor to Installation Total (and spot-check a qty>1 line:
-  under the unified math its lineTotal becomes qty × unit, which the legacy path
-  under-reported). If a live Xero invoice was built off the under-reported
-  number, expect the unified output to be HIGHER on qty>1 proposals — that's the
-  fix, not a regression, but confirm finance expects it before flipping.
-- **The collapse**: make the CO math unconditional (qty from `field_1964_raw`
-  default 1, amount from `field_2269_raw` fallback qty×unit), keep the
-  positive-only include gate for base (`> 0`) OR drop it too if reconciliation
-  shows no legitimate negative rows on base proposals; delete the
-  `isChangeOrder` conditionals except the credit flags (`isCredit` stays CO-only
-  by definition). The jsdom suite (scratchpad test-co-publish.js §3d) has the
-  base-regression assertion to update.
+  `isChangeOrder` param. The CO path aggregated rows by REAL qty
+  (`field_1964_raw`) × extended net (`field_2269_raw`); the base path kept the
+  legacy 1-per-row unit-price sum (`field_2268_raw` once per row) — a LATENT
+  UNDERCOUNT for any line with qty > 1.
+- **Collapsed (2026-09-17, INV-11795 audit)**: every row now bills
+  `qty (field_1964_raw; blank → 1; explicit 0 → 0) × net unit (field_2268)` with
+  the amount taken from `field_2269_raw` (fallback qty × unit when the snapshot
+  doesn't project it). Base proposals keep a positive-only include gate
+  (`rowAmt > 0`); COs keep non-zero (removes are negative), the signed labor
+  lump, `isCredit` and the xeroSafe pass. Invoice equipment lines now reconcile
+  to the proposal's Equipment Total (Σ `field_2269`) except License rows, which
+  still route to `recurring` and are NOT invoiced by scenario 10.01.
+- **Expect invoices to be HIGHER than before on proposals with qty>1 rows** —
+  that's the fix, not a regression. Node suite: scratchpad
+  `test-invoice-items.js` (base qty math, edge cases, discounts, CO paths).
+- **Still open (Make side, scenario 10.01)**: the combined invoice (module 165)
+  hardcodes DueDate now+180 while the acceptance is NET30 (`field_948` = +30);
+  the two-invoice route's labor invoice (163) hardcodes a Contact id and +180;
+  TaxJar calls (110/149/168) hit `api.sandbox.taxjar.com`; module 234 updates
+  object_125 with the ACCEPTANCE id (`{{2.id}}`); `recurring` lines are never
+  invoiced anywhere.
 
 ### 17. Builder snippets ship the live Knack REST API key client-side — migrate to view-based reads (HIGH PRIORITY / SECURITY)
 - **The hole**: the out-of-bundle Builder snippets that populate `window.SCW.*` globals (`productBucketMap`, and the newer `deliverablesFields` for the questionnaires) authenticate with the app's **REST API key** in client-side JS. That key is delivered to and used in the **browser** — Knack Builder "JavaScript" is NOT server-side — so anyone who can load the page can read it (DevTools → Network → any `api.knack.com` request → `X-Knack-REST-API-Key` header, in plaintext). A Knack REST key is **not role-scoped**: it grants full read/write to every object, bypassing view/role permissions. This is bad on internal pages and **much worse on customer-facing pages** (e.g. the customer questionnaire `view_4031`), where customers could extract it and read/write all app data.
