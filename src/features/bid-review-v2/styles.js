@@ -1003,22 +1003,64 @@
     '  background: #f4f8fc; border-right: 2px solid #cbd5e1;',
     '  position: relative;',
     '}',
-    /* Accessory child rows — indented + slate grouping rail so they read as
-       belonging to the parent item directly above them. */
+    /* ── Parent → accessory connector ─────────────────────────────
+       A parent and the accessory rows woven beneath it read as ONE block:
+       a slate spine drops from under the parent's product name (the
+       parent's --has-acc ::after), runs down the accessory rows, and each
+       accessory hangs off it with an elbow (its ::before, an L drawn with
+       borders). --acc-mid rows (a sibling follows) extend the spine through
+       to their bottom edge with ::after; the last one ends on the elbow.
+       The rule between parent and accessory softens to a dashed line so
+       the spine visibly crosses it. Column geometry: the spine sits at
+       30px, the elbow reaches 14px right, content starts at 52px. */
+    '.scw-bid-review-v2__row--has-acc .scw-bid-review-v2__sow-cell {',
+    '  border-bottom-style: dashed !important; border-bottom-color: #cbd5e1 !important;',
+    '}',
+    '.scw-bid-review-v2__row--has-acc .scw-bid-review-v2__sow-cell::after {',
+    '  content: ""; position: absolute; left: 30px; bottom: -1px; width: 2px; height: 21px;',
+    '  background: #64748b; z-index: 1;',
+    '}',
     '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__sow-cell {',
-    '  padding-left: 34px !important;',
-    '  box-shadow: inset 3px 0 0 #94a3b8;',
+    '  padding-left: 52px !important;',
+    '  background: #eef3f9;',
+    '}',
+    '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__sow-cell::before {',
+    '  content: ""; position: absolute; left: 30px; top: -1px; width: 14px; height: 31px;',
+    '  border-left: 2px solid #64748b; border-bottom: 2px solid #64748b;',
+    '  border-bottom-left-radius: 7px; z-index: 1;',
+    '}',
+    '.scw-bid-review-v2__row--acc-mid .scw-bid-review-v2__sow-cell::before {',
+    '  border-bottom-left-radius: 0;',
+    '}',
+    '.scw-bid-review-v2__row--acc-mid .scw-bid-review-v2__sow-cell {',
+    '  border-bottom-style: dashed !important; border-bottom-color: #cbd5e1 !important;',
+    '}',
+    '.scw-bid-review-v2__row--acc-mid .scw-bid-review-v2__sow-cell::after {',
+    '  content: ""; position: absolute; left: 30px; top: 30px; bottom: -1px; width: 2px;',
+    '  background: #64748b; z-index: 1;',
     '}',
     '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__row-label-cell {',
     '  background: #eef3f9;',
     '}',
-    /* "attached to <parent>" line at the top of an accessory SOW cell. */
-    '.scw-bid-review-v2__sow-attached {',
-    '  font: 500 11px/1.3 system-ui, -apple-system, sans-serif;',
-    '  color: #64748b; margin-bottom: 6px;',
-    '  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+    '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__sow-product {',
+    '  font-size: 12.5px;',
     '}',
-    '.scw-bid-review-v2__sow-attached-name { color: #475569; font-weight: 600; }',
+    /* "ATTACHED TO <parent>" caption at the top of an accessory SOW cell —
+       label pill in the same voice as the cell's other field labels. */
+    '.scw-bid-review-v2__sow-attached {',
+    '  display: flex; align-items: center; gap: 7px; min-height: 18px;',
+    '  margin-bottom: 7px; overflow: hidden;',
+    '}',
+    '.scw-bid-review-v2__sow-attached-tag {',
+    '  flex: 0 0 auto; padding: 2px 7px; border-radius: 4px;',
+    '  background: #64748b; color: #fff;',
+    '  font: 700 9.5px/1.3 system-ui, -apple-system, sans-serif;',
+    '  letter-spacing: .07em; text-transform: uppercase; white-space: nowrap;',
+    '}',
+    '.scw-bid-review-v2__sow-attached-name {',
+    '  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+    '  font: 600 11.5px/1.3 system-ui, -apple-system, sans-serif; color: #334155;',
+    '}',
     /* ── Photos column (v1 parity) ─────────────────────────── */
     '.scw-bid-review-v2__photos-cell {',
     '  padding: 8px 6px !important; vertical-align: top;',

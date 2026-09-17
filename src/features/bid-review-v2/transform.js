@@ -446,7 +446,9 @@
       if (p) {
         var pk = keyOf(p);
         (childrenByKey[pk] = childrenByKey[pk] || []).push(r);
-        r.isAccessory = true;   // card.js indents these
+        r.isAccessory = true;   // card.js draws the parent → accessory connector
+        r.parentKey   = pk;     // the parent row's key (sowItem || id) — lets
+                                // card.js tell consecutive siblings apart
         r.parentLabel = (p.sowItemData && p.sowItemData.productName) ||
                         p.productName || p.displayLabel || '';
       } else {

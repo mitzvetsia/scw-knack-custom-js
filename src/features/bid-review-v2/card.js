@@ -615,11 +615,15 @@
       ? ns.warnings.chipsHtml(row.sowItem, sowItemData.scwNotes) : '';
     // Modifier replaces the old :has(.__warn-chips) CSS lookup.
     if (warnHtml) td.classList.add('scw-bid-review-v2__sow-cell--has-warns');
-    // Accessory rows get an "attached to <parent>" line so the relationship
-    // is explicit even when scrolled away from the parent.
+    // Accessory rows get an "ATTACHED TO <parent>" caption — a label pill in
+    // the same voice as the cell's other field labels — so the relationship
+    // is explicit even when scrolled away from the parent. The drawn
+    // connector (spine + elbow, styles.js --accessory / --acc-mid /
+    // --has-acc) does the at-a-glance work; the caption names the parent.
     var attachHtml = (row && row.isAccessory && row.parentLabel)
       ? '<div class="scw-bid-review-v2__sow-attached" title="Attached to ' +
-          escapeHtml(row.parentLabel) + '">↳ attached to ' +
+          escapeHtml(row.parentLabel) + '">' +
+          '<span class="scw-bid-review-v2__sow-attached-tag">Attached to</span>' +
           '<span class="scw-bid-review-v2__sow-attached-name">' +
             escapeHtml(row.parentLabel) + '</span></div>'
       : '';
@@ -1745,6 +1749,31 @@
     return tr;
   }
 
+  // Parent → accessory chain classes. Accessories are woven directly under
+  // their parent (transform.js weaveAccessories), so the connector is drawn
+  // from neighbours: the parent gets --has-acc (its spine starts under its
+  // product name), each accessory --accessory (elbow off the spine), and
+  // every accessory that has another sibling right below it --acc-mid (the
+  // spine continues through it). Computed on the FINAL row list, after the
+  // child-only filter, so a hidden sibling never leaves a dangling spine.
+  function rowKey(row) { return (row && (row.sowItem || row.id)) || ''; }
+  function stampAccessoryChains(trs, rows) {
+    for (var i = 0; i < trs.length; i++) {
+      var row = rows[i], next = rows[i + 1], tr = trs[i];
+      if (!row || !tr) continue;
+      if (row.isAccessory) {
+        if (next && next.isAccessory && next.parentKey && next.parentKey === row.parentKey) {
+          tr.classList.add('scw-bid-review-v2__row--acc-mid');
+        } else {
+          tr.classList.add('scw-bid-review-v2__row--acc-last');
+        }
+      } else if (next && next.isAccessory && next.parentKey && next.parentKey === rowKey(row)) {
+        tr.classList.add('scw-bid-review-v2__row--has-acc');
+      }
+    }
+    return trs;
+  }
+
   function appendGroup(tbody, group, packages, colspan, sowId) {
     // Default-collapsed groups (e.g. "Removed items") render their rows
     // pre-hidden; the L1 collapse toggle in init.js flips them back.
@@ -1767,9 +1796,12 @@
       if (phRow) addRow(phRow);
     }
     // Direct rows (when there are no subgroups).
+    var directTrs = [];
     for (var i = 0; i < group.rows.length; i++) {
-      addRow(buildBidRow(group.rows[i], packages, sowId));
+      directTrs.push(buildBidRow(group.rows[i], packages, sowId));
     }
+    stampAccessoryChains(directTrs, group.rows);
+    for (var d = 0; d < directTrs.length; d++) addRow(directTrs[d]);
     // Subgroups (e.g. the per-location "Removed" subgroup). The header
     // follows the L1's hide state; its rows are additionally hidden when
     // the subgroup is default-collapsed, and tagged --in-subgroup so the
@@ -1779,8 +1811,13 @@
       var sub = subs[s];
       addRow(buildL2HeaderRow(sub, colspan));
       var subHidden = hide || !!sub.defaultCollapsed;
+      var subTrs = [];
       for (var sr = 0; sr < sub.rows.length; sr++) {
-        var subRow = buildBidRow(sub.rows[sr], packages, sowId);
+        subTrs.push(buildBidRow(sub.rows[sr], packages, sowId));
+      }
+      stampAccessoryChains(subTrs, sub.rows);
+      for (var st = 0; st < subTrs.length; st++) {
+        var subRow = subTrs[st];
         subRow.classList.add('scw-bid-review-v2__row--in-subgroup');
         if (subHidden) subRow.classList.add('scw-bid-review-v2__row--hidden');
         tbody.appendChild(subRow);
@@ -2186,8 +2223,10 @@
     buildSowSection: buildSowSection,
     buildBidRow:     buildBidRow,
     buildBidCell:    buildBidCell,
-    // Exposed for tests — the settings-gear spec a row's SOW cell renders.
-    rsbGearHtml:     rsbGearHtml
+    // Exposed for tests — the settings-gear spec a row's SOW cell renders,
+    // and the parent → accessory connector classes.
+    rsbGearHtml:     rsbGearHtml,
+    stampAccessoryChains: stampAccessoryChains
   };
 })();
 /*** END BID REVIEW V2 — CARD *************************************************/
