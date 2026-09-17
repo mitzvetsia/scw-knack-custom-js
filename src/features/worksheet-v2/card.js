@@ -1603,6 +1603,16 @@
               ((ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.bracket) || '') +
             '</span>'
           : '';
+        // Sub-bid state: an accessory whose Require Sub Bid is Yes is bid on
+        // its own line (it also renders as its own row below) — tag the chip
+        // so it reads differently from a folded, unbid one at a glance.
+        var accSubBid = accRec
+          ? readBool(accRec, fieldsFor(viewKey).requireSubBid || 'field_2479') === 'Yes'
+          : false;
+        var subBidMark = accSubBid
+          ? '<span class="scw-ws-v2-mh-subbid" ' +
+              'title="Sub bid required — this accessory is bid on its own line">Sub bid</span>'
+          : '';
         var canMulti = accRec ? !isQtyLocked(accRec) : false;
         var curQty  = accRec ? (parseFloat(readNum(accRec, 'field_1964')) || 1) : 1;
         // At qty 1 the minus is no longer a dead stop: it becomes "remove this
@@ -1658,6 +1668,7 @@
           ? '<span class="scw-ws-v2-mh-spin" title="Deleting…"></span>'
           : (stepperHtml + unlinkX + delX);
         var wrapCls = 'scw-ws-v2-mh-chip-wrap' +
+          (accSubBid ? ' scw-ws-v2-mh-chip-wrap--subbid' : '') +
           (accWrong ? ' scw-ws-v2-mh-chip-wrap--warn' : '') +
           (pendingDel ? ' scw-ws-v2-mh-chip-wrap--deleting' : '');
         var wrapTitle = pendingDel ? ' title="Deleting…"' : '';
@@ -1666,14 +1677,14 @@
             '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
               ' title="Edit ' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
-            '</a>' + warnMark + tail +
+            '</a>' + subBidMark + warnMark + tail +
           '</span>';
         } else {
           chipsHtml += '<span class="' + wrapCls + '"' + wrapTitle + '>' +
             '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert"' +
               ' title="' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
-            '</span>' + warnMark + tail +
+            '</span>' + subBidMark + warnMark + tail +
           '</span>';
         }
       }
@@ -2770,17 +2781,6 @@
       sel.setAttribute('data-scw-ws-v2-select', rec.id);
       sel.setAttribute('aria-label', 'Select row');
       rowEl.insertBefore(sel, rowEl.firstChild);
-    }
-    // "Item settings" gear (require-sub-bid-settings.js) at the row's right
-    // edge — the mirror of the select box on the left. Only on views that
-    // opt in (config requireSubBidSettings: the ops build page), never on
-    // read-only panels (rowEl is null there) or assumption rows (no bid).
-    if (rowEl && cat !== 'assumptions' && _coVc.requireSubBidSettings &&
-        window.SCW.requireSubBid && typeof window.SCW.requireSubBid.gearHtml === 'function') {
-      card.classList.add('scw-ws-v2-card--rsb');
-      rowEl.insertAdjacentHTML('beforeend', window.SCW.requireSubBid.gearHtml({
-        surface: 'worksheet', viewKey: sourceViewKey, recordId: rec.id
-      }));
     }
     // Photo strip — appended AFTER the detail panel. Hidden by
     // default; only revealed when the card is expanded (matches the

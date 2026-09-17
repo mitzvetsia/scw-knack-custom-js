@@ -1607,6 +1607,20 @@
     '  max-width: 320px !important;',
     '  overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;',
     '}',
+    /* Sub-bid accessory — Require Sub Bid = Yes: bid on its own line (it also
+       renders as its own row). White chip with the navy rule + a small
+       SUB BID tag, so it reads apart from a folded blue one. */
+    '.scw-ws-v2-mh-chip-wrap--subbid {',
+    '  background: #fff !important;',
+    '  border-color: #295f91 !important;',
+    '}',
+    '.scw-ws-v2-mh-subbid {',
+    '  display: inline-flex !important; align-items: center !important; flex: 0 0 auto !important;',
+    '  margin-left: 2px !important; padding: 1px 5px !important; border-radius: 3px !important;',
+    '  background: #295f91 !important; color: #fff !important;',
+    '  font: 700 8.5px/1.3 system-ui, sans-serif !important;',
+    '  letter-spacing: .06em !important; text-transform: uppercase !important; white-space: nowrap !important;',
+    '}',
     /* Wrong-bracket accessory — amber chip + inline "wrong bracket" marker. */
     '.scw-ws-v2-mh-chip-wrap--warn {',
     '  background: #fffbeb !important;',
