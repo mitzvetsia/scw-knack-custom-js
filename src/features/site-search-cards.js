@@ -8,8 +8,12 @@
  *   COMPANY (client) — stated ONCE even when many sites share it
  *     └─ SITE — nickname (→ Site Dashboard), address
  *          ├─ status group: e.g. "Project Greenlit (1)"
- *          │    └─ one-column PROJECT cards — name (→ project dashboard),
- *          │      type, HubSpot Deal + ClickUp Task links
+ *          │    └─ one-column PROJECT cards — name (→ the project's STAGE
+ *          │      page by status: New Lead → build-sow, Site Visit
+ *          │      Scheduled → review-bids, Greenlit / Completed → deploy;
+ *          │      anything else → project dashboard — see
+ *          │      CONFIG.statusRoutes), type, HubSpot Deal + ClickUp Task
+ *          │      links
  *          ├─ … more status groups (ordered: in-flight → pipeline → done)
  *          └─ "Service Calls (n)" — stripped-down cards, one per WO
  *             (→ closeout page)
@@ -59,7 +63,20 @@
     //   { field: 'field_XXXX', label: 'Status' },
     scMeta: [],
     hubspotDealUrl: 'https://app.hubspot.com/contacts/5417380/record/0-3/',
-    clickupUrl:     'https://app.clickup.com/t/8530675/'
+    clickupUrl:     'https://app.clickup.com/t/8530675/',
+
+    // Project-name link routing by status (2026-09-17): the card link deep-
+    // links to the stage page the project is actually at, nested under the
+    // project dashboard with the PROJECT id repeated in both slots:
+    //   #team-calendar/project-dashboard/<projectId>/<slug>/<projectId>/
+    // First matching rule wins; a status matching nothing (No status, Site
+    // Survey Requested, dead states, …) keeps Knack's native dashboard link.
+    projectDashboardHash: '#team-calendar/project-dashboard/',
+    statusRoutes: [
+      { match: /new lead/i,         slug: 'build-sow',   label: 'Build SOW' },
+      { match: /site visit/i,       slug: 'review-bids', label: 'Review Bids' },
+      { match: /greenlit|complet/i, slug: 'deploy',      label: 'Deploy' }
+    ]
   };
 
   // Session memory for group toggles — keyed siteId|group label, survives
@@ -493,14 +510,40 @@
     return out + rows;
   }
 
+  // ── Project link routing ──────────────────────────────────────────────
+  function statusRoute(status) {
+    var t = String(status || '');
+    for (var i = 0; i < CONFIG.statusRoutes.length; i++) {
+      if (CONFIG.statusRoutes[i].match.test(t)) return CONFIG.statusRoutes[i];
+    }
+    return null;
+  }
+  // Knack's native href is "#team-calendar/project-dashboard/<id>/" (with or
+  // without the trailing slash). The stage page nests beneath it with the
+  // project id repeated. If the native href doesn't end in the project id
+  // (unexpected shape), the hash is rebuilt from the configured base.
+  function projectHref(p) {
+    var route = statusRoute(p.status);
+    if (!route || !p.id) return p.href || '';
+    var base = String(p.href || '').replace(/\/+$/, '');
+    if (!base || base.slice(-p.id.length) !== p.id) {
+      base = CONFIG.projectDashboardHash + p.id;
+    }
+    return base + '/' + route.slug + '/' + p.id + '/';
+  }
+
   function projectCardHtml(p) {
     var dealDigits = String(p.dealId || '').replace(/\D+/g, '');
+    var route = p.id ? statusRoute(p.status) : null;
+    var href  = projectHref(p);
     return '<div class="scw-ssc-card">' +
       '<div class="scw-ssc-card-main">' +
         '<div class="scw-ssc-name">' +
-          (p.href
-            ? '<a href="' + esc(p.href) + '" title="Open the project dashboard">' +
-              esc(p.label) + '</a>'
+          (href
+            ? '<a href="' + esc(href) + '" title="' +
+              (route ? 'Open ' + esc(route.label) : 'Open the project dashboard') +
+              '"' + (route ? ' data-scw-ssc-route="' + esc(route.slug) + '"' : '') +
+              '>' + esc(p.label) + '</a>'
             : esc(p.label)) +
         '</div>' +
         (p.type ? '<div class="scw-ssc-type">' + esc(p.type) + '</div>' : '') +
