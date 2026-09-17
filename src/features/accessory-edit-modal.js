@@ -46,7 +46,8 @@
     laborDesc: 'field_2020',
     parent:    'field_2464',
     sow:       'field_2154',
-    mdf:       'field_1946'
+    mdf:       'field_1946',
+    requireSubBid: 'field_2479'   // FLAG_require sub bid — Yes/No segmented control
   };
 
   var OVERLAY_ID = 'scw-accem-overlay';
@@ -121,7 +122,14 @@
       '  border-radius: 5px; padding: 6px 16px; cursor: pointer;',
       '  font: 500 13px/1.2 system-ui, sans-serif;',
       '}',
-      '.scw-accem-done:hover { background: #1d4ed8; }'
+      '.scw-accem-done:hover { background: #1d4ed8; }',
+      /* Require sub bid — Yes/No segmented control (worksheet radiochip look) */
+      '.scw-accem-rsb-note {',
+      '  margin-top: 5px; font: 400 11px/1.4 system-ui, -apple-system, sans-serif; color: #64748b;',
+      '}',
+      '.scw-accem-rsb-err {',
+      '  margin-top: 4px; font: 500 11px/1.4 system-ui, -apple-system, sans-serif; color: #b91c1c;',
+      '}'
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
@@ -234,10 +242,112 @@
     '</div>';
   }
 
+  /* ── Require sub bid (field_2479) ──────────────────────────────────── */
+
+  function rsbApi() { return (window.SCW && window.SCW.requireSubBid) || null; }
+
+  /** 'Yes' | 'No' | '' for the accessory's Require Sub Bid flag. */
+  function flagOf(rec) {
+    var api = rsbApi();
+    if (api && typeof api.readFlag === 'function') return api.readFlag(rec, F.requireSubBid);
+    var raw = rec[F.requireSubBid + '_raw'];
+    if (raw === true) return 'Yes';
+    if (raw === false) return 'No';
+    var v = stripHtml(raw != null && typeof raw !== 'object' ? raw : rec[F.requireSubBid]);
+    return /^(yes|true)$/i.test(v) ? 'Yes' : (/^(no|false)$/i.test(v) ? 'No' : '');
+  }
+
+  function setSeg(group, val) {
+    if (!group) return;
+    var btns = group.querySelectorAll('[data-scw-accem-rsb]');
+    for (var i = 0; i < btns.length; i++) {
+      var sel = btns[i].getAttribute('data-scw-accem-rsb') === val;
+      btns[i].classList.toggle('is-selected', sel);
+      btns[i].classList.toggle('is-unselected', !sel);
+      btns[i].setAttribute('aria-pressed', sel ? 'true' : 'false');
+    }
+  }
+
+  /** Require sub bid row — Yes / No segmented control. No = folded under its
+   *  parent with no bid of its own (the usual accessory); Yes = its own line
+   *  that subs price. Saves through SCW.requireSubBid.setFlag (view-based
+   *  PUT + worksheet refetch, so the promote/fold regroup happens); the
+   *  No → Yes flip goes through the same "are you sure" confirm the row
+   *  settings gear uses. Renders read-only text if that module is absent. */
+  function requireRow(rec) {
+    var val = flagOf(rec);
+    var api = rsbApi();
+    var control;
+    if (api && typeof api.setFlag === 'function') {
+      function seg(v) {
+        var sel = (val === v);
+        return '<button type="button" class="scw-ws-v2-radiochip ' + (sel ? 'is-selected' : 'is-unselected') + '" ' +
+          'data-scw-accem-rsb="' + v + '" aria-pressed="' + (sel ? 'true' : 'false') + '">' + v + '</button>';
+      }
+      control = '<div class="scw-ws-v2-radiochips" role="group" aria-label="Require sub bid">' +
+        seg('Yes') + seg('No') + '</div>';
+    } else {
+      control = '<div class="scw-ws-v2-display">' + esc(val || '(not set)') + '</div>';
+    }
+    return '<div class="scw-ws-v2-detail-field scw-accem-rsb" data-scw-df="' + esc(F.requireSubBid) + '">' +
+      '<div class="scw-ws-v2-detail-label">Require sub bid</div>' +
+      control +
+      '<div class="scw-accem-rsb-note">Yes = its own line that subs price. ' +
+        'No = attached to its parent with no bid of its own.</div>' +
+    '</div>';
+  }
+
+  function onRsbClick(e) {
+    var btn = e.target && e.target.closest && e.target.closest('[data-scw-accem-rsb]');
+    if (!btn || !_open) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var api = rsbApi();
+    if (!api || typeof api.setFlag !== 'function') return;
+    var viewKey = _open.viewKey;
+    var rec = readRecord(viewKey, _open.recordId);
+    if (!rec) return;
+    var next = btn.getAttribute('data-scw-accem-rsb') === 'No' ? 'No' : 'Yes';
+    var cur  = flagOf(rec);
+    if (cur === next) return;
+    var group = btn.closest('.scw-ws-v2-radiochips');
+    var field = btn.closest('.scw-accem-rsb');
+    var parentLabel = connDisplay(viewKey, rec, F.parent);
+    var item = {
+      key: 'sow:' + rec.id, kind: 'sow', viewKey: viewKey, recordId: rec.id,
+      field: F.requireSubBid, label: accessoryLabel(rec), sub: 'attached accessory',
+      value: cur, promote: !!parentLabel, parentLabel: parentLabel
+    };
+    // Friction only on the way UP — the same confirm the settings gear uses.
+    var ask = (next === 'Yes' && typeof api.confirm === 'function' && typeof api.confirmCopy === 'function')
+      ? api.confirm(api.confirmCopy(item))
+      : Promise.resolve(true);
+    ask.then(function (ok) {
+      if (!ok || !_open) return;
+      var old = field && field.querySelector('.scw-accem-rsb-err');
+      if (old) old.parentNode.removeChild(old);
+      setSeg(group, next);
+      if (group) group.classList.add('scw-ws-v2-radiochip--saving');
+      return api.setFlag(item, 'worksheet', next).then(function (res) {
+        if (group) group.classList.remove('scw-ws-v2-radiochip--saving');
+        if (!_open) return;
+        if (res && res.ok) return;
+        setSeg(group, cur);
+        if (field) {
+          var err = document.createElement('div');
+          err.className = 'scw-accem-rsb-err';
+          err.textContent = (res && res.message) || 'Save failed.';
+          field.appendChild(err);
+        }
+      });
+    });
+  }
+
   function bodyHtml(rec, viewKey) {
     return connRow(rec, viewKey, F.product, 'Product') +
       laborRow(rec, viewKey) +
       connRow(rec, viewKey, F.parent, 'Parent') +
+      requireRow(rec) +
       connRow(rec, viewKey, F.sow, 'SOW') +
       connRow(rec, viewKey, F.mdf, 'MDF / IDF');
   }
@@ -287,6 +397,7 @@
 
     overlay.querySelector('.scw-accem-x').addEventListener('click', closeModal);
     overlay.querySelector('.scw-accem-done').addEventListener('click', closeModal);
+    overlay.addEventListener('click', onRsbClick);
     // Backdrop click closes — but only a click that both started and ended on
     // the backdrop, so a text-selection drag out of the textarea can't nuke
     // the modal.
@@ -329,6 +440,10 @@
         valEl.textContent = connDisplay(_open.viewKey, rec, CONN[i][0]) || '(none)';
       }
     }
+
+    // Require sub bid — reflect the model unless a save is mid-flight.
+    var seg = ov.querySelector('.scw-accem-rsb .scw-ws-v2-radiochips');
+    if (seg && !seg.classList.contains('scw-ws-v2-radiochip--saving')) setSeg(seg, flagOf(rec));
 
     var ta = ov.querySelector('textarea[data-scw-ws-v2-field="' + F.laborDesc + '"]');
     if (ta && document.activeElement !== ta) {

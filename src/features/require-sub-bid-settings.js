@@ -392,90 +392,52 @@
     return viewKey;
   }
 
-  /** PUT <field> = Yes on one item. Resolves { ok, dropped, status, message }. */
-  function setYes(item, surface) {
+  /** One view-based PUT of <field> = value, with the dropped-write check
+   *  and the local model patch. Resolves { ok, dropped, status, message,
+   *  rec, confirmed } — never rejects. No surface refresh here. */
+  function putFlag(viewKey, recordId, field, value) {
     return new Promise(function (resolve) {
-      if (!item || !item.viewKey || !item.recordId || !item.field) {
-        resolve({ ok: false, message: 'Nothing to save.' }); return;
-      }
+      if (!viewKey || !recordId || !field) { resolve({ ok: false, message: 'Nothing to save.' }); return; }
       if (!window.SCW || typeof SCW.knackAjax !== 'function' || typeof SCW.knackRecordUrl !== 'function') {
         resolve({ ok: false, message: 'Save path unavailable.' }); return;
       }
-      var body = {}; body[item.field] = 'Yes';
-      var wsData = window.SCW.worksheetV2 && window.SCW.worksheetV2.data;
-      var audit  = window.SCW.worksheetV2 && window.SCW.worksheetV2.audit;
-      var prevSnap = null;
-      try {
-        if (surface === 'worksheet' && audit && typeof audit.enabledFor === 'function' &&
-            audit.enabledFor(item.viewKey) && typeof audit.snapshotValues === 'function') {
-          prevSnap = audit.snapshotValues(item.viewKey, item.recordId, body);
-        }
-      } catch (e) { prevSnap = null; }
+      var body = {}; body[field] = value;
       try {
         SCW.knackAjax({
-          url:  SCW.knackRecordUrl(item.viewKey, item.recordId),
+          url:  SCW.knackRecordUrl(viewKey, recordId),
           type: 'PUT',
           data: JSON.stringify(body),
           success: function (resp) {
             var rec = (resp && resp.record && typeof resp.record === 'object' && resp.record.id)
               ? resp.record : resp;
-            // Dropped-write check: 200 but the server still holds No → the
-            // column isn't inline-editable on this view (Builder), or a rule
-            // re-stamped it. Report it instead of pretending it saved.
-            var srvRaw = rec && typeof rec === 'object' ? rec[item.field + '_raw'] : undefined;
-            if (srvRaw === false || (typeof srvRaw === 'string' && isNo(srvRaw))) {
+            // Dropped-write check: 200 but the server still holds the old
+            // value → the column isn't inline-editable on this view
+            // (Builder), or a rule re-stamped it. Report it, don't pretend.
+            var srvRaw = rec && typeof rec === 'object' ? rec[field + '_raw'] : undefined;
+            var srvFlag = (srvRaw != null) ? readFlag(rec, field) : '';
+            if (srvFlag && srvFlag !== value) {
               console.warn('[scw-rsb] save IGNORED by Knack (200, field unchanged)', {
-                viewKey: item.viewKey, recordId: item.recordId, field: item.field, resp: resp
+                viewKey: viewKey, recordId: recordId, field: field, sent: value, resp: resp
               });
-              resolve({ ok: false, dropped: true, status: 200,
-                message: 'Knack didn’t keep the change — ' + item.field + ' is probably not an ' +
-                  'inline-editable column on ' + viewLabel(item.viewKey) + ' (Builder).' });
+              resolve({ ok: false, dropped: true, status: 200, resp: resp,
+                message: 'Knack didn’t keep the change — ' + field + ' is probably not an ' +
+                  'inline-editable column on ' + viewLabel(viewKey) + ' (Builder).' });
               return;
             }
-            var confirmed = (srvRaw != null) ? srvRaw : true;
+            var confirmed = (srvRaw != null) ? srvRaw : (value === 'Yes');
             try {
               if (typeof SCW.syncKnackModel === 'function') {
-                SCW.syncKnackModel(item.viewKey, item.recordId, rec || {}, item.field, confirmed);
+                SCW.syncKnackModel(viewKey, recordId, rec || {}, field, confirmed);
               }
             } catch (e) { /* ignore */ }
-            if (surface === 'worksheet') {
-              try {
-                if (wsData && typeof wsData.registerPendingWrite === 'function') {
-                  wsData.registerPendingWrite(item.viewKey, item.recordId, item.field, confirmed);
-                }
-              } catch (e) { /* ignore */ }
-              try {
-                if (prevSnap && audit && typeof audit.logPut === 'function') {
-                  var lbls = {}; lbls[item.field] = 'Require Sub Bid';
-                  audit.logPut(item.viewKey, item.recordId, body,
-                    { prevValues: prevSnap, resp: resp, labels: lbls });
-                }
-              } catch (e) { /* ignore */ }
-              // Grouping can change (a folded accessory becomes its own row) —
-              // full refetch + rebuild, not a single-card patch.
-              try {
-                if (wsData && typeof wsData.refetchAndNotify === 'function') wsData.refetchAndNotify(item.viewKey);
-                else if (wsData && typeof wsData.notify === 'function') wsData.notify(item.viewKey);
-              } catch (e) { /* ignore */ }
-            } else {
-              var brData = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.data;
-              try {
-                if (brData && typeof brData.notifyDebounced === 'function') brData.notifyDebounced();
-              } catch (e) { /* ignore */ }
-              // A worksheet-v2 panel on the same scene reading this view
-              // (the comparison page's SOW-item expand editor) re-renders too.
-              try {
-                if (wsData && typeof wsData.notify === 'function') wsData.notify(item.viewKey);
-              } catch (e) { /* ignore */ }
-            }
-            resolve({ ok: true, status: 200 });
+            resolve({ ok: true, status: 200, resp: resp, rec: rec, confirmed: confirmed });
           },
           error: function (xhr) {
             var st = xhr && xhr.status;
-            console.warn('[scw-rsb] save failed', { viewKey: item.viewKey, recordId: item.recordId, field: item.field, xhr: xhr });
+            console.warn('[scw-rsb] save failed', { viewKey: viewKey, recordId: recordId, field: field, xhr: xhr });
             resolve({ ok: false, status: st,
               message: 'Save failed' + (st ? ' (' + st + ')' : '') +
-                (st === 403 ? ' — no permission to edit this field through ' + viewLabel(item.viewKey) + '.' : '. Try again.') });
+                (st === 403 ? ' — no permission to edit this field through ' + viewLabel(viewKey) + '.' : '. Try again.') });
           }
         });
       } catch (e) {
@@ -483,6 +445,138 @@
       }
     });
   }
+
+  function connIds(rec, field) {
+    var raw = rec && rec[field + '_raw'];
+    var out = [];
+    if (Array.isArray(raw)) { for (var i = 0; i < raw.length; i++) if (raw[i] && raw[i].id) out.push(raw[i].id); }
+    else if (raw && typeof raw === 'object' && raw.id) out.push(raw.id);
+    return out;
+  }
+
+  /** Bid records (view_3680) whose REL_sow Line Item (field_2404) points at
+   *  this SOW item and whose own Require Sub Bid (field_2478) isn't Yes. Empty
+   *  wherever the bid view isn't loaded (build page). */
+  function bidItemsFor(sowItemId) {
+    var v1 = (window.SCW.bidReview && window.SCW.bidReview.CONFIG) || {};
+    var FK = v1.fieldKeys || {};
+    var bidView = v1.viewKey || 'view_3680';
+    var relKey  = FK.relatedSowItem || 'field_2404';
+    var recs = readRecords(bidView);
+    var out = [];
+    for (var i = 0; i < recs.length; i++) {
+      var r = recs[i];
+      if (!r || !r.id) continue;
+      if (connIds(r, relKey).indexOf(sowItemId) === -1) continue;
+      if (isYes(readFlag(r, FIELDS.bid))) continue;
+      out.push({ viewKey: bidView, recordId: r.id, field: FIELDS.bid, label: labelOf(r) || r.id });
+    }
+    return out;
+  }
+
+  /** Reconcile-page rule: when a SOW item goes to Yes, every bid item
+   *  associated with it goes to Yes too (the sub's Labor input unlocks on
+   *  their bid worksheet only when the BID record's flag is Yes). Runs the
+   *  bid PUTs one at a time — a row has a handful of bids, well under the
+   *  rate limit — and resolves { attempted, done, failed:[labels] }. */
+  function cascadeBids(sowItemId) {
+    var targets = bidItemsFor(sowItemId);
+    var out = { attempted: targets.length, done: 0, failed: [] };
+    var i = 0;
+    return new Promise(function (resolve) {
+      (function next() {
+        if (i >= targets.length) { resolve(out); return; }
+        var t = targets[i++];
+        putFlag(t.viewKey, t.recordId, t.field, 'Yes').then(function (r) {
+          if (r.ok) out.done++; else out.failed.push(t.label);
+          next();
+        });
+      })();
+    });
+  }
+
+  function refreshSurfaces(item, surface) {
+    var wsData = window.SCW.worksheetV2 && window.SCW.worksheetV2.data;
+    var brCfg  = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.CONFIG;
+    var brData = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.data;
+    var gridMounted = !!(brCfg && brCfg.mountId && document.getElementById(brCfg.mountId));
+    if (surface === 'worksheet') {
+      // Grouping can change (a folded accessory becomes its own row) —
+      // full refetch + rebuild, not a single-card patch.
+      try {
+        if (wsData && typeof wsData.refetchAndNotify === 'function') wsData.refetchAndNotify(item.viewKey);
+        else if (wsData && typeof wsData.notify === 'function') wsData.notify(item.viewKey);
+      } catch (e) { /* ignore */ }
+      // The compare page hosts the same worksheet view (view_3921) inside
+      // its grid — re-render the grid too when it's mounted.
+      try {
+        if (gridMounted && brData && typeof brData.notifyDebounced === 'function') brData.notifyDebounced();
+      } catch (e) { /* ignore */ }
+    } else {
+      try {
+        if (brData && typeof brData.notifyDebounced === 'function') brData.notifyDebounced();
+      } catch (e) { /* ignore */ }
+      // A worksheet-v2 panel on the same scene reading this view (the
+      // comparison page's SOW-item expand editor) re-renders too.
+      try {
+        if (wsData && typeof wsData.notify === 'function') wsData.notify(item.viewKey);
+      } catch (e) { /* ignore */ }
+    }
+  }
+
+  /** Set <field> = value ('Yes' | 'No') on one item, then refresh the
+   *  surface and — on a SOW item going to Yes with the bid view loaded (the
+   *  reconcile page) — cascade Yes to its bid items. Resolves
+   *  { ok, dropped, status, message, cascaded, warning }. `surface`:
+   *  'worksheet' refetches the worksheet view and re-renders a mounted
+   *  comparison grid; 'bidReview' re-renders the grid and notifies any
+   *  worksheet panel on the same view. */
+  function setFlag(item, surface, value) {
+    value = (value === 'No') ? 'No' : 'Yes';
+    if (!item || !item.viewKey || !item.recordId || !item.field) {
+      return Promise.resolve({ ok: false, message: 'Nothing to save.' });
+    }
+    var wsData = window.SCW.worksheetV2 && window.SCW.worksheetV2.data;
+    var audit  = window.SCW.worksheetV2 && window.SCW.worksheetV2.audit;
+    var body = {}; body[item.field] = value;
+    var prevSnap = null;
+    try {
+      if (surface === 'worksheet' && audit && typeof audit.enabledFor === 'function' &&
+          audit.enabledFor(item.viewKey) && typeof audit.snapshotValues === 'function') {
+        prevSnap = audit.snapshotValues(item.viewKey, item.recordId, body);
+      }
+    } catch (e) { prevSnap = null; }
+
+    return putFlag(item.viewKey, item.recordId, item.field, value).then(function (r) {
+      if (!r.ok) return r;
+      if (surface === 'worksheet') {
+        try {
+          if (wsData && typeof wsData.registerPendingWrite === 'function') {
+            wsData.registerPendingWrite(item.viewKey, item.recordId, item.field, r.confirmed);
+          }
+        } catch (e) { /* ignore */ }
+        try {
+          if (prevSnap && audit && typeof audit.logPut === 'function') {
+            var lbls = {}; lbls[item.field] = 'Require Sub Bid';
+            audit.logPut(item.viewKey, item.recordId, body, { prevValues: prevSnap, resp: r.resp, labels: lbls });
+          }
+        } catch (e) { /* ignore */ }
+      }
+      var cascade = (value === 'Yes' && item.kind === 'sow')
+        ? cascadeBids(item.recordId)
+        : Promise.resolve({ attempted: 0, done: 0, failed: [] });
+      return cascade.then(function (c) {
+        refreshSurfaces(item, surface);
+        var warning = '';
+        if (c.failed.length) {
+          warning = 'Saved, but ' + c.failed.length + ' of ' + c.attempted + ' bid item' +
+            (c.attempted === 1 ? '' : 's') + ' could not be set to Yes (' + c.failed.join(', ') + ').';
+        }
+        return { ok: true, status: 200, cascaded: c.done, cascadeAttempted: c.attempted, warning: warning };
+      });
+    });
+  }
+  function setYes(item, surface) { return setFlag(item, surface, 'Yes'); }
 
   // ── Popover ──────────────────────────────────────────────────────────
   var _open = null;   // { pop, gear, spec, surface }
@@ -584,9 +678,19 @@
       return setYes(item, surface).then(function (res) {
         if (!_open || _open.pop !== pop) return;
         if (res.ok) {
-          // Re-read from the (now patched) model so every row reflects truth.
+          // Re-read from the (now patched) model so every row reflects truth
+          // — including bid items the cascade just flipped.
           renderRows(pop, _open.spec);
           position(pop, _open.gear);
+          if (res.warning) {
+            var wrow = pop.querySelector('[data-scw-rsb-row="' + key.replace(/"/g, '\\"') + '"]');
+            if (wrow) {
+              var warn = document.createElement('div');
+              warn.className = 'scw-rsb-err';
+              warn.textContent = res.warning;
+              wrow.appendChild(warn);
+            }
+          }
           return;
         }
         if (b) { b.disabled = false; b.textContent = 'Set to Yes'; }
@@ -642,6 +746,9 @@
     open:        open,
     close:       close,
     setYes:      setYes,
+    setFlag:     setFlag,
+    bidItemsFor: bidItemsFor,
+    confirm:     confirmModal,
     readFlag:    readFlag,
     isYes:       isYes,
     isNo:        isNo,
