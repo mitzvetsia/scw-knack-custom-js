@@ -928,3 +928,25 @@ number, and when a removed item still has a target-linked Add. Render amber
 rather than presenting the bad state as fact. Same shape as the acceptance-card
 bid-basis seal (`acceptance-card.js` `basisDrift`). Useful after the Make fixes
 too, since it catches the next regression where someone is actually looking.
+
+### 24. JSON snapshot (`field_2671`) — HTML attributes get mangled in the stored string (bundle FIXED 2026-09-17; Make patch pending)
+- **Symptom**: 11.04 module 6 (Parse JSON of `[{{4.field_2671_raw}}]`) fails with
+  "invalid JSON" at greenlight. Same read in 13.06b module 73 (`9.field_2671_raw`)
+  and 11.06 module 84 (`83.field_2671_raw`).
+- **Root cause (confirmed against all 429 published proposals)**: rich-text `_raw`
+  values that carry tag ATTRIBUTES (`<ul class="ak-ul">`, `<span style>`, `<a href>`)
+  serialize as `class=\"ak-ul\"`; the paragraph field the snapshot is stored in runs
+  an HTML-aware sanitizer that mangles every escaped attribute quote to `class="\"`
+  (value dropped, one backslash dropped). 21/21 snapshots that ever contained a tag
+  with attributes are broken; 0/408 without one; escaped quotes in plain text
+  (`26\" monitor`) survive. `stripNonRawFields` already dropped the rendered
+  `<span class="id">` twins for this reason — the rich-text raw HTML slipped through.
+- **Bundle fix**: `stripHtmlTagAttrs` (proposal-pdf-export.js) runs on every string
+  leaf inside `stripNonRawFields`, so `jsonString` never contains `=\"`. Rule going
+  forward: **the stored snapshot must never contain an HTML tag with attributes.**
+- **Make side (pending — needed for the 21 already-published snapshots)**: repair
+  before parsing in each consumer, e.g. 11.04 module 6 JSON string:
+  `[{{replace(4.field_2671_raw; / [a-zA-Z-]+=\x22\\\x22/g; "")}}]`
+  (13.06b module 73 uses `9.`, 11.06 module 84 uses `83.`). Drops the mangled
+  attribute (`<ul class="\">` → `<ul>`); the attribute values are already lost and
+  nothing downstream needs them. Verified against all 21 broken snapshots.

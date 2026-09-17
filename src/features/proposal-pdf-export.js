@@ -4029,6 +4029,29 @@
     return encoded.slice(1, -1);
   }
 
+  // Strip every attribute off every HTML tag inside a snapshot string
+  // value: `<ul class="ak-ul">` → `<ul>`, `<a href="…">` → `<a>`,
+  // `<br />` stays `<br />`, closing tags and text are untouched.
+  //
+  // Why (confirmed 2026-09-17 against all 429 published proposals): the
+  // rich-text `_raw` values (labor descriptions etc.) still carry tags
+  // WITH attributes. JSON.stringify turns `class="ak-ul"` into
+  // `class=\"ak-ul\"`, and the paragraph field the snapshot is stored in
+  // (field_2671) runs an HTML-aware sanitizer over the string that
+  // mangles every escaped ATTRIBUTE quote to `class="\"` (value dropped,
+  // one backslash dropped) — invalid JSON, so Make's Parse JSON dies at
+  // greenlight (11.04 module 6). 21/21 snapshots that ever contained a
+  // tag with attributes were broken this way; none of the 408 without
+  // one were, and escaped quotes in plain text (`26\" monitor`) survive.
+  // The attributes carry nothing the downstream record clones need.
+  var HTML_TAG_RE = /<([a-zA-Z][\w:-]*)(?:\s[^<>]*?)?(\s*\/?)>/g;
+  function stripHtmlTagAttrs(s) {
+    if (typeof s !== 'string' || s.indexOf('<') === -1) return s;
+    return s.replace(HTML_TAG_RE, function (m, tag, close) {
+      return '<' + tag + (close.indexOf('/') !== -1 ? ' />' : '>');
+    });
+  }
+
   // Recursively walk a Knack snapshot and drop every `field_xxx` key
   // that has a `field_xxx_raw` counterpart on the same object. Knack
   // returns connection / rich-text / file fields with a rendered-HTML
@@ -4039,8 +4062,10 @@
   // round-trip the JSON through a string field) it's pure liability:
   // every quote inside the HTML is a JSON-escape footgun. Strip them.
   // Keep `id`, `headerId`, `sowRecordId`, and any field_xxx that has
-  // no _raw twin.
+  // no _raw twin. String leaves (rich-text `_raw` HTML) additionally
+  // lose their tag attributes — see stripHtmlTagAttrs above.
   function stripNonRawFields(node) {
+    if (typeof node === 'string') return stripHtmlTagAttrs(node);
     if (Array.isArray(node)) {
       var arr = [];
       for (var i = 0; i < node.length; i++) arr.push(stripNonRawFields(node[i]));
@@ -5364,9 +5389,13 @@
       // for any consumer that re-encodes the JSON, because the inner
       // HTML quotes (especially the equation-field `<span id="">…</span>`
       // wrappers) get half-escaped in transit and break Parse JSON.
-      // Store this string verbatim in a Knack plain-text/paragraph
-      // field; at read time, `parseJSON(field_value)` reconstitutes
-      // the (raw-only) object exactly.
+      // The same mangling hits rich-text `_raw` HTML that carries tag
+      // attributes (`<ul class="ak-ul">`), so those attributes are
+      // stripped too (stripHtmlTagAttrs) — the stored string must never
+      // contain an escaped ATTRIBUTE quote. Store this string verbatim
+      // in a Knack plain-text/paragraph field; at read time,
+      // `parseJSON(field_value)` reconstitutes the (raw-only) object
+      // exactly.
       jsonString:            (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })(),
       // Pre-categorized, billing-system-agnostic invoice line items.
       // Bundle owns the SKU vs labor vs license classification; Make
