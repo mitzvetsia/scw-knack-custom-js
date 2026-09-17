@@ -53,7 +53,9 @@
     // visible section showing only the unassigned ones), and (b) have
     // inline editing on field_771 (PIC). field_2447 (FLAG_complete) inline-
     // editable too, or "Remove photo" clears the image but leaves the
-    // completed flag set; field_2865 (QA history) is optional (audit only).
+    // completed flag set; field_2865 (QA history) inline-editable so the
+    // sales user's replace/remove events land in the history log they
+    // now read (photos.js PHOTO_MODAL_POLICY view_3586 qa:'readonly').
     view_3586: 'view_3522'    // sales scene DOC_photos grid ("Additional Photos")
   };
 

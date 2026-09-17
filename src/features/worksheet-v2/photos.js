@@ -91,7 +91,13 @@
           // present on the source view (install surface). Defaults keep the
           // chit in a neutral "Pending" state everywhere else.
           qaStatus: 'Pending', qaClient: 'N/A', qaNotes: '', qaHistory: '',
-          qaCompletedBy: '', qaCompletedDate: '', qaPresent: false
+          qaCompletedBy: '', qaCompletedDate: '', qaPresent: false,
+          // Whether the source view SERVES the QA columns at all (the QA
+          // status cell exists on the row). Distinct from qaPresent, which
+          // says this photo has a non-blank status. Surfaces that show QA
+          // read-only gate the chit + sidebar on this, so the feature
+          // self-activates when the columns are added in Builder.
+          qaColumns: false
         };
       }
       return map[rid];
@@ -193,9 +199,10 @@
       var inner = span.querySelector('span[data-kn="connection-value"]');
       return ((inner ? inner.textContent : span.textContent) || '').trim();
     }
-    if (eachQaSpan(FK_QA_STATUS, function (rec, span) {
+    var qaCols = eachQaSpan(FK_QA_STATUS, function (rec, span) {
       var t = spanText(span); if (t) { rec.qaStatus = t; rec.qaPresent = true; }
-    })) {
+    });
+    if (qaCols) {
       eachQaSpan(FK_QA_CLIENT,  function (rec, span) { var t = spanText(span); if (t) rec.qaClient = t; });
       eachQaSpan(FK_QA_NOTES,   function (rec, span) { rec.qaNotes = (span.textContent || '').trim(); });
       eachQaSpan(FK_QA_BY,      function (rec, span) { rec.qaCompletedBy = spanText(span); });
@@ -204,7 +211,7 @@
     }
 
     var arr = [];
-    for (var k in map) arr.push(map[k]);
+    for (var k in map) { map[k].qaColumns = qaCols; arr.push(map[k]); }
     // Sort: pinned types first (PHOTO_TYPE_PRIORITY), then required+incomplete,
     // then required, then by type, then id
     arr.sort(function (a, b) {
@@ -482,20 +489,25 @@
   // the Knack add-photo page). Decided 2026-08-12.
   // view_4056 (sub deployment dashboard) joined 2026-09-03: subs SEE the
   // QA chit + status (the QA columns are exposed on that view), but their
-  // modal renders QA read-only (QA_MODAL_RESTRICTED_VIEWS below).
-  var QA_CHIT_VIEWS = { view_4093: 1, view_4056: 1 };
+  // modal renders QA read-only (PHOTO_MODAL_POLICY below).
+  // view_3586 (sales) joined 2026-09-17 on the same read-only terms. The
+  // chit ALSO requires the source row to actually serve the QA columns
+  // (p.qaColumns) — so on a view where Builder hasn't exposed them yet
+  // nothing renders instead of a misleading "Needs QA" on every photo.
+  var QA_CHIT_VIEWS = { view_4093: 1, view_4056: 1, view_3586: 1 };
 
   // Surfaces where the photo modal opens RESTRICTED: upload / view /
   // replace / remove only — no Photo Type or Required editors (these
   // audiences can't reclassify; buildClassifyBar is deploy-save-view-only
   // already and snapshot.lockClassify is the belt). QA is an ops function,
   // so the QA sidebar is never EDITABLE here — `qa` says what they see:
-  //   'readonly' — SCW's verdict, no controls (the sub needs to know
-  //                whether their photo passed; the QA columns are exposed
-  //                on view_4056). A Pass freezes replace/remove.
-  //   'none'     — no QA sidebar at all (sales: photo QA happens on the
-  //                install records at deploy time, the QA columns aren't on
-  //                view_3586, and sales never signs anything off).
+  //   'readonly' — SCW's verdict, no controls: status, client signoff,
+  //                notes, who/when, and the history log (incl. the
+  //                synthesized "Photo uploaded" stamp). A Pass freezes
+  //                replace/remove. Served only while the source view
+  //                exposes the QA columns (p.qaColumns) — otherwise the
+  //                modal opens as the plain viewer, exactly like 'none'.
+  //   'none'     — no QA sidebar at all, whatever the row serves.
   // Filled cards on these surfaces open the SAME restricted modal (Replace /
   // Remove) instead of the lightbox, so the audience can update photos
   // without leaving the page — the "similar to the subcontractor actions"
@@ -508,8 +520,17 @@
   // lightbox), exactly the pre-2026-09-02 behavior.
   var PHOTO_MODAL_POLICY = {
     view_4056: { qa: 'readonly' },   // sub deployment dashboard (2026-09-02)
-    view_3586: { qa: 'none' }        // sales scope-of-work page (2026-09-17)
+    view_3586: { qa: 'readonly' }    // sales scope-of-work page (2026-09-17)
   };
+  // Does this surface serve QA for a photo? Ops surfaces (no policy)
+  // always do; 'readonly' only when the row carries the QA columns;
+  // 'none' never. (Callers that build photo objects by hand — tests,
+  // future hosts — omit qaColumns; undefined counts as "served".)
+  function policyServesQa(policy, p) {
+    if (!policy) return true;
+    if (policy.qa === 'none') return false;
+    return !(p && p.qaColumns === false);
+  }
   function modalPolicy(viewKey) {
     return (viewKey && PHOTO_MODAL_POLICY[viewKey]) || null;
   }
@@ -589,7 +610,6 @@
     // plain viewer (needsqa=0) whatever the Required flag says.
     var policy = modalPolicy(sourceViewKey);
     var modalCards = qaEnabled || !!policy;
-    var noQa = !!(policy && policy.qa === 'none');
     var addHref = addPhotoHref(recordId);
     // When there are no photos AND no add route, there's nothing to
     // render. Otherwise keep the strip so the user always has a way
@@ -667,7 +687,8 @@
       // full-size url + identity so the delegated click handler can build
       // the viewer without re-scraping the source view.
       var reqState = p.required ? (p.completed ? 'done' : 'missing') : '';
-      var needsQa = noQa ? false : photoNeedsQa(p);
+      var servesQa = policyServesQa(policy, p);
+      var needsQa = servesQa && photoNeedsQa(p);
       // QA snapshot attrs on the card itself (install + restricted surfaces)
       // so a click on the THUMBNAIL can open the same modal as the chit —
       // without re-scraping the source view. needsQa drives whether the
@@ -725,11 +746,12 @@
             'title="Disconnect from this line item (keeps the photo)">' +
             PHOTO_UNLINK_SVG + '</button>'
         : '';
-      // Photo QA chit — install surface only, only on cards that hold an
-      // actual photo, AND only on photos that NEED QA (required). Non-QA
-      // photos are not served a QA status (they still open the big-photo
-      // modal, just without the QA sidebar).
-      var qaChit = (qaEnabled && p.id && p.imgUrl && photoNeedsQa(p))
+      // Photo QA chit — QA_CHIT_VIEWS only, only on cards that hold an
+      // actual photo, AND only on photos that NEED QA (required) on a row
+      // that serves QA (policyServesQa — read-only surfaces need the QA
+      // columns present). Non-QA photos are not served a QA status (they
+      // still open the big-photo modal, just without the QA sidebar).
+      var qaChit = (qaEnabled && p.id && p.imgUrl && needsQa)
         ? qaChitHtml(p) : '';
       // Inline QA-feedback card — rendered AFTER the anchor (flex sibling →
       // sits to the photo's RIGHT in the strip) whenever the photo FAILED
@@ -1213,6 +1235,9 @@
       if (!svMap || !svMap[viewKey]) return false;
     }
     // qa:'none' surfaces never see a QA sidebar, required photo or not.
+    // (A 'readonly' surface without the QA columns already arrives here
+    // with needsQa=false from the card attr — buildStripFromPhotos gates
+    // it through policyServesQa, and no chit exists to say otherwise.)
     if (policy && policy.qa === 'none') needsQa = false;
 
     var resolvedImg = imgUrl || el.getAttribute('data-qa-img') || '';
@@ -1311,12 +1336,17 @@
       // if qa-popover isn't loaded.
       if (!card.getAttribute('data-scw-ws-v2-photo-url')) {
         var reqd = card.getAttribute('data-photo-required') === 'true';
+        // The card's build-time verdict wins when it carries one: it already
+        // folds Required together with whether the surface SERVES QA
+        // (policyServesQa — a read-only surface whose row lacks the QA
+        // columns stamps 0). Cards without the marker keep the Required rule.
+        var served = card.getAttribute('data-scw-ws-v2-photo-needsqa');
         var openedEmpty = openPhotoQaModal(
           card,
           card.getAttribute('data-scw-ws-v2-photo-id'),
           card.getAttribute('data-scw-ws-v2-photo-type') || '',
           '',
-          reqd
+          (served !== null) ? (served === '1') : reqd
         );
         if (openedEmpty) { e.preventDefault(); e.stopPropagation(); }
         return;

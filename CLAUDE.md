@@ -963,23 +963,40 @@ too, since it catches the next regression where someone is actually looking.
   Replace module (Pattern ` [a-zA-Z-]+="\\"`, New value empty, Global match yes)
   between the Get Record and the Parse JSON.
 
-### 25. Sales page photo modal (view_3586) — restricted, no QA; Builder activation pending
+### 25. Sales page photo modal (view_3586) — restricted, QA read-only; Builder activation pending
 - **Shipped 2026-09-17**: the worksheet-v2 photo modal now has a per-surface policy
   (`worksheet-v2/photos.js` `PHOTO_MODAL_POLICY`): ops (view_4093) editable QA; sub
-  (view_4056) `qa:'readonly'`; **sales (view_3586) `qa:'none'`** — upload / view /
-  replace / remove only, never a QA sidebar, never Type/Required editors. Filled cards on
-  policy surfaces open the modal (Replace/Remove) instead of the lightbox. The save view
-  is mapped (`photo-edit-panel.js` SAVE_VIEWS: `view_3586 → view_3522`); before that the
-  upload pane fell back to the DEPLOY scene's grid (view_3937) and every PUT 403'd from
-  scene_1116. Unmapped/unready ⇒ the modal doesn't open and the card keeps its native
-  Knack href (empty slot → add-photo page; filled → lightbox).
+  (view_4056) and **sales (view_3586) `qa:'readonly'`** — upload / view / replace /
+  remove, the QA sidebar READ-ONLY (status, client signoff, notes, who/when, history
+  log incl. the synthesized "Photo uploaded" stamp), never Type/Required editors; a Pass
+  freezes replace/remove. (`qa:'none'` — no sidebar at all — stays available.) Filled
+  cards on policy surfaces open the modal (Replace/Remove) instead of the lightbox. The
+  save view is mapped (`photo-edit-panel.js` SAVE_VIEWS: `view_3586 → view_3522`); before
+  that the upload pane fell back to the DEPLOY scene's grid (view_3937) and every PUT
+  403'd from scene_1116. Unmapped/unready ⇒ the modal doesn't open and the card keeps
+  its native Knack href (empty slot → add-photo page; filled → lightbox).
+- **QA data self-activates**: the strip scrapes QA off the worksheet's SOURCE grid — the
+  DOC_photos fields shown THROUGH the photo connection as columns (`extractPhotoRecords`
+  reads `td[data-field-key=field_2859…]` → one `span[id=<photoId>]` per photo). Each
+  photo carries `qaColumns` (the QA status column exists on the row). On a `readonly`
+  surface without the columns nothing QA-ish renders (no chit, plain viewer) instead of
+  a misleading "Needs QA" everywhere; add the columns and the chit + sidebar appear.
+  **Builder (TO SHOW QA on sales)**: on view_3586 add the photo-connection columns
+  `field_2859` QA status, `field_2860` client signoff, `field_2861` QA notes,
+  `field_2862` completed by, `field_2863` completed date, `field_2865` QA history — the
+  same way `field_2445`/`2446`/`2447`/`114` already ride that grid. view_3586's native
+  table is `display:none` (v2 cutover, `worksheet-v2/styles.js`) so the columns never
+  show. Upload TIME needs no field (derived from the record id); the uploader's NAME is
+  only known for photos added through the modal (logged to `field_2865`) — bulk/Make
+  uploads have no created-by on DOC_photos.
 - **Builder (TO ACTIVATE uploads)**: on view_3522 "Additional Photos" (scene_1116) widen
   the source filter from "Assign to SOW Item is blank" to every photo on this SOW, enable
   inline editing on `field_771` (PIC) — plus `field_2447` (FLAG_complete) so "Remove
-  photo" clears the completed flag, `field_2865` optional (history). Give the grid a
-  large page size: the save PUT is keyed by record id so pagination never blocks it, but
-  hidden linked rows still count against the page, so a small page can leave the visible
-  section empty while unassigned photos sit on page 2.
+  photo" clears the completed flag, and `field_2865` (history) so the sales user's
+  replace/remove events land in the log they now read. Give the grid a large page size:
+  the save PUT is keyed by record id so pagination never blocks it, but hidden linked
+  rows still count against the page, so a small page can leave the visible section empty
+  while unassigned photos sit on page 2.
   `photo-grid-unlinked-filter.js` hides the rows whose `field_2342` is populated so the
   section still shows only unassigned photos, fixes "Showing N of N", and stamps
   `data-scw-acc-count` on the view (a new override `ktl-accordion.js` `computeCount`
