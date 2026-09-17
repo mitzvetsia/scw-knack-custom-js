@@ -138,6 +138,13 @@
         // (hidden) view_3436 menu link (#add-mdfidf7), replacing the button
         // that lived in the now-hidden standalone section.
         addMdfMenuView:   'view_3436',
+        // "Item settings" gear on every row (require-sub-bid-settings.js):
+        // lets ops flip Require Sub Bid (field_2479) to Yes — on the item
+        // and on any attached accessory still on No — behind a confirm.
+        // Build page only; sales / CO / survey / install stay without it.
+        // ⚠️ Builder: field_2479 must be an inline-editable column on
+        // view_3962 or the PUT is dropped (reported in the popover).
+        requireSubBidSettings: true,
         // No field/bucket overrides — uses the defaults above verbatim.
         fields:  {},
         buckets: {}

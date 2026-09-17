@@ -507,7 +507,42 @@
         '</div></div>';
   }
 
-  function buildSowCell(row, isAssumption, sowId) {
+  // "Item settings" gear (require-sub-bid-settings.js) for a row's SOW cell:
+  // lets ops flip Require Sub Bid to Yes on the SOW item (field_2479 via
+  // view_3921), on each bid's item behind this row (field_2478 via
+  // view_3680) and on attached accessories still on No — behind a confirm.
+  // The bid record ids come from the row's cells; labels from the package
+  // headers (sub name → bid name → package label, same as the column head).
+  // Skipped for off-SOW / removed rows (the item isn't this SOW's to flip)
+  // and for rows with neither a SOW item nor a bid record.
+  function rsbGearHtml(row, packages) {
+    var api = window.SCW && window.SCW.requireSubBid;
+    if (!api || typeof api.gearHtml !== 'function' || !row) return '';
+    if (row.offSow || row.removed) return '';
+    var v1 = (window.SCW.bidReview && window.SCW.bidReview.CONFIG) || {};
+    var cells = row.cellsByPackage || {};
+    var pkgs = packages || [];
+    var bids = [];
+    for (var i = 0; i < pkgs.length; i++) {
+      var pk = pkgs[i];
+      var c = (pk && pk.id) ? cells[pk.id] : null;
+      if (!c || !c.id) continue;
+      bids.push({
+        id: c.id,
+        label: String(pk.subName || pk.bidName || pk.label || '').trim() || ('Bid ' + (i + 1))
+      });
+    }
+    if (!row.sowItem && !bids.length) return '';
+    return api.gearHtml({
+      surface:    'bidReview',
+      sowViewKey: v1.sowItemsViewKey || 'view_3921',
+      bidViewKey: v1.viewKey || 'view_3680',
+      sowItemId:  row.sowItem || '',
+      bids:       bids
+    });
+  }
+
+  function buildSowCell(row, isAssumption, sowId, packages) {
     var sowItemData = row && row.sowItemData;
     var diff = aggregateMismatch(row);
     var td = document.createElement('td');
@@ -526,14 +561,17 @@
         td.innerHTML = rDetail ||
           '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
       } else if (row && (!row.sowItem || row.needsSow)) {
-        // Bid item with no SOW counterpart → offer "+ Add to SOW".
+        // Bid item with no SOW counterpart → offer "+ Add to SOW". The
+        // settings gear still renders (bid-side Require Sub Bid is flippable
+        // even before the item has a SOW record).
         td.innerHTML =
           '<span class="scw-bid-review-v2__cell-empty-mark">—</span>' +
           '<div class="scw-bid-review-v2__cell-actions">' +
             '<button type="button" class="scw-bid-review__cell-action ' +
               'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
               crAttrs('row_add_to_sow', row.id, '', sowId) + '>+ Add to SOW</button>' +
-          '</div>';
+          '</div>' +
+          (isAssumption ? '' : rsbGearHtml(row, packages));
       } else {
         // A blank cell means no corresponding SOW record exists.
         td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
@@ -632,7 +670,9 @@
       // "belongs to another SOW" rows note which SOW(s) the item is on.
       ((row && row.otherKind === 'other-sow' && row.otherSowNames && row.otherSowNames.length) ?
         '<div class="scw-bid-review-v2__sow-elsewhere">on ' +
-          escapeHtml(row.otherSowNames.join(', ')) + '</div>' : '');
+          escapeHtml(row.otherSowNames.join(', ')) + '</div>' : '') +
+      // Settings gear — top-right of the cell (CSS in require-sub-bid-settings.js).
+      rsbGearHtml(row, packages);
     return td;
   }
 
@@ -1285,7 +1325,7 @@
     var assumption = isAssumption(row);
 
     // SOW item column — anchors the row, always second from left.
-    tr.appendChild(buildSowCell(row, assumption, sowId));
+    tr.appendChild(buildSowCell(row, assumption, sowId, packages));
 
     // One cell per bid package
     for (var p = 0; p < packages.length; p++) {
@@ -2145,7 +2185,9 @@
   ns.card = {
     buildSowSection: buildSowSection,
     buildBidRow:     buildBidRow,
-    buildBidCell:    buildBidCell
+    buildBidCell:    buildBidCell,
+    // Exposed for tests — the settings-gear spec a row's SOW cell renders.
+    rsbGearHtml:     rsbGearHtml
   };
 })();
 /*** END BID REVIEW V2 — CARD *************************************************/

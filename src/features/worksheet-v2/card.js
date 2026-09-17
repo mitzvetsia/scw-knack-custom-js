@@ -2771,6 +2771,17 @@
       sel.setAttribute('aria-label', 'Select row');
       rowEl.insertBefore(sel, rowEl.firstChild);
     }
+    // "Item settings" gear (require-sub-bid-settings.js) at the row's right
+    // edge — the mirror of the select box on the left. Only on views that
+    // opt in (config requireSubBidSettings: the ops build page), never on
+    // read-only panels (rowEl is null there) or assumption rows (no bid).
+    if (rowEl && cat !== 'assumptions' && _coVc.requireSubBidSettings &&
+        window.SCW.requireSubBid && typeof window.SCW.requireSubBid.gearHtml === 'function') {
+      card.classList.add('scw-ws-v2-card--rsb');
+      rowEl.insertAdjacentHTML('beforeend', window.SCW.requireSubBid.gearHtml({
+        surface: 'worksheet', viewKey: sourceViewKey, recordId: rec.id
+      }));
+    }
     // Photo strip — appended AFTER the detail panel. Hidden by
     // default; only revealed when the card is expanded (matches the
     // detail panel\'s show-on-open behavior).
