@@ -55,7 +55,9 @@ additive chrome.
    home next to the worksheet). Assumptions / Services groups are a quiet
    tier, collapsed by default with a one-line summary. Bulk actions stay the
    existing checkbox-select flow (no header button).
-5. **Progress: two bars, one per owner.** SVS (subcontractor): required photos
+5. **Progress: two bars, one per owner.** UI copy says **"Sub"**, never a
+   subcontractor's name or initials (decided 2026-09-18; the page serves any
+   sub). Sub: required photos
    in / required (missing + failed-to-resubmit count against them). SCW:
    items QA'd (see rollup below). Shown in the Installation tile and the
    worksheet header, later per MDF/IDF row. Real numbers for the reference
@@ -74,9 +76,9 @@ additive chrome.
    **One QA surface per item (decided 2026-09-18)**: the checklist is the
    only place QA happens. The photo strip is evidence only (thumbnails,
    upload, replace; no "Needs QA" chit). Every required photo is a row in
-   the checklist ("Uploaded by SVS · needs your review" → Review opens the
+   the checklist ("Uploaded by Sub · needs your review" → Review opens the
    existing photo modal, whose Pass / Fail writes the DOC_photos QA fields
-   exactly as today; "Not uploaded · waiting on SVS" rows are inert). The
+   exactly as today; "Not uploaded · waiting on Sub" rows are inert). The
    item is Complete when every schema check is ticked AND every required
    photo has passed.
    **Config Field Definition object, what to add**: ONE Yes/No field,
