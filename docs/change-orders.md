@@ -89,6 +89,22 @@ install line items.
      (type=CO) in one gesture (the client deliberates AFTER send, so
      publish/accept collapse), then the acceptance-created automation branches
      on Type to send the CO agreement via esignatures.
+   - **Amendment (2026-08-20): an optional pre-issue "Publish CO Preview"
+     verb exists alongside Issue.** The original design collapsed
+     publish/accept into Issue; in practice clients want to REVIEW the CO
+     as a web quote before anything goes out for signature. The preview
+     ships the same full publish payload to the SAME `MAKE_CO_ISSUE_WEBHOOK`
+     as Issue — the scenario routes on `stepId` ('publish-co-preview' vs
+     'issue-change-order'), sharing the record-creation modules. The
+     preview branch only creates the published-proposal record (Type =
+     change order, field_2658 Published) — no esignatures contract, no
+     acceptance, no CO Status change. While CO Status is pre-issue, the published page (both
+     scene_1279 and the public token page) swaps the e-sign banner for
+     preview copy plus a "request the signature copy" nudge CTA
+     (`MAKE_CO_SIGNATURE_REQUEST_WEBHOOK` — a notify-ops ping, NOT a
+     client-initiated Issue, preserving the one-writer rule on Issued).
+     Issue afterwards creates its own frozen snapshot and should mark the
+     preview record Superseded (field_2658).
    - **Invoice timing: the CO branch defers Xero invoice creation to the
      SIGNED webhook.** (Proposal flow invoices at acceptance-creation because
      the client already committed; a CO at issue time is not yet agreed —
@@ -364,6 +380,28 @@ design:
    Declined.
 4. Confirm the existing proposal→install conversion can take "only items
    connected to CO-###" as input — it's the acceptance hook.
+5. **Publish CO Preview** (bundle shipped 2026-08-20) — a BRANCH of the
+   Issue scenario, not its own webhook: both stepper actions fire
+   `MAKE_CO_ISSUE_WEBHOOK` with identical full publish payloads, and the
+   scenario's FIRST router splits on `stepId`. ⚠️ Add that router before
+   using the preview button — without it a preview click runs the full
+   Issue flow (contract sent). Preview branch: create the
+   published-proposal record from the payload (html → field_2680, token →
+   field_2904, tokenized URL → field_2908, expiration → field_2659, Type
+   = change order, field_2658 = Published) and STOP — no contract, no
+   acceptance, no status flip. Respond `{ success: true }`. Issue branch:
+   also flip any prior preview record to Superseded (field_2658).
+6. **CO signature-request nudge** (optional) —
+   `MAKE_CO_SIGNATURE_REQUEST_WEBHOOK`: ping ops when a client clicks
+   "Request the signature copy" on a preview. Payload
+   `{ source, publishedProposalId, proposalName, coStatus, pageUrl }`.
+   The CTA on both published pages hides until this is configured.
+
+   Builder prerequisites for the preview banner state: **field_2953 (CO
+   Status) added to view_3874** (scene_1279) and **exposed through the
+   SOW connection on view_3952** (public lookup view — arrives as a
+   dotted key). Until then every CO shows the issued-style e-sign banner
+   (fails safe, nothing regresses).
 
 ## Implementation state (bundle, as of 2026-07-07)
 
@@ -514,3 +552,56 @@ but never got installed (not part of a greenlit SOW).
    documents, statuses, and chips.
 6. **Awarded-sub auto-assign mechanic** (Project connection stamped at apply
    vs filtered dropdown) — see Sub assignment chain.
+
+## Swap pairs — product changes apply IN PLACE (locked 2026-09-01)
+
+The adds+removes ledger stays, but a **product change on an existing install
+item is a linked PAIR, not two independent lines** — a swap's physical
+install (drop, photos, QA, the install record itself) continues, and a
+naive remove+create severed that history (the problem that triggered this
+decision).
+
+**Scope (locked same day): a swap is a PRODUCT swap only at this stage.**
+Every other field carries over verbatim from the original install item, the
+gesture is offered only on rows that carry a product (services/assumptions
+have nothing to swap), and the apply writes the product and nothing else. A
+broader field-level swap is a future decision, not an extension of this one.
+
+- **Drafting**: ONE gesture — "⇄ Swap Product" on the removal panel
+  (`co-remove.js fireSwap`) — through the two EXISTING scenarios, no
+  dedicated swap hook (contract documented in `src/config.js`):
+  `MAKE_CO_ADD_ITEMS_WEBHOOK` first with the install item's config cloned
+  into the normal add payload + `swap: true` + `targetInstallItemId` (the
+  add scenario maps it → `field_2966`; an Add carrying a target IS the pair
+  marker — no new CO Action values), then `MAKE_CO_REMOVE_ITEMS_WEBHOOK`
+  exactly as a plain removal. Add fires first: a lone target-linked Add is
+  apply-safe (pricing gap only), a lone Remove would remove the item. The
+  user then changes the Add line's product to the replacement on the CO
+  worksheet — the one field a swap may change.
+- **Accessories ride as their own pairs** — the CO must show what mounting
+  is being credited and re-added (the sub prices it off the CO). The add
+  payload's `swapAccessories` array carries `{productId, productName,
+  targetInstallItemId, qty}` per accessory child (install back-pointer
+  `field_2853`, the `field_2464` analogue — answers the detection-source
+  audit in the open questions above); the add scenario creates each as a
+  `field_2464` child of the device Add with `field_2966` → its own install
+  record, and their install ids join the remove call's `installItemIds`.
+  `accessoryIds` still ships `[]` — swap accessories come ONLY through
+  `swapAccessories`, and the scenario must skip default-accessory
+  auto-adds on swap (an untargeted accessory Add would double the mount at
+  apply). At accept each accessory Add applies in place exactly like the
+  device: product PUT on its own install record; unchanged mount = no-op
+  PUT, changed mount = the real price lines the CO already showed.
+- **Apply (signature)**: an Add with a `field_2966` target is an IN-PLACE
+  UPDATE of that install record's PRODUCT — and nothing else (product-only
+  at this stage) — never remove + create. `Removed by CO` (`field_2967`) is
+  NOT flipped for paired removes. Photos / QA / acceptance / topology keep
+  their identity because the record persists. Unpaired adds and removes keep
+  today's behavior exactly.
+- **Document**: the signed CO still prices the pair as credit + charge lines
+  (pricing transparency unchanged); rendering a pair as one "Changed: X → Y"
+  block is a later cosmetic option, not a data-model change.
+- **Why not a MODIFY action type**: it reopens the adds+removes ledger and
+  drags delta-pricing + e-sign presentation questions with it. The pair
+  keeps every locked property — nothing mutates until signature, Make is the
+  single writer, the CO lines stay an immutable audit trail.

@@ -112,6 +112,9 @@
       {
         // Build-SOW page (internal). The canonical deployment.
         sourceViewKey:    'view_3962',
+        // Service lines may be attached to a parent line item (field_2464)
+        // — same opt-in as the CO worksheet (see the view_4079 entry).
+        serviceParent:    true,
         // Mount directly after view_3369 so the panel lands as the last child
         // of its layout group (group 7), where end users expect the worksheet.
         // (view_3610, the retired v1 grid, has been removed from the scene.)
@@ -193,6 +196,17 @@
         // attach under it (hidden row + read-only chip on the parent card) —
         // no Require-Sub-Bid promote rule on the install side.
         accessoriesAlwaysAttach: true,
+        // Designator (prefix + number) editing on cam/reader rows — the ONE
+        // identity edit ops can make on a deployed item (worksheet-v2/
+        // designator-edit.js). Deliberately high-friction: a pencil on the
+        // label, a "are you SURE this matches the map" confirm, then an
+        // inline prefix picker (dropPrefix) + number input (dropNumber) that
+        // save through this view. Ops deploy page ONLY — the sub-portal
+        // (view_4056) and CO-removal (view_4086) clones strip it below.
+        // ⚠️ Builder: field_2823 + field_2798 must be inline-editable
+        // columns on view_4093 or the view-based PUT is dropped (edit.js
+        // surfaces that as a "Knack didn't keep your change" toast).
+        designatorEdit:   true,
         fields: {
           // identity / grouping
           product:        'field_2846',     // CORE_product (connection — for picker/edit)
@@ -272,7 +286,15 @@
         // (schema resolved per record from schemaField; answers merged into
         // valueField). Uses the internal field set (all active fields) via
         // window.SCW.deliverables.
-        questionnaire: { schemaField: 'field_2930', valueField: 'field_2932' }
+        questionnaire: { schemaField: 'field_2930', valueField: 'field_2932' },
+        // Per-record edit-history blob (worksheet-v2/audit-log.js). Every save
+        // through the worksheet (edit.js / picker.js / bulk.js / deliverables
+        // panel) appends a {t,u,f,l,from,to} entry; the card detail panel
+        // renders it as a collapsed "Edit history (N)" section. The view_4056
+        // sub-portal clone inherits this via the JSON deep-clone. ⚠️ Builder:
+        // field_2995 must be an inline-editable column on view_4093 AND
+        // view_4056 or the view-based audit PUT 403s (warned in console).
+        auditField: 'field_2995'
       }
 
       // ── Sales scope-of-work-details page (view_3586) ────────────────
@@ -291,6 +313,26 @@
         label:            'Scope of Work Line Items',
         mdfSourceViewKey: 'view_3602',   // MDF/IDF locations on the sales SOW page
         mdfLabelField:    'field_1642',
+        // Location management folded INTO the worksheet (mdf-notes.js) —
+        // same integration as build-SOW/deploy/survey: every real-location
+        // L1 gets the edit pencil (designator/##/name + delete-when-empty)
+        // and the always-visible detail band (survey-notes callout, photos
+        // strip + add-tile, inline SCW notes). Reads/PUTs go through the
+        // Manage MDFs/IDFs grid (view_3602), whose standalone accordion
+        // section is hidden by mdf-notes.js static CSS. deleteGate ports
+        // the rule mdf-idf-cards.js enforced on the standalone section:
+        // once the SOW's ClickUp task exists (link renders in view_3491),
+        // location deletes lock — ops is working off these locations.
+        mdfManage:        { viewKey: 'view_3602', notesField: 'field_1643',
+                            deleteGate: {
+                              cuLinkView: 'view_3491',
+                              title: 'This SOW already has a ClickUp task — ' +
+                                'locations can’t be deleted once work is initiated.'
+                            } },
+        // "+ Add MDF/IDF" toolbar CTA — clicks the (hidden) view_3654 menu
+        // link (accordion-menu-inject hoisted it into the now-hidden
+        // standalone section), replacing the button that lived there.
+        addMdfMenuView:   'view_3654',
         moneyMode:        'sales',
         hideSow:          true,          // no SOW column / pills / sort on this page
         // "+ Add to SOW" toolbar button clicks the add link inside this
@@ -408,6 +450,24 @@
         },
         mdfSourceViewKey:  'view_3617',     // MDF/IDF locations grid on the survey scene
         mdfLabelField:     'field_1642',    // MDF/IDF full label
+        // Location management folded INTO the worksheet (mdf-notes.js), same
+        // as the build-SOW/deploy pages: every L1 header gets the pencil
+        // panel (HEADEND/IDF designator + ## + name + delete-when-empty) and
+        // each expanded group opens with the location band (photos strip +
+        // add-photos tile + notes). Reads/PUTs go through the OPS_MDF-IDFs
+        // grid (view_3617) with the user's session; the standalone section
+        // (view_3508 heading + view_3617 accordion) is hidden by mdf-notes.js
+        // static CSS. ⚠️ Notes editability is INVERTED vs the internal pages:
+        // this scene's audience writes SURVEY notes, so field_2457 is the
+        // editable band field and ops' Notes (field_1643) shows read-only in
+        // the callout — matching which columns view_3617 inline-edits
+        // (field_1643 has no cell-edit there, so a PUT would be dropped).
+        mdfManage: { viewKey: 'view_3617',
+                     notesField: 'field_2457',  notesLabel: 'Survey Notes',
+                     calloutField: 'field_1643', calloutLabel: 'SCW Notes' },
+        // "+ Add MDF/IDF" toolbar CTA — clicks the (hidden) view_3509 menu
+        // link (#new-add-mdfidf/<requestId>), replacing the standalone menu.
+        addMdfMenuView:    'view_3509',
         fields: {
           // identity / grouping
           product:        'field_2627',     // REL_product (editable)
@@ -558,9 +618,40 @@
         // (view_4112, laborOnly) never renders SCW-side money, and the
         // laborOnly gate keeps this flag inert if the entry is ever cloned.
         // ⚠ Builder dependency: field_1960 must be an inline-editable column
-        // on view_4079 or the view-based PUT silently drops the edit.
+        // on view_4079 or the view-based PUT silently drops the edit (edit.js
+        // now detects the 200-but-unchanged response and toasts the cause).
         equipmentField:     'field_1960',
-        fields:  {},
+        // Custom discount on the CO card's detail panel (card.js
+        // pricingDetail zone): Custom Disc % (field_2261) + Custom Disc $ each
+        // (field_2262) + reason (field_2263) editable, Applied Discount
+        // (field_2303) / Net unit (field_2268) / Total (field_2269) read-only.
+        // Pricing a CO line through the discount fields is the supported path
+        // when a rule re-stamps the unit price from the product — and it's
+        // how a REMOVE line credits at the price the item was bought for:
+        // the removal's discount fields stack ON TOP of the unit price the
+        // line was created with, so an extra line-level credit/fee is just
+        // a value in Custom Disc $ each. ⚠ Builder dependency: field_2261 /
+        // field_2262 / field_2263 inline-editable columns on view_4079.
+        // The same logical keys feed edit.js RECALC_DEPS (a discount edit
+        // refetches the record so the CALC cells refresh).
+        pricingDetail:      true,
+        // Service lines can be attached to a parent line item (field_2464)
+        // — e.g. a restocking fee attached to the Remove line it applies
+        // to. The service keeps its own card (never folds into the
+        // parent's mounting-hardware chips) and lists under the parent as
+        // a "Related services" chip. ⚠ Builder: the parent cascade PUTs
+        // field_2207 on the parent through this view (already required
+        // for accessory parenting).
+        serviceParent:      true,
+        fields:  {
+          retailPrice:     'field_1960', // PRODUCT STORED_price (unit list price)
+          lineDiscPct:     'field_2261', // INPUT line discount % (editable)
+          lineDiscAmt:     'field_2262', // INPUT line discount $ each (editable)
+          lineDiscReason:  'field_2263', // discount reason notes (editable)
+          appliedDiscount: 'field_2303', // CALC extended discount (read-only)
+          netUnit:         'field_2268', // CALC unit price after discounts (read-only)
+          total:           'field_2269'  // CALC line total (read-only)
+        },
         buckets: {}
       }
 
@@ -648,6 +739,9 @@
     // field_1641/field_2458/field_1943/field_1643 (saves PUT through
     // it) and a Delete link for location delete to authorize.
     clone.mdfManage          = { viewKey: 'view_4060', notesField: 'field_1643' };
+    // Designator editing is an SCW-ops gesture (deploy page only) — the sub
+    // never re-labels installed items.
+    delete clone.designatorEdit;
     views.push(clone);
   })();
 
@@ -692,6 +786,7 @@
     delete clone.photoUploadView;
     delete clone.questionnaire;
     delete clone.bulkFields;
+    delete clone.designatorEdit;   // read-only removal source — no identity edits
     // Removal marker (co-remove.js selects views by this flag, mirroring the
     // `adopt` flag on view_4088).
     //   targetField    = field_2966 "Target install item" — on the SOW Line

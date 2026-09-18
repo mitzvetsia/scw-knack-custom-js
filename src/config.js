@@ -101,14 +101,74 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // CO Action = Remove, Target install item → the install record, connected
   // to the CO via field_2154). The install record's own `Removed by CO` flip
   // defers to signature. Expected:
-  //   Request body:  { changeOrderId: <CO SOW id>, installItemIds: [<install rec ids>],
-  //                    removal: true, triggeredBy: {...} }
+  //   Request body:  {
+  //     changeOrderId:           <CO SOW id>,
+  //     installItemIds:          [<DEVICE install rec ids — acted-on rows ONLY>],
+  //     accessoryInstallItemIds: [<accessory install rec ids approved to ride>],
+  //     items: [ { id: <device id>, accessoryIds: [<its approved accessories>] } ],
+  //     removal: true, swap?: true, triggeredBy: {...}
+  //   }
   //   Response body: { success: true, created?: <count>, message?: "..." }
   //             or:  { success: false, error: "<message>" }
-  // Single-item and bulk removal fire the SAME payload shape (co-remove.js
-  // fireRemove builds it once): installItemIds is ALWAYS an array (one id or
-  // many), so Make can parse one way regardless of how many were selected.
+  // ⚠ Shape change 2026-09-01: accessories are NO LONGER mixed into
+  // installItemIds — the flat array lost which parent each accessory
+  // belonged to, so their Remove lines couldn't carry the parent
+  // connection. The scenario should now use ONE of:
+  //   A (recommended, no searches): iterate `items[]` → create the device's
+  //     Remove line → iterate that bundle's `accessoryIds` → create each
+  //     accessory Remove line parented to the device's (field_2464 on the
+  //     created line → the device Remove line, same as the old per-camera
+  //     loop produced).
+  //   B (matches the old loop): iterate `installItemIds` (devices) → search
+  //     each device's accessories from Knack (install field_2853 = device)
+  //     → FILTER to ids present in `accessoryInstallItemIds` → create their
+  //     Remove lines inside the device's loop pass (parent preserved).
+  // Either way accessories NOT in the approved set are left alone (the
+  // remove confirm's checkbox unchecked = empty arrays). Single, bulk and
+  // swap removes all fire this SAME shape (swap: true is informational —
+  // the swap pairing lives on the created lines' field_2966 targets).
+  // ⚠ The scenario must NOT also create Remove lines from the ADD webhook's
+  // swap branch — the client always follows a swap's Add call with this
+  // remove call; an add-scenario remove doubles every credit line.
   MAKE_CO_REMOVE_ITEMS_WEBHOOK: "https://hook.us1.make.com/yw3x0othv8k4guke6qx91iyo3q5hgnyy",
+  // Change-order PRODUCT SWAP (worksheet-v2/co-remove.js fireSwapBatch) — NO
+  // dedicated webhook: the gesture (single row or bulk) opens the bucket-
+  // filtered product picker for the REPLACEMENT first, then drafts a linked
+  // Remove + Add pair PER ITEM through the two EXISTING hooks, in this order:
+  //   1. MAKE_CO_ADD_ITEMS_WEBHOOK — one call per item (sequential): the
+  //      normal add payload with the install item's config cloned in and
+  //      productIds = the REPLACEMENT product the user picked (the Add line
+  //      is created with it directly — no post-edit step). The credited
+  //      current product rides along as swapFromProductId /
+  //      swapFromProductName (informational — the credit itself is the
+  //      Remove line). PLUS the swap extras. The ADD scenario must, when
+  //      swap=true:
+  //        (a) map targetInstallItemId → field_2966 on the created device
+  //            line — an Add carrying a target IS the pair marker;
+  //        (b) iterate `swapAccessories` [{productId, productName,
+  //            targetInstallItemId, qty}] creating one child Add line per
+  //            entry — same creation steps as the normal accessory path
+  //            (parented via field_2464 to the device Add) plus field_2966 =
+  //            that entry's targetInstallItemId — so the CO shows the
+  //            mounting being credited/re-added and the sub can price it;
+  //        (c) skip any default-accessory auto-adds (accessoryIds arrives []
+  //            — swap accessories come ONLY through swapAccessories; an
+  //            untargeted accessory Add would double the mount at apply).
+  //   2. MAKE_CO_REMOVE_ITEMS_WEBHOOK — ONE call for the whole batch,
+  //      identical STRUCTURED payload to a plain removal (see the removal
+  //      contract above): installItemIds = the successfully-added devices,
+  //      each device's accessories under it in `items[]` /
+  //      accessoryInstallItemIds, plus an informational swap:true. Add
+  //      fires first because a lone target-linked Add is apply-safe, while
+  //      a lone Remove would actually remove the item; an item whose Add
+  //      failed is left OUT of the remove call so it stays live and
+  //      untouched.
+  // At SIGNATURE the apply scenario routes on "CO Action = Add AND
+  // field_2966 populated" → IN-PLACE UPDATE of the targeted install
+  // record's PRODUCT (nothing else — product-only at this stage; never
+  // remove + create), and SKIPS any Remove whose target matches a swap-Add
+  // (no field_2967 flip). That identity preservation is what keeps
+  // photos/QA/history attached. See docs/change-orders.md.
   // Change-order ADD item (worksheet-v2/co-add-item-form.js): the custom
   // "Add line item(s)" modal fires this INSTEAD of the native DTO form. Make
   // creates SOW Line Item records DIRECTLY from the payload (no DTO staging
@@ -197,9 +257,36 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // (sourceRecordId, stepId:'issue-change-order', notes, sowFields,
   // sowLineItemIds, html/htmlPdf/json/totals/proposalAccessToken/Url, …)
   // plus changeOrderId (alias of sourceRecordId, matching the other CO
-  // webhooks). ⚠️ Requires field_2952 on view_3861 for CO mode to activate.
+  // webhooks), recipient { id, name, label, email, phone }, and poNumber —
+  // the OPTIONAL client PO # typed in the Issue modal ('' when left blank;
+  // key present only on issue-change-order, whose modal has the input).
+  // Make maps it onto the CO / invoice reference wherever needed.
+  // ⚠️ Requires field_2952 on view_3861 for CO mode to activate.
   //   Response body: { success: true } or { success: false, error: "..." }
+  // ⚠️ SHARED by TWO stepper actions — the scenario must route on
+  // payload.stepId as its first step:
+  //   'issue-change-order'  → full Issue: published record + esignatures
+  //                           contract + acceptance + CO Status = Issued,
+  //                           and flip any prior preview record to
+  //                           Superseded (field_2658).
+  //   'publish-co-preview'  → create the SOW_published proposals record
+  //                           only (field_2680 html, field_2904 token,
+  //                           field_2908 tokenized URL, field_2659
+  //                           expiration, Type = change order, field_2658
+  //                           = Published) and STOP — no contract, no
+  //                           acceptance, no CO Status change.
+  // Both ship the identical full publish payload (changeOrderId alias
+  // included), so the record-creation modules are common and the branch
+  // point is after them.
   MAKE_CO_ISSUE_WEBHOOK: "https://hook.us1.make.com/fwpbnldo3fkrywggxwu18qsh6ghgrg7w",
+  // Fires from the published CO page (scene_1279 AND the public token
+  // page snippet) when a client clicks "Request the signature copy" on
+  // a PRE-ISSUE CO preview. Minimal notify payload:
+  //   { source, publishedProposalId, proposalName, coStatus, pageUrl }
+  // The scenario just pings ops (Slack/email) to run Issue from the
+  // preview page. The CTA hides while this is blank, so the preview
+  // banner ships safely before the scenario exists.
+  MAKE_CO_SIGNATURE_REQUEST_WEBHOOK: "",
   // Fires on the "Request Validation & Add as Alternative Bid to Survey"
   // stepper action (state 3 of the gating model — sibling SOW has the
   // survey; docs/project-stage-workflow.md). Payload now carries stepId
@@ -217,6 +304,35 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // ⚠️ PLACEHOLDER — point at the real Make scenario before enabling in
   // production; the button alerts "not configured" until then.
   MAKE_REQUEST_BID_UPDATE_WEBHOOK: "PLACEHOLDER",
+  // Fires from the Agreements & Invoices panel (acceptance-card.js) to ask
+  // Make whether the deal is ready to greenlight for install. Two entry
+  // points, both OPTIONAL — nothing fires unless the user asks for it:
+  //   1. a checkbox in the signed-agreement uploader — ticked by default,
+  //      shown BEFORE anything runs, fires as part of the same Upload
+  //      click (source: 'agreement-upload'), and
+  //   2. the row's standalone "Check greenlight" button
+  //      (source: 'manual'), shown once an agreement is on file.
+  // Payload:
+  //   Request body:  { acceptanceRecordId, proposalId, proposalLabel,
+  //                    agreementSigned, paymentReceived, approvedForTerms,
+  //                    source, pageUrl, triggeredBy }
+  //   Response body: { success: true, greenlit?: bool, message?: "..." }
+  //             or:  { success: false, error: "<message>" }
+  // A bare HTTP 200 (Make's "Accepted" ack when the scenario runs past the
+  // 40s webhook-response window) counts as "check started" — the panel
+  // refetches so any flags the scenario flips show up on their own.
+  // Blank/PLACEHOLDER hides the row button and drops the uploader's
+  // checkbox, so the panel degrades to a plain file upload.
+  MAKE_GREENLIGHT_CHECK_WEBHOOK: "https://hook.us1.make.com/zlxkei9ro9iaxjri5e5yf2f4fqzi89xl",
+  // QA-fail notification: qa-popover POSTs here whenever a save WRITES a
+  // photo's QA status to Fail (the fields diff carries the status only on
+  // change, so this fires exactly on the transition). Payload:
+  //   { photoId, status: "Fail", notes, failedBy: {id,name}, failedAt,
+  //     pageHash }
+  // Make resolves photoId → photo record → line item → project → sub and
+  // sends the actual notification. Fire-and-forget: a webhook failure
+  // console.warns and never blocks the QA save itself.
+  MAKE_QA_FAIL_WEBHOOK: "https://hook.us1.make.com/ti9u45iyxdc9j4qfro68m2lwo6noktmt",
   // ⚠️ RETIRED FROM CODE 2026-08-02 (docs/project-stage-workflow.md): the
   // standalone "Request SOW validated as ready for Survey" stepper button
   // was removed — both remaining sales actions (the renamed initiate form
@@ -226,6 +342,23 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // the initiate + survey scenarios carry the ping (cleanup step 8 in the
   // design doc).
   MAKE_REQUEST_SOW_VALIDATION_WEBHOOK: "https://hook.us1.make.com/os586ruwyb1p2o3j31xoju3v7togumfy",
+  // Custom survey-request form (survey-request-form.js, DORMANT until wired
+  // in). Replaces the view_3853 Knack form: the record is created by MAKE,
+  // not a Knack form insert — the copied form's page connection never
+  // executed on create, so the scenario receives everything and writes the
+  // SOW_OPS_site survey request itself: connect REL_scope of work
+  // (field_2329) + project, set the correct status (Pending Validation vs
+  // fire-now per the validated flag — docs/project-stage-workflow.md branch
+  // table), resolve/create the contacts, notify per the existing flow.
+  //   Request body: { action: 'survey-request-create', sowId, sowName,
+  //     projectId, companyId, validated, surveyRequested,
+  //     installContact:  { mode: 'existing', id, name, email, phone } |
+  //                      { mode: 'new', first, last, email, phone },
+  //     billingContact:  same shape or null,
+  //     pocAuthorized, badging, badgingDetails, ppe, notes,
+  //     requestedBy: { id, name, email }, submittedAt }
+  //   Response: { success: true } (or bare Make "Accepted")
+  MAKE_SURVEY_REQUEST_FORM_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_SURVEY_REQUEST_FORM",
   // Ops-side stepper actions (view_3345 on the proposal page). Each fires on
   // button click with a notes modal. Payload shape:
   //   Request body:  { sourceRecordId, notes, sowFields, sowLineItemIds,
@@ -412,3 +545,28 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // Payload shape: { sowId, productId, productName, parentRecordIds, parentLabels, sourceViewId, triggeredBy }
   MAKE_BULK_ADD_MOUNTING_BOX_WEBHOOK: "https://hook.us1.make.com/g43gvnp10lyo4xrcjkrdsv7fvmwmdb2b"
 };
+
+// ─────────────────────────────────────────────────────────────
+// Build stamp + boot log
+// ─────────────────────────────────────────────────────────────
+// Printed once per page load so the LOADED bundle self-identifies —
+// including the exact CDN URL (with the pinned git SHA) it was loaded
+// from. When "is the page running the build I just pushed?" comes up,
+// open the console and read this line instead of fingerprinting the
+// DOM. Bump the stamp when shipping something you need to verify live.
+(function () {
+  'use strict';
+  window.SCW.BUILD = '2026-09-01 co-product-swap';
+  try {
+    var src = (document.currentScript && document.currentScript.src) || '';
+    if (!src) {
+      var scripts = document.getElementsByTagName('script');
+      for (var i = scripts.length - 1; i >= 0; i--) {
+        if (scripts[i].src && scripts[i].src.indexOf('knack-bundle') !== -1) {
+          src = scripts[i].src; break;
+        }
+      }
+    }
+    console.info('[SCW] bundle build:', window.SCW.BUILD, src ? '· ' + src : '');
+  } catch (e) { /* logging is a nicety — never block boot */ }
+})();

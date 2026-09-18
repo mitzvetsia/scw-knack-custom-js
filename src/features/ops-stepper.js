@@ -96,12 +96,22 @@
   // When a survey request is pending, the Mark Ready modal surfaces the
   // request's details prefilled + EDITABLE so Ops can correct them before
   // the send. Source + write path: a hidden grid of SOW_OPS_site survey
-  // requests CONNECTED to this page's SOW on scene_1096, with the fields
-  // below as columns and inline editing ON (view-based PUT rides the
-  // user's session — same mechanic as the CO recipient picker's
-  // write-back). Same view shape as view_3876 on the sales scene.
+  // requests on scene_1096, with the fields below as columns and inline
+  // editing ON (view-based PUT rides the user's session — same mechanic
+  // as the CO recipient picker's write-back). Same view shape as
+  // view_3876 on the sales scene.
   // Unconfigured → fail open: no editor renders, modal behaves as today.
-  var PENDING_REQ_VIEW = 'view_4141';  // hidden connected grid on scene_1096 (added 2026-08-03)
+  //
+  // The view stays CONNECTED to this page's SOW (via the request's
+  // field_2329) — deliberately. A wider (project-wide) source would let
+  // a request captured for a SIBLING SOW arm THIS SOW's Mark Ready and
+  // release the survey against a SOW that was never validated. The
+  // matching requirement is that capture records actually CARRY the SOW
+  // connection: survey-request-sow-link.js prefills field_2329 on the
+  // view_3853 form (once the input is added to the form in Builder).
+  // Legacy/unattributed records (blank field_2329) never appear in this
+  // view and never arm — backfill field_2329 by hand to surface one.
+  var PENDING_REQ_VIEW = 'view_4141';  // hidden SOW-connected requests grid on scene_1096 (added 2026-08-03)
   // Field map = the SOW_OPS_site survey request capture record. NOTE the
   // POC lives in the INPUT fields (what the view_3853 form writes) — the
   // REL_poc contact connection (field_1197) is typically BLANK on these
@@ -118,6 +128,10 @@
     notes:          'field_1194',  // "anything else" text (editable)
     status:         'field_2992'   // FLAG_status (PENDING/…, read-only; row pick)
   };
+  // Request → SOW connection (usually BLANK — the capture form doesn't set
+  // it). Read separately from the editor fields purely to scope rows when
+  // it IS populated: an explicit sibling-SOW row must not arm THIS SOW.
+  var PENDING_REQ_SOW_FIELD = 'field_2329';
 
   var NS         = '.scwOpsStepper';
   var BLOCK_CLS  = 'scw-ops-stepper';
@@ -403,6 +417,41 @@
     // same full publish shape as publish-final so the scenario reuses the
     // existing publish plumbing.
     {
+      // Publish a client-viewable CO PREVIEW without issuing: same full
+      // publish payload as Issue (html/json/totals/token — Make creates
+      // the published record, Type=CO, field_2658 Published) but NO
+      // esignatures contract, NO acceptance record, NO status flip. Lets
+      // the client review the web quote and deliberate BEFORE ops runs
+      // Issue; the Issue scenario supersedes the preview record. The
+      // published page branches on CO Status (field_2953) to show
+      // preview copy + a "request the signature copy" CTA instead of the
+      // issued e-sign banner (published-proposal-render.js + the public
+      // token snippet).
+      //
+      // SAME WEBHOOK as Issue — the Make scenario branches on
+      // payload.stepId ('publish-co-preview' stops after creating the
+      // published record; 'issue-change-order' continues into contract +
+      // acceptance + status flip). Same pattern as request-alt-bid /
+      // update-matching-bid sharing MAKE_OPS_REQUEST_ALT_BID_WEBHOOK.
+      // ⚠️ The scenario MUST have that stepId router before this button
+      // is used — without it a preview click runs the full Issue flow.
+      id: 'publish-co-preview',
+      label: 'Publish CO Preview — client-viewable, no signature request',
+      tone: 'secondary',
+      coOnly: true,
+      webhookKey: 'MAKE_CO_ISSUE_WEBHOOK',
+      modal: {
+        title:       'Publish CO Preview',
+        intro:       'Publishes a client-viewable preview of this change ' +
+                     'order (web quote + tokenized link). Nothing goes out ' +
+                     'for signature and the CO status does not change — ' +
+                     'run Issue when the client is ready to sign.',
+        placeholder: 'e.g. preview for client review ahead of formal issue',
+        submitLabel: 'Publish Preview'
+      },
+      includeFullPayload: true
+    },
+    {
       id: 'issue-change-order',
       label: 'Issue Change Order — send to client for signature',
       tone: 'success',
@@ -426,6 +475,12 @@
         intro:       'Publishes the change-order document, creates the ' +
                      'e-signature contract, and sends it to the chosen ' +
                      'contact. Line items lock once issued.',
+        // Optional client PO # — rides on payload.poNumber for Make to
+        // stamp on the CO / invoice reference. Never blocks Issue.
+        po: {
+          label:       'Client PO # (optional)',
+          placeholder: 'e.g. PO-48211 — referenced on the CO and invoice'
+        },
         placeholder: 'e.g. CO-1410: 2 cameras added at dock, 1 removed at cash register',
         submitLabel: 'Issue Change Order'
       },
@@ -616,6 +671,16 @@
       '.scw-ops-modal-banner--warn {' +
       '  background: rgba(245,158,11,0.10); color: #b45309;' +
       '  border: 1px solid rgba(245,158,11,0.35);' +
+      '}' +
+      /* Optional single-line extra input (client PO # on Issue) */
+      '.scw-ops-modal-po { margin-top: 12px; }' +
+      '.scw-ops-modal-po__lbl {' +
+      '  display: block; font-size: 12.5px; font-weight: 600; color: #1f2937;' +
+      '}' +
+      '.scw-ops-modal-po__input {' +
+      '  width: 100%; box-sizing: border-box; display: block; margin-top: 4px;' +
+      '  padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;' +
+      '  font-family: inherit; font-size: 13px; background: #fff; color: #1f2937;' +
       '}' +
       /* Recipient single-select (issue-change-order) */
       '.scw-ops-modal-recipient {' +
@@ -824,18 +889,50 @@
   }
 
   /** Count of armed survey requests on this SOW.
-   *  Preferred source: the Builder rollup (ARMED_REQ_COUNT_FIELD) once it
-   *  exists on view_3861. Until then, DERIVED from the flags already on
-   *  the view: field_2706 flips at submit regardless of validation
-   *  (confirmed 2026-08-02), so 2706 = Yes while 2723 = No means a
-   *  request was captured but the survey hasn't been sent — armed. The
-   *  derived form can't count multiples; it reports 1. Legacy-safe: this
-   *  state was unreachable before the stepper ungated pre-validation
-   *  submits. */
+   *  Source order:
+   *    1. The Builder rollup (ARMED_REQ_COUNT_FIELD) once it exists on
+   *       view_3861.
+   *    2. PENDING capture rows in PENDING_REQ_VIEW — the same signal the
+   *       sales page derives its "Pending" cards from (survey-request-
+   *       cards.js: "real status field wins"). The rows are the truth
+   *       under the always-pending redesign: the field_2706 flip moved
+   *       behind Make's promote (docs/project-stage-workflow.md), so a
+   *       pre-validation submit no longer flips it at all (observed live
+   *       2026-09-01 — capture row FLAG_status = PENDING while 2706
+   *       still read No, so the sales page showed the pending request
+   *       and this stepper said "validation only"). Only rows EXPLICITLY
+   *       attributed to this SOW (field_2329 match) count — sibling and
+   *       unattributed rows never arm this SOW's Mark Ready.
+   *    3. Flag fallback (view empty / not yet showing rows): under the
+   *       pre-redesign record rule field_2706 flipped at submit
+   *       (confirmed 2026-08-02), so 2706 = Yes while 2723 = No means
+   *       captured but not sent — armed. Kept for records that predate
+   *       the redesign. Can't count multiples; reports 1. */
   function armedSurveyCount() {
     if (ARMED_REQ_COUNT_FIELD && fieldPresent(ARMED_REQ_COUNT_FIELD)) {
       var n = parseFloat(readField(ARMED_REQ_COUNT_FIELD));
       return (isFinite(n) && n > 0) ? n : 0;
+    }
+    var rows = eligibleRequestRows();
+    var sowId = getSourceRecordId();
+    var pending = 0, unattributed = 0;
+    for (var i = 0; i < rows.length; i++) {
+      if (!rowIsPending(rows[i])) continue;
+      // Arm ONLY on explicit this-SOW attribution. An unattributed row
+      // (blank field_2329) must not arm: were the view ever sourced wider
+      // than the SOW connection, it could belong to a sibling SOW, and
+      // arming here would release that survey against a SOW that was
+      // never validated. (In the SOW-connected view such rows can't
+      // appear at all — this guard is defense in depth.)
+      if (sowId && rows[i].sowId === sowId) pending++;
+      else if (!rows[i].sowId) unattributed++;
+    }
+    if (pending > 0) return pending;
+    if (unattributed > 0) {
+      console.warn('[scw-ops-stepper] ' + unattributed + ' PENDING survey ' +
+        'request(s) visible in ' + PENDING_REQ_VIEW + ' with NO SOW ' +
+        'connection (field_2329 blank) — not arming Mark Ready. Backfill ' +
+        'the request’s REL_scope of work to attribute it.');
     }
     if (conditionMet({ field: 'field_2706', value: 'Yes' }) &&
         conditionMet({ field: 'field_2723', value: 'No' })) {
@@ -889,24 +986,15 @@
     return out;
   }
 
-  /** The SOW's pending survey-request capture record from
-   *  PENDING_REQ_VIEW's model (DOM-scrape fallback) — { id, values } with
-   *  plain-text display values per PENDING_REQ_FIELDS logical name, or
-   *  null when the view is unconfigured / has no rows (fail open). The
-   *  view is connected to the page SOW, so its rows ARE this SOW's
-   *  requests; the row whose status reads pending wins, else the first. */
-  function readPendingRequest() {
-    if (!PENDING_REQ_VIEW) return null;
+  /** All survey-request capture rows from PENDING_REQ_VIEW (model first,
+   *  DOM-scrape fallback) — each { id, values, nameRaw, sowId } with
+   *  plain-text display values per PENDING_REQ_FIELDS logical name and
+   *  sowId = the request's field_2329 connection id ('' when blank, the
+   *  usual case). [] when the view is unconfigured / has no rows. */
+  function readPendingRequestRows() {
+    if (!PENDING_REQ_VIEW) return [];
     var F = PENDING_REQ_FIELDS;
-    // Prefer the row whose status reads pending — the view may also carry
-    // already-sent requests. No status match → first row (fail open).
-    function pickPending(list) {
-      for (var i = 0; i < list.length; i++) {
-        if (/pending/i.test(list[i].values.status || '')) return list[i];
-      }
-      return list[0] || null;
-    }
-    function firstFromModel() {
+    function fromModel() {
       var v = Knack.views && Knack.views[PENDING_REQ_VIEW];
       var models = (v && v.model && v.model.data && v.model.data.models) || [];
       var out = [];
@@ -918,14 +1006,18 @@
         // Raw person-name shape ({first,last,…}) — the write-back must
         // match it (same contract as the recipient picker).
         var nameRaw = a[F.pocName + '_raw'];
+        var sowRaw = a[PENDING_REQ_SOW_FIELD + '_raw'];
+        var sowId = '';
+        if (Array.isArray(sowRaw) && sowRaw[0] && sowRaw[0].id) sowId = sowRaw[0].id;
+        else if (sowRaw && typeof sowRaw === 'object' && sowRaw.id) sowId = sowRaw.id;
         out.push({
-          id: a.id, values: values,
+          id: a.id, values: values, sowId: String(sowId || ''),
           nameRaw: (nameRaw && typeof nameRaw === 'object') ? nameRaw : null
         });
       }
-      return pickPending(out);
+      return out;
     }
-    function firstFromDom() {
+    function fromDom() {
       var out = [];
       var viewEl = document.getElementById(PENDING_REQ_VIEW);
       var rows = viewEl ? viewEl.querySelectorAll('tbody tr[id]') : [];
@@ -938,12 +1030,56 @@
             ? (td.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
             : '';
         }
-        out.push({ id: rows[r].id, values: values, nameRaw: null });
+        var sowSpan = rows[r].querySelector(
+          'td.' + PENDING_REQ_SOW_FIELD + ' span[data-kn="connection-value"]');
+        var sowCls = sowSpan ? String(sowSpan.className || '').trim() : '';
+        out.push({
+          id: rows[r].id, values: values, nameRaw: null,
+          sowId: /^[0-9a-f]{24}$/i.test(sowCls) ? sowCls : ''
+        });
       }
-      return pickPending(out);
+      return out;
     }
-    try { return firstFromModel() || firstFromDom(); }
-    catch (e) { return firstFromDom(); }
+    var list;
+    try { list = fromModel(); } catch (e) { list = []; }
+    if (!list.length) { try { list = fromDom(); } catch (e2) { list = []; } }
+    return list;
+  }
+
+  // Rows that can belong to THIS SOW: unattributed (blank field_2329 —
+  // the capture form doesn't set it) or explicitly connected to the page
+  // SOW. A row explicitly connected to a SIBLING SOW is excluded — its
+  // validation/send belongs to that SOW's Mark Ready, not this one's.
+  function eligibleRequestRows() {
+    var rows = readPendingRequestRows();
+    var sowId = getSourceRecordId();
+    var out = [];
+    for (var i = 0; i < rows.length; i++) {
+      if (!rows[i].sowId || !sowId || rows[i].sowId === sowId) out.push(rows[i]);
+    }
+    return out;
+  }
+
+  function rowIsPending(row) {
+    return /pending/i.test((row.values && row.values.status) || '');
+  }
+
+  /** The pending survey-request capture record to review/send —
+   *  { id, values, nameRaw, sowId } or null (fail open). Preference:
+   *  pending row explicitly on this SOW → any pending row → first
+   *  eligible row (rows predating the status column read '' — fail
+   *  open on the first, matching the pre-status behavior). */
+  function readPendingRequest() {
+    var rows = eligibleRequestRows();
+    var sowId = getSourceRecordId();
+    var i;
+    for (i = 0; i < rows.length; i++) {
+      if (rowIsPending(rows[i]) && sowId && rows[i].sowId === sowId) return rows[i];
+    }
+    for (i = 0; i < rows.length; i++) {
+      if (rowIsPending(rows[i])) return rows[i];
+    }
+    return rows[0] || null;
   }
 
   /** Record id of the SOW's basis-bid connection (field_2942) as rendered on
@@ -1009,13 +1145,22 @@
    *  the SOW — a reviewer note must be present. Basis + note ⇒ unblocked.
    *  Fails open when field_2941 isn't projected onto view_3861. */
   function publishFinalBlockReason() {
+    var snap = readSubBidSnapshot();
+    // "K1 Bid OR no subcontractor bid" was chosen as the basis: the reviewer
+    // asserted the SOW is priced from a bid document, so that PDF must be on
+    // file (snapshot k1Pdf — uploaded on the Bid Review page) before Publish
+    // Final. Checked before the no-bids shortcut: a K1 choice is explicit
+    // regardless of how many bid requests the SOW has.
+    if (snap && snap.basisBidId === 'K1' && !(snap.k1Pdf && snap.k1Pdf.assetId)) {
+      return '“K1 Bid OR no subcontractor bid” is the basis, but the sub bid PDF ' +
+             'hasn’t been uploaded. Upload it on the Bid Review page, then publish.';
+    }
     // No subcontractor bids for this SOW → there's nothing to diff against, so
     // the sub-bid review doesn't apply and Publish Final is free. field_2728 is
     // the subcontractor survey/bid-request count — the same signal that gates
     // the Request/Update Subcontractor Bid steps, and that the publish-final
     // visibility gate used before it was disabled. Zero/absent ⇒ no bids.
     if (!conditionMet({ field: 'field_2728', gt: 0 })) return '';
-    var snap = readSubBidSnapshot();
 
     // The basis-bid CHOICE is the actual review decision, and it persists as a
     // connection on the SOW (field_2942) independently of the diff snapshot
@@ -1152,8 +1297,15 @@
     // exists for this SOW. Zero-count tally rows would just look broken;
     // state it plainly instead.
     if (snap.basisBidId === 'K1') {
-      html += '<div class="scw-ops-subbid__empty">K1 Bid — no subcontractor bid ' +
-              'applies to this SOW (self-perform).</div>';
+      var k1 = snap.k1Pdf && snap.k1Pdf.assetId ? snap.k1Pdf : null;
+      html += '<div class="scw-ops-subbid__empty">K1 Bid OR no subcontractor bid — ' +
+              'priced from the attached bid PDF' +
+              (k1
+                ? ': ' + (k1.url
+                    ? '<a href="' + escHtml(k1.url) + '" target="_blank" rel="noopener">' + escHtml(k1.name || 'bid.pdf') + '</a>'
+                    : escHtml(k1.name || 'bid.pdf')) + '.'
+                : ' — <b>not uploaded yet</b>. Upload it on the Bid Review page.') +
+              '</div>';
       if (snap.note && String(snap.note).trim()) {
         html += '<div class="scw-ops-subbid__note"><b>Reviewer note:</b> ' +
                 escHtml(String(snap.note).trim()) + '</div>';
@@ -1338,6 +1490,7 @@
         step.id === 'publish-gfe' ||
         step.id === 'publish-final' ||
         step.id === 'publish-proposal' ||
+        step.id === 'publish-co-preview' ||
         step.id === 'issue-change-order') {
 
       // Per-step TBD treatment for the publish html. The three publish
@@ -1346,17 +1499,20 @@
       //   publish-sow-tbd → ALWAYS TBD (SOW-only quote, labor pending)
       //   publish-gfe     → NEVER TBD  (Good-Faith Estimate, labor shown)
       //   publish-final   → NEVER TBD  (Final, labor shown)
-      //   issue-change-order → NEVER TBD (CO is fully priced by the sub;
-      //                        the client signs real numbers)
+      //   issue-change-order / publish-co-preview → NEVER TBD (CO is
+      //                        fully priced by the sub; the client sees
+      //                        real numbers)
       var tbdMode;
       if (step.id === 'publish-sow-tbd') tbdMode = true;
       else if (step.id === 'publish-gfe' || step.id === 'publish-final' ||
+               step.id === 'publish-co-preview' ||
                step.id === 'issue-change-order') tbdMode = false;
       else tbdMode = undefined;   // default — read field_2725
 
       // The CO webhooks all key on changeOrderId — alias the SOW record id
-      // so the Issue scenario reads the same name as send-to-sub / remove.
-      if (step.id === 'issue-change-order') {
+      // so the Issue/Preview scenarios read the same name as send-to-sub /
+      // remove.
+      if (step.id === 'issue-change-order' || step.id === 'publish-co-preview') {
         payload.changeOrderId = payload.sourceRecordId;
       }
 
@@ -1385,6 +1541,12 @@
             // agreement (use INSTEAD of grandTotal on COs), and
             // coChangeSummary is the structured adds/removes manifest.
             'isChangeOrder', 'coNetChange', 'coChangeSummary',
+            // Sub-facing CO pricing document (qty × field_2150 per line)
+            // — present on CO publishes only. Same silent-drop trap as
+            // the subBid* keys below: any NEW buildPublishPayload key
+            // must be added HERE or the ops-stepper webhooks never
+            // carry it.
+            'coSubBidHtml',
             'json', 'jsonString',
             'invoiceItems', 'invoiceItemsString',
             // Tokenized public link, minted at publish time by
@@ -2207,6 +2369,28 @@
     var submissionGroup = buildRadioGroup(opts.submission);
     if (submissionGroup) card.appendChild(submissionGroup.element);
 
+    // Optional single-line extra input — opts.po = { label, placeholder }
+    // (issue-change-order: the client's PO #). Never required, never
+    // gates submit; the trimmed value rides on ctx.po ('' when blank,
+    // null when the modal has no PO field at all).
+    var poInput = null;
+    if (opts.po) {
+      var poWrap = document.createElement('div');
+      poWrap.className = 'scw-ops-modal-po';
+      var poLbl = document.createElement('label');
+      poLbl.className = 'scw-ops-modal-po__lbl';
+      poLbl.textContent = opts.po.label || 'Client PO # (optional)';
+      poInput = document.createElement('input');
+      poInput.type = 'text';
+      poInput.className = 'scw-ops-modal-po__input';
+      poInput.placeholder = opts.po.placeholder || '';
+      poInput.setAttribute('maxlength', '80');
+      poInput.setAttribute('autocomplete', 'off');
+      poLbl.appendChild(poInput);
+      poWrap.appendChild(poLbl);
+      card.appendChild(poWrap);
+    }
+
     // Note input — placed AFTER submission. When a submission group
     // exists, hide by default ("No" is the default selection) and
     // toggle visibility as the operator picks a real submit option.
@@ -2342,7 +2526,8 @@
         clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
         recipient:     gate.recipient || null,
         branches:      bGate.branches || [],
-        surveyRequest: requestEditor ? requestEditor.getValue() : null
+        surveyRequest: requestEditor ? requestEditor.getValue() : null,
+        po:            poInput ? (poInput.value || '').trim() : null
       });
     });
     if (secondaryBtn) {
@@ -2361,7 +2546,8 @@
           clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
           recipient:     gate.recipient || null,
           branches:      bGate.branches || [],
-          surveyRequest: requestEditor ? requestEditor.getValue() : null
+          surveyRequest: requestEditor ? requestEditor.getValue() : null,
+          po:            poInput ? (poInput.value || '').trim() : null
         });
       });
     }
@@ -2577,6 +2763,7 @@
                         step.id === 'publish-gfe' ||
                         step.id === 'publish-final' ||
                         step.id === 'publish-proposal' ||
+                        step.id === 'publish-co-preview' ||
                         step.id === 'issue-change-order';
     if (isPublishStep &&
         window.SCW && SCW.pdfExport && typeof SCW.pdfExport.isPageReady === 'function' &&
@@ -2692,6 +2879,10 @@
       // Make resolves the full contact record from the id; label/email are
       // convenience copies of what the picker showed.
       if (ctx.recipient)              payload.recipient = ctx.recipient;
+      // Client PO # (issue-change-order's optional input). Included even
+      // when blank IF the modal had the field — a stable key ('' vs
+      // missing) keeps the Make mapping unconditional.
+      if (ctx.po != null)             payload.poNumber = ctx.po;
       if (ctx.submission)             payload.submission = ctx.submission;
       else if (step.forceSubmission)  payload.submission = step.forceSubmission;
       // Pending-survey context (mark-ready): how many Pending Validation

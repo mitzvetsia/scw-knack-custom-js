@@ -1007,6 +1007,16 @@
 
       var putKey = opts.putViewKey || opts.sourceViewKey;
 
+      // Edit-history snapshot (auditField views only) — captured BEFORE the
+      // PUT: the success handler patches the local model, so a later lookup
+      // would read the new selection as the "from" side.
+      var _auditPrevVals = null;
+      try {
+        if (ns.audit && ns.audit.enabledFor(opts.sourceViewKey)) {
+          _auditPrevVals = ns.audit.snapshotValues(opts.sourceViewKey, opts.recordId, body);
+        }
+      } catch (e) { /* ignore */ }
+
       try {
         SCW.knackAjax({
           // PUT URL is normally the source view, but for fields whose
@@ -1018,6 +1028,14 @@
           type: 'PUT',
           data: JSON.stringify(body),
           success: function (resp) {
+            // Append to the record's edit-history blob (auditField views only).
+            try {
+              if (_auditPrevVals && ns.audit && typeof ns.audit.logPut === 'function') {
+                var _aLbls = {}; _aLbls[opts.fieldKey] = opts.label || opts.fieldKey;
+                ns.audit.logPut(opts.sourceViewKey, opts.recordId, body,
+                  { prevValues: _auditPrevVals, resp: resp, labels: _aLbls });
+              }
+            } catch (e) { /* ignore */ }
             // ── Wire up the cascade ─────────────────────────────────
             // SCW.knackAjax's PUT updates Knack's data server-side but
             // does NOT fire knack-cell-update on its own — that event
@@ -1307,7 +1325,13 @@
     open:          open,
     // Canonical MDF/IDF groupBy — exported so callers can pass it explicitly,
     // though open() already uses it by default for record pickers.
-    groupByMdfIdf: groupByMdfIdf
+    groupByMdfIdf: groupByMdfIdf,
+    // Canonical item comparator factory (field_2218 asc → label natural → id).
+    // Exported for surfaces that present SOW line-item records in their OWN
+    // chrome rather than through open() — e.g. the per-item shared-line-item
+    // checklist in sow-margin-cascade.js — so those lists still match the
+    // worksheet's grouping + order instead of hand-rolling a sort.
+    canonicalItemSort: canonicalItemSort
   };
 })();
 /*** END WORKSHEET V2 — PICKER ************************************************/

@@ -243,7 +243,9 @@
         ]
       },
       {
-        // view_3577 (build-SOW scene) and view_3617 (survey scene) MDF/IDF
+        // view_3577 (build-SOW scene), view_3617 (survey scene) and
+        // view_3602 (sales SOW scene — folded into worksheet-v2 view_3586
+        // via mdf-notes.js, standalone section hidden) MDF/IDF
         // grids are REMOVED from this V1 config so `mdf-idf-cards.js` owns them
         // and renders the newer compact `.scw-mdf-card` layout instead. When
         // both systems claim a view they RACE — device-worksheet builds
@@ -270,23 +272,6 @@
         summaryLayout: ['surveyNotes'],
         detailLayout: {
           left:  ['mdfIdf', 'mdfNumber', 'name', 'status'],
-          right: ['notes']
-        }
-      },
-      {
-        viewId: 'view_3602',
-        layout: { labelWidth: '400px' },
-        fields: {
-          label:            { key: 'field_1642', type: 'readOnly',   summary: true },
-
-          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
-          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true, hideWhenFieldEquals: { field: 'field_1641', value: 'HEADEND' } },
-          name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
-          notes:            { key: 'field_1643', type: 'directEdit', notes: true }
-        },
-        summaryLayout: [],
-        detailLayout: {
-          left:  ['mdfIdf', 'mdfNumber', 'name'],
           right: ['notes']
         }
       },

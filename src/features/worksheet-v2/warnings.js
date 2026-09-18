@@ -23,6 +23,11 @@
  *                  scrolled past — reused as-is by bid-review-v2\'s
  *                  warnings.js, so this single check covers both the
  *                  build-SOW worksheet and the bid comparison grid.
+ *   surveyAdded  — the record\'s product name carries the "added during
+ *                  survey" marker: a placeholder product from the field
+ *                  walk whose real model hasn\'t been picked yet. Labeled
+ *                  "missing model selection" in the UI. Informational,
+ *                  like notes; also reused by bid-review-v2.
  *
  * Public API:
  *   ns.warnings.analyze(records, viewKey)  — run once per render,
@@ -37,12 +42,14 @@
   var ns = window.SCW && window.SCW.worksheetV2;
   if (!ns) return;
 
-  var TYPES  = ['photos', 'disconnected', 'bracket', 'notes'];
+  var TYPES  = ['photos', 'disconnected', 'bracket', 'notes', 'surveyAdded', 'qaFail'];
   var LABELS = {
     photos:       'missing photos',
     disconnected: 'disconnected',
     bracket:      'wrong accessory',
-    notes:        'has SCW notes'
+    notes:        'has SCW notes',
+    surveyAdded:  'missing model selection',
+    qaFail:       'failed QA'
   };
 
   // Per-issue-type inline SVG. Picked to match v1\'s vocabulary —
@@ -92,7 +99,28 @@
       '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
       'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
       'stroke-linejoin="round">' +
-      '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
+      '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+    // Clipboard with a plus (Lucide "clipboard-plus") — the line item still
+    // carries the "added during survey" placeholder product from the field
+    // walk, i.e. its real model hasn't been selected yet ("missing model
+    // selection"). Informational, like notes.
+    surveyAdded:
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+      'stroke-linejoin="round">' +
+      '<rect x="8" y="2" width="8" height="4" rx="1"/>' +
+      '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>' +
+      '<path d="M9 14h6"/><path d="M12 11v6"/></svg>',
+    // X in a circle — a photo on this item FAILED SCW QA. Gets the one
+    // SOLID-red chip (styles.js): it's an error state needing rework, not
+    // a warning, so it must outrank every amber/rose chip at a glance.
+    qaFail:
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+      'stroke-linejoin="round">' +
+      '<circle cx="12" cy="12" r="10"/>' +
+      '<line x1="15" y1="9" x2="9" y2="15"/>' +
+      '<line x1="9" y1="9" x2="15" y2="15"/></svg>'
   };
 
   // Per-view cache of the last analyze() result. analyze() is cheap
@@ -256,6 +284,49 @@
     return true;
   }
 
+  /** Product name carries the "added during survey" marker — the product
+   *  chosen for line items created during the field survey rather than the
+   *  original quote. Checks the display text AND the connection identifiers
+   *  (the marker lives in the product's name either way). Substring match,
+   *  case-insensitive, so naming variants like "(Added During Survey)"
+   *  all register. */
+  var SURVEY_ADDED_RE = /added\s+during\s+survey/i;
+  function isSurveyAddedProduct(rec) {
+    var key = F().productName || 'field_1949';
+    if (!rec) return false;
+    var txt = (rec[key] == null ? '' : String(rec[key])).replace(/<[^>]*>/g, ' ');
+    if (SURVEY_ADDED_RE.test(txt)) return true;
+    var raw = rec[key + '_raw'];
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) {
+        var ident = raw[i] && (raw[i].identifier || raw[i].name || '');
+        if (SURVEY_ADDED_RE.test(String(ident))) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Any photo on this record has QA status = Fail. Reads the source row's
+   *  per-photo QA-status connection spans (field_2859, one span per PIC
+   *  record — same signal the photo-strip chit shows). Views that don't
+   *  project the column simply never flag (SOW/sales/bid surfaces). NOT
+   *  memoized: one cell read per record on the shared tr map, and QA flips
+   *  Pass↔Fail with no photo add/remove to invalidate a cache. */
+  function hasFailedQaPhoto(rec) {
+    try {
+      var tr = _trMap ? _trMap[rec.id] : null;
+      if (!tr) return false;
+      var key = F().photoQaStatus || F().qaStatus || 'field_2859';
+      var cell = tr.querySelector('td[data-field-key="' + key + '"], td.' + key);
+      if (!cell) return false;
+      var spans = cell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var i = 0; i < spans.length; i++) {
+        if ((spans[i].textContent || '').trim().toLowerCase() === 'fail') return true;
+      }
+    } catch (e) { /* DOM not ready yet — skip */ }
+    return false;
+  }
+
   /** SCW Notes (logical `scwNotes`) is non-blank. Plain-text/textarea field —
    *  read the record directly (no DOM scrape needed, unlike photos). */
   function hasScwNotesText(rec) {
@@ -300,9 +371,39 @@
     return '';
   }
 
+  /** Ids of the SERVICES-bucket records loaded on the view. A service line
+   *  attached to a parent (config serviceParent — e.g. a CO restocking fee
+   *  on its Remove line) is not mounting hardware, so Knack's per-accessory
+   *  match check (field_2244) saying "No" for it must not raise the
+   *  wrong-accessory warning on the parent. */
+  function servicesIdSet(viewKey) {
+    var set = Object.create(null);
+    try {
+      var SVC = (ns.cfg && typeof ns.cfg.bucket === 'function' && ns.cfg.bucket('services', viewKey)) ||
+                (ns.card && ns.card.SERVICES_BUCKET) || '6977caa7f246edf67b52cbcd';
+      var bf = (ns.cfg && ns.cfg.fields(viewKey).bucket) || 'field_2219';
+      var kv = window.Knack && Knack.views && Knack.views[viewKey];
+      var models = (kv && kv.model && kv.model.data && kv.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var m = models[i]; if (!m || !m.id) continue;
+        var a = m.attributes || m;
+        var raw = a[bf + '_raw'];
+        var id = Array.isArray(raw) ? (raw[0] && raw[0].id) : (raw && raw.id);
+        if (id === SVC) set[m.id] = true;
+      }
+    } catch (e) { /* best-effort */ }
+    return set;
+  }
+
   function buildBracketMaps(viewKey) {
     var byAccessory = Object.create(null);
     var byParent = Object.create(null);
+    var svc = servicesIdSet(viewKey);
+    function flag(accId, parentId) {
+      if (!accId || svc[accId]) return;   // attached SERVICE line — not a bracket
+      byAccessory[accId] = true;
+      if (parentId) byParent[parentId] = true;
+    }
 
     // (1) connected-records' computed warnings (the correct, parent-derived
     //     signal). Document-wide so it works regardless of which SOW-item
@@ -312,9 +413,7 @@
       var rem = warns[w].querySelector('.scw-cr-remove[data-record-id]');
       var aId = rem ? (rem.getAttribute('data-record-id') || '').trim() : '';
       if (!aId) continue;
-      byAccessory[aId] = true;
-      var pId = ownerRecordId(warns[w]);
-      if (pId) byParent[pId] = true;
+      flag(aId, ownerRecordId(warns[w]));
     }
 
     // (2) Raw per-accessory field_2244 spans on the source view (covers
@@ -332,10 +431,7 @@
         for (var s = 0; s < spans.length; s++) {
           var accId = (spans[s].id || '').trim();
           var v = (spans[s].textContent || '').trim().toLowerCase();
-          if (accId && (v === 'no' || v === 'false')) {
-            byAccessory[accId] = true;
-            if (parentId) byParent[parentId] = true;
-          }
+          if (accId && (v === 'no' || v === 'false')) flag(accId, parentId);
         }
       }
     }
@@ -378,6 +474,8 @@
       if (isDisconnected(rec))                     issues.push('disconnected');
       if (bracketParents[rec.id])                  issues.push('bracket');
       if (hasScwNotesText(rec))                    issues.push('notes');
+      if (isSurveyAddedProduct(rec))               issues.push('surveyAdded');
+      if (hasFailedQaPhoto(rec))                   issues.push('qaFail');
       if (issues.length) byRecord[rec.id] = issues;
     }
 

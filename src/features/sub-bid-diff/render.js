@@ -68,6 +68,24 @@
     catch (e) {}
   }
 
+  // Quiet layout (2026-08-27 UX triage): the diff panel defaults FOLDED —
+  // the bar (chevron + basis picker + readiness + gap chip) stays standing,
+  // the body only opens when the diff needs eyes (coverage gaps / missing
+  // note) or the user opens it. An explicit toggle always wins and persists
+  // per SOW; the toolbar's Classic-layout switch restores default-open.
+  function brClassic() {
+    try { return localStorage.getItem('scwBrLayoutClassic') === '1'; }
+    catch (e) { return false; }
+  }
+  var attentionBySow = {};   // sowId → diff currently needs eyes (set by inlineHtml)
+  function resolveCollapsed(sowId) {
+    if (Object.prototype.hasOwnProperty.call(collapsedBySow, sowId)) {
+      return !!collapsedBySow[sowId];
+    }
+    if (brClassic()) return false;
+    return !attentionBySow[sowId];
+  }
+
   /** Persist the basis bid on the SOW (field_2942, single connection) via the
    *  SOW write view. The diff snapshot (field_2941) rides in the SAME PUT so
    *  the two fields can never diverge: relying on the debounced auto-save to
@@ -141,14 +159,114 @@
     return '';
   }
 
-  // Sentinel basis choice: "K1 Bid" = there genuinely is NO subcontractor
-  // bid for this SOW (K1 self-performs). Not a Knack record, so it can't
-  // live in the field_2942 connection — writeBasis CLEARS field_2942 and the
-  // choice persists via the field_2941 snapshot blob (basisBidId: 'K1').
-  // Downstream: the ops-stepper publish gate accepts it (snap.basisBidId is
-  // truthy, no mismatch since field_2942 is empty), and the publish payload
-  // ships subBidBasisId 'K1' + subBidIsK1 true so Make can branch on it.
+  // Sentinel basis choice: "K1 Bid OR no subcontractor bid" = the SOW is
+  // priced from a K1 bid (or there is genuinely no subcontractor bid). Not a
+  // Knack record, so it can't live in the field_2942 connection — writeBasis
+  // CLEARS field_2942 and the choice persists via the field_2941 snapshot
+  // blob (basisBidId: 'K1'). Downstream: the ops-stepper publish gate
+  // accepts it ONLY once the bid PDF is uploaded (snap.k1Pdf), and the
+  // publish payload ships subBidBasisId 'K1' + subBidIsK1 true + the PDF.
   var K1_ID = 'K1';
+  var K1_LABEL = 'K1 Bid OR no subcontractor bid';
+
+  // ── K1 bid PDF (required) ────────────────────────────────────────────
+  // sowId → { assetId, name, url } uploaded this session (wins over the
+  // persisted copies until the model refetches).
+  var k1PdfByGrid  = Object.create(null);
+  var k1Uploading  = Object.create(null);   // sowId → true while uploading/saving
+  var k1UploadMsg  = Object.create(null);   // sowId → { ok, text } last status
+
+  /** File-field raw → { assetId, name, url } or null. Knack file raws look
+   *  like { id, filename, url, thumb_url, size, … }. */
+  function fileRefFromRaw(raw) {
+    if (!raw) return null;
+    if (Array.isArray(raw)) raw = raw[0];
+    if (!raw || typeof raw !== 'object') return null;
+    var id = raw.id || raw.asset_id || '';
+    if (!id) return null;
+    return { assetId: String(id), name: String(raw.filename || raw.name || 'bid.pdf'),
+             url: String(raw.url || raw.public_url || '') };
+  }
+
+  /** The K1 bid PDF in effect for a SOW: this session's upload, else the
+   *  snapshot's k1Pdf, else the SOW's own file field (when the write view
+   *  exposes it). null when none. */
+  function currentK1Pdf(sowId) {
+    if (k1PdfByGrid[sowId]) return k1PdfByGrid[sowId];
+    var snap = persistedSnapshot(sowId);
+    if (snap && snap.k1Pdf && snap.k1Pdf.assetId) return snap.k1Pdf;
+    if (C.k1PdfField) {
+      var sows = readView(C.basisBidView);
+      for (var i = 0; i < sows.length; i++) {
+        if (sows[i] && sows[i].id === sowId) {
+          return fileRefFromRaw(sows[i][C.k1PdfField + '_raw']);
+        }
+      }
+    }
+    return null;
+  }
+
+  // ACTION sentinel on the same picker — "Request a K2 bid". Deliberately not
+  // a bid id: the change handler intercepts it before writeBasis ever sees it
+  // and restores the prior selection, so it can never reach field_2942 or the
+  // snapshot blob. Prefixed/suffixed with __ so it can't collide with a Knack
+  // 24-hex record id.
+  var REQ_K2_ID = '__request_k2__';
+  var requestingK2 = {};   // sowId -> true while its POST is in flight
+
+  // ── Builder-assigned bid → soft default ─────────────────────────────
+  // A bid package can carry REL_SOW (field_2387) in Builder. When it names
+  // this SOW and NOTHING is chosen or persisted yet, the compare defaults
+  // to that bid on first load — a VIEW default only. It deliberately does
+  // NOT write field_2942 or the field_2941 snapshot (see the autoSave
+  // guard): the basis pick is the award moment and must stay a human
+  // gesture, so a defaulted-but-unsaved bid can never open the publish
+  // gate. Every persistence path (saved basis, session pick, K1 snapshot)
+  // outranks it, so remembered selections behave exactly as before.
+
+  /** pkgId → [{id, identifier}] of the SOWs its REL_SOW names. */
+  function pkgSowLinks() {
+    var out = Object.create(null);
+    if (!(C.f && C.f.pkgToSow)) return out;
+    var pkgs = readView(C.bidPkgViewKey);
+    for (var i = 0; i < pkgs.length; i++) {
+      var p = pkgs[i];
+      if (!p || !p.id) continue;
+      var raw = p[C.f.pkgToSow + '_raw'];
+      var list = [];
+      if (Array.isArray(raw)) {
+        for (var j = 0; j < raw.length; j++) if (raw[j] && raw[j].id) list.push(raw[j]);
+      } else if (raw && raw.id) {
+        list.push(raw);
+      }
+      if (list.length) out[p.id] = list;
+    }
+    return out;
+  }
+
+  /** First bid package (view_3573 order) whose REL_SOW names this SOW. */
+  function assignedDefaultFor(sowId) {
+    var links = pkgSowLinks();
+    var pkgs = readView(C.bidPkgViewKey);
+    for (var i = 0; i < pkgs.length; i++) {
+      var p = pkgs[i];
+      if (!p || !p.id || !links[p.id]) continue;
+      for (var j = 0; j < links[p.id].length; j++) {
+        if (links[p.id][j].id === sowId) return p.id;
+      }
+    }
+    return '';
+  }
+
+  /** True while the CURRENT selection is only the soft REL_SOW default —
+   *  nothing chosen this session, nothing persisted. */
+  function isDefaulted(sowId) {
+    if (sowId in selectedByGrid) return false;
+    if (persistedBasis(sowId)) return false;
+    var snap = persistedSnapshot(sowId);
+    if (snap && snap.basisBidId === K1_ID) return false;
+    return !!assignedDefaultFor(sowId);
+  }
 
   function basisFor(sowId) {
     // An explicit session choice — INCLUDING the cleared '' option — wins over
@@ -160,6 +278,14 @@
     // K1 persists only in the snapshot blob (no connection to read).
     var snap = persistedSnapshot(sowId);
     if (snap && snap.basisBidId === K1_ID) return K1_ID;
+    // Soft default, last: the Builder-assigned bid (REL_SOW → this SOW).
+    // Guard on the SOW record being loaded — persistedBasis reads '' both
+    // when empty and when the model hasn't populated, and defaulting in
+    // that window would flash the wrong bid over a real saved basis.
+    if (sowRecordLoaded(sowId)) {
+      var def = assignedDefaultFor(sowId);
+      if (def) return def;
+    }
     return '';
   }
 
@@ -169,6 +295,41 @@
     var sows = readView(C.basisBidView);
     for (var i = 0; i < sows.length; i++) {
       if (sows[i] && sows[i].id === sowId) return true;
+    }
+    return false;
+  }
+
+  /** Does this project have any survey connected? Gates the "Request a K2
+   *  bid" option, which is only meaningful when there's no survey.
+   *
+   *  Fails CLOSED — an unreadable or not-yet-loaded gate view returns true
+   *  (treat as "has a survey", hide the option). The rule is "offer it ONLY
+   *  when there are no surveys", so the option needs positive evidence of
+   *  zero; an empty read during load is not that evidence, and showing it
+   *  then would flash the option on every page load of a surveyed project. */
+  function projectHasSurvey() {
+    if (!C.surveyGateView) return false;      // gate unconfigured → don't gate
+    var recs;
+    try { recs = readView(C.surveyGateView) || []; } catch (e) { return true; }
+
+    if (!recs.length) {
+      // Zero records is the load-bearing case, and it is AMBIGUOUS: a project
+      // with no survey has no survey line items either, so "empty" is exactly
+      // what we're looking for — but it's also what a not-yet-fetched view
+      // looks like. Knack renders an explicit no-data row once a grid has
+      // loaded empty, so that marker is the difference. No marker = still
+      // loading = unknown, and unknown hides the option (the rule is "offer it
+      // ONLY when there are no surveys", which needs positive evidence).
+      var el = document.getElementById(C.surveyGateView);
+      return !(el && el.querySelector('tr.kn-tr-nodata'));
+    }
+
+    if (!C.surveyGateField) return true;      // records ARE surveys, and there are some
+    for (var i = 0; i < recs.length; i++) {
+      var raw = recs[i] && recs[i][C.surveyGateField + '_raw'];
+      if (Array.isArray(raw) ? raw.length : (raw && raw.id)) return true;
+      // Fall back to the display value for views whose model lacks _raw.
+      if (!raw && recs[i] && String(recs[i][C.surveyGateField] || '').trim()) return true;
     }
     return false;
   }
@@ -286,7 +447,8 @@
       (b.rv || 0),
       b.basisBidId || '', b.total || 0, Math.round((b.laborDelta || 0) * 100),
       [c.material || 0, c.spec || 0, c.added || 0, c.orphan || 0].join(','),
-      String(b.note || '').trim(), exSig
+      String(b.note || '').trim(), exSig,
+      (b.k1Pdf && b.k1Pdf.assetId) || ''
     ].join('~');
   }
 
@@ -301,14 +463,20 @@
     // every snapshot reader (ops stepper, publish payload) sees a truthy
     // basisBidId with zero differences and no HTML fragments.
     if (pkgId === K1_ID) {
+      var k1Pdf = currentK1Pdf(sowId);
       return {
         v: 1, rv: PDF_RENDER_VERSION, sowId: sowId, sowName: grid.sowName || '',
-        basisBidId: K1_ID, basisBidName: 'K1 Bid',
+        basisBidId: K1_ID, basisBidName: K1_LABEL,
         basisSubId: '', basisSubName: '',
         savedAt: new Date().toISOString(),
         laborDelta: 0, counts: { material: 0, spec: 0, added: 0, orphan: 0 },
         coverageGaps: 0, total: 0, exceptions: [],
+        // No bid package to total — the uploaded PDF below IS the bid.
+        basisTotal: null,
         note: currentNote(sowId),
+        // The uploaded bid PDF this SOW is priced from — REQUIRED for K1.
+        // Read by the ops-stepper publish gate + the publish payload.
+        k1Pdf: k1Pdf ? { assetId: k1Pdf.assetId, name: k1Pdf.name || '', url: k1Pdf.url || '' } : null,
         bidHtml: '', diffHtml: ''
       };
     }
@@ -353,6 +521,13 @@
       savedAt: new Date().toISOString(),
       laborDelta: res.laborDelta, counts: res.counts, coverageGaps: res.coverageGaps,
       total: res.total,
+      // The basis bid's own total — Σ(basis cell labor), the same number
+      // bidHtml prints as "Sub Bid Total". Carried as a FIRST-CLASS number
+      // so readers don't have to scrape the HTML fragment: the sub-facing
+      // acceptance card (acceptance-card.js) shows it, and the publish
+      // payload can ship it. `total` above is the exception COUNT, not
+      // money — do not confuse the two.
+      basisTotal: res.basisTotal,
       exceptions: res.exceptions.map(function (e) {
         return { tier: e.tier, label: e.label, product: e.product, fields: e.fields || [],
                  sowFee: e.sowFee, bidLabor: e.bidLabor, delta: e.delta, jumpId: e.jumpId || '' };
@@ -439,6 +614,11 @@
     if (!C.snapshotField || !grid) return;
     var sowId = grid.sowId;
     if (!basisFor(sowId)) return;
+    // Soft REL_SOW default: never snapshot it. A field_2941 blob with a
+    // basisBidId reads as "basis chosen" downstream (ops publish gate), and
+    // a Builder connection nobody confirmed must not open that gate. The
+    // moment the user picks (or Save-as-basis promotes it), this clears.
+    if (isDefaulted(sowId)) return;
     var blob = buildBlobWith(grid);
     if (!blob) return;
     var sig = blobSig(blob);
@@ -824,27 +1004,72 @@
   }
 
   // ── HTML builders ───────────────────────────────────────────────────────
-  function pkgOption(p, selId) {
+  /** Short display for a SOW identifier — the SW#### token when present,
+   *  else the (tag-stripped, trimmed) identifier itself. */
+  function shortSowName(identifier) {
+    var s = stripTags(identifier || '');
+    var m = s.match(/SW-?\d+(?:CO)?/i);
+    if (m) return m[0];
+    return s.length > 20 ? s.slice(0, 18) + '…' : s;
+  }
+
+  function pkgOption(p, selId, ctx) {
     var bits = [p.bidName || p.name || 'Bid'];
     if (p.bidStatus) bits.push(p.bidStatus);
     var n = p.onSowItemCount || 0;
     bits.push(n ? (n + ' on SOW') : 'no items on this SOW');
+    // REL_SOW marks: say plainly which SOW each bid is assigned to in
+    // Builder — ★ when it's THIS one. Informational only; any bid stays
+    // pickable.
+    var star = '';
+    if (ctx && ctx.links && ctx.links[p.id]) {
+      var mine = false, others = [];
+      for (var li = 0; li < ctx.links[p.id].length; li++) {
+        var lk = ctx.links[p.id][li];
+        if (lk.id === ctx.sowId) mine = true;
+        else others.push(shortSowName(lk.identifier));
+      }
+      if (mine) { star = '★ '; bits.push('assigned to this SOW'); }
+      else if (others.length) bits.push('assigned to ' + others.join(', '));
+    }
     return '<option value="' + esc(p.id) + '"' + (p.id === selId ? ' selected' : '') +
-      '>' + esc(bits.join(' · ')) + '</option>';
+      '>' + star + esc(bits.join(' · ')) + '</option>';
   }
 
   function selector(grid, selId, persisted) {
     var pkgs = basisCandidates(grid);
+    var optCtx = { sowId: grid.sowId, links: pkgSowLinks() };
     var opts = '<option value="">— choose the basis bid —</option>' +
-      // Sentinel: no subcontractor bid exists for this SOW (self-perform).
+      // Sentinel: priced from a K1 bid / no subcontractor bid package. The
+      // bid PDF upload beneath is required once this is chosen.
       '<option value="' + K1_ID + '"' + (selId === K1_ID ? ' selected' : '') +
-        '>K1 Bid — no subcontractor bid (self-perform)</option>' +
-      pkgs.map(function (p) { return pkgOption(p, selId); }).join('');
+        '>' + esc(K1_LABEL) + '</option>' +
+      pkgs.map(function (p) { return pkgOption(p, selId, optCtx); }).join('');
+    // Action item, pinned last under its own rule so it never reads as one of
+    // the bids above. Never carries `selected` — it's a verb, not a state.
+    // Offered only while the project has no survey connected: with a survey
+    // in hand the work goes out to subs, so a K2 request doesn't apply.
+    if (C.requestK2Webhook && !projectHasSurvey()) {
+      opts += '<option disabled>──────────</option>' +
+        '<option value="' + REQ_K2_ID + '">' +
+        (requestingK2[grid.sowId] ? 'Requesting a K2 bid…' : '⤴ Request a K2 bid') +
+        '</option>';
+    }
     var note;
     if (savingGrid[grid.sowId]) {
       note = '<span class="scw-sbd-baseline__meta">saving…</span>';
+    } else if (selId && isDefaulted(grid.sowId)) {
+      // Soft REL_SOW default: shown, compared, but deliberately unsaved.
+      // The button is the explicit award gesture (re-selecting the same
+      // option in a native <select> fires no change event).
+      note = '<span class="scw-sbd-baseline__meta">★ shown by default — assigned to this SOW · not saved as basis</span>' +
+        '<button type="button" class="scw-sbd-savedef" data-scw-sbd-savedef ' +
+          'data-sow-id="' + esc(grid.sowId) + '" data-pkg-id="' + esc(selId) + '"' +
+          ' title="Save this bid as the basis for this SOW → proposal">Save as basis</button>';
     } else if (selId === K1_ID && (persisted || savedByGrid[grid.sowId])) {
-      note = '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--saved">✓ saved — K1 Bid (no sub bid for this SOW)</span>';
+      note = currentK1Pdf(grid.sowId)
+        ? '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--saved">✓ saved — ' + esc(K1_LABEL) + ' · bid PDF on file</span>'
+        : '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--req">saved — upload the sub bid PDF below (required)</span>';
     } else if (selId && (persisted || savedByGrid[grid.sowId])) {
       note = autoPickedBySow[grid.sowId]
         ? '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--saved">✓ auto-selected — this bid matches the SOW · saved</span>'
@@ -857,6 +1082,7 @@
     return '<div class="scw-sbd-baseline">' +
       '<label>Basis bid:</label>' +
       '<select data-scw-sbd-basis data-sow-id="' + esc(grid.sowId) + '"' +
+        ' data-sow-name="' + esc(grid.sowName || '') + '"' +
         (savingGrid[grid.sowId] ? ' disabled' : '') + '>' + opts + '</select>' +
       note + '</div>';
   }
@@ -1017,13 +1243,15 @@
     // Readiness derived from the LOCAL diff (no second buildState). The snapshot
     // auto-saves, so the only thing a reviewer still owes us is a note when
     // there are differences.
-    var rd, res = null, needsNote = false;
+    var rd, res = null, needsNote = false, needsPdf = false;
     if (!selId) {
       rd = { state: 'needs-basis', label: 'Pick a basis bid' };
     } else if (selId === K1_ID) {
-      rd = savingSnap[sowId]
-        ? { state: 'needs-review', label: 'Saving…' }
-        : { state: 'ready', label: '✓ K1 Bid — no sub bid' };
+      // K1 needs the bid PDF on file before it counts as reviewed.
+      needsPdf = !currentK1Pdf(sowId);
+      if (k1Uploading[sowId] || savingSnap[sowId]) rd = { state: 'needs-review', label: k1Uploading[sowId] ? 'Uploading…' : 'Saving…' };
+      else if (needsPdf)                             rd = { state: 'needs-pdf',    label: 'Upload the sub bid PDF' };
+      else                                           rd = { state: 'ready',        label: '✓ K1 Bid — bid PDF on file' };
     } else {
       res = distill(grid, selId);
       needsNote = res.total > 0 && !currentNote(sowId).trim();
@@ -1042,24 +1270,192 @@
         'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
         '<polyline points="6 9 12 15 18 9"></polyline></svg>' +
       '<span class="scw-sbd-pill">sub-bid diff</span></button>';
+    // Signals the folded bar must carry: attention state (drives the quiet
+    // default-open) and a gap chip so a collapsed panel can't hide a
+    // coverage problem.
+    var gaps = (res && res.coverageGaps) || 0;
+    attentionBySow[sowId] = !!(gaps > 0 || needsNote || needsPdf);
+    var gapChip = gaps > 0
+      ? '<span class="scw-sbd-bargap" title="SOW lines needing a bid, or bid lines off this SOW">⚠ ' +
+          gaps + ' gap' + (gaps === 1 ? '' : 's') + '</span>'
+      : '';
     var bar = '<div class="scw-sbd-inline-bar">' +
       toggle +
       selector(grid, selId, persisted) +
       '<span class="scw-sbd-ready scw-sbd-ready--' + rd.state + '">' + esc(rd.label) + '</span>' +
+      gapChip +
       '</div>';
     var body;
     if (!selId) {
       body = '<div class="scw-sbd-empty">Choose the basis bid to see what differs vs this SOW.</div>';
     } else if (selId === K1_ID) {
-      body = '<div class="scw-sbd-empty">K1 Bid — no subcontractor bid applies to this ' +
-        'SOW (self-perform). There is nothing to diff, and Publish Final is not gated.</div>' +
-        noteBar(sowId, false);
+      body = k1PdfBar(sowId, needsPdf) + noteBar(sowId, false);
     } else {
       var ex = res.total ? exDetail(res, sowId) : '';
       body = tally(res) + flag(res) + ex + nonBidDetail(res) +
         (res.total > 0 ? noteBar(sowId, needsNote) : '');
     }
     return bar + '<div class="scw-sbd-inline-body">' + body + '</div>';
+  }
+
+  /** K1 bid PDF block — the file this SOW → proposal is priced from. There is
+   *  no bid package (and so no field_2626 PDF) behind the K1 choice, so the
+   *  reviewer MUST attach one: the readiness pill, the ops-stepper publish
+   *  gate and the publish payload all read it. Shows the file on record with
+   *  a Replace path, else the required picker. */
+  function k1PdfBar(sowId, needsPdf) {
+    var cur = currentK1Pdf(sowId);
+    var busy = !!k1Uploading[sowId];
+    var st = k1UploadMsg[sowId];
+    var status = busy
+      ? '<span class="scw-sbd-savemsg">' + esc((st && st.text) || 'Uploading…') + '</span>'
+      : (st ? '<span class="scw-sbd-savemsg' + (st.ok ? ' scw-sbd-savemsg--ok' : ' scw-sbd-savemsg--err') + '">' + esc(st.text) + '</span>' : '');
+    var fileHtml = cur
+      ? '<div class="scw-sbd-k1-cur">' +
+          (cur.url
+            ? '<a class="scw-sbd-k1-link" href="' + esc(cur.url) + '" target="_blank" rel="noopener" title="Open the bid PDF">' + esc(cur.name || 'bid.pdf') + '</a>'
+            : '<span class="scw-sbd-k1-link">' + esc(cur.name || 'bid.pdf') + '</span>') +
+          '<span class="scw-sbd-k1-cur__cap">on file</span>' +
+        '</div>'
+      : '';
+    // ONE button. It opens the app's shared upload modal (drop zone → file
+    // chip → Upload) — the same uploader the acceptance card uses — so there
+    // is no separate "choose a file" step to explain.
+    return '<div class="scw-sbd-k1' + (needsPdf ? ' scw-sbd-k1--req' : '') + '">' +
+      '<div class="scw-sbd-k1__lead">' + esc(K1_LABEL) + ' — this SOW → proposal is priced from ' +
+        'a bid document instead of a subcontractor bid package. ' +
+        (needsPdf
+          ? '<span class="scw-sbd-req">Upload that bid PDF (required) — Publish as Final stays blocked until it is on file.</span>'
+          : 'The bid PDF on file is what the proposal and the ops review carry.') +
+      '</div>' +
+      fileHtml +
+      '<div class="scw-sbd-k1-row">' +
+        '<button type="button" class="scw-sbd-k1-upload" data-scw-sbd-k1-open data-sow-id="' + esc(sowId) + '"' +
+          (busy ? ' disabled' : '') + '>' + (busy ? 'Uploading…' : (cur ? 'Replace bid PDF' : 'Upload bid PDF')) + '</button>' +
+        status +
+      '</div>' +
+    '</div>';
+  }
+
+  /** Open the shared uploader for a SOW's K1 bid PDF. The modal owns the
+   *  choose/validate/progress states; uploadK1Pdf below does the work. */
+  function openK1PdfModal(sowId) {
+    var fum = window.SCW && window.SCW.fileUploadModal;
+    if (!fum || typeof fum.open !== 'function') {
+      console.warn('[scw-sub-bid-diff] SCW.fileUploadModal is not loaded — build order?');
+      return;
+    }
+    var cur = currentK1Pdf(sowId);
+    fum.open({
+      title:   cur ? 'Replace the sub bid PDF' : 'Sub bid PDF',
+      accept:  'application/pdf,.pdf',
+      current: cur ? { name: cur.name || 'bid.pdf', href: cur.url || '' } : null,
+      hint:    'The bid document this SOW → proposal is priced from. It is saved on the ' +
+               'SOW and carried by the proposal and the ops review.',
+      okLabel: 'Upload',
+      validate: function (file) {
+        var isPdf = /\.pdf$/i.test(file.name || '') || (file.type || '') === 'application/pdf';
+        return isPdf ? '' : 'Please choose a PDF.';
+      },
+      onUpload: function (file, say) { return uploadK1Pdf(sowId, file, say); }
+    });
+  }
+
+  /** Upload the chosen file to Knack assets, then ONE PUT through the SOW
+   *  write view: the file field (field_2981) + the field_2941 snapshot that
+   *  now carries k1Pdf. The snapshot copy is what the publish gate reads, so
+   *  even if the file field isn't exposed on the write view the choice
+   *  still records (and the panel says the field needs adding).
+   *  Returns a promise: resolves once the PUT lands, rejects on any failure
+   *  (the modal shows the error and offers a retry). `say` is the modal's
+   *  progress line (optional). */
+  function uploadK1Pdf(sowId, file, say) {
+    say = typeof say === 'function' ? say : function () {};
+    if (!sowId || !file) return Promise.reject(new Error('no file chosen'));
+    if (k1Uploading[sowId]) return Promise.reject(new Error('an upload is already running'));
+    if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) {
+      return Promise.reject(new Error('Knack session helpers unavailable'));
+    }
+    if (!/\.pdf$/i.test(file.name || '') && (file.type || '') !== 'application/pdf') {
+      return Promise.reject(new Error('Please choose a PDF.'));
+    }
+    k1Uploading[sowId] = true;
+    k1UploadMsg[sowId] = { ok: true, text: 'Uploading ' + (file.name || 'bid.pdf') + '…' };
+    render();
+
+    var fd = new FormData();
+    fd.append('files', file, file.name || 'bid.pdf');
+    var uploaded = null;
+    // Remember the session's current file so a failed replacement can put
+    // it back (the local model isn't refetched after our PUTs, so the
+    // session copy is the only record of the last successful upload).
+    var prevSession = k1PdfByGrid[sowId] || null;
+    return Promise.resolve($.ajax({
+      url: Knack.api_url + '/v1/applications/' + Knack.application_id + '/assets/file/upload',
+      type: 'POST', data: fd, processData: false, contentType: false,
+      headers: {
+        'X-Knack-Application-Id': Knack.application_id,
+        'x-knack-rest-api-key': 'knack',
+        'Authorization': Knack.getUserToken()
+      }
+    })).then(function (res) {
+      var asset = res && (res.asset && typeof res.asset === 'object' ? res.asset : res);
+      var assetId = asset && (asset.id || asset.asset_id);
+      if (!assetId) throw new Error('no asset id in the upload response');
+      uploaded = {
+        assetId: String(assetId),
+        name: String((asset && (asset.filename || asset.name)) || file.name || 'bid.pdf'),
+        url:  String((asset && (asset.url || asset.public_url)) || '')
+      };
+      k1PdfByGrid[sowId] = uploaded;
+      k1UploadMsg[sowId] = { ok: true, text: 'Saving…' };
+      say('Saving to the SOW…');
+      render();
+      // Snapshot with the PDF + the file field, one PUT (same shape as
+      // writeBasis so basis/snapshot/file can't drift apart).
+      var body = {};
+      if (C.k1PdfField) body[C.k1PdfField] = uploaded.assetId;
+      if (C.basisBidField) body[C.basisBidField] = [];          // K1 → no package
+      var blob = buildBlob(sowId);
+      var sig = '';
+      if (C.snapshotField && blob) { sig = blobSig(blob); body[C.snapshotField] = JSON.stringify(blob); }
+      return Promise.resolve(SCW.knackAjax({
+        url: SCW.knackRecordUrl(C.basisBidView, sowId),
+        type: 'PUT', data: JSON.stringify(body)
+      })).then(function (resp) {
+        k1Uploading[sowId] = false;
+        savedByGrid[sowId] = true;
+        if (sig) { savedSnap[sowId] = true; lastWrittenSig[sowId] = sig; }
+        // Did the file field actually land? A view-scoped PUT silently drops
+        // a field the write view doesn't expose — the snapshot still carries
+        // the asset, but say so, because the SOW's file field is what Make
+        // and the acceptance record read.
+        var r = resp && resp.record ? resp.record : resp;
+        var landed = !C.k1PdfField || !r || typeof r !== 'object' ||
+          !!fileRefFromRaw(r[C.k1PdfField + '_raw']);
+        if (!landed) {
+          console.warn('[scw-sub-bid-diff] ' + C.k1PdfField + ' did not persist through ' +
+            C.basisBidView + ' — add it as an editable field on that view (Builder). ' +
+            'The snapshot (' + C.snapshotField + ') still carries the uploaded asset.');
+          k1UploadMsg[sowId] = { ok: false, text: '✓ bid PDF saved to the review — but the SOW file field (' +
+            C.k1PdfField + ') is not on ' + C.basisBidView + '; add it in Builder so the PDF lands on the SOW.' };
+        } else {
+          k1UploadMsg[sowId] = { ok: true, text: '✓ bid PDF saved' };
+        }
+        render();
+      });
+    }).then(null, function (err) {
+      k1Uploading[sowId] = false;
+      var msg = (err && err.message) ? err.message
+        : (err && err.status ? 'HTTP ' + err.status : 'upload failed');
+      console.warn('[scw-sub-bid-diff] K1 bid PDF upload failed', sowId, err);
+      k1UploadMsg[sowId] = { ok: false, text: 'Upload failed — ' + msg + '. Try again.' };
+      // Roll the session copy back to whatever was on record before this
+      // attempt (the new asset never reached the SOW).
+      if (prevSession) k1PdfByGrid[sowId] = prevSession; else delete k1PdfByGrid[sowId];
+      render();
+      throw (err instanceof Error ? err : new Error(msg));
+    });
   }
 
   /** Reviewer note. Auto-saves with the diff (no Save button) — the note PUTs
@@ -1161,8 +1557,9 @@
         else sec.insertBefore(block, sec.firstChild);
       }
       block.innerHTML = inlineHtml(grid);
-      // Re-apply the independent collapse state (survives this rebuild).
-      block.classList.toggle('scw-sbd-inline--collapsed', !!collapsedBySow[sowId]);
+      // Re-apply the collapse state (survives this rebuild). inlineHtml just
+      // stashed attentionBySow, so the quiet default resolves correctly.
+      block.classList.toggle('scw-sbd-inline--collapsed', resolveCollapsed(sowId));
 
       // Keep field_2941 in lockstep with whatever the diff currently shows —
       // any data change, basis pick, or note edit re-persists (debounced).
@@ -1171,6 +1568,72 @@
       // automatically (guards + once-per-session inside).
       maybeAutoPickBasis(grid);
     }
+  }
+
+  // ── "Request a K2 bid" ──────────────────────────────────────────────────
+  // Fires the SOW id at Make so a K2 (internal/self-perform) bid gets raised
+  // for this SOW. Deliberately NOT routed through SCW.knackAjax: that helper
+  // attaches the user's Knack session token, which has no business being sent
+  // to a third-party webhook host.
+  function sbdToast(msg, type) {
+    try {
+      var br = window.SCW && window.SCW.bidReview;
+      if (br && typeof br.renderToast === 'function') { br.renderToast(msg, type); return; }
+    } catch (e) { /* fall through */ }
+    if (type === 'error') console.warn('[SubBidDiff] ' + msg);
+  }
+
+  function requestK2Bid(sowId, sowName) {
+    if (!sowId || !C.requestK2Webhook) return;
+    if (requestingK2[sowId]) return;               // one in-flight per SOW
+    // Re-check the gate at fire time: a survey can land between render and
+    // click (the option sits in DOM Knack re-renders on its own schedule), and
+    // this is the last point before the POST.
+    if (projectHasSurvey()) {
+      sbdToast('This project already has a survey — a K2 bid request no longer applies', 'error');
+      render();
+      return;
+    }
+    var label = sowName ? ('SOW ' + sowName) : 'this SOW';
+    if (!window.confirm('Request a K2 bid for ' + label + '?')) return;
+
+    requestingK2[sowId] = true;
+    render();                                      // option reads "Requesting…"
+
+    var body = {
+      actionType: 'request_k2_bid',
+      sowId:      sowId,
+      sowName:    sowName || '',
+      timestamp:  new Date().toISOString()
+    };
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) body.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) { /* user attrs unavailable */ }
+
+    function done(ok, msg) {
+      delete requestingK2[sowId];
+      render();
+      sbdToast(msg, ok ? 'success' : 'error');
+    }
+
+    $.ajax({
+      url:         C.requestK2Webhook,
+      type:        'POST',
+      contentType: 'application/json',
+      data:        JSON.stringify(body),
+      timeout:     30000,
+      success: function () { done(true, 'K2 bid requested for ' + label); },
+      error: function (xhr) {
+        // Make's hook host answers cross-origin without CORS headers, so a
+        // delivered POST still surfaces as status 0 — treated as sent, the
+        // same convention revision-accept-reject.js uses.
+        if (xhr && xhr.status === 0) { done(true, 'K2 bid requested for ' + label); return; }
+        console.error('[SubBidDiff] Request K2 bid failed:',
+                      xhr && xhr.status, xhr && xhr.responseText);
+        done(false, 'Could not request a K2 bid — please try again');
+      }
+    });
   }
 
   function bindOnce() {
@@ -1182,6 +1645,15 @@
         var bsow = sel.getAttribute('data-sow-id');
         if (!bsow) return;
         var pkgId = sel.value || '';
+        // "Request a K2 bid" is an ACTION, not a basis choice. Snap the picker
+        // back to the real basis FIRST — before the confirm, so declining (or
+        // a failed POST) can't leave the control misreporting the basis — then
+        // fire. Nothing below this runs, so field_2942 is never touched.
+        if (pkgId === REQ_K2_ID) {
+          sel.value = basisFor(bsow) || '';
+          requestK2Bid(bsow, sel.getAttribute('data-sow-name') || '');
+          return;
+        }
         selectedByGrid[bsow] = pkgId;          // optimistic — diff shows immediately
         // ONE PUT persists basis + snapshot together (set or cleared) — see
         // writeBasis. Never split across writes, so they can't drift apart.
@@ -1206,13 +1678,36 @@
       if (sowId) noteByGrid[sowId] = n.value;
     });
     document.addEventListener('click', function (e) {
+      // K1 bid PDF — one button opens the shared upload modal.
+      var up = e.target.closest && e.target.closest('[data-scw-sbd-k1-open]');
+      if (up) {
+        var usow = up.getAttribute('data-sow-id');
+        if (usow && !k1Uploading[usow]) openK1PdfModal(usow);
+        return;
+      }
+      // "Save as basis" on a soft REL_SOW default — the explicit award
+      // gesture. Routes through the SAME writeBasis path as a manual pick,
+      // so field_2942 + snapshot + downstream gates behave identically.
+      var sd = e.target.closest && e.target.closest('[data-scw-sbd-savedef]');
+      if (sd) {
+        var dsow = sd.getAttribute('data-sow-id');
+        var dpkg = sd.getAttribute('data-pkg-id');
+        if (dsow && dpkg) {
+          selectedByGrid[dsow] = dpkg;   // now the user's choice, not a default
+          writeBasis(dsow, dpkg);
+        }
+        return;
+      }
       // Independent collapse toggle — fold just this SOW's diff panel, no
       // re-render needed (CSS drives body visibility + chevron rotation).
       var ct = e.target.closest && e.target.closest('[data-scw-sbd-collapse]');
       if (ct) {
         var csow = ct.getAttribute('data-sow-id');
         if (csow) {
-          collapsedBySow[csow] = !collapsedBySow[csow];
+          // Flip from the RESOLVED state, not the raw map — under the quiet
+          // default a SOW with no stored entry renders collapsed, and its
+          // first click must open it (storing the choice explicitly).
+          collapsedBySow[csow] = !resolveCollapsed(csow);
           saveCollapsed();
           var blk = ct.closest('.scw-sbd-inline');
           if (blk) blk.classList.toggle('scw-sbd-inline--collapsed', !!collapsedBySow[csow]);
@@ -1237,6 +1732,10 @@
   // resolution order as the selector (session pick → persisted field_2942 →
   // K1 snapshot sentinel), so the filter always agrees with the dropdown.
   ns.render = { render: render, bindOnce: bindOnce, distill: distill,
-                markDirty: markDirty, basisFor: basisFor };
+                markDirty: markDirty, basisFor: basisFor,
+                // K1 bid PDF: current file for a SOW (session / snapshot /
+                // SOW file field) + the upload entry point (tests, tooling).
+                currentK1Pdf: currentK1Pdf, uploadK1Pdf: uploadK1Pdf,
+                openK1PdfModal: openK1PdfModal, K1_LABEL: K1_LABEL };
 })();
 /*** END SUB-BID DIFF — RENDER ***********************************************/

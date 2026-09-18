@@ -149,16 +149,38 @@
     });
   }
 
-  // Parent (Manage Deployment) hash: the CO page is a drill-in child — cut
-  // the hash at the edit-change-order segment. Fallback: drop the trailing
-  // slug + record-id pair.
+  // Parent (Manage Deployment) hash. The CO page can be MORE than one hop
+  // below it — creating a CO routes deploy → create-change-order →
+  // edit-change-order, and a cut at just the edit segment landed on the
+  // Create Change Order drill page (its modal re-opens). Strategies, in
+  // order:
+  //   1. Cut right after the deploy/<recordId> pair — the label says
+  //      "Manage Deployment", so go THERE, however deep the chain is.
+  //   2. Cut at edit-change-order, then peel any trailing
+  //      create-change-order slug (+ its record id) left on the prefix.
+  //   3. Legacy: drop the trailing slug + record-id pair.
   function parentHash() {
     var hash = (window.location.hash || '').replace(/^#/, '').split('?')[0]
       .replace(/\/+$/, '');
     var segs = hash.split('/');
-    for (var i = 0; i < segs.length; i++) {
+    var i;
+    for (i = 0; i < segs.length; i++) {
+      if (/^deploy\d*$/i.test(segs[i])) {
+        var end = (i + 1 < segs.length && /^[a-f0-9]{24}$/i.test(segs[i + 1]))
+          ? i + 2 : i + 1;
+        return '#' + segs.slice(0, end).join('/') + '/';
+      }
+    }
+    for (i = 0; i < segs.length; i++) {
       if (/^edit-change-order/i.test(segs[i])) {
-        return '#' + segs.slice(0, i).join('/') + '/';
+        var out = segs.slice(0, i);
+        if (out.length >= 2 && /^[a-f0-9]{24}$/i.test(out[out.length - 1]) &&
+            /^create-change-order/i.test(out[out.length - 2])) {
+          out.splice(-2);
+        } else if (out.length && /^create-change-order/i.test(out[out.length - 1])) {
+          out.pop();
+        }
+        return '#' + out.join('/') + '/';
       }
     }
     if (segs.length >= 2 && /^[a-f0-9]{24}$/i.test(segs[segs.length - 1])) {

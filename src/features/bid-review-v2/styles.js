@@ -184,6 +184,9 @@
     '.scw-bid-review-v2__pkg-expand-label {',
     '  writing-mode: vertical-rl; transform: rotate(180deg);',
     '  letter-spacing: 0.5px; white-space: nowrap;',
+    /* The label now carries the sub/bid NAME (not just "Bid 2") — cap the
+       vertical run so a long name can't stretch the collapsed strip. */
+    '  max-height: 200px; overflow: hidden; text-overflow: ellipsis;',
     '}',
     /* ── Basis column filter — non-basis bid columns hidden entirely ── */
     '.scw-bid-review-v2__pkg-col--basis-hidden { display: none !important; }',
@@ -601,6 +604,10 @@
        for it, so SOW/bid data isn't shown twice. */
     '.scw-bid-review-v2__row[aria-expanded="true"] { display: none !important; }',
     /* ── Expand panel ──────────────────────────────────────── */
+    /* Width games are pointless here: the table is table-layout:fixed, so
+       cell CONTENT never sets column widths — what widened the grid was
+       the expand td's COLSPAN counting display:none'd bid columns (fixed
+       in init.js toggleRowExpand + basis-filter's colspan fixer). */
     '.scw-bid-review-v2__panel { width: 100%; }',
     '.scw-bid-review-v2__panel-header {',
     '  display: flex; align-items: center; gap: 10px;',
@@ -649,6 +656,16 @@
     '  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;',
     '  padding: 12px 14px; align-self: flex-start;',
     '}',
+    /* Stub strip — every "removed from bid / not surveyed" cell as one
+       quiet full-width row of chips instead of N near-empty cards. */
+    '.scw-bid-review-v2__bid-card--stubs { flex: 1 1 100%; max-width: none;',
+    '  background: #f8fafc; }',
+    '.scw-bid-review-v2__stub-chips { display: flex; flex-wrap: wrap;',
+    '  gap: 8px 18px; align-items: center; }',
+    '.scw-bid-review-v2__stub-chip { display: inline-flex; align-items: center;',
+    '  gap: 7px; }',
+    '.scw-bid-review-v2__stub-chip-name { font-size: 12px; font-weight: 700;',
+    '  color: #475569; font-variant-numeric: tabular-nums; }',
     '.scw-bid-review-v2__bid-card-label {',
     '  font-size: 11px; font-weight: 700; text-transform: uppercase;',
     '  letter-spacing: 0.04em; color: #295f91;',
@@ -862,6 +879,16 @@
     '.scw-bid-review-v2__warn-chip[data-issue-type="notes"] {',
     '  color: #0e7490; background: #ecfeff; border-color: #a5f3fc;',
     '}',
+    '.scw-bid-review-v2__warn-chip[data-issue-type="surveyAdded"] {',
+    '  color: #a21caf; background: #fdf4ff; border-color: #f0abfc;',
+    '}',
+    /* Bid-column identity: small "Subcontractor Bid" eyebrow above the
+       sub/bid name that pkgTitleCell renders as the big title. */
+    '.scw-bid-review-v2__head-eyebrow {',
+    '  font: 700 10px/1.2 system-ui, -apple-system, sans-serif;',
+    '  text-transform: uppercase; letter-spacing: .06em; color: #64748b;',
+    '  margin: 0 0 2px;',
+    '}',
     /* Aggregate (summary) chips in the MDF/IDF group header — icon + count
        + label, auto-width pill. Sits between the title and the row count.
        CRITICAL: the base __warn-chips rule above is an absolutely-positioned
@@ -881,6 +908,16 @@
     '  white-space: nowrap;',
     '}',
     '.scw-bid-review-v2__warn-chip-n { font-weight: 700; font-variant-numeric: tabular-nums; }',
+    /* Summary chips are clickable (warnings.js wireChipClicks): reveal +
+       flash the affected rows. Hover ring so they read as controls; the
+       flash reuses sub-bid-diff's amber "jump" cue so the two feel alike. */
+    '.scw-bid-review-v2__warn-chip--sum { cursor: pointer; }',
+    '.scw-bid-review-v2__warn-chip--sum:hover,',
+    '.scw-bid-review-v2__warn-chip--sum:focus-visible {',
+    '  box-shadow: 0 0 0 2px rgba(15, 23, 42, .12); outline: none;',
+    '}',
+    '@keyframes scw-br-v2-warn-flash { 0% { background: #fde68a; } 100% { background: transparent; } }',
+    '.scw-bid-review-v2__row--warn-flash > td { animation: scw-br-v2-warn-flash 2s ease-out; }',
     /* Line-item label cell (E-001, etc) */
     /* Caret gutter on the left; checkbox / label / totals stack with a
        clean gap so nothing is crammed together. */
@@ -938,6 +975,12 @@
     '  font: 700 9px/1.2 system-ui, -apple-system, sans-serif;',
     '  text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8;',
     '}',
+    /* Accessory money riding the parent row — same family as Equip /
+       Install (it's money, not a warning); the value sits one shade
+       lighter so it reads as the supplementary line of its group. */
+    '.scw-bid-review-v2__row-total--acc .scw-bid-review-v2__row-total-value {',
+    '  color: #475569;',
+    '}',
     '.scw-bid-review-v2__row-total-value {',
     '  font-size: 12px; font-weight: 600; color: #0f172a;',
     '}',
@@ -960,22 +1003,72 @@
     '  background: #f4f8fc; border-right: 2px solid #cbd5e1;',
     '  position: relative;',
     '}',
-    /* Accessory child rows — indented + slate grouping rail so they read as
-       belonging to the parent item directly above them. */
+    /* ── Parent → accessory connector ─────────────────────────────
+       A parent and the accessory rows woven beneath it read as ONE block:
+       a slate spine drops from under the parent's product name (the
+       parent's --has-acc ::after), runs down the accessory rows, and each
+       accessory hangs off it with an elbow (its ::before, an L drawn with
+       borders). --acc-mid rows (a sibling follows) extend the spine through
+       to their bottom edge with ::after; the last one ends on the elbow.
+       The rule between parent and accessory softens to a dashed line so
+       the spine visibly crosses it. Column geometry: the spine sits at
+       30px, the elbow reaches 14px right, content starts at 52px. */
+    '.scw-bid-review-v2__row--has-acc .scw-bid-review-v2__sow-cell {',
+    '  border-bottom-style: dashed !important; border-bottom-color: #cbd5e1 !important;',
+    '}',
+    '.scw-bid-review-v2__row--has-acc .scw-bid-review-v2__sow-cell::after {',
+    '  content: ""; position: absolute; left: 30px; bottom: -1px; width: 2px; height: 21px;',
+    '  background: #64748b; z-index: 1;',
+    '}',
     '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__sow-cell {',
-    '  padding-left: 34px !important;',
-    '  box-shadow: inset 3px 0 0 #94a3b8;',
+    '  padding-left: 52px !important;',
+    '  background: #eef3f9;',
+    '}',
+    '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__sow-cell::before {',
+    '  content: ""; position: absolute; left: 30px; top: -1px; width: 14px; height: 31px;',
+    '  border-left: 2px solid #64748b; border-bottom: 2px solid #64748b;',
+    '  border-bottom-left-radius: 7px; z-index: 1;',
+    '}',
+    '.scw-bid-review-v2__row--acc-mid .scw-bid-review-v2__sow-cell::before {',
+    '  border-bottom-left-radius: 0;',
+    '}',
+    '.scw-bid-review-v2__row--acc-mid .scw-bid-review-v2__sow-cell {',
+    '  border-bottom-style: dashed !important; border-bottom-color: #cbd5e1 !important;',
+    '}',
+    '.scw-bid-review-v2__row--acc-mid .scw-bid-review-v2__sow-cell::after {',
+    '  content: ""; position: absolute; left: 30px; top: 30px; bottom: -1px; width: 2px;',
+    '  background: #64748b; z-index: 1;',
     '}',
     '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__row-label-cell {',
     '  background: #eef3f9;',
     '}',
-    /* "attached to <parent>" line at the top of an accessory SOW cell. */
-    '.scw-bid-review-v2__sow-attached {',
-    '  font: 500 11px/1.3 system-ui, -apple-system, sans-serif;',
-    '  color: #64748b; margin-bottom: 6px;',
-    '  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+    '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__sow-product {',
+    '  font-size: 12.5px;',
     '}',
-    '.scw-bid-review-v2__sow-attached-name { color: #475569; font-weight: 600; }',
+    /* "ATTACHED TO <parent>" caption at the top of an accessory SOW cell —
+       label pill in the same voice as the cell's other field labels. */
+    '.scw-bid-review-v2__sow-attached {',
+    '  display: flex; align-items: center; gap: 7px; min-height: 18px;',
+    '  margin-bottom: 7px; overflow: hidden;',
+    '}',
+    /* Arrowhead where the elbow meets the pill — the stub ends at 46px, the
+       triangle runs 44→51px and points into the ATTACHED TO label. Absolute
+       against the (positioned) cell, so the caption's overflow can't clip it. */
+    '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__sow-attached::before {',
+    '  content: ""; position: absolute; left: 44px; top: 26px; width: 0; height: 0;',
+    '  border-top: 5px solid transparent; border-bottom: 5px solid transparent;',
+    '  border-left: 7px solid #64748b; z-index: 1;',
+    '}',
+    '.scw-bid-review-v2__sow-attached-tag {',
+    '  flex: 0 0 auto; padding: 2px 7px; border-radius: 4px;',
+    '  background: #64748b; color: #fff;',
+    '  font: 700 9.5px/1.3 system-ui, -apple-system, sans-serif;',
+    '  letter-spacing: .07em; text-transform: uppercase; white-space: nowrap;',
+    '}',
+    '.scw-bid-review-v2__sow-attached-name {',
+    '  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+    '  font: 600 11.5px/1.3 system-ui, -apple-system, sans-serif; color: #334155;',
+    '}',
     /* ── Photos column (v1 parity) ─────────────────────────── */
     '.scw-bid-review-v2__photos-cell {',
     '  padding: 8px 6px !important; vertical-align: top;',
@@ -1122,6 +1215,17 @@
     '  text-transform: uppercase; letter-spacing: 0.03em;',
     '}',
     '.scw-bid-review-v2__bid-dupe-tag svg { flex: 0 0 auto; }',
+    /* Variant: the stacked item is (also) on a DIFFERENT bid — reference
+       noise for this bid\'s comparison, not a defect in it. Neutral slate
+       instead of amber, dimmed until hovered. */
+    '.scw-bid-review-v2__cell--dupe-otherbid { box-shadow: inset 3px 0 0 #94a3b8; }',
+    '.scw-bid-review-v2__bid-item--otherbid { opacity: .68; border-top-color: #cbd5e1; }',
+    '.scw-bid-review-v2__bid-item--otherbid:hover,',
+    '.scw-bid-review-v2__bid-item--otherbid:focus-within { opacity: 1; }',
+    '.scw-bid-review-v2__bid-dupe-tag--otherbid {',
+    '  background: #f8fafc; border-color: #cbd5e1; color: #475569;',
+    '  text-transform: none; letter-spacing: 0;',
+    '}',
     /* ── Bid-vs-SOW mismatch states (v1 parity) ───────────────── */
     /* On-bid-but-not-on-this-SOW: blue dashed cut-out on the SOW cell. */
     '.scw-bid-review-v2__sow-cell--off-sow {',

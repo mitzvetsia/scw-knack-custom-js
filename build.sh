@@ -17,6 +17,7 @@ cat \
   src/features/patch-jquery-delegate-matching.js \
   src/features/session-timeout.js \
   src/features/_design-tokens.js \
+  src/features/_file-upload-modal.js \
   src/features/sow-color.js \
   src/features/_render-totals-guard.js \
   src/features/_toolbar-registry.js \
@@ -40,6 +41,9 @@ cat \
   src/features/accordion-menu-inject.js \
   src/features/workflow-stepper.js \
   src/features/survey-request-cards.js \
+  src/features/survey-request-sow-link.js \
+  src/features/survey-request-form.js \
+  src/features/step-form-draft-guard.js \
   src/features/accordion-section-icons.js \
   src/features/ratking/modal-backdrop-click-disable.js \
   src/features/ratking/default-field-values.js \
@@ -87,6 +91,8 @@ cat \
   src/features/sub-bid-diff/render.js \
   src/features/sub-bid-diff/pdf-html.js \
   src/features/sub-bid-diff/init.js \
+  src/features/sow-margin-cascade.js \
+  src/features/sow-item-tray.js \
   src/features/sales-revision-column.js \
   src/features/group-collapse.js \
   src/features/sow-filter-pills.js \
@@ -134,6 +140,8 @@ cat \
   src/features/install-config-subpanel.js \
   src/features/install-as-quoted-panel.js \
   src/features/deploy-page-nav.js \
+  src/features/pinned-notes.js \
+  src/features/site-maps-strip.js \
   src/features/qa-popover.js \
   src/features/photo-edit-panel.js \
   src/features/config-qa-popover.js \
@@ -161,7 +169,10 @@ cat \
   src/features/mdf-idf-cards.js \
   src/features/files-gallery.js \
   src/features/photo-grid-manager.js \
+  src/features/photo-grid-unlinked-filter.js \
   src/features/survey-request-header.js \
+  src/features/build-sow-project-header.js \
+  src/features/product-lifecycle.js \
   src/features/ops-stepper.js \
   src/features/sales-stepper.js \
   src/features/published-quote-on-proposal-page.js \
@@ -206,6 +217,7 @@ cat \
   src/features/worksheet-v2/summary.js \
   src/features/worksheet-v2/picker.js \
   src/features/worksheet-v2/edit.js \
+  src/features/worksheet-v2/audit-log.js \
   src/features/worksheet-v2/mdf-notes.js \
   src/features/worksheet-v2/render.js \
   src/features/worksheet-v2/toolbar.js \
@@ -226,21 +238,30 @@ cat \
   src/features/worksheet-v2/co-sub-lock.js \
   src/features/worksheet-v2/co-ops-lock.js \
   src/features/worksheet-v2/co-review-diff.js \
+  src/features/worksheet-v2/co-swap-pairs.js \
+  src/features/worksheet-v2/focus-link.js \
+  src/features/worksheet-v2/designator-edit.js \
+  src/features/require-sub-bid-settings.js \
+  src/features/accessory-edit-modal.js \
   src/features/survey-report-photo-lightbox.js \
   src/features/sales-change-request/render-v2.js \
   src/features/deliverables-worksheet.js \
   src/features/customer-questionnaire.js \
   src/features/customer-account-link.js \
   src/features/customer-questionnaire-scene.js \
-  src/features/regenerate-kickoff-deck.js \
+  src/features/client-questionnaire-list.js \
+  src/features/client-sites-list.js \
   src/features/send-coc-button.js \
+  src/features/regenerate-closeout-docs.js \
   src/features/co-header-card.js \
   src/features/co-stage-strip.js \
   src/features/questionnaire-deployment-audit.js \
   src/features/acceptance-card.js \
   src/features/questionnaire-card.js \
+  src/features/co-cards.js \
   src/features/other-files-gallery.js \
   src/features/resend-credentials-btn.js \
+  src/features/site-search-cards.js \
   > "$TMP_BUNDLE"
 
 UNMIN_BYTES=$(wc -c < "$TMP_BUNDLE" | tr -d ' ')

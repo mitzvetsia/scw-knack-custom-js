@@ -73,7 +73,10 @@
     s.lastTickedAt = Date.now();
     try {
       if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-        ns.data.refetchAndNotify(viewKey);
+        // skipIfUnchanged: a freshness check that finds nothing must cost
+        // zero DOM work — no rebuild, no swap, no flash. Only ticks whose
+        // fetch actually brought different data repaint.
+        ns.data.refetchAndNotify(viewKey, { skipIfUnchanged: true });
       }
     } catch (e) {
       console.warn('[scw-ws-v2 poll] refetch threw', e);

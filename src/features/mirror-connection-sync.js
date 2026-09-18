@@ -307,7 +307,43 @@
   // Concurrency-limited queue — funnels every PUT through here so we
   // don't burst past Knack's rate limit on big cascades.
   function knackPutKeepalive(url, body, onDone) {
-    _putQueue.push({ url: url, body: body, onDone: onDone });
+    // Edit-history hook (worksheet-v2/audit-log.js): cascade writes land on
+    // OTHER records than the one the user edited — children's Connected To
+    // (field_2821) flips, accessory MDF drag-alongs, cross-MDF clears — and
+    // none of those pass through the worksheet's own save hooks. Since every
+    // cascade PUT funnels through this queue, snapshot the target record's
+    // pre-PUT values NOW (enqueue time — before any local patch) and append
+    // to its audit blob on success. No-ops unless the URL's view configures
+    // an auditField (install/deploy views only); repair-pass re-PUTs of
+    // identical values are dropped by audit-log's dedupe.
+    var _audit = null, _auditPrev = null, _auditPrevRaw = null,
+        _auditView = '', _auditRecId = '';
+    try {
+      var _wsv2 = window.SCW && SCW.worksheetV2;
+      var _m = /\/views\/(view_\d+)\/records\/([0-9a-f]{24})/i.exec(url || '');
+      if (_m && _wsv2 && _wsv2.audit && _wsv2.audit.enabledFor(_m[1])) {
+        _audit     = _wsv2.audit;
+        _auditView = _m[1];
+        _auditRecId = _m[2];
+        _auditPrev = _audit.snapshotValues(_auditView, _auditRecId, body || {});
+        // Raw connection snapshot too — a Connected To re-point needs the
+        // OLD owner's record id so the losing parent's log gets an entry.
+        _auditPrevRaw = _audit.snapshotRaw(_auditView, _auditRecId, body || {});
+      }
+    } catch (e) { _audit = null; }
+    var _onDone = onDone;
+    if (_audit) {
+      _onDone = function (err, resp) {
+        try {
+          if (!err) {
+            _audit.logPut(_auditView, _auditRecId, body || {},
+              { prevValues: _auditPrev, prevRaw: _auditPrevRaw, resp: resp });
+          }
+        } catch (e) { /* ignore */ }
+        if (typeof onDone === 'function') onDone(err, resp);
+      };
+    }
+    _putQueue.push({ url: url, body: body, onDone: _onDone });
     drainPutQueue();
   }
 
@@ -2516,6 +2552,16 @@
     CONNECTIONS_FIELD:   'field_2197',
     GROUPING_FIELD:      'field_1946',
     SOW_FIELD:           'field_2154',
+    // Accessory config mirrors the view_4079 instance: accessories on the
+    // CO are ordinary line items in THIS view's model (no separate hidden
+    // accessory grid on the sub scene), so the accessory view IS the
+    // worksheet view. Enables the accessory-follow on MDF regroups and the
+    // accessory-SOW reconcile sweep on the sub page; repair PUTs go
+    // through view_4112 (field_2154 is already written through it by the
+    // sub's unlink flow).
+    ACCESSORIES_FIELD:        'field_1958',
+    ACCESSORIES_VIEW_ID:      'view_4112',
+    ACCESSORIES_PARENT_FIELD: 'field_2464',
     LABEL_FIELD:         'field_1950',
     MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView4112'

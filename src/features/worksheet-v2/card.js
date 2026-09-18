@@ -503,8 +503,13 @@
   /** Post-build pass: neutralize every editable control in a locked card
    *  except the whitelisted three. Read-only inputs (keep readable, white
    *  bg, no pointer/keyboard), non-interactive chips / connection pickers /
-   *  accessory buttons, and hide the per-row delete. */
-  function lockCardFields(card) {
+   *  accessory buttons, and hide the per-row delete.
+   *  opts.keepAccessoryAdd (the SALES survey-assoc lock) leaves the
+   *  mounting-hardware "+ Add" live — adding an accessory opens the same
+   *  add-accessories modal the ops build-SOW page uses; removing / qty
+   *  stepping existing accessories stays locked. The survey worksheet's
+   *  finalized-row lock passes no opts and keeps the full lock. */
+  function lockCardFields(card, opts) {
     var i, el, f;
     var inputs = card.querySelectorAll(
       'input[data-scw-ws-v2-field], textarea[data-scw-ws-v2-field]'
@@ -530,12 +535,21 @@
       el.classList.add('scw-ws-v2-locked-ctl');
       setLockTooltip(el);
     }
-    // Boolean chips (cabling), accessory add/remove/qty, and the per-row
-    // trash button.
-    var ctls = card.querySelectorAll(
-      '[data-scw-ws-v2-chip], .scw-ws-v2-mh-add, .scw-ws-v2-mh-del, ' +
-      '.scw-ws-v2-mh-unlink, .scw-ws-v2-mh-step, .scw-ws-v2-mh-chip'
-    );
+    // Boolean chips (cabling), accessory remove/qty controls, and the
+    // per-row trash button. keepAccessoryAdd exempts the "+ Add" only.
+    //
+    // The accessory CHIP (.scw-ws-v2-mh-chip — the link to the accessory's
+    // own edit page) is deliberately NOT locked: the accessory's Custom
+    // Disc % lives on that page and nowhere else, and the lock's stated
+    // policy is that Custom Disc % stays editable (it's a sales-side
+    // pricing knob — it changes nothing the surveyor sees). Locking the
+    // chip made an accessory's discount unreachable on any surveyed SOW
+    // while the parent's stayed editable. Quantity/structure stay
+    // protected: the − / + steppers, unlink, and delete remain locked.
+    var ctlSel = '[data-scw-ws-v2-chip], .scw-ws-v2-mh-del, ' +
+      '.scw-ws-v2-mh-unlink, .scw-ws-v2-mh-step';
+    if (!(opts && opts.keepAccessoryAdd)) ctlSel += ', .scw-ws-v2-mh-add';
+    var ctls = card.querySelectorAll(ctlSel);
     for (i = 0; i < ctls.length; i++) {
       ctls[i].style.pointerEvents = 'none';
       ctls[i].classList.add('scw-ws-v2-locked-ctl');
@@ -559,7 +573,8 @@
 
   // Shared copy + glyph for the lock messaging.
   var LOCKED_MSG = 'This item is locked because it has already been ' +
-    'submitted for survey. Product, Custom Disc % and SCW Notes remain editable.';
+    'submitted for survey. Product, Custom Disc %, SCW Notes and adding ' +
+    'mounting hardware remain editable.';
   var LOCK_HOVER_MSG = 'Fields are locked because this item has been part of a survey.';
   // Reason-aware copy — set per card right before the lock pass runs (sales
   // survey-assoc vs survey finalized). setLockTooltip + addLockedNote read it.
@@ -635,15 +650,75 @@
   }
 
   /** Sales-only detail zone — Retail Price (ro), Discount % (editable),
-   *  Applied Discount (ro), Total (ro). Empty string for non-sales views. */
+   *  Applied Discount (ro), Total (ro). Empty string for non-sales views.
+   *
+   *  Views with config pricingDetail:true (the ops CO worksheet, view_4079)
+   *  get the fuller custom-discount zone instead: Unit Price (ro — it's the
+   *  editable Equip $ stack on the summary row), Custom Disc % + Custom
+   *  Disc $ each + reason (editable), Applied Discount / Net unit / Total
+   *  (ro). Field keys resolve through the view's `fields` map so the zone
+   *  is config-driven; a logical key the view doesn't map is skipped. */
   function salesPricingDetail(rec, viewKey) {
-    if (!isSalesMoney(viewKey)) return '';
-    return '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--pricing">' +
-      detailReadOnly(rec,          'field_1960', 'Retail Price') +
-      detailField(rec,    viewKey, 'field_2261', 'Custom Disc %', 'number') +
-      detailReadOnly(rec,          'field_2303', 'Applied Discount') +
-      detailReadOnly(rec,          'field_2269', 'Total') +
+    if (isSalesMoney(viewKey)) {
+      return '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--pricing">' +
+        detailReadOnly(rec,          'field_1960', 'Retail Price') +
+        detailField(rec,    viewKey, 'field_2261', 'Custom Disc %', 'number') +
+        detailReadOnly(rec,          'field_2303', 'Applied Discount') +
+        detailReadOnly(rec,          'field_2269', 'Total') +
+      '</div>';
+    }
+    if (!hasPricingDetail(viewKey)) return '';
+    var F = (ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(viewKey)) || {};
+    // CO Remove lines credit the item at the price it SOLD for: the discount
+    // it carried is displayed (it's what the proposal's "Original discount on
+    // returned items" line sums) but never edited here — a restocking fee or
+    // partial credit is its own service line, not a tweak to the credit.
+    var isRemove = isCoRemoveLine(rec);
+    var out = '';
+    if (F.retailPrice)     out += detailReadOnly(rec, F.retailPrice, 'Unit Price');
+    if (isRemove) {
+      if (F.appliedDiscount) out += detailReadOnly(rec, F.appliedDiscount, 'Original discount');
+    } else {
+      if (F.lineDiscPct)     out += detailField(rec, viewKey, F.lineDiscPct, 'Custom Disc %', 'number');
+      if (F.lineDiscAmt)     out += detailField(rec, viewKey, F.lineDiscAmt, 'Custom Disc $ each', 'number');
+      if (F.appliedDiscount) out += detailReadOnly(rec, F.appliedDiscount, 'Applied Discount');
+    }
+    // Net unit (field_2268) is only rendered when the view actually carries
+    // the column — a blank "Net unit" on a view without it reads as $0.
+    if (F.netUnit && rec && (rec[F.netUnit] != null || rec[F.netUnit + '_raw'] != null)) {
+      out += detailReadOnly(rec, F.netUnit, isRemove ? 'Credit per unit' : 'Net unit');
+    }
+    if (F.total)           out += detailReadOnly(rec, F.total, isRemove ? 'Credit' : 'Total');
+    if (F.lineDiscReason) {
+      if (!isRemove) {
+        out += '<div class="scw-ws-v2-pricing-reason">' +
+          detailField(rec, viewKey, F.lineDiscReason, 'Discount reason', 'text') +
+        '</div>';
+      } else if (readField(rec, F.lineDiscReason)) {
+        out += '<div class="scw-ws-v2-pricing-reason">' +
+          detailReadOnly(rec, F.lineDiscReason, 'Discount reason') +
+        '</div>';
+      }
+    }
+    if (!out) return '';
+    return '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--pricing scw-ws-v2-detail-zone--pricing-co">' +
+      out +
     '</div>';
+  }
+
+  /** True for a change-order REMOVE line (CO Action field_2965 = Remove —
+   *  the lines co-remove.js drafts to credit an install item back). */
+  function isCoRemoveLine(rec) {
+    return /remove/i.test(String(readField(rec, 'field_2965') || ''));
+  }
+
+  /** True when the view renders the custom-discount pricing zone in the
+   *  detail panel (config pricingDetail — the ops CO worksheet). */
+  function hasPricingDetail(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.pricingDetail);
+    } catch (e) { return false; }
   }
 
   /** True when the view shows LABOR money only (config laborOnly — the sub
@@ -1466,9 +1541,19 @@
     var accAttrsById = recById(viewKey);
     var accKids = backIndex(viewKey, 'field_2464')[parentId] || [];
 
+    // Service lines attached to this parent (config serviceParent — e.g. a
+    // restocking fee on a CO Remove line) are NOT mounting hardware: they
+    // list separately below as "Related services" chips — no qty stepper,
+    // no wrong-accessory mark, no delete (each keeps its own card).
+    var svcKids = [];
+
     for (var ai = 0; ai < accKids.length; ai++) {
       var arec = accKids[ai];
       if (!arec || !arec.id) continue;
+      if (bucketCategoryOf(arec.attributes || arec, viewKey) === 'services') {
+        svcKids.push(arec);
+        continue;
+      }
       // Label = the accessory's connection identifier (its field_1950 display
       // label, e.g. "… (MDF)"), matching how Knack lists it under a parent;
       // fall back to labelLineItem's "drop · product" composite only when
@@ -1518,13 +1603,32 @@
               ((ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.bracket) || '') +
             '</span>'
           : '';
+        // Sub-bid state: an accessory whose Require Sub Bid is Yes is bid on
+        // its own line (it also renders as its own row below) — tag the chip
+        // so it reads differently from a folded, unbid one at a glance.
+        var accSubBid = accRec
+          ? readBool(accRec, fieldsFor(viewKey).requireSubBid || 'field_2479') === 'Yes'
+          : false;
+        var subBidMark = accSubBid
+          ? '<span class="scw-ws-v2-mh-subbid" ' +
+              'title="Sub bid required — this accessory is bid on its own line">Sub bid</span>'
+          : '';
         var canMulti = accRec ? !isQtyLocked(accRec) : false;
         var curQty  = accRec ? (parseFloat(readNum(accRec, 'field_1964')) || 1) : 1;
+        // At qty 1 the minus is no longer a dead stop: it becomes "remove this
+        // accessory", confirmed and then handed to the trash button's own
+        // handler (init.js). It only stays disabled when there is no delete
+        // affordance to hand off to — the same `chip.id && parentId` condition
+        // that governs whether delX below is rendered at all.
+        var minusDeletes  = curQty <= 1 && !!(chip.id && parentId);
+        var minusDisabled = curQty <= 1 && !minusDeletes;
         var stepperHtml = canMulti
           ? '<span class="scw-ws-v2-mh-stepper" data-scw-ws-v2-acc-id="' + escapeHtml(chip.id) + '">' +
-              '<button type="button" class="scw-ws-v2-mh-step" ' +
+              '<button type="button" class="scw-ws-v2-mh-step' +
+                (minusDeletes ? ' scw-ws-v2-mh-step--del' : '') + '" ' +
                 'data-scw-ws-v2-acc-step="down" data-scw-ws-v2-acc-id="' + escapeHtml(chip.id) + '" ' +
-                'title="Decrease quantity"' + (curQty <= 1 ? ' disabled' : '') + '>&minus;</button>' +
+                'title="' + (minusDeletes ? 'Remove this accessory' : 'Decrease quantity') + '"' +
+                (minusDisabled ? ' disabled' : '') + '>&minus;</button>' +
               '<span class="scw-ws-v2-mh-qty">' + curQty + '</span>' +
               '<button type="button" class="scw-ws-v2-mh-step" ' +
                 'data-scw-ws-v2-acc-step="up" data-scw-ws-v2-acc-id="' + escapeHtml(chip.id) + '" ' +
@@ -1564,6 +1668,7 @@
           ? '<span class="scw-ws-v2-mh-spin" title="Deleting…"></span>'
           : (stepperHtml + unlinkX + delX);
         var wrapCls = 'scw-ws-v2-mh-chip-wrap' +
+          (accSubBid ? ' scw-ws-v2-mh-chip-wrap--subbid' : '') +
           (accWrong ? ' scw-ws-v2-mh-chip-wrap--warn' : '') +
           (pendingDel ? ' scw-ws-v2-mh-chip-wrap--deleting' : '');
         var wrapTitle = pendingDel ? ' title="Deleting…"' : '';
@@ -1572,14 +1677,14 @@
             '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
               ' title="Edit ' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
-            '</a>' + warnMark + tail +
+            '</a>' + subBidMark + warnMark + tail +
           '</span>';
         } else {
           chipsHtml += '<span class="' + wrapCls + '"' + wrapTitle + '>' +
             '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert"' +
               ' title="' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
-            '</span>' + warnMark + tail +
+            '</span>' + subBidMark + warnMark + tail +
           '</span>';
         }
       }
@@ -1592,11 +1697,38 @@
         'data-scw-ws-v2-add-accessory="' + escapeHtml(parentId) + '" ' +
         'title="Add accessory">+ Add</a>';
 
+    // Related services — one inert chip per attached service line, labelled
+    // by its description (field_2020) so "30% restocking fee …" reads as
+    // itself. Click scrolls to the service's own card (init.js focus-link
+    // handles data-scw-ws-v2-goto).
+    var svcHtml = '';
+    if (svcKids.length) {
+      var svcChips = '';
+      for (var si = 0; si < svcKids.length; si++) {
+        var srec = svcKids[si];
+        var sA   = srec.attributes || srec;
+        var slbl = (readMultiline(sA, 'field_2020') || '').replace(/\s+/g, ' ').trim() ||
+                   labelLineItem(srec) || srec.id;
+        var sShort = slbl.length > 60 ? slbl.slice(0, 57) + '…' : slbl;
+        svcChips += '<span class="scw-ws-v2-mh-chip-wrap scw-ws-v2-mh-chip-wrap--svc">' +
+          '<button type="button" class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--svc" ' +
+            'data-scw-ws-v2-goto="' + escapeHtml(srec.id) + '" ' +
+            'title="' + escapeHtml(slbl) + ' — attached service line (click to jump to it)">' +
+            escapeHtml(sShort) +
+          '</button>' +
+        '</span>';
+      }
+      svcHtml = '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--svc-kids">' +
+        '<div class="scw-ws-v2-detail-label">Related services</div>' +
+        '<div class="scw-ws-v2-mh-list">' + svcChips + '</div>' +
+      '</div>';
+    }
+
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--mh">' +
       '<div class="scw-ws-v2-detail-label">Mounting Hardware</div>' +
       '<div class="scw-ws-v2-mh-list">' + chipsHtml + '</div>' +
       (addHtml ? '<div class="scw-ws-v2-mh-addrow">' + addHtml + '</div>' : '') +
-    '</div>';
+    '</div>' + svcHtml;
   }
 
   function buildDetail_cam(rec, viewKey) {
@@ -1655,11 +1787,25 @@
     '</div>';
   }
 
+  /** True when the view lets service lines carry a parent line item
+   *  (config serviceParent — build-SOW + ops CO worksheets). */
+  function hasServiceParent(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.serviceParent);
+    } catch (e) { return false; }
+  }
+
   function buildDetail_services(rec, viewKey) {
+    // Parent (field_2464) on a service line — opt-in per view; always
+    // shown once a parent is set so it can be changed or cleared. The
+    // same picker + field_2207 cascade as accessory parenting (init.js).
+    var showParent = hasServiceParent(viewKey) || !!readParentRef(rec);
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones scw-ws-v2-detail-zones--no-identity">' +
         salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
+          (showParent ? detailConnection(rec, viewKey, 'field_2464', 'Parent') : '') +
           detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
@@ -1879,11 +2025,19 @@
     var surveyNotesCell = surveyFill(rec, viewKey, F.surveyNotes || 'field_2412',
       'Survey notes', 'scw-ws-v2-cell--survey-notes');
     // Description of Work (field_2409): when no sub bid is required here, the
-    // field is HIDDEN entirely (an empty grid cell keeps the columns aligned).
-    // Otherwise v1 parity — empty Description → danger (red).
+    // sub isn't asked to FILL it — but the text is still content (for
+    // assumptions/services it IS the row), and hiding it rendered these as
+    // bare "empty" cards on the sub page (2026-09-08 report). Show it
+    // read-only via the install-descro pattern; only a genuinely blank
+    // description keeps the empty grid cell. Otherwise v1 parity — empty
+    // Description → danger (red).
     var laborDescCell;
     if (subBidNo) {
-      laborDescCell = empty('scw-ws-v2-cell--labor-desc');
+      var roDesc = readField(rec, F.laborDesc || 'field_2409');
+      laborDescCell = roDesc
+        ? '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc scw-ws-v2-cell--install-descro" ' +
+            'title="' + escapeHtml(roDesc) + '">' + escapeHtml(roDesc) + '</div>'
+        : empty('scw-ws-v2-cell--labor-desc');
     } else {
       var laborDescWarn = surveyWarnClass(rec, F.laborDesc || 'field_2409', 'danger', null);
       laborDescCell = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
@@ -1919,14 +2073,14 @@
     if (cat === 'assumptions') {
       laborCell = empty('scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor');
     } else if (subBidNo) {
-      var laborVal = readNum(rec, F.labor || 'field_2400');
-      laborCell = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency scw-ws-v2-cell--labor-na" ' +
-          'title="Require Sub Bid is No — no sub bid needed for this item">' +
-          '<span class="scw-ws-v2-currency-glyph">$</span>' +
-          '<input type="number" step="any" class="scw-ws-v2-input scw-ws-v2-input--num" ' +
-            'readonly tabindex="-1" aria-label="Labor (no sub bid required)" ' +
-            'value="' + escapeHtml(laborVal) + '">' +
-        '</div>';
+      // Require Sub Bid = No → the Labor field AND its number are hidden
+      // outright (2026-09-09: the old read-only "$ N/A" box still read as a
+      // zero price). Blank cell keeps the grid aligned; the tooltip is the
+      // only trace. Ext hides below for the same reason ($0.00 on a line
+      // that owes no bid reads as a price, not an exemption).
+      laborCell = '<div class="scw-ws-v2-cell scw-ws-v2-cell--blank ' +
+          'scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor" ' +
+          'title="Require Sub Bid is No — no sub bid needed for this item"></div>';
     } else {
       var laborWarn = surveyWarnClass(rec, F.labor || 'field_2400', 'danger', 'warning');
       laborCell = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency ' + laborWarn + '">' +
@@ -1934,7 +2088,7 @@
           numInput(rec, viewKey, F.labor || 'field_2400', readNum(rec, F.labor || 'field_2400'), 'Labor') +
         '</div>';
     }
-    var extCell = (isCam || cat === 'assumptions')
+    var extCell = (isCam || cat === 'assumptions' || subBidNo)
       ? empty('scw-ws-v2-cell--survey-ext')
       : ro(readField(rec, F.extended || 'field_2401'), 'scw-ws-v2-cell--survey-ext', 'Extended');
     var bidCell = surveyBidCell(rec, viewKey, F.bid || 'field_2415');
@@ -2150,16 +2304,127 @@
       'title="' + escapeHtml(txt) + '">' + escapeHtml(txt) + '</div>';
   }
 
+  /** Display label for an install row: displayLabel (field_2802 LABEL_DISPLAY)
+   *  is often blank on install rows — fall back to labelAlt (field_2801 "set
+   *  label by bucket", e.g. AC-01). */
+  function installLabel(rec, F) {
+    return readField(rec, F.displayLabel || 'field_2802') ||
+           readField(rec, F.labelAlt || 'field_2801');
+  }
+
+  var PENCIL_SVG =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M12 20h9"/>' +
+    '<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
+
+  // The repo's standard warning triangle (CLAUDE.md "Warning Icons") — amber
+  // via CSS on the hint, never red.
+  var DESIG_WARN_SVG =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+    '<line x1="12" y1="9" x2="12" y2="13"/>' +
+    '<line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+  /** True when the view lets ops edit the designator (config designatorEdit)
+   *  AND the row is a live cam/reader (removed-by-CO rows are out of scope —
+   *  nothing to re-label). */
+  function designatorEditable(rec, viewKey, cat) {
+    if (cat !== 'cam') return false;
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      if (!vc || vc.designatorEdit !== true) return false;
+    } catch (e) { return false; }
+    return installRemovedBy(rec, viewKey) === null;
+  }
+
+  /**
+   * The install worksheet's DESIGNATOR cell (cam/reader rows). Two states,
+   * both keeping the .scw-ws-v2-cell--label class every label reader
+   * (photos captions, bulk chips, patchDerivedCells) keys on:
+   *
+   *   read  — the label text in its own span + a pencil
+   *           ([data-scw-ws-v2-desig-edit]). designator-edit.js owns the
+   *           click: it shows the "are you SURE this matches the map"
+   *           confirm and only then flips the record into edit mode.
+   *   edit  — (ns.designator.isEditing(rec.id)) a floating tray with the
+   *           Prefix picker button (data-scw-ws-v2-conn=dropPrefix → the
+   *           shared Drop Prefix catalog picker in init.js), the drop NUMBER
+   *           input (data-scw-ws-v2-field=dropNumber → edit.js blur/Enter
+   *           save; dropNumber is in RECALC_DEPS so the recomputed label
+   *           refetches), and a Done button. Edit mode lives in
+   *           designator-edit.js's per-record set, so the tray survives the
+   *           card rebuilds each save triggers until the user clicks Done.
+   *
+   * The pencil is an SVG-only button so the cell's textContent stays the
+   * bare label for those readers. Rows the view doesn't let ops re-label
+   * (config off, removed-by-CO, non-cam) render the plain read-only cell.
+   */
+  function installDesignatorCell(rec, viewKey, cat) {
+    var F     = fieldsFor(viewKey);
+    var label = installLabel(rec, F);
+    if (!designatorEditable(rec, viewKey, cat)) {
+      return ro(label, 'scw-ws-v2-cell--label', label);
+    }
+    var editing = !!(ns.designator && typeof ns.designator.isEditing === 'function' &&
+      ns.designator.isEditing(rec.id));
+    var idAttr = ' data-scw-ws-v2-desig="' + escapeHtml(rec.id) + '"' +
+                 ' data-scw-ws-v2-view="' + escapeHtml(viewKey) + '"';
+    if (!editing) {
+      return '<div class="scw-ws-v2-cell scw-ws-v2-cell--label scw-ws-v2-desig"' + idAttr +
+          ' title="' + escapeHtml(label) + '">' +
+        '<span class="scw-ws-v2-desig-val">' + escapeHtml(label) + '</span>' +
+        '<button type="button" class="scw-ws-v2-desig-edit" ' +
+          'data-scw-ws-v2-desig-edit="' + escapeHtml(rec.id) + '" ' +
+          'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+          'title="Edit designator (prefix / number) — only if you are sure it matches the map" ' +
+          'aria-label="Edit designator ' + escapeHtml(label) + '">' + PENCIL_SVG + '</button>' +
+      '</div>';
+    }
+    var prefixKey = F.dropPrefix || 'field_2823';
+    var numberKey = F.dropNumber || 'field_2798';
+    var prefix    = readField(rec, prefixKey);
+    var number    = readNum(rec, numberKey);
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--label scw-ws-v2-desig scw-ws-v2-desig--editing"' +
+        idAttr + ' title="Editing designator ' + escapeHtml(label) + '">' +
+      '<div class="scw-ws-v2-desig-tray" role="group" aria-label="Edit designator ' + escapeHtml(label) + '">' +
+        '<button type="button" class="scw-ws-v2-desig-prefix" ' +
+          'data-scw-ws-v2-conn="' + escapeHtml(prefixKey) + '" ' +
+          'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+          'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+          'data-scw-ws-v2-conn-label="Prefix" ' +
+          'title="Change prefix">' +
+          '<span class="scw-ws-v2-desig-prefix-val">' + escapeHtml(prefix || '—') + '</span>' +
+        '</button>' +
+        '<span class="scw-ws-v2-desig-dash" aria-hidden="true">-</span>' +
+        '<input type="number" min="0" step="1" inputmode="numeric" ' +
+          'class="scw-ws-v2-input scw-ws-v2-input--num scw-ws-v2-desig-num" ' +
+          'aria-label="Designator number" placeholder="#" ' +
+          'value="' + escapeHtml(number) + '"' + attrsFor(rec, viewKey, numberKey) + '>' +
+        '<button type="button" class="scw-ws-v2-desig-done" ' +
+          'data-scw-ws-v2-desig-done="' + escapeHtml(rec.id) + '" ' +
+          'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+          'title="Done editing the designator">Done</button>' +
+        '<span class="scw-ws-v2-desig-hint" title="Only change this if it matches the site map">' +
+          '<span class="scw-ws-v2-desig-hint-ic" aria-hidden="true">' + DESIG_WARN_SVG + '</span>' +
+          'Must match the map' +
+        '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
   function buildRow_install(rec, viewKey, cat) {
     var F     = fieldsFor(viewKey);
     var isCam = (cat === 'cam');
-    // displayLabel (field_2802 LABEL_DISPLAY) is often blank on install rows —
-    // fall back to labelAlt (field_2801 "set label by bucket", e.g. AC-01).
-    var label = readField(rec, F.displayLabel || 'field_2802') ||
-                readField(rec, F.labelAlt || 'field_2801');
 
+    // Cam/reader rows: the designator cell (read-only label, or label +
+    // pencil / inline editor on views with designatorEdit). Other rows keep
+    // a blank label track.
     var labelSlot = isCam
-      ? ro(label, 'scw-ws-v2-cell--label', label)
+      ? installDesignatorCell(rec, viewKey, cat)
       : empty('scw-ws-v2-cell--label');
 
     // services & assumptions show their labor/assumption text (read-only) in
@@ -2272,10 +2537,45 @@
       items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
         'scw-ws-v2-sd--wide');
     } else if (cat === 'default') {
-      // Connected Devices (field_2820, multi) — EDITABLE, network devices only
-      // (v1: showWhenFieldIsYes field_2795 / mapConn).
-      if (readBool(rec, F.mapConn || 'field_2795') === 'Yes') {
-        items += sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2820', 'Connected Devices'), 'scw-ws-v2-sd--conn');
+      // Parent (install field_2853 — the field_2464 analogue). EDITABLE,
+      // same rules as the SOW Parent field (buildDetail_default): shown on
+      // any default-category row that is NOT Networking/Headend (those are
+      // primary items), and always once a parent exists so it can be
+      // cleared. The generalized parent-picker branch in init.js resolves
+      // the per-view key and rebuilds the parent's forward children array
+      // (field_2852) from the back-pointers — that forward array is
+      // DERIVED and never directly editable.
+      var _pk = F.parent;
+      if (_pk) {
+        var _pRaw = rec[_pk + '_raw'];
+        var _hasP = Array.isArray(_pRaw) && _pRaw.length && _pRaw[0] && _pRaw[0].id;
+        if (_hasP || bucketIdOf(rec, viewKey) !== NETWORKING_BUCKET) {
+          items += sdItem(detailConnection(rec, viewKey, _pk, 'Parent'),
+            'scw-ws-v2-sd--conn');
+        }
+      }
+      // Connected Devices (field_2820, multi) — EDITABLE when the product
+      // is flagged Map Connections (field_2795 = Yes) OR the row already
+      // has any wiring (forward list ∪ back-pointers). The flag alone
+      // under-covers (relays/hubs/locks ship with it unset in the catalog
+      // — the reason a blanket ungate existed here), and the blanket
+      // ungate over-covered (monitors/passive gear offered a wiring
+      // picker). Flag-unset AND unwired rows hide the control — fix the
+      // product's Map Connections flag in the catalog to enable them.
+      var _cdKey  = F.connectedDevices || 'field_2820';
+      var _mcKey  = F.mapConn || 'field_2795';
+      var _mcRaw  = rec[_mcKey + '_raw'];
+      var _isMapConn = (_mcRaw === true || _mcRaw === 'Yes' || _mcRaw === 'yes' || _mcRaw === 1) ||
+        ((rec[_mcKey] || '').toString().replace(/<[^>]*>/g, '').trim().toLowerCase() === 'yes');
+      var _fwdRaw = rec[_cdKey + '_raw'];
+      var _hasWiring = Array.isArray(_fwdRaw) && _fwdRaw.length > 0;
+      if (!_hasWiring) {
+        try {
+          _hasWiring = (backIndex(viewKey, F.connectedDevice || 'field_2821')[rec.id] || []).length > 0;
+        } catch (eBW) { /* index unavailable — flag decides */ }
+      }
+      if (_isMapConn || _hasWiring) {
+        items += sdItem(detailConnectedDevices(rec, viewKey, _cdKey, 'Connected Devices'), 'scw-ws-v2-sd--conn');
       }
       var mhDef = detailMountingHardwareRO(rec, viewKey);
       if (mhDef) items += sdItem(mhDef, 'scw-ws-v2-sd--wide');
@@ -2285,8 +2585,16 @@
     // services / assumptions: their labor/assumption text is in the header
     // (read-only) — nothing extra in the detail panel.
 
-    return '<div class="scw-ws-v2-detail">' +
+    // Edit history (auditField views only) — trigger pinned to the panel's
+    // far right, aligned under the row's warning-icon column. Sits OUTSIDE
+    // the sd grid (a sibling of it) so the grid flow can't push it around;
+    // the --audit modifier reserves the right edge against overlap.
+    var auditHtml = (ns.audit && typeof ns.audit.detailSection === 'function')
+      ? ns.audit.detailSection(rec, viewKey) : '';
+
+    return '<div class="scw-ws-v2-detail' + (auditHtml ? ' scw-ws-v2-detail--audit' : '') + '">' +
       '<div class="scw-ws-v2-survey-detail scw-ws-v2-install-detail">' + items + '</div>' +
+      auditHtml +
     '</div>';
   }
 
@@ -2330,9 +2638,15 @@
     // Promoted-bracket marker: the bracket has a parent (field_2464
     // resolves) but is showing as its own row because Require Sub
     // Bid (field_2479) isn\'t No/false. Used by CSS for the amber
-    // left accent + the inline attached-to chip.
+    // left accent + the inline attached-to chip. Service lines with a
+    // parent (config serviceParent) are NOT brackets — they keep their
+    // normal card styling and just carry the "↳ parent" caption.
     if (readParentRef(rec)) {
-      card.classList.add('scw-ws-v2-card--promoted-bracket');
+      if (bucketCategoryOf(rec, sourceViewKey) === 'services') {
+        card.classList.add('scw-ws-v2-card--child-service');
+      } else {
+        card.classList.add('scw-ws-v2-card--promoted-bracket');
+      }
     }
 
     // CO worksheet: visually separate ADD rows from REMOVAL rows by the CO
@@ -2393,18 +2707,19 @@
       det = sales ? buildDetail_sales(rec, sourceViewKey, cat) : buildDetail_default(rec, sourceViewKey);
     }
 
-    // Attached-to caption — small slate-gray line above the main row
-    // for any record that resolves a parent via field_2464. Replaces
-    // the previous amber label-slot chip (which truncated and read
-    // like an error). Lives inside the card so background tinting on
-    // open / selected propagates naturally.
+    // Attached-to caption — a line above the main row for any record that
+    // resolves a parent via field_2464: a drawn elbow + arrowhead (CSS on
+    // the caption, same language as the bid compare grid's accessory rows)
+    // pointing into an "ATTACHED TO" label pill and the parent name. Lives
+    // inside the card so background tinting on open / selected propagates
+    // naturally.
     var attachedCaption = '';
     var parentRefLabel  = readParentRef(rec);
     if (parentRefLabel) {
       attachedCaption =
         '<div class="scw-ws-v2-attached-caption" ' +
           'title="Attached to ' + escapeHtml(parentRefLabel) + '">' +
-          '<span class="scw-ws-v2-attached-tick" aria-hidden="true">↳</span>' +
+          '<span class="scw-ws-v2-attached-tag">Attached to</span>' +
           '<span class="scw-ws-v2-attached-name">' +
             escapeHtml(parentRefLabel) +
           '</span>' +
@@ -2419,7 +2734,9 @@
       var _labelCell = card.querySelector('.scw-ws-v2-row .scw-ws-v2-cell--label');
       if (_labelCell) {
         _labelCell.insertAdjacentHTML('afterbegin',
-          '<span class="scw-ws-v2-co-flag scw-ws-v2-co-flag--remove">REMOVE</span>');
+          '<span class="scw-ws-v2-co-flag scw-ws-v2-co-flag--remove" ' +
+          'title="Remove line — credits this install item back on the change ' +
+          'order. The item leaves install scope when the CO is signed.">REMOVE</span>');
       }
     }
     // Sub CO page: badge the rows the sub created — theirs to delete. SCW
@@ -2442,13 +2759,22 @@
         ? { msg: LOCKED_MSG, hover: LOCK_HOVER_MSG }
         : { msg: 'This item is locked because it has been finalized.',
             hover: 'Locked — this item is finalized.' };
-      lockCardFields(card);
+      // Sales survey-assoc lock keeps the mounting-hardware "+ Add" live
+      // (same add-accessories modal as the ops build-SOW page); the survey
+      // finalized lock stays a full lock.
+      lockCardFields(card, { keepAccessoryAdd: isSalesMoney(sourceViewKey) });
       addLockedNote(card);
     }
     // Leading bulk-select checkbox — absolutely positioned INSIDE the
     // row so it vertically centers with the row\'s actual height
     // (multi-line labor desc rows are taller than single-line ones).
-    var rowEl = card.querySelector('.scw-ws-v2-row');
+    // NOT on readOnly panels (CO adopt/remove sources): bulk never mounts
+    // there, so the box was an inert decoy that overlapped co-remove's own
+    // selection checkbox and fed nothing — its clicks either died or bled
+    // into the CO worksheet's bulk bar, serving the wrong options.
+    var vcRO = ns.cfg && typeof ns.cfg.viewCfg === 'function'
+      ? ns.cfg.viewCfg(sourceViewKey) : null;
+    var rowEl = (vcRO && vcRO.readOnly) ? null : card.querySelector('.scw-ws-v2-row');
     if (rowEl) {
       var sel = document.createElement('input');
       sel.type = 'checkbox';
@@ -2516,7 +2842,10 @@
     isLaborOnly:         isLaborOnly,
     // Reciprocal Connected-Devices fingerprint — folded into the render
     // signature so a parent rebuilds when a child's Connected To changes.
-    connDevicesSig:      connDevicesSig
+    connDevicesSig:      connDevicesSig,
+    // Install designator cell (read ↔ edit) — designator-edit.js re-renders
+    // just this cell when a row enters / leaves edit mode.
+    installDesignatorCell: installDesignatorCell
   };
 })();
 /*** END WORKSHEET V2 — CARD **************************************************/

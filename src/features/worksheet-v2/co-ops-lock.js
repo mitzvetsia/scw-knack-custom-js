@@ -8,7 +8,16 @@
  * otherwise-locked header form: Make flips status → Draft, the sub's
  * window closes, and this lock releases.
  *
- * Locked (status matches /pending sub pricing/i):
+ * TWO lock modes, same mechanics:
+ *   'sub'   — status Pending Sub Pricing: temporary hand-off lock (amber
+ *             banner, Recall from Sub is the escape hatch).
+ *   'final' — status Issued / Accepted / Applied: the CO is out for
+ *             signature or signed — drafting is permanently closed (sky
+ *             banner; further changes require a NEW change order). The
+ *             stage strip's own per-status action buttons stay live.
+ *             Declined / Void stay editable (dead COs, nothing to protect).
+ *
+ * Locked (either mode):
  *   - a lock banner renders at the top of the scene
  *   - the v2 CO worksheet flips read-only (.scw-ws-v2--readonly) and its
  *     toolbar hides; the add/adopt/remove strips block hides entirely
@@ -41,7 +50,14 @@
     V2_CO_VIEW:   'view_4079',   // the v2 CO worksheet panel → read-only
     V2_HIDE:      ['view_4088', 'view_4086'],   // adopt + remove panels → hidden
     STRIPS_WRAP:  'scw-co-strips-view_4079',    // co-scene-header strips block
-    LOCKED_RE:    /pending sub pricing/i   // locked WHILE the sub prices
+    LOCKED_RE:    /pending sub pricing/i,  // locked WHILE the sub prices
+    // Post-issue lock: once the CO is Issued (out for signature), Accepted
+    // (signed), or Applied (signed + applied to install scope), drafting is
+    // over — the document the client sees/signed must not drift. Same lock
+    // mechanics, different banner; the stage strip's own action buttons
+    // stay live (they're the only legitimate verbs in these states).
+    // Declined / Void stay editable — dead COs, nothing to protect.
+    FINAL_RE:     /^(issued|accepted|applied)\b/i
   };
 
   var STYLE_ID  = 'scw-co-ops-lock-css';
@@ -120,14 +136,19 @@
       'margin:0 0 14px;padding:11px 16px;border-radius:8px;',
       'background:#fffbeb;border:1px solid #fde68a;box-shadow:inset 4px 0 0 #f59e0b;',
       'font:600 13px/1.45 system-ui,-apple-system,sans-serif;color:#78350f;}',
-      '#' + BANNER_ID + ' b{color:#451a03;}'
+      '#' + BANNER_ID + ' b{color:#451a03;}',
+      // Post-issue variant — sky (informational state, not a hand-off wait)
+      '#' + BANNER_ID + '.scw-co-ops-lock--final{',
+      'background:#f0f9ff;border-color:#bae6fd;box-shadow:inset 4px 0 0 #0369a1;',
+      'color:#0c4a6e;}',
+      '#' + BANNER_ID + '.scw-co-ops-lock--final b{color:#082f49;}'
     ].join('');
     document.head.appendChild(s);
   }
 
-  function renderBanner(locked) {
+  function renderBanner(mode, status) {
     var banner = document.getElementById(BANNER_ID);
-    if (!locked) {
+    if (!mode) {
       if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
       return;
     }
@@ -138,9 +159,22 @@
       banner.id = BANNER_ID;
       root.insertBefore(banner, root.firstChild);
     }
-    banner.innerHTML = '✉️ <span>With the <b>subcontractor for pricing</b> — ' +
-      'editing is locked while they work. Use <b>Recall from Sub</b> below ' +
-      'to close their window and take it back.</span>';
+    banner.classList.toggle('scw-co-ops-lock--final', mode === 'final');
+    if (mode === 'final') {
+      var st = String(status || '').toLowerCase();
+      var why = /^issued/.test(st)
+        ? 'it is out with the client for signature'
+        : (/^applied/.test(st)
+            ? 'it has been signed and applied to the install scope'
+            : 'the client has signed it');
+      banner.innerHTML = '🔒 <span>This change order is <b>' + stripHtml(status) +
+        '</b> — ' + why + ', so editing is closed. Further changes need a ' +
+        '<b>new change order</b>.</span>';
+    } else {
+      banner.innerHTML = '✉️ <span>With the <b>subcontractor for pricing</b> — ' +
+        'editing is locked while they work. Use <b>Recall from Sub</b> below ' +
+        'to close their window and take it back.</span>';
+    }
   }
 
   // Keyboard/tab belt on top of the pointer-events CSS — inputs are rebuilt
@@ -185,9 +219,12 @@
     }
     injectCss();
     var status = getStatus();
-    _locked = CFG.LOCKED_RE.test(status);   // blank/unknown → UNLOCKED (ops' page)
+    // blank/unknown → UNLOCKED (ops' page fails open)
+    var mode = CFG.FINAL_RE.test(status) ? 'final'
+             : (CFG.LOCKED_RE.test(status) ? 'sub' : '');
+    _locked = !!mode;
     document.body.classList.toggle(LOCK_CLS, _locked);
-    renderBanner(_locked);
+    renderBanner(mode, status);
     lockV2Worksheet(_locked);
     lockInputs(_locked);
   }

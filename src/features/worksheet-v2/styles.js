@@ -341,6 +341,42 @@
     '.scw-ws-v2-cell--net {',
     '  font-weight: 600 !important; color: #0f172a !important;',
     '}',
+    /* Custom-discount pricing strip (config pricingDetail — ops CO worksheet).
+       Spans the full detail-zones grid as a single wrapping row above the
+       identity / connections zones: Unit Price · Custom Disc % · Custom Disc
+       $ each · Applied Discount · Net unit · Total · Discount reason. Money
+       values right-align; the reason box takes the remaining width. */
+    '.scw-ws-v2-detail-zone--pricing-co {',
+    '  grid-column: 1 / -1 !important;',
+    '  display: flex !important;',
+    '  flex-wrap: wrap !important;',
+    '  gap: 8px 18px !important;',
+    '  align-items: flex-end !important;',
+    '  padding: 0 0 10px !important;',
+    '  margin: 0 0 10px !important;',
+    '  border-bottom: 1px solid #e2e8f0 !important;',
+    '}',
+    '.scw-ws-v2-detail-zone--pricing-co > .scw-ws-v2-detail-field {',
+    '  flex: 0 0 auto !important;',
+    '  min-width: 88px !important;',
+    '}',
+    '.scw-ws-v2-detail-zone--pricing-co .scw-ws-v2-input--num {',
+    '  width: 96px !important;',
+    '  text-align: right !important;',
+    '}',
+    '.scw-ws-v2-detail-zone--pricing-co .scw-ws-v2-detail-field--ro .scw-ws-v2-display {',
+    '  text-align: right !important;',
+    '  min-width: 88px !important;',
+    '}',
+    '.scw-ws-v2-pricing-reason {',
+    '  flex: 1 1 220px !important;',
+    '  min-width: 180px !important;',
+    '}',
+    '.scw-ws-v2-pricing-reason .scw-ws-v2-detail-field,',
+    '.scw-ws-v2-pricing-reason .scw-ws-v2-input--text {',
+    '  width: 100% !important;',
+    '  box-sizing: border-box !important;',
+    '}',
     /* Equip assumptions: the base rule spans desc 3/10 (tuned to the
        12-track SOW grid, where sow/warn/kebab then autoplace at 10-12).
        This grid has no sow track but adds equip + net, so respan the desc
@@ -720,7 +756,7 @@
        one sub-block. The product name indents slightly for a tree feel
        while every other column stays aligned with the parent. */
     '.scw-ws-v2-card--promoted-bracket {',
-    '  box-shadow: inset 3px 0 0 #94a3b8 !important;',
+    '  box-shadow: inset 3px 0 0 #64748b !important;',   /* same slate as the connector */
     '  background: #f8fafc !important;',
     '}',
     // CO worksheet: ADD vs REMOVE separation (field_2965). Adds read from the
@@ -733,6 +769,19 @@
     '.scw-ws-v2-card--co-remove {',
     '  box-shadow: inset 4px 0 0 #e11d48 !important;',
     '  background: #fff5f6 !important;',
+    '}',
+    /* The base zebra (.scw-ws-v2-card:nth-child(even), specificity 0,2,0)
+       out-ranks the plain --co-remove class, so even-positioned removals
+       went gray — red/gray/red striping read as three different states.
+       Every removal must stay in the red family: zebra survives as two
+       rose shades, and hover stays rose too (the base even:hover rule
+       would otherwise gray it back out). */
+    '.scw-ws-v2-card--co-remove:nth-child(even) {',
+    '  background: #ffeef0 !important;',
+    '}',
+    '.scw-ws-v2-card--co-remove:hover,',
+    '.scw-ws-v2-card--co-remove:nth-child(even):hover {',
+    '  background: #ffe4e6 !important;',
     '}',
     // "REMOVE" flag in the DROP/label cell — stacked ABOVE the label on its
     // own line (inline beside it truncated the drop label in the narrow
@@ -1539,6 +1588,39 @@
     '  background: #dbeafe !important;',
     '  border-color: #93c5fd !important;',
     '}',
+    /* "Related services" chips under a parent (service lines attached via
+       field_2464 — config serviceParent). Slate instead of the blue hardware
+       tint so they don't read as brackets; the chip is a button that jumps
+       to the service's own card. */
+    '.scw-ws-v2-mh-chip-wrap--svc {',
+    '  background: #f1f5f9 !important;',
+    '  border-color: #cbd5e1 !important;',
+    '  padding: 3px 10px !important;',
+    '}',
+    '.scw-ws-v2-mh-chip-wrap--svc:hover {',
+    '  background: #e2e8f0 !important;',
+    '  border-color: #94a3b8 !important;',
+    '}',
+    '.scw-ws-v2-mh-chip--svc {',
+    '  cursor: pointer !important;',
+    '  color: #334155 !important;',
+    '  max-width: 320px !important;',
+    '  overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;',
+    '}',
+    /* Sub-bid accessory — Require Sub Bid = Yes: bid on its own line (it also
+       renders as its own row). White chip with the navy rule + a small
+       SUB BID tag, so it reads apart from a folded blue one. */
+    '.scw-ws-v2-mh-chip-wrap--subbid {',
+    '  background: #fff !important;',
+    '  border-color: #295f91 !important;',
+    '}',
+    '.scw-ws-v2-mh-subbid {',
+    '  display: inline-flex !important; align-items: center !important; flex: 0 0 auto !important;',
+    '  margin-left: 2px !important; padding: 1px 5px !important; border-radius: 3px !important;',
+    '  background: #295f91 !important; color: #fff !important;',
+    '  font: 700 8.5px/1.3 system-ui, sans-serif !important;',
+    '  letter-spacing: .06em !important; text-transform: uppercase !important; white-space: nowrap !important;',
+    '}',
     /* Wrong-bracket accessory — amber chip + inline "wrong bracket" marker. */
     '.scw-ws-v2-mh-chip-wrap--warn {',
     '  background: #fffbeb !important;',
@@ -1629,23 +1711,40 @@
     '  border-radius: 50% !important;',
     '  animation: scw-ws-v2-spin 700ms linear infinite !important;',
     '}',
-    /* Attached-to caption above the row for promoted accessories. Tight,
-       muted metadata line that hugs the row — "↳ <parent>" with the tick
-       carrying the connection and the parent name kept compact. */
+    /* Attached-to caption above the row for promoted accessories — the same
+       connector language as the bid compare grid's accessory rows: an elbow
+       drawn with borders drops from the card's top edge in the left gutter,
+       an arrowhead points into the ATTACHED TO pill, then the parent name.
+       Geometry: elbow at 30px (leg 2px, stub to 42px), arrowhead 40→47px,
+       text from 52px. The gutter is the row's 44px select-box lane; the
+       caption sits above the row so nothing collides. */
     '.scw-ws-v2-attached-caption {',
-    '  display: flex !important; align-items: baseline !important; gap: 5px !important;',
-    '  padding: 5px 14px 1px 44px !important;', /* match row padding-left */
-    '  font: 500 10.5px/1.2 system-ui, -apple-system, sans-serif !important;',
-    '  color: #64748b !important;',
+    '  position: relative !important;',
+    '  display: flex !important; align-items: center !important; gap: 7px !important;',
+    '  min-height: 24px !important;',
+    '  padding: 6px 14px 2px 52px !important;',
     '  white-space: nowrap !important;',
     '  overflow: hidden !important;',
     '}',
-    '.scw-ws-v2-attached-caption .scw-ws-v2-attached-tick {',
-    '  color: #94a3b8 !important; font-size: 12px !important; flex: 0 0 auto !important;',
+    '.scw-ws-v2-attached-caption::before {',
+    '  content: ""; position: absolute; left: 30px; top: -1px; width: 10px; height: 16px;',
+    '  border-left: 2px solid #64748b; border-bottom: 2px solid #64748b;',
+    '  border-bottom-left-radius: 7px;',
+    '}',
+    '.scw-ws-v2-attached-caption::after {',
+    '  content: ""; position: absolute; left: 40px; top: 10px; width: 0; height: 0;',
+    '  border-top: 5px solid transparent; border-bottom: 5px solid transparent;',
+    '  border-left: 7px solid #64748b;',
+    '}',
+    '.scw-ws-v2-attached-caption .scw-ws-v2-attached-tag {',
+    '  flex: 0 0 auto !important; padding: 2px 7px !important; border-radius: 4px !important;',
+    '  background: #64748b !important; color: #fff !important;',
+    '  font: 700 9.5px/1.3 system-ui, -apple-system, sans-serif !important;',
+    '  letter-spacing: .07em !important; text-transform: uppercase !important;',
     '}',
     '.scw-ws-v2-attached-caption .scw-ws-v2-attached-name {',
-    '  color: #475569 !important;',
-    '  font-weight: 600 !important;',
+    '  color: #334155 !important;',
+    '  font: 600 11.5px/1.3 system-ui, -apple-system, sans-serif !important;',
     '  overflow: hidden !important; text-overflow: ellipsis !important; min-width: 0 !important;',
     '}',
     /* Stepper baseline tweak — keep buttons on the chip\'s midline. */
@@ -1735,7 +1834,7 @@
        killed here; co-adopt.js hard-disables the inputs after each render
        so keyboard tab-and-type can\'t commit either. The card expand
        chevron and the adopt button stay live. */
-    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check),',
+    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check):not(.scw-co-remove-check),',
     '.scw-ws-v2--readonly .scw-ws-v2-card textarea,',
     '.scw-ws-v2--readonly .scw-ws-v2-card select,',
     '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-conn],',
@@ -1747,7 +1846,7 @@
     '}',
     /* Inputs READ as plain text — no edit chrome at all (border/background
        gone, placeholders blanked), values stay fully readable. */
-    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check),',
+    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check):not(.scw-co-remove-check),',
     '.scw-ws-v2--readonly .scw-ws-v2-card textarea {',
     '  background: transparent !important;',
     '  border-color: transparent !important;',
@@ -1842,6 +1941,12 @@
     '  border-radius: 4px !important;',
     '}',
     '.scw-ws-v2-mh-step:disabled { opacity: 0.25 !important; cursor: not-allowed !important; }',
+    /* At qty 1 the minus removes the accessory (confirmed first), so it reads
+       destructive on hover instead of looking like another decrement. */
+    '.scw-ws-v2-mh-step--del:hover {',
+    '  color: #be123c !important;',
+    '  background: #ffe4e6 !important;',
+    '}',
     '.scw-ws-v2-mh-qty {',
     '  min-width: 16px !important;',
     '  text-align: center !important;',
@@ -2160,6 +2265,23 @@
     '  color: #991b1b !important;',
     '}',
     '.scw-ws-v2-bulk-delete svg { flex: 0 0 auto !important; }',
+    /* Request removal (sales CR surface) — amber, not red: it does not      */
+    /* destroy anything, it queues a request for someone else to approve.    */
+    /* The inline display:none it ships with is cleared by refreshToolbar.   */
+    '.scw-ws-v2-bulk-toolbar button.scw-ws-v2-bulk-request-removal {',
+    '  display: inline-flex !important;',
+    '  align-items: center !important;',
+    '  gap: 6px !important;',
+    '  background: #fef3c7 !important;',
+    '  color: #92400e !important;',
+    '  border: 1px solid #fde68a !important;',
+    '}',
+    '.scw-ws-v2-bulk-toolbar button.scw-ws-v2-bulk-request-removal:hover:not(:disabled) {',
+    '  background: #fde68a !important;',
+    '  border-color: #fbbf24 !important;',
+    '  color: #78350f !important;',
+    '}',
+    '.scw-ws-v2-bulk-request-removal svg { flex: 0 0 auto !important; }',
     /* Remove accessories — purple like the rest (only Delete is red);    */
     /* layout rules keep the trash icon + label aligned.                   */
     '.scw-ws-v2-bulk-remove-acc {',
@@ -3222,6 +3344,102 @@
     '.scw-ws-v2-warn-chip[data-issue-type="notes"] {',
     '  color: #0e7490 !important; background: #ecfeff !important;',
     '  border-color: #a5f3fc !important;',
+    '}',
+    '.scw-ws-v2-warn-chit[data-issue-type="surveyAdded"],',
+    '.scw-ws-v2-warn-chip[data-issue-type="surveyAdded"] {',
+    '  color: #a21caf !important; background: #fdf4ff !important;',
+    '  border-color: #f0abfc !important;',
+    '}',
+    /* qaFail — the ONE solid-filled chip: a photo failed SCW QA, i.e. an
+       error state needing rework (red is reserved for errors, per repo
+       convention), and it must outrank the tinted warning chips at a
+       glance on the sub deployment page. */
+    '.scw-ws-v2-warn-chit[data-issue-type="qaFail"],',
+    '.scw-ws-v2-warn-chip[data-issue-type="qaFail"] {',
+    '  color: #fff !important; background: #dc2626 !important;',
+    '  border-color: #b91c1c !important;',
+    '}',
+    /* ── QA-fail alert banner (render.js applyQaFailSurfacing) ─────────
+       An ERROR banner, deliberately outside the chip vocabulary: pinned
+       under the worksheet banner, red field + heavy accent, one
+       click-to-jump chip per failed line item. */
+    '.scw-ws-v2-qafail-alert {',
+    '  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;',
+    '  margin: 8px 0 2px; padding: 11px 14px;',
+    '  background: #fef2f2; border: 1px solid #fecaca;',
+    '  border-left: 6px solid #dc2626; border-radius: 10px;',
+    '}',
+    '.scw-ws-v2-qafail-alert-ic { display: inline-flex; flex: 0 0 auto;',
+    '  color: #dc2626; }',
+    '.scw-ws-v2-qafail-alert-text { flex: 1 1 auto; min-width: 220px;',
+    '  font: 500 13px/1.45 system-ui, sans-serif; color: #7f1d1d; }',
+    '.scw-ws-v2-qafail-alert-text strong { color: #991b1b; font-weight: 800;',
+    '  font-size: 14px; }',
+    '.scw-ws-v2-qafail-alert-items { display: inline-flex; flex-wrap: wrap;',
+    '  gap: 6px; }',
+    '.scw-ws-v2-qafail-alert-item {',
+    '  font: 700 12px/1.3 system-ui, sans-serif; padding: 6px 13px;',
+    '  border-radius: 14px; border: 1.5px solid #dc2626;',
+    '  background: #fff; color: #b91c1c; cursor: pointer;',
+    '  transition: background 120ms ease, color 120ms ease;',
+    '  max-width: 340px; text-align: left; white-space: normal;',
+    '}',
+    '.scw-ws-v2-qafail-alert-item:hover { background: #dc2626; color: #fff; }',
+    /* Scale guard: past MAX_CHIPS (render.js) the remaining chips collapse
+       behind a "+N more" toggle so a big fail batch does not wall the
+       banner in red pills. */
+    '.scw-ws-v2-qafail-alert-items:not(.is-expanded)',
+    '  .scw-ws-v2-qafail-alert-item--extra { display: none; }',
+    '.scw-ws-v2-qafail-alert-more {',
+    '  font: 700 12px/1.3 system-ui, sans-serif; padding: 6px 13px;',
+    '  border-radius: 14px; border: 1.5px dashed #dc2626;',
+    '  background: transparent; color: #b91c1c; cursor: pointer;',
+    '}',
+    '.scw-ws-v2-qafail-alert-more:hover { background: #fee2e2; }',
+    /* Full-row error treatment on the failed card: red edge stripe + row
+       tint so the item pops mid-scroll without expanding anything. The
+       stripe is an INSET box-shadow, not a border — a border added width
+       to the card and clipped/offset its right edge against the flush
+       list layout (cards are square, border-bottom-separated rows). */
+    '.scw-ws-v2-card--qafail {',
+    '  box-shadow: inset 6px 0 0 #dc2626 !important;',
+    '}',
+    '.scw-ws-v2-card--qafail > .scw-ws-v2-row {',
+    '  background: #fef2f2 !important;',
+    '}',
+    /* Inline QA-feedback card — flex sibling rendered to the RIGHT of a
+       FAILED photo in the strip (photos.js) so the reviewer notes are
+       visible without opening anything. align-self:stretch matches the
+       photo card height; max-height caps its own content contribution
+       BELOW a failed photo card natural footprint (200px img + type +
+       REQUIRED badge + chit) so a long note can never grow the strip
+       vertically — the body clips, the tooltip + QA modal carry the
+       full text. Whole card is a click target for the QA modal (same
+       [data-scw-ws-v2-photo-qa] hook as the chit). */
+    '.scw-ws-v2-photo-qanote {',
+    '  flex: 0 1 260px; min-width: 190px; max-width: 280px;',
+    '  align-self: stretch; max-height: 256px;',
+    '  display: flex; flex-direction: column; gap: 6px;',
+    '  padding: 10px 12px; box-sizing: border-box;',
+    '  background: #fef2f2; border: 1.5px solid #fecaca;',
+    '  border-left: 4px solid #dc2626; border-radius: 8px;',
+    '  cursor: pointer; overflow: hidden;',
+    '  transition: border-color 120ms ease;',
+    '}',
+    '.scw-ws-v2-photo-qanote:hover { border-color: #dc2626; }',
+    '.scw-ws-v2-photo-qanote-head {',
+    '  display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;',
+    '  font: 800 11px/1 system-ui, sans-serif; color: #b91c1c;',
+    '  text-transform: uppercase; letter-spacing: 0.04em;',
+    '}',
+    '.scw-ws-v2-photo-qanote-body {',
+    '  flex: 1 1 auto; min-height: 0; overflow: hidden;',
+    '  font: 500 12px/1.5 system-ui, sans-serif; color: #7f1d1d;',
+    '  white-space: pre-wrap; overflow-wrap: anywhere;',
+    '}',
+    '.scw-ws-v2-photo-qanote-meta {',
+    '  flex: 0 0 auto; font: 600 10.5px/1.3 system-ui, sans-serif;',
+    '  color: #b91c1c; opacity: 0.85;',
     '}',
     /* Card-flash animation triggered when a warning chip is clicked
        — amber pulse on the matching cards so the user sees them at

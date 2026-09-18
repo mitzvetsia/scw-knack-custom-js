@@ -71,19 +71,23 @@
       { t: 'mdf', mode: 'opt' },
       { t: 'qty' }
     ]},
-    // Services: the product is OPTIONAL — a service line is defined by its
-    // description + cost; a catalog product only rides along when relevant.
+    // Services: product-less by design (2026-08-19) — a service line is
+    // defined by its description + cost, so the Products picker is hidden
+    // outright. productOptional keeps validation requiring the description
+    // instead of a product.
     { id: B_SERVICE, name: 'Other Services', productOptional: true, fields: [
-      { t: 'product', label: 'Products (optional)' },
       { t: 'mdf', mode: 'opt' },
       { t: 'serviceCost' },
       { t: 'qty' },
       { t: 'description' }
     ]},
-    { id: B_ASSUMPTIONS, name: 'Assumptions', fields: [
-      { t: 'product' },
+    // Assumptions: product-less by design (2026-08-19) — every CO
+    // assumption is typed free-text (the canned-assumption catalog isn't
+    // offered here), so the Products picker is hidden and the description
+    // is always visible + required.
+    { id: B_ASSUMPTIONS, name: 'Assumptions', productOptional: true, fields: [
       { t: 'mdf', mode: 'opt' },
-      { t: 'description', conditional: 'customAssumption' }
+      { t: 'description', label: 'Assumption text' }
     ]},
     { id: B_MATERIALS, name: 'Materials', fields: [
       { t: 'product' },
@@ -691,11 +695,19 @@
       var b = bucketById(st.bucketId);
       if (!b) { showErr('Pick an item type.'); return; }
       if (!st.productIds.length && !b.productOptional) { showErr('Pick a product.'); return; }
-      // productOptional buckets (Services) still need SOMETHING to define
-      // the line — require a description when no product is chosen.
+      // productOptional buckets (Services / Assumptions) still need
+      // SOMETHING to define the line — require a description when no
+      // product is chosen. Buckets whose product picker is hidden by
+      // design word the error without mentioning a product.
       if (!st.productIds.length && b.productOptional &&
           !String(readField('description') || '').trim()) {
-        showErr('Pick a product or enter a description of the service.');
+        var _hasProductField = false;
+        for (var pf = 0; pf < b.fields.length; pf++) {
+          if (b.fields[pf].t === 'product') { _hasProductField = true; break; }
+        }
+        showErr(_hasProductField
+          ? 'Pick a product or enter a description of the service.'
+          : 'Enter a description — it defines this line item.');
         return;
       }
       var mdfField = null;

@@ -1421,6 +1421,23 @@
     return sections;
   }
 
+
+  /** Is this SOW a change order, per its own Type field?
+   *
+   *  field_2952 ("base scope" / "change order") projected onto the hidden
+   *  view_3861 details. This is the AUTHORITATIVE answer — the CO
+   *  "What's Changing" manifest is a rendering that can be absent for
+   *  reasons that have nothing to do with whether the SOW is a CO. Fails
+   *  CLOSED (false) so a missing view can never mark a base proposal a
+   *  change order; the manifest still catches the CO case on its own. */
+  function sowTypeIsChangeOrder() {
+    try {
+      var typeEl = document.querySelector(
+        '#view_3861 .kn-detail.field_2952 .kn-detail-body');
+      return !!typeEl && /change\s*order/i.test(String(typeEl.textContent || ''));
+    } catch (e) { return false; }
+  }
+
   function scrapeAllViews(cfg, opts) {
     opts = opts || {};
     var result = { views: [], sceneId: cfg.sceneId, type: cfg.payloadType || '' };
@@ -1520,7 +1537,16 @@
     // so buildPdfHtml + buildSowDocumentElements can emit CO-specific
     // content, and so Make/e-sign templates can branch on isChangeOrder.
     result.coChangeSummary = scrapeCoChangeSummary(sceneEl);
-    result.isChangeOrder = !!result.coChangeSummary;
+    // A CO is a CO because the SOW SAYS SO (field_2952), not because a
+    // scraped DOM manifest happened to render. Deriving the flag from the
+    // manifest alone published a real change order with
+    // isChangeOrder:false — which sent buildInvoiceItems down the BASE
+    // path, flipping every Remove line positive and billing $1,110
+    // instead of the $170 net the document itself showed. The manifest
+    // can legitimately be absent (lines with no CO Action, floorplan
+    // imports, and whatever else stops it rendering), so it is now one of
+    // TWO signals rather than the only one.
+    result.isChangeOrder = !!result.coChangeSummary || sowTypeIsChangeOrder();
 
     // Image attachments to append at the END of the rendered PDF
     // (site maps, additional photos). buildPdfHtml emits a cover-page
@@ -1798,8 +1824,20 @@
             esc(bucket.label) + '</div>');
           continue;
         }
+        if (bucket.coBandNote) {
+          // Caption beneath the removed band's credit (proposal-grid-v2
+          // rmCreditNote): the credit is net of the original discount.
+          html.push('<div class="co-band-note co-band-note--' + bucket.kind + '">' +
+            esc(bucket.label) + '</div>');
+          continue;
+        }
         if (bucket.coBandTotal) {
-          html.push('<div class="co-band-total co-band-total--' + bucket.kind + '">' +
+          // coBandDisc / coBandNet: the added band's own "Discount on added
+          // items" line and net total (proposal-grid-v2 emitPubBands).
+          html.push('<div class="co-band-total co-band-total--' + bucket.kind +
+            (bucket.coBandOpen ? ' co-band-total--open' : '') +
+            (bucket.coBandDisc ? ' co-band-total--disc' : '') +
+            (bucket.coBandNet ? ' co-band-total--net' : '') + '">' +
             '<span class="co-band-total-label">' + esc(bucket.label) + '</span>' +
             '<span class="co-band-total-value">' + esc(bucket.cost) + '</span></div>');
           continue;
@@ -1890,7 +1928,8 @@
               // (Accessory rollup lines deliberately NOT bolded — only the
               // true L3 product header row gets the bold treatment, so the
               // parent product stands out over its children; 2026-07-17.)
-              html.push('<tr class="' + l4Class + (item.isEquipment ? ' l4-acc' : '') + '">');
+              html.push('<tr class="' + l4Class + (item.isEquipment ? ' l4-acc' : '') +
+                (item.isServiceChild ? ' l4-svc' : '') + '">');
               var l4Content = item.description
                 ? item.description
                     .replace(/<b>/gi, '<span style="font-weight:700">')
@@ -1946,22 +1985,25 @@
       }
 
       if (section.footer && section.footer.lines.length) {
-        html.push('<div class="l1-footer">');
-        html.push('<div class="l1-footer-title">' + esc(section.footer.title) + '</div>');
-        for (var fl = 0; fl < section.footer.lines.length; fl++) {
-          var line = section.footer.lines[fl];
-          // On a CO the per-section "Total" line duplicates the Change
-          // Order Total directly beneath it (single-section COs are the
-          // norm) — drop it. Subtotal/Discount lines, if any, stay.
-          if (isChangeOrder && line.type === 'final' && /^total$/i.test(line.label || '')) {
-            continue;
+        // On a CO the per-section "Total" line duplicates the Change Order
+        // Total directly beneath it (single-section COs are the norm) — drop
+        // it. Subtotal/Discount lines, if any, stay. A footer left with no
+        // lines is skipped whole (no orphan title).
+        var footerLines = section.footer.lines.filter(function (line) {
+          return !(isChangeOrder && line.type === 'final' && /^total$/i.test(line.label || ''));
+        });
+        if (footerLines.length) {
+          html.push('<div class="l1-footer">');
+          html.push('<div class="l1-footer-title">' + esc(section.footer.title) + '</div>');
+          for (var fl = 0; fl < footerLines.length; fl++) {
+            var line = footerLines[fl];
+            html.push('<div class="l1-footer-line l1-line--' + line.type + ' l1-line--' + labelSlug(line.label) + '">');
+            html.push('<span class="l1-footer-label">' + esc(line.label) + '</span>');
+            html.push('<span class="l1-footer-value">' + esc(line.value) + '</span>');
+            html.push('</div>');
           }
-          html.push('<div class="l1-footer-line l1-line--' + line.type + ' l1-line--' + labelSlug(line.label) + '">');
-          html.push('<span class="l1-footer-label">' + esc(line.label) + '</span>');
-          html.push('<span class="l1-footer-value">' + esc(line.value) + '</span>');
           html.push('</div>');
         }
-        html.push('</div>');
       }
 
       html.push('</div>');
@@ -2432,6 +2474,18 @@
       '.co-band-total--add { background: #dcfce7; color: #065f46; border-top: 2px solid #059669; }',
       '.co-band-total--rm  { background: #eef2f7; color: #334155; border-top: 2px solid #64748b; }',
       '.co-band-total--rm .co-band-total-value { color: #be123c; }',
+      /* Added band with a discount: subtotal (list) · discount · total read
+         as one block — the open subtotal drops its bottom gap, the discount
+         is a quiet orange sub-line, the total has no top rule. The removed
+         band's credit is followed by its caption the same way. */
+      '.co-band-total--open { margin-bottom: 0; }',
+      '.co-band-total--disc { background: #f7fdf9; color: #d97706; font-weight: 700; border-top: 0; margin: 0; padding-top: 4px; padding-bottom: 4px; }',
+      '.co-band-total--net { border-top: 0; margin-top: 0; }',
+      '.co-band-note { text-align: right; font-style: italic; font-size: 11px; color: #5f6b7a; padding: 3px 10px; margin: 0 0 12px; }',
+      /* Service line riding under a product (restocking fee on a returned
+         item): a positive charge inside the removed band is not credit-red. */
+      'table.product-table.co-band--rm tbody tr.l4-svc td.col-cost { color: #07467c; }',
+      'tr.l4-svc td { color: #5f6b7a; }',
       '',
       '/* ── Report / BOM Table ── */',
       '.report-table-wrap { margin-top: 30px; }',
@@ -2817,7 +2871,7 @@
     'proposalAccessToken', 'proposalAccessUrl',
     'plaintext', 'plaintextJsonEscaped',
     'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
-    'isChangeOrder', 'coNetChange', 'coChangeSummary',
+    'isChangeOrder', 'coNetChange', 'coChangeSummary', 'coSubBidHtml',
     'tokens', 'publishAsTbd',
     'subBidBidHtml', 'subBidDiffHtml', 'subBidDiffDocHtml', 'subBidReviewHtml',
     'subBidBasis', 'subBidBasisId', 'subBidBasisSubId',
@@ -3975,6 +4029,29 @@
     return encoded.slice(1, -1);
   }
 
+  // Strip every attribute off every HTML tag inside a snapshot string
+  // value: `<ul class="ak-ul">` → `<ul>`, `<a href="…">` → `<a>`,
+  // `<br />` stays `<br />`, closing tags and text are untouched.
+  //
+  // Why (confirmed 2026-09-17 against all 429 published proposals): the
+  // rich-text `_raw` values (labor descriptions etc.) still carry tags
+  // WITH attributes. JSON.stringify turns `class="ak-ul"` into
+  // `class=\"ak-ul\"`, and the paragraph field the snapshot is stored in
+  // (field_2671) runs an HTML-aware sanitizer over the string that
+  // mangles every escaped ATTRIBUTE quote to `class="\"` (value dropped,
+  // one backslash dropped) — invalid JSON, so Make's Parse JSON dies at
+  // greenlight (11.04 module 6). 21/21 snapshots that ever contained a
+  // tag with attributes were broken this way; none of the 408 without
+  // one were, and escaped quotes in plain text (`26\" monitor`) survive.
+  // The attributes carry nothing the downstream record clones need.
+  var HTML_TAG_RE = /<([a-zA-Z][\w:-]*)(?:\s[^<>]*?)?(\s*\/?)>/g;
+  function stripHtmlTagAttrs(s) {
+    if (typeof s !== 'string' || s.indexOf('<') === -1) return s;
+    return s.replace(HTML_TAG_RE, function (m, tag, close) {
+      return '<' + tag + (close.indexOf('/') !== -1 ? ' />' : '>');
+    });
+  }
+
   // Recursively walk a Knack snapshot and drop every `field_xxx` key
   // that has a `field_xxx_raw` counterpart on the same object. Knack
   // returns connection / rich-text / file fields with a rendered-HTML
@@ -3985,8 +4062,10 @@
   // round-trip the JSON through a string field) it's pure liability:
   // every quote inside the HTML is a JSON-escape footgun. Strip them.
   // Keep `id`, `headerId`, `sowRecordId`, and any field_xxx that has
-  // no _raw twin.
+  // no _raw twin. String leaves (rich-text `_raw` HTML) additionally
+  // lose their tag attributes — see stripHtmlTagAttrs above.
   function stripNonRawFields(node) {
+    if (typeof node === 'string') return stripHtmlTagAttrs(node);
     if (Array.isArray(node)) {
       var arr = [];
       for (var i = 0; i < node.length; i++) arr.push(stripNonRawFields(node[i]));
@@ -4051,24 +4130,31 @@
   //                                 falls back to bucket name)
   //   field_1963_raw                SKU
   //   field_1958_raw                product display name
-  //   field_2268_raw                equipment unit price AND per-row
-  //                                 amount, after per-line discounts
-  //                                 (locked-down field — keep these
-  //                                 in sync so qty × unitPrice = lineTotal
-  //                                 on the Xero invoice line)
-  //   field_2028_raw                labor value for this row (locked-down field)
+  //   field_1964_raw                row quantity (blank → 1; negative on
+  //                                 CO Remove lines)
+  //   field_2268_raw                net UNIT price after per-line discounts
+  //                                 (the invoice line's unit amount)
+  //   field_2269_raw                extended net = qty × net unit — the
+  //                                 same figure the proposal grid sums into
+  //                                 Equipment Total, so invoice equipment
+  //                                 lines reconcile to the proposal. Falls
+  //                                 back to qty × field_2268 when the
+  //                                 snapshot view doesn't project it.
+  //   field_2028_raw                labor value for this row (extended)
   //
   // Proposal-level discount: a separate "Proposal Discount" line appears
   // in payload.projectTotals (rendered as `scw-l1-line--disc`). Per
   // request, the proposal discount is subtracted from the LABOR lump,
   // not from equipment lines (which already reflect their per-line
   // discounts via field_2269).
-  // isChangeOrder: CO invoices carry SIGNED amounts — Remove lines are
-  // credits (negative qty × positive price under the CO qty-negation
-  // convention), so rows aggregate by their real qty (field_1964) and
-  // extended net (field_2269) instead of 1-per-row positive-only, and a
-  // net-negative labor lump survives instead of clamping to zero. The
-  // base-proposal path is byte-identical to before. A final xeroSafe pass
+  // Every row — base proposal or CO — aggregates by its REAL qty
+  // (field_1964) and extended net (field_2269). Until 2026-09-17 the base
+  // path counted each row once at the net unit price, which under-billed
+  // any SOW row with qty > 1 (Known Issue #21; INV-11795 audit). What
+  // still differs on a CO (isChangeOrder): Remove lines are credits
+  // (negative qty × positive price under the CO qty-negation convention),
+  // so non-zero rather than positive amounts are kept and a net-negative
+  // labor lump survives instead of clamping to zero. A final xeroSafe pass
   // then re-shapes CO lines for Xero (which rejects qty < 0): the sign
   // moves into the amounts — credit notes get positive lines, invoices
   // keep removes as positive-qty / negative-amount lines.
@@ -4115,18 +4201,16 @@
       // unitPrice while summing post-discount amounts produced
       // mismatched invoice math.
       var unitAmount = num(row.field_2268_raw);
-      var equipmentVal = unitAmount;
       var laborVal = num(row.field_2028_raw);
-      // CO rows: real qty (negative on Remove lines) + extended net amount.
-      // Base rows keep the historical 1-per-row unit-sum behavior.
-      var rowQty = 1;
-      var rowAmt = equipmentVal;
-      if (isChangeOrder) {
-        var coQty = num(row.field_1964_raw);
-        rowQty = coQty || 1;
-        var coExt = num(row.field_2269_raw);
-        rowAmt = coExt !== 0 ? coExt : round2(rowQty * unitAmount);
-      }
+      // Real row quantity: blank/unprojected → 1 (a line item is at least
+      // one unit); an explicit 0 stays 0 so the row bills nothing; negative
+      // on CO Remove lines. Row amount = extended net (field_2269 — what the
+      // proposal grid sums into Equipment Total), falling back to
+      // qty × net unit when the snapshot doesn't project field_2269.
+      var qtyRaw = row.field_1964_raw;
+      var rowQty = (qtyRaw === undefined || qtyRaw === null || qtyRaw === '') ? 1 : num(qtyRaw);
+      var extNet = num(row.field_2269_raw);
+      var rowAmt = extNet !== 0 ? extNet : round2(rowQty * unitAmount);
       // Bucket sort order from field_2218 if projected on the line-item
       // record; otherwise fall back to bucket name (so the output is at
       // least deterministic). Add field_2218 to view_3896 to get the
@@ -4142,8 +4226,13 @@
         bucketSort = isNaN(bs) ? Number.POSITIVE_INFINITY : bs;
       }
 
+      // Include gate: a CO keeps any non-zero amount (removes are negative);
+      // a base proposal bills positive amounts only (a $0 / qty-0 row is
+      // not an invoice line).
+      var billable = (sku || name) && (isChangeOrder ? rowAmt !== 0 : rowAmt > 0);
+
       if (/^license\b/i.test(bucket)) {
-        if ((sku || name) && (isChangeOrder ? rowAmt !== 0 : equipmentVal > 0)) {
+        if (billable) {
           // Aggregation key: bucket + sku + name + unitPrice. Same SKU
           // at different prices (e.g. tiered pricing) yields separate
           // invoice lines so qty × unitPrice always equals lineTotal.
@@ -4165,7 +4254,7 @@
         continue;
       }
 
-      if ((sku || name) && (isChangeOrder ? rowAmt !== 0 : equipmentVal > 0)) {
+      if (billable) {
         var equipmentKey = bucket + '␟' + sku + '␟' + name + '␟' + unitAmount;
         if (!equipmentBySku[equipmentKey]) {
           equipmentBySku[equipmentKey] = {
@@ -4597,6 +4686,11 @@
           pushHeader(3, bandText);
           continue;
         }
+        if (cCls && cCls.contains('co-band-note')) {
+          flushTable();
+          pushNormal(cleanText(child.textContent));
+          continue;
+        }
         if (cCls && cCls.contains('co-band-total')) {
           flushTable();
           var btLbl = child.querySelector('.co-band-total-label');
@@ -4805,6 +4899,115 @@
     return elements;
   }
 
+  // ── CO sub pricing sheet (INTERNAL — subcontractor cost data) ──────────
+  // A change order has no separate sub bid record: the sub prices the CO
+  // directly on the SOW line items (field_2203 per row). So the subBid*
+  // keys below (built from the bid-review field_2941 blob) ride EMPTY on
+  // CO publishes and there is no sub-facing document to PDF. This builds
+  // one: a complete standalone HTML doc (getPdfCss inlined, same
+  // l1/l2/product-table fragment classes as the bid PDF) itemizing every
+  // CO line the sub priced — qty × sub cost, signed (Remove lines carry
+  // negative qty), grouped MDF/IDF → bucket in snapshot row order.
+  // Ships as payload.coSubBidHtml on CO publishes ONLY. Make feeds it to
+  // an HTML→PDF step and stamps the file wherever the CO's sub agreement
+  // should live. NOT spliced into the client html/htmlPdf — sub cost
+  // never reaches the customer document.
+  function buildCoSubBidDoc(jsonSnapshot, sowId) {
+    if (!jsonSnapshot || typeof jsonSnapshot !== 'object') return '';
+    var lineItems = [];
+    var snapKeys = Object.keys(jsonSnapshot);
+    for (var ki = 0; ki < snapKeys.length; ki++) {
+      var v = jsonSnapshot[snapKeys[ki]];
+      if (Array.isArray(v) && v.length && v[0] && v[0].field_2219_raw !== undefined) {
+        lineItems = lineItems.concat(v);
+      }
+    }
+    if (!lineItems.length) return '';
+
+    function num(x) { var n = parseFloat(x); return isNaN(n) ? 0 : n; }
+    function round2(n) { return Math.round(n * 100) / 100; }
+    function money(n) {
+      var neg = (n || 0) < 0;
+      return (neg ? '-$' : '$') + Math.abs(n || 0)
+        .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // L1 = MDF/IDF in first-seen (grid) order; rows without an MDF sink
+    // to a trailing "No MDF / IDF" group (picker convention).
+    var NO_MDF = 'No MDF / IDF';
+    var l1s = [], l1ByLabel = {}, grand = 0;
+    for (var i = 0; i < lineItems.length; i++) {
+      var row  = lineItems[i] || {};
+      var qty  = num(row.field_1964_raw) || 1;   // negative on Remove lines
+      // field_2150 = INPUT sub bid (the sub's unit number). NOT field_2203
+      // — that's the client-facing unit sell total; putting it on a
+      // sub-facing document would leak margin.
+      var cost = num(row.field_2150_raw);
+      var amt  = round2(qty * cost);
+      if (!amt) continue;                        // nothing sub-priced
+      var mdfArr = row.field_1946_raw;
+      var mdf = (mdfArr && mdfArr[0] && mdfArr[0].identifier) || NO_MDF;
+      var bucketArr = row.field_2219_raw;
+      var bucket = (bucketArr && bucketArr[0] && bucketArr[0].identifier) || '';
+      var label = (row.field_1958_raw || row.field_1963_raw || '').toString().trim() || 'Line item';
+      if (/^remove$/i.test((row.field_2965_raw || '').toString())) label += ' — removal';
+      var l1 = l1ByLabel[mdf];
+      if (!l1) {
+        l1 = l1ByLabel[mdf] = { label: mdf, buckets: [], bucketByLabel: {}, total: 0 };
+        l1s.push(l1);
+      }
+      var bk = l1.bucketByLabel[bucket];
+      if (!bk) {
+        bk = l1.bucketByLabel[bucket] = { label: bucket, items: [] };
+        l1.buckets.push(bk);
+      }
+      bk.items.push({ label: label, qty: qty, amt: amt });
+      l1.total = round2(l1.total + amt);
+      grand = round2(grand + amt);
+    }
+    if (!l1s.length) return '';
+    l1s.sort(function (a, b) {
+      return (a.label === NO_MDF ? 1 : 0) - (b.label === NO_MDF ? 1 : 0);
+    });
+
+    var h = [];
+    h.push('<div class="view-title">Change Order — Sub Pricing' +
+           (sowId ? ' <span style="font-weight:600;color:#64748b;">(' + esc(sowId) + ')</span>' : '') +
+           '</div>');
+    for (var g = 0; g < l1s.length; g++) {
+      var sec = l1s[g];
+      h.push('<div class="l1-section">');
+      h.push('<div class="l1-header">' + esc(sec.label) + '</div>');
+      for (var b = 0; b < sec.buckets.length; b++) {
+        var bkt = sec.buckets[b];
+        if (bkt.label) h.push('<div class="l2-header">' + esc(bkt.label) + '</div>');
+        h.push('<table class="product-table">');
+        h.push('<thead><tr><th class="col-desc"></th><th class="col-qty">Qty</th>' +
+               '<th class="col-cost">Sub Cost</th></tr></thead>');
+        h.push('<tbody>');
+        for (var k = 0; k < bkt.items.length; k++) {
+          var it = bkt.items[k];
+          h.push('<tr class="l3-row"><td>' + esc(it.label) + '</td>' +
+                 '<td class="col-qty">' + esc(it.qty) + '</td>' +
+                 '<td class="col-cost">' + money(it.amt) + '</td></tr>');
+        }
+        h.push('</tbody></table>');
+      }
+      h.push('<div class="l1-footer"><div class="l1-footer-line l1-line--final">' +
+             '<span class="l1-footer-label">Sub Cost Subtotal</span>' +
+             '<span class="l1-footer-value">' + money(sec.total) + '</span></div></div>');
+      h.push('</div>');
+    }
+    h.push('<div class="project-totals"><div class="pt-line pt-line--final">' +
+           '<span class="pt-label">CO Sub Total</span>' +
+           '<span class="pt-value">' + money(grand) + '</span></div></div>');
+
+    return ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
+      '<title>CO Sub Pricing' + (sowId ? ' — ' + esc(sowId) : '') + '</title>',
+      '<style>', getPdfCss(), '</style>', '</head><body>', bodyLevelCss(),
+      h.join('\n'), '</body></html>'].join('\n');
+  }
+
   // ── Sub-bid review (bid + diff) for the published-proposal record ──────
   // The sub-bid diff is computed on the Bid Review page and stamped onto the
   // SOW's field_2941 (JSON blob) by sub-bid-diff/pdf-html.js. That blob carries
@@ -4826,7 +5029,8 @@
     // blob (stamped at bid review); subId/subName ride the same blob once
     // sub-bid-diff's pkgSub config key is set (bid package → sub connection).
     var empty = { bidHtml: '', diffHtml: '', diffDocHtml: '', reviewHtml: '',
-      basis: '', basisId: '', subId: '', subName: '', hasDiff: false, note: '' };
+      basis: '', basisId: '', subId: '', subName: '', hasDiff: false, note: '',
+      k1PdfAssetId: '', k1PdfName: '', k1PdfUrl: '' };
     function finishSubBid(snap) {
       if (!snap) return empty;
       // The blob's embedded HTML fragments can come back TAG-STRIPPED: when
@@ -4868,10 +5072,15 @@
           '<style>', getPdfCss(), '</style>', '</head><body>', bodyLevelCss(),
           d, PAGEBREAK, '</body></html>'].join('\n');
       }
+      var k1 = (snap.k1Pdf && typeof snap.k1Pdf === 'object') ? snap.k1Pdf : {};
       return { bidHtml: b, diffHtml: d, diffDocHtml: dd, reviewHtml: rv,
         basis: snap.basisBidName || '', basisId: snap.basisBidId || '',
         subId: snap.basisSubId || '', subName: snap.basisSubName || '',
-        hasDiff: Number(snap.total) > 0, note: snap.note || '' };
+        hasDiff: Number(snap.total) > 0, note: snap.note || '',
+        // K1 basis: the uploaded bid PDF the SOW is priced from (also on the
+        // SOW's field_2981 when the write view exposes it).
+        k1PdfAssetId: String(k1.assetId || ''), k1PdfName: String(k1.name || ''),
+        k1PdfUrl: String(k1.url || '') };
     }
     function readSnapshotReview() {
       // Prefer the Knack MODEL value (verbatim JSON) — Knack renders the embedded
@@ -5003,6 +5212,18 @@
     var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
     var plaintextStr  = htmlToPlaintext(htmlStr);
     var subBid        = buildSubBidReview();
+    // CO publishes only: the sub-facing pricing document (no separate sub
+    // bid record exists for a CO — pricing lives on the SOW rows).
+    // Gate on the SOW header's Type field (field_2952, projected on the
+    // hidden view_3861 details) rather than payload.isChangeOrder alone:
+    // isChangeOrder derives from the "What's Changing" manifest, which
+    // doesn't render when the CO's lines carry no CO Action (field_2965)
+    // — e.g. floorplan-imported lines — but the sub pricing sheet should
+    // still ship for any change-order SOW.
+    // payload.isChangeOrder now already ORs in the SOW Type field (see
+    // where it is set), so this no longer needs its own copy of that read.
+    var coSubBidHtml  = payload.isChangeOrder
+      ? buildCoSubBidDoc(jsonSnapshot, summary.sowId) : '';
     // Tech group — field_2954 lives on the BID; view_3861 shows it through
     // a chain (SOW -> bids -> tech group), which renders NESTED
     // connection spans fanned out per intermediate record:
@@ -5062,8 +5283,23 @@
       // coChangeSummary is the full structured manifest
       // { desc, adds[], addSubtotal, removes[], removeSubtotal, net }.
       isChangeOrder:         payload.isChangeOrder || false,
-      coNetChange:           payload.coChangeSummary ? payload.coChangeSummary.net : '',
+      // Falls back to the grand total on a CO whose manifest didn't
+      // render: for a change order the project total IS the net change
+      // (the document itself labels it "Change Order Total"), so shipping
+      // '' left the e-sign template with no headline amount at all.
+      coNetChange:           payload.coChangeSummary
+                               ? payload.coChangeSummary.net
+                               : (payload.isChangeOrder
+                                   ? (summary.grandTotal || '') : ''),
       coChangeSummary:       payload.coChangeSummary || undefined,
+      // ── CO sub pricing (INTERNAL — subcontractor cost data) ──────────
+      // Complete standalone HTML doc itemizing the sub's CO pricing
+      // (qty × field_2203 per line, signed; MDF/IDF → bucket grouping).
+      // Present on CO publishes only. Make feeds this to an HTML→PDF
+      // step and stamps the file wherever the CO's sub agreement should
+      // live — never into the client-facing field_2680. See
+      // buildCoSubBidDoc.
+      coSubBidHtml:          coSubBidHtml || undefined,
       // Tokenized public link, minted client-side at publish time.
       // Make should write these to field_2904 and field_2908 on the
       // proposal record so the public snippet finds them on first
@@ -5110,6 +5346,12 @@
       // literal string 'K1' (not a 24-hex record id); this flag lets Make
       // branch without string-sniffing.
       subBidIsK1:            subBid.basisId === 'K1',
+      // K1 basis only: the bid PDF the reviewer uploaded on the Bid Review
+      // page (Knack asset id + filename + URL). Make should attach / stamp
+      // this where it would otherwise use the basis bid package's field_2626.
+      subBidK1PdfAssetId:    subBid.k1PdfAssetId,
+      subBidK1PdfName:       subBid.k1PdfName,
+      subBidK1PdfUrl:        subBid.k1PdfUrl,
       subBidHasDiff:         subBid.hasDiff,
       subBidNote:            subBid.note,
       plaintext:             plaintextStr,
@@ -5147,9 +5389,13 @@
       // for any consumer that re-encodes the JSON, because the inner
       // HTML quotes (especially the equation-field `<span id="">…</span>`
       // wrappers) get half-escaped in transit and break Parse JSON.
-      // Store this string verbatim in a Knack plain-text/paragraph
-      // field; at read time, `parseJSON(field_value)` reconstitutes
-      // the (raw-only) object exactly.
+      // The same mangling hits rich-text `_raw` HTML that carries tag
+      // attributes (`<ul class="ak-ul">`), so those attributes are
+      // stripped too (stripHtmlTagAttrs) — the stored string must never
+      // contain an escaped ATTRIBUTE quote. Store this string verbatim
+      // in a Knack plain-text/paragraph field; at read time,
+      // `parseJSON(field_value)` reconstitutes the (raw-only) object
+      // exactly.
       jsonString:            (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })(),
       // Pre-categorized, billing-system-agnostic invoice line items.
       // Bundle owns the SKU vs labor vs license classification; Make

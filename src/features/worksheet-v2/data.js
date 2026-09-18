@@ -153,6 +153,46 @@
     };
   }
 
+  // ── Unchanged-model gate (poll ticks) ───────────────────────────────
+  // A background poll tick whose fetch brings back an UNCHANGED model must
+  // cost zero DOM work — the rebuild swap (even at 100% card reuse) is the
+  // "little flash" users see every 15s during a poll burst. Fingerprint
+  // the model; refetchAndNotify({skipIfUnchanged}) skips the notify when
+  // it matches what the page last rendered. Baseline refreshes on every
+  // runNotify, so user-driven renders keep it current.
+  var _renderedFp = Object.create(null);
+  // True while a skipIfUnchanged fetch is in flight for the view. The
+  // fetch ALSO fires Knack's native knack-view-render (reset → render),
+  // whose listener below would rebuild regardless of the settle gate —
+  // so the render-event path checks this flag + the fingerprint too.
+  // User-driven native renders (no flag) always repaint.
+  var _quietFetch = Object.create(null);
+  function quietSkip(viewKey) {
+    if (!_quietFetch[viewKey]) return false;
+    var fp = modelFp(viewKey);
+    if (!fp || fp !== _renderedFp[viewKey]) return false;
+    try {
+      if (window.localStorage && localStorage.scwScrollSpy === '1') {
+        console.warn('[scw-ws-v2] ' + viewKey +
+          ' poll refetch: model unchanged — render skipped');
+      }
+    } catch (eL) { /* ignore */ }
+    return true;
+  }
+  function modelFp(viewKey) {
+    try {
+      var v = Knack.views[viewKey];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (!models) return '';
+      var parts = new Array(models.length);
+      for (var i = 0; i < models.length; i++) {
+        var m = models[i];
+        parts[i] = (m && m.id) + '' + JSON.stringify(m && m.attributes);
+      }
+      return models.length + '' + parts.join('');
+    } catch (e) { return ''; }   // unreadable → treated as changed
+  }
+
   function runNotify(sourceViewKey) {
     var list = subscribers[sourceViewKey];
     if (!list || !list.length) return;
@@ -166,6 +206,8 @@
     // the stale value ("edit flashes green then reverts"). Applying the
     // overlay here makes every rebuild honor writes newer than the TTL.
     applyPendingOverlay(sourceViewKey);
+    // Baseline AFTER the overlay — what subscribers are about to render.
+    _renderedFp[sourceViewKey] = modelFp(sourceViewKey);
     var records = readRecords(sourceViewKey);
     for (var i = 0; i < list.length; i++) {
       try { list[i](sourceViewKey, records); }
@@ -312,13 +354,18 @@
     if (Object.keys(v).length === 0) delete _pending[viewKey];
   }
 
-  function refetchAndNotify(viewKey) {
+  function refetchAndNotify(viewKey, opts) {
     try {
       var v = Knack.views[viewKey];
       if (!v || !v.model || typeof v.model.fetch !== 'function') {
         notify(viewKey);
         return;
       }
+      // Capture-early scroll guard: the full fetch re-renders Knack's
+      // NATIVE grid — the moment its deferred scroll fires (poll.js burst
+      // ticks run this path every 15s after an edit, which is why the
+      // jumps feel random). Anchor the nearest row NOW, before the fetch.
+      armGuard();
       if (_fetchInFlight[viewKey]) {
         // Coalesce — a fetch is already running for this view. Just make
         // sure we re-render once it lands.
@@ -326,12 +373,22 @@
         return;
       }
       _fetchInFlight[viewKey] = true;
+      if (opts && opts.skipIfUnchanged) _quietFetch[viewKey] = true;
       var settle = function () {
         _fetchInFlight[viewKey] = false;
         // Re-apply optimistic edits the fetch just clobbered BEFORE notify,
         // so the rebuild renders the user's in-flight values, not stale
         // pre-commit server data.
         applyPendingOverlay(viewKey);
+        // Unchanged-model gate: a caller that opted in (poll ticks) skips
+        // the notify entirely when the fetched model fingerprints the same
+        // as what the page last rendered — a background freshness check
+        // that finds nothing must not repaint (the poll-burst "flash").
+        // Never skipped when another caller asked mid-flight.
+        var skipUnchanged = opts && opts.skipIfUnchanged && !_fetchWantFollow[viewKey]
+          && quietSkip(viewKey);
+        _quietFetch[viewKey] = false;
+        if (skipUnchanged) return;
         notify(viewKey);
         if (_fetchWantFollow[viewKey]) {
           _fetchWantFollow[viewKey] = false;
@@ -351,6 +408,7 @@
       }
     } catch (e) {
       _fetchInFlight[viewKey] = false;
+      _quietFetch[viewKey] = false;
       notify(viewKey);
     }
   }
@@ -428,6 +486,22 @@
     }
   }
 
+  /** Capture-early scroll guard (see _v2-scroll-anchor.js guard()). Armed
+   *  at every point a native re-render can follow — Knack's own deferred
+   *  post-render code scrolls the page through a pre-patch native
+   *  reference (invisible to scroll-spy). Every observed jump fires AFTER
+   *  the knack-view-render event, so a render-time capture is still a
+   *  healthy pre-jump baseline; guard() ignores re-arms while active
+   *  (extends the window) so storm-repeat calls stay cheap. */
+  function armGuard() {
+    try {
+      if (window.SCW && SCW.v2ScrollAnchor &&
+          typeof SCW.v2ScrollAnchor.guard === 'function') {
+        SCW.v2ScrollAnchor.guard();
+      }
+    } catch (e) { /* best-effort */ }
+  }
+
   /** Wire the Knack event listeners that drive notify(). */
   function attachListeners() {
     if (!ns.CONFIG || !ns.CONFIG.enabled) return;
@@ -438,7 +512,13 @@
       // view (initial load, filter change, sort change, model.fetch).
       $(document)
         .off('knack-view-render.' + key + '.scwWsV2')
-        .on('knack-view-render.' + key + '.scwWsV2', function () { notify(key); });
+        .on('knack-view-render.' + key + '.scwWsV2', function () {
+          armGuard();
+          // The quiet (poll) fetch's own native render — model unchanged
+          // means our rebuild output would be identical: skip the repaint.
+          if (quietSkip(key)) return;
+          notify(key);
+        });
 
       // knack-cell-update fires on inline-edit save — we re-notify so
       // subscribers can patch the affected record without waiting for
@@ -455,7 +535,7 @@
         var mdfKey = vcfg.mdfSourceViewKey;
         $(document)
           .off('knack-view-render.' + mdfKey + '.scwWsV2-' + key)
-          .on('knack-view-render.' + mdfKey + '.scwWsV2-' + key, function () { notify(key); });
+          .on('knack-view-render.' + mdfKey + '.scwWsV2-' + key, function () { armGuard(); notify(key); });
       }
     });
 
@@ -477,9 +557,37 @@
     }
   }
 
+  // Post-RENDER subscribers — fired by init.js AFTER the panel DOM for a
+  // view has actually been (re)built. The correct hook for modules that
+  // DECORATE rendered cards (co-remove checkcells/actions, swap chips,
+  // review-diff flags): a plain data subscriber can fire while the rebuild
+  // is DEFERRED (requestRender holds rebuilds while a grid input is
+  // focused), so anything it painted landed on the OLD DOM and the later
+  // rebuild destroyed it — the "checkboxes just disappeared" bug. Direct
+  // renderView call sites (sort / filter / search) fire this too.
+  var renderedSubs = Object.create(null);
+  function subscribeRendered(sourceViewKey, handler) {
+    if (!renderedSubs[sourceViewKey]) renderedSubs[sourceViewKey] = [];
+    renderedSubs[sourceViewKey].push(handler);
+  }
+  function notifyRendered(sourceViewKey) {
+    var list = renderedSubs[sourceViewKey] || [];
+    for (var i = 0; i < list.length; i++) {
+      // One throwing decorator must not block the rest.
+      try { list[i](sourceViewKey); } catch (e) {
+        if (window.console && console.warn) {
+          console.warn('[scw-ws-v2] rendered-subscriber failed on ' +
+            sourceViewKey, e);
+        }
+      }
+    }
+  }
+
   ns.data = {
     readRecords: readRecords,
     subscribe:   subscribe,
+    subscribeRendered: subscribeRendered,
+    notifyRendered:    notifyRendered,
     notify:      notify,
     notifyNow:   notifyNow,
     refetchAndNotify: refetchAndNotify,

@@ -1206,11 +1206,40 @@
       data: JSON.stringify(payload),
       success: function (resp) {
         input.classList.remove('scw-bid-review__sow-metric-input--saving');
+        // Dropped-write check: a view-scoped PUT answers 200 even when the
+        // write view doesn't expose field_2750 (Knack just ignores the
+        // field). The response record tells the truth — a $0 that "saved"
+        // but came back blank would leave the Preview gate up forever.
+        var rec = resp && resp.record && typeof resp.record === 'object' ? resp.record : resp;
+        if (rec && typeof rec === 'object' && Object.prototype.hasOwnProperty.call(rec, fieldKey + '_raw')) {
+          var back = rec[fieldKey + '_raw'];
+          var backNum = (back === '' || back == null) ? null
+            : parseFloat(String(back).replace(/[^0-9.\-]/g, ''));
+          var landed = (num === null)
+            ? (backNum === null || !isFinite(backNum))
+            : (backNum !== null && isFinite(backNum) && Math.abs(backNum - num) < 0.005);
+          if (!landed) {
+            console.warn('[BidReview] Survey Costs write was ignored by Knack — ' + fieldKey +
+              ' must be an editable field on ' + writeView + ' (Builder).', { sent: num, got: back });
+            ns.renderToast('Knack didn’t keep Survey Costs — ' + fieldKey +
+              ' isn’t editable on ' + writeView + '. Add it in Builder.', 'error');
+            return;
+          }
+        }
         input.classList.add('scw-bid-review__sow-metric-input--saved');
         if (typeof SCW.syncKnackModel === 'function') {
           SCW.syncKnackModel(writeView, sowId, resp, fieldKey, payload[fieldKey]);
         }
-        // Refresh view_3325 so the next-step block + margin update.
+        // Reflect the answer NOW: formatted value, the red note, and the
+        // Preview pill's gate in this SOW section (the status bar itself is
+        // only rebuilt when a grid source view re-renders — see
+        // opsReview.applySurveyCostsAnswer).
+        try {
+          if (SCW.opsReview && typeof SCW.opsReview.applySurveyCostsAnswer === 'function') {
+            SCW.opsReview.applySurveyCostsAnswer(input, num);
+          }
+        } catch (e3) { /* best-effort */ }
+        // Refresh the SOW view so the next-step block + margin update.
         try {
           var v = Knack && Knack.views && Knack.views[CFG.nextStepViewKey];
           if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
@@ -3172,6 +3201,87 @@
     });
   }
 
+  // ── Unlink a bid item from THIS SOW item ───────────────────
+  // The different-bid stacked block's remedy: a bid item that lives on
+  // ANOTHER bid has its field_2404 pointing at this SOW item, so it
+  // stacks under this bid's cell as noise. Clear THIS SOW item out of
+  // that pointer (field_2404 can be multi-valued — any other targets are
+  // kept). The record itself, its own bid membership, and its pricing
+  // are untouched.
+  function handleUnlinkBidSowItem(button) {
+    var bidId     = button.getAttribute('data-bid-record-id');
+    var sowItemId = button.getAttribute('data-sow-item-id');
+    if (!bidId || !sowItemId) return;
+
+    var FKsow = (CFG.fieldKeys && CFG.fieldKeys.relatedSowItem) || 'field_2404';
+
+    var bidView = Knack && Knack.views && Knack.views[CFG.viewKey];
+    var models  = bidView && bidView.model && bidView.model.data &&
+                  bidView.model.data.models;
+    var attrs = null;
+    if (models) {
+      for (var i = 0; i < models.length; i++) {
+        if (models[i] && models[i].id === bidId) {
+          attrs = models[i].attributes || {};
+          break;
+        }
+      }
+    }
+    if (!attrs) {
+      ns.renderToast('Could not locate the bid record on the page', 'error');
+      return;
+    }
+
+    var keep = [];
+    var found = false;
+    var raw = attrs[FKsow + '_raw'];
+    if (Array.isArray(raw)) {
+      for (var r = 0; r < raw.length; r++) {
+        if (!raw[r] || !raw[r].id) continue;
+        if (raw[r].id === sowItemId) { found = true; continue; }
+        keep.push(raw[r].id);
+      }
+    } else if (raw && raw.id) {
+      if (raw.id === sowItemId) found = true;
+      else keep.push(raw.id);
+    }
+    if (!found) {
+      ns.renderToast('That bid item no longer points at this SOW item', 'info');
+      refreshSilently();
+      return;
+    }
+
+    var prod = (button.getAttribute('data-bid-product') || '').trim() ||
+               'this bid item';
+    if (!window.confirm(
+      'Unlink ' + prod + ' from this SOW item?\n\n' +
+      'The bid item is NOT deleted and stays on its own bid — only its ' +
+      'pointer at this SOW item is cleared, so it stops stacking here.'
+    )) return;
+
+    setBusy(button, true);
+    var payload = {};
+    payload[FKsow] = keep;   // empty array clears the connection
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(CFG.viewKey, bidId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function (resp) {
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(CFG.viewKey, bidId, resp, FKsow, keep);
+        }
+        setBusy(button, false);
+        ns.renderToast('Bid item unlinked from this SOW item', 'success');
+        refreshSilently();
+      },
+      error: function (xhr) {
+        setBusy(button, false);
+        ns.renderToast('Unlink failed (' + (xhr && xhr.status) +
+          ') — try again', 'error');
+      }
+    });
+  }
+
   // ── disconnect from SOW (per-row, on SOW detail cell) ──────
   // Removes this SOW's id from the SOW Line Item's field_2154
   // connection (the SOW connection is multi-value — a single line
@@ -3859,6 +3969,7 @@
     if (action === 'cell_reinstate')                { handleReinstate(button); return true; }
     if (action === 'cell_create_sow_from_bid')      { handleCreateSowFromBid(button); return true; }
     if (action === 'cell_relink_bid')               { handleRelinkBid(button); return true; }
+    if (action === 'cell_unlink_bid_sowitem')       { handleUnlinkBidSowItem(button); return true; }
     if (action === 'cr_submit') {
       var pkgId = button.getAttribute('data-pkg-id');
       if (ns.changeRequests && ns.changeRequests.submitForPackage) {
@@ -4523,6 +4634,20 @@
     if (CFG.nextStepViewKey) {
       SCW.onViewRender(CFG.nextStepViewKey, function () {
         if (_state && ns.rerender) ns.rerender();
+        // v2 owns the page: renderMatrix above is a no-op there, and v2's
+        // data layer doesn't watch this view — so the status bars v2 embeds
+        // (margin / next step / survey costs / Preview pill) never
+        // refreshed after a Survey Costs save or an ops-stepper action.
+        // Ask v2 to rebuild from the fresh row DOM. Debounced, and the
+        // save fires on `change` (blur/Enter) so the input no longer has
+        // focus by the time the rebuild replaces it.
+        try {
+          var v2 = window.SCW.bidReviewV2;
+          if (v2 && v2.CONFIG && v2.CONFIG.replaceV1 && v2.data &&
+              typeof v2.data.notifyDebounced === 'function') {
+            v2.data.notifyDebounced();
+          }
+        } catch (eV2) { /* best-effort */ }
       }, CFG.eventNs + 'NextStep');
     }
     // ── Scene cleanup ───────────────────────────────────────────

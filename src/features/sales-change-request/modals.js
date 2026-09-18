@@ -17,7 +17,10 @@
 
   var MODAL_ID = P + '-overlay';
 
-  /** Resolve display label + product for a record from pending, baseline, or DOM. */
+  /** Resolve display label + product + custom text for a record from
+   *  pending, baseline, or DOM. `desc` (Labor Description, CFG.descField)
+   *  is the only distinguishing identity a designator-less row has —
+   *  "REMOVE — Other Services" is meaningless to Ops without it. */
   function resolveIdentity(recordId) {
     var pending = S.pending();
     var item = pending[recordId] || pending['note_' + recordId];
@@ -25,10 +28,12 @@
 
     var label = H.readableVal((item && item.displayLabel) || base._label || '');
     var product = H.readableVal((item && item.productName) || base._product || '');
+    var desc = H.readableVal((item && item.descText) || base[CFG.descField] || '');
 
     // Sanitize any leftover [object Object] from stale sessionStorage
     if (label.indexOf('[object') !== -1) label = '';
     if (product.indexOf('[object') !== -1) product = '';
+    if (desc.indexOf('[object') !== -1) desc = '';
 
     // Fallback: read from the DOM card
     if (!label && !product) {
@@ -40,8 +45,26 @@
         if ($prodTd.length) product = H.stripHtml($prodTd.text());
       }
     }
+    if (!desc) {
+      var $row2 = $('#' + recordId);
+      var $descTd = $row2.length &&
+        $row2.find('td[data-field-key="' + CFG.descField + '"]');
+      if ($descTd && $descTd.length) desc = H.stripHtml($descTd.text());
+    }
 
-    return { label: label, product: product };
+    return { label: label, product: product, desc: desc };
+  }
+
+  /** One-line identity for modal subtitles / bulk lists: "E-003 — Product",
+   *  with the custom text appended for designator-less rows. */
+  function identityText(id, fallback) {
+    var text = id.label && id.product ? (id.label + ' — ' + id.product)
+             : (id.label || id.product || fallback || 'Item');
+    if (!id.label && id.desc) {
+      var d = id.desc.length > 90 ? id.desc.slice(0, 87) + '…' : id.desc;
+      text += ' — “' + d + '”';
+    }
+    return text;
   }
 
   function closeModal() {
@@ -142,9 +165,7 @@
     var hLeft = H.el('div');
     hLeft.appendChild(H.el('div', P + '-modal__title',
       isEdit ? 'Edit Removal Request' : 'Request Removal'));
-    var subtitle = product || label || 'Item';
-    if (label && product) subtitle = label + ' \u2014 ' + product;
-    hLeft.appendChild(H.el('div', P + '-modal__subtitle', subtitle));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', identityText(id)));
     header.appendChild(hLeft);
     var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
     closeBtn.addEventListener('click', closeModal);
@@ -177,6 +198,7 @@
         rowId: recordId,
         displayLabel: label,
         productName: product,
+        descText: id.desc || '',
         action: 'remove',
         current: {},
         requested: {},
@@ -186,6 +208,125 @@
       if (ns.refresh) ns.refresh();
       closeModal();
       ns.showToast('Removal added to change request', 'success');
+    });
+    footer.appendChild(removeBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
+  // ── Bulk removal request (worksheet bulk selection) ──
+  // Once the CR surface is live the per-row trash is gone and removal only
+  // happens through a request — which made clearing out N items an N-modal
+  // chore. This is openRemoveModal over a set: one shared reason, one entry
+  // written per row into the SAME pending map, so the CR panel, the payload
+  // builder and the submit path all see them as ordinary removals with no
+  // special-casing anywhere downstream.
+
+  function openBulkRemoveModal(recordIds) {
+    var ids = [];
+    for (var i = 0; i < (recordIds || []).length; i++) {
+      if (recordIds[i]) ids.push(recordIds[i]);
+    }
+    if (!ids.length) return;
+
+    ns.injectStyles();
+    closeModal();
+
+    var pending = S.pending();
+    var already = 0;
+    for (var a = 0; a < ids.length; a++) {
+      var ex = pending[ids[a]];
+      if (ex && ex.action === 'remove') already++;
+    }
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title', 'Request Removal'));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle',
+      ids.length + ' line item' + (ids.length === 1 ? '' : 's') + ' selected'));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '×');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = H.el('div', P + '-modal__body');
+    body.appendChild(H.el('div', P + '-modal__hint',
+      'Request that these line items be removed. The reason below applies to ' +
+      'all of them; you can edit any one afterwards from the change-request panel.'));
+
+    // Name every row. Blind bulk removal on a priced SOW is not something to
+    // confirm from a count alone.
+    var list = H.el('div', P + '-modal__bulklist');
+    for (var n = 0; n < ids.length; n++) {
+      var id = resolveIdentity(ids[n]);
+      var row = H.el('div', P + '-modal__bulkitem', identityText(id, ids[n]));
+      var exi = pending[ids[n]];
+      if (exi && exi.action === 'remove') {
+        row.appendChild(H.el('span', P + '-modal__bulkflag', 'already requested'));
+      }
+      list.appendChild(row);
+    }
+    body.appendChild(list);
+
+    if (already) {
+      body.appendChild(H.el('div', P + '-modal__hint',
+        already + ' of these already ' + (already === 1 ? 'has' : 'have') +
+        ' a removal request — submitting will overwrite ' +
+        (already === 1 ? 'its reason' : 'their reasons') + ' with the note below.'));
+    }
+
+    body.appendChild(H.el('label', P + '-modal__label', 'Reason (optional)'));
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.placeholder = 'Why should these items be removed…';
+    ta.rows = 3;
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+
+    var removeBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--remove',
+      'Request removal of ' + ids.length);
+    removeBtn.addEventListener('click', function () {
+      var note = ta.value.trim();
+      var p = S.pending();
+      for (var k = 0; k < ids.length; k++) {
+        var ident = resolveIdentity(ids[k]);
+        p[ids[k]] = {
+          rowId:        ids[k],
+          displayLabel: ident.label,
+          productName:  ident.product,
+          descText:     ident.desc || '',
+          action:       'remove',
+          current:      {},
+          requested:    {},
+          changeNotes:  note,
+        };
+      }
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      // Drop the worksheet selection — leaving N rows ticked after they've
+      // all been marked for removal invites a second accidental pass.
+      try {
+        var b = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.bulk;
+        if (b && typeof b.clear === 'function') b.clear();
+      } catch (eSel) { /* selection is cosmetic here */ }
+      ns.showToast(ids.length + ' removal' + (ids.length === 1 ? '' : 's') +
+        ' added to change request', 'success');
     });
     footer.appendChild(removeBtn);
     modal.appendChild(footer);
@@ -218,9 +359,7 @@
     var hLeft = H.el('div');
     hLeft.appendChild(H.el('div', P + '-modal__title',
       existing ? 'Edit Note' : 'Add Note'));
-    var subtitle = product || label || 'Item';
-    if (label && product) subtitle = label + ' \u2014 ' + product;
-    hLeft.appendChild(H.el('div', P + '-modal__subtitle', subtitle));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', identityText(id)));
     header.appendChild(hLeft);
     var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
     closeBtn.addEventListener('click', closeModal);
@@ -256,6 +395,7 @@
         rowId: recordId,
         displayLabel: label,
         productName: product,
+        descText: id.desc || '',
         action: 'note',
         current: {},
         requested: {},
@@ -297,9 +437,7 @@
     var hLeft = H.el('div');
     hLeft.appendChild(H.el('div', P + '-modal__title',
       existing ? 'Edit Add Request' : 'Add to Change Request'));
-    var addSubtitle = product || label || 'Item';
-    if (label && product) addSubtitle = label + ' \u2014 ' + product;
-    hLeft.appendChild(H.el('div', P + '-modal__subtitle', addSubtitle));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', identityText(id)));
     header.appendChild(hLeft);
     var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
     closeBtn.addEventListener('click', closeModal);
@@ -343,6 +481,7 @@
         rowId: recordId,
         displayLabel: label,
         productName: product,
+        descText: id.desc || base[CFG.descField] || '',
         bucketId: base._bucketId || '',
         bucketName: base._bucketName || '',
         laborHours: base._laborHours || 0,
@@ -430,7 +569,8 @@
     if (!item) return;
 
     var id = resolveIdentity(recordId);
-    var label = id.product || id.label || item.displayLabel || item.productName || 'Item';
+    var label = identityText(id,
+      item.displayLabel || item.productName || 'Item');
 
     var overlay = H.el('div', P + '-overlay');
     overlay.id = MODAL_ID;
@@ -484,6 +624,7 @@
   ns.openRowNote        = openRowNoteModal;
   ns.openAddNote        = openAddNoteModal;
   ns.openRemove         = openRemoveModal;
+  ns.openBulkRemove     = openBulkRemoveModal;
   ns.openEditGlobalNote = openEditGlobalNoteModal;
   ns.openEditReviseNote = openEditReviseNoteModal;
 

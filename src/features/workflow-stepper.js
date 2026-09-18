@@ -7,6 +7,69 @@
   var SCENE_ID = 'scene_1116';
   var SOURCE_VIEW = 'view_3827';
 
+  // ── Project-level "a bid already came back" signal ───────
+  // Why it exists: the alternative-proposal ask reads very differently
+  // depending on whether the survey round is still open. While it's
+  // open, "add this SOW to the survey as an alternative bid" is exactly
+  // right. Once a bid is BACK on any SOW in the project, the survey is
+  // closed — sales isn't joining a survey any more, they're asking for
+  // the alternative to be priced against what came back. Same action,
+  // same webhook; only the copy changes (see the dynamicLabel /
+  // subText / promptCopy entries on 'request-alternative-proposal').
+  //
+  // Source of truth: the SURVEY_requests grid (view_4155, project-wide
+  // survey rounds, hidden by hide-data-source-views). A round with
+  // DATE_first-bid-submitted (field_2955) set means a bid came back.
+  // Fallback union: field_2996 on the SOW header (bids connected to
+  // THIS SOW) > 0 — definitionally "a bid is back" even while view_4155
+  // is still loading or absent. Legacy rounds run outside the
+  // SURVEY_requests architecture have no REQ row; the fallback is what
+  // catches those when this SOW itself carries the bid.
+  var SURVEY_REQS_VIEW   = 'view_4155';  // SURVEY_requests grid (project rounds)
+  var REQ_FIRST_BID_DATE = 'field_2955'; // DATE first bid submitted (on the REQ)
+  var REQ_FIELDS = {                     // payload context for the Ops card
+    reqId:     'field_2345',             // REQ_ID (e.g. 61052838674-SR121)
+    status:    'field_2349',             // FLAG_survey status
+    requested: 'field_2351',             // DATE_requested
+    scheduled: 'field_2352',             // DATE_scheduled
+    occurred:  'field_2353'              // DATE_occured
+  };
+  var SOW_BID_COUNT = 'field_2996';      // bids connected to THIS SOW (view_3827)
+
+  function stripHtml(v) {
+    if (v == null) return '';
+    return String(v).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  // Raw attribute maps of every survey round loaded in view_4155.
+  // Empty array when the view is absent/not yet populated — callers
+  // must treat that as "no evidence", not "no rounds exist".
+  function surveyRounds() {
+    var out = [];
+    try {
+      var v = Knack.views && Knack.views[SURVEY_REQS_VIEW];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i].attributes || models[i];
+        if (a && a.id) out.push(a);
+      }
+    } catch (e) { /* view absent — no evidence */ }
+    return out;
+  }
+
+  // True when a subcontractor bid has come back on ANY SOW on this
+  // project (including this one). Guarded so a missing view / field
+  // reads as "no bids back" rather than throwing.
+  function bidIsBack() {
+    var rounds = surveyRounds();
+    for (var i = 0; i < rounds.length; i++) {
+      if (stripHtml(rounds[i][REQ_FIRST_BID_DATE])) return true;
+    }
+    return conditionMet({ field: SOW_BID_COUNT, gt: 0 });
+  }
+  var BID_BACK    = { fn: bidIsBack };
+  var NO_BID_BACK = { not: { fn: bidIsBack } };
+
   // ── Step definitions ─────────────────────────────────────
   var STEPS = [
     {
@@ -39,9 +102,17 @@
       // pollAfterClick exit) on that stamp instead of field_1199.
       // field_2723 = Yes also completes it — Ops validating makes the
       // request moot.
+      // Partial mitigation until the per-SOW stamp exists: the field_1199
+      // proxy only counts when the project has NO validated SOW yet
+      // (field_2917 = 0) — otherwise this SOW is an alternate that merely
+      // inherited the project link, and treating that as "validation
+      // requested" deadlocks the whole stepper (hidden-as-done here +
+      // survey locked "waiting on Ops"). Same guard on softHideWhen and
+      // on the survey step's wait lock.
       completed: {
         any: [
-          { field: 'field_1199', hasValue: true },
+          { all: [ { field: 'field_1199', hasValue: true },
+                   { not: { field: 'field_2917', gt: 0 } } ] },
           { field: 'field_2723', value: 'Yes' }
         ]
       },
@@ -55,7 +126,8 @@
       // this is a CSS soft-hide, never a showWhen removal.
       softHideWhen: {
         any: [
-          { field: 'field_1199', hasValue: true },   // validate-only fired
+          { all: [ { field: 'field_1199', hasValue: true },       // validate-only fired…
+                   { not: { field: 'field_2917', gt: 0 } } ] },   // …and not an inherited link
           { field: 'field_2723', value: 'Yes' },     // already validated
           { field: 'field_2706', value: 'Yes' },     // survey path taken
           { field: 'field_2728', gt: 0 }             // sibling owns the survey
@@ -109,9 +181,14 @@
         // Validate-first path in flight (validation requested, Ops hasn't
         // flipped field_2723 yet): neutral label — the step is locked
         // below with "Waiting on Ops to validate", so the header must not
-        // read as an offer to validate again.
+        // read as an offer to validate again. Guarded on field_2917 = 0
+        // to match the lock below — on an alternate SOW (validated
+        // sibling exists) the inherited field_1199 doesn't mean a
+        // validation is in flight, so fall through to the validate-offer
+        // label instead.
         { when: { all: [ { field: 'field_1199', hasValue: true },
-                         { field: 'field_2723', notValue: 'Yes' } ] },
+                         { field: 'field_2723', notValue: 'Yes' },
+                         { not: { field: 'field_2917', gt: 0 } } ] },
           label: 'Request Site Survey' },
         { when: { field: 'field_2723', notValue: 'Yes' }, label: 'Validate SOW & Straight to Survey' },
         { label: 'Request Survey' }
@@ -167,11 +244,20 @@
       //      itself soft-hides). Unlocks automatically when field_2723
       //      flips. NOTE the pre-decision "Validate SOW & Straight to
       //      Survey" submit stays ungated — Make branches on field_2723.
+      //      ⚠️ Guarded on field_2917 = 0 (no validated SOW on the project
+      //      yet): field_1199 is PROJECT-level, so an alternate SOW
+      //      created after a sibling was set up inherits it — without the
+      //      guard the alternate deadlocks (Validate step hidden-as-done
+      //      + survey locked "waiting on Ops" for a validation nobody
+      //      requested). With a validated sibling the proxy is void; the
+      //      step stays active as "Validate SOW & Straight to Survey",
+      //      whose Make branch validates + skips project setup.
       disabled: [
         { when: { field: 'field_2724', notValue: 'Yes' },
           message: 'Complete the Project Playbook first' },
         { when: { all: [ { field: 'field_1199', hasValue: true },
-                         { field: 'field_2723', notValue: 'Yes' } ] },
+                         { field: 'field_2723', notValue: 'Yes' },
+                         { not: { field: 'field_2917', gt: 0 } } ] },
           message: 'Waiting on Ops to validate the SOW — this unlocks automatically' }
       ],
       // TODO(pending-REQ rollup): once the Builder rollup field (count of
@@ -219,11 +305,43 @@
       type: 'action',
       id: 'request-alternative-proposal',
       label: 'Request Alternative Proposal',
-      // Validation state decides how much the ask claims to do.
+      // Two axes decide the copy — the ACTION and the webhook are the
+      // same in every case:
+      //   1. Has a bid already come back on the project (BID_BACK)? If
+      //      so the survey round is closed, so "add to the survey" is
+      //      the wrong picture — the ask is to get this alternative
+      //      priced against what came back.
+      //   2. Is THIS SOW validated (field_2723)? Decides whether the
+      //      ask also carries the validation request.
+      // First match wins, so the bid-back pair must come first. BID_BACK
+      // reads the view_4155 survey rounds (field_2955 first-bid date),
+      // falling back to field_2996 (bids on THIS SOW) — see bidIsBack().
       dynamicLabel: [
+        { when: { all: [ BID_BACK, { field: 'field_2723', notValue: 'Yes' } ] },
+          label: 'Request Validation & Bid on This Alternative' },
+        { when: BID_BACK,
+          label: 'Request Bid on This Alternative' },
         { when: { field: 'field_2723', notValue: 'Yes' },
           label: 'Request Validation & Add as Alternative Bid to Survey' },
         { label: 'Request Addition to Survey as Alternative Bid' }
+      ],
+      // Only the bid-back states need explaining — the survey-open
+      // labels already say what happens. Renders on active states only.
+      subText: [
+        { when: BID_BACK,
+          text: 'Bids are already back on this project — Ops will get this alternative priced against them.' }
+      ],
+      // Modal copy tracks the label, so the ask reads the same way in
+      // the step and in the prompt it opens. Falls back to the
+      // survey-open wording in the handler when nothing matches.
+      promptCopy: [
+        {
+          when: BID_BACK,
+          title:       'Request Bid on This Alternative',
+          intro:       'Bids are already back on this project. What should the bid team know about pricing this alternative?',
+          placeholder: 'e.g. Same scope as SW-1601 but with the cheaper NVR — price it against the returned bid',
+          submitLabel: 'Submit Request'
+        }
       ],
       insertAfterStepId: 'review-site-survey',
       webhookAction: 'requestAlternativeProposal',
@@ -605,6 +723,10 @@
     if (Array.isArray(cond.any)) return cond.any.some(conditionMet);
     // Negation: passes when the wrapped condition does NOT match
     if (cond.not) return !conditionMet(cond.not);
+    // Predicate escape hatch, for signals that aren't a plain field read
+    // on SOURCE_VIEW (e.g. bidIsBack, which reads the view_4155 survey
+    // rounds). Composes with all/any/not like any other condition.
+    if (typeof cond.fn === 'function') return !!cond.fn();
 
     var val = readField(cond.field);
     if (cond.hasValue)  return val.length > 0;
@@ -880,11 +1002,14 @@
         alert('Could not determine current SOW record ID.');
         return;
       }
+      // State-dependent copy (see the step's promptCopy) with the
+      // survey-open wording as the default.
+      var copy = resolvePromptCopy(step);
       openNotesPromptModal({
-        title:         'Request Alternative Proposal',
-        intro:         'Give our bid team some context — what should they know about this alternative bid?',
-        placeholder:   'e.g. Budget option — fewer cameras in the parking lot, cheaper NVR',
-        submitLabel:   'Submit Request',
+        title:         copy.title       || 'Request Alternative Proposal',
+        intro:         copy.intro       || 'Give our bid team some context — what should they know about this alternative bid?',
+        placeholder:   copy.placeholder || 'e.g. Budget option — fewer cameras in the parking lot, cheaper NVR',
+        submitLabel:   copy.submitLabel || 'Submit Request',
         onSubmit: function (notes, setSubmitting, onError) {
           setSubmitting(true);
           setStepLoading(el, true);
@@ -894,6 +1019,30 @@
           var account = readConnectionFromView('view_3491', 'field_2119');
           var project = readConnectionFromView('view_3491', 'field_6');
           var projectName = readFieldFromView('view_3491', 'field_1456');
+          // Survey-round history (view_4155) trimmed to the fields Ops
+          // cares about, so a second-round ask lands on the ClickUp card
+          // with the prior rounds attached.
+          var roundsCtx = surveyRounds().map(function (a) {
+            var o = { id: a.id, firstBidSubmitted: stripHtml(a[REQ_FIRST_BID_DATE]) };
+            for (var k in REQ_FIELDS) o[k] = stripHtml(a[REQ_FIELDS[k]]);
+            return o;
+          });
+          // Latest submitted survey-request DTO (project-wide view_3876,
+          // via survey-request-cards' public API): the POC / badging /
+          // PPE snapshot Ops confirms against on a second round — sales
+          // just asks for the bid; re-confirming site access is Ops's
+          // call, made from this context instead of a bounce to sales.
+          var lastReq = null;
+          try {
+            var reqs = (SCW.surveyRequests && SCW.surveyRequests.getRecords &&
+                        SCW.surveyRequests.getRecords()) || [];
+            for (var ri = 0; ri < reqs.length; ri++) {
+              if (!lastReq) { lastReq = reqs[ri]; continue; }
+              var tNew = Date.parse(reqs[ri].requested || '') || 0;
+              var tOld = Date.parse(lastReq.requested || '') || 0;
+              if (tNew >= tOld) lastReq = reqs[ri];
+            }
+          } catch (e2) { /* cards module absent — omit the snapshot */ }
           fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -904,7 +1053,19 @@
               // docs/project-stage-workflow.md). Additive: existing
               // scenario branches ignore unknown keys.
               stepId:         step.id,
-              actionLabel:    step.label || '',
+              // Second-round context (all additive — existing branches
+              // ignore what they don't map): whether a bid is already
+              // back, the project's survey rounds, and the last known
+              // site-access snapshot for Ops to confirm.
+              bidIsBack:      bidIsBack(),
+              sowBidCount:    readField(SOW_BID_COUNT) || '0',
+              surveyRounds:   roundsCtx,
+              lastSurveyRequestInfo: lastReq,
+              // Resolved label, not the static one — it tells Ops WHICH
+              // ask was made (join the open survey vs. price this
+              // alternative against bids already back), which the copy
+              // variants above are the whole point of.
+              actionLabel:    resolveDynamicLabel(step) || step.label || '',
               notes:          notes,
               account:        account,
               project:        project,
@@ -1278,6 +1439,19 @@
     return null;
   }
 
+  // Resolve step.promptCopy — state-dependent copy for the notes-prompt
+  // modal a webhook step opens, same first-match-wins shape as
+  // dynamicLabel. Returns {} when nothing matches, so callers can spread
+  // their own defaults underneath with `|| fallback` per key.
+  function resolvePromptCopy(step) {
+    if (!step || !step.promptCopy) return {};
+    for (var i = 0; i < step.promptCopy.length; i++) {
+      var p = step.promptCopy[i];
+      if (!p.when || conditionMet(p.when)) return p;
+    }
+    return {};
+  }
+
   function renderHeaderMessage(hdr, step, stepKey, isCompleted, baseDisabled) {
     var msgEl = hdr.querySelector('.scw-step-disabled-msg[data-step="' + stepKey + '"]');
     var msg = resolveHeaderMessage(step, isCompleted, baseDisabled);
@@ -1515,7 +1689,14 @@
         { field: 'field_2723', notValue: 'Yes' },
         { field: 'field_2706', notValue: 'Yes' },
         { not: { field: 'field_2728', gt: 0 } },
-        { not: { field: 'field_1199', hasValue: true } }
+        // "Validation not yet requested" — but a project-level field_1199
+        // inherited by an alternate SOW (validated sibling exists,
+        // field_2917 > 0) doesn't count as a request for THIS SOW, so the
+        // choice re-opens there. Mirrors the guards on the two steps.
+        { any: [
+          { not: { field: 'field_1199', hasValue: true } },
+          { field: 'field_2917', gt: 0 }
+        ] }
       ]
     });
   }
@@ -1856,6 +2037,14 @@
         setTimeout(applySteps, 200);
       }, NS);
     });
+
+    // bidIsBack() reads the SURVEY_requests grid, which isn't a config-
+    // declared dependency view — re-evaluate once its model lands (it
+    // typically renders after SOURCE_VIEW, so the first applySteps pass
+    // ran with zero rounds and showed the NO_BID_BACK copy).
+    SCW.onViewRender(SURVEY_REQS_VIEW, function () {
+      setTimeout(applySteps, 200);
+    }, NS);
   }
 
   $(document).on('knack-scene-render.' + SCENE_ID + NS, function () {

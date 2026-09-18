@@ -43,8 +43,26 @@
     // request as draftView for SOW record API calls.
     'view_3841',
     // 'view_3876' — workflow-stepper reads field_2329 here to build
-    // the action link href.
+    // the action link href; survey-request-cards renders its rows as
+    // cards and workflow-stepper ships the latest row as the
+    // lastSurveyRequestInfo payload snapshot.
     'view_3876',
+    // 'view_4155' — SURVEY_requests rounds for the project on the sales
+    // build-SOW page (scene_1116). workflow-stepper's bidIsBack() reads
+    // field_2955 from its model (drives the alt-proposal step's bid-back
+    // copy) and the alt-proposal payload ships its rounds as context.
+    'view_4155',
+    // 'view_4156' — CORE_contacts candidates on the sales build-SOW page
+    // (scene_1116): the contact-picker source for the custom survey-request
+    // form (survey-request-form.js, dormant until wired in). Hidden now so
+    // the raw grid doesn't sit on the page while that form is parked.
+    'view_4156',
+    // 'view_4158' — DOC_photos grid on the SUB deployment dashboard
+    // (scene_1353): the same-scene save view for the restricted photo
+    // modal's uploads (photo-edit-panel.js SAVE_VIEWS view_4056 →
+    // view_4158; field_771 inline-editable). PUTs are URL-based, so
+    // display:none is safe — subs never need to see the raw grid.
+    'view_4158',
     // 'view_3913' — hidden grid of all SOW line items on the project,
     // scraped by import-unique-items-btn for the sowId → lineItemIds
     // index (and itemId → label map). change-record-limit pumps it
@@ -79,6 +97,16 @@
     // column.js and bid-review/init.js (revision card prefill) via
     // DOM scrape of the rendered grid.
     'view_3842',
+    // 'view_4153' — BID_revision requests. Not consumed by anything in the
+    // bundle; it's on the scene as the request-level companion to view_4154.
+    // Nothing to read, nothing for the user to do with it — hidden outright.
+    'view_4153',
+    // 'view_4154' — BID_revision line items, UNFILTERED. view_3842 renders
+    // only revisions awaiting Ops triage, so the Revision Requests panel
+    // reads this one for accepted/rejected/forwarded history (sales-revision-
+    // column.js CFG.revisionViews). MUST stay rendered — the panel scrapes
+    // its rows out of the DOM.
+    'view_4154',
     // 'view_3918' — Scopes of Work grid; bid-review's "next step"
     // surface reads/writes through this view (config.nextStepViewKey
     // + surveyCostsWriteView). Kept rendered for model access.
@@ -125,6 +153,41 @@
     // Order page (scene_1374). co-sub-lock.js reads CO Status from its
     // model to decide the page-wide edit window.
     'view_4122',
+    // 'view_4066' — ACCEPTANCE grid on the sub deployment dashboard
+    // (scene_1353). NO LONGER HIDDEN (2026-09-14): acceptance-card.js
+    // renders a read-only sub variant over it — the bid the SOW is priced
+    // from, that bid's total, and the terms/signature pills — and hides
+    // the native grid itself (unconditionally for sub views, so a failed
+    // guard can't leak the raw table). The rest of the acceptance record
+    // (Xero links, uploaders, greenlight, questionnaire) stays ops-only.
+    // Its other consumers still read the same rendered rows:
+    // regenerate-closeout-docs.js (AcceptanceID webhook payload) and
+    // install-as-quoted-panel.js (origin/quote chips).
+    // 'view_4151' — SOW_proposed line items grid on the sub deployment
+    // dashboard (scene_1353): the sub-scene analogue of view_4072.
+    // install-as-quoted-panel.js reads its model for the As Quoted
+    // panels; subs have no business seeing the raw grid.
+    'view_4151',
+    // 'view_4157' — published proposals for the project on the ops deploy
+    // scene (scene_1311), carrying field_2671 (the publish-time `json`
+    // snapshot). install-as-quoted-panel.js parses it for the immutable
+    // quote-history sections. OPS SCENE ONLY — the blob includes SCW-side
+    // money and must never ride a sub-visible scene.
+    'view_4157',
+    // 'view_4159' — SURVEY_requests grid for the project on the ops Build
+    // SOWs page (scene_1085). build-sow-project-header.js reads its model
+    // (DOM fallback) for the survey subcontract ClickUp task links
+    // (field_2631 / field_2918) labeled by assigned tech group (field_2347)
+    // and renders them in the project header card — nobody needs the raw
+    // 30-column grid at the bottom of the page.
+    'view_4159',
+    // 'view_4160' — DOC_photos grid on the survey/bid scene (scene_1140)
+    // sourced from the survey's MDF/IDF photos: the same-scene save view
+    // the worksheet-v2 MDF/IDF band's soft photo REMOVE PUTs through
+    // (mdf-notes.js MDF_PHOTO_REMOVE_VIEWS view_3617 → view_4160; field_771
+    // + field_2865 inline-editable). URL-based PUTs, so display:none is
+    // safe — subs never need the raw grid.
+    'view_4160',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the

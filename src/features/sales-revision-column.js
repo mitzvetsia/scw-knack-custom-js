@@ -22,12 +22,26 @@
   'use strict';
 
   var CFG = {
+    // WRITE target. Accept/Reject/Apply PUT through this view, so it must
+    // stay a cell-editable grid of the revision-line-item object.
     revisionView:    'view_3842',
+    // READ sources, in priority order. view_3842 is filtered server-side
+    // (it only ever renders revisions still awaiting Ops triage), so it can
+    // never supply the accepted/rejected/forwarded rows the history section
+    // is made of — on a project whose revisions are all triaged it renders
+    // "No data" and the whole panel used to disappear. view_4154 is the
+    // unfiltered, project-scoped grid of the same object and carries every
+    // column this module reads, so it supplies history. Rows are merged by
+    // record id; a row present in the editable view wins (it is writable).
+    // Views absent from a scene are skipped, so this list is safe to carry
+    // everywhere the module runs.
+    revisionViews:   ['view_3842', 'view_4154'],
     sowItemField:    'field_2708',
     parentReqField:  'field_2643',
     htmlField:       'field_2695',
     jsonField:       'field_2696',
     statusField:     'field_2645',
+    originField:     'field_2721',   // "Revision Origin" — Sales | Ops
 
     colHeaderText:   'Sales Revisions',
     mountSelector:   '#bid-review-matrix',
@@ -214,16 +228,51 @@
   //  LOAD REVISION DATA FROM view_3842
   // ═══════════════════════════════════════════════════════════
 
+  /** Status bucket. The stored vocabulary is mixed-case and wider than
+   *  Accept/Reject: Make writes lowercase ("accepted"), this module writes
+   *  "Accepted"/"Rejected", and the forward-to-sub flow writes "submitted to
+   *  sub contractor". Only rows still awaiting Ops triage may be 'pending' —
+   *  anything already actioned is history, so a forwarded revision never
+   *  reappears with Accept/Reject buttons on it. */
+  function normalizeStatus(status) {
+    var s = String(status || '').toLowerCase();
+    if (/^accepted$/.test(s)) return 'accepted';
+    if (/^rejected$/.test(s)) return 'rejected';
+    if (s.indexOf('sub') !== -1) return 'forwarded';
+    return 'pending';
+  }
+
   function loadRevisions() {
-    var $view = $('#' + CFG.revisionView);
-    if (!$view.length) return;
+    var views = CFG.revisionViews || [CFG.revisionView];
+    var present = [];
+    for (var v = 0; v < views.length; v++) {
+      if ($('#' + views[v]).length) present.push(views[v]);
+    }
+    if (!present.length) return;
 
     _revisionData = [];
+    var seen = {};
+
+    for (var pv = 0; pv < present.length; pv++) readRevisionView(present[pv], seen);
+
+    if (window.SCW && SCW.bidReview && SCW.bidReview.CONFIG && SCW.bidReview.CONFIG.debug) {
+      SCW.debug('[SalesRevCol] Loaded', _revisionData.length, 'revision records from', present.join(', '));
+    }
+  }
+
+  /** Scrape one grid of revision line items into _revisionData. Rows already
+   *  collected from an earlier (higher-priority) view are skipped, so the
+   *  editable view's copy is the one that keeps `writable`. */
+  function readRevisionView(viewId, seen) {
+    var $view = $('#' + viewId);
+    if (!$view.length) return;
+    var writable = (viewId === CFG.revisionView);
 
     $view.find('tbody tr[id]').each(function () {
       var $tr = $(this);
       var id  = $tr.attr('id');
-      if (!id) return;
+      if (!id || seen[id]) return;
+      seen[id] = true;
 
       var $sowCell = $tr.find('td.' + CFG.sowItemField);
       var sowSpan  = $sowCell.length
@@ -239,8 +288,12 @@
 
       var status = ($tr.find('td.' + CFG.statusField).text() || '').replace(/[\u00a0\s]+/g, ' ').trim();
 
-      // Skip rejected/accepted items
-      if (/^rejected$/i.test(status) || /^accepted$/i.test(status)) return;
+      // Accepted/rejected/forwarded rows are KEPT \u2014 the summary panel renders
+      // them as history; the inline grid cards stay pending-only via
+      // revisionsBySowItem's filter.
+      var statusNorm = normalizeStatus(status);
+
+      var origin = ($tr.find('td.' + CFG.originField).text() || '').replace(/[\u00a0\s]+/g, ' ').trim();
 
       var $htmlCell = $tr.find('td.' + CFG.htmlField);
       var htmlContent = '';
@@ -258,14 +311,16 @@
         sowItemId:        sowItemId,
         parentRequestId:  parentRequestId,
         status:           status,
+        statusNorm:       statusNorm,
+        origin:           origin,
+        // Accept/Reject PUT through CFG.revisionView, so only rows that view
+        // actually renders can be actioned. History rows sourced from the
+        // read-only view render without action buttons.
+        writable:         writable,
         html:             htmlContent,
         json:             jsonData,
       });
     });
-
-    if (window.SCW && SCW.bidReview && SCW.bidReview.CONFIG && SCW.bidReview.CONFIG.debug) {
-      SCW.debug('[SalesRevCol] Loaded', _revisionData.length, 'revision records');
-    }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -273,10 +328,13 @@
   // ═══════════════════════════════════════════════════════════
 
   function revisionsBySowItem() {
+    // PENDING only — inline grid cards (V1 column + V2 SOW-cell blocks)
+    // never show history; that lives in the summary panel.
     var map = {};
     for (var i = 0; i < _revisionData.length; i++) {
       var r = _revisionData[i];
       if (!r.sowItemId) continue;
+      if (r.statusNorm && r.statusNorm !== 'pending') continue;
       if (!map[r.sowItemId]) map[r.sowItemId] = [];
       map[r.sowItemId].push(r);
     }
@@ -1091,11 +1149,18 @@
   // doesn't reliably re-render view_3842 (Known Issue #2) — so without this the
   // card lingers until a manual refresh. The 1.5s fetch below still runs as the
   // authoritative reconcile.
-  function dropRevisionFromData(revId) {
+  function dropRevisionFromData(revId, newStatus) {
     if (!revId) return;
+    // Flip the item's status locally (instead of splicing it away) so it
+    // MOVES to the summary panel's history immediately; the 1.5s
+    // authoritative refetch replaces it with the server-stamped copy.
     for (var i = _revisionData.length - 1; i >= 0; i--) {
-      if (_revisionData[i] && _revisionData[i].id === revId) _revisionData.splice(i, 1);
+      if (_revisionData[i] && _revisionData[i].id === revId) {
+        _revisionData[i].statusNorm = newStatus || 'accepted';
+        _revisionData[i].status = (newStatus === 'rejected') ? 'Rejected' : 'Accepted';
+      }
     }
+    try { renderRevisionsPanel(); } catch (eP) { /* best-effort */ }
     try {
       // Remove the actioned card from both grids (V1 column + V2 SOW cell).
       // Every action button on the card carries data-rev-id, so one query
@@ -1116,29 +1181,32 @@
     } catch (e) { /* best-effort UI prune */ }
   }
 
+  /** Refetch every read source. An actioned row LEAVES the filtered editable
+   *  view and ENTERS the history view, so refetching only one of the two would
+   *  make the card vanish instead of moving into history. */
+  function refetchRevisionViews() {
+    var views = CFG.revisionViews || [CFG.revisionView];
+    for (var i = 0; i < views.length; i++) {
+      var v = Knack.views[views[i]];
+      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+    }
+  }
+
   function afterAccept(btn, revId) {
     btn.textContent = 'Accepted ✓';
     btn.style.opacity = '0.6';
-    dropRevisionFromData(revId);
-    setTimeout(function () {
-      if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
-        Knack.views[CFG.revisionView].model.fetch();
-      }
-    }, 1500);
+    dropRevisionFromData(revId, 'accepted');
+    setTimeout(refetchRevisionViews, 1500);
   }
 
   function afterReject(btn, revId) {
     btn.textContent = 'Rejected \u2713';
     btn.style.opacity = '0.6';
-    dropRevisionFromData(revId);
-    // Refresh revision data view — its view-render event triggers
+    dropRevisionFromData(revId, 'rejected');
+    // Refresh revision data views — their view-render events trigger
     // loadRevisions() + injectColumn(), and scw-bid-review-rendered
     // re-injects the column after any grid rebuild.
-    setTimeout(function () {
-      if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
-        Knack.views[CFG.revisionView].model.fetch();
-      }
-    }, 1500);
+    setTimeout(refetchRevisionViews, 1500);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1227,7 +1295,7 @@
       setTimeout(function () {
         if (Knack.views[SOW_VIEW] && Knack.views[SOW_VIEW].model) Knack.views[SOW_VIEW].model.fetch();
         if (Knack.views[SURVEY_VIEW] && Knack.views[SURVEY_VIEW].model) Knack.views[SURVEY_VIEW].model.fetch();
-        if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) Knack.views[CFG.revisionView].model.fetch();
+        refetchRevisionViews();
       }, 1500);
     }
 
@@ -1595,9 +1663,11 @@
 
     var header = document.createElement('div');
     header.className = 'scw-bid-cr-card__header';
-    header.textContent = action === 'remove' ? 'Sales: Remove'
-                       : action === 'add'    ? 'Sales: Add'
-                       :                       'Sales: Revise';
+    // The panel now also surfaces Ops-raised revisions (they live in the same
+    // object and only differ by field_2721), so the header names the real
+    // author rather than assuming Sales.
+    header.textContent = (rev.origin || 'Sales') + ': ' +
+      (action === 'remove' ? 'Remove' : action === 'add' ? 'Add' : 'Revise');
     card.appendChild(header);
 
     var cardProduct = json.productName || '';
@@ -1669,7 +1739,11 @@
     })(rev);
     item.appendChild(card);
 
-    // Ops actions — identical handlers to the V1 column.
+    // Ops actions — identical handlers to the V1 column. Rows that only exist
+    // in the read-only history view can't be PUT through CFG.revisionView, so
+    // they render as a card with no actions rather than buttons that 404.
+    if (rev.writable === false) return item;
+
     var actions = document.createElement('div');
     actions.className = 'scw-bid-review__action-menus';
     var revJsonStr = JSON.stringify(rev.json || {});
@@ -1739,9 +1813,19 @@
   function injectIntoV2() {
     var mount = getV2Mount();
     if (!mount || !_revisionData.length) return;
-    var bySow = revisionsBySowItem();
-    if (!Object.keys(bySow).length) return;
+    var bySow = revisionsBySowItem();   // pending only — the action cards
     injectStyles();
+    injectPanelStyles();                // history timeline classes
+
+    // Triaged (non-pending) revisions per item, for the cell's collapsed
+    // history toggle. Pending items already render as action cards right
+    // above it, so the cell history excludes them.
+    var histBySow = {};
+    for (var h = 0; h < _revisionData.length; h++) {
+      var hr = _revisionData[h];
+      if (!hr.sowItemId || hr.statusNorm === 'pending') continue;
+      (histBySow[hr.sowItemId] = histBySow[hr.sowItemId] || []).push(hr);
+    }
 
     _v2Suppress = true;
     try {
@@ -1752,25 +1836,45 @@
         if (!sowCell) continue;
         var prev = sowCell.querySelector('.' + V2_BLOCK_CLASS);
         if (prev && prev.parentNode) prev.parentNode.removeChild(prev);
+        var prevHist = sowCell.querySelector('.scw-sr-cellhist');
+        if (prevHist && prevHist.parentNode) prevHist.parentNode.removeChild(prevHist);
 
         var sowItemId = tr.getAttribute('data-sow-item-id') || '';
         var revs = sowItemId ? (bySow[sowItemId] || []) : [];
-        if (!revs.length) continue;
+        if (revs.length) {
+          var block = document.createElement('div');
+          block.className = V2_BLOCK_CLASS;
+          var lbl = document.createElement('div');
+          lbl.className = 'scw-sr-v2-block-label';
+          lbl.textContent = 'Sales Revisions';
+          block.appendChild(lbl);
 
-        var block = document.createElement('div');
-        block.className = V2_BLOCK_CLASS;
-        var lbl = document.createElement('div');
-        lbl.className = 'scw-sr-v2-block-label';
-        lbl.textContent = 'Sales Revisions';
-        block.appendChild(lbl);
-
-        var packages = getV2Packages(tr);
-        var onBid = isRowOnBidV2(tr);
-        for (var r = 0; r < revs.length; r++) {
-          block.appendChild(buildRevisionItemV2(revs[r], packages, onBid));
+          var packages = getV2Packages(tr);
+          var onBid = isRowOnBidV2(tr);
+          for (var r = 0; r < revs.length; r++) {
+            block.appendChild(buildRevisionItemV2(revs[r], packages, onBid));
+          }
+          sowCell.appendChild(block);
         }
-        sowCell.appendChild(block);
+
+        // Collapsed per-item history beneath — "this line item has been
+        // revised before" stays visible on the row without opening it.
+        var histRevs = sowItemId ? (histBySow[sowItemId] || []) : [];
+        if (histRevs.length) {
+          sowCell.appendChild(buildScopedHistory(histRevs, {
+            cls: 'scw-sr-cellhist',
+            label: 'Revision history',
+            open: !!_itemHistOpen[sowItemId],
+            onToggle: (function (id) {
+              return function (open) { _itemHistOpen[id] = open; };
+            })(sowItemId)
+          }));
+        }
       }
+
+      // One collapsed strip per SOW section — the full log of revisions
+      // that touched items on that SOW, any status.
+      injectSowHistories(mount);
     } catch (e) {
       console.warn('[SalesRevCol] injectIntoV2 threw', e);
     }
@@ -1779,7 +1883,13 @@
 
   function injectIntoV2Debounced() {
     if (_v2InjectTimer) clearTimeout(_v2InjectTimer);
-    _v2InjectTimer = setTimeout(injectIntoV2, 60);
+    _v2InjectTimer = setTimeout(function () {
+      injectIntoV2();
+      // The first grid render can land after view_3842 loaded — mount the
+      // summary panel if it isn't there yet. Never RE-render from here:
+      // grid rebuilds fire constantly and would churn open action menus.
+      if (!document.getElementById(PANEL_ID)) renderRevisionsPanel();
+    }, 60);
   }
 
   /** Watch the V2 grid body so revisions re-inject after every rebuild.
@@ -1798,17 +1908,634 @@
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  REVISIONS SUMMARY PANEL — pending roll-up + history
+  //
+  //  Mounted directly ABOVE the V2 comparison grid (outside its mount,
+  //  so grid rebuilds never wipe it). Two sections:
+  //    PENDING — every live revision, with the SAME action cards as the
+  //      inline SOW-cell blocks (Accept / Reject / Forward, built by
+  //      buildRevisionItemV2) — including revisions whose SOW item has
+  //      no row on the grid, which were previously invisible.
+  //    HISTORY — accepted + rejected revisions (collapsed by default),
+  //      rendered from their stored field_2695 card (which carries the
+  //      accept/reject stamp performAccept/performReject wrote).
+  // ═══════════════════════════════════════════════════════════
+
+  var PANEL_ID       = 'scw-sr-panel';
+  var PANEL_STYLE_ID = 'scw-sr-panel-css';
+  var HIST_LS        = 'scwSrPanelHistOpen';
+
+  function injectPanelStyles() {
+    if (document.getElementById(PANEL_STYLE_ID)) return;
+    var css = [
+      '#' + PANEL_ID + ' {',
+      '  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;',
+      '  box-shadow: 0 1px 2px rgba(15,23,42,.04); padding: 14px 16px;',
+      '  margin: 0 0 12px;',
+      '  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;',
+      '  color: #0f172a;',
+      '}',
+      '.scw-sr-panel__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;',
+      '  cursor: pointer; border-radius: 6px; }',
+      '.scw-sr-panel__head:focus-visible { outline: 2px solid #0f4c75; outline-offset: 2px; }',
+      '.scw-sr-panel__caret { font-size: 11px; color: #64748b; }',
+      '.scw-sr-panel__closedmeta { color: #94a3b8; font: 500 12px/1.3 system-ui, sans-serif; }',
+      '#scw-sr-panel.scw-sr-panel--closed { padding: 9px 16px; }',
+      '.scw-sr-panel__title { font: 700 13.5px/1.2 system-ui, sans-serif; color: #0c4a6e; }',
+      '.scw-sr-panel__pill { display: inline-flex; align-items: center; padding: 3px 10px;',
+      '  border-radius: 999px; border: 1px solid transparent;',
+      '  font: 700 11px/1.2 system-ui, sans-serif; white-space: nowrap; }',
+      '.scw-sr-panel__pill--pending { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
+      '.scw-sr-panel__pill--clear   { background: #dcfce7; border-color: #86efac; color: #15803d; }',
+      '.scw-sr-panel__hist-toggle { margin-left: auto; border: none; background: transparent;',
+      '  color: #0f4c75; font: 600 12px/1.2 system-ui, sans-serif; cursor: pointer;',
+      '  padding: 4px 6px; border-radius: 5px; }',
+      '.scw-sr-panel__hist-toggle:hover { background: #eef2f7; }',
+      '.scw-sr-panel__list { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start;',
+      '  margin-top: 12px; }',
+      '.scw-sr-panel__pitem { flex: 0 1 320px; min-width: 260px; }',
+      // The reused inline card (scw-sr-col-item) sizes to its container.
+      '.scw-sr-panel__pitem .' + P + '-item { margin: 0; }',
+      '.scw-sr-panel__pitem .' + P + '-item > div { max-width: 100% !important; }',
+      '.scw-sr-panel__empty { margin-top: 10px; color: #64748b;',
+      '  font: 500 12.5px/1.4 system-ui, sans-serif; }',
+      // History — a vertical timeline of request blocks. It used to be a
+      // flex-wrap row of 320px cards, which is what made 26 items unreadable:
+      // side-by-side columns destroy any sense of order.
+      '.scw-sr-panel__hist { margin-top: 12px; border-top: 1px solid #eef2f7;',
+      '  padding-top: 6px; display: block; }',
+      // ── Grouped history: one block per REQUEST ──
+      '.scw-sr-req { border: 1px solid #e2e8f0; border-radius: 9px;',
+      '  background: #fff; margin-top: 10px; overflow: hidden; }',
+      '.scw-sr-req__head {',
+      '  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;',
+      '  padding: 8px 12px; background: #f8fafc;',
+      '  border-bottom: 1px solid #eef2f7;',
+      '}',
+      '.scw-sr-req__when { font: 700 12px/1.2 system-ui, sans-serif; color: #0f172a; }',
+      '.scw-sr-req__dir {',
+      '  display: inline-flex; align-items: center; padding: 2px 9px;',
+      '  border-radius: 999px; border: 1px solid transparent;',
+      '  font: 700 10.5px/1.5 system-ui, sans-serif; white-space: nowrap;',
+      '}',
+      '.scw-sr-req__dir--sales   { background: #e0f2fe; border-color: #bae6fd; color: #075985; }',
+      '.scw-sr-req__dir--ops     { background: #ede9fe; border-color: #ddd6fe; color: #5b21b6; }',
+      '.scw-sr-req__dir--unknown { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }',
+      '.scw-sr-req__count { margin-left: auto; color: #64748b; font-size: 11.5px; }',
+      '.scw-sr-req__items { padding: 2px 0; }',
+      // Item rows — one line each, not a card
+      '.scw-sr-hitem { padding: 5px 12px; border-top: 1px solid #f8fafc; }',
+      '.scw-sr-hitem:first-child { border-top: 0; }',
+      '.scw-sr-hitem__line { display: flex; align-items: center; gap: 8px; }',
+      '.scw-sr-hitem__act {',
+      '  flex: 0 0 auto; font: 700 10px/1.5 system-ui, sans-serif;',
+      '  letter-spacing: .04em; padding: 1px 6px; border-radius: 4px;',
+      '}',
+      '.scw-sr-hitem__act--remove { background: #fee2e2; color: #991b1b; }',
+      '.scw-sr-hitem__act--add    { background: #dcfce7; color: #166534; }',
+      '.scw-sr-hitem__act--revise { background: #dbeafe; color: #1e40af; }',
+      '.scw-sr-hitem__text {',
+      '  flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: #0f172a;',
+      '  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+      '}',
+      '.scw-sr-hitem__more {',
+      '  flex: 0 0 auto; border: 0; background: transparent; cursor: pointer;',
+      '  color: #0f4c75; font: 600 11px/1.4 system-ui, sans-serif;',
+      '  padding: 2px 5px; border-radius: 4px;',
+      '}',
+      '.scw-sr-hitem__more:hover { background: #eef2f7; }',
+      '.scw-sr-hitem__detail { display: none; margin: 6px 0 2px; }',
+      '.scw-sr-hitem__detail--open { display: block; }',
+      '.scw-sr-hitem__detail > div { max-width: 100% !important; }',
+      '.scw-sr-hitem__notes { margin: 2px 0 0 0; padding-left: 2px;',
+      '  color: #64748b; font-size: 11.5px; font-style: italic; }',
+      '.scw-sr-panel__chip { display: inline-flex; align-items: center; padding: 2px 9px;',
+      '  border-radius: 999px; border: 1px solid transparent; margin-bottom: 6px;',
+      '  font: 700 10.5px/1.4 system-ui, sans-serif; letter-spacing: .02em; }',
+      '.scw-sr-panel__chip--accepted  { background: #dcfce7; border-color: #86efac; color: #15803d; }',
+      '.scw-sr-panel__chip--rejected  { background: #fff1f2; border-color: #fecdd3; color: #be123c; }',
+      '.scw-sr-panel__chip--forwarded { background: #e0e7ff; border-color: #c7d2fe; color: #4338ca; }',
+      '.scw-sr-panel__chip--origin    { background: #f1f5f9; border-color: #e2e8f0; color: #475569;',
+      '  margin-left: 6px; }',
+      '.scw-sr-hitem__detail > div > div { max-width: 100% !important; }',
+      '.scw-sr-panel__chip--pending { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
+      // ── Scoped history shells (per-SOW strip / per-item toggles) ──
+      // Collapsed-by-default: one pill-toggle, timeline hidden beneath.
+      '.scw-sr-scope { margin: 6px 0 0; }',
+      '.scw-sr-scope__toggle { display: inline-flex; align-items: center; gap: 6px;',
+      '  border: 1px solid #e2e8f0; background: #f8fafc; color: #334155;',
+      '  font: 600 11px/1.4 system-ui, sans-serif; padding: 3px 10px;',
+      '  border-radius: 999px; cursor: pointer; white-space: nowrap; }',
+      '.scw-sr-scope__toggle:hover { background: #eef2f7; color: #0f4c75; }',
+      '.scw-sr-scope__caret { font-size: 10px; line-height: 1; }',
+      '.scw-sr-scope__body { display: none; }',
+      '.scw-sr-scope--open .scw-sr-scope__body { display: block; }',
+      // The page-panel divider line doesn\'t belong inside scoped shells.
+      '.scw-sr-scope .scw-sr-panel__hist { border-top: 0; margin-top: 2px; padding-top: 0; }',
+      // Per-SOW strip — between the SOW header and its table; hides with
+      // the section\'s own collapse.
+      '.scw-sr-sowhist { padding: 6px 12px; background: #fbfdff;',
+      '  border-bottom: 1px solid #eef2f7; }',
+      '.scw-sr-sowhist .scw-sr-scope { margin: 0; }',
+      '.scw-bid-review-v2__sow--collapsed .scw-sr-sowhist { display: none; }',
+      // Per-item history beneath the pending cards in the SOW cell.
+      '.scw-sr-cellhist { margin-top: 6px; }',
+      // Per-item history block at the bottom of the row-expand panel.
+      '.scw-sr-panelhist { margin-top: 10px; padding: 8px 12px 10px; background: #fff;',
+      '  border: 1px solid #e2e8f0; border-radius: 8px; }'
+    ].join('\n');
+    var s = document.createElement('style');
+    s.id = PANEL_STYLE_ID;
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  function histOpen() {
+    try { return localStorage.getItem(HIST_LS) === '1'; } catch (e) { return false; }
+  }
+  function setHistOpen(open) {
+    try { localStorage.setItem(HIST_LS, open ? '1' : '0'); } catch (e) { /* ignore */ }
+  }
+
+  // Quiet layout (2026-08-27 UX triage): the whole panel is a DRAWER — the
+  // head (title + pending pill) stands, the card list opens on click. The
+  // pending work itself stays always-visible on the grid rows, so a closed
+  // drawer hides nothing actionable. Classic layout restores default-open.
+  var PANEL_OPEN_LS = 'scwSrPanelBodyOpen';
+  function brClassic() {
+    try { return localStorage.getItem('scwBrLayoutClassic') === '1'; }
+    catch (e) { return false; }
+  }
+  function panelOpen() {
+    try {
+      var v = localStorage.getItem(PANEL_OPEN_LS);
+      if (v === '1') return true;
+      if (v === '0') return false;
+    } catch (e) { /* fall through */ }
+    return brClassic();
+  }
+  function setPanelOpen(open) {
+    try { localStorage.setItem(PANEL_OPEN_LS, open ? '1' : '0'); } catch (e) { /* ignore */ }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  HISTORY — grouped by request + direction, newest first
+  //
+  //  A flat wall of one card per revision LINE ITEM was unreadable: 26 pink
+  //  blocks with no sense of which ask they belonged to or what order any of
+  //  it happened in. History is really a log of REQUESTS, each carrying a few
+  //  items, so that's how it renders now — one block per request, headed with
+  //  when it went out and which way it flowed, items listed compactly beneath.
+  //
+  //  Chronology with no date field: Knack record ids are Mongo ObjectIds, so
+  //  the leading 8 hex chars ARE the creation time in Unix seconds. Verified
+  //  against this project — 6a62406e → 2026-07-23, matching its survey date.
+  //  That gives real ordering for both requests and the items inside them
+  //  without adding a data source or depending on a column being on a view.
+  // ═══════════════════════════════════════════════════════════
+
+  function objectIdTime(id) {
+    if (!id || !/^[0-9a-f]{24}$/i.test(id)) return null;
+    var secs = parseInt(id.slice(0, 8), 16);
+    if (!isFinite(secs) || secs <= 0) return null;
+    return new Date(secs * 1000);
+  }
+
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun',
+                'Jul','Aug','Sep','Oct','Nov','Dec'];
+  function fmtWhen(d) {
+    if (!d) return '';
+    var h = d.getHours(), ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12; if (!h) h = 12;
+    var m = d.getMinutes(); if (m < 10) m = '0' + m;
+    return MONTHS[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear() +
+           ' · ' + h + ':' + m + ' ' + ampm;
+  }
+
+  /** Direction of travel for a request, from its origin. Sales raises a
+   *  revision for Ops to triage; Ops raises one for the subcontractor to
+   *  re-price. Origin is uniform within a request (checked against live
+   *  data), so it belongs in the request header, not on every item. */
+  function directionOf(origin) {
+    var o = String(origin || '').toLowerCase();
+    if (o === 'sales') return { label: 'Sales → Ops', mod: 'sales' };
+    if (o === 'ops')   return { label: 'Ops → Sub',   mod: 'ops'   };
+    return { label: origin || 'Unknown direction', mod: 'unknown' };
+  }
+
+  function statusLabel(norm, raw) {
+    return norm === 'accepted'  ? 'Accepted'
+         : norm === 'rejected'  ? 'Rejected'
+         : norm === 'forwarded' ? 'Sent to sub'
+         : norm === 'pending'   ? 'Pending'
+         : (raw || 'Triaged');
+  }
+
+  /** Compact one-line summary of a revision item, from its stored JSON.
+   *  The full field_2695 card stays available behind a per-item toggle —
+   *  it carries the accept/reject stamp and the before/after detail. */
+  function itemSummary(rev) {
+    var j = rev.json || {};
+    var action = j.removeFromBid ? 'remove'
+               : j.addToBid ? 'add'
+               : (j.action || 'revise');
+    var label = String(j.displayLabel || '').trim();
+    var prod  = String(j.productName || '').trim();
+    var text = (label && prod && prod !== label) ? (label + ' — ' + prod)
+             : (label || prod || 'Line item');
+    return { action: action, text: text, notes: String(j.changeNotes || '').trim() };
+  }
+
+  function buildHistory(hist) {
+    // Group by parent request. Items with no parent collect under one
+    // "unlinked" bucket rather than vanishing.
+    var byReq = Object.create(null), order = [];
+    for (var i = 0; i < hist.length; i++) {
+      var rev = hist[i];
+      var key = rev.parentRequestId || '__none__';
+      if (!byReq[key]) {
+        byReq[key] = { id: rev.parentRequestId || '', items: [], origins: {} };
+        order.push(key);
+      }
+      byReq[key].items.push(rev);
+      if (rev.origin) byReq[key].origins[rev.origin] = true;
+    }
+
+    // Requests newest first; items inside oldest first, so each block reads
+    // as the sequence in which that request's lines were raised.
+    var groups = [];
+    for (var o = 0; o < order.length; o++) {
+      var g = byReq[order[o]];
+      g.when = objectIdTime(g.id);
+      g.items.sort(function (a, b) {
+        var ta = objectIdTime(a.id), tb = objectIdTime(b.id);
+        return (ta ? ta.getTime() : 0) - (tb ? tb.getTime() : 0);
+      });
+      groups.push(g);
+    }
+    groups.sort(function (a, b) {
+      var ta = a.when ? a.when.getTime() : 0, tb = b.when ? b.when.getTime() : 0;
+      return tb - ta;
+    });
+
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-sr-panel__hist';
+
+    for (var q = 0; q < groups.length; q++) {
+      var grp = groups[q];
+      var originKeys = [];
+      for (var ok in grp.origins) originKeys.push(ok);
+      var dir = directionOf(originKeys.length === 1 ? originKeys[0] : '');
+
+      var block = document.createElement('div');
+      block.className = 'scw-sr-req';
+
+      var head = document.createElement('div');
+      head.className = 'scw-sr-req__head';
+
+      var when = document.createElement('span');
+      when.className = 'scw-sr-req__when';
+      when.textContent = grp.when ? fmtWhen(grp.when) : 'Date unknown';
+      head.appendChild(when);
+
+      var dirEl = document.createElement('span');
+      dirEl.className = 'scw-sr-req__dir scw-sr-req__dir--' + dir.mod;
+      dirEl.textContent = dir.label;
+      head.appendChild(dirEl);
+
+      var count = document.createElement('span');
+      count.className = 'scw-sr-req__count';
+      count.textContent = grp.items.length + ' item' +
+        (grp.items.length === 1 ? '' : 's');
+      head.appendChild(count);
+
+      block.appendChild(head);
+
+      var list = document.createElement('div');
+      list.className = 'scw-sr-req__items';
+      for (var k = 0; k < grp.items.length; k++) {
+        list.appendChild(buildHistItem(grp.items[k]));
+      }
+      block.appendChild(list);
+      wrap.appendChild(block);
+    }
+    return wrap;
+  }
+
+  function buildHistItem(rev) {
+    var sum = itemSummary(rev);
+    var row = document.createElement('div');
+    row.className = 'scw-sr-hitem scw-sr-hitem--' + rev.statusNorm;
+
+    var line = document.createElement('div');
+    line.className = 'scw-sr-hitem__line';
+
+    var st = document.createElement('span');
+    st.className = 'scw-sr-panel__chip scw-sr-panel__chip--' + rev.statusNorm;
+    st.textContent = statusLabel(rev.statusNorm, rev.status);
+    line.appendChild(st);
+
+    var act = document.createElement('span');
+    act.className = 'scw-sr-hitem__act scw-sr-hitem__act--' + sum.action;
+    act.textContent = sum.action.toUpperCase();
+    line.appendChild(act);
+
+    var txt = document.createElement('span');
+    txt.className = 'scw-sr-hitem__text';
+    txt.textContent = sum.text;
+    txt.title = sum.text;
+    line.appendChild(txt);
+
+    // The stored card is the audit trail — keep it reachable, just not
+    // occupying the whole panel by default.
+    if (rev.html) {
+      var tog = document.createElement('button');
+      tog.type = 'button';
+      tog.className = 'scw-sr-hitem__more';
+      tog.textContent = 'detail';
+      line.appendChild(tog);
+      var det = document.createElement('div');
+      det.className = 'scw-sr-hitem__detail';
+      det.innerHTML = rev.html;
+      tog.addEventListener('click', function (d) {
+        return function () { d.classList.toggle('scw-sr-hitem__detail--open'); };
+      }(det));
+      row.appendChild(line);
+      row.appendChild(det);
+    } else {
+      row.appendChild(line);
+    }
+
+    if (sum.notes) {
+      var n = document.createElement('div');
+      n.className = 'scw-sr-hitem__notes';
+      n.textContent = '“' + sum.notes + '”';
+      row.appendChild(n);
+    }
+    return row;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  SCOPED HISTORY — per SOW section + per line item
+  //
+  //  The page-level panel answers "what's pending on this project"; these
+  //  answer "what has touched THIS SOW / THIS item". Both are behind a
+  //  collapsed toggle so they cost one line until asked for. Open state
+  //  lives in module maps (not the DOM) because the v2 grid rebuilds its
+  //  sections wholesale on every data tick — re-injection restores it.
+  // ═══════════════════════════════════════════════════════════
+
+  var _sowHistOpen  = {};   // sowId     → strip expanded
+  var _itemHistOpen = {};   // sowItemId → item history expanded
+
+  /** Collapsible shell around buildHistory(): a pill toggle with a count,
+   *  timeline hidden until opened. opts: {label, cls, open, onToggle}. */
+  function buildScopedHistory(revs, opts) {
+    opts = opts || {};
+    var open = !!opts.open;
+    var box = document.createElement('div');
+    box.className = 'scw-sr-scope' + (opts.cls ? ' ' + opts.cls : '') +
+      (open ? ' scw-sr-scope--open' : '');
+
+    var tog = document.createElement('button');
+    tog.type = 'button';
+    tog.className = 'scw-sr-scope__toggle';
+    tog.setAttribute('aria-expanded', open ? 'true' : 'false');
+    var caret = document.createElement('span');
+    caret.className = 'scw-sr-scope__caret';
+    caret.textContent = open ? '▾' : '▸';
+    tog.appendChild(caret);
+    tog.appendChild(document.createTextNode(
+      (opts.label || 'Revision history') + ' (' + revs.length + ')'));
+    // The strip sits under a clickable SOW header and the cell toggle sits
+    // inside an expandable row — a toggle click must never bubble into the
+    // section collapse or the row expand.
+    tog.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var now = box.classList.toggle('scw-sr-scope--open');
+      tog.setAttribute('aria-expanded', now ? 'true' : 'false');
+      caret.textContent = now ? '▾' : '▸';
+      if (opts.onToggle) opts.onToggle(now);
+    });
+    box.appendChild(tog);
+
+    var body = document.createElement('div');
+    body.className = 'scw-sr-scope__body';
+    // Clicks inside the open timeline (the per-item "detail" toggles) must
+    // not reach the row/section handlers either.
+    body.addEventListener('click', function (e) { e.stopPropagation(); });
+    body.appendChild(buildHistory(revs));
+    box.appendChild(body);
+    return box;
+  }
+
+  /** One collapsed strip per SOW section: every revision (any status)
+   *  whose target item is rendered inside that section. Called from
+   *  injectIntoV2's suppression window so the grid observer stays quiet. */
+  function injectSowHistories(mount) {
+    var sections = mount.querySelectorAll('section.scw-bid-review-v2__sow[data-sow-id]');
+    for (var s = 0; s < sections.length; s++) {
+      var sec = sections[s];
+      var sowId = sec.getAttribute('data-sow-id') || '';
+      var prior = sec.querySelector(':scope > .scw-sr-sowhist');
+
+      var idSet = {};
+      var trs = sec.querySelectorAll('tr[data-sow-item-id]');
+      for (var t = 0; t < trs.length; t++) {
+        var tid = trs[t].getAttribute('data-sow-item-id');
+        if (tid) idSet[tid] = true;
+      }
+      // Two match paths, because row-presence alone loses exactly the
+      // revisions that changed the SOW most: an accepted REMOVE deletes
+      // its item, so no row ever renders for it again. The stored payload
+      // (field_2696 JSON) carries the SOW the request was raised from —
+      // match on that too, so history survives its item leaving the grid.
+      var revs = [];
+      for (var i = 0; i < _revisionData.length; i++) {
+        var r = _revisionData[i];
+        var byRow = r.sowItemId && idSet[r.sowItemId];
+        var bySowId = r.json && r.json.sowId && r.json.sowId === sowId;
+        if (byRow || bySowId) revs.push(r);
+      }
+      if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
+      if (!revs.length) continue;
+
+      var strip = document.createElement('div');
+      strip.className = 'scw-sr-sowhist';
+      strip.appendChild(buildScopedHistory(revs, {
+        label: 'Revision history — items on this SOW',
+        open: !!_sowHistOpen[sowId],
+        onToggle: (function (id) {
+          return function (open) { _sowHistOpen[id] = open; };
+        })(sowId)
+      }));
+      var hdr = sec.querySelector(':scope > .scw-bid-review-v2__sow-header');
+      if (hdr && hdr.nextSibling) sec.insertBefore(strip, hdr.nextSibling);
+      else sec.appendChild(strip);
+    }
+  }
+
+  // Public: full revision history (any status) for ONE SOW item, as a
+  // collapsed block — mounted by bid-review-v2's row-expand panel, the
+  // "looking at a specific line item" surface. Null when the item has no
+  // revisions (or data hasn't loaded), so callers can append-or-skip.
+  window.SCW.salesRevHistory = {
+    blockForItem: function (sowItemId) {
+      if (!sowItemId || !_revisionData.length) return null;
+      var revs = [];
+      for (var i = 0; i < _revisionData.length; i++) {
+        if (_revisionData[i].sowItemId === sowItemId) revs.push(_revisionData[i]);
+      }
+      if (!revs.length) return null;
+      injectStyles();
+      injectPanelStyles();
+      var wrap = document.createElement('div');
+      wrap.className = 'scw-sr-panelhist';
+      wrap.appendChild(buildScopedHistory(revs, {
+        label: 'Revision history for this item',
+        open: !!_itemHistOpen[sowItemId],
+        onToggle: function (open) { _itemHistOpen[sowItemId] = open; }
+      }));
+      return wrap;
+    }
+  };
+
+  function renderRevisionsPanel() {
+    var mount = getV2Mount();
+    if (!mount || !mount.parentNode) return;
+    var prior = document.getElementById(PANEL_ID);
+    if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
+    if (!_revisionData.length) return;
+
+    var pending = [], hist = [];
+    for (var i = 0; i < _revisionData.length; i++) {
+      ((_revisionData[i].statusNorm === 'pending') ? pending : hist).push(_revisionData[i]);
+    }
+
+    injectStyles();
+    injectPanelStyles();
+
+    var panel = document.createElement('div');
+    panel.id = PANEL_ID;
+    var isOpen = panelOpen();
+    panel.classList.toggle('scw-sr-panel--closed', !isOpen);
+
+    // ── Head: drawer handle — title + pending pill (+ history toggle
+    //    while open). Click anywhere on it to open/close the panel body.
+    var head = document.createElement('div');
+    head.className = 'scw-sr-panel__head';
+    head.setAttribute('role', 'button');
+    head.setAttribute('tabindex', '0');
+    head.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    var caret = document.createElement('span');
+    caret.className = 'scw-sr-panel__caret';
+    caret.textContent = isOpen ? '▾' : '▸';
+    head.appendChild(caret);
+    var title = document.createElement('span');
+    title.className = 'scw-sr-panel__title';
+    // Not "Sales Revisions" any more: history is read from the unfiltered
+    // view, which carries Ops-raised revisions too. Each card names its origin.
+    title.textContent = 'Revision Requests';
+    head.appendChild(title);
+    var pill = document.createElement('span');
+    pill.className = 'scw-sr-panel__pill ' +
+      (pending.length ? 'scw-sr-panel__pill--pending' : 'scw-sr-panel__pill--clear');
+    pill.textContent = pending.length
+      ? (pending.length + ' pending')
+      : 'none pending';
+    head.appendChild(pill);
+    if (hist.length && !isOpen) {
+      var hint = document.createElement('span');
+      hint.className = 'scw-sr-panel__closedmeta';
+      hint.textContent = hist.length + ' in history';
+      head.appendChild(hint);
+    }
+    if (hist.length && isOpen) {
+      var tog = document.createElement('button');
+      tog.type = 'button';
+      tog.className = 'scw-sr-panel__hist-toggle';
+      tog.textContent = (histOpen() ? 'Hide history' : 'Show history') +
+        ' (' + hist.length + ')';
+      tog.addEventListener('click', function (e) {
+        e.stopPropagation();   // must not also toggle the drawer
+        setHistOpen(!histOpen());
+        renderRevisionsPanel();
+      });
+      head.appendChild(tog);
+    }
+    function toggleDrawer() {
+      setPanelOpen(!panelOpen());
+      renderRevisionsPanel();
+    }
+    head.addEventListener('click', toggleDrawer);
+    head.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleDrawer(); }
+    });
+    panel.appendChild(head);
+    if (!isOpen) {
+      mount.parentNode.insertBefore(panel, mount);
+      return;
+    }
+
+    // ── Pending — full action cards, identical to the inline blocks.
+    // Items whose SOW item has no grid row (previously invisible) render
+    // here too; their on-bid state falls back to false, which keeps the
+    // Forward menu's add-variant available.
+    if (pending.length) {
+      var list = document.createElement('div');
+      list.className = 'scw-sr-panel__list';
+      var packages = getV2Packages(null);
+      for (var p = 0; p < pending.length; p++) {
+        var rev = pending[p];
+        var rowEl = rev.sowItemId
+          ? mount.querySelector('tr[data-sow-item-id="' + rev.sowItemId + '"]')
+          : null;
+        var onBid = rowEl ? isRowOnBidV2(rowEl) : false;
+        var wrap = document.createElement('div');
+        wrap.className = 'scw-sr-panel__pitem';
+        try {
+          wrap.appendChild(buildRevisionItemV2(rev, packages, onBid));
+        } catch (eB) { continue; }
+        list.appendChild(wrap);
+      }
+      panel.appendChild(list);
+    } else {
+      var empty = document.createElement('div');
+      empty.className = 'scw-sr-panel__empty';
+      empty.textContent = 'No pending revisions — everything has been triaged.';
+      panel.appendChild(empty);
+    }
+
+    // ── History — grouped by request, newest first ──
+    if (hist.length && histOpen()) {
+      panel.appendChild(buildHistory(hist));
+    }
+
+    mount.parentNode.insertBefore(panel, mount);
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  EVENT BINDINGS
   // ═══════════════════════════════════════════════════════════
 
-  SCW.onViewRender(CFG.revisionView, function () {
-    setTimeout(function () {
-      loadRevisions();
-      injectColumn();    // V1 grid (#bid-review-matrix)
-      observeV2Grid();   // V2 grid — attach the re-inject watchdog once
-      injectIntoV2();    // V2 grid — inline SOW-cell cards
-    }, 300);
-  }, CFG.eventNs);
+  // Bind every READ source: the editable view and the history view render
+  // independently, and either can land second. loadRevisions() re-merges all
+  // present views on each tick, so re-running is idempotent.
+  (function () {
+    var views = CFG.revisionViews || [CFG.revisionView];
+    for (var i = 0; i < views.length; i++) {
+      SCW.onViewRender(views[i], function () {
+        setTimeout(function () {
+          loadRevisions();
+          injectColumn();          // V1 grid (#bid-review-matrix)
+          observeV2Grid();         // V2 grid — attach the re-inject watchdog once
+          injectIntoV2();          // V2 grid — inline SOW-cell cards
+          renderRevisionsPanel();  // pending roll-up + history above the grid
+        }, 300);
+      }, CFG.eventNs);
+    }
+  })();
 
   $(document).on('scw-bid-review-rendered' + CFG.eventNs, function () {
     setTimeout(injectColumn, 100);
@@ -1817,7 +2544,11 @@
   $(document).on('knack-scene-render.scene_1155' + CFG.eventNs, function () {
     setTimeout(function () {
       observeV2Grid();
-      if (_revisionData.length) { injectColumn(); injectIntoV2(); }
+      if (_revisionData.length) {
+        injectColumn();
+        injectIntoV2();
+        renderRevisionsPanel();
+      }
     }, 1000);
   });
 

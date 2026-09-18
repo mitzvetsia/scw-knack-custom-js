@@ -306,7 +306,15 @@
             qty:       num(rec, FK.qty),
             rate:      num(rec, FK.rate),
             labor:     num(rec, FK.labor),
-            laborDesc: rawHtml(rec, FK.laborDesc)
+            laborDesc: rawHtml(rec, FK.laborDesc),
+            // EVERY bid package this record is connected to — lets the
+            // card tell a true same-bid duplicate (both records live only
+            // on this bid → amber defect) from a record that (also)
+            // belongs to a DIFFERENT bid, which is reference noise for
+            // this bid's comparison, not a defect in it.
+            packages:  pkgs.map(function (pk) {
+              return { id: pk.id, label: stripHtml(pk.identifier || '') };
+            })
           });
           continue;
         }
@@ -438,7 +446,9 @@
       if (p) {
         var pk = keyOf(p);
         (childrenByKey[pk] = childrenByKey[pk] || []).push(r);
-        r.isAccessory = true;   // card.js indents these
+        r.isAccessory = true;   // card.js draws the parent → accessory connector
+        r.parentKey   = pk;     // the parent row's key (sowItem || id) — lets
+                                // card.js tell consecutive siblings apart
         r.parentLabel = (p.sowItemData && p.sowItemData.productName) ||
                         p.productName || p.displayLabel || '';
       } else {
@@ -525,9 +535,22 @@
       }
       var subgroups = [];
       if (rmRows.length) {
+        // Label honestly: a row lands here either because it's on nothing at
+        // all, or because its only bid cells sit on basis-hidden columns
+        // (hiddenBidOnly — still live on another, undisplayed bid).
+        var rmHusks = 0;
+        for (var rh = 0; rh < rmRows.length; rh++) {
+          if (rmRows[rh].hiddenBidOnly) rmHusks++;
+        }
+        var rmLabel = 'Removed — no longer on any SOW or bid';
+        if (rmHusks === rmRows.length) {
+          rmLabel = 'Not on this SOW or displayed bid — still on another bid';
+        } else if (rmHusks) {
+          rmLabel = 'Removed — not on this SOW or displayed bid';
+        }
         subgroups.push({
           key:              mdfKey + '::removed',
-          label:            'Removed — no longer on any SOW or bid',
+          label:            rmLabel,
           rows:             rmRows,
           removedItems:     true,
           defaultCollapsed: true
@@ -617,6 +640,18 @@
         if (bidName) info.bidName = bidName;
       }
 
+      // Subcontractor identity (connection on the bid package). DORMANT
+      // until CONFIG.fieldKeys.bidSub names the field AND the column is
+      // exposed on view_3573 — then the comparison-grid column headers show
+      // the sub's company name instead of the bid label.
+      if (FK.bidSub) {
+        var subConns = connectionAll(rec, FK.bidSub);
+        var subNm = (subConns.length && subConns[0])
+          ? stripHtml(String(subConns[0].identifier || '')) : '';
+        if (!subNm) subNm = stripHtml(String(rec[FK.bidSub] || ''));
+        if (subNm) info.subName = subNm;
+      }
+
       // REL_SOW on the bid package (field_2387). Gates which SOW grids this bid
       // appears on: a bid tied to a sibling SOW must NOT show on other SOWs'
       // grids (v1 parity) — without this, a bid for SOW-A leaks onto SOW-B's
@@ -668,6 +703,25 @@
         }
       }
     })();
+    // Deterministic section order: by the SOW's increment number, low →
+    // high. Without this, sections rendered in ENCOUNTER order — whatever
+    // order the bid records loaded in — which could shuffle between page
+    // loads. Key = the digits of the SW#### token (fallback: the last
+    // number in the identifier); a CO lands right after its base SOW via
+    // the string tiebreak; no number at all sinks to the end. The
+    // synthetic "Bid items (no matching SOW)" grid is pushed AFTER this
+    // sort, so it always stays last.
+    function sowIncrement(name) {
+      var s = String(name || '');
+      var m = s.match(/SW-?(\d+)/i);
+      if (!m) m = s.match(/(\d+)(?!.*\d)/);
+      return m ? parseInt(m[1], 10) : Infinity;
+    }
+    sows.sort(function (a, b) {
+      var ka = sowIncrement(a.name), kb = sowIncrement(b.name);
+      if (ka !== kb) return ka - kb;
+      return String(a.name).localeCompare(String(b.name));
+    });
     // bid record id → its SOW line item id (field_2404 relatedSowItem). Lets
     // the connected-device / connected-to diff resolve a bid record's
     // connections (field_2380/2381 point at OTHER bid records) to SOW line
@@ -834,6 +888,11 @@
       var out = [];
       function add(entry) {
         if (!entry || !entry.id || seen[entry.id]) return;
+        // A record can never be its own connected device — a self-pointing
+        // field_2197 (cascade drift) otherwise lists + counts the record in
+        // its OWN Connected list. init.js's expand-panel union already skips
+        // self; mirror it here.
+        if (entry.id === rec.id) return;
         seen[entry.id] = true;
         out.push({ id: entry.id, identifier: entry.identifier, sows: deviceSows(entry.id) });
       }
@@ -905,6 +964,29 @@
         conduit:        raw(s, SFK.conduit),
         dropLength:     raw(s, SFK.dropLength)
       };
+    }
+
+    // Accessory money rollup — each parent's attached accessories'
+    // equipment + install fee, aggregated from the CHILDREN's own
+    // field_2464 back-pointer (authoritative per CLAUDE.md Known Issue
+    // #12 — the parent's forward field_2207 list can go stale).
+    // Accessories never render as rows on this grid (they ride their
+    // parents), so this is how their money surfaces on the parent row
+    // (card.js renders "+ Acc Equip / + Acc Install" from these). The
+    // SOW header Install total is unaffected — it already sums every
+    // item from the index individually, accessories included.
+    if (SFK.accessoryParent) {
+      for (var ari = 0; ari < sowItemList.length; ari++) {
+        var arec = sowItemList[ari];
+        if (!arec || !arec.id) continue;
+        var apId = connectionId(arec, SFK.accessoryParent);
+        if (!apId || !sowItemIndex[apId]) continue;
+        var aEntry = sowItemIndex[arec.id];
+        if (!aEntry) continue;
+        var apar = sowItemIndex[apId];
+        apar.accEquip   = (apar.accEquip   || 0) + (aEntry.equipmentTotal || 0);
+        apar.accInstall = (apar.accInstall || 0) + (aEntry.installFee || 0);
+      }
     }
 
     // SOW items that aren't on any bid → synthesized "NOT SURVEYED" rows,
@@ -1336,6 +1418,48 @@
       otherSowRows        = dedupeRowsBySowItem(otherSowRows, _seenSowItem, false);
       bidOnlyRows         = dedupeRowsBySowItem(bidOnlyRows, _seenSowItem, false);
 
+      // ── Basis-filter interaction: bid-only rows with no VISIBLE cell ──
+      // With a basis bid chosen, non-basis columns are display:none'd
+      // (basis-filter.js). A bid-only row whose EVERY cell sits on a hidden
+      // column renders as a husk — empty SOW cell plus a cutout on the
+      // displayed bid — while the bid that actually carries it is invisible.
+      // Route those into the collapsed Removed subgroup ("not on this SOW or
+      // displayed bid — still on another bid"). The show-all toggle and
+      // basis changes trigger a rebuild (basis-filter.js rebuildGrid), so
+      // the row returns to the main grid whenever its column is shown.
+      var hiddenPkg = (ns.basisFilter && typeof ns.basisFilter.hiddenFor === 'function')
+        ? ns.basisFilter.hiddenFor(sow.id, packages.map(function (p) { return p.id; }))
+        : null;
+      if (hiddenPkg && bidOnlyRows.length) {
+        var keptBidOnly = [];
+        for (var hb = 0; hb < bidOnlyRows.length; hb++) {
+          var hbr = bidOnlyRows[hb];
+          var hbPids = Object.keys(hbr.cellsByPackage || {});
+          var hbVisible = !hbPids.length;   // no cells at all → not a husk, keep
+          for (var hv = 0; hv < hbPids.length; hv++) {
+            if (!hiddenPkg[hbPids[hv]]) { hbVisible = true; break; }
+          }
+          if (hbVisible) { keptBidOnly.push(hbr); continue; }
+          hbr.removed       = true;
+          hbr.hiddenBidOnly = true;
+          hbr.hasBidRecord  = true;
+          // "What it is" snapshot off its (hidden) live cell, same shape the
+          // Source-B removed rows carry for the expand panel.
+          var hbCell = hbr.cellsByPackage[hbPids[0]];
+          if (!hbr.detail && hbCell) {
+            hbr.detail = {
+              side:    'BID',
+              product: hbCell.productName,
+              qty:     hbCell.qty,
+              fee:     hbCell.labor,
+              desc:    hbCell.laborDesc
+            };
+          }
+          removedRowsGrid.push(hbr);
+        }
+        bidOnlyRows = keptBidOnly;
+      }
+
       var otherRows = otherSowRows.concat(bidOnlyRows);
 
       // Rows used for totals/grid include the "other" items; rendering
@@ -1352,7 +1476,22 @@
         var sdat = allRows[sr].sowItemData;
         if (sdat && !allRows[sr].offSow) {
           sowSub     += sdat.fee || 0;
-          sowInstall += sdat.installFee || 0;
+        }
+      }
+      // Install total: Σ installFee over EVERY view_3921 record whose OWN
+      // field_2154 names this SOW — walked from the item INDEX, not the
+      // grid rows. Accessory line items never render as rows here (they
+      // ride their parents), so the old row-based sum silently dropped
+      // their install fees and the header under-read the SOW's real
+      // Install Total (field_2161) by exactly the accessories' install.
+      // Sub Bid deliberately STAYS row-based: it's compared against the
+      // bid columns' totals for the "matches SOW" delta, and bids price
+      // parent rows only — an index-based Sub Bid would break the match
+      // the moment an accessory carried a fee.
+      for (var itKey in sowItemIndex) {
+        var itIdx = sowItemIndex[itKey];
+        if (itIdx && itIdx.sowIds && itIdx.sowIds[sow.id]) {
+          sowInstall += itIdx.installFee || 0;
         }
       }
       for (var pi = 0; pi < packages.length; pi++) {
@@ -1375,6 +1514,7 @@
         var info = pkgInfo[packages[pi].id] || {};
         packages[pi].bidStatus   = info.bidStatus || '';
         packages[pi].bidName     = info.bidName || '';
+        packages[pi].subName     = info.subName || '';
         packages[pi].pdfUrl      = info.pdfUrl || '';
         packages[pi].pdfFilename = info.pdfFilename || '';
       }
@@ -1406,18 +1546,25 @@
         bidOnlyRows.length ? displayRows.concat(bidOnlyRows) : displayRows,
         removedRowsGrid
       );
-      // "Belong to another SOW" stays at the BOTTOM.
-      if (otherSowRows.length) {
-        groups.push({
-          key:           '__other_sow_items__',
-          label:         'On these bids — belong to another SOW',
-          mdfIdfId:      '',
-          level:         1,
-          rows:          otherSowRows,
-          subgroups:     [],
-          otherBidItems: true
-        });
-      }
+      // NOTE: there is deliberately NO "On these bids — belong to another SOW"
+      // group any more.
+      //
+      // It put rows for line items that are NOT on this SOW into this SOW's
+      // grid, and every framing of that was wrong somewhere. With no basis
+      // picked the bid columns are hidden, so "On these bids" sat beside no
+      // bids at all; and the row itself belongs to a different SOW, so the
+      // grid was asserting two things the page was visibly contradicting.
+      // Gating it on the bid columns being visible only fixed half of that —
+      // the row still didn't belong to this SOW.
+      //
+      // Items not on this SOW now live in the collapsed tray below the grid
+      // (sow-item-tray.js), which is built for exactly this: grouped by the
+      // SOW they DO belong to, badged when they're on this section's bid, and
+      // offering "+ Add to this SOW". The bid record itself still renders in
+      // full in the grid of the SOW it actually belongs to.
+      //
+      // otherSowRows is still computed above — it feeds `otherRows` for the
+      // column totals, which must keep counting the sub's priced lines.
 
       sowGrids.push({
         sowId:    sow.id,
@@ -1482,12 +1629,16 @@
       if (!id) return '';
       return fromBid ? (_bidToSow[id] || '') : id;
     }
-    function connIdSet(arr, fromBid) {
+    // Self-references are excluded from BOTH sides: connDeviceUnion already
+    // drops them on the SOW side, and a bid snapshot seeded from a SOW item
+    // that self-pointed at the time carries the same junk — without the
+    // symmetric skip that bid would flag a phantom connDevice diff forever.
+    function connIdSet(arr, fromBid, selfId) {
       var set = Object.create(null);
       if (Array.isArray(arr)) {
         for (var i = 0; i < arr.length; i++) {
           var sid = sowIdOf(arr[i] && arr[i].id, fromBid);
-          if (sid) set[sid] = true;
+          if (sid && sid !== selfId) set[sid] = true;
         }
       }
       return set;
@@ -1503,9 +1654,9 @@
     // their underlying SOW line item id (label-agnostic). Anchor on the SOW
     // side carrying connections (the reference) so a row with no SOW-side
     // topology is never flagged.
-    var sowCDset = connIdSet(sd.connDevice, false);
+    var sowCDset = connIdSet(sd.connDevice, false, row.sowItem);
     var connDeviceDiff = Object.keys(sowCDset).length
-      ? !sameSet(sowCDset, connIdSet(cell.connDevice || [], true)) : false;
+      ? !sameSet(sowCDset, connIdSet(cell.connDevice || [], true, row.sowItem)) : false;
     // Connected To: single connection, compared by SOW line item id.
     var sowCTid = sowIdOf(sd.connToId, false);
     var connToDiff = sowCTid ? (sowCTid !== sowIdOf(cell.connToId, true)) : false;

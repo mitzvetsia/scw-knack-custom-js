@@ -63,6 +63,10 @@
   // with no money to adjust, so there's nothing to promote a row for.
   var ACC_ALWAYS_ATTACH          = false;
   var MOUNTING_HARDWARE_BUCKET   = '594a94536877675816984cb9';
+  // Service lines may carry a parent (config serviceParent — e.g. a CO
+  // restocking fee attached to its Remove line) but are never "attached
+  // and hidden": they always render as their own row.
+  var SERVICES_BUCKET            = '6977caa7f246edf67b52cbcd';
   var SYNTHETIC_ORPHAN_BRACKETS_LABEL = 'Orphaned Accessories';
 
   function bucketIdOf(rec) {
@@ -92,23 +96,60 @@
       if (records[i] && records[i].id) recordById[records[i].id] = records[i];
     }
     var attached = Object.create(null);
+    var parentOf = Object.create(null);   // recId → the loaded parent that hides it
     for (var j = 0; j < records.length; j++) {
       var rec = records[j];
       if (!rec || !rec.id) continue;
-      // No bucket check — any record (any bucket) is "attached and
-      // hidden" when it has a parent AND its Require Sub Bid flag is
-      // explicitly No/false. Otherwise it shows as its own line item.
-      // ACC_ALWAYS_ATTACH (install) skips the promote rule entirely.
+      // Any non-service record (any bucket) is "attached and hidden" when
+      // it has a parent AND its Require Sub Bid flag is explicitly
+      // No/false. Otherwise it shows as its own line item. Service lines
+      // with a parent always keep their own row (the parent lists them
+      // as "Related services" chips instead). ACC_ALWAYS_ATTACH (install)
+      // skips the promote rule entirely.
+      if (bucketIdOf(rec) === SERVICES_BUCKET) continue;
       if (!ACC_ALWAYS_ATTACH && !isRequireSubBidNoOrFalse(rec)) continue;
       var raw = rec[ACCESSORY_PARENT_FIELD + '_raw'];
       if (!Array.isArray(raw)) continue;
       for (var k = 0; k < raw.length; k++) {
         var parentId = raw[k] && raw[k].id;
-        if (parentId && recordById[parentId]) {
+        if (parentId && parentId !== rec.id && recordById[parentId]) {
           attached[rec.id] = true;
+          parentOf[rec.id] = parentId;
           break;
         }
       }
+    }
+    // Mutual-parent cycle guard. Corrupt reciprocal links can leave TWO
+    // records naming EACH OTHER as parent (seen live on the install
+    // worksheet: a camera + its mount, and a monitor + its wall mount,
+    // each pair holding both directions of the accessory link). Without
+    // this, each record hides under the other and BOTH vanish from the
+    // worksheet completely — no card, no chip, no warning. Break the tie
+    // so bad data stays visible: the mounting-hardware-bucket side stays
+    // attached (it is plausibly a real accessory), the other side renders
+    // as its own card; when the buckets don't disambiguate, show both.
+    for (var cid in parentOf) {
+      var pid = parentOf[cid];
+      if (cid >= pid) continue;                 // visit each pair once
+      if (parentOf[pid] !== cid) continue;      // not a 2-cycle
+      var cMount = bucketIdOf(recordById[cid]) === MOUNTING_HARDWARE_BUCKET;
+      var pMount = bucketIdOf(recordById[pid]) === MOUNTING_HARDWARE_BUCKET;
+      var kept;
+      if (cMount !== pMount) {
+        kept = cMount ? pid : cid;              // device side un-hides
+        delete attached[kept];
+      } else {
+        kept = 'both';                          // ambiguous — show both
+        delete attached[cid];
+        delete attached[pid];
+      }
+      try {
+        console.warn('[scw-ws-v2] accessory parent cycle: records ' + cid +
+          ' and ' + pid + ' each name the other as parent (' +
+          ACCESSORY_PARENT_FIELD + ') — corrupt reciprocal link, fix the ' +
+          'data; keeping ' + (kept === 'both' ? 'both visible' : kept +
+          ' visible') + ' so it can be found');
+      } catch (e) { /* ignore */ }
     }
     return attached;
   }

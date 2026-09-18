@@ -1,10 +1,12 @@
 /*** WORKSHEET V2 — MDF/IDF LOCATION MANAGE (manage-section integration) ******
  *
  * Folds the standalone "Manage MDFs / IDFs" section INTO the worksheet
- * (deploy scene view_3932; build-SOW scene view_3577 — config-driven per
- * worksheet-v2 view entry), with full parity to the bid-review-v2 manage panel
- * (bid-review-v2/mdf-manage.js): every real-location L1 header gets a pencil
- * that opens a panel directly under the header with
+ * (deploy scene view_3932; build-SOW scene view_3577; sales SOW scene
+ * view_3602; survey/bid scene view_3617 — config-driven per worksheet-v2
+ * view entry), with full parity
+ * to the bid-review-v2 manage panel (bid-review-v2/mdf-manage.js): every
+ * real-location L1 header gets a pencil that opens a panel directly under
+ * the header with
  *
  *   - editable designator badge (HEADEND/IDF select + in-badge ## input —
  *     HEADENDs never carry a ##: flipping to HEADEND hides + clears it)
@@ -24,6 +26,14 @@
  *
  * Config (per worksheet-v2 view entry):
  *   mdfManage: { viewKey: 'view_3932', notesField: 'field_1643' }
+ *
+ * Notes editability is config-flippable: `notesField`/`notesLabel` name the
+ * INLINE-EDITABLE band field (default field_1643 "SCW Notes"), and
+ * `calloutField`/`calloutLabel` the READ-ONLY callout above it (default
+ * field_2457 "Survey Notes"). Internal pages keep the defaults; the
+ * sub-facing survey scene (view_3505 → view_3617) inverts them — its
+ * audience WRITES survey notes and only reads ops' notes (and view_3617
+ * only inline-edits field_2457, so a field_1643 PUT would be dropped).
  ****************************************************************************/
 (function () {
   'use strict';
@@ -40,6 +50,80 @@
   var core = window.SCW.mdfEdit;
   if (!core) return;
   var F = core.FIELDS;
+
+  // ── MDF photo delete — per-scene DOC_photos view for the REST DELETE ──
+  // Keyed by the MANAGE view (cfg.viewKey), because that's what identifies
+  // the scene. The named view must be a same-scene DOC_photos view with a
+  // Delete link enabled in Builder (the delete link is what authorizes the
+  // session-scoped REST DELETE — same plumbing as photos.js
+  // PHOTO_GRID_FALLBACK_VIEWS and bid-review-v2 MDF_PHOTO_DELETE_GRID).
+  // Scenes NOT listed render no delete affordance at all (sales, survey,
+  // sub portal — ops surfaces only).
+  var MDF_PHOTO_DELETE_VIEWS = {
+    view_3932: 'view_3937',   // deploy scene_1311 — qa-popover's DOC_photos save view
+    view_3577: 'view_3584'    // build-SOW scene — its delete-enabled DOC_photos grid
+  };
+
+  // ── MDF photo REMOVE (soft) — the sub-facing scenes ──────────────────
+  // The survey/bid scene (view_3505 → manage view_3617) and the sub-portal
+  // deployment dashboard (view_4056 → view_4060) deliberately carry no hard
+  // delete (above), which left subs with NO way out of a mis-upload —
+  // photos from another site dropped on the wrong headend (SVS, 2026-09-10).
+  // Those scenes get a SOFT remove instead: the image (field_771) is
+  // cleared through the scene's DOC_photos save view (the same view
+  // photo-edit-panel PUTs replacements through — field_771 inline-editable
+  // there), the record stays, and the outgoing asset URL is logged into
+  // its history (field_2865) exactly like qa-popover's Remove photo. Knack
+  // keeps the asset alive at that URL, so SCW can restore it; nothing is
+  // permanently gone. An image-less record renders no <img> in the manage
+  // grid, so it drops out of the strip on the next sweep.
+  //
+  // Keyed by the MANAGE view like the delete map; a hard-delete scene never
+  // gets the soft affordance (delete wins). Falls back to photo-edit-panel's
+  // SAVE_VIEWS (keyed by the worksheet SOURCE view) so a new deployment
+  // that has a photo save view gets the remove for free.
+  //
+  // ⚠ The save view must actually CONTAIN the MDF/IDF photo records — a
+  // view-scoped PUT is a 403 for anything outside the view's result set.
+  // On the survey scene that is NOT view_4070 (the line-item photo-slot
+  // grid photos.js deletes through — survey → line items → photos); it is
+  // view_4160, a DOC_photos grid sourced from the survey's MDF/IDFs (added
+  // 2026-09-10, hidden by hide-data-source-views). removeMdfPhoto() still
+  // checks the save view first (photoInView) and tells the user instead of
+  // failing when a photo isn't in it. Same check applies to view_4158.
+  var MDF_PHOTO_REMOVE_VIEWS = {
+    view_3617: 'view_4160',   // survey/bid scene — MDF/IDF DOC_photos grid, field_771 inline-editable
+    view_4060: 'view_4158'    // sub deployment dashboard — DOC_photos grid, field_771 inline-editable
+  };
+  var PHOTO_IMG_FIELD     = 'field_771';
+  var PHOTO_HISTORY_FIELD = 'field_2865';
+  function photoRemoveView(cfg, sourceViewKey) {
+    if (!cfg) return '';
+    if (MDF_PHOTO_DELETE_VIEWS[cfg.viewKey]) return '';
+    if (MDF_PHOTO_REMOVE_VIEWS[cfg.viewKey]) return MDF_PHOTO_REMOVE_VIEWS[cfg.viewKey];
+    var sv = window.SCW && SCW.photoEditPanel && SCW.photoEditPanel.SAVE_VIEWS;
+    return (sv && sourceViewKey && sv[sourceViewKey]) || '';
+  }
+  function photoUtil() {
+    var u = window.SCW && SCW.photoEditPanel && SCW.photoEditPanel.util;
+    return (u && typeof u.clearFileField === 'function' && typeof u.putRecord === 'function') ? u : null;
+  }
+  // History stamp — same shape as qa-popover's prependHistory so the two
+  // audits read as one log on the photo record.
+  function nowStamp() {
+    var d = new Date();
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+      ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function currentUserName() {
+    try {
+      var u = Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u && u.name) return u.name;
+      if (u && u.values && u.values.name) return u.values.name;
+    } catch (e) { /* ignore */ }
+    return 'Unknown user';
+  }
 
   var PENCIL_SVG =
     '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
@@ -80,12 +164,21 @@
          their home now. Static CSS so there is no flash while models load.
          view_3932 = deploy scene; view_3577 = build-SOW scene (view_3962
          integration); view_4060 = sub-portal deployment dashboard
-         (view_4056 integration). The views still render (display:none
-         keeps their models + rows readable for the pencil panel /
-         photo scrape). */
+         (view_4056 integration); view_3602 = sales SOW scene (view_3586
+         integration — its view_3654 Add-menu, hoisted into the accordion
+         by accordion-menu-inject, is absorbed by the toolbar CTA);
+         view_3617 = survey/bid scene (view_3505
+         integration — its "MDF/IDFs" rich-text heading view_3508 goes with
+         it; the view_3509 Add-menu is absorbed by the toolbar CTA). The
+         views still render (display:none keeps their models + rows
+         readable for the pencil panel / photo scrape). */
       '.scw-acc-for-view_3932,',
       '.scw-acc-for-view_3577,',
-      '.scw-acc-for-view_4060 {',
+      '.scw-acc-for-view_4060,',
+      '.scw-acc-for-view_3602,',
+      '.scw-acc-for-view_3617,',
+      '#view_3617,',
+      '#view_3508 {',
       '  display: none !important;',
       '}',
       /* Icon-only pencil before the L1 title — borderless, quiet; a soft
@@ -136,6 +229,19 @@
       '  overflow: hidden; border: 1px solid #e2e8f0; background: #f8fafc; flex: none; }',
       '.' + P + '-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }',
       '.' + P + '-thumb:hover { border-color: #0f4c81; }',
+      /* Hover-revealed per-photo delete (ops scenes only — see
+         MDF_PHOTO_DELETE_VIEWS). Red is reserved for destructive actions. */
+      '.' + P + '-thumbwrap { position: relative; flex: none; }',
+      '.' + P + '-thumb-del { position: absolute; top: -6px; right: -6px;',
+      '  width: 20px; height: 20px; border-radius: 50%; padding: 0;',
+      '  border: 1px solid #fecaca; background: #fff; color: #dc2626;',
+      '  font: 700 13px/1 system-ui, sans-serif; cursor: pointer;',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  box-shadow: 0 1px 3px rgba(15,23,42,.25); opacity: 0; z-index: 2;',
+      '  transition: opacity .12s, background .12s; }',
+      '.' + P + '-thumbwrap:hover .' + P + '-thumb-del,',
+      '.' + P + '-thumb-del:focus-visible { opacity: 1; }',
+      '.' + P + '-thumb-del:hover { background: #dc2626; color: #fff; border-color: #dc2626; }',
       '.' + P + '-addphoto { display: inline-flex; flex-direction: column;',
       '  align-items: center; justify-content: center; gap: 4px;',
       '  width: 74px; height: 74px; border: 2px dashed #cbd5e1; border-radius: 8px;',
@@ -211,6 +317,21 @@
     } catch (e) { return null; }
   }
 
+  /** Capture-early scroll guard (the v1 preserve-scroll coordinator's
+   *  winning idea): arm BEFORE the PUT/DELETE, so the anchor row is
+   *  captured before the quiet model.fetch's render storm — during which
+   *  Knack's own code can scroll the page through a pre-patch native
+   *  reference the scroll-spy can't even trace. See _v2-scroll-anchor.js
+   *  guard(). Best-effort: without the module, saves behave as before. */
+  function armScrollGuard() {
+    try {
+      if (window.SCW && SCW.v2ScrollAnchor &&
+          typeof SCW.v2ScrollAnchor.guard === 'function') {
+        SCW.v2ScrollAnchor.guard();
+      }
+    } catch (e) { /* best-effort */ }
+  }
+
   function manageAttrs(manageViewKey, recId) {
     try {
       var v = Knack && Knack.views && Knack.views[manageViewKey];
@@ -273,25 +394,93 @@
     var imgs = cell.querySelectorAll('img');
     for (var i = 0; i < imgs.length; i++) {
       var a = imgs[i].closest('a[href]');
+      var href = (a && a.getAttribute('href')) || '';
+      // Photo RECORD id. The manage grid renders each photo one of two ways:
+      //   ops scenes   — an edit-page link  <a href="…/edit-photo/<photoId>">
+      //   survey scene — an image-gallery anchor (href="#") wrapping
+      //                  <span id="<photoId>" data-kn="connection-value">
+      // Read both; the id is what the per-photo delete / remove PUTs target.
+      var pid = '';
+      if (href && href !== '#') {
+        var hrefIds = href.match(/[a-f0-9]{24}/gi);
+        if (hrefIds) pid = hrefIds[hrefIds.length - 1];
+      }
+      if (!pid) {
+        var sp = imgs[i].closest('span[data-kn="connection-value"]');
+        var sid = sp ? (sp.getAttribute('id') || sp.className || '') : '';
+        var sm = String(sid).match(/[a-f0-9]{24}/i);
+        if (sm) pid = sm[0];
+      }
       out.push({
         thumb: imgs[i].getAttribute('src') || '',
         // Full-size asset for the lightbox stage — Knack stamps the gallery
         // URL on grid images; fall back to the thumb src when absent.
         full:  imgs[i].getAttribute('data-kn-img-gallery') ||
                imgs[i].getAttribute('src') || '',
-        href: (a && a.getAttribute('href')) || ''
+        href:  href,
+        id:    pid
       });
     }
     return out;
   }
 
+  /** Is the photo record inside a same-scene DOC_photos view's result set?
+   *  Knack's view-scoped PUT/DELETE only succeeds for records the view can
+   *  see, so a photo missing from the view = a guaranteed 403. Reads the
+   *  view's model then its rendered rows; when the view is paginated past
+   *  what's loaded the answer is unknowable client-side → null (proceed). */
+  function photoInView(viewKey, photoId) {
+    var el = document.getElementById(viewKey);
+    if (!el || !photoId) return null;
+    try {
+      var v = Knack.views && Knack.views[viewKey];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (models) {
+        for (var i = 0; i < models.length; i++) {
+          if (models[i] && models[i].id === photoId) return true;
+        }
+      }
+    } catch (e) { /* fall through to the DOM */ }
+    if (el.querySelector('tbody tr[id="' + photoId + '"]')) return true;
+    var loaded = el.querySelectorAll('tbody tr[id]').length;
+    var sum = el.querySelector('.kn-entries-summary');
+    var m = sum ? String(sum.textContent || '').match(/of\s+([\d,]+)/i) : null;
+    var total = m ? parseInt(m[1].replace(/,/g, ''), 10) : NaN;
+    if (!isFinite(total)) return null;
+    return loaded >= total ? false : null;   // fully loaded and absent → not in the view
+  }
+
   /** Content signature for a band — retrofit skips the rebuild+replaceChild
    *  when nothing it displays has changed. */
-  function bandSig(attrs, photos, notesField) {
-    var s = (attrs ? fieldText(attrs, F.surveyNotes) : '') + '\u0001' +
-            (attrs ? fieldText(attrs, notesField) : '');
+  function bandSig(attrs, photos, nc) {
+    var s = (attrs ? fieldText(attrs, nc.calloutField) : '') + '\u0001' +
+            (attrs ? fieldText(attrs, nc.editField) : '');
     for (var i = 0; i < photos.length; i++) s += '\u0001' + photos[i].thumb;
     return s;
+  }
+
+  /** Per-deployment notes wiring — which field the band's textarea EDITS
+   *  and which shows READ-ONLY in the callout (see header note). */
+  function notesCfg(cfg) {
+    return {
+      editField:    (cfg && cfg.notesField)   || F.notes,
+      editLabel:    (cfg && cfg.notesLabel)   || 'SCW Notes',
+      calloutField: (cfg && cfg.calloutField) || F.surveyNotes,
+      calloutLabel: (cfg && cfg.calloutLabel) || 'Survey Notes'
+    };
+  }
+
+  /** Optional per-deployment delete gate (config mdfManage.deleteGate):
+   *  while the named view renders a ClickUp link, location deletes are
+   *  blocked — ops is already working off these locations. Same DOM read
+   *  as mdf-idf-cards.js DELETE_GATE / co-header-card.js. A missing gate
+   *  view fails OPEN (delete stays available), matching mdf-idf-cards. */
+  function deleteGateActive(cfg) {
+    var g = cfg && cfg.deleteGate;
+    if (!g || !g.cuLinkView) return null;
+    var root = document.getElementById(g.cuLinkView);
+    if (!root) return null;
+    return root.querySelector('a[href*="clickup.com"]') ? g : null;
   }
 
   /** Identity-aware bulk photo uploader against this MDF/IDF location
@@ -354,9 +543,33 @@
     if (!attrs && !photos.length) return null;   // nothing yet — retrofit adds later
     injectStyles();
 
-    var sNotes = attrs ? fieldText(attrs, F.surveyNotes) : '';
-    var notes  = attrs ? fieldText(attrs, cfg.notesField || F.notes) : '';
+    var nc = notesCfg(cfg);
+    // ADOPT the live band when nothing it shows has changed — a full
+    // worksheet rebuild otherwise re-creates every band from scratch
+    // (fresh <img> decodes, a transient height wobble, a lost caret) for
+    // identical content. Moving the existing node into the new tree keeps
+    // decoded images and the notes textarea exactly as they were. Guarded
+    // to the same mount so multi-worksheet scenes never steal each
+    // other's bands, and never adopts a band the user is typing in
+    // mid-signature-change (the sig match already implies same value).
+    var sig = bandSig(attrs, photos, nc);
+    var existing = document.querySelector(
+      '[data-scw-ws-v2-mdf-band="' + l1.id + '"]');
+    if (existing && existing.getAttribute('data-scw-sig') === sig) {
+      var owner = existing.closest &&
+        existing.closest('.scw-ws-v2[id^="scw-ws-v2-"]');
+      if (!owner || owner.id === 'scw-ws-v2-' + sourceViewKey) return existing;
+    }
 
+    var sNotes = attrs ? fieldText(attrs, nc.calloutField) : '';
+    var notes  = attrs ? fieldText(attrs, nc.editField) : '';
+
+    // Per-photo ×: a hard DELETE on scenes with a delete-authorizing
+    // DOC_photos view (ops surfaces), a soft REMOVE (image cleared, record
+    // + history kept) on the sub-facing scenes — see the two maps above.
+    // The photo record id is the last 24-hex segment of its edit-page href.
+    var delView = MDF_PHOTO_DELETE_VIEWS[cfg.viewKey] || '';
+    var remView = photoRemoveView(cfg, sourceViewKey);
     var photosHtml = '';
     for (var p = 0; p < photos.length; p++) {
       // The manage grid renders field_771 at /original/ size — swap the
@@ -365,12 +578,39 @@
       var pFull = photos[p].full || photos[p].thumb;
       var pDisp = (window.SCW && SCW.knackImgThumb)
         ? SCW.knackImgThumb(photos[p].thumb) : photos[p].thumb;
-      photosHtml += '<a class="' + P + '-thumb" href="' + esc(photos[p].href) + '" ' +
+      var thumbA = '<a class="' + P + '-thumb" href="' + esc(photos[p].href) + '" ' +
         'data-scw-mdf-photo-full="' + esc(pFull) + '" ' +
         'title="Open photo"><img src="' + esc(pDisp) + '" alt="" loading="lazy" ' +
         (pDisp !== photos[p].thumb
           ? 'onerror="this.onerror=null;this.src=\'' + esc(photos[p].thumb) + '\'"'
           : '') + '></a>';
+      var photoId = photos[p].id || '';
+      if (!photoId) {
+        var hrefIds = String(photos[p].href || '').match(/[a-f0-9]{24}/gi);
+        photoId = hrefIds ? hrefIds[hrefIds.length - 1] : '';
+      }
+      if (delView && photoId) {
+        photosHtml += '<span class="' + P + '-thumbwrap">' + thumbA +
+            '<button type="button" class="' + P + '-thumb-del" ' +
+              'data-scw-ws-v2-mdf-photo-del="' + esc(photoId) + '" ' +
+              'data-scw-ws-v2-view="' + esc(sourceViewKey) + '" ' +
+              'data-scw-thumb="' + esc(pDisp) + '" ' +
+              'title="Delete this photo permanently" aria-label="Delete this photo">' +
+              '&times;</button>' +
+          '</span>';
+      } else if (remView && photoId) {
+        photosHtml += '<span class="' + P + '-thumbwrap">' + thumbA +
+            '<button type="button" class="' + P + '-thumb-del" ' +
+              'data-scw-ws-v2-mdf-photo-rem="' + esc(photoId) + '" ' +
+              'data-scw-ws-v2-view="' + esc(sourceViewKey) + '" ' +
+              'data-scw-thumb="' + esc(pDisp) + '" ' +
+              'data-scw-full="' + esc(pFull) + '" ' +
+              'title="Remove this photo from this MDF/IDF" aria-label="Remove this photo">' +
+              '&times;</button>' +
+          '</span>';
+      } else {
+        photosHtml += thumbA;
+      }
     }
     photosHtml += '<button type="button" class="' + P + '-addphoto" ' +
       'data-scw-ws-v2-mdf-add="' + esc(l1.id) + '" ' +
@@ -382,15 +622,15 @@
     band.setAttribute('data-scw-ws-v2-mdf-band', l1.id);
     // Content signature — retrofit compares before rebuilding so an
     // unchanged band is never re-created/replaced on sweep.
-    band.setAttribute('data-scw-sig',
-      bandSig(attrs, photos, cfg.notesField || F.notes));
+    band.setAttribute('data-scw-sig', bandSig(attrs, photos, nc));
     band.innerHTML =
-      // Survey Notes stay READ-ONLY here (subs' territory — same rule as
-      // the comparison page); SCW Notes edit INLINE, saving on blur.
+      // The callout field stays READ-ONLY (the other audience's territory —
+      // same rule as the comparison page); the edit field saves on blur.
+      // Which is which flips per deployment — see notesCfg.
       (sNotes
         ? '<div class="' + P + '-callout">' +
             '<span class="' + P + '-callout-ic">' + DOC_SVG + '</span>' +
-            '<div><div class="' + P + '-callout-lbl">Survey Notes</div>' +
+            '<div><div class="' + P + '-callout-lbl">' + esc(nc.calloutLabel) + '</div>' +
             '<div class="' + P + '-callout-txt">' + esc(sNotes) + '</div></div>' +
           '</div>'
         : '') +
@@ -400,7 +640,7 @@
           '<div class="' + P + '-photos-strip">' + photosHtml + '</div>' +
         '</div>' +
         '<div class="' + P + '-band-sec">' +
-          '<div class="' + P + '-lbl">SCW Notes</div>' +
+          '<div class="' + P + '-lbl">' + esc(nc.editLabel) + '</div>' +
           '<textarea class="' + P + '-band-ta" placeholder="Add notes — saves when you click away"></textarea>' +
         '</div>' +
       '</div>';
@@ -409,7 +649,7 @@
       ta.value = notes;
       ta.setAttribute('data-scw-saved-val', notes);
       ta.addEventListener('blur', function () {
-        saveBandNotes(ta, cfg.viewKey, l1.id, cfg.notesField || F.notes);
+        saveBandNotes(ta, cfg.viewKey, l1.id, nc.editField);
       });
     }
     return band;
@@ -419,6 +659,7 @@
    *  shared core (drop detection + model sync included). */
   function saveBandNotes(ta, manageViewKey, recId, field) {
     if (ta.getAttribute('data-scw-saved-val') === ta.value) return;
+    armScrollGuard();
     var value = ta.value;
     var body = {}; body[field] = value;
     ta.classList.add(P + '-band-ta--saving');
@@ -474,7 +715,7 @@
       var cfg = manageCfg(srcKey);
       if (!cfg) continue;
       if (!(cfg.viewKey in rowIdx)) rowIdx[cfg.viewKey] = photoRowIndex(cfg.viewKey);
-      var notesField = cfg.notesField || F.notes;
+      var nc = notesCfg(cfg);
       var sections = mounts[m].querySelectorAll('[data-scw-ws-v2-l1]');
       for (var s = 0; s < sections.length; s++) {
         var id = sections[s].getAttribute('data-scw-ws-v2-l1') || '';
@@ -500,7 +741,7 @@
           if (!(cur && cur.contains(document.activeElement))) {
             var photos = locationPhotos(cfg.viewKey, id, rowIdx[cfg.viewKey]);
             if (attrs || photos.length) {
-              var sig = bandSig(attrs, photos, notesField);
+              var sig = bandSig(attrs, photos, nc);
               if (!(cur && cur.getAttribute('data-scw-sig') === sig)) {
                 var fresh = detailBand({ id: id }, srcKey,
                   { attrs: attrs, photos: photos });
@@ -580,15 +821,18 @@
     });
     var goBtn = conf.querySelector('.' + P + '-btn--confirm-del');
     goBtn.addEventListener('click', function () {
-      // Re-verify at the moment of truth — records may have been added
-      // while the confirm sat open.
-      if (!locationIsEmpty(sourceViewKey, l1Id, block)) {
-        st.textContent = 'This location is no longer empty — delete cancelled.';
+      // Re-verify at the moment of truth — records may have been added (or
+      // the ClickUp gate may have engaged) while the confirm sat open.
+      var gateNow = deleteGateActive(cfg);
+      if (gateNow || !locationIsEmpty(sourceViewKey, l1Id, block)) {
+        st.textContent = gateNow ? gateNow.title
+          : 'This location is no longer empty — delete cancelled.';
         goBtn.disabled = true;
         return;
       }
       goBtn.disabled = true;
       st.textContent = 'Deleting…';
+      armScrollGuard();
       SCW.knackAjax({
         url:  SCW.knackRecordUrl(cfg.viewKey, l1Id),
         type: 'DELETE',
@@ -620,6 +864,202 @@
         }
       });
     });
+  }
+
+  /** Delete ONE MDF/IDF photo (DOC_photos record) — big loud confirm, then
+   *  a view-scoped REST DELETE through the scene's delete-authorizing
+   *  DOC_photos view (MDF_PHOTO_DELETE_VIEWS). Optimistic thumb removal;
+   *  the manage view refetches so the band's next sweep agrees. */
+  function deleteMdfPhoto(btn) {
+    var photoId = btn.getAttribute('data-scw-ws-v2-mdf-photo-del');
+    var sourceViewKey = btn.getAttribute('data-scw-ws-v2-view');
+    var cfg = manageCfg(sourceViewKey);
+    var delView = cfg ? (MDF_PHOTO_DELETE_VIEWS[cfg.viewKey] || '') : '';
+    if (!photoId || !delView) return;
+
+    var block = btn.closest('.scw-ws-v2-l1');
+    var lblEl = block && block.querySelector('.scw-ws-v2-l1-label');
+    var locLabel = (lblEl && lblEl.textContent.trim()) || 'this MDF/IDF';
+    var thumbUrl = btn.getAttribute('data-scw-thumb') || '';
+
+    function doDelete() {
+      armScrollGuard();
+      var wrap = btn.closest('.' + P + '-thumbwrap');
+      if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);   // optimistic
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(delView, photoId),
+        type: 'DELETE',
+        success: function () {
+          // Refetch the manage view — the band strip scrapes ITS rendered
+          // row, so this is what makes the deletion stick on next sweep.
+          try {
+            var mv = Knack.views && Knack.views[cfg.viewKey];
+            if (mv && mv.model && typeof mv.model.fetch === 'function') mv.model.fetch();
+          } catch (e) { /* best-effort */ }
+        },
+        error: function (xhr) {
+          var status = xhr && xhr.status;
+          console.warn('[scw-ws-v2-mdf] photo delete failed via ' + delView, {
+            photoId: photoId, status: status, response: xhr && xhr.responseText
+          });
+          alert('Couldn’t delete that photo (status ' + status + ').' +
+            (status === 403 || status === 404
+              ? ' ' + delView + ' may need a Delete link enabled in Knack Builder.'
+              : ''));
+          // Refetch either way — if the delete landed despite the error,
+          // the strip catches up; if not, the thumb comes back.
+          try {
+            var mv2 = Knack.views && Knack.views[cfg.viewKey];
+            if (mv2 && mv2.model && typeof mv2.model.fetch === 'function') mv2.model.fetch();
+          } catch (e2) { /* best-effort */ }
+        }
+      });
+    }
+
+    // The requested "are you SURE!?!?" — loud copy, the photo shown in the
+    // modal so there's no ambiguity about WHICH one dies, destructive-red
+    // confirm button (ns.confirmModal styles it via …-confirm-delete).
+    if (ns.confirmModal && typeof ns.confirmModal === 'function') {
+      ns.confirmModal({
+        title: 'Delete this photo — are you SURE?',
+        body:
+          '<div style="display:flex;gap:12px;align-items:center;text-align:left;">' +
+            (thumbUrl
+              ? '<img src="' + esc(thumbUrl) + '" alt="" style="width:64px;height:64px;' +
+                'object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;flex:none;">'
+              : '') +
+            '<span>This <b>permanently deletes</b> the photo from ' +
+            '<b>&ldquo;' + esc(locLabel) + '&rdquo;</b>. There is no undo.</span>' +
+          '</div>',
+        okLabel: 'Yes — delete it forever',
+        cancelLabel: 'Keep photo'
+      }).then(function (ok) { if (ok) doDelete(); });
+    } else if (window.confirm('Permanently delete this photo? There is no undo.')) {
+      doDelete();
+    }
+  }
+
+  /** Soft-REMOVE one MDF/IDF photo (sub-facing scenes — MDF_PHOTO_REMOVE_VIEWS):
+   *  confirm, clear the image through the scene's DOC_photos save view (the
+   *  record stays), then log the outgoing asset URL into the photo's history
+   *  so SCW can restore it. Optimistic thumb removal; the manage view
+   *  refetches so the band's next sweep agrees (an image-less record renders
+   *  no <img>, so it simply drops out of the strip). */
+  function removeMdfPhoto(btn) {
+    var photoId = btn.getAttribute('data-scw-ws-v2-mdf-photo-rem');
+    var sourceViewKey = btn.getAttribute('data-scw-ws-v2-view');
+    var cfg = manageCfg(sourceViewKey);
+    var remView = photoRemoveView(cfg, sourceViewKey);
+    if (!photoId || !remView) return;
+    var u = photoUtil();
+    if (!u) {
+      alert('The photo tools haven’t finished loading — refresh the page and try again.');
+      return;
+    }
+
+    var block = btn.closest('.scw-ws-v2-l1');
+    var lblEl = block && block.querySelector('.scw-ws-v2-l1-label');
+    var locLabel = (lblEl && lblEl.textContent.trim()) || 'this MDF/IDF';
+    var thumbUrl = btn.getAttribute('data-scw-thumb') || '';
+    var fullUrl  = btn.getAttribute('data-scw-full') || thumbUrl;
+
+    // A view-scoped PUT only lands on records the save view can see. If the
+    // scene's DOC_photos save view doesn't include this MDF/IDF photo (wrong
+    // source, filter, or the wrong view mapped) say so up front instead of
+    // optimistically removing the thumb and then failing.
+    if (photoInView(remView, photoId) === false) {
+      console.warn('[scw-ws-v2-mdf] photo ' + photoId + ' is not in ' + remView +
+        '’s result set — the remove PUT would be rejected. Builder: the ' +
+        'DOC_photos view on this scene must include photos connected to the ' +
+        'survey’s MDF/IDFs (or point MDF_PHOTO_REMOVE_VIEWS at one that does).');
+      alert('This photo can’t be removed from here yet — it isn’t in this ' +
+        'page’s photo list (' + remView + '), so Knack would reject the change. ' +
+        'Please ask SCW to remove it.');
+      return;
+    }
+
+    function refetchManage() {
+      try {
+        var mv = Knack.views && Knack.views[cfg.viewKey];
+        if (mv && mv.model && typeof mv.model.fetch === 'function') mv.model.fetch();
+      } catch (e) { /* best-effort */ }
+    }
+    // Audit trail — mirrors qa-popover's "REMOVED PHOTO" entry. Read the
+    // record through the save view first and prepend; only write when the
+    // view actually projects the history column (a PUT of history alone
+    // would otherwise wipe what's there). Never blocks the removal.
+    function logRemoval() {
+      try {
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(remView, photoId),
+          type: 'GET',
+          success: function (rec) {
+            if (!rec || !Object.prototype.hasOwnProperty.call(rec, PHOTO_HISTORY_FIELD)) {
+              console.warn('[scw-ws-v2-mdf] photo history not on ' + remView +
+                ' — removal of ' + photoId + ' not logged (image was ' + fullUrl + ')');
+              return;
+            }
+            var line = nowStamp() + ' — ' + currentUserName() + ' — REMOVED FROM MDF/IDF' +
+              (locLabel ? ' “' + locLabel + '”' : '') +
+              (/^https?:/i.test(fullUrl) ? ': removed version ' + fullUrl : '');
+            line = line.replace(/[<>]/g, function (c) { return c === '<' ? '&lt;' : '&gt;'; });
+            var existing = String(rec[PHOTO_HISTORY_FIELD] || '');
+            var body = {};
+            body[PHOTO_HISTORY_FIELD] = existing ? line + '<br>' + existing : line;
+            u.putRecord(remView, photoId, body).catch(function (err) {
+              console.warn('[scw-ws-v2-mdf] photo history log skipped:',
+                (err && err.message) || err);
+            });
+          },
+          error: function () {
+            console.warn('[scw-ws-v2-mdf] could not read photo ' + photoId +
+              ' via ' + remView + ' — removal not logged (image was ' + fullUrl + ')');
+          }
+        });
+      } catch (e) { /* audit only */ }
+    }
+    function doRemove() {
+      armScrollGuard();
+      var wrap = btn.closest('.' + P + '-thumbwrap');
+      if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);   // optimistic
+      // clearFileField verifies against the PUT response and retries with
+      // '' when null is silently ignored (Knack file-field quirk).
+      u.clearFileField(remView, photoId, PHOTO_IMG_FIELD, {}).then(function () {
+        logRemoval();
+        refetchManage();
+      }).catch(function (err) {
+        var msg = (err && err.message) || 'unknown error';
+        console.warn('[scw-ws-v2-mdf] photo remove failed via ' + remView, {
+          photoId: photoId, error: msg
+        });
+        alert('Couldn’t remove that photo (' + msg + ').' +
+          (/40[34]/.test(msg)
+            ? ' ' + remView + ' may need the photo field inline-editable in Knack Builder.'
+            : ''));
+        refetchManage();   // the thumb comes back if nothing changed
+      });
+    }
+
+    var confirmBody =
+      '<div style="display:flex;gap:12px;align-items:center;text-align:left;">' +
+        (thumbUrl
+          ? '<img src="' + esc(thumbUrl) + '" alt="" style="width:64px;height:64px;' +
+            'object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;flex:none;">'
+          : '') +
+        '<span>This removes the photo from <b>&ldquo;' + esc(locLabel) + '&rdquo;</b>. ' +
+        'SCW keeps a copy on file, so it can be restored if this was a mistake.</span>' +
+      '</div>';
+    if (ns.confirmModal && typeof ns.confirmModal === 'function') {
+      ns.confirmModal({
+        title: 'Remove this photo?',
+        body: confirmBody,
+        okLabel: 'Remove photo',
+        cancelLabel: 'Keep photo'
+      }).then(function (ok) { if (ok) doRemove(); });
+    } else if (window.confirm('Remove this photo from ' + locLabel + '?\n\n' +
+        'SCW keeps a copy on file, so it can be restored if this was a mistake.')) {
+      doRemove();
+    }
   }
 
   function openPanel(btn) {
@@ -689,11 +1129,13 @@
     // is discoverable without being dangerous.
     var delBtn = panel.querySelector('.' + P + '-btn--delete');
     if (delBtn) {
-      var emptyNow = locationIsEmpty(sourceViewKey, l1Id, block);
+      var gateNow = deleteGateActive(cfg);
+      var emptyNow = !gateNow && locationIsEmpty(sourceViewKey, l1Id, block);
       delBtn.disabled = !emptyNow;
-      delBtn.title = emptyNow
-        ? 'Delete this MDF/IDF location'
-        : 'Can’t delete — this MDF/IDF still has line items under it. Move or delete them first.';
+      delBtn.title = gateNow ? gateNow.title
+        : emptyNow
+          ? 'Delete this MDF/IDF location'
+          : 'Can’t delete — this MDF/IDF still has line items under it. Move or delete them first.';
       delBtn.addEventListener('click', function () {
         var lblEl = block.querySelector('.scw-ws-v2-l1-label');
         openDeleteConfirm(panel, cfg, sourceViewKey, l1Id, block,
@@ -752,6 +1194,7 @@
         if (v !== (initial[fk] || '')) { fields[fk] = v; changed++; }
       }
       if (!changed) { closePanels(); return; }
+      armScrollGuard();
       saving = true;
       status.classList.remove('is-err');
       status.textContent = 'Saving…';
@@ -807,6 +1250,25 @@
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-mdf-notes-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-mdf-notes-bound', '1');
     document.addEventListener('click', function (e) {
+      // Per-photo delete × — checked FIRST (it sits beside the thumb
+      // anchor; never fall through into the lightbox).
+      var pdel = e.target && e.target.closest &&
+        e.target.closest('[data-scw-ws-v2-mdf-photo-del]');
+      if (pdel) {
+        e.preventDefault();
+        e.stopPropagation();
+        deleteMdfPhoto(pdel);
+        return;
+      }
+      // Per-photo soft remove × (sub-facing scenes) — same precedence.
+      var prem = e.target && e.target.closest &&
+        e.target.closest('[data-scw-ws-v2-mdf-photo-rem]');
+      if (prem) {
+        e.preventDefault();
+        e.stopPropagation();
+        removeMdfPhoto(prem);
+        return;
+      }
       // Photo thumb → same in-place lightbox viewer as the line-item photo
       // strips (photos.js openLightbox), flipping between THIS location's
       // photos. Knack's edit-photo page stays reachable via the lightbox's
@@ -868,18 +1330,41 @@
   // Retrofit pencils when the manage view's model lands after the worksheet
   // rendered — the source of the "pencils sometimes missing" flakiness.
   var _retrofitTimer = 0;
+  var _retrofitLastRun = 0;
+  /** Is `viewKey` the manage view of any MOUNTED worksheet? */
+  function isManageViewKey(viewKey) {
+    if (!viewKey) return false;
+    try {
+      var mounts = document.querySelectorAll('.scw-ws-v2[id^="scw-ws-v2-"]');
+      for (var i = 0; i < mounts.length; i++) {
+        var cfg = manageCfg(mounts[i].id.replace('scw-ws-v2-', ''));
+        if (cfg && cfg.viewKey === viewKey) return true;
+      }
+    } catch (e) { /* ignore */ }
+    return false;
+  }
   $(document)
     .off('knack-view-render.any.scwWsV2MdfRetrofit')
-    .on('knack-view-render.any.scwWsV2MdfRetrofit', function () {
-      // Trailing debounce — scene load / refetch storms fire one render
-      // event per view; one sweep per storm is enough (each sweep covers
-      // every mount). The old per-event scheduling stacked dozens of
-      // full sweeps during a big-quote init.
+    .on('knack-view-render.any.scwWsV2MdfRetrofit', function (e, view) {
+      // One sweep per storm is enough (each sweep covers every mount) —
+      // but a PURE trailing debounce starves on busy scenes: during a
+      // scene load the renders (dozen views + v2 rebuilds + KTL) arrive
+      // faster than the window for seconds on end, and the bands showed
+      // up "REALLY late" (survey/bid page, 2026-08-10). Two rules fix it:
+      //   1. The MANAGE view itself rendering is the very data the
+      //      pencils/bands wait on → sweep next tick, no debounce.
+      //   2. Everything else debounces 150ms but with a MAX-WAIT — if
+      //      events keep streaming, still sweep at least every 400ms.
       if (_retrofitTimer) clearTimeout(_retrofitTimer);
-      _retrofitTimer = setTimeout(function () {
+      var run = function () {
         _retrofitTimer = 0;
+        _retrofitLastRun = Date.now();
         retrofit();
-      }, 150);
+      };
+      var wait = 150;
+      if (isManageViewKey(view && view.key)) wait = 0;
+      else if (Date.now() - _retrofitLastRun > 400) wait = 0;
+      _retrofitTimer = setTimeout(run, wait);
     });
 
   injectStyles();

@@ -779,6 +779,20 @@
         '</svg>' +
         '<span class="scw-ws-v2-bulk-delete-label">Delete</span>' +
       '</button>' +
+      // Sales CR surface only: once the SOW is locked the per-row trash is
+      // replaced by "request removal", and doing that one row at a time is
+      // the whole complaint. Hidden unless salesCR is live on this page AND
+      // the selection actually contains rows the CR path owns.
+      '<button type="button" class="scw-ws-v2-bulk-request-removal" ' +
+        'style="display:none !important" disabled>' +
+        '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'stroke-linejoin="round">' +
+          '<circle cx="12" cy="12" r="9"></circle>' +
+          '<line x1="8" y1="12" x2="16" y2="12"></line>' +
+        '</svg>' +
+        '<span class="scw-ws-v2-bulk-request-removal-label">Request removal</span>' +
+      '</button>' +
       '<button type="button" class="scw-ws-v2-bulk-clear">Clear</button>';
     document.body.appendChild(toolbar);
 
@@ -826,7 +840,40 @@
       if (!ids.length) return;
       openBulkDeleteConfirm(ids, _sourceViewKey || sourceViewKey);
     });
+    var rrBtn = toolbar.querySelector('.scw-ws-v2-bulk-request-removal');
+    if (rrBtn) rrBtn.addEventListener('click', function () {
+      // Only the CR-owned rows — a mixed selection sends the deletable ones
+      // to Delete and the locked ones here, rather than silently doing the
+      // wrong thing to half of them.
+      var ids = crLockedSelection();
+      if (!ids.length) return;
+      try {
+        SCW.salesCR.openBulkRemove(ids);
+      } catch (e) {
+        console.warn('[scw-ws-v2] bulk request-removal failed to open', e);
+      }
+    });
     return toolbar;
+  }
+
+  /** Is the sales change-request surface live on this page? When it is, the
+   *  per-row trash is gone and removal happens by request instead. */
+  function salesCrLive() {
+    try {
+      var cr = window.SCW && SCW.salesCR;
+      return !!(cr && typeof cr.openBulkRemove === 'function' &&
+                cr._state && typeof cr._state.onPage === 'function' &&
+                cr._state.onPage());
+    } catch (e) { return false; }
+  }
+
+  /** Selected ids that can't be deleted here — exactly the set the CR
+   *  "request removal" path owns (same partition the Delete button uses). */
+  function crLockedSelection() {
+    if (!salesCrLive()) return [];
+    var ids = selList();
+    if (!ids.length) return [];
+    return partitionDeletable(ids, _sourceViewKey).blocked;
   }
 
   /** Does the active view's object lack an accessory relationship? (config
@@ -835,6 +882,20 @@
     try {
       var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
       return !!(vc && vc.noAccessories);
+    } catch (e) { return false; }
+  }
+
+  /** Install-object worksheets (config moneyMode:'install' — the deploy
+   *  pages). The add-accessory modal creates SOW-object records and Make
+   *  resolves the payload's parent ids against the SOW line-item object,
+   *  so install rows can never be valid parents — every such add
+   *  manufactured an orphaned record with no SOW and no parent. Install
+   *  scope changes go through the change-order process anyway. Treated
+   *  like noAccessories: hides the bulk Add/Remove accessories buttons. */
+  function viewIsInstallObject(sourceViewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      return !!(vc && vc.moneyMode === 'install');
     } catch (e) { return false; }
   }
 
@@ -850,7 +911,8 @@
   function refreshToolbar() {
     if (!toolbar) return;
     var n = selSize();
-    var noAcc = viewHasNoAccessories(_sourceViewKey);
+    var noAcc = viewHasNoAccessories(_sourceViewKey) ||
+                viewIsInstallObject(_sourceViewKey);
     toolbar.classList.toggle('scw-ws-v2-bulk-toolbar--active', n > 0);
     toolbar.querySelector('.scw-ws-v2-bulk-count').textContent = n + ' selected';
     toolbar.querySelector('.scw-ws-v2-bulk-edit').disabled   = (n === 0);
@@ -897,6 +959,32 @@
       if (noAcc) raBtn.style.setProperty('display', 'none', 'important');
       else       raBtn.style.removeProperty('display');
       raBtn.disabled = (n === 0);
+    }
+
+    // Request removal — only where the CR surface owns removal, and only
+    // while the selection holds rows it owns. Counts the CR-locked subset,
+    // not the whole selection, so a mixed pick reads honestly: Delete (3)
+    // beside Request removal (5).
+    var rrBtn = toolbar.querySelector('.scw-ws-v2-bulk-request-removal');
+    if (rrBtn) {
+      var rrIds = (n === 0) ? [] : crLockedSelection();
+      var rrLabel = rrBtn.querySelector('.scw-ws-v2-bulk-request-removal-label');
+      if (!salesCrLive()) {
+        rrBtn.style.setProperty('display', 'none', 'important');
+        rrBtn.disabled = true;
+      } else {
+        rrBtn.style.removeProperty('display');
+        rrBtn.disabled = (rrIds.length === 0);
+        rrBtn.title = rrIds.length
+          ? 'Add a removal request for ' + rrIds.length + ' locked line item' +
+            (rrIds.length === 1 ? '' : 's')
+          : 'None of the selected items are locked — use Delete instead';
+        if (rrLabel) {
+          rrLabel.textContent = rrIds.length
+            ? ('Request removal (' + rrIds.length + ')')
+            : 'Request removal';
+        }
+      }
     }
   }
 
@@ -948,6 +1036,7 @@
       var id = all[i].getAttribute('data-scw-ws-v2-select');
       if (!id || seen[id]) continue;
       if (all[i].offsetParent === null) continue;
+      if (all[i].closest && all[i].closest('.scw-ws-v2--readonly')) continue;
       seen[id] = true;
       out.push(all[i]);
     }
@@ -973,9 +1062,17 @@
     return true;
   }
 
+  // Real modifier state at mousedown — a click synthesized from a label
+  // or re-dispatched by other handlers can reach the box without shiftKey.
+  var _shiftDownAtMousedown = false;
+
   function wireGlobalDelegates(sourceViewKey) {
     if (document.documentElement.hasAttribute('data-scw-ws-v2-bulk-bound')) return;
     document.documentElement.setAttribute('data-scw-ws-v2-bulk-bound', '1');
+
+    document.addEventListener('mousedown', function (e) {
+      _shiftDownAtMousedown = !!e.shiftKey;
+    }, true);
 
     // Capture shift-state at mousedown — by the time `change` fires the
     // modifier keys aren\'t on the event. We hijack the click on the row
@@ -985,11 +1082,16 @@
       var t = e.target;
       if (!t || !t.hasAttribute) return;
       if (!t.hasAttribute('data-scw-ws-v2-select')) return;
+      // Boxes inside readOnly panels (CO adopt/remove sources) never feed
+      // the bulk selection — those panels have their own selection flows
+      // (co-remove checkboxes) and their own toolbars. card.js no longer
+      // renders the box there; this guards any straggler.
+      if (t.closest && t.closest('.scw-ws-v2--readonly')) return;
 
       // Stop the click bubbling to the card\'s expand handler.
       e.stopPropagation();
 
-      if (e.shiftKey && lastAnchorId) {
+      if ((e.shiftKey || _shiftDownAtMousedown) && lastAnchorId) {
         // Range mode: the box\'s checked state already flipped via the
         // browser default; use the new state as the "on/off" for the
         // whole range. Then refresh DOM.
@@ -1015,6 +1117,7 @@
     document.addEventListener('change', function (e) {
       var t = e.target;
       if (!t) return;
+      if (t.closest && t.closest('.scw-ws-v2--readonly')) return;
       if (t.hasAttribute && t.hasAttribute('data-scw-ws-v2-select')) {
         // Shift-click was handled in the click listener above; here we
         // only catch the plain toggle. If shift was held, the click
@@ -1049,8 +1152,18 @@
     var s = xhr.status;
     return s === 0 || s === 408 || s === 429 || (s >= 500 && s <= 599);
   }
-  function doPutWithRetry(viewKey, recordId, body, attempt) {
+  function doPutWithRetry(viewKey, recordId, body, attempt, _auditPrev) {
     attempt = attempt || 1;
+    // Edit-history snapshot (auditField views only) — captured ONCE before
+    // the first attempt and carried through retries, so a retry can't read
+    // post-patch values as the "from" side.
+    if (attempt === 1 && _auditPrev == null) {
+      try {
+        if (ns.audit && ns.audit.enabledFor(viewKey)) {
+          _auditPrev = ns.audit.snapshotValues(viewKey, recordId, body);
+        }
+      } catch (e) { /* ignore */ }
+    }
     var d = $.Deferred();
     try {
       SCW.knackAjax({
@@ -1058,13 +1171,18 @@
         type: 'PUT',
         data: JSON.stringify(body),
         success: function (resp) {
+          try {
+            if (_auditPrev && ns.audit && typeof ns.audit.logPut === 'function') {
+              ns.audit.logPut(viewKey, recordId, body, { prevValues: _auditPrev, resp: resp });
+            }
+          } catch (e) { /* ignore */ }
           d.resolve({ ok: true, recordId: recordId, status: 200, resp: resp });
         },
         error: function (xhr) {
           if (attempt < MAX_ATTEMPTS && isRetryable(xhr)) {
             var wait = BASE_BACKOFF * Math.pow(2, attempt - 1) + Math.random() * 250;
             setTimeout(function () {
-              doPutWithRetry(viewKey, recordId, body, attempt + 1)
+              doPutWithRetry(viewKey, recordId, body, attempt + 1, _auditPrev)
                 .then(function (r) { d.resolve(r); });
             }, wait);
           } else {
@@ -2597,6 +2715,13 @@
     mount:            mount,
     syncDomFromState: syncDomFromState,
     refreshToolbar:   refreshToolbar,
+    /** Drop the selection + repaint. Used by the sales-CR bulk removal modal
+     *  so N rows aren't left ticked after they've all been marked. */
+    clear: function () {
+      clearAll();
+      try { syncDomFromState(); } catch (e) { /* toolbar still refreshes */ }
+      refreshToolbar();
+    },
     // FE-only delete primitives — callers must pass the view to DELETE through.
     deleteRecordFE:   deleteRecordFE,
     queuedDeleteFE:   queuedDeleteFE

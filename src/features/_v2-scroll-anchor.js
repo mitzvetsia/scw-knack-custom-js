@@ -21,6 +21,12 @@
  * (or a time cap), abort if the user scrolls, and fall back to holding the
  * pre-rebuild scroll position whenever the anchor row isn't resolvable.
  *
+ * On top of the loop, a DOC-HEIGHT FLOOR (body min-height = pre-rebuild
+ * scrollHeight, ~1.5s) makes the browser's scroll CLAMP impossible while the
+ * rebuilt DOM is transiently short — the clamp fires between frames with no
+ * JS scroll involved, so it's the one jump the loop alone can't stop (see
+ * the FLOOR_MS note below).
+ *
  *   SCW.v2ScrollAnchor.around(rowSelector, idAttr, runRebuildFn)
  ****************************************************************************/
 (function () {
@@ -66,6 +72,46 @@
   // they're superseded and abort, so only the latest render's loop runs.
   var _runToken = 0;
 
+  // ── Doc-height floor (browser-clamp guard) ─────────────────────────────
+  // The rebuilt DOM is transiently SHORTER than what it replaced while photo
+  // strips re-decode and late mounts fill back in. If the document's
+  // scrollable range dips below the current scrollY for even one layout
+  // pass, the BROWSER clamps the scroll to the new bottom — no scrollTo/
+  // scrollBy involved, so nothing for scroll-spy to trace; the page just
+  // "randomly" jumps up and stays there when the content regrows (observed
+  // on scene_1140: every MDF save's refetch→rebuild landed scrollY at
+  // exactly docHeight − viewportHeight). The settle loop can't prevent it —
+  // the clamp fires between our frames and re-clamps as long as the doc
+  // stays short. So FLOOR the height across the rebuild: body min-height =
+  // the pre-rebuild scrollHeight, released after FLOOR_MS (images have
+  // decoded and layout has settled by then) or as soon as the user scrolls
+  // (their gesture re-legitimizes wherever the page sits). Re-arming while
+  // active just refreshes the window, so a render storm stays floored until
+  // FLOOR_MS after its last rebuild.
+  var FLOOR_MS = 1500;
+  var _floorTimer = 0;
+  var _floorPrev = null;   // body.style.minHeight to restore ('' typically)
+  function releaseFloor() {
+    if (_floorTimer) { clearTimeout(_floorTimer); _floorTimer = 0; }
+    if (_floorPrev !== null) {
+      try { document.body.style.minHeight = _floorPrev; } catch (e) { /* ignore */ }
+      _floorPrev = null;
+    }
+  }
+  function applyFloor(px) {
+    if (!px) return;
+    try {
+      if (_floorPrev === null) _floorPrev = document.body.style.minHeight || '';
+      document.body.style.minHeight = px + 'px';
+    } catch (e) { return; }
+    if (_floorTimer) clearTimeout(_floorTimer);
+    _floorTimer = setTimeout(releaseFloor, FLOOR_MS);
+    // One-shot user-gesture release (once: they self-remove; releaseFloor
+    // is idempotent, so a stale one firing later is a no-op).
+    window.addEventListener('wheel', releaseFloor, { passive: true, once: true });
+    window.addEventListener('touchmove', releaseFloor, { passive: true, once: true });
+  }
+
   function cssEsc(s) {
     if (window.CSS && CSS.escape) return CSS.escape(s);
     return String(s).replace(/["\\\]\[]/g, '\\$&');
@@ -79,6 +125,12 @@
     var myToken = ++_runToken;   // supersede any in-flight settle loop
     var anchor = null;
     var prevY = scrollY();
+    // Pre-rebuild doc height: the clamp-guard floor (below) and the
+    // displacement-vs-layout test in the settle loop both key off it.
+    var capH = 0;
+    try { capH = document.documentElement.scrollHeight; } catch (eF) { /* ignore */ }
+    // Clamp guard — skipped at the top of the page (nothing to clamp).
+    var floorPx = prevY > 0 ? capH : 0;
     try {
       var rows = document.querySelectorAll(rowSelector);
       var guard = 72;                       // clear sticky toolbars / headers
@@ -93,6 +145,9 @@
     } catch (e) { /* ignore — fall through to a plain rebuild */ }
 
     run();
+    // Floor AFTER the swap so the short rebuilt DOM never shrinks the
+    // scrollable range below where the user sits (see the note on FLOOR_MS).
+    applyFloor(floorPx);
 
     // Bounded settle loop. Re-pin the anchor (or hold prevY) every frame so
     // late layout shifts can't drift or clamp the page. Stops early once
@@ -101,13 +156,25 @@
     var stable = 0;
     var userScrolled = false;
     function onUserScroll() { userScrolled = true; }
+    // Keyboard scrolling counts as the user taking over too — now that the
+    // loop CHASES displacement, it must never fight a PageUp/arrow scroll.
+    // Keys typed into inputs don't scroll the page, so they don't abort.
+    function onKeyScroll(e) {
+      if (!e.key || !/^(Arrow|Page|Home|End| )/.test(e.key)) return;
+      var t = e.target;
+      if (t && (t.isContentEditable ||
+        /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
+      userScrolled = true;
+    }
     // passive listeners — we only OBSERVE that the user grabbed the scroll.
     window.addEventListener('wheel', onUserScroll, { passive: true });
     window.addEventListener('touchmove', onUserScroll, { passive: true });
+    window.addEventListener('keydown', onKeyScroll, true);
 
     function cleanup() {
       window.removeEventListener('wheel', onUserScroll, { passive: true });
       window.removeEventListener('touchmove', onUserScroll, { passive: true });
+      window.removeEventListener('keydown', onKeyScroll, true);
     }
 
     function tick(ts) {
@@ -125,15 +192,36 @@
           // but never CHASE a big downward shift (content added above = a jump).
           var delta = el.getBoundingClientRect().top - anchor.top;
           if (delta > BIG_DOWN || delta < -BIG_UP) {
-            // Big shift either direction — hold the pre-edit scroll rather than
-            // chasing it, but ONLY within HOLD_MS (see its comment above). A
-            // shift that's STILL big past that window means the row genuinely
-            // relocated (not a transient reflow) — stop forcing prevY so the
-            // page can settle wherever the rebuild actually left it.
-            if (withinHoldWindow && Math.abs(scrollY() - prevY) > 1) {
+            // Big shift — TWO causes that need OPPOSITE responses:
+            //  · LAYOUT: content above grew/shrank, and the doc height moved
+            //    with it. Chasing that is itself a jump (the scrollBy(+243) /
+            //    scrollBy(-6526) incidents in the notes above) → old
+            //    behavior: hold prevY within HOLD_MS, then let it settle.
+            //  · DISPLACEMENT: the doc height is UNCHANGED and the anchor
+            //    moved anyway — nothing reflowed; something scrolled the
+            //    WINDOW out from under the user (Knack scrolling after a
+            //    render through a pre-patch native scrollTo reference —
+            //    invisible to scroll-spy, observed on scene_1140 as
+            //    -600/-955px "no user gesture" jumps at a rock-stable
+            //    docHeight). That one we CHASE: restoring the anchor row's
+            //    viewport spot exactly undoes the external scroll.
+            var hNow = 0;
+            try { hNow = document.documentElement.scrollHeight; } catch (eH) { /* ignore */ }
+            var heightStable = capH > 0 && hNow > 0 && Math.abs(hNow - capH) < 80;
+            if (heightStable) {
+              guardLog('around: chasing ' + Math.round(delta) +
+                'px displacement of ' + anchor.key + ' (height stable)');
+              window.scrollBy(0, delta); corrected = true;
+            } else if (withinHoldWindow && Math.abs(scrollY() - prevY) > 1) {
               window.scrollTo(0, prevY); corrected = true;
             }
           } else if (Math.abs(delta) > 1) {
+            // Diary the re-pins big enough to feel — the "little nudge"
+            // class (~50px chases after a rebuild) is content ABOVE the
+            // anchor changing height; the anchor key names WHERE.
+            if (Math.abs(delta) > 10) {
+              guardLog('around: re-pin ' + Math.round(delta) + 'px on ' + anchor.key);
+            }
             window.scrollBy(0, delta); corrected = true;
           }
         } else if (withinHoldWindow) {
@@ -153,6 +241,125 @@
     raf(tick);
   }
 
-  window.SCW.v2ScrollAnchor = { around: around };
+  // ── Edit-time guard — capture-early / restore-late ─────────────────────
+  // The property that made the v1 pages' preserve-scroll-on-refresh
+  // coordinator win this fight: it snapshots scroll at EDIT time (on
+  // knack-cell-update, before any render), then restores after the storm
+  // settles — so a scroll fired DURING Knack's own render can't survive.
+  // around() can't cover that flow: it captures at REBUILD time, which on
+  // a Knack-native render (model.fetch → view render → our rebuild) is
+  // already AFTER Knack scrolled — it then faithfully preserves the wrong
+  // position (observed on scene_1140: the JUMP logs BEFORE the
+  // view-render event). guard(ms) is the capture-early port for
+  // programmatic save paths (MDF saves etc.) that never fire a native
+  // knack-cell-update: call it right before the PUT; for the next `ms` a
+  // per-frame watchdog snaps back any big no-gesture displacement while
+  // the doc height is stable, and re-baselines on genuine layout changes
+  // so a later external scroll is still caught. User input cancels it.
+  // ROW-anchored, not pixel-anchored: on this page the doc height naturally
+  // jitters 100-450px per rebuild (lazy photos, group state), so "did the
+  // height change?" cannot separate legit reflow from an external scroll —
+  // but the row nearest the viewport top IS the user's context either way.
+  // Whatever moves it (Knack's scroll OR content shrinking above), putting
+  // it back at its captured viewport offset restores what the user was
+  // looking at. Only BIG displacements are chased — around()'s settle loop
+  // owns fine re-pinning during its own window.
+  var GUARD_MS_DEFAULT = 3000;   // save + fetch + render storm + Knack's late scroll
+  var GUARD_JUMP_PX = 120;       // below this, leave the page alone
+  var _guardToken = 0;
+  var _guardUntil = 0;           // active guard's deadline (extendable by re-arms)
+  function nowMs() {
+    return (window.performance && performance.now) ? performance.now() : 0;
+  }
+  // Diary — only while scroll-spy is armed, so debugging captures narrate
+  // exactly what the guard saw and did (or why it did nothing).
+  function guardLog(msg) {
+    try {
+      if (window.localStorage && localStorage.scwScrollSpy === '1') {
+        console.warn('[scw-v2-guard] ' + msg);
+      }
+    } catch (e) { /* ignore */ }
+  }
+  function guard(ms, rowSelector, idAttr) {
+    rowSelector = rowSelector || '[data-scw-ws-v2-record]';
+    idAttr = idAttr || 'data-scw-ws-v2-record';
+    if (!(ms > 0)) ms = GUARD_MS_DEFAULT;
+    // A storm arms the guard repeatedly (save → refetch → render →
+    // coalesced refetch…). Only the FIRST capture has a pre-storm
+    // baseline — a re-capture mid-storm could anchor a just-jumped
+    // position and defend the wrong spot. Keep the active guard's anchor
+    // but EXTEND its window, so a long storm can't outlive it (observed:
+    // a late Knack scroll landing just past a fixed 3s window). Gestures
+    // cancel, so a fresh arm after real user scrolling baselines fresh.
+    var armT = nowMs();
+    if (armT && armT < _guardUntil) {
+      _guardUntil = armT + ms;
+      guardLog('re-arm → window extended');
+      return;
+    }
+    _guardUntil = armT + ms;
+    var token = ++_guardToken;   // a newer guard supersedes an EXPIRED one
+    // Same nearest-visible-row capture as around() — but at SAVE time,
+    // before any render can move the page.
+    var anchor = null;
+    try {
+      var rows = document.querySelectorAll(rowSelector);
+      var guardPx = 72;
+      var vh = window.innerHeight || document.documentElement.clientHeight;
+      for (var i = 0; i < rows.length; i++) {
+        var key = rows[i].getAttribute(idAttr);
+        if (!key) continue;
+        var r = rows[i].getBoundingClientRect();
+        if (r.bottom > guardPx && r.top < vh) { anchor = { key: key, top: r.top }; break; }
+      }
+    } catch (e) { /* no anchor → guard is a no-op */ }
+    if (!anchor) { guardLog('arm SKIPPED — no visible anchor row'); return; }
+    guardLog('armed on ' + anchor.key + ' @top=' + Math.round(anchor.top) +
+      ' y=' + Math.round(scrollY()));
+    function cancel() {
+      if (token === _guardToken) { _guardToken++; _guardUntil = 0; }
+      guardLog('cancelled by user gesture');
+      cleanup();
+    }
+    function onKey(e) {
+      if (!e.key || !/^(Arrow|Page|Home|End| )/.test(e.key)) return;
+      var t = e.target;
+      if (t && (t.isContentEditable ||
+        /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
+      cancel();
+    }
+    function cleanup() {
+      window.removeEventListener('wheel', cancel, { passive: true });
+      window.removeEventListener('touchmove', cancel, { passive: true });
+      window.removeEventListener('keydown', onKey, true);
+    }
+    window.addEventListener('wheel', cancel, { passive: true });
+    window.addEventListener('touchmove', cancel, { passive: true });
+    window.addEventListener('keydown', onKey, true);
+    function tick() {
+      if (token !== _guardToken) { cleanup(); return; }
+      // Deadline is the MODULE-level _guardUntil so mid-storm re-arms
+      // extend this loop instead of racing a fixed closure window.
+      if (nowMs() > _guardUntil) { guardLog('expired (no action pending)'); cleanup(); return; }
+      try {
+        var el = document.querySelector(
+          '[' + idAttr + '="' + cssEsc(anchor.key) + '"]');
+        // A row inside a collapsed group reads rect 0,0 — never anchor math
+        // against a hidden element.
+        if (el && el.getClientRects().length) {
+          var delta = el.getBoundingClientRect().top - anchor.top;
+          if (Math.abs(delta) > GUARD_JUMP_PX) {
+            guardLog('correcting ' + Math.round(delta) + 'px displacement of ' +
+              anchor.key + ' (y=' + Math.round(scrollY()) + ')');
+            window.scrollBy(0, delta);
+          }
+        }
+      } catch (e2) { /* keep watching */ }
+      raf(tick);
+    }
+    raf(tick);
+  }
+
+  window.SCW.v2ScrollAnchor = { around: around, guard: guard };
 })();
 /*** END V2 SCROLL ANCHOR ***************************************************/

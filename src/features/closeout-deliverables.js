@@ -38,7 +38,10 @@
   var DEPLOYMENTS = [
     { closeoutView: 'view_3940', docSaveView: 'view_3941',
       addSlug: 'add-file-to-closeout',  editSlug: 'edit-doc-file' },
-    { closeoutView: 'view_4058', docSaveView: 'view_4068',
+    // Sub deployment dashboard (scene_1353): QA sign-off is an SCW/ops
+    // action — the file viewer shows QA Status as read-only there
+    // (decided 2026-08-19).
+    { closeoutView: 'view_4058', docSaveView: 'view_4068', qaReadOnly: true,
       addSlug: 'add-file-to-closeout3', editSlug: 'edit-doc-file' }
   ];
   function depFor(closeoutView) {
@@ -1347,25 +1350,37 @@
       statusLbl.className = POPOVER_ID + '__label';
       statusLbl.textContent = 'QA Status';
       statusSec.appendChild(statusLbl);
-      var chips = document.createElement('div');
-      chips.className = POPOVER_ID + '__chips';
-      QA_STATUS_OPTIONS.forEach(function (opt) {
-        var c = document.createElement('button');
-        c.type = 'button';
-        c.className = POPOVER_ID + '__chip';
-        c.setAttribute('data-value', opt);
-        c.textContent = opt;
-        if (opt === _popoverDoc.qaStatus) c.classList.add('is-selected');
-        c.addEventListener('click', function () {
-          var siblings = chips.querySelectorAll('.' + POPOVER_ID + '__chip');
-          for (var i = 0; i < siblings.length; i++) siblings[i].classList.remove('is-selected');
-          c.classList.add('is-selected');
-          _popoverDoc.qaStatus = opt;
-          refreshActions(pop);
+      // Sub deployment dashboard (deployment qaReadOnly): QA sign-off is an
+      // SCW/ops action — show the current status as plain read-only text
+      // (locked-field convention: fully readable, no input chrome).
+      if ((activeDep() || {}).qaReadOnly) {
+        var roStatus = document.createElement('div');
+        roStatus.className = POPOVER_ID + '__signoff';
+        roStatus.innerHTML = 'Current: <strong>' +
+          escapeHtml(_popoverDoc.qaStatus || 'Pending') +
+          '</strong> — QA sign-off is completed by SCW.';
+        statusSec.appendChild(roStatus);
+      } else {
+        var chips = document.createElement('div');
+        chips.className = POPOVER_ID + '__chips';
+        QA_STATUS_OPTIONS.forEach(function (opt) {
+          var c = document.createElement('button');
+          c.type = 'button';
+          c.className = POPOVER_ID + '__chip';
+          c.setAttribute('data-value', opt);
+          c.textContent = opt;
+          if (opt === _popoverDoc.qaStatus) c.classList.add('is-selected');
+          c.addEventListener('click', function () {
+            var siblings = chips.querySelectorAll('.' + POPOVER_ID + '__chip');
+            for (var i = 0; i < siblings.length; i++) siblings[i].classList.remove('is-selected');
+            c.classList.add('is-selected');
+            _popoverDoc.qaStatus = opt;
+            refreshActions(pop);
+          });
+          chips.appendChild(c);
         });
-        chips.appendChild(c);
-      });
-      statusSec.appendChild(chips);
+        statusSec.appendChild(chips);
+      }
       sbContent.appendChild(statusSec);
 
       // Notes

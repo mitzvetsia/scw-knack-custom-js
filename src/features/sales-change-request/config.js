@@ -29,6 +29,9 @@
     // ── Display / identity fields (worksheetView) ──────────
     labelField:       'field_1950',  // display label (e.g. "E-003")
     productField:     'field_1949',  // product name
+    descField:        'field_2020',  // custom text (Labor Description) — the
+                                     // identity for designator-less rows
+                                     // (Other Services / General Assumptions)
     bucketField:      'field_2219',  // proposal bucket (grouping)
     laborHoursField:  'field_1981',  // product-specific default labor hours
 

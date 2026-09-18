@@ -89,6 +89,11 @@
   //   field_1089  install agreement contact         → CO e-sign banner
   //                (names WHO the signature request went to; banner
   //                 falls back to generic copy if not exposed/blank)
+  //   field_2953  CO Status (via SOW connection)    → CO banner state
+  //                (pre-issue statuses → "preview" copy + request-
+  //                 signature CTA; Issued/Accepted/Applied/Declined →
+  //                 the e-sign banner. Not exposed/blank → e-sign
+  //                 banner, so nothing regresses without the column.)
   //
   // Source view IDs on the public scene:
   //   view_3953  "I'm Ready for a Site Survey"
@@ -116,14 +121,14 @@
   var CO_NAME_FIELDS   = ['field_2656', 'field_2665', 'field_2663'];
   var CO_CONTACT_FIELD = 'field_1089'; // install agreement contact (signer)
 
-  // Read CO_TYPE_FIELD off the record, accepting the plain key or any
-  // connected-field dotted key ('field_XXXX.field_2952'), raw or display,
-  // string or array (FLAG_SOW raw can be an array of choices).
-  function readSowTypeValue(attrs) {
-    var keys = [CO_TYPE_FIELD + '_raw', CO_TYPE_FIELD];
+  // Read a field off the record, accepting the plain key or any
+  // connected-field dotted key ('field_XXXX.field_YYYY'), raw or display,
+  // string or array (multiple-choice raw can be an array of choices).
+  function readConnectedFieldValue(attrs, fieldKey) {
+    var keys = [fieldKey + '_raw', fieldKey];
     for (var k in attrs) {
       if (!attrs.hasOwnProperty(k)) continue;
-      if (k.indexOf('.' + CO_TYPE_FIELD) !== -1) keys.push(k);
+      if (k.indexOf('.' + fieldKey) !== -1) keys.push(k);
     }
     for (var i = 0; i < keys.length; i++) {
       var v = attrs[keys[i]];
@@ -133,6 +138,31 @@
       if (t) return t;
     }
     return '';
+  }
+  function readSowTypeValue(attrs) {
+    return readConnectedFieldValue(attrs, CO_TYPE_FIELD);
+  }
+
+  // ── CO lifecycle state (issued vs pre-issue preview) ───────────────
+  // CO Status (field_2953, on the SOW — expose on view_3952 through the
+  // SOW connection, same dotted-key mechanic as field_2952). An ISSUED
+  // CO shows the "check your email" e-sign banner; a PRE-ISSUE preview
+  // (the ops "Publish CO Preview" action) shows review copy + an
+  // optional "request the signature copy" CTA. Blank/unreadable NEVER
+  // reads as preview — issued-style banner stays, nothing regresses.
+  var CO_STATUS_FIELD = 'field_2953';
+  function coBannerState(attrs) {
+    var s = readConnectedFieldValue(attrs || {}, CO_STATUS_FIELD).toLowerCase();
+    if (!s) return 'issued';
+    return /issued|accepted|applied|declined/.test(s) ? 'issued' : 'preview';
+  }
+  // Notify webhook for the preview CTA — read from the CDN bundle's
+  // config (the bundle loads app-wide, this page included). Blank or
+  // bundle-absent → the CTA simply doesn't render.
+  function coSignatureRequestWebhook() {
+    var u = (window.SCW && window.SCW.CONFIG &&
+             window.SCW.CONFIG.MAKE_CO_SIGNATURE_REQUEST_WEBHOOK) || '';
+    return /PLACEHOLDER/.test(u) ? '' : u;
   }
 
   function isChangeOrderProposal(attrs) {
@@ -635,12 +665,24 @@
           ? cRaw : (attrs[CO_CONTACT_FIELD] || ''))
         .replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
     }
-    var body = contact
-      ? 'The signature request was sent by email to <b>' + escapeHtml(contact) +
-        '</b> — check that inbox for a message from SCW to review and sign ' +
-        'this change order.'
-      : 'The signature request was sent by email — check your inbox for a ' +
-        'message from SCW to review and sign this change order.';
+    var state = coBannerState(attrs);
+    var title, body;
+    if (state === 'preview') {
+      // Pre-issue preview (ops "Publish CO Preview"): nothing has been
+      // sent for signature — this is a review copy.
+      title = 'Change order preview';
+      body = 'This is a review copy of the proposed change order — nothing ' +
+        'has been sent for signature yet. Questions or changes? Contact ' +
+        'your SCW representative.';
+    } else {
+      title = 'This change order is signed electronically';
+      body = contact
+        ? 'The signature request was sent by email to <b>' + escapeHtml(contact) +
+          '</b> — check that inbox for a message from SCW to review and sign ' +
+          'this change order.'
+        : 'The signature request was sent by email — check your inbox for a ' +
+          'message from SCW to review and sign this change order.';
+    }
 
     var banner = doc.createElement('div');
     banner.className = 'scw-co-esign-banner';
@@ -652,9 +694,63 @@
       'text-align: left;';
     banner.innerHTML =
       '<div style="font-size:15px; font-weight:800; margin-bottom:4px;">' +
-        'This change order is signed electronically' +
+        title +
       '</div>' +
       '<div style="font-weight:500;">' + body + '</div>';
+
+    // Preview-state CTA — the client-side nudge that stands in for the
+    // Issue button: posts a tiny notify payload so ops runs Issue from
+    // the preview page. Mirrors published-proposal-render.js; only
+    // renders once MAKE_CO_SIGNATURE_REQUEST_WEBHOOK is configured.
+    if (state === 'preview') {
+      var hookUrl = coSignatureRequestWebhook();
+      if (hookUrl) {
+        var btn = doc.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'Ready to approve? Request the signature copy';
+        btn.style.cssText =
+          'display: inline-block; margin-top: 10px; padding: 9px 18px;' +
+          'background: #0f4c75; color: #fff; border: 1px solid #0f4c75;' +
+          'border-radius: 6px; cursor: pointer;' +
+          'font: 600 13.5px/1.3 system-ui, -apple-system, sans-serif;';
+        btn.addEventListener('click', function () {
+          if (btn.disabled) return;
+          btn.disabled = true;
+          btn.textContent = 'Sending…';
+          $.ajax({
+            url: hookUrl,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+              source:              'public-co-token-page',
+              publishedProposalId: (attrs && attrs.id) || '',
+              proposalName:        String((attrs && (attrs.field_2665 || attrs.field_2656)) || '')
+                                     .replace(/<[^>]*>/g, '').trim(),
+              coStatus:            readConnectedFieldValue(attrs || {}, CO_STATUS_FIELD),
+              pageUrl:             window.location.href
+            }),
+            success: function () { markSent(); },
+            error: function (xhr) {
+              // status 0 = CORS-opaque response; the POST still landed.
+              if (xhr && xhr.status === 0) { markSent(); return; }
+              btn.disabled = false;
+              btn.textContent = 'Something went wrong — try again';
+            }
+          });
+          function markSent() {
+            var done = doc.createElement('div');
+            done.style.cssText =
+              'margin-top: 10px; font: 700 13.5px/1.4 system-ui, sans-serif;' +
+              'color: #166534;';
+            done.textContent =
+              '✓ Thanks — your SCW team has been notified and will send the ' +
+              'signature request shortly.';
+            banner.replaceChild(done, btn);
+          }
+        });
+        banner.appendChild(btn);
+      }
+    }
     doc.body.insertBefore(banner, doc.body.firstChild);
   }
 

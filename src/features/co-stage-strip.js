@@ -143,6 +143,11 @@
       'color:#334155;margin-bottom:12px;}',
       '.scw-co-skip-file{display:block;margin-top:5px;font:400 12px/1.3 system-ui,sans-serif;',
       'color:#334155;width:100%;}',
+      '.scw-co-skip-nobid{display:flex;align-items:flex-start;gap:8px;cursor:pointer;',
+      'font:400 12px/1.45 system-ui,-apple-system,sans-serif;color:#334155;',
+      'margin:-4px 0 12px;}',
+      '.scw-co-skip-nobid input{width:14px;height:14px;margin:1px 0 0;flex:0 0 auto;',
+      'accent-color:#0f4c75;cursor:pointer;}',
       '.scw-co-skip-note{display:block;margin-top:5px;width:100%;box-sizing:border-box;',
       'border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;resize:vertical;',
       'font:400 12.5px/1.45 system-ui,-apple-system,sans-serif;color:#1e293b;}',
@@ -380,10 +385,13 @@
           qty:  num(r, 'field_1964') || 1,
           bid:  num(r, 'field_2150')
         };
+        // field_2150 is the PER-UNIT sub bid — the doc's line amount and the
+        // totals are extended (qty × each), matching how the line is billed.
+        e.total = e.qty * e.bid;
         entries.push(e);
         var t = isRm ? tRm : tAdd;
         if (isRm) nRm++; else nAdd++;
-        t.bid += e.bid;
+        t.bid += e.total;
       }
       var totBid = tAdd.bid + tRm.bid;
 
@@ -447,7 +455,14 @@
                   esc(en.desc) + '</div>'
                 : '') + '</td>' +
             '<td style="' + NUM_TD + '">' + en.qty + '</td>' +
-            '<td style="' + NUM_TD + '">' + esc(money(en.bid)) + '</td>' +
+            // Line total (qty × each); the per-unit price rides beneath it
+            // whenever qty > 1 so the math is visible on the doc.
+            '<td style="' + NUM_TD + '">' + esc(money(en.total)) +
+              (en.qty > 1
+                ? '<br><span style="color:#64748b;font-size:10.5px;' +
+                  'font-weight:400;">' + en.qty + ' × ' + esc(money(en.bid)) +
+                  ' each</span>'
+                : '') + '</td>' +
             '</tr>');
         }
       }
@@ -506,7 +521,10 @@
           tx.push((et.isRm ? '- REMOVE  ' : '+ ADD  ') + et.item +
             (et.drop ? ' — ' + et.drop : ''));
           if (et.desc) tx.push('    ' + et.desc);
-          tx.push('    qty ' + et.qty + ' · sub bid (labor) ' + money(et.bid));
+          tx.push('    qty ' + et.qty + ' · sub bid (labor) ' +
+            (et.qty > 1
+              ? money(et.bid) + ' each · line total ' + money(et.total)
+              : money(et.total)));
         }
       }
       tx.push('');
@@ -588,26 +606,57 @@
 
     // ── actions (ops only — the sub strip renders no buttons) ────────────
     function sendToSub() {
-      confirmThen('Send to sub for pricing?',
-        'Send this change order to the subcontractor for pricing? Current ' +
-        'line pricing is snapshotted as the baseline, and the sub is notified.',
-        'Send to Sub',
-        function () {
-          var doc = buildRequestDoc();
-          fireWebhook('send', {
-            snapshot:    buildSnapshot(),
-            coNumber:    doc.coNumber,
-            coName:      doc.coName,
-            requestHtml: doc.html,
-            requestText: doc.text
-          }, function () {
-            _optimistic = 'Pending Sub Pricing';
-            setPillText('Pending Sub Pricing');
-            render();
-            managePoll();
-            refreshLocks();
-          });
+      // Confirm + optional note in one modal. The note is FOLDED INTO the
+      // request document (requestHtml/requestText) that already rides the
+      // webhook, so the existing Make scenario forwards it to the sub with
+      // zero re-mapping — and it's attributed to the sender by name.
+      var wsNs = window.SCW && window.SCW.worksheetV2;
+      var ask = (wsNs && typeof wsNs.promptNote === 'function')
+        ? wsNs.promptNote({
+            title: 'Send to sub for pricing?',
+            body: 'Current line pricing is snapshotted as the baseline, and ' +
+                  'the sub is notified. Add a note for the subcontractor ' +
+                  '(optional) — it appears at the top of the pricing request ' +
+                  'they receive.',
+            placeholder: 'e.g. Please price by Friday — client wants to sign next week',
+            okLabel: 'Send to Sub',
+            optional: true
+          })
+        : Promise.resolve(window.prompt(
+            'Send this change order to the subcontractor for pricing?\n\n' +
+            'Note for the subcontractor (optional):', ''));
+      ask.then(function (note) {
+        if (note === null || note === undefined) return;   // cancelled
+        note = String(note).trim();
+        var doc  = buildRequestDoc();
+        var html = doc.html;
+        var text = doc.text;
+        if (note) {
+          var who = (getTriggeredBy().name || '').trim() || 'SCW Ops';
+          html = '<div style="margin:0 0 14px;padding:10px 14px;' +
+            'background:#fffbeb;border:1px solid #fde68a;border-radius:8px;' +
+            'font-size:14px;line-height:1.5;">' +
+            '<b>Note from ' + esc(who) + ' (SCW):</b> ' + esc(note) +
+            '</div>' + html;
+          text = 'NOTE FROM ' + who.toUpperCase() + ' (SCW): ' + note +
+            '\n\n' + text;
+        }
+        fireWebhook('send', {
+          snapshot:    buildSnapshot(),
+          coNumber:    doc.coNumber,
+          coName:      doc.coName,
+          requestHtml: html,
+          requestText: text,
+          // Also a first-class key, in case Make ever wants it separately.
+          note:        note
+        }, function () {
+          _optimistic = 'Pending Sub Pricing';
+          setPillText('Pending Sub Pricing');
+          render();
+          managePoll();
+          refreshLocks();
         });
+      });
     }
 
     function nudgeSub() {
@@ -733,7 +782,10 @@
     // Ops sometimes already has the sub's number in hand (bid arrived by
     // email / phone) — let them jump straight to Preview & Issue. Gated:
     // the bid PDF (stored on the CO via SKIP_PDF_FIELD, exposed on
-    // view_4092) and a reason note are both REQUIRED. Status flips
+    // view_4092) and a reason note are both REQUIRED — EXCEPT when ops
+    // declares the CO has $0 labor change (nothing for the sub to price):
+    // the no-bid checkbox waives the PDF and the note alone carries the
+    // audit trail (the webhook flags noBid:true). Status flips
     // directly (same session-authed PUT as Recall); a notify-only webhook
     // (mode 'skip-pricing') carries the note + asset id for ClickUp/audit
     // — fired silently until a Make branch exists for it.
@@ -797,10 +849,14 @@
           '<div class="scw-co-skip-body">This jumps the change order straight ' +
             'to Ops Review / Preview &amp; Issue without the subcontractor ' +
             'pricing round-trip. Attach the bid you already have and note ' +
-            'why — both are required.</div>' +
+            'why — or, if this CO changes no labor, tick the box instead.</div>' +
           '<label class="scw-co-skip-lbl">Sub bid PDF' +
             '<input type="file" class="scw-co-skip-file" ' +
               'accept="application/pdf,.pdf"></label>' +
+          '<label class="scw-co-skip-nobid">' +
+            '<input type="checkbox" class="scw-co-skip-nobid-cb">' +
+            '<span>No sub bid to attach — this CO has <b>$0 labor change</b>, ' +
+              'so there was nothing for the sub to price</span></label>' +
           '<label class="scw-co-skip-lbl">Why are we skipping sub pricing?' +
             '<textarea class="scw-co-skip-note" rows="3" placeholder=' +
               '"e.g. Sub priced via email 7/15 — bid attached."></textarea></label>' +
@@ -814,12 +870,29 @@
         '</div>';
       document.body.appendChild(ovl);
 
-      var fileIn = ovl.querySelector('.scw-co-skip-file');
-      var noteIn = ovl.querySelector('.scw-co-skip-note');
-      var errEl  = ovl.querySelector('.scw-co-skip-err');
-      var goBtn  = ovl.querySelector('[data-skip="go"]');
+      var fileIn  = ovl.querySelector('.scw-co-skip-file');
+      var noBidCb = ovl.querySelector('.scw-co-skip-nobid-cb');
+      var noteIn  = ovl.querySelector('.scw-co-skip-note');
+      var errEl   = ovl.querySelector('.scw-co-skip-err');
+      var goBtn   = ovl.querySelector('[data-skip="go"]');
       function err(msg) { errEl.hidden = !msg; errEl.textContent = msg || ''; }
       function close() { ovl.remove(); }
+
+      // $0-labor declaration: the PDF row hides (nothing to attach) and the
+      // note — still required — is seeded with the standard reason so the
+      // audit trail states it explicitly. Seed only an EMPTY note; whatever
+      // ops typed themselves is never overwritten (and never cleared on
+      // untick — they can edit either way).
+      noBidCb.addEventListener('change', function () {
+        var lbl = fileIn.closest ? fileIn.closest('label') : null;
+        if (lbl) lbl.style.display = noBidCb.checked ? 'none' : '';
+        if (noBidCb.checked) {
+          err('');
+          if (!(noteIn.value || '').trim()) {
+            noteIn.value = '$0 labor change — no sub pricing required.';
+          }
+        }
+      });
 
       ovl.addEventListener('click', function (e) {
         if (e.target === ovl) { close(); return; }
@@ -827,18 +900,24 @@
         if (!b) return;
         if (b.getAttribute('data-skip') === 'cancel') { close(); return; }
 
-        var file = fileIn.files && fileIn.files[0];
-        var note = (noteIn.value || '').trim();
-        if (!file) { err('Attach the sub bid PDF.'); return; }
+        var noBid = !!noBidCb.checked;
+        var file  = fileIn.files && fileIn.files[0];
+        var note  = (noteIn.value || '').trim();
+        if (!noBid && !file) {
+          err('Attach the sub bid PDF — or tick "No sub bid to attach" if ' +
+            'this CO has no labor change.');
+          return;
+        }
         if (!note) { err('Add a note explaining why sub pricing is being skipped.'); return; }
 
         err('');
         goBtn.setAttribute('disabled', 'disabled');
-        goBtn.textContent = 'Uploading…';
-        uploadSkipPdf(file).then(function (assetId) {
+        goBtn.textContent = noBid ? 'Saving…' : 'Uploading…';
+        var step = noBid ? Promise.resolve(null) : uploadSkipPdf(file);
+        step.then(function (assetId) {
           goBtn.textContent = 'Saving…';
           var fields = {};
-          fields[SKIP_PDF_FIELD] = assetId;
+          if (assetId) fields[SKIP_PDF_FIELD] = assetId;
           fields[STATUS_FIELD]   = 'Ops Review';
           if (SKIP_NOTE_FIELD) fields[SKIP_NOTE_FIELD] = note;
           putFields(fields, function (ok) {
@@ -866,7 +945,8 @@
                     changeOrderId: getCoSowId(),
                     mode: 'skip-pricing',
                     skipNote: note,
-                    bidPdfAssetId: assetId,
+                    noBid: noBid,               // $0 labor change — PDF waived
+                    bidPdfAssetId: assetId || null,
                     coNumber: readHeaderValue('field_2123'),
                     coName:   readHeaderValue('field_2126'),
                     triggeredBy: getTriggeredBy()
@@ -1034,7 +1114,8 @@
           '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
           'data-scw-co-act="skip">Skip Sub Pricing &rarr;</button>' +
           '<span class="scw-co-stage-note">Sends the CO to the subcontractor to price ' +
-          '— or skip straight to review with a bid PDF on file.</span>';
+          '— or skip straight to review with a bid PDF on file (none needed ' +
+          'when the CO has $0 labor change).</span>';
       }
       if (cur === 1) {
         // Recall = the ops escape hatch while the ball is in the sub's court —

@@ -37,7 +37,9 @@
     // model — a page cap silently drops the LAST-created records, i.e.
     // change-order items, and their install cards lose the As Quoted
     // panel); view_3914 = acceptance grid feeding origin/quote chips.
-    'view_4072', 'view_3914',
+    // view_4151 / view_4066 = the sub deployment dashboard's (scene_1353)
+    // analogues of the same two grids.
+    'view_4072', 'view_3914', 'view_4151', 'view_4066',
     // Customer questionnaire scene (scene_1347): view_4031 = install line
     // items the cards render from; view_4075 = hidden DOC_photos grid the
     // photo strips scrape (was 100/page — projects past 100 photos lost
@@ -80,8 +82,8 @@
     'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818',
     // review-bids DOC_photos delete-plumbing grid (see VIEW_IDS above)
     'view_4098',
-    // Deploy-scene As-Quoted source grids (see VIEW_IDS above)
-    'view_4072', 'view_3914',
+    // Deploy-scene As-Quoted source grids, ops + sub (see VIEW_IDS above)
+    'view_4072', 'view_3914', 'view_4151', 'view_4066',
     // Customer questionnaire scene grids (see VIEW_IDS above)
     'view_4031', 'view_4075',
     // Change Order scene views (see VIEW_IDS above)

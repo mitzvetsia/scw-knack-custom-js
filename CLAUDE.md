@@ -443,6 +443,26 @@ Notes:
   key in from Builder → Settings → API & Code at paste time only, and
   keep it out of PRs/issues/chat.
 
+## Manage Deployment page (scene_1311) redesign — full reference: docs/deploy-page-redesign.md
+
+Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-auk1dh`
+(every push is live at `https://cdn.jsdelivr.net/gh/mitzvetsia/scw-knack-custom-js@<sha>/dist/knack-bundle.js`).
+**Read the doc's "State of the build" section before touching the page**, then:
+
+- **Modules**: `deploy-page-nav.js` (four stage tiles, parked sections + right
+  drawer, section action bars, "Also on this project" list),
+  `pinned-notes.js` (pinned strip, notes cards, inline composer submitting the
+  hidden `view_4162` add form), `site-maps-strip.js` (maps card, pop-out
+  viewer, density + "+N more"). Sub scene `scene_1353` shares the config.
+- **Invariants**: tiles and the "Also" list are never rebuilt while a drawer is
+  open or closing (a drawer-hosted section counts via its `.scw-deploy-home`
+  placeholder); sections move into the drawer as ELEMENTS and back; UI copy says
+  "Sub", never a subcontractor name; the current tile is white with a navy frame
+  (the navy fill was rejected as "yelly"); no descriptions in the "Also" rows.
+- **Tests**: `tests/deploy-page/` (jsdom). Run all four before every push.
+- **Pending**: QA checklist per line item (Builder keys still needed — see the
+  doc), contacts + pinned contacts, pinned files in the maps strip.
+
 ## Change Orders (design locked 2026-07-03 — full reference: docs/change-orders.md)
 
 Install-phase change orders: ops (or the sub) proposes **adds and removes**
@@ -519,7 +539,7 @@ land in the published PDF. This is a deliberate, user-approved tradeoff —
 - **ES5-compatible** syntax for the most part (`var`, `function`, no arrow functions in older modules), though newer modules use `const`/`let` and template literals
 - **jQuery** (`$`) is available globally (provided by Knack)
 - **No module system** — everything is global via `window.SCW` or IIFE-scoped
-- **No tests** — the codebase has no test framework. Changes are tested manually against the live Knack app
+- **Tests**: no framework, but `tests/` holds plain-node **jsdom smoke tests** for the deploy-page modules (`cd tests && npm install && npm test`). Add one next to a module you change there and keep them green before a push. Everything else is tested manually against the live Knack app
 - **No linter** — no ESLint/Prettier config. Follow existing style in each file
 - Use `!important` sparingly in CSS, but it's often necessary to override Knack's inline styles
 - Comment headers use banner-style delimiters: `/*** FEATURE NAME ***/`
@@ -774,31 +794,29 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **The question**: rebuild the proposal grid from `Knack.views[x].model` data into our own DOM (like worksheet-v2 does) instead of layering ~3.5k lines of transforms on Knack's grid render (`proposal-grid.js` reorders, synthesized L2/L3/L4 headers, accessory relocation, subtotal/discount/total rows, label rewrites, TBD masking, CO tint/banner/manifest, 5 safety-net re-runs).
 - **Decision**: deferred. The pipeline encodes years of pricing-presentation behavior with no tests; a rebuild risks regressing the PUBLISHED PROPOSAL/PDF pipeline (`buildPublishPayload` scrapes this DOM). Revisit only if the layered approach becomes untenable (e.g. another render-race class of bugs like the CO row-moving failures). If attempted: worksheet-v2's model→DOM architecture is the sibling to copy; the publish payload contract is the compatibility bar.
 
-### 21. Collapse buildInvoiceItems' base/CO branch after one reconciliation check
+### 21. buildInvoiceItems base/CO branch — COLLAPSED 2026-09-17
 - **What forked (2026-07-17)**: `buildInvoiceItems` (proposal-pdf-export.js) grew an
-  `isChangeOrder` param. The CO path aggregates rows by REAL qty
-  (`field_1964_raw`, negative on Remove lines) × extended net (`field_2269_raw`),
-  keeps signed amounts, and lets the labor lump go negative; the base path was
-  kept byte-identical to its legacy behavior — 1-per-row counting, unit-price
-  sums (`field_2268_raw` once per row), positive-only gates.
-- **Why collapse it**: the CO math is simply the more correct math, and the base
-  path has a LATENT UNDERCOUNT for any line with qty > 1 (it adds the unit price
-  once per row regardless of qty). Two aggregation paths = two things to
-  maintain; the goal is one.
-- **The gate (do this before collapsing)**: publish one real BASE proposal and
-  reconcile `invoiceItems` — equipment lineTotals should sum to the proposal's
-  Equipment Total and labor to Installation Total (and spot-check a qty>1 line:
-  under the unified math its lineTotal becomes qty × unit, which the legacy path
-  under-reported). If a live Xero invoice was built off the under-reported
-  number, expect the unified output to be HIGHER on qty>1 proposals — that's the
-  fix, not a regression, but confirm finance expects it before flipping.
-- **The collapse**: make the CO math unconditional (qty from `field_1964_raw`
-  default 1, amount from `field_2269_raw` fallback qty×unit), keep the
-  positive-only include gate for base (`> 0`) OR drop it too if reconciliation
-  shows no legitimate negative rows on base proposals; delete the
-  `isChangeOrder` conditionals except the credit flags (`isCredit` stays CO-only
-  by definition). The jsdom suite (scratchpad test-co-publish.js §3d) has the
-  base-regression assertion to update.
+  `isChangeOrder` param. The CO path aggregated rows by REAL qty
+  (`field_1964_raw`) × extended net (`field_2269_raw`); the base path kept the
+  legacy 1-per-row unit-price sum (`field_2268_raw` once per row) — a LATENT
+  UNDERCOUNT for any line with qty > 1.
+- **Collapsed (2026-09-17, INV-11795 audit)**: every row now bills
+  `qty (field_1964_raw; blank → 1; explicit 0 → 0) × net unit (field_2268)` with
+  the amount taken from `field_2269_raw` (fallback qty × unit when the snapshot
+  doesn't project it). Base proposals keep a positive-only include gate
+  (`rowAmt > 0`); COs keep non-zero (removes are negative), the signed labor
+  lump, `isCredit` and the xeroSafe pass. Invoice equipment lines now reconcile
+  to the proposal's Equipment Total (Σ `field_2269`) except License rows, which
+  still route to `recurring` and are NOT invoiced by scenario 10.01.
+- **Expect invoices to be HIGHER than before on proposals with qty>1 rows** —
+  that's the fix, not a regression. Node suite: scratchpad
+  `test-invoice-items.js` (base qty math, edge cases, discounts, CO paths).
+- **Still open (Make side, scenario 10.01)**: the combined invoice (module 165)
+  hardcodes DueDate now+180 while the acceptance is NET30 (`field_948` = +30);
+  the two-invoice route's labor invoice (163) hardcodes a Contact id and +180;
+  TaxJar calls (110/149/168) hit `api.sandbox.taxjar.com`; module 234 updates
+  object_125 with the ACCEPTANCE id (`{{2.id}}`); `recurring` lines are never
+  invoiced anywhere.
 
 ### 17. Builder snippets ship the live Knack REST API key client-side — migrate to view-based reads (HIGH PRIORITY / SECURITY)
 - **The hole**: the out-of-bundle Builder snippets that populate `window.SCW.*` globals (`productBucketMap`, and the newer `deliverablesFields` for the questionnaires) authenticate with the app's **REST API key** in client-side JS. That key is delivered to and used in the **browser** — Knack Builder "JavaScript" is NOT server-side — so anyone who can load the page can read it (DevTools → Network → any `api.knack.com` request → `X-Knack-REST-API-Key` header, in plaintext). A Knack REST key is **not role-scoped**: it grants full read/write to every object, bypassing view/role permissions. This is bad on internal pages and **much worse on customer-facing pages** (e.g. the customer questionnaire `view_4031`), where customers could extract it and read/write all app data.
@@ -816,3 +834,196 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Fix shape (small)**: acceptance flows through the accept-SOW DTO / Make scenario — add a write-back at the moment the install-acceptance record is created (or on the e-signature SIGNED webhook, matching the CO design where signature is the gate): PUT the parent SOW's `FLAG_accepted = Yes` and stamp the REAL date into `SYS_accepted date` (or a new dedicated date field if the auto-fill default must stay). One step fixes both holes.
 - **Follow-up audit**: after the write-back lands, sweep everything that currently READS `FLAG_accepted` (views, filters, Make scenarios, bundle features) — those consumers have only ever seen "No", so their behavior/reporting has been silently understated and may need re-checking once the flag starts flipping.
 - **Related nice-to-have**: keep project `REL_company` mandatory (98% populated today) — it is what makes client-level analysis (and the full "Testies" test-project sweep) possible; the legacy quote-era Contact field is only 22% populated and the legacy Company field is empty (3/7,617).
+
+### 22. Product retirement cascade + "where is this product quoted?" — INERT until Builder keys are filled
+- **Shipped 2026-09-10** as `src/features/product-lifecycle.js` with a `CONFIG` of Builder TBDs
+  that all fail open (one console warning naming what's missing). Full design, rules, and the
+  Builder checklist: **`docs/product-retirement.md`**.
+- **What it does once configured**: saving a product as Disabled (edit form / grid inline edit on
+  the Products page) opens an impact modal and, on confirm, flips a new `FLAG_is disabled` on every
+  SOW line item carrying that product whose SOW was quoted in the last 12 months (or never quoted
+  but created in the last 12 months); the product details view gets a "Where is this product
+  quoted?" panel listing SOWs with a proposal in the last 6 months (window selectable). Writes go
+  through a capped retry queue; already-flagged items are skipped.
+- **Builder work needed**: `FLAG_is disabled` on SOW Line Item; `SYS_latest proposal date` (Max
+  formula over published proposals) on the SOW header; hidden all-records grids of SOW Line Items
+  (flag inline-editable) and SOW headers on the Products page; then fill `sceneKey`,
+  `productDetailView`, `productStatusViews`, `lineItemsView`, `sowsView`, `lineItem.disabled`,
+  `sow.created`, `sow.latestProposal` (+ optional `sow.project`).
+- **Do NOT reuse `field_2912`** for the flag — it is derived from the product (Yes = still active)
+  and flips for every line item ever created, which is exactly the noise the 12-month rule avoids.
+  Follow-up once the flag exists: OR it into the worksheet "discontinued" badge.
+
+### 23. CO product SWAP lands as "Removed by CO" — Make scenario 13.06b (HIGH URGENCY — VERIFIED)
+
+✅ **Independently verified 2026-09-16** by re-reading the blueprint JSON
+(router 164 filters and modules 161/219 mappers quoted verbatim below are
+exact) and confirmed against the live SW1781CO publish payload. That payload
+settles the last open question — WHY the bracket's line specifically won:
+feeder [87] emits the CO lines in `field_2173` order (30914 Deputy-Remove,
+30915 Informant-Add, **30916 Wall-Bracket-Remove targeting the CAMERA**,
+30917 EBM-Add). For the camera that is [161] set → [219] clear → [161] set,
+so the last writer is the bracket's Remove line, hence `field_2967` = that
+line and the chip shows a bracket name. Router semantics: a Make router runs
+*every* route whose filter passes, but the three filters are mutually
+exclusive per line — the fight is across LINES, and feeder order decides.
+Two corrections to the original read: (a) the EBM Add having no
+`field_2966` is CORRECT — it is a net-new accessory, a plain Add, not a
+swap leg; (b) the real upstream anomaly is the wall-bracket Remove targeting
+the camera's install record instead of its own.
+
+- **Symptom (seen 2026-09-15)**: install record `6a62981788f3ebe5858c08a1`
+  (`I-03`, Informant Dual Vision, project `69f0d4b567a35332e743cc27`) renders in
+  the worksheet's collapsible **Removed by CO** section with the chip
+  `Removed by CO Wall Mount Bra…` — when the change order (`1781CO`, quote
+  20260915-11613, signed) was meant to be a **product swap, not a removal**. The
+  card still lists BOTH mounts ("Wall Mount Bracket for The Deputy…" and
+  "Electrical Box Mount for the Informant 4.0 Dual Vision"), and its As-Quoted
+  panel does resolve the 1781CO line (`2 differ`: Connected To, Conduit) — so
+  the target-linked Add leg exists.
+- **Scenario**: `*13.06b | CHANGE ORDER | True Deployment Records based on
+  signed CO`. Relevant modules: router **[164]** (3 routes), **[161]** REMOVE,
+  **[219]** SWAP, **[92]** create install line, feeder **[87]** (iterates
+  `{{73.view_3896}}` = the CO's LINE ITEMS), **[11]** get SOW (= the CO header,
+  `object_106`, `record_id = {{9.field_2666_raw[].id}}`).
+
+**Claimed bug 1 — route 1 has no swap guard.** Router [164] filters:
+  - route 0 ADD: `field_2965_raw = "Add"` AND `field_2966_raw[].id` **notexist**
+  - route 1 REMOVE: `field_2965_raw = "Remove"` ← *only condition*
+  - route 2 SWAP: `field_2965_raw = "Add"` AND `field_2966_raw[].id` **exist**
+
+  A swap is a **linked pair** of CO lines (see the swap contract in
+  `worksheet-v2/co-remove.js`, header comment ~lines 27-57) and BOTH carry
+  `field_2966` pointing at the same install record. Feeder [87] processes both:
+  [219] sets `field_2967: {{null}}` (clears the flag), [161] sets
+  `field_2967: {{87.id}}` (re-flags it). They fight; the last one processed
+  wins, and the client fires Add-then-remove so the Remove tends to land last.
+  Route 0 got the analogous guard; route 1 didn't.
+  - **Fix shape**: `field_2966` exist/notexist CANNOT distinguish them (a plain
+    Remove needs it to know what to flag). Use the same test the client uses
+    (`co-remove.js` `coTargetCounts`: *one* targeting line = plain remove,
+    *two+* = swap pair): before feeder [87], aggregate install ids targeted by
+    `action = Add AND field_2966 exists` lines into a variable, then add to
+    route 1 `target install id NOT IN that set`. Modules **[303]/[304]** already
+    build this shape of map. Reordering routes will NOT fix it — feeder order
+    decides, not route order.
+  - ⚠ **Unconfirmed premise**: whether a Make BasicRouter runs *every* passing
+    route or only the first match, and whether that changes the analysis.
+
+**Claimed bug 2 — `field_2967` gets the CO LINE id, not the CO header.**
+  [161] maps `field_2967 = "{{87.id}}"`, but [87] iterates CO **line items**, so
+  the install record is connected to a SOW Line Item whose identifier is a
+  **product name** — hence the bracket text in the chip (`card.js` `shortCoLabel`
+  finds no CO digits and falls back to a 14-char truncation).
+  `config.js` (~line 232) declares `removedByCo: 'field_2967'` as
+  *"CO_REL_removed by co (**→ CO header**)"*.
+  - **Fix shape**: `field_2967 = {{11.id}}`. Note [92] does the analogous thing
+    correctly — `field_2819 = {{87.id}}` genuinely *is* the source CO line — so
+    [161] looks copy-pasted from it.
+  - **Builder check needed**: which object does `field_2967` actually connect
+    to? It accepted a line-item id and rendered a product name, suggesting it
+    points at SOW Line Items, not SOW. Either Builder is wrong or our
+    `config.js` comment is. The card's label logic assumes the header.
+
+**Not in this blueprint — upstream.** For the CAMERA's install record to be
+flagged by the BRACKET's CO line, that bracket Remove line's `field_2966` must
+point at the camera rather than at the bracket's own install record. This
+scenario only *consumes* `field_2966`; it's set by whatever handles
+`MAKE_CO_REMOVE_ITEMS_WEBHOOK` when the CO lines are created. The client sends
+each accessory its own target (`co-remove.js` ~line 1418,
+`targetInstallItemId: aRec.id`), so check whether that scenario applies the
+device's install id across every id in the call instead of per-id. Fixing bug 1
+makes this harmless for swaps but it would still mis-flag a plain accessory
+removal. **Also unexplained**: both mounts are still present, i.e. the bracket
+accessory was never actually removed.
+
+**Recovery for the affected record**: clear `field_2967` on
+`6a62981788f3ebe5858c08a1` (the durable flag — clearing it returns the item to
+active scope), confirm the product swap actually applied to the camera, and
+check whether the wall-bracket accessory still needs removing.
+
+**Optional client-side guard (not built)**: `card.js` already has the signal —
+flag when `field_2967` resolves to a record whose identifier carries no CO
+number, and when a removed item still has a target-linked Add. Render amber
+rather than presenting the bad state as fact. Same shape as the acceptance-card
+bid-basis seal (`acceptance-card.js` `basisDrift`). Useful after the Make fixes
+too, since it catches the next regression where someone is actually looking.
+
+### 24. JSON snapshot (`field_2671`) — HTML attributes get mangled in the stored string (bundle FIXED 2026-09-17; Make patch pending)
+- **Symptom**: 11.04 module 6 (Parse JSON of `[{{4.field_2671_raw}}]`) fails with
+  "invalid JSON" at greenlight. Same read in 13.06b module 73 (`9.field_2671_raw`)
+  and 11.06 module 84 (`83.field_2671_raw`).
+- **Root cause (confirmed against all 429 published proposals)**: rich-text `_raw`
+  values that carry tag ATTRIBUTES (`<ul class="ak-ul">`, `<span style>`, `<a href>`)
+  serialize as `class=\"ak-ul\"`; the paragraph field the snapshot is stored in runs
+  an HTML-aware sanitizer that mangles every escaped attribute quote to `class="\"`
+  (value dropped, one backslash dropped). 21/21 snapshots that ever contained a tag
+  with attributes are broken; 0/408 without one; escaped quotes in plain text
+  (`26\" monitor`) survive. `stripNonRawFields` already dropped the rendered
+  `<span class="id">` twins for this reason — the rich-text raw HTML slipped through.
+- **Bundle fix**: `stripHtmlTagAttrs` (proposal-pdf-export.js) runs on every string
+  leaf inside `stripNonRawFields`, so `jsonString` never contains `=\"`. Rule going
+  forward: **the stored snapshot must never contain an HTML tag with attributes.**
+- **Make side (pending — needed for the 21 already-published snapshots)**: repair
+  before parsing in each consumer, e.g. 11.04 module 6 JSON string:
+  `[{{replace(4.field_2671_raw; "/ [a-zA-Z-]+=[!-#].[!-#]/g"; emptystring)}}]`
+  (13.06b module 73 uses `9.`, 11.06 module 84 uses `83.`). Drops the mangled
+  attribute (`<ul class="\">` → `<ul>`); the attribute values are already lost and
+  nothing downstream needs them. Verified against all 21 broken snapshots (0 hits
+  in the 408 clean ones). Shipped for 11.04 as a textual blueprint patch
+  (2026-09-17); 13.06b / 11.06 still need the same edit.
+  **Make formula gotchas** (learned the hard way): the regex MUST be a quoted
+  string — bare, the editor tokenizes `/ - + =` as arithmetic operators. A literal
+  `"` cannot be put inside a Make string: typing `\"` in the editor CLOSES the
+  string and it auto-inserts `+` operators around the leftovers (seen in the
+  exported mapper). Hence the pattern spells the quote as the character range
+  `[!-#]` (`!`, `"`, `#`) and the stray backslash as `.` — no quotes, no
+  backslashes, nothing for the editor or IML to reinterpret. Make's `replace()`
+  accepts ONE regex flag only (`g`). Fallback with zero escaping: a Text parser →
+  Replace module (Pattern ` [a-zA-Z-]+="\\"`, New value empty, Global match yes)
+  between the Get Record and the Parse JSON.
+
+### 25. Sales page photo modal (view_3586) — restricted, QA read-only; Builder activation pending
+- **Shipped 2026-09-17**: the worksheet-v2 photo modal now has a per-surface policy
+  (`worksheet-v2/photos.js` `PHOTO_MODAL_POLICY`): ops (view_4093) editable QA; sub
+  (view_4056) and **sales (view_3586) `qa:'readonly'`** — upload / view / replace /
+  remove, the QA sidebar READ-ONLY (status, client signoff, notes, who/when, history
+  log incl. the synthesized "Photo uploaded" stamp), never Type/Required editors; a Pass
+  freezes replace/remove. (`qa:'none'` — no sidebar at all — stays available.) Filled
+  cards on policy surfaces open the modal (Replace/Remove) instead of the lightbox. The
+  save view is mapped (`photo-edit-panel.js` SAVE_VIEWS: `view_3586 → view_3522`); before
+  that the upload pane fell back to the DEPLOY scene's grid (view_3937) and every PUT
+  403'd from scene_1116. Unmapped/unready ⇒ the modal doesn't open and the card keeps
+  its native Knack href (empty slot → add-photo page; filled → lightbox).
+- **QA data self-activates — two sources**: (a) the worksheet's SOURCE grid, where the
+  DOC_photos fields ride THROUGH the photo connection as columns (`extractPhotoRecords`
+  reads `td[data-field-key=field_2859…]` → one `span[id=<photoId>]` per photo — the
+  ops/sub shape, view_4093/view_4056); or (b) when the source row has no QA status
+  column, a same-scene DOC_photos grid mapped in `photos.js` `QA_SOURCE_VIEWS`
+  (**sales: view_3586 → view_3522**, the "Additional Photos" grid) — one
+  `tr[id=<photoId>]` per photo, the PIC fields as plain cells, plus Knack's built-in
+  **Created By (`field_3180`)** as the UPLOADER for every photo (the modal's "Photo
+  uploaded" line names them; bulk/Make uploads read as the API user). Each photo carries
+  `qaColumns` (served); on a `readonly` surface an unserved photo gets no chit and opens
+  the plain viewer instead of a misleading "Needs QA". Source (b) serves a photo only
+  when its row is on the grid's current PAGE. The consumed columns are hidden on the
+  source grid by injected CSS (`scw-ws-v2-qa-source-css`); its render refreshes the
+  worksheet strips (QA state is in the strip signature), and a photo save refetches it.
+  **Builder (sales, done 2026-09-17)**: view_3522 carries `field_2859`/`2860`/`2861`/
+  `2862`/`2863`/`2865` + `field_3180`; set its page size to 1000 (it was 25).
+- **Builder (TO ACTIVATE uploads)**: on view_3522 "Additional Photos" (scene_1116) widen
+  the source filter from "Assign to SOW Item is blank" to every photo on this SOW, enable
+  inline editing on `field_771` (PIC) — plus `field_2447` (FLAG_complete) so "Remove
+  photo" clears the completed flag, and `field_2865` (history) so the sales user's
+  replace/remove events land in the log they now read. Give the grid a large page size:
+  the save PUT is keyed by record id so pagination never blocks it, but hidden linked
+  rows still count against the page, so a small page can leave the visible section empty
+  while unassigned photos sit on page 2.
+  `photo-grid-unlinked-filter.js` hides the rows whose `field_2342` is populated so the
+  section still shows only unassigned photos, fixes "Showing N of N", and stamps
+  `data-scw-acc-count` on the view (a new override `ktl-accordion.js` `computeCount`
+  honors ahead of the model count). Alternative with no client-side filtering: a separate
+  hidden all-photos DOC_photos grid (the view_3584 / view_4070 / view_4158 pattern) and
+  point the SAVE_VIEWS entry at it.
+- **Not changed**: the survey worksheet (view_3505) still opens the FULL editable QA modal
+  for the sub on empty required slots — same class of leak, decide separately.

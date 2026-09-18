@@ -58,6 +58,11 @@
   // Currently open popover state.
   var _popover = null;          // DOM element
   var _photoId = null;          // PIC record id currently being edited
+  // Snapshot of the photo the popover/modal is editing — line-item context
+  // for the QA-fail webhook payload. Deliberately NOT cleared on close: the
+  // close-autosave PUT resolves after the popover is gone and notifyQaFail
+  // still needs it.
+  var _currentPhoto = null;
   var _initialState = null;     // snapshot at open time, used to detect changes
   var _hasUnsavedChanges = false;
   var _isSaving = false;
@@ -296,6 +301,23 @@
          max-height so it fills the sidebar column. */
       '.scw-qa-modal__sidebar .scw-qa-popover__body { max-height: none; flex: 1 1 auto; }',
       '.scw-qa-modal__sidebar .scw-qa-popover__actions { flex: 0 0 auto; }',
+      /* Read-only QA sidebar (sub surfaces) — static values, no controls. */
+      '.scw-qa-popover__ro-val {',
+      '  display: inline-flex; align-items: center; padding: 4px 12px;',
+      '  border-radius: 999px; font: 600 12px/1.2 system-ui, sans-serif;',
+      '  background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0;',
+      '}',
+      '.scw-qa-popover__ro-val--pass { background: #dcfce7; color: #15803d; border-color: #86efac; }',
+      '.scw-qa-popover__ro-val--fail { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }',
+      '.scw-qa-popover__ro-val--pending { background: #ede9fe; color: #6d28d9; border-color: #c4b5fd; }',
+      '.scw-qa-popover__ro-text {',
+      '  font: 400 12.5px/1.5 system-ui, sans-serif; color: #374151;',
+      '  white-space: pre-wrap; overflow-wrap: anywhere;',
+      '}',
+      '.scw-qa-popover__ro-note {',
+      '  margin-top: 12px; font: 500 11.5px/1.4 system-ui, sans-serif;',
+      '  color: #94a3b8;',
+      '}',
       /* No-QA (preview-only) modal — no sidebar, viewer fills full width. */
       '.scw-qa-modal--noqa .scw-qa-modal__viewer { flex: 1 1 100%; }'
     ].join('\n');
@@ -404,6 +426,7 @@
     var rawClient = readSpanText(F.client);
     return {
       id:         photoId,
+      lineItemId: (tr && tr.id) || '',   // the source row IS the line item
       type:       readType(),
       status:     normalizeOption(rawStatus, STATUS_OPTIONS) || 'Pending',
       client:     normalizeOption(rawClient, ['N/A'].concat(CLIENT_OPTIONS)) || 'N/A',
@@ -478,7 +501,371 @@
     return safe + '<br>' + existing;
   }
 
+  /** When the photo RECORD was created — i.e. the original upload —
+   *  derived from the Knack record id (Mongo-style: first 8 hex chars are
+   *  unix seconds). Available for EVERY photo, past or future, with no
+   *  Builder field. Rendered in the viewer's local timezone. '' on a
+   *  malformed id. */
+  function uploadedStampFromId(id) {
+    var s = String(id || '');
+    if (!/^[a-f0-9]{24}$/i.test(s)) return '';
+    var secs = parseInt(s.slice(0, 8), 16);
+    if (!secs) return '';
+    var d = new Date(secs * 1000);
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+      ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  /** History block innerHTML with the synthesized "Photo uploaded" line at
+   *  the BOTTOM (entries stack newest-first, and the upload is by
+   *  definition the oldest event). The uploader's NAME isn't derivable
+   *  client-side for photos created outside the modal (no Created-By field
+   *  on the photos object); in-modal uploads/replaces/removes log their own
+   *  attributed entries via logPhotoEvent. Returns '' when there's nothing
+   *  to show. */
+  function historyHtmlWithUpload(photo) {
+    // An image-less record (empty required slot) was created, not uploaded
+    // — only its logged events (if any) show.
+    var up = (photo && photo.completed !== false) ? uploadedStampFromId(photo.id) : '';
+    var hist = (photo && photo.history && String(photo.history).trim())
+      ? String(photo.history) : '';
+    // Uploader name when the host knows it (Knack's Created By via a QA
+    // source grid — worksheet-v2/photos.js); otherwise the bare stamp.
+    var who = (photo && photo.uploadedBy) ? String(photo.uploadedBy).trim() : '';
+    var upLine = up
+      ? escapeHtml(up + ' — ' + (who ? who + ' — ' : '') + 'Photo uploaded') : '';
+    if (hist && upLine) return linkifyHistory(hist + '<br>' + upLine);
+    return linkifyHistory(hist || upLine);
+  }
+
+  /** Render raw URLs in history entries as compact links. The only URLs
+   *  ever written into the history field are prior-version asset URLs
+   *  (REPLACED/REMOVED events preserve the outgoing image's URL — Knack
+   *  keeps overwritten assets alive at their original address, so the
+   *  link IS the photo archive). */
+  function linkifyHistory(html) {
+    return String(html || '').replace(/(https?:\/\/[^\s<]+)/g, function (url) {
+      return '<a href="' + url + '" target="_blank" rel="noopener" ' +
+        'class="scw-qa-popover__hist-link">view photo</a>';
+    });
+  }
+
+  /** Best-effort audit write: prepend "<stamp> — <user> — <event>" to the
+   *  photo's QA history in its OWN PUT after the primary image operation
+   *  succeeded. Separate on purpose — a save view that doesn't carry
+   *  field_2865 must never fail the upload/replace/remove itself. Advances
+   *  photo.history locally so a second event in the same modal session
+   *  stacks instead of overwriting. */
+  function logPhotoEvent(photo, saveView, event, detail) {
+    try {
+      var u = pepUtil();
+      if (!u || !saveView || !photo || !photo.id) return;
+      var newHist = prependHistory(photo.history || '', event, detail);
+      var body = {};
+      body[F.history] = newHist;
+      u.putRecord(saveView, photo.id, body).then(function () {
+        photo.history = newHist;
+      }).catch(function (err) {
+        console.warn('[scw-qa] history log skipped (' + event + '):',
+          (err && err.message) || err);
+      });
+    } catch (e) { /* audit only — never break the image flow */ }
+  }
+
   // ── Save ────────────────────────────────────────────────────────
+
+  // ── Project record id (QA-fail payload) ─────────────────────────
+  // DATA FIRST. Every source below reads the Project record id out of
+  // records Knack has already loaded on the page (or out of the QA save's
+  // own PUT response); the URL is the last resort, not the plan. Every
+  // route that hosts this popover is keyed off the Project record, so any
+  // Project connection rendered anywhere on the scene IS the page's
+  // project — the chain simply prefers the most direct link:
+  //
+  //   1. lineItem        the failed photo's own install line item (the
+  //                      worksheet row it sits in) → its Project connection,
+  //                      whichever field that is on the install object
+  //                      (resolved from the app schema — see projectSchema).
+  //   2. photo:put       the QA save's PUT response — the photo record's
+  //                      own Project connection (DOC_photos field_675),
+  //                      when the save view projects that column.
+  //   3. photo:row       the same field, read off the photo's row in any
+  //                      loaded view model (the hidden DOC_photos grids).
+  //   4. project:details a details view OF the Project record → model.id.
+  //   5. page            any Project connection on any loaded row/details
+  //                      view — accepted only when every row on the page
+  //                      agrees, so a stray unscoped grid can't mislead it.
+  //   6. dom             connection-value spans for those same fields
+  //                      (views whose models aren't populated).
+  //   7. hash            the project-dashboard/<id> route segment.
+  //
+  // "Project connection" fields are discovered from Knack.objects — the
+  // app schema Knack ships to the browser (connected-records.js reads the
+  // same collection): the Project object key is whatever field_675 points
+  // at, and every connection field on every object targeting that key
+  // counts. A Builder column change on any one grid therefore can't
+  // silently drop this back to the URL. The known keys are seeded in case
+  // the schema isn't reachable.
+  //
+  // resolveProjectRef({ photoId, lineItemId, putResp }) → { id, source }.
+  // Exposed as SCW.qaPopover.resolveProjectId for DevTools checks — run it
+  // on a deploy page with a line item id to see which source answers.
+  var PHOTO_PROJECT_CONN = 'field_675';   // DOC_photos → Project
+  var SOW_PROJECT_CONN   = 'field_2119';  // SOW → Project
+  var PROJECT_CONN_SEEDS = [
+    PHOTO_PROJECT_CONN,
+    SOW_PROJECT_CONN,
+    'field_1770',   // System-setup questionnaire → Installation Project
+    'field_2181'    // Survey bid item → REL_project
+  ];
+  var HEX24 = /^[a-f0-9]{24}$/i;
+
+  /** A single connected id from a connection `_raw` value — '' when empty
+   *  or when the field lists several records (ambiguous, skip it). */
+  function singleConnId(raw) {
+    if (Array.isArray(raw)) {
+      return (raw.length === 1 && raw[0] && raw[0].id) ? String(raw[0].id) : '';
+    }
+    return (raw && raw.id) ? String(raw.id) : '';
+  }
+
+  /** { objectKey, keys } — the Project object key + every connection field
+   *  (any object) that points at it. Memoized once the schema read
+   *  succeeds; Knack.objects is static for the app session. */
+  var _projSchema = null;
+  function projectSchema() {
+    if (_projSchema) return _projSchema;
+    var objectKey = '';
+    var keys = PROJECT_CONN_SEEDS.slice();
+    try {
+      var objs = window.Knack && Knack.objects && Knack.objects.models;
+      var i, j, f, fields;
+      // Pass 1 — which object does the photo's Project connection target?
+      for (i = 0; objs && i < objs.length && !objectKey; i++) {
+        fields = objs[i] && objs[i].attributes && objs[i].attributes.fields;
+        for (j = 0; fields && j < fields.length; j++) {
+          f = fields[j];
+          if (f && f.key === PHOTO_PROJECT_CONN && f.relationship &&
+              f.relationship.object) {
+            objectKey = String(f.relationship.object);
+            break;
+          }
+        }
+      }
+      // Pass 2 — every connection field, on any object, pointing at it.
+      for (i = 0; objectKey && objs && i < objs.length; i++) {
+        fields = objs[i] && objs[i].attributes && objs[i].attributes.fields;
+        for (j = 0; fields && j < fields.length; j++) {
+          f = fields[j];
+          if (f && f.type === 'connection' && f.relationship &&
+              f.relationship.object === objectKey && keys.indexOf(f.key) === -1) {
+            keys.push(f.key);
+          }
+        }
+      }
+    } catch (e) { /* seeds only */ }
+    var out = { objectKey: objectKey, keys: keys };
+    if (objectKey) _projSchema = out;   // cache complete reads only
+    return out;
+  }
+
+  /** First Project connection on a record's attributes, over `keys`. */
+  function projectIdFromAttrs(attrs, keys) {
+    if (!attrs) return '';
+    for (var k = 0; k < keys.length; k++) {
+      var id = singleConnId(attrs[keys[k] + '_raw']);
+      if (id && HEX24.test(id)) return id;
+    }
+    return '';
+  }
+
+  /** fn(viewKey, model) over every loaded Knack view; return true to stop. */
+  function eachLoadedView(fn) {
+    var views = window.Knack && Knack.views;
+    for (var vk in views) {
+      if (!Object.prototype.hasOwnProperty.call(views, vk)) continue;
+      var mdl = views[vk] && views[vk].model;
+      if (!mdl) continue;
+      if (fn(vk, mdl) === true) return true;
+    }
+    return false;
+  }
+
+  /** Project id off a specific record's row in any loaded grid model. */
+  function projectIdFromRow(recordId, keys) {
+    var found = '';
+    if (!recordId) return '';
+    eachLoadedView(function (vk, mdl) {
+      var rows = mdl.data && mdl.data.models;
+      for (var i = 0; rows && i < rows.length; i++) {
+        if (rows[i] && rows[i].id === recordId) {
+          found = projectIdFromAttrs(rows[i].attributes, keys);
+          if (found) return true;
+        }
+      }
+    });
+    return found;
+  }
+
+  function resolveProjectRef(ctx) {
+    ctx = ctx || {};
+    var schema = projectSchema();
+    var keys = schema.keys;
+    var found = '';
+
+    // 1. The failed photo's own install line item row.
+    try { found = projectIdFromRow(ctx.lineItemId, keys); } catch (e1) { found = ''; }
+    if (found) return { id: found, source: 'lineItem' };
+
+    // 2. The QA save's PUT response — the photo record as stored.
+    try {
+      var rec = ctx.putResp && (ctx.putResp.record || ctx.putResp);
+      found = projectIdFromAttrs(rec, [PHOTO_PROJECT_CONN]);
+    } catch (e2) { found = ''; }
+    if (found) return { id: found, source: 'photo:put' };
+
+    // 3. The photo's row in any loaded view model.
+    try { found = projectIdFromRow(ctx.photoId, [PHOTO_PROJECT_CONN]); } catch (e3) { found = ''; }
+    if (found) return { id: found, source: 'photo:row' };
+
+    // 4. A details view of the Project record itself.
+    if (schema.objectKey) {
+      try {
+        found = '';
+        eachLoadedView(function (vk, mdl) {
+          var src = mdl.view && mdl.view.source;
+          if (src && src.object === schema.objectKey &&
+              !(mdl.data && mdl.data.models) &&
+              mdl.id && HEX24.test(String(mdl.id))) {
+            found = String(mdl.id);
+            return true;
+          }
+        });
+      } catch (e4) { found = ''; }
+      if (found) return { id: found, source: 'project:details' };
+    }
+
+    // 5. Any Project connection anywhere on the page — unanimous only.
+    try {
+      var seen = {}, count = 0;
+      var note = function (id) { if (id && !seen[id]) { seen[id] = 1; count++; } };
+      eachLoadedView(function (vk, mdl) {
+        note(projectIdFromAttrs(mdl.attributes, keys));
+        var rows = mdl.data && mdl.data.models;
+        for (var i = 0; rows && i < rows.length; i++) {
+          note(projectIdFromAttrs(rows[i] && rows[i].attributes, keys));
+        }
+      });
+      found = '';
+      if (count === 1) { for (var only in seen) { if (seen[only]) found = only; } }
+      else if (count > 1) {
+        console.warn('[scw-qa] projectId: loaded rows disagree on the project — ' +
+          Object.keys(seen).join(', '));
+      }
+    } catch (e5) { found = ''; }
+    if (found) return { id: found, source: 'page' };
+
+    // 6. DOM connection-value spans for those fields (unpopulated models).
+    try {
+      var sel = [];
+      for (var k = 0; k < keys.length; k++) {
+        sel.push('.kn-detail.' + keys[k] + ' span[data-kn="connection-value"]');
+        sel.push('td.' + keys[k] + ' span[data-kn="connection-value"]');
+      }
+      var spans = document.querySelectorAll(sel.join(', '));
+      var seenDom = {}, countDom = 0;
+      for (var s = 0; s < spans.length; s++) {
+        var cls = (spans[s].className || '').trim();
+        var idAttr = (spans[s].id || '').trim();
+        var cand = HEX24.test(cls) ? cls : (HEX24.test(idAttr) ? idAttr : '');
+        if (cand && !seenDom[cand]) { seenDom[cand] = 1; countDom++; }
+      }
+      found = '';
+      if (countDom === 1) { for (var onlyDom in seenDom) { if (seenDom[onlyDom]) found = onlyDom; } }
+    } catch (e6) { found = ''; }
+    if (found) return { id: found, source: 'dom' };
+
+    // 7. The project-keyed route — last resort.
+    try {
+      var hm = (window.location.hash || '').match(/project-dashboard\/([a-f0-9]{24})/i);
+      if (hm) return { id: hm[1], source: 'hash' };
+    } catch (e7) { /* nothing left */ }
+    return { id: '', source: 'none' };
+  }
+
+  // ── QA-fail notification ────────────────────────────────────────
+  // Fired once per save that WRITES status = Fail (the fields diff carries
+  // F.status only when it changed, so this is exactly the Pending/Pass →
+  // Fail transition — re-saving notes on an already-failed photo doesn't
+  // refire). Fire-and-forget POST to Make, which resolves the photo record
+  // → line item → project → sub and sends the actual notification. Never
+  // blocks or fails the QA save itself.
+  function notifyQaFail(fields, putResp) {
+    try {
+      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_QA_FAIL_WEBHOOK) || '';
+      if (!url || /PLACEHOLDER/.test(url)) {
+        console.warn('[scw-qa] QA failed but MAKE_QA_FAIL_WEBHOOK is not ' +
+          'configured — no sub notification sent.');
+        return;
+      }
+      var p = _currentPhoto || {};
+      // Only real asset URLs travel — a blob: preview after an in-modal
+      // replace is local-only and useless to Make.
+      var imgUrl = /^https?:/i.test(p.imgUrl || '') ? p.imgUrl : '';
+      var deployM = (window.location.hash || '').match(/\/deploy\/([a-f0-9]{24})/i);
+      var proj = resolveProjectRef({
+        photoId: _photoId, lineItemId: p.lineItemId || '', putResp: putResp
+      });
+      if (!proj.id || proj.source === 'hash') {
+        // Loud on purpose: a data source went missing (a Builder column
+        // dropped, a view renamed) and we're back on the URL / empty.
+        console.warn('[scw-qa] projectId resolved via "' + proj.source + '" — ' +
+          'no loaded record on this page carries a Project connection. ' +
+          'Expose one on a view here (e.g. ' + PHOTO_PROJECT_CONN + ' on ' +
+          PIC_SAVE_VIEW + ').');
+      } else {
+        console.info('[scw-qa] projectId ' + proj.id + ' via ' + proj.source);
+      }
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          photoId:    _photoId,
+          status:     'Fail',
+          notes:      fields[F.notes] != null ? fields[F.notes]
+                      : (_initialState && _initialState.notes) || '',
+          failedBy:   { id: currentUserId(), name: currentUserName() },
+          failedAt:   nowStamp(),
+          // Line-item + page context so Make can write a human message and
+          // build the sub deep link without extra Knack hops. lineItemId is
+          // the line record id — pairs with the ?scwItem= focus link.
+          photoType:  p.type || '',
+          photoUrl:   imgUrl,
+          lineItemId: p.lineItemId || '',
+          lineLabel:  p.lineLabel  || '',
+          product:    p.product    || '',
+          // CORE_project record id — the hop Make needs: project →
+          // field_1199 (SCW CU task) → subcontractor task → comment.
+          // projectIdSource names which loaded record answered (see
+          // resolveProjectRef) so a Make bundle shows the provenance;
+          // "hash" means every data source came up empty.
+          projectId:       proj.id,
+          projectIdSource: proj.source,
+          // The id in the …/deploy/<id> route segment. On the internal
+          // deploy page this is the SAME Project record id (the scene is
+          // keyed off the project), so it's context, not a hop — use
+          // projectId above.
+          deployId:   deployM ? deployM[1] : '',
+          viewKey:    p.viewKey || '',
+          pageHash:   window.location.hash || ''
+        })
+      }).catch(function (err) {
+        console.warn('[scw-qa] QA-fail webhook failed:',
+          (err && err.message) || err);
+      });
+    } catch (e) { /* notification is best-effort */ }
+  }
 
   function saveFields(fields, onDone) {
     if (typeof SCW === 'undefined' ||
@@ -491,7 +878,14 @@
       url: SCW.knackRecordUrl(PIC_SAVE_VIEW, _photoId),
       type: 'PUT',
       data: JSON.stringify(fields),
-      success: function () { onDone && onDone(null); },
+      success: function (resp) {
+        // Every QA write funnels through here — the one hook that sees
+        // every path that can set Fail (explicit save, close-autosave).
+        // The PUT response is the stored photo record — handed to the
+        // notifier so it can read the photo's own Project connection.
+        if (fields && fields[F.status] === 'Fail') notifyQaFail(fields, resp);
+        onDone && onDone(null);
+      },
       error: function (xhr) {
         onDone && onDone(new Error('PUT ' + xhr.status));
       }
@@ -614,12 +1008,17 @@
     notesSec.appendChild(hint);
     body.appendChild(notesSec);
 
-    // Sign-off metadata summary (read-only) — matches closeout __signoff.
-    if (alreadySignedOff && (photo.completedBy || photo.completedDate)) {
+    // Verdict metadata summary (read-only) — matches closeout __signoff.
+    // Also shown for FAILS: field_2862/63 now stamp on every verdict save,
+    // so the author of a fail is visible without digging through history.
+    var isFailedState = String(photo.status || '').toLowerCase() === 'fail';
+    if ((alreadySignedOff || isFailedState) &&
+        (photo.completedBy || photo.completedDate)) {
       var foot = document.createElement('div');
       foot.className = 'scw-qa-popover__signoff';
       foot.innerHTML =
-        'Last signed off by <strong>' + escapeHtml(photo.completedBy || '—') +
+        (isFailedState ? 'Failed by' : 'Last signed off by') +
+        ' <strong>' + escapeHtml(photo.completedBy || '—') +
         '</strong> on <strong>' + escapeHtml(photo.completedDate || '—') + '</strong>';
       body.appendChild(foot);
     }
@@ -633,12 +1032,16 @@
     histSec.appendChild(histLbl);
     var hist = document.createElement('div');
     hist.className = 'scw-qa-popover__history';
-    if (photo.history && photo.history.trim()) {
-      // history is paragraph-text innerHTML (newlines as <br>) — render as-is.
-      hist.innerHTML = photo.history;
+    // history is paragraph-text innerHTML (newlines as <br>) — rendered
+    // as-is, with the record-created "Photo uploaded" stamp appended as
+    // the oldest line (derived from the record id — no Builder field).
+    var histHtml = historyHtmlWithUpload(photo);
+    if (histHtml) {
+      hist.innerHTML = histHtml;
     } else {
       hist.className += ' scw-qa-popover__history-empty';
-      hist.textContent = 'No QA history yet.';
+      hist.textContent = (photo.completed === false)
+        ? 'No photo uploaded yet.' : 'No QA history yet.';
     }
     histSec.appendChild(hist);
     body.appendChild(histSec);
@@ -729,6 +1132,7 @@
           drop.parentNode.replaceChild(img, drop);
           photo.imgUrl = url;
           photo.completed = true;
+          logPhotoEvent(photo, saveView, 'UPLOADED PHOTO');
           notifyHostSaved(photo);
         });
       }).catch(function (err) {
@@ -759,8 +1163,17 @@
     var bar = document.createElement('div');
     bar.className = 'scw-qa-modal__viewer-bar';
 
-    var locked = photo.needsQa !== false && isFullyComplete(photo.status, photo.client);
-    var lockTitle = 'QA is signed off — set it back to Pending or Fail first.';
+    // Restricted surfaces (subs): a photo that PASSED SCW QA is frozen —
+    // no replace, no remove — regardless of client signoff. Ops surfaces
+    // keep the softer rule (locked only once fully signed off, and ops can
+    // always unlock by flipping the status back).
+    var subPassLock = !!photo.qaReadOnly &&
+      String(photo.status || '').toLowerCase() === 'pass';
+    var locked = subPassLock ||
+      (photo.needsQa !== false && isFullyComplete(photo.status, photo.client));
+    var lockTitle = subPassLock
+      ? 'This photo passed SCW QA — it can no longer be replaced or removed.'
+      : 'QA is signed off — set it back to Pending or Fail first.';
 
     function swapToUploadPane() {
       // Keep the classify bar (Type/Required editors) across the swap.
@@ -791,6 +1204,13 @@
       if (repB.disabled) return;
       pickImage(function (file) {
         if ((file.type || '').indexOf('image/') !== 0) { alert('Not an image file.'); return; }
+        // Preserve the outgoing photo: Knack keeps the overwritten asset
+        // alive at its original URL, so logging that URL into the history
+        // makes every prior version recoverable (rendered as a "view
+        // photo" link). A blob: URL (second replace in one session) is
+        // local-only — skip it; the real server version was already
+        // linked by the first replace's entry.
+        var prevUrl = /^https?:/i.test(photo.imgUrl || '') ? photo.imgUrl : '';
         repB.disabled = true;
         repB.textContent = 'Replacing…';
         u.downscale(file).then(function (blob) {
@@ -806,6 +1226,8 @@
             photo.imgUrl = url;
             repB.disabled = locked;
             repB.textContent = 'Replace photo';
+            logPhotoEvent(photo, saveView, 'REPLACED PHOTO',
+              prevUrl ? 'previous version ' + prevUrl : '');
             notifyHostSaved(photo);
           });
         }).catch(function (err) {
@@ -828,6 +1250,9 @@
             'The photo slot stays — only the image is cleared.')) return;
       remB.disabled = true;
       remB.textContent = 'Removing…';
+      // Same preservation as replace — the cleared asset stays alive at
+      // its URL; the history link is the only remaining pointer to it.
+      var prevUrl = /^https?:/i.test(photo.imgUrl || '') ? photo.imgUrl : '';
       var extra = {};
       extra[F.completed] = 'No';
       // clearFileField verifies against the PUT response and retries with ''
@@ -835,6 +1260,8 @@
       u.clearFileField(saveView, photo.id, F.img, extra).then(function () {
         photo.imgUrl = '';
         photo.completed = false;
+        logPhotoEvent(photo, saveView, 'REMOVED PHOTO',
+          prevUrl ? 'removed version ' + prevUrl : '');
         swapToUploadPane();
         notifyHostSaved(photo);
       }).catch(function (err) {
@@ -856,6 +1283,9 @@
    *  catalog, scene-scrape fallback). onTypeChanged(label) lets the
    *  modal retitle itself when the type is reassigned. */
   function buildClassifyBar(photo, onTypeChanged) {
+    // Restricted surfaces (sub deployment dashboard): subs may upload into
+    // a slot but never reclassify it — no Type/Required editors, period.
+    if (photo.lockClassify) return null;
     var u = pepUtil();
     var saveView = pepSaveView(photo.viewKey);
     if (!u || saveView !== PIC_SAVE_VIEW) return null;
@@ -955,11 +1385,91 @@
    * treat as _popover (it owns .scw-qa-popover__body / __actions and the
    * is-saving toggle via .scw-qa-modal.is-saving).
    */
+  /** Read-only QA summary for restricted surfaces (sub deployment page):
+   *  the sub sees SCW's verdict — status, client signoff, notes, sign-off
+   *  metadata, history — with no controls, so no save routine is ever
+   *  reachable. Mirrors the editable sidebar's sections visually. */
+  function buildReadOnlyQaSidebar(photo) {
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-qa-popover__body';
+
+    function section(label, node) {
+      var sec = document.createElement('div');
+      sec.className = 'scw-qa-popover__section';
+      var lbl = document.createElement('div');
+      lbl.className = 'scw-qa-popover__label';
+      lbl.textContent = label;
+      sec.appendChild(lbl);
+      sec.appendChild(node);
+      wrap.appendChild(sec);
+    }
+
+    var st = String(photo.status || 'Pending');
+    var stEl = document.createElement('span');
+    stEl.className = 'scw-qa-popover__ro-val scw-qa-popover__ro-val--' +
+      (/^pass$/i.test(st) ? 'pass' : (/^fail$/i.test(st) ? 'fail' : 'pending'));
+    stEl.textContent = st;
+    section('QA Status (SCW)', stEl);
+
+    if (isClientGateActive(photo.client)) {
+      var cl = document.createElement('span');
+      cl.className = 'scw-qa-popover__ro-val';
+      cl.textContent = photo.client || 'N/A';
+      section('Client signoff', cl);
+    }
+
+    if (photo.notes && String(photo.notes).trim()) {
+      var nt = document.createElement('div');
+      nt.className = 'scw-qa-popover__ro-text';
+      nt.textContent = photo.notes;
+      section('QA Notes', nt);
+    }
+
+    var roFailed = String(photo.status || '').toLowerCase() === 'fail';
+    if ((isFullyComplete(photo.status, photo.client) || roFailed) &&
+        (photo.completedBy || photo.completedDate)) {
+      var foot = document.createElement('div');
+      foot.className = 'scw-qa-popover__signoff';
+      foot.innerHTML =
+        (roFailed ? 'Failed by' : 'Signed off by') +
+        ' <strong>' + escapeHtml(photo.completedBy || '—') +
+        '</strong> on <strong>' + escapeHtml(photo.completedDate || '—') + '</strong>';
+      wrap.appendChild(foot);
+    }
+
+    // History — REQUIRED photos only. Non-required photos don't get QA
+    // served, so a history block there is noise even when residual QA data
+    // exists (e.g. a photo whose Required flag was later unchecked).
+    if (photo.required) {
+      var hist = document.createElement('div');
+      hist.className = 'scw-qa-popover__history';
+      var roHistHtml = historyHtmlWithUpload(photo);   // same render as editable path
+      if (roHistHtml) {
+        hist.innerHTML = roHistHtml;
+      } else {
+        hist.className += ' scw-qa-popover__history-empty';
+        hist.textContent = (photo.completed === false)
+          ? 'No photo uploaded yet.' : 'No QA history yet.';
+      }
+      section('History', hist);
+    }
+
+    var note = document.createElement('div');
+    note.className = 'scw-qa-popover__ro-note';
+    // Read by subs AND sales — say who does it, not where it's editable.
+    note.textContent = 'QA is completed by the SCW Install team.';
+    wrap.appendChild(note);
+    return wrap;
+  }
+
   function buildModal(photo) {
     var alreadySignedOff = isFullyComplete(photo.status, photo.client);
     // needsQa=false → plain big-photo viewer: no QA sidebar, no QA controls
     // built at all (so the save routines are never reachable for this photo).
     var showQa = (photo.needsQa !== false);
+    // Restricted surfaces show the QA sidebar READ-ONLY (see
+    // buildReadOnlyQaSidebar) — the editable controls are never built.
+    var qaRO = !!photo.qaReadOnly;
 
     var overlay = document.createElement('div');
     overlay.className = 'scw-qa-modal__overlay';
@@ -974,7 +1484,7 @@
     // mount them in the sidebar. `src` is a throwaway container. Skipped
     // entirely when the photo doesn't need QA (preview-only modal).
     var body = null, actions = null;
-    if (showQa) {
+    if (showQa && !qaRO) {
       var src = buildPopover(photo, dialog);
       body    = src.querySelector('.scw-qa-popover__body');
       actions = src.querySelector('.scw-qa-popover__actions');
@@ -991,7 +1501,9 @@
     typeEl.title = photo.type || 'Photo';
     var subEl = document.createElement('div');
     subEl.className = 'scw-qa-modal__sub';
-    subEl.textContent = !showQa ? 'Photo' : (alreadySignedOff ? 'Signed off' : 'QA review');
+    subEl.textContent = !showQa ? 'Photo'
+      : qaRO ? ('QA: ' + (photo.status || 'Pending'))
+      : (alreadySignedOff ? 'Signed off' : 'QA review');
     meta.appendChild(typeEl);
     meta.appendChild(subEl);
     head.appendChild(meta);
@@ -1056,8 +1568,12 @@
     if (showQa) {
       var sidebar = document.createElement('div');
       sidebar.className = 'scw-qa-modal__sidebar';
-      if (body)    sidebar.appendChild(body);     // reused QA controls
-      if (actions) sidebar.appendChild(actions);  // reused footer buttons
+      if (qaRO) {
+        sidebar.appendChild(buildReadOnlyQaSidebar(photo));
+      } else {
+        if (body)    sidebar.appendChild(body);     // reused QA controls
+        if (actions) sidebar.appendChild(actions);  // reused footer buttons
+      }
       splitBody.appendChild(sidebar);
     }
 
@@ -1066,7 +1582,8 @@
     // The footer was populated by buildPopover while it still lived in the
     // throwaway `src`; now that it's mounted under `dialog`, re-run so any
     // later updateActions(dialog,…) calls (chip/notes edits) keep resolving.
-    if (showQa) updateActions(dialog, photo);
+    // (Read-only sidebars have no footer — nothing to populate.)
+    if (showQa && !qaRO) updateActions(dialog, photo);
 
     overlay.appendChild(dialog);
     return { overlay: overlay, dialog: dialog };
@@ -1210,6 +1727,22 @@
       fields[F.client] = client;
     }
     if (notes !== _initialState.notes) fields[F.notes] = notes;
+    // A status change is a QA verdict — stamp WHO + WHEN (field_2862/63)
+    // and log the event to history, so a Fail carries its author
+    // (2026-09-09: only the Sign Off path stamped these; a Fail saved via
+    // Save/autosave showed no author anywhere). Pending clears the stamp
+    // — nobody has "completed" QA on a pending photo. The Fail entry
+    // captures the notes AT FAIL TIME, since the notes field itself is
+    // mutable and gets overwritten by later reviews.
+    if (fields[F.status] != null) {
+      var isVerdict = (status === 'Pass' || status === 'Fail');
+      fields[F.completedBy]   = isVerdict ? currentUserId() : '';
+      fields[F.completedDate] = isVerdict ? todayForKnack() : '';
+      fields[F.history] = prependHistory(photo.history || '',
+        status === 'Fail' ? 'QA FAILED'
+          : status === 'Pass' ? 'QA PASSED' : 'QA RESET TO PENDING',
+        status === 'Fail' ? (notes || '').trim() : '');
+    }
     if (!Object.keys(fields).length) { setSaveStatus(pop, '', ''); return; }
 
     _isSaving = true;
@@ -1229,6 +1762,13 @@
       if (fields[F.client] != null) _initialState.client = client;
       if (fields[F.notes]  != null) { _initialState.notes = notes; photo.notes = notes; }
       photo.status = status; photo.client = client;
+      // Advance the local history so a second event in this modal session
+      // (another verdict, a replace) stacks instead of overwriting.
+      if (fields[F.history] != null) {
+        photo.history = fields[F.history];
+        photo.completedBy   = fields[F.completedBy]   ? currentUserName() : '';
+        photo.completedDate = fields[F.completedDate] || '';
+      }
       _hasUnsavedChanges = false;
       if (_refreshHandler) _refreshHandler(fields, photo);
       else if (chit) refreshChitAndCells(chit, photo, fields);
@@ -1324,6 +1864,18 @@
       fields[F.client] = client;
     }
     if (notes !== _initialState.notes) fields[F.notes] = notes;
+    // Same verdict stamping as saveDirty — close-autosave is the other
+    // path that can commit a status change without Sign Off.
+    if (fields[F.status] != null) {
+      var isVerdict2 = (status === 'Pass' || status === 'Fail');
+      fields[F.completedBy]   = isVerdict2 ? currentUserId() : '';
+      fields[F.completedDate] = isVerdict2 ? todayForKnack() : '';
+      fields[F.history] = prependHistory(
+        (_currentPhoto && _currentPhoto.history) || '',
+        status === 'Fail' ? 'QA FAILED'
+          : status === 'Pass' ? 'QA PASSED' : 'QA RESET TO PENDING',
+        status === 'Fail' ? (notes || '').trim() : '');
+    }
 
     if (!Object.keys(fields).length) {
       onDone && onDone();
@@ -1568,6 +2120,7 @@
     }
 
     _photoId = photoId;
+    _currentPhoto = photo;
     _initialState = {
       status: photo.status,
       client: photo.client,
@@ -1613,6 +2166,9 @@
       history:       snapshot.history || '',
       completedBy:   snapshot.completedBy   || '',
       completedDate: snapshot.completedDate || '',
+      // Who created the photo record (Knack Created By), when the host
+      // could read it — names the "Photo uploaded" history line.
+      uploadedBy:    snapshot.uploadedBy    || '',
       // If the host didn't tell us, assume the photo exists (it has a chit).
       completed:     (snapshot.completed != null) ? !!snapshot.completed : true,
       // Whether to render the QA sidebar. When false, the modal opens as a
@@ -1623,10 +2179,22 @@
       // Photo-add support (photo-edit-panel.js machinery): viewKey
       // resolves the per-scene DOC_photos save view for upload/clear PUTs.
       required:      !!snapshot.required,
-      viewKey:       snapshot.viewKey || ''
+      viewKey:       snapshot.viewKey || '',
+      // Line-item context (QA-fail webhook payload) — supplied by the v2
+      // photo-strip host (photos.js) when it opened the modal.
+      lineItemId:    snapshot.lineItemId || '',
+      lineLabel:     snapshot.lineLabel  || '',
+      product:       snapshot.product    || '',
+      // Restricted surfaces (sub deployment dashboard): upload/view only —
+      // never render the Photo Type / Required editors.
+      lockClassify:  !!snapshot.lockClassify,
+      // Restricted surfaces: QA sidebar renders READ-ONLY (subs see SCW's
+      // verdict but can't touch it), and Pass freezes replace/remove.
+      qaReadOnly:    !!snapshot.qaReadOnly
     };
 
     _photoId = photoId;
+    _currentPhoto = photo;
     _initialState = {
       status:  photo.status,
       client:  photo.client,
@@ -1768,6 +2336,10 @@
   SCW.qaPopover = {
     open:       openForChit,     // V1 chit path (reads worksheet source <tr>)
     openAnchor: openForAnchor,   // host-agnostic path (V2 install photo strip)
-    close:      function () { closePopover(true); }
+    close:      function () { closePopover(true); },
+    // DevTools check for the QA-fail payload's project resolution:
+    //   SCW.qaPopover.resolveProjectId({ lineItemId: '<install row id>' })
+    // → { id, source } — see resolveProjectRef for the source chain.
+    resolveProjectId: resolveProjectRef
   };
 })();

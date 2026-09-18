@@ -73,6 +73,99 @@
     return i === -1 ? PHOTO_TYPE_PRIORITY.length : i;
   }
 
+  // ── Secondary QA source: a same-scene DOC_photos grid ──────────────
+  // A worksheet whose SOURCE grid doesn't expose the QA columns can read
+  // them off a DOC_photos grid on the same scene instead — one
+  // <tr id="<photoId>"> per photo, the PIC fields as plain cells. The sales
+  // page's "Additional Photos" grid (view_3522) is that grid: it already
+  // serves every photo on the SOW for the save path (photo-edit-panel.js
+  // SAVE_VIEWS), so the QA columns ride there instead of on the hidden
+  // line-item grid. It also yields the UPLOADER — Knack's built-in Created
+  // By (field_3180), which the line-item grid's connection columns can't
+  // carry — rendered into the modal's "Photo uploaded" history line.
+  // The consumed columns are hidden on that grid (CSS below), so the grid
+  // keeps showing what it always did. Per photo, QA counts as served only
+  // when its row is on the grid's current PAGE — give the grid a large page
+  // size, or photos past it open as the plain viewer.
+  var QA_SOURCE_VIEWS = { view_3586: 'view_3522' };   // worksheet → DOC_photos grid
+  var QA_SOURCE_FIELDS = {
+    status:    'field_2859',
+    client:    'field_2860',
+    notes:     'field_2861',
+    by:        'field_2862',
+    date:      'field_2863',
+    history:   'field_2865',
+    createdBy: 'field_3180'   // Knack system field — who created the photo record
+  };
+  // Created By values that aren't a person: photos created through the REST
+  // API (Make bulk uploads) are stamped with the app's account-owner user.
+  // Show what the team reads it as. Matched case-insensitively.
+  var UPLOADER_LABELS = { 'account owner': 'via API' };
+  function uploaderLabel(name) {
+    var key = String(name || '').trim().toLowerCase();
+    return UPLOADER_LABELS.hasOwnProperty(key) ? UPLOADER_LABELS[key] : String(name || '').trim();
+  }
+  (function injectQaSourceCss() {
+    var STYLE_ID = 'scw-ws-v2-qa-source-css';
+    if (document.getElementById(STYLE_ID)) return;
+    var sel = [];
+    for (var wk in QA_SOURCE_VIEWS) {
+      for (var f in QA_SOURCE_FIELDS) {
+        sel.push('#' + QA_SOURCE_VIEWS[wk] + ' th.' + QA_SOURCE_FIELDS[f]);
+        sel.push('#' + QA_SOURCE_VIEWS[wk] + ' td.' + QA_SOURCE_FIELDS[f]);
+      }
+    }
+    if (!sel.length) return;
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = sel.join(',\n') + ' { display: none !important; }';
+    (document.head || document.documentElement).appendChild(s);
+  })();
+
+  // Rows-by-photo-id index of a QA source grid, cached per <tbody> (a Knack
+  // re-render swaps the tbody, so the cache self-invalidates).
+  var _qaSourceCache = (typeof WeakMap === 'function') ? new WeakMap() : null;
+  function qaSourceIndex(viewKey) {
+    var view = viewKey ? document.getElementById(viewKey) : null;
+    var tbody = view && view.querySelector('table.kn-table tbody');
+    if (!tbody) return null;
+    var idx = _qaSourceCache && _qaSourceCache.get(tbody);
+    if (idx) return idx;
+    var table = tbody.parentNode;
+    var hasStatus = !!(table && table.querySelector('th.' + QA_SOURCE_FIELDS.status)) ||
+                    !!tbody.querySelector('td[data-field-key="' + QA_SOURCE_FIELDS.status + '"]');
+    var byId = Object.create(null);
+    var rows = tbody.querySelectorAll('tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      if (/^[a-f0-9]{24}$/i.test(rows[i].id)) byId[rows[i].id] = rows[i];
+    }
+    idx = { hasStatus: hasStatus, byId: byId };
+    if (_qaSourceCache) _qaSourceCache.set(tbody, idx);
+    return idx;
+  }
+  function qaSourceText(tr, fieldKey) {
+    var td = tr.querySelector('td[data-field-key="' + fieldKey + '"]');
+    if (!td) return null;                              // column not on the grid
+    return (td.textContent || '').replace(/ /g, ' ').trim();
+  }
+  function qaSourceHtml(tr, fieldKey) {
+    var td = tr.querySelector('td[data-field-key="' + fieldKey + '"]');
+    if (!td) return null;
+    var wrap = td.querySelector('span[class^="col-"]') || td;
+    var html = (wrap.innerHTML || '').trim();
+    return /^(?:&nbsp;|\s)*$/.test(html) ? '' : html;   // paragraph text keeps <br>
+  }
+  function applyQaFromSourceRow(rec, tr) {
+    var F = QA_SOURCE_FIELDS, v;
+    v = qaSourceText(tr, F.status);    if (v) { rec.qaStatus = v; rec.qaPresent = true; }
+    v = qaSourceText(tr, F.client);    if (v) rec.qaClient = v;
+    v = qaSourceText(tr, F.notes);     if (v !== null) rec.qaNotes = v;
+    v = qaSourceText(tr, F.by);        if (v !== null) rec.qaCompletedBy = v;
+    v = qaSourceText(tr, F.date);      if (v !== null) rec.qaCompletedDate = v;
+    v = qaSourceHtml(tr, F.history);   if (v !== null) rec.qaHistory = v;
+    v = qaSourceText(tr, F.createdBy); if (v) rec.uploadedBy = uploaderLabel(v);
+  }
+
   /** Walk the source-view <tr> for this record and pull a list of
    *  attached photo records: { id, imgUrl, type, required, completed, notes } */
   function extractPhotoRecords(sourceViewKey, recordId) {
@@ -91,7 +184,16 @@
           // present on the source view (install surface). Defaults keep the
           // chit in a neutral "Pending" state everywhere else.
           qaStatus: 'Pending', qaClient: 'N/A', qaNotes: '', qaHistory: '',
-          qaCompletedBy: '', qaCompletedDate: '', qaPresent: false
+          qaCompletedBy: '', qaCompletedDate: '', qaPresent: false,
+          // Whether the source view SERVES the QA columns at all (the QA
+          // status cell exists on the row). Distinct from qaPresent, which
+          // says this photo has a non-blank status. Surfaces that show QA
+          // read-only gate the chit + sidebar on this, so the feature
+          // self-activates when the columns are added in Builder.
+          qaColumns: false,
+          // Who created the photo record (Knack Created By) — only a QA
+          // source grid carries it; shown on the "Photo uploaded" line.
+          uploadedBy: ''
         };
       }
       return map[rid];
@@ -193,9 +295,10 @@
       var inner = span.querySelector('span[data-kn="connection-value"]');
       return ((inner ? inner.textContent : span.textContent) || '').trim();
     }
-    if (eachQaSpan(FK_QA_STATUS, function (rec, span) {
+    var qaCols = eachQaSpan(FK_QA_STATUS, function (rec, span) {
       var t = spanText(span); if (t) { rec.qaStatus = t; rec.qaPresent = true; }
-    })) {
+    });
+    if (qaCols) {
       eachQaSpan(FK_QA_CLIENT,  function (rec, span) { var t = spanText(span); if (t) rec.qaClient = t; });
       eachQaSpan(FK_QA_NOTES,   function (rec, span) { rec.qaNotes = (span.textContent || '').trim(); });
       eachQaSpan(FK_QA_BY,      function (rec, span) { rec.qaCompletedBy = spanText(span); });
@@ -205,6 +308,22 @@
 
     var arr = [];
     for (var k in map) arr.push(map[k]);
+    if (qaCols) {
+      for (var q = 0; q < arr.length; q++) arr[q].qaColumns = true;
+    } else {
+      // No QA columns on the source row → secondary source (a same-scene
+      // DOC_photos grid, QA_SOURCE_VIEWS). Per photo: served only when its
+      // row is on that grid's current page, so a photo past the page size
+      // opens as the plain viewer instead of claiming "Needs QA".
+      var srcIdx = qaSourceIndex(QA_SOURCE_VIEWS[sourceViewKey]);
+      if (srcIdx && srcIdx.hasStatus) {
+        for (var s = 0; s < arr.length; s++) {
+          var srcRow = srcIdx.byId[arr[s].id];
+          arr[s].qaColumns = !!srcRow;
+          if (srcRow) applyQaFromSourceRow(arr[s], srcRow);
+        }
+      }
+    }
     // Sort: pinned types first (PHOTO_TYPE_PRIORITY), then required+incomplete,
     // then required, then by type, then id
     arr.sort(function (a, b) {
@@ -230,6 +349,7 @@
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
+      /(subcontractor-portal\/deployment-dashboard\/[a-f0-9]{24})/,
       /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
       /(proposals\/scope-of-work\/[a-f0-9]{24})/
     ];
@@ -259,6 +379,14 @@
   // missed, mislabeling install line items as SOW line items.
   function isDeployBase(base) {
     return /(^|\/)deploy\/[a-f0-9]{24}/.test(base);
+  }
+  // The SUB deployment dashboard (scene_1353, view_4056) also renders
+  // INSTALL line items — but its Knack child pages carry the generic slugs
+  // (edit-photo / add-photo-to-sow-line-item), NOT the ops deploy ones, so
+  // it is deploy-like ONLY for the bulk-upload identity (installLineItemID),
+  // never for slug choice. Keep the two predicates separate.
+  function isSubDeployBase(base) {
+    return /(^|\/)deployment-dashboard\/[a-f0-9]{24}/.test(base);
   }
 
   function editPhotoHref(photoRecordId) {
@@ -294,7 +422,8 @@
     if (surveyBasePath()) return 'surveyLineItemID';
     var base = buildSowBasePath();
     if (!base) return '';
-    return isDeployBase(base) ? 'installLineItemID' : 'sowLineItemID';
+    return (isDeployBase(base) || isSubDeployBase(base))
+      ? 'installLineItemID' : 'sowLineItemID';
   }
 
   /** Survey-scene base path. Returns '' off the survey scene so the
@@ -345,7 +474,10 @@
   // item's id rather than blanking the whole field), leaving the photo
   // record and its image untouched. Enabled only where photo-edit-panel.js
   // already has a same-scene save view wired up (SAVE_VIEWS).
-  var PHOTO_DISCONNECT_VIEWS = { view_4093: 1, view_4056: 1 };
+  // view_4056 (sub dashboard) deliberately EXCLUDED — subs don't manage
+  // photo records (decided 2026-08-12), and their scene has no DOC_photos
+  // save view anyway.
+  var PHOTO_DISCONNECT_VIEWS = { view_4093: 1 };
   var FK_LINE_ITEM_CONN = 'field_2849';   // DOC_photos → connected Install Line Item(s)
   var FK_PROJECT_CONN   = 'field_675';    // DOC_photos → Project
 
@@ -464,7 +596,56 @@
   // model qa-popover.js uses (computeChitState). Only rendered when the
   // source view exposed QA columns (p.qaPresent) — i.e. the install
   // worksheet (view_4093). Other surfaces render no chit.
-  var QA_CHIT_VIEWS = { view_4093: 1, view_4056: 1 };
+  // view_4056 (sub dashboard) deliberately EXCLUDED — photo QA is an ops
+  // surface; subs see plain photo strips (thumbnails → lightbox, "+ Add" →
+  // the Knack add-photo page). Decided 2026-08-12.
+  // view_4056 (sub deployment dashboard) joined 2026-09-03: subs SEE the
+  // QA chit + status (the QA columns are exposed on that view), but their
+  // modal renders QA read-only (PHOTO_MODAL_POLICY below).
+  // view_3586 (sales) joined 2026-09-17 on the same read-only terms. The
+  // chit ALSO requires the source row to actually serve the QA columns
+  // (p.qaColumns) — so on a view where Builder hasn't exposed them yet
+  // nothing renders instead of a misleading "Needs QA" on every photo.
+  var QA_CHIT_VIEWS = { view_4093: 1, view_4056: 1, view_3586: 1 };
+
+  // Surfaces where the photo modal opens RESTRICTED: upload / view /
+  // replace / remove only — no Photo Type or Required editors (these
+  // audiences can't reclassify; buildClassifyBar is deploy-save-view-only
+  // already and snapshot.lockClassify is the belt). QA is an ops function,
+  // so the QA sidebar is never EDITABLE here — `qa` says what they see:
+  //   'readonly' — SCW's verdict, no controls: status, client signoff,
+  //                notes, who/when, and the history log (incl. the
+  //                synthesized "Photo uploaded" stamp). A Pass freezes
+  //                replace/remove. Served only while the source view
+  //                exposes the QA columns (p.qaColumns) — otherwise the
+  //                modal opens as the plain viewer, exactly like 'none'.
+  //   'none'     — no QA sidebar at all, whatever the row serves.
+  // Filled cards on these surfaces open the SAME restricted modal (Replace /
+  // Remove) instead of the lightbox, so the audience can update photos
+  // without leaving the page — the "similar to the subcontractor actions"
+  // shape decided 2026-09-17 for sales.
+  // ⚠️ ACTIVATION REQUIRES a DOC_photos save view ON that scene mapped in
+  // photo-edit-panel.js SAVE_VIEWS — view-based PUTs are same-scene only,
+  // so until the mapping exists the modal could open but never save.
+  // Unmapped ⇒ openPhotoQaModal returns false and callers keep the native
+  // fallback (empty card → Knack add-photo navigation; filled card →
+  // lightbox), exactly the pre-2026-09-02 behavior.
+  var PHOTO_MODAL_POLICY = {
+    view_4056: { qa: 'readonly' },   // sub deployment dashboard (2026-09-02)
+    view_3586: { qa: 'readonly' }    // sales scope-of-work page (2026-09-17)
+  };
+  // Does this surface serve QA for a photo? Ops surfaces (no policy)
+  // always do; 'readonly' only when the row carries the QA columns;
+  // 'none' never. (Callers that build photo objects by hand — tests,
+  // future hosts — omit qaColumns; undefined counts as "served".)
+  function policyServesQa(policy, p) {
+    if (!policy) return true;
+    if (policy.qa === 'none') return false;
+    return !(p && p.qaColumns === false);
+  }
+  function modalPolicy(viewKey) {
+    return (viewKey && PHOTO_MODAL_POLICY[viewKey]) || null;
+  }
 
   function qaChitState(p) {
     if (!p.completed) return 'missing';
@@ -503,6 +684,7 @@
       ' data-qa-history="'  + escapeHtml(p.qaHistory || '')       + '"' +
       ' data-qa-by="'       + escapeHtml(p.qaCompletedBy || '')   + '"' +
       ' data-qa-date="'     + escapeHtml(p.qaCompletedDate || '') + '"' +
+      ' data-qa-uploaded-by="' + escapeHtml(p.uploadedBy || '')  + '"' +
       ' data-qa-type="'     + escapeHtml(p.type || 'Photo')       + '"' +
       ' data-qa-img="'      + escapeHtml(p.imgUrl || '')          + '"' +
       ' title="Photo QA — ' + escapeHtml(qaChitLabel(state)) + ' (click to review)">' +
@@ -519,7 +701,15 @@
   function stripSig(photos) {
     var s = photos.length + ':';
     for (var i = 0; i < photos.length; i++) {
-      s += photos[i].id + '#' + (photos[i].imgUrl ? '1' : '0') + '|';
+      var p = photos[i];
+      s += p.id + '#' + (p.imgUrl ? '1' : '0');
+      // QA state rides along so a QA-source grid render (or a verdict save)
+      // rebuilds the strip — the chit + modal snapshot live in the card attrs.
+      if (p.qaColumns) {
+        s += '~' + (p.qaStatus || '') + '/' + (p.qaClient || '') + '/' +
+             (p.qaHistory ? p.qaHistory.length : 0) + '/' + (p.uploadedBy || '');
+      }
+      s += '|';
     }
     return s;
   }
@@ -535,6 +725,12 @@
   // refreshStrips can reuse one scrape for both the sig check and the rebuild.
   function buildStripFromPhotos(photos, recordId, sourceViewKey) {
     var qaEnabled = !!QA_CHIT_VIEWS[sourceViewKey];
+    // Restricted surfaces (PHOTO_MODAL_POLICY) also route filled-card clicks
+    // into the modal — same data-* contract as the ops surface, minus the
+    // chit. A qa:'none' surface never serves QA, so its cards open as the
+    // plain viewer (needsqa=0) whatever the Required flag says.
+    var policy = modalPolicy(sourceViewKey);
+    var modalCards = qaEnabled || !!policy;
     var addHref = addPhotoHref(recordId);
     // When there are no photos AND no add route, there's nothing to
     // render. Otherwise keep the strip so the user always has a way
@@ -612,21 +808,24 @@
       // full-size url + identity so the delegated click handler can build
       // the viewer without re-scraping the source view.
       var reqState = p.required ? (p.completed ? 'done' : 'missing') : '';
-      var needsQa = photoNeedsQa(p);
-      // QA snapshot attrs on the card itself (install surface) so a click on
-      // the THUMBNAIL can open the same QA modal as the chit — without
-      // re-scraping the source view. needsQa drives whether the modal shows
-      // the QA sidebar (true) or opens as a plain big-photo viewer (false).
-      // (No p.imgUrl requirement — empty required photos need the QA
-      // snapshot too so the edit panel's QA button can open qa-popover.)
-      var qaCardAttrs = (qaEnabled && p.id)
+      var servesQa = policyServesQa(policy, p);
+      var needsQa = servesQa && photoNeedsQa(p);
+      // QA snapshot attrs on the card itself (install + restricted surfaces)
+      // so a click on the THUMBNAIL can open the same modal as the chit —
+      // without re-scraping the source view. needsQa drives whether the
+      // modal shows the QA sidebar (true) or opens as a plain big-photo
+      // viewer (false). (No p.imgUrl requirement — empty required photos
+      // need the QA snapshot too so the edit panel's QA button can open
+      // qa-popover.)
+      var qaCardAttrs = (modalCards && p.id)
         ? ' data-scw-ws-v2-photo-needsqa="' + (needsQa ? '1' : '0') + '"' +
           ' data-qa-status="'  + escapeHtml(p.qaStatus || 'Pending') + '"' +
           ' data-qa-client="'  + escapeHtml(p.qaClient || 'N/A')     + '"' +
           ' data-qa-notes="'   + escapeHtml(p.qaNotes || '')         + '"' +
           ' data-qa-history="' + escapeHtml(p.qaHistory || '')       + '"' +
           ' data-qa-by="'      + escapeHtml(p.qaCompletedBy || '')   + '"' +
-          ' data-qa-date="'    + escapeHtml(p.qaCompletedDate || '') + '"'
+          ' data-qa-date="'    + escapeHtml(p.qaCompletedDate || '') + '"' +
+          ' data-qa-uploaded-by="' + escapeHtml(p.uploadedBy || '') + '"'
         : '';
       var dataAttrs =
         ' data-scw-ws-v2-photo-url="'  + escapeHtml(p.imgUrl || '') + '"' +
@@ -669,17 +868,59 @@
             'title="Disconnect from this line item (keeps the photo)">' +
             PHOTO_UNLINK_SVG + '</button>'
         : '';
-      // Photo QA chit — install surface only, only on cards that hold an
-      // actual photo, AND only on photos that NEED QA (required). Non-QA
-      // photos are not served a QA status (they still open the big-photo
-      // modal, just without the QA sidebar).
-      var qaChit = (qaEnabled && p.id && p.imgUrl && photoNeedsQa(p))
+      // Photo QA chit — QA_CHIT_VIEWS only, only on cards that hold an
+      // actual photo, AND only on photos that NEED QA (required) on a row
+      // that serves QA (policyServesQa — read-only surfaces need the QA
+      // columns present). Non-QA photos are not served a QA status (they
+      // still open the big-photo modal, just without the QA sidebar).
+      var qaChit = (qaEnabled && p.id && p.imgUrl && needsQa)
         ? qaChitHtml(p) : '';
+      // Inline QA-feedback card — rendered AFTER the anchor (flex sibling →
+      // sits to the photo's RIGHT in the strip) whenever the photo FAILED
+      // QA and the reviewer left notes, so the sub reads the feedback
+      // without opening anything. Carries the same [data-scw-ws-v2-photo-qa]
+      // hook + data-qa-* snapshot as the chit, so the existing delegated
+      // handler opens the identical QA modal from a click anywhere on it.
+      // (data-photo-required rides directly on it — the modal's `required`
+      // resolve uses closest(), and this card is OUTSIDE the anchor; a
+      // fail verdict only exists on required/needs-QA photos.)
+      var qaNote = '';
+      if (qaChit && qaChitState(p) === 'fail' && p.qaNotes) {
+        var qaMetaBits = [];
+        if (p.qaCompletedBy)   qaMetaBits.push(p.qaCompletedBy);
+        if (p.qaCompletedDate) qaMetaBits.push(p.qaCompletedDate);
+        var qaMeta = qaMetaBits.join(' · ');
+        qaNote =
+          '<div class="scw-ws-v2-photo-qanote"' +
+            ' data-scw-ws-v2-photo-qa="' + escapeHtml(p.id) + '"' +
+            ' data-qa-status="'  + escapeHtml(p.qaStatus || 'Fail')    + '"' +
+            ' data-qa-client="'  + escapeHtml(p.qaClient || 'N/A')     + '"' +
+            ' data-qa-notes="'   + escapeHtml(p.qaNotes || '')         + '"' +
+            ' data-qa-history="' + escapeHtml(p.qaHistory || '')       + '"' +
+            ' data-qa-by="'      + escapeHtml(p.qaCompletedBy || '')   + '"' +
+            ' data-qa-date="'    + escapeHtml(p.qaCompletedDate || '') + '"' +
+            ' data-qa-uploaded-by="' + escapeHtml(p.uploadedBy || '') + '"' +
+            ' data-qa-type="'    + escapeHtml(p.type || 'Photo')       + '"' +
+            ' data-qa-img="'     + escapeHtml(p.imgUrl || '')          + '"' +
+            ' data-photo-required="true"' +
+            ' title="' + escapeHtml('QA feedback' +
+                (qaMeta ? ' — ' + qaMeta : '') + '\n\n' + p.qaNotes +
+                '\n\n(click to review and respond)') + '">' +
+            '<div class="scw-ws-v2-photo-qanote-head">' + QA_ICONS.fail +
+              '<span>QA feedback</span></div>' +
+            '<div class="scw-ws-v2-photo-qanote-body">' +
+              escapeHtml(p.qaNotes) + '</div>' +
+            (qaMeta
+              ? '<div class="scw-ws-v2-photo-qanote-meta">' +
+                  escapeHtml(qaMeta) + '</div>'
+              : '') +
+          '</div>';
+      }
       html +=
         '<a class="' + cls + '"' + openAttrs + dataAttrs + draggableAttr +
             ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
           thumb + typeHtml + reqHtml + noteHtml + qaChit + delBtn + unlinkBtn +
-        '</a>';
+        '</a>' + qaNote;
     }
 
     if (addHref) {
@@ -1106,6 +1347,22 @@
                 el.closest('.scw-ws-v2-card').querySelector('[data-scw-ws-v2-view]'));
     if (host) viewKey = host.getAttribute('data-scw-ws-v2-view') || '';
 
+    // Non-ops surfaces (PHOTO_MODAL_POLICY) open the modal RESTRICTED
+    // (upload/view/replace/remove; QA sidebar read-only or absent) — and
+    // only once a same-scene save view is mapped, since without one the
+    // upload pane's PUT can never succeed. Unmapped → native path.
+    var policy = modalPolicy(viewKey);
+    var restricted = !!policy;
+    if (restricted) {
+      var svMap = window.SCW && SCW.photoEditPanel && SCW.photoEditPanel.SAVE_VIEWS;
+      if (!svMap || !svMap[viewKey]) return false;
+    }
+    // qa:'none' surfaces never see a QA sidebar, required photo or not.
+    // (A 'readonly' surface without the QA columns already arrives here
+    // with needsQa=false from the card attr — buildStripFromPhotos gates
+    // it through policyServesQa, and no chit exists to say otherwise.)
+    if (policy && policy.qa === 'none') needsQa = false;
+
     var resolvedImg = imgUrl || el.getAttribute('data-qa-img') || '';
     var snapshot = {
       type:          type || el.getAttribute('data-qa-type') || '',
@@ -1116,6 +1373,7 @@
       history:       el.getAttribute('data-qa-history')  || '',
       completedBy:   el.getAttribute('data-qa-by')       || '',
       completedDate: el.getAttribute('data-qa-date')     || '',
+      uploadedBy:    el.getAttribute('data-qa-uploaded-by') || '',
       completed:     !!resolvedImg,
       needsQa:       !!needsQa,
       // Photo-add + classify support in the QA modal (qa-popover.js).
@@ -1125,7 +1383,32 @@
         var reqEl = (el.closest && el.closest('[data-photo-required]')) || el;
         return reqEl.getAttribute('data-photo-required') === 'true';
       })(),
-      viewKey:       viewKey
+      viewKey:       viewKey,
+      // Line-item context for the QA-fail notification payload: the chit
+      // lives inside the card's photo strip (data-scw-ws-v2-photos = the
+      // line record id); label + product read off the owning card.
+      lineItemId: (function () {
+        var strip = el.closest && el.closest('[data-scw-ws-v2-photos]');
+        if (strip) return strip.getAttribute('data-scw-ws-v2-photos') || '';
+        var card0 = el.closest && el.closest('[data-scw-ws-v2-record]');
+        return card0 ? (card0.getAttribute('data-scw-ws-v2-record') || '') : '';
+      })(),
+      lineLabel: (function () {
+        var card1 = el.closest && el.closest('.scw-ws-v2-card');
+        var lab = card1 && card1.querySelector('.scw-ws-v2-cell--label');
+        return lab ? (lab.textContent || '').trim() : '';
+      })(),
+      product: (function () {
+        var card2 = el.closest && el.closest('.scw-ws-v2-card');
+        var pn = card2 && card2.querySelector('.scw-ws-v2-product-name');
+        return pn ? (pn.textContent || '').trim() : '';
+      })(),
+      // Restricted surfaces: hard-lock the Type/Required editors even if a
+      // future save-view change would otherwise let the classify bar render,
+      // and render the QA sidebar read-only (subs see SCW's verdict; a Pass
+      // also freezes replace/remove in the viewer bar).
+      lockClassify:  restricted,
+      qaReadOnly:    restricted
     };
 
     SCW.qaPopover.openAnchor(el, photoId, snapshot, function () {
@@ -1134,6 +1417,17 @@
       if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
       if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
         setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 800);
+      }
+      // A QA source grid (QA_SOURCE_VIEWS) carries the QA + history this
+      // surface reads — refetch it too so the replace/remove events just
+      // logged to the history field show up (its render refreshes the strips).
+      var srcKey = QA_SOURCE_VIEWS[viewKey];
+      var srcView = srcKey && window.Knack && Knack.views && Knack.views[srcKey];
+      if (srcView && srcView.model && typeof srcView.model.fetch === 'function') {
+        setTimeout(function () {
+          try { srcView.model.fetch(); }
+          catch (e) { console.warn('[scw-ws-v2] QA source refetch failed for ' + srcKey, e); }
+        }, 800);
       }
     });
     return true;
@@ -1177,21 +1471,28 @@
       // if qa-popover isn't loaded.
       if (!card.getAttribute('data-scw-ws-v2-photo-url')) {
         var reqd = card.getAttribute('data-photo-required') === 'true';
+        // The card's build-time verdict wins when it carries one: it already
+        // folds Required together with whether the surface SERVES QA
+        // (policyServesQa — a read-only surface whose row lacks the QA
+        // columns stamps 0). Cards without the marker keep the Required rule.
+        var served = card.getAttribute('data-scw-ws-v2-photo-needsqa');
         var openedEmpty = openPhotoQaModal(
           card,
           card.getAttribute('data-scw-ws-v2-photo-id'),
           card.getAttribute('data-scw-ws-v2-photo-type') || '',
           '',
-          reqd
+          (served !== null) ? (served === '1') : reqd
         );
         if (openedEmpty) { e.preventDefault(); e.stopPropagation(); }
         return;
       }
 
-      // Install surface (QA_CHIT_VIEWS marks cards with the needsqa attr):
-      // clicking a filled photo opens the QA modal — required photos with
-      // the QA sidebar, others as the big-photo viewer. Other surfaces
-      // (bid-review/sales/etc.) fall through to the lightbox unchanged.
+      // Install surface (QA_CHIT_VIEWS) and restricted surfaces
+      // (PHOTO_MODAL_POLICY) mark cards with the needsqa attr: clicking a
+      // filled photo opens the modal — required photos with the QA sidebar
+      // (editable on ops, read-only on the sub page, absent on sales),
+      // others as the big-photo viewer with Replace/Remove. Surfaces with
+      // no policy (bid-review etc.) fall through to the lightbox unchanged.
       if (card.hasAttribute('data-scw-ws-v2-photo-needsqa')) {
         var needsQa = card.getAttribute('data-scw-ws-v2-photo-needsqa') === '1';
         var opened = openPhotoQaModal(
@@ -1561,6 +1862,18 @@
         .off('knack-view-render.' + key + '.scwWsV2Photos')
         .on('knack-view-render.' + key + '.scwWsV2Photos', function () {
           scheduleStripRefresh(key);
+        });
+    });
+    // A QA source grid (QA_SOURCE_VIEWS) renders on its own schedule — after
+    // the worksheet on a cold load, and again after a photo save refetches
+    // it — so its render refreshes the worksheet's strips too (the QA state
+    // is part of the strip signature, so only changed strips rebuild).
+    Object.keys(QA_SOURCE_VIEWS).forEach(function (wsKey) {
+      var srcKey = QA_SOURCE_VIEWS[wsKey];
+      $(document)
+        .off('knack-view-render.' + srcKey + '.scwWsV2PhotosQaSrc')
+        .on('knack-view-render.' + srcKey + '.scwWsV2PhotosQaSrc', function () {
+          scheduleStripRefresh(wsKey);
         });
     });
   }

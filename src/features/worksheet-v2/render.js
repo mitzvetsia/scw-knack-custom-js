@@ -266,6 +266,13 @@
     // laborOnly views render the fee cell BLANK — never repopulate it here.
     var laborOnly = !!(ns.card && ns.card.isLaborOnly &&
       ns.card.isLaborOnly(sourceViewKey));
+    // The drop label lives on a different field per object (SOW field_1950,
+    // survey field_2365, install field_2802 → labelAlt field_2801) — resolve
+    // it through config so a non-SOW view doesn't get its label blanked.
+    var LF = {};
+    try { LF = (ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(sourceViewKey)) || {}; }
+    catch (e) { LF = {}; }
+    var labelKey = LF.displayLabel || 'field_1950';
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
       if (!rec || !rec.id) continue;
@@ -275,7 +282,19 @@
       );
       if (!card) continue;
 
-      setCellText(card, '.scw-ws-v2-cell--label', readDerived(rec, 'field_1950'));
+      var labelText = readDerived(rec, labelKey);
+      var labelEl = card.querySelector('.scw-ws-v2-cell--label');
+      if (labelEl && labelEl.hasAttribute('data-scw-ws-v2-desig')) {
+        // Install designator cell: the text has its own span and the pencil /
+        // inline editor around it must survive (this path runs while the
+        // number input may be the focused field). Touch the span only, with
+        // the same displayLabel → labelAlt fallback the install card uses.
+        if (!labelText && LF.labelAlt) labelText = readDerived(rec, LF.labelAlt);
+        var valEl = labelEl.querySelector('.scw-ws-v2-desig-val');
+        if (valEl && valEl.textContent !== labelText) valEl.textContent = labelText;
+      } else {
+        setCellText(card, '.scw-ws-v2-cell--label', labelText);
+      }
       if (!laborOnly) {
         setCellText(card, '.scw-ws-v2-cell--fee', readDerived(rec, 'field_2028'));
       }
@@ -637,9 +656,219 @@
   // and expand individual devices on demand.
   var _cardsSeeded = Object.create(null);   // sourceViewKey → true once persisted state applied
 
+  // ── Qty-one repair (survey deployments) ─────────────────────────────
+  // FLAG_limit-to-quantity-one rows hide the Qty input and treat qty as
+  // "implicitly 1" — but that's display-only. When the record's ACTUAL qty
+  // (field_2399) is 0/blank (the survey-creation scenario left it unset),
+  // every consumer that multiplies — the extended calc, the bid doc, Make
+  // totals — gets $0 while the worksheet shows nothing wrong (the $0 HDMI
+  // bid line, 2026-09-08). Persist the implied 1 so the data matches the
+  // UI. Unlocked rows only — a finalized/submitted bid is never silently
+  // mutated (those get fixed by hand). One attempt per record per session;
+  // sequential PUTs so a big survey can't trip Knack's ~10 req/s limit.
+  var qtyRepairTried = {};
+
+  function repairQtyOne(sourceViewKey, records) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function'
+        ? ns.cfg.viewCfg(sourceViewKey) : null;
+      if (!vc || vc.moneyMode !== 'survey' || vc.readOnly) return;
+      if (!(window.SCW && typeof SCW.knackAjax === 'function' &&
+            typeof SCW.knackRecordUrl === 'function')) return;
+      var F = (ns.cfg && typeof ns.cfg.fields === 'function')
+        ? ns.cfg.fields(sourceViewKey) : {};
+      var qtyKey = (F && F.qty)    || 'field_2399';
+      var oneKey = (F && F.qtyOne) || 'field_2373';
+      var lockFn = ns.card && ns.card.isCrLocked;
+
+      function boolYes(rec, key) {
+        var raw = rec[key + '_raw'];
+        if (raw === true || raw === 'Yes' || raw === 1) return true;
+        var s = String(rec[key] == null ? '' : rec[key])
+          .replace(/<[^>]*>/g, '').trim().toLowerCase();
+        return s === 'yes' || s === 'true' || s === '1';
+      }
+
+      var queue = [];
+      for (var i = 0; i < records.length; i++) {
+        var rec = records[i];
+        if (!rec || !rec.id || qtyRepairTried[rec.id]) continue;
+        if (!boolYes(rec, oneKey)) continue;
+        var q = parseFloat(rec[qtyKey + '_raw']);
+        if (isFinite(q) && q > 0) continue;               // real qty present
+        if (lockFn && lockFn(rec, sourceViewKey)) continue; // finalized — hands off
+        queue.push(rec);
+      }
+      if (!queue.length) return;
+
+      (function next() {
+        var r = queue.shift();
+        if (!r) return;
+        qtyRepairTried[r.id] = true;
+        var body = {};
+        body[qtyKey] = 1;
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(sourceViewKey, r.id),
+          type: 'PUT',
+          data: JSON.stringify(body),
+          success: function () {
+            r[qtyKey + '_raw'] = 1;
+            r[qtyKey] = '1';
+            console.log('[scw-ws-v2] qty-one repair: qty 0/blank → 1 on', r.id);
+            setTimeout(next, 300);
+          },
+          error: function (xhr) {
+            console.warn('[scw-ws-v2] qty-one repair failed on', r.id,
+              '(HTTP ' + (xhr && xhr.status) + ')');
+            setTimeout(next, 300);
+          }
+        });
+      })();
+    } catch (e) { /* repair is best-effort — never break the render */ }
+  }
+
+  // ── QA-fail surfacing (alert banner + row treatment) ────────────────
+  // A failed QA is an ERROR — rework required — not another warning. As a
+  // chip in the chip row it reads as peer-severity with "missing photos"
+  // and gets skimmed past (2026-09-09). Two treatments, both applied per
+  // render from the warnings cache:
+  //   1. A red alert banner pinned directly under the worksheet banner
+  //      listing every failed line item as a click-to-jump chip
+  //      (ns.focusRecord: opens the group, expands the card, scrolls +
+  //      pulses — same mechanics as the ?scwItem= deep link).
+  //   2. Full-row error treatment on each failed card (red edge stripe +
+  //      row tint, .scw-ws-v2-card--qafail) so the item pops mid-scroll.
+  function applyQaFailSurfacing(container, sourceViewKey, records) {
+    var banner = container.querySelector('.scw-ws-v2-qafail-alert');
+    var failed = [];
+    if (ns.warnings && typeof ns.warnings.getIssuesFor === 'function') {
+      for (var i = 0; i < records.length; i++) {
+        var rec = records[i];
+        if (!rec || !rec.id) continue;
+        if (ns.warnings.getIssuesFor(sourceViewKey, rec.id).indexOf('qaFail') !== -1) {
+          failed.push(rec);
+        }
+      }
+    }
+    for (var f = 0; f < failed.length; f++) {
+      var fc = container.querySelector(
+        '.scw-ws-v2-card[data-scw-ws-v2-record="' + failed[f].id + '"]');
+      if (fc) fc.classList.add('scw-ws-v2-card--qafail');
+    }
+    if (!failed.length) {
+      if (banner) banner.remove();
+      return;
+    }
+
+    // Chip text: "Designator · Product" (E-03 · Informant Dual Vision) —
+    // designator omitted when the row has none (headend gear, services);
+    // never the raw record id. Reads per-view logical fields so the same
+    // code serves install, SOW and survey deployments.
+    var Fq = (ns.cfg && typeof ns.cfg.fields === 'function')
+      ? (ns.cfg.fields(sourceViewKey) || {}) : {};
+    function readTxt(rec, key) {
+      if (!rec || !key) return '';
+      var raw = rec[key + '_raw'];
+      if (Array.isArray(raw)) {
+        return raw.map(function (r) {
+          return (r && (r.identifier != null ? r.identifier : '')) || '';
+        }).filter(Boolean).join(', ').replace(/<[^>]*>/g, '').trim();
+      }
+      var v = (raw != null && typeof raw !== 'object') ? raw : rec[key];
+      if (v == null) return '';
+      return String(v).replace(/<[^>]*>/g, '').trim();
+    }
+    function chipText(rec) {
+      var desig = readTxt(rec, Fq.displayLabel) || readTxt(rec, Fq.labelAlt);
+      var prod  = readTxt(rec, Fq.productName)  || readTxt(rec, Fq.product);
+      // Knack-synthesized "<24hex> (label)" identifiers → drop the id part.
+      desig = desig.replace(/[a-f0-9]{24}/ig, '').replace(/\(\s*\)/g, '').trim();
+      if (desig && prod) return desig + ' · ' + prod;
+      if (desig || prod) return desig || prod;
+      return (ns.card && typeof ns.card.labelLineItem === 'function' &&
+              ns.card.labelLineItem(rec)) || 'Line item';
+    }
+    // Scale guard: past MAX_CHIPS the remaining chips collapse behind a
+    // "+N more" toggle (styles.js hides .--extra until .is-expanded) so a
+    // big fail batch doesn't wall the page in red pills. The expanded
+    // state is re-read off the old banner before the innerHTML rebuild so
+    // a background re-render doesn't snap the list shut mid-read.
+    var MAX_CHIPS = 6;
+    var wasExpanded = false;
+    if (banner) {
+      var prevItems = banner.querySelector('.scw-ws-v2-qafail-alert-items');
+      wasExpanded = !!(prevItems && prevItems.classList.contains('is-expanded'));
+    }
+    var chipsHtml = '';
+    for (var c = 0; c < failed.length; c++) {
+      chipsHtml += '<button type="button" class="scw-ws-v2-qafail-alert-item' +
+        (c >= MAX_CHIPS ? ' scw-ws-v2-qafail-alert-item--extra' : '') + '" ' +
+        'data-scw-qafail-goto="' + escapeHtml(failed[c].id) + '" ' +
+        'title="Jump to this line item">' + escapeHtml(chipText(failed[c])) + '</button>';
+    }
+    var extraCount = failed.length - MAX_CHIPS;
+    if (extraCount > 0) {
+      chipsHtml += '<button type="button" class="scw-ws-v2-qafail-alert-more" ' +
+        'data-scw-qafail-more="' + extraCount + '">' +
+        (wasExpanded ? 'Show fewer' : '+ ' + extraCount + ' more') + '</button>';
+    }
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.className = 'scw-ws-v2-qafail-alert';
+      var anchor = container.querySelector('.scw-ws-v2-banner');
+      if (anchor && anchor.parentNode) {
+        anchor.parentNode.insertBefore(banner, anchor.nextSibling);
+      } else {
+        container.insertBefore(banner, container.firstChild);
+      }
+    }
+    banner.innerHTML =
+      '<span class="scw-ws-v2-qafail-alert-ic" aria-hidden="true">' +
+        '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" ' +
+        'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" ' +
+        'stroke-linejoin="round"><circle cx="12" cy="12" r="10"/>' +
+        '<line x1="15" y1="9" x2="9" y2="15"/>' +
+        '<line x1="9" y1="9" x2="15" y2="15"/></svg></span>' +
+      '<span class="scw-ws-v2-qafail-alert-text"><strong>' +
+        'Photo QA flagged ' + failed.length + ' line item' +
+        (failed.length === 1 ? '' : 's') + '</strong> — we’ve identified an ' +
+        'issue and left notes on each. Please review: remediate the work and ' +
+        'post a new photo, or share photos/documentation showing it’s correct ' +
+        'as-is — we’ll re-review together:</span>' +
+      '<span class="scw-ws-v2-qafail-alert-items' +
+        (wasExpanded ? ' is-expanded' : '') + '">' + chipsHtml + '</span>';
+  }
+
+  // Click-to-jump for the alert chips + the "+N more" collapse toggle —
+  // delegated once, document-wide.
+  if (!document.documentElement.hasAttribute('data-scw-qafail-goto-bound')) {
+    document.documentElement.setAttribute('data-scw-qafail-goto-bound', '1');
+    document.addEventListener('click', function (e) {
+      var m = e.target && e.target.closest && e.target.closest('[data-scw-qafail-more]');
+      if (m) {
+        e.preventDefault();
+        var wrap = m.closest('.scw-ws-v2-qafail-alert-items');
+        if (wrap) {
+          var open = wrap.classList.toggle('is-expanded');
+          m.textContent = open
+            ? 'Show fewer'
+            : '+ ' + m.getAttribute('data-scw-qafail-more') + ' more';
+        }
+        return;
+      }
+      var b = e.target && e.target.closest && e.target.closest('[data-scw-qafail-goto]');
+      if (!b) return;
+      e.preventDefault();
+      if (typeof ns.focusRecord === 'function') {
+        ns.focusRecord(b.getAttribute('data-scw-qafail-goto'));
+      }
+    });
+  }
+
   function renderView(sourceViewKey, records) {
     var container = document.getElementById('scw-ws-v2-' + sourceViewKey);
     if (!container) return;
+    repairQtyOne(sourceViewKey, records);
 
     // New render cycle → invalidate card.js's per-render record indexes so a
     // changed back-pointer (connection edit) can't be served stale from cache.
@@ -997,6 +1226,11 @@
     if (ns.sowFilter && typeof ns.sowFilter.applyRowColors === 'function') {
       ns.sowFilter.applyRowColors(sourceViewKey);
     }
+
+    // QA-fail surfacing — banner + full-row error treatment. Runs after
+    // the rebuild so the fresh cards get their classes.
+    try { applyQaFailSurfacing(container, sourceViewKey, effectiveRecords); }
+    catch (eqf) { console.warn('[scw-ws-v2] qa-fail surfacing failed', eqf); }
 
     if (_PF) {
       var _tot = SCW._now() - _pf0;

@@ -334,6 +334,12 @@
     }
 
     // Split accessories (field_2464 → a parent that's IN this record set).
+    // SERVICE lines can carry a parent too (worksheet-v2 serviceParent —
+    // e.g. a restocking fee attached to the item it applies to): they ride
+    // under the parent like accessories do, but render as service rows
+    // (description + their own charge, never a "Mounting Hardware" rollup)
+    // and, in a CO's Removed band, their charge is broken out as the band's
+    // "Fees on returned items" line rather than mixed into the credit.
     var accByParent = Object.create(null);
     var mainRecs = [];
     for (i = 0; i < records.length; i++) {
@@ -539,6 +545,151 @@
     c = connFirst(rec, CONFIG.fields.bucketSort);
     return !!(c && c.id === CONFIG.camReaderBucketId);
   }
+  function isServicesRec(rec) {
+    var c = connFirst(rec, CONFIG.fields.bucket);
+    if (c && CONFIG.servicesBucketIds.indexOf(c.id) !== -1) return true;
+    c = connFirst(rec, CONFIG.fields.bucketSort);
+    if (c && CONFIG.servicesBucketIds.indexOf(c.id) !== -1) return true;
+    return norm(readText(rec, CONFIG.fields.bucket)).toLowerCase() === 'services';
+  }
+  // ── CO money helpers ───────────────────────────────────────────────
+  // A change order carries two kinds of line discount that pull in opposite
+  // directions: a concession on ADDED gear (money off) and the discount the
+  // REMOVED gear originally sold with (the credit is what the customer PAID,
+  // not list). Netting the two into one "Discount" line per section produced
+  // a sign-flipped total (abs of a negative net) and a number nobody could
+  // read once the rates differed. So on a CO each band explains itself:
+  //   - Added band: list, then "Discount on added items", then the band
+  //     total.
+  //   - Removed band: every line and total is the credit at what the
+  //     customer PAID (list minus the discount the gear sold with, folded
+  //     into the line amount — decided 2026-09-11: a "+$102 discount"
+  //     line against a credit read as noise). Service charges riding on a
+  //     returned item (restocking fees) are the one extra line: "Fees on
+  //     returned items", above the credit.
+  //   - Section footers show one net Total; the Change Order Totals block
+  //     breaks equipment out the same way.
+  // Base proposals only carry positive discounts and keep their layout.
+  function discSum(recs) { return sumRecs(recs, CONFIG.fields.lineDiscount); }
+  /** Equipment (hardware) sum — net of the line discounts when `net`. */
+  function hardwareSum(recs, net) {
+    var h = sumRecs(recs, CONFIG.fields.hardware);
+    return net ? h - discSum(recs) : h;
+  }
+  var LBL_DISC_ADD = 'Discount on added items';
+  /** A service line riding under a parent that is NOT itself a credit —
+   *  e.g. a restocking fee attached to a returned item. In the Removed band
+   *  its charge is part of the returned item's credit (it sums into the
+   *  bucket row and the band credit like any other line beneath the item)
+   *  but it is not a returned UNIT, so it stays out of the qty column. */
+  function isServiceCharge(rec) {
+    return isServicesRec(rec) && !!connFirst(rec, CONFIG.fields.accessoryParent) &&
+           coActionOf(rec) !== 'remove';
+  }
+  /** Band money for one CO band. Added band: cost at list, `disc` = the
+   *  discounts to show beneath. Removed band: cost is the NET credit — each
+   *  returned item at what was paid (own discount folded in) PLUS any
+   *  service charge riding on it (restocking fee) — so the bucket row and
+   *  the band credit are exactly the sum of the lines printed above them;
+   *  `disc` stays 0 there. rmHardware / rmDisc / rmRate / rmUniform
+   *  describe the original discount for the credit caption. */
+  function newBandTotals() {
+    return { qty: 0, cost: 0, disc: 0, rmHardware: 0, rmDisc: 0, rmRate: null, rmUniform: true };
+  }
+  function bandSums(recs, band) {
+    var s = newBandTotals();
+    for (var i = 0; i < recs.length; i++) {
+      var r = recs[i];
+      var disc = readNum(r, CONFIG.fields.lineDiscount);
+      if (band === 'rm') {
+        s.cost += readNum(r, CONFIG.fields.cost) - disc;   // credit at what was paid
+        if (isServiceCharge(r)) continue;                   // a charge, not a returned unit
+        s.qty += readNum(r, CONFIG.fields.qty);
+        var hw = readNum(r, CONFIG.fields.hardware);
+        if (Math.abs(hw) > 0.004) {
+          var rate = disc / hw;
+          if (s.rmRate === null) s.rmRate = rate;
+          else if (Math.abs(rate - s.rmRate) > 0.005) s.rmUniform = false;
+          s.rmHardware += hw; s.rmDisc += disc;
+        }
+      } else {
+        s.qty += readNum(r, CONFIG.fields.qty);
+        s.cost += readNum(r, CONFIG.fields.cost);
+        s.disc += disc;
+      }
+    }
+    return s;
+  }
+  function mergeBandSums(tot, s) {
+    tot.qty += s.qty; tot.cost += s.cost; tot.disc += s.disc;
+    tot.rmHardware += s.rmHardware; tot.rmDisc += s.rmDisc;
+    if (s.rmRate !== null) {
+      if (tot.rmRate === null) tot.rmRate = s.rmRate;
+      else if (Math.abs(s.rmRate - tot.rmRate) > 0.005) tot.rmUniform = false;
+    }
+    if (!s.rmUniform) tot.rmUniform = false;
+  }
+  /** Caption beneath the removed band's credit: the credit is net of the
+   *  discount the items originally sold with. Names the rate when every
+   *  returned item carried the same one. '' when nothing was discounted. */
+  function rmCreditNote(tot) {
+    if (Math.abs(tot.rmDisc) < 0.004 || Math.abs(tot.rmHardware) < 0.004) return '';
+    var pct = Math.round(Math.abs(tot.rmDisc / tot.rmHardware) * 1000) / 10;
+    var pctText = String(pct).replace(/\.0$/, '') + '%';
+    return tot.rmUniform
+      ? 'Credits reflect the ' + pctText + ' discount applied to the original items.'
+      : 'Credits reflect the discounts applied to the original items.';
+  }
+  /** Display for the money a discount line APPLIES to its band: a positive
+   *  discount takes money off ("–$66.00"), a negative one (removed side)
+   *  gives it back ("+$102.00"). `dash` is the minus glyph convention of the
+   *  caller ('–' on page, '-' in the publish payload). */
+  function discDelta(disc, fmt, dash) {
+    return (disc < 0 ? '+' : dash) + fmt(Math.abs(disc));
+  }
+  /** Change Order Totals money — ONE partition shared by the on-page
+   *  render, the publish payload and the SCW.proposalGridTotals stash, so
+   *  the totals block always agrees with the bands:
+   *    addRecs  — every non-Remove line except the fee lines below
+   *    rmRecs   — Remove-action lines (credits)
+   *    feeRecs  — service charges riding on a Remove-action parent
+   *               (restocking fees): part of the returned items' credit,
+   *               exactly as the Removed band prints them
+   *  returnedCredit = Σ rm net credit + Σ fee charge (equipment + labor)
+   *  feeLabor       = the fee lines' labor money, which the Removed band
+   *                   counts inside the credit — so Installation Net leaves
+   *                   it out and Equipment Net takes it in (no double count).
+   *  lines: Equipment added · Discount on added items · Returned items
+   *  (credit). Lines that would be $0 / have no records are omitted. */
+  function coTotalsMoney(records, fmt, dash) {
+    fmt = fmt || money; dash = dash || '–';
+    var byId = Object.create(null), i, r;
+    for (i = 0; i < records.length; i++) { if (records[i] && records[i].id) byId[records[i].id] = records[i]; }
+    var addRecs = [], rmRecs = [], feeRecs = [];
+    for (i = 0; i < records.length; i++) {
+      r = records[i];
+      if (coActionOf(r) === 'remove') { rmRecs.push(r); continue; }
+      var pc = isServiceCharge(r) ? connFirst(r, CONFIG.fields.accessoryParent) : null;
+      var parent = pc && byId[pc.id];
+      if (parent && coActionOf(parent) === 'remove') feeRecs.push(r);
+      else addRecs.push(r);
+    }
+    var equipAdd = hardwareSum(addRecs, false);
+    var discAdd  = discSum(addRecs);
+    var feeLabor = sumRecs(feeRecs, CONFIG.fields.labor);
+    var returnedCredit = hardwareSum(rmRecs, true) + hardwareSum(feeRecs, true) + feeLabor;
+    var lines = [];
+    if (addRecs.length && Math.abs(equipAdd) > 0.004) {
+      lines.push({ type: 'sub', label: 'Equipment added', value: fmt(equipAdd) });
+    }
+    if (Math.abs(discAdd) > 0.004) {
+      lines.push({ type: 'disc', label: LBL_DISC_ADD, value: discDelta(discAdd, fmt, dash) });
+    }
+    if ((rmRecs.length || feeRecs.length) && Math.abs(returnedCredit) > 0.004) {
+      lines.push({ type: 'sub', label: 'Returned items (credit)', value: fmt(returnedCredit) });
+    }
+    return { lines: lines, equipAdd: equipAdd, discAdd: discAdd, returnedCredit: returnedCredit, feeLabor: feeLabor };
+  }
 
   // ── render ────────────────────────────────────────────────────────
   function tbd() { return '<span class="scw-pg2-tbd">TBD</span>'; }
@@ -577,11 +728,15 @@
 
     function emitProductBlock(product, accessories, bctx, tint, first) {
       var tintCls = tint ? ' scw-pg2-co-' + tint : '';
+      // Removed band on a CO: equipment credits at what the customer paid
+      // (the line's own discount folded in). Added band shows list; its
+      // discount is the band's own line beneath (emitBands).
+      var netRm = isCO && tint === 'rm';
 
       // L3 product line — qty/cost of PARENT devices only.
       if (!bctx.hideL3 && !isBlankish(product.label)) {
         var pQty = sumRecs(product.items, F.qty);
-        var pHardware = sumRecs(product.items, F.hardware);
+        var pHardware = hardwareSum(product.items, netRm);
         pushRow('scw-pg2-l3' + (first ? ' scw-pg2-l3--first' : '') + tintCls, [
           { html: esc(product.label) },
           { html: '<strong>' + Math.round(pQty) + '</strong>' },
@@ -641,12 +796,17 @@
         ]);
       });
 
+      // Children split: mounting hardware (rolled up per accessory product)
+      // vs SERVICE lines attached to this product (one row each, below).
+      var hwAccs = [], svcKids = [];
+      accessories.forEach(function (a) { (isServicesRec(a) ? svcKids : hwAccs).push(a); });
+
       // Mounting-hardware cluster beneath the product: one line per
       // accessory product (equipment price), + labor sub-line when the
       // accessory carries install labor.
-      if (accessories.length) {
+      if (hwAccs.length) {
         var byProduct = Object.create(null), order = [];
-        accessories.forEach(function (a) {
+        hwAccs.forEach(function (a) {
           var name = cleanProductLabel(readText(a, F.accessoryProduct)) ||
                      cleanProductLabel(readText(a, F.product)) || 'Mounting Hardware';
           if (!byProduct[name]) { byProduct[name] = []; order.push(name); }
@@ -655,7 +815,7 @@
         order.forEach(function (name) {
           var grp = byProduct[name];
           var gQty = sumRecs(grp, F.qty);
-          var gHardware = sumRecs(grp, F.hardware);
+          var gHardware = hardwareSum(grp, netRm);
           var gLabor = sumRecs(grp, F.labor);
           // Parent designators — cam/reader parents only (v1 parity).
           var parentRecs = [];
@@ -688,6 +848,21 @@
           }
         });
       }
+
+      // Service lines attached to this product (worksheet-v2 serviceParent —
+      // e.g. "30% restocking fee on returning …"): description as the label,
+      // the line's own charge (labor + equipment) as the cost. Inside the
+      // Removed band a positive charge is NOT painted credit-red.
+      svcKids.forEach(function (a) {
+        var descHtml = sanitizeLimited(a[F.installDesc]);
+        var text = norm(stripHtml(descHtml));
+        var amt = readNum(a, F.labor) + readNum(a, F.hardware);
+        pushRow('scw-pg2-svc-child' + tintCls + (amt > 0 ? ' scw-pg2-svc-child--charge' : ''), [
+          { html: '<span class="scw-pg2-l4-desc">' + (isBlankish(text) ? 'Service' : descHtml) + '</span>' },
+          { html: String(Math.round(readNum(a, F.qty))) },
+          { html: masked ? tbd() : esc(money(amt)) }
+        ]);
+      });
     }
 
     // L2 footer — total = hardware + labor for the whole bucket
@@ -719,29 +894,65 @@
         pushRow('scw-pg2-band scw-pg2-band--' + band, [
           { html: esc(bandLabel) }, { html: '' }, { html: '' }
         ]);
-        var bandQty = 0, bandCost = 0;
+        // Added band: lines at list → subtotal → "Discount on added items" →
+        // total. Removed band: lines at the NET credit → credit (the SAME
+        // figure Change Order Totals shows as "Equipment removed (credit)")
+        // → caption → fees riding on the returned items, listed beneath
+        // the credit rather than folded into it. See bandSums.
+        var tot = newBandTotals();
         inBand.forEach(function (e) {
           if (!sectionPromoted) emitBucketHeaderRow(e.bctx, false, false);
-          var q = 0, c = 0;
+          var recs = [];
           e.prs.forEach(function (pr, pi) {
             emitProductBlock(pr.product, pr.accessories, e.bctx, band, pi === 0);
-            pr.product.items.concat(pr.accessories).forEach(function (r) {
-              q += readNum(r, F.qty);
-              c += readNum(r, F.cost);
-            });
+            recs = recs.concat(pr.product.items, pr.accessories);
           });
-          bandQty += q; bandCost += c;
+          var s = bandSums(recs, band);
+          mergeBandSums(tot, s);
           pushRow('scw-pg2-band-sub scw-pg2-band-sub--' + band, [
             { html: '<strong>' + esc(e.bctx.displayLabel) + '</strong>', cls: 'scw-pg2-l2foot-label' },
-            { html: '<strong>' + Math.round(q) + '</strong>' },
-            { html: '<strong>' + esc(bandMoney(c)) + '</strong>' }
+            { html: '<strong>' + Math.round(s.qty) + '</strong>' },
+            { html: '<strong>' + esc(bandMoney(s.cost)) + '</strong>' }
           ]);
         });
-        pushRow('scw-pg2-band-total scw-pg2-band-total--' + band, [
+        if (band === 'rm') {
+          // One credit figure = the sum of every line printed above it
+          // (returned items net of their original discount + any fee riding
+          // on them), then the caption. Same number Change Order Totals
+          // shows as "Returned items (credit)".
+          var note = rmCreditNote(tot);
+          pushRow('scw-pg2-band-total scw-pg2-band-total--rm' +
+                  (note ? ' scw-pg2-band-total--has-disc' : ''), [
+            { html: '<strong>' + esc(bandLabel + ' — credit') + '</strong>', cls: 'scw-pg2-l2foot-label' },
+            { html: '<strong>' + Math.round(tot.qty) + '</strong>' },
+            { html: '<strong>' + esc(bandMoney(tot.cost)) + '</strong>' }
+          ]);
+          if (note) {
+            pushRow('scw-pg2-band-note scw-pg2-band-note--rm scw-pg2-band-last', [
+              { html: esc(note), cls: 'scw-pg2-l2foot-label' }, { html: '' }, { html: '' }
+            ]);
+          }
+          return;
+        }
+        var hasBandDisc = Math.abs(tot.disc) > 0.004;
+        pushRow('scw-pg2-band-total scw-pg2-band-total--add' +
+                (hasBandDisc ? ' scw-pg2-band-total--has-disc' : ''), [
           { html: '<strong>' + esc(bandLabel + ' — subtotal') + '</strong>', cls: 'scw-pg2-l2foot-label' },
-          { html: '<strong>' + Math.round(bandQty) + '</strong>' },
-          { html: '<strong>' + esc(bandMoney(bandCost)) + '</strong>' }
+          { html: '<strong>' + Math.round(tot.qty) + '</strong>' },
+          { html: '<strong>' + esc(bandMoney(tot.cost)) + '</strong>' }
         ]);
+        if (hasBandDisc) {
+          pushRow('scw-pg2-band-disc scw-pg2-band-disc--add', [
+            { html: esc(LBL_DISC_ADD), cls: 'scw-pg2-l2foot-label' },
+            { html: '' },
+            { html: esc(discDelta(tot.disc, money, '–')) }
+          ]);
+          pushRow('scw-pg2-band-total scw-pg2-band-total--add scw-pg2-band-net', [
+            { html: '<strong>' + esc(bandLabel + ' — total') + '</strong>', cls: 'scw-pg2-l2foot-label' },
+            { html: '' },
+            { html: '<strong>' + esc(bandMoney(tot.cost - tot.disc)) + '</strong>' }
+          ]);
+        }
       });
     }
 
@@ -851,12 +1062,18 @@
       var labor = laborSum(recs);
       var subtotal = hardware + labor;
       if (Math.abs(subtotal) < 0.01) return;
-      var discount = Math.abs(sumRecs(recs, F.lineDiscount));
-      var hasDiscount = discount > 0.004;
+      // SIGNED sum — on a CO the Removed band's discounts are negative (the
+      // credit shrinks to what was paid) and must ADD to the total; abs()
+      // subtracted them and shorted the section by twice the net discount.
+      var discount = sumRecs(recs, F.lineDiscount);
+      var hasDiscount = Math.abs(discount) > 0.004;
       rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--title', title: title });
-      if (hasDiscount) {
+      if (isCO) {
+        // The bands above already explain the money per side; one net Total.
+        rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--final scw-pg2-l1foot--last', label: 'Total', value: money(subtotal - discount) });
+      } else if (hasDiscount) {
         rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--sub', label: 'Subtotal', value: money(subtotal) });
-        rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--disc', label: 'Discount', value: '–' + money(discount) });
+        rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--disc', label: 'Discount', value: (discount < 0 ? '+' : '–') + money(Math.abs(discount)) });
         rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--final scw-pg2-l1foot--last', label: 'Total', value: money(subtotal - discount) });
       } else {
         rows.push({ cls: 'scw-pg2-l1foot scw-pg2-l1foot--final scw-pg2-l1foot--last', label: 'Total', value: money(subtotal) });
@@ -869,17 +1086,27 @@
       var lineItemDiscounts = sumRecs(tree.allRecords, F.lineDiscount);
       var proposalDiscount = Math.abs(readDetailNum('2302'));
       var discountNote = readDetail('2291');
-      var equipmentTotal = equipmentSubtotal - lineItemDiscounts;
-      var installationTotal = sumRecs(tree.allRecords, F.labor);
+      // CO: fees riding on returned items are part of the returned items'
+      // credit (as the Removed band prints them), so their labor money moves
+      // from Installation Net into Equipment Net. Grand total unchanged.
+      var co = isCO ? coTotalsMoney(tree.allRecords, money, "–") : null;
+      var equipmentTotal = equipmentSubtotal - lineItemDiscounts + (co ? co.feeLabor : 0);
+      var installationTotal = sumRecs(tree.allRecords, F.labor) - (co ? co.feeLabor : 0);
       var grandTotal = equipmentTotal + installationTotal - proposalDiscount;
       var hasAnyDiscount = lineItemDiscounts !== 0 || proposalDiscount !== 0;
 
       rows.push({ cls: 'scw-pg2-pt scw-pg2-l1foot--title scw-pg2-pt--first',
         title: isCO ? 'Change Order Totals' : 'Project Totals' });
-      if (hasAnyDiscount) {
+      if (co) {
+        // Equipment added / Discount on added items / Returned items
+        // (credit) → Equipment Net — each the same figure its band shows.
+        co.lines.forEach(function (ln) {
+          rows.push({ cls: 'scw-pg2-pt scw-pg2-l1foot--' + ln.type + ' scw-pg2-pt--tight', label: ln.label, value: ln.value });
+        });
+      } else if (hasAnyDiscount) {
         rows.push({ cls: 'scw-pg2-pt scw-pg2-l1foot--sub scw-pg2-pt--tight', label: 'Equipment Subtotal', value: money(equipmentSubtotal) });
         if (lineItemDiscounts !== 0) {
-          rows.push({ cls: 'scw-pg2-pt scw-pg2-l1foot--disc scw-pg2-pt--tight', label: 'Line Item Discounts', value: '–' + money(Math.abs(lineItemDiscounts)) });
+          rows.push({ cls: 'scw-pg2-pt scw-pg2-l1foot--disc scw-pg2-pt--tight', label: 'Line Item Discounts', value: (lineItemDiscounts < 0 ? '+' : '–') + money(Math.abs(lineItemDiscounts)) });
         }
       }
       rows.push({ cls: 'scw-pg2-pt scw-pg2-l1foot--final scw-pg2-pt--equipment', label: isCO ? 'Equipment Net' : 'Equipment Total', value: money(equipmentTotal) });
@@ -1204,12 +1431,15 @@
     function l1FooterData(title, recs) {
       var subtotal = sumRecs(recs, F.hardware) + sumRecs(recs, F.labor);
       if (Math.abs(subtotal) < 0.01) return null;
-      var discount = Math.abs(sumRecs(recs, F.lineDiscount));
-      var hasDiscount = discount > 0.004;
+      // SIGNED (see pushL1Footer): a CO's removed-side discounts are negative.
+      var discount = sumRecs(recs, F.lineDiscount);
+      var hasDiscount = Math.abs(discount) > 0.004;
       var lines = [];
-      if (hasDiscount) {
+      if (isCO) {
+        lines.push({ type: 'final', label: 'Total', value: pubMoney(subtotal - discount) });
+      } else if (hasDiscount) {
         lines.push({ type: 'sub', label: 'Subtotal', value: pubMoney(subtotal) });
-        lines.push({ type: 'disc', label: 'Discount', value: '-' + pubMoney(discount) });
+        lines.push({ type: 'disc', label: 'Discount', value: (discount < 0 ? '+' : '-') + pubMoney(Math.abs(discount)) });
         lines.push({ type: 'final', label: 'Total', value: pubMoney(subtotal - discount) });
       } else {
         lines.push({ type: 'final', label: 'Total', value: pubMoney(subtotal) });
@@ -1225,6 +1455,8 @@
       var synth = null;
       prs.forEach(function (pr) {
         var product = pr.product, accessories = pr.accessories;
+        // Removed band on a CO: equipment credits at what the customer paid.
+        var netRm = isCO && pr.band === 'rm';
         var prod = null;
         if (!bctx.hideL3 && !isBlankish(product.label)) {
           var cd = connDevicesOf(product.items);
@@ -1251,7 +1483,7 @@
           prod = {
             level: 3, label: product.label,
             qty: Math.round(sumRecs(product.items, F.qty)),
-            cost: pubMoney(sumRecs(product.items, F.hardware)),
+            cost: pubMoney(hardwareSum(product.items, netRm)),
             rate: '', hideCost: false,
             connectedDevices: cd.list,
             connectedDevicesCount: cd.count,
@@ -1285,9 +1517,11 @@
           }
         });
 
-        if (prod && accessories.length) {
+        var hwAccs = [], svcKids = [];
+        accessories.forEach(function (a) { (isServicesRec(a) ? svcKids : hwAccs).push(a); });
+        if (prod && hwAccs.length) {
           var byProduct = Object.create(null), order = [];
-          accessories.forEach(function (a) {
+          hwAccs.forEach(function (a) {
             var nm = cleanProductLabel(readText(a, F.accessoryProduct)) ||
                      cleanProductLabel(readText(a, F.product)) || 'Mounting Hardware';
             if (!byProduct[nm]) { byProduct[nm] = []; order.push(nm); }
@@ -1304,7 +1538,7 @@
             prod.lineItems.push({
               level: 4, label: nm, description: '',
               qty: Math.round(sumRecs(grp, F.qty)),
-              cost: pubMoney(sumRecs(grp, F.hardware)),
+              cost: pubMoney(hardwareSum(grp, netRm)),
               cameraList: designatorList(parentRecs),
               // Relocated EQUIPMENT accessory — must NOT be TBD-masked.
               isEquipment: true,
@@ -1317,6 +1551,22 @@
               }
               if (desc) prod.lineItems.push({ level: 4, label: desc, description: '', qty: '', cost: pubMoney(gLabor), cameraList: '' });
             }
+          });
+        }
+        // Service lines attached to this product — same row shape as the
+        // on-page render (description label, own charge). Labor-side money,
+        // so the sales TBD mask applies to it like any other service line.
+        if (prod && svcKids.length) {
+          svcKids.forEach(function (a) {
+            var descHtml = sanitizeLimited(a[F.installDesc]);
+            var text = norm(stripHtml(descHtml));
+            prod.lineItems.push({
+              level: 4, label: isBlankish(text) ? 'Service' : text,
+              description: isBlankish(text) ? '' : descHtml,
+              qty: Math.round(readNum(a, F.qty)),
+              cost: pubMoney(readNum(a, F.labor) + readNum(a, F.hardware)),
+              cameraList: '', isServiceChild: true,
+            });
           });
         }
       });
@@ -1344,24 +1594,45 @@
         if (!inBand.length) return;
         var bandLabel = band === 'add' ? 'Items to be Added' : 'Items to be Removed';
         sec.buckets.push({ level: 2, coBandHeader: true, kind: band, label: bandLabel, products: [], footer: null });
-        var bandCost = 0;
+        // Same money rules as the on-page render (emitBands / bandSums):
+        // added at list + its discount line + total; removed at the net
+        // credit, then the credit caption, then fees riding on the returned
+        // items beneath it.
+        var tot = newBandTotals();
         inBand.forEach(function (e) {
-          var q = 0, c = 0;
-          e.prs.forEach(function (pr) {
-            pr.product.items.concat(pr.accessories).forEach(function (r) {
-              q += readNum(r, F.qty);
-              c += readNum(r, F.cost);
-            });
-          });
-          bandCost += c;
+          var recs = [];
+          e.prs.forEach(function (pr) { recs = recs.concat(pr.product.items, pr.accessories); });
+          var s = bandSums(recs, band);
+          mergeBandSums(tot, s);
           sec.buckets.push({
             level: 2, label: e.bctx.displayLabel, isPromoted: promotedSec,
             coBand: band,
             products: buildBucketProducts(e.bctx, e.prs),
-            footer: { label: e.bctx.displayLabel, qty: Math.round(q), cost: bandMoney(c), coBand: band },
+            footer: { label: e.bctx.displayLabel, qty: Math.round(s.qty), cost: bandMoney(s.cost), coBand: band },
           });
         });
-        sec.buckets.push({ level: 2, coBandTotal: true, kind: band, label: bandLabel + ' — subtotal', cost: bandMoney(bandCost), products: [], footer: null });
+        if (band === 'rm') {
+          var note = rmCreditNote(tot);
+          sec.buckets.push({ level: 2, coBandTotal: true, coBandOpen: !!note, kind: band,
+            label: bandLabel + ' — credit',
+            cost: bandMoney(tot.cost), products: [], footer: null });
+          if (note) {
+            sec.buckets.push({ level: 2, coBandNote: true, kind: band, label: note, products: [], footer: null });
+          }
+          return;
+        }
+        var hasBandDisc = Math.abs(tot.disc) > 0.004;
+        sec.buckets.push({ level: 2, coBandTotal: true, coBandOpen: hasBandDisc, kind: band,
+          label: bandLabel + ' — subtotal',
+          cost: bandMoney(tot.cost), products: [], footer: null });
+        if (hasBandDisc) {
+          sec.buckets.push({ level: 2, coBandTotal: true, coBandDisc: true, kind: band,
+            label: LBL_DISC_ADD,
+            cost: discDelta(tot.disc, pubMoney, '-'), products: [], footer: null });
+          sec.buckets.push({ level: 2, coBandTotal: true, coBandNet: true, kind: band,
+            label: bandLabel + ' — total',
+            cost: bandMoney(tot.cost - tot.disc), products: [], footer: null });
+        }
       });
     }
 
@@ -1451,13 +1722,19 @@
       var equipmentSubtotal = sumRecs(tree.allRecords, F.hardware);
       var lineItemDiscounts = sumRecs(tree.allRecords, F.lineDiscount);
       var proposalDiscount = Math.abs(readDetailNum('2302'));
-      var equipmentTotal = equipmentSubtotal - lineItemDiscounts;
-      var installationTotal = sumRecs(tree.allRecords, F.labor);
+      // Same fee treatment as the on-page render (see coTotalsMoney).
+      var co = isCO ? coTotalsMoney(tree.allRecords, pubMoney, "-") : null;
+      var equipmentTotal = equipmentSubtotal - lineItemDiscounts + (co ? co.feeLabor : 0);
+      var installationTotal = sumRecs(tree.allRecords, F.labor) - (co ? co.feeLabor : 0);
       var grandTotal = equipmentTotal + installationTotal - proposalDiscount;
       projectTotals = { title: isCO ? 'Change Order Totals' : 'Project Totals', lines: [] };
-      if (lineItemDiscounts !== 0 || proposalDiscount !== 0) {
+      if (co) {
+        co.lines.forEach(function (ln) {
+          projectTotals.lines.push(ln);
+        });
+      } else if (lineItemDiscounts !== 0 || proposalDiscount !== 0) {
         projectTotals.lines.push({ type: 'sub', label: 'Equipment Subtotal', value: pubMoney(equipmentSubtotal) });
-        if (lineItemDiscounts !== 0) projectTotals.lines.push({ type: 'disc', label: 'Line Item Discounts', value: '-' + pubMoney(Math.abs(lineItemDiscounts)) });
+        if (lineItemDiscounts !== 0) projectTotals.lines.push({ type: 'disc', label: 'Line Item Discounts', value: (lineItemDiscounts < 0 ? '+' : '-') + pubMoney(Math.abs(lineItemDiscounts)) });
       }
       projectTotals.lines.push({ type: 'final', label: isCO ? 'Equipment Net' : 'Equipment Total', value: pubMoney(equipmentTotal) });
       projectTotals.lines.push({ type: 'final', label: isCO ? 'Installation Net' : 'Installation Total', value: pubMoney(installationTotal) });
@@ -1559,6 +1836,25 @@
       '.scw-pg2-band-total--add td { background: #dcfce7; color: #065f46; border-top: 2px solid #059669; }',
       '.scw-pg2-band-total--rm td { background: #eef2f7; color: #334155; border-top: 2px solid #64748b; }',
       '.scw-pg2-table .scw-pg2-band-sub--rm td:nth-child(3), .scw-pg2-table .scw-pg2-band-total--rm td:nth-child(3) { color: #be123c; }',
+      /* Band with follow-on lines: subtotal (list) · discount · fees · total
+         or credit. The subtotal loses its bottom gap so they read as one
+         block; the closing total/credit row loses its top rule. */
+      '.scw-pg2-band-total--has-disc td { border-bottom: 0; }',
+      '.scw-pg2-band-disc td { background: #f7fdf9; background-clip: padding-box; color: orange; font-weight: 700; padding-top: 4px; padding-bottom: 4px; }',
+      '.scw-pg2-band-disc td:first-child { text-align: right; }',
+      '.scw-pg2-band-net td { border-top: 0 !important; }',
+      /* Caption under the removed band's credit ("Credits reflect the 15%
+         discount applied to the original items.") + the band's last
+         follow-on row restores the gap the open credit row gave up. */
+      '.scw-pg2-band-note td { background: transparent; color: #5f6b7a; font: italic 12px/1.3 system-ui, sans-serif; padding-top: 3px; padding-bottom: 3px; }',
+      '.scw-pg2-band-note td:first-child { text-align: right; }',
+      '.scw-pg2-band-last td { border-bottom: 20px solid transparent; }',
+      /* Service line riding under a product (restocking fee, …): reads like
+         a mount rollup; a positive charge inside the Removed band is not
+         painted credit-red. */
+      '.scw-pg2-svc-child td { color: #5f6b7a; font-size: 14px; font-weight: 400; }',
+      '.scw-pg2-svc-child td:nth-child(n+2) { font-weight: 600; }',
+      '.scw-pg2-table .scw-pg2-co-rm.scw-pg2-svc-child--charge td:nth-child(3) { color: #07467c; }',
       // Missing-columns notice
       '.scw-pg2-notice { margin: 10px 0; padding: 10px 14px; border: 1px solid #f5d199; border-radius: 8px; background: #fff9ec; color: #7a4a09; font: 13px/1.5 system-ui, sans-serif; }',
       '.scw-pg2-notice code { font-size: 12px; color: #92400e; }',
@@ -1780,12 +2076,21 @@
           var tEquipSub = sumRecs(tree.allRecords, CONFIG.fields.hardware);
           var tLineDisc = sumRecs(tree.allRecords, CONFIG.fields.lineDiscount);
           var tPropDisc = Math.abs(readDetailNum('2302'));
-          var tEquip = tEquipSub - tLineDisc;
-          var tInstall = sumRecs(tree.allRecords, CONFIG.fields.labor);
+          // CO: fee lines riding on returned items count inside the
+          // returned items' credit (equipment side), not Installation —
+          // the same split the rendered totals block shows (coTotalsMoney).
+          var tIsCO = false;
+          for (var tci = 0; tci < tree.allRecords.length; tci++) {
+            if (coActionOf(tree.allRecords[tci])) { tIsCO = true; break; }
+          }
+          var tFeeLabor = tIsCO ? coTotalsMoney(tree.allRecords).feeLabor : 0;
+          var tEquip = tEquipSub - tLineDisc + tFeeLabor;
+          var tInstall = sumRecs(tree.allRecords, CONFIG.fields.labor) - tFeeLabor;
           window.SCW.proposalGridTotals = {
             viewId: v1ViewId,
             equipmentSubtotal: tEquipSub,
             lineItemDiscounts: tLineDisc,
+            returnFees: tFeeLabor,
             proposalDiscount: tPropDisc,
             equipmentTotal: tEquip,
             installationTotal: tInstall,

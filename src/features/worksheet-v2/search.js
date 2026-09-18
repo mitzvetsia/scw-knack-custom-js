@@ -208,6 +208,9 @@
     updateMeta(viewKey, container);
   }
 
-  ns.search = { mount: mount, filterRecords: filterRecords };
+  // queryOf: init.js's applyRender compares the active query against the one
+  // the body was last painted with — a changed query must override the
+  // "nothing dirty, skip the rebuild" guard (a keystroke dirties no records).
+  ns.search = { mount: mount, filterRecords: filterRecords, queryOf: getQ };
 })();
 /*** END WORKSHEET V2 — SEARCH BOX ******************************************/

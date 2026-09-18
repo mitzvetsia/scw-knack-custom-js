@@ -67,6 +67,11 @@
     return true;
   }
 
+  function brClassic() {
+    try { return localStorage.getItem('scwBrLayoutClassic') === '1'; }
+    catch (e) { return false; }
+  }
+
   function build() {
     var mdfAvailable = addMdfAvailable();
     var bar = document.createElement('div');
@@ -88,6 +93,14 @@
           'data-scw-br-v2-tb="rows-toggle" ' +
           'title="Open or close every line item’s detail panel">' +
           'Expand line items</button>' +
+        // Quiet ⇄ Classic layout (2026-08-27 UX triage). Quiet folds the
+        // per-SOW panels (sub-bid diff, Revision Requests, margin meta) to
+        // bars/pills by default; Classic restores the old always-open
+        // layout. Label names the layout you'd SWITCH TO.
+        '<button type="button" class="scw-ws-v2-toolbar-btn" ' +
+          'data-scw-br-v2-tb="layout-toggle" ' +
+          'title="Quiet folds the diff / revisions / margin panels to one-line bars; Classic keeps them open like before">' +
+          (brClassic() ? 'Quiet layout' : 'Classic layout') + '</button>' +
       '</div>' +
       '<div class="scw-ws-v2-toolbar-spacer"></div>' +
       '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
@@ -202,6 +215,13 @@
           ns.toggleAllGroups(!!(ns.allGroupsOpen && ns.allGroupsOpen()));
         }
         syncLabels();
+      } else if (action === 'layout-toggle') {
+        // Reload rather than live-restyle: three separate modules read this
+        // flag at render time, and a reload lands them all consistently.
+        try {
+          localStorage.setItem('scwBrLayoutClassic', brClassic() ? '0' : '1');
+        } catch (err) { /* ignore */ }
+        window.location.reload();
       }
     });
 

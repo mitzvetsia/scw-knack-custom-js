@@ -78,9 +78,44 @@
     snapshotField: 'field_2941', // JSON blob: frozen diff + reviewer note (on SOW header)
     basisBidView:  'view_3918',  // SOW records write view on scene_1155 (must expose field_2942 + field_2941)
 
+    // ── "K1 Bid OR no subcontractor bid" → the bid PDF is REQUIRED ──────
+    // When the reviewer picks the K1 sentinel there is no bid package (and
+    // so no field_2626 PDF) to price from. They must upload the bid PDF the
+    // SOW → proposal is priced against instead. It lands in the SOW's own
+    // bid-PDF file field (the same field_2981 the CO "Skip Sub Pricing"
+    // flow fills) via the SOW write view, AND its {assetId, name, url}
+    // rides in the field_2941 snapshot as `k1Pdf` — that's what the ops
+    // stepper's publish gate and the publish payload read, so no extra
+    // column is needed on view_3861. ⚠ Builder: field_2981 must be an
+    // editable field on view_3918 or the file-field write is dropped (the
+    // panel warns; the snapshot copy still carries the asset).
+    k1PdfField:    'field_2981',
+
     // A package whose status text reads complete/submitted — surfaced as a
     // hint next to each option, NOT used to auto-select.
     completeStatusRe: /complete|submit|final|received|done/i,
+
+    // ── "Request a K2 bid" action ──────────────────────────────────────
+    // An ACTION item on the basis-bid picker, not a basis choice: picking it
+    // POSTs the SOW id to Make and immediately restores the previously-saved
+    // basis, so it can never be persisted as field_2942. Blank disables the
+    // option entirely.
+    requestK2Webhook: 'https://hook.us1.make.com/h3dxxy818kqqeos18cux32x1sx41xcdv',
+
+    // The option is offered ONLY when the project has no survey connected.
+    // scene_1155 carries no Surveys grid, so the check is derived from the
+    // survey line items already loaded in view_3680: each row's REL_survey
+    // request (field_2360) names its survey, so any populated value means a
+    // survey exists.
+    //
+    // KNOWN LIMIT of deriving it this way: a survey request that exists but
+    // has no line items yet (not walked) is invisible here, and the option
+    // would still be offered. To make the check authoritative, add a hidden
+    // Surveys grid for the project to scene_1155 and point surveyGateView at
+    // it with surveyGateField '' — records-exist then means surveys-exist,
+    // and no other code changes.
+    surveyGateView:  'view_3680',
+    surveyGateField: 'field_2360',   // '' = the view's records ARE the surveys
 
     // ── Diff tiers ─────────────────────────────────────────────────────
     // Severity ladder. Nothing is ever hidden — noise is demoted, not
