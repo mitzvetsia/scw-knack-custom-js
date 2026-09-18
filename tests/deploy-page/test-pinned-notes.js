@@ -109,77 +109,78 @@ setTimeout(() => {
   document.getElementById('kn-scene_1311').appendChild(shell);
   const bar = document.createElement('div'); bar.id = 'scw-deploy-notes-actionbar'; bar.appendChild(cta);
   view.parentNode.insertBefore(bar, view);
-  let submitted = 0, reloaded = 0;
-  formHost.querySelector('form').addEventListener('submit', e => { e.preventDefault(); submitted++; });
-  formHost.querySelector('.kn-form-reload').addEventListener('click', e => { e.preventDefault(); reloaded++; });
+  let knackSubmits = 0;
+  formHost.querySelector('form').addEventListener('submit', e => { e.preventDefault(); knackSubmits++; });   // stands in for Knack's handler
   // No schema for the form in Knack.views: detection is DOM-only.
   fire();
   setTimeout(() => {
     check('the on-page form moves above the card list, restyled, its accordion shell hidden',
       [formHost.parentNode === view, formHost.nextElementSibling && formHost.nextElementSibling.className, formHost.classList.contains('scw-notes-addform'), shell.style.display],
       [true, 'scw-notes-list', true, 'none']);
-    check('the proxied "Add Project Note" button is hidden; the form keeps its own submit, relabelled',
-      [document.getElementById('scw-pinned-notes-css-form').textContent, formHost.querySelector('button[type="submit"]').textContent, !!formHost.querySelector('textarea').getAttribute('placeholder')],
-      ['#view_4162:not(.scw-notes-addform) { display: none !important; }\n#scw-deploy-notes-actionbar { display: none !important; }', 'Save note', true]);
+    check('the proxied "Add Project Note" button is hidden; Knack\'s submit is hidden behind our Save note',
+      [document.getElementById('scw-pinned-notes-css-form').textContent, formHost.querySelector('button[type="submit"]').style.getPropertyValue('display'), formHost.querySelector('.scw-notes-addform__save').textContent, !!formHost.querySelector('textarea').getAttribute('placeholder')],
+      ['#view_4162:not(.scw-notes-addform) { display: none !important; }\n#scw-deploy-notes-actionbar { display: none !important; }', 'none', 'Save note', true]);
     const pinCb = formHost.querySelector('.kn-submit input[name="scw_pin"]');
     check('a Pin checkbox rides in the submit row (the form has no pin input)', [!!pinCb, pinCb && pinCb.disabled], [true, false]);
     check('the empty-state hint / CTA click focuses the form instead of navigating', [clickCta(), !!view.querySelector('.scw-notes-compose')], [true, false]);
+    check('KTL / legacy chrome is beaten with inline !important (box, textarea)',
+      [formHost.style.getPropertyPriority('background-color'), formHost.querySelector('textarea').style.getPropertyValue('width')], ['important', '100%']);
     formHost.querySelector('#field_328').value = 'Escort required after 6pm.';
     pinCb.checked = true;
     const before = puts.length;
-    formHost.querySelector('button[type="submit"]').click();
-    check('Save is Knack\'s own submit (no REST call from the bundle)', [submitted, puts.length - before], [1, 0]);
-    (handlers['knack-record-create.view_4162.scwPinnedNotesSave'] || []).forEach(fn => fn(null, {}, { id: 'n1' }));
-    (handlers['knack-form-submit.view_4162.scwPinnedNotesSave'] || []).forEach(fn => fn(null, {}, { id: 'n1' }));
-    check('record-create pins the new record through the grid and refetches once', [puts[puts.length - 1], fetched], [{ url: '/view_4135/n1', type: 'PUT', body: { field_3278: true } }, 4]);
+    formHost.querySelector('.scw-notes-addform__save').click();
+    check('Save POSTs the form\'s inputs through the form view (note + hidden project), never Knack\'s submit',
+      [puts[before], knackSubmits],
+      [{ url: 'https://api.knack.com/v1/pages/scene_1311/views/view_4162/records', type: 'POST', body: { field_328: 'Escort required after 6pm.', field_329: PROJECT } }, 0]);
+    check('then pins the new record through the grid, refetches, clears the form, flashes "Note saved."',
+      [puts[before + 1], fetched, formHost.querySelector('#field_328').value, pinCb.checked, (view.querySelector('.scw-notes-saved') || {}).textContent],
+      [{ url: '/view_4135/new1', type: 'PUT', body: { field_3278: true } }, 4, '', false, 'Note saved.']);
+    (handlers['knack-record-create.view_4162.scwPinnedNotesSave'] || []).forEach(fn => fn(null, {}, { id: 'new1' }));
+    check('Knack\'s own record-create for that record is an echo: no second refresh', fetched, 4);
+    // A native submit (Enter, a stray handler) is intercepted and saved the same way.
+    formHost.querySelector('#field_328').value = 'Gate closes at 5.';
+    formHost.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    check('a native submit is ours too: API POST, Knack\'s handler never runs', [puts[puts.length - 1].type, puts[puts.length - 1].body.field_328, knackSubmits, fetched], ['POST', 'Gate closes at 5.', 0, 5]);
     setTimeout(() => {
-      check('form-submit for the same record is not a second save', [puts.length, fetched], [before + 1, 4]);
-      // Knack re-renders the form (same element) after the save: a pass re-dresses it without moving it.
-      formHost.querySelector('button[type="submit"]').textContent = 'Submit';
+      // Knack re-renders the form (same element) on a scene pass: re-dressed without moving, one Save, one Pin.
       fire();
       setTimeout(() => {
-        check('a re-render pass re-labels in place; still one Pin checkbox', [formHost.querySelector('button[type="submit"]').textContent, formHost.querySelectorAll('input[name="scw_pin"]').length, formHost.nextElementSibling.className], ['Save note', 1, 'scw-notes-list']);
-        check('KTL / legacy chrome is beaten with inline !important (box, textarea, button)',
-          [formHost.style.getPropertyPriority('background-color'), formHost.querySelector('textarea').style.getPropertyValue('width'), formHost.querySelector('button[type="submit"]').style.getPropertyValue('width'), formHost.querySelector('button[type="submit"]').style.getPropertyValue('background-color')],
-          ['important', '100%', 'auto', '#163C6E'.toLowerCase() === '#163c6e' ? formHost.querySelector('button[type="submit"]').style.getPropertyValue('background-color') : '']);
+        check('a re-render pass re-dresses in place; one Save, one Pin checkbox', [formHost.querySelectorAll('.scw-notes-addform__save').length, formHost.querySelectorAll('input[name="scw_pin"]').length, formHost.nextElementSibling.className], [1, 1, 'scw-notes-list']);
+        // Knack re-renders by REPLACING the element at its home: the old copy is stale, a fresh one appears in
+        // the scene. The pass adopts the fresh one, drops the stale copy, and the button stays hidden throughout.
+        formHost.querySelector('form').remove();
+        const fresh = formHost.cloneNode(false); fresh.className = 'kn-view kn-form'; fresh.removeAttribute('style');
+        fresh.innerHTML = '<form action="#" method="post"><textarea id="field_328" name="field_328"></textarea><div class="kn-submit"><button class="kn-button is-primary" type="submit">Submit</button></div></form>';
+        shell.appendChild(fresh);
+        fire();
         setTimeout(() => {
-          check('the form is reloaded for the next note', reloaded, 1);
-          // Knack re-renders by REPLACING the element at its home: the old (adopted) copy shows the
-          // confirmation, a fresh one appears in the scene. The pass adopts the fresh one, drops the stale
-          // copy, and the button stays hidden throughout.
-          formHost.querySelector('form').remove();
-          const fresh = formHost.cloneNode(false); fresh.className = 'kn-view kn-form'; fresh.removeAttribute('style');
-          fresh.innerHTML = '<form action="#" method="post"><textarea id="field_328" name="field_328"></textarea><div class="kn-submit"><button class="kn-button is-primary" type="submit">Submit</button></div></form>';
-          shell.appendChild(fresh);
+          check('a replaced form element is adopted in place of the stale one; one element left; button still hidden',
+            [document.querySelectorAll('[id="view_4162"]').length, fresh.parentNode === view, fresh.nextElementSibling.className, !!fresh.querySelector('.scw-notes-addform__save'), /notes-actionbar \{ display: none/.test(document.getElementById('scw-pinned-notes-css-form').textContent)],
+            [1, true, 'scw-notes-list', true, true]);
+          // Element gone entirely for a beat (Knack mid re-render): the button must NOT come back.
+          fresh.remove();
           fire();
           setTimeout(() => {
-            check('a replaced form element is adopted in place of the stale one; one element left; button still hidden',
-              [document.querySelectorAll('[id="view_4162"]').length, fresh.parentNode === view, fresh.nextElementSibling.className, fresh.querySelector('button[type="submit"]').textContent, /notes-actionbar \{ display: none/.test(document.getElementById('scw-pinned-notes-css-form').textContent)],
-              [1, true, 'scw-notes-list', 'Save note', true]);
-            // Element gone entirely for a beat (Knack mid re-render): the button must NOT come back.
-            fresh.remove();
+            check('with the form momentarily absent the button stays hidden', /notes-actionbar \{ display: none/.test(document.getElementById('scw-pinned-notes-css-form').textContent), true);
+            shell.appendChild(fresh);
             fire();
             setTimeout(() => {
-              check('with the form momentarily absent the button stays hidden', /notes-actionbar \{ display: none/.test(document.getElementById('scw-pinned-notes-css-form').textContent), true);
-              shell.appendChild(fresh);
-              fire();
-              setTimeout(() => {
-                check('and the form is re-adopted when it returns', [fresh.parentNode === view, fresh.nextElementSibling.className], [true, 'scw-notes-list']);
-                afterComposer();
-              }, 200);
+              check('and the form is re-adopted when it returns', [fresh.parentNode === view, fresh.nextElementSibling.className], [true, 'scw-notes-list']);
+              afterComposer();
             }, 200);
           }, 200);
-        }, 1000);
+        }, 200);
       }, 200);
-    }, 500);
+    }, 50);
   }, 250);
   function afterComposer() {
   // Cap: with 3 pinned in the model, pinning a 4th is refused.
   recs[1].field_3278_raw = true;
   fire();
   setTimeout(() => {
+    const beforeCap = puts.length;
     view.querySelector('[data-scw-note-id="d4"] .scw-pin-toggle').click();
-    check('a fourth pin is refused with an explanation', [puts.length, alerts.length > 0 && /Up to 3/.test(alerts[0])], [4, true]);
+    check('a fourth pin is refused with an explanation', [puts.length - beforeCap, alerts.length > 0 && /Up to 3/.test(alerts[0])], [0, true]);
     check('strip shows at most three', document.querySelectorAll('#scw-pinned-notes .scw-pin-note').length, 3);
     // No notes: empty state instead of Knack's "No Data" row; strip gone.
     model.data.models = [];

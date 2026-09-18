@@ -593,26 +593,45 @@
                 font: '13.5px/1.5 system-ui, sans-serif', color: '#0f172a', margin: '0' });
     }
     var formEl = el.querySelector('form');
-    var submit = formEl && formEl.querySelector('button[type="submit"], input[type="submit"]');
-    if (submit) {
-      if (submit.tagName === 'BUTTON' && /^submit$/i.test(plain(submit.textContent))) submit.textContent = 'Save note';
-      else if (submit.tagName === 'INPUT' && /^submit$/i.test(submit.value)) submit.value = 'Save note';
-      imp(submit, { width: 'auto', display: 'inline-flex', margin: '0', padding: '7px 16px', 'border-radius': '8px',
-                    border: '1px solid #163C6E', background: '#163C6E', 'background-color': '#163C6E', color: '#fff',
-                    font: '600 13px/1.2 system-ui, sans-serif', 'font-size': '13px', 'box-shadow': 'none' });
+    var knSubmit = formEl && formEl.querySelector('button[type="submit"], input[type="submit"], .kn-submit .kn-button');
+    var row = knSubmit ? knSubmit.parentNode : formEl;
+    if (!row) { bindSave(cfg, form.viewKey); return; }
+    // Knack's own submit is never used: its post-submit state (confirmation,
+    // "Reload form", element replacement) proved unreliable to recover
+    // from. The note is POSTed through this form view — the same
+    // view-based endpoint the form itself uses, so the form's record rules
+    // (author, date, project) run server-side — and the form simply stays.
+    if (knSubmit) knSubmit.style.setProperty('display', 'none', 'important');
+    var save = row.querySelector('.scw-notes-addform__save');
+    if (!save) {
+      save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'scw-notes-addform__save';
+      save.textContent = 'Save note';
+      row.appendChild(save);
+      save.addEventListener('click', function () { saveViaApi(cfg, form.viewKey); });
+    }
+    imp(save, { width: 'auto', display: 'inline-flex', margin: '0', padding: '7px 16px', 'border-radius': '8px',
+                border: '1px solid #163C6E', background: '#163C6E', 'background-color': '#163C6E', color: '#fff',
+                font: '600 13px/1.2 system-ui, sans-serif', 'font-size': '13px', 'box-shadow': 'none', cursor: 'pointer' });
+    var status = row.querySelector('.scw-notes-compose__status');
+    if (!status) {
+      status = document.createElement('span');
+      status.className = 'scw-notes-compose__status';
+      status.setAttribute('aria-live', 'polite');
+      row.insertBefore(status, save);
     }
     // Pin to the header: the form has no FLAG_pinned input, so the choice
     // rides along and is written through the grid once Knack hands back
     // the record.
-    if (!form.inputs[F.pinned] && submit && submit.parentNode) {
-      var row = submit.parentNode;
+    if (!form.inputs[F.pinned]) {
       var pin = row.querySelector('.scw-notes-compose__pin');
       var atCap = pinnedNotes(cfg).length >= cfg.maxPinned;
       if (!pin) {
         pin = document.createElement('label');
         pin.className = 'scw-notes-compose__pin';
         pin.innerHTML = '<input type="checkbox" name="scw_pin"> Pin to project header <span class="scw-notes-compose__hint"></span>';
-        row.insertBefore(pin, submit);
+        row.insertBefore(pin, status);
       }
       var cb = pin.querySelector('input');
       cb.disabled = atCap;
@@ -621,13 +640,91 @@
     }
     if (formEl && !formEl.__scwNotesBound) {
       formEl.__scwNotesBound = true;
-      formEl.addEventListener('submit', function () {
-        var cb = el.querySelector('input[name="scw_pin"]');
-        _pendingPin[form.viewKey] = !!(cb && cb.checked && !cb.disabled);
+      // Belt and braces: a native submit (Enter in a one-line input, a
+      // stray Knack handler) is ours too — never Knack's.
+      formEl.addEventListener('submit', function (e) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        saveViaApi(cfg, form.viewKey);
+      }, true);
+      if (ta) ta.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveViaApi(cfg, form.viewKey); }
       });
     }
     bindSave(cfg, form.viewKey);
   }
+  /** POST the form's inputs (every name="field_N" — the note, the hidden
+   *  project connection) through the form view; then pin, refetch, clear. */
+  var _saving = {};
+  function saveViaApi(cfg, viewKey) {
+    var el = liveFormEl(viewKey), F = cfg.fields;
+    var formEl = el && el.querySelector('form');
+    if (!formEl || _saving[viewKey]) return;
+    var ta = formEl.querySelector('[name="' + F.note + '"], #' + viewKey + '-' + F.note + ', #' + F.note + ', textarea');
+    var text = ta ? String(ta.value || '').trim() : '';
+    if (!text) { if (ta) ta.focus(); return; }
+    if (!(window.SCW && typeof SCW.knackAjax === 'function')) { console.warn('[scw-pinned-notes] SCW.knackAjax missing'); return; }
+    var body = {}, els = formEl.querySelectorAll('input, textarea, select');
+    for (var i = 0; i < els.length; i++) {
+      var f = els[i], m = (f.getAttribute('name') || '').match(/^field_\d+$/) || (f.id || '').match(/field_\d+$/);
+      if (!m) continue;
+      var key = m[0];
+      if (f.type === 'checkbox' || f.type === 'radio') { if (f.checked) body[key] = f.value; continue; }
+      if (f.tagName === 'SELECT' && f.multiple) {
+        body[key] = []; for (var o = 0; o < f.options.length; o++) if (f.options[o].selected && f.options[o].value) body[key].push(f.options[o].value);
+        continue;
+      }
+      if (f.value !== '' && body[key] == null) body[key] = f.value;
+    }
+    body[F.note] = text;
+    var cb = el.querySelector('input[name="scw_pin"]');
+    var wantPin = !!(cb && cb.checked && !cb.disabled);
+    if (wantPin && liveInputs(el)[F.pinned]) body[F.pinned] = true;
+    var save = el.querySelector('.scw-notes-addform__save'), status = el.querySelector('.scw-notes-compose__status');
+    _saving[viewKey] = true;
+    if (save) save.disabled = true;
+    if (status) status.textContent = 'Saving…';
+    var done = function (err) {
+      _saving[viewKey] = false;
+      if (save) save.disabled = false;
+      if (err) {
+        if (status) status.textContent = 'Could not save (' + err + '). Try again.';
+        console.warn('[scw-pinned-notes] add note failed', err);
+        return;
+      }
+      if (status) status.textContent = '';
+      if (ta) { ta.value = ''; }
+      if (cb) cb.checked = false;
+      flashSaved(cfg, 'Note saved.');
+    };
+    SCW.knackAjax({
+      url: Knack.api_url + '/v1/pages/' + cfg.sceneId + '/views/' + viewKey + '/records',
+      type: 'POST', data: JSON.stringify(body),
+      success: function (res) {
+        var record = res && (res.record || res);
+        var newId = record && record.id || '';
+        _lastSaved[viewKey] = { key: newId || 'anon', at: Date.now() };   // Knack's own events, if any, are echoes
+        done(null);
+        var refetch = function () {
+          var v = Knack.views && Knack.views[cfg.notesView];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();   // re-render → new card + strip
+        };
+        if (wantPin && !body[F.pinned] && newId && typeof SCW.knackRecordUrl === 'function') {
+          var pb = {}; pb[F.pinned] = true;
+          SCW.knackAjax({ url: SCW.knackRecordUrl(cfg.notesView, newId), type: 'PUT', data: JSON.stringify(pb),
+            success: refetch,
+            error: function (xhr) { console.warn('[scw-pinned-notes] pin after add failed', xhr && xhr.status); refetch(); } });
+        } else {
+          refetch();
+        }
+      },
+      error: function (xhr) {
+        var msg = 'HTTP ' + (xhr && xhr.status);
+        try { var j = JSON.parse(xhr.responseText); if (j && j.errors && j.errors[0]) msg = j.errors[0].message || msg; } catch (e) { /* not JSON */ }
+        done(msg);
+      }
+    });
+  }
+  function liveInputs(el) { return domInputs(el); }
   /** Our own "Note saved." line at the top of the notes list (Knack's
    *  confirmation is hidden: the form reloads on its own). */
   function flashSaved(cfg, text) {
@@ -654,42 +751,17 @@
   function onSaved(cfg, viewKey, record) {
     var newId = record && (record.id || (record.record && record.record.id)) || '';
     var key = newId || 'anon', now = Date.now();
-    if (_lastSaved[viewKey] && _lastSaved[viewKey].key === key && now - _lastSaved[viewKey].at < 3000) return;
+    if (_lastSaved[viewKey] && (_lastSaved[viewKey].key === key || _lastSaved[viewKey].key === 'anon') && now - _lastSaved[viewKey].at < 5000) return;
     _lastSaved[viewKey] = { key: key, at: now };
-    var wantPin = !!_pendingPin[viewKey];
+    console.warn('[scw-pinned-notes] the add form submitted natively (not via the API); refreshing', viewKey);
+    var v = Knack.views && Knack.views[cfg.notesView];
+    if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
     _pendingPin[viewKey] = false;
-    var refetch = function () {
-      var v = Knack.views && Knack.views[cfg.notesView];
-      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();   // re-render → new card + strip
-    };
-    if (wantPin && newId && window.SCW && typeof SCW.knackAjax === 'function' && typeof SCW.knackRecordUrl === 'function') {
-      var body = {}; body[cfg.fields.pinned] = true;
-      SCW.knackAjax({ url: SCW.knackRecordUrl(cfg.notesView, newId), type: 'PUT', data: JSON.stringify(body),
-        success: refetch,
-        error: function (xhr) { console.warn('[scw-pinned-notes] pin after add failed', xhr && xhr.status); refetch(); } });
-    } else {
-      refetch();
-    }
-    flashSaved(cfg, 'Note saved.');
-    // Knack swaps the form for its confirmation ("Reload form"): reload it
-    // so the next note finds a live form. If Knack dropped the element
-    // instead (a view re-render replaces elements), render it again.
     setTimeout(function () {
-      var el = liveFormEl(viewKey);
-      var reload = el && el.querySelector('.kn-form-reload');
+      var el = liveFormEl(viewKey), reload = el && el.querySelector('.kn-form-reload');
       if (reload) reload.click();
-    }, 900);
-    setTimeout(function () {
-      var el = liveFormEl(viewKey);
-      if (el && el.querySelector('form')) { scheduleApply(0); return; }
-      var v = Knack.views && Knack.views[viewKey];
-      try {
-        if (v && typeof v.renderForm === 'function') v.renderForm();
-        else if (v && typeof v.render === 'function') v.render();
-        else console.warn('[scw-pinned-notes] add form gone after save and Knack.views has no renderer for', viewKey);
-      } catch (e) { console.warn('[scw-pinned-notes] add form re-render failed', e); }
       scheduleApply(300);
-    }, 2500);
+    }, 900);
   }
   function focusForm(cfg) {
     var el = adoptedForm(cfg);

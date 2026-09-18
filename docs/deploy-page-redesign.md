@@ -255,10 +255,17 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   adopted (`adoptForm`) — moved above the card list, restyled
   (`.scw-notes-addform`: header/label hidden, "Save note" button, a "Pin to
   project header" checkbox in the submit row since the form has no pin
-  input). Knack submits it natively (validation, record rules, "Show a
-  message" confirmation); on `knack-record-create` / `knack-form-submit` the
-  bundle writes the pin through the grid, refetches view_4135 (new card +
-  strip) and clicks "Reload form" after ~1.2s. The proxied "Add Project
+  input). **Knack's submit is not used**: its post-submit state (confirmation,
+  "Reload form", element replacement) never gave the form back live, so
+  Knack's button is hidden behind our "Save note", which POSTs every
+  `field_N` input of the form (the note + the hidden project connection)
+  through the form view — `/v1/pages/scene_1311/views/view_4162/records`,
+  the same view-based endpoint the form itself uses, so the form's record
+  rules (author, date) run server-side (`saveViaApi`). A native submit is
+  intercepted (capture) and saved the same way; Knack's
+  `knack-record-create` / `knack-form-submit` are treated as echoes. On
+  success: pin PUT through the grid, view_4135 refetched (new card +
+  strip), textarea cleared, "Note saved." flash. The form never leaves. The proxied "Add Project
   Note" button (`#scw-deploy-notes-actionbar`) is hidden while the form is
   adopted; the empty state's "add the first one" focuses the form. Detection
   is DOM-only (`#view_4162` with a `<form>`), no dependence on `Knack.views`
@@ -308,6 +315,16 @@ button automatically when the link text matches /add|upload file/i).
   CSS) and after the first save it vanished with the button back (Knack
   replaced the element; the pass that couldn't find a `<form>` restored the
   button). Both fixed as described in the module note.
+- Second live test: the button stayed gone, but after a submit the form never
+  came back (Knack's confirmation / reload path). Dropped Knack's submit
+  entirely: the note is POSTed through the form view by the bundle and the
+  form is never touched (see the module note).
+- Reported the same day, not yet placed: the Agreements & Invoices tray
+  "reproduces the entire top section of the page". Nothing in the notes
+  work touches the Acceptance section or the drawer; needs a screenshot /
+  the pinned build SHA. Suspects: ktl-accordion wrapping a larger node than
+  the acceptance view (`wrapTarget = knView || btn.parentNode`), or a
+  Builder layout change when view_4162 was added to the page.
 - The Push link was not exercised; still unverified below.
 
 ### To verify live (not yet confirmed by the user)
@@ -316,8 +333,9 @@ button automatically when the link text matches /add|upload file/i).
   list as a bordered box (textarea, Pin checkbox, "Save note"), and the
   "Add Project Note (K2)" button is gone. A saved note lands with
   author/date filled (form rules), the card appears without a reload, the
-  ticked pin sticks, and the form is blank again ~1s later. The form's
-  submit rule must be "Show a message" (a redirect rule would navigate). If
+  ticked pin sticks, the textarea clears and "Note saved." flashes above the
+  list. Author / date must come from the form's record rules (they run
+  server-side for the view-based POST). If
   the form shows Knack's default look (title "Add DOC_note", "Submit"),
   the adoption didn't run: check the console for
   `[scw-pinned-notes] add form not adopted`.
