@@ -16,19 +16,18 @@
   'use strict';
 
   // The scene's "Other Files" DOC_files grid: every file on the project.
-  // Site plans are picked out by TYPE — FLAG_doc type (field_67, has the
-  // "Site Plan" choice) when that column is on the grid, else the
-  // CONFIG_file type name (field_2877), else the filename as a last resort.
-  // A Knack view model only carries the grid's columns, so adding field_67
-  // (and field_754, the image variant of a map) to view_3942 is the one
-  // Builder step; both columns can stay hidden.
+  // Site plans are picked out by TYPE — CONFIG_file type (field_2877, the
+  // connection to the file-type catalog; FLAG_doc type field_67 is being
+  // deprecated), already a column on the grid. The filename is the fallback
+  // only when no type column is on the grid at all. field_754 (the image
+  // variant of a map) is read when present.
   var SCENES = [
     { sceneId: 'scene_1311',
       mapsView: 'view_3942',
-      fields: { file: 'field_68', image: 'field_754', type: 'field_67', typeAlt: 'field_2877', notes: 'field_588' } },
+      fields: { file: 'field_68', image: 'field_754', type: 'field_2877', notes: 'field_588' } },
     { sceneId: 'scene_1353',
       mapsView: 'view_4063',
-      fields: { file: 'field_68', image: 'field_754', type: 'field_67', typeAlt: 'field_2877', notes: 'field_588' } }
+      fields: { file: 'field_68', image: 'field_754', type: 'field_2877', notes: 'field_588' } }
   ];
   var MAP_TYPE = /site\s*plan|site\s*map|coverage|floor\s*plan/i;
   var MAP_FILE = /site[-_ ]?(plan|map)|coverage|floor[-_ ]?plan/i;
@@ -109,8 +108,7 @@
   /** Is this DOC record a site plan / coverage map? Type wins; filename is
    *  the fallback only when no type column is on the grid at all. */
   function isMap(rec, F, file) {
-    if (has(rec, F.type))    return MAP_TYPE.test(typeText(rec, F.type));
-    if (has(rec, F.typeAlt)) return MAP_TYPE.test(typeText(rec, F.typeAlt));
+    if (has(rec, F.type)) return MAP_TYPE.test(typeText(rec, F.type));
     return MAP_FILE.test(file.name || file.url);
   }
   function maps(cfg) {
