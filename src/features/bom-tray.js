@@ -8,9 +8,11 @@
  * The first row of "Also on this project" ("Bill of materials", added by
  * deploy-page-nav.js) opens the deploy drawer (openPanel) around a tray:
  *   head       N new drops · M on existing cable, and a By category /
- *              By MDF-IDF toggle
+ *              By MDF-IDF / By SOW toggle
  *   Shipping   what goes in the SCW box, grouped by proposal bucket (the
- *              L2 name the SOW already uses) or by MDF/IDF, one row per
+ *              L2 name the SOW already uses), by MDF/IDF (items with no
+ *              location last) or by the SOW the line came from (items with
+ *              no SOW link last; a line shared by two SOWs names both), one row per
  *              product: Product | SKU | Qty | Retail | Discount | After
  *              discount. Pricing on the ops page only; the sub's tray has
  *              Product | SKU | Qty.
@@ -27,7 +29,13 @@
  * cards render), else the Knack model. Pricing lives on the PROPOSED SOW
  * line item the install record points at (field_2819) — the hidden
  * view_4072 grid on the ops scene — retail (field_1960), discount $ each
- * (field_2262), net unit (field_2268); shown extended (× qty).
+ * (field_2262), net unit (field_2268); shown extended (× qty). The same
+ * record's SOW connection (field_2154) is the By SOW grouping.
+ *
+ * The tray element is created ONCE per open and re-painted in place when
+ * the grouping changes: the deploy drawer tags that element to clear it
+ * when another section or panel opens, so swapping it for a fresh element
+ * would leave an untagged copy behind under the next tray.
  ****************************************************************************/
 (function () {
   'use strict';
@@ -53,8 +61,11 @@
     retail:       'field_1960',   // PRODUCT STORED_price (unit list price)
     discountEach: 'field_2262',   // INPUT line discount $ each
     netUnit:      'field_2268',   // CALC unit price after discounts
+    sow:          'field_2154',   // REL_scope of work (multi: a line shared by two SOWs names both)
     sku:          'field_56'      // INPUT_sku — fallback; the live key is read off the grid header (skuField)
   };
+  var NO_LOC = 'No MDF / IDF';
+  var NO_SOW = 'No SOW';
   /** The SKU column's field key, found by its header text on the SOW grid
    *  (view_4072 / view_4151) or the install grid — whichever carries a
    *  column labelled SKU. Hidden Knack grids keep their DOM, so the header
@@ -102,7 +113,9 @@
       '.scw-bom__table th { padding: 5px 8px; text-align: left; font: 700 10.5px/1.2 system-ui, sans-serif; letter-spacing: 0.08em; color: #64748b; border-bottom: 1px solid #0f172a; white-space: nowrap; }',
       '.scw-bom__table td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }',
       '.scw-bom__table th.num, .scw-bom__table td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }',
-      '.scw-bom__group td { padding: 10px 8px 2px; border-bottom: 0; font: 800 10.5px/1.2 system-ui, sans-serif; letter-spacing: 0.1em; color: #163c6e; text-transform: uppercase; }',
+      '.scw-bom__group td { padding: 26px 8px 4px; border-bottom: 2px solid #e2e8f0; font: 800 11px/1.2 system-ui, sans-serif; letter-spacing: 0.1em; color: #163c6e; text-transform: uppercase; }',
+      '.scw-bom__group:first-child td { padding-top: 10px; }',
+      '.scw-bom__group--none td { color: #64748b; }',
       '.scw-bom__name { font-weight: 700; }',
       '.scw-bom__desig { color: #64748b; font-weight: 400; }',
       '.scw-bom__sku { color: #64748b; white-space: nowrap; }',
@@ -149,6 +162,21 @@
     if (Array.isArray(raw)) return raw.length && raw[0] ? plain(raw[0].identifier) : '';
     if (raw && typeof raw === 'object') return plain(raw.identifier);
     return plain(rec[fk]);
+  }
+  /** Every identifier on a (multi) connection, in order. */
+  function connLabels(rec, fk) {
+    var raw = rec[fk + '_raw'], out = [];
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) if (raw[i]) { var l = plain(raw[i].identifier); if (l) out.push(l); }
+      return out;
+    }
+    var one = connLabel(rec, fk);
+    return one ? [one] : [];
+  }
+  /** "1524" / "SW1524" / "61507493933-SW1524" → "SOW 1524"; anything else as is. */
+  function sowLabel(s) {
+    var m = String(s || '').match(/(?:^|-)\s*(?:SW)?(\d+[A-Z]*)\s*$/i);
+    return m ? 'SOW ' + m[1].toUpperCase() : String(s || '');
   }
   function connId(rec, fk) {
     var raw = rec[fk + '_raw'];
@@ -234,7 +262,8 @@
       var it = {
         id: r.id, name: name, kind: kind, qty: qty, sku: sku,
         bucket: connLabel(r, IF.bucket) || 'Other',
-        loc: connLabel(r, IF.mdfIdf) || 'No location',
+        loc: connLabel(r, IF.mdfIdf) || NO_LOC,
+        sow: s ? (connLabels(s, SF.sow).map(sowLabel).join(' + ') || NO_SOW) : NO_SOW,
         designator: plain(r[IF.displayLabel]),
         isCam: cat === 'cam',
         newDrop: false, existingDrop: false,
@@ -288,11 +317,22 @@
       }
     }
     // Cameras / readers lead when grouping by bucket (they are the drops).
+    // By location / SOW: alphabetical (numbers in order), the group with
+    // nothing to group by last, so the assigned rows read top to bottom.
     if (by === 'bucket') groups.sort(function (a, b) {
       var ac = /camera|reader/i.test(a.label) ? 0 : 1, bc = /camera|reader/i.test(b.label) ? 0 : 1;
       return ac - bc;
     });
+    else groups.sort(function (a, b) {
+      var an = isNoneGroup(a.label) ? 1 : 0, bn = isNoneGroup(b.label) ? 1 : 0;
+      if (an !== bn) return an - bn;
+      return String(a.label).localeCompare(String(b.label), undefined, { numeric: true, sensitivity: 'base' });
+    });
+    for (var ni = 0; ni < groups.length; ni++) groups[ni].none = isNoneGroup(groups[ni].label);
     return groups;
+  }
+  function isNoneGroup(label) {
+    return label === NO_LOC || label === NO_SOW || /^\s*(unassigned|none|no\s+(mdf|idf|location|sow))\b/i.test(label);
   }
   function model(cfg, mode) {
     var all = items(cfg);
@@ -303,7 +343,7 @@
       if (it.existingDrop) existing++;
       (it.kind === 'ship' ? ship : noShip).push(it);
     }
-    var by = mode === 'loc' ? 'loc' : 'bucket';
+    var by = mode === 'loc' ? 'loc' : (mode === 'sow' ? 'sow' : 'bucket');
     return {
       count: all.length, newDrops: newDrops, existing: existing,
       ship: groupRows(ship, by),
@@ -373,7 +413,7 @@
     var html = '<table class="scw-bom__table"><thead>' + headRow(cols) + '</thead><tbody>';
     for (var g = 0; g < groups.length; g++) {
       var grp = groups[g];
-      html += '<tr class="scw-bom__group"><td colspan="' + ncols + '">' + esc(grp.label) + '</td></tr>';
+      html += '<tr class="scw-bom__group' + (grp.none ? ' scw-bom__group--none' : '') + '"><td colspan="' + ncols + '">' + esc(grp.label) + '</td></tr>';
       for (var r = 0; r < grp.rows.length; r++) html += rowHtml(grp.rows[r], cols, showLoc);
     }
     if (total) {
@@ -385,10 +425,8 @@
     }
     return html + '</tbody></table>';
   }
-  function render(cfg, mode) {
+  function paint(el, cfg, mode) {
     var m = model(cfg, mode), pricing = !!cfg.pricing;
-    var el = document.createElement('div');
-    el.className = 'scw-bom';
     el.setAttribute('data-scw-bom-mode', mode);
     var html =
       '<div class="scw-bom__head">' +
@@ -398,6 +436,7 @@
         '<span class="scw-bom__toggle">' +
           '<button type="button" data-scw-bom-set="bucket"' + (mode !== 'loc' ? ' class="is-on"' : '') + '>By category</button>' +
           '<button type="button" data-scw-bom-set="loc"' + (mode === 'loc' ? ' class="is-on"' : '') + '>By MDF / IDF</button>' +
+          '<button type="button" data-scw-bom-set="sow"' + (mode === 'sow' ? ' class="is-on"' : '') + '>By SOW</button>' +
         '</span>' +
       '</div>';
     if (!m.count) {
@@ -419,23 +458,33 @@
       }
     }
     el.innerHTML = html;
+  }
+  /** The tray element. Regrouping repaints THIS element (see the header:
+   *  the drawer tags it, so it must stay the one the drawer knows). */
+  function render(cfg, mode) {
+    var el = document.createElement('div');
+    el.className = 'scw-bom';
+    paint(el, cfg, mode);
     el.addEventListener('click', function (e) {
       var b = e.target.closest && e.target.closest('[data-scw-bom-set]');
       if (!b) return;
       var next = b.getAttribute('data-scw-bom-set');
       _mode = next;
       try { window.localStorage.setItem('scw:bom:mode', next); } catch (err) { /* optional */ }
-      var fresh = render(cfg, next);
-      el.parentNode.replaceChild(fresh, el);
+      paint(el, cfg, next);
     });
     return el;
   }
+  var MODES = { bucket: 1, loc: 1, sow: 1 };
   var _mode = 'bucket';
-  try { _mode = window.localStorage.getItem('scw:bom:mode') === 'loc' ? 'loc' : 'bucket'; } catch (e) { /* default */ }
+  try { var saved = window.localStorage.getItem('scw:bom:mode'); if (MODES[saved]) _mode = saved; } catch (e) { /* default */ }
 
   function open(cfg) {
     var api = window.SCW && SCW.deployNav;
     if (!api || typeof api.openPanel !== 'function') return false;
+    // One tray at a time: anything an earlier open left in the page goes.
+    var stale = document.querySelectorAll('.scw-bom');
+    for (var i = 0; i < stale.length; i++) if (stale[i].parentNode) stale[i].parentNode.removeChild(stale[i]);
     return api.openPanel({
       eyebrow: '3 · Installation',
       title: 'Bill of materials',

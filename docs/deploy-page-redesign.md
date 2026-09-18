@@ -287,9 +287,17 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   `SCW.bomTray` exists) opens the deploy drawer around a tray
   (`SCW.deployNav.openPanel`, new: a custom element in the drawer, the
   hosted section goes home first). Head: N new drops · M on existing cable
-  (cam/reader rows, `field_2807`) + By category / By MDF-IDF toggle
-  (persisted `scw:bom:mode`). **Shipping**: one row per product per group
-  (bucket L2 name `field_2822`, cameras first, or location `field_2818`):
+  (cam/reader rows, `field_2807`) + By category / By MDF-IDF / By SOW
+  toggle (persisted `scw:bom:mode`; the tray element is REPAINTED in place
+  on toggle, never swapped: the drawer tags that element to clear it when
+  the next section or panel opens, and a fresh untagged copy lingered under
+  whatever opened next, 2026-09-18 fix; `open()` also drops any earlier
+  `.scw-bom` in the page). **Shipping**: one row per product per group
+  (bucket L2 name `field_2822`, cameras first; location `field_2818`; or the
+  SOW off the linked SOW item's `field_2154`, "SOW 1524", a line shared by
+  two SOWs under "SOW 1524 + SOW 1601"; location / SOW groups sort A→Z with
+  "No MDF / IDF" / "No SOW" last and muted; group rows carry 26px of top
+  space + a rule so the list skims):
   Product (+ designators `field_2802` compacted "I-001 to I-005", chips; no
   location run-on in the category view, the MDF/IDF view carries it) | SKU |
   Qty | Retail | Discount ($) | After discount, extended × qty, totals row.
