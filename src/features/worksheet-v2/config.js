@@ -621,6 +621,15 @@
         // on view_4079 or the view-based PUT silently drops the edit (edit.js
         // now detects the 200-but-unchanged response and toasts the cause).
         equipmentField:     'field_1960',
+        // Bulk edit: the shared SOW registry plus the unit Equipment $ on the
+        // equipment buckets (cam / default) — the same field_1960 the card's
+        // Equipment $ stack edits, so a PM can price a batch of CO adds at
+        // once. Services / assumptions carry no equipment price. (bulk.js
+        // fieldSetFor merges these onto the legacy registry.)
+        bulkExtraFields: {
+          cam:       [ { f: 'retailPrice', kind: 'number', label: 'Equipment $ (unit)' } ],
+          'default': [ { f: 'retailPrice', kind: 'number', label: 'Equipment $ (unit)' } ]
+        },
         // Custom discount on the CO card's detail panel (card.js
         // pricingDetail zone): Custom Disc % (field_2261) + Custom Disc $ each
         // (field_2262) + reason (field_2263) editable, Applied Discount

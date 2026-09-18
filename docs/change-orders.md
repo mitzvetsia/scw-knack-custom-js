@@ -605,3 +605,18 @@ broader field-level swap is a future decision, not an extension of this one.
   drags delta-pricing + e-sign presentation questions with it. The pair
   keeps every locked property — nothing mutates until signature, Make is the
   single writer, the CO lines stay an immutable audit trail.
+
+## Bulk edit: Equipment $ on the CO worksheet (2026-09-18)
+
+The Build Change Order page's worksheet (view_4079) offers the unit
+Equipment $ (`field_1960`, the same field the card's Equipment $ stack
+edits) in the bulk-edit panel for the cam / reader and equipment buckets,
+so a PM can price a batch of CO adds at once. Services and assumptions
+don't get it. Mechanism: `bulkExtraFields` on the view's config
+(worksheet-v2/config.js), merged onto the shared SOW registry by
+`fieldSetFor` (bulk.js); the shared registry itself is unchanged for every
+other worksheet. Builder dependency, same as the single edit: `field_1960`
+must be an inline-editable column on view_4079. After a successful bulk
+save the view refetches, so the CALC cells (net unit, line total) follow.
+Test: `tests/worksheet-v2/test-co-bulk-fields.js`.
+

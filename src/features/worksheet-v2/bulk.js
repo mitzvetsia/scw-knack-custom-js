@@ -222,12 +222,32 @@
   }
 
   /** Active field registry for a view: config `bulkFields` if present, else
-   *  the legacy sales / SOW registries. */
+   *  the legacy sales / SOW registries — plus, on either, the view's
+   *  `bulkExtraFields` (same per-bucket LOGICAL-name specs as bulkFields):
+   *  a deployment that keeps the shared registry can still add a field of
+   *  its own, e.g. the CO worksheet's Equipment $ (retailPrice). */
+  var _setCache = Object.create(null);
   function fieldSetFor(sourceViewKey) {
-    var cfgReg = configRegistry(sourceViewKey);
-    if (cfgReg) return cfgReg;
-    if (isSalesView(sourceViewKey)) return SALES_FIELDS;
-    return FIELDS;
+    if (sourceViewKey in _setCache) return _setCache[sourceViewKey];
+    var base = configRegistry(sourceViewKey) || (isSalesView(sourceViewKey) ? SALES_FIELDS : FIELDS);
+    var vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function') ? ns.cfg.viewCfg(sourceViewKey) : null;
+    var extra = vc && vc.bulkExtraFields;
+    if (!extra) { _setCache[sourceViewKey] = base; return base; }
+    var F = (ns.cfg && ns.cfg.fields(sourceViewKey)) || {};
+    var merged = {};
+    Object.keys(base).forEach(function (cat) { merged[cat] = base[cat].slice(); });
+    Object.keys(extra).forEach(function (cat) {
+      merged[cat] = merged[cat] || [];
+      (extra[cat] || []).forEach(function (spec) {
+        var key = F[spec.f] || spec.f;
+        for (var i = 0; i < merged[cat].length; i++) if (merged[cat][i].key === key) return;   // already there
+        merged[cat].push({ key: key, label: spec.label || spec.f, kind: spec.kind || 'text',
+                           candSource: spec.candSource, options: spec.options,
+                           gateNoKey: spec.gateNo ? (F[spec.gateNo] || spec.gateNo) : null });
+      });
+    });
+    _setCache[sourceViewKey] = merged;
+    return merged;
   }
 
   /** True when every selected record shares the same proposal bucket. */
@@ -2712,6 +2732,7 @@
   }
 
   ns.bulk = {
+    fieldSetFor: fieldSetFor,     // the bulk-editable field registry for a view (tests)
     mount:            mount,
     syncDomFromState: syncDomFromState,
     refreshToolbar:   refreshToolbar,
