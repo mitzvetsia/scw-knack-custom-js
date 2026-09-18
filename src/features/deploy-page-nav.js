@@ -78,18 +78,8 @@
     { match: /^closeout$/i, rename: 'Closeout Deliverables',
       sub: 'Documents required before closeout + Certificate of Completion.' }
   ];
-  // Band dividers — thin uppercase signposts splitting the page into
-  // lifecycle phases. Everything stays ABOVE the worksheet; Installation
-  // (CO strip + worksheet) is always last.
-  var BANDS = [
-    // Array order mirrors page order (bands anchor to their sections, so
-    // position actually follows reorderSections — paperwork now leads).
-    { id: 'paper',   label: 'Paperwork & Billing', find: /^acceptance$/i },
-    { id: 'setup',   label: 'Project Setup',       find: /^system setup questionnaire/i },
-    { id: 'close',   label: 'Closeout',            find: /^closeout$/i },
-    { id: 'ref',     label: 'Reference',           find: /^other files$/i },
-    { id: 'install', label: 'Installation',        strip: true }
-  ];
+  // (Band dividers retired 2026-09-18: the stage tiles + drawers replaced
+  // them — see docs/deploy-page-redesign.md.)
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -159,6 +149,59 @@
       '}',
       '.scw-deploy-bar > span { display: block; height: 100%; }',
       '.scw-deploy-also { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }',
+      '.scw-deploy-tile__link, .scw-deploy-tile__action {',
+      '  font: 600 12px/1.2 system-ui, sans-serif; cursor: pointer; text-align: left;',
+      '}',
+      '.scw-deploy-tile__link { background: none; border: 0; padding: 0; color: #0f4c81; }',
+      '.scw-deploy-tile__actions { margin-top: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }',
+      '.scw-deploy-tile__action {',
+      '  padding: 5px 11px; border-radius: 7px; border: 1px solid #163C6E;',
+      '  background: #163C6E; color: #fff;',
+      '}',
+      '.scw-deploy-tile__action:hover { background: #1d4d8c; }',
+      /* ── Parked sections + drawer ──
+         Every non-worksheet accordion is hidden in place (parked) and shown
+         inside the drawer when its tile / chip is clicked. Knack re-renders
+         views by element id, so a moved section keeps working. */
+      '.scw-ktl-accordion.scw-deploy-parked { display: none !important; }',
+      '.scw-deploy-band { display: none !important; }',
+      '#scw-deploy-drawer { position: fixed; inset: 0; z-index: 1200; }',
+      '#scw-deploy-drawer[hidden] { display: none; }',
+      '#scw-deploy-drawer .scw-deploy-drawer__scrim {',
+      '  position: absolute; inset: 0; background: rgba(15,23,42,0.28);',
+      '}',
+      '#scw-deploy-drawer .scw-deploy-drawer__panel {',
+      '  position: absolute; top: 0; right: 0; bottom: 0; width: 680px; max-width: 94vw;',
+      '  box-sizing: border-box; background: #fff; border-left: 1px solid #e2e8f0;',
+      '  box-shadow: -12px 0 32px rgba(15,23,42,0.18);',
+      '  display: flex; flex-direction: column; font: 13px/1.4 system-ui, sans-serif; color: #0f172a;',
+      '}',
+      '#scw-deploy-drawer.scw-deploy-drawer--wide .scw-deploy-drawer__panel { width: 820px; }',
+      '#scw-deploy-drawer .scw-deploy-drawer__head {',
+      '  display: flex; align-items: flex-start; gap: 12px; padding: 18px 22px 14px;',
+      '  border-bottom: 1px solid #e2e8f0;',
+      '}',
+      '#scw-deploy-drawer .scw-deploy-drawer__eyebrow {',
+      '  font: 700 10.5px/1 system-ui, sans-serif; letter-spacing: 0.1em;',
+      '  text-transform: uppercase; color: #64748b; margin-bottom: 4px;',
+      '}',
+      '#scw-deploy-drawer .scw-deploy-drawer__title { margin: 0; font: 700 18px/1.2 system-ui, sans-serif; }',
+      '#scw-deploy-drawer .scw-deploy-drawer__sub { font-size: 12.5px; color: #475569; margin-top: 3px; }',
+      '#scw-deploy-drawer .scw-deploy-drawer__close {',
+      '  margin-left: auto; width: 36px; height: 36px; border-radius: 8px; flex: none;',
+      '  border: 1px solid #dbe4ee; background: #fff; color: #334155; cursor: pointer;',
+      '  font: 600 18px/1 system-ui, sans-serif;',
+      '}',
+      '#scw-deploy-drawer .scw-deploy-drawer__body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 22px 24px; }',
+      /* The parked section, once inside the drawer: shown, its own bar hidden
+         (the drawer head is the title), its body forced open. */
+      '.scw-ktl-accordion.scw-deploy-in-drawer {',
+      '  display: block !important; box-shadow: none !important; border: 0 !important; margin: 0 !important;',
+      '}',
+      '.scw-ktl-accordion.scw-deploy-in-drawer > .scw-ktl-accordion__header { display: none !important; }',
+      '.scw-ktl-accordion.scw-deploy-in-drawer > .scw-ktl-accordion__body { display: block !important; }',
+      /* Worksheet toolbar "+ Change Order" proxy (mirrors the Builder menu link). */
+      'a#scw-deploy-co-toolbar-cta { text-decoration: none !important; }',
       '.scw-deploy-nav-item {',
       '  display: inline-flex; align-items: center; gap: 6px;',
       '  padding: 5px 11px; border-radius: 999px;',
@@ -398,33 +441,6 @@
     }
   }
 
-  function applyBands(scene, cfg) {
-    for (var i = 0; i < BANDS.length; i++) {
-      var b = BANDS[i], target = null;
-      if (b.strip) {
-        target = document.getElementById(STRIP_ID) ||
-                 document.getElementById(cfg.worksheetMount);
-      } else {
-        var acc = findAcc(scene, b.find);
-        if (acc && acc.style.display !== 'none' && acc.offsetParent) target = acc;
-      }
-      var el = document.getElementById('scw-deploy-band-' + b.id);
-      if (!target || !target.parentNode) {
-        if (el && el.parentNode) el.parentNode.removeChild(el);
-        continue;
-      }
-      if (!el) {
-        el = document.createElement('div');
-        el.id = 'scw-deploy-band-' + b.id;
-        el.className = 'scw-deploy-band';
-        el.innerHTML = '<span>' + esc(b.label) + '</span>';
-      }
-      if (el.nextElementSibling !== target) {
-        target.parentNode.insertBefore(el, target);
-      }
-    }
-  }
-
   // ── Part 6: section action bars — one consistent home for the buttons
   // that pertain to a view: a slim right-aligned row at the top of the
   // section's BODY (headers stay clean). The closeout toolbar already
@@ -570,7 +586,12 @@
     var accs = scene.querySelectorAll('.scw-ktl-accordion');
     for (var i = 0; i < accs.length; i++) {
       var acc = accs[i];
-      if (acc.style.display === 'none' || !acc.offsetParent) continue;
+      // Parked / drawer-hosted sections are ours and count as visible;
+      // anything else hidden (e.g. the MDF section folded into the
+      // worksheet) is skipped.
+      var parked = acc.classList.contains('scw-deploy-parked') ||
+                   acc.classList.contains('scw-deploy-in-drawer');
+      if (!parked && (acc.style.display === 'none' || !acc.offsetParent)) continue;
       // Exclude on the ORIGINAL title (renames don't dodge exclusion);
       // label with the renamed name, sans subtitle. Strip accordions
       // (Project Notes, Change Orders) are real sections — they get their
@@ -668,6 +689,28 @@
     var also = [];
     for (var a = 0; a < targets.length; a++) if (!used[a]) also.push(targets[a]);
 
+    // Document generation is a Setup fact: read the closeout doc cards
+    // (a card with a file = generated or uploaded) onto the Setup tile.
+    var setupM = null, closeM = null;
+    for (var q = 0; q < stages.length; q++) {
+      if (stages[q].stage.id === 'setup') setupM = stages[q];
+      if (stages[q].stage.id === 'close') closeM = stages[q];
+    }
+    if (setupM && closeM) {
+      var docsAll  = closeM.target.el.querySelectorAll('.scw-cd-doc').length;
+      var docsWith = closeM.target.el.querySelectorAll('.scw-cd-doc:not(.is-no-file)').length;
+      setupM.docsGenerated = docsWith > 0;
+      var docFact = docsAll
+        ? (docsWith ? docsWith + ' of ' + docsAll + ' documents generated' : 'Documents not generated yet')
+        : '';
+      if (docFact) setupM.fact = setupM.fact ? setupM.fact + ' · ' + docFact : docFact;
+      if (!setupM.docsGenerated && docsAll) {
+        setupM.factWarn = true;
+        if (setupM.stateCls !== 'warn') { setupM.stateCls = 'warn'; setupM.stateText = 'Waiting'; }
+      }
+      setupM.sig += ',docs:' + docsWith + '/' + docsAll;
+    }
+
     // Rebuild only when the signature changed — keeps the heartbeat
     // rebuild from thrashing the DOM (and hover states) every pass.
     var sig = stages.map(function (m) { return m.sig; }).join('|') + '||' +
@@ -678,12 +721,22 @@
     nav.innerHTML = '';
     var tiles = document.createElement('div');
     tiles.className = 'scw-deploy-tiles';
+    var closeoutModel = null;
+    for (var cm = 0; cm < stages.length; cm++) if (stages[cm].stage.id === 'close') closeoutModel = stages[cm];
     for (var m = 0; m < stages.length; m++) {
       (function (model) {
-        var tile = document.createElement('button');
-        tile.type = 'button';
+        var tile = document.createElement('div');
         tile.className = 'scw-deploy-tile' + (model.current ? ' scw-deploy-tile--current' : '');
-        tile.setAttribute('aria-label', model.stage.label + ': ' + model.stateText);
+        tile.setAttribute('data-scw-tile', model.stage.id);
+        var actions = '';
+        if (model.stage.id === 'setup' && closeoutModel) {
+          // Document generation is a SETUP step (docs/deploy-page-redesign.md):
+          // the button opens the Closeout drawer and presses the existing
+          // Regenerate Docs button there, so the picker/webhook are unchanged.
+          actions = model.docsGenerated
+            ? '<button type="button" class="scw-deploy-tile__link" data-scw-tile-docs="1">Regenerate documents…</button>'
+            : '<button type="button" class="scw-deploy-tile__action" data-scw-tile-docs="1">Generate documents…</button>';
+        }
         tile.innerHTML =
           '<span class="scw-deploy-tile__top">' +
             '<span class="scw-deploy-tile__eyebrow">' + model.stage.n + ' · ' + esc(model.stage.label) + '</span>' +
@@ -692,8 +745,16 @@
           '<span class="scw-deploy-tile__head">' + esc(model.head) + '</span>' +
           (model.bars || '') +
           (model.fact ? '<span class="scw-deploy-tile__fact' + (model.factWarn ? ' scw-deploy-tile__fact--warn' : '') + '">' + esc(model.fact) + '</span>' : '') +
-          '<span class="scw-deploy-tile__link">' + esc(model.link) + '</span>';
-        tile.addEventListener('click', function () { scrollToTarget(model.target); });
+          '<span class="scw-deploy-tile__actions">' +
+            '<button type="button" class="scw-deploy-tile__link" data-scw-tile-open="1" aria-label="' + esc(model.stage.label + ': ' + model.stateText) + '">' + esc(model.link) + '</button>' +
+            actions +
+          '</span>';
+        tile.addEventListener('click', function (e) {
+          var docsBtn = e.target.closest && e.target.closest('[data-scw-tile-docs]');
+          if (docsBtn) { e.stopPropagation(); openDocsGenerator(closeoutModel.target); return; }
+          if (model.target.kind === 'worksheet') scrollToTarget(model.target);
+          else openDrawer(model.target);
+        });
         tiles.appendChild(tile);
       })(stages[m]);
     }
@@ -712,12 +773,163 @@
             (t.warn ? '<span class="scw-deploy-nav-dot" title="Needs attention"></span>' : '') +
             '<span>' + esc(t.label) + '</span>' +
             (t.count ? '<span class="scw-deploy-nav-count">' + esc(t.count) + '</span>' : '');
-          btn.addEventListener('click', function () { scrollToTarget(t); });
+          btn.addEventListener('click', function () { openDrawer(t); });
           row.appendChild(btn);
         })(also[i]);
       }
       nav.appendChild(row);
     }
+  }
+
+  // ── Parked sections + drawer ──────────────────────────────────────────
+  // The page shows tiles + worksheet; every other section is hidden in
+  // place ("parked") and shown inside a right-side drawer on demand. The
+  // accordion ELEMENT moves (Knack re-renders views by id, so it keeps
+  // working), and a placeholder marks its home so it can move back.
+  var DRAWER_ID = 'scw-deploy-drawer';
+  var _drawerAcc = null;
+
+  function parkSections(scene, cfg) {
+    var accs = scene.querySelectorAll('.scw-ktl-accordion');
+    for (var i = 0; i < accs.length; i++) {
+      var acc = accs[i];
+      if (acc.classList.contains('scw-deploy-in-drawer')) continue;
+      if (acc.classList.contains('scw-deploy-parked')) continue;
+      if (acc.style.display === 'none') continue;          // hidden by another module
+      if (excluded(origTitle(acc))) continue;              // staging / worksheet source
+      var mount = document.getElementById(cfg.worksheetMount);
+      if (mount && (acc.contains(mount) || mount.contains(acc))) continue;
+      acc.classList.add('scw-deploy-parked');
+    }
+  }
+
+  function ensureDrawer() {
+    var d = document.getElementById(DRAWER_ID);
+    if (d) return d;
+    d = document.createElement('div');
+    d.id = DRAWER_ID;
+    d.hidden = true;
+    d.innerHTML =
+      '<div class="scw-deploy-drawer__scrim"></div>' +
+      '<aside class="scw-deploy-drawer__panel" role="dialog" aria-modal="true" aria-labelledby="' + DRAWER_ID + '-title">' +
+        '<div class="scw-deploy-drawer__head">' +
+          '<div><div class="scw-deploy-drawer__eyebrow"></div>' +
+            '<h2 class="scw-deploy-drawer__title" id="' + DRAWER_ID + '-title"></h2>' +
+            '<div class="scw-deploy-drawer__sub"></div></div>' +
+          '<button type="button" class="scw-deploy-drawer__close" aria-label="Close">×</button>' +
+        '</div>' +
+        '<div class="scw-deploy-drawer__body"></div>' +
+      '</aside>';
+    document.body.appendChild(d);
+    d.querySelector('.scw-deploy-drawer__scrim').addEventListener('click', closeDrawer);
+    d.querySelector('.scw-deploy-drawer__close').addEventListener('click', closeDrawer);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !d.hidden) closeDrawer();
+    });
+    return d;
+  }
+
+  function stageLabelFor(acc) {
+    var ot = origTitle(acc);
+    for (var s = 0; s < STAGES.length; s++) {
+      if (STAGES[s].match && STAGES[s].match.test(ot)) return STAGES[s].n + ' · ' + STAGES[s].label;
+    }
+    return 'Also on this project';
+  }
+
+  function openDrawer(target) {
+    var acc = target && target.el;
+    if (!acc || !acc.classList || !acc.classList.contains('scw-ktl-accordion')) {
+      if (target) scrollToTarget(target);
+      return;
+    }
+    var d = ensureDrawer();
+    if (_drawerAcc && _drawerAcc !== acc) returnHome(_drawerAcc);
+    if (!acc.__scwHome) {
+      var home = document.createElement('span');
+      home.className = 'scw-deploy-home';
+      home.hidden = true;
+      acc.parentNode.insertBefore(home, acc);
+      acc.__scwHome = home;
+    }
+    acc.classList.remove('scw-deploy-parked');
+    acc.classList.add('scw-deploy-in-drawer');
+    d.querySelector('.scw-deploy-drawer__body').appendChild(acc);
+    if (!acc.classList.contains('is-expanded')) {
+      var head = acc.querySelector('.scw-ktl-accordion__header');
+      if (head) head.click();                 // ktl-accordion's own toggle (persists state)
+      if (!acc.classList.contains('is-expanded')) {
+        acc.classList.add('is-expanded');     // belt and braces if nothing was bound
+        var body = acc.querySelector('.scw-ktl-accordion__body');
+        if (body) body.style.display = '';
+      }
+    }
+    var label = acc.getAttribute('data-scw-nav-label') || txt(acc.querySelector('.scw-acc-title'));
+    var sub = txt(acc.querySelector('.scw-deploy-acc-sub'));
+    if (sub && label.indexOf(sub) >= 0) label = label.replace(sub, '').trim();
+    d.querySelector('.scw-deploy-drawer__eyebrow').textContent = stageLabelFor(acc);
+    d.querySelector('.scw-deploy-drawer__title').textContent = label;
+    d.querySelector('.scw-deploy-drawer__sub').textContent = sub;
+    d.classList.toggle('scw-deploy-drawer--wide', /photos/i.test(label));
+    d.hidden = false;
+    document.body.style.overflow = 'hidden';
+    _drawerAcc = acc;
+    try { d.querySelector('.scw-deploy-drawer__close').focus(); } catch (e) { /* focus is a courtesy */ }
+  }
+
+  function returnHome(acc) {
+    var home = acc.__scwHome;
+    acc.classList.remove('scw-deploy-in-drawer');
+    acc.classList.add('scw-deploy-parked');
+    if (home && home.parentNode) home.parentNode.insertBefore(acc, home.nextSibling);
+    else if (acc.parentNode) acc.parentNode.removeChild(acc);   // scene is gone
+  }
+
+  function closeDrawer() {
+    var d = document.getElementById(DRAWER_ID);
+    if (_drawerAcc) returnHome(_drawerAcc);
+    _drawerAcc = null;
+    if (d) d.hidden = true;
+    document.body.style.overflow = '';
+  }
+
+  /** Scene re-rendered underneath an open drawer: its section is stale. */
+  function dropStaleDrawer() {
+    if (!_drawerAcc) return;
+    var homeGone = !(_drawerAcc.__scwHome && document.contains(_drawerAcc.__scwHome));
+    var drawerGone = !document.getElementById(DRAWER_ID);
+    if (homeGone || drawerGone) closeDrawer();
+  }
+
+  /** Setup tile → open the Closeout drawer and press the existing
+   *  "Regenerate Docs…" button so its picker opens where it can be seen. */
+  function openDocsGenerator(closeoutTarget) {
+    openDrawer(closeoutTarget);
+    setTimeout(function () {
+      var btn = document.getElementById('scw-regen-docs-btn');
+      if (btn) btn.click();
+    }, 60);
+  }
+
+  // ── "+ Change Order" in the worksheet toolbar ─────────────────────────
+  // Mirrors the Builder menu link (same proxy idea as mountProxyCta) into
+  // the v2 toolbar's CTA group, before "+ Add Photos". The toolbar is
+  // rebuilt on every worksheet render, so the heartbeat re-mounts it.
+  function mountToolbarCoCta(scene, cfg) {
+    var mount = document.getElementById(cfg.worksheetMount);
+    var group = mount && mount.querySelector('.scw-ws-v2-toolbar-group--cta');
+    var srcView = findMenuLinkView(scene, /create change order/i);
+    var src = srcView && (srcView.querySelector('a.kn-link') || srcView.querySelector('a[href]'));
+    if (!group || !src) return;
+    var btn = document.getElementById('scw-deploy-co-toolbar-cta');
+    if (!btn) {
+      btn = document.createElement('a');
+      btn.id = 'scw-deploy-co-toolbar-cta';
+      btn.className = 'scw-ws-v2-toolbar-btn scw-ws-v2-toolbar-btn--cta';
+    }
+    if (btn.parentNode !== group) group.insertBefore(btn, group.firstChild);
+    if (btn.getAttribute('href') !== src.getAttribute('href')) btn.setAttribute('href', src.getAttribute('href'));
+    if (btn.textContent !== '+ Change Order') btn.textContent = '+ Change Order';
   }
 
   // ── Stage tiles ───────────────────────────────────────────────────────
@@ -861,14 +1073,16 @@
       if (!active) return;
       var scene = active.el, cfg = active.cfg;
       injectStyles();
+      try { dropStaleDrawer(); } catch (e) { /* drawer is optional chrome */ }
       try { moveChangeOrders(scene, cfg); } catch (e) { /* keep native order */ }
       try { applyNames(scene); } catch (e) { /* labels are cosmetic */ }
       try { reorderSections(scene); } catch (e) { /* keep native order */ }
-      try { applyBands(scene, cfg); } catch (e) { /* signposts are cosmetic */ }
       try { applyReferenceTier(scene); } catch (e) { /* cosmetic only */ }
       try { applyRollups(scene, cfg); } catch (e) { /* rollups are optional */ }
       try { placeViewActions(scene); } catch (e) { /* actions stay put */ }
+      try { parkSections(scene, cfg); } catch (e) { /* sections stay visible */ }
       try { buildNav(scene, cfg); } catch (e) { /* nav is optional chrome */ }
+      try { mountToolbarCoCta(scene, cfg); } catch (e) { /* CTA stays in its section */ }
     }, delay == null ? 250 : delay);
   }
 
