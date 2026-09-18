@@ -98,8 +98,12 @@ the rollup unit**, not the individual checks.
   items incomplete. The bundle recomputes on render and rewrites the stored
   status/counters when they differ (throttled, like the reconcile-sweep
   pattern), so the rollups self-heal.
-- **Optional gate**: Send CoC could additionally require every hardware item
-  QA Complete (policy call, not decided).
+- **Send CoC gate (decided 2026-09-18)**: NOT gated on item QA. Send CoC
+  keeps its current rule (every required closeout document QA passed).
+  Requiring every hardware item QA Complete is a possible later policy
+  change, not part of this design. When it comes, it is one extra condition
+  in the closeout module's Send CoC enablement, reading the project rollup
+  of `QA_status` = Complete.
 
 ## Builder work implied (Phase I)
 
