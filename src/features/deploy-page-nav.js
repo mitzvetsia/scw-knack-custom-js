@@ -100,13 +100,13 @@
       sub: 'Documents required before closeout + Certificate of Completion.' },
     // "Also on this project" rows: say what each one holds.
     { match: /^other files$/i, rename: 'Files',
-      sub: 'SOW PDFs, approval forms, anything else filed on the project.' },
+      sub: 'SOW PDFs, approval forms' },
     { match: /^additional photos$/i, rename: 'Context photos',
-      sub: 'Rooms, racks and site shots not tied to a line item.' },
+      sub: 'rooms, racks, not tied to an item' },
     { match: /^project notes$/i,
-      sub: 'Pushed to ClickUp + Slack. Pin the ones every visit should see.' },
+      sub: 'pinned + pushed to ClickUp / Slack' },
     { match: /^change orders?$/i,
-      sub: 'Adds and removes against the install scope.' }
+      sub: 'adds and removes against the scope' }
   ];
   // (Band dividers retired 2026-09-18: the stage tiles + drawers replaced
   // them — see docs/deploy-page-redesign.md.)
@@ -202,7 +202,7 @@
       '}',
       '.scw-deploy-also__row:hover { background: #f8fafc; border-color: #dbe4ee; }',
       '.scw-deploy-also__label { font-weight: 600; white-space: nowrap; }',
-      '.scw-deploy-also__sub { color: #475569; font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+      '.scw-deploy-also__sub { color: #64748b; font-size: 12px; min-width: 0; flex: 1 1 auto; line-height: 1.3; }',
       '.scw-deploy-row2:not(.has-maps) .scw-deploy-also__sub { display: none; }',
       '.scw-deploy-also__chev { color: #94a3b8; margin-left: auto; }',
       '.scw-deploy-row2.has-maps .scw-deploy-also__row .scw-deploy-nav-count { margin-left: auto; }',
@@ -267,6 +267,22 @@
       '}',
       '.scw-ktl-accordion.scw-deploy-in-drawer > .scw-ktl-accordion__header { display: none !important; }',
       '.scw-ktl-accordion.scw-deploy-in-drawer > .scw-ktl-accordion__body { display: block !important; }',
+      /* The acceptance card sizes its money grid by VIEWPORT width; in the
+         1100px drawer the viewport is wide but the container is not, so its
+         four-column desk layout overlaps. Force the card\'s own "under 1200px"
+         band layout (paperwork tiles on a band beneath the identity) here,
+         and its stacked layout when the drawer itself is narrow. */
+      '.scw-deploy-in-drawer .scw-acpt-row, .scw-deploy-in-drawer .scw-acpt-colhead, .scw-deploy-in-drawer .scw-acpt-foot {',
+      '  grid-template-columns: minmax(0, 1fr) var(--acpt-equip) calc(var(--acpt-num) + var(--acpt-lbl) + 7px) !important;',
+      '  grid-template-areas: "id equip labor" "docs docs docs" !important;',
+      '}',
+      '.scw-deploy-in-drawer .scw-acpt-docs > .scw-acpt-actions { border-top: 1px dashed #eef2f7; padding-top: 12px; }',
+      '@media (max-width: 860px) {',
+      '  .scw-deploy-in-drawer .scw-acpt-row, .scw-deploy-in-drawer .scw-acpt-colhead, .scw-deploy-in-drawer .scw-acpt-foot {',
+      '    grid-template-columns: minmax(0, 1fr) !important;',
+      '    grid-template-areas: "id" "equip" "labor" "docs" !important;',
+      '  }',
+      '}',
       /* Setup drawer prelude: the generated documents */
       '.scw-deploy-drawer__prelude { margin: 12px 0 18px; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; }',
       '.scw-deploy-docs__head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }',
@@ -369,7 +385,7 @@
          section\'s body (headers stay clean — status pills only). */
       '.scw-acc-actionbar {',
       '  display: flex; align-items: center; justify-content: flex-end;',
-      '  gap: 8px; padding: 10px 12px 0;',
+      '  gap: 8px; padding: 10px 12px 14px;',
       '}',
       '.scw-acc-actionbar a.kn-button {',
       '  display: inline-flex; align-items: center;',
@@ -796,7 +812,7 @@
       var docsWith = closeM.target.el.querySelectorAll('.scw-cd-doc:not(.is-no-file)').length;
       setupM.docsGenerated = docsWith > 0;
       var docFact = docsAll
-        ? (docsWith ? docsWith + ' of ' + docsAll + ' documents generated' : 'Documents not generated yet')
+        ? (docsWith ? docsWith + ' of ' + docsAll + ' docs generated' : 'Docs not generated yet')
         : '';
       if (docFact) setupM.fact = setupM.fact ? setupM.fact + ' · ' + docFact : docFact;
       if (!setupM.docsGenerated && docsAll) {
@@ -1219,10 +1235,18 @@
 
   /** The rollup pill a section already renders in its accordion header
    *  (acceptance tally, questionnaire status, closeout docs). */
+  /** Knack status values arrive SHOUTING ("PENDING TECH SUPPORT SIGNOFF");
+   *  a tile reads them in sentence case. Mixed-case text is left alone. */
+  function sentenceCase(s) {
+    s = String(s || '');
+    if (s.length < 4 || s !== s.toUpperCase()) return s;
+    var lower = s.toLowerCase();
+    return lower.charAt(0).toUpperCase() + lower.slice(1);
+  }
   function readRollup(acc) {
     var head = acc.querySelector('.scw-ktl-accordion__header');
     var pill = head && head.querySelector('.scw-acpt-rollup, .scw-deploy-rollup');
-    var text = pill ? txt(pill) : '';
+    var text = pill ? sentenceCase(txt(pill)) : '';
     var warn = pill
       ? /--warn/.test(pill.className)
       : acc.hasAttribute('data-scw-attention');
