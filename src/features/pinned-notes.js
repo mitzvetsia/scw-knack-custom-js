@@ -398,13 +398,23 @@
       host.insertBefore(list, table || null);
     }
     var addForm = null;
-    try { addForm = findOnPageForm(cfg); } catch (e) { /* no form: the link keeps its page */ }
+    try { addForm = findOnPageForm(cfg); } catch (e) { logState('detect threw: ' + (e && e.message)); }
     if (addForm) {
-      try { adoptForm(cfg, addForm, view, list); } catch (e) { hideForm(addForm); console.warn('[scw-pinned-notes] add form not adopted', e); }
+      try {
+        adoptForm(cfg, addForm, view, list);
+        logState('adopted ' + addForm.viewKey + (addForm.live ? '' : ' (no <form> inside yet)') +
+          (view.closest && view.closest('#scw-deploy-drawer') ? ' in the drawer' : ' at home'));
+      } catch (e) {
+        hideForm(addForm);
+        logState('NOT adopted: ' + (e && e.message));
+        console.warn('[scw-pinned-notes] add form not adopted', e);
+      }
     } else if (cfg.addFormView && _everAdopted[cfg.addFormView]) {
       formStyle('#scw-deploy-notes-actionbar { display: none !important; }');   // the form is coming back, not the button
+      logState('form element missing after adoption (button stays hidden)');
     } else {
       formStyle('');
+      logState('no add form on the page (' + (cfg.addFormView || 'auto') + '): the menu link keeps its page');
     }
     var F = cfg.fields;
     var notes = records(cfg.notesView).map(function (r) { return noteModel(r, F); });
@@ -737,6 +747,14 @@
     list.parentNode.insertBefore(n, list);
     clearTimeout(n.__t);
     n.__t = setTimeout(function () { if (n.parentNode) n.parentNode.removeChild(n); }, 2500);
+  }
+  // One console line per state CHANGE of the add form, so a live report can
+  // say which path ran without a debugger.
+  var _lastState = '';
+  function logState(msg) {
+    if (msg === _lastState) return;
+    _lastState = msg;
+    try { console.info('[scw-pinned-notes] add form: ' + msg); } catch (e) { /* no console */ }
   }
   var _pendingPin = {}, _boundSave = {}, _lastSaved = {};
   function bindSave(cfg, viewKey) {
