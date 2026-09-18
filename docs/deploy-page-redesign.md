@@ -37,7 +37,20 @@ additive chrome.
    in the project header (one-line strip while working) and float to the top
    of the notes drawer with a Pin/Unpin toggle. Pins are shared.
 4. **Worksheet**: starts ~560–610px from the top. The warning chips ARE the
-   filters. View/sort collapse into two menus. "+ Change order" and
+   filters, and a "show only" filter must keep every record the user needs
+   in order to act on what it shows (decided 2026-09-18):
+   - **Disconnected** shows the disconnected devices PLUS every record whose
+     product has `PRODUCT STORED FLAG_map camera or reader connections`
+     (`field_2795`) = Yes, i.e. the switches / connection targets, across
+     all MDF/IDFs. A device is connected from the network device's
+     Connected Devices picker (the child's Connected To is read-only, see
+     CLAUDE.md Known Issue #12), so hiding the targets hides the fix. The
+     targets render with a "connection target" hint; groups with neither
+     are hidden.
+   - **Missing photos** and **Photos to review** need nothing extra: the
+     action (upload, QA) lives on the item itself.
+   The view switch is a three-segment control (MDF/IDFs | Line items |
+   Summary), not a dropdown; sort stays a menu. "+ Change order" and
    "+ Add photos" live in the worksheet header (the CO CTA keeps its current
    home next to the worksheet). Assumptions / Services groups are a quiet
    tier, collapsed by default with a one-line summary. Bulk actions stay the
