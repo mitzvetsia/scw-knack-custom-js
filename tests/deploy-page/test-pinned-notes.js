@@ -114,9 +114,9 @@ setTimeout(() => {
   // No schema for the form in Knack.views: detection is DOM-only.
   fire();
   setTimeout(() => {
-    check('the on-page form moves above the card list, restyled, its accordion shell hidden',
-      [formHost.parentNode === view, formHost.nextElementSibling && formHost.nextElementSibling.className, formHost.classList.contains('scw-notes-addform'), shell.style.display],
-      [true, 'scw-notes-list', true, 'none']);
+    check('the on-page form sits directly BEFORE the notes view (never inside it), restyled, its accordion shell hidden',
+      [formHost.nextElementSibling === view, formHost.parentNode === view.parentNode, formHost.classList.contains('scw-notes-addform'), shell.style.display],
+      [true, true, true, 'none']);
     check('the proxied "Add Project Note" button is hidden; Knack\'s submit is hidden behind our Save note',
       [document.getElementById('scw-pinned-notes-css-form').textContent, formHost.querySelector('button[type="submit"]').style.getPropertyValue('display'), formHost.querySelector('.scw-notes-addform__save').textContent, !!formHost.querySelector('textarea').getAttribute('placeholder')],
       ['#view_4162:not(.scw-notes-addform) { display: none !important; }\n#scw-deploy-notes-actionbar { display: none !important; }', 'none', 'Save note', true]);
@@ -132,9 +132,12 @@ setTimeout(() => {
     check('Save POSTs the form\'s inputs through the form view (note + hidden project), never Knack\'s submit',
       [puts[before], knackSubmits],
       [{ url: 'https://api.knack.com/v1/pages/scene_1311/views/view_4162/records', type: 'POST', body: { field_328: 'Escort required after 6pm.', field_329: PROJECT } }, 0]);
-    check('then pins the new record through the grid, refetches, clears the form, flashes "Note saved."',
-      [puts[before + 1], fetched, formHost.querySelector('#field_328').value, pinCb.checked, (view.querySelector('.scw-notes-saved') || {}).textContent],
+    check('then pins the new record through the grid, refetches, clears the form, says "Note saved."',
+      [puts[before + 1], fetched, formHost.querySelector('#field_328').value, pinCb.checked, formHost.querySelector('.scw-notes-compose__status').textContent],
       [{ url: '/view_4135/new1', type: 'PUT', body: { field_3278: true } }, 4, '', false, 'Note saved.']);
+    // Knack rewrites the grid element's contents on every refresh (this is what wiped the form live).
+    view.innerHTML = grid(recs);
+    fire();
     (handlers['knack-record-create.view_4162.scwPinnedNotesSave'] || []).forEach(fn => fn(null, {}, { id: 'new1' }));
     check('Knack\'s own record-create for that record is an echo: no second refresh', fetched, 4);
     // A native submit (Enter, a stray handler) is intercepted and saved the same way.
@@ -145,7 +148,8 @@ setTimeout(() => {
       // Knack re-renders the form (same element) on a scene pass: re-dressed without moving, one Save, one Pin.
       fire();
       setTimeout(() => {
-        check('a re-render pass re-dresses in place; one Save, one Pin checkbox', [formHost.querySelectorAll('.scw-notes-addform__save').length, formHost.querySelectorAll('input[name="scw_pin"]').length, formHost.nextElementSibling.className], [1, 1, 'scw-notes-list']);
+        check('a grid rewrite + pass leaves the form standing beside the fresh grid; one Save, one Pin checkbox',
+          [document.body.contains(formHost), formHost.nextElementSibling === view, !!view.querySelector('.scw-notes-list'), formHost.querySelectorAll('.scw-notes-addform__save').length, formHost.querySelectorAll('input[name="scw_pin"]').length], [true, true, true, 1, 1]);
         // Knack re-renders by REPLACING the element at its home: the old copy is stale, a fresh one appears in
         // the scene. The pass adopts the fresh one, drops the stale copy, and the button stays hidden throughout.
         formHost.querySelector('form').remove();
@@ -155,8 +159,8 @@ setTimeout(() => {
         fire();
         setTimeout(() => {
           check('a replaced form element is adopted in place of the stale one; one element left; button still hidden',
-            [document.querySelectorAll('[id="view_4162"]').length, fresh.parentNode === view, fresh.nextElementSibling.className, !!fresh.querySelector('.scw-notes-addform__save'), /notes-actionbar \{ display: none/.test(document.getElementById('scw-pinned-notes-css-form').textContent)],
-            [1, true, 'scw-notes-list', true, true]);
+            [document.querySelectorAll('[id="view_4162"]').length, fresh.nextElementSibling === view, !!fresh.querySelector('.scw-notes-addform__save'), /notes-actionbar \{ display: none/.test(document.getElementById('scw-pinned-notes-css-form').textContent)],
+            [1, true, true, true]);
           // Element gone entirely for a beat (Knack mid re-render): the button must NOT come back.
           fresh.remove();
           fire();
@@ -165,7 +169,7 @@ setTimeout(() => {
             shell.appendChild(fresh);
             fire();
             setTimeout(() => {
-              check('and the form is re-adopted when it returns', [fresh.parentNode === view, fresh.nextElementSibling.className], [true, 'scw-notes-list']);
+              check('and the form is re-adopted when it returns', fresh.nextElementSibling === view, true);
               afterComposer();
             }, 200);
           }, 200);

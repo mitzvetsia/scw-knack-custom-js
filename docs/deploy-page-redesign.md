@@ -260,6 +260,9 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   Knack's button is hidden behind our "Save note", which POSTs every
   `field_N` input of the form (the note + the hidden project connection)
   through the form view — `/v1/pages/scene_1311/views/view_4162/records`,
+  and the element sits as a sibling directly BEFORE `#view_4135`, never
+  inside it (Knack rewrites the grid element's contents on every refresh;
+  the form was being wiped by the first refresh after adoption),
   the same view-based endpoint the form itself uses, so the form's record
   rules (author, date) run server-side (`saveViaApi`). A native submit is
   intercepted (capture) and saved the same way; Knack's
@@ -316,7 +319,12 @@ button automatically when the link text matches /add|upload file/i).
   replaced the element; the pass that couldn't find a `<form>` restored the
   button). Both fixed as described in the module note.
 - Second live test: the button stayed gone, but after a submit the form never
-  came back (Knack's confirmation / reload path). Dropped Knack's submit
+  came back; third test: no form at all, `[id=view_4162]` absent from the
+  DOM while `Knack.views.view_4162` still existed. Root cause of both: the
+  adopted form was placed INSIDE `#view_4135`, and Knack rewrites that
+  element's contents on every grid refresh (after a save, a pin, its own
+  fetch). Moved to a sibling before the view. (Knack's confirmation /
+  reload path was a red herring.) Dropped Knack's submit
   entirely: the note is POSTed through the form view by the bundle and the
   form is never touched (see the module note).
 - The Agreements & Invoices tray "reproduced the entire top section of the

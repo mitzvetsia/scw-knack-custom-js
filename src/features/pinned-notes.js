@@ -157,7 +157,7 @@
       '.scw-notes-addform .kn-form-group, .scw-notes-addform .kn-form-col, .scw-notes-addform .columns, .scw-notes-addform .column {',
       '  width: 100% !important; max-width: none !important; flex: 1 1 100% !important; margin: 0 !important; padding: 0 !important;',
       '}',
-      '.scw-notes-saved { margin: 0 0 10px; padding: 8px 12px; border-radius: 8px; background: #ecfdf5; border: 1px solid #a7f3d0; color: #166534; font: 600 12.5px/1.3 system-ui, sans-serif; }'
+      '.scw-notes-compose__status:not(:empty) { color: #166534; font-weight: 600; }'
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
@@ -401,7 +401,7 @@
     try { addForm = findOnPageForm(cfg); } catch (e) { logState('detect threw: ' + (e && e.message)); }
     if (addForm) {
       try {
-        adoptForm(cfg, addForm, view, list);
+        adoptForm(cfg, addForm, view);
         logState('adopted ' + addForm.viewKey + (addForm.live ? '' : ' (no <form> inside yet)') +
           (view.closest && view.closest('#scw-deploy-drawer') ? ' in the drawer' : ' at home'));
       } catch (e) {
@@ -563,7 +563,9 @@
   }
   function adoptedForm(cfg) {
     var view = document.getElementById(cfg.notesView);
-    return view ? view.querySelector('.' + ADDFORM_CLS) : null;
+    var prev = view && view.previousElementSibling;
+    if (prev && prev.classList.contains(ADDFORM_CLS)) return prev;
+    return document.querySelector('.' + ADDFORM_CLS);
   }
   /** Move the form above the card list (a sibling of the list: list
    *  re-renders never touch a draft), restyle, add the Pin checkbox, and
@@ -572,7 +574,7 @@
   function imp(el, props) {
     for (var k in props) el.style.setProperty(k, props[k], 'important');
   }
-  function adoptForm(cfg, form, view, list) {
+  function adoptForm(cfg, form, view) {
     var F = cfg.fields, el = form.el;
     // The ktl accordion that wrapped the form (if any) is an empty shell
     // now: keep it out of sight and out of the nav.
@@ -581,8 +583,12 @@
       if (shell && !shell.contains(view)) shell.style.setProperty('display', 'none', 'important');
     } catch (e) { /* no shell */ }
     el.classList.add(ADDFORM_CLS);
-    if (el.parentNode !== list.parentNode || el.nextSibling !== list) {
-      list.parentNode.insertBefore(el, list);
+    // A sibling directly BEFORE the notes view — never inside it: Knack
+    // rewrites the grid element's contents on every refresh (after a save,
+    // a pin, its own fetch), and anything inside goes with it. That is how
+    // the form vanished: adopted, then wiped by the first grid refresh.
+    if (el.parentNode !== view.parentNode || el.nextSibling !== view) {
+      view.parentNode.insertBefore(el, view);
     }
     _everAdopted[form.viewKey] = true;
     formStyle('#' + form.viewKey + ':not(.' + ADDFORM_CLS + ') { display: none !important; }\n' +
@@ -735,18 +741,15 @@
     });
   }
   function liveInputs(el) { return domInputs(el); }
-  /** Our own "Note saved." line at the top of the notes list (Knack's
-   *  confirmation is hidden: the form reloads on its own). */
+  /** "Note saved." in the form's own status line for a moment (the list
+   *  below is Knack's to rewrite; nothing of ours lives in it). */
   function flashSaved(cfg, text) {
-    var view = document.getElementById(cfg.notesView);
-    var list = view && view.querySelector('.scw-notes-list');
-    if (!list) return;
-    var n = view.querySelector('.scw-notes-saved');
-    if (!n) { n = document.createElement('div'); n.className = 'scw-notes-saved'; }
-    n.textContent = text;
-    list.parentNode.insertBefore(n, list);
-    clearTimeout(n.__t);
-    n.__t = setTimeout(function () { if (n.parentNode) n.parentNode.removeChild(n); }, 2500);
+    var el = cfg.addFormView ? liveFormEl(cfg.addFormView) : adoptedForm(cfg);
+    var status = el && el.querySelector('.scw-notes-compose__status');
+    if (!status) return;
+    status.textContent = text;
+    clearTimeout(status.__t);
+    status.__t = setTimeout(function () { if (status.textContent === text) status.textContent = ''; }, 2500);
   }
   // One console line per state CHANGE of the add form, so a live report can
   // say which path ran without a debugger.
