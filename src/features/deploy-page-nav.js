@@ -575,6 +575,20 @@
       findAcc(scene, /^project notes$/i),
       findMenuLinkView(scene, /add project note/i),
       'scw-deploy-notes-actionbar', 'scw-deploy-notes-cta');
+    // Files ← "Add File" / "Upload File": a Builder menu link to a child
+    // page holding a DOC_files "add connected record" form (file, file
+    // type, notes) connected to the PROJECT. Files uploaded from this page
+    // attach to the project, never to a SOW or the closeout. The same
+    // href feeds the site-maps strip's upload button (addFileHref below).
+    mountProxyCta(
+      findAcc(scene, /^other files$/i),
+      findMenuLinkView(scene, /^\s*(add|upload)\s+(a\s+)?files?\s*$/i),
+      'scw-deploy-files-actionbar', 'scw-deploy-files-cta');
+  }
+  function addFileHref(scene) {
+    var v = findMenuLinkView(scene, /^\s*(add|upload)\s+(a\s+)?files?\s*$/i);
+    var a = v && (v.querySelector('a.kn-link') || v.querySelector('a[href]'));
+    return a ? a.getAttribute('href') : '';
   }
 
   // ── Part 5: phase rollups — questionnaire status + closeout docs ──────
@@ -1362,7 +1376,13 @@
       openDrawer({ el: acc, kind: 'accordion' });
       return true;
     },
-    closeDrawer: closeDrawer
+    closeDrawer: closeDrawer,
+    // href of the scene's "Add File" menu link (project-attached upload
+    // form), '' until the Builder link exists.
+    addFileHref: function () {
+      var active = activeScene();
+      return active ? addFileHref(active.el) : '';
+    }
   };
   $(document).on('knack-view-render.any' + EVENT_NS, function () {
     if (activeScene()) scheduleApply(250);

@@ -173,7 +173,9 @@
     }
     // The card holds its place even with no map: PMs should notice the gap.
     var list = maps(cfg);
-    var sig = list.map(function (m) { return m.id + ':' + m.url + ':' + m.name; }).join('|') || 'empty';
+    var api0 = window.SCW && SCW.deployNav;
+    var sig = (list.map(function (m) { return m.id + ':' + m.url + ':' + m.name; }).join('|') || 'empty') +
+      '#' + (api0 && typeof api0.addFileHref === 'function' ? api0.addFileHref() : '');
     var strip = document.getElementById(STRIP_ID);
     if (strip && strip.getAttribute('data-scw-sig') === sig) { row2.classList.add('has-maps'); return; }
     if (!strip) {
@@ -198,15 +200,25 @@
         '<a class="scw-maps__btn" href="' + esc(m.url) + '" target="_blank" rel="noopener">Open</a>' +
         '<button type="button" class="scw-maps__btn" data-map-pop="' + esc(m.id) + '">Pop out</button></div>';
     }).join('');
+    // Upload: the scene's "Add File" form link (project-attached), when the
+    // Builder link exists; otherwise point at Files and the SOW-page path.
+    var api = window.SCW && SCW.deployNav;
+    var uploadHref = api && typeof api.addFileHref === 'function' ? api.addFileHref() : '';
+    var uploadBtn = uploadHref
+      ? '<a class="scw-maps__btn scw-maps__upload" href="' + esc(uploadHref) + '">+ Upload site plan</a>'
+      : '<button type="button" class="scw-maps__btn scw-maps__upload" data-map-upload="1">Files ›</button>';
+    var emptyText = uploadHref
+      ? 'No site plan or coverage map is filed on this project. Upload one here and give it the Site Plan file type. Images get a thumbnail; PDFs a document card.'
+      : 'No site plan or coverage map is filed on this project. Upload one from the Build SOW page (Site Maps &amp; Other Files → Add Document), then set its file type to Site Plan under Files here. Images get a thumbnail; PDFs a document card.';
     strip.innerHTML =
       '<div class="scw-maps__head"><span class="scw-maps__title">Site maps &amp; coverage</span>' +
         (list.length
           ? '<span class="scw-maps__sub">' + list.length + (list.length === 1 ? ' plan' : ' plans') + ' · open, or pop one out into its own window</span>'
           : '<span class="scw-maps__sub">None on this project yet</span>') +
-        '<button type="button" class="scw-maps__btn scw-maps__upload" data-map-upload="1">Files ›</button>' +
+        uploadBtn +
       '</div>' +
       (tiles ? '<div class="scw-maps__tiles">' + tiles + '</div>' :
-        '<div class="scw-maps__empty">No site plan or coverage map is filed on this project. Upload one from the Build SOW page (Site Maps &amp; Other Files → Add Document), then set its file type to Site Plan under Files here. Images get a thumbnail; PDFs a document card.</div>');
+        '<div class="scw-maps__empty">' + emptyText + '</div>');
     strip.onclick = function (e) {
       if (e.target.closest && e.target.closest('[data-map-upload]')) {
         var api = window.SCW && SCW.deployNav;
