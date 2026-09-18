@@ -104,6 +104,33 @@ additive chrome.
   back into that app rather than here. Phase I ships the strip + pop-out
   viewer only.
 
+## Checklist rows: pass / fail / fix submitted (decided 2026-09-18)
+
+- The Config Field Definition object got a **Checkbox** input type: a
+  definition of that type IS a check item (renders only in the checklist,
+  never in the Configuration grid; no flag needed). `Include on checklist`
+  still marks other input types as "verify this value" rows.
+- Each check row renders as **pass / fail controls, not a bare tick**. Fail
+  requires a short note. Stored per row in the blob: state (`pass`, `fail`,
+  `fixed`, or empty), note, who, when.
+- **Only SCW passes or fails a row.** The sub can set a failed row to
+  **`fixed`** ("Fixed, please re-review") with a note and, usually, a new
+  photo, from the sub worksheet (view_4056). The sub never writes the
+  verdict fields; the row stays in SCW's court until SCW passes or fails it
+  again.
+- **The item verdict derives from the rows; no Pass / Fail buttons.** Any
+  row `fail` → Failed (row notes = the failure reason). Every row (and every
+  required photo) passed → Complete, stamping `QA_completed by/on` with the
+  last passer. Any row `fixed` and none `fail` → **Fix submitted**. Else In
+  progress / Not started.
+- `QA_status` choices: Not started / In progress / **Fix submitted** /
+  Complete / Failed. **Fix submitted counts in SCW's queue**: it leaves the
+  sub's failed count and joins the SCW bar's "to review" segment, and the
+  "photos to review" chip / filter includes it. Make can watch the value to
+  ping the PM.
+- Builder: view_4056 needs inline editing on the config blob (`field_2932`)
+  and `QA_status` so "Mark fixed" saves through the sub's view.
+
 ## Rolling up "QA checklist complete"
 
 The JSON blob cannot be rolled up by Knack formulas, so the **item verdict is
@@ -111,11 +138,14 @@ the rollup unit**, not the individual checks.
 
 - **Per item, written by the bundle in the SAME view-based PUT as the blob**
   (one request, no extra rate-limit cost):
-  - `QA_status` (new multiple choice): Not started / In progress / Complete /
-    Failed — derived: no checks → Not started; some → In progress; every
-    checklist item checked + required photos in → Complete; verdict Fail →
-    Failed. (Or reuse `QA_passed` Yes/No for Complete only; the 4-state field
-    is what makes "in progress" visible.)
+  - `QA_status` (new multiple choice): Not started / In progress / Fix
+    submitted / Complete / Failed — derived from the rows as above (see
+    "Checklist rows"). `QA_passed` Yes/No mirrors Complete for anything that
+    already reads it.
+  - **Owner split for the two bars**: sub bar = required photos in / required
+    (missing and failed rows count against the sub); SCW bar = items
+    reviewed / items with evidence, where "to review" = photos awaiting first
+    review PLUS items in Fix submitted.
   - `QA_checks done` / `QA_checks total` (new numbers) for finer progress.
 - **Per MDF/IDF group and per project**: the bundle computes counts from the
   loaded records (instant, no Builder work) for the group headers ("QA 3/16"),
