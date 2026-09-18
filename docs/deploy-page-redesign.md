@@ -22,7 +22,11 @@ additive chrome.
 
 **The worksheet is the page; everything else is a status tile or a drawer.**
 
-1. **Four stage tiles** replace pills + bands + accordion bars: Paperwork & billing,
+1. **Four stage tiles** replace pills + bands + accordion bars: Paperwork & billing
+   (its fact is acceptance-card.js's rollup, which since 2026-09-18 says when
+   what is waiting is a change order: "change order awaiting signature" /
+   "2 awaiting signature · 1 is a change order" — SW####CO number or the CO
+   sub-pricing snapshot, `isCoRow`),
    Project setup, Installation (current, navy), Closeout. One four-state
    vocabulary: Done / Waiting / In progress / N missing. The rollups the nav
    module already computes feed the tiles.
@@ -289,8 +293,14 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   view_3942 deployment), confirm → view-based DELETE through the DOC save
   view view_3941 (the path closeout-deliverables.js already deletes by) →
   card + native row dropped → save / gallery / closeout models refetched
-  (maps strip and closeout list follow). Sub dashboard: no ×.
-  `tests/deploy-page/test-files-gallery.js`.
+  (maps strip and closeout list follow). Sub dashboard: no ×. **Bulk delete**
+  (same day): "Select files…" above the grid puts a checkbox on every card
+  (Select all, "N selected"); Delete selected → ONE confirm naming the files
+  (and how many are Required) → the DELETEs run two at a time, each settled
+  on its own (`deleteDocs`), successes drop card + row as they land,
+  failures stay selected and are named in one alert; Done leaves the mode.
+  Selection survives a re-render (save-view refetch) and prunes rows that
+  went away. `tests/deploy-page/test-files-gallery.js`.
 - **`bom-tray.js`** (2026-09-18, replaces the worksheet Summary on the
   deploy pages) — the FIRST row of "Also on this project" ("Bill of
   materials", box icon, a `kind:'panel'` target deploy-page-nav adds when
@@ -324,9 +334,14 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   pricing; the sub tray is Product | SKU | Qty. **Not shipping**: a dashed,
   muted block for Pre-existing (`/^pre-existing/` in the product name: on
   site, we connect to it) and Customer-supplied (`customer|client supplied`
-  in the name: they provide it, we install it). Never listed: services,
-  assumptions, rows removed by a CO (`field_2967`). Accessories are rows in
-  their own bucket. The old per-MDF / grand summary panels and the "Summary
+  in the name: they provide it, we install it). **Removed by change order**:
+  a third muted block for rows a signed CO pulled (`field_2967` set, the
+  worksheet's "Removed by CO" rule; a removal drafted this session shows
+  once the field lands), grouped by CO, struck through, never counted or
+  priced. Never listed: services, assumptions. Accessories are rows in their
+  own bucket. Group headers are 15px headings with a rule; Camera / Reader
+  alone carries a subtotal row in the category view (the drop count is what
+  a PM checks; on mounts or headend it adds nothing). The old per-MDF / grand summary panels and the "Summary
   only" toolbar mode are hidden on both deploy mounts (a saved Summary-only
   mode is bounced back to the default). Mockup: the "Install BOM Summary
   Wireframes" canvas. `tests/deploy-page/test-bom-tray.js`.

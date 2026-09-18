@@ -20,9 +20,14 @@
  *              connect to it, not installing it) and Customer-supplied (the
  *              customer provides it, we install it). Both read off the
  *              product NAME.
- * Services and assumptions never appear. Rows removed by a change order
- * are skipped. Accessories (mounts) are line items with a product and ship
- * like anything else: they are rows in their own bucket.
+ *   Removed by change order  a third muted block: rows a signed CO pulled
+ *              from the install scope (field_2967 set, same rule as the
+ *              worksheet's "Removed by CO" fold), grouped by CO, struck
+ *              through, never counted or priced. A removal drafted this
+ *              session shows once the CO signs and the field lands.
+ * Services and assumptions never appear. Accessories (mounts) are line
+ * items with a product and ship like anything else: they are rows in their
+ * own bucket.
  *
  * Data: the install line items (view_4093 ops / view_4056 sub), read
  * through worksheet-v2's record cache when it is there (same records the
@@ -113,7 +118,7 @@
       '.scw-bom__table th { padding: 5px 8px; text-align: left; font: 700 10.5px/1.2 system-ui, sans-serif; letter-spacing: 0.08em; color: #64748b; border-bottom: 1px solid #0f172a; white-space: nowrap; }',
       '.scw-bom__table td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }',
       '.scw-bom__table th.num, .scw-bom__table td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }',
-      '.scw-bom__group td { padding: 26px 8px 4px; border-bottom: 2px solid #e2e8f0; font: 800 11px/1.2 system-ui, sans-serif; letter-spacing: 0.1em; color: #163c6e; text-transform: uppercase; }',
+      '.scw-bom__group td { padding: 26px 8px 6px; border-bottom: 2px solid #cbd5e1; font: 800 15px/1.2 system-ui, sans-serif; color: #163c6e; }',
       '.scw-bom__group:first-child td { padding-top: 10px; }',
       '.scw-bom__group--none td { color: #64748b; }',
       '.scw-bom__name { font-weight: 700; }',
@@ -122,11 +127,14 @@
       '.scw-bom__qty { font-weight: 700; }',
       '.scw-bom__muted { color: #64748b; }',
       '.scw-bom__total td { border-top: 2px solid #0f172a; border-bottom: 0; font-weight: 700; padding-top: 7px; }',
+      '.scw-bom__subtotal td { border-top: 1px solid #cbd5e1; border-bottom: 0; font-weight: 700; color: #475569; padding-top: 6px; }',
       '.scw-bom__chip { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font: 700 11px/1.5 system-ui, sans-serif; white-space: nowrap; vertical-align: middle; }',
       '.scw-bom__chip--drops { background: #eaf0f7; color: #163c6e; }',
       '.scw-bom__chip--special { border: 1px solid #fcd34d; background: #fffbeb; color: #92400e; }',
       '.scw-bom__chip--pre { border: 1px solid #cbd5e1; background: #fff; color: #475569; }',
       '.scw-bom__chip--cust { border: 1px solid #93c5fd; background: #eff6ff; color: #1d4ed8; }',
+      '.scw-bom__chip--removed { border: 1px solid #fca5a5; background: #fef2f2; color: #b91c1c; }',
+      '.scw-bom__removed .scw-bom__name { text-decoration: line-through; text-decoration-color: #94a3b8; }',
       '.scw-bom__noship { margin-top: 22px; padding: 10px 12px 4px; border: 1px dashed #cbd5e1; border-radius: 8px; background: #f8fafc; color: #475569; }',
       '.scw-bom__noship .scw-bom__section { padding-top: 0; }',
       '.scw-bom__noship .scw-bom__section-title { color: #475569; }',
@@ -246,11 +254,11 @@
     for (var i = 0; i < recs.length; i++) {
       var r = recs[i];
       if (!r || !r.id) continue;
-      if (hasValue(r, IF.removedByCo)) continue;
       var cat = categoryOf(r, cfg);
       if (cat === 'services' || cat === 'assumptions') continue;
       var name = plain(r[IF.productName]) || connLabel(r, IF.product) || '(unnamed)';
-      var kind = PRE_RE.test(name) ? 'pre' : (CUST_RE.test(name) ? 'cust' : 'ship');
+      var removed = hasValue(r, IF.removedByCo);
+      var kind = removed ? 'removed' : (PRE_RE.test(name) ? 'pre' : (CUST_RE.test(name) ? 'cust' : 'ship'));
       var qty = num(r[IF.qty]) || 1;
       var s = sow[connId(r, IF.sowItem)] || null;
       var sku = '';
@@ -263,6 +271,7 @@
         id: r.id, name: name, kind: kind, qty: qty, sku: sku,
         bucket: connLabel(r, IF.bucket) || 'Other',
         loc: connLabel(r, IF.mdfIdf) || NO_LOC,
+        co: removed ? (connLabel(r, IF.removedByCo) || 'Change order') : '',
         sow: s ? (connLabels(s, SF.sow).map(sowLabel).join(' + ') || NO_SOW) : NO_SOW,
         designator: plain(r[IF.displayLabel]),
         isCam: cat === 'cam',
@@ -270,7 +279,7 @@
         special: SPECIAL_RE.test(name),
         retail: null, discount: null, net: null
       };
-      if (it.isCam && hasValue(r, IF.existCabling)) {
+      if (!removed && it.isCam && hasValue(r, IF.existCabling)) {
         if (isYes(r[IF.existCabling])) it.existingDrop = true; else it.newDrop = true;
       }
       if (s) {
@@ -328,7 +337,12 @@
       if (an !== bn) return an - bn;
       return String(a.label).localeCompare(String(b.label), undefined, { numeric: true, sensitivity: 'base' });
     });
-    for (var ni = 0; ni < groups.length; ni++) groups[ni].none = isNoneGroup(groups[ni].label);
+    for (var ni = 0; ni < groups.length; ni++) {
+      groups[ni].none = isNoneGroup(groups[ni].label);
+      // Cameras / readers get a subtotal (the drop count is what a PM checks);
+      // it adds nothing on mounts or headend gear.
+      groups[ni].subtotal = by === 'bucket' && /camera|reader/i.test(groups[ni].label);
+    }
     return groups;
   }
   function isNoneGroup(label) {
@@ -336,18 +350,19 @@
   }
   function model(cfg, mode) {
     var all = items(cfg);
-    var ship = [], noShip = [], newDrops = 0, existing = 0;
+    var ship = [], noShip = [], removed = [], newDrops = 0, existing = 0;
     for (var i = 0; i < all.length; i++) {
       var it = all[i];
       if (it.newDrop) newDrops++;
       if (it.existingDrop) existing++;
-      (it.kind === 'ship' ? ship : noShip).push(it);
+      (it.kind === 'removed' ? removed : (it.kind === 'ship' ? ship : noShip)).push(it);
     }
     var by = mode === 'loc' ? 'loc' : (mode === 'sow' ? 'sow' : 'bucket');
     return {
       count: all.length, newDrops: newDrops, existing: existing,
       ship: groupRows(ship, by),
       noShip: groupRows(noShip, 'bucket'),
+      removed: groupRows(removed, 'co'),
       shipQty: ship.reduce(function (n, it) { return n + it.qty; }, 0),
       shipRetail: ship.reduce(function (n, it) { return n + (it.retail || 0) * it.qty; }, 0),
       shipDiscount: ship.reduce(function (n, it) { return n + (it.discount || 0) * it.qty; }, 0),
@@ -384,6 +399,7 @@
     if (row.special) chips += ' <span class="scw-bom__chip scw-bom__chip--special">Special order</span>';
     if (row.kind === 'pre') chips += ' <span class="scw-bom__chip scw-bom__chip--pre">Pre-existing</span>';
     if (row.kind === 'cust') chips += ' <span class="scw-bom__chip scw-bom__chip--cust">Customer-supplied</span>';
+    if (row.kind === 'removed') chips += ' <span class="scw-bom__chip scw-bom__chip--removed">Removed</span>';
     var html = '<tr>' +
       '<td><span class="scw-bom__name">' + esc(row.name) + '</span>' + desig + where + chips + '</td>';
     if (cols.sku) html += '<td class="scw-bom__sku">' + (row.sku ? esc(row.sku) : '<span class="scw-bom__muted">—</span>') + '</td>';
@@ -415,6 +431,13 @@
       var grp = groups[g];
       html += '<tr class="scw-bom__group' + (grp.none ? ' scw-bom__group--none' : '') + '"><td colspan="' + ncols + '">' + esc(grp.label) + '</td></tr>';
       for (var r = 0; r < grp.rows.length; r++) html += rowHtml(grp.rows[r], cols, showLoc);
+      if (grp.subtotal) {
+        html += '<tr class="scw-bom__subtotal"><td>' + esc(grp.label) + ' subtotal</td>' + (cols.sku ? '<td></td>' : '') +
+          '<td class="num">' + grp.qty + '</td>' +
+          (cols.retail   ? '<td class="num">' + (grp.priced ? money(grp.retail) : '—') + '</td>' : '') +
+          (cols.discount ? '<td class="num">' + (grp.priced && grp.discount ? '−' + money(grp.discount).replace('−', '') : '—') + '</td>' : '') +
+          (cols.net      ? '<td class="num">' + (grp.priced ? money(grp.net) : '—') + '</td>' : '') + '</tr>';
+      }
     }
     if (total) {
       html += '<tr class="scw-bom__total"><td>' + esc(total.label) + '</td>' + (cols.sku ? '<td></td>' : '') +
@@ -454,6 +477,13 @@
           '<span class="scw-bom__section-sub">on the SOW, not in the box · ' +
           '<span class="scw-bom__why">Pre-existing: on site, we connect to it. Customer-supplied: they provide it, we install it.</span></span></div>' +
           tableHtml(m.noShip, false, false, null) +
+        '</div>';
+      }
+      if (m.removed.length) {
+        html += '<div class="scw-bom__noship scw-bom__removed">' +
+          '<div class="scw-bom__section"><span class="scw-bom__section-title">Removed by change order</span>' +
+          '<span class="scw-bom__section-sub">pulled from the install scope · not shipping, not counted</span></div>' +
+          tableHtml(m.removed, false, false, null) +
         '</div>';
       }
     }

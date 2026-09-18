@@ -2770,9 +2770,10 @@
       '</div>';
     // Per-SOW sub-bid sums, resolved ONCE for the whole card.
     var bySow = proposedSubBidBySow();
-    var signedCount = 0, entries = [];
+    var signedCount = 0, pendingCo = 0, entries = [];
     for (var ri = 0; ri < rows.length; ri++) {
       if (isYes(cellText(rows[ri], F.signed))) signedCount++;
+      else if (isCoRow(VIEW, rows[ri])) pendingCo++;
       var entry = buildSubRow(VIEW, rows[ri], bySow);
       entries.push(entry);
       card.appendChild(entry.el);
@@ -2782,13 +2783,21 @@
     var foot = buildProjectMoney(entries, true);
     if (foot) card.appendChild(foot);
     viewEl.appendChild(card);
-    rollup(viewEl, rows.length - signedCount);
+    rollup(viewEl, rows.length - signedCount, pendingCo);
   }
 
+  /** A change-order acceptance: the SOW number's CO suffix (SW1418CO) when
+   *  the column shows it, else the CO sub-pricing snapshot only a CO carries. */
+  function isCoRow(viewKey, row) {
+    if (/\bSW\d+CO\b/i.test(cellText(row, F.proposal))) return true;
+    try { return isCoSnapshot(readSnapshot(viewKey, row)); } catch (e) { return false; }
+  }
   /** Accordion-header tally: "N awaiting signature" (amber) / "all signed"
    *  (green), plus the attention flag the deploy nav's amber dot reads.
-   *  Shared by both variants. */
-  function rollup(viewEl, pending) {
+   *  Says when what is waiting is a change order — a PM reading the
+   *  Paperwork tile needs to know whether the base agreement or a CO is
+   *  the holdup. Shared by both variants. */
+  function rollup(viewEl, pending, pendingCo) {
     var acc = viewEl.closest('.scw-ktl-accordion');
     if (!acc) return;
     acc.toggleAttribute && acc.toggleAttribute('data-scw-attention', pending > 0);
@@ -2804,9 +2813,17 @@
     }
     roll.classList.toggle('scw-acpt-rollup--warn', pending > 0);
     roll.classList.toggle('scw-acpt-rollup--ok', pending === 0);
-    roll.textContent = pending > 0
-      ? (pending + ' awaiting signature')
-      : 'all signed';
+    var text = 'all signed';
+    if (pending > 0) {
+      pendingCo = pendingCo || 0;
+      if (pendingCo === pending) {
+        text = (pending === 1 ? 'change order' : pending + ' change orders') + ' awaiting signature';
+      } else {
+        text = pending + ' awaiting signature' +
+          (pendingCo ? ' · ' + pendingCo + (pendingCo === 1 ? ' is a change order' : ' are change orders') : '');
+      }
+    }
+    roll.textContent = text;
   }
 
   function render() {
@@ -2846,15 +2863,16 @@
     // base acceptance with neither payment nor terms approval) float to the
     // top so a 6-12 acceptance pile on a big project self-prioritizes.
     var entries = [];
-    var signedCount = 0;
+    var signedCount = 0, pendingCo = 0;
     for (var ri = 0; ri < rows.length; ri++) {
       var r = rows[ri];
       var rSigned = isYes(cellText(r, F.signed));
       var rPaid   = isYes(cellText(r, F.payment));
       var rTerms  = isYes(cellText(r, F.terms));
-      var rIsCo   = /\bSW\d+CO\b/i.test(cellText(r, F.proposal));
+      var rIsCo   = isCoRow(VIEW, r);
       var attention = !rSigned || (!rIsCo && !rTerms && !rPaid);
       if (rSigned) signedCount++;
+      else if (rIsCo) pendingCo++;
       entries.push({ row: r, attention: attention, order: ri });
     }
     entries.sort(function (a, b) {
@@ -2917,7 +2935,7 @@
 
     // Rollup badge in the accordion header bar — visible without
     // expanding; the attention attribute feeds the deploy nav's amber dot.
-    rollup(viewEl, rows.length - signedCount);
+    rollup(viewEl, rows.length - signedCount, pendingCo);
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {

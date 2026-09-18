@@ -78,7 +78,7 @@ setTimeout(() => {
   const groups = [...tray.querySelectorAll('.scw-bom__table')][0].querySelectorAll('.scw-bom__group td');
   check('Shipping groups by bucket, cameras first; services and assumptions never appear', [...groups].map(g => g.textContent), ['Camera / Reader', 'Networking or Headend', 'Mounting Hardware']);
   const ship = tray.querySelectorAll('.scw-bom__table')[0];
-  const rows = [...ship.querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total)')].map(cells);
+  const rows = [...ship.querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total):not(.scw-bom__subtotal)')].map(cells);
   check('one row per product: designators compacted, no location run-on, drops chip, SKU + extended pricing from the SOW item',
     rows[0], ['Informant 8.0 v5 · I-001 to I-005 3 new drops', 'INF-80-V5', '5', '$1,500.00', '−$250.00', '$1,250.00']);
   check('special order chip from the name; no SKU → dash; discount 0 → dash',
@@ -86,12 +86,17 @@ setTimeout(() => {
   check('no SOW item → no SKU, no pricing on that row', rows[3], ['Cat6 Uplink', '—', '1', '—', '—', '—']);
   check('mounts are ordinary shipping rows', rows[4], ['Junction Box', 'JB-1', '5', '$50.00', '—', '$50.00']);
   check('shipping total', cells(ship.querySelector('.scw-bom__total')), ['Shipping total', '', '14', '$3,350.00', '−$250.00', '$3,100.00']);
+  check('Camera / Reader gets a subtotal row (the only group that does)', [...ship.querySelectorAll('.scw-bom__subtotal')].map(cells), [['Camera / Reader subtotal', '', '5', '$1,500.00', '−$250.00', '$1,250.00']]);
   check('columns exist only when some row has data: all six here', [...ship.querySelectorAll('thead th')].map(t => t.textContent), ['Product', 'SKU', 'Qty', 'Retail', 'Discount', 'After discount']);
   const noShip = tray.querySelector('.scw-bom__noship');
   const nsRows = [...noShip.querySelectorAll('tbody tr:not(.scw-bom__group)')].map(cells);
   check('Not shipping: pre-existing + customer-supplied read off the name, no pricing columns',
     nsRows, [['Pre-existing PoE Switch Pre-existing', '1'], ['Customer-supplied Monitor Customer-supplied', '1']]);
   check('pre-existing / customer-supplied never count toward shipping', ship.textContent.indexOf('PoE Switch') < 0 && ship.textContent.indexOf('Monitor') < 0, true);
+  const removed = tray.querySelector('.scw-bom__removed');
+  check('Removed by change order: rows with field_2967 set, grouped by the CO, chip, no pricing, never in Shipping',
+    [[...removed.querySelectorAll('.scw-bom__group td')].map(g => g.textContent), [...removed.querySelectorAll('tbody tr:not(.scw-bom__group)')].map(cells), ship.textContent.indexOf('Removed Camera') < 0],
+    [['CO 1'], [['Removed Camera Removed', '1']], true]);
   // Toggle → by MDF / IDF. The tray REPAINTS IN PLACE: same element, still tagged for the
   // drawer to clear (a swapped-in fresh element lost the tag and lingered under the next tray).
   tray.querySelector('[data-scw-bom-set="loc"]').click();
@@ -99,10 +104,11 @@ setTimeout(() => {
   check('regrouping keeps the same element and the drawer tag; only one tray in the page',
     [tray2 === tray, tray2.classList.contains('scw-deploy-drawer__custom'), document.querySelectorAll('.scw-bom').length], [true, true, 1]);
   const g2 = [...tray2.querySelectorAll('.scw-bom__table')][0].querySelectorAll('.scw-bom__group');
+  check('no subtotals in the location view', tray2.querySelectorAll('.scw-bom__subtotal').length, 0);
   check('By MDF / IDF regroups the shipping rows by location, unassigned last and muted, toggle state persists',
     [[...g2].map(g => g.textContent), [...g2].map(g => g.classList.contains('scw-bom__group--none')), tray2.getAttribute('data-scw-bom-mode'), window.localStorage.getItem('scw:bom:mode')],
     [['Default MDF', 'IDF 01', 'No MDF / IDF'], [false, false, true], 'loc', 'loc']);
-  const idfRows = [...tray2.querySelectorAll('.scw-bom__table')][0].querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total)');
+  const idfRows = [...tray2.querySelectorAll('.scw-bom__table')][0].querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total):not(.scw-bom__subtotal)');
   check('per-location rows carry their own qty and drops', cells(idfRows[0]), ['Informant 8.0 v5 · I-001 to I-003 3 new drops', 'INF-80-V5', '3', '$900.00', '−$150.00', '$750.00']);
   check('groups are set apart: the group row carries top padding + a rule, the first one less',
     [/\.scw-bom__group td \{[^}]*padding: 26px/.test(document.getElementById('scw-bom-css').textContent), /\.scw-bom__group:first-child td \{[^}]*padding-top: 10px/.test(document.getElementById('scw-bom-css').textContent)], [true, true]);
@@ -111,7 +117,7 @@ setTimeout(() => {
   const g3 = [...tray.querySelectorAll('.scw-bom__table')][0].querySelectorAll('.scw-bom__group td');
   check('By SOW groups by the SOW the line came from, "SOW n" labels, shared lines under both names, no link last',
     [[...g3].map(g => g.textContent), tray.getAttribute('data-scw-bom-mode')], [['SOW 1524', 'SOW 1524 + SOW 1601', 'SOW 1601', 'No SOW'], 'sow']);
-  const sowRows = [...tray.querySelectorAll('.scw-bom__table')][0].querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total)');
+  const sowRows = [...tray.querySelectorAll('.scw-bom__table')][0].querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total):not(.scw-bom__subtotal)');
   check('rows under their SOW', [cells(sowRows[0])[0], cells(sowRows[1])[0], cells(sowRows[2])[0], cells(sowRows[3])[0], cells(sowRows[4])[0]],
     ['Informant 8.0 v5 · I-001 to I-005 3 new drops', 'Imperial 128 Channel 4K NVR v3', 'Junction Box', 'v2 16 Drive Mini-SAS Enclosure (Special Order) Special order', 'Cat6 Uplink']);
   // Re-open: the earlier tray is dropped, never stacked.

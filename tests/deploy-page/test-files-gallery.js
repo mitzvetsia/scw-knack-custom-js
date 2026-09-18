@@ -53,11 +53,25 @@ setTimeout(() => {
   const alerts = []; window.alert = m => alerts.push(m); global.alert = window.alert;
   view.querySelectorAll('.scw-ofg-del')[1].click();   // the "fail" record → 403
   check('a failed DELETE keeps the card and explains', [view.querySelectorAll('.scw-ofg-card').length, alerts.length === 1 && /HTTP 403/.test(alerts[0]), view.querySelectorAll('.scw-ofg-del')[1].disabled], [2, true, false]);
+  // Bulk delete: Select files → a checkbox per card, select all, one confirm, capped-concurrency DELETEs.
+  view.querySelector('.scw-ofg-select').click();
+  const bar = () => view.querySelector('.scw-ofg-bar');
+  check('Select files: a checkbox on every card, the delete button waits for a pick', [view.querySelectorAll('.scw-ofg-pick').length, bar().querySelector('.scw-ofg-bulk-del').disabled, view.querySelector('.scw-ofg-grid').classList.contains('is-selecting')], [2, true, true]);
+  const all = bar().querySelector('.scw-ofg-all'); all.checked = true; all.dispatchEvent(new window.Event('change'));
+  check('select all ticks every card', [bar().querySelector('.scw-ofg-count').textContent, view.querySelectorAll('.scw-ofg-card.is-selected').length, bar().querySelector('.scw-ofg-bulk-del').disabled], ['2 selected', 2, false]);
+  let bulkAsk = ''; window.confirm = m => { bulkAsk = m; return true; }; global.confirm = window.confirm;
+  calls.length = 0; alerts.length = 0;
+  bar().querySelector('.scw-ofg-bulk-del').click();
+  check('one confirm names the count and the files; every pick is DELETEd through the save view', [/Delete 2 files/.test(bulkAsk), /b2b2b2b2b2b2b2b2b2b2b2b2\.pdf/.test(bulkAsk), calls.map(c => c.type + ' ' + c.url).sort()], [true, true, ['DELETE /view_3941/' + B, 'DELETE /view_3941/' + F]]);
+  check('the deleted card + row go; the failed one stays selected and the alert says which', [view.querySelectorAll('.scw-ofg-card').length, !!view.querySelector('tr[id="' + B + '"]'), view.querySelectorAll('.scw-ofg-card.is-selected').length, alerts.length === 1 && /Deleted 1 of 2/.test(alerts[0]) && /HTTP 403/.test(alerts[0])], [1, false, 1, true]);
+  bar().querySelector('.scw-ofg-cancel').click();
+  check('Done leaves selection mode', [!!view.querySelector('.scw-ofg-select'), view.querySelectorAll('.scw-ofg-pick').length], [true, 0]);
   // Sub dashboard: same module, no delete.
   scene('view_4063', 'view_4068', [A, B]);
   setTimeout(() => {
     const sub = document.getElementById('view_4063');
     check('sub dashboard: cards, but no delete control', [sub.querySelectorAll('.scw-ofg-card').length, sub.querySelectorAll('.scw-ofg-del').length], [2, 0]);
+    check('sub dashboard: no bulk select either', !!sub.querySelector('.scw-ofg-select'), false);
     console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
     process.exit(fails ? 1 : 0);
   }, 100);

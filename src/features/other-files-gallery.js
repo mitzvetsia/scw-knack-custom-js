@@ -41,7 +41,11 @@
   //                  this onto the DOC so it joins the closeout deliverables.
   //   canDelete    — PMs can delete a file from the tray (ops page only):
   //                  a view-based DELETE through the save view, the same
-  //                  path closeout-deliverables.js removes a DOC by.
+  //                  path closeout-deliverables.js removes a DOC by. One
+  //                  at a time from the card's ×, or several at once:
+  //                  "Select files" puts a checkbox on every card and one
+  //                  confirm deletes the lot (capped concurrency, each
+  //                  DELETE settled on its own, failures named).
   var DEPLOYMENTS = [
     { view: 'view_3942', saveView: 'view_3941', closeoutView: 'view_3940', canDelete: true },  // ops deploy
     { view: 'view_4063', saveView: 'view_4068', closeoutView: 'view_4058' }                    // sub dashboard
@@ -109,6 +113,21 @@
       '.scw-ofg-card:hover .scw-ofg-del, .scw-ofg-del:focus, .scw-ofg-del[disabled] { opacity: 1; }',
       '.scw-ofg-del:hover { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }',
       '.scw-ofg-del[disabled] { cursor: default; color: #94a3b8; }',
+      // Bulk delete: the bar above the grid + a checkbox on every card
+      '.scw-ofg-bar { display: flex; align-items: center; gap: 12px; margin-top: 8px; min-height: 30px;',
+      '  font: 500 12px/1.3 system-ui, sans-serif; color: #475569; }',
+      '.scw-ofg-bar button { padding: 5px 11px; border-radius: 7px; border: 1px solid #cbd5e1; background: #fff;',
+      '  color: #334155; font: 600 11.5px/1.2 system-ui, sans-serif; cursor: pointer; }',
+      '.scw-ofg-bar button:hover { background: #f1f5f9; }',
+      '.scw-ofg-bar button[disabled] { opacity: .5; cursor: default; }',
+      '.scw-ofg-bar .scw-ofg-bulk-del { border-color: #fca5a5; color: #b91c1c; }',
+      '.scw-ofg-bar .scw-ofg-bulk-del:not([disabled]):hover { background: #fee2e2; }',
+      '.scw-ofg-bar label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }',
+      '.scw-ofg-bar .scw-ofg-spring { flex: 1 1 auto; }',
+      '.scw-ofg-pick { position: absolute; top: 8px; left: 8px; width: 18px; height: 18px; margin: 0;',
+      '  cursor: pointer; accent-color: #163c6e; z-index: 1; }',
+      '.scw-ofg-card.is-selected { outline: 2px solid #163c6e; outline-offset: -1px; }',
+      '.scw-ofg-grid.is-selecting .scw-ofg-del { display: none; }',
       '.scw-ofg-name { display: block; font: 600 11.5px/1.35 system-ui, sans-serif;',
       '  color: #0f4c75; cursor: pointer; word-break: break-all;',
       '  max-height: 2.7em; overflow: hidden; text-decoration: none; }',
@@ -248,6 +267,34 @@
       }
     });
   }
+
+  /** DELETE several DOC records: capped concurrency (CLAUDE.md: never a
+   *  bare Promise.all of writes against Knack's rate limit), every call
+   *  settled, then done({ ok: [ids], failed: [{ id, status }] }). */
+  function deleteDocs(ids, onEach, done) {
+    var MAX = 2, i = 0, running = 0, ok = [], failed = [];
+    function next() {
+      while (running < MAX && i < ids.length) {
+        (function (id) {
+          running++;
+          deleteDoc(id, function (good, status) {
+            running--;
+            if (good) ok.push(id); else failed.push({ id: id, status: status });
+            try { onEach(id, good); } catch (e) { /* card update is cosmetic */ }
+            if (!running && i >= ids.length) done({ ok: ok, failed: failed });
+            else next();
+          });
+        })(ids[i++]);
+      }
+    }
+    if (!ids.length) { done({ ok: ok, failed: failed }); return; }
+    next();
+  }
+
+  // Bulk-delete selection: survives re-renders (a save-view refetch
+  // rebuilds the cards) so half-way through picking isn't lost.
+  var _selecting = false;
+  var _selected  = {};   // recId → true
 
   /** The page's closeout record id — first row of the closeout grid on
    *  this scene (one closeout per project). */
@@ -433,10 +480,16 @@
     var isRequired = caps.required && /^yes$/i.test(readDocField(REQUIRED_FIELD));
 
     var card = document.createElement('div');
-    card.className = 'scw-ofg-card';
+    card.className = 'scw-ofg-card' + (caps.del && _selecting && _selected[recId] ? ' is-selected' : '');
+    card.setAttribute('data-scw-ofg-id', recId);
+    card.setAttribute('data-scw-ofg-name', name);
+    if (isRequired) card.setAttribute('data-scw-ofg-required', '1');
     card.innerHTML =
       (caps.del
         ? '<button type="button" class="scw-ofg-del" title="Delete this file" aria-label="Delete file">×</button>'
+        : '') +
+      (caps.del && _selecting
+        ? '<input type="checkbox" class="scw-ofg-pick" aria-label="Select file"' + (_selected[recId] ? ' checked' : '') + '>'
         : '') +
       '<button type="button" class="scw-ofg-thumb" title="Open file">' +
         (thumb
@@ -482,6 +535,13 @@
     var noteEl = card.querySelector('.scw-ofg-note');
     if (noteEl) noteEl.addEventListener('click', function () {
       openNotesEditor(this, recId, notesTxt);
+    });
+
+    var pick = card.querySelector('.scw-ofg-pick');
+    if (pick) pick.addEventListener('change', function () {
+      if (pick.checked) _selected[recId] = true; else delete _selected[recId];
+      card.classList.toggle('is-selected', pick.checked);
+      syncBar(card.closest('.kn-view'));
     });
 
     var delBtn = card.querySelector('.scw-ofg-del');
@@ -577,12 +637,115 @@
       closeout: !!columnView(CLOSEOUT_FIELD),
       del:      canDeleteHere()
     };
+    var priorBar = viewEl.querySelector(':scope > .scw-ofg-bar');
+    if (priorBar) priorBar.remove();
+    if (caps.del) {
+      // Prune picks for rows that are gone (deleted elsewhere, refetched away).
+      var present = {};
+      for (var pi = 0; pi < rows.length; pi++) present[rows[pi].id] = true;
+      for (var sid in _selected) if (!present[sid]) delete _selected[sid];
+      viewEl.appendChild(buildBar(viewEl, rows.length));
+    } else {
+      _selecting = false; _selected = {};
+    }
     var grid = document.createElement('div');
-    grid.className = 'scw-ofg-grid';
+    grid.className = 'scw-ofg-grid' + (caps.del && _selecting ? ' is-selecting' : '');
     for (var i = 0; i < rows.length; i++) {
       grid.appendChild(buildCard(rows[i], attrsById[rows[i].id], caps));
     }
     viewEl.appendChild(grid);
+    if (caps.del && _selecting) syncBar(viewEl);
+  }
+
+  // ── Bulk delete bar ──────────────────────────────────────────────
+  function selectedIds() { return Object.keys(_selected); }
+  function syncBar(viewEl) {
+    var bar = viewEl && viewEl.querySelector(':scope > .scw-ofg-bar');
+    if (!bar || !_selecting) return;
+    var n = selectedIds().length, total = viewEl.querySelectorAll('.scw-ofg-card').length;
+    bar.querySelector('.scw-ofg-count').textContent = n ? n + ' selected' : 'Tick the files to delete';
+    bar.querySelector('.scw-ofg-bulk-del').disabled = !n;
+    var all = bar.querySelector('.scw-ofg-all');
+    all.checked = total > 0 && n === total;
+    all.indeterminate = n > 0 && n < total;
+  }
+  function buildBar(viewEl, total) {
+    var bar = document.createElement('div');
+    bar.className = 'scw-ofg-bar';
+    if (!_selecting) {
+      bar.innerHTML = '<span class="scw-ofg-spring"></span>' +
+        '<button type="button" class="scw-ofg-select" title="Pick several files and delete them at once">Select files…</button>';
+      bar.querySelector('.scw-ofg-select').addEventListener('click', function () {
+        _selecting = true; _selected = {};
+        render();
+      });
+      return bar;
+    }
+    bar.innerHTML =
+      '<label><input type="checkbox" class="scw-ofg-all"> Select all</label>' +
+      '<span class="scw-ofg-count"></span>' +
+      '<span class="scw-ofg-spring"></span>' +
+      '<button type="button" class="scw-ofg-bulk-del" disabled>Delete selected</button>' +
+      '<button type="button" class="scw-ofg-cancel">Done</button>';
+    bar.querySelector('.scw-ofg-all').addEventListener('change', function () {
+      var on = this.checked, cards = viewEl.querySelectorAll('.scw-ofg-card');
+      _selected = {};
+      for (var i = 0; i < cards.length; i++) {
+        var id = cards[i].getAttribute('data-scw-ofg-id');
+        if (on) _selected[id] = true;
+        cards[i].classList.toggle('is-selected', on);
+        var pick = cards[i].querySelector('.scw-ofg-pick');
+        if (pick) pick.checked = on;
+      }
+      syncBar(viewEl);
+    });
+    bar.querySelector('.scw-ofg-cancel').addEventListener('click', function () {
+      _selecting = false; _selected = {};
+      render();
+    });
+    bar.querySelector('.scw-ofg-bulk-del').addEventListener('click', function () {
+      var ids = selectedIds();
+      if (!ids.length) return;
+      var names = [], required = 0;
+      for (var i = 0; i < ids.length; i++) {
+        var c = viewEl.querySelector('.scw-ofg-card[data-scw-ofg-id="' + ids[i] + '"]');
+        names.push(c ? c.getAttribute('data-scw-ofg-name') : ids[i]);
+        if (c && c.hasAttribute('data-scw-ofg-required')) required++;
+      }
+      var list = names.slice(0, 8).join('\n') + (names.length > 8 ? '\n… and ' + (names.length - 8) + ' more' : '');
+      var msg = 'Delete ' + ids.length + (ids.length === 1 ? ' file' : ' files') + ' from this project?\n\n' + list + '\n\n' +
+        (required ? required + (required === 1 ? ' is' : ' are') + ' marked Required for closeout. ' : '') +
+        'The file records are removed for everyone. This cannot be undone.';
+      if (!window.confirm(msg)) return;
+      var btn = this;
+      btn.disabled = true;
+      btn.textContent = 'Deleting…';
+      deleteDocs(ids, function (id, good) {
+        if (!good) return;
+        delete _selected[id];
+        // Gone: drop the card and the native row now (a re-render before
+        // the refetch lands must not bring it back).
+        var card = viewEl.querySelector('.scw-ofg-card[data-scw-ofg-id="' + id + '"]');
+        if (card && card.parentNode) card.parentNode.removeChild(card);
+        var row = viewEl.querySelector('tbody tr[id="' + id + '"]');
+        if (row && row.parentNode) row.parentNode.removeChild(row);
+      }, function (res) {
+        if (res.failed.length) {
+          var bad = [];
+          for (var f = 0; f < res.failed.length; f++) {
+            var fc = viewEl.querySelector('.scw-ofg-card[data-scw-ofg-id="' + res.failed[f].id + '"]');
+            bad.push((fc ? fc.getAttribute('data-scw-ofg-name') : res.failed[f].id) + ' (' + (res.failed[f].status || 'no response') + ')');
+          }
+          alert('Deleted ' + res.ok.length + ' of ' + ids.length + '. Could not delete:\n' + bad.join('\n') +
+                '\n\nThey stay selected — try again, or use the edit page.');
+        } else {
+          _selecting = false; _selected = {};
+        }
+        refetch();
+        render();
+      });
+    });
+    return bar;
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
