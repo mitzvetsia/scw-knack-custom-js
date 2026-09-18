@@ -319,12 +319,14 @@ button automatically when the link text matches /add|upload file/i).
   came back (Knack's confirmation / reload path). Dropped Knack's submit
   entirely: the note is POSTed through the form view by the bundle and the
   form is never touched (see the module note).
-- Reported the same day, not yet placed: the Agreements & Invoices tray
-  "reproduces the entire top section of the page". Nothing in the notes
-  work touches the Acceptance section or the drawer; needs a screenshot /
-  the pinned build SHA. Suspects: ktl-accordion wrapping a larger node than
-  the acceptance view (`wrapTarget = knView || btn.parentNode`), or a
-  Builder layout change when view_4162 was added to the page.
+- The Agreements & Invoices tray "reproduced the entire top section of the
+  page": `buildNav` anchors the nav directly before the FIRST accordion
+  (Acceptance) on every pass, using the accordion element wherever it is —
+  with Acceptance in the drawer, the tiles / maps strip / "Also" list were
+  carried into the drawer body. Now a first section that is away anchors at
+  its home placeholder. Any pass while the tray was open triggered it
+  (heartbeat, a view render), which is why it looked new: the notes work
+  made more passes happen with a tray open.
 - The Push link was not exercised; still unverified below.
 
 ### To verify live (not yet confirmed by the user)

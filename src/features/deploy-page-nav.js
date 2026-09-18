@@ -796,6 +796,10 @@
     // stay above the nav. Step back over any band divider so the nav sits
     // above the first signpost (and the two inserts don't fight).
     var anchorEl = firstAcc || scene.firstChild;
+    // A drawer-hosted first section lives OUTSIDE the scene: anchor at its
+    // home placeholder, never at the element itself — that would carry the
+    // whole nav (tiles, maps, "Also" list) into the drawer with it.
+    if (anchorEl && !scene.contains(anchorEl)) anchorEl = (firstAcc && firstAcc.__scwHome) || null;
     while (anchorEl && anchorEl.previousElementSibling &&
            anchorEl.previousElementSibling.classList &&
            anchorEl.previousElementSibling.classList.contains('scw-deploy-band')) {

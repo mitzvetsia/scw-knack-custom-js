@@ -77,10 +77,19 @@ setTimeout(() => {
   const tileNodes = [...document.querySelectorAll('.scw-deploy-tile')];
   const alsoNode = document.querySelector('.scw-deploy-also');
   document.querySelector('[data-scw-tile="paper"] [data-scw-tile-open]').click();
-  fire();   // a pass while the section is in the drawer must not touch the tiles
+  // A pass while the section is in the drawer must not touch the tiles. Run it NOW
+  // (the module defers passes with a timer) so the checks below see its effect.
+  const realTimeout = global.setTimeout;
+  global.setTimeout = (fn) => { fn(); return 0; };
+  try { fire(); } finally { global.setTimeout = realTimeout; }
   const drawer = document.getElementById('scw-deploy-drawer');
   const inDrawer = drawer.querySelector('.scw-deploy-drawer__body .scw-ktl-accordion');
   check('tile opens the drawer with its section inside, expanded', [!drawer.hidden, !!inDrawer, inDrawer && inDrawer.classList.contains('is-expanded'), inDrawer && inDrawer.classList.contains('scw-deploy-in-drawer')], [true, true, true, true]);
+  // The nav anchors before the FIRST section; with that section away in the drawer a pass
+  // must anchor at its home placeholder, not carry the tiles / maps / "Also" list into the drawer.
+  check('the nav (tiles, maps, "also") stays in the scene while the first section is in the drawer',
+    [document.getElementById('kn-scene_1311').contains(document.getElementById('scw-deploy-nav')), !!drawer.querySelector('#scw-deploy-nav'), document.getElementById('scw-deploy-nav').nextElementSibling.className],
+    [true, false, 'scw-deploy-home']);
   check('drawer head names the stage + renamed section', [drawer.querySelector('.scw-deploy-drawer__eyebrow').textContent, drawer.querySelector('.scw-deploy-drawer__title').textContent], ['1 · Paperwork & billing', 'Agreements & Invoices']);
   // Setup tile → drawer leads with the generated documents from the DOC model.
   // Other Files holds the BLANK generated forms ("(not completed)"); the
