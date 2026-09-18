@@ -100,34 +100,51 @@ setTimeout(() => {
   check('Save posts through the form view: note, project connection, pin (no author/date inputs → not sent), then refetches and closes',
     [puts[2], fetched, !!view.querySelector('.scw-notes-compose')],
     [{ url: 'https://api.knack.com/v1/pages/scene_9/views/view_9/records', type: 'POST', body: { field_328: 'Gate code is 4471.', field_100: PROJECT, field_3278: true } }, 3, false]);
-  // ── Preferred path: a hidden add-note form ON the scene → the composer submits Knack's own form.
+  // ── Preferred path: the add-note form ON the scene is adopted into the notes list (no button, no composer).
   const formHost = document.createElement('div'); formHost.className = 'kn-view kn-form'; formHost.id = 'view_4162';
   // Live markup (view_4162): the textarea is #field_328, the project rides in a hidden field_329, no pin input.
-  formHost.innerHTML = '<div class="kn-form-confirmation" style="display: none"><a href="#" class="kn-form-reload">Reload form</a></div>' +
-    '<form action="#" method="post"><textarea class="kn-textarea" id="field_328" name="field_328"></textarea><input type="hidden" name="field_329" value="' + PROJECT + '"><button class="kn-button" type="submit">Submit</button></form>';
-  document.getElementById('kn-scene_1311').appendChild(formHost);
+  formHost.innerHTML = '<div class="view-header"><h2 class="kn-title">Add DOC_note</h2></div><div class="kn-form-confirmation" style="display: none"><a href="#" class="kn-form-reload">Reload form</a></div>' +
+    '<form action="#" method="post"><label class="kn-label">Notes</label><textarea class="kn-textarea" id="field_328" name="field_328"></textarea><input type="hidden" name="field_329" value="' + PROJECT + '"><div class="kn-submit"><button class="kn-button is-primary" type="submit">Submit</button></div></form>';
+  const shell = document.createElement('div'); shell.className = 'scw-ktl-accordion'; shell.appendChild(formHost);
+  document.getElementById('kn-scene_1311').appendChild(shell);
+  const bar = document.createElement('div'); bar.id = 'scw-deploy-notes-actionbar'; bar.appendChild(cta);
+  view.parentNode.insertBefore(bar, view);
   let submitted = 0, reloaded = 0;
   formHost.querySelector('form').addEventListener('submit', e => { e.preventDefault(); submitted++; });
   formHost.querySelector('.kn-form-reload').addEventListener('click', e => { e.preventDefault(); reloaded++; });
-  window.Knack.views.view_4162 = { model: { view: { key: 'view_4162', type: 'form', action: 'insert', source: { object: 'object_7', connection_key: 'field_329' },
-    groups: [{ columns: [{ inputs: [{ field: { key: 'field_328' } }] }] }] } } };
-  window.Knack.views.view_4135.model.view = { source: { object: 'object_7' } };
+  // No schema for the form in Knack.views: detection is DOM-only.
   fire();
   setTimeout(() => {
-    check('the on-page form is auto-detected and hidden', document.getElementById('scw-pinned-notes-css-form').textContent, '#view_4162 { display: none !important; }');
-    clickCta();
-    const box2 = view.querySelector('.scw-notes-compose');
-    box2.querySelector('textarea').value = 'Escort required after 6pm.';
-    box2.querySelector('input[name="pin"]').checked = true;
+    check('the on-page form moves above the card list, restyled, its accordion shell hidden',
+      [formHost.parentNode === view, formHost.nextElementSibling && formHost.nextElementSibling.className, formHost.classList.contains('scw-notes-addform'), shell.style.display],
+      [true, 'scw-notes-list', true, 'none']);
+    check('the proxied "Add Project Note" button is hidden; the form keeps its own submit, relabelled',
+      [document.getElementById('scw-pinned-notes-css-form').textContent, formHost.querySelector('button[type="submit"]').textContent, !!formHost.querySelector('textarea').getAttribute('placeholder')],
+      ['#scw-deploy-notes-actionbar { display: none !important; }', 'Save note', true]);
+    const pinCb = formHost.querySelector('.kn-submit input[name="scw_pin"]');
+    check('a Pin checkbox rides in the submit row (the form has no pin input)', [!!pinCb, pinCb && pinCb.disabled], [true, false]);
+    check('the empty-state hint / CTA click focuses the form instead of navigating', [clickCta(), !!view.querySelector('.scw-notes-compose')], [true, false]);
+    formHost.querySelector('#field_328').value = 'Escort required after 6pm.';
+    pinCb.checked = true;
     const before = puts.length;
-    box2.querySelector('[type="submit"]').click();
-    check('Save fills and submits the hidden Knack form (no REST call yet)', [formHost.querySelector('#field_328').value, submitted, puts.length - before, box2.querySelector('.scw-notes-compose__status').textContent], ['Escort required after 6pm.', 1, 0, 'Saving…']);
+    formHost.querySelector('button[type="submit"]').click();
+    check('Save is Knack\'s own submit (no REST call from the bundle)', [submitted, puts.length - before], [1, 0]);
     (handlers['knack-record-create.view_4162.scwPinnedNotesSave'] || []).forEach(fn => fn(null, {}, { id: 'n1' }));
-    check('record-create closes the composer, pins the new record through the grid, refetches', [!!view.querySelector('.scw-notes-compose'), puts[puts.length - 1], fetched], [false, { url: '/view_4135/n1', type: 'PUT', body: { field_3278: true } }, 4]);
+    (handlers['knack-form-submit.view_4162.scwPinnedNotesSave'] || []).forEach(fn => fn(null, {}, { id: 'n1' }));
+    check('record-create pins the new record through the grid and refetches once', [puts[puts.length - 1], fetched], [{ url: '/view_4135/n1', type: 'PUT', body: { field_3278: true } }, 4]);
     setTimeout(() => {
-      check('the hidden form is reloaded for the next note', reloaded, 1);
-      afterComposer();
-    }, 50);
+      check('form-submit for the same record is not a second save', [puts.length, fetched], [before + 1, 4]);
+      // Knack re-renders the form (same element) after the save: a pass re-dresses it without moving it.
+      formHost.querySelector('button[type="submit"]').textContent = 'Submit';
+      fire();
+      setTimeout(() => {
+        check('a re-render pass re-labels in place; still one Pin checkbox', [formHost.querySelector('button[type="submit"]').textContent, formHost.querySelectorAll('input[name="scw_pin"]').length, formHost.nextElementSibling.className], ['Save note', 1, 'scw-notes-list']);
+        setTimeout(() => {
+          check('the form is reloaded for the next note', reloaded, 1);
+          afterComposer();
+        }, 1000);
+      }, 200);
+    }, 500);
   }, 250);
   function afterComposer() {
   // Cap: with 3 pinned in the model, pinning a 4th is refused.

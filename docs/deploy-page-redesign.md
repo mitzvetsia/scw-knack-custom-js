@@ -250,12 +250,20 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   field_3278 via view_4135 PUT); the Notes drawer as **cards** (author · date,
   text with paragraphs, Show more past 4 lines, Pin/Unpin, per-row action links
   proxied to the hidden grid — the Push Note to ClickUp/Slack action is an
-  icon + EMPTY anchor, label from the column header); **inline composer**
-  (textarea, Pin, Cancel | Save) that fills and submits the hidden on-page
-  "Add DOC_note" form **view_4162** (`addFormView`), success = Knack's
-  record-create/form-submit event, pin written afterwards through the grid,
-  form reloaded behind the composer. Schema-POST via the child page's form is
-  the fallback when no on-page form exists.
+  icon + EMPTY anchor, label from the column header); **the add form is on the
+  page**: Knack's own "Add DOC_note" form **view_4162** (`addFormView`) is
+  adopted (`adoptForm`) — moved above the card list, restyled
+  (`.scw-notes-addform`: header/label hidden, "Save note" button, a "Pin to
+  project header" checkbox in the submit row since the form has no pin
+  input). Knack submits it natively (validation, record rules, "Show a
+  message" confirmation); on `knack-record-create` / `knack-form-submit` the
+  bundle writes the pin through the grid, refetches view_4135 (new card +
+  strip) and clicks "Reload form" after ~1.2s. The proxied "Add Project
+  Note" button (`#scw-deploy-notes-actionbar`) is hidden while the form is
+  adopted; the empty state's "add the first one" focuses the form. Detection
+  is DOM-only (`#view_4162` with a `<form>`), no dependence on `Knack.views`
+  schema. The schema-POST composer (child page's form view via the menu
+  link's slug) remains only as the fallback on a scene without the form.
 - **`site-maps-strip.js`** — "Site maps & coverage" card in row 2 beside the
   "Also" list. Reads Other Files (view_3942 / sub view_4063), picks maps by
   CONFIG_file type (field_2877 matching site plan / coverage / floor plan);
@@ -288,15 +296,29 @@ Optional: an "Add File" menu link → project-connected DOC_files form on
 scene_1311 (the bundle proxies it into the Files action bar + the maps upload
 button automatically when the link text matches /add|upload file/i).
 
+### Learned 2026-09-18 (second session)
+
+- The hidden-form composer never opened live: "Add Project Note (K2)" kept
+  navigating to the child page (the on-page/schema lookups came back empty,
+  so the click fell through to the anchor's href). Replaced by adopting the
+  form itself into the drawer — nothing to look up, nothing to fill by
+  proxy. The user's call: no button, the form lives on the page.
+- The Push link was not exercised; still unverified below.
+
 ### To verify live (not yet confirmed by the user)
 
-- Composer: a saved note lands with author/date filled (form rules) and the
-  ticked pin sticks; the form's submit rule must be "Show a message" (a redirect
-  rule would navigate). Console prints `[scw-pinned-notes] add note failed …`
-  on failure.
-- The card's "Push Note to Clickup and Slack ›" link fires the action rule (it
-  programmatically clicks the hidden row's anchor; if Knack ignores that, target
-  the `i.fa-send` icon instead).
+- Notes drawer: the "Add DOC_note" form (view_4162) shows at the top of the
+  list as a bordered box (textarea, Pin checkbox, "Save note"), and the
+  "Add Project Note (K2)" button is gone. A saved note lands with
+  author/date filled (form rules), the card appears without a reload, the
+  ticked pin sticks, and the form is blank again ~1s later. The form's
+  submit rule must be "Show a message" (a redirect rule would navigate). If
+  the form shows Knack's default look (title "Add DOC_note", "Submit"),
+  the adoption didn't run: check the console for
+  `[scw-pinned-notes] add form not adopted`.
+- The card's "Push Note to Clickup and Slack ›" link fires the action rule
+  (it programmatically clicks the hidden row's anchor; if Knack ignores
+  that, target the `i.fa-send` icon instead).
 - Slow first load reported once, not reproduced (jsDelivr cold fetch per new SHA
   is the likely cause; ask which phase is slow on a second load).
 

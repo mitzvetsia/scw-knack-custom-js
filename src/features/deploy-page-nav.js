@@ -77,7 +77,9 @@
     /\(hide\)/i, /^DOC_/i, /^INSTALL_system setup/i, /^SOW_proposed/i,
     /^PHOTOS$/i, /^what we.?re installing/i,
     // Folded into the worksheet (mdf-notes.js) / staging grids: not sections.
-    /^manage mdfs?/i, /^all associated sows?/i, /^CORE_/i, /^INSTALL_acceptances/i
+    /^manage mdfs?/i, /^all associated sows?/i, /^CORE_/i, /^INSTALL_acceptances/i,
+    // The add-note form pinned-notes.js adopts into the notes list.
+    /^add\s+(a\s+)?doc_?\s*notes?\b/i
   ];
 
   // ── Lifecycle organization (Part 3) ───────────────────────────────────
