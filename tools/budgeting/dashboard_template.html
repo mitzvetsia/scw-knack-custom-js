@@ -210,6 +210,13 @@ tr.rowopen>td{background:color-mix(in srgb, var(--surface2) 60%, var(--surface))
 tr.ppl>td{background:var(--surface2);border-top:1px dashed var(--border2)}
 .ppl-grid{display:flex;flex-direction:column;gap:2px;padding:2px 0 4px}
 .ppl-row{display:flex;gap:10px;align-items:flex-end;font-size:12px;flex-wrap:wrap}
+.raise-row{position:relative;padding:3px 0}
+.rz-grip{flex:0 0 auto;align-self:flex-end;cursor:grab;color:var(--muted);font-size:15px;line-height:1;padding:0 2px 7px 0;user-select:none;letter-spacing:-3px}
+.rz-grip:hover{color:var(--ink)}
+.raise-row.rz-dragging{opacity:.35}
+.raise-row.rz-before::before,.raise-row.rz-after::after{content:"";position:absolute;left:0;right:0;height:2px;border-radius:2px;background:var(--modest);pointer-events:none}
+.raise-row.rz-before::before{top:-2px}
+.raise-row.rz-after::after{bottom:-2px}
 .btn.mini{padding:2px 8px;font-size:11px;border-radius:6px}
 .exp-toggle{border:none;background:none;cursor:pointer;color:var(--muted);font-size:11px;padding:0 4px}
 tr.deptsec td{cursor:default}
@@ -538,7 +545,7 @@ th.yb,td.yb{border-left:2px solid var(--border2)}
 <section class="tab" id="tab-staff">
   <div class="card"><h2>Payroll: model vs booked</h2><p class="note">Bars are Xero booked payroll (wages + tax + benefits, commissions included). The line is this tab's fully-loaded model — expect it to sit under the bars in strong commission months.</p><figure class="chart" id="chartPayroll"></figure>
     <div id="payCal"></div></div>
-  <div class="card"><h2>Raise planner</h2><p class="note">Every planned raise in one list — pick who it covers (a whole department, one role, or a named person), how much (% or dollars), and when it starts. Raises stack: a person covered by a department raise and their own raise gets both.</p>
+  <div class="card"><h2>Raise planner</h2><p class="note">Every planned raise in one list — pick who it covers (a whole department, one role, or a named person), how much (% or dollars), and when it starts. Raises stack: a person covered by a department raise and their own raise gets both. Drag the ⋮⋮ handle to put the list in any order you like; the order changes nothing in the numbers.</p>
     <div id="raisePlanner"></div>
     <button class="btn addrow" id="addRaise">+ Plan a raise</button></div>
   <div class="card"><h2>Roster &amp; headcount plan</h2><p class="note">Fully-loaded monthly cost = (salary/12 + planned raises) × (1 + tax&amp;match) + health + per-seat licenses. The two rates below are entered once and apply to every eligible role — untick BEN or TAX on a row for 1099 contractors or coverage decliners. Set headcount by month (later months follow), or open a role (▸) to name its people or switch it to hourly. Each department header carries its own headcount by month, and the HEADCOUNT row at the foot totals the whole company — shaded months are booked, where payroll comes from Xero rather than this plan.</p>
@@ -1025,6 +1032,12 @@ function migrateState(st){
       }
       for (const [d, v] of Object.entries(st.deptRaise || {}))
         if (v) st.raises.push({ id: "rd" + d, scope: "dept", target: d, kind: "pct", amount: v, month: 9 });
+    }
+    // Raises used to be listed by start month; the list now keeps whatever order it is dragged
+    // into. Sort once by month so nothing moves on the day this lands.
+    if (!L0.raiseOrderFix){
+      if (Array.isArray(st.raises)) st.raises.sort((a, b) => (a.month || 1) - (b.month || 1));
+      L0.raiseOrderFix = 1;
     }
     // one-shot fixes above have now had their pass — mark them done AFTER, never before
     L0.contractorFix = 1; L0.pacingFix = 1; L0.cycleFix = 1;
@@ -3615,10 +3628,10 @@ function raiseImpact(ev){
 }
 function renderRaisePlanner(){
   const T = raiseTargets();
-  const rows = [...(S.raises || [])].sort((a, b) => (a.month || 1) - (b.month || 1)).map(ev => {
+  const rows = (S.raises || []).map(ev => {
     const opts = T[ev.scope] || [];
     const imp = raiseImpact(ev);
-    return `<div class="ppl-row raise-row">
+    return `<div class="ppl-row raise-row" data-rz="${ev.id}"><span class="rz-grip" title="Drag to reorder">⋮⋮</span>
       <span class="fld"><label>Who</label><select class="cell" data-id="${ev.id}" data-k="rscope">
         <option value="dept"${ev.scope === "dept" ? " selected" : ""}>Department</option>
         <option value="role"${ev.scope === "role" ? " selected" : ""}>Role</option>
@@ -4702,6 +4715,45 @@ document.getElementById("raisePlanner").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-k=rdel]"); if (!b) return;
   S.raises = S.raises.filter(r => r.id !== b.dataset.id); persist(); scheduleRender();
 });
+/* Reorder raises by dragging the ⋮⋮ handle. Only a press on the handle arms its row for a drag,
+   so the selects and inputs on the row keep their own mouse behaviour. The order is the list's
+   order and nothing else — raises add up the same whichever way they are listed. */
+(() => {
+  const root = document.getElementById("raisePlanner"); let dragId = null;
+  const disarm = () => root.querySelectorAll(".raise-row[draggable=true]").forEach(r => { r.draggable = false; });
+  const clearMarks = () => root.querySelectorAll(".rz-before,.rz-after,.rz-dragging").forEach(r => r.classList.remove("rz-before", "rz-after", "rz-dragging"));
+  const rowOf = ev => ev.target && ev.target.closest ? ev.target.closest(".raise-row") : null;
+  root.addEventListener("mousedown", ev => { const g = ev.target.closest(".rz-grip"); if (g) g.closest(".raise-row").draggable = true; });
+  root.addEventListener("mouseup", disarm);
+  root.addEventListener("dragstart", ev => {
+    const row = rowOf(ev);
+    if (!row || !row.draggable){ ev.preventDefault(); return; }
+    dragId = row.dataset.rz;
+    ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", dragId);
+    row.classList.add("rz-dragging");
+  });
+  root.addEventListener("dragover", ev => {
+    if (!dragId) return;
+    const row = rowOf(ev); if (!row || row.dataset.rz === dragId) return;
+    ev.preventDefault(); ev.dataTransfer.dropEffect = "move";
+    const r = row.getBoundingClientRect(), before = ev.clientY < r.top + r.height / 2;
+    root.querySelectorAll(".rz-before,.rz-after").forEach(x => { if (x !== row) x.classList.remove("rz-before", "rz-after"); });
+    row.classList.toggle("rz-before", before); row.classList.toggle("rz-after", !before);
+  });
+  root.addEventListener("dragleave", ev => { if (!root.contains(ev.relatedTarget)) root.querySelectorAll(".rz-before,.rz-after").forEach(x => x.classList.remove("rz-before", "rz-after")); });
+  root.addEventListener("drop", ev => {
+    if (!dragId) return;
+    ev.preventDefault();
+    const row = rowOf(ev), list = S.raises || [];
+    const from = list.findIndex(r => r.id === dragId);
+    if (!row || row.dataset.rz === dragId || from < 0){ dragId = null; clearMarks(); disarm(); return; }
+    const before = row.classList.contains("rz-before");
+    const [moved] = list.splice(from, 1);
+    list.splice(list.findIndex(r => r.id === row.dataset.rz) + (before ? 0 : 1), 0, moved);
+    dragId = null; persist(); renderRaisePlanner();
+  });
+  root.addEventListener("dragend", () => { dragId = null; clearMarks(); disarm(); });
+})();
 document.getElementById("addRaise").addEventListener("click", () => {
   S.raises = S.raises || [];
   S.raises.push({ id: "rz" + Date.now(), scope: "dept", target: DEPTS[0], kind: "pct", amount: 0.03, month: 10 });
