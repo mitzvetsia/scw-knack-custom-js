@@ -30,11 +30,13 @@ const install = [
   { id: 'v1', field_2790: 'Travel', field_2789: 2, field_2822_raw: conn(SVC, 'Other Services') },
   { id: 'x1', field_2790: 'Removed Camera', field_2789: 1, field_2807: 'No', field_2822_raw: conn(CAM, 'Camera / Reader'), field_2967_raw: conn('co1', 'CO 1') }
 ];
+// The SKU column on the hidden SOW grid is whatever field the Builder exposed under a "SKU" header
+// (here field_9999) — found by header text, not by a guessed key.
 const sow = [
-  { id: 's1', field_1960: '$300.00', field_2262: '$50.00', field_2268: '$250.00', field_56: 'INF-80-V5' },
-  { id: 's2', field_1960: '$1,000.00', field_2262: '$0.00', field_2268: '$1,000.00', field_56: 'IMP-128' },
+  { id: 's1', field_1960: '$300.00', field_2262: '$50.00', field_2268: '$250.00', field_9999: 'INF-80-V5' },
+  { id: 's2', field_1960: '$1,000.00', field_2262: '$0.00', field_2268: '$1,000.00', field_9999: 'IMP-128' },
   { id: 's3', field_1960: '$400.00', field_2262: '$0.00', field_2268: '$400.00' },
-  { id: 's4', field_1960: '$10.00', field_2262: '$0.00', field_2268: '$10.00', field_56: 'JB-1' }
+  { id: 's4', field_1960: '$10.00', field_2262: '$0.00', field_2268: '$10.00', field_9999: 'JB-1' }
 ];
 const models = recs => ({ model: { data: { models: recs.map(a => ({ attributes: a })) } } });
 window.Knack = { views: { view_4093: models(install), view_4072: models(sow) }, router: { current_scene_key: 'scene_1311' } };
@@ -50,7 +52,8 @@ new Function('window', 'document', '$', 'Knack', 'SCW',
 document.body.innerHTML = '<div id="kn-scene_1311"><div id="scw-ws-v2-view_4093"><div class="scw-ws-v2-toolbar">' +
   '<button type="button" class="scw-ws-v2-toolbar-btn" data-scw-ws-v2-mode="default">Default</button><button type="button" class="scw-ws-v2-toolbar-btn" data-scw-ws-v2-mode="summary">Summary only</button>' +
   '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta"><a id="scw-deploy-co-toolbar-cta" class="scw-ws-v2-toolbar-btn">+ Change Order</a></div></div>' +
-  '<div class="scw-ws-v2-grand-summary">old summary</div></div></div>';
+  '<div class="scw-ws-v2-grand-summary">old summary</div></div>' +
+  '<div class="kn-view kn-table" id="view_4072" style="display:none"><table><thead><tr><th class="field_1949">Product</th><th class="field_9999">SKU</th><th class="field_1960">PRODUCT STORED_price</th></tr></thead><tbody></tbody></table></div></div>';
 (handlers['knack-view-render.view_4093.scwBomTray'] || []).forEach(fn => fn());
 
 let fails = 0;
@@ -94,12 +97,12 @@ setTimeout(() => {
   // Sub scene: no pricing columns.
   document.body.innerHTML = '<div id="kn-scene_1353"><div id="scw-ws-v2-view_4056"><div class="scw-ws-v2-toolbar"><div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta"></div></div></div></div>';
   // The sub grid carries no SKU column: the SKU column is left out entirely (a column with no data on any row never shows).
-  window.Knack.views = { view_4056: models(install), view_4151: models(sow.map(r => { const c = Object.assign({}, r); delete c.field_56; return c; })) };
+  window.Knack.views = { view_4056: models(install), view_4151: models(sow) };   // no SKU header on the sub grid → no SKU column
   (handlers['knack-view-render.view_4056.scwBomTray'] || []).forEach(fn => fn());
   setTimeout(() => {
     window.SCW.bomTray.open();
     const sub = opened.el;
-    check('sub dashboard: no pricing, and no SKU column when no row has one', [[...sub.querySelector('.scw-bom__table thead').querySelectorAll('th')].map(t => t.textContent), cells(sub.querySelector('.scw-bom__total'))], [['Product', 'Qty'], ['Shipping total', '13']]);
+    check('sub dashboard: no pricing, and no SKU column when the grid has no SKU header', [[...sub.querySelector('.scw-bom__table thead').querySelectorAll('th')].map(t => t.textContent), cells(sub.querySelector('.scw-bom__total'))], [['Product', 'Qty'], ['Shipping total', '13']]);
     console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
     process.exit(fails ? 1 : 0);
   }, 300);

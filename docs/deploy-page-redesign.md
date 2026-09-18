@@ -298,8 +298,11 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   columns the ops tray is Product | Qty. Pricing is joined from the PROPOSED SOW item the install
   record points at (`field_2819` → hidden view_4072 / view_4151):
   `field_1960` retail, `field_2262` discount each, `field_2268` net unit;
-  SKU `field_56` when the grid exposes it (Builder TODO: add INPUT_sku to
-  view_4072 / view_4151, else the column shows —). Ops page only shows
+  SKU: the column is found by its HEADER text ("SKU") on the hidden SOW grid
+  first, then the install grid (`skuField`), so whichever field the Builder
+  exposed under that label is the one read; `field_56` is only the fallback.
+  Added to view_4072 on 2026-09-18. Pricing columns stay dormant until the
+  price fields are on the grid (deferred by Micah). Ops page only shows
   pricing; the sub tray is Product | SKU | Qty. **Not shipping**: a dashed,
   muted block for Pre-existing (`/^pre-existing/` in the product name: on
   site, we connect to it) and Customer-supplied (`customer|client supplied`

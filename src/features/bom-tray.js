@@ -53,8 +53,23 @@
     retail:       'field_1960',   // PRODUCT STORED_price (unit list price)
     discountEach: 'field_2262',   // INPUT line discount $ each
     netUnit:      'field_2268',   // CALC unit price after discounts
-    sku:          'field_56'      // INPUT_sku (if exposed on the grid)
+    sku:          'field_56'      // INPUT_sku — fallback; the live key is read off the grid header (skuField)
   };
+  /** The SKU column's field key, found by its header text on the SOW grid
+   *  (view_4072 / view_4151) or the install grid — whichever carries a
+   *  column labelled SKU. Hidden Knack grids keep their DOM, so the header
+   *  is there to read. Returns { view, key } or null. */
+  function skuField(cfg) {
+    var views = [cfg.sowView, cfg.installView];
+    for (var v = 0; v < views.length; v++) {
+      var ths = document.querySelectorAll('#' + views[v] + ' thead th');
+      for (var i = 0; i < ths.length; i++) {
+        var m = (ths[i].className || '').match(/\bfield_\d+\b/);
+        if (m && /\bsku\b/i.test(ths[i].textContent)) return { view: views[v], key: m[0] };
+      }
+    }
+    return null;
+  }
   var STYLE_ID = 'scw-bom-css';
   var EVENT_NS = '.scwBomTray';
   var PRE_RE   = /^\s*pre[\s-]*existing\b/i;
@@ -199,6 +214,7 @@
   /** One entry per install line item worth listing. */
   function items(cfg) {
     var recs = installRecords(cfg), sow = sowIndex(cfg), out = [];
+    var skuCol = skuField(cfg);
     for (var i = 0; i < recs.length; i++) {
       var r = recs[i];
       if (!r || !r.id) continue;
@@ -209,7 +225,12 @@
       var kind = PRE_RE.test(name) ? 'pre' : (CUST_RE.test(name) ? 'cust' : 'ship');
       var qty = num(r[IF.qty]) || 1;
       var s = sow[connId(r, IF.sowItem)] || null;
-      var sku = plain(s && s[SF.sku]) || plain(r[SF.sku]);
+      var sku = '';
+      if (skuCol) {
+        var src = skuCol.view === cfg.installView ? r : s;
+        sku = src ? (connLabel(src, skuCol.key) || plain(src[skuCol.key])) : '';
+      }
+      if (!sku) sku = plain(s && s[SF.sku]) || plain(r[SF.sku]);
       var it = {
         id: r.id, name: name, kind: kind, qty: qty, sku: sku,
         bucket: connLabel(r, IF.bucket) || 'Other',
