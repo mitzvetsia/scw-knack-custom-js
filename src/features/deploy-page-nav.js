@@ -71,6 +71,12 @@
   var STRIP_ID  = 'scw-deploy-co-strip';
   var STYLE_ID  = 'scw-deploy-nav-css';
   var EVENT_NS  = '.scwDeployNav';
+  // Curtain (see injectStyles): the scene is invisible until a pass has
+  // run since its render; a section is hidden until a pass has classified
+  // it as kept or parked.
+  var READY_CLASS = 'scw-deploy-ready';
+  var SEEN_ATTR   = 'data-scw-deploy';
+  var CURTAIN_MAX_MS = 2500;   // never hold the page longer than this
 
   // Accordion sections excluded from the nav — the staging/data-source
   // sections slated for hiding ("MICAH'S SHIT" block), plus the (hidden)
@@ -136,6 +142,12 @@
     var mountSel = SCENES.map(function (s) { return '#' + s.worksheetMount; }).join(', ');
     var stripSceneSel = SCENES.map(function (s) {
       return '#kn-' + s.sceneId + ' > #' + STRIP_ID;
+    }).join(', ');
+    var curtainSel = SCENES.map(function (s) {
+      return '#kn-' + s.sceneId + ':not(.' + READY_CLASS + ')';
+    }).join(', ');
+    var unclassifiedSel = SCENES.map(function (s) {
+      return '#kn-' + s.sceneId + ' .scw-ktl-accordion:not([' + SEEN_ATTR + '])';
     }).join(', ');
     var css = [
       /* Status strip container: tiles + "also on this project" chips. */
@@ -251,6 +263,17 @@
          inside the drawer when its tile / chip is clicked. Knack re-renders
          views by element id, so a moved section keeps working. */
       '.scw-ktl-accordion.scw-deploy-parked { display: none !important; }',
+      /* No flash of the native page. Knack paints its own layout (nine
+         co-equal accordion bars, sections in Builder order) before the
+         pass parks, moves and builds; the scene stays invisible until
+         the first pass after a scene render marks it ready (visibility,
+         not display: layout still happens, so nothing measuring is
+         thrown). A section ktl-accordion wraps AFTER a pass (a view whose
+         data arrived late) stays hidden until the next pass classifies
+         it (data-scw-deploy) — the scene observer below runs that pass
+         at once, so it shows in its place, never first in the old one. */
+      curtainSel + ' { visibility: hidden !important; }',
+      unclassifiedSel + ' { display: none !important; }',
       '.scw-deploy-band { display: none !important; }',
       '#scw-deploy-drawer { position: fixed; inset: 0; z-index: 1200; }',
       '#scw-deploy-drawer[hidden] { display: none; }',
@@ -1013,15 +1036,16 @@
 
   function parkSections(scene, cfg) {
     var accs = scene.querySelectorAll('.scw-ktl-accordion');
+    var mount = document.getElementById(cfg.worksheetMount);
     for (var i = 0; i < accs.length; i++) {
       var acc = accs[i];
-      if (acc.classList.contains('scw-deploy-in-drawer')) continue;
-      if (acc.classList.contains('scw-deploy-parked')) continue;
-      if (acc.style.display === 'none') continue;          // hidden by another module
-      if (excluded(origTitle(acc))) continue;              // staging / worksheet source
-      var mount = document.getElementById(cfg.worksheetMount);
-      if (mount && (acc.contains(mount) || mount.contains(acc))) continue;
-      acc.classList.add('scw-deploy-parked');
+      var keep = acc.classList.contains('scw-deploy-in-drawer') ||
+                 acc.style.display === 'none' ||                 // hidden by another module
+                 excluded(origTitle(acc)) ||                     // staging / worksheet source
+                 (mount && (acc.contains(mount) || mount.contains(acc)));
+      if (!keep) acc.classList.add('scw-deploy-parked');
+      // Classified: the curtain CSS shows it (kept) or the parked rule hides it.
+      acc.setAttribute(SEEN_ATTR, acc.classList.contains('scw-deploy-parked') ? 'parked' : 'keep');
     }
   }
 
@@ -1475,14 +1499,54 @@
       try { parkSections(scene, cfg); } catch (e) { /* sections stay visible */ }
       try { buildNav(scene, cfg); } catch (e) { /* nav is optional chrome */ }
       try { mountToolbarCoCta(scene, cfg); } catch (e) { /* CTA stays in its section */ }
+      scene.classList.add(READY_CLASS);
+      watchScene(scene);
     }, delay == null ? 250 : delay);
+  }
+
+  /** A section wrapped after the pass (ktl-accordion enhances on its own
+   *  debounce, per view render) sits hidden until classified: classify it
+   *  now rather than on the next view render / heartbeat. One observer
+   *  per scene element (Knack replaces the element on a scene render). */
+  function watchScene(scene) {
+    if (scene.__scwDeployObs || typeof MutationObserver === 'undefined') return;
+    var obs = new MutationObserver(function (muts) {
+      for (var m = 0; m < muts.length; m++) {
+        var added = muts[m].addedNodes;
+        for (var n = 0; n < added.length; n++) {
+          var el = added[n];
+          if (!el || el.nodeType !== 1) continue;
+          if ((el.classList && el.classList.contains('scw-ktl-accordion') && !el.hasAttribute(SEEN_ATTR)) ||
+              (el.querySelector && el.querySelector('.scw-ktl-accordion:not([' + SEEN_ATTR + '])'))) {
+            scheduleApply(0);
+            return;
+          }
+        }
+      }
+    });
+    obs.observe(scene, { childList: true, subtree: true });
+    scene.__scwDeployObs = obs;
   }
 
   for (var s = 0; s < SCENES.length; s++) {
     $(document).on('knack-scene-render.' + SCENES[s].sceneId + EVENT_NS, function () {
+      // Curtain down NOW (Knack may reuse the scene element, class and all),
+      // up after the pass — or after CURTAIN_MAX_MS, whatever happens.
+      var active = activeScene();
+      if (active) {
+        active.el.classList.remove(READY_CLASS);
+        (function (el) {
+          setTimeout(function () { el.classList.add(READY_CLASS); }, CURTAIN_MAX_MS);
+        })(active.el);
+      }
       scheduleApply(150);
     });
   }
+  // Styles at load, not at the first pass: the parked / curtain rules must
+  // be in the page before Knack paints the scene.
+  injectStyles();
+  // The scene may already be up (bundle loaded after the render).
+  if (activeScene()) scheduleApply(0);
 
   // Small public API: other modules (pinned-notes.js "All notes ›") open a
   // parked section's drawer by its ORIGINAL Builder title. Returns true

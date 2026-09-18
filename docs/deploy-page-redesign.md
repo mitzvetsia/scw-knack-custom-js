@@ -245,7 +245,17 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   drawer leads with the generated documents (`buildSetupPrelude`, blank forms
   from Other Files by CONFIG_file type); Setup tile hosts the doc generator
   (`SCW.regenDocs.openPicker`). Public API `SCW.deployNav.openSection(re) /
-  closeDrawer() / addFileHref()`.
+  closeDrawer() / addFileHref()`. **No flash of the native page** (2026-09-18):
+  styles are injected at load, not at the first pass; the scene is
+  `visibility: hidden` until the first pass after a scene render marks it
+  `scw-deploy-ready` (the `knack-scene-render` handler drops the class
+  synchronously, a 2.5s watchdog lifts it regardless); every
+  `.scw-ktl-accordion` in the scene is `display: none` until a pass stamps
+  `data-scw-deploy="keep|parked"` (`parkSections`), so a section ktl-accordion
+  wraps after the pass never paints in the old layout first; a
+  `MutationObserver` on the scene runs a pass as soon as an unclassified
+  section appears. bom-tray.js likewise injects its summary-hiding CSS at
+  load.
 - **`pinned-notes.js`** — pinned strip under the project header (≤3, `FLAG_pinned`
   field_3278 via view_4135 PUT); the Notes drawer as **cards** (author · date,
   text with paragraphs, Show more past 4 lines, Pin/Unpin, per-row action links

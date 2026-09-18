@@ -7,7 +7,7 @@ const path = require('path');
 const { JSDOM } = require('jsdom');
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://scwinstallation.knack.com/installationservices#deploy/x' });
 const { window } = dom; const { document } = window;
-global.window = window; global.document = document; global.Node = window.Node;
+global.window = window; global.document = document; global.Node = window.Node; global.MutationObserver = window.MutationObserver;
 const handlers = {};
 function jq() { return jqObj; }
 const jqObj = { on(ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); return jqObj; }, off() { return jqObj; }, trigger() { return jqObj; },
@@ -153,8 +153,24 @@ setTimeout(() => {
     // Reopen, then scene re-render underneath the open drawer → drawer drops the stale section.
     document.querySelector('[data-scw-tile="paper"] [data-scw-tile-open]').click();
     buildScene(); fire();
+    // Curtain: a rendered scene is not ready until the pass; the CSS holds it invisible
+    // (and any section not yet classified hidden) so the native layout never paints first.
+    const scene = () => document.getElementById('kn-scene_1311');
+    check('curtain down right after a scene render (before the pass)', scene().classList.contains('scw-deploy-ready'), false);
+    const css = document.getElementById('scw-deploy-nav-css').textContent;
+    check('curtain + unclassified-section rules are in the stylesheet, injected at load',
+      [/#kn-scene_1311:not\(\.scw-deploy-ready\)[^{]*\{ visibility: hidden !important; \}/.test(css), /#kn-scene_1311 \.scw-ktl-accordion:not\(\[data-scw-deploy\]\)[^{]*\{ display: none !important; \}/.test(css)], [true, true]);
     setTimeout(() => {
       check('scene re-render closes a stale drawer', [drawer.hidden, drawer.querySelector('.scw-deploy-drawer__body').children.length], [true, 0]);
+      check('after the pass: scene ready, every section classified (kept or parked)',
+        [scene().classList.contains('scw-deploy-ready'), accs().map(a => a.getAttribute('data-scw-deploy'))], [true, ['parked', 'parked', 'parked', 'parked']]);
+      // A section wrapped AFTER the pass (late view) arrives unclassified → the scene observer classifies it without waiting for a render.
+      scene().insertAdjacentHTML('beforeend', acc('Project Notes', '2'));
+      const late = accs()[4];
+      check('late section starts unclassified (hidden by CSS)', late.hasAttribute('data-scw-deploy'), false);
+      setTimeout(() => {
+        check('…and is classified (parked) by the observer-triggered pass', [late.getAttribute('data-scw-deploy'), late.classList.contains('scw-deploy-parked')], ['parked', true]);
+      }, 100);
     }, 600);
     setTimeout(() => {
       console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');

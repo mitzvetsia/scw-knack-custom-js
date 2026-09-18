@@ -517,6 +517,9 @@
       try { takedown(cfg); } catch (e) { /* worksheet not up yet */ }
     }, delay == null ? 150 : delay);
   }
+  // Styles at load: the old summary panels + "Summary only" button are
+  // hidden before worksheet-v2 renders them, not a timer later.
+  injectStyles();
   for (var s = 0; s < SCENES.length; s++) {
     $(document).on('knack-scene-render.' + SCENES[s].sceneId + EVENT_NS, function () { schedule(300); });
     $(document).on('knack-view-render.' + SCENES[s].installView + EVENT_NS, function () { schedule(200); });
