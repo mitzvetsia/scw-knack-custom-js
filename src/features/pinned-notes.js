@@ -241,18 +241,26 @@
     if (!tr) return out;
     var skip = {}; skip[F.note] = 1; skip[F.date] = 1; skip[F.author] = 1; skip[F.pinned] = 1;
     var cells = tr.querySelectorAll('td');
+    // Column headers by index: an action link shown as an ICON has an empty
+    // anchor (<a class="kn-action-link"></a> beside <i class="fa fa-send">),
+    // so its only label is the header ("Push Note to Clickup and Slack").
+    var table = tr.closest && tr.closest('table');
+    var ths = table ? table.querySelectorAll('thead th') : [];
     for (var i = 0; i < cells.length; i++) {
       var td = cells[i], key = (td.className.match(/\bfield_\d+\b/) || [])[0];
       if (key && skip[key]) continue;
+      var headLabel = ths[i] ? plain(ths[i].textContent) : '';
       // Knack renders link columns several ways: <a class="kn-action-link">,
       // a .kn-action-link wrapper holding an <a>, or (older) a bare span —
-      // take the innermost clickable element with a label.
+      // take the innermost clickable element; label from it, else the header.
       var els = td.querySelectorAll('a, button, .kn-action-link, .kn-link');
       var seen = [];
       for (var j = 0; j < els.length; j++) {
         var el = els[j];
         if (el.querySelector('a, button')) continue;        // wrapper: its child is the target
-        var label = plain(el.textContent);
+        if (/\btext-expand\b/.test(el.className)) continue; // Knack's own "view more"
+        var label = plain(el.textContent) || plain(el.getAttribute('title')) ||
+                    plain(el.getAttribute('aria-label')) || headLabel;
         if (!label || seen.indexOf(el) >= 0) continue;
         seen.push(el);
         out.push({ label: label, a: el });
