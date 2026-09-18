@@ -98,16 +98,29 @@
       } },
     { match: /^closeout$/i, rename: 'Closeout Deliverables',
       sub: 'Documents required before closeout + Certificate of Completion.' },
-    // "Also on this project" rows: say what each one holds.
-    { match: /^other files$/i, rename: 'Files',
+    // "Also on this project" rows: icon + name in the list (the sub only
+    // shows in the drawer head — the list stays one tight column).
+    { match: /^other files$/i, rename: 'Files', icon: 'clip',
       sub: 'SOW PDFs, approval forms' },
-    { match: /^additional photos$/i, rename: 'Context photos',
+    { match: /^additional photos$/i, rename: 'Context photos', icon: 'image',
       sub: 'rooms, racks, not tied to an item' },
-    { match: /^project notes$/i,
+    { match: /^project notes$/i, rename: 'Project notes', icon: 'note',
       sub: 'pinned + pushed to ClickUp / Slack' },
-    { match: /^change orders?$/i,
+    { match: /^change orders?$/i, rename: 'Change orders', icon: 'refresh',
       sub: 'adds and removes against the scope' }
   ];
+  // Row icons for the "Also on this project" list (feather-style, 15px).
+  var ICONS = {
+    clip:    '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>',
+    image:   '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>',
+    note:    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line>',
+    refresh: '<polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>',
+    folder:  '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>'
+  };
+  function iconSvg(key) {
+    var body = ICONS[key] || ICONS.folder;
+    return '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + body + '</svg>';
+  }
   // (Band dividers retired 2026-09-18: the stage tiles + drawers replaced
   // them — see docs/deploy-page-redesign.md.)
 
@@ -195,18 +208,24 @@
       '.scw-deploy-row2.has-maps .scw-deploy-also__row { width: 100%; min-width: 0; box-sizing: border-box; }',
       '.scw-deploy-also #' + NAV_ID + '-label { flex: 0 0 100%; margin-bottom: 4px; }',
       '.scw-deploy-row2:not(.has-maps) .scw-deploy-also #' + NAV_ID + '-label { flex: none; margin: 0 6px 0 2px; }',
+      /* One tight column: icon · name · count · chevron, every row on the
+         same axis (the label takes the slack, count + chevron hang right). */
       '.scw-deploy-also__row {',
-      '  display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer;',
-      '  padding: 6px 8px; border-radius: 8px; border: 1px solid transparent; background: #fff;',
+      '  display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer;',
+      '  padding: 7px 8px; border-radius: 8px; border: 1px solid transparent; background: #fff;',
       '  font: 12.5px/1.3 system-ui, sans-serif; color: #0f172a;',
       '}',
       '.scw-deploy-also__row:hover { background: #f8fafc; border-color: #dbe4ee; }',
-      '.scw-deploy-also__label { font-weight: 600; white-space: nowrap; }',
-      '.scw-deploy-also__sub { color: #64748b; font-size: 12px; min-width: 0; flex: 1 1 auto; line-height: 1.3; }',
-      '.scw-deploy-row2:not(.has-maps) .scw-deploy-also__sub { display: none; }',
-      '.scw-deploy-also__chev { color: #94a3b8; margin-left: auto; }',
-      '.scw-deploy-row2.has-maps .scw-deploy-also__row .scw-deploy-nav-count { margin-left: auto; }',
-      '.scw-deploy-row2.has-maps .scw-deploy-also__row .scw-deploy-nav-count + .scw-deploy-also__chev { margin-left: 0; }',
+      '.scw-deploy-also__icon { display: inline-flex; flex: none; color: #475569; }',
+      '.scw-deploy-also__row:hover .scw-deploy-also__icon { color: #163C6E; }',
+      '.scw-deploy-also__label { font-weight: 600; white-space: nowrap; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }',
+      '.scw-deploy-row2:not(.has-maps) .scw-deploy-also__label { flex: none; }',
+      '.scw-deploy-also__row .scw-deploy-nav-count {',
+      '  flex: none; min-width: 22px; box-sizing: border-box; text-align: center;',
+      '  background: #eaf1f7; color: #163C6E; padding: 1px 8px; font-size: 11px;',
+      '  font-variant-numeric: tabular-nums;',
+      '}',
+      '.scw-deploy-also__chev { color: #94a3b8; flex: none; width: 10px; text-align: right; }',
       '.scw-deploy-tile__link, .scw-deploy-tile__action {',
       '  font: 600 12px/1.2 system-ui, sans-serif; cursor: pointer; text-align: left;',
       '}',
@@ -512,10 +531,11 @@
       var ov = sec.bySceneId &&
         sec.bySceneId[String(scene.id || '').replace(/^kn-/, '')];
       if (ov) sec = { match: sec.match, rename: ov.rename || sec.rename,
-                      sub: ov.sub || sec.sub };
+                      sub: ov.sub || sec.sub, icon: sec.icon };
       var name = sec.rename || ot;
       acc.setAttribute('data-scw-nav-label', name);
       if (sec.sub) acc.setAttribute('data-scw-nav-sub', sec.sub);
+      if (sec.icon) acc.setAttribute('data-scw-nav-icon', sec.icon);
       var titleEl = acc.querySelector('.scw-acc-title');
       if (!titleEl) continue;
       var want = esc(name) +
@@ -694,9 +714,16 @@
     var out = [];
     // Accordion sections, document order. Skip hidden ones (e.g. the
     // Manage MDFs/IDFs section mdf-notes.js folded into the worksheet).
-    var accs = scene.querySelectorAll('.scw-ktl-accordion');
-    for (var i = 0; i < accs.length; i++) {
-      var acc = accs[i];
+    // A section hosted in the drawer lives OUTSIDE the scene element; its
+    // home placeholder stands in for it here so the target set (and so the
+    // tiles) is identical whether a drawer is open, closing or closed.
+    var nodes = scene.querySelectorAll('.scw-ktl-accordion, .scw-deploy-home');
+    for (var i = 0; i < nodes.length; i++) {
+      var acc = nodes[i];
+      if (acc.classList.contains('scw-deploy-home')) {
+        acc = acc.__scwAcc;
+        if (!acc || scene.contains(acc)) continue;   // at home: counted as itself
+      }
       // Parked / drawer-hosted sections are ours and count as visible;
       // anything else hidden (e.g. the MDF section folded into the
       // worksheet) is skipped.
@@ -830,7 +857,7 @@
     var sig = stages.map(function (m) { return m.sig; }).join('|') + '||' +
       also.map(function (t) { return t.label + ':' + t.count + (t.warn ? '!' : ''); }).join('|');
     if (nav.getAttribute('data-scw-sig') === sig) return;
-    if (_drawerAcc) return;
+    if (_drawerAcc || _drawerBusy) return;
     nav.setAttribute('data-scw-sig', sig);
 
     // Patch in place: keep the tile elements (no blank frame, hover state
@@ -916,25 +943,35 @@
       row2.innerHTML = '<div class="scw-deploy-maps-slot"></div>';
       nav.appendChild(row2);
     }
+    // The list is only rebuilt when ITS rows changed — a tile-only change
+    // must not blink the list.
+    var alsoSig = also.map(function (t) { return t.label + ':' + t.count + (t.warn ? '!' : ''); }).join('|');
     var oldAlso = row2.querySelector('.scw-deploy-also');
+    if (oldAlso && oldAlso.getAttribute('data-scw-sig') === alsoSig && also.length) {
+      // Same rows: refresh the click targets only (elements may have moved).
+      var rowsEl = oldAlso.querySelectorAll('.scw-deploy-also__row');
+      for (var r = 0; r < rowsEl.length && r < also.length; r++) rowsEl[r].__scwTarget = also[r];
+      return;
+    }
     if (oldAlso) row2.removeChild(oldAlso);
     if (also.length) {
       var list = document.createElement('div');
       list.className = 'scw-deploy-also';
+      list.setAttribute('data-scw-sig', alsoSig);
       list.innerHTML = '<span id="' + NAV_ID + '-label">Also on this project</span>';
       for (var i = 0; i < also.length; i++) {
         (function (t) {
-          var sub = t.el.getAttribute('data-scw-nav-sub') || '';
           var btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'scw-deploy-also__row';
           btn.innerHTML =
-            (t.warn ? '<span class="scw-deploy-nav-dot" title="Needs attention"></span>' : '') +
+            '<span class="scw-deploy-also__icon">' + iconSvg(t.el.getAttribute('data-scw-nav-icon')) + '</span>' +
             '<span class="scw-deploy-also__label">' + esc(t.label) + '</span>' +
-            (sub ? '<span class="scw-deploy-also__sub">' + esc(sub) + '</span>' : '') +
+            (t.warn ? '<span class="scw-deploy-nav-dot" title="Needs attention"></span>' : '') +
             (t.count ? '<span class="scw-deploy-nav-count">' + esc(t.count) + '</span>' : '') +
             '<span class="scw-deploy-also__chev">›</span>';
-          btn.addEventListener('click', function () { openDrawer(t); });
+          btn.__scwTarget = t;
+          btn.addEventListener('click', function () { openDrawer(btn.__scwTarget); });
           list.appendChild(btn);
         })(also[i]);
       }
@@ -949,6 +986,7 @@
   // working), and a placeholder marks its home so it can move back.
   var DRAWER_ID = 'scw-deploy-drawer';
   var _drawerAcc = null;
+  var _drawerBusy = false;   // closing: section still on its way home
 
   function parkSections(scene, cfg) {
     var accs = scene.querySelectorAll('.scw-ktl-accordion');
@@ -1110,6 +1148,7 @@
       home.hidden = true;
       acc.parentNode.insertBefore(home, acc);
       acc.__scwHome = home;
+      home.__scwAcc = acc;
     }
     acc.classList.remove('scw-deploy-parked');
     acc.classList.add('scw-deploy-in-drawer');
@@ -1167,12 +1206,16 @@
     document.body.style.overflow = '';
     if (!d || d.hidden) { if (acc) returnHome(acc); return; }
     // Slide out first, then do the (reflow-heavy) move back home after the
-    // panel is gone, so the close never feels laggy.
+    // panel is gone, so the close never feels laggy. The nav stays frozen
+    // until the section is home (a pass in between would see it moving).
+    _drawerBusy = true;
     d.classList.add('scw-deploy-drawer--closing');
     setTimeout(function () {
       d.hidden = true;
       d.classList.remove('scw-deploy-drawer--closing');
       if (acc) returnHome(acc);
+      _drawerBusy = false;
+      scheduleApply(0);
     }, 170);
   }
 

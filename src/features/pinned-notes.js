@@ -293,6 +293,7 @@
     var rest   = notes.filter(function (n) { return !n.pinned; });
     notes = pinned.concat(rest);
     list.innerHTML = '';
+    var linkTotal = 0, firstTr = null;
     if (!notes.length) {
       list.innerHTML = '<div class="scw-notes-empty"><strong>No notes yet</strong>' +
         'Site access, contacts, gotchas — add the first one with Add Project Note.</div>';
@@ -300,10 +301,34 @@
       notes.forEach(function (n) {
         var tr = null;
         try { tr = view.querySelector('tbody tr[id="' + n.id + '"]'); } catch (e) { /* odd id */ }
+        if (tr && !firstTr) firstTr = tr;
+        linkTotal += rowLinks(tr, F).length;
         list.appendChild(buildCard(cfg, n, tr));
       });
     }
     view.classList.add(CARDS_CLS);
+    // The grid declares an action-link column (e.g. Push Note to ClickUp and
+    // Slack) but no row carried an anchor: say so once, with the first row,
+    // so a missing button can be diagnosed from the console.
+    if (notes.length && !linkTotal && view.querySelector('thead th.kn-table-action-link, thead th.kn-table-link') && !view.__scwNotesLinkWarned) {
+      view.__scwNotesLinkWarned = true;
+      console.warn('[scw-pinned-notes] action column present but no row links found; first row:',
+        firstTr ? firstTr.outerHTML.slice(0, 800) : '(no row matched a model record)');
+    }
+    watchGrid(cfg, view);
+  }
+  /** Knack can fill / refresh the hidden grid's rows after our pass (action
+   *  links, inline-edit refreshes): re-render the cards when they change. */
+  function watchGrid(cfg, view) {
+    if (view.__scwNotesObs || typeof MutationObserver === 'undefined') return;
+    var tbody = view.querySelector('table tbody');
+    if (!tbody) return;
+    var obs = new MutationObserver(function () {
+      if (view.__scwNotesMuted) return;
+      scheduleApply(120);
+    });
+    obs.observe(tbody, { childList: true, subtree: true });
+    view.__scwNotesObs = obs;
   }
 
   // ── Orchestration ─────────────────────────────────────────────────
