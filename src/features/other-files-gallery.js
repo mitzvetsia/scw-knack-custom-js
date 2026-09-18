@@ -39,9 +39,12 @@
   //   closeoutView — the scene's closeout grid; its first row is the page's
   //                  closeout record. Flipping a file to Required stamps
   //                  this onto the DOC so it joins the closeout deliverables.
+  //   canDelete    — PMs can delete a file from the tray (ops page only):
+  //                  a view-based DELETE through the save view, the same
+  //                  path closeout-deliverables.js removes a DOC by.
   var DEPLOYMENTS = [
-    { view: 'view_3942', saveView: 'view_3941', closeoutView: 'view_3940' },  // ops deploy
-    { view: 'view_4063', saveView: 'view_4068', closeoutView: 'view_4058' }   // sub dashboard
+    { view: 'view_3942', saveView: 'view_3941', closeoutView: 'view_3940', canDelete: true },  // ops deploy
+    { view: 'view_4063', saveView: 'view_4068', closeoutView: 'view_4058' }                    // sub dashboard
   ];
   var C = DEPLOYMENTS[0];   // active deployment (resolved per render)
   function activeCfg() {
@@ -98,6 +101,14 @@
       '  height: 110px; font: 800 18px/1 system-ui, sans-serif; color: #64748b;',
       '  letter-spacing: .06em; text-transform: uppercase; }',
       '.scw-ofg-body { padding: 8px 10px 9px; }',
+      // Delete (×): top-right of the card, shows on hover / focus
+      '.scw-ofg-del { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px;',
+      '  border-radius: 50%; border: 1px solid #e2e8f0; background: rgba(255,255,255,.95); color: #64748b;',
+      '  font: 700 15px/1 system-ui, sans-serif; cursor: pointer; opacity: 0; transition: opacity .12s;',
+      '  display: inline-flex; align-items: center; justify-content: center; padding: 0; }',
+      '.scw-ofg-card:hover .scw-ofg-del, .scw-ofg-del:focus, .scw-ofg-del[disabled] { opacity: 1; }',
+      '.scw-ofg-del:hover { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }',
+      '.scw-ofg-del[disabled] { cursor: default; color: #94a3b8; }',
       '.scw-ofg-name { display: block; font: 600 11.5px/1.35 system-ui, sans-serif;',
       '  color: #0f4c75; cursor: pointer; word-break: break-all;',
       '  max-height: 2.7em; overflow: hidden; text-decoration: none; }',
@@ -215,6 +226,26 @@
       data: JSON.stringify(fields),
       success: function () { done(true); },
       error:   function () { done(false); }
+    });
+  }
+
+  /** DELETE a DOC record through the save view (view-based, session token)
+   *  — closeout-deliverables.js removes docs the same way. Only offered on
+   *  a deployment with canDelete and a live save view. */
+  function canDeleteHere() {
+    return !!(C.canDelete && window.Knack && Knack.views && Knack.views[C.saveView] &&
+              window.SCW && typeof SCW.knackAjax === 'function' && typeof SCW.knackRecordUrl === 'function');
+  }
+  function deleteDoc(recId, done) {
+    if (!canDeleteHere()) { done(false, 'delete unavailable'); return; }
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(C.saveView, recId),
+      type: 'DELETE',
+      success: function () { done(true); },
+      error:   function (xhr) {
+        console.warn('[scw-ofg] DELETE failed', recId, xhr && xhr.status, xhr && xhr.responseText);
+        done(false, 'HTTP ' + (xhr && xhr.status));
+      }
     });
   }
 
@@ -404,6 +435,9 @@
     var card = document.createElement('div');
     card.className = 'scw-ofg-card';
     card.innerHTML =
+      (caps.del
+        ? '<button type="button" class="scw-ofg-del" title="Delete this file" aria-label="Delete file">×</button>'
+        : '') +
       '<button type="button" class="scw-ofg-thumb" title="Open file">' +
         (thumb
           ? '<img src="' + esc(thumb) + '" alt="" loading="lazy">'
@@ -448,6 +482,31 @@
     var noteEl = card.querySelector('.scw-ofg-note');
     if (noteEl) noteEl.addEventListener('click', function () {
       openNotesEditor(this, recId, notesTxt);
+    });
+
+    var delBtn = card.querySelector('.scw-ofg-del');
+    if (delBtn) delBtn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var msg = 'Delete "' + name + '" from this project?\n\n' +
+        (isRequired ? 'It is marked Required for closeout. ' : '') +
+        'The file record is removed for everyone. This cannot be undone.';
+      if (!window.confirm(msg)) return;
+      delBtn.disabled = true;
+      delBtn.textContent = '…';
+      deleteDoc(recId, function (ok, status) {
+        if (!ok) {
+          delBtn.disabled = false;
+          delBtn.textContent = '×';
+          alert('Could not delete the file (' + (status || 'no response') + '). Try again, or use the edit page.');
+          return;
+        }
+        // Gone: drop the card and the native row now (a re-render before
+        // the refetch lands must not bring it back), then refetch the
+        // models so the maps strip and closeout list follow.
+        if (card.parentNode) card.parentNode.removeChild(card);
+        if (row.parentNode) row.parentNode.removeChild(row);
+        refetch();
+      });
     });
 
     var reqBtn = card.querySelector('.scw-ofg-req');
@@ -515,7 +574,8 @@
     var caps = {
       required: !!columnView(REQUIRED_FIELD),
       notes:    !!columnView(NOTES_FIELD),
-      closeout: !!columnView(CLOSEOUT_FIELD)
+      closeout: !!columnView(CLOSEOUT_FIELD),
+      del:      canDeleteHere()
     };
     var grid = document.createElement('div');
     grid.className = 'scw-ofg-grid';

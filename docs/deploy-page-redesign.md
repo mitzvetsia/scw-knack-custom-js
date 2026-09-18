@@ -274,6 +274,13 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   is DOM-only (`#view_4162` with a `<form>`), no dependence on `Knack.views`
   schema. The schema-POST composer (child page's form view via the menu
   link's slug) remains only as the fallback on a scene without the form.
+- **`other-files-gallery.js`** (pre-existing; the Files tray) gained **delete**
+  (2026-09-18): a × on each card, ops page only (`canDelete` on the
+  view_3942 deployment), confirm → view-based DELETE through the DOC save
+  view view_3941 (the path closeout-deliverables.js already deletes by) →
+  card + native row dropped → save / gallery / closeout models refetched
+  (maps strip and closeout list follow). Sub dashboard: no ×.
+  `tests/deploy-page/test-files-gallery.js`.
 - **`site-maps-strip.js`** — "Site maps & coverage" card in row 2 beside the
   "Also" list. Reads Other Files (view_3942 / sub view_4063), picks maps by
   CONFIG_file type (field_2877 matching site plan / coverage / floor plan);
