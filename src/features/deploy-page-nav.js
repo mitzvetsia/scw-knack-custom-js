@@ -5,11 +5,15 @@
  * (scene_1353), which read as nine co-equal accordion bars with no
  * hierarchy:
  *
- *   1. STICKY SIGNPOST BAR — a compact pill nav pinned to the top of the
- *      scene: one pill per (visible) accordion section, plus "Install Items"
- *      (the v2 worksheet) and "Change Orders". Pills show the section's
- *      count badge and smooth-scroll to it on click (auto-expanding a
- *      collapsed accordion so the user never lands on a closed bar).
+ *   1. STAGE TILES (docs/deploy-page-redesign.md, Phase I) — a four-tile
+ *      status strip above the sections: Paperwork & billing, Project setup,
+ *      Installation (the v2 worksheet, always "current"), Closeout. Each
+ *      tile reads the rollup its section already renders (acceptance tally,
+ *      questionnaire status, closeout docs, worksheet warn chips + photo
+ *      slots) and smooth-scrolls to the section on click (auto-expanding a
+ *      collapsed accordion). Sections that aren't a stage (Other Files,
+ *      Additional Photos, Project Notes, Change Orders) sit in an "Also on
+ *      this project" chip row beneath the tiles until the drawers land.
  *
  *   2. CHANGE ORDERS ← WORKSHEET — the Change Orders grid + "Create Change
  *      Order" CTA used to sit at the very bottom of the page, ~2000px from
@@ -95,20 +99,66 @@
       return '#kn-' + s.sceneId + ' > #' + STRIP_ID;
     }).join(', ');
     var css = [
+      /* Status strip container: tiles + "also on this project" chips. */
       '#' + NAV_ID + ' {',
-      '  position: sticky; top: 0; z-index: 900;',
       '  width: 100%; max-width: 100%; box-sizing: border-box;',
       '  grid-column: 1 / -1; flex: 1 1 100%;',
-      '  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;',
-      '  background: rgba(255,255,255,0.97);',
-      '  border: 1px solid #e2e8f0; border-radius: 10px;',
-      '  box-shadow: 0 2px 10px rgba(15,23,42,0.07);',
-      '  padding: 8px 10px; margin: 8px 0 12px;',
+      '  display: flex; flex-direction: column; gap: 10px;',
+      '  margin: 8px 0 12px;',
       '}',
       '#' + NAV_ID + '-label {',
       '  font: 700 10.5px/1 system-ui, sans-serif; letter-spacing: 0.07em;',
-      '  text-transform: uppercase; color: #94a3b8; margin: 0 4px 0 2px;',
+      '  text-transform: uppercase; color: #64748b; margin: 0 4px 0 2px;',
       '}',
+      '.scw-deploy-tiles {',
+      '  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;',
+      '}',
+      '.scw-deploy-tile {',
+      '  text-align: left; background: #fff; border: 1px solid #e2e8f0;',
+      '  border-radius: 12px; padding: 12px 16px; min-height: 104px;',
+      '  box-sizing: border-box; display: flex; flex-direction: column; gap: 6px;',
+      '  cursor: pointer; font: 13px/1.4 system-ui, sans-serif; color: #0f172a;',
+      '}',
+      '.scw-deploy-tile:hover { border-color: #b6c9db; }',
+      '.scw-deploy-tile--current {',
+      '  background: #163C6E; border-color: #163C6E; color: #fff;',
+      '}',
+      '.scw-deploy-tile__top {',
+      '  display: flex; align-items: center; justify-content: space-between; gap: 8px;',
+      '}',
+      '.scw-deploy-tile__eyebrow {',
+      '  font: 700 10.5px/1 system-ui, sans-serif; letter-spacing: 0.1em;',
+      '  text-transform: uppercase; color: #64748b;',
+      '}',
+      '.scw-deploy-tile--current .scw-deploy-tile__eyebrow { color: rgba(255,255,255,0.75); }',
+      '.scw-deploy-tile__state {',
+      '  padding: 2px 8px; border-radius: 999px; white-space: nowrap;',
+      '  font: 700 11px/1.2 system-ui, sans-serif; border: 1px solid transparent;',
+      '}',
+      '.scw-deploy-tile__state--ok      { background: #dcfce7; border-color: #86efac; color: #15803d; }',
+      '.scw-deploy-tile__state--warn    { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
+      '.scw-deploy-tile__state--muted   { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }',
+      '.scw-deploy-tile__state--current { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.35); color: #fff; }',
+      '.scw-deploy-tile__head { font-size: 15px; font-weight: 600; }',
+      '.scw-deploy-tile__fact { font-size: 12px; color: #475569; }',
+      '.scw-deploy-tile__fact--warn { color: #92400e; }',
+      '.scw-deploy-tile--current .scw-deploy-tile__fact { color: rgba(255,255,255,0.85); }',
+      '.scw-deploy-tile__link { margin-top: auto; font-size: 12px; font-weight: 600; color: #0f4c81; }',
+      '.scw-deploy-tile--current .scw-deploy-tile__link { color: rgba(255,255,255,0.85); }',
+      /* One progress bar per owner (Sub submits, SCW reviews). */
+      '.scw-deploy-bars {',
+      '  display: grid; grid-template-columns: 30px minmax(0, 1fr) auto;',
+      '  gap: 5px 8px; align-items: center; margin-top: 2px;',
+      '  font: 11px/1.2 system-ui, sans-serif; color: rgba(255,255,255,0.88);',
+      '  font-variant-numeric: tabular-nums;',
+      '}',
+      '.scw-deploy-bars b { font-weight: 700; }',
+      '.scw-deploy-bar {',
+      '  display: flex; height: 6px; border-radius: 999px; overflow: hidden;',
+      '  background: rgba(255,255,255,0.18);',
+      '}',
+      '.scw-deploy-bar > span { display: block; height: 100%; }',
+      '.scw-deploy-also { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }',
       '.scw-deploy-nav-item {',
       '  display: inline-flex; align-items: center; gap: 6px;',
       '  padding: 5px 11px; border-radius: 999px;',
@@ -600,29 +650,191 @@
       scene.insertBefore(nav, scene.firstChild);
     }
 
-    // Rebuild pills only when the signature changed — keeps the heartbeat
+    // Resolve the four stages against the collected targets; whatever is
+    // left over becomes the "Also on this project" chip row.
+    var stages = [], used = {};
+    for (var s = 0; s < STAGES.length; s++) {
+      var st = STAGES[s], hit = null;
+      for (var t = 0; t < targets.length; t++) {
+        if (used[t]) continue;
+        var tg = targets[t];
+        if (st.worksheet ? tg.kind === 'worksheet'
+                         : (tg.kind === 'accordion' && st.match.test(origTitle(tg.el)))) {
+          hit = tg; used[t] = true; break;
+        }
+      }
+      if (hit) stages.push(tileModel(st, hit, cfg));
+    }
+    var also = [];
+    for (var a = 0; a < targets.length; a++) if (!used[a]) also.push(targets[a]);
+
+    // Rebuild only when the signature changed — keeps the heartbeat
     // rebuild from thrashing the DOM (and hover states) every pass.
-    var sig = targets.map(function (t) {
-      return t.label + ':' + t.count + (t.warn ? '!' : '');
-    }).join('|');
+    var sig = stages.map(function (m) { return m.sig; }).join('|') + '||' +
+      also.map(function (t) { return t.label + ':' + t.count + (t.warn ? '!' : ''); }).join('|');
     if (nav.getAttribute('data-scw-sig') === sig) return;
     nav.setAttribute('data-scw-sig', sig);
 
-    nav.innerHTML = '<span id="' + NAV_ID + '-label">On this page</span>';
-    for (var i = 0; i < targets.length; i++) {
-      (function (t) {
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'scw-deploy-nav-item';
-        btn.innerHTML =
-          (t.warn ? '<span class="scw-deploy-nav-dot" title="Needs attention"></span>' : '') +
-          '<span>' + t.label.replace(/[&<>]/g, function (c) {
-            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c];
-          }) + '</span>' + (t.count ? '<span class="scw-deploy-nav-count">' + t.count + '</span>' : '');
-        btn.addEventListener('click', function () { scrollToTarget(t); });
-        nav.appendChild(btn);
-      })(targets[i]);
+    nav.innerHTML = '';
+    var tiles = document.createElement('div');
+    tiles.className = 'scw-deploy-tiles';
+    for (var m = 0; m < stages.length; m++) {
+      (function (model) {
+        var tile = document.createElement('button');
+        tile.type = 'button';
+        tile.className = 'scw-deploy-tile' + (model.current ? ' scw-deploy-tile--current' : '');
+        tile.setAttribute('aria-label', model.stage.label + ': ' + model.stateText);
+        tile.innerHTML =
+          '<span class="scw-deploy-tile__top">' +
+            '<span class="scw-deploy-tile__eyebrow">' + model.stage.n + ' · ' + esc(model.stage.label) + '</span>' +
+            '<span class="scw-deploy-tile__state scw-deploy-tile__state--' + model.stateCls + '">' + esc(model.stateText) + '</span>' +
+          '</span>' +
+          '<span class="scw-deploy-tile__head">' + esc(model.head) + '</span>' +
+          (model.bars || '') +
+          (model.fact ? '<span class="scw-deploy-tile__fact' + (model.factWarn ? ' scw-deploy-tile__fact--warn' : '') + '">' + esc(model.fact) + '</span>' : '') +
+          '<span class="scw-deploy-tile__link">' + esc(model.link) + '</span>';
+        tile.addEventListener('click', function () { scrollToTarget(model.target); });
+        tiles.appendChild(tile);
+      })(stages[m]);
     }
+    nav.appendChild(tiles);
+
+    if (also.length) {
+      var row = document.createElement('div');
+      row.className = 'scw-deploy-also';
+      row.innerHTML = '<span id="' + NAV_ID + '-label">Also on this project</span>';
+      for (var i = 0; i < also.length; i++) {
+        (function (t) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'scw-deploy-nav-item';
+          btn.innerHTML =
+            (t.warn ? '<span class="scw-deploy-nav-dot" title="Needs attention"></span>' : '') +
+            '<span>' + esc(t.label) + '</span>' +
+            (t.count ? '<span class="scw-deploy-nav-count">' + esc(t.count) + '</span>' : '');
+          btn.addEventListener('click', function () { scrollToTarget(t); });
+          row.appendChild(btn);
+        })(also[i]);
+      }
+      nav.appendChild(row);
+    }
+  }
+
+  // ── Stage tiles ───────────────────────────────────────────────────────
+  // Matched on the ORIGINAL Builder title (like SECTIONS); the worksheet
+  // stage keys on the target kind. Order = page order = lifecycle order.
+  var STAGES = [
+    { id: 'paper',   n: 1, match: /^acceptance$/i,                label: 'Paperwork & billing', link: 'Open agreements ›' },
+    { id: 'setup',   n: 2, match: /^system setup questionnaire/i, label: 'Project setup',       link: 'Open questionnaire ›' },
+    { id: 'install', n: 3, worksheet: true,                       label: 'Installation',        link: 'Install items below ↓' },
+    { id: 'close',   n: 4, match: /^closeout$/i,                  label: 'Closeout',            link: 'Open deliverables ›' }
+  ];
+
+  function num(s) { var m = String(s || '').match(/\d+/); return m ? parseInt(m[0], 10) : 0; }
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+  /** The rollup pill a section already renders in its accordion header
+   *  (acceptance tally, questionnaire status, closeout docs). */
+  function readRollup(acc) {
+    var head = acc.querySelector('.scw-ktl-accordion__header');
+    var pill = head && head.querySelector('.scw-acpt-rollup, .scw-deploy-rollup');
+    var text = pill ? txt(pill) : '';
+    var warn = pill
+      ? /--warn/.test(pill.className)
+      : acc.hasAttribute('data-scw-attention');
+    return { text: text, warn: warn, known: !!pill };
+  }
+
+  /** Photo QA tallies straight off the rendered worksheet cards — the same
+   *  slots/chits the strips show, so the bars can't disagree with them. */
+  function photoStats(ws) {
+    var req = ws.querySelectorAll('.scw-ws-v2-photo-card--required').length;
+    var missing = ws.querySelectorAll('.scw-ws-v2-photo-card--required.scw-ws-v2-photo-card--missing').length;
+    return {
+      required: req,
+      missing:  missing,
+      inCount:  Math.max(0, req - missing),
+      pending:  ws.querySelectorAll('.scw-ws-v2-photo-qa-chit.is-pending').length,
+      failed:   ws.querySelectorAll('.scw-ws-v2-photo-qa-chit.is-fail').length,
+      passed:   ws.querySelectorAll('.scw-ws-v2-photo-qa-chit.is-done, .scw-ws-v2-photo-qa-chit.is-half-pass').length
+    };
+  }
+  function bannerChip(ws, type) {
+    var el = ws.querySelector('.scw-ws-v2-banner [data-scw-ws-v2-warn-chip="' + type + '"] .scw-ws-v2-warn-chip-n');
+    return el ? num(txt(el)) : 0;
+  }
+  function pct(n, d) { return d > 0 ? Math.round((n / d) * 100) : 0; }
+
+  function tileModel(stage, target, cfg) {
+    var model = { stage: stage, target: target, link: stage.link,
+                  stateCls: 'muted', stateText: 'Open', head: '', fact: '', factWarn: false, current: false };
+    var count = num(target.count);
+
+    if (stage.worksheet) {
+      var ws = target.el;
+      var ps = photoStats(ws);
+      var recs = num(txt(ws.querySelector('.scw-ws-v2-count')));
+      var missingItems = bannerChip(ws, 'photos');
+      var disconnected = bannerChip(ws, 'disconnected');
+      model.current = true;
+      model.stateCls = 'current';
+      model.stateText = 'In progress';
+      model.head = plural(recs, 'item', 'items') +
+        (ps.required ? ' · ' + ps.required + ' required photos' : '');
+      if (ps.required) {
+        var subFail = pct(ps.failed, ps.required);
+        model.bars =
+          '<span class="scw-deploy-bars">' +
+            '<b>Sub</b>' +
+            '<span class="scw-deploy-bar">' +
+              '<span style="width:' + pct(ps.inCount - ps.failed, ps.required) + '%;background:#93c5fd"></span>' +
+              '<span style="width:' + subFail + '%;background:#e11d48"></span>' +
+            '</span>' +
+            '<span>' + ps.inCount + ' of ' + ps.required + ' in · ' + ps.missing + ' missing' +
+              (ps.failed ? ' · ' + ps.failed + ' failed' : '') + '</span>' +
+            '<b>SCW</b>' +
+            '<span class="scw-deploy-bar">' +
+              '<span style="width:' + pct(ps.passed, ps.inCount) + '%;background:#22c55e"></span>' +
+              '<span style="width:' + pct(ps.failed, ps.inCount) + '%;background:#e11d48"></span>' +
+            '</span>' +
+            '<span>' + (ps.passed + ps.failed) + ' of ' + ps.inCount + ' reviewed · ' + ps.pending + ' waiting</span>' +
+          '</span>';
+      }
+      var facts = [];
+      if (missingItems) facts.push(missingItems + ' items missing photos');
+      if (disconnected) facts.push(disconnected + ' disconnected');
+      model.fact = facts.join(' · ');
+      model.sig = [recs, ps.required, ps.missing, ps.pending, ps.failed, ps.passed, missingItems, disconnected].join(',');
+      return model;
+    }
+
+    var roll = readRollup(target.el);
+    if (stage.id === 'paper') {
+      model.head = count ? plural(count, 'agreement', 'agreements') : 'No agreements yet';
+      model.fact = roll.text;
+      model.factWarn = roll.warn;
+      model.stateCls = roll.known ? (roll.warn ? 'warn' : 'ok') : 'muted';
+      model.stateText = roll.known ? (roll.warn ? 'Waiting' : 'Done') : 'Open';
+    } else if (stage.id === 'setup') {
+      model.head = count ? 'Questionnaire captured' : 'No questionnaire yet';
+      model.fact = roll.text;
+      model.factWarn = roll.warn;
+      model.stateCls = roll.known ? (roll.warn ? 'warn' : 'ok') : 'muted';
+      model.stateText = roll.known ? (roll.warn ? 'Waiting' : 'Done') : 'Open';
+    } else if (stage.id === 'close') {
+      var docs = target.el.querySelectorAll('.scw-cd-doc').length;
+      var noFile = target.el.querySelectorAll('.scw-cd-doc.is-no-file:not(.is-optional)').length;
+      model.head = docs ? (docs - noFile) + ' of ' + docs + ' deliverables in' : 'Closeout';
+      model.fact = roll.text;
+      model.factWarn = roll.warn;
+      var missingPart = roll.text.split('·')[0].trim();
+      model.stateCls = roll.known ? (roll.warn ? 'warn' : 'ok') : 'muted';
+      model.stateText = roll.known
+        ? (roll.warn ? (/missing/.test(missingPart) ? missingPart : 'Waiting') : 'Done')
+        : 'Open';
+    }
+    model.sig = [stage.id, count, model.head, model.fact, model.stateText].join(',');
+    return model;
   }
 
   // ── Part 4: demote reference sections to a quieter tier ───────────────
