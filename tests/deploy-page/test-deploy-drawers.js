@@ -14,7 +14,8 @@ const jqObj = { on(ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); retur
   ready(fn) { if (fn) fn(); return jqObj; }, find() { return jqObj; }, closest() { return jqObj; }, data() { return null; }, attr() { return null; }, length: 0 };
 jq.fn = {}; window.$ = jq; window.jQuery = jq; global.$ = jq;
 window.Knack = { views: {}, router: { current_scene_key: 'scene_1311' } }; global.Knack = window.Knack;
-window.SCW = { CONFIG: {} }; global.SCW = window.SCW;
+let bomOpened = 0;
+window.SCW = { CONFIG: {}, bomTray: { open() { bomOpened++; return true; } } }; global.SCW = window.SCW;
 window.setInterval = function () {};
 new Function('window', 'document', '$', 'Knack', 'SCW',
   fs.readFileSync(path.join(__dirname, '../../src/features/deploy-page-nav.js'), 'utf8'))(window, document, jq, window.Knack, window.SCW);
@@ -66,7 +67,9 @@ setTimeout(() => {
   }
   const accs = () => [...document.querySelectorAll('#kn-scene_1311 .scw-ktl-accordion')];
   check('every non-worksheet section is parked (hidden in place)', accs().map(a => a.classList.contains('scw-deploy-parked')), [true, true, true, true]);
-  check('parked sections still produce tiles + chips', [document.querySelectorAll('.scw-deploy-tile').length, [...document.querySelectorAll('.scw-deploy-also__row')].map(b => b.querySelector('.scw-deploy-also__label').textContent + b.querySelector('.scw-deploy-nav-count').textContent)], [4, ['Files4']]);
+  check('parked sections still produce tiles + chips; the bill of materials leads the "also" list', [document.querySelectorAll('.scw-deploy-tile').length, [...document.querySelectorAll('.scw-deploy-also__row')].map(b => b.querySelector('.scw-deploy-also__label').textContent + ((b.querySelector('.scw-deploy-nav-count') || {}).textContent || ''))], [4, ['Bill of materials', 'Files4']]);
+  document.querySelector('.scw-deploy-also__row').click();
+  check('the bill of materials row opens the tray, not a section drawer', [bomOpened, document.getElementById('scw-deploy-drawer') ? !document.getElementById('scw-deploy-drawer').hidden : false], [1, false]);
   const setup = document.querySelector('[data-scw-tile="setup"]');
   check('setup tile: docs not generated → Waiting + Generate button', [setup.querySelector('.scw-deploy-tile__state').textContent, setup.querySelector('[data-scw-tile-docs]').textContent, setup.querySelector('.scw-deploy-tile__fact').textContent],
     ['Waiting', 'Generate documents…', 'Pending Tech Support Signoff · Docs not generated yet']);
@@ -114,7 +117,7 @@ setTimeout(() => {
     [['Scope of Work PDF', 'Ready to print · sow_form.pdf', 'https://s3/sow.pdf'], ['Location Approval Form (blank)', 'Ready to print · location_approval.pdf', 'https://s3/loc_blank.pdf'], ['View Approval Form (blank)', 'Ready to print · view_approval.pdf', 'https://s3/view_blank.pdf'], ['Kickoff Deck', 'Ready to print · deck.pdf', 'https://s3/deck.pdf']]);
   check('the questionnaire section follows the documents', pre && pre.nextElementSibling && pre.nextElementSibling.classList.contains('scw-ktl-accordion'), true);
   // Switch to the Other Files chip while open → previous section goes home.
-  document.querySelector('.scw-deploy-also__row').click();
+  document.querySelectorAll('.scw-deploy-also__row')[1].click();
   check('opening another section returns the first one home (parked, in scene)', [accs().length, accs()[0].classList.contains('scw-deploy-parked'), drawer.querySelector('.scw-deploy-drawer__title').textContent], [3, true, 'Files']);
   // A custom panel (bom-tray.js) takes the drawer over: the hosted section goes home first,
   // and opening a section again drops the panel.
@@ -123,7 +126,7 @@ setTimeout(() => {
   check('openPanel hosts a custom element, sends the section home, titles the drawer',
     [!!drawer.querySelector('.scw-deploy-drawer__body #custom-panel'), custom.classList.contains('scw-deploy-drawer__custom'), accs().length, drawer.querySelector('.scw-deploy-drawer__title').textContent, drawer.querySelector('.scw-deploy-drawer__eyebrow').textContent],
     [true, true, 4, 'Bill of materials', '3 · Installation']);
-  document.querySelector('.scw-deploy-also__row').click();
+  document.querySelectorAll('.scw-deploy-also__row')[1].click();
   check('opening a section afterwards drops the custom panel', [!!drawer.querySelector('#custom-panel'), accs().length, drawer.querySelector('.scw-deploy-drawer__title').textContent], [false, 3, 'Files']);
   // Escape closes and returns it home in original position.
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }));

@@ -282,16 +282,20 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   (maps strip and closeout list follow). Sub dashboard: no ×.
   `tests/deploy-page/test-files-gallery.js`.
 - **`bom-tray.js`** (2026-09-18, replaces the worksheet Summary on the
-  deploy pages) — "Bill of materials ›" button in the install worksheet's
-  toolbar CTA group opens the deploy drawer around a tray
+  deploy pages) — the FIRST row of "Also on this project" ("Bill of
+  materials", box icon, a `kind:'panel'` target deploy-page-nav adds when
+  `SCW.bomTray` exists) opens the deploy drawer around a tray
   (`SCW.deployNav.openPanel`, new: a custom element in the drawer, the
   hosted section goes home first). Head: N new drops · M on existing cable
   (cam/reader rows, `field_2807`) + By category / By MDF-IDF toggle
   (persisted `scw:bom:mode`). **Shipping**: one row per product per group
   (bucket L2 name `field_2822`, cameras first, or location `field_2818`):
-  Product (+ designators `field_2802` compacted "I-001 to I-005", locations,
-  chips) | SKU | Qty | Retail | Discount ($) | After discount, extended × qty,
-  totals row. Pricing is joined from the PROPOSED SOW item the install
+  Product (+ designators `field_2802` compacted "I-001 to I-005", chips; no
+  location run-on in the category view, the MDF/IDF view carries it) | SKU |
+  Qty | Retail | Discount ($) | After discount, extended × qty, totals row.
+  **A column with no data on any row is left out** (SKU, Retail, Discount,
+  After discount each on their own), so until view_4072 carries the price
+  columns the ops tray is Product | Qty. Pricing is joined from the PROPOSED SOW item the install
   record points at (`field_2819` → hidden view_4072 / view_4151):
   `field_1960` retail, `field_2262` discount each, `field_2268` net unit;
   SKU `field_56` when the grid exposes it (Builder TODO: add INPUT_sku to

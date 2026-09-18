@@ -5,8 +5,8 @@
  * interior / plenum) with one question a PM can answer at a glance: am I
  * shipping the right stuff?
  *
- * One button in the install worksheet's toolbar ("Bill of materials ›")
- * opens the deploy drawer (deploy-page-nav.js openPanel) around a tray:
+ * The first row of "Also on this project" ("Bill of materials", added by
+ * deploy-page-nav.js) opens the deploy drawer (openPanel) around a tray:
  *   head       N new drops · M on existing cable, and a By category /
  *              By MDF-IDF toggle
  *   Shipping   what goes in the SCW box, grouped by proposal bucket (the
@@ -55,7 +55,6 @@
     netUnit:      'field_2268',   // CALC unit price after discounts
     sku:          'field_56'      // INPUT_sku (if exposed on the grid)
   };
-  var BTN_ID   = 'scw-bom-toolbar-btn';
   var STYLE_ID = 'scw-bom-css';
   var EVENT_NS = '.scwBomTray';
   var PRE_RE   = /^\s*pre[\s-]*existing\b/i;
@@ -73,7 +72,6 @@
     var css = [
       /* The old summary panels + the "Summary only" mode: the tray replaces them. */
       hide.join(',\n') + ' { display: none !important; }',
-      '#' + BTN_ID + ' { white-space: nowrap; }',
       '.scw-bom { font: 12.5px/1.4 system-ui, -apple-system, sans-serif; color: #0f172a; }',
       '.scw-bom__head { display: flex; align-items: center; gap: 14px; padding: 4px 0 12px; border-bottom: 1px solid #e2e8f0; }',
       '.scw-bom__drops { font-size: 13px; color: #475569; }',
@@ -298,7 +296,24 @@
   }
 
   // ── Render ─────────────────────────────────────────────────────────
-  function rowHtml(row, pricing, showLoc) {
+  /** Which columns have data on at least one row (a column with nothing in
+   *  it is left out entirely). `pricing` false = never money columns. */
+  function columnsFor(groups, pricing) {
+    var c = { sku: false, retail: false, discount: false, net: false };
+    for (var g = 0; g < groups.length; g++) {
+      for (var r = 0; r < groups[g].rows.length; r++) {
+        var row = groups[g].rows[r];
+        if (row.sku) c.sku = true;
+        if (pricing && row.priced) {
+          if (row.retail) c.retail = true;
+          if (row.discount) c.discount = true;
+          if (row.net || row.retail) c.net = true;
+        }
+      }
+    }
+    return c;
+  }
+  function rowHtml(row, cols, showLoc) {
     var desig = row.designators.length ? ' <span class="scw-bom__desig">· ' + esc(compactList(row.designators)) + '</span>' : '';
     var locs = Object.keys(row.locs);
     var where = showLoc && locs.length ? ' <span class="scw-bom__desig">· ' +
@@ -309,14 +324,12 @@
     if (row.kind === 'pre') chips += ' <span class="scw-bom__chip scw-bom__chip--pre">Pre-existing</span>';
     if (row.kind === 'cust') chips += ' <span class="scw-bom__chip scw-bom__chip--cust">Customer-supplied</span>';
     var html = '<tr>' +
-      '<td><span class="scw-bom__name">' + esc(row.name) + '</span>' + desig + where + chips + '</td>' +
-      '<td class="scw-bom__sku">' + (row.sku ? esc(row.sku) : '<span class="scw-bom__muted">—</span>') + '</td>' +
-      '<td class="num scw-bom__qty">' + row.qty + '</td>';
-    if (pricing) {
-      html += '<td class="num scw-bom__muted">' + (row.priced ? money(row.retail) : '—') + '</td>' +
-              '<td class="num scw-bom__muted">' + (row.priced && row.discount ? '−' + money(row.discount).replace('−', '') : '—') + '</td>' +
-              '<td class="num">' + (row.priced ? money(row.net) : '—') + '</td>';
-    }
+      '<td><span class="scw-bom__name">' + esc(row.name) + '</span>' + desig + where + chips + '</td>';
+    if (cols.sku) html += '<td class="scw-bom__sku">' + (row.sku ? esc(row.sku) : '<span class="scw-bom__muted">—</span>') + '</td>';
+    html += '<td class="num scw-bom__qty">' + row.qty + '</td>';
+    if (cols.retail)   html += '<td class="num scw-bom__muted">' + (row.priced && row.retail ? money(row.retail) : '—') + '</td>';
+    if (cols.discount) html += '<td class="num scw-bom__muted">' + (row.priced && row.discount ? '−' + money(row.discount).replace('−', '') : '—') + '</td>';
+    if (cols.net)      html += '<td class="num">' + (row.priced ? money(row.net) : '—') + '</td>';
     return html + '</tr>';
   }
   /** "I-001, I-002, I-003" → "I-001 to I-003" when the run is unbroken. */
@@ -327,22 +340,27 @@
     if (m0 && m1 && m0[1] === m1[1] && parseInt(m1[2], 10) - parseInt(m0[2], 10) === ls.length - 1) return ls[0] + ' to ' + ls[ls.length - 1];
     return ls.length > 6 ? ls.slice(0, 5).join(', ') + ' +' + (ls.length - 5) : ls.join(', ');
   }
-  function headRow(pricing) {
-    return '<tr><th>Product</th><th>SKU</th><th class="num">Qty</th>' +
-      (pricing ? '<th class="num">Retail</th><th class="num">Discount</th><th class="num">After discount</th>' : '') + '</tr>';
+  function headRow(cols) {
+    return '<tr><th>Product</th>' + (cols.sku ? '<th>SKU</th>' : '') + '<th class="num">Qty</th>' +
+      (cols.retail ? '<th class="num">Retail</th>' : '') +
+      (cols.discount ? '<th class="num">Discount</th>' : '') +
+      (cols.net ? '<th class="num">After discount</th>' : '') + '</tr>';
   }
   function tableHtml(groups, pricing, showLoc, total) {
-    var cols = pricing ? 6 : 3, html = '<table class="scw-bom__table"><thead>' + headRow(pricing) + '</thead><tbody>';
+    var cols = columnsFor(groups, pricing);
+    var ncols = 2 + (cols.sku ? 1 : 0) + (cols.retail ? 1 : 0) + (cols.discount ? 1 : 0) + (cols.net ? 1 : 0);
+    var html = '<table class="scw-bom__table"><thead>' + headRow(cols) + '</thead><tbody>';
     for (var g = 0; g < groups.length; g++) {
       var grp = groups[g];
-      html += '<tr class="scw-bom__group"><td colspan="' + cols + '">' + esc(grp.label) + '</td></tr>';
-      for (var r = 0; r < grp.rows.length; r++) html += rowHtml(grp.rows[r], pricing, showLoc);
+      html += '<tr class="scw-bom__group"><td colspan="' + ncols + '">' + esc(grp.label) + '</td></tr>';
+      for (var r = 0; r < grp.rows.length; r++) html += rowHtml(grp.rows[r], cols, showLoc);
     }
     if (total) {
-      html += '<tr class="scw-bom__total"><td>' + esc(total.label) + '</td><td></td><td class="num">' + total.qty + '</td>' +
-        (pricing ? '<td class="num">' + (total.priced ? money(total.retail) : '—') + '</td>' +
-                   '<td class="num">' + (total.priced && total.discount ? '−' + money(total.discount).replace('−', '') : '—') + '</td>' +
-                   '<td class="num">' + (total.priced ? money(total.net) : '—') + '</td>' : '') + '</tr>';
+      html += '<tr class="scw-bom__total"><td>' + esc(total.label) + '</td>' + (cols.sku ? '<td></td>' : '') +
+        '<td class="num">' + total.qty + '</td>' +
+        (cols.retail   ? '<td class="num">' + money(total.retail) + '</td>' : '') +
+        (cols.discount ? '<td class="num">' + (total.discount ? '−' + money(total.discount).replace('−', '') : '—') + '</td>' : '') +
+        (cols.net      ? '<td class="num">' + money(total.net) + '</td>' : '') + '</tr>';
     }
     return html + '</tbody></table>';
   }
@@ -367,7 +385,7 @@
       html += '<div class="scw-bom__section"><span class="scw-bom__section-title">Shipping</span>' +
               '<span class="scw-bom__section-sub">what goes in the SCW box</span></div>';
       html += m.ship.length
-        ? tableHtml(m.ship, pricing, mode !== 'loc',
+        ? tableHtml(m.ship, pricing, false,
             { label: 'Shipping total', qty: m.shipQty, retail: m.shipRetail, discount: m.shipDiscount, net: m.shipNet, priced: m.anyPriced })
         : '<div class="scw-bom__empty">Nothing to ship.</div>';
       if (m.noShip.length) {
@@ -375,7 +393,7 @@
           '<div class="scw-bom__section"><span class="scw-bom__section-title">Not shipping</span>' +
           '<span class="scw-bom__section-sub">on the SOW, not in the box · ' +
           '<span class="scw-bom__why">Pre-existing: on site, we connect to it. Customer-supplied: they provide it, we install it.</span></span></div>' +
-          tableHtml(m.noShip, false, true, null) +
+          tableHtml(m.noShip, false, false, null) +
         '</div>';
       }
     }
@@ -405,23 +423,14 @@
     });
   }
 
-  // ── Toolbar button + summary takedown ──────────────────────────────
-  function mountButton(cfg) {
+  // ── Summary takedown ───────────────────────────────────────────────
+  // The entry point is the "Bill of materials" row deploy-page-nav.js puts
+  // first in "Also on this project" (it calls SCW.bomTray.open). Here: a
+  // saved "Summary only" worksheet mode would now show an empty worksheet,
+  // so bounce it back to the default.
+  function takedown(cfg) {
     var mount = document.getElementById(cfg.mount);
-    var group = mount && mount.querySelector('.scw-ws-v2-toolbar-group--cta');
-    if (!group) return;
-    var btn = document.getElementById(BTN_ID);
-    if (!btn) {
-      btn = document.createElement('button');
-      btn.type = 'button';
-      btn.id = BTN_ID;
-      btn.className = 'scw-ws-v2-toolbar-btn scw-ws-v2-toolbar-btn--cta';
-      btn.textContent = 'Bill of materials ›';
-      btn.title = 'What ships for this project';
-      btn.addEventListener('click', function (e) { e.preventDefault(); open(cfg); });
-    }
-    if (btn.parentNode !== group) group.appendChild(btn);
-    // "Summary only" mode would now show an empty worksheet: bounce back.
+    if (!mount) return;
     if (mount.classList.contains('scw-ws-v2-mode-summary')) {
       var other = mount.querySelector('.scw-ws-v2-toolbar-btn[data-scw-ws-v2-mode]:not([data-scw-ws-v2-mode="summary"])');
       if (other) other.click();
@@ -435,7 +444,7 @@
       var cfg = activeScene();
       if (!cfg) return;
       injectStyles();
-      try { mountButton(cfg); } catch (e) { /* toolbar not up yet */ }
+      try { takedown(cfg); } catch (e) { /* worksheet not up yet */ }
     }, delay == null ? 150 : delay);
   }
   for (var s = 0; s < SCENES.length; s++) {
@@ -443,7 +452,7 @@
     $(document).on('knack-view-render.' + SCENES[s].installView + EVENT_NS, function () { schedule(200); });
   }
   $(document).on('knack-view-render.any' + EVENT_NS, function () { if (activeScene()) schedule(200); });
-  setInterval(function () { if (activeScene()) schedule(0); }, 2500);   // the toolbar is rebuilt on every worksheet render
+  setInterval(function () { if (activeScene()) schedule(0); }, 5000);
 
   window.SCW = window.SCW || {};
   window.SCW.bomTray = { open: function () { var c = activeScene(); return c ? open(c) : false; }, model: model, items: items };

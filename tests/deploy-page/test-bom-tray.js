@@ -1,5 +1,5 @@
-// jsdom smoke test: bom-tray.js puts a "Bill of materials ›" button in the install worksheet's
-// toolbar, hides the old summary panels, and builds the tray: drops head, Shipping grouped by
+// jsdom smoke test: bom-tray.js hides the old summary panels and builds the tray (opened from the
+// "Bill of materials" row deploy-page-nav.js puts in "Also on this project"): drops head, Shipping grouped by
 // bucket (or MDF/IDF), one row per product with SKU / qty / pricing joined from the proposed SOW
 // item, a separate Not shipping block for Pre-existing and Customer-supplied, no services.
 const fs = require('fs');
@@ -61,28 +61,28 @@ function check(label, got, want) {
 }
 const cells = tr => [...tr.querySelectorAll('td')].map(td => td.textContent.replace(/\s+/g, ' ').trim());
 setTimeout(() => {
-  const btn = document.getElementById('scw-bom-toolbar-btn');
-  check('a "Bill of materials" button joins the worksheet toolbar CTA group; the old summary + Summary-only mode are hidden by CSS',
-    [!!btn, btn && btn.parentNode.classList.contains('scw-ws-v2-toolbar-group--cta'), /\.scw-ws-v2-grand-summary[\s\S]*display: none/.test(document.getElementById('scw-bom-css').textContent), /mode="summary"\]/.test(document.getElementById('scw-bom-css').textContent)],
-    [true, true, true, true]);
-  btn.click();
+  check('no toolbar button (the Also list is the way in); the old summary + Summary-only mode are hidden by CSS',
+    [!!document.getElementById('scw-bom-toolbar-btn'), /\.scw-ws-v2-grand-summary[\s\S]*display: none/.test(document.getElementById('scw-bom-css').textContent), /mode="summary"\]/.test(document.getElementById('scw-bom-css').textContent)],
+    [false, true, true]);
+  window.SCW.bomTray.open();
   const tray = opened && opened.el;
-  check('click opens the drawer around the tray, titled', [opened && opened.title, opened && opened.eyebrow, !!tray], ['Bill of materials', '3 · Installation', true]);
+  check('open() puts the tray in the drawer, titled', [opened && opened.title, opened && opened.eyebrow, !!tray], ['Bill of materials', '3 · Installation', true]);
   check('head: new drops vs existing cable (removed-by-CO rows ignored)', tray.querySelector('.scw-bom__drops').textContent.replace(/\s+/g, ' '), '3 new drops · 2 on existing cable');
   const groups = [...tray.querySelectorAll('.scw-bom__table')][0].querySelectorAll('.scw-bom__group td');
   check('Shipping groups by bucket, cameras first; services and assumptions never appear', [...groups].map(g => g.textContent), ['Camera / Reader', 'Networking or Headend', 'Mounting Hardware']);
   const ship = tray.querySelectorAll('.scw-bom__table')[0];
   const rows = [...ship.querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total)')].map(cells);
-  check('one row per product: designators compacted, locations, drops chip, SKU + extended pricing from the SOW item',
-    rows[0], ['Informant 8.0 v5 · I-001 to I-005 · Default MDF 3 · IDF 01 2 3 new drops', 'INF-80-V5', '5', '$1,500.00', '−$250.00', '$1,250.00']);
+  check('one row per product: designators compacted, no location run-on, drops chip, SKU + extended pricing from the SOW item',
+    rows[0], ['Informant 8.0 v5 · I-001 to I-005 3 new drops', 'INF-80-V5', '5', '$1,500.00', '−$250.00', '$1,250.00']);
   check('special order chip from the name; no SKU → dash; discount 0 → dash',
-    rows[2], ['v2 16 Drive Mini-SAS Enclosure (Special Order) · Default MDF Special order', '—', '2', '$800.00', '—', '$800.00']);
-  check('mounts are ordinary shipping rows', rows[3], ['Junction Box · Default MDF', 'JB-1', '5', '$50.00', '—', '$50.00']);
+    rows[2], ['v2 16 Drive Mini-SAS Enclosure (Special Order) Special order', '—', '2', '$800.00', '—', '$800.00']);
+  check('mounts are ordinary shipping rows', rows[3], ['Junction Box', 'JB-1', '5', '$50.00', '—', '$50.00']);
   check('shipping total', cells(ship.querySelector('.scw-bom__total')), ['Shipping total', '', '13', '$3,350.00', '−$250.00', '$3,100.00']);
+  check('columns exist only when some row has data: all six here', [...ship.querySelectorAll('thead th')].map(t => t.textContent), ['Product', 'SKU', 'Qty', 'Retail', 'Discount', 'After discount']);
   const noShip = tray.querySelector('.scw-bom__noship');
   const nsRows = [...noShip.querySelectorAll('tbody tr:not(.scw-bom__group)')].map(cells);
   check('Not shipping: pre-existing + customer-supplied read off the name, no pricing columns',
-    nsRows, [['Pre-existing PoE Switch · Default MDF Pre-existing', '—', '1'], ['Customer-supplied Monitor · IDF 01 Customer-supplied', '—', '1']]);
+    nsRows, [['Pre-existing PoE Switch Pre-existing', '1'], ['Customer-supplied Monitor Customer-supplied', '1']]);
   check('pre-existing / customer-supplied never count toward shipping', ship.textContent.indexOf('PoE Switch') < 0 && ship.textContent.indexOf('Monitor') < 0, true);
   // Toggle → by MDF / IDF
   tray.querySelector('[data-scw-bom-set="loc"]').click();
@@ -93,12 +93,13 @@ setTimeout(() => {
   check('per-location rows carry their own qty and drops', cells(idfRows[0]), ['Informant 8.0 v5 · I-001 to I-003 3 new drops', 'INF-80-V5', '3', '$900.00', '−$150.00', '$750.00']);
   // Sub scene: no pricing columns.
   document.body.innerHTML = '<div id="kn-scene_1353"><div id="scw-ws-v2-view_4056"><div class="scw-ws-v2-toolbar"><div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta"></div></div></div></div>';
-  window.Knack.views = { view_4056: models(install), view_4151: models(sow) };
+  // The sub grid carries no SKU column: the SKU column is left out entirely (a column with no data on any row never shows).
+  window.Knack.views = { view_4056: models(install), view_4151: models(sow.map(r => { const c = Object.assign({}, r); delete c.field_56; return c; })) };
   (handlers['knack-view-render.view_4056.scwBomTray'] || []).forEach(fn => fn());
   setTimeout(() => {
-    document.getElementById('scw-bom-toolbar-btn').click();
+    window.SCW.bomTray.open();
     const sub = opened.el;
-    check('sub dashboard: same rows, Product | SKU | Qty only', [[...sub.querySelector('.scw-bom__table thead').querySelectorAll('th')].map(t => t.textContent), cells(sub.querySelector('.scw-bom__total'))], [['Product', 'SKU', 'Qty'], ['Shipping total', '', '13']]);
+    check('sub dashboard: no pricing, and no SKU column when no row has one', [[...sub.querySelector('.scw-bom__table thead').querySelectorAll('th')].map(t => t.textContent), cells(sub.querySelector('.scw-bom__total'))], [['Product', 'Qty'], ['Shipping total', '13']]);
     console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
     process.exit(fails ? 1 : 0);
   }, 300);

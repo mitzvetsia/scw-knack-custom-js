@@ -118,6 +118,7 @@
   var ICONS = {
     clip:    '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>',
     image:   '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>',
+    box:     '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line>',
     note:    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line>',
     refresh: '<polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>',
     folder:  '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>'
@@ -838,6 +839,12 @@
     }
     var also = [];
     for (var a = 0; a < targets.length; a++) if (!used[a]) also.push(targets[a]);
+    // The bill of materials (bom-tray.js) is a panel, not a Builder section:
+    // it leads the list so a PM checking a shipment finds it first.
+    if (window.SCW && SCW.bomTray && typeof SCW.bomTray.open === 'function') {
+      also.unshift({ label: 'Bill of materials', count: '', el: null, kind: 'panel', icon: 'box', warn: false,
+                     open: function () { SCW.bomTray.open(); } });
+    }
 
     // Document generation is a Setup fact: read the closeout doc cards
     // (a card with a file = generated or uploaded) onto the Setup tile.
@@ -977,13 +984,17 @@
           btn.type = 'button';
           btn.className = 'scw-deploy-also__row';
           btn.innerHTML =
-            '<span class="scw-deploy-also__icon">' + iconSvg(t.el.getAttribute('data-scw-nav-icon')) + '</span>' +
+            '<span class="scw-deploy-also__icon">' + iconSvg(t.icon || (t.el && t.el.getAttribute('data-scw-nav-icon'))) + '</span>' +
             '<span class="scw-deploy-also__label">' + esc(t.label) + '</span>' +
             (t.warn ? '<span class="scw-deploy-nav-dot" title="Needs attention"></span>' : '') +
             (t.count ? '<span class="scw-deploy-nav-count">' + esc(t.count) + '</span>' : '') +
             '<span class="scw-deploy-also__chev">›</span>';
           btn.__scwTarget = t;
-          btn.addEventListener('click', function () { openDrawer(btn.__scwTarget); });
+          btn.addEventListener('click', function () {
+            var tg = btn.__scwTarget;
+            if (tg && tg.kind === 'panel' && typeof tg.open === 'function') tg.open();
+            else openDrawer(tg);
+          });
           list.appendChild(btn);
         })(also[i]);
       }
