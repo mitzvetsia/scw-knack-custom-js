@@ -153,7 +153,8 @@
       '  font: 600 12px/1.2 system-ui, sans-serif; cursor: pointer; text-align: left;',
       '}',
       '.scw-deploy-tile__link { background: none; border: 0; padding: 0; color: #0f4c81; }',
-      '.scw-deploy-tile__actions { margin-top: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }',
+      '.scw-deploy-tile__actions { margin-top: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; position: relative; }',
+      '.scw-deploy-tile__actions #scw-regen-docs-panel { top: calc(100% + 8px); left: 0; z-index: 1100; }',
       '.scw-deploy-tile__action {',
       '  padding: 5px 11px; border-radius: 7px; border: 1px solid #163C6E;',
       '  background: #163C6E; color: #fff;',
@@ -170,13 +171,21 @@
       '#scw-deploy-drawer .scw-deploy-drawer__scrim {',
       '  position: absolute; inset: 0; background: rgba(15,23,42,0.28);',
       '}',
+      /* Sections were laid out for the full page width (the acceptance card
+         has four money columns), so the drawer is wide: most of the viewport
+         on a laptop, capped on a big monitor. */
       '#scw-deploy-drawer .scw-deploy-drawer__panel {',
-      '  position: absolute; top: 0; right: 0; bottom: 0; width: 680px; max-width: 94vw;',
+      '  position: absolute; top: 0; right: 0; bottom: 0; width: 1100px; max-width: 94vw;',
       '  box-sizing: border-box; background: #fff; border-left: 1px solid #e2e8f0;',
-      '  box-shadow: -12px 0 32px rgba(15,23,42,0.18);',
+      '  box-shadow: -12px 0 32px rgba(15,23,42,0.18); outline: none;',
       '  display: flex; flex-direction: column; font: 13px/1.4 system-ui, sans-serif; color: #0f172a;',
+      '  transform: translateX(0); transition: transform 160ms ease-out;',
       '}',
-      '#scw-deploy-drawer.scw-deploy-drawer--wide .scw-deploy-drawer__panel { width: 820px; }',
+      '#scw-deploy-drawer.scw-deploy-drawer--closing .scw-deploy-drawer__panel { transform: translateX(100%); }',
+      '#scw-deploy-drawer.scw-deploy-drawer--opening .scw-deploy-drawer__panel { transform: translateX(100%); transition: none; }',
+      '#scw-deploy-drawer .scw-deploy-drawer__close:focus { outline: none; }',
+      '#scw-deploy-drawer .scw-deploy-drawer__close:focus-visible { outline: 2px solid #163C6E; outline-offset: 2px; }',
+      '@media (prefers-reduced-motion: reduce) { #scw-deploy-drawer .scw-deploy-drawer__panel { transition: none; } }',
       '#scw-deploy-drawer .scw-deploy-drawer__head {',
       '  display: flex; align-items: flex-start; gap: 12px; padding: 18px 22px 14px;',
       '  border-bottom: 1px solid #e2e8f0;',
@@ -750,8 +759,14 @@
             actions +
           '</span>';
         tile.addEventListener('click', function (e) {
+          // Clicks inside the hosted document picker are the picker's own.
+          if (e.target.closest && e.target.closest('#scw-regen-docs-panel')) return;
           var docsBtn = e.target.closest && e.target.closest('[data-scw-tile-docs]');
-          if (docsBtn) { e.stopPropagation(); openDocsGenerator(closeoutModel.target); return; }
+          if (docsBtn) {
+            e.stopPropagation();
+            openDocsGenerator(closeoutModel.target, docsBtn.parentNode, docsBtn);
+            return;
+          }
           if (model.target.kind === 'worksheet') scrollToTarget(model.target);
           else openDrawer(model.target);
         });
@@ -826,6 +841,12 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && !d.hidden) closeDrawer();
     });
+    // Any Knack navigation (a page link inside the drawer, e.g. the
+    // questionnaire page, or a modal) changes the hash: close the drawer so
+    // it never sits over the next page.
+    window.addEventListener('hashchange', function () {
+      if (!d.hidden) closeDrawer();
+    });
     return d;
   }
 
@@ -870,11 +891,18 @@
     d.querySelector('.scw-deploy-drawer__eyebrow').textContent = stageLabelFor(acc);
     d.querySelector('.scw-deploy-drawer__title').textContent = label;
     d.querySelector('.scw-deploy-drawer__sub').textContent = sub;
-    d.classList.toggle('scw-deploy-drawer--wide', /photos/i.test(label));
+    // Slide in: start off-screen (no transition), then let the transition run.
+    d.classList.remove('scw-deploy-drawer--closing');
+    d.classList.add('scw-deploy-drawer--opening');
     d.hidden = false;
     document.body.style.overflow = 'hidden';
     _drawerAcc = acc;
-    try { d.querySelector('.scw-deploy-drawer__close').focus(); } catch (e) { /* focus is a courtesy */ }
+    var panel = d.querySelector('.scw-deploy-drawer__panel');
+    void panel.offsetWidth;                       // commit the off-screen frame
+    d.classList.remove('scw-deploy-drawer--opening');
+    // Keyboard users land inside the dialog; no visible ring unless they tab.
+    panel.setAttribute('tabindex', '-1');
+    try { panel.focus({ preventScroll: true }); } catch (e) { /* focus is a courtesy */ }
   }
 
   function returnHome(acc) {
@@ -887,10 +915,18 @@
 
   function closeDrawer() {
     var d = document.getElementById(DRAWER_ID);
-    if (_drawerAcc) returnHome(_drawerAcc);
+    var acc = _drawerAcc;
     _drawerAcc = null;
-    if (d) d.hidden = true;
     document.body.style.overflow = '';
+    if (!d || d.hidden) { if (acc) returnHome(acc); return; }
+    // Slide out first, then do the (reflow-heavy) move back home after the
+    // panel is gone, so the close never feels laggy.
+    d.classList.add('scw-deploy-drawer--closing');
+    setTimeout(function () {
+      d.hidden = true;
+      d.classList.remove('scw-deploy-drawer--closing');
+      if (acc) returnHome(acc);
+    }, 170);
   }
 
   /** Scene re-rendered underneath an open drawer: its section is stale. */
@@ -901,9 +937,14 @@
     if (homeGone || drawerGone) closeDrawer();
   }
 
-  /** Setup tile → open the Closeout drawer and press the existing
-   *  "Regenerate Docs…" button so its picker opens where it can be seen. */
-  function openDocsGenerator(closeoutTarget) {
+  /** Setup tile → open just the document picker, hosted under the tile's
+   *  button (regenerate-closeout-docs.js openPicker). The webhook, the
+   *  checklist of documents and the refresh are all that module's. Falls
+   *  back to opening the Closeout drawer and pressing its button when the
+   *  API isn't there. */
+  function openDocsGenerator(closeoutTarget, host, stateBtn) {
+    var api = window.SCW && SCW.regenDocs;
+    if (api && typeof api.openPicker === 'function' && host && api.openPicker(host, stateBtn)) return;
     openDrawer(closeoutTarget);
     setTimeout(function () {
       var btn = document.getElementById('scw-regen-docs-btn');
@@ -1091,6 +1132,21 @@
       scheduleApply(150);
     });
   }
+
+  // Small public API: other modules (pinned-notes.js "All notes ›") open a
+  // parked section's drawer by its ORIGINAL Builder title. Returns true
+  // when a section matched.
+  window.SCW = window.SCW || {};
+  window.SCW.deployNav = {
+    openSection: function (re) {
+      var active = activeScene();
+      var acc = active && findAcc(active.el, re);
+      if (!acc) return false;
+      openDrawer({ el: acc, kind: 'accordion' });
+      return true;
+    },
+    closeDrawer: closeDrawer
+  };
   $(document).on('knack-view-render.any' + EVENT_NS, function () {
     if (activeScene()) scheduleApply(250);
   });

@@ -286,7 +286,10 @@
   }
   function onOutside(e) {
     var wrap = document.getElementById(WRAP_ID);
-    if (wrap && !wrap.contains(e.target)) closePanel();
+    var panel = document.getElementById(PANEL_ID);
+    if (panel && panel.contains(e.target)) return;      // inside the picker (wherever it is hosted)
+    if (wrap && wrap.contains(e.target)) return;        // the button itself
+    closePanel();
   }
   function openPanel(wrap, btn) {
     if (document.getElementById(PANEL_ID)) { closePanel(); return; }
@@ -362,6 +365,23 @@
       else view.insertBefore(wrap, view.firstChild);
     }
   }
+
+  // Public: open the picker anchored under ANOTHER element (the deploy
+  // page's Setup tile hosts it — document generation is a setup step, see
+  // docs/deploy-page-redesign.md). `host` gets the absolutely-positioned
+  // panel appended, so it should be position: relative; `stateBtn` (optional)
+  // receives the loading / done / error feedback instead of the toolbar
+  // button. Returns false when the toolbar button doesn't exist yet.
+  window.SCW = window.SCW || {};
+  window.SCW.regenDocs = {
+    openPicker: function (host, stateBtn) {
+      var btn = document.getElementById(BTN_ID);
+      if (!btn || !host) return false;
+      openPanel(host, stateBtn || btn);
+      return true;
+    },
+    closePicker: closePanel
+  };
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
     DEPLOYMENTS.forEach(function (dep) {
