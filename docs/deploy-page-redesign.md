@@ -68,9 +68,27 @@ additive chrome.
    a Yes/No definition flagged on becomes a check item ("Right device
    installed"); any other flagged field becomes a "verify this value" item
    ("OSD matches the label: I-010"). Checked state + who/when live in the same
-   blob. One built-in item outside the schema: required photos in. Verdict
-   (Pass / Fail…) writes the existing `QA_passed` (`field_2830`),
-   `QA_completed by` (`field_2831`), `QA_completed on` (`field_2832`).
+   blob. Verdict (Pass / Fail…) writes the existing `QA_passed`
+   (`field_2830`), `QA_completed by` (`field_2831`), `QA_completed on`
+   (`field_2832`).
+   **One QA surface per item (decided 2026-09-18)**: the checklist is the
+   only place QA happens. The photo strip is evidence only (thumbnails,
+   upload, replace; no "Needs QA" chit). Every required photo is a row in
+   the checklist ("Uploaded by SVS · needs your review" → Review opens the
+   existing photo modal, whose Pass / Fail writes the DOC_photos QA fields
+   exactly as today; "Not uploaded · waiting on SVS" rows are inert). The
+   item is Complete when every schema check is ticked AND every required
+   photo has passed.
+   **Config Field Definition object, what to add**: ONE Yes/No field,
+   `Include on checklist`. Rendering rule: a definition of Input Type
+   Yes/No with the flag = a check item (it does NOT render in the
+   Configuration grid); any other Input Type with the flag = normal config
+   field AND a "verify this value" row. The existing tooltip column
+   (`field_2938`) is the instruction shown under the item; sort order
+   (`field_2927`) orders the checklist. The bundle reads the flag off the
+   same raw records the Builder snippet already emits
+   (`window.SCW.deliverablesFields`), so the only code change is a new
+   `checklist` key in `CONFIG.DEF` (deliverables-worksheet.js).
 7. **Visual restraint**: filled colored pills only for the current stage tile
    and the active filter. Everything else is plain text with a small colored
    dot. No colored tile borders.
