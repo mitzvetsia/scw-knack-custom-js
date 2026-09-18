@@ -96,7 +96,12 @@ setTimeout(() => {
   // closeout save grid holds completed uploads (must NOT show here) + the deck.
   window.Knack.views.view_3942 = { model: { data: { models: [
     { attributes: { id: 'o1', field_2877_raw: [{ id: 't1', identifier: 'Scope of Work PDF' }], field_68_raw: { url: 'https://s3/sow.pdf', filename: 'sow_form.pdf' } } },
-    { attributes: { id: 'o2', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form (not completed)' }], field_68_raw: { url: 'https://s3/loc_blank.pdf', filename: 'location_approval.pdf' } } }
+    // Live shape: the generator types a blank "Location Approval Form" and writes "(not completed)" into the NOTE.
+    { attributes: { id: 'o2', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form' }], field_588: 'Location Approval Form (not completed)', field_68_raw: { url: 'https://s3/loc_blank.pdf', filename: 'location_approval.pdf' } } },
+    // A run that missed the type still carries the note: it is a blank too.
+    { attributes: { id: 'o3', field_2877_raw: [], field_588: 'View Approval Form (not completed)', field_68_raw: { url: 'https://s3/view_blank.pdf', filename: 'view_approval.pdf' } } },
+    // Same type, no "(not completed)" note: a completed upload, not a blank.
+    { attributes: { id: 'o4', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form' }], field_588: 'signed on site', field_68_raw: { url: 'https://s3/loc_done.pdf', filename: 'loc_done.pdf' } } }
   ] } } };
   window.Knack.views.view_3941 = { model: { data: { models: [
     { attributes: { id: 'd2', field_2877_raw: [{ id: 't5', identifier: 'Location Approval Form' }], field_68_raw: { url: 'https://s3/loc_completed.pdf', filename: 'loc_completed.pdf' }, field_2879: 'Pass' } },
@@ -106,7 +111,7 @@ setTimeout(() => {
   const pre = drawer.querySelector('.scw-deploy-drawer__prelude');
   check('Setup drawer lists the blank PDFs for the sub (not the completed uploads), in order',
     pre && [...pre.querySelectorAll('.scw-deploy-docs__row')].map(r => [r.querySelector('.scw-deploy-docs__type').textContent, r.querySelector('.scw-deploy-docs__state').textContent, (r.querySelector('.scw-deploy-docs__open') || {}).href || null]),
-    [['Scope of Work PDF', 'Ready to print · sow_form.pdf', 'https://s3/sow.pdf'], ['Location Approval Form (blank)', 'Ready to print · location_approval.pdf', 'https://s3/loc_blank.pdf'], ['View Approval Form (blank)', 'Not generated', null], ['Kickoff Deck', 'Ready to print · deck.pdf', 'https://s3/deck.pdf']]);
+    [['Scope of Work PDF', 'Ready to print · sow_form.pdf', 'https://s3/sow.pdf'], ['Location Approval Form (blank)', 'Ready to print · location_approval.pdf', 'https://s3/loc_blank.pdf'], ['View Approval Form (blank)', 'Ready to print · view_approval.pdf', 'https://s3/view_blank.pdf'], ['Kickoff Deck', 'Ready to print · deck.pdf', 'https://s3/deck.pdf']]);
   check('the questionnaire section follows the documents', pre && pre.nextElementSibling && pre.nextElementSibling.classList.contains('scw-ktl-accordion'), true);
   // Switch to the Other Files chip while open → previous section goes home.
   document.querySelector('.scw-deploy-also__row').click();

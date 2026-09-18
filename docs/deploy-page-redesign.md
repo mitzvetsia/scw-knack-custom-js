@@ -335,6 +335,13 @@ button automatically when the link text matches /add|upload file/i).
   its home placeholder. Any pass while the tray was open triggered it
   (heartbeat, a view render), which is why it looked new: the notes work
   made more passes happen with a tray open.
+- Setup drawer said "Not generated" for approval forms the project clearly
+  had: live, the generator types a blank as plain "Location Approval Form"
+  and puts "(not completed)" in the file NOTE (field_588); some runs miss the
+  type and carry only the note. `setupDocs` now matches type + note together
+  (a completed upload has the type and no such note, so it still stays out).
+  The Setup TILE's "N of M docs generated" still counts the closeout doc
+  cards, a different tally.
 - The Push link was not exercised; still unverified below.
 
 ### To verify live (not yet confirmed by the user)

@@ -54,13 +54,16 @@
   // DOC_files columns on the docs views.
   var DOC_F = { type: 'field_2877', file: 'field_68', notes: 'field_588' };
   // The documents generated at setup, in display order, matched on the
-  // CONFIG_file type name. The approval forms match ONLY their blank
-  // "(not completed)" incarnation — the completed upload has the same base
-  // name and belongs to Closeout.
+  // CONFIG_file type name AND the file note together (live: the generator
+  // types a blank as "Location Approval Form" and writes "Location Approval
+  // Form (not completed)" into the note; a run that missed the type still
+  // carries the note). The approval forms match ONLY their blank
+  // "(not completed)" incarnation — the completed upload has the same type
+  // and no such note, and belongs to Closeout.
   var SETUP_DOCS = [
     { match: /scope of work/i,                                 label: 'Scope of Work PDF' },
-    { match: /location approval.*not completed/i,             label: 'Location Approval Form (blank)' },
-    { match: /view approval.*not completed/i,                  label: 'View Approval Form (blank)' },
+    { match: /location approval[\s\S]*not completed/i,         label: 'Location Approval Form (blank)' },
+    { match: /view approval[\s\S]*not completed/i,              label: 'View Approval Form (blank)' },
     { match: /kickoff/i,                                       label: 'Kickoff Deck' }
   ];
 
@@ -1076,8 +1079,10 @@
         if (!rec || !rec.id || seen[rec.id]) continue;
         var typeRaw = rec[DOC_F.type + '_raw'];
         var type = Array.isArray(typeRaw) ? (typeRaw[0] && typeRaw[0].identifier) || '' : plainText(rec[DOC_F.type]);
+        var note = plainText(rec[DOC_F.notes]);
+        var text = type + ' ' + note;
         var kind = null;
-        for (var k = 0; k < SETUP_DOCS.length; k++) if (SETUP_DOCS[k].match.test(type)) { kind = SETUP_DOCS[k]; break; }
+        for (var k = 0; k < SETUP_DOCS.length; k++) if (SETUP_DOCS[k].match.test(text)) { kind = SETUP_DOCS[k]; break; }
         if (!kind) continue;
         var fileRaw = rec[DOC_F.file + '_raw'];
         var url = fileRaw && typeof fileRaw === 'object' ? (fileRaw.url || '') : '';
@@ -1089,7 +1094,7 @@
         if (!url) continue;                     // a typed record with no file isn't a generated PDF
         seen[rec.id] = true;
         out.push({ kind: kind, type: kind.label, url: url, name: name,
-                   note: plainText(rec[DOC_F.notes]), order: SETUP_DOCS.indexOf(kind) });
+                   note: note, order: SETUP_DOCS.indexOf(kind) });
       }
     }
     out.sort(function (a, b) { return a.order - b.order; });
@@ -1112,7 +1117,8 @@
           var doc = docs[d];
           rows += '<div class="scw-deploy-docs__row">' +
             '<span class="scw-deploy-docs__type">' + esc(doc.type) + '</span>' +
-            '<span class="scw-deploy-docs__state">Ready to print' + (doc.name ? ' · ' + esc(doc.name) : '') + (doc.note ? ' · ' + esc(doc.note) : '') + '</span>' +
+            '<span class="scw-deploy-docs__state">Ready to print' + (doc.name ? ' · ' + esc(doc.name) : '') +
+              (doc.note && !/not completed/i.test(doc.note) ? ' · ' + esc(doc.note) : '') + '</span>' +
             '<a class="scw-deploy-docs__open" href="' + esc(doc.url) + '" target="_blank" rel="noopener">Open ›</a>' +
           '</div>';
         }
