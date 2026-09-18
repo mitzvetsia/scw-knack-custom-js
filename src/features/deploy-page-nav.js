@@ -1168,8 +1168,7 @@
     acc.classList.remove('scw-deploy-parked');
     acc.classList.add('scw-deploy-in-drawer');
     var body = d.querySelector('.scw-deploy-drawer__body');
-    var stalePrelude = body.querySelector('.scw-deploy-drawer__prelude');
-    if (stalePrelude) body.removeChild(stalePrelude);
+    clearDrawerExtras(body);
     // The Setup drawer leads with the generated documents (the questionnaire
     // section follows); the tile alone would otherwise just re-link them.
     var st = stageFor(acc), active = activeScene();
@@ -1189,21 +1188,44 @@
     var label = acc.getAttribute('data-scw-nav-label') || txt(acc.querySelector('.scw-acc-title'));
     var sub = txt(acc.querySelector('.scw-deploy-acc-sub'));
     if (sub && label.indexOf(sub) >= 0) label = label.replace(sub, '').trim();
-    d.querySelector('.scw-deploy-drawer__eyebrow').textContent = stageLabelFor(acc);
-    d.querySelector('.scw-deploy-drawer__title').textContent = label;
-    d.querySelector('.scw-deploy-drawer__sub').textContent = sub;
+    _drawerAcc = acc;
+    showDrawer(d, stageLabelFor(acc), label, sub);
+  }
+  /** Anything in the drawer body that is not the hosted section: the Setup
+   *  prelude, or a custom panel (openPanel). */
+  function clearDrawerExtras(body) {
+    var extras = body.querySelectorAll('.scw-deploy-drawer__prelude, .scw-deploy-drawer__custom');
+    for (var i = 0; i < extras.length; i++) body.removeChild(extras[i]);
+  }
+  function showDrawer(d, eyebrow, title, sub) {
+    d.querySelector('.scw-deploy-drawer__eyebrow').textContent = eyebrow || '';
+    d.querySelector('.scw-deploy-drawer__title').textContent = title || '';
+    d.querySelector('.scw-deploy-drawer__sub').textContent = sub || '';
     // Slide in: start off-screen (no transition), then let the transition run.
     d.classList.remove('scw-deploy-drawer--closing');
     d.classList.add('scw-deploy-drawer--opening');
     d.hidden = false;
     document.body.style.overflow = 'hidden';
-    _drawerAcc = acc;
     var panel = d.querySelector('.scw-deploy-drawer__panel');
     void panel.offsetWidth;                       // commit the off-screen frame
     d.classList.remove('scw-deploy-drawer--opening');
     // Keyboard users land inside the dialog; no visible ring unless they tab.
     panel.setAttribute('tabindex', '-1');
     try { panel.focus({ preventScroll: true }); } catch (e) { /* focus is a courtesy */ }
+  }
+  /** Open the drawer around a custom element (not a Builder section): the
+   *  bill of materials tray (bom-tray.js). A hosted section goes home
+   *  first; the element is dropped on close or when a section opens. */
+  function openPanel(opts) {
+    if (!opts || !opts.el) return false;
+    var d = ensureDrawer();
+    if (_drawerAcc) { returnHome(_drawerAcc); _drawerAcc = null; }
+    var body = d.querySelector('.scw-deploy-drawer__body');
+    clearDrawerExtras(body);
+    opts.el.classList.add('scw-deploy-drawer__custom');
+    body.appendChild(opts.el);
+    showDrawer(d, opts.eyebrow, opts.title, opts.sub);
+    return true;
   }
 
   function returnHome(acc) {
@@ -1229,6 +1251,8 @@
       d.hidden = true;
       d.classList.remove('scw-deploy-drawer--closing');
       if (acc) returnHome(acc);
+      var body = d.querySelector('.scw-deploy-drawer__body');
+      if (body) clearDrawerExtras(body);
       _drawerBusy = false;
       scheduleApply(0);
     }, 170);
@@ -1462,6 +1486,10 @@
       return true;
     },
     closeDrawer: closeDrawer,
+    // Open the drawer around a custom element: { eyebrow, title, sub, el }.
+    openPanel: openPanel,
+    // The active deployment's config (scene id, worksheet mount) or null.
+    activeConfig: function () { var a = activeScene(); return a ? a.cfg : null; },
     // href of the scene's "Add File" menu link (project-attached upload
     // form), '' until the Builder link exists.
     addFileHref: function () {

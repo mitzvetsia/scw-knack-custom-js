@@ -281,6 +281,30 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   card + native row dropped → save / gallery / closeout models refetched
   (maps strip and closeout list follow). Sub dashboard: no ×.
   `tests/deploy-page/test-files-gallery.js`.
+- **`bom-tray.js`** (2026-09-18, replaces the worksheet Summary on the
+  deploy pages) — "Bill of materials ›" button in the install worksheet's
+  toolbar CTA group opens the deploy drawer around a tray
+  (`SCW.deployNav.openPanel`, new: a custom element in the drawer, the
+  hosted section goes home first). Head: N new drops · M on existing cable
+  (cam/reader rows, `field_2807`) + By category / By MDF-IDF toggle
+  (persisted `scw:bom:mode`). **Shipping**: one row per product per group
+  (bucket L2 name `field_2822`, cameras first, or location `field_2818`):
+  Product (+ designators `field_2802` compacted "I-001 to I-005", locations,
+  chips) | SKU | Qty | Retail | Discount ($) | After discount, extended × qty,
+  totals row. Pricing is joined from the PROPOSED SOW item the install
+  record points at (`field_2819` → hidden view_4072 / view_4151):
+  `field_1960` retail, `field_2262` discount each, `field_2268` net unit;
+  SKU `field_56` when the grid exposes it (Builder TODO: add INPUT_sku to
+  view_4072 / view_4151, else the column shows —). Ops page only shows
+  pricing; the sub tray is Product | SKU | Qty. **Not shipping**: a dashed,
+  muted block for Pre-existing (`/^pre-existing/` in the product name: on
+  site, we connect to it) and Customer-supplied (`customer|client supplied`
+  in the name: they provide it, we install it). Never listed: services,
+  assumptions, rows removed by a CO (`field_2967`). Accessories are rows in
+  their own bucket. The old per-MDF / grand summary panels and the "Summary
+  only" toolbar mode are hidden on both deploy mounts (a saved Summary-only
+  mode is bounced back to the default). Mockup: the "Install BOM Summary
+  Wireframes" canvas. `tests/deploy-page/test-bom-tray.js`.
 - **`site-maps-strip.js`** — "Site maps & coverage" card in row 2 beside the
   "Also" list. Reads Other Files (view_3942 / sub view_4063), picks maps by
   CONFIG_file type (field_2877 matching site plan / coverage / floor plan);
@@ -352,6 +376,12 @@ button automatically when the link text matches /add|upload file/i).
 - The Push link was not exercised; still unverified below.
 
 ### To verify live (not yet confirmed by the user)
+
+- BOM tray: the button shows in the worksheet toolbar, the old Summary
+  blocks are gone, pricing columns fill (they need view_4072 to carry
+  field_1960 / field_2262 / field_2268 — if every row shows —, those
+  columns are missing from the hidden grid), SKU fills once INPUT_sku is on
+  view_4072. Sub dashboard: no pricing.
 
 - Notes drawer: the "Add DOC_note" form (view_4162) shows at the top of the
   list as a bordered box (textarea, Pin checkbox, "Save note"), and the

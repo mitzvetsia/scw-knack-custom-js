@@ -116,6 +116,15 @@ setTimeout(() => {
   // Switch to the Other Files chip while open → previous section goes home.
   document.querySelector('.scw-deploy-also__row').click();
   check('opening another section returns the first one home (parked, in scene)', [accs().length, accs()[0].classList.contains('scw-deploy-parked'), drawer.querySelector('.scw-deploy-drawer__title').textContent], [3, true, 'Files']);
+  // A custom panel (bom-tray.js) takes the drawer over: the hosted section goes home first,
+  // and opening a section again drops the panel.
+  const custom = document.createElement('div'); custom.id = 'custom-panel'; custom.textContent = 'BOM';
+  window.SCW.deployNav.openPanel({ eyebrow: '3 · Installation', title: 'Bill of materials', sub: 'ships', el: custom });
+  check('openPanel hosts a custom element, sends the section home, titles the drawer',
+    [!!drawer.querySelector('.scw-deploy-drawer__body #custom-panel'), custom.classList.contains('scw-deploy-drawer__custom'), accs().length, drawer.querySelector('.scw-deploy-drawer__title').textContent, drawer.querySelector('.scw-deploy-drawer__eyebrow').textContent],
+    [true, true, 4, 'Bill of materials', '3 · Installation']);
+  document.querySelector('.scw-deploy-also__row').click();
+  check('opening a section afterwards drops the custom panel', [!!drawer.querySelector('#custom-panel'), accs().length, drawer.querySelector('.scw-deploy-drawer__title').textContent], [false, 3, 'Files']);
   // Escape closes and returns it home in original position.
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }));
   fire();   // a pass DURING the close (section still in the drawer) must not touch the tiles either

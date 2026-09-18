@@ -230,6 +230,7 @@ cat \
   src/features/worksheet-v2/change-requests.js \
   src/features/worksheet-v2/poll.js \
   src/features/worksheet-v2/init.js \
+  src/features/bom-tray.js \
   src/features/worksheet-v2/co-adopt.js \
   src/features/worksheet-v2/co-remove.js \
   src/features/worksheet-v2/co-add-item-form.js \
