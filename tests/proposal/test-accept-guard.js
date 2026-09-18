@@ -4,12 +4,13 @@
 // through the proposal page's detail view (field_2990) replaces the form with a notice.
 const fs = require('fs');
 const path = require('path');
-const { JSDOM } = require('jsdom');
+const { JSDOM, VirtualConsole } = require('jsdom');
 const ID = 'c3c3c3c3c3c3c3c3c3c3c3c3';
-const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://scwinstallation.knack.com/installationservices#project-proposal/view-proposal/' + ID + '/accept-proposal3/' + ID });
+// jsdom has no form submission; a submit click's activation behavior logs "not implemented" — drop it.
+const vc = new VirtualConsole(); vc.sendTo(console, { omitJSDOMErrors: true });
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://scwinstallation.knack.com/installationservices#project-proposal/view-proposal/' + ID + '/accept-proposal3/' + ID, virtualConsole: vc });
 const { window } = dom; const { document } = window;
 global.window = window; global.document = document;
-window.HTMLFormElement.prototype.requestSubmit = function () {};   // jsdom stub: a submit click's activation behavior
 const handlers = {};
 function jq() { return jqObj; }
 const jqObj = { on(ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); return jqObj; }, off() { return jqObj; }, trigger() { return jqObj; }, length: 0 };

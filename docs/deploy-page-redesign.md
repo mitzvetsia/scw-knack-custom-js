@@ -336,9 +336,19 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   site, we connect to it) and Customer-supplied (`customer|client supplied`
   in the name: they provide it, we install it). **Removed by change order**:
   a third muted block for rows a signed CO pulled (`field_2967` set, the
-  worksheet's "Removed by CO" rule; a removal drafted this session shows
-  once the field lands), grouped by CO, struck through, never counted or
-  priced. Never listed: services, assumptions. Accessories are rows in their
+  worksheet's "Removed by CO" rule), headed by the CO's SOW number, struck
+  through, never counted or priced. **Change orders are read off the CO's
+  own lines on the proposed grid** (view_4072 / view_4151: target install
+  record `field_2966`, action `field_2965`, SOW `field_2154` → "SOW 1418CO";
+  `coIndex`): `field_2967`'s display value is the removed line's product
+  name, so the flag alone cannot head a group; and the lines show what the
+  install record cannot — a Remove on an UNSIGNED CO (row stays in
+  Shipping, amber "Removal pending · SOW 1418CO not signed" chip: nothing
+  leaves scope before signature) and a SWAP (Remove + Add pair targeting
+  one record; signature updates the record's product in place, so the row
+  shows the NEW product with a "Swapped in by SOW 1418CO · was <old>" chip
+  and no removed row ever appears for the old one — the "the CO removed a
+  camera but the tray doesn't show it" case). Never listed: services, assumptions. Accessories are rows in their
   own bucket. Group headers are 15px headings with a rule; Camera / Reader
   alone carries a subtotal row in the category view (the drop count is what
   a PM checks; on mounts or headend it adds nothing). The old per-MDF / grand summary panels and the "Summary

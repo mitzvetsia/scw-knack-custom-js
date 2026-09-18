@@ -22,9 +22,19 @@
  *              product NAME.
  *   Removed by change order  a third muted block: rows a signed CO pulled
  *              from the install scope (field_2967 set, same rule as the
- *              worksheet's "Removed by CO" fold), grouped by CO, struck
- *              through, never counted or priced. A removal drafted this
- *              session shows once the CO signs and the field lands.
+ *              worksheet's "Removed by CO" fold), grouped by the CO's SOW
+ *              number, struck through, never counted or priced.
+ * Change orders are read off the CO's OWN lines on the proposed SOW grid
+ * (a CO line carries its target install record field_2966, its action
+ * field_2965 and its SOW field_2154, "SW1418CO"): that is where the CO
+ * number comes from (field_2967's own display value is the removed line's
+ * product name, useless as a heading), and it is what shows the two
+ * things the install record alone cannot: a REMOVE on a CO not yet signed
+ * (row stays in Shipping with an amber "Removal pending" chip — nothing
+ * leaves scope before signature) and a SWAP, where signature changed the
+ * install record's product IN PLACE (row shows its new product with a
+ * "Swapped in by … · was …" chip; the old product never appears as a
+ * removed row because no record was removed).
  * Services and assumptions never appear. Accessories (mounts) are line
  * items with a product and ship like anything else: they are rows in their
  * own bucket.
@@ -69,8 +79,16 @@
     sow:          'field_2154',   // REL_scope of work (multi: a line shared by two SOWs names both)
     sku:          'field_56'      // INPUT_sku — fallback; the live key is read off the grid header (skuField)
   };
+  // Change-order lines on the proposed SOW grid (view_4072 / view_4151)
+  var CF = {
+    target: 'field_2966',   // Target install item (the install record a CO line acts on)
+    action: 'field_2965',   // CO Action (Remove on credit lines, else an Add)
+    sow:    'field_2154',   // the CO's SOW ("SW1418CO")
+    product:'field_1949'    // Product (connection → name)
+  };
   var NO_LOC = 'No MDF / IDF';
   var NO_SOW = 'No SOW';
+  var UNKNOWN_CO = 'Change order';
   /** The SKU column's field key, found by its header text on the SOW grid
    *  (view_4072 / view_4151) or the install grid — whichever carries a
    *  column labelled SKU. Hidden Knack grids keep their DOM, so the header
@@ -134,7 +152,10 @@
       '.scw-bom__chip--pre { border: 1px solid #cbd5e1; background: #fff; color: #475569; }',
       '.scw-bom__chip--cust { border: 1px solid #93c5fd; background: #eff6ff; color: #1d4ed8; }',
       '.scw-bom__chip--removed { border: 1px solid #fca5a5; background: #fef2f2; color: #b91c1c; }',
-      '.scw-bom__removed .scw-bom__name { text-decoration: line-through; text-decoration-color: #94a3b8; }',
+      '.scw-bom__chip--pending { border: 1px solid #fcd34d; background: #fffbeb; color: #92400e; }',
+      '.scw-bom__chip--swap { border: 1px solid #c7d2fe; background: #eef2ff; color: #3730a3; }',
+      '.scw-bom__removed .scw-bom__name { text-decoration: line-through; text-decoration-color: #94a3b8; color: #64748b; font-weight: 600; }',
+      '.scw-bom__removed .scw-bom__group td { font-size: 13px; padding-top: 14px; }',
       '.scw-bom__noship { margin-top: 22px; padding: 10px 12px 4px; border: 1px dashed #cbd5e1; border-radius: 8px; background: #f8fafc; color: #475569; }',
       '.scw-bom__noship .scw-bom__section { padding-top: 0; }',
       '.scw-bom__noship .scw-bom__section-title { color: #475569; }',
@@ -234,6 +255,32 @@
     for (var i = 0; i < recs.length; i++) if (recs[i] && recs[i].id) out[recs[i].id] = recs[i];
     return out;
   }
+  /** Change-order lines by the install record they act on:
+   *  { installId: { removes: [{ co, name }], adds: [{ co, name }] } }. */
+  function coIndex(cfg) {
+    var out = {}, recs = modelRecords(cfg.sowView);
+    for (var i = 0; i < recs.length; i++) {
+      var r = recs[i];
+      if (!r) continue;
+      var tid = connId(r, CF.target);
+      if (!tid) continue;
+      var line = {
+        co:   connLabels(r, CF.sow).map(sowLabel).filter(function (l) { return /CO/i.test(l); })[0] ||
+              connLabels(r, CF.sow).map(sowLabel)[0] || UNKNOWN_CO,
+        name: connLabel(r, CF.product) || plain(r[IF.productName]) || ''
+      };
+      var e = out[tid] || (out[tid] = { removes: [], adds: [] });
+      (/remove/i.test(plain(r[CF.action])) ? e.removes : e.adds).push(line);
+    }
+    return out;
+  }
+  /** The CO a removed install record names on field_2967 — only when its
+   *  display value is a SOW/CO number; the live data shows the removed
+   *  line's product name there. */
+  function coFromFlag(rec) {
+    var l = connLabel(rec, IF.removedByCo);
+    return /^\s*(SW)?\d+CO\b/i.test(l) || /^\s*\d+[-\s]*(SW)?\d+CO\b/i.test(l) ? sowLabel(l) : '';
+  }
   function categoryOf(rec, cfg) {
     var ns = window.SCW && SCW.worksheetV2;
     try {
@@ -249,7 +296,7 @@
   // ── Model ──────────────────────────────────────────────────────────
   /** One entry per install line item worth listing. */
   function items(cfg) {
-    var recs = installRecords(cfg), sow = sowIndex(cfg), out = [];
+    var recs = installRecords(cfg), sow = sowIndex(cfg), cos = coIndex(cfg), out = [];
     var skuCol = skuField(cfg);
     for (var i = 0; i < recs.length; i++) {
       var r = recs[i];
@@ -258,7 +305,23 @@
       if (cat === 'services' || cat === 'assumptions') continue;
       var name = plain(r[IF.productName]) || connLabel(r, IF.product) || '(unnamed)';
       var removed = hasValue(r, IF.removedByCo);
+      var co = cos[r.id] || null;
       var kind = removed ? 'removed' : (PRE_RE.test(name) ? 'pre' : (CUST_RE.test(name) ? 'cust' : 'ship'));
+      // What the CO lines say about this record (see the header):
+      //   Remove line, record not flagged → removal pending (CO unsigned).
+      //   Add line targeting it → a swap; applied once the record's product
+      //   is the Add line's (signature updates it in place), else pending.
+      var tag = '';
+      if (removed) {
+        tag = 'Removed';
+      } else if (co && co.adds.length) {
+        var add = co.adds[co.adds.length - 1], was = co.removes.length ? co.removes[0].name : '';
+        var applied = add.name && add.name.toLowerCase() === name.toLowerCase();
+        tag = (applied ? 'Swapped in by ' : 'Swap pending · ') + add.co + (was && was.toLowerCase() !== name.toLowerCase() ? ' · was ' + was : '');
+        if (!applied && add.name) tag += ' → ' + add.name;
+      } else if (co && co.removes.length) {
+        tag = 'Removal pending · ' + co.removes[0].co + ' not signed';
+      }
       var qty = num(r[IF.qty]) || 1;
       var s = sow[connId(r, IF.sowItem)] || null;
       var sku = '';
@@ -271,7 +334,8 @@
         id: r.id, name: name, kind: kind, qty: qty, sku: sku,
         bucket: connLabel(r, IF.bucket) || 'Other',
         loc: connLabel(r, IF.mdfIdf) || NO_LOC,
-        co: removed ? (connLabel(r, IF.removedByCo) || 'Change order') : '',
+        co: removed ? ((co && co.removes.length && co.removes[0].co) || coFromFlag(r) || UNKNOWN_CO) : '',
+        tag: tag,
         sow: s ? (connLabels(s, SF.sow).map(sowLabel).join(' + ') || NO_SOW) : NO_SOW,
         designator: plain(r[IF.displayLabel]),
         isCam: cat === 'cam',
@@ -300,10 +364,10 @@
       var it = list[i], gk = it[by];
       var g = byKey[gk];
       if (!g) { g = byKey[gk] = { label: gk, rows: [], byProduct: {}, qty: 0, retail: 0, discount: 0, net: 0, priced: false }; groups.push(g); }
-      var rk = it.name + '|' + it.sku;
+      var rk = it.name + '|' + it.sku + '|' + (it.tag || '');
       var row = g.byProduct[rk];
       if (!row) {
-        row = g.byProduct[rk] = { name: it.name, sku: it.sku, kind: it.kind, qty: 0, designators: [], locs: {}, newDrops: 0,
+        row = g.byProduct[rk] = { name: it.name, sku: it.sku, kind: it.kind, tag: it.tag || '', qty: 0, designators: [], locs: {}, newDrops: 0,
                                   special: it.special, retail: 0, discount: 0, net: 0, priced: false };
         g.rows.push(row);
       }
@@ -400,6 +464,8 @@
     if (row.kind === 'pre') chips += ' <span class="scw-bom__chip scw-bom__chip--pre">Pre-existing</span>';
     if (row.kind === 'cust') chips += ' <span class="scw-bom__chip scw-bom__chip--cust">Customer-supplied</span>';
     if (row.kind === 'removed') chips += ' <span class="scw-bom__chip scw-bom__chip--removed">Removed</span>';
+    else if (/^Swap/.test(row.tag)) chips += ' <span class="scw-bom__chip scw-bom__chip--swap">' + esc(row.tag) + '</span>';
+    else if (row.tag) chips += ' <span class="scw-bom__chip scw-bom__chip--pending">' + esc(row.tag) + '</span>';
     var html = '<tr>' +
       '<td><span class="scw-bom__name">' + esc(row.name) + '</span>' + desig + where + chips + '</td>';
     if (cols.sku) html += '<td class="scw-bom__sku">' + (row.sku ? esc(row.sku) : '<span class="scw-bom__muted">—</span>') + '</td>';
@@ -429,7 +495,7 @@
     var html = '<table class="scw-bom__table"><thead>' + headRow(cols) + '</thead><tbody>';
     for (var g = 0; g < groups.length; g++) {
       var grp = groups[g];
-      html += '<tr class="scw-bom__group' + (grp.none ? ' scw-bom__group--none' : '') + '"><td colspan="' + ncols + '">' + esc(grp.label) + '</td></tr>';
+      if (grp.label !== UNKNOWN_CO) html += '<tr class="scw-bom__group' + (grp.none ? ' scw-bom__group--none' : '') + '"><td colspan="' + ncols + '">' + esc(grp.label) + '</td></tr>';
       for (var r = 0; r < grp.rows.length; r++) html += rowHtml(grp.rows[r], cols, showLoc);
       if (grp.subtotal) {
         html += '<tr class="scw-bom__subtotal"><td>' + esc(grp.label) + ' subtotal</td>' + (cols.sku ? '<td></td>' : '') +

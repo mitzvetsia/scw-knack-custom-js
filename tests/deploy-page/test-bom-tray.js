@@ -39,7 +39,15 @@ const sow = [
   { id: 's1', field_1960: '$300.00', field_2262: '$50.00', field_2268: '$250.00', field_9999: 'INF-80-V5', field_2154_raw: conn('w1', '1524') },
   { id: 's2', field_1960: '$1,000.00', field_2262: '$0.00', field_2268: '$1,000.00', field_9999: 'IMP-128', field_2154_raw: [{ id: 'w1', identifier: '1524' }, { id: 'w2', identifier: 'SW1601' }] },
   { id: 's3', field_1960: '$400.00', field_2262: '$0.00', field_2268: '$400.00' },
-  { id: 's4', field_1960: '$10.00', field_2262: '$0.00', field_2268: '$10.00', field_9999: 'JB-1', field_2154_raw: conn('w2', 'SW1601') }
+  { id: 's4', field_1960: '$10.00', field_2262: '$0.00', field_2268: '$10.00', field_9999: 'JB-1', field_2154_raw: conn('w2', 'SW1601') },
+  // Change-order lines (SOW 1601CO), each targeting an install record (field_2966):
+  //   r1 Remove → x1 (flagged on the record: signed, removed)
+  //   r2 Remove → m1 (not flagged: the CO is unsigned, removal pending)
+  //   r3 Remove + a1 Add → n1 (a swap; the record already carries the Add's product → applied)
+  { id: 'r1', field_2965: 'Remove', field_2966_raw: conn('x1', 'x'), field_2154_raw: conn('w3', 'SW1601CO'), field_1949_raw: conn('p0', 'Removed Camera') },
+  { id: 'r2', field_2965: 'Remove', field_2966_raw: conn('m1', 'x'), field_2154_raw: conn('w3', 'SW1601CO'), field_1949_raw: conn('p4', 'Junction Box') },
+  { id: 'r3', field_2965: 'Remove', field_2966_raw: conn('n1', 'x'), field_2154_raw: conn('w3', 'SW1601CO'), field_1949_raw: conn('p5', 'Imperial 64 Channel NVR') },
+  { id: 'a1', field_2965: 'Add',    field_2966_raw: conn('n1', 'x'), field_2154_raw: conn('w3', 'SW1601CO'), field_1949_raw: conn('p6', 'Imperial 128 Channel 4K NVR v3') }
 ];
 const models = recs => ({ model: { data: { models: recs.map(a => ({ attributes: a })) } } });
 window.Knack = { views: { view_4093: models(install), view_4072: models(sow) }, router: { current_scene_key: 'scene_1311' } };
@@ -84,7 +92,8 @@ setTimeout(() => {
   check('special order chip from the name; no SKU → dash; discount 0 → dash',
     rows[2], ['v2 16 Drive Mini-SAS Enclosure (Special Order) Special order', '—', '2', '$800.00', '—', '$800.00']);
   check('no SOW item → no SKU, no pricing on that row', rows[3], ['Cat6 Uplink', '—', '1', '—', '—', '—']);
-  check('mounts are ordinary shipping rows', rows[4], ['Junction Box', 'JB-1', '5', '$50.00', '—', '$50.00']);
+  check('mounts are ordinary shipping rows; a Remove line on an UNSIGNED CO leaves the row in Shipping with a pending chip', rows[4], ['Junction Box Removal pending · SOW 1601CO not signed', 'JB-1', '5', '$50.00', '—', '$50.00']);
+  check('a swap (Remove + Add pair) whose product already landed on the record: live row, swapped-in chip naming the CO and the old product', rows[1][0], 'Imperial 128 Channel 4K NVR v3 Swapped in by SOW 1601CO · was Imperial 64 Channel NVR');
   check('shipping total', cells(ship.querySelector('.scw-bom__total')), ['Shipping total', '', '14', '$3,350.00', '−$250.00', '$3,100.00']);
   check('Camera / Reader gets a subtotal row (the only group that does)', [...ship.querySelectorAll('.scw-bom__subtotal')].map(cells), [['Camera / Reader subtotal', '', '5', '$1,500.00', '−$250.00', '$1,250.00']]);
   check('columns exist only when some row has data: all six here', [...ship.querySelectorAll('thead th')].map(t => t.textContent), ['Product', 'SKU', 'Qty', 'Retail', 'Discount', 'After discount']);
@@ -94,9 +103,9 @@ setTimeout(() => {
     nsRows, [['Pre-existing PoE Switch Pre-existing', '1'], ['Customer-supplied Monitor Customer-supplied', '1']]);
   check('pre-existing / customer-supplied never count toward shipping', ship.textContent.indexOf('PoE Switch') < 0 && ship.textContent.indexOf('Monitor') < 0, true);
   const removed = tray.querySelector('.scw-bom__removed');
-  check('Removed by change order: rows with field_2967 set, grouped by the CO, chip, no pricing, never in Shipping',
+  check('Removed by change order: rows with field_2967 set, headed by the CO\'s SOW number (off its own lines, not the flag\'s display value), chip, no pricing, never in Shipping',
     [[...removed.querySelectorAll('.scw-bom__group td')].map(g => g.textContent), [...removed.querySelectorAll('tbody tr:not(.scw-bom__group)')].map(cells), ship.textContent.indexOf('Removed Camera') < 0],
-    [['CO 1'], [['Removed Camera Removed', '1']], true]);
+    [['SOW 1601CO'], [['Removed Camera Removed', '1']], true]);
   // Toggle → by MDF / IDF. The tray REPAINTS IN PLACE: same element, still tagged for the
   // drawer to clear (a swapped-in fresh element lost the tag and lingered under the next tray).
   tray.querySelector('[data-scw-bom-set="loc"]').click();
@@ -119,7 +128,7 @@ setTimeout(() => {
     [[...g3].map(g => g.textContent), tray.getAttribute('data-scw-bom-mode')], [['SOW 1524', 'SOW 1524 + SOW 1601', 'SOW 1601', 'No SOW'], 'sow']);
   const sowRows = [...tray.querySelectorAll('.scw-bom__table')][0].querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total):not(.scw-bom__subtotal)');
   check('rows under their SOW', [cells(sowRows[0])[0], cells(sowRows[1])[0], cells(sowRows[2])[0], cells(sowRows[3])[0], cells(sowRows[4])[0]],
-    ['Informant 8.0 v5 · I-001 to I-005 3 new drops', 'Imperial 128 Channel 4K NVR v3', 'Junction Box', 'v2 16 Drive Mini-SAS Enclosure (Special Order) Special order', 'Cat6 Uplink']);
+    ['Informant 8.0 v5 · I-001 to I-005 3 new drops', 'Imperial 128 Channel 4K NVR v3 Swapped in by SOW 1601CO · was Imperial 64 Channel NVR', 'Junction Box Removal pending · SOW 1601CO not signed', 'v2 16 Drive Mini-SAS Enclosure (Special Order) Special order', 'Cat6 Uplink']);
   // Re-open: the earlier tray is dropped, never stacked.
   window.SCW.bomTray.open();
   check('re-opening replaces the tray (one in the page), remembering the last grouping', [document.querySelectorAll('.scw-bom').length, opened.el.getAttribute('data-scw-bom-mode')], [1, 'sow']);
