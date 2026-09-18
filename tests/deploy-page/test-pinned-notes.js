@@ -120,7 +120,7 @@ setTimeout(() => {
       [true, 'scw-notes-list', true, 'none']);
     check('the proxied "Add Project Note" button is hidden; the form keeps its own submit, relabelled',
       [document.getElementById('scw-pinned-notes-css-form').textContent, formHost.querySelector('button[type="submit"]').textContent, !!formHost.querySelector('textarea').getAttribute('placeholder')],
-      ['#scw-deploy-notes-actionbar { display: none !important; }', 'Save note', true]);
+      ['#view_4162:not(.scw-notes-addform) { display: none !important; }\n#scw-deploy-notes-actionbar { display: none !important; }', 'Save note', true]);
     const pinCb = formHost.querySelector('.kn-submit input[name="scw_pin"]');
     check('a Pin checkbox rides in the submit row (the form has no pin input)', [!!pinCb, pinCb && pinCb.disabled], [true, false]);
     check('the empty-state hint / CTA click focuses the form instead of navigating', [clickCta(), !!view.querySelector('.scw-notes-compose')], [true, false]);
