@@ -141,6 +141,7 @@ cat \
   src/features/install-as-quoted-panel.js \
   src/features/deploy-page-nav.js \
   src/features/pinned-notes.js \
+  src/features/site-maps-strip.js \
   src/features/qa-popover.js \
   src/features/photo-edit-panel.js \
   src/features/config-qa-popover.js \

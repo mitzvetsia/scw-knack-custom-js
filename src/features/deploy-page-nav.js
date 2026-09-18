@@ -40,24 +40,28 @@
     { sceneId: 'scene_1311',                 // internal ops deploy page
       worksheetMount: 'scw-ws-v2-view_4093',
       questionnaireView: 'view_4015',
-      // Hidden DOC_files inline-edit grid (closeout-deliverables' save view):
-      // its model carries every closeout document with file + type + QA,
-      // which the Setup drawer lists (generated forms, front and centre).
-      docsView: 'view_3941' },
+      // DOC_files grids whose models the Setup drawer reads for the BLANK
+      // generated PDFs the sub prints and gets completed on site: the
+      // "Other Files" gallery (the generator files them there, typed
+      // "… (not completed)") first, then the closeout save grid (kickoff
+      // deck). Completed uploads are Closeout's business, not Setup's.
+      docsViews: ['view_3942', 'view_3941'] },
     { sceneId: 'scene_1353',                 // subcontractor deployment dashboard
       worksheetMount: 'scw-ws-v2-view_4056',
       questionnaireView: 'view_4053',
-      docsView: 'view_4068' }
+      docsViews: ['view_4063', 'view_4068'] }
   ];
-  // DOC_files columns on docsView.
-  var DOC_F = { type: 'field_2877', file: 'field_68', qa: 'field_2879', required: 'field_2894', complete: 'field_2895' };
-  // The documents generated at setup, in display order (matched on the
-  // CONFIG_file type name).
+  // DOC_files columns on the docs views.
+  var DOC_F = { type: 'field_2877', file: 'field_68', notes: 'field_588' };
+  // The documents generated at setup, in display order, matched on the
+  // CONFIG_file type name. The approval forms match ONLY their blank
+  // "(not completed)" incarnation — the completed upload has the same base
+  // name and belongs to Closeout.
   var SETUP_DOCS = [
-    { match: /scope of work/i,       label: 'Scope of Work PDF' },
-    { match: /location approval/i,   label: 'Location Approval Form' },
-    { match: /view approval/i,       label: 'View Approval Form' },
-    { match: /kickoff/i,             label: 'Kickoff Deck' }
+    { match: /scope of work/i,                                 label: 'Scope of Work PDF' },
+    { match: /location approval.*not completed/i,             label: 'Location Approval Form (blank)' },
+    { match: /view approval.*not completed/i,                  label: 'View Approval Form (blank)' },
+    { match: /kickoff/i,                                       label: 'Kickoff Deck' }
   ];
 
   var NAV_ID    = 'scw-deploy-nav';
@@ -91,7 +95,16 @@
           sub: 'The bid this scope is priced from, and its signature status.' }
       } },
     { match: /^closeout$/i, rename: 'Closeout Deliverables',
-      sub: 'Documents required before closeout + Certificate of Completion.' }
+      sub: 'Documents required before closeout + Certificate of Completion.' },
+    // "Also on this project" rows: say what each one holds.
+    { match: /^other files$/i, rename: 'Files',
+      sub: 'SOW PDFs, approval forms, anything else filed on the project.' },
+    { match: /^additional photos$/i, rename: 'Context photos',
+      sub: 'Rooms, racks and site shots not tied to a line item.' },
+    { match: /^project notes$/i,
+      sub: 'Pushed to ClickUp + Slack. Pin the ones every visit should see.' },
+    { match: /^change orders?$/i,
+      sub: 'Adds and removes against the install scope.' }
   ];
   // (Band dividers retired 2026-09-18: the stage tiles + drawers replaced
   // them — see docs/deploy-page-redesign.md.)
@@ -163,7 +176,33 @@
       '  background: rgba(255,255,255,0.18);',
       '}',
       '.scw-deploy-bar > span { display: block; height: 100%; }',
-      '.scw-deploy-also { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }',
+      /* Row 2: maps slot + "Also on this project". With no maps (slot
+         empty) the list runs horizontally; with maps it becomes the
+         right-hand column of the strip card. */
+      '.scw-deploy-row2 { display: flex; gap: 12px; align-items: stretch; }',
+      '.scw-deploy-maps-slot:empty { display: none; }',
+      '.scw-deploy-maps-slot { flex: 1 1 auto; min-width: 0; }',
+      '.scw-deploy-also {',
+      '  display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1 1 auto;',
+      '  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 14px;',
+      '}',
+      '.scw-deploy-row2.has-maps .scw-deploy-also {',
+      '  flex: 0 0 340px; flex-direction: column; align-items: stretch; gap: 2px;',
+      '}',
+      '.scw-deploy-also #' + NAV_ID + '-label { flex: 0 0 100%; margin-bottom: 4px; }',
+      '.scw-deploy-row2:not(.has-maps) .scw-deploy-also #' + NAV_ID + '-label { flex: none; margin: 0 6px 0 2px; }',
+      '.scw-deploy-also__row {',
+      '  display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer;',
+      '  padding: 6px 8px; border-radius: 8px; border: 1px solid transparent; background: #fff;',
+      '  font: 12.5px/1.3 system-ui, sans-serif; color: #0f172a;',
+      '}',
+      '.scw-deploy-also__row:hover { background: #f8fafc; border-color: #dbe4ee; }',
+      '.scw-deploy-also__label { font-weight: 600; white-space: nowrap; }',
+      '.scw-deploy-also__sub { color: #475569; font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+      '.scw-deploy-row2:not(.has-maps) .scw-deploy-also__sub { display: none; }',
+      '.scw-deploy-also__chev { color: #94a3b8; margin-left: auto; }',
+      '.scw-deploy-row2.has-maps .scw-deploy-also__row .scw-deploy-nav-count { margin-left: auto; }',
+      '.scw-deploy-row2.has-maps .scw-deploy-also__row .scw-deploy-nav-count + .scw-deploy-also__chev { margin-left: 0; }',
       '.scw-deploy-tile__link, .scw-deploy-tile__action {',
       '  font: 600 12px/1.2 system-ui, sans-serif; cursor: pointer; text-align: left;',
       '}',
@@ -456,6 +495,7 @@
                       sub: ov.sub || sec.sub };
       var name = sec.rename || ot;
       acc.setAttribute('data-scw-nav-label', name);
+      if (sec.sub) acc.setAttribute('data-scw-nav-sub', sec.sub);
       var titleEl = acc.querySelector('.scw-acc-title');
       if (!titleEl) continue;
       var want = esc(name) +
@@ -831,27 +871,40 @@
       if (!keep[old[o].getAttribute('data-scw-tile')]) tiles.removeChild(old[o]);
     }
     if (fresh) nav.appendChild(tiles);
-    var oldAlso = nav.querySelector('.scw-deploy-also');
-    if (oldAlso) nav.removeChild(oldAlso);
 
+    // Row 2: [ site maps slot | "Also on this project" list ]. The slot is
+    // owned by site-maps-strip.js and survives rebuilds; only the list is
+    // re-rendered here.
+    var row2 = nav.querySelector('.scw-deploy-row2');
+    if (!row2) {
+      row2 = document.createElement('div');
+      row2.className = 'scw-deploy-row2';
+      row2.innerHTML = '<div class="scw-deploy-maps-slot"></div>';
+      nav.appendChild(row2);
+    }
+    var oldAlso = row2.querySelector('.scw-deploy-also');
+    if (oldAlso) row2.removeChild(oldAlso);
     if (also.length) {
-      var row = document.createElement('div');
-      row.className = 'scw-deploy-also';
-      row.innerHTML = '<span id="' + NAV_ID + '-label">Also on this project</span>';
+      var list = document.createElement('div');
+      list.className = 'scw-deploy-also';
+      list.innerHTML = '<span id="' + NAV_ID + '-label">Also on this project</span>';
       for (var i = 0; i < also.length; i++) {
         (function (t) {
+          var sub = t.el.getAttribute('data-scw-nav-sub') || '';
           var btn = document.createElement('button');
           btn.type = 'button';
-          btn.className = 'scw-deploy-nav-item';
+          btn.className = 'scw-deploy-also__row';
           btn.innerHTML =
             (t.warn ? '<span class="scw-deploy-nav-dot" title="Needs attention"></span>' : '') +
-            '<span>' + esc(t.label) + '</span>' +
-            (t.count ? '<span class="scw-deploy-nav-count">' + esc(t.count) + '</span>' : '');
+            '<span class="scw-deploy-also__label">' + esc(t.label) + '</span>' +
+            (sub ? '<span class="scw-deploy-also__sub">' + esc(sub) + '</span>' : '') +
+            (t.count ? '<span class="scw-deploy-nav-count">' + esc(t.count) + '</span>' : '') +
+            '<span class="scw-deploy-also__chev">›</span>';
           btn.addEventListener('click', function () { openDrawer(t); });
-          row.appendChild(btn);
+          list.appendChild(btn);
         })(also[i]);
       }
-      nav.appendChild(row);
+      row2.appendChild(list);
     }
   }
 
@@ -932,26 +985,34 @@
     return String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
   }
   function setupDocs(cfg) {
-    var recs = modelRecords(cfg.docsView);
-    var out = [];
-    for (var i = 0; i < recs.length; i++) {
-      var rec = recs[i];
-      var typeRaw = rec[DOC_F.type + '_raw'];
-      var type = Array.isArray(typeRaw) ? (typeRaw[0] && typeRaw[0].identifier) || '' : plainText(rec[DOC_F.type]);
-      var kind = null;
-      for (var k = 0; k < SETUP_DOCS.length; k++) if (SETUP_DOCS[k].match.test(type)) { kind = SETUP_DOCS[k]; break; }
-      if (!kind) continue;
-      var fileRaw = rec[DOC_F.file + '_raw'];
-      var url = fileRaw && typeof fileRaw === 'object' ? (fileRaw.url || '') : '';
-      var name = fileRaw && typeof fileRaw === 'object' ? (fileRaw.filename || '') : '';
-      if (!url) {   // formatted value may still carry an <a href>
-        var m = String(rec[DOC_F.file] || '').match(/href="([^"]+)"/);
-        if (m) url = m[1];
+    var out = [], seen = {}, anyRecords = false;
+    var views = cfg.docsViews || [];
+    for (var v = 0; v < views.length; v++) {
+      var recs = modelRecords(views[v]);
+      if (recs.length) anyRecords = true;
+      for (var i = 0; i < recs.length; i++) {
+        var rec = recs[i];
+        if (!rec || !rec.id || seen[rec.id]) continue;
+        var typeRaw = rec[DOC_F.type + '_raw'];
+        var type = Array.isArray(typeRaw) ? (typeRaw[0] && typeRaw[0].identifier) || '' : plainText(rec[DOC_F.type]);
+        var kind = null;
+        for (var k = 0; k < SETUP_DOCS.length; k++) if (SETUP_DOCS[k].match.test(type)) { kind = SETUP_DOCS[k]; break; }
+        if (!kind) continue;
+        var fileRaw = rec[DOC_F.file + '_raw'];
+        var url = fileRaw && typeof fileRaw === 'object' ? (fileRaw.url || '') : '';
+        var name = fileRaw && typeof fileRaw === 'object' ? (fileRaw.filename || '') : '';
+        if (!url) {   // formatted value may still carry an <a href>
+          var m = String(rec[DOC_F.file] || '').match(/href="([^"]+)"/);
+          if (m) { url = m[1]; name = name || plainText(rec[DOC_F.file]); }
+        }
+        if (!url) continue;                     // a typed record with no file isn't a generated PDF
+        seen[rec.id] = true;
+        out.push({ kind: kind, type: kind.label, url: url, name: name,
+                   note: plainText(rec[DOC_F.notes]), order: SETUP_DOCS.indexOf(kind) });
       }
-      out.push({ kind: kind, type: type || kind.label, url: url, name: name,
-                 qa: plainText(rec[DOC_F.qa]), order: SETUP_DOCS.indexOf(kind) });
     }
     out.sort(function (a, b) { return a.order - b.order; });
+    out.anyRecords = anyRecords;
     return out;
   }
   function buildSetupPrelude(cfg) {
@@ -959,7 +1020,7 @@
     var box = document.createElement('div');
     box.className = 'scw-deploy-drawer__prelude';
     var rows = '';
-    if (!docs.length && !modelRecords(cfg.docsView).length) {
+    if (!docs.length && !docs.anyRecords) {
       rows = '<div class="scw-deploy-docs__empty">Documents haven\'t loaded yet, or none have been generated for this project.</div>';
     } else {
       for (var i = 0; i < SETUP_DOCS.length; i++) {
@@ -968,12 +1029,10 @@
           if (docs[d].kind !== kind) continue;
           found = true;
           var doc = docs[d];
-          var state = !doc.url ? 'Not generated'
-            : (/pass/i.test(doc.qa) ? 'QA passed' : /fail/i.test(doc.qa) ? 'QA failed' : 'Generated');
-          rows += '<div class="scw-deploy-docs__row' + (doc.url ? '' : ' is-missing') + '">' +
+          rows += '<div class="scw-deploy-docs__row">' +
             '<span class="scw-deploy-docs__type">' + esc(doc.type) + '</span>' +
-            '<span class="scw-deploy-docs__state">' + esc(state) + (doc.name ? ' · ' + esc(doc.name) : '') + '</span>' +
-            (doc.url ? '<a class="scw-deploy-docs__open" href="' + esc(doc.url) + '" target="_blank" rel="noopener">Open ›</a>' : '') +
+            '<span class="scw-deploy-docs__state">Ready to print' + (doc.name ? ' · ' + esc(doc.name) : '') + (doc.note ? ' · ' + esc(doc.note) : '') + '</span>' +
+            '<a class="scw-deploy-docs__open" href="' + esc(doc.url) + '" target="_blank" rel="noopener">Open ›</a>' +
           '</div>';
         }
         if (!found) {
@@ -985,8 +1044,8 @@
     }
     box.innerHTML =
       '<div class="scw-deploy-docs__head">' +
-        '<span class="scw-deploy-docs__title">Project documents</span>' +
-        '<span class="scw-deploy-docs__sub">Generated after the client kickoff, before a tech is on site.</span>' +
+        '<span class="scw-deploy-docs__title">Documents for the sub</span>' +
+        '<span class="scw-deploy-docs__sub">Blank PDFs generated after the client kickoff, for the sub to print and get completed on site. Completed copies come back under Closeout.</span>' +
         '<span class="scw-deploy-tile__actions scw-deploy-docs__actions">' +
           '<button type="button" class="scw-deploy-tile__action" data-scw-drawer-docs="1">Generate documents…</button>' +
         '</span>' +
@@ -1026,7 +1085,7 @@
     // The Setup drawer leads with the generated documents (the questionnaire
     // section follows); the tile alone would otherwise just re-link them.
     var st = stageFor(acc), active = activeScene();
-    if (st && st.id === 'setup' && active && active.cfg.docsView) {
+    if (st && st.id === 'setup' && active && active.cfg.docsViews) {
       body.appendChild(buildSetupPrelude(active.cfg));
     }
     body.appendChild(acc);
