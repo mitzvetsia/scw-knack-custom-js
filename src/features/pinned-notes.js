@@ -32,6 +32,8 @@
   var STYLE_ID  = 'scw-pinned-notes-css';
   var EVENT_NS  = '.scwPinnedNotes';
   var CARDS_CLS = 'scw-notes-cards';     // on the view element while the card list owns the surface
+  var COLLAPSE_CHARS = 320;              // longer notes start collapsed (Show more)
+  var COLLAPSE_LINES = 4;
   var PIN_SVG   = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M9 3h6l-1 7 3 3H7l3-3z"></path></svg>';
 
   function injectStyles() {
@@ -77,6 +79,14 @@
       '.scw-note-card__author { font-weight: 600; color: #334155; }',
       '.scw-note-card__meta .scw-pin-toggle { margin-left: auto; }',
       '.scw-note-card__text { font-size: 13.5px; line-height: 1.5; color: #0f172a; white-space: pre-line; overflow-wrap: anywhere; }',
+      '.scw-note-card.is-collapsed .scw-note-card__text {',
+      '  display: -webkit-box; -webkit-line-clamp: ' + COLLAPSE_LINES + '; -webkit-box-orient: vertical; overflow: hidden;',
+      '}',
+      '.scw-note-card__more {',
+      '  margin-top: 6px; background: none; border: 0; padding: 0; cursor: pointer;',
+      '  font: 600 12px/1.2 system-ui, sans-serif; color: #0f4c81;',
+      '}',
+      '.scw-note-card__more:hover { text-decoration: underline; }',
       '.scw-note-card__links { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }',
       '.scw-note-card__link { background: none; border: 0; padding: 0; cursor: pointer; font: 600 12px/1.2 system-ui, sans-serif; color: #0f4c81; }',
       '.scw-note-card__link:hover { text-decoration: underline; }',
@@ -234,10 +244,24 @@
     for (var i = 0; i < cells.length; i++) {
       var td = cells[i], key = (td.className.match(/\bfield_\d+\b/) || [])[0];
       if (key && skip[key]) continue;
-      var anchors = td.querySelectorAll('a');
-      for (var j = 0; j < anchors.length; j++) {
-        var label = plain(anchors[j].textContent);
-        if (label) out.push({ label: label, a: anchors[j] });
+      // Knack renders link columns several ways: <a class="kn-action-link">,
+      // a .kn-action-link wrapper holding an <a>, or (older) a bare span —
+      // take the innermost clickable element with a label.
+      var els = td.querySelectorAll('a, button, .kn-action-link, .kn-link');
+      var seen = [];
+      for (var j = 0; j < els.length; j++) {
+        var el = els[j];
+        if (el.querySelector('a, button')) continue;        // wrapper: its child is the target
+        var label = plain(el.textContent);
+        if (!label || seen.indexOf(el) >= 0) continue;
+        seen.push(el);
+        out.push({ label: label, a: el });
+      }
+      // A link cell with plain text and nothing clickable inside: proxy the
+      // cell itself (Knack's delegated handler reads the row from the td).
+      if (!els.length && /\bkn-table-link\b/.test(td.className)) {
+        var t = plain(td.textContent);
+        if (t) out.push({ label: t, a: td });
       }
     }
     return out;
@@ -255,8 +279,24 @@
     card.appendChild(meta);
     var text = document.createElement('div');
     text.className = 'scw-note-card__text';
-    text.textContent = n.body || n.text || '(empty note)';
+    var body = n.body || n.text || '(empty note)';
+    text.textContent = body;
     card.appendChild(text);
+    // Long notes start collapsed to a few lines with a Show more toggle;
+    // short ones show whole.
+    if (body.length > COLLAPSE_CHARS || body.split('\n').length > COLLAPSE_LINES) {
+      card.classList.add('is-collapsed');
+      var more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'scw-note-card__more';
+      more.textContent = 'Show more';
+      more.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var open = card.classList.toggle('is-collapsed');
+        more.textContent = open ? 'Show more' : 'Show less';
+      });
+      card.appendChild(more);
+    }
     var links = rowLinks(tr, cfg.fields);
     if (links.length) {
       var wrap = document.createElement('div');
@@ -313,7 +353,8 @@
     if (notes.length && !linkTotal && view.querySelector('thead th.kn-table-action-link, thead th.kn-table-link') && !view.__scwNotesLinkWarned) {
       view.__scwNotesLinkWarned = true;
       console.warn('[scw-pinned-notes] action column present but no row links found; first row:',
-        firstTr ? firstTr.outerHTML.slice(0, 800) : '(no row matched a model record)');
+        firstTr ? firstTr.outerHTML.slice(0, 1500) : '(no row matched a model record; tbody: ' +
+          String((view.querySelector('table tbody') || {}).innerHTML || '').slice(0, 600) + ')');
     }
     watchGrid(cfg, view);
   }

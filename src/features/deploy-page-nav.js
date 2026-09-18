@@ -153,9 +153,14 @@
       '  cursor: pointer; font: 13px/1.4 system-ui, sans-serif; color: #0f172a;',
       '}',
       '.scw-deploy-tile:hover { border-color: #b6c9db; }',
+      /* The current stage: same white tile, a navy frame + filled pill.
+         (A navy fill marked the stage you are already standing on louder
+         than anything else on the page.) */
       '.scw-deploy-tile--current {',
-      '  background: #163C6E; border-color: #163C6E; color: #fff;',
+      '  border: 2px solid #163C6E; padding: 11px 15px;',
+      '  box-shadow: 0 1px 0 rgba(22, 60, 110, 0.12);',
       '}',
+      '.scw-deploy-tile--current:hover { border-color: #163C6E; }',
       '.scw-deploy-tile__top {',
       '  display: flex; align-items: center; justify-content: space-between; gap: 8px;',
       '}',
@@ -163,7 +168,7 @@
       '  font: 700 10.5px/1 system-ui, sans-serif; letter-spacing: 0.1em;',
       '  text-transform: uppercase; color: #64748b;',
       '}',
-      '.scw-deploy-tile--current .scw-deploy-tile__eyebrow { color: rgba(255,255,255,0.75); }',
+      '.scw-deploy-tile--current .scw-deploy-tile__eyebrow { color: #163C6E; }',
       '.scw-deploy-tile__state {',
       '  padding: 2px 8px; border-radius: 999px; white-space: nowrap;',
       '  font: 700 11px/1.2 system-ui, sans-serif; border: 1px solid transparent;',
@@ -171,24 +176,22 @@
       '.scw-deploy-tile__state--ok      { background: #dcfce7; border-color: #86efac; color: #15803d; }',
       '.scw-deploy-tile__state--warn    { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
       '.scw-deploy-tile__state--muted   { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }',
-      '.scw-deploy-tile__state--current { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.35); color: #fff; }',
+      '.scw-deploy-tile__state--current { background: #163C6E; border-color: #163C6E; color: #fff; }',
       '.scw-deploy-tile__head { font-size: 15px; font-weight: 600; }',
       '.scw-deploy-tile__fact { font-size: 12px; color: #475569; }',
       '.scw-deploy-tile__fact--warn { color: #92400e; }',
-      '.scw-deploy-tile--current .scw-deploy-tile__fact { color: rgba(255,255,255,0.85); }',
       '.scw-deploy-tile__link { margin-top: auto; font-size: 12px; font-weight: 600; color: #0f4c81; }',
-      '.scw-deploy-tile--current .scw-deploy-tile__link { color: rgba(255,255,255,0.85); }',
       /* One progress bar per owner (Sub submits, SCW reviews). */
       '.scw-deploy-bars {',
       '  display: grid; grid-template-columns: 30px minmax(0, 1fr) auto;',
       '  gap: 5px 8px; align-items: center; margin-top: 2px;',
-      '  font: 11px/1.2 system-ui, sans-serif; color: rgba(255,255,255,0.88);',
+      '  font: 11px/1.2 system-ui, sans-serif; color: #475569;',
       '  font-variant-numeric: tabular-nums;',
       '}',
-      '.scw-deploy-bars b { font-weight: 700; }',
+      '.scw-deploy-bars b { font-weight: 700; color: #0f172a; }',
       '.scw-deploy-bar {',
       '  display: flex; height: 6px; border-radius: 999px; overflow: hidden;',
-      '  background: rgba(255,255,255,0.18);',
+      '  background: #e2e8f0;',
       '}',
       '.scw-deploy-bar > span { display: block; height: 100%; }',
       /* Row 2: maps slot + "Also on this project". With no maps (slot
@@ -1338,7 +1341,7 @@
           '<span class="scw-deploy-bars">' +
             '<b>Sub</b>' +
             '<span class="scw-deploy-bar">' +
-              '<span style="width:' + pct(ps.inCount - ps.failed, ps.required) + '%;background:#93c5fd"></span>' +
+              '<span style="width:' + pct(ps.inCount - ps.failed, ps.required) + '%;background:#60a5fa"></span>' +
               '<span style="width:' + subFail + '%;background:#e11d48"></span>' +
             '</span>' +
             '<span>' + ps.inCount + ' of ' + ps.required + ' in · ' + ps.missing + ' missing' +
@@ -1348,7 +1351,9 @@
               '<span style="width:' + pct(ps.passed, ps.inCount) + '%;background:#22c55e"></span>' +
               '<span style="width:' + pct(ps.failed, ps.inCount) + '%;background:#e11d48"></span>' +
             '</span>' +
-            '<span>' + (ps.passed + ps.failed) + ' of ' + ps.inCount + ' reviewed · ' + ps.pending + ' waiting</span>' +
+            '<span>' + (ps.inCount
+              ? (ps.passed + ps.failed) + ' of ' + ps.inCount + ' reviewed · ' + ps.pending + ' waiting'
+              : 'Nothing to review yet') + '</span>' +
           '</span>';
       }
       var facts = [];
@@ -1383,6 +1388,7 @@
       model.stateText = roll.known
         ? (roll.warn ? (/missing/.test(missingPart) ? missingPart : 'Waiting') : 'Done')
         : 'Open';
+      if (model.fact === model.stateText) model.fact = '';   // the pill already says it
     }
     model.sig = [stage.id, count, model.head, model.fact, model.stateText].join(',');
     return model;

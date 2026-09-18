@@ -209,8 +209,8 @@
       ? '<a class="scw-maps__btn scw-maps__upload" href="' + esc(uploadHref) + '">+ Upload site plan</a>'
       : '<button type="button" class="scw-maps__btn scw-maps__upload" data-map-upload="1">Files ›</button>';
     var emptyText = uploadHref
-      ? 'No site plan or coverage map is filed on this project. Upload one here and give it the Site Plan file type. Images get a thumbnail; PDFs a document card.'
-      : 'No site plan or coverage map is filed on this project. Upload one from the Build SOW page (Site Maps &amp; Other Files → Add Document), then set its file type to Site Plan under Files here. Images get a thumbnail; PDFs a document card.';
+      ? 'Upload a site plan or coverage map and give it the Site Plan file type.'
+      : 'Upload a site plan or coverage map from the Build SOW page, then set its file type to Site Plan under Files.';
     strip.innerHTML =
       '<div class="scw-maps__head"><span class="scw-maps__title">Site maps &amp; coverage</span>' +
         (list.length
