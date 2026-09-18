@@ -59,6 +59,7 @@ cat \
   src/features/proposal-preview-images.js \
   src/features/proposal-preview-expiration.js \
   src/features/published-proposal-render.js \
+  src/features/accept-proposal-guard.js \
   src/features/secure-proposal-link.js \
   src/features/bid-items-grid.js \
   src/features/bid-review/config.js \

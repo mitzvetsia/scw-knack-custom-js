@@ -625,18 +625,43 @@
       .replace(/<[^>]*>/g, '').replace(/[^0-9.\-]/g, ''));
     return isNaN(n) ? NaN : n;
   }
+  function isAcceptedCount(n) { return !isNaN(n) && n > 1; }
+  // Tripwire: the accept form page (accept-proposal-guard.js) records the
+  // proposal id in localStorage the moment its form submits, so THIS
+  // browser treats the proposal as accepted at once — field_2990 is a
+  // Knack count that catches up seconds later, and that gap (plus a Back
+  // button) is how a rep accepted twice.
+  var TRIPWIRE_PREFIX = 'scw:proposal-accepted:';
+  function markAcceptedHere(id) {
+    if (!id) return;
+    try { window.localStorage.setItem(TRIPWIRE_PREFIX + id, new Date().toISOString()); } catch (e) { /* optional */ }
+  }
+  function acceptedHereAt(id) {
+    if (!id) return '';
+    try { return window.localStorage.getItem(TRIPWIRE_PREFIX + id) || ''; } catch (e) { return ''; }
+  }
   function isProposalAccepted() {
-    var n = readAcceptCount(readPublishedProposalAttrs());
-    if (!isNaN(n)) return n > 1;
+    var attrs = readPublishedProposalAttrs();
+    if (attrs && attrs.id && acceptedHereAt(attrs.id)) return true;
+    var n = readAcceptCount(attrs);
+    if (!isNaN(n)) return isAcceptedCount(n);
     try {
       var v = window.Knack && Knack.views && Knack.views[SOW_DETAIL_VIEW];
-      var attrs = v && v.model && (v.model.attributes
+      var sattrs = v && v.model && (v.model.attributes
                   || (v.model.data && v.model.data.attributes));
-      var n2 = readAcceptCount(attrs);
-      if (!isNaN(n2)) return n2 > 1;
+      var n2 = readAcceptCount(sattrs);
+      if (!isNaN(n2)) return isAcceptedCount(n2);
     } catch (e) { /* not accepted */ }
     return false;
   }
+  // Shared with accept-proposal-guard.js (the accept form page): one
+  // reading of "accepted", one tripwire.
+  window.SCW = window.SCW || {};
+  window.SCW.proposalAccept = {
+    sceneId: SCENE_ID, viewId: VIEW_ID, countField: ACCEPT_COUNT_FIELD,
+    readAcceptCount: readAcceptCount, isAcceptedCount: isAcceptedCount,
+    markAcceptedHere: markAcceptedHere, acceptedHereAt: acceptedHereAt
+  };
 
   // Green "already accepted" notice — takes the Accept CTA's spot (just
   // above the first .view-title) when field_2990 (> 1) says the proposal

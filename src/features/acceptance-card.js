@@ -1198,6 +1198,7 @@
       '  border: 1px solid transparent; }',
       '.scw-acpt-pill.is-yes { background: #dcfce7; border-color: #86efac; color: #15803d; }',
       '.scw-acpt-pill.is-no  { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
+      '.scw-acpt-pill.is-dup { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }',
       '.scw-acpt-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }',
       '.scw-acpt-btn { display: inline-flex; align-items: center; gap: 7px; cursor: pointer;',
       '  font: 600 12.5px/1 system-ui, sans-serif; padding: 8px 14px; border-radius: 6px;',
@@ -2306,6 +2307,10 @@
         // Status belongs under the thing it describes, and keeps the top
         // line to just name + figure.
         '<div class="scw-acpt-status">' +
+          (isDupRow(viewKey, row)
+            ? '<span class="scw-acpt-pill is-dup" title="More than one base acceptance for this SOW — the proposal was accepted twice. Keep one, remove the other before it invoices.">' +
+                '<span>Accepted twice — duplicate</span></span>'
+            : '') +
           (isCo ? '' :
             (terms
               ? pill('Approved for terms', true)
@@ -2771,6 +2776,8 @@
     // Per-SOW sub-bid sums, resolved ONCE for the whole card.
     var bySow = proposedSubBidBySow();
     var signedCount = 0, pendingCo = 0, entries = [];
+    var dups = dupTokensFor(VIEW, rows);
+    _dupTokens = dups.byToken;
     for (var ri = 0; ri < rows.length; ri++) {
       if (isYes(cellText(rows[ri], F.signed))) signedCount++;
       else if (isCoRow(VIEW, rows[ri])) pendingCo++;
@@ -2783,7 +2790,7 @@
     var foot = buildProjectMoney(entries, true);
     if (foot) card.appendChild(foot);
     viewEl.appendChild(card);
-    rollup(viewEl, rows.length - signedCount, pendingCo);
+    rollup(viewEl, rows.length - signedCount, pendingCo, dups.rows);
   }
 
   /** A change-order acceptance: the SOW number's CO suffix (SW1418CO) when
@@ -2792,15 +2799,36 @@
     if (/\bSW\d+CO\b/i.test(cellText(row, F.proposal))) return true;
     try { return isCoSnapshot(readSnapshot(viewKey, row)); } catch (e) { return false; }
   }
+  /** Duplicate base acceptances: two (or more) non-CO rows for the same
+   *  SOW — a rep accepted the proposal twice (accept-proposal-guard.js now
+   *  stops that at the source; this names the ones already on file so ops
+   *  removes the extra before it invoices). */
+  var _dupTokens = {};
+  function dupTokensFor(viewKey, rows) {
+    var counts = {}, dups = {}, n = 0;
+    for (var i = 0; i < rows.length; i++) {
+      if (isCoRow(viewKey, rows[i])) continue;
+      var t = sowTokenOf(rows[i]);
+      if (!t) continue;
+      counts[t] = (counts[t] || 0) + 1;
+    }
+    for (var k in counts) if (counts[k] > 1) { dups[k] = counts[k]; n += counts[k]; }
+    return { byToken: dups, rows: n };
+  }
+  function isDupRow(viewKey, row) {
+    return !isCoRow(viewKey, row) && !!_dupTokens[sowTokenOf(row)];
+  }
   /** Accordion-header tally: "N awaiting signature" (amber) / "all signed"
    *  (green), plus the attention flag the deploy nav's amber dot reads.
    *  Says when what is waiting is a change order — a PM reading the
    *  Paperwork tile needs to know whether the base agreement or a CO is
-   *  the holdup. Shared by both variants. */
-  function rollup(viewEl, pending, pendingCo) {
+   *  the holdup — and when the same SOW was accepted more than once.
+   *  Shared by both variants. */
+  function rollup(viewEl, pending, pendingCo, dupRows) {
     var acc = viewEl.closest('.scw-ktl-accordion');
     if (!acc) return;
-    acc.toggleAttribute && acc.toggleAttribute('data-scw-attention', pending > 0);
+    dupRows = dupRows || 0;
+    acc.toggleAttribute && acc.toggleAttribute('data-scw-attention', pending > 0 || dupRows > 0);
     var head = acc.querySelector('.scw-ktl-accordion__header');
     if (!head) return;
     var countEl = head.querySelector('.scw-acc-count');
@@ -2811,8 +2839,8 @@
       if (countEl) head.insertBefore(roll, countEl);
       else head.appendChild(roll);
     }
-    roll.classList.toggle('scw-acpt-rollup--warn', pending > 0);
-    roll.classList.toggle('scw-acpt-rollup--ok', pending === 0);
+    roll.classList.toggle('scw-acpt-rollup--warn', pending > 0 || dupRows > 0);
+    roll.classList.toggle('scw-acpt-rollup--ok', pending === 0 && dupRows === 0);
     var text = 'all signed';
     if (pending > 0) {
       pendingCo = pendingCo || 0;
@@ -2823,6 +2851,7 @@
           (pendingCo ? ' · ' + pendingCo + (pendingCo === 1 ? ' is a change order' : ' are change orders') : '');
       }
     }
+    if (dupRows) text += ' · accepted twice';
     roll.textContent = text;
   }
 
@@ -2864,13 +2893,15 @@
     // top so a 6-12 acceptance pile on a big project self-prioritizes.
     var entries = [];
     var signedCount = 0, pendingCo = 0;
+    var dups = dupTokensFor(VIEW, rows);
+    _dupTokens = dups.byToken;
     for (var ri = 0; ri < rows.length; ri++) {
       var r = rows[ri];
       var rSigned = isYes(cellText(r, F.signed));
       var rPaid   = isYes(cellText(r, F.payment));
       var rTerms  = isYes(cellText(r, F.terms));
       var rIsCo   = isCoRow(VIEW, r);
-      var attention = !rSigned || (!rIsCo && !rTerms && !rPaid);
+      var attention = !rSigned || (!rIsCo && !rTerms && !rPaid) || isDupRow(VIEW, r);
       if (rSigned) signedCount++;
       else if (rIsCo) pendingCo++;
       entries.push({ row: r, attention: attention, order: ri });
@@ -2935,7 +2966,7 @@
 
     // Rollup badge in the accordion header bar — visible without
     // expanding; the attention attribute feeds the deploy nav's amber dot.
-    rollup(viewEl, rows.length - signedCount, pendingCo);
+    rollup(viewEl, rows.length - signedCount, pendingCo, dups.rows);
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
