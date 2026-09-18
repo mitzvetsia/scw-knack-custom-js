@@ -188,6 +188,30 @@ the rollup unit**, not the individual checks.
 - Install line item: `QA_status` (multiple choice), `QA_checks done`,
   `QA_checks total` (numbers), all inline-editable on the install grid
   (view_4093) so the bundle can PUT them. Rollups on the acceptance/project.
-- Scene_1311: a hidden DOC_files grid filtered to doc type "Site Plan"
-  (`field_67`) for the maps strip; today no view on the scene loads site plans
-  (Other Files, view_3942, only carries closeout docs).
+- Scene_1311: the maps strip reads the existing Other Files grid (view_3942)
+  and picks site plans by CONFIG_file type (`field_2877`, "Site Plan"); no
+  extra view needed (decided 2026-09-18 — `field_67` FLAG_doc type is
+  deprecated). Plus an "Add File" menu link → project-connected DOC_files form
+  so uploads from this page attach to the PROJECT.
+
+## Next up (noted 2026-09-18, not built)
+
+1. **Contacts + pinned contacts.** The people a PM needs on every open:
+   site contact, IT, the sub's lead. Shape: a contacts strip beside the
+   pinned notes (name · role · phone · email, tap-to-call/mail), sourced from
+   a project contacts grid on scene_1311, with a `FLAG_pinned` on the contact
+   record (same pattern as notes: pinned first, cap 3, Pin/Unpin in a
+   Contacts tray listed under "Also on this project"). Builder asks: which
+   object holds project contacts (HubSpot-synced contacts vs. a per-project
+   contact join), a grid of them on scene_1311 with `FLAG_pinned` inline-
+   editable, and the role field key.
+2. **Pinned files.** A `FLAG_pinned` on DOC_files; pinned files show in the
+   maps strip ("Site maps & pinned files"), document card style, ahead of the
+   maps, with Pin/Unpin in the Files tray. Same view (view_3942) — the flag is
+   just another column. Builder ask: `FLAG_pinned` on DOC_files, on view_3942
+   and inline-editable.
+3. **Many maps (built 2026-09-18).** The strip scales by count: ≤3 big tiles,
+   4–6 medium, 7+ compact; past 6 the rest sit behind a "+N more" tile that
+   expands in place. Pinned files will share the same cap, so a dozen maps +
+   pinned files never stack the page. Open question for the user: should
+   pinned files count against the 6, or get their own row above the maps?

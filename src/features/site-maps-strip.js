@@ -34,6 +34,10 @@
   var STRIP_ID = 'scw-site-maps';
   var STYLE_ID = 'scw-site-maps-css';
   var EVENT_NS = '.scwSiteMaps';
+  // Density: up to 3 maps get big tiles; 4–6 medium; 7+ compact. Past
+  // MAX_VISIBLE the rest hide behind a "+N more" tile (toggle), so a dozen
+  // maps (or pinned files sharing this strip later) never stack the page.
+  var MAX_VISIBLE = 6;
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -68,7 +72,29 @@
       '  cursor: pointer; text-decoration: none; white-space: nowrap;',
       '}',
       '.scw-maps__btn:hover { background: #eaf1f7; }',
-      '.scw-maps__empty { font-size: 12.5px; color: #64748b; }'
+      '.scw-maps__empty { font-size: 12.5px; color: #64748b; }',
+      /* Density buckets */
+      '#' + STRIP_ID + '.is-medium .scw-maps__tile { width: 220px; }',
+      '#' + STRIP_ID + '.is-medium .scw-maps__thumb { height: 104px; }',
+      '#' + STRIP_ID + '.is-medium .scw-maps__doc { width: 240px; }',
+      '#' + STRIP_ID + '.is-compact .scw-maps__tiles { gap: 8px; }',
+      '#' + STRIP_ID + '.is-compact .scw-maps__tile { width: 168px; }',
+      '#' + STRIP_ID + '.is-compact .scw-maps__thumb { height: 84px; }',
+      '#' + STRIP_ID + '.is-compact .scw-maps__foot { padding: 6px 8px; gap: 6px; }',
+      '#' + STRIP_ID + '.is-compact .scw-maps__name { font-size: 11.5px; }',
+      '#' + STRIP_ID + '.is-compact .scw-maps__btn { padding: 3px 7px; font-size: 11px; }',
+      '#' + STRIP_ID + '.is-compact .scw-maps__doc { width: 200px; padding: 8px 10px; gap: 8px; }',
+      '#' + STRIP_ID + '.is-compact .scw-maps__doc-icon { width: 32px; height: 32px; }',
+      '#' + STRIP_ID + '.is-compact .scw-maps__doc .scw-maps__btn:first-of-type { display: none; }',   // Pop out covers Open
+      /* Overflow: hidden past MAX_VISIBLE until "+N more" */
+      '.scw-maps__over { display: none; }',
+      '#' + STRIP_ID + '.is-expanded .scw-maps__over { display: flex; }',
+      '.scw-maps__more {',
+      '  align-self: stretch; min-height: 60px; min-width: 120px; border: 1px dashed #cbd5e1; border-radius: 10px;',
+      '  background: #f8fafc; color: #163C6E; font: 600 12.5px/1.2 system-ui, sans-serif; cursor: pointer;',
+      '  display: inline-flex; align-items: center; justify-content: center; padding: 8px 14px;',
+      '}',
+      '.scw-maps__more:hover { background: #eaf1f7; border-color: #94a3b8; }'
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
@@ -186,21 +212,30 @@
     }
     strip.setAttribute('data-scw-sig', sig);
     var pdfIcon = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
-    var tiles = list.map(function (m) {
+    var wasExpanded = strip.classList.contains('is-expanded');
+    var tiles = list.map(function (m, idx) {
+      var over = idx >= MAX_VISIBLE ? ' scw-maps__over' : '';
       if (m.thumb) {
-        return '<div class="scw-maps__tile" data-map-id="' + esc(m.id) + '">' +
+        return '<div class="scw-maps__tile' + over + '" data-map-id="' + esc(m.id) + '">' +
           '<a class="scw-maps__thumb" href="' + esc(m.url) + '" target="_blank" rel="noopener" aria-label="Open ' + esc(m.name) + '"><img src="' + esc(m.thumb) + '" alt="" loading="lazy"></a>' +
           '<div class="scw-maps__foot"><span class="scw-maps__name" title="' + esc(m.name) + '">' + esc(m.name) + '</span>' +
           '<button type="button" class="scw-maps__btn" data-map-pop="' + esc(m.id) + '">Pop out</button></div></div>';
       }
       // A PDF has no thumbnail: a document card, not a grey box.
-      return '<div class="scw-maps__doc" data-map-id="' + esc(m.id) + '">' +
+      return '<div class="scw-maps__doc' + over + '" data-map-id="' + esc(m.id) + '">' +
         '<span class="scw-maps__doc-icon">' + pdfIcon + '</span>' +
         '<span class="scw-maps__doc-text"><span class="scw-maps__name" title="' + esc(m.name) + '">' + esc(m.name) + '</span>' +
           '<span class="scw-maps__doc-kind">PDF' + (m.file ? ' · ' + esc(m.file) : '') + '</span></span>' +
         '<a class="scw-maps__btn" href="' + esc(m.url) + '" target="_blank" rel="noopener">Open</a>' +
         '<button type="button" class="scw-maps__btn" data-map-pop="' + esc(m.id) + '">Pop out</button></div>';
     }).join('');
+    var hidden = Math.max(0, list.length - MAX_VISIBLE);
+    if (hidden) {
+      tiles += '<button type="button" class="scw-maps__more" data-map-more="1" aria-expanded="' + (wasExpanded ? 'true' : 'false') + '">' +
+        (wasExpanded ? 'Show fewer' : '+' + hidden + ' more') + '</button>';
+    }
+    strip.classList.toggle('is-medium', list.length > 3 && list.length <= 6);
+    strip.classList.toggle('is-compact', list.length > 6);
     // Upload: the scene's "Add File" form link (project-attached), when the
     // Builder link exists; otherwise point at Files and the SOW-page path.
     var api = window.SCW && SCW.deployNav;
@@ -221,6 +256,13 @@
       (tiles ? '<div class="scw-maps__tiles">' + tiles + '</div>' :
         '<div class="scw-maps__empty">' + emptyText + '</div>');
     strip.onclick = function (e) {
+      var more = e.target.closest && e.target.closest('[data-map-more]');
+      if (more) {
+        var open = strip.classList.toggle('is-expanded');
+        more.textContent = open ? 'Show fewer' : '+' + hidden + ' more';
+        more.setAttribute('aria-expanded', open ? 'true' : 'false');
+        return;
+      }
       if (e.target.closest && e.target.closest('[data-map-upload]')) {
         var api = window.SCW && SCW.deployNav;
         if (api && typeof api.openSection === 'function') api.openSection(/^other files$/i);

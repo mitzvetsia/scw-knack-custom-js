@@ -94,7 +94,28 @@
       '  padding: 30px 16px; text-align: center; border: 1px dashed #cbd5e1; border-radius: 10px;',
       '  color: #64748b; font: 13px/1.5 system-ui, sans-serif;',
       '}',
-      '.scw-notes-empty strong { display: block; color: #334155; font-size: 14px; margin-bottom: 2px; }'
+      '.scw-notes-empty strong { display: block; color: #334155; font-size: 14px; margin-bottom: 2px; }',
+      '.scw-notes-empty__add { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; font-weight: 600; color: #0f4c81; }',
+      /* Inline composer */
+      '.scw-notes-compose {',
+      '  margin: 0 0 12px; padding: 12px 14px; border: 1px solid #b6c9db; border-radius: 10px; background: #f8fafc;',
+      '  display: flex; flex-direction: column; gap: 8px; font-family: system-ui, sans-serif;',
+      '}',
+      '.scw-notes-compose__text {',
+      '  width: 100%; box-sizing: border-box; resize: vertical; min-height: 88px; padding: 8px 10px;',
+      '  border: 1px solid #cbd5e1; border-radius: 8px; font: 13.5px/1.5 system-ui, sans-serif; color: #0f172a; background: #fff;',
+      '}',
+      '.scw-notes-compose__text:focus { outline: 2px solid #163C6E; outline-offset: 1px; border-color: #163C6E; }',
+      '.scw-notes-compose__row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }',
+      '.scw-notes-compose__pin { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #334155; }',
+      '.scw-notes-compose__hint { color: #94a3b8; }',
+      '.scw-notes-compose__status { margin-left: auto; font-size: 12px; color: #64748b; }',
+      '.scw-notes-compose__btn {',
+      '  padding: 6px 14px; border-radius: 8px; border: 1px solid #dbe4ee; background: #fff; color: #334155;',
+      '  font: 600 12.5px/1.2 system-ui, sans-serif; cursor: pointer;',
+      '}',
+      '.scw-notes-compose__btn--primary { background: #163C6E; border-color: #163C6E; color: #fff; }',
+      '.scw-notes-compose__btn[disabled] { opacity: 0.6; cursor: default; }'
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
@@ -344,7 +365,7 @@
     var linkTotal = 0, firstTr = null;
     if (!notes.length) {
       list.innerHTML = '<div class="scw-notes-empty"><strong>No notes yet</strong>' +
-        'Site access, contacts, gotchas — add the first one with Add Project Note.</div>';
+        'Site access, contacts, gotchas — <button type="button" class="scw-notes-empty__add" data-notes-compose="1">add the first one</button>.</div>';
     } else {
       notes.forEach(function (n) {
         var tr = null;
@@ -379,6 +400,130 @@
     obs.observe(tbody, { childList: true, subtree: true });
     view.__scwNotesObs = obs;
   }
+
+  // ── Inline composer (no trip to the native Knack add page) ─────────
+  // The "Add Project Note" menu link points at a child page whose form adds a
+  // DOC_notes record connected to the project. The app schema (Knack.scenes)
+  // has that page — matched by the link's URL slug — and its form view: the
+  // connection key to the project and the inputs it carries. Posting through
+  // that form view (view-based POST, session token) runs the same record
+  // rules as the page would. If the form can't be found the link keeps its
+  // native behaviour.
+  var HEX24 = /^[0-9a-f]{24}$/i;
+  function ctaLink() {
+    return document.getElementById('scw-deploy-notes-cta') ||
+      document.querySelector('#kn-scene_1311 .kn-menu a[href*="add-project-note"]');
+  }
+  /** { sceneKey, viewKey, connKey, inputs:{field_X:true}, projectId } or null */
+  function findAddForm() {
+    var a = ctaLink();
+    var href = a ? (a.getAttribute('href') || '') : '';
+    var segs = href.split('#')[1] ? href.split('#')[1].split('/') : [];
+    var slug = '', projectId = '';
+    for (var i = segs.length - 1; i >= 0; i--) {
+      if (HEX24.test(segs[i])) { if (!projectId) projectId = segs[i]; continue; }
+      slug = segs[i]; break;
+    }
+    if (!slug || !projectId) return null;
+    var scenes = (typeof Knack !== 'undefined' && Knack.scenes && Knack.scenes.models) || [];
+    for (var s = 0; s < scenes.length; s++) {
+      var sc = scenes[s], at = sc.attributes || sc;
+      if (at.slug !== slug) continue;
+      var views = (sc.views && sc.views.models ? sc.views.models.map(function (v) { return v.attributes || v; }) : at.views) || [];
+      for (var v = 0; v < views.length; v++) {
+        var vw = views[v];
+        if (vw.type !== 'form' || (vw.action && vw.action !== 'insert')) continue;
+        var inputs = {};
+        (vw.groups || []).forEach(function (g) {
+          (g.columns || []).forEach(function (c) {
+            (c.inputs || []).forEach(function (inp) { if (inp && inp.field && inp.field.key) inputs[inp.field.key] = true; });
+          });
+        });
+        return { sceneKey: at.key || sc.id, viewKey: vw.key, connKey: (vw.source && vw.source.connection_key) || '',
+                 inputs: inputs, projectId: projectId };
+      }
+    }
+    return null;
+  }
+  function today() {
+    var d = new Date();
+    return (d.getMonth() + 1 < 10 ? '0' : '') + (d.getMonth() + 1) + '/' + (d.getDate() < 10 ? '0' : '') + d.getDate() + '/' + d.getFullYear();
+  }
+  function postNote(cfg, form, text, pin, cb) {
+    var F = cfg.fields, body = {};
+    body[F.note] = text;
+    if (form.connKey) body[form.connKey] = form.projectId;
+    if (form.inputs[F.pinned]) body[F.pinned] = !!pin;
+    if (form.inputs[F.date]) body[F.date] = today();
+    if (form.inputs[F.author]) {
+      var u = null;
+      try { u = Knack.getUserAttributes(); } catch (e) { /* no user */ }
+      if (u && u.id) body[F.author] = u.id;
+    }
+    SCW.knackAjax({
+      url: Knack.api_url + '/v1/pages/' + form.sceneKey + '/views/' + form.viewKey + '/records',
+      type: 'POST', data: JSON.stringify(body),
+      success: function (res) { cb(null, res); },
+      error: function (xhr) { cb(new Error('HTTP ' + (xhr && xhr.status))); }
+    });
+  }
+  function openComposer(cfg, form) {
+    var view = document.getElementById(cfg.notesView);
+    var list = view && view.querySelector('.scw-notes-list');
+    if (!list) return false;
+    var box = view.querySelector('.scw-notes-compose');
+    if (box) { box.querySelector('textarea').focus(); return true; }
+    box = document.createElement('form');
+    box.className = 'scw-notes-compose';
+    var canPin = form.inputs[cfg.fields.pinned];
+    var atCap = pinnedNotes(cfg).length >= cfg.maxPinned;
+    box.innerHTML =
+      '<textarea class="scw-notes-compose__text" rows="4" placeholder="What should the team know? Site access, contacts, gotchas, status…" required></textarea>' +
+      '<div class="scw-notes-compose__row">' +
+        (canPin ? '<label class="scw-notes-compose__pin"><input type="checkbox" name="pin"' + (atCap ? ' disabled' : '') + '> Pin to project header' +
+          (atCap ? ' <span class="scw-notes-compose__hint">(' + cfg.maxPinned + ' already pinned)</span>' : '') + '</label>' : '') +
+        '<span class="scw-notes-compose__status" aria-live="polite"></span>' +
+        '<button type="button" class="scw-notes-compose__btn" data-compose-cancel="1">Cancel</button>' +
+        '<button type="submit" class="scw-notes-compose__btn scw-notes-compose__btn--primary">Save note</button>' +
+      '</div>';
+    list.parentNode.insertBefore(box, list);   // a sibling: list re-renders never touch the draft
+    var ta = box.querySelector('textarea'), status = box.querySelector('.scw-notes-compose__status');
+    var submit = box.querySelector('[type="submit"]');
+    function close() { if (box.parentNode) box.parentNode.removeChild(box); }
+    box.querySelector('[data-compose-cancel]').addEventListener('click', close);
+    ta.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    box.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var text = ta.value.trim();
+      if (!text) { ta.focus(); return; }
+      var pinEl = box.querySelector('input[name="pin"]');
+      submit.disabled = true; status.textContent = 'Saving…';
+      postNote(cfg, form, text, pinEl && pinEl.checked, function (err) {
+        if (err) {
+          submit.disabled = false;
+          status.textContent = 'Could not save (' + err.message + '). Try again, or use the Knack page.';
+          console.warn('[scw-pinned-notes] add note failed', err);
+          return;
+        }
+        close();
+        var v = Knack.views && Knack.views[cfg.notesView];
+        if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();   // re-render → new card + strip
+      });
+    });
+    try { ta.focus(); } catch (e) { /* focus is a courtesy */ }
+    return true;
+  }
+  // The action-bar link (and the empty state's hint) open the composer;
+  // without a discoverable form the link keeps its native page.
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest && e.target.closest('#scw-deploy-notes-cta, [data-notes-compose]');
+    if (!t) return;
+    var cfg = activeScene();
+    if (!cfg) return;
+    var form = findAddForm();
+    if (!form) return;
+    if (openComposer(cfg, form)) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
 
   // ── Orchestration ─────────────────────────────────────────────────
   var _timer = null;
