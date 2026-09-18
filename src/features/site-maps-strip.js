@@ -203,10 +203,10 @@
         (list.length
           ? '<span class="scw-maps__sub">' + list.length + (list.length === 1 ? ' plan' : ' plans') + ' · open, or pop one out into its own window</span>'
           : '<span class="scw-maps__sub">None on this project yet</span>') +
-        '<button type="button" class="scw-maps__btn scw-maps__upload" data-map-upload="1">+ Upload site plan</button>' +
+        '<button type="button" class="scw-maps__btn scw-maps__upload" data-map-upload="1">Files ›</button>' +
       '</div>' +
       (tiles ? '<div class="scw-maps__tiles">' + tiles + '</div>' :
-        '<div class="scw-maps__empty">No site plan or coverage map is filed on this project. Upload one under Files and give it the Site Plan file type; images get a thumbnail here, PDFs a document card.</div>');
+        '<div class="scw-maps__empty">No site plan or coverage map is filed on this project. Upload one from the Build SOW page (Site Maps &amp; Other Files → Add Document), then set its file type to Site Plan under Files here. Images get a thumbnail; PDFs a document card.</div>');
     strip.onclick = function (e) {
       if (e.target.closest && e.target.closest('[data-map-upload]')) {
         var api = window.SCW && SCW.deployNav;
