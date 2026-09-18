@@ -1,9 +1,13 @@
 # Manage Deployment page (scene_1311) — redesign
 
-Status: **design direction agreed 2026-09-18** (mockup session). Implementation not
-started. Mockup: the "Manage Deployment Redesign" design canvas (private artifact,
-six artboards: page at rest, line item open, Files / Context photos / Closeout /
-Project notes drawers).
+Status: **Phase I top section BUILT and live on the branch (2026-09-18)** — see
+"State of the build" at the bottom for what is shipped, what to verify, and what
+is next. Mockup: the "Manage Deployment Redesign" design canvas
+(https://claude.ai/artifact/7bJB4ndf7aP3ZbASRdVcTe — private artifact, eight
+artboards: page at rest, line item open, map pop-out, filter, Files / Photos /
+Closeout / Notes drawers). The live build deliberately differs from the mockup
+where noted below (current tile is white with a navy frame, not navy-filled;
+"Also" rows have no descriptions; notes are cards).
 
 ## Why
 
@@ -215,3 +219,90 @@ the rollup unit**, not the individual checks.
    expands in place. Pinned files will share the same cap, so a dozen maps +
    pinned files never stack the page. Open question for the user: should
    pinned files count against the 6, or get their own row above the maps?
+
+## State of the build (2026-09-18, end of first build session)
+
+Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
+`https://cdn.jsdelivr.net/gh/mitzvetsia/scw-knack-custom-js@<sha>/dist/knack-bundle.js`.
+
+### Modules (all `src/features/`, wired in `build.sh` after `deploy-page-nav.js`)
+
+- **`deploy-page-nav.js`** — the page frame. `STAGES` → four tiles (`tileModel`,
+  patched in place; `.scw-deploy-tile--current` = white tile, navy frame, filled
+  pill). `SECTIONS` = rename / sub / icon per Builder section; `EXCLUDE_TITLES`
+  keeps Manage MDFs, All associated SOWs, CORE_/INSTALL_ grids out of the nav.
+  Every non-worksheet section is **parked** (`scw-deploy-parked`, hidden in
+  place) and opens in the right **drawer** (`#scw-deploy-drawer`, 1100px): the
+  accordion ELEMENT moves into the drawer and back to a `.scw-deploy-home`
+  placeholder (`openDrawer` / `returnHome` / `closeDrawer`). Invariants: tiles
+  and the "Also" list are never rebuilt while a drawer is open or closing
+  (`_drawerAcc` / `_drawerBusy`); `collectTargets` counts a drawer-hosted
+  section via its placeholder so the nav signature is stable across open/close;
+  the "Also" list re-renders only when its own rows change. The drawer forces
+  the acceptance card's narrow band layout (it sizes by viewport otherwise).
+  Section **action bars** (`mountProxyCta`) proxy Builder menu links (Create
+  Change Order, Add Project Note, Add File) into the section body; the Setup
+  drawer leads with the generated documents (`buildSetupPrelude`, blank forms
+  from Other Files by CONFIG_file type); Setup tile hosts the doc generator
+  (`SCW.regenDocs.openPicker`). Public API `SCW.deployNav.openSection(re) /
+  closeDrawer() / addFileHref()`.
+- **`pinned-notes.js`** — pinned strip under the project header (≤3, `FLAG_pinned`
+  field_3278 via view_4135 PUT); the Notes drawer as **cards** (author · date,
+  text with paragraphs, Show more past 4 lines, Pin/Unpin, per-row action links
+  proxied to the hidden grid — the Push Note to ClickUp/Slack action is an
+  icon + EMPTY anchor, label from the column header); **inline composer**
+  (textarea, Pin, Cancel | Save) that fills and submits the hidden on-page
+  "Add DOC_note" form **view_4162** (`addFormView`), success = Knack's
+  record-create/form-submit event, pin written afterwards through the grid,
+  form reloaded behind the composer. Schema-POST via the child page's form is
+  the fallback when no on-page form exists.
+- **`site-maps-strip.js`** — "Site maps & coverage" card in row 2 beside the
+  "Also" list. Reads Other Files (view_3942 / sub view_4063), picks maps by
+  CONFIG_file type (field_2877 matching site plan / coverage / floor plan);
+  image tiles with thumbnail + Pop out (own window, zoom/fit), PDFs as document
+  cards; empty state holds the place; density ≤3 big / 4–6 medium / 7+ compact,
+  `MAX_VISIBLE` 6 then a "+N more" tile.
+- **`regenerate-closeout-docs.js`** gained `SCW.regenDocs.openPicker(host,
+  stateBtn)`; **`acceptance-card.js`** unchanged (drawer CSS override lives in
+  deploy-page-nav).
+
+### Tests
+
+`tests/deploy-page/test-*.js` (jsdom, no framework): `cd tests && npm install &&
+npm test`. They fake jQuery/Knack, emulate ktl-accordion's header toggle and
+scene re-render, and pin the invariants above (tile/list element identity across
+open → mid-close pass → close; composer fills the hidden form; icon-only action
+links; 12-map overflow). Update them with the module; run all four before a push.
+
+### Builder state
+
+Done: `FLAG_pinned` field_3278 on DOC_notes, on view_4135 inline-editable;
+`QA_status` field_3277 (multiple choice), `QA_checks done` field_3279,
+`QA_checks total` field_3280 on the install line item (same object as view_4093);
+`Add DOC_note` form view_4162 on scene_1311 (Notes + hidden project connection
+field_329). Still needed for the QA checklist: `Include on checklist` on the
+Config Field Definition object (key TBD), the Checkbox input type's exact name,
+field_3277 choice spellings, inline edit on view_4093 for 3277/3279/3280/2830/
+2831/2832, and on view_4056 for field_2932 + QA_status (sub "Mark fixed").
+Optional: an "Add File" menu link → project-connected DOC_files form on
+scene_1311 (the bundle proxies it into the Files action bar + the maps upload
+button automatically when the link text matches /add|upload file/i).
+
+### To verify live (not yet confirmed by the user)
+
+- Composer: a saved note lands with author/date filled (form rules) and the
+  ticked pin sticks; the form's submit rule must be "Show a message" (a redirect
+  rule would navigate). Console prints `[scw-pinned-notes] add note failed …`
+  on failure.
+- The card's "Push Note to Clickup and Slack ›" link fires the action rule (it
+  programmatically clicks the hidden row's anchor; if Knack ignores that, target
+  the `i.fa-send` icon instead).
+- Slow first load reported once, not reproduced (jsDelivr cold fetch per new SHA
+  is the likely cause; ask which phase is slow on a second load).
+
+### Next
+
+1. Line items: the QA checklist per item (design above, Builder keys pending),
+   the 3-segment view switch, "show only Disconnected" including connection
+   targets (`field_2795` = Yes), checkbox bulk flow.
+2. Contacts + pinned contacts; pinned files in the maps strip (see "Next up").

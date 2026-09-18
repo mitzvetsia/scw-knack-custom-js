@@ -443,6 +443,26 @@ Notes:
   key in from Builder → Settings → API & Code at paste time only, and
   keep it out of PRs/issues/chat.
 
+## Manage Deployment page (scene_1311) redesign — full reference: docs/deploy-page-redesign.md
+
+Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-auk1dh`
+(every push is live at `https://cdn.jsdelivr.net/gh/mitzvetsia/scw-knack-custom-js@<sha>/dist/knack-bundle.js`).
+**Read the doc's "State of the build" section before touching the page**, then:
+
+- **Modules**: `deploy-page-nav.js` (four stage tiles, parked sections + right
+  drawer, section action bars, "Also on this project" list),
+  `pinned-notes.js` (pinned strip, notes cards, inline composer submitting the
+  hidden `view_4162` add form), `site-maps-strip.js` (maps card, pop-out
+  viewer, density + "+N more"). Sub scene `scene_1353` shares the config.
+- **Invariants**: tiles and the "Also" list are never rebuilt while a drawer is
+  open or closing (a drawer-hosted section counts via its `.scw-deploy-home`
+  placeholder); sections move into the drawer as ELEMENTS and back; UI copy says
+  "Sub", never a subcontractor name; the current tile is white with a navy frame
+  (the navy fill was rejected as "yelly"); no descriptions in the "Also" rows.
+- **Tests**: `tests/deploy-page/` (jsdom). Run all four before every push.
+- **Pending**: QA checklist per line item (Builder keys still needed — see the
+  doc), contacts + pinned contacts, pinned files in the maps strip.
+
 ## Change Orders (design locked 2026-07-03 — full reference: docs/change-orders.md)
 
 Install-phase change orders: ops (or the sub) proposes **adds and removes**
@@ -519,7 +539,7 @@ land in the published PDF. This is a deliberate, user-approved tradeoff —
 - **ES5-compatible** syntax for the most part (`var`, `function`, no arrow functions in older modules), though newer modules use `const`/`let` and template literals
 - **jQuery** (`$`) is available globally (provided by Knack)
 - **No module system** — everything is global via `window.SCW` or IIFE-scoped
-- **No tests** — the codebase has no test framework. Changes are tested manually against the live Knack app
+- **Tests**: no framework, but `tests/` holds plain-node **jsdom smoke tests** for the deploy-page modules (`cd tests && npm install && npm test`). Add one next to a module you change there and keep them green before a push. Everything else is tested manually against the live Knack app
 - **No linter** — no ESLint/Prettier config. Follow existing style in each file
 - Use `!important` sparingly in CSS, but it's often necessary to override Knack's inline styles
 - Comment headers use banner-style delimiters: `/*** FEATURE NAME ***/`

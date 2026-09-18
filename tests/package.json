@@ -1,0 +1,11 @@
+{
+  "name": "scw-knack-custom-js-tests",
+  "private": true,
+  "description": "jsdom smoke tests for bundle modules (no bundler, no framework — plain node scripts). Run: cd tests && npm install && npm test",
+  "scripts": {
+    "test": "bash run.sh"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.3"
+  }
+}
