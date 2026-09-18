@@ -139,9 +139,36 @@ setTimeout(() => {
       fire();
       setTimeout(() => {
         check('a re-render pass re-labels in place; still one Pin checkbox', [formHost.querySelector('button[type="submit"]').textContent, formHost.querySelectorAll('input[name="scw_pin"]').length, formHost.nextElementSibling.className], ['Save note', 1, 'scw-notes-list']);
+        check('KTL / legacy chrome is beaten with inline !important (box, textarea, button)',
+          [formHost.style.getPropertyPriority('background-color'), formHost.querySelector('textarea').style.getPropertyValue('width'), formHost.querySelector('button[type="submit"]').style.getPropertyValue('width'), formHost.querySelector('button[type="submit"]').style.getPropertyValue('background-color')],
+          ['important', '100%', 'auto', '#163C6E'.toLowerCase() === '#163c6e' ? formHost.querySelector('button[type="submit"]').style.getPropertyValue('background-color') : '']);
         setTimeout(() => {
           check('the form is reloaded for the next note', reloaded, 1);
-          afterComposer();
+          // Knack re-renders by REPLACING the element at its home: the old (adopted) copy shows the
+          // confirmation, a fresh one appears in the scene. The pass adopts the fresh one, drops the stale
+          // copy, and the button stays hidden throughout.
+          formHost.querySelector('form').remove();
+          const fresh = formHost.cloneNode(false); fresh.className = 'kn-view kn-form'; fresh.removeAttribute('style');
+          fresh.innerHTML = '<form action="#" method="post"><textarea id="field_328" name="field_328"></textarea><div class="kn-submit"><button class="kn-button is-primary" type="submit">Submit</button></div></form>';
+          shell.appendChild(fresh);
+          fire();
+          setTimeout(() => {
+            check('a replaced form element is adopted in place of the stale one; one element left; button still hidden',
+              [document.querySelectorAll('[id="view_4162"]').length, fresh.parentNode === view, fresh.nextElementSibling.className, fresh.querySelector('button[type="submit"]').textContent, /notes-actionbar \{ display: none/.test(document.getElementById('scw-pinned-notes-css-form').textContent)],
+              [1, true, 'scw-notes-list', 'Save note', true]);
+            // Element gone entirely for a beat (Knack mid re-render): the button must NOT come back.
+            fresh.remove();
+            fire();
+            setTimeout(() => {
+              check('with the form momentarily absent the button stays hidden', /notes-actionbar \{ display: none/.test(document.getElementById('scw-pinned-notes-css-form').textContent), true);
+              shell.appendChild(fresh);
+              fire();
+              setTimeout(() => {
+                check('and the form is re-adopted when it returns', [fresh.parentNode === view, fresh.nextElementSibling.className], [true, 'scw-notes-list']);
+                afterComposer();
+              }, 200);
+            }, 200);
+          }, 200);
         }, 1000);
       }, 200);
     }, 500);

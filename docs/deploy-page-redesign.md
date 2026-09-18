@@ -303,6 +303,11 @@ button automatically when the link text matches /add|upload file/i).
   so the click fell through to the anchor's href). Replaced by adopting the
   form itself into the drawer — nothing to look up, nothing to fill by
   proxy. The user's call: no button, the form lives on the page.
+- First live test of the adopted form: it looked like a raw KTL view
+  (KTL's global `.kn-view:has(.ktlHideShowButton)` styling beat the class
+  CSS) and after the first save it vanished with the button back (Knack
+  replaced the element; the pass that couldn't find a `<form>` restored the
+  button). Both fixed as described in the module note.
 - The Push link was not exercised; still unverified below.
 
 ### To verify live (not yet confirmed by the user)
