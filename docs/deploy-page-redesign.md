@@ -22,6 +22,18 @@ additive chrome.
    Project setup, Installation (current, navy), Closeout. One four-state
    vocabulary: Done / Waiting / In progress / N missing. The rollups the nav
    module already computes feed the tiles.
+   **Document generation lives on the Setup tile (decided 2026-09-18).**
+   The closeout documents (approval forms etc.) are generated up front,
+   after the client kickoff and before a tech is on site, so "Generate
+   documents…" is a Setup action, not a Closeout one. The Setup tile shows
+   two facts: questionnaire status, and documents generated / not yet
+   (derived from the closeout DOC records the generator creates); the tile
+   carries the "Generate documents…" button (the same proxy-CTA trick as
+   the Change Order button: it fires the existing closeout-deliverables
+   regenerate handler) and reads Waiting until both are done. Once
+   generated, the action demotes to a "Regenerate…" text link. The Closeout
+   tile / drawer tracks the OTHER half: documents in, QA passed, CoC sent.
+   "Regenerate docs…" stays in the Closeout drawer's action bar as well.
 2. **Site maps & coverage strip** directly under the tiles, always visible
    (PMs need the maps in their face). Map tiles open the file full size or
    **pop out** into their own browser window (`window.open` on a plain
