@@ -39,10 +39,25 @@
   var SCENES = [
     { sceneId: 'scene_1311',                 // internal ops deploy page
       worksheetMount: 'scw-ws-v2-view_4093',
-      questionnaireView: 'view_4015' },
+      questionnaireView: 'view_4015',
+      // Hidden DOC_files inline-edit grid (closeout-deliverables' save view):
+      // its model carries every closeout document with file + type + QA,
+      // which the Setup drawer lists (generated forms, front and centre).
+      docsView: 'view_3941' },
     { sceneId: 'scene_1353',                 // subcontractor deployment dashboard
       worksheetMount: 'scw-ws-v2-view_4056',
-      questionnaireView: 'view_4053' }
+      questionnaireView: 'view_4053',
+      docsView: 'view_4068' }
+  ];
+  // DOC_files columns on docsView.
+  var DOC_F = { type: 'field_2877', file: 'field_68', qa: 'field_2879', required: 'field_2894', complete: 'field_2895' };
+  // The documents generated at setup, in display order (matched on the
+  // CONFIG_file type name).
+  var SETUP_DOCS = [
+    { match: /scope of work/i,       label: 'Scope of Work PDF' },
+    { match: /location approval/i,   label: 'Location Approval Form' },
+    { match: /view approval/i,       label: 'View Approval Form' },
+    { match: /kickoff/i,             label: 'Kickoff Deck' }
   ];
 
   var NAV_ID    = 'scw-deploy-nav';
@@ -209,6 +224,19 @@
       '}',
       '.scw-ktl-accordion.scw-deploy-in-drawer > .scw-ktl-accordion__header { display: none !important; }',
       '.scw-ktl-accordion.scw-deploy-in-drawer > .scw-ktl-accordion__body { display: block !important; }',
+      /* Setup drawer prelude: the generated documents */
+      '.scw-deploy-drawer__prelude { margin: 12px 0 18px; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; }',
+      '.scw-deploy-docs__head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }',
+      '.scw-deploy-docs__title { font: 700 13px/1.2 system-ui, sans-serif; }',
+      '.scw-deploy-docs__sub { font-size: 12px; color: #475569; }',
+      '.scw-deploy-docs__actions { margin: 0 0 0 auto; }',
+      '.scw-deploy-docs__list { display: flex; flex-direction: column; }',
+      '.scw-deploy-docs__row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid #eef2f7; font-size: 13px; }',
+      '.scw-deploy-docs__type { font-weight: 600; flex: 0 0 200px; }',
+      '.scw-deploy-docs__state { color: #475569; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+      '.scw-deploy-docs__row.is-missing .scw-deploy-docs__state { color: #92400e; }',
+      '.scw-deploy-docs__open { font-weight: 600; text-decoration: none; color: #0f4c81; flex: none; }',
+      '.scw-deploy-docs__empty { font-size: 12.5px; color: #64748b; padding: 6px 0; }',
       /* Worksheet toolbar "+ Change Order" proxy (mirrors the Builder menu link). */
       'a#scw-deploy-co-toolbar-cta { text-decoration: none !important; }',
       '.scw-deploy-nav-item {',
@@ -721,22 +749,38 @@
     }
 
     // Rebuild only when the signature changed — keeps the heartbeat
-    // rebuild from thrashing the DOM (and hover states) every pass.
+    // rebuild from thrashing the DOM (and hover states) every pass — and
+    // never while a drawer is open: the moved section's count/rollup
+    // flickers as ktl re-measures it, and a rebuild would blank the tiles
+    // behind the scrim.
     var sig = stages.map(function (m) { return m.sig; }).join('|') + '||' +
       also.map(function (t) { return t.label + ':' + t.count + (t.warn ? '!' : ''); }).join('|');
     if (nav.getAttribute('data-scw-sig') === sig) return;
+    if (_drawerAcc) return;
     nav.setAttribute('data-scw-sig', sig);
 
-    nav.innerHTML = '';
-    var tiles = document.createElement('div');
-    tiles.className = 'scw-deploy-tiles';
+    // Patch in place: keep the tile elements (no blank frame, hover state
+    // survives) and only swap the innerHTML of tiles whose content changed.
+    var tiles = nav.querySelector('.scw-deploy-tiles');
+    var fresh = !tiles;
+    if (fresh) {
+      nav.innerHTML = '';
+      tiles = document.createElement('div');
+      tiles.className = 'scw-deploy-tiles';
+    }
     var closeoutModel = null;
     for (var cm = 0; cm < stages.length; cm++) if (stages[cm].stage.id === 'close') closeoutModel = stages[cm];
+    var keep = {};
     for (var m = 0; m < stages.length; m++) {
       (function (model) {
-        var tile = document.createElement('div');
+        keep[model.stage.id] = true;
+        var tile = tiles.querySelector('.scw-deploy-tile[data-scw-tile="' + model.stage.id + '"]');
+        var isNew = !tile;
+        if (isNew) {
+          tile = document.createElement('div');
+          tile.setAttribute('data-scw-tile', model.stage.id);
+        }
         tile.className = 'scw-deploy-tile' + (model.current ? ' scw-deploy-tile--current' : '');
-        tile.setAttribute('data-scw-tile', model.stage.id);
         var actions = '';
         if (model.stage.id === 'setup' && closeoutModel) {
           // Document generation is a SETUP step (docs/deploy-page-redesign.md):
@@ -746,7 +790,7 @@
             ? '<button type="button" class="scw-deploy-tile__link" data-scw-tile-docs="1">Regenerate documents…</button>'
             : '<button type="button" class="scw-deploy-tile__action" data-scw-tile-docs="1">Generate documents…</button>';
         }
-        tile.innerHTML =
+        var html =
           '<span class="scw-deploy-tile__top">' +
             '<span class="scw-deploy-tile__eyebrow">' + model.stage.n + ' · ' + esc(model.stage.label) + '</span>' +
             '<span class="scw-deploy-tile__state scw-deploy-tile__state--' + model.stateCls + '">' + esc(model.stateText) + '</span>' +
@@ -758,22 +802,37 @@
             '<button type="button" class="scw-deploy-tile__link" data-scw-tile-open="1" aria-label="' + esc(model.stage.label + ': ' + model.stateText) + '">' + esc(model.link) + '</button>' +
             actions +
           '</span>';
-        tile.addEventListener('click', function (e) {
-          // Clicks inside the hosted document picker are the picker's own.
-          if (e.target.closest && e.target.closest('#scw-regen-docs-panel')) return;
-          var docsBtn = e.target.closest && e.target.closest('[data-scw-tile-docs]');
-          if (docsBtn) {
-            e.stopPropagation();
-            openDocsGenerator(closeoutModel.target, docsBtn.parentNode, docsBtn);
-            return;
-          }
-          if (model.target.kind === 'worksheet') scrollToTarget(model.target);
-          else openDrawer(model.target);
-        });
-        tiles.appendChild(tile);
+        if (tile.innerHTML !== html) tile.innerHTML = html;
+        // The click handler reads the latest model through this box, so
+        // a patched tile never keeps a stale target.
+        tile.__scwModel = model;
+        tile.__scwCloseout = closeoutModel;
+        if (isNew) {
+          tile.addEventListener('click', function (e) {
+            var mdl = tile.__scwModel, closeM = tile.__scwCloseout;
+            // Clicks inside the hosted document picker are the picker's own.
+            if (e.target.closest && e.target.closest('#scw-regen-docs-panel')) return;
+            var docsBtn = e.target.closest && e.target.closest('[data-scw-tile-docs]');
+            if (docsBtn) {
+              e.stopPropagation();
+              if (closeM) openDocsGenerator(closeM.target, docsBtn.parentNode, docsBtn);
+              return;
+            }
+            if (mdl.target.kind === 'worksheet') scrollToTarget(mdl.target);
+            else openDrawer(mdl.target);
+          });
+          tiles.appendChild(tile);
+        }
       })(stages[m]);
     }
-    nav.appendChild(tiles);
+    // Drop tiles whose stage vanished (a section hidden by another module).
+    var old = tiles.querySelectorAll('.scw-deploy-tile');
+    for (var o = 0; o < old.length; o++) {
+      if (!keep[old[o].getAttribute('data-scw-tile')]) tiles.removeChild(old[o]);
+    }
+    if (fresh) nav.appendChild(tiles);
+    var oldAlso = nav.querySelector('.scw-deploy-also');
+    if (oldAlso) nav.removeChild(oldAlso);
 
     if (also.length) {
       var row = document.createElement('div');
@@ -850,12 +909,98 @@
     return d;
   }
 
-  function stageLabelFor(acc) {
+  function stageFor(acc) {
     var ot = origTitle(acc);
     for (var s = 0; s < STAGES.length; s++) {
-      if (STAGES[s].match && STAGES[s].match.test(ot)) return STAGES[s].n + ' · ' + STAGES[s].label;
+      if (STAGES[s].match && STAGES[s].match.test(ot)) return STAGES[s];
     }
-    return 'Also on this project';
+    return null;
+  }
+  function stageLabelFor(acc) {
+    var st = stageFor(acc);
+    return st ? st.n + ' · ' + st.label : 'Also on this project';
+  }
+
+  // ── Setup drawer: the generated documents, listed from the DOC model ──
+  function modelRecords(viewId) {
+    var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[viewId] : null;
+    var models = v && v.model && v.model.data && v.model.data.models;
+    if (!models || !models.length) return [];
+    return models.map(function (m) { return m.attributes || (m.toJSON ? m.toJSON() : m); });
+  }
+  function plainText(v) {
+    return String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+  }
+  function setupDocs(cfg) {
+    var recs = modelRecords(cfg.docsView);
+    var out = [];
+    for (var i = 0; i < recs.length; i++) {
+      var rec = recs[i];
+      var typeRaw = rec[DOC_F.type + '_raw'];
+      var type = Array.isArray(typeRaw) ? (typeRaw[0] && typeRaw[0].identifier) || '' : plainText(rec[DOC_F.type]);
+      var kind = null;
+      for (var k = 0; k < SETUP_DOCS.length; k++) if (SETUP_DOCS[k].match.test(type)) { kind = SETUP_DOCS[k]; break; }
+      if (!kind) continue;
+      var fileRaw = rec[DOC_F.file + '_raw'];
+      var url = fileRaw && typeof fileRaw === 'object' ? (fileRaw.url || '') : '';
+      var name = fileRaw && typeof fileRaw === 'object' ? (fileRaw.filename || '') : '';
+      if (!url) {   // formatted value may still carry an <a href>
+        var m = String(rec[DOC_F.file] || '').match(/href="([^"]+)"/);
+        if (m) url = m[1];
+      }
+      out.push({ kind: kind, type: type || kind.label, url: url, name: name,
+                 qa: plainText(rec[DOC_F.qa]), order: SETUP_DOCS.indexOf(kind) });
+    }
+    out.sort(function (a, b) { return a.order - b.order; });
+    return out;
+  }
+  function buildSetupPrelude(cfg) {
+    var docs = setupDocs(cfg);
+    var box = document.createElement('div');
+    box.className = 'scw-deploy-drawer__prelude';
+    var rows = '';
+    if (!docs.length && !modelRecords(cfg.docsView).length) {
+      rows = '<div class="scw-deploy-docs__empty">Documents haven\'t loaded yet, or none have been generated for this project.</div>';
+    } else {
+      for (var i = 0; i < SETUP_DOCS.length; i++) {
+        var kind = SETUP_DOCS[i], found = false;
+        for (var d = 0; d < docs.length; d++) {
+          if (docs[d].kind !== kind) continue;
+          found = true;
+          var doc = docs[d];
+          var state = !doc.url ? 'Not generated'
+            : (/pass/i.test(doc.qa) ? 'QA passed' : /fail/i.test(doc.qa) ? 'QA failed' : 'Generated');
+          rows += '<div class="scw-deploy-docs__row' + (doc.url ? '' : ' is-missing') + '">' +
+            '<span class="scw-deploy-docs__type">' + esc(doc.type) + '</span>' +
+            '<span class="scw-deploy-docs__state">' + esc(state) + (doc.name ? ' · ' + esc(doc.name) : '') + '</span>' +
+            (doc.url ? '<a class="scw-deploy-docs__open" href="' + esc(doc.url) + '" target="_blank" rel="noopener">Open ›</a>' : '') +
+          '</div>';
+        }
+        if (!found) {
+          rows += '<div class="scw-deploy-docs__row is-missing">' +
+            '<span class="scw-deploy-docs__type">' + esc(kind.label) + '</span>' +
+            '<span class="scw-deploy-docs__state">Not generated</span></div>';
+        }
+      }
+    }
+    box.innerHTML =
+      '<div class="scw-deploy-docs__head">' +
+        '<span class="scw-deploy-docs__title">Project documents</span>' +
+        '<span class="scw-deploy-docs__sub">Generated after the client kickoff, before a tech is on site.</span>' +
+        '<span class="scw-deploy-tile__actions scw-deploy-docs__actions">' +
+          '<button type="button" class="scw-deploy-tile__action" data-scw-drawer-docs="1">Generate documents…</button>' +
+        '</span>' +
+      '</div>' +
+      '<div class="scw-deploy-docs__list">' + rows + '</div>';
+    box.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('#scw-regen-docs-panel')) return;
+      var b = e.target.closest && e.target.closest('[data-scw-drawer-docs]');
+      if (!b) return;
+      e.stopPropagation();
+      var api = window.SCW && SCW.regenDocs;
+      if (api && typeof api.openPicker === 'function') api.openPicker(b.parentNode, b);
+    });
+    return box;
   }
 
   function openDrawer(target) {
@@ -875,7 +1020,16 @@
     }
     acc.classList.remove('scw-deploy-parked');
     acc.classList.add('scw-deploy-in-drawer');
-    d.querySelector('.scw-deploy-drawer__body').appendChild(acc);
+    var body = d.querySelector('.scw-deploy-drawer__body');
+    var stalePrelude = body.querySelector('.scw-deploy-drawer__prelude');
+    if (stalePrelude) body.removeChild(stalePrelude);
+    // The Setup drawer leads with the generated documents (the questionnaire
+    // section follows); the tile alone would otherwise just re-link them.
+    var st = stageFor(acc), active = activeScene();
+    if (st && st.id === 'setup' && active && active.cfg.docsView) {
+      body.appendChild(buildSetupPrelude(active.cfg));
+    }
+    body.appendChild(acc);
     if (!acc.classList.contains('is-expanded')) {
       var head = acc.querySelector('.scw-ktl-accordion__header');
       if (head) head.click();                 // ktl-accordion's own toggle (persists state)
@@ -978,7 +1132,7 @@
   // stage keys on the target kind. Order = page order = lifecycle order.
   var STAGES = [
     { id: 'paper',   n: 1, match: /^acceptance$/i,                label: 'Paperwork & billing', link: 'Open agreements ›' },
-    { id: 'setup',   n: 2, match: /^system setup questionnaire/i, label: 'Project setup',       link: 'Open questionnaire ›' },
+    { id: 'setup',   n: 2, match: /^system setup questionnaire/i, label: 'Project setup',       link: 'Open setup ›' },
     { id: 'install', n: 3, worksheet: true,                       label: 'Installation',        link: 'Install items below ↓' },
     { id: 'close',   n: 4, match: /^closeout$/i,                  label: 'Closeout',            link: 'Open deliverables ›' }
   ];
