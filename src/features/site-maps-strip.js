@@ -43,8 +43,16 @@
       '  display: flex; flex-direction: column; gap: 10px; height: 100%; box-sizing: border-box;',
       '  font: 13px/1.4 system-ui, sans-serif; color: #0f172a;',
       '}',
-      '.scw-maps__head { display: flex; align-items: center; gap: 10px; }',
-      '.scw-maps__title { margin: 0; font: 700 13px/1.2 system-ui, sans-serif; }',
+      '.scw-maps__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }',
+      '.scw-maps__title { margin: 0; font: 700 13px/1.2 system-ui, sans-serif; color: #0f172a; }',
+      '.scw-maps__upload { margin-left: auto; }',
+      '.scw-maps__doc {',
+      '  display: flex; align-items: center; gap: 10px; width: 420px; max-width: 100%; box-sizing: border-box;',
+      '  border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px; background: #fff;',
+      '}',
+      '.scw-maps__doc-icon { width: 40px; height: 40px; border-radius: 8px; background: #f1f5f9; color: #475569; display: inline-flex; align-items: center; justify-content: center; flex: none; }',
+      '.scw-maps__doc-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }',
+      '.scw-maps__doc-kind { font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
       '.scw-maps__sub { font-size: 12px; color: #475569; }',
       '.scw-maps__tiles { display: flex; gap: 12px; flex-wrap: wrap; }',
       '.scw-maps__tile { width: 300px; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }',
@@ -119,8 +127,10 @@
       var url = img.url || file.url;
       if (!url) return;
       if (!isMap(rec, F, img.url ? img : file)) return;
-      var name = plain(rec[F.notes]) || img.name || file.name || 'Site plan';
-      out.push({ id: rec.id, url: url, thumb: img.thumb || (isImage(url) ? url : ''), name: name, image: isImage(url) });
+      var fileName = img.name || file.name || '';
+      var name = plain(rec[F.notes]) || fileName || 'Site plan';
+      out.push({ id: rec.id, url: url, thumb: img.thumb || (isImage(url) ? url : ''), name: name,
+                 file: fileName !== name ? fileName : '', image: isImage(url) });
     });
     return out;
   }
@@ -156,13 +166,14 @@
     var row2 = nav && nav.querySelector('.scw-deploy-row2');
     var slot = row2 && row2.querySelector('.scw-deploy-maps-slot');
     if (!slot) return;
-    var list = cfg.mapsView && document.getElementById(cfg.mapsView) ? maps(cfg) : null;
-    if (!list || !list.length) {   // no grid, or no site plan on this project → no strip
+    if (!cfg.mapsView || !document.getElementById(cfg.mapsView)) {   // no grid on the scene → no strip
       if (slot.firstChild) slot.innerHTML = '';
       row2.classList.remove('has-maps');
       return;
     }
-    var sig = list.map(function (m) { return m.id + ':' + m.url + ':' + m.name; }).join('|');
+    // The card holds its place even with no map: PMs should notice the gap.
+    var list = maps(cfg);
+    var sig = list.map(function (m) { return m.id + ':' + m.url + ':' + m.name; }).join('|') || 'empty';
     var strip = document.getElementById(STRIP_ID);
     if (strip && strip.getAttribute('data-scw-sig') === sig) { row2.classList.add('has-maps'); return; }
     if (!strip) {
@@ -171,19 +182,37 @@
       slot.appendChild(strip);
     }
     strip.setAttribute('data-scw-sig', sig);
+    var pdfIcon = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
     var tiles = list.map(function (m) {
-      var thumb = m.thumb
-        ? '<a class="scw-maps__thumb" href="' + esc(m.url) + '" target="_blank" rel="noopener" aria-label="Open ' + esc(m.name) + '"><img src="' + esc(m.thumb) + '" alt="" loading="lazy"></a>'
-        : '<a class="scw-maps__thumb scw-maps__thumb--file" href="' + esc(m.url) + '" target="_blank" rel="noopener">PDF · open</a>';
-      return '<div class="scw-maps__tile" data-map-id="' + esc(m.id) + '">' + thumb +
-        '<div class="scw-maps__foot"><span class="scw-maps__name" title="' + esc(m.name) + '">' + esc(m.name) + '</span>' +
-        '<button type="button" class="scw-maps__btn" data-map-pop="' + esc(m.id) + '">Pop out</button></div></div>';
+      if (m.thumb) {
+        return '<div class="scw-maps__tile" data-map-id="' + esc(m.id) + '">' +
+          '<a class="scw-maps__thumb" href="' + esc(m.url) + '" target="_blank" rel="noopener" aria-label="Open ' + esc(m.name) + '"><img src="' + esc(m.thumb) + '" alt="" loading="lazy"></a>' +
+          '<div class="scw-maps__foot"><span class="scw-maps__name" title="' + esc(m.name) + '">' + esc(m.name) + '</span>' +
+          '<button type="button" class="scw-maps__btn" data-map-pop="' + esc(m.id) + '">Pop out</button></div></div>';
+      }
+      // A PDF has no thumbnail: a document card, not a grey box.
+      return '<div class="scw-maps__doc" data-map-id="' + esc(m.id) + '">' +
+        '<span class="scw-maps__doc-icon">' + pdfIcon + '</span>' +
+        '<span class="scw-maps__doc-text"><span class="scw-maps__name" title="' + esc(m.name) + '">' + esc(m.name) + '</span>' +
+          '<span class="scw-maps__doc-kind">PDF' + (m.file ? ' · ' + esc(m.file) : '') + '</span></span>' +
+        '<a class="scw-maps__btn" href="' + esc(m.url) + '" target="_blank" rel="noopener">Open</a>' +
+        '<button type="button" class="scw-maps__btn" data-map-pop="' + esc(m.id) + '">Pop out</button></div>';
     }).join('');
     strip.innerHTML =
-      '<div class="scw-maps__head"><h2 class="scw-maps__title">Site maps &amp; coverage</h2>' +
-        '<span class="scw-maps__sub">' + list.length + (list.length === 1 ? ' plan' : ' plans') + ' · click to open, or pop one out into its own window</span></div>' +
-      (tiles ? '<div class="scw-maps__tiles">' + tiles + '</div>' : '<div class="scw-maps__empty">No site plan on this project yet.</div>');
+      '<div class="scw-maps__head"><span class="scw-maps__title">Site maps &amp; coverage</span>' +
+        (list.length
+          ? '<span class="scw-maps__sub">' + list.length + (list.length === 1 ? ' plan' : ' plans') + ' · open, or pop one out into its own window</span>'
+          : '<span class="scw-maps__sub">None on this project yet</span>') +
+        '<button type="button" class="scw-maps__btn scw-maps__upload" data-map-upload="1">+ Upload site plan</button>' +
+      '</div>' +
+      (tiles ? '<div class="scw-maps__tiles">' + tiles + '</div>' :
+        '<div class="scw-maps__empty">No site plan or coverage map is filed on this project. Upload one under Files and give it the Site Plan file type; images get a thumbnail here, PDFs a document card.</div>');
     strip.onclick = function (e) {
+      if (e.target.closest && e.target.closest('[data-map-upload]')) {
+        var api = window.SCW && SCW.deployNav;
+        if (api && typeof api.openSection === 'function') api.openSection(/^other files$/i);
+        return;
+      }
       var b = e.target.closest && e.target.closest('[data-map-pop]');
       if (!b) return;
       var id = b.getAttribute('data-map-pop');

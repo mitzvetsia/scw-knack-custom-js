@@ -75,7 +75,9 @@
   // Matched on title.
   var EXCLUDE_TITLES = [
     /\(hide\)/i, /^DOC_/i, /^INSTALL_system setup/i, /^SOW_proposed/i,
-    /^PHOTOS$/i, /^what we.?re installing/i
+    /^PHOTOS$/i, /^what we.?re installing/i,
+    // Folded into the worksheet (mdf-notes.js) / staging grids: not sections.
+    /^manage mdfs?/i, /^all associated sows?/i, /^CORE_/i, /^INSTALL_acceptances/i
   ];
 
   // ── Lifecycle organization (Part 3) ───────────────────────────────────
@@ -187,8 +189,10 @@
       '  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 14px;',
       '}',
       '.scw-deploy-row2.has-maps .scw-deploy-also {',
-      '  flex: 0 0 340px; flex-direction: column; align-items: stretch; gap: 2px;',
+      '  flex: 0 0 360px; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 2px;',
+      '  min-width: 0; align-self: flex-start;',
       '}',
+      '.scw-deploy-row2.has-maps .scw-deploy-also__row { width: 100%; min-width: 0; box-sizing: border-box; }',
       '.scw-deploy-also #' + NAV_ID + '-label { flex: 0 0 100%; margin-bottom: 4px; }',
       '.scw-deploy-row2:not(.has-maps) .scw-deploy-also #' + NAV_ID + '-label { flex: none; margin: 0 6px 0 2px; }',
       '.scw-deploy-also__row {',
