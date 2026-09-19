@@ -103,9 +103,10 @@ setTimeout(() => {
     nsRows, [['Pre-existing PoE Switch Pre-existing', '1'], ['Customer-supplied Monitor Customer-supplied', '1']]);
   check('pre-existing / customer-supplied never count toward shipping', ship.textContent.indexOf('PoE Switch') < 0 && ship.textContent.indexOf('Monitor') < 0, true);
   const removed = tray.querySelector('.scw-bom__removed');
-  check('Removed by change order: rows with field_2967 set, headed by the CO\'s SOW number (off its own lines, not the flag\'s display value), chip, no pricing, never in Shipping',
+  check('Removed or swapped out by change order: rows with field_2967 set plus each applied swap\'s old unit, headed by the CO\'s SOW number (off its own lines, not the flag\'s display value), chip, no pricing, never in Shipping',
     [[...removed.querySelectorAll('.scw-bom__group td')].map(g => g.textContent), [...removed.querySelectorAll('tbody tr:not(.scw-bom__group)')].map(cells), ship.textContent.indexOf('Removed Camera') < 0],
-    [['SOW 1601CO'], [['Removed Camera Removed', '1']], true]);
+    [['SOW 1601CO'], [['Imperial 64 Channel NVR Swapped out · replaced by Imperial 128 Channel 4K NVR v3', '1'], ['Removed Camera Removed', '1']], true]);
+  check('the swapped-out unit is listed as hardware to bring back, never in Shipping or its totals', [[...ship.querySelectorAll('.scw-bom__name')].some(n => n.textContent === 'Imperial 64 Channel NVR'), cells(ship.querySelector('.scw-bom__total'))[2]], [false, '14']);
   // Toggle → by MDF / IDF. The tray REPAINTS IN PLACE: same element, still tagged for the
   // drawer to clear (a swapped-in fresh element lost the tag and lingered under the next tray).
   tray.querySelector('[data-scw-bom-set="loc"]').click();

@@ -346,9 +346,12 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   Shipping, amber "Removal pending · SOW 1418CO not signed" chip: nothing
   leaves scope before signature) and a SWAP (Remove + Add pair targeting
   one record; signature updates the record's product in place, so the row
-  shows the NEW product with a "Swapped in by SOW 1418CO · was <old>" chip
-  and no removed row ever appears for the old one — the "the CO removed a
-  camera but the tray doesn't show it" case). Never listed: services, assumptions. Accessories are rows in their
+  shows the NEW product with a "Swapped in by SOW 1418CO · was <old>" chip;
+  and because the OLD unit is real hardware — quoted, maybe shipped, maybe
+  on site — the pair's Remove line (product + qty) is listed in the removed
+  block as "Swapped out · replaced by <new>", hardware to bring back. The
+  block is titled "Removed or swapped out by change order" — the "the CO
+  swapped a camera and there's an extra one on site" case). Never listed: services, assumptions. Accessories are rows in their
   own bucket. Group headers are 15px headings with a rule; Camera / Reader
   alone carries a subtotal row in the category view (the drop count is what
   a PM checks; on mounts or headend it adds nothing). The old per-MDF / grand summary panels and the "Summary

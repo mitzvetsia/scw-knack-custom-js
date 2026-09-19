@@ -33,8 +33,10 @@
  * (row stays in Shipping with an amber "Removal pending" chip — nothing
  * leaves scope before signature) and a SWAP, where signature changed the
  * install record's product IN PLACE (row shows its new product with a
- * "Swapped in by … · was …" chip; the old product never appears as a
- * removed row because no record was removed).
+ * "Swapped in by … · was …" chip). No record was removed, but the OLD unit
+ * is real hardware — quoted, possibly shipped, possibly on site — so the
+ * swap's Remove line (its product + qty) is listed in the same block as
+ * removals, "Swapped out", as extra hardware to bring back.
  * Services and assumptions never appear. Accessories (mounts) are line
  * items with a product and ship like anything else: they are rows in their
  * own bucket.
@@ -84,7 +86,8 @@
     target: 'field_2966',   // Target install item (the install record a CO line acts on)
     action: 'field_2965',   // CO Action (Remove on credit lines, else an Add)
     sow:    'field_2154',   // the CO's SOW ("SW1418CO")
-    product:'field_1949'    // Product (connection → name)
+    product:'field_1949',   // Product (connection → name)
+    qty:    'field_1964'    // Quantity on the CO line
   };
   var NO_LOC = 'No MDF / IDF';
   var NO_SOW = 'No SOW';
@@ -267,7 +270,9 @@
       var line = {
         co:   connLabels(r, CF.sow).map(sowLabel).filter(function (l) { return /CO/i.test(l); })[0] ||
               connLabels(r, CF.sow).map(sowLabel)[0] || UNKNOWN_CO,
-        name: connLabel(r, CF.product) || plain(r[IF.productName]) || ''
+        name: connLabel(r, CF.product) || plain(r[IF.productName]) || '',
+        qty:  num(r[CF.qty]) || 0,
+        rec:  r
       };
       var e = out[tid] || (out[tid] = { removes: [], adds: [] });
       (/remove/i.test(plain(r[CF.action])) ? e.removes : e.adds).push(line);
@@ -353,6 +358,19 @@
         if (it.net == null && it.retail != null) it.net = it.retail - (it.discount || 0);
       }
       out.push(it);
+      // An applied swap: the old unit (the pair's Remove line) is extra
+      // hardware — list it with the removals so it gets brought back.
+      if (/^Swapped in/.test(tag) && co.removes.length) {
+        var old = co.removes[0];
+        var oldSku = '';
+        if (skuCol && skuCol.view === cfg.sowView && old.rec) oldSku = connLabel(old.rec, skuCol.key) || plain(old.rec[skuCol.key]);
+        out.push({
+          id: r.id + ':swapped-out', name: old.name || '(unnamed)', kind: 'swapped', qty: old.qty || qty, sku: oldSku,
+          bucket: it.bucket, loc: it.loc, sow: it.sow, co: old.co, designator: it.designator,
+          tag: 'Swapped out · replaced by ' + name,
+          isCam: false, newDrop: false, existingDrop: false, special: false, retail: null, discount: null, net: null
+        });
+      }
     }
     return out;
   }
@@ -419,7 +437,7 @@
       var it = all[i];
       if (it.newDrop) newDrops++;
       if (it.existingDrop) existing++;
-      (it.kind === 'removed' ? removed : (it.kind === 'ship' ? ship : noShip)).push(it);
+      (it.kind === 'removed' || it.kind === 'swapped' ? removed : (it.kind === 'ship' ? ship : noShip)).push(it);
     }
     var by = mode === 'loc' ? 'loc' : (mode === 'sow' ? 'sow' : 'bucket');
     return {
@@ -547,8 +565,9 @@
       }
       if (m.removed.length) {
         html += '<div class="scw-bom__noship scw-bom__removed">' +
-          '<div class="scw-bom__section"><span class="scw-bom__section-title">Removed by change order</span>' +
-          '<span class="scw-bom__section-sub">pulled from the install scope · not shipping, not counted</span></div>' +
+          '<div class="scw-bom__section"><span class="scw-bom__section-title">Removed or swapped out by change order</span>' +
+          '<span class="scw-bom__section-sub">out of scope · not shipping, not counted · ' +
+          '<span class="scw-bom__why">if it already shipped, it is extra hardware on site — bring it back</span></span></div>' +
           tableHtml(m.removed, false, false, null) +
         '</div>';
       }
