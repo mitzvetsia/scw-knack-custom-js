@@ -37,9 +37,11 @@
  *     ETA branches here — the search for "delivery" in this file finds
  *     every place they belong.
  *
- * What a PM on this page needs: has it shipped and where is it. So the
- * tile line leads with what is moving and the last ship date, the
- * drawer's rows lead with the ship date + carrier + tracking link, and
+ * What a PM on this page needs: how many shipments there are and whether
+ * they have gone out. So the tile line is a COUNT plus the last ship
+ * date — never "in transit" or "out", which imply a location the OMS
+ * never tells us. The drawer's rows lead with the ship date + carrier +
+ * tracking link (the link is what knows where a parcel is), and
  * order administration (order no, date, ship-to, address, OMS link, sync
  * state) sits behind a per-row "Order details" disclosure.
  *
@@ -326,10 +328,11 @@
 
   // ── The compact tile line (always visible on the Installation tile) ──
   /** Returns an HTML string deploy-page-nav folds into the tile, or ''.
-   *  Leads with what a PM acts on: a warning state, then what is moving
-   *  and when it last shipped, then what has not gone out. Staleness
-   *  OVERRIDES the headline — a stale status must not read as fact.
-   *  Nothing here speaks to arrival; we cannot see it. */
+   *  Leads with what a PM acts on: a warning state, else a plain count
+   *  plus the last ship date. Staleness OVERRIDES the headline — a stale
+   *  status must not read as fact. Nothing here speaks to WHERE anything
+   *  is: no "in transit", no "out", no arrival. We cannot see any of it;
+   *  the tracking link can. */
   function tileLine() {
     var cfg = activeScene();
     if (!cfg) return '';
@@ -353,13 +356,15 @@
       text = s.missing + (s.missing === 1 ? ' order missing in the OMS' : ' orders missing in the OMS');
     } else if (s.shipped) {
       cls = 'go';
-      // Say what is known — shipped, and when — never an arrival.
-      text = s.shipped + (s.shipped === 1 ? ' shipment out' : ' shipments out') +
-        (s.lastShipped ? ' · last shipped ' + fmtDay(s.lastShipped) : '') +
-        (s.waiting ? ' · ' + s.waiting + ' not shipped yet' : '');
+      // A COUNT and a DATE — nothing about where a parcel is. "In transit"
+      // / "out" both imply a location we cannot see: all we know is that
+      // this many shipments exist and when the last one left.
+      text = s.total + (s.total === 1 ? ' shipment' : ' shipments') +
+        (s.waiting ? ' · ' + s.waiting + ' not shipped yet' : '') +
+        (s.lastShipped ? ' · last shipped ' + fmtDay(s.lastShipped) : '');
     } else {
       cls = 'wait';
-      text = s.waiting + (s.waiting === 1 ? ' shipment not sent yet' : ' shipments not sent yet');
+      text = s.total + (s.total === 1 ? ' shipment' : ' shipments') + ' · none shipped yet';
     }
     return '<button type="button" class="scw-ships-line" data-scw-tile-ships="1" ' +
         'aria-label="Shipments: ' + esc(text) + '">' +
@@ -831,7 +836,7 @@
     return api.openPanel({
       eyebrow: '3 · Installation',
       title: 'Shipments',
-      sub: 'Orders mirrored from the OMS — has it shipped, and where is it',
+      sub: 'Orders mirrored from the OMS — how many, and what has gone out',
       el: render(cfg)
     });
   }

@@ -128,17 +128,19 @@ scene([
   shipRec({ id: 's2', orderNo: 'SO-1002', status: 'shipped', synced: now - 3600000, shipDate: now - DAY, carrier: 'UPS', tracking: '1Z999' }),
   shipRec({ id: 's3', orderNo: 'SO-1003', status: 'pending', synced: now - 3600000 })
 ]);
-check('fresh: leads with what is out and when it last shipped — never an arrival',
+check('fresh: a plain COUNT plus the last ship date — no "in transit", no "out", nothing about where a parcel is',
   [lineText(), lineTone()],
-  ['2 shipments out · last shipped ' + new Date(now - DAY).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' · 1 not shipped yet', 'go']);
+  ['3 shipments · 1 not shipped yet · last shipped ' + new Date(now - DAY).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), 'go']);
 
 scene([shipRec({ id: 's1', orderNo: 'SO-1001', status: 'pending', synced: now - 3600000 })]);
-check('nothing out yet', [lineText(), lineTone()], ['1 shipment not sent yet', 'wait']);
+check('nothing shipped yet', [lineText(), lineTone()], ['1 shipment · none shipped yet', 'wait']);
 // A status that SAYS delivered is still only free text: it is shown verbatim, but the tray does not
 // infer an arrival from it, count it as landed, or colour it as done.
 scene([shipRec({ id: 's1', orderNo: 'SO-1001', status: 'Delivered', synced: now - 3600000, shipDate: now - DAY })]);
 check('a "Delivered" status string does not become a delivery claim', [lineText(), api.tone('Delivered')],
-  ['1 shipment out · last shipped ' + new Date(now - DAY).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), 'neutral']);
+  ['1 shipment · last shipped ' + new Date(now - DAY).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), 'neutral']);
+check('the tile line never claims a location',
+  /in transit|\bout\b|en route|arriv/i.test(lineText()), false);
 
 scene([
   shipRec({ id: 's1', orderNo: 'SO-1001', status: 'shipped', synced: now - 5 * DAY, shipDate: now - 6 * DAY }),

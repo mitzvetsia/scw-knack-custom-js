@@ -290,9 +290,11 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   carrier and a tracking link. To phase it back in, get a real delivery
   feed first (a ShipEdge webhook, carrier tracking, or parsed delivery
   mail), then restore the branches the module header points at. The line
-  leads with what a PM acts on: missing in OMS → what is out + last ship
-  date → nothing sent yet, and **staleness outranks every other
-  headline**. Drawer: freshness bar + "Re-check shipments", a stale
+  leads with what a PM acts on: missing in OMS → a plain COUNT plus the
+  last ship date → none shipped yet, and **staleness outranks every other
+  headline**. It never says "in transit" or "out": both imply a location
+  the OMS never reports. All we know is how many shipments exist and when
+  the last one left; the tracking link is what knows where a parcel is. Drawer: freshness bar + "Re-check shipments", a stale
   banner, counts, then one card per order leading with its ship date plus
   carrier and tracking link, with order administration behind a per-row
   "Order details" disclosure, and one line stating plainly that delivery
