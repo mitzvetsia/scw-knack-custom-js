@@ -341,6 +341,9 @@
         syncState:   txtOf(r, F.syncState),
         lastSynced:  dateOf(r, F.lastSynced),
         acceptance:  txtOf(r, F.acceptance),
+        // Two different silences: no column on the view at all, vs. a
+        // column that no sync has filled yet. The card says which.
+        hasBlobField: !!F.itemsJson,
         contents:    F.itemsJson ? contentsOf(r, F) : []
       });
     }
@@ -500,6 +503,7 @@
       '.scw-ships__item-name { color: #0f172a; }',
       '.scw-ships__item-sku { color: #64748b; font-variant-numeric: tabular-nums; }',
       '.scw-ships__item-serials { display: block; margin-top: 2px; color: #64748b; font-size: 11.5px; font-variant-numeric: tabular-nums; }',
+      '.scw-ships__nocontents { margin: 2px 0 0; color: #64748b; font-size: 12px; line-height: 1.45; }',
       '.scw-ships__dl { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 12.5px; }',
       '.scw-ships__dl dt { color: #64748b; }',
       '.scw-ships__dl dd { margin: 0; color: #0f172a; }',
@@ -850,6 +854,14 @@
         (sh.contents.length === 1 ? ' product' : ' products') +
         (units !== sh.contents.length ? ' · ' + units + ' units' : '') +
         '</summary><ul class="scw-ships__items">' + li + '</ul></details>';
+    } else {
+      // Never render nothing here. An empty contents block reads as a
+      // broken feature, and the two reasons it can be empty have
+      // completely different fixes — say which one this is.
+      contents = '<div class="scw-ships__nocontents">' + (sh.hasBlobField
+        ? 'Contents not captured yet &mdash; resync to pull this order\u2019s items from the OMS.'
+        : 'Contents are not on this view yet &mdash; add the items-JSON field as a column on the shipments source view.') +
+        '</div>';
     }
 
     return '<div class="' + cls + '">' +

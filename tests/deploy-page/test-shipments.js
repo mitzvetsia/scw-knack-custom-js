@@ -68,10 +68,10 @@ global.SCW = window.SCW;
 new Function('window', 'document', '$', 'Knack', 'SCW',
   fs.readFileSync(path.join(__dirname, '../../src/features/shipments-tray.js'), 'utf8'))(window, document, jq, window.Knack, window.SCW);
 
-function scene(recs) {
+function scene(recs, cols) {
   document.body.innerHTML = '<div id="kn-scene_1311">' +
     '<div class="kn-table kn-view" id="view_4163"><table><thead><tr>' +
-      COLS.map(([k, label]) => '<th class="' + k + '"><span class="table-fixed-label"><a class="kn-sort"><span>' + label + '</span></a></span></th>').join('') +
+      (cols || COLS).map(([k, label]) => '<th class="' + k + '"><span class="table-fixed-label"><a class="kn-sort"><span>' + label + '</span></a></span></th>').join('') +
     '</tr></thead><tbody></tbody></table></div>' +
     '<div class="kn-table kn-view" id="view_4161"></div><div class="kn-table kn-view" id="view_3914"></div>' +
     '<div class="kn-table kn-view" id="view_4157"></div>' +
@@ -221,8 +221,20 @@ check('contents render from the blob: qty, name, SKU and serials, decoded, under
     ['2×', 'The Viking 8.0 v5 - 26BV8-V5', '0235UTNT', 'Serials 210235UTNT3265000114, 210235UTNT3265000085']]]);
 check('a product name with a quote survives, because the blob percent-encodes every string',
   cards[1].querySelector('.scw-ships__item-name').firstChild.textContent.trim(), 'The 6" \'Big\' Bracket, v2');
-check('no contents blob → no contents disclosure, and nothing throws',
-  cards[0].querySelector('.scw-ships__more--items'), null);
+check('no contents blob → no disclosure, but NEVER a silent blank: the card says the snapshot is missing and that a resync fills it',
+  [cards[0].querySelector('.scw-ships__more--items'),
+   /resync/i.test(cards[0].querySelector('.scw-ships__nocontents').textContent)],
+  [null, true]);
+// The other way contents can be empty: nobody put the JSON column on the view.
+// Same blank to the eye, completely different fix — so the card must name it.
+(() => {
+  const noJson = COLS.filter(c => c[0] !== 'field_3307');
+  scene([shipRec({ id: 'r1', no: 'A-1' })], noJson);
+  api.open();
+  const el = document.querySelector('.scw-ships__nocontents');
+  check('the JSON column missing from the view reads as a SETUP gap, not as an un-synced order',
+    [/not on this view/i.test(el.textContent), /resync/i.test(el.textContent)], [true, false]);
+})();
 // A carrier with no tracking URL: the number is still shown, selectable, but not a dead link.
 check('an unlinkable carrier still shows the number, as text rather than a broken link',
   (() => { const b = cards[0].querySelector('.scw-ships__actions .scw-ships__btn'); return [b.tagName, b.className.indexOf('--num') > 0, b.textContent, b.getAttribute('href')]; })(),
