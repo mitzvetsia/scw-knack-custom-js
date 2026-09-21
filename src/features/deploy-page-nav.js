@@ -965,6 +965,7 @@
           '<span class="scw-deploy-tile__head">' + esc(model.head) + '</span>' +
           (model.bars || '') +
           (model.fact ? '<span class="scw-deploy-tile__fact' + (model.factWarn ? ' scw-deploy-tile__fact--warn' : '') + '">' + esc(model.fact) + '</span>' : '') +
+          (model.extra || '') +
           '<span class="scw-deploy-tile__actions">' +
             '<button type="button" class="scw-deploy-tile__link" data-scw-tile-open="1" aria-label="' + esc(model.stage.label + ': ' + model.stateText) + '">' + esc(model.link) + '</button>' +
             actions +
@@ -983,6 +984,14 @@
             if (docsBtn) {
               e.stopPropagation();
               if (closeM) openDocsGenerator(closeM.target, docsBtn.parentNode, docsBtn);
+              return;
+            }
+            // The shipments line on the Installation tile opens its own
+            // drawer (shipments-tray.js), not the tile's target.
+            var shipBtn = e.target.closest && e.target.closest('[data-scw-tile-ships]');
+            if (shipBtn) {
+              e.stopPropagation();
+              if (window.SCW && SCW.shipments && typeof SCW.shipments.open === 'function') SCW.shipments.open();
               return;
             }
             if (mdl.target.kind === 'worksheet') scrollToTarget(mdl.target);
@@ -1552,6 +1561,16 @@
     var count = num(target.count);
 
     if (stage.worksheet) {
+      // Shipments: a compact always-visible line under the photo bars,
+      // opening the shipments drawer. shipments-tray.js owns the content
+      // and returns '' when the view isn't on the scene; building it HERE
+      // keeps it inside the tile's innerHTML diff, so a nav pass can't
+      // fight a separately-mounted element.
+      try {
+        if (window.SCW && SCW.shipments && typeof SCW.shipments.tileLine === 'function') {
+          model.extra = SCW.shipments.tileLine() || '';
+        }
+      } catch (e) { model.extra = ''; }
       var ws = target.el;
       var ps = photoStats(ws);
       var recs = num(txt(ws.querySelector('.scw-ws-v2-count')));

@@ -323,6 +323,24 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // refetches so any flags the scenario flips show up on their own.
   // Blank/PLACEHOLDER hides the row button and drops the uploader's
   // checkbox, so the panel degrades to a plain file upload.
+  // ── Shipments re-check (deploy page → OMS reconcile) ────────────────
+  // Fired by the "Re-check shipments" button in the Installation tile's
+  // shipments drawer (shipments-tray.js). The scenario pulls the OMS and
+  // reconciles it against what Knack already holds, creating records for
+  // orders it doesn't recognize and flagging ones that no longer resolve
+  // ("Missing in OMS"). The payload carries everything the page knows so
+  // the scenario needn't re-query Knack first:
+  //   { project_recordID, source: 'deploy-page', requestedAt,
+  //     sows:        [ { id, sowId } ],                 // All Associated SOWs
+  //     acceptances: [ { id, proposal, signed } ],      // accepted proposals
+  //     shipments:   [ { id, orderNo, omsOrderId, syncState, lastSynced } ] }
+  // An order ties to a project directly OR through an accepted proposal,
+  // so both sides of the match ship. `shipments` is what we already hold —
+  // the list to diff against. Response: 2xx (body optional; only
+  // {success:false} fails). A blank / PLACEHOLDER url makes the button
+  // report "Re-check not configured" and fire nothing.
+  MAKE_SHIPMENTS_RESYNC_WEBHOOK: "https://hook.us1.make.com/dbrdngn246t4m6nebqyhrhlua1w7ew1q",
+
   MAKE_GREENLIGHT_CHECK_WEBHOOK: "https://hook.us1.make.com/zlxkei9ro9iaxjri5e5yf2f4fqzi89xl",
   // QA-fail notification: qa-popover POSTs here whenever a save WRITES a
   // photo's QA status to Fail (the fields diff carries the status only on

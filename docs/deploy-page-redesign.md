@@ -273,6 +273,45 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   `MutationObserver` on the scene runs a pass as soon as an unclassified
   section appears. bom-tray.js likewise injects its summary-hiding CSS at
   load.
+- **`shipments-tray.js`** (2026-09-21) — a Shipment record mirrors ONE order
+  in the third-party OMS (one order = one shipment = one record). The OMS
+  owns the facts; Knack owns the linkage. A **compact always-visible line on
+  the Installation tile** (`SCW.shipments.tileLine()`, folded into the tile
+  by deploy-page-nav so it lives inside the tile's own innerHTML diff and a
+  nav pass can't fight it) opens the **Shipments drawer**
+  (`SCW.deployNav.openPanel`). The line leads with what a PM acts on:
+  overdue → missing in OMS → in transit + next ETA (or last ship date) →
+  all delivered, and **staleness outranks every other headline**. Drawer:
+  freshness bar + "Re-check shipments", a stale banner, counts, then one
+  card per order leading with delivered / ETA / ship date + carrier and
+  tracking link, with order administration behind a per-row "Order details"
+  disclosure. **Everything is read-only** — nothing writes a record; a
+  "fix" typed in Knack is overwritten by the next reconcile pass.
+  `field_2967`-style guessing is avoided entirely: **field keys are
+  discovered from view_4163's own column headers by LABEL** (`fields()`,
+  the trick bom-tray.js uses for SKU), confirmed against the live view
+  (field_3281…field_3305). **Two spec fields are NOT on the view** —
+  `SHIP_eta` and `OMS_order total` — so no arrival date is implied and
+  nothing can be "overdue"; the drawer says so once, and both light up
+  with no code change if Builder adds them. `SHIP_address` is four parts
+  (street/city/state/zip) composed into one line. OMS statuses are FREE
+  TEXT: `tone()` keyword-matches what it knows and **falls through to a
+  neutral chip** for anything unseen, shown verbatim. "Missing in OMS" is
+  surfaced on the row and the tile. Staleness is judged by the OLDEST
+  `SYS_last synced` (the worst record), and reported from it — `syncedText`
+  is the newest, `staleText` the oldest, and anything reporting staleness
+  quotes the oldest. **Re-check shipments** POSTs
+  `MAKE_SHIPMENTS_RESYNC_WEBHOOK` with everything the page knows so the
+  scenario needn't re-query Knack: project id, the SOWs (view_4161), the
+  acceptances + signed flag (view_3914 — an order ties to a project
+  directly OR through an accepted proposal), and the shipments we already
+  hold (id / order no / OMS order id / sync state / last synced) as the
+  list to diff against; then refetches view_4163 at 1.5s / 6s / 15s and
+  repaints (project rollups recalculate lazily — this reads the shipment
+  RECORDS, never a rollup). The native grid is registered in
+  `hide-data-source-views.js`. Ops page only.
+  `tests/deploy-page/test-shipments.js` (+ the tile-line integration in
+  `test-deploy-tiles.js`).
 - **`pinned-notes.js`** — pinned strip under the project header (≤3, `FLAG_pinned`
   field_3278 via view_4135 PUT); the Notes drawer as **cards** (author · date,
   text with paragraphs, Show more past 4 lines, Pin/Unpin, per-row action links
