@@ -539,15 +539,15 @@
       '.scw-ships__more[open] summary { margin-bottom: 8px; }',
       '.scw-ships__more--items summary { color: #0f4c81; }',
       '.scw-ships__items { list-style: none; margin: 0; padding: 0; }',
-      '.scw-ships__item { display: flex; gap: 12px; align-items: baseline; font-size: 12.5px; padding: 7px 0; border-top: 1px solid #f1f5f9; }',
-      '.scw-ships__item:first-child { border-top: 0; padding-top: 0; }',
-      '.scw-ships__item-qty { flex: none; min-width: 34px; text-align: right; font-weight: 800; font-size: 13.5px; color: #0f172a; font-variant-numeric: tabular-nums; }',
-      '.scw-ships__item-qty i { font-style: normal; font-weight: 600; color: #94a3b8; margin-left: 1px; }',
-      '.scw-ships__item-body { min-width: 0; }',
-      '.scw-ships__item-name { display: block; color: #0f172a; font-weight: 600; line-height: 1.35; }',
-      '.scw-ships__item-sku { display: block; margin-top: 1px; color: #64748b; font-size: 11.5px; font-variant-numeric: tabular-nums; }',
-      '.scw-ships__item-fits { display: block; margin-top: 1px; color: #94a3b8; font-size: 11.5px; line-height: 1.35; }',
-      '.scw-ships__item-serials { display: block; margin-top: 2px; color: #64748b; font-size: 11.5px; font-variant-numeric: tabular-nums; }',
+      // Zebra rather than rules: the same separation for none of the height.
+      '.scw-ships__item { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; font-size: 12px; line-height: 1.5; padding: 1px 6px; border-radius: 3px; }',
+      '.scw-ships__item:nth-child(even) { background: #f8fafc; }',
+      '.scw-ships__item-qty { flex: none; min-width: 30px; text-align: right; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums; }',
+      '.scw-ships__item-qty i { font-style: normal; font-weight: 400; color: #94a3b8; margin-left: 1px; }',
+      // The name takes the slack and clips; the codes never do.
+      '.scw-ships__item-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #0f172a; }',
+      '.scw-ships__item-sku { flex: none; color: #94a3b8; font-size: 11px; font-variant-numeric: tabular-nums; }',
+      '.scw-ships__item-serials { flex: 0 0 100%; margin: 0 0 1px 38px; color: #64748b; font-size: 11px; font-variant-numeric: tabular-nums; }',
       '.scw-ships__nocontents { margin: 2px 0 0; color: #64748b; font-size: 12px; line-height: 1.45; }',
       '.scw-ships__dl { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 12.5px; }',
       '.scw-ships__dl dt { color: #64748b; }',
@@ -890,17 +890,19 @@
         var codes = [];
         if (parts.model) codes.push(esc(parts.model));
         // An order line with no description falls back to its SKU for the
-        // name; do not then print the same code again underneath it.
+        // name; do not then print the same code again beside it.
         if (it.sku && it.sku !== parts.model && it.sku !== parts.title) codes.push(esc(it.sku));
-        li += '<li class="scw-ships__item">' +
+        // ONE LINE PER PRODUCT. The fitment list is the bulk of the string
+        // and the least of what a PM is looking for, so it lives on the
+        // row's tooltip with the untouched original name rather than
+        // costing thirty rows a line each.
+        li += '<li class="scw-ships__item" title="' + esc(it.name) + '">' +
           '<span class="scw-ships__item-qty">' + esc(it.qty) + '<i>&times;</i></span>' +
-          '<span class="scw-ships__item-body">' +
-            '<span class="scw-ships__item-name">' + esc(parts.title) + '</span>' +
-            (codes.length ? '<span class="scw-ships__item-sku">' + codes.join(' &middot; ') + '</span>' : '') +
-            (parts.fits ? '<span class="scw-ships__item-fits">for ' + esc(parts.fits) + '</span>' : '') +
-            (it.serials.length ? '<span class="scw-ships__item-serials">' +
-              (it.serials.length === 1 ? 'Serial ' : 'Serials ') + esc(it.serials.join(', ')) + '</span>' : '') +
-          '</span></li>';
+          '<span class="scw-ships__item-name">' + esc(parts.title) + '</span>' +
+          (codes.length ? '<span class="scw-ships__item-sku">' + codes.join(' &middot; ') + '</span>' : '') +
+          (it.serials.length ? '<span class="scw-ships__item-serials">' +
+            (it.serials.length === 1 ? 'Serial ' : 'Serials ') + esc(it.serials.join(', ')) + '</span>' : '') +
+          '</li>';
       }
       contents = '<details class="scw-ships__more scw-ships__more--items"><summary>' +
         'What&rsquo;s in this shipment · ' + sh.contents.length +

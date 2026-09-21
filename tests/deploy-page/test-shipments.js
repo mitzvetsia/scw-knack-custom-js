@@ -220,25 +220,27 @@ const rows = (card) => [...card.querySelectorAll('.scw-ships__item')].map(li => 
   li.querySelector('.scw-ships__item-qty').textContent,
   li.querySelector('.scw-ships__item-name').textContent,
   (li.querySelector('.scw-ships__item-sku') || { textContent: '' }).textContent,
-  (li.querySelector('.scw-ships__item-fits') || { textContent: '' }).textContent,
+  li.getAttribute('title'),
   (li.querySelector('.scw-ships__item-serials') || { textContent: '' }).textContent]);
 check('BIGGEST QUANTITY FIRST — a PM scans for what there is a lot of, not for the blob\'s order',
   rows(cards[2]).map(r => r[0]), ['30×', '4×', '3×', '2×', '1×']);
 check('the summary counts products and units',
   cards[2].querySelector('.scw-ships__more--items summary').textContent,
   'What\u2019s in this shipment · 5 products · 40 units');
-check('A COMPATIBILITY LIST IS NOT THE NAME: it drops to its own line so the product leads, and the model code joins the SKU',
+check('ONE LINE PER PRODUCT: the compatibility list leaves the row entirely, and the untouched original name rides the tooltip so nothing is lost',
   rows(cards[2])[0],
   ['30×', 'Electrical Box Mount', 'EMB26DFD · 2115T0GE',
-   'for Deputy v2; Deputy v3; Sheriff; Informant; Scout', '']);
+   'Electrical Box Mount for Deputy v2; Deputy v3; Sheriff; Informant; Scout - EMB26DFD', '']);
+check('no row ever renders a fitment line',
+  cards[2].querySelector('.scw-ships__item-fits'), null);
 check('HTML ENTITIES ARE DECODED — the OMS escapes them, so a 10\u2032 cable must not read "10&#039;"',
-  rows(cards[2])[1], ['4×', "10' PMC HDMI", 'PMC-HDMI-010 · 10ftpmc', '', '']);
-check('a line with no description leads with its SKU, and does not then repeat it underneath',
-  rows(cards[2])[2], ['3×', '00406142', '', '', '']);
+  rows(cards[2])[1].slice(0, 3), ['4×', "10' PMC HDMI", 'PMC-HDMI-010 · 10ftpmc']);
+check('a line with no description leads with its SKU, and does not then repeat it beside itself',
+  rows(cards[2])[2].slice(0, 3), ['3×', '00406142', '']);
 check('a name with no compatibility list and no model code is left exactly as it is, serials and all',
-  rows(cards[2]).slice(3),
-  [['2×', 'The Viking 8.0 v5', '26BV8-V5 · 0235UTNT', '', 'Serials 210235UTNT3265000114, 210235UTNT3265000085'],
-   ['1×', 'The Lookout Mini 5.0', '26ZV5M-MINI-V2 · 0235UL3C', '', 'Serial 210235UL3C325B000013']]);
+  rows(cards[2]).slice(3).map(r => [r[0], r[1], r[2], r[4]]),
+  [['2×', 'The Viking 8.0 v5', '26BV8-V5 · 0235UTNT', 'Serials 210235UTNT3265000114, 210235UTNT3265000085'],
+   ['1×', 'The Lookout Mini 5.0', '26ZV5M-MINI-V2 · 0235UL3C', 'Serial 210235UL3C325B000013']]);
 check('a product name with a quote survives, because the blob percent-encodes every string',
   cards[1].querySelector('.scw-ships__item-name').textContent, 'The 6" \'Big\' Bracket, v2');
 check('no contents blob → no disclosure, but NEVER a silent blank: the card says the snapshot is missing and that a resync fills it',
