@@ -304,10 +304,23 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   `MAKE_SHIPMENTS_RESYNC_WEBHOOK` with everything the page knows so the
   scenario needn't re-query Knack: project id, the SOWs (view_4161), the
   acceptances + signed flag (view_3914 — an order ties to a project
-  directly OR through an accepted proposal), and the shipments we already
+  directly OR through an accepted proposal), the shipments we already
   hold (id / order no / OMS order id / sync state / last synced) as the
-  list to diff against; then refetches view_4163 at 1.5s / 6s / 15s and
-  repaints (project rollups recalculate lazily — this reads the shipment
+  list to diff against, and — the key to matching ShipEdge —
+  **constructed `references`**. ShipEdge's Orders API has no contains /
+  LIKE / keyword filter on `reference_number`, only an exact lookup
+  (`GET /apirest/v4/oms/orders/{ref}?identify_by=order_reference`) or a
+  date-windowed list you filter yourself. Our linkage lives in the order
+  reference, shaped `<project no>-SW<sow no> | <quote no>` (e.g.
+  `62489857827-SW1454 | 20260910-11567`) — exactly the published
+  proposal's identifier — so `buildReferences()` emits every reference an
+  order for this project could carry: the acceptances' full strings first
+  (they know the quote), then the SOW-only left sides (`sowRef`, for an
+  order with no proposal behind it), deduped, each naming its source
+  record. `projectNo` rides at the top level as the one token they all
+  share, the needle for a contains pass over a list windowed by the newest
+  `lastSynced` — the only way to catch an order typed into ShipEdge by
+  hand. Then it refetches view_4163 at 1.5s / 6s / 15s and repaints (project rollups recalculate lazily — this reads the shipment
   RECORDS, never a rollup). The native grid is registered in
   `hide-data-source-views.js`. Ops page only.
   `tests/deploy-page/test-shipments.js` (+ the tile-line integration in

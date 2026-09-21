@@ -469,14 +469,92 @@
     }
     return out;
   }
+  // ── OMS reference numbers ─────────────────────────────────────────
+  // ShipEdge carries the linkage in the ORDER'S REFERENCE, shaped
+  //   <project no>-SW<sow no> | <quote no>
+  //   e.g. "62489857827-SW1454 | 20260910-11567"
+  // which is exactly the published proposal's identifier. That matters
+  // because ShipEdge's Orders API has NO contains / LIKE / keyword filter
+  // on reference_number — only an exact lookup
+  // (GET /apirest/v4/oms/orders/{ref}?identify_by=order_reference) or a
+  // date-windowed list you filter yourself. So the page CONSTRUCTS every
+  // reference an order for this project could carry and ships them, and
+  // the scenario can hit the exact endpoint per reference instead of
+  // paging the whole order history.
+  //
+  // Both forms travel, because an order may or may not have a quote
+  // behind it (a shipment with a project and no proposal is a normal
+  // state): `reference` is the full string when a quote is known, and
+  // `sowRef` is the left side alone. `projectNo` rides at the top level
+  // as the one token every reference for this project shares — the
+  // needle for a client-side contains pass over a date-windowed list,
+  // which is the only way to catch an order somebody typed by hand.
+  /** "62489857827-SW1454 | 20260910-11567" → its parts. Accepts the left
+   *  side alone ("62489857827-SW1454"), which is what the SOW ID field
+   *  carries. Returns null for anything that isn't reference-shaped. */
+  function parseReference(v) {
+    var raw = plain(v);
+    if (!raw) return null;
+    var bar = raw.split('|');
+    var left = plain(bar[0]);
+    var quote = bar.length > 1 ? plain(bar.slice(1).join('|')) : '';
+    if (!left) return null;
+    var segs = left.split('-');
+    var sow = segs.length > 1 ? plain(segs[segs.length - 1]) : '';
+    var projectNo = segs.length > 1 ? plain(segs.slice(0, -1).join('-')) : '';
+    // A bare SOW number with no project prefix is not a reference.
+    if (!sow || !projectNo) return null;
+    return {
+      reference: left + (quote ? ' | ' + quote : ''),
+      sowRef: left,
+      projectNo: projectNo,
+      sow: sow,
+      quote: quote
+    };
+  }
+  /** Every reference an OMS order for this project could carry, built
+   *  from the acceptances (which know the quote) and the SOWs (which do
+   *  not), deduped on the full string. */
+  function buildReferences(cfg) {
+    var out = [], seen = {};
+    function add(parsed, extra) {
+      if (!parsed || seen[parsed.reference]) return;
+      seen[parsed.reference] = true;
+      var row = {
+        reference: parsed.reference, sowRef: parsed.sowRef,
+        projectNo: parsed.projectNo, sow: parsed.sow, quote: parsed.quote
+      };
+      for (var k in extra) row[k] = extra[k];
+      out.push(row);
+    }
+    // Acceptances first — their proposal identifier IS the full shape.
+    var acpts = modelRecords(ACPT_VIEW);
+    for (var a = 0; a < acpts.length; a++) {
+      add(parseReference(txtOf(acpts[a], ACPT_PROPOSAL)),
+          { acceptanceId: acpts[a].id, signed: /^yes$/i.test(txtOf(acpts[a], ACPT_SIGNED)) });
+    }
+    // Then the SOWs — the left side alone, for an order raised against a
+    // SOW with no proposal behind it.
+    var sows = modelRecords(SOW_VIEW);
+    for (var i = 0; i < sows.length; i++) {
+      add(parseReference(txtOf(sows[i], SOW_ID_FIELD)), { sowRecordId: sows[i].id });
+    }
+    return out;
+  }
   /** Everything the page already knows, handed to the scenario so it can
    *  match OMS orders without re-querying Knack. */
   function resyncPayload(cfg) {
     var list = shipments(cfg);
+    var refs = buildReferences(cfg);
     return {
       project_recordID: projectId(),
       source: 'deploy-page',
       requestedAt: new Date().toISOString(),
+      // The one token every reference for this project shares — the
+      // needle for a contains pass when an exact lookup can't be used.
+      projectNo: refs.length ? refs[0].projectNo : '',
+      // Exact-match candidates for ShipEdge's order_reference lookup.
+      references: refs,
       // An order ties to a project directly, or through an accepted
       // proposal — ship both sides of the match.
       sows: rowsOf(SOW_VIEW, function (r) {
@@ -763,6 +841,7 @@
     shipments: function () { var c = activeScene(); return c ? shipments(c) : []; },
     summarize: summarize,
     resyncPayload: function () { var c = activeScene(); return c ? resyncPayload(c) : null; },
+    parseReference: parseReference,
     fields: function () { var c = activeScene(); return c ? fields(c) : {}; },
     tone: tone
   };

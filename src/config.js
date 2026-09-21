@@ -331,12 +331,31 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // ("Missing in OMS"). The payload carries everything the page knows so
   // the scenario needn't re-query Knack first:
   //   { project_recordID, source: 'deploy-page', requestedAt,
+  //     projectNo:   '62489857827',                     // the shared token
+  //     references:  [ { reference, sowRef, projectNo, sow, quote,
+  //                      acceptanceId?, signed?, sowRecordId? } ],
   //     sows:        [ { id, sowId } ],                 // All Associated SOWs
   //     acceptances: [ { id, proposal, signed } ],      // accepted proposals
   //     shipments:   [ { id, orderNo, omsOrderId, syncState, lastSynced } ] }
   // An order ties to a project directly OR through an accepted proposal,
   // so both sides of the match ship. `shipments` is what we already hold —
-  // the list to diff against. Response: 2xx (body optional; only
+  // the list to diff against.
+  //
+  // ⚠️ `references` is the key to matching ShipEdge. Its Orders API has NO
+  // contains / LIKE / keyword filter on reference_number — only an exact
+  // lookup (GET /apirest/v4/oms/orders/{ref}?identify_by=order_reference)
+  // or a date-windowed list you filter client-side. ShipEdge carries our
+  // linkage in the order reference, shaped
+  //   <project no>-SW<sow no> | <quote no>   e.g.
+  //   62489857827-SW1454 | 20260910-11567
+  // which is exactly the published proposal's identifier. So the page
+  // builds every reference an order for this project could carry and
+  // ships them: hit the exact endpoint once per `reference` (and per
+  // `sowRef` for an order raised with no quote behind it) instead of
+  // paging the order history. `projectNo` is the one token they all
+  // share — the needle for a contains pass over a list windowed by the
+  // newest `lastSynced`, which is the only way to catch an order somebody
+  // typed into ShipEdge by hand. Response: 2xx (body optional; only
   // {success:false} fails). A blank / PLACEHOLDER url makes the button
   // report "Re-check not configured" and fire nothing.
   MAKE_SHIPMENTS_RESYNC_WEBHOOK: "https://hook.us1.make.com/dbrdngn246t4m6nebqyhrhlua1w7ew1q",

@@ -68,10 +68,17 @@ function scene(recs) {
     '<div class="kn-table kn-view" id="view_4161"></div><div class="kn-table kn-view" id="view_3914"></div>' +
   '</div>';
   window.Knack.views.view_4163 = models(recs);
-  window.Knack.views.view_4161 = models([{ id: 'sow1', field_2122: '61507493933-SW1347' }, { id: 'sow2', field_2122: '61507493933-SW1348' }]);
+  // SOW ID carries the left side alone; the acceptance's proposal identifier carries the full
+  // reference ShipEdge holds: "<project no>-SW<sow no> | <quote no>". SW1454 appears BOTH ways —
+  // as an accepted proposal and as a SOW — so the dedupe and the two forms are both exercised.
+  window.Knack.views.view_4161 = models([
+    { id: 'sow1', field_2122: '62489857827-SW1454' },
+    { id: 'sow2', field_2122: '62489857827-SW1455' },
+    { id: 'sow3', field_2122: '' }                        // nothing to build a reference from
+  ]);
   window.Knack.views.view_3914 = models([
-    { id: 'acc1', field_2755_raw: [{ id: 'p1', identifier: '20260918-11682' }], field_2766: 'Yes' },
-    { id: 'acc2', field_2755_raw: [{ id: 'p2', identifier: '20260921-11690' }], field_2766: 'No' }
+    { id: 'acc1', field_2755_raw: [{ id: 'p1', identifier: '62489857827-SW1454 | 20260910-11567' }], field_2766: 'Yes' },
+    { id: 'acc2', field_2755_raw: [{ id: 'p2', identifier: '62489857827-SW1456 | 20260921-11690' }], field_2766: 'No' }
   ]);
 }
 let fails = 0;
@@ -181,11 +188,27 @@ scene([
   shipRec({ id: 's2', orderNo: 'SO-1002', omsId: 'OMS-2', status: 'In Transit', sync: 'Missing in OMS', synced: now - 3600000 })
 ]);
 check('the re-check payload carries everything the page knows: the project, its SOWs, its acceptances, and the shipments we already hold',
-  (() => { const p = api.resyncPayload(); return [p.project_recordID, p.source, p.sows, p.acceptances, p.shipments.map(s => [s.id, s.orderNo, s.omsOrderId, s.syncState])]; })(),
+  (() => { const p = api.resyncPayload(); return [p.project_recordID, p.source, p.sows.map(x => x.sowId), p.acceptances.map(x => x.id + ':' + x.signed), p.shipments.map(s => [s.id, s.orderNo, s.omsOrderId, s.syncState])]; })(),
   ['6aa43526d15c143d30214121', 'deploy-page',
-   [{ id: 'sow1', sowId: '61507493933-SW1347' }, { id: 'sow2', sowId: '61507493933-SW1348' }],
-   [{ id: 'acc1', proposal: '20260918-11682', signed: true }, { id: 'acc2', proposal: '20260921-11690', signed: false }],
+   ['62489857827-SW1454', '62489857827-SW1455', ''],
+   ['acc1:true', 'acc2:false'],
    [['s1', 'SO-1001', 'OMS-1', 'Linked'], ['s2', 'SO-1002', 'OMS-2', 'Missing in OMS']]]);
+// ShipEdge has no contains filter on reference_number, so the page constructs the exact strings.
+check('a reference parses into its parts, and the left side alone parses too; anything not reference-shaped is dropped',
+  [api.parseReference('62489857827-SW1454 | 20260910-11567'), api.parseReference('62489857827-SW1454'),
+   api.parseReference('SW1454'), api.parseReference(''), api.parseReference('  62489857827-SW1454  |  20260910-11567  ')],
+  [{ reference: '62489857827-SW1454 | 20260910-11567', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '20260910-11567' },
+   { reference: '62489857827-SW1454', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '' },
+   null, null,
+   { reference: '62489857827-SW1454 | 20260910-11567', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '20260910-11567' }]);
+check('references: the accepted proposals\' full strings first (they know the quote), then the SOW-only forms, deduped, each naming where it came from',
+  api.resyncPayload().references,
+  [{ reference: '62489857827-SW1454 | 20260910-11567', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '20260910-11567', acceptanceId: 'acc1', signed: true },
+   { reference: '62489857827-SW1456 | 20260921-11690', sowRef: '62489857827-SW1456', projectNo: '62489857827', sow: 'SW1456', quote: '20260921-11690', acceptanceId: 'acc2', signed: false },
+   { reference: '62489857827-SW1454', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '', sowRecordId: 'sow1' },
+   { reference: '62489857827-SW1455', sowRef: '62489857827-SW1455', projectNo: '62489857827', sow: 'SW1455', quote: '', sowRecordId: 'sow2' }]);
+check('the project number rides at the top level — the one needle for a contains pass when an exact lookup cannot be used',
+  api.resyncPayload().projectNo, '62489857827');
 api.open();
 const t2 = opened.el;
 const btn = t2.querySelector('[data-scw-ships-resync]');
