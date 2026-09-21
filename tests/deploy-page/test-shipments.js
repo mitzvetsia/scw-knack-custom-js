@@ -3,6 +3,8 @@
 // used here verbatim), OMS facts are read-only, an unknown status falls through to a neutral chip,
 // "Missing in OMS" is surfaced, stale data outranks every other headline, and "Re-check shipments"
 // POSTs the project + SOWs + acceptances + the shipments we already hold.
+// DELIVERY IS OUT (2026-09-21): ShipEdge stops at "shipped", so the tray must say nothing about
+// arrival — no delivered date, no ETA, no overdue. These tests hold that line.
 const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
@@ -114,39 +116,48 @@ const lineTone = () => {
 scene([]);
 check('field keys are discovered off the view\'s own headers, by label — including the four address parts, the project and the acceptance link',
   (() => { const f = api.fields(); return [f.orderNo, f.omsId, f.omsUrl, f.source, f.syncState, f.lastSynced, f.orderDate, f.orderStatus, f.shipToName, f.shipStatus, f.carrier, f.trackingNo, f.trackingUrl, f.shipDate, f.deliveredDate, f.street, f.city, f.state, f.zip, f.project, f.acceptance, f.eta, f.orderTotal]; })(),
-  ['field_3281', 'field_3282', 'field_3283', 'field_3284', 'field_3285', 'field_3286', 'field_3287', 'field_3288', 'field_3289', 'field_3290', 'field_3291', 'field_3292', 'field_3293', 'field_3294', 'field_3295', 'field_3296', 'field_3297', 'field_3298', 'field_3299', 'field_3304', 'field_3305', undefined, undefined]);
+  ['field_3281', 'field_3282', 'field_3283', 'field_3284', 'field_3285', 'field_3286', 'field_3287', 'field_3288', 'field_3289', 'field_3290', 'field_3291', 'field_3292', 'field_3293', 'field_3294', undefined, 'field_3296', 'field_3297', 'field_3298', 'field_3299', 'field_3304', 'field_3305', undefined, undefined]);
+check('the delivered-date column is NOT read even though it exists on the view — there is no feed behind it',
+  [api.fields().deliveredDate, api.fields().eta], [undefined, undefined]);
 
 // ── Tile line ──────────────────────────────────────────────────────
 check('no shipments yet reads as a plain fact, not a problem', [lineText(), lineTone()], ['No shipments on this project yet', 'none']);
 
 scene([
-  shipRec({ id: 's1', orderNo: 'SO-1001', status: 'Delivered', synced: now - 3600000, delivered: now - 2 * DAY }),
-  shipRec({ id: 's2', orderNo: 'SO-1002', status: 'In Transit', synced: now - 3600000, shipDate: now - DAY, carrier: 'UPS', tracking: '1Z999', trackUrl: 'https://ups/1Z999' })
+  shipRec({ id: 's1', orderNo: 'SO-1001', status: 'shipped', synced: now - 3600000, shipDate: now - 3 * DAY }),
+  shipRec({ id: 's2', orderNo: 'SO-1002', status: 'shipped', synced: now - 3600000, shipDate: now - DAY, carrier: 'UPS', tracking: '1Z999' }),
+  shipRec({ id: 's3', orderNo: 'SO-1003', status: 'pending', synced: now - 3600000 })
 ]);
-check('fresh + in transit: leads with what is moving and when it shipped (no ETA field on this view, so no arrival is implied)',
-  [lineText(), lineTone()], ['1 in transit · last shipped ' + new Date(now - DAY).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' · 1 delivered', 'go']);
+check('fresh: leads with what is out and when it last shipped — never an arrival',
+  [lineText(), lineTone()],
+  ['2 shipments out · last shipped ' + new Date(now - DAY).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' · 1 not shipped yet', 'go']);
 
-scene([shipRec({ id: 's1', orderNo: 'SO-1001', status: 'Delivered', synced: now - 3600000, delivered: now - DAY })]);
-check('everything landed', [lineText(), lineTone()], ['All 1 shipment delivered', 'ok']);
+scene([shipRec({ id: 's1', orderNo: 'SO-1001', status: 'pending', synced: now - 3600000 })]);
+check('nothing out yet', [lineText(), lineTone()], ['1 shipment not sent yet', 'wait']);
+// A status that SAYS delivered is still only free text: it is shown verbatim, but the tray does not
+// infer an arrival from it, count it as landed, or colour it as done.
+scene([shipRec({ id: 's1', orderNo: 'SO-1001', status: 'Delivered', synced: now - 3600000, shipDate: now - DAY })]);
+check('a "Delivered" status string does not become a delivery claim', [lineText(), api.tone('Delivered')],
+  ['1 shipment out · last shipped ' + new Date(now - DAY).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), 'neutral']);
 
 scene([
-  shipRec({ id: 's1', orderNo: 'SO-1001', status: 'In Transit', synced: now - 5 * DAY, shipDate: now - 6 * DAY }),
-  shipRec({ id: 's2', orderNo: 'SO-1002', status: 'Delivered', synced: now - 2 * 3600000, delivered: now - DAY })
+  shipRec({ id: 's1', orderNo: 'SO-1001', status: 'shipped', synced: now - 5 * DAY, shipDate: now - 6 * DAY }),
+  shipRec({ id: 's2', orderNo: 'SO-1002', status: 'shipped', synced: now - 2 * 3600000, shipDate: now - DAY })
 ]);
 check('STALE OUTRANKS EVERYTHING: the oldest stamp is judged, and the line says the status may be out of date rather than reporting it as fact',
   [lineText(), lineTone()], ['2 shipments · not synced since 5 days ago — status may be out of date', 'warn']);
 
 scene([
-  shipRec({ id: 's1', orderNo: 'SO-1001', status: 'In Transit', sync: 'Missing in OMS', synced: now - 3600000, shipDate: now - DAY }),
-  shipRec({ id: 's2', orderNo: 'SO-1002', status: 'Delivered', synced: now - 3600000, delivered: now - DAY })
+  shipRec({ id: 's1', orderNo: 'SO-1001', status: 'shipped', sync: 'Missing in OMS', synced: now - 3600000, shipDate: now - DAY }),
+  shipRec({ id: 's2', orderNo: 'SO-1002', status: 'shipped', synced: now - 3600000, shipDate: now - DAY })
 ]);
 check('a record whose OMS order no longer resolves is surfaced on the tile, not hidden', [lineText(), lineTone()], ['1 order missing in the OMS', 'warn']);
 
 // ── Drawer ─────────────────────────────────────────────────────────
 scene([
-  shipRec({ id: 's1', orderNo: 'SO-1001', omsId: 'OMS-1', omsUrl: 'https://oms/1', status: 'Delivered', synced: now - 3600000,
-            delivered: now - 2 * DAY, shipDate: now - 5 * DAY, carrier: 'UPS', tracking: '1Z001', trackUrl: 'https://ups/1Z001',
-            orderDate: now - 9 * DAY, orderStatus: 'Complete', shipTo: 'Ed Haman', street: '12 Main St', city: 'Durham', state: 'NC', zip: '27701' }),
+  shipRec({ id: 's1', orderNo: 'SO-1001', omsId: 'OMS-1', omsUrl: 'https://oms/1', status: 'shipped', synced: now - 3600000,
+            shipDate: now - 5 * DAY, carrier: 'UPS', tracking: '1Z001', trackUrl: 'https://ups/1Z001',
+            orderDate: now - 9 * DAY, orderStatus: 'shipped', shipTo: 'Ed Haman', street: '12 Main St', city: 'Durham', state: 'NC', zip: '27701' }),
   shipRec({ id: 's2', orderNo: 'SO-1002', omsId: 'OMS-2', status: 'Rolling down a hill', synced: now - 3600000, shipDate: now - DAY, carrier: 'FedEx', tracking: '77', sync: 'Missing in OMS' }),
   shipRec({ id: 's3', orderNo: 'SO-1003', omsId: 'OMS-3', status: '', orderStatus: 'Processing', synced: now - 3600000 })
 ]);
@@ -158,19 +169,20 @@ check('open() puts the tray in the deploy drawer, titled and tagged for the draw
 check('the drawer leads with freshness and the re-check button',
   [tray.querySelector('.scw-ships__freshness').textContent, !!tray.querySelector('[data-scw-ships-resync]'), tray.querySelector('.scw-ships__stalebanner') === null],
   ['Last synced 1 hour ago', true, true]);
-check('counts: total, delivered, in transit, not shipped, and the missing-in-OMS warning',
+check('counts: total, shipped, not shipped, and the missing-in-OMS warning',
   [...tray.querySelectorAll('.scw-ships__counts span')].map(s => s.textContent),
-  ['3shipments', '1delivered', '1in transit', '1not shipped', '1missing in OMS']);
+  ['3shipments', '2shipped', '1not shipped', '1missing in OMS']);
 const cards = [...tray.querySelectorAll('.scw-ships__card')];
-check('rows: in transit first, delivered last; each leads with when it lands / landed',
+const day = ms => new Date(ms).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+check('rows: a sync warning first, then what has not gone out, then most recently shipped; each leads with the LAST KNOWN fact, never an arrival',
   cards.map(c => [c.querySelector('.scw-ships__order').textContent, c.querySelector('.scw-ships__when').textContent]),
-  [['SO-1002', 'Shipped ' + new Date(now - DAY).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' · no ETA from the carrier'],
+  [['SO-1002', 'Shipped ' + day(now - DAY)],
    ['SO-1003', 'Not shipped yet'],
-   ['SO-1001', 'Delivered ' + new Date(now - 2 * DAY).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })]]);
+   ['SO-1001', 'Shipped ' + day(now - 5 * DAY)]]);
 check('AN UNKNOWN OMS STATUS IS SHOWN VERBATIM ON A NEUTRAL CHIP — the vocabulary is open, never assumed closed',
-  [api.tone('Rolling down a hill'), api.tone('Delivered'), api.tone('In Transit'), api.tone('Exception'), api.tone(''),
+  [api.tone('Rolling down a hill'), api.tone('shipped'), api.tone('Exception'), api.tone(''),
    [...cards[0].querySelectorAll('.scw-ships__chip')].map(c => c.className.replace('scw-ships__chip scw-ships__chip--', '') + ':' + c.textContent)],
-  ['neutral', 'ok', 'go', 'warn', 'none', ['neutral:Rolling down a hill', 'warn:Missing in OMS']]);
+  ['neutral', 'go', 'warn', 'none', ['neutral:Rolling down a hill', 'warn:Missing in OMS']]);
 check('carrier + tracking sit on the row as a link; order administration hides behind a disclosure',
   [cards[2].querySelector('.scw-ships__meta').textContent, cards[2].querySelector('.scw-ships__more summary').textContent,
    [...cards[2].querySelectorAll('.scw-ships__dl dt')].map(d => d.textContent)],
@@ -181,11 +193,16 @@ check('NOTHING IS EDITABLE — the OMS owns these facts; the only controls are t
   [tray.querySelectorAll('input, select, textarea, [contenteditable]').length,
    [...tray.querySelectorAll('button')].map(b => b.getAttribute('data-scw-ships-resync') ? 'resync' : b.tagName)],
   [0, ['resync']]);
-check('with no ETA column the drawer says so once, instead of implying an arrival date',
-  /No estimated-delivery field is published/.test(tray.textContent), true);
+check('the drawer states plainly that delivery is not tracked, and points at the carrier link instead',
+  [/Delivery is not tracked yet/.test(tray.textContent), /no arrival date here/.test(tray.textContent)], [true, true]);
+check('NOTHING in the drawer claims a delivery or an ETA (word-boundaried — "details" contains "eta")',
+  (() => {
+    const body = tray.textContent.replace(/Delivery is not tracked yet[^]*?actually is\./i, '');
+    return [/\bdelivered\b/i.test(body), /\bETA\b/.test(body), /\boverdue\b/i.test(body), /\barrival\b/i.test(body)];
+  })(), [false, false, false, false]);
 
 // ── Staleness in the drawer ────────────────────────────────────────
-scene([shipRec({ id: 's1', orderNo: 'SO-1001', status: 'In Transit', synced: now - 4 * DAY, shipDate: now - 5 * DAY })]);
+scene([shipRec({ id: 's1', orderNo: 'SO-1001', status: 'shipped', synced: now - 4 * DAY, shipDate: now - 5 * DAY })]);
 api.open();
 const stale = opened.el;
 check('stale: the banner leads, the freshness reads as a warning, and only one tray is ever in the page',
@@ -195,8 +212,8 @@ check('stale: the banner leads, the freshness reads as a warning, and only one t
 
 // ── Re-check ───────────────────────────────────────────────────────
 scene([
-  shipRec({ id: 's1', orderNo: 'SO-1001', omsId: 'OMS-1', status: 'Delivered', synced: now - 3600000, delivered: now - DAY }),
-  shipRec({ id: 's2', orderNo: 'SO-1002', omsId: 'OMS-2', status: 'In Transit', sync: 'Missing in OMS', synced: now - 3600000 })
+  shipRec({ id: 's1', orderNo: 'SO-1001', omsId: 'OMS-1', status: 'shipped', synced: now - 3600000, shipDate: now - DAY }),
+  shipRec({ id: 's2', orderNo: 'SO-1002', omsId: 'OMS-2', status: 'shipped', sync: 'Missing in OMS', synced: now - 3600000 })
 ]);
 check('the re-check payload carries everything the page knows: the project, its SOWs, its acceptances, and the shipments we already hold',
   (() => { const p = api.resyncPayload(); return [p.project_recordID, p.source, p.sows.map(x => x.sowId), p.acceptances.map(x => x.id + ':' + x.signed), p.shipments.map(s => [s.id, s.orderNo, s.omsOrderId, s.syncState])]; })(),

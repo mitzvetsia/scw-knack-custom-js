@@ -279,13 +279,24 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   the Installation tile** (`SCW.shipments.tileLine()`, folded into the tile
   by deploy-page-nav so it lives inside the tile's own innerHTML diff and a
   nav pass can't fight it) opens the **Shipments drawer**
-  (`SCW.deployNav.openPanel`). The line leads with what a PM acts on:
-  overdue → missing in OMS → in transit + next ETA (or last ship date) →
-  all delivered, and **staleness outranks every other headline**. Drawer:
-  freshness bar + "Re-check shipments", a stale banner, counts, then one
-  card per order leading with delivered / ETA / ship date + carrier and
-  tracking link, with order administration behind a per-row "Order details"
-  disclosure. **Everything is read-only** — nothing writes a record; a
+  (`SCW.deployNav.openPanel`). **DELIVERY IS NOT TRACKED (scrubbed
+  2026-09-21):** ShipEdge's terminal state is "shipped" — its order payload
+  carries no delivered date and no ETA, and nothing else feeds them — so
+  the tray says NOTHING about arrival. No delivered date, no ETA, no
+  overdue, no "all delivered"; `SHIP_delivered date` exists on the object
+  but is deliberately not read, and a status string that happens to say
+  "delivered" is shown verbatim without being counted or coloured as
+  landed. The vocabulary is: not shipped yet, or shipped on a date with a
+  carrier and a tracking link. To phase it back in, get a real delivery
+  feed first (a ShipEdge webhook, carrier tracking, or parsed delivery
+  mail), then restore the branches the module header points at. The line
+  leads with what a PM acts on: missing in OMS → what is out + last ship
+  date → nothing sent yet, and **staleness outranks every other
+  headline**. Drawer: freshness bar + "Re-check shipments", a stale
+  banner, counts, then one card per order leading with its ship date plus
+  carrier and tracking link, with order administration behind a per-row
+  "Order details" disclosure, and one line stating plainly that delivery
+  is not tracked. **Everything is read-only** — nothing writes a record; a
   "fix" typed in Knack is overwritten by the next reconcile pass.
   `field_2967`-style guessing is avoided entirely: **field keys are
   discovered from view_4163's own column headers by LABEL** (`fields()`,

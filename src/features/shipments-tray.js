@@ -23,24 +23,34 @@
  *     longer resolves — deleted or renumbered upstream. It is surfaced, on
  *     the row AND on the tile line, never hidden.
  *   • STALE DATA IS WORSE THAN NO DATA. `SYS_last synced` blank or older
- *     than STALE_MS makes freshness the headline: the tile line says so,
- *     the drawer leads with it, and an ETA is rendered as "last known",
- *     not as fact.
+ *     than STALE_MS makes freshness the headline: the tile line says so
+ *     and the drawer leads with it.
+ *   • WE CANNOT SEE DELIVERY (2026-09-21). ShipEdge's terminal state is
+ *     "shipped" — its order payload carries no delivered date and no ETA,
+ *     and the Knack object exposes neither. So this tray says NOTHING
+ *     about arrival: no delivered date, no ETA, no overdue, no "all
+ *     delivered". A shipment is not shipped yet, or it shipped on a date
+ *     with a carrier and a tracking number the PM can click. Claiming
+ *     more would be inventing it. PHASING IT BACK IN: get a real
+ *     delivery feed first (a ShipEdge webhook, carrier tracking, or
+ *     parsed delivery mail), add the field, then restore the delivered /
+ *     ETA branches here — the search for "delivery" in this file finds
+ *     every place they belong.
  *
- * What a PM on this page needs: has it shipped, where is it, when does it
- * land. So the tile line leads with overdue / in transit / next ETA, the
- * drawer's rows lead with ETA · delivered · carrier + tracking, and order
- * administration (order no, date, ship-to, address, OMS link, sync state)
- * sits behind a per-row "Order details" disclosure.
+ * What a PM on this page needs: has it shipped and where is it. So the
+ * tile line leads with what is moving and the last ship date, the
+ * drawer's rows lead with the ship date + carrier + tracking link, and
+ * order administration (order no, date, ship-to, address, OMS link, sync
+ * state) sits behind a per-row "Order details" disclosure.
  *
  * LIVE FIELD SET (view_4163, confirmed 2026-09-21): order no, oms order id,
  * oms url, source, sync state, last synced, order date, order status, ship
  * to name, ship status, carrier, tracking no, tracking url, ship date,
  * delivered date, address street/city/state/zip, CORE_projects,
- * INSTALL_acceptances. The spec's `SHIP_eta` and `OMS_order total` are NOT
- * there, so "when does it land" can only be answered for what has already
- * shipped or landed — the drawer says so once rather than implying a date
- * nobody published. Add either field and it lights up with no code change.
+ * INSTALL_acceptances. `SHIP_delivered date` exists on the object but is
+ * NEVER POPULATED (ShipEdge has no delivery feed), and `SHIP_eta` /
+ * `OMS_order total` are not on the view at all — so none of the three is
+ * read here.
  *
  * FIELD KEYS ARE DISCOVERED, NOT HARDCODED (the object was built from a
  * spec; the Builder assigned the keys). `fields()` reads view_4163's
@@ -81,11 +91,11 @@
   // (field_3281…field_3305) on 2026-09-21 — but still matched by LABEL, so
   // a Builder reshuffle or a re-created field can't silently blank a row.
   //
-  // ⚠️ TWO FIELDS THE SPEC LISTED ARE NOT ON THE VIEW: `SHIP_eta` and
-  // `OMS_order total`. Everything below degrades rather than guessing —
-  // no ETA column means no ETA line and no overdue state (you cannot be
-  // late for a date nobody published), and the drawer says so once. Add
-  // either field in Builder and it lights up with no code change.
+  // ⚠️ DELIVERY IS DELIBERATELY NOT MAPPED. `SHIP_delivered date`,
+  // `SHIP_eta` and `OMS_order total` have no feed behind them, so they are
+  // absent from this map on purpose — not an oversight. Re-add the entry
+  // (and the branches this file's header points at) once a real delivery
+  // source exists.
   var FIELD_PATTERNS = [
     ['omsId',         /oms order id/],
     ['omsUrl',        /oms url/],
@@ -99,8 +109,6 @@
     ['trackingUrl',   /tracking url/],
     ['trackingNo',    /tracking no/],
     ['shipDate',      /ship date/],
-    ['deliveredDate', /delivered/],
-    ['eta',           /\beta\b|estimated (?:deliver|arriv)/],
     ['source',        /source/],
     ['syncState',     /sync state/],
     ['lastSynced',    /last synced/],
@@ -245,13 +253,11 @@
   function tone(status) {
     var s = String(status || '').toLowerCase();
     if (!s) return 'none';
-    if (/deliver/.test(s))                                   return 'ok';
     if (/exception|return|lost|damag|fail|cancel|void|hold/.test(s)) return 'warn';
     if (/transit|shipped|out for delivery|en route|dispatch/.test(s)) return 'go';
     if (/pending|process|await|backorder|prepar|label|new\b|open\b/.test(s)) return 'wait';
     return 'neutral';
   }
-  function isDelivered(sh) { return !!sh.deliveredDate || /deliver/i.test(sh.shipStatus || ''); }
   function isMissing(sh)   { return /missing/i.test(sh.syncState || ''); }
   function isNoProject(sh) { return /no project/i.test(sh.syncState || ''); }
   function isUnlinked(sh)  { return /unlink/i.test(sh.syncState || ''); }
@@ -277,8 +283,6 @@
         trackingNo:  txtOf(r, F.trackingNo),
         trackingUrl: urlOf(r, F.trackingUrl),
         shipDate:    dateOf(r, F.shipDate),
-        eta:         dateOf(r, F.eta),
-        delivered:   dateOf(r, F.deliveredDate),
         source:      txtOf(r, F.source),
         syncState:   txtOf(r, F.syncState),
         lastSynced:  dateOf(r, F.lastSynced),
@@ -288,24 +292,18 @@
     return out;
   }
   /** The one summary both the tile line and the drawer head read from. */
-  function summarize(list, now, hasEta) {
-    var today = startOfDay(new Date(now)).getTime();
-    var s = { total: list.length, delivered: 0, transit: 0, waiting: 0, overdue: 0,
-              missing: 0, noProject: 0, nextEta: null, lastShipped: null,
+  function summarize(list, now) {
+    var s = { total: list.length, shipped: 0, waiting: 0,
+              missing: 0, noProject: 0, lastShipped: null,
               newest: null, oldest: null, stale: false, neverSynced: 0 };
     for (var i = 0; i < list.length; i++) {
       var sh = list[i];
-      sh.delivered_ = isDelivered(sh);
-      // No ETA on the record (or no ETA column at all) → not overdue.
-      // Nothing can be late for a date nobody published.
-      sh.overdue = !sh.delivered_ && !!sh.eta && startOfDay(sh.eta).getTime() < today;
-      if (sh.delivered_) s.delivered++;
-      else if (tone(sh.shipStatus) === 'go' || sh.shipDate) s.transit++;
-      else s.waiting++;
-      if (sh.overdue) s.overdue++;
+      // Shipped or not. That is the whole vocabulary until a delivery
+      // feed exists — see the header.
+      sh.shipped = !!sh.shipDate || tone(sh.shipStatus) === 'go';
+      if (sh.shipped) s.shipped++; else s.waiting++;
       if (isMissing(sh)) s.missing++;
       if (isNoProject(sh) || isUnlinked(sh)) s.noProject++;
-      if (!sh.delivered_ && sh.eta && (!s.nextEta || sh.eta < s.nextEta)) s.nextEta = sh.eta;
       if (sh.shipDate && (!s.lastShipped || sh.shipDate > s.lastShipped)) s.lastShipped = sh.shipDate;
       if (!sh.lastSynced) s.neverSynced++;
       else {
@@ -323,22 +321,22 @@
     // oldest.
     s.syncedText = s.newest ? ago(s.newest, now) : '';
     s.staleText  = s.oldest ? ago(s.oldest, now) : '';
-    s.hasEta = !!hasEta;
     return s;
   }
 
   // ── The compact tile line (always visible on the Installation tile) ──
   /** Returns an HTML string deploy-page-nav folds into the tile, or ''.
-   *  Leads with what a PM acts on: overdue, then in transit + next ETA,
-   *  then a warning state, then "all delivered". Staleness OVERRIDES the
-   *  headline — a stale ETA must not read as fact. */
+   *  Leads with what a PM acts on: a warning state, then what is moving
+   *  and when it last shipped, then what has not gone out. Staleness
+   *  OVERRIDES the headline — a stale status must not read as fact.
+   *  Nothing here speaks to arrival; we cannot see it. */
   function tileLine() {
     var cfg = activeScene();
     if (!cfg) return '';
     injectStyles();
     var list = shipments(cfg);
     var now = Date.now();
-    var s = summarize(list, now, !!fields(cfg).eta);
+    var s = summarize(list, now);
     var cls = 'neutral', text;
     if (!list.length) {
       // No records: could be "none ordered yet", which is not a problem.
@@ -350,27 +348,18 @@
         (s.neverSynced === s.total ? 'never synced'
                                    : 'not synced since ' + s.staleText) +
         ' — status may be out of date';
-    } else if (s.overdue) {
-      cls = 'warn';
-      text = s.overdue + ' overdue' + (s.transit ? ' · ' + s.transit + ' in transit' : '') +
-        (s.delivered ? ' · ' + s.delivered + ' delivered' : '');
     } else if (s.missing) {
       cls = 'warn';
       text = s.missing + (s.missing === 1 ? ' order missing in the OMS' : ' orders missing in the OMS');
-    } else if (s.transit) {
+    } else if (s.shipped) {
       cls = 'go';
-      // Without an ETA column there is no date to promise — say what is
-      // known (shipped, and when) rather than implying an arrival.
-      text = s.transit + ' in transit' +
-        (s.nextEta ? ' · next ETA ' + fmtDay(s.nextEta)
-                   : (s.lastShipped ? ' · last shipped ' + fmtDay(s.lastShipped) : '')) +
-        (s.delivered ? ' · ' + s.delivered + ' delivered' : '');
-    } else if (s.delivered === s.total) {
-      cls = 'ok';
-      text = 'All ' + s.total + (s.total === 1 ? ' shipment delivered' : ' shipments delivered');
+      // Say what is known — shipped, and when — never an arrival.
+      text = s.shipped + (s.shipped === 1 ? ' shipment out' : ' shipments out') +
+        (s.lastShipped ? ' · last shipped ' + fmtDay(s.lastShipped) : '') +
+        (s.waiting ? ' · ' + s.waiting + ' not shipped yet' : '');
     } else {
       cls = 'wait';
-      text = s.waiting + ' not shipped yet' + (s.delivered ? ' · ' + s.delivered + ' delivered' : '');
+      text = s.waiting + (s.waiting === 1 ? ' shipment not sent yet' : ' shipments not sent yet');
     }
     return '<button type="button" class="scw-ships-line" data-scw-tile-ships="1" ' +
         'aria-label="Shipments: ' + esc(text) + '">' +
@@ -414,7 +403,6 @@
       '.scw-ships__count--warn b { color: #b91c1c; }',
       '.scw-ships__list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }',
       '.scw-ships__card { border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; padding: 12px 14px; }',
-      '.scw-ships__card.is-overdue { border-color: #fca5a5; }',
       '.scw-ships__card.is-warnsync { border-color: #fcd34d; background: #fffdf7; }',
       '.scw-ships__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }',
       '.scw-ships__chip { display: inline-block; padding: 2px 9px; border-radius: 999px; font: 700 11px/1.5 system-ui, sans-serif; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; }',
@@ -422,7 +410,6 @@
       '.scw-ships__chip--go { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }',
       '.scw-ships__chip--warn { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; }',
       '.scw-ships__chip--wait { border-color: #fde68a; background: #fffbeb; color: #92400e; }',
-      '.scw-ships__chip--overdue { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; }',
       '.scw-ships__order { font-weight: 700; }',
       '.scw-ships__when { margin-top: 7px; font-size: 13px; }',
       '.scw-ships__when b { font-weight: 700; }',
@@ -705,28 +692,23 @@
   // ── Drawer ────────────────────────────────────────────────────────
   function cardHtml(sh, stale, now) {
     var t = tone(sh.shipStatus || sh.orderStatus);
-    var cls = 'scw-ships__card' + (sh.overdue ? ' is-overdue' : '') +
+    var cls = 'scw-ships__card' +
               ((isMissing(sh) || isNoProject(sh) || isUnlinked(sh)) ? ' is-warnsync' : '');
     var chips = '';
     if (sh.shipStatus) chips += '<span class="scw-ships__chip scw-ships__chip--' + t + '">' + esc(sh.shipStatus) + '</span>';
     else if (sh.orderStatus) chips += '<span class="scw-ships__chip scw-ships__chip--' + tone(sh.orderStatus) + '">' + esc(sh.orderStatus) + '</span>';
-    if (sh.overdue) chips += '<span class="scw-ships__chip scw-ships__chip--overdue">Overdue</span>';
     // Sync state: "Missing in OMS" is a real warning — surface it (rule 4).
     if (isMissing(sh)) chips += '<span class="scw-ships__chip scw-ships__chip--warn" title="The OMS order this record mirrors no longer resolves — deleted or renumbered upstream.">Missing in OMS</span>';
     else if (isNoProject(sh) || isUnlinked(sh)) chips += '<span class="scw-ships__chip scw-ships__chip--wait">' + esc(sh.syncState) + '</span>';
 
-    // Lead with when it lands. A stale record's ETA is "last known", never
-    // presented as fact (rule 5).
+    // Lead with the last thing we actually know. There is no arrival
+    // date to lead with — see the header.
     var when;
-    if (sh.delivered) {
-      when = 'Delivered <b>' + esc(fmtDay(sh.delivered)) + '</b>';
-    } else if (sh.eta) {
-      when = (sh.overdue ? 'ETA was ' : 'ETA ') + '<b>' + esc(fmtDay(sh.eta)) + '</b>' +
-        (stale ? ' <span class="is-stale">(last known — not synced recently)</span>' : '');
-    } else if (sh.delivered_) {
-      when = 'Delivered';
-    } else if (sh.shipDate) {
-      when = 'Shipped <b>' + esc(fmtDay(sh.shipDate)) + '</b> · no ETA from the carrier';
+    if (sh.shipDate) {
+      when = 'Shipped <b>' + esc(fmtDay(sh.shipDate)) + '</b>' +
+        (stale ? ' <span class="is-stale">(as of the last sync)</span>' : '');
+    } else if (sh.shipped) {
+      when = 'Shipped';
     } else {
       when = 'Not shipped yet';
     }
@@ -738,7 +720,6 @@
         ? '<a href="' + esc(sh.trackingUrl) + '" target="_blank" rel="noopener">' + esc(sh.trackingNo) + ' ›</a>'
         : esc(sh.trackingNo));
     }
-    if (sh.shipDate && !sh.delivered) track.push('shipped ' + esc(fmtDay(sh.shipDate)));
 
     var rows = '';
     function row(label, value) { if (value) rows += '<dt>' + esc(label) + '</dt><dd>' + value + '</dd>'; }
@@ -767,13 +748,16 @@
 
   function paint(el, cfg) {
     var list = shipments(cfg), now = Date.now();
-    var s = summarize(list, now, !!fields(cfg).eta);
-    // Overdue first, then the soonest ETA, then delivered at the bottom.
+    var s = summarize(list, now);
+    // A sync warning first, then what hasn't gone out, then the most
+    // recently shipped.
     list.sort(function (a, b) {
-      if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
-      if (a.delivered_ !== b.delivered_) return a.delivered_ ? 1 : -1;
-      var ae = a.eta ? a.eta.getTime() : Infinity, be = b.eta ? b.eta.getTime() : Infinity;
-      if (ae !== be) return ae - be;
+      var aw = (isMissing(a) || isNoProject(a) || isUnlinked(a)) ? 0 : 1;
+      var bw = (isMissing(b) || isNoProject(b) || isUnlinked(b)) ? 0 : 1;
+      if (aw !== bw) return aw - bw;
+      if (a.shipped !== b.shipped) return a.shipped ? 1 : -1;
+      var ad = a.shipDate ? a.shipDate.getTime() : 0, bd = b.shipDate ? b.shipDate.getTime() : 0;
+      if (ad !== bd) return bd - ad;
       return String(a.orderNo).localeCompare(String(b.orderNo), undefined, { numeric: true });
     });
     // Fresh: the most recent sync. Stale: the OLDEST, because that is the
@@ -803,20 +787,15 @@
     } else {
       html += '<div class="scw-ships__counts">' +
         '<span><b>' + s.total + '</b>' + (s.total === 1 ? 'shipment' : 'shipments') + '</span>' +
-        '<span><b>' + s.delivered + '</b>delivered</span>' +
-        '<span><b>' + s.transit + '</b>in transit</span>' +
+        '<span><b>' + s.shipped + '</b>shipped</span>' +
         '<span><b>' + s.waiting + '</b>not shipped</span>' +
-        (s.overdue ? '<span class="scw-ships__count--warn"><b>' + s.overdue + '</b>overdue</span>' : '') +
         (s.missing ? '<span class="scw-ships__count--warn"><b>' + s.missing + '</b>missing in OMS</span>' : '') +
       '</div>';
       var cards = '';
       for (var i = 0; i < list.length; i++) cards += cardHtml(list[i], s.stale, now);
       html += '<div class="scw-ships__list">' + cards + '</div>';
-      if (!s.hasEta) {
-        html += '<div class="scw-ships__note">No estimated-delivery field is published on this view, so a shipment ' +
-          'in transit shows its ship date and tracking rather than an arrival date. Add SHIP_eta in Builder and ' +
-          'ETAs (and overdue) appear here automatically.</div>';
-      }
+      html += '<div class="scw-ships__note">Delivery is not tracked yet: the OMS stops at "shipped", so ' +
+        'there is no arrival date here. Use the tracking link for where a parcel actually is.</div>';
       html += '<div class="scw-ships__note">Order facts come from the OMS and are read-only here — ' +
         'a change typed in Knack is overwritten by the next sync. Attribution (which project an order belongs to) ' +
         'lives on the unlinked-shipments queue.</div>';
@@ -852,7 +831,7 @@
     return api.openPanel({
       eyebrow: '3 · Installation',
       title: 'Shipments',
-      sub: 'Orders mirrored from the OMS — has it shipped, where is it, when does it land',
+      sub: 'Orders mirrored from the OMS — has it shipped, and where is it',
       el: render(cfg)
     });
   }
