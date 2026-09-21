@@ -653,3 +653,19 @@ form exists on the CO but never reaches the page — the worksheet, the value
 strip ("0 lines") and the tray all read the view's model. Either drop the
 License-bucket exclusion from view_4079 / view_4112 (the bundle then sets
 them apart as above), or add a Licenses grid to the CO scene.
+
+## Recurring services on the proposal / e-sign document (2026-09-21)
+
+The e-signatures agreement is built by Make from `payload.html` — the same
+document HTML `proposal-pdf-export.js` renders for the PDF and the published
+page. Recurring services / licenses come from the proposal scene's licenses
+grid (view_3371, `recurringGrids`) and render in a `.recurring-section`
+BELOW the Project Totals (skipped when that grid is empty,
+`hideEmptyGrids`). Since 2026-09-21 the section carries a note under its
+title — "Recurring — billed separately on its own cycle. Not included in the
+Project Totals above." — and the e-sign element manifest
+(`buildSowDocumentElements`) emits it as a text element right after the
+section header, so the signer reads it in the agreement, not just the PDF.
+`tests/proposal/test-recurring-note.js` (the builders are exported as test
+seams on `SCW.pdfExport`). Whether a given CO's licenses appear depends on
+view_3371 listing them on that proposal's scene at publish time.

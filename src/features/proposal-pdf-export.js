@@ -1789,6 +1789,17 @@
     if (view.title) {
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
     }
+    // Recurring services / licenses: say what the section is. It sits
+    // BELOW the Project Totals (buildPdfHtml) and its lines are billed on
+    // their own cycle, never in that total — the customer signing the
+    // e-sign agreement (Make builds it from this HTML; the manifest walker
+    // emits this note as a text element after the title) must read that
+    // here, not infer it from the placement.
+    if (view.isRecurring) {
+      html.push('<div class="recurring-note">' +
+        'Recurring \u2014 billed separately on its own cycle. Not included in the Project Totals above.' +
+        '</div>');
+    }
     // Optional narrative block right below the title — used by
     // scene_1096 to drop field_2128 ("Proposed Solution" intro text)
     // beneath the heading, matching the in-app preview layout.
@@ -2397,6 +2408,10 @@
       '',
       '/* ── Recurring Services ── */',
       '.recurring-section { margin-top: 40px; }',
+      '.recurring-note {',
+      '  margin: 2px 0 12px; padding: 8px 12px; border-left: 3px solid #07467c;',
+      '  background: #f1f5f9; color: #334155; font-size: 11px; font-weight: 600; line-height: 1.4;',
+      '}',
       '.recurring-header {',
       '  font-size: 20px; font-weight: 800; color: #07467c;',
       '  margin-bottom: 8px; padding-bottom: 4px;',
@@ -5497,6 +5512,10 @@
     },
     getCss: getPdfCss,
     buildPublishPayload: buildPublishPayload,
+    // Test seams (tests/proposal/): the document HTML from a scraped
+    // payload, and the e-signatures element manifest from that HTML.
+    buildPdfHtml: buildPdfHtml,
+    buildSowDocumentElements: buildSowDocumentElements,
     // Render just the appended image sections (Site Maps / Additional
     // Photos) for a scene as an HTML string — the exact same markup the
     // published PDF/HTML appends at the end. proposal-preview-images.js
