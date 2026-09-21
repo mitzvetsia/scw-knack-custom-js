@@ -295,10 +295,16 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   headline**. It never says "in transit" or "out": both imply a location
   the OMS never reports. All we know is how many shipments exist and when
   the last one left; the tracking link is what knows where a parcel is. Drawer: freshness bar + "Re-check shipments", a stale
-  banner, counts, then one card per order leading with its ship date plus
-  carrier and tracking link, with order administration behind a per-row
-  "Order details" disclosure, and one line stating plainly that delivery
-  is not tracked. **Everything is read-only** — nothing writes a record; a
+  banner, counts, then one card per order leading with its ship date. **The
+  two things a PM clicks are full-size buttons on the card**: `Track ·
+  <carrier> <number>` (the carrier's page; an unrecognised carrier has no
+  URL, so the number renders as selectable text rather than a dead link)
+  and `Open in ShipEdge`
+  (`order_view.php?view=orderlist&OrderID=<order id>`). Both open a new
+  tab so the deploy page is not lost, and the OMS link is NOT repeated in
+  the disclosure. Order administration sits behind a per-row "Order
+  details" disclosure, and one line states plainly that delivery is not
+  tracked. **Everything is read-only** — nothing writes a record; a
   "fix" typed in Knack is overwritten by the next reconcile pass.
   `field_2967`-style guessing is avoided entirely: **field keys are
   discovered from view_4163's own column headers by LABEL** (`fields()`,

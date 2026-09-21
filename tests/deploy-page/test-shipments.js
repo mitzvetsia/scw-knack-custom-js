@@ -185,11 +185,23 @@ check('AN UNKNOWN OMS STATUS IS SHOWN VERBATIM ON A NEUTRAL CHIP — the vocabul
   [api.tone('Rolling down a hill'), api.tone('shipped'), api.tone('Exception'), api.tone(''),
    [...cards[0].querySelectorAll('.scw-ships__chip')].map(c => c.className.replace('scw-ships__chip scw-ships__chip--', '') + ':' + c.textContent)],
   ['neutral', 'go', 'warn', 'none', ['neutral:Rolling down a hill', 'warn:Missing in OMS']]);
-check('carrier + tracking sit on the row as a link; order administration hides behind a disclosure',
-  [cards[2].querySelector('.scw-ships__meta').textContent, cards[2].querySelector('.scw-ships__more summary').textContent,
+// THE TWO ACTIONS: tracking and the ShipEdge order are full buttons on the card, in that order,
+// both opening a new tab. Everything else stays behind the disclosure — and the OMS link is NOT
+// duplicated down there.
+check('tracking + Open in ShipEdge are buttons on the card, each a new-tab link to the right place',
+  [...cards[2].querySelectorAll('.scw-ships__actions .scw-ships__btn')].map(a =>
+    [a.tagName, a.className.replace('scw-ships__btn scw-ships__btn--', ''), a.textContent, a.getAttribute('href'), a.getAttribute('target')]),
+  [['A', 'track', 'Track · UPS 1Z001↗', 'https://ups/1Z001', '_blank'],
+   ['A', 'oms', 'Open in ShipEdge↗', 'https://oms/1', '_blank']]);
+check('order administration stays in the disclosure, and the OMS link is not repeated there',
+  [cards[2].querySelector('.scw-ships__more summary').textContent,
    [...cards[2].querySelectorAll('.scw-ships__dl dt')].map(d => d.textContent)],
-  ['UPS · 1Z001 ›', 'Order details',
-   ['Order no', 'Order date', 'Order status', 'Ship to', 'Address', 'Source', 'Sync state', 'Last synced', 'In the OMS']]);
+  ['Order details',
+   ['Order no', 'Order date', 'Order status', 'Ship to', 'Address', 'Source', 'Sync state', 'Last synced']]);
+// A carrier with no tracking URL: the number is still shown, selectable, but not a dead link.
+check('an unlinkable carrier still shows the number, as text rather than a broken link',
+  (() => { const b = cards[0].querySelector('.scw-ships__actions .scw-ships__btn'); return [b.tagName, b.className.indexOf('--num') > 0, b.textContent, b.getAttribute('href')]; })(),
+  ['SPAN', true, 'FedEx 77', null]);
 check('the four address parts compose into one line', cards[2].querySelector('.scw-ships__dl dd:nth-of-type(5)').textContent, '12 Main St · Durham, NC 27701');
 check('NOTHING IS EDITABLE — the OMS owns these facts; the only controls are the re-check button and the disclosures',
   [tray.querySelectorAll('input, select, textarea, [contenteditable]').length,

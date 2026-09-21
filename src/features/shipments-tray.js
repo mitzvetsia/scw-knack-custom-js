@@ -419,8 +419,22 @@
       '.scw-ships__when { margin-top: 7px; font-size: 13px; }',
       '.scw-ships__when b { font-weight: 700; }',
       '.scw-ships__when .is-stale { color: #92400e; }',
-      '.scw-ships__meta { margin-top: 4px; color: #475569; font-size: 12.5px; }',
-      '.scw-ships__meta a { color: #0f4c81; font-weight: 600; }',
+      /* The two actions: real buttons, generous hit area, side by side. */
+      '.scw-ships__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }',
+      '.scw-ships__btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px;',
+      '  border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #0f172a;',
+      '  font: 600 12.5px/1.2 system-ui, sans-serif; text-decoration: none; white-space: nowrap; }',
+      '.scw-ships__btn:hover { background: #f1f5f9; border-color: #94a3b8; }',
+      '.scw-ships__btn--track { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }',
+      '.scw-ships__btn--track:hover { background: #dbeafe; border-color: #60a5fa; }',
+      '.scw-ships__btn--oms { border-color: #cbd5e1; color: #0f4c81; }',
+      '.scw-ships__btn--oms:hover { background: #eef2f7; border-color: #94a3b8; }',
+      /* No link for this carrier — the number is text to copy, not a button. */
+      '.scw-ships__btn--num { background: #f8fafc; color: #475569; cursor: text; user-select: all; }',
+      '.scw-ships__btn--num:hover { background: #f8fafc; border-color: #cbd5e1; }',
+      '.scw-ships__num { font-variant-numeric: tabular-nums; letter-spacing: .01em; }',
+      '.scw-ships__ext { color: #64748b; font-weight: 700; }',
+      '.scw-ships__btn--track .scw-ships__ext { color: #60a5fa; }',
       '.scw-ships__more { margin-top: 8px; }',
       '.scw-ships__more summary { cursor: pointer; font: 600 11.5px/1.2 system-ui, sans-serif; color: #64748b; list-style: none; }',
       '.scw-ships__more summary::-webkit-details-marker { display: none; }',
@@ -718,12 +732,28 @@
       when = 'Not shipped yet';
     }
 
-    var track = [];
-    if (sh.carrier) track.push(esc(sh.carrier));
+    // THE TWO ACTIONS. A PM on this card wants the carrier's tracking
+    // page and the order in ShipEdge — everything else is reference. Both
+    // are full-size buttons on the card, never buried in the disclosure,
+    // and both open in a new tab so the deploy page is not lost.
+    var actions = '';
     if (sh.trackingNo) {
-      track.push(sh.trackingUrl
-        ? '<a href="' + esc(sh.trackingUrl) + '" target="_blank" rel="noopener">' + esc(sh.trackingNo) + ' ›</a>'
-        : esc(sh.trackingNo));
+      var trackLabel = (sh.carrier ? esc(sh.carrier) + ' ' : '') +
+        '<span class="scw-ships__num">' + esc(sh.trackingNo) + '</span>';
+      actions += sh.trackingUrl
+        // A carrier we know how to link to.
+        ? '<a class="scw-ships__btn scw-ships__btn--track" href="' + esc(sh.trackingUrl) + '" ' +
+            'target="_blank" rel="noopener" title="Track this shipment with the carrier">' +
+            'Track · ' + trackLabel + '<span class="scw-ships__ext">↗</span></a>'
+        // No URL (an unrecognised carrier): still show the number, big
+        // enough to read and select, rather than hiding it.
+        : '<span class="scw-ships__btn scw-ships__btn--num" title="No tracking link for this carrier — the number is here to copy">' +
+            trackLabel + '</span>';
+    }
+    if (sh.omsUrl) {
+      actions += '<a class="scw-ships__btn scw-ships__btn--oms" href="' + esc(sh.omsUrl) + '" ' +
+        'target="_blank" rel="noopener" title="Open this order in ShipEdge">' +
+        'Open in ShipEdge<span class="scw-ships__ext">↗</span></a>';
     }
 
     var rows = '';
@@ -738,14 +768,15 @@
     row('Source', esc(sh.source));
     row('Sync state', esc(sh.syncState));
     row('Last synced', sh.lastSynced ? esc(ago(sh.lastSynced, now)) : '<span class="is-stale">never</span>');
-    if (sh.omsUrl) row('In the OMS', '<a href="' + esc(sh.omsUrl) + '" target="_blank" rel="noopener">Open order ›</a>');
+    // The OMS link is NOT repeated down here — it is one of the two
+    // buttons above.
 
     return '<div class="' + cls + '">' +
       '<div class="scw-ships__head">' +
         '<span class="scw-ships__order">' + esc(sh.orderNo || sh.omsId || 'Shipment') + '</span>' + chips +
       '</div>' +
       '<div class="scw-ships__when">' + when + '</div>' +
-      (track.length ? '<div class="scw-ships__meta">' + track.join(' · ') + '</div>' : '') +
+      (actions ? '<div class="scw-ships__actions">' + actions + '</div>' : '') +
       (rows ? '<details class="scw-ships__more"><summary>Order details</summary>' +
                 '<dl class="scw-ships__dl">' + rows + '</dl></details>' : '') +
     '</div>';
