@@ -26,7 +26,17 @@
  *              number, struck through, never counted or priced.
  * Change orders are read off the CO's OWN lines on the proposed SOW grid
  * (a CO line carries its target install record field_2966, its action
- * field_2965 and its SOW field_2154, "SW1418CO"): that is where the CO
+ * field_2965 and its SOW field_2154, "SW1418CO"). The ACTION is taken
+ * first from the CO's pricing snapshot JSON (the {lines:{id:{action,qty,
+ * item}}} blob co-stage-strip.js writes when the CO goes to the sub,
+ * carried on the acceptance / proposal records already on this scene and
+ * keyed by the same line ids), then the grid's own action column, then
+ * the sign of the line's qty (a Remove line is negative) — the grid may
+ * not expose the action column, and without it every line read as an Add.
+ * Lines are paired to the record they target BY CATEGORY: a camera's swap
+ * is the camera-bucket Add/Remove pair; a mount line targeting the same
+ * record is the accessory riding along, never the camera's replacement.
+ * That is where the CO
  * number comes from (field_2967's own display value is the removed line's
  * product name, useless as a heading), and it is what shows the two
  * things the install record alone cannot: a REMOVE on a CO not yet signed
@@ -87,8 +97,10 @@
     action: 'field_2965',   // CO Action (Remove on credit lines, else an Add)
     sow:    'field_2154',   // the CO's SOW ("SW1418CO")
     product:'field_1949',   // Product (connection → name)
-    qty:    'field_1964'    // Quantity on the CO line
+    qty:    'field_1964',   // Quantity on the CO line (negative on a Remove)
+    bucket: 'field_2219'    // proposal bucket (connection, L2 name)
   };
+  var MOUNT_RE = /mount|bracket|hardware|accessor|adapter|plate|pole\b/i;
   var NO_LOC = 'No MDF / IDF';
   var NO_SOW = 'No SOW';
   var UNKNOWN_CO = 'Change order';
@@ -258,26 +270,95 @@
     for (var i = 0; i < recs.length; i++) if (recs[i] && recs[i].id) out[recs[i].id] = recs[i];
     return out;
   }
-  /** Change-order lines by the install record they act on:
-   *  { installId: { removes: [{ co, name }], adds: [{ co, name }] } }. */
-  function coIndex(cfg) {
-    var out = {}, recs = modelRecords(cfg.sowView);
-    for (var i = 0; i < recs.length; i++) {
-      var r = recs[i];
-      if (!r) continue;
-      var tid = connId(r, CF.target);
-      if (!tid) continue;
-      var line = {
-        co:   connLabels(r, CF.sow).map(sowLabel).filter(function (l) { return /CO/i.test(l); })[0] ||
-              connLabels(r, CF.sow).map(sowLabel)[0] || UNKNOWN_CO,
-        name: connLabel(r, CF.product) || plain(r[IF.productName]) || '',
-        qty:  num(r[CF.qty]) || 0,
-        rec:  r
-      };
-      var e = out[tid] || (out[tid] = { removes: [], adds: [] });
-      (/remove/i.test(plain(r[CF.action])) ? e.removes : e.adds).push(line);
+  function parseLooseJson(v) {
+    if (v == null) return null;
+    var t = String(v).trim();
+    if (!t) return null;
+    try { return JSON.parse(t); } catch (e) { /* entities / tags */ }
+    try { var ta = document.createElement('textarea'); ta.innerHTML = t; return JSON.parse(ta.value.trim()); } catch (e) { /* */ }
+    try { return JSON.parse(t.replace(/<[^>]*>/g, '').trim()); } catch (e) { return null; }
+  }
+  /** Every CO pricing snapshot on the page ({lines:{lineId:{action,qty,
+   *  item}}}), wherever a view's model carries one (the acceptance grid's
+   *  proposal / stamp columns, a CO header's field_2972): lineId → line. */
+  function coSnapshotLines() {
+    var out = {}, views = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views : {};
+    for (var vk in views) {
+      var recs = modelRecords(vk);
+      for (var i = 0; i < recs.length; i++) {
+        var a = recs[i];
+        if (!a) continue;
+        for (var k in a) {
+          if (!/^field_\d+$/.test(k) || typeof a[k] !== 'string' || a[k].indexOf('"lines"') === -1) continue;
+          var snap = parseLooseJson(a[k]);
+          if (!snap || !snap.lines || typeof snap.lines !== 'object' || Array.isArray(snap.lines)) continue;
+          for (var id in snap.lines) if (snap.lines[id] && typeof snap.lines[id] === 'object' && !out[id]) out[id] = snap.lines[id];
+        }
+      }
     }
     return out;
+  }
+  /** Which side of a swap a CO line is on: 'cam' (camera / reader), 'mount'
+   *  (accessory) or 'default' from its bucket; with no bucket on the grid,
+   *  'mount?' when the product name reads like one, else 'unknown'. */
+  function lineCat(bucketLabel, name) {
+    if (bucketLabel) {
+      if (/camera|reader/i.test(bucketLabel)) return 'cam';
+      return MOUNT_RE.test(bucketLabel) ? 'mount' : 'default';
+    }
+    return MOUNT_RE.test(name) ? 'mount?' : 'unknown';
+  }
+  /** Product names compare loosely: case, spacing and a trailing " - SKU"
+   *  (the CO line's product identifier carries one, the install record's
+   *  stored name does not). */
+  function normName(s) {
+    return plain(s).toLowerCase().replace(/\s+-\s+[a-z0-9][a-z0-9.\-\/]*$/i, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+  function sameProduct(a, b) {
+    var x = normName(a), y = normName(b);
+    return !!x && !!y && (x === y || x.indexOf(y) === 0 || y.indexOf(x) === 0);
+  }
+  /** Change-order lines by the install record they act on:
+   *  { installId: [ { id, co, name, qty, cat, remove, rec } ] }. */
+  function coIndex(cfg) {
+    var out = {}, recs = modelRecords(cfg.sowView), snap = coSnapshotLines();
+    for (var i = 0; i < recs.length; i++) {
+      var r = recs[i];
+      if (!r || !r.id) continue;
+      var tid = connId(r, CF.target);
+      if (!tid) continue;
+      var sl = snap[r.id] || null;
+      var action = (sl && sl.action) ? String(sl.action) : plain(r[CF.action]);
+      var qty = num(r[CF.qty]);
+      if (!qty && sl && sl.qty != null) qty = Number(sl.qty) || 0;
+      var name = connLabel(r, CF.product) || plain(r[IF.productName]) || (sl && sl.item) || '';
+      out[tid] = out[tid] || [];
+      out[tid].push({
+        id: r.id,
+        co:   connLabels(r, CF.sow).map(sowLabel).filter(function (l) { return /CO/i.test(l); })[0] ||
+              connLabels(r, CF.sow).map(sowLabel)[0] || UNKNOWN_CO,
+        name: name,
+        qty:  Math.abs(qty) || 0,
+        cat:  lineCat(connLabel(r, CF.bucket), name),
+        remove: /remove|credit/i.test(action) || qty < 0,
+        rec:  r
+      });
+    }
+    return out;
+  }
+  /** The CO lines that act on one install record, split into the record's
+   *  OWN pair (same category) and accessory lines riding on it. */
+  function coFor(lines, recCat) {
+    var o = { adds: [], removes: [], accRemoves: [] };
+    if (!lines) return o;
+    for (var i = 0; i < lines.length; i++) {
+      var l = lines[i];
+      var isMount = l.cat === 'mount' || l.cat === 'mount?';
+      var own = l.cat === recCat || l.cat === 'unknown' || (isMount && recCat === 'mount');
+      if (own) (l.remove ? o.removes : o.adds).push(l);
+      else if (isMount && l.remove) o.accRemoves.push(l);
+    }
+    return o;
   }
   /** The CO a removed install record names on field_2967 — only when its
    *  display value is a SOW/CO number; the live data shows the removed
@@ -310,7 +391,8 @@
       if (cat === 'services' || cat === 'assumptions') continue;
       var name = plain(r[IF.productName]) || connLabel(r, IF.product) || '(unnamed)';
       var removed = hasValue(r, IF.removedByCo);
-      var co = cos[r.id] || null;
+      var recCat = cat === 'cam' ? 'cam' : (MOUNT_RE.test(connLabel(r, IF.bucket)) || (!connLabel(r, IF.bucket) && MOUNT_RE.test(name)) ? 'mount' : 'default');
+      var co = cos[r.id] ? coFor(cos[r.id], recCat) : null;
       var kind = removed ? 'removed' : (PRE_RE.test(name) ? 'pre' : (CUST_RE.test(name) ? 'cust' : 'ship'));
       // What the CO lines say about this record (see the header):
       //   Remove line, record not flagged → removal pending (CO unsigned).
@@ -321,8 +403,8 @@
         tag = 'Removed';
       } else if (co && co.adds.length) {
         var add = co.adds[co.adds.length - 1], was = co.removes.length ? co.removes[0].name : '';
-        var applied = add.name && add.name.toLowerCase() === name.toLowerCase();
-        tag = (applied ? 'Swapped in by ' : 'Swap pending · ') + add.co + (was && was.toLowerCase() !== name.toLowerCase() ? ' · was ' + was : '');
+        var applied = sameProduct(add.name, name);
+        tag = (applied ? 'Swapped in by ' : 'Swap pending · ') + add.co + (was && !sameProduct(was, name) ? ' · was ' + was : '');
         if (!applied && add.name) tag += ' → ' + add.name;
       } else if (co && co.removes.length) {
         tag = 'Removal pending · ' + co.removes[0].co + ' not signed';
@@ -358,18 +440,21 @@
         if (it.net == null && it.retail != null) it.net = it.retail - (it.discount || 0);
       }
       out.push(it);
-      // An applied swap: the old unit (the pair's Remove line) is extra
-      // hardware — list it with the removals so it gets brought back.
-      if (/^Swapped in/.test(tag) && co.removes.length) {
-        var old = co.removes[0];
-        var oldSku = '';
-        if (skuCol && skuCol.view === cfg.sowView && old.rec) oldSku = connLabel(old.rec, skuCol.key) || plain(old.rec[skuCol.key]);
-        out.push({
-          id: r.id + ':swapped-out', name: old.name || '(unnamed)', kind: 'swapped', qty: old.qty || qty, sku: oldSku,
-          bucket: it.bucket, loc: it.loc, sow: it.sow, co: old.co, designator: it.designator,
-          tag: 'Swapped out · replaced by ' + name,
-          isCam: false, newDrop: false, existingDrop: false, special: false, retail: null, discount: null, net: null
-        });
+      // An applied swap: the old unit (the pair's Remove line) and any
+      // accessory the CO pulled with it are extra hardware — list them
+      // with the removals so they get brought back.
+      if (/^Swapped in/.test(tag)) {
+        var olds = (co.removes.length ? [co.removes[0]] : []).concat(co.accRemoves);
+        for (var oi = 0; oi < olds.length; oi++) {
+          var old = olds[oi], oldSku = '';
+          if (skuCol && skuCol.view === cfg.sowView && old.rec) oldSku = connLabel(old.rec, skuCol.key) || plain(old.rec[skuCol.key]);
+          out.push({
+            id: r.id + ':swapped-out:' + old.id, name: old.name || '(unnamed)', kind: 'swapped', qty: old.qty || qty, sku: oldSku,
+            bucket: it.bucket, loc: it.loc, sow: it.sow, co: old.co, designator: oi === 0 ? it.designator : '',
+            tag: oi === 0 ? 'Swapped out · replaced by ' + name : 'Swapped out · ' + old.co,
+            isCam: false, newDrop: false, existingDrop: false, special: false, retail: null, discount: null, net: null
+          });
+        }
       }
     }
     return out;

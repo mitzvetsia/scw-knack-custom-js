@@ -341,7 +341,20 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   own lines on the proposed grid** (view_4072 / view_4151: target install
   record `field_2966`, action `field_2965`, SOW `field_2154` → "SOW 1418CO";
   `coIndex`): `field_2967`'s display value is the removed line's product
-  name, so the flag alone cannot head a group; and the lines show what the
+  name, so the flag alone cannot head a group. A line's ACTION comes first
+  from the CO's pricing snapshot JSON (`{lines:{id:{action,qty,item}}}`,
+  co-stage-strip's blob as the acceptance grid carries it on field_2959 /
+  field_2946 — every view model on the page is scanned for a string with
+  `"lines"`, joined by line id), then the grid's field_2965, then the sign
+  of the qty (a Remove is negative) — view_4072 may not expose the action
+  column, and without it every line read as an Add (the "Swap pending →
+  Wall Mount Bracket" on an Informant). Lines are paired to the record
+  they target BY CATEGORY (bucket field_2219, else the product name): the
+  camera's swap is the camera-bucket Add/Remove pair; a mount line on the
+  same record is the accessory riding along — its Remove lists as
+  "Swapped out · SOW ####CO", never as the camera's replacement. Product
+  names compare with the CO line's " - SKU" suffix stripped. And the lines
+  show what the
   install record cannot — a Remove on an UNSIGNED CO (row stays in
   Shipping, amber "Removal pending · SOW 1418CO not signed" chip: nothing
   leaves scope before signature) and a SWAP (Remove + Add pair targeting

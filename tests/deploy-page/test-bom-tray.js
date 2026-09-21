@@ -46,11 +46,20 @@ const sow = [
   //   r3 Remove + a1 Add → n1 (a swap; the record already carries the Add's product → applied)
   { id: 'r1', field_2965: 'Remove', field_2966_raw: conn('x1', 'x'), field_2154_raw: conn('w3', 'SW1601CO'), field_1949_raw: conn('p0', 'Removed Camera') },
   { id: 'r2', field_2965: 'Remove', field_2966_raw: conn('m1', 'x'), field_2154_raw: conn('w3', 'SW1601CO'), field_1949_raw: conn('p4', 'Junction Box') },
-  { id: 'r3', field_2965: 'Remove', field_2966_raw: conn('n1', 'x'), field_2154_raw: conn('w3', 'SW1601CO'), field_1949_raw: conn('p5', 'Imperial 64 Channel NVR') },
-  { id: 'a1', field_2965: 'Add',    field_2966_raw: conn('n1', 'x'), field_2154_raw: conn('w3', 'SW1601CO'), field_1949_raw: conn('p6', 'Imperial 128 Channel 4K NVR v3') }
+  //   r3 / a1 carry NO action column (the grid may not expose field_2965): the action comes from the
+  //   CO's pricing snapshot JSON on the acceptance grid, joined by line id; r4 has neither — its
+  //   negative qty says Remove. r4 / a2 are the ACCESSORY pair riding on the same record (mount
+  //   bucket): never the NVR's own swap; the old mount is listed as swapped-out hardware.
+  { id: 'r3', field_2966_raw: conn('n1', 'x'), field_2154_raw: conn('w3', 'SW1601CO'), field_1949_raw: conn('p5', 'Imperial 64 Channel NVR'), field_2219_raw: conn('bn', 'Networking or Headend') },
+  { id: 'a1', field_2966_raw: conn('n1', 'x'), field_2154_raw: conn('w3', 'SW1601CO'), field_1949_raw: conn('p6', 'Imperial 128 Channel 4K NVR v3 - IMP128-V3'), field_2219_raw: conn('bn', 'Networking or Headend'), field_1964: 1 },
+  { id: 'r4', field_2966_raw: conn('n1', 'x'), field_2154_raw: conn('w3', 'SW1601CO'), field_1949_raw: conn('p7', 'Rack Mount Ears, 1U'), field_2219_raw: conn('bm', 'Mounting Hardware'), field_1964: -1 },
+  { id: 'a2', field_2966_raw: conn('n1', 'x'), field_2154_raw: conn('w3', 'SW1601CO'), field_1949_raw: conn('p8', 'Rack Mount Ears, 2U'), field_2219_raw: conn('bm', 'Mounting Hardware'), field_1964: 1 }
 ];
+// The CO's pricing snapshot (co-stage-strip buildSnapshot shape), as the acceptance grid carries it.
+const snapshot = JSON.stringify({ sentAt: '2026-09-01', lines: { r3: { action: 'Remove', qty: -1, item: 'Imperial 64 Channel NVR' }, a1: { action: 'Add', qty: 1 } } });
+const acceptances = [{ id: 'acc1', field_2959: snapshot }];
 const models = recs => ({ model: { data: { models: recs.map(a => ({ attributes: a })) } } });
-window.Knack = { views: { view_4093: models(install), view_4072: models(sow) }, router: { current_scene_key: 'scene_1311' } };
+window.Knack = { views: { view_4093: models(install), view_4072: models(sow), view_3914: models(acceptances) }, router: { current_scene_key: 'scene_1311' } };
 global.Knack = window.Knack;
 let opened = null;
 window.SCW = { CONFIG: {},
@@ -93,7 +102,7 @@ setTimeout(() => {
     rows[2], ['v2 16 Drive Mini-SAS Enclosure (Special Order) Special order', '—', '2', '$800.00', '—', '$800.00']);
   check('no SOW item → no SKU, no pricing on that row', rows[3], ['Cat6 Uplink', '—', '1', '—', '—', '—']);
   check('mounts are ordinary shipping rows; a Remove line on an UNSIGNED CO leaves the row in Shipping with a pending chip', rows[4], ['Junction Box Removal pending · SOW 1601CO not signed', 'JB-1', '5', '$50.00', '—', '$50.00']);
-  check('a swap (Remove + Add pair) whose product already landed on the record: live row, swapped-in chip naming the CO and the old product', rows[1][0], 'Imperial 128 Channel 4K NVR v3 Swapped in by SOW 1601CO · was Imperial 64 Channel NVR');
+  check('a swap (Remove + Add pair) whose product already landed on the record: live row, swapped-in chip naming the CO and the old product — action from the snapshot, " - SKU" suffix ignored, the accessory pair on the same record not mistaken for it', rows[1][0], 'Imperial 128 Channel 4K NVR v3 Swapped in by SOW 1601CO · was Imperial 64 Channel NVR');
   check('shipping total', cells(ship.querySelector('.scw-bom__total')), ['Shipping total', '', '14', '$3,350.00', '−$250.00', '$3,100.00']);
   check('Camera / Reader gets a subtotal row (the only group that does)', [...ship.querySelectorAll('.scw-bom__subtotal')].map(cells), [['Camera / Reader subtotal', '', '5', '$1,500.00', '−$250.00', '$1,250.00']]);
   check('columns exist only when some row has data: all six here', [...ship.querySelectorAll('thead th')].map(t => t.textContent), ['Product', 'SKU', 'Qty', 'Retail', 'Discount', 'After discount']);
@@ -105,7 +114,7 @@ setTimeout(() => {
   const removed = tray.querySelector('.scw-bom__removed');
   check('Removed or swapped out by change order: rows with field_2967 set plus each applied swap\'s old unit, headed by the CO\'s SOW number (off its own lines, not the flag\'s display value), chip, no pricing, never in Shipping',
     [[...removed.querySelectorAll('.scw-bom__group td')].map(g => g.textContent), [...removed.querySelectorAll('tbody tr:not(.scw-bom__group)')].map(cells), ship.textContent.indexOf('Removed Camera') < 0],
-    [['SOW 1601CO'], [['Imperial 64 Channel NVR Swapped out · replaced by Imperial 128 Channel 4K NVR v3', '1'], ['Removed Camera Removed', '1']], true]);
+    [['SOW 1601CO'], [['Imperial 64 Channel NVR Swapped out · replaced by Imperial 128 Channel 4K NVR v3', '1'], ['Rack Mount Ears, 1U Swapped out · SOW 1601CO', '1'], ['Removed Camera Removed', '1']], true]);
   check('the swapped-out unit is listed as hardware to bring back, never in Shipping or its totals', [[...ship.querySelectorAll('.scw-bom__name')].some(n => n.textContent === 'Imperial 64 Channel NVR'), cells(ship.querySelector('.scw-bom__total'))[2]], [false, '14']);
   // Toggle → by MDF / IDF. The tray REPAINTS IN PLACE: same element, still tagged for the
   // drawer to clear (a swapped-in fresh element lost the tag and lingered under the next tray).
@@ -137,7 +146,7 @@ setTimeout(() => {
   // Sub scene: no pricing columns.
   document.body.innerHTML = '<div id="kn-scene_1353"><div id="scw-ws-v2-view_4056"><div class="scw-ws-v2-toolbar"><div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta"></div></div></div></div>';
   // The sub grid carries no SKU column: the SKU column is left out entirely (a column with no data on any row never shows).
-  window.Knack.views = { view_4056: models(install), view_4151: models(sow) };   // no SKU header on the sub grid → no SKU column
+  window.Knack.views = { view_4056: models(install), view_4151: models(sow), view_4066: models(acceptances) };   // no SKU header on the sub grid → no SKU column
   (handlers['knack-view-render.view_4056.scwBomTray'] || []).forEach(fn => fn());
   setTimeout(() => {
     window.SCW.bomTray.open();
