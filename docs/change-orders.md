@@ -635,5 +635,21 @@ recurring · not in the project total" (its money reads "… recurring");
 Total ("Recurring licenses — billed separately", subtotal "not in Total") and
 never counts them in the totals — the worksheet reads the way the proposal
 does, where licenses sit under Recurring Services below the project totals.
-`tests/worksheet-v2/test-license-group.js`. Not changed: co-stage-strip's
-send-to-sub snapshot still carries every CO line, licenses included.
+`tests/worksheet-v2/test-license-group.js`. The CO value strip
+(`co-value.js`) keeps licenses out of Adds / Credits / Net change and shows
+them on a fourth tile, "Recurring licenses · billed separately · not in net
+change" (their extended net; the sub strip never counts them);
+`tests/worksheet-v2/test-co-value.js`. co-stage-strip leaves license lines
+out of the sub-pricing snapshot, the request document and the unpriced
+count — a license is not the sub's to price; the CO proposal bills it
+under Recurring Services on its own.
+
+**⚠️ Builder dependency (2026-09-21):** all of the above only sees license
+lines the CO worksheet view LOADS. On the SOW pages licenses live in their
+own Licenses accordion (view_3369 / view_3471 / view_3371) and the
+worksheet grids leave them out; if view_4079 (and the sub's view_4112)
+carry the same bucket filter, a license added to a CO through the add-item
+form exists on the CO but never reaches the page — the worksheet, the value
+strip ("0 lines") and the tray all read the view's model. Either drop the
+License-bucket exclusion from view_4079 / view_4112 (the bundle then sets
+them apart as above), or add a Licenses grid to the CO scene.

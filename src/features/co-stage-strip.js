@@ -288,6 +288,20 @@
 
     // The "ops proposed" money baseline, per CO line — what the Ops-Review
     // diff compares the sub's returned pricing against.
+    // Recurring licenses (License bucket) are never the sub's to price:
+    // they stay out of the sub-pricing snapshot, the request document and
+    // the unpriced count. The CO proposal bills them under Recurring
+    // Services on its own.
+    var LICENSE_BUCKET = '645554dce6f3a60028362a6a';
+    function isLicenseLine(r) {
+      try {
+        var ws = window.SCW && window.SCW.worksheetV2;
+        if (ws && ws.card && typeof ws.card.isLicenseBucket === 'function') return ws.card.isLicenseBucket(r, CO_VIEW);
+      } catch (e) { /* fall through */ }
+      var raw = r && r['field_2219_raw'];
+      var one = Array.isArray(raw) ? raw[0] : raw;
+      return !!one && (one.id === LICENSE_BUCKET || /^\s*licen[cs]e/i.test(String(one.identifier || '')));
+    }
     function buildSnapshot() {
       var ns = window.SCW && window.SCW.worksheetV2;
       var recs = (ns && ns.data && typeof ns.data.readRecords === 'function')
@@ -295,7 +309,7 @@
       var lines = {};
       for (var i = 0; i < recs.length; i++) {
         var r = recs[i];
-        if (!r || !r.id) continue;
+        if (!r || !r.id || isLicenseLine(r)) continue;
         // Drop prefix (field_2240) is a connection — ship both the record id
         // (what Make writes/references) and the display text.
         var prefixRaw = r['field_2240_raw'];
@@ -368,7 +382,7 @@
       var tAdd = { bid: 0 }, tRm = { bid: 0 };
       for (var i = 0; i < recs.length; i++) {
         var r = recs[i];
-        if (!r || !r.id) continue;
+        if (!r || !r.id || isLicenseLine(r)) continue;
         var isRm = /remove/i.test(readTxt(r, 'field_2965'));
         // Services/assumptions rows have no product — fall back to the
         // labor description so every line names itself.
@@ -974,7 +988,7 @@
       var n = 0;
       for (var i = 0; i < recs.length; i++) {
         var r = recs[i];
-        if (!r || !r.id) continue;
+        if (!r || !r.id || isLicenseLine(r)) continue;
         // "Sub bid required" (field_2478) explicitly No = the line is on
         // the CO but not the sub's to price (equipment-only rows) — never
         // counts as unpriced. Blank/missing (or the column not on the

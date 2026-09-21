@@ -17,6 +17,13 @@
  * If a Remove line's money hasn't been negated (seeding gap), its positive
  * value shows up in the Credits tile — deliberately visible, not masked.
  *
+ * Recurring licenses (License bucket) are NOT adds or credits: the
+ * proposal bills them separately under Recurring Services, outside the
+ * project total. They get their own fourth tile on the ops strip
+ * ("Recurring licenses · billed separately", their extended net) and stay
+ * out of Adds / Credits / Net change; the sub strip never counts them
+ * (a license is not the sub's to price).
+ *
  * Data source: the CO worksheet's own view model via the v2 data layer —
  * subscribe() keeps the strip live as lines are added/edited/removed,
  * readRecords() serves the mount-time render.
@@ -44,6 +51,16 @@
   var F_EQUIP  = 'field_2269';  // equipment extended net
   var F_FEE    = 'field_2028';  // install fee extended
   var F_BID    = 'field_2151';  // extended sub bid (labor — the sub's number)
+  var F_BUCKET = 'field_2219';  // proposal bucket (connection)
+  var LICENSE_BUCKET = '645554dce6f3a60028362a6a';
+  function isLicense(rec, viewKey) {
+    try {
+      if (ns.card && typeof ns.card.isLicenseBucket === 'function') return ns.card.isLicenseBucket(rec, viewKey);
+    } catch (e) { /* fall through */ }
+    var raw = rec && rec[F_BUCKET + '_raw'];
+    var one = Array.isArray(raw) ? raw[0] : raw;
+    return !!one && (one.id === LICENSE_BUCKET || /^\s*licen[cs]e/i.test(String(one.identifier || '')));
+  }
 
   function injectCss() {
     if (document.getElementById(STYLE_ID)) return;
@@ -99,19 +116,35 @@
     return (n < 0 ? '−' : '') + s;
   }
 
-  function compute(records) {
+  function compute(records, viewKey) {
     var adds = { count: 0, eq: 0, fee: 0, bid: 0 };
     var rem  = { count: 0, eq: 0, fee: 0, bid: 0 };
+    var lic  = { count: 0, eq: 0, fee: 0, bid: 0 };
     for (var i = 0; i < (records ? records.length : 0); i++) {
       var r = records[i];
       if (!r) continue;
+      if (isLicense(r, viewKey)) {
+        lic.count++;
+        lic.eq += readNum(r, F_EQUIP);   // a Remove of a license carries its negative net
+        continue;
+      }
       var b = /remove/i.test(readTxt(r, F_ACTION)) ? rem : adds;
       b.count++;
       b.eq  += readNum(r, F_EQUIP);
       b.fee += readNum(r, F_FEE);
       b.bid += readNum(r, F_BID);
     }
-    return { adds: adds, rem: rem };
+    return { adds: adds, rem: rem, lic: lic };
+  }
+  function tileLicenses(count, eq) {
+    return '<div class="scw-co-val-tile scw-co-val-tile--licenses">' +
+      '<div class="scw-co-val-head">' +
+        '<span class="scw-co-val-label">Recurring licenses</span>' +
+        '<span class="scw-co-val-count">' + count + ' ' + (count === 1 ? 'line' : 'lines') + '</span>' +
+      '</div>' +
+      '<div class="scw-co-val-amt">' + esc(fmtMoney(eq)) + '</div>' +
+      '<div class="scw-co-val-split">billed separately &middot; not in net change</div>' +
+    '</div>';
   }
 
   function tile(cls, label, count, eq, fee, countNoun) {
@@ -173,7 +206,7 @@
       }
     } catch (e) { /* view not loaded yet — render zeros */ }
 
-    var t = compute(records);
+    var t = compute(records, pair.coView);
     if (pair.mode === 'labor') {
       el.innerHTML =
         tileLabor('adds',    'Adds',       t.adds.count, t.adds.bid) +
@@ -184,7 +217,8 @@
         tile('adds',    'Adds',       t.adds.count, t.adds.eq, t.adds.fee) +
         tile('credits', 'Credits',    t.rem.count,  t.rem.eq,  t.rem.fee) +
         tile('net',     'Net change', null,
-             t.adds.eq + t.rem.eq, t.adds.fee + t.rem.fee);
+             t.adds.eq + t.rem.eq, t.adds.fee + t.rem.fee) +
+        (t.lic.count ? tileLicenses(t.lic.count, t.lic.eq) : '');
     }
   }
 
