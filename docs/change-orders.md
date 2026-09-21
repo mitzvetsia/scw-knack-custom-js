@@ -669,3 +669,24 @@ section header, so the signer reads it in the agreement, not just the PDF.
 `tests/proposal/test-recurring-note.js` (the builders are exported as test
 seams on `SCW.pdfExport`). Whether a given CO's licenses appear depends on
 view_3371 listing them on that proposal's scene at publish time.
+
+## Make 13.06b: swapped items came out "Removed by CO" (2026-09-21)
+
+Scenario *13.06b | CHANGE ORDER | True Deployment Records based on signed CO*
+iterates the CO's lines (`73.view_3896`) through a router with three routes
+— ADD (Add, no target) creates an install record; REMOVE (Remove) flags the
+target install record's field_2967; SWAP (Add with a target) updates the
+target in place and clears field_2967. A Make router runs EVERY matching
+route per bundle, and a swap is two lines targeting one install record: the
+Add line took the SWAP route, then the pair's Remove line (drafted after
+the Add, so later in the array) took the REMOVE route and flagged the same
+record — every swapped device and its ride-along mount ended in the
+worksheet's "Removed by CO" fold (1818CO: RA-I-068 / RA-I-069). Fix
+(blueprint patched, handed back as "… (swap fix).blueprint.json"): the
+REMOVE route's filter gains `array:notcontain` — the target ids of every
+Add line in the CO (`map(flatten(map(73.view_3896; "field_2966_raw";
+"field_2965_raw"; "Add")); "id")`) must NOT contain this line's target
+(`first(map(87.field_2966_raw; "id"))`); SWAP's record_id uses the same
+`first(map(...))` form as REMOVE. Records already mis-flagged need
+field_2967 cleared by hand (the scenario cannot be re-run for a signed
+CO).
