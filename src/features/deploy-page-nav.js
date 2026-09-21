@@ -45,12 +45,21 @@
       // "Other Files" gallery (the generator files them there, typed
       // "… (not completed)") first, then the closeout save grid (kickoff
       // deck). Completed uploads are Closeout's business, not Setup's.
-      docsViews: ['view_3942', 'view_3941'] },
+      docsViews: ['view_3942', 'view_3941'],
+      // The DOC save view (inline-editable grid): PMs supersede / delete
+      // generated documents through it — view-based PUT of the note and
+      // DELETE, the same paths other-files-gallery.js writes by. Ops only.
+      docsSaveView: 'view_3941' },
     { sceneId: 'scene_1353',                 // subcontractor deployment dashboard
       worksheetMount: 'scw-ws-v2-view_4056',
       questionnaireView: 'view_4053',
       docsViews: ['view_4063', 'view_4068'] }
   ];
+  // A generated document a PM retired: the note carries this prefix (the
+  // Files tray and Closeout show the note, so the mark reads everywhere and
+  // needs no Builder field). Reversible (Restore strips it).
+  var SUPERSEDED_PREFIX = 'Superseded · ';
+  var SUPERSEDED_RE = /^\s*superseded\b\s*[·:\-–]?\s*/i;
   // DOC_files columns on the docs views.
   var DOC_F = { type: 'field_2877', file: 'field_68', notes: 'field_588' };
   // The documents generated at setup, in display order, matched on the
@@ -347,6 +356,21 @@
       '.scw-deploy-docs__row.is-missing .scw-deploy-docs__state { color: #92400e; }',
       '.scw-deploy-docs__open { font-weight: 600; text-decoration: none; color: #0f4c81; flex: none; }',
       '.scw-deploy-docs__empty { font-size: 12.5px; color: #64748b; padding: 6px 0; }',
+      /* Supersede / delete / restore on a generated document (ops page) */
+      '.scw-deploy-docs__acts { display: inline-flex; gap: 4px; flex: none; }',
+      '.scw-deploy-docs__act { padding: 3px 8px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #475569; font: 600 11px/1.2 system-ui, sans-serif; cursor: pointer; }',
+      '.scw-deploy-docs__act:hover { background: #f1f5f9; color: #0f172a; }',
+      '.scw-deploy-docs__act--del:hover { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }',
+      '.scw-deploy-docs__act[disabled] { opacity: .5; cursor: default; }',
+      '.scw-deploy-docs__chip { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; border: 1px solid #fcd34d; background: #fffbeb; color: #92400e; font: 700 10.5px/1.5 system-ui, sans-serif; vertical-align: middle; }',
+      '.scw-deploy-docs__keep { margin-right: 8px; }',
+      '.scw-deploy-docs__old { margin-top: 10px; border-top: 1px dashed #cbd5e1; padding-top: 6px; }',
+      '.scw-deploy-docs__old-toggle { border: 0; background: none; padding: 4px 0; color: #64748b; font: 600 12px/1.2 system-ui, sans-serif; cursor: pointer; }',
+      '.scw-deploy-docs__old-toggle:hover { color: #0f172a; }',
+      '.scw-deploy-docs__old-list { display: none; }',
+      '.scw-deploy-docs__old.is-open .scw-deploy-docs__old-list { display: block; }',
+      '.scw-deploy-docs__row.is-old { color: #64748b; }',
+      '.scw-deploy-docs__row.is-old .scw-deploy-docs__type, .scw-deploy-docs__row.is-old .scw-deploy-docs__state { text-decoration: line-through; text-decoration-color: #cbd5e1; }',
       /* Worksheet toolbar "+ Change Order" proxy (mirrors the Builder menu link). */
       'a#scw-deploy-co-toolbar-cta { text-decoration: none !important; }',
       '.scw-deploy-nav-item {',
@@ -1128,53 +1152,133 @@
         }
         if (!url) continue;                     // a typed record with no file isn't a generated PDF
         seen[rec.id] = true;
-        out.push({ kind: kind, type: kind.label, url: url, name: name,
-                   note: note, order: SETUP_DOCS.indexOf(kind) });
+        // Newest = the date the generator stamps into the file name
+        // (…_20260921.pdf), else model order.
+        var dm = String(name || url).match(/(20\d{6})(?!.*20\d{6})/);
+        out.push({ id: rec.id, kind: kind, type: kind.label, url: url, name: name,
+                   note: note.replace(SUPERSEDED_RE, ''), rawNote: note,
+                   superseded: SUPERSEDED_RE.test(note),
+                   dateKey: dm ? dm[1] : '', seq: out.length,
+                   order: SETUP_DOCS.indexOf(kind) });
       }
     }
-    out.sort(function (a, b) { return a.order - b.order; });
+    out.sort(function (a, b) { return a.order - b.order || (a.dateKey < b.dateKey ? -1 : a.dateKey > b.dateKey ? 1 : 0) || a.seq - b.seq; });
     out.anyRecords = anyRecords;
     return out;
+  }
+  function docsEditable(cfg) {
+    return !!(cfg.docsSaveView && typeof Knack !== 'undefined' && Knack.views && Knack.views[cfg.docsSaveView] &&
+              window.SCW && typeof SCW.knackAjax === 'function' && typeof SCW.knackRecordUrl === 'function');
+  }
+  function docPut(cfg, id, fields, done) {
+    SCW.knackAjax({ url: SCW.knackRecordUrl(cfg.docsSaveView, id), type: 'PUT', data: JSON.stringify(fields),
+      success: function () { done(true); }, error: function (x) { done(false, 'HTTP ' + (x && x.status)); } });
+  }
+  function docDelete(cfg, id, done) {
+    SCW.knackAjax({ url: SCW.knackRecordUrl(cfg.docsSaveView, id), type: 'DELETE',
+      success: function () { done(true); }, error: function (x) { done(false, 'HTTP ' + (x && x.status)); } });
+  }
+  /** Run one write per doc, two at a time, every one settled. */
+  function docBatch(ids, each, done) {
+    var i = 0, running = 0, failed = [];
+    function next() {
+      while (running < 2 && i < ids.length) {
+        (function (id) {
+          running++;
+          each(id, function (ok, status) {
+            running--;
+            if (!ok) failed.push(id + ' (' + (status || 'no response') + ')');
+            if (!running && i >= ids.length) done(failed); else next();
+          });
+        })(ids[i++]);
+      }
+    }
+    if (!ids.length) { done(failed); return; }
+    next();
+  }
+  /** Refetch the docs views' models, then rebuild the prelude in place. */
+  function refreshPrelude(cfg, box) {
+    var views = cfg.docsViews || [];
+    for (var i = 0; i < views.length; i++) {
+      try { var v = Knack.views[views[i]]; if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch(); } catch (e) { /* best-effort */ }
+    }
+    setTimeout(function () {
+      if (!box.parentNode) return;
+      var fresh = buildSetupPrelude(cfg);
+      if (box.querySelector('.scw-deploy-docs__old.is-open')) { var o = fresh.querySelector('.scw-deploy-docs__old'); if (o) o.classList.add('is-open'); }
+      box.parentNode.replaceChild(fresh, box);
+    }, 900);
   }
   function buildSetupPrelude(cfg) {
     var docs = setupDocs(cfg);
     var box = document.createElement('div');
     box.className = 'scw-deploy-drawer__prelude';
-    var rows = '';
+    var canEdit = docsEditable(cfg);
+    var rows = '', oldRows = '', oldCount = 0, olderLive = [];
+    function actsHtml(doc) {
+      if (!canEdit) return '';
+      return '<span class="scw-deploy-docs__acts">' +
+        (doc.superseded
+          ? '<button type="button" class="scw-deploy-docs__act" data-scw-doc-act="restore" data-scw-doc-id="' + esc(doc.id) + '" title="Bring this document back">Restore</button>'
+          : '<button type="button" class="scw-deploy-docs__act" data-scw-doc-act="supersede" data-scw-doc-id="' + esc(doc.id) + '" title="Mark as outdated — keeps the file, moves it out of the way">Supersede</button>') +
+        '<button type="button" class="scw-deploy-docs__act scw-deploy-docs__act--del" data-scw-doc-act="delete" data-scw-doc-id="' + esc(doc.id) + '" data-scw-doc-name="' + esc(doc.name) + '" title="Delete this file record" aria-label="Delete">×</button>' +
+      '</span>';
+    }
+    function rowHtml(doc, extraCls, chip) {
+      return '<div class="scw-deploy-docs__row' + (extraCls || '') + '" data-scw-doc-row="' + esc(doc.id) + '">' +
+        '<span class="scw-deploy-docs__type">' + esc(doc.type) + '</span>' +
+        '<span class="scw-deploy-docs__state">' + (doc.superseded ? 'Superseded' : 'Ready to print') + (doc.name ? ' · ' + esc(doc.name) : '') +
+          (doc.note && !/not completed/i.test(doc.note) ? ' · ' + esc(doc.note) : '') + (chip || '') + '</span>' +
+        '<a class="scw-deploy-docs__open" href="' + esc(doc.url) + '" target="_blank" rel="noopener">Open ›</a>' +
+        actsHtml(doc) +
+      '</div>';
+    }
     if (!docs.length && !docs.anyRecords) {
       rows = '<div class="scw-deploy-docs__empty">Documents haven\'t loaded yet, or none have been generated for this project.</div>';
     } else {
       for (var i = 0; i < SETUP_DOCS.length; i++) {
-        var kind = SETUP_DOCS[i], found = false;
+        var kind = SETUP_DOCS[i], live = [];
         for (var d = 0; d < docs.length; d++) {
           if (docs[d].kind !== kind) continue;
-          found = true;
-          var doc = docs[d];
-          rows += '<div class="scw-deploy-docs__row">' +
-            '<span class="scw-deploy-docs__type">' + esc(doc.type) + '</span>' +
-            '<span class="scw-deploy-docs__state">Ready to print' + (doc.name ? ' · ' + esc(doc.name) : '') +
-              (doc.note && !/not completed/i.test(doc.note) ? ' · ' + esc(doc.note) : '') + '</span>' +
-            '<a class="scw-deploy-docs__open" href="' + esc(doc.url) + '" target="_blank" rel="noopener">Open ›</a>' +
-          '</div>';
+          if (docs[d].superseded) { oldRows += rowHtml(docs[d], ' is-old'); oldCount++; }
+          else live.push(docs[d]);
         }
-        if (!found) {
+        // Several live copies of one document: the newest is the one to
+        // print; older ones are flagged, and "Keep newest of each" retires them.
+        for (var l = 0; l < live.length; l++) {
+          var isOlder = l < live.length - 1;
+          if (isOlder) olderLive.push(live[l].id);
+          rows += rowHtml(live[l], '', isOlder ? '<span class="scw-deploy-docs__chip">older copy</span>' : '');
+        }
+        if (!live.length) {
           rows += '<div class="scw-deploy-docs__row is-missing">' +
             '<span class="scw-deploy-docs__type">' + esc(kind.label) + '</span>' +
-            '<span class="scw-deploy-docs__state">Not generated</span></div>';
+            '<span class="scw-deploy-docs__state">' + (oldCount ? 'Not generated (superseded copies below)' : 'Not generated') + '</span></div>';
         }
       }
     }
+    var oldHtml = oldCount
+      ? '<div class="scw-deploy-docs__old">' +
+          '<button type="button" class="scw-deploy-docs__old-toggle" data-scw-doc-act="toggle-old">' + oldCount + ' superseded · show</button>' +
+          '<div class="scw-deploy-docs__old-list">' + oldRows + '</div>' +
+        '</div>'
+      : '';
+    var keepHtml = (canEdit && olderLive.length)
+      ? '<button type="button" class="scw-deploy-tile__action scw-deploy-docs__keep" data-scw-doc-act="keep-newest" data-scw-doc-ids="' + esc(olderLive.join(',')) + '" title="Mark every older copy as superseded">Keep newest of each (' + olderLive.length + ' older)</button>'
+      : '';
     box.innerHTML =
       '<div class="scw-deploy-docs__head">' +
         '<span class="scw-deploy-docs__title">Documents for the sub</span>' +
         '<span class="scw-deploy-docs__sub">Blank PDFs generated after the client kickoff, for the sub to print and get completed on site. Completed copies come back under Closeout.</span>' +
-        '<span class="scw-deploy-tile__actions scw-deploy-docs__actions">' +
+        '<span class="scw-deploy-tile__actions scw-deploy-docs__actions">' + keepHtml +
           '<button type="button" class="scw-deploy-tile__action" data-scw-drawer-docs="1">Generate documents…</button>' +
         '</span>' +
       '</div>' +
-      '<div class="scw-deploy-docs__list">' + rows + '</div>';
+      '<div class="scw-deploy-docs__list">' + rows + '</div>' + oldHtml;
     box.addEventListener('click', function (e) {
       if (e.target.closest && e.target.closest('#scw-regen-docs-panel')) return;
+      var act = e.target.closest && e.target.closest('[data-scw-doc-act]');
+      if (act) { e.stopPropagation(); onDocAction(cfg, box, act); return; }
       var b = e.target.closest && e.target.closest('[data-scw-drawer-docs]');
       if (!b) return;
       e.stopPropagation();
@@ -1182,6 +1286,58 @@
       if (api && typeof api.openPicker === 'function') api.openPicker(b.parentNode, b);
     });
     return box;
+  }
+  /** Supersede / restore / delete / keep-newest on the generated documents. */
+  function onDocAction(cfg, box, btn) {
+    var act = btn.getAttribute('data-scw-doc-act');
+    if (act === 'toggle-old') {
+      var fold = btn.closest('.scw-deploy-docs__old'), open = fold.classList.toggle('is-open');
+      btn.textContent = btn.textContent.replace(/· (show|hide)$/, '· ' + (open ? 'hide' : 'show'));
+      return;
+    }
+    if (!docsEditable(cfg)) return;
+    var docs = setupDocs(cfg), byId = {};
+    for (var i = 0; i < docs.length; i++) byId[docs[i].id] = docs[i];
+    function markNote(doc, on) {
+      var base = doc ? doc.note : '';
+      var f = {};
+      f[DOC_F.notes] = on ? (SUPERSEDED_PREFIX + base).replace(/\s+$/, '') : base;
+      return f;
+    }
+    var id = btn.getAttribute('data-scw-doc-id');
+    if (act === 'supersede' || act === 'restore') {
+      btn.disabled = true;
+      docPut(cfg, id, markNote(byId[id], act === 'supersede'), function (ok, status) {
+        if (!ok) { btn.disabled = false; alert('Could not update the document (' + (status || 'no response') + ').'); return; }
+        refreshPrelude(cfg, box);
+      });
+      return;
+    }
+    if (act === 'delete') {
+      var name = btn.getAttribute('data-scw-doc-name') || 'this document';
+      if (!window.confirm('Delete "' + name + '"?\n\nThe file record is removed for everyone. This cannot be undone. ' +
+                          '(Supersede keeps the file and moves it out of the way.)')) return;
+      btn.disabled = true;
+      docDelete(cfg, id, function (ok, status) {
+        if (!ok) { btn.disabled = false; alert('Could not delete the document (' + (status || 'no response') + ').'); return; }
+        var row = box.querySelector('[data-scw-doc-row="' + id + '"]');
+        if (row && row.parentNode) row.parentNode.removeChild(row);
+        refreshPrelude(cfg, box);
+      });
+      return;
+    }
+    if (act === 'keep-newest') {
+      var ids = (btn.getAttribute('data-scw-doc-ids') || '').split(',').filter(Boolean);
+      if (!ids.length) return;
+      if (!window.confirm('Mark ' + ids.length + ' older ' + (ids.length === 1 ? 'copy' : 'copies') + ' as superseded? ' +
+                          'The newest of each document stays; the rest move to the superseded fold (files are kept, Restore undoes it).')) return;
+      btn.disabled = true;
+      btn.textContent = 'Working…';
+      docBatch(ids, function (did, done) { docPut(cfg, did, markNote(byId[did], true), done); }, function (failed) {
+        if (failed.length) alert('Some documents could not be updated:\n' + failed.join('\n'));
+        refreshPrelude(cfg, box);
+      });
+    }
   }
 
   function openDrawer(target) {

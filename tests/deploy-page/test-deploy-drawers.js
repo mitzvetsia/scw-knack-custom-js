@@ -104,8 +104,17 @@ setTimeout(() => {
     // A run that missed the type still carries the note: it is a blank too.
     { attributes: { id: 'o3', field_2877_raw: [], field_588: 'View Approval Form (not completed)', field_68_raw: { url: 'https://s3/view_blank.pdf', filename: 'view_approval.pdf' } } },
     // Same type, no "(not completed)" note: a completed upload, not a blank.
-    { attributes: { id: 'o4', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form' }], field_588: 'signed on site', field_68_raw: { url: 'https://s3/loc_done.pdf', filename: 'loc_done.pdf' } } }
+    { attributes: { id: 'o4', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form' }], field_588: 'signed on site', field_68_raw: { url: 'https://s3/loc_done.pdf', filename: 'loc_done.pdf' } } },
+    // A re-issued Location Approval blank (newer date in the file name): the newest is the one to print, o2 is an older copy.
+    { attributes: { id: 'o5', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form' }], field_588: 'Location Approval Form (not completed)', field_68_raw: { url: 'https://s3/loc_blank2.pdf', filename: 'location_approval_20260921.pdf' } } },
+    // A blank a PM already superseded: its note carries the prefix; it sits in the fold, not the list.
+    { attributes: { id: 'o6', field_2877_raw: [], field_588: 'Superseded · View Approval Form (not completed)', field_68_raw: { url: 'https://s3/view_old.pdf', filename: 'view_approval_20260917.pdf' } } }
   ] } } };
+  // Ops page: the DOC save view is live and the write helpers exist → supersede / delete offered.
+  const docCalls = []; let confirmMsg = '';
+  window.SCW.knackRecordUrl = (v, id) => '/' + v + '/' + id;
+  window.SCW.knackAjax = o => { docCalls.push({ url: o.url, type: o.type, data: o.data ? JSON.parse(o.data) : null }); o.success({}); };
+  window.confirm = m => { confirmMsg = m; return true; }; global.confirm = window.confirm;
   window.Knack.views.view_3941 = { model: { data: { models: [
     { attributes: { id: 'd2', field_2877_raw: [{ id: 't5', identifier: 'Location Approval Form' }], field_68_raw: { url: 'https://s3/loc_completed.pdf', filename: 'loc_completed.pdf' }, field_2879: 'Pass' } },
     { attributes: { id: 'd4', field_2877_raw: [{ id: 't4', identifier: 'Project Kickoff Deck' }], field_68_raw: { url: 'https://s3/deck.pdf', filename: 'deck.pdf' } } }
@@ -113,8 +122,25 @@ setTimeout(() => {
   document.querySelector('[data-scw-tile="setup"] [data-scw-tile-open]').click();
   const pre = drawer.querySelector('.scw-deploy-drawer__prelude');
   check('Setup drawer lists the blank PDFs for the sub (not the completed uploads), in order',
-    pre && [...pre.querySelectorAll('.scw-deploy-docs__row')].map(r => [r.querySelector('.scw-deploy-docs__type').textContent, r.querySelector('.scw-deploy-docs__state').textContent, (r.querySelector('.scw-deploy-docs__open') || {}).href || null]),
-    [['Scope of Work PDF', 'Ready to print · sow_form.pdf', 'https://s3/sow.pdf'], ['Location Approval Form (blank)', 'Ready to print · location_approval.pdf', 'https://s3/loc_blank.pdf'], ['View Approval Form (blank)', 'Ready to print · view_approval.pdf', 'https://s3/view_blank.pdf'], ['Kickoff Deck', 'Ready to print · deck.pdf', 'https://s3/deck.pdf']]);
+    pre && [...pre.querySelectorAll('.scw-deploy-docs__list .scw-deploy-docs__row')].map(r => [r.querySelector('.scw-deploy-docs__type').textContent, r.querySelector('.scw-deploy-docs__state').textContent, (r.querySelector('.scw-deploy-docs__open') || {}).href || null]),
+    [['Scope of Work PDF', 'Ready to print · sow_form.pdf', 'https://s3/sow.pdf'], ['Location Approval Form (blank)', 'Ready to print · location_approval.pdfolder copy', 'https://s3/loc_blank.pdf'], ['Location Approval Form (blank)', 'Ready to print · location_approval_20260921.pdf', 'https://s3/loc_blank2.pdf'], ['View Approval Form (blank)', 'Ready to print · view_approval.pdf', 'https://s3/view_blank.pdf'], ['Kickoff Deck', 'Ready to print · deck.pdf', 'https://s3/deck.pdf']]);
+  check('every live row offers Supersede + delete; the older copy is chipped; Keep newest counts it; the superseded blank sits in a fold',
+    [pre.querySelectorAll('.scw-deploy-docs__list [data-scw-doc-act="supersede"]').length, pre.querySelectorAll('.scw-deploy-docs__list [data-scw-doc-act="delete"]').length,
+     pre.querySelector('[data-scw-doc-act="keep-newest"]').textContent, pre.querySelector('[data-scw-doc-act="keep-newest"]').getAttribute('data-scw-doc-ids'),
+     pre.querySelector('.scw-deploy-docs__old-toggle').textContent, [...pre.querySelectorAll('.scw-deploy-docs__old-list .scw-deploy-docs__row')].map(r => r.querySelector('.scw-deploy-docs__state').textContent + ' | ' + r.querySelector('[data-scw-doc-act]').textContent)],
+    [5, 5, 'Keep newest of each (1 older)', 'o2', '1 superseded · show', ['Superseded · view_approval_20260917.pdf | Restore']]);
+  pre.querySelector('.scw-deploy-docs__old-toggle').click();
+  check('the fold opens', [pre.querySelector('.scw-deploy-docs__old').classList.contains('is-open'), pre.querySelector('.scw-deploy-docs__old-toggle').textContent], [true, '1 superseded · hide']);
+  pre.querySelector('[data-scw-doc-act="supersede"][data-scw-doc-id="o2"]').click();
+  check('Supersede writes the prefixed note through the DOC save view', docCalls[0], { url: '/view_3941/o2', type: 'PUT', data: { field_588: 'Superseded · Location Approval Form (not completed)' } });
+  pre.querySelector('[data-scw-doc-act="restore"][data-scw-doc-id="o6"]').click();
+  check('Restore strips the prefix', docCalls[1], { url: '/view_3941/o6', type: 'PUT', data: { field_588: 'View Approval Form (not completed)' } });
+  pre.querySelector('[data-scw-doc-act="delete"][data-scw-doc-id="o5"]').click();
+  check('Delete asks (naming the file, pointing at Supersede as the soft option) then DELETEs through the save view and drops the row',
+    [/location_approval_20260921\.pdf/.test(confirmMsg) && /Supersede keeps the file/.test(confirmMsg), docCalls[2], !!pre.querySelector('[data-scw-doc-row="o5"]')], [true, { url: '/view_3941/o5', type: 'DELETE', data: null }, false]);
+  pre.querySelector('[data-scw-doc-act="keep-newest"]').click();
+  check('Keep newest of each supersedes every older copy (one confirm, one PUT per doc)', [/1 older copy/.test(confirmMsg), docCalls.slice(3).map(c => c.url + ' ' + c.data.field_588)], [true, ['/view_3941/o2 Superseded · Location Approval Form (not completed)']]);
+  delete window.SCW.knackAjax; delete window.SCW.knackRecordUrl;
   check('the questionnaire section follows the documents', pre && pre.nextElementSibling && pre.nextElementSibling.classList.contains('scw-ktl-accordion'), true);
   // Switch to the Other Files chip while open → previous section goes home.
   document.querySelectorAll('.scw-deploy-also__row')[1].click();

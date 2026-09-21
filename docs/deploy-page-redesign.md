@@ -248,7 +248,20 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   Change Order, Add Project Note, Add File) into the section body; the Setup
   drawer leads with the generated documents (`buildSetupPrelude`, blank forms
   from Other Files by CONFIG_file type); Setup tile hosts the doc generator
-  (`SCW.regenDocs.openPicker`). Public API `SCW.deployNav.openSection(re) /
+  (`SCW.regenDocs.openPicker`). **Re-issued documents** (2026-09-21): PMs
+  regenerate the blanks when something changes, so the list piled up
+  copies. On the ops page (`docsSaveView` view_3941 live + the write
+  helpers) every row offers **Supersede** (PUT the note with a
+  "Superseded · " prefix, `SUPERSEDED_RE`; reversible, no Builder field —
+  the Files tray and Closeout show the note so the mark reads everywhere)
+  and **delete** (× → confirm → view-based DELETE, the Files tray's path).
+  Superseded copies drop into a "N superseded · show" fold with Restore.
+  When a document has several live copies the newest (the date the
+  generator stamps into the file name, else model order) is the one to
+  print, older ones carry an "older copy" chip, and **Keep newest of each**
+  supersedes them in one confirm (two writes at a time, each settled).
+  After a write the docs views refetch and the prelude rebuilds in place.
+  Sub dashboard: read-only. Public API `SCW.deployNav.openSection(re) /
   closeDrawer() / addFileHref()`. **No flash of the native page** (2026-09-18):
   styles are injected at load, not at the first pass; the scene is
   `visibility: hidden` until the first pass after a scene render marks it
