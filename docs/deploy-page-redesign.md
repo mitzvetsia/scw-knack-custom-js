@@ -353,8 +353,14 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   camera's swap is the camera-bucket Add/Remove pair; a mount line on the
   same record is the accessory riding along — its Remove lists as
   "Swapped out · SOW ####CO", never as the camera's replacement. Product
-  names compare with the CO line's " - SKU" suffix stripped. And the lines
-  show what the
+  names compare with the CO line's " - SKU" suffix stripped. An accessory
+  the swap pulled that ALSO has its own install record flagged removed
+  (signature flags the ride-along mount as well as targeting it on the
+  device's line) is listed once: its own row, carrying the CO from the
+  device's line. Rows inside every group follow the proposal's bucket order
+  (install `field_2218`), worksheet order within a bucket; the By MDF/IDF
+  and By SOW views carry small bucket sub-heads; By category orders its
+  groups the same way. And the lines show what the
   install record cannot — a Remove on an UNSIGNED CO (row stays in
   Shipping, amber "Removal pending · SOW 1418CO not signed" chip: nothing
   leaves scope before signature) and a SWAP (Remove + Add pair targeting

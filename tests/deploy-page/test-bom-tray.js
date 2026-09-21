@@ -17,20 +17,20 @@ const CAM = 'bucket_cam', NET = 'bucket_net', MNT = 'bucket_mount', SVC = 'bucke
 const conn = (id, name) => [{ id, identifier: name }];
 const install = [
   // 3 cams on new drops at the MDF, 2 on existing cable at the IDF; all priced via the SOW item s1
-  { id: 'c1', field_2790: 'Informant 8.0 v5', field_2802: 'I-001', field_2789: 1, field_2807: 'No',  field_2818_raw: conn('L1', 'Default MDF'), field_2822_raw: conn(CAM, 'Camera / Reader'), field_2819_raw: conn('s1', 'x') },
-  { id: 'c2', field_2790: 'Informant 8.0 v5', field_2802: 'I-002', field_2789: 1, field_2807: 'No',  field_2818_raw: conn('L1', 'Default MDF'), field_2822_raw: conn(CAM, 'Camera / Reader'), field_2819_raw: conn('s1', 'x') },
-  { id: 'c3', field_2790: 'Informant 8.0 v5', field_2802: 'I-003', field_2789: 1, field_2807: 'No',  field_2818_raw: conn('L1', 'Default MDF'), field_2822_raw: conn(CAM, 'Camera / Reader'), field_2819_raw: conn('s1', 'x') },
-  { id: 'c4', field_2790: 'Informant 8.0 v5', field_2802: 'I-004', field_2789: 1, field_2807: 'Yes', field_2818_raw: conn('L2', 'IDF 01'),      field_2822_raw: conn(CAM, 'Camera / Reader'), field_2819_raw: conn('s1', 'x') },
-  { id: 'c5', field_2790: 'Informant 8.0 v5', field_2802: 'I-005', field_2789: 1, field_2807: 'Yes', field_2818_raw: conn('L2', 'IDF 01'),      field_2822_raw: conn(CAM, 'Camera / Reader'), field_2819_raw: conn('s1', 'x') },
-  { id: 'n1', field_2790: 'Imperial 128 Channel 4K NVR v3', field_2789: 1, field_2818_raw: conn('L1', 'Default MDF'), field_2822_raw: conn(NET, 'Networking or Headend'), field_2819_raw: conn('s2', 'x') },
-  { id: 'n2', field_2790: 'v2 16 Drive Mini-SAS Enclosure (Special Order)', field_2789: 2, field_2818_raw: conn('L1', 'Default MDF'), field_2822_raw: conn(NET, 'Networking or Headend'), field_2819_raw: conn('s3', 'x') },
-  { id: 'n3', field_2790: 'Pre-existing PoE Switch', field_2789: 1, field_2818_raw: conn('L1', 'Default MDF'), field_2822_raw: conn(NET, 'Networking or Headend') },
-  { id: 'n4', field_2790: 'Customer-supplied Monitor', field_2789: 1, field_2818_raw: conn('L2', 'IDF 01'), field_2822_raw: conn(NET, 'Networking or Headend') },
+  { id: 'c1', field_2790: 'Informant 8.0 v5', field_2802: 'I-001', field_2789: 1, field_2807: 'No',  field_2818_raw: conn('L1', 'Default MDF'), field_2218: 10, field_2822_raw: conn(CAM, 'Camera / Reader'), field_2819_raw: conn('s1', 'x') },
+  { id: 'c2', field_2790: 'Informant 8.0 v5', field_2802: 'I-002', field_2789: 1, field_2807: 'No',  field_2818_raw: conn('L1', 'Default MDF'), field_2218: 10, field_2822_raw: conn(CAM, 'Camera / Reader'), field_2819_raw: conn('s1', 'x') },
+  { id: 'c3', field_2790: 'Informant 8.0 v5', field_2802: 'I-003', field_2789: 1, field_2807: 'No',  field_2818_raw: conn('L1', 'Default MDF'), field_2218: 10, field_2822_raw: conn(CAM, 'Camera / Reader'), field_2819_raw: conn('s1', 'x') },
+  { id: 'c4', field_2790: 'Informant 8.0 v5', field_2802: 'I-004', field_2789: 1, field_2807: 'Yes', field_2818_raw: conn('L2', 'IDF 01'),      field_2218: 10, field_2822_raw: conn(CAM, 'Camera / Reader'), field_2819_raw: conn('s1', 'x') },
+  { id: 'c5', field_2790: 'Informant 8.0 v5', field_2802: 'I-005', field_2789: 1, field_2807: 'Yes', field_2818_raw: conn('L2', 'IDF 01'),      field_2218: 10, field_2822_raw: conn(CAM, 'Camera / Reader'), field_2819_raw: conn('s1', 'x') },
+  { id: 'n1', field_2790: 'Imperial 128 Channel 4K NVR v3', field_2789: 1, field_2818_raw: conn('L1', 'Default MDF'), field_2218: 20, field_2822_raw: conn(NET, 'Networking or Headend'), field_2819_raw: conn('s2', 'x') },
+  { id: 'n2', field_2790: 'v2 16 Drive Mini-SAS Enclosure (Special Order)', field_2789: 2, field_2818_raw: conn('L1', 'Default MDF'), field_2218: 20, field_2822_raw: conn(NET, 'Networking or Headend'), field_2819_raw: conn('s3', 'x') },
+  { id: 'n3', field_2790: 'Pre-existing PoE Switch', field_2789: 1, field_2818_raw: conn('L1', 'Default MDF'), field_2218: 20, field_2822_raw: conn(NET, 'Networking or Headend') },
+  { id: 'n4', field_2790: 'Customer-supplied Monitor', field_2789: 1, field_2818_raw: conn('L2', 'IDF 01'), field_2218: 20, field_2822_raw: conn(NET, 'Networking or Headend') },
   // no MDF/IDF and no SOW link: lands in the "No MDF / IDF" / "No SOW" group, which sorts last
-  { id: 'n5', field_2790: 'Cat6 Uplink', field_2789: 1, field_2822_raw: conn(NET, 'Networking or Headend') },
-  { id: 'm1', field_2790: 'Junction Box', field_2789: 5, field_2818_raw: conn('L1', 'Default MDF'), field_2822_raw: conn(MNT, 'Mounting Hardware'), field_2819_raw: conn('s4', 'x') },
+  { id: 'n5', field_2790: 'Cat6 Uplink', field_2789: 1, field_2218: 20, field_2822_raw: conn(NET, 'Networking or Headend') },
+  { id: 'm1', field_2790: 'Junction Box', field_2789: 5, field_2818_raw: conn('L1', 'Default MDF'), field_2218: 30, field_2822_raw: conn(MNT, 'Mounting Hardware'), field_2819_raw: conn('s4', 'x') },
   { id: 'v1', field_2790: 'Travel', field_2789: 2, field_2822_raw: conn(SVC, 'Other Services') },
-  { id: 'x1', field_2790: 'Removed Camera', field_2789: 1, field_2807: 'No', field_2822_raw: conn(CAM, 'Camera / Reader'), field_2967_raw: conn('co1', 'CO 1') }
+  { id: 'x1', field_2790: 'Removed Camera', field_2789: 1, field_2807: 'No', field_2218: 10, field_2822_raw: conn(CAM, 'Camera / Reader'), field_2967_raw: conn('co1', 'CO 1') }
 ];
 // The SKU column on the hidden SOW grid is whatever field the Builder exposed under a "SKU" header
 // (here field_9999) — found by header text, not by a guessed key.
@@ -95,7 +95,7 @@ setTimeout(() => {
   const groups = [...tray.querySelectorAll('.scw-bom__table')][0].querySelectorAll('.scw-bom__group td');
   check('Shipping groups by bucket, cameras first; services and assumptions never appear', [...groups].map(g => g.textContent), ['Camera / Reader', 'Networking or Headend', 'Mounting Hardware']);
   const ship = tray.querySelectorAll('.scw-bom__table')[0];
-  const rows = [...ship.querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total):not(.scw-bom__subtotal)')].map(cells);
+  const rows = [...ship.querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total):not(.scw-bom__subtotal):not(.scw-bom__sub)')].map(cells);
   check('one row per product: designators compacted, no location run-on, drops chip, SKU + extended pricing from the SOW item',
     rows[0], ['Informant 8.0 v5 · I-001 to I-005 3 new drops', 'INF-80-V5', '5', '$1,500.00', '−$250.00', '$1,250.00']);
   check('special order chip from the name; no SKU → dash; discount 0 → dash',
@@ -114,7 +114,7 @@ setTimeout(() => {
   const removed = tray.querySelector('.scw-bom__removed');
   check('Removed or swapped out by change order: rows with field_2967 set plus each applied swap\'s old unit, headed by the CO\'s SOW number (off its own lines, not the flag\'s display value), chip, no pricing, never in Shipping',
     [[...removed.querySelectorAll('.scw-bom__group td')].map(g => g.textContent), [...removed.querySelectorAll('tbody tr:not(.scw-bom__group)')].map(cells), ship.textContent.indexOf('Removed Camera') < 0],
-    [['SOW 1601CO'], [['Imperial 64 Channel NVR Swapped out · replaced by Imperial 128 Channel 4K NVR v3', '1'], ['Rack Mount Ears, 1U Swapped out · SOW 1601CO', '1'], ['Removed Camera Removed', '1']], true]);
+    [['SOW 1601CO'], [['Removed Camera Removed', '1'], ['Imperial 64 Channel NVR Swapped out · replaced by Imperial 128 Channel 4K NVR v3', '1'], ['Rack Mount Ears, 1U Swapped out · SOW 1601CO', '1']], true]);
   check('the swapped-out unit is listed as hardware to bring back, never in Shipping or its totals', [[...ship.querySelectorAll('.scw-bom__name')].some(n => n.textContent === 'Imperial 64 Channel NVR'), cells(ship.querySelector('.scw-bom__total'))[2]], [false, '14']);
   // Toggle → by MDF / IDF. The tray REPAINTS IN PLACE: same element, still tagged for the
   // drawer to clear (a swapped-in fresh element lost the tag and lingered under the next tray).
@@ -127,8 +127,12 @@ setTimeout(() => {
   check('By MDF / IDF regroups the shipping rows by location, unassigned last and muted, toggle state persists',
     [[...g2].map(g => g.textContent), [...g2].map(g => g.classList.contains('scw-bom__group--none')), tray2.getAttribute('data-scw-bom-mode'), window.localStorage.getItem('scw:bom:mode')],
     [['Default MDF', 'IDF 01', 'No MDF / IDF'], [false, false, true], 'loc', 'loc']);
-  const idfRows = [...tray2.querySelectorAll('.scw-bom__table')][0].querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total):not(.scw-bom__subtotal)');
+  const idfRows = [...tray2.querySelectorAll('.scw-bom__table')][0].querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total):not(.scw-bom__subtotal):not(.scw-bom__sub)');
   check('per-location rows carry their own qty and drops', cells(idfRows[0]), ['Informant 8.0 v5 · I-001 to I-003 3 new drops', 'INF-80-V5', '3', '$900.00', '−$150.00', '$750.00']);
+  check('inside a location the rows follow the proposal\'s bucket order (field_2218) under small bucket heads',
+    [...tray2.querySelectorAll('.scw-bom__table')][0].querySelectorAll('.scw-bom__sub td').length > 0 &&
+    [...[...tray2.querySelectorAll('.scw-bom__table')][0].querySelectorAll('tbody tr')].slice(1, 6).map(tr => tr.className.replace('scw-bom__', '') + ':' + (tr.querySelector('.scw-bom__name') || tr.querySelector('td')).textContent.trim()),
+    ['sub:Camera / Reader', ':Informant 8.0 v5', 'sub:Networking or Headend', ':Imperial 128 Channel 4K NVR v3', ':v2 16 Drive Mini-SAS Enclosure (Special Order)']);
   check('groups are set apart: the group row carries top padding + a rule, the first one less',
     [/\.scw-bom__group td \{[^}]*padding: 26px/.test(document.getElementById('scw-bom-css').textContent), /\.scw-bom__group:first-child td \{[^}]*padding-top: 10px/.test(document.getElementById('scw-bom-css').textContent)], [true, true]);
   // Toggle → by SOW (the SOW item's field_2154; shared lines name both SOWs; unlinked last)
@@ -136,7 +140,7 @@ setTimeout(() => {
   const g3 = [...tray.querySelectorAll('.scw-bom__table')][0].querySelectorAll('.scw-bom__group td');
   check('By SOW groups by the SOW the line came from, "SOW n" labels, shared lines under both names, no link last',
     [[...g3].map(g => g.textContent), tray.getAttribute('data-scw-bom-mode')], [['SOW 1524', 'SOW 1524 + SOW 1601', 'SOW 1601', 'No SOW'], 'sow']);
-  const sowRows = [...tray.querySelectorAll('.scw-bom__table')][0].querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total):not(.scw-bom__subtotal)');
+  const sowRows = [...tray.querySelectorAll('.scw-bom__table')][0].querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total):not(.scw-bom__subtotal):not(.scw-bom__sub)');
   check('rows under their SOW', [cells(sowRows[0])[0], cells(sowRows[1])[0], cells(sowRows[2])[0], cells(sowRows[3])[0], cells(sowRows[4])[0]],
     ['Informant 8.0 v5 · I-001 to I-005 3 new drops', 'Imperial 128 Channel 4K NVR v3 Swapped in by SOW 1601CO · was Imperial 64 Channel NVR', 'Junction Box Removal pending · SOW 1601CO not signed', 'v2 16 Drive Mini-SAS Enclosure (Special Order) Special order', 'Cat6 Uplink']);
   // Re-open: the earlier tray is dropped, never stacked.

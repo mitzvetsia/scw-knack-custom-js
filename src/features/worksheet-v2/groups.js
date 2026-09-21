@@ -159,6 +159,18 @@
   var SYNTHETIC_SERVICES_LABEL    = 'Project Wide Services';
   var SYNTHETIC_ASSUMPTIONS_LABEL = 'Project Wide Assumptions';
   var SYNTHETIC_UNASSIGNED_LABEL  = 'Unassigned';
+  // Recurring licenses: their own L1 whatever the record's MDF/IDF says
+  // (a license is not installed anywhere), always the LAST group, and
+  // flagged isLicense so render.js / summary.js set it apart — the
+  // proposal lists them under "Recurring Services", billed separately.
+  var SYNTHETIC_LICENSE_LABEL     = 'Recurring licenses';
+  var SYNTHETIC_LICENSE_ID        = '__synthetic__licenses';
+  function isLicenseRecord(rec, bucketLabel) {
+    try {
+      if (ns.card && typeof ns.card.isLicenseBucket === 'function') return ns.card.isLicenseBucket(rec, GF.__viewKey);
+    } catch (e) { /* label below */ }
+    return /^\s*licen[cs]e/i.test(String(bucketLabel || ''));
+  }
 
   /** Extract { id, label } from a connection-field _raw array. */
   function readConn(rec, fieldKey) {
@@ -245,6 +257,7 @@
     REQUIRE_SUBBID_FIELD   = F.requireSubBid || 'field_2479';
     ACC_ALWAYS_ATTACH      = !!opts.accessoriesAlwaysAttach;
     GF = F;
+    GF.__viewKey = opts.viewKey || GF.__viewKey;
     // First pass: bucket into L1 → L2 maps
     var l1Map = Object.create(null);
 
@@ -357,12 +370,16 @@
         isSynthetic = true;
       }
 
+      if (isLicenseRecord(rec, l2Conn.label)) {
+        l1Id = SYNTHETIC_LICENSE_ID; l1Label = SYNTHETIC_LICENSE_LABEL; isSynthetic = true;
+      }
       var l1 = l1Map[l1Id];
       if (!l1) {
         l1 = {
           id:           l1Id,
           label:        l1Label,
           isSynthetic:  isSynthetic,
+          isLicense:    l1Id === SYNTHETIC_LICENSE_ID,
           sortOrder:    Infinity,
           recordCount:  0,
           l2Map:        Object.create(null)
@@ -394,6 +411,7 @@
 
     // L1 sort: real groups alphabetical (numeric-aware), synthetic last
     l1List.sort(function (a, b) {
+      if (!!a.isLicense !== !!b.isLicense) return a.isLicense ? 1 : -1;   // licenses last of all
       if (a.isSynthetic !== b.isSynthetic) return a.isSynthetic ? 1 : -1;
       return String(a.label).localeCompare(String(b.label), undefined, {
         numeric: true, sensitivity: 'base'

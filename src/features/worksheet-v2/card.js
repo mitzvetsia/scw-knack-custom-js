@@ -37,6 +37,10 @@
   var SERVICES_BUCKET     = '6977caa7f246edf67b52cbcd';
   var ASSUMPTIONS_BUCKET  = '697b7a023a31502ec68b3303';
   var NETWORKING_BUCKET   = '647953bb54b4e1002931ed97';
+  // Recurring licenses (billed separately, never part of the project
+  // total) — grouped apart by groups.js / summary.js and flagged on the
+  // card. The bucket id first, the label as belt and braces.
+  var LICENSE_BUCKET      = '645554dce6f3a60028362a6a';
 
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -194,6 +198,13 @@
     return '';
   }
 
+  function isLicenseBucket(rec, viewKey) {
+    if (!rec) return false;
+    if (bucketIdOf(rec, viewKey) === LICENSE_BUCKET) return true;
+    var raw = rec[bucketFieldOf(viewKey) + '_raw'];
+    var label = Array.isArray(raw) ? (raw[0] && raw[0].identifier) : (raw && raw.identifier);
+    return /^\s*licen[cs]e/i.test(String(label || ''));
+  }
   function bucketCategoryOf(rec, viewKey) {
     var id = bucketIdOf(rec, viewKey);
     if (id === CAM_READER_BUCKET)  return 'cam';
@@ -2607,6 +2618,7 @@
 
     var cat = bucketCategoryOf(rec, sourceViewKey);
     card.classList.add('scw-ws-v2-card--' + cat);
+    if (isLicenseBucket(rec, sourceViewKey)) card.classList.add('scw-ws-v2-card--license');
     if (isSalesMoney(sourceViewKey))   card.classList.add('scw-ws-v2-card--sales');
     if (isSurveyMoney(sourceViewKey))  card.classList.add('scw-ws-v2-card--survey');
     if (isInstallMoney(sourceViewKey)) {
@@ -2828,7 +2840,9 @@
     SERVICES_BUCKET:     SERVICES_BUCKET,
     ASSUMPTIONS_BUCKET:  ASSUMPTIONS_BUCKET,
     NETWORKING_BUCKET:   NETWORKING_BUCKET,
+    LICENSE_BUCKET:      LICENSE_BUCKET,
     bucketCategoryOf:    bucketCategoryOf,
+    isLicenseBucket:     isLicenseBucket,
     labelLineItem:       labelLineItem,
     // Lock rule (sales survey-associated rows) + the fields that stay
     // editable on a locked row — consumed by the bulk-edit modal so it

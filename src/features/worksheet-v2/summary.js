@@ -118,6 +118,11 @@
     var includeServices = !!opts.includeServices;   // bid: count services too
     var bucketCategoryOf = (ns.card && ns.card.bucketCategoryOf) ||
                            function () { return 'default'; };
+    var isLicense = (ns.card && ns.card.isLicenseBucket) || function () { return false; };
+    // Recurring licenses: their own section, LAST, never in `totals` —
+    // billed separately, like the proposal's Recurring Services band.
+    var licenses = { label: 'Recurring licenses — billed separately', byProduct: Object.create(null),
+                     subtotal: emptyAgg() };
 
     var groups = {
       cam:      { label: 'Camera / Reader',     byProduct: Object.create(null),
@@ -132,6 +137,17 @@
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
       if (!r) continue;
+      if (isLicense(r, viewKey)) {
+        var lprod = (fProductNm && stripHtml(r[fProductNm])) || stripHtml(r[fProduct]) || '(license)';
+        var lqty  = readNum(r, fQty) || 1;
+        var lp = licenses.byProduct[lprod] || (licenses.byProduct[lprod] = {
+          label: lprod, isCamReader: false, labels: [],
+          count: 0, existCabling: 0, newCabling: 0, exterior: 0, interior: 0, plenum: 0, subBidSum: 0 });
+        lp.count += lqty; licenses.subtotal.count += lqty;
+        var lbid = readNum(r, moneyField);
+        if (lbid) { lp.subBidSum += lbid; licenses.subtotal.subBidSum += lbid; }
+        continue;
+      }
       var cat = bucketCategoryOf(r, viewKey);
       // Assumptions never belong in the summary. Services are skipped UNLESS
       // includeServices (bid) — then they roll into a "Services" section so the
@@ -254,8 +270,12 @@
       var bo = isFinite(b.sortOrder) ? b.sortOrder : Infinity;
       return ao - bo;
     });
+    var licProducts = productList(licenses.byProduct);
+    var hasLicenses = licProducts.length > 0;
 
-    return { sections: sections, totals: totals };
+    return { sections: sections, totals: totals,
+             licenses: hasLicenses ? { key: 'licenses', label: licenses.label, isCamReader: false, isLicense: true,
+                                       products: licProducts, subtotal: licenses.subtotal } : null };
   }
 
   function emptyAgg() {
@@ -358,6 +378,12 @@
     // Grand total — across both sections
     if (agg.sections.length > 1) {
       rows += subtotalRow('Total', agg.totals, true);
+    }
+    // Recurring licenses after the total, so the total plainly excludes them.
+    if (agg.licenses) {
+      rows += sectionHeadRow(agg.licenses.label);
+      for (var li = 0; li < agg.licenses.products.length; li++) rows += productRow(agg.licenses.products[li], false);
+      rows += subtotalRow('Recurring licenses subtotal (not in Total)', agg.licenses.subtotal, false);
     }
     return rows;
   }

@@ -81,7 +81,9 @@
     mdfIdf:       'field_2818',   // L1 location (connection)
     bucket:       'field_2822',   // REL_CONFIG_proposal bucket (connection, L2 name)
     removedByCo:  'field_2967',   // populated = removed from install scope
-    sowItem:      'field_2819'    // → proposed SOW line item (pricing)
+    sowItem:      'field_2819',   // → proposed SOW line item (pricing)
+    sortOrder:    'field_2218',   // proposal bucket sort order (same key as the SOW)
+    parent:       'field_2853'    // accessory → its device (install object's parent pointer)
   };
   // Proposed SOW line item (view_4072 / view_4151)
   var SF = {
@@ -154,6 +156,7 @@
       '.scw-bom__group td { padding: 26px 8px 6px; border-bottom: 2px solid #cbd5e1; font: 800 15px/1.2 system-ui, sans-serif; color: #163c6e; }',
       '.scw-bom__group:first-child td { padding-top: 10px; }',
       '.scw-bom__group--none td { color: #64748b; }',
+      '.scw-bom__sub td { padding: 12px 8px 3px; border-bottom: 1px solid #e2e8f0; font: 700 10.5px/1.2 system-ui, sans-serif; letter-spacing: 0.08em; color: #64748b; text-transform: uppercase; }',
       '.scw-bom__name { font-weight: 700; }',
       '.scw-bom__desig { color: #64748b; font-weight: 400; }',
       '.scw-bom__sku { color: #64748b; white-space: nowrap; }',
@@ -382,7 +385,7 @@
   // ── Model ──────────────────────────────────────────────────────────
   /** One entry per install line item worth listing. */
   function items(cfg) {
-    var recs = installRecords(cfg), sow = sowIndex(cfg), cos = coIndex(cfg), out = [];
+    var recs = installRecords(cfg), sow = sowIndex(cfg), cos = coIndex(cfg), out = [], swaps = [];
     var skuCol = skuField(cfg);
     for (var i = 0; i < recs.length; i++) {
       var r = recs[i];
@@ -420,6 +423,8 @@
       var it = {
         id: r.id, name: name, kind: kind, qty: qty, sku: sku,
         bucket: connLabel(r, IF.bucket) || 'Other',
+        bucketOrder: hasValue(r, IF.sortOrder) ? num(r[IF.sortOrder]) : Infinity,
+        parent: connId(r, IF.parent),
         loc: connLabel(r, IF.mdfIdf) || NO_LOC,
         co: removed ? ((co && co.removes.length && co.removes[0].co) || coFromFlag(r) || UNKNOWN_CO) : '',
         tag: tag,
@@ -440,21 +445,39 @@
         if (it.net == null && it.retail != null) it.net = it.retail - (it.discount || 0);
       }
       out.push(it);
-      // An applied swap: the old unit (the pair's Remove line) and any
-      // accessory the CO pulled with it are extra hardware — list them
-      // with the removals so they get brought back.
-      if (/^Swapped in/.test(tag)) {
-        var olds = (co.removes.length ? [co.removes[0]] : []).concat(co.accRemoves);
-        for (var oi = 0; oi < olds.length; oi++) {
-          var old = olds[oi], oldSku = '';
-          if (skuCol && skuCol.view === cfg.sowView && old.rec) oldSku = connLabel(old.rec, skuCol.key) || plain(old.rec[skuCol.key]);
-          out.push({
-            id: r.id + ':swapped-out:' + old.id, name: old.name || '(unnamed)', kind: 'swapped', qty: old.qty || qty, sku: oldSku,
-            bucket: it.bucket, loc: it.loc, sow: it.sow, co: old.co, designator: oi === 0 ? it.designator : '',
-            tag: oi === 0 ? 'Swapped out · replaced by ' + name : 'Swapped out · ' + old.co,
-            isCam: false, newDrop: false, existingDrop: false, special: false, retail: null, discount: null, net: null
-          });
+      if (/^Swapped in/.test(tag)) swaps.push({ it: it, co: co, rec: r });
+    }
+    // Second pass — an applied swap's old unit (the pair's Remove line)
+    // and any accessory the CO pulled with it are extra hardware: list
+    // them with the removals so they get brought back. An accessory that
+    // ALSO has its own install record flagged removed (signature flags the
+    // ride-along mount as well as targeting it on the device's line) is
+    // listed ONCE: its own row keeps the CO from the device's line, and
+    // the line is not listed again.
+    var removedByParent = {};
+    for (var ri = 0; ri < out.length; ri++) {
+      var rit = out[ri];
+      if (rit.kind === 'removed' && rit.parent) (removedByParent[rit.parent] = removedByParent[rit.parent] || []).push(rit);
+    }
+    for (var si = 0; si < swaps.length; si++) {
+      var sw = swaps[si], itx = sw.it, cox = sw.co;
+      var olds = (cox.removes.length ? [cox.removes[0]] : []).concat(cox.accRemoves);
+      for (var oi = 0; oi < olds.length; oi++) {
+        var old = olds[oi];
+        if (oi > 0) {
+          var own = null, kids = removedByParent[itx.id] || [];
+          for (var ki = 0; ki < kids.length; ki++) if (sameProduct(kids[ki].name, old.name)) { own = kids[ki]; break; }
+          if (own) { if (own.co === UNKNOWN_CO) own.co = old.co; continue; }
         }
+        var oldSku = '';
+        if (skuCol && skuCol.view === cfg.sowView && old.rec) oldSku = connLabel(old.rec, skuCol.key) || plain(old.rec[skuCol.key]);
+        out.push({
+          id: itx.id + ':swapped-out:' + old.id, name: old.name || '(unnamed)', kind: 'swapped', qty: old.qty || itx.qty, sku: oldSku,
+          bucket: oi === 0 ? itx.bucket : 'Mounting Hardware', bucketOrder: oi === 0 ? itx.bucketOrder : itx.bucketOrder + 0.5,
+          loc: itx.loc, sow: itx.sow, co: old.co, designator: oi === 0 ? itx.designator : '', parent: '',
+          tag: oi === 0 ? 'Swapped out · replaced by ' + itx.name : 'Swapped out · ' + old.co,
+          isCam: false, newDrop: false, existingDrop: false, special: false, retail: null, discount: null, net: null
+        });
       }
     }
     return out;
@@ -466,14 +489,17 @@
     for (var i = 0; i < list.length; i++) {
       var it = list[i], gk = it[by];
       var g = byKey[gk];
-      if (!g) { g = byKey[gk] = { label: gk, rows: [], byProduct: {}, qty: 0, retail: 0, discount: 0, net: 0, priced: false }; groups.push(g); }
+      if (!g) { g = byKey[gk] = { label: gk, rows: [], byProduct: {}, qty: 0, retail: 0, discount: 0, net: 0, priced: false, bucketOrder: Infinity }; groups.push(g); }
       var rk = it.name + '|' + it.sku + '|' + (it.tag || '');
       var row = g.byProduct[rk];
       if (!row) {
         row = g.byProduct[rk] = { name: it.name, sku: it.sku, kind: it.kind, tag: it.tag || '', qty: 0, designators: [], locs: {}, newDrops: 0,
+                                  bucket: it.bucket, bucketOrder: it.bucketOrder, seq: g.rows.length,
                                   special: it.special, retail: 0, discount: 0, net: 0, priced: false };
         g.rows.push(row);
       }
+      if (it.bucketOrder < row.bucketOrder) row.bucketOrder = it.bucketOrder;
+      if (it.bucketOrder < g.bucketOrder) g.bucketOrder = it.bucketOrder;
       row.qty += it.qty;
       if (it.designator) row.designators.push(it.designator);
       row.locs[it.loc] = (row.locs[it.loc] || 0) + it.qty;
@@ -492,10 +518,24 @@
         grp.retail += grp.rows[ri].retail; grp.discount += grp.rows[ri].discount; grp.net += grp.rows[ri].net;
       }
     }
-    // Cameras / readers lead when grouping by bucket (they are the drops).
-    // By location / SOW: alphabetical (numbers in order), the group with
-    // nothing to group by last, so the assigned rows read top to bottom.
+    // Rows inside every group follow the proposal's bucket order (the
+    // line's field_2218, the order the SOW and proposal already use), then
+    // the name — so a location or a SOW reads cameras, then mounts, then
+    // headend, the way the paperwork does.
+    for (var gi0 = 0; gi0 < groups.length; gi0++) {
+      groups[gi0].rows.sort(function (a, b) {
+        var ao = isFinite(a.bucketOrder) ? a.bucketOrder : Infinity, bo = isFinite(b.bucketOrder) ? b.bucketOrder : Infinity;
+        if (ao !== bo) return ao - bo;
+        return a.seq - b.seq;   // same bucket (or no order known): the worksheet's own order
+      });
+    }
+    // Groups by bucket: the proposal's bucket order too (cameras / readers
+    // first when the order is unknown). By location / SOW: alphabetical
+    // (numbers in order), the group with nothing to group by last, so the
+    // assigned rows read top to bottom.
     if (by === 'bucket') groups.sort(function (a, b) {
+      var ao = isFinite(a.bucketOrder) ? a.bucketOrder : Infinity, bo = isFinite(b.bucketOrder) ? b.bucketOrder : Infinity;
+      if (ao !== bo) return ao - bo;
       var ac = /camera|reader/i.test(a.label) ? 0 : 1, bc = /camera|reader/i.test(b.label) ? 0 : 1;
       return ac - bc;
     });
@@ -592,14 +632,21 @@
       (cols.discount ? '<th class="num">Discount</th>' : '') +
       (cols.net ? '<th class="num">After discount</th>' : '') + '</tr>';
   }
-  function tableHtml(groups, pricing, showLoc, total) {
+  function tableHtml(groups, pricing, showLoc, total, subHeads) {
     var cols = columnsFor(groups, pricing);
     var ncols = 2 + (cols.sku ? 1 : 0) + (cols.retail ? 1 : 0) + (cols.discount ? 1 : 0) + (cols.net ? 1 : 0);
     var html = '<table class="scw-bom__table"><thead>' + headRow(cols) + '</thead><tbody>';
     for (var g = 0; g < groups.length; g++) {
       var grp = groups[g];
       if (grp.label !== UNKNOWN_CO) html += '<tr class="scw-bom__group' + (grp.none ? ' scw-bom__group--none' : '') + '"><td colspan="' + ncols + '">' + esc(grp.label) + '</td></tr>';
-      for (var r = 0; r < grp.rows.length; r++) html += rowHtml(grp.rows[r], cols, showLoc);
+      var lastBucket = null;
+      for (var r = 0; r < grp.rows.length; r++) {
+        if (subHeads && grp.rows[r].bucket !== lastBucket) {
+          lastBucket = grp.rows[r].bucket;
+          html += '<tr class="scw-bom__sub"><td colspan="' + ncols + '">' + esc(lastBucket) + '</td></tr>';
+        }
+        html += rowHtml(grp.rows[r], cols, showLoc);
+      }
       if (grp.subtotal) {
         html += '<tr class="scw-bom__subtotal"><td>' + esc(grp.label) + ' subtotal</td>' + (cols.sku ? '<td></td>' : '') +
           '<td class="num">' + grp.qty + '</td>' +
@@ -638,7 +685,8 @@
               '<span class="scw-bom__section-sub">what goes in the SCW box</span></div>';
       html += m.ship.length
         ? tableHtml(m.ship, pricing, false,
-            { label: 'Shipping total', qty: m.shipQty, retail: m.shipRetail, discount: m.shipDiscount, net: m.shipNet, priced: m.anyPriced })
+            { label: 'Shipping total', qty: m.shipQty, retail: m.shipRetail, discount: m.shipDiscount, net: m.shipNet, priced: m.anyPriced },
+            mode === 'loc' || mode === 'sow')
         : '<div class="scw-bom__empty">Nothing to ship.</div>';
       if (m.noShip.length) {
         html += '<div class="scw-bom__noship">' +

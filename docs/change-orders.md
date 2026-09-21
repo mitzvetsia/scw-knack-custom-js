@@ -620,3 +620,20 @@ must be an inline-editable column on view_4079. After a successful bulk
 save the view refetches, so the CALC cells (net unit, line total) follow.
 Test: `tests/worksheet-v2/test-co-bulk-fields.js`.
 
+
+## Recurring licenses on the CO worksheet (2026-09-21)
+
+License-bucket lines (bucket `645554dce6f3a60028362a6a`, or any bucket whose
+label starts "License") are set apart on every worksheet-v2 view, the CO
+worksheet included: `groups.js` routes them into their own synthetic L1
+"Recurring licenses" (whatever MDF/IDF the record carries — a license is not
+installed anywhere), always the last group, flagged `isLicense`; `render.js`
+gives that header an indigo accent and the sub line "billed separately ·
+recurring · not in the project total" (its money reads "… recurring");
+`card.js` flags the card `scw-ws-v2-card--license` and exports
+`isLicenseBucket`; `summary.js` lists them in their own section AFTER the
+Total ("Recurring licenses — billed separately", subtotal "not in Total") and
+never counts them in the totals — the worksheet reads the way the proposal
+does, where licenses sit under Recurring Services below the project totals.
+`tests/worksheet-v2/test-license-group.js`. Not changed: co-stage-strip's
+send-to-sub snapshot still carries every CO line, licenses included.

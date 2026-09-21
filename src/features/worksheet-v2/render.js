@@ -323,7 +323,8 @@
     head.type = 'button';
     head.className = 'scw-ws-v2-l1-head' +
       (l1.isOpen ? ' scw-ws-v2-l1-head--open' : '') +
-      (l1.isSynthetic ? ' scw-ws-v2-l1-head--synthetic' : '');
+      (l1.isSynthetic ? ' scw-ws-v2-l1-head--synthetic' : '') +
+      (l1.isLicense ? ' scw-ws-v2-l1-head--license' : '');
     head.setAttribute('data-scw-ws-v2-l1-toggle', l1.id);
     head.setAttribute('data-scw-ws-v2-view', sourceViewKey);
     head.setAttribute('aria-expanded', l1.isOpen ? 'true' : 'false');
@@ -353,9 +354,11 @@
 
     head.innerHTML =
       '<span class="scw-ws-v2-l1-chevron">' + L1_CHEVRON_SVG + '</span>' +
-      '<span class="scw-ws-v2-l1-label">' + escapeHtml(l1.label) + '</span>' +
+      '<span class="scw-ws-v2-l1-label">' + escapeHtml(l1.label) +
+        (l1.isLicense ? '<span class="scw-ws-v2-l1-sub">billed separately · recurring · not in the project total</span>' : '') +
+      '</span>' +
       issueChips +
-      (moneyStr ? '<span class="scw-ws-v2-l1-money">' + moneyStr + '</span>' : '') +
+      (moneyStr ? '<span class="scw-ws-v2-l1-money">' + moneyStr + (l1.isLicense ? ' recurring' : '') + '</span>' : '') +
       '<span class="scw-ws-v2-l1-count">' + l1.recordCount + '</span>';
 
     return head;
@@ -431,7 +434,8 @@
     var block = document.createElement('section');
     block.className = 'scw-ws-v2-l1' +
       (l1.isOpen ? ' scw-ws-v2-l1--open' : '') +
-      (l1.isSynthetic ? ' scw-ws-v2-l1--synthetic' : '');
+      (l1.isSynthetic ? ' scw-ws-v2-l1--synthetic' : '') +
+      (l1.isLicense ? ' scw-ws-v2-l1--license' : '');
     block.setAttribute('data-scw-ws-v2-l1', l1.id);
 
     // L1-level select-all checkbox lives in a flex wrapper alongside
