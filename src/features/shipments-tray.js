@@ -300,7 +300,13 @@
   /** [{ sku, name, qty, serials: [] }] — [] when the blob is absent or
    *  unreadable. Never throws; a bad blob simply shows no contents. */
   function contentsOf(rec, F) {
-    var blob = parseLooseJson(rec[F.itemsJson] != null ? rec[F.itemsJson] : rec[F.itemsJson + '_raw']);
+    // _raw FIRST, like every other reader here. The rendered value of a
+    // paragraph-text column is what the table shows, and the table
+    // truncates: a clipped blob is a non-null string that will never
+    // parse, and preferring it meant _raw was never even consulted. Take
+    // whichever candidate actually parses.
+    var blob = null, cand = [rec[F.itemsJson + '_raw'], rec[F.itemsJson]];
+    for (var k = 0; k < cand.length && !blob; k++) blob = parseLooseJson(cand[k]);
     if (!blob || !blob.items || !blob.items.length) return [];
     var enc = blob.enc, out = [];
     for (var i = 0; i < blob.items.length; i++) {

@@ -57,7 +57,11 @@ function shipRec(o) {
     field_3294_raw: o.shipDate == null ? null : dateRaw(o.shipDate),
     field_3295_raw: o.delivered == null ? null : dateRaw(o.delivered),
     field_3296: o.street || '', field_3297: o.city || '', field_3298: o.state || '', field_3299: o.zip || '',
-    field_3307: o.items ? blob(o.items) : ''
+    // EXACTLY how Knack hands a paragraph-text column to a table: _raw
+    // holds the whole string, the rendered value is CLIPPED for the cell.
+    // Read the rendered one and the JSON never parses.
+    field_3307_raw: o.items ? blob(o.items) : '',
+    field_3307: o.items ? blob(o.items).slice(0, 64) : ''
   });
 }
 window.Knack = { views: {}, router: { current_scene_key: 'scene_1311' } }; global.Knack = window.Knack;
