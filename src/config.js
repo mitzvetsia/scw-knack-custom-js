@@ -334,6 +334,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //     projectNo:   '62489857827',                     // the shared token
   //     references:  [ { reference, sowRef, projectNo, sow, quote,
   //                      acceptanceId?, signed?, sowRecordId? } ],
+  //     referencesMissingQuote: bool,   // no reference has a proposal no
   //     sows:        [ { id, sowId } ],                 // All Associated SOWs
   //     acceptances: [ { id, proposal, signed } ],      // accepted proposals
   //     shipments:   [ { id, orderNo, omsOrderId, syncState, lastSynced } ] }
@@ -355,7 +356,18 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // paging the order history. `projectNo` is the one token they all
   // share — the needle for a contains pass over a list windowed by the
   // newest `lastSynced`, which is the only way to catch an order somebody
-  // typed into ShipEdge by hand. Response: 2xx (body optional; only
+  // typed into ShipEdge by hand.
+  //
+  // The reference is the PUBLISHED PROPOSAL's identifier, "<SOW id> |
+  // <proposal no>", and it should sit on every accepted acceptance. Which
+  // connection projects it onto a given grid is a Builder decision, so the
+  // page finds it BY SHAPE across both acceptance grids and the SOWs
+  // rather than trusting one field key (on a live project the acceptance's
+  // own field_2755 rendered empty and the quote went missing).
+  // `referencesMissingQuote: true` means not one reference carries a
+  // proposal number — the proposal isn't linked on this project, so only
+  // the date-windowed contains pass can match, and the run should say so
+  // rather than reporting clean. Response: 2xx (body optional; only
   // {success:false} fails). A blank / PLACEHOLDER url makes the button
   // report "Re-check not configured" and fire nothing.
   MAKE_SHIPMENTS_RESYNC_WEBHOOK: "https://hook.us1.make.com/dbrdngn246t4m6nebqyhrhlua1w7ew1q",

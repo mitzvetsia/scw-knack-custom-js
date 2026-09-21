@@ -317,10 +317,19 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   order for this project could carry: the acceptances' full strings first
   (they know the quote), then the SOW-only left sides (`sowRef`, for an
   order with no proposal behind it), deduped, each naming its source
-  record. `projectNo` rides at the top level as the one token they all
-  share, the needle for a contains pass over a list windowed by the newest
-  `lastSynced` — the only way to catch an order typed into ShipEdge by
-  hand. Then it refetches view_4163 at 1.5s / 6s / 15s and repaints (project rollups recalculate lazily — this reads the shipment
+  record. The string is the published proposal's identifier
+  (`<SOW id> | <proposal no>`) and should sit on every accepted
+  acceptance, but WHICH connection projects it onto a grid is a Builder
+  decision — on a live project the acceptance's own `field_2755` rendered
+  empty and the quote went missing — so `referenceOnRecord()` takes the
+  named connection first and then scans every field **by shape**
+  (`REF_FULL_RE`), across both acceptance grids (view_3914 + view_4157,
+  deduped) and the SOWs. `referencesMissingQuote` flags the case where not
+  one reference carries a proposal number, so the scenario reports a
+  fallback rather than a clean run. `projectNo` rides at the top level as
+  the one token they all share, the needle for a contains pass over a list
+  windowed by the newest `lastSynced` — the only way to catch an order
+  typed into ShipEdge by hand. Then it refetches view_4163 at 1.5s / 6s / 15s and repaints (project rollups recalculate lazily — this reads the shipment
   RECORDS, never a rollup). The native grid is registered in
   `hide-data-source-views.js`. Ops page only.
   `tests/deploy-page/test-shipments.js` (+ the tile-line integration in

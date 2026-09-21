@@ -457,7 +457,9 @@
   // ("ACCEPTANCE", whose proposal connection names the accepted proposal).
   // Field keys are the ones acceptance-card.js already uses; every read
   // falls back so a missing column costs a label, never the payload.
-  var SOW_VIEW = 'view_4161', ACPT_VIEW = 'view_3914';
+  // Acceptance grids on the deploy scene. BOTH are read: which one
+  // projects the published-proposal connection is a Builder decision.
+  var SOW_VIEW = 'view_4161', ACPT_VIEW = 'view_3914', ACPT_VIEW_2 = 'view_4157';
   var SOW_ID_FIELD = 'field_2122';        // SOW ID ("1347")
   var ACPT_PROPOSAL = 'field_2755';       // REL_SOW_published proposal
   var ACPT_SIGNED = 'field_2766';         // FLAG_agreement signed
@@ -489,6 +491,10 @@
   // as the one token every reference for this project shares — the
   // needle for a client-side contains pass over a date-windowed list,
   // which is the only way to catch an order somebody typed by hand.
+  // The full reference, anywhere it appears in a longer string. The left
+  // side is the SOW id (<project no>-SW<sow no>, the shape field_2122
+  // carries); the right is the proposal / quote number.
+  var REF_FULL_RE = /(\d{4,}-SW\d+[A-Za-z]*)\s*\|\s*([A-Za-z0-9][\w.\/-]*)/;
   /** "62489857827-SW1454 | 20260910-11567" → its parts. Accepts the left
    *  side alone ("62489857827-SW1454"), which is what the SOW ID field
    *  carries. Returns null for anything that isn't reference-shaped. */
@@ -512,6 +518,31 @@
       quote: quote
     };
   }
+  /** The reference on ONE record. The named connection first, then a
+   *  scan of every other field for the shape.
+   *
+   *  Why scan: the string is the PUBLISHED PROPOSAL's identifier, and
+   *  which connection projects it onto a given grid is a Builder
+   *  decision — on a live project the acceptance's own
+   *  REL_SOW_published proposal (field_2755) rendered EMPTY while the
+   *  same string sat on a neighbouring field. Reading one hardcoded key
+   *  silently produced a quote-less reference, which is exactly the bug
+   *  this shape scan removes. A record with the string nowhere yields
+   *  the left side alone (or nothing), never a guess. */
+  function referenceOnRecord(rec, preferKey) {
+    var direct = parseReference(txtOf(rec, preferKey));
+    if (direct && direct.quote) return direct;
+    for (var k in rec) {
+      if (!/^field_\d+$/.test(k)) continue;
+      var v = txtOf(rec, k);
+      if (!v || v.indexOf('|') === -1) continue;
+      var m = v.match(REF_FULL_RE);
+      if (!m) continue;
+      var p = parseReference(m[0]);
+      if (p && p.quote) return p;
+    }
+    return direct;
+  }
   /** Every reference an OMS order for this project could carry, built
    *  from the acceptances (which know the quote) and the SOWs (which do
    *  not), deduped on the full string. */
@@ -527,17 +558,26 @@
       for (var k in extra) row[k] = extra[k];
       out.push(row);
     }
-    // Acceptances first — their proposal identifier IS the full shape.
-    var acpts = modelRecords(ACPT_VIEW);
-    for (var a = 0; a < acpts.length; a++) {
-      add(parseReference(txtOf(acpts[a], ACPT_PROPOSAL)),
-          { acceptanceId: acpts[a].id, signed: /^yes$/i.test(txtOf(acpts[a], ACPT_SIGNED)) });
+    // Acceptances first — the published proposal's identifier IS the
+    // full shape, "<SOW id> | <proposal no>", and it should sit on every
+    // accepted acceptance.
+    var acptSeen = {};
+    var acptViews = [ACPT_VIEW, ACPT_VIEW_2];
+    for (var v = 0; v < acptViews.length; v++) {
+      var acpts = modelRecords(acptViews[v]);
+      for (var a = 0; a < acpts.length; a++) {
+        if (acptSeen[acpts[a].id]) continue;    // the two grids overlap
+        acptSeen[acpts[a].id] = true;
+        add(referenceOnRecord(acpts[a], ACPT_PROPOSAL),
+            { acceptanceId: acpts[a].id, signed: /^yes$/i.test(txtOf(acpts[a], ACPT_SIGNED)) });
+      }
     }
-    // Then the SOWs — the left side alone, for an order raised against a
-    // SOW with no proposal behind it.
+    // Then the SOWs. A SOW row may carry the full string too (its
+    // proposal-basis connection), so scan before falling back to the SOW
+    // id's left-side-only form.
     var sows = modelRecords(SOW_VIEW);
     for (var i = 0; i < sows.length; i++) {
-      add(parseReference(txtOf(sows[i], SOW_ID_FIELD)), { sowRecordId: sows[i].id });
+      add(referenceOnRecord(sows[i], SOW_ID_FIELD), { sowRecordId: sows[i].id });
     }
     return out;
   }
@@ -555,6 +595,12 @@
       projectNo: refs.length ? refs[0].projectNo : '',
       // Exact-match candidates for ShipEdge's order_reference lookup.
       references: refs,
+      // True when NOT ONE reference carries a proposal number. Every
+      // accepted acceptance should have one, so this means the published
+      // proposal isn't linked (or isn't on these grids) — the scenario
+      // can only fall back to the date-windowed contains pass, and
+      // should say so rather than reporting a clean run.
+      referencesMissingQuote: refs.length > 0 && !refs.some(function (r) { return !!r.quote; }),
       // An order ties to a project directly, or through an accepted
       // proposal — ship both sides of the match.
       sows: rowsOf(SOW_VIEW, function (r) {

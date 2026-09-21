@@ -66,6 +66,7 @@ function scene(recs) {
       COLS.map(([k, label]) => '<th class="' + k + '"><span class="table-fixed-label"><a class="kn-sort"><span>' + label + '</span></a></span></th>').join('') +
     '</tr></thead><tbody></tbody></table></div>' +
     '<div class="kn-table kn-view" id="view_4161"></div><div class="kn-table kn-view" id="view_3914"></div>' +
+    '<div class="kn-table kn-view" id="view_4157"></div>' +
   '</div>';
   window.Knack.views.view_4163 = models(recs);
   // SOW ID carries the left side alone; the acceptance's proposal identifier carries the full
@@ -78,7 +79,17 @@ function scene(recs) {
   ]);
   window.Knack.views.view_3914 = models([
     { id: 'acc1', field_2755_raw: [{ id: 'p1', identifier: '62489857827-SW1454 | 20260910-11567' }], field_2766: 'Yes' },
-    { id: 'acc2', field_2755_raw: [{ id: 'p2', identifier: '62489857827-SW1456 | 20260921-11690' }], field_2766: 'No' }
+    // LIVE FAILURE MODE: the named proposal connection is empty while the same string sits on a
+    // neighbouring field. Reading only field_2755 produced a quote-less reference; the shape scan
+    // finds it wherever the Builder put it.
+    { id: 'acc2', field_2755_raw: [], field_2766: 'Yes',
+      field_2960: 'Basis: 62489857827-SW1456 | 20260921-11690 (signed)' }
+  ]);
+  // The second acceptance grid on the scene. acc1 repeats (the grids overlap and must dedupe);
+  // acc3 is only here, and only this grid knows its proposal.
+  window.Knack.views.view_4157 = models([
+    { id: 'acc1', field_2755_raw: [{ id: 'p1', identifier: '62489857827-SW1454 | 20260910-11567' }], field_2766: 'Yes' },
+    { id: 'acc3', field_2671: '{"proposal":"62489857827-SW1457 | 20260922-11701"}', field_2766: 'Yes' }
   ]);
 }
 let fails = 0;
@@ -191,7 +202,7 @@ check('the re-check payload carries everything the page knows: the project, its 
   (() => { const p = api.resyncPayload(); return [p.project_recordID, p.source, p.sows.map(x => x.sowId), p.acceptances.map(x => x.id + ':' + x.signed), p.shipments.map(s => [s.id, s.orderNo, s.omsOrderId, s.syncState])]; })(),
   ['6aa43526d15c143d30214121', 'deploy-page',
    ['62489857827-SW1454', '62489857827-SW1455', ''],
-   ['acc1:true', 'acc2:false'],
+   ['acc1:true', 'acc2:true'],
    [['s1', 'SO-1001', 'OMS-1', 'Linked'], ['s2', 'SO-1002', 'OMS-2', 'Missing in OMS']]]);
 // ShipEdge has no contains filter on reference_number, so the page constructs the exact strings.
 check('a reference parses into its parts, and the left side alone parses too; anything not reference-shaped is dropped',
@@ -201,12 +212,20 @@ check('a reference parses into its parts, and the left side alone parses too; an
    { reference: '62489857827-SW1454', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '' },
    null, null,
    { reference: '62489857827-SW1454 | 20260910-11567', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '20260910-11567' }]);
-check('references: the accepted proposals\' full strings first (they know the quote), then the SOW-only forms, deduped, each naming where it came from',
+check('references: every acceptance\'s full string first (found by SHAPE, so an empty proposal connection or a second grid still yields the quote), deduped across the two grids, then the SOW-only forms',
   api.resyncPayload().references,
   [{ reference: '62489857827-SW1454 | 20260910-11567', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '20260910-11567', acceptanceId: 'acc1', signed: true },
-   { reference: '62489857827-SW1456 | 20260921-11690', sowRef: '62489857827-SW1456', projectNo: '62489857827', sow: 'SW1456', quote: '20260921-11690', acceptanceId: 'acc2', signed: false },
+   { reference: '62489857827-SW1456 | 20260921-11690', sowRef: '62489857827-SW1456', projectNo: '62489857827', sow: 'SW1456', quote: '20260921-11690', acceptanceId: 'acc2', signed: true },
+   { reference: '62489857827-SW1457 | 20260922-11701', sowRef: '62489857827-SW1457', projectNo: '62489857827', sow: 'SW1457', quote: '20260922-11701', acceptanceId: 'acc3', signed: true },
    { reference: '62489857827-SW1454', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '', sowRecordId: 'sow1' },
    { reference: '62489857827-SW1455', sowRef: '62489857827-SW1455', projectNo: '62489857827', sow: 'SW1455', quote: '', sowRecordId: 'sow2' }]);
+check('a quote was found, so the scenario is not told to fall back', api.resyncPayload().referencesMissingQuote, false);
+// Nothing anywhere carries the proposal number: say so rather than shipping a quiet quote-less payload.
+window.Knack.views.view_3914 = models([{ id: 'acc1', field_2755_raw: [], field_2766: 'Yes' }]);
+window.Knack.views.view_4157 = models([]);
+check('when NO reference carries a proposal number the payload flags it, and the SOW-only forms still ship',
+  [api.resyncPayload().referencesMissingQuote, api.resyncPayload().references.map(r => r.reference)],
+  [true, ['62489857827-SW1454', '62489857827-SW1455']]);
 check('the project number rides at the top level — the one needle for a contains pass when an exact lookup cannot be used',
   api.resyncPayload().projectNo, '62489857827');
 api.open();
