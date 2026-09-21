@@ -140,9 +140,19 @@
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
     });
   }
+  var ENTS = { quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ' };
+  /** Tags out, entities in. The OMS ships descriptions HTML-escaped, so a
+   *  10' cable arrives as "10&#039;" and a 26" TV as "26&quot;". Everything
+   *  here is re-escaped on the way into the DOM, so decoding is safe.
+   *  &amp; is decoded LAST or "&amp;quot;" would turn into a quote. */
   function plain(v) {
-    return String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    return String(v == null ? '' : v)
+      .replace(/<[^>]*>/g, '')
+      .replace(/&#x([0-9a-f]+);/gi, function (m, h) { return String.fromCharCode(parseInt(h, 16)); })
+      .replace(/&#(\d+);/g, function (m, d) { return String.fromCharCode(+d); })
+      .replace(/&(quot|apos|lt|gt|nbsp);/gi, function (m, n) { return ENTS[n.toLowerCase()]; })
+      .replace(/&amp;/g, '&')
+      .replace(/\s+/g, ' ').trim();
   }
   function activeScene() {
     for (var i = 0; i < SCENES.length; i++) {
@@ -312,14 +322,39 @@
     for (var i = 0; i < blob.items.length; i++) {
       var it = blob.items[i] || {};
       var serials = dec(it.serials, enc);
+      var sku = dec(it.sku, enc);
       out.push({
-        sku:  dec(it.sku, enc),
-        name: dec(it.name, enc) || '(unnamed)',
+        sku:  sku,
+        // No description on the order line: the SKU is the only name there
+        // is, so lead with it rather than printing "(unnamed)".
+        name: dec(it.name, enc) || sku || '(unnamed)',
         qty:  parseFloat(dec(it.qty, enc)) || 1,
         serials: serials ? serials.split(/\s*,\s*/).filter(Boolean) : []
       });
     }
+    // Most of what is in the box, first. Ties fall back to name so the
+    // order is stable between renders.
+    out.sort(function (a, b) {
+      if (a.qty !== b.qty) return b.qty - a.qty;
+      return String(a.name).localeCompare(String(b.name), undefined, { numeric: true });
+    });
     return out;
+  }
+
+  /** "500mm Pendant Extension for Lookout; Laser; Beacon - PM26ZV-500"
+   *  → title / model / fits. The compatibility list is most of the string
+   *  and none of the point, so it drops to its own muted line and the
+   *  scannable part leads. Anything that does not match this shape is
+   *  returned whole — nothing is ever dropped. */
+  function splitName(name) {
+    var rest = String(name || ''), model = '', fits = '';
+    var m = /^(.*\S)\s+-\s+([A-Za-z0-9][\w.\/-]*)$/.exec(rest);
+    // A model code, not a word: it has to carry a digit AND a capital,
+    // so "… - Dropshipped" stays part of the name.
+    if (m && /\d/.test(m[2]) && /[A-Z]/.test(m[2])) { rest = m[1]; model = m[2]; }
+    var f = /^(.*?),?\s+for\s+(\S.*)$/.exec(rest);
+    if (f && (f[2].indexOf(';') >= 0 || f[2].length > 30)) { rest = f[1]; fits = f[2]; }
+    return { title: rest, model: model, fits: fits };
   }
 
   // ── Model ─────────────────────────────────────────────────────────
@@ -503,11 +538,15 @@
       '.scw-ships__more summary:hover { color: #0f172a; }',
       '.scw-ships__more[open] summary { margin-bottom: 8px; }',
       '.scw-ships__more--items summary { color: #0f4c81; }',
-      '.scw-ships__items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }',
-      '.scw-ships__item { display: flex; gap: 10px; align-items: baseline; font-size: 12.5px; }',
-      '.scw-ships__item-qty { flex: none; min-width: 26px; text-align: right; font-weight: 800; color: #0f172a; font-variant-numeric: tabular-nums; }',
-      '.scw-ships__item-name { color: #0f172a; }',
-      '.scw-ships__item-sku { color: #64748b; font-variant-numeric: tabular-nums; }',
+      '.scw-ships__items { list-style: none; margin: 0; padding: 0; }',
+      '.scw-ships__item { display: flex; gap: 12px; align-items: baseline; font-size: 12.5px; padding: 7px 0; border-top: 1px solid #f1f5f9; }',
+      '.scw-ships__item:first-child { border-top: 0; padding-top: 0; }',
+      '.scw-ships__item-qty { flex: none; min-width: 34px; text-align: right; font-weight: 800; font-size: 13.5px; color: #0f172a; font-variant-numeric: tabular-nums; }',
+      '.scw-ships__item-qty i { font-style: normal; font-weight: 600; color: #94a3b8; margin-left: 1px; }',
+      '.scw-ships__item-body { min-width: 0; }',
+      '.scw-ships__item-name { display: block; color: #0f172a; font-weight: 600; line-height: 1.35; }',
+      '.scw-ships__item-sku { display: block; margin-top: 1px; color: #64748b; font-size: 11.5px; font-variant-numeric: tabular-nums; }',
+      '.scw-ships__item-fits { display: block; margin-top: 1px; color: #94a3b8; font-size: 11.5px; line-height: 1.35; }',
       '.scw-ships__item-serials { display: block; margin-top: 2px; color: #64748b; font-size: 11.5px; font-variant-numeric: tabular-nums; }',
       '.scw-ships__nocontents { margin: 2px 0 0; color: #64748b; font-size: 12px; line-height: 1.45; }',
       '.scw-ships__dl { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 12.5px; }',
@@ -847,10 +886,18 @@
       for (var c = 0; c < sh.contents.length; c++) {
         var it = sh.contents[c];
         units += it.qty;
+        var parts = splitName(it.name);
+        var codes = [];
+        if (parts.model) codes.push(esc(parts.model));
+        // An order line with no description falls back to its SKU for the
+        // name; do not then print the same code again underneath it.
+        if (it.sku && it.sku !== parts.model && it.sku !== parts.title) codes.push(esc(it.sku));
         li += '<li class="scw-ships__item">' +
-          '<span class="scw-ships__item-qty">' + esc(it.qty) + '&times;</span>' +
-          '<span class="scw-ships__item-name">' + esc(it.name) +
-            (it.sku ? ' <span class="scw-ships__item-sku">' + esc(it.sku) + '</span>' : '') +
+          '<span class="scw-ships__item-qty">' + esc(it.qty) + '<i>&times;</i></span>' +
+          '<span class="scw-ships__item-body">' +
+            '<span class="scw-ships__item-name">' + esc(parts.title) + '</span>' +
+            (codes.length ? '<span class="scw-ships__item-sku">' + codes.join(' &middot; ') + '</span>' : '') +
+            (parts.fits ? '<span class="scw-ships__item-fits">for ' + esc(parts.fits) + '</span>' : '') +
             (it.serials.length ? '<span class="scw-ships__item-serials">' +
               (it.serials.length === 1 ? 'Serial ' : 'Serials ') + esc(it.serials.join(', ')) + '</span>' : '') +
           '</span></li>';

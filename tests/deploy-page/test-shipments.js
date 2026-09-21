@@ -170,8 +170,14 @@ scene([
   shipRec({ id: 's1', orderNo: 'SO-1001', omsId: 'OMS-1', omsUrl: 'https://oms/1', status: 'shipped', synced: now - 3600000,
             shipDate: now - 5 * DAY, carrier: 'UPS', tracking: '1Z001', trackUrl: 'https://ups/1Z001',
             orderDate: now - 9 * DAY, orderStatus: 'shipped', shipTo: 'Ed Haman', street: '12 Main St', city: 'Durham', state: 'NC', zip: '27701',
+            // The shapes a real OMS order actually throws at this: a compatibility
+            // list that is most of the string, an HTML-escaped inch/foot mark, and
+            // a line with no description at all.
             items: [{ sku: '0235UL3C', name: 'The Lookout Mini 5.0 - 26ZV5M-MINI-V2', qty: 1, serials: ['210235UL3C325B000013'] },
-                    { sku: '0235UTNT', name: 'The Viking 8.0 v5 - 26BV8-V5', qty: 2, serials: ['210235UTNT3265000114', '210235UTNT3265000085'] }] }),
+                    { sku: '0235UTNT', name: 'The Viking 8.0 v5 - 26BV8-V5', qty: 2, serials: ['210235UTNT3265000114', '210235UTNT3265000085'] },
+                    { sku: '2115T0GE', name: 'Electrical Box Mount for Deputy v2; Deputy v3; Sheriff; Informant; Scout - EMB26DFD', qty: 30, serials: [] },
+                    { sku: '10ftpmc', name: '10&#039; PMC HDMI - PMC-HDMI-010', qty: 4, serials: [] },
+                    { sku: '00406142', name: '', qty: 3, serials: [] }] }),
   shipRec({ id: 's2', orderNo: 'SO-1002', omsId: 'OMS-2', status: 'Rolling down a hill', synced: now - 3600000, shipDate: now - DAY, carrier: 'FedEx', tracking: '77', sync: 'Missing in OMS' }),
   shipRec({ id: 's3', orderNo: 'SO-1003', omsId: 'OMS-3', status: '', orderStatus: 'Processing', synced: now - 3600000,
             items: [{ sku: 'BRK-6', name: 'The 6" \'Big\' Bracket, v2', qty: 1, serials: [] }] })
@@ -210,21 +216,31 @@ check('the disclosure carries REFERENCE ONLY — nothing already on the card (or
   [...cards[2].querySelectorAll('.scw-ships__dl dt')].map(d => d.textContent),
   ['Order date', 'Ship to', 'Address', 'Last synced']);
 // ── What's in the shipment (the scrubbed blob) ─────────────────────
-check('contents render from the blob: qty, name, SKU and serials, decoded, under their own disclosure',
-  (() => {
-    const d = cards[2].querySelector('.scw-ships__more--items');
-    return [d.querySelector('summary').textContent,
-      [...d.querySelectorAll('.scw-ships__item')].map(li => [
-        li.querySelector('.scw-ships__item-qty').textContent,
-        li.querySelector('.scw-ships__item-name').firstChild.textContent.trim(),
-        (li.querySelector('.scw-ships__item-sku') || {}).textContent,
-        (li.querySelector('.scw-ships__item-serials') || {}).textContent])];
-  })(),
-  ['What\u2019s in this shipment · 2 products · 3 units',
-   [['1×', 'The Lookout Mini 5.0 - 26ZV5M-MINI-V2', '0235UL3C', 'Serial 210235UL3C325B000013'],
-    ['2×', 'The Viking 8.0 v5 - 26BV8-V5', '0235UTNT', 'Serials 210235UTNT3265000114, 210235UTNT3265000085']]]);
+const rows = (card) => [...card.querySelectorAll('.scw-ships__item')].map(li => [
+  li.querySelector('.scw-ships__item-qty').textContent,
+  li.querySelector('.scw-ships__item-name').textContent,
+  (li.querySelector('.scw-ships__item-sku') || { textContent: '' }).textContent,
+  (li.querySelector('.scw-ships__item-fits') || { textContent: '' }).textContent,
+  (li.querySelector('.scw-ships__item-serials') || { textContent: '' }).textContent]);
+check('BIGGEST QUANTITY FIRST — a PM scans for what there is a lot of, not for the blob\'s order',
+  rows(cards[2]).map(r => r[0]), ['30×', '4×', '3×', '2×', '1×']);
+check('the summary counts products and units',
+  cards[2].querySelector('.scw-ships__more--items summary').textContent,
+  'What\u2019s in this shipment · 5 products · 40 units');
+check('A COMPATIBILITY LIST IS NOT THE NAME: it drops to its own line so the product leads, and the model code joins the SKU',
+  rows(cards[2])[0],
+  ['30×', 'Electrical Box Mount', 'EMB26DFD · 2115T0GE',
+   'for Deputy v2; Deputy v3; Sheriff; Informant; Scout', '']);
+check('HTML ENTITIES ARE DECODED — the OMS escapes them, so a 10\u2032 cable must not read "10&#039;"',
+  rows(cards[2])[1], ['4×', "10' PMC HDMI", 'PMC-HDMI-010 · 10ftpmc', '', '']);
+check('a line with no description leads with its SKU, and does not then repeat it underneath',
+  rows(cards[2])[2], ['3×', '00406142', '', '', '']);
+check('a name with no compatibility list and no model code is left exactly as it is, serials and all',
+  rows(cards[2]).slice(3),
+  [['2×', 'The Viking 8.0 v5', '26BV8-V5 · 0235UTNT', '', 'Serials 210235UTNT3265000114, 210235UTNT3265000085'],
+   ['1×', 'The Lookout Mini 5.0', '26ZV5M-MINI-V2 · 0235UL3C', '', 'Serial 210235UL3C325B000013']]);
 check('a product name with a quote survives, because the blob percent-encodes every string',
-  cards[1].querySelector('.scw-ships__item-name').firstChild.textContent.trim(), 'The 6" \'Big\' Bracket, v2');
+  cards[1].querySelector('.scw-ships__item-name').textContent, 'The 6" \'Big\' Bracket, v2');
 check('no contents blob → no disclosure, but NEVER a silent blank: the card says the snapshot is missing and that a resync fills it',
   [cards[0].querySelector('.scw-ships__more--items'),
    /resync/i.test(cards[0].querySelector('.scw-ships__nocontents').textContent)],
