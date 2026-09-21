@@ -45,6 +45,17 @@
  * order administration (order no, date, ship-to, address, OMS link, sync
  * state) sits behind a per-row "Order details" disclosure.
  *
+ * CONTENTS (field_3307, "SHIP_items json", 2026-09-21): a scrubbed
+ * snapshot of what is in the box, written by the Make scenario —
+ * { v, enc:"url", capturedAt, orderId, items:[{sku,name,qty,serials}] }.
+ * ALLOW-LIST, never deny-list: the OMS item's nested product object
+ * carries our COST, retail, sold price, SUPPLIER and live stock, and none
+ * of it may reach Knack — this blob is readable by anyone who can open the
+ * page, and the sub portal is a page, so scrubbing in the browser would be
+ * cosmetic. Strings are percent-encoded so a quote or a newline in a
+ * product name cannot break the JSON. Renders as its own "What's in this
+ * shipment" disclosure; a missing or unreadable blob simply shows nothing.
+ *
  * LIVE FIELD SET (view_4163, confirmed 2026-09-21): order no, oms order id,
  * oms url, source, sync state, last synced, order date, order status, ship
  * to name, ship status, carrier, tracking no, tracking url, ship date,
@@ -114,6 +125,7 @@
     ['source',        /source/],
     ['syncState',     /sync state/],
     ['lastSynced',    /last synced/],
+    ['itemsJson',     /items json|contents json|\bjson\b/],
     ['street',        /address street|^street/],
     ['city',          /address city|^city/],
     ['state',         /address state|^state/],
@@ -264,6 +276,46 @@
   function isNoProject(sh) { return /no project/i.test(sh.syncState || ''); }
   function isUnlinked(sh)  { return /unlink/i.test(sh.syncState || ''); }
 
+  // ── What's in the shipment (field_3307) ───────────────────────────
+  // A scrubbed snapshot the Make scenario writes: sku / name / qty /
+  // serials and NOTHING else. The order payload's nested product object
+  // carries our cost, retail, sold price, supplier and live stock — none
+  // of it travels, because this blob is readable by anyone who can open
+  // the page and the sub portal is a page. Strings are percent-encoded
+  // ("enc":"url") so a quote or a line break in a product name can never
+  // break the JSON; decode on the way out.
+  function parseLooseJson(v) {
+    if (v == null) return null;
+    var t = String(v).trim();
+    if (!t) return null;
+    try { return JSON.parse(t); } catch (e) { /* entities / tags */ }
+    try { var ta = document.createElement('textarea'); ta.innerHTML = t; return JSON.parse(ta.value.trim()); } catch (e) { /* */ }
+    try { return JSON.parse(t.replace(/<[^>]*>/g, '').trim()); } catch (e) { return null; }
+  }
+  function dec(v, enc) {
+    var t = String(v == null ? '' : v);
+    if (enc !== 'url' || !t) return plain(t);
+    try { return plain(decodeURIComponent(t.replace(/\+/g, ' '))); } catch (e) { return plain(t); }
+  }
+  /** [{ sku, name, qty, serials: [] }] — [] when the blob is absent or
+   *  unreadable. Never throws; a bad blob simply shows no contents. */
+  function contentsOf(rec, F) {
+    var blob = parseLooseJson(rec[F.itemsJson] != null ? rec[F.itemsJson] : rec[F.itemsJson + '_raw']);
+    if (!blob || !blob.items || !blob.items.length) return [];
+    var enc = blob.enc, out = [];
+    for (var i = 0; i < blob.items.length; i++) {
+      var it = blob.items[i] || {};
+      var serials = dec(it.serials, enc);
+      out.push({
+        sku:  dec(it.sku, enc),
+        name: dec(it.name, enc) || '(unnamed)',
+        qty:  parseFloat(dec(it.qty, enc)) || 1,
+        serials: serials ? serials.split(/\s*,\s*/).filter(Boolean) : []
+      });
+    }
+    return out;
+  }
+
   // ── Model ─────────────────────────────────────────────────────────
   function shipments(cfg) {
     var F = fields(cfg), recs = modelRecords(cfg.view), out = [];
@@ -288,7 +340,8 @@
         source:      txtOf(r, F.source),
         syncState:   txtOf(r, F.syncState),
         lastSynced:  dateOf(r, F.lastSynced),
-        acceptance:  txtOf(r, F.acceptance)
+        acceptance:  txtOf(r, F.acceptance),
+        contents:    F.itemsJson ? contentsOf(r, F) : []
       });
     }
     return out;
@@ -440,6 +493,13 @@
       '.scw-ships__more summary::-webkit-details-marker { display: none; }',
       '.scw-ships__more summary:hover { color: #0f172a; }',
       '.scw-ships__more[open] summary { margin-bottom: 8px; }',
+      '.scw-ships__more--items summary { color: #0f4c81; }',
+      '.scw-ships__items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }',
+      '.scw-ships__item { display: flex; gap: 10px; align-items: baseline; font-size: 12.5px; }',
+      '.scw-ships__item-qty { flex: none; min-width: 26px; text-align: right; font-weight: 800; color: #0f172a; font-variant-numeric: tabular-nums; }',
+      '.scw-ships__item-name { color: #0f172a; }',
+      '.scw-ships__item-sku { color: #64748b; font-variant-numeric: tabular-nums; }',
+      '.scw-ships__item-serials { display: block; margin-top: 2px; color: #64748b; font-size: 11.5px; font-variant-numeric: tabular-nums; }',
       '.scw-ships__dl { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 12.5px; }',
       '.scw-ships__dl dt { color: #64748b; }',
       '.scw-ships__dl dd { margin: 0; color: #0f172a; }',
@@ -756,20 +816,41 @@
         'Open in ShipEdge<span class="scw-ships__ext">↗</span></a>';
     }
 
+    // Reference only, and only what is NOT already on the card. The order
+    // number is the card's title, the status is the chip beside it, and a
+    // sync problem is its own chip — repeating any of them is noise.
+    // Source and sync state are our plumbing, not a PM's business; the
+    // acceptance is implied by the project whose page this is. The OMS
+    // link is one of the two buttons above, so it is not repeated either.
     var rows = '';
     function row(label, value) { if (value) rows += '<dt>' + esc(label) + '</dt><dd>' + value + '</dd>'; }
-    row('Order no', esc(sh.orderNo));
     row('Order date', esc(fmtDay(sh.orderDate)));
-    row('Order status', esc(sh.orderStatus));
-    row('Order total', esc(sh.orderTotal));
     row('Ship to', esc(sh.shipToName));
     row('Address', esc(sh.address));
-    row('Acceptance', esc(sh.acceptance));
-    row('Source', esc(sh.source));
-    row('Sync state', esc(sh.syncState));
     row('Last synced', sh.lastSynced ? esc(ago(sh.lastSynced, now)) : '<span class="is-stale">never</span>');
-    // The OMS link is NOT repeated down here — it is one of the two
-    // buttons above.
+
+    // What is in the box — the blob's whole point, so it opens on its own
+    // disclosure above the reference data rather than inside it.
+    var contents = '';
+    if (sh.contents && sh.contents.length) {
+      var units = 0, li = '';
+      for (var c = 0; c < sh.contents.length; c++) {
+        var it = sh.contents[c];
+        units += it.qty;
+        li += '<li class="scw-ships__item">' +
+          '<span class="scw-ships__item-qty">' + esc(it.qty) + '&times;</span>' +
+          '<span class="scw-ships__item-name">' + esc(it.name) +
+            (it.sku ? ' <span class="scw-ships__item-sku">' + esc(it.sku) + '</span>' : '') +
+            (it.serials.length ? '<span class="scw-ships__item-serials">' +
+              (it.serials.length === 1 ? 'Serial ' : 'Serials ') + esc(it.serials.join(', ')) + '</span>' : '') +
+          '</span></li>';
+      }
+      contents = '<details class="scw-ships__more scw-ships__more--items"><summary>' +
+        'What&rsquo;s in this shipment · ' + sh.contents.length +
+        (sh.contents.length === 1 ? ' product' : ' products') +
+        (units !== sh.contents.length ? ' · ' + units + ' units' : '') +
+        '</summary><ul class="scw-ships__items">' + li + '</ul></details>';
+    }
 
     return '<div class="' + cls + '">' +
       '<div class="scw-ships__head">' +
@@ -777,6 +858,7 @@
       '</div>' +
       '<div class="scw-ships__when">' + when + '</div>' +
       (actions ? '<div class="scw-ships__actions">' + actions + '</div>' : '') +
+      contents +
       (rows ? '<details class="scw-ships__more"><summary>Order details</summary>' +
                 '<dl class="scw-ships__dl">' + rows + '</dl></details>' : '') +
     '</div>';

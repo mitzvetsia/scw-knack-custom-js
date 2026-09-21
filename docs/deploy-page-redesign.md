@@ -302,9 +302,21 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   and `Open in ShipEdge`
   (`order_view.php?view=orderlist&OrderID=<order id>`). Both open a new
   tab so the deploy page is not lost, and the OMS link is NOT repeated in
-  the disclosure. Order administration sits behind a per-row "Order
-  details" disclosure, and one line states plainly that delivery is not
-  tracked. **Everything is read-only** — nothing writes a record; a
+  the disclosure. **What's in the shipment** (field_3307 `SHIP_items json`,
+  2026-09-21) gets its own disclosure above that: a scrubbed snapshot the
+  Make scenario writes — `{v, enc:"url", capturedAt, orderId,
+  items:[{sku,name,qty,serials}]}` — rendered as qty / name / SKU /
+  serials. **Allow-list, never deny-list**: the OMS item's nested product
+  object carries our cost, retail, sold price, supplier and live stock,
+  and the strip happens in the MAKE MAPPER, not the browser — the blob is
+  readable by anyone who can open the page and the sub portal is a page,
+  so a client-side scrub would be cosmetic. Strings are percent-encoded so
+  a quote in a product name cannot break the JSON. The per-row "Order
+  details" disclosure below it carries REFERENCE ONLY — order date, ship
+  to, address, last synced — never what is already on the card (the order
+  number is the title, the status is the chip), never our plumbing
+  (source, sync state) and never a repeat of the OMS link. One line states
+  plainly that delivery is not tracked. **Everything is read-only** — nothing writes a record; a
   "fix" typed in Knack is overwritten by the next reconcile pass.
   `field_2967`-style guessing is avoided entirely: **field keys are
   discovered from view_4163's own column headers by LABEL** (`fields()`,

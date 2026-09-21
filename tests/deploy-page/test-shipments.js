@@ -34,8 +34,13 @@ const COLS = [
   ['field_3296', 'SHIP_address street'], ['field_3297', 'SHIP_address city'], ['field_3298', 'SHIP_address state'],
   ['field_3299', 'SHIP_address zip'], ['field_3300', 'Record ID'], ['field_3301', 'Created By'],
   ['field_3302', 'Updated By'], ['field_3303', 'Owned By'], ['field_3304', 'CORE_projects'],
-  ['field_3305', 'INSTALL_acceptances']
+  ['field_3305', 'INSTALL_acceptances'], ['field_3307', 'SHIP_items json']
 ];
+// The scrubbed contents blob the Make scenario writes: sku / name / qty / serials and NOTHING
+// else. Strings are percent-encoded so a quote in a product name can't break the JSON.
+const blob = items => JSON.stringify({ v: 1, enc: 'url', capturedAt: '2026-09-21T21:33:31', orderId: '63621',
+  items: items.map(i => ({ sku: encodeURIComponent(i.sku), name: encodeURIComponent(i.name),
+    qty: encodeURIComponent(i.qty), serials: encodeURIComponent((i.serials || []).join(', ')) })) });
 const DAY = 86400000;
 const iso = ms => new Date(ms).toISOString();
 const dateRaw = ms => ({ date: new Date(ms).toLocaleDateString('en-US'), iso_timestamp: iso(ms) });
@@ -51,7 +56,8 @@ function shipRec(o) {
     field_3292: o.tracking || '', field_3293_raw: o.trackUrl ? { url: o.trackUrl } : null,
     field_3294_raw: o.shipDate == null ? null : dateRaw(o.shipDate),
     field_3295_raw: o.delivered == null ? null : dateRaw(o.delivered),
-    field_3296: o.street || '', field_3297: o.city || '', field_3298: o.state || '', field_3299: o.zip || ''
+    field_3296: o.street || '', field_3297: o.city || '', field_3298: o.state || '', field_3299: o.zip || '',
+    field_3307: o.items ? blob(o.items) : ''
   });
 }
 window.Knack = { views: {}, router: { current_scene_key: 'scene_1311' } }; global.Knack = window.Knack;
@@ -159,9 +165,12 @@ check('a record whose OMS order no longer resolves is surfaced on the tile, not 
 scene([
   shipRec({ id: 's1', orderNo: 'SO-1001', omsId: 'OMS-1', omsUrl: 'https://oms/1', status: 'shipped', synced: now - 3600000,
             shipDate: now - 5 * DAY, carrier: 'UPS', tracking: '1Z001', trackUrl: 'https://ups/1Z001',
-            orderDate: now - 9 * DAY, orderStatus: 'shipped', shipTo: 'Ed Haman', street: '12 Main St', city: 'Durham', state: 'NC', zip: '27701' }),
+            orderDate: now - 9 * DAY, orderStatus: 'shipped', shipTo: 'Ed Haman', street: '12 Main St', city: 'Durham', state: 'NC', zip: '27701',
+            items: [{ sku: '0235UL3C', name: 'The Lookout Mini 5.0 - 26ZV5M-MINI-V2', qty: 1, serials: ['210235UL3C325B000013'] },
+                    { sku: '0235UTNT', name: 'The Viking 8.0 v5 - 26BV8-V5', qty: 2, serials: ['210235UTNT3265000114', '210235UTNT3265000085'] }] }),
   shipRec({ id: 's2', orderNo: 'SO-1002', omsId: 'OMS-2', status: 'Rolling down a hill', synced: now - 3600000, shipDate: now - DAY, carrier: 'FedEx', tracking: '77', sync: 'Missing in OMS' }),
-  shipRec({ id: 's3', orderNo: 'SO-1003', omsId: 'OMS-3', status: '', orderStatus: 'Processing', synced: now - 3600000 })
+  shipRec({ id: 's3', orderNo: 'SO-1003', omsId: 'OMS-3', status: '', orderStatus: 'Processing', synced: now - 3600000,
+            items: [{ sku: 'BRK-6', name: 'The 6" \'Big\' Bracket, v2', qty: 1, serials: [] }] })
 ]);
 api.open();
 const tray = opened && opened.el;
@@ -193,16 +202,33 @@ check('tracking + Open in ShipEdge are buttons on the card, each a new-tab link 
     [a.tagName, a.className.replace('scw-ships__btn scw-ships__btn--', ''), a.textContent, a.getAttribute('href'), a.getAttribute('target')]),
   [['A', 'track', 'Track · UPS 1Z001↗', 'https://ups/1Z001', '_blank'],
    ['A', 'oms', 'Open in ShipEdge↗', 'https://oms/1', '_blank']]);
-check('order administration stays in the disclosure, and the OMS link is not repeated there',
-  [cards[2].querySelector('.scw-ships__more summary').textContent,
-   [...cards[2].querySelectorAll('.scw-ships__dl dt')].map(d => d.textContent)],
-  ['Order details',
-   ['Order no', 'Order date', 'Order status', 'Ship to', 'Address', 'Source', 'Sync state', 'Last synced']]);
+check('the disclosure carries REFERENCE ONLY — nothing already on the card (order no is the title, status is the chip), no internal plumbing (source, sync state), no acceptance, no repeated OMS link',
+  [...cards[2].querySelectorAll('.scw-ships__dl dt')].map(d => d.textContent),
+  ['Order date', 'Ship to', 'Address', 'Last synced']);
+// ── What's in the shipment (the scrubbed blob) ─────────────────────
+check('contents render from the blob: qty, name, SKU and serials, decoded, under their own disclosure',
+  (() => {
+    const d = cards[2].querySelector('.scw-ships__more--items');
+    return [d.querySelector('summary').textContent,
+      [...d.querySelectorAll('.scw-ships__item')].map(li => [
+        li.querySelector('.scw-ships__item-qty').textContent,
+        li.querySelector('.scw-ships__item-name').firstChild.textContent.trim(),
+        (li.querySelector('.scw-ships__item-sku') || {}).textContent,
+        (li.querySelector('.scw-ships__item-serials') || {}).textContent])];
+  })(),
+  ['What\u2019s in this shipment · 2 products · 3 units',
+   [['1×', 'The Lookout Mini 5.0 - 26ZV5M-MINI-V2', '0235UL3C', 'Serial 210235UL3C325B000013'],
+    ['2×', 'The Viking 8.0 v5 - 26BV8-V5', '0235UTNT', 'Serials 210235UTNT3265000114, 210235UTNT3265000085']]]);
+check('a product name with a quote survives, because the blob percent-encodes every string',
+  cards[1].querySelector('.scw-ships__item-name').firstChild.textContent.trim(), 'The 6" \'Big\' Bracket, v2');
+check('no contents blob → no contents disclosure, and nothing throws',
+  cards[0].querySelector('.scw-ships__more--items'), null);
 // A carrier with no tracking URL: the number is still shown, selectable, but not a dead link.
 check('an unlinkable carrier still shows the number, as text rather than a broken link',
   (() => { const b = cards[0].querySelector('.scw-ships__actions .scw-ships__btn'); return [b.tagName, b.className.indexOf('--num') > 0, b.textContent, b.getAttribute('href')]; })(),
   ['SPAN', true, 'FedEx 77', null]);
-check('the four address parts compose into one line', cards[2].querySelector('.scw-ships__dl dd:nth-of-type(5)').textContent, '12 Main St · Durham, NC 27701');
+check('the four address parts compose into one line',
+  [...cards[2].querySelectorAll('.scw-ships__dl dd')][2].textContent, '12 Main St · Durham, NC 27701');
 check('NOTHING IS EDITABLE — the OMS owns these facts; the only controls are the re-check button and the disclosures',
   [tray.querySelectorAll('input, select, textarea, [contenteditable]').length,
    [...tray.querySelectorAll('button')].map(b => b.getAttribute('data-scw-ships-resync') ? 'resync' : b.tagName)],
