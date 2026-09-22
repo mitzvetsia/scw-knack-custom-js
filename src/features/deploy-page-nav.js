@@ -227,13 +227,6 @@
       '.scw-deploy-row2 { display: flex; gap: 12px; align-items: stretch; }',
       '.scw-deploy-maps-slot:empty { display: none; }',
       '.scw-deploy-maps-slot { flex: 1 1 auto; min-width: 0; }',
-      /* Row 3: recurring-licenses strip slot, owned by licenses-strip.js —
-         a full-width card between "Also on this project" and the
-         worksheet, not a drawer (docs/deploy-page-redesign.md addendum,
-         Recurring licenses, 2026-09-22). Empty (no license lines on the
-         project, or the module isn't loaded) collapses to nothing, same
-         as the maps slot. */
-      '.scw-deploy-licenses-slot:empty { display: none; }',
       '.scw-deploy-also {',
       '  display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1 1 auto;',
       '  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 14px;',
@@ -1062,16 +1055,6 @@
         })(also[i]);
       }
       row2.appendChild(list);
-    }
-
-    // Row 3: recurring-licenses strip slot — a sibling of row2, so it
-    // lands between "Also on this project" and the worksheet (nav's next
-    // sibling). Created once; licenses-strip.js owns everything inside it.
-    var licSlot = nav.querySelector('.scw-deploy-licenses-slot');
-    if (!licSlot) {
-      licSlot = document.createElement('div');
-      licSlot.className = 'scw-deploy-licenses-slot';
-      nav.appendChild(licSlot);
     }
   }
 
