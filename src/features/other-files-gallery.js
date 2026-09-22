@@ -76,6 +76,16 @@
 
   var STYLE_ID = 'scw-ofg-css';
   var EVENT_NS = '.scwOtherFilesGallery';
+  // Delete affordance: the same trash glyph the worksheet's row control uses
+  // (worksheet-v2 .scw-ws-v2-trash) — one delete icon across the app.
+  var TRASH_SVG =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<polyline points="3 6 5 6 21 6"></polyline>' +
+      '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
+      '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
+      '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>' +
+    '</svg>';
   var IMG_EXT  = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
 
   function esc(s) {
@@ -105,7 +115,7 @@
       '  height: 110px; font: 800 18px/1 system-ui, sans-serif; color: #64748b;',
       '  letter-spacing: .06em; text-transform: uppercase; }',
       '.scw-ofg-body { padding: 8px 10px 9px; }',
-      // Delete (×): top-right of the card, shows on hover / focus
+      // Delete (trash): top-right of the card, shows on hover / focus
       '.scw-ofg-del { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px;',
       '  border-radius: 50%; border: 1px solid #e2e8f0; background: rgba(255,255,255,.95); color: #64748b;',
       '  font: 700 15px/1 system-ui, sans-serif; cursor: pointer; opacity: 0; transition: opacity .12s;',
@@ -486,7 +496,7 @@
     if (isRequired) card.setAttribute('data-scw-ofg-required', '1');
     card.innerHTML =
       (caps.del
-        ? '<button type="button" class="scw-ofg-del" title="Delete this file" aria-label="Delete file">×</button>'
+        ? '<button type="button" class="scw-ofg-del" title="Delete this file" aria-label="Delete file">' + TRASH_SVG + '</button>'
         : '') +
       (caps.del && _selecting
         ? '<input type="checkbox" class="scw-ofg-pick" aria-label="Select file"' + (_selected[recId] ? ' checked' : '') + '>'
@@ -556,7 +566,7 @@
       deleteDoc(recId, function (ok, status) {
         if (!ok) {
           delBtn.disabled = false;
-          delBtn.textContent = '×';
+          delBtn.innerHTML = TRASH_SVG;
           alert('Could not delete the file (' + (status || 'no response') + '). Try again, or use the edit page.');
           return;
         }
