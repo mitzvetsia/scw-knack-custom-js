@@ -2507,11 +2507,21 @@
       if (!lbl) lbl = '(accessory)';
       var q = parseFloat(readNum(aA, F.qty || 'field_1964'));
       var qtySuffix = (isFinite(q) && q > 1) ? ' ×' + q : '';
-      chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap">' +
+      // Removed by a signed CO. An accessory with a loaded parent attaches
+      // as a chip instead of getting its own card, so without this it reads
+      // as live hardware whatever field_2967 says — a swapped-out mount
+      // looked identical to the one that replaced it. The tag never names
+      // the CO: field_2967's display value is the removed LINE's product
+      // name, not a CO number (bom-tray.js coFromFlag guards the same way).
+      var gone = installRemovedBy(aA, viewKey) !== null;
+      chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap' +
+          (gone ? ' scw-ws-v2-mh-chip-wrap--removed' : '') + '">' +
         '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert" ' +
-          'title="' + escapeHtml(lbl) + '">' +
+          'title="' + escapeHtml(lbl + (gone ? ' — removed from install scope by a change order' : '')) + '">' +
           escapeHtml(lbl + qtySuffix) +
-        '</span></span>';
+        '</span>' +
+        (gone ? '<span class="scw-ws-v2-mh-removed">removed</span>' : '') +
+      '</span>';
     }
     if (!chipsHtml) return '';
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--ro">' +

@@ -1636,6 +1636,30 @@
     '  font: 700 8.5px/1.3 system-ui, sans-serif !important;',
     '  letter-spacing: .06em !important; text-transform: uppercase !important; white-space: nowrap !important;',
     '}',
+    /* Removed by a signed CO. Install scope is never deleted, so the
+       accessory stays attached to its device — it just has to stop reading
+       as live hardware. Struck through + rose, mirroring the card's own
+       --removed treatment, with a REMOVED tag shaped like the SUB BID one. */
+    '.scw-ws-v2-mh-chip-wrap--removed {',
+    '  background: #fef2f2 !important;',
+    '  border-color: #fca5a5 !important;',
+    '}',
+    '.scw-ws-v2-mh-chip-wrap--removed:hover {',
+    '  background: #fee2e2 !important;',
+    '  border-color: #f87171 !important;',
+    '}',
+    '.scw-ws-v2-mh-chip-wrap--removed .scw-ws-v2-mh-chip {',
+    '  color: #b91c1c !important;',
+    '  text-decoration: line-through !important;',
+    '  text-decoration-color: #fca5a5 !important;',
+    '}',
+    '.scw-ws-v2-mh-removed {',
+    '  display: inline-flex !important; align-items: center !important; flex: 0 0 auto !important;',
+    '  margin-left: 2px !important; padding: 1px 5px !important; border-radius: 3px !important;',
+    '  background: #b91c1c !important; color: #fff !important;',
+    '  font: 700 8.5px/1.3 system-ui, sans-serif !important;',
+    '  letter-spacing: .06em !important; text-transform: uppercase !important; white-space: nowrap !important;',
+    '}',
     /* Wrong-bracket accessory — amber chip + inline "wrong bracket" marker. */
     '.scw-ws-v2-mh-chip-wrap--warn {',
     '  background: #fffbeb !important;',
