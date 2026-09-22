@@ -20,6 +20,14 @@
 
   var STYLE_ID = 'scw-co-cards-css';
   var ON_CLS   = 'scw-co-cards-on';
+  // "Waiting on your pricing" bar (sub deployment dashboard, scene_1353).
+  // A CO in Pending Sub Pricing is blocked ON THE SUB, and since the
+  // redesign the CO list is a drawer row — a sub can open the dashboard for
+  // days and never see it. Ops needs none of this: co-stage-strip already
+  // says where the CO stands there.
+  var SUB_SCENE  = 'scene_1353';
+  var PENDING_RE = /sub pricing/i;      // "Pending Sub Pricing" — co-sub-lock's own rule
+  var ALERT_ID   = 'scw-co-alert';
 
   // CO (SOW-object) field keys — same on every CO grid. Every entry is
   // fail-open: a card element renders only when the grid actually carries
@@ -117,6 +125,37 @@
       '.' + ON_CLS + ' .kn-table-wrapper,',
       '.' + ON_CLS + ' .view-header,',
       '.' + ON_CLS + ' .kn-records-nav { display: none !important; }',
+
+      /* The pricing bar — loud on purpose: it is the only BLOCKING thing on
+         the sub's page, and it has to beat a drawer row for attention. */
+      '#' + ALERT_ID + ' {',
+      '  margin: 10px 0 14px; padding: 14px 18px;',
+      '  background: #fffbeb; border: 2px solid #f59e0b; border-left-width: 6px;',
+      '  border-radius: 12px; box-shadow: 0 1px 3px rgba(180,83,9,.15);',
+      '  font: 13px/1.45 system-ui, -apple-system, sans-serif; color: #7c2d12;',
+      '}',
+      '.scw-co-alert__head { display: flex; align-items: center; gap: 9px; }',
+      '.scw-co-alert__head svg { flex: none; color: #b45309; }',
+      '.scw-co-alert__title { font: 700 16px/1.25 system-ui, sans-serif; color: #92400e; }',
+      '.scw-co-alert__body { margin: 3px 0 0 27px; color: #9a3412; }',
+      '.scw-co-alert__rows { margin: 11px 0 0 27px; display: flex; flex-direction: column; gap: 7px; }',
+      '.scw-co-alert__row {',
+      '  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;',
+      '  background: #fff; border: 1px solid #fde68a; border-radius: 9px;',
+      '  padding: 9px 11px 9px 13px;',
+      '}',
+      '.scw-co-alert__id { flex: 1 1 auto; min-width: 0; }',
+      '.scw-co-alert__name { display: block; font-weight: 700; color: #0f172a; }',
+      '.scw-co-alert__num {',
+      '  display: block; color: #92400e;',
+      '  font: 500 11.5px/1.5 ui-monospace, Menlo, Consolas, monospace;',
+      '}',
+      '.scw-co-alert__btn {',
+      '  flex: none; background: #b45309; color: #fff !important; border-radius: 7px;',
+      '  padding: 8px 15px; text-decoration: none !important; white-space: nowrap;',
+      '  font: 700 12.5px/1 system-ui, sans-serif;',
+      '}',
+      '.scw-co-alert__btn:hover { background: #92400e; }',
 
       '.scw-co-cards { display: flex; flex-direction: column; gap: 8px; }',
       '.scw-co-card {',
@@ -342,9 +381,95 @@
     }, 250);
   }
 
+  /** Every CO on the page that is waiting on the sub's pricing. Read off
+   *  the grid rows wherever the grid currently lives — deploy-page-nav
+   *  re-homes the CO section into a drawer, and a drawer-hosted element is
+   *  still in the document, so this must not scope itself to the scene. */
+  function pendingForSub() {
+    var out = [], grids = document.querySelectorAll('.kn-table.kn-view');
+    for (var g = 0; g < grids.length; g++) {
+      if (!isCoGrid(grids[g])) continue;
+      var rows = grids[g].querySelectorAll('tbody tr[id]');
+      for (var r = 0; r < rows.length; r++) {
+        if (!PENDING_RE.test(cellText(rows[r], F.status))) continue;
+        var link = rows[r].querySelector('td.kn-table-link a.kn-link-page');
+        out.push({ id: rows[r].id,
+                   name: cellText(rows[r], F.name),
+                   number: cellText(rows[r], F.number),
+                   href: link ? link.getAttribute('href') : '' });
+      }
+    }
+    return out;
+  }
+
+  var WARN_SVG =
+    '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" ' +
+      'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>' +
+      '<line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>' +
+    '</svg>';
+
+  function renderAlert() {
+    var bar = document.getElementById(ALERT_ID);
+    function drop() { if (bar && bar.parentNode) bar.parentNode.removeChild(bar); }
+    var scene = document.getElementById('kn-' + SUB_SCENE);
+    if (!scene) { drop(); return; }                    // ops page / elsewhere
+    var list = pendingForSub();
+    if (!list.length) { drop(); return; }              // nothing is blocked on them
+
+    injectCss();
+    if (!bar) { bar = document.createElement('div'); bar.id = ALERT_ID; }
+    var sig = list.map(function (c) { return c.id + ':' + c.href; }).join('|');
+    if (bar.getAttribute('data-scw-sig') !== sig) {
+      bar.setAttribute('data-scw-sig', sig);
+      var rowsHtml = '';
+      for (var i = 0; i < list.length; i++) {
+        var c = list[i];
+        var main = c.name || c.number || 'Change order';
+        var sub  = (c.name && c.number) ? c.number : '';
+        rowsHtml +=
+          '<div class="scw-co-alert__row">' +
+            '<span class="scw-co-alert__id">' +
+              '<span class="scw-co-alert__name">' + esc(main) + '</span>' +
+              (sub ? '<span class="scw-co-alert__num">' + esc(sub) + '</span>' : '') +
+            '</span>' +
+            // New tab, like the card's Open: pricing a CO is its own work
+            // session and the dashboard should still be here afterwards.
+            (c.href
+              ? '<a class="scw-co-alert__btn" target="_blank" rel="noopener" href="' +
+                  esc(c.href) + '">Add your pricing</a>'
+              : '') +
+          '</div>';
+      }
+      bar.innerHTML =
+        '<div class="scw-co-alert__head">' + WARN_SVG +
+          '<span class="scw-co-alert__title">' +
+            (list.length === 1
+              ? 'A change order is waiting on your pricing'
+              : list.length + ' change orders are waiting on your pricing') +
+          '</span>' +
+        '</div>' +
+        '<div class="scw-co-alert__body">' +
+          'SCW can’t move ' + (list.length === 1 ? 'it' : 'them') +
+          ' forward until you send your labor pricing back.' +
+        '</div>' +
+        '<div class="scw-co-alert__rows">' + rowsHtml + '</div>';
+    }
+    // Above the stage tiles, or the top of the scene when the nav hasn't
+    // built yet. Re-seated every pass: buildNav re-inserts the nav element,
+    // which would otherwise leave the bar stranded below it.
+    var nav = document.getElementById('scw-deploy-nav');
+    if (nav && nav.parentNode) {
+      if (bar.nextElementSibling !== nav) nav.parentNode.insertBefore(bar, nav);
+    } else if (bar.parentNode !== scene) {
+      scene.insertBefore(bar, scene.firstChild);
+    }
+  }
+
   function scanAll() {
     var views = document.querySelectorAll('.kn-table.kn-view');
     for (var i = 0; i < views.length; i++) transform(views[i]);
+    try { renderAlert(); } catch (e) { /* the bar is chrome — never block the cards */ }
   }
 
   $(document)
@@ -352,6 +477,7 @@
     .on('knack-view-render.any.scwCoCards', function (event, view) {
       if (!view || !view.key) return;
       transform(document.getElementById(view.key));
+      try { renderAlert(); } catch (e) { /* chrome only */ }
     });
   $(document)
     .off('knack-scene-render.any.scwCoCards')
