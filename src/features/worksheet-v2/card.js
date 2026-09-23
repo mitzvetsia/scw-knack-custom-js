@@ -1800,9 +1800,18 @@
     '</div>';
   }
 
+  // Views with NO worksheet-v2 config entry whose cards are still built by
+  // another feature and need the flip: the bid-review comparison grid
+  // (scene_1155, bid-review-v2) expands SOW items through buildCard with
+  // view_3921 — same object, same field_2479, same PUT route. Same pattern
+  // as DELETE_BLOCK_VIEWS above.
+  var SUB_BID_CONTROL_VIEWS = { view_3921: 1 };
+
   /** True when the view offers the Require Sub Bid flip on ordinary rows
-   *  (config requireSubBidControl — the build-SOW worksheet). */
+   *  (config requireSubBidControl — the build-SOW worksheet — or one of the
+   *  config-less views in SUB_BID_CONTROL_VIEWS). */
   function hasSubBidControl(viewKey) {
+    if (SUB_BID_CONTROL_VIEWS[viewKey]) return true;
     try {
       var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
       return !!(vc && vc.requireSubBidControl);

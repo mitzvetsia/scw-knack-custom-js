@@ -53,6 +53,10 @@ check('never on an assumptions row — it is contract language, nobody bids it',
   sectionOf(assume, 'view_3962'), null);
 check('only where config opts in: the ops CO worksheet (view_4079) has no requireSubBidControl',
   sectionOf(cam, 'view_4079'), null);
+check('the bid-review comparison grid (view_3921, no config entry — cards built by bid-review-v2) gets it too',
+  (() => { const s = sectionOf(cam, 'view_3921');
+           return [!!s, s && s.querySelector('[data-scw-ws-v2-subbid]').getAttribute('data-scw-ws-v2-view')]; })(),
+  [true, 'view_3921']);
 check('NOTHING on the row at rest — no gear, no icon; the section lives inside the detail panel only',
   (() => { const card = ns.card.buildCard(cam, 'view_3962');
            return [card.querySelector('.scw-ws-v2-row .scw-ws-v2-subbid'), !!card.querySelector('.scw-ws-v2-detail .scw-ws-v2-subbid')]; })(),
