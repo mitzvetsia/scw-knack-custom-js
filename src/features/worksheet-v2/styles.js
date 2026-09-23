@@ -1660,6 +1660,30 @@
     '  font: 700 8.5px/1.3 system-ui, sans-serif !important;',
     '  letter-spacing: .06em !important; text-transform: uppercase !important; white-space: nowrap !important;',
     '}',
+    /* "Sub bid" disclosure at the foot of the expanded card (config
+       requireSubBidControl). A quiet strip under the notes: collapsed, the
+       header alone says whether subs price this item; open, the modal's own
+       Yes / No radiochips. Nothing on the row at rest. */
+    '.scw-ws-v2-subbid {',
+    '  margin: 10px 0 2px !important; border-top: 1px dashed #dbe2ea !important; padding-top: 6px !important;',
+    '}',
+    '.scw-ws-v2-subbid-head {',
+    '  display: flex !important; align-items: center !important; gap: 8px !important; width: 100% !important;',
+    '  padding: 5px 4px !important; background: none !important; border: 0 !important; cursor: pointer !important;',
+    '  text-align: left !important; font: 12px/1.3 system-ui, -apple-system, sans-serif !important; color: #475569 !important;',
+    '}',
+    '.scw-ws-v2-subbid-head:hover .scw-ws-v2-subbid-title { color: #07467c !important; }',
+    '.scw-ws-v2-subbid-caret { display: inline-flex !important; color: #94a3b8 !important; transition: transform 120ms ease !important; }',
+    '.scw-ws-v2-subbid.is-open .scw-ws-v2-subbid-caret { transform: rotate(90deg) !important; }',
+    '.scw-ws-v2-subbid-title { font-weight: 700 !important; letter-spacing: .02em !important; text-transform: uppercase !important; font-size: 10.5px !important; color: #64748b !important; }',
+    '.scw-ws-v2-subbid-state { color: #64748b !important; }',
+    '.scw-ws-v2-subbid-state--yes { color: #07467c !important; font-weight: 600 !important; }',
+    '.scw-ws-v2-subbid-hint { margin-left: auto !important; font-size: 11px !important; color: #94a3b8 !important; }',
+    '.scw-ws-v2-subbid-head:hover .scw-ws-v2-subbid-hint { color: #07467c !important; text-decoration: underline !important; }',
+    '.scw-ws-v2-subbid-body { display: none !important; padding: 4px 4px 6px !important; }',
+    '.scw-ws-v2-subbid.is-open .scw-ws-v2-subbid-body { display: block !important; }',
+    '.scw-ws-v2-subbid-note { margin-top: 6px !important; font: 11px/1.45 system-ui, sans-serif !important; color: #64748b !important; max-width: 62ch !important; }',
+    '.scw-ws-v2-subbid-err { margin-top: 6px !important; font: 600 11.5px/1.4 system-ui, sans-serif !important; color: #b91c1c !important; }',
     /* Wrong-bracket accessory — amber chip + inline "wrong bracket" marker. */
     '.scw-ws-v2-mh-chip-wrap--warn {',
     '  background: #fffbeb !important;',

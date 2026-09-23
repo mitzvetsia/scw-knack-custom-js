@@ -470,6 +470,88 @@
     });
   }
 
+  // "Sub bid" disclosure (card.js detailSubBidSection, config
+  // requireSubBidControl): the header toggles it open; a Yes / No chip
+  // flips Require Sub Bid through SCW.requireSubBid.setFlag — the same path
+  // the accessory edit modal uses, so the No → Yes confirm, the
+  // dropped-write check and the worksheet refetch are shared, not copied.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-subbid-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-subbid-bound', '1');
+    document.addEventListener('click', function (e) {
+      var head = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-subbid-toggle]');
+      if (!head) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var sec = head.closest('.scw-ws-v2-subbid');
+      if (!sec) return;
+      var open = sec.classList.toggle('is-open');
+      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-subbid]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var api = window.SCW && window.SCW.requireSubBid;
+      if (!api || typeof api.setFlag !== 'function') return;
+      var viewKey  = btn.getAttribute('data-scw-ws-v2-view');
+      var recordId = btn.getAttribute('data-scw-ws-v2-record');
+      var field    = btn.getAttribute('data-scw-ws-v2-field');
+      var next     = btn.getAttribute('data-scw-ws-v2-subbid') === 'No' ? 'No' : 'Yes';
+      var rec = null;
+      try {
+        var recs = (ns.data && typeof ns.data.readRecords === 'function') ? ns.data.readRecords(viewKey) : [];
+        for (var i = 0; i < recs.length; i++) if (recs[i] && recs[i].id === recordId) { rec = recs[i]; break; }
+      } catch (err) { rec = null; }
+      if (!rec) return;
+      var cur = (typeof api.readFlag === 'function') ? api.readFlag(rec, field) : '';
+      if (cur === next) return;
+      var group = btn.closest('.scw-ws-v2-radiochips');
+      var fieldEl = btn.closest('.scw-ws-v2-detail-field');
+      function setSeg(val) {
+        if (!group) return;
+        var chips = group.querySelectorAll('[data-scw-ws-v2-subbid]');
+        for (var c = 0; c < chips.length; c++) {
+          var sel = chips[c].getAttribute('data-scw-ws-v2-subbid') === val;
+          chips[c].classList.toggle('is-selected', sel);
+          chips[c].classList.toggle('is-unselected', !sel);
+          chips[c].setAttribute('aria-pressed', sel ? 'true' : 'false');
+        }
+      }
+      // A folded accessory going to Yes gets promoted to its own row — the
+      // confirm copy names the parent it leaves. An ordinary row has none.
+      var pRaw = rec['field_2464_raw'];
+      var parentLabel = (Array.isArray(pRaw) && pRaw.length && pRaw[0]) ? String(pRaw[0].identifier || '') : '';
+      var item = {
+        key: 'sow:' + rec.id, kind: 'sow', viewKey: viewKey, recordId: rec.id, field: field,
+        label: (typeof api.labelOf === 'function' && api.labelOf(rec)) || 'this item', sub: '',
+        value: cur, promote: !!parentLabel, parentLabel: parentLabel
+      };
+      // Friction only on the way UP — the same confirm the modal uses.
+      var ask = (next === 'Yes' && typeof api.confirm === 'function' && typeof api.confirmCopy === 'function')
+        ? api.confirm(api.confirmCopy(item))
+        : Promise.resolve(true);
+      ask.then(function (ok) {
+        if (!ok) return;
+        var old = fieldEl && fieldEl.querySelector('.scw-ws-v2-subbid-err');
+        if (old) old.parentNode.removeChild(old);
+        setSeg(next);
+        if (group) group.classList.add('scw-ws-v2-radiochip--saving');
+        return api.setFlag(item, 'worksheet', next).then(function (res) {
+          if (group) group.classList.remove('scw-ws-v2-radiochip--saving');
+          if (res && res.ok) return;      // the refetch re-renders the card with the new state
+          setSeg(cur);
+          if (fieldEl) {
+            var err = document.createElement('div');
+            err.className = 'scw-ws-v2-subbid-err';
+            err.textContent = (res && res.message) || 'Save failed.';
+            fieldEl.appendChild(err);
+          }
+        });
+      });
+    });
+  }
+
   // Chevron click — toggle the card's detail panel open/closed. Persisted
   // per record only on the views state.js flags (CARD_PERSIST_VIEWS,
   // e.g. view_4093/view_4056) — setCardOpen no-ops elsewhere, so this is

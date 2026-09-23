@@ -1763,6 +1763,7 @@
         '</div>' +
       '</div>' +
       detailNotesSection(rec, viewKey) +
+      detailSubBidSection(rec, viewKey) +
     '</div>';
   }
 
@@ -1795,6 +1796,73 @@
         '</div>' +
       '</div>' +
       detailNotesSection(rec, viewKey) +
+      detailSubBidSection(rec, viewKey) +
+    '</div>';
+  }
+
+  /** True when the view offers the Require Sub Bid flip on ordinary rows
+   *  (config requireSubBidControl — the build-SOW worksheet). */
+  function hasSubBidControl(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.requireSubBidControl);
+    } catch (e) { return false; }
+  }
+
+  /** 'Yes' | 'No' | '' — the row's Require Sub Bid flag. */
+  function subBidFlagOf(rec, viewKey) {
+    var field = fieldsFor(viewKey).requireSubBid || 'field_2479';
+    var api = window.SCW && window.SCW.requireSubBid;
+    if (api && typeof api.readFlag === 'function') return api.readFlag(rec, field);
+    var v = readBool(rec, field);
+    return v === 'Yes' ? 'Yes' : (v === 'No' ? 'No' : '');
+  }
+
+  /** "Sub bid" — a collapsed disclosure at the FOOT of the expanded card,
+   *  below the notes: the only place an ordinary row's Require Sub Bid is
+   *  flipped (the accessory edit modal covers accessories). Three clicks
+   *  deep on purpose (expand the row, open this, flip) and nothing on the
+   *  row at rest — the flag changes what subs must price. The header reads
+   *  the current state even while collapsed. The control is the modal's own
+   *  Yes / No radiochips; init.js routes the click through
+   *  SCW.requireSubBid.setFlag, so the No → Yes confirm, the dropped-write
+   *  check and the refetch are shared. */
+  function detailSubBidSection(rec, viewKey) {
+    if (!hasSubBidControl(viewKey)) return '';
+    var field = fieldsFor(viewKey).requireSubBid || 'field_2479';
+    var val = subBidFlagOf(rec, viewKey);
+    var yes = val === 'Yes';
+    var api = window.SCW && window.SCW.requireSubBid;
+    var canEdit = !!(api && typeof api.setFlag === 'function');
+    function seg(v) {
+      var sel = (val === v);
+      return '<button type="button" class="scw-ws-v2-radiochip ' + (sel ? 'is-selected' : 'is-unselected') + '" ' +
+        'data-scw-ws-v2-subbid="' + v + '" data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+        'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" data-scw-ws-v2-field="' + escapeHtml(field) + '" ' +
+        'aria-pressed="' + (sel ? 'true' : 'false') + '">' + v + '</button>';
+    }
+    return '<div class="scw-ws-v2-subbid" data-scw-ws-v2-subbid-section="' + escapeHtml(rec.id) + '">' +
+      '<button type="button" class="scw-ws-v2-subbid-head" data-scw-ws-v2-subbid-toggle="1" aria-expanded="false">' +
+        '<span class="scw-ws-v2-subbid-caret" aria-hidden="true">' +
+          '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" ' +
+            'stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>' +
+        '</span>' +
+        '<span class="scw-ws-v2-subbid-title">Sub bid</span>' +
+        '<span class="scw-ws-v2-subbid-state' + (yes ? ' scw-ws-v2-subbid-state--yes' : '') + '">' +
+          (yes ? 'Required — subs price this item on its own line' : 'Not required') +
+        '</span>' +
+        '<span class="scw-ws-v2-subbid-hint">' + (canEdit ? 'change' : '') + '</span>' +
+      '</button>' +
+      '<div class="scw-ws-v2-subbid-body">' +
+        '<div class="scw-ws-v2-detail-field" data-scw-df="' + escapeHtml(field) + '">' +
+          '<div class="scw-ws-v2-detail-label">Require sub bid</div>' +
+          (canEdit
+            ? '<div class="scw-ws-v2-radiochips" role="group" aria-label="Require sub bid">' + seg('Yes') + seg('No') + '</div>'
+            : '<div class="scw-ws-v2-display">' + escapeHtml(val || '(not set)') + '</div>') +
+          '<div class="scw-ws-v2-subbid-note">Yes = subs must price this item; it shows as its own line on bids ' +
+            'and in the comparison grid. No = priced as part of the scope, no line of its own.</div>' +
+        '</div>' +
+      '</div>' +
     '</div>';
   }
 
@@ -1821,6 +1889,7 @@
         '</div>' +
       '</div>' +
       detailNotesSection(rec, viewKey) +
+      detailSubBidSection(rec, viewKey) +
     '</div>';
   }
 

@@ -115,6 +115,16 @@
         // Service lines may be attached to a parent line item (field_2464)
         // — same opt-in as the CO worksheet (see the view_4079 entry).
         serviceParent:    true,
+        // Require Sub Bid on an ORDINARY row: a collapsed "Sub bid" disclosure
+        // at the foot of the expanded card (card.js detailSubBidSection).
+        // The accessory edit modal covers accessories; this is the only way
+        // to flip a plain line item. Deliberately three clicks deep — expand
+        // the row, open the disclosure, flip — and nothing on the row at
+        // rest: the flag changes what subs must price. Saves through
+        // SCW.requireSubBid.setFlag (confirm on No → Yes, dropped-write
+        // check, worksheet refetch). ⚠️ Builder: field_2479 must be an
+        // inline-editable column on view_3962 or the PUT is dropped.
+        requireSubBidControl: true,
         // Mount directly after view_3369 so the panel lands as the last child
         // of its layout group (group 7), where end users expect the worksheet.
         // (view_3610, the retired v1 grid, has been removed from the scene.)
