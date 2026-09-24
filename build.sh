@@ -218,6 +218,7 @@ cat \
   src/features/worksheet-v2/warnings.js \
   src/features/worksheet-v2/summary.js \
   src/features/worksheet-v2/picker.js \
+  src/features/worksheet-v2/product-enabled-flag.js \
   src/features/worksheet-v2/edit.js \
   src/features/worksheet-v2/audit-log.js \
   src/features/worksheet-v2/mdf-notes.js \

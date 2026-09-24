@@ -2237,8 +2237,23 @@
             candidates:    prodCandidates,
             itemLabel:     function (rec) { return rec.name || rec.id; },
             multi:         false,
-            onSaved:       function () {
+            onSaved:       function (ids) {
               if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
+              // The line item's stored product flag (field_2912 — the ⊘
+              // "discontinued" badge) doesn't re-stamp on a product change.
+              // When the NEW product is in the enabled catalog (SCW.productMap
+              // = Status Enabled), flip it to Yes so the badge clears
+              // (product-enabled-flag.js; no-op where it can't confirm).
+              try {
+                if (ns.productEnabledFlag && typeof ns.productEnabledFlag.clearIfEnabled === 'function') {
+                  ns.productEnabledFlag.clearIfEnabled({
+                    viewKey:   viewKey,
+                    recordId:  recordId,
+                    productId: Array.isArray(ids) ? ids[0] : ids,
+                    rec:       current
+                  });
+                }
+              } catch (e) { /* ignore */ }
             }
           });
         };
