@@ -1922,6 +1922,17 @@
               }
               html.push('</tr>');
 
+              // Catalog description (grid-v2 payload `productDesc`): a quiet
+              // sub-row under the product name, before any labor description.
+              if (prod.productDesc) {
+                html.push('<tr class="l4-row l4-proddesc">');
+                html.push('<td class="l4-desc"' + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(prod.productDesc) + '</td>');
+                if (!prod.hideCost) {
+                  html.push('<td class="col-qty"></td><td class="col-cost"></td>');
+                }
+                html.push('</tr>');
+              }
+
               if (prod.productLabel && prod.descText) {
                 html.push('<tr class="l4-row">');
                 html.push('<td class="l4-desc"' + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(prod.descText) + '</td>');
@@ -2342,6 +2353,7 @@
       '.l4-row td.col-qty, .l4-row td.col-cost { font-weight: 600; color: #07467c; }',
       '/* Accessory rollups muted slate — secondary to the product (v2). */',
       '.l4-row.l4-acc td { color: #5f6b7a; font-weight: 400; }',
+      '.l4-row.l4-proddesc td { color: #6b7280; }',
       '.l4-row.l4-acc td.col-qty, .l4-row.l4-acc td.col-cost { color: #5f6b7a; }',
       '',
       '/* ── L2 Footer ── */',
