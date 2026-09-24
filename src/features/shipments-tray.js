@@ -78,6 +78,12 @@
  * proposal), and the shipment records we already hold (id + order no + OMS
  * order id + sync state), which is also the list the scenario diffs against
  * to decide what is new, what changed and what no longer resolves upstream.
+ * The drawer also takes an OPTIONAL reference typed by the user (an order
+ * reference the page can't construct — a mis-keyed one, an order placed
+ * under a different project no.); it ships as `extraReferences` and is
+ * folded into `references` as an exact-lookup candidate. ShipEdge only
+ * offers an exact match on order_reference, so the drawer tells the user it
+ * must match ShipEdge character for character.
  * Then it refetches view_4163 a few times (project rollups recalculate
  * LAZILY — never read one straight after a write; this tray reads the
  * shipment RECORDS, never a rollup).
@@ -499,6 +505,12 @@
       '.scw-ships__resync[disabled] { opacity: .6; cursor: default; }',
       '.scw-ships__resync.is-err { border-color: #fca5a5; color: #b91c1c; }',
       '.scw-ships__resync.is-done { border-color: #86efac; color: #15803d; }',
+      '.scw-ships__reflabel { display: inline-flex; align-items: center; gap: 6px; }',
+      '.scw-ships__reftitle { font-size: 11.5px; color: #475569; white-space: nowrap; }',
+      '.scw-ships__ref { width: 240px; max-width: 100%; padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 7px; font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; color: #0f172a; background: #fff; }',
+      '.scw-ships__ref:focus { outline: none; border-color: #0f4c81; box-shadow: 0 0 0 2px rgba(15,76,129,.15); }',
+      '.scw-ships__refnote { flex: 1 0 100%; font-size: 11.5px; line-height: 1.4; color: #64748b; }',
+      '.scw-ships__refnote b { color: #92400e; }',
       '.scw-ships__stalebanner { margin: 12px 0 0; padding: 10px 12px; border: 1px solid #fde68a; background: #fffbeb; border-radius: 8px; color: #92400e; font-size: 12.5px; }',
       '.scw-ships__counts { display: flex; gap: 16px; flex-wrap: wrap; padding: 12px 0 4px; font-size: 12.5px; color: #475569; }',
       '.scw-ships__counts b { color: #0f172a; font-size: 15px; font-weight: 800; display: block; }',
@@ -698,9 +710,44 @@
   }
   /** Everything the page already knows, handed to the scenario so it can
    *  match OMS orders without re-querying Knack. */
-  function resyncPayload(cfg) {
+  /** Split what the user typed into distinct reference strings — commas,
+   *  semicolons and newlines separate; whitespace is trimmed, never altered
+   *  inside (ShipEdge matches order_reference exactly). */
+  function splitExtraRefs(v) {
+    var out = [], seen = {};
+    String(v == null ? '' : v).split(/[,;\n]+/).forEach(function (t) {
+      t = plain(t);
+      if (!t || seen[t]) return;
+      seen[t] = true;
+      out.push(t);
+    });
+    return out;
+  }
+  function resyncPayload(cfg, extraRefs) {
     var list = shipments(cfg);
     var refs = buildReferences(cfg);
+    var extras = Array.isArray(extraRefs) ? extraRefs : splitExtraRefs(extraRefs);
+    // User-typed references ride in `references` too, as exact-lookup
+    // candidates, flagged manual. One the page already built is not
+    // repeated. A string that doesn't parse to our <project>-SW<sow> shape
+    // still ships verbatim — it may be exactly what the order carries.
+    for (var x = 0; x < extras.length; x++) {
+      var dup = false;
+      for (var r = 0; r < refs.length; r++) { if (refs[r].reference === extras[x]) { dup = true; break; } }
+      if (dup) continue;
+      // parseReference is lenient (any "a-b" splits); only credit the
+      // parts when the tail is our SW<sow> token, else ship the string bare.
+      var parsed = parseReference(extras[x]);
+      if (parsed && !/^sw\d+$/i.test(parsed.sow)) parsed = null;
+      refs.push({
+        reference: extras[x],
+        sowRef:    parsed ? parsed.sowRef : '',
+        projectNo: parsed ? parsed.projectNo : '',
+        sow:       parsed ? parsed.sow : '',
+        quote:     parsed ? parsed.quote : '',
+        manual:    true
+      });
+    }
     return {
       project_recordID: projectId(),
       source: 'deploy-page',
@@ -708,8 +755,12 @@
       // The one token every reference for this project shares — the
       // needle for a contains pass when an exact lookup can't be used.
       projectNo: refs.length ? refs[0].projectNo : '',
-      // Exact-match candidates for ShipEdge's order_reference lookup.
+      // Exact-match candidates for ShipEdge's order_reference lookup
+      // (page-built first, then any the user typed — `manual: true`).
       references: refs,
+      // What the user typed into the drawer, verbatim — must match
+      // ShipEdge's order_reference exactly (no contains lookup exists).
+      extraReferences: extras,
       // True when NOT ONE reference carries a proposal number. Every
       // accepted acceptance should have one, so this means the published
       // proposal isn't linked (or isn't on these grids) — the scenario
@@ -778,6 +829,9 @@
       })(tries[i]);
     }
   }
+  function extraRefInput(el) {
+    return el && el.querySelector ? el.querySelector('[data-scw-ships-ref]') : null;
+  }
   function onResync(cfg, btn, el) {
     var url = webhookUrl();
     if (!url) {
@@ -786,7 +840,8 @@
       setTimeout(function () { resetResync(btn); }, 5000);
       return;
     }
-    var payload = resyncPayload(cfg);
+    var refInput = extraRefInput(el);
+    var payload = resyncPayload(cfg, refInput ? refInput.value : '');
     if (!payload.project_recordID) {
       btn.classList.add('is-err');
       btn.textContent = 'No project id in the URL';
@@ -932,6 +987,10 @@
   }
 
   function paint(el, cfg) {
+    // A repaint (view render, post-resync refetch) rebuilds the HTML — carry
+    // the user's typed reference across so it isn't wiped mid-thought.
+    var prevRef = extraRefInput(el);
+    var keepRef = prevRef ? prevRef.value : '';
     var list = shipments(cfg), now = Date.now();
     var s = summarize(list, now);
     // A sync warning first, then what hasn't gone out, then the most
@@ -960,7 +1019,15 @@
       '<div class="scw-ships__bar">' +
         '<span class="scw-ships__freshness' + (s.stale ? ' is-stale' : '') + '">' + fresh + '</span>' +
         '<span class="scw-ships__spring"></span>' +
+        '<label class="scw-ships__reflabel">' +
+          '<span class="scw-ships__reftitle">Also search a reference</span>' +
+          '<input type="text" class="scw-ships__ref" data-scw-ships-ref="1" autocomplete="off" spellcheck="false" ' +
+            'placeholder="e.g. 62489857827-SW1234 | Q5678" value="' + esc(keepRef) + '">' +
+        '</label>' +
         '<button type="button" class="scw-ships__resync" data-scw-ships-resync="1">Re-check shipments</button>' +
+        '<div class="scw-ships__refnote">Optional. The reference must match the ShipEdge order reference ' +
+          '<b>exactly</b> — same characters, spacing and punctuation. ShipEdge has no partial match. ' +
+          'Separate several with commas.</div>' +
       '</div>';
     if (s.stale && s.total) {
       html += '<div class="scw-ships__stalebanner">These figures come from the last sync, not from the OMS right now. ' +
@@ -1001,6 +1068,14 @@
       if (!b) return;
       e.preventDefault();
       onResync(cfg, b, el);
+    });
+    el.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      var inp = e.target.closest && e.target.closest('[data-scw-ships-ref]');
+      if (!inp) return;
+      e.preventDefault();
+      var b = el.querySelector('[data-scw-ships-resync]');
+      if (b && !b.disabled) onResync(cfg, b, el);
     });
     return el;
   }
@@ -1050,7 +1125,8 @@
     /** Test seams / other modules. */
     shipments: function () { var c = activeScene(); return c ? shipments(c) : []; },
     summarize: summarize,
-    resyncPayload: function () { var c = activeScene(); return c ? resyncPayload(c) : null; },
+    resyncPayload: function (extraRefs) { var c = activeScene(); return c ? resyncPayload(c, extraRefs) : null; },
+    splitExtraRefs: splitExtraRefs,
     parseReference: parseReference,
     fields: function () { var c = activeScene(); return c ? fields(c) : {}; },
     tone: tone

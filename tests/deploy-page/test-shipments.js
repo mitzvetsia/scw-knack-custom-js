@@ -263,10 +263,10 @@ check('an unlinkable carrier still shows the number, as text rather than a broke
   ['SPAN', true, 'FedEx 77', null]);
 check('the four address parts compose into one line',
   [...cards[2].querySelectorAll('.scw-ships__dl dd')][2].textContent, '12 Main St · Durham, NC 27701');
-check('NOTHING IS EDITABLE — the OMS owns these facts; the only controls are the re-check button and the disclosures',
-  [tray.querySelectorAll('input, select, textarea, [contenteditable]').length,
+check('NOTHING ABOUT A SHIPMENT IS EDITABLE — the OMS owns these facts; the only controls are the re-check button, its optional reference box, and the disclosures',
+  [[...tray.querySelectorAll('input, select, textarea, [contenteditable]')].map(i => i.getAttribute('data-scw-ships-ref') ? 'ref' : i.tagName),
    [...tray.querySelectorAll('button')].map(b => b.getAttribute('data-scw-ships-resync') ? 'resync' : b.tagName)],
-  [0, ['resync']]);
+  [['ref'], ['resync']]);
 check('the drawer states plainly that delivery is not tracked, and points at the carrier link instead',
   [/Delivery is not tracked yet/.test(tray.textContent), /no arrival date here/.test(tray.textContent)], [true, true]);
 check('NOTHING in the drawer claims a delivery or an ETA (word-boundaried — "details" contains "eta")',
@@ -327,6 +327,37 @@ btn.click();
 check('the button POSTs that payload and reports back',
   [ajaxCalls.length, ajaxCalls[0].url, ajaxCalls[0].type, ajaxCalls[0].payload.shipments.length, btn.textContent, btn.classList.contains('is-done')],
   [1, 'https://hook.example/ships', 'POST', 2, 'Re-check requested', true]);
+// ── Extra reference typed by the user ───────────────────────────────
+// The page can only construct references from what Knack holds; an order keyed under a different
+// project no. (or a mis-typed one) is invisible to it. The drawer takes one — and says, next to
+// the box, that it must match ShipEdge's order reference EXACTLY (ShipEdge has no partial match).
+api.open();
+const t4 = opened.el, ref4 = t4.querySelector('[data-scw-ships-ref]'), btn4 = t4.querySelector('[data-scw-ships-resync]');
+check('the drawer offers an optional reference box beside the button, with the exact-match note',
+  [!!ref4, /Optional/.test(t4.querySelector('.scw-ships__refnote').textContent),
+   /must match the ShipEdge order reference exactly/.test(t4.querySelector('.scw-ships__refnote').textContent),
+   /no partial match/.test(t4.querySelector('.scw-ships__refnote').textContent)],
+  [true, true, true, true]);
+check('empty box → payload unchanged: no extras, no manual references',
+  (() => { const p = api.resyncPayload(''); return [p.extraReferences, p.references.filter(r => r.manual).length]; })(), [[], 0]);
+check('what is typed ships verbatim (trimmed, split on commas, deduped) AND joins references as manual exact-lookup candidates; a non-canonical string still ships as typed',
+  (() => { const p = api.resyncPayload(' 99999999-SW77 | Q1 , ORD-ABC-123 ,, 99999999-SW77 | Q1 ');
+           const man = p.references.filter(r => r.manual);
+           return [p.extraReferences, man.map(r => [r.reference, r.projectNo, r.sow, r.quote])]; })(),
+  [['99999999-SW77 | Q1', 'ORD-ABC-123'], [['99999999-SW77 | Q1', '99999999', 'SW77', 'Q1'], ['ORD-ABC-123', '', '', '']]]);
+check('a typed reference the page already built is not duplicated',
+  (() => { const base = api.resyncPayload('').references[0].reference; const p = api.resyncPayload(base);
+           return [p.extraReferences, p.references.filter(r => r.reference === base).length, p.references.filter(r => r.manual).length]; })()[1], 1);
+ref4.value = 'ORD-ABC-123';
+ajaxCalls.length = 0;
+btn4.click();
+check('mashing the button sends the typed reference with the rest of the payload',
+  [ajaxCalls.length, ajaxCalls[0].payload.extraReferences, ajaxCalls[0].payload.references.some(r => r.manual && r.reference === 'ORD-ABC-123')],
+  [1, ['ORD-ABC-123'], true]);
+ref4.value = 'ORD-XYZ';
+ajaxCalls.length = 0;
+ref4.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+check('Enter in the box fires the same re-check', [ajaxCalls.length, ajaxCalls[0] && ajaxCalls[0].payload.extraReferences], [1, ['ORD-XYZ']]);
 window.SCW.CONFIG.MAKE_SHIPMENTS_RESYNC_WEBHOOK = 'PLACEHOLDER';
 api.open();
 const t3 = opened.el, btn3 = t3.querySelector('[data-scw-ships-resync]');
