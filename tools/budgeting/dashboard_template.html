@@ -1831,7 +1831,7 @@ function vendorOf(contact, desc){
 }
 function parseXeroWorkbook(wb){
   const X = window.XLSX, B = MODEL.account_buckets || {}, AL = MODEL.vendor_aliases || {};
-  const PAY = new Set(B.payroll || []), COGS = new Set(B.cogs || []), OTH = new Set(B.other_income || []);
+  const PAY = new Set(B.payroll || []), COGS = new Set(B.cogs || []), OTH = new Set(B.other_income || []), PEND = new Set(B.pending || []);
   const VAR = new RegExp(B.varcomp_re || "variable comp|commission|bonus|spiff", "i");
   const OVR = (AL.opex_overrides || []).map(([c, rx]) => [c, new RegExp(rx, "i")]);
   const SKIP = ["Total", "Opening Balance", "Closing Balance", "Net movement", "No transactions", "Date", "Account Transactions", "Security Camera", "For the period", "Accrual Basis", "Account Type"];
@@ -1840,7 +1840,7 @@ function parseXeroWorkbook(wb){
   const toDate = v => v instanceof Date ? v : (typeof v === "number" ? new Date(Math.round((v - 25569) * 86400000)) : (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? new Date(v.slice(0, 10) + "T00:00:00Z") : null));
   const idx = d => (d.getUTCFullYear() - 2026) * 12 + d.getUTCMonth();   // 0 = Jan 2026
   const mk = () => Array(NM).fill(0);
-  const out = { rev: mk(), oth: mk(), cogs: mk(), pay: mk(), varcomp: mk(), opex: mk(), vendors: {}, lastBilled: {}, accounts: {}, vendAcct: {}, mj: {}, months: new Set(), rows: 0, first: null, last: null, hasSource: false };
+  const out = { rev: mk(), pend: mk(), oth: mk(), cogs: mk(), pay: mk(), varcomp: mk(), opex: mk(), vendors: {}, lastBilled: {}, accounts: {}, vendAcct: {}, mj: {}, months: new Set(), rows: 0, first: null, last: null, hasSource: false };
   let section = null, H = null;   // H: column index by header name — Xero's newer layout adds Source / Departments / Related account
   const col = (row, name, pos) => H && H[name] != null ? row[H[name]] : (pos < 0 ? null : row[pos]);
   for (const row of rows){
@@ -1863,7 +1863,7 @@ function parseXeroWorkbook(wb){
     out.rows++; if (!out.first || iso < out.first) out.first = iso; if (!out.last || iso > out.last) out.last = iso;
     const i = idx(d); if (i < 0 || i >= NM) continue;
     out.months.add(i);
-    if (code.startsWith("4")){ (OTH.has(code) ? out.oth : out.rev)[i] -= net; continue; }
+    if (code.startsWith("4")){ (OTH.has(code) ? out.oth : PEND.has(code) ? out.pend : out.rev)[i] -= net; continue; }   // pending revenue (4058/4059) is a memo, never sales
     if (COGS.has(code)){ out.cogs[i] += net; continue; }
     if (PAY.has(code)){ out.pay[i] += net; if (VAR.test(contact)) out.varcomp[i] += net; continue; }
     const isOpex = code === "OPEX" || ((code.startsWith("6") || code.startsWith("8") || code === "208") && code !== "8311");

@@ -118,6 +118,10 @@ VARCOMP_RE = re.compile(r"variable comp|commission|bonus|spiff", re.I)
 ACCRUAL_RE = re.compile(r"payroll liabilit", re.I)
 REVERSAL_RE = re.compile(r"reversal", re.I)
 OTHER_INC = {"4050", "4051", "4057"}   # interest earned, rental income, late fees
+# Pending revenue (4058 Pending Installation Services Revenue, 4059 Pending Equipment Revenue) is
+# invoiced ahead of the work: not earned, not sales the model should pace against. Kept as a memo
+# total (totals.pending) so the gap to the Push board / Xero P&L can be shown, never in revenue.
+PENDING = {"4058", "4059"}
 # NOTE: 8311 UniView Rebate is typed Other Income in Xero, so the AT#15 export ("Expense,
 # Revenue") does not carry it — booked other income here is interest + rent + late fees only.
 # The rebate ran roughly $6-9K/mo against a $117K January credit being drawn down; the forward
@@ -253,7 +257,7 @@ for rec in records:
     if c.startswith("4"):
         # Split operating sales from the incidental lines. Interest, rent and late fees are not
         # sales and must not inflate the revenue the whole model paces against.
-        (totals_ttm["rebate"] if c in OTHER_INC else totals_ttm["revenue"])[i] -= net
+        (totals_ttm["rebate"] if c in OTHER_INC else totals_ttm["pending"] if c in PENDING else totals_ttm["revenue"])[i] -= net
         continue
     if c in COGS:
         totals_ttm["cogs"][i] += net
@@ -459,13 +463,14 @@ model = dict(
     # export lands on the same canonical names this builder produced
     vendor_aliases=dict(exact=EXACT, prefix=[list(x) for x in PREFIX], contracts=sorted(contracts.keys()),
                         splits=[list(x) for x in SPLITS], contains=[list(x) for x in CONTAINS], opex_overrides=[list(x) for x in OPEX_OVERRIDES]),
-    account_buckets=dict(payroll=sorted(PAYROLL_PL), cogs=sorted(COGS), other_income=sorted(OTHER_INC), varcomp_re=VARCOMP_RE.pattern),
+    account_buckets=dict(payroll=sorted(PAYROLL_PL), cogs=sorted(COGS), other_income=sorted(OTHER_INC), pending=sorted(PENDING), varcomp_re=VARCOMP_RE.pattern),
     # every operating-expense account with postings in the window, by month — the account picker
     # on Expenses, and the history behind a department's budget for an account (one-off spend)
     accounts=[dict(name=a, ttm=[round(x, 2) for x in mo]) for a, mo in sorted(acct_ttm.items(), key=lambda kv: code(kv[0]))],
     totals=dict(
         revenue=[round(x,2) for x in totals_ttm["revenue"][Y26_FROM:12]],
         other_income=[round(x,2) for x in totals_ttm["rebate"][Y26_FROM:12]],
+        pending=[round(x,2) for x in totals_ttm["pending"][Y26_FROM:12]],
         cogs=[round(x,2) for x in totals_ttm["cogs"][Y26_FROM:12]],
         payroll=[round(x,2) for x in totals_ttm["payroll"][Y26_FROM:12]],
         opex=[round(x,2) for x in opex26],
