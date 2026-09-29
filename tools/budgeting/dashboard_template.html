@@ -2458,10 +2458,12 @@ function renderProjLevers(){
     leverInput("lvRvFloor", "Modest margin floor", (((L.reinvest || {}).floorPct || 0) * 100).toFixed(1), "% net at modest, after programs — the surplus above it is staffing budget") +
     leverInput("lvLab", "Labor hedge", (L.laborHedge * 100).toFixed(1), "% on modeled payroll") +
     leverInput("lvOpx", "Opex hedge", (L.opexHedge * 100).toFixed(1), "% on planned expenses") +
-    `<div class="lever"><label for="lvProv">Jul COGS (not yet entered)</label><select id="lvProv" class="lever-in">
+    // Only while a booked month is missing its month-end COGS entry. Once the export carries the
+    // entry the month is complete and there is nothing to estimate, so the lever goes with it.
+    ((MODEL.provisional_cogs_months || []).length ? `<div class="lever"><label for="lvProv">${(MODEL.provisional_cogs_months || []).map(m => MONTHS[m - 1]).join(" + ")} COGS (not yet entered)</label><select id="lvProv" class="lever-in">
       <option value="est"${L.estProv ? " selected" : ""}>Estimate at COGS % fwd</option>
       <option value="booked"${!L.estProv ? " selected" : ""}>As booked</option></select>
-      <span class="unit">month-end COGS entry not made yet for ${(MODEL.provisional_cogs_months || []).map(m => MONTHS[m - 1]).join(" or ")}</span></div>` +
+      <span class="unit">month-end COGS entry not made yet for ${(MODEL.provisional_cogs_months || []).map(m => MONTHS[m - 1]).join(" or ")}</span></div>` : "") +
     ((MODEL.payroll_partial_months || []).length ? (() => {
       const pm = (MODEL.payroll_partial_months || [])[0];
       const bk = basePayOf(pm), est = payPerBday() * (BDAYS[pm - 1] || 0);
