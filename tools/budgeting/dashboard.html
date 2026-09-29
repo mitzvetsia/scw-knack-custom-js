@@ -318,6 +318,17 @@ table.sum-staff td{padding:6px 10px 6px 0;border-top:1px solid var(--border);ver
 table.sum-staff td.when{white-space:nowrap;font-weight:600;width:1%;padding-right:16px}
 table.sum-staff td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;width:1%;padding-right:0}
 table.sum-staff tr.tot td{font-weight:600;border-top:2px solid var(--border2)}
+table.sum-staff td.kind{width:1%;white-space:nowrap;padding-right:10px}
+table.sum-staff td.who{font-weight:600;white-space:nowrap;padding-right:14px}
+table.sum-staff td.det{color:var(--ink2)}
+table.sum-staff tr.mon td{background:var(--surface2);font-weight:650;border-top:2px solid var(--border2);padding:7px 10px 7px 8px}
+table.sum-staff tr.mon td.num{padding-right:0}
+.kchip{display:inline-block;font-size:10.5px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;border-radius:20px;padding:1px 8px;line-height:1.5;white-space:nowrap}
+.kchip.in{background:var(--chip-good);color:var(--good-text)} .kchip.backfill{background:var(--modest-soft);color:var(--modest)}
+.kchip.move,.kchip.pay{background:var(--booked-soft);color:var(--booked)} .kchip.out{background:rgba(208,59,59,.12);color:var(--crit)}
+.kchip.raise{background:var(--chip-warn);color:#8a5a0d}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .kchip.raise{color:#e0b25a} :root:not([data-theme="light"]) .kchip.in{color:var(--good)} }
+:root[data-theme="dark"] .kchip.raise{color:#e0b25a} :root[data-theme="dark"] .kchip.in{color:var(--good)}
 /* a cycle against its targets: one bullet per cycle */
 .ct-row{display:grid;grid-template-columns:168px 1fr;gap:2px 18px;align-items:start;padding:12px 0;border-top:1px solid var(--grid)}
 .ct-row:first-child{border-top:0;padding-top:4px}
@@ -2302,7 +2313,8 @@ function planChanges(){
     const rDept = ev.scope === "dept" ? ev.target
       : ev.scope === "role" ? ((S.staff.find(r => r.id === ev.target) || {}).dept || "")
       : (S.staff.find(r => (r.people || []).some(pp => pp.id === ev.target)) || {}).dept || "";
-    kept.push({ m, kind: "raise", who: name, cost: imp.delta, heads: imp.heads, dept: rDept,
+    const rRole = ev.scope === "role" ? S.staff.find(r => r.id === ev.target) : ev.scope === "person" ? S.staff.find(r => (r.people || []).some(pp => pp.id === ev.target)) : null;
+    kept.push({ m, kind: "raise", who: name, cost: imp.delta, heads: imp.heads, dept: rDept, ev, pos: (rRole || {}).position || "", toAnnual: imp.toAnnual, toRate: imp.toRate,
       note: ev.kind === "pct" ? (ev.amount * 100).toFixed(1) + "%" : fmt$(ev.amount) + (ev.kind === "yr" ? "/yr" : ev.kind === "hr" ? "/hr" : "/mo") });
   }
   return kept.concat(moves, backfills).sort((a, b) => a.m - b.m || a.kind.localeCompare(b.kind));
@@ -3183,19 +3195,36 @@ function renderSummary(C){
     const hT0 = dRows.reduce((a, r) => a + r.h0, 0), hT1 = dRows.reduce((a, r) => a + r.h1, 0), flat = dRows.length - dMoved.length;
     const hc = v => (Math.round(v * 10) / 10).toLocaleString("en-US");
     const money = v => Math.abs(v) < 1 ? `<span class="dim">—</span>` : `${v > 0 ? "+" : "−"}${fmtK(Math.abs(v))}/mo`;
-    const named = (who, pos) => who && who !== pos && !/^(tbd|open|new hire|vacant)$/i.test(who) ? ` <span class="dim">(${esc(who)})</span>` : "";
-    const phrase = c => {
+    const isTbd = w => !w || /^(tbd(\s*\d+)?|open|new hire|vacant|\(unnamed\))$/i.test(String(w).trim());
+    const chip = k => `<span class="kchip ${k}">${{ in: "Hire", backfill: "Backfill", move: "Move", out: "End", pay: "Pay change", raise: "Raise" }[k] || k}</span>`;
+    const payOfRole = (r, pp) => r.payType === "hourly" ? fmt$(pp && pp.sal != null ? pp.sal : (r.rate || 0)) + "/hr" : fmt$(pp && pp.sal != null ? pp.sal : (r.ote || 0)) + "/yr";
+    const deptOf = c => dn(((c.role || {}).dept) || c.dept || "");
+    // the raise, as the reader wants it: who, how many heads, the pay before and after
+    const raiseText = c => {
+      const ev = c.ev || {}, amt = +ev.amount || 0;
+      if (ev.kind === "hr" && c.toRate != null) return `$${(c.toRate - amt).toFixed(2)} → $${c.toRate.toFixed(2)}/hr`;
+      // an hourly-sized raise on a salaried row lands on the salary: show it as the annual it becomes
+      if (ev.kind === "hr" && c.toAnnual != null){ const yr = amt * (((c.role || {}).hrs) || 40) * 52; return `${fmt$(c.toAnnual - yr)} → ${fmt$(c.toAnnual)}/yr`; }
+      if (ev.kind === "yr" && c.toAnnual != null) return `${fmt$(c.toAnnual - amt)} → ${fmt$(c.toAnnual)}/yr`;
+      if (ev.kind === "pct" && c.toAnnual != null) return `+${(amt * 100).toFixed(1)}% → ${fmt$(c.toAnnual)}/yr`;
+      return `+${esc(c.note || "")}`;
+    };
+    const row = c => {
       const pos = ((c.role || {}).position || "").trim();
+      let who = "", det = "";
       switch (c.kind){
-        case "in": return `<b>Hire</b> ${c.n > 1 ? c.n + " × " : ""}${esc(pos)}${named(c.who, pos)}`;
-        case "backfill": return `<b>Backfill</b> ${esc(pos)} <span class="dim">${esc(c.prev || "vacant")} → ${esc(c.who || "unfilled")}</span>`;
-        case "move": return `<b>${esc(c.who)}</b> moves ${esc((c.from || {}).position || "")} → ${esc(pos)}`;
-        case "out": return `<b>End</b> ${esc(pos)}${named(c.who, pos)}`;
-        case "pay": return `<b>Pay change</b> ${esc(c.who || pos)}`;
+        case "in": who = `${c.n > 1 ? c.n + " × " : ""}${esc(pos)}`; det = `${isTbd(c.who) || c.who === pos ? "to be hired" : esc(c.who)} · ${esc(deptOf(c))} · ${esc(payOfRole(c.role || {}, c.p))}`; break;
+        case "backfill": { const [pa, pb] = String(c.note || "").split(" · ")[0].split(" → "); const pay = pa && pb ? (pa === pb ? `at ${pa}` : `${pa} → ${pb}`) : (c.note || "");
+          who = esc(pos); det = `${esc(c.prev || "vacant")} → ${isTbd(c.who) ? "to be hired" : esc(c.who)} · ${esc(deptOf(c))} · ${esc(pay)}`; break; }
+        case "move": who = esc(c.who); det = `${esc((c.from || {}).position || "")} → ${esc(pos)} · ${esc(deptOf(c))}`; break;
+        case "out": who = esc(pos); det = `${isTbd(c.who) || c.who === pos ? "seat closes" : esc(c.who) + " leaves"} · ${esc(deptOf(c))}`; break;
+        case "pay": who = esc(c.who || pos); det = `${esc(c.note || "")} · ${esc(deptOf(c))}`; break;
+        case "raise": who = esc(c.who || c.pos || ""); det = `${c.ev && c.ev.scope === "person" && c.pos ? esc(c.pos) + " · " : ""}${c.heads > 1 ? c.heads + " heads · " : ""}${raiseText(c)}`; break;
         default: return "";
       }
+      return `<tr><td class="kind">${chip(c.kind)}</td><td class="who">${who}</td><td class="det">${det}</td><td class="num">${money(c.cost || 0)}</td></tr>`;
     };
-    const RANK = { in: 0, backfill: 1, move: 2, out: 3, pay: 4 };
+    const RANK = { in: 0, backfill: 1, move: 2, out: 3, pay: 4, raise: 5 };
     const byM = new Map();
     for (const c of chg){ if (!byM.has(c.m)) byM.set(c.m, []); byM.get(c.m).push(c); }
     const rows = [...byM.entries()].sort((a, b) => a[0] - b[0]).map(([m, list]) => {
@@ -3203,21 +3232,20 @@ function renderSummary(C){
       const merged = [];
       for (const c of list.filter(c => c.kind in RANK)){
         const pos = (c.role || {}).position || "";
-        const twin = c.kind === "in" && !named(c.who, pos) && merged.find(o => o.kind === "in" && ((o.role || {}).position || "") === pos && !named(o.who, pos));
+        const twin = c.kind === "in" && (isTbd(c.who) || c.who === pos) && merged.find(o => o.kind === "in" && ((o.role || {}).position || "") === pos && (isTbd(o.who) || o.who === pos));
         if (twin){ twin.n = (twin.n || 1) + (c.n || 1); twin.cost = (twin.cost || 0) + (c.cost || 0); } else merged.push({ ...c });
       }
-      const main = merged.sort((a, b) => RANK[a.kind] - RANK[b.kind] || Math.abs(b.cost || 0) - Math.abs(a.cost || 0)).map(phrase);
-      const rs = list.filter(c => c.kind === "raise"), rHeads = rs.reduce((a, c) => a + (c.heads || 0), 0), rCost = rs.reduce((a, c) => a + (c.cost || 0), 0);
-      if (rs.length === 1) main.push(`<b>Raise</b> ${esc(rs[0].who || "")}${rHeads > 1 ? ` <span class="dim">· ${rHeads} heads</span>` : ""} <span class="dim">${money(rCost)}</span>`);
-      else if (rs.length) main.push(`<b>${rs.length} raises</b> across ${rHeads} head${rHeads === 1 ? "" : "s"} <span class="dim">${money(rCost)}</span>`);
-      return `<tr><td class="when">${esc(monthName(m))}</td><td>${main.join(" · ")}</td><td class="num">${money(list.reduce((a, c) => a + (c.cost || 0), 0))}</td></tr>`;
+      merged.sort((a, b) => RANK[a.kind] - RANK[b.kind] || Math.abs(b.cost || 0) - Math.abs(a.cost || 0));
+      const nR = merged.filter(c => c.kind === "raise").length, nC = merged.length - nR;
+      const what = [nC ? `${nC} change${nC === 1 ? "" : "s"}` : "", nR ? `${nR} raise${nR === 1 ? "" : "s"}` : ""].filter(Boolean).join(", ");
+      return `<tr class="mon"><td colspan="3">${esc(monthName(m))} <span class="dim">· ${what}</span></td><td class="num">${money(list.reduce((a, c) => a + (c.cost || 0), 0))}</td></tr>` + merged.map(row).join("");
     });
     st.innerHTML = `<div class="eyebrow">The staffing plan</div>
       <div class="sum-staff-head">${chg.length
-        ? `<b>${hc(hT0)} → ${hc(hT1)} heads</b>, ${esc(monthName(b0 + 1))} → ${esc(monthName(b1 + 1))}${dMoved.length ? ` · ${dMoved.map(r => `${esc(dn(r.d))} ${hc(r.h0)} → <b>${hc(r.h1)}</b>`).join(" · ")}` : ""}${flat ? ` · ${flat} department${flat === 1 ? "" : "s"} held flat` : ""}`
+        ? `<b>${hc(hT0)} → ${hc(hT1)} heads</b>, ${esc(monthName(b0 + 1))} → ${esc(monthName(b1 + 1))}${dMoved.length ? ` · ${dMoved.map(r => `${esc(dn(r.d))} ${hc(r.h0)} → <b>${hc(r.h1)}</b>`).join(" · ")}` : ""}${flat ? ` · ${flat} department${flat === 1 ? "" : "s"} held flat` : ""} · $/mo is the change to fully-loaded monthly cost`
         : `The roster is held flat after ${esc(ACT_MO)}: ${hc(hT1)} heads, no role opens or closes, and no pay change is scheduled.`}</div>
       ${chg.length ? `<table class="sum-staff"><tbody>${rows.join("")}
-        <tr class="tot"><td class="when">By ${esc(monthName(NM))}</td><td>${heads > 0 ? "+" : heads < 0 ? "−" : ""}${Math.abs(heads)} head${Math.abs(heads) === 1 ? "" : "s"} · ${chg.length} change${chg.length === 1 ? "" : "s"}: ${kinds.map(([k, n]) => `${n} ${word[k]}${n === 1 ? "" : "s"}`).join(", ")}</td><td class="num">${money(cost)}</td></tr></tbody></table>` : ""}`;
+        <tr class="tot"><td colspan="3">By ${esc(monthName(NM))}: ${heads > 0 ? "+" : heads < 0 ? "−" : ""}${Math.abs(heads)} head${Math.abs(heads) === 1 ? "" : "s"} · ${chg.length} change${chg.length === 1 ? "" : "s"}: ${kinds.map(([k, n]) => `${n} ${word[k]}${n === 1 ? "" : "s"}`).join(", ")}</td><td class="num">${money(cost)}</td></tr></tbody></table>` : ""}`;
   }
 }
 /* The sandbox: extra account executives on this model's own ramp curve and loaded cost — revenue,
