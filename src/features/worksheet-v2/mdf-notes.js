@@ -764,50 +764,146 @@
     }
   }
 
-  /** True only when NOTHING points at this location: no worksheet cards in
-   *  its L1 block AND no loaded source-view record whose MDF/IDF connection
-   *  (cfg mdfIdf, default field_1946) references it. Fails CLOSED — if the
-   *  model can't be read, the location is treated as NOT empty so the
-   *  delete stays disabled rather than trusting a blind check. */
-  function locationIsEmpty(sourceViewKey, l1Id, block) {
-    if (block && block.querySelector('.scw-ws-v2-card')) return false;
-    var mdfField = 'field_1946';
+  /** Who is still pointing at this location? Walks the loaded source-view
+   *  model for records whose MDF/IDF connection (cfg mdfIdf, default
+   *  field_1946) references l1Id and sorts them into:
+   *    - strays:   accessories (cfg parent, default field_2464) whose PARENT
+   *                is loaded and lives in a DIFFERENT MDF/IDF. They render as
+   *                chips on the parent's card, never as cards of their own, so
+   *                the location reads "0" while they silently pin it. Their
+   *                MDF should follow the parent — delete re-homes them first.
+   *    - blockers: everything else (labels, for the tooltip).
+   *  `unknown` = the model couldn't be read → fail CLOSED. */
+  function locationRefs(sourceViewKey, l1Id, block) {
+    var out = { cards: 0, strays: [], blockers: [], unknown: false };
+    if (block) out.cards = block.querySelectorAll('.scw-ws-v2-card').length;
+    var mdfField = 'field_1946', parentField = 'field_2464', labelField = 'field_1950';
     try {
       var f = ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(sourceViewKey);
       if (f && f.mdfIdf) mdfField = f.mdfIdf;
-    } catch (e) { /* default */ }
+      if (f && f.parent) parentField = f.parent;
+      if (f && f.displayLabel) labelField = f.displayLabel;
+    } catch (e) { /* defaults */ }
+    function firstId(raw) {
+      if (Array.isArray(raw)) return (raw[0] && raw[0].id) || '';
+      return (raw && raw.id) || '';
+    }
+    function pointsHere(raw) {
+      if (Array.isArray(raw)) {
+        for (var j = 0; j < raw.length; j++) if (raw[j] && raw[j].id === l1Id) return true;
+        return false;
+      }
+      return !!(raw && raw.id === l1Id);
+    }
+    function labelOf(a) {
+      var t = String(a[labelField] || '').replace(/<[^>]*>/g, '').trim();
+      if (!t) {
+        var pr = a['field_1949_raw'];
+        t = (Array.isArray(pr) && pr[0] && pr[0].identifier) || '';
+      }
+      return t || a.id;
+    }
     try {
       var v = Knack.views && Knack.views[sourceViewKey];
       var models = v && v.model && v.model.data && v.model.data.models;
-      if (!models) return false;
+      if (!models) { out.unknown = true; return out; }
+      var byId = {};
       for (var i = 0; i < models.length; i++) {
-        var raw = models[i].attributes && models[i].attributes[mdfField + '_raw'];
-        if (Array.isArray(raw)) {
-          for (var j = 0; j < raw.length; j++) {
-            if (raw[j] && raw[j].id === l1Id) return false;
-          }
-        } else if (raw && raw.id === l1Id) {
-          return false;
+        var at = models[i].attributes;
+        if (at && at.id) byId[at.id] = at;
+      }
+      for (var k = 0; k < models.length; k++) {
+        var a = models[k].attributes;
+        if (!a || !pointsHere(a[mdfField + '_raw'])) continue;
+        var parent = byId[firstId(a[parentField + '_raw'])];
+        var parentMdf = parent ? firstId(parent[mdfField + '_raw']) : '';
+        if (parentMdf && parentMdf !== l1Id) {
+          out.strays.push({ id: a.id, label: labelOf(a), mdfId: parentMdf, mdfField: mdfField });
+        } else {
+          out.blockers.push(labelOf(a));
         }
       }
-    } catch (e) { return false; }
-    return true;
+    } catch (e) { out.unknown = true; }
+    return out;
+  }
+
+  /** Deletable = no cards, no real blockers, model readable. Strays don't
+   *  block — they get re-homed to their parent's MDF/IDF before the DELETE. */
+  function refsDeletable(r) {
+    return !r.unknown && !r.cards && !r.blockers.length;
+  }
+
+  function refsBlockedTitle(r) {
+    if (r.unknown) return 'Can’t delete — couldn’t verify this MDF/IDF is empty. Refresh and try again.';
+    var names = r.blockers.slice(0, 5).join(', ') +
+      (r.blockers.length > 5 ? ' +' + (r.blockers.length - 5) + ' more' : '');
+    return 'Can’t delete — ' + (r.blockers.length || r.cards) +
+      ' line item(s) still point at this MDF/IDF' + (names ? ': ' + names : '') +
+      '. Move or delete them first.';
+  }
+
+  /** Re-home stray accessories to their parent's MDF/IDF, sequentially
+   *  (≤1 in flight) with retry + backoff on transient failures (429/5xx/
+   *  408/0). Settles with the count of failures — never rejects. */
+  function rehomeStrays(sourceViewKey, strays, onProgress, onDone) {
+    var failed = 0, idx = 0;
+    function attempt(s, n) {
+      var body = {};
+      body[s.mdfField] = [s.mdfId];
+      SCW.knackAjax({
+        type: 'PUT', url: SCW.knackRecordUrl(sourceViewKey, s.id),
+        data: JSON.stringify(body), dataType: 'json',
+        success: function (resp) {
+          try {
+            if (typeof SCW.syncKnackModel === 'function') {
+              SCW.syncKnackModel(sourceViewKey, s.id, resp, s.mdfField, [{ id: s.mdfId }]);
+            }
+          } catch (e) { /* best-effort */ }
+          next();
+        },
+        error: function (xhr) {
+          var st = (xhr && xhr.status) || 0;
+          var transient = st === 0 || st === 408 || st === 429 || st >= 500;
+          if (transient && n < 4) {
+            setTimeout(function () { attempt(s, n + 1); },
+              400 * Math.pow(2, n - 1) + Math.random() * 250);
+            return;
+          }
+          failed++;
+          console.warn('[scw-ws-v2-mdf] accessory re-home failed', { id: s.id, status: st });
+          next();
+        }
+      });
+    }
+    function next() {
+      if (idx >= strays.length) { onDone(failed); return; }
+      var s = strays[idx++];
+      if (onProgress) onProgress(idx, strays.length);
+      attempt(s, 1);
+    }
+    next();
   }
 
   /** Big, loud confirm → view-scoped REST DELETE of the location record.
-   *  Only reachable when locationIsEmpty() said yes; the manage view
+   *  Only reachable when refsDeletable() said yes (stray accessories are
+   *  re-homed to their parent's MDF/IDF just before the DELETE); the manage view
    *  (view_3577 / view_3932) carries the Delete link in Builder that
    *  authorizes the session-authed DELETE. On success the L1 block is
    *  removed in place and the manage + source views refetch so the next
    *  rebuild agrees. */
   function openDeleteConfirm(panel, cfg, sourceViewKey, l1Id, block, label) {
     if (panel.querySelector('.' + P + '-delconf')) return;
+    var strayCount = locationRefs(sourceViewKey, l1Id, block).strays.length;
     var conf = document.createElement('div');
     conf.className = P + '-delconf';
     conf.innerHTML =
       '<div class="' + P + '-delconf-title">Are you ABSOLUTELY sure you want to delete this MDF/IDF?</div>' +
       '<div class="' + P + '-delconf-msg">&ldquo;' + esc(label) + '&rdquo; will be permanently deleted, ' +
         'along with its notes and photo links. There is no undo.</div>' +
+      (strayCount
+        ? '<div class="' + P + '-delconf-msg">' + strayCount + ' accessor' + (strayCount === 1 ? 'y' : 'ies') +
+          ' still filed here (but attached to devices in other MDF/IDFs) will first be moved to their parent’s MDF/IDF.</div>'
+        : '') +
       '<div class="' + P + '-delconf-actions">' +
         '<span class="' + P + '-delconf-status"></span>' +
         '<button type="button" class="' + P + '-btn ' + P + '-btn--cancel">Keep it</button>' +
@@ -824,15 +920,34 @@
       // Re-verify at the moment of truth — records may have been added (or
       // the ClickUp gate may have engaged) while the confirm sat open.
       var gateNow = deleteGateActive(cfg);
-      if (gateNow || !locationIsEmpty(sourceViewKey, l1Id, block)) {
+      var refs = locationRefs(sourceViewKey, l1Id, block);
+      if (gateNow || !refsDeletable(refs)) {
         st.textContent = gateNow ? gateNow.title
           : 'This location is no longer empty — delete cancelled.';
         goBtn.disabled = true;
         return;
       }
       goBtn.disabled = true;
-      st.textContent = 'Deleting…';
       armScrollGuard();
+      if (refs.strays.length) {
+        rehomeStrays(sourceViewKey, refs.strays, function (n, total) {
+          st.textContent = 'Moving accessory ' + n + ' of ' + total + '…';
+        }, function (failed) {
+          if (failed) {
+            st.textContent = failed + ' accessor' + (failed === 1 ? 'y' : 'ies') +
+              ' couldn’t be moved — delete cancelled. Refresh and try again.';
+            goBtn.disabled = false;
+            return;
+          }
+          doDelete();
+        });
+      } else {
+        doDelete();
+      }
+    });
+
+    function doDelete() {
+      st.textContent = 'Deleting…';
       SCW.knackAjax({
         url:  SCW.knackRecordUrl(cfg.viewKey, l1Id),
         type: 'DELETE',
@@ -863,7 +978,7 @@
           });
         }
       });
-    });
+    }
   }
 
   /** Delete ONE MDF/IDF photo (DOC_photos record) — big loud confirm, then
@@ -1130,12 +1245,13 @@
     var delBtn = panel.querySelector('.' + P + '-btn--delete');
     if (delBtn) {
       var gateNow = deleteGateActive(cfg);
-      var emptyNow = !gateNow && locationIsEmpty(sourceViewKey, l1Id, block);
+      var refsNow = locationRefs(sourceViewKey, l1Id, block);
+      var emptyNow = !gateNow && refsDeletable(refsNow);
       delBtn.disabled = !emptyNow;
       delBtn.title = gateNow ? gateNow.title
         : emptyNow
           ? 'Delete this MDF/IDF location'
-          : 'Can’t delete — this MDF/IDF still has line items under it. Move or delete them first.';
+          : refsBlockedTitle(refsNow);
       delBtn.addEventListener('click', function () {
         var lblEl = block.querySelector('.scw-ws-v2-l1-label');
         openDeleteConfirm(panel, cfg, sourceViewKey, l1Id, block,

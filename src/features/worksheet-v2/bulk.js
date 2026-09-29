@@ -1348,6 +1348,48 @@
     return map;
   }
 
+  /** Fire mirror-connection-sync's MDF-move handler (`-mdf`) for every bulk
+   *  job that wrote the MDF/IDF field. A single-record MDF edit dispatches
+   *  knack-cell-update, which drags the record's mounting-hardware
+   *  accessories (field_2464 children) to the new MDF/IDF and clears any
+   *  now-cross-MDF peer connection. Bulk PUTs never fired it, so a bulk
+   *  "move to MDF/IDF" left every accessory filed under the OLD location —
+   *  invisible (accessories render as chips on the parent's card) yet still
+   *  pinning it, so the old location showed 0 items but refused to delete. */
+  function fireMdfMoveCascades(jobList, failedRecSet) {
+    for (var i = 0; i < jobList.length; i++) {
+      var job = jobList[i];
+      if (!job || !job.body) continue;
+      if (failedRecSet && failedRecSet[job.recordId]) continue;
+      var mdfKey = 'field_1946';
+      try {
+        var F = ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(job.viewKey);
+        if (F && F.mdfIdf) mdfKey = F.mdfIdf;
+      } catch (e) { /* default */ }
+      if (!(mdfKey in job.body)) continue;
+      try {
+        var val = job.body[mdfKey];
+        var arr = Array.isArray(val) ? val : (val ? [val] : []);
+        var rawObjs = arr.map(function (v) {
+          return (v && typeof v === 'object') ? v : { id: v };
+        });
+        if (!rawObjs.length) continue;
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(job.viewKey, job.recordId, {}, mdfKey, rawObjs);
+        }
+        var view = window.Knack && Knack.views && Knack.views[job.viewKey];
+        var rec = view && view.model && view.model.data &&
+          typeof view.model.data.get === 'function' ? view.model.data.get(job.recordId) : null;
+        if (rec) {
+          $(document).trigger('knack-cell-update.' + job.viewKey,
+            [view, rec.attributes || rec, mdfKey]);
+        }
+      } catch (e) {
+        console.warn('[scw-ws-v2-bulk] mdf-move cascade trigger failed', e);
+      }
+    }
+  }
+
   /** Fire the Connected Devices (field_1957) → Connected To (field_2197)
    *  reciprocal cascade for every bulk job that wrote field_1957. The bulk
    *  save PUTs directly (SCW.knackAjax), which — unlike Knack\'s inline edit —
@@ -1359,6 +1401,7 @@
    *  write didn\'t land — cascading it would write reciprocals for a value
    *  that isn\'t there). */
   function fireConnectedDevicesCascades(jobList, failedRecSet) {
+    fireMdfMoveCascades(jobList, failedRecSet);
     var TRIGGER = 'field_1957';
     for (var i = 0; i < jobList.length; i++) {
       var job = jobList[i];
