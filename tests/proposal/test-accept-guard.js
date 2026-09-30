@@ -33,7 +33,7 @@ function check(label, got, want) {
   console.log((ok ? 'ok   ' : 'FAIL ') + label + (ok ? '' : '  got=' + JSON.stringify(got) + ' want=' + JSON.stringify(want)));
 }
 const A = window.SCW.proposalAccept;
-check('one reading of accepted, shared by the proposal page and the guard', [typeof A.isAcceptedCount, A.isAcceptedCount(A.readAcceptCount({ field_2990: '2' })), A.isAcceptedCount(A.readAcceptCount({ field_2990: '1' })), A.isAcceptedCount(A.readAcceptCount({}))], ['function', true, false, false]);
+check('one reading of accepted, shared by the proposal page and the guard', [typeof A.isAcceptedCount, A.isAcceptedCount(A.readAcceptCount({ field_2990: '2' })), A.isAcceptedCount(A.readAcceptCount({ field_2990: '1' })), A.isAcceptedCount(A.readAcceptCount({ field_2990: '0' })), A.isAcceptedCount(A.readAcceptCount({}))], ['function', true, true, false, false]);
 scene();
 setTimeout(() => {
   const form = () => document.getElementById('view_9001');
