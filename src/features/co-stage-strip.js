@@ -208,9 +208,29 @@
       'font:700 10.5px/1.2 system-ui,-apple-system,sans-serif;color:#475569;',
       'letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;}',
       '.scw-co-hdr-nb--nosig{background:#fffbeb;border-color:#fde68a;color:#b45309;}',
-      '.scw-co-stage-nb{display:inline-flex;align-items:center;gap:8px;',
-      'padding:7px 12px;border-radius:7px;background:#f1f5f9;border:1px solid #cbd5e1;',
-      'font:600 12px/1.3 system-ui,sans-serif;color:#334155;}',
+      // Terminal "Accepted" summary card — one component, three accents:
+      // slate (not billable), amber (approved without signature), green
+      // (e-signed). Replaces the old chip + run-on sentence.
+      '.scw-co-acc{display:flex;flex-direction:column;gap:7px;width:100%;max-width:640px;',
+      'box-sizing:border-box;padding:11px 14px 11px 16px;border-radius:9px;',
+      'background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid var(--scw-co-acc,#16a34a);}',
+      '.scw-co-acc--nb{--scw-co-acc:#64748b;}',
+      '.scw-co-acc--nosig{--scw-co-acc:#d97706;background:#fffdf7;border-color:#fde68a;}',
+      '.scw-co-acc--signed{--scw-co-acc:#16a34a;background:#f7fdf9;border-color:#bbf7d0;}',
+      '.scw-co-acc-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;}',
+      '.scw-co-acc-title{font:800 11px/1.2 system-ui,-apple-system,sans-serif;letter-spacing:.06em;',
+      'text-transform:uppercase;color:var(--scw-co-acc,#16a34a);}',
+      '.scw-co-acc--nb .scw-co-acc-title{color:#475569;}',
+      '.scw-co-acc--nosig .scw-co-acc-title{color:#b45309;}',
+      '.scw-co-acc--signed .scw-co-acc-title{color:#15803d;}',
+      '.scw-co-acc-meta{font:500 11.5px/1.3 system-ui,-apple-system,sans-serif;color:#64748b;}',
+      '.scw-co-acc-reason{font:400 13px/1.5 system-ui,-apple-system,sans-serif;color:#1e293b;}',
+      '.scw-co-acc-reason b{font-weight:600;color:#475569;margin-right:4px;}',
+      '.scw-co-acc-facts{display:flex;flex-wrap:wrap;gap:6px;}',
+      '.scw-co-acc-fact{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;',
+      'border-radius:999px;background:#fff;border:1px solid #e2e8f0;',
+      'font:600 10.5px/1.2 system-ui,-apple-system,sans-serif;color:#475569;white-space:nowrap;}',
+      '.scw-co-acc-fact:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--scw-co-acc,#16a34a);}',
       '.scw-co-nb-note{display:block;margin-top:5px;width:100%;box-sizing:border-box;',
       'border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;resize:vertical;',
       'font:400 12.5px/1.45 system-ui,-apple-system,sans-serif;color:#1e293b;}',
@@ -1526,6 +1546,35 @@
       return out + '</div>';
     }
 
+    // Terminal-state summary card (the three Accepted flavours). `info` =
+    // { reason, by, at } (or null for e-signed); `facts` = short chips.
+    function acceptedCard(kind, title, info, facts) {
+      var meta = '';
+      if (info && (info.by || info.at)) {
+        var when = '';
+        if (info.at) {
+          var d = new Date(info.at);
+          if (!isNaN(+d)) when = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        }
+        meta = (info.by ? 'by ' + esc(info.by) : '') +
+               (info.by && when ? ' · ' : '') + esc(when);
+      }
+      var chips = '';
+      for (var i = 0; i < (facts || []).length; i++) {
+        chips += '<span class="scw-co-acc-fact">' + esc(facts[i]) + '</span>';
+      }
+      return '<div class="scw-co-acc scw-co-acc--' + kind + '">' +
+        '<div class="scw-co-acc-head">' +
+          '<span class="scw-co-acc-title">' + esc(title) + '</span>' +
+          (meta ? '<span class="scw-co-acc-meta">' + meta + '</span>' : '') +
+        '</div>' +
+        (info && info.reason
+          ? '<div class="scw-co-acc-reason"><b>Why</b>' + esc(info.reason) + '</div>'
+          : '') +
+        (chips ? '<div class="scw-co-acc-facts">' + chips + '</div>' : '') +
+      '</div>';
+    }
+
     function opsActionsHtml(status, cur, nb) {
       var s = String(status || '').toLowerCase();
       if (cur === 0) {
@@ -1570,12 +1619,8 @@
         // Accepted + FLAG_not billable: ops-authorized, no client chain.
         // Terminal (Proposal + Acceptance records exist, scope applied) —
         // no undo; further changes are a new CO, same as a signed one.
-        return '<span class="scw-co-stage-nb">Authorized as not billable' +
-          (nb.by ? ' by ' + esc(nb.by) : '') + '</span>' +
-          '<span class="scw-co-stage-note">' +
-            (nb.reason ? '<b>Why:</b> ' + esc(nb.reason) + ' — ' : '') +
-            'No client document or invoice. The sub is notified and the ' +
-            'changes are applied to the install scope.</span>';
+        return acceptedCard('nb', 'Accepted · not billable', nb,
+          ['No client document', 'No invoice', 'Sub notified', 'Install scope applied']);
       }
       if (cur === 3) {
         var rcp = readIssuedRecipient();
@@ -1595,12 +1640,11 @@
       if (cur === 4) {
         var nsig = noSignature();
         if (nsig) {
-          return '<span class="scw-co-stage-note"><b>Accepted — approved without ' +
-            'client signature.</b> ' + (nsig.reason ? '<b>Why:</b> ' + esc(nsig.reason) + ' — ' : '') +
-            'invoiced and applied to the install scope.</span>';
+          return acceptedCard('nosig', 'Accepted · approved without client signature', nsig,
+            ['No e-signature on file', 'Client invoiced', 'Sub notified', 'Install scope applied']);
         }
-        return '<span class="scw-co-stage-note"><b>Accepted.</b> Signed by the ' +
-          'client — invoiced and applied to the install scope.</span>';
+        return acceptedCard('signed', 'Accepted · signed by the client', null,
+          ['Agreement signed', 'Client invoiced', 'Install scope applied']);
       }
       if (/declined/.test(s)) {
         return '<span class="scw-co-stage-note"><b>Declined.</b> Revise the lines and re-issue.</span>' +
