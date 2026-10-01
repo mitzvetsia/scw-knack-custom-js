@@ -750,13 +750,9 @@ not-billable. Nothing about billability or the reason is written to the SOW.
 ### Approve without client signature (preview page)
 
 - **UI** (`ops-stepper.js`, step `approve-without-signature`): amber CO-mode
-  step between Preview and Issue; modal = the required reason + a **billable
-  yes/no** (default yes). Billable fires `MAKE_CO_ISSUE_WEBHOOK` with the normal
-  FULL publish payload plus `noSignature: true`, `signed: false`,
-  `billable: true`, `reason`, `status: 'Accepted'`. **Not billable** switches
-  the `stepId` to `authorize-not-billable` (the CO page's route — one Make
-  branch for both pages), drops `proposalAccessToken/Url` and zeroes the client
-  totals; gated by `CO_AUTHORIZE_NOT_BILLABLE_READY`.
+  step between Preview and Issue; modal = the same single required reason.
+  Fires `MAKE_CO_ISSUE_WEBHOOK` with the normal FULL publish payload plus
+  `noSignature: true`, `signed: false`, `reason`, `status: 'Accepted'`.
 - **13.03 route** (to build — clone route 0 minus the AGREEMENTS branch):
   Proposal (Type CO, published + token) → Acceptance with `field_3309 = Yes`,
   `field_3310 = No`, reason, `field_2767` = the PDF → CO Status `Accepted`

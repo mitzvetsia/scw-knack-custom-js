@@ -321,16 +321,12 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // to fire while this is false. Flip to true once the route is live.
   CO_AUTHORIZE_NOT_BILLABLE_READY: false,
   // "Approve without client signature" (ops-stepper.js, preview page) —
-  // the modal asks for the reason AND a billable yes/no:
-  //   Billable → stepId 'approve-without-signature', the normal FULL Issue
-  //     publish payload (html, htmlPdf, jsonString, invoiceItems, totals …)
-  //     plus { noSignature: true, signed: false, billable: true,
-  //            notBillable: false, reason, notes, status: "Accepted" }
-  //     — no recipient, no scopeOfWorkDocumentElements consumer.
-  //   Not billable → stepId 'authorize-not-billable' (the SAME route the CO
-  //     page fires) with the full payload minus proposalAccessToken/Url and
-  //     with the three client totals zeroed, plus { billable: false,
-  //     notBillable: true, signed: false, reason, status: "Accepted" }.
+  // stepId 'approve-without-signature', the normal FULL Issue publish
+  // payload (html, htmlPdf, jsonString, invoiceItems, totals …) plus
+  //   { noSignature: true, signed: false, billable: true, notBillable: false,
+  //     reason, notes, status: "Accepted" }
+  //   — no recipient, no scopeOfWorkDocumentElements consumer. Always
+  //   billable: the not-billable path has its own button on the CO page.
   // Route: Proposal (Type CO, published + customer token) → Acceptance
   // (Type CO, field_3309 = Yes, field_3310 = No, reason) → CO Status
   // "Accepted" (skips Issued) → the SIGNED scenario's downstream: Xero
