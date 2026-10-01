@@ -84,6 +84,7 @@
     // Make 13.03 at creation; the SOW status says only "Accepted".
     noSig:     'field_3309',   // FLAG_approved without signature (Yes/No)
     notBill:   'field_3310',   // FLAG_not billable (Yes/No)
+    reason:    'field_3311',   // INPUT_approved not billable reason (paragraph)
     xero:      'field_1847',
     agreement: 'field_2767',
     // SYS_bid basis pdf. TWO possible columns and the card accepts either,
@@ -826,13 +827,18 @@
    *  than a rate to hold (see laborMargin). Each line drops out when its
    *  figure is unknown, so the column never implies a rate it couldn't
    *  compute. */
-  function laborStat(installBilled, amt, surveyCost, basis) {
+  function laborStat(installBilled, amt, surveyCost, basis, notBill) {
     var subAmt  = amt ? amt.amount : null;
     if (installBilled == null && subAmt == null) {
       return '<span class="scw-acpt-col scw-acpt-col--labor"></span>';
     }
     var lines = '';
-    if (installBilled != null) {
+    if (notBill) {
+      // Authorized as not billable: nothing goes to the client, whatever
+      // the proposal snapshot carries — say so instead of a figure.
+      lines += line('—', 'not billable to client', '',
+        'Authorized as not billable — no client document, no invoice');
+    } else if (installBilled != null) {
       lines += line(esc(money(installBilled)), 'billed to client');
     }
     if (subAmt != null) {
@@ -1204,6 +1210,10 @@
       '.scw-acpt-pill.is-no  { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
       '.scw-acpt-pill.is-dup { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }',
       '.scw-acpt-pill.is-nb  { background: #f1f5f9; border-color: #cbd5e1; color: #475569; }',
+      '.scw-acpt-reason { margin-top: 6px; font: 400 12.5px/1.45 system-ui, sans-serif; color: #475569;',
+      '  max-width: 520px; }',
+      '.scw-acpt-reason__lbl { font: 700 10px/1 system-ui, sans-serif; letter-spacing: .08em;',
+      '  text-transform: uppercase; color: #94a3b8; margin-right: 6px; }',
       '.scw-acpt-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }',
       '.scw-acpt-btn { display: inline-flex; align-items: center; gap: 7px; cursor: pointer;',
       '  font: 600 12.5px/1 system-ui, sans-serif; padding: 8px 14px; border-radius: 6px;',
@@ -2157,6 +2167,10 @@
     // When approved for terms, the initial-payment requirement is waived —
     // show an "Approved for terms" pill in place of the payment-received pill.
     var terms   = isYes(cellText(row, F.terms));
+    // Acceptance basis flags (2026-10-01) — blank when the grid lacks them.
+    var notBill = isYes(cellText(row, F.notBill));
+    var noSig   = isYes(cellText(row, F.noSig)) || notBill;
+    var reason  = cellText(row, F.reason);
     var xeroA    = cellAnchor(row, F.xero);
     var xeroEstA = cellAnchor(row, F.xeroEst);
     var contractId = cellText(row, F.contract);
@@ -2340,6 +2354,12 @@
               : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid))) +
           signaturePills(row) +
         '</div>' +
+        // The ops reason behind a no-signature / not-billable acceptance —
+        // the one line a PM needs when the pills say the client never signed.
+        (reason && noSig
+          ? '<div class="scw-acpt-reason" title="' + esc(reason) + '">' +
+              '<span class="scw-acpt-reason__lbl">Why</span>' + esc(reason) + '</div>'
+          : '') +
       '</div>' +
       // Two money columns, straight into the row\'s own grid tracks — no
       // wrapper. A wrapper would size itself to its content and the
@@ -2349,7 +2369,7 @@
         ? equipCell(billed.equip != null ? money(billed.equip) : '') +
           // No total column: it\'s exactly equipment + labor billed, both
           // of which are right here.
-          laborStat(billed.install, amt, svyCost, drift)
+          laborStat(billed.install, amt, svyCost, drift, notBill)
         // No billed columns on the view: nothing to compare against, so
         // the row keeps its single figure — what we pay the sub. It sits
         // in the labor track, since that is what it measures.
