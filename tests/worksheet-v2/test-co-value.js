@@ -1,5 +1,6 @@
 // jsdom smoke test: the CO value strip (co-value.js) keeps recurring licenses out of Adds /
-// Credits / Net change and shows them on their own "billed separately" tile (ops strip only).
+// Credits / Net change and shows them on their own "billed separately" row (ops card only),
+// and expresses the labor margin as a % of the install fee.
 const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
@@ -35,10 +36,21 @@ function check(label, got, want) {
   console.log((ok ? 'ok   ' : 'FAIL ') + label + (ok ? '' : '  got=' + JSON.stringify(got) + ' want=' + JSON.stringify(want)));
 }
 setTimeout(() => {
-  const tiles = [...document.querySelectorAll('.scw-co-val-tile')].map(t => [t.querySelector('.scw-co-val-label').textContent, (t.querySelector('.scw-co-val-count') || {}).textContent || '', t.querySelector('.scw-co-val-amt').textContent]);
-  check('Adds / Credits / Net count hardware only; licenses get their own tile with their net, billed separately',
-    tiles, [['Adds', '1 line', '$800.00'], ['Credits', '1 line', '−$300.00'], ['Net change', '', '$500.00'], ['Recurring licenses', '2 lines', '$240.00']]);
-  check('the licenses tile says why it is apart', /billed separately/.test(document.querySelector('.scw-co-val-tile--licenses .scw-co-val-split').textContent), true);
+  // Rows of the value table: [label, count, client amount]. The label cell
+  // carries a dot + label + count; the amount is the Client column.
+  const rows = [...document.querySelectorAll('.scw-co-val-table tbody tr')].map(tr => {
+    const lbl = tr.querySelector('.scw-co-val-row-label');
+    const cnt = lbl.querySelector('.scw-co-val-count');
+    const label = lbl.textContent.replace(cnt ? cnt.textContent : '', '').trim();
+    return [label, cnt ? cnt.textContent : '', tr.querySelector('.scw-co-val-main').textContent];
+  });
+  check('Adds / Credits / Net count hardware only; licenses get their own row with their net, billed separately',
+    rows, [['Adds', '1 line', '$800.00'], ['Credits', '1 line', '−$300.00'], ['Net change', '', '$500.00'], ['Recurring licenses', '2 lines', '$240.00']]);
+  const licRow = [...document.querySelectorAll('.scw-co-val-table tbody tr')].pop();
+  check('the licenses row says why it is apart', /billed separately/.test(licRow.textContent), true);
+  // Sub side: Adds bid 0 on this fixture → margin 100% of the fee; Net too.
+  const cells = [...document.querySelectorAll('.scw-co-val-table tbody tr')].map(tr => [...tr.querySelectorAll('td')].map(td => td.textContent.trim()));
+  check('labor margin is a percent of the install fee', cells[0][4], '100%');
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
 }, 800);
