@@ -452,19 +452,22 @@
       includeFullPayload: true
     },
     {
-      // APPROVE WITHOUT CLIENT SIGNATURE (2026-10-01) — the billable twin of
-      // the CO page's "Authorize as not billable": the client has already
-      // approved the change (email / verbal / PO / contract allows), so the
-      // CO is published, INVOICED and applied WITHOUT an e-signature round
-      // trip. Same webhook + full publish payload as Issue; the scenario
-      // branches on stepId. Make: Proposal (Type CO, published + token) →
-      // Acceptance (Type CO, accepted, agreement signed = NO, method =
-      // client approval, FLAG_approved without signature field_3309 = Yes,
-      // reason stamped on the Acceptance) → CO Status "Accepted" (skips
-      // Issued) → the signed scenario's downstream (Xero invoice, 13.06b
-      // true-up, sub + ClickUp). The reason is the ONLY
-      // input — it is the audit record of who approved and how, so the
-      // modal requires it. Amber tone: SCW bills on its own paper here.
+      // APPROVE WITHOUT CLIENT SIGNATURE (2026-10-01): accept the CO with
+      // NO e-signature round trip. Two inputs — the REASON (required; the
+      // audit record of who approved and how) and a BILLABLE yes/no:
+      //   Billable (default) → stepId 'approve-without-signature': the
+      //     client already approved the change (email / verbal / PO /
+      //     contract allows); published + tokenized, INVOICED, applied.
+      //   Not billable → stepId 'authorize-not-billable' — the SAME route
+      //     the CO page's "Authorize as not billable" button fires (SCW
+      //     eats it): no customer token, client totals zeroed, no invoice.
+      // Same webhook + full publish payload as Issue; the scenario branches
+      // on stepId. Make: Proposal (Type CO) → Acceptance (Type CO,
+      // field_3309 approved-without-signature = Yes, field_3310 not
+      // billable = the choice, field_3311 = reason, agreement signed stays
+      // No) → CO Status "Accepted" (skips Issued) → the signed scenario's
+      // downstream (13.06b true-up, sub + ClickUp; Xero only when billable).
+      // Amber tone: SCW acts on its own paper here.
       // ⚠ Gated by CO_APPROVE_WITHOUT_SIGNATURE_READY — without the route,
       // the Issue scenario would send a contract on this payload.
       id: 'approve-without-signature',
@@ -475,13 +478,24 @@
       readyKey: 'CO_APPROVE_WITHOUT_SIGNATURE_READY',
       modal: {
         title:       'Approve without client signature',
-        intro:       'Publishes the change order, invoices the client and ' +
-                     'applies the changes — with NO e-signature request. ' +
-                     'Use only when the client has already approved the change.',
+        intro:       'Publishes the change order and applies the changes — ' +
+                     'with NO e-signature request. Billable: the client is ' +
+                     'invoiced now (use only when they have already approved ' +
+                     'the change). Not billable: no client document, no invoice.',
         notesLabel:  'Reason — who approved, and how',
         notesRequired: true,
         placeholder: 'e.g. Jane Doe approved by email 9/30 — PO-48211 attached',
-        submitLabel: 'Approve & Bill'
+        // Billable yes/no — rides on ctx.choice → payload.billable /
+        // notBillable and picks the stepId (see buildPayload).
+        choice: {
+          question: 'Is this change order billable to the client?',
+          options: [
+            { value: 'yes', label: 'Yes — invoice the client now' },
+            { value: 'no',  label: 'No — not billable (SCW absorbs it; no client document or invoice)' }
+          ],
+          defaultValue: 'yes'
+        },
+        submitLabel: 'Approve'
       },
       includeFullPayload: true
     },
@@ -2498,6 +2512,41 @@
     var clickupGroup = buildRadioGroup(opts.clickupStatus);
     if (clickupGroup) card.appendChild(clickupGroup.element);
 
+    // Generic required choice (opts.choice = { question, options:[{value,
+    // label}], defaultValue }) — every option is a real value (no "none"
+    // row, so it never hides the textarea the way `submission` does).
+    // Selected value rides on ctx.choice. Used by approve-without-
+    // signature for its billable yes/no.
+    var choiceGroup = null;
+    if (opts.choice && Array.isArray(opts.choice.options) && opts.choice.options.length) {
+      var chWrap = document.createElement('div');
+      chWrap.className = 'scw-ops-modal-submission';
+      var chQ = document.createElement('div');
+      chQ.className = 'scw-ops-modal-submission__q';
+      chQ.textContent = opts.choice.question || '';
+      chWrap.appendChild(chQ);
+      var chName = 'scw-ops-choice-' + Math.random().toString(36).slice(2, 9);
+      opts.choice.options.forEach(function (o) {
+        var l = document.createElement('label');
+        l.className = 'scw-ops-modal-submission__opt';
+        var r = document.createElement('input');
+        r.type = 'radio'; r.name = chName; r.value = o.value;
+        if (o.value === opts.choice.defaultValue) r.checked = true;
+        var sp = document.createElement('span');
+        sp.textContent = o.label;
+        l.appendChild(r); l.appendChild(sp);
+        chWrap.appendChild(l);
+      });
+      card.appendChild(chWrap);
+      choiceGroup = {
+        getValue: function () {
+          var rs = chWrap.querySelectorAll('input[type="radio"]');
+          for (var i = 0; i < rs.length; i++) if (rs[i].checked) return rs[i].value;
+          return null;
+        }
+      };
+    }
+
     var actions = document.createElement('div');
     actions.className = 'scw-ops-modal-actions';
 
@@ -2595,7 +2644,8 @@
         recipient:     gate.recipient || null,
         branches:      bGate.branches || [],
         surveyRequest: requestEditor ? requestEditor.getValue() : null,
-        po:            poInput ? (poInput.value || '').trim() : null
+        po:            poInput ? (poInput.value || '').trim() : null,
+        choice:        choiceGroup ? choiceGroup.getValue() : null
       });
     });
     if (secondaryBtn) {
@@ -2961,6 +3011,34 @@
       // when blank IF the modal had the field — a stable key ('' vs
       // missing) keeps the Make mapping unconditional.
       if (ctx.po != null)             payload.poNumber = ctx.po;
+      // Approve without signature: the billable choice decides the route.
+      // Not billable reuses the CO page's 'authorize-not-billable' route
+      // and its contract — no customer token, client totals zeroed — so
+      // Make has ONE not-billable branch whichever page fired it.
+      if (step.id === 'approve-without-signature') {
+        var billable = ctx.choice !== 'no';
+        payload.billable    = billable;
+        payload.notBillable = !billable;
+        if (!billable) {
+          // The not-billable route has its own ready gate (the step-level
+          // gate checked CO_APPROVE_WITHOUT_SIGNATURE_READY before the
+          // modal, when the choice wasn't known yet).
+          if (!(window.SCW && SCW.CONFIG && SCW.CONFIG.CO_AUTHORIZE_NOT_BILLABLE_READY)) {
+            setBtnLoading(btn, false);
+            ctx.setSubmitting(false);
+            ctx.showError('"Not billable" is not live yet — the Make route for it is not ' +
+              'configured (CO_AUTHORIZE_NOT_BILLABLE_READY). Nothing was changed.');
+            return;
+          }
+          payload.stepId      = 'authorize-not-billable';
+          payload.actionLabel = 'Authorize as not billable';
+          delete payload.proposalAccessToken;
+          delete payload.proposalAccessUrl;
+          payload.installationTotal = 0;
+          payload.equipmentTotal    = 0;
+          payload.grandTotal        = 0;
+        }
+      }
       if (ctx.submission)             payload.submission = ctx.submission;
       else if (step.forceSubmission)  payload.submission = step.forceSubmission;
       // Pending-survey context (mark-ready): how many Pending Validation
