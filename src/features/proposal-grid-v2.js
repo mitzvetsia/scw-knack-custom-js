@@ -90,7 +90,14 @@
       accessoryParent: 'field_2464',
       accessoryProduct: 'field_1958',
       connectedDevices: 'field_1957',
-      coAction:      'field_2965'
+      coAction:      'field_2965',
+      // Product's catalog description — a quiet sub-row under the L3 product
+      // name (the name alone doesn't say what a "[SPECIAL ORDER] SCW-PS18C"
+      // is). OPTIONAL: '' until the SOW Line Item object carries a stored /
+      // formula copy of the product description AND it is a column on every
+      // dataViewKey above (view_4140, view_3371). Not a PROBE_FIELD — the grid
+      // renders without it; the row simply doesn't appear.
+      productDesc:   ''
     },
 
     // Detail views already on the scene (rendered hidden) that v1 also reads.
@@ -212,6 +219,17 @@
     return null;
   }
   function readText(rec, f) { return norm(stripHtml(rec && rec[f])); }
+  // First non-blank product description across the L3's records ('' when the
+  // field isn't configured / not a column). One product → one description.
+  function productDescOf(recs) {
+    var f = CONFIG.fields.productDesc;
+    if (!f) return '';
+    for (var i = 0; i < (recs || []).length; i++) {
+      var t = readText(recs[i], f);
+      if (t && !isBlankish(t)) return t;
+    }
+    return '';
+  }
   function readNum(rec, f) {
     var raw = rec && rec[f + '_raw'];
     if (typeof raw === 'number' && isFinite(raw)) return raw;
@@ -742,6 +760,15 @@
           { html: '<strong>' + Math.round(pQty) + '</strong>' },
           { html: '<strong>' + amountHtml(pHardware, false) + '</strong>' }
         ]);
+        // Quiet catalog-description sub-row, directly under the name and
+        // above the labor description(s). No qty / cost of its own.
+        var pDesc = productDescOf(product.items);
+        if (pDesc) {
+          pushRow('scw-pg2-l3desc' + tintCls, [
+            { html: '<span class="scw-pg2-l3-desc">' + esc(pDesc) + '</span>' },
+            { html: '' }, { html: '' }
+          ]);
+        }
       }
 
       // L4 install-description lines — qty + labor.
@@ -1488,6 +1515,9 @@
             connectedDevices: cd.list,
             connectedDevicesCount: cd.count,
             connectedDeviceGroups: cdGroups || undefined,
+            // Catalog description — proposal-pdf-export renders it as the
+            // quiet l4-proddesc row under the product name ('' → no row).
+            productDesc: productDescOf(product.items),
             isMountingHardware: bctx.isMounting, lineItems: [],
           };
           products.push(prod);
@@ -1775,6 +1805,9 @@
       '.scw-pg2-l3--first td { border-top: 0; }',
       '.scw-pg2-l3 td:first-child { font-size: 20px; }',
       '.scw-pg2-l3 td:nth-child(n+2) { font-weight: 600; }',
+      // Catalog description under the product name: quiet, no top rule.
+      '.scw-pg2-l3desc td { padding-top: 2px; border-top: 0; font-weight: 300; color: #64748b; }',
+      '.scw-pg2-l3-desc { display: block; font-size: 13px; line-height: 1.35; max-width: 110ch; }',
       // Callouts: orange for the LABEL only; the designator list itself is
       // quiet gray fine print (dense projects were a wall of bold orange).
       '.scw-pg2-l4-conn { display: block; margin-top: 4px; line-height: 1.4; font-size: 12px; color: #64748b; font-weight: 400; max-width: 110ch; }',

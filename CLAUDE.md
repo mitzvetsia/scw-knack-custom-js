@@ -478,9 +478,13 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   `change order`), NOT a new object. CO line items are ordinary SOW Line Item
   records (connected via `field_2154`). All SOW-consuming surfaces need a
   "Type **is not** change order" filter (blank fails safe).
-- **CO Status is a NEW separate field** (8 options: Draft, Pending Sub Pricing,
-  Ops Review, Issued, Accepted, Applied, Declined, Void — each with exactly one
-  writer). Do NOT add options to the existing SOW status field.
+- **CO Status is a NEW separate field** (`field_2953`, 7 options as of 2026-10-01:
+  Draft, Pending Sub Pricing, Ops Review, Issued, Accepted, Declined, Void — the
+  STAGE only; there is NO `Applied` — accepted IS applied). **Billability /
+  signature / the ops reason live on the ACCEPTANCE as flags** (`field_2766`
+  signed, `field_3309` approved without signature, `field_3310` not billable +
+  a reason field), never on the SOW. Do NOT add options to the existing SOW
+  status field.
 - **A CO rides the full chain** SOW → Proposal snapshot → Acceptance → apply.
   The verb is "Issue" (creates snapshot + acceptance in one gesture); invoice
   defers to the SIGNED webhook; the apply gate is **signature alone**; the
@@ -495,6 +499,16 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   source); `view_4088` = other project SOW/proposal items (adoption source).
   view_4079 has its own `createMirror` instance (the field_1957 ↔ field_2197
   cascade is mandatory on every view that edits this object).
+- **Two no-e-signature accepted paths (prepped 2026-10-01, NOT live)** — see the doc's
+  "Accepted without an e-signature" section. **Authorize as not billable**: third Ops Review
+  exit in `co-stage-strip.js` — reason modal → `MAKE_CO_ISSUE_WEBHOOK` `stepId:
+  'authorize-not-billable'` with a CO-page-built payload (raw snapshot, internal
+  sub-labor+equipment+reason card, totals, `signed:false`); no client-side writes. **Approve
+  without client signature**: amber CO-mode step on the preview page (`ops-stepper.js`
+  `approve-without-signature`), full Issue payload + `noSignature:true` + `reason`. Make 13.03
+  creates Proposal/Acceptance (flags + reason on the Acceptance), writes `Accepted`, calls
+  13.06b. The CO strip reads the Acceptance from a hidden grid (`ACC.view`, TBD). Gated by
+  `CO_AUTHORIZE_NOT_BILLABLE_READY` / `CO_APPROVE_WITHOUT_SIGNATURE_READY` (false).
 - **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
   `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
   install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,
@@ -832,6 +846,7 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   - **`FLAG_accepted` is never written.** All 275 SOWs in the export read "No" — including the 15 SOWs that verifiably went through acceptance (they have install-acceptance records with invoice dates, several with signed agreements). Acceptance truth lives ONLY in the install-acceptance table; anything that filters/reports on the SOW flag silently sees zero accepted SOWs. Correcting this in the analysis moved 2026 accepted totals up ~11% ($1.19M → $1.32M).
   - **`SYS_accepted date` equals `SYS_create date` on 240 of 241 SOWs** that have it (field default "today" stamped at record creation, sample rows show create = accepted = default-expiration). It cannot measure quote→accept cycle time; the analysis had to proxy via the acceptance record's Invoice Date (which itself once predated the SOW create date by 26 days in a CO sequence).
 - **Fix shape (small)**: acceptance flows through the accept-SOW DTO / Make scenario — add a write-back at the moment the install-acceptance record is created (or on the e-signature SIGNED webhook, matching the CO design where signature is the gate): PUT the parent SOW's `FLAG_accepted = Yes` and stamp the REAL date into `SYS_accepted date` (or a new dedicated date field if the auto-fill default must stay). One step fixes both holes.
+- **Double acceptance (2026-09-18)**: reps were accepting a proposal twice (a second acceptance record → second agreement + invoice). The Accept CTA gate reads `field_2990` (a Knack count that catches up seconds after the record lands, and it counts as accepted when it reads >= 1 — see `published-proposal-render.js` `isAcceptedCount`; it was `> 1` until 2026-09-30, which left the CTA up on singly-accepted proposals. The public token page's snippet `knack-snippets/proposal-access-public.snippet.js` carries its own copy of the rule and must be re-pasted into Builder when it changes), and the accept form is a child page reachable again via Back / a second tab. `accept-proposal-guard.js` now (1) locks the form's submit button on first click, (2) trips a per-browser wire in localStorage (`scw:proposal-accepted:<id>`) on `knack-form-submit`, which the CTA gate and the guard both read at once, and (3) on render GETs the proposal through scene_1279 / view_3813 and replaces the form with an "already accepted" notice when `field_2990` says so. `acceptance-card.js` flags duplicate base acceptances (same SOW token, non-CO, >1 row) with a red "Accepted twice — duplicate" pill and "· accepted twice" in the rollup / Paperwork tile so ops removes the extra. `tests/proposal/test-accept-guard.js`.
 - **Follow-up audit**: after the write-back lands, sweep everything that currently READS `FLAG_accepted` (views, filters, Make scenarios, bundle features) — those consumers have only ever seen "No", so their behavior/reporting has been silently understated and may need re-checking once the flag starts flipping.
 - **Related nice-to-have**: keep project `REL_company` mandatory (98% populated today) — it is what makes client-level analysis (and the full "Testies" test-project sweep) possible; the legacy quote-era Contact field is only 22% populated and the legacy Company field is empty (3/7,617).
 

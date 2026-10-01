@@ -45,22 +45,34 @@
       // "Other Files" gallery (the generator files them there, typed
       // "… (not completed)") first, then the closeout save grid (kickoff
       // deck). Completed uploads are Closeout's business, not Setup's.
-      docsViews: ['view_3942', 'view_3941'] },
+      docsViews: ['view_3942', 'view_3941'],
+      // The DOC save view (inline-editable grid): PMs supersede / delete
+      // generated documents through it — view-based PUT of the note and
+      // DELETE, the same paths other-files-gallery.js writes by. Ops only.
+      docsSaveView: 'view_3941' },
     { sceneId: 'scene_1353',                 // subcontractor deployment dashboard
       worksheetMount: 'scw-ws-v2-view_4056',
       questionnaireView: 'view_4053',
       docsViews: ['view_4063', 'view_4068'] }
   ];
+  // A generated document a PM retired: the note carries this prefix (the
+  // Files tray and Closeout show the note, so the mark reads everywhere and
+  // needs no Builder field). Reversible (Restore strips it).
+  var SUPERSEDED_PREFIX = 'Superseded · ';
+  var SUPERSEDED_RE = /^\s*superseded\b\s*[·:\-–]?\s*/i;
   // DOC_files columns on the docs views.
   var DOC_F = { type: 'field_2877', file: 'field_68', notes: 'field_588' };
   // The documents generated at setup, in display order, matched on the
-  // CONFIG_file type name. The approval forms match ONLY their blank
-  // "(not completed)" incarnation — the completed upload has the same base
-  // name and belongs to Closeout.
+  // CONFIG_file type name AND the file note together (live: the generator
+  // types a blank as "Location Approval Form" and writes "Location Approval
+  // Form (not completed)" into the note; a run that missed the type still
+  // carries the note). The approval forms match ONLY their blank
+  // "(not completed)" incarnation — the completed upload has the same type
+  // and no such note, and belongs to Closeout.
   var SETUP_DOCS = [
     { match: /scope of work/i,                                 label: 'Scope of Work PDF' },
-    { match: /location approval.*not completed/i,             label: 'Location Approval Form (blank)' },
-    { match: /view approval.*not completed/i,                  label: 'View Approval Form (blank)' },
+    { match: /location approval[\s\S]*not completed/i,         label: 'Location Approval Form (blank)' },
+    { match: /view approval[\s\S]*not completed/i,              label: 'View Approval Form (blank)' },
     { match: /kickoff/i,                                       label: 'Kickoff Deck' }
   ];
 
@@ -68,6 +80,12 @@
   var STRIP_ID  = 'scw-deploy-co-strip';
   var STYLE_ID  = 'scw-deploy-nav-css';
   var EVENT_NS  = '.scwDeployNav';
+  // Curtain (see injectStyles): the scene is invisible until a pass has
+  // run since its render; a section is hidden until a pass has classified
+  // it as kept or parked.
+  var READY_CLASS = 'scw-deploy-ready';
+  var SEEN_ATTR   = 'data-scw-deploy';
+  var CURTAIN_MAX_MS = 2500;   // never hold the page longer than this
 
   // Accordion sections excluded from the nav — the staging/data-source
   // sections slated for hiding ("MICAH'S SHIT" block), plus the (hidden)
@@ -77,7 +95,9 @@
     /\(hide\)/i, /^DOC_/i, /^INSTALL_system setup/i, /^SOW_proposed/i,
     /^PHOTOS$/i, /^what we.?re installing/i,
     // Folded into the worksheet (mdf-notes.js) / staging grids: not sections.
-    /^manage mdfs?/i, /^all associated sows?/i, /^CORE_/i, /^INSTALL_acceptances/i
+    /^manage mdfs?/i, /^all associated sows?/i, /^CORE_/i, /^INSTALL_acceptances/i,
+    // The add-note form pinned-notes.js adopts into the notes list.
+    /^add\s+(a\s+)?doc_?\s*notes?\b/i
   ];
 
   // ── Lifecycle organization (Part 3) ───────────────────────────────────
@@ -113,6 +133,7 @@
   var ICONS = {
     clip:    '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>',
     image:   '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>',
+    box:     '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line>',
     note:    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line>',
     refresh: '<polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>',
     folder:  '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>'
@@ -130,6 +151,12 @@
     var mountSel = SCENES.map(function (s) { return '#' + s.worksheetMount; }).join(', ');
     var stripSceneSel = SCENES.map(function (s) {
       return '#kn-' + s.sceneId + ' > #' + STRIP_ID;
+    }).join(', ');
+    var curtainSel = SCENES.map(function (s) {
+      return '#kn-' + s.sceneId + ':not(.' + READY_CLASS + ')';
+    }).join(', ');
+    var unclassifiedSel = SCENES.map(function (s) {
+      return '#kn-' + s.sceneId + ' .scw-ktl-accordion:not([' + SEEN_ATTR + '])';
     }).join(', ');
     var css = [
       /* Status strip container: tiles + "also on this project" chips. */
@@ -200,6 +227,13 @@
       '.scw-deploy-row2 { display: flex; gap: 12px; align-items: stretch; }',
       '.scw-deploy-maps-slot:empty { display: none; }',
       '.scw-deploy-maps-slot { flex: 1 1 auto; min-width: 0; }',
+      /* Row 3: recurring-licenses strip slot, owned by licenses-strip.js —
+         a full-width card between "Also on this project" and the
+         worksheet, not a drawer (docs/deploy-page-redesign.md addendum,
+         Recurring licenses, 2026-09-22). Empty (no license lines on the
+         project, or the module isn't loaded) collapses to nothing, same
+         as the maps slot. */
+      '.scw-deploy-licenses-slot:empty { display: none; }',
       '.scw-deploy-also {',
       '  display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1 1 auto;',
       '  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 14px;',
@@ -245,6 +279,17 @@
          inside the drawer when its tile / chip is clicked. Knack re-renders
          views by element id, so a moved section keeps working. */
       '.scw-ktl-accordion.scw-deploy-parked { display: none !important; }',
+      /* No flash of the native page. Knack paints its own layout (nine
+         co-equal accordion bars, sections in Builder order) before the
+         pass parks, moves and builds; the scene stays invisible until
+         the first pass after a scene render marks it ready (visibility,
+         not display: layout still happens, so nothing measuring is
+         thrown). A section ktl-accordion wraps AFTER a pass (a view whose
+         data arrived late) stays hidden until the next pass classifies
+         it (data-scw-deploy) — the scene observer below runs that pass
+         at once, so it shows in its place, never first in the old one. */
+      curtainSel + ' { visibility: hidden !important; }',
+      unclassifiedSel + ' { display: none !important; }',
       '.scw-deploy-band { display: none !important; }',
       '#scw-deploy-drawer { position: fixed; inset: 0; z-index: 1200; }',
       '#scw-deploy-drawer[hidden] { display: none; }',
@@ -318,6 +363,21 @@
       '.scw-deploy-docs__row.is-missing .scw-deploy-docs__state { color: #92400e; }',
       '.scw-deploy-docs__open { font-weight: 600; text-decoration: none; color: #0f4c81; flex: none; }',
       '.scw-deploy-docs__empty { font-size: 12.5px; color: #64748b; padding: 6px 0; }',
+      /* Supersede / delete / restore on a generated document (ops page) */
+      '.scw-deploy-docs__acts { display: inline-flex; gap: 4px; flex: none; }',
+      '.scw-deploy-docs__act { padding: 3px 8px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #475569; font: 600 11px/1.2 system-ui, sans-serif; cursor: pointer; }',
+      '.scw-deploy-docs__act:hover { background: #f1f5f9; color: #0f172a; }',
+      '.scw-deploy-docs__act--del:hover { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }',
+      '.scw-deploy-docs__act[disabled] { opacity: .5; cursor: default; }',
+      '.scw-deploy-docs__chip { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; border: 1px solid #fcd34d; background: #fffbeb; color: #92400e; font: 700 10.5px/1.5 system-ui, sans-serif; vertical-align: middle; }',
+      '.scw-deploy-docs__keep { margin-right: 8px; }',
+      '.scw-deploy-docs__old { margin-top: 10px; border-top: 1px dashed #cbd5e1; padding-top: 6px; }',
+      '.scw-deploy-docs__old-toggle { border: 0; background: none; padding: 4px 0; color: #64748b; font: 600 12px/1.2 system-ui, sans-serif; cursor: pointer; }',
+      '.scw-deploy-docs__old-toggle:hover { color: #0f172a; }',
+      '.scw-deploy-docs__old-list { display: none; }',
+      '.scw-deploy-docs__old.is-open .scw-deploy-docs__old-list { display: block; }',
+      '.scw-deploy-docs__row.is-old { color: #64748b; }',
+      '.scw-deploy-docs__row.is-old .scw-deploy-docs__type, .scw-deploy-docs__row.is-old .scw-deploy-docs__state { text-decoration: line-through; text-decoration-color: #cbd5e1; }',
       /* Worksheet toolbar "+ Change Order" proxy (mirrors the Builder menu link). */
       'a#scw-deploy-co-toolbar-cta { text-decoration: none !important; }',
       '.scw-deploy-nav-item {',
@@ -794,6 +854,10 @@
     // stay above the nav. Step back over any band divider so the nav sits
     // above the first signpost (and the two inserts don't fight).
     var anchorEl = firstAcc || scene.firstChild;
+    // A drawer-hosted first section lives OUTSIDE the scene: anchor at its
+    // home placeholder, never at the element itself — that would carry the
+    // whole nav (tiles, maps, "Also" list) into the drawer with it.
+    if (anchorEl && !scene.contains(anchorEl)) anchorEl = (firstAcc && firstAcc.__scwHome) || null;
     while (anchorEl && anchorEl.previousElementSibling &&
            anchorEl.previousElementSibling.classList &&
            anchorEl.previousElementSibling.classList.contains('scw-deploy-band')) {
@@ -829,6 +893,12 @@
     }
     var also = [];
     for (var a = 0; a < targets.length; a++) if (!used[a]) also.push(targets[a]);
+    // The bill of materials (bom-tray.js) is a panel, not a Builder section:
+    // it leads the list so a PM checking a shipment finds it first.
+    if (window.SCW && SCW.bomTray && typeof SCW.bomTray.open === 'function') {
+      also.unshift({ label: 'Bill of materials', count: '', el: null, kind: 'panel', icon: 'box', warn: false,
+                     open: function () { SCW.bomTray.open(); } });
+    }
 
     // Document generation is a Setup fact: read the closeout doc cards
     // (a card with a file = generated or uploaded) onto the Setup tile.
@@ -902,6 +972,7 @@
           '<span class="scw-deploy-tile__head">' + esc(model.head) + '</span>' +
           (model.bars || '') +
           (model.fact ? '<span class="scw-deploy-tile__fact' + (model.factWarn ? ' scw-deploy-tile__fact--warn' : '') + '">' + esc(model.fact) + '</span>' : '') +
+          (model.extra || '') +
           '<span class="scw-deploy-tile__actions">' +
             '<button type="button" class="scw-deploy-tile__link" data-scw-tile-open="1" aria-label="' + esc(model.stage.label + ': ' + model.stateText) + '">' + esc(model.link) + '</button>' +
             actions +
@@ -920,6 +991,14 @@
             if (docsBtn) {
               e.stopPropagation();
               if (closeM) openDocsGenerator(closeM.target, docsBtn.parentNode, docsBtn);
+              return;
+            }
+            // The shipments line on the Installation tile opens its own
+            // drawer (shipments-tray.js), not the tile's target.
+            var shipBtn = e.target.closest && e.target.closest('[data-scw-tile-ships]');
+            if (shipBtn) {
+              e.stopPropagation();
+              if (window.SCW && SCW.shipments && typeof SCW.shipments.open === 'function') SCW.shipments.open();
               return;
             }
             if (mdl.target.kind === 'worksheet') scrollToTarget(mdl.target);
@@ -968,17 +1047,31 @@
           btn.type = 'button';
           btn.className = 'scw-deploy-also__row';
           btn.innerHTML =
-            '<span class="scw-deploy-also__icon">' + iconSvg(t.el.getAttribute('data-scw-nav-icon')) + '</span>' +
+            '<span class="scw-deploy-also__icon">' + iconSvg(t.icon || (t.el && t.el.getAttribute('data-scw-nav-icon'))) + '</span>' +
             '<span class="scw-deploy-also__label">' + esc(t.label) + '</span>' +
             (t.warn ? '<span class="scw-deploy-nav-dot" title="Needs attention"></span>' : '') +
             (t.count ? '<span class="scw-deploy-nav-count">' + esc(t.count) + '</span>' : '') +
             '<span class="scw-deploy-also__chev">›</span>';
           btn.__scwTarget = t;
-          btn.addEventListener('click', function () { openDrawer(btn.__scwTarget); });
+          btn.addEventListener('click', function () {
+            var tg = btn.__scwTarget;
+            if (tg && tg.kind === 'panel' && typeof tg.open === 'function') tg.open();
+            else openDrawer(tg);
+          });
           list.appendChild(btn);
         })(also[i]);
       }
       row2.appendChild(list);
+    }
+
+    // Row 3: recurring-licenses strip slot — a sibling of row2, so it
+    // lands between "Also on this project" and the worksheet (nav's next
+    // sibling). Created once; licenses-strip.js owns everything inside it.
+    var licSlot = nav.querySelector('.scw-deploy-licenses-slot');
+    if (!licSlot) {
+      licSlot = document.createElement('div');
+      licSlot.className = 'scw-deploy-licenses-slot';
+      nav.appendChild(licSlot);
     }
   }
 
@@ -993,15 +1086,16 @@
 
   function parkSections(scene, cfg) {
     var accs = scene.querySelectorAll('.scw-ktl-accordion');
+    var mount = document.getElementById(cfg.worksheetMount);
     for (var i = 0; i < accs.length; i++) {
       var acc = accs[i];
-      if (acc.classList.contains('scw-deploy-in-drawer')) continue;
-      if (acc.classList.contains('scw-deploy-parked')) continue;
-      if (acc.style.display === 'none') continue;          // hidden by another module
-      if (excluded(origTitle(acc))) continue;              // staging / worksheet source
-      var mount = document.getElementById(cfg.worksheetMount);
-      if (mount && (acc.contains(mount) || mount.contains(acc))) continue;
-      acc.classList.add('scw-deploy-parked');
+      var keep = acc.classList.contains('scw-deploy-in-drawer') ||
+                 acc.style.display === 'none' ||                 // hidden by another module
+                 excluded(origTitle(acc)) ||                     // staging / worksheet source
+                 (mount && (acc.contains(mount) || mount.contains(acc)));
+      if (!keep) acc.classList.add('scw-deploy-parked');
+      // Classified: the curtain CSS shows it (kept) or the parked rule hides it.
+      acc.setAttribute(SEEN_ATTR, acc.classList.contains('scw-deploy-parked') ? 'parked' : 'keep');
     }
   }
 
@@ -1070,8 +1164,10 @@
         if (!rec || !rec.id || seen[rec.id]) continue;
         var typeRaw = rec[DOC_F.type + '_raw'];
         var type = Array.isArray(typeRaw) ? (typeRaw[0] && typeRaw[0].identifier) || '' : plainText(rec[DOC_F.type]);
+        var note = plainText(rec[DOC_F.notes]);
+        var text = type + ' ' + note;
         var kind = null;
-        for (var k = 0; k < SETUP_DOCS.length; k++) if (SETUP_DOCS[k].match.test(type)) { kind = SETUP_DOCS[k]; break; }
+        for (var k = 0; k < SETUP_DOCS.length; k++) if (SETUP_DOCS[k].match.test(text)) { kind = SETUP_DOCS[k]; break; }
         if (!kind) continue;
         var fileRaw = rec[DOC_F.file + '_raw'];
         var url = fileRaw && typeof fileRaw === 'object' ? (fileRaw.url || '') : '';
@@ -1082,52 +1178,133 @@
         }
         if (!url) continue;                     // a typed record with no file isn't a generated PDF
         seen[rec.id] = true;
-        out.push({ kind: kind, type: kind.label, url: url, name: name,
-                   note: plainText(rec[DOC_F.notes]), order: SETUP_DOCS.indexOf(kind) });
+        // Newest = the date the generator stamps into the file name
+        // (…_20260921.pdf), else model order.
+        var dm = String(name || url).match(/(20\d{6})(?!.*20\d{6})/);
+        out.push({ id: rec.id, kind: kind, type: kind.label, url: url, name: name,
+                   note: note.replace(SUPERSEDED_RE, ''), rawNote: note,
+                   superseded: SUPERSEDED_RE.test(note),
+                   dateKey: dm ? dm[1] : '', seq: out.length,
+                   order: SETUP_DOCS.indexOf(kind) });
       }
     }
-    out.sort(function (a, b) { return a.order - b.order; });
+    out.sort(function (a, b) { return a.order - b.order || (a.dateKey < b.dateKey ? -1 : a.dateKey > b.dateKey ? 1 : 0) || a.seq - b.seq; });
     out.anyRecords = anyRecords;
     return out;
+  }
+  function docsEditable(cfg) {
+    return !!(cfg.docsSaveView && typeof Knack !== 'undefined' && Knack.views && Knack.views[cfg.docsSaveView] &&
+              window.SCW && typeof SCW.knackAjax === 'function' && typeof SCW.knackRecordUrl === 'function');
+  }
+  function docPut(cfg, id, fields, done) {
+    SCW.knackAjax({ url: SCW.knackRecordUrl(cfg.docsSaveView, id), type: 'PUT', data: JSON.stringify(fields),
+      success: function () { done(true); }, error: function (x) { done(false, 'HTTP ' + (x && x.status)); } });
+  }
+  function docDelete(cfg, id, done) {
+    SCW.knackAjax({ url: SCW.knackRecordUrl(cfg.docsSaveView, id), type: 'DELETE',
+      success: function () { done(true); }, error: function (x) { done(false, 'HTTP ' + (x && x.status)); } });
+  }
+  /** Run one write per doc, two at a time, every one settled. */
+  function docBatch(ids, each, done) {
+    var i = 0, running = 0, failed = [];
+    function next() {
+      while (running < 2 && i < ids.length) {
+        (function (id) {
+          running++;
+          each(id, function (ok, status) {
+            running--;
+            if (!ok) failed.push(id + ' (' + (status || 'no response') + ')');
+            if (!running && i >= ids.length) done(failed); else next();
+          });
+        })(ids[i++]);
+      }
+    }
+    if (!ids.length) { done(failed); return; }
+    next();
+  }
+  /** Refetch the docs views' models, then rebuild the prelude in place. */
+  function refreshPrelude(cfg, box) {
+    var views = cfg.docsViews || [];
+    for (var i = 0; i < views.length; i++) {
+      try { var v = Knack.views[views[i]]; if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch(); } catch (e) { /* best-effort */ }
+    }
+    setTimeout(function () {
+      if (!box.parentNode) return;
+      var fresh = buildSetupPrelude(cfg);
+      if (box.querySelector('.scw-deploy-docs__old.is-open')) { var o = fresh.querySelector('.scw-deploy-docs__old'); if (o) o.classList.add('is-open'); }
+      box.parentNode.replaceChild(fresh, box);
+    }, 900);
   }
   function buildSetupPrelude(cfg) {
     var docs = setupDocs(cfg);
     var box = document.createElement('div');
     box.className = 'scw-deploy-drawer__prelude';
-    var rows = '';
+    var canEdit = docsEditable(cfg);
+    var rows = '', oldRows = '', oldCount = 0, olderLive = [];
+    function actsHtml(doc) {
+      if (!canEdit) return '';
+      return '<span class="scw-deploy-docs__acts">' +
+        (doc.superseded
+          ? '<button type="button" class="scw-deploy-docs__act" data-scw-doc-act="restore" data-scw-doc-id="' + esc(doc.id) + '" title="Bring this document back">Restore</button>'
+          : '<button type="button" class="scw-deploy-docs__act" data-scw-doc-act="supersede" data-scw-doc-id="' + esc(doc.id) + '" title="Mark as outdated — keeps the file, moves it out of the way">Supersede</button>') +
+        '<button type="button" class="scw-deploy-docs__act scw-deploy-docs__act--del" data-scw-doc-act="delete" data-scw-doc-id="' + esc(doc.id) + '" data-scw-doc-name="' + esc(doc.name) + '" title="Delete this file record" aria-label="Delete">×</button>' +
+      '</span>';
+    }
+    function rowHtml(doc, extraCls, chip) {
+      return '<div class="scw-deploy-docs__row' + (extraCls || '') + '" data-scw-doc-row="' + esc(doc.id) + '">' +
+        '<span class="scw-deploy-docs__type">' + esc(doc.type) + '</span>' +
+        '<span class="scw-deploy-docs__state">' + (doc.superseded ? 'Superseded' : 'Ready to print') + (doc.name ? ' · ' + esc(doc.name) : '') +
+          (doc.note && !/not completed/i.test(doc.note) ? ' · ' + esc(doc.note) : '') + (chip || '') + '</span>' +
+        '<a class="scw-deploy-docs__open" href="' + esc(doc.url) + '" target="_blank" rel="noopener">Open ›</a>' +
+        actsHtml(doc) +
+      '</div>';
+    }
     if (!docs.length && !docs.anyRecords) {
       rows = '<div class="scw-deploy-docs__empty">Documents haven\'t loaded yet, or none have been generated for this project.</div>';
     } else {
       for (var i = 0; i < SETUP_DOCS.length; i++) {
-        var kind = SETUP_DOCS[i], found = false;
+        var kind = SETUP_DOCS[i], live = [];
         for (var d = 0; d < docs.length; d++) {
           if (docs[d].kind !== kind) continue;
-          found = true;
-          var doc = docs[d];
-          rows += '<div class="scw-deploy-docs__row">' +
-            '<span class="scw-deploy-docs__type">' + esc(doc.type) + '</span>' +
-            '<span class="scw-deploy-docs__state">Ready to print' + (doc.name ? ' · ' + esc(doc.name) : '') + (doc.note ? ' · ' + esc(doc.note) : '') + '</span>' +
-            '<a class="scw-deploy-docs__open" href="' + esc(doc.url) + '" target="_blank" rel="noopener">Open ›</a>' +
-          '</div>';
+          if (docs[d].superseded) { oldRows += rowHtml(docs[d], ' is-old'); oldCount++; }
+          else live.push(docs[d]);
         }
-        if (!found) {
+        // Several live copies of one document: the newest is the one to
+        // print; older ones are flagged, and "Keep newest of each" retires them.
+        for (var l = 0; l < live.length; l++) {
+          var isOlder = l < live.length - 1;
+          if (isOlder) olderLive.push(live[l].id);
+          rows += rowHtml(live[l], '', isOlder ? '<span class="scw-deploy-docs__chip">older copy</span>' : '');
+        }
+        if (!live.length) {
           rows += '<div class="scw-deploy-docs__row is-missing">' +
             '<span class="scw-deploy-docs__type">' + esc(kind.label) + '</span>' +
-            '<span class="scw-deploy-docs__state">Not generated</span></div>';
+            '<span class="scw-deploy-docs__state">' + (oldCount ? 'Not generated (superseded copies below)' : 'Not generated') + '</span></div>';
         }
       }
     }
+    var oldHtml = oldCount
+      ? '<div class="scw-deploy-docs__old">' +
+          '<button type="button" class="scw-deploy-docs__old-toggle" data-scw-doc-act="toggle-old">' + oldCount + ' superseded · show</button>' +
+          '<div class="scw-deploy-docs__old-list">' + oldRows + '</div>' +
+        '</div>'
+      : '';
+    var keepHtml = (canEdit && olderLive.length)
+      ? '<button type="button" class="scw-deploy-tile__action scw-deploy-docs__keep" data-scw-doc-act="keep-newest" data-scw-doc-ids="' + esc(olderLive.join(',')) + '" title="Mark every older copy as superseded">Keep newest of each (' + olderLive.length + ' older)</button>'
+      : '';
     box.innerHTML =
       '<div class="scw-deploy-docs__head">' +
         '<span class="scw-deploy-docs__title">Documents for the sub</span>' +
         '<span class="scw-deploy-docs__sub">Blank PDFs generated after the client kickoff, for the sub to print and get completed on site. Completed copies come back under Closeout.</span>' +
-        '<span class="scw-deploy-tile__actions scw-deploy-docs__actions">' +
+        '<span class="scw-deploy-tile__actions scw-deploy-docs__actions">' + keepHtml +
           '<button type="button" class="scw-deploy-tile__action" data-scw-drawer-docs="1">Generate documents…</button>' +
         '</span>' +
       '</div>' +
-      '<div class="scw-deploy-docs__list">' + rows + '</div>';
+      '<div class="scw-deploy-docs__list">' + rows + '</div>' + oldHtml;
     box.addEventListener('click', function (e) {
       if (e.target.closest && e.target.closest('#scw-regen-docs-panel')) return;
+      var act = e.target.closest && e.target.closest('[data-scw-doc-act]');
+      if (act) { e.stopPropagation(); onDocAction(cfg, box, act); return; }
       var b = e.target.closest && e.target.closest('[data-scw-drawer-docs]');
       if (!b) return;
       e.stopPropagation();
@@ -1135,6 +1312,58 @@
       if (api && typeof api.openPicker === 'function') api.openPicker(b.parentNode, b);
     });
     return box;
+  }
+  /** Supersede / restore / delete / keep-newest on the generated documents. */
+  function onDocAction(cfg, box, btn) {
+    var act = btn.getAttribute('data-scw-doc-act');
+    if (act === 'toggle-old') {
+      var fold = btn.closest('.scw-deploy-docs__old'), open = fold.classList.toggle('is-open');
+      btn.textContent = btn.textContent.replace(/· (show|hide)$/, '· ' + (open ? 'hide' : 'show'));
+      return;
+    }
+    if (!docsEditable(cfg)) return;
+    var docs = setupDocs(cfg), byId = {};
+    for (var i = 0; i < docs.length; i++) byId[docs[i].id] = docs[i];
+    function markNote(doc, on) {
+      var base = doc ? doc.note : '';
+      var f = {};
+      f[DOC_F.notes] = on ? (SUPERSEDED_PREFIX + base).replace(/\s+$/, '') : base;
+      return f;
+    }
+    var id = btn.getAttribute('data-scw-doc-id');
+    if (act === 'supersede' || act === 'restore') {
+      btn.disabled = true;
+      docPut(cfg, id, markNote(byId[id], act === 'supersede'), function (ok, status) {
+        if (!ok) { btn.disabled = false; alert('Could not update the document (' + (status || 'no response') + ').'); return; }
+        refreshPrelude(cfg, box);
+      });
+      return;
+    }
+    if (act === 'delete') {
+      var name = btn.getAttribute('data-scw-doc-name') || 'this document';
+      if (!window.confirm('Delete "' + name + '"?\n\nThe file record is removed for everyone. This cannot be undone. ' +
+                          '(Supersede keeps the file and moves it out of the way.)')) return;
+      btn.disabled = true;
+      docDelete(cfg, id, function (ok, status) {
+        if (!ok) { btn.disabled = false; alert('Could not delete the document (' + (status || 'no response') + ').'); return; }
+        var row = box.querySelector('[data-scw-doc-row="' + id + '"]');
+        if (row && row.parentNode) row.parentNode.removeChild(row);
+        refreshPrelude(cfg, box);
+      });
+      return;
+    }
+    if (act === 'keep-newest') {
+      var ids = (btn.getAttribute('data-scw-doc-ids') || '').split(',').filter(Boolean);
+      if (!ids.length) return;
+      if (!window.confirm('Mark ' + ids.length + ' older ' + (ids.length === 1 ? 'copy' : 'copies') + ' as superseded? ' +
+                          'The newest of each document stays; the rest move to the superseded fold (files are kept, Restore undoes it).')) return;
+      btn.disabled = true;
+      btn.textContent = 'Working…';
+      docBatch(ids, function (did, done) { docPut(cfg, did, markNote(byId[did], true), done); }, function (failed) {
+        if (failed.length) alert('Some documents could not be updated:\n' + failed.join('\n'));
+        refreshPrelude(cfg, box);
+      });
+    }
   }
 
   function openDrawer(target) {
@@ -1156,8 +1385,7 @@
     acc.classList.remove('scw-deploy-parked');
     acc.classList.add('scw-deploy-in-drawer');
     var body = d.querySelector('.scw-deploy-drawer__body');
-    var stalePrelude = body.querySelector('.scw-deploy-drawer__prelude');
-    if (stalePrelude) body.removeChild(stalePrelude);
+    clearDrawerExtras(body);
     // The Setup drawer leads with the generated documents (the questionnaire
     // section follows); the tile alone would otherwise just re-link them.
     var st = stageFor(acc), active = activeScene();
@@ -1177,21 +1405,44 @@
     var label = acc.getAttribute('data-scw-nav-label') || txt(acc.querySelector('.scw-acc-title'));
     var sub = txt(acc.querySelector('.scw-deploy-acc-sub'));
     if (sub && label.indexOf(sub) >= 0) label = label.replace(sub, '').trim();
-    d.querySelector('.scw-deploy-drawer__eyebrow').textContent = stageLabelFor(acc);
-    d.querySelector('.scw-deploy-drawer__title').textContent = label;
-    d.querySelector('.scw-deploy-drawer__sub').textContent = sub;
+    _drawerAcc = acc;
+    showDrawer(d, stageLabelFor(acc), label, sub);
+  }
+  /** Anything in the drawer body that is not the hosted section: the Setup
+   *  prelude, or a custom panel (openPanel). */
+  function clearDrawerExtras(body) {
+    var extras = body.querySelectorAll('.scw-deploy-drawer__prelude, .scw-deploy-drawer__custom');
+    for (var i = 0; i < extras.length; i++) body.removeChild(extras[i]);
+  }
+  function showDrawer(d, eyebrow, title, sub) {
+    d.querySelector('.scw-deploy-drawer__eyebrow').textContent = eyebrow || '';
+    d.querySelector('.scw-deploy-drawer__title').textContent = title || '';
+    d.querySelector('.scw-deploy-drawer__sub').textContent = sub || '';
     // Slide in: start off-screen (no transition), then let the transition run.
     d.classList.remove('scw-deploy-drawer--closing');
     d.classList.add('scw-deploy-drawer--opening');
     d.hidden = false;
     document.body.style.overflow = 'hidden';
-    _drawerAcc = acc;
     var panel = d.querySelector('.scw-deploy-drawer__panel');
     void panel.offsetWidth;                       // commit the off-screen frame
     d.classList.remove('scw-deploy-drawer--opening');
     // Keyboard users land inside the dialog; no visible ring unless they tab.
     panel.setAttribute('tabindex', '-1');
     try { panel.focus({ preventScroll: true }); } catch (e) { /* focus is a courtesy */ }
+  }
+  /** Open the drawer around a custom element (not a Builder section): the
+   *  bill of materials tray (bom-tray.js). A hosted section goes home
+   *  first; the element is dropped on close or when a section opens. */
+  function openPanel(opts) {
+    if (!opts || !opts.el) return false;
+    var d = ensureDrawer();
+    if (_drawerAcc) { returnHome(_drawerAcc); _drawerAcc = null; }
+    var body = d.querySelector('.scw-deploy-drawer__body');
+    clearDrawerExtras(body);
+    opts.el.classList.add('scw-deploy-drawer__custom');
+    body.appendChild(opts.el);
+    showDrawer(d, opts.eyebrow, opts.title, opts.sub);
+    return true;
   }
 
   function returnHome(acc) {
@@ -1217,6 +1468,8 @@
       d.hidden = true;
       d.classList.remove('scw-deploy-drawer--closing');
       if (acc) returnHome(acc);
+      var body = d.querySelector('.scw-deploy-drawer__body');
+      if (body) clearDrawerExtras(body);
       _drawerBusy = false;
       scheduleApply(0);
     }, 170);
@@ -1325,6 +1578,16 @@
     var count = num(target.count);
 
     if (stage.worksheet) {
+      // Shipments: a compact always-visible line under the photo bars,
+      // opening the shipments drawer. shipments-tray.js owns the content
+      // and returns '' when the view isn't on the scene; building it HERE
+      // keeps it inside the tile's innerHTML diff, so a nav pass can't
+      // fight a separately-mounted element.
+      try {
+        if (window.SCW && SCW.shipments && typeof SCW.shipments.tileLine === 'function') {
+          model.extra = SCW.shipments.tileLine() || '';
+        }
+      } catch (e) { model.extra = ''; }
       var ws = target.el;
       var ps = photoStats(ws);
       var recs = num(txt(ws.querySelector('.scw-ws-v2-count')));
@@ -1428,14 +1691,54 @@
       try { parkSections(scene, cfg); } catch (e) { /* sections stay visible */ }
       try { buildNav(scene, cfg); } catch (e) { /* nav is optional chrome */ }
       try { mountToolbarCoCta(scene, cfg); } catch (e) { /* CTA stays in its section */ }
+      scene.classList.add(READY_CLASS);
+      watchScene(scene);
     }, delay == null ? 250 : delay);
+  }
+
+  /** A section wrapped after the pass (ktl-accordion enhances on its own
+   *  debounce, per view render) sits hidden until classified: classify it
+   *  now rather than on the next view render / heartbeat. One observer
+   *  per scene element (Knack replaces the element on a scene render). */
+  function watchScene(scene) {
+    if (scene.__scwDeployObs || typeof MutationObserver === 'undefined') return;
+    var obs = new MutationObserver(function (muts) {
+      for (var m = 0; m < muts.length; m++) {
+        var added = muts[m].addedNodes;
+        for (var n = 0; n < added.length; n++) {
+          var el = added[n];
+          if (!el || el.nodeType !== 1) continue;
+          if ((el.classList && el.classList.contains('scw-ktl-accordion') && !el.hasAttribute(SEEN_ATTR)) ||
+              (el.querySelector && el.querySelector('.scw-ktl-accordion:not([' + SEEN_ATTR + '])'))) {
+            scheduleApply(0);
+            return;
+          }
+        }
+      }
+    });
+    obs.observe(scene, { childList: true, subtree: true });
+    scene.__scwDeployObs = obs;
   }
 
   for (var s = 0; s < SCENES.length; s++) {
     $(document).on('knack-scene-render.' + SCENES[s].sceneId + EVENT_NS, function () {
+      // Curtain down NOW (Knack may reuse the scene element, class and all),
+      // up after the pass — or after CURTAIN_MAX_MS, whatever happens.
+      var active = activeScene();
+      if (active) {
+        active.el.classList.remove(READY_CLASS);
+        (function (el) {
+          setTimeout(function () { el.classList.add(READY_CLASS); }, CURTAIN_MAX_MS);
+        })(active.el);
+      }
       scheduleApply(150);
     });
   }
+  // Styles at load, not at the first pass: the parked / curtain rules must
+  // be in the page before Knack paints the scene.
+  injectStyles();
+  // The scene may already be up (bundle loaded after the render).
+  if (activeScene()) scheduleApply(0);
 
   // Small public API: other modules (pinned-notes.js "All notes ›") open a
   // parked section's drawer by its ORIGINAL Builder title. Returns true
@@ -1450,6 +1753,10 @@
       return true;
     },
     closeDrawer: closeDrawer,
+    // Open the drawer around a custom element: { eyebrow, title, sub, el }.
+    openPanel: openPanel,
+    // The active deployment's config (scene id, worksheet mount) or null.
+    activeConfig: function () { var a = activeScene(); return a ? a.cfg : null; },
     // href of the scene's "Add File" menu link (project-attached upload
     // form), '' until the Builder link exists.
     addFileHref: function () {

@@ -2015,6 +2015,9 @@
       '.scw-sr-panel__chip--accepted  { background: #dcfce7; border-color: #86efac; color: #15803d; }',
       '.scw-sr-panel__chip--rejected  { background: #fff1f2; border-color: #fecdd3; color: #be123c; }',
       '.scw-sr-panel__chip--forwarded { background: #e0e7ff; border-color: #c7d2fe; color: #4338ca; }',
+      // Completed state, whatever the status word: Accepted, or Sent to sub
+      // on a Sales → Ops request (Ops is done with it).
+      '.scw-sr-panel__chip--done      { background: #dcfce7; border-color: #86efac; color: #15803d; }',
       '.scw-sr-panel__chip--origin    { background: #f1f5f9; border-color: #e2e8f0; color: #475569;',
       '  margin-left: 6px; }',
       '.scw-sr-hitem__detail > div > div { max-width: 100% !important; }',
@@ -2161,16 +2164,19 @@
       if (rev.origin) byReq[key].origins[rev.origin] = true;
     }
 
-    // Requests newest first; items inside oldest first, so each block reads
-    // as the sequence in which that request's lines were raised.
+    // Newest to oldest throughout: requests by their latest event, items
+    // inside a request newest first as well. A request's time is the
+    // newer of the request record and its newest item, so a block sorts by
+    // the last thing that happened in it — and a parentless group still
+    // dates from its items instead of sinking as "unknown".
+    function timeOf(id) { var t = objectIdTime(id); return t ? t.getTime() : 0; }
     var groups = [];
     for (var o = 0; o < order.length; o++) {
       var g = byReq[order[o]];
-      g.when = objectIdTime(g.id);
-      g.items.sort(function (a, b) {
-        var ta = objectIdTime(a.id), tb = objectIdTime(b.id);
-        return (ta ? ta.getTime() : 0) - (tb ? tb.getTime() : 0);
-      });
+      g.items.sort(function (a, b) { return timeOf(b.id) - timeOf(a.id); });
+      var latest = timeOf(g.id);
+      if (g.items.length) latest = Math.max(latest, timeOf(g.items[0].id));
+      g.when = latest ? new Date(latest) : null;
       groups.push(g);
     }
     groups.sort(function (a, b) {
@@ -2214,7 +2220,7 @@
       var list = document.createElement('div');
       list.className = 'scw-sr-req__items';
       for (var k = 0; k < grp.items.length; k++) {
-        list.appendChild(buildHistItem(grp.items[k]));
+        list.appendChild(buildHistItem(grp.items[k], dir.mod));
       }
       block.appendChild(list);
       wrap.appendChild(block);
@@ -2222,16 +2228,24 @@
     return wrap;
   }
 
-  function buildHistItem(rev) {
+  /** dirMod: the request's direction ('sales' = Sales → Ops, 'ops' =
+   *  Ops → Sub). "Sent to sub" is the END of a Sales → Ops request — Ops
+   *  triaged it and handed it on — so there it reads as completed (green),
+   *  not as something still in flight. */
+  function buildHistItem(rev, dirMod) {
     var sum = itemSummary(rev);
+    var done = rev.statusNorm === 'accepted' ||
+               (rev.statusNorm === 'forwarded' && dirMod === 'sales');
     var row = document.createElement('div');
-    row.className = 'scw-sr-hitem scw-sr-hitem--' + rev.statusNorm;
+    row.className = 'scw-sr-hitem scw-sr-hitem--' + rev.statusNorm +
+      (done ? ' scw-sr-hitem--done' : '');
 
     var line = document.createElement('div');
     line.className = 'scw-sr-hitem__line';
 
     var st = document.createElement('span');
-    st.className = 'scw-sr-panel__chip scw-sr-panel__chip--' + rev.statusNorm;
+    st.className = 'scw-sr-panel__chip scw-sr-panel__chip--' + rev.statusNorm +
+      (done ? ' scw-sr-panel__chip--done' : '');
     st.textContent = statusLabel(rev.statusNorm, rev.status);
     line.appendChild(st);
 
@@ -2381,6 +2395,8 @@
   // "looking at a specific line item" surface. Null when the item has no
   // revisions (or data hasn't loaded), so callers can append-or-skip.
   window.SCW.salesRevHistory = {
+    /** Test seam: the timeline builder, fed revision rows directly. */
+    buildHistory: buildHistory,
     blockForItem: function (sowItemId) {
       if (!sowItemId || !_revisionData.length) return null;
       var revs = [];

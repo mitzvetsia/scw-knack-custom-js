@@ -59,7 +59,6 @@
     'draft':    { fg: '#475569', bg: '#f1f5f9', bd: '#cbd5e1' },
     'issued':   { fg: '#0369a1', bg: '#e0f2fe', bd: '#bae6fd' },
     'accepted': { fg: '#15803d', bg: '#f0fdf4', bd: '#bbf7d0' },
-    'applied':  { fg: '#15803d', bg: '#f0fdf4', bd: '#bbf7d0' },
     'declined': { fg: '#b91c1c', bg: '#fef2f2', bd: '#fecaca' },
     'void':     { fg: '#b91c1c', bg: '#fef2f2', bd: '#fecaca' }
   };

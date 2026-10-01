@@ -22,7 +22,11 @@ additive chrome.
 
 **The worksheet is the page; everything else is a status tile or a drawer.**
 
-1. **Four stage tiles** replace pills + bands + accordion bars: Paperwork & billing,
+1. **Four stage tiles** replace pills + bands + accordion bars: Paperwork & billing
+   (its fact is acceptance-card.js's rollup, which since 2026-09-18 says when
+   what is waiting is a change order: "change order awaiting signature" /
+   "2 awaiting signature · 1 is a change order" — SW####CO number or the CO
+   sub-pricing snapshot, `isCoRow`),
    Project setup, Installation (current, navy), Closeout. One four-state
    vocabulary: Done / Waiting / In progress / N missing. The rollups the nav
    module already computes feed the tiles.
@@ -244,18 +248,240 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   Change Order, Add Project Note, Add File) into the section body; the Setup
   drawer leads with the generated documents (`buildSetupPrelude`, blank forms
   from Other Files by CONFIG_file type); Setup tile hosts the doc generator
-  (`SCW.regenDocs.openPicker`). Public API `SCW.deployNav.openSection(re) /
-  closeDrawer() / addFileHref()`.
+  (`SCW.regenDocs.openPicker`). **Re-issued documents** (2026-09-21): PMs
+  regenerate the blanks when something changes, so the list piled up
+  copies. On the ops page (`docsSaveView` view_3941 live + the write
+  helpers) every row offers **Supersede** (PUT the note with a
+  "Superseded · " prefix, `SUPERSEDED_RE`; reversible, no Builder field —
+  the Files tray and Closeout show the note so the mark reads everywhere)
+  and **delete** (× → confirm → view-based DELETE, the Files tray's path).
+  Superseded copies drop into a "N superseded · show" fold with Restore.
+  When a document has several live copies the newest (the date the
+  generator stamps into the file name, else model order) is the one to
+  print, older ones carry an "older copy" chip, and **Keep newest of each**
+  supersedes them in one confirm (two writes at a time, each settled).
+  After a write the docs views refetch and the prelude rebuilds in place.
+  Sub dashboard: read-only. Public API `SCW.deployNav.openSection(re) /
+  closeDrawer() / addFileHref()`. **No flash of the native page** (2026-09-18):
+  styles are injected at load, not at the first pass; the scene is
+  `visibility: hidden` until the first pass after a scene render marks it
+  `scw-deploy-ready` (the `knack-scene-render` handler drops the class
+  synchronously, a 2.5s watchdog lifts it regardless); every
+  `.scw-ktl-accordion` in the scene is `display: none` until a pass stamps
+  `data-scw-deploy="keep|parked"` (`parkSections`), so a section ktl-accordion
+  wraps after the pass never paints in the old layout first; a
+  `MutationObserver` on the scene runs a pass as soon as an unclassified
+  section appears. bom-tray.js likewise injects its summary-hiding CSS at
+  load.
+- **`shipments-tray.js`** (2026-09-21) — a Shipment record mirrors ONE order
+  in the third-party OMS (one order = one shipment = one record). The OMS
+  owns the facts; Knack owns the linkage. A **compact always-visible line on
+  the Installation tile** (`SCW.shipments.tileLine()`, folded into the tile
+  by deploy-page-nav so it lives inside the tile's own innerHTML diff and a
+  nav pass can't fight it) opens the **Shipments drawer**
+  (`SCW.deployNav.openPanel`). **DELIVERY IS NOT TRACKED (scrubbed
+  2026-09-21):** ShipEdge's terminal state is "shipped" — its order payload
+  carries no delivered date and no ETA, and nothing else feeds them — so
+  the tray says NOTHING about arrival. No delivered date, no ETA, no
+  overdue, no "all delivered"; `SHIP_delivered date` exists on the object
+  but is deliberately not read, and a status string that happens to say
+  "delivered" is shown verbatim without being counted or coloured as
+  landed. The vocabulary is: not shipped yet, or shipped on a date with a
+  carrier and a tracking link. To phase it back in, get a real delivery
+  feed first (a ShipEdge webhook, carrier tracking, or parsed delivery
+  mail), then restore the branches the module header points at. The line
+  leads with what a PM acts on: missing in OMS → a plain COUNT plus the
+  last ship date → none shipped yet, and **staleness outranks every other
+  headline**. It never says "in transit" or "out": both imply a location
+  the OMS never reports. All we know is how many shipments exist and when
+  the last one left; the tracking link is what knows where a parcel is. Drawer: freshness bar + "Re-check shipments", a stale
+  banner, counts, then one card per order leading with its ship date. **The
+  two things a PM clicks are full-size buttons on the card**: `Track ·
+  <carrier> <number>` (the carrier's page; an unrecognised carrier has no
+  URL, so the number renders as selectable text rather than a dead link)
+  and `Open in ShipEdge`
+  (`order_view.php?view=orderlist&OrderID=<order id>`). Both open a new
+  tab so the deploy page is not lost, and the OMS link is NOT repeated in
+  the disclosure. **What's in the shipment** (field_3307 `SHIP_items json`,
+  2026-09-21) gets its own disclosure above that: a scrubbed snapshot the
+  Make scenario writes — `{v, enc:"url", capturedAt, orderId,
+  items:[{sku,name,qty,serials}]}` — rendered as qty / name / SKU /
+  serials. **Allow-list, never deny-list**: the OMS item's nested product
+  object carries our cost, retail, sold price, supplier and live stock,
+  and the strip happens in the MAKE MAPPER, not the browser — the blob is
+  readable by anyone who can open the page and the sub portal is a page,
+  so a client-side scrub would be cosmetic. Strings are percent-encoded so
+  a quote in a product name cannot break the JSON. The per-row "Order
+  details" disclosure below it carries REFERENCE ONLY — order date, ship
+  to, address, last synced — never what is already on the card (the order
+  number is the title, the status is the chip), never our plumbing
+  (source, sync state) and never a repeat of the OMS link. One line states
+  plainly that delivery is not tracked. **Everything is read-only** — nothing writes a record; a
+  "fix" typed in Knack is overwritten by the next reconcile pass.
+  `field_2967`-style guessing is avoided entirely: **field keys are
+  discovered from view_4163's own column headers by LABEL** (`fields()`,
+  the trick bom-tray.js uses for SKU), confirmed against the live view
+  (field_3281…field_3305). **Two spec fields are NOT on the view** —
+  `SHIP_eta` and `OMS_order total` — so no arrival date is implied and
+  nothing can be "overdue"; the drawer says so once, and both light up
+  with no code change if Builder adds them. `SHIP_address` is four parts
+  (street/city/state/zip) composed into one line. OMS statuses are FREE
+  TEXT: `tone()` keyword-matches what it knows and **falls through to a
+  neutral chip** for anything unseen, shown verbatim. "Missing in OMS" is
+  surfaced on the row and the tile. Staleness is judged by the OLDEST
+  `SYS_last synced` (the worst record), and reported from it — `syncedText`
+  is the newest, `staleText` the oldest, and anything reporting staleness
+  quotes the oldest. **Re-check shipments** POSTs
+  `MAKE_SHIPMENTS_RESYNC_WEBHOOK` with everything the page knows so the
+  scenario needn't re-query Knack: project id, the SOWs (view_4161), the
+  acceptances + signed flag (view_3914 — an order ties to a project
+  directly OR through an accepted proposal), the shipments we already
+  hold (id / order no / OMS order id / sync state / last synced) as the
+  list to diff against, and — the key to matching ShipEdge —
+  **constructed `references`**. ShipEdge's Orders API has no contains /
+  LIKE / keyword filter on `reference_number`, only an exact lookup
+  (`GET /apirest/v4/oms/orders/{ref}?identify_by=order_reference`) or a
+  date-windowed list you filter yourself. Our linkage lives in the order
+  reference, shaped `<project no>-SW<sow no> | <quote no>` (e.g.
+  `62489857827-SW1454 | 20260910-11567`) — exactly the published
+  proposal's identifier — so `buildReferences()` emits every reference an
+  order for this project could carry: the acceptances' full strings first
+  (they know the quote), then the SOW-only left sides (`sowRef`, for an
+  order with no proposal behind it), deduped, each naming its source
+  record. The string is the published proposal's identifier
+  (`<SOW id> | <proposal no>`) and should sit on every accepted
+  acceptance, but WHICH connection projects it onto a grid is a Builder
+  decision — on a live project the acceptance's own `field_2755` rendered
+  empty and the quote went missing — so `referenceOnRecord()` takes the
+  named connection first and then scans every field **by shape**
+  (`REF_FULL_RE`), across both acceptance grids (view_3914 + view_4157,
+  deduped) and the SOWs. `referencesMissingQuote` flags the case where not
+  one reference carries a proposal number, so the scenario reports a
+  fallback rather than a clean run. `projectNo` rides at the top level as
+  the one token they all share, the needle for a contains pass over a list
+  windowed by the newest `lastSynced` — the only way to catch an order
+  typed into ShipEdge by hand. Then it refetches view_4163 at 1.5s / 6s / 15s and repaints (project rollups recalculate lazily — this reads the shipment
+  RECORDS, never a rollup). The native grid is registered in
+  `hide-data-source-views.js`. Ops page only.
+  `tests/deploy-page/test-shipments.js` (+ the tile-line integration in
+  `test-deploy-tiles.js`).
 - **`pinned-notes.js`** — pinned strip under the project header (≤3, `FLAG_pinned`
   field_3278 via view_4135 PUT); the Notes drawer as **cards** (author · date,
   text with paragraphs, Show more past 4 lines, Pin/Unpin, per-row action links
   proxied to the hidden grid — the Push Note to ClickUp/Slack action is an
-  icon + EMPTY anchor, label from the column header); **inline composer**
-  (textarea, Pin, Cancel | Save) that fills and submits the hidden on-page
-  "Add DOC_note" form **view_4162** (`addFormView`), success = Knack's
-  record-create/form-submit event, pin written afterwards through the grid,
-  form reloaded behind the composer. Schema-POST via the child page's form is
-  the fallback when no on-page form exists.
+  icon + EMPTY anchor, label from the column header); **the add form is on the
+  page**: Knack's own "Add DOC_note" form **view_4162** (`addFormView`) is
+  adopted (`adoptForm`) — moved above the card list, restyled
+  (`.scw-notes-addform`: header/label hidden, "Save note" button, a "Pin to
+  project header" checkbox in the submit row since the form has no pin
+  input). **Knack's submit is not used**: its post-submit state (confirmation,
+  "Reload form", element replacement) never gave the form back live, so
+  Knack's button is hidden behind our "Save note", which POSTs every
+  `field_N` input of the form (the note + the hidden project connection)
+  through the form view — `/v1/pages/scene_1311/views/view_4162/records`,
+  and the element sits as a sibling directly BEFORE `#view_4135`, never
+  inside it (Knack rewrites the grid element's contents on every refresh;
+  the form was being wiped by the first refresh after adoption),
+  the same view-based endpoint the form itself uses, so the form's record
+  rules (author, date) run server-side (`saveViaApi`). A native submit is
+  intercepted (capture) and saved the same way; Knack's
+  `knack-record-create` / `knack-form-submit` are treated as echoes. On
+  success: pin PUT through the grid, view_4135 refetched (new card +
+  strip), textarea cleared, "Note saved." flash. The form never leaves. The proxied "Add Project
+  Note" button (`#scw-deploy-notes-actionbar`) is hidden while the form is
+  adopted; the empty state's "add the first one" focuses the form. Detection
+  is DOM-only (`#view_4162` with a `<form>`), no dependence on `Knack.views`
+  schema. The schema-POST composer (child page's form view via the menu
+  link's slug) remains only as the fallback on a scene without the form.
+- **`other-files-gallery.js`** (pre-existing; the Files tray) gained **delete**
+  (2026-09-18): a × on each card, ops page only (`canDelete` on the
+  view_3942 deployment), confirm → view-based DELETE through the DOC save
+  view view_3941 (the path closeout-deliverables.js already deletes by) →
+  card + native row dropped → save / gallery / closeout models refetched
+  (maps strip and closeout list follow). Sub dashboard: no ×. **Bulk delete**
+  (same day): "Select files…" above the grid puts a checkbox on every card
+  (Select all, "N selected"); Delete selected → ONE confirm naming the files
+  (and how many are Required) → the DELETEs run two at a time, each settled
+  on its own (`deleteDocs`), successes drop card + row as they land,
+  failures stay selected and are named in one alert; Done leaves the mode.
+  Selection survives a re-render (save-view refetch) and prunes rows that
+  went away. `tests/deploy-page/test-files-gallery.js`.
+- **`bom-tray.js`** (2026-09-18, replaces the worksheet Summary on the
+  deploy pages) — the FIRST row of "Also on this project" ("Bill of
+  materials", box icon, a `kind:'panel'` target deploy-page-nav adds when
+  `SCW.bomTray` exists) opens the deploy drawer around a tray
+  (`SCW.deployNav.openPanel`, new: a custom element in the drawer, the
+  hosted section goes home first). Head: N new drops · M on existing cable
+  (cam/reader rows, `field_2807`) + By category / By MDF-IDF / By SOW
+  toggle (persisted `scw:bom:mode`; the tray element is REPAINTED in place
+  on toggle, never swapped: the drawer tags that element to clear it when
+  the next section or panel opens, and a fresh untagged copy lingered under
+  whatever opened next, 2026-09-18 fix; `open()` also drops any earlier
+  `.scw-bom` in the page). **Shipping**: one row per product per group
+  (bucket L2 name `field_2822`, cameras first; location `field_2818`; or the
+  SOW off the linked SOW item's `field_2154`, "SOW 1524", a line shared by
+  two SOWs under "SOW 1524 + SOW 1601"; location / SOW groups sort A→Z with
+  "No MDF / IDF" / "No SOW" last and muted; group rows carry 26px of top
+  space + a rule so the list skims):
+  Product (+ designators `field_2802` compacted "I-001 to I-005", chips; no
+  location run-on in the category view, the MDF/IDF view carries it) | SKU |
+  Qty | Retail | Discount ($) | After discount, extended × qty, totals row.
+  **A column with no data on any row is left out** (SKU, Retail, Discount,
+  After discount each on their own), so until view_4072 carries the price
+  columns the ops tray is Product | Qty. Pricing is joined from the PROPOSED SOW item the install
+  record points at (`field_2819` → hidden view_4072 / view_4151):
+  `field_1960` retail, `field_2262` discount each, `field_2268` net unit;
+  SKU: the column is found by its HEADER text ("SKU") on the hidden SOW grid
+  first, then the install grid (`skuField`), so whichever field the Builder
+  exposed under that label is the one read; `field_56` is only the fallback.
+  Added to view_4072 on 2026-09-18. Pricing columns stay dormant until the
+  price fields are on the grid (deferred by Micah). Ops page only shows
+  pricing; the sub tray is Product | SKU | Qty. **Not shipping**: a dashed,
+  muted block for Pre-existing (`/^pre-existing/` in the product name: on
+  site, we connect to it) and Customer-supplied (`customer|client supplied`
+  in the name: they provide it, we install it). **Removed by change order**:
+  a third muted block for rows a signed CO pulled (`field_2967` set, the
+  worksheet's "Removed by CO" rule), headed by the CO's SOW number, struck
+  through, never counted or priced. **Change orders are read off the CO's
+  own lines on the proposed grid** (view_4072 / view_4151: target install
+  record `field_2966`, action `field_2965`, SOW `field_2154` → "SOW 1418CO";
+  `coIndex`): `field_2967`'s display value is the removed line's product
+  name, so the flag alone cannot head a group. A line's ACTION comes first
+  from the CO's pricing snapshot JSON (`{lines:{id:{action,qty,item}}}`,
+  co-stage-strip's blob as the acceptance grid carries it on field_2959 /
+  field_2946 — every view model on the page is scanned for a string with
+  `"lines"`, joined by line id), then the grid's field_2965, then the sign
+  of the qty (a Remove is negative) — view_4072 may not expose the action
+  column, and without it every line read as an Add (the "Swap pending →
+  Wall Mount Bracket" on an Informant). Lines are paired to the record
+  they target BY CATEGORY (bucket field_2219, else the product name): the
+  camera's swap is the camera-bucket Add/Remove pair; a mount line on the
+  same record is the accessory riding along — its Remove lists as
+  "Swapped out · SOW ####CO", never as the camera's replacement. Product
+  names compare with the CO line's " - SKU" suffix stripped. An accessory
+  the swap pulled that ALSO has its own install record flagged removed
+  (signature flags the ride-along mount as well as targeting it on the
+  device's line) is listed once: its own row, carrying the CO from the
+  device's line. Rows inside every group follow the proposal's bucket order
+  (install `field_2218`), worksheet order within a bucket; the By MDF/IDF
+  and By SOW views carry small bucket sub-heads; By category orders its
+  groups the same way. And the lines show what the
+  install record cannot — a Remove on an UNSIGNED CO (row stays in
+  Shipping, amber "Removal pending · SOW 1418CO not signed" chip: nothing
+  leaves scope before signature) and a SWAP (Remove + Add pair targeting
+  one record; signature updates the record's product in place, so the row
+  shows the NEW product with a "Swapped in by SOW 1418CO · was <old>" chip;
+  and because the OLD unit is real hardware — quoted, maybe shipped, maybe
+  on site — the pair's Remove line (product + qty) is listed in the removed
+  block as "Swapped out · replaced by <new>", hardware to bring back. The
+  block is titled "Removed or swapped out by change order" — the "the CO
+  swapped a camera and there's an extra one on site" case). Never listed: services, assumptions. Accessories are rows in their
+  own bucket. Group headers are 15px headings with a rule; Camera / Reader
+  alone carries a subtotal row in the category view (the drop count is what
+  a PM checks; on mounts or headend it adds nothing). The old per-MDF / grand summary panels and the "Summary
+  only" toolbar mode are hidden on both deploy mounts (a saved Summary-only
+  mode is bounced back to the default). Mockup: the "Install BOM Summary
+  Wireframes" canvas. `tests/deploy-page/test-bom-tray.js`.
 - **`site-maps-strip.js`** — "Site maps & coverage" card in row 2 beside the
   "Also" list. Reads Other Files (view_3942 / sub view_4063), picks maps by
   CONFIG_file type (field_2877 matching site plan / coverage / floor plan);
@@ -288,15 +514,65 @@ Optional: an "Add File" menu link → project-connected DOC_files form on
 scene_1311 (the bundle proxies it into the Files action bar + the maps upload
 button automatically when the link text matches /add|upload file/i).
 
+### Learned 2026-09-18 (second session)
+
+- The hidden-form composer never opened live: "Add Project Note (K2)" kept
+  navigating to the child page (the on-page/schema lookups came back empty,
+  so the click fell through to the anchor's href). Replaced by adopting the
+  form itself into the drawer — nothing to look up, nothing to fill by
+  proxy. The user's call: no button, the form lives on the page.
+- First live test of the adopted form: it looked like a raw KTL view
+  (KTL's global `.kn-view:has(.ktlHideShowButton)` styling beat the class
+  CSS) and after the first save it vanished with the button back (Knack
+  replaced the element; the pass that couldn't find a `<form>` restored the
+  button). Both fixed as described in the module note.
+- Second live test: the button stayed gone, but after a submit the form never
+  came back; third test: no form at all, `[id=view_4162]` absent from the
+  DOM while `Knack.views.view_4162` still existed. Root cause of both: the
+  adopted form was placed INSIDE `#view_4135`, and Knack rewrites that
+  element's contents on every grid refresh (after a save, a pin, its own
+  fetch). Moved to a sibling before the view. (Knack's confirmation /
+  reload path was a red herring.) Dropped Knack's submit
+  entirely: the note is POSTed through the form view by the bundle and the
+  form is never touched (see the module note).
+- The Agreements & Invoices tray "reproduced the entire top section of the
+  page": `buildNav` anchors the nav directly before the FIRST accordion
+  (Acceptance) on every pass, using the accordion element wherever it is —
+  with Acceptance in the drawer, the tiles / maps strip / "Also" list were
+  carried into the drawer body. Now a first section that is away anchors at
+  its home placeholder. Any pass while the tray was open triggered it
+  (heartbeat, a view render), which is why it looked new: the notes work
+  made more passes happen with a tray open.
+- Setup drawer said "Not generated" for approval forms the project clearly
+  had: live, the generator types a blank as plain "Location Approval Form"
+  and puts "(not completed)" in the file NOTE (field_588); some runs miss the
+  type and carry only the note. `setupDocs` now matches type + note together
+  (a completed upload has the type and no such note, so it still stays out).
+  The Setup TILE's "N of M docs generated" still counts the closeout doc
+  cards, a different tally.
+- The Push link was not exercised; still unverified below.
+
 ### To verify live (not yet confirmed by the user)
 
-- Composer: a saved note lands with author/date filled (form rules) and the
-  ticked pin sticks; the form's submit rule must be "Show a message" (a redirect
-  rule would navigate). Console prints `[scw-pinned-notes] add note failed …`
-  on failure.
-- The card's "Push Note to Clickup and Slack ›" link fires the action rule (it
-  programmatically clicks the hidden row's anchor; if Knack ignores that, target
-  the `i.fa-send` icon instead).
+- BOM tray: the button shows in the worksheet toolbar, the old Summary
+  blocks are gone, pricing columns fill (they need view_4072 to carry
+  field_1960 / field_2262 / field_2268 — if every row shows —, those
+  columns are missing from the hidden grid), SKU fills once INPUT_sku is on
+  view_4072. Sub dashboard: no pricing.
+
+- Notes drawer: the "Add DOC_note" form (view_4162) shows at the top of the
+  list as a bordered box (textarea, Pin checkbox, "Save note"), and the
+  "Add Project Note (K2)" button is gone. A saved note lands with
+  author/date filled (form rules), the card appears without a reload, the
+  ticked pin sticks, the textarea clears and "Note saved." flashes above the
+  list. Author / date must come from the form's record rules (they run
+  server-side for the view-based POST). If
+  the form shows Knack's default look (title "Add DOC_note", "Submit"),
+  the adoption didn't run: check the console for
+  `[scw-pinned-notes] add form not adopted`.
+- The card's "Push Note to Clickup and Slack ›" link fires the action rule
+  (it programmatically clicks the hidden row's anchor; if Knack ignores
+  that, target the `i.fa-send` icon instead).
 - Slow first load reported once, not reproduced (jsDelivr cold fetch per new SHA
   is the likely cause; ask which phase is slow on a second load).
 

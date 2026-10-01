@@ -1,0 +1,370 @@
+// jsdom smoke test: shipments-tray.js — the Installation tile's compact shipments line and the
+// drawer behind it. Field keys are DISCOVERED off view_4163's own headers (the live labels are
+// used here verbatim), OMS facts are read-only, an unknown status falls through to a neutral chip,
+// "Missing in OMS" is surfaced, stale data outranks every other headline, and "Re-check shipments"
+// POSTs the project + SOWs + acceptances + the shipments we already hold.
+// DELIVERY IS OUT (2026-09-21): ShipEdge stops at "shipped", so the tray must say nothing about
+// arrival — no delivered date, no ETA, no overdue. These tests hold that line.
+const fs = require('fs');
+const path = require('path');
+const { JSDOM } = require('jsdom');
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://scwinstallation.knack.com/installationservices#team-calendar/project-dashboard/6aa43526d15c143d30214121/deploy/6aa43526d15c143d30214121/' });
+const { window } = dom; const { document } = window;
+global.window = window; global.document = document;
+const handlers = {};
+const ajaxCalls = [];
+function jq() { return jqObj; }
+const jqObj = { on(ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); return jqObj; }, off() { return jqObj; }, trigger() { return jqObj; }, length: 0 };
+jq.fn = {};
+jq.ajax = function (o) {
+  ajaxCalls.push({ url: o.url, type: o.type, payload: JSON.parse(o.data) });
+  const d = { done(fn) { if (!/fail/.test(o.url)) fn({ success: true }); return d; }, fail(fn) { if (/fail/.test(o.url)) fn({ status: 500 }); return d; } };
+  return d;
+};
+window.$ = jq; window.jQuery = jq; global.$ = jq;
+window.setInterval = function () {}; global.setInterval = function () {};
+
+// The LIVE view_4163 columns (field_3281…field_3305), labels verbatim from the Builder.
+const COLS = [
+  ['field_3281', 'SHIP_order no'], ['field_3282', 'SYS_oms order id'], ['field_3283', 'SYS_oms url'],
+  ['field_3284', 'SHIP_source'], ['field_3285', 'SHIP_sync state'], ['field_3286', 'SYS_last synced'],
+  ['field_3287', 'OMS_order date'], ['field_3288', 'OMS_order status'], ['field_3289', 'OMS_ship to name'],
+  ['field_3290', 'SHIP_status'], ['field_3291', 'SHIP_carrier'], ['field_3292', 'SHIP_tracking no'],
+  ['field_3293', 'SHIP_tracking url'], ['field_3294', 'SHIP_ship date'], ['field_3295', 'SHIP_delivered date'],
+  ['field_3296', 'SHIP_address street'], ['field_3297', 'SHIP_address city'], ['field_3298', 'SHIP_address state'],
+  ['field_3299', 'SHIP_address zip'], ['field_3300', 'Record ID'], ['field_3301', 'Created By'],
+  ['field_3302', 'Updated By'], ['field_3303', 'Owned By'], ['field_3304', 'CORE_projects'],
+  ['field_3305', 'INSTALL_acceptances'], ['field_3307', 'SHIP_items json']
+];
+// The scrubbed contents blob the Make scenario writes: sku / name / qty / serials and NOTHING
+// else. Strings are percent-encoded so a quote in a product name can't break the JSON.
+const blob = items => JSON.stringify({ v: 1, enc: 'url', capturedAt: '2026-09-21T21:33:31', orderId: '63621',
+  items: items.map(i => ({ sku: encodeURIComponent(i.sku), name: encodeURIComponent(i.name),
+    qty: encodeURIComponent(i.qty), serials: encodeURIComponent((i.serials || []).join(', ')) })) });
+const DAY = 86400000;
+const iso = ms => new Date(ms).toISOString();
+const dateRaw = ms => ({ date: new Date(ms).toLocaleDateString('en-US'), iso_timestamp: iso(ms) });
+const now = Date.now();
+const models = recs => ({ model: { data: { models: recs.map(a => ({ attributes: a })) } }, fetched: 0 });
+function shipRec(o) {
+  return Object.assign({
+    id: o.id, field_3281: o.orderNo || '', field_3282: o.omsId || '', field_3283_raw: o.omsUrl ? { url: o.omsUrl } : null,
+    field_3284: o.source || 'Auto', field_3285: o.sync || 'Linked',
+    field_3286_raw: o.synced == null ? null : dateRaw(o.synced),
+    field_3287_raw: o.orderDate == null ? null : dateRaw(o.orderDate), field_3288: o.orderStatus || '',
+    field_3289: o.shipTo || '', field_3290: o.status || '', field_3291: o.carrier || '',
+    field_3292: o.tracking || '', field_3293_raw: o.trackUrl ? { url: o.trackUrl } : null,
+    field_3294_raw: o.shipDate == null ? null : dateRaw(o.shipDate),
+    field_3295_raw: o.delivered == null ? null : dateRaw(o.delivered),
+    field_3296: o.street || '', field_3297: o.city || '', field_3298: o.state || '', field_3299: o.zip || '',
+    // EXACTLY how Knack hands a paragraph-text column to a table: _raw
+    // holds the whole string, the rendered value is CLIPPED for the cell.
+    // Read the rendered one and the JSON never parses.
+    field_3307_raw: o.items ? blob(o.items) : '',
+    field_3307: o.items ? blob(o.items).slice(0, 64) : ''
+  });
+}
+window.Knack = { views: {}, router: { current_scene_key: 'scene_1311' } }; global.Knack = window.Knack;
+let opened = null;
+window.SCW = { CONFIG: { MAKE_SHIPMENTS_RESYNC_WEBHOOK: 'https://hook.example/ships' }, debug() {},
+  deployNav: { openPanel(o) { opened = o; o.el.classList.add('scw-deploy-drawer__custom'); document.body.appendChild(o.el); return true; } } };
+global.SCW = window.SCW;
+new Function('window', 'document', '$', 'Knack', 'SCW',
+  fs.readFileSync(path.join(__dirname, '../../src/features/shipments-tray.js'), 'utf8'))(window, document, jq, window.Knack, window.SCW);
+
+function scene(recs, cols) {
+  document.body.innerHTML = '<div id="kn-scene_1311">' +
+    '<div class="kn-table kn-view" id="view_4163"><table><thead><tr>' +
+      (cols || COLS).map(([k, label]) => '<th class="' + k + '"><span class="table-fixed-label"><a class="kn-sort"><span>' + label + '</span></a></span></th>').join('') +
+    '</tr></thead><tbody></tbody></table></div>' +
+    '<div class="kn-table kn-view" id="view_4161"></div><div class="kn-table kn-view" id="view_3914"></div>' +
+    '<div class="kn-table kn-view" id="view_4157"></div>' +
+  '</div>';
+  window.Knack.views.view_4163 = models(recs);
+  // SOW ID carries the left side alone; the acceptance's proposal identifier carries the full
+  // reference ShipEdge holds: "<project no>-SW<sow no> | <quote no>". SW1454 appears BOTH ways —
+  // as an accepted proposal and as a SOW — so the dedupe and the two forms are both exercised.
+  window.Knack.views.view_4161 = models([
+    { id: 'sow1', field_2122: '62489857827-SW1454' },
+    { id: 'sow2', field_2122: '62489857827-SW1455' },
+    { id: 'sow3', field_2122: '' }                        // nothing to build a reference from
+  ]);
+  window.Knack.views.view_3914 = models([
+    { id: 'acc1', field_2755_raw: [{ id: 'p1', identifier: '62489857827-SW1454 | 20260910-11567' }], field_2766: 'Yes' },
+    // LIVE FAILURE MODE: the named proposal connection is empty while the same string sits on a
+    // neighbouring field. Reading only field_2755 produced a quote-less reference; the shape scan
+    // finds it wherever the Builder put it.
+    { id: 'acc2', field_2755_raw: [], field_2766: 'Yes',
+      field_2960: 'Basis: 62489857827-SW1456 | 20260921-11690 (signed)' }
+  ]);
+  // The second acceptance grid on the scene. acc1 repeats (the grids overlap and must dedupe);
+  // acc3 is only here, and only this grid knows its proposal.
+  window.Knack.views.view_4157 = models([
+    { id: 'acc1', field_2755_raw: [{ id: 'p1', identifier: '62489857827-SW1454 | 20260910-11567' }], field_2766: 'Yes' },
+    { id: 'acc3', field_2671: '{"proposal":"62489857827-SW1457 | 20260922-11701"}', field_2766: 'Yes' }
+  ]);
+}
+let fails = 0;
+function check(label, got, want) {
+  const ok = JSON.stringify(got) === JSON.stringify(want);
+  if (!ok) fails++;
+  console.log((ok ? 'ok   ' : 'FAIL ') + label + (ok ? '' : '\n      got= ' + JSON.stringify(got) + '\n      want=' + JSON.stringify(want)));
+}
+const api = window.SCW.shipments;
+const lineText = () => {
+  const d = document.createElement('div'); d.innerHTML = api.tileLine();
+  const t = d.querySelector('.scw-ships-text');
+  return t ? t.textContent : '';
+};
+const lineTone = () => {
+  const d = document.createElement('div'); d.innerHTML = api.tileLine();
+  const dot = d.querySelector('.scw-ships-dot');
+  return dot ? dot.className.replace('scw-ships-dot scw-ships-dot--', '') : '';
+};
+
+// ── Field discovery ────────────────────────────────────────────────
+scene([]);
+check('field keys are discovered off the view\'s own headers, by label — including the four address parts, the project and the acceptance link',
+  (() => { const f = api.fields(); return [f.orderNo, f.omsId, f.omsUrl, f.source, f.syncState, f.lastSynced, f.orderDate, f.orderStatus, f.shipToName, f.shipStatus, f.carrier, f.trackingNo, f.trackingUrl, f.shipDate, f.deliveredDate, f.street, f.city, f.state, f.zip, f.project, f.acceptance, f.eta, f.orderTotal]; })(),
+  ['field_3281', 'field_3282', 'field_3283', 'field_3284', 'field_3285', 'field_3286', 'field_3287', 'field_3288', 'field_3289', 'field_3290', 'field_3291', 'field_3292', 'field_3293', 'field_3294', undefined, 'field_3296', 'field_3297', 'field_3298', 'field_3299', 'field_3304', 'field_3305', undefined, undefined]);
+check('the delivered-date column is NOT read even though it exists on the view — there is no feed behind it',
+  [api.fields().deliveredDate, api.fields().eta], [undefined, undefined]);
+
+// ── Tile line ──────────────────────────────────────────────────────
+check('no shipments yet reads as a plain fact, not a problem', [lineText(), lineTone()], ['No shipments on this project yet', 'none']);
+
+scene([
+  shipRec({ id: 's1', orderNo: 'SO-1001', status: 'shipped', synced: now - 3600000, shipDate: now - 3 * DAY }),
+  shipRec({ id: 's2', orderNo: 'SO-1002', status: 'shipped', synced: now - 3600000, shipDate: now - DAY, carrier: 'UPS', tracking: '1Z999' }),
+  shipRec({ id: 's3', orderNo: 'SO-1003', status: 'pending', synced: now - 3600000 })
+]);
+check('fresh: a plain COUNT plus the last ship date — no "in transit", no "out", nothing about where a parcel is',
+  [lineText(), lineTone()],
+  ['3 shipments · 1 not shipped yet · last shipped ' + new Date(now - DAY).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), 'go']);
+
+scene([shipRec({ id: 's1', orderNo: 'SO-1001', status: 'pending', synced: now - 3600000 })]);
+check('nothing shipped yet', [lineText(), lineTone()], ['1 shipment · none shipped yet', 'wait']);
+// A status that SAYS delivered is still only free text: it is shown verbatim, but the tray does not
+// infer an arrival from it, count it as landed, or colour it as done.
+scene([shipRec({ id: 's1', orderNo: 'SO-1001', status: 'Delivered', synced: now - 3600000, shipDate: now - DAY })]);
+check('a "Delivered" status string does not become a delivery claim', [lineText(), api.tone('Delivered')],
+  ['1 shipment · last shipped ' + new Date(now - DAY).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), 'neutral']);
+check('the tile line never claims a location',
+  /in transit|\bout\b|en route|arriv/i.test(lineText()), false);
+
+scene([
+  shipRec({ id: 's1', orderNo: 'SO-1001', status: 'shipped', synced: now - 5 * DAY, shipDate: now - 6 * DAY }),
+  shipRec({ id: 's2', orderNo: 'SO-1002', status: 'shipped', synced: now - 2 * 3600000, shipDate: now - DAY })
+]);
+check('STALE OUTRANKS EVERYTHING: the oldest stamp is judged, and the line says the status may be out of date rather than reporting it as fact',
+  [lineText(), lineTone()], ['2 shipments · not synced since 5 days ago — status may be out of date', 'warn']);
+
+scene([
+  shipRec({ id: 's1', orderNo: 'SO-1001', status: 'shipped', sync: 'Missing in OMS', synced: now - 3600000, shipDate: now - DAY }),
+  shipRec({ id: 's2', orderNo: 'SO-1002', status: 'shipped', synced: now - 3600000, shipDate: now - DAY })
+]);
+check('a record whose OMS order no longer resolves is surfaced on the tile, not hidden', [lineText(), lineTone()], ['1 order missing in the OMS', 'warn']);
+
+// ── Drawer ─────────────────────────────────────────────────────────
+scene([
+  shipRec({ id: 's1', orderNo: 'SO-1001', omsId: 'OMS-1', omsUrl: 'https://oms/1', status: 'shipped', synced: now - 3600000,
+            shipDate: now - 5 * DAY, carrier: 'UPS', tracking: '1Z001', trackUrl: 'https://ups/1Z001',
+            orderDate: now - 9 * DAY, orderStatus: 'shipped', shipTo: 'Ed Haman', street: '12 Main St', city: 'Durham', state: 'NC', zip: '27701',
+            // The shapes a real OMS order actually throws at this: a compatibility
+            // list that is most of the string, an HTML-escaped inch/foot mark, and
+            // a line with no description at all.
+            items: [{ sku: '0235UL3C', name: 'The Lookout Mini 5.0 - 26ZV5M-MINI-V2', qty: 1, serials: ['210235UL3C325B000013'] },
+                    { sku: '0235UTNT', name: 'The Viking 8.0 v5 - 26BV8-V5', qty: 2, serials: ['210235UTNT3265000114', '210235UTNT3265000085'] },
+                    { sku: '2115T0GE', name: 'Electrical Box Mount for Deputy v2; Deputy v3; Sheriff; Informant; Scout - EMB26DFD', qty: 30, serials: [] },
+                    { sku: '10ftpmc', name: '10&#039; PMC HDMI - PMC-HDMI-010', qty: 4, serials: [] },
+                    { sku: '00406142', name: '', qty: 3, serials: [] }] }),
+  shipRec({ id: 's2', orderNo: 'SO-1002', omsId: 'OMS-2', status: 'Rolling down a hill', synced: now - 3600000, shipDate: now - DAY, carrier: 'FedEx', tracking: '77', sync: 'Missing in OMS' }),
+  shipRec({ id: 's3', orderNo: 'SO-1003', omsId: 'OMS-3', status: '', orderStatus: 'Processing', synced: now - 3600000,
+            items: [{ sku: 'BRK-6', name: 'The 6" \'Big\' Bracket, v2', qty: 1, serials: [] }] })
+]);
+api.open();
+const tray = opened && opened.el;
+check('open() puts the tray in the deploy drawer, titled and tagged for the drawer to clear',
+  [opened && opened.title, opened && opened.eyebrow, tray && tray.classList.contains('scw-deploy-drawer__custom')],
+  ['Shipments', '3 · Installation', true]);
+check('the drawer leads with freshness and the re-check button',
+  [tray.querySelector('.scw-ships__freshness').textContent, !!tray.querySelector('[data-scw-ships-resync]'), tray.querySelector('.scw-ships__stalebanner') === null],
+  ['Last synced 1 hour ago', true, true]);
+check('counts: total, shipped, not shipped, and the missing-in-OMS warning',
+  [...tray.querySelectorAll('.scw-ships__counts span')].map(s => s.textContent),
+  ['3shipments', '2shipped', '1not shipped', '1missing in OMS']);
+const cards = [...tray.querySelectorAll('.scw-ships__card')];
+const day = ms => new Date(ms).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+check('rows: a sync warning first, then what has not gone out, then most recently shipped; each leads with the LAST KNOWN fact, never an arrival',
+  cards.map(c => [c.querySelector('.scw-ships__order').textContent, c.querySelector('.scw-ships__when').textContent]),
+  [['SO-1002', 'Shipped ' + day(now - DAY)],
+   ['SO-1003', 'Not shipped yet'],
+   ['SO-1001', 'Shipped ' + day(now - 5 * DAY)]]);
+check('AN UNKNOWN OMS STATUS IS SHOWN VERBATIM ON A NEUTRAL CHIP — the vocabulary is open, never assumed closed',
+  [api.tone('Rolling down a hill'), api.tone('shipped'), api.tone('Exception'), api.tone(''),
+   [...cards[0].querySelectorAll('.scw-ships__chip')].map(c => c.className.replace('scw-ships__chip scw-ships__chip--', '') + ':' + c.textContent)],
+  ['neutral', 'go', 'warn', 'none', ['neutral:Rolling down a hill', 'warn:Missing in OMS']]);
+// THE TWO ACTIONS: tracking and the ShipEdge order are full buttons on the card, in that order,
+// both opening a new tab. Everything else stays behind the disclosure — and the OMS link is NOT
+// duplicated down there.
+check('tracking + Open in ShipEdge are buttons on the card, each a new-tab link to the right place',
+  [...cards[2].querySelectorAll('.scw-ships__actions .scw-ships__btn')].map(a =>
+    [a.tagName, a.className.replace('scw-ships__btn scw-ships__btn--', ''), a.textContent, a.getAttribute('href'), a.getAttribute('target')]),
+  [['A', 'track', 'Track · UPS 1Z001↗', 'https://ups/1Z001', '_blank'],
+   ['A', 'oms', 'Open in ShipEdge↗', 'https://oms/1', '_blank']]);
+check('the disclosure carries REFERENCE ONLY — nothing already on the card (order no is the title, status is the chip), no internal plumbing (source, sync state), no acceptance, no repeated OMS link',
+  [...cards[2].querySelectorAll('.scw-ships__dl dt')].map(d => d.textContent),
+  ['Order date', 'Ship to', 'Address', 'Last synced']);
+// ── What's in the shipment (the scrubbed blob) ─────────────────────
+const rows = (card) => [...card.querySelectorAll('.scw-ships__item')].map(li => [
+  li.querySelector('.scw-ships__item-qty').textContent,
+  li.querySelector('.scw-ships__item-name').textContent,
+  (li.querySelector('.scw-ships__item-sku') || { textContent: '' }).textContent,
+  li.getAttribute('title'),
+  (li.querySelector('.scw-ships__item-serials') || { textContent: '' }).textContent]);
+check('BIGGEST QUANTITY FIRST — a PM scans for what there is a lot of, not for the blob\'s order',
+  rows(cards[2]).map(r => r[0]), ['30×', '4×', '3×', '2×', '1×']);
+check('the summary counts products and units',
+  cards[2].querySelector('.scw-ships__more--items summary').textContent,
+  'What\u2019s in this shipment · 5 products · 40 units');
+check('ONE LINE PER PRODUCT: the compatibility list leaves the row entirely, and the untouched original name rides the tooltip so nothing is lost',
+  rows(cards[2])[0],
+  ['30×', 'Electrical Box Mount', 'EMB26DFD · 2115T0GE',
+   'Electrical Box Mount for Deputy v2; Deputy v3; Sheriff; Informant; Scout - EMB26DFD', '']);
+check('no row ever renders a fitment line',
+  cards[2].querySelector('.scw-ships__item-fits'), null);
+check('HTML ENTITIES ARE DECODED — the OMS escapes them, so a 10\u2032 cable must not read "10&#039;"',
+  rows(cards[2])[1].slice(0, 3), ['4×', "10' PMC HDMI", 'PMC-HDMI-010 · 10ftpmc']);
+check('a line with no description leads with its SKU, and does not then repeat it beside itself',
+  rows(cards[2])[2].slice(0, 3), ['3×', '00406142', '']);
+check('a name with no compatibility list and no model code is left exactly as it is, serials and all',
+  rows(cards[2]).slice(3).map(r => [r[0], r[1], r[2], r[4]]),
+  [['2×', 'The Viking 8.0 v5', '26BV8-V5 · 0235UTNT', 'Serials 210235UTNT3265000114, 210235UTNT3265000085'],
+   ['1×', 'The Lookout Mini 5.0', '26ZV5M-MINI-V2 · 0235UL3C', 'Serial 210235UL3C325B000013']]);
+check('a product name with a quote survives, because the blob percent-encodes every string',
+  cards[1].querySelector('.scw-ships__item-name').textContent, 'The 6" \'Big\' Bracket, v2');
+check('no contents blob → no disclosure, but NEVER a silent blank: the card says the snapshot is missing and that a resync fills it',
+  [cards[0].querySelector('.scw-ships__more--items'),
+   /resync/i.test(cards[0].querySelector('.scw-ships__nocontents').textContent)],
+  [null, true]);
+// The other way contents can be empty: nobody put the JSON column on the view.
+// Same blank to the eye, completely different fix — so the card must name it.
+(() => {
+  const noJson = COLS.filter(c => c[0] !== 'field_3307');
+  scene([shipRec({ id: 'r1', no: 'A-1' })], noJson);
+  api.open();
+  const el = document.querySelector('.scw-ships__nocontents');
+  check('the JSON column missing from the view reads as a SETUP gap, not as an un-synced order',
+    [/not on this view/i.test(el.textContent), /resync/i.test(el.textContent)], [true, false]);
+})();
+// A carrier with no tracking URL: the number is still shown, selectable, but not a dead link.
+check('an unlinkable carrier still shows the number, as text rather than a broken link',
+  (() => { const b = cards[0].querySelector('.scw-ships__actions .scw-ships__btn'); return [b.tagName, b.className.indexOf('--num') > 0, b.textContent, b.getAttribute('href')]; })(),
+  ['SPAN', true, 'FedEx 77', null]);
+check('the four address parts compose into one line',
+  [...cards[2].querySelectorAll('.scw-ships__dl dd')][2].textContent, '12 Main St · Durham, NC 27701');
+check('NOTHING ABOUT A SHIPMENT IS EDITABLE — the OMS owns these facts; the only controls are the re-check button, its optional reference box, and the disclosures',
+  [[...tray.querySelectorAll('input, select, textarea, [contenteditable]')].map(i => i.getAttribute('data-scw-ships-ref') ? 'ref' : i.tagName),
+   [...tray.querySelectorAll('button')].map(b => b.getAttribute('data-scw-ships-resync') ? 'resync' : b.tagName)],
+  [['ref'], ['resync']]);
+check('the drawer states plainly that delivery is not tracked, and points at the carrier link instead',
+  [/Delivery is not tracked yet/.test(tray.textContent), /no arrival date here/.test(tray.textContent)], [true, true]);
+check('NOTHING in the drawer claims a delivery or an ETA (word-boundaried — "details" contains "eta")',
+  (() => {
+    const body = tray.textContent.replace(/Delivery is not tracked yet[^]*?actually is\./i, '');
+    return [/\bdelivered\b/i.test(body), /\bETA\b/.test(body), /\boverdue\b/i.test(body), /\barrival\b/i.test(body)];
+  })(), [false, false, false, false]);
+
+// ── Staleness in the drawer ────────────────────────────────────────
+scene([shipRec({ id: 's1', orderNo: 'SO-1001', status: 'shipped', synced: now - 4 * DAY, shipDate: now - 5 * DAY })]);
+api.open();
+const stale = opened.el;
+check('stale: the banner leads, the freshness reads as a warning, and only one tray is ever in the page',
+  [/last sync, not from the OMS right now/.test(stale.querySelector('.scw-ships__stalebanner').textContent),
+   stale.querySelector('.scw-ships__freshness').classList.contains('is-stale'), document.querySelectorAll('.scw-ships').length],
+  [true, true, 1]);
+
+// ── Re-check ───────────────────────────────────────────────────────
+scene([
+  shipRec({ id: 's1', orderNo: 'SO-1001', omsId: 'OMS-1', status: 'shipped', synced: now - 3600000, shipDate: now - DAY }),
+  shipRec({ id: 's2', orderNo: 'SO-1002', omsId: 'OMS-2', status: 'shipped', sync: 'Missing in OMS', synced: now - 3600000 })
+]);
+check('the re-check payload carries everything the page knows: the project, its SOWs, its acceptances, and the shipments we already hold',
+  (() => { const p = api.resyncPayload(); return [p.project_recordID, p.source, p.sows.map(x => x.sowId), p.acceptances.map(x => x.id + ':' + x.signed), p.shipments.map(s => [s.id, s.orderNo, s.omsOrderId, s.syncState])]; })(),
+  ['6aa43526d15c143d30214121', 'deploy-page',
+   ['62489857827-SW1454', '62489857827-SW1455', ''],
+   ['acc1:true', 'acc2:true'],
+   [['s1', 'SO-1001', 'OMS-1', 'Linked'], ['s2', 'SO-1002', 'OMS-2', 'Missing in OMS']]]);
+// ShipEdge has no contains filter on reference_number, so the page constructs the exact strings.
+check('a reference parses into its parts, and the left side alone parses too; anything not reference-shaped is dropped',
+  [api.parseReference('62489857827-SW1454 | 20260910-11567'), api.parseReference('62489857827-SW1454'),
+   api.parseReference('SW1454'), api.parseReference(''), api.parseReference('  62489857827-SW1454  |  20260910-11567  ')],
+  [{ reference: '62489857827-SW1454 | 20260910-11567', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '20260910-11567' },
+   { reference: '62489857827-SW1454', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '' },
+   null, null,
+   { reference: '62489857827-SW1454 | 20260910-11567', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '20260910-11567' }]);
+check('references: every acceptance\'s full string first (found by SHAPE, so an empty proposal connection or a second grid still yields the quote), deduped across the two grids, then the SOW-only forms',
+  api.resyncPayload().references,
+  [{ reference: '62489857827-SW1454 | 20260910-11567', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '20260910-11567', acceptanceId: 'acc1', signed: true },
+   { reference: '62489857827-SW1456 | 20260921-11690', sowRef: '62489857827-SW1456', projectNo: '62489857827', sow: 'SW1456', quote: '20260921-11690', acceptanceId: 'acc2', signed: true },
+   { reference: '62489857827-SW1457 | 20260922-11701', sowRef: '62489857827-SW1457', projectNo: '62489857827', sow: 'SW1457', quote: '20260922-11701', acceptanceId: 'acc3', signed: true },
+   { reference: '62489857827-SW1454', sowRef: '62489857827-SW1454', projectNo: '62489857827', sow: 'SW1454', quote: '', sowRecordId: 'sow1' },
+   { reference: '62489857827-SW1455', sowRef: '62489857827-SW1455', projectNo: '62489857827', sow: 'SW1455', quote: '', sowRecordId: 'sow2' }]);
+check('a quote was found, so the scenario is not told to fall back', api.resyncPayload().referencesMissingQuote, false);
+// Nothing anywhere carries the proposal number: say so rather than shipping a quiet quote-less payload.
+window.Knack.views.view_3914 = models([{ id: 'acc1', field_2755_raw: [], field_2766: 'Yes' }]);
+window.Knack.views.view_4157 = models([]);
+check('when NO reference carries a proposal number the payload flags it, and the SOW-only forms still ship',
+  [api.resyncPayload().referencesMissingQuote, api.resyncPayload().references.map(r => r.reference)],
+  [true, ['62489857827-SW1454', '62489857827-SW1455']]);
+check('the project number rides at the top level — the one needle for a contains pass when an exact lookup cannot be used',
+  api.resyncPayload().projectNo, '62489857827');
+api.open();
+const t2 = opened.el;
+const btn = t2.querySelector('[data-scw-ships-resync]');
+ajaxCalls.length = 0;
+btn.click();
+check('the button POSTs that payload and reports back',
+  [ajaxCalls.length, ajaxCalls[0].url, ajaxCalls[0].type, ajaxCalls[0].payload.shipments.length, btn.textContent, btn.classList.contains('is-done')],
+  [1, 'https://hook.example/ships', 'POST', 2, 'Re-check requested', true]);
+// ── Extra reference typed by the user ───────────────────────────────
+// The page can only construct references from what Knack holds; an order keyed under a different
+// project no. (or a mis-typed one) is invisible to it. The drawer takes one — and says, next to
+// the box, that it must match ShipEdge's order reference EXACTLY (ShipEdge has no partial match).
+api.open();
+const t4 = opened.el, ref4 = t4.querySelector('[data-scw-ships-ref]'), btn4 = t4.querySelector('[data-scw-ships-resync]');
+check('the drawer offers an optional reference box beside the button, with the exact-match note',
+  [!!ref4, /Optional/.test(t4.querySelector('.scw-ships__refnote').textContent),
+   /must match the ShipEdge order reference exactly/.test(t4.querySelector('.scw-ships__refnote').textContent),
+   /no partial match/.test(t4.querySelector('.scw-ships__refnote').textContent)],
+  [true, true, true, true]);
+check('empty box → payload unchanged: no extras, no manual references',
+  (() => { const p = api.resyncPayload(''); return [p.extraReferences, p.references.filter(r => r.manual).length]; })(), [[], 0]);
+check('what is typed ships verbatim (trimmed, split on commas, deduped) AND joins references as manual exact-lookup candidates; a non-canonical string still ships as typed',
+  (() => { const p = api.resyncPayload(' 99999999-SW77 | Q1 , ORD-ABC-123 ,, 99999999-SW77 | Q1 ');
+           const man = p.references.filter(r => r.manual);
+           return [p.extraReferences, man.map(r => [r.reference, r.projectNo, r.sow, r.quote])]; })(),
+  [['99999999-SW77 | Q1', 'ORD-ABC-123'], [['99999999-SW77 | Q1', '99999999', 'SW77', 'Q1'], ['ORD-ABC-123', '', '', '']]]);
+check('a typed reference the page already built is not duplicated',
+  (() => { const base = api.resyncPayload('').references[0].reference; const p = api.resyncPayload(base);
+           return [p.extraReferences, p.references.filter(r => r.reference === base).length, p.references.filter(r => r.manual).length]; })()[1], 1);
+ref4.value = 'ORD-ABC-123';
+ajaxCalls.length = 0;
+btn4.click();
+check('mashing the button sends the typed reference with the rest of the payload',
+  [ajaxCalls.length, ajaxCalls[0].payload.extraReferences, ajaxCalls[0].payload.references.some(r => r.manual && r.reference === 'ORD-ABC-123')],
+  [1, ['ORD-ABC-123'], true]);
+ref4.value = 'ORD-XYZ';
+ajaxCalls.length = 0;
+ref4.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+check('Enter in the box fires the same re-check', [ajaxCalls.length, ajaxCalls[0] && ajaxCalls[0].payload.extraReferences], [1, ['ORD-XYZ']]);
+window.SCW.CONFIG.MAKE_SHIPMENTS_RESYNC_WEBHOOK = 'PLACEHOLDER';
+api.open();
+const t3 = opened.el, btn3 = t3.querySelector('[data-scw-ships-resync]');
+ajaxCalls.length = 0;
+btn3.click();
+check('an unconfigured webhook fires nothing and says so, rather than failing silently',
+  [ajaxCalls.length, btn3.textContent, btn3.classList.contains('is-err')], [0, 'Re-check not configured', true]);
+
+console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
+process.exit(fails ? 1 : 0);

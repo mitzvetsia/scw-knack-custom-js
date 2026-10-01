@@ -7,14 +7,15 @@ const path = require('path');
 const { JSDOM } = require('jsdom');
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://scwinstallation.knack.com/installationservices#deploy/x' });
 const { window } = dom; const { document } = window;
-global.window = window; global.document = document; global.Node = window.Node;
+global.window = window; global.document = document; global.Node = window.Node; global.MutationObserver = window.MutationObserver;
 const handlers = {};
 function jq() { return jqObj; }
 const jqObj = { on(ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); return jqObj; }, off() { return jqObj; }, trigger() { return jqObj; },
   ready(fn) { if (fn) fn(); return jqObj; }, find() { return jqObj; }, closest() { return jqObj; }, data() { return null; }, attr() { return null; }, length: 0 };
 jq.fn = {}; window.$ = jq; window.jQuery = jq; global.$ = jq;
 window.Knack = { views: {}, router: { current_scene_key: 'scene_1311' } }; global.Knack = window.Knack;
-window.SCW = { CONFIG: {} }; global.SCW = window.SCW;
+let bomOpened = 0;
+window.SCW = { CONFIG: {}, bomTray: { open() { bomOpened++; return true; } } }; global.SCW = window.SCW;
 window.setInterval = function () {};
 new Function('window', 'document', '$', 'Knack', 'SCW',
   fs.readFileSync(path.join(__dirname, '../../src/features/deploy-page-nav.js'), 'utf8'))(window, document, jq, window.Knack, window.SCW);
@@ -66,7 +67,9 @@ setTimeout(() => {
   }
   const accs = () => [...document.querySelectorAll('#kn-scene_1311 .scw-ktl-accordion')];
   check('every non-worksheet section is parked (hidden in place)', accs().map(a => a.classList.contains('scw-deploy-parked')), [true, true, true, true]);
-  check('parked sections still produce tiles + chips', [document.querySelectorAll('.scw-deploy-tile').length, [...document.querySelectorAll('.scw-deploy-also__row')].map(b => b.querySelector('.scw-deploy-also__label').textContent + b.querySelector('.scw-deploy-nav-count').textContent)], [4, ['Files4']]);
+  check('parked sections still produce tiles + chips; the bill of materials leads the "also" list', [document.querySelectorAll('.scw-deploy-tile').length, [...document.querySelectorAll('.scw-deploy-also__row')].map(b => b.querySelector('.scw-deploy-also__label').textContent + ((b.querySelector('.scw-deploy-nav-count') || {}).textContent || ''))], [4, ['Bill of materials', 'Files4']]);
+  document.querySelector('.scw-deploy-also__row').click();
+  check('the bill of materials row opens the tray, not a section drawer', [bomOpened, document.getElementById('scw-deploy-drawer') ? !document.getElementById('scw-deploy-drawer').hidden : false], [1, false]);
   const setup = document.querySelector('[data-scw-tile="setup"]');
   check('setup tile: docs not generated → Waiting + Generate button', [setup.querySelector('.scw-deploy-tile__state').textContent, setup.querySelector('[data-scw-tile-docs]').textContent, setup.querySelector('.scw-deploy-tile__fact').textContent],
     ['Waiting', 'Generate documents…', 'Pending Tech Support Signoff · Docs not generated yet']);
@@ -77,18 +80,41 @@ setTimeout(() => {
   const tileNodes = [...document.querySelectorAll('.scw-deploy-tile')];
   const alsoNode = document.querySelector('.scw-deploy-also');
   document.querySelector('[data-scw-tile="paper"] [data-scw-tile-open]').click();
-  fire();   // a pass while the section is in the drawer must not touch the tiles
+  // A pass while the section is in the drawer must not touch the tiles. Run it NOW
+  // (the module defers passes with a timer) so the checks below see its effect.
+  const realTimeout = global.setTimeout;
+  global.setTimeout = (fn) => { fn(); return 0; };
+  try { fire(); } finally { global.setTimeout = realTimeout; }
   const drawer = document.getElementById('scw-deploy-drawer');
   const inDrawer = drawer.querySelector('.scw-deploy-drawer__body .scw-ktl-accordion');
   check('tile opens the drawer with its section inside, expanded', [!drawer.hidden, !!inDrawer, inDrawer && inDrawer.classList.contains('is-expanded'), inDrawer && inDrawer.classList.contains('scw-deploy-in-drawer')], [true, true, true, true]);
+  // The nav anchors before the FIRST section; with that section away in the drawer a pass
+  // must anchor at its home placeholder, not carry the tiles / maps / "Also" list into the drawer.
+  check('the nav (tiles, maps, "also") stays in the scene while the first section is in the drawer',
+    [document.getElementById('kn-scene_1311').contains(document.getElementById('scw-deploy-nav')), !!drawer.querySelector('#scw-deploy-nav'), document.getElementById('scw-deploy-nav').nextElementSibling.className],
+    [true, false, 'scw-deploy-home']);
   check('drawer head names the stage + renamed section', [drawer.querySelector('.scw-deploy-drawer__eyebrow').textContent, drawer.querySelector('.scw-deploy-drawer__title').textContent], ['1 · Paperwork & billing', 'Agreements & Invoices']);
   // Setup tile → drawer leads with the generated documents from the DOC model.
   // Other Files holds the BLANK generated forms ("(not completed)"); the
   // closeout save grid holds completed uploads (must NOT show here) + the deck.
   window.Knack.views.view_3942 = { model: { data: { models: [
     { attributes: { id: 'o1', field_2877_raw: [{ id: 't1', identifier: 'Scope of Work PDF' }], field_68_raw: { url: 'https://s3/sow.pdf', filename: 'sow_form.pdf' } } },
-    { attributes: { id: 'o2', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form (not completed)' }], field_68_raw: { url: 'https://s3/loc_blank.pdf', filename: 'location_approval.pdf' } } }
+    // Live shape: the generator types a blank "Location Approval Form" and writes "(not completed)" into the NOTE.
+    { attributes: { id: 'o2', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form' }], field_588: 'Location Approval Form (not completed)', field_68_raw: { url: 'https://s3/loc_blank.pdf', filename: 'location_approval.pdf' } } },
+    // A run that missed the type still carries the note: it is a blank too.
+    { attributes: { id: 'o3', field_2877_raw: [], field_588: 'View Approval Form (not completed)', field_68_raw: { url: 'https://s3/view_blank.pdf', filename: 'view_approval.pdf' } } },
+    // Same type, no "(not completed)" note: a completed upload, not a blank.
+    { attributes: { id: 'o4', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form' }], field_588: 'signed on site', field_68_raw: { url: 'https://s3/loc_done.pdf', filename: 'loc_done.pdf' } } },
+    // A re-issued Location Approval blank (newer date in the file name): the newest is the one to print, o2 is an older copy.
+    { attributes: { id: 'o5', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form' }], field_588: 'Location Approval Form (not completed)', field_68_raw: { url: 'https://s3/loc_blank2.pdf', filename: 'location_approval_20260921.pdf' } } },
+    // A blank a PM already superseded: its note carries the prefix; it sits in the fold, not the list.
+    { attributes: { id: 'o6', field_2877_raw: [], field_588: 'Superseded · View Approval Form (not completed)', field_68_raw: { url: 'https://s3/view_old.pdf', filename: 'view_approval_20260917.pdf' } } }
   ] } } };
+  // Ops page: the DOC save view is live and the write helpers exist → supersede / delete offered.
+  const docCalls = []; let confirmMsg = '';
+  window.SCW.knackRecordUrl = (v, id) => '/' + v + '/' + id;
+  window.SCW.knackAjax = o => { docCalls.push({ url: o.url, type: o.type, data: o.data ? JSON.parse(o.data) : null }); o.success({}); };
+  window.confirm = m => { confirmMsg = m; return true; }; global.confirm = window.confirm;
   window.Knack.views.view_3941 = { model: { data: { models: [
     { attributes: { id: 'd2', field_2877_raw: [{ id: 't5', identifier: 'Location Approval Form' }], field_68_raw: { url: 'https://s3/loc_completed.pdf', filename: 'loc_completed.pdf' }, field_2879: 'Pass' } },
     { attributes: { id: 'd4', field_2877_raw: [{ id: 't4', identifier: 'Project Kickoff Deck' }], field_68_raw: { url: 'https://s3/deck.pdf', filename: 'deck.pdf' } } }
@@ -96,12 +122,38 @@ setTimeout(() => {
   document.querySelector('[data-scw-tile="setup"] [data-scw-tile-open]').click();
   const pre = drawer.querySelector('.scw-deploy-drawer__prelude');
   check('Setup drawer lists the blank PDFs for the sub (not the completed uploads), in order',
-    pre && [...pre.querySelectorAll('.scw-deploy-docs__row')].map(r => [r.querySelector('.scw-deploy-docs__type').textContent, r.querySelector('.scw-deploy-docs__state').textContent, (r.querySelector('.scw-deploy-docs__open') || {}).href || null]),
-    [['Scope of Work PDF', 'Ready to print · sow_form.pdf', 'https://s3/sow.pdf'], ['Location Approval Form (blank)', 'Ready to print · location_approval.pdf', 'https://s3/loc_blank.pdf'], ['View Approval Form (blank)', 'Not generated', null], ['Kickoff Deck', 'Ready to print · deck.pdf', 'https://s3/deck.pdf']]);
+    pre && [...pre.querySelectorAll('.scw-deploy-docs__list .scw-deploy-docs__row')].map(r => [r.querySelector('.scw-deploy-docs__type').textContent, r.querySelector('.scw-deploy-docs__state').textContent, (r.querySelector('.scw-deploy-docs__open') || {}).href || null]),
+    [['Scope of Work PDF', 'Ready to print · sow_form.pdf', 'https://s3/sow.pdf'], ['Location Approval Form (blank)', 'Ready to print · location_approval.pdfolder copy', 'https://s3/loc_blank.pdf'], ['Location Approval Form (blank)', 'Ready to print · location_approval_20260921.pdf', 'https://s3/loc_blank2.pdf'], ['View Approval Form (blank)', 'Ready to print · view_approval.pdf', 'https://s3/view_blank.pdf'], ['Kickoff Deck', 'Ready to print · deck.pdf', 'https://s3/deck.pdf']]);
+  check('every live row offers Supersede + delete; the older copy is chipped; Keep newest counts it; the superseded blank sits in a fold',
+    [pre.querySelectorAll('.scw-deploy-docs__list [data-scw-doc-act="supersede"]').length, pre.querySelectorAll('.scw-deploy-docs__list [data-scw-doc-act="delete"]').length,
+     pre.querySelector('[data-scw-doc-act="keep-newest"]').textContent, pre.querySelector('[data-scw-doc-act="keep-newest"]').getAttribute('data-scw-doc-ids'),
+     pre.querySelector('.scw-deploy-docs__old-toggle').textContent, [...pre.querySelectorAll('.scw-deploy-docs__old-list .scw-deploy-docs__row')].map(r => r.querySelector('.scw-deploy-docs__state').textContent + ' | ' + r.querySelector('[data-scw-doc-act]').textContent)],
+    [5, 5, 'Keep newest of each (1 older)', 'o2', '1 superseded · show', ['Superseded · view_approval_20260917.pdf | Restore']]);
+  pre.querySelector('.scw-deploy-docs__old-toggle').click();
+  check('the fold opens', [pre.querySelector('.scw-deploy-docs__old').classList.contains('is-open'), pre.querySelector('.scw-deploy-docs__old-toggle').textContent], [true, '1 superseded · hide']);
+  pre.querySelector('[data-scw-doc-act="supersede"][data-scw-doc-id="o2"]').click();
+  check('Supersede writes the prefixed note through the DOC save view', docCalls[0], { url: '/view_3941/o2', type: 'PUT', data: { field_588: 'Superseded · Location Approval Form (not completed)' } });
+  pre.querySelector('[data-scw-doc-act="restore"][data-scw-doc-id="o6"]').click();
+  check('Restore strips the prefix', docCalls[1], { url: '/view_3941/o6', type: 'PUT', data: { field_588: 'View Approval Form (not completed)' } });
+  pre.querySelector('[data-scw-doc-act="delete"][data-scw-doc-id="o5"]').click();
+  check('Delete asks (naming the file, pointing at Supersede as the soft option) then DELETEs through the save view and drops the row',
+    [/location_approval_20260921\.pdf/.test(confirmMsg) && /Supersede keeps the file/.test(confirmMsg), docCalls[2], !!pre.querySelector('[data-scw-doc-row="o5"]')], [true, { url: '/view_3941/o5', type: 'DELETE', data: null }, false]);
+  pre.querySelector('[data-scw-doc-act="keep-newest"]').click();
+  check('Keep newest of each supersedes every older copy (one confirm, one PUT per doc)', [/1 older copy/.test(confirmMsg), docCalls.slice(3).map(c => c.url + ' ' + c.data.field_588)], [true, ['/view_3941/o2 Superseded · Location Approval Form (not completed)']]);
+  delete window.SCW.knackAjax; delete window.SCW.knackRecordUrl;
   check('the questionnaire section follows the documents', pre && pre.nextElementSibling && pre.nextElementSibling.classList.contains('scw-ktl-accordion'), true);
   // Switch to the Other Files chip while open → previous section goes home.
-  document.querySelector('.scw-deploy-also__row').click();
+  document.querySelectorAll('.scw-deploy-also__row')[1].click();
   check('opening another section returns the first one home (parked, in scene)', [accs().length, accs()[0].classList.contains('scw-deploy-parked'), drawer.querySelector('.scw-deploy-drawer__title').textContent], [3, true, 'Files']);
+  // A custom panel (bom-tray.js) takes the drawer over: the hosted section goes home first,
+  // and opening a section again drops the panel.
+  const custom = document.createElement('div'); custom.id = 'custom-panel'; custom.textContent = 'BOM';
+  window.SCW.deployNav.openPanel({ eyebrow: '3 · Installation', title: 'Bill of materials', sub: 'ships', el: custom });
+  check('openPanel hosts a custom element, sends the section home, titles the drawer',
+    [!!drawer.querySelector('.scw-deploy-drawer__body #custom-panel'), custom.classList.contains('scw-deploy-drawer__custom'), accs().length, drawer.querySelector('.scw-deploy-drawer__title').textContent, drawer.querySelector('.scw-deploy-drawer__eyebrow').textContent],
+    [true, true, 4, 'Bill of materials', '3 · Installation']);
+  document.querySelectorAll('.scw-deploy-also__row')[1].click();
+  check('opening a section afterwards drops the custom panel', [!!drawer.querySelector('#custom-panel'), accs().length, drawer.querySelector('.scw-deploy-drawer__title').textContent], [false, 3, 'Files']);
   // Escape closes and returns it home in original position.
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }));
   fire();   // a pass DURING the close (section still in the drawer) must not touch the tiles either
@@ -127,8 +179,24 @@ setTimeout(() => {
     // Reopen, then scene re-render underneath the open drawer → drawer drops the stale section.
     document.querySelector('[data-scw-tile="paper"] [data-scw-tile-open]').click();
     buildScene(); fire();
+    // Curtain: a rendered scene is not ready until the pass; the CSS holds it invisible
+    // (and any section not yet classified hidden) so the native layout never paints first.
+    const scene = () => document.getElementById('kn-scene_1311');
+    check('curtain down right after a scene render (before the pass)', scene().classList.contains('scw-deploy-ready'), false);
+    const css = document.getElementById('scw-deploy-nav-css').textContent;
+    check('curtain + unclassified-section rules are in the stylesheet, injected at load',
+      [/#kn-scene_1311:not\(\.scw-deploy-ready\)[^{]*\{ visibility: hidden !important; \}/.test(css), /#kn-scene_1311 \.scw-ktl-accordion:not\(\[data-scw-deploy\]\)[^{]*\{ display: none !important; \}/.test(css)], [true, true]);
     setTimeout(() => {
       check('scene re-render closes a stale drawer', [drawer.hidden, drawer.querySelector('.scw-deploy-drawer__body').children.length], [true, 0]);
+      check('after the pass: scene ready, every section classified (kept or parked)',
+        [scene().classList.contains('scw-deploy-ready'), accs().map(a => a.getAttribute('data-scw-deploy'))], [true, ['parked', 'parked', 'parked', 'parked']]);
+      // A section wrapped AFTER the pass (late view) arrives unclassified → the scene observer classifies it without waiting for a render.
+      scene().insertAdjacentHTML('beforeend', acc('Project Notes', '2'));
+      const late = accs()[4];
+      check('late section starts unclassified (hidden by CSS)', late.hasAttribute('data-scw-deploy'), false);
+      setTimeout(() => {
+        check('…and is classified (parked) by the observer-triggered pass', [late.getAttribute('data-scw-deploy'), late.classList.contains('scw-deploy-parked')], ['parked', true]);
+      }, 100);
     }, 600);
     setTimeout(() => {
       console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');

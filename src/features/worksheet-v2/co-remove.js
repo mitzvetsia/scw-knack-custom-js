@@ -276,6 +276,21 @@
       '  background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 999px;',
       '  color: #475569; white-space: nowrap;',
       '}',
+      // Per-accessory remove control. pointer-events re-enabled explicitly —
+      // the readonly lockdown kills the mouse path on card contents.
+      '.scw-co-remove-acc-x {',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  width: 14px; height: 14px; margin: 0 -3px 0 4px; padding: 0;',
+      '  border: none; border-radius: 999px; background: transparent;',
+      '  color: #94a3b8; font: 700 12px/1 system-ui, -apple-system, sans-serif;',
+      '  cursor: pointer; pointer-events: auto !important;',
+      '}',
+      '.scw-co-remove-acc-x:hover { background: #be123c; color: #fff; }',
+      '.scw-co-remove-acc-x:disabled { opacity: .5; cursor: default; }',
+      '.scw-co-remove-acc-chip--flagged {',
+      '  background: #fff1f2; border-color: #fecdd3; color: #be123c;',
+      '  text-decoration: line-through;',
+      '}',
 
       // Accessory-inclusion choice inside the remove confirm modal.
       '.scw-co-remove-accopt {',
@@ -463,16 +478,40 @@
   // Accessory children of an install item — install-object parent pointer is
   // field_2853 (the field_2464 analogue; see bulk.js accParentKeyFor).
   var INSTALL_ACC_PARENT = 'field_2853';
-  function accessoryChildren(viewKey, rid) {
+  // liveOnly: drop accessories already slated for removal on their OWN
+  // (per-accessory "×" — see accessoryIsFlagged) so a later device remove /
+  // swap never drafts a second credit line for the same mount.
+  function accessoryChildren(viewKey, rid, liveOnly) {
     var out = [];
     var recs = (ns.data && typeof ns.data.readRecords === 'function')
       ? ns.data.readRecords(viewKey) : [];
+    var tc = liveOnly ? coTargetCounts(viewKey) : null;
     for (var i = 0; i < recs.length; i++) {
       var raw = recs[i] && recs[i][INSTALL_ACC_PARENT + '_raw'];
       var pid = Array.isArray(raw) ? (raw[0] && raw[0].id) : (raw && raw.id);
-      if (pid === rid) out.push(recs[i]);
+      if (pid !== rid) continue;
+      if (liveOnly && accessoryIsFlagged(recs[i], viewKey, tc)) continue;
+      out.push(recs[i]);
     }
     return out;
+  }
+
+  function vcfgFor(viewKey) {
+    var vs = removeViews();
+    for (var i = 0; i < vs.length; i++) {
+      if (vs[i].sourceViewKey === viewKey) return vs[i];
+    }
+    return null;
+  }
+
+  // An accessory's own removal state — same three signals as a device row
+  // (decorate): field_2967 on the install record, the session-optimistic
+  // set, or any CO line already targeting it (field_2966).
+  function accessoryIsFlagged(aRec, viewKey, tc) {
+    if (!aRec || !aRec.id) return false;
+    if (_flaggedOptimistic[aRec.id] || _swappedOptimistic[aRec.id]) return true;
+    if (tc && tc[aRec.id] >= 1) return true;
+    return isFlagged(aRec, vcfgFor(viewKey));
   }
 
   // ── TEMPORARY DIAGNOSTIC ─────────────────────────────────────────────
@@ -582,6 +621,7 @@
     var Fv = (ns.cfg && typeof ns.cfg.fields === 'function')
       ? (ns.cfg.fields(viewKey) || {}) : {};
     var accs = accessoryChildren(viewKey, rid);
+    var tc = coTargetCounts(viewKey);
     var existing = prodCell.querySelector('.scw-co-remove-accs');
     if (!accs.length) {
       if (existing) existing.parentNode.removeChild(existing);
@@ -595,8 +635,26 @@
                 readConn(aRec, Fv.product).label || '(accessory)';
       var q = parseFloat(readTxt(aRec, Fv.qty));
       if (isFinite(q) && q > 1) lbl += ' ×' + q;
-      chips += '<span class="scw-co-remove-acc-chip" title="' + escHtml(lbl) +
-        '">' + escHtml(lbl) + '</span>';
+      // Each accessory is independently removable: a live chip carries a
+      // "×" (drafts a Remove line for JUST that accessory — the device stays);
+      // an accessory already slated reads struck-through rose, no control.
+      if (accessoryIsFlagged(aRec, viewKey, tc)) {
+        chips += '<span class="scw-co-remove-acc-chip scw-co-remove-acc-chip--flagged" ' +
+          'data-scw-co-remove-acc-chip="' + aRec.id + '" ' +
+          'title="' + escHtml(lbl) + ' — slated for removal on this change order">' +
+          escHtml(lbl) + '</span>';
+      } else {
+        chips += '<span class="scw-co-remove-acc-chip" ' +
+          'data-scw-co-remove-acc-chip="' + aRec.id + '" title="' + escHtml(lbl) + '">' +
+          escHtml(lbl) +
+          '<button type="button" class="scw-co-remove-acc-x" ' +
+            'data-scw-co-remove-acc="' + aRec.id + '" ' +
+            'data-scw-co-remove-acc-label="' + escHtml(lbl) + '" ' +
+            'data-scw-co-remove-view="' + viewKey + '" ' +
+            'title="Remove just this accessory on the change order — the device stays" ' +
+            'aria-label="Remove accessory ' + escHtml(lbl) + '">&times;</button>' +
+          '</span>';
+      }
     }
     if (!chips) { if (existing) existing.parentNode.removeChild(existing); return; }
     var d = existing || document.createElement('div');
@@ -1023,6 +1081,7 @@
           delete _sel[allIds[k]];
           _flaggedOptimistic[allIds[k]] = true;   // survive rebuilds until field_2967 lands
           if (!container) continue;
+          markAccChipsFlagged(container, allIds[k]);
           var card = container.querySelector(
             '.scw-ws-v2-card[data-scw-ws-v2-record="' + allIds[k] + '"]');
           var row = card && card.querySelector('.scw-ws-v2-row');
@@ -1045,6 +1104,53 @@
     });
   }
 
+  // Flip an accessory's chip(s) to the struck-through flagged state in place
+  // (accessories have no card of their own to setRowState).
+  function markAccChipsFlagged(container, accId) {
+    var chips = container.querySelectorAll('[data-scw-co-remove-acc-chip="' + accId + '"]');
+    for (var i = 0; i < chips.length; i++) {
+      var x = chips[i].querySelector('.scw-co-remove-acc-x');
+      if (x) x.parentNode.removeChild(x);
+      chips[i].classList.add('scw-co-remove-acc-chip--flagged');
+      chips[i].title = (chips[i].textContent || '') +
+        ' — slated for removal on this change order';
+    }
+  }
+
+  // ── Single-accessory remove ───────────────────────────────────────────
+  // Drafts a Remove line for ONE accessory while its device stays installed
+  // (e.g. a wrong/extra mount). Same webhook + shape as a device remove,
+  // with the accessory as the acted-on item: installItemIds = [accId],
+  // items = [{ id: accId, accessoryIds: [] }]. Make creates it as a
+  // top-level Remove line targeting the accessory's install record — there
+  // is no device Remove line to parent it to.
+  function confirmRemoveAccessory(accId, label, viewKey, ui) {
+    var parentLbl = '';
+    var recs = (ns.data && typeof ns.data.readRecords === 'function')
+      ? ns.data.readRecords(viewKey) : [];
+    for (var i = 0; i < recs.length; i++) {
+      if (!recs[i] || recs[i].id !== accId) continue;
+      var raw = recs[i][INSTALL_ACC_PARENT + '_raw'];
+      var one = Array.isArray(raw) ? raw[0] : raw;
+      parentLbl = one ? String(one.identifier || '').replace(/<[^>]*>/g, '').trim() : '';
+      break;
+    }
+    var title = 'Remove this accessory?';
+    var lead = '<b>' + escHtml(label || 'This accessory') + '</b> gets its own ' +
+      '<b>Remove</b> line on the change order. ' +
+      (parentLbl ? 'Its device (<b>' + escHtml(parentLbl) + '</b>)' : 'Its device') +
+      ' stays installed. Nothing leaves install scope until the CO is signed.';
+    function go() { fireRemove([accId], viewKey, ui, null); }
+    if (ns.confirmModal && typeof ns.confirmModal === 'function') {
+      ns.confirmModal({
+        title: title, body: lead,
+        okLabel: 'Flag for removal', cancelLabel: 'Cancel'
+      }).then(function (ok) { if (ok) go(); });
+      return;
+    }
+    if (window.confirm(title + '\n\n' + lead.replace(/<[^>]*>/g, ''))) go();
+  }
+
   // ── Remove confirm (single + bulk) — with the accessory choice ────────
   // A device's accessory children DEFAULT to riding the removal (checkbox,
   // checked — removing a camera usually removes its mount), but ops can
@@ -1057,7 +1163,7 @@
     // parent so Make can preserve the relationship on the created lines.
     var accMap = {}, accIds = [], seen = {};
     for (var i = 0; i < ids.length; i++) {
-      var kids = accessoryChildren(viewKey, ids[i]);
+      var kids = accessoryChildren(viewKey, ids[i], true);
       for (var k = 0; k < kids.length; k++) {
         var aid = kids[k] && kids[k].id;
         if (aid && !seen[aid] && ids.indexOf(aid) === -1) {
@@ -1317,7 +1423,7 @@
     }
     var accTotal = 0;
     for (var a = 0; a < run.length; a++) {
-      accTotal += accessoryChildren(viewKey, run[a].rid).length;
+      accTotal += accessoryChildren(viewKey, run[a].rid, true).length;
     }
     var single = run.length === 1;
     var body =
@@ -1405,7 +1511,7 @@
       // only the device gets the replacement) and its own INSTALL record id
       // (what the created line's field_2966 must target). Their Remove lines
       // join the device's in the single remove-hook call below.
-      var accs = accessoryChildren(viewKey, job.rid);
+      var accs = accessoryChildren(viewKey, job.rid, true);
       var swapAccessories = [], accInstallIds = [];
       for (var ai = 0; ai < accs.length; ai++) {
         var aRec = accs[ai];
@@ -1717,6 +1823,23 @@
   }, true);
 
   document.addEventListener('click', function (e) {
+    // Per-accessory "×" on a row's accessory chip.
+    var accBtn = e.target && e.target.closest &&
+      e.target.closest('.scw-co-remove-acc-x[data-scw-co-remove-acc]');
+    if (accBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (accBtn.disabled) return;
+      confirmRemoveAccessory(
+        accBtn.getAttribute('data-scw-co-remove-acc'),
+        accBtn.getAttribute('data-scw-co-remove-acc-label'),
+        accBtn.getAttribute('data-scw-co-remove-view'), {
+          busy: function () { accBtn.disabled = true; },
+          done: function () { /* chip flipped by fireRemove */ },
+          fail: function () { accBtn.disabled = false; }
+        });
+      return;
+    }
     // Single-row "− Remove".
     var btn = e.target && e.target.closest &&
       e.target.closest('.' + BTN_CLS + '[data-scw-co-remove]');

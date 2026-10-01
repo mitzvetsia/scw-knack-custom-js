@@ -51,13 +51,13 @@
     V2_HIDE:      ['view_4088', 'view_4086'],   // adopt + remove panels → hidden
     STRIPS_WRAP:  'scw-co-strips-view_4079',    // co-scene-header strips block
     LOCKED_RE:    /pending sub pricing/i,  // locked WHILE the sub prices
-    // Post-issue lock: once the CO is Issued (out for signature), Accepted
-    // (signed), or Applied (signed + applied to install scope), drafting is
-    // over — the document the client sees/signed must not drift. Same lock
+    // Post-issue lock: once the CO is Issued (out for signature) or Accepted
+    // (e-signed, approved without signature, or authorized not billable —
+    // the Acceptance flags say which), drafting is over — the document the client sees/signed must not drift. Same lock
     // mechanics, different banner; the stage strip's own action buttons
     // stay live (they're the only legitimate verbs in these states).
     // Declined / Void stay editable — dead COs, nothing to protect.
-    FINAL_RE:     /^(issued|accepted|applied)\b/i
+    FINAL_RE:     /^(issued|accepted)\b/i
   };
 
   var STYLE_ID  = 'scw-co-ops-lock-css';
@@ -164,9 +164,7 @@
       var st = String(status || '').toLowerCase();
       var why = /^issued/.test(st)
         ? 'it is out with the client for signature'
-        : (/^applied/.test(st)
-            ? 'it has been signed and applied to the install scope'
-            : 'the client has signed it');
+        : 'it has been accepted and applied to the install scope';
       banner.innerHTML = '🔒 <span>This change order is <b>' + stripHtml(status) +
         '</b> — ' + why + ', so editing is closed. Further changes need a ' +
         '<b>new change order</b>.</span>';

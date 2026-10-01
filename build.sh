@@ -59,6 +59,7 @@ cat \
   src/features/proposal-preview-images.js \
   src/features/proposal-preview-expiration.js \
   src/features/published-proposal-render.js \
+  src/features/accept-proposal-guard.js \
   src/features/secure-proposal-link.js \
   src/features/bid-items-grid.js \
   src/features/bid-review/config.js \
@@ -142,6 +143,7 @@ cat \
   src/features/deploy-page-nav.js \
   src/features/pinned-notes.js \
   src/features/site-maps-strip.js \
+  src/features/shipments-tray.js \
   src/features/qa-popover.js \
   src/features/photo-edit-panel.js \
   src/features/config-qa-popover.js \
@@ -216,6 +218,7 @@ cat \
   src/features/worksheet-v2/warnings.js \
   src/features/worksheet-v2/summary.js \
   src/features/worksheet-v2/picker.js \
+  src/features/worksheet-v2/product-enabled-flag.js \
   src/features/worksheet-v2/edit.js \
   src/features/worksheet-v2/audit-log.js \
   src/features/worksheet-v2/mdf-notes.js \
@@ -230,6 +233,8 @@ cat \
   src/features/worksheet-v2/change-requests.js \
   src/features/worksheet-v2/poll.js \
   src/features/worksheet-v2/init.js \
+  src/features/bom-tray.js \
+  src/features/licenses-strip.js \
   src/features/worksheet-v2/co-adopt.js \
   src/features/worksheet-v2/co-remove.js \
   src/features/worksheet-v2/co-add-item-form.js \

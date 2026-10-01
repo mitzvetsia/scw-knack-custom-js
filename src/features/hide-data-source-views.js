@@ -33,6 +33,10 @@
     // 'view_4073' — pending change requests data source on scene_1149.
     // Read from the DOM by the bid page enhancements; users never see it
     // (and proposal-pdf-export skips it so it never enters the bid PDF).
+    // 'view_4163' — Shipments (OMS order mirror) on the deploy scene.
+    // shipments-tray.js renders it as the Installation tile's shipments
+    // line + drawer; the native grid is a data source only.
+    'view_4163',
     'view_4073',
     // 'view_3827' — SOW kn-details: workflow-stepper SOURCE_VIEW,
     // create-sow-option-btn / preview-proposal-btn / import-unique-
