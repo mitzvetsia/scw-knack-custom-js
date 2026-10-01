@@ -2592,8 +2592,12 @@
       // the CO: field_2967's display value is the removed LINE's product
       // name, not a CO number (bom-tray.js coFromFlag guards the same way).
       var gone = installRemovedBy(aA, viewKey) !== null;
+      // data-scw-ws-v2-acc-chip = the accessory's install record id: the id
+      // hook co-remove.js uses to put its per-accessory Remove control on
+      // this chip (CO drafting scene, view_4086). Inert everywhere else.
       chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap' +
-          (gone ? ' scw-ws-v2-mh-chip-wrap--removed' : '') + '">' +
+          (gone ? ' scw-ws-v2-mh-chip-wrap--removed' : '') + '" ' +
+          'data-scw-ws-v2-acc-chip="' + escapeHtml(aA.id) + '">' +
         '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert" ' +
           'title="' + escapeHtml(lbl + (gone ? ' — removed from install scope by a change order' : '')) + '">' +
           escapeHtml(lbl + qtySuffix) +

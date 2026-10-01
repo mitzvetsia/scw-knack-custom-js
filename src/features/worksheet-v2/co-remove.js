@@ -291,6 +291,34 @@
       '  background: #fff1f2; border-color: #fecdd3; color: #be123c;',
       '  text-decoration: line-through;',
       '}',
+      // The expanded card's Mounting Hardware chips (card.js
+      // detailMountingHardwareRO) carry the SAME per-accessory remove — as
+      // a labelled REMOVE button, since the row chip's bare "×" went
+      // unnoticed next to the big blue detail chip. Drafted state = the
+      // struck-through rose wrap + an "on this CO" tag shaped like the
+      // signed-CO "removed" tag. !important where the base wrap rule is.
+      '.scw-co-remove-acc-x--detail {',
+      '  width: auto; height: auto; margin: 0 0 0 6px; padding: 1px 7px;',
+      '  border: 1px solid #fecdd3; border-radius: 999px; background: #fff;',
+      '  color: #be123c; font: 700 9.5px/1.3 system-ui, -apple-system, sans-serif;',
+      '  letter-spacing: .04em; text-transform: uppercase;',
+      '}',
+      '.scw-co-remove-acc-x--detail:hover { background: #be123c; border-color: #be123c; color: #fff; }',
+      '.scw-ws-v2-mh-chip-wrap.scw-co-remove-acc-chip--flagged {',
+      '  background: #fff1f2 !important; border-color: #fecdd3 !important;',
+      '  text-decoration: none;',
+      '}',
+      '.scw-ws-v2-mh-chip-wrap.scw-co-remove-acc-chip--flagged .scw-ws-v2-mh-chip {',
+      '  color: #be123c !important; text-decoration: line-through !important;',
+      '  text-decoration-color: #fda4af !important;',
+      '}',
+      '.scw-co-remove-acc-tag {',
+      '  display: inline-flex; align-items: center; flex: 0 0 auto;',
+      '  margin-left: 2px; padding: 1px 5px; border-radius: 3px;',
+      '  background: #be123c; color: #fff;',
+      '  font: 700 8.5px/1.3 system-ui, -apple-system, sans-serif;',
+      '  letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;',
+      '}',
 
       // Accessory-inclusion choice inside the remove confirm modal.
       '.scw-co-remove-accopt {',
@@ -663,6 +691,65 @@
     if (!existing) prodCell.appendChild(d);
   }
 
+  // Label for an accessory's remove control / confirm — product name, then
+  // the product connection's label (same precedence as the row chips so the
+  // modal names the accessory the way the row does).
+  function accessoryLabel(aRec, viewKey) {
+    var Fv = (ns.cfg && typeof ns.cfg.fields === 'function')
+      ? (ns.cfg.fields(viewKey) || {}) : {};
+    return readTxt(aRec, Fv.productName) ||
+           readConn(aRec, Fv.product).label || '(accessory)';
+  }
+
+  // Per-accessory remove on the EXPANDED card's Mounting Hardware chips
+  // (card.js detailMountingHardwareRO stamps data-scw-ws-v2-acc-chip = the
+  // accessory's install id). That block is where ops actually look for the
+  // mount, so it gets a labelled REMOVE button; an accessory already slated
+  // on this CO reads struck-through rose + "on this CO"; one a SIGNED CO
+  // removed (card.js --removed) is left alone — nothing to draft. The chip
+  // also gets data-scw-co-remove-acc-chip so markAccChipsFlagged flips it
+  // in the same pass as the row chip after the webhook ACKs.
+  function injectDetailAccessoryControls(card, viewKey, byId, tc) {
+    var wraps = card.querySelectorAll('.scw-ws-v2-mh-chip-wrap[data-scw-ws-v2-acc-chip]');
+    for (var i = 0; i < wraps.length; i++) {
+      var wrap  = wraps[i];
+      var accId = wrap.getAttribute('data-scw-ws-v2-acc-chip');
+      var aRec  = byId[accId];
+      if (!aRec) continue;
+      wrap.setAttribute('data-scw-co-remove-acc-chip', accId);
+      if (wrap.classList.contains('scw-ws-v2-mh-chip-wrap--removed')) continue;
+      if (accessoryIsFlagged(aRec, viewKey, tc)) { markWrapFlagged(wrap); continue; }
+      if (wrap.querySelector('.scw-co-remove-acc-x')) continue;   // already injected
+      var lbl = accessoryLabel(aRec, viewKey);
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'scw-co-remove-acc-x scw-co-remove-acc-x--detail';
+      btn.setAttribute('data-scw-co-remove-acc', accId);
+      btn.setAttribute('data-scw-co-remove-acc-label', lbl);
+      btn.setAttribute('data-scw-co-remove-view', viewKey);
+      btn.title = 'Remove just this accessory on the change order \u2014 the device stays';
+      btn.setAttribute('aria-label', 'Remove accessory ' + lbl);
+      btn.textContent = 'Remove';
+      wrap.appendChild(btn);
+    }
+  }
+
+  // Drafted-remove state on a detail Mounting Hardware chip wrap.
+  function markWrapFlagged(wrap) {
+    var x = wrap.querySelector('.scw-co-remove-acc-x');
+    if (x) x.parentNode.removeChild(x);
+    wrap.classList.add('scw-co-remove-acc-chip--flagged');
+    if (!wrap.querySelector('.scw-co-remove-acc-tag')) {
+      var tag = document.createElement('span');
+      tag.className = 'scw-co-remove-acc-tag';
+      tag.textContent = 'on this CO';
+      wrap.appendChild(tag);
+    }
+    var chip = wrap.querySelector('.scw-ws-v2-mh-chip');
+    wrap.title = ((chip && chip.textContent) || '').trim() +
+      ' \u2014 slated for removal on this change order';
+  }
+
   // ── Row restructure + control state ──────────────────────────────────
   // One-time per row: prepend the checkbox cell, append the action cell. The
   // trash cell is display:none'd by the readOnly lockdown, so the visible cell
@@ -859,6 +946,7 @@
       restructureRow(row, rid, viewKey);
       injectDesc(card, rec, vcfg);   // stack labor description under product (read-only)
       injectAccessorySummary(card, rid, viewKey);   // accessory chips on the row
+      injectDetailAccessoryControls(card, viewKey, byId, tc);   // + on the expanded detail
       var state = 'live';
       if (_swappedOptimistic[rid] || (tc && tc[rid] >= 2)) {
         state = 'swapped';
@@ -1109,6 +1197,10 @@
   function markAccChipsFlagged(container, accId) {
     var chips = container.querySelectorAll('[data-scw-co-remove-acc-chip="' + accId + '"]');
     for (var i = 0; i < chips.length; i++) {
+      if (chips[i].classList.contains('scw-ws-v2-mh-chip-wrap')) {
+        markWrapFlagged(chips[i]);   // detail Mounting Hardware chip
+        continue;
+      }
       var x = chips[i].querySelector('.scw-co-remove-acc-x');
       if (x) x.parentNode.removeChild(x);
       chips[i].classList.add('scw-co-remove-acc-chip--flagged');
