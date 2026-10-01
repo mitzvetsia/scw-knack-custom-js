@@ -1235,7 +1235,7 @@
           '</ul>' +
           '<label class="scw-co-skip-lbl">Why is this not billable?' +
             '<textarea class="scw-co-nb-note" rows="3" placeholder=' +
-              '"e.g. Techs returned an unused mount — crediting the sub, no charge to client.">' +
+              '"e.g. SCW absorbing lift extension due to equipment delivery delay">' +
               esc(seed) + '</textarea></label>' +
           '<div class="scw-co-skip-err" hidden></div>' +
           '<div class="scw-co-skip-btns">' +
