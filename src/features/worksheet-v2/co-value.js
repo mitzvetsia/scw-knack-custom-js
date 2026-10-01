@@ -6,6 +6,13 @@
  *   [ ADDS  n lines ]  [ CREDITS  n lines ]  [ NET CHANGE ]
  *     $1,252.00           −$1,336.00            −$84.00
  *     Equip … · Install …
+ *     Sub bid …  · Labor margin …          ← ops strip only (2026-10-01)
+ *
+ * The ops strip shows BOTH sides of the money: the big number is the
+ * CLIENT change (equip net + install fee); the second line is the SUB
+ * change (extended sub bid, field_2151) and the labor margin (install fee
+ * − sub bid) so the PM sees what the client pays AND what SCW owes the sub
+ * for the same lines — a not-billable CO reads $0 client / real sub cost.
  *
  * Money model (docs/change-orders.md decision 7): adds = charges, removes =
  * credits carried as NEGATIVE money on the Remove line itself. So the strip
@@ -83,7 +90,13 @@
       '.scw-co-val-tile--credits .scw-co-val-amt{color:#be123c;}',
       '.scw-co-val-tile--net .scw-co-val-amt{color:#0f4c75;font-size:18px;}',
       '.scw-co-val-split{font:400 11px/1.4 system-ui,sans-serif;color:#64748b;',
-      'margin-top:1px;white-space:nowrap;}'
+      'margin-top:1px;white-space:nowrap;}',
+      // Sub-side line: same size, set off with a hairline so the two money
+      // owners (client above, sub below) read as two rows, not one blur.
+      '.scw-co-val-sub{font:400 11px/1.4 system-ui,sans-serif;color:#475569;',
+      'margin-top:4px;padding-top:4px;border-top:1px dashed rgba(100,116,139,.35);white-space:nowrap;}',
+      '.scw-co-val-sub b{font-weight:600;color:#334155;}',
+      '.scw-co-val-sub .is-neg{color:#be123c;}'
     ].join('');
     document.head.appendChild(s);
   }
@@ -147,9 +160,18 @@
     '</div>';
   }
 
-  function tile(cls, label, count, eq, fee, countNoun) {
+  // bid (optional) = extended sub bid for the same lines → second row with
+  // the sub's number and the labor margin (install fee − sub bid).
+  function tile(cls, label, count, eq, fee, countNoun, bid) {
     var total = eq + fee;
     var noun = countNoun || (count === 1 ? 'line' : 'lines');
+    var subRow = '';
+    if (bid != null) {
+      var margin = fee - bid;
+      subRow = '<div class="scw-co-val-sub">Sub bid <b>' + esc(fmtMoney(bid)) + '</b>' +
+        ' &middot; Labor margin <b class="' + (margin < 0 ? 'is-neg' : '') + '">' +
+        esc(fmtMoney(margin)) + '</b></div>';
+    }
     return '<div class="scw-co-val-tile scw-co-val-tile--' + cls + '">' +
       '<div class="scw-co-val-head">' +
         '<span class="scw-co-val-label">' + esc(label) + '</span>' +
@@ -158,6 +180,7 @@
       '<div class="scw-co-val-amt">' + esc(fmtMoney(total)) + '</div>' +
       '<div class="scw-co-val-split">Equip ' + esc(fmtMoney(eq)) +
         ' &middot; Install ' + esc(fmtMoney(fee)) + '</div>' +
+      subRow +
     '</div>';
   }
 
@@ -214,10 +237,10 @@
         tileLabor('net',     'Net change', null, t.adds.bid + t.rem.bid);
     } else {
       el.innerHTML =
-        tile('adds',    'Adds',       t.adds.count, t.adds.eq, t.adds.fee) +
-        tile('credits', 'Credits',    t.rem.count,  t.rem.eq,  t.rem.fee) +
+        tile('adds',    'Adds',       t.adds.count, t.adds.eq, t.adds.fee, null, t.adds.bid) +
+        tile('credits', 'Credits',    t.rem.count,  t.rem.eq,  t.rem.fee,  null, t.rem.bid) +
         tile('net',     'Net change', null,
-             t.adds.eq + t.rem.eq, t.adds.fee + t.rem.fee) +
+             t.adds.eq + t.rem.eq, t.adds.fee + t.rem.fee, null, t.adds.bid + t.rem.bid) +
         (t.lic.count ? tileLicenses(t.lic.count, t.lic.eq) : '');
     }
   }
