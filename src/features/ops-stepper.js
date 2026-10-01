@@ -1535,6 +1535,7 @@
         step.id === 'publish-final' ||
         step.id === 'publish-proposal' ||
         step.id === 'publish-co-preview' ||
+        step.id === 'approve-without-signature' ||
         step.id === 'issue-change-order') {
 
       // Per-step TBD treatment for the publish html. The three publish
