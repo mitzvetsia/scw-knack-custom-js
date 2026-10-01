@@ -80,6 +80,10 @@
     payment:   'field_2765',
     signed:    'field_2766',
     terms:     'field_2940',   // FLAG_approved for terms (Yes/No)
+    // 2026-10-01: the two no-e-signature acceptance paths. Both stamped by
+    // Make 13.03 at creation; the SOW status says only "Accepted".
+    noSig:     'field_3309',   // FLAG_approved without signature (Yes/No)
+    notBill:   'field_3310',   // FLAG_not billable (Yes/No)
     xero:      'field_1847',
     agreement: 'field_2767',
     // SYS_bid basis pdf. TWO possible columns and the card accepts either,
@@ -1199,6 +1203,7 @@
       '.scw-acpt-pill.is-yes { background: #dcfce7; border-color: #86efac; color: #15803d; }',
       '.scw-acpt-pill.is-no  { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
       '.scw-acpt-pill.is-dup { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }',
+      '.scw-acpt-pill.is-nb  { background: #f1f5f9; border-color: #cbd5e1; color: #475569; }',
       '.scw-acpt-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }',
       '.scw-acpt-btn { display: inline-flex; align-items: center; gap: 7px; cursor: pointer;',
       '  font: 600 12.5px/1 system-ui, sans-serif; padding: 8px 14px; border-radius: 6px;',
@@ -1731,6 +1736,24 @@
   function pill(label, yes) {
     return '<span class="scw-acpt-pill ' + (yes ? 'is-yes' : 'is-no') + '">' +
       (yes ? CHECK_SVG : CLOCK_SVG) + '<span>' + esc(label) + '</span></span>';
+  }
+  // Signature pill honoring the no-e-signature paths: an acceptance SCW
+  // approved without a client signature reads as approved (green), not
+  // as "not signed" (amber clock); a not-billable one adds a slate pill.
+  function signaturePills(row) {
+    var signed  = isYes(cellText(row, F.signed));
+    var noSig   = isYes(cellText(row, F.noSig));
+    var notBill = isYes(cellText(row, F.notBill));
+    var out = signed
+      ? pill('Agreement signed', true)
+      : (noSig || notBill)
+        ? pill('Approved without client signature', true)
+        : pill('Agreement not signed', false);
+    if (notBill) {
+      out += '<span class="scw-acpt-pill is-nb" title="Authorized as not billable — ' +
+        'no client document, no invoice"><span>Not billable</span></span>';
+    }
+    return out;
   }
 
   var PENCIL_SVG =
@@ -2315,7 +2338,7 @@
             (terms
               ? pill('Approved for terms', true)
               : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid))) +
-          pill(signed ? 'Agreement signed' : 'Agreement not signed', signed) +
+          signaturePills(row) +
         '</div>' +
       '</div>' +
       // Two money columns, straight into the row\'s own grid tracks — no
@@ -2606,7 +2629,7 @@
             (terms
               ? pill('Approved for terms', true)
               : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid))) +
-          pill(signed ? 'Agreement signed' : 'Agreement not signed', signed) +
+          signaturePills(row) +
         '</div>' +
       '</div>' +
       equipCell('') +

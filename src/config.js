@@ -279,6 +279,58 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // included), so the record-creation modules are common and the branch
   // point is after them.
   MAKE_CO_ISSUE_WEBHOOK: "https://hook.us1.make.com/fwpbnldo3fkrywggxwu18qsh6ghgrg7w",
+  // ── The two NO-E-SIGNATURE accepted paths (2026-10-01) ─────────────────
+  // Both are stepId routes on the Issue scenario (13.03). Where the truth
+  // lives: the SOW's CO Status is the STAGE only — every accepted path
+  // writes the single value "Accepted". Billability / signature / reason
+  // live on the ACCEPTANCE (object_62) as flags Make stamps at creation:
+  //   field_2766 FLAG_agreement signed            e-sign only (13.06b [15]
+  //                                               must map it from payload
+  //                                               `signed`, default true)
+  //   field_3309 FLAG_approved without signature  Yes on both paths below
+  //   field_3310 FLAG_not billable                Yes on the not-billable path
+  //   field_3311 INPUT_approved not billable reason  payload.reason
+  // 13.06b's invoice gate should read the Acceptance's field_3310 (not the
+  // SOW status); 13.06b [169] (SOW status write) is retired — each route
+  // in 13.03 / the signed scenario writes "Accepted" itself.
+  //
+  // "Authorize as not billable" (co-stage-strip.js, fired from the CO
+  // drafting page, NOT the preview page) — stepId 'authorize-not-billable',
+  // reduced payload built on the CO page:
+  //   { stepId, recordId, changeOrderId, sourceRecordId, isChangeOrder: true,
+  //     notBillable: true, signed: false, reason, notes, status: "Accepted",
+  //     coNumber, coName, html, htmlPdf, plaintext,
+  //     installationTotal: 0, equipmentTotal: 0, grandTotal: 0, totals,
+  //     jsonString, triggeredBy }
+  //   (recordId / sourceRecordId / htmlPdf / jsonString / plaintext / the
+  //   three totals are the keys 13.03's trunk reads for every stepId —
+  //   modules 11, 23, 100, 104.)
+  //   html/htmlPdf = INTERNAL authorization card (sub labor + equipment +
+  //                  the reason) — store as the Proposal's document, never
+  //                  mint a customer token/link for it
+  //   jsonString   = raw-only `{ sowRecordId, view_3896: [...] }` from
+  //                  view_4079's records — same shape/key as the preview page
+  //   totals       = { lines:{adds,removals}, subLabor:{adds,removals,net},
+  //                    equipment:{adds,removals,net} }
+  // Route: Proposal (Type CO, no token) → Acceptance (Type CO, field_3309 =
+  // Yes, field_3310 = Yes, reason) → CO Status "Accepted" → notify sub
+  // ("approved, pricing stands") + ClickUp → call 13.06b exactly as the
+  // signed scenario does (its invoice gate skips on field_3310).
+  // ⚠ READY FLAG: until the route exists, the Issue scenario would run the
+  // FULL Issue flow (contract sent) on this payload — so the button refuses
+  // to fire while this is false. Flip to true once the route is live.
+  CO_AUTHORIZE_NOT_BILLABLE_READY: false,
+  // "Approve without client signature" (ops-stepper.js, preview page) —
+  // stepId 'approve-without-signature', the normal FULL Issue publish
+  // payload (html, htmlPdf, jsonString, invoiceItems, totals …) plus
+  //   { noSignature: true, signed: false, reason, notes, status: "Accepted" }
+  //   — no recipient, no scopeOfWorkDocumentElements consumer.
+  // Route: Proposal (Type CO, published + customer token) → Acceptance
+  // (Type CO, field_3309 = Yes, field_3310 = No, reason) → CO Status
+  // "Accepted" (skips Issued) → the SIGNED scenario's downstream: Xero
+  // invoice, 13.06b true-up, sub + ClickUp.
+  // ⚠ READY FLAG: same reason as above.
+  CO_APPROVE_WITHOUT_SIGNATURE_READY: false,
   // Fires from the published CO page (scene_1279 AND the public token
   // page snippet) when a client clicks "Request the signature copy" on
   // a PRE-ISSUE CO preview. Minimal notify payload:

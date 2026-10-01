@@ -478,9 +478,13 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   `change order`), NOT a new object. CO line items are ordinary SOW Line Item
   records (connected via `field_2154`). All SOW-consuming surfaces need a
   "Type **is not** change order" filter (blank fails safe).
-- **CO Status is a NEW separate field** (8 options: Draft, Pending Sub Pricing,
-  Ops Review, Issued, Accepted, Applied, Declined, Void — each with exactly one
-  writer). Do NOT add options to the existing SOW status field.
+- **CO Status is a NEW separate field** (`field_2953`, 7 options as of 2026-10-01:
+  Draft, Pending Sub Pricing, Ops Review, Issued, Accepted, Declined, Void — the
+  STAGE only; there is NO `Applied` — accepted IS applied). **Billability /
+  signature / the ops reason live on the ACCEPTANCE as flags** (`field_2766`
+  signed, `field_3309` approved without signature, `field_3310` not billable +
+  a reason field), never on the SOW. Do NOT add options to the existing SOW
+  status field.
 - **A CO rides the full chain** SOW → Proposal snapshot → Acceptance → apply.
   The verb is "Issue" (creates snapshot + acceptance in one gesture); invoice
   defers to the SIGNED webhook; the apply gate is **signature alone**; the
@@ -495,6 +499,16 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   source); `view_4088` = other project SOW/proposal items (adoption source).
   view_4079 has its own `createMirror` instance (the field_1957 ↔ field_2197
   cascade is mandatory on every view that edits this object).
+- **Two no-e-signature accepted paths (prepped 2026-10-01, NOT live)** — see the doc's
+  "Accepted without an e-signature" section. **Authorize as not billable**: third Ops Review
+  exit in `co-stage-strip.js` — reason modal → `MAKE_CO_ISSUE_WEBHOOK` `stepId:
+  'authorize-not-billable'` with a CO-page-built payload (raw snapshot, internal
+  sub-labor+equipment+reason card, totals, `signed:false`); no client-side writes. **Approve
+  without client signature**: amber CO-mode step on the preview page (`ops-stepper.js`
+  `approve-without-signature`), full Issue payload + `noSignature:true` + `reason`. Make 13.03
+  creates Proposal/Acceptance (flags + reason on the Acceptance), writes `Accepted`, calls
+  13.06b. The CO strip reads the Acceptance from a hidden grid (`ACC.view`, TBD). Gated by
+  `CO_AUTHORIZE_NOT_BILLABLE_READY` / `CO_APPROVE_WITHOUT_SIGNATURE_READY` (false).
 - **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
   `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
   install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,

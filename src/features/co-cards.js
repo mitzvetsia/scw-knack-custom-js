@@ -69,7 +69,6 @@
     'ops review':          { bg: '#eef2ff', bd: '#c7d2fe', fg: '#4338ca' },
     'issued':              { bg: '#f0f9ff', bd: '#bae6fd', fg: '#0369a1' },
     'accepted':            { bg: '#f0fdf4', bd: '#bbf7d0', fg: '#166534' },
-    'applied':             { bg: '#ecfdf5', bd: '#a7f3d0', fg: '#047857' },
     'declined':            { bg: '#fff1f2', bd: '#fecdd3', fg: '#be123c' },
     'void':                { bg: '#f3f4f6', bd: '#e5e7eb', fg: '#6b7280' }
   };

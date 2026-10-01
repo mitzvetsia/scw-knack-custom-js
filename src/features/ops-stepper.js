@@ -452,6 +452,40 @@
       includeFullPayload: true
     },
     {
+      // APPROVE WITHOUT CLIENT SIGNATURE (2026-10-01) — the billable twin of
+      // the CO page's "Authorize as not billable": the client has already
+      // approved the change (email / verbal / PO / contract allows), so the
+      // CO is published, INVOICED and applied WITHOUT an e-signature round
+      // trip. Same webhook + full publish payload as Issue; the scenario
+      // branches on stepId. Make: Proposal (Type CO, published + token) →
+      // Acceptance (Type CO, accepted, agreement signed = NO, method =
+      // client approval, FLAG_approved without signature field_3309 = Yes,
+      // reason stamped on the Acceptance) → CO Status "Accepted" (skips
+      // Issued) → the signed scenario's downstream (Xero invoice, 13.06b
+      // true-up, sub + ClickUp). The reason is the ONLY
+      // input — it is the audit record of who approved and how, so the
+      // modal requires it. Amber tone: SCW bills on its own paper here.
+      // ⚠ Gated by CO_APPROVE_WITHOUT_SIGNATURE_READY — without the route,
+      // the Issue scenario would send a contract on this payload.
+      id: 'approve-without-signature',
+      label: 'Approve without client signature',
+      tone: 'warning',
+      coOnly: true,
+      webhookKey: 'MAKE_CO_ISSUE_WEBHOOK',
+      readyKey: 'CO_APPROVE_WITHOUT_SIGNATURE_READY',
+      modal: {
+        title:       'Approve without client signature',
+        intro:       'Publishes the change order, invoices the client and ' +
+                     'applies the changes — with NO e-signature request. ' +
+                     'Use only when the client has already approved the change.',
+        notesLabel:  'Reason — who approved, and how',
+        notesRequired: true,
+        placeholder: 'e.g. Jane Doe approved by email 9/30 — PO-48211 attached',
+        submitLabel: 'Approve & Bill'
+      },
+      includeFullPayload: true
+    },
+    {
       id: 'issue-change-order',
       label: 'Issue Change Order — send to client for signature',
       tone: 'success',
@@ -609,6 +643,16 @@
       '  font-size: 13px; font-weight: 500; color: #475569;' +
       '}' +
       '.scw-step-tone-secondary .scw-step-icon { color: #94a3b8; opacity: 1; }' +
+      /* Warning tone — actions where SCW takes on risk on its own paper
+         (approve + bill without a client signature). Amber accent. */
+      '.scw-step-tone-warning {' +
+      '  --scw-step-accent: #d97706;' +
+      '  background: #fffbeb;' +
+      '  border-color: #fde68a;' +
+      '}' +
+      '.scw-step-tone-warning:hover { background: #fef3c7; }' +
+      '.scw-step-tone-warning .scw-step-title { color: #92400e; }' +
+      '.scw-step-tone-warning .scw-step-icon { color: #d97706; opacity: 1; }' +
       '.scw-step-action.is-completed.is-disabled .scw-step-icon {' +
       '  color: #16a34a; opacity: 1;' +
       '}' +
@@ -1506,14 +1550,25 @@
       if (step.id === 'publish-sow-tbd') tbdMode = true;
       else if (step.id === 'publish-gfe' || step.id === 'publish-final' ||
                step.id === 'publish-co-preview' ||
+               step.id === 'approve-without-signature' ||
                step.id === 'issue-change-order') tbdMode = false;
       else tbdMode = undefined;   // default — read field_2725
 
       // The CO webhooks all key on changeOrderId — alias the SOW record id
       // so the Issue/Preview scenarios read the same name as send-to-sub /
       // remove.
-      if (step.id === 'issue-change-order' || step.id === 'publish-co-preview') {
+      if (step.id === 'issue-change-order' || step.id === 'publish-co-preview' ||
+          step.id === 'approve-without-signature') {
         payload.changeOrderId = payload.sourceRecordId;
+      }
+      // Approve without signature: the notes ARE the approval record.
+      // Surface them as `reason` (what Make writes to CO header field_3308
+      // and stamps on the Acceptance) + the status Make writes.
+      if (step.id === 'approve-without-signature') {
+        payload.reason      = notes || '';
+        payload.noSignature = true;
+        payload.signed      = false;   // 13.06b: don't stamp the Acceptance as e-signed
+        payload.status      = 'Accepted';
       }
 
       payload.publishAsTbd = (tbdMode === true)
@@ -1896,6 +1951,15 @@
       card.appendChild(banner);
     }
 
+    // Optional label above the textarea (e.g. "Reason — who approved, and
+    // how") — the notes become the audit record on some steps.
+    if (opts.notesLabel) {
+      var notesLbl = document.createElement('div');
+      notesLbl.className = 'scw-ops-modal-intro';
+      notesLbl.style.fontWeight = '600';
+      notesLbl.textContent = opts.notesLabel;
+      card.appendChild(notesLbl);
+    }
     var ta = document.createElement('textarea');
     ta.className = 'scw-ops-modal-textarea';
     ta.placeholder = opts.placeholder || '';
@@ -2519,6 +2583,10 @@
       // Sync any survey-request detail edits back to the request record.
       if (requestEditor) requestEditor.saveEdits();
       var notes = (ta.value || '').trim();
+      if (opts.notesRequired && !notes) {
+        showError((opts.notesLabel || 'A note') + ' is required.');
+        return;
+      }
       onSubmit(notes, {
         setSubmitting: setSubmitting, showError: showError, close: close,
         mode: opts.primaryMode || null,
@@ -2751,6 +2819,15 @@
       alert(step.label + ' webhook URL is not configured (' + step.webhookKey + ').');
       return;
     }
+    // Steps that share a webhook with an existing flow and need their own
+    // Make route before they are safe to fire (the scenario would run the
+    // OTHER flow on the payload otherwise). Flip the flag in src/config.js
+    // once the route exists.
+    if (step.readyKey && !(window.SCW && SCW.CONFIG && SCW.CONFIG[step.readyKey])) {
+      alert('"' + step.label + '" is not live yet — the Make route for it is not ' +
+        'configured (' + step.readyKey + '). Nothing was changed.');
+      return;
+    }
     if (!getSourceRecordId()) {
       alert('Could not determine the SOW record ID from ' + SOURCE_VIEW + '.');
       return;
@@ -2764,6 +2841,7 @@
                         step.id === 'publish-final' ||
                         step.id === 'publish-proposal' ||
                         step.id === 'publish-co-preview' ||
+                        step.id === 'approve-without-signature' ||
                         step.id === 'issue-change-order';
     if (isPublishStep &&
         window.SCW && SCW.pdfExport && typeof SCW.pdfExport.isPageReady === 'function' &&
