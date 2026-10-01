@@ -332,7 +332,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // "Accepted" (skips Issued) → the SIGNED scenario's downstream: Xero
   // invoice, 13.06b true-up, sub + ClickUp.
   // ⚠ READY FLAG: same reason as above.
-  CO_APPROVE_WITHOUT_SIGNATURE_READY: false,
+  CO_APPROVE_WITHOUT_SIGNATURE_READY: true,    // flipped 2026-10-01 — 13.03 route exists
   // Fires from the published CO page (scene_1279 AND the public token
   // page snippet) when a client clicks "Request the signature copy" on
   // a PRE-ISSUE CO preview. Minimal notify payload:

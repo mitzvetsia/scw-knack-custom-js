@@ -753,7 +753,7 @@ not-billable. Nothing about billability or the reason is written to the SOW.
   step between Preview and Issue; modal = the same single required reason.
   Fires `MAKE_CO_ISSUE_WEBHOOK` with the normal FULL publish payload plus
   `noSignature: true`, `signed: false`, `reason`, `status: 'Accepted'`.
-- **13.03 route** (to build — clone route 0 minus the AGREEMENTS branch):
+- **13.03 route** (exists as of 2026-10-01 — route 0 minus the AGREEMENTS branch; `CO_APPROVE_WITHOUT_SIGNATURE_READY` flipped the same day):
   Proposal (Type CO, published + token) → Acceptance with `field_3309 = Yes`,
   `field_3310 = No`, reason, `field_2767` = the PDF → CO Status `Accepted`
   (skips Issued) → Slack → 13.06b trigger (with `"signed": false`). 13.06b
