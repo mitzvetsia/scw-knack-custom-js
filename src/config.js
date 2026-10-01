@@ -319,7 +319,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // ⚠ READY FLAG: until the route exists, the Issue scenario would run the
   // FULL Issue flow (contract sent) on this payload — so the button refuses
   // to fire while this is false. Flip to true once the route is live.
-  CO_AUTHORIZE_NOT_BILLABLE_READY: false,
+  CO_AUTHORIZE_NOT_BILLABLE_READY: true,    // flipped 2026-10-01 — 13.03 route 2 exists
   // "Approve without client signature" (ops-stepper.js, preview page) —
   // stepId 'approve-without-signature', the normal FULL Issue publish
   // payload (html, htmlPdf, jsonString, invoiceItems, totals …) plus
