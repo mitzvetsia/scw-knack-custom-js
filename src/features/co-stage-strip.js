@@ -1728,6 +1728,9 @@
         (IS_OPS ? opsActionsHtml(status, cur, nb) : subActionsHtml(status, cur, nb)) +
         '</div></div>';
       renderHeaderTag(form, nb);
+      // The value strip shows client money — it has to know when the CO
+      // is not billable, and it renders on its own timers.
+      try { if (window.SCW.coValue) SCW.coValue.refresh(); } catch (eCv) { /* optional */ }
       if (!nb) renderPublishedBlock(el, cur);
     }
 
@@ -1825,8 +1828,12 @@
     // SCW.coStageSub (co-sub-lock reads view_4122 directly, but the surface
     // is there if anything needs the sub-page status).
     window.SCW = window.SCW || {};
-    SCW[IS_OPS ? 'coStage' : 'coStageSub'] =
-      { getStatus: getStatus, getSnapshot: getSnapshot, refresh: render };
+    SCW[IS_OPS ? 'coStage' : 'coStageSub'] = {
+      getStatus: getStatus, getSnapshot: getSnapshot, refresh: render,
+      // { notBillable, noSignature, signed, reason, by, at } or null — the
+      // Acceptance read (co-value.js zeroes the client column on it).
+      getAcceptance: acceptanceInfo
+    };
   }
 
   for (var d = 0; d < DEPLOYMENTS.length; d++) setup(DEPLOYMENTS[d]);

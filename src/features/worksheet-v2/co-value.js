@@ -103,7 +103,10 @@
       '.scw-co-val-table tr.scw-co-val-net td.scw-co-val-main{color:#163C6E;font-size:15px;}',
       '.scw-co-val-sub{color:#64748b;font-size:12px;}',
       '.scw-co-val-neg{color:#be123c;}',
-      '.scw-co-val-foot{font:400 11px/1.4 system-ui,sans-serif;color:#94a3b8;margin-top:6px;}'
+      '.scw-co-val-foot{font:400 11px/1.4 system-ui,sans-serif;color:#94a3b8;margin-top:6px;}',
+      '.scw-co-val-list{display:block;font:400 11px/1.3 system-ui,sans-serif;color:#94a3b8;text-decoration:line-through;}',
+      '.scw-co-val-flag{margin-left:10px;font:600 10.5px/1 system-ui,sans-serif;letter-spacing:0;',
+      'text-transform:none;color:#475569;}'
     ].join('');
     document.head.appendChild(s);
   }
@@ -173,18 +176,39 @@
       '</span>';
   }
 
+  // A CO authorized as NOT BILLABLE charges the client nothing, whatever
+  // the lines carry — co-stage-strip reads that off the Acceptance.
+  function notBillable() {
+    try {
+      var st = window.SCW && SCW.coStage;
+      var a = st && typeof st.getAcceptance === 'function' ? st.getAcceptance() : null;
+      return !!(a && a.notBillable);
+    } catch (e) { return false; }
+  }
+
   // Ops table: Client (equip net + install fee, with the split) | Sub bid |
   // Labor margin (fee − bid). Rows: Adds, Credits, Net change, and
   // Recurring licenses (billed separately) when the CO carries any.
+  // Not billable: the client column reads $0.00 (the line prices stay
+  // visible, muted, as "list"), and the margin column says what SCW eats.
   function opsTable(t) {
+    var nb = notBillable();
     function row(kind, label, count, b, isNet) {
       var client = b.eq + b.fee;
+      var clientCell = nb
+        ? '<td class="scw-co-val-main">$0.00' +
+            (client ? '<span class="scw-co-val-list">list ' + esc(fmtMoney(client)) + '</span>' : '') +
+          '</td>'
+        : '<td class="scw-co-val-main">' + money(client) + '</td>';
+      var marginCell = nb
+        ? '<td class="scw-co-val-sub">' + (b.bid ? 'SCW absorbs ' + esc(fmtMoney(Math.abs(b.bid))) : '&mdash;') + '</td>'
+        : '<td>' + marginPct(b.fee, b.bid) + '</td>';
       return '<tr' + (isNet ? ' class="scw-co-val-net"' : '') + '>' +
         '<td>' + rowLabel(kind, label, count) + '</td>' +
-        '<td class="scw-co-val-main">' + money(client) + '</td>' +
+        clientCell +
         '<td class="scw-co-val-sub">' + money(b.eq) + ' &middot; ' + money(b.fee) + '</td>' +
         '<td>' + money(b.bid) + '</td>' +
-        '<td>' + marginPct(b.fee, b.bid) + '</td>' +
+        marginCell +
       '</tr>';
     }
     var net = { eq: t.adds.eq + t.rem.eq, fee: t.adds.fee + t.rem.fee, bid: t.adds.bid + t.rem.bid };
@@ -193,17 +217,23 @@
         '<td class="scw-co-val-main">' + money(t.lic.eq) + '</td>' +
         '<td class="scw-co-val-sub" colspan="3">billed separately &middot; not in net change</td></tr>'
       : '';
-    return '<div class="scw-co-val-eyebrow">Change order value</div>' +
+    return '<div class="scw-co-val-eyebrow">Change order value' +
+        (nb ? '<span class="scw-co-val-flag">Not billable &middot; client is charged nothing</span>' : '') +
+      '</div>' +
       '<table class="scw-co-val-table"><thead><tr>' +
-        '<th></th><th>Client</th><th>Equip &middot; Install</th><th>Sub bid</th><th>Labor margin</th>' +
+        '<th></th><th>Client</th><th>Equip &middot; Install</th><th>Sub bid</th><th>' +
+        (nb ? 'Labor margin' : 'Labor margin') + '</th>' +
       '</tr></thead><tbody>' +
         row('adds',    'Adds',       t.adds.count, t.adds, false) +
         row('credits', 'Credits',    t.rem.count,  t.rem,  false) +
         row('net',     'Net change', null,         net,    true) +
         lic +
       '</tbody></table>' +
-      '<div class="scw-co-val-foot">Client = equipment net + install fee &middot; ' +
-        'Labor margin = (install fee &minus; sub bid) &divide; install fee</div>';
+      '<div class="scw-co-val-foot">' + (nb
+        ? 'Not billable: the client is invoiced $0 &middot; "list" is what the lines would have billed &middot; ' +
+          'SCW absorbs the sub bid'
+        : 'Client = equipment net + install fee &middot; ' +
+          'Labor margin = (install fee &minus; sub bid) &divide; install fee') + '</div>';
   }
 
   // Sub portal: the sub's own labor only (equip / install fee are client
@@ -256,6 +286,11 @@
     var t = compute(records, pair.coView);
     el.innerHTML = pair.mode === 'labor' ? laborTable(t) : opsTable(t);
   }
+
+  // co-stage-strip calls this after its own render (it owns the Acceptance
+  // read the ops table's not-billable branch depends on).
+  window.SCW = window.SCW || {};
+  SCW.coValue = { refresh: function () { PAIRS.forEach(render); } };
 
   PAIRS.forEach(function (pair) {
     var EVENT_NS = '.scwCoValue' + pair.coView.replace('view_', '');
