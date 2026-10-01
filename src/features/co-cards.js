@@ -41,6 +41,13 @@
     name:   'field_2126',   // INPUT: sow friendly name
     notes:  'field_2198',   // INPUT_notes (the CO header card's textarea)
     contract: 'field_1843', // esignatures.com contract id (uuid)
+    // ── Acceptance flags (2026-10-01) — live on the ACCEPTANCE object and
+    // reach a CO grid as THROUGH-connection columns, whose <td> class is
+    // the compound "field_<conn>-field_3309"; cellAny() matches either
+    // shape. Fail-open like everything else here.
+    noSig:   'field_3309',   // FLAG_approved without signature (Yes/No)
+    notBill: 'field_3310',   // FLAG_not billable (Yes/No)
+    reason:  'field_3311',   // INPUT_approved not billable reason
     // ── Net total ──
     // Preferred: ONE stored grand-total column (equation on the SOW object
     // = equipment rollup + installation rollup). CO lines carry signed
@@ -87,6 +94,14 @@
     if (!td) return '';
     return String(td.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
   }
+  // cellText, but also matching a through-connection column (class
+  // "field_<conn>-field_XXXX") — how fields of a connected record show up.
+  function cellAny(tr, fieldKey) {
+    var td = tr.querySelector('td.' + fieldKey) || tr.querySelector('td[class*="' + fieldKey + '"]');
+    if (!td) return '';
+    return String(td.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function isYes(v) { return /^(yes|true)$/i.test(String(v || '').trim()); }
   /** Money cell → number, or null when the column is absent / blank /
    *  unparsable. Handles "$1,234.56", "-$550", "−$550.00", "($550)". */
   function cellMoney(tr, fieldKey) {
@@ -207,6 +222,21 @@
       '.scw-co-card__basis {',
       '  font: 500 12px/1.4 system-ui, sans-serif; color: #64748b; white-space: nowrap;',
       '}',
+      '.scw-co-card__basis-tag {',
+      '  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;',
+      '  font: 600 11.5px/1.4 system-ui, sans-serif; color: #475569;',
+      '}',
+      '.scw-co-card__basis-tag:before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #94a3b8; }',
+      '.scw-co-card__basis-tag--nosig { color: #92400e; }',
+      '.scw-co-card__basis-tag--nosig:before { background: #d97706; }',
+      '.scw-co-card__reason {',
+      '  margin-top: 2px; font: 400 12px/1.4 system-ui, sans-serif; color: #475569;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;',
+      '}',
+      '.scw-co-card__reason-lbl {',
+      '  font: 700 10px/1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase;',
+      '  color: #94a3b8; margin-right: 6px;',
+      '}',
       '.scw-co-card__open {',
       '  display: inline-flex; align-items: center; gap: 6px;',
       '  padding: 6px 14px; border-radius: 7px; white-space: nowrap;',
@@ -249,6 +279,10 @@
     var basis  = cellText(tr, F.basis);
     var notes  = cellText(tr, F.notes);
     var contractId = cellText(tr, F.contract);
+    // Acceptance basis (through-connection columns; blank when not on the grid)
+    var notBill = isYes(cellAny(tr, F.notBill));
+    var noSig   = isYes(cellAny(tr, F.noSig)) || notBill;
+    var reason  = cellAny(tr, F.reason);
     // Net: the grand-total column when configured/present, else the sum of
     // the equipment + installation rollups when BOTH columns are on the
     // grid (CO line money is signed, so the rollups sum to the net).
@@ -282,6 +316,10 @@
         (sub ? '<div class="scw-co-card__num">' + esc(sub) + '</div>' : '') +
         (notes ? '<div class="scw-co-card__notes" title="' + esc(notes) + '">' +
           esc(notes) + '</div>' : '') +
+        (reason && (noSig || notBill)
+          ? '<div class="scw-co-card__reason" title="' + esc(reason) + '">' +
+              '<span class="scw-co-card__reason-lbl">Why</span>' + esc(reason) + '</div>'
+          : '') +
       '</div>' +
       (net != null
         ? '<div class="scw-co-card__net" title="Net change (equipment + installation, signed)">' +
@@ -295,6 +333,15 @@
           ? '<span class="scw-co-card__pill" style="background:' + col.bg +
             ';border-color:' + col.bd + ';color:' + col.fg + ';">' + esc(status) + '</span>'
           : '') +
+        // Acceptance basis — plain text + dot (deploy-page restraint: the
+        // status pill is the only filled color on the card).
+        (notBill
+          ? '<span class="scw-co-card__basis-tag scw-co-card__basis-tag--nb" ' +
+              'title="Authorized as not billable — no client document, no invoice">Not billable</span>'
+          : noSig
+            ? '<span class="scw-co-card__basis-tag scw-co-card__basis-tag--nosig" ' +
+                'title="Approved without client signature — billed on client approval, no e-signature on file">No signature</span>'
+            : '') +
         (exp
           ? '<span class="scw-co-card__exp' + (isPastDate(exp) ? ' scw-co-card__exp--past' : '') +
             '" title="Pricing expiration">' + (isPastDate(exp) ? 'Expired ' : 'Expires ') +
