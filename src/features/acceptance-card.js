@@ -810,6 +810,30 @@
       '</span>';
   }
 
+  /** BILLED TO CLIENT — the first money column. The TOTAL leads, heavy,
+   *  because that is the figure the eye takes for "the line"; equipment
+   *  and labor sit under it as its two parts in the quiet line style. A
+   *  bare bold equipment figure here used to read as the row's total
+   *  (equipment is usually the bigger half), with labor off to the side
+   *  looking like a footnote. Not billable: no figures, the reason. */
+  function clientStat(equip, install, notBill) {
+    if (notBill) {
+      return '<span class="scw-acpt-col scw-acpt-col--equip">' +
+        line('\u2014', 'not billable to client', '',
+          'Authorized as not billable \u2014 no client document, no invoice') +
+        '</span>';
+    }
+    if (equip == null && install == null) {
+      return '<span class="scw-acpt-col scw-acpt-col--equip"></span>';
+    }
+    var total = (equip == null ? 0 : equip) + (install == null ? 0 : install);
+    var lines = line(esc(money(total)), 'billed to client', 'scw-acpt-line__val--total',
+      'Equipment + labor billed to the client on this acceptance');
+    if (equip   != null) lines += line(esc(money(equip)),   'equipment');
+    if (install != null) lines += line(esc(money(install)), 'labor');
+    return '<span class="scw-acpt-col scw-acpt-col--equip">' + lines + '</span>';
+  }
+
   /** One value + name line inside a stat's stacked block. */
   function line(val, lbl, valMod, tip) {
     return '<span class="scw-acpt-line__val' + (valMod ? ' ' + valMod : '') + '"' +
@@ -832,15 +856,9 @@
     if (installBilled == null && subAmt == null) {
       return '<span class="scw-acpt-col scw-acpt-col--labor"></span>';
     }
+    // What the client is billed lives in the BILLED TO CLIENT column now
+    // (clientStat); this column is the margin on the labor half of it.
     var lines = '';
-    if (notBill) {
-      // Authorized as not billable: nothing goes to the client, whatever
-      // the proposal snapshot carries — say so instead of a figure.
-      lines += line('—', 'not billable to client', '',
-        'Authorized as not billable — no client document, no invoice');
-    } else if (installBilled != null) {
-      lines += line(esc(money(installBilled)), 'billed to client');
-    }
     if (subAmt != null) {
       var sd = amt && SRC[amt.source];
       lines += line(esc(money(subAmt)),
@@ -1326,13 +1344,12 @@
       // construction. min-width alignment (what this replaced) only lines
       // up when the content happens to be the same width — -$454.00 and
       // $11,735.00 are not, which is what made the edges rag.
-      '.scw-acpt-card { --acpt-equip: 112px; --acpt-num: 94px;',
-      '  --acpt-lbl: 98px; }',
+      '.scw-acpt-card { --acpt-num: 94px; --acpt-lbl: 98px;',
+      // Both money columns share one shape now — total over its parts on
+      // the left, the labor margin on the right — so one track width.
+      '  --acpt-equip: calc(var(--acpt-num) + var(--acpt-lbl) + 7px); }',
       '.scw-acpt-col { display: grid; grid-template-columns:',
       '  var(--acpt-num) var(--acpt-lbl); gap: 2px 7px; align-items: baseline; }',
-      // Equipment is one figure, so it needs no label column of its own —
-      // it right-aligns in its width and the header names it.
-      '.scw-acpt-col--equip { display: block; text-align: right; }',
       '.scw-acpt-col__val { color: #0f172a;',
       '  font: 700 16px/1.2 system-ui, sans-serif;',
       '  font-variant-numeric: tabular-nums; white-space: nowrap; }',
@@ -1344,7 +1361,7 @@
       '.scw-acpt-colhead__lbl { font: 700 9.5px/1 system-ui, sans-serif;',
       '  letter-spacing: .08em; text-transform: uppercase; color: #94a3b8;',
       '  white-space: nowrap; text-align: right; }',
-      '.scw-acpt-colhead .scw-acpt-col--labor .scw-acpt-colhead__lbl:last-child {',
+      '.scw-acpt-colhead .scw-acpt-col .scw-acpt-colhead__lbl:last-child {',
       '  display: none; }',
       // Labor\'s lines: figures in the number column, their names beside
       // them. Same grid as the header, so they cannot drift.
@@ -1356,6 +1373,10 @@
       // The percent is the answer — give it the weight and let the figures
       // above it read as the inputs they are.
       '.scw-acpt-line__val--rate { font-size: 20px; cursor: help; }',
+      // The billed-to-client total: the row's headline figure.
+      '.scw-acpt-line__val--total { font-size: 16px; color: #0f172a; cursor: help; }',
+      '.scw-acpt-line__val--total + .scw-acpt-line__lbl { font-size: 10.5px;',
+      '  color: #64748b; }',
       '.scw-acpt-line__val--rate + .scw-acpt-line__lbl { font-size: 10.5px;',
       '  color: #64748b; }',
       '.scw-acpt-line__src { cursor: help; border-bottom: 1px dotted #cbd5e1; }',
@@ -1425,7 +1446,7 @@
       '  border-top: 2px solid #e2e8f0; }',
       '.scw-acpt-foot__cap { font: 700 10px/1 system-ui, sans-serif;',
       '  letter-spacing: .1em; text-transform: uppercase; color: #475569; }',
-      '.scw-acpt-foot .scw-acpt-col__val { font-size: 17px; }',
+      '.scw-acpt-foot .scw-acpt-line__val--total { font-size: 17px; }',
       '.scw-acpt-foot .scw-acpt-line__val--rate { font-size: 21px; }',
       // The bid + change-order split rides in the footer\'s identity cell,
       // beside the word PROJECT. It used to be a third band with its own
@@ -1486,15 +1507,14 @@
       // Stacked, there is no right edge to hang from and no header above
       // the columns, so each figure left-aligns and names itself again.
       '  .scw-acpt-colhead { display: none; }',
-      '  .scw-acpt-col--equip { text-align: left; }',
       '  .scw-acpt-col { grid-template-columns: auto auto; justify-content: start; }',
       '  .scw-acpt-line__val { text-align: left; }',
       '  .scw-acpt-col--equip::before, .scw-acpt-col--labor::before {',
       '    display: block; font: 700 9.5px/1 system-ui, sans-serif;',
       '    letter-spacing: .08em; text-transform: uppercase; color: #94a3b8;',
       '    margin-bottom: 3px; }',
-      '  .scw-acpt-col--equip::before { content: "Equipment"; }',
-      '  .scw-acpt-col--labor::before { content: "Labor"; grid-column: 1 / -1; }',
+      '  .scw-acpt-col--equip::before { content: "Billed to client"; grid-column: 1 / -1; }',
+      '  .scw-acpt-col--labor::before { content: "Labor margin"; grid-column: 1 / -1; }',
       '}',
       '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #e2e8f0; }',
       // The identity column: base SOW numbers (SW1145) are shorter than CO
@@ -2366,9 +2386,7 @@
       // columns would drift row to row; as grid children they inherit the
       // card\'s fixed tracks, which is what holds the axis.
       (billed
-        ? equipCell(billed.equip != null ? money(billed.equip) : '') +
-          // No total column: it\'s exactly equipment + labor billed, both
-          // of which are right here.
+        ? clientStat(billed.equip, billed.install, notBill) +
           laborStat(billed.install, amt, svyCost, drift, notBill)
         // No billed columns on the view: nothing to compare against, so
         // the row keeps its single figure — what we pay the sub. It sits
@@ -2737,7 +2755,7 @@
           (billedRows < 2 ? 'Project total' : 'Project') + '</span>' +
         split +
       '</span>' +
-      equipCell(forSub ? '' : (eq != null ? money(eq) : '')) +
+      (forSub ? equipCell('') : clientStat(eq, inst, false)) +
       (forSub
         ? '<span class="scw-acpt-col scw-acpt-col--labor">' +
             (sub == null ? '' : line(esc(money(sub)), 'your total' +
@@ -3018,9 +3036,10 @@
       // here rather than carrying filler spans.
       head.innerHTML =
         '<span class="scw-acpt-col scw-acpt-col--equip">' +
-          '<span class="scw-acpt-colhead__lbl">Equipment</span></span>' +
+          '<span class="scw-acpt-colhead__lbl">Billed to client</span>' +
+          '<span class="scw-acpt-colhead__lbl"></span></span>' +
         '<span class="scw-acpt-col scw-acpt-col--labor">' +
-          '<span class="scw-acpt-colhead__lbl">Labor</span>' +
+          '<span class="scw-acpt-colhead__lbl">Labor margin</span>' +
           '<span class="scw-acpt-colhead__lbl"></span></span>';
       card.insertBefore(head, built[0].el);
     }
