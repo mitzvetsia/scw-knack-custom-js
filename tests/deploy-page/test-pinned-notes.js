@@ -93,7 +93,9 @@ setTimeout(() => {
   window.confirm = () => true;
   view.querySelector('[data-scw-note-id="b2"] .scw-note-card__del').click();
   check('confirmed delete: no native delete link on this grid → view-scoped REST DELETE, then refetch',
-    [puts[3].url, puts[3].type, fetched], ['/view_4135/b2', 'DELETE', 3]);
+    [puts[3].url, puts[3].type, fetched], ['/view_4135/b2', 'DELETE', 4]);
+  // Rewind the counters this block added so the composer checks below keep their fixed indexes.
+  puts.splice(2); fetched = 2;
   // ── Inline composer: the action-bar link posts through the child page's form view.
   const PROJECT = '6a317499f8c8cfac425c873d';
   const cta = document.createElement('a'); cta.id = 'scw-deploy-notes-cta';

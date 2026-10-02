@@ -73,14 +73,14 @@
       '.scw-pin-note__meta { flex: none; font-size: 11px; color: #92400e; white-space: nowrap; }',
       '.scw-pin-all { flex: none; background: none; border: 0; padding: 0; cursor: pointer; font: 600 12px/1.2 system-ui, sans-serif; color: #0f4c81; }',
       /* Pin / Unpin toggle (note cards) */
-      '.scw-pin-toggle {',
+      '.scw-pin-toggle, .scw-sow-toggle {',
       '  display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; flex: none;',
       '  padding: 3px 9px; border-radius: 999px; border: 1px solid #dbe4ee; background: #fff;',
       '  color: #475569; font: 600 11px/1.2 system-ui, sans-serif; cursor: pointer;',
       '}',
-      '.scw-pin-toggle:hover { border-color: #94a3b8; color: #0f172a; }',
+      '.scw-pin-toggle:hover, .scw-sow-toggle:hover { border-color: #94a3b8; color: #0f172a; }',
       '.scw-pin-toggle.is-pinned { background: #fef3c7; border-color: #f59e0b; color: #92400e; }',
-      '.scw-pin-toggle[disabled] { opacity: 0.6; cursor: default; }',
+      '.scw-pin-toggle[disabled], .scw-sow-toggle[disabled] { opacity: 0.6; cursor: default; }',
       /* "On SOW PDF" toggle — same pill, navy when on (Make 11.05 prints
          flagged notes under Project Notes on the SOW). */
       '.scw-sow-toggle.is-on { background: #e0ecf7; border-color: #0f4c75; color: #0f4c75; }',
@@ -308,7 +308,7 @@
   function sowToggle(cfg, n) {
     var btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'scw-pin-toggle scw-sow-toggle' + (n.onSow ? ' is-on' : '');
+    btn.className = 'scw-sow-toggle' + (n.onSow ? ' is-on' : '');
     btn.innerHTML = DOC_SVG + (n.onSow ? 'On SOW PDF' : 'Add to SOW PDF');
     btn.title = n.onSow ? 'Printed under Project Notes on the SOW PDF \u2014 click to leave it off'
                         : 'Print this note under Project Notes on the SOW PDF';
