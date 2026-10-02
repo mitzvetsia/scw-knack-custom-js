@@ -338,6 +338,10 @@
     s.id = STYLE_ID;
     s.textContent = [
       '#' + HERO_ID + ' { display: block; background: #fff;',
+      // Full width whatever the scene's layout is — the deploy scene lays its
+      // children out as a grid/flex container, where a block shrinks to its
+      // content. Span every column / the whole row like deploy-page-nav does.
+      '  width: 100%; max-width: 100%; box-sizing: border-box; grid-column: 1 / -1; flex: 1 1 100%;',
       '  border: 2px solid #124e85; border-radius: 12px; padding: 16px 24px; margin: 0 0 18px;',
       '  font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #0f172a; }',
       '#' + HERO_ID + ' .scw-pid-body, #' + HERO_ID + ' .scw-pid-own { display: flex; align-items: stretch; gap: 28px; min-width: 0; }',

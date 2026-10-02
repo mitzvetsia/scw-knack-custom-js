@@ -40,10 +40,20 @@
   var CONFIG = {
     navView:   'view_44',
     home:      /^(k[12]:\s*)?dashboard$/i,
+    // Each stage carries an icon (feather-style stroke paths, drawn in the
+    // badge with currentColor): document for drafting SOWs, a balance for
+    // comparing bids, a wrench for the install. `step` keeps the workflow
+    // order for sorting.
     stages: [
-      { match: /^(k[12]:\s*)?build sows?$/i,       step: 1 },
-      { match: /^(k[12]:\s*)?reconcile bids?$/i,   step: 2 },
-      { match: /^(k[12]:\s*)?manage deployment$/i, step: 3 }
+      { match: /^(k[12]:\s*)?build sows?$/i,       step: 1,
+        icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>' +
+              '<line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>' },
+      { match: /^(k[12]:\s*)?reconcile bids?$/i,   step: 2,
+        icon: '<line x1="12" y1="3" x2="12" y2="21"/><line x1="5" y1="7" x2="19" y2="7"/>' +
+              '<path d="M3 15l2.5-8 2.5 8a2.5 2.5 0 0 1-5 0z"/><path d="M16 15l2.5-8 2.5 8a2.5 2.5 0 0 1-5 0z"/>' },
+      { match: /^(k[12]:\s*)?manage deployment$/i, step: 3,
+        icon: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91' +
+              'a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>' }
     ],
     prefixRe:  /^k[12]:\s*/i,          // stripped from every label
     moreLabel: 'More',
@@ -71,6 +81,10 @@
   var HOME_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" ' +
     'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>' +
     '<polyline points="9 22 9 12 15 12 15 22"></polyline></svg>';
+  function stepSvg(stage) {
+    return '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + stage.icon + '</svg>';
+  }
   var CHEV_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" ' +
     'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>';
   var COPY_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" ' +
@@ -117,10 +131,18 @@
       '  color: #0f172a !important; background: #fff !important; border-bottom-color: #cbd5e1 !important; }',
       '#' + STRIP_ID + ' a.kn-link.is-current, #' + BAR_ID + ' a.scw-phn-clone.is-current {',
       '  color: #0f4c75 !important; font-weight: 700 !important; background: #fff !important; border-bottom-color: #0f4c75 !important; }',
-      '.scw-phn-step { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #94a3b8; color: #64748b !important;',
-      '  font: 700 11px/1 system-ui, sans-serif !important; display: inline-flex; align-items: center; justify-content: center; flex: none; }',
-      'a:hover > .scw-phn-step { border-color: #64748b; color: #334155 !important; }',
-      'a.is-current > .scw-phn-step { background: #0f4c75; border-color: #0f4c75; color: #fff !important; }',
+      // Stage badge: a ring holding the stage icon; the current page fills it
+      // navy with the icon in white. The strip's `a.kn-link span { color:
+      // inherit }` rule above outranks a bare class selector, so the colors
+      // are pinned with the same id-scoped specificity (the old navy-on-navy
+      // badge was that rule winning).
+      '.scw-phn-step { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #94a3b8; color: #64748b !important;',
+      '  display: inline-flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box; }',
+      '.scw-phn-step svg { display: block; }',
+      '#' + STRIP_ID + ' a.kn-link:hover > .scw-phn-step, #' + BAR_ID + ' a.scw-phn-clone:hover > .scw-phn-step {',
+      '  border-color: #64748b; color: #334155 !important; }',
+      '#' + STRIP_ID + ' a.kn-link.is-current > .scw-phn-step, #' + BAR_ID + ' a.scw-phn-clone.is-current > .scw-phn-step {',
+      '  background: #0f4c75; border-color: #0f4c75; color: #fff !important; }',
       '.scw-phn-home-ic { display: inline-flex; color: inherit; }',
       // More ▾ + panel
       '.scw-phn-more { position: relative; display: flex; align-items: stretch; }',
@@ -151,7 +173,8 @@
       '  max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
       '#' + BAR_ID + ' .scw-phn-bar-tabs { display: flex; align-items: stretch; margin-left: auto; }',
       '#' + BAR_ID + ' a.scw-phn-clone { height: 48px !important; padding: 0 12px !important; }',
-      '#' + BAR_ID + ' .scw-phn-step { width: 18px; height: 18px; font-size: 10px !important; }',
+      '#' + BAR_ID + ' .scw-phn-step { width: 20px; height: 20px; }',
+      '#' + BAR_ID + ' .scw-phn-step svg { width: 11px; height: 11px; }',
       '@media (max-width: 900px) {',
       '  #' + BAR_ID + ' .scw-phn-bar-title { display: none; }',
       '  #' + STRIP_ID + ' a.kn-link { padding: 0 10px !important; }',
@@ -234,7 +257,11 @@
         step.className = 'scw-phn-step';
         a.insertBefore(step, span === a ? a.firstChild : span);
       }
-      step.textContent = String(stage.step);
+      var svg = stepSvg(stage);
+      if (step.getAttribute('data-scw-icon') !== String(stage.step)) {
+        step.innerHTML = svg;
+        step.setAttribute('data-scw-icon', String(stage.step));
+      }
     } else if (isHome(a) && !a.querySelector('.scw-phn-home-ic')) {
       var ic = document.createElement('span');
       ic.className = 'scw-phn-home-ic';
@@ -368,7 +395,7 @@
       if (a.closest('.scw-phn-panel')) return;   // legacy pages stay behind More
       var st = stageOf(a);
       html += '<a class="scw-phn-clone' + (a === current ? ' is-current' : '') + '" href="' + esc(a.getAttribute('href') || '#') + '">' +
-        (st ? '<span class="scw-phn-step">' + st.step + '</span>' : '') +
+        (st ? '<span class="scw-phn-step">' + stepSvg(st) + '</span>' : '') +
         '<span>' + esc(labelOf(a)) + '</span></a>';
     });
     html += '</div>';

@@ -61,8 +61,10 @@ setTimeout(() => {
 
   check('the strip lives in the hero footer; the hero is the card', [!!strip, strip && strip.closest('#scw-pid-hero .scw-pid-foot') !== null, hero.classList.contains('scw-pid--nav')], [true, true, true]);
   check('Dashboard, then the three stages in workflow order, prefixes gone', labels(stripAnchors()), ['Dashboard', 'Build SOWs', 'Reconcile Bids', 'Manage Deployment']);
-  check('stages carry step numbers 1-3; Dashboard carries the home icon instead',
-    [[...strip.querySelectorAll('.scw-phn-stages .scw-phn-step')].map(s => s.textContent), !!strip.querySelector('.scw-phn-home .scw-phn-home-ic')], [['1', '2', '3'], true]);
+  check('stages carry an icon badge each (in workflow order 1-3); Dashboard carries the home icon instead',
+    [[...strip.querySelectorAll('.scw-phn-stages .scw-phn-step')].map(s => [s.getAttribute('data-scw-icon'), !!s.querySelector('svg'), s.textContent.trim()]),
+     !!strip.querySelector('.scw-phn-home .scw-phn-home-ic')],
+    [[['1', true, ''], ['2', true, ''], ['3', true, '']], true]);
   check('the moved anchors are the REAL Knack anchors (href intact)', stripAnchors()[3].getAttribute('href'), BASE + 'deploy/' + PROJECT);
   check('current page = Manage Deployment (from the hash), aria-current set',
     [...strip.querySelectorAll('a.is-current')].map(a => [labels([a])[0], a.getAttribute('aria-current')]), [['Manage Deployment', 'page']]);
@@ -79,7 +81,7 @@ setTimeout(() => {
   const bar = document.getElementById('scw-phn-bar');
   check('the pinned bar carries the number, the title and cloned tabs (no legacy pages); the badge pill is off',
     [!!bar, bar && bar.querySelector('.scw-phn-bar-num').textContent, bar && bar.querySelector('.scw-phn-bar-title').textContent,
-     bar && [...bar.querySelectorAll('a.scw-phn-clone')].map(a => a.textContent.replace(/^\d/, '').trim()), SCW.projectId.CONFIG.stickyPill],
+     bar && [...bar.querySelectorAll('a.scw-phn-clone')].map(a => a.textContent.trim()), SCW.projectId.CONFIG.stickyPill],
     [true, '60524852230', 'Surveillance System Installation', ['Dashboard', 'Build SOWs', 'Reconcile Bids', 'Manage Deployment'], false]);
 
   // "More" toggles its panel.
@@ -95,7 +97,9 @@ setTimeout(() => {
     check('after a Knack menu rebuild the strip holds exactly the fresh anchors — no duplicates',
       [strip.querySelectorAll('a.kn-link').length, document.querySelectorAll('#view_44 a.kn-link').length], [9, 0]);
     // Second decorate pass must not stack step badges.
-    check('step badges are not duplicated on re-adopt', strip.querySelectorAll('.scw-phn-stages a')[0].querySelectorAll('.scw-phn-step').length, 1);
+    check('step badges are not duplicated on re-adopt (one badge, one svg)',
+      [strip.querySelectorAll('.scw-phn-stages a')[0].querySelectorAll('.scw-phn-step').length, strip.querySelectorAll('.scw-phn-stages a')[0].querySelectorAll('.scw-phn-step svg').length], [1, 1]);
+    check('the sticky bar clones carry icon badges too', bar.querySelectorAll('a.scw-phn-clone .scw-phn-step svg').length, 3);
     console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
     process.exit(fails ? 1 : 0);
   }, 150);
