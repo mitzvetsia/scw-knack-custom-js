@@ -32,7 +32,8 @@
     { sceneId: 'scene_1311',
       notesView: 'view_4135',
       headerView: 'view_3938',        // the strip mounts right after this view
-      fields: { pinned: 'field_3278', note: 'field_328', date: 'field_327', author: 'field_678' },
+      fields: { pinned: 'field_3278', note: 'field_328', date: 'field_327', author: 'field_678',
+                onSow: 'field_3312' },   // FLAG_include on SOW PDF (Make 11.05 reads it)
       // The "add DOC_notes connected to this project" form ON this scene,
       // adopted into the notes list. Auto-detected when blank (a form view
       // on the scene whose source object is the notes grid's object).
@@ -80,6 +81,18 @@
       '.scw-pin-toggle:hover { border-color: #94a3b8; color: #0f172a; }',
       '.scw-pin-toggle.is-pinned { background: #fef3c7; border-color: #f59e0b; color: #92400e; }',
       '.scw-pin-toggle[disabled] { opacity: 0.6; cursor: default; }',
+      /* "On SOW PDF" toggle — same pill, navy when on (Make 11.05 prints
+         flagged notes under Project Notes on the SOW). */
+      '.scw-sow-toggle.is-on { background: #e0ecf7; border-color: #0f4c75; color: #0f4c75; }',
+      /* Card controls cluster right: SOW toggle · Pin toggle · delete */
+      '.scw-note-card__ctl { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; flex: none; }',
+      '.scw-note-card__del {',
+      '  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;',
+      '  border: 1px solid transparent; border-radius: 999px; background: none; color: #cbd5e1; cursor: pointer; padding: 0;',
+      '}',
+      '.scw-note-card:hover .scw-note-card__del { color: #94a3b8; }',
+      '.scw-note-card__del:hover { background: #fee2e2; border-color: #fecaca; color: #b91c1c; }',
+      '.scw-note-card__del[disabled] { opacity: .5; cursor: default; }',
       /* The note cards that replace the raw grid */
       '.' + CARDS_CLS + ' .kn-table-wrapper, .' + CARDS_CLS + ' table.kn-table, .' + CARDS_CLS + ' > table { display: none !important; }',
       '.scw-notes-list { display: flex; flex-direction: column; gap: 10px; margin: 0 0 12px; font-family: system-ui, sans-serif; }',
@@ -89,7 +102,7 @@
       '.scw-note-card.is-pinned { background: #fffbeb; border-color: #fde68a; border-left-color: #f59e0b; }',
       '.scw-note-card__meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11.5px; color: #64748b; }',
       '.scw-note-card__author { font-weight: 600; color: #334155; }',
-      '.scw-note-card__meta .scw-pin-toggle { margin-left: auto; }',
+      '.scw-note-card__meta > .scw-pin-toggle { margin-left: auto; }',
       '.scw-note-card__text { font-size: 13.5px; line-height: 1.5; color: #0f172a; white-space: pre-line; overflow-wrap: anywhere; }',
       '.scw-note-card.is-collapsed .scw-note-card__text {',
       '  display: -webkit-box; -webkit-line-clamp: ' + COLLAPSE_LINES + '; -webkit-box-orient: vertical; overflow: hidden;',
@@ -207,6 +220,7 @@
     return {
       id:     rec.id,
       pinned: isYes(rec[F.pinned + '_raw'] != null ? rec[F.pinned + '_raw'] : rec[F.pinned]),
+      onSow:  F.onSow ? isYes(rec[F.onSow + '_raw'] != null ? rec[F.onSow + '_raw'] : rec[F.onSow]) : false,
       text:   plain(rec[F.note]),
       body:   lines(rec[F.note]),
       date:   plain(rec[F.date]),
@@ -258,24 +272,109 @@
     for (var i = 0; i < btns.length; i++) btns[i].addEventListener('click', open);
   }
 
-  // ── Pin / Unpin (view-based PUT through the notes grid) ────────────
-  function setPinned(cfg, recordId, on, btn) {
+  // ── Flag toggles (view-based PUT through the notes grid) ───────────
+  function refetchNotes(cfg) {
+    var v = Knack.views && Knack.views[cfg.notesView];
+    if (v && v.model && typeof v.model.fetch === 'function') { v.model.fetch(); return true; }
+    return false;
+  }
+  function setFlag(cfg, fieldKey, fieldLabel, recordId, on, btn) {
     if (!(window.SCW && typeof SCW.knackAjax === 'function' && typeof SCW.knackRecordUrl === 'function')) return;
-    var body = {}; body[cfg.fields.pinned] = on;
+    var body = {}; body[fieldKey] = on;
     btn.disabled = true;
     SCW.knackAjax({
       url: SCW.knackRecordUrl(cfg.notesView, recordId), type: 'PUT', data: JSON.stringify(body),
       success: function () {
-        var v = Knack.views && Knack.views[cfg.notesView];
-        if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();  // re-render → strip + cards refresh
-        else btn.disabled = false;
+        if (!refetchNotes(cfg)) btn.disabled = false;   // re-render → strip + cards refresh
       },
       error: function (xhr) {
         btn.disabled = false;
-        console.warn('[scw-pinned-notes] pin PUT failed', xhr && xhr.status);
-        window.alert('Could not save the pin. Is FLAG_pinned on the Project Notes grid with inline editing on?');
+        console.warn('[scw-pinned-notes] ' + fieldKey + ' PUT failed', xhr && xhr.status);
+        window.alert('Could not save. Is ' + fieldLabel + ' (' + fieldKey + ') on the Project Notes grid with inline editing on?');
       }
     });
+  }
+  function setPinned(cfg, recordId, on, btn) {
+    setFlag(cfg, cfg.fields.pinned, 'FLAG_pinned', recordId, on, btn);
+  }
+  var DOC_SVG = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline>' +
+    '<line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>';
+  var TRASH_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
+    '<path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>';
+  /** "On SOW PDF" — the FLAG_include on SOW PDF the 11.05 scenario reads
+   *  when it prints Project Notes on the Statement of Work. */
+  function sowToggle(cfg, n) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'scw-pin-toggle scw-sow-toggle' + (n.onSow ? ' is-on' : '');
+    btn.innerHTML = DOC_SVG + (n.onSow ? 'On SOW PDF' : 'Add to SOW PDF');
+    btn.title = n.onSow ? 'Printed under Project Notes on the SOW PDF \u2014 click to leave it off'
+                        : 'Print this note under Project Notes on the SOW PDF';
+    btn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      setFlag(cfg, cfg.fields.onSow, 'FLAG_include on SOW PDF', n.id, !btn.classList.contains('is-on'), btn);
+    });
+    return btn;
+  }
+
+  // ── Delete a note ───────────────────────────────────────────────────
+  // Knack's own delete link on the hidden grid row when the grid carries
+  // one (auto-confirmed, so it stays one click + our confirm), else the
+  // view-scoped REST DELETE — either way the grid refetches and the card
+  // and any pinned chip drop out.
+  function autoConfirmKnackDelete() {
+    var done = false;
+    document.documentElement.setAttribute('data-scw-suppress-kn-modal', '1');
+    function unsuppress() { document.documentElement.removeAttribute('data-scw-suppress-kn-modal'); }
+    var obs = new MutationObserver(function () {
+      if (done) return;
+      var modals = document.querySelectorAll('.kn-modal-bg .kn-modal, .kn-modal-bg, .kn-modal');
+      for (var i = 0; i < modals.length; i++) {
+        var b = modals[i].querySelector('button.is-primary, .kn-button.is-primary, button[type="submit"].kn-button, a.kn-button.is-primary');
+        if (b) { done = true; obs.disconnect(); b.click(); unsuppress(); return; }
+      }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    setTimeout(function () { if (!done) { obs.disconnect(); unsuppress(); } }, 4000);
+  }
+  function deleteNote(cfg, n, view, btn) {
+    var preview = n.text.length > 90 ? n.text.slice(0, 87) + '\u2026' : n.text;
+    if (!window.confirm('Delete this note?\n\n' + preview)) return;
+    btn.disabled = true;
+    var tr = null;
+    try { tr = view.querySelector('tbody tr[id="' + n.id + '"]'); } catch (e) { /* odd id */ }
+    var link = tr && tr.querySelector('a.kn-link-delete');
+    if (link) {
+      autoConfirmKnackDelete();
+      link.click();
+      setTimeout(function () { refetchNotes(cfg); }, 1500);
+      return;
+    }
+    if (!(window.SCW && typeof SCW.knackAjax === 'function' && typeof SCW.knackRecordUrl === 'function')) { btn.disabled = false; return; }
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(cfg.notesView, n.id), type: 'DELETE',
+      success: function () { if (!refetchNotes(cfg)) btn.disabled = false; },
+      error: function (xhr) {
+        btn.disabled = false;
+        console.warn('[scw-pinned-notes] DELETE failed', xhr && xhr.status);
+        window.alert('Could not delete the note. Is the Delete link enabled on the Project Notes grid?');
+      }
+    });
+  }
+  function deleteButton(cfg, n, view) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'scw-note-card__del';
+    btn.innerHTML = TRASH_SVG;
+    btn.title = 'Delete this note';
+    btn.setAttribute('aria-label', 'Delete note');
+    btn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      deleteNote(cfg, n, view, btn);
+    });
+    return btn;
   }
   function pinToggle(cfg, n) {
     var btn = document.createElement('button');
@@ -303,6 +402,7 @@
     var out = [];
     if (!tr) return out;
     var skip = {}; skip[F.note] = 1; skip[F.date] = 1; skip[F.author] = 1; skip[F.pinned] = 1;
+    if (F.onSow) skip[F.onSow] = 1;
     var cells = tr.querySelectorAll('td');
     // Column headers by index: an action link shown as an ICON has an empty
     // anchor (<a class="kn-action-link"></a> beside <i class="fa fa-send">),
@@ -322,6 +422,7 @@
         var el = els[j];
         if (el.querySelector('a, button')) continue;        // wrapper: its child is the target
         if (/\btext-expand\b/.test(el.className)) continue; // Knack's own "view more"
+        if (/\bkn-link-delete\b/.test(el.className)) continue; // the card has its own Delete
         var label = plain(el.textContent) || plain(el.getAttribute('title')) ||
                     plain(el.getAttribute('aria-label')) || headLabel;
         if (!label || seen.indexOf(el) >= 0) continue;
@@ -337,7 +438,7 @@
     }
     return out;
   }
-  function buildCard(cfg, n, tr) {
+  function buildCard(cfg, n, tr, view) {
     var card = document.createElement('article');
     card.className = 'scw-note-card' + (n.pinned ? ' is-pinned' : '');
     card.setAttribute('data-scw-note-id', n.id);
@@ -346,7 +447,12 @@
     meta.innerHTML = (n.author ? '<span class="scw-note-card__author">' + esc(n.author) + '</span>' : '') +
       (n.author && n.date ? '<span>·</span>' : '') +
       (n.date ? '<span class="scw-note-card__date">' + esc(n.date) + '</span>' : '');
-    meta.appendChild(pinToggle(cfg, n));
+    var ctl = document.createElement('span');
+    ctl.className = 'scw-note-card__ctl';
+    if (cfg.fields.onSow) ctl.appendChild(sowToggle(cfg, n));
+    ctl.appendChild(pinToggle(cfg, n));
+    if (view) ctl.appendChild(deleteButton(cfg, n, view));
+    meta.appendChild(ctl);
     card.appendChild(meta);
     var text = document.createElement('div');
     text.className = 'scw-note-card__text';
@@ -433,7 +539,7 @@
         try { tr = view.querySelector('tbody tr[id="' + n.id + '"]'); } catch (e) { /* odd id */ }
         if (tr && !firstTr) firstTr = tr;
         linkTotal += rowLinks(tr, F).length;
-        list.appendChild(buildCard(cfg, n, tr));
+        list.appendChild(buildCard(cfg, n, tr, view));
       });
     }
     view.classList.add(CARDS_CLS);

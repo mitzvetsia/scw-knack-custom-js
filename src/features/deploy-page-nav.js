@@ -86,6 +86,7 @@
   var READY_CLASS = 'scw-deploy-ready';
   var SEEN_ATTR   = 'data-scw-deploy';
   var CURTAIN_MAX_MS = 2500;   // never hold the page longer than this
+  var PREWRAP_CLS    = 'scw-deploy-prewrap';   // a moved view awaiting its accordion wrapper
 
   // Accordion sections excluded from the nav — the staging/data-source
   // sections slated for hiding ("MICAH'S SHIT" block), plus the (hidden)
@@ -290,6 +291,9 @@
          at once, so it shows in its place, never first in the old one. */
       curtainSel + ' { visibility: hidden !important; }',
       unclassifiedSel + ' { display: none !important; }',
+      /* visibility + zero height, not display:none — ktl-accordion skips
+         display:none sections, and it has to wrap this one. */
+      '.' + PREWRAP_CLS + ' { visibility: hidden !important; max-height: 0 !important; overflow: hidden !important; }',
       '.scw-deploy-band { display: none !important; }',
       '#scw-deploy-drawer { position: fixed; inset: 0; z-index: 1200; }',
       '#scw-deploy-drawer[hidden] { display: none; }',
@@ -558,6 +562,16 @@
     // would rip the view back out of its wrapper every heartbeat.
     var grid = findCoGridView(scene);
     if (grid && !strip.contains(grid)) strip.appendChild(grid);
+    // Pre-adoption: the moved grid is a bare .kn-view until ktl-accordion
+    // wraps it, so neither the curtain's unclassified rule nor parking
+    // reaches it — it painted (CO cards and all) and then vanished into the
+    // drawer. Keep it out of sight until it is wrapped and classified
+    // (parkSections lifts the class); never longer than the curtain max,
+    // so a grid ktl-accordion never wraps still shows.
+    if (grid && !grid.closest('.scw-ktl-accordion') && !grid.classList.contains(PREWRAP_CLS)) {
+      grid.classList.add(PREWRAP_CLS);
+      setTimeout(function () { grid.classList.remove(PREWRAP_CLS); }, CURTAIN_MAX_MS);
+    }
   }
 
   // ── Part 3: lifecycle organization — rename, subtitle, reorder, band ──
@@ -1096,6 +1110,10 @@
       if (!keep) acc.classList.add('scw-deploy-parked');
       // Classified: the curtain CSS shows it (kept) or the parked rule hides it.
       acc.setAttribute(SEEN_ATTR, acc.classList.contains('scw-deploy-parked') ? 'parked' : 'keep');
+      // A view that waited for this wrapper (moveChangeOrders) is now
+      // governed by the wrapper's own state.
+      var waiting = acc.querySelectorAll('.' + PREWRAP_CLS);
+      for (var w = 0; w < waiting.length; w++) waiting[w].classList.remove(PREWRAP_CLS);
     }
   }
 

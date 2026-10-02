@@ -26,7 +26,7 @@ window.Knack = { views: { view_4135: { model } },
   router: { current_scene_key: 'scene_1311' }, api_url: 'https://api.knack.com', application_id: 'app', getUserToken() { return 't'; } };
 global.Knack = window.Knack;
 window.SCW = { CONFIG: {}, knackRecordUrl(v, id) { return '/' + v + '/' + id; },
-  knackAjax(o) { puts.push({ url: o.url, type: o.type || 'PUT', body: JSON.parse(o.data) }); o.success({ record: { id: 'new1' } }); },
+  knackAjax(o) { puts.push({ url: o.url, type: o.type || 'PUT', body: o.data ? JSON.parse(o.data) : undefined }); o.success({ record: { id: 'new1' } }); },
   deployNav: { openSection(re) { opened = String(re); return true; } } };
 global.SCW = window.SCW;
 new Function('window', 'document', '$', 'Knack', 'SCW',
@@ -81,6 +81,19 @@ setTimeout(() => {
   check('Pin saves the flag through the notes view and refetches', [puts[0], fetched], [{ url: '/view_4135/b2', type: 'PUT', body: { field_3278: true } }, 1]);
   view.querySelector('[data-scw-note-id="a1"] .scw-pin-toggle').click();
   check('Unpin saves false', puts[1], { url: '/view_4135/a1', type: 'PUT', body: { field_3278: false } });
+  // ── "On SOW PDF" (field_3312) toggle + Delete per card
+  check('every card carries an SOW-PDF toggle and a delete control, clustered right',
+    cards().map(c => [c.querySelector('.scw-note-card__ctl .scw-sow-toggle') ? c.querySelector('.scw-sow-toggle').textContent : null, !!c.querySelector('.scw-note-card__ctl .scw-note-card__del')]),
+    [['Add to SOW PDF', true], ['Add to SOW PDF', true], ['Add to SOW PDF', true], ['Add to SOW PDF', true]]);
+  view.querySelector('[data-scw-note-id="c3"] .scw-sow-toggle').click();
+  check('the SOW toggle saves FLAG_include on SOW PDF through the notes view', puts[2], { url: '/view_4135/c3', type: 'PUT', body: { field_3312: true } });
+  window.confirm = () => false;
+  view.querySelector('[data-scw-note-id="b2"] .scw-note-card__del').click();
+  check('delete asks first; declining sends nothing', puts.length, 3);
+  window.confirm = () => true;
+  view.querySelector('[data-scw-note-id="b2"] .scw-note-card__del').click();
+  check('confirmed delete: no native delete link on this grid → view-scoped REST DELETE, then refetch',
+    [puts[3].url, puts[3].type, fetched], ['/view_4135/b2', 'DELETE', 3]);
   // ── Inline composer: the action-bar link posts through the child page's form view.
   const PROJECT = '6a317499f8c8cfac425c873d';
   const cta = document.createElement('a'); cta.id = 'scw-deploy-notes-cta';

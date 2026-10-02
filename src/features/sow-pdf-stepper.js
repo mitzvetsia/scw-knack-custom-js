@@ -683,7 +683,8 @@
     }
     html.push('  </div>');
     html.push('  <div class="laf-header__logo">');
-    html.push('    <img src="https://www.getscw.com/pub/media/logo/stores/1/logo-scw.jpeg" alt="SCW">');
+    html.push('    <img src="' + escapeHtml((window.SCW && SCW.CONFIG && SCW.CONFIG.SCW_LOGO_URL) ||
+      'https://www.getscw.com/_next/image?url=https%3A%2F%2Fscw-commerce-media.s3.amazonaws.com%2Fpub%2Fmedia%2Flogo%2Fstores%2F1%2Flogo-scw.jpeg&w=256&q=75') + '" alt="SCW">');
     html.push('  </div>');
     html.push('</header>');
 

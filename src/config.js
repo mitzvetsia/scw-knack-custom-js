@@ -341,6 +341,11 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // preview page. The CTA hides while this is blank, so the preview
   // banner ships safely before the scenario exists.
   MAKE_CO_SIGNATURE_REQUEST_WEBHOOK: "",
+  // SCW logo for generated documents (SOW PDF, Location Approval Form,
+  // questionnaire printable). The old /pub/media/... path 404s; this is the
+  // storefront's image endpoint over the S3 asset. Make's 11.05 templates
+  // carry the same URL — change both together.
+  SCW_LOGO_URL: "https://www.getscw.com/_next/image?url=https%3A%2F%2Fscw-commerce-media.s3.amazonaws.com%2Fpub%2Fmedia%2Flogo%2Fstores%2F1%2Flogo-scw.jpeg&w=256&q=75",
   // Fires on the "Request Validation & Add as Alternative Bid to Survey"
   // stepper action (state 3 of the gating model — sibling SOW has the
   // survey; docs/project-stage-workflow.md). Payload now carries stepId
