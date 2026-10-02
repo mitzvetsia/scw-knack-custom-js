@@ -61,6 +61,7 @@
     coNumberField: 'field_2123',
     coNameField:   'field_2126',
     coStatusField: 'field_2953',
+    stickyPill:    true,   // project-header-nav.js turns this off (its bar carries the number)
     supportLine:   'Give this number to SCW tech support when you call.',
     opsLine:       'HubSpot deal id · the number techs quote to support',
     docLine:       'Reference this project number when contacting SCW support'
@@ -336,9 +337,12 @@
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = [
-      '#' + HERO_ID + ' { display: flex; align-items: stretch; gap: 28px; background: #fff;',
+      '#' + HERO_ID + ' { display: block; background: #fff;',
       '  border: 2px solid #124e85; border-radius: 12px; padding: 16px 24px; margin: 0 0 18px;',
       '  font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #0f172a; }',
+      '#' + HERO_ID + ' .scw-pid-body, #' + HERO_ID + ' .scw-pid-own { display: flex; align-items: stretch; gap: 28px; min-width: 0; }',
+      '#' + HERO_ID + ' .scw-pid-own { flex: 1 1 auto; }',
+      '#' + HERO_ID + ' .scw-pid-foot:empty { display: none; }',
       '#' + HERO_ID + ' .scw-pid-left { display: flex; flex-direction: column; gap: 5px; min-width: 300px; }',
       '#' + HERO_ID + ' .scw-pid-divider { width: 1px; background: #e2e8f0; align-self: stretch; }',
       '#' + HERO_ID + ' .scw-pid-right { display: flex; flex-direction: column; justify-content: center; gap: 6px; min-width: 0; flex: 1 1 auto; }',
@@ -377,7 +381,8 @@
       '#' + STICKY_ID + ' .scw-pid-eyebrow { font-size: 10px; }',
       '#' + STICKY_ID + ' .scw-pid-num { font-size: 17px; }',
       '@media (max-width: 860px) {',
-      '  #' + HERO_ID + ' { flex-direction: column; gap: 12px; padding: 14px 16px; }',
+      '  #' + HERO_ID + ' { padding: 14px 16px; }',
+      '  #' + HERO_ID + ' .scw-pid-body, #' + HERO_ID + ' .scw-pid-own { flex-direction: column; gap: 12px; }',
       '  #' + HERO_ID + ' .scw-pid-divider { display: none; }',
       '  #' + HERO_ID + ' .scw-pid-left { min-width: 0; }',
       '  .scw-pid-num { font-size: 30px; }',
@@ -409,20 +414,34 @@
     // Always the FIRST thing in the scene — other modules (deploy-page-nav)
     // prepend their own blocks, so re-pin on every pass.
     if (root.firstChild !== hero) root.insertBefore(hero, root.firstChild);
+    // Structure: body = [own: left | divider | right] + [adopt slot], then a
+    // footer. Only `own` re-renders here — project-header-nav.js owns the
+    // adopt slot (the project header card's top block) and the footer (the
+    // tab strip), and a data refresh must not wipe them.
+    var body = hero.querySelector(':scope > .scw-pid-body');
+    if (!body) {
+      hero.innerHTML = '<div class="scw-pid-body"><div class="scw-pid-own"></div><div class="scw-pid-adopt"></div></div>' +
+        '<div class="scw-pid-foot"></div>';
+      body = hero.querySelector(':scope > .scw-pid-body');
+    }
+    var own = body.querySelector(':scope > .scw-pid-own');
     var sig = entry.variant + '|' + html;
     if (_sig[entry.sceneId] !== sig) {
       _sig[entry.sceneId] = sig;
-      hero.innerHTML = html;
+      own.innerHTML = html;
       hero.setAttribute('data-scw-pid', res.id || '');
       hero.setAttribute('data-scw-pid-source', res.source || '');
     }
     mountSticky(res.id, hero);
+    if (window.SCW && SCW.projectHeaderNav && typeof SCW.projectHeaderNav.refresh === 'function') {
+      SCW.projectHeaderNav.refresh();
+    }
   }
 
   var _io = null;
   function mountSticky(id, hero) {
     var pill = document.getElementById(STICKY_ID);
-    if (!id) { if (pill) pill.classList.remove('is-shown'); return; }
+    if (!id || CONFIG.stickyPill === false) { if (pill) pill.classList.remove('is-shown'); return; }
     if (!pill) {
       pill = document.createElement('div');
       pill.id = STICKY_ID;

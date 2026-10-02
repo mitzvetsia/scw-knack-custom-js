@@ -110,7 +110,6 @@ cat \
   src/features/sync-checkboxes \
   src/features/survey-form-drag-drop-files.js \
   src/features/hide-navigation.js \
-  src/features/nav-knack2-highlight.js \
   src/features/strip-register-buttons.js \
   src/features/calc-install-fee-adjustment.js \
   src/features/instructions-placement.js \
@@ -175,6 +174,7 @@ cat \
   src/features/photo-grid-unlinked-filter.js \
   src/features/survey-request-header.js \
   src/features/build-sow-project-header.js \
+  src/features/project-header-nav.js \
   src/features/product-lifecycle.js \
   src/features/ops-stepper.js \
   src/features/sales-stepper.js \

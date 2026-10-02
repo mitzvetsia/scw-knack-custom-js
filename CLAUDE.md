@@ -530,6 +530,17 @@ printable already do). `buildPublishPayload` ships `projectNumber` (and ops-step
 `PUBLISH_KEYS` carries it) for the Make-side templates. Builder: adding `field_1622` to a view a
 scene loads makes that scene's read authoritative. Test: `tests/project-id/test-badge.js`.
 
+**Project header navigation** (`src/features/project-header-nav.js`, 2026-10-02): Knack's project menu
+(`view_44`) is folded into the hero as a tab strip — the menu's REAL anchors move into
+`#scw-pid-hero .scw-pid-foot` (routing + Builder renames intact), `K2:` prefixes stripped, the three
+workflow stages numbered in order, Dashboard behind a hairline, everything else under "More"; the
+project header card's `.scw-bsh-top` is adopted into the hero's `.scw-pid-adopt` slot (deal-id suffix
+stripped from the title) so the name is said once; a 48px bar with the number + cloned tabs pins on
+scroll (the badge's pill is switched off via `SCW.projectId.CONFIG.stickyPill`). `view_44` stays in the
+DOM hidden as the source of truth; a Knack menu rebuild is re-adopted. The badge re-renders ONLY its
+`.scw-pid-own` block so the adopt slot and footer survive data refreshes. Supersedes
+`nav-knack2-highlight.js` (deleted). Test: `tests/project-id/test-header-nav.js`.
+
 ## Security & External Services
 
 ### ⚠️ Third-party image-resize proxy (proposal PDF Site Maps)
