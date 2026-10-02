@@ -309,7 +309,7 @@
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'scw-sow-toggle' + (n.onSow ? ' is-on' : '');
-    btn.innerHTML = DOC_SVG + (n.onSow ? 'On SOW PDF' : 'Add to SOW PDF');
+    btn.innerHTML = DOC_SVG + (n.onSow ? 'On SOW PDF' : 'Include on SOW PDF');
     btn.title = n.onSow ? 'Printed under Project Notes on the SOW PDF \u2014 click to leave it off'
                         : 'Print this note under Project Notes on the SOW PDF';
     btn.addEventListener('click', function (e) {

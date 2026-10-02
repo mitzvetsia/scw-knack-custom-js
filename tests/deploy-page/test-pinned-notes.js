@@ -84,7 +84,7 @@ setTimeout(() => {
   // ── "On SOW PDF" (field_3312) toggle + Delete per card
   check('every card carries an SOW-PDF toggle and a delete control, clustered right',
     cards().map(c => [c.querySelector('.scw-note-card__ctl .scw-sow-toggle') ? c.querySelector('.scw-sow-toggle').textContent : null, !!c.querySelector('.scw-note-card__ctl .scw-note-card__del')]),
-    [['Add to SOW PDF', true], ['Add to SOW PDF', true], ['Add to SOW PDF', true], ['Add to SOW PDF', true]]);
+    [['Include on SOW PDF', true], ['Include on SOW PDF', true], ['Include on SOW PDF', true], ['Include on SOW PDF', true]]);
   view.querySelector('[data-scw-note-id="c3"] .scw-sow-toggle').click();
   check('the SOW toggle saves FLAG_include on SOW PDF through the notes view', puts[2], { url: '/view_4135/c3', type: 'PUT', body: { field_3312: true } });
   window.confirm = () => false;
