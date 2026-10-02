@@ -2905,6 +2905,31 @@
     }
   }
 
+  // The no-signature / not-billable pills and the "Why" line read three
+  // Acceptance columns the grid has to CARRY (field_3309 / 3310 / 3311).
+  // Missing columns fail silent — every row just reads "Agreement not
+  // signed" — so say once, in console, exactly which ones Builder lacks.
+  // Ops views only: the reason is internal and never goes on a sub grid.
+  var _basisColsWarned = {};
+  function warnMissingBasisColumns(VIEW, viewEl) {
+    if (SUB_VIEWS[VIEW] || _basisColsWarned[VIEW]) return;
+    var want = [[F.noSig, 'FLAG_approved without signature'],
+                [F.notBill, 'FLAG_not billable'],
+                [F.reason, 'INPUT_approved not billable reason']];
+    var missing = [];
+    for (var i = 0; i < want.length; i++) {
+      if (!viewEl.querySelector('thead th.' + want[i][0])) {
+        missing.push(want[i][0] + ' (' + want[i][1] + ')');
+      }
+    }
+    if (!missing.length) return;
+    _basisColsWarned[VIEW] = true;
+    console.warn('[scw-acceptance-card] ' + VIEW + ' is missing ' + missing.length +
+      ' Acceptance column(s) — add them to the grid in Builder or the ' +
+      '"Approved without client signature" / "Not billable" pills and the reason ' +
+      'line never render:\n  ' + missing.join('\n  '));
+  }
+
   function renderView(VIEW) {
     var viewEl = document.getElementById(VIEW);
     if (!viewEl) return;
@@ -2920,6 +2945,7 @@
       return;
     }
     viewEl.classList.add('scw-acpt-on');
+    warnMissingBasisColumns(VIEW, viewEl);
 
     // Rebuild from scratch — a project accrues one acceptance per signed
     // agreement (base proposal + each CO). ONE card, one compact list row
