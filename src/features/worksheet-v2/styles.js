@@ -2038,6 +2038,10 @@
     '  transition: background 100ms ease, color 100ms ease !important;',
     '}',
     '.scw-ws-v2-card:hover .scw-ws-v2-trash { color: #94a3b8 !important; }',
+    /* A CO Remove line's trash rests in the row's own rose so it reads on
+       the tinted row (slate-200 vanished against #fff5f6). */
+    '.scw-ws-v2-card--co-remove .scw-ws-v2-trash--co-remove { color: #fda4af !important; }',
+    '.scw-ws-v2-card--co-remove:hover .scw-ws-v2-trash--co-remove { color: #e11d48 !important; }',
     '.scw-ws-v2-trash:hover, .scw-ws-v2-kebab:hover {',
     '  background: #fee2e2 !important; color: #b91c1c !important;',
     '}',

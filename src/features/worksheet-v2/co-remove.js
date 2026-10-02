@@ -1761,6 +1761,39 @@
     setTimeout(refetch, 8000);
   }
 
+  // ── Deleted CO line → un-flag its install item ─────────────────────────
+  // init.js calls this after a line on the CO worksheet is deleted. For a
+  // Remove line the install item it targeted is no longer slated: drop the
+  // session-optimistic flags (by target when field_2966 is on the CO view,
+  // otherwise wholesale — the durable signals re-derive on refetch) and
+  // refetch the removal panel(s) fed by that CO view so the row reads live
+  // again. Make set the install's field_2967 to the LINE at draft time
+  // (13.02 [8]); deleting the line leaves that pointer dangling, and the
+  // refetch is what shows whether Knack cleared it.
+  function onCoLineDeleted(coViewKey, rec) {
+    if (!rec) return;
+    var act = String(rec['field_2965'] || '').replace(/<[^>]*>/g, '').trim();
+    if (!/remove/i.test(act)) return;
+    var raw = rec[TARGET_FIELD + '_raw'];
+    var target = Array.isArray(raw) ? (raw[0] && raw[0].id) : (raw && raw.id);
+    if (target) {
+      delete _flaggedOptimistic[target];
+      delete _swappedOptimistic[target];
+    } else {
+      _flaggedOptimistic = {};
+      _swappedOptimistic = {};
+    }
+    var vs = removeViews();
+    for (var i = 0; i < vs.length; i++) {
+      var vk = vs[i].sourceViewKey;
+      if (coViewFor(vk) !== coViewKey) continue;
+      refetchAfterRemove(vk);
+      decorateSoon(vs[i]);
+    }
+  }
+  ns.coRemove = ns.coRemove || {};
+  ns.coRemove.onCoLineDeleted = onCoLineDeleted;
+
   // ── Wiring ────────────────────────────────────────────────────────────
   var views = removeViews();
   if (!views.length) return;

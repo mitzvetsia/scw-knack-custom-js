@@ -108,6 +108,24 @@ setTimeout(() => {
     !!container.querySelector('.scw-co-remove-acc-chip--flagged[data-scw-co-remove-acc-chip="acc-live"]:not(.scw-ws-v2-mh-chip-wrap)'), true);
   check('the device row itself is NOT flagged',
     !!container.querySelector('.scw-ws-v2-card[data-scw-ws-v2-record="dev1"].scw-co-remove-card--flagged'), false);
+  // Deleting the Remove line on the CO worksheet (init.js → co-remove hook)
+  // un-flags the accessory: the optimistic flag drops and the next decorate
+  // puts the REMOVE button back on both chips.
+  check('co-remove exports the deleted-line hook', typeof ns.coRemove.onCoLineDeleted, 'function');
+  ns.coRemove.onCoLineDeleted('view_4079', { id: 'lineX', field_2965: 'Remove', field_2966_raw: conn('acc-live', 'Electrical Box Mount') });
+  rendered.view_4086();
+  // The flagged wrap was rebuilt by card.js in the live app; here the old DOM
+  // persists, so re-read the chip state after a fresh card build.
+  container.innerHTML = '';
+  container.appendChild(ns.card.buildCard(device, 'view_4086'));
+  rendered.view_4086();
+  const wLive2 = wrapOf('acc-live');
+  check('after the Remove line is deleted the accessory reads live again (detail chip)',
+    [!!btnOf(wLive2), flagged(wLive2)], [true, false]);
+  check('…and the row chip offers its × again',
+    !!container.querySelector('.scw-co-remove-accs .scw-co-remove-acc-x[data-scw-co-remove-acc="acc-live"]'), true);
+  check('a drafted line still on the CO view stays flagged (durable signal wins)',
+    flagged(wrapOf('acc-drafted')), true);
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
 }, 50);

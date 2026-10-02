@@ -1101,7 +1101,17 @@
     var trashTitle = subOwnsRecord(rec, viewKey) === true
       ? 'Delete line item (you added this item)'
       : 'Delete line item';
-    return '<button type="button" class="scw-ws-v2-cell scw-ws-v2-trash" ' +
+    // CO worksheet Remove line (drafted off an install item): deletable
+    // while the CO is editable, and the title says what that means — the
+    // install item returns to active scope. Nothing on the install record
+    // is touched here; its Removed-by-CO pointer dangles off the deleted
+    // line and co-remove re-reads it after the refetch.
+    var trashCls = 'scw-ws-v2-cell scw-ws-v2-trash';
+    if (_vc.coDeleteGuard && isCoRemoveLine(rec)) {
+      trashCls += ' scw-ws-v2-trash--co-remove';
+      trashTitle = 'Delete this Remove line \u2014 the install item goes back to active scope';
+    }
+    return '<button type="button" class="' + trashCls + '" ' +
       'data-scw-ws-v2-kebab="' + escapeHtml(rec.id) + '" ' +
       'data-scw-ws-v2-view="' + escapeHtml(viewKey || '') + '" ' +
       'aria-label="Delete line item" title="' + trashTitle + '">' +

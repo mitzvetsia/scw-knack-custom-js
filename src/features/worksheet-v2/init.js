@@ -1341,6 +1341,14 @@
           // delete that re-renders or navigates the view can't cancel the
           // in-flight child deletes — backlog #1's "navigating right after
           // the parent delete cancels in-flight child deletes" failure.
+          // A deleted CO Remove line un-flags its install item: let
+          // co-remove.js drop its optimistic "flagged" state and refetch the
+          // removal panel so the item reads live again without a reload.
+          function notifyCoLineDeleted() {
+            if (selfRec && ns.coRemove && typeof ns.coRemove.onCoLineDeleted === 'function') {
+              try { ns.coRemove.onCoLineDeleted(viewId, selfRec); } catch (e) { /* best-effort */ }
+            }
+          }
           function deleteParent() {
             // Delete the parent through Knack's native delete link.
             //    Auto-confirm the modal so it stays a two-click flow.
@@ -1373,6 +1381,7 @@
                     if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
                       ns.data.refetchAndNotify(viewId);
                     }
+                    notifyCoLineDeleted();
                   },
                   error: function (xhr) {
                     console.warn('[scw-ws-v2] direct DELETE failed for ' + rowId,
@@ -1386,6 +1395,7 @@
             }
             autoConfirmKnackDelete();
             link.click();
+            notifyCoLineDeleted();
 
             // Refetch the source view a beat after the delete so the
             // row stays gone even if Knack didn't fire a fresh
