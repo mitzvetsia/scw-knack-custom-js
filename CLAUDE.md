@@ -515,6 +515,20 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   and the sub-facing view (⚠️ gated on Known Issue #17 — no worksheet-v2
   surface to sub logins while the REST-key Builder snippet ships).
 
+## Scene veil (load gating) — `src/features/scene-veil.js`
+
+Heavy ops scenes are hidden behind a spinner until Knack's render stream goes quiet (600ms)
+AND the page's transform markers exist (scene_1085: worksheet-v2 panel on view_3962 past its
+"Waiting…" placeholder, `#scw-pid-hero`, the view_3901 header card, an accordion shell;
+scene_1155: bid-review-v2 panel + hero). Caps: 6s from first render, 3s after the scene's own
+render event, 10s event-independent watchdog that force-reveals and logs the missing markers.
+Add a scene by adding a `SCENES` entry — pick markers that exist on EVERY record of that
+scene or the page waits for the cap. scene_1116 keeps its original veil in `scene-tweaks.js`.
+`change-record-limit.js` now rewrites `rows_per_page` on the wire (`$.ajaxPrefilter`) for its
+listed views, so the first fetch is already the full page and the old "load at 25, refetch at
+1000" double render is gone; the per-view handler skips the refetch when loaded ≥ server total.
+Tests: `tests/scene-veil/`.
+
 ## Project Number badge (HubSpot deal id) — `src/features/project-id-badge.js`
 
 The "Project Number" is the project's HubSpot deal id (`field_1622`). It is what a tech

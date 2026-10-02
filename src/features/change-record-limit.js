@@ -106,6 +106,42 @@
     document.head.appendChild(s);
   })();
 
+  // Request-level limit push — the pre-fetch stamp below can't reach the
+  // FIRST view a scene fetches (its request is already in flight when the
+  // first knack-view-render fires), and Knack resets rows_per_page on some
+  // scene re-renders. So rewrite the page size on the wire: every GET of a
+  // listed view's records asks for 1000 rows whatever the model says.
+  // Backbone.sync goes through $.ajax, so the prefilter sees Knack's own
+  // fetches. Only `/views/<key>/records` list GETs are touched — a record
+  // PUT/DELETE (`/records/<id>`) never matches.
+  const LIMIT_SET = {};
+  VIEW_IDS.forEach((k) => { LIMIT_SET[k] = true; });
+  const RECORDS_RE = /\/views\/(view_\d+)\/records(?:[?#]|$)/;
+  if (typeof $ !== 'undefined' && $.ajaxPrefilter) {
+    $.ajaxPrefilter(function (options) {
+      try {
+        if (options.type && String(options.type).toUpperCase() !== 'GET') return;
+        var url = options.url || '';
+        var m = RECORDS_RE.exec(url);
+        if (!m || !LIMIT_SET[m[1]]) return;
+        if (/[?&]rows_per_page=/.test(url)) {
+          if (/[?&]rows_per_page=1000(?:&|$)/.test(url)) return;
+          options.url = url.replace(/([?&]rows_per_page=)\d+/, '$1' + LIMIT_VALUE);
+        } else {
+          options.url = url + (url.indexOf('?') === -1 ? '?' : '&') + 'rows_per_page=' + LIMIT_VALUE;
+        }
+        // Keep the model's idea of the page size in step so Knack's
+        // pager math and our completeness check below agree.
+        var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[m[1]] : null;
+        var mv = v && v.model && v.model.view;
+        if (mv) {
+          mv.rows_per_page = LIMIT_NUM;
+          if (mv.source) mv.source.limit = LIMIT_NUM;
+        }
+      } catch (e) { /* never break a request */ }
+    });
+  }
+
   // Pre-fetch limit push — on ANY view render, sweep every listed view and
   // stamp rows_per_page=1000 on models that haven't fetched yet. Knack
   // renders a scene's views serially, so by the time the FIRST view fires
@@ -141,8 +177,30 @@
         if ($view.data('scwLimitSet')) return;
         $view.data('scwLimitSet', true);
 
-        // Strategy 1: DOM dropdown exists — use it
         const $limit = $view.find('select[name="limit"]');
+
+        // Already complete — the prefilter above made the first fetch a
+        // full page (loaded >= server total). Stamp the model + dropdown
+        // silently and skip the refetch that used to double every scene
+        // load (and re-render every worksheet).
+        var kv = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[VIEW_ID] : null;
+        var km = kv && kv.model;
+        var kd = km && km.data;
+        if (kd && kd.models) {
+          var total = kd.total_records != null ? kd.total_records
+            : (kd.pagination_meta && kd.pagination_meta.total_records);
+          if (typeof total === 'number' && kd.models.length >= total) {
+            var kmv = km.view;
+            if (kmv) {
+              kmv.rows_per_page = LIMIT_NUM;
+              if (kmv.source) kmv.source.limit = LIMIT_NUM;
+            }
+            if ($limit.length && $limit.val() !== LIMIT_VALUE) $limit.val(LIMIT_VALUE);
+            return;
+          }
+        }
+
+        // Strategy 1: DOM dropdown exists — use it
         if ($limit.length) {
           if ($limit.val() !== LIMIT_VALUE) {
             $limit.val(LIMIT_VALUE).trigger('change');

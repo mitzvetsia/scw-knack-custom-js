@@ -22,7 +22,6 @@ cat \
   src/features/_render-totals-guard.js \
   src/features/_toolbar-registry.js \
   src/features/_v2-scroll-anchor.js \
-  src/features/_scroll-spy.js \
   src/features/disable-scroll-restoration.js \
   src/features/preserve-scroll-on-refresh.js \
   src/features/modal-refresh-redirect.js \
@@ -33,6 +32,7 @@ cat \
   src/features/google-places-pac-watchdog.js \
   src/features/hide-data-source-views.js \
   src/features/scene-tweaks.js \
+  src/features/scene-veil.js \
   src/features/percent-field-format.js \
   src/features/inline-form-recompose.js \
   src/features/inline-edit-checkbox-layout.js \
