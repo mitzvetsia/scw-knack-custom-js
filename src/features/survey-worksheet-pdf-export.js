@@ -1451,6 +1451,23 @@
   // HTML BUILDER
   // ══════════════════════════════════════════════════════════════
 
+  function projectNumberFor(payload) {
+    var pid = window.SCW && SCW.projectId;
+    if (!pid) return '';
+    var id = typeof pid.prefixOf === 'function' ? pid.prefixOf(payload && payload.surveyId) : '';
+    if (!id && typeof pid.resolve === 'function') {
+      var scene = (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
+      try { id = scene ? (pid.resolve(scene).id || '') : ''; } catch (e) { id = ''; }
+    }
+    return id;
+  }
+  function projectBannerFor(payload) {
+    var pid = window.SCW && SCW.projectId;
+    if (!pid || typeof pid.banner !== 'function') return '';
+    var sid = String((payload && payload.surveyId) || '').replace(/^\d+-/, '');
+    return pid.banner(projectNumberFor(payload), { right: [sid ? 'Survey ' + sid : ''] });
+  }
+
   function buildHtml(payload) {
     var html = [];
     html.push('<!DOCTYPE html>');
@@ -1460,6 +1477,10 @@
     html.push(getCss(payload));
     html.push('</style>');
     html.push('</head><body>');
+    // Project number (HubSpot deal id) first — the number the tech quotes
+    // to SCW support. Read off the survey request id's prefix
+    // ("62610818596-SR168"); project-id-badge.js owns the fragment.
+    html.push(projectBannerFor(payload));
 
     // ── Page 1: info cover (view_3796 + view_3795 + view_3798) ──
     if (payload.page1Sections && payload.page1Sections.length) {
@@ -2678,7 +2699,10 @@
     if (!surveyId && payload.title) {
       surveyId = String(payload.title).replace(/^Survey:\s*/i, '');
     }
-    var footerPrefix = surveyId ? (cssString(surveyId) + '  \\2014  Page ') : 'Page ';
+    // Running footer: "Project # 60486704913 — 62610818596-SR168 — Page N".
+    var projectNo = projectNumberFor(payload);
+    var footerPrefix = (projectNo ? ('Project # ' + cssString(projectNo) + '  \\2014  ') : '') +
+      (surveyId ? (cssString(surveyId) + '  \\2014  Page ') : 'Page ');
 
     return [
       '@page {',

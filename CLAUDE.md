@@ -515,6 +515,21 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   and the sub-facing view (⚠️ gated on Known Issue #17 — no worksheet-v2
   surface to sub logins while the REST-key Builder snippet ships).
 
+## Project Number badge (HubSpot deal id) — `src/features/project-id-badge.js`
+
+The "Project Number" is the project's HubSpot deal id (`field_1622`). It is what a tech
+quotes to SCW tech support, so it renders FIRST on every sub-facing scene (scene_1353 /
+scene_1374 / scene_1140) and the ops scenes, and at the top of every bundle-built document.
+`SCW.projectId.resolve(sceneId)` reads `field_1622` off any loaded record or rendered detail,
+else derives it from the SOW / survey identifier prefix (`60486704913-SW1163`,
+`62610818596-SR168` — flagged `derived`), else renders "not on this record" (never blank, never
+a guess). `SCW.projectId.banner(id, {right, phone})` / `.footer(id, right)` are the inline-styled
+document fragments — every new document builder must call them (proposal-pdf-export,
+co-stage-strip request doc, survey-worksheet-pdf-export, sow-pdf-stepper, questionnaire
+printable already do). `buildPublishPayload` ships `projectNumber` (and ops-stepper's
+`PUBLISH_KEYS` carries it) for the Make-side templates. Builder: adding `field_1622` to a view a
+scene loads makes that scene's read authoritative. Test: `tests/project-id/test-badge.js`.
+
 ## Security & External Services
 
 ### ⚠️ Third-party image-resize proxy (proposal PDF Site Maps)

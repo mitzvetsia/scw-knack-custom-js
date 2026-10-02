@@ -1613,6 +1613,9 @@
             // see these so the new SOW_published_proposals record is
             // born with field_2904 (token) and field_2908 (URL).
             'proposalAccessToken', 'proposalAccessUrl',
+            // Project number (HubSpot deal id) — printed by the Make-side
+            // templates (COC, approval forms, agreement emails).
+            'projectNumber',
             // Sub-bid review + structured basis identity. These were built
             // by buildPublishPayload but silently DROPPED here (only the
             // standalone publish button shipped them), so the publish

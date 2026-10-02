@@ -596,7 +596,19 @@
         foot += footRow('Total', totBid, true, totEquip);
       }
 
+      // Project number (HubSpot deal id) above the card — the number the
+      // sub quotes to SCW support (project-id-badge.js, inline-styled).
+      var projectBanner = '';
+      try {
+        var pid = window.SCW && SCW.projectId;
+        var sceneKey = (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
+        if (pid && sceneKey) {
+          projectBanner = pid.banner(pid.resolve(sceneKey).id,
+            { right: [coNumber ? 'Change Order ' + coNumber : ''] });
+        }
+      } catch (e) { projectBanner = ''; }
       var html =
+        projectBanner +
         '<div style="font-family:Helvetica,Arial,sans-serif;font-size:12.5px;' +
           'color:#1e293b;border:1px solid #dbe4ee;border-radius:8px;overflow:hidden;">' +
         '<div style="background:#163C6E;color:#fff;padding:8px 12px;font-weight:800;' +

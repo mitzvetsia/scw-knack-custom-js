@@ -590,6 +590,12 @@
 
     return '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
       '<title>System Setup Questionnaire</title><style>' + _printCss() + '</style></head><body>' +
+        // Project number (HubSpot deal id) — the reference for SCW support.
+        ((window.SCW && SCW.projectId && typeof SCW.projectId.banner === 'function')
+          ? SCW.projectId.banner((function () {
+              try { return SCW.projectId.resolve(SCENE).id || ''; } catch (e) { return ''; }
+            })(), {})
+          : '') +
         '<div class="q-header">' +
           '<div class="q-logo"><img src="' + SCW_LOGO + '" alt="SCW"></div>' +
           '<div class="q-head-right"><div class="q-title">System Setup Questionnaire</div>' +

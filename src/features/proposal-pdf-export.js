@@ -2079,6 +2079,38 @@
   // net change); the published customer page and PDF present just the
   // banded CO proposal, where the manifest would duplicate the itemized
   // Added/Removed bands (user call, 2026-07-17).
+  // ── Project number (HubSpot deal id) on every document ─────────────
+  // The number a tech quotes to SCW support. Read off the SOW identifier's
+  // prefix ("60486704913-SW1163 | …"), else resolved from the scene the
+  // document is built on (project-id-badge.js). Inline-styled fragments so
+  // they survive the HTML → PDF pipeline and the stored-HTML sanitizer.
+  function projectNumberFor(payload) {
+    var pid = window.SCW && SCW.projectId;
+    if (!pid) return '';
+    var id = typeof pid.prefixOf === 'function' ? pid.prefixOf(payload && payload.sowId) : '';
+    if (!id && typeof pid.resolve === 'function') {
+      var scene = (payload && payload.sceneId) ||
+        (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
+      try { id = scene ? (pid.resolve(scene).id || '') : ''; } catch (e) { id = ''; }
+    }
+    return id;
+  }
+  function sowShortOf(sowId) {
+    var m = /-(S[WR]\d{2,6}[A-Za-z]*)\b/.exec(String(sowId || ''));
+    return m ? m[1] : '';
+  }
+  function projectBannerHtml(payload) {
+    var pid = window.SCW && SCW.projectId;
+    if (!pid || typeof pid.banner !== 'function') return '';
+    var short = sowShortOf(payload && payload.sowId);
+    return pid.banner(projectNumberFor(payload), { right: [short ? 'SOW ' + short : ''] });
+  }
+  function projectFooterHtml(payload) {
+    var pid = window.SCW && SCW.projectId;
+    if (!pid || typeof pid.footer !== 'function') return '';
+    return pid.footer(projectNumberFor(payload), sowShortOf(payload && payload.sowId));
+  }
+
   function buildPdfHtml(payload, opts) {
     if (!payload.views.length) return '';
 
@@ -2095,6 +2127,8 @@
     html.push('</style>');
     html.push('</head><body>');
     html.push(bodyLevelCss());
+    // Project number first — before the bid header and the proposal body.
+    html.push(projectBannerHtml(payload));
 
     // Bid identity header — WHICH survey request / bid / friendly name
     // (field_2638) + expiration date (field_2635) at the top of the
@@ -2196,6 +2230,7 @@
       }
     }
 
+    html.push(projectFooterHtml(payload));
     html.push('</body></html>');
     return html.join('\n');
   }
@@ -5032,7 +5067,10 @@
     return ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
       '<title>CO Sub Pricing' + (sowId ? ' — ' + esc(sowId) : '') + '</title>',
       '<style>', getPdfCss(), '</style>', '</head><body>', bodyLevelCss(),
-      h.join('\n'), '</body></html>'].join('\n');
+      projectBannerHtml({ sowId: sowId }),
+      h.join('\n'),
+      projectFooterHtml({ sowId: sowId }),
+      '</body></html>'].join('\n');
   }
 
   // ── Sub-bid review (bid + diff) for the published-proposal record ──────
@@ -5298,6 +5336,9 @@
       bidLabel:              cfg.payloadType === 'subcontractor bid' ? ((payload.bidHeader || {}).label || '') : undefined,
       bidExpirationDate:     cfg.payloadType === 'subcontractor bid' ? ((payload.bidHeader || {}).expires || '') : undefined,
       sowId:                 summary.sowId,
+      // Project number (HubSpot deal id) — for Make templates (COC, approval
+      // forms, agreement emails, invoice reference) that print it.
+      projectNumber:         projectNumberFor({ sowId: summary.sowId, sceneId: cfg.sceneId }),
       equipmentTotal:        summary.equipmentTotal,
       installationTotal:     summary.installationTotal,
       grandTotal:            summary.grandTotal,
