@@ -87,6 +87,8 @@ setTimeout(() => {
   // "More" toggles its panel.
   strip.querySelector('.scw-phn-more-btn').click();
   check('More opens its panel', strip.querySelector('.scw-phn-more').classList.contains('is-open'), true);
+  check('the hero does not clip the panel (no overflow:hidden on the nav card)',
+    /#scw-pid-hero\.scw-pid--nav \{[^}]*overflow: visible/.test(document.getElementById('scw-phn-css').textContent), true);
   document.body.click();
   check('an outside click closes it', strip.querySelector('.scw-phn-more').classList.contains('is-open'), false);
 

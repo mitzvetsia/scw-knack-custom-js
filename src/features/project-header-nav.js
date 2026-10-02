@@ -100,9 +100,13 @@
       // The menu view stays as the data source, out of sight.
       '#' + CONFIG.navView + '.' + HIDE_CLS + ' { display: none !important; }',
       // Hero as the card: body row + tab strip footer.
-      '#scw-pid-hero.scw-pid--nav { padding: 0 !important; overflow: hidden; }',
+      // No overflow:hidden on the hero — the More panel is positioned below
+      // the strip, outside the card's box, and the clip swallowed it (the
+      // chevron flipped, nothing opened). The footer rounds its own bottom
+      // corners instead so the tinted strip still sits inside the frame.
+      '#scw-pid-hero.scw-pid--nav { padding: 0 !important; overflow: visible; }',
       '#scw-pid-hero.scw-pid--nav > .scw-pid-body { padding: 16px 24px 14px; }',
-      '#scw-pid-hero.scw-pid--nav > .scw-pid-foot { border-top: 1px solid #e2e8f0; background: #f8fafc; }',
+      '#scw-pid-hero.scw-pid--nav > .scw-pid-foot { border-top: 1px solid #e2e8f0; background: #f8fafc; border-radius: 0 0 10px 10px; }',
       // Adopted project header block: the hero's own right half steps aside.
       '#scw-pid-hero.scw-pid--adopted .scw-pid-own .scw-pid-right { display: none; }',
       '#scw-pid-hero.scw-pid--adopted .scw-pid-adopt { flex: 1 1 auto; min-width: 0; }',
