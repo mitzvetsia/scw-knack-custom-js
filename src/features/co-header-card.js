@@ -375,6 +375,17 @@
         e.preventDefault();   // don't let Knack submit the form
         this.blur();          // focusout commits
       });
+    // Rich text (client notes): Enter can't mean "save" and Tab is eaten by
+    // the editor toolbar, so ALSO commit 1.5s after typing pauses — blur
+    // still commits immediately. Plain inputs keep the Enter/Tab/blur path.
+    var _typingTimer = null;
+    $(document).off('input' + EVENT_NS).on('input' + EVENT_NS,
+      '#' + VIEW + ' [id^="kn-input-field_"] [contenteditable="true"]',
+      function () {
+        var el = this;
+        clearTimeout(_typingTimer);
+        _typingTimer = setTimeout(function () { commitField(el, VIEW); }, 1500);
+      });
   });
 })();
 /*** END: CO header card ***************************************************/
