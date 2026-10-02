@@ -39,7 +39,7 @@
     basis:  'field_2942',   // REL_proposal basis (connection)
     exp:    'field_2135',   // INPUT_expiration date
     name:   'field_2126',   // INPUT: sow friendly name
-    notes:  'field_2198',   // INPUT_notes (the CO header card's textarea)
+    notes:  'field_2198',   // INTERNAL notes (the CO header card's "Internal notes")
     contract: 'field_1843', // esignatures.com contract id (uuid)
     // ── Acceptance flags (2026-10-01) — live on the ACCEPTANCE object and
     // reach a CO grid as THROUGH-connection columns, whose <td> class is
@@ -192,6 +192,11 @@
       '  margin-top: 3px; overflow: hidden; display: -webkit-box;',
       '  -webkit-line-clamp: 2; -webkit-box-orient: vertical;',
       '}',
+      // field_2198 is INTERNAL — say so where the text prints.
+      '.scw-co-card__notes-lbl {',
+      '  font: 700 9.5px/1 system-ui, sans-serif; letter-spacing: .08em;',
+      '  text-transform: uppercase; color: #94a3b8; margin-right: 6px;',
+      '}',
       '.scw-co-card__net {',
       '  display: flex; flex-direction: column; align-items: flex-end;',
       '  flex: 0 0 auto; min-width: 86px;',
@@ -314,8 +319,8 @@
       '<div class="scw-co-card__main">' +
         '<div class="scw-co-card__name">' + esc(main) + '</div>' +
         (sub ? '<div class="scw-co-card__num">' + esc(sub) + '</div>' : '') +
-        (notes ? '<div class="scw-co-card__notes" title="' + esc(notes) + '">' +
-          esc(notes) + '</div>' : '') +
+        (notes ? '<div class="scw-co-card__notes" title="Internal notes: ' + esc(notes) + '">' +
+          '<span class="scw-co-card__notes-lbl">Internal</span>' + esc(notes) + '</div>' : '') +
         (reason && (noSig || notBill)
           ? '<div class="scw-co-card__reason" title="' + esc(reason) + '">' +
               '<span class="scw-co-card__reason-lbl">Why</span>' + esc(reason) + '</div>'

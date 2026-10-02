@@ -15,7 +15,11 @@
  *   field_2123 — CO / SOW number (equation, read-only)
  *   field_2953 — CO status (read-only)   Draft/…/Void
  *   field_2126 — friendly name (input)
- *   field_2198 — notes (textarea)
+ *   field_2198 — INTERNAL notes (textarea) — never reaches the client
+ *   field_2128 — CLIENT notes (rich text) — printed under "Proposed
+ *                Solution" on the CO proposal / PDF (scene_1096 renders
+ *                it; proposal-pdf-export carries it). Editable on the ops
+ *                form only; locked read-only on the sub's view_4121.
  *
  * Deployments: view_4092 (internal CO drafting scene_1362) and view_4121
  * (sub portal Manage Change Order scene_1374 — same form, sub's page).
@@ -104,6 +108,16 @@
       '#' + VIEW + ' .kn-label span{font:600 11px/1.2 system-ui,sans-serif;',
       'letter-spacing:.04em;text-transform:uppercase;color:#64748b;}',
       '#' + VIEW + ' textarea.kn-textarea{min-height:72px;}',
+      // Field hints (Knack's own instructions slot, normally empty/hidden).
+      '#' + VIEW + ' p.kn-instructions.scw-co-hdr-hint{display:block !important;',
+      'margin:2px 0 6px;font:500 11.5px/1.3 system-ui,sans-serif;color:#94a3b8;}',
+      // Client notes on the SUB view: readable, not editable (repo locked-field
+      // convention — plain text, no input chrome, no dimming).
+      '#' + VIEW + ' .scw-co-hdr-locked textarea, #' + VIEW + ' .scw-co-hdr-locked [contenteditable]{',
+      'pointer-events:none !important;background:transparent !important;',
+      'border-color:transparent !important;box-shadow:none !important;color:#0f172a !important;}',
+      '#' + VIEW + ' .scw-co-hdr-locked .redactor-toolbar,',
+      '#' + VIEW + ' .scw-co-hdr-locked .redactor-box .redactor-toolbar{display:none !important;}',
       // Name/notes autosave replaces the Submit button entirely — commits
       // fire on Tab/Enter/blur via view-based PUT.
       '#' + VIEW + ' .kn-submit{display:none !important;}',
@@ -234,21 +248,58 @@
         '" target="_blank" rel="noopener">ClickUp Task &#8599;</a>' : '');
 
     setLabel(viewEl, 'field_2126', 'Change order name');
-    setLabel(viewEl, 'field_2198', 'Notes');
+    // Two notes fields, and the difference has to be on the label: the
+    // old plain "Notes" on field_2198 read as the client-facing one.
+    setLabel(viewEl, 'field_2198', 'Internal notes');
+    setHint(viewEl,  'field_2198', 'SCW only \u2014 never shown to the client.');
+    setLabel(viewEl, 'field_2128', 'Client notes');
+    setHint(viewEl,  'field_2128', 'Shown to the client under Proposed Solution on the change order proposal.');
+
+    // The sub's view: client notes are SCW's words to the client — read-only.
+    var clientWrap = viewEl.querySelector('#kn-input-field_2128');
+    if (clientWrap && LOCK_CLIENT_NOTES[VIEW]) {
+      clientWrap.classList.add('scw-co-hdr-locked');
+      var ctls = clientWrap.querySelectorAll('textarea, [contenteditable="true"]');
+      for (var li = 0; li < ctls.length; li++) {
+        if (ctls[li].tagName === 'TEXTAREA') ctls[li].readOnly = true;
+        else ctls[li].setAttribute('contenteditable', 'false');
+      }
+    }
 
     // Baseline for the autosave's changed-check — stamped once per fresh
     // DOM (Knack re-renders rebuild the inputs, losing the attribute).
     EDIT_FIELDS.forEach(function (fk) {
       var ctl = viewEl.querySelector(
-        '#kn-input-' + fk + ' input, #kn-input-' + fk + ' textarea');
+        '#kn-input-' + fk + ' input, #kn-input-' + fk + ' textarea, ' +
+        '#kn-input-' + fk + ' [contenteditable="true"]');
       if (ctl && !ctl.hasAttribute('data-scw-saved-val')) {
-        ctl.setAttribute('data-scw-saved-val', ctl.value);
+        ctl.setAttribute('data-scw-saved-val', valueOf(ctl));
       }
     });
   }
 
+  // Knack renders an empty, hidden <p class="kn-instructions"> under every
+  // label — fill it and show it.
+  function setHint(viewEl, fieldKey, text) {
+    var p = viewEl.querySelector('#kn-input-' + fieldKey + ' p.kn-instructions');
+    if (!p) return;
+    if (p.textContent !== text) p.textContent = text;
+    p.classList.add('scw-co-hdr-hint');
+    p.style.display = '';
+  }
+
+  // Rich-text fields (field_2128) render a contenteditable editor; the
+  // value is its HTML. Plain inputs/textareas use .value.
+  function valueOf(el) {
+    return (el.isContentEditable || el.getAttribute('contenteditable') === 'true')
+      ? el.innerHTML : el.value;
+  }
+
   // ── autosave (name + notes commit on Tab/Enter/blur — no Submit) ───────
-  var EDIT_FIELDS = ['field_2126', 'field_2198'];
+  // field_2128 (client notes) only autosaves where it is editable — the sub
+  // view locks it (LOCK_CLIENT_NOTES) and a locked control never focuses.
+  var EDIT_FIELDS = ['field_2126', 'field_2198', 'field_2128'];
+  var LOCK_CLIENT_NOTES = { view_4121: true };
 
   function recordIdFromHash() {
     var segs = (window.location.hash || '').replace(/^#/, '').split('?')[0]
@@ -262,14 +313,15 @@
   // View-based PUT of the single changed field — the mdf-idf-cards inline
   // save pattern (SCW.knackAjax adds session auth; no API key involved).
   function commitField(el, VIEW) {
-    if (el.getAttribute('data-scw-saved-val') === el.value) return;   // unchanged
+    var value = valueOf(el);
+    if (el.getAttribute('data-scw-saved-val') === value) return;   // unchanged
     var wrap = el.closest('[id^="kn-input-field_"]');
     var fieldKey = wrap && wrap.id.replace('kn-input-', '');
     var recId = recordIdFromHash();
     if (!fieldKey || !recId) return;
+    if (wrap.classList.contains('scw-co-hdr-locked')) return;      // read-only here
     if (!(window.SCW && typeof SCW.knackAjax === 'function' &&
           typeof SCW.knackRecordUrl === 'function')) return;
-    var value = el.value;
     var body = {};
     body[fieldKey] = value;
     el.classList.remove('scw-co-hdr-saved', 'scw-co-hdr-err');
@@ -311,13 +363,15 @@
     // Knack's re-rendered inputs stay wired.
     var FIELD_SEL = EDIT_FIELDS.map(function (fk) {
       return '#' + VIEW + ' #kn-input-' + fk + ' input, ' +
-             '#' + VIEW + ' #kn-input-' + fk + ' textarea';
+             '#' + VIEW + ' #kn-input-' + fk + ' textarea, ' +
+             '#' + VIEW + ' #kn-input-' + fk + ' [contenteditable="true"]';
     }).join(', ');
     $(document).off('focusout' + EVENT_NS).on('focusout' + EVENT_NS, FIELD_SEL,
       function () { commitField(this, VIEW); });
     $(document).off('keydown' + EVENT_NS).on('keydown' + EVENT_NS, FIELD_SEL,
       function (e) {
         if (e.key !== 'Enter' || e.shiftKey) return;
+        if (this.isContentEditable) return;   // rich text: Enter is a paragraph
         e.preventDefault();   // don't let Knack submit the form
         this.blur();          // focusout commits
       });
