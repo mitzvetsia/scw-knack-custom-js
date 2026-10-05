@@ -87,5 +87,17 @@ check('truncated first page (no dropdown) → model stamped and refetched once',
 wrap([document]).trigger('knack-view-render.view_3573');
 check('run-once guard: a second render of the same view instance does not refetch again', fetched, 1);
 
+// The bug behind "27 of 50 cameras": the model already SAYS 1000 (stamped before the first
+// request left at the Builder page size) but holds 100 of 139 — it must still refetch.
+document.body.innerHTML = '<div id="view_4031"></div>';
+Knack.views.view_4031 = { model: {
+  view: { rows_per_page: 1000, source: { limit: 1000 } },
+  data: { models: new Array(100), total_records: 139 },
+  fetch() { fetched++; }, url() { return API + 'view_4031/records'; }
+} };
+const before4031 = fetched;
+wrap([document]).trigger('knack-view-render.view_4031');
+check('model stamped 1000 but only 100 of 139 loaded → refetch anyway', fetched - before4031, 1);
+
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

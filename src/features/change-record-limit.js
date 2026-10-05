@@ -217,9 +217,20 @@
         var modelView = view.model.view;
         if (!modelView) return;
 
-        // Already at the desired limit — nothing to do
-        if (modelView.rows_per_page === LIMIT_NUM ||
-            modelView.rows_per_page === LIMIT_VALUE) return;
+        // Skip only when the data really is complete. The model's
+        // rows_per_page is NOT evidence: the pre-fetch stamp and the ajax
+        // prefilter both set it to 1000, but when the first request had
+        // already left at the Builder page size the model still holds a
+        // partial page — and the old "already at the limit" check skipped
+        // the refetch for good (seen 2026-10-05: the customer questionnaire
+        // grid view_4031 loaded 100 of 139, 27 of 50 cameras on the page).
+        var kdat = view.model.data;
+        var kTotal = kdat && (kdat.total_records != null ? kdat.total_records
+          : (kdat.pagination_meta && kdat.pagination_meta.total_records));
+        var kLoaded = kdat && kdat.models ? kdat.models.length : 0;
+        var knownShort = typeof kTotal === 'number' && kLoaded < kTotal;
+        if (!knownShort && (modelView.rows_per_page === LIMIT_NUM ||
+            modelView.rows_per_page === LIMIT_VALUE)) return;
 
         modelView.rows_per_page = LIMIT_NUM;
         if (modelView.source) modelView.source.limit = LIMIT_NUM;
