@@ -52,6 +52,22 @@ check('record PUT untouched (URL has /records/<id>)',
   API + 'view_3962/records/64a1b2c3d4e5f6a7b8c9d0e1?rows_per_page=25');
 check('already 1000 left as is', run(API + 'view_3962/records?rows_per_page=1000&page=1'), API + 'view_3962/records?rows_per_page=1000&page=1');
 
+// THE BUG behind "27 of 50 cameras": Knack sends the page size as request DATA. jQuery serializes
+// data before prefilters and appends it to a GET's URL after them — so the final request must
+// carry 1000 once, not "?rows_per_page=1000&…&rows_per_page=100" (the server read the last one).
+function jqFinal(url, data) {
+  const o = { url, type: 'GET', data };
+  prefilter(o);
+  return o.data ? o.url + (o.url.indexOf('?') === -1 ? '?' : '&') + o.data : o.url;
+}
+const finalUrl = jqFinal(API + 'view_4031/records', 'format=both&page=1&rows_per_page=100&sort_field=field_2801&sort_order=asc');
+check('Knack\'s page size in request data is rewritten to 1000 (one rows_per_page in the final URL)',
+  [finalUrl.match(/rows_per_page=\d+/g), /page=1(&|$)/.test(finalUrl)], [['rows_per_page=1000'], true]);
+check('a page-2 pagination request on a forced grid asks for page 1 (the full set lives there)',
+  jqFinal(API + 'view_4031/records', 'format=both&page=2&rows_per_page=100').match(/(^|[?&])page=\d+/g), ['&page=1']);
+check('data without rows_per_page gets one added to the data, not the URL',
+  jqFinal(API + 'view_4031/records', 'format=both&page=1'), API + 'view_4031/records?format=both&page=1&rows_per_page=1000');
+
 // Model stamped when the prefilter sees its fetch.
 Knack.views.view_3962 = { model: { view: { rows_per_page: 25, source: { limit: 25 } }, data: { models: [] } } };
 run(API + 'view_3962/records?rows_per_page=25');

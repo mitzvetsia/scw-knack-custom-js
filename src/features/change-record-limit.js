@@ -117,6 +117,7 @@
   const LIMIT_SET = {};
   VIEW_IDS.forEach((k) => { LIMIT_SET[k] = true; });
   const RECORDS_RE = /\/views\/(view_\d+)\/records(?:[?#]|$)/;
+  var _rewroteLogged = {};
   if (typeof $ !== 'undefined' && $.ajaxPrefilter) {
     $.ajaxPrefilter(function (options) {
       try {
@@ -124,14 +125,30 @@
         var url = options.url || '';
         var m = RECORDS_RE.exec(url);
         if (!m || !LIMIT_SET[m[1]]) return;
-        if (/[?&]rows_per_page=/.test(url)) {
-          if (/[?&]rows_per_page=1000(?:&|$)/.test(url)) return;
-          options.url = url.replace(/([?&]rows_per_page=)\d+/, '$1' + LIMIT_VALUE);
-        } else {
-          options.url = url + (url.indexOf('?') === -1 ? '?' : '&') + 'rows_per_page=' + LIMIT_VALUE;
+        // Knack passes the page size as request DATA (Backbone fetch →
+        // {page, rows_per_page, …}). jQuery serializes data to a string
+        // BEFORE prefilters run but appends it to a GET's URL AFTER — so a
+        // rewrite of the URL alone left Knack's own rows_per_page=100 tacked
+        // on the end, and the server took the last value (view_4031 stuck at
+        // 100 of 139 on every load and refetch). Rewrite wherever it lives.
+        var PARAM_RE = /(^|[?&])rows_per_page=\d+/;
+        var inData = typeof options.data === 'string' && PARAM_RE.test(options.data);
+        var inUrl = PARAM_RE.test(url);
+        if (inData) options.data = options.data.replace(/(^|&)rows_per_page=\d+/g, '$1rows_per_page=' + LIMIT_VALUE);
+        if (inUrl) options.url = url.replace(/([?&])rows_per_page=\d+/g, '$1rows_per_page=' + LIMIT_VALUE);
+        if (!inData && !inUrl) {
+          if (typeof options.data === 'string' && options.data) options.data += '&rows_per_page=' + LIMIT_VALUE;
+          else options.url = url + (url.indexOf('?') === -1 ? '?' : '&') + 'rows_per_page=' + LIMIT_VALUE;
         }
-        // Keep the model's idea of the page size in step so Knack's
-        // pager math and our completeness check below agree.
+        // A pagination request for a later page would now overlap page 1 —
+        // the full set is on page 1, so always ask for it.
+        if (typeof options.data === 'string') options.data = options.data.replace(/(^|&)page=\d+/g, '$1page=1');
+        options.url = options.url.replace(/([?&])page=\d+/g, '$1page=1');
+        if (!_rewroteLogged[m[1]]) {
+          _rewroteLogged[m[1]] = true;
+          console.info('[scw-record-limit] ' + m[1] + ': request rewritten to ' + LIMIT_VALUE + ' per page');
+        }
+        // Keep the model's idea of the page size in step.
         var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[m[1]] : null;
         var mv = v && v.model && v.model.view;
         if (mv) {
