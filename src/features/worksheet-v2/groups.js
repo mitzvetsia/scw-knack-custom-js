@@ -90,6 +90,27 @@
     return s === 'no' || s === 'false' || s === '0';
   }
 
+  // The accessory parent back-pointer only reaches the worksheet when it is
+  // a COLUMN on the source grid. Missing, every record reads as parentless:
+  // accessories render as their own rows instead of folding under their
+  // parent, and the same project shows MORE rows on that view than on one
+  // that carries the column (seen live 2026-10-05: the sub portal's
+  // view_4056 listed a surge kit and a WattBox that the ops view_4093 held
+  // as chips under the Rocket Prism kit and the Admiral NVR). Warn once per
+  // view when the key is absent from EVERY loaded record — an empty
+  // connection is `[]`, a missing column is `undefined`.
+  var _parentColWarned = Object.create(null);
+  function warnIfParentColumnMissing(records, viewKey) {
+    if (!viewKey || _parentColWarned[viewKey] || !records || !records.length) return;
+    for (var i = 0; i < records.length; i++) {
+      if (records[i] && records[i][ACCESSORY_PARENT_FIELD + '_raw'] !== undefined) return;
+    }
+    _parentColWarned[viewKey] = true;
+    console.warn('[scw-ws-v2] ' + viewKey + ': accessory parent field ' + ACCESSORY_PARENT_FIELD +
+      ' is not on any loaded record — add it as a column on the view in Builder, or every ' +
+      'accessory renders as its own row instead of under its parent.');
+  }
+
   function collectAttachedAccessoryIds(records) {
     var recordById = Object.create(null);
     for (var i = 0; i < records.length; i++) {
@@ -280,6 +301,7 @@
       }
     }
 
+    warnIfParentColumnMissing(records, opts && opts.viewKey);
     var attachedIds = collectAttachedAccessoryIds(records);
     // Local recordById lookup for the promoted-bracket parent-inherit
     // logic below — we need to resolve a bracket\'s field_2464 parent
