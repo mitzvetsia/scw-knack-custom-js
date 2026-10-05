@@ -75,29 +75,49 @@ wrap([document]).trigger('knack-view-render.view_3921');
 check('complete first page → no refetch, dropdown value set to 1000',
   [fetched, sel.value, Knack.views.view_3921.model.view.rows_per_page], [0, '1000', 1000]);
 
-// Incomplete (total > loaded, no dropdown) → refetch path still runs.
-document.body.innerHTML = '<div id="view_3573"></div>';
-Knack.views.view_3573 = { model: {
-  view: { rows_per_page: 25, source: { limit: 25 } },
-  data: { models: new Array(25), total_records: 60 },
-  fetch() { fetched++; }, url() { return API + 'view_3573/records'; }
+// ── Force-load: a grid short of its total is loaded straight from the view endpoint at
+// 1000/page (all pages), the records go into the model, and the grid's render fires again.
+const gets = []; let renders = 0;
+window.SCW = global.SCW = { knackAjax(o) {
+  gets.push(o.url);
+  const page = +(o.url.match(/[?&]page=(\d+)/) || [])[1];
+  // 1200 records over two pages of 1000.
+  const n = page === 1 ? 1000 : 200;
+  o.success({ records: Array.from({ length: n }, (_, i) => ({ id: 'r' + page + '_' + i })), total_pages: 2, total_records: 1200 });
 } };
-wrap([document]).trigger('knack-view-render.view_3573');
-check('truncated first page (no dropdown) → model stamped and refetched once', [fetched, Knack.views.view_3573.model.view.rows_per_page], [1, 1000]);
-wrap([document]).trigger('knack-view-render.view_3573');
-check('run-once guard: a second render of the same view instance does not refetch again', fetched, 1);
+Knack.api_url = 'https://api.knack.com'; Knack.router = { current_scene_key: 'scene_1347' };
+function collection(n, total) {
+  return { models: new Array(n).fill(0).map((_, i) => ({ id: 'm' + i })), total_records: total,
+    reset(recs) { this.models = recs.map(r => ({ id: r.id, attributes: r })); } };
+}
+handlers['knack-view-render.view_4031'] = handlers['knack-view-render.view_4031'] || [];
+handlers['knack-view-render.view_4031'].push(() => { renders++; });
 
-// The bug behind "27 of 50 cameras": the model already SAYS 1000 (stamped before the first
-// request left at the Builder page size) but holds 100 of 139 — it must still refetch.
-document.body.innerHTML = '<div id="view_4031"></div>';
-Knack.views.view_4031 = { model: {
-  view: { rows_per_page: 1000, source: { limit: 1000 } },
-  data: { models: new Array(100), total_records: 139 },
-  fetch() { fetched++; }, url() { return API + 'view_4031/records'; }
-} };
-const before4031 = fetched;
+// The bug behind "27 of 50 cameras": the model already SAYS 1000 but holds 100 of 139.
+document.body.innerHTML = '<div id="view_4031"><div class="kn-entries-summary">Showing 1-100 of 139</div></div>';
+Knack.views.view_4031 = { model: { view: { rows_per_page: 1000, source: { limit: 1000 } }, data: collection(100, 139), fetch() { fetched++; } } };
+const before = fetched;
 wrap([document]).trigger('knack-view-render.view_4031');
-check('model stamped 1000 but only 100 of 139 loaded → refetch anyway', fetched - before4031, 1);
+check('100 of 139 loaded (model already claims 1000) → direct GET of every page at 1000, no Knack refetch',
+  [gets.length, gets[0], /page=2/.test(gets[1]), fetched - before],
+  [2, 'https://api.knack.com/v1/pages/scene_1347/views/view_4031/records?format=both&rows_per_page=1000&page=1', true, 0]);
+check('the full set lands in the model and the grid\'s render fires again for the consumers',
+  [Knack.views.view_4031.model.data.models.length, Knack.views.view_4031.model.data.total_records, renders], [1200, 1200, 2]);
+check('the re-fired render does not loop (run-once guard)', gets.length, 2);
+
+// Total unknown on the collection → read from Knack's "Showing … of N" line.
+gets.length = 0;
+document.body.innerHTML = '<div id="view_4075"><div class="kn-entries-summary">Showing 1-25 of 60</div></div>';
+Knack.views.view_4075 = { model: { view: { rows_per_page: 25 }, data: Object.assign(collection(25, undefined), { total_records: undefined }) } };
+wrap([document]).trigger('knack-view-render.view_4075');
+check('total read from the entries summary when the collection has none → force-load runs', gets.length > 0, true);
+
+// Complete grid with no dropdown → nothing fetched.
+gets.length = 0;
+document.body.innerHTML = '<div id="view_3573"></div>';
+Knack.views.view_3573 = { model: { view: { rows_per_page: 25 }, data: collection(60, 60) } };
+wrap([document]).trigger('knack-view-render.view_3573');
+check('complete grid → no request', gets.length, 0);
 
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

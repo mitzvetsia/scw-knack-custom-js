@@ -208,51 +208,84 @@
           return;
         }
 
-        // Strategy 2: No dropdown — set rows_per_page on the Knack view model
-        // and re-fetch (same pattern as default-sort.js)
-        if (typeof Knack === 'undefined') return;
-        var view = Knack.views && Knack.views[VIEW_ID];
-        if (!view || !view.model) return;
-
-        var modelView = view.model.view;
-        if (!modelView) return;
-
-        // Skip only when the data really is complete. The model's
-        // rows_per_page is NOT evidence: the pre-fetch stamp and the ajax
-        // prefilter both set it to 1000, but when the first request had
-        // already left at the Builder page size the model still holds a
-        // partial page — and the old "already at the limit" check skipped
-        // the refetch for good (seen 2026-10-05: the customer questionnaire
-        // grid view_4031 loaded 100 of 139, 27 of 50 cameras on the page).
-        var kdat = view.model.data;
-        var kTotal = kdat && (kdat.total_records != null ? kdat.total_records
-          : (kdat.pagination_meta && kdat.pagination_meta.total_records));
-        var kLoaded = kdat && kdat.models ? kdat.models.length : 0;
-        var knownShort = typeof kTotal === 'number' && kLoaded < kTotal;
-        if (!knownShort && (modelView.rows_per_page === LIMIT_NUM ||
-            modelView.rows_per_page === LIMIT_VALUE)) return;
-
-        modelView.rows_per_page = LIMIT_NUM;
-        if (modelView.source) modelView.source.limit = LIMIT_NUM;
-
-        if (typeof view.model.fetch === 'function') {
-          // Probe the URL before fetching — some Knack view models lack
-          // a usable URL (form views, partially-initialised models on
-          // the current page render tick), and Backbone.sync throws
-          // synchronously which bubbles up as an Uncaught Error that
-          // can put Knack into a render loop. Skip silently if no URL.
-          try {
-            var url = (typeof view.model.url === 'function')
-              ? view.model.url.call(view.model)
-              : view.model.url;
-            if (!url) return;
-          } catch (e) {
-            return;
-          }
-          try { view.model.fetch(); } catch (e) { /* swallow */ }
-        }
+        // Strategy 2: no dropdown → FORCE-LOAD. Asking Knack to refetch at a
+        // bigger page size (rows_per_page on the model + model.fetch) is not
+        // reliable — on grids without the per-page control Knack keeps the
+        // Builder page size (seen 2026-10-05: the customer questionnaire
+        // grid view_4031 stayed at 100 of 139, 27 of 50 cameras). So when a
+        // listed grid holds fewer records than its total, GET every record
+        // straight from the view's endpoint (session auth, 1000 per page,
+        // all pages), put them into the grid's model, and fire the grid's
+        // render so every consumer reading the model rebuilds with the
+        // full set. The native table under it keeps Knack's first page;
+        // every listed grid is a data source the bundle renders from.
+        forceFullLoad(VIEW_ID);
       });
   });
+
+  /** Server total for a grid: the collection's stamp, else Knack's
+   *  "Showing 1-100 of 139" line. null when neither is readable. */
+  function totalOf(viewId, data) {
+    var t = data && (data.total_records != null ? data.total_records
+      : (data.pagination_meta && data.pagination_meta.total_records));
+    if (typeof t === 'number') return t;
+    var el = document.querySelector('#' + viewId + ' .kn-entries-summary');
+    var m = el && (el.textContent || '').match(/of\s+([\d,]+)/i);
+    return m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
+  }
+
+  var _forcing = {};
+  function forceFullLoad(viewId) {
+    if (typeof Knack === 'undefined' || !Knack.views) return;
+    var view = Knack.views[viewId];
+    var data = view && view.model && view.model.data;
+    if (!data || !data.models) return;
+    var total = totalOf(viewId, data);
+    var loaded = data.models.length;
+    if (total == null || loaded >= total) return;     // complete (or unknowable)
+    if (_forcing[viewId]) return;
+    if (!(window.SCW && typeof SCW.knackAjax === 'function')) return;
+    var scene = Knack.router && Knack.router.current_scene_key;
+    if (!scene || !Knack.api_url) return;
+    _forcing[viewId] = true;
+
+    var base = Knack.api_url + '/v1/pages/' + scene + '/views/' + viewId +
+               '/records?format=both&rows_per_page=' + LIMIT_VALUE;
+    var all = [], page = 1, MAX_PAGES = 10;
+    function done() { _forcing[viewId] = false; }
+    function next() {
+      SCW.knackAjax({
+        url: base + '&page=' + page, type: 'GET',
+        success: function (resp) {
+          var recs = (resp && resp.records) || [];
+          all = all.concat(recs);
+          var pages = resp && resp.total_pages;
+          if (recs.length && page < MAX_PAGES && ((pages && page < pages) || (!pages && recs.length === LIMIT_NUM))) {
+            page++; next(); return;
+          }
+          done();
+          // The user may have navigated away while this was in flight.
+          if (!document.getElementById(viewId) || Knack.views[viewId] !== view) return;
+          if (all.length <= data.models.length) return;   // nothing gained
+          try {
+            data.reset(all, { silent: true });
+            data.total_records = resp && resp.total_records != null ? resp.total_records : all.length;
+            var mv = view.model.view;
+            if (mv) { mv.rows_per_page = LIMIT_NUM; if (mv.source) mv.source.limit = LIMIT_NUM; }
+          } catch (e) { console.warn('[scw-record-limit] could not load the full set into ' + viewId, e); return; }
+          // Knack's own render event, so every SCW.onViewRender consumer
+          // re-reads the model (now complete). The run-once guard above
+          // keeps this from looping.
+          $(document).trigger('knack-view-render.' + viewId, [view, all]);
+        },
+        error: function (xhr) {
+          done();
+          console.warn('[scw-record-limit] full load of ' + viewId + ' failed (page ' + page + ')', xhr && xhr.status);
+        }
+      });
+    }
+    next();
+  }
 })();
 
 
