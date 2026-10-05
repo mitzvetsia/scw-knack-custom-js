@@ -147,8 +147,10 @@ setTimeout(() => {
     check('Save POSTs the form\'s inputs through the form view (note + hidden project), never Knack\'s submit',
       [puts[before], knackSubmits],
       [{ url: 'https://api.knack.com/v1/pages/scene_1311/views/view_4162/records', type: 'POST', body: { field_328: 'Escort required after 6pm.', field_329: PROJECT } }, 0]);
-    const d = new Date(), TODAY = (d.getMonth() + 1 < 10 ? '0' : '') + (d.getMonth() + 1) + '/' + (d.getDate() < 10 ? '0' : '') + d.getDate() + '/' + d.getFullYear();
-    check('then pins the new record through the grid AND stamps author + date there (the form has no such inputs; a view POST runs no record rules), refetches, clears the form, says "Note saved."',
+    const d = new Date(), pad = n => (n < 10 ? '0' : '') + n, h = d.getHours();
+    // Knack date/time payload — the note date field carries a time now.
+    const TODAY = { date: pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + '/' + d.getFullYear(), hours: String(h % 12 === 0 ? 12 : h % 12), minutes: pad(d.getMinutes()), am_pm: h < 12 ? 'AM' : 'PM' };
+    check('then pins the new record through the grid AND stamps author + date/time there (the form has no such inputs; a view POST runs no record rules), refetches, clears the form, says "Note saved."',
       [puts[before + 1], fetched, formHost.querySelector('#field_328').value, pinCb.checked, formHost.querySelector('.scw-notes-compose__status').textContent],
       [{ url: '/view_4135/new1', type: 'PUT', body: { field_3278: true, field_678: 'u9', field_327: TODAY } }, 4, '', false, 'Note saved.']);
     // Knack rewrites the grid element's contents on every refresh (this is what wiped the form live).

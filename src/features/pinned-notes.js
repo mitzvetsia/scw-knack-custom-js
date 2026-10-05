@@ -813,7 +813,7 @@
     try { who = Knack.getUserAttributes(); } catch (e) { /* no user */ }
     var stamp = {};
     if (F.author && who && who.id) stamp[F.author] = who.id;
-    if (F.date) stamp[F.date] = today();
+    if (F.date) stamp[F.date] = nowStamp();
     for (var sk in stamp) if (inputs[sk] && body[sk] == null) body[sk] = stamp[sk];
     var save = el.querySelector('.scw-notes-addform__save'), status = el.querySelector('.scw-notes-compose__status');
     _saving[viewKey] = true;
@@ -976,16 +976,25 @@
     }
     return null;
   }
-  function today() {
-    var d = new Date();
-    return (d.getMonth() + 1 < 10 ? '0' : '') + (d.getMonth() + 1) + '/' + (d.getDate() < 10 ? '0' : '') + d.getDate() + '/' + d.getFullYear();
+  /** Knack date/time payload for "right now" (field_327 is a date + time
+   *  field): the object form carries the time explicitly and is accepted
+   *  by both view-based POST and PUT whatever the field's display format. */
+  function nowStamp() {
+    var d = new Date(), h = d.getHours();
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    return {
+      date:    pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + '/' + d.getFullYear(),
+      hours:   String(h % 12 === 0 ? 12 : h % 12),
+      minutes: pad(d.getMinutes()),
+      am_pm:   h < 12 ? 'AM' : 'PM'
+    };
   }
   function postNote(cfg, form, text, pin, cb) {
     var F = cfg.fields, body = {};
     body[F.note] = text;
     if (form.connKey) body[form.connKey] = form.projectId;
     if (form.inputs[F.pinned]) body[F.pinned] = !!pin;
-    if (form.inputs[F.date]) body[F.date] = today();
+    if (form.inputs[F.date]) body[F.date] = nowStamp();
     if (form.inputs[F.author]) {
       var u = null;
       try { u = Knack.getUserAttributes(); } catch (e) { /* no user */ }
