@@ -147,9 +147,10 @@ setTimeout(() => {
     check('Save POSTs the form\'s inputs through the form view (note + hidden project), never Knack\'s submit',
       [puts[before], knackSubmits],
       [{ url: 'https://api.knack.com/v1/pages/scene_1311/views/view_4162/records', type: 'POST', body: { field_328: 'Escort required after 6pm.', field_329: PROJECT } }, 0]);
-    check('then pins the new record through the grid, refetches, clears the form, says "Note saved."',
+    const d = new Date(), TODAY = (d.getMonth() + 1 < 10 ? '0' : '') + (d.getMonth() + 1) + '/' + (d.getDate() < 10 ? '0' : '') + d.getDate() + '/' + d.getFullYear();
+    check('then pins the new record through the grid AND stamps author + date there (the form has no such inputs; a view POST runs no record rules), refetches, clears the form, says "Note saved."',
       [puts[before + 1], fetched, formHost.querySelector('#field_328').value, pinCb.checked, formHost.querySelector('.scw-notes-compose__status').textContent],
-      [{ url: '/view_4135/new1', type: 'PUT', body: { field_3278: true } }, 4, '', false, 'Note saved.']);
+      [{ url: '/view_4135/new1', type: 'PUT', body: { field_3278: true, field_678: 'u9', field_327: TODAY } }, 4, '', false, 'Note saved.']);
     // Knack rewrites the grid element's contents on every refresh (this is what wiped the form live).
     view.innerHTML = grid(recs);
     fire();
@@ -158,7 +159,9 @@ setTimeout(() => {
     // A native submit (Enter, a stray handler) is intercepted and saved the same way.
     formHost.querySelector('#field_328').value = 'Gate closes at 5.';
     formHost.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
-    check('a native submit is ours too: API POST, Knack\'s handler never runs', [puts[puts.length - 1].type, puts[puts.length - 1].body.field_328, knackSubmits, fetched], ['POST', 'Gate closes at 5.', 0, 5]);
+    check('a native submit is ours too: API POST (then the author/date stamp), Knack\'s handler never runs',
+      [puts[puts.length - 2].type, puts[puts.length - 2].body.field_328, puts[puts.length - 1].type, puts[puts.length - 1].body.field_678, knackSubmits, fetched],
+      ['POST', 'Gate closes at 5.', 'PUT', 'u9', 0, 5]);
     setTimeout(() => {
       // Knack re-renders the form (same element) on a scene pass: re-dressed without moving, one Save, one Pin.
       fire();

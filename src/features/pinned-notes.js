@@ -798,9 +798,23 @@
       if (f.value !== '' && body[key] == null) body[key] = f.value;
     }
     body[F.note] = text;
+    var inputs = liveInputs(el);
     var cb = el.querySelector('input[name="scw_pin"]');
     var wantPin = !!(cb && cb.checked && !cb.disabled);
-    if (wantPin && liveInputs(el)[F.pinned]) body[F.pinned] = true;
+    if (wantPin && inputs[F.pinned]) body[F.pinned] = true;
+    // Author + date. The form's record rules set them on Knack's OWN
+    // submit only — a view-based POST runs no form rules (confirmed live
+    // 2026-10-05: notes landed with no author). Stamp them from the
+    // session instead: in the POST when the form carries the inputs,
+    // else through the notes grid right after (same PUT the pin uses).
+    // ⚠️ Builder: that grid must have the author / date columns
+    // inline-editable or the PUT is ignored (warned below).
+    var who = null;
+    try { who = Knack.getUserAttributes(); } catch (e) { /* no user */ }
+    var stamp = {};
+    if (F.author && who && who.id) stamp[F.author] = who.id;
+    if (F.date) stamp[F.date] = today();
+    for (var sk in stamp) if (inputs[sk] && body[sk] == null) body[sk] = stamp[sk];
     var save = el.querySelector('.scw-notes-addform__save'), status = el.querySelector('.scw-notes-compose__status');
     _saving[viewKey] = true;
     if (save) save.disabled = true;
@@ -830,11 +844,31 @@
           var v = Knack.views && Knack.views[cfg.notesView];
           if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();   // re-render → new card + strip
         };
-        if (wantPin && !body[F.pinned] && newId && typeof SCW.knackRecordUrl === 'function') {
-          var pb = {}; pb[F.pinned] = true;
+        // Follow-up PUT through the notes grid for whatever the POST could
+        // not carry: the pin (no input on the form) and the author / date
+        // when the created record came back without them.
+        var pb = {}, any = false;
+        if (wantPin && !body[F.pinned]) { pb[F.pinned] = true; any = true; }
+        for (var k in stamp) {
+          if (body[k] != null) continue;                // sent in the POST
+          var got = record && (record[k + '_raw'] != null ? record[k + '_raw'] : record[k]);
+          var has = Array.isArray(got) ? got.length > 0 : !!(got && (got.id || String(got).trim()));
+          if (!has) { pb[k] = stamp[k]; any = true; }
+        }
+        if (any && newId && typeof SCW.knackRecordUrl === 'function') {
           SCW.knackAjax({ url: SCW.knackRecordUrl(cfg.notesView, newId), type: 'PUT', data: JSON.stringify(pb),
-            success: refetch,
-            error: function (xhr) { console.warn('[scw-pinned-notes] pin after add failed', xhr && xhr.status); refetch(); } });
+            success: function (res2) {
+              var r2 = res2 && (res2.record || res2);
+              if (r2 && F.author && pb[F.author] && r2[F.author + '_raw'] !== undefined) {
+                var a2 = r2[F.author + '_raw'];
+                if (!(Array.isArray(a2) ? a2.length : a2)) {
+                  console.warn('[scw-pinned-notes] author not saved — make ' + F.author + ' (and ' + F.date +
+                    ') inline-editable columns on ' + cfg.notesView + ' in Builder, or add them as inputs on ' + viewKey);
+                }
+              }
+              refetch();
+            },
+            error: function (xhr) { console.warn('[scw-pinned-notes] follow-up save after add failed', xhr && xhr.status, pb); refetch(); } });
         } else {
           refetch();
         }
