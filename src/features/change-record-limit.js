@@ -173,8 +173,10 @@
         const $view = $('#' + VIEW_ID);
         if (!$view.length) return;
 
-        // Run-once guard per view instance
-        if ($view.data('scwLimitSet')) return;
+        // Run-once guard per view instance for the dropdown / stamp work.
+        // A grid that is still short re-checks on every render (the try
+        // counter in forceFullLoad bounds the refetches).
+        if ($view.data('scwLimitSet')) { forceFullLoad(VIEW_ID); return; }
         $view.data('scwLimitSet', true);
 
         const $limit = $view.find('select[name="limit"]');
@@ -234,90 +236,35 @@
     return m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
   }
 
-  var _forcing = {};
+  // Same proven pattern as bid-review-v2's truncation repair and
+  // proposal-grid-v2's ensureFullPage: stamp 1000 on the model and let
+  // KNACK refetch. Knack builds the request (incl. the parent-record
+  // crumbs a child-page grid is filtered by), re-renders the grid and
+  // fires knack-view-render, so every consumer rebuilds from the full
+  // model. The ajax prefilter above rewrites rows_per_page=1000 on that
+  // request even if Knack's own URL builder ignores the model value.
+  // Bounded per view instance so a >1000-record grid can't loop.
+  var FETCH_TRIES_MAX = 2;
+  var _tries = {};
   function forceFullLoad(viewId) {
     if (typeof Knack === 'undefined' || !Knack.views) return;
     var view = Knack.views[viewId];
     var data = view && view.model && view.model.data;
-    if (!data || !data.models) return;
+    if (!data || !data.models || typeof view.model.fetch !== 'function') return;
     var total = totalOf(viewId, data);
     var loaded = data.models.length;
     if (total == null || loaded >= total) return;     // complete (or unknowable)
-    if (_forcing[viewId]) return;
-    if (!(window.SCW && typeof SCW.knackAjax === 'function')) return;
-    var scene = Knack.router && Knack.router.current_scene_key;
-    if (!scene || !Knack.api_url) return;
-    _forcing[viewId] = true;
-
-    // Knack's OWN records address for this grid carries what a hand-built
-    // one lacks: the parent-record crumbs a child-page grid is filtered by
-    // (view_4031 lives under install-system-setup-questionnairre-details).
-    // Without them the request fails and the grid stays at its first page.
-    // Use the model's URL, swap in our page size; hand-build only as a
-    // last resort.
-    var base = '';
-    try {
-      var mu = typeof view.model.url === 'function' ? view.model.url.call(view.model) : view.model.url;
-      if (mu) {
-        base = String(mu).replace(/([?&])(rows_per_page|page)=[^&]*/g, '$1').replace(/[?&]+$/, '').replace(/([?&])&+/g, '$1');
-      }
-    } catch (e) { /* hand-built below */ }
-    if (!base) {
-      // Hand-built: add the parent-record crumbs Knack's own forms on this
-      // scene submit (hidden input.crumb, e.g. deploy_id /
-      // install-system-setup-questionnairre-details_id).
-      base = Knack.api_url + '/v1/pages/' + scene + '/views/' + viewId + '/records';
-      var crumbs = [], seenCrumb = {};
-      var crumbEls = document.querySelectorAll('#kn-' + scene + ' input.crumb[name]');
-      for (var ci = 0; ci < crumbEls.length; ci++) {
-        var cn = crumbEls[ci].getAttribute('name'), cv = crumbEls[ci].value;
-        if (!cn || !cv || seenCrumb[cn]) continue;
-        seenCrumb[cn] = true;
-        crumbs.push(encodeURIComponent(cn) + '=' + encodeURIComponent(cv));
-      }
-      if (crumbs.length) base += '?' + crumbs.join('&');
+    var tries = _tries[viewId] || 0;
+    if (tries >= FETCH_TRIES_MAX) {
+      console.warn('[scw-record-limit] ' + viewId + ': still ' + loaded + ' of ' + total + ' after ' + tries + ' refetches — giving up');
+      return;
     }
-    base += (base.indexOf('?') === -1 ? '?' : '&') + 'rows_per_page=' + LIMIT_VALUE;
-    if (!/[?&]format=/.test(base)) base += '&format=both';
-    console.info('[scw-record-limit] ' + viewId + ': ' + loaded + ' of ' + total + ' loaded — force-loading all records');
-    var all = [], page = 1, MAX_PAGES = 10;
-    function done() { _forcing[viewId] = false; }
-    function next() {
-      SCW.knackAjax({
-        url: base + '&page=' + page, type: 'GET',
-        success: function (resp) {
-          var recs = (resp && resp.records) || [];
-          all = all.concat(recs);
-          var pages = resp && resp.total_pages;
-          if (recs.length && page < MAX_PAGES && ((pages && page < pages) || (!pages && recs.length === LIMIT_NUM))) {
-            page++; next(); return;
-          }
-          done();
-          // The user may have navigated away while this was in flight.
-          if (!document.getElementById(viewId) || Knack.views[viewId] !== view) return;
-          if (all.length <= data.models.length) {
-            console.warn('[scw-record-limit] ' + viewId + ': full load returned ' + all.length + ' records, no gain over ' + data.models.length + ' — ' + base);
-            return;
-          }
-          try {
-            data.reset(all, { silent: true });
-            data.total_records = resp && resp.total_records != null ? resp.total_records : all.length;
-            var mv = view.model.view;
-            if (mv) { mv.rows_per_page = LIMIT_NUM; if (mv.source) mv.source.limit = LIMIT_NUM; }
-          } catch (e) { console.warn('[scw-record-limit] could not load the full set into ' + viewId, e); return; }
-          // Knack's own render event, so every SCW.onViewRender consumer
-          // re-reads the model (now complete). The run-once guard above
-          // keeps this from looping.
-          $(document).trigger('knack-view-render.' + viewId, [view, all]);
-        },
-        error: function (xhr) {
-          done();
-          console.warn('[scw-record-limit] full load of ' + viewId + ' failed (page ' + page + ', HTTP ' + (xhr && xhr.status) + ') — ' + base + '&page=' + page,
-            xhr && xhr.responseText ? String(xhr.responseText).slice(0, 200) : '');
-        }
-      });
-    }
-    next();
+    _tries[viewId] = tries + 1;
+    var mv = view.model.view;
+    if (mv) { mv.rows_per_page = LIMIT_NUM; if (mv.source) mv.source.limit = LIMIT_NUM; }
+    console.info('[scw-record-limit] ' + viewId + ': ' + loaded + ' of ' + total + ' loaded — refetching at ' + LIMIT_VALUE + ' (try ' + (tries + 1) + ')');
+    try { view.model.fetch(); }
+    catch (e) { console.warn('[scw-record-limit] ' + viewId + ' refetch threw', e); }
   }
 })();
 
