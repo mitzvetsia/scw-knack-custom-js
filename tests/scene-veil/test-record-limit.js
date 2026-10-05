@@ -95,12 +95,15 @@ handlers['knack-view-render.view_4031'].push(() => { renders++; });
 
 // The bug behind "27 of 50 cameras": the model already SAYS 1000 but holds 100 of 139.
 document.body.innerHTML = '<div id="view_4031"><div class="kn-entries-summary">Showing 1-100 of 139</div></div>';
-Knack.views.view_4031 = { model: { view: { rows_per_page: 1000, source: { limit: 1000 } }, data: collection(100, 139), fetch() { fetched++; } } };
+const CRUMB = 'install-system-setup-questionnairre-details_id=6abd03d886a1cb704b750e8e';
+Knack.views.view_4031 = { model: { view: { rows_per_page: 1000, source: { limit: 1000 } }, data: collection(100, 139), fetch() { fetched++; },
+  // Knack's own address for a child-page grid: carries the parent-record crumb.
+  url() { return 'https://api.knack.com/v1/scenes/scene_1347/views/view_4031/records?format=both&page=1&rows_per_page=100&' + CRUMB; } } };
 const before = fetched;
 wrap([document]).trigger('knack-view-render.view_4031');
-check('100 of 139 loaded (model already claims 1000) → direct GET of every page at 1000, no Knack refetch',
+check('100 of 139 loaded (model already claims 1000) → GET every page at 1000 on Knack\'s own address (parent crumb kept), no Knack refetch',
   [gets.length, gets[0], /page=2/.test(gets[1]), fetched - before],
-  [2, 'https://api.knack.com/v1/pages/scene_1347/views/view_4031/records?format=both&rows_per_page=1000&page=1', true, 0]);
+  [2, 'https://api.knack.com/v1/scenes/scene_1347/views/view_4031/records?format=both&' + CRUMB + '&rows_per_page=1000&page=1', true, 0]);
 check('the full set lands in the model and the grid\'s render fires again for the consumers',
   [Knack.views.view_4031.model.data.models.length, Knack.views.view_4031.model.data.total_records, renders], [1200, 1200, 2]);
 check('the re-fired render does not loop (run-once guard)', gets.length, 2);

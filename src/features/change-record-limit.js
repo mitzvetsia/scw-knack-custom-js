@@ -249,8 +249,23 @@
     if (!scene || !Knack.api_url) return;
     _forcing[viewId] = true;
 
-    var base = Knack.api_url + '/v1/pages/' + scene + '/views/' + viewId +
-               '/records?format=both&rows_per_page=' + LIMIT_VALUE;
+    // Knack's OWN records address for this grid carries what a hand-built
+    // one lacks: the parent-record crumbs a child-page grid is filtered by
+    // (view_4031 lives under install-system-setup-questionnairre-details).
+    // Without them the request fails and the grid stays at its first page.
+    // Use the model's URL, swap in our page size; hand-build only as a
+    // last resort.
+    var base = '';
+    try {
+      var mu = typeof view.model.url === 'function' ? view.model.url.call(view.model) : view.model.url;
+      if (mu) {
+        base = String(mu).replace(/([?&])(rows_per_page|page)=[^&]*/g, '$1').replace(/[?&]+$/, '').replace(/([?&])&+/g, '$1');
+      }
+    } catch (e) { /* hand-built below */ }
+    if (!base) base = Knack.api_url + '/v1/pages/' + scene + '/views/' + viewId + '/records';
+    base += (base.indexOf('?') === -1 ? '?' : '&') + 'rows_per_page=' + LIMIT_VALUE;
+    if (!/[?&]format=/.test(base)) base += '&format=both';
+    console.info('[scw-record-limit] ' + viewId + ': ' + loaded + ' of ' + total + ' loaded — force-loading all records');
     var all = [], page = 1, MAX_PAGES = 10;
     function done() { _forcing[viewId] = false; }
     function next() {
@@ -266,7 +281,10 @@
           done();
           // The user may have navigated away while this was in flight.
           if (!document.getElementById(viewId) || Knack.views[viewId] !== view) return;
-          if (all.length <= data.models.length) return;   // nothing gained
+          if (all.length <= data.models.length) {
+            console.warn('[scw-record-limit] ' + viewId + ': full load returned ' + all.length + ' records, no gain over ' + data.models.length + ' — ' + base);
+            return;
+          }
           try {
             data.reset(all, { silent: true });
             data.total_records = resp && resp.total_records != null ? resp.total_records : all.length;
@@ -280,7 +298,8 @@
         },
         error: function (xhr) {
           done();
-          console.warn('[scw-record-limit] full load of ' + viewId + ' failed (page ' + page + ')', xhr && xhr.status);
+          console.warn('[scw-record-limit] full load of ' + viewId + ' failed (page ' + page + ', HTTP ' + (xhr && xhr.status) + ') — ' + base + '&page=' + page,
+            xhr && xhr.responseText ? String(xhr.responseText).slice(0, 200) : '');
         }
       });
     }
