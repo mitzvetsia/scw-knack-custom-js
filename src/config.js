@@ -664,7 +664,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
 // DOM. Bump the stamp when shipping something you need to verify live.
 (function () {
   'use strict';
-  window.SCW.BUILD = '2026-10-05 record-limit prefilter-data v4';
+  window.SCW.BUILD = '2026-10-05 record-limit address per_page v5';
   try {
     var src = (document.currentScript && document.currentScript.src) || '';
     if (!src) {

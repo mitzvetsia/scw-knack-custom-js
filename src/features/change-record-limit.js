@@ -106,59 +106,6 @@
     document.head.appendChild(s);
   })();
 
-  // Request-level limit push — the pre-fetch stamp below can't reach the
-  // FIRST view a scene fetches (its request is already in flight when the
-  // first knack-view-render fires), and Knack resets rows_per_page on some
-  // scene re-renders. So rewrite the page size on the wire: every GET of a
-  // listed view's records asks for 1000 rows whatever the model says.
-  // Backbone.sync goes through $.ajax, so the prefilter sees Knack's own
-  // fetches. Only `/views/<key>/records` list GETs are touched — a record
-  // PUT/DELETE (`/records/<id>`) never matches.
-  const LIMIT_SET = {};
-  VIEW_IDS.forEach((k) => { LIMIT_SET[k] = true; });
-  const RECORDS_RE = /\/views\/(view_\d+)\/records(?:[?#]|$)/;
-  var _rewroteLogged = {};
-  if (typeof $ !== 'undefined' && $.ajaxPrefilter) {
-    $.ajaxPrefilter(function (options) {
-      try {
-        if (options.type && String(options.type).toUpperCase() !== 'GET') return;
-        var url = options.url || '';
-        var m = RECORDS_RE.exec(url);
-        if (!m || !LIMIT_SET[m[1]]) return;
-        // Knack passes the page size as request DATA (Backbone fetch →
-        // {page, rows_per_page, …}). jQuery serializes data to a string
-        // BEFORE prefilters run but appends it to a GET's URL AFTER — so a
-        // rewrite of the URL alone left Knack's own rows_per_page=100 tacked
-        // on the end, and the server took the last value (view_4031 stuck at
-        // 100 of 139 on every load and refetch). Rewrite wherever it lives.
-        var PARAM_RE = /(^|[?&])rows_per_page=\d+/;
-        var inData = typeof options.data === 'string' && PARAM_RE.test(options.data);
-        var inUrl = PARAM_RE.test(url);
-        if (inData) options.data = options.data.replace(/(^|&)rows_per_page=\d+/g, '$1rows_per_page=' + LIMIT_VALUE);
-        if (inUrl) options.url = url.replace(/([?&])rows_per_page=\d+/g, '$1rows_per_page=' + LIMIT_VALUE);
-        if (!inData && !inUrl) {
-          if (typeof options.data === 'string' && options.data) options.data += '&rows_per_page=' + LIMIT_VALUE;
-          else options.url = url + (url.indexOf('?') === -1 ? '?' : '&') + 'rows_per_page=' + LIMIT_VALUE;
-        }
-        // A pagination request for a later page would now overlap page 1 —
-        // the full set is on page 1, so always ask for it.
-        if (typeof options.data === 'string') options.data = options.data.replace(/(^|&)page=\d+/g, '$1page=1');
-        options.url = options.url.replace(/([?&])page=\d+/g, '$1page=1');
-        if (!_rewroteLogged[m[1]]) {
-          _rewroteLogged[m[1]] = true;
-          console.info('[scw-record-limit] ' + m[1] + ': request rewritten to ' + LIMIT_VALUE + ' per page');
-        }
-        // Keep the model's idea of the page size in step.
-        var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[m[1]] : null;
-        var mv = v && v.model && v.model.view;
-        if (mv) {
-          mv.rows_per_page = LIMIT_NUM;
-          if (mv.source) mv.source.limit = LIMIT_NUM;
-        }
-      } catch (e) { /* never break a request */ }
-    });
-  }
-
   // Pre-fetch limit push — on ANY view render, sweep every listed view and
   // stamp rows_per_page=1000 on models that haven't fetched yet. Knack
   // renders a scene's views serially, so by the time the FIRST view fires
@@ -253,35 +200,54 @@
     return m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
   }
 
-  // Same proven pattern as bid-review-v2's truncation repair and
-  // proposal-grid-v2's ensureFullPage: stamp 1000 on the model and let
-  // KNACK refetch. Knack builds the request (incl. the parent-record
-  // crumbs a child-page grid is filtered by), re-renders the grid and
-  // fires knack-view-render, so every consumer rebuilds from the full
-  // model. The ajax prefilter above rewrites rows_per_page=1000 on that
-  // request even if Knack's own URL builder ignores the model value.
-  // Bounded per view instance so a >1000-record grid can't loop.
-  var FETCH_TRIES_MAX = 2;
-  var _tries = {};
+  // Grids WITHOUT the per-page dropdown. Every grid that reliably loads
+  // 1000 in this app does it through Knack's per-page dropdown (Strategy 1
+  // above, bid-review/init.js ensureFullPage) — and what that dropdown
+  // actually changes is a parameter in the page address:
+  // `view_XXXX_per_page=1000` (connected-records.js strips exactly that
+  // from hashes). Knack's paging state lives in the address, not the
+  // model: stamping model.view.rows_per_page + model.fetch() was ignored
+  // (view_4031 stayed 100 of 139 on every refetch), and Knack's requests
+  // don't pass through the page's jQuery, so a prefilter never saw them.
+  // So do what the dropdown does: put view_XXXX_per_page=1000 (page 1) in
+  // the address and let Knack route + load it. location.replace keeps the
+  // Back button clean. Once per view per address — if Knack still comes
+  // back short with the parameter in place, say so and stop.
   function forceFullLoad(viewId) {
     if (typeof Knack === 'undefined' || !Knack.views) return;
     var view = Knack.views[viewId];
     var data = view && view.model && view.model.data;
-    if (!data || !data.models || typeof view.model.fetch !== 'function') return;
+    if (!data || !data.models) return;
     var total = totalOf(viewId, data);
     var loaded = data.models.length;
     if (total == null || loaded >= total) return;     // complete (or unknowable)
-    var tries = _tries[viewId] || 0;
-    if (tries >= FETCH_TRIES_MAX) {
-      console.warn('[scw-record-limit] ' + viewId + ': still ' + loaded + ' of ' + total + ' after ' + tries + ' refetches — giving up');
+
+    var hash = window.location.hash || '';
+    var q = hash.indexOf('?');
+    var path = q === -1 ? hash : hash.slice(0, q);
+    var query = q === -1 ? '' : hash.slice(q + 1);
+    var params = query ? query.split('&').filter(Boolean) : [];
+    var perKey = viewId + '_per_page', pageKey = viewId + '_page';
+    var already = params.some(function (kv) { return kv === perKey + '=' + LIMIT_VALUE; });
+    if (already) {
+      console.warn('[scw-record-limit] ' + viewId + ': ' + loaded + ' of ' + total +
+        ' with ' + perKey + '=' + LIMIT_VALUE + ' already in the address — Knack did not load the full set');
       return;
     }
-    _tries[viewId] = tries + 1;
-    var mv = view.model.view;
-    if (mv) { mv.rows_per_page = LIMIT_NUM; if (mv.source) mv.source.limit = LIMIT_NUM; }
-    console.info('[scw-record-limit] ' + viewId + ': ' + loaded + ' of ' + total + ' loaded — refetching at ' + LIMIT_VALUE + ' (try ' + (tries + 1) + ')');
-    try { view.model.fetch(); }
-    catch (e) { console.warn('[scw-record-limit] ' + viewId + ' refetch threw', e); }
+    params = params.filter(function (kv) {
+      var k = kv.split('=')[0];
+      return k !== perKey && k !== pageKey;
+    });
+    params.push(perKey + '=' + LIMIT_VALUE, pageKey + '=1');
+    var next = path + '?' + params.join('&');
+    console.info('[scw-record-limit] ' + viewId + ': ' + loaded + ' of ' + total +
+      ' loaded — setting ' + perKey + '=' + LIMIT_VALUE + ' in the address (what the per-page dropdown does)');
+    try {
+      var href = window.location.href.split('#')[0] + next;
+      window.location.replace(href);
+    } catch (e) {
+      window.location.hash = next;
+    }
   }
 })();
 

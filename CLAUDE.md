@@ -524,9 +524,12 @@ scene_1155: bid-review-v2 panel + hero). Caps: 6s from first render, 3s after th
 render event, 10s event-independent watchdog that force-reveals and logs the missing markers.
 Add a scene by adding a `SCENES` entry — pick markers that exist on EVERY record of that
 scene or the page waits for the cap. scene_1116 keeps its original veil in `scene-tweaks.js`.
-`change-record-limit.js` now rewrites `rows_per_page` on the wire (`$.ajaxPrefilter`) for its
-listed views, so the first fetch is already the full page and the old "load at 25, refetch at
-1000" double render is gone; the per-view handler skips the refetch when loaded ≥ server total.
+`change-record-limit.js` forces its listed grids to 1000 rows the way Knack's own per-page
+dropdown does: set the dropdown when the grid has one; otherwise, when a grid holds fewer records
+than its total, put `view_XXXX_per_page=1000&view_XXXX_page=1` in the page address (Knack keeps
+paging state in the address — stamping `model.view.rows_per_page` + `model.fetch()` is ignored,
+and Knack's requests bypass the page's jQuery, so an `$.ajaxPrefilter` never sees them; both were
+tried and proven dead on view_4031 2026-10-05). Once per address; a still-short grid warns.
 Tests: `tests/scene-veil/`.
 
 ## Project Number badge (HubSpot deal id) — `src/features/project-id-badge.js`
