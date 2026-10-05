@@ -61,20 +61,31 @@
   var SUPERSEDED_PREFIX = 'Superseded · ';
   var SUPERSEDED_RE = /^\s*superseded\b\s*[·:\-–]?\s*/i;
   // DOC_files columns on the docs views.
-  var DOC_F = { type: 'field_2877', file: 'field_68', notes: 'field_588' };
+  var DOC_F = { type: 'field_2877', file: 'field_68', notes: 'field_588',
+                completed: 'field_2895',    // FLAG_completed — Closeout sets Yes on a completed upload
+                closeout:  'field_2885' };  // REL_install closeout — a completed upload hangs off one
   // The documents generated at setup, in display order, matched on the
-  // CONFIG_file type name AND the file note together (live: the generator
-  // types a blank as "Location Approval Form" and writes "Location Approval
-  // Form (not completed)" into the note; a run that missed the type still
-  // carries the note). The approval forms match ONLY their blank
-  // "(not completed)" incarnation — the completed upload has the same type
-  // and no such note, and belongs to Closeout.
+  // CONFIG_file type name or the file note (a run that missed the type still
+  // carries a note naming the form). The approval forms share their type
+  // with the COMPLETED upload the sub brings back under Closeout — that copy
+  // is told apart by the record itself (FLAG_completed = Yes, or linked to
+  // an install closeout), never by note text: the generator stopped writing
+  // "(not completed)" into the note (seen 2026-10-05 — typed blanks with an
+  // empty note read "Not generated" on the sub dashboard).
   var SETUP_DOCS = [
-    { match: /scope of work/i,                                 label: 'Scope of Work PDF' },
-    { match: /location approval[\s\S]*not completed/i,         label: 'Location Approval Form (blank)' },
-    { match: /view approval[\s\S]*not completed/i,              label: 'View Approval Form (blank)' },
-    { match: /kickoff/i,                                       label: 'Kickoff Deck' }
+    { match: /scope of work/i,       label: 'Scope of Work PDF' },
+    { match: /location approval/i,   label: 'Location Approval Form (blank)' },
+    { match: /view approval/i,       label: 'View Approval Form (blank)' },
+    { match: /kickoff/i,             label: 'Kickoff Deck' }
   ];
+  function isCompletedUpload(rec) {
+    var c = rec[DOC_F.completed + '_raw'];
+    if (c === true || c === 'Yes' || c === 'yes') return true;
+    if (c === undefined && /^yes$/i.test(plainText(rec[DOC_F.completed]))) return true;
+    var co = rec[DOC_F.closeout + '_raw'];
+    if (Array.isArray(co) ? co.length > 0 : !!(co && co.id)) return true;
+    return false;
+  }
 
   var NAV_ID    = 'scw-deploy-nav';
   var STRIP_ID  = 'scw-deploy-co-strip';
@@ -1187,6 +1198,7 @@
         var kind = null;
         for (var k = 0; k < SETUP_DOCS.length; k++) if (SETUP_DOCS[k].match.test(text)) { kind = SETUP_DOCS[k]; break; }
         if (!kind) continue;
+        if (isCompletedUpload(rec)) continue;   // the sub's completed copy — Closeout's business
         var fileRaw = rec[DOC_F.file + '_raw'];
         var url = fileRaw && typeof fileRaw === 'object' ? (fileRaw.url || '') : '';
         var name = fileRaw && typeof fileRaw === 'object' ? (fileRaw.filename || '') : '';
@@ -1342,10 +1354,16 @@
     if (!docsEditable(cfg)) return;
     var docs = setupDocs(cfg), byId = {};
     for (var i = 0; i < docs.length; i++) byId[docs[i].id] = docs[i];
+    // A generated blank usually carries no note, so superseding one names
+    // the document after the prefix ("Superseded · Location Approval Form
+    // (blank)") instead of leaving a bare mark; Restore recognizes that
+    // stand-in and clears the note again.
     function markNote(doc, on) {
       var base = doc ? doc.note : '';
+      var label = doc ? doc.type : '';
       var f = {};
-      f[DOC_F.notes] = on ? (SUPERSEDED_PREFIX + base).replace(/\s+$/, '') : base;
+      if (on) f[DOC_F.notes] = SUPERSEDED_PREFIX + (base || label);
+      else f[DOC_F.notes] = (base === label) ? '' : base;
       return f;
     }
     var id = btn.getAttribute('data-scw-doc-id');

@@ -95,16 +95,16 @@ setTimeout(() => {
     [true, false, 'scw-deploy-home']);
   check('drawer head names the stage + renamed section', [drawer.querySelector('.scw-deploy-drawer__eyebrow').textContent, drawer.querySelector('.scw-deploy-drawer__title').textContent], ['1 · Paperwork & billing', 'Agreements & Invoices']);
   // Setup tile → drawer leads with the generated documents from the DOC model.
-  // Other Files holds the BLANK generated forms ("(not completed)"); the
-  // closeout save grid holds completed uploads (must NOT show here) + the deck.
+  // Other Files holds the BLANK generated forms; the closeout save grid holds
+  // completed uploads (FLAG_completed / closeout link — must NOT show here) + the deck.
   window.Knack.views.view_3942 = { model: { data: { models: [
     { attributes: { id: 'o1', field_2877_raw: [{ id: 't1', identifier: 'Scope of Work PDF' }], field_68_raw: { url: 'https://s3/sow.pdf', filename: 'sow_form.pdf' } } },
-    // Live shape: the generator types a blank "Location Approval Form" and writes "(not completed)" into the NOTE.
-    { attributes: { id: 'o2', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form' }], field_588: 'Location Approval Form (not completed)', field_68_raw: { url: 'https://s3/loc_blank.pdf', filename: 'location_approval.pdf' } } },
+    // Live shape (2026-10): the generator types a blank "Location Approval Form" and writes NO note.
+    { attributes: { id: 'o2', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form' }], field_588: '', field_68_raw: { url: 'https://s3/loc_blank.pdf', filename: 'location_approval.pdf' } } },
     // A run that missed the type still carries the note: it is a blank too.
     { attributes: { id: 'o3', field_2877_raw: [], field_588: 'View Approval Form (not completed)', field_68_raw: { url: 'https://s3/view_blank.pdf', filename: 'view_approval.pdf' } } },
-    // Same type, no "(not completed)" note: a completed upload, not a blank.
-    { attributes: { id: 'o4', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form' }], field_588: 'signed on site', field_68_raw: { url: 'https://s3/loc_done.pdf', filename: 'loc_done.pdf' } } },
+    // Same type, FLAG_completed = Yes: the sub's completed upload, not a blank.
+    { attributes: { id: 'o4', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form' }], field_588: 'signed on site', field_2895_raw: true, field_2895: 'Yes', field_68_raw: { url: 'https://s3/loc_done.pdf', filename: 'loc_done.pdf' } } },
     // A re-issued Location Approval blank (newer date in the file name): the newest is the one to print, o2 is an older copy.
     { attributes: { id: 'o5', field_2877_raw: [{ id: 't2', identifier: 'Location Approval Form' }], field_588: 'Location Approval Form (not completed)', field_68_raw: { url: 'https://s3/loc_blank2.pdf', filename: 'location_approval_20260921.pdf' } } },
     // A blank a PM already superseded: its note carries the prefix; it sits in the fold, not the list.
@@ -116,7 +116,8 @@ setTimeout(() => {
   window.SCW.knackAjax = o => { docCalls.push({ url: o.url, type: o.type, data: o.data ? JSON.parse(o.data) : null }); o.success({}); };
   window.confirm = m => { confirmMsg = m; return true; }; global.confirm = window.confirm;
   window.Knack.views.view_3941 = { model: { data: { models: [
-    { attributes: { id: 'd2', field_2877_raw: [{ id: 't5', identifier: 'Location Approval Form' }], field_68_raw: { url: 'https://s3/loc_completed.pdf', filename: 'loc_completed.pdf' }, field_2879: 'Pass' } },
+    // Completed upload linked to an install closeout (no completed flag column on this grid) — Closeout's, not Setup's.
+    { attributes: { id: 'd2', field_2877_raw: [{ id: 't5', identifier: 'Location Approval Form' }], field_68_raw: { url: 'https://s3/loc_completed.pdf', filename: 'loc_completed.pdf' }, field_2879: 'Pass', field_2885_raw: [{ id: 'co1', identifier: 'Closeout 1' }] } },
     { attributes: { id: 'd4', field_2877_raw: [{ id: 't4', identifier: 'Project Kickoff Deck' }], field_68_raw: { url: 'https://s3/deck.pdf', filename: 'deck.pdf' } } }
   ] } } };
   document.querySelector('[data-scw-tile="setup"] [data-scw-tile-open]').click();
@@ -132,14 +133,14 @@ setTimeout(() => {
   pre.querySelector('.scw-deploy-docs__old-toggle').click();
   check('the fold opens', [pre.querySelector('.scw-deploy-docs__old').classList.contains('is-open'), pre.querySelector('.scw-deploy-docs__old-toggle').textContent], [true, '1 superseded · hide']);
   pre.querySelector('[data-scw-doc-act="supersede"][data-scw-doc-id="o2"]').click();
-  check('Supersede writes the prefixed note through the DOC save view', docCalls[0], { url: '/view_3941/o2', type: 'PUT', data: { field_588: 'Superseded · Location Approval Form (not completed)' } });
+  check('Supersede writes the prefixed note through the DOC save view', docCalls[0], { url: '/view_3941/o2', type: 'PUT', data: { field_588: 'Superseded · Location Approval Form (blank)' } });
   pre.querySelector('[data-scw-doc-act="restore"][data-scw-doc-id="o6"]').click();
   check('Restore strips the prefix', docCalls[1], { url: '/view_3941/o6', type: 'PUT', data: { field_588: 'View Approval Form (not completed)' } });
   pre.querySelector('[data-scw-doc-act="delete"][data-scw-doc-id="o5"]').click();
   check('Delete asks (naming the file, pointing at Supersede as the soft option) then DELETEs through the save view and drops the row',
     [/location_approval_20260921\.pdf/.test(confirmMsg) && /Supersede keeps the file/.test(confirmMsg), docCalls[2], !!pre.querySelector('[data-scw-doc-row="o5"]')], [true, { url: '/view_3941/o5', type: 'DELETE', data: null }, false]);
   pre.querySelector('[data-scw-doc-act="keep-newest"]').click();
-  check('Keep newest of each supersedes every older copy (one confirm, one PUT per doc)', [/1 older copy/.test(confirmMsg), docCalls.slice(3).map(c => c.url + ' ' + c.data.field_588)], [true, ['/view_3941/o2 Superseded · Location Approval Form (not completed)']]);
+  check('Keep newest of each supersedes every older copy (one confirm, one PUT per doc)', [/1 older copy/.test(confirmMsg), docCalls.slice(3).map(c => c.url + ' ' + c.data.field_588)], [true, ['/view_3941/o2 Superseded · Location Approval Form (blank)']]);
   delete window.SCW.knackAjax; delete window.SCW.knackRecordUrl;
   check('the questionnaire section follows the documents', pre && pre.nextElementSibling && pre.nextElementSibling.classList.contains('scw-ktl-accordion'), true);
   // Switch to the Other Files chip while open → previous section goes home.
