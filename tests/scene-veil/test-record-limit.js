@@ -115,6 +115,16 @@ Knack.views.view_4075 = { model: { view: { rows_per_page: 25 }, data: Object.ass
 wrap([document]).trigger('knack-view-render.view_4075');
 check('total read from the entries summary when the collection has none → force-load runs', gets.length > 0, true);
 
+// No model URL → hand-built address carries the scene's parent-record crumbs.
+gets.length = 0;
+document.body.innerHTML = '<div id="kn-scene_1347"><form><input class="crumb" type="hidden" name="deploy_id" value="P1">' +
+  '<input class="crumb" type="hidden" name="install-system-setup-questionnairre-details_id" value="Q1"></form>' +
+  '<div id="view_4084"><div class="kn-entries-summary">Showing 1-100 of 139</div></div></div>';
+Knack.views.view_4084 = { model: { view: { rows_per_page: 100 }, data: collection(100, 139) } };
+wrap([document]).trigger('knack-view-render.view_4084');
+check('no model URL → hand-built address includes the crumbs from the scene\'s forms',
+  gets[0], 'https://api.knack.com/v1/pages/scene_1347/views/view_4084/records?deploy_id=P1&install-system-setup-questionnairre-details_id=Q1&rows_per_page=1000&format=both&page=1');
+
 // Complete grid with no dropdown → nothing fetched.
 gets.length = 0;
 document.body.innerHTML = '<div id="view_3573"></div>';

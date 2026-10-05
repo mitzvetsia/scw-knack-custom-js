@@ -262,7 +262,21 @@
         base = String(mu).replace(/([?&])(rows_per_page|page)=[^&]*/g, '$1').replace(/[?&]+$/, '').replace(/([?&])&+/g, '$1');
       }
     } catch (e) { /* hand-built below */ }
-    if (!base) base = Knack.api_url + '/v1/pages/' + scene + '/views/' + viewId + '/records';
+    if (!base) {
+      // Hand-built: add the parent-record crumbs Knack's own forms on this
+      // scene submit (hidden input.crumb, e.g. deploy_id /
+      // install-system-setup-questionnairre-details_id).
+      base = Knack.api_url + '/v1/pages/' + scene + '/views/' + viewId + '/records';
+      var crumbs = [], seenCrumb = {};
+      var crumbEls = document.querySelectorAll('#kn-' + scene + ' input.crumb[name]');
+      for (var ci = 0; ci < crumbEls.length; ci++) {
+        var cn = crumbEls[ci].getAttribute('name'), cv = crumbEls[ci].value;
+        if (!cn || !cv || seenCrumb[cn]) continue;
+        seenCrumb[cn] = true;
+        crumbs.push(encodeURIComponent(cn) + '=' + encodeURIComponent(cv));
+      }
+      if (crumbs.length) base += '?' + crumbs.join('&');
+    }
     base += (base.indexOf('?') === -1 ? '?' : '&') + 'rows_per_page=' + LIMIT_VALUE;
     if (!/[?&]format=/.test(base)) base += '&format=both';
     console.info('[scw-record-limit] ' + viewId + ': ' + loaded + ' of ' + total + ' loaded — force-loading all records');
