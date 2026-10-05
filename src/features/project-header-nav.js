@@ -115,7 +115,10 @@
       '#scw-pid-hero .scw-pid-adopt .scw-bsh-top { padding: 0; margin: 0; border: 0; }',
       '.scw-bsh-card.scw-bsh-card--hollow { display: none !important; }',
       // Standalone card (scenes without the hero).
-      '#' + CARD_ID + ' { background: #fff; border: 1px solid #dbe4ee; border-radius: 12px; overflow: hidden; margin: 0 0 16px; }',
+      // Standalone card (scenes without the Project # hero, e.g. the dashboard):
+      // same rule as the hero — no overflow clip, or the More panel is swallowed.
+      '#' + CARD_ID + ' { background: #fff; border: 1px solid #dbe4ee; border-radius: 12px; overflow: visible; margin: 0 0 16px; }',
+      '#' + CARD_ID + ' > #' + STRIP_ID + ' { border-radius: 12px; }',
       // ── The strip ──
       '#' + STRIP_ID + ' { display: flex; align-items: stretch; flex-wrap: wrap; padding: 0 12px; min-height: 46px;',
       '  font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }',
