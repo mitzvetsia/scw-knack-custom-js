@@ -22,7 +22,12 @@ window.$ = jq; global.$ = jq;
 let user = { id: 'u1', email: 'Rep.Person@getscw.com' };
 window.Knack = { getUserAttributes: () => user }; global.Knack = window.Knack;
 let overlayHides = 0;
-window.SCW = { totalsRefresh: { hide() { overlayHides++; } } }; global.SCW = window.SCW;
+// SCW.onViewRender is the bundle's binder with catch-up replay for views that rendered before the
+// bundle loaded; the gate must register through it (a raw $(document).on misses the first render).
+const registered = [];
+window.SCW = { totalsRefresh: { hide() { overlayHides++; } },
+  onViewRender(viewId, fn, ns) { registered.push(viewId + ns); (handlers['knack-view-render.' + viewId] = handlers['knack-view-render.' + viewId] || []).push(fn); } };
+global.SCW = window.SCW;
 console.info = () => {};
 
 new Function('window', 'document', '$', 'Knack', 'SCW',
@@ -49,6 +54,8 @@ function knackSubmits(viewId) {   // stands in for Knack's own bubble-phase hand
   form.querySelector('button[type="submit"]').addEventListener('click', () => { n.click++; });
   return n;
 }
+
+check('binds through SCW.onViewRender (catch-up replay), not a raw jQuery handler', registered, ['view_3492.scwPricingGate', 'view_3490.scwPricingGate']);
 
 // ── Restricted user ──
 document.body.innerHTML = FORMS;

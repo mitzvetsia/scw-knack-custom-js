@@ -455,6 +455,20 @@
       flashInputs(formCfg.viewId);
       formCfg._flashOnRender = true;
 
+      // Knack's "show a message" submit rule hides the form and shows the
+      // confirmation (which this panel's CSS hides) — the box simply
+      // vanishes until Knack's own "Reload form" link is clicked. Click it
+      // for the user so the field is ready for the next value; the reload
+      // re-renders the view (knack-view-render → panel + gates rebind).
+      var reloadVid = formCfg.viewId;
+      setTimeout(function () {
+        var v = document.getElementById(reloadVid);
+        var form = v && v.querySelector('form');
+        var reload = v && v.querySelector('.kn-form-reload');
+        var hidden = form && (form.style.display === 'none' || form.offsetParent === null);
+        if (reload && (hidden || !form)) reload.click();
+      }, 400);
+
       // Re-format after Knack re-renders with raw values
       var vid = formCfg.viewId;
       var fCfg = formCfg.fields;

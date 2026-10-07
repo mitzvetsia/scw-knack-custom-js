@@ -164,8 +164,14 @@
     log(viewId + ' capped at ' + cfg.max + ' for ' + (userEmail() || '(no user)'));
   }
 
+  // SCW.onViewRender replays for a view that rendered BEFORE the bundle
+  // finished loading (the bundle downloads in parallel with Knack's first
+  // paint — a raw $(document).on() misses that first render and the form
+  // stays ungated until something re-renders it).
   Object.keys(CONFIG.FORMS).forEach(function (viewId) {
-    $(document).off('knack-view-render.' + viewId + NS).on('knack-view-render.' + viewId + NS, function () { bind(viewId); });
+    var handler = function () { bind(viewId); };
+    if (window.SCW && typeof SCW.onViewRender === 'function') SCW.onViewRender(viewId, handler, NS);
+    else $(document).off('knack-view-render.' + viewId + NS).on('knack-view-render.' + viewId + NS, handler);
   });
 
   window.SCW = window.SCW || {};

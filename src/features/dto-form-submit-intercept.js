@@ -282,8 +282,12 @@
     log(viewId + ' submit intercepted (bucket-visible fields only)');
   }
 
+  // SCW.onViewRender replays for a view that rendered before the bundle
+  // finished loading; a raw $(document).on() would miss that first render.
   CONFIG.VIEWS.forEach(function (viewId) {
-    $(document).off('knack-view-render.' + viewId + NS).on('knack-view-render.' + viewId + NS, function () { bind(viewId); });
+    var handler = function () { bind(viewId); };
+    if (window.SCW && typeof SCW.onViewRender === 'function') SCW.onViewRender(viewId, handler, NS);
+    else $(document).off('knack-view-render.' + viewId + NS).on('knack-view-render.' + viewId + NS, handler);
   });
 
   window.SCW = window.SCW || {};
