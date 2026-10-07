@@ -63,15 +63,18 @@ render('view_3921');
 check('complete grid with a dropdown → dropdown set to 1000, no requests', [document.querySelector('#view_3921 select').value, requests.length], ['1000', 0]);
 
 // ── No dropdown, 100 of 142 (the questionnaire): pages 2..N are fetched on the grid's own address.
-document.body.innerHTML = '<div id="view_4031"><div class="kn-entries-summary">Showing 1-100 of 142</div>' +
-  '<select name="page_select" class="kn-page-select"><option>Page 1</option><option>Page 2</option></select></div>';
+document.body.innerHTML = '<div id="kn-scene_1347">' +
+  '<div id="view_4025"><form><input class="crumb" type="hidden" name="install-system-setup-questionnairre-details_id" value="6ac660637ca88d28d9113e82"></form></div>' +
+  '<div id="view_4031"><div class="kn-entries-summary">Showing 1-100 of 142</div>' +
+  '<select name="page_select" class="kn-page-select"><option>Page 1</option><option>Page 2</option></select></div></div>';
 for (let i = 100; i < 142; i++) (pages[2] = pages[2] || []).push(rec(i));
-const MODEL_URL = 'https://api.knack.com/v1/scenes/scene_1347/views/view_4031/records?format=both&page=1&rows_per_page=100&install-system-setup-questionnairre-details_id=Q1';
+// Knack's model URL is bare — the parent crumb is added as request data at send time (seen live).
+const MODEL_URL = 'https://api.knack.com/v1/scenes/scene_1347/views/view_4031/records?format=both';
 Knack.views.view_4031 = { model: { view: { rows_per_page: 100 }, url() { return MODEL_URL; }, data: collection(100, 142) } };
 fired.length = 0;
 render('view_4031');
-check('100 of 142, no dropdown → page 2 requested at Knack\'s page size on the model\'s own address (crumb kept)',
-  requests, ['https://api.knack.com/v1/scenes/scene_1347/views/view_4031/records?format=both&install-system-setup-questionnairre-details_id=Q1&rows_per_page=100&page=2']);
+check('100 of 142, no dropdown → page 2 requested at Knack\'s page size on the model\'s own address + the scene\'s parent crumb',
+  requests, ['https://api.knack.com/v1/scenes/scene_1347/views/view_4031/records?format=both&install-system-setup-questionnairre-details_id=6ac660637ca88d28d9113e82&rows_per_page=100&page=2']);
 check('the 42 page-2 records join the model and the grid\'s render is re-fired for the consumers',
   [Knack.views.view_4031.model.data.models.length, fired.filter(f => f === 'knack-view-render.view_4031').length], [142, 2]);
 check('the address is never touched', window.location.hash, START);
@@ -80,19 +83,28 @@ check('the address is never touched', window.location.hash, START);
 render('view_4031');
 check('complete after paging → no further requests', requests.length, 1);
 
+// ── No form on the scene → the crumb is read from the address (slug / 24-hex id pairs).
+window.location.hash = '#project-questionnaire/install-system-setup-questionnairre-details/6ac660637ca88d28d9113e82/';
+document.body.innerHTML = '<div id="kn-scene_1347"><div id="view_4031"><div class="kn-entries-summary">Showing 1-100 of 142</div></div></div>';
+Knack.views.view_4031 = { model: { view: { rows_per_page: 100 }, url() { return MODEL_URL; }, data: collection(100, 142) } };
+render('view_4031');
+check('no form on the scene → crumb parsed from the address',
+  requests[requests.length - 1], 'https://api.knack.com/v1/scenes/scene_1347/views/view_4031/records?format=both&install-system-setup-questionnairre-details_id=6ac660637ca88d28d9113e82&rows_per_page=100&page=2');
+window.location.hash = START;
+
 // ── A grid whose extra pages come back empty: one warning, one attempt per view instance.
 delete pages[2];
 document.body.innerHTML = '<div id="view_4075"><div class="kn-entries-summary">Showing 1-25 of 60</div></div>';
 Knack.views.view_4075 = { model: { view: { rows_per_page: 25 }, url() { return 'https://api.knack.com/v1/scenes/scene_1347/views/view_4075/records?format=both'; }, data: Object.assign(collection(25, undefined), { total_records: undefined }) } };
 render('view_4075'); render('view_4075');
 check('total read from "Showing … of N"; nothing new → one warning, one attempt',
-  [requests.length, warns.filter(w => /view_4075: paging returned nothing new/.test(w)).length], [2, 1]);
+  [requests.length, warns.filter(w => /view_4075: paging returned nothing new/.test(w)).length], [3, 1]);
 
 // ── Complete grid with no dropdown → untouched.
 document.body.innerHTML = '<div id="view_3573"></div>';
 Knack.views.view_3573 = { model: { view: { rows_per_page: 25 }, data: collection(60, 60) } };
 render('view_3573');
-check('complete grid → no requests', requests.length, 2);
+check('complete grid → no requests', requests.length, 3);
 
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

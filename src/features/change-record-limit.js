@@ -215,6 +215,33 @@
   // The native table underneath keeps Knack's first page; every listed grid
   // is a data source the bundle renders from. Once per view instance.
   var _paging = {};
+  /** The parent-record crumbs a child-page grid is filtered by. Knack does
+   *  NOT put them in model.url() — it adds `<parent-slug>_id=<id>` as request
+   *  data at send time (seen 2026-10-07: the model URL was bare
+   *  `…/records?format=both` and page 2 without the crumb came back EMPTY).
+   *  Every form on the scene carries them as hidden `input.crumb`s with the
+   *  exact names Knack sends; the page address (slug/id pairs) is the
+   *  fallback when the scene has no form. */
+  function sceneCrumbs(scene) {
+    var out = [], seen = {};
+    var sceneEl = document.getElementById('kn-' + scene);
+    var inputs = (sceneEl || document).querySelectorAll('input.crumb[name]');
+    for (var i = 0; i < inputs.length; i++) {
+      var n = inputs[i].getAttribute('name'), v = inputs[i].value;
+      if (!n || !v || seen[n]) continue;
+      seen[n] = true;
+      out.push({ name: n, value: v });
+    }
+    if (out.length) return out;
+    var parts = (window.location.hash || '').split('?')[0].replace(/^#\/?/, '').split('/').filter(Boolean);
+    for (var j = 1; j < parts.length; j++) {
+      if (/^[a-f0-9]{24}$/i.test(parts[j]) && !/^[a-f0-9]{24}$/i.test(parts[j - 1])) {
+        var name = parts[j - 1] + '_id';
+        if (!seen[name]) { seen[name] = true; out.push({ name: name, value: parts[j] }); }
+      }
+    }
+    return out;
+  }
   function recordsUrl(view, viewId, scene) {
     var base = '';
     try {
@@ -224,6 +251,11 @@
     if (!base) base = Knack.api_url + '/v1/scenes/' + scene + '/views/' + viewId + '/records?format=both';
     base = base.replace(/([?&])(rows_per_page|page)=[^&]*/g, '$1').replace(/[?&]+$/, '').replace(/([?&])&+/g, '$1');
     if (!/[?&]format=/.test(base)) base += (base.indexOf('?') === -1 ? '?' : '&') + 'format=both';
+    var crumbs = sceneCrumbs(scene);
+    for (var c = 0; c < crumbs.length; c++) {
+      if (base.indexOf(crumbs[c].name + '=') !== -1) continue;   // Knack already carries it
+      base += '&' + encodeURIComponent(crumbs[c].name) + '=' + encodeURIComponent(crumbs[c].value);
+    }
     return base;
   }
   function forceFullLoad(viewId) {
