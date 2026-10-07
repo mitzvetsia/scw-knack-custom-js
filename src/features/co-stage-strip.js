@@ -709,7 +709,12 @@
       }).then(function (r) {
         setBusy(false);
         var explicitFail = !!(r.data && (r.data.success === false || r.data.error));
-        if (r.ok && !explicitFail) { if (onOk) onOk(r.data); return; }
+        if (r.ok && !explicitFail) {
+          // The webhook already succeeded — a failure in the follow-up
+          // (re-render, polling) is ours to log, not a "Webhook error".
+          if (onOk) { try { onOk(r.data); } catch (eOk) { console.error('[scw-co-stage] after-webhook handler failed:', eOk); } }
+          return;
+        }
         alert((r.data && (r.data.error || r.data.message)) || 'The action failed. Try again.');
       }).catch(function (err) {
         setBusy(false);
@@ -1744,6 +1749,35 @@
       // is not billable, and it renders on its own timers.
       try { if (window.SCW.coValue) SCW.coValue.refresh(); } catch (eCv) { /* optional */ }
       if (!nb) renderPublishedBlock(el, cur);
+    }
+
+    // Published-proposal card (header + name + expiration + PDF chip +
+    // customer link) docked to the RIGHT of the stepper for the
+    // Issued/Signed/Applied stages — the same widget the preview page
+    // shows. Lights up once PUBLISHED_VIEW is configured with a hidden
+    // published-proposals grid on this scene. (Dropped by mistake in the
+    // not-billable work; its call site stayed, so every render threw a
+    // ReferenceError — surfaced as a bogus "Webhook error" alert after
+    // Send back to sub, whose success callback re-renders.)
+    function renderPublishedBlock(el, cur) {
+      if (!IS_OPS || cur < 3) return;
+      var PUB = DEP.PUBLISHED_VIEW || '';
+      if (!PUB || !document.getElementById(PUB)) return;
+      var pq = window.SCW && SCW.publishedQuoteInfo;
+      if (!pq) return;
+      var proposal = pq.read({ sourceView: PUB });
+      if (!proposal) return;
+      var block = pq.buildBlock(proposal, {
+        variant: 'regular',
+        header:  'Published Proposal',
+        customerLink: proposal.tokenUrl
+          ? { url: proposal.tokenUrl, label: 'Customer Link' } : null
+      });
+      if (!block) return;
+      var side = document.createElement('div');
+      side.className = 'scw-co-stage-side';
+      side.appendChild(block);
+      el.appendChild(side);
     }
 
     // Basis tag beside the header status pill (co-header-card rebuilds the
