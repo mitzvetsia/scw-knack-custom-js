@@ -200,19 +200,32 @@
     return m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
   }
 
-  // Grids WITHOUT the per-page dropdown. Every grid that reliably loads
-  // 1000 in this app does it through Knack's per-page dropdown (Strategy 1
-  // above, bid-review/init.js ensureFullPage) — and what that dropdown
-  // actually changes is a parameter in the page address:
-  // `view_XXXX_per_page=1000` (connected-records.js strips exactly that
-  // from hashes). Knack's paging state lives in the address, not the
-  // model: stamping model.view.rows_per_page + model.fetch() was ignored
-  // (view_4031 stayed 100 of 139 on every refetch), and Knack's requests
-  // don't pass through the page's jQuery, so a prefilter never saw them.
-  // So do what the dropdown does: put view_XXXX_per_page=1000 (page 1) in
-  // the address and let Knack route + load it. location.replace keeps the
-  // Back button clean. Once per view per address — if Knack still comes
-  // back short with the parameter in place, say so and stop.
+  // Grids WITHOUT the per-page dropdown (view_4031, the customer
+  // questionnaire's install line items). Every lever that asks Knack for a
+  // BIGGER page was tried and failed on this grid (2026-10-05..07):
+  // rows_per_page on the model + model.fetch(), a request prefilter, and
+  // view_XXXX_per_page=1000 in the page address all came back 100 of 142 —
+  // with the dropdown disabled in Builder, Knack serves its configured page
+  // size, period. What it DOES honor is its own paging (the "Page 1 / Page
+  // 2" select). So page through: GET pages 2..N at Knack's own page size on
+  // the grid's OWN request address (the model's URL — it carries the
+  // parent-record crumb a hand-built one lacks), add the records to the
+  // grid's collection, and re-fire the grid's render so every consumer
+  // reading the model (the questionnaire cards) rebuilds with the full set.
+  // The native table underneath keeps Knack's first page; every listed grid
+  // is a data source the bundle renders from. Once per view instance.
+  var _paging = {};
+  function recordsUrl(view, viewId, scene) {
+    var base = '';
+    try {
+      var mu = typeof view.model.url === 'function' ? view.model.url.call(view.model) : view.model.url;
+      if (mu) base = String(mu);
+    } catch (e) { /* hand-built below */ }
+    if (!base) base = Knack.api_url + '/v1/scenes/' + scene + '/views/' + viewId + '/records?format=both';
+    base = base.replace(/([?&])(rows_per_page|page)=[^&]*/g, '$1').replace(/[?&]+$/, '').replace(/([?&])&+/g, '$1');
+    if (!/[?&]format=/.test(base)) base += (base.indexOf('?') === -1 ? '?' : '&') + 'format=both';
+    return base;
+  }
   function forceFullLoad(viewId) {
     if (typeof Knack === 'undefined' || !Knack.views) return;
     var view = Knack.views[viewId];
@@ -221,33 +234,62 @@
     var total = totalOf(viewId, data);
     var loaded = data.models.length;
     if (total == null || loaded >= total) return;     // complete (or unknowable)
+    if (_paging[viewId] === view) return;             // already paged this instance
+    if (!(window.SCW && typeof SCW.knackAjax === 'function')) return;
+    var scene = Knack.router && Knack.router.current_scene_key;
+    if (!scene || !Knack.api_url) return;
+    _paging[viewId] = view;
 
-    var hash = window.location.hash || '';
-    var q = hash.indexOf('?');
-    var path = q === -1 ? hash : hash.slice(0, q);
-    var query = q === -1 ? '' : hash.slice(q + 1);
-    var params = query ? query.split('&').filter(Boolean) : [];
-    var perKey = viewId + '_per_page', pageKey = viewId + '_page';
-    var already = params.some(function (kv) { return kv === perKey + '=' + LIMIT_VALUE; });
-    if (already) {
-      console.warn('[scw-record-limit] ' + viewId + ': ' + loaded + ' of ' + total +
-        ' with ' + perKey + '=' + LIMIT_VALUE + ' already in the address — Knack did not load the full set');
-      return;
+    var pageSize = loaded;                             // what Knack actually served
+    var pages = Math.ceil(total / pageSize);
+    var base = recordsUrl(view, viewId, scene);
+    var have = {};
+    for (var i = 0; i < data.models.length; i++) { var m = data.models[i]; have[(m && (m.id || (m.attributes && m.attributes.id))) || i] = true; }
+    console.info('[scw-record-limit] ' + viewId + ': ' + loaded + ' of ' + total + ' loaded — paging through the rest at Knack\'s page size (' +
+      pageSize + ' per page, pages 2-' + pages + ') on ' + base);
+    var added = [], page = 2;
+    function finish() {
+      if (!added.length) {
+        console.warn('[scw-record-limit] ' + viewId + ': paging returned nothing new (' + data.models.length + ' of ' + total + ')');
+        return;
+      }
+      if (!document.getElementById(viewId) || Knack.views[viewId] !== view) return;   // navigated away
+      try {
+        if (typeof data.add === 'function') data.add(added, { silent: true });
+        else data.models = data.models.concat(added);
+        data.total_records = total;
+        var mv = view.model.view;
+        if (mv) { mv.rows_per_page = LIMIT_NUM; if (mv.source) mv.source.limit = LIMIT_NUM; }
+      } catch (e) { console.warn('[scw-record-limit] could not add the paged records to ' + viewId, e); return; }
+      console.info('[scw-record-limit] ' + viewId + ': now ' + data.models.length + ' of ' + total + ' — re-rendering');
+      // Knack's own render event, so every SCW.onViewRender consumer
+      // re-reads the (now complete) model. The run-once guard keeps this
+      // from looping: the grid is complete, so the next pass returns early.
+      $(document).trigger('knack-view-render.' + viewId, [view]);
     }
-    params = params.filter(function (kv) {
-      var k = kv.split('=')[0];
-      return k !== perKey && k !== pageKey;
-    });
-    params.push(perKey + '=' + LIMIT_VALUE, pageKey + '=1');
-    var next = path + '?' + params.join('&');
-    console.info('[scw-record-limit] ' + viewId + ': ' + loaded + ' of ' + total +
-      ' loaded — setting ' + perKey + '=' + LIMIT_VALUE + ' in the address (what the per-page dropdown does)');
-    try {
-      var href = window.location.href.split('#')[0] + next;
-      window.location.replace(href);
-    } catch (e) {
-      window.location.hash = next;
+    function next() {
+      if (page > pages || page > 50) { finish(); return; }
+      var url = base + '&rows_per_page=' + pageSize + '&page=' + page;
+      SCW.knackAjax({
+        url: url, type: 'GET',
+        success: function (resp) {
+          var recs = (resp && resp.records) || [];
+          var fresh = 0;
+          for (var r = 0; r < recs.length; r++) { if (recs[r] && recs[r].id && !have[recs[r].id]) { have[recs[r].id] = true; added.push(recs[r]); fresh++; } }
+          console.info('[scw-record-limit] ' + viewId + ': page ' + page + ' → ' + recs.length + ' records (' + fresh + ' new)' +
+            (resp && resp.total_pages ? ', server says ' + resp.total_pages + ' pages' : ''));
+          if (resp && resp.total_pages && resp.total_pages < pages) pages = resp.total_pages;
+          if (!recs.length) { finish(); return; }
+          page++; next();
+        },
+        error: function (xhr) {
+          console.warn('[scw-record-limit] ' + viewId + ': page ' + page + ' failed (HTTP ' + (xhr && xhr.status) + ') — ' + url,
+            xhr && xhr.responseText ? String(xhr.responseText).slice(0, 200) : '');
+          finish();
+        }
+      });
     }
+    next();
   }
 })();
 

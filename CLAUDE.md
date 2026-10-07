@@ -524,12 +524,14 @@ scene_1155: bid-review-v2 panel + hero). Caps: 6s from first render, 3s after th
 render event, 10s event-independent watchdog that force-reveals and logs the missing markers.
 Add a scene by adding a `SCENES` entry — pick markers that exist on EVERY record of that
 scene or the page waits for the cap. scene_1116 keeps its original veil in `scene-tweaks.js`.
-`change-record-limit.js` forces its listed grids to 1000 rows the way Knack's own per-page
-dropdown does: set the dropdown when the grid has one; otherwise, when a grid holds fewer records
-than its total, put `view_XXXX_per_page=1000&view_XXXX_page=1` in the page address (Knack keeps
-paging state in the address — stamping `model.view.rows_per_page` + `model.fetch()` is ignored,
-and Knack's requests bypass the page's jQuery, so an `$.ajaxPrefilter` never sees them; both were
-tried and proven dead on view_4031 2026-10-05). Once per address; a still-short grid warns.
+`change-record-limit.js` forces its listed grids to the full record set: set the per-page dropdown
+to 1000 when the grid has one; otherwise (view_4031, the customer questionnaire grid) PAGE THROUGH —
+GET pages 2..N at Knack's own page size on the grid's own request address (`model.url()`, which
+carries the parent-record crumb), `data.add` the records, re-fire `knack-view-render` so the model
+consumers rebuild. Every bigger-page lever is proven dead on a dropdown-less grid (2026-10-05..07):
+`model.view.rows_per_page` + `model.fetch()`, an `$.ajaxPrefilter` (Knack's requests bypass the
+page's jQuery), and `view_XXXX_per_page=1000` in the page address all came back 100 of 142 — with
+the dropdown disabled in Builder, Knack serves its configured page size. Once per view instance.
 Tests: `tests/scene-veil/`.
 
 ## Project Number badge (HubSpot deal id) — `src/features/project-id-badge.js`
