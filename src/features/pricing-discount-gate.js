@@ -27,11 +27,11 @@
       // unit (percent as entered: 15 = 15%).
       view_3492: { mode: 'cap', field: 'field_2276', max: 15,
                    label: 'Global Discount %',
-                   note: 'Global discounts above 15% need ops-management approval — the value was set to 15%. Press Enter to apply.' },
+                   note: 'Discounts above 15% can only be entered by Sales Leadership. Talk to Ben. The value was set to 15% — press Enter to apply.' },
       // Locked read-only for everyone not in ALLOWED_EMAILS.
       view_3490: { mode: 'lock',
                    label: 'Additional Lump Sum Discount',
-                   note: 'Lump sum discounts can only be entered by ops management.' }
+                   note: 'Lump sum discounts can only be entered by Sales Leadership. Talk to Ben.' }
     },
     debug: false
   };
@@ -117,6 +117,10 @@
   function blockSubmit(e) {
     e.preventDefault();
     e.stopImmediatePropagation();
+    // refresh-view-on-form-submit.js already showed its "Refreshing…"
+    // overlay on this click (document-level capture runs before ours) and
+    // would wait for a knack-form-submit that is never coming.
+    try { if (window.SCW && SCW.totalsRefresh) SCW.totalsRefresh.hide(); } catch (err) { /* ignore */ }
   }
 
   function bind(viewId) {

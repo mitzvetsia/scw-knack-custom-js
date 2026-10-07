@@ -21,7 +21,8 @@ function jq() { return jqObj; }
 window.$ = jq; global.$ = jq;
 let user = { id: 'u1', email: 'Rep.Person@getscw.com' };
 window.Knack = { getUserAttributes: () => user }; global.Knack = window.Knack;
-window.SCW = {}; global.SCW = window.SCW;
+let overlayHides = 0;
+window.SCW = { totalsRefresh: { hide() { overlayHides++; } } }; global.SCW = window.SCW;
 console.info = () => {};
 
 new Function('window', 'document', '$', 'Knack', 'SCW',
@@ -61,7 +62,8 @@ check('restricted: 10% passes through to Knack (panel Enter path clicks the butt
 gInput.value = '25'; gBtn.click();
 check('restricted: 25% is clamped to 15, the submit is blocked, amber note shown',
   [gInput.value, gSeen.click, (document.querySelector('#view_3492 .scw-pricing-gate-note') || {}).textContent],
-  ['15', 1, 'Global discounts above 15% need ops-management approval — the value was set to 15%. Press Enter to apply.']);
+  ['15', 1, 'Discounts above 15% can only be entered by Sales Leadership. Talk to Ben. The value was set to 15% — press Enter to apply.']);
+check('restricted: a blocked submit hides the totals "Refreshing…" overlay', overlayHides, 1);
 gBtn.click();
 check('restricted: re-submitting the clamped 15% goes through and clears the note', [gSeen.click, !!document.querySelector('#view_3492 .scw-pricing-gate-note')], [2, false]);
 
@@ -72,7 +74,7 @@ const lView = document.getElementById('view_3490');
 check('restricted: lump sum form locked — readOnly inputs, locked class, note',
   [lView.classList.contains('scw-pricing-gate--locked'), document.getElementById('field_2290').readOnly, document.getElementById('field_2291').readOnly,
    (lView.querySelector('.scw-pricing-gate-note') || {}).textContent],
-  [true, true, true, 'Lump sum discounts can only be entered by ops management.']);
+  [true, true, true, 'Lump sum discounts can only be entered by Sales Leadership. Talk to Ben.']);
 document.getElementById('field_2290').value = '500';
 document.querySelector('#view_3490 button').click();
 document.querySelector('#view_3490 form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
