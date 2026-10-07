@@ -24,12 +24,21 @@
   'use strict';
 
   var CONFIG = {
+    // Every DTO add form a bucket-visibility module hides fields on:
+    //   view_3329 / view_4002  Add to Scope (SOW-line-item-DTO-bucket-field-visibility.js)
+    //   view_3451 / view_3748  Add to Scope, ops + sales pages (…_view_3451.js)
+    //   view_3544 / view_3619 / view_3627  Add survey bid item (bucket-field-visibility_add-survey-bid-item.js)
     // view_4100 (CO add form) is replaced by worksheet-v2/co-add-item-form.js.
-    VIEWS: ['view_3329', 'view_4002'],
+    VIEWS: ['view_3329', 'view_4002', 'view_3451', 'view_3748', 'view_3544', 'view_3619', 'view_3627'],
     BUCKET_FIELD: 'field_2223',
     // Field keys the visibility module manages: hidden unless .scw-visible.
     // Anything else on the form is submitted as-is.
     VISIBLE_CLASS: 'scw-visible',
+    // Sent whether or not the bucket shows them: the bucket itself and the
+    // unified product (set_unified_product_field.js fills it from the
+    // bucket's product picker and parks it off-screen; not every bucket's
+    // rule lists it).
+    ALWAYS_SEND: ['field_2223', 'field_2246'],
     debug: true
   };
   var NS = '.scwDtoIntercept';
@@ -64,9 +73,14 @@
     return m ? m[0] : '';
   }
   function isSent(wrap, key, isManaged) {
-    if (key === CONFIG.BUCKET_FIELD) return true;
+    if (CONFIG.ALWAYS_SEND.indexOf(key) >= 0) return true;
     if (!isManaged) return true;
     return wrap.classList.contains(CONFIG.VISIBLE_CLASS);
+  }
+  function hasValue(v) {
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === 'boolean') return v;
+    return v !== null && v !== undefined && String(v).trim() !== '';
   }
 
   /** Read one input wrapper into the view-API value shape. */
@@ -116,16 +130,23 @@
 
   function collect(formEl) {
     var isManaged = managed(formEl);
-    var body = {}, sent = [], skipped = [];
+    var body = {}, sent = [], skipped = [], hiddenWithValue = [];
     var wraps = formEl.querySelectorAll('.kn-input');
     for (var i = 0; i < wraps.length; i++) {
       var key = fieldKeyOf(wraps[i]);
       if (!key || body.hasOwnProperty(key)) continue;
-      if (!isSent(wraps[i], key, isManaged)) { skipped.push(key); continue; }
-      body[key] = readValue(wraps[i], key);
+      var val = readValue(wraps[i], key);
+      if (!isSent(wraps[i], key, isManaged)) {
+        // Knack's own submit sent hidden fields too; only the EMPTY ones are
+        // what its required check trips on. A hidden field something filled
+        // (a default, a JS setter) still goes, so nothing is lost vs before.
+        if (!hasValue(val)) { skipped.push(key); continue; }
+        hiddenWithValue.push(key);
+      }
+      body[key] = val;
       sent.push(key);
     }
-    return { body: body, sent: sent, skipped: skipped };
+    return { body: body, sent: sent, skipped: skipped, hiddenWithValue: hiddenWithValue };
   }
 
   /** The form's parent-record crumbs (hidden input.crumb) — the same
@@ -154,6 +175,19 @@
     box.textContent = text;
   }
 
+  /** A child-page form opens in Knack's modal shell; an inline form sits
+   *  in the page itself and just resets after a submit. */
+  function inModal(formEl) {
+    return !!(formEl.closest && formEl.closest('.kn-modal, .kn-modal-bg'));
+  }
+  function resetForm(formEl) {
+    try { formEl.reset(); } catch (e) { /* ignore */ }
+    try {
+      var sels = formEl.querySelectorAll('select');
+      for (var i = 0; i < sels.length; i++) $(sels[i]).trigger('chosen:updated').trigger('liszt:updated').trigger('change');
+    } catch (e) { /* jQuery-less test envs */ }
+  }
+
   /** Leave the modal the way the form's own submit does: back to the
    *  parent page (drop the modal's slug [+ record id] from the hash),
    *  which re-renders the parent and its grids. */
@@ -177,6 +211,7 @@
     var scene = Knack.router && Knack.router.current_scene_key;
     if (!scene) { message(formEl, 'Cannot submit: no current page.', 'err'); return; }
     var c = collect(formEl);
+    if (c.hiddenWithValue.length) log(viewId + ' hidden fields carrying a value, sent anyway:', c.hiddenWithValue);
     var url = Knack.api_url + '/v1/pages/' + scene + '/views/' + viewId + '/records';
     var qs = crumbQuery(formEl);
     if (qs) url += '?' + qs;
@@ -200,7 +235,8 @@
           $(document).trigger('knack-form-submit.' + viewId, [v, record]);
           $(document).trigger('knack-record-create.' + viewId, [v, record]);
         } catch (e) { /* listeners are best-effort */ }
-        setTimeout(returnToParent, 300);
+        if (inModal(formEl)) setTimeout(returnToParent, 300);
+        else resetForm(formEl);
       },
       error: function (xhr) {
         _busy[viewId] = false;
@@ -216,7 +252,16 @@
     });
   }
 
+  /** Only ADD forms: an edit form would need a PUT to its record; none of
+   *  the listed views is one, but don't take over Submit if that changes. */
+  function isInsertForm(viewId) {
+    var v = Knack.views && Knack.views[viewId];
+    var vw = v && v.model && v.model.view;
+    return !vw || !vw.action || vw.action === 'insert' || vw.action === 'create';
+  }
+
   function bind(viewId) {
+    if (!isInsertForm(viewId)) { log(viewId + ' is not an add form — leaving Knack submit alone'); return; }
     var view = document.getElementById(viewId);
     var formEl = view && view.querySelector('form');
     if (!formEl || formEl.__scwDtoBound) return;
