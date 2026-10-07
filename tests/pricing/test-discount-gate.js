@@ -3,12 +3,13 @@
 // Lump Sum form locked read-only with its submit hidden; allowed users are untouched.
 const fs = require('fs');
 const path = require('path');
-const { JSDOM } = require('jsdom');
-const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://scwinstallation.knack.com/installationservices#x' });
+const { JSDOM, VirtualConsole } = require('jsdom');
+// Un-blocked submit clicks reach jsdom's unimplemented requestSubmit; keep that noise out of the log.
+const vc = new VirtualConsole(); vc.on('error', () => {}); vc.on('warn', () => {}); vc.on('jsdomError', () => {});
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://scwinstallation.knack.com/installationservices#x', virtualConsole: vc });
 const { window } = dom; const { document } = window;
 global.window = window; global.document = document; global.CSS = window.CSS || { escape: s => s };
 if (!window.CSS) window.CSS = global.CSS;
-window.HTMLFormElement.prototype.requestSubmit = function () {};   // jsdom stub: an un-blocked button click reaches here
 
 const handlers = {};
 function key(ev) { return ev.split('.').slice(0, 2).join('.'); }
