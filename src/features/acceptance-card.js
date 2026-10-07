@@ -1948,11 +1948,15 @@
         '<span class="scw-acpt-file__sz"></span>' +
         '<button type="button" class="scw-acpt-file__x" title="Choose a different file">&times;</button>' +
       '</div>' +
-      (wantsGreenlight
+      // Base scope: opt-in greenlight check. Change order: the same box,
+      // checked by default, so a wrong file can go up WITHOUT sending the
+      // CO to Make (untick, upload, then re-upload the right file ticked).
+      (wantsGreenlight || autoGl
         ? '<label class="scw-acpt-chk">' +
             '<input type="checkbox" checked>' +
-            '<span>' + esc(opts.greenlightLabel ||
-              'Check whether this deal is ready to greenlight') + '</span>' +
+            '<span>' + esc(autoGl
+              ? 'Send the signed change order to Make to apply it'
+              : (opts.greenlightLabel || 'Check whether this deal is ready to greenlight')) + '</span>' +
           '</label>'
         : '') +
       '<div class="scw-acpt-m__status" style="display:none"></div>';
@@ -2096,8 +2100,9 @@
     }
 
     m.ok.addEventListener('click', function () {
-      var manualCheck = !!(wantsGreenlight && glCheck && glCheck.checked);
-      var runCheck = manualCheck || autoGl;
+      var ticked = !!(glCheck && glCheck.checked);
+      var manualCheck = wantsGreenlight && ticked;
+      var runCheck = manualCheck || (autoGl && ticked);
 
       // Check-only submit (populated slot, no replacement chosen): fire
       // and close — the outcome arrives as a toast. Manual mode only; the
@@ -2147,7 +2152,7 @@
                 autoGl ? 'co-agreement-upload-auto' : 'agreement-upload',
                 null, null);
             } else {
-              toast(title + ' uploaded.');
+              toast(autoGl ? title + ' uploaded — not sent to Make.' : title + ' uploaded.');
             }
           }).catch(function (err) {
             fail((err && err.message) || 'Save failed');
