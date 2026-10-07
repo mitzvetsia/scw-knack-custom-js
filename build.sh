@@ -35,6 +35,7 @@ cat \
   src/features/scene-veil.js \
   src/features/percent-field-format.js \
   src/features/inline-form-recompose.js \
+  src/features/pricing-discount-gate.js \
   src/features/inline-edit-checkbox-layout.js \
   src/features/extract-hsv-color.js \
   src/features/heavy-grid-perf.js \
