@@ -664,7 +664,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
 // DOM. Bump the stamp when shipping something you need to verify live.
 (function () {
   'use strict';
-  window.SCW.BUILD = '2026-10-07 pricing-discount-gate v2 copy + overlay';
+  window.SCW.BUILD = '2026-10-07 pricing-discount-gate v3 fraction cap';
   try {
     var src = (document.currentScript && document.currentScript.src) || '';
     if (!src) {

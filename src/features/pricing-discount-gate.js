@@ -23,17 +23,19 @@
   var CONFIG = {
     ALLOWED_EMAILS: ['micah.shearer@getscw.com', 'ben.larue@getscw.com'],
     FORMS: {
-      // Cap for everyone not in ALLOWED_EMAILS. Value is the field's own
-      // unit (percent as entered: 15 = 15%).
-      view_3492: { mode: 'cap', field: 'field_2276', max: 15,
+      // Cap for everyone not in ALLOWED_EMAILS. field_2276 is a Knack
+      // DECIMAL FRACTION (0.15 = 15%; the totals read it that way and
+      // ".2" is how a 20% discount is entered). An entry above 1 is read
+      // as a percent typed by habit ("20" → 0.20) so it can't slip past.
+      view_3492: { mode: 'cap', field: 'field_2276', max: 0.15,
                    label: 'Global Discount %',
-                   note: 'Discounts above 15% can only be entered by Sales Leadership. Talk to Ben. The value was set to 15% — press Enter to apply.' },
+                   note: 'Discounts above 15% can only be entered by Sales Leadership. Talk to Ben. The value was set to 0.15 (15%) — press Enter to apply.' },
       // Locked read-only for everyone not in ALLOWED_EMAILS.
       view_3490: { mode: 'lock',
                    label: 'Additional Lump Sum Discount',
                    note: 'Lump sum discounts can only be entered by Sales Leadership. Talk to Ben.' }
     },
-    debug: false
+    debug: true
   };
 
   var NS = '.scwPricingGate';
@@ -90,13 +92,15 @@
     var n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, ''));
     return isNaN(n) ? null : n;
   }
+  /** The field holds a fraction; "20" typed as a percent means 0.20. */
+  function asFraction(n) { return n > 1 ? n / 100 : n; }
 
   /** Cap: clamp an over-limit value and block the submit that carried it. */
   function enforceCap(viewId, formEl, cfg) {
     var input = formEl.querySelector('#' + CSS.escape(cfg.field) + ', [name="' + cfg.field + '"]');
     if (!input) return true;
     var n = numberOf(input.value);
-    if (n === null || n <= cfg.max) { note(formEl, ''); return true; }
+    if (n === null || asFraction(n) <= cfg.max) { note(formEl, ''); return true; }
     input.value = String(cfg.max);
     note(formEl, cfg.note);
     log(viewId + ' capped ' + n + ' → ' + cfg.max);

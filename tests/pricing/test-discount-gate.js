@@ -56,19 +56,21 @@ render('view_3492'); render('view_3490');
 const gSeen = knackSubmits('view_3492'), lSeen = knackSubmits('view_3490');
 const gInput = document.getElementById('field_2276'), gBtn = document.querySelector('#view_3492 button');
 
-gInput.value = '10'; gBtn.click();
-check('restricted: 10% passes through to Knack (panel Enter path clicks the button)', [gSeen.click, !!document.querySelector('#view_3492 .scw-pricing-gate-note')], [1, false]);
+gInput.value = '.1'; gBtn.click();
+check('restricted: .1 (10%) passes through to Knack (panel Enter path clicks the button)', [gSeen.click, !!document.querySelector('#view_3492 .scw-pricing-gate-note')], [1, false]);
 
-gInput.value = '25'; gBtn.click();
-check('restricted: 25% is clamped to 15, the submit is blocked, amber note shown',
+gInput.value = '.2'; gBtn.click();
+check('restricted: .2 (20%) is clamped to 0.15, the submit is blocked, amber note shown',
   [gInput.value, gSeen.click, (document.querySelector('#view_3492 .scw-pricing-gate-note') || {}).textContent],
-  ['15', 1, 'Discounts above 15% can only be entered by Sales Leadership. Talk to Ben. The value was set to 15% — press Enter to apply.']);
+  ['0.15', 1, 'Discounts above 15% can only be entered by Sales Leadership. Talk to Ben. The value was set to 0.15 (15%) — press Enter to apply.']);
 check('restricted: a blocked submit hides the totals "Refreshing…" overlay', overlayHides, 1);
 gBtn.click();
-check('restricted: re-submitting the clamped 15% goes through and clears the note', [gSeen.click, !!document.querySelector('#view_3492 .scw-pricing-gate-note')], [2, false]);
+check('restricted: re-submitting the clamped 0.15 goes through and clears the note', [gSeen.click, !!document.querySelector('#view_3492 .scw-pricing-gate-note')], [2, false]);
 
 gInput.value = '40'; gInput.dispatchEvent(new window.Event('change', { bubbles: true }));
-check('restricted: leaving the field with 40% clamps before Enter', gInput.value, '15');
+check('restricted: leaving the field with "40" (a percent typed by habit) clamps to 0.15 before Enter', gInput.value, '0.15');
+gInput.value = '0.15'; gInput.dispatchEvent(new window.Event('change', { bubbles: true }));
+check('restricted: exactly 0.15 is allowed', gInput.value, '0.15');
 
 const lView = document.getElementById('view_3490');
 check('restricted: lump sum form locked — readOnly inputs, locked class, note',
@@ -86,11 +88,11 @@ user = { id: 'u2', email: 'Micah.Shearer@getscw.com' };
 document.body.innerHTML = FORMS;
 render('view_3492'); render('view_3490');
 const aG = knackSubmits('view_3492'), aL = knackSubmits('view_3490');
-document.getElementById('field_2276').value = '35'; document.querySelector('#view_3492 button').click();
+document.getElementById('field_2276').value = '.35'; document.querySelector('#view_3492 button').click();
 document.getElementById('field_2290').value = '750'; document.querySelector('#view_3490 button').click();
-check('allowed: 35% global discount and a lump sum both submit untouched',
+check('allowed: .35 (35%) global discount and a lump sum both submit untouched',
   [document.getElementById('field_2276').value, aG.click, aL.click, document.getElementById('view_3490').classList.contains('scw-pricing-gate--locked'), document.getElementById('field_2290').readOnly],
-  ['35', 1, 1, false, false]);
+  ['.35', 1, 1, false, false]);
 
 // ── No identity → restricted ──
 user = null;
