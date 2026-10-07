@@ -1,0 +1,246 @@
+/*** DTO FORM SUBMIT INTERCEPT — submit only the fields the bucket shows ***/
+//
+// The SOW line-item "Add to Scope" DTO forms show a different set of fields
+// per bucket (SOW-line-item-DTO-bucket-field-visibility.js hides the rest
+// with CSS). Several hidden fields are REQUIRED (mandatory MDF/IDF single +
+// multi selects, one product field per bucket, Label Pre-Fix). Knack used to
+// skip required inputs that weren't visible; since 2026-10 its in-browser
+// check validates them anyway, so every bucket's submit fails with
+// "X is required" for fields the user never saw.
+//
+// Records submitted this way were always accepted server-side with those
+// hidden fields EMPTY, so the block is Knack's browser-side check. This
+// module takes over Submit on the listed forms: it collects the fields the
+// selected bucket shows (plus any input the visibility module doesn't
+// manage), POSTs them through the SAME form view's records endpoint with
+// the user's session — creating the same DTO record Knack would have — and
+// then returns to the parent page the way the form's own submit does.
+// Required stays ON in Knack; nothing fake is written.
+//
+// ⚠ If Make is triggered by a RULE on this form's submit (not by watching
+// the DTO object), a view-based POST may not run it — the project-notes
+// composer's record rule did not run through the same kind of POST.
+(function () {
+  'use strict';
+
+  var CONFIG = {
+    // view_4100 (CO add form) is replaced by worksheet-v2/co-add-item-form.js.
+    VIEWS: ['view_3329', 'view_4002'],
+    BUCKET_FIELD: 'field_2223',
+    // Field keys the visibility module manages: hidden unless .scw-visible.
+    // Anything else on the form is submitted as-is.
+    VISIBLE_CLASS: 'scw-visible',
+    debug: true
+  };
+  var NS = '.scwDtoIntercept';
+  var HEX24 = /^[a-f0-9]{24}$/i;
+  var STYLE_ID = 'scw-dto-intercept-css';
+  var _busy = {};
+
+  function log() { if (CONFIG.debug) { try { console.info.apply(console, ['[scw-dto-submit]'].concat([].slice.call(arguments))); } catch (e) { /* ignore */ } } }
+
+  function injectCss() {
+    if (document.getElementById(STYLE_ID)) return;
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent =
+      '.scw-dto-msg{margin:0 0 14px;padding:10px 14px;border-radius:8px;font:600 13px/1.4 system-ui,sans-serif}' +
+      '.scw-dto-msg.is-err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c}' +
+      '.scw-dto-msg.is-info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a}';
+    document.head.appendChild(s);
+  }
+
+  // ── which fields to send ─────────────────────────────────────────
+  // A field is sent when its wrapper is visible for this bucket, or when
+  // the visibility module doesn't manage it at all (no scw-visible toggling
+  // on the form → every wrapper counts as visible). The bucket always goes.
+  function managed(formEl) {
+    return !!formEl.querySelector('.kn-input.' + CONFIG.VISIBLE_CLASS);
+  }
+  function fieldKeyOf(wrap) {
+    var k = wrap.getAttribute('data-input-id') || '';
+    if (/^field_\d+$/.test(k)) return k;
+    var m = (wrap.id || '').match(/field_\d+$/);
+    return m ? m[0] : '';
+  }
+  function isSent(wrap, key, isManaged) {
+    if (key === CONFIG.BUCKET_FIELD) return true;
+    if (!isManaged) return true;
+    return wrap.classList.contains(CONFIG.VISIBLE_CLASS);
+  }
+
+  /** Read one input wrapper into the view-API value shape. */
+  function readValue(wrap, key) {
+    // Chosen / native selects (connections, multiple choice).
+    var sel = wrap.querySelector('select#' + CSS.escape(wrap.closest('.kn-view').id + '-' + key)) ||
+              wrap.querySelector('select[name="' + key + '"]') ||
+              wrap.querySelector('select:not([name="page_select"]):not([name="limit"])');
+    if (sel) {
+      if (sel.multiple) {
+        var vals = [];
+        for (var i = 0; i < sel.options.length; i++) if (sel.options[i].selected && sel.options[i].value) vals.push(sel.options[i].value);
+        return vals;
+      }
+      var v = sel.value || '';
+      return HEX24.test(v) ? [v] : v;
+    }
+    // Checkbox lists: connection ids (24-hex values) → array; a lone
+    // Yes/No checkbox → boolean.
+    var boxes = wrap.querySelectorAll('input[type="checkbox"]');
+    if (boxes.length) {
+      var anyHex = false, picked = [];
+      for (var b = 0; b < boxes.length; b++) {
+        if (HEX24.test(boxes[b].value)) anyHex = true;
+        if (boxes[b].checked) picked.push(boxes[b].value);
+      }
+      if (anyHex) return picked.filter(function (x) { return HEX24.test(x); });
+      if (boxes.length === 1) return !!boxes[0].checked;
+      return picked;
+    }
+    var radio = wrap.querySelector('input[type="radio"]:checked');
+    if (radio) return radio.value;
+    if (wrap.querySelector('input[type="radio"]')) return '';
+    // Hidden connection carrier.
+    var conn = wrap.querySelector('input.connection');
+    if (conn && conn.value) {
+      var cv = conn.value.trim();
+      if (cv.charAt(0) === '[') { try { var arr = JSON.parse(cv); return arr.map(function (x) { return x && x.id ? x.id : x; }); } catch (e) { /* split below */ } }
+      return cv.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+    }
+    var ta = wrap.querySelector('textarea');
+    if (ta) return ta.value;
+    var inp = wrap.querySelector('input[name="' + key + '"], input#' + CSS.escape(key) + ', input[id$="-' + key + '"]') ||
+              wrap.querySelector('input:not([type="hidden"]):not([type="file"])');
+    return inp ? inp.value : '';
+  }
+
+  function collect(formEl) {
+    var isManaged = managed(formEl);
+    var body = {}, sent = [], skipped = [];
+    var wraps = formEl.querySelectorAll('.kn-input');
+    for (var i = 0; i < wraps.length; i++) {
+      var key = fieldKeyOf(wraps[i]);
+      if (!key || body.hasOwnProperty(key)) continue;
+      if (!isSent(wraps[i], key, isManaged)) { skipped.push(key); continue; }
+      body[key] = readValue(wraps[i], key);
+      sent.push(key);
+    }
+    return { body: body, sent: sent, skipped: skipped };
+  }
+
+  /** The form's parent-record crumbs (hidden input.crumb) — the same
+   *  context Knack's own submit carries for a child-page form. */
+  function crumbQuery(formEl) {
+    var out = [], seen = {};
+    var els = formEl.querySelectorAll('input.crumb[name]');
+    for (var i = 0; i < els.length; i++) {
+      var n = els[i].getAttribute('name'), v = els[i].value;
+      if (!n || !v || seen[n]) continue;
+      seen[n] = true;
+      out.push(encodeURIComponent(n) + '=' + encodeURIComponent(v));
+    }
+    return out.join('&');
+  }
+
+  function message(formEl, text, kind) {
+    var box = formEl.querySelector('.scw-dto-msg');
+    if (!text) { if (box) box.remove(); return; }
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'scw-dto-msg';
+      formEl.insertBefore(box, formEl.firstChild);
+    }
+    box.className = 'scw-dto-msg ' + (kind === 'err' ? 'is-err' : 'is-info');
+    box.textContent = text;
+  }
+
+  /** Leave the modal the way the form's own submit does: back to the
+   *  parent page (drop the modal's slug [+ record id] from the hash),
+   *  which re-renders the parent and its grids. */
+  function returnToParent() {
+    var raw = window.location.hash || '';
+    var q = raw.indexOf('?');
+    var path = (q >= 0 ? raw.slice(0, q) : raw).replace(/\/+$/, '');
+    var query = q >= 0 ? raw.slice(q) : '';
+    var parts = path.replace(/^#\/?/, '').split('/').filter(Boolean);
+    // Child-page hash is .../<modal-slug>/<record-id>; drop both (same as
+    // modal-refresh-redirect.js). A lone slug drops just itself.
+    if (parts.length >= 2) parts.splice(-2, 2); else parts.length = 0;
+    var next = '#' + parts.join('/') + query;
+    try { window.location.replace(window.location.pathname + window.location.search + next); }
+    catch (e) { window.location.hash = next; }
+  }
+
+  function submit(viewId, formEl, btn) {
+    if (_busy[viewId]) return;
+    if (!(window.SCW && typeof SCW.knackAjax === 'function')) { message(formEl, 'Cannot submit: the bundle request helper is missing.', 'err'); return; }
+    var scene = Knack.router && Knack.router.current_scene_key;
+    if (!scene) { message(formEl, 'Cannot submit: no current page.', 'err'); return; }
+    var c = collect(formEl);
+    var url = Knack.api_url + '/v1/pages/' + scene + '/views/' + viewId + '/records';
+    var qs = crumbQuery(formEl);
+    if (qs) url += '?' + qs;
+    log(viewId + ' submitting ' + c.sent.length + ' fields (bucket-visible), skipping ' + c.skipped.length + ' hidden:', c.body, 'skipped:', c.skipped, 'url:', url);
+
+    _busy[viewId] = true;
+    var label = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+    message(formEl, 'Submitting…', 'info');
+    SCW.knackAjax({
+      url: url, type: 'POST', data: JSON.stringify(c.body),
+      success: function (res) {
+        _busy[viewId] = false;
+        var record = res && (res.record || res);
+        log(viewId + ' created', record && record.id);
+        message(formEl, 'Added.', 'info');
+        if (btn) { btn.disabled = false; btn.textContent = label || 'Submit'; }
+        // Let anything listening for this form's submit run as usual.
+        try {
+          var v = Knack.views && Knack.views[viewId];
+          $(document).trigger('knack-form-submit.' + viewId, [v, record]);
+          $(document).trigger('knack-record-create.' + viewId, [v, record]);
+        } catch (e) { /* listeners are best-effort */ }
+        setTimeout(returnToParent, 300);
+      },
+      error: function (xhr) {
+        _busy[viewId] = false;
+        if (btn) { btn.disabled = false; btn.textContent = label || 'Submit'; }
+        var msg = 'HTTP ' + (xhr && xhr.status);
+        try {
+          var j = JSON.parse(xhr.responseText);
+          if (j && j.errors && j.errors.length) msg = j.errors.map(function (e) { return e.message || e; }).join(' · ');
+        } catch (e) { /* not JSON */ }
+        console.warn('[scw-dto-submit] ' + viewId + ' failed:', msg, c.body);
+        message(formEl, 'Could not add: ' + msg, 'err');
+      }
+    });
+  }
+
+  function bind(viewId) {
+    var view = document.getElementById(viewId);
+    var formEl = view && view.querySelector('form');
+    if (!formEl || formEl.__scwDtoBound) return;
+    formEl.__scwDtoBound = true;
+    injectCss();
+    // Capture phase on the form: ours runs before Knack's handlers, which
+    // never see the submit (their required check is what blocks today).
+    formEl.addEventListener('submit', function (e) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      submit(viewId, formEl, formEl.querySelector('button[type="submit"], .kn-submit .kn-button'));
+    }, true);
+    formEl.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('button[type="submit"], input[type="submit"], .kn-submit .kn-button');
+      if (!btn || !formEl.contains(btn)) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      submit(viewId, formEl, btn);
+    }, true);
+    log(viewId + ' submit intercepted (bucket-visible fields only)');
+  }
+
+  CONFIG.VIEWS.forEach(function (viewId) {
+    $(document).off('knack-view-render.' + viewId + NS).on('knack-view-render.' + viewId + NS, function () { bind(viewId); });
+  });
+
+  window.SCW = window.SCW || {};
+  SCW.dtoSubmitIntercept = { CONFIG: CONFIG, collect: collect, bind: bind };
+})();
