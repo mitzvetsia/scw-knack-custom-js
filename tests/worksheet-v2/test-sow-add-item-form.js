@@ -92,7 +92,8 @@ const sales = qa('.scw-sowadd').pop();
 check('sales page (view_3586): four bucket chips and NO "Which SOW(s)" row',
   [sales.querySelectorAll('.scw-sowadd__chip').length, sales.querySelectorAll('.scw-sowadd__checks').length], [4, 0]);
 sales.querySelector('[data-act="cancel"]').click();
-check('ops page keeps its SOW row', q('.scw-sowadd') && q('.scw-sowadd').querySelectorAll('.scw-sowadd__checks').length, 1);
+check('ops page keeps its SOW row (plus the Networking MDF group)',
+  [texts('.scw-sowadd__lbl').includes('Which SOW(s) are you adding to? *'), q('.scw-sowadd').querySelectorAll('.scw-sowadd__checks').length], [true, 2]);
 check('product list is filtered to the bucket (NVR only — the camera is not offered)', texts('.scw-sowadd__opt'), ['Imperial 256 Channel 4K NVR - IMP256']);
 const mdfGroup = () => qa('.scw-sowadd__checks').pop();   // the SOW group is first, the MDF group last
 check('MDF/IDF locations come from the scene\'s locations grid', Array.from(mdfGroup().querySelectorAll('.scw-sowadd__check')).map(e => e.textContent.trim()),
