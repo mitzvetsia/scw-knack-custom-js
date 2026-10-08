@@ -354,7 +354,10 @@
         // falls back to a page-wide link-text scan.
         addSowMenuView:   'view_3450',
         // Gated "+ Add to SOW (new)" modal button — see the view_3962 entry.
-        sowAddModal:      true,
+        // Sales may add only the buckets whose "allow sales to add" is Yes —
+        // the view_3748 dropdown's four, in its order. (The flag isn't readable
+        // client-side yet, so the list is spelled out here.)
+        sowAddModal:      { buckets: ['networking', 'otherEquipment', 'camera', 'license'] },
         fields: {
           retailPrice:     'field_1960', // PRODUCT STORED_price (read-only)
           lineDiscPct:     'field_2261', // INPUT line discount % (editable)

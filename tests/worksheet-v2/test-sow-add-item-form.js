@@ -79,7 +79,12 @@ check('SOW row: page SOW first and pre-checked, the other SOW on the worksheet o
 q('.scw-sowadd__chip[data-bucket="' + B_NET + '"]').click();
 check('Networking: product, optional accessories, qty (per MDF/IDF wording) and the mandatory MDF multi-select, in that order',
   texts('.scw-sowadd__lbl').slice(2),
-  ['Products', 'Optional accessories', 'How many do you want to add to EACH MDF/IDF selected below?', 'Which MDF or IDFs will this item go in? *']);
+  ['Product', 'Optional accessories', 'How many do you want to add to EACH MDF/IDF selected below?', 'Which MDF or IDFs will this item go in? *']);
+check('product single/multi per bucket: camera + networking single, other equipment + license multi',
+  ['camera', 'networking', 'otherEquipment', 'license'].map(k => !!form.BUCKETS.find(b => b.id === form.BUCKET_KEYS[k]).productMulti), [false, false, true, true]);
+check('sales page (view_3586) offers only the "allow sales to add" buckets, in the DTO dropdown\'s order',
+  form.bucketsFor('view_3586').map(b => b.name), ['Networking or Headend', 'Other Equipment', 'Camera or Reader', 'License']);
+check('build-SOW page (view_3962) offers every bucket', form.bucketsFor('view_3962').length, 7);
 check('product list is filtered to the bucket (NVR only — the camera is not offered)', texts('.scw-sowadd__opt'), ['Imperial 256 Channel 4K NVR - IMP256']);
 const mdfGroup = () => qa('.scw-sowadd__checks').pop();   // the SOW group is first, the MDF group last
 check('MDF/IDF locations come from the scene\'s locations grid', Array.from(mdfGroup().querySelectorAll('.scw-sowadd__check')).map(e => e.textContent.trim()),

@@ -87,7 +87,10 @@
     // field_2193 product · field_2211 MDF (single, relabeled) · field_2183 qty ·
     // field_2241 pre-fix · field_2184 label number · field_2462/2739/2740 flags ·
     // field_2206 accessories · field_2466 notes
-    { id: B_CAMERA, name: 'Camera or Reader', fields: [
+    // productMulti: Camera/Reader + Networking are SINGLE product (one prefix /
+    // numbering run, one headend device); Other Equipment, License, Assumptions,
+    // Materials take several at once.
+    { id: B_CAMERA, name: 'Camera or Reader', productMulti: false, fields: [
       { t: 'product', label: 'Product' },
       { t: 'mdf', mode: 'single', label: 'Cabling for these cameras will route back to which MDF or IDF?' },
       { t: 'qty', label: 'How many cameras or readers do you want to add?' },
@@ -98,14 +101,14 @@
       { t: 'notes' }
     ]},
     // field_2194 product · field_2206 accessories · field_2183 qty · field_2180 MDF (multi, mandatory)
-    { id: B_NETWORKING, name: 'Networking or Headend', fields: [
+    { id: B_NETWORKING, name: 'Networking or Headend', productMulti: false, fields: [
       { t: 'product' },
       { t: 'accessories' },
       { t: 'qty', label: 'How many do you want to add to EACH MDF/IDF selected below?' },
       { t: 'mdf', mode: 'multi', label: 'Which MDF or IDFs will this item go in?', helper: MDF_MULTI_HELPER }
     ]},
     // field_2195 product · field_2250 MDF (optional multi) · field_2183 qty
-    { id: B_OTHEREQUIP, name: 'Other Equipment', fields: [
+    { id: B_OTHEREQUIP, name: 'Other Equipment', productMulti: true, fields: [
       { t: 'product' },
       { t: 'qty' },
       { t: 'mdf', mode: 'opt' }
@@ -121,19 +124,19 @@
     // field_2248 assumption catalog (Products in the Assumptions bucket) ·
     // field_2210 description, shown only when "Custom Assumption" is picked ·
     // field_2250 MDF (optional)
-    { id: B_ASSUMPTIONS, name: 'Assumptions', fields: [
+    { id: B_ASSUMPTIONS, name: 'Assumptions', productMulti: true, fields: [
       { t: 'product', label: 'Assumption(s)', placeholder: 'Search assumptions…' },
       { t: 'description', label: 'Detail custom assumption', conditional: 'customAssumption' },
       { t: 'mdf', mode: 'opt' }
     ]},
     // field_2913 product · field_2206 accessories · field_2250 MDF (optional)
-    { id: B_MATERIALS, name: 'Materials', fields: [
+    { id: B_MATERIALS, name: 'Materials', productMulti: true, fields: [
       { t: 'product' },
       { t: 'accessories' },
       { t: 'mdf', mode: 'opt' }
     ]},
     // field_2224 product · field_2183 qty
-    { id: B_LICENSE, name: 'License', fields: [
+    { id: B_LICENSE, name: 'License', productMulti: true, fields: [
       { t: 'product' },
       { t: 'qty' }
     ]}
@@ -141,6 +144,26 @@
   function bucketById(id) {
     for (var i = 0; i < BUCKETS.length; i++) if (BUCKETS[i].id === id) return BUCKETS[i];
     return null;
+  }
+  // Config names for the per-view bucket list (worksheet-v2/config.js
+  // `sowAddModal: { buckets: [...] }`, names or 24-hex ids, in display order).
+  var BUCKET_KEYS = {
+    camera: B_CAMERA, networking: B_NETWORKING, otherEquipment: B_OTHEREQUIP, services: B_SERVICE,
+    assumptions: B_ASSUMPTIONS, materials: B_MATERIALS, license: B_LICENSE
+  };
+  /** The buckets this worksheet offers — the view's configured list (e.g. the
+   *  sales page: only the buckets whose "allow sales to add" is Yes, in the
+   *  DTO dropdown's order), else every bucket. */
+  function bucketsFor(viewKey) {
+    var vc = viewCfg(viewKey);
+    var list = vc && vc.sowAddModal && Array.isArray(vc.sowAddModal.buckets) ? vc.sowAddModal.buckets : null;
+    if (!list || !list.length) return BUCKETS.slice();
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var b = bucketById(BUCKET_KEYS[list[i]] || list[i]);
+      if (b && out.indexOf(b) === -1) out.push(b);
+    }
+    return out.length ? out : BUCKETS.slice();
   }
 
   // Label prefix options (object_111 CONFIG: Pre-Fix — the DTO's field_2241
@@ -549,6 +572,7 @@
     if (!isAllowed()) { log('open refused — user not in ALLOWED_EMAILS'); return; }
     injectCss();
 
+    var buckets  = bucketsFor(viewKey);
     var sowCands = sowCandidates(viewKey);
     var mdfCands = mdfCandidates(viewKey);
     var sowLabels = {}, mdfLabels = {};
@@ -611,10 +635,9 @@
     function buildField(fd, b) {
       var t = fd.t;
       if (t === 'product') {
-        // Camera/Reader is single-select (label numbering is per camera: one
-        // prefix + start #). Every other bucket allows MULTIPLE products —
-        // productIds is an array either way so Make iterates one uniform list.
-        var pMulti = b.id !== B_CAMERA;
+        // Single vs multi per bucket (productMulti above) — productIds is an
+        // array either way so Make iterates one uniform list.
+        var pMulti = !!b.productMulti;
         var row = labelRow(fd.label || (pMulti ? 'Products' : 'Product'), fd.helper);
         var host = document.createElement('div'); row.appendChild(host);
         combos.product = makeCombo(host, {
@@ -740,10 +763,10 @@
       var chipRow = document.createElement('div'); chipRow.className = 'scw-sowadd__row';
       var chipHtml = '<span class="scw-sowadd__lbl">What type of item are you adding to your Scope of Work?</span>' +
         '<div class="scw-sowadd__chips">';
-      for (var i = 0; i < BUCKETS.length; i++) {
+      for (var i = 0; i < buckets.length; i++) {
         chipHtml += '<button type="button" class="scw-sowadd__chip' +
-          (BUCKETS[i].id === st.bucketId ? ' is-on' : '') + '" data-bucket="' +
-          BUCKETS[i].id + '">' + esc(BUCKETS[i].name) + '</button>';
+          (buckets[i].id === st.bucketId ? ' is-on' : '') + '" data-bucket="' +
+          buckets[i].id + '">' + esc(buckets[i].name) + '</button>';
       }
       chipRow.innerHTML = chipHtml + '</div>';
       body.appendChild(chipRow);
@@ -766,7 +789,7 @@
       }
 
       var b = bucketById(st.bucketId);
-      if (!b) return;
+      if (!b || buckets.indexOf(b) === -1) return;
       for (var f = 0; f < b.fields.length; f++) {
         var el = buildField(b.fields[f], b);
         if (el) body.appendChild(el);
@@ -891,6 +914,6 @@
     return { close: close };
   }
 
-  wv2.sowAddForm = { open: open, isAllowed: isAllowed, CONFIG: CONFIG, BUCKETS: BUCKETS };
+  wv2.sowAddForm = { open: open, isAllowed: isAllowed, bucketsFor: bucketsFor, CONFIG: CONFIG, BUCKETS: BUCKETS, BUCKET_KEYS: BUCKET_KEYS };
 })();
 /*** END: SOW add-item modal **********************************************/
