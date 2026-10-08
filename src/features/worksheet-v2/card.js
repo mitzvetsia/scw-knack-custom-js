@@ -37,6 +37,10 @@
   var SERVICES_BUCKET     = '6977caa7f246edf67b52cbcd';
   var ASSUMPTIONS_BUCKET  = '697b7a023a31502ec68b3303';
   var NETWORKING_BUCKET   = '647953bb54b4e1002931ed97';
+  // Recurring licenses (billed separately, never part of the project
+  // total) — grouped apart by groups.js / summary.js and flagged on the
+  // card. The bucket id first, the label as belt and braces.
+  var LICENSE_BUCKET      = '645554dce6f3a60028362a6a';
 
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -194,6 +198,13 @@
     return '';
   }
 
+  function isLicenseBucket(rec, viewKey) {
+    if (!rec) return false;
+    if (bucketIdOf(rec, viewKey) === LICENSE_BUCKET) return true;
+    var raw = rec[bucketFieldOf(viewKey) + '_raw'];
+    var label = Array.isArray(raw) ? (raw[0] && raw[0].identifier) : (raw && raw.identifier);
+    return /^\s*licen[cs]e/i.test(String(label || ''));
+  }
   function bucketCategoryOf(rec, viewKey) {
     var id = bucketIdOf(rec, viewKey);
     if (id === CAM_READER_BUCKET)  return 'cam';
@@ -1090,7 +1101,17 @@
     var trashTitle = subOwnsRecord(rec, viewKey) === true
       ? 'Delete line item (you added this item)'
       : 'Delete line item';
-    return '<button type="button" class="scw-ws-v2-cell scw-ws-v2-trash" ' +
+    // CO worksheet Remove line (drafted off an install item): deletable
+    // while the CO is editable, and the title says what that means — the
+    // install item returns to active scope. Nothing on the install record
+    // is touched here; its Removed-by-CO pointer dangles off the deleted
+    // line and co-remove re-reads it after the refetch.
+    var trashCls = 'scw-ws-v2-cell scw-ws-v2-trash';
+    if (_vc.coDeleteGuard && isCoRemoveLine(rec)) {
+      trashCls += ' scw-ws-v2-trash--co-remove';
+      trashTitle = 'Delete this Remove line \u2014 the install item goes back to active scope';
+    }
+    return '<button type="button" class="' + trashCls + '" ' +
       'data-scw-ws-v2-kebab="' + escapeHtml(rec.id) + '" ' +
       'data-scw-ws-v2-view="' + escapeHtml(viewKey || '') + '" ' +
       'aria-label="Delete line item" title="' + trashTitle + '">' +
@@ -1752,6 +1773,7 @@
         '</div>' +
       '</div>' +
       detailNotesSection(rec, viewKey) +
+      detailSubBidSection(rec, viewKey) +
     '</div>';
   }
 
@@ -1784,6 +1806,82 @@
         '</div>' +
       '</div>' +
       detailNotesSection(rec, viewKey) +
+      detailSubBidSection(rec, viewKey) +
+    '</div>';
+  }
+
+  // Views with NO worksheet-v2 config entry whose cards are still built by
+  // another feature and need the flip: the bid-review comparison grid
+  // (scene_1155, bid-review-v2) expands SOW items through buildCard with
+  // view_3921 — same object, same field_2479, same PUT route. Same pattern
+  // as DELETE_BLOCK_VIEWS above.
+  var SUB_BID_CONTROL_VIEWS = { view_3921: 1 };
+
+  /** True when the view offers the Require Sub Bid flip on ordinary rows
+   *  (config requireSubBidControl — the build-SOW worksheet — or one of the
+   *  config-less views in SUB_BID_CONTROL_VIEWS). */
+  function hasSubBidControl(viewKey) {
+    if (SUB_BID_CONTROL_VIEWS[viewKey]) return true;
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.requireSubBidControl);
+    } catch (e) { return false; }
+  }
+
+  /** 'Yes' | 'No' | '' — the row's Require Sub Bid flag. */
+  function subBidFlagOf(rec, viewKey) {
+    var field = fieldsFor(viewKey).requireSubBid || 'field_2479';
+    var api = window.SCW && window.SCW.requireSubBid;
+    if (api && typeof api.readFlag === 'function') return api.readFlag(rec, field);
+    var v = readBool(rec, field);
+    return v === 'Yes' ? 'Yes' : (v === 'No' ? 'No' : '');
+  }
+
+  /** "Sub bid" — a collapsed disclosure at the FOOT of the expanded card,
+   *  below the notes: the only place an ordinary row's Require Sub Bid is
+   *  flipped (the accessory edit modal covers accessories). Three clicks
+   *  deep on purpose (expand the row, open this, flip) and nothing on the
+   *  row at rest — the flag changes what subs must price. The header reads
+   *  the current state even while collapsed. The control is the modal's own
+   *  Yes / No radiochips; init.js routes the click through
+   *  SCW.requireSubBid.setFlag, so the No → Yes confirm, the dropped-write
+   *  check and the refetch are shared. */
+  function detailSubBidSection(rec, viewKey) {
+    if (!hasSubBidControl(viewKey)) return '';
+    var field = fieldsFor(viewKey).requireSubBid || 'field_2479';
+    var val = subBidFlagOf(rec, viewKey);
+    var yes = val === 'Yes';
+    var api = window.SCW && window.SCW.requireSubBid;
+    var canEdit = !!(api && typeof api.setFlag === 'function');
+    function seg(v) {
+      var sel = (val === v);
+      return '<button type="button" class="scw-ws-v2-radiochip ' + (sel ? 'is-selected' : 'is-unselected') + '" ' +
+        'data-scw-ws-v2-subbid="' + v + '" data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+        'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" data-scw-ws-v2-field="' + escapeHtml(field) + '" ' +
+        'aria-pressed="' + (sel ? 'true' : 'false') + '">' + v + '</button>';
+    }
+    return '<div class="scw-ws-v2-subbid" data-scw-ws-v2-subbid-section="' + escapeHtml(rec.id) + '">' +
+      '<button type="button" class="scw-ws-v2-subbid-head" data-scw-ws-v2-subbid-toggle="1" aria-expanded="false">' +
+        '<span class="scw-ws-v2-subbid-caret" aria-hidden="true">' +
+          '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" ' +
+            'stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>' +
+        '</span>' +
+        '<span class="scw-ws-v2-subbid-title">Sub bid</span>' +
+        '<span class="scw-ws-v2-subbid-state' + (yes ? ' scw-ws-v2-subbid-state--yes' : '') + '">' +
+          (yes ? 'Required — subs price this item on its own line' : 'Not required') +
+        '</span>' +
+        '<span class="scw-ws-v2-subbid-hint">' + (canEdit ? 'change' : '') + '</span>' +
+      '</button>' +
+      '<div class="scw-ws-v2-subbid-body">' +
+        '<div class="scw-ws-v2-detail-field" data-scw-df="' + escapeHtml(field) + '">' +
+          '<div class="scw-ws-v2-detail-label">Require sub bid</div>' +
+          (canEdit
+            ? '<div class="scw-ws-v2-radiochips" role="group" aria-label="Require sub bid">' + seg('Yes') + seg('No') + '</div>'
+            : '<div class="scw-ws-v2-display">' + escapeHtml(val || '(not set)') + '</div>') +
+          '<div class="scw-ws-v2-subbid-note">Yes = subs must price this item; it shows as its own line on bids ' +
+            'and in the comparison grid. No = priced as part of the scope, no line of its own.</div>' +
+        '</div>' +
+      '</div>' +
     '</div>';
   }
 
@@ -1810,6 +1908,7 @@
         '</div>' +
       '</div>' +
       detailNotesSection(rec, viewKey) +
+      detailSubBidSection(rec, viewKey) +
     '</div>';
   }
 
@@ -2496,11 +2595,25 @@
       if (!lbl) lbl = '(accessory)';
       var q = parseFloat(readNum(aA, F.qty || 'field_1964'));
       var qtySuffix = (isFinite(q) && q > 1) ? ' ×' + q : '';
-      chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap">' +
+      // Removed by a signed CO. An accessory with a loaded parent attaches
+      // as a chip instead of getting its own card, so without this it reads
+      // as live hardware whatever field_2967 says — a swapped-out mount
+      // looked identical to the one that replaced it. The tag never names
+      // the CO: field_2967's display value is the removed LINE's product
+      // name, not a CO number (bom-tray.js coFromFlag guards the same way).
+      var gone = installRemovedBy(aA, viewKey) !== null;
+      // data-scw-ws-v2-acc-chip = the accessory's install record id: the id
+      // hook co-remove.js uses to put its per-accessory Remove control on
+      // this chip (CO drafting scene, view_4086). Inert everywhere else.
+      chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap' +
+          (gone ? ' scw-ws-v2-mh-chip-wrap--removed' : '') + '" ' +
+          'data-scw-ws-v2-acc-chip="' + escapeHtml(aA.id) + '">' +
         '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert" ' +
-          'title="' + escapeHtml(lbl) + '">' +
+          'title="' + escapeHtml(lbl + (gone ? ' — removed from install scope by a change order' : '')) + '">' +
           escapeHtml(lbl + qtySuffix) +
-        '</span></span>';
+        '</span>' +
+        (gone ? '<span class="scw-ws-v2-mh-removed">removed</span>' : '') +
+      '</span>';
     }
     if (!chipsHtml) return '';
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--ro">' +
@@ -2607,6 +2720,7 @@
 
     var cat = bucketCategoryOf(rec, sourceViewKey);
     card.classList.add('scw-ws-v2-card--' + cat);
+    if (isLicenseBucket(rec, sourceViewKey)) card.classList.add('scw-ws-v2-card--license');
     if (isSalesMoney(sourceViewKey))   card.classList.add('scw-ws-v2-card--sales');
     if (isSurveyMoney(sourceViewKey))  card.classList.add('scw-ws-v2-card--survey');
     if (isInstallMoney(sourceViewKey)) {
@@ -2828,7 +2942,9 @@
     SERVICES_BUCKET:     SERVICES_BUCKET,
     ASSUMPTIONS_BUCKET:  ASSUMPTIONS_BUCKET,
     NETWORKING_BUCKET:   NETWORKING_BUCKET,
+    LICENSE_BUCKET:      LICENSE_BUCKET,
     bucketCategoryOf:    bucketCategoryOf,
+    isLicenseBucket:     isLicenseBucket,
     labelLineItem:       labelLineItem,
     // Lock rule (sales survey-associated rows) + the fields that stay
     // editable on a locked row — consumed by the bulk-edit modal so it

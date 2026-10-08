@@ -22,18 +22,20 @@ cat \
   src/features/_render-totals-guard.js \
   src/features/_toolbar-registry.js \
   src/features/_v2-scroll-anchor.js \
-  src/features/_scroll-spy.js \
   src/features/disable-scroll-restoration.js \
   src/features/preserve-scroll-on-refresh.js \
   src/features/modal-refresh-redirect.js \
   src/features/modal-scroll-restore.js \
   src/features/ktl-hide-show-state.js \
   src/features/global-styles.js \
+  src/features/project-id-badge.js \
   src/features/google-places-pac-watchdog.js \
   src/features/hide-data-source-views.js \
   src/features/scene-tweaks.js \
+  src/features/scene-veil.js \
   src/features/percent-field-format.js \
   src/features/inline-form-recompose.js \
+  src/features/pricing-discount-gate.js \
   src/features/inline-edit-checkbox-layout.js \
   src/features/extract-hsv-color.js \
   src/features/heavy-grid-perf.js \
@@ -59,6 +61,7 @@ cat \
   src/features/proposal-preview-images.js \
   src/features/proposal-preview-expiration.js \
   src/features/published-proposal-render.js \
+  src/features/accept-proposal-guard.js \
   src/features/secure-proposal-link.js \
   src/features/bid-items-grid.js \
   src/features/bid-review/config.js \
@@ -101,6 +104,7 @@ cat \
   src/features/bulk-add-mounting-box.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility_view_3451.js \
+  src/features/dto-form-submit-intercept.js \
   src/features/highlight-duplicate-cells.js \
   src/features/change-record-limit.js \
   src/features/SURVEY_lineitem_conditional-field-grayout.js \
@@ -108,7 +112,6 @@ cat \
   src/features/sync-checkboxes \
   src/features/survey-form-drag-drop-files.js \
   src/features/hide-navigation.js \
-  src/features/nav-knack2-highlight.js \
   src/features/strip-register-buttons.js \
   src/features/calc-install-fee-adjustment.js \
   src/features/instructions-placement.js \
@@ -142,6 +145,7 @@ cat \
   src/features/deploy-page-nav.js \
   src/features/pinned-notes.js \
   src/features/site-maps-strip.js \
+  src/features/shipments-tray.js \
   src/features/qa-popover.js \
   src/features/photo-edit-panel.js \
   src/features/config-qa-popover.js \
@@ -172,6 +176,7 @@ cat \
   src/features/photo-grid-unlinked-filter.js \
   src/features/survey-request-header.js \
   src/features/build-sow-project-header.js \
+  src/features/project-header-nav.js \
   src/features/product-lifecycle.js \
   src/features/ops-stepper.js \
   src/features/sales-stepper.js \
@@ -216,6 +221,7 @@ cat \
   src/features/worksheet-v2/warnings.js \
   src/features/worksheet-v2/summary.js \
   src/features/worksheet-v2/picker.js \
+  src/features/worksheet-v2/product-enabled-flag.js \
   src/features/worksheet-v2/edit.js \
   src/features/worksheet-v2/audit-log.js \
   src/features/worksheet-v2/mdf-notes.js \
@@ -230,9 +236,12 @@ cat \
   src/features/worksheet-v2/change-requests.js \
   src/features/worksheet-v2/poll.js \
   src/features/worksheet-v2/init.js \
+  src/features/bom-tray.js \
+  src/features/licenses-strip.js \
   src/features/worksheet-v2/co-adopt.js \
   src/features/worksheet-v2/co-remove.js \
   src/features/worksheet-v2/co-add-item-form.js \
+  src/features/worksheet-v2/sow-add-item-form.js \
   src/features/worksheet-v2/co-scene-header.js \
   src/features/worksheet-v2/co-value.js \
   src/features/worksheet-v2/co-sub-lock.js \

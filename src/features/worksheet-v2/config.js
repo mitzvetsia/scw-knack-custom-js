@@ -115,6 +115,16 @@
         // Service lines may be attached to a parent line item (field_2464)
         // — same opt-in as the CO worksheet (see the view_4079 entry).
         serviceParent:    true,
+        // Require Sub Bid on an ORDINARY row: a collapsed "Sub bid" disclosure
+        // at the foot of the expanded card (card.js detailSubBidSection).
+        // The accessory edit modal covers accessories; this is the only way
+        // to flip a plain line item. Deliberately three clicks deep — expand
+        // the row, open the disclosure, flip — and nothing on the row at
+        // rest: the flag changes what subs must price. Saves through
+        // SCW.requireSubBid.setFlag (confirm on No → Yes, dropped-write
+        // check, worksheet refetch). ⚠️ Builder: field_2479 must be an
+        // inline-editable column on view_3962 or the PUT is dropped.
+        requireSubBidControl: true,
         // Mount directly after view_3369 so the panel lands as the last child
         // of its layout group (group 7), where end users expect the worksheet.
         // (view_3610, the retired v1 grid, has been removed from the scene.)
@@ -138,6 +148,13 @@
         // (hidden) view_3436 menu link (#add-mdfidf7), replacing the button
         // that lived in the now-hidden standalone section.
         addMdfMenuView:   'view_3436',
+        // "+ Add to SOW (new)" — the custom add-item modal (sow-add-item-form.js,
+        // Make creates the line items directly). Rendered only for the users in
+        // that module's ALLOWED_EMAILS; the native "+ Add to SOW" stays.
+        // page:'project' — this page's record is the PROJECT (its route repeats
+        // the project id), so the user picks the SOW(s) from the Scopes of Work
+        // grid (view_3325), exactly as the DTO form's "Which SOWs?" did.
+        sowAddModal:      { page: 'project', sowViews: ['view_3325', 'view_3918'] },
         // No field/bucket overrides — uses the defaults above verbatim.
         fields:  {},
         buckets: {}
@@ -339,6 +356,13 @@
         // Knack menu view (same link v1 used). Without it the button
         // falls back to a page-wide link-text scan.
         addSowMenuView:   'view_3450',
+        // Gated "+ Add to SOW (new)" modal button — see the view_3962 entry.
+        // Sales may add only the buckets whose "allow sales to add" is Yes —
+        // the view_3748 dropdown's four, in its order. (The flag isn't readable
+        // client-side yet, so the list is spelled out here.)
+        // sowPicker:false — sales adds to the SOW they are on; only ops (view_3962)
+        // gets the "Which SOW(s)?" choice.
+        sowAddModal:      { page: 'sow', buckets: ['networking', 'otherEquipment', 'camera', 'license'], sowPicker: false },
         fields: {
           retailPrice:     'field_1960', // PRODUCT STORED_price (read-only)
           lineDiscPct:     'field_2261', // INPUT line discount % (editable)
@@ -621,6 +645,15 @@
         // on view_4079 or the view-based PUT silently drops the edit (edit.js
         // now detects the 200-but-unchanged response and toasts the cause).
         equipmentField:     'field_1960',
+        // Bulk edit: the shared SOW registry plus the unit Equipment $ on the
+        // equipment buckets (cam / default) — the same field_1960 the card's
+        // Equipment $ stack edits, so a PM can price a batch of CO adds at
+        // once. Services / assumptions carry no equipment price. (bulk.js
+        // fieldSetFor merges these onto the legacy registry.)
+        bulkExtraFields: {
+          cam:       [ { f: 'retailPrice', kind: 'number', label: 'Equipment $ (unit)' } ],
+          'default': [ { f: 'retailPrice', kind: 'number', label: 'Equipment $ (unit)' } ]
+        },
         // Custom discount on the CO card's detail panel (card.js
         // pricingDetail zone): Custom Disc % (field_2261) + Custom Disc $ each
         // (field_2262) + reason (field_2263) editable, Applied Discount

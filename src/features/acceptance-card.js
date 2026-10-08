@@ -80,6 +80,11 @@
     payment:   'field_2765',
     signed:    'field_2766',
     terms:     'field_2940',   // FLAG_approved for terms (Yes/No)
+    // 2026-10-01: the two no-e-signature acceptance paths. Both stamped by
+    // Make 13.03 at creation; the SOW status says only "Accepted".
+    noSig:     'field_3309',   // FLAG_approved without signature (Yes/No)
+    notBill:   'field_3310',   // FLAG_not billable (Yes/No)
+    reason:    'field_3311',   // INPUT_approved not billable reason (paragraph)
     xero:      'field_1847',
     agreement: 'field_2767',
     // SYS_bid basis pdf. TWO possible columns and the card accepts either,
@@ -805,6 +810,30 @@
       '</span>';
   }
 
+  /** BILLED TO CLIENT — the first money column. The TOTAL leads, heavy,
+   *  because that is the figure the eye takes for "the line"; equipment
+   *  and labor sit under it as its two parts in the quiet line style. A
+   *  bare bold equipment figure here used to read as the row's total
+   *  (equipment is usually the bigger half), with labor off to the side
+   *  looking like a footnote. Not billable: no figures, the reason. */
+  function clientStat(equip, install, notBill) {
+    if (notBill) {
+      return '<span class="scw-acpt-col scw-acpt-col--equip">' +
+        line('\u2014', 'not billable to client', '',
+          'Authorized as not billable \u2014 no client document, no invoice') +
+        '</span>';
+    }
+    if (equip == null && install == null) {
+      return '<span class="scw-acpt-col scw-acpt-col--equip"></span>';
+    }
+    var total = (equip == null ? 0 : equip) + (install == null ? 0 : install);
+    var lines = line(esc(money(total)), 'billed to client', 'scw-acpt-line__val--total',
+      'Equipment + labor billed to the client on this acceptance');
+    if (equip   != null) lines += line(esc(money(equip)),   'equipment');
+    if (install != null) lines += line(esc(money(install)), 'labor');
+    return '<span class="scw-acpt-col scw-acpt-col--equip">' + lines + '</span>';
+  }
+
   /** One value + name line inside a stat's stacked block. */
   function line(val, lbl, valMod, tip) {
     return '<span class="scw-acpt-line__val' + (valMod ? ' ' + valMod : '') + '"' +
@@ -822,15 +851,14 @@
    *  than a rate to hold (see laborMargin). Each line drops out when its
    *  figure is unknown, so the column never implies a rate it couldn't
    *  compute. */
-  function laborStat(installBilled, amt, surveyCost, basis) {
+  function laborStat(installBilled, amt, surveyCost, basis, notBill) {
     var subAmt  = amt ? amt.amount : null;
     if (installBilled == null && subAmt == null) {
       return '<span class="scw-acpt-col scw-acpt-col--labor"></span>';
     }
+    // What the client is billed lives in the BILLED TO CLIENT column now
+    // (clientStat); this column is the margin on the labor half of it.
     var lines = '';
-    if (installBilled != null) {
-      lines += line(esc(money(installBilled)), 'billed to client');
-    }
     if (subAmt != null) {
       var sd = amt && SRC[amt.source];
       lines += line(esc(money(subAmt)),
@@ -1198,6 +1226,12 @@
       '  border: 1px solid transparent; }',
       '.scw-acpt-pill.is-yes { background: #dcfce7; border-color: #86efac; color: #15803d; }',
       '.scw-acpt-pill.is-no  { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
+      '.scw-acpt-pill.is-dup { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }',
+      '.scw-acpt-pill.is-nb  { background: #f1f5f9; border-color: #cbd5e1; color: #475569; }',
+      '.scw-acpt-reason { margin-top: 6px; font: 400 12.5px/1.45 system-ui, sans-serif; color: #475569;',
+      '  max-width: 520px; }',
+      '.scw-acpt-reason__lbl { font: 700 10px/1 system-ui, sans-serif; letter-spacing: .08em;',
+      '  text-transform: uppercase; color: #94a3b8; margin-right: 6px; }',
       '.scw-acpt-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }',
       '.scw-acpt-btn { display: inline-flex; align-items: center; gap: 7px; cursor: pointer;',
       '  font: 600 12.5px/1 system-ui, sans-serif; padding: 8px 14px; border-radius: 6px;',
@@ -1310,13 +1344,12 @@
       // construction. min-width alignment (what this replaced) only lines
       // up when the content happens to be the same width — -$454.00 and
       // $11,735.00 are not, which is what made the edges rag.
-      '.scw-acpt-card { --acpt-equip: 112px; --acpt-num: 94px;',
-      '  --acpt-lbl: 98px; }',
+      '.scw-acpt-card { --acpt-num: 94px; --acpt-lbl: 98px;',
+      // Both money columns share one shape now — total over its parts on
+      // the left, the labor margin on the right — so one track width.
+      '  --acpt-equip: calc(var(--acpt-num) + var(--acpt-lbl) + 7px); }',
       '.scw-acpt-col { display: grid; grid-template-columns:',
       '  var(--acpt-num) var(--acpt-lbl); gap: 2px 7px; align-items: baseline; }',
-      // Equipment is one figure, so it needs no label column of its own —
-      // it right-aligns in its width and the header names it.
-      '.scw-acpt-col--equip { display: block; text-align: right; }',
       '.scw-acpt-col__val { color: #0f172a;',
       '  font: 700 16px/1.2 system-ui, sans-serif;',
       '  font-variant-numeric: tabular-nums; white-space: nowrap; }',
@@ -1328,7 +1361,7 @@
       '.scw-acpt-colhead__lbl { font: 700 9.5px/1 system-ui, sans-serif;',
       '  letter-spacing: .08em; text-transform: uppercase; color: #94a3b8;',
       '  white-space: nowrap; text-align: right; }',
-      '.scw-acpt-colhead .scw-acpt-col--labor .scw-acpt-colhead__lbl:last-child {',
+      '.scw-acpt-colhead .scw-acpt-col .scw-acpt-colhead__lbl:last-child {',
       '  display: none; }',
       // Labor\'s lines: figures in the number column, their names beside
       // them. Same grid as the header, so they cannot drift.
@@ -1340,6 +1373,10 @@
       // The percent is the answer — give it the weight and let the figures
       // above it read as the inputs they are.
       '.scw-acpt-line__val--rate { font-size: 20px; cursor: help; }',
+      // The billed-to-client total: the row's headline figure.
+      '.scw-acpt-line__val--total { font-size: 16px; color: #0f172a; cursor: help; }',
+      '.scw-acpt-line__val--total + .scw-acpt-line__lbl { font-size: 10.5px;',
+      '  color: #64748b; }',
       '.scw-acpt-line__val--rate + .scw-acpt-line__lbl { font-size: 10.5px;',
       '  color: #64748b; }',
       '.scw-acpt-line__src { cursor: help; border-bottom: 1px dotted #cbd5e1; }',
@@ -1409,7 +1446,7 @@
       '  border-top: 2px solid #e2e8f0; }',
       '.scw-acpt-foot__cap { font: 700 10px/1 system-ui, sans-serif;',
       '  letter-spacing: .1em; text-transform: uppercase; color: #475569; }',
-      '.scw-acpt-foot .scw-acpt-col__val { font-size: 17px; }',
+      '.scw-acpt-foot .scw-acpt-line__val--total { font-size: 17px; }',
       '.scw-acpt-foot .scw-acpt-line__val--rate { font-size: 21px; }',
       // The bid + change-order split rides in the footer\'s identity cell,
       // beside the word PROJECT. It used to be a third band with its own
@@ -1470,15 +1507,14 @@
       // Stacked, there is no right edge to hang from and no header above
       // the columns, so each figure left-aligns and names itself again.
       '  .scw-acpt-colhead { display: none; }',
-      '  .scw-acpt-col--equip { text-align: left; }',
       '  .scw-acpt-col { grid-template-columns: auto auto; justify-content: start; }',
       '  .scw-acpt-line__val { text-align: left; }',
       '  .scw-acpt-col--equip::before, .scw-acpt-col--labor::before {',
       '    display: block; font: 700 9.5px/1 system-ui, sans-serif;',
       '    letter-spacing: .08em; text-transform: uppercase; color: #94a3b8;',
       '    margin-bottom: 3px; }',
-      '  .scw-acpt-col--equip::before { content: "Equipment"; }',
-      '  .scw-acpt-col--labor::before { content: "Labor"; grid-column: 1 / -1; }',
+      '  .scw-acpt-col--equip::before { content: "Billed to client"; grid-column: 1 / -1; }',
+      '  .scw-acpt-col--labor::before { content: "Labor margin"; grid-column: 1 / -1; }',
       '}',
       '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #e2e8f0; }',
       // The identity column: base SOW numbers (SW1145) are shorter than CO
@@ -1731,6 +1767,24 @@
     return '<span class="scw-acpt-pill ' + (yes ? 'is-yes' : 'is-no') + '">' +
       (yes ? CHECK_SVG : CLOCK_SVG) + '<span>' + esc(label) + '</span></span>';
   }
+  // Signature pill honoring the no-e-signature paths: an acceptance SCW
+  // approved without a client signature reads as approved (green), not
+  // as "not signed" (amber clock); a not-billable one adds a slate pill.
+  function signaturePills(row) {
+    var signed  = isYes(cellText(row, F.signed));
+    var noSig   = isYes(cellText(row, F.noSig));
+    var notBill = isYes(cellText(row, F.notBill));
+    var out = signed
+      ? pill('Agreement signed', true)
+      : (noSig || notBill)
+        ? pill('Approved without client signature', true)
+        : pill('Agreement not signed', false);
+    if (notBill) {
+      out += '<span class="scw-acpt-pill is-nb" title="Authorized as not billable — ' +
+        'no client document, no invoice"><span>Not billable</span></span>';
+    }
+    return out;
+  }
 
   var PENCIL_SVG =
     '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
@@ -1894,11 +1948,15 @@
         '<span class="scw-acpt-file__sz"></span>' +
         '<button type="button" class="scw-acpt-file__x" title="Choose a different file">&times;</button>' +
       '</div>' +
-      (wantsGreenlight
+      // Base scope: opt-in greenlight check. Change order: the same box,
+      // checked by default, so a wrong file can go up WITHOUT sending the
+      // CO to Make (untick, upload, then re-upload the right file ticked).
+      (wantsGreenlight || autoGl
         ? '<label class="scw-acpt-chk">' +
             '<input type="checkbox" checked>' +
-            '<span>' + esc(opts.greenlightLabel ||
-              'Check whether this deal is ready to greenlight') + '</span>' +
+            '<span>' + esc(autoGl
+              ? 'Send the signed change order to Make to apply it'
+              : (opts.greenlightLabel || 'Check whether this deal is ready to greenlight')) + '</span>' +
           '</label>'
         : '') +
       '<div class="scw-acpt-m__status" style="display:none"></div>';
@@ -2042,8 +2100,9 @@
     }
 
     m.ok.addEventListener('click', function () {
-      var manualCheck = !!(wantsGreenlight && glCheck && glCheck.checked);
-      var runCheck = manualCheck || autoGl;
+      var ticked = !!(glCheck && glCheck.checked);
+      var manualCheck = wantsGreenlight && ticked;
+      var runCheck = manualCheck || (autoGl && ticked);
 
       // Check-only submit (populated slot, no replacement chosen): fire
       // and close — the outcome arrives as a toast. Manual mode only; the
@@ -2093,7 +2152,7 @@
                 autoGl ? 'co-agreement-upload-auto' : 'agreement-upload',
                 null, null);
             } else {
-              toast(title + ' uploaded.');
+              toast(autoGl ? title + ' uploaded — not sent to Make.' : title + ' uploaded.');
             }
           }).catch(function (err) {
             fail((err && err.message) || 'Save failed');
@@ -2133,6 +2192,10 @@
     // When approved for terms, the initial-payment requirement is waived —
     // show an "Approved for terms" pill in place of the payment-received pill.
     var terms   = isYes(cellText(row, F.terms));
+    // Acceptance basis flags (2026-10-01) — blank when the grid lacks them.
+    var notBill = isYes(cellText(row, F.notBill));
+    var noSig   = isYes(cellText(row, F.noSig)) || notBill;
+    var reason  = cellText(row, F.reason);
     var xeroA    = cellAnchor(row, F.xero);
     var xeroEstA = cellAnchor(row, F.xeroEst);
     var contractId = cellText(row, F.contract);
@@ -2306,22 +2369,30 @@
         // Status belongs under the thing it describes, and keeps the top
         // line to just name + figure.
         '<div class="scw-acpt-status">' +
+          (isDupRow(viewKey, row)
+            ? '<span class="scw-acpt-pill is-dup" title="More than one base acceptance for this SOW — the proposal was accepted twice. Keep one, remove the other before it invoices.">' +
+                '<span>Accepted twice — duplicate</span></span>'
+            : '') +
           (isCo ? '' :
             (terms
               ? pill('Approved for terms', true)
               : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid))) +
-          pill(signed ? 'Agreement signed' : 'Agreement not signed', signed) +
+          signaturePills(row) +
         '</div>' +
+        // The ops reason behind a no-signature / not-billable acceptance —
+        // the one line a PM needs when the pills say the client never signed.
+        (reason && noSig
+          ? '<div class="scw-acpt-reason" title="' + esc(reason) + '">' +
+              '<span class="scw-acpt-reason__lbl">Why</span>' + esc(reason) + '</div>'
+          : '') +
       '</div>' +
       // Two money columns, straight into the row\'s own grid tracks — no
       // wrapper. A wrapper would size itself to its content and the
       // columns would drift row to row; as grid children they inherit the
       // card\'s fixed tracks, which is what holds the axis.
       (billed
-        ? equipCell(billed.equip != null ? money(billed.equip) : '') +
-          // No total column: it\'s exactly equipment + labor billed, both
-          // of which are right here.
-          laborStat(billed.install, amt, svyCost, drift)
+        ? clientStat(billed.equip, billed.install, notBill) +
+          laborStat(billed.install, amt, svyCost, drift, notBill)
         // No billed columns on the view: nothing to compare against, so
         // the row keeps its single figure — what we pay the sub. It sits
         // in the labor track, since that is what it measures.
@@ -2601,7 +2672,7 @@
             (terms
               ? pill('Approved for terms', true)
               : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid))) +
-          pill(signed ? 'Agreement signed' : 'Agreement not signed', signed) +
+          signaturePills(row) +
         '</div>' +
       '</div>' +
       equipCell('') +
@@ -2689,7 +2760,7 @@
           (billedRows < 2 ? 'Project total' : 'Project') + '</span>' +
         split +
       '</span>' +
-      equipCell(forSub ? '' : (eq != null ? money(eq) : '')) +
+      (forSub ? equipCell('') : clientStat(eq, inst, false)) +
       (forSub
         ? '<span class="scw-acpt-col scw-acpt-col--labor">' +
             (sub == null ? '' : line(esc(money(sub)), 'your total' +
@@ -2770,9 +2841,12 @@
       '</div>';
     // Per-SOW sub-bid sums, resolved ONCE for the whole card.
     var bySow = proposedSubBidBySow();
-    var signedCount = 0, entries = [];
+    var signedCount = 0, pendingCo = 0, entries = [];
+    var dups = dupTokensFor(VIEW, rows);
+    _dupTokens = dups.byToken;
     for (var ri = 0; ri < rows.length; ri++) {
       if (isYes(cellText(rows[ri], F.signed))) signedCount++;
+      else if (isCoRow(VIEW, rows[ri])) pendingCo++;
       var entry = buildSubRow(VIEW, rows[ri], bySow);
       entries.push(entry);
       card.appendChild(entry.el);
@@ -2782,16 +2856,45 @@
     var foot = buildProjectMoney(entries, true);
     if (foot) card.appendChild(foot);
     viewEl.appendChild(card);
-    rollup(viewEl, rows.length - signedCount);
+    rollup(viewEl, rows.length - signedCount, pendingCo, dups.rows);
   }
 
+  /** A change-order acceptance: the SOW number's CO suffix (SW1418CO) when
+   *  the column shows it, else the CO sub-pricing snapshot only a CO carries. */
+  function isCoRow(viewKey, row) {
+    if (/\bSW\d+CO\b/i.test(cellText(row, F.proposal))) return true;
+    try { return isCoSnapshot(readSnapshot(viewKey, row)); } catch (e) { return false; }
+  }
+  /** Duplicate base acceptances: two (or more) non-CO rows for the same
+   *  SOW — a rep accepted the proposal twice (accept-proposal-guard.js now
+   *  stops that at the source; this names the ones already on file so ops
+   *  removes the extra before it invoices). */
+  var _dupTokens = {};
+  function dupTokensFor(viewKey, rows) {
+    var counts = {}, dups = {}, n = 0;
+    for (var i = 0; i < rows.length; i++) {
+      if (isCoRow(viewKey, rows[i])) continue;
+      var t = sowTokenOf(rows[i]);
+      if (!t) continue;
+      counts[t] = (counts[t] || 0) + 1;
+    }
+    for (var k in counts) if (counts[k] > 1) { dups[k] = counts[k]; n += counts[k]; }
+    return { byToken: dups, rows: n };
+  }
+  function isDupRow(viewKey, row) {
+    return !isCoRow(viewKey, row) && !!_dupTokens[sowTokenOf(row)];
+  }
   /** Accordion-header tally: "N awaiting signature" (amber) / "all signed"
    *  (green), plus the attention flag the deploy nav's amber dot reads.
+   *  Says when what is waiting is a change order — a PM reading the
+   *  Paperwork tile needs to know whether the base agreement or a CO is
+   *  the holdup — and when the same SOW was accepted more than once.
    *  Shared by both variants. */
-  function rollup(viewEl, pending) {
+  function rollup(viewEl, pending, pendingCo, dupRows) {
     var acc = viewEl.closest('.scw-ktl-accordion');
     if (!acc) return;
-    acc.toggleAttribute && acc.toggleAttribute('data-scw-attention', pending > 0);
+    dupRows = dupRows || 0;
+    acc.toggleAttribute && acc.toggleAttribute('data-scw-attention', pending > 0 || dupRows > 0);
     var head = acc.querySelector('.scw-ktl-accordion__header');
     if (!head) return;
     var countEl = head.querySelector('.scw-acc-count');
@@ -2802,11 +2905,20 @@
       if (countEl) head.insertBefore(roll, countEl);
       else head.appendChild(roll);
     }
-    roll.classList.toggle('scw-acpt-rollup--warn', pending > 0);
-    roll.classList.toggle('scw-acpt-rollup--ok', pending === 0);
-    roll.textContent = pending > 0
-      ? (pending + ' awaiting signature')
-      : 'all signed';
+    roll.classList.toggle('scw-acpt-rollup--warn', pending > 0 || dupRows > 0);
+    roll.classList.toggle('scw-acpt-rollup--ok', pending === 0 && dupRows === 0);
+    var text = 'all signed';
+    if (pending > 0) {
+      pendingCo = pendingCo || 0;
+      if (pendingCo === pending) {
+        text = (pending === 1 ? 'change order' : pending + ' change orders') + ' awaiting signature';
+      } else {
+        text = pending + ' awaiting signature' +
+          (pendingCo ? ' · ' + pendingCo + (pendingCo === 1 ? ' is a change order' : ' are change orders') : '');
+      }
+    }
+    if (dupRows) text += ' · accepted twice';
+    roll.textContent = text;
   }
 
   function render() {
@@ -2814,6 +2926,31 @@
       if (SUB_VIEWS[VIEWS[vi]]) renderSubView(VIEWS[vi]);
       else renderView(VIEWS[vi]);
     }
+  }
+
+  // The no-signature / not-billable pills and the "Why" line read three
+  // Acceptance columns the grid has to CARRY (field_3309 / 3310 / 3311).
+  // Missing columns fail silent — every row just reads "Agreement not
+  // signed" — so say once, in console, exactly which ones Builder lacks.
+  // Ops views only: the reason is internal and never goes on a sub grid.
+  var _basisColsWarned = {};
+  function warnMissingBasisColumns(VIEW, viewEl) {
+    if (SUB_VIEWS[VIEW] || _basisColsWarned[VIEW]) return;
+    var want = [[F.noSig, 'FLAG_approved without signature'],
+                [F.notBill, 'FLAG_not billable'],
+                [F.reason, 'INPUT_approved not billable reason']];
+    var missing = [];
+    for (var i = 0; i < want.length; i++) {
+      if (!viewEl.querySelector('thead th.' + want[i][0])) {
+        missing.push(want[i][0] + ' (' + want[i][1] + ')');
+      }
+    }
+    if (!missing.length) return;
+    _basisColsWarned[VIEW] = true;
+    console.warn('[scw-acceptance-card] ' + VIEW + ' is missing ' + missing.length +
+      ' Acceptance column(s) — add them to the grid in Builder or the ' +
+      '"Approved without client signature" / "Not billable" pills and the reason ' +
+      'line never render:\n  ' + missing.join('\n  '));
   }
 
   function renderView(VIEW) {
@@ -2831,6 +2968,7 @@
       return;
     }
     viewEl.classList.add('scw-acpt-on');
+    warnMissingBasisColumns(VIEW, viewEl);
 
     // Rebuild from scratch — a project accrues one acceptance per signed
     // agreement (base proposal + each CO). ONE card, one compact list row
@@ -2846,15 +2984,18 @@
     // base acceptance with neither payment nor terms approval) float to the
     // top so a 6-12 acceptance pile on a big project self-prioritizes.
     var entries = [];
-    var signedCount = 0;
+    var signedCount = 0, pendingCo = 0;
+    var dups = dupTokensFor(VIEW, rows);
+    _dupTokens = dups.byToken;
     for (var ri = 0; ri < rows.length; ri++) {
       var r = rows[ri];
       var rSigned = isYes(cellText(r, F.signed));
       var rPaid   = isYes(cellText(r, F.payment));
       var rTerms  = isYes(cellText(r, F.terms));
-      var rIsCo   = /\bSW\d+CO\b/i.test(cellText(r, F.proposal));
-      var attention = !rSigned || (!rIsCo && !rTerms && !rPaid);
+      var rIsCo   = isCoRow(VIEW, r);
+      var attention = !rSigned || (!rIsCo && !rTerms && !rPaid) || isDupRow(VIEW, r);
       if (rSigned) signedCount++;
+      else if (rIsCo) pendingCo++;
       entries.push({ row: r, attention: attention, order: ri });
     }
     entries.sort(function (a, b) {
@@ -2900,9 +3041,10 @@
       // here rather than carrying filler spans.
       head.innerHTML =
         '<span class="scw-acpt-col scw-acpt-col--equip">' +
-          '<span class="scw-acpt-colhead__lbl">Equipment</span></span>' +
+          '<span class="scw-acpt-colhead__lbl">Billed to client</span>' +
+          '<span class="scw-acpt-colhead__lbl"></span></span>' +
         '<span class="scw-acpt-col scw-acpt-col--labor">' +
-          '<span class="scw-acpt-colhead__lbl">Labor</span>' +
+          '<span class="scw-acpt-colhead__lbl">Labor margin</span>' +
           '<span class="scw-acpt-colhead__lbl"></span></span>';
       card.insertBefore(head, built[0].el);
     }
@@ -2917,7 +3059,7 @@
 
     // Rollup badge in the accordion header bar — visible without
     // expanding; the attention attribute feeds the deploy nav's amber dot.
-    rollup(viewEl, rows.length - signedCount);
+    rollup(viewEl, rows.length - signedCount, pendingCo, dups.rows);
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {

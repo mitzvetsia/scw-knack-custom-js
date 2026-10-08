@@ -183,6 +183,8 @@
   function build(viewKey) {
     var _vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
     var addLabel = (_vc && _vc.addItemLabel) ? ('+ ' + _vc.addItemLabel) : '+ Add to SOW';
+    var useAddModal = !!(_vc && _vc.sowAddModal && ns.sowAddForm &&
+      typeof ns.sowAddForm.isAllowed === 'function' && ns.sowAddForm.isAllowed(viewKey));
     var bar = document.createElement('div');
     bar.className = 'scw-ws-v2-toolbar';
     bar.innerHTML =
@@ -217,8 +219,13 @@
         // "+ Add to SOW" is suppressed on views flagged noAddItem — the
         // deploy/install grids (view_4093/view_4056), where you can't add to
         // the scope without a change order.
+        // Views flagged sowAddModal get the custom add-item modal
+        // (sow-add-item-form.js) AS their "+ Add to SOW" — the Knack DTO add
+        // form behind the old button is retired there. Other views (survey)
+        // keep the native add link.
         ((_vc && _vc.noAddItem) ? '' :
-          actionBtn('add-sow',    addLabel,               'Add a new line item')) +
+          (useAddModal ? actionBtn('add-sow-modal', addLabel, ns.sowAddForm.CONFIG.BUTTON_TITLE)
+                       : actionBtn('add-sow',       addLabel, 'Add a new line item'))) +
         // "+ Add MDF/IDF" — views with an addMdfMenuView (a hidden Knack
         // menu whose link is the add-location action, e.g. view_3436 on
         // build-SOW). Replaces the button that lived in the standalone
@@ -345,6 +352,10 @@
 
   // ── Action handlers ──
   function handleAction(action, viewKey) {
+    if (action === 'add-sow-modal') {
+      if (ns.sowAddForm && typeof ns.sowAddForm.open === 'function') ns.sowAddForm.open({ viewKey: viewKey });
+      return;
+    }
     if (action === 'add-sow') {
       // Custom add modal (viewCfg.customAddModal) — replaces the native DTO
       // form entirely. The CO worksheet (view_4079) opts in: it fires a Make

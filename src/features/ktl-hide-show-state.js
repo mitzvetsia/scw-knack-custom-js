@@ -147,8 +147,30 @@
   // Debounced at 200ms (was rAF ~16ms) since button injection
   // happens in batches and we only need to run once after they settle.
 
+  // Filter first: only a mutation that ADDS a hideShow_* button (or a
+  // subtree containing one) matters. Unfiltered, every DOM write on a
+  // busy scene (worksheet rows, chips, accordion wraps — thousands per
+  // load) re-armed the 200ms timer and re-ran the jQuery sweep; on the
+  // KTL-free scenes, where no button ever appears, that was pure churn.
+  function addsHideShowButton(muts) {
+    for (var i = 0; i < muts.length; i++) {
+      var added = muts[i].addedNodes;
+      if (!added) continue;
+      for (var j = 0; j < added.length; j++) {
+        var n = added[j];
+        if (!n || n.nodeType !== 1) continue;
+        // typeof guard: a <form> with a control named "id" exposes that
+        // ELEMENT as n.id (see ktl-accordion.js) — never call string
+        // methods on it blindly.
+        if ((typeof n.id === 'string' && n.id.indexOf('hideShow_') === 0) ||
+            (n.querySelector && n.querySelector('[id^="hideShow_"]'))) return true;
+      }
+    }
+    return false;
+  }
   var obsTimer = 0;
-  var observer = new MutationObserver(function () {
+  var observer = new MutationObserver(function (muts) {
+    if (!addsHideShowButton(muts)) return;
     if (obsTimer) clearTimeout(obsTimer);
     obsTimer = setTimeout(function () {
       obsTimer = 0;

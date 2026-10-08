@@ -455,6 +455,31 @@
       flashInputs(formCfg.viewId);
       formCfg._flashOnRender = true;
 
+      // Knack's "show a message" submit rule hides the form and shows the
+      // confirmation (which this panel's CSS hides) — the box simply
+      // vanishes until Knack's own "Reload form" link is clicked. Click it
+      // for the user so the field is ready for the next value; the reload
+      // re-renders the view (knack-view-render → panel + gates rebind).
+      var reloadVid = formCfg.viewId;
+      var reloadTries = 0;
+      (function reloadWhenReady() {
+        var v = document.getElementById(reloadVid);
+        var form = v && v.querySelector('form');
+        var reload = v && v.querySelector('.kn-form-reload');
+        var conf = v && v.querySelector('.kn-form-confirmation');
+        var formHidden = !form || form.style.display === 'none' || form.offsetParent === null;
+        var confShown = !!conf && conf.style.display !== 'none';
+        // Diagnostic (kept on while the panel is being verified).
+        try {
+          console.info('[scw-ifc] ' + reloadVid + ' after submit: form ' + (form ? (formHidden ? 'hidden' : 'visible') : 'MISSING') +
+            ', confirmation ' + (conf ? (confShown ? 'shown' : 'hidden') : 'missing') + ', reload link ' + (reload ? 'present' : 'absent') +
+            ', input ' + (function () { var i = form && form.querySelector('.kn-input input, .kn-input textarea'); return i ? (i.disabled ? 'disabled' : i.readOnly ? 'readOnly' : 'editable') + ' value=' + JSON.stringify(i.value) : 'none'; })());
+        } catch (e) { /* diagnostics only */ }
+        if (reload && (formHidden || confShown)) { reload.click(); return; }
+        // Knack can take a moment to swap the form for its confirmation.
+        if (formHidden || confShown || ++reloadTries < 6) setTimeout(reloadWhenReady, 400);
+      })();
+
       // Re-format after Knack re-renders with raw values
       var vid = formCfg.viewId;
       var fCfg = formCfg.fields;

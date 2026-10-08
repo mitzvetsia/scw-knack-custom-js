@@ -279,6 +279,46 @@
   }
 
   // ── picker panel ─────────────────────────────────────────────────────
+  /** The nearest ancestor that would CLIP the panel (the Setup drawer and
+   *  the document card both scroll/hide their overflow), as a rect. Falls
+   *  back to the viewport. */
+  function clipRect(el) {
+    var vw = document.documentElement.clientWidth || window.innerWidth || 0;
+    var vh = document.documentElement.clientHeight || window.innerHeight || 0;
+    var box = { left: 0, right: vw, top: 0, bottom: vh };
+    for (var n = el.parentNode; n && n.nodeType === 1 && n !== document.body; n = n.parentNode) {
+      var ov = '';
+      try { ov = (window.getComputedStyle(n).overflowX || '') + ' ' + (window.getComputedStyle(n).overflow || ''); }
+      catch (e) { continue; }
+      if (!/hidden|auto|scroll/.test(ov)) continue;
+      var r = n.getBoundingClientRect();
+      if (!r.width && !r.height) continue;
+      if (r.left  > box.left)  box.left  = r.left;
+      if (r.right < box.right) box.right = r.right;
+      break;                                   // the innermost clipper decides
+    }
+    return box;
+  }
+  /** Anchor the panel so it stays inside whatever would clip it. Left-
+   *  anchored by default (the stage tile's button sits at the tile's left
+   *  edge); in the Setup drawer the button is hard right, where a
+   *  left-anchored panel ran past the container and clipped its own
+   *  Generate button. */
+  function place(wrap, panel) {
+    var r = panel.getBoundingClientRect();
+    if (!r.width && !r.height) return;         // no layout (jsdom) — leave the CSS default
+    var clip = clipRect(wrap);
+    var room = clip.right - clip.left;
+    if (r.right <= clip.right - 6) return;     // already fits
+    panel.style.left = 'auto';
+    panel.style.right = '0';
+    var flipped = panel.getBoundingClientRect();
+    if (flipped.left >= clip.left + 6) return; // hanging leftward fits
+    // Too wide for the container either way: pin it inside and let it shrink.
+    panel.style.right = 'auto';
+    panel.style.left = ((clip.left + 6) - wrap.getBoundingClientRect().left) + 'px';
+    if (room > 40) { panel.style.minWidth = '0'; panel.style.maxWidth = (room - 12) + 'px'; }
+  }
   function closePanel() {
     var p = document.getElementById(PANEL_ID);
     if (p && p.parentNode) p.parentNode.removeChild(p);
@@ -311,6 +351,7 @@
         '<button type="button" class="scw-rgd-btn scw-rgd-btn--go">Generate</button>' +
       '</div>';
     wrap.appendChild(panel);
+    place(wrap, panel);
 
     var go = panel.querySelector('.scw-rgd-btn--go');
     function syncGo() {

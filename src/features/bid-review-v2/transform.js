@@ -427,8 +427,21 @@
       if (rr.id) byId[rr.id] = rr;
     }
     function keyOf(r) { return r.sowItem || r.id; }
+    // The parent pointer lives on the SOW LINE ITEM (field_2464, view_3921).
+    // A bid-backed row's own parentId was read off the BID record, which has
+    // no such field — so every Require-Sub-Bid=Yes accessory on a bid came
+    // through with parentId '' and floated to the top of its MDF group as a
+    // stray top-level row instead of nesting under its parent (the DPS /
+    // REX rows above AC-001 on the reconcile page). Read the SOW record
+    // first (attached by buildState before groupRows runs), then fall back
+    // to the row's own value (SOW-backed rows set it from the line item).
+    function parentIdOf(r) {
+      var pid = '';
+      if (r.sowFullRecord) pid = connectionId(r.sowFullRecord, 'field_2464') || '';
+      return pid || r.parentId || '';
+    }
     function parentOf(r) {
-      var pid = r.parentId;
+      var pid = parentIdOf(r);
       if (!pid) return null;
       var p = bySow[pid] || byId[pid] || null;
       return (p && p !== r) ? p : null;

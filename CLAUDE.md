@@ -478,9 +478,13 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   `change order`), NOT a new object. CO line items are ordinary SOW Line Item
   records (connected via `field_2154`). All SOW-consuming surfaces need a
   "Type **is not** change order" filter (blank fails safe).
-- **CO Status is a NEW separate field** (8 options: Draft, Pending Sub Pricing,
-  Ops Review, Issued, Accepted, Applied, Declined, Void — each with exactly one
-  writer). Do NOT add options to the existing SOW status field.
+- **CO Status is a NEW separate field** (`field_2953`, 7 options as of 2026-10-01:
+  Draft, Pending Sub Pricing, Ops Review, Issued, Accepted, Declined, Void — the
+  STAGE only; there is NO `Applied` — accepted IS applied). **Billability /
+  signature / the ops reason live on the ACCEPTANCE as flags** (`field_2766`
+  signed, `field_3309` approved without signature, `field_3310` not billable +
+  a reason field), never on the SOW. Do NOT add options to the existing SOW
+  status field.
 - **A CO rides the full chain** SOW → Proposal snapshot → Acceptance → apply.
   The verb is "Issue" (creates snapshot + acceptance in one gesture); invoice
   defers to the SIGNED webhook; the apply gate is **signature alone**; the
@@ -495,11 +499,83 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   source); `view_4088` = other project SOW/proposal items (adoption source).
   view_4079 has its own `createMirror` instance (the field_1957 ↔ field_2197
   cascade is mandatory on every view that edits this object).
+- **Two no-e-signature accepted paths (prepped 2026-10-01, NOT live)** — see the doc's
+  "Accepted without an e-signature" section. **Authorize as not billable**: third Ops Review
+  exit in `co-stage-strip.js` — reason modal → `MAKE_CO_ISSUE_WEBHOOK` `stepId:
+  'authorize-not-billable'` with a CO-page-built payload (raw snapshot, internal
+  sub-labor+equipment+reason card, totals, `signed:false`); no client-side writes. **Approve
+  without client signature**: amber CO-mode step on the preview page (`ops-stepper.js`
+  `approve-without-signature`), full Issue payload + `noSignature:true` + `reason`. Make 13.03
+  creates Proposal/Acceptance (flags + reason on the Acceptance), writes `Accepted`, calls
+  13.06b. The CO strip reads the Acceptance from a hidden grid (`ACC.view`, TBD). Gated by
+  `CO_AUTHORIZE_NOT_BILLABLE_READY` / `CO_APPROVE_WITHOUT_SIGNATURE_READY` (false).
 - **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
   `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
   install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,
   and the sub-facing view (⚠️ gated on Known Issue #17 — no worksheet-v2
   surface to sub logins while the REST-key Builder snippet ships).
+
+## SOW add-item modal (live 2026-10-08) — `src/features/worksheet-v2/sow-add-item-form.js`
+
+The Knack DTO "Add to Scope" forms (view_3329 / view_4002 / view_3451 / view_3748) are
+retired: Knack's browser-side required check blocked them, and the intercept that posted
+them itself never connected the DTO to its SOW header. "+ Add to SOW" on the build-SOW
+(view_3962), sales (view_3586) and reconcile-bids (bid-review-v2, host view_3921) surfaces
+is now this modal — the CO modal's engine with the DTO forms' per-bucket field suite,
+bucket-first or product-first (one bucket per product; click the active chip to clear).
+Submit posts ONE payload to `MAKE_SOW_ADD_ITEMS_WEBHOOK` (Make scenario 02.01 "SOW Line
+Item DTO (DUPE USING CUSTOM MODAL)", remapped from the DTO record to the payload, which
+therefore mirrors the DTO's `field_XXXX_raw` shape — contract in `src/config.js`). Per-view
+options: `sowAddModal` in worksheet-v2/config.js (ops = project page, SOW picker from
+view_3325; sales = SOW page, four "allow sales to add" buckets, no picker) or the module's
+`HOSTS` for non-worksheet surfaces. `ALLOWED_EMAILS` (empty = everyone) re-gates it.
+`dto-form-submit-intercept.js` now covers only the survey add forms — likely carrying the
+same connection bug; verify before relying on them.
+
+## Scene veil (load gating) — `src/features/scene-veil.js`
+
+Heavy ops scenes are hidden behind a spinner until Knack's render stream goes quiet (600ms)
+AND the page's transform markers exist (scene_1085: worksheet-v2 panel on view_3962 past its
+"Waiting…" placeholder, `#scw-pid-hero`, the view_3901 header card, an accordion shell;
+scene_1155: bid-review-v2 panel + hero). Caps: 6s from first render, 3s after the scene's own
+render event, 10s event-independent watchdog that force-reveals and logs the missing markers.
+Add a scene by adding a `SCENES` entry — pick markers that exist on EVERY record of that
+scene or the page waits for the cap. scene_1116 keeps its original veil in `scene-tweaks.js`.
+`change-record-limit.js` forces its listed grids to the full record set: set the per-page dropdown
+to 1000 when the grid has one; otherwise (view_4031, the customer questionnaire grid) PAGE THROUGH —
+GET pages 2..N at Knack's own page size on the grid's own request address (`model.url()`, which
+carries the parent-record crumb), `data.add` the records, re-fire `knack-view-render` so the model
+consumers rebuild. Every bigger-page lever is proven dead on a dropdown-less grid (2026-10-05..07):
+`model.view.rows_per_page` + `model.fetch()`, an `$.ajaxPrefilter` (Knack's requests bypass the
+page's jQuery), and `view_XXXX_per_page=1000` in the page address all came back 100 of 142 — with
+the dropdown disabled in Builder, Knack serves its configured page size. Once per view instance.
+Tests: `tests/scene-veil/`.
+
+## Project Number badge (HubSpot deal id) — `src/features/project-id-badge.js`
+
+The "Project Number" is the project's HubSpot deal id (`field_1622`). It is what a tech
+quotes to SCW tech support, so it renders FIRST on every sub-facing scene (scene_1353 /
+scene_1374 / scene_1140) and the ops scenes, and at the top of every bundle-built document.
+`SCW.projectId.resolve(sceneId)` reads `field_1622` off any loaded record or rendered detail,
+else derives it from the SOW / survey identifier prefix (`60486704913-SW1163`,
+`62610818596-SR168` — flagged `derived`), else renders "not on this record" (never blank, never
+a guess). `SCW.projectId.banner(id, {right, phone})` / `.footer(id, right)` are the inline-styled
+document fragments — every new document builder must call them (proposal-pdf-export,
+co-stage-strip request doc, survey-worksheet-pdf-export, sow-pdf-stepper, questionnaire
+printable already do). `buildPublishPayload` ships `projectNumber` (and ops-stepper's
+`PUBLISH_KEYS` carries it) for the Make-side templates. Builder: adding `field_1622` to a view a
+scene loads makes that scene's read authoritative. Test: `tests/project-id/test-badge.js`.
+
+**Project header navigation** (`src/features/project-header-nav.js`, 2026-10-02): Knack's project menu
+(`view_44`) is folded into the hero as a tab strip — the menu's REAL anchors move into
+`#scw-pid-hero .scw-pid-foot` (routing + Builder renames intact), `K2:` prefixes stripped, the three
+workflow stages numbered in order, Dashboard behind a hairline, everything else under "More"; the
+project header card's `.scw-bsh-top` is adopted into the hero's `.scw-pid-adopt` slot (deal-id suffix
+stripped from the title) so the name is said once; a 48px bar with the number + cloned tabs pins on
+scroll (the badge's pill is switched off via `SCW.projectId.CONFIG.stickyPill`). `view_44` stays in the
+DOM hidden as the source of truth; a Knack menu rebuild is re-adopted. The badge re-renders ONLY its
+`.scw-pid-own` block so the adopt slot and footer survive data refreshes. Supersedes
+`nav-knack2-highlight.js` (deleted). Test: `tests/project-id/test-header-nav.js`.
 
 ## Security & External Services
 
@@ -832,6 +908,7 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   - **`FLAG_accepted` is never written.** All 275 SOWs in the export read "No" — including the 15 SOWs that verifiably went through acceptance (they have install-acceptance records with invoice dates, several with signed agreements). Acceptance truth lives ONLY in the install-acceptance table; anything that filters/reports on the SOW flag silently sees zero accepted SOWs. Correcting this in the analysis moved 2026 accepted totals up ~11% ($1.19M → $1.32M).
   - **`SYS_accepted date` equals `SYS_create date` on 240 of 241 SOWs** that have it (field default "today" stamped at record creation, sample rows show create = accepted = default-expiration). It cannot measure quote→accept cycle time; the analysis had to proxy via the acceptance record's Invoice Date (which itself once predated the SOW create date by 26 days in a CO sequence).
 - **Fix shape (small)**: acceptance flows through the accept-SOW DTO / Make scenario — add a write-back at the moment the install-acceptance record is created (or on the e-signature SIGNED webhook, matching the CO design where signature is the gate): PUT the parent SOW's `FLAG_accepted = Yes` and stamp the REAL date into `SYS_accepted date` (or a new dedicated date field if the auto-fill default must stay). One step fixes both holes.
+- **Double acceptance (2026-09-18)**: reps were accepting a proposal twice (a second acceptance record → second agreement + invoice). The Accept CTA gate reads `field_2990` (a Knack count that catches up seconds after the record lands, and it counts as accepted when it reads >= 1 — see `published-proposal-render.js` `isAcceptedCount`; it was `> 1` until 2026-09-30, which left the CTA up on singly-accepted proposals. The public token page's snippet `knack-snippets/proposal-access-public.snippet.js` carries its own copy of the rule and must be re-pasted into Builder when it changes), and the accept form is a child page reachable again via Back / a second tab. `accept-proposal-guard.js` now (1) locks the form's submit button on first click, (2) trips a per-browser wire in localStorage (`scw:proposal-accepted:<id>`) on `knack-form-submit`, which the CTA gate and the guard both read at once, and (3) on render GETs the proposal through scene_1279 / view_3813 and replaces the form with an "already accepted" notice when `field_2990` says so. `acceptance-card.js` flags duplicate base acceptances (same SOW token, non-CO, >1 row) with a red "Accepted twice — duplicate" pill and "· accepted twice" in the rollup / Paperwork tile so ops removes the extra. `tests/proposal/test-accept-guard.js`.
 - **Follow-up audit**: after the write-back lands, sweep everything that currently READS `FLAG_accepted` (views, filters, Make scenarios, bundle features) — those consumers have only ever seen "No", so their behavior/reporting has been silently understated and may need re-checking once the flag starts flipping.
 - **Related nice-to-have**: keep project `REL_company` mandatory (98% populated today) — it is what makes client-level analysis (and the full "Testies" test-project sweep) possible; the legacy quote-era Contact field is only 22% populated and the legacy Company field is empty (3/7,617).
 

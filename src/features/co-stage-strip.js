@@ -4,7 +4,7 @@
  * exactly one primary action per status, rendered into the CO header card
  * between the header row and the value strip:
  *
- *   Draft ── Sub Pricing ── Ops Review ── Issued ── Signed ── Applied
+ *   Draft ── Sub Pricing ── Ops Review ── Issued ── Accepted
  *   [ Send to Sub ]                    (action area matches the status)
  *
  * Two deployments (scenes never coexist, so the mount id is shared):
@@ -18,7 +18,7 @@
  *                           (destructive/secondary first, primary last; the
  *                           Issue itself fires from the preview page's CO-mode
  *                           ops stepper — see ops-stepper.js issue-change-order)
- *     Issued/Accepted/Applied/Declined/Void → informational notes.
+ *     Issued/Accepted (- Billable / - Not Billable)/Declined/Void → notes.
  *   sub (view_4121, scene_1374) — the SAME stepper, display-only: sub-facing
  *   notes per stage ("Your pricing window is open…"), NO action buttons. The
  *   sub's verbs live elsewhere (worksheet edits while unlocked; the hand-back
@@ -45,6 +45,49 @@
 
   var SNAPSHOT_FIELD = 'field_2972';
   var STATUS_FIELD   = 'field_2953';
+  // "Authorize as not billable" (Ops Review exit, 2026-10-01): the CO is
+  // approved — the sub is told so and the scope changes apply — but the
+  // client is never sent a document, never e-signs, and is never invoiced.
+  // It RIDES THE ISSUE SCENARIO (13.03, MAKE_CO_ISSUE_WEBHOOK, stepId
+  // 'authorize-not-billable') — the same scenario that creates the locked
+  // Proposal + Acceptance records on a normal Issue — but fired from THIS
+  // page with a reduced payload built here (no client proposal DOM needed):
+  // the raw line snapshot (`jsonString`, same `{ sowRecordId, view_3896 }`
+  // shape the preview page ships, from view_4079's records), an INTERNAL
+  // authorization card as `htmlPdf`/`html` (sub labor + equipment + the
+  // reason — never tokenized for a client), the totals, the reason,
+  // triggeredBy. Make's route: Proposal (Type CO, no token) + Acceptance
+  // (Type CO) stamped with the ACCEPTANCE FLAGS + the reason, CO Status →
+  // "Accepted" (Make-written, like Issue), sub notification + ClickUp,
+  // then the 13.06b true-up webhook exactly as the signed scenario calls
+  // it. No esignatures, no Xero.
+  //
+  // WHERE THE TRUTH LIVES (decided 2026-10-01): the SOW's CO Status is the
+  // STAGE rollup only — one terminal value, "Accepted", for every path.
+  // Billability / signature / the reason live on the ACCEPTANCE record as
+  // flags (same family as approved-for-terms / payment / signed):
+  //   field_2766 FLAG_agreement signed          — the esignatures event
+  //   field_3309 FLAG_approved without signature — SCW accepted it (either
+  //                                               new path)
+  //   field_3310 FLAG_not billable               — never invoice it
+  //   field_3311 INPUT_approved not billable reason — the ops reason
+  // This page reads them from a hidden Acceptance grid on the CO scene
+  // (ACC.view = view_4164: acceptances on the parent page's PROJECT, with
+  // those columns + field_2755); it matches the row whose proposal is one
+  // of this CO's published proposals (PUBLISHED_VIEW). If the grid hasn't
+  // loaded yet it fails open to a same-browser marker written at the
+  // click, so the user who authorized still sees the state.
+  var NB_STATUS  = 'Accepted';
+  var NB_STEP_ID = 'authorize-not-billable';
+  var ACC = {
+    view:      'view_4164',   // hidden Acceptance grid on the CO edit scene
+    proposal:  'field_2755',  // acceptance → proposal connection
+    signed:    'field_2766',
+    noSig:     'field_3309',
+    notBill:   'field_3310',
+    reason:    'field_3311'   // INPUT_approved not billable reason
+  };
+  var NB_LS_PREFIX = 'scw-co-not-billable:';
   var POLL_MS        = 30 * 1000;
 
   var DEPLOYMENTS = [
@@ -66,8 +109,9 @@
     { key: 'pricing',  label: 'Sub Pricing', match: /pending sub pricing/ },
     { key: 'review',   label: 'Ops Review',  match: /ops review/ },
     { key: 'issued',   label: 'Issued',      match: /^issued$/ },
-    { key: 'signed',   label: 'Signed',      match: /^accepted$/ },
-    { key: 'applied',  label: 'Applied',     match: /^applied$/ }
+    // Terminal — one value for every path (e-signed, approved without
+    // signature, not billable); the Acceptance flags say which.
+    { key: 'accepted', label: 'Accepted',    match: /^accepted/ }
   ];
 
   function esc(s) {
@@ -156,7 +200,42 @@
       '.scw-co-skip-err{font:600 12px/1.4 system-ui,sans-serif;color:#be123c;',
       'background:#fff1f2;border:1px solid #fecdd3;border-radius:7px;padding:7px 10px;',
       'margin-bottom:12px;}',
-      '.scw-co-skip-btns{display:flex;justify-content:flex-end;gap:10px;margin-top:4px;}'
+      '.scw-co-skip-btns{display:flex;justify-content:flex-end;gap:10px;margin-top:4px;}',
+      // ── Not billable ──
+      // Header tag next to the status pill (slate — a state, not a warning)
+      '.scw-co-hdr-nb{display:inline-flex;align-items:center;margin-left:8px;',
+      'padding:4px 10px;border-radius:999px;background:#f1f5f9;border:1px solid #cbd5e1;',
+      'font:700 10.5px/1.2 system-ui,-apple-system,sans-serif;color:#475569;',
+      'letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;}',
+      '.scw-co-hdr-nb--nosig{background:#fffbeb;border-color:#fde68a;color:#b45309;}',
+      // Terminal "Accepted" summary card — one component, three accents:
+      // slate (not billable), amber (approved without signature), green
+      // (e-signed). Replaces the old chip + run-on sentence.
+      '.scw-co-acc{display:flex;flex-direction:column;gap:6px;width:100%;max-width:640px;',
+      'box-sizing:border-box;padding:12px 16px;border-radius:12px;',
+      'background:#fff;border:1px solid #e2e8f0;}',
+      '.scw-co-acc--nb{--scw-co-acc:#64748b;}',
+      '.scw-co-acc--nosig{--scw-co-acc:#d97706;}',
+      '.scw-co-acc--signed{--scw-co-acc:#16a34a;}',
+      '.scw-co-acc-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;}',
+      '.scw-co-acc-title{display:inline-flex;align-items:center;gap:8px;',
+      'font:700 10.5px/1 system-ui,-apple-system,sans-serif;letter-spacing:.1em;',
+      'text-transform:uppercase;color:#64748b;}',
+      '.scw-co-acc-title:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--scw-co-acc,#16a34a);}',
+      '.scw-co-acc-meta{font:12px/1.3 system-ui,-apple-system,sans-serif;color:#475569;}',
+      '.scw-co-acc-reason{font:600 15px/1.4 system-ui,-apple-system,sans-serif;color:#0f172a;}',
+      '.scw-co-acc-reason b{display:none;}',
+      '.scw-co-acc-facts{display:flex;flex-wrap:wrap;gap:0 14px;font:12px/1.5 system-ui,-apple-system,sans-serif;color:#475569;}',
+      '.scw-co-acc-fact{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}',
+      '.scw-co-acc-fact:before{content:"";width:5px;height:5px;border-radius:50%;background:#cbd5e1;}',
+      '.scw-co-nb-note{display:block;margin-top:5px;width:100%;box-sizing:border-box;',
+      'border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;resize:vertical;',
+      'font:400 12.5px/1.45 system-ui,-apple-system,sans-serif;color:#1e293b;}',
+      '.scw-co-nb-note:focus{outline:none;border-color:#0f4c75;',
+      'box-shadow:0 0 0 2px rgba(15,76,117,.15);}',
+      '.scw-co-nb-list{margin:0 0 14px;padding-left:18px;',
+      'font:400 12.5px/1.5 system-ui,-apple-system,sans-serif;color:#475569;}',
+      '.scw-co-nb-list b{color:#1e293b;}'
     ].join('');
     document.head.appendChild(s);
   }
@@ -288,6 +367,20 @@
 
     // The "ops proposed" money baseline, per CO line — what the Ops-Review
     // diff compares the sub's returned pricing against.
+    // Recurring licenses (License bucket) are never the sub's to price:
+    // they stay out of the sub-pricing snapshot, the request document and
+    // the unpriced count. The CO proposal bills them under Recurring
+    // Services on its own.
+    var LICENSE_BUCKET = '645554dce6f3a60028362a6a';
+    function isLicenseLine(r) {
+      try {
+        var ws = window.SCW && window.SCW.worksheetV2;
+        if (ws && ws.card && typeof ws.card.isLicenseBucket === 'function') return ws.card.isLicenseBucket(r, CO_VIEW);
+      } catch (e) { /* fall through */ }
+      var raw = r && r['field_2219_raw'];
+      var one = Array.isArray(raw) ? raw[0] : raw;
+      return !!one && (one.id === LICENSE_BUCKET || /^\s*licen[cs]e/i.test(String(one.identifier || '')));
+    }
     function buildSnapshot() {
       var ns = window.SCW && window.SCW.worksheetV2;
       var recs = (ns && ns.data && typeof ns.data.readRecords === 'function')
@@ -295,7 +388,7 @@
       var lines = {};
       for (var i = 0; i < recs.length; i++) {
         var r = recs[i];
-        if (!r || !r.id) continue;
+        if (!r || !r.id || isLicenseLine(r)) continue;
         // Drop prefix (field_2240) is a connection — ship both the record id
         // (what Make writes/references) and the display text.
         var prefixRaw = r['field_2240_raw'];
@@ -336,7 +429,16 @@
     // overrides the doc title — the sub's hand-back reuses this builder as
     // "Pricing Submission" (same lines/totals, the values ARE the sub's
     // submitted pricing).
-    function buildRequestDoc(note, titleBase) {
+    // opts.equip  — add an Equipment column (field_2269, extended) + its
+    //               totals: the not-billable authorization card shows the
+    //               full cost picture (sub labor + equipment), not just the
+    //               labor the sub-pricing loop trades.
+    // opts.banner — { label, text } highlighted band under the title (the
+    //               not-billable REASON); `note` stays the amber send note.
+    // opts.verb   — "Sent by" → e.g. "Authorized by".
+    function buildRequestDoc(note, titleBase, opts) {
+      opts = opts || {};
+      var withEquip = !!opts.equip;
       var ns = window.SCW && window.SCW.worksheetV2;
       var recs = (ns && ns.data && typeof ns.data.readRecords === 'function')
         ? ns.data.readRecords(CO_VIEW) : [];
@@ -365,10 +467,10 @@
       // full set before rendering. LABOR ONLY: the sub pricing loop trades
       // labor numbers (sub bid); equipment pricing never rides this doc.
       var entries = [], nAdd = 0, nRm = 0;
-      var tAdd = { bid: 0 }, tRm = { bid: 0 };
+      var tAdd = { bid: 0, equip: 0 }, tRm = { bid: 0, equip: 0 };
       for (var i = 0; i < recs.length; i++) {
         var r = recs[i];
-        if (!r || !r.id) continue;
+        if (!r || !r.id || isLicenseLine(r)) continue;
         var isRm = /remove/i.test(readTxt(r, 'field_2965'));
         // Services/assumptions rows have no product — fall back to the
         // labor description so every line names itself.
@@ -383,7 +485,9 @@
           drop: readTxt(r, 'field_1950'),
           loc:  cleanLoc(conn(r, 'field_1946')),
           qty:  num(r, 'field_1964') || 1,
-          bid:  num(r, 'field_2150')
+          bid:  num(r, 'field_2150'),
+          // field_2269 is the EXTENDED equipment amount (qty already in).
+          equip: withEquip ? num(r, 'field_2269') : 0
         };
         // field_2150 is the PER-UNIT sub bid — the doc's line amount and the
         // totals are extended (qty × each), matching how the line is billed.
@@ -392,8 +496,11 @@
         var t = isRm ? tRm : tAdd;
         if (isRm) nRm++; else nAdd++;
         t.bid += e.total;
+        t.equip += e.equip;
       }
       var totBid = tAdd.bid + tRm.bid;
+      var totEquip = tAdd.equip + tRm.equip;
+      var nCols = withEquip ? 5 : 4;
 
       // Bucket by MDF/IDF location (first-seen order) — shared by the HTML
       // table (location header rows) and the plaintext groups, so both read
@@ -408,7 +515,7 @@
 
       var title = (titleBase || 'Change Order Pricing Request') +
         (coNumber ? ' — ' + coNumber : '') + (coName ? ' · ' + coName : '');
-      var sentLine = 'Sent by ' + (who.name || who.email || 'SCW') + ' · ' +
+      var sentLine = (opts.verb || 'Sent by') + ' ' + (who.name || who.email || 'SCW') + ' · ' +
         when.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
       var countLine = nAdd + ' add' + (nAdd === 1 ? '' : 's') +
         ', ' + nRm + ' removal' + (nRm === 1 ? '' : 's');
@@ -426,7 +533,7 @@
         // MDF/IDF location header band — same grouping/order as the
         // worksheet, so the priced quote reads like the drafting surface.
         htmlRows.push(
-          '<tr><td colspan="4" style="background:#e8eef7;color:#163C6E;' +
+          '<tr><td colspan="' + nCols + '" style="background:#e8eef7;color:#163C6E;' +
           'font-weight:800;font-size:11px;letter-spacing:.05em;' +
           'text-transform:uppercase;padding:6px 10px;' +
           'border-bottom:1px solid #dbe4ee;">' + esc(locOrder[lg]) + '</td></tr>');
@@ -463,39 +570,61 @@
                   'font-weight:400;">' + en.qty + ' × ' + esc(money(en.bid)) +
                   ' each</span>'
                 : '') + '</td>' +
+            (withEquip
+              ? '<td style="' + NUM_TD + '">' + esc(money(en.equip)) + '</td>'
+              : '') +
             '</tr>');
         }
       }
       // Totals: adds/removals breakdown only when both exist, then the total.
-      function footRow(label, bid, isNet) {
+      function footRow(label, bid, isNet, equip) {
         var td = 'padding:7px 10px;text-align:right;white-space:nowrap;' +
           (isNet ? 'border-top:2px solid #163C6E;font-weight:700;color:#163C6E;'
                  : 'font-weight:600;color:#334155;');
         return '<tr style="background:#f8fafc;">' +
           '<td colspan="3" style="' + td + '">' + esc(label) + '</td>' +
-          '<td style="' + td + '">' + esc(money(bid)) + '</td></tr>';
+          '<td style="' + td + '">' + esc(money(bid)) + '</td>' +
+          (withEquip ? '<td style="' + td + '">' + esc(money(equip)) + '</td>' : '') +
+          '</tr>';
       }
       var foot = '';
       if (nAdd && nRm) {
-        foot += footRow('Adds (' + nAdd + ')', tAdd.bid, false) +
-                footRow('Removals (' + nRm + ')', tRm.bid, false) +
-                footRow('Net change', totBid, true);
+        foot += footRow('Adds (' + nAdd + ')', tAdd.bid, false, tAdd.equip) +
+                footRow('Removals (' + nRm + ')', tRm.bid, false, tRm.equip) +
+                footRow('Net change', totBid, true, totEquip);
       } else {
-        foot += footRow('Total', totBid, true);
+        foot += footRow('Total', totBid, true, totEquip);
       }
 
+      // Project number (HubSpot deal id) above the card — the number the
+      // sub quotes to SCW support (project-id-badge.js, inline-styled).
+      var projectBanner = '';
+      try {
+        var pid = window.SCW && SCW.projectId;
+        var sceneKey = (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
+        if (pid && sceneKey) {
+          projectBanner = pid.banner(pid.resolve(sceneKey).id,
+            { right: [coNumber ? 'Change Order ' + coNumber : ''] });
+        }
+      } catch (e) { projectBanner = ''; }
       var html =
+        projectBanner +
         '<div style="font-family:Helvetica,Arial,sans-serif;font-size:12.5px;' +
           'color:#1e293b;border:1px solid #dbe4ee;border-radius:8px;overflow:hidden;">' +
         '<div style="background:#163C6E;color:#fff;padding:8px 12px;font-weight:800;' +
           'font-size:12px;letter-spacing:.04em;text-transform:uppercase;">' + esc(title) + '</div>' +
         '<div style="padding:6px 12px;background:#f0f4fa;border-bottom:1px solid #dbe4ee;' +
           'color:#334155;font-size:11.5px;">' + esc(sentLine) + ' · ' + esc(countLine) + '</div>' +
+        (opts.banner ? '<div style="padding:8px 12px;background:#f1f5f9;border-bottom:1px solid ' +
+          '#cbd5e1;color:#334155;font-size:12px;"><b>' + esc(opts.banner.label) + '</b> ' +
+          esc(opts.banner.text) + '</div>' : '') +
         (note ? '<div style="padding:6px 12px;background:#fffbeb;border-bottom:1px solid ' +
           '#fde68a;color:#92400e;font-size:12px;"><b>Note:</b> ' + esc(note) + '</div>' : '') +
         '<table style="width:100%;border-collapse:collapse;">' +
         '<thead><tr>' +
-          ['Action', 'Item', 'Qty', 'Sub Bid (Labor)'].map(function (hd, idx) {
+          (withEquip
+            ? ['Action', 'Item', 'Qty', 'Sub Bid (Labor)', 'Equipment']
+            : ['Action', 'Item', 'Qty', 'Sub Bid (Labor)']).map(function (hd, idx) {
             return '<th style="padding:5px ' + (idx >= 2 ? '10px' : '8px') + ';' +
               'background:#f8fafc;border-bottom:1px solid ' +
               '#dbe4ee;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;' +
@@ -510,6 +639,7 @@
       // totals block at the end — reads top-to-bottom instead of one dense
       // run-on line per item.
       var tx = [title, sentLine + ' · ' + countLine];
+      if (opts.banner) tx.push(opts.banner.label + ' ' + opts.banner.text);
       if (note) tx.push('Note: ' + note);
       // Same location buckets as the HTML table above.
       for (var lo = 0; lo < locOrder.length; lo++) {
@@ -524,20 +654,29 @@
           tx.push('    qty ' + et.qty + ' · sub bid (labor) ' +
             (et.qty > 1
               ? money(et.bid) + ' each · line total ' + money(et.total)
-              : money(et.total)));
+              : money(et.total)) +
+            (withEquip ? ' · equipment ' + money(et.equip) : ''));
         }
       }
+      function eq(v) { return withEquip ? ' · equipment ' + money(v) : ''; }
       tx.push('');
-      tx.push('== TOTALS (labor) ==');
+      tx.push('== TOTALS (labor' + (withEquip ? ' · equipment' : '') + ') ==');
       if (nAdd && nRm) {
-        tx.push('Adds (' + nAdd + '): ' + money(tAdd.bid));
-        tx.push('Removals (' + nRm + '): ' + money(tRm.bid));
-        tx.push('Net change: ' + money(totBid));
+        tx.push('Adds (' + nAdd + '): ' + money(tAdd.bid) + eq(tAdd.equip));
+        tx.push('Removals (' + nRm + '): ' + money(tRm.bid) + eq(tRm.equip));
+        tx.push('Net change: ' + money(totBid) + eq(totEquip));
       } else {
-        tx.push('Total: ' + money(totBid));
+        tx.push('Total: ' + money(totBid) + eq(totEquip));
       }
 
-      return { coNumber: coNumber, coName: coName, html: html, text: tx.join('\n') };
+      return {
+        coNumber: coNumber, coName: coName, html: html, text: tx.join('\n'),
+        totals: {
+          lines:     { adds: nAdd, removals: nRm },
+          subLabor:  { adds: tAdd.bid,   removals: tRm.bid,   net: totBid },
+          equipment: { adds: tAdd.equip, removals: tRm.equip, net: totEquip }
+        }
+      };
     }
 
     function fireWebhook(mode, extra, onOk) {
@@ -570,7 +709,12 @@
       }).then(function (r) {
         setBusy(false);
         var explicitFail = !!(r.data && (r.data.success === false || r.data.error));
-        if (r.ok && !explicitFail) { if (onOk) onOk(r.data); return; }
+        if (r.ok && !explicitFail) {
+          // The webhook already succeeded — a failure in the follow-up
+          // (re-render, polling) is ours to log, not a "Webhook error".
+          if (onOk) { try { onOk(r.data); } catch (eOk) { console.error('[scw-co-stage] after-webhook handler failed:', eOk); } }
+          return;
+        }
         alert((r.data && (r.data.error || r.data.message)) || 'The action failed. Try again.');
       }).catch(function (err) {
         setBusy(false);
@@ -963,6 +1107,304 @@
       });
     }
 
+    // ── ops: "Authorize as not billable" (Ops Review → approved, no client chain)
+    // The third exit from Ops Review. Approving a CO we are NOT going to bill
+    // the client for (SCW eats it / credit of goodwill / internal fix): the
+    // sub is told it's approved and the scope changes apply, but no client
+    // document, no e-signature, no invoice. Reason REQUIRED (seeded from the
+    // CO notes). Durable record = the Builder flag fields when configured
+    // (NOT_BILLABLE_FIELD / _NOTE_FIELD, written here by session PUT); until
+    // then a same-browser localStorage marker keeps the strip honest. The
+    // webhook (mode 'authorize-not-billable' on the send-to-sub hook) owns
+    // the downstream: sub notification + ClickUp, and the status flips
+    // (→ Accepted → Applied via the apply branch, with the authorization as
+    // the trigger instead of the signed webhook). The status is deliberately
+    // NOT flipped client-side — "apply" is Make's.
+    function nbMarker() {
+      try {
+        var raw = localStorage.getItem(NB_LS_PREFIX + getCoSowId());
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) { return null; }
+    }
+    function setNbMarker(obj) {
+      try {
+        var k = NB_LS_PREFIX + getCoSowId();
+        if (obj) localStorage.setItem(k, JSON.stringify(obj));
+        else localStorage.removeItem(k);
+      } catch (e) { /* private mode */ }
+    }
+    // { reason, by, at } when the CO is on the not-billable path, else null.
+    // ── Acceptance read (the truth for billability / signature / reason) ──
+    // This CO's acceptance = the row in ACC.view whose proposal (field_2755)
+    // is one of the published proposals the PUBLISHED_VIEW grid lists for
+    // this SOW. Null when the grid isn't configured / not loaded / no row.
+    function readAcceptance() {
+      if (!ACC.view || !window.Knack || !Knack.views) return null;
+      var pubIds = {};
+      try {
+        var pv = DEP.PUBLISHED_VIEW && Knack.views[DEP.PUBLISHED_VIEW];
+        var pm = pv && pv.model && pv.model.data && pv.model.data.models;
+        for (var i = 0; pm && i < pm.length; i++) {
+          if (pm[i] && pm[i].id) pubIds[pm[i].id] = true;
+        }
+      } catch (e) { /* no proposal list → no match */ }
+      try {
+        var av = Knack.views[ACC.view];
+        var am = av && av.model && av.model.data && av.model.data.models;
+        var best = null;
+        for (var j = 0; am && j < am.length; j++) {
+          var r = am[j] && am[j].attributes;
+          if (!r) continue;
+          var raw = r[ACC.proposal + '_raw'];
+          var pid = Array.isArray(raw) ? (raw[0] && raw[0].id) : (raw && raw.id);
+          if (pid && pubIds[pid]) best = r;   // last wins = newest acceptance
+        }
+        return best;
+      } catch (e2) { return null; }
+    }
+    function accYes(rec, fk) {
+      if (!rec || !fk) return false;
+      var raw = rec[fk + '_raw'];
+      return raw === true || /^(yes|true)$/i.test(readTxt(rec, fk));
+    }
+    // { notBillable, noSignature, signed, reason, by, at } or null when the
+    // CO isn't Accepted. Acceptance grid first; the same-browser marker
+    // (written at the click) fills in when the grid isn't there yet.
+    function acceptanceInfo() {
+      if (!/^accepted/i.test(getStatus())) return null;
+      var rec = readAcceptance();
+      var marker = nbMarker();
+      if (rec) {
+        return {
+          notBillable: accYes(rec, ACC.notBill),
+          noSignature: accYes(rec, ACC.noSig) || accYes(rec, ACC.notBill),
+          signed:      accYes(rec, ACC.signed),
+          reason:      (ACC.reason && readTxt(rec, ACC.reason)) || (marker && marker.reason) || '',
+          by:          (marker && marker.by) || '',
+          at:          (marker && marker.at) || ''
+        };
+      }
+      if (marker) {
+        return {
+          notBillable: marker.kind === 'not-billable',
+          noSignature: true, signed: false,
+          reason: marker.reason || '', by: marker.by || '', at: marker.at || ''
+        };
+      }
+      return null;
+    }
+    function notBillable() {
+      var a = acceptanceInfo();
+      return a && a.notBillable ? a : null;
+    }
+    function noSignature() {
+      var a = acceptanceInfo();
+      return a && a.noSignature && !a.notBillable ? a : null;
+    }
+
+    // Raw-only record snapshot — the exact rule proposal-pdf-export.js
+    // stripNonRawFields applies to the preview page's publish payload:
+    // drop every `field_xxx` (and dotted projection) that has a `_raw`
+    // twin, and strip tag ATTRIBUTES from any remaining HTML string (the
+    // paragraph field the snapshot lives in mangles escaped attribute
+    // quotes — CLAUDE.md Known Issue #24).
+    function rawOnly(node) {
+      if (typeof node === 'string') {
+        return node.replace(/<([a-zA-Z][\w:-]*)(?:\s[^<>]*?)?(\/?)>/g, '<$1$2>');
+      }
+      if (Array.isArray(node)) {
+        var arr = [];
+        for (var i = 0; i < node.length; i++) arr.push(rawOnly(node[i]));
+        return arr;
+      }
+      if (node && typeof node === 'object') {
+        var keys = Object.keys(node), twin = {}, out = {};
+        for (var k = 0; k < keys.length; k++) {
+          if (/_raw$/.test(keys[k])) twin[keys[k].replace(/_raw$/, '')] = true;
+        }
+        for (var j = 0; j < keys.length; j++) {
+          var key = keys[j];
+          if (/^field_\d+(\.field_\d+)*$/.test(key) && twin[key]) continue;
+          out[key] = rawOnly(node[key]);
+        }
+        return out;
+      }
+      return node;
+    }
+    // `{ sowRecordId, view_3896: [...] }` — keyed "view_3896" so the Issue
+    // scenario's existing Parse JSON → 13.06b feed reads it unchanged.
+    // ⚠ view_4079 must carry every column 13.06b maps when it creates
+    // install records; a missing column lands as a blank.
+    function buildNbSnapshotString(coId) {
+      var ns = window.SCW && window.SCW.worksheetV2;
+      var recs = (ns && ns.data && typeof ns.data.readRecords === 'function')
+        ? ns.data.readRecords(CO_VIEW) : [];
+      var rows = [];
+      for (var i = 0; i < recs.length; i++) {
+        if (recs[i] && recs[i].id) rows.push(recs[i]);
+      }
+      try {
+        return JSON.stringify(rawOnly({ sowRecordId: coId, view_3896: rows }));
+      } catch (e) { return ''; }
+    }
+
+    function authorizeNotBillable() {
+      var old = document.getElementById('scw-co-skip-ovl');
+      if (old) old.remove();
+      var seed = readHeaderValue('field_2198');   // CO notes — usually already the why
+      var ovl = document.createElement('div');
+      ovl.id = 'scw-co-skip-ovl';
+      ovl.className = 'scw-co-skip-ovl';
+      ovl.innerHTML =
+        '<div class="scw-co-skip-card">' +
+          '<div class="scw-co-skip-title">Authorize as not billable?</div>' +
+          '<div class="scw-co-skip-body">This approves the change order ' +
+            '<b>without billing the client</b>:</div>' +
+          '<ul class="scw-co-nb-list">' +
+            '<li><b>No client document</b>, no e-signature request, <b>no invoice</b>.</li>' +
+            '<li>The subcontractor is notified the CO is <b>approved</b> (their pricing stands).</li>' +
+            '<li>An internal authorization record (sub labor + equipment + your reason) is ' +
+              'filed in place of the client proposal, and the scope changes apply to the ' +
+              'install as if signed. This cannot be undone from here.</li>' +
+          '</ul>' +
+          '<label class="scw-co-skip-lbl">Why is this not billable?' +
+            '<textarea class="scw-co-nb-note" rows="3" placeholder=' +
+              '"e.g. SCW absorbing lift extension due to equipment delivery delay">' +
+              esc(seed) + '</textarea></label>' +
+          '<div class="scw-co-skip-err" hidden></div>' +
+          '<div class="scw-co-skip-btns">' +
+            '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
+              'data-nb="cancel">Cancel</button>' +
+            '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--primary" ' +
+              'data-nb="go">Authorize as not billable</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(ovl);
+
+      var noteIn = ovl.querySelector('.scw-co-nb-note');
+      var errEl  = ovl.querySelector('.scw-co-skip-err');
+      var goBtn  = ovl.querySelector('[data-nb="go"]');
+      function err(msg) { errEl.hidden = !msg; errEl.textContent = msg || ''; }
+      function close() { ovl.remove(); }
+
+      ovl.addEventListener('click', function (e) {
+        if (e.target === ovl) { close(); return; }
+        var b = e.target.closest && e.target.closest('[data-nb]');
+        if (!b) return;
+        if (b.getAttribute('data-nb') === 'cancel') { close(); return; }
+        var note = (noteIn.value || '').trim();
+        if (!note) { err('Add a note explaining why the client is not being billed.'); return; }
+        err('');
+        goBtn.setAttribute('disabled', 'disabled');
+        goBtn.textContent = 'Saving…';
+
+        var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_ISSUE_WEBHOOK) || '';
+        var ready = !!(window.SCW && SCW.CONFIG && SCW.CONFIG.CO_AUTHORIZE_NOT_BILLABLE_READY);
+        if (!url || /PLACEHOLDER/.test(url) || !ready) {
+          // ⚠ Hard stop until Make has the stepId route: the Issue scenario
+          // without it would run the FULL Issue flow (contract sent) on this
+          // payload. Flip CO_AUTHORIZE_NOT_BILLABLE_READY in src/config.js
+          // once the route exists.
+          err('Not live yet — the Make route for "Authorize as not billable" ' +
+            'is not configured (CO_AUTHORIZE_NOT_BILLABLE_READY). Nothing was changed.');
+          goBtn.removeAttribute('disabled');
+          goBtn.textContent = 'Authorize as not billable';
+          return;
+        }
+        var coId = getCoSowId();
+        if (!coId) {
+          err('Could not determine the change order record id from the URL.');
+          goBtn.removeAttribute('disabled');
+          goBtn.textContent = 'Authorize as not billable';
+          return;
+        }
+        var who = getTriggeredBy();
+
+        // No client-side writes: Make creates the Acceptance with the flags +
+        // the reason and writes the SOW status. The marker below keeps this
+        // browser honest until the Acceptance grid shows the record.
+        var marker = { kind: 'not-billable', reason: note,
+                       by: who.name || who.email || '', at: new Date().toISOString() };
+        (function () {
+          goBtn.textContent = 'Authorizing…';
+          // 2. The Issue scenario, not-billable route. Internal card (sub
+          //    labor + equipment + reason) stands in for the client proposal
+          //    HTML; the raw snapshot feeds the Proposal record + 13.06b.
+          var doc = buildRequestDoc(null, 'Change Order Authorization — Not Billable', {
+            equip: true,
+            verb: 'Authorized by',
+            banner: { label: 'Authorized as not billable —', text: note }
+          });
+          // Key names follow 13.03's trunk (it runs for EVERY stepId before
+          // the stepId router): `recordId` → Proposal field_2666 + the
+          // supersede search, `sourceRecordId` → the entry router + get SOW,
+          // `htmlPdf` → the PDF + field_2680 document, `jsonString` →
+          // field_2671 (what 13.06b iterates), `plaintext` → field_2754, the
+          // three totals → field_2668/2669/2670. Client-facing totals are $0
+          // by definition here — the sub/equipment picture rides `totals`.
+          // No proposalAccessToken/Url on purpose: no customer link.
+          var payload = {
+            stepId:          NB_STEP_ID,
+            recordId:        coId,
+            changeOrderId:   coId,
+            sourceRecordId:  coId,
+            isChangeOrder:   true,
+            notBillable:     true,
+            signed:          false,
+            reason:          note,
+            notes:           note,
+            status:          NB_STATUS,          // what Make writes to field_2953 ("Accepted")
+            coNumber:        doc.coNumber,
+            coName:          doc.coName,
+            html:            doc.html,           // internal authorization card
+            htmlPdf:         doc.html,           // same card — 13.03 renders the PDF from htmlPdf
+            plaintext:       doc.text,
+            installationTotal: 0,
+            equipmentTotal:    0,
+            grandTotal:        0,
+            totals:          doc.totals,         // { lines, subLabor, equipment } adds/removals/net
+            jsonString:      buildNbSnapshotString(coId),
+            triggeredBy:     who
+          };
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          }).then(function (resp) {
+            var httpOk = resp.ok;
+            return resp.text().then(function (txt) {
+              var body = null;
+              try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
+              return { ok: httpOk, data: body };
+            });
+          }).then(function (r) {
+            var explicitFail = !!(r.data && (r.data.success === false || r.data.error));
+            if (!r.ok || explicitFail) {
+              err((r.data && (r.data.error || r.data.message)) ||
+                'The authorization webhook failed. The reason was saved; try again.');
+              goBtn.removeAttribute('disabled');
+              goBtn.textContent = 'Authorize as not billable';
+              return;
+            }
+            close();
+            // Optimistic: Make writes the status a beat after the ACK.
+            _optimistic = NB_STATUS;
+            setPillText(NB_STATUS);
+            var sel = document.querySelector('#' + VIEW + ' #kn-input-' + STATUS_FIELD + ' select');
+            if (sel) sel.value = NB_STATUS;
+            setNbMarker(marker);
+            render();
+            managePoll();
+            refreshLocks();
+          }).catch(function (e2) {
+            err('Webhook error: ' + (e2 && e2.message ? e2.message : e2));
+            goBtn.removeAttribute('disabled');
+            goBtn.textContent = 'Authorize as not billable';
+          });
+        })();
+      });
+    }
+
     // ── sub hand-back: "Submit Pricing to SCW" ────────────────────────────
     // Lines with no Sub Bid yet — surfaced in the confirm copy so the sub
     // knows what they're about to hand back (informational, not a block:
@@ -974,7 +1416,7 @@
       var n = 0;
       for (var i = 0; i < recs.length; i++) {
         var r = recs[i];
-        if (!r || !r.id) continue;
+        if (!r || !r.id || isLicenseLine(r)) continue;
         // "Sub bid required" (field_2478) explicitly No = the line is on
         // the CO but not the sub's to price (equipment-only rows) — never
         // counts as unpriced. Blank/missing (or the column not on the
@@ -1093,20 +1535,61 @@
     }
 
     // ── render ────────────────────────────────────────────────────────────
-    function stepsHtml(cur) {
+    function stepsHtml(cur, nb) {
+      var stages = STAGES;
+      if (nb) {
+        // No client document / signature on this path: the Issued node
+        // goes away and the terminal node names the path.
+        stages = [];
+        for (var k = 0; k < STAGES.length; k++) {
+          if (STAGES[k].key === 'issued') continue;
+          stages.push(STAGES[k].key === 'accepted'
+            ? { key: 'accepted', label: 'Accepted · not billable' } : STAGES[k]);
+        }
+        if (cur >= 4) cur -= 1;
+      }
       var out = '<div class="scw-co-steps">';
-      for (var i = 0; i < STAGES.length; i++) {
+      for (var i = 0; i < stages.length; i++) {
         var cls = i < cur ? ' scw-co-step--done'
                 : i === cur ? ' scw-co-step--done scw-co-step--current' : '';
         out += '<div class="scw-co-step' + cls + '">' +
           '<div class="scw-co-step-dot"></div>' +
-          '<div class="scw-co-step-lbl">' + esc(STAGES[i].label) + '</div>' +
+          '<div class="scw-co-step-lbl">' + esc(stages[i].label) + '</div>' +
         '</div>';
       }
       return out + '</div>';
     }
 
-    function opsActionsHtml(status, cur) {
+    // Terminal-state summary card (the three Accepted flavours). `info` =
+    // { reason, by, at } (or null for e-signed); `facts` = short chips.
+    function acceptedCard(kind, title, info, facts) {
+      var meta = '';
+      if (info && (info.by || info.at)) {
+        var when = '';
+        if (info.at) {
+          var d = new Date(info.at);
+          if (!isNaN(+d)) when = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        }
+        meta = (info.by ? 'by ' + esc(info.by) : '') +
+               (info.by && when ? ' · ' : '') + esc(when);
+      }
+      var chips = '';
+      for (var i = 0; i < (facts || []).length; i++) {
+        chips += '<span class="scw-co-acc-fact">' + esc(facts[i]) + '</span>';
+      }
+      return '<div class="scw-co-acc scw-co-acc--' + kind + '">' +
+        '<div class="scw-co-acc-head">' +
+          '<span class="scw-co-acc-title">' + esc(title) + '</span>' +
+          (meta ? '<span class="scw-co-acc-meta">' + meta + '</span>' : '') +
+        '</div>' +
+        (info && info.reason
+          ? '<div class="scw-co-acc-reason"><b>Why</b>' + esc(info.reason) + '</div>'
+          : '') +
+        (chips ? '<div class="scw-co-acc-facts">' + chips + '</div>' : '') +
+      '</div>';
+    }
+
+    function opsActionsHtml(status, cur, nb) {
       var s = String(status || '').toLowerCase();
       if (cur === 0) {
         return '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--primary" ' +
@@ -1134,11 +1617,24 @@
         // + 'data-scw-co-act="nudge">Nudge sub</button>';
       }
       if (cur === 2) {
+        // Three exits — negative, then the exception path, then the primary.
         return '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
           'data-scw-co-act="sendback">Send back to sub</button>' +
+          '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
+          'data-scw-co-act="nb-authorize" title="Approve this change order without ' +
+          'billing the client — no document, no e-signature, no invoice">' +
+          'Authorize as not billable</button>' +
           '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--primary" ' +
           'data-scw-co-act="preview-issue">Preview &amp; Issue &rarr;</button>' +
-          '<span class="scw-co-stage-note">Review the client-facing document, then issue from there.</span>';
+          '<span class="scw-co-stage-note">Review the client-facing document, then issue from there ' +
+          '— or authorize internally if the client won’t be billed.</span>';
+      }
+      if (cur === 4 && nb) {
+        // Accepted + FLAG_not billable: ops-authorized, no client chain.
+        // Terminal (Proposal + Acceptance records exist, scope applied) —
+        // no undo; further changes are a new CO, same as a signed one.
+        return acceptedCard('nb', 'Accepted · not billable', nb,
+          ['No client document', 'No invoice', 'Sub notified', 'Install scope applied']);
       }
       if (cur === 3) {
         var rcp = readIssuedRecipient();
@@ -1155,8 +1651,15 @@
           '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
           'data-scw-co-act="reopen">Reopen for Changes</button>';
       }
-      if (cur === 4) return '<span class="scw-co-stage-note">Signed — applying changes to the install scope…</span>';
-      if (cur === 5) return '<span class="scw-co-stage-note"><b>Applied.</b> Install scope updated and invoiced.</span>';
+      if (cur === 4) {
+        var nsig = noSignature();
+        if (nsig) {
+          return acceptedCard('nosig', 'Accepted · approved without client signature', nsig,
+            ['No e-signature on file', 'Client invoiced', 'Sub notified', 'Install scope applied']);
+        }
+        return acceptedCard('signed', 'Accepted · signed by the client', null,
+          ['Agreement signed', 'Client invoiced', 'Install scope applied']);
+      }
       if (/declined/.test(s)) {
         return '<span class="scw-co-stage-note"><b>Declined.</b> Revise the lines and re-issue.</span>' +
           '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
@@ -1169,8 +1672,12 @@
     // Sub-facing copy: same stepper, no verbs — the sub's only actions are
     // editing the worksheet while their window is open (co-sub-lock handles
     // the lock/unlock) and, later, the hand-back submit verb.
-    function subActionsHtml(status, cur) {
+    function subActionsHtml(status, cur, nb) {
       var s = String(status || '').toLowerCase();
+      if (nb && cur === 4) {
+        return '<span class="scw-co-stage-note"><b>Approved by SCW.</b> ' +
+          'Your pricing stands; the changes are being applied.</span>';
+      }
       if (cur === 0) {
         return '<span class="scw-co-stage-note">SCW is drafting this change order — ' +
           'you’ll be notified when it’s ready to price.</span>';
@@ -1185,8 +1692,7 @@
       }
       if (cur === 2) return '<span class="scw-co-stage-note">Pricing submitted — SCW is reviewing.</span>';
       if (cur === 3) return '<span class="scw-co-stage-note">Issued — awaiting client signature.</span>';
-      if (cur === 4) return '<span class="scw-co-stage-note">Signed — SCW is applying the changes.</span>';
-      if (cur === 5) return '<span class="scw-co-stage-note"><b>Applied.</b></span>';
+      if (cur === 4) return '<span class="scw-co-stage-note"><b>Accepted</b> — signed by the client; SCW is applying the changes.</span>';
       if (/declined/.test(s)) return '<span class="scw-co-stage-note"><b>Declined</b> by the client.</span>';
       if (/void/.test(s))     return '<span class="scw-co-stage-note"><b>Void.</b></span>';
       return '<span class="scw-co-stage-note">Status: ' + esc(status || 'unknown') + '</span>';
@@ -1219,6 +1725,7 @@
           if (act === 'sendback')      sendBackToSub();
           if (act === 'preview-issue') previewIssue();
           if (act === 'reopen')        reopenForChanges();
+          if (act === 'nb-authorize')  authorizeNotBillable();
         });
       }
       // Pin directly under the header row (co-header-card builds .scw-co-hdr
@@ -1230,20 +1737,28 @@
 
       var status = getStatus();
       var cur = stageIndex(status);
+      var nb = notBillable();
       var offPath = cur === -1 && /declined|void/i.test(status || '');
       el.className = offPath ? 'scw-co-stage--offpath' : '';
-      el.innerHTML = '<div class="scw-co-stage-main">' + stepsHtml(cur) +
+      el.innerHTML = '<div class="scw-co-stage-main">' + stepsHtml(cur, nb) +
         '<div class="scw-co-stage-actions">' +
-        (IS_OPS ? opsActionsHtml(status, cur) : subActionsHtml(status, cur)) +
+        (IS_OPS ? opsActionsHtml(status, cur, nb) : subActionsHtml(status, cur, nb)) +
         '</div></div>';
-      renderPublishedBlock(el, cur);
+      renderHeaderTag(form, nb);
+      // The value strip shows client money — it has to know when the CO
+      // is not billable, and it renders on its own timers.
+      try { if (window.SCW.coValue) SCW.coValue.refresh(); } catch (eCv) { /* optional */ }
+      if (!nb) renderPublishedBlock(el, cur);
     }
 
     // Published-proposal card (header + name + expiration + PDF chip +
     // customer link) docked to the RIGHT of the stepper for the
     // Issued/Signed/Applied stages — the same widget the preview page
     // shows. Lights up once PUBLISHED_VIEW is configured with a hidden
-    // published-proposals grid on this scene.
+    // published-proposals grid on this scene. (Dropped by mistake in the
+    // not-billable work; its call site stayed, so every render threw a
+    // ReferenceError — surfaced as a bogus "Webhook error" alert after
+    // Send back to sub, whose success callback re-renders.)
     function renderPublishedBlock(el, cur) {
       if (!IS_OPS || cur < 3) return;
       var PUB = DEP.PUBLISHED_VIEW || '';
@@ -1263,6 +1778,28 @@
       side.className = 'scw-co-stage-side';
       side.appendChild(block);
       el.appendChild(side);
+    }
+
+    // Basis tag beside the header status pill (co-header-card rebuilds the
+    // pill on its own timer — re-applied every render): slate "NOT
+    // BILLABLE" on the not-billable path, amber "NO SIGNATURE" on a
+    // billable CO approved without a client signature.
+    function renderHeaderTag(form, nb) {
+      var pill = form.querySelector('.scw-co-hdr-pill');
+      var tag = form.querySelector('.scw-co-hdr-nb');
+      var ns = !nb && noSignature();
+      if (!nb && !ns) { if (tag) tag.remove(); return; }
+      if (!pill) return;
+      if (!tag) {
+        tag = document.createElement('span');
+        pill.parentNode.insertBefore(tag, pill.nextSibling);
+      }
+      tag.className = 'scw-co-hdr-nb' + (ns ? ' scw-co-hdr-nb--nosig' : '');
+      tag.textContent = nb ? 'Not billable' : 'No signature';
+      tag.title = nb
+        ? (nb.reason || 'Authorized without billing the client') + (nb.by ? ' — ' + nb.by : '')
+        : 'Approved and billed on client approval, no e-signature' + (ns.reason ? ' — ' + ns.reason : '');
+      if (pill.nextSibling !== tag) pill.parentNode.insertBefore(tag, pill.nextSibling);
     }
 
     // ── status polling while the ball is in the other court ──────────────
@@ -1306,9 +1843,19 @@
       SCW.onViewRender(VIEW, soon, EVENT_NS);
       if (STATUS_VIEW) SCW.onViewRender(STATUS_VIEW, soon, EVENT_NS);
       if (DEP.PUBLISHED_VIEW) SCW.onViewRender(DEP.PUBLISHED_VIEW, soon, EVENT_NS);
+      if (IS_OPS && ACC.view) SCW.onViewRender(ACC.view, soon, EVENT_NS);
     }
     // The published-proposals source grid is data-only — keep it out of
     // sight (display:none keeps the DOM + model readable).
+    if (IS_OPS && ACC.view) {
+      var accHideId = 'scw-co-stage-acchide-' + ACC.view;
+      if (!document.getElementById(accHideId)) {
+        var accHide = document.createElement('style');
+        accHide.id = accHideId;
+        accHide.textContent = '#' + ACC.view + ' { display: none !important; }';
+        document.head.appendChild(accHide);
+      }
+    }
     if (DEP.PUBLISHED_VIEW) {
       var hideId = 'scw-co-stage-pubhide-' + DEP.PUBLISHED_VIEW;
       if (!document.getElementById(hideId)) {
@@ -1327,8 +1874,12 @@
     // SCW.coStageSub (co-sub-lock reads view_4122 directly, but the surface
     // is there if anything needs the sub-page status).
     window.SCW = window.SCW || {};
-    SCW[IS_OPS ? 'coStage' : 'coStageSub'] =
-      { getStatus: getStatus, getSnapshot: getSnapshot, refresh: render };
+    SCW[IS_OPS ? 'coStage' : 'coStageSub'] = {
+      getStatus: getStatus, getSnapshot: getSnapshot, refresh: render,
+      // { notBillable, noSignature, signed, reason, by, at } or null — the
+      // Acceptance read (co-value.js zeroes the client column on it).
+      getAcceptance: acceptanceInfo
+    };
   }
 
   for (var d = 0; d < DEPLOYMENTS.length; d++) setup(DEPLOYMENTS[d]);

@@ -18,7 +18,13 @@ const jqObj = {
 };
 jq.fn = {}; window.$ = jq; window.jQuery = jq; global.$ = jq;
 window.Knack = { views: {}, router: { current_scene_key: 'scene_1311' } }; global.Knack = window.Knack;
-window.SCW = { CONFIG: {} }; global.SCW = window.SCW;
+let shipOpened = 0;
+window.SCW = { CONFIG: {},
+  // shipments-tray.js owns the line's HTML; the nav just folds it into the
+  // Installation tile and routes its click.
+  shipments: { tileLine() { return '<button type="button" class="scw-ships-line" data-scw-tile-ships="1"><span class="scw-ships-text">1 in transit · 2 delivered</span></button>'; },
+               open() { shipOpened++; return true; } } };
+global.SCW = window.SCW;
 window.setInterval = function () {}; // no heartbeat in the test
 new Function('window', 'document', '$', 'Knack', 'SCW',
   fs.readFileSync(path.join(__dirname, '../../src/features/deploy-page-nav.js'), 'utf8'))(window, document, jq, window.Knack, window.SCW);
@@ -87,6 +93,17 @@ setTimeout(() => {
   check('clicking a stage tile opens its section in the drawer, expanded', [!!drawer && !drawer.hidden, drawer && drawer.contains(closeout), closeout.classList.contains('is-expanded')], [true, true, true]);
   tiles[2].click();
   check('the Installation tile scrolls to the worksheet instead', document.getElementById('scw-ws-v2-view_4093').getAttribute('data-scrolled'), '1');
+  // Shipments: a compact always-visible line on the Installation tile only, inside the tile's own
+  // innerHTML (so a nav pass can't fight it), and its click opens the shipments drawer rather than
+  // the tile's target.
+  check('the shipments line sits on the Installation tile, after the facts, and nowhere else',
+    [tiles.map(t => !!t.querySelector('[data-scw-tile-ships]')), tiles[2].querySelector('.scw-ships-text').textContent,
+     tiles[2].querySelector('.scw-deploy-tile__fact').nextElementSibling.className],
+    [[false, false, true, false], '1 in transit · 2 delivered', 'scw-ships-line']);
+  document.getElementById('scw-ws-v2-view_4093').removeAttribute('data-scrolled');
+  tiles[2].querySelector('[data-scw-tile-ships]').click();
+  check('clicking it opens the shipments drawer and does NOT scroll to the worksheet',
+    [shipOpened, document.getElementById('scw-ws-v2-view_4093').getAttribute('data-scrolled')], [1, null]);
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
 }, 400);

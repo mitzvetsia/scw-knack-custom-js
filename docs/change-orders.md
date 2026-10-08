@@ -211,10 +211,20 @@ install line items.
 [ops]  Draft ─ (no sub pricing needed, e.g. pure removals) ─ Issue ─────┼─┐
 [sub]  Draft (origin: sub, priced while drafting) ─ sub submits CO ─────┘ │
                                                                           ▼
-        Ops Review ─ Issue ─→ Issued ─ e-signed ─→ Accepted ─→ Applied
-        (or send back to        │
-         Pending Sub Pricing)   └─→ Declined (revise → re-issue) / Void
+        Ops Review ─ Issue ─→ Issued ─ e-signed ──────────────┬─→ Accepted
+        (or send back to   │    │                               │
+         Pending Sub       │    └─→ Declined (revise → re-issue) / Void
+         Pricing)          ├─ Approve without client signature ─┤  (preview page)
+                           └─ Authorize as not billable ────────┘  (CO page)
 ```
+
+- **2026-10-01 status revision**: `Applied` was dropped — accepted IS applied on
+  every path (the old Accepted/Applied split only existed to spot a half-run
+  Make apply; that signal now lives in Make's own error notifications). The
+  SOW's CO Status stays the **stage rollup only**: one terminal `Accepted` for
+  all three accepted paths. **Billability / signature / the reason live on the
+  Acceptance record as flags** (see "Where the truth lives" below) — never on
+  the SOW, so there is no second copy to drift.
 
 - Ops-originated COs that need no sub pricing (e.g. pure removals) are Issued
   straight from Draft.
@@ -245,8 +255,7 @@ install line items.
 | Pending Sub Pricing | ops "Send to Sub" | sub's window — subBid fields only |
 | Ops Review | the sub's submit (either path) | ops vets the priced CO; sub locked; exit = Issue or send back |
 | Issued | the Issue action | snapshot + acceptance created, e-sign sent |
-| Accepted | signed webhook (apply START) | signed; apply in flight — stuck here = apply failed |
-| Applied | apply branch END | install scope updated, invoice created |
+| Accepted | signed webhook (00.00), or 13.03's two no-signature routes | terminal — applied; the Acceptance flags say signed / approved-without-signature / not-billable |
 | Declined | esignatures decline webhook | revise working lines → re-issue |
 | Void | ops manual action | cancelled |
 
@@ -605,3 +614,198 @@ broader field-level swap is a future decision, not an extension of this one.
   drags delta-pricing + e-sign presentation questions with it. The pair
   keeps every locked property — nothing mutates until signature, Make is the
   single writer, the CO lines stay an immutable audit trail.
+
+## Bulk edit: Equipment $ on the CO worksheet (2026-09-18)
+
+The Build Change Order page's worksheet (view_4079) offers the unit
+Equipment $ (`field_1960`, the same field the card's Equipment $ stack
+edits) in the bulk-edit panel for the cam / reader and equipment buckets,
+so a PM can price a batch of CO adds at once. Services and assumptions
+don't get it. Mechanism: `bulkExtraFields` on the view's config
+(worksheet-v2/config.js), merged onto the shared SOW registry by
+`fieldSetFor` (bulk.js); the shared registry itself is unchanged for every
+other worksheet. Builder dependency, same as the single edit: `field_1960`
+must be an inline-editable column on view_4079. After a successful bulk
+save the view refetches, so the CALC cells (net unit, line total) follow.
+Test: `tests/worksheet-v2/test-co-bulk-fields.js`.
+
+
+## Recurring licenses on the CO worksheet (2026-09-21)
+
+License-bucket lines (bucket `645554dce6f3a60028362a6a`, or any bucket whose
+label starts "License") are set apart on every worksheet-v2 view, the CO
+worksheet included: `groups.js` routes them into their own synthetic L1
+"Recurring licenses" (whatever MDF/IDF the record carries — a license is not
+installed anywhere), always the last group, flagged `isLicense`; `render.js`
+gives that header an indigo accent and the sub line "billed separately ·
+recurring · not in the project total" (its money reads "… recurring");
+`card.js` flags the card `scw-ws-v2-card--license` and exports
+`isLicenseBucket`; `summary.js` lists them in their own section AFTER the
+Total ("Recurring licenses — billed separately", subtotal "not in Total") and
+never counts them in the totals — the worksheet reads the way the proposal
+does, where licenses sit under Recurring Services below the project totals.
+`tests/worksheet-v2/test-license-group.js`. The CO value strip
+(`co-value.js`) keeps licenses out of Adds / Credits / Net change and shows
+them on a fourth tile, "Recurring licenses · billed separately · not in net
+change" (their extended net; the sub strip never counts them);
+`tests/worksheet-v2/test-co-value.js`. co-stage-strip leaves license lines
+out of the sub-pricing snapshot, the request document and the unpriced
+count — a license is not the sub's to price; the CO proposal bills it
+under Recurring Services on its own.
+
+**⚠️ Builder dependency (2026-09-21):** all of the above only sees license
+lines the CO worksheet view LOADS. On the SOW pages licenses live in their
+own Licenses accordion (view_3369 / view_3471 / view_3371) and the
+worksheet grids leave them out; if view_4079 (and the sub's view_4112)
+carry the same bucket filter, a license added to a CO through the add-item
+form exists on the CO but never reaches the page — the worksheet, the value
+strip ("0 lines") and the tray all read the view's model. Either drop the
+License-bucket exclusion from view_4079 / view_4112 (the bundle then sets
+them apart as above), or add a Licenses grid to the CO scene.
+
+## Recurring services on the proposal / e-sign document (2026-09-21)
+
+The e-signatures agreement is built by Make from `payload.html` — the same
+document HTML `proposal-pdf-export.js` renders for the PDF and the published
+page. Recurring services / licenses come from the proposal scene's licenses
+grid (view_3371, `recurringGrids`) and render in a `.recurring-section`
+BELOW the Project Totals (skipped when that grid is empty,
+`hideEmptyGrids`). Since 2026-09-21 the section carries a note under its
+title — "Recurring — billed separately on its own cycle. Not included in the
+Project Totals above." — and the e-sign element manifest
+(`buildSowDocumentElements`) emits it as a text element right after the
+section header, so the signer reads it in the agreement, not just the PDF.
+`tests/proposal/test-recurring-note.js` (the builders are exported as test
+seams on `SCW.pdfExport`). Whether a given CO's licenses appear depends on
+view_3371 listing them on that proposal's scene at publish time.
+
+## Make 13.06b: swapped items came out "Removed by CO" (2026-09-21)
+
+Scenario *13.06b | CHANGE ORDER | True Deployment Records based on signed CO*
+iterates the CO's lines (`73.view_3896`) through a router with three routes
+— ADD (Add, no target) creates an install record; REMOVE (Remove) flags the
+target install record's field_2967; SWAP (Add with a target) updates the
+target in place and clears field_2967. A Make router runs EVERY matching
+route per bundle, and a swap is two lines targeting one install record: the
+Add line took the SWAP route, then the pair's Remove line (drafted after
+the Add, so later in the array) took the REMOVE route and flagged the same
+record — every swapped device and its ride-along mount ended in the
+worksheet's "Removed by CO" fold (1818CO: RA-I-068 / RA-I-069). Fix
+(blueprint patched, handed back as "… (swap fix).blueprint.json"): the
+REMOVE route's filter gains `array:notcontain` — the target ids of every
+Add line in the CO (`map(flatten(map(73.view_3896; "field_2966_raw";
+"field_2965_raw"; "Add")); "id")`) must NOT contain this line's target
+(`first(map(87.field_2966_raw; "id"))`); SWAP's record_id uses the same
+`first(map(...))` form as REMOVE. Records already mis-flagged need
+field_2967 cleared by hand (the scenario cannot be re-run for a signed
+CO).
+
+## Accepted without an e-signature — two paths (2026-10-01 — PREPPED, not yet live)
+
+Ops sometimes approves a CO without an e-signature round trip: either the
+client already approved it another way (email / verbal / PO / contract allows)
+and SCW **bills** it, or SCW eats it (e.g. "Mount Credit: techs returned an
+unused mount") and it is **not billable**. Both still need the locked Proposal
++ Acceptance records (the audit trail and what 13.06b iterates); neither has an
+esignatures contract.
+
+### Where the truth lives
+
+The SOW's CO Status is the **stage** only — every accepted path writes the one
+value `Accepted`. The **Acceptance record** carries the facts, as flags in the
+same family as approved-for-terms / payment / signed (it has no status field by
+design, and it will be reused as the billing vehicle for service-call SOWs):
+
+| Path | `field_2766` signed | `field_3309` approved w/o signature | `field_3310` not billable |
+|---|---|---|---|
+| e-signed | Yes | No | No |
+| approve without client signature | No | Yes | No |
+| authorize as not billable | No | Yes | Yes |
+
+plus the **reason** (`field_3311` INPUT_approved not billable reason, paragraph),
+stamped by Make from `payload.reason`. Derivations are pure flag logic:
+*accepted* = signed OR approved-w/o-sig; *invoiceable* = accepted AND NOT
+not-billable. Nothing about billability or the reason is written to the SOW.
+
+### Authorize as not billable (CO drafting page)
+
+- **UI** (`co-stage-strip.js`): third Ops Review exit, `[Send back to sub]
+  [Authorize as not billable] [Preview & Issue →]` (secondary styling). Click →
+  modal with the consequences + a **required reason** (seeded from CO Notes).
+  On confirm it POSTs `MAKE_CO_ISSUE_WEBHOOK` with `stepId:
+  'authorize-not-billable'` and a payload **built on the CO page** (no preview
+  page needed): raw line snapshot `jsonString` (`{ sowRecordId, view_3896 }`
+  from view_4079's records), an **internal authorization card** as
+  `html`/`htmlPdf` (sub labor + **equipment** + **the reason**, grouped by
+  MDF/IDF — the send-to-sub card builder with an Equipment column), `totals`,
+  `reason`, `signed: false`, client totals = 0, `recordId`/`sourceRecordId`.
+  No client-side writes. Make owns the status flip; the page flips
+  optimistically and keeps a same-browser marker. Terminal — no undo.
+- **13.03 route** (`authorize-not-billable`, exists; see fixes): Proposal (Type
+  CO, `htmlPdf` = the card, snapshot from `jsonString`, **no customer token**)
+  → Acceptance [234] with `field_3309 = Yes`, `field_3310 = Yes`, reason →
+  CO Status `Accepted` [240] → Slack [247] → 13.06b trigger [249]. 13.06b's
+  invoice gate skips it (read `10.field_3310`, not the SOW status).
+
+### Approve without client signature (preview page)
+
+- **UI** (`ops-stepper.js`, step `approve-without-signature`): amber CO-mode
+  step between Preview and Issue; modal = the same single required reason.
+  Fires `MAKE_CO_ISSUE_WEBHOOK` with the normal FULL publish payload plus
+  `noSignature: true`, `signed: false`, `reason`, `status: 'Accepted'`.
+- **13.03 route** (exists as of 2026-10-01 — route 0 minus the AGREEMENTS branch; `CO_APPROVE_WITHOUT_SIGNATURE_READY` flipped the same day):
+  Proposal (Type CO, published + token) → Acceptance with `field_3309 = Yes`,
+  `field_3310 = No`, reason, `field_2767` = the PDF → CO Status `Accepted`
+  (skips Issued) → Slack → 13.06b trigger (with `"signed": false`). 13.06b
+  invoices it (status Accepted, `field_2200 ≠ 0`, `field_3310 = No`).
+
+### Make fixes required before either goes live (found in the 2026-10-01 blueprints)
+
+1. **13.03 router [235] → the filter on [236]** is `stepId = issue-change-order`
+   inside the not-billable branch — never true, so [236]–[249] never run.
+   Delete the filter.
+2. **13.06b [169]** writes `field_2953 = "Accepted"` at the tail of every run —
+   retire it; each caller writes the status itself (13.03's routes already do;
+   **00.00** needs an `Accepted` write on the SOW in its CO branch before [95]).
+3. **13.06b [15]** sets `field_2766` = Yes on every run — map it to
+   `{{if(220.signed = false; false; true)}}` (both new payloads send
+   `signed: false`; 00.00 [95] sends nothing → true).
+4. **13.06b invoice gate** (router [54] route 0): read the Acceptance flag
+   `10.field_3310 = No` instead of `field_2953 notcontain "not billable"`.
+5. **Column parity**: 13.06b reads these off each snapshot line — `1946 1948 1949
+   1951 1953 1956 1957 1958 1960 1962 1963 1964 1965 1983 1984 2020 2035 2150
+   2172 2219 2230 2231 2240 2461 2464 2479 2673 2965 2966`. Verify
+   `field_1948`, `field_1956`, `field_1962`, `field_1963`, `field_2172`,
+   `field_2673`, `field_2966` are columns on **view_4079** (nothing in the
+   worksheet config references them); a missing one lands blank on the created
+   install record.
+
+### How the pages show it
+
+- **CO page strip**: reads the Acceptance from the hidden Acceptance grid on the
+  CO scene (`view_4164` — acceptances on the parent page's **project**, columns
+  `field_2755`/`2766`/`3309`/`3310`/`3311`), matched to this CO through its
+  published proposals (view_4125).
+  Not billable → slate **NOT BILLABLE** tag, stepper drops the Issued node and
+  ends on "Accepted · not billable", note "Authorized as not billable — Why: …".
+  Approved without signature → amber **NO SIGNATURE** tag + "Accepted —
+  approved without client signature. Why: …". Until the grid exists it falls
+  open to the same-browser marker written at the click.
+- **Manage Deployment acceptance cards** (`acceptance-card.js`): the signature
+  pill reads the flags — "Approved without client signature" (green) instead
+  of "Agreement not signed", plus a slate "Not billable" pill.
+- **Ops lock** treats any `Accepted` as final; the sub strip reads "Approved by
+  SCW — your pricing stands" on the not-billable path.
+
+### Builder checklist
+
+- CO Status `field_2953` options: Draft / Pending Sub Pricing / Ops Review /
+  Issued / **Accepted** / Declined / Void (no `Applied`, no billable variants).
+- Acceptance: `field_3309`, `field_3310`, `field_3311` reason (done);
+  `field_3308` on the SOW is unused — remove it.
+- Hidden Acceptance grid on the CO scene: `view_4164` (done) — must carry
+  `field_2755`, `field_2766`, `field_3309`, `field_3310`, `field_3311`.
+- Then flip `CO_AUTHORIZE_NOT_BILLABLE_READY` / `CO_APPROVE_WITHOUT_SIGNATURE_READY`
+  in `src/config.js` once each Make route exists (without the route the Issue
+  scenario would send a contract on the payload — the buttons refuse to fire
+  while false).

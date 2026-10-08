@@ -195,6 +195,29 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   }
   //   Response: 2xx = accepted (body optional; only {success:false}|{error} fails)
   MAKE_CO_ADD_ITEMS_WEBHOOK: "https://hook.us1.make.com/ae51ped3yu5m671mx3yvxqyk5r14wp9o",
+  // Base-SOW ADD item (worksheet-v2/sow-add-item-form.js): the custom "Add to
+  // Scope of Work" modal — gated to CONFIG.ALLOWED_EMAILS while it proves out
+  // — fires this INSTEAD of the native DTO add forms (view_3329 / view_3748 /
+  // view_3451). Make scenario 02.01 "SOW Line Item DTO (DUPE USING CUSTOM
+  // MODAL)" is the DTO scenario remapped from the DTO record to this payload,
+  // which therefore carries the DTO record's shape alongside readable keys:
+  //   Request body: {
+  //     sowId, sowIds: [...], projectId,          // page SOW first; projectId '' when
+  //                                               // the route has no project segment
+  //     bucketId, bucketName, productIds: [...], accessoryIds: [...], mdfIds: [...],
+  //     qty, prefixId, prefix, startNumber, existingCabling, exterior, plenum,
+  //     serviceCost, description, notes, triggeredBy: { id, name, email },
+  //     origin: 'ops'|'sales', originPage, originView, originScene,
+  //     // DTO mirror — connections as [{id, identifier}] under the DTO field key
+  //     // the bucket used (products: field_2193 cam / 2194 networking / 2195 other
+  //     // / 2224 license / 2248 assumptions / 2913 materials; MDF: field_2211
+  //     // single / 2180 multi / 2250 optional), unused keys = []; plain inputs as
+  //     // field_X + field_X_raw (field_2183 qty, 2184 start #, 2233 sub bid,
+  //     // 2210 description, 2466 notes, 2462/2739/2740 flags as booleans).
+  //     field_2223_raw, field_2182_raw, field_2206_raw, field_2241_raw, field_2181_raw, …
+  //   }
+  //   Response: 2xx = accepted (body optional; only {success:false}|{error} fails)
+  MAKE_SOW_ADD_ITEMS_WEBHOOK: "https://hook.us1.make.com/rrypzupolck7mbov3gmiv8hbvnw5lns4",
   // Change-order sub-pricing loop (co-stage-strip.js). One scenario, the
   // payload's `mode` branches it:
   //   mode:'send'     → store payload.snapshot verbatim in the CO header's
@@ -279,6 +302,60 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // included), so the record-creation modules are common and the branch
   // point is after them.
   MAKE_CO_ISSUE_WEBHOOK: "https://hook.us1.make.com/fwpbnldo3fkrywggxwu18qsh6ghgrg7w",
+  // ── The two NO-E-SIGNATURE accepted paths (2026-10-01) ─────────────────
+  // Both are stepId routes on the Issue scenario (13.03). Where the truth
+  // lives: the SOW's CO Status is the STAGE only — every accepted path
+  // writes the single value "Accepted". Billability / signature / reason
+  // live on the ACCEPTANCE (object_62) as flags Make stamps at creation:
+  //   field_2766 FLAG_agreement signed            e-sign only (13.06b [15]
+  //                                               must map it from payload
+  //                                               `signed`, default true)
+  //   field_3309 FLAG_approved without signature  Yes on both paths below
+  //   field_3310 FLAG_not billable                Yes on the not-billable path
+  //   field_3311 INPUT_approved not billable reason  payload.reason
+  // 13.06b's invoice gate should read the Acceptance's field_3310 (not the
+  // SOW status); 13.06b [169] (SOW status write) is retired — each route
+  // in 13.03 / the signed scenario writes "Accepted" itself.
+  //
+  // "Authorize as not billable" (co-stage-strip.js, fired from the CO
+  // drafting page, NOT the preview page) — stepId 'authorize-not-billable',
+  // reduced payload built on the CO page:
+  //   { stepId, recordId, changeOrderId, sourceRecordId, isChangeOrder: true,
+  //     notBillable: true, signed: false, reason, notes, status: "Accepted",
+  //     coNumber, coName, html, htmlPdf, plaintext,
+  //     installationTotal: 0, equipmentTotal: 0, grandTotal: 0, totals,
+  //     jsonString, triggeredBy }
+  //   (recordId / sourceRecordId / htmlPdf / jsonString / plaintext / the
+  //   three totals are the keys 13.03's trunk reads for every stepId —
+  //   modules 11, 23, 100, 104.)
+  //   html/htmlPdf = INTERNAL authorization card (sub labor + equipment +
+  //                  the reason) — store as the Proposal's document, never
+  //                  mint a customer token/link for it
+  //   jsonString   = raw-only `{ sowRecordId, view_3896: [...] }` from
+  //                  view_4079's records — same shape/key as the preview page
+  //   totals       = { lines:{adds,removals}, subLabor:{adds,removals,net},
+  //                    equipment:{adds,removals,net} }
+  // Route: Proposal (Type CO, no token) → Acceptance (Type CO, field_3309 =
+  // Yes, field_3310 = Yes, reason) → CO Status "Accepted" → notify sub
+  // ("approved, pricing stands") + ClickUp → call 13.06b exactly as the
+  // signed scenario does (its invoice gate skips on field_3310).
+  // ⚠ READY FLAG: until the route exists, the Issue scenario would run the
+  // FULL Issue flow (contract sent) on this payload — so the button refuses
+  // to fire while this is false. Flip to true once the route is live.
+  CO_AUTHORIZE_NOT_BILLABLE_READY: true,    // flipped 2026-10-01 — 13.03 route 2 exists
+  // "Approve without client signature" (ops-stepper.js, preview page) —
+  // stepId 'approve-without-signature', the normal FULL Issue publish
+  // payload (html, htmlPdf, jsonString, invoiceItems, totals …) plus
+  //   { noSignature: true, signed: false, billable: true, notBillable: false,
+  //     reason, notes, status: "Accepted" }
+  //   — no recipient, no scopeOfWorkDocumentElements consumer. Always
+  //   billable: the not-billable path has its own button on the CO page.
+  // Route: Proposal (Type CO, published + customer token) → Acceptance
+  // (Type CO, field_3309 = Yes, field_3310 = No, reason) → CO Status
+  // "Accepted" (skips Issued) → the SIGNED scenario's downstream: Xero
+  // invoice, 13.06b true-up, sub + ClickUp.
+  // ⚠ READY FLAG: same reason as above.
+  CO_APPROVE_WITHOUT_SIGNATURE_READY: true,    // flipped 2026-10-01 — 13.03 route exists
   // Fires from the published CO page (scene_1279 AND the public token
   // page snippet) when a client clicks "Request the signature copy" on
   // a PRE-ISSUE CO preview. Minimal notify payload:
@@ -287,6 +364,11 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // preview page. The CTA hides while this is blank, so the preview
   // banner ships safely before the scenario exists.
   MAKE_CO_SIGNATURE_REQUEST_WEBHOOK: "",
+  // SCW logo for generated documents (SOW PDF, Location Approval Form,
+  // questionnaire printable). The old /pub/media/... path 404s; this is the
+  // storefront's image endpoint over the S3 asset. Make's 11.05 templates
+  // carry the same URL — change both together.
+  SCW_LOGO_URL: "https://www.getscw.com/_next/image?url=https%3A%2F%2Fscw-commerce-media.s3.amazonaws.com%2Fpub%2Fmedia%2Flogo%2Fstores%2F1%2Flogo-scw.jpeg&w=256&q=75",
   // Fires on the "Request Validation & Add as Alternative Bid to Survey"
   // stepper action (state 3 of the gating model — sibling SOW has the
   // survey; docs/project-stage-workflow.md). Payload now carries stepId
@@ -323,6 +405,55 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // refetches so any flags the scenario flips show up on their own.
   // Blank/PLACEHOLDER hides the row button and drops the uploader's
   // checkbox, so the panel degrades to a plain file upload.
+  // ── Shipments re-check (deploy page → OMS reconcile) ────────────────
+  // Fired by the "Re-check shipments" button in the Installation tile's
+  // shipments drawer (shipments-tray.js). The scenario pulls the OMS and
+  // reconciles it against what Knack already holds, creating records for
+  // orders it doesn't recognize and flagging ones that no longer resolve
+  // ("Missing in OMS"). The payload carries everything the page knows so
+  // the scenario needn't re-query Knack first:
+  //   { project_recordID, source: 'deploy-page', requestedAt,
+  //     projectNo:   '62489857827',                     // the shared token
+  //     references:  [ { reference, sowRef, projectNo, sow, quote,
+  //                      acceptanceId?, signed?, sowRecordId? } ],
+  //     referencesMissingQuote: bool,   // no reference has a proposal no
+  //     sows:        [ { id, sowId } ],                 // All Associated SOWs
+  //     acceptances: [ { id, proposal, signed } ],      // accepted proposals
+  //     shipments:   [ { id, orderNo, omsOrderId, syncState, lastSynced } ] }
+  // An order ties to a project directly OR through an accepted proposal,
+  // so both sides of the match ship. `shipments` is what we already hold —
+  // the list to diff against.
+  //
+  // ⚠️ `references` is the key to matching ShipEdge. Its Orders API has NO
+  // contains / LIKE / keyword filter on reference_number — only an exact
+  // lookup (GET /apirest/v4/oms/orders/{ref}?identify_by=order_reference)
+  // or a date-windowed list you filter client-side. ShipEdge carries our
+  // linkage in the order reference, shaped
+  //   <project no>-SW<sow no> | <quote no>   e.g.
+  //   62489857827-SW1454 | 20260910-11567
+  // which is exactly the published proposal's identifier. So the page
+  // builds every reference an order for this project could carry and
+  // ships them: hit the exact endpoint once per `reference` (and per
+  // `sowRef` for an order raised with no quote behind it) instead of
+  // paging the order history. `projectNo` is the one token they all
+  // share — the needle for a contains pass over a list windowed by the
+  // newest `lastSynced`, which is the only way to catch an order somebody
+  // typed into ShipEdge by hand.
+  //
+  // The reference is the PUBLISHED PROPOSAL's identifier, "<SOW id> |
+  // <proposal no>", and it should sit on every accepted acceptance. Which
+  // connection projects it onto a given grid is a Builder decision, so the
+  // page finds it BY SHAPE across both acceptance grids and the SOWs
+  // rather than trusting one field key (on a live project the acceptance's
+  // own field_2755 rendered empty and the quote went missing).
+  // `referencesMissingQuote: true` means not one reference carries a
+  // proposal number — the proposal isn't linked on this project, so only
+  // the date-windowed contains pass can match, and the run should say so
+  // rather than reporting clean. Response: 2xx (body optional; only
+  // {success:false} fails). A blank / PLACEHOLDER url makes the button
+  // report "Re-check not configured" and fire nothing.
+  MAKE_SHIPMENTS_RESYNC_WEBHOOK: "https://hook.us1.make.com/dbrdngn246t4m6nebqyhrhlua1w7ew1q",
+
   MAKE_GREENLIGHT_CHECK_WEBHOOK: "https://hook.us1.make.com/zlxkei9ro9iaxjri5e5yf2f4fqzi89xl",
   // QA-fail notification: qa-popover POSTs here whenever a save WRITES a
   // photo's QA status to Fail (the fields diff carries the status only on
@@ -556,7 +687,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
 // DOM. Bump the stamp when shipping something you need to verify live.
 (function () {
   'use strict';
-  window.SCW.BUILD = '2026-09-01 co-product-swap';
+  window.SCW.BUILD = '2026-10-08 sow-add modal LIVE for everyone; DTO forms retired';
   try {
     var src = (document.currentScript && document.currentScript.src) || '';
     if (!src) {

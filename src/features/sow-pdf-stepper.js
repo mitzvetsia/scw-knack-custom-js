@@ -284,6 +284,24 @@
   //   • A <base href> so any relative image/asset URLs in the scraped
   //     content resolve against the original page.
   //   • The scraped scene HTML as the body content (stepper removed).
+  // Project number (HubSpot deal id) for the generated documents — resolved
+  // from this scene's loaded SOW / project records by project-id-badge.js.
+  function projectNumber() {
+    var pid = window.SCW && SCW.projectId;
+    if (!pid || typeof pid.resolve !== 'function') return '';
+    try { return pid.resolve(SCENE_ID).id || ''; } catch (e) { return ''; }
+  }
+  function projectBannerHtml(rightLine) {
+    var pid = window.SCW && SCW.projectId;
+    if (!pid || typeof pid.banner !== 'function') return '';
+    return pid.banner(projectNumber(), { right: [rightLine || ''] });
+  }
+  function projectFooterHtml(rightLine) {
+    var pid = window.SCW && SCW.projectId;
+    if (!pid || typeof pid.footer !== 'function') return '';
+    return pid.footer(projectNumber(), rightLine || '');
+  }
+
   function buildStandaloneHtml(sceneClone) {
     var parts = [];
     parts.push('<!DOCTYPE html>');
@@ -471,7 +489,9 @@
 
     parts.push('</head>');
     parts.push('<body>');
+    parts.push(projectBannerHtml(''));   // Project number first (project-id-badge.js)
     parts.push(sceneClone.outerHTML);
+    parts.push(projectFooterHtml());
     parts.push('</body>');
     parts.push('</html>');
 
@@ -651,6 +671,7 @@
     html.push(buildLafCss());
     html.push('</style>');
     html.push('</head><body>');
+    html.push(projectBannerHtml(proposal ? 'Proposal ' + proposal : ''));
 
     // ── Page header (repeats on every page via running header) ──
     html.push('<header class="laf-header">');
@@ -662,7 +683,8 @@
     }
     html.push('  </div>');
     html.push('  <div class="laf-header__logo">');
-    html.push('    <img src="https://www.getscw.com/pub/media/logo/stores/1/logo-scw.jpeg" alt="SCW">');
+    html.push('    <img src="' + escapeHtml((window.SCW && SCW.CONFIG && SCW.CONFIG.SCW_LOGO_URL) ||
+      'https://www.getscw.com/_next/image?url=https%3A%2F%2Fscw-commerce-media.s3.amazonaws.com%2Fpub%2Fmedia%2Flogo%2Fstores%2F1%2Flogo-scw.jpeg&w=256&q=75') + '" alt="SCW">');
     html.push('  </div>');
     html.push('</header>');
 
@@ -749,6 +771,7 @@
       html.push('</section>');
     }
 
+    html.push(projectFooterHtml(proposal ? 'Proposal ' + proposal : ''));
     html.push('</body></html>');
 
     // Stash count for debug.

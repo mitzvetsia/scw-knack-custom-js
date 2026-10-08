@@ -47,7 +47,14 @@
   function hideRefreshing() {
     var overlay = document.getElementById(OVERLAY_ID);
     if (overlay) overlay.remove();
+    clearTimeout(_clickSafety); _clickSafety = null;
   }
+
+  // The click path shows the overlay BEFORE Knack submits; if no submit
+  // follows (a gate blocked it, Knack's own validation failed), nothing
+  // else hides it — so the click path arms its own safety timeout.
+  var _clickSafety = null;
+  var CLICK_SAFETY_MS = 8000;
 
   /**
    * Refresh the source grid views so their DOM updates with fresh data.
@@ -102,8 +109,15 @@
     if (isTargetForm) {
       SCW.debug('[scw-refresh] Submit button clicked — showing overlay');
       showRefreshing();
+      clearTimeout(_clickSafety);
+      _clickSafety = setTimeout(hideRefreshing, CLICK_SAFETY_MS);
     }
   }, true); // capture phase — fires before Knack's handler
+
+  // Other modules (pricing-discount-gate.js) hide the overlay when they
+  // swallow a submit the click path already reacted to.
+  window.SCW = window.SCW || {};
+  SCW.totalsRefresh = { show: showRefreshing, hide: hideRefreshing };
 
   // --- form submissions (knack-form-submit.viewId) ---
   // By the time this fires, the save is done — refresh the source grids.

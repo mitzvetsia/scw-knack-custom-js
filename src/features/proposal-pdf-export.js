@@ -1789,6 +1789,17 @@
     if (view.title) {
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
     }
+    // Recurring services / licenses: say what the section is. It sits
+    // BELOW the Project Totals (buildPdfHtml) and its lines are billed on
+    // their own cycle, never in that total — the customer signing the
+    // e-sign agreement (Make builds it from this HTML; the manifest walker
+    // emits this note as a text element after the title) must read that
+    // here, not infer it from the placement.
+    if (view.isRecurring) {
+      html.push('<div class="recurring-note">' +
+        'Recurring \u2014 billed separately on its own cycle. Not included in the Project Totals above.' +
+        '</div>');
+    }
     // Optional narrative block right below the title — used by
     // scene_1096 to drop field_2128 ("Proposed Solution" intro text)
     // beneath the heading, matching the in-app preview layout.
@@ -1910,6 +1921,17 @@
                 html.push('<td class="col-cost">' + esc(prod.cost) + '</td>');
               }
               html.push('</tr>');
+
+              // Catalog description (grid-v2 payload `productDesc`): a quiet
+              // sub-row under the product name, before any labor description.
+              if (prod.productDesc) {
+                html.push('<tr class="l4-row l4-proddesc">');
+                html.push('<td class="l4-desc"' + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(prod.productDesc) + '</td>');
+                if (!prod.hideCost) {
+                  html.push('<td class="col-qty"></td><td class="col-cost"></td>');
+                }
+                html.push('</tr>');
+              }
 
               if (prod.productLabel && prod.descText) {
                 html.push('<tr class="l4-row">');
@@ -2057,6 +2079,38 @@
   // net change); the published customer page and PDF present just the
   // banded CO proposal, where the manifest would duplicate the itemized
   // Added/Removed bands (user call, 2026-07-17).
+  // ── Project number (HubSpot deal id) on every document ─────────────
+  // The number a tech quotes to SCW support. Read off the SOW identifier's
+  // prefix ("60486704913-SW1163 | …"), else resolved from the scene the
+  // document is built on (project-id-badge.js). Inline-styled fragments so
+  // they survive the HTML → PDF pipeline and the stored-HTML sanitizer.
+  function projectNumberFor(payload) {
+    var pid = window.SCW && SCW.projectId;
+    if (!pid) return '';
+    var id = typeof pid.prefixOf === 'function' ? pid.prefixOf(payload && payload.sowId) : '';
+    if (!id && typeof pid.resolve === 'function') {
+      var scene = (payload && payload.sceneId) ||
+        (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
+      try { id = scene ? (pid.resolve(scene).id || '') : ''; } catch (e) { id = ''; }
+    }
+    return id;
+  }
+  function sowShortOf(sowId) {
+    var m = /-(S[WR]\d{2,6}[A-Za-z]*)\b/.exec(String(sowId || ''));
+    return m ? m[1] : '';
+  }
+  function projectBannerHtml(payload) {
+    var pid = window.SCW && SCW.projectId;
+    if (!pid || typeof pid.banner !== 'function') return '';
+    var short = sowShortOf(payload && payload.sowId);
+    return pid.banner(projectNumberFor(payload), { right: [short ? 'SOW ' + short : ''] });
+  }
+  function projectFooterHtml(payload) {
+    var pid = window.SCW && SCW.projectId;
+    if (!pid || typeof pid.footer !== 'function') return '';
+    return pid.footer(projectNumberFor(payload), sowShortOf(payload && payload.sowId));
+  }
+
   function buildPdfHtml(payload, opts) {
     if (!payload.views.length) return '';
 
@@ -2073,6 +2127,8 @@
     html.push('</style>');
     html.push('</head><body>');
     html.push(bodyLevelCss());
+    // Project number first — before the bid header and the proposal body.
+    html.push(projectBannerHtml(payload));
 
     // Bid identity header — WHICH survey request / bid / friendly name
     // (field_2638) + expiration date (field_2635) at the top of the
@@ -2174,6 +2230,7 @@
       }
     }
 
+    html.push(projectFooterHtml(payload));
     html.push('</body></html>');
     return html.join('\n');
   }
@@ -2331,6 +2388,7 @@
       '.l4-row td.col-qty, .l4-row td.col-cost { font-weight: 600; color: #07467c; }',
       '/* Accessory rollups muted slate — secondary to the product (v2). */',
       '.l4-row.l4-acc td { color: #5f6b7a; font-weight: 400; }',
+      '.l4-row.l4-proddesc td { color: #6b7280; }',
       '.l4-row.l4-acc td.col-qty, .l4-row.l4-acc td.col-cost { color: #5f6b7a; }',
       '',
       '/* ── L2 Footer ── */',
@@ -2397,6 +2455,10 @@
       '',
       '/* ── Recurring Services ── */',
       '.recurring-section { margin-top: 40px; }',
+      '.recurring-note {',
+      '  margin: 2px 0 12px; padding: 8px 12px; border-left: 3px solid #07467c;',
+      '  background: #f1f5f9; color: #334155; font-size: 11px; font-weight: 600; line-height: 1.4;',
+      '}',
       '.recurring-header {',
       '  font-size: 20px; font-weight: 800; color: #07467c;',
       '  margin-bottom: 8px; padding-bottom: 4px;',
@@ -5005,7 +5067,10 @@
     return ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
       '<title>CO Sub Pricing' + (sowId ? ' — ' + esc(sowId) : '') + '</title>',
       '<style>', getPdfCss(), '</style>', '</head><body>', bodyLevelCss(),
-      h.join('\n'), '</body></html>'].join('\n');
+      projectBannerHtml({ sowId: sowId }),
+      h.join('\n'),
+      projectFooterHtml({ sowId: sowId }),
+      '</body></html>'].join('\n');
   }
 
   // ── Sub-bid review (bid + diff) for the published-proposal record ──────
@@ -5271,6 +5336,9 @@
       bidLabel:              cfg.payloadType === 'subcontractor bid' ? ((payload.bidHeader || {}).label || '') : undefined,
       bidExpirationDate:     cfg.payloadType === 'subcontractor bid' ? ((payload.bidHeader || {}).expires || '') : undefined,
       sowId:                 summary.sowId,
+      // Project number (HubSpot deal id) — for Make templates (COC, approval
+      // forms, agreement emails, invoice reference) that print it.
+      projectNumber:         projectNumberFor({ sowId: summary.sowId, sceneId: cfg.sceneId }),
       equipmentTotal:        summary.equipmentTotal,
       installationTotal:     summary.installationTotal,
       grandTotal:            summary.grandTotal,
@@ -5497,6 +5565,10 @@
     },
     getCss: getPdfCss,
     buildPublishPayload: buildPublishPayload,
+    // Test seams (tests/proposal/): the document HTML from a scraped
+    // payload, and the e-signatures element manifest from that HTML.
+    buildPdfHtml: buildPdfHtml,
+    buildSowDocumentElements: buildSowDocumentElements,
     // Render just the appended image sections (Site Maps / Additional
     // Photos) for a scene as an HTML string — the exact same markup the
     // published PDF/HTML appends at the end. proposal-preview-images.js

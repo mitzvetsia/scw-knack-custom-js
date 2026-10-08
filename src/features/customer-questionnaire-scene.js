@@ -440,7 +440,8 @@
   //    NOT a clone of the editable scene (which renders as ugly input boxes). ──
   // /pub/media — the bare /media/... path started returning 403 AccessDenied
   // from the site CDN (observed 2026-09-03); /pub/media/... still serves.
-  var SCW_LOGO = 'https://www.getscw.com/pub/media/logo/stores/1/logo-scw.jpeg';
+  var SCW_LOGO = (window.SCW && SCW.CONFIG && SCW.CONFIG.SCW_LOGO_URL) ||
+    'https://www.getscw.com/_next/image?url=https%3A%2F%2Fscw-commerce-media.s3.amazonaws.com%2Fpub%2Fmedia%2Flogo%2Fstores%2F1%2Flogo-scw.jpeg&w=256&q=75';
   function _txt(el) { return el ? el.textContent.replace(/\s+/g, ' ').trim() : ''; }
   function _today() {
     var d = new Date(); function p(n) { return (n < 10 ? '0' : '') + n; }
@@ -590,6 +591,12 @@
 
     return '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
       '<title>System Setup Questionnaire</title><style>' + _printCss() + '</style></head><body>' +
+        // Project number (HubSpot deal id) — the reference for SCW support.
+        ((window.SCW && SCW.projectId && typeof SCW.projectId.banner === 'function')
+          ? SCW.projectId.banner((function () {
+              try { return SCW.projectId.resolve(SCENE).id || ''; } catch (e) { return ''; }
+            })(), {})
+          : '') +
         '<div class="q-header">' +
           '<div class="q-logo"><img src="' + SCW_LOGO + '" alt="SCW"></div>' +
           '<div class="q-head-right"><div class="q-title">System Setup Questionnaire</div>' +

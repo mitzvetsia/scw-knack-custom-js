@@ -20,6 +20,14 @@
 
   var STYLE_ID = 'scw-co-cards-css';
   var ON_CLS   = 'scw-co-cards-on';
+  // "Waiting on your pricing" bar (sub deployment dashboard, scene_1353).
+  // A CO in Pending Sub Pricing is blocked ON THE SUB, and since the
+  // redesign the CO list is a drawer row — a sub can open the dashboard for
+  // days and never see it. Ops needs none of this: co-stage-strip already
+  // says where the CO stands there.
+  var SUB_SCENE  = 'scene_1353';
+  var PENDING_RE = /sub pricing/i;      // "Pending Sub Pricing" — co-sub-lock's own rule
+  var ALERT_ID   = 'scw-co-alert';
 
   // CO (SOW-object) field keys — same on every CO grid. Every entry is
   // fail-open: a card element renders only when the grid actually carries
@@ -31,8 +39,15 @@
     basis:  'field_2942',   // REL_proposal basis (connection)
     exp:    'field_2135',   // INPUT_expiration date
     name:   'field_2126',   // INPUT: sow friendly name
-    notes:  'field_2198',   // INPUT_notes (the CO header card's textarea)
+    notes:  'field_2198',   // INTERNAL notes (the CO header card's "Internal notes")
     contract: 'field_1843', // esignatures.com contract id (uuid)
+    // ── Acceptance flags (2026-10-01) — live on the ACCEPTANCE object and
+    // reach a CO grid as THROUGH-connection columns, whose <td> class is
+    // the compound "field_<conn>-field_3309"; cellAny() matches either
+    // shape. Fail-open like everything else here.
+    noSig:   'field_3309',   // FLAG_approved without signature (Yes/No)
+    notBill: 'field_3310',   // FLAG_not billable (Yes/No)
+    reason:  'field_3311',   // INPUT_approved not billable reason
     // ── Net total ──
     // Preferred: ONE stored grand-total column (equation on the SOW object
     // = equipment rollup + installation rollup). CO lines carry signed
@@ -61,7 +76,6 @@
     'ops review':          { bg: '#eef2ff', bd: '#c7d2fe', fg: '#4338ca' },
     'issued':              { bg: '#f0f9ff', bd: '#bae6fd', fg: '#0369a1' },
     'accepted':            { bg: '#f0fdf4', bd: '#bbf7d0', fg: '#166534' },
-    'applied':             { bg: '#ecfdf5', bd: '#a7f3d0', fg: '#047857' },
     'declined':            { bg: '#fff1f2', bd: '#fecdd3', fg: '#be123c' },
     'void':                { bg: '#f3f4f6', bd: '#e5e7eb', fg: '#6b7280' }
   };
@@ -80,6 +94,14 @@
     if (!td) return '';
     return String(td.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
   }
+  // cellText, but also matching a through-connection column (class
+  // "field_<conn>-field_XXXX") — how fields of a connected record show up.
+  function cellAny(tr, fieldKey) {
+    var td = tr.querySelector('td.' + fieldKey) || tr.querySelector('td[class*="' + fieldKey + '"]');
+    if (!td) return '';
+    return String(td.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function isYes(v) { return /^(yes|true)$/i.test(String(v || '').trim()); }
   /** Money cell → number, or null when the column is absent / blank /
    *  unparsable. Handles "$1,234.56", "-$550", "−$550.00", "($550)". */
   function cellMoney(tr, fieldKey) {
@@ -118,6 +140,37 @@
       '.' + ON_CLS + ' .view-header,',
       '.' + ON_CLS + ' .kn-records-nav { display: none !important; }',
 
+      /* The pricing bar — loud on purpose: it is the only BLOCKING thing on
+         the sub's page, and it has to beat a drawer row for attention. */
+      '#' + ALERT_ID + ' {',
+      '  margin: 10px 0 14px; padding: 14px 18px;',
+      '  background: #fffbeb; border: 2px solid #f59e0b; border-left-width: 6px;',
+      '  border-radius: 12px; box-shadow: 0 1px 3px rgba(180,83,9,.15);',
+      '  font: 13px/1.45 system-ui, -apple-system, sans-serif; color: #7c2d12;',
+      '}',
+      '.scw-co-alert__head { display: flex; align-items: center; gap: 9px; }',
+      '.scw-co-alert__head svg { flex: none; color: #b45309; }',
+      '.scw-co-alert__title { font: 700 16px/1.25 system-ui, sans-serif; color: #92400e; }',
+      '.scw-co-alert__body { margin: 3px 0 0 27px; color: #9a3412; }',
+      '.scw-co-alert__rows { margin: 11px 0 0 27px; display: flex; flex-direction: column; gap: 7px; }',
+      '.scw-co-alert__row {',
+      '  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;',
+      '  background: #fff; border: 1px solid #fde68a; border-radius: 9px;',
+      '  padding: 9px 11px 9px 13px;',
+      '}',
+      '.scw-co-alert__id { flex: 1 1 auto; min-width: 0; }',
+      '.scw-co-alert__name { display: block; font-weight: 700; color: #0f172a; }',
+      '.scw-co-alert__num {',
+      '  display: block; color: #92400e;',
+      '  font: 500 11.5px/1.5 ui-monospace, Menlo, Consolas, monospace;',
+      '}',
+      '.scw-co-alert__btn {',
+      '  flex: none; background: #b45309; color: #fff !important; border-radius: 7px;',
+      '  padding: 8px 15px; text-decoration: none !important; white-space: nowrap;',
+      '  font: 700 12.5px/1 system-ui, sans-serif;',
+      '}',
+      '.scw-co-alert__btn:hover { background: #92400e; }',
+
       '.scw-co-cards { display: flex; flex-direction: column; gap: 8px; }',
       '.scw-co-card {',
       '  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;',
@@ -138,6 +191,11 @@
       '  font: 400 12px/1.45 system-ui, sans-serif; color: #64748b;',
       '  margin-top: 3px; overflow: hidden; display: -webkit-box;',
       '  -webkit-line-clamp: 2; -webkit-box-orient: vertical;',
+      '}',
+      // field_2198 is INTERNAL — say so where the text prints.
+      '.scw-co-card__notes-lbl {',
+      '  font: 700 9.5px/1 system-ui, sans-serif; letter-spacing: .08em;',
+      '  text-transform: uppercase; color: #94a3b8; margin-right: 6px;',
       '}',
       '.scw-co-card__net {',
       '  display: flex; flex-direction: column; align-items: flex-end;',
@@ -168,6 +226,21 @@
       '.scw-co-card__exp--past { color: #b45309; font-weight: 700; }',
       '.scw-co-card__basis {',
       '  font: 500 12px/1.4 system-ui, sans-serif; color: #64748b; white-space: nowrap;',
+      '}',
+      '.scw-co-card__basis-tag {',
+      '  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;',
+      '  font: 600 11.5px/1.4 system-ui, sans-serif; color: #475569;',
+      '}',
+      '.scw-co-card__basis-tag:before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #94a3b8; }',
+      '.scw-co-card__basis-tag--nosig { color: #92400e; }',
+      '.scw-co-card__basis-tag--nosig:before { background: #d97706; }',
+      '.scw-co-card__reason {',
+      '  margin-top: 2px; font: 400 12px/1.4 system-ui, sans-serif; color: #475569;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;',
+      '}',
+      '.scw-co-card__reason-lbl {',
+      '  font: 700 10px/1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase;',
+      '  color: #94a3b8; margin-right: 6px;',
       '}',
       '.scw-co-card__open {',
       '  display: inline-flex; align-items: center; gap: 6px;',
@@ -211,6 +284,10 @@
     var basis  = cellText(tr, F.basis);
     var notes  = cellText(tr, F.notes);
     var contractId = cellText(tr, F.contract);
+    // Acceptance basis (through-connection columns; blank when not on the grid)
+    var notBill = isYes(cellAny(tr, F.notBill));
+    var noSig   = isYes(cellAny(tr, F.noSig)) || notBill;
+    var reason  = cellAny(tr, F.reason);
     // Net: the grand-total column when configured/present, else the sum of
     // the equipment + installation rollups when BOTH columns are on the
     // grid (CO line money is signed, so the rollups sum to the net).
@@ -242,8 +319,12 @@
       '<div class="scw-co-card__main">' +
         '<div class="scw-co-card__name">' + esc(main) + '</div>' +
         (sub ? '<div class="scw-co-card__num">' + esc(sub) + '</div>' : '') +
-        (notes ? '<div class="scw-co-card__notes" title="' + esc(notes) + '">' +
-          esc(notes) + '</div>' : '') +
+        (notes ? '<div class="scw-co-card__notes" title="Internal notes: ' + esc(notes) + '">' +
+          '<span class="scw-co-card__notes-lbl">Internal</span>' + esc(notes) + '</div>' : '') +
+        (reason && (noSig || notBill)
+          ? '<div class="scw-co-card__reason" title="' + esc(reason) + '">' +
+              '<span class="scw-co-card__reason-lbl">Why</span>' + esc(reason) + '</div>'
+          : '') +
       '</div>' +
       (net != null
         ? '<div class="scw-co-card__net" title="Net change (equipment + installation, signed)">' +
@@ -257,6 +338,15 @@
           ? '<span class="scw-co-card__pill" style="background:' + col.bg +
             ';border-color:' + col.bd + ';color:' + col.fg + ';">' + esc(status) + '</span>'
           : '') +
+        // Acceptance basis — plain text + dot (deploy-page restraint: the
+        // status pill is the only filled color on the card).
+        (notBill
+          ? '<span class="scw-co-card__basis-tag scw-co-card__basis-tag--nb" ' +
+              'title="Authorized as not billable — no client document, no invoice">Not billable</span>'
+          : noSig
+            ? '<span class="scw-co-card__basis-tag scw-co-card__basis-tag--nosig" ' +
+                'title="Approved without client signature — billed on client approval, no e-signature on file">No signature</span>'
+            : '') +
         (exp
           ? '<span class="scw-co-card__exp' + (isPastDate(exp) ? ' scw-co-card__exp--past' : '') +
             '" title="Pricing expiration">' + (isPastDate(exp) ? 'Expired ' : 'Expires ') +
@@ -342,9 +432,95 @@
     }, 250);
   }
 
+  /** Every CO on the page that is waiting on the sub's pricing. Read off
+   *  the grid rows wherever the grid currently lives — deploy-page-nav
+   *  re-homes the CO section into a drawer, and a drawer-hosted element is
+   *  still in the document, so this must not scope itself to the scene. */
+  function pendingForSub() {
+    var out = [], grids = document.querySelectorAll('.kn-table.kn-view');
+    for (var g = 0; g < grids.length; g++) {
+      if (!isCoGrid(grids[g])) continue;
+      var rows = grids[g].querySelectorAll('tbody tr[id]');
+      for (var r = 0; r < rows.length; r++) {
+        if (!PENDING_RE.test(cellText(rows[r], F.status))) continue;
+        var link = rows[r].querySelector('td.kn-table-link a.kn-link-page');
+        out.push({ id: rows[r].id,
+                   name: cellText(rows[r], F.name),
+                   number: cellText(rows[r], F.number),
+                   href: link ? link.getAttribute('href') : '' });
+      }
+    }
+    return out;
+  }
+
+  var WARN_SVG =
+    '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" ' +
+      'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>' +
+      '<line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>' +
+    '</svg>';
+
+  function renderAlert() {
+    var bar = document.getElementById(ALERT_ID);
+    function drop() { if (bar && bar.parentNode) bar.parentNode.removeChild(bar); }
+    var scene = document.getElementById('kn-' + SUB_SCENE);
+    if (!scene) { drop(); return; }                    // ops page / elsewhere
+    var list = pendingForSub();
+    if (!list.length) { drop(); return; }              // nothing is blocked on them
+
+    injectCss();
+    if (!bar) { bar = document.createElement('div'); bar.id = ALERT_ID; }
+    var sig = list.map(function (c) { return c.id + ':' + c.href; }).join('|');
+    if (bar.getAttribute('data-scw-sig') !== sig) {
+      bar.setAttribute('data-scw-sig', sig);
+      var rowsHtml = '';
+      for (var i = 0; i < list.length; i++) {
+        var c = list[i];
+        var main = c.name || c.number || 'Change order';
+        var sub  = (c.name && c.number) ? c.number : '';
+        rowsHtml +=
+          '<div class="scw-co-alert__row">' +
+            '<span class="scw-co-alert__id">' +
+              '<span class="scw-co-alert__name">' + esc(main) + '</span>' +
+              (sub ? '<span class="scw-co-alert__num">' + esc(sub) + '</span>' : '') +
+            '</span>' +
+            // New tab, like the card's Open: pricing a CO is its own work
+            // session and the dashboard should still be here afterwards.
+            (c.href
+              ? '<a class="scw-co-alert__btn" target="_blank" rel="noopener" href="' +
+                  esc(c.href) + '">Add your pricing</a>'
+              : '') +
+          '</div>';
+      }
+      bar.innerHTML =
+        '<div class="scw-co-alert__head">' + WARN_SVG +
+          '<span class="scw-co-alert__title">' +
+            (list.length === 1
+              ? 'A change order is waiting on your pricing'
+              : list.length + ' change orders are waiting on your pricing') +
+          '</span>' +
+        '</div>' +
+        '<div class="scw-co-alert__body">' +
+          'SCW can’t move ' + (list.length === 1 ? 'it' : 'them') +
+          ' forward until you send your labor pricing back.' +
+        '</div>' +
+        '<div class="scw-co-alert__rows">' + rowsHtml + '</div>';
+    }
+    // Above the stage tiles, or the top of the scene when the nav hasn't
+    // built yet. Re-seated every pass: buildNav re-inserts the nav element,
+    // which would otherwise leave the bar stranded below it.
+    var nav = document.getElementById('scw-deploy-nav');
+    if (nav && nav.parentNode) {
+      if (bar.nextElementSibling !== nav) nav.parentNode.insertBefore(bar, nav);
+    } else if (bar.parentNode !== scene) {
+      scene.insertBefore(bar, scene.firstChild);
+    }
+  }
+
   function scanAll() {
     var views = document.querySelectorAll('.kn-table.kn-view');
     for (var i = 0; i < views.length; i++) transform(views[i]);
+    try { renderAlert(); } catch (e) { /* the bar is chrome — never block the cards */ }
   }
 
   $(document)
@@ -352,6 +528,7 @@
     .on('knack-view-render.any.scwCoCards', function (event, view) {
       if (!view || !view.key) return;
       transform(document.getElementById(view.key));
+      try { renderAlert(); } catch (e) { /* chrome only */ }
     });
   $(document)
     .off('knack-scene-render.any.scwCoCards')
