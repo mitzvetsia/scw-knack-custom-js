@@ -279,6 +279,39 @@
   }
 
   // ── candidate sources ──────────────────────────────────────────────
+  /** The bucket ids a product belongs to (SCW.productMap buckets, else
+   *  SCW.productBucketMap) — [] when the catalog doesn't know. */
+  function productBucketsOf(pid) {
+    var pmap = (window.SCW && SCW.productMap) || {};
+    var bmap = (window.SCW && SCW.productBucketMap) || null;
+    var p = pmap[pid];
+    if (p && Array.isArray(p.buckets) && p.buckets.length) return p.buckets.slice();
+    if (bmap && Array.isArray(bmap[pid]) && bmap[pid].length) return bmap[pid].slice();
+    return [];
+  }
+  /** Product-first list: every product in any of the buckets this view
+   *  offers, labelled "name · bucket" so same-named products in two buckets
+   *  read apart. Products the catalog can't place are left out here (they
+   *  still appear once a bucket is chosen). */
+  function productFirstCandidates(buckets) {
+    var pmap = (window.SCW && SCW.productMap) || {};
+    var out = [];
+    for (var id in pmap) {
+      if (!Object.prototype.hasOwnProperty.call(pmap, id)) continue;
+      var b = bucketForProduct(id, buckets);
+      if (!b || !b.fields.some(function (f) { return f.t === 'product'; })) continue;
+      out.push({ id: id, name: ((pmap[id] && pmap[id].name) || '(unnamed)') + ' · ' + b.name, bucketId: b.id });
+    }
+    out.sort(sortByName);
+    return out;
+  }
+  /** The bucket a product resolves to among the offered buckets — the first
+   *  in display order that the product belongs to. */
+  function bucketForProduct(pid, buckets) {
+    var mine = productBucketsOf(pid);
+    for (var i = 0; i < buckets.length; i++) if (mine.indexOf(buckets[i].id) !== -1) return buckets[i];
+    return null;
+  }
   // Products: ONE list, filtered to the chosen bucket via SCW.productMap /
   // SCW.productBucketMap (Builder-snippet globals). Falls back to the
   // products already on the worksheet's rows when the catalog is absent.
@@ -501,6 +534,8 @@
     var selected = [];
     var labels = {};
     (cfg.candidates || []).forEach(function (c) { labels[c.id] = c.name; });
+    (cfg.selected || []).forEach(function (id) { if (labels[id] && selected.indexOf(id) === -1) selected.push(id); });
+    if (!multi && selected.length > 1) selected = selected.slice(0, 1);
 
     host.classList.add('scw-sowadd__combo');
     var tags  = document.createElement('div'); tags.className = 'scw-sowadd__tags';
@@ -522,6 +557,8 @@
     host.appendChild(tags); host.appendChild(input); host.appendChild(menu);
 
     function fire() { if (typeof cfg.onChange === 'function') cfg.onChange(selected.slice(), labels); }
+    // Initial selection (product carried over from the product-first pick).
+    setTimeout(function () { renderTags(); markSel(); if (!multi && selected.length) input.value = labels[selected[0]] || ''; }, 0);
     function renderTags() {
       if (!multi) { tags.innerHTML = ''; return; }
       var h = '';
@@ -694,7 +731,7 @@
       return row;
     }
 
-    function buildField(fd, b) {
+    function buildField(fd, b, keep) {
       var t = fd.t;
       if (t === 'product') {
         // Single vs multi per bucket (productMulti above) — productIds is an
@@ -702,8 +739,11 @@
         var pMulti = !!b.productMulti;
         var row = labelRow(fd.label || (pMulti ? 'Products' : 'Product'), fd.helper);
         var host = document.createElement('div'); row.appendChild(host);
+        var cands = productCandidates(st.bucketId, viewKey);
+        var keepIds = keep ? keep.filter(function (id) { return cands.some(function (c) { return c.id === id; }); }) : [];
+        if (!pMulti) keepIds = keepIds.slice(0, 1);
         combos.product = makeCombo(host, {
-          candidates: productCandidates(st.bucketId, viewKey), multi: pMulti,
+          candidates: cands, multi: pMulti, selected: keepIds,
           placeholder: fd.placeholder || 'Search products…',
           emptyText: 'No products available on this page',
           onChange: function (ids, labels) {
@@ -712,6 +752,10 @@
             rebuildAccessoryCombo();
           }
         });
+        if (keepIds.length) {
+          st.productIds = keepIds.slice(); st.productLabels = {};
+          cands.forEach(function (c) { st.productLabels[c.id] = c.name; });
+        }
         return row;
       }
       if (t === 'mdf') {
@@ -814,12 +858,12 @@
     }
     function rebuildAccessoryCombo() { if (combos.accessoryHost) buildAccessoryCombo(); }
 
-    // Full render — on open + on bucket change. The bucket chips and the SOW
-    // row persist across buckets (the SOW choice is kept); field rows and
-    // combos are re-created.
-    function render() {
+    // Full render — on open, on bucket change, and after a product-first
+    // pick. The SOW choice persists; field rows and combos are re-created.
+    // `keep` = product ids to carry into the bucket's own product field.
+    function render(keep) {
       combos = {};
-      st.productIds = []; st.mdfIds = []; st.accessoryIds = [];
+      st.productIds = []; st.productLabels = {}; st.mdfIds = []; st.accessoryIds = [];
       body.innerHTML = '';
 
       var chipRow = document.createElement('div'); chipRow.className = 'scw-sowadd__row';
@@ -835,8 +879,11 @@
       chipRow.querySelector('.scw-sowadd__chips').addEventListener('click', function (e) {
         var chip = e.target.closest && e.target.closest('[data-bucket]');
         if (!chip) return;
-        st.bucketId = chip.getAttribute('data-bucket');
-        showErr(''); render();
+        var nextId = chip.getAttribute('data-bucket');
+        // A product already picked stays when it also belongs to the new bucket.
+        var carry = st.productIds.filter(function (pid) { return productBucketsOf(pid).indexOf(nextId) !== -1; });
+        st.bucketId = nextId;
+        showErr(''); render(carry);
       });
 
       // "Which SOWs are you adding to?" — project pages always (the SOW is the
@@ -852,11 +899,34 @@
       }
 
       var b = bucketById(st.bucketId);
-      if (!b || buckets.indexOf(b) === -1) return;
+      if (!b || buckets.indexOf(b) === -1) {
+        // Product FIRST: no item type yet — offer every product the offered
+        // buckets contain; picking one selects its bucket and opens that
+        // bucket's form with the product filled in.
+        var prow = labelRow('Product', 'Pick a product and its item type is set for you — or choose the type above and the list narrows.');
+        var phost = document.createElement('div'); prow.appendChild(phost);
+        var firstCands = productFirstCandidates(buckets);
+        makeCombo(phost, {
+          candidates: firstCands, multi: false,
+          placeholder: 'Search all products…',
+          emptyText: 'No products available on this page — choose an item type above',
+          onChange: function (ids) {
+            if (!ids.length) return;
+            var pick = null;
+            for (var c = 0; c < firstCands.length; c++) if (firstCands[c].id === ids[0]) pick = firstCands[c];
+            if (!pick) return;
+            st.bucketId = pick.bucketId;
+            showErr(''); render([pick.id]);
+          }
+        });
+        body.appendChild(prow);
+        return;
+      }
       for (var f = 0; f < b.fields.length; f++) {
-        var el = buildField(b.fields[f], b);
+        var el = buildField(b.fields[f], b, keep);
         if (el) body.appendChild(el);
       }
+      if (b.id === B_ASSUMPTIONS) syncAssumptionDesc();
     }
 
     function readField(f) {

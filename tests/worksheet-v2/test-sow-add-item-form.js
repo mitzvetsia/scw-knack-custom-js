@@ -39,8 +39,8 @@ window.Knack = {
 global.Knack = window.Knack;
 window.SCW = {
   CONFIG: { MAKE_SOW_ADD_ITEMS_WEBHOOK: 'PLACEHOLDER' }, worksheetV2: {}, debug() {}, onViewRender() {}, onSceneRender() {},
-  productMap: { [NVR]: { name: 'Imperial 256 Channel 4K NVR - IMP256' }, [CAM]: { name: 'Vista Dome 4MP' } },
-  productBucketMap: { [NVR]: [B_NET], [CAM]: [B_CAM] },
+  productMap: { [NVR]: { name: 'Imperial 256 Channel 4K NVR - IMP256' }, [CAM]: { name: 'Vista Dome 4MP' }, '697b7a023a31502ec68b3399': { name: 'Standard assumption' } },
+  productBucketMap: { [NVR]: [B_NET], [CAM]: [B_CAM], '697b7a023a31502ec68b3399': ['697b7a023a31502ec68b3303'] },
   mountingBoxProducts: []
 };
 global.SCW = window.SCW;
@@ -82,7 +82,17 @@ window.Knack.views.view_3586 = window.Knack.views.view_3962;   // the sales work
 check('a SOW page lists the page\'s SOW first, then the others on its rows',
   form.sowCandidates('view_3586').map(c => c.name), ['This SOW (this page)', 'SW-1001', 'SW-1060']);
 
-// Networking bucket → the DTO form's field suite for that bucket
+// Product FIRST: before any bucket, every product of the offered buckets, labelled with its bucket
+check('product-first: no bucket yet → one product list spanning the offered buckets, bucket-labelled',
+  texts('.scw-sowadd__opt'), ['Imperial 256 Channel 4K NVR - IMP256 · Networking or Headend', 'Standard assumption · Assumptions', 'Vista Dome 4MP · Camera or Reader']);
+qa('.scw-sowadd__opt')[2].dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+check('picking the camera selects the Camera or Reader chip and opens that bucket\'s form (prefix + start number rows present)',
+  [q('.scw-sowadd__chip.is-on') && q('.scw-sowadd__chip.is-on').textContent, !!q('[data-f="prefix"]'), !!q('[data-f="startNumber"]')],
+  ['Camera or Reader', true, true]);
+setTimeout(() => {
+check('the picked camera is carried into the bucket\'s product field', [q('.scw-sowadd__combo-in').value, q('.scw-sowadd__opt.is-sel') && q('.scw-sowadd__opt.is-sel').textContent.trim()],
+  ['Vista Dome 4MP', 'Vista Dome 4MP']);
+// Networking bucket → the DTO form's field suite for that bucket (the camera does not belong there → product cleared)
 q('.scw-sowadd__chip[data-bucket="' + B_NET + '"]').click();
 check('Networking: product, optional accessories, qty (per MDF/IDF wording) and the mandatory MDF multi-select, in that order',
   texts('.scw-sowadd__lbl').slice(2),
@@ -97,6 +107,9 @@ form.open({ viewKey: 'view_3586' });
 const sales = qa('.scw-sowadd').pop();
 check('sales page (view_3586): four bucket chips and NO "Which SOW(s)" row (the page record is the SOW)',
   [sales.querySelectorAll('.scw-sowadd__chip').length, sales.querySelectorAll('.scw-sowadd__checks').length], [4, 0]);
+check('sales page product-first list holds only products of the allowed buckets (the assumption product is absent)',
+  Array.from(sales.querySelectorAll('.scw-sowadd__opt')).map(e => e.textContent.trim()),
+  ['Imperial 256 Channel 4K NVR - IMP256 · Networking or Headend', 'Vista Dome 4MP · Camera or Reader']);
 sales.querySelector('[data-act="cancel"]').click();
 check('ops page keeps its SOW row (plus the Networking MDF group)',
   [texts('.scw-sowadd__lbl').includes('Which SOW(s) are you adding to? *'), q('.scw-sowadd').querySelectorAll('.scw-sowadd__checks').length], [true, 2]);
@@ -150,4 +163,5 @@ setTimeout(() => {
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
 }, 50);
+}, 5);
 }, 5);

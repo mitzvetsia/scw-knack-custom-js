@@ -687,7 +687,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
 // DOM. Bump the stamp when shipping something you need to verify live.
 (function () {
   'use strict';
-  window.SCW.BUILD = '2026-10-08 sow-add modal: project-page SOW picker';
+  window.SCW.BUILD = '2026-10-08 sow-add modal: product-first + bucket-first';
   try {
     var src = (document.currentScript && document.currentScript.src) || '';
     if (!src) {
