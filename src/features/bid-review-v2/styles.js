@@ -403,6 +403,14 @@
     '.scw-bid-review-v2__cell-action.scw-bid-review__cell-action--add {',
     '  color: #15803d; border-color: #bbe6c9;',
     '}',
+    /* Link bid item… — violet like v1's Re-link: both are field_2404 pointer
+       edits done right here, never a change request to the sub. */
+    '.scw-bid-review-v2__cell-action.scw-bid-review__cell-action--link {',
+    '  color: #6d28d9; border-color: #ddd6fe;',
+    '}',
+    '.scw-bid-review-v2__cell-action.scw-bid-review__cell-action--link:hover {',
+    '  background: #f5f3ff;',
+    '}',
     /* Cell flagged with a pending change request. */
     '.scw-bid-review-v2__cell--has-cr {',
     '  background: #fffbeb; box-shadow: inset 3px 0 0 #f59e0b;',

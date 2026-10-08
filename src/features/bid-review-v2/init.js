@@ -802,10 +802,13 @@
         stubs.push({
           label: lblTxt,
           badge: badgeEl ? (badgeEl.textContent || '').trim() : 'Not on this bid',
-          // The live button node, data attributes intact — the CR
-          // dispatch handlers are document-delegated, so it works from
-          // the strip exactly as it does from the cell.
-          btn: body.querySelector('.scw-bid-review-v2__cell-actions button')
+          // The live button nodes, data attributes intact — the CR
+          // dispatch handlers are document-delegated, so they work from
+          // the strip exactly as they do from the cell. ALL of them: a
+          // "Not surveyed" stub carries "+ Add to bid" AND "Link bid
+          // item…"; taking only the first silently dropped the link.
+          btns: Array.prototype.slice.call(
+            body.querySelectorAll('.scw-bid-review-v2__cell-actions button'))
         });
         continue;
       }
@@ -850,7 +853,7 @@
         nm.className = 'scw-bid-review-v2__stub-chip-name';
         nm.textContent = s.label;
         chip.appendChild(nm);
-        if (s.btn) chip.appendChild(s.btn);
+        for (var sb = 0; sb < (s.btns || []).length; sb++) chip.appendChild(s.btns[sb]);
         chips.appendChild(chip);
       });
       strip.appendChild(chips);

@@ -18,6 +18,14 @@
  *     itemLabel:        function (rec) -> 'E-001 · NVR Pro 16ch',
  *     multi:            true,                 // false → single-select
  *     onSaved:          function (newIds) {}, // after PUT success
+ *     save:             function (ids, ctx) -> thenable,  // optional: the
+ *                       // caller owns the write instead of the picker's PUT.
+ *                       // For pickers whose selection is written to OTHER
+ *                       // records than recordId (bid-review's "Link bid
+ *                       // items": each chosen BID record gets its own
+ *                       // field_2404 PUT). Resolve → close + onSaved(ids,
+ *                       // result); reject → the modal stays open showing
+ *                       // the error so the user can retry.
  *     sowFilter:        { fieldKey, label, nameById }  // optional — which
  *                       // membership connection the filter pills / per-item
  *                       // line / filtered tally read. Defaults to SOW
@@ -594,7 +602,8 @@
           groupWraps.push({
             wrap: wrap, body: body,
             countEl: head.querySelector('.scw-ws-v2-picker-group-count'),
-            total: g.items.length
+            total: g.items.length,
+            rank:  g.rank || 0
           });
           itemHost = body;
         }
@@ -714,6 +723,11 @@
         var AUTO_COLLAPSE_MIN = 16;
         if (groupWraps.length > 1 && candidates.length >= AUTO_COLLAPSE_MIN) {
           for (var gc = 0; gc < groupWraps.length; gc++) {
+            // A negative-rank group is the caller's "look here first" band
+            // (Re-link's "No bid item yet", Link bid item's "Same product on
+            // this bid") — it floats to the top AND stays open; collapsing
+            // it would hide exactly the options the picker was opened for.
+            if (groupWraps[gc].rank < 0) continue;
             if (!groupWraps[gc].body.querySelector('input:checked')) {
               groupWraps[gc].wrap.classList.add('is-collapsed');
             }
@@ -1004,6 +1018,33 @@
       confirmBtn.disabled = true;
       cancelBtn.disabled  = true;
       setStatus('Saving…');
+
+      // Caller-owned write (opts.save). Everything below — the picker's own
+      // PUT, the local model patch, the cascade dispatch and the pending-
+      // write overlay — assumes ONE record (opts.recordId) and ONE field; a
+      // save hook exists precisely because the selection is written
+      // somewhere else, so all of it is skipped and the hook's promise
+      // decides close-vs-stay-open.
+      if (typeof opts.save === 'function') {
+        var hookDone = function (result) {
+          close(overlay, onKey);
+          if (typeof opts.onSaved === 'function') opts.onSaved(ids, result);
+        };
+        var hookFail = function (err) {
+          console.warn('[scw-ws-v2-picker] save hook failed', err);
+          setStatus((err && err.message) || 'Save failed. Try again.', true);
+          confirmBtn.disabled = false;
+          cancelBtn.disabled  = false;
+        };
+        try {
+          var hooked = opts.save(ids, { body: body, extra: extra });
+          if (hooked && typeof hooked.then === 'function') hooked.then(hookDone, hookFail);
+          else hookDone(hooked);
+        } catch (eHook) {
+          hookFail(eHook);
+        }
+        return;
+      }
 
       var putKey = opts.putViewKey || opts.sourceViewKey;
 

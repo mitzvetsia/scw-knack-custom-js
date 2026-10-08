@@ -3201,6 +3201,293 @@
     });
   }
 
+  // ── Link EXISTING bid item(s) to a SOW line item ──────────────────
+  // Re-link, entered from the SOW item's side. A "Not surveyed" cell means
+  // no bid record points at this SOW line item through field_2404 — but
+  // the bid item usually EXISTS and is just pointing somewhere else:
+  //   • a revised / copied SOW got fresh line items while the sub's bid
+  //     records still point at the ORIGINAL SOW's items. The bid item is
+  //     then not even a row in this SOW's grid (transform.js sends it to
+  //     the "Items not on this SOW" tray), so nothing here could reach it;
+  //   • the bid item was taken off the bid (no package) and sits in the
+  //     collapsed Removed subgroup, where Re-link never rendered.
+  // Re-link only renders inside a POPULATED bid cell, so from this grid
+  // those records had no handle at all.
+  //
+  // Opens the worksheet-v2 picker over EVERY bid record loaded on the
+  // scene (view_3680) — on this bid, on another bid, or on no bid — and
+  // writes this SOW item into each chosen record's field_2404. The write
+  // is a UNION: the record keeps any line item it already points at (a
+  // bid item legitimately serves line items on two SOWs — groupBySow
+  // buckets it into both grids); to MOVE it instead, Re-link from the now-
+  // populated cell normalizes the pointer to one item. Unchecking a pre-
+  // selected record drops this SOW item from its pointer (the same write
+  // "Unlink from this SOW item" does). Bid membership (field_2415) is
+  // never touched here — a linked item that is not on this bid renders
+  // "Removed from bid + Reinstate", the existing change-request path for
+  // putting it on the sub's bid.
+  //
+  // Picker groups (rank asc): same product on this bid → same product
+  // elsewhere → the rest of this bid → each other bid → not on any bid.
+  // The Bid membership line, filter pills and the "different Bid" flag are
+  // the picker's own (sowFilter / anchorSowIds keyed on field_2415). The
+  // candidates are BID records (view_3680), not SOW line items, so the
+  // MDF/IDF record-picker convention (CLAUDE.md) does not apply — they
+  // carry no field_1946, and the question being answered is "which bid
+  // item", i.e. bid membership + product; items within a group still use
+  // the picker's canonical sort (field_2218, then label).
+  function handleLinkBidItems(button) {
+    var sowItemId = button.getAttribute('data-sow-item-id');
+    if (!sowItemId) return;
+    var pkgId = button.getAttribute('data-package-id') || '';
+
+    var FK     = CFG.fieldKeys || {};
+    var SFK    = CFG.sowItemFieldKeys || {};
+    var FKsow  = FK.relatedSowItem || 'field_2404';
+    var FKpkg  = FK.bidPackage     || 'field_2415';
+    var FKprod = FK.field2627      || 'field_2627';   // product connection on the bid record
+    var FKlbl  = FK.displayLabel   || 'field_2365';
+    var FKname = FK.productName    || 'field_2379';
+    var FKdesc = FK.laborDesc      || 'field_2409';
+    var SFKlbl = SFK.displayLabel  || 'field_1950';
+    var SFKprd = SFK.product       || 'field_1949';
+    var SFKsow = SFK.sow           || 'field_2154';
+    var picker = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.picker;
+    if (!picker || typeof picker.open !== 'function') {
+      if (ns.renderToast) ns.renderToast('Link unavailable — picker module not loaded', 'error');
+      return;
+    }
+
+    function modelAttrs(viewKey) {
+      var out = [];
+      try {
+        var v = Knack.views && Knack.views[viewKey];
+        var ms = (v && v.model && v.model.data && v.model.data.models) || [];
+        for (var i = 0; i < ms.length; i++) {
+          if (ms[i] && ms[i].attributes && ms[i].attributes.id) out.push(ms[i].attributes);
+        }
+      } catch (e) { /* fall through */ }
+      return out;
+    }
+    function plain(v) {
+      return String(v == null ? '' : v).replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    }
+    function connRaw(rec, fk) {
+      var raw = rec && rec[fk + '_raw'];
+      if (Array.isArray(raw)) return raw;
+      return (raw && raw.id) ? [raw] : [];
+    }
+    function connIds(rec, fk) {
+      var raw = connRaw(rec, fk), out = [];
+      for (var i = 0; i < raw.length; i++) if (raw[i] && raw[i].id) out.push(raw[i].id);
+      return out;
+    }
+    var HEX_RE = /^[a-f0-9]{24}(\s|\b|$)/i;
+
+    var bids = modelAttrs(CFG.viewKey);
+    if (!bids.length) {
+      if (ns.renderToast) ns.renderToast('Bid items not loaded yet — try again in a moment', 'error');
+      return;
+    }
+
+    // SOW line items (view_3921): the target's product for the same-product
+    // partition, and every item's name for the candidates' "Linked to" line.
+    // sowNameById = plain name (used as the connection identifier when the
+    // local model is patched); sowLabelById = name + its SOW(s), for display.
+    var sowRec = null;
+    var sowNameById  = Object.create(null);
+    var sowLabelById = Object.create(null);
+    var items = modelAttrs(CFG.sowItemsViewKey);
+    for (var si = 0; si < items.length; si++) {
+      var it = items[si];
+      var l1 = plain(it[SFKlbl]), p1 = plain(it[SFKprd]);
+      if (HEX_RE.test(l1)) l1 = '';
+      if (HEX_RE.test(p1)) p1 = '';
+      var nm = (l1 && p1) ? (l1 + ' · ' + p1) : (p1 || l1 || it.id);
+      var sws = [];
+      var swRaw = connRaw(it, SFKsow);
+      for (var sw = 0; sw < swRaw.length; sw++) {
+        var swl = plain(swRaw[sw] && swRaw[sw].identifier);
+        if (swl) sws.push(swl);
+      }
+      sowNameById[it.id]  = nm;
+      sowLabelById[it.id] = sws.length ? (nm + ' (SOW ' + sws.join(', ') + ')') : nm;
+      if (it.id === sowItemId) sowRec = it;
+    }
+    var productId  = sowRec ? (connIds(sowRec, SFKprd)[0] || '') : '';
+    var targetName = (sowRec && sowLabelById[sowItemId]) ||
+      plain(button.getAttribute('data-display-label')) ||
+      plain(button.getAttribute('data-product-name')) || 'this SOW line item';
+
+    // Bid package id → label, read off the bid records' own connections.
+    var pkgLabel = Object.create(null);
+    // Pre-selected: every bid record already pointing at this SOW item.
+    var selected = [];
+    var candidates = [];
+    var bidById = Object.create(null);
+    for (var b = 0; b < bids.length; b++) {
+      var br = bids[b];
+      if (!br || !br.id) continue;
+      bidById[br.id] = br;
+      var pr = connRaw(br, FKpkg);
+      for (var p = 0; p < pr.length; p++) {
+        if (pr[p] && pr[p].id && !pkgLabel[pr[p].id]) {
+          pkgLabel[pr[p].id] = plain(pr[p].identifier) || pr[p].id;
+        }
+      }
+      var linkedRaw = connRaw(br, FKsow);
+      if (connIds(br, FKsow).indexOf(sowItemId) !== -1) selected.push(br.id);
+      // Shallow copy: the picker's secondary line (`sub`) must never land on
+      // Knack's live model attributes.
+      var cand = {};
+      for (var k in br) if (Object.prototype.hasOwnProperty.call(br, k)) cand[k] = br[k];
+      var linkedNames = [];
+      for (var li = 0; li < linkedRaw.length; li++) {
+        var lr = linkedRaw[li];
+        if (!lr || !lr.id) continue;
+        linkedNames.push(sowLabelById[lr.id] || plain(lr.identifier) || 'another line item');
+      }
+      cand.sub = linkedNames.length
+        ? 'Linked to: ' + linkedNames.join(' · ')
+        : 'Not linked to any SOW line item';
+      candidates.push(cand);
+    }
+    var thisBidLabel = pkgId ? (pkgLabel[pkgId] || 'this bid') : '';
+
+    function onThisBid(rec)   { return !!pkgId && connIds(rec, FKpkg).indexOf(pkgId) !== -1; }
+    function sameProduct(rec) { return !!productId && connIds(rec, FKprod)[0] === productId; }
+    function groupBy(rec) {
+      var pk = connIds(rec, FKpkg);
+      var same = sameProduct(rec);
+      if (same && onThisBid(rec)) {
+        return { id: 'same-this', label: 'Same product · on bid ' + thisBidLabel, rank: -2 };
+      }
+      if (same) {
+        return { id: 'same-other', rank: -1,
+                 label: 'Same product · ' + (pk.length ? 'on other bids' : 'not on any bid') };
+      }
+      if (onThisBid(rec)) return { id: 'bid::' + pkgId, label: 'On bid ' + thisBidLabel, rank: 0 };
+      if (pk.length) {
+        var names = [];
+        for (var pn = 0; pn < pk.length; pn++) names.push(pkgLabel[pk[pn]] || pk[pn]);
+        return { id: 'bid::' + pk.join('+'), label: 'On bid ' + names.join(' + '), rank: 1 };
+      }
+      return { id: 'nobid', label: 'Not on any bid (removed from bid)', rank: 2 };
+    }
+    function itemLabel(rec) {
+      var lbl = plain(rec[FKlbl]), prod = plain(rec[FKname]);
+      if (HEX_RE.test(lbl)) lbl = '';
+      if (HEX_RE.test(prod)) prod = '';
+      // field_2365 falls back to the product name when the drop label is
+      // empty (the NanoBeam kits) — don't print "X · X".
+      if (lbl && prod && lbl !== prod) return lbl + ' · ' + prod;
+      if (prod || lbl) return prod || lbl;
+      var desc = plain(rec[FKdesc]);
+      if (desc.length > 90) desc = desc.slice(0, 89) + '…';
+      return desc || rec.id;
+    }
+
+    // One field_2404 PUT per CHANGED record, run one at a time (a handful at
+    // most — nowhere near Knack's rate limit — and every result is tallied,
+    // never thrown). Resolves with the tally; rejects only when a record
+    // failed, which keeps the picker open so the user can retry.
+    function save(ids) {
+      var d = $.Deferred();
+      var queue = [];
+      for (var a = 0; a < ids.length; a++) {
+        if (selected.indexOf(ids[a]) === -1) queue.push({ id: ids[a], add: true });
+      }
+      for (var r = 0; r < selected.length; r++) {
+        if (ids.indexOf(selected[r]) === -1) queue.push({ id: selected[r], add: false });
+      }
+      var tally = { added: 0, removed: 0, failed: 0 };
+      if (!queue.length) { d.resolve(tally); return d.promise(); }
+      function next() {
+        var job = queue.shift();
+        if (!job) {
+          if (tally.failed) {
+            d.reject(new Error(tally.failed + ' bid item' + (tally.failed === 1 ? '' : 's') +
+              ' could not be saved — try again'));
+          } else {
+            d.resolve(tally);
+          }
+          return;
+        }
+        var rec = bidById[job.id];
+        var cur = rec ? connIds(rec, FKsow) : [];
+        var nextIds = job.add
+          ? (cur.indexOf(sowItemId) === -1 ? cur.concat([sowItemId]) : cur)
+          : cur.filter(function (x) { return x !== sowItemId; });
+        var body = {};
+        body[FKsow] = nextIds;
+        try {
+          SCW.knackAjax({
+            url:  SCW.knackRecordUrl(CFG.viewKey, job.id),
+            type: 'PUT',
+            data: JSON.stringify(body),
+            success: function (resp) {
+              try {
+                if (typeof SCW.syncKnackModel === 'function') {
+                  var rawObjs = [];
+                  for (var n = 0; n < nextIds.length; n++) {
+                    rawObjs.push({ id: nextIds[n], identifier: sowNameById[nextIds[n]] || nextIds[n] });
+                  }
+                  SCW.syncKnackModel(CFG.viewKey, job.id, resp, FKsow, rawObjs);
+                }
+              } catch (eSync) { /* the refetch re-reads server truth anyway */ }
+              if (job.add) tally.added++; else tally.removed++;
+              next();
+            },
+            error: function (xhr) {
+              tally.failed++;
+              console.warn('[scw-bid-review] link bid item: PUT failed', job.id, xhr && xhr.status);
+              next();
+            }
+          });
+        } catch (ePut) {
+          tally.failed++;
+          next();
+        }
+      }
+      next();
+      return d.promise();
+    }
+
+    picker.open({
+      // Nominal — the save hook writes each chosen BID record itself.
+      sourceViewKey: CFG.viewKey,
+      recordId:      sowItemId,
+      fieldKey:      FKsow,
+      label:         'Link bid items → ' + targetName,
+      selectedIds:   selected,
+      candidates:    candidates,
+      groupBy:       groupBy,
+      itemLabel:     itemLabel,
+      multi:         true,
+      sowFilter:     { fieldKey: FKpkg, label: 'Bid', nameById: pkgLabel },
+      anchorSowIds:  pkgId ? [pkgId] : [],
+      save:          save,
+      onSaved:       function (ids, tally) {
+        if (ns.renderToast) {
+          var t = tally || {};
+          var msg;
+          if (!t.added && !t.removed) {
+            msg = 'No changes to bid item links';
+          } else {
+            msg = (t.added ? t.added + ' bid item' + (t.added === 1 ? '' : 's') + ' linked' : '') +
+                  (t.added && t.removed ? ', ' : '') +
+                  (t.removed ? t.removed + ' unlinked' : '');
+          }
+          ns.renderToast(msg, 'success');
+        }
+        // Server-truth reload → v1 _state rebuild; the model fetches it
+        // fires re-render v2 too (knack-view-render → notifyDebounced).
+        refreshSilently();
+      }
+    });
+  }
+
   // ── Unlink a bid item from THIS SOW item ───────────────────
   // The different-bid stacked block's remedy: a bid item that lives on
   // ANOTHER bid has its field_2404 pointing at this SOW item, so it
@@ -3969,6 +4256,7 @@
     if (action === 'cell_reinstate')                { handleReinstate(button); return true; }
     if (action === 'cell_create_sow_from_bid')      { handleCreateSowFromBid(button); return true; }
     if (action === 'cell_relink_bid')               { handleRelinkBid(button); return true; }
+    if (action === 'cell_link_bid_item')            { handleLinkBidItems(button); return true; }
     if (action === 'cell_unlink_bid_sowitem')       { handleUnlinkBidSowItem(button); return true; }
     if (action === 'cr_submit') {
       var pkgId = button.getAttribute('data-pkg-id');

@@ -917,6 +917,22 @@
         // unlinked from this package) → a REVISE-type CR that RE-LINKS the
         // existing bid record (never a new add). The two MUST dispatch
         // different actions or reinstate duplicates the bid record.
+        //
+        // Both also carry a LINK remedy, because the bid item the reviewer
+        // is looking for very often EXISTS and simply isn't pointing here:
+        //   • no bid record → "Link bid item…" (cell_link_bid_item): pick
+        //     any bid record loaded on the scene — on this bid, on another
+        //     bid, or on no bid at all — and point its field_2404 at this
+        //     SOW item. The classic case is a revised SOW whose new line
+        //     items read "Not surveyed" while the sub's bid records still
+        //     point at the ORIGINAL SOW's items (so they aren't even rows
+        //     in this grid — they sit in the "Items not on this SOW" tray).
+        //   • bid record with NO populated cell anywhere (removed-from-bid /
+        //     unlinked leftovers — row.id IS the view_3680 record) → the
+        //     same Re-link a populated cell carries, so a removed item can
+        //     be pointed at a different SOW item without reinstating it
+        //     first. Rows with a populated cell already expose Re-link from
+        //     that cell's card in the expand panel.
         if (hasBidRecord) {
           // The bid RECORD id to re-link. For a bid-side row (surveyNoBid /
           // Source-B removed) row.id IS the view_3680 bid record id; the
@@ -935,6 +951,15 @@
                 ' data-reinstate-fee="' + escapeHtml(det && det.fee != null ? det.fee : '') + '"' +
                 ' data-reinstate-desc="' + escapeHtml(ns.transform.stripHtml((det && det.desc) || '')) + '"' +
                 '>+ Reinstate</button>' +
+              (!rowHasAnyBidCell && row.id
+                ? '<button type="button" class="scw-bid-review__cell-action ' +
+                    'scw-bid-review__cell-action--relink scw-bid-review-v2__cell-action" ' +
+                    'data-action="cell_relink_bid" ' +
+                    'data-bid-record-id="' + escapeHtml(row.id) + '" ' +
+                    'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
+                    'title="Point this bid item at a different SOW line item (source of truth)"' +
+                    '>Re-link</button>'
+                : '') +
             '</div>';
         } else {
           // Prefill attrs: v1's handleAddToBid re-finds the row in v1's OWN
@@ -968,6 +993,16 @@
                 ' data-mdf-idf="' + escapeHtml(row.mdfIdf || '') + '"' +
                 ' data-mdf-idf-id="' + escapeHtml(row.mdfIdfId || '') + '"' +
                 '>+ Add to bid</button>' +
+              (row.sowItem
+                ? '<button type="button" class="scw-bid-review__cell-action ' +
+                    'scw-bid-review__cell-action--link scw-bid-review-v2__cell-action" ' +
+                    crAttrs('cell_link_bid_item', row.id, pkgId, sowId) +
+                    ' data-sow-item-id="' + escapeHtml(row.sowItem) + '"' +
+                    ' data-display-label="' + escapeHtml(row.displayLabel || '') + '"' +
+                    ' data-product-name="' + escapeHtml((addDet.product) || row.productName || '') + '"' +
+                    ' title="Link an existing bid item to this SOW line item — any bid item on the page, including ones not on this bid"' +
+                    '>Link bid item…</button>'
+                : '') +
           '</div>';
         }
       }
