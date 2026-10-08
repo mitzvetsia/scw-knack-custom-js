@@ -54,6 +54,8 @@ document.body.innerHTML = '<div class="kn-modal-bg"><div class="kn-modal"><div i
   '<div class="kn-input" id="kn-input-field_2246" data-input-id="field_2246"><select id="view_3329-field_2246" name="field_2246"><option value="' + PROD + '" selected>Cam</option></select></div>' +
   // hidden managed field left with a stale value by a bucket switch: sent too (Knack's submit sent it)
   '<div class="kn-input" id="kn-input-field_2184" data-input-id="field_2184"><input id="field_2184" name="field_2184" type="text" value="7"></div>' +
+  // Knack's link to the PAGE'S record: a bare hidden input in an id-less wrapper — must be sent (it is the SOW header connection)
+  '<span class="kn-input"><input type="hidden" name="field_2199" value="' + SOW + '"></span>' +
   '<div class="kn-submit"><input class="crumb" type="hidden" name="project-dashboard_id" value="P1"><input class="crumb" type="hidden" name="build-sow_id" value="S1">' +
   '<button class="kn-button is-primary" type="submit">Submit</button></div>' +
   '</form></div></div></div></div>' +
@@ -62,6 +64,7 @@ document.body.innerHTML = '<div class="kn-modal-bg"><div class="kn-modal"><div i
   '<div class="kn-input scw-visible" id="kn-input-field_2223" data-input-id="field_2223"><select id="view_3748-field_2223" name="field_2223"><option value=""></option><option value="' + ASSUMP + '" selected>Assumptions</option></select></div>' +
   '<div class="kn-input scw-visible" id="kn-input-field_2432" data-input-id="field_2432"><textarea name="field_2432">note</textarea></div>' +
   '<div class="kn-input" id="kn-input-field_2211" data-input-id="field_2211"><select name="field_2211"><option value=""></option></select></div>' +
+  '<span class="kn-input"><input type="hidden" name="field_2199" value="' + SOW + '"></span>' +
   '<div class="kn-submit"><input class="crumb" type="hidden" name="scope-of-work-details_id" value="S1"><button class="kn-button is-primary" type="submit">Submit</button></div></form></div>';
 
 (handlers['knack-view-render.view_3329'] || []).forEach(fn => fn());
@@ -72,10 +75,10 @@ form.addEventListener('submit', () => { knackSawSubmit++; });   // stands in for
 
 const c = SCW.dtoSubmitIntercept.collect(form);
 check('collect: bucket-visible fields + hidden fields that carry a value; empty hidden required ones skipped',
-  [c.sent, c.skipped, c.hiddenWithValue],
-  [['field_2223', 'field_2182', 'field_2250', 'field_2248', 'field_2246', 'field_2184'], ['field_2211', 'field_2193', 'field_2241', 'field_2183'], ['field_2184']]);
-check('values: single connection → [id]; checkbox connections → ids; multi-select → ids; unified product always sent',
-  c.body, { field_2223: [ASSUMP], field_2182: [SOW], field_2250: [MDF1], field_2248: [CUST], field_2246: [PROD], field_2184: '7' });
+  [c.sent, c.skipped, c.hiddenWithValue, c.pageLinks],
+  [['field_2223', 'field_2182', 'field_2250', 'field_2248', 'field_2246', 'field_2184', 'field_2199'], ['field_2211', 'field_2193', 'field_2241', 'field_2183'], ['field_2184'], ['field_2199 = ' + SOW]]);
+check('values: single connection → [id]; checkbox connections → ids; multi-select → ids; unified product always sent; bare hidden page-record link → [id]',
+  c.body, { field_2223: [ASSUMP], field_2182: [SOW], field_2250: [MDF1], field_2248: [CUST], field_2246: [PROD], field_2184: '7', field_2199: [SOW] });
 
 form.querySelector('button[type="submit"]').click();
 check('Submit → one POST through the form view with the parent crumbs; Knack\'s own submit never runs',
@@ -83,7 +86,7 @@ check('Submit → one POST through the form view with the parent crumbs; Knack\'
   [1, 'https://api.knack.com/v1/pages/scene_1086/views/view_3329/records?project-dashboard_id=P1&build-sow_id=S1', 'POST', 0]);
 check('the POST body is the collected field set PLUS the parent crumbs (Knack reads the page record from the body)',
   [Object.keys(posts[0].body), posts[0].body['project-dashboard_id'], posts[0].body['build-sow_id']],
-  [['field_2223', 'field_2182', 'field_2250', 'field_2248', 'field_2246', 'field_2184', 'project-dashboard_id', 'build-sow_id'], 'P1', 'S1']);
+  [['field_2223', 'field_2182', 'field_2250', 'field_2248', 'field_2246', 'field_2184', 'field_2199', 'project-dashboard_id', 'build-sow_id'], 'P1', 'S1']);
 check('every bucket-filtered DTO add form is covered', SCW.dtoSubmitIntercept.CONFIG.VIEWS,
   ['view_3329', 'view_4002', 'view_3451', 'view_3748', 'view_3544', 'view_3619', 'view_3627']);
 check('listeners for the form\'s submit / record-create still fire', triggered.filter(t => /view_3329/.test(t)), ['knack-form-submit.view_3329', 'knack-record-create.view_3329']);
@@ -94,7 +97,7 @@ const inlineForm = document.querySelector('#view_3748 form');
 inlineForm.querySelector('button[type="submit"]').click();
 check('inline form: POST through view_3748 with the bucket + visible textarea + its SOW crumb, hidden empty select skipped',
   [posts.length, posts[1] && posts[1].url, posts[1] && Object.keys(posts[1].body), posts[1] && posts[1].body['scope-of-work-details_id']],
-  [2, 'https://api.knack.com/v1/pages/scene_1086/views/view_3748/records?scope-of-work-details_id=S1', ['field_2223', 'field_2432', 'scope-of-work-details_id'], 'S1']);
+  [2, 'https://api.knack.com/v1/pages/scene_1086/views/view_3748/records?scope-of-work-details_id=S1', ['field_2223', 'field_2432', 'field_2199', 'scope-of-work-details_id'], 'S1']);
 check('inline form resets in place (no navigation)',
   [inlineForm.querySelector('textarea').value, document.querySelector('#view_3748 .scw-dto-msg').textContent],
   ['note', 'Added.']);

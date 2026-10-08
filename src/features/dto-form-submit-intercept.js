@@ -152,7 +152,24 @@
       body[key] = val;
       sent.push(key);
     }
-    return { body: body, sent: sent, skipped: skipped, hiddenWithValue: hiddenWithValue };
+    // Knack renders a connected form's link to the PAGE'S RECORD as a bare
+    // hidden input — <span class="kn-input"><input type="hidden"
+    // name="field_X" value="<page record id>"></span>, no wrapper id, not a
+    // configured input — and its own submit serializes it with the rest.
+    // It is what connects the new DTO record to the page's SOW header
+    // (2026-10-08: the wrapper-id walk above never saw it, so every record
+    // the intercept created landed unconnected). Always send it.
+    var pageLinks = [];
+    var hidden = formEl.querySelectorAll('input[type="hidden"][name^="field_"]:not(.connection)');
+    for (var h = 0; h < hidden.length; h++) {
+      var hk = hidden[h].getAttribute('name'), hv = (hidden[h].value || '').trim();
+      if (!/^field_\d+$/.test(hk) || body.hasOwnProperty(hk) || !hv) continue;
+      var hw = hidden[h].closest ? hidden[h].closest('.kn-input') : null;
+      if (hw && fieldKeyOf(hw)) continue;   // a configured input's own carrier — handled above
+      body[hk] = HEX24.test(hv) ? [hv] : hv;
+      sent.push(hk); pageLinks.push(hk + ' = ' + hv);
+    }
+    return { body: body, sent: sent, skipped: skipped, hiddenWithValue: hiddenWithValue, pageLinks: pageLinks };
   }
 
   /** The form's parent-record crumbs — Knack renders them as hidden
@@ -237,6 +254,8 @@
     if (!scene) { message(formEl, 'Cannot submit: no current page.', 'err'); return; }
     var c = collect(formEl);
     if (c.hiddenWithValue.length) log(viewId + ' hidden fields carrying a value, sent anyway:', c.hiddenWithValue);
+    if (c.pageLinks.length) log(viewId + ' page-record connection(s):', c.pageLinks);
+    else console.warn('[scw-dto-submit] ' + viewId + ': no hidden page-record connection input in the form — if Builder says this form connects to the page record, the record will land unconnected');
     // Parent crumbs go in the body (where Knack's own submit puts them —
     // that is what connects the record to the page's SOW) and in the URL.
     var cr = crumbs(formEl, scene), qs = [];
