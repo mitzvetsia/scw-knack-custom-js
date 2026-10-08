@@ -532,6 +532,29 @@ view_3325; sales = SOW page, four "allow sales to add" buckets, no picker) or th
 `dto-form-submit-intercept.js` now covers only the survey add forms — likely carrying the
 same connection bug; verify before relying on them.
 
+## Alternative SOWs: Share vs Consolidate (view_3869) — `src/features/import-unique-items-btn.js`
+
+On the SOW page, view_3869 lists the project's OTHER SOWs. Per row: "Add (N) unique items"
+(N = that SOW's line items not on the current SOW, from the hidden all-items grid view_3913;
+`field_2154` is the multi-connection to SOW headers), or "Delete SW-x" when N = 0. Above the
+grid: "Add (N) unique items from other SOWs" and "Consolidate K SOWs into this one". Every modal
+makes the user pick an intent and spells out what it leaves behind (this replaced a buried
+"also delete" checkbox that users read as a move, 2026-10-08):
+- **Share** (default): link the selected items onto this SOW. The source SOW KEEPS them — one line
+  item on both SOWs, so edits, margin and pricing changes apply to both (the same idiom as the
+  bid-review tray's "+ Add to this SOW" and Create Alternate SOW's link mode).
+- **Consolidate**: link EVERY unique item, then DELETE the source SOW(s); Knack drops a deleted
+  record's connections, so the items end up on this SOW only. Offered ONLY when no source SOW has
+  Survey Requested (`field_2706`) set — a surveyed SOW has bids attached — otherwise the tile /
+  bar button reads unavailable with the reason. The checklist locks to everything (a partial
+  consolidate orphans the unticked items). Bulk consolidate takes every other SOW on the project,
+  including ones with nothing unique; change-order SOWs (`field_2952`) are never included —
+  Builder must expose `field_2952` on view_3869 (or filter COs out of it) for that guard to see them.
+- Both fire `MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK` with `mode: 'share' | 'consolidate'` (contract in
+  `src/config.js`); Make links `uniqueItemIds` and deletes `deleteSourceIds`. Whether the scenario
+  acts on `deleteSourceIds` has to be verified in Make — the client never deletes anything itself.
+- Test: `tests/sow-page/test-share-consolidate.js`.
+
 ## Scene veil (load gating) — `src/features/scene-veil.js`
 
 Heavy ops scenes are hidden behind a spinner until Knack's render stream goes quiet (600ms)

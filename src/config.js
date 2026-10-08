@@ -69,20 +69,34 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Response body: { success: true,  newSowId: "<hex>", newSowUrl: "<full URL>" }
   //             or:  { success: false, error: "<message>" }
   MAKE_DUPLICATE_SOW_WEBHOOK: "https://hook.us1.make.com/ysbsl1qw19vdhc6f3hpk8barcfk79puu",
-  // Fires on "Import Unique Items" click in view_3869 (per-row OR the
-  // bulk bar above the grid). Expects:
+  // Fires from the alternative-SOWs grid (view_3869) on the SOW page —
+  // per-row "Add (N) unique items" / "Delete SW-x", or the bar's "Add unique
+  // items from other SOWs" / "Consolidate K SOWs into this one"
+  // (import-unique-items-btn.js). Two intents:
+  //   share        — link uniqueItemIds onto the receiving SOW (append its id
+  //                  to each item's field_2154, a multi-connection). The
+  //                  source SOWs KEEP the items: one record on both SOWs.
+  //                  deleteSourceIds is [].
+  //   consolidate  — link EVERY unique item, then DELETE deleteSourceIds (==
+  //                  sourceRecordIds). Knack drops a deleted record's
+  //                  connections, so the items end up on the receiving SOW
+  //                  only. The client offers this ONLY when no source SOW
+  //                  has field_2706 (Survey Requested?) = Yes, and never
+  //                  includes a change-order SOW (field_2952). In bulk mode
+  //                  sourceRecordIds is every other SOW on the project, even
+  //                  one with nothing unique to add.
   //   Request body:  {
+  //     mode:                    'share' | 'consolidate',
   //     receivingRecordId:       <current SOW id>,
   //     sourceRecordId:          <row SOW id> | null  (null in bulk mode),
-  //     sourceRecordIds:         [ <contributing SOW ids> ],
-  //     uniqueItemIds:           [ <line item record ids being imported —
+  //     sourceRecordIds:         [ <source SOW ids> ],
+  //     uniqueItemIds:           [ <line item record ids being linked —
   //                                 already deduped, all NOT on receiving> ],
-  //     deleteSourceIds:         [ <SOW ids the user opted to delete after
-  //                                 import; subset of sourceRecordIds; only
-  //                                 SOWs WITHOUT field_2706 = Yes are ever
-  //                                 included> ],
+  //     deleteSourceIds:         [ <SOW ids to delete after linking — [] for
+  //                                 share, == sourceRecordIds for consolidate;
+  //                                 never a SOW with field_2706 = Yes> ],
   //     deleteSourceAfterImport: <bool — true iff deleteSourceIds non-empty>,
-  //     bulk:                    <bool — true for the bulk bar>,
+  //     bulk:                    <bool — true for the bar buttons>,
   //     triggeredBy:             { id, name, email }
   //   }
   //   Response body: { success: true,  imported: <count>, message?: "..." }

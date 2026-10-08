@@ -1,24 +1,34 @@
-/*** FEATURE: "Import Unique Items" button on each row of view_3869 ***/
+/*** FEATURE: Share / Consolidate alternative SOWs (view_3869) ***/
 /**
- * For each row in view_3869 (alternative SOWs on the same project),
- * injects an "Import Unique Items (N)" button. N = count of line items
- * connected to that source SOW that are NOT already connected to the
- * current (receiving) SOW. N is computed from view_3913 — a hidden grid
- * of all SOW line items connected to the project, where field_2154 is
- * the multi-connection back to SOW headers.
+ * On the SOW page, view_3869 lists the OTHER SOWs on the same project. This
+ * module adds, per row, an "Add (N) unique items" button (N = that SOW's line
+ * items not yet on the current SOW, counted from view_3913 — a hidden grid of
+ * every line item on the project; field_2154 is the multi-connection back to
+ * the SOW headers) and, above the grid, a bar with two project-wide buttons.
+ *
+ * TWO INTENTS — every modal makes the user pick one and says what it leaves:
+ *   SHARE        Link the selected items onto the current SOW. field_2154 is a
+ *                multi-connection, so the source SOW keeps them: ONE line item
+ *                on both SOWs, and edits / margin / pricing changes apply to
+ *                both. The default (non-destructive) — the same idiom as the
+ *                bid-review tray's "+ Add to this SOW" and Create Alternate
+ *                SOW's link mode.
+ *   CONSOLIDATE  Move EVERYTHING onto the current SOW and DELETE the source
+ *                SOW(s), so the user ends up with one SOW. Knack drops a
+ *                deleted record's connections, which is what makes the items
+ *                end up on this SOW only. Offered ONLY when no source SOW has
+ *                "Survey Requested?" (field_2706) set — a surveyed SOW has bids
+ *                hanging off it and must stay. The bulk Consolidate takes every
+ *                other SOW on the project, including ones with nothing unique
+ *                to add; the per-row one takes that row's SOW. The checklist
+ *                locks to "everything" in this mode: a partial consolidate
+ *                would orphan the unticked items when their SOW is deleted.
  *
  * Click fires the Make webhook at SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK
- * with:
- *   {
- *     receivingRecordId: <current SOW id from view_3827>,
- *     sourceRecordId:    <tr.id of the row where the button lives>,
- *     triggeredBy:       { id, name, email }
- *   }
- *
- * Make is expected to look up all line items on the source SOW, filter
- * to those NOT already on the receiving SOW, and append the receiving
- * SOW's id to each such item's field_2154 connection. The button is
- * never rendered on the self-row (hidden by hide-self-row).
+ * (contract in src/config.js): Make appends the receiving SOW's id to each
+ * uniqueItemIds record's field_2154 and deletes deleteSourceIds. `mode`
+ * ('share' | 'consolidate') names the intent. The button is never rendered on
+ * the self-row (hidden by hide-self-row).
  */
 (function () {
   'use strict';
@@ -131,6 +141,19 @@
       '.scw-iui-bulkbar-btn.is-loading svg {' +
       '  animation: scw-import-unique-spin 0.8s linear infinite;' +
       '}' +
+      '.scw-iui-bulkbar-btn--consolidate {' +
+      '  background: #b91c1c; border-color: #991b1b;' +
+      '}' +
+      '.scw-iui-bulkbar-btn--consolidate:hover {' +
+      '  background: #991b1b; border-color: #7f1d1d;' +
+      '}' +
+      /* Blocked (a survey is requested somewhere): still clickable so the
+         reason can be shown, but reads as unavailable. */
+      '.scw-iui-bulkbar-btn.is-blocked,' +
+      '.scw-iui-bulkbar-btn.is-blocked:hover {' +
+      '  background: #fff; color: #6b7280; border-color: #d1d5db;' +
+      '  cursor: not-allowed;' +
+      '}' +
 
       // ── Confirm modal ──
       '.scw-iui-overlay {' +
@@ -160,26 +183,43 @@
       '  display: block; margin-top: 4px; color: #6b7280;' +
       '  font-size: 12px; word-break: break-word;' +
       '}' +
-      '.scw-iui-opt {' +
-      '  display: flex; align-items: flex-start; gap: 10px;' +
-      '  padding: 12px 14px; border: 1px solid #e5e7eb;' +
-      '  border-radius: 8px; cursor: pointer;' +
-      '  background: #f9fafb; transition: background 0.15s, border-color 0.15s;' +
+      // ── Share / Consolidate tiles ──
+      '.scw-iui-modes {' +
+      '  display: flex; flex-direction: column; gap: 8px; margin-top: 4px;' +
       '}' +
-      '.scw-iui-opt:hover { background: #fef2f2; border-color: #fecaca; }' +
-      '.scw-iui-opt input {' +
+      '.scw-iui-mode {' +
+      '  display: flex; align-items: flex-start; gap: 10px;' +
+      '  padding: 10px 12px; border: 1px solid #e5e7eb;' +
+      '  border-radius: 8px; cursor: pointer; background: #fff;' +
+      '  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;' +
+      '}' +
+      '.scw-iui-mode:hover { background: #f9fafb; }' +
+      '.scw-iui-mode.is-selected {' +
+      '  border-color: #163C6E; background: #f0f5fb;' +
+      '  box-shadow: inset 0 0 0 1px #163C6E;' +
+      '}' +
+      '.scw-iui-mode--danger.is-selected {' +
+      '  border-color: #b91c1c; background: #fef2f2;' +
+      '  box-shadow: inset 0 0 0 1px #b91c1c;' +
+      '}' +
+      '.scw-iui-mode.is-blocked {' +
+      '  cursor: not-allowed; background: #f9fafb; opacity: 0.8;' +
+      '}' +
+      '.scw-iui-mode input {' +
       '  margin: 2px 0 0; flex: 0 0 auto;' +
       '  width: 16px; height: 16px; cursor: pointer;' +
-      '  accent-color: #b91c1c;' +
+      '  accent-color: #163C6E;' +
       '}' +
-      '.scw-iui-opt-label {' +
+      '.scw-iui-mode--danger input { accent-color: #b91c1c; }' +
+      '.scw-iui-mode.is-blocked input { cursor: not-allowed; }' +
+      '.scw-iui-mode-text {' +
+      '  display: flex; flex-direction: column; gap: 2px;' +
       '  font-size: 13px; color: #1f2937; line-height: 1.45;' +
       '}' +
-      '.scw-iui-opt-label strong { color: #b91c1c; font-weight: 700; }' +
-      '.scw-iui-opt-hint {' +
-      '  display: block; color: #6b7280; font-size: 12px;' +
-      '  margin-top: 2px;' +
-      '}' +
+      '.scw-iui-mode-title { font-weight: 700; }' +
+      '.scw-iui-mode--danger .scw-iui-mode-title { color: #b91c1c; }' +
+      '.scw-iui-mode.is-blocked .scw-iui-mode-title { color: #6b7280; }' +
+      '.scw-iui-mode-hint { color: #6b7280; font-size: 12px; }' +
       '.scw-iui-note {' +
       '  font-size: 12px; color: #6b7280; line-height: 1.45;' +
       '  padding: 10px 12px; border-radius: 6px;' +
@@ -226,6 +266,10 @@
       '  flex: 1; min-width: 0;' +
       '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' +
       '}' +
+      /* Consolidate locks the checklist: everything moves. */
+      '.scw-iui-items.is-locked .scw-iui-item { cursor: default; }' +
+      '.scw-iui-items.is-locked .scw-iui-item input { accent-color: #9ca3af; }' +
+      '.scw-iui-items.is-locked .scw-iui-toggle-all { display: none; }' +
       '.scw-iui-footer {' +
       '  display: flex; justify-content: flex-end; gap: 8px;' +
       '  padding: 14px 20px;' +
@@ -346,8 +390,37 @@
       if (e.target && e.target.classList.contains('scw-iui-item-cb')) syncHeader();
     });
 
+    // Consolidate locks the list: every item is going (a partial consolidate
+    // would orphan the unticked rows the moment their SOW is deleted). The
+    // user's share-mode selection is remembered and restored on unlock.
+    var remembered = null;
+    function setLocked(locked) {
+      if (locked) {
+        if (remembered === null) remembered = getSelectedIds();
+        for (var a = 0; a < checkboxes.length; a++) {
+          checkboxes[a].checked = true;
+          checkboxes[a].disabled = true;
+        }
+        listEl.classList.add('is-locked');
+        countEl.textContent = 'All ' + totalCount + ' item' +
+          (totalCount === 1 ? '' : 's') + ' move';
+      } else {
+        for (var b = 0; b < checkboxes.length; b++) {
+          checkboxes[b].disabled = false;
+          if (remembered) {
+            checkboxes[b].checked =
+              remembered.indexOf(checkboxes[b].getAttribute('data-item-id')) !== -1;
+          }
+        }
+        remembered = null;
+        listEl.classList.remove('is-locked');
+        syncHeader();
+      }
+    }
+
     return {
       getSelectedIds: getSelectedIds,
+      setLocked:      setLocked,
       total:          totalCount
     };
   }
@@ -368,23 +441,96 @@
     return { token: full || tr.id || '', full: full };
   }
 
-  // Confirm modal. Resolves with {action: 'cancel'|'import'|'import-delete'}.
+  // ── Share / Consolidate tiles (shared by both modals) ───────────────
+  // The two intents look identical on the page afterwards except for what
+  // is left behind, so each tile spells that out.
+  //   opts.sourceLabel  what keeps the items in share mode ("SW-1334")
+  //   opts.deleteLabel  what consolidate deletes ("SW-1334" / "3 SOWs (…)")
+  //   opts.blockers     tokens of surveyed SOWs — non-empty renders the
+  //                     consolidate tile disabled with the reason
+  //   opts.initialMode  'share' (default) | 'consolidate' (pre-selected when
+  //                     not blocked)
+  function modeTilesHtml(opts) {
+    opts = opts || {};
+    var blockers    = opts.blockers || [];
+    var blocked     = blockers.length > 0;
+    var sourceLabel = escapeHtml(opts.sourceLabel || 'The other SOW');
+    var deleteLabel = escapeHtml(opts.deleteLabel || opts.sourceLabel || 'the other SOW');
+    var startConsolidate = !blocked && opts.initialMode === 'consolidate';
+    return (
+      '<div class="scw-iui-modes">' +
+        '<label class="scw-iui-mode' + (startConsolidate ? '' : ' is-selected') + '">' +
+          '<input type="radio" name="scw-iui-mode" value="share"' +
+            (startConsolidate ? '' : ' checked') + '>' +
+          '<span class="scw-iui-mode-text">' +
+            '<span class="scw-iui-mode-title">Share — add the selected items to this SOW</span>' +
+            '<span class="scw-iui-mode-hint">' + sourceLabel + ' keeps them too: one line item ' +
+              'on both SOWs, so edits, margin and pricing changes apply to both.</span>' +
+          '</span>' +
+        '</label>' +
+        '<label class="scw-iui-mode scw-iui-mode--danger' +
+            (blocked ? ' is-blocked' : (startConsolidate ? ' is-selected' : '')) + '">' +
+          '<input type="radio" name="scw-iui-mode" value="consolidate"' +
+            (blocked ? ' disabled' : (startConsolidate ? ' checked' : '')) + '>' +
+          '<span class="scw-iui-mode-text">' +
+            '<span class="scw-iui-mode-title">Consolidate — move everything here and delete ' +
+              deleteLabel + '</span>' +
+            '<span class="scw-iui-mode-hint">' +
+              (blocked
+                ? 'Unavailable: a survey has been requested on ' + escapeHtml(blockers.join(', ')) +
+                  '. A surveyed SOW has bids attached and cannot be deleted from here.'
+                : 'Every item moves onto this SOW (the whole list, not just the selection) and ' +
+                  (opts.plural ? 'those SOWs are' : 'that SOW is') + ' deleted. This cannot be undone.') +
+            '</span>' +
+          '</span>' +
+        '</label>' +
+      '</div>');
+  }
+
+  // Which tile is picked right now ('share' when nothing is).
+  function currentMode(overlay) {
+    var r = overlay.querySelector('input[name="scw-iui-mode"]:checked');
+    return (r && r.value) || 'share';
+  }
+
+  // Wire the tiles: highlight the picked one, lock the checklist in
+  // consolidate mode, and let the modal re-sync its button + copy.
+  function bindModeTiles(overlay, checklist, onChange) {
+    var radios = overlay.querySelectorAll('input[name="scw-iui-mode"]');
+    function apply() {
+      var m = currentMode(overlay);
+      for (var i = 0; i < radios.length; i++) {
+        var tile = radios[i].closest('.scw-iui-mode');
+        if (tile) tile.classList.toggle('is-selected', !!radios[i].checked);
+      }
+      if (checklist && typeof checklist.setLocked === 'function') {
+        checklist.setLocked(m === 'consolidate');
+      }
+      if (typeof onChange === 'function') onChange();
+    }
+    for (var r = 0; r < radios.length; r++) radios[r].addEventListener('change', apply);
+    apply();
+  }
+
+  // Per-row confirm. Resolves with { action: 'cancel'|'share'|'consolidate',
+  // selectedIds } — in consolidate mode selectedIds is every unique item.
+  //   opts.surveyRequested  true → consolidate unavailable for this SOW
   function showImportConfirm(opts) {
     return new Promise(function (resolve) {
-      var token          = escapeHtml(opts.sourceToken || 'this SOW');
-      var fullLabel      = escapeHtml(opts.sourceFull || '');
-      var showFull       = fullLabel && fullLabel !== opts.sourceToken;
-      var allowDelete    = !!opts.allowDelete;
-      var items          = opts.items || [];
+      var tokenRaw  = opts.sourceToken || 'this SOW';
+      var token     = escapeHtml(tokenRaw);
+      var fullLabel = escapeHtml(opts.sourceFull || '');
+      var showFull  = fullLabel && fullLabel !== opts.sourceToken;
+      var items     = opts.items || [];
+      var blockers  = opts.surveyRequested ? [tokenRaw] : [];
       var overlay = document.createElement('div');
       overlay.className = 'scw-iui-overlay';
       overlay.innerHTML =
         '<div class="scw-iui-card" role="alertdialog" aria-modal="true">' +
           '<div class="scw-iui-body">' +
-            '<div class="scw-iui-msg">Add unique items?</div>' +
+            '<div class="scw-iui-msg"></div>' +
             '<div class="scw-iui-sub">' +
-              'Add items from <strong>' + token +
-              '</strong> to the current SOW.' +
+              'Items on <strong>' + token + '</strong> that are not yet on the current SOW.' +
               (showFull ? '<span class="scw-iui-source">' + fullLabel + '</span>' : '') +
             '</div>' +
           '</div>' +
@@ -399,74 +545,45 @@
       var primaryBtn = overlay.querySelector('.scw-iui-btn--primary');
 
       var checklist = renderItemChecklist(body, [{ token: '', items: items }],
-        function (selectedIds) {
-          msgEl.textContent = 'Add ' + selectedIds.length +
-            ' unique item' + (selectedIds.length === 1 ? '' : 's') + '?';
-          syncPrimary();
-        });
-
-      // Append delete-toggle / blocked-note tile AFTER the checklist.
-      if (allowDelete) {
-        body.insertAdjacentHTML('beforeend',
-          '<label class="scw-iui-opt">' +
-            '<input type="checkbox" class="scw-iui-delete-toggle">' +
-            '<span class="scw-iui-opt-label">' +
-              '<strong>Also delete ' + token + '</strong> after adding' +
-              '<span class="scw-iui-opt-hint">' +
-                'Removes the source SOW once its items have been added.' +
-              '</span>' +
-            '</span>' +
-          '</label>');
-      } else {
-        body.insertAdjacentHTML('beforeend',
-          '<div class="scw-iui-note">' +
-            'A survey has already been requested for ' + token + ', ' +
-            'so it cannot be deleted from here.' +
-          '</div>');
-      }
-
-      var checkbox = overlay.querySelector('.scw-iui-delete-toggle');
+        function () { syncPrimary(); });
+      body.insertAdjacentHTML('beforeend', modeTilesHtml({
+        sourceLabel: tokenRaw, deleteLabel: tokenRaw, blockers: blockers, plural: false
+      }));
 
       function syncPrimary() {
         var selCount = checklist.getSelectedIds().length;
-        primaryBtn.disabled = selCount === 0;
-        if (checkbox && checkbox.checked) {
+        if (currentMode(overlay) === 'consolidate') {
+          msgEl.textContent = 'Consolidate ' + tokenRaw + ' into this SOW?';
+          primaryBtn.disabled = false;
           primaryBtn.classList.add('is-delete');
-          primaryBtn.textContent = 'Add & Delete';
+          primaryBtn.textContent = 'Consolidate & delete ' + tokenRaw;
         } else {
+          msgEl.textContent = 'Add ' + selCount + ' unique item' +
+            (selCount === 1 ? '' : 's') + '?';
+          primaryBtn.disabled = selCount === 0;
           primaryBtn.classList.remove('is-delete');
           primaryBtn.textContent = 'Add';
         }
       }
-
-      // Initial title (matches default all-selected state).
-      msgEl.textContent = 'Add ' + items.length +
-        ' unique item' + (items.length === 1 ? '' : 's') + '?';
-      syncPrimary();
+      bindModeTiles(overlay, checklist, syncPrimary);
 
       function close(answer) {
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
         document.removeEventListener('keydown', onKey);
-        resolve({
-          action:      answer,
-          selectedIds: checklist.getSelectedIds()
-        });
+        resolve({ action: answer, selectedIds: checklist.getSelectedIds() });
+      }
+      function confirmAction() {
+        if (primaryBtn.disabled) return;
+        close(currentMode(overlay));
       }
       function onKey(e) {
         if (e.key === 'Escape') close('cancel');
-        else if (e.key === 'Enter') {
-          if (primaryBtn.disabled) return;
-          close(checkbox && checkbox.checked ? 'import-delete' : 'import');
-        }
+        else if (e.key === 'Enter') confirmAction();
       }
 
-      if (checkbox) checkbox.addEventListener('change', syncPrimary);
       overlay.querySelector('.scw-iui-btn--cancel')
         .addEventListener('click', function () { close('cancel'); });
-      primaryBtn.addEventListener('click', function () {
-        if (primaryBtn.disabled) return;
-        close(checkbox && checkbox.checked ? 'import-delete' : 'import');
-      });
+      primaryBtn.addEventListener('click', confirmAction);
       overlay.addEventListener('click', function (e) {
         if (e.target === overlay) close('cancel');
       });
@@ -691,8 +808,9 @@
   // SOWs allowed to contribute items: the receiving SOW plus the rows
   // actually rendered in view_3869 (alternative SOWs on the SAME project).
   // view_3913's model can carry line items from OTHER projects (its
-  // Builder source filter has drifted before) — without this guard,
-  // "Combine All SOWs" would union other projects' SOWs into the import.
+  // Builder source filter has drifted before) — without this guard, the
+  // bar's Share / Consolidate would union other projects' SOWs into the
+  // import (and Consolidate would try to delete them).
   function allowedSowIds() {
     var out = {};
     var rcv = getReceivingSowId();
@@ -753,6 +871,71 @@
       sourceIds:          sourceIds,
       deletableSourceIds: deletableSourceIds,
       blockedSourceIds:   blockedSourceIds
+    };
+  }
+
+  // A change order is a SOW subtype (field_2952 Type = "change order",
+  // CLAUDE.md "Change Orders"). It must never be swept up by Consolidate —
+  // deleting a signed CO's header is unrecoverable — so when view_3869
+  // exposes field_2952 those rows are excluded from the source set and
+  // reported back as kept. When the column is NOT on the view this cannot
+  // tell, so Builder should either expose field_2952 on view_3869 or filter
+  // change orders out of it.
+  var SOW_TYPE_FIELD = 'field_2952';
+  function isChangeOrderSow(sowId) {
+    try {
+      var v = Knack.views && Knack.views[TARGET_VIEW];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (!models) return false;
+      for (var i = 0; i < models.length; i++) {
+        var rec = models[i] && models[i].attributes;
+        if (!rec || rec.id !== sowId) continue;
+        var raw = rec[SOW_TYPE_FIELD + '_raw'];
+        var txt = (raw != null && typeof raw !== 'object') ? String(raw) : String(rec[SOW_TYPE_FIELD] || '');
+        return /change\s*order/i.test(txt.replace(/<[^>]+>/g, ''));
+      }
+    } catch (e) { /* ignore */ }
+    return false;
+  }
+
+  // Consolidate's scope: EVERY other SOW on the project (view_3869's rows —
+  // allowedSowIds minus the receiving SOW), whether or not it has anything
+  // unique to add, because the point is ending up with ONE SOW. Change-order
+  // SOWs are kept (see isChangeOrderSow). Returns
+  //   { sourceIds, itemIds (every unique item, deduped), blockedSourceIds
+  //     (survey requested → consolidate unavailable), coKeptIds,
+  //     perSow: sowId → [itemIds] }
+  // or null before the index is built.
+  function aggregateConsolidate(receivingSowId) {
+    if (!sowToItems || !receivingSowId) return null;
+    var allowed = allowedSowIds();
+    var rcv = sowToItems[receivingSowId] || {};
+    var seen = {};
+    var itemIds = [], sourceIds = [], blockedSourceIds = [], coKeptIds = [];
+    var perSow = {};
+    for (var sowId in allowed) {
+      if (!Object.prototype.hasOwnProperty.call(allowed, sowId)) continue;
+      if (sowId === receivingSowId) continue;
+      if (isChangeOrderSow(sowId)) { coKeptIds.push(sowId); continue; }
+      sourceIds.push(sowId);
+      perSow[sowId] = [];
+      var items = sowToItems[sowId] || {};
+      for (var itemId in items) {
+        if (!Object.prototype.hasOwnProperty.call(items, itemId)) continue;
+        if (rcv[itemId]) continue;
+        perSow[sowId].push(itemId);
+        if (seen[itemId]) continue;
+        seen[itemId] = 1;
+        itemIds.push(itemId);
+      }
+      if (isSurveyRequested(sowId)) blockedSourceIds.push(sowId);
+    }
+    return {
+      sourceIds:        sourceIds,
+      itemIds:          itemIds,
+      blockedSourceIds: blockedSourceIds,
+      coKeptIds:        coKeptIds,
+      perSow:           perSow
     };
   }
 
@@ -829,8 +1012,8 @@
       labelSpan.textContent = 'Add (' + count + ') unique item' +
         (count === 1 ? '' : 's');
       btn.setAttribute('data-mode', 'import');
-      btn.title = 'Copy ' + count + ' item' + (count === 1 ? '' : 's') +
-        ' from ' + token + ' not already on the current SOW';
+      btn.title = 'Add ' + count + ' item' + (count === 1 ? '' : 's') +
+        ' from ' + token + ' not already on the current SOW — shared, or consolidated; you choose next';
       setBtnIcon(btn, DOWNLOAD_SVG);
       return;
     }
@@ -864,12 +1047,11 @@
     }
   }
 
-  // Per-row import / delete-only flow. sourceRecordId is required;
-  // deleteSourceAfterImport may be true.
-  // explicitItemIds: optional array — when present (e.g. user-trimmed
-  // selection from the modal), it's used verbatim. Otherwise the full
-  // unique set is recomputed.
-  function fireWebhook(btn, sourceRecordId, deleteSourceAfterImport, explicitItemIds) {
+  // Per-row flow. mode: 'share' (link the user's selection, source SOW kept)
+  // | 'consolidate' (link EVERY unique item, then delete the source SOW).
+  // explicitItemIds is the share-mode selection; consolidate ignores it and
+  // sends the full unique set, because a partial consolidate orphans items.
+  function fireWebhook(btn, sourceRecordId, mode, explicitItemIds) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK) || '';
     if (!url || /PLACEHOLDER/.test(url)) {
       alert('Import-unique-items webhook URL is not configured.');
@@ -885,30 +1067,40 @@
       return;
     }
     if (receivingRecordId === sourceRecordId) {
-      alert('Source and receiving SOW are the same — nothing to import.');
+      alert('Source and receiving SOW are the same — nothing to add.');
+      return;
+    }
+    var consolidate = (mode === 'consolidate');
+    if (consolidate && isSurveyRequested(sourceRecordId)) {
+      alert('Consolidate is unavailable: a survey has been requested for ' +
+        getSowToken(sourceRecordId) + ', so it cannot be deleted from here.');
       return;
     }
 
-    var uniqueItemIds = (explicitItemIds && explicitItemIds.length)
+    var allUnique = uniqueItemsFor(sourceRecordId, receivingRecordId) || [];
+    var uniqueItemIds = (!consolidate && explicitItemIds && explicitItemIds.length)
       ? explicitItemIds
-      : (uniqueItemsFor(sourceRecordId, receivingRecordId) || []);
-    var deleteSourceIds = deleteSourceAfterImport ? [sourceRecordId] : [];
+      : allUnique;
     postWebhook(btn, {
+      mode:                    consolidate ? 'consolidate' : 'share',
       receivingRecordId:       receivingRecordId,
       sourceRecordId:          sourceRecordId,
       sourceRecordIds:         [sourceRecordId],
       uniqueItemIds:           uniqueItemIds,
-      deleteSourceIds:         deleteSourceIds,
-      deleteSourceAfterImport: !!deleteSourceAfterImport,
+      deleteSourceIds:         consolidate ? [sourceRecordId] : [],
+      deleteSourceAfterImport: consolidate,
       bulk:                    false,
       triggeredBy:             getTriggeredBy()
     });
   }
 
-  // Bulk import flow — fires the same webhook with the union of unique
-  // items across every alternative SOW. Optionally deletes the
-  // delete-eligible source SOWs (those without a survey requested).
-  function fireBulkWebhook(btn, deleteEligibleSources, explicitItemIds) {
+  // Bulk flow. share → the union of unique items across the contributing
+  // SOWs (user-trimmed), nothing deleted. consolidate → EVERY other SOW on
+  // the project is a source (even one with nothing unique to add), every
+  // unique item is linked, and every source SOW is deleted. Refused when any
+  // source SOW has a survey requested — the bar's button is already blocked
+  // then; this is the belt to that suspender.
+  function fireBulkWebhook(btn, mode, explicitItemIds) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK) || '';
     if (!url || /PLACEHOLDER/.test(url)) {
       alert('Import-unique-items webhook URL is not configured.');
@@ -919,22 +1111,40 @@
       alert('Could not determine current SOW record ID.');
       return;
     }
-    var agg = aggregateAllUnique(receivingRecordId);
-    if (!agg || !agg.itemIds.length) {
-      alert('No unique items to import.');
+    var consolidate = (mode === 'consolidate');
+    // Same scope for both modes — every other non-change-order SOW on the
+    // project (aggregateConsolidate). Share reports only the SOWs that
+    // actually contribute an item; consolidate names them all.
+    var agg = aggregateConsolidate(receivingRecordId);
+    if (!agg) {
+      alert('Line items are still loading — try again in a moment.');
       return;
     }
-    var uniqueItemIds = (explicitItemIds && explicitItemIds.length)
+    if (!consolidate && !agg.itemIds.length) {
+      alert('No unique items to add.');
+      return;
+    }
+    var contributing = contributingSources(agg);
+    if (consolidate && !agg.sourceIds.length) {
+      alert('There are no other SOWs on this project to consolidate.');
+      return;
+    }
+    if (consolidate && agg.blockedSourceIds.length) {
+      alert('Consolidate is unavailable: a survey has been requested on ' +
+        agg.blockedSourceIds.map(getSowToken).join(', ') + '.');
+      return;
+    }
+    var uniqueItemIds = (!consolidate && explicitItemIds && explicitItemIds.length)
       ? explicitItemIds
       : agg.itemIds;
-    var deleteSourceIds = deleteEligibleSources ? agg.deletableSourceIds : [];
     postWebhook(btn, {
+      mode:                    consolidate ? 'consolidate' : 'share',
       receivingRecordId:       receivingRecordId,
       sourceRecordId:          null,
-      sourceRecordIds:         agg.sourceIds,
+      sourceRecordIds:         consolidate ? agg.sourceIds : contributing,
       uniqueItemIds:           uniqueItemIds,
-      deleteSourceIds:         deleteSourceIds,
-      deleteSourceAfterImport: deleteSourceIds.length > 0,
+      deleteSourceIds:         consolidate ? agg.sourceIds : [],
+      deleteSourceAfterImport: consolidate,
       bulk:                    true,
       triggeredBy:             getTriggeredBy()
     }, /*isBulk=*/true);
@@ -989,17 +1199,25 @@
   }
 
   // ── Bulk modal ───────────────────────────────────────────
-  // Resolves with { action: 'cancel'|'import'|'import-delete' }.
-  // opts.groups: [{ token, items: [{id, label}] }] — one entry per source SOW
+  // One modal for both bar buttons; `initialMode` pre-selects the tile the
+  // button named. Resolves with { action: 'cancel'|'share'|'consolidate',
+  // selectedIds } — in consolidate mode selectedIds is every item listed.
+  //   opts.groups        [{ token, items: [{id, label, defaultChecked}] }] by MDF/IDF
+  //   opts.sourceCount   contributing SOWs (share copy)
+  //   opts.allSources    every other SOW on the project (consolidate copy): [{ id, token }]
+  //   opts.blockers      tokens of surveyed SOWs (consolidate disabled when non-empty)
+  //   opts.coKeptCount   change-order SOWs consolidate leaves alone
   function showBulkConfirm(opts) {
     return new Promise(function (resolve) {
-      var sourceCount    = opts.sourceCount;
-      var deletableCount = opts.deletableCount;
-      var blockedCount   = opts.blockedCount;
-      var canDelete      = deletableCount > 0;
-      var groups         = opts.groups || [];
-      var totalItems     = 0;
+      var groups      = opts.groups || [];
+      var sourceCount = opts.sourceCount || 0;
+      var allSources  = opts.allSources || [];
+      var blockers    = opts.blockers || [];
+      var coKept      = opts.coKeptCount || 0;
+      var totalItems  = 0;
       groups.forEach(function (g) { totalItems += g.items.length; });
+      var nAll       = allSources.length;
+      var sourceList = allSources.map(function (x) { return x.token; }).join(', ');
 
       var overlay = document.createElement('div');
       overlay.className = 'scw-iui-overlay';
@@ -1007,11 +1225,7 @@
         '<div class="scw-iui-card" role="alertdialog" aria-modal="true">' +
           '<div class="scw-iui-body">' +
             '<div class="scw-iui-msg"></div>' +
-            '<div class="scw-iui-sub">' +
-              'Items will be added from <strong>' + sourceCount +
-              ' alternative SOW' + (sourceCount === 1 ? '' : 's') +
-              '</strong> to the current SOW.' +
-            '</div>' +
+            '<div class="scw-iui-sub"></div>' +
           '</div>' +
           '<div class="scw-iui-footer">' +
             '<button type="button" class="scw-iui-btn scw-iui-btn--cancel">Cancel</button>' +
@@ -1021,81 +1235,63 @@
 
       var body       = overlay.querySelector('.scw-iui-body');
       var msgEl      = body.querySelector('.scw-iui-msg');
+      var subEl      = body.querySelector('.scw-iui-sub');
       var primaryBtn = overlay.querySelector('.scw-iui-btn--primary');
 
-      var checklist = renderItemChecklist(body, groups, function (selectedIds) {
-        msgEl.textContent = 'Add ' + selectedIds.length +
-          ' unique item' + (selectedIds.length === 1 ? '' : 's') + '?';
-        syncPrimary();
-      });
-
-      // Append delete-option / blocked-note tile after the checklist.
-      if (canDelete) {
-        var blockedNote = blockedCount > 0
-          ? ' ' + blockedCount + ' SOW' + (blockedCount === 1 ? '' : 's') +
-            ' with a survey requested will be kept.'
-          : '';
-        body.insertAdjacentHTML('beforeend',
-          '<label class="scw-iui-opt">' +
-            '<input type="checkbox" class="scw-iui-delete-toggle">' +
-            '<span class="scw-iui-opt-label">' +
-              '<strong>Also delete ' + deletableCount + ' eligible SOW' +
-                (deletableCount === 1 ? '' : 's') + '</strong> after adding' +
-              '<span class="scw-iui-opt-hint">' +
-                'Removes source SOWs without a survey requested.' + blockedNote +
-              '</span>' +
-            '</span>' +
-          '</label>');
-      } else if (blockedCount > 0) {
-        body.insertAdjacentHTML('beforeend',
-          '<div class="scw-iui-note">' +
-            'All ' + blockedCount + ' source SOW' + (blockedCount === 1 ? '' : 's') +
-            ' ha' + (blockedCount === 1 ? 's' : 've') +
-            ' a survey requested and cannot be auto-deleted.' +
-          '</div>');
-      }
-
-      var checkbox = overlay.querySelector('.scw-iui-delete-toggle');
+      var checklist = renderItemChecklist(body, groups, function () { syncPrimary(); });
+      body.insertAdjacentHTML('beforeend', modeTilesHtml({
+        sourceLabel: nAll === 1 ? 'The other SOW' : 'The other SOWs',
+        deleteLabel: nAll + ' SOW' + (nAll === 1 ? '' : 's') + (sourceList ? ' (' + sourceList + ')' : ''),
+        blockers:    blockers,
+        plural:      nAll !== 1,
+        initialMode: opts.initialMode
+      }));
 
       function syncPrimary() {
         var selCount = checklist.getSelectedIds().length;
-        primaryBtn.disabled = selCount === 0;
-        if (checkbox && checkbox.checked) {
+        if (currentMode(overlay) === 'consolidate') {
+          msgEl.textContent = 'Consolidate ' + nAll + ' SOW' + (nAll === 1 ? '' : 's') +
+            ' into this one?';
+          subEl.innerHTML =
+            'Everything on <strong>' + escapeHtml(sourceList) + '</strong> moves onto the ' +
+            'current SOW and ' + (nAll === 1 ? 'that SOW is' : 'those SOWs are') +
+            ' deleted. Items already on both stay here.' +
+            (coKept ? ' ' + coKept + ' change order' + (coKept === 1 ? ' is' : 's are') + ' kept.' : '');
+          primaryBtn.disabled = false;
           primaryBtn.classList.add('is-delete');
-          primaryBtn.textContent = 'Add & Delete';
+          primaryBtn.textContent = 'Consolidate & delete ' + nAll + ' SOW' + (nAll === 1 ? '' : 's');
         } else {
+          msgEl.textContent = 'Add ' + selCount + ' unique item' +
+            (selCount === 1 ? '' : 's') + '?';
+          subEl.innerHTML =
+            'Items will be added from <strong>' + sourceCount +
+            ' alternative SOW' + (sourceCount === 1 ? '' : 's') +
+            '</strong> to the current SOW. They stay on their original SOW' +
+            (sourceCount === 1 ? '' : 's') + ' too.';
+          primaryBtn.disabled = selCount === 0;
           primaryBtn.classList.remove('is-delete');
           primaryBtn.textContent = 'Add All';
         }
       }
-
-      msgEl.textContent = 'Add ' + totalItems +
-        ' unique item' + (totalItems === 1 ? '' : 's') + '?';
-      syncPrimary();
+      bindModeTiles(overlay, checklist, syncPrimary);
 
       function close(answer) {
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
         document.removeEventListener('keydown', onKey);
-        resolve({
-          action:      answer,
-          selectedIds: checklist.getSelectedIds()
-        });
+        resolve({ action: answer, selectedIds: checklist.getSelectedIds() });
+      }
+      function confirmAction() {
+        if (primaryBtn.disabled) return;
+        close(currentMode(overlay));
       }
       function onKey(e) {
         if (e.key === 'Escape') close('cancel');
-        else if (e.key === 'Enter') {
-          if (primaryBtn.disabled) return;
-          close(checkbox && checkbox.checked ? 'import-delete' : 'import');
-        }
+        else if (e.key === 'Enter') confirmAction();
       }
 
-      if (checkbox) checkbox.addEventListener('change', syncPrimary);
       overlay.querySelector('.scw-iui-btn--cancel')
         .addEventListener('click', function () { close('cancel'); });
-      primaryBtn.addEventListener('click', function () {
-        if (primaryBtn.disabled) return;
-        close(checkbox && checkbox.checked ? 'import-delete' : 'import');
-      });
+      primaryBtn.addEventListener('click', confirmAction);
       overlay.addEventListener('click', function (e) {
         if (e.target === overlay) close('cancel');
       });
@@ -1107,18 +1303,110 @@
   }
 
   // ── Bulk bar ─────────────────────────────────────────────
+  // Two project-wide buttons above view_3869:
+  //   "Add (N) unique items from other SOWs"   → share modal
+  //   "Consolidate K SOWs into this one"        → consolidate modal; blocked
+  //                                               (reads as unavailable, click
+  //                                               explains) while any other SOW
+  //                                               has a survey requested
   var BULK_BAR_ID = 'scw-iui-bulkbar';
+
+  // Every unique item grouped by its MDF/IDF location. Items without an MDF
+  // (typically Project Wide assumptions / services) land in a "Project Wide"
+  // bucket; assumption items there are pre-deselected for SHARE (they would
+  // duplicate the receiving SOW's own assumptions). Consolidate locks the
+  // list to everything anyway.
+  function buildGroups(receivingSowId, sourceIds) {
+    var rcvSet = sowToItems[receivingSowId] || {};
+    var seenItem = {};
+    var byMdf = Object.create(null);   // mdfId → { label, items: [] }
+    var PROJECT_WIDE_KEY = '__project_wide__';
+    for (var si = 0; si < sourceIds.length; si++) {
+      var items = sowToItems[sourceIds[si]] || {};
+      for (var iid in items) {
+        if (!Object.prototype.hasOwnProperty.call(items, iid)) continue;
+        if (rcvSet[iid] || seenItem[iid]) continue;
+        seenItem[iid] = 1;
+        var m = getItemMeta(iid);
+        var key   = m.mdfId || PROJECT_WIDE_KEY;
+        var label = m.mdfLabel || 'Project Wide';
+        if (!byMdf[key]) byMdf[key] = { label: label, items: [] };
+        byMdf[key].items.push({
+          id: iid,
+          label: getItemLabel(iid),
+          defaultChecked: !(key === PROJECT_WIDE_KEY && m.isAssumption)
+        });
+      }
+    }
+    var groups = [];
+    Object.keys(byMdf).forEach(function (k) {
+      byMdf[k].items.sort(function (a, b) {
+        return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' });
+      });
+      groups.push({ key: k, token: byMdf[k].label, items: byMdf[k].items });
+    });
+    groups.sort(function (a, b) {
+      if (a.key === PROJECT_WIDE_KEY) return 1;
+      if (b.key === PROJECT_WIDE_KEY) return -1;
+      return a.token.localeCompare(b.token, undefined, { numeric: true, sensitivity: 'base' });
+    });
+    return groups;
+  }
+
+  function countItems(groups) {
+    var n = 0;
+    for (var i = 0; i < groups.length; i++) n += groups[i].items.length;
+    return n;
+  }
+  // The source SOWs that actually have something unique to give.
+  function contributingSources(cons) {
+    return cons.sourceIds.filter(function (id) { return (cons.perSow[id] || []).length > 0; });
+  }
+
+  function openBulkModal(btn, initialMode) {
+    var rcv  = getReceivingSowId();
+    var cons = rcv ? aggregateConsolidate(rcv) : null;
+    if (!cons) return;
+    var groups   = buildGroups(rcv, cons.sourceIds);
+    var blockers = cons.blockedSourceIds.map(getSowToken);
+    if (initialMode === 'consolidate' && blockers.length) {
+      alert('Consolidate is unavailable: a survey has been requested on ' +
+        blockers.join(', ') + '. A surveyed SOW has bids attached and cannot be deleted from here.');
+      return;
+    }
+    if (initialMode === 'consolidate' && !cons.sourceIds.length) {
+      alert('There are no other SOWs on this project to consolidate.');
+      return;
+    }
+    if (initialMode !== 'consolidate' && !countItems(groups)) {
+      alert('No unique items to add.');
+      return;
+    }
+    showBulkConfirm({
+      initialMode: initialMode,
+      groups:      groups,
+      sourceCount: contributingSources(cons).length,
+      allSources:  cons.sourceIds.map(function (id) { return { id: id, token: getSowToken(id) }; }),
+      blockers:    blockers,
+      coKeptCount: cons.coKeptIds.length
+    }).then(function (res) {
+      if (res.action === 'cancel') return;
+      if (res.action === 'consolidate') { fireBulkWebhook(btn, 'consolidate'); return; }
+      if (!res.selectedIds || !res.selectedIds.length) return;
+      fireBulkWebhook(btn, 'share', res.selectedIds);
+    });
+  }
 
   function syncBulkBar() {
     var viewEl = document.getElementById(TARGET_VIEW);
     if (!viewEl) return;
-    var rcv = getReceivingSowId();
-    var agg = rcv ? aggregateAllUnique(rcv) : null;
+    var rcv  = getReceivingSowId();
+    var cons = rcv ? aggregateConsolidate(rcv) : null;
 
     var bar = document.getElementById(BULK_BAR_ID);
 
-    // Hide bar entirely until we have an index and at least one unique item.
-    if (!agg || !agg.itemIds.length) {
+    // Nothing to offer until the index is built and another (non-CO) SOW exists.
+    if (!cons || !cons.sourceIds.length) {
       if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
       return;
     }
@@ -1129,75 +1417,28 @@
       bar.className = 'scw-iui-bulkbar';
       bar.innerHTML =
         '<span class="scw-iui-bulkbar-msg"></span>' +
-        '<button type="button" class="scw-iui-bulkbar-btn">' +
+        '<button type="button" class="scw-iui-bulkbar-btn scw-iui-bulkbar-btn--share">' +
           '<span class="scw-iui-bulkbar-icon" style="display:inline-flex;align-items:center;">' +
             DOWNLOAD_SVG +
           '</span>' +
           '<span class="scw-iui-bulkbar-label"></span>' +
+        '</button>' +
+        '<button type="button" class="scw-iui-bulkbar-btn scw-iui-bulkbar-btn--consolidate">' +
+          '<span class="scw-iui-bulkbar-icon" style="display:inline-flex;align-items:center;">' +
+            CLOSE_SVG +
+          '</span>' +
+          '<span class="scw-iui-bulkbar-label"></span>' +
         '</button>';
 
-      var btn = bar.querySelector('.scw-iui-bulkbar-btn');
-      btn.addEventListener('click', function () {
-        if (btn.classList.contains('is-loading') || btn.disabled) return;
-        var rcvNow = getReceivingSowId();
-        var aggNow = rcvNow ? aggregateAllUnique(rcvNow) : null;
-        if (!aggNow || !aggNow.itemIds.length) return;
-
-        // Group every unique item by its MDF/IDF location. Items
-        // without an MDF connection (typically Project Wide assumptions
-        // / services) land in a "Project Wide" bucket and are
-        // pre-deselected for assumption-bucket items.
-        var rcvSet = sowToItems[rcvNow] || {};
-        var seenItem = {};
-        var byMdf = Object.create(null);   // mdfId → { label, items: [] }
-        var PROJECT_WIDE_KEY = '__project_wide__';
-        for (var si2 = 0; si2 < aggNow.sourceIds.length; si2++) {
-          var sowId2 = aggNow.sourceIds[si2];
-          var items2 = sowToItems[sowId2] || {};
-          for (var iid in items2) {
-            if (!Object.prototype.hasOwnProperty.call(items2, iid)) continue;
-            if (rcvSet[iid] || seenItem[iid]) continue;
-            seenItem[iid] = 1;
-            var m = getItemMeta(iid);
-            var key   = m.mdfId || PROJECT_WIDE_KEY;
-            var label = m.mdfLabel || 'Project Wide';
-            if (!byMdf[key]) byMdf[key] = { label: label, items: [] };
-            // Default-deselect for project-wide assumption items.
-            var defaultChecked = !(key === PROJECT_WIDE_KEY && m.isAssumption);
-            byMdf[key].items.push({
-              id: iid,
-              label: getItemLabel(iid),
-              defaultChecked: defaultChecked
-            });
-          }
-        }
-        // Sort the groups: real MDF/IDF entries first, then Project
-        // Wide at the bottom. Within each, sort items alphabetically.
-        var groups = [];
-        Object.keys(byMdf).forEach(function (k) {
-          byMdf[k].items.sort(function (a, b) {
-            return a.label.localeCompare(b.label, undefined,
-              { numeric: true, sensitivity: 'base' });
-          });
-          groups.push({ key: k, token: byMdf[k].label, items: byMdf[k].items });
-        });
-        groups.sort(function (a, b) {
-          if (a.key === PROJECT_WIDE_KEY) return 1;
-          if (b.key === PROJECT_WIDE_KEY) return -1;
-          return a.token.localeCompare(b.token, undefined,
-            { numeric: true, sensitivity: 'base' });
-        });
-
-        showBulkConfirm({
-          sourceCount:    aggNow.sourceIds.length,
-          deletableCount: aggNow.deletableSourceIds.length,
-          blockedCount:   aggNow.blockedSourceIds.length,
-          groups:         groups
-        }).then(function (res) {
-          if (res.action === 'cancel') return;
-          if (!res.selectedIds || !res.selectedIds.length) return;
-          fireBulkWebhook(btn, res.action === 'import-delete', res.selectedIds);
-        });
+      var shareBtn = bar.querySelector('.scw-iui-bulkbar-btn--share');
+      shareBtn.addEventListener('click', function () {
+        if (shareBtn.classList.contains('is-loading') || shareBtn.disabled) return;
+        openBulkModal(shareBtn, 'share');
+      });
+      var consBtn = bar.querySelector('.scw-iui-bulkbar-btn--consolidate');
+      consBtn.addEventListener('click', function () {
+        if (consBtn.classList.contains('is-loading')) return;
+        openBulkModal(consBtn, 'consolidate');
       });
 
       // Mount above the table — try the records-nav block first, then fall
@@ -1210,14 +1451,35 @@
       }
     }
 
-    var labelSpan = bar.querySelector('.scw-iui-bulkbar-label');
     var msgSpan   = bar.querySelector('.scw-iui-bulkbar-msg');
-    var n = agg.itemIds.length;
-    labelSpan.textContent = 'Combine All SOWs — add (' + n + ') unique item' +
-      (n === 1 ? '' : 's');
-    msgSpan.textContent =
-      n + ' unique item' + (n === 1 ? '' : 's') +
-      ' across ' + agg.sourceIds.length + ' SOW' + (agg.sourceIds.length === 1 ? '' : 's');
+    var shareEl   = bar.querySelector('.scw-iui-bulkbar-btn--share');
+    var shareLbl  = shareEl.querySelector('.scw-iui-bulkbar-label');
+    var consEl    = bar.querySelector('.scw-iui-bulkbar-btn--consolidate');
+    var consLbl   = consEl.querySelector('.scw-iui-bulkbar-label');
+
+    var n = cons.itemIds.length;
+    var k = cons.sourceIds.length;
+    var contributing = contributingSources(cons).length;
+    shareLbl.textContent = 'Add (' + n + ') unique item' + (n === 1 ? '' : 's') + ' from other SOWs';
+    shareEl.disabled = (n === 0);
+    shareEl.title = n
+      ? 'Link the items the other SOWs have and this one lacks. They stay on their original SOWs too.'
+      : 'Every item on the other SOWs is already on this one.';
+    msgSpan.textContent = n
+      ? n + ' unique item' + (n === 1 ? '' : 's') + ' across ' + contributing +
+        ' SOW' + (contributing === 1 ? '' : 's')
+      : 'No unique items on the other ' + k + ' SOW' + (k === 1 ? '' : 's');
+
+    consLbl.textContent = 'Consolidate ' + k + ' SOW' + (k === 1 ? '' : 's') + ' into this one';
+    var blockers = cons.blockedSourceIds.map(getSowToken);
+    consEl.classList.toggle('is-blocked', blockers.length > 0);
+    consEl.setAttribute('aria-disabled', blockers.length ? 'true' : 'false');
+    consEl.title = blockers.length
+      ? 'Unavailable — a survey has been requested on ' + blockers.join(', ') +
+        '. A surveyed SOW has bids attached and cannot be deleted from here.'
+      : 'Move everything onto this SOW and delete the other ' + k + ' SOW' + (k === 1 ? '' : 's') +
+        (cons.coKeptIds.length ? ' (change orders are kept)' : '') + '.';
+
     if (indexTruncated) {
       msgSpan.textContent = '⚠ counts unreliable (' + indexLoaded + ' of ' +
         indexTotal + ' line items loaded) · ' + msgSpan.textContent;
@@ -1235,7 +1497,7 @@
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = BTN_MARKER;
-    btn.title = 'Copy items from this SOW that are not already on the current SOW';
+    btn.title = 'Add items from this SOW that are not already on the current SOW';
 
     var iconSpan = document.createElement('span');
     iconSpan.className = 'scw-import-unique-items-icon';
@@ -1267,25 +1529,28 @@
           sourceFull:  label.full
         }).then(function (res) {
           if (res.action !== 'delete') return;
-          fireWebhook(btn, sourceRecordId, true);
+          fireWebhook(btn, sourceRecordId, 'consolidate');
         });
         return;
       }
 
-      // mode === 'import'
+      // mode === 'import' — share or consolidate, the user picks in the modal.
       var items = ids.map(function (id) {
         return { id: id, label: getItemLabel(id) };
       });
       showImportConfirm({
-        sourceToken: label.token,
-        sourceFull:  label.full,
-        allowDelete: allowDelete,
-        items:       items
+        sourceToken:     label.token,
+        sourceFull:      label.full,
+        surveyRequested: !allowDelete,
+        items:           items
       }).then(function (res) {
         if (res.action === 'cancel') return;
+        if (res.action === 'consolidate') {
+          fireWebhook(btn, sourceRecordId, 'consolidate');
+          return;
+        }
         if (!res.selectedIds || !res.selectedIds.length) return;
-        fireWebhook(btn, sourceRecordId, res.action === 'import-delete',
-          res.selectedIds);
+        fireWebhook(btn, sourceRecordId, 'share', res.selectedIds);
       });
     });
 
@@ -1318,8 +1583,11 @@
       var recordId = tr.id;
       if (!/^[a-f0-9]{24}$/.test(recordId)) continue;
       // Don't inject into the current SOW's own row (safety even though
-      // hide-self-row hides it already).
+      // hide-self-row hides it already), nor into a change-order SOW's row —
+      // a CO's lines are deltas against install scope, never shared onto a
+      // base SOW, and its header must never be deleted from here.
       if (recordId === getReceivingSowId()) continue;
+      if (isChangeOrderSow(recordId)) continue;
       if (tr.querySelector('.' + BTN_MARKER)) continue;
 
       var td = document.createElement('td');
@@ -1380,6 +1648,16 @@
   // to see exactly what the feature is working from.
   window.SCW = window.SCW || {};
   SCW.importUniqueItems = {
+    // Exposed for tests/sow-page/test-share-consolidate.js.
+    _internals: {
+      showImportConfirm:    showImportConfirm,
+      showBulkConfirm:      showBulkConfirm,
+      modeTilesHtml:        modeTilesHtml,
+      buildSowIndex:        buildSowIndex,
+      uniqueItemsFor:       uniqueItemsFor,
+      aggregateAllUnique:   aggregateAllUnique,
+      aggregateConsolidate: aggregateConsolidate
+    },
     dump: function () {
       var out = {
         receivingSowId: getReceivingSowId(),
@@ -1398,6 +1676,13 @@
           }
         }
         out.itemCountPerSow = perSow;
+        // What each bar button would do right now — the quickest answer to
+        // "why is Consolidate unavailable?" (blockedSourceIds) or "why does
+        // Share count N?" (itemIds).
+        if (out.receivingSowId) {
+          out.share       = aggregateAllUnique(out.receivingSowId);
+          out.consolidate = aggregateConsolidate(out.receivingSowId);
+        }
       }
       console.table ? console.table(out) : console.log(out);
       return out;
