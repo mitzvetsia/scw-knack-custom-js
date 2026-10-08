@@ -504,7 +504,21 @@
         opts[i].classList.toggle('scw-sowadd__hide', !hit);
       }
     }
-    input.addEventListener('focus', function () { if (!multi) input.select(); menu.hidden = false; });
+    // Open = show the FULL list (single-select: with the current pick
+    // highlighted and the field's text selected so typing replaces it).
+    function openMenu() {
+      menu.hidden = false;
+      if (!multi) { input.select(); filter(''); }
+    }
+    input.addEventListener('focus', openMenu);
+    // After a single-select pick the list closes but focus stays in the
+    // field — a click (or ArrowDown / Enter) on the focused field re-opens
+    // it instead of forcing a blur-and-refocus. Deferred so the browser's
+    // own mousedown handling (caret placement) runs first.
+    input.addEventListener('mousedown', function () { if (menu.hidden) setTimeout(openMenu, 0); });
+    input.addEventListener('keydown', function (e) {
+      if (menu.hidden && (e.key === 'ArrowDown' || e.key === 'Enter')) { e.preventDefault(); openMenu(); }
+    });
     input.addEventListener('input', function () { menu.hidden = false; filter(input.value); });
     input.addEventListener('blur', function () {
       setTimeout(function () { menu.hidden = true; }, 120);

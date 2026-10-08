@@ -103,6 +103,13 @@ check('MDF/IDF locations come from the scene\'s locations grid', Array.from(mdfG
 q('[data-act="submit"]').click();
 check('validation: a product is required first', q('.scw-sowadd__err').textContent, 'Pick a product.');
 q('.scw-sowadd__opt').dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+const combo = q('.scw-sowadd__combo'), comboMenu = combo.querySelector('.scw-sowadd__menu'), comboIn = combo.querySelector('.scw-sowadd__combo-in');
+check('single-select: picking closes the list and shows the pick in the field', [comboMenu.hidden, comboIn.value], [true, 'Imperial 256 Channel 4K NVR - IMP256']);
+comboIn.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));   // field still focused — no focus event fires
+setTimeout(() => {
+check('single-select: a click on the still-focused field re-opens the full list with the pick highlighted',
+  [comboMenu.hidden, qa('.scw-sowadd__opt').filter(o => !o.classList.contains('scw-sowadd__hide')).length, q('.scw-sowadd__opt.is-sel') && q('.scw-sowadd__opt.is-sel').textContent.trim()],
+  [false, 1, 'Imperial 256 Channel 4K NVR - IMP256']);
 q('[data-act="submit"]').click();
 check('validation: a mandatory MDF/IDF is required', q('.scw-sowadd__err').textContent, 'Pick at least one MDF / IDF.');
 const mdfBox = mdfGroup().querySelectorAll('input')[1]; mdfBox.checked = true; mdfBox.dispatchEvent(new window.Event('change', { bubbles: true }));
@@ -134,3 +141,4 @@ setTimeout(() => {
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
 }, 50);
+}, 5);
