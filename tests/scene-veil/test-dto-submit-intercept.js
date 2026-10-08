@@ -62,7 +62,7 @@ document.body.innerHTML = '<div class="kn-modal-bg"><div class="kn-modal"><div i
   '<div class="kn-input scw-visible" id="kn-input-field_2223" data-input-id="field_2223"><select id="view_3748-field_2223" name="field_2223"><option value=""></option><option value="' + ASSUMP + '" selected>Assumptions</option></select></div>' +
   '<div class="kn-input scw-visible" id="kn-input-field_2432" data-input-id="field_2432"><textarea name="field_2432">note</textarea></div>' +
   '<div class="kn-input" id="kn-input-field_2211" data-input-id="field_2211"><select name="field_2211"><option value=""></option></select></div>' +
-  '<div class="kn-submit"><button class="kn-button is-primary" type="submit">Submit</button></div></form></div>';
+  '<div class="kn-submit"><input class="crumb" type="hidden" name="scope-of-work-details_id" value="S1"><button class="kn-button is-primary" type="submit">Submit</button></div></form></div>';
 
 (handlers['knack-view-render.view_3329'] || []).forEach(fn => fn());
 (handlers['knack-view-render.view_3748'] || []).forEach(fn => fn());
@@ -81,7 +81,9 @@ form.querySelector('button[type="submit"]').click();
 check('Submit → one POST through the form view with the parent crumbs; Knack\'s own submit never runs',
   [posts.length, posts[0] && posts[0].url, posts[0] && posts[0].type, knackSawSubmit],
   [1, 'https://api.knack.com/v1/pages/scene_1086/views/view_3329/records?project-dashboard_id=P1&build-sow_id=S1', 'POST', 0]);
-check('the POST body is the collected field set', Object.keys(posts[0].body), ['field_2223', 'field_2182', 'field_2250', 'field_2248', 'field_2246', 'field_2184']);
+check('the POST body is the collected field set PLUS the parent crumbs (Knack reads the page record from the body)',
+  [Object.keys(posts[0].body), posts[0].body['project-dashboard_id'], posts[0].body['build-sow_id']],
+  [['field_2223', 'field_2182', 'field_2250', 'field_2248', 'field_2246', 'field_2184', 'project-dashboard_id', 'build-sow_id'], 'P1', 'S1']);
 check('every bucket-filtered DTO add form is covered', SCW.dtoSubmitIntercept.CONFIG.VIEWS,
   ['view_3329', 'view_4002', 'view_3451', 'view_3748', 'view_3544', 'view_3619', 'view_3627']);
 check('listeners for the form\'s submit / record-create still fire', triggered.filter(t => /view_3329/.test(t)), ['knack-form-submit.view_3329', 'knack-record-create.view_3329']);
@@ -90,9 +92,9 @@ check('listeners for the form\'s submit / record-create still fire', triggered.f
 window.Knack.views.view_3748 = { model: { view: { action: 'insert' } } };
 const inlineForm = document.querySelector('#view_3748 form');
 inlineForm.querySelector('button[type="submit"]').click();
-check('inline form: POST through view_3748 with the bucket + visible textarea, hidden empty select skipped',
-  [posts.length, posts[1] && posts[1].url, posts[1] && Object.keys(posts[1].body)],
-  [2, 'https://api.knack.com/v1/pages/scene_1086/views/view_3748/records', ['field_2223', 'field_2432']]);
+check('inline form: POST through view_3748 with the bucket + visible textarea + its SOW crumb, hidden empty select skipped',
+  [posts.length, posts[1] && posts[1].url, posts[1] && Object.keys(posts[1].body), posts[1] && posts[1].body['scope-of-work-details_id']],
+  [2, 'https://api.knack.com/v1/pages/scene_1086/views/view_3748/records?scope-of-work-details_id=S1', ['field_2223', 'field_2432', 'scope-of-work-details_id'], 'S1']);
 check('inline form resets in place (no navigation)',
   [inlineForm.querySelector('textarea').value, document.querySelector('#view_3748 .scw-dto-msg').textContent],
   ['note', 'Added.']);
@@ -113,6 +115,12 @@ setTimeout(() => {
   check('a server-side rejection is shown in the form and the button comes back',
     [document.querySelector('#view_3329 .scw-dto-msg').textContent, document.querySelector('#view_3329 button[type="submit"]').disabled],
     ['Could not add: Which SOWS are you adding to? is required.', false]);
+  // No crumb input anywhere (a form Knack rendered without them): fall back to the scene, then the hash.
+  document.querySelectorAll('input.crumb').forEach(el => el.remove());
+  window.location.hash = '#project-dashboard/6a286df9cccc376ebd6e5525/build-sow/69dd0f8333dbe73a5cdfc652/add-to-scope';
+  check('crumb fallback: derived from the hash (…/<slug>/<24-hex id> → <slug>_id) when no input.crumb exists',
+    SCW.dtoSubmitIntercept.crumbs(form, 'scene_1086'),
+    [{ name: 'project-dashboard_id', value: '6a286df9cccc376ebd6e5525' }, { name: 'build-sow_id', value: '69dd0f8333dbe73a5cdfc652' }]);
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
 }, 400);

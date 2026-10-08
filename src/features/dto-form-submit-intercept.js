@@ -17,6 +17,12 @@
 // then returns to the parent page the way the form's own submit does.
 // Required stays ON in Knack; nothing fake is written.
 //
+// The form's parent-record CRUMBS (hidden input.crumb in .kn-submit, e.g.
+// scope-of-work-details_id=<sow id>) travel IN THE BODY alongside the
+// field values, exactly as Knack's own submit serializes them — they are
+// what connects the new record to the page's record. (2026-10-08: sending
+// them only in the URL left every DTO record unconnected to its SOW.)
+//
 // ⚠ If Make is triggered by a RULE on this form's submit (not by watching
 // the DTO object), a view-based POST may not run it — the project-notes
 // composer's record rule did not run through the same kind of POST.
@@ -149,18 +155,37 @@
     return { body: body, sent: sent, skipped: skipped, hiddenWithValue: hiddenWithValue };
   }
 
-  /** The form's parent-record crumbs (hidden input.crumb) — the same
-   *  context Knack's own submit carries for a child-page form. */
-  function crumbQuery(formEl) {
+  /** The form's parent-record crumbs — Knack renders them as hidden
+   *  input.crumb elements in the form's .kn-submit block and sends them with
+   *  the field values; they are what connects the new record to the page's
+   *  record. Fallbacks: the scene's crumbs, then the page hash
+   *  (…/<slug>/<24-hex id> → <slug>_id). */
+  function crumbs(formEl, scene) {
     var out = [], seen = {};
-    var els = formEl.querySelectorAll('input.crumb[name]');
-    for (var i = 0; i < els.length; i++) {
-      var n = els[i].getAttribute('name'), v = els[i].value;
-      if (!n || !v || seen[n]) continue;
-      seen[n] = true;
-      out.push(encodeURIComponent(n) + '=' + encodeURIComponent(v));
+    function take(els) {
+      for (var i = 0; i < els.length; i++) {
+        var n = els[i].getAttribute('name'), v = els[i].value;
+        if (!n || !v || seen[n]) continue;
+        seen[n] = true;
+        out.push({ name: n, value: v });
+      }
     }
-    return out.join('&');
+    take(formEl.querySelectorAll('input.crumb[name]'));
+    if (!out.length) {
+      var sceneEl = scene ? document.getElementById('kn-' + scene) : null;
+      take((sceneEl || document).querySelectorAll('input.crumb[name]'));
+    }
+    if (!out.length) {
+      var parts = (window.location.hash || '').split('?')[0].replace(/^#\/?/, '').split('/').filter(Boolean);
+      for (var j = 1; j < parts.length; j++) {
+        var name = parts[j - 1] + '_id';
+        if (HEX24.test(parts[j]) && !HEX24.test(parts[j - 1]) && !seen[name]) {
+          seen[name] = true;
+          out.push({ name: name, value: parts[j] });
+        }
+      }
+    }
+    return out;
   }
 
   function message(formEl, text, kind) {
@@ -212,10 +237,16 @@
     if (!scene) { message(formEl, 'Cannot submit: no current page.', 'err'); return; }
     var c = collect(formEl);
     if (c.hiddenWithValue.length) log(viewId + ' hidden fields carrying a value, sent anyway:', c.hiddenWithValue);
-    var url = Knack.api_url + '/v1/pages/' + scene + '/views/' + viewId + '/records';
-    var qs = crumbQuery(formEl);
-    if (qs) url += '?' + qs;
-    log(viewId + ' submitting ' + c.sent.length + ' fields (bucket-visible), skipping ' + c.skipped.length + ' hidden:', c.body, 'skipped:', c.skipped, 'url:', url);
+    // Parent crumbs go in the body (where Knack's own submit puts them —
+    // that is what connects the record to the page's SOW) and in the URL.
+    var cr = crumbs(formEl, scene), qs = [];
+    for (var k = 0; k < cr.length; k++) {
+      c.body[cr[k].name] = cr[k].value;
+      qs.push(encodeURIComponent(cr[k].name) + '=' + encodeURIComponent(cr[k].value));
+    }
+    var url = Knack.api_url + '/v1/pages/' + scene + '/views/' + viewId + '/records' + (qs.length ? '?' + qs.join('&') : '');
+    if (!cr.length) console.warn('[scw-dto-submit] ' + viewId + ': no parent-record crumb found — the new record will NOT connect to the page\'s record');
+    log(viewId + ' submitting ' + c.sent.length + ' fields (bucket-visible), skipping ' + c.skipped.length + ' hidden:', c.body, 'skipped:', c.skipped, 'crumbs:', cr, 'url:', url);
 
     _busy[viewId] = true;
     var label = btn ? btn.textContent : '';
@@ -291,5 +322,5 @@
   });
 
   window.SCW = window.SCW || {};
-  SCW.dtoSubmitIntercept = { CONFIG: CONFIG, collect: collect, bind: bind };
+  SCW.dtoSubmitIntercept = { CONFIG: CONFIG, collect: collect, crumbs: crumbs, bind: bind };
 })();
