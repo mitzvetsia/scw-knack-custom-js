@@ -357,7 +357,9 @@
         // Sales may add only the buckets whose "allow sales to add" is Yes —
         // the view_3748 dropdown's four, in its order. (The flag isn't readable
         // client-side yet, so the list is spelled out here.)
-        sowAddModal:      { buckets: ['networking', 'otherEquipment', 'camera', 'license'] },
+        // sowPicker:false — sales adds to the SOW they are on; only ops (view_3962)
+        // gets the "Which SOW(s)?" choice.
+        sowAddModal:      { buckets: ['networking', 'otherEquipment', 'camera', 'license'], sowPicker: false },
         fields: {
           retailPrice:     'field_1960', // PRODUCT STORED_price (read-only)
           lineDiscPct:     'field_2261', // INPUT line discount % (editable)

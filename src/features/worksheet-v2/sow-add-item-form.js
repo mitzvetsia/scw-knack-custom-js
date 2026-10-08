@@ -573,7 +573,12 @@
     injectCss();
 
     var buckets  = bucketsFor(viewKey);
+    // SOW picker: ops (build-SOW) may add to any SOW on the project; sales
+    // adds to the SOW they are on, nothing else (sowAddModal.sowPicker:false).
+    var vcOpen = viewCfg(viewKey);
+    var sowPicker = !(vcOpen && vcOpen.sowAddModal && vcOpen.sowAddModal.sowPicker === false);
     var sowCands = sowCandidates(viewKey);
+    if (!sowPicker) sowCands = sowCands.slice(0, 1);
     var mdfCands = mdfCandidates(viewKey);
     var sowLabels = {}, mdfLabels = {};
     sowCands.forEach(function (c) { sowLabels[c.id] = c.name.replace(/ \(this page\)$/, ''); });
@@ -777,8 +782,9 @@
         showErr(''); render();
       });
 
-      // "Which SOWs are you adding to?" — only when there is a choice.
-      if (sowCands.length > 1) {
+      // "Which SOWs are you adding to?" — only where the view allows a
+      // choice and there is one.
+      if (sowPicker && sowCands.length > 1) {
         var srow = labelRow('Which SOW(s) are you adding to? *');
         var shost = document.createElement('div'); srow.appendChild(shost);
         makeCheckGroup(shost, {

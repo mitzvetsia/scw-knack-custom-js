@@ -85,6 +85,14 @@ check('product single/multi per bucket: camera + networking single, other equipm
 check('sales page (view_3586) offers only the "allow sales to add" buckets, in the DTO dropdown\'s order',
   form.bucketsFor('view_3586').map(b => b.name), ['Networking or Headend', 'Other Equipment', 'Camera or Reader', 'License']);
 check('build-SOW page (view_3962) offers every bucket', form.bucketsFor('view_3962').length, 7);
+// Sales page: no SOW choice even when the rows carry several SOWs — the page's SOW is implicit.
+window.Knack.views.view_3586 = window.Knack.views.view_3962;
+form.open({ viewKey: 'view_3586' });
+const sales = qa('.scw-sowadd').pop();
+check('sales page (view_3586): four bucket chips and NO "Which SOW(s)" row',
+  [sales.querySelectorAll('.scw-sowadd__chip').length, sales.querySelectorAll('.scw-sowadd__checks').length], [4, 0]);
+sales.querySelector('[data-act="cancel"]').click();
+check('ops page keeps its SOW row', q('.scw-sowadd') && q('.scw-sowadd').querySelectorAll('.scw-sowadd__checks').length, 1);
 check('product list is filtered to the bucket (NVR only — the camera is not offered)', texts('.scw-sowadd__opt'), ['Imperial 256 Channel 4K NVR - IMP256']);
 const mdfGroup = () => qa('.scw-sowadd__checks').pop();   // the SOW group is first, the MDF group last
 check('MDF/IDF locations come from the scene\'s locations grid', Array.from(mdfGroup().querySelectorAll('.scw-sowadd__check')).map(e => e.textContent.trim()),
