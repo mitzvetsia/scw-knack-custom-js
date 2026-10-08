@@ -279,20 +279,21 @@
   }
 
   // ── candidate sources ──────────────────────────────────────────────
-  /** The bucket ids a product belongs to (SCW.productMap buckets, else
-   *  SCW.productBucketMap) — [] when the catalog doesn't know. */
-  function productBucketsOf(pid) {
+  /** A product's bucket (SCW.productMap buckets, else SCW.productBucketMap).
+   *  Every product has exactly ONE bucket; '' only when the catalog map
+   *  hasn't loaded or lacks the product. */
+  function productBucketOf(pid) {
     var pmap = (window.SCW && SCW.productMap) || {};
     var bmap = (window.SCW && SCW.productBucketMap) || null;
     var p = pmap[pid];
-    if (p && Array.isArray(p.buckets) && p.buckets.length) return p.buckets.slice();
-    if (bmap && Array.isArray(bmap[pid]) && bmap[pid].length) return bmap[pid].slice();
-    return [];
+    if (p && Array.isArray(p.buckets) && p.buckets.length) return p.buckets[0];
+    if (bmap && Array.isArray(bmap[pid]) && bmap[pid].length) return bmap[pid][0];
+    return '';
   }
-  /** Product-first list: every product in any of the buckets this view
-   *  offers, labelled "name · bucket" so same-named products in two buckets
-   *  read apart. Products the catalog can't place are left out here (they
-   *  still appear once a bucket is chosen). */
+  /** Product-first list: every product whose bucket this view offers,
+   *  labelled "name · bucket" so the item type reads at a glance. A product
+   *  the catalog map doesn't know yet (cold load) is left out here; it still
+   *  shows once a bucket is chosen (productCandidates fails open). */
   function productFirstCandidates(buckets) {
     var pmap = (window.SCW && SCW.productMap) || {};
     var out = [];
@@ -305,11 +306,10 @@
     out.sort(sortByName);
     return out;
   }
-  /** The bucket a product resolves to among the offered buckets — the first
-   *  in display order that the product belongs to. */
+  /** The product's bucket, when this view offers it. */
   function bucketForProduct(pid, buckets) {
-    var mine = productBucketsOf(pid);
-    for (var i = 0; i < buckets.length; i++) if (mine.indexOf(buckets[i].id) !== -1) return buckets[i];
+    var mine = productBucketOf(pid);
+    for (var i = 0; i < buckets.length; i++) if (buckets[i].id === mine) return buckets[i];
     return null;
   }
   // Products: ONE list, filtered to the chosen bucket via SCW.productMap /
@@ -880,8 +880,9 @@
         var chip = e.target.closest && e.target.closest('[data-bucket]');
         if (!chip) return;
         var nextId = chip.getAttribute('data-bucket');
-        // A product already picked stays when it also belongs to the new bucket.
-        var carry = st.productIds.filter(function (pid) { return productBucketsOf(pid).indexOf(nextId) !== -1; });
+        // A product already picked stays only if it IS this bucket's (one
+        // bucket per product) — switching type clears a mismatched pick.
+        var carry = st.productIds.filter(function (pid) { return productBucketOf(pid) === nextId; });
         st.bucketId = nextId;
         showErr(''); render(carry);
       });
