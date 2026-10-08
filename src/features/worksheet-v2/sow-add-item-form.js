@@ -12,14 +12,17 @@
  * (SCW.CONFIG.MAKE_SOW_ADD_ITEMS_WEBHOOK) that creates the SOW Line Items
  * directly, connected to the chosen SOW(s). No DTO record, no Knack form.
  *
- * Rollout gate: the "+ Add to SOW (new)" toolbar button renders only for
- * the users in CONFIG.ALLOWED_EMAILS (worksheet-v2/toolbar.js asks
- * isAllowed()); the native "+ Add to SOW" button stays for everyone. Empty
- * the list to open it up.
+ * LIVE for everyone since 2026-10-08 (CONFIG.ALLOWED_EMAILS is empty; put
+ * emails back in to gate a future change). Where a view opts in, the
+ * worksheet toolbar's "+ Add to SOW" IS this modal — the old button that
+ * opened the Knack DTO form is gone; the bid-review-v2 (reconcile bids)
+ * toolbar routes its "+ Add to SOW" here too.
  *
- * Wiring: a worksheet-v2 config entry sets sowAddModal:true → toolbar
- * build() adds the gated button → handleAction('add-sow-modal') calls
- * SCW.worksheetV2.sowAddForm.open({ viewKey }).
+ * Wiring: a worksheet-v2 config entry sets sowAddModal:{…} → toolbar
+ * build() renders the button → handleAction('add-sow-modal') calls
+ * SCW.worksheetV2.sowAddForm.open({ viewKey }). Surfaces outside
+ * worksheet-v2's config (bid-review-v2 on scene_1155) describe themselves
+ * in HOSTS below.
  *
  * SOW target: the page's record (last 24-hex segment of the hash — the
  * build-SOW and sales SOW pages are both SOW record pages), pre-checked;
@@ -34,12 +37,12 @@
   var wv2 = ns.worksheetV2;
 
   var CONFIG = {
-    // Who sees the new button (case-insensitive). Empty list = everyone.
-    ALLOWED_EMAILS: ['micah.shearer@getscw.com'],
+    // Who sees the button (case-insensitive). Empty list = everyone (LIVE).
+    ALLOWED_EMAILS: [],
     // SCW.CONFIG key holding the Make webhook that creates the line items.
     WEBHOOK_KEY:    'MAKE_SOW_ADD_ITEMS_WEBHOOK',
-    BUTTON_LABEL:   '+ Add to SOW (new)',
-    BUTTON_TITLE:   'Add line items through the new modal (Make creates them directly)',
+    BUTTON_LABEL:   '+ Add to SOW',
+    BUTTON_TITLE:   'Add line items to the Scope of Work',
     // Line item → SOW(s): where the "other SOWs on this project" list comes from.
     SOW_FIELD:      'field_2154',
     // Make creates N records asynchronously — refetch the worksheet twice.
@@ -47,7 +50,17 @@
     // Structural initiator per hosting deployment (never the user's email).
     ORIGINS: {
       view_3962: { origin: 'ops',   originPage: 'Build SOW' },
-      view_3586: { origin: 'sales', originPage: 'Sales SOW' }
+      view_3586: { origin: 'sales', originPage: 'Sales SOW' },
+      view_3921: { origin: 'ops',   originPage: 'Reconcile bids' }
+    },
+    // Hosts outside worksheet-v2's config — same keys as a view's
+    // sowAddModal entry (page / sowViews / buckets / sowPicker) plus the
+    // MDF/IDF source (mdfView / mdfLabelField) worksheet views get from
+    // their own config. view_3921 = the SOW items grid bid-review-v2 reads
+    // on scene_1155 (reconcile bids): a PROJECT page (review-bids/<project>),
+    // SOWs from the Scopes of Work grid view_3918, locations from view_3822.
+    HOSTS: {
+      view_3921: { page: 'project', sowViews: ['view_3918', 'view_3325'], mdfView: 'view_3822', mdfLabelField: 'field_1642' }
     },
     debug: false
   };
@@ -156,7 +169,8 @@
    *  DTO dropdown's order), else every bucket. */
   function bucketsFor(viewKey) {
     var vc = viewCfg(viewKey);
-    var list = vc && vc.sowAddModal && Array.isArray(vc.sowAddModal.buckets) ? vc.sowAddModal.buckets : null;
+    var o = (vc && vc.sowAddModal && typeof vc.sowAddModal === 'object') ? vc.sowAddModal : (CONFIG.HOSTS[viewKey] || {});
+    var list = Array.isArray(o.buckets) ? o.buckets : null;
     if (!list || !list.length) return BUCKETS.slice();
     var out = [];
     for (var i = 0; i < list.length; i++) {
@@ -357,8 +371,8 @@
   // MDF/IDF locations from the scene's locations grid (viewCfg.mdfSourceViewKey
   // — view_3577 on build-SOW, view_3602 on the sales page).
   function mdfCandidates(viewKey) {
-    var vc = viewCfg(viewKey) || {};
-    var mv = vc.mdfSourceViewKey, lf = vc.mdfLabelField || 'field_1642';
+    var o = modalOpts(viewKey);
+    var mv = o.mdfView, lf = o.mdfLabelField;
     var out = [];
     var models = viewModels(mv);
     for (var i = 0; i < models.length; i++) {
@@ -382,11 +396,13 @@
    *    buckets:   the buckets offered, in order (names or ids) */
   function modalOpts(viewKey) {
     var vc = viewCfg(viewKey);
-    var o = (vc && vc.sowAddModal && typeof vc.sowAddModal === 'object') ? vc.sowAddModal : {};
+    var o = (vc && vc.sowAddModal && typeof vc.sowAddModal === 'object') ? vc.sowAddModal : (CONFIG.HOSTS[viewKey] || {});
     return {
-      page:      o.page === 'project' ? 'project' : 'sow',
-      sowViews:  Array.isArray(o.sowViews) && o.sowViews.length ? o.sowViews : ['view_3325', 'view_3918'],
-      sowPicker: o.sowPicker !== false
+      page:          o.page === 'project' ? 'project' : 'sow',
+      sowViews:      Array.isArray(o.sowViews) && o.sowViews.length ? o.sowViews : ['view_3325', 'view_3918'],
+      sowPicker:     o.sowPicker !== false,
+      mdfView:       o.mdfView || (vc && vc.mdfSourceViewKey) || '',
+      mdfLabelField: o.mdfLabelField || (vc && vc.mdfLabelField) || 'field_1642'
     };
   }
   /** The project record: on a project page the page record itself, else the
@@ -688,7 +704,6 @@
       '<div class="scw-sowadd" role="dialog" aria-modal="true">' +
         '<div class="scw-sowadd__head">' +
           '<span class="scw-sowadd__title">Add to Scope of Work</span>' +
-          '<span class="scw-sowadd__beta" title="New add-item flow — items are created by Make directly">New</span>' +
           '<button type="button" class="scw-sowadd__x" aria-label="Close">&times;</button>' +
         '</div>' +
         '<div class="scw-sowadd__body"></div>' +
@@ -1039,11 +1054,12 @@
           var explicitFail = !!(r.data && (r.data.success === false || r.data.error));
           if (r.ok && !explicitFail) {
             close();
-            if (wv2.data && typeof wv2.data.refetchAndNotify === 'function') {
-              CONFIG.REFETCH_DELAYS_MS.forEach(function (ms) {
-                setTimeout(function () { wv2.data.refetchAndNotify(viewKey); }, ms);
-              });
-            }
+            CONFIG.REFETCH_DELAYS_MS.forEach(function (ms) {
+              setTimeout(function () {
+                if (wv2.data && typeof wv2.data.refetchAndNotify === 'function') wv2.data.refetchAndNotify(viewKey);
+                if (typeof opts.onAdded === 'function') { try { opts.onAdded(); } catch (e) { /* host refresh is best-effort */ } }
+              }, ms);
+            });
             if (typeof wv2.toast === 'function') wv2.toast('Adding to SOW… the worksheet refreshes when Make has created the items.');
           } else {
             modal.classList.remove('is-busy');
@@ -1062,6 +1078,6 @@
     return { close: close };
   }
 
-  wv2.sowAddForm = { open: open, isAllowed: isAllowed, bucketsFor: bucketsFor, sowCandidates: sowCandidates, CONFIG: CONFIG, BUCKETS: BUCKETS, BUCKET_KEYS: BUCKET_KEYS };
+  wv2.sowAddForm = { open: open, isAllowed: isAllowed, bucketsFor: bucketsFor, sowCandidates: sowCandidates, modalOpts: modalOpts, CONFIG: CONFIG, BUCKETS: BUCKETS, BUCKET_KEYS: BUCKET_KEYS };
 })();
 /*** END: SOW add-item modal **********************************************/

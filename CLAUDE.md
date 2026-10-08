@@ -515,6 +515,23 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   and the sub-facing view (⚠️ gated on Known Issue #17 — no worksheet-v2
   surface to sub logins while the REST-key Builder snippet ships).
 
+## SOW add-item modal (live 2026-10-08) — `src/features/worksheet-v2/sow-add-item-form.js`
+
+The Knack DTO "Add to Scope" forms (view_3329 / view_4002 / view_3451 / view_3748) are
+retired: Knack's browser-side required check blocked them, and the intercept that posted
+them itself never connected the DTO to its SOW header. "+ Add to SOW" on the build-SOW
+(view_3962), sales (view_3586) and reconcile-bids (bid-review-v2, host view_3921) surfaces
+is now this modal — the CO modal's engine with the DTO forms' per-bucket field suite,
+bucket-first or product-first (one bucket per product; click the active chip to clear).
+Submit posts ONE payload to `MAKE_SOW_ADD_ITEMS_WEBHOOK` (Make scenario 02.01 "SOW Line
+Item DTO (DUPE USING CUSTOM MODAL)", remapped from the DTO record to the payload, which
+therefore mirrors the DTO's `field_XXXX_raw` shape — contract in `src/config.js`). Per-view
+options: `sowAddModal` in worksheet-v2/config.js (ops = project page, SOW picker from
+view_3325; sales = SOW page, four "allow sales to add" buckets, no picker) or the module's
+`HOSTS` for non-worksheet surfaces. `ALLOWED_EMAILS` (empty = everyone) re-gates it.
+`dto-form-submit-intercept.js` now covers only the survey add forms — likely carrying the
+same connection bug; verify before relying on them.
+
 ## Scene veil (load gating) — `src/features/scene-veil.js`
 
 Heavy ops scenes are hidden behind a spinner until Knack's render stream goes quiet (600ms)

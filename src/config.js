@@ -687,7 +687,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
 // DOM. Bump the stamp when shipping something you need to verify live.
 (function () {
   'use strict';
-  window.SCW.BUILD = '2026-10-08 sow-add modal: click active chip to clear type';
+  window.SCW.BUILD = '2026-10-08 sow-add modal LIVE for everyone; DTO forms retired';
   try {
     var src = (document.currentScript && document.currentScript.src) || '';
     if (!src) {

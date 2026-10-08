@@ -61,15 +61,21 @@ function check(label, got, want) {
 const q = s => document.querySelector(s), qa = s => Array.from(document.querySelectorAll(s));
 const texts = s => qa(s).map(e => e.textContent.trim());
 
-// Gate
-check('gate: the allowed user (case-insensitive) sees the button', form.isAllowed('view_3962'), true);
+// Gate — LIVE: the list is empty, so everyone gets the button; the mechanics still work when a list is set.
+check('gate: ALLOWED_EMAILS is empty → live for everyone, identity or not', [form.CONFIG.ALLOWED_EMAILS.length, form.isAllowed('view_3962'), (email = '', form.isAllowed('view_3962'))], [0, true, true]);
+form.CONFIG.ALLOWED_EMAILS.push('micah.shearer@getscw.com');
+email = 'Micah.Shearer@getscw.com';
+check('gate (list set): the allowed user (case-insensitive) passes', form.isAllowed('view_3962'), true);
 email = 'someone@getscw.com';
-check('gate: another user does not', form.isAllowed('view_3962'), false);
+check('gate (list set): another user does not', form.isAllowed('view_3962'), false);
 email = '';
-check('gate: no identity → not allowed', form.isAllowed('view_3962'), false);
+check('gate (list set): no identity → not allowed', form.isAllowed('view_3962'), false);
 form.open({ viewKey: 'view_3962' });
 check('open() refuses for a user outside the gate', !!q('.scw-sowadd'), false);
+form.CONFIG.ALLOWED_EMAILS.length = 0;
 email = 'micah.shearer@getscw.com';
+check('reconcile-bids host (view_3921, outside worksheet-v2 config): project page, SOWs from view_3918, MDFs from view_3822',
+  (o => [o.page, o.sowViews[0], o.mdfView, form.bucketsFor('view_3921').length])(form.modalOpts('view_3921')), ['project', 'view_3918', 'view_3822', 7]);
 
 // Open → bucket chips + SOW row (two SOWs known from the worksheet rows; the page SOW pre-checked)
 form.open({ viewKey: 'view_3962' });

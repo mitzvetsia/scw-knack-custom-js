@@ -30,12 +30,14 @@
   'use strict';
 
   var CONFIG = {
-    // Every DTO add form a bucket-visibility module hides fields on:
-    //   view_3329 / view_4002  Add to Scope (SOW-line-item-DTO-bucket-field-visibility.js)
-    //   view_3451 / view_3748  Add to Scope, ops + sales pages (…_view_3451.js)
-    //   view_3544 / view_3619 / view_3627  Add survey bid item (bucket-field-visibility_add-survey-bid-item.js)
-    // view_4100 (CO add form) is replaced by worksheet-v2/co-add-item-form.js.
-    VIEWS: ['view_3329', 'view_4002', 'view_3451', 'view_3748', 'view_3544', 'view_3619', 'view_3627'],
+    // The survey "Add survey bid item" forms (bucket-field-visibility_add-survey-bid-item.js).
+    // RETIRED here 2026-10-08: the SOW Add to Scope forms view_3329 / view_4002 /
+    // view_3451 / view_3748 — replaced by worksheet-v2/sow-add-item-form.js (the
+    // intercepted POST never connected the DTO to its SOW header); view_4100 (CO)
+    // by co-add-item-form.js. ⚠ The survey forms may well have the same
+    // page-record connection problem — verify a survey DTO connects to its
+    // survey before relying on them.
+    VIEWS: ['view_3544', 'view_3619', 'view_3627'],
     BUCKET_FIELD: 'field_2223',
     // Field keys the visibility module manages: hidden unless .scw-visible.
     // Anything else on the form is submitted as-is.

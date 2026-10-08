@@ -12,7 +12,8 @@
  *                                Expand all/Collapse all button; both stay
  *                                in sync (init.js toggleAllGroups).
  *   - Expand/Collapse line items : every row's detail panel, whole grid.
- *   - + Add to SOW  : reuse Knack's "Add to Scope" link
+ *   - + Add to SOW  : the custom add-item modal (worksheet-v2/sow-add-item-form.js,
+ *                     host view_3921); Knack's "Add to Scope" link only as a fallback
  *   - + Add MDF/IDF : auto-appears the moment the scene carries a Knack
  *                     "Add MDF/IDF" menu link (same auto-detect as
  *                     worksheet-v2's deploy-page button) — no config
@@ -120,6 +121,19 @@
   var ADD_SOW_MENU_VIEW = 'view_4001';
 
   function handleAddSow() {
+    // The custom add-item modal (Make creates the SOW line items directly).
+    // view_3921 is this grid's SOW-items source; sow-add-item-form.js HOSTS
+    // describes the page (project route, SOWs from view_3918, MDFs view_3822).
+    var wv2 = window.SCW && SCW.worksheetV2;
+    if (wv2 && wv2.sowAddForm && typeof wv2.sowAddForm.open === 'function' &&
+        (typeof wv2.sowAddForm.isAllowed !== 'function' || wv2.sowAddForm.isAllowed('view_3921'))) {
+      wv2.sowAddForm.open({ viewKey: 'view_3921', onAdded: function () {
+        try {
+          if (window.SCW.bidReview && typeof SCW.bidReview.refreshSilently === 'function') SCW.bidReview.refreshSilently();
+        } catch (e) { /* the grid also rebuilds on view_3921's own re-render */ }
+      } });
+      return;
+    }
     var menuLink = document.querySelector(
       '#' + ADD_SOW_MENU_VIEW + ' a.kn-link-page, ' +
       '#' + ADD_SOW_MENU_VIEW + ' a.kn-link, ' +
