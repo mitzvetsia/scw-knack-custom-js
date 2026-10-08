@@ -7,7 +7,7 @@ const path = require('path');
 const { JSDOM } = require('jsdom');
 const PID = '6a286df9cccc376ebd6e5525', SOW = '69dd0f8333dbe73a5cdfc652', SOW2 = '69ea62103a04f2f006dde85c';
 const dom = new JSDOM('<!doctype html><html><body></body></html>',
-  { url: 'https://scwinstallation.knack.com/installationservices#team-calendar/project-dashboard/' + PID + '/build-sow/' + SOW });
+  { url: 'https://scwinstallation.knack.com/installationservices#team-calendar/project-dashboard/' + PID + '/build-sow/' + PID });   // the ops route repeats the PROJECT id
 const { window } = dom; const { document } = window;
 global.window = window; global.document = document;
 function jq() { return jqObj; }
@@ -25,6 +25,10 @@ window.Knack = {
     view_3962: { model: { data: { models: [
       { attributes: { id: 'li1', field_1949_raw: [{ id: CAM, identifier: 'Cam' }], field_2154_raw: [{ id: SOW, identifier: 'SW-1001' }] } },
       { attributes: { id: 'li2', field_1949_raw: [{ id: NVR, identifier: 'NVR' }], field_2154_raw: [{ id: SOW, identifier: 'SW-1001' }, { id: SOW2, identifier: 'SW-1060' }] } }
+    ] } } },
+    view_3325: { model: { data: { models: [
+      { attributes: { id: SOW2, field_2122: 'SW-1060', field_2126: 'Alt bid' } },
+      { attributes: { id: SOW, field_2122: 'SW-1001', field_2126: 'Base scope' } }
     ] } } },
     view_3577: { model: { data: { models: [
       { attributes: { id: MDF1, field_1642_raw: 'HEADEND: behind cashregister' } },
@@ -71,9 +75,12 @@ email = 'micah.shearer@getscw.com';
 form.open({ viewKey: 'view_3962' });
 check('the seven DTO buckets render as chips, in DTO order', texts('.scw-sowadd__chip'),
   ['Camera or Reader', 'Networking or Headend', 'Other Equipment', 'Other Services', 'Assumptions', 'Materials', 'License']);
-check('SOW row: page SOW first and pre-checked, the other SOW on the worksheet offered',
+check('ops (project page): SOW row lists the project\'s SOWs from the Scopes of Work grid, sorted, none pre-checked',
   [texts('.scw-sowadd__check').slice(0, 2), qa('.scw-sowadd__check input').map(i => i.checked)],
-  [['SW-1001 (this page)', 'SW-1060'], [true, false]]);
+  [['SW-1001 · Base scope', 'SW-1060 · Alt bid'], [false, false]]);
+window.Knack.views.view_3586 = window.Knack.views.view_3962;   // the sales worksheet, same rows
+check('a SOW page lists the page\'s SOW first, then the others on its rows',
+  form.sowCandidates('view_3586').map(c => c.name), ['This SOW (this page)', 'SW-1001', 'SW-1060']);
 
 // Networking bucket → the DTO form's field suite for that bucket
 q('.scw-sowadd__chip[data-bucket="' + B_NET + '"]').click();
@@ -86,10 +93,9 @@ check('sales page (view_3586) offers only the "allow sales to add" buckets, in t
   form.bucketsFor('view_3586').map(b => b.name), ['Networking or Headend', 'Other Equipment', 'Camera or Reader', 'License']);
 check('build-SOW page (view_3962) offers every bucket', form.bucketsFor('view_3962').length, 7);
 // Sales page: no SOW choice even when the rows carry several SOWs — the page's SOW is implicit.
-window.Knack.views.view_3586 = window.Knack.views.view_3962;
 form.open({ viewKey: 'view_3586' });
 const sales = qa('.scw-sowadd').pop();
-check('sales page (view_3586): four bucket chips and NO "Which SOW(s)" row',
+check('sales page (view_3586): four bucket chips and NO "Which SOW(s)" row (the page record is the SOW)',
   [sales.querySelectorAll('.scw-sowadd__chip').length, sales.querySelectorAll('.scw-sowadd__checks').length], [4, 0]);
 sales.querySelector('[data-act="cancel"]').click();
 check('ops page keeps its SOW row (plus the Networking MDF group)',
@@ -101,7 +107,10 @@ check('MDF/IDF locations come from the scene\'s locations grid', Array.from(mdfG
 
 // Validation + unconfigured webhook
 q('[data-act="submit"]').click();
-check('validation: a product is required first', q('.scw-sowadd__err').textContent, 'Pick a product.');
+check('validation: the SOW must be picked on a project page', q('.scw-sowadd__err').textContent, 'Pick at least one SOW.');
+const sowBox = qa('.scw-sowadd__checks')[0].querySelectorAll('input')[0]; sowBox.checked = true; sowBox.dispatchEvent(new window.Event('change', { bubbles: true }));
+q('[data-act="submit"]').click();
+check('validation: then a product', q('.scw-sowadd__err').textContent, 'Pick a product.');
 q('.scw-sowadd__opt').dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
 const combo = q('.scw-sowadd__combo'), comboMenu = combo.querySelector('.scw-sowadd__menu'), comboIn = combo.querySelector('.scw-sowadd__combo-in');
 check('single-select: picking closes the list and shows the pick in the field', [comboMenu.hidden, comboIn.value], [true, 'Imperial 256 Channel 4K NVR - IMP256']);

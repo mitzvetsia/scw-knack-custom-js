@@ -336,12 +336,53 @@
     out.sort(sortByName);
     return out;
   }
-  // SOWs: the page's SOW first (pre-checked), then every other SOW the
-  // worksheet's rows connect to (field_2154) — the DTO's "Which SOWs are
-  // you adding to?" list.
+  /** Per-view modal options (worksheet-v2/config.js `sowAddModal`):
+   *    page:      'sow'     — the page's record IS a SOW (sales SOW page): it is
+   *                           the implicit target, others may be offered;
+   *               'project' — the page's record is the PROJECT (ops build-SOW,
+   *                           whose route repeats the project id): the user
+   *                           picks the SOW(s), like the DTO's "Which SOWs?"
+   *    sowViews:  SOW grids on the scene listing the project's SOWs (default
+   *               view_3325 build-SOW / view_3918 bid review — field_2122 =
+   *               SW-#### id, field_2126 = name, same as the bulk editor)
+   *    sowPicker: false hides the SOW row (sales adds to the page's SOW only)
+   *    buckets:   the buckets offered, in order (names or ids) */
+  function modalOpts(viewKey) {
+    var vc = viewCfg(viewKey);
+    var o = (vc && vc.sowAddModal && typeof vc.sowAddModal === 'object') ? vc.sowAddModal : {};
+    return {
+      page:      o.page === 'project' ? 'project' : 'sow',
+      sowViews:  Array.isArray(o.sowViews) && o.sowViews.length ? o.sowViews : ['view_3325', 'view_3918'],
+      sowPicker: o.sowPicker !== false
+    };
+  }
+  /** The project record: on a project page the page record itself, else the
+   *  …/project-dashboard/<id>/… segment when the route carries it. */
+  function projectIdFor(viewKey) {
+    return modalOpts(viewKey).page === 'project' ? currentSowId() : currentProjectId();
+  }
+  // SOWs the user can add to.
+  //   project page: every SOW on the project from the scene's SOW grid
+  //                 (falls back to the SOWs the worksheet's rows connect to);
+  //   SOW page:     the page's SOW first, then any other SOW the rows connect to.
   function sowCandidates(viewKey) {
-    var cur = currentSowId();
-    var seen = Object.create(null), others = [], curName = '';
+    var opts = modalOpts(viewKey);
+    var seen = Object.create(null), out = [];
+    if (opts.page === 'project') {
+      for (var v = 0; v < opts.sowViews.length && !out.length; v++) {
+        var grid = viewModels(opts.sowViews[v]);
+        for (var g = 0; g < grid.length; g++) {
+          var ga = grid[g] && grid[g].attributes; if (!ga || !ga.id || seen[ga.id]) continue;
+          var sowNo = stripHtml(ga.field_2122_raw != null ? ga.field_2122_raw : ga.field_2122);
+          var sowNm = stripHtml(ga.field_2126_raw != null ? ga.field_2126_raw : ga.field_2126);
+          if (!sowNo && !sowNm) continue;
+          seen[ga.id] = 1;
+          out.push({ id: ga.id, name: sowNo && sowNm ? sowNo + ' · ' + sowNm : (sowNo || sowNm), identifier: sowNo || sowNm });
+        }
+      }
+    }
+    var cur = opts.page === 'sow' ? currentSowId() : '';
+    var fromRows = [], curName = '';
     var models = viewModels(viewKey);
     for (var i = 0; i < models.length; i++) {
       var a = models[i] && models[i].attributes;
@@ -351,13 +392,13 @@
         var s = raw[j]; if (!s || !s.id || seen[s.id]) continue;
         seen[s.id] = 1;
         var nm = s.identifier != null ? stripHtml(s.identifier) : s.id;
-        if (s.id === cur) curName = nm; else others.push({ id: s.id, name: nm });
+        if (s.id === cur) curName = nm; else fromRows.push({ id: s.id, name: nm, identifier: nm });
       }
     }
-    others.sort(sortByName);
-    var out = [];
-    if (cur) out.push({ id: cur, name: (curName || 'This SOW') + ' (this page)' });
-    return out.concat(others);
+    if (!out.length) { fromRows.sort(sortByName); out = fromRows; }
+    else out.sort(sortByName);
+    if (cur) out.unshift({ id: cur, name: (curName || 'This SOW') + ' (this page)', identifier: curName || 'This SOW' });
+    return out;
   }
   function sortByName(a, b) {
     return String(a.name).localeCompare(String(b.name), undefined, { numeric: true, sensitivity: 'base' });
@@ -587,17 +628,19 @@
     injectCss();
 
     var buckets  = bucketsFor(viewKey);
-    // SOW picker: ops (build-SOW) may add to any SOW on the project; sales
-    // adds to the SOW they are on, nothing else (sowAddModal.sowPicker:false).
-    var vcOpen = viewCfg(viewKey);
-    var sowPicker = !(vcOpen && vcOpen.sowAddModal && vcOpen.sowAddModal.sowPicker === false);
+    var opts     = modalOpts(viewKey);
+    // SOW picker: ops (project page) picks the SOW(s) — pre-checked only when
+    // the project has exactly one; a SOW page targets its own SOW and may
+    // offer the others (sowPicker:false — sales — hides the choice).
     var sowCands = sowCandidates(viewKey);
-    if (!sowPicker) sowCands = sowCands.slice(0, 1);
+    if (!opts.sowPicker) sowCands = sowCands.slice(0, 1);
+    var showSowRow = opts.sowPicker && (opts.page === 'project' ? sowCands.length > 0 : sowCands.length > 1);
+    var preChecked = opts.page === 'project' ? (sowCands.length === 1 ? [sowCands[0].id] : []) : (sowCands.length ? [sowCands[0].id] : []);
     var mdfCands = mdfCandidates(viewKey);
     var sowLabels = {}, mdfLabels = {};
-    sowCands.forEach(function (c) { sowLabels[c.id] = c.name.replace(/ \(this page\)$/, ''); });
+    sowCands.forEach(function (c) { sowLabels[c.id] = c.identifier || c.name; });
     mdfCands.forEach(function (c) { mdfLabels[c.id] = c.name; });
-    var st = { bucketId: '', sowIds: sowCands.length ? [sowCands[0].id] : [], productIds: [], mdfIds: [], accessoryIds: [],
+    var st = { bucketId: '', sowIds: preChecked, productIds: [], mdfIds: [], accessoryIds: [],
                productLabels: {}, accessoryLabels: {} };
 
     var overlay = document.createElement('div');
@@ -796,9 +839,9 @@
         showErr(''); render();
       });
 
-      // "Which SOWs are you adding to?" — only where the view allows a
-      // choice and there is one.
-      if (sowPicker && sowCands.length > 1) {
+      // "Which SOWs are you adding to?" — project pages always (the SOW is the
+      // user's choice there); SOW pages only when there is another SOW to offer.
+      if (showSowRow) {
         var srow = labelRow('Which SOW(s) are you adding to? *');
         var shost = document.createElement('div'); srow.appendChild(shost);
         makeCheckGroup(shost, {
@@ -826,7 +869,11 @@
     function submit() {
       var b = bucketById(st.bucketId);
       if (!b) { showErr('Pick an item type.'); return; }
-      if (!st.sowIds.length) { showErr(sowCands.length ? 'Pick at least one SOW.' : 'Could not resolve this SOW from the URL.'); return; }
+      if (!st.sowIds.length) {
+        showErr(sowCands.length ? 'Pick at least one SOW.' :
+          (opts.page === 'project' ? 'No Scope of Work found on this project — create the SOW first.' : 'Could not resolve this SOW from the URL.'));
+        return;
+      }
       if (!st.productIds.length && !b.productOptional) {
         showErr(b.id === B_ASSUMPTIONS ? 'Pick at least one assumption.' : 'Pick a product.'); return;
       }
@@ -852,7 +899,7 @@
       var payload = {
         sowId:           st.sowIds[0],
         sowIds:          st.sowIds.slice(),
-        projectId:       currentProjectId(),
+        projectId:       projectIdFor(viewKey),
         bucketId:        b.id,
         bucketName:      b.name,
         productIds:      st.productIds.slice(),
@@ -934,6 +981,6 @@
     return { close: close };
   }
 
-  wv2.sowAddForm = { open: open, isAllowed: isAllowed, bucketsFor: bucketsFor, CONFIG: CONFIG, BUCKETS: BUCKETS, BUCKET_KEYS: BUCKET_KEYS };
+  wv2.sowAddForm = { open: open, isAllowed: isAllowed, bucketsFor: bucketsFor, sowCandidates: sowCandidates, CONFIG: CONFIG, BUCKETS: BUCKETS, BUCKET_KEYS: BUCKET_KEYS };
 })();
 /*** END: SOW add-item modal **********************************************/

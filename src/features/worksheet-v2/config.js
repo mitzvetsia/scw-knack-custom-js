@@ -151,7 +151,10 @@
         // "+ Add to SOW (new)" — the custom add-item modal (sow-add-item-form.js,
         // Make creates the line items directly). Rendered only for the users in
         // that module's ALLOWED_EMAILS; the native "+ Add to SOW" stays.
-        sowAddModal:      true,
+        // page:'project' — this page's record is the PROJECT (its route repeats
+        // the project id), so the user picks the SOW(s) from the Scopes of Work
+        // grid (view_3325), exactly as the DTO form's "Which SOWs?" did.
+        sowAddModal:      { page: 'project', sowViews: ['view_3325', 'view_3918'] },
         // No field/bucket overrides — uses the defaults above verbatim.
         fields:  {},
         buckets: {}
@@ -359,7 +362,7 @@
         // client-side yet, so the list is spelled out here.)
         // sowPicker:false — sales adds to the SOW they are on; only ops (view_3962)
         // gets the "Which SOW(s)?" choice.
-        sowAddModal:      { buckets: ['networking', 'otherEquipment', 'camera', 'license'], sowPicker: false },
+        sowAddModal:      { page: 'sow', buckets: ['networking', 'otherEquipment', 'camera', 'license'], sowPicker: false },
         fields: {
           retailPrice:     'field_1960', // PRODUCT STORED_price (read-only)
           lineDiscPct:     'field_2261', // INPUT line discount % (editable)
