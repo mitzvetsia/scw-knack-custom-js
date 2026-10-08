@@ -124,6 +124,13 @@ setTimeout(() => {
   check('crumb fallback: derived from the hash (…/<slug>/<24-hex id> → <slug>_id) when no input.crumb exists',
     SCW.dtoSubmitIntercept.crumbs(form, 'scene_1086'),
     [{ name: 'project-dashboard_id', value: '6a286df9cccc376ebd6e5525' }, { name: 'build-sow_id', value: '69dd0f8333dbe73a5cdfc652' }]);
+  // No hidden page-record input, but the view's source names the connection field: filled from the page record in the hash.
+  document.querySelectorAll('#view_3329 input[name="field_2199"]').forEach(el => el.remove());
+  window.Knack.views.view_3329 = { model: { view: { action: 'insert', source: { connection_key: 'field_2199' } } } };
+  window.SCW.knackAjax = o => { posts.push({ url: o.url, type: o.type, body: JSON.parse(o.data) }); o.success({ record: { id: 'dto2' } }); };
+  form.querySelector('button[type="submit"]').click();
+  check('page-record link from the view source when the form renders no hidden input (id = last 24-hex hash segment)',
+    posts[posts.length - 1].body.field_2199, ['69dd0f8333dbe73a5cdfc652']);
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
 }, 400);

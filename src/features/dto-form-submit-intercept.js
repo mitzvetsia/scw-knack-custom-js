@@ -205,6 +205,22 @@
     return out;
   }
 
+  /** The connection field a connected form writes the page's record into,
+   *  from the view's own schema (model.view.source.connection_key). */
+  function viewSourceConnectionKey(viewId) {
+    try {
+      var src = Knack.views[viewId].model.view.source;
+      return (src && /^field_\d+$/.test(src.connection_key || '')) ? src.connection_key : '';
+    } catch (e) { return ''; }
+  }
+  /** The page's record: the last 24-hex segment of the hash (the SOW on a
+   *  build-SOW page, also under its add-to-scope child page). */
+  function pageRecordId() {
+    var segs = (window.location.hash || '').split('?')[0].replace(/^#\/?/, '').split('/');
+    for (var i = segs.length - 1; i >= 0; i--) if (HEX24.test(segs[i])) return segs[i];
+    return '';
+  }
+
   function message(formEl, text, kind) {
     var box = formEl.querySelector('.scw-dto-msg');
     if (!text) { if (box) box.remove(); return; }
@@ -254,8 +270,16 @@
     if (!scene) { message(formEl, 'Cannot submit: no current page.', 'err'); return; }
     var c = collect(formEl);
     if (c.hiddenWithValue.length) log(viewId + ' hidden fields carrying a value, sent anyway:', c.hiddenWithValue);
+    // Belt and braces: when the form renders no hidden page-record input,
+    // the view's source still names the connection field — fill it with the
+    // page's record ourselves.
+    var linkKey = viewSourceConnectionKey(viewId);
+    if (linkKey && !c.body.hasOwnProperty(linkKey)) {
+      var pageId = pageRecordId();
+      if (pageId) { c.body[linkKey] = [pageId]; c.sent.push(linkKey); c.pageLinks.push(linkKey + ' = ' + pageId + ' (view source)'); }
+    }
     if (c.pageLinks.length) log(viewId + ' page-record connection(s):', c.pageLinks);
-    else console.warn('[scw-dto-submit] ' + viewId + ': no hidden page-record connection input in the form — if Builder says this form connects to the page record, the record will land unconnected');
+    else console.warn('[scw-dto-submit] ' + viewId + ': no page-record connection found (no hidden field input, no view source connection_key) — if Builder says this form connects to the page record, the record will land unconnected');
     // Parent crumbs go in the body (where Knack's own submit puts them —
     // that is what connects the record to the page's SOW) and in the URL.
     var cr = crumbs(formEl, scene), qs = [];
