@@ -87,7 +87,7 @@ check('product-first: no bucket yet → one product list spanning the offered bu
   texts('.scw-sowadd__opt'), ['Imperial 256 Channel 4K NVR - IMP256 · Networking or Headend', 'Standard assumption · Assumptions', 'Vista Dome 4MP · Camera or Reader']);
 qa('.scw-sowadd__opt')[2].dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
 check('picking the camera selects the Camera or Reader chip and opens that bucket\'s form (prefix + start number rows present)',
-  [q('.scw-sowadd__chip.is-on') && q('.scw-sowadd__chip.is-on').textContent, !!q('[data-f="prefix"]'), !!q('[data-f="startNumber"]')],
+  [q('.scw-sowadd__chip.is-on') && q('.scw-sowadd__chip.is-on').textContent.replace('\u00d7', '').trim(), !!q('[data-f="prefix"]'), !!q('[data-f="startNumber"]')],
   ['Camera or Reader', true, true]);
 setTimeout(() => {
 check('the picked camera is carried into the bucket\'s product field', [q('.scw-sowadd__combo-in').value, q('.scw-sowadd__opt.is-sel') && q('.scw-sowadd__opt.is-sel').textContent.trim()],
@@ -110,6 +110,15 @@ check('sales page (view_3586): four bucket chips and NO "Which SOW(s)" row (the 
 check('sales page product-first list holds only products of the allowed buckets (the assumption product is absent)',
   Array.from(sales.querySelectorAll('.scw-sowadd__opt')).map(e => e.textContent.trim()),
   ['Imperial 256 Channel 4K NVR - IMP256 · Networking or Headend', 'Vista Dome 4MP · Camera or Reader']);
+// Clicking the ACTIVE chip clears the type + product and returns to the search-everything list.
+sales.querySelector('.scw-sowadd__chip[data-bucket="' + B_NET + '"]').click();
+check('sales: Networking chip selected → its form (qty row) and the bucket-filtered product list',
+  [!!sales.querySelector('[data-f="qty"]'), Array.from(sales.querySelectorAll('.scw-sowadd__opt')).map(e => e.textContent.trim())],
+  [true, ['Imperial 256 Channel 4K NVR - IMP256']]);
+sales.querySelector('.scw-sowadd__chip.is-on').click();
+check('clicking the active chip again clears the item type: no form rows, the all-products list is back',
+  [!!sales.querySelector('.scw-sowadd__chip.is-on'), !!sales.querySelector('[data-f="qty"]'), sales.querySelectorAll('.scw-sowadd__opt').length],
+  [false, false, 2]);
 sales.querySelector('[data-act="cancel"]').click();
 check('ops page keeps its SOW row (plus the Networking MDF group)',
   [texts('.scw-sowadd__lbl').includes('Which SOW(s) are you adding to? *'), q('.scw-sowadd').querySelectorAll('.scw-sowadd__checks').length], [true, 2]);

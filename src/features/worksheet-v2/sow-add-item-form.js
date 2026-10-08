@@ -486,6 +486,8 @@
       'font:600 12.5px/1 system-ui,sans-serif;color:#334155;cursor:pointer;}',
       '.scw-sowadd__chip:hover{background:#f1f5f9;}',
       '.scw-sowadd__chip.is-on{background:#0f4c75;border-color:#0a3a63;color:#fff;}',
+      '.scw-sowadd__chip-x{margin-left:7px;opacity:.75;font-weight:700;}',
+      '.scw-sowadd__chip.is-on:hover .scw-sowadd__chip-x{opacity:1;}',
       '.scw-sowadd__in{width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:7px;',
       'font:13px/1.4 system-ui,sans-serif;color:#1e293b;box-sizing:border-box;background:#fff;}',
       '.scw-sowadd__in:focus{outline:none;border-color:#60a5fa;}',
@@ -870,9 +872,12 @@
       var chipHtml = '<span class="scw-sowadd__lbl">What type of item are you adding to your Scope of Work?</span>' +
         '<div class="scw-sowadd__chips">';
       for (var i = 0; i < buckets.length; i++) {
-        chipHtml += '<button type="button" class="scw-sowadd__chip' +
-          (buckets[i].id === st.bucketId ? ' is-on' : '') + '" data-bucket="' +
-          buckets[i].id + '">' + esc(buckets[i].name) + '</button>';
+        var on = buckets[i].id === st.bucketId;
+        chipHtml += '<button type="button" class="scw-sowadd__chip' + (on ? ' is-on' : '') +
+          '" data-bucket="' + buckets[i].id + '"' +
+          (on ? ' title="Clear the item type and search every product again"' : '') + '>' +
+          esc(buckets[i].name) + (on ? '<span class="scw-sowadd__chip-x" aria-hidden="true">&times;</span>' : '') +
+          '</button>';
       }
       chipRow.innerHTML = chipHtml + '</div>';
       body.appendChild(chipRow);
@@ -880,11 +885,16 @@
         var chip = e.target.closest && e.target.closest('[data-bucket]');
         if (!chip) return;
         var nextId = chip.getAttribute('data-bucket');
+        showErr('');
+        // Clicking the ACTIVE chip clears the item type (and with it the
+        // product) — back to the search-everything list, no cycling through
+        // the other types to get there.
+        if (nextId === st.bucketId) { st.bucketId = ''; render(); return; }
         // A product already picked stays only if it IS this bucket's (one
         // bucket per product) — switching type clears a mismatched pick.
         var carry = st.productIds.filter(function (pid) { return productBucketOf(pid) === nextId; });
         st.bucketId = nextId;
-        showErr(''); render(carry);
+        render(carry);
       });
 
       // "Which SOWs are you adding to?" — project pages always (the SOW is the
