@@ -195,6 +195,29 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   }
   //   Response: 2xx = accepted (body optional; only {success:false}|{error} fails)
   MAKE_CO_ADD_ITEMS_WEBHOOK: "https://hook.us1.make.com/ae51ped3yu5m671mx3yvxqyk5r14wp9o",
+  // Base-SOW ADD item (worksheet-v2/sow-add-item-form.js): the custom "Add to
+  // Scope of Work" modal — gated to CONFIG.ALLOWED_EMAILS while it proves out
+  // — fires this INSTEAD of the native DTO add forms (view_3329 / view_3748 /
+  // view_3451). Make scenario 02.01 "SOW Line Item DTO (DUPE USING CUSTOM
+  // MODAL)" is the DTO scenario remapped from the DTO record to this payload,
+  // which therefore carries the DTO record's shape alongside readable keys:
+  //   Request body: {
+  //     sowId, sowIds: [...], projectId,          // page SOW first; projectId '' when
+  //                                               // the route has no project segment
+  //     bucketId, bucketName, productIds: [...], accessoryIds: [...], mdfIds: [...],
+  //     qty, prefixId, prefix, startNumber, existingCabling, exterior, plenum,
+  //     serviceCost, description, notes, triggeredBy: { id, name, email },
+  //     origin: 'ops'|'sales', originPage, originView, originScene,
+  //     // DTO mirror — connections as [{id, identifier}] under the DTO field key
+  //     // the bucket used (products: field_2193 cam / 2194 networking / 2195 other
+  //     // / 2224 license / 2248 assumptions / 2913 materials; MDF: field_2211
+  //     // single / 2180 multi / 2250 optional), unused keys = []; plain inputs as
+  //     // field_X + field_X_raw (field_2183 qty, 2184 start #, 2233 sub bid,
+  //     // 2210 description, 2466 notes, 2462/2739/2740 flags as booleans).
+  //     field_2223_raw, field_2182_raw, field_2206_raw, field_2241_raw, field_2181_raw, …
+  //   }
+  //   Response: 2xx = accepted (body optional; only {success:false}|{error} fails)
+  MAKE_SOW_ADD_ITEMS_WEBHOOK: "https://hook.us1.make.com/rrypzupolck7mbov3gmiv8hbvnw5lns4",
   // Change-order sub-pricing loop (co-stage-strip.js). One scenario, the
   // payload's `mode` branches it:
   //   mode:'send'     → store payload.snapshot verbatim in the CO header's
@@ -664,7 +687,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
 // DOM. Bump the stamp when shipping something you need to verify live.
 (function () {
   'use strict';
-  window.SCW.BUILD = '2026-10-08 dto-intercept page-record link v2';
+  window.SCW.BUILD = '2026-10-08 sow-add-item modal (gated)';
   try {
     var src = (document.currentScript && document.currentScript.src) || '';
     if (!src) {

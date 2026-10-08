@@ -219,6 +219,11 @@
         // the scope without a change order.
         ((_vc && _vc.noAddItem) ? '' :
           actionBtn('add-sow',    addLabel,               'Add a new line item')) +
+        // "+ Add to SOW (new)" — the custom add-item modal (sow-add-item-form.js)
+        // on views flagged sowAddModal, for the users its gate allows.
+        ((_vc && _vc.sowAddModal && !_vc.noAddItem && ns.sowAddForm &&
+          typeof ns.sowAddForm.isAllowed === 'function' && ns.sowAddForm.isAllowed(viewKey)) ?
+          actionBtn('add-sow-modal', ns.sowAddForm.CONFIG.BUTTON_LABEL, ns.sowAddForm.CONFIG.BUTTON_TITLE) : '') +
         // "+ Add MDF/IDF" — views with an addMdfMenuView (a hidden Knack
         // menu whose link is the add-location action, e.g. view_3436 on
         // build-SOW). Replaces the button that lived in the standalone
@@ -345,6 +350,10 @@
 
   // ── Action handlers ──
   function handleAction(action, viewKey) {
+    if (action === 'add-sow-modal') {
+      if (ns.sowAddForm && typeof ns.sowAddForm.open === 'function') ns.sowAddForm.open({ viewKey: viewKey });
+      return;
+    }
     if (action === 'add-sow') {
       // Custom add modal (viewCfg.customAddModal) — replaces the native DTO
       // form entirely. The CO worksheet (view_4079) opts in: it fires a Make

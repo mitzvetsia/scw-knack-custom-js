@@ -241,6 +241,7 @@ cat \
   src/features/worksheet-v2/co-adopt.js \
   src/features/worksheet-v2/co-remove.js \
   src/features/worksheet-v2/co-add-item-form.js \
+  src/features/worksheet-v2/sow-add-item-form.js \
   src/features/worksheet-v2/co-scene-header.js \
   src/features/worksheet-v2/co-value.js \
   src/features/worksheet-v2/co-sub-lock.js \

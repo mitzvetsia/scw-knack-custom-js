@@ -148,6 +148,10 @@
         // (hidden) view_3436 menu link (#add-mdfidf7), replacing the button
         // that lived in the now-hidden standalone section.
         addMdfMenuView:   'view_3436',
+        // "+ Add to SOW (new)" — the custom add-item modal (sow-add-item-form.js,
+        // Make creates the line items directly). Rendered only for the users in
+        // that module's ALLOWED_EMAILS; the native "+ Add to SOW" stays.
+        sowAddModal:      true,
         // No field/bucket overrides — uses the defaults above verbatim.
         fields:  {},
         buckets: {}
@@ -349,6 +353,8 @@
         // Knack menu view (same link v1 used). Without it the button
         // falls back to a page-wide link-text scan.
         addSowMenuView:   'view_3450',
+        // Gated "+ Add to SOW (new)" modal button — see the view_3962 entry.
+        sowAddModal:      true,
         fields: {
           retailPrice:     'field_1960', // PRODUCT STORED_price (read-only)
           lineDiscPct:     'field_2261', // INPUT line discount % (editable)
