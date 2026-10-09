@@ -432,7 +432,12 @@
         // that URL is a PLACEHOLDER the toolbar keeps the native Knack add
         // link (view_3627), so the sub is never left with a modal that can't
         // submit — fill the URL in src/config.js and the button flips.
-        sowAddModal:       { mode: 'survey', bidViews: ['view_3507'], requireWebhook: true },
+        // previewEmails (testing, 2026-10-09): the native button stays for
+        // EVERYONE; the listed users also get "+ Add Survey/Bid Item (new)"
+        // (amber) that opens the modal. Delete the list when testing is done
+        // and the modal becomes THE add button (requireWebhook still applies).
+        sowAddModal:       { mode: 'survey', bidViews: ['view_3507'], requireWebhook: true,
+                             previewEmails: ['micah.shearer@getscw.com'] },
         photoUploadView:   'view_3532',
         independentFields: true,            // Survey object — no SOW fallback
         moneyMode:         'survey',

@@ -3240,6 +3240,19 @@
     '  border-color: var(--scw-accent-deep, #14365a) !important;',
     '  color: #fff !important;',
     '}',
+    /* Preview-rollout "(new)" add button (sow-add-item-form.js
+       previewEmails): amber so the tester can tell it from the live
+       native button beside it. */
+    '.scw-ws-v2-toolbar-btn--cta.scw-ws-v2-toolbar-btn--preview {',
+    '  background: #fef3c7 !important;',
+    '  color: #92400e !important;',
+    '  border-color: #f59e0b !important;',
+    '}',
+    '.scw-ws-v2-toolbar-btn--cta.scw-ws-v2-toolbar-btn--preview:hover {',
+    '  background: #fde68a !important;',
+    '  color: #78350f !important;',
+    '  border-color: #d97706 !important;',
+    '}',
     /* Mounting-box modal submit button — also use the blue accent so
        the entire CTA path reads as one consistent color. */
     '.scw-ws-v2-mb-submit {',

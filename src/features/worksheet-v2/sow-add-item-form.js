@@ -44,6 +44,11 @@
  * DTO scenario re-triggered by SCW.CONFIG.MAKE_SURVEY_ADD_ITEMS_WEBHOOK.
  * requireWebhook:true keeps the toolbar on the native "Add Survey/Bid Item"
  * link until that URL is filled in.
+ *
+ * PREVIEW (sowAddModal.previewEmails): while the list is set, the native
+ * add button stays for EVERYONE and the listed users get a second
+ * "(new)" button beside it that opens this modal — nothing changes for
+ * anyone else. Remove the list to make the modal THE add button.
  ***************************************************************************/
 (function () {
   'use strict';
@@ -391,11 +396,22 @@
   function buttonTitle(viewKey) {
     return modalOpts(viewKey).mode === 'survey' ? CONFIG.SURVEY_BUTTON_TITLE : CONFIG.BUTTON_TITLE;
   }
+  /** Preview rollout on this view: previewEmails is set → the toolbar keeps
+   *  the native add button for everyone and adds the modal as a "(new)"
+   *  button for the listed users only. */
+  function isPreview(viewKey) { return !!viewKey && modalOpts(viewKey).previewEmails.length > 0; }
+  function isPreviewUser(viewKey) {
+    var email = userEmail();
+    return !!email && modalOpts(viewKey).previewEmails.indexOf(email) !== -1;
+  }
   /** Rollout gate for the toolbar button + open(): the email list, and on
    *  views flagged requireWebhook a configured webhook (survey: the native
    *  "Add Survey/Bid Item" link stays until MAKE_SURVEY_ADD_ITEMS_WEBHOOK is
    *  filled in — a modal that can't submit would strand the sub). */
   function isAllowed(viewKey) {
+    // Preview: the listed users, webhook or not (submit reports an
+    // unconfigured webhook) — everyone else keeps the native button.
+    if (isPreview(viewKey)) return isPreviewUser(viewKey);
     if (viewKey && modalOpts(viewKey).requireWebhook && !webhookUrl(viewKey)) return false;
     if (!CONFIG.ALLOWED_EMAILS.length) return true;
     var email = userEmail();
@@ -533,8 +549,15 @@
     var vc = viewCfg(viewKey);
     var o = (vc && vc.sowAddModal && typeof vc.sowAddModal === 'object') ? vc.sowAddModal : (CONFIG.HOSTS[viewKey] || {});
     var mode = o.mode === 'survey' ? 'survey' : 'sow';
+    var preview = [];
+    if (Array.isArray(o.previewEmails)) {
+      for (var p = 0; p < o.previewEmails.length; p++) preview.push(String(o.previewEmails[p]).trim().toLowerCase());
+    }
     return {
       mode:          mode,
+      // preview rollout: only these users get the modal (as a SECOND button
+      // beside the untouched native one); empty = the modal is the button
+      previewEmails: preview,
       bidViews:      Array.isArray(o.bidViews) && o.bidViews.length ? o.bidViews : ['view_3507'],
       requireWebhook: !!o.requireWebhook,
       webhookKey:    o.webhookKey || (mode === 'survey' ? CONFIG.SURVEY_WEBHOOK_KEY : CONFIG.WEBHOOK_KEY),
@@ -943,6 +966,7 @@
       '<div class="scw-sowadd" role="dialog" aria-modal="true">' +
         '<div class="scw-sowadd__head">' +
           '<span class="scw-sowadd__title">' + (survey ? 'Add Survey / Bid Item' : 'Add to Scope of Work') + '</span>' +
+          (isPreview(viewKey) ? '<span class="scw-sowadd__beta" title="Preview — only the listed users see this modal; everyone else keeps the Knack form">Preview</span>' : '') +
           '<button type="button" class="scw-sowadd__x" aria-label="Close">&times;</button>' +
         '</div>' +
         '<div class="scw-sowadd__body"></div>' +
@@ -1355,7 +1379,7 @@
     return { close: close };
   }
 
-  wv2.sowAddForm = { open: open, isAllowed: isAllowed, buttonTitle: buttonTitle, bucketsFor: bucketsFor,
+  wv2.sowAddForm = { open: open, isAllowed: isAllowed, isPreview: isPreview, buttonTitle: buttonTitle, bucketsFor: bucketsFor,
                      sowCandidates: sowCandidates, bidCandidates: bidCandidates, modalOpts: modalOpts, webhookUrl: webhookUrl,
                      CONFIG: CONFIG, BUCKETS: BUCKETS, SURVEY_BUCKETS: SURVEY_BUCKETS, BUCKET_KEYS: BUCKET_KEYS };
 })();

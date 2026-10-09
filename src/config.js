@@ -257,10 +257,11 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //     field_2426, field_2426_raw, field_2427_raw, field_2223_raw, field_2432, field_2432_raw, …
   //   }
   //   Response: 2xx = accepted (body optional; only {success:false}|{error} fails)
-  // ⚠️ PLACEHOLDER keeps the toolbar on the native Knack add link
-  //    (requireWebhook in worksheet-v2/config.js view_3505). Import the twin
-  //    blueprint, create its webhook, paste the URL here → the modal goes live.
-  MAKE_SURVEY_ADD_ITEMS_WEBHOOK: "PLACEHOLDER",
+  //   Live hook set 2026-10-09. Rollout: worksheet-v2/config.js view_3505
+  //   sowAddModal.previewEmails — while set, only the listed users see the
+  //   "(new)" button (the native Knack add link stays for everyone); delete the
+  //   list to make the modal THE add button (requireWebhook still applies).
+  MAKE_SURVEY_ADD_ITEMS_WEBHOOK: "https://hook.us1.make.com/3uiy5gytfxz8u12ffpenyt9824psxtlq",
   // Change-order sub-pricing loop (co-stage-strip.js). One scenario, the
   // payload's `mode` branches it:
   //   mode:'send'     → store payload.snapshot verbatim in the CO header's

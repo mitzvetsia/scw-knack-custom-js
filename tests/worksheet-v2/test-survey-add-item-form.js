@@ -24,9 +24,10 @@ const MDF1 = '6abd0251e5d0b1ca628ebb94', MDF2 = '6abd0286c3e527b8ea5499ef', BID1
 const B_CAM = '6481e5ba38f283002898113c', B_NET = '647953bb54b4e1002931ed97', B_OTH = '5df12ce036f91b0015404d78', B_SVC = '6977caa7f246edf67b52cbcd',
       B_ASM = '697b7a023a31502ec68b3303', B_MATL = '6a14eee134e422f3769ada00', B_LIC = '645554dce6f3a60028362a6a';
 const PREFIX_E = '697c23e95fcd43d578c31963';
+let email = 'aaron@sub.example';   // a subcontractor — NOT on the preview list
 window.Knack = {
   router: { current_scene_key: 'scene_1140' },
-  getUserAttributes() { return { id: 'u9', name: { first: 'Aaron', last: 'M' }, email: 'aaron@sub.example' }; },
+  getUserAttributes() { return { id: 'u9', name: { first: 'Aaron', last: 'M' }, email }; },
   views: {
     // the survey request details view (project through the request, field_2346)
     view_3825: { model: { attributes: { id: REQ, field_2346_raw: [{ id: PID, identifier: 'Project X' }] } } },
@@ -79,17 +80,24 @@ const chip = id => q('.scw-sowadd__chip[data-bucket="' + id + '"]').click();
 const fieldLabels = () => texts('.scw-sowadd__lbl').slice(2);   // after the item-type question + the bid row
 
 // Config + gate
-check('view_3505 runs survey mode: survey webhook key, requireWebhook, bids from view_3507, MDFs from the survey locations grid',
-  (o => [o.mode, o.webhookKey, o.requireWebhook, o.bidViews, o.mdfView, o.mdfLabelField])(form.modalOpts('view_3505')),
-  ['survey', 'MAKE_SURVEY_ADD_ITEMS_WEBHOOK', true, ['view_3507'], 'view_3617', 'field_1642']);
-check('SOW views are untouched by the survey mode', (o => [o.mode, o.webhookKey, o.requireWebhook])(form.modalOpts('view_3962')), ['sow', 'MAKE_SOW_ADD_ITEMS_WEBHOOK', false]);
-check('gate: a requireWebhook view is NOT allowed while its webhook is a PLACEHOLDER (the native add link stays); SOW views are',
-  [form.isAllowed('view_3505'), form.isAllowed('view_3962'), form.webhookUrl('view_3505')], [false, true, '']);
+check('view_3505 runs survey mode: survey webhook key, requireWebhook, bids from view_3507, MDFs from the survey locations grid, preview list',
+  (o => [o.mode, o.webhookKey, o.requireWebhook, o.bidViews, o.mdfView, o.mdfLabelField, o.previewEmails])(form.modalOpts('view_3505')),
+  ['survey', 'MAKE_SURVEY_ADD_ITEMS_WEBHOOK', true, ['view_3507'], 'view_3617', 'field_1642', ['micah.shearer@getscw.com']]);
+check('SOW views are untouched by the survey mode (no preview list)', (o => [o.mode, o.webhookKey, o.requireWebhook, o.previewEmails])(form.modalOpts('view_3962')), ['sow', 'MAKE_SOW_ADD_ITEMS_WEBHOOK', false, []]);
+check('preview gate: a user outside previewEmails is NOT allowed (webhook set or not) — the native button is all they see; SOW views unaffected',
+  [form.isPreview('view_3505'), form.isAllowed('view_3505'), form.isAllowed('view_3962'), form.webhookUrl('view_3505')], [true, false, true, '']);
 form.open({ viewKey: 'view_3505' });
-check('open() refuses on the gated view', !!q('.scw-sowadd'), false);
+check('open() refuses for the non-preview user', !!q('.scw-sowadd'), false);
 window.SCW.CONFIG.MAKE_SURVEY_ADD_ITEMS_WEBHOOK = 'https://hook.us1.make.com/survey-add-items';
-check('the configured URL flips the gate; the toolbar title names the surface',
+check('still refused with the webhook configured — the preview list decides', form.isAllowed('view_3505'), false);
+email = 'Micah.Shearer@getscw.com';   // the preview user (case-insensitive)
+window.SCW.CONFIG.MAKE_SURVEY_ADD_ITEMS_WEBHOOK = 'PLACEHOLDER';
+check('the preview user is allowed even before the webhook is configured (so the form can be reviewed); the toolbar title names the surface',
   [form.isAllowed('view_3505'), form.buttonTitle('view_3505'), form.buttonTitle('view_3962')], [true, 'Add survey / bid items', 'Add line items to the Scope of Work']);
+form.open({ viewKey: 'view_3505' });
+check('preview user: the modal opens with a Preview pill', [!!q('.scw-sowadd'), q('.scw-sowadd__beta') && q('.scw-sowadd__beta').textContent], [true, 'Preview']);
+q('[data-act="cancel"]').click();
+window.SCW.CONFIG.MAKE_SURVEY_ADD_ITEMS_WEBHOOK = 'https://hook.us1.make.com/survey-add-items';
 check('the survey suite keeps the seven DTO buckets (same ids, different field suites)',
   [form.bucketsFor('view_3505').map(b => b.name), form.bucketsFor('view_3505') === form.bucketsFor('view_3962')],
   [['Camera or Reader', 'Networking or Headend', 'Other Equipment', 'Other Services', 'Assumptions', 'Materials', 'License'], false]);

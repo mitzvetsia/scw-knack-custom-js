@@ -185,6 +185,10 @@
     var addLabel = (_vc && _vc.addItemLabel) ? ('+ ' + _vc.addItemLabel) : '+ Add to SOW';
     var useAddModal = !!(_vc && _vc.sowAddModal && ns.sowAddForm &&
       typeof ns.sowAddForm.isAllowed === 'function' && ns.sowAddForm.isAllowed(viewKey));
+    // Preview rollout (sowAddModal.previewEmails): the native button stays
+    // for everyone; the listed users ALSO get the modal as a "(new)" button.
+    var previewAdd = useAddModal && typeof ns.sowAddForm.isPreview === 'function' && ns.sowAddForm.isPreview(viewKey);
+    var modalTitle = ns.sowAddForm && (typeof ns.sowAddForm.buttonTitle === 'function' ? ns.sowAddForm.buttonTitle(viewKey) : ns.sowAddForm.CONFIG.BUTTON_TITLE);
     var bar = document.createElement('div');
     bar.className = 'scw-ws-v2-toolbar';
     bar.innerHTML =
@@ -225,8 +229,9 @@
         // there. isAllowed(viewKey) is false while a requireWebhook view's
         // webhook is unconfigured (survey), so the native add link stays.
         ((_vc && _vc.noAddItem) ? '' :
-          (useAddModal ? actionBtn('add-sow-modal', addLabel,
-                           (typeof ns.sowAddForm.buttonTitle === 'function' ? ns.sowAddForm.buttonTitle(viewKey) : ns.sowAddForm.CONFIG.BUTTON_TITLE))
+          previewAdd ? (actionBtn('add-sow', addLabel, 'Add a new line item') +
+                        actionBtn('add-sow-modal', addLabel + ' (new)', modalTitle + ' — preview: only you see this button', 'scw-ws-v2-toolbar-btn--preview')) :
+          (useAddModal ? actionBtn('add-sow-modal', addLabel, modalTitle)
                        : actionBtn('add-sow',       addLabel, 'Add a new line item'))) +
         // "+ Add MDF/IDF" — views with an addMdfMenuView (a hidden Knack
         // menu whose link is the add-location action, e.g. view_3436 on
@@ -244,8 +249,8 @@
     return bar;
   }
 
-  function actionBtn(action, label, title) {
-    return '<button type="button" class="scw-ws-v2-toolbar-btn scw-ws-v2-toolbar-btn--cta" ' +
+  function actionBtn(action, label, title, extraClass) {
+    return '<button type="button" class="scw-ws-v2-toolbar-btn scw-ws-v2-toolbar-btn--cta' + (extraClass ? ' ' + extraClass : '') + '" ' +
       'data-scw-ws-v2-action="' + action + '" ' +
       'title="' + esc(title) + '">' + esc(label) + '</button>';
   }

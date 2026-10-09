@@ -547,7 +547,11 @@ MODAL)" — the DTO scenario with the webhook as module 2 so every `2.field_*` r
 payload unchanged; config/variables sets from `var.organization.knack_config_set` /
 `knack_variable_set`; module 157 keeps the request's own project / SOWs when the payload has none.
 `MAKE_SURVEY_ADD_ITEMS_WEBHOOK` is a PLACEHOLDER: `isAllowed(viewKey)` is false for `requireWebhook`
-views until it is filled, so the toolbar keeps the native "Add Survey/Bid Item" link. Behaviors the
+views until it is filled, so the toolbar keeps the native "Add Survey/Bid Item" link. **Preview
+gate**: while `sowAddModal.previewEmails` is set (currently micah.shearer@getscw.com) the native
+button stays for everyone and only the listed users get a second amber "+ Add Survey/Bid Item (new)"
+button that opens the modal (webhook or not; submit reports an unconfigured one). Delete the list to
+make the modal the add button. Behaviors the
 modal inherits from 05.01 (pre-existing, not changed): License qty is ignored (one line per license
 product), exterior/plenum come from the PRODUCT not the toggles, Materials accessories (`field_2206`)
 create SOW Line Items (object_105), not survey items. Test: `tests/worksheet-v2/test-survey-add-item-form.js`.
