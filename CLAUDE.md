@@ -375,6 +375,12 @@ you any of that.
 
 #### `window.SCW.productBucketMap` (used by filter-products-by-bucket.js, bulk-add-mounting-box.js, and v2 product picker)
 
+**Source of truth (2026-10-09): `knack-snippets/product-catalog-loader.snippet.js`** — the live
+Builder snippet, key blanked. It builds `productMap` (`{ name, buckets, subAllowed (field_2433),
+salesAllowed (field_2434) }`), `productBucketMap`, `mountingBoxProducts` and `productMapReady` in one
+paginated fetch; re-paste it into Builder on any change. The older minimal snippet below is kept
+for the shape of the bucket map only.
+
 Map of product id → array of proposal-bucket connection ids:
 
 ```js
