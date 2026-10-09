@@ -3831,12 +3831,16 @@
     '.scw-ws-v2-scope-products > .scw-ws-v2-summary-body { flex: 1 1 100% !important; padding: 6px 0 4px !important; border-bottom: 0 !important; }',
     /* Highlighted cards after a tile click. */
     '.scw-ws-v2-card--scope-hl { box-shadow: inset 4px 0 0 #163c6e, 0 0 0 1px #c7d7ea !important; background: #f3f7fb !important; }',
-    /* MDF/IDF header scope line — a second row of chips inside the navy
-       header button (the header wraps; the line takes the full width). */
-    '.scw-ws-v2-l1-head { flex-wrap: wrap !important; row-gap: 6px !important; }',
+    /* MDF/IDF header scope line — counts only, muted, INLINE after the group
+       name on the header's single row; shrinks with an ellipsis before
+       anything else does (the breakdown is on hover). */
     '.scw-ws-v2-l1-scope {',
-    '  flex: 1 1 100% !important; display: flex !important; flex-wrap: wrap !important; gap: 6px !important;',
-    '  padding-left: 24px !important; font: 600 11px/1.3 system-ui, sans-serif !important; letter-spacing: 0 !important;',
+    '  flex: 0 1 auto !important; min-width: 0 !important; display: inline-flex !important; align-items: center !important; gap: 8px !important;',
+    '  font: 500 11.5px/1.2 system-ui, sans-serif !important; letter-spacing: 0 !important; text-transform: none !important;',
+    '}',
+    '.scw-ws-v2-l1-scope-text {',
+    '  min-width: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;',
+    '  color: rgba(255, 255, 255, 0.72) !important; font-variant-numeric: tabular-nums !important;',
     '}',
     '.scw-ws-v2-l1-scope-chip {',
     '  display: inline-flex !important; align-items: baseline !important; gap: 4px !important;',

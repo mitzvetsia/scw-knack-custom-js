@@ -883,34 +883,48 @@
       '</div>';
     return wrap;
   }
-  function l1Chip(n, label, detail, mod) {
-    return '<span class="scw-ws-v2-l1-scope-chip' + (mod ? ' ' + mod : '') + '"><b>' + n + '</b> ' + esc(label) +
-      (detail ? '<span class="scw-ws-v2-l1-scope-detail"> · ' + detail + '</span>' : '') + '</span>';
-  }
-  /** One MDF/IDF's scope as chips for its header (replaces the per-group panel). */
+  /** One MDF/IDF's scope for its header: COUNTS ONLY, inline after the
+   *  group name ("6 cameras · 6 mounts · 3 headend · 8 other"); the splits and
+   *  the product names ride on the hover title — the strip at the top and
+   *  the cards carry the detail (a chip-per-family line with splits and
+   *  product lists read as noise on busy install pages, 2026-10-09). A
+   *  removed-by-CO count stays a rose chip: it is the one state worth a look. */
   function l1ScopeLine(l1, opts) {
     var recs = collectRecords(l1);
     if (!recs.length) return '';
     recs = recs.concat(attachedTo(recs, opts || {}));
     var a = aggregateScope(recs, opts || {});
-    var chips = [];
+    var parts = [], tips = [];
+    function nonZero(list) { return list.filter(function (p) { return p && !/^0 /.test(p); }); }
+    function prodTip(fam) {
+      var out = [];
+      for (var i = 0; i < fam.products.length; i++) out.push(fam.products[i].qty + '× ' + fam.products[i].name);
+      return out.join(', ');
+    }
     if (a.cam.count) {
-      var parts = [];
-      if (a.cam.newDrops || a.cam.existing) parts.push(a.cam.newDrops + ' new · ' + a.cam.existing + ' existing');
-      if (a.cam.interior || a.cam.exterior) parts.push(a.cam.interior + ' int · ' + a.cam.exterior + ' ext');
-      if (a.cam.plenum) parts.push(a.cam.plenum + ' plenum');
-      if (a.hasQa && (a.cam.qaPassed || a.cam.qaOpen)) parts.push(a.cam.qaPassed + ' QA passed');
       var camLabel = a.title.toLowerCase();
       if (a.cam.count === 1) camLabel = camLabel === 'readers' ? 'reader' : 'camera';
-      chips.push(l1Chip(a.cam.count, camLabel, parts.join(' · ')));
+      parts.push(a.cam.count + ' ' + camLabel);
+      var splits = nonZero([
+        a.cam.newDrops + ' ' + plural(a.cam.newDrops, 'new drop'), a.cam.existing + ' existing cable',
+        a.cam.interior + ' interior', a.cam.exterior + ' exterior', a.cam.plenum + ' plenum',
+        (a.hasQa ? a.cam.qaPassed + ' QA passed' : '0 ')
+      ]);
+      tips.push(a.title + ': ' + (splits.length ? splits.join(' · ') : a.cam.count) + (a.cam.products.length ? '\n  ' + prodTip(a.cam) : ''));
     }
-    if (a.mounts.count)   chips.push(l1Chip(a.mounts.count, plural(a.mounts.count, 'mount'), '', 'scw-ws-v2-l1-scope-chip--muted'));
-    if (a.headend.count)  chips.push(l1Chip(a.headend.count, 'headend', scopeProductsInline(a.headend, 3)));
-    if (a.other.count)    chips.push(l1Chip(a.other.count, 'other', scopeProductsInline(a.other, 2)));
-    if (a.services.count) chips.push(l1Chip(a.services.count, plural(a.services.count, 'service'), '', 'scw-ws-v2-l1-scope-chip--muted'));
-    if (a.licenses.count) chips.push(l1Chip(a.licenses.count, plural(a.licenses.count, 'license'), 'recurring', 'scw-ws-v2-l1-scope-chip--muted'));
-    if (a.removed.count)  chips.push(l1Chip(a.removed.count, 'removed by CO', '', 'scw-ws-v2-l1-scope-chip--removed'));
-    return chips.join('');
+    if (a.mounts.count)   { parts.push(a.mounts.count + ' ' + plural(a.mounts.count, 'mount')); tips.push('Mounts: ' + prodTip(a.mounts)); }
+    if (a.headend.count)  { parts.push(a.headend.count + ' headend'); tips.push('Headend & networking: ' + prodTip(a.headend)); }
+    if (a.other.count)    { parts.push(a.other.count + ' other'); tips.push('Other equipment: ' + prodTip(a.other)); }
+    if (a.services.count) { parts.push(a.services.count + ' ' + plural(a.services.count, 'service')); tips.push('Services: ' + prodTip(a.services)); }
+    if (a.licenses.count) { parts.push(a.licenses.count + ' ' + plural(a.licenses.count, 'license')); tips.push('Licenses (recurring): ' + prodTip(a.licenses)); }
+    var h = parts.length
+      ? '<span class="scw-ws-v2-l1-scope-text" title="' + esc(tips.join('\n')) + '">' + esc(parts.join(' · ')) + '</span>'
+      : '';
+    if (a.removed.count) {
+      h += '<span class="scw-ws-v2-l1-scope-chip scw-ws-v2-l1-scope-chip--removed" title="' +
+        esc('Removed by change order: ' + a.removed.labels.join(', ')) + '"><b>' + a.removed.count + '</b> removed by CO</span>';
+    }
+    return h;
   }
 
   ns.summary = {

@@ -111,9 +111,11 @@ check('an empty tree renders the empty strip', ns.summary.buildScopeStrip([], { 
 // ── MDF/IDF header line: that group's families as chips ────────────────────────────────────
 const l1Clubhouse = tree.find(l1 => l1.label === 'MDF - Clubhouse');
 const line = document.createElement('div'); line.innerHTML = ns.summary.l1ScopeLine(l1Clubhouse, opts);
-check('the MDF/IDF header line carries the group\'s own numbers as chips (3 cameras with splits, mounts, headend by name, other, services)',
-  [...line.querySelectorAll('.scw-ws-v2-l1-scope-chip')].map(txt),
-  ['3 cameras · 2 new · 1 existing · 2 int · 1 ext · 1 plenum', '4 mounts', '3 headend · 2× PoE switch 48-port · 1× Imperial 256 Channel 4K NVR', '1 other · 1× Rack UPS 1500VA', '1 service']);
+check('the MDF/IDF header line is counts only (inline text, no chips); the splits and product names ride on the hover title',
+  [txt(line.querySelector('.scw-ws-v2-l1-scope-text')), line.querySelector('.scw-ws-v2-l1-scope-text').getAttribute('title').split('\n'), line.querySelectorAll('.scw-ws-v2-l1-scope-chip').length],
+  ['3 cameras · 4 mounts · 3 headend · 1 other · 1 service',
+   ['Cameras: 2 new drops · 1 existing cable · 2 interior · 1 exterior · 1 plenum', '  2× Vista Dome 4MP, 1× Vista Bullet 8MP', 'Mounts: 4× Wall Mount Bracket',
+    'Headend & networking: 2× PoE switch 48-port, 1× Imperial 256 Channel 4K NVR', 'Other equipment: 1× Rack UPS 1500VA', 'Services: 1× Lift rental'], 0]);
 check('a zero side collapses into the other segment instead of a sliver; one unit reads singular',
   [...document.createRange().createContextualFragment(
      ns.summary.buildScopeStrip(ns.groups.buildGroupTree([cam('z1', 'Vista Dome 4MP', 'L1', no, no, no, 100)], [], { viewKey: 'view_3962', fields: F }), { viewKey: 'view_3962', fields: F }).outerHTML
@@ -149,9 +151,10 @@ check('install strip: no money anywhere, a green QA bar in the camera tile, a ro
    itiles[itiles.length - 1].classList.contains('scw-ws-v2-scope-tile--removed'), txt(itiles[itiles.length - 1].querySelector('.scw-ws-v2-scope-sub'))],
   [0, false, ['2 new drops1 existing cable', '2 interior1 exterior', '2 QA passed1 open'], true, ['cam', 'headend', 'removed'], true, '60486704913-SW1418CO']);
 const iline = document.createElement('div'); iline.innerHTML = ns.summary.l1ScopeLine(itree[0], iopts);
-check('install header line: QA passed in the camera chip, a rose removed-by-CO chip',
-  [...iline.querySelectorAll('.scw-ws-v2-l1-scope-chip')].map(c => txt(c) + (c.classList.contains('scw-ws-v2-l1-scope-chip--removed') ? ' [removed]' : '')),
-  ['3 cameras · 2 new · 1 existing · 2 int · 1 ext · 2 QA passed', '1 headend · 1× Admiral 32 Channel NVR', '1 removed by CO [removed]']);
+check('install header line: counts only, QA passed on the hover title, the removed-by-CO count as the one rose chip',
+  [txt(iline.querySelector('.scw-ws-v2-l1-scope-text')), /2 QA passed/.test(iline.querySelector('.scw-ws-v2-l1-scope-text').getAttribute('title')),
+   [...iline.querySelectorAll('.scw-ws-v2-l1-scope-chip')].map(c => txt(c) + (c.classList.contains('scw-ws-v2-l1-scope-chip--removed') ? ' [removed]' : ''))],
+  ['3 cameras · 1 headend', true, ['1 removed by CO [removed]']]);
 
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

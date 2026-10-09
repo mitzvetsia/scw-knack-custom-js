@@ -580,9 +580,12 @@ read apart), muted services + licenses (licenses never in the total), and a rose
 change order" tile on install (same `removedByCo` marker as the cards). **Mounts fold into the
 camera tile** as a "N mounts" line. Counts are qty-weighted; assumptions are skipped; money is the
 view's own (`buildMoneyOpts`: sub bid / Total / Sub Bid, none on install). Each **MDF/IDF header**
-carries the same numbers as chips (`l1ScopeLine`, a second row inside the navy header button) —
-the per-group summary panel is no longer rendered. The old product table lives behind the strip's
-"Products (N)" disclosure (persisted under the same `grand` open-state key).
+carries its COUNTS ONLY, inline after the group name (`l1ScopeLine`: "6 cameras · 6 mounts · 3
+headend · 8 other", muted, ellipsizes first; splits + product names on the hover title; a
+removed-by-CO count is the one rose chip) — a chip-per-family line with splits and product lists
+was "busy as fuck" on install pages (2026-10-09). The per-group summary panel is no longer
+rendered. The old product table lives behind the strip's "Products (N)" disclosure (persisted under
+the same `grand` open-state key).
 - **Attached accessories**: groups.js hides mounts under their parent card, so the tree never
   carries them. render.js stashes the render's filtered record list (`_scopeRecords`) and passes it
   as `opts.records`; the tiles and header lines count from it (`attachedTo`), while the Products
