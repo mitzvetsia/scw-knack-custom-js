@@ -220,11 +220,13 @@
         // deploy/install grids (view_4093/view_4056), where you can't add to
         // the scope without a change order.
         // Views flagged sowAddModal get the custom add-item modal
-        // (sow-add-item-form.js) AS their "+ Add to SOW" — the Knack DTO add
-        // form behind the old button is retired there. Other views (survey)
-        // keep the native add link.
+        // (sow-add-item-form.js) AS their "+ Add to SOW" / "+ Add Survey/Bid
+        // Item" — the Knack DTO add form behind the old button is retired
+        // there. isAllowed(viewKey) is false while a requireWebhook view's
+        // webhook is unconfigured (survey), so the native add link stays.
         ((_vc && _vc.noAddItem) ? '' :
-          (useAddModal ? actionBtn('add-sow-modal', addLabel, ns.sowAddForm.CONFIG.BUTTON_TITLE)
+          (useAddModal ? actionBtn('add-sow-modal', addLabel,
+                           (typeof ns.sowAddForm.buttonTitle === 'function' ? ns.sowAddForm.buttonTitle(viewKey) : ns.sowAddForm.CONFIG.BUTTON_TITLE))
                        : actionBtn('add-sow',       addLabel, 'Add a new line item'))) +
         // "+ Add MDF/IDF" — views with an addMdfMenuView (a hidden Knack
         // menu whose link is the add-location action, e.g. view_3436 on

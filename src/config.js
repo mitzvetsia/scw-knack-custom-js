@@ -232,6 +232,35 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   }
   //   Response: 2xx = accepted (body optional; only {success:false}|{error} fails)
   MAKE_SOW_ADD_ITEMS_WEBHOOK: "https://hook.us1.make.com/rrypzupolck7mbov3gmiv8hbvnw5lns4",
+  // SURVEY ADD item (worksheet-v2/sow-add-item-form.js in SURVEY mode — the
+  // sub survey / bid worksheet view_3505, scene_1140): the same modal running
+  // the survey DTO form's (view_3627) per-bucket rules, firing this INSTEAD of
+  // the native "Add Survey/Bid Item" DTO form. Make scenario 05.01 "SURVEY
+  // ITEM | Create from DTO (DUPE USING CUSTOM MODAL)" is the DTO scenario
+  // re-triggered by this webhook (module 2 = the webhook, so every
+  // `2.field_XXXX_raw` read resolves against this payload unchanged):
+  //   Request body: {
+  //     surveyRequestId, surveyRequest,            // the page's request (route
+  //                                                // …/site-survey-request-details/<id>)
+  //                                                // + its identifier when a loaded
+  //                                                // view names it ('' otherwise)
+  //     bidIds: [...], projectId,                  // bids picked (view_3507); the
+  //                                                // request's project when a view on
+  //                                                // the scene loads field_2346, else ''
+  //     bucketId, bucketName, productIds, accessoryIds, mdfIds, qty, prefixId, prefix,
+  //     startNumber, existingCabling, exterior, plenum,
+  //     laborBid (= serviceCost), surveyNotes (= notes), description,
+  //     sowId: '', sowIds: [], triggeredBy, origin: 'sub', originPage, originView, originScene,
+  //     // survey DTO mirror (field_2426 request, field_2427 bids, field_2432 notes,
+  //     // field_2233 labor bid, field_2185 pre-fix text, field_2246 unified product,
+  //     // field_2181 project, field_2182 = []) + the shared DTO keys above
+  //     field_2426, field_2426_raw, field_2427_raw, field_2223_raw, field_2432, field_2432_raw, …
+  //   }
+  //   Response: 2xx = accepted (body optional; only {success:false}|{error} fails)
+  // ⚠️ PLACEHOLDER keeps the toolbar on the native Knack add link
+  //    (requireWebhook in worksheet-v2/config.js view_3505). Import the twin
+  //    blueprint, create its webhook, paste the URL here → the modal goes live.
+  MAKE_SURVEY_ADD_ITEMS_WEBHOOK: "PLACEHOLDER",
   // Change-order sub-pricing loop (co-stage-strip.js). One scenario, the
   // payload's `mode` branches it:
   //   mode:'send'     → store payload.snapshot verbatim in the CO header's

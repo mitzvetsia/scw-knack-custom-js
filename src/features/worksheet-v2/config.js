@@ -423,6 +423,16 @@
         // bulk-upload VIEWS[] menuViewId for this scene (survey → view_3532,
         // linkField surveyID, hash /site-survey-request-details/).
         addItemLabel:      'Add Survey/Bid Item',
+        // "+ Add Survey/Bid Item" → the custom add-item modal in SURVEY mode
+        // (sow-add-item-form.js SURVEY_BUCKETS = view_3627's per-bucket rules;
+        // bids from view_3507; MDF/IDFs from mdfSourceViewKey; the page's
+        // survey request as the target). POSTs to
+        // SCW.CONFIG.MAKE_SURVEY_ADD_ITEMS_WEBHOOK (Make 05.01 "SURVEY ITEM |
+        // Create from DTO (DUPE USING CUSTOM MODAL)"). requireWebhook: while
+        // that URL is a PLACEHOLDER the toolbar keeps the native Knack add
+        // link (view_3627), so the sub is never left with a modal that can't
+        // submit — fill the URL in src/config.js and the button flips.
+        sowAddModal:       { mode: 'survey', bidViews: ['view_3507'], requireWebhook: true },
         photoUploadView:   'view_3532',
         independentFields: true,            // Survey object — no SOW fallback
         moneyMode:         'survey',

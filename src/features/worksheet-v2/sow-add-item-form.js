@@ -28,6 +28,22 @@
  * build-SOW and sales SOW pages are both SOW record pages), pre-checked;
  * when the worksheet's rows carry other SOWs (field_2154) they are offered
  * too, mirroring the DTO's "Which SOWs are you adding to?" multi-select.
+ *
+ * SURVEY MODE (2026-10-09): a view whose sowAddModal has mode:'survey' (the
+ * sub survey / bid worksheet view_3505 on scene_1140) gets the SAME modal
+ * running the SURVEY DTO form's rules instead — SURVEY_BUCKETS mirrors
+ * bucket-field-visibility_add-survey-bid-item.js (view_3627) field-for-field:
+ * the bid(s) row on every bucket, the sub's labor bid (field_2233) + survey
+ * notes (field_2432) on every bucket but License, accessories only on
+ * Materials, License = product + qty only. The target is the page's SURVEY
+ * REQUEST (last 24-hex segment of …/site-survey-request-details/<id>) plus
+ * the bid(s) picked from the BIDs grid (view_3507, the worksheet's active bid
+ * filter pre-checked). The payload mirrors the survey DTO record (field_2426
+ * request · field_2427 bids · field_2432 notes · field_2233 labor bid …) for
+ * Make 05.01 "SURVEY ITEM | Create from DTO (DUPE USING CUSTOM MODAL)" — the
+ * DTO scenario re-triggered by SCW.CONFIG.MAKE_SURVEY_ADD_ITEMS_WEBHOOK.
+ * requireWebhook:true keeps the toolbar on the native "Add Survey/Bid Item"
+ * link until that URL is filled in.
  ***************************************************************************/
 (function () {
   'use strict';
@@ -41,17 +57,29 @@
     ALLOWED_EMAILS: [],
     // SCW.CONFIG key holding the Make webhook that creates the line items.
     WEBHOOK_KEY:    'MAKE_SOW_ADD_ITEMS_WEBHOOK',
+    // Survey mode (sowAddModal.mode:'survey'): Make 05.01 twin.
+    SURVEY_WEBHOOK_KEY: 'MAKE_SURVEY_ADD_ITEMS_WEBHOOK',
     BUTTON_LABEL:   '+ Add to SOW',
     BUTTON_TITLE:   'Add line items to the Scope of Work',
+    SURVEY_BUTTON_TITLE: 'Add survey / bid items',
     // Line item → SOW(s): where the "other SOWs on this project" list comes from.
     SOW_FIELD:      'field_2154',
+    // Survey mode: line item → bid(s) (the worksheet's grouping connection),
+    // the BIDs grid's label (bid number) + friendly name columns, and the
+    // survey request's project connection (object_113) read off any view on
+    // the scene that loads the request.
+    BID_FIELD:            'field_2415',
+    BID_LABEL_FIELD:      'field_2414',
+    BID_NAME_FIELD:       'field_2636',
+    SURVEY_PROJECT_FIELD: 'field_2346',
     // Make creates N records asynchronously — refetch the worksheet twice.
     REFETCH_DELAYS_MS: [2500, 8000],
     // Structural initiator per hosting deployment (never the user's email).
     ORIGINS: {
       view_3962: { origin: 'ops',   originPage: 'Build SOW' },
       view_3586: { origin: 'sales', originPage: 'Sales SOW' },
-      view_3921: { origin: 'ops',   originPage: 'Reconcile bids' }
+      view_3921: { origin: 'ops',   originPage: 'Reconcile bids' },
+      view_3505: { origin: 'sub',   originPage: 'Survey / bid worksheet' }
     },
     // Hosts outside worksheet-v2's config — same keys as a view's
     // sowAddModal entry (page / sowViews / buckets / sowPicker) plus the
@@ -154,9 +182,90 @@
       { t: 'qty' }
     ]}
   ];
-  function bucketById(id) {
-    for (var i = 0; i < BUCKETS.length; i++) if (BUCKETS[i].id === id) return BUCKETS[i];
+  // SURVEY mode — the survey DTO form's (view_3627) per-bucket suite:
+  // bucket-field-visibility_add-survey-bid-item.js BUCKET_RULES_HUMAN, field
+  // for field (product first like the SOW suite, then the Knack form's
+  // order). Differences from the SOW suite: the bid(s) row (field_2427) on
+  // EVERY bucket (rendered once above the fields, where the SOW row sits);
+  // the sub's LABOR BID (field_2233 — Make 05.01 writes it to the line's
+  // Labor field_2400, blank = the product's default labor rate) and SURVEY
+  // NOTES (field_2432) on every bucket but License; accessories (field_2206)
+  // only on Materials; no camera-notes field; License = product + qty only
+  // (no project / MDF / notes). field_2181 project + field_2246 unified
+  // product are the form's hidden plumbing — the payload carries both.
+  // ⚠ Keep in step with BUCKET_RULES_HUMAN when view_3627's rules change.
+  var SURVEY_LABOR_LABEL  = 'Labor bid ($ each)';
+  var SURVEY_LABOR_HELPER = 'Your labor price per item. Leave blank to use the product’s default labor rate.';
+  var SURVEY_BUCKETS = [
+    // field_2211 MDF (single, mandatory) · field_2193 product · field_2183 qty ·
+    // field_2241 pre-fix · field_2184 label number · field_2462/2739/2740 flags ·
+    // field_2432 survey notes · field_2233 labor bid
+    { id: B_CAMERA, name: 'Camera or Reader', productMulti: false, fields: [
+      { t: 'product', label: 'Product' },
+      { t: 'mdf', mode: 'single', label: 'Cabling for these cameras will route back to which MDF or IDF?' },
+      { t: 'qty', label: 'How many cameras or readers do you want to add?' },
+      { t: 'prefix', label: 'Label pre-fix' },
+      { t: 'startNumber', label: 'What number should we start the camera label numbers on?', helper: CAM_START_HELPER },
+      { t: 'toggles', items: ['existingCabling', 'exterior', 'plenum'] },
+      { t: 'notes', label: 'Survey notes' },
+      { t: 'serviceCost', label: SURVEY_LABOR_LABEL, helper: SURVEY_LABOR_HELPER }
+    ]},
+    // field_2180 MDF (multi, mandatory) · field_2183 qty · field_2194 product ·
+    // field_2233 labor bid · field_2432 survey notes
+    { id: B_NETWORKING, name: 'Networking or Headend', productMulti: false, fields: [
+      { t: 'product' },
+      { t: 'qty', label: 'How many do you want to add to EACH MDF/IDF selected below?' },
+      { t: 'mdf', mode: 'multi', label: 'Which MDF or IDFs will this item go in?', helper: MDF_MULTI_HELPER },
+      { t: 'serviceCost', label: SURVEY_LABOR_LABEL, helper: SURVEY_LABOR_HELPER },
+      { t: 'notes', label: 'Survey notes' }
+    ]},
+    // field_2250 MDF (optional) · field_2195 product · field_2233 · field_2432 · field_2183 qty
+    { id: B_OTHEREQUIP, name: 'Other Equipment', productMulti: true, fields: [
+      { t: 'product' },
+      { t: 'qty' },
+      { t: 'mdf', mode: 'opt' },
+      { t: 'serviceCost', label: SURVEY_LABOR_LABEL, helper: SURVEY_LABOR_HELPER },
+      { t: 'notes', label: 'Survey notes' }
+    ]},
+    // Product-less: field_2250 MDF (optional) · field_2233 labor bid · field_2183 qty ·
+    // field_2210 service description · field_2432 survey notes
+    { id: B_SERVICE, name: 'Other Services', productOptional: true, fields: [
+      { t: 'description', label: 'Service description' },
+      { t: 'serviceCost', label: 'Labor bid ($)', helper: 'Your price for this service.' },
+      { t: 'qty' },
+      { t: 'mdf', mode: 'opt' },
+      { t: 'notes', label: 'Survey notes' }
+    ]},
+    // field_2250 MDF (optional) · field_2432 · field_2248 assumptions
+    // (+ field_2210 only when "Custom Assumption" is picked)
+    { id: B_ASSUMPTIONS, name: 'Assumptions', productMulti: true, fields: [
+      { t: 'product', label: 'Assumption(s)', placeholder: 'Search assumptions…' },
+      { t: 'description', label: 'Detail custom assumption', conditional: 'customAssumption' },
+      { t: 'mdf', mode: 'opt' },
+      { t: 'notes', label: 'Survey notes' }
+    ]},
+    // field_2250 MDF (optional) · field_2432 · field_2913 product · field_2206 accessories
+    { id: B_MATERIALS, name: 'Materials', productMulti: true, fields: [
+      { t: 'product' },
+      { t: 'accessories' },
+      { t: 'mdf', mode: 'opt' },
+      { t: 'notes', label: 'Survey notes' }
+    ]},
+    // field_2183 qty · field_2224 product — no project, MDF or notes
+    { id: B_LICENSE, name: 'License', productMulti: true, fields: [
+      { t: 'product' },
+      { t: 'qty' }
+    ]}
+  ];
+  function bucketById(id, list) {
+    list = list || BUCKETS;
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;
+  }
+  /** The bucket catalogue a view runs: the survey DTO form's suite in survey
+   *  mode, else the SOW forms'. Same ids, different field suites. */
+  function allBuckets(viewKey) {
+    return modalOpts(viewKey).mode === 'survey' ? SURVEY_BUCKETS : BUCKETS;
   }
   // Config names for the per-view bucket list (worksheet-v2/config.js
   // `sowAddModal: { buckets: [...] }`, names or 24-hex ids, in display order).
@@ -170,14 +279,15 @@
   function bucketsFor(viewKey) {
     var vc = viewCfg(viewKey);
     var o = (vc && vc.sowAddModal && typeof vc.sowAddModal === 'object') ? vc.sowAddModal : (CONFIG.HOSTS[viewKey] || {});
+    var base = allBuckets(viewKey);
     var list = Array.isArray(o.buckets) ? o.buckets : null;
-    if (!list || !list.length) return BUCKETS.slice();
+    if (!list || !list.length) return base.slice();
     var out = [];
     for (var i = 0; i < list.length; i++) {
-      var b = bucketById(BUCKET_KEYS[list[i]] || list[i]);
+      var b = bucketById(BUCKET_KEYS[list[i]] || list[i], base);
       if (b && out.indexOf(b) === -1) out.push(b);
     }
-    return out.length ? out : BUCKETS.slice();
+    return out.length ? out : base.slice();
   }
 
   // Label prefix options (object_111 CONFIG: Pre-Fix — the DTO's field_2241
@@ -220,7 +330,11 @@
   var DTO_MDF_FIELD = { single: 'field_2211', multi: 'field_2180', opt: 'field_2250' };
   var DTO_ARRAY_KEYS = ['field_2193', 'field_2194', 'field_2195', 'field_2224', 'field_2248', 'field_2913',
                         'field_2211', 'field_2180', 'field_2250', 'field_2206', 'field_2241', 'field_2181',
-                        'field_2187'];
+                        'field_2187', 'field_2246', 'field_2426', 'field_2427'];
+  // field_2246 "unified product" = the first filled product field in this
+  // priority (set_unified_product_field.js SINGLE_PRIORITY) — the buckets
+  // whose product field is one of them.
+  var UNIFIED_PRODUCT_BUCKETS = [B_CAMERA, B_NETWORKING, B_OTHEREQUIP, B_MATERIALS];
   function conn(ids, labels) {
     var out = [];
     for (var i = 0; i < ids.length; i++) out.push({ id: ids[i], identifier: (labels && labels[ids[i]]) || '' });
@@ -268,8 +382,21 @@
       return u && u.email ? String(u.email).trim().toLowerCase() : '';
     } catch (e) { return ''; }
   }
-  /** Rollout gate for the toolbar button + open(). */
-  function isAllowed() {
+  /** The view's configured webhook URL — '' when blank / PLACEHOLDER. */
+  function webhookUrl(viewKey) {
+    var key = modalOpts(viewKey).webhookKey;
+    var url = (window.SCW && SCW.CONFIG && SCW.CONFIG[key]) || '';
+    return (!url || /PLACEHOLDER/.test(url)) ? '' : String(url);
+  }
+  function buttonTitle(viewKey) {
+    return modalOpts(viewKey).mode === 'survey' ? CONFIG.SURVEY_BUTTON_TITLE : CONFIG.BUTTON_TITLE;
+  }
+  /** Rollout gate for the toolbar button + open(): the email list, and on
+   *  views flagged requireWebhook a configured webhook (survey: the native
+   *  "Add Survey/Bid Item" link stays until MAKE_SURVEY_ADD_ITEMS_WEBHOOK is
+   *  filled in — a modal that can't submit would strand the sub). */
+  function isAllowed(viewKey) {
+    if (viewKey && modalOpts(viewKey).requireWebhook && !webhookUrl(viewKey)) return false;
     if (!CONFIG.ALLOWED_EMAILS.length) return true;
     var email = userEmail();
     if (!email) return false;   // no identity → not shown
@@ -393,11 +520,24 @@
    *               view_3325 build-SOW / view_3918 bid review — field_2122 =
    *               SW-#### id, field_2126 = name, same as the bulk editor)
    *    sowPicker: false hides the SOW row (sales adds to the page's SOW only)
-   *    buckets:   the buckets offered, in order (names or ids) */
+   *    buckets:   the buckets offered, in order (names or ids)
+   *    mode:      'survey' — the survey DTO form's suite (SURVEY_BUCKETS), the
+   *               page's SURVEY REQUEST as the target, a bid(s) row instead of
+   *               the SOW row, the survey webhook (see header)
+   *    bidViews:  survey mode — the BIDs grid(s) the bid row reads
+   *               (default view_3507: bid number field_2414, name field_2636)
+   *    requireWebhook: the toolbar shows the modal only once the webhook URL
+   *               is configured (the native add link stays until then)
+   *    webhookKey: SCW.CONFIG key override (defaults per mode) */
   function modalOpts(viewKey) {
     var vc = viewCfg(viewKey);
     var o = (vc && vc.sowAddModal && typeof vc.sowAddModal === 'object') ? vc.sowAddModal : (CONFIG.HOSTS[viewKey] || {});
+    var mode = o.mode === 'survey' ? 'survey' : 'sow';
     return {
+      mode:          mode,
+      bidViews:      Array.isArray(o.bidViews) && o.bidViews.length ? o.bidViews : ['view_3507'],
+      requireWebhook: !!o.requireWebhook,
+      webhookKey:    o.webhookKey || (mode === 'survey' ? CONFIG.SURVEY_WEBHOOK_KEY : CONFIG.WEBHOOK_KEY),
       page:          o.page === 'project' ? 'project' : 'sow',
       sowViews:      Array.isArray(o.sowViews) && o.sowViews.length ? o.sowViews : ['view_3325', 'view_3918'],
       sowPicker:     o.sowPicker !== false,
@@ -451,6 +591,87 @@
   }
   function sortByName(a, b) {
     return String(a.name).localeCompare(String(b.name), undefined, { numeric: true, sensitivity: 'base' });
+  }
+  /** Every record a view on the scene has loaded — details views
+   *  (model.attributes) and grids (model.data.models[*].attributes).
+   *  fn(attrs, viewKey) returning truthy stops the scan with that value. */
+  function scanLoadedRecords(fn) {
+    var views = (window.Knack && Knack.views) || {};
+    for (var k in views) {
+      if (!Object.prototype.hasOwnProperty.call(views, k)) continue;
+      var m = views[k] && views[k].model, r;
+      if (!m) continue;
+      if (m.attributes && m.attributes.id) { r = fn(m.attributes, k); if (r) return r; }
+      var rows = (m.data && m.data.models) || [];
+      for (var i = 0; i < rows.length; i++) {
+        var a = rows[i] && rows[i].attributes;
+        if (a) { r = fn(a, k); if (r) return r; }
+      }
+    }
+    return null;
+  }
+  /** Display identifier of a record id from any loaded connection pointing at
+   *  it (the survey request through the rows' field_2360, the MDFs' field_2435,
+   *  a details view of the record itself …); '' when nothing on the scene
+   *  names it. */
+  function identifierOf(recordId) {
+    if (!recordId) return '';
+    return scanLoadedRecords(function (a) {
+      if (a.id === recordId && a.identifier != null) return stripHtml(a.identifier) || null;
+      for (var key in a) {
+        if (!Object.prototype.hasOwnProperty.call(a, key) || !/_raw$/.test(key)) continue;
+        var raw = a[key];
+        if (!Array.isArray(raw)) continue;
+        for (var i = 0; i < raw.length; i++) {
+          if (raw[i] && raw[i].id === recordId && raw[i].identifier != null) return stripHtml(raw[i].identifier) || null;
+        }
+      }
+      return null;
+    }) || '';
+  }
+  /** Survey mode: the request's project (object_113 field_2346) when a view on
+   *  the scene loads the request; '' otherwise — the 05.01 twin then keeps the
+   *  request's own project. */
+  function surveyProjectId() {
+    return scanLoadedRecords(function (a) {
+      var raw = a[CONFIG.SURVEY_PROJECT_FIELD + '_raw'];
+      return (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) ? raw[0].id : null;
+    }) || '';
+  }
+  // Survey mode: the bids the item can sit on — every bid on the BIDs grid(s),
+  // labelled like the worksheet's pickers (the in-use connection identifier
+  // from the rows' field_2415, else the grid's bid number field_2414, with the
+  // friendly name field_2636 appended). Falls back to the bids the rows
+  // connect to when the grid isn't loaded.
+  function bidCandidates(viewKey) {
+    var opts = modalOpts(viewKey);
+    var inUse = Object.create(null), seen = Object.create(null), out = [];
+    var rows = viewModels(viewKey), i, j;
+    for (i = 0; i < rows.length; i++) {
+      var a = rows[i] && rows[i].attributes;
+      var raw = a && a[CONFIG.BID_FIELD + '_raw'];
+      if (!Array.isArray(raw)) continue;
+      for (j = 0; j < raw.length; j++) {
+        if (raw[j] && raw[j].id && raw[j].identifier != null) inUse[raw[j].id] = stripHtml(raw[j].identifier);
+      }
+    }
+    for (var v = 0; v < opts.bidViews.length && !out.length; v++) {
+      var grid = viewModels(opts.bidViews[v]);
+      for (i = 0; i < grid.length; i++) {
+        var g = grid[i] && grid[i].attributes; if (!g || !g.id || seen[g.id]) continue;
+        var lblRaw = g[CONFIG.BID_LABEL_FIELD + '_raw'];
+        var base = inUse[g.id] || stripHtml(lblRaw != null ? lblRaw : g[CONFIG.BID_LABEL_FIELD]) ||
+          stripHtml(g.identifier) || g.id;
+        var fn = stripHtml(g[CONFIG.BID_NAME_FIELD]);
+        seen[g.id] = 1;
+        out.push({ id: g.id, name: (fn && base.indexOf(fn) === -1) ? (base + ' — ' + fn) : base, identifier: base });
+      }
+    }
+    if (!out.length) {
+      for (var id in inUse) if (Object.prototype.hasOwnProperty.call(inUse, id)) out.push({ id: id, name: inUse[id], identifier: inUse[id] });
+    }
+    out.sort(sortByName);
+    return out;
   }
   // Accessories: OPTIONAL accessories only — Make auto-adds a product's
   // default accessories. SCW.mountingBoxProducts filtered to products whose
@@ -676,26 +897,44 @@
   }
 
   // ── the modal ──────────────────────────────────────────────────────
-  function open(opts) {
-    opts = opts || {};
-    var viewKey = opts.viewKey || 'view_3962';
-    if (!isAllowed()) { log('open refused — user not in ALLOWED_EMAILS'); return; }
+  function open(callerOpts) {
+    // callerOpts = { viewKey, onClose, onAdded } (kept apart from the view's
+    // modalOpts — an earlier `opts` reuse silently dropped bid-review-v2's
+    // onAdded refresh).
+    callerOpts = callerOpts || {};
+    var viewKey = callerOpts.viewKey || 'view_3962';
+    if (!isAllowed(viewKey)) { log('open refused — gate (ALLOWED_EMAILS / webhook) for ' + viewKey); return; }
     injectCss();
 
-    var buckets  = bucketsFor(viewKey);
-    var opts     = modalOpts(viewKey);
+    var opts       = modalOpts(viewKey);
+    var survey     = opts.mode === 'survey';
+    var bucketList = allBuckets(viewKey);
+    var buckets    = bucketsFor(viewKey);
+    function pickBucket(id) { return bucketById(id, bucketList); }
     // SOW picker: ops (project page) picks the SOW(s) — pre-checked only when
     // the project has exactly one; a SOW page targets its own SOW and may
-    // offer the others (sowPicker:false — sales — hides the choice).
-    var sowCands = sowCandidates(viewKey);
+    // offer the others (sowPicker:false — sales — hides the choice). Survey
+    // mode has no SOW row at all: the survey DTO form carries no SOW field.
+    var sowCands = survey ? [] : sowCandidates(viewKey);
     if (!opts.sowPicker) sowCands = sowCands.slice(0, 1);
-    var showSowRow = opts.sowPicker && (opts.page === 'project' ? sowCands.length > 0 : sowCands.length > 1);
-    var preChecked = opts.page === 'project' ? (sowCands.length === 1 ? [sowCands[0].id] : []) : (sowCands.length ? [sowCands[0].id] : []);
+    var showSowRow = !survey && opts.sowPicker && (opts.page === 'project' ? sowCands.length > 0 : sowCands.length > 1);
+    var preChecked = survey ? [] : (opts.page === 'project' ? (sowCands.length === 1 ? [sowCands[0].id] : []) : (sowCands.length ? [sowCands[0].id] : []));
+    // Survey mode: the page's survey request is the target; the bid(s) are the
+    // user's choice, the worksheet's active bid filter pills pre-checked.
+    var requestId = survey ? currentSowId() : '';
+    var bidCands  = survey ? bidCandidates(viewKey) : [];
+    var activeBids = [];
+    if (survey && wv2.sowFilter && typeof wv2.sowFilter.loadActive === 'function') {
+      try { activeBids = wv2.sowFilter.loadActive(viewKey) || []; } catch (e) { activeBids = []; }
+    }
+    var preBids = [];
+    bidCands.forEach(function (c) { if (activeBids.indexOf(c.id) !== -1) preBids.push(c.id); });
     var mdfCands = mdfCandidates(viewKey);
-    var sowLabels = {}, mdfLabels = {};
+    var sowLabels = {}, mdfLabels = {}, bidLabels = {};
     sowCands.forEach(function (c) { sowLabels[c.id] = c.identifier || c.name; });
     mdfCands.forEach(function (c) { mdfLabels[c.id] = c.name; });
-    var st = { bucketId: '', sowIds: preChecked, productIds: [], mdfIds: [], accessoryIds: [],
+    bidCands.forEach(function (c) { bidLabels[c.id] = c.identifier || c.name; });
+    var st = { bucketId: '', sowIds: preChecked, bidIds: preBids, productIds: [], mdfIds: [], accessoryIds: [],
                productLabels: {}, accessoryLabels: {} };
 
     var overlay = document.createElement('div');
@@ -703,14 +942,15 @@
     overlay.innerHTML =
       '<div class="scw-sowadd" role="dialog" aria-modal="true">' +
         '<div class="scw-sowadd__head">' +
-          '<span class="scw-sowadd__title">Add to Scope of Work</span>' +
+          '<span class="scw-sowadd__title">' + (survey ? 'Add Survey / Bid Item' : 'Add to Scope of Work') + '</span>' +
           '<button type="button" class="scw-sowadd__x" aria-label="Close">&times;</button>' +
         '</div>' +
         '<div class="scw-sowadd__body"></div>' +
         '<div class="scw-sowadd__foot">' +
           '<span class="scw-sowadd__err" hidden></span>' +
           '<button type="button" class="scw-sowadd__btn scw-sowadd__btn--sec" data-act="cancel">Cancel</button>' +
-          '<button type="button" class="scw-sowadd__btn scw-sowadd__btn--pri" data-act="submit">Add to SOW</button>' +
+          '<button type="button" class="scw-sowadd__btn scw-sowadd__btn--pri" data-act="submit">' +
+            (survey ? 'Add to survey' : 'Add to SOW') + '</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(overlay);
@@ -722,7 +962,7 @@
     function close() {
       document.removeEventListener('keydown', onKey, true);
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-      if (typeof opts.onClose === 'function') opts.onClose();
+      if (typeof callerOpts.onClose === 'function') callerOpts.onClose();
     }
     function onKey(e) {
       if (e.key !== 'Escape') return;
@@ -816,7 +1056,7 @@
         return prow;
       }
       if (t === 'serviceCost') {
-        var crow = labelRow(fd.label || 'Expected sub bid ($)');
+        var crow = labelRow(fd.label || 'Expected sub bid ($)', fd.helper);
         crow.insertAdjacentHTML('beforeend', '<input type="number" step="0.01" class="scw-sowadd__in" data-f="serviceCost">');
         return crow;
       }
@@ -884,7 +1124,9 @@
       body.innerHTML = '';
 
       var chipRow = document.createElement('div'); chipRow.className = 'scw-sowadd__row';
-      var chipHtml = '<span class="scw-sowadd__lbl">What type of item are you adding to your Scope of Work?</span>' +
+      var chipHtml = '<span class="scw-sowadd__lbl">' +
+        (survey ? 'What type of item are you adding to the survey?' : 'What type of item are you adding to your Scope of Work?') +
+        '</span>' +
         '<div class="scw-sowadd__chips">';
       for (var i = 0; i < buckets.length; i++) {
         var on = buckets[i].id === st.bucketId;
@@ -923,8 +1165,22 @@
         });
         body.appendChild(srow);
       }
+      // Survey mode: "Which bid(s) is this item on?" — every bid on the BIDs
+      // grid, the worksheet's active bid filter pre-checked. Optional: an item
+      // can be surveyed before it sits on a bid (the form's field_2427 is
+      // not required).
+      if (survey && bidCands.length) {
+        var brow = labelRow('Which bid(s) is this item on?',
+          'Optional — leave every bid unchecked to add the item to the survey only.');
+        var bhost = document.createElement('div'); brow.appendChild(bhost);
+        makeCheckGroup(bhost, {
+          candidates: bidCands, multi: true, checked: st.bidIds,
+          onChange: function (ids) { st.bidIds = ids; }
+        });
+        body.appendChild(brow);
+      }
 
-      var b = bucketById(st.bucketId);
+      var b = pickBucket(st.bucketId);
       if (!b || buckets.indexOf(b) === -1) {
         // Product FIRST: no item type yet — offer every product the offered
         // buckets contain; picking one selects its bucket and opens that
@@ -963,9 +1219,11 @@
     }
 
     function submit() {
-      var b = bucketById(st.bucketId);
+      var b = pickBucket(st.bucketId);
       if (!b) { showErr('Pick an item type.'); return; }
-      if (!st.sowIds.length) {
+      if (survey) {
+        if (!requestId) { showErr('Could not resolve this survey request from the URL.'); return; }
+      } else if (!st.sowIds.length) {
         showErr(sowCands.length ? 'Pick at least one SOW.' :
           (opts.page === 'project' ? 'No Scope of Work found on this project — create the SOW first.' : 'Could not resolve this SOW from the URL.'));
         return;
@@ -985,17 +1243,17 @@
       if (mdfField && (mdfField.mode === 'single' || mdfField.mode === 'multi') && !st.mdfIds.length) {
         showErr('Pick at least one MDF / IDF.'); return;
       }
-      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG[CONFIG.WEBHOOK_KEY]) || '';
-      if (!url || /PLACEHOLDER/.test(url)) {
-        showErr('Add-item webhook is not configured yet (SCW.CONFIG.' + CONFIG.WEBHOOK_KEY + ').'); return;
+      var url = webhookUrl(viewKey);
+      if (!url) {
+        showErr('Add-item webhook is not configured yet (SCW.CONFIG.' + opts.webhookKey + ').'); return;
       }
 
       var prefixId = readField('prefix') || '';
       var org = CONFIG.ORIGINS[viewKey] || {};
       var payload = {
-        sowId:           st.sowIds[0],
-        sowIds:          st.sowIds.slice(),
-        projectId:       projectIdFor(viewKey),
+        sowId:           survey ? '' : st.sowIds[0],
+        sowIds:          survey ? [] : st.sowIds.slice(),
+        projectId:       survey ? surveyProjectId() : projectIdFor(viewKey),
         bucketId:        b.id,
         bucketName:      b.name,
         productIds:      st.productIds.slice(),
@@ -1018,17 +1276,32 @@
         originScene:     (typeof Knack !== 'undefined' && Knack.router &&
                           Knack.router.current_scene_key) || ''
       };
+      if (survey) {
+        payload.surveyRequestId = requestId;
+        payload.surveyRequest   = identifierOf(requestId);   // "60524852230-SR1145"; '' when no loaded view names it
+        payload.bidIds          = st.bidIds.slice();
+        payload.laborBid        = payload.serviceCost;        // field_2233 — the sub's labor price per item
+        payload.surveyNotes     = payload.notes;              // field_2432
+      }
       // DTO-shaped mirror (see DTO_PRODUCT_FIELD above). Keys the bucket
       // doesn't use are sent as EMPTY arrays so the scenario's merges and
       // `[].id` reads behave exactly as they did on a DTO record.
       var dto = {};
       for (var d = 0; d < DTO_ARRAY_KEYS.length; d++) dto[DTO_ARRAY_KEYS[d] + '_raw'] = [];
       dto.field_2223_raw = [{ id: b.id, identifier: b.name }];
-      dto.field_2182_raw = conn(st.sowIds, sowLabels);
+      dto.field_2182_raw = conn(st.sowIds, sowLabels);   // [] in survey mode — the survey form has no SOW field
+      if (survey) {
+        var reqLabel = payload.surveyRequest || requestId;
+        dto.field_2426_raw = [{ id: requestId, identifier: reqLabel }];
+        dto.field_2426     = reqLabel;   // 05.01's "is connected to a Survey" gate reads the formatted value
+        dto.field_2427_raw = conn(st.bidIds, bidLabels);
+      }
       if (mdfField) dto[DTO_MDF_FIELD[mdfField.mode] + '_raw'] = conn(st.mdfIds, mdfLabels);
       if (DTO_PRODUCT_FIELD[b.id]) dto[DTO_PRODUCT_FIELD[b.id] + '_raw'] = conn(st.productIds, st.productLabels);
       dto.field_2206_raw = conn(st.accessoryIds, st.accessoryLabels);
       if (prefixId) dto.field_2241_raw = [{ id: prefixId, identifier: prefixLabelFor(prefixId) }];
+      dto.field_2185_raw = payload.prefix;                  dto.field_2185 = payload.prefix;   // legacy text twin of the pre-fix
+      if (UNIFIED_PRODUCT_BUCKETS.indexOf(b.id) !== -1) dto.field_2246_raw = conn(st.productIds, st.productLabels);
       if (payload.projectId) dto.field_2181_raw = [{ id: payload.projectId, identifier: '' }];
       dto.field_2183_raw = numOrNull(payload.qty);          dto.field_2183 = String(payload.qty);
       dto.field_2184_raw = numOrNull(payload.startNumber);  dto.field_2184 = String(payload.startNumber);
@@ -1037,7 +1310,8 @@
       dto.field_2739_raw = payload.exterior;                dto.field_2739 = yesNo(payload.exterior);
       dto.field_2740_raw = payload.plenum;                  dto.field_2740 = yesNo(payload.plenum);
       dto.field_2210_raw = payload.description;             dto.field_2210 = payload.description;
-      dto.field_2466_raw = payload.notes;                   dto.field_2466 = payload.notes;
+      if (survey) { dto.field_2432_raw = payload.notes;     dto.field_2432 = payload.notes; }   // survey notes
+      else        { dto.field_2466_raw = payload.notes;     dto.field_2466 = payload.notes; }   // camera / reader notes
       for (var dk in dto) if (Object.prototype.hasOwnProperty.call(dto, dk)) payload[dk] = dto[dk];
       log('submit', payload);
 
@@ -1057,10 +1331,13 @@
             CONFIG.REFETCH_DELAYS_MS.forEach(function (ms) {
               setTimeout(function () {
                 if (wv2.data && typeof wv2.data.refetchAndNotify === 'function') wv2.data.refetchAndNotify(viewKey);
-                if (typeof opts.onAdded === 'function') { try { opts.onAdded(); } catch (e) { /* host refresh is best-effort */ } }
+                if (typeof callerOpts.onAdded === 'function') { try { callerOpts.onAdded(); } catch (e) { /* host refresh is best-effort */ } }
               }, ms);
             });
-            if (typeof wv2.toast === 'function') wv2.toast('Adding to SOW… the worksheet refreshes when Make has created the items.');
+            if (typeof wv2.toast === 'function') {
+              wv2.toast(survey ? 'Adding to the survey… the worksheet refreshes when Make has created the items.'
+                               : 'Adding to SOW… the worksheet refreshes when Make has created the items.');
+            }
           } else {
             modal.classList.remove('is-busy');
             showErr((r.data && r.data.error) ? ('Failed: ' + r.data.error) : 'Add failed — try again.');
@@ -1078,6 +1355,8 @@
     return { close: close };
   }
 
-  wv2.sowAddForm = { open: open, isAllowed: isAllowed, bucketsFor: bucketsFor, sowCandidates: sowCandidates, modalOpts: modalOpts, CONFIG: CONFIG, BUCKETS: BUCKETS, BUCKET_KEYS: BUCKET_KEYS };
+  wv2.sowAddForm = { open: open, isAllowed: isAllowed, buttonTitle: buttonTitle, bucketsFor: bucketsFor,
+                     sowCandidates: sowCandidates, bidCandidates: bidCandidates, modalOpts: modalOpts, webhookUrl: webhookUrl,
+                     CONFIG: CONFIG, BUCKETS: BUCKETS, SURVEY_BUCKETS: SURVEY_BUCKETS, BUCKET_KEYS: BUCKET_KEYS };
 })();
 /*** END: SOW add-item modal **********************************************/

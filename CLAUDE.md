@@ -532,6 +532,26 @@ view_3325; sales = SOW page, four "allow sales to add" buckets, no picker) or th
 `dto-form-submit-intercept.js` now covers only the survey add forms — likely carrying the
 same connection bug; verify before relying on them.
 
+**Survey mode (2026-10-09 — INERT until the webhook URL is filled)**: the sub survey / bid worksheet
+(view_3505, scene_1140) runs the SAME modal with `sowAddModal: { mode: 'survey', bidViews:
+['view_3507'], requireWebhook: true }`. `SURVEY_BUCKETS` in `sow-add-item-form.js` mirrors view_3627's
+per-bucket rules (`bucket-field-visibility_add-survey-bid-item.js` — change both together): bid(s) row
+on every bucket (active filter pills pre-checked, optional), labor bid `field_2233` + survey notes
+`field_2432` on every bucket but License, accessories only on Materials, License = product + qty, MDF
+single (camera) / multi (networking) / optional (others) / none (License), custom-assumption detail
+conditional. Target = the page's survey request (last 24-hex route segment); payload = readable keys +
+the survey DTO mirror (`field_2426`/`_raw` request, `field_2427_raw` bids, `field_2432`, `field_2233`,
+`field_2185` pre-fix text, `field_2246_raw` unified product, `field_2181_raw` project when a view loads
+`field_2346`, `field_2182_raw: []`). Make side: 05.01 "SURVEY ITEM | Create from DTO (DUPE USING CUSTOM
+MODAL)" — the DTO scenario with the webhook as module 2 so every `2.field_*` read resolves against the
+payload unchanged; config/variables sets from `var.organization.knack_config_set` /
+`knack_variable_set`; module 157 keeps the request's own project / SOWs when the payload has none.
+`MAKE_SURVEY_ADD_ITEMS_WEBHOOK` is a PLACEHOLDER: `isAllowed(viewKey)` is false for `requireWebhook`
+views until it is filled, so the toolbar keeps the native "Add Survey/Bid Item" link. Behaviors the
+modal inherits from 05.01 (pre-existing, not changed): License qty is ignored (one line per license
+product), exterior/plenum come from the PRODUCT not the toggles, Materials accessories (`field_2206`)
+create SOW Line Items (object_105), not survey items. Test: `tests/worksheet-v2/test-survey-add-item-form.js`.
+
 ## Alternative SOWs: Share vs Consolidate (view_3869) — `src/features/import-unique-items-btn.js`
 
 On the SOW page, view_3869 lists the project's OTHER SOWs. Per row: "Add (N) unique items"

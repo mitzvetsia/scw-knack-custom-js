@@ -18,6 +18,9 @@
   const ASSUMPTION_DESC_FIELD = 'field_2210';
 
   // Readable mapping
+  // ⚠ worksheet-v2/sow-add-item-form.js SURVEY_BUCKETS is the custom-modal
+  //   copy of these rules (the survey page's "+ Add Survey/Bid Item" opens
+  //   the modal once its webhook is configured) — change both together.
   const BUCKET_RULES_HUMAN = {
     //cameras or readers
     '6481e5ba38f283002898113c': [
