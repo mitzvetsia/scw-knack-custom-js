@@ -89,8 +89,8 @@ check('Submit → one POST through the form view with the parent crumbs; Knack\'
 check('the POST body is the collected field set PLUS the parent crumbs (Knack reads the page record from the body)',
   [Object.keys(posts[0].body), posts[0].body['project-dashboard_id'], posts[0].body['build-sow_id']],
   [['field_2223', 'field_2182', 'field_2250', 'field_2248', 'field_2246', 'field_2184', 'field_2199', 'project-dashboard_id', 'build-sow_id'], 'P1', 'S1']);
-check('only the survey add forms stay intercepted — the SOW Add to Scope forms are retired for the custom modal',
-  SCW.dtoSubmitIntercept.CONFIG.VIEWS, ['view_3544', 'view_3619', 'view_3627']);
+check('only the ops survey add forms stay intercepted — the SOW Add to Scope forms (2026-10-08) and the sub survey form view_3627 (2026-10-09) are retired for the custom modal',
+  SCW.dtoSubmitIntercept.CONFIG.VIEWS, ['view_3544', 'view_3619']);
 check('listeners for the form\'s submit / record-create still fire', triggered.filter(t => /view_3329/.test(t)), ['knack-form-submit.view_3329', 'knack-record-create.view_3329']);
 
 // Inline form: POSTs, resets in place, hash untouched.
