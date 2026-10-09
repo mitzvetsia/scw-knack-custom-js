@@ -511,6 +511,28 @@
   // Fields that stay editable even on a locked (existing) sales row.
   var LOCK_WHITELIST = { field_1949: 1, field_2261: 1, field_1953: 1 };
 
+  /** Change-order lock (2026-10-09): on a view whose config says
+   *  coItemsReadOnly (the ops project worksheet view_3962), a line item on a
+   *  change-order SOW is VIEW-ONLY — COs are drafted, priced, locked and
+   *  signed on their own scene (view_4079 + co-ops-lock), so an edit here
+   *  would change a document the sub priced or the client signed. The CO is
+   *  recognised by the SOW identifier's CO suffix or the SOW grid's Type. */
+  function isCoLocked(rec, viewKey) {
+    var vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function') ? ns.cfg.viewCfg(viewKey) : null;
+    if (!vc || !vc.coItemsReadOnly) return false;
+    if (!ns.sowContext || typeof ns.sowContext.isChangeOrderRef !== 'function') return false;
+    var f = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+    var raw = rec && rec[(f.sow || 'field_2154') + '_raw'];
+    if (!Array.isArray(raw)) return false;
+    for (var i = 0; i < raw.length; i++) {
+      if (ns.sowContext.isChangeOrderRef(raw[i], viewKey)) return true;
+    }
+    return false;
+  }
+  var CO_LOCKED_MSG = 'This item is on a change order, so it is view-only here. ' +
+    'Change-order items are edited, priced and signed on the change order\'s own page.';
+  var CO_LOCK_HOVER_MSG = 'View only — this item belongs to a change order; edit it on the change order page.';
+
   /** Post-build pass: neutralize every editable control in a locked card
    *  except the whitelisted three. Read-only inputs (keep readable, white
    *  bg, no pointer/keyboard), non-interactive chips / connection pickers /
@@ -522,13 +544,15 @@
    *  finalized-row lock passes no opts and keeps the full lock. */
   function lockCardFields(card, opts) {
     var i, el, f;
+    // opts.lockAll (change-order lock): no whitelist — nothing stays editable.
+    var keep = (opts && opts.lockAll) ? {} : LOCK_WHITELIST;
     var inputs = card.querySelectorAll(
       'input[data-scw-ws-v2-field], textarea[data-scw-ws-v2-field]'
     );
     for (i = 0; i < inputs.length; i++) {
       el = inputs[i];
       f = el.getAttribute('data-scw-ws-v2-field');
-      if (LOCK_WHITELIST[f]) continue;
+      if (keep[f]) continue;
       el.readOnly = true;
       el.tabIndex = -1;
       el.style.pointerEvents = 'none';
@@ -541,7 +565,7 @@
     for (i = 0; i < conns.length; i++) {
       el = conns[i];
       f = el.getAttribute('data-scw-ws-v2-conn');
-      if (LOCK_WHITELIST[f]) continue;
+      if (keep[f]) continue;
       el.style.pointerEvents = 'none';
       el.classList.add('scw-ws-v2-locked-ctl');
       setLockTooltip(el);
@@ -560,6 +584,10 @@
     var ctlSel = '[data-scw-ws-v2-chip], .scw-ws-v2-mh-del, ' +
       '.scw-ws-v2-mh-unlink, .scw-ws-v2-mh-step';
     if (!(opts && opts.keepAccessoryAdd)) ctlSel += ', .scw-ws-v2-mh-add';
+    if (opts && opts.lockAll) {
+      ctlSel += ', [data-scw-ws-v2-radiochip], [data-scw-ws-v2-option], [data-scw-ws-v2-bool], ' +
+        'select, .scw-ws-v2-photos-add, [data-scw-ws-v2-photo-add], .scw-ws-v2-co-flag-btn';
+    }
     var ctls = card.querySelectorAll(ctlSel);
     for (i = 0; i < ctls.length; i++) {
       ctls[i].style.pointerEvents = 'none';
@@ -575,8 +603,8 @@
       el.innerHTML = LOCK_SVG_SM;
       el.className = 'scw-ws-v2-cell scw-ws-v2-trash scw-ws-v2-lock-cell';
       el.setAttribute('aria-hidden', 'false');
-      el.setAttribute('aria-label', 'Locked — submitted for survey');
-      el.title = LOCKED_MSG;
+      el.setAttribute('aria-label', 'Locked');
+      el.title = _lockCopy.msg;
       el.style.display = '';
       el.style.pointerEvents = '';
     }
@@ -2865,7 +2893,19 @@
     }
     // Sales lock: existing survey-derived items (field_2586 >= 1) are
     // read-only except Product / Custom Disc % / SCW Notes (v1 parity).
-    if (isCrLocked(rec, sourceViewKey)) {
+    if (isCoLocked(rec, sourceViewKey)) {
+      // Change-order item on the ops project worksheet: fully view-only.
+      card.classList.add('scw-ws-v2-card--locked', 'scw-ws-v2-card--co-locked');
+      _lockCopy = { msg: CO_LOCKED_MSG, hover: CO_LOCK_HOVER_MSG };
+      lockCardFields(card, { lockAll: true });
+      addLockedNote(card);
+      var _coCell = card.querySelector('.scw-ws-v2-row .scw-ws-v2-cell--label');
+      if (_coCell) {
+        _coCell.insertAdjacentHTML('afterbegin',
+          '<span class="scw-ws-v2-co-flag scw-ws-v2-co-flag--viewonly" title="' + escapeHtml(CO_LOCK_HOVER_MSG) + '">' +
+          LOCK_SVG_SM + ' CHANGE ORDER · VIEW ONLY</span>');
+      }
+    } else if (isCrLocked(rec, sourceViewKey)) {
       card.classList.add('scw-ws-v2-card--locked');
       // Reason-aware copy: sales survey-assoc keeps Product/Disc/SCW Notes
       // editable; survey finalized is a full lock.
@@ -2888,7 +2928,10 @@
     // into the CO worksheet's bulk bar, serving the wrong options.
     var vcRO = ns.cfg && typeof ns.cfg.viewCfg === 'function'
       ? ns.cfg.viewCfg(sourceViewKey) : null;
-    var rowEl = (vcRO && vcRO.readOnly) ? null : card.querySelector('.scw-ws-v2-row');
+    // No bulk-select box on a change-order (view-only) card either — bulk
+    // edit / delete must not reach it.
+    var rowEl = ((vcRO && vcRO.readOnly) || card.classList.contains('scw-ws-v2-card--co-locked'))
+      ? null : card.querySelector('.scw-ws-v2-row');
     if (rowEl) {
       var sel = document.createElement('input');
       sel.type = 'checkbox';
@@ -2937,6 +2980,7 @@
 
   ns.card = {
     buildCard:           buildCard,
+    isCoLocked:          isCoLocked,
     bucketIdOf:          bucketIdOf,
     CAM_READER_BUCKET:   CAM_READER_BUCKET,
     SERVICES_BUCKET:     SERVICES_BUCKET,

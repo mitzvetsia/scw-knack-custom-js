@@ -110,7 +110,8 @@
       fieldKey:  sowK,
       label:     'SOW',
       nameViews: ['view_3325', 'view_3918'],
-      nameField: 'field_2126'
+      nameField: 'field_2126',
+      typeField: 'field_2952'   // SOW Type ("change order") when the grid loads it
     };
   }
 
@@ -119,7 +120,7 @@
   // friendly name — so we look it up here for the pill hover tooltip. When
   // the spec has no nameViews (e.g. the Bid filter), returns an empty map
   // and the pill just shows its identifier.
-  function nameById(spec) {
+  function nameById(spec, typeMap) {
     var map = Object.create(null);
     if (!spec || !spec.nameViews || !spec.nameField) return map;
     for (var vi = 0; vi < spec.nameViews.length; vi++) {
@@ -130,6 +131,10 @@
         if (!a || !a.id || map[a.id]) continue;
         var name = stripHtml(a[spec.nameField]);
         if (name) map[a.id] = name;
+        if (typeMap && spec.typeField) {
+          var t = a[spec.typeField + '_raw'] != null ? a[spec.typeField + '_raw'] : a[spec.typeField];
+          if (t != null && t !== '') typeMap[a.id] = stripHtml(t);
+        }
       }
     }
     return map;
@@ -141,7 +146,8 @@
     var models = v.model.data.models || [];
     var spec = filterSpec(viewKey);
     var SOWK = spec.fieldKey + '_raw';
-    var nameMap = nameById(spec);
+    var typeMap = Object.create(null);
+    var nameMap = nameById(spec, typeMap);
     var seen = Object.create(null);
     var list = [];
     for (var i = 0; i < models.length; i++) {
@@ -160,7 +166,8 @@
           id: s.id,
           label: stripHtml(s.identifier) || nameMap[s.id] ||
                  (ns.sowNameById && ns.sowNameById(s.id)) || s.id,
-          name: nameMap[s.id] || ''
+          name: nameMap[s.id] || '',
+          isCo: /change\s*order/i.test(typeMap[s.id] || '')
         });
       }
     }

@@ -84,7 +84,7 @@ check('2+ SOWs and nothing stored: the panel waits behind the chooser (bar first
 const opts = [...P.querySelectorAll('[data-scw-ws-v2-sowctx-choose]')];
 check('chooser lists every scope with token, badge, name and line-item count (shared item counts on both), plus the explicit "all" option',
   opts.map(o => txt(o)),
-  ['SW1334 Original Fellowship Hall P2P 3 line items', 'SW1589 Alternate Alternate Sign Option 2 line items', 'SW1781CO Change order Switch swap 1 line item', 'Show all 3 scopes together (mixed counts)']);
+  ['SW1334 Original Fellowship Hall P2P 3 line items', 'SW1589 Alternate Alternate Sign Option 2 line items', 'SW1781CO Change order Switch swap 1 line item · view only here', 'Show all 3 scopes together (mixed counts)']);
 check('unchosen: the filter leaves every record visible (nothing stored) and describe() says the scopes are mixed',
   [ns.sowFilter.filterRecords('view_3962', project).length, ns.sowContext.describe('view_3962')], [6, 'across 3 scopes, mixed']);
 

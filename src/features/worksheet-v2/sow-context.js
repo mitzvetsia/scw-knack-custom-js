@@ -69,11 +69,40 @@
   }
 
   // ── SOW identity ─────────────────────────────────────────────────────
-  /** "SW-1589" / "60486704913-SW1589CO" / "SW1589 - Alternate …" → number + CO flag. */
+  /** "SW-1589" / "60486704913-SW1589CO" / "SW1589 - Alternate …" → number + CO
+   *  flag. The SOW connection identifier is usually the BARE number ("1628",
+   *  "1926CO" — what the pills and card chips show), so a label or name that
+   *  starts with a bare number parses too. */
+  var SW_RE   = /\bSW-?(\d+)\s*(CO)?\b/i;
+  var BARE_RE = /^\s*(\d{2,6})\s*(CO)?(?:\s*$|\s*[-–—:·(])/i;
   function parseSow(label, name) {
-    var m = String(label || '').match(/\bSW-?(\d+)\s*(CO)?\b/i) ||
-            String(name  || '').match(/\bSW-?(\d+)\s*(CO)?\b/i);
+    var m = String(label || '').match(SW_RE) || String(name || '').match(SW_RE) ||
+            String(label || '').match(BARE_RE) || String(name || '').match(BARE_RE);
     return { num: m ? parseInt(m[1], 10) : NaN, isCo: !!(m && m[2]) };
+  }
+  /** Is this SOW connection ref ({id, identifier}) a change order? The
+   *  identifier's CO suffix, or the SOW grid's Type (field_2952) when the
+   *  pill list carries it. */
+  function isChangeOrderRef(ref, viewKey) {
+    if (!ref) return false;
+    if (parseSow(ref.identifier, '').isCo) return true;
+    var set = coIdSet(viewKey);
+    return !!(ref.id && set[ref.id]);
+  }
+  var _coCache = { key: '', at: 0, set: null };
+  function coIdSet(viewKey) {
+    var now = Date.now();
+    if (_coCache.set && _coCache.key === viewKey && now - _coCache.at < 1000) return _coCache.set;
+    var set = Object.create(null);
+    try {
+      var sf = ns.sowFilter;
+      var list = (sf && typeof sf.collectSowList === 'function') ? sf.collectSowList(viewKey) : [];
+      for (var i = 0; i < list.length; i++) {
+        if (list[i] && (list[i].isCo || parseSow(list[i].label, list[i].name).isCo)) set[list[i].id] = true;
+      }
+    } catch (e) { /* no grid */ }
+    _coCache = { key: viewKey, at: now, set: set };
+    return set;
   }
   function isCoType(typeText) { return /change\s*order/i.test(stripHtml(typeText)); }
   /** Stamp kind ('original' | 'alternate' | 'co' | 'other') on each SOW. */
@@ -98,15 +127,26 @@
     var t = KIND_LABEL[kind];
     return t ? '<span class="' + BAR_CLS + '-badge ' + BAR_CLS + '-badge--' + kind + '">' + t + '</span>' : '';
   }
-  /** Short token for prose: "SW1589". */
+  /** Short token for prose: the bare identifier as the app shows it ("1628",
+   *  "1926CO"), else "SW1589" when the label carries more (a deal-prefixed id). */
   function token(s) {
-    return isNaN(s.num) ? (s.label || s.name || '') : ('SW' + s.num + (s.kind === 'co' ? 'CO' : ''));
+    var label = stripHtml(s.label || '');
+    if (/^\s*\d+\s*(CO)?\s*$/i.test(label)) return label.replace(/\s+/g, '');
+    if (!isNaN(s.num)) return 'SW' + s.num + (s.kind === 'co' ? 'CO' : '');
+    return label || stripHtml(s.name || '');
   }
-  /** Name without a leading SW token (field_2126 often starts with it). */
+  /** Name without a leading SW / bare-number token (field_2126 often starts with it). */
   function cleanName(s) {
     var n = stripHtml(s.name || '');
-    n = n.replace(/^\s*SW-?\d+\s*(CO)?\s*[-–—:·]?\s*/i, '').trim();
+    n = n.replace(/^\s*(SW-?)?\d+\s*(CO)?\s*[-–—:·]?\s*/i, '').trim();
+    if (/^\d+\s*(CO)?$/i.test(n)) n = '';
     return n;
+  }
+  function viewLocksCo(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' ? ns.cfg.viewCfg(viewKey) : null;
+      return !!(vc && vc.coItemsReadOnly);
+    } catch (e) { return false; }
   }
 
   // ── Project page: the SOW filter's selection is the context ─────────
@@ -171,6 +211,7 @@
     for (var r = 0; r < real.length; r++) if (byId[real[r]]) activeSows.push(byId[real[r]]);
     var mode;
     if (activeSows.length === 1 && !blank) mode = 'single';
+    else if (blank && !activeSows.length)  mode = 'blank';    // only the no-SOW items
     else if (activeSows.length || blank)   mode = 'multi';
     else if (all || sows.length < 2)       mode = 'all';
     else                                   mode = cfg && cfg.requireChoice ? 'unchosen' : 'all';
@@ -234,6 +275,7 @@
       var s = inf.active[0];
       return 'on ' + token(s) + (KIND_LABEL[s.kind] ? ' (' + KIND_LABEL[s.kind].toLowerCase() + ')' : '');
     }
+    if (inf.mode === 'blank') return 'with no SOW designated';
     if (inf.mode === 'multi') {
       var toks = inf.active.map(token);
       if (inf.blankActive) toks.push('no SOW');
@@ -247,21 +289,29 @@
     var c = (window.SCW && SCW.sowColor && typeof SCW.sowColor.dot === 'function') ? SCW.sowColor.dot(idx) : '#64748b';
     return '<span class="' + BAR_CLS + '-dot" style="background:' + c + '"></span>';
   }
-  function tabHtml(s, on) {
-    return '<button type="button" class="' + BAR_CLS + '-tab' + (on ? ' is-on' : '') + '" ' +
+  var LOCK_SVG = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+    '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+  var CO_VIEW_ONLY = 'view-only here — change-order items are edited on the change order\'s own page';
+  function tabHtml(s, on, locksCo) {
+    var viewOnly = locksCo && s.kind === 'co';
+    return '<button type="button" class="' + BAR_CLS + '-tab' + (on ? ' is-on' : '') + (viewOnly ? ' ' + BAR_CLS + '-tab--viewonly' : '') + '" ' +
       'data-scw-ws-v2-sowctx-tab="' + esc(s.id) + '" aria-pressed="' + (on ? 'true' : 'false') + '" ' +
       'title="' + esc(token(s) + (cleanName(s) ? ' — ' + cleanName(s) : '') + (KIND_LABEL[s.kind] ? ' · ' + KIND_LABEL[s.kind] : '') +
+                     (viewOnly ? ' · ' + CO_VIEW_ONLY : '') +
                      ' · click: only this scope · shift-click: add to the view') + '">' +
       dot(s.idx) + '<span class="' + BAR_CLS + '-tab-tok">' + esc(token(s)) + '</span>' +
       (s.kind === 'alternate' || s.kind === 'co' ? '<span class="' + BAR_CLS + '-tab-kind">' + esc(KIND_LABEL[s.kind]) + '</span>' : '') +
+      (viewOnly ? '<span class="' + BAR_CLS + '-lock" aria-label="View only">' + LOCK_SVG + '</span>' : '') +
       '<span class="' + BAR_CLS + '-tab-n">' + s.count + '</span>' +
     '</button>';
   }
-  function tabsHtml(inf) {
+  function tabsHtml(inf, viewKey) {
     var h = '<span class="' + BAR_CLS + '-tabs-label">Scope</span>';
     var activeIds = Object.create(null);
+    var locksCo = viewLocksCo(viewKey);
     for (var a = 0; a < inf.active.length; a++) activeIds[inf.active[a].id] = true;
-    for (var i = 0; i < inf.sows.length; i++) h += tabHtml(inf.sows[i], inf.mode !== 'all' && !!activeIds[inf.sows[i].id]);
+    for (var i = 0; i < inf.sows.length; i++) h += tabHtml(inf.sows[i], inf.mode !== 'all' && !!activeIds[inf.sows[i].id], locksCo);
     if (inf.blankCount) {
       h += '<button type="button" class="' + BAR_CLS + '-tab ' + BAR_CLS + '-tab--blank' + (inf.blankActive ? ' is-on' : '') + '" ' +
         'data-scw-ws-v2-sowctx-tab="' + BLANK + '" aria-pressed="' + (inf.blankActive ? 'true' : 'false') + '" ' +
@@ -306,12 +356,21 @@
     if (inf.mode === 'single') {
       var s = inf.active[0];
       var shared = sharedCount(viewKey, s.id);
-      h += '<span class="' + BAR_CLS + '-eyebrow">Working on</span>' +
-        '<span class="' + BAR_CLS + '-title">' + titleHtml(s) + '</span>' +
+      var coView = s.kind === 'co' && viewLocksCo(viewKey);
+      h += '<span class="' + BAR_CLS + '-eyebrow">' + (coView ? 'Viewing' : 'Working on') + '</span>' +
+        '<span class="' + BAR_CLS + '-title">' + titleHtml(s) +
+          (coView ? '<span class="' + BAR_CLS + '-badge ' + BAR_CLS + '-badge--viewonly">' + LOCK_SVG + ' View only</span>' : '') + '</span>' +
         '<span class="' + BAR_CLS + '-meta">' + s.count + ' line ' + plural(s.count, 'item') +
           (shared ? ' · ' + shared + ' also on another scope' : '') +
           (inf.sows.length > 1 ? ' · ' + (inf.sows.length - 1) + ' other ' + plural(inf.sows.length - 1, 'scope') + ' hidden' : '') +
+          (coView ? ' · ' + esc(CO_VIEW_ONLY) : '') +
         '</span>';
+    } else if (inf.mode === 'blank') {
+      h += '<span class="' + BAR_CLS + '-eyebrow">Showing</span>' +
+        '<span class="' + BAR_CLS + '-title"><span class="' + BAR_CLS + '-tok">No SOW designated</span>' +
+          '<span class="' + BAR_CLS + '-badge ' + BAR_CLS + '-badge--blank">Unassigned</span></span>' +
+        '<span class="' + BAR_CLS + '-meta">' + inf.blankCount + ' line ' + plural(inf.blankCount, 'item') +
+          ' on no scope of work — not on any proposal until a SOW is set · click a scope tab to work on one</span>';
     } else if (inf.mode === 'multi') {
       var parts = inf.active.map(function (x) { return token(x) + ' (' + x.count + ')'; });
       if (inf.blankActive) parts.push('no SOW (' + inf.blankCount + ')');
@@ -332,11 +391,12 @@
         '<span class="' + BAR_CLS + '-meta">' + esc(all.join(' · ')) +
           ' · counts and totals combine every scope · click a scope tab to work on one</span>';
     }
-    if (inf.sows.length > 1 || inf.blankCount) h += tabsHtml(inf);
+    if (inf.sows.length > 1 || inf.blankCount) h += tabsHtml(inf, viewKey);
     return h;
   }
 
-  function chooserHtml(inf) {
+  function chooserHtml(inf, viewKey) {
+    var locksCo = viewLocksCo(viewKey);
     var h = '<div class="' + BAR_CLS + '-chooser" role="group" aria-label="Choose the scope of work">' +
       '<div class="' + BAR_CLS + '-chooser-q">Which scope of work are you working on?</div>' +
       '<div class="' + BAR_CLS + '-chooser-sub">This project has ' + inf.sows.length + ' scopes and this page holds all of their line items. ' +
@@ -348,7 +408,8 @@
       h += '<button type="button" class="' + BAR_CLS + '-opt" data-scw-ws-v2-sowctx-choose="' + esc(s.id) + '">' +
         '<span class="' + BAR_CLS + '-opt-head">' + dot(s.idx) + '<span class="' + BAR_CLS + '-tok">' + esc(token(s)) + '</span>' + badge(s.kind) + '</span>' +
         (nm ? '<span class="' + BAR_CLS + '-opt-name">' + esc(nm) + '</span>' : '') +
-        '<span class="' + BAR_CLS + '-opt-n">' + s.count + ' line ' + plural(s.count, 'item') + '</span>' +
+        '<span class="' + BAR_CLS + '-opt-n">' + s.count + ' line ' + plural(s.count, 'item') +
+          (locksCo && s.kind === 'co' ? ' · view only here' : '') + '</span>' +
       '</button>';
     }
     h += '</div>' +
@@ -383,12 +444,13 @@
     container.classList.add('scw-ws-v2--sowctx');
     container.classList.toggle('scw-ws-v2--sow-unchosen', inf.mode === 'unchosen');
     container.classList.toggle('scw-ws-v2--sow-mixed', inf.mode === 'all' || inf.mode === 'multi');
+    container.classList.toggle('scw-ws-v2--sow-blank', inf.mode === 'blank');
     bar.className = BAR_CLS + ' ' + BAR_CLS + '--' + inf.mode + ' ' + BAR_CLS + '--' + inf.page;
     bar.setAttribute('data-scw-ws-v2-sowctx-view', viewKey);
     bar.setAttribute('data-scw-ws-v2-sowctx-mode', inf.mode);
     bar.style.setProperty('--scw-sowctx-top', stickyTop() + 'px');
     var html = '<div class="' + BAR_CLS + '-row">' + barHtml(inf, viewKey) + '</div>';
-    if (inf.mode === 'unchosen') html += chooserHtml(inf);
+    if (inf.mode === 'unchosen') html += chooserHtml(inf, viewKey);
     if (bar.innerHTML !== html) bar.innerHTML = html;
     bind();
   }
@@ -445,12 +507,13 @@
   try { bindSources(); } catch (e) { /* config not ready */ }
 
   ns.sowContext = {
-    mount:     mount,
-    info:      info,
-    describe:  describe,
-    classify:  classify,
-    parseSow:  parseSow,
-    ALL:       ALL
+    mount:            mount,
+    info:             info,
+    describe:         describe,
+    classify:         classify,
+    parseSow:         parseSow,
+    isChangeOrderRef: isChangeOrderRef,
+    ALL:              ALL
   };
 })();
 /*** END WORKSHEET V2 — SOW CONTEXT *******************************************/

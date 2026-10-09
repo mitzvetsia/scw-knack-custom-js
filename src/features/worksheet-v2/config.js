@@ -117,6 +117,12 @@
         // project with 2+ SOWs gates the body behind a chooser until one is
         // picked (RCA 2026-10-06: mixed-SOW counts, invisible alternate).
         sowContext:       { requireChoice: true },
+        // Change-order line items are VIEW-ONLY here (card.js isCoLocked):
+        // a CO is drafted / priced / signed on its own scene (view_4079,
+        // co-ops-lock), and an edit from the project worksheet would change
+        // a document the sub priced or the client signed. The SOW context
+        // bar marks those scopes "view only".
+        coItemsReadOnly:  true,
         // Service lines may be attached to a parent line item (field_2464)
         // — same opt-in as the CO worksheet (see the view_4079 entry).
         serviceParent:    true,

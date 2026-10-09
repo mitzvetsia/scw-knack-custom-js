@@ -3670,6 +3670,7 @@
     '}',
     '.scw-ws-v2-sowctx--all, .scw-ws-v2-sowctx--multi { background: #fffbeb !important; border-bottom-color: #d97706 !important; }',
     '.scw-ws-v2-sowctx--unchosen { position: static !important; border-bottom-color: #e2e8f0 !important; }',
+    '.scw-ws-v2-sowctx--blank { border-bottom-color: #94a3b8 !important; }',
     '.scw-ws-v2-sowctx-row { display: flex !important; flex-wrap: wrap !important; align-items: center !important; gap: 6px 12px !important; padding: 10px 14px !important; }',
     '.scw-ws-v2-sowctx-eyebrow { font: 700 10px/1 system-ui, sans-serif !important; letter-spacing: .12em !important; text-transform: uppercase !important; color: #64748b !important; }',
     '.scw-ws-v2-sowctx-title { display: inline-flex !important; align-items: center !important; gap: 8px !important; min-width: 0 !important; }',
@@ -3687,6 +3688,10 @@
     '.scw-ws-v2-sowctx-badge--alternate { background: #fef3c7 !important; color: #92400e !important; }',
     '.scw-ws-v2-sowctx-badge--co        { background: #ffe4e6 !important; color: #9f1239 !important; }',
     '.scw-ws-v2-sowctx-badge--mixed     { background: #d97706 !important; color: #fff !important; }',
+    '.scw-ws-v2-sowctx-badge--blank     { background: #e2e8f0 !important; color: #475569 !important; }',
+    '.scw-ws-v2-sowctx-badge--viewonly  { background: #f1f5f9 !important; color: #475569 !important; border: 1px solid #cbd5e1 !important; gap: 4px !important; }',
+    '.scw-ws-v2-sowctx-lock { display: inline-flex !important; align-items: center !important; color: #64748b !important; }',
+    '.scw-ws-v2-sowctx-tab.is-on .scw-ws-v2-sowctx-lock { color: rgba(255, 255, 255, .85) !important; }',
     '.scw-ws-v2-sowctx-meta { font: 500 12px/1.3 system-ui, sans-serif !important; color: #475569 !important; }',
     '.scw-ws-v2-sowctx--all .scw-ws-v2-sowctx-meta, .scw-ws-v2-sowctx--multi .scw-ws-v2-sowctx-meta { color: #92400e !important; }',
     '.scw-ws-v2-sowctx-tabs { display: inline-flex !important; flex-wrap: wrap !important; align-items: center !important; gap: 6px !important; margin-left: auto !important; }',
@@ -3728,6 +3733,13 @@
     '}',
     /* The scope strip's meta names the scope it is counting. */
     '.scw-ws-v2-scope-ctx { color: #163c6e !important; }',
+    /* Change-order item on the ops project worksheet: view-only card. */
+    '.scw-ws-v2-card--co-locked { box-shadow: inset 3px 0 0 #fda4af !important; }',
+    '.scw-ws-v2-co-flag--viewonly {',
+    '  display: inline-flex !important; align-items: center !important; gap: 4px !important;',
+    '  background: #fff1f2 !important; color: #9f1239 !important; border: 1px solid #fecdd3 !important;',
+    '}',
+    '.scw-ws-v2-card--co-locked select { pointer-events: none !important; appearance: none !important; background: transparent !important; border-color: transparent !important; box-shadow: none !important; color: #1f2937 !important; }',
 
     /* ── SCOPE STRIP (summary.js buildScopeStrip) ─────────────────
        The grand slot: one tile per family filling the width, cameras
@@ -3773,20 +3785,22 @@
     '.scw-ws-v2-scope-n { font: 800 24px/1 system-ui, sans-serif !important; font-variant-numeric: tabular-nums !important; }',
     '.scw-ws-v2-scope-bars { display: flex !important; flex-direction: column !important; gap: 5px !important; }',
     '.scw-ws-v2-scope-bar {',
-    '  display: flex !important; height: 20px !important; border-radius: 4px !important;',
+    '  display: flex !important; flex-wrap: nowrap !important; height: 20px !important; border-radius: 4px !important;',
     '  overflow: hidden !important; background: #e2e8f0 !important;',
     '  font: 700 11px/1 system-ui, sans-serif !important; font-variant-numeric: tabular-nums !important;',
     '}',
+    /* Labels live inside the segments and are never cut: each segment is at
+       least as wide as its own label (min-width: max-content); the fill's
+       width is the share of the pair and SHRINKS first when the two labels
+       need the room (flex-shrink on the fill, none on the rest). */
     '.scw-ws-v2-scope-bar-a, .scw-ws-v2-scope-bar-b {',
     '  display: flex !important; align-items: center !important; padding: 0 8px !important;',
-    '  white-space: nowrap !important; overflow: hidden !important; min-width: 0 !important;',
+    '  white-space: nowrap !important; min-width: max-content !important; box-sizing: border-box !important;',
     '}',
-    /* The fill is the share of the pair, but never narrower than its own
-       label (a 1-of-24 segment still reads "1 new drop"). */
-    '.scw-ws-v2-scope-bar-a { background: #163c6e !important; color: #fff !important; flex: 0 0 auto !important; min-width: max-content !important; }',
+    '.scw-ws-v2-scope-bar-a { background: #163c6e !important; color: #fff !important; flex: 0 1 auto !important; }',
     '.scw-ws-v2-scope-bar-a--full { flex: 1 1 auto !important; }',
     '.scw-ws-v2-scope-bar-a--ok { background: #15803d !important; }',
-    '.scw-ws-v2-scope-bar-b { flex: 1 1 auto !important; color: #334155 !important; }',
+    '.scw-ws-v2-scope-bar-b { flex: 1 0 auto !important; color: #334155 !important; }',
     '.scw-ws-v2-scope-mounts {',
     '  display: flex !important; justify-content: space-between !important; gap: 8px !important;',
     '  padding-top: 5px !important; border-top: 1px dashed #e2e8f0 !important;',
@@ -3798,7 +3812,8 @@
     '  gap: 2px 6px !important; font: 11.5px/1.3 system-ui, sans-serif !important;',
     '}',
     '.scw-ws-v2-scope-q { text-align: right !important; font-weight: 700 !important; font-variant-numeric: tabular-nums !important; }',
-    '.scw-ws-v2-scope-p { min-width: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }',
+    /* Product names wrap rather than get cut; the full name rides on hover. */
+    '.scw-ws-v2-scope-p { min-width: 0 !important; overflow-wrap: anywhere !important; }',
     '.scw-ws-v2-scope-more { color: #64748b !important; }',
     '.scw-ws-v2-scope-sub { font: 500 11px/1.35 system-ui, sans-serif !important; color: #64748b !important; }',
     '.scw-ws-v2-scope-products {',

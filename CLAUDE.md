@@ -589,6 +589,9 @@ the per-group summary panel is no longer rendered. The old product table lives b
   table keeps the tree's rows as before. A strip built without `records` falls back to the tree.
 - **Tile click** highlights that family's cards (`scw-ws-v2-card--scope-hl`, ids ride on the tile)
   and scrolls to the first — the warning-chip gesture; click again to clear.
+- **Bar labels never clip**: each segment is at least its own label's width (`min-width:
+  max-content`); the fill's width is the share of the pair and shrinks first when both labels need
+  the room. A zero side folds into the other segment's text. Product names wrap (hover = full name).
 - **Deploy pages** (view_4093 ops / view_4056 sub) get the strip too: `bom-tray.js` hides only the
   old `.scw-ws-v2-summary` / `.scw-ws-v2-grand-summary` panels, the strip is its own element.
 - Design: Claude Design canvas "Worksheet Scope Summary". Test: `tests/worksheet-v2/test-scope-strip.js`.
@@ -618,7 +621,17 @@ true, and nothing said "you are on SW1589 — Alternate"). A **sticky bar above 
   `field_2952` = change order where the grid loads it) is **Change order**, never an alternate.
   Numbers are parsed from the connection identifier (`SW-1589`), the SOW name (`field_2126`) or the
   ID (`field_2122`, `60486704913-SW1589`).
-- The scope strip's meta line leads with `describe(viewKey)` ("on SW1589 (alternate)" / "across 2
+- **Identifiers are bare numbers** as Knack shows them ("1628", "1926CO") — `parseSow` reads those,
+  `SW-1589` and the deal-prefixed `60486704913-SW1589`; `token()` keeps the bare label users see.
+  "(no SOW)" alone is its own mode (`blank`: "No SOW designated · Unassigned"), never "mixed".
+- **Change-order items are VIEW-ONLY on the ops project worksheet** (view_3962 `coItemsReadOnly`,
+  2026-10-09): `card.js isCoLocked` — a line item whose `field_2154` lists a CO SOW (identifier CO
+  suffix, or the SOW grid's Type `field_2952` via `sowContext.isChangeOrderRef`) gets the full lock
+  (`lockCardFields` `lockAll`: no whitelist), no bulk-select box, the lock in the trash slot, a
+  "CHANGE ORDER · VIEW ONLY" flag and a detail note; the context bar's CO tabs / chooser options
+  say "view only" and a single CO scope reads "Viewing … View only". COs are edited on their own
+  scene (view_4079 + co-ops-lock). Test: `tests/worksheet-v2/test-co-items-readonly.js`.
+- The scope strip's meta line leads with `describe(viewKey)` ("on 1589 (alternate)" / "across 2
   scopes, mixed"). Sticky offset follows the project header's pinned bar (`#scw-phn-bar`).
 - Test: `tests/worksheet-v2/test-sow-context.js`.
 

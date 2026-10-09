@@ -757,7 +757,7 @@
     var n = fam.products.length, h = '';
     for (var i = 0; i < Math.min(n, max); i++) {
       h += '<span class="scw-ws-v2-scope-q">' + fam.products[i].qty + '×</span>' +
-           '<span class="scw-ws-v2-scope-p">' + esc(fam.products[i].name) + '</span>';
+           '<span class="scw-ws-v2-scope-p" title="' + esc(fam.products[i].qty + '× ' + fam.products[i].name) + '">' + esc(fam.products[i].name) + '</span>';
     }
     if (n > max) h += '<span class="scw-ws-v2-scope-q"></span><span class="scw-ws-v2-scope-p scw-ws-v2-scope-more">+ ' + (n - max) + ' more</span>';
     return h ? '<span class="scw-ws-v2-scope-list">' + h + '</span>' : '';
