@@ -860,7 +860,11 @@
     if (tableAgg.licenses) prodCount += tableAgg.licenses.products.length;
     var viewKey = opts.viewKey || '';
     var open = isSumOpen(viewKey, 'grand');
-    var meta = a.lineItems + ' line item' + (a.lineItems === 1 ? '' : 's') + ' · ' + l1Count + ' MDF/IDF' + (l1Count === 1 ? '' : 's') +
+    var ctx = '';
+    try { ctx = (ns.sowContext && typeof ns.sowContext.describe === 'function') ? ns.sowContext.describe(viewKey) : ''; }
+    catch (eCtx) { ctx = ''; }
+    var meta = (ctx ? '<b class="scw-ws-v2-scope-ctx">' + esc(ctx) + '</b> · ' : '') +
+      a.lineItems + ' line item' + (a.lineItems === 1 ? '' : 's') + ' · ' + l1Count + ' MDF/IDF' + (l1Count === 1 ? '' : 's') +
       (money(a.total) ? ' · <b>' + money(a.total) + '</b> ' + esc(opts.moneyLabel || 'sub bid') : '') +
       (a.licenses.count ? ' · licenses not included' : '');
     wrap.innerHTML =

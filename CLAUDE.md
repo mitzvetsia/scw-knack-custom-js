@@ -593,6 +593,35 @@ the per-group summary panel is no longer rendered. The old product table lives b
   old `.scw-ws-v2-summary` / `.scw-ws-v2-grand-summary` panels, the strip is its own element.
 - Design: Claude Design canvas "Worksheet Scope Summary". Test: `tests/worksheet-v2/test-scope-strip.js`.
 
+## SOW context bar (live 2026-10-09) — `src/features/worksheet-v2/sow-context.js`
+
+"Which scope of work am I looking at?" is now unavoidable on the worksheets (RCA, 2026-10-06
+revision: the ops project page mixed two SOWs' items, so "22 cameras at the MDF" and "none" were both
+true, and nothing said "you are on SW1589 — Alternate"). A **sticky bar above the worksheet banner**:
+- **Project page (view_3962, `sowContext: { requireChoice: true }`)**: the bar names the SOW the
+  worksheet is filtered to — number, name, badge, line-item count, how many items are shared with
+  another scope — and carries the **scope tabs** (one per SOW with its count, "(no SOW)", "All ·
+  mixed"); click = only that scope, shift/cmd-click = add. Mixed views (several SOWs or All) turn the
+  bar AMBER ("counts and totals combine these scopes"). A project with **2+ SOWs and no stored choice
+  waits behind a chooser** ("Which scope of work are you working on?") — everything but the bar is
+  hidden until a scope is picked; "Show all … (mixed counts)" is the explicit alternative. The choice
+  IS the SOW filter's selection (`sow-filter.js` storage, now per scene + view + **page record id**
+  from the route, so one project's choice never carries to the next project); "all" is stored as
+  the `__all` sentinel so the chooser doesn't return (`[]` = never chose). The old pills strip is hidden
+  on these views (`.scw-ws-v2--sowctx`); its code still drives the filtering (`setActive`,
+  `collectSowList` exported).
+- **SOW page (view_3586, `sowContext: { page: 'sow', detailView: 'view_3827', siblingsView:
+  'view_3869' }`)**: the bar names THIS SOW and the project's other scopes with their badges
+  ("1 of 2 scopes on this project · also on this project: SW1334 (Original)").
+- **Badges** (no Builder field marks an alternate): among the project's non-CO SOWs the LOWEST SW
+  number is **Original**, every other one **Alternate**; an identifier ending in CO (or
+  `field_2952` = change order where the grid loads it) is **Change order**, never an alternate.
+  Numbers are parsed from the connection identifier (`SW-1589`), the SOW name (`field_2126`) or the
+  ID (`field_2122`, `60486704913-SW1589`).
+- The scope strip's meta line leads with `describe(viewKey)` ("on SW1589 (alternate)" / "across 2
+  scopes, mixed"). Sticky offset follows the project header's pinned bar (`#scw-phn-bar`).
+- Test: `tests/worksheet-v2/test-sow-context.js`.
+
 ## Alternative SOWs: Share vs Consolidate (view_3869) — `src/features/import-unique-items-btn.js`
 
 On the SOW page, view_3869 lists the project's OTHER SOWs. Per row: "Add (N) unique items"

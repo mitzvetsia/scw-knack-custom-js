@@ -16,8 +16,14 @@
  * does the actual hide. CSS can\'t do dynamic-id matching, so the
  * match logic runs in JS.
  *
- * Selection persists per (scene, viewKey). Stale ids that no longer
- * correspond to a real SOW are dropped silently on mount.
+ * Selection persists per (scene, viewKey, page record) — the route's record
+ * id scopes it so one project's choice never carries to another project on
+ * the same scene. Stale ids that no longer correspond to a real SOW are
+ * dropped silently on mount.
+ *
+ * 2026-10-09: sow-context.js renders the SOW CONTEXT BAR from this selection
+ * (and hides this strip on views that have it). `__all` stored = the user
+ * explicitly chose "all, mixed"; empty = never chose (the chooser shows).
  ****************************************************************************/
 (function () {
   'use strict';
@@ -26,13 +32,34 @@
   if (!ns) return;
 
   var BLANK = '__blank';
+  // Explicit "show every SOW" choice (sow-context.js chooser / "All · mixed"
+  // tab). Stored as a sentinel so a view that requires a scope choice can
+  // tell "the user chose all" from "the user never chose" (empty storage).
+  var ALL = '__all';
+  function viewRequiresChoice(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' ? ns.cfg.viewCfg(viewKey) : null;
+      return !!(vc && vc.sowContext && vc.sowContext.requireChoice);
+    } catch (e) { return false; }
+  }
 
   function getSceneId() {
     var m = (document.body.id || '').match(/scene_\d+/);
     return m ? m[0] : 'default';
   }
+  // The page's record (project / SOW / survey request) — the last 24-hex
+  // segment of the route. Scoping the stored selection to it keeps one
+  // project's choice (notably "all, mixed") from carrying over to the next
+  // project opened on the same scene (2026-10-09, SOW context).
+  function routeRecordId() {
+    var m = String(window.location.hash || '').match(/\/([0-9a-f]{24})(?:\/|$|\?)/gi);
+    if (!m || !m.length) return '';
+    var last = m[m.length - 1].match(/[0-9a-f]{24}/i);
+    return last ? last[0] : '';
+  }
   function storageKey(viewKey) {
-    return 'scw:ws-v2:sow-filter:' + getSceneId() + ':' + viewKey;
+    var rid = routeRecordId();
+    return 'scw:ws-v2:sow-filter:' + getSceneId() + ':' + viewKey + (rid ? ':' + rid : '');
   }
   function loadActive(viewKey) {
     try {
@@ -145,7 +172,8 @@
   }
 
   function applyFilter(container, activeIds, viewKey) {
-    var hasAny = activeIds && activeIds.length > 0;
+    activeIds = (activeIds || []).filter(function (id) { return id !== ALL; });
+    var hasAny = activeIds.length > 0;
     if (hasAny) container.setAttribute('data-scw-ws-v2-sow-filter', activeIds.join(','));
     else container.removeAttribute('data-scw-ws-v2-sow-filter');
 
@@ -179,13 +207,24 @@
       var records = ns.data.readRecords(viewKey);
       ns.render.renderView(viewKey, records);
     }
+    // The SOW context bar reads the selection — refresh it with the view.
+    if (viewKey && ns.sowContext && typeof ns.sowContext.mount === 'function') {
+      try { ns.sowContext.mount(viewKey); } catch (e) { /* ignore */ }
+    }
+  }
+
+  /** Set the selection from outside (sow-context.js tabs / chooser). */
+  function setActive(viewKey, ids) {
+    saveActive(viewKey, ids || []);
+    var container = document.getElementById('scw-ws-v2-' + viewKey);
+    if (container) applyFilter(container, (ids || []).slice(), viewKey);
   }
 
   /** Filter a flat records array by the active SOW filter for this
    *  view. Public so render.js can apply it before group-tree build. */
   function filterRecords(viewKey, records) {
     var active = loadActive(viewKey);
-    if (!active.length) return records;
+    if (!active.length || active.indexOf(ALL) !== -1) return records;
     var activeSet = Object.create(null);
     var blankActive = false;
     for (var a = 0; a < active.length; a++) {
@@ -222,6 +261,10 @@
     if (!sows.length) {
       if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
       container.removeAttribute('data-scw-ws-v2-sow-filter');
+      // Keep the context bar honest (it may still show a previous state).
+      if (ns.sowContext && typeof ns.sowContext.mount === 'function') {
+        try { ns.sowContext.mount(viewKey); } catch (e) { /* ignore */ }
+      }
       return;
     }
 
@@ -259,6 +302,7 @@
     var valid = Object.create(null);
     for (var s = 0; s < sows.length; s++) valid[sows[s].id] = true;
     valid[BLANK] = true;
+    valid[ALL] = true;
     var active = loadActive(viewKey).filter(function (id) { return valid[id]; });
     saveActive(viewKey, active);
     applyFilter(container, active, viewKey);
@@ -269,10 +313,11 @@
         var pill = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-sow-pill]');
         if (!pill) return;
         var id = pill.getAttribute('data-scw-ws-v2-sow-pill');
-        var current = loadActive(viewKey);
+        var current = loadActive(viewKey).filter(function (s) { return s !== ALL; });
         var next;
         if (id === '__all') {
-          next = [];
+          // A view that requires a scope choice remembers "all" explicitly.
+          next = viewRequiresChoice(viewKey) ? [ALL] : [];
         } else {
           var idx = current.indexOf(id);
           if (idx === -1) { next = current.slice(); next.push(id); }
@@ -349,8 +394,11 @@
   ns.sowFilter = {
     mount:          mount,
     loadActive:     loadActive,
+    setActive:      setActive,
+    collectSowList: collectSowList,
     filterRecords:  filterRecords,
-    applyRowColors: applyRowColors
+    applyRowColors: applyRowColors,
+    ALL:            ALL
   };
 })();
 /*** END WORKSHEET V2 — SOW FILTER PILLS **************************************/

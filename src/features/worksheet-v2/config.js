@@ -112,6 +112,11 @@
       {
         // Build-SOW page (internal). The canonical deployment.
         sourceViewKey:    'view_3962',
+        // SOW context (worksheet-v2/sow-context.js): the project's SOWs share
+        // this worksheet, so a sticky bar names the scope being worked on and a
+        // project with 2+ SOWs gates the body behind a chooser until one is
+        // picked (RCA 2026-10-06: mixed-SOW counts, invisible alternate).
+        sowContext:       { requireChoice: true },
         // Service lines may be attached to a parent line item (field_2464)
         // — same opt-in as the CO worksheet (see the view_4079 entry).
         serviceParent:    true,
@@ -352,6 +357,9 @@
         addMdfMenuView:   'view_3654',
         moneyMode:        'sales',
         hideSow:          true,          // no SOW column / pills / sort on this page
+        // SOW context bar (sow-context.js): THIS SOW (view_3827 detail) and its
+        // siblings on the project (view_3869) with Original / Alternate badges.
+        sowContext:       { page: 'sow', detailView: 'view_3827', siblingsView: 'view_3869' },
         // "+ Add to SOW" toolbar button clicks the add link inside this
         // Knack menu view (same link v1 used). Without it the button
         // falls back to a page-wide link-text scan.

@@ -231,6 +231,12 @@
         (!(_vcSow && _vcSow.hideSow) || (_vcSow && _vcSow.filterPills))) {
       ns.sowFilter.mount(key);
     }
+    // SOW context bar (sow-context.js): names the scope being worked on; on
+    // the project page a 2+ SOW project waits behind a chooser until one is
+    // picked. No-op for views without a sowContext config.
+    if (ns.sowContext && typeof ns.sowContext.mount === 'function') {
+      try { ns.sowContext.mount(key); } catch (eCtx) { /* ignore */ }
+    }
     // Free-text search box (above the pills) — narrows records by product /
     // label / MDF-IDF / notes. Mounts idempotently on every render.
     if (ns.search && typeof ns.search.mount === 'function') {
