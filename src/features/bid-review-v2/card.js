@@ -1872,13 +1872,17 @@
 
   function pkgTotalsCell(pkg) {
     var delta;
+    // Money rule (2026-10-09): a bid total that differs from the SOW is never
+    // good news, whichever way it differs — amber, "$X off the SOW". The one
+    // success is a match, called out green.
     if (pkg.matchesSow) {
       delta = '<div class="scw-bid-review-v2__head-delta scw-bid-review-v2__head-delta--match">' +
-        '✓ matches SOW</div>';
+        '✓ matches the SOW</div>';
     } else {
       var sign = pkg.deltaVsSow > 0 ? '+' : '−';
-      delta = '<div class="scw-bid-review-v2__head-delta scw-bid-review-v2__head-delta--gap">' +
-        sign + (fmtMoney(Math.abs(pkg.deltaVsSow)) || '$0.00') + ' vs SOW</div>';
+      delta = '<div class="scw-bid-review-v2__head-delta scw-bid-review-v2__head-delta--gap" title="' +
+        sign + escapeHtml(fmtMoney(Math.abs(pkg.deltaVsSow)) || '$0.00') + ' vs the SOW sub-bid total">' +
+        (fmtMoney(Math.abs(pkg.deltaVsSow)) || '$0.00') + ' off the SOW</div>';
     }
     return pkgTh(pkg, 'scw-bid-review-v2__head-cell--totals',
       '<div class="scw-bid-review-v2__head-totals">' +
@@ -2016,6 +2020,33 @@
       'data-sow-id="' + escapeHtml(sowId || '') + '">' +
       escapeHtml(label) +
     '</button>';
+  }
+
+  /** Header rework: the Line item / Photos labels as a thin row directly
+   *  above the line items (under the documents row), which also names each
+   *  column. Bid cells carry the column class + pkg id so basis-filter and
+   *  column-collapse hide / fold them with their column. */
+  function buildColLabelsRow(grid) {
+    var tr = document.createElement('tr');
+    tr.className = 'scw-bid-review-v2__collabels';
+    var html =
+      '<td class="scw-bid-review-v2__collabel scw-bid-review-v2__collabel--label">Line item</td>' +
+      '<td class="scw-bid-review-v2__collabel scw-bid-review-v2__collabel--photos">Photos</td>' +
+      '<td class="scw-bid-review-v2__collabel scw-bid-review-v2__collabel--sow">SCW · SOW</td>';
+    var pkgs = grid.packages || [];
+    for (var i = 0; i < pkgs.length; i++) {
+      var p = pkgs[i];
+      if (!p || !p.id) continue;
+      var who = String(p.subName || p.bidName || p.name || '').trim() || ('Bid ' + (i + 1));
+      html += '<td class="scw-bid-review-v2__collabel scw-bid-review-v2__collabel--pkg ' +
+          'scw-bid-review-v2__pkg-col" data-pkg-id="' + escapeHtml(p.id) + '">' +
+        escapeHtml(who) +
+        (p.label && p.label !== who
+          ? '<span class="scw-bid-review-v2__collabel-id">' + escapeHtml(p.label) + '</span>' : '') +
+        '<span class="scw-bid-review-v2__collabel-basis" hidden>Basis</span></td>';
+    }
+    tr.innerHTML = html;
+    return tr;
   }
 
   // ── Per-SOW collapse persistence ─────────────────────────────
@@ -2180,6 +2211,8 @@
       docsTr.appendChild(docsTd);
       tbody.appendChild(docsTr);
     }
+    // Header rework: column labels directly above the line items.
+    if (ns.CONFIG && ns.CONFIG.headerRework) tbody.appendChild(buildColLabelsRow(grid));
     var groups = grid.groups || [{ key: '__all__', level: 0, rows: grid.rows, subgroups: [] }];
     for (var g = 0; g < groups.length; g++) {
       // Per-group guard: a throw in one group must not blank the whole section
@@ -2218,6 +2251,7 @@
     buildSowSection: buildSowSection,
     buildBidRow:     buildBidRow,
     buildBidCell:    buildBidCell,
+    buildColLabelsRow: buildColLabelsRow,
     // Exposed for tests — the parent → accessory connector classes.
     stampAccessoryChains: stampAccessoryChains
   };

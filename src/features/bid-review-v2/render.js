@@ -80,6 +80,8 @@
     // SOW items live on the second source view (view_3921). They feed
     // the SOW column on the left side of the comparison grid.
     var sowItems = (snapshot && sourceKeys[1] && snapshot[sourceKeys[1]]) || [];
+    // header.js reads these for the tabs' counts + the scope summary.
+    ns.lastSowItems = sowItems;
     // Bid package records (view_3573) carry status / friendly name / PDF.
     var bidPackages = (snapshot && sourceKeys[2] && snapshot[sourceKeys[2]]) || [];
     if (!ns.transform || typeof ns.transform.buildState !== 'function') {
@@ -136,6 +138,9 @@
     if (state.isEmpty) {
       body.innerHTML = '<div class="scw-bid-review-v2-empty">' +
         'No bid records loaded yet.</div>';
+      if (ns.header && typeof ns.header.afterRender === 'function') {
+        try { ns.header.afterRender(body); } catch (eh) { /* fail soft */ }
+      }
       return;
     }
 
@@ -223,6 +228,13 @@
     if (ns.search) {
       if (typeof ns.search.mount === 'function') ns.search.mount();
       if (typeof ns.search.apply === 'function') ns.search.apply();
+    }
+
+    // Header rework (header.js): SOW tabs, status line, column cards —
+    // decorates the freshly built sections, keeps reused ones as they are.
+    if (ns.header && typeof ns.header.afterRender === 'function') {
+      try { ns.header.afterRender(body); }
+      catch (eh) { console.warn('[scw-br-v2] header.afterRender threw', eh); }
     }
   }
 

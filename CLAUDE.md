@@ -638,6 +638,58 @@ true, and nothing said "you are on SW1589 — Alternate"). A **sticky bar above 
   scopes, mixed"). Sticky offset follows the project header's pinned bar (`#scw-phn-bar`).
 - Test: `tests/worksheet-v2/test-sow-context.js`.
 
+## Reconcile Bids header rework (live 2026-10-09) — `src/features/bid-review-v2/header.js`
+
+The top of the reconcile-bids page (scene_1155, bid-review-v2) reworked per the canvas boards 7–9
+("Worksheet Scope Summary"): **one band, one party**. Kill switch `CONFIG.headerRework`
+(bid-review-v2/config.js) — off = the old stacked layout, untouched.
+- **SOW tabs** (`.scw-bid-review-v2__sowtabs`, container level above the toolbar): ONE SOW at a time —
+  the number as Knack shows it + **Original / Alternate / Change order** badge (same rule as the
+  worksheet context bar: lowest non-CO SW number = Original; CO suffix or view_3918's `field_2952`
+  = Change order; `SCW.worksheetV2.sowContext.classify` when loaded, local fallback otherwise), the
+  full SOW name on its own line (✎ on the active tab = inline rename, committed through v1's hidden
+  SOW Name input + its `change`), the scope counts ("2 cameras · 1 mount · 1 headend", from
+  `SCW.worksheetV2.summary.aggregateScope` over `ns.lastSowItems`, stashed by render.js), the state
+  line (✓ reviewed / ● basis chosen / ○ pick a basis bid · N gaps · N change requests queued · N bids
+  in) and "N of M scopes reviewed". The synthetic no-SOW grid is the **"Unmatched bid items"** tab.
+  Choice persists in `scw:br-v2:sow-tab:<scene>:<project id from the route>`; default = the
+  Original. Inactive sections are `display:none`; section fold (the navy header click) is OFF
+  under the tabs (init.js reads `data-scw-br-v2-tabs`) and a persisted fold is cleared.
+- **Status line** = the old navy SOW header restyled (same element, so the warning chips keep
+  their row-scoped click): "Scope summary ▸" (the worksheet scope strip for this SOW, built on
+  first open from the grid's groups + SOW items, no money; a tile click highlights that family's
+  ROWS, `tr.scw-bid-review-v2__row--scope-hl`) + the aggregate warning chips. Name / meta /
+  Collapse all hidden (the tab is the identity; the toolbar has Expand/Collapse).
+- **Column cards**: the four head bands (title / totals / details / actions) stay four `<tr>`s —
+  CSS reads them as one card per column. Existing elements are MOVED, never rebuilt (same classes +
+  `data-action`, so init.js's delegated click still routes to v1's handlers). SCW's card: the diff
+  bar's basis `<select>` (`.scw-sbd-baseline`) moves into `.scw-bid-review-v2__basis-slot` (the
+  complete picker incl. K1 / Request a K2 bid / Save as basis), then survey costs / margin /
+  proposal, then **Next step**: a MIRROR of the diff bar's readiness (`.scw-sbd-ready` → `__ready`,
+  "— auto-saved" trimmed) ahead of Preview Proposal. Each sub card: a **radio** that sets the basis
+  (bridged: sets the select + dispatches ONE `change`, so sub-bid-diff persists `field_2942` and
+  basis-filter repaints exactly as for a dropdown pick), BASIS badge + navy top rule, basis-filter's
+  "Show all bids (+N)" pill (untouched), `$X off the SOW` (amber, never signed/positive) or
+  `✓ matches the SOW` (card.js `pkgTotalsCell`), status · PDF · Reopen Bid on one line, the gap count
+  (mirror of `.scw-sbd-bargap`, basis card only; click unfolds the diff panel), then "N change
+  requests queued for <sub>, not sent yet" over ONE primary — `cr_preview` relabelled **"Review &
+  send to <sub>"** (the Preview Change Request modal's Submit is the send; `cr_submit` is hidden)
+  or, with nothing queued, `cr_bulk_selected` as "Request changes on selected…" — and a **⋮ menu**
+  (Set as basis bid · Open bid PDF · Request changes on selected rows… · Discard the N queued
+  requests · Update SOW to match this bid… · Create a new SOW from this bid…). Mirrors re-sync from
+  a MutationObserver on the body (the diff bar re-renders its own innerHTML on its own schedule;
+  `syncAll` is idempotent and `takeRecords()` swallows its own moves).
+- **No basis = every bid column shows** (the radios are the picker; basis-filter `modeFor` returns
+  `none` under the rework). K1 still folds the sub-bid side away. Once a basis is chosen only that
+  column shows, as before.
+- **Documents** stay their own row under the cards (card.js already mounts `bar.docs` there);
+  the **Line item / Photos labels** are a thin `tr.scw-bid-review-v2__collabels` row directly above
+  the line items (after the docs row) that also names each column; its bid cells carry
+  `__pkg-col` + `data-pkg-id` so basis-filter / column-collapse fold them with the column. The two
+  rowspan corner cells stay (table-layout: fixed needs them for widths) and read blank.
+- The diff bar keeps only its fold handle; the exceptions list + reviewer note are as they were.
+- Test: `tests/bid-review-v2/test-header-rework.js`.
+
 ## Alternative SOWs: Share vs Consolidate (view_3869) — `src/features/import-unique-items-btn.js`
 
 On the SOW page, view_3869 lists the project's OTHER SOWs. Per row: "Add (N) unique items"

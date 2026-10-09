@@ -35,6 +35,11 @@
     // #bid-review-matrix is display:none'd. Flip back to false to
     // restore the v1 grid.
     replaceV1:  true,
+    // Header rework (header.js, 2026-10-09): SOW tabs (one SOW at a time),
+    // the status line, the four head bands as column cards, the basis
+    // picked from each bid card, the Line item / Photos labels in a row
+    // directly above the rows. Flip to false to get the stacked layout back.
+    headerRework: true,
 
     // Anchor for the v2 mount point. Insert v2 AFTER v1's grid root
     // (#bid-review-matrix lives inside v1's mount). Falls back to the

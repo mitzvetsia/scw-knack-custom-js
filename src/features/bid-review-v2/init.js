@@ -236,6 +236,9 @@
     document.addEventListener('click', function (e) {
       var sowHead = e.target.closest && e.target.closest('.scw-bid-review-v2__sow-header');
       if (!sowHead) return;
+      // Header rework: the header is the status line and the tabs are the
+      // only fold — one SOW shows at a time (header.js).
+      if (document.documentElement.hasAttribute('data-scw-br-v2-tabs')) return;
       if (e.target.closest('input, button, select, textarea, a')) return;
       var section = sowHead.closest('.scw-bid-review-v2__sow');
       if (!section) return;
@@ -251,6 +254,7 @@
       if (e.key !== 'Enter' && e.key !== ' ') return;
       var sowHead = e.target.closest && e.target.closest('.scw-bid-review-v2__sow-header');
       if (!sowHead || e.target !== sowHead) return;
+      if (document.documentElement.hasAttribute('data-scw-br-v2-tabs')) return;
       e.preventDefault();
       sowHead.click();
     });

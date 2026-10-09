@@ -105,6 +105,11 @@
     if (!sowId || sowId === NO_SOW) return { mode: 'none', basis: '' };
 
     var basis = basisOf(sowId);
+    // Header rework (CONFIG.headerRework): the basis is picked from the radio
+    // on each bid card, so with NO basis every bid column stays visible —
+    // those columns are what a reviewer reads to choose one. K1 (self-perform)
+    // still folds the sub-bid side away: no subcontractor bid applies.
+    if (!basis && ns.CONFIG && ns.CONFIG.headerRework) return { mode: 'none', basis: '' };
     // No basis designated, or K1 (self-perform — no subcontractor bid exists
     // for this SOW): the whole sub-bid side of the grid is inapplicable.
     if (!basis || basis === K1_ID) {
@@ -294,6 +299,7 @@
   }
 
   ns.basisFilter = {
+    basisOf:        basisOf,
     applyToSection: applyToSection,
     hiddenFor:      hiddenFor,
     wire:           wire
