@@ -567,6 +567,32 @@ modal inherits from 05.01 (pre-existing, not changed): License qty is ignored (o
 product), exterior/plenum come from the PRODUCT not the toggles, Materials accessories (`field_2206`)
 create SOW Line Items (object_105), not survey items. Test: `tests/worksheet-v2/test-survey-add-item-form.js`.
 
+## Worksheet scope strip (live 2026-10-09) — `src/features/worksheet-v2/summary.js`
+
+The worksheet-v2 grand "Summary" panel is now the **scope strip** (`buildScopeStrip`): one tile
+per family filling the width, always open, answering "what is on this proposal?". Families are the
+**proposal bucket every line already carries** — there is no product family field and no name
+rules: cameras / readers (tile titled Cameras, Readers, or Cameras & readers by product name —
+proposals never mix them) with full-width split bars (new drops vs existing cable from
+`existCabling`, interior vs exterior, plenum, and QA passed on install), headend & networking and
+other equipment listing their **products by name with counts** (how NVRs / switches / antennas
+read apart), muted services + licenses (licenses never in the total), and a rose "Removed by
+change order" tile on install (same `removedByCo` marker as the cards). **Mounts fold into the
+camera tile** as a "N mounts" line. Counts are qty-weighted; assumptions are skipped; money is the
+view's own (`buildMoneyOpts`: sub bid / Total / Sub Bid, none on install). Each **MDF/IDF header**
+carries the same numbers as chips (`l1ScopeLine`, a second row inside the navy header button) —
+the per-group summary panel is no longer rendered. The old product table lives behind the strip's
+"Products (N)" disclosure (persisted under the same `grand` open-state key).
+- **Attached accessories**: groups.js hides mounts under their parent card, so the tree never
+  carries them. render.js stashes the render's filtered record list (`_scopeRecords`) and passes it
+  as `opts.records`; the tiles and header lines count from it (`attachedTo`), while the Products
+  table keeps the tree's rows as before. A strip built without `records` falls back to the tree.
+- **Tile click** highlights that family's cards (`scw-ws-v2-card--scope-hl`, ids ride on the tile)
+  and scrolls to the first — the warning-chip gesture; click again to clear.
+- **Deploy pages** (view_4093 ops / view_4056 sub) get the strip too: `bom-tray.js` hides only the
+  old `.scw-ws-v2-summary` / `.scw-ws-v2-grand-summary` panels, the strip is its own element.
+- Design: Claude Design canvas "Worksheet Scope Summary". Test: `tests/worksheet-v2/test-scope-strip.js`.
+
 ## Alternative SOWs: Share vs Consolidate (view_3869) — `src/features/import-unique-items-btn.js`
 
 On the SOW page, view_3869 lists the project's OTHER SOWs. Per row: "Add (N) unique items"

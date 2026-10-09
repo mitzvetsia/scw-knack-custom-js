@@ -202,7 +202,7 @@
           'data-scw-ws-v2-rows-toggle ' +
           'title="Open or close every line item’s detail panel (leaves MDF/IDF groups alone)">' +
           'Expand line items</button>' +
-        btn('summary',  'Summary only',     'Open every group + show only the L1 summary') +
+        btn('summary',  'Summary only',     'Open every group + show only the scope strip and each MDF/IDF header line') +
       '</div>' +
       '<div class="scw-ws-v2-toolbar-group">' +
         '<button type="button" class="scw-ws-v2-toolbar-btn"' +

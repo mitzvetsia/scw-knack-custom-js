@@ -1,5 +1,11 @@
 /*** WORKSHEET V2 — SUMMARY ***************************************************
  *
+ * 2026-10-09: the grand panel is now the SCOPE STRIP (buildScopeStrip —
+ * family tiles with the camera splits, products by name) and each MDF/IDF
+ * header carries its own scope line (l1ScopeLine); the per-L1 panel below
+ * is no longer rendered. The product table lives on behind the strip's
+ * "Products" disclosure. The aggregate() pipeline below feeds that table.
+ *
  * Per-L1 summary panel — table of products with per-product counts,
  * cabling / exterior / plenum metrics (cam/reader bucket only), qty, and
  * total sub bid. Mirrors v1's mdf-summary-panel.js shape so users get
@@ -572,9 +578,344 @@
     return (agg.totals && agg.totals.subBidSum) || 0;
   }
 
+
+  // ── SCOPE STRIP (2026-10-09) ──────────────────────────────────────
+  // Replaces the grand summary panel; the per-MDF panels' numbers move into
+  // the L1 header line (l1ScopeLine). One question: what is on this
+  // proposal? Families are the proposal bucket every line already carries
+  // — cameras / readers (with the splits: new drops vs existing cable,
+  // interior vs exterior, plenum; QA passed on install), headend &
+  // networking and other equipment (their products listed BY NAME with
+  // counts — no product family field, no name rules), services and
+  // licenses as muted tiles. Mounts fold into the camera tile. Removed-by-
+  // CO rows (install) are counted apart and excluded from everything else.
+  // Design: canvas "Worksheet Scope Summary" (2026-10-09).
+  var SCOPE_BUCKETS = {
+    cam:         '6481e5ba38f283002898113c',
+    mount:       '594a94536877675816984cb9',
+    networking:  '647953bb54b4e1002931ed97',
+    otherEquip:  '5df12ce036f91b0015404d78',
+    materials:   '6a14eee134e422f3769ada00',
+    services:    '6977caa7f246edf67b52cbcd',
+    assumptions: '697b7a023a31502ec68b3303',
+    license:     '645554dce6f3a60028362a6a'
+  };
+  function scopeBucketIds(viewKey) {
+    var ids = {};
+    for (var k in SCOPE_BUCKETS) ids[k] = SCOPE_BUCKETS[k];
+    try {
+      var b = ns.cfg && typeof ns.cfg.buckets === 'function' ? ns.cfg.buckets(viewKey) : null;
+      if (b) {
+        if (b.camReader)        ids.cam = b.camReader;
+        if (b.mountingHardware) ids.mount = b.mountingHardware;
+        if (b.networking)       ids.networking = b.networking;
+        if (b.otherEquip)       ids.otherEquip = b.otherEquip;
+        if (b.services)         ids.services = b.services;
+        if (b.assumptions)      ids.assumptions = b.assumptions;
+      }
+    } catch (e) { /* defaults */ }
+    return ids;
+  }
+  function bucketIdOfRec(rec, viewKey) {
+    if (ns.card && typeof ns.card.bucketIdOf === 'function') return ns.card.bucketIdOf(rec, viewKey) || '';
+    var raw = rec && rec.field_2219_raw;
+    return (Array.isArray(raw) && raw[0] && raw[0].id) || '';
+  }
+  /** Family of a record: cam | mount | headend | other | services | assumptions | license. */
+  function familyOf(rec, viewKey, ids) {
+    ids = ids || scopeBucketIds(viewKey);
+    var isLicense = (ns.card && ns.card.isLicenseBucket) || function () { return false; };
+    if (isLicense(rec, viewKey)) return 'license';
+    var id = bucketIdOfRec(rec, viewKey);
+    if (id === ids.cam)         return 'cam';
+    if (id === ids.mount)       return 'mount';
+    if (id === ids.networking)  return 'headend';
+    if (id === ids.services)    return 'services';
+    if (id === ids.assumptions) return 'assumptions';
+    return 'other';
+  }
+  function removedByCoMarker(rec, F) {
+    var key = (F && F.removedByCo) || '';
+    if (!key) return null;
+    var raw = rec && rec[key + '_raw'];
+    return (Array.isArray(raw) && raw.length && raw[0]) ? raw[0] : null;
+  }
+  function emptyFam() { return { count: 0, money: 0, ids: [], byProduct: Object.create(null), products: [] }; }
+  function addProduct(fam, name, qty) {
+    var p = fam.byProduct[name] || (fam.byProduct[name] = { name: name, qty: 0 });
+    p.qty += qty;
+  }
+  function finishProducts(fam) {
+    var out = [];
+    for (var k in fam.byProduct) out.push(fam.byProduct[k]);
+    out.sort(function (a, b) {
+      return (b.qty - a.qty) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    });
+    fam.products = out;
+    delete fam.byProduct;
+    return fam;
+  }
+  /** The scope aggregate for a set of records (same opts as aggregate()). */
+  function aggregateScope(records, opts) {
+    opts = opts || {};
+    var F = opts.fields || {};
+    var viewKey = opts.viewKey;
+    var moneyField = opts.hideMoney ? '' : (opts.moneyField || F.subBid || 'field_2150');
+    var fProduct   = F.product      || 'field_1949';
+    var fProductNm = F.productName  || null;
+    var fQty       = F.qty          || 'field_1964';
+    var fExist     = F.existCabling || 'field_2461';
+    var fExt       = F.exterior     || 'field_1984';
+    var fPlenum    = F.plenum       || 'field_1983';
+    var fQaPassed  = F.qaPassed     || '';
+    var fQaStatus  = F.qaStatus     || '';
+    var fLaborDesc = F.laborDesc    || '';
+    var ids = scopeBucketIds(viewKey);
+    var fams = { cam: emptyFam(), mount: emptyFam(), headend: emptyFam(), other: emptyFam(),
+                 services: emptyFam(), license: emptyFam() };
+    var cam = fams.cam;
+    cam.newDrops = 0; cam.existing = 0; cam.interior = 0; cam.exterior = 0; cam.plenum = 0;
+    cam.qaPassed = 0; cam.qaOpen = 0; cam.readers = 0;
+    var removed = { count: 0, ids: [], labels: [] };
+    var lineItems = 0, total = 0;
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i];
+      if (!r) continue;
+      var fam = familyOf(r, viewKey, ids);
+      if (fam === 'assumptions') continue;
+      var rm = removedByCoMarker(r, F);
+      if (rm) {
+        removed.count++; removed.ids.push(r.id);
+        var rl = stripHtml(rm.identifier);
+        if (rl && removed.labels.indexOf(rl) === -1) removed.labels.push(rl);
+        continue;
+      }
+      var qty  = readNum(r, fQty) || 1;
+      var name = (fProductNm && stripHtml(r[fProductNm])) || stripHtml(r[fProduct]) ||
+                 (fam === 'services' && fLaborDesc ? stripHtml(r[fLaborDesc]) : '') ||
+                 (fam === 'services' ? '(service)' : '(unnamed)');
+      var f = fams[fam];
+      f.count += qty; f.ids.push(r.id); addProduct(f, name, qty);
+      var money = moneyField ? readNum(r, moneyField) : 0;
+      if (money) f.money += money;
+      lineItems++;
+      if (fam !== 'license' && money) total += money;
+      if (fam === 'cam') {
+        if (/\breader\b|keypad|intercom/i.test(name)) cam.readers += qty;
+        if (r[fExist] != null && stripHtml(r[fExist]) !== '') {
+          if (isYes(r, fExist)) cam.existing += qty; else cam.newDrops += qty;
+        }
+        if (r[fExt] != null && stripHtml(r[fExt]) !== '') {
+          if (isYes(r, fExt)) cam.exterior += qty; else cam.interior += qty;
+        }
+        if (isYes(r, fPlenum)) cam.plenum += qty;
+        if (fQaPassed || fQaStatus) {
+          var passed = (fQaPassed && isYes(r, fQaPassed)) ||
+                       (fQaStatus && /^pass/i.test(stripHtml(r[fQaStatus])));
+          if (passed) cam.qaPassed += qty; else cam.qaOpen += qty;
+        }
+      }
+    }
+    for (var fk in fams) finishProducts(fams[fk]);
+    // Cameras and readers never share a proposal (either/or); the tile says which.
+    var title = !cam.count ? 'Cameras' :
+      (cam.readers >= cam.count ? 'Readers' : (cam.readers ? 'Cameras & readers' : 'Cameras'));
+    return { title: title, cam: cam, mounts: fams.mount, headend: fams.headend, other: fams.other,
+             services: fams.services, licenses: fams.license, removed: removed,
+             lineItems: lineItems, total: total, hasQa: !!(fQaPassed || fQaStatus),
+             hideMoney: !!opts.hideMoney };
+  }
+
+  function pct(part, whole) {
+    return whole ? Math.max(0, Math.min(100, Math.round(part / whole * 100))) : 0;
+  }
+  function plural(n, one, many) { return n === 1 ? one : (many || one + 's'); }
+  /** A two-segment bar with the labels inside. aLabel/bLabel may be
+   *  [singular, plural]. A zero side collapses into the other segment's
+   *  text ("0 new drops · 6 existing cable") instead of a sliver. */
+  function scopeBar(aN, aLabel, bN, bLabel, mod) {
+    var whole = aN + bN;
+    if (!whole) return '';
+    var la = Array.isArray(aLabel) ? plural(aN, aLabel[0], aLabel[1]) : aLabel;
+    var lb = Array.isArray(bLabel) ? plural(bN, bLabel[0], bLabel[1]) : bLabel;
+    var aCls = 'scw-ws-v2-scope-bar-a' + (mod ? ' scw-ws-v2-scope-bar-a--' + mod : '');
+    if (!bN) {
+      return '<span class="scw-ws-v2-scope-bar"><span class="' + aCls + ' scw-ws-v2-scope-bar-a--full" style="width:100%">' +
+        aN + ' ' + esc(la) + ' · 0 ' + esc(lb) + '</span></span>';
+    }
+    if (!aN) {
+      return '<span class="scw-ws-v2-scope-bar"><span class="scw-ws-v2-scope-bar-b">0 ' + esc(la) + ' · ' +
+        bN + ' ' + esc(lb) + '</span></span>';
+    }
+    return '<span class="scw-ws-v2-scope-bar">' +
+      '<span class="' + aCls + '" style="width:' + pct(aN, whole) + '%">' + aN + ' ' + esc(la) + '</span>' +
+      '<span class="scw-ws-v2-scope-bar-b">' + bN + ' ' + esc(lb) + '</span>' +
+    '</span>';
+  }
+  function scopeProductList(fam, max) {
+    max = max || 6;
+    var n = fam.products.length, h = '';
+    for (var i = 0; i < Math.min(n, max); i++) {
+      h += '<span class="scw-ws-v2-scope-q">' + fam.products[i].qty + '×</span>' +
+           '<span class="scw-ws-v2-scope-p">' + esc(fam.products[i].name) + '</span>';
+    }
+    if (n > max) h += '<span class="scw-ws-v2-scope-q"></span><span class="scw-ws-v2-scope-p scw-ws-v2-scope-more">+ ' + (n - max) + ' more</span>';
+    return h ? '<span class="scw-ws-v2-scope-list">' + h + '</span>' : '';
+  }
+  function scopeProductsInline(fam, max) {
+    var parts = [];
+    for (var i = 0; i < Math.min(fam.products.length, max); i++) parts.push(fam.products[i].qty + '× ' + esc(fam.products[i].name));
+    if (fam.products.length > max) parts.push('+ ' + (fam.products.length - max) + ' more');
+    return parts.join(' · ');
+  }
+  function scopeTile(fam, key, label, mod, inner, corner) {
+    return '<button type="button" class="scw-ws-v2-scope-tile' + (mod ? ' ' + mod : '') + '" ' +
+      'data-scw-ws-v2-scope-tile="' + key + '" data-scw-ws-v2-scope-ids="' + esc(fam.ids.join(',')) + '" ' +
+      'aria-pressed="false" title="Highlight these rows in the worksheet">' +
+      '<span class="scw-ws-v2-scope-k"><span>' + esc(label) + '</span>' +
+        (corner ? '<span class="scw-ws-v2-scope-corner">' + corner + '</span>' : '') + '</span>' +
+      '<span class="scw-ws-v2-scope-n">' + fam.count + '</span>' +
+      (inner || '') +
+    '</button>';
+  }
+  /** Records attached under a parent card (groups.js hides them from the
+   *  tree) whose parent is one of `recs` — so a group's mounts count with
+   *  its cameras. Needs opts.records (the render's full record list). */
+  function attachedTo(recs, opts) {
+    var pool = opts && opts.records;
+    if (!Array.isArray(pool) || !pool.length) return [];
+    var F = opts.fields || {};
+    var fParent = F.parent || 'field_2464';
+    var have = Object.create(null), i;
+    for (i = 0; i < recs.length; i++) if (recs[i] && recs[i].id) have[recs[i].id] = true;
+    var out = [];
+    for (i = 0; i < pool.length; i++) {
+      var r = pool[i];
+      if (!r || !r.id || have[r.id]) continue;
+      var raw = r[fParent + '_raw'];
+      if (!Array.isArray(raw)) continue;
+      for (var k = 0; k < raw.length; k++) {
+        if (raw[k] && raw[k].id && have[raw[k].id]) { out.push(r); break; }
+      }
+    }
+    return out;
+  }
+  /** The scope strip — the grand slot at the top of the worksheet.
+   *  opts.records (the render's full, filtered record list) feeds the tiles
+   *  so attached accessories count; the Products table keeps the tree's
+   *  records (the rows the worksheet shows), as the old panel did. */
+  function buildScopeStrip(tree, opts) {
+    opts = opts || {};
+    _hideMoney = !!opts.hideMoney;
+    var all = [], l1Count = 0;
+    for (var i = 0; i < tree.length; i++) {
+      var recs = collectRecords(tree[i]);
+      if (recs.length && !tree[i].isSynthetic) l1Count++;
+      all = all.concat(recs);
+    }
+    var scopeRecs = (Array.isArray(opts.records) && opts.records.length) ? opts.records : all;
+    var a = aggregateScope(scopeRecs, opts);
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-ws-v2-scope';
+    wrap.setAttribute('data-scw-ws-v2-scope-view', opts.viewKey || '');
+    if (!a.lineItems && !a.removed.count) {
+      wrap.classList.add('scw-ws-v2-scope--empty');
+      wrap.innerHTML = '<div class="scw-ws-v2-summary-empty">No hardware line items yet.</div>';
+      return wrap;
+    }
+    var money = function (n) { return (!_hideMoney && n) ? esc(fmtMoney(n)) : ''; };
+    var tiles = '';
+    if (a.cam.count || a.mounts.count) {
+      var bars = '';
+      if (a.cam.count) {
+        bars += scopeBar(a.cam.newDrops, ['new drop', 'new drops'], a.cam.existing, 'existing cable');
+        bars += scopeBar(a.cam.interior, 'interior', a.cam.exterior, 'exterior');
+        if (a.cam.plenum) bars += scopeBar(a.cam.plenum, 'plenum', a.cam.count - a.cam.plenum, 'not plenum');
+        if (a.hasQa && (a.cam.qaPassed || a.cam.qaOpen)) bars += scopeBar(a.cam.qaPassed, 'QA passed', a.cam.qaOpen, 'open', 'ok');
+      }
+      var mountsLine = a.mounts.count
+        ? '<span class="scw-ws-v2-scope-mounts" data-scw-ws-v2-scope-ids="' + esc(a.mounts.ids.join(',')) + '">' +
+            '<span><b>' + a.mounts.count + '</b> ' + plural(a.mounts.count, 'mount') + '</span>' +
+            (money(a.mounts.money) ? '<span>' + money(a.mounts.money) + '</span>' : '') + '</span>'
+        : '';
+      var camFam = a.cam.count ? a.cam : a.mounts;
+      tiles += scopeTile(camFam, a.cam.count ? 'cam' : 'mount', a.cam.count ? a.title : 'Mounts', 'scw-ws-v2-scope-tile--cam',
+        (bars ? '<span class="scw-ws-v2-scope-bars">' + bars + '</span>' : '') + (a.cam.count ? mountsLine : ''),
+        money(a.cam.count ? a.cam.money : a.mounts.money));
+    }
+    if (a.headend.count) tiles += scopeTile(a.headend, 'headend', 'Headend & networking', 'scw-ws-v2-scope-tile--headend', scopeProductList(a.headend, 6), money(a.headend.money));
+    if (a.other.count)   tiles += scopeTile(a.other, 'other', 'Other equipment', 'scw-ws-v2-scope-tile--other', scopeProductList(a.other, 4), money(a.other.money));
+    if (a.services.count) tiles += scopeTile(a.services, 'services', 'Services', 'scw-ws-v2-scope-tile--muted',
+      '<span class="scw-ws-v2-scope-sub">' + scopeProductsInline(a.services, 3) + (money(a.services.money) ? ' · ' + money(a.services.money) : '') + '</span>');
+    if (a.licenses.count) tiles += scopeTile(a.licenses, 'license', 'Licenses', 'scw-ws-v2-scope-tile--muted',
+      '<span class="scw-ws-v2-scope-sub">recurring · billed separately · not in total</span>');
+    if (a.removed.count) {
+      tiles += scopeTile(a.removed, 'removed', 'Removed by change order', 'scw-ws-v2-scope-tile--removed',
+        '<span class="scw-ws-v2-scope-sub">' + esc(a.removed.labels.slice(0, 2).join(' · ')) + '</span>');
+    }
+    // "Products" disclosure = the per-product table the old panel showed.
+    var tableAgg = aggregate(all, opts);
+    var prodCount = 0;
+    for (var s = 0; s < tableAgg.sections.length; s++) prodCount += tableAgg.sections[s].products.length;
+    if (tableAgg.licenses) prodCount += tableAgg.licenses.products.length;
+    var viewKey = opts.viewKey || '';
+    var open = isSumOpen(viewKey, 'grand');
+    var meta = a.lineItems + ' line item' + (a.lineItems === 1 ? '' : 's') + ' · ' + l1Count + ' MDF/IDF' + (l1Count === 1 ? '' : 's') +
+      (money(a.total) ? ' · <b>' + money(a.total) + '</b> ' + esc(opts.moneyLabel || 'sub bid') : '') +
+      (a.licenses.count ? ' · licenses not included' : '');
+    wrap.innerHTML =
+      '<div class="scw-ws-v2-scope-tiles">' + tiles + '</div>' +
+      '<div class="scw-ws-v2-scope-products' + (open ? ' scw-ws-v2-summary--open' : '') + '" ' +
+        'data-scw-ws-v2-summary-id="grand" data-scw-ws-v2-summary-view="' + esc(viewKey) + '">' +
+        '<button type="button" class="scw-ws-v2-scope-prodtoggle" data-scw-ws-v2-summary-toggle aria-expanded="' + (open ? 'true' : 'false') + '">' +
+          '<span class="scw-ws-v2-summary-chev">' + CHEV_SVG + '</span>Products (' + prodCount + ')</button>' +
+        '<span class="scw-ws-v2-scope-meta">' + meta + '</span>' +
+        '<div class="scw-ws-v2-summary-body">' +
+          (tableAgg.sections.length
+            ? '<table class="scw-ws-v2-summary-table">' + tableHeaderRow(opts.moneyLabel) +
+              '<tbody>' + buildSectionsRows(tableAgg, { alwaysSubtotal: true }) + '</tbody></table>'
+            : '<div class="scw-ws-v2-summary-empty">No hardware line items.</div>') +
+        '</div>' +
+      '</div>';
+    return wrap;
+  }
+  function l1Chip(n, label, detail, mod) {
+    return '<span class="scw-ws-v2-l1-scope-chip' + (mod ? ' ' + mod : '') + '"><b>' + n + '</b> ' + esc(label) +
+      (detail ? '<span class="scw-ws-v2-l1-scope-detail"> · ' + detail + '</span>' : '') + '</span>';
+  }
+  /** One MDF/IDF's scope as chips for its header (replaces the per-group panel). */
+  function l1ScopeLine(l1, opts) {
+    var recs = collectRecords(l1);
+    if (!recs.length) return '';
+    recs = recs.concat(attachedTo(recs, opts || {}));
+    var a = aggregateScope(recs, opts || {});
+    var chips = [];
+    if (a.cam.count) {
+      var parts = [];
+      if (a.cam.newDrops || a.cam.existing) parts.push(a.cam.newDrops + ' new · ' + a.cam.existing + ' existing');
+      if (a.cam.interior || a.cam.exterior) parts.push(a.cam.interior + ' int · ' + a.cam.exterior + ' ext');
+      if (a.cam.plenum) parts.push(a.cam.plenum + ' plenum');
+      if (a.hasQa && (a.cam.qaPassed || a.cam.qaOpen)) parts.push(a.cam.qaPassed + ' QA passed');
+      var camLabel = a.title.toLowerCase();
+      if (a.cam.count === 1) camLabel = camLabel === 'readers' ? 'reader' : 'camera';
+      chips.push(l1Chip(a.cam.count, camLabel, parts.join(' · ')));
+    }
+    if (a.mounts.count)   chips.push(l1Chip(a.mounts.count, plural(a.mounts.count, 'mount'), '', 'scw-ws-v2-l1-scope-chip--muted'));
+    if (a.headend.count)  chips.push(l1Chip(a.headend.count, 'headend', scopeProductsInline(a.headend, 3)));
+    if (a.other.count)    chips.push(l1Chip(a.other.count, 'other', scopeProductsInline(a.other, 2)));
+    if (a.services.count) chips.push(l1Chip(a.services.count, plural(a.services.count, 'service'), '', 'scw-ws-v2-l1-scope-chip--muted'));
+    if (a.licenses.count) chips.push(l1Chip(a.licenses.count, plural(a.licenses.count, 'license'), 'recurring', 'scw-ws-v2-l1-scope-chip--muted'));
+    if (a.removed.count)  chips.push(l1Chip(a.removed.count, 'removed by CO', '', 'scw-ws-v2-l1-scope-chip--removed'));
+    return chips.join('');
+  }
+
   ns.summary = {
     buildL1Summary:    buildL1Summary,
     buildGrandSummary: buildGrandSummary,
+    buildScopeStrip:   buildScopeStrip,
+    aggregateScope:    aggregateScope,
+    l1ScopeLine:       l1ScopeLine,
+    familyOf:          familyOf,
     issueChipsForL1:   issueChipsForL1,
     grandIssueChips:   grandIssueChips,
     l1MoneyTotal:      l1MoneyTotal,

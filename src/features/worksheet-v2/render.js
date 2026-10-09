@@ -71,6 +71,12 @@
     } catch (e) { /* default build-SOW */ }
     return f;
   }
+  // The records the current render was built from (post SOW/Bid + search
+  // filter), per view — the scope strip and the L1 header lines count
+  // ATTACHED accessories (mounts hidden under their parent card) from this
+  // list, since the group tree drops them (groups.js attached-hide gate).
+  var _scopeRecords = Object.create(null);
+
   function buildMoneyOpts(sourceViewKey, flags) {
     flags = flags || viewMoneyFlags(sourceViewKey);
     var o = flags.sales
@@ -352,6 +358,17 @@
       }
     } catch (e) { /* no money in header */ }
 
+    // Scope line (summary.js l1ScopeLine): this MDF/IDF's families + camera
+    // splits as chips on a second header row — replaces the per-group panel.
+    var scopeLine = '';
+    try {
+      if (!l1.isLicense && ns.summary && typeof ns.summary.l1ScopeLine === 'function') {
+        var _scopeOpts = buildMoneyOpts(sourceViewKey);
+        _scopeOpts.records = _scopeRecords[sourceViewKey] || null;
+        scopeLine = ns.summary.l1ScopeLine(l1, _scopeOpts) || '';
+      }
+    } catch (e) { scopeLine = ''; }
+
     head.innerHTML =
       '<span class="scw-ws-v2-l1-chevron">' + L1_CHEVRON_SVG + '</span>' +
       '<span class="scw-ws-v2-l1-label">' + escapeHtml(l1.label) +
@@ -359,7 +376,8 @@
       '</span>' +
       issueChips +
       (moneyStr ? '<span class="scw-ws-v2-l1-money">' + moneyStr + (l1.isLicense ? ' recurring' : '') + '</span>' : '') +
-      '<span class="scw-ws-v2-l1-count">' + l1.recordCount + '</span>';
+      '<span class="scw-ws-v2-l1-count">' + l1.recordCount + '</span>' +
+      (scopeLine ? '<span class="scw-ws-v2-l1-scope">' + scopeLine + '</span>' : '');
 
     return head;
   }
@@ -488,35 +506,10 @@
       surveyMoney = !!(_vcSales && _vcSales.moneyMode === 'survey');
       installMoney = !!(_vcSales && _vcSales.moneyMode === 'install');
     } catch (e) { /* default to build-SOW */ }
-    var summaryMoneyOpts = salesMoney
-      ? { moneyField: 'field_2269', moneyLabel: 'Total' }
-      : (surveyMoney ? { moneyField: 'field_2401', moneyLabel: 'Sub Bid' } : {});
-    // Install has no money columns — show the summary minus the Sub Bid column.
-    if (installMoney) summaryMoneyOpts.hideMoney = true;
-    // Bid (survey): roll service items into the summary so the per-MDF sub-bid
-    // total is complete.
-    if (surveyMoney) summaryMoneyOpts.includeServices = true;
-    // Hand the summary a per-view field map (cfg.fields) + the view key so
-    // aggregate() resolves product/qty/cabling/money per-object instead of
-    // the SOW literals it used to hardcode (CLAUDE.md #15). SOW path is
-    // unchanged (map resolves to the same literals).
-    try {
-      summaryMoneyOpts.fields = (ns.cfg && typeof ns.cfg.fields === 'function')
-        ? ns.cfg.fields(sourceViewKey) : null;
-    } catch (eF) { summaryMoneyOpts.fields = null; }
-    summaryMoneyOpts.viewKey = sourceViewKey;
-
-    // Per-L1 summary block — sits at the top of the body, always rendered;
-    // CSS controls its visibility per toolbar mode. Rendered for every money
-    // model now (install gets the no-money variant).
-    if (ns.summary && typeof ns.summary.buildL1Summary === 'function') {
-      try {
-        var sumEl = ns.summary.buildL1Summary(l1, summaryMoneyOpts);
-        if (sumEl) body.appendChild(sumEl);
-      } catch (sumErr) {
-        console.warn('[scw-ws-v2] summary build failed for L1', l1 && l1.id, sumErr);
-      }
-    }
+    // Per-L1 summary panel RETIRED 2026-10-09: the group's numbers now ride
+    // in its header as the scope line (buildL1Header → summary.l1ScopeLine,
+    // money model via buildMoneyOpts), and the product table lives behind the
+    // scope strip's "Products" disclosure at the top of the worksheet.
 
     if (ns.card && typeof ns.card.buildCard === 'function') {
       // Column-header strip — one per L1 body, sits at the top so
@@ -949,6 +942,7 @@
     if (ns.search && typeof ns.search.filterRecords === 'function') {
       effectiveRecords = ns.search.filterRecords(sourceViewKey, effectiveRecords);
     }
+    _scopeRecords[sourceViewKey] = effectiveRecords;
     // Detect issues once per render — cards + summary chips read from
     // the cached analysis. Runs against the filtered records so the
     // counts reflect what\'s actually visible.
@@ -1043,11 +1037,14 @@
       if (_dids.length &&
           tryInPlaceUpdate(body, tree, dirty.ids, sourceViewKey, openIds)) {
         var _mOpts = buildMoneyOpts(sourceViewKey);
-        // Grand summary (totals may have shifted) — swap the node in place.
-        var _grandOld = body.querySelector('.scw-ws-v2-grand-summary');
-        if (_grandOld && ns.summary && ns.summary.buildGrandSummary) {
+        _mOpts.records = effectiveRecords;
+        // Scope strip / grand summary (totals may have shifted) — swap in place.
+        var _grandOld = body.querySelector('.scw-ws-v2-scope') || body.querySelector('.scw-ws-v2-grand-summary');
+        if (_grandOld && ns.summary && (ns.summary.buildScopeStrip || ns.summary.buildGrandSummary)) {
           try {
-            var _grandNew = ns.summary.buildGrandSummary(tree, _mOpts);
+            var _grandNew = ns.summary.buildScopeStrip
+              ? ns.summary.buildScopeStrip(tree, _mOpts)
+              : ns.summary.buildGrandSummary(tree, _mOpts);
             if (_grandNew && _grandOld.parentNode) {
               _grandOld.parentNode.replaceChild(_grandNew, _grandOld);
             }
@@ -1170,11 +1167,15 @@
         ? ns.cfg.fields(sourceViewKey) : null;
     } catch (eGF) { grandMoneyOpts.fields = null; }
     grandMoneyOpts.viewKey = sourceViewKey;
-    // Grand summary — rendered for every money model (install = no-money variant).
+    grandMoneyOpts.records = effectiveRecords;   // incl. attached accessories (mounts)
+    // Scope strip (summary.js buildScopeStrip) in the grand slot — every money
+    // model (install = no-money variant). Falls back to the old grand table.
     var _as = _PF ? SCW._now() : 0;
-    if (ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
+    if (ns.summary && (typeof ns.summary.buildScopeStrip === 'function' || typeof ns.summary.buildGrandSummary === 'function')) {
       try {
-        var grand = ns.summary.buildGrandSummary(tree, grandMoneyOpts);
+        var grand = (typeof ns.summary.buildScopeStrip === 'function')
+          ? ns.summary.buildScopeStrip(tree, grandMoneyOpts)
+          : ns.summary.buildGrandSummary(tree, grandMoneyOpts);
         if (grand) frag.appendChild(grand);
       } catch (gErr) {
         console.warn('[scw-ws-v2] grand summary failed', gErr);

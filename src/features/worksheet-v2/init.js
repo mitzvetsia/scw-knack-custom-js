@@ -360,6 +360,16 @@
         highlightIssueType(chip);
         return;
       }
+      // Scope-strip tile → highlight that family's cards (toggle; one
+      // family at a time), the same gesture as the warning chips.
+      var tile = e.target && e.target.closest &&
+                 e.target.closest('[data-scw-ws-v2-scope-tile]');
+      if (tile) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        highlightScopeFamily(tile);
+        return;
+      }
       var head = e.target && e.target.closest &&
                  e.target.closest('[data-scw-ws-v2-summary-toggle]');
       if (!head) return;
@@ -374,6 +384,37 @@
         ns.summary.persistOpen(panel, nowOpen);
       }
     });
+  }
+
+  /** Scope-strip tile click: toggle a highlight on every card of that
+   *  family (ids ride on the tile) within the strip's own worksheet. */
+  function highlightScopeFamily(tile) {
+    var strip = tile.closest('.scw-ws-v2-scope');
+    var container = (strip && strip.closest('[id^="scw-ws-v2-"]')) || document;
+    var wasOn = tile.getAttribute('aria-pressed') === 'true';
+    var tiles = (strip || container).querySelectorAll('[data-scw-ws-v2-scope-tile]');
+    for (var t = 0; t < tiles.length; t++) {
+      tiles[t].classList.remove('is-on');
+      tiles[t].setAttribute('aria-pressed', 'false');
+    }
+    var lit = container.querySelectorAll('.scw-ws-v2-card--scope-hl');
+    for (var c = 0; c < lit.length; c++) lit[c].classList.remove('scw-ws-v2-card--scope-hl');
+    if (wasOn) return;
+    tile.classList.add('is-on');
+    tile.setAttribute('aria-pressed', 'true');
+    var ids = (tile.getAttribute('data-scw-ws-v2-scope-ids') || '').split(',');
+    var first = null;
+    for (var i = 0; i < ids.length; i++) {
+      if (!ids[i]) continue;
+      var cards = container.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record="' + ids[i] + '"]');
+      for (var k = 0; k < cards.length; k++) {
+        cards[k].classList.add('scw-ws-v2-card--scope-hl');
+        if (!first) first = cards[k];
+      }
+    }
+    if (first && typeof first.scrollIntoView === 'function') {
+      try { first.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* ignore */ }
+    }
   }
 
   /** When a warning chip is clicked, scope to its summary panel
