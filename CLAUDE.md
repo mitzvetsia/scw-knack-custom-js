@@ -544,9 +544,11 @@ makes the user pick an intent and spells out what it leaves behind (this replace
   item on both SOWs, so edits, margin and pricing changes apply to both (the same idiom as the
   bid-review tray's "+ Add to this SOW" and Create Alternate SOW's link mode).
 - **Consolidate**: link EVERY unique item, then DELETE the source SOW(s); Knack drops a deleted
-  record's connections, so the items end up on this SOW only. Offered ONLY when no source SOW has
-  Survey Requested (`field_2706`) set — a surveyed SOW has bids attached — otherwise the tile /
-  bar button reads unavailable with the reason. The checklist locks to everything (a partial
+  record's connections, so the items end up on this SOW only. Offered ONLY when NO survey has been
+  requested anywhere on the project (`surveyBlockers`: this SOW's `field_2706`, its project-wide
+  count `field_2728` on view_3827, any row in the SURVEY_requests grid view_4155, each source SOW's
+  `field_2706`) — surveyed scope has bids attached — otherwise the tile / bar button / 0-unique
+  "Delete" button read unavailable naming the blocker. The checklist locks to everything (a partial
   consolidate orphans the unticked items). Bulk consolidate takes every other SOW on the project,
   including ones with nothing unique; change-order SOWs (`field_2952`) are never included —
   Builder must expose `field_2952` on view_3869 (or filter COs out of it) for that guard to see them.

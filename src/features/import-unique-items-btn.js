@@ -16,9 +16,12 @@
  *   CONSOLIDATE  Move EVERYTHING onto the current SOW and DELETE the source
  *                SOW(s), so the user ends up with one SOW. Knack drops a
  *                deleted record's connections, which is what makes the items
- *                end up on this SOW only. Offered ONLY when no source SOW has
- *                "Survey Requested?" (field_2706) set — a surveyed SOW has bids
- *                hanging off it and must stay. The bulk Consolidate takes every
+ *                end up on this SOW only. Offered ONLY when NO survey has been
+ *                requested anywhere on the project (surveyBlockers: this SOW's
+ *                field_2706, its project-wide count field_2728, any row in the
+ *                SURVEY_requests grid view_4155, each source SOW's field_2706)
+ *                — surveyed scope has bids hanging off it and must stay. The
+ *                bulk Consolidate takes every
  *                other SOW on the project, including ones with nothing unique
  *                to add; the per-row one takes that row's SOW. The checklist
  *                locks to "everything" in this mode: a partial consolidate
@@ -42,7 +45,15 @@
   var MDF_FIELD        = 'field_1946';  // MDF/IDF connection on a line item
   var BUCKET_FIELD     = 'field_2219';  // Proposal bucket connection
   var ASSUMPTIONS_BUCKET_ID = '697b7a023a31502ec68b3303';
-  var SURVEY_FIELD     = 'field_2706';  // Yes/No: "Survey Requested?" on a SOW Header
+  var SURVEY_FIELD     = 'field_2706';  // Yes/No: FLAG_survey requested on a SOW Header
+  // Project-wide survey evidence (the gate for Consolidate — see surveyBlockers):
+  var SURVEY_COUNT_FIELD = 'field_2728';  // on the SOW detail (view_3827): # of the project's
+                                          // SOWs with a survey requested, THIS one included
+  var SURVEY_REQS_VIEW   = 'view_4155';   // SURVEY_requests grid — one row per survey round
+                                          // on the project (hidden; same source the stepper uses)
+  var REQ_ID_FIELD       = 'field_2345';  // REQ_ID  (e.g. 61052838674-SR121)
+  var REQ_STATUS_FIELD   = 'field_2349';  // FLAG_survey status (Submitted / …)
+  var SOW_NAME_FIELD     = 'field_2126';  // SOW Name (view_3827) — for the blocker's label
   var BTN_MARKER     = 'scw-import-unique-items-btn';
   var BTN_LABEL      = 'Add unique items';
   var EVENT_NS       = '.scwImportUniqueItems';
@@ -477,8 +488,9 @@
               deleteLabel + '</span>' +
             '<span class="scw-iui-mode-hint">' +
               (blocked
-                ? 'Unavailable: a survey has been requested on ' + escapeHtml(blockers.join(', ')) +
-                  '. A surveyed SOW has bids attached and cannot be deleted from here.'
+                ? 'Unavailable: a survey has been requested on this project — ' +
+                  escapeHtml(blockers.join('; ')) +
+                  '. Surveyed scope has bids attached, so no SOW can be deleted from here.'
                 : 'Every item moves onto this SOW (the whole list, not just the selection) and ' +
                   (opts.plural ? 'those SOWs are' : 'that SOW is') + ' deleted. This cannot be undone.') +
             '</span>' +
@@ -514,7 +526,9 @@
 
   // Per-row confirm. Resolves with { action: 'cancel'|'share'|'consolidate',
   // selectedIds } — in consolidate mode selectedIds is every unique item.
-  //   opts.surveyRequested  true → consolidate unavailable for this SOW
+  //   opts.blockers         labels from surveyBlockers — non-empty disables
+  //                         consolidate (opts.surveyRequested: true is the
+  //                         one-SOW shorthand)
   function showImportConfirm(opts) {
     return new Promise(function (resolve) {
       var tokenRaw  = opts.sourceToken || 'this SOW';
@@ -522,7 +536,9 @@
       var fullLabel = escapeHtml(opts.sourceFull || '');
       var showFull  = fullLabel && fullLabel !== opts.sourceToken;
       var items     = opts.items || [];
-      var blockers  = opts.surveyRequested ? [tokenRaw] : [];
+      var blockers  = (opts.blockers && opts.blockers.length)
+        ? opts.blockers
+        : (opts.surveyRequested ? [tokenRaw + ' — survey requested'] : []);
       var overlay = document.createElement('div');
       overlay.className = 'scw-iui-overlay';
       overlay.innerHTML =
@@ -903,8 +919,9 @@
   // unique to add, because the point is ending up with ONE SOW. Change-order
   // SOWs are kept (see isChangeOrderSow). Returns
   //   { sourceIds, itemIds (every unique item, deduped), blockedSourceIds
-  //     (survey requested → consolidate unavailable), coKeptIds,
-  //     perSow: sowId → [itemIds] }
+  //     (source SOWs with their own survey flag), surveyBlockers (EVERY
+  //     reason consolidate is unavailable, project-wide — see
+  //     surveyBlockers; empty = allowed), coKeptIds, perSow: sowId → [itemIds] }
   // or null before the index is built.
   function aggregateConsolidate(receivingSowId) {
     if (!sowToItems || !receivingSowId) return null;
@@ -934,12 +951,77 @@
       sourceIds:        sourceIds,
       itemIds:          itemIds,
       blockedSourceIds: blockedSourceIds,
+      surveyBlockers:   surveyBlockers(receivingSowId, sourceIds),
       coKeptIds:        coKeptIds,
       perSow:           perSow
     };
   }
 
-  // Read field_2706 ("Survey Requested?") for a row in view_3869. Returns
+  // ── Consolidate gate: "no survey requested anywhere on this project" ──
+  // Consolidate deletes SOW headers, and a SOW with a survey has bids and
+  // survey records hanging off it. So it is offered only when NO survey has
+  // been requested anywhere on the project — not just on the SOWs being
+  // deleted. Every signal the SOW page carries is checked, because each
+  // one alone has blind spots (a legacy round has no REQ row; the alt grid
+  // may not expose field_2706; the receiving SOW is not in the alt grid):
+  //   1. this SOW's own FLAG_survey requested (field_2706, view_3827)
+  //   2. field_2728 on this SOW — the project's count of SOWs with a survey
+  //      requested, this one included
+  //   3. the SURVEY_requests grid (view_4155): any survey round on the project
+  //   4. each source SOW's own field_2706 (view_3869 rows)
+  // Returns [{ id, label }], one per distinct reason; empty = allowed.
+  function surveyBlockers(receivingSowId, sourceIds) {
+    var out = [], seen = {};
+    function add(id, label) {
+      if (seen[id]) return;
+      seen[id] = 1;
+      out.push({ id: id, label: label });
+    }
+    function truthy(v) {
+      if (v === true) return true;
+      var t = String(v == null ? '' : v).replace(/<[^>]+>/g, '').trim().toLowerCase();
+      return t === 'yes' || t === 'true' || t === '1';
+    }
+    // 1 + 2 — the receiving SOW's detail record.
+    try {
+      var gv = Knack.views && Knack.views[GATE_VIEW];
+      var attrs = gv && gv.model && gv.model.attributes;
+      if (attrs) {
+        var selfName = cleanText(attrs[SOW_NAME_FIELD]);
+        var selfTok  = (selfName.match(/\bSW-?\d+(?:CO)?\b/i) || [])[0] || selfName || 'this SOW';
+        if (truthy(attrs[SURVEY_FIELD]) || truthy(attrs[SURVEY_FIELD + '_raw'])) {
+          add('self', selfTok + ' (this SOW) — survey requested');
+        }
+        var cntRaw = attrs[SURVEY_COUNT_FIELD + '_raw'];
+        var cnt = parseFloat((cntRaw != null && typeof cntRaw !== 'object')
+          ? cntRaw : cleanText(attrs[SURVEY_COUNT_FIELD]).replace(/[^0-9.\-]/g, ''));
+        if (cnt > 0) {
+          add('count', cnt + ' SOW' + (cnt === 1 ? '' : 's') + ' on this project ' +
+            (cnt === 1 ? 'has' : 'have') + ' a survey requested');
+        }
+      }
+    } catch (e) { /* no evidence from the detail view */ }
+    // 3 — survey rounds on the project.
+    try {
+      var rv = Knack.views && Knack.views[SURVEY_REQS_VIEW];
+      var rounds = (rv && rv.model && rv.model.data && rv.model.data.models) || [];
+      for (var r = 0; r < rounds.length; r++) {
+        var a = rounds[r] && (rounds[r].attributes || rounds[r]);
+        if (!a || !a.id) continue;
+        var reqId  = cleanText(a[REQ_ID_FIELD]) || a.id;
+        var status = cleanText(a[REQ_STATUS_FIELD]);
+        add('req:' + a.id, 'survey request ' + reqId + (status ? ' (' + status + ')' : ''));
+      }
+    } catch (e) { /* view absent — no evidence */ }
+    // 4 — the source SOWs' own flags.
+    var ids = sourceIds || [];
+    for (var i = 0; i < ids.length; i++) {
+      if (isSurveyRequested(ids[i])) add('sow:' + ids[i], getSowToken(ids[i]) + ' — survey requested');
+    }
+    return out;
+  }
+
+  // Read field_2706 (FLAG_survey requested) for a row in view_3869. Returns
   // true only when the value is explicitly Yes / true. Falls back to a DOM
   // scrape of the row when the model isn't yet populated.
   function isSurveyRequested(sourceSowId, tr) {
@@ -1018,13 +1100,15 @@
       return;
     }
 
-    // count === 0
-    var surveyed = isSurveyRequested(sourceRecordId, tr);
-    if (surveyed) {
+    // count === 0 — the only thing left to offer is deleting the SOW, which
+    // is a consolidate: gated on the same project-wide survey rule.
+    var blockers = surveyBlockers(rcv, [sourceRecordId]);
+    if (blockers.length) {
       labelSpan.textContent = '0 unique · survey requested';
       btn.setAttribute('data-mode', 'disabled');
-      btn.title = 'No unique items, and a survey has been requested — ' +
-        'this SOW cannot be deleted.';
+      btn.title = 'No unique items, and a survey has been requested on this project (' +
+        blockers.map(function (b) { return b.label; }).join('; ') +
+        ') — no SOW can be deleted from here.';
       setBtnIcon(btn, DOWNLOAD_SVG);
     } else {
       labelSpan.textContent = 'Delete ' + token;
@@ -1071,10 +1155,14 @@
       return;
     }
     var consolidate = (mode === 'consolidate');
-    if (consolidate && isSurveyRequested(sourceRecordId)) {
-      alert('Consolidate is unavailable: a survey has been requested for ' +
-        getSowToken(sourceRecordId) + ', so it cannot be deleted from here.');
-      return;
+    if (consolidate) {
+      var rowBlockers = surveyBlockers(receivingRecordId, [sourceRecordId]);
+      if (rowBlockers.length) {
+        alert('Consolidate is unavailable: a survey has been requested on this project — ' +
+          rowBlockers.map(function (b) { return b.label; }).join('; ') +
+          '. No SOW can be deleted from here.');
+        return;
+      }
     }
 
     var allUnique = uniqueItemsFor(sourceRecordId, receivingRecordId) || [];
@@ -1129,9 +1217,10 @@
       alert('There are no other SOWs on this project to consolidate.');
       return;
     }
-    if (consolidate && agg.blockedSourceIds.length) {
-      alert('Consolidate is unavailable: a survey has been requested on ' +
-        agg.blockedSourceIds.map(getSowToken).join(', ') + '.');
+    if (consolidate && agg.surveyBlockers.length) {
+      alert('Consolidate is unavailable: a survey has been requested on this project — ' +
+        agg.surveyBlockers.map(function (b) { return b.label; }).join('; ') +
+        '. No SOW can be deleted from here.');
       return;
     }
     var uniqueItemIds = (!consolidate && explicitItemIds && explicitItemIds.length)
@@ -1368,10 +1457,10 @@
     var cons = rcv ? aggregateConsolidate(rcv) : null;
     if (!cons) return;
     var groups   = buildGroups(rcv, cons.sourceIds);
-    var blockers = cons.blockedSourceIds.map(getSowToken);
+    var blockers = cons.surveyBlockers.map(function (b) { return b.label; });
     if (initialMode === 'consolidate' && blockers.length) {
-      alert('Consolidate is unavailable: a survey has been requested on ' +
-        blockers.join(', ') + '. A surveyed SOW has bids attached and cannot be deleted from here.');
+      alert('Consolidate is unavailable: a survey has been requested on this project — ' +
+        blockers.join('; ') + '. Surveyed scope has bids attached, so no SOW can be deleted from here.');
       return;
     }
     if (initialMode === 'consolidate' && !cons.sourceIds.length) {
@@ -1471,12 +1560,12 @@
       : 'No unique items on the other ' + k + ' SOW' + (k === 1 ? '' : 's');
 
     consLbl.textContent = 'Consolidate ' + k + ' SOW' + (k === 1 ? '' : 's') + ' into this one';
-    var blockers = cons.blockedSourceIds.map(getSowToken);
+    var blockers = cons.surveyBlockers.map(function (b) { return b.label; });
     consEl.classList.toggle('is-blocked', blockers.length > 0);
     consEl.setAttribute('aria-disabled', blockers.length ? 'true' : 'false');
     consEl.title = blockers.length
-      ? 'Unavailable — a survey has been requested on ' + blockers.join(', ') +
-        '. A surveyed SOW has bids attached and cannot be deleted from here.'
+      ? 'Unavailable — a survey has been requested on this project: ' + blockers.join('; ') +
+        '. Surveyed scope has bids attached, so no SOW can be deleted from here.'
       : 'Move everything onto this SOW and delete the other ' + k + ' SOW' + (k === 1 ? '' : 's') +
         (cons.coKeptIds.length ? ' (change orders are kept)' : '') + '.';
 
@@ -1521,7 +1610,7 @@
       var label  = getRowLabel(tr);
       var rcv    = getReceivingSowId();
       var ids    = uniqueItemsFor(sourceRecordId, rcv) || [];
-      var allowDelete = !isSurveyRequested(sourceRecordId, tr);
+      var rowBlockers = surveyBlockers(rcv, [sourceRecordId]);
 
       if (mode === 'delete-only') {
         showDeleteConfirm({
@@ -1539,10 +1628,10 @@
         return { id: id, label: getItemLabel(id) };
       });
       showImportConfirm({
-        sourceToken:     label.token,
-        sourceFull:      label.full,
-        surveyRequested: !allowDelete,
-        items:           items
+        sourceToken: label.token,
+        sourceFull:  label.full,
+        blockers:    rowBlockers.map(function (b) { return b.label; }),
+        items:       items
       }).then(function (res) {
         if (res.action === 'cancel') return;
         if (res.action === 'consolidate') {
@@ -1656,7 +1745,8 @@
       buildSowIndex:        buildSowIndex,
       uniqueItemsFor:       uniqueItemsFor,
       aggregateAllUnique:   aggregateAllUnique,
-      aggregateConsolidate: aggregateConsolidate
+      aggregateConsolidate: aggregateConsolidate,
+      surveyBlockers:       surveyBlockers
     },
     dump: function () {
       var out = {

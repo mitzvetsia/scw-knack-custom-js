@@ -63,6 +63,24 @@ check('consolidate: the surveyed SOW blocks it', cons.blockedSourceIds, ['alt2']
 check('consolidate: change order reported as kept', cons.coKeptIds, ['co1']);
 check('consolidate: empty shell contributes nothing but is still deleted', cons.perSow.alt3, []);
 check('consolidate: unique union excludes the change order\'s items', cons.itemIds.slice().sort(), ['i1', 'i3', 'i5']);
+check('gate: the alt SOW\'s own flag is one blocker', cons.surveyBlockers.length, 1);
+
+// ── Project-wide survey signals block consolidate even when no OTHER SOW carries the flag ──
+window.Knack.views.view_3869.model.data.models[1].attributes.field_2706 = 'No';   // alt2 un-flagged
+check('gate: nothing flagged anywhere → consolidate allowed', I.surveyBlockers('rcv', ['alt1', 'alt2', 'alt3']), []);
+window.Knack.views.view_3827.model.attributes = { id: 'rcv', field_2126: '60524852230-SW1145 | Taproom', field_2706: 'Yes', field_2728: 0 };
+let b = I.surveyBlockers('rcv', ['alt1', 'alt2', 'alt3']);
+check('gate: the RECEIVING SOW\'s own survey request blocks, and is named', b.map(x => x.label), ['SW1145 (this SOW) — survey requested']);
+window.Knack.views.view_3827.model.attributes = { id: 'rcv', field_2126: 'SW1145', field_2706: 'No', field_2728: '2' };
+b = I.surveyBlockers('rcv', ['alt1', 'alt2', 'alt3']);
+check('gate: the project-wide count (field_2728) blocks on its own', b.map(x => x.label), ['2 SOWs on this project have a survey requested']);
+window.Knack.views.view_3827.model.attributes = { id: 'rcv', field_2126: 'SW1145', field_2706: 'No', field_2728: 0 };
+window.Knack.views.view_4155 = { model: { data: { models: [mdl({ id: 'req1', field_2345: '60524852230-SR1145', field_2349: 'Submitted' })] } } };
+b = I.surveyBlockers('rcv', ['alt1', 'alt2', 'alt3']);
+check('gate: a survey round on the project blocks, named with its status', b.map(x => x.label), ['survey request 60524852230-SR1145 (Submitted)']);
+check('gate: aggregateConsolidate carries the same list', I.aggregateConsolidate('rcv').surveyBlockers.map(x => x.label), ['survey request 60524852230-SR1145 (Submitted)']);
+delete window.Knack.views.view_4155;
+window.Knack.views.view_3869.model.data.models[1].attributes.field_2706 = 'Yes';  // restore fixture
 
 const overlay = () => document.querySelector('.scw-iui-overlay');
 const radio = v => overlay().querySelector('input[name="scw-iui-mode"][value="' + v + '"]');
@@ -94,7 +112,7 @@ const primary = () => overlay().querySelector('.scw-iui-btn--primary');
   // ── Per-row modal, source surveyed → consolidate unavailable ────────────────────────────────
   p = I.showImportConfirm({ sourceToken: 'SW-1500', surveyRequested: true, items: [{ id: 'i3', label: 'NVR' }] });
   check('surveyed: consolidate tile disabled + blocked', [radio('consolidate').disabled, radio('consolidate').closest('.scw-iui-mode').classList.contains('is-blocked')], [true, true]);
-  check('surveyed: the reason names the SOW', /survey has been requested on SW-1500/.test(overlay().textContent), true);
+  check('surveyed: the reason names the SOW', /survey has been requested on this project — SW-1500 — survey requested/.test(overlay().textContent), true);
   primary().click();
   res = await p;
   check('surveyed: share still works', res, { action: 'share', selectedIds: ['i3'] });
