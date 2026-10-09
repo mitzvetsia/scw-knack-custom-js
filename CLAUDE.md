@@ -538,9 +538,10 @@ view_3325; sales = SOW page, four "allow sales to add" buckets, no picker) or th
 `dto-form-submit-intercept.js` now covers only the survey add forms — likely carrying the
 same connection bug; verify before relying on them.
 
-**Survey mode (2026-10-09 — INERT until the webhook URL is filled)**: the sub survey / bid worksheet
-(view_3505, scene_1140) runs the SAME modal with `sowAddModal: { mode: 'survey', bidViews:
-['view_3507'], requireWebhook: true }`. `SURVEY_BUCKETS` in `sow-add-item-form.js` mirrors view_3627's
+**Survey mode (LIVE for everyone 2026-10-09)**: the sub survey / bid worksheet (view_3505,
+scene_1140) runs the SAME modal with `sowAddModal: { mode: 'survey', bidViews: ['view_3507'],
+requireWebhook: true }` as its one "+ Add Survey/Bid Item" button; the native Knack DTO form
+view_3627 is retired from the page (dropped from `dto-form-submit-intercept.js`; reachable by URL only). `SURVEY_BUCKETS` in `sow-add-item-form.js` mirrors view_3627's
 per-bucket rules (`bucket-field-visibility_add-survey-bid-item.js` — change both together): bid(s) row
 on every bucket (active filter pills pre-checked, optional), labor bid `field_2233` + survey notes
 `field_2432` on every bucket but License, accessories only on Materials, License = product + qty, MDF
@@ -552,12 +553,12 @@ the survey DTO mirror (`field_2426`/`_raw` request, `field_2427_raw` bids, `fiel
 MODAL)" — the DTO scenario with the webhook as module 2 so every `2.field_*` read resolves against the
 payload unchanged; config/variables sets from `var.organization.knack_config_set` /
 `knack_variable_set`; module 157 keeps the request's own project / SOWs when the payload has none.
-`MAKE_SURVEY_ADD_ITEMS_WEBHOOK` is a PLACEHOLDER: `isAllowed(viewKey)` is false for `requireWebhook`
-views until it is filled, so the toolbar keeps the native "Add Survey/Bid Item" link. **Preview
-gate**: while `sowAddModal.previewEmails` is set (currently micah.shearer@getscw.com) the native
-button stays for everyone and only the listed users get a second amber "+ Add Survey/Bid Item (new)"
-button that opens the modal (webhook or not; submit reports an unconfigured one). Delete the list to
-make the modal the add button. **Sub-can-add**: survey mode offers only products with `field_2433`
+`MAKE_SURVEY_ADD_ITEMS_WEBHOOK` carries the live hook; `isAllowed(viewKey)` is false for
+`requireWebhook` views while it is blank/PLACEHOLDER, in which case the toolbar falls back to the
+native add link. **Preview gate** (for staging future changes): set `sowAddModal.previewEmails` and
+the native button returns for everyone while only the listed users get a second amber
+"+ Add Survey/Bid Item (new)" button that opens the modal (webhook or not; submit reports an
+unconfigured one). Clear the list to make the modal the add button again. **Sub-can-add**: survey mode offers only products with `field_2433`
 FLAG_subcontractor can add = Yes and hides buckets with no eligible product (product-less Services
 stays). Flag source: `sowAddModal.subCanAddView` (a Products grid on the scene, Builder TBD) else
 `SCW.productMap[id].subCanAdd` (extend the productMap Builder snippet with `field_2433_raw`); with

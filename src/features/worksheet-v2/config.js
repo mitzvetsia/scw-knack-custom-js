@@ -432,10 +432,11 @@
         // that URL is a PLACEHOLDER the toolbar keeps the native Knack add
         // link (view_3627), so the sub is never left with a modal that can't
         // submit — fill the URL in src/config.js and the button flips.
-        // previewEmails (testing, 2026-10-09): the native button stays for
-        // EVERYONE; the listed users also get "+ Add Survey/Bid Item (new)"
-        // (amber) that opens the modal. Delete the list when testing is done
-        // and the modal becomes THE add button (requireWebhook still applies).
+        // LIVE for everyone since 2026-10-09 (the native Knack add form
+        // view_3627 is retired from this page). To stage a future change,
+        // set previewEmails: ['…'] — the native button then returns for
+        // everyone and only the listed users get the modal as a second
+        // amber "(new)" button.
         // subCanAddView (Builder TBD): a hidden all-records Products grid on
         // scene_1140 carrying field_2433 "FLAG_subcontractor can add" — the
         // modal offers ONLY flagged products and hides buckets with none
@@ -443,8 +444,7 @@
         // from SCW.productMap[id].subCanAdd (add field_2433_raw to the
         // productMap Builder snippet); with neither source the modal shows
         // every product and says so in an amber note.
-        sowAddModal:       { mode: 'survey', bidViews: ['view_3507'], requireWebhook: true,
-                             previewEmails: ['micah.shearer@getscw.com'], subCanAddView: '' },
+        sowAddModal:       { mode: 'survey', bidViews: ['view_3507'], requireWebhook: true, subCanAddView: '' },
         photoUploadView:   'view_3532',
         independentFields: true,            // Survey object — no SOW fallback
         moneyMode:         'survey',

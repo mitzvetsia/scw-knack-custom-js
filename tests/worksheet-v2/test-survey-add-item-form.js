@@ -80,16 +80,18 @@ const chip = id => q('.scw-sowadd__chip[data-bucket="' + id + '"]').click();
 const fieldLabels = () => texts('.scw-sowadd__lbl').slice(2);   // after the item-type question + the bid row
 
 // Config + gate
-check('view_3505 runs survey mode: survey webhook key, requireWebhook, bids from view_3507, MDFs from the survey locations grid, preview list',
+check('view_3505 runs survey mode: survey webhook key, requireWebhook, bids from view_3507, MDFs from the survey locations grid, LIVE (no preview list)',
   (o => [o.mode, o.webhookKey, o.requireWebhook, o.bidViews, o.mdfView, o.mdfLabelField, o.previewEmails])(form.modalOpts('view_3505')),
-  ['survey', 'MAKE_SURVEY_ADD_ITEMS_WEBHOOK', true, ['view_3507'], 'view_3617', 'field_1642', ['micah.shearer@getscw.com']]);
-check('SOW views are untouched by the survey mode (no preview list)', (o => [o.mode, o.webhookKey, o.requireWebhook, o.previewEmails])(form.modalOpts('view_3962')), ['sow', 'MAKE_SOW_ADD_ITEMS_WEBHOOK', false, []]);
-check('preview gate: a user outside previewEmails is NOT allowed (webhook set or not) — the native button is all they see; SOW views unaffected',
-  [form.isPreview('view_3505'), form.isAllowed('view_3505'), form.isAllowed('view_3962'), form.webhookUrl('view_3505')], [true, false, true, '']);
+  ['survey', 'MAKE_SURVEY_ADD_ITEMS_WEBHOOK', true, ['view_3507'], 'view_3617', 'field_1642', []]);
+check('SOW views are untouched by the survey mode', (o => [o.mode, o.webhookKey, o.requireWebhook, o.previewEmails])(form.modalOpts('view_3962')), ['sow', 'MAKE_SOW_ADD_ITEMS_WEBHOOK', false, []]);
+check('requireWebhook: with a PLACEHOLDER webhook the sub is NOT allowed (the native add link stays); SOW views are',
+  [form.isPreview('view_3505'), form.isAllowed('view_3505'), form.isAllowed('view_3962'), form.webhookUrl('view_3505')], [false, false, true, '']);
 form.open({ viewKey: 'view_3505' });
-check('open() refuses for the non-preview user', !!q('.scw-sowadd'), false);
+check('open() refuses while the webhook is unconfigured', !!q('.scw-sowadd'), false);
+// Preview-gate mechanics (previewEmails set): the listed users only, webhook or not — the native button stays for everyone else.
+window.SCW.worksheetV2.cfg.viewCfg('view_3505').sowAddModal.previewEmails = ['micah.shearer@getscw.com'];
 window.SCW.CONFIG.MAKE_SURVEY_ADD_ITEMS_WEBHOOK = 'https://hook.us1.make.com/survey-add-items';
-check('still refused with the webhook configured — the preview list decides', form.isAllowed('view_3505'), false);
+check('preview list set: a user outside it is refused even with the webhook configured', [form.isPreview('view_3505'), form.isAllowed('view_3505')], [true, false]);
 email = 'Micah.Shearer@getscw.com';   // the preview user (case-insensitive)
 window.SCW.CONFIG.MAKE_SURVEY_ADD_ITEMS_WEBHOOK = 'PLACEHOLDER';
 check('the preview user is allowed even before the webhook is configured (so the form can be reviewed); the toolbar title names the surface',
@@ -97,7 +99,14 @@ check('the preview user is allowed even before the webhook is configured (so the
 form.open({ viewKey: 'view_3505' });
 check('preview user: the modal opens with a Preview pill', [!!q('.scw-sowadd'), q('.scw-sowadd__beta') && q('.scw-sowadd__beta').textContent], [true, 'Preview']);
 q('[data-act="cancel"]').click();
+// LIVE again: list cleared + webhook configured → the sub gets the modal as THE add button, no Preview pill.
+window.SCW.worksheetV2.cfg.viewCfg('view_3505').sowAddModal.previewEmails = [];
+email = 'aaron@sub.example';
 window.SCW.CONFIG.MAKE_SURVEY_ADD_ITEMS_WEBHOOK = 'https://hook.us1.make.com/survey-add-items';
+form.open({ viewKey: 'view_3505' });
+check('live: no preview list + configured webhook → the sub is allowed; the modal opens without a Preview pill',
+  [form.isPreview('view_3505'), form.isAllowed('view_3505'), !!q('.scw-sowadd'), !!q('.scw-sowadd__beta')], [false, true, true, false]);
+q('[data-act="cancel"]').click();
 check('the survey suite keeps the seven DTO buckets (same ids, different field suites)',
   [form.bucketsFor('view_3505').map(b => b.name), form.bucketsFor('view_3505') === form.bucketsFor('view_3962')],
   [['Camera or Reader', 'Networking or Headend', 'Other Equipment', 'Other Services', 'Assumptions', 'Materials', 'License'], false]);

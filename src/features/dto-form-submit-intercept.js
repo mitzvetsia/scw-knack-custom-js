@@ -36,12 +36,11 @@
     // intercepted POST never connected the DTO to its SOW header); view_4100 (CO)
     // by co-add-item-form.js. ⚠ The survey forms may well have the same
     // page-record connection problem — verify a survey DTO connects to its
-    // survey before relying on them. 2026-10-09: view_3627 (the sub survey /
-    // bid page) is superseded by sow-add-item-form.js in SURVEY mode as soon
-    // as SCW.CONFIG.MAKE_SURVEY_ADD_ITEMS_WEBHOOK is filled in (the toolbar
-    // then opens the modal instead of this form); it stays listed here for
-    // the interim and for any other route that still reaches the form.
-    VIEWS: ['view_3544', 'view_3619', 'view_3627'],
+    // survey before relying on them. RETIRED 2026-10-09: view_3627 (the sub
+    // survey / bid page) — replaced by sow-add-item-form.js in SURVEY mode
+    // (the worksheet's "+ Add Survey/Bid Item" opens the modal; the form is
+    // no longer linked from the page).
+    VIEWS: ['view_3544', 'view_3619'],
     BUCKET_FIELD: 'field_2223',
     // Field keys the visibility module manages: hidden unless .scw-visible.
     // Anything else on the form is submitted as-is.
