@@ -551,7 +551,11 @@ views until it is filled, so the toolbar keeps the native "Add Survey/Bid Item" 
 gate**: while `sowAddModal.previewEmails` is set (currently micah.shearer@getscw.com) the native
 button stays for everyone and only the listed users get a second amber "+ Add Survey/Bid Item (new)"
 button that opens the modal (webhook or not; submit reports an unconfigured one). Delete the list to
-make the modal the add button. Behaviors the
+make the modal the add button. **Sub-can-add**: survey mode offers only products with `field_2433`
+FLAG_subcontractor can add = Yes and hides buckets with no eligible product (product-less Services
+stays). Flag source: `sowAddModal.subCanAddView` (a Products grid on the scene, Builder TBD) else
+`SCW.productMap[id].subCanAdd` (extend the productMap Builder snippet with `field_2433_raw`); with
+neither on the page the modal shows every product behind an amber notice + console warning. Behaviors the
 modal inherits from 05.01 (pre-existing, not changed): License qty is ignored (one line per license
 product), exterior/plenum come from the PRODUCT not the toggles, Materials accessories (`field_2206`)
 create SOW Line Items (object_105), not survey items. Test: `tests/worksheet-v2/test-survey-add-item-form.js`.

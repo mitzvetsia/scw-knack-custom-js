@@ -45,6 +45,13 @@
  * requireWebhook:true keeps the toolbar on the native "Add Survey/Bid Item"
  * link until that URL is filled in.
  *
+ * SUB-CAN-ADD (survey mode): only products flagged "FLAG_subcontractor can
+ * add" (Products field_2433 = Yes) are offered, and a bucket with no such
+ * product is hidden (product-less Other Services stays). Flag source:
+ * sowAddModal.subCanAddView (a Products grid on the scene) else
+ * SCW.productMap[id].subCanAdd (Builder snippet); neither on the page →
+ * every product + an in-modal notice, never a silently empty list.
+ *
  * PREVIEW (sowAddModal.previewEmails): while the list is set, the native
  * add button stays for EVERYONE and the listed users get a second
  * "(new)" button beside it that opens this modal — nothing changes for
@@ -77,6 +84,11 @@
     BID_LABEL_FIELD:      'field_2414',
     BID_NAME_FIELD:       'field_2636',
     SURVEY_PROJECT_FIELD: 'field_2346',
+    // Products · FLAG_subcontractor can add — survey mode offers only these.
+    SUB_CAN_ADD_FIELD:    'field_2433',
+    // Key(s) the productMap Builder snippet may expose the flag under
+    // (first one present wins; the snippet names the field SUB_ALLOWED).
+    SUB_CAN_ADD_KEYS:     ['subAllowed', 'subCanAdd', 'sub_allowed', 'field_2433', 'field_2433_raw'],
     // Make creates N records asynchronously — refetch the worksheet twice.
     REFETCH_DELAYS_MS: [2500, 8000],
     // Structural initiator per hosting deployment (never the user's email).
@@ -286,13 +298,13 @@
     var o = (vc && vc.sowAddModal && typeof vc.sowAddModal === 'object') ? vc.sowAddModal : (CONFIG.HOSTS[viewKey] || {});
     var base = allBuckets(viewKey);
     var list = Array.isArray(o.buckets) ? o.buckets : null;
-    if (!list || !list.length) return base.slice();
+    if (!list || !list.length) return hideEmptySurveyBuckets(base.slice(), viewKey);
     var out = [];
     for (var i = 0; i < list.length; i++) {
       var b = bucketById(BUCKET_KEYS[list[i]] || list[i], base);
       if (b && out.indexOf(b) === -1) out.push(b);
     }
-    return out.length ? out : base.slice();
+    return hideEmptySurveyBuckets(out.length ? out : base.slice(), viewKey);
   }
 
   // Label prefix options (object_111 CONFIG: Pre-Fix — the DTO's field_2241
@@ -447,11 +459,79 @@
     if (bmap && Array.isArray(bmap[pid]) && bmap[pid].length) return bmap[pid][0];
     return '';
   }
+  function flagTruthy(v) {
+    if (v === true) return true;
+    var s = String(v == null ? '' : v).trim().toLowerCase();
+    return s === 'yes' || s === 'true' || s === '1';
+  }
+  /** Survey mode: the products a SUBCONTRACTOR may add — Products field_2433
+   *  "FLAG_subcontractor can add" = Yes. Source, in order: a Products grid on
+   *  the scene (sowAddModal.subCanAddView — one row per product, the flag as
+   *  a column), else the catalog entry's `subCanAdd` (SCW.productMap, when
+   *  the Builder snippet carries field_2433). null on SOW surfaces (no
+   *  restriction); { known:false } when neither source is on this page —
+   *  callers then FAIL OPEN (every product, every bucket) and the modal says
+   *  so, rather than silently offering nothing. */
+  function subCanAddIndex(viewKey) {
+    var o = modalOpts(viewKey);
+    if (o.mode !== 'survey') return null;
+    var F = CONFIG.SUB_CAN_ADD_FIELD, set = Object.create(null), known = false, i, a;
+    if (o.subCanAddView) {
+      var rows = viewModels(o.subCanAddView);
+      for (i = 0; i < rows.length; i++) {
+        a = rows[i] && rows[i].attributes; if (!a || !a.id) continue;
+        known = true;
+        if (flagTruthy(a[F + '_raw'] != null ? a[F + '_raw'] : a[F])) set[a.id] = true;
+      }
+    }
+    if (!known) {
+      var pmap = (window.SCW && SCW.productMap) || {};
+      for (var id in pmap) {
+        if (!Object.prototype.hasOwnProperty.call(pmap, id)) continue;
+        var p = pmap[id];
+        if (!p) continue;
+        var v = undefined;   // reset per product — a bare `var v;` keeps the previous product's value
+        for (var k = 0; k < CONFIG.SUB_CAN_ADD_KEYS.length && v === undefined; k++) v = p[CONFIG.SUB_CAN_ADD_KEYS[k]];
+        if (v === undefined) continue;
+        known = true;
+        if (flagTruthy(v)) set[id] = true;
+      }
+    }
+    return { known: known, set: set };
+  }
+  /** The sub-can-add restriction on a candidate list — a no-op where it
+   *  doesn't apply or isn't known on this page. */
+  function restrictSubCanAdd(list, viewKey) {
+    var idx = subCanAddIndex(viewKey);
+    if (!idx || !idx.known) return list;
+    return list.filter(function (c) { return !!idx.set[c.id]; });
+  }
+  /** Survey mode: a bucket with a product field is offered only when at
+   *  least one sub-can-add product belongs to it — there would be nothing to
+   *  add otherwise. Product-less buckets (Other Services) stay. No-op until
+   *  both the flag and the catalog's bucket map are on the page. */
+  function hideEmptySurveyBuckets(buckets, viewKey) {
+    var idx = subCanAddIndex(viewKey);
+    if (!idx || !idx.known) return buckets;
+    var pmap = (window.SCW && SCW.productMap) || {};
+    var bmap = (window.SCW && SCW.productBucketMap) || {};
+    if (!Object.keys(pmap).length && !Object.keys(bmap).length) return buckets;   // catalog not loaded: can't tell
+    var has = Object.create(null);
+    for (var pid in idx.set) {
+      if (!Object.prototype.hasOwnProperty.call(idx.set, pid)) continue;
+      var bk = productBucketOf(pid); if (bk) has[bk] = true;
+    }
+    return buckets.filter(function (b) {
+      var hasProductField = b.fields.some(function (f) { return f.t === 'product'; });
+      return !hasProductField || !!has[b.id];
+    });
+  }
   /** Product-first list: every product whose bucket this view offers,
    *  labelled "name · bucket" so the item type reads at a glance. A product
    *  the catalog map doesn't know yet (cold load) is left out here; it still
-   *  shows once a bucket is chosen (productCandidates fails open). */
-  function productFirstCandidates(buckets) {
+   *  shows once a bucket is chosen (productCandidates fails open). Survey
+   *  mode: sub-can-add products only. */
+  function productFirstCandidates(buckets, viewKey) {
     var pmap = (window.SCW && SCW.productMap) || {};
     var out = [];
     for (var id in pmap) {
@@ -460,6 +540,7 @@
       if (!b || !b.fields.some(function (f) { return f.t === 'product'; })) continue;
       out.push({ id: id, name: ((pmap[id] && pmap[id].name) || '(unnamed)') + ' · ' + b.name, bucketId: b.id });
     }
+    out = restrictSubCanAdd(out, viewKey);
     out.sort(sortByName);
     return out;
   }
@@ -508,6 +589,7 @@
         }
       }
     }
+    out = restrictSubCanAdd(out, viewKey);   // survey: sub-can-add products only
     out.sort(sortByName);
     return out;
   }
@@ -544,6 +626,8 @@
    *               (default view_3507: bid number field_2414, name field_2636)
    *    requireWebhook: the toolbar shows the modal only once the webhook URL
    *               is configured (the native add link stays until then)
+   *    subCanAddView: survey mode — a Products grid on the scene carrying
+   *               field_2433 (one row per product); preferred flag source
    *    webhookKey: SCW.CONFIG key override (defaults per mode) */
   function modalOpts(viewKey) {
     var vc = viewCfg(viewKey);
@@ -560,6 +644,7 @@
       previewEmails: preview,
       bidViews:      Array.isArray(o.bidViews) && o.bidViews.length ? o.bidViews : ['view_3507'],
       requireWebhook: !!o.requireWebhook,
+      subCanAddView: o.subCanAddView || '',
       webhookKey:    o.webhookKey || (mode === 'survey' ? CONFIG.SURVEY_WEBHOOK_KEY : CONFIG.WEBHOOK_KEY),
       page:          o.page === 'project' ? 'project' : 'sow',
       sowViews:      Array.isArray(o.sowViews) && o.sowViews.length ? o.sowViews : ['view_3325', 'view_3918'],
@@ -741,6 +826,8 @@
       '.scw-sowadd__lbl{display:block;font:600 11px/1.2 system-ui,sans-serif;letter-spacing:.04em;',
       'text-transform:uppercase;color:#64748b;margin-bottom:6px;}',
       '.scw-sowadd__help{font:400 11.5px/1.4 system-ui,sans-serif;color:#94a3b8;margin:5px 0 0;}',
+      '.scw-sowadd__note{font:600 11.5px/1.4 system-ui,-apple-system,sans-serif;color:#b45309;background:#fef3c7;',
+      'border:1px solid #fcd34d;border-radius:6px;padding:6px 9px;margin:8px 0 0;}',
       '.scw-sowadd__chips{display:flex;flex-wrap:wrap;gap:8px;}',
       '.scw-sowadd__chip{padding:7px 13px;border:1px solid #cbd5e1;border-radius:999px;background:#fff;',
       'font:600 12.5px/1 system-ui,sans-serif;color:#334155;cursor:pointer;}',
@@ -952,6 +1039,15 @@
     }
     var preBids = [];
     bidCands.forEach(function (c) { if (activeBids.indexOf(c.id) !== -1) preBids.push(c.id); });
+    // Survey mode without a sub-can-add source on the page: fail OPEN and say so.
+    var subCanAddIdx = survey ? subCanAddIndex(viewKey) : null;
+    var subCanAddNotice = !!(survey && !(subCanAddIdx && subCanAddIdx.known));
+    if (subCanAddNotice) {
+      try {
+        console.warn('[scw-sow-add] survey: products are not filtered to "subcontractor can add" (' + CONFIG.SUB_CAN_ADD_FIELD +
+          ') — no Products grid (sowAddModal.subCanAddView) and no subCanAdd on SCW.productMap. Showing every product.');
+      } catch (e) { /* ignore */ }
+    }
     var mdfCands = mdfCandidates(viewKey);
     var sowLabels = {}, mdfLabels = {}, bidLabels = {};
     sowCands.forEach(function (c) { sowLabels[c.id] = c.identifier || c.name; });
@@ -1161,6 +1257,10 @@
           '</button>';
       }
       chipRow.innerHTML = chipHtml + '</div>';
+      if (subCanAddNotice) {
+        chipRow.insertAdjacentHTML('beforeend', '<p class="scw-sowadd__note">Products aren’t filtered to “subcontractor can add” on this page ' +
+          '(no flag source loaded) — showing every product.</p>');
+      }
       body.appendChild(chipRow);
       chipRow.querySelector('.scw-sowadd__chips').addEventListener('click', function (e) {
         var chip = e.target.closest && e.target.closest('[data-bucket]');
@@ -1211,7 +1311,7 @@
         // bucket's form with the product filled in.
         var prow = labelRow('Product', 'Pick a product and its item type is set for you — or choose the type above and the list narrows.');
         var phost = document.createElement('div'); prow.appendChild(phost);
-        var firstCands = productFirstCandidates(buckets);
+        var firstCands = productFirstCandidates(buckets, viewKey);
         makeCombo(phost, {
           candidates: firstCands, multi: false,
           placeholder: 'Search all products…',
@@ -1380,6 +1480,7 @@
   }
 
   wv2.sowAddForm = { open: open, isAllowed: isAllowed, isPreview: isPreview, buttonTitle: buttonTitle, bucketsFor: bucketsFor,
+                     subCanAddIndex: subCanAddIndex,
                      sowCandidates: sowCandidates, bidCandidates: bidCandidates, modalOpts: modalOpts, webhookUrl: webhookUrl,
                      CONFIG: CONFIG, BUCKETS: BUCKETS, SURVEY_BUCKETS: SURVEY_BUCKETS, BUCKET_KEYS: BUCKET_KEYS };
 })();

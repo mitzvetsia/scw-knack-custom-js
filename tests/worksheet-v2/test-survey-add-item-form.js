@@ -140,6 +140,29 @@ chip(B_LIC);
 check('License: products + qty only — no MDF, no notes, no labor bid (the bid row is the only check group)',
   [fieldLabels(), qa('.scw-sowadd__checks').length, !!q('[data-f="notes"]'), !!q('[data-f="serviceCost"]')], [['Products', 'Quantity'], 1, false, false]);
 
+// Sub-can-add restriction (Products field_2433). No source on the page yet → fail OPEN with a notice.
+check('no sub-can-add source on the page → fail OPEN: index unknown, every bucket offered, the modal says so; SOW surfaces: no index',
+  [form.subCanAddIndex('view_3505').known, form.bucketsFor('view_3505').length, !!q('.scw-sowadd__note'), form.subCanAddIndex('view_3962')], [false, 7, true, null]);
+q('[data-act="cancel"]').click();
+// The catalog carries the flag (productMap snippet extended): the NVR is NOT sub-addable → Networking has no eligible product → hidden
+Object.keys(window.SCW.productMap).forEach(id => { window.SCW.productMap[id].subAllowed = id !== NVR ? 'Yes' : false; });   // the snippet's SUB_ALLOWED key, Yes/No or boolean
+check('catalog flag known: Networking (its only product not sub-addable) is hidden; product-less Services stays; the rest remain',
+  form.bucketsFor('view_3505').map(b => b.name), ['Camera or Reader', 'Other Equipment', 'Other Services', 'Assumptions', 'Materials', 'License']);
+check('SOW surfaces are never restricted', form.bucketsFor('view_3962').length, 7);
+form.open({ viewKey: 'view_3505' });
+check('modal: six chips, no notice, product-first list without the NVR',
+  [qa('.scw-sowadd__chip').length, !!q('.scw-sowadd__note'), texts('.scw-sowadd__opt').some(t => /NVR/.test(t)), qa('.scw-sowadd__opt').length], [6, false, false, 6]);
+q('[data-act="cancel"]').click();
+// A Products grid on the scene (sowAddModal.subCanAddView) wins over the catalog flag: only CAM + OTH flagged there
+window.SCW.worksheetV2.cfg.viewCfg('view_3505').sowAddModal.subCanAddView = 'view_9999';
+window.Knack.views.view_9999 = { model: { data: { models: [
+  { attributes: { id: CAM, field_2433: 'Yes', field_2433_raw: true } }, { attributes: { id: NVR, field_2433: 'No', field_2433_raw: false } }, { attributes: { id: OTH, field_2433: 'Yes', field_2433_raw: true } }
+] } } };
+check('a Products grid on the scene is the preferred flag source: buckets with no flagged product hidden, Services kept',
+  form.bucketsFor('view_3505').map(b => b.name), ['Camera or Reader', 'Other Equipment', 'Other Services']);
+window.SCW.worksheetV2.cfg.viewCfg('view_3505').sowAddModal.subCanAddView = '';
+form.open({ viewKey: 'view_3505' });
+
 // Camera flow → validation → ONE POST mirroring the survey DTO record
 chip(B_CAM);
 q('[data-act="submit"]').click();

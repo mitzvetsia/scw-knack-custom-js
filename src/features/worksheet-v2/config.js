@@ -436,8 +436,15 @@
         // EVERYONE; the listed users also get "+ Add Survey/Bid Item (new)"
         // (amber) that opens the modal. Delete the list when testing is done
         // and the modal becomes THE add button (requireWebhook still applies).
+        // subCanAddView (Builder TBD): a hidden all-records Products grid on
+        // scene_1140 carrying field_2433 "FLAG_subcontractor can add" — the
+        // modal offers ONLY flagged products and hides buckets with none
+        // (product-less Services stays). Until it exists the flag is read
+        // from SCW.productMap[id].subCanAdd (add field_2433_raw to the
+        // productMap Builder snippet); with neither source the modal shows
+        // every product and says so in an amber note.
         sowAddModal:       { mode: 'survey', bidViews: ['view_3507'], requireWebhook: true,
-                             previewEmails: ['micah.shearer@getscw.com'] },
+                             previewEmails: ['micah.shearer@getscw.com'], subCanAddView: '' },
         photoUploadView:   'view_3532',
         independentFields: true,            // Survey object — no SOW fallback
         moneyMode:         'survey',
