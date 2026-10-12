@@ -489,6 +489,16 @@
     var grid = gridFor(sowId);
     decorateHeader(section);
     decorateHead(section, grid);
+    decorateDocs(section);
+  }
+
+  /** The documents band is an auto-expanded gallery (2026-10-12): v1 folds
+   *  the "N other project docs" (unlinked) list behind its toggle; here it
+   *  starts open so the whole gallery reads at a glance. The toggle still
+   *  folds it. */
+  function decorateDocs(section) {
+    var other = section.querySelector('.' + CLS + '__docs-row .scw-bid-review__docs-other');
+    if (other) other.setAttribute('data-collapsed', '0');
   }
 
   /** The navy SOW header becomes the status line: scope summary disclosure +

@@ -43,7 +43,10 @@ v1.buildSowStatusBar = function (g) {
     '<div class="scw-bid-review__sow-metrics"><label class="scw-bid-review__sow-metric">Survey Costs <input class="scw-bid-review__sow-metric-input" data-action="sow_survey_costs"></label></div>';
   const actions = document.createElement('div'); actions.className = 'scw-bid-review__sow-actions';
   actions.innerHTML = '<a class="scw-ops-pill" href="#">Preview Proposal for Next Steps</a>';
-  const docs = document.createElement('div'); docs.className = 'scw-bid-review__docs scw-bid-review__docs--sow'; docs.textContent = 'Documents';
+  const docs = document.createElement('div'); docs.className = 'scw-bid-review__docs scw-bid-review__docs--sow';
+  docs.innerHTML = '<div class="scw-bid-review__docs-header">Documents</div><div class="scw-bid-review__docs-list"></div>' +
+    '<div class="scw-bid-review__docs-other" data-collapsed="1"><button type="button" class="scw-bid-review__docs-other-toggle" data-action="docs_toggle_other">2 other project docs</button>' +
+    '<div class="scw-bid-review__docs-list scw-bid-review__docs-list--available"></div></div>';
   return { details, actions, docs };
 };
 const basisMap = { s1: 'pkgA', s2: '' };
@@ -249,6 +252,8 @@ const labels = q(s1, 'tr.scw-bid-review-v2__collabels');
 check('the Line item / Photos labels sit in a row directly above the line items, after the documents row',
   [!!labels, labels.previousElementSibling.classList.contains('scw-bid-review-v2__docs-row'), labels.parentNode.tagName, qa(labels, 'td').map(td => txt(td))],
   [true, true, 'TBODY', ['Line item', 'Photos', 'SCW · SOW', 'SVSBD-141Basis', 'ACMEBD-93Basis']]);
+check('the documents band is an auto-expanded gallery: the "other project docs" list starts open (the toggle still folds it)',
+  q(s1, '.scw-bid-review-v2__docs-row .scw-bid-review__docs-other').getAttribute('data-collapsed'), '0');
 check('bid label cells ride the column (class + pkg id) so the filter hides them with it; the basis marker on the basis column only',
   qa(labels, 'td.scw-bid-review-v2__collabel--pkg').map(td => [td.getAttribute('data-pkg-id'), td.classList.contains('scw-bid-review-v2__pkg-col'), td.classList.contains('scw-bid-review-v2__pkg-col--basis-hidden'), q(td, '.scw-bid-review-v2__collabel-basis').hidden]),
   [['pkgA', true, false, false], ['pkgB', true, true, true]]);
