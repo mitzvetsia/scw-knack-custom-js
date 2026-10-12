@@ -750,6 +750,7 @@
 
     // ── actions (ops only — the sub strip renders no buttons) ────────────
     function sendToSub() {
+      if (!guardDocLines('send for pricing')) return;
       // Confirm + optional note in one modal. The note is FOLDED INTO the
       // request document (requestHtml/requestText) that already rides the
       // webhook, so the existing Make scenario forwards it to the sub with
@@ -1249,6 +1250,7 @@
     }
 
     function authorizeNotBillable() {
+      if (!guardDocLines('authorize', true)) return;
       var old = document.getElementById('scw-co-skip-ovl');
       if (old) old.remove();
       var seed = readHeaderValue('field_2198');   // CO notes — usually already the why
@@ -1409,6 +1411,45 @@
     // Lines with no Sub Bid yet — surfaced in the confirm copy so the sub
     // knows what they're about to hand back (informational, not a block:
     // $0/no-charge lines are legitimate).
+    // ── Empty-document guard (2026-10-12) ─────────────────────────────
+    // Every document this strip sends — the pricing request, the sub's
+    // priced submission, the send-back, the not-billable authorization —
+    // is built from the CO worksheet's records on THIS page (readRecords on
+    // CO_VIEW; license lines never ride the labor docs). A page holding no
+    // line produces the "0 adds, 0 removals · Total $0.00" card, and
+    // SW1943CO shipped exactly that: the sub's Submit Pricing ran while
+    // their worksheet view held no line, although the ops grid showed one.
+    // Refuse instead of sending an empty document, and say why.
+    function countDocLines(includeLicenses) {
+      var wsns = window.SCW && window.SCW.worksheetV2;
+      var recs = (wsns && wsns.data && typeof wsns.data.readRecords === 'function')
+        ? wsns.data.readRecords(CO_VIEW) : [];
+      var n = 0;
+      for (var i = 0; i < recs.length; i++) {
+        var r = recs[i];
+        if (!r || !r.id) continue;
+        if (!includeLicenses && isLicenseLine(r)) continue;
+        n++;
+      }
+      return n;
+    }
+    // `what` names the verb for the message ("submit", "send for pricing").
+    // Returns true when the document would carry at least one line.
+    function guardDocLines(what, includeLicenses) {
+      if (countDocLines(includeLicenses) > 0) return true;
+      var msg = IS_OPS
+        ? 'This change order has no line items on this page, so there is nothing to ' +
+          what + '.\n\nAdd the items first. If the line items exist but are not showing ' +
+          'here, this page\u2019s CO worksheet (' + CO_VIEW + ') is not loading them \u2014 ' +
+          'reload the page, and check the view\u2019s source filter in Builder if it stays empty.'
+        : 'No line items are showing on this change order, so there is nothing to ' + what +
+          '.\n\nIf SCW has added items, they are not reaching your page yet \u2014 reload the ' +
+          'page, and contact SCW if it stays empty. An empty submission would come through ' +
+          'as $0.00.';
+      window.alert(msg);
+      return false;
+    }
+
     function countUnpriced() {
       var wsns = window.SCW && window.SCW.worksheetV2;
       var recs = (wsns && wsns.data && typeof wsns.data.readRecords === 'function')
@@ -1438,6 +1479,7 @@
     // basis), notifies SCW + updates both ClickUp tasks. The optimistic flip
     // relocks this page instantly; the status-view refetch confirms.
     function submitToScw() {
+      if (!guardDocLines('submit')) return;
       var blank = countUnpriced();
       confirmThen('Submit pricing to SCW?',
         'Send your pricing back to SCW for review? Your pricing window ' +
@@ -1477,6 +1519,7 @@
     }
 
     function sendBackToSub() {
+      if (!guardDocLines('send back')) return;
       var note = window.prompt(
         'Note to the subcontractor (what needs revisiting):', '');
       if (note === null) return;   // cancelled
@@ -1876,6 +1919,9 @@
     window.SCW = window.SCW || {};
     SCW[IS_OPS ? 'coStage' : 'coStageSub'] = {
       getStatus: getStatus, getSnapshot: getSnapshot, refresh: render,
+      // The empty-document guard (tests / tooling): lines the docs would
+      // carry, and the refuse-with-a-message check the senders run.
+      countDocLines: countDocLines, guardDocLines: guardDocLines,
       // { notBillable, noSignature, signed, reason, by, at } or null — the
       // Acceptance read (co-value.js zeroes the client column on it).
       getAcceptance: acceptanceInfo
