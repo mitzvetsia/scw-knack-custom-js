@@ -69,6 +69,7 @@ cat \
   src/features/bid-review/adapters.js \
   src/features/bid-review/transform.js \
   src/features/bid-review/render.js \
+  src/features/bid-review/confirm.js \
   src/features/bid-review/actions.js \
   src/features/bid-review/change-requests.js \
   src/features/bid-review/init.js \

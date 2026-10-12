@@ -1332,6 +1332,22 @@
       return;
     }
 
+    // Confirm first (2026-10-12): the pill is always on the tile now, so a
+    // stray click must not sever anything. The question names the file.
+    var item = (button.closest && button.closest('.scw-bid-review__docs-item')) || null;
+    var link = item && item.querySelector('.scw-bid-review__docs-link');
+    var fileName = ((link && (link.getAttribute('title') || link.textContent)) || '').trim();
+    var question = 'Unlink ' + (fileName ? '\u201c' + fileName + '\u201d' : 'this file') + ' from this SOW?';
+    var detail = 'The file itself is not deleted \u2014 it stays with the project and can be linked again from the other project docs.';
+    if (typeof ns.confirmDanger === 'function') {
+      ns.confirmDanger({ title: 'Are you SURE!?!', body: question, detail: detail, okLabel: 'Unlink' },
+        function (close) { close(); unlinkDocNow(button, writeView, docId, nextSows); });
+    } else if (window.confirm(question + '\n\n' + detail)) {
+      unlinkDocNow(button, writeView, docId, nextSows);
+    }
+  }
+
+  function unlinkDocNow(button, writeView, docId, nextSows) {
     setBusy(button, true);
 
     var payload = {};
