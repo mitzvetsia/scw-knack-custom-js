@@ -419,9 +419,31 @@
     return h;
   }
 
-  function stickyTop() {
-    var bar = document.getElementById('scw-phn-bar');
-    return bar ? Math.round(bar.getBoundingClientRect().height || 48) : 0;
+  // position:sticky resolves against the nearest ancestor whose overflow is
+  // anything but visible — and KTL wraps every view in section.ktlBoxWithBorder
+  // { overflow: hidden }. Inside such a box the bar can never reach the
+  // viewport, and a top offset only shoves it DOWN by that many pixels from
+  // the top of the box, over whatever sits beneath it. 2026-10-12: a re-mount
+  // after the project bar had pinned read its 48px and the worksheet toolbar
+  // vanished under the scope bar (only the add buttons' top edge showed). So
+  // the offset applies only when every ancestor lets sticky through.
+  function canStickToViewport(el) {
+    var p = el && el.parentElement;
+    while (p && p !== document.body && p !== document.documentElement) {
+      var cs = null;
+      try { cs = window.getComputedStyle(p); } catch (e) { cs = null; }
+      if (cs) {
+        var o = (cs.overflow || '') + ' ' + (cs.overflowX || '') + ' ' + (cs.overflowY || '');
+        if (/\b(hidden|scroll|auto|overlay)\b/.test(o)) return false;
+      }
+      p = p.parentElement;
+    }
+    return true;
+  }
+  function stickyTop(bar) {
+    if (bar && !canStickToViewport(bar)) return 0;
+    var pinned = document.getElementById('scw-phn-bar');
+    return pinned ? Math.round(pinned.getBoundingClientRect().height || 48) : 0;
   }
 
   /** Render (or refresh) the bar for a view. Idempotent; call after each render. */
@@ -448,7 +470,7 @@
     bar.className = BAR_CLS + ' ' + BAR_CLS + '--' + inf.mode + ' ' + BAR_CLS + '--' + inf.page;
     bar.setAttribute('data-scw-ws-v2-sowctx-view', viewKey);
     bar.setAttribute('data-scw-ws-v2-sowctx-mode', inf.mode);
-    bar.style.setProperty('--scw-sowctx-top', stickyTop() + 'px');
+    bar.style.setProperty('--scw-sowctx-top', stickyTop(bar) + 'px');
     var html = '<div class="' + BAR_CLS + '-row">' + barHtml(inf, viewKey) + '</div>';
     if (inf.mode === 'unchosen') html += chooserHtml(inf, viewKey);
     if (bar.innerHTML !== html) bar.innerHTML = html;
@@ -513,6 +535,7 @@
     classify:         classify,
     parseSow:         parseSow,
     isChangeOrderRef: isChangeOrderRef,
+    canStickToViewport: canStickToViewport,
     ALL:              ALL
   };
 })();

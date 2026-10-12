@@ -164,5 +164,23 @@ check('SOW page: the bar names THIS SOW from the detail view with its badge, cou
   ['single', 'Scope of work', 'SW1589', 'Alternate', '2 line items · 1 of 3 scopes on this project · also on this project: SW1334 (Original), SW1781CO (Change order)', 0, 'on SW1589 (alternate)', false]);
 check('a view without a sowContext config gets no bar', (panel('view_4093'), ns.sowContext.mount('view_4093'), document.querySelector('#scw-ws-v2-view_4093 .scw-ws-v2-sowctx')), null);
 
+// ── sticky offset only where sticky can reach the viewport (2026-10-12) ──────────────────────
+// KTL wraps every view in section.ktlBoxWithBorder { overflow: hidden }; position:sticky then
+// resolves against the box, not the viewport, and a top offset only shoves the bar DOWN over the
+// toolbar beneath it (the "buttons tucked away after an add" hiccup). The pinned project bar
+// exists here (jsdom measures it 0 → the 48px fallback).
+const pinned = document.createElement('div'); pinned.id = 'scw-phn-bar'; document.body.appendChild(pinned);
+const ktlCss = document.createElement('style'); ktlCss.textContent = 'section.ktlBoxWithBorder { overflow: hidden; }';
+document.head.appendChild(ktlCss);
+const box = document.createElement('section'); box.className = 'ktlBoxWithBorder'; box.style.overflow = 'hidden';
+document.body.appendChild(box); box.appendChild(S);
+ns.sowContext.mount('view_3586');
+check('inside an overflow:hidden KTL box the bar gets NO sticky offset (it could only push it down over the toolbar)',
+  [ns.sowContext.canStickToViewport(sbar), sbar.style.getPropertyValue('--scw-sowctx-top')], [false, '0px']);
+document.body.appendChild(S);   // back under body: nothing clips, so sticky can reach the viewport
+ns.sowContext.mount('view_3586');
+check('with no clipping ancestor the bar reserves the pinned project bar\'s height',
+  [ns.sowContext.canStickToViewport(sbar), sbar.style.getPropertyValue('--scw-sowctx-top')], [true, '48px']);
+
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);
