@@ -1408,9 +1408,14 @@
     tr.setAttribute('aria-expanded', group.defaultCollapsed ? 'false' : 'true');
     var td = document.createElement('td');
     td.colSpan = colspan;
+    // The header count is LIVE rows only: the collapsed "Removed — no longer
+    // on any SOW or bid" subgroup shows its own count, and folding it into
+    // the group's number read "4" over a group with one item (2026-10-13).
     var rowCount =
       (group.rows ? group.rows.length : 0) +
-      (group.subgroups || []).reduce(function (a, s) { return a + s.rows.length; }, 0);
+      (group.subgroups || []).reduce(function (a, s) {
+        return a + (s.removedItems ? 0 : s.rows.length);
+      }, 0);
     // Aggregate issue chips across every SOW item in this MDF/IDF group.
     var sowIds = collectGroupSowIds(group);
     var summaryChips = (ns.warnings && typeof ns.warnings.summaryChipsHtml === 'function')

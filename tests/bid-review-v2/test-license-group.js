@@ -75,6 +75,17 @@ check('Licenses L1 header: license class, the recurring sub-line, no manage gear
   [hdr.classList.contains('scw-bid-review-v2__group-header--license'), !!hdr.querySelector('.scw-brv2-mdf-gear'),
    hdr.querySelector('.scw-bid-review-v2__grp-sub').textContent, hdr.querySelector('.scw-bid-review-v2__grp-title').textContent.indexOf('Licenses') === 0],
   [true, false, 'recurring · billed separately · not in the project total', true]);
+// Removed license records (on no SOW, never on a bid) fold into the group's collapsed
+// "Removed" subgroup — the HEADER count stays the live rows only (the subgroup shows its own).
+const removedLic = (i) => row({ id: 's-rl' + i, sowItem: 's-rl' + i, productName: 'Old License ' + i, mdfIdf: '', mdfIdfId: '',
+  proposalBucket: 'License', proposalBucketId: LIC, noBid: true, removed: true, hasBidRecord: false,
+  sowItemData: { productName: 'Old License ' + i, qty: 1, fee: 0, installFee: 0, equipmentTotal: 10, laborDesc: '' } });
+const gWithRemoved = T.groupRows([lic], [removedLic(1), removedLic(2), removedLic(3)]);
+const hdrR = ns.card.buildL1HeaderRow(gWithRemoved[0], 4);
+check('a Licenses group with 1 live row + 3 removed: the header counts 1; the Removed subgroup carries its own 3',
+  [gWithRemoved[0].key, gWithRemoved[0].rows.length, gWithRemoved[0].subgroups.length, gWithRemoved[0].subgroups[0].rows.length,
+   gWithRemoved[0].subgroups[0].removedItems, hdrR.querySelector('.scw-bid-review-v2__grp-count').textContent],
+  ['Licenses', 1, 1, 3, true, '1']);
 const mdfHdr = ns.card.buildL1HeaderRow(groups[0], 4);
 check('an MDF/IDF header is untouched (gear, no license class)',
   [mdfHdr.classList.contains('scw-bid-review-v2__group-header--license'), !!mdfHdr.querySelector('.scw-brv2-mdf-gear')], [false, true]);
