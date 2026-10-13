@@ -1097,7 +1097,8 @@
     '.scw-ws-v2-l1-head--license:hover {',
     '  background: linear-gradient(180deg, #3f4a86 0%, #333c70 100%) !important;',
     '}',
-    '.scw-ws-v2-l1--license { margin-top: 28px !important; }',
+    /* No extra gap above the Licenses group — its colour sets it apart; the
+       28px margin read as a hole in the collapsed list (sales page, 2026-10-13). */
     '.scw-ws-v2-l1-sub {',
     '  display: block !important; font: 500 11px/1.3 system-ui, sans-serif !important;',
     '  letter-spacing: 0.04em !important; text-transform: none !important; opacity: .85 !important;',
