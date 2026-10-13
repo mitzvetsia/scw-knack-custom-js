@@ -28,7 +28,10 @@ window.Knack = {
     ] } } },
     view_3325: { model: { data: { models: [
       { attributes: { id: SOW2, field_2122: 'SW-1060', field_2126: 'Alt bid' } },
-      { attributes: { id: SOW, field_2122: 'SW-1001', field_2126: 'Base scope' } }
+      { attributes: { id: SOW, field_2122: 'SW-1001', field_2126: 'Base scope' } },
+      // change orders: one by the CO suffix, one by Type — never a target on the build / reconcile pages
+      { attributes: { id: '6a2c0000000000000000c0c1', field_2122: 'SW-1781CO', field_2126: 'Switch swap' } },
+      { attributes: { id: '6a2c0000000000000000c0c2', field_2122: '1926', field_2126: 'Camera swap', field_2952: 'change order' } }
     ] } } },
     view_3577: { model: { data: { models: [
       { attributes: { id: MDF1, field_1642_raw: 'HEADEND: behind cashregister' } },
@@ -76,6 +79,10 @@ form.CONFIG.ALLOWED_EMAILS.length = 0;
 email = 'micah.shearer@getscw.com';
 check('reconcile-bids host (view_3921, outside worksheet-v2 config): project page, SOWs from view_3918, MDFs from view_3822',
   (o => [o.page, o.sowViews[0], o.mdfView, form.bucketsFor('view_3921').length])(form.modalOpts('view_3921')), ['project', 'view_3918', 'view_3822', 7]);
+check('change orders are never a target where the page hides them (build page via sowContext, reconcile host via its flag); the sales SOW page does not hide',
+  [form.modalOpts('view_3962').hideChangeOrders, form.modalOpts('view_3921').hideChangeOrders, form.modalOpts('view_3586').hideChangeOrders,
+   form.sowCandidates('view_3962').map(c => c.identifier), form.sowCandidates('view_3921').map(c => c.identifier)],
+  [true, true, false, ['SW-1001', 'SW-1060'], ['SW-1001', 'SW-1060']]);
 
 // Open → bucket chips + SOW row (two SOWs known from the worksheet rows; the page SOW pre-checked)
 form.open({ viewKey: 'view_3962' });

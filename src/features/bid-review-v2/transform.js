@@ -134,6 +134,88 @@
 
   // ── per-SOW pivot ────────────────────────────────────────────
 
+  // ── Change orders (CONFIG.hideChangeOrders) ──────────────────────────
+  // A change-order SOW is recognised by the CO suffix on its identifier /
+  // name ("1781CO", "SW-1781CO", "60486704913-SW1781CO") or by Type =
+  // change order (field_2952) on the next-step SOW grid (view_3918), read
+  // off its DOM the way header.js sowTypeText does.
+  var CO_LABEL_RE = /\bSW-?\d+\s*CO\b|^\s*\d{2,6}\s*CO(?:\s*$|\s*[-–—:·(])/i;
+  function coLabel(txt) { return CO_LABEL_RE.test(stripHtml(txt)); }
+  function coIdsFromGrid() {
+    var set = Object.create(null);
+    try {
+      var cfg = window.SCW.bidReview && window.SCW.bidReview.CONFIG;
+      var viewKey = (cfg && cfg.nextStepViewKey) || 'view_3918';
+      var fld = (cfg && cfg.sowTypeField) || 'field_2952';
+      var view = document.getElementById(viewKey);
+      var rows = view ? view.querySelectorAll('tbody tr[id]') : [];
+      for (var i = 0; i < rows.length; i++) {
+        var td = rows[i].querySelector('td.' + fld + ', td[data-field-key="' + fld + '"]');
+        if (td && /change\s*order/i.test(stripHtml(td.textContent))) set[rows[i].id] = true;
+      }
+    } catch (e) { /* no grid */ }
+    return set;
+  }
+  var _coSowIds = Object.create(null);
+  /** Is this SOW ref ({id, identifier} / {id, name}) a change order? */
+  function isChangeOrderSow(ref, coIds) {
+    if (!ref) return false;
+    if (coLabel(ref.identifier) || coLabel(ref.name)) return true;
+    var set = coIds || _coSowIds;
+    return !!(ref.id && set && set[ref.id]);
+  }
+  function hidesChangeOrders() { return !!(ns.CONFIG && ns.CONFIG.hideChangeOrders); }
+  /** Drop change orders from the raw inputs: CO SOW ids are collected (grid
+   *  Type + identifier suffix over every SOW ref), then every SOW line item
+   *  and bid record whose SOW membership is non-empty and ALL change orders
+   *  goes. An item / record on a base SOW as well stays; one on no SOW stays
+   *  (it is the removed / orphan machinery's business). */
+  function dropChangeOrders(records, sowItems) {
+    var SFK = ns.CONFIG.sowItemFieldKeys || {};
+    var coIds = coIdsFromGrid();
+    function note(refs) {
+      for (var i = 0; i < refs.length; i++) {
+        if (refs[i] && refs[i].id && coLabel(refs[i].identifier)) coIds[refs[i].id] = true;
+      }
+    }
+    var i;
+    for (i = 0; i < records.length; i++)  note(connectionAll(records[i], FK.sow));
+    for (i = 0; i < sowItems.length; i++) note(connectionAll(sowItems[i], SFK.sow));
+    function allCo(ids) {
+      if (!ids.length) return false;
+      for (var k = 0; k < ids.length; k++) if (!coIds[ids[k]]) return false;
+      return true;
+    }
+    var itemSows = Object.create(null);
+    var keptItems = [], dropped = 0;
+    for (i = 0; i < sowItems.length; i++) {
+      var it = sowItems[i];
+      if (!it || !it.id) continue;
+      var sids = connectionAll(it, SFK.sow).map(function (r) { return r && r.id; }).filter(Boolean);
+      itemSows[it.id] = sids;
+      if (allCo(sids)) { dropped++; continue; }
+      keptItems.push(it);
+    }
+    var keptRecords = [], droppedRecs = 0;
+    for (i = 0; i < records.length; i++) {
+      var rec = records[i];
+      if (!rec) continue;
+      var ids = connectionAll(rec, FK.sow).map(function (r) { return r && r.id; }).filter(Boolean);
+      var rel = connectionAll(rec, FK.relatedSowItem);
+      for (var r2 = 0; r2 < rel.length; r2++) {
+        var more = rel[r2] && itemSows[rel[r2].id];
+        if (more) ids = ids.concat(more);
+      }
+      if (allCo(ids)) { droppedRecs++; continue; }
+      keptRecords.push(rec);
+    }
+    _coSowIds = coIds;
+    if (ns.CONFIG.debug && (dropped || droppedRecs)) {
+      try { console.log('[scw-br-v2] change orders hidden:', dropped, 'line items,', droppedRecs, 'bid records'); } catch (e) {}
+    }
+    return { records: keptRecords, sowItems: keptItems, coIds: coIds };
+  }
+
   function extractSows(records) {
     var seen = Object.create(null);
     var list = [];
@@ -718,7 +800,18 @@
   }
 
   function buildState(records, sowItems, bidPackages) {
+    records  = records  || [];
+    sowItems = sowItems || [];
+    var hideCo = hidesChangeOrders();
+    if (hideCo) {
+      var cof = dropChangeOrders(records, sowItems);
+      records = cof.records; sowItems = cof.sowItems;
+    } else {
+      _coSowIds = Object.create(null);
+    }
     var sows = extractSows(records);
+    // A kept (mixed) bid record can still name a change order — no grid for it.
+    if (hideCo) sows = sows.filter(function (sw) { return !isChangeOrderSow(sw); });
     // Also surface SOWs reachable through the SOW line items (view_3921): a bid
     // record's own field_2154 can be empty while its related line item IS on a
     // SOW (the line item is authoritative — same rule groupBySow uses). Without
@@ -735,6 +828,7 @@
           var id = conns[c] && conns[c].id;
           if (!id || seen[id]) continue;
           seen[id] = true;
+          if (hideCo && isChangeOrderSow(conns[c])) continue;
           sows.push({ id: id, name: stripHtml(conns[c].identifier || ('SOW ' + sows.length)) });
         }
       }
@@ -1781,6 +1875,9 @@
 
   ns.transform = {
     NO_SOW:           NO_SOW,
+    isChangeOrderSow: isChangeOrderSow,
+    hidesChangeOrders: hidesChangeOrders,
+    dropChangeOrders: dropChangeOrders,
     LICENSE_BUCKET_ID: LICENSE_BUCKET_ID,
     LICENSE_L1:       LICENSE_L1,
     isLicenseRow:     isLicenseRow,

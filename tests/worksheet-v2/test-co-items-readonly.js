@@ -2,8 +2,10 @@
 // CHANGE-ORDER SOW is view-only — COs are drafted, priced and signed on their own scene (view_4079,
 // co-ops-lock), so the card locks every field (no whitelist), drops the bulk-select box, swaps the
 // trash for a lock and says why. A CO is recognised by the identifier's CO suffix ("1926CO" — the SOW
-// identifier is the bare number) or by the SOW grid's Type (field_2952). The SOW context bar marks
-// CO scopes "view only"; the "(no SOW)" filter reads as unassigned, not mixed.
+// identifier is the bare number) or by the SOW grid's Type (field_2952). 2026-10-13: the page no
+// longer SERVES change orders at all (sowContext.hideChangeOrders) — CO-only items are dropped
+// before the filter and CO scopes get no tab / chooser entry — so the lock matters for an item a
+// base SOW and a CO both list. The "(no SOW)" filter reads as unassigned, not mixed.
 const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
@@ -87,15 +89,19 @@ check('isCoLocked is a no-op on a view without coItemsReadOnly', ns.card.isCoLoc
 // ── context bar: CO scopes read view-only; (no SOW) is unassigned, not mixed ──────────────────
 const P = document.createElement('div'); P.id = 'scw-ws-v2-view_3962'; P.className = 'scw-ws-v2';
 P.innerHTML = '<div class="scw-ws-v2-banner"></div><div class="scw-ws-v2-body"></div>'; document.body.appendChild(P);
+check('change orders are not served here: both COs (suffix / Type) leave the SOW list and their items leave the records; base + no-SOW items stay',
+  [ns.sowFilter.collectSowList('view_3962').map(s => s.label), ns.sowFilter.collectSowList('view_3962', { includeCo: true }).map(s => s.label),
+   ns.sowFilter.filterRecords('view_3962', project).map(r => r.id), ns.card.isCoLocked(rec('mixed', [BASE, CO]), 'view_3962')],
+  [['1628'], ['1628', '1926CO', '1927'], ['b1', 'b2', 'n1'], true]);
 ns.sowFilter.setActive('view_3962', [CO]);
-check('single CO scope: the bar reads "Viewing · 1926CO · Change order · View only" and says where to edit',
+check('a stored CO scope is not a served scope: the bar falls back to the only base scope (no "Viewing", no view-only badge)',
   [txt(P.querySelector('.scw-ws-v2-sowctx-eyebrow')), txt(P.querySelector('.scw-ws-v2-sowctx-tok')), [...P.querySelectorAll('.scw-ws-v2-sowctx-title .scw-ws-v2-sowctx-badge')].map(txt),
-   /view-only here — change-order items are edited on the change order/.test(txt(P.querySelector('.scw-ws-v2-sowctx-meta')))],
-  ['Viewing', '1926CO', ['Change order', 'View only'], true]);
+   /view-only here/.test(txt(P.querySelector('.scw-ws-v2-sowctx-meta')))],
+  ['Scope of work', '1628', ['Original'], false]);
 const tabs = [...P.querySelectorAll('[data-scw-ws-v2-sowctx-tab]')];
-check('tabs keep the bare identifiers the app shows; CO tabs carry the lock; the base SOW reads Original',
+check('tabs: the base SOW (bare identifier) and (no SOW) only — no CO tab, no lock, no "All · mixed" for a single served scope',
   [tabs.map(t => txt(t) + (t.querySelector('.scw-ws-v2-sowctx-lock') ? ' [lock]' : '')), ns.sowContext.info('view_3962').sows.map(s => s.kind)],
-  [['1628 2', '1926CO Change order 1 [lock]', '1927 Change order 1 [lock]', '(no SOW) 1', 'All · mixed'], ['original', 'co', 'co']]);
+  [['1628 2', '(no SOW) 1'], ['original']]);
 ns.sowFilter.setActive('view_3962', ['__blank']);
 check('(no SOW) alone: not "mixed" — "No SOW designated · Unassigned", the count, and what it means; describe() matches',
   [P.querySelector('.scw-ws-v2-sowctx').getAttribute('data-scw-ws-v2-sowctx-mode'), P.classList.contains('scw-ws-v2--sow-mixed'), P.classList.contains('scw-ws-v2--sow-blank'),

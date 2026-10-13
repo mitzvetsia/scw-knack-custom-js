@@ -59,6 +59,7 @@
       return {
         page:         c.page || 'project',
         requireChoice: !!c.requireChoice,
+        hideChangeOrders: !!c.hideChangeOrders,
         detailView:   c.detailView || '',
         siblingsView: c.siblingsView || '',
         idField:      c.idField   || 'field_2122',
@@ -96,7 +97,9 @@
     var set = Object.create(null);
     try {
       var sf = ns.sowFilter;
-      var list = (sf && typeof sf.collectSowList === 'function') ? sf.collectSowList(viewKey) : [];
+      // includeCo: on a view that hides change orders the filtered list has
+      // none — but a CO ref on a mixed item must still be recognised by id.
+      var list = (sf && typeof sf.collectSowList === 'function') ? sf.collectSowList(viewKey, { includeCo: true }) : [];
       for (var i = 0; i < list.length; i++) {
         if (list[i] && (list[i].isCo || parseSow(list[i].label, list[i].name).isCo)) set[list[i].id] = true;
       }
@@ -155,8 +158,15 @@
     catch (e) { return 'field_2154'; }
   }
   function readRecords(viewKey) {
-    try { return (ns.data && typeof ns.data.readRecords === 'function') ? ns.data.readRecords(viewKey) : []; }
-    catch (e) { return []; }
+    var recs;
+    try { recs = (ns.data && typeof ns.data.readRecords === 'function') ? ns.data.readRecords(viewKey) : []; }
+    catch (e) { recs = []; }
+    // A view that hides change orders never counts the records it does not
+    // serve (sow-filter.js visibleRecords: CO-only line items).
+    try {
+      if (ns.sowFilter && typeof ns.sowFilter.visibleRecords === 'function') recs = ns.sowFilter.visibleRecords(viewKey, recs || []);
+    } catch (e2) { /* unfiltered */ }
+    return recs || [];
   }
   /** Per-SOW line-item counts + the no-SOW count from the view's records. */
   function countBySow(viewKey) {
@@ -177,11 +187,21 @@
   function sharedCount(viewKey, sowId) {
     var fk = sowFieldKey(viewKey) + '_raw';
     var recs = readRecords(viewKey) || [];
+    var cfg = ctxCfg(viewKey);
+    var hideCo = !!(cfg && cfg.hideChangeOrders);
     var n = 0;
     for (var i = 0; i < recs.length; i++) {
       var raw = recs[i] && recs[i][fk];
       if (!Array.isArray(raw) || raw.length < 2) continue;
-      for (var j = 0; j < raw.length; j++) if (raw[j] && raw[j].id === sowId) { n++; break; }
+      var onThis = false, other = false;
+      for (var j = 0; j < raw.length; j++) {
+        if (!raw[j] || !raw[j].id) continue;
+        if (raw[j].id === sowId) { onThis = true; continue; }
+        // A change order the view does not serve is not "another scope" here.
+        if (hideCo && isChangeOrderRef(raw[j], viewKey)) continue;
+        other = true;
+      }
+      if (onThis && other) n++;
     }
     return n;
   }
@@ -270,12 +290,12 @@
       var self = inf.self;
       return 'on ' + token(self) + (KIND_LABEL[self.kind] ? ' (' + KIND_LABEL[self.kind].toLowerCase() + ')' : '');
     }
+    if (inf.mode === 'blank') return 'with no SOW designated';
     if (inf.sows.length < 2 && inf.mode !== 'multi') return '';
     if (inf.mode === 'single') {
       var s = inf.active[0];
       return 'on ' + token(s) + (KIND_LABEL[s.kind] ? ' (' + KIND_LABEL[s.kind].toLowerCase() + ')' : '');
     }
-    if (inf.mode === 'blank') return 'with no SOW designated';
     if (inf.mode === 'multi') {
       var toks = inf.active.map(token);
       if (inf.blankActive) toks.push('no SOW');

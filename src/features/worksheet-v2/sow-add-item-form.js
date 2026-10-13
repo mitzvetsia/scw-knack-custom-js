@@ -105,7 +105,8 @@
     // on scene_1155 (reconcile bids): a PROJECT page (review-bids/<project>),
     // SOWs from the Scopes of Work grid view_3918, locations from view_3822.
     HOSTS: {
-      view_3921: { page: 'project', sowViews: ['view_3918', 'view_3325'], mdfView: 'view_3822', mdfLabelField: 'field_1642' }
+      view_3921: { page: 'project', sowViews: ['view_3918', 'view_3325'], mdfView: 'view_3822', mdfLabelField: 'field_1642',
+                   hideChangeOrders: true }   // the reconcile page serves no change orders (2026-10-13)
     },
     debug: false
   };
@@ -647,6 +648,9 @@
       subCanAddView: o.subCanAddView || '',
       webhookKey:    o.webhookKey || (mode === 'survey' ? CONFIG.SURVEY_WEBHOOK_KEY : CONFIG.WEBHOOK_KEY),
       page:          o.page === 'project' ? 'project' : 'sow',
+      // Change-order SOWs are never offered as a target on a page that does
+      // not serve them (the host's own flag, or the view's sowContext).
+      hideChangeOrders: !!(o.hideChangeOrders || (vc && vc.sowContext && vc.sowContext.hideChangeOrders)),
       sowViews:      Array.isArray(o.sowViews) && o.sowViews.length ? o.sowViews : ['view_3325', 'view_3918'],
       sowPicker:     o.sowPicker !== false,
       mdfView:       o.mdfView || (vc && vc.mdfSourceViewKey) || '',
@@ -662,9 +666,21 @@
   //   project page: every SOW on the project from the scene's SOW grid
   //                 (falls back to the SOWs the worksheet's rows connect to);
   //   SOW page:     the page's SOW first, then any other SOW the rows connect to.
+  // A change-order SOW: the grid row's Type (field_2952) says so, or the
+  // identifier / name carries the CO suffix ("1926CO", "SW-1781CO").
+  var CO_LABEL_RE = /\bSW-?\d+\s*CO\b|^\s*\d{2,6}\s*CO(?:\s*$|\s*[-–—:·(])/i;
+  function isCoSow(label, name, typeText) {
+    if (/change\s*order/i.test(stripHtml(typeText))) return true;
+    var sc = wv2 && wv2.sowContext;
+    if (sc && typeof sc.parseSow === 'function') {
+      try { if (sc.parseSow(label, name).isCo) return true; } catch (e) { /* local */ }
+    }
+    return CO_LABEL_RE.test(stripHtml(label)) || CO_LABEL_RE.test(stripHtml(name));
+  }
   function sowCandidates(viewKey) {
     var opts = modalOpts(viewKey);
     var seen = Object.create(null), out = [];
+    var hideCo = !!opts.hideChangeOrders;
     if (opts.page === 'project') {
       for (var v = 0; v < opts.sowViews.length && !out.length; v++) {
         var grid = viewModels(opts.sowViews[v]);
@@ -674,6 +690,7 @@
           var sowNm = stripHtml(ga.field_2126_raw != null ? ga.field_2126_raw : ga.field_2126);
           if (!sowNo && !sowNm) continue;
           seen[ga.id] = 1;
+          if (hideCo && isCoSow(sowNo, sowNm, ga.field_2952_raw != null ? ga.field_2952_raw : ga.field_2952)) continue;
           out.push({ id: ga.id, name: sowNo && sowNm ? sowNo + ' · ' + sowNm : (sowNo || sowNm), identifier: sowNo || sowNm });
         }
       }
@@ -689,7 +706,8 @@
         var s = raw[j]; if (!s || !s.id || seen[s.id]) continue;
         seen[s.id] = 1;
         var nm = s.identifier != null ? stripHtml(s.identifier) : s.id;
-        if (s.id === cur) curName = nm; else fromRows.push({ id: s.id, name: nm, identifier: nm });
+        if (s.id === cur) curName = nm;
+        else if (!(hideCo && isCoSow(nm, '', ''))) fromRows.push({ id: s.id, name: nm, identifier: nm });
       }
     }
     if (!out.length) { fromRows.sort(sortByName); out = fromRows; }

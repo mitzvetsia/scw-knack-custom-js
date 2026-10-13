@@ -84,9 +84,16 @@ check('2+ SOWs and nothing stored: the panel waits behind the chooser (bar first
 const opts = [...P.querySelectorAll('[data-scw-ws-v2-sowctx-choose]')];
 check('chooser lists every scope with token, badge, name and line-item count (shared item counts on both), plus the explicit "all" option',
   opts.map(o => txt(o)),
-  ['SW1334 Original Fellowship Hall P2P 3 line items', 'SW1589 Alternate Alternate Sign Option 2 line items', 'SW1781CO Change order Switch swap 1 line item · view only here', 'Show all 3 scopes together (mixed counts)']);
+  ['SW1334 Original Fellowship Hall P2P 3 line items', 'SW1589 Alternate Alternate Sign Option 2 line items', 'Show all 2 scopes together (mixed counts)']);
 check('unchosen: the filter leaves every record visible (nothing stored) and describe() says the scopes are mixed',
-  [ns.sowFilter.filterRecords('view_3962', project).length, ns.sowContext.describe('view_3962')], [6, 'across 3 scopes, mixed']);
+  [ns.sowFilter.filterRecords('view_3962', project).length, ns.sowContext.describe('view_3962')], [5, 'across 2 scopes, mixed']);
+// ── change orders are not served on the project page (sowContext.hideChangeOrders, 2026-10-13) ──
+const mixedCo = rec('rx', [A, C]);   // base scope that a change order also lists
+check('hideChangeOrders: the CO is only in the unfiltered SOW list; its ref is still known by id; the CO-only item r5 is dropped, an item on a base SOW + the CO stays (view-only)',
+  [ns.sowFilter.collectSowList('view_3962').map(s => s.label), ns.sowFilter.collectSowList('view_3962', { includeCo: true }).map(s => s.label),
+   ns.sowContext.isChangeOrderRef({ id: C, identifier: '' }, 'view_3962'), ns.sowFilter.visibleRecords('view_3962', project.concat([mixedCo])).map(r => r.id),
+   ns.card.isCoLocked(mixedCo, 'view_3962'), ns.card.isCoLocked(project[2], 'view_3962')],
+  [['SW-1334', 'SW-1589'], ['SW-1334', 'SW-1589', 'SW-1781CO'], true, ['r1', 'r2', 'r3', 'r4', 'r6', 'rx'], true, false]);
 
 // ── choose SW1589 ─────────────────────────────────────────────────────────────────────────────
 renders.length = 0;
@@ -98,11 +105,11 @@ check('single mode: the bar names the scope (token · name · Alternate badge) w
   [txt(P.querySelector('.scw-ws-v2-sowctx-eyebrow')), txt(P.querySelector('.scw-ws-v2-sowctx-tok')), txt(P.querySelector('.scw-ws-v2-sowctx-name')),
    txt(P.querySelector('.scw-ws-v2-sowctx-badge')), txt(P.querySelector('.scw-ws-v2-sowctx-meta')),
    ns.sowFilter.filterRecords('view_3962', project).map(r => r.id), ns.sowContext.describe('view_3962')],
-  ['Working on', 'SW1589', 'Alternate Sign Option', 'Alternate', '2 line items · 1 also on another scope · 2 other scopes hidden', ['r3', 'r4'], 'on SW1589 (alternate)']);
+  ['Working on', 'SW1589', 'Alternate Sign Option', 'Alternate', '2 line items · 1 also on another scope · 1 other scope hidden', ['r3', 'r4'], 'on SW1589 (alternate)']);
 const tabs = [...P.querySelectorAll('[data-scw-ws-v2-sowctx-tab]')];
 check('scope tabs: one per SOW (with kind + count), (no SOW) for blank rows, All · mixed; the chosen one is on; the pills strip is hidden by the --sowctx class',
   [tabs.map(t => txt(t) + (t.classList.contains('is-on') ? ' *' : '')), P.classList.contains('scw-ws-v2--sowctx'), !!P.querySelector('.scw-ws-v2-sow-pills')],
-  [['SW1334 3', 'SW1589 Alternate 2 *', 'SW1781CO Change order 1', '(no SOW) 1', 'All · mixed'], true, true]);
+  [['SW1334 3', 'SW1589 Alternate 2 *', '(no SOW) 1', 'All · mixed'], true, true]);
 
 // ── shift-click adds a scope (mixed) ──────────────────────────────────────────────────────────
 tabs[0].dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
@@ -116,7 +123,7 @@ P.querySelector('[data-scw-ws-v2-sowctx-tab="__all"]').dispatchEvent(new window.
 check('"All · mixed" stores the __all sentinel (so the chooser does not return), shows every record, reads amber',
   [ns.sowFilter.loadActive('view_3962'), ns.sowFilter.filterRecords('view_3962', project).length, P.classList.contains('scw-ws-v2--sow-unchosen'),
    P.querySelector('.scw-ws-v2-sowctx').getAttribute('data-scw-ws-v2-sowctx-mode'), txt(P.querySelector('.scw-ws-v2-sowctx-tok')), txt(P.querySelector('.scw-ws-v2-sowctx-meta'))],
-  [['__all'], 6, false, 'all', 'All 3 scopes', 'SW1334 (3) · SW1589 (2) · SW1781CO (1) · counts and totals combine every scope · click a scope tab to work on one']);
+  [['__all'], 5, false, 'all', 'All 2 scopes', 'SW1334 (3) · SW1589 (2) · counts and totals combine every scope · click a scope tab to work on one']);
 check('a plain click on a scope tab from "all" selects just that scope (the sentinel is dropped)',
   (P.querySelector('[data-scw-ws-v2-sowctx-tab="' + A + '"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })),   // the bar was rebuilt — re-query the live tab
    [ns.sowFilter.loadActive('view_3962'), ns.sowFilter.filterRecords('view_3962', project).map(r => r.id)]),
@@ -131,6 +138,12 @@ check('a different project (route record id) has no stored choice: the chooser r
   [P.classList.contains('scw-ws-v2--sow-unchosen'), ns.sowFilter.loadActive('view_3962'),
    (window.location.hash = '#k2-build-sows/project-details/6a2c00010000000000001111/', ns.sowFilter.mount('view_3962'), ns.sowFilter.loadActive('view_3962'))],
   [true, [], ['__all']]);
+
+// ── a stored choice of a change order alone is dropped on mount: the chooser returns ─────────
+ns.sowFilter.setActive('view_3962', [C]);
+ns.sowFilter.mount('view_3962');
+check('a stored selection naming only the CO is discarded (not a served scope): nothing stored, chooser back',
+  [ns.sowFilter.loadActive('view_3962'), P.classList.contains('scw-ws-v2--sow-unchosen')], [[], true]);
 
 // ── scope strip meta names the scope ──────────────────────────────────────────────────────────
 ns.sowFilter.setActive('view_3962', [B]);

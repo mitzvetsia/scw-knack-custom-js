@@ -40,6 +40,12 @@
     // picked from each bid card, the Line item / Photos labels in a row
     // directly above the rows. Flip to false to get the stacked layout back.
     headerRework: true,
+    // Change orders are not served on the reconcile page (2026-10-13): a SOW
+    // whose identifier carries the CO suffix (or whose Type on view_3918 is
+    // "change order") gets no grid / tab, and bid records + SOW line items
+    // connected only to change orders are dropped before the state is built
+    // (transform.js dropChangeOrders). COs are reconciled on their own scene.
+    hideChangeOrders: true,
 
     // Anchor for the v2 mount point. Insert v2 AFTER v1's grid root
     // (#bid-review-matrix lives inside v1's mount). Falls back to the

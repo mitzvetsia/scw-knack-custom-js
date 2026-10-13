@@ -116,12 +116,15 @@
         // this worksheet, so a sticky bar names the scope being worked on and a
         // project with 2+ SOWs gates the body behind a chooser until one is
         // picked (RCA 2026-10-06: mixed-SOW counts, invisible alternate).
-        sowContext:       { requireChoice: true },
-        // Change-order line items are VIEW-ONLY here (card.js isCoLocked):
-        // a CO is drafted / priced / signed on its own scene (view_4079,
-        // co-ops-lock), and an edit from the project worksheet would change
-        // a document the sub priced or the client signed. The SOW context
-        // bar marks those scopes "view only".
+        // hideChangeOrders (2026-10-13): change-order SOWs are not served on
+        // this page at all — no scope tab / chooser entry / pill, and a line
+        // item connected only to change orders is dropped (sow-filter.js
+        // visibleRecords). COs live on their own scene (view_4079).
+        sowContext:       { requireChoice: true, hideChangeOrders: true },
+        // A line item on a base SOW AND a change order still renders (it is
+        // base scope) but is VIEW-ONLY here (card.js isCoLocked): an edit
+        // from the project worksheet would change a document the sub priced
+        // or the client signed.
         coItemsReadOnly:  true,
         // Service lines may be attached to a parent line item (field_2464)
         // — same opt-in as the CO worksheet (see the view_4079 entry).

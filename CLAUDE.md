@@ -715,6 +715,18 @@ true, and nothing said "you are on SW1589 — Alternate"). A **sticky bar above 
   "CHANGE ORDER · VIEW ONLY" flag and a detail note; the context bar's CO tabs / chooser options
   say "view only" and a single CO scope reads "Viewing … View only". COs are edited on their own
   scene (view_4079 + co-ops-lock). Test: `tests/worksheet-v2/test-co-items-readonly.js`.
+- **Change orders are NOT SERVED on the ops project worksheet** (2026-10-13, `sowContext:
+  { hideChangeOrders: true }` on view_3962): `sow-filter.js` `collectSowList` drops CO SOWs (CO
+  suffix on the identifier / name, or the SOW grid's Type `field_2952`) from the pills / tabs /
+  chooser, and `visibleRecords` drops every line item whose SOW connections are ALL change orders
+  before the selection filter runs (`filterRecords`, the context bar's counts). An item on a base
+  SOW AND a CO stays (base scope) and is still view-only (`coItemsReadOnly`); `collectSowList(vk,
+  { includeCo: true })` is the unfiltered list `sowContext.isChangeOrderRef` recognises CO ids
+  from. A stored selection naming only a CO is discarded on mount (the chooser returns). The add
+  modal's "Which SOW(s)?" list skips COs on such views (`sow-add-item-form.js` `isCoSow`;
+  the reconcile host carries `hideChangeOrders: true` in `HOSTS`). COs are drafted / priced /
+  signed on their own scene (view_4079). Builder can also filter view_3325 / view_3918 to
+  "Type is not change order"; the bundle does not depend on it.
 - The scope strip's meta line leads with `describe(viewKey)` ("on 1589 (alternate)" / "across 2
   scopes, mixed"). Sticky offset follows the project header's pinned bar (`#scw-phn-bar`).
 - Test: `tests/worksheet-v2/test-sow-context.js`.
@@ -769,6 +781,15 @@ The top of the reconcile-bids page (scene_1155, bid-review-v2) reworked per the 
   `__pkg-col` + `data-pkg-id` so basis-filter / column-collapse fold them with the column. The two
   rowspan corner cells stay (table-layout: fixed needs them for widths) and read blank.
 - The diff bar keeps only its fold handle; the exceptions list + reviewer note are as they were.
+- **Change orders are NOT SERVED on the reconcile page** (2026-10-13, `bid-review-v2/config.js`
+  `hideChangeOrders: true`): `transform.js` `dropChangeOrders` runs first in `buildState` —
+  CO SOW ids come from the CO suffix on any SOW ref and from view_3918's Type column
+  (`coIdsFromGrid`) — and removes every SOW line item and bid record whose SOW membership
+  (own `field_2154` ∪ the related line item's) is non-empty and all change orders, so they never
+  become "Unmatched bid items" or removed rows; `extractSows` / `unionSowsFromItems` skip CO refs
+  a kept (mixed) record still names. `ns.transform.isChangeOrderSow(ref)` is the shared test —
+  `sow-item-tray.js` ignores CO memberships and leaves CO-only items out of the tray. COs are
+  reconciled on their own scene. Test: `tests/bid-review-v2/test-hide-change-orders.js`.
 - Test: `tests/bid-review-v2/test-header-rework.js`.
 
 ## Alternative SOWs: Share vs Consolidate (view_3869) — `src/features/import-unique-items-btn.js`

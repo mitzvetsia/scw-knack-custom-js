@@ -42,6 +42,30 @@
       return !!(vc && vc.sowContext && vc.sowContext.requireChoice);
     } catch (e) { return false; }
   }
+  /** sowContext.hideChangeOrders — change-order SOWs are not served on this
+   *  view at all (2026-10-13, ops build-SOW page): no pill / tab / chooser
+   *  entry for them, and a line item connected ONLY to change orders is
+   *  dropped before the SOW filter runs. COs are drafted, priced and signed
+   *  on their own scene. An item on a base SOW AND a CO stays (it is base
+   *  scope; card.js isCoLocked still locks it). */
+  function hidesChangeOrders(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' ? ns.cfg.viewCfg(viewKey) : null;
+      return !!(vc && vc.sowContext && vc.sowContext.hideChangeOrders);
+    } catch (e) { return false; }
+  }
+  // "1926CO" / "SW-1781CO" / "60486704913-SW1781CO" — the CO suffix on a SOW
+  // identifier or name (sow-context.js parseSow has the fuller parser; this
+  // module loads first, so keep a local test for the bare suffix).
+  var CO_LABEL_RE = /\bSW-?\d+\s*CO\b|^\s*\d{2,6}\s*CO(?:\s*$|\s*[-–—:·(])/i;
+  function coLabel(txt) {
+    var t = stripHtml(txt);
+    if (!t) return false;
+    if (ns.sowContext && typeof ns.sowContext.parseSow === 'function') {
+      try { if (ns.sowContext.parseSow(t, '').isCo) return true; } catch (e) { /* local */ }
+    }
+    return CO_LABEL_RE.test(t);
+  }
 
   function getSceneId() {
     var m = (document.body.id || '').match(/scene_\d+/);
@@ -140,7 +164,10 @@
     return map;
   }
 
-  function collectSowList(viewKey) {
+  /** The SOWs the view's records connect to. `opts.includeCo` keeps change
+   *  orders in the list on a view that hides them (sow-context.js uses it to
+   *  recognise a CO ref by id). */
+  function collectSowList(viewKey, opts) {
     var v = window.Knack && Knack.views && Knack.views[viewKey];
     if (!v || !v.model || !v.model.data) return [];
     var models = v.model.data.models || [];
@@ -162,20 +189,65 @@
         // Identifier can be blank on freshly created SOWs (stale stored
         // identifier) — prefer the friendly name from the SOW grids over
         // ever showing a raw record id on the pill.
+        var label = stripHtml(s.identifier) || nameMap[s.id] ||
+                    (ns.sowNameById && ns.sowNameById(s.id)) || s.id;
+        var name  = nameMap[s.id] || '';
         list.push({
           id: s.id,
-          label: stripHtml(s.identifier) || nameMap[s.id] ||
-                 (ns.sowNameById && ns.sowNameById(s.id)) || s.id,
-          name: nameMap[s.id] || '',
-          isCo: /change\s*order/i.test(typeMap[s.id] || '')
+          label: label,
+          name: name,
+          // The SOW grid's Type (field_2952) when it loads it, else the CO
+          // suffix on the identifier / name.
+          isCo: /change\s*order/i.test(typeMap[s.id] || '') || coLabel(s.identifier) || coLabel(name)
         });
       }
+    }
+    if (hidesChangeOrders(viewKey) && !(opts && opts.includeCo)) {
+      list = list.filter(function (x) { return !x.isCo; });
     }
     list.sort(function (a, b) {
       return a.label.localeCompare(b.label, undefined,
         { numeric: true, sensitivity: 'base' });
     });
     return list;
+  }
+
+  /** Is this SOW connection ref ({id, identifier}) a change order on this
+   *  view? The identifier's suffix, else the (unfiltered) SOW list's type. */
+  var _coSet = { key: '', at: 0, set: null };
+  function isCoRef(ref, viewKey) {
+    if (!ref) return false;
+    if (coLabel(ref.identifier)) return true;
+    if (!ref.id) return false;
+    var now = Date.now();
+    if (!_coSet.set || _coSet.key !== viewKey || now - _coSet.at > 1000) {
+      var set = Object.create(null);
+      var all = collectSowList(viewKey, { includeCo: true });
+      for (var i = 0; i < all.length; i++) if (all[i].isCo) set[all[i].id] = true;
+      _coSet = { key: viewKey, at: now, set: set };
+    }
+    return !!_coSet.set[ref.id];
+  }
+
+  /** The records this view serves at all: on a view that hides change
+   *  orders, every record whose SOW connections are ALL change orders is
+   *  dropped. Records on no SOW, and records that also belong to a base SOW,
+   *  stay. Runs ahead of the SOW selection in filterRecords. */
+  function visibleRecords(viewKey, records) {
+    if (!hidesChangeOrders(viewKey)) return records;
+    var SOWK = filterSpec(viewKey).fieldKey + '_raw';
+    var out = [];
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i];
+      var raw = r && r[SOWK];
+      if (!Array.isArray(raw) || !raw.length) { out.push(r); continue; }
+      var base = false;
+      for (var j = 0; j < raw.length; j++) {
+        if (raw[j] && raw[j].id && !isCoRef(raw[j], viewKey)) { base = true; break; }
+      }
+      if (base) out.push(r);
+    }
+    return out;
   }
 
   function applyFilter(container, activeIds, viewKey) {
@@ -230,6 +302,7 @@
   /** Filter a flat records array by the active SOW filter for this
    *  view. Public so render.js can apply it before group-tree build. */
   function filterRecords(viewKey, records) {
+    records = visibleRecords(viewKey, records || []);
     var active = loadActive(viewKey);
     if (!active.length || active.indexOf(ALL) !== -1) return records;
     var activeSet = Object.create(null);
@@ -404,6 +477,9 @@
     setActive:      setActive,
     collectSowList: collectSowList,
     filterRecords:  filterRecords,
+    visibleRecords: visibleRecords,
+    hidesChangeOrders: hidesChangeOrders,
+    isCoRef:        isCoRef,
     applyRowColors: applyRowColors,
     ALL:            ALL
   };

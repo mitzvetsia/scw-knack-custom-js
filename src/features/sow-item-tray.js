@@ -179,8 +179,18 @@
     };
   }
 
+  /** Change-order SOW ref, when the page hides change orders (bid-review-v2
+   *  CONFIG.hideChangeOrders — transform.js knows the CO ids / suffix). */
+  function isCoRef(ref) {
+    var t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
+    if (!t || typeof t.hidesChangeOrders !== 'function' || !t.hidesChangeOrders()) return false;
+    try { return !!t.isChangeOrderSow(ref); } catch (e) { return false; }
+  }
+
   /** Every project line item NOT on this SOW, bucketed the way the tray
-   *  renders them: no-SOW first, then one group per other-SOW combination. */
+   *  renders them: no-SOW first, then one group per other-SOW combination.
+   *  Change orders are not served on this page: a CO membership is ignored,
+   *  and an item on change orders only is left out entirely. */
   function buildGroups(sowId, section) {
     var recs = records();
     var noSow = [], bySow = Object.create(null), order = [];
@@ -189,13 +199,15 @@
       var rec = recs[i];
       if (!rec || !rec.id) continue;
       var sows = sowsOf(rec);
-      var onThis = false, names = [];
+      var onThis = false, names = [], coOnly = false;
       for (var s = 0; s < sows.length; s++) {
         if (!sows[s] || !sows[s].id) continue;
         if (sows[s].id === sowId) { onThis = true; break; }
+        if (isCoRef(sows[s])) { coOnly = true; continue; }
         names.push(String(sows[s].identifier || sows[s].id).trim());
       }
       if (onThis) continue;                    // already here — not tray material
+      if (!names.length && coOnly) continue;   // on change orders only — not served here
 
       if (!names.length) { noSow.push(rec); continue; }
       names.sort();
