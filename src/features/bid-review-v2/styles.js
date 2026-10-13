@@ -1371,18 +1371,16 @@
     '.scw-bid-review-v2__group-header--other .scw-bid-review-v2__grp-title {',
     '  font-style: italic; font-weight: 600;',
     '}',
-    /* "Licenses" group header — indigo, set apart from the MDF/IDF groups
-       (same accent as the worksheet's Licenses L1). */
+    /* "Licenses" group header — an indigo tint of the page's light group
+       headers (same hue family as the worksheet's Licenses L1, kept light so
+       it sits with the MDF/IDF headers around it). */
     '.scw-bid-review-v2__group-header--license td {',
-    '  background: linear-gradient(180deg, #4338ca 0%, #3730a3 100%);',
-    '  color: #fff; border-left-color: #a5b4fc; border-top-color: #312e81; border-bottom-color: #312e81;',
+    '  background: #eef2ff; color: #3730a3; border-left-color: #6366f1;',
     '}',
-    '.scw-bid-review-v2__group-header--license:hover td {',
-    '  background: linear-gradient(180deg, #3730a3 0%, #312e81 100%);',
-    '}',
-    '.scw-bid-review-v2__group-header--license .scw-bid-review-v2__grp-chevron { color: #c7d2fe; }',
+    '.scw-bid-review-v2__group-header--license:hover td { background: #e0e7ff; }',
+    '.scw-bid-review-v2__group-header--license .scw-bid-review-v2__grp-chevron { color: #6366f1; }',
     '.scw-bid-review-v2__group-header--license .scw-bid-review-v2__grp-count {',
-    '  background: rgba(255,255,255,0.18); color: #fff;',
+    '  background: #c7d2fe; color: #3730a3;',
     '}',
     '.scw-bid-review-v2__grp-sub {',
     '  display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.04em;',

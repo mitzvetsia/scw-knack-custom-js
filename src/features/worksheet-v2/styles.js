@@ -1085,14 +1085,17 @@
     '.scw-ws-v2-l1-head--synthetic:hover {',
     '  background: linear-gradient(180deg, #475569 0%, #334155 100%) !important;',
     '}',
-    /* Recurring licenses: indigo, set apart from install groups; the sub
-       line under the label says billed separately. */
-    '.scw-ws-v2-l1-head--license, .scw-ws-v2-l1--license > .scw-ws-v2-l1-head-wrap {',
-    '  background: linear-gradient(180deg, #4338ca 0%, #3730a3 100%) !important;',
+    /* Licenses: a muted indigo, set apart from the navy MDF/IDF groups AND
+       the slate synthetic groups; the sub line under the label says billed
+       separately. (The head-WRAP variant — views with the select-all box —
+       lives next to the synthetic wrap rule further down, which it must
+       follow in the cascade: a license L1 is synthetic too.) */
+    '.scw-ws-v2-l1-head--license {',
+    '  background: linear-gradient(180deg, #4f5a9c 0%, #3f4a86 100%) !important;',
     '  border-left-color: #a5b4fc !important;',
     '}',
     '.scw-ws-v2-l1-head--license:hover {',
-    '  background: linear-gradient(180deg, #3730a3 0%, #312e81 100%) !important;',
+    '  background: linear-gradient(180deg, #3f4a86 0%, #333c70 100%) !important;',
     '}',
     '.scw-ws-v2-l1--license { margin-top: 28px !important; }',
     '.scw-ws-v2-l1-sub {',
@@ -2183,6 +2186,13 @@
     '.scw-ws-v2-l1--synthetic > .scw-ws-v2-l1-head-wrap {',
     '  background: linear-gradient(180deg, #5f6b7a 0%, #475569 100%) !important;',
     '  border-left-color: #94a3b8 !important;',
+    '}',
+    /* Licenses L1 — muted indigo. AFTER the synthetic rule on purpose: the
+       license group is synthetic as well, and with equal specificity the
+       later rule wins (this one used to sit earlier and lost → slate). */
+    '.scw-ws-v2-l1--license > .scw-ws-v2-l1-head-wrap {',
+    '  background: linear-gradient(180deg, #4f5a9c 0%, #3f4a86 100%) !important;',
+    '  border-left-color: #a5b4fc !important;',
     '}',
     '.scw-ws-v2-l1-head-wrap > .scw-ws-v2-l1-head {',
     '  flex: 1 1 auto !important;',
