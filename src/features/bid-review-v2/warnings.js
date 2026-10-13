@@ -92,19 +92,17 @@
     var byParent = Object.create(null);
     var byAccessory = Object.create(null);
     // Source 0 — the catalog's own answer (product-catalog.js, 2026-10-13),
-    // nothing stamped. The accessory RECORDS are filtered out of view_3921, so
-    // this needs a view on the scene that loads them (CONFIG.accessoriesViewKey,
-    // a hidden grid of the project's mounting-hardware line items with their
-    // product and parent — Builder TBD). With it, the catalog is authoritative
-    // wherever it answers: a fit clears any stale stamp below, a misfit is
-    // flagged with no stamp at all. Without it, the stamped sources decide.
+    // nothing stamped. The accessory line items are rows of view_3921 like
+    // their parents (transform.js weaves each one under its parent by its
+    // field_2464 pointer), so the audit runs over the view's own records.
+    // Wherever the catalog answers it is authoritative: a fit clears any
+    // stale stamp below, a misfit is flagged with no stamp at all; where it
+    // cannot say, the stamped sources decide.
     var cleared = Object.create(null);
     try {
       var cat = window.SCW && window.SCW.catalog;
-      var accView = ns.CONFIG && ns.CONFIG.accessoriesViewKey;
-      if (cat && accView && typeof cat.auditAccessories === 'function') {
-        var recs = modelRecords(SOW_VIEW).concat(modelRecords(accView));
-        var audit = cat.auditAccessories(recs, { product: 'field_1949', parent: 'field_2464' });
+      if (cat && typeof cat.auditAccessories === 'function') {
+        var audit = cat.auditAccessories(modelRecords(SOW_VIEW), { product: 'field_1949', parent: 'field_2464' });
         if (audit && audit.ready) {
           for (var okId in audit.ok) cleared[okId] = true;
           for (var badId in audit.wrong) {
@@ -350,14 +348,14 @@
   }
   wireChipClicks();
 
-  // Reconcile grid painted before the catalog landed: once it arrives, and
-  // only where an accessories view lets the catalog answer, rebuild through
-  // v1's rerender so the chips carry the derived verdicts.
+  // Reconcile grid painted before the catalog landed: once it arrives,
+  // rebuild through v1's rerender (a no-op before the first render) so the
+  // chips carry the derived verdicts.
   try {
     if (window.SCW && window.SCW.catalog && typeof window.SCW.catalog.ready === 'function') {
       window.SCW.catalog.ready(function () {
         var v1 = window.SCW && window.SCW.bidReview;
-        if (ns.CONFIG && ns.CONFIG.accessoriesViewKey && v1 && typeof v1.rerender === 'function') {
+        if (v1 && typeof v1.rerender === 'function') {
           try { v1.rerender(); } catch (e) { /* next render carries it */ }
         }
       });

@@ -20,11 +20,16 @@
  *   SCW.catalog.auditAccessories(records, fields)   — { ready, wrong, ok, undecided }
  *
  * Three-state answers are the contract: null means "the catalog cannot say"
- * (not loaded, load failed, product unknown, no compatibility list, no status
- * column) and the caller falls back to whatever it had — never a warning.
- * Disabled is only ever reported from an explicit status, so a catalog that
- * holds enabled products only (the snippet before 2026-10-13) answers false
- * for the products it holds and null for the rest.
+ * (not loaded, load failed, no compatibility list, accessory product unknown)
+ * and the caller falls back to whatever it had — never a warning.
+ *
+ * "Disabled" costs nothing extra to load: the snippet fetches every ENABLED
+ * product and the pickers offer nothing else, so a line item whose product is
+ * not in that catalog has a product that can no longer be quoted — disabled,
+ * retired or deleted alike. The map is published only after its last page,
+ * and an empty map is treated as not loaded, so a missing or failed load can
+ * never badge a live product. (An entry carrying an explicit `enabled`
+ * boolean is honoured too, should the catalog ever carry status.)
  *
  * Source-agnostic on purpose: when the snippet's REST-key fetch gives way to
  * hidden all-products grids (Known Issue #17), only source() changes.
@@ -35,10 +40,13 @@
 
   function source() {
     var S = window.SCW || {};
+    var map = (S.productMap && typeof S.productMap === 'object') ? S.productMap : null;
+    // An empty map is a load that brought nothing (a renamed object, a bad
+    // filter): it must read as "not loaded", never as "everything disabled".
+    if (map) { var any = false; for (var k in map) { any = true; break; } if (!any) map = null; }
     return {
-      map:       (S.productMap && typeof S.productMap === 'object') ? S.productMap : null,
-      list:      Array.isArray(S.mountingBoxProducts) ? S.mountingBoxProducts : null,
-      hasStatus: S.productMapHasStatus === true
+      map:  map,
+      list: Array.isArray(S.mountingBoxProducts) ? S.mountingBoxProducts : null
     };
   }
 
@@ -95,19 +103,20 @@
     if (!src.map || !id) return null;
     var e = src.map[String(id)];
     if (!e) return null;
-    var enabled = (typeof e.enabled === 'boolean') ? e.enabled : (src.hasStatus ? null : true);
+    var enabled = (typeof e.enabled === 'boolean') ? e.enabled : true;
     return { id: String(id), name: e.name || '', buckets: e.buckets || [], enabled: enabled, status: e.status || '' };
   }
 
-  /** true = the product's status is not Enabled; false = it is enabled;
-   *  null = the catalog cannot say. Never "disabled" on mere absence. */
+  /** true = the product can no longer be quoted (not in the enabled catalog,
+   *  or carrying an explicit enabled:false); false = it is enabled; null =
+   *  the catalog is not loaded or there is no product id to ask about. */
   function isDisabled(productId) {
     var src = source();
     if (!src.map || !productId) return null;
     var e = src.map[String(productId)];
-    if (!e) return null;
+    if (!e) return true;                                   // absent from the enabled catalog
     if (typeof e.enabled === 'boolean') return !e.enabled;
-    return src.hasStatus ? null : false;   // enabled-only catalog: present ⇒ enabled
+    return false;
   }
 
   /** true = the accessory product's compatibility lists name the parent's

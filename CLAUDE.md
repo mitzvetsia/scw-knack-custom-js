@@ -460,7 +460,7 @@ snippet.js`): `SCW.catalog.fits(accessoryProductId, parentProductId)` applies th
 the add-accessory pickers use (either compatibility list, `field_2236` / `field_2205`, names
 the parent's product) and `SCW.catalog.isDisabled(productId)` reads the product's status.
 - **Three-state contract**: `true` / `false` when the catalog knows, `null` when it cannot say
-  (not loaded, load failed, product unknown, no compatibility list, no status column). On
+  (not loaded, load failed, accessory product unknown, no compatibility list). On
   `null` every consumer falls back to the stored signal it had before; a `null` is never a
   warning. `SCW.catalog.ready(fn)` runs once the maps land (`scw-mounting-box-products-ready`);
   worksheets painted before that repaint themselves then.
@@ -468,16 +468,16 @@ the parent's product) and `SCW.catalog.isDisabled(productId)` reads the product'
   (`auditAccessories`) — an accessory the catalog says fits is never flagged by a stale stamp,
   one it says does not fit is flagged with no stamp at all, undecided ones fall to the stamped
   spans; attached service lines stay exempt. `worksheet-v2/card.js` `isDiscontinued(rec,
-  viewKey)` asks the catalog before `field_2912`. `bid-review-v2/warnings.js` does the same
-  audit but needs the accessory RECORDS, which view_3921 filters out: set `CONFIG.
-  accessoriesViewKey` (bid-review-v2/config.js) to a hidden grid of the project's mounting-
-  hardware line items with `field_1949` + `field_2464` as columns (Builder TBD); until then the
-  stamped spans decide there.
-- **Snippet (re-paste on change)**: loads EVERY product (no status filter) and gives each
-  `productMap` entry `status` (`field_956`) + `enabled`, flagged by `window.SCW.
-  productMapHasStatus = true`; `mountingBoxProducts` / `productBucketMap` stay enabled-only
-  so the pickers never offer a disabled product. With the pre-2026-10-13 snippet the badge
-  still falls back to `field_2912` (present = enabled, absent = unknown).
+  viewKey)` asks the catalog before `field_2912`. `bid-review-v2/warnings.js` runs the same
+  audit over view_3921's own records — the accessory line items are rows of that grid like
+  their parents (transform.js weaves them under their parent by `field_2464`), so no extra view
+  is needed there either.
+- **No extra load**: the snippet is unchanged and still fetches ENABLED products only — a
+  line item whose product is not in that catalog has a product the pickers can no longer
+  offer, so "absent from the enabled catalog" IS the disabled verdict (disabled, retired or
+  deleted alike). The map is published only after its last page and an empty map counts as
+  not loaded, so a missing or failed load can never badge a live product. Never narrow the
+  snippet's filter: that would badge live products.
 - **Retire later**: the `field_2244` / `field_2912` columns on the views, the Make step that
   stamps them, and `worksheet-v2/product-enabled-flag.js` (writes `field_2912` Yes after a
   product change — harmless, now redundant). Known Issue #14 (default accessory missing)

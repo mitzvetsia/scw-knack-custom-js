@@ -38,8 +38,8 @@ check('fits: either list names the parent → true; a list that does not → fal
   [cat.fits(MOUNT, CAM), cat.fits(BOX, NVR), cat.fits(MOUNT, NVR), cat.fits(BOX, CAM)], [true, true, false, false]);
 check('fits: unknown accessory, no list at all, or a missing id → null (never "wrong")',
   [cat.fits('p-ghost', CAM), cat.fits(NOLIST, CAM), cat.fits('', CAM), cat.fits(MOUNT, '')], [null, null, null, null]);
-check('enabled-only catalog: present → not disabled; absent → null, never "disabled" on absence',
-  [cat.isDisabled(CAM), cat.isDisabled(OLDMOUNT), cat.product(CAM).enabled], [false, null, true]);
+check('enabled-only catalog: present → not disabled; absent → disabled (the pickers can no longer offer it)',
+  [cat.isDisabled(CAM), cat.isDisabled(OLDMOUNT), cat.product(CAM).enabled], [false, true, true]);
 
 const F = { product: 'field_1949', parent: 'field_2464' };
 const rec = (id, prod, parent) => ({ id, field_1949_raw: [{ id: prod, identifier: prod }], field_2464_raw: parent ? [{ id: parent, identifier: parent }] : [] });
@@ -49,12 +49,15 @@ check('audit: wrong / ok / undecided map each accessory to its parent; non-acces
   [a.ready, a.wrong, a.ok, a.undecided],
   [true, { m2: 'nvr1' }, { m1: 'cam1', b1: 'nvr1' }, { c1: 'cam1', m3: 'ghost-parent', x1: 'cam1' }]);
 
-// ── the NEW snippet shape: every product with its status ──
-window.SCW.productMapHasStatus = true;
+// ── an explicit enabled flag is honoured should the catalog ever carry status ──
 window.SCW.productMap = { [CAM]: { name: 'Cam', status: 'Enabled', enabled: true }, [OLDMOUNT]: { name: 'Old mount', status: 'Disabled', enabled: false }, [MOUNT]: { name: 'Wall mount', status: 'Enabled', enabled: true } };
-check('status catalog: enabled → false, disabled → true, unknown id → null',
-  [cat.isDisabled(CAM), cat.isDisabled(OLDMOUNT), cat.isDisabled('p-ghost'), cat.product(OLDMOUNT).status], [false, true, null, 'Disabled']);
+check('explicit status: enabled → false, disabled → true, absent → true, status readable',
+  [cat.isDisabled(CAM), cat.isDisabled(OLDMOUNT), cat.isDisabled('p-ghost'), cat.product(OLDMOUNT).status], [false, true, true, 'Disabled']);
 check('a disabled accessory is not in the picker list, so its fit is unknown (the disabled badge carries it)', cat.fits(OLDMOUNT, CAM), null);
+
+// ── an empty map is a failed load, never "everything disabled" ──
+window.SCW.productMap = {};
+check('an empty catalog reads as not loaded: null, not disabled', [cat.isReady(), cat.isDisabled(CAM)], [false, null]);
 
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

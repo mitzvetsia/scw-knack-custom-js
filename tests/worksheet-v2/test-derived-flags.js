@@ -65,9 +65,8 @@ check('no catalog: the discontinued badge follows the stored flag only',
 
 // ── the catalog lands: a wall mount fits a camera, not an NVR ──
 window.SCW.mountingBoxProducts = [{ id: MOUNT, name: 'Wall mount', compatibleProducts: [CAM], compatibleProductsAlt: [] }];
-window.SCW.productMapHasStatus = true;
-window.SCW.productMap = { [CAM]: { name: 'Cam', enabled: true, status: 'Enabled' }, [NVR]: { name: 'NVR', enabled: true, status: 'Enabled' },
-  [MOUNT]: { name: 'Wall mount', enabled: true, status: 'Enabled' }, [OLD]: { name: 'Old', enabled: false, status: 'Disabled' } };
+// The snippet's shape: enabled products only — OLD is simply not there.
+window.SCW.productMap = { [CAM]: { name: 'Cam' }, [NVR]: { name: 'NVR' }, [MOUNT]: { name: 'Wall mount' } };
 document.dispatchEvent(new window.CustomEvent('scw-mounting-box-products-ready'));
 check('catalog wins: the stale No on m1 is cleared (it fits), the stale Yes on m2 is overruled (it does not) → only nvr1 flagged',
   [named(issues(records)), ns.warnings.isAccessoryMismatch(M1), ns.warnings.isAccessoryMismatch(M2)], [['nvr1'], false, true]);
@@ -90,9 +89,9 @@ check('a service line attached to a parent is exempt even when the catalog says 
 delete window.Knack.views[V];
 
 // ── the discontinued badge from the catalog's status ──
-check('catalog status: a disabled product badges even with a stale Yes; an enabled one never badges even with a stale No; unknown → stored flag',
+check('catalog: a product missing from the enabled catalog badges even with a stale Yes; an enabled one never badges even with a stale No; no product id → stored flag',
   [ns.card.isDiscontinued(rec('x', OLD, { extra: { field_2912_raw: true } }), V), ns.card.isDiscontinued(rec('y', CAM, { extra: { field_2912_raw: false } }), V),
-   ns.card.isDiscontinued(rec('z', 'p-ghost', { extra: { field_2912_raw: false } }), V), ns.card.isDiscontinued(rec('w', 'p-ghost'), V)],
+   ns.card.isDiscontinued(Object.assign(rec('z', CAM, { extra: { field_2912_raw: false } }), { field_1949_raw: [] }), V), ns.card.isDiscontinued(Object.assign(rec('w', CAM), { field_1949_raw: [] }), V)],
   [true, false, true, false]);
 
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
