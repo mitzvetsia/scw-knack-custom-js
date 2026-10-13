@@ -592,13 +592,13 @@
     var wsv2 = window.SCW && SCW.worksheetV2;
     if (wsv2 && typeof wsv2.confirmModal === 'function') {
       wsv2.confirmModal({
-        title: 'Delete this photo?',
-        body: 'This permanently removes the photo from this MDF/IDF location and ' +
-              'can’t be undone.',
+        title: 'Are you SURE!?!',
+        body: 'This permanently deletes the photo from this MDF/IDF location. ' +
+              'It can’t be undone.',
         okLabel: 'Delete photo',
         cancelLabel: 'Cancel'
       }).then(function (ok) { if (ok) doDelete(); });
-    } else if (window.confirm('Delete this photo? This can’t be undone.')) {
+    } else if (window.confirm('Are you SURE!?!\n\nThis permanently deletes the photo from this MDF/IDF location. It can’t be undone.')) {
       doDelete();
     }
   }

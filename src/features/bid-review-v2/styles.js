@@ -1339,22 +1339,25 @@
     '.scw-bid-review-v2__l1-detail-photo:hover {',
     '  transform: scale(1.03); box-shadow: 0 3px 12px rgba(0,0,0,.15);',
     '}',
-    /* Delete overlay — small trash chip, top-right of the thumb, revealed
-       on hover (same treatment as worksheet-v2's line-item photo delete). */
+    /* Delete chip — trash, top-right of the thumb, ALWAYS visible
+       (2026-10-13: it used to appear only on hover and nobody found it).
+       Pale pink at rest, dark red with a white glyph on hover / focus;
+       the click goes through the "Are you SURE!?!" confirm in
+       mdf-manage.js deleteMdfPhoto before the DELETE fires. */
     '.scw-bid-review-v2__l1-detail-photo-del {',
-    '  position: absolute; top: 3px; right: 3px; z-index: 3;',
+    '  position: absolute; top: 4px; right: 4px; z-index: 3;',
     '  display: inline-flex; align-items: center; justify-content: center;',
-    '  width: 20px; height: 20px; padding: 0;',
-    '  border: 0; border-radius: 50%;',
-    '  background: rgba(255,255,255,0.92); color: #64748b;',
+    '  width: 22px; height: 22px; padding: 0;',
+    '  border: 1px solid #fecdd3; border-radius: 50%;',
+    '  background: #ffe4e6; color: #9f1239;',
     '  box-shadow: 0 1px 3px rgba(2,6,23,0.35);',
-    '  cursor: pointer; opacity: 0;',
-    '  transition: opacity 100ms ease, background 100ms ease, color 100ms ease;',
+    '  cursor: pointer; opacity: 1;',
+    '  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;',
     '}',
-    '.scw-bid-review-v2__l1-detail-photo:hover .scw-bid-review-v2__l1-detail-photo-del {',
-    '  opacity: 1;',
+    '.scw-bid-review-v2__l1-detail-photo-del:hover,',
+    '.scw-bid-review-v2__l1-detail-photo-del:focus-visible {',
+    '  background: #9f1239; border-color: #9f1239; color: #fff;',
     '}',
-    '.scw-bid-review-v2__l1-detail-photo-del:hover { background: #fee2e2; color: #b91c1c; }',
     '.scw-bid-review-v2__l1-detail-photo-del svg { display: block; }',
     /* Override Knack default ".kn-content img { max-width: 100% }". */
     '.scw-bid-review-v2__l1-detail-photo img,',
