@@ -508,38 +508,42 @@
       '.scw-bid-review__docs-link-btn.scw-bid-review__btn--busy {',
       '  opacity: 0.5; cursor: progress;',
       '}',
-      /* "Unlink" pill on linked docs — ALWAYS on the tile (2026-10-12:
-         it used to appear only on hover and nobody found it). Pale pink
-         at rest, dark red with white text on hover, so it reads as the
-         destructive-leaning action it is; the click goes through the
-         "Are you SURE!?!" confirm (init.js handleDocUnlinkFromSow)
-         before anything is severed. It disconnects the SOW from the
-         doc — the DOC_files record itself is not deleted. */
+      /* "Unlink" pill on linked docs — slate, NOT red. Chain-break
+         icon + word "Unlink" makes the intent unambiguous: this
+         disconnects the SOW from the doc, it does NOT delete the
+         underlying DOC_files record. Hover deepens to a darker slate
+         so it reads as "modifies state" without crossing into the
+         destructive-action visual vocabulary. */
       '.scw-bid-review__docs-unlink-btn {',
       '  display: inline-flex;',
       '  align-items: center;',
       '  gap: 3px;',
-      /* Card overlay — same top-right pin as + Link. */
+      /* Card overlay — same top-right pin as + Link; hidden until the
+         card is hovered so linked cards stay clean. */
       '  position: absolute;',
       '  top: 6px;',
       '  right: 6px;',
       '  padding: 2px 8px;',
-      '  background: #ffe4e6;',
-      '  border: 1px solid #fecdd3;',
+      '  background: rgba(255,255,255,0.95);',
+      '  border: 1px solid #cbd5e1;',
       '  border-radius: 999px;',
-      '  color: #9f1239;',
+      '  color: #64748b;',
       '  font: 600 10px/1.2 system-ui, sans-serif;',
       '  letter-spacing: 0.03em;',
       '  text-transform: uppercase;',
       '  cursor: pointer;',
+      '  opacity: 0;',
       '  box-shadow: 0 1px 3px rgba(15,23,42,.15);',
-      '  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;',
+      '  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;',
       '}',
-      '.scw-bid-review__docs-unlink-btn:hover,',
-      '.scw-bid-review__docs-unlink-btn:focus-visible {',
-      '  background: #9f1239;',
-      '  border-color: #9f1239;',
+      '.scw-bid-review__docs-item:hover .scw-bid-review__docs-unlink-btn {',
+      '  opacity: 1;',
+      '}',
+      '.scw-bid-review__docs-unlink-btn:hover {',
+      '  background: #475569;',
+      '  border-color: #475569;',
       '  color: #fff;',
+      '  opacity: 1;',
       '}',
       '.scw-bid-review__docs-unlink-btn:disabled,',
       '.scw-bid-review__docs-unlink-btn.scw-bid-review__btn--busy {',
