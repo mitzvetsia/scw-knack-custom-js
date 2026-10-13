@@ -242,6 +242,14 @@
     if (ns.search && typeof ns.search.mount === 'function') {
       ns.search.mount(key);
     }
+    // Discontinued-products bar under the banner (discontinued-bar.js): built
+    // from the render's filtered records so it names what is on screen.
+    if (ns.discontinuedBar && typeof ns.discontinuedBar.mount === 'function') {
+      try {
+        var _discRecs = (ns.render && typeof ns.render.scopeRecords === 'function' && ns.render.scopeRecords(key)) || records;
+        ns.discontinuedBar.mount(key, _discRecs);
+      } catch (eDisc) { /* fail soft */ }
+    }
     // After every re-render, sync the bulk-select checkboxes to
     // current selection state + refresh the floating toolbar. GUARD on the
     // panel actually being mounted on THIS scene: bulk is a singleton, and
@@ -2296,21 +2304,9 @@
             multi:         false,
             onSaved:       function (ids) {
               if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
-              // The line item's stored product flag (field_2912 — the ⊘
-              // "discontinued" badge) doesn't re-stamp on a product change.
-              // When the NEW product is in the enabled catalog (SCW.productMap
-              // = Status Enabled), flip it to Yes so the badge clears
-              // (product-enabled-flag.js; no-op where it can't confirm).
-              try {
-                if (ns.productEnabledFlag && typeof ns.productEnabledFlag.clearIfEnabled === 'function') {
-                  ns.productEnabledFlag.clearIfEnabled({
-                    viewKey:   viewKey,
-                    recordId:  recordId,
-                    productId: Array.isArray(ids) ? ids[0] : ids,
-                    rec:       current
-                  });
-                }
-              } catch (e) { /* ignore */ }
+              // The ⊘ "discontinued" badge derives from the catalog
+              // (product-catalog.js), so a product change clears or raises it
+              // on this re-render by itself — nothing to re-stamp.
             }
           });
         };

@@ -58,5 +58,39 @@ check('with no stamps on the page at all, the catalog alone flags nvr1', [bracke
 grid(records.concat([rec(G1, 'p-ghost', CAM1)]), { [CAM1]: [[G1, 'No']] });
 check('an accessory product the catalog does not know → undecided → its stamped No still flags cam1', bracket(CAM1), true);
 
+// ── discontinued-products bar under a SOW section's status line (2026-10-13) ──
+const SOW_A = hid('a1'), SOW_B = hid('b1');
+const item = (id, prod, name, sows) => ({ id, field_1949: name, field_1949_raw: [{ id: prod, identifier: name }], field_2154_raw: sows.map(s => ({ id: s, identifier: s })) });
+const sowItems = [item(CAM1, CAM, 'Cam', [SOW_A]), item(hid('71'), 'p-old-sw', '8 Port Switch', [SOW_A]), item(hid('72'), 'p-old-sw', '8 Port Switch', [SOW_A]),
+  item(hid('73'), 'p-old-ups', 'Standby UPS', [SOW_B]), item(hid('74'), 'p-old-ups', 'Standby UPS', [])];
+ns.lastSowItems = sowItems;
+window.SCW.productMap = { [CAM]: { name: 'Cam' }, [NVR]: { name: 'NVR' }, [MOUNT]: { name: 'Wall mount' } };   // the switch and the UPS are gone
+check('collectDiscontinued: only this SOW\'s items, grouped by product with their ids',
+  [ns.warnings.collectDiscontinued(sowItems, SOW_A), ns.warnings.collectDiscontinued(sowItems, SOW_B), ns.warnings.collectDiscontinued(sowItems, '__none__')],
+  [[{ name: '8 Port Switch', ids: [hid('71'), hid('72')] }], [{ name: 'Standby UPS', ids: [hid('73')] }], [{ name: 'Standby UPS', ids: [hid('74')] }]]);
+function section(sowId, rowIds) {
+  const sec = document.createElement('div'); sec.className = 'scw-bid-review-v2__sow'; sec.setAttribute('data-sow-id', sowId);
+  sec.innerHTML = '<div class="scw-bid-review-v2__sow-header">status line</div><table><tbody>' +
+    rowIds.map(id => '<tr class="scw-bid-review-v2__row" data-sow-item-id="' + id + '"><td>row</td></tr>').join('') + '</tbody></table>';
+  document.body.appendChild(sec); return sec;
+}
+const secA = section(SOW_A, [CAM1, hid('71'), hid('72')]);
+ns.warnings.mountDiscontinuedBar(secA, sowItems);
+const dbar = () => secA.querySelector(':scope > .scw-bid-review-v2__disc');
+const dtxt = el => el ? Array.from(el.children).map(c => c.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' ') : null;
+check('the bar sits right under the status line and names the product with its count',
+  [dbar() && dbar().previousElementSibling.className, dtxt(dbar())],
+  ['scw-bid-review-v2__sow-header', '2 discontinued products on this scope — replace them before it goes out: 8 Port Switch×2']);
+window.Element.prototype.scrollIntoView = window.Element.prototype.scrollIntoView || function () {};
+const dchip = dbar().querySelector('.scw-bid-review-v2__disc-chip');
+dchip.click();
+const dlit = () => Array.from(secA.querySelectorAll('tr.scw-bid-review-v2__row--scope-hl')).map(tr => tr.getAttribute('data-sow-item-id'));
+check('a click highlights that product\'s rows (the scope-tile class)', [dlit(), dchip.classList.contains('is-on')], [[hid('71'), hid('72')], true]);
+dchip.click();
+check('a second click clears', [dlit(), dchip.classList.contains('is-on')], [[], false]);
+window.SCW.productMap = { [CAM]: { name: 'Cam' }, 'p-old-sw': { name: '8 Port Switch' } };
+ns.warnings.mountDiscontinuedBar(secA, sowItems);
+check('once the product is enabled again the bar goes', dbar(), null);
+
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

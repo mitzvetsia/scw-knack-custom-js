@@ -203,6 +203,16 @@
     body.innerHTML = '';
     body.appendChild(frag);
 
+    // Discontinued-products bar under each section's status line (warnings.js,
+    // 2026-10-13) — refreshed on reused sections too, since the catalog may
+    // have landed after they were built.
+    if (ns.warnings && typeof ns.warnings.mountDiscontinuedBar === 'function') {
+      var secs = body.querySelectorAll('.scw-bid-review-v2__sow');
+      for (var di = 0; di < secs.length; di++) {
+        try { ns.warnings.mountDiscontinuedBar(secs[di], sowItems); } catch (ed) { /* fail soft */ }
+      }
+    }
+
     // Re-apply persisted MDF/IDF group + subgroup collapse state — the
     // rebuild just reset every group to its default, which re-opened
     // anything the user had closed (init.js applyGroupCollapse).

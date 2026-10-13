@@ -1280,7 +1280,10 @@
   }, true);
 
   ns.render = {
-    renderView: renderView
+    renderView: renderView,
+    // The last render's filtered (visible) record set for a view — what the
+    // scope strip and the discontinued-products bar count from.
+    scopeRecords: function (viewKey) { return _scopeRecords[viewKey] || null; }
   };
 })();
 /*** END WORKSHEET V2 — RENDER ************************************************/

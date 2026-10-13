@@ -3330,6 +3330,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     '<line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>';
 
   function isDiscontinuedRow(tr) {
+    // The catalog first (product-catalog.js, 2026-10-13): the row's product
+    // id is the connection-value span's class in the product cell. null =
+    // the catalog cannot say → the stored flag below, as before.
+    try {
+      var cat = window.SCW && window.SCW.catalog;
+      if (cat && typeof cat.isDisabled === 'function') {
+        var keys = ['field_1949', 'field_2627', 'field_2846'], pid = '';
+        for (var k = 0; k < keys.length && !pid; k++) {
+          var pc = findCell(tr, keys[k]);
+          var sp = pc && pc.querySelector('span[data-kn="connection-value"]');
+          var cls = sp ? (sp.className || '').trim() : '';
+          if (/^[a-f0-9]{24}$/i.test(cls)) pid = cls;
+        }
+        var d = pid ? cat.isDisabled(pid) : null;
+        if (d === true) return true;
+        if (d === false) return false;
+      }
+    } catch (e) { /* fall through to the stored flag */ }
     var cell = findCell(tr, 'field_2912');
     if (!cell) return false;
     var s = (cell.textContent || '')

@@ -478,11 +478,22 @@ the parent's product) and `SCW.catalog.isDisabled(productId)` reads the product'
   deleted alike). The map is published only after its last page and an empty map counts as
   not loaded, so a missing or failed load can never badge a live product. Never narrow the
   snippet's filter: that would badge live products.
-- **Retire later**: the `field_2244` / `field_2912` columns on the views, the Make step that
-  stamps them, and `worksheet-v2/product-enabled-flag.js` (writes `field_2912` Yes after a
-  product change — harmless, now redundant). Known Issue #14 (default accessory missing)
-  becomes derivable the day the product object carries a default-accessory field.
-- Tests: `tests/catalog/test-product-catalog.js`, `tests/worksheet-v2/test-derived-flags.js`.
+- **Discontinued-products bar** (same day): wherever a rendered line item carries a product
+  the catalog no longer offers, a full-width amber bar names every such product with its count
+  — under the worksheet banner on the build page (`worksheet-v2/discontinued-bar.js`, mounted
+  by init.js after each render over the filtered records) and under each SOW section's status
+  line on the reconcile page (`bid-review-v2/warnings.js` `mountDiscontinuedBar`, called by
+  render.js). A click on a product highlights its cards / rows and scrolls to the first (the
+  scope-tile gesture); a second click clears. The bar removes itself when the scope is clean.
+- **Retired with it**: `worksheet-v2/product-enabled-flag.js` (it wrote `field_2912` Yes after
+  a product change — nothing writes a product flag now) and the v1 worksheet's
+  `device-worksheet.js isDiscontinuedRow` asks the catalog first. The `field_2244` /
+  `field_2912` columns on the views, and the Make step that stamps them, can go: every reader
+  treats a missing column as "no stored signal", and the catalog answers first. Known Issue #14
+  (default accessory missing) becomes derivable the day the product object carries a
+  default-accessory field.
+- Tests: `tests/catalog/test-product-catalog.js`, `tests/worksheet-v2/test-derived-flags.js`,
+  `tests/worksheet-v2/test-discontinued-bar.js`, `tests/bid-review-v2/test-derived-brackets.js`.
 
 ## Manage Deployment page (scene_1311) redesign — full reference: docs/deploy-page-redesign.md
 

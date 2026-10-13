@@ -362,8 +362,144 @@
     }
   } catch (e) { /* no catalog on this page */ }
 
+  // ── Discontinued products bar (2026-10-13) ───────────────────────────
+  // A full-width warning bar under a SOW section's status line whenever any
+  // of that SOW's line items carries a product the catalog no longer offers
+  // (worksheet-v2 card.isDiscontinued → product-catalog.js). Names every such
+  // product with its count; a click on one highlights its rows and scrolls
+  // to the first (the scope-tile gesture), a second click clears.
+  var DISC = 'scw-bid-review-v2__disc';
+  var DISC_STYLE_ID = DISC + '-css';
+  var DISC_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>';
+
+  function isDiscontinuedItem(rec) {
+    try {
+      var w = window.SCW && window.SCW.worksheetV2 && window.SCW.worksheetV2.card;
+      if (w && typeof w.isDiscontinued === 'function') return !!w.isDiscontinued(rec, SOW_VIEW);
+      var cat = window.SCW && window.SCW.catalog;
+      var raw = rec['field_1949_raw']; if (Array.isArray(raw)) raw = raw[0];
+      var pid = raw && raw.id;
+      return !!(cat && pid && cat.isDisabled(String(pid)) === true);
+    } catch (e) { return false; }
+  }
+  function productLabelOf(rec) {
+    var raw = rec['field_1949_raw']; if (Array.isArray(raw)) raw = raw[0];
+    var s = raw && raw.identifier ? String(raw.identifier) : String(rec['field_1949'] == null ? '' : rec['field_1949']);
+    return s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() || 'Unnamed product';
+  }
+  function onSow(rec, sowId) {
+    var raw = rec['field_2154_raw'];
+    var ids = [];
+    if (Array.isArray(raw)) { for (var i = 0; i < raw.length; i++) if (raw[i] && raw[i].id) ids.push(String(raw[i].id)); }
+    else if (raw && raw.id) ids.push(String(raw.id));
+    if (!/^[a-f0-9]{24}$/i.test(sowId || '')) return ids.length === 0;   // the no-SOW section
+    return ids.indexOf(sowId) !== -1;
+  }
+  /** [{ name, ids }] of the SOW's discontinued line items, by product name. */
+  function collectDiscontinued(sowItems, sowId) {
+    var out = [], byName = Object.create(null);
+    for (var i = 0; i < (sowItems || []).length; i++) {
+      var rec = sowItems[i];
+      if (!rec || !rec.id || !onSow(rec, sowId) || !isDiscontinuedItem(rec)) continue;
+      var name = productLabelOf(rec);
+      var e = byName[name];
+      if (!e) { e = byName[name] = { name: name, ids: [] }; out.push(e); }
+      e.ids.push(rec.id);
+    }
+    out.sort(function (a, b) { return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }); });
+    return out;
+  }
+  function discontinuedBarHtml(list) {
+    if (!list || !list.length) return '';
+    var n = 0;
+    for (var i = 0; i < list.length; i++) n += list[i].ids.length;
+    var h = '<span class="' + DISC + '-icon">' + DISC_SVG + '</span>' +
+      '<span class="' + DISC + '-text"><b>' + n + ' discontinued product' + (n === 1 ? '' : 's') +
+      '</b> on this scope \u2014 replace ' + (n === 1 ? 'it' : 'them') + ' before it goes out:</span>';
+    for (var j = 0; j < list.length; j++) {
+      var c = list[j].ids.length;
+      h += '<button type="button" class="' + DISC + '-chip" aria-pressed="false" ' +
+        'data-scw-br-v2-disc-ids="' + esc(list[j].ids.join(',')) + '" ' +
+        'title="Highlight ' + (c === 1 ? 'this line item' : 'these ' + c + ' line items') + '">' +
+        esc(list[j].name) + (c > 1 ? '<span class="' + DISC + '-n">\u00d7' + c + '</span>' : '') + '</button>';
+    }
+    return h;
+  }
+  function injectDiscStyles() {
+    if (document.getElementById(DISC_STYLE_ID)) return;
+    var s = document.createElement('style');
+    s.id = DISC_STYLE_ID;
+    s.textContent = [
+      '.' + DISC + ' { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 9px 14px;',
+      '  background: #fffbeb; border-top: 1px solid #fcd34d; border-bottom: 1px solid #fcd34d; box-shadow: inset 4px 0 0 #b45309;',
+      '  color: #78350f; font: 500 13px/1.35 system-ui, -apple-system, sans-serif; }',
+      '.' + DISC + '-icon { display: inline-flex; color: #b45309; }',
+      '.' + DISC + '-text b { font-weight: 800; color: #7c2d12; }',
+      '.' + DISC + '-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid #f59e0b;',
+      '  border-radius: 999px; background: #fff; color: #7c2d12; font: 600 12px/1.2 system-ui, sans-serif; cursor: pointer; }',
+      '.' + DISC + '-chip:hover { background: #fef3c7; }',
+      '.' + DISC + '-chip.is-on { background: #b45309; border-color: #b45309; color: #fff; }',
+      '.' + DISC + '-n { font-weight: 800; opacity: .8; }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+  /** Mount / refresh / remove the bar on one SOW section (idempotent). */
+  function mountDiscontinuedBar(section, sowItems) {
+    if (!section || !section.querySelector) return;
+    var sowId = section.getAttribute('data-sow-id') || '';
+    var list = collectDiscontinued(sowItems || ns.lastSowItems || [], sowId);
+    var bar = section.querySelector(':scope > .' + DISC);
+    var h = discontinuedBarHtml(list);
+    if (!h) { if (bar && bar.parentNode) bar.parentNode.removeChild(bar); return; }
+    injectDiscStyles();
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.className = DISC;
+      bar.setAttribute('role', 'alert');
+      var head = section.querySelector(':scope > .scw-bid-review-v2__sow-header');
+      if (head) section.insertBefore(bar, head.nextSibling);
+      else section.insertBefore(bar, section.firstChild);
+    }
+    if (bar.getAttribute('data-scw-sig') !== h) { bar.innerHTML = h; bar.setAttribute('data-scw-sig', h); }
+  }
+  var ROW_HL = 'scw-bid-review-v2__row--scope-hl';
+  function clearDiscHighlight(section) {
+    var lit = section.querySelectorAll('.' + ROW_HL);
+    for (var c = 0; c < lit.length; c++) lit[c].classList.remove(ROW_HL);
+    var on = section.querySelectorAll('.' + DISC + '-chip.is-on');
+    for (var o = 0; o < on.length; o++) { on[o].classList.remove('is-on'); on[o].setAttribute('aria-pressed', 'false'); }
+  }
+  if (!document.documentElement.hasAttribute('data-scw-br-v2-disc-bound')) {
+    document.documentElement.setAttribute('data-scw-br-v2-disc-bound', '1');
+    document.addEventListener('click', function (e) {
+      var chip = e.target && e.target.closest && e.target.closest('[data-scw-br-v2-disc-ids]');
+      if (!chip) return;
+      var section = chip.closest('.scw-bid-review-v2__sow');
+      if (!section) return;
+      e.preventDefault();
+      var wasOn = chip.classList.contains('is-on');
+      clearDiscHighlight(section);
+      if (wasOn) return;
+      chip.classList.add('is-on');
+      chip.setAttribute('aria-pressed', 'true');
+      var ids = (chip.getAttribute('data-scw-br-v2-disc-ids') || '').split(',');
+      var first = null;
+      for (var i = 0; i < ids.length; i++) {
+        if (!ids[i]) continue;
+        var rows = section.querySelectorAll('tr.scw-bid-review-v2__row[data-sow-item-id="' + ids[i] + '"]');
+        for (var k = 0; k < rows.length; k++) { rows[k].classList.add(ROW_HL); if (!first) first = rows[k]; }
+      }
+      if (first) { try { first.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (err) { /* ignore */ } }
+    });
+  }
+
   ns.warnings = {
     analyze:            analyze,
+    collectDiscontinued:   collectDiscontinued,
+    discontinuedBarHtml:   discontinuedBarHtml,
+    mountDiscontinuedBar:  mountDiscontinuedBar,
     issuesFor:          issuesFor,
     chipsHtml:          chipsHtml,
     summaryChipsHtml:   summaryChipsHtml,
