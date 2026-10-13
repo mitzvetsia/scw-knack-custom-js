@@ -449,6 +449,41 @@ Notes:
   key in from Builder → Settings → API & Code at paste time only, and
   keep it out of PRs/issues/chat.
 
+## Derived product flags (live 2026-10-13) — `src/features/product-catalog.js`
+
+**Nothing about a product is stamped on a line item any more.** Two facts used to ride stored
+line-item flags — the "accessory match check" (`field_2244`, Yes/No per attached accessory,
+scraped off the parent row) and the product-status mirror (`field_2912`, Yes = still active) —
+and both went stale whenever the catalog or the line changed. They are now QUESTIONS asked of
+the product catalog the Builder snippet already loads (`knack-snippets/product-catalog-loader.
+snippet.js`): `SCW.catalog.fits(accessoryProductId, parentProductId)` applies the exact rule
+the add-accessory pickers use (either compatibility list, `field_2236` / `field_2205`, names
+the parent's product) and `SCW.catalog.isDisabled(productId)` reads the product's status.
+- **Three-state contract**: `true` / `false` when the catalog knows, `null` when it cannot say
+  (not loaded, load failed, product unknown, no compatibility list, no status column). On
+  `null` every consumer falls back to the stored signal it had before; a `null` is never a
+  warning. `SCW.catalog.ready(fn)` runs once the maps land (`scw-mounting-box-products-ready`);
+  worksheets painted before that repaint themselves then.
+- **Consumers**: `worksheet-v2/warnings.js` `buildBracketMaps` audits the view's records first
+  (`auditAccessories`) — an accessory the catalog says fits is never flagged by a stale stamp,
+  one it says does not fit is flagged with no stamp at all, undecided ones fall to the stamped
+  spans; attached service lines stay exempt. `worksheet-v2/card.js` `isDiscontinued(rec,
+  viewKey)` asks the catalog before `field_2912`. `bid-review-v2/warnings.js` does the same
+  audit but needs the accessory RECORDS, which view_3921 filters out: set `CONFIG.
+  accessoriesViewKey` (bid-review-v2/config.js) to a hidden grid of the project's mounting-
+  hardware line items with `field_1949` + `field_2464` as columns (Builder TBD); until then the
+  stamped spans decide there.
+- **Snippet (re-paste on change)**: loads EVERY product (no status filter) and gives each
+  `productMap` entry `status` (`field_956`) + `enabled`, flagged by `window.SCW.
+  productMapHasStatus = true`; `mountingBoxProducts` / `productBucketMap` stay enabled-only
+  so the pickers never offer a disabled product. With the pre-2026-10-13 snippet the badge
+  still falls back to `field_2912` (present = enabled, absent = unknown).
+- **Retire later**: the `field_2244` / `field_2912` columns on the views, the Make step that
+  stamps them, and `worksheet-v2/product-enabled-flag.js` (writes `field_2912` Yes after a
+  product change — harmless, now redundant). Known Issue #14 (default accessory missing)
+  becomes derivable the day the product object carries a default-accessory field.
+- Tests: `tests/catalog/test-product-catalog.js`, `tests/worksheet-v2/test-derived-flags.js`.
+
 ## Manage Deployment page (scene_1311) redesign — full reference: docs/deploy-page-redesign.md
 
 Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-auk1dh`

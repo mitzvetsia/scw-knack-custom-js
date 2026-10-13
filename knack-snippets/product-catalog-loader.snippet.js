@@ -2,19 +2,30 @@
  *
  * Paste into Knack Builder → Settings → API & Code → JavaScript (app-level),
  * alongside the other SCW snippets. Runs before the CDN bundle loads and
- * exposes the Enabled product catalog (object_8) for the in-bundle pickers:
+ * exposes the product catalog (object_8) for the in-bundle pickers and,
+ * since 2026-10-13, for the DERIVED product flags (src/features/
+ * product-catalog.js — nothing is stamped on line items any more):
  *
  *   window.SCW.productMap          = { '<productId>': { name, buckets: [bucketId…],
- *                                       subAllowed, salesAllowed }, … }
- *   window.SCW.productBucketMap    = { '<productId>': [bucketId…], … }   // bucket filter
+ *                                       subAllowed, salesAllowed, status, enabled }, … }
+ *                                    EVERY product, whatever its status (the
+ *                                    disabled badge needs the disabled ones)
+ *   window.SCW.productMapHasStatus = true   // tells product-catalog.js the
+ *                                    map carries status (absence = unknown,
+ *                                    never "disabled")
+ *   window.SCW.productBucketMap    = { '<productId>': [bucketId…], … }   // ENABLED only
  *   window.SCW.mountingBoxProducts = [ { id, name, bucketId, bucketName,
  *                                       compatibleProducts, compatibleProductsAlt }, … ]
+ *                                    ENABLED only — the pickers never offer a
+ *                                    disabled product
  *   window.SCW.productMapReady     = Promise → productMap (resolves after the
  *                                    last page; the error path resolves too)
  *   document event 'scw-mounting-box-products-ready'
  *
  *   subAllowed   = field_2433 "FLAG_subcontractor can add" (boolean)
  *   salesAllowed = field_2434 "FLAG_sales can add"         (boolean)
+ *   status       = field_956 "FLAG_product status" (text, tags stripped)
+ *   enabled      = status is "Enabled" (boolean)
  *
  * Consumers (grep productMap / productBucketMap / mountingBoxProducts in src/):
  *   - worksheet-v2 product pickers + bulk editor, bid-review, the v2 add-item
@@ -46,12 +57,12 @@
   var SUB_ALLOWED      = 'field_2433';
 
 
-  var filters = encodeURIComponent(JSON.stringify({
-    match: 'and',
-    rules: [ { field: STATUS_FIELD, operator: 'is', value: 'Enabled' } ]
-  }));
+  // No status filter (2026-10-13): every product loads, and each entry says
+  // whether it is enabled. The picker lists below stay enabled-only.
+  var filters = encodeURIComponent(JSON.stringify({ match: 'and', rules: [] }));
 
   window.SCW = window.SCW || {};
+  window.SCW.productMapHasStatus = true;
   var out = [], productMap = {}, productBucketMap = {}, _ready;
   window.SCW.productMapReady = new Promise(function (r) { _ready = r; });
 
@@ -91,17 +102,24 @@
             .replace(/<[^>]*>/g, '').trim();
           if (sku) name = name + ' - ' + sku;
           var buckets = allBuckets(rec);
-
+          var status = String(rec[STATUS_FIELD + '_raw'] != null
+            ? rec[STATUS_FIELD + '_raw'] : (rec[STATUS_FIELD] || ''))
+            .replace(/<[^>]*>/g, '').trim();
+          var enabled = status.toLowerCase() === 'enabled';
 
           // product-picker globals — subAllowed / salesAllowed gate the
           // sub survey page (sow-add-item-form.js SURVEY mode) and, later,
-          // the sales page.
+          // the sales page. Every product lands here, with its status, for
+          // the derived flags; the picker lists below take enabled only.
           productMap[rec.id] = {
             name:         name,
             buckets:      buckets,
             subAllowed:   flag(rec, SUB_ALLOWED),     // field_2433 FLAG_subcontractor can add
-            salesAllowed: flag(rec, SALES_ALLOWED)    // field_2434 FLAG_sales can add
+            salesAllowed: flag(rec, SALES_ALLOWED),   // field_2434 FLAG_sales can add
+            status:       status,                     // field_956 FLAG_product status
+            enabled:      enabled
           };
+          if (!enabled) continue;
           if (buckets.length) productBucketMap[rec.id] = buckets;
 
           // accessory-picker global (unchanged)

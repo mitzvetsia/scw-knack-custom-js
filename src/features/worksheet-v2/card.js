@@ -150,7 +150,24 @@
    * Requires field_2912 to be a column on the source view (view_3962)
    * so it lands in the Backbone model attributes.
    */
-  function isDiscontinued(rec) {
+  function isDiscontinued(rec, viewKey) {
+    // The catalog's answer first (product-catalog.js, 2026-10-13): an explicit
+    // product status, nothing stamped. null = it cannot say → the stored flag.
+    try {
+      var cat = window.SCW && window.SCW.catalog;
+      if (cat && typeof cat.isDisabled === 'function') {
+        var pk = 'field_1949';
+        if (viewKey && ns.cfg && typeof ns.cfg.fields === 'function') {
+          pk = (ns.cfg.fields(viewKey) || {}).product || pk;
+        }
+        var praw = rec[pk + '_raw'];
+        if (Array.isArray(praw)) praw = praw[0];
+        var pid = praw && praw.id;
+        var d = pid ? cat.isDisabled(String(pid)) : null;
+        if (d === true) return true;
+        if (d === false) return false;
+      }
+    } catch (e) { /* fall through to the stored flag */ }
     var raw = rec['field_2912_raw'];
     if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
     if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
@@ -911,7 +928,7 @@
   }
 
   function productCell(rec, viewKey, value) {
-    var discontinued = isDiscontinued(rec);
+    var discontinued = isDiscontinued(rec, viewKey);
     var cls = 'scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--editable-conn' +
       (discontinued ? ' scw-ws-v2-cell--discontinued' : '');
     var title = discontinued
@@ -2980,6 +2997,7 @@
 
   ns.card = {
     buildCard:           buildCard,
+    isDiscontinued:      isDiscontinued,
     isCoLocked:          isCoLocked,
     bucketIdOf:          bucketIdOf,
     CAM_READER_BUCKET:   CAM_READER_BUCKET,

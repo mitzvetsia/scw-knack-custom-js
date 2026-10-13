@@ -69,6 +69,12 @@
     addToSowWebhook:     v1 && v1.addToSowWebhook,
 
     sceneKey:    v1 && v1.sceneKey,
+    // Derived wrong-accessory warnings (product-catalog.js, 2026-10-13) need
+    // the accessory RECORDS, which view_3921 filters out: a hidden grid of the
+    // project's mounting-hardware line items (product field_1949 + parent
+    // field_2464 as columns) on scene_1155. Blank = the stamped field_2244
+    // spans decide, as before. Builder TBD.
+    accessoriesViewKey: '',
     debug:       false,
     eventNs:     '.scwBidReviewV2',
     cssId:       'scw-bid-review-v2-css',

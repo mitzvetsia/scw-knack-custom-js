@@ -395,12 +395,38 @@
     return set;
   }
 
-  function buildBracketMaps(viewKey) {
+  function buildBracketMaps(viewKey, records) {
     var byAccessory = Object.create(null);
     var byParent = Object.create(null);
     var svc = servicesIdSet(viewKey);
+
+    // (0) The catalog's own answer (product-catalog.js, 2026-10-13) — nothing
+    //     stamped. Wherever it answers it is authoritative: an accessory the
+    //     catalog says FITS its parent is never flagged by a stale stamp
+    //     below, and one it says does NOT fit is flagged with no stamp at
+    //     all. Where it cannot say (not loaded, product unknown, no
+    //     compatibility list, parent not on this view) the stamped sources
+    //     below decide, as before.
+    var cleared = Object.create(null);
+    try {
+      var cat = window.SCW && window.SCW.catalog;
+      var f = F();
+      if (cat && records && f.product && f.parent && typeof cat.auditAccessories === 'function') {
+        var audit = cat.auditAccessories(records, { product: f.product, parent: f.parent });
+        if (audit && audit.ready) {
+          for (var okId in audit.ok) cleared[okId] = true;
+          for (var badId in audit.wrong) {
+            if (svc[badId]) continue;   // an attached SERVICE line is never a bracket
+            byAccessory[badId] = true;
+            if (audit.wrong[badId]) byParent[audit.wrong[badId]] = true;
+          }
+        }
+      }
+    } catch (e) { /* the stamped sources below still run */ }
+
     function flag(accId, parentId) {
       if (!accId || svc[accId]) return;   // attached SERVICE line — not a bracket
+      if (cleared[accId]) return;         // the catalog says it fits — a stale stamp loses
       byAccessory[accId] = true;
       if (parentId) byParent[parentId] = true;
     }
@@ -450,7 +476,7 @@
     // stale map can never leak into a later pass against changed DOM.
     _trMap = buildTrMap(viewKey);
     try {
-    var bracket = buildBracketMaps(viewKey);
+    var bracket = buildBracketMaps(viewKey, records);
     lastAccMismatch = bracket.byAccessory;
     var bracketParents = bracket.byParent;
 
@@ -526,6 +552,31 @@
     if (!map) return;
     for (var id in map) { if (map[id]) lastAccMismatch[id] = true; }
   }
+
+  // A worksheet painted before the catalog landed carries stamp-based (or no)
+  // flags. When the catalog arrives, repaint every mounted worksheet with the
+  // catalog's answers: chips are built into the card, and the renderer reuses
+  // a card whose stored signature still matches — so drop the signatures,
+  // mark every record dirty (the notify gate skips an unchanged view) and
+  // notify. One-time, and only on pages painted ahead of the snippet.
+  try {
+    if (window.SCW && window.SCW.catalog && typeof window.SCW.catalog.ready === 'function') {
+      window.SCW.catalog.ready(function () {
+        var panels = document.querySelectorAll('.scw-ws-v2[id^="scw-ws-v2-view_"]');
+        for (var i = 0; i < panels.length; i++) {
+          var vk = panels[i].id.replace('scw-ws-v2-', '');
+          if (!ns.data || typeof ns.data.readRecords !== 'function' || typeof ns.data.notify !== 'function') continue;
+          var cards = panels[i].querySelectorAll('.scw-ws-v2-card[data-scw-sig]');
+          for (var c = 0; c < cards.length; c++) cards[c].removeAttribute('data-scw-sig');
+          var recs = ns.data.readRecords(vk) || [];
+          if (typeof ns.data.markDirty === 'function') {
+            for (var r = 0; r < recs.length; r++) if (recs[r] && recs[r].id) ns.data.markDirty(vk, recs[r].id);
+          }
+          ns.data.notify(vk);
+        }
+      });
+    }
+  } catch (e) { /* no catalog on this page */ }
 
   ns.warnings = {
     TYPES:               TYPES,
