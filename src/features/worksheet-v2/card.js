@@ -1302,6 +1302,100 @@
     '</div>';
   }
 
+  // ── License rows ───────────────────────────────────────────
+  // License-bucket line items (card.js LICENSE_BUCKET) are recurring
+  // subscriptions, not devices: nothing is installed, cabled, connected or
+  // bid. The row keeps the default column template (product · description ·
+  // qty · money · SOW) so it lines up with the rest of the worksheet, but:
+  //   • the money tracks that belong to the LABOR model (Sub Bid / +Hrs /
+  //     +Mat / Install fee) stay BLANK — a sub never prices a license and
+  //     nothing is installed. The sales page's line total (field_2269 =
+  //     retail × qty, less discount) and the ops CO worksheet's Equipment $
+  //     stack + net total DO apply (that is the license's price) and render
+  //     as they do on any other row;
+  //   • the detail panel carries pricing (where the view has it) + notes
+  //     only — no MDF/IDF, Parent, Mounting Hardware, Connected Devices or
+  //     Require Sub Bid.
+  // groups.js puts every license in the "Licenses" L1 (last, indigo),
+  // whatever MDF/IDF the record may carry.
+  function moneyCells_license(rec, viewKey) {
+    if (isSalesMoney(viewKey)) return moneyCells(rec, viewKey);   // line total applies
+    var blankTitle = ' title="Licenses are not bid or installed"';
+    function blank(cls) {
+      return '<div class="scw-ws-v2-cell scw-ws-v2-cell--blank scw-ws-v2-cell--license-blank ' +
+        cls + '"' + blankTitle + '></div>';
+    }
+    if (isLaborOnly(viewKey)) return blank('scw-ws-v2-cell--stack');
+    var eqF = equipmentFieldOf(viewKey);
+    return (eqF
+        ? stackCell(rec, viewKey, eqF, readNum(rec, eqF), readField(rec, 'field_2201'), 'Equip $')
+        : '') +
+      blank('scw-ws-v2-cell--stack') +
+      blank('scw-ws-v2-cell--stack') +
+      blank('scw-ws-v2-cell--stack') +
+      blank('scw-ws-v2-cell--fee') +
+      (eqF
+        ? ro(readField(rec, 'field_2269'), 'scw-ws-v2-cell--fee scw-ws-v2-cell--net', 'Extended net total')
+        : '');
+  }
+
+  function buildRow_license(rec, viewKey) {
+    var product = readField(rec, 'field_1949') || '(unnamed)';
+    var qty     = readNum(rec, 'field_1964');
+    // Sales keeps Qty in the detail panel (v1 parity), like every other row.
+    var qtyInput = isSalesMoney(viewKey) ? null : qtyCell(rec, viewKey, qty);
+    var noQty = (qtyInput === null);
+    var rowCls = 'scw-ws-v2-row scw-ws-v2-row--default scw-ws-v2-row--license' +
+      (noQty ? ' scw-ws-v2-row--no-qty' : '');
+    var qtySlot = noQty
+      ? empty('scw-ws-v2-cell--num')
+      : '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' + qtyInput + '</div>';
+    return '<div class="' + rowCls + '">' +
+      chevronCell(rec) +
+      labelCellOrBlank(rec) +
+      productCell(rec, viewKey, product) +
+      rowFillCell(rec, viewKey, 'Description') +
+      qtySlot +
+      moneyCells_license(rec, viewKey) +
+      sowSlot(rec, viewKey) +
+      warnCell(rec) +
+      kebabCell(rec, viewKey) +
+    '</div>';
+  }
+
+  function buildDetail_license(rec, viewKey) {
+    if (isSalesMoney(viewKey)) {
+      // Pricing column only — Retail Price, Qty, Custom Disc %, Applied
+      // Discount, Total — plus the read-only description. No connections.
+      var left =
+        detailReadOnly(rec, 'field_1960', 'Retail Price') +
+        (isQtyLocked(rec)
+          ? detailReadOnly(rec, 'field_1964', 'Qty')
+          : detailField(rec, viewKey, 'field_1964', 'Qty', 'number')) +
+        detailField(rec, viewKey, 'field_2261', 'Custom Disc %', 'number') +
+        detailReadOnly(rec, 'field_2303', 'Applied Discount') +
+        detailReadOnly(rec, 'field_2269', 'Total');
+      return '<div class="scw-ws-v2-detail">' +
+        '<div class="scw-ws-v2-sales-detail">' +
+          '<div class="scw-ws-v2-sales-detail-col scw-ws-v2-sales-detail-col--left">' + left + '</div>' +
+          '<div class="scw-ws-v2-sales-detail-col scw-ws-v2-sales-detail-col--right">' +
+            detailReadOnly(rec, 'field_2020', 'Description') +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }
+    // Build-SOW / CO worksheets: the pricing zone where the view has one
+    // (the ops CO worksheet's custom-discount zone), then notes. Nothing
+    // about location, connections, accessories or sub bids.
+    var pricing = salesPricingDetail(rec, viewKey);
+    return '<div class="scw-ws-v2-detail">' +
+      (pricing
+        ? '<div class="scw-ws-v2-detail-zones scw-ws-v2-detail-zones--no-identity">' + pricing + '</div>'
+        : '') +
+      detailNotesSection(rec, viewKey) +
+    '</div>';
+  }
+
   function buildRow_services(rec, viewKey) {
     // Services: hide product. Keep labor desc + qty + money + fee +
     // sow. Mirrors v1's bucketRules['6977caa7f246edf67b52cbcd']
@@ -2852,6 +2946,11 @@
     } else if (install) {
       row = buildRow_install(rec, sourceViewKey, cat);
       det = buildDetail_install(rec, sourceViewKey, cat);
+    } else if (isLicenseBucket(rec, sourceViewKey)) {
+      // Licenses (cat 'default' by bucket, but nothing to install / bid):
+      // product · description · qty · the view's own price, notes only.
+      row = buildRow_license(rec, sourceViewKey);
+      det = buildDetail_license(rec, sourceViewKey);
     } else if (cat === 'cam') {
       row = buildRow_cam(rec, sourceViewKey);
       det = sales ? buildDetail_sales(rec, sourceViewKey, cat) : buildDetail_cam(rec, sourceViewKey);

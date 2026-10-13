@@ -137,6 +137,16 @@
    * @param {object} sowGrid — one entry from state.sowGrids
    * @returns {object} payload ready for submitAction
    */
+  // License-bucket row (bid-review-v2/transform.js isLicenseRow when loaded;
+  // the same bucket id / label test otherwise).
+  function isLicenseRow(row) {
+    var t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
+    if (t && typeof t.isLicenseRow === 'function') return t.isLicenseRow(row);
+    if (!row) return false;
+    if (row.proposalBucketId === '645554dce6f3a60028362a6a') return true;
+    return /^\s*licen[cs]e/i.test(String(row.proposalBucket || ''));
+  }
+
   ns.buildCopyToSowPayload = function buildCopyToSowPayload(pkgId, sowGrid) {
     var updates  = [];
     var creates  = [];
@@ -252,6 +262,9 @@
           bidRecord:        cell._rawRecord || null,
         });
       } else if (row.sowItem && !cell) {
+        // Licenses are never on a bid (no sub prices them) — "not covered by
+        // this bid" is their normal state, not a removal.
+        if (isLicenseRow(row)) continue;
         // Removal: SOW item not covered by this bid package. BUT — an
         // accessory/mounting-hardware row (row.accessoryParentId set)
         // never gets its own bid cell; bids price the parent device, not

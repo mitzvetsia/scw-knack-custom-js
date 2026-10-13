@@ -372,7 +372,7 @@
     head.innerHTML =
       '<span class="scw-ws-v2-l1-chevron">' + L1_CHEVRON_SVG + '</span>' +
       '<span class="scw-ws-v2-l1-label">' + escapeHtml(l1.label) +
-        (l1.isLicense ? '<span class="scw-ws-v2-l1-sub">billed separately · recurring · not in the project total</span>' : '') +
+        (l1.isLicense ? '<span class="scw-ws-v2-l1-sub">recurring · billed separately · not in the project total</span>' : '') +
       '</span>' +
       issueChips +
       (moneyStr ? '<span class="scw-ws-v2-l1-money">' + moneyStr + (l1.isLicense ? ' recurring' : '') + '</span>' : '') +

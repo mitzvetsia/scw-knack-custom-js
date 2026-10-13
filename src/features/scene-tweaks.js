@@ -164,17 +164,17 @@
    SCENE 1085 — Build SOWs page (Project Dashboard)
    ══════════════════════════════════════════════════════════════ */
 
-/* Treat these four accordions as one supporting-files group so they
+/* Treat these three accordions as one supporting-files group so they
    visually subordinate to the Scope of Work Line Items grid below.
    Selectors target by data-view-key on the header so we don't touch
    other accordions that happen to live on the scene.
 
    Affected: view_3577 (Manage MDF/IDFs), view_3917 (Additional Photos),
-   view_3949 (Site Maps & Other Files), view_3369 (Licenses).         */
+   view_3949 (Site Maps & Other Files). The Licenses grid view_3369 was
+   retired 2026-10-13 — licenses live in the worksheet's own group now. */
 #kn-scene_1085 .scw-acc-for-view_3577,
 #kn-scene_1085 .scw-acc-for-view_3917,
-#kn-scene_1085 .scw-acc-for-view_3949,
-#kn-scene_1085 .scw-acc-for-view_3369 {
+#kn-scene_1085 .scw-acc-for-view_3949 {
   /* Tighten the wrapper margin so adjacent siblings sit flush as a group */
   margin-top: 2px !important;
   margin-bottom: 2px !important;
@@ -184,28 +184,24 @@
    Smaller padding + reduced icon/title sizes keep proportions sane. */
 #kn-scene_1085 .scw-acc-for-view_3577 > .scw-ktl-accordion__header,
 #kn-scene_1085 .scw-acc-for-view_3917 > .scw-ktl-accordion__header,
-#kn-scene_1085 .scw-acc-for-view_3949 > .scw-ktl-accordion__header,
-#kn-scene_1085 .scw-acc-for-view_3369 > .scw-ktl-accordion__header {
+#kn-scene_1085 .scw-acc-for-view_3949 > .scw-ktl-accordion__header {
   min-height: 30px;
   padding: 6px 12px 6px 18px;
 }
 #kn-scene_1085 .scw-acc-for-view_3577 .scw-acc-title,
 #kn-scene_1085 .scw-acc-for-view_3917 .scw-acc-title,
-#kn-scene_1085 .scw-acc-for-view_3949 .scw-acc-title,
-#kn-scene_1085 .scw-acc-for-view_3369 .scw-acc-title {
+#kn-scene_1085 .scw-acc-for-view_3949 .scw-acc-title {
   font-size: 13px;
 }
 #kn-scene_1085 .scw-acc-for-view_3577 .scw-acc-icon svg,
 #kn-scene_1085 .scw-acc-for-view_3917 .scw-acc-icon svg,
-#kn-scene_1085 .scw-acc-for-view_3949 .scw-acc-icon svg,
-#kn-scene_1085 .scw-acc-for-view_3369 .scw-acc-icon svg {
+#kn-scene_1085 .scw-acc-for-view_3949 .scw-acc-icon svg {
   width: 13px;
   height: 13px;
 }
 #kn-scene_1085 .scw-acc-for-view_3577 .scw-acc-count,
 #kn-scene_1085 .scw-acc-for-view_3917 .scw-acc-count,
-#kn-scene_1085 .scw-acc-for-view_3949 .scw-acc-count,
-#kn-scene_1085 .scw-acc-for-view_3369 .scw-acc-count {
+#kn-scene_1085 .scw-acc-for-view_3949 .scw-acc-count {
   padding: 1px 7px;
   font-size: 11px;
   min-width: 0 !important;
@@ -216,8 +212,7 @@
    relative to the prominent SOW Line Items accordion below.            */
 #kn-scene_1085 .scw-acc-for-view_3577,
 #kn-scene_1085 .scw-acc-for-view_3917,
-#kn-scene_1085 .scw-acc-for-view_3949,
-#kn-scene_1085 .scw-acc-for-view_3369 {
+#kn-scene_1085 .scw-acc-for-view_3949 {
   --scw-accent: #6b7a8c !important;
   --scw-accent-rgb: 107, 122, 140 !important;
 }
@@ -248,8 +243,10 @@
                                             scrapes its DOM, which survives
                                             display:none)
      • view_3964  Add Document menu
-   The v2 SOW worksheet panel (#scw-ws-v2-view_3962) mounts after view_3369 in
-   group 7 — ABOVE view_3898 — so it is unaffected by this rule.            */
+   The v2 SOW worksheet panel (#scw-ws-v2-view_3962) mounts as the last child
+   of group 7 (after view_3369 while Builder still has it, else after the Site
+   Maps & Other Files accordion — worksheet-v2/config.js mountAfterSelector) —
+   ABOVE view_3898 — so it is unaffected by this rule.                      */
 #kn-scene_1085 #view_3898,
 #kn-scene_1085 #view_3898 ~ .kn-view,
 #kn-scene_1085 .view-group:has(#view_3898) ~ .view-group {

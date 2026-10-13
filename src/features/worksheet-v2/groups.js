@@ -180,11 +180,15 @@
   var SYNTHETIC_SERVICES_LABEL    = 'Project Wide Services';
   var SYNTHETIC_ASSUMPTIONS_LABEL = 'Project Wide Assumptions';
   var SYNTHETIC_UNASSIGNED_LABEL  = 'Unassigned';
-  // Recurring licenses: their own L1 whatever the record's MDF/IDF says
-  // (a license is not installed anywhere), always the LAST group, and
-  // flagged isLicense so render.js / summary.js set it apart — the
-  // proposal lists them under "Recurring Services", billed separately.
-  var SYNTHETIC_LICENSE_LABEL     = 'Recurring licenses';
+  // Licenses: their own L1 whatever the record's MDF/IDF says (a license
+  // is not installed anywhere), always the LAST group — under Project Wide
+  // Services — and flagged isLicense so render.js / summary.js set it apart
+  // (indigo, "recurring · billed separately · not in the project total");
+  // the proposal lists them under "Recurring Services". Since 2026-10-13
+  // the build-SOW grids (view_3962 ops / view_3586 sales) no longer filter
+  // the License bucket out, so this group is where licenses live on the
+  // worksheet (the standalone Licenses grid view_3369 is retired).
+  var SYNTHETIC_LICENSE_LABEL     = 'Licenses';
   var SYNTHETIC_LICENSE_ID        = '__synthetic__licenses';
   function isLicenseRecord(rec, bucketLabel) {
     try {

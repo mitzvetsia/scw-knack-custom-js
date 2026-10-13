@@ -763,8 +763,11 @@
         continue;
       }
 
-      // Matched to this SOW. Exclude require-sub-bid = No.
+      // Matched to this SOW. Exclude require-sub-bid = No, and licenses — a
+      // sub never prices a license, so one missing from the basis bid is not
+      // a coverage gap (bid-review-v2/transform.js isLicenseRow).
       if (isReqNo(row.requireSubBidSow)) continue;
+      if (v2t && typeof v2t.isLicenseRow === 'function' && v2t.isLicenseRow(row)) continue;
 
       // Live SOW fee, blank-safe: a blank/zero fee on the LIVE SOW item is a
       // real $0 — never fall through to row.sowFee (the bid view's related

@@ -491,17 +491,31 @@
   // No-MDF rows are routed to a synthetic L1 by proposal-bucket text, just
   // like the device worksheet (groups.js): "service" → Project Wide
   // Services, "assumption" → Project Wide Assumptions, else Unassigned.
+  // Licenses (LICENSE_BUCKET_ID / a bucket named "License…") get their own
+  // "Licenses" L1 whatever the record's MDF/IDF says — a license is not
+  // installed anywhere — last of all, as on the worksheet (2026-10-13:
+  // view_3921 no longer filters the License bucket out).
+  var LICENSE_BUCKET_ID = '645554dce6f3a60028362a6a';
+  var LICENSE_L1        = 'Licenses';
+  function isLicenseRow(row) {
+    if (!row) return false;
+    if (row.proposalBucketId === LICENSE_BUCKET_ID) return true;
+    return /^\s*licen[cs]e/i.test(String(row.proposalBucket || ''));
+  }
   function syntheticL1ForBucket(bucketLabel) {
     var lc = String(bucketLabel || '').toLowerCase();
+    if (/^\s*licen[cs]e/.test(lc))       return LICENSE_L1;
     if (lc.indexOf('service') !== -1)    return 'Project Wide Services';
     if (lc.indexOf('assumption') !== -1) return 'Project Wide Assumptions';
     return 'Unassigned';
   }
-  // Sort rank: real MDF/IDF first (alpha), then the synthetic groups last.
+  // Sort rank: real MDF/IDF first (alpha), then the synthetic groups last,
+  // licenses after everything.
   function l1Rank(label) {
     if (label === 'Project Wide Services')    return 1;
     if (label === 'Project Wide Assumptions') return 2;
     if (label === 'Unassigned')               return 3;
+    if (label === LICENSE_L1)                 return 4;
     return 0;
   }
 
@@ -516,7 +530,10 @@
     var mdfMap = Object.create(null);
     var removedMap = Object.create(null);
     var mdfOrder = [];
-    function keyOf(r) { return r.mdfIdf || syntheticL1ForBucket(r.proposalBucket); }
+    function keyOf(r) {
+      if (isLicenseRow(r)) return LICENSE_L1;   // never under an MDF/IDF
+      return r.mdfIdf || syntheticL1ForBucket(r.proposalBucket);
+    }
     function ensure(k) {
       if (!mdfMap[k]) { mdfMap[k] = []; removedMap[k] = []; mdfOrder.push(k); }
     }
@@ -569,8 +586,14 @@
           defaultCollapsed: true
         });
       }
+      var isLicenseGroup = (mdfKey === LICENSE_L1);
       groups.push({
-        key: mdfKey, label: mdfKey, mdfIdfId: mdfIdfId,
+        key: mdfKey, label: mdfKey,
+        // The Licenses group is a bucket, not a place: no location record to
+        // manage, no survey notes / photos band, whatever MDF a license
+        // record happens to carry.
+        mdfIdfId: isLicenseGroup ? '' : mdfIdfId,
+        licenseItems: isLicenseGroup,
         level: 1, rows: weaveAccessories(mdfRows), subgroups: subgroups
       });
     }
@@ -959,6 +982,7 @@
         mdfIdf:      connectionLabel(s, SFK.mdfIdf),
         mdfIdfId:    connectionId(s, SFK.mdfIdf),
         proposalBucket: connectionLabel(s, SFK.proposalBucket),
+        proposalBucketId: connectionId(s, SFK.proposalBucket),
         // Connection topology for the comparison cells. An NVR/switch has
         // connDevice (field_1957) populated (its cameras); a camera/reader
         // has connTo (field_2197) populated (its NVR) — the cell renders
@@ -1337,6 +1361,7 @@
           // SOW line item so a no-MDF item lands in the bucket the worksheet
           // shows, not the bid record's copy.
           rows[r].proposalBucket = sidx.proposalBucket || '';
+          if (sidx.proposalBucketId) rows[r].proposalBucketId = sidx.proposalBucketId;
         }
         if (sidx && sidx.sowIds && !sidx.sowIds[sow.id]) rows[r].offSow = true;
       }
@@ -1484,10 +1509,13 @@
       // SOW sub-bid total = Σ SOW-item fee; install = Σ install fee, both
       // excluding offSow rows. Each bid column total = Σ cell labor
       // across ALL rows (matched + other). A bid "matches" within a penny.
+      // Licenses are excluded from both: a sub never prices a license and
+      // nothing is installed, so a license fee would only ever put the SOW
+      // "off" every bid by its own amount.
       var sowSub = 0, sowInstall = 0;
       for (var sr = 0; sr < allRows.length; sr++) {
         var sdat = allRows[sr].sowItemData;
-        if (sdat && !allRows[sr].offSow) {
+        if (sdat && !allRows[sr].offSow && !isLicenseRow(allRows[sr])) {
           sowSub     += sdat.fee || 0;
         }
       }
@@ -1503,7 +1531,7 @@
       // the moment an accessory carried a fee.
       for (var itKey in sowItemIndex) {
         var itIdx = sowItemIndex[itKey];
-        if (itIdx && itIdx.sowIds && itIdx.sowIds[sow.id]) {
+        if (itIdx && itIdx.sowIds && itIdx.sowIds[sow.id] && !isLicenseRow(itIdx)) {
           sowInstall += itIdx.installFee || 0;
         }
       }
@@ -1753,6 +1781,9 @@
 
   ns.transform = {
     NO_SOW:           NO_SOW,
+    LICENSE_BUCKET_ID: LICENSE_BUCKET_ID,
+    LICENSE_L1:       LICENSE_L1,
+    isLicenseRow:     isLicenseRow,
     buildState:       buildState,
     groupRows:        groupRows,
     getMismatches:    getMismatches,

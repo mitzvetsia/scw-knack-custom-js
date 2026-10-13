@@ -759,6 +759,20 @@
     setBtnLoading(btn, true);
 
     refreshView(LICENSE_VIEW).then(function () {
+      // Licenses now flow through the SOW Line Items grid too (the License
+      // bucket is no longer filtered out of view_3586, 2026-10-13), so a
+      // license the user ticked in the checklist is already in linkIds /
+      // cloneItems. The standalone Licenses grid (view_3471) still feeds
+      // licenseRecurringIds while Builder keeps it — minus anything the
+      // checklist already carries, so no record rides the payload twice.
+      var carried = Object.create(null);
+      for (var li = 0; li < linkIds.length; li++) carried[linkIds[li]] = true;
+      for (var ci = 0; ci < cloneItems.length; ci++) {
+        if (cloneItems[ci] && cloneItems[ci].sourceItemId) carried[cloneItems[ci].sourceItemId] = true;
+      }
+      var licenseIds = collectRecordIdsFromView(LICENSE_VIEW).filter(function (id) {
+        return !carried[id];
+      });
       return fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -769,7 +783,7 @@
           sowLineItemIds:      linkIds,
           linkIds:             linkIds,
           cloneItems:          cloneItems,
-          licenseRecurringIds: collectRecordIdsFromView(LICENSE_VIEW),
+          licenseRecurringIds: licenseIds,
           triggeredBy:         getTriggeredBy()
         })
       });

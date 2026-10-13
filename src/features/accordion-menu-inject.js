@@ -50,7 +50,9 @@
     'view_3325': 'view_3428',           // Scopes of Work ← Add New SOW
     'view_3577': 'view_3436',           // Manage MDF/IDFs ← Add MDF/IDF
     'view_3949': 'view_3964',           // Site Maps & Other Files ← Add Document
-    'view_3369': 'view_3877',           // Licenses ← Add License or Recurring Service
+    // view_3369 (Licenses) + view_3877 (Add License or Recurring Service)
+    // retired 2026-10-13: licenses render in the worksheet's own Licenses
+    // group and are added through "+ Add to SOW" (License bucket).
   };
 
   // ── State ──────────────────────────────────────────

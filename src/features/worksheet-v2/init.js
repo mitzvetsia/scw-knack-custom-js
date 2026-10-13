@@ -90,12 +90,15 @@
       if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(vcfg.sourceViewKey);
       return;
     }
-    var anchor = document.querySelector(vcfg.mountAfterSelector);
+    // mountAfterSelector: one selector, or an ORDERED list of candidates —
+    // the first that matches wins (not document order), so a retired anchor
+    // (view_3369 on the build-SOW page) hands over to the next one in place.
+    var anchor = firstMatch(vcfg.mountAfterSelector);
     // Fallback anchor so deleting the primary mount view from the Knack scene
     // (e.g. retiring the hidden v1 grid view_3610) can't orphan the panel —
     // it then mounts after a stable surviving element (e.g. the v2 source view).
     if (!anchor && vcfg.mountAfterFallback) {
-      anchor = document.querySelector(vcfg.mountAfterFallback);
+      anchor = firstMatch(vcfg.mountAfterFallback);
     }
     if (!anchor) return; // source view not on this scene
     var panel = buildPanel(vcfg);
@@ -108,6 +111,18 @@
         ns.data.notifyRendered(vcfg.sourceViewKey);
       }
     }
+  }
+
+  /** First element matching the first selector (in list order) that matches. */
+  function firstMatch(sel) {
+    var list = Array.isArray(sel) ? sel : [sel];
+    for (var i = 0; i < list.length; i++) {
+      if (!list[i]) continue;
+      var el = null;
+      try { el = document.querySelector(list[i]); } catch (e) { el = null; }
+      if (el) return el;
+    }
+    return null;
   }
 
   // Full cutover views hide their native source view AND its KTL accordion

@@ -495,6 +495,41 @@ the parent's product) and `SCW.catalog.isDisabled(productId)` reads the product'
 - Tests: `tests/catalog/test-product-catalog.js`, `tests/worksheet-v2/test-derived-flags.js`,
   `tests/worksheet-v2/test-discontinued-bar.js`, `tests/bid-review-v2/test-derived-brackets.js`.
 
+## Licenses on the worksheets (live 2026-10-13)
+
+License-bucket line items (proposal bucket `645554dce6f3a60028362a6a`, or a bucket named
+"License…") are ordinary SOW line items that used to be filtered OUT of the worksheet grids and
+shown in standalone Knack grids (view_3369 on the build-SOW page, view_3471 on the sales SOW page).
+The Builder filters are gone (ops first; widen view_3586 / view_3921 the same way) and the standalone
+grid + its "Add License or Recurring Service" form (view_3877) are retired on scene_1085 — licenses
+are added through "+ Add to SOW" (the modal offers the License bucket on both pages).
+- **Worksheet-v2** (`groups.js`): every license lands in the **"Licenses"** synthetic L1 — LAST,
+  under Project Wide Services, whatever MDF/IDF the record carries (a license is not installed
+  anywhere) — indigo header (`styles.js` `--license`), sub-line "recurring · billed separately · not
+  in the project total". The license CARD (`card.js` `buildRow_license` / `buildDetail_license`) is
+  product · description · qty · the view's own price: the LABOR money tracks (Sub Bid / +Hrs / +Mat /
+  Install fee) stay blank (`.scw-ws-v2-cell--license-blank`), the sales line total and the ops CO
+  worksheet's Equipment $ stack + net total render as on any row, and the detail is pricing (where
+  the view has it) + notes — no MDF/IDF, Parent, Mounting Hardware, Connected Devices or Require Sub
+  Bid. The scope strip / summary already kept licenses out of the Total.
+- **Reconcile page** (`bid-review-v2/transform.js` `isLicenseRow`, `LICENSE_L1`): a "Licenses" L1
+  after Unassigned (`l1Rank` 4), `licenseItems: true`, `mdfIdfId: ''` (no manage gear, survey
+  notes or photos band — `card.js`). Bid cells read a muted "—" ("Licenses are not priced by subs"):
+  never the "Not surveyed" cut-out / "+ Add to bid"; the SOW cell shows Qty but no Sub Bid; the row
+  total label reads "Recurring". Licenses are left out of the SOW Sub Bid / Install head totals and
+  `deltaVsSow`, out of the diff bar's coverage gaps (`sub-bid-diff/render.js` `distill`) and out
+  of "Update SOW to match Bid"'s disconnect list (`bid-review/actions.js`). The SOW item index now
+  carries `proposalBucketId` and matched rows take it from the line item.
+- **Mount anchor**: `worksheet-v2/config.js` view_3962 `mountAfterSelector` is now an ORDERED list
+  (`init.js` `firstMatch`): `#view_3369` while Builder still has it, then the Site Maps & Other
+  Files accordion (`.scw-acc-for-view_3949`, then `#view_3949`). The fallback `#view_3962` sits in
+  the region scene-tweaks.js hides after view_3898 — keep a listed anchor alive on the scene.
+  `accordion-menu-inject.js` and `scene-tweaks.js` no longer reference view_3369.
+- **Create Alternate SOW** (`create-sow-option-btn.js`): `licenseRecurringIds` (view_3471) drops any
+  id the checklist already sends in `linkIds` / `cloneItems`, so a license never rides the payload
+  twice once it also flows through view_3586.
+- Tests: `tests/worksheet-v2/test-license-group.js`, `tests/bid-review-v2/test-license-group.js`.
+
 ## Manage Deployment page (scene_1311) redesign — full reference: docs/deploy-page-redesign.md
 
 Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-auk1dh`

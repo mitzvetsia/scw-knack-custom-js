@@ -209,6 +209,16 @@
     var b = (row && row.proposalBucket || '').toLowerCase().trim();
     return b.indexOf('assumption') !== -1;
   }
+  // License rows (transform.js isLicenseRow): recurring subscriptions no sub
+  // prices and nothing installs — their bid cells read "—", never "Not
+  // surveyed" / "+ Add to bid", and they sit in the "Licenses" L1.
+  function isLicense(row) {
+    var t = ns.transform;
+    if (t && typeof t.isLicenseRow === 'function') return t.isLicenseRow(row);
+    if (!row) return false;
+    if (row.proposalBucketId === '645554dce6f3a60028362a6a') return true;
+    return /^\s*licen[cs]e/i.test(String(row.proposalBucket || ''));
+  }
 
   // PDF document icon — same shape v1's bid PDF link uses.
   var PDF_SVG =
@@ -611,8 +621,10 @@
       '<div class="scw-bid-review-v2__sow-numbers">' +
         '<span class="scw-bid-review-v2__sow-num" data-scw-sow-field="qty"><label>Qty</label>' +
           escapeHtml(qtyTxt) + '</span>' +
+        // A license has no sub bid to show (or to compare).
+        (isLicense(row) ? '' :
         '<span class="scw-bid-review-v2__sow-num" data-scw-sow-field="fee"><label>Sub Bid</label>' +
-          escapeHtml(feeTxt) + '</span>' +
+          escapeHtml(feeTxt) + '</span>') +
       '</div>' +
       (descTxt ?
         '<div class="scw-bid-review-v2__sow-desc" data-scw-sow-field="desc" title="' +
@@ -881,6 +893,15 @@
       // Assumptions aren't "on a bid" in the priced sense — leave blank.
       if (isAssumption) {
         td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
+        appendPendingCard(td, pendingItem, row, pkg, sowId);
+        return td;
+      }
+      // Licenses are never priced by a sub — not a gap, nothing to add to a
+      // bid. A muted dash, no cut-out, no actions.
+      if (isLicense(row)) {
+        td.classList.add('scw-bid-review-v2__cell--license');
+        td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark" ' +
+          'title="Licenses are not priced by subs">—</span>';
         appendPendingCard(td, pendingItem, row, pkg, sowId);
         return td;
       }
@@ -1229,6 +1250,7 @@
     if (row.offSow)      tr.classList.add('scw-bid-review-v2__row--off-sow');
     if (row.removed)     tr.classList.add('scw-bid-review-v2__row--removed');
     if (row.isAccessory) tr.classList.add('scw-bid-review-v2__row--accessory');
+    if (isLicense(row))  tr.classList.add('scw-bid-review-v2__row--license');
     // EVERY data row is expandable — including rows whose bid item points at
     // NO SOW item (off-SOW / orphaned bids). Those used to be dead rows, which
     // made the panel-only Re-link button unreachable for exactly the records
@@ -1274,7 +1296,9 @@
       if (sd.equipmentTotal) {
         labelHtml +=
           '<div class="scw-bid-review-v2__row-total scw-bid-review-v2__row-total--equip">' +
-            '<span class="scw-bid-review-v2__row-total-label">Equip</span>' +
+            // A license's "equipment" total is its recurring price × qty.
+            '<span class="scw-bid-review-v2__row-total-label">' +
+              (isLicense(row) ? 'Recurring' : 'Equip') + '</span>' +
             '<span class="scw-bid-review-v2__row-total-value">' +
               escapeHtml(fmtMoney(sd.equipmentTotal)) + '</span>' +
           '</div>';
@@ -1377,6 +1401,7 @@
     if (group.otherBidItems) tr.className += ' scw-bid-review-v2__group-header--other';
     if (group.bidOnlyItems)  tr.className += ' scw-bid-review-v2__group-header--bid-only';
     if (group.removedItems)  tr.className += ' scw-bid-review-v2__group-header--removed';
+    if (group.licenseItems)  tr.className += ' scw-bid-review-v2__group-header--license';
     if (group.defaultCollapsed) tr.className += ' scw-bid-review-v2__group-header--collapsed';
     tr.setAttribute('data-l1-id', group.key);
     tr.setAttribute('role', 'button');
@@ -1394,7 +1419,7 @@
     // "Other bid items" have no location record to edit). Click handled by
     // mdf-manage.js (capture phase, so the header collapse toggle doesn't fire).
     var manageBtn = (group.mdfIdfId || group.label) &&
-        !group.otherBidItems && !group.bidOnlyItems && !group.removedItems
+        !group.otherBidItems && !group.bidOnlyItems && !group.removedItems && !group.licenseItems
       ? '<button type="button" class="scw-brv2-mdf-gear" ' +
           'data-scw-mdf-manage="' + escapeHtml(group.mdfIdfId || '') + '" ' +
           'data-scw-mdf-label="' + escapeHtml(group.label || '') + '" ' +
@@ -1413,7 +1438,11 @@
         // "TYPE: :" when the ## segment is blank — collapse it for display
         // only (data-scw-mdf-label above keeps the raw label for matching).
         '<span class="scw-bid-review-v2__grp-title">' +
-          escapeHtml(String(group.label || '').replace(/:\s*:/g, ':')) + '</span>' +
+          escapeHtml(String(group.label || '').replace(/:\s*:/g, ':')) +
+          (group.licenseItems
+            ? '<span class="scw-bid-review-v2__grp-sub">recurring · billed separately · not in the project total</span>'
+            : '') +
+        '</span>' +
         summaryChips +
         '<span class="scw-bid-review-v2__grp-count">' + rowCount + '</span>' +
       '</div>';
@@ -1550,6 +1579,7 @@
       window.SCW.bidReview.CONFIG.debug);
     var mdfIdfId = group && group.mdfIdfId;
     var label    = group && group.label;
+    if (group && group.licenseItems) return null;   // a bucket, not a location
     if (!mdfIdfId && !label) {
       if (dbg) console.log('[scw-br-v2] survey-notes: no mdfIdfId or label on group');
       return null;
@@ -1600,6 +1630,7 @@
   function buildL1PhotosRow(group, colspan) {
     var mdfIdfId = group && group.mdfIdfId;
     var label    = group && group.label;
+    if (group && group.licenseItems) return null;   // a bucket, not a location
     if (!mdfIdfId && !label) return null;
 
     var viewKey = (window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
@@ -2251,6 +2282,8 @@
     buildSowSection: buildSowSection,
     buildBidRow:     buildBidRow,
     buildBidCell:    buildBidCell,
+    buildL1HeaderRow: buildL1HeaderRow,
+    isLicense:       isLicense,
     buildColLabelsRow: buildColLabelsRow,
     // Exposed for tests — the parent → accessory connector classes.
     stampAccessoryChains: stampAccessoryChains

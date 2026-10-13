@@ -136,13 +136,18 @@
         // check, worksheet refetch). ⚠️ Builder: field_2479 must be an
         // inline-editable column on view_3962 or the PUT is dropped.
         requireSubBidControl: true,
-        // Mount directly after view_3369 so the panel lands as the last child
-        // of its layout group (group 7), where end users expect the worksheet.
+        // Mount as the last child of layout group 7, where end users expect
+        // the worksheet: after the (retired, 2026-10-13) Licenses grid
+        // view_3369 while Builder still has it, else after the Site Maps &
+        // Other Files accordion (its KTL wrapper first, the bare view if the
+        // accordion hasn't wrapped yet) — the group's last surviving member.
+        // Ordered candidates: the first selector that matches wins (init.js).
         // (view_3610, the retired v1 grid, has been removed from the scene.)
-        mountAfterSelector: '#view_3369',
+        mountAfterSelector: ['#view_3369', '.scw-acc-for-view_3949', '#view_3949'],
         // Fallback so a missing/renamed anchor can't orphan the panel — it then
-        // mounts after the (hidden) v2 source view, both SOW Line Items grids in
-        // the same scene region.
+        // mounts after the (hidden) v2 source view. ⚠️ That view sits in the
+        // region scene-tweaks.js hides after view_3898, so this is a last
+        // resort, not a home: keep a candidate above it alive in Builder.
         mountAfterFallback: '#view_3962',
         label:            'SOW Line Items',
         mdfSourceViewKey: 'view_3577',
