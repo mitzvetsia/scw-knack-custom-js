@@ -652,31 +652,47 @@ create SOW Line Items (object_105), not survey items. Test: `tests/worksheet-v2/
 
 Gated to `CONFIG.ALLOWED_EMAILS` (micah.shearer@getscw.com; empty = everyone): the listed users get a
 second amber "+ Add Photos (v2)" button right after the worksheet toolbar's "+ Add Photos" on every
-worksheet-v2 view; the v1 button + modal (`bulk-upload.js`) are untouched. Files → Assign → Send:
+worksheet-v2 view; the v1 button + modal (`bulk-upload.js`) are untouched. Design: Claude Design canvas
+"Bulk Photo Assign v2" (rev 2, 2026-10-14 — the first cut's three modes were replaced by ONE screen).
+- **One screen, no modes**: photo tiles (big thumbnails) on the left, the worksheet's devices in a rail
+  on the right, always on screen. Every photo is AIMED at one or more devices; each destination is a
+  CHIP on the tile that FILLS an open slot (a DOC_photos record with a type and no image, from
+  `ns.photos.extractPhotoRecords`, in the strip's own order) or adds a NEW photo (typed from the
+  photo-type catalog, or untyped). A tile with two chips is the old "copy" case: one upload, N writes.
+  Three gestures, same result: the unaimed tile's FINDER (filters the rail, Enter = top hit, Tab walks
+  the unaimed), tick tiles + click a rail row (toggles; "Tick all N" per MDF/IDF group), or drag a tile
+  / the selection onto a rail row. One batch rule in the toolbar (`fillfirst`: first open required slot
+  nobody else in the batch fills, else new / `new`); the chip menu is the per-photo override (open
+  slots incl. ones another queued photo already takes, shown disabled; typed / untyped new; remove).
+  "Assign in order…" (canonical picker, `pickOnly`) pairs name-sorted files with the picked devices.
 - **Targets** = the worksheet's hardware (`ns.data.readRecords` minus services / assumptions /
-  licenses / accessories), labelled drop · product, in canonical order; picked through
-  `ns.picker.open` in `pickOnly` mode (single per row, multi for "Assign in order…" and copy mode).
-  File names auto-aim rows (`matchFile`: label tokens = letters + zero-stripped digit runs, so E-001 /
-  e1 / E-01 / E001 all hit E-001, RA-E-001 beats E-001 as the longer match, a tie or a bare number
-  matches nothing) and the match is SHOWN and correctable before anything is sent.
-- **Slot menu per row**: "New photo (no type)", the device's OPEN slots (its DOC_photos records with
-  no image, from `ns.photos.extractPhotoRecords`; required first) as "Fill …", and the photo-type
-  catalog (`SCW.photoEditPanel.util.collectTypeOptions`) as typed new photos. "For all rows" applies
-  one rule (incl. "first open required slot, else new").
-- **Copy mode** (exactly one queued file): N devices + ONE rule — `fill:<type>` (fill that slot where
-  open, else create a `<type>` photo) or `new`. One upload, N writes.
+  licenses / accessories), label = the one the card shows: `displayLabel` else `labelAlt` (install
+  rows often carry only `field_2801` — reading only the display label is why the first build matched
+  nothing on a deploy page). Candidates carry `prefix` (letters) + `number`.
+- **File-name matching** (`matchFile(name, candidates, ctx)` → `{cand, confidence, via}` | null; canvas
+  board 2): tokens = letters + zero-stripped digit runs (i10 / I-10 / I_010 / 0010 all read I,10). A
+  whole label in the name = `matched` (longest label wins; two devices at the same length = null); a
+  bare number that is UNIQUE among the worksheet's labels = `matched` via `number`; a leading "1"
+  read as I (1.10 → I-010) or an unknown sibling prefix (E-003 on an I- page) = `guessed` (applied,
+  blue chip, counted as confirmed on Send); a shared number, a known prefix with a missing number, or
+  two devices named = null (the tile asks); the number after a camera-roll stem
+  (`CONFIG.CAMERA_ROLL_STEMS`: IMG, DSC, PXL, DJI…) is never used. "Re-match" re-reads only rows that
+  were aimed by name; hand-aimed rows are never touched.
 - **Writes — no API key in the browser**: the binary goes to Knack's asset store with the session
-  token (`SCW.photoEditPanel.util.uploadImage`, one asset per file); a FILL is a view-based PUT of
+  token (`SCW.photoEditPanel.util.uploadImage`, one asset per photo); a FILL is a view-based PUT of
   the asset id onto the slot record through the scene's save view (`photo-edit-panel.js
   SAVE_VIEWS`) plus a best-effort second PUT (`field_2447` Yes + a `field_2865` history line) that
   never fails the fill; a CREATE posts a byte-less manifest to `MAKE_PHOTO_ASSIGN_WEBHOOK`
   (contract in `src/config.js`: `uploadKind: 'photo_assign'`, asset, target kind/record, photoType,
-  scope = the v1 upload's parent linkField/recordId, uploadId for idempotency). While that hook is
-  PLACEHOLDER the Send refuses batches needing a create and says so; fills work without Make.
-  Writes run through a 3-wide queue; the worksheet refetches after the batch (again 9s later when
-  Make was sent anything). `SCW.bulkUpload.prepareFile` (HEIC → JPEG, downscale) is exported for it.
-- **Not carried over (yet)**: the IndexedDB queue / resume banner. Make side: scenario for the
-  `photo_assign` manifest (create route only) still to build. Test: `tests/worksheet-v2/test-photo-assign.js`.
+  scope = the v1 upload's parent linkField/recordId, uploadId `<row>:<device>` for idempotency).
+  While that hook is PLACEHOLDER the Send refuses batches needing a create and says so; fills work
+  without Make. Writes run through a 3-wide queue. **Send takes the aimed photos only** — unaimed
+  ones stay queued (still carrying their finder) and can be aimed and sent afterwards; the worksheet
+  refetches after the batch (again 9s later when Make was sent anything).
+  `SCW.bulkUpload.prepareFile` (HEIC → JPEG, downscale) is exported for it.
+- **Not carried over (yet)**: the IndexedDB queue / resume banner; the phone layout (canvas board 5)
+  is a future state. Make side: scenario for the `photo_assign` manifest (create route only) still to
+  build. Test: `tests/worksheet-v2/test-photo-assign-v2.js`.
 
 ## Worksheet scope strip (live 2026-10-09) — `src/features/worksheet-v2/summary.js`
 

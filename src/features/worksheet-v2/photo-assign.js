@@ -5,41 +5,54 @@
  * "+ Add Photos"; everyone else sees nothing. The v1 button and modal
  * (bulk-upload.js) are untouched.
  *
- * WHAT IT DOES. Files → Assign → Send. Every queued photo is aimed at ONE
- * device on this worksheet, and at either an OPEN SLOT on that device (an
- * existing DOC_photos record with a type and no image — the "required"
- * placeholders) or a NEW photo (with or without a type). Two modes:
+ * ONE SCREEN, NO MODES (design canvas "Bulk Photo Assign v2", rev 2). Photos
+ * are tiles on the left; the worksheet's devices are a rail on the right,
+ * always on screen. Every photo is AIMED at one or more devices — each
+ * destination is a chip on the tile that says what happens there: FILL an
+ * open slot (an existing DOC_photos record with a type and no image — the
+ * "required" placeholders) or add a NEW photo (with or without a type).
+ * A tile with two chips is the old "copy" case: one upload, two writes.
+ * Three gestures, same result:
+ *   · type on the tile — a photo with no device carries a finder; it
+ *     filters the rail, Enter takes the top hit, Tab walks the unaimed;
+ *   · select photos, click a device in the rail (toggles the destination);
+ *   · drag a tile (or the selection) onto a device row.
+ * One batch rule in the toolbar ("when a device has an open required slot:
+ * fill it, otherwise add a new photo" / "always add a new photo") decides
+ * what a fresh destination does; the chip's own menu is the per-photo
+ * override. Two photos aimed at one device fill its open required slots in
+ * order (a slot is never filled twice in one batch).
  *
- *   assign — one photo per device (20 shots → 18 cameras). Targets are
- *            pre-filled from the file names (E-001 / e1 / RA-E-02 match the
- *            device's drop label — the same rule Make applied blind; here
- *            the match is VISIBLE and correctable before anything is sent).
- *            "Assign in order" pairs the files, name-sorted, with devices
- *            picked in the canonical MDF/IDF order. A per-row slot menu
- *            fills a required slot or classifies a new photo; a "for all
- *            rows" helper applies one rule to the batch.
- *   copy   — ONE photo to several devices, with ONE rule: fill the "<type>"
- *            slot where the device has one open, otherwise add the photo as
- *            a new "<type>" photo (or: add as a plain new photo everywhere).
- *            The file is uploaded ONCE; every device gets a reference.
+ * FILE-NAME MATCHING (board 2 of the canvas): a name is read as letters and
+ * digit runs, separators and case ignored, leading zeros dropped. A device
+ * label in the name is a MATCH (the longer label wins); a bare number is a
+ * match when it is unique among this worksheet's labels; a leading "1" read
+ * as the letter I (1.10 → I-010) or a sibling prefix (E-003 → I-003) is a
+ * GUESS — applied, flagged blue, and counted as confirmed if not corrected;
+ * two devices named, or two devices sharing the number, is AMBIGUOUS and
+ * asks; camera-roll names (IMG_4523) are never guessed from. The label read
+ * is the one the card shows (display label, else the alternate label —
+ * install rows often carry only the latter, which is why the first build
+ * matched nothing on a deploy page).
  *
  * HOW IT WRITES — no API key in the browser (Known Issue #17 pattern):
  *   1. The binary goes STRAIGHT to Knack's asset store with the user's own
  *      session token (SCW.photoEditPanel.util.uploadImage — the same call
- *      the single-photo modal makes). One asset per unique file.
+ *      the single-photo modal makes). One asset per photo, however many
+ *      destinations it has.
  *   2. A FILL writes the asset id onto the slot record through the scene's
  *      DOC_photos save view (photo-edit-panel.js SAVE_VIEWS — view-based
- *      PUT, session token). Exactly the single-photo modal's upload pane,
- *      N times. A best-effort second PUT stamps FLAG_complete = Yes and a
- *      history line; its failure never fails the fill.
- *   3. A CREATE posts a small MANIFEST (asset id + target + type + scope,
+ *      PUT, session token), then a best-effort second PUT stamps
+ *      FLAG_complete = Yes and a history line; its failure never fails the
+ *      fill.
+ *   3. A NEW photo posts a small MANIFEST (asset id + target + type + scope,
  *      no file bytes) to SCW.CONFIG.MAKE_PHOTO_ASSIGN_WEBHOOK, where Make
- *      creates the DOC_photos record and connects it — the contract is in
- *      src/config.js. While that URL is blank the Send button refuses
- *      batches that need it and says so; fills work without Make.
- *
- * Not carried over from v1 (deliberately, for now): the IndexedDB queue /
- * resume banner. A closed modal drops its queue.
+ *      creates the DOC_photos record and connects it — contract in
+ *      src/config.js. While that URL is blank the Send refuses batches that
+ *      need it and says so; fills work without Make.
+ * Send takes the aimed photos; unaimed ones stay in the queue and can be
+ * aimed and sent afterwards. Not carried over from v1: the IndexedDB queue /
+ * resume banner — a closed modal drops its queue.
  ****************************************************************************/
 (function () {
   'use strict';
@@ -58,6 +71,9 @@
     // Make creates the records on its own schedule after the ack; refetch
     // the worksheet once more this long after a batch that sent any.
     MAKE_REFRESH_DELAY_MS: 9000,
+    // Camera-roll name stems: the number that follows one of these is a
+    // frame counter, never a device number.
+    CAMERA_ROLL_STEMS: ['IMG', 'DSC', 'DSCN', 'DSCF', 'PXL', 'DJI', 'GOPR', 'GP', 'MVIMG', 'PANO', 'SAM', 'DCIM', 'PHOTO', 'IMAGE', 'SCREENSHOT', 'VID'],
     PHOTO_FIELDS: {
       img:       'field_771',
       type:      'field_2445',
@@ -82,9 +98,9 @@
   function uuid() {
     var c = window.crypto;
     if (c && typeof c.randomUUID === 'function') return c.randomUUID();
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (ch) {
       var r = Math.random() * 16 | 0;
-      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      return (ch === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
     });
   }
   function fmtBytes(n) {
@@ -98,6 +114,10 @@
     var d = new Date();
     return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) +
       ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+  function natCmp(a, b) {
+    return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
   }
   function userAttrs() {
     try {
@@ -215,9 +235,21 @@
     var s = stripHtml(v);
     return /^[a-f0-9]{24}$/i.test(s) ? '' : s;
   }
-  function dropLabelOf(rec, F) { return readText(rec, F.displayLabel || 'field_1950'); }
+  /** The label the card shows: the display label, else the alternate
+   *  label (install rows often carry only field_2801). */
+  function dropLabelOf(rec, F) {
+    return readText(rec, F.displayLabel || 'field_1950') ||
+           readText(rec, F.labelAlt || 'field_2365');
+  }
   function productOf(rec, F) {
     return readText(rec, F.productName || '') || readText(rec, F.product || 'field_1949');
+  }
+  function mdfOf(rec, F) {
+    var raw = rec && rec[(F.mdfIdf || 'field_1946') + '_raw'];
+    if (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) {
+      return { id: raw[0].id, label: stripHtml(raw[0].identifier) || 'MDF / IDF' };
+    }
+    return { id: '__unknown', label: 'No MDF / IDF' };
   }
   function labelOf(rec, viewKey) {
     var F = fieldsFor(viewKey);
@@ -256,13 +288,32 @@
     var F = fieldsFor(viewKey);
     return keep.map(function (r) {
       var drop = dropLabelOf(r, F);
-      return { id: r.id, label: labelOf(r, viewKey), drop: drop, tokens: tokensOf(drop), rec: r };
+      var toks = tokensOf(drop);
+      var letters = [], number = '';
+      for (var t = 0; t < toks.length; t++) {
+        if (/^\d+$/.test(toks[t])) number = toks[t]; else letters.push(toks[t]);
+      }
+      return {
+        id: r.id, label: labelOf(r, viewKey), drop: drop, product: productOf(r, F),
+        tokens: toks, prefix: letters.join(''), number: number, mdf: mdfOf(r, F), rec: r
+      };
     });
   }
   function candidateById(id) {
-    var list = (_state && _state.candidates) || [];
-    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
-    return null;
+    return (_state && _state.candIndex && _state.candIndex[id]) || null;
+  }
+
+  // ── File-name matching ────────────────────────────────────────────
+  /** Per-batch index over the candidates: which prefixes exist, and which
+   *  devices carry each number. */
+  function buildMatchContext(candidates) {
+    var prefixes = Object.create(null), byNumber = Object.create(null);
+    for (var i = 0; i < candidates.length; i++) {
+      var c = candidates[i];
+      if (c.prefix) prefixes[c.prefix] = true;
+      if (c.number) (byNumber[c.number] = byNumber[c.number] || []).push(c);
+    }
+    return { prefixes: prefixes, byNumber: byNumber };
   }
   function containsSeq(hay, needle) {
     if (!needle.length || needle.length > hay.length) return false;
@@ -273,125 +324,278 @@
     }
     return false;
   }
-  /** The device a file name names, or null (no match, or two devices'
-   *  labels both fit and neither is longer — say nothing rather than guess).
-   *  A label that is only a bare number never matches (every photo has
-   *  numbers in its name). */
-  function matchFile(filename, candidates) {
+  function isRollStem(tok) { return CONFIG.CAMERA_ROLL_STEMS.indexOf(tok) !== -1; }
+  /** The device a file name names → { cand, confidence: 'matched'|'guessed',
+   *  via } or null (nothing, ambiguous, or camera-roll only). */
+  function matchFile(filename, candidates, ctx) {
+    ctx = ctx || buildMatchContext(candidates);
     var hay = tokensOf(String(filename || '').replace(/\.[^.]+$/, ''));
-    var best = null, bestLen = 0, tie = false;
+    if (!hay.length) return null;
+
+    // 1 — a whole device label in the name. The longer label wins; two
+    //     different devices at the same length is ambiguous.
+    var best = null, bestLen = 0, bestCount = 0;
     for (var i = 0; i < candidates.length; i++) {
       var t = candidates[i].tokens;
-      if (!t.length) continue;
-      if (t.length === 1 && /^\d+$/.test(t[0])) continue;
+      if (!t.length || !candidates[i].prefix) continue;     // bare-number labels: step 3
       if (!containsSeq(hay, t)) continue;
-      if (t.length > bestLen) { best = candidates[i]; bestLen = t.length; tie = false; }
-      else if (t.length === bestLen) tie = true;
+      if (t.length > bestLen) { best = candidates[i]; bestLen = t.length; bestCount = 1; }
+      else if (t.length === bestLen) bestCount++;
     }
-    return tie ? null : best;
+    if (best) return bestCount === 1 ? { cand: best, confidence: 'matched', via: 'label' } : null;
+
+    // Numbers the name carries, minus a camera-roll counter (IMG_4523).
+    var nums = [], lettersBefore = Object.create(null), prev = null;
+    for (var h = 0; h < hay.length; h++) {
+      var tok = hay[h];
+      if (/^\d+$/.test(tok)) {
+        if (prev && isRollStem(prev)) { prev = tok; continue; }
+        if (nums.indexOf(tok) === -1) nums.push(tok);
+        if (prev && /^[A-Z]+$/.test(prev)) lettersBefore[tok] = prev;
+      }
+      prev = tok;
+    }
+    if (!nums.length) return null;
+
+    // 2 — a leading "1" read as the letter I: 1.10 → I-010 (a guess).
+    if (hay.length >= 2 && hay[0] === '1' && /^\d+$/.test(hay[1]) && ctx.prefixes.I) {
+      var iHits = (ctx.byNumber[hay[1]] || []).filter(function (c) { return c.prefix === 'I'; });
+      if (iHits.length === 1) return { cand: iHits[0], confidence: 'guessed', via: 'leading1' };
+    }
+
+    // 3 — a number unique on this worksheet: a match on its own, a guess
+    //     when an unknown prefix precedes it (E-003 on an I- page).
+    var hit = null, hitNum = '';
+    for (var n = 0; n < nums.length; n++) {
+      var list = ctx.byNumber[nums[n]] || [];
+      if (!list.length) continue;
+      if (list.length > 1 || hit) return null;               // two devices fit
+      hit = list[0]; hitNum = nums[n];
+    }
+    if (!hit) return null;
+    var pre = lettersBefore[hitNum] || '';
+    if (pre && pre !== hit.prefix) {
+      return ctx.prefixes[pre] ? null : { cand: hit, confidence: 'guessed', via: 'prefix' };
+    }
+    return { cand: hit, confidence: 'matched', via: 'number' };
   }
 
   // ── Slots + types ─────────────────────────────────────────────────
-  /** This device's photo records WITHOUT an image: the open slots, in the
-   *  order the worksheet strip shows them (photos.js pins Proposed Mounting
-   *  Location first, then missing-required, then required, then type) —
-   *  so "the first open required slot" is the one the strip shows first. */
-  function openSlotsFor(viewKey, recordId) {
+  function photoList(viewKey, deviceId) {
     var ph = (ns.photos && typeof ns.photos.extractPhotoRecords === 'function')
-      ? ns.photos.extractPhotoRecords(viewKey, recordId) : [];
+      ? ns.photos.extractPhotoRecords(viewKey, deviceId) : [];
     var out = [];
     for (var i = 0; i < ph.length; i++) {
       var p = ph[i];
-      if (!p || !p.id || p.imgUrl) continue;
-      out.push({ id: p.id, type: p.type || '', required: !!p.required, history: p.qaHistory || '' });
+      if (!p || !p.id) continue;
+      out.push({ id: p.id, type: p.type || '', required: !!p.required, filled: !!p.imgUrl, history: p.qaHistory || '' });
     }
     return out;
   }
-  function slotsCached(recordId) {
+  /** This device's photo records, in the order the worksheet strip shows
+   *  them (photos.js pins Proposed Mounting Location first, then
+   *  missing-required, then required, then type). Cached per batch. */
+  function photosFor(deviceId) {
     if (!_state) return [];
-    if (!_state.slotCache[recordId]) _state.slotCache[recordId] = openSlotsFor(_state.viewKey, recordId);
-    return _state.slotCache[recordId];
+    if (!_state.photoCache[deviceId]) _state.photoCache[deviceId] = photoList(_state.viewKey, deviceId);
+    return _state.photoCache[deviceId];
+  }
+  function openSlotsFor(viewKey, deviceId) {
+    var list = (_state && _state.viewKey === viewKey) ? photosFor(deviceId) : photoList(viewKey, deviceId);
+    return list.filter(function (p) { return !p.filled; });
+  }
+  function deviceInfo(deviceId) {
+    var all = photosFor(deviceId);
+    var reqTotal = 0, reqOpen = 0, open = [];
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].required) { reqTotal++; if (!all[i].filled) reqOpen++; }
+      if (!all[i].filled) open.push(all[i]);
+    }
+    return { reqTotal: reqTotal, reqOpen: reqOpen, open: open };
   }
   function typeOptions() {
     var u = pepUtil();
     var list = (u && typeof u.collectTypeOptions === 'function') ? (u.collectTypeOptions() || []) : [];
     return list.filter(function (t) { return t && t.id && t.label; });
   }
-  function typeIdByLabel(label) {
-    var want = String(label || '').trim().toLowerCase();
-    var list = typeOptions();
-    for (var i = 0; i < list.length; i++) if (String(list[i].label).trim().toLowerCase() === want) return list[i].id;
-    return '';
-  }
   function typeLabelById(id) {
     var list = typeOptions();
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i].label;
     return '';
+  }
+  function shortType(label) {
+    var s = String(label || '').trim();
+    if (s.length <= 16) return s;
+    var words = s.split(/\s+/).filter(Boolean);
+    if (words.length < 2) return s.slice(0, 14) + '…';
+    return words.map(function (w) { return w[0].toUpperCase(); }).join('');
+  }
+
+  // ── Targets (the chips) ───────────────────────────────────────────
+  function slotTakenBy(slotId, exceptRowId) {
+    if (!_state) return null;
+    for (var i = 0; i < _state.rows.length; i++) {
+      var r = _state.rows[i];
+      if (r.id === exceptRowId || r.status === 'done') continue;
+      for (var t = 0; t < r.targets.length; t++) {
+        if (r.targets[t].mode === 'slot' && r.targets[t].slotId === slotId) return r.id;
+      }
+    }
+    return null;
+  }
+  function slotTarget(deviceId, slot, guessed) {
+    return { deviceId: deviceId, mode: 'slot', slotId: slot.id, slotType: slot.type, slotRequired: !!slot.required,
+             history: slot.history || '', typeId: '', typeLabel: '', guessed: !!guessed };
+  }
+  function newTarget(deviceId, typeId, guessed) {
+    return { deviceId: deviceId, mode: 'new', slotId: '', slotType: '', slotRequired: false, history: '',
+             typeId: typeId || '', typeLabel: typeId ? typeLabelById(typeId) : '', guessed: !!guessed };
+  }
+  /** What the batch rule does on a fresh destination: the first open
+   *  required slot nobody else in the batch is filling, else a new photo. */
+  function defaultTarget(deviceId, guessed) {
+    if (_state && _state.rule === 'fillfirst') {
+      var open = deviceInfo(deviceId).open;
+      for (var i = 0; i < open.length; i++) {
+        if (open[i].required && !slotTakenBy(open[i].id)) return slotTarget(deviceId, open[i], guessed);
+      }
+    }
+    return newTarget(deviceId, '', guessed);
+  }
+  function targetOf(row, deviceId) {
+    for (var i = 0; i < row.targets.length; i++) if (row.targets[i].deviceId === deviceId) return row.targets[i];
+    return null;
+  }
+  function addTarget(rowId, deviceId, spec) {
+    var row = rowById(rowId);
+    if (!row || row.status === 'done' || row.status === 'too-big' || !candidateById(deviceId)) return false;
+    var existing = targetOf(row, deviceId);
+    var t;
+    if (spec && spec.mode === 'slot') {
+      var slots = deviceInfo(deviceId).open, slot = null;
+      for (var i = 0; i < slots.length; i++) if (slots[i].id === spec.slotId) { slot = slots[i]; break; }
+      if (!slot) return false;
+      if (slotTakenBy(slot.id, rowId)) return false;
+      t = slotTarget(deviceId, slot, spec.guessed);
+    } else if (spec && spec.mode === 'new') {
+      t = newTarget(deviceId, spec.typeId, spec.guessed);
+    } else {
+      t = defaultTarget(deviceId, spec && spec.guessed);
+    }
+    if (existing) row.targets[row.targets.indexOf(existing)] = t; else row.targets.push(t);
+    if (row.status === 'failed') { row.status = 'queued'; row.error = ''; }
+    return true;
+  }
+  function removeTarget(rowId, deviceId) {
+    var row = rowById(rowId);
+    if (!row) return;
+    row.targets = row.targets.filter(function (t) { return t.deviceId !== deviceId; });
+  }
+  function describeTarget(t) {
+    if (t.mode === 'slot') return 'fills ' + shortType(t.slotType || 'slot');
+    return t.typeLabel ? 'new: ' + shortType(t.typeLabel) : 'new';
+  }
+  function describeTargetLong(t) {
+    var c = candidateById(t.deviceId);
+    var dev = c ? (c.drop || c.label) : 'device';
+    if (t.mode === 'slot') return 'Fill ' + (t.slotType || 'slot') + ' on ' + dev;
+    return 'New ' + (t.typeLabel ? '"' + t.typeLabel + '" ' : '') + 'photo on ' + dev;
   }
 
   // ── Styles ────────────────────────────────────────────────────────
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var css = [
-      '.scw-pa-overlay { position:fixed; inset:0; z-index:99990; background:rgba(15,23,42,.55);',
-      '  display:flex; align-items:center; justify-content:center; font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif; }',
-      '.scw-pa { background:#fff; border-radius:10px; width:min(900px,94vw); max-height:92vh; display:flex; flex-direction:column;',
-      '  box-shadow:0 20px 60px rgba(0,0,0,.4); overflow:hidden; color:#0f172a; }',
-      '.scw-pa-hd { padding:12px 18px; display:flex; align-items:center; justify-content:space-between; background:#07467c; color:#fff; }',
+      '.scw-pa-overlay { position:fixed; inset:0; z-index:99990; background:rgba(15,23,42,.55); display:flex; align-items:center; justify-content:center;',
+      '  font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif; color:#0f172a; }',
+      '.scw-pa { background:#fff; border-radius:12px; width:min(1340px,96vw); height:min(900px,94vh); display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.4); overflow:hidden; }',
+      '.scw-pa-hd { padding:12px 18px; display:flex; align-items:center; justify-content:space-between; background:#07467c; color:#fff; flex:none; }',
       '.scw-pa-hd .scw-pa-title { font-weight:700; font-size:15px; }',
       '.scw-pa-hd .scw-pa-sub { font-size:12px; opacity:.85; margin-top:2px; }',
       '.scw-pa-hd button { background:none; border:none; color:#fff; font-size:22px; cursor:pointer; padding:0 4px; line-height:1; }',
-      '.scw-pa-bd { padding:12px 18px; overflow-y:auto; flex:1; }',
-      '.scw-pa-ft { padding:10px 18px; border-top:1px solid #e5e7eb; display:flex; gap:8px; justify-content:flex-end; align-items:center; background:#f8fafc; }',
-      '.scw-pa-ft .scw-pa-summary { margin-right:auto; color:#475569; font-size:13px; }',
-      '.scw-pa-btn { padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; font:600 13px/1 system-ui,sans-serif; background:#fff; color:#0f172a; border-color:#cbd5e1; }',
+      '.scw-pa-tb { padding:10px 18px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:none; }',
+      '.scw-pa-tb .scw-pa-spacer { flex:1; }',
+      '.scw-pa-matchsum { display:flex; align-items:center; gap:8px; font-size:12.5px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; }',
+      '.scw-pa-matchsum .ok { font-weight:700; color:#14532d; } .scw-pa-matchsum .gs { font-weight:700; color:#1e3a8a; } .scw-pa-matchsum .td { font-weight:700; color:#92400e; } .scw-pa-matchsum .dot { color:#cbd5e1; }',
+      '.scw-pa-tb label { display:flex; align-items:center; gap:6px; font-size:12.5px; color:#334155; }',
+      '.scw-pa-tb select { padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; font-size:12.5px; max-width:320px; }',
+      '.scw-pa-main { display:flex; gap:14px; padding:12px 18px; flex:1; min-height:0; }',
+      '.scw-pa-left { flex:1; min-width:0; display:flex; flex-direction:column; gap:10px; min-height:0; }',
+      '.scw-pa-selbar { display:flex; align-items:center; gap:10px; font-size:12.5px; flex:none; flex-wrap:wrap; }',
+      '.scw-pa-selbar .muted { color:#64748b; } .scw-pa-selbar .scw-pa-spacer { flex:1; }',
+      '.scw-pa-gridwrap { flex:1; min-height:0; overflow-y:auto; border-radius:10px; padding:10px 8px 8px; }',
+      '.scw-pa-gridwrap.is-over { outline:2px dashed #0284c7; outline-offset:-2px; background:#f0f9ff; }',
+      '.scw-pa-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:12px; align-content:start; }',
+      '.scw-pa-empty { grid-column:1 / -1; padding:40px 16px; text-align:center; color:#64748b; font-size:13px; border:2px dashed #cbd5e1; border-radius:10px; background:#f8fafc; }',
+      '.scw-pa-tile { background:#fff; border:2px solid #e2e8f0; border-radius:10px; display:flex; flex-direction:column; position:relative; }',
+      '.scw-pa-tile.is-sel { border-color:#0284c7; box-shadow:0 0 0 3px rgba(2,132,199,.2); }',
+      '.scw-pa-tile.is-todo { border-color:#f59e0b; }',
+      '.scw-pa-tile.is-done { opacity:.6; }',
+      '.scw-pa-tile.is-dragging { opacity:.4; }',
+      '.scw-pa-tile.has-menu { z-index:5; }',
+      '.scw-pa-thumb { height:118px; border-radius:8px 8px 0 0; background:#334155; display:flex; align-items:flex-end; justify-content:space-between; padding:6px 8px; box-sizing:border-box; color:#cbd5e1; font-size:11px; overflow:hidden; position:relative; cursor:pointer; border:0; width:100%; text-align:left; }',
+      '.scw-pa-thumb img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }',
+      '.scw-pa-thumb .sz { position:relative; z-index:1; background:rgba(15,23,42,.55); border-radius:4px; padding:1px 5px; margin-left:auto; }',
+      '.scw-pa-cb { position:absolute; right:8px; top:8px; width:18px; height:18px; border-radius:4px; border:2px solid #fff; background:rgba(255,255,255,.35); z-index:2; pointer-events:none; }',
+      '.scw-pa-tile.is-sel .scw-pa-cb { background:#0284c7; border-color:#0284c7; }',
+      '.scw-pa-tile.is-sel .scw-pa-cb::after { content:""; position:absolute; left:5px; top:1px; width:4px; height:9px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }',
+      '.scw-pa-meta { padding:8px 10px 10px; display:flex; flex-direction:column; gap:6px; position:relative; }',
+      '.scw-pa-name { font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
+      '.scw-pa-chip { display:flex; align-items:center; gap:6px; border-radius:7px; padding:5px 8px; font-size:12px; border:1px solid #86efac; background:#f0fdf4; color:#14532d; min-height:30px; box-sizing:border-box; cursor:pointer; width:100%; text-align:left; }',
+      '.scw-pa-chip.is-guess { border-color:#93c5fd; background:#eff6ff; color:#1e3a8a; }',
+      '.scw-pa-chip .lbl { font-weight:700; white-space:nowrap; }',
+      '.scw-pa-chip .sub { opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }',
+      '.scw-pa-chip .slot { font-size:10.5px; font-weight:700; color:#312e81; background:#eef2ff; border-radius:4px; padding:1px 5px; white-space:nowrap; }',
+      '.scw-pa-chip .slot.new { color:#475569; background:#f1f5f9; }',
+      '.scw-pa-addmore { border:1px dashed #cbd5e1; border-radius:7px; padding:4px 8px; font-size:11.5px; color:#64748b; background:#fff; text-align:left; cursor:pointer; width:100%; }',
+      '.scw-pa-finder { display:flex; align-items:center; gap:6px; border-radius:7px; padding:4px 6px; border:1px solid #f59e0b; background:#fffbeb; }',
+      '.scw-pa-finder:focus-within { border-color:#0284c7; background:#fff; box-shadow:0 0 0 3px rgba(2,132,199,.18); }',
+      '.scw-pa-finder input { border:0; outline:0; font:600 12.5px system-ui,sans-serif; width:100%; color:#0f172a; background:transparent; min-width:0; }',
+      '.scw-pa-finder input::placeholder { color:#b45309; font-weight:600; }',
+      '.scw-pa-hint { font-size:11px; color:#64748b; }',
+      '.scw-pa-status { font-size:11.5px; color:#475569; }',
+      '.scw-pa-status.is-ok { color:#15803d; font-weight:600; } .scw-pa-status.is-err { color:#b91c1c; font-weight:600; } .scw-pa-status.is-busy { color:#0369a1; }',
+      '.scw-pa-menu { position:absolute; left:8px; right:8px; top:100%; margin-top:-6px; z-index:6; background:#fff; border:1px solid #cbd5e1; border-radius:10px; box-shadow:0 16px 40px rgba(15,23,42,.25); padding:6px; font-size:12px; }',
+      '.scw-pa-menu .h { padding:4px 8px; font-size:10.5px; font-weight:700; letter-spacing:.04em; color:#64748b; text-transform:uppercase; }',
+      '.scw-pa-menu button { display:flex; width:100%; justify-content:space-between; gap:8px; border:0; background:#fff; text-align:left; padding:7px 8px; border-radius:6px; font:12px system-ui,sans-serif; color:#0f172a; cursor:pointer; }',
+      '.scw-pa-menu button:hover { background:#f1f5f9; } .scw-pa-menu button.is-on { background:#e0f2fe; } .scw-pa-menu button[disabled] { color:#94a3b8; cursor:default; }',
+      '.scw-pa-menu button.danger { color:#b91c1c; }',
+      '.scw-pa-x { position:absolute; right:-7px; top:-7px; width:20px; height:20px; border-radius:999px; border:1px solid #cbd5e1; background:#fff; color:#64748b; font-size:13px; line-height:1; cursor:pointer; z-index:3; display:none; padding:0; }',
+      '.scw-pa-tile:hover .scw-pa-x { display:block; }',
+      '.scw-pa-rail { width:400px; flex:none; border:1px solid #e2e8f0; border-radius:10px; display:flex; flex-direction:column; overflow:hidden; min-height:0; }',
+      '.scw-pa-rail-hd { padding:10px 10px 8px; border-bottom:1px solid #e2e8f0; display:flex; flex-direction:column; gap:8px; flex:none; }',
+      '.scw-pa-rail-hd .t { font-size:12.5px; } .scw-pa-rail-hd .t .muted { color:#64748b; }',
+      '.scw-pa-search { display:flex; align-items:center; gap:8px; border:1px solid #cbd5e1; border-radius:6px; padding:6px 8px; }',
+      '.scw-pa-search input { border:0; outline:0; flex:1; font:12.5px system-ui,sans-serif; min-width:0; }',
+      '.scw-pa-rail-hd label { display:flex; align-items:center; gap:6px; font-size:12px; color:#334155; }',
+      '.scw-pa-rail-list { flex:1; overflow-y:auto; min-height:0; padding:4px 0; }',
+      '.scw-pa-grp { font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#64748b; padding:10px 10px 4px; display:flex; justify-content:space-between; align-items:center; }',
+      '.scw-pa-grp button { border:0; background:none; color:#07467c; font:600 11px system-ui,sans-serif; cursor:pointer; text-transform:none; letter-spacing:0; }',
+      '.scw-pa-dev { display:grid; grid-template-columns:18px 56px 1fr auto; gap:8px; align-items:center; padding:7px 10px; margin:0 4px; border-radius:8px; border:1px solid transparent; font-size:12.5px; cursor:pointer; }',
+      '.scw-pa-dev:hover { background:#f8fafc; }',
+      '.scw-pa-dev.is-hit { background:#e0f2fe; border-color:#7dd3fc; }',
+      '.scw-pa-dev.is-over { background:#e0f2fe; border-color:#0284c7; border-style:dashed; }',
+      '.scw-pa-dev .id { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
+      '.scw-pa-dev .nm { color:#475569; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
+      '.scw-pa-dev .st { font-size:11px; white-space:nowrap; color:#92400e; font-weight:700; }',
+      '.scw-pa-dev .st.full { color:#15803d; font-weight:400; } .scw-pa-dev .st.none { color:#94a3b8; font-weight:400; } .scw-pa-dev .st.q { color:#0369a1; font-weight:600; }',
+      '.scw-pa-dev .box { width:16px; height:16px; border-radius:4px; border:1.5px solid #cbd5e1; background:#fff; position:relative; }',
+      '.scw-pa-dev .box.on { background:#0284c7; border-color:#0284c7; }',
+      '.scw-pa-dev .box.on::after { content:""; position:absolute; left:4px; top:1px; width:4px; height:8px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }',
+      '.scw-pa-dev .box.some { background:#bae6fd; border-color:#0284c7; }',
+      '.scw-pa-rail-ft { padding:8px 10px; border-top:1px solid #e2e8f0; font-size:11.5px; color:#64748b; background:#f8fafc; flex:none; }',
+      '.scw-pa-ft { padding:10px 18px; border-top:1px solid #e5e7eb; display:flex; gap:8px; justify-content:flex-end; align-items:center; background:#f8fafc; flex:none; }',
+      '.scw-pa-ft .scw-pa-summary { margin-right:auto; color:#475569; font-size:13px; } .scw-pa-ft .scw-pa-summary b { color:#0f172a; }',
+      '.scw-pa-btn { padding:7px 12px; border-radius:6px; border:1px solid #cbd5e1; cursor:pointer; font:600 12.5px/1 system-ui,sans-serif; background:#fff; color:#0f172a; }',
       '.scw-pa-btn.primary { background:#07467c; color:#fff; border-color:#053659; }',
       '.scw-pa-btn.primary:hover:not([disabled]) { background:#053659; }',
-      '.scw-pa-btn[disabled] { opacity:.55; cursor:default; }',
       '.scw-pa-btn.sm { padding:5px 10px; font-size:12px; }',
-      '.scw-pa-preview { margin:0 0 10px; padding:8px 12px; border-radius:8px; background:#fffbeb; border:1px solid #fcd34d; color:#78350f; font-size:12.5px; }',
-      '.scw-pa-modes { display:inline-flex; border:1px solid #cbd5e1; border-radius:8px; overflow:hidden; margin-bottom:10px; }',
-      '.scw-pa-modes button { background:#fff; border:none; padding:7px 12px; font:600 12.5px system-ui,sans-serif; color:#334155; cursor:pointer; }',
-      '.scw-pa-modes button + button { border-left:1px solid #cbd5e1; }',
-      '.scw-pa-modes button.is-on { background:#07467c; color:#fff; }',
-      '.scw-pa-modes button[disabled] { opacity:.5; cursor:default; }',
-      '.scw-pa-drop { border:2px dashed #cbd5e1; border-radius:8px; padding:16px 14px; text-align:center; color:#475569; background:#f8fafc; cursor:pointer; }',
-      '.scw-pa-drop.is-over { background:#e0f2fe; border-color:#0284c7; color:#0c4a6e; }',
-      '.scw-pa-drop .scw-pa-hint { display:block; margin-top:4px; font-size:12px; color:#64748b; }',
-      '.scw-pa-tools { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0 6px; font-size:12.5px; color:#334155; }',
-      '.scw-pa-tools select { padding:5px 8px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; font-size:12.5px; max-width:300px; }',
-      '.scw-pa-tools .scw-pa-spacer { flex:1; }',
-      '.scw-pa-head, .scw-pa-row { display:grid; grid-template-columns:44px minmax(140px,1.1fr) minmax(170px,1.4fr) minmax(200px,1.7fr) 150px 28px; gap:10px; align-items:center; }',
-      '.scw-pa-head { font:700 11px system-ui,sans-serif; text-transform:uppercase; letter-spacing:.04em; color:#64748b; padding:6px 0 4px; border-bottom:1px solid #e2e8f0; }',
-      '.scw-pa-row { padding:8px 0; border-bottom:1px solid #f1f5f9; }',
-      '.scw-pa-thumb { width:44px; height:44px; background:#f1f5f9; border-radius:4px; overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#64748b; }',
-      '.scw-pa-thumb img { width:100%; height:100%; object-fit:cover; }',
-      '.scw-pa-name { min-width:0; }',
-      '.scw-pa-name .n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; font-size:13px; }',
-      '.scw-pa-name .s { font-size:11.5px; color:#64748b; }',
-      '.scw-pa-target { width:100%; text-align:left; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; font-size:12.5px; cursor:pointer; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }',
-      '.scw-pa-target.is-empty { color:#b45309; border-color:#f59e0b; background:#fffbeb; }',
-      '.scw-pa-target .m { font-size:10.5px; color:#15803d; font-weight:700; margin-left:4px; }',
-      '.scw-pa-slot { width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; font-size:12.5px; }',
-      '.scw-pa-slot[disabled] { background:#f8fafc; color:#94a3b8; }',
-      '.scw-pa-status { font-size:12px; color:#475569; }',
-      '.scw-pa-status.is-ok { color:#15803d; font-weight:600; }',
-      '.scw-pa-status.is-err { color:#b91c1c; font-weight:600; }',
-      '.scw-pa-status.is-busy { color:#0369a1; }',
-      '.scw-pa-x { background:none; border:none; cursor:pointer; color:#64748b; font-size:16px; padding:2px 6px; border-radius:4px; }',
-      '.scw-pa-x:hover { background:#f1f5f9; color:#0f172a; }',
-      '.scw-pa-copy { border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin-top:10px; background:#fff; }',
-      '.scw-pa-copy-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:6px 0; font-size:12.5px; }',
-      '.scw-pa-copy-row select { padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; font-size:12.5px; max-width:420px; }',
-      '.scw-pa-chips { display:flex; flex-wrap:wrap; gap:6px; }',
-      '.scw-pa-chip { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:999px; background:#e0f2fe; color:#0c4a6e; font-size:12px; border:1px solid #bae6fd; }',
-      '.scw-pa-chip.is-done { background:#dcfce7; color:#14532d; border-color:#bbf7d0; }',
-      '.scw-pa-chip.is-err { background:#fee2e2; color:#7f1d1d; border-color:#fecaca; }',
-      '.scw-pa-errors { margin:10px 0 0; padding:8px 12px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#7f1d1d; font-size:12.5px; }',
+      '.scw-pa-btn[disabled] { opacity:.55; cursor:default; }',
+      '.scw-pa-errors { margin:10px 18px 0; padding:8px 12px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#7f1d1d; font-size:12.5px; flex:none; }',
       '.scw-pa-errors div + div { margin-top:3px; }',
-      '.scw-pa-done { margin:10px 0 0; padding:8px 12px; border-radius:8px; background:#f0fdf4; border:1px solid #bbf7d0; color:#14532d; font-size:12.5px; }',
-      '.scw-pa-empty { padding:14px 0; color:#64748b; font-size:12.5px; text-align:center; }',
-      '@media (max-width: 720px) { .scw-pa-head { display:none; } .scw-pa-row { grid-template-columns:44px 1fr; } .scw-pa-row > * { grid-column:auto; } }'
+      '.scw-pa-done { margin:10px 18px 0; padding:8px 12px; border-radius:8px; background:#f0fdf4; border:1px solid #bbf7d0; color:#14532d; font-size:12.5px; flex:none; }',
+      '.scw-pa-k { display:inline-block; border:1px solid #cbd5e1; border-bottom-width:2px; border-radius:4px; padding:0 5px; font-size:10.5px; color:#475569; background:#f8fafc; }',
+      '@media (max-width: 900px) { .scw-pa-main { flex-direction:column; } .scw-pa-rail { width:auto; max-height:40%; } }'
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
@@ -426,8 +630,6 @@
     if (ns.data && typeof ns.data.subscribeRendered === 'function') {
       ns.data.subscribeRendered(viewKey, function () { inject(viewKey); });
     }
-    // The toolbar mounts on the worksheet's own schedule — a few retries
-    // cover the first paint without a MutationObserver.
     var delays = [0, 300, 1200, 3000, 6000];
     for (var i = 0; i < delays.length; i++) {
       setTimeout(function () { inject(viewKey); }, delays[i]);
@@ -439,16 +641,28 @@
     if (!isAllowed()) return null;
     injectStyles();
     close();
+    var cands = candidatesFor(viewKey);
+    var idx = Object.create(null);
+    for (var i = 0; i < cands.length; i++) idx[cands[i].id] = cands[i];
     _state = {
       viewKey:    viewKey,
-      mode:       'assign',
       rows:       [],
-      copy:       { targetIds: [], rule: 'new', results: [] },
-      candidates: candidatesFor(viewKey),
-      slotCache:  Object.create(null),
+      candidates: cands,
+      candIndex:  idx,
+      matchCtx:   buildMatchContext(cands),
+      photoCache: Object.create(null),
+      selected:   Object.create(null),
+      hideAimed:  false,
+      railQuery:  '',
+      railNeedFirst: true,
+      rule:       'fillfirst',
+      finderRow:  '',
+      menuRow:    '',
+      menuDevice: '',
+      dragIds:    null,
       sending:    false,
       errors:     [],
-      done:       null,
+      done:       '',
       batchId:    uuid()
     };
     var overlay = document.createElement('div');
@@ -459,17 +673,30 @@
       '<div class="scw-pa" role="dialog" aria-modal="true">' +
         '<div class="scw-pa-hd">' +
           '<div><div class="scw-pa-title">Add Photos (v2)</div>' +
-            '<div class="scw-pa-sub">' + esc((vc && vc.label) || 'This worksheet') +
-              ' · ' + _state.candidates.length + ' device' + (_state.candidates.length === 1 ? '' : 's') +
-              ' on this page</div></div>' +
+            '<div class="scw-pa-sub">' + esc((vc && vc.label) || 'This worksheet') + ' · ' +
+              plural(cands.length, 'device') + ' · aim each photo at one or more devices · preview: only you see this</div></div>' +
           '<button type="button" data-scw-pa-close aria-label="Close">&times;</button>' +
         '</div>' +
-        '<div class="scw-pa-bd"></div>' +
+        '<div class="scw-pa-tb"></div>' +
+        '<div class="scw-pa-errors" hidden></div>' +
+        '<div class="scw-pa-done" hidden></div>' +
+        '<div class="scw-pa-main">' +
+          '<div class="scw-pa-left">' +
+            '<div class="scw-pa-selbar"></div>' +
+            '<div class="scw-pa-gridwrap"><div class="scw-pa-grid"></div></div>' +
+          '</div>' +
+          '<div class="scw-pa-rail">' +
+            '<div class="scw-pa-rail-hd"></div>' +
+            '<div class="scw-pa-rail-list"></div>' +
+            '<div class="scw-pa-rail-ft">Ticks show where the <b>selected</b> photo goes. Tick two devices and it is sent to both. Drag a tile onto a device for the same thing.</div>' +
+          '</div>' +
+        '</div>' +
         '<div class="scw-pa-ft">' +
           '<div class="scw-pa-summary"></div>' +
           '<button type="button" class="scw-pa-btn" data-scw-pa-clear>Clear all</button>' +
           '<button type="button" class="scw-pa-btn primary" data-scw-pa-send>Send</button>' +
         '</div>' +
+        '<input type="file" multiple accept="image/*,.heic,.heif" style="display:none" data-scw-pa-file>' +
       '</div>';
     document.body.appendChild(overlay);
     wire(overlay);
@@ -479,92 +706,194 @@
   function close() {
     var el = document.getElementById(ROOT_ID);
     if (el && el.parentNode) el.parentNode.removeChild(el);
+    if (_state) {
+      for (var i = 0; i < _state.rows.length; i++) {
+        if (_state.rows[i].thumbUrl) { try { URL.revokeObjectURL(_state.rows[i].thumbUrl); } catch (e) {} }
+      }
+    }
     _state = null;
   }
   function root() { return document.getElementById(ROOT_ID); }
+  function q(sel) { var r = root(); return r ? r.querySelector(sel) : null; }
 
   function wire(overlay) {
     overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) { if (!_state || !_state.sending) close(); return; }
-      var t = e.target && e.target.closest ? e.target : null;
-      if (!t) return;
+      if (!_state) return;
+      if (e.target === overlay) { if (!_state.sending) close(); return; }
+      var t = e.target;
+      if (!t || !t.closest) return;
       var b;
       if (t.closest('[data-scw-pa-close]')) { if (!_state.sending) close(); return; }
-      if (t.closest('[data-scw-pa-clear]')) { if (!_state.sending) { _state.rows = []; _state.copy.targetIds = []; _state.done = null; _state.errors = []; render(); } return; }
+      if (t.closest('[data-scw-pa-clear]')) { if (!_state.sending) clearAll(); return; }
       if (t.closest('[data-scw-pa-send]')) { send(); return; }
-      if ((b = t.closest('[data-scw-pa-mode]'))) { setMode(b.getAttribute('data-scw-pa-mode')); return; }
-      if (t.closest('.scw-pa-drop')) { var inp = overlay.querySelector('input[type="file"]'); if (inp) inp.click(); return; }
-      if ((b = t.closest('[data-scw-pa-remove]'))) { removeRow(b.getAttribute('data-scw-pa-remove')); return; }
-      if ((b = t.closest('[data-scw-pa-target]'))) { pickTargetFor(b.getAttribute('data-scw-pa-target')); return; }
-      if (t.closest('[data-scw-pa-match]')) { autoMatch(true); render(); return; }
+      if (t.closest('[data-scw-pa-add]')) { var inp = overlay.querySelector('[data-scw-pa-file]'); if (inp) inp.click(); return; }
       if (t.closest('[data-scw-pa-order]')) { assignInOrder(); return; }
-      if (t.closest('[data-scw-pa-forall-apply]')) {
-        var sel = overlay.querySelector('[data-scw-pa-forall]');
-        applyToAll(sel ? sel.value : 'new'); render(); return;
-      }
-      if (t.closest('[data-scw-pa-copy-pick]')) { pickCopyTargets(); return; }
+      if (t.closest('[data-scw-pa-rematch]')) { autoMatch(true); render(); return; }
+      if (t.closest('[data-scw-pa-selunaimed]')) { selectUnaimed(); return; }
+      if (t.closest('[data-scw-pa-hideaimed]')) { _state.hideAimed = !_state.hideAimed; render(); return; }
+      if ((b = t.closest('[data-scw-pa-remove]'))) { removeRow(b.getAttribute('data-scw-pa-remove')); return; }
+      if ((b = t.closest('[data-scw-pa-toggle]'))) { toggleSelect(b.getAttribute('data-scw-pa-toggle')); return; }
+      if ((b = t.closest('[data-scw-pa-chip]'))) { openMenu(b.getAttribute('data-scw-pa-chip'), b.getAttribute('data-scw-pa-dev')); return; }
+      if ((b = t.closest('[data-scw-pa-more]'))) { focusRailFor(b.getAttribute('data-scw-pa-more')); return; }
+      if ((b = t.closest('[data-scw-pa-menu-slot]'))) { chooseFromMenu({ mode: 'slot', slotId: b.getAttribute('data-scw-pa-menu-slot') }); return; }
+      if ((b = t.closest('[data-scw-pa-menu-new]'))) { chooseFromMenu({ mode: 'new', typeId: b.getAttribute('data-scw-pa-menu-new') }); return; }
+      if (t.closest('[data-scw-pa-menu-remove]')) { chooseFromMenu({ remove: true }); return; }
+      if (t.closest('[data-scw-pa-menu-close]')) { closeMenu(); render(); return; }
+      if ((b = t.closest('[data-scw-pa-tickgrp]'))) { tickGroup(b.getAttribute('data-scw-pa-tickgrp')); return; }
+      if ((b = t.closest('[data-scw-pa-dev-row]'))) { clickDevice(b.getAttribute('data-scw-pa-dev-row')); return; }
+      if (_state.menuRow && !t.closest('.scw-pa-menu')) { closeMenu(); render(); }
     });
     overlay.addEventListener('change', function (e) {
+      if (!_state) return;
       var t = e.target;
       if (!t) return;
-      if (t.matches && t.matches('input[type="file"]')) {
+      if (t.hasAttribute('data-scw-pa-file')) {
         addFiles(Array.prototype.slice.call(t.files || []));
         t.value = '';
-        return;
-      }
-      if (t.hasAttribute && t.hasAttribute('data-scw-pa-slot')) {
-        var row = rowById(t.getAttribute('data-scw-pa-slot'));
-        if (row) row.slot = t.value;
-        return;
-      }
-      if (t.hasAttribute && t.hasAttribute('data-scw-pa-copy-rule')) {
-        _state.copy.rule = t.value;
-        return;
+      } else if (t.hasAttribute('data-scw-pa-rule')) {
+        _state.rule = t.value === 'new' ? 'new' : 'fillfirst';
+      } else if (t.hasAttribute('data-scw-pa-needfirst')) {
+        _state.railNeedFirst = !!t.checked;
+        renderRail();
       }
     });
-    ['dragenter', 'dragover'].forEach(function (ev) {
-      overlay.addEventListener(ev, function (e) {
-        var d = e.target && e.target.closest && e.target.closest('.scw-pa-drop');
-        if (!d) return;
-        e.preventDefault(); e.stopPropagation(); d.classList.add('is-over');
-      });
+    overlay.addEventListener('input', function (e) {
+      if (!_state) return;
+      var t = e.target;
+      if (!t) return;
+      if (t.hasAttribute('data-scw-pa-finder')) {
+        _state.finderRow = t.getAttribute('data-scw-pa-finder');
+        _state.railQuery = t.value;
+        var rs = q('[data-scw-pa-railq]');
+        if (rs) rs.value = t.value;
+        renderRail();
+      } else if (t.hasAttribute('data-scw-pa-railq')) {
+        _state.railQuery = t.value;
+        renderRail();
+      }
     });
-    ['dragleave', 'drop'].forEach(function (ev) {
-      overlay.addEventListener(ev, function (e) {
-        var d = e.target && e.target.closest && e.target.closest('.scw-pa-drop');
-        if (!d) return;
-        e.preventDefault(); e.stopPropagation(); d.classList.remove('is-over');
-        if (ev === 'drop') addFiles(Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []));
-      });
+    overlay.addEventListener('focusin', function (e) {
+      if (!_state) return;
+      var t = e.target;
+      if (t && t.hasAttribute && t.hasAttribute('data-scw-pa-finder')) {
+        _state.finderRow = t.getAttribute('data-scw-pa-finder');
+        _state.railQuery = t.value;
+        renderRail();
+      }
     });
-    document.addEventListener('keydown', function onKey(e) {
-      if (!root()) { document.removeEventListener('keydown', onKey); return; }
-      if (e.key === 'Escape' && _state && !_state.sending) close();
+    overlay.addEventListener('keydown', function (e) {
+      if (!_state) return;
+      var t = e.target;
+      if (t && t.hasAttribute && t.hasAttribute('data-scw-pa-finder')) {
+        if (e.key === 'Enter') { e.preventDefault(); finderEnter(t.getAttribute('data-scw-pa-finder')); }
+        else if (e.key === 'Escape') { e.preventDefault(); t.value = ''; _state.railQuery = ''; renderRail(); }
+        return;
+      }
+      if (t && t.hasAttribute && t.hasAttribute('data-scw-pa-railq')) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          var first = q('[data-scw-pa-dev-row]');
+          if (first) clickDevice(first.getAttribute('data-scw-pa-dev-row'));
+          return;
+        }
+        if (e.key === 'Escape' && t.value) { e.preventDefault(); t.value = ''; _state.railQuery = ''; renderRail(); return; }
+      }
+      if (e.key === 'Escape') {
+        if (_state.menuRow) { closeMenu(); render(); }
+        else if (!_state.sending) close();
+      }
+    });
+    // Drag: tiles → device rows; files from the desktop → the grid.
+    overlay.addEventListener('dragstart', function (e) {
+      var tile = e.target && e.target.closest && e.target.closest('[data-scw-pa-row]');
+      if (!tile || !_state || _state.sending) return;
+      var id = tile.getAttribute('data-scw-pa-row');
+      _state.dragIds = _state.selected[id] ? selectedIds() : [id];
+      try { e.dataTransfer.setData('text/plain', _state.dragIds.join(',')); e.dataTransfer.effectAllowed = 'copyMove'; } catch (e2) {}
+      tile.classList.add('is-dragging');
+    });
+    overlay.addEventListener('dragend', function () {
+      if (_state) _state.dragIds = null;
+      var d = overlay.querySelectorAll('.is-dragging, .is-over');
+      for (var i = 0; i < d.length; i++) { d[i].classList.remove('is-dragging'); d[i].classList.remove('is-over'); }
+    });
+    overlay.addEventListener('dragover', function (e) {
+      var row = e.target && e.target.closest && e.target.closest('[data-scw-pa-dev-row]');
+      var grid = e.target && e.target.closest && e.target.closest('.scw-pa-gridwrap');
+      var hasFiles = e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') !== -1;
+      if (row && _state && _state.dragIds) { e.preventDefault(); try { e.dataTransfer.dropEffect = 'copy'; } catch (e2) {} row.classList.add('is-over'); }
+      else if (grid && hasFiles) { e.preventDefault(); try { e.dataTransfer.dropEffect = 'copy'; } catch (e3) {} grid.classList.add('is-over'); }
+    });
+    overlay.addEventListener('dragleave', function (e) {
+      var row = e.target && e.target.closest && e.target.closest('[data-scw-pa-dev-row]');
+      if (row) row.classList.remove('is-over');
+      var grid = e.target && e.target.closest && e.target.closest('.scw-pa-gridwrap');
+      if (grid && e.target === grid) grid.classList.remove('is-over');
+    });
+    overlay.addEventListener('drop', function (e) {
+      var row = e.target && e.target.closest && e.target.closest('[data-scw-pa-dev-row]');
+      var grid = e.target && e.target.closest && e.target.closest('.scw-pa-gridwrap');
+      if (row && _state && _state.dragIds) {
+        e.preventDefault();
+        row.classList.remove('is-over');
+        var ids = _state.dragIds, dev = row.getAttribute('data-scw-pa-dev-row');
+        for (var i = 0; i < ids.length; i++) { var r = rowById(ids[i]); if (r) { r.match = null; addTarget(ids[i], dev, null); } }
+        _state.dragIds = null;
+        render();
+      } else if (grid && e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+        e.preventDefault();
+        grid.classList.remove('is-over');
+        addFiles(Array.prototype.slice.call(e.dataTransfer.files));
+      }
     });
   }
 
+  // ── Rows ──────────────────────────────────────────────────────────
   function rowById(id) {
     if (!_state) return null;
     for (var i = 0; i < _state.rows.length; i++) if (_state.rows[i].id === id) return _state.rows[i];
     return null;
   }
+  function selectedIds() {
+    if (!_state) return [];
+    return _state.rows.filter(function (r) { return _state.selected[r.id]; }).map(function (r) { return r.id; });
+  }
   function removeRow(id) {
     if (!_state || _state.sending) return;
+    var row = rowById(id);
+    if (row && row.thumbUrl) { try { URL.revokeObjectURL(row.thumbUrl); } catch (e) {} }
     _state.rows = _state.rows.filter(function (r) { return r.id !== id; });
-    if (_state.mode === 'copy' && _state.rows.length !== 1) _state.mode = 'assign';
+    delete _state.selected[id];
     render();
   }
-  function setMode(mode) {
+  function clearAll() {
+    if (!_state) return;
+    for (var i = 0; i < _state.rows.length; i++) {
+      if (_state.rows[i].thumbUrl) { try { URL.revokeObjectURL(_state.rows[i].thumbUrl); } catch (e) {} }
+    }
+    _state.rows = [];
+    _state.selected = Object.create(null);
+    _state.errors = []; _state.done = '';
+    render();
+  }
+  function toggleSelect(id) {
     if (!_state || _state.sending) return;
-    if (mode === 'copy' && _state.rows.length !== 1) return;
-    _state.mode = mode === 'copy' ? 'copy' : 'assign';
-    _state.errors = [];
+    if (_state.selected[id]) delete _state.selected[id]; else _state.selected[id] = true;
+    renderTile(id); renderSelbar(); renderRail();
+  }
+  function selectUnaimed() {
+    if (!_state) return;
+    _state.selected = Object.create(null);
+    for (var i = 0; i < _state.rows.length; i++) {
+      var r = _state.rows[i];
+      if (r.status !== 'too-big' && r.status !== 'done' && !r.targets.length) _state.selected[r.id] = true;
+    }
     render();
   }
 
   /** Queue picked files: HEIC → JPEG and oversized rasters downscaled via
    *  bulk-upload.js's prepareFile when it is exported, else the photo
-   *  panel's downscale. Each row auto-matches a device from its name. */
+   *  panel's downscale. Each row is aimed from its name. */
   function prepare(file) {
     var bu = window.SCW && SCW.bulkUpload;
     if (bu && typeof bu.prepareFile === 'function') return bu.prepareFile(file);
@@ -577,8 +906,7 @@
     return Promise.resolve({ blob: file, converted: false, triedResize: false });
   }
   function addFiles(files) {
-    if (!_state || !files || !files.length) return Promise.resolve([]);
-    if (_state.sending) return Promise.resolve([]);
+    if (!_state || !files || !files.length || _state.sending) return Promise.resolve([]);
     var st = _state;
     return Promise.all(files.map(function (f) {
       return prepare(f).then(function (prep) {
@@ -602,13 +930,17 @@
           error:     blob ? '' : ((prep && prep.heicFailed)
             ? 'HEIC photo could not be converted — export it as JPEG and re-add it'
             : 'File is too large and could not be resized'),
-          targetId:  '',
-          matched:   false,
-          slot:      'new',
+          targets:   [],
+          match:     null,       // { confidence, via } while the aim came from the name
           assetId:   '',
           uploadId:  uuid(),
-          result:    ''
+          result:    '',
+          thumbUrl:  ''
         };
+        if (blob && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function' &&
+            String(mime).indexOf('image/') === 0) {
+          try { row.thumbUrl = URL.createObjectURL(blob); } catch (e) {}
+        }
         st.rows.push(row);
         return row;
       }).catch(function (err) {
@@ -618,98 +950,183 @@
     })).then(function (rows) {
       if (_state !== st) return [];
       autoMatch(false);
-      st.done = null;
+      st.done = '';
       render();
       return rows.filter(Boolean);
     });
   }
-  /** Fill targets from file names. `all` re-matches rows the user already
-   *  aimed; otherwise only empty targets are touched. */
+  /** Aim rows from their file names. `all` re-aims rows that were aimed by
+   *  name before; rows the user aimed by hand are left alone. */
   function autoMatch(all) {
     if (!_state) return;
     for (var i = 0; i < _state.rows.length; i++) {
       var row = _state.rows[i];
-      if (row.status === 'too-big') continue;
-      if (row.targetId && !all) continue;
-      var c = matchFile(row.filename, _state.candidates);
-      if (c) { row.targetId = c.id; row.matched = true; row.slot = 'new'; }
-      else if (all) { row.targetId = ''; row.matched = false; row.slot = 'new'; }
+      if (row.status === 'too-big' || row.status === 'done') continue;
+      if (row.targets.length && !(all && row.match)) continue;
+      var m = matchFile(row.filename, _state.candidates, _state.matchCtx);
+      if (!m) { if (all && row.match) { row.targets = []; row.match = null; } continue; }
+      row.targets = [];
+      row.match = { confidence: m.confidence, via: m.via };
+      addTarget(row.id, m.cand.id, { guessed: m.confidence === 'guessed' });
     }
   }
-  function applyToAll(rule) {
-    if (!_state) return;
+  function matchCounts() {
+    var c = { matched: 0, guessed: 0, todo: 0 };
+    if (!_state) return c;
     for (var i = 0; i < _state.rows.length; i++) {
-      var row = _state.rows[i];
-      if (row.status === 'too-big' || !row.targetId) continue;
-      if (rule === 'firstreq') {
-        var slots = slotsCached(row.targetId);
-        var req = null;
-        for (var s = 0; s < slots.length; s++) if (slots[s].required) { req = slots[s]; break; }
-        row.slot = req ? 'slot:' + req.id : 'new';
-      } else {
-        row.slot = rule || 'new';
-      }
+      var r = _state.rows[i];
+      if (r.status === 'too-big' || r.status === 'done') continue;
+      if (!r.targets.length) c.todo++;
+      else if (r.match && r.match.confidence === 'guessed') c.guessed++;
+      else if (r.match) c.matched++;
     }
-  }
-  function setTarget(rowId, targetId) {
-    var row = rowById(rowId);
-    if (!row) return;
-    row.targetId = targetId || '';
-    row.matched = false;
-    row.slot = 'new';
+    return c;
   }
 
-  // ── Device pickers (worksheet-v2's canonical record picker, pickOnly) ──
-  function groupByFor(viewKey) {
-    var F = fieldsFor(viewKey);
-    var key = F.mdfIdf || 'field_1946';
-    return function (rec) {
-      var raw = rec && rec[key + '_raw'];
-      if (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) {
-        return { id: raw[0].id, label: stripHtml(raw[0].identifier) || 'MDF / IDF' };
-      }
-      return { id: '__unknown', label: 'No MDF / IDF' };
-    };
-  }
-  function openPicker(opts) {
-    if (!_state) return;
-    if (!(ns.picker && typeof ns.picker.open === 'function')) {
-      alert('The record picker is not loaded on this page.');
+  // ── Gestures ──────────────────────────────────────────────────────
+  /** A device row click: toggles the destination on the selected photos,
+   *  else aims the photo whose finder is open. */
+  function clickDevice(deviceId) {
+    if (!_state || _state.sending || !candidateById(deviceId)) return;
+    var ids = selectedIds();
+    var viaFinder = false;
+    if (!ids.length && _state.finderRow) { ids = [_state.finderRow]; viaFinder = true; }
+    if (!ids.length) {
+      var ft = q('.scw-pa-rail-ft');
+      if (ft) ft.innerHTML = '<b style="color:#92400e">Select a photo first</b> — tick a tile (or type in its finder), then click the device it belongs to.';
       return;
     }
-    var vk = _state.viewKey;
-    ns.picker.open({
-      fieldKey:      'scwPhotoAssignTarget',
-      recordId:      '__batch__',
-      sourceViewKey: vk,
-      label:         opts.label,
-      multi:         !!opts.multi,
-      selectedIds:   opts.selectedIds || [],
-      candidates:    _state.candidates.map(function (c) { return c.rec; }),
-      itemLabel:     function (r) { return labelOf(r, vk); },
-      groupBy:       groupByFor(vk),
-      allowClear:    false,
-      pickOnly:      true,
-      onChoose:      opts.onChoose
-    });
+    var allHave = ids.every(function (id) { var r = rowById(id); return r && targetOf(r, deviceId); });
+    for (var i = 0; i < ids.length; i++) {
+      var row = rowById(ids[i]);
+      if (!row) continue;
+      if (allHave) removeTarget(ids[i], deviceId);
+      else if (!targetOf(row, deviceId)) { row.match = null; addTarget(ids[i], deviceId, null); }
+    }
+    if (viaFinder && !allHave) {
+      var fr = _state.finderRow;
+      _state.finderRow = ''; _state.railQuery = '';
+      render();
+      focusNextFinder(fr);
+      return;
+    }
+    render();
   }
-  function pickTargetFor(rowId) {
+  function tickGroup(groupId) {
+    if (!_state || _state.sending) return;
+    var ids = selectedIds();
+    if (!ids.length) return;
+    for (var c = 0; c < _state.candidates.length; c++) {
+      var cand = _state.candidates[c];
+      if (cand.mdf.id !== groupId) continue;
+      for (var i = 0; i < ids.length; i++) {
+        var row = rowById(ids[i]);
+        if (row && !targetOf(row, cand.id)) { row.match = null; addTarget(ids[i], cand.id, null); }
+      }
+    }
+    render();
+  }
+  function railHits() {
+    if (!_state) return [];
+    var query = tokensOf(_state.railQuery);
+    var raw = String(_state.railQuery || '').trim().toLowerCase();
+    var out = [];
+    for (var i = 0; i < _state.candidates.length; i++) {
+      var c = _state.candidates[i];
+      if (!raw) { out.push(c); continue; }
+      var hay = tokensOf(c.drop + ' ' + c.product + ' ' + c.mdf.label);
+      var ok = query.length > 0 && containsSeq(hay, query);
+      if (!ok && query.length === 1 && /^\d+$/.test(query[0])) ok = c.number === query[0];
+      if (!ok) ok = (c.label + ' ' + c.mdf.label).toLowerCase().indexOf(raw) !== -1;
+      if (ok) out.push(c);
+    }
+    return out;
+  }
+  function railOrdered(list) {
+    if (!_state || !_state.railNeedFirst) return list;
+    // Devices still missing a required photo first; canonical order kept
+    // inside each band — a stable partition, not a re-sort.
+    var need = [], rest = [];
+    for (var i = 0; i < list.length; i++) (deviceInfo(list[i].id).reqOpen > 0 ? need : rest).push(list[i]);
+    return need.concat(rest);
+  }
+  function finderEnter(rowId) {
+    if (!_state) return;
+    _state.finderRow = rowId;
+    var hits = railOrdered(railHits());
+    if (!hits.length) return;
     var row = rowById(rowId);
-    if (!row || _state.sending) return;
-    openPicker({
-      label: 'Which device is "' + row.filename + '" a photo of?',
-      multi: false,
-      selectedIds: row.targetId ? [row.targetId] : [],
-      onChoose: function (ids) { setTarget(rowId, ids && ids[0]); render(); }
-    });
+    if (!row) return;
+    row.match = null;
+    addTarget(rowId, hits[0].id, null);
+    _state.finderRow = ''; _state.railQuery = '';
+    render();
+    focusNextFinder(rowId);
   }
-  /** Files in name order ↔ devices in the picked (canonical) order. */
+  function setFinderQuery(rowId, text) {
+    if (!_state) return;
+    _state.finderRow = rowId; _state.railQuery = text || '';
+    var inp = q('[data-scw-pa-finder="' + rowId + '"]');
+    if (inp) inp.value = _state.railQuery;
+    renderRail();
+  }
+  function focusNextFinder(afterRowId) {
+    var r = root();
+    if (!r) return;
+    var finders = r.querySelectorAll('[data-scw-pa-finder]');
+    var pick = null, seen = !afterRowId;
+    for (var i = 0; i < finders.length; i++) {
+      var id = finders[i].getAttribute('data-scw-pa-finder');
+      if (seen) { pick = finders[i]; break; }
+      if (id === afterRowId) seen = true;
+    }
+    if (!pick && finders.length) pick = finders[0];
+    if (pick) { try { pick.focus(); } catch (e) {} }
+  }
+  function focusRailFor(rowId) {
+    if (!_state) return;
+    _state.selected = Object.create(null);
+    _state.selected[rowId] = true;
+    _state.finderRow = '';
+    render();
+    var rs = q('[data-scw-pa-railq]');
+    if (rs) { try { rs.focus(); } catch (e) {} }
+  }
+  function openMenu(rowId, deviceId) {
+    if (!_state || _state.sending) return;
+    _state.menuRow = rowId; _state.menuDevice = deviceId;
+    renderTile(rowId);
+  }
+  function closeMenu() { if (_state) { _state.menuRow = ''; _state.menuDevice = ''; } }
+  function chooseFromMenu(spec) {
+    if (!_state || !_state.menuRow) return;
+    var rowId = _state.menuRow, dev = _state.menuDevice;
+    var row = rowById(rowId);
+    if (row) {
+      if (spec.remove) removeTarget(rowId, dev);
+      else { row.match = null; addTarget(rowId, dev, spec); }
+    }
+    closeMenu();
+    render();
+  }
+  function setRule(rule) {
+    if (!_state) return;
+    _state.rule = rule === 'new' ? 'new' : 'fillfirst';
+    render();
+  }
+  /** Files in name order ↔ devices picked (canonical order) in the shared
+   *  record picker. Every queued row is re-aimed. */
   function assignInOrder() {
     if (!_state || _state.sending) return;
-    openPicker({
+    if (!(ns.picker && typeof ns.picker.open === 'function')) return;
+    var vk = _state.viewKey;
+    ns.picker.open({
+      fieldKey: 'scwPhotoAssignTarget', recordId: '__batch__', sourceViewKey: vk,
       label: 'Pick the devices these photos belong to, in order',
-      multi: true,
-      selectedIds: _state.rows.map(function (r) { return r.targetId; }).filter(Boolean),
+      multi: true, selectedIds: [], allowClear: false, pickOnly: true,
+      candidates: _state.candidates.map(function (c) { return c.rec; }),
+      itemLabel: function (r) { return labelOf(r, vk); },
+      groupBy: function (r) { return mdfOf(r, fieldsFor(vk)); },
       onChoose: function (ids) { pairInOrder(ids || []); render(); }
     });
   }
@@ -719,312 +1136,297 @@
     for (var c = 0; c < _state.candidates.length; c++) {
       if (ids.indexOf(_state.candidates[c].id) !== -1) order.push(_state.candidates[c].id);
     }
-    var rows = _state.rows.filter(function (r) { return r.status !== 'too-big'; });
-    rows.sort(function (a, b) {
-      return String(a.filename).localeCompare(String(b.filename), undefined, { numeric: true, sensitivity: 'base' });
-    });
-    for (var i = 0; i < rows.length; i++) {
-      rows[i].targetId = order[i] || '';
-      rows[i].matched = false;
-      rows[i].slot = 'new';
+    var rows = _state.rows.filter(function (r) { return r.status !== 'too-big' && r.status !== 'done'; });
+    rows.sort(function (a, b) { return natCmp(a.filename, b.filename); });
+    for (var i = 0; i < rows.length; i++) { rows[i].targets = []; rows[i].match = null; }
+    for (var j = 0; j < rows.length; j++) {
+      if (order[j]) addTarget(rows[j].id, order[j], null);
     }
-  }
-  function pickCopyTargets() {
-    if (!_state || _state.sending) return;
-    openPicker({
-      label: 'Copy this photo to which devices?',
-      multi: true,
-      selectedIds: _state.copy.targetIds.slice(),
-      onChoose: function (ids) { setCopyTargets(ids || []); render(); }
-    });
-  }
-  function setCopyTargets(ids) {
-    if (!_state) return;
-    var keep = [];
-    for (var c = 0; c < _state.candidates.length; c++) {
-      if (ids.indexOf(_state.candidates[c].id) !== -1) keep.push(_state.candidates[c].id);
-    }
-    _state.copy.targetIds = keep;
-    _state.copy.results = [];
   }
 
   // ── Render ────────────────────────────────────────────────────────
-  function thumbHtml(row) {
+  function render() {
+    if (!root() || !_state) return;
+    renderToolbar(); renderSelbar(); renderGrid(); renderRail(); renderFooter(); renderNotes();
+  }
+  function renderToolbar() {
+    var tb = q('.scw-pa-tb');
+    if (!tb) return;
+    var st = _state, mc = matchCounts(), dis = st.sending ? ' disabled' : '';
+    tb.innerHTML =
+      '<button type="button" class="scw-pa-btn" data-scw-pa-add' + dis + '>+ Add photos</button>' +
+      '<div class="scw-pa-matchsum"><span style="color:#64748b">From the file names:</span>' +
+        '<span class="ok">' + mc.matched + ' matched</span><span class="dot">·</span>' +
+        '<span class="gs">' + mc.guessed + ' guessed</span><span class="dot">·</span>' +
+        '<span class="td">' + mc.todo + ' to pick</span>' +
+        '<button type="button" class="scw-pa-btn sm" data-scw-pa-rematch' + dis + ' style="margin-left:4px" title="Re-read every file name">Re-match</button></div>' +
+      '<button type="button" class="scw-pa-btn" data-scw-pa-order' + dis + ' title="Pick devices in order; the files pair with them in name order">Assign in order…</button>' +
+      '<span class="scw-pa-spacer"></span>' +
+      '<label>When a device has an open required slot:' +
+        '<select data-scw-pa-rule' + dis + '>' +
+          '<option value="fillfirst"' + (st.rule === 'fillfirst' ? ' selected' : '') + '>fill it, otherwise add a new photo</option>' +
+          '<option value="new"' + (st.rule === 'new' ? ' selected' : '') + '>always add a new photo</option>' +
+        '</select></label>';
+  }
+  function renderSelbar() {
+    var el = q('.scw-pa-selbar');
+    if (!el) return;
+    var st = _state, sel = selectedIds().length, dis = st.sending ? ' disabled' : '';
+    var unaimed = st.rows.filter(function (r) { return r.status !== 'too-big' && r.status !== 'done' && !r.targets.length; }).length;
+    el.innerHTML =
+      (sel ? '<b>' + plural(sel, 'photo') + ' selected</b><span class="muted">· click a device on the right, or drag onto it</span>'
+           : '<span class="muted">Tick photos, then click a device on the right — or type in a tile\'s finder. <span class="scw-pa-k">Tab</span> walks the unaimed ones.</span>') +
+      '<span class="scw-pa-spacer"></span>' +
+      (unaimed ? '<button type="button" class="scw-pa-btn sm" data-scw-pa-selunaimed' + dis + '>Select the ' + unaimed + ' unaimed</button>' : '') +
+      '<button type="button" class="scw-pa-btn sm" data-scw-pa-hideaimed' + dis + '>' + (st.hideAimed ? 'Show aimed' : 'Hide aimed') + '</button>';
+  }
+  function thumbHtml(row, canDrag) {
     var ext = (row.filename.match(/\.([^.]+)$/) || [, '?'])[1].toUpperCase();
-    return '<div class="scw-pa-thumb" data-scw-pa-thumb="' + esc(row.id) + '">' + esc(ext) + '</div>';
+    return '<button type="button" class="scw-pa-thumb" data-scw-pa-toggle="' + esc(row.id) + '" aria-label="Select ' + esc(row.filename) + '"' +
+      (canDrag ? ' draggable="true" title="Click to select · drag onto a device"' : '') + '>' +
+      (row.thumbUrl ? '<img src="' + esc(row.thumbUrl) + '" alt="">' : '<span style="position:relative;z-index:1">' + esc(ext) + '</span>') +
+      '<span class="sz">' + esc(fmtBytes(row.sizeBytes)) + (row.origSize ? ' · resized' : '') + '</span></button>' +
+      '<span class="scw-pa-cb" aria-hidden="true"></span>';
   }
   function statusHtml(row) {
     var cls = 'scw-pa-status', txt = '';
     switch (row.status) {
-      case 'queued':    txt = 'Queued'; break;
       case 'uploading': txt = 'Uploading…'; cls += ' is-busy'; break;
       case 'uploaded':  txt = 'Writing…'; cls += ' is-busy'; break;
       case 'done':      txt = row.result || 'Done'; cls += ' is-ok'; break;
       case 'failed':    txt = row.error || 'Failed'; cls += ' is-err'; break;
       case 'too-big':   txt = row.error || 'Too big'; cls += ' is-err'; break;
+      default: return '';
     }
     return '<div class="' + cls + '" title="' + esc(txt) + '">' + esc(txt) + '</div>';
   }
-  function slotSelectHtml(row) {
-    if (!row.targetId) {
-      return '<select class="scw-pa-slot" disabled><option>Pick a device first</option></select>';
-    }
-    var c = candidateById(row.targetId);
-    var slots = slotsCached(row.targetId);
-    var types = typeOptions();
-    var h = '<select class="scw-pa-slot" data-scw-pa-slot="' + esc(row.id) + '"' + (_state.sending ? ' disabled' : '') + '>';
-    h += '<option value="new"' + (row.slot === 'new' ? ' selected' : '') + '>New photo (no type)</option>';
-    if (slots.length) {
-      h += '<optgroup label="Fill an open slot on ' + esc(c ? c.drop || c.label : 'this device') + '">';
-      for (var i = 0; i < slots.length; i++) {
-        var v = 'slot:' + slots[i].id;
-        h += '<option value="' + esc(v) + '"' + (row.slot === v ? ' selected' : '') + '>' +
-          esc(slots[i].type || 'Untyped slot') + (slots[i].required ? ' (required)' : ' (empty)') + '</option>';
-      }
-      h += '</optgroup>';
-    }
-    if (types.length) {
-      h += '<optgroup label="New photo with a type">';
-      for (var t = 0; t < types.length; t++) {
-        var tv = 'type:' + types[t].id;
-        h += '<option value="' + esc(tv) + '"' + (row.slot === tv ? ' selected' : '') + '>' + esc(types[t].label) + '</option>';
-      }
-      h += '</optgroup>';
-    }
-    return h + '</select>';
+  function chipHtml(row, t) {
+    var c = candidateById(t.deviceId);
+    return '<button type="button" class="scw-pa-chip' + (t.guessed ? ' is-guess' : '') + '" data-scw-pa-chip="' + esc(row.id) + '" data-scw-pa-dev="' + esc(t.deviceId) + '"' +
+      ' title="' + esc(describeTargetLong(t)) + (t.guessed ? ' — a guess from the file name; click to change, Send confirms' : ' — click to change') + '">' +
+      '<span class="lbl">' + esc(c ? (c.drop || c.label) : t.deviceId) + (t.guessed ? '?' : '') + '</span>' +
+      '<span class="sub">' + esc(c ? c.product : '') + '</span>' +
+      '<span class="slot' + (t.mode === 'new' ? ' new' : '') + '">' + esc(describeTarget(t)) + '</span></button>';
   }
-  function rowHtml(row) {
-    var c = row.targetId ? candidateById(row.targetId) : null;
-    var tBtn = '<button type="button" class="scw-pa-target' + (c ? '' : ' is-empty') + '" data-scw-pa-target="' + esc(row.id) + '"' +
-      (_state.sending ? ' disabled' : '') + ' title="' + esc(c ? c.label : 'Pick the device this photo belongs to') + '">' +
-      (c ? esc(c.label) + (row.matched ? '<span class="m">matched</span>' : '') : 'Pick device…') + '</button>';
-    return '<div class="scw-pa-row" data-scw-pa-row="' + esc(row.id) + '">' +
-      thumbHtml(row) +
-      '<div class="scw-pa-name"><div class="n" title="' + esc(row.filename) + '">' + esc(row.filename) + '</div>' +
-        '<div class="s">' + esc(fmtBytes(row.sizeBytes)) + (row.origSize ? ' (resized)' : '') + '</div></div>' +
-      (row.status === 'too-big' ? '<div></div><div></div>' : (tBtn + slotSelectHtml(row))) +
-      statusHtml(row) +
-      '<button type="button" class="scw-pa-x" data-scw-pa-remove="' + esc(row.id) + '" title="Remove"' + (_state.sending ? ' disabled' : '') + '>&times;</button>' +
-    '</div>';
-  }
-  function copyRuleOptionsHtml() {
-    var seen = Object.create(null);
-    var labels = [];
-    var ids = _state.copy.targetIds;
-    for (var i = 0; i < ids.length; i++) {
-      var slots = slotsCached(ids[i]);
-      for (var s = 0; s < slots.length; s++) {
-        var k = String(slots[s].type || '').trim().toLowerCase();
-        if (k && !seen[k]) { seen[k] = true; labels.push(slots[s].type); }
-      }
+  function menuHtml(row) {
+    var dev = _state.menuDevice, c = candidateById(dev);
+    var cur = targetOf(row, dev);
+    var open = deviceInfo(dev).open, types = typeOptions();
+    var h = '<div class="scw-pa-menu"><div class="h">' + esc(c ? (c.drop || c.label) : 'device') + ' — this photo</div>';
+    for (var i = 0; i < open.length; i++) {
+      var taker = slotTakenBy(open[i].id, row.id);
+      var on = cur && cur.mode === 'slot' && cur.slotId === open[i].id;
+      h += '<button type="button" data-scw-pa-menu-slot="' + esc(open[i].id) + '" class="' + (on ? 'is-on' : '') + '"' + (taker ? ' disabled' : '') + '>' +
+        '<span>Fill ' + esc(open[i].type || 'untyped slot') + (open[i].required ? ' (required)' : '') + '</span>' +
+        '<span style="color:#64748b">' + (taker ? 'another photo in this batch' : 'open') + '</span></button>';
     }
-    var types = typeOptions();
+    h += '<button type="button" data-scw-pa-menu-new="" class="' + (cur && cur.mode === 'new' && !cur.typeId ? 'is-on' : '') + '"><span>New photo, no type</span></button>';
     for (var t = 0; t < types.length; t++) {
-      var k2 = String(types[t].label).trim().toLowerCase();
-      if (!seen[k2]) { seen[k2] = true; labels.push(types[t].label); }
+      h += '<button type="button" data-scw-pa-menu-new="' + esc(types[t].id) + '" class="' + (cur && cur.mode === 'new' && cur.typeId === types[t].id ? 'is-on' : '') + '"><span>New photo: ' + esc(types[t].label) + '</span></button>';
     }
-    labels.sort(function (a, b) { return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }); });
-    var h = '<option value="new"' + (_state.copy.rule === 'new' ? ' selected' : '') + '>Add as a new photo (no type) on every device</option>';
-    for (var l = 0; l < labels.length; l++) {
-      var v = 'fill:' + labels[l];
-      h += '<option value="' + esc(v) + '"' + (_state.copy.rule === v ? ' selected' : '') + '>' +
-        'Fill the "' + esc(labels[l]) + '" slot where open, otherwise add as a "' + esc(labels[l]) + '" photo</option>';
-    }
+    h += '<button type="button" class="danger" data-scw-pa-menu-remove><span>Remove this device</span></button>' +
+         '<button type="button" data-scw-pa-menu-close><span style="color:#64748b">Close</span></button></div>';
     return h;
   }
-  function copyHtml() {
-    var ids = _state.copy.targetIds;
-    var chips = '';
-    for (var i = 0; i < ids.length; i++) {
-      var c = candidateById(ids[i]);
-      var res = null;
-      for (var r = 0; r < _state.copy.results.length; r++) if (_state.copy.results[r].targetId === ids[i]) res = _state.copy.results[r];
-      chips += '<span class="scw-pa-chip' + (res ? (res.ok ? ' is-done' : ' is-err') : '') + '" title="' + esc(res ? res.text : '') + '">' +
-        esc(c ? (c.drop || c.label) : ids[i]) + (res ? ' · ' + esc(res.text) : '') + '</span>';
-    }
-    return '<div class="scw-pa-copy">' +
-      '<div class="scw-pa-copy-row"><strong>Copy to:</strong>' +
-        '<button type="button" class="scw-pa-btn sm" data-scw-pa-copy-pick' + (_state.sending ? ' disabled' : '') + '>' +
-          (ids.length ? 'Change devices…' : 'Pick devices…') + '</button>' +
-        '<span>' + ids.length + ' device' + (ids.length === 1 ? '' : 's') + '</span></div>' +
-      (chips ? '<div class="scw-pa-chips">' + chips + '</div>' : '') +
-      '<div class="scw-pa-copy-row"><strong>On each device:</strong>' +
-        '<select data-scw-pa-copy-rule' + (_state.sending ? ' disabled' : '') + '>' + copyRuleOptionsHtml() + '</select></div>' +
-    '</div>';
-  }
-  function toolsHtml() {
-    var types = typeOptions();
-    var forall = '<option value="new">New photo (no type)</option>' +
-      '<option value="firstreq">Fill the first open required slot (else new photo)</option>';
-    for (var t = 0; t < types.length; t++) forall += '<option value="type:' + esc(types[t].id) + '">New photo: ' + esc(types[t].label) + '</option>';
-    var dis = _state.sending ? ' disabled' : '';
-    return '<div class="scw-pa-tools">' +
-      '<button type="button" class="scw-pa-btn sm" data-scw-pa-match' + dis + ' title="Re-read every file name and aim each photo at the device it names">Match file names</button>' +
-      '<button type="button" class="scw-pa-btn sm" data-scw-pa-order' + dis + ' title="Pick devices in order; the files pair with them in name order">Assign in order…</button>' +
-      '<span class="scw-pa-spacer"></span>' +
-      '<label>For all rows: <select data-scw-pa-forall' + dis + '>' + forall + '</select></label>' +
-      '<button type="button" class="scw-pa-btn sm" data-scw-pa-forall-apply' + dis + '>Apply</button>' +
-    '</div>';
-  }
-  function render() {
-    var el = root();
-    if (!el || !_state) return;
+  function tileHtml(row) {
     var st = _state;
-    var bd = el.querySelector('.scw-pa-bd');
-    var rows = st.rows;
-    var copyOk = rows.length === 1 && rows[0].status !== 'too-big';
-    var h = '<div class="scw-pa-preview"><strong>Preview.</strong> Only you see this button and modal; the regular "+ Add Photos" is unchanged.</div>' +
-      '<div class="scw-pa-modes">' +
-        '<button type="button" data-scw-pa-mode="assign" class="' + (st.mode === 'assign' ? 'is-on' : '') + '"' + (st.sending ? ' disabled' : '') + '>One photo per device</button>' +
-        '<button type="button" data-scw-pa-mode="copy" class="' + (st.mode === 'copy' ? 'is-on' : '') + '"' + ((!copyOk || st.sending) ? ' disabled' : '') +
-          ' title="' + (copyOk ? 'Send one photo to several devices' : 'Queue exactly one photo to copy it to several devices') + '">Copy one photo to several devices</button>' +
-      '</div>' +
-      (st.sending ? '' :
-        '<div class="scw-pa-drop" tabindex="0"><div><strong>Drop photos here</strong> or click to choose</div>' +
-          '<span class="scw-pa-hint">Images only · large photos are resized · HEIC converts to JPEG</span>' +
-          '<input type="file" multiple accept="image/*,.heic,.heif" style="display:none"></div>');
-    if (!rows.length) {
-      h += '<div class="scw-pa-empty">No photos queued yet.</div>';
-    } else if (st.mode === 'copy') {
-      h += '<div class="scw-pa-head"><div></div><div>Photo</div><div></div><div></div><div>Status</div><div></div></div>' +
-        rows.map(function (r) {
-          return '<div class="scw-pa-row" data-scw-pa-row="' + esc(r.id) + '">' + thumbHtml(r) +
-            '<div class="scw-pa-name"><div class="n" title="' + esc(r.filename) + '">' + esc(r.filename) + '</div>' +
-              '<div class="s">' + esc(fmtBytes(r.sizeBytes)) + (r.origSize ? ' (resized)' : '') + '</div></div>' +
-            '<div></div><div></div>' + statusHtml(r) +
-            '<button type="button" class="scw-pa-x" data-scw-pa-remove="' + esc(r.id) + '" title="Remove"' + (st.sending ? ' disabled' : '') + '>&times;</button></div>';
-        }).join('') + copyHtml();
+    var cls = 'scw-pa-tile' + (st.selected[row.id] ? ' is-sel' : '') +
+      (row.status === 'too-big' || (!row.targets.length && row.status !== 'done') ? ' is-todo' : '') +
+      (row.status === 'done' ? ' is-done' : '') + (st.menuRow === row.id ? ' has-menu' : '');
+    var h = '<div class="' + cls + '" data-scw-pa-row="' + esc(row.id) + '">' +
+      thumbHtml(row, !(st.sending || row.status === 'done' || row.status === 'too-big')) +
+      '<button type="button" class="scw-pa-x" data-scw-pa-remove="' + esc(row.id) + '" title="Remove from the queue" aria-label="Remove ' + esc(row.filename) + '"' + (st.sending ? ' disabled' : '') + '>&times;</button>' +
+      '<div class="scw-pa-meta">' +
+        '<div class="scw-pa-name" title="' + esc(row.filename) + '">' + esc(row.filename) + '</div>';
+    if (row.status === 'too-big') {
+      h += statusHtml(row);
     } else {
-      h += toolsHtml() +
-        '<div class="scw-pa-head"><div></div><div>Photo</div><div>Device</div><div>Slot / type</div><div>Status</div><div></div></div>' +
-        rows.map(rowHtml).join('');
-    }
-    if (st.errors.length) {
-      h += '<div class="scw-pa-errors">' + st.errors.map(function (e) { return '<div>' + esc(e) + '</div>'; }).join('') + '</div>';
-    }
-    if (st.done) h += '<div class="scw-pa-done">' + esc(st.done) + '</div>';
-    bd.innerHTML = h;
-
-    // Thumbnails (object URLs, revoked on load).
-    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-      var slots = bd.querySelectorAll('[data-scw-pa-thumb]');
-      for (var i = 0; i < slots.length; i++) {
-        var row = rowById(slots[i].getAttribute('data-scw-pa-thumb'));
-        if (!row || !row.blob || String(row.mimeType).indexOf('image/') !== 0) continue;
-        try {
-          var url = URL.createObjectURL(row.blob);
-          var img = document.createElement('img');
-          img.src = url;
-          img.onload = img.onerror = (function (u) { return function () { try { URL.revokeObjectURL(u); } catch (e) {} }; })(url);
-          slots[i].innerHTML = '';
-          slots[i].appendChild(img);
-        } catch (e) { /* keep the extension tile */ }
+      for (var i = 0; i < row.targets.length; i++) h += chipHtml(row, row.targets[i]);
+      if (row.status !== 'done') {
+        if (!row.targets.length) {
+          h += '<div class="scw-pa-finder"><svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
+            '<input type="text" data-scw-pa-finder="' + esc(row.id) + '" placeholder="Pick device — type a number" aria-label="Which device is ' + esc(row.filename) + '?" autocomplete="off"' +
+            (st.finderRow === row.id ? ' value="' + esc(st.railQuery) + '"' : '') + (st.sending ? ' disabled' : '') + '></div>' +
+            '<div class="scw-pa-hint">Filters the devices on the right · <span class="scw-pa-k">Enter</span> takes the top one</div>';
+        } else {
+          h += '<button type="button" class="scw-pa-addmore" data-scw-pa-more="' + esc(row.id) + '"' + (st.sending ? ' disabled' : '') + '>+ another device' +
+            (row.targets.length > 1 ? ' · one upload, ' + row.targets.length + ' copies' : '') + '</button>';
+        }
       }
+      h += statusHtml(row);
+      if (st.menuRow === row.id) h += menuHtml(row);
     }
-
-    // Footer
-    var usable = rows.filter(function (r) { return r.status !== 'too-big'; });
-    var aimed = usable.filter(function (r) { return r.targetId; }).length;
-    var sum = el.querySelector('.scw-pa-summary');
-    var sendBtn = el.querySelector('[data-scw-pa-send]');
-    var clearBtn = el.querySelector('[data-scw-pa-clear]');
-    if (st.mode === 'copy') {
-      sum.textContent = usable.length ? ('1 photo → ' + st.copy.targetIds.length + ' device' + (st.copy.targetIds.length === 1 ? '' : 's')) : '';
-      sendBtn.disabled = st.sending || !usable.length || !st.copy.targetIds.length || !!st.done;
-    } else {
-      sum.textContent = rows.length
-        ? (usable.length + ' photo' + (usable.length === 1 ? '' : 's') + ' · ' + aimed + ' aimed' +
-           (usable.length - aimed ? ' · ' + (usable.length - aimed) + ' need a device' : '') +
-           (rows.length - usable.length ? ' · ' + (rows.length - usable.length) + ' too big' : ''))
-        : '';
-      sendBtn.disabled = st.sending || !usable.length || aimed < usable.length || !!st.done;
+    return h + '</div></div>';
+  }
+  function visibleRows() {
+    return _state.rows.filter(function (r) {
+      if (_state.hideAimed && r.targets.length && r.status !== 'done') return false;
+      return true;
+    });
+  }
+  function renderGrid() {
+    var g = q('.scw-pa-grid');
+    if (!g) return;
+    if (!_state.rows.length) {
+      g.innerHTML = '<div class="scw-pa-empty"><b>Drop photos here</b> or use "+ Add photos".<br><span style="font-size:12px">Large photos are resized · HEIC converts to JPEG · name a file after its device (i10, I-010, 10) and it aims itself.</span></div>';
+      return;
     }
-    sendBtn.textContent = st.sending ? 'Sending…' : (st.done ? 'Sent' : 'Send');
-    clearBtn.disabled = st.sending || !rows.length;
+    var rows = visibleRows();
+    g.innerHTML = rows.map(tileHtml).join('') +
+      (rows.length < _state.rows.length ? '<div class="scw-pa-empty" style="padding:14px">' + (_state.rows.length - rows.length) + ' aimed photos hidden</div>' : '');
+  }
+  function renderTile(rowId) {
+    var row = rowById(rowId);
+    var el = q('[data-scw-pa-row="' + rowId + '"]');
+    if (!row || !el) { renderGrid(); return; }
+    var tmp = document.createElement('div');
+    tmp.innerHTML = tileHtml(row);
+    el.parentNode.replaceChild(tmp.firstChild, el);
+  }
+  function renderRail() {
+    var hd = q('.scw-pa-rail-hd'), list = q('.scw-pa-rail-list');
+    if (!hd || !list || !_state) return;
+    var st = _state;
+    if (!hd.querySelector('[data-scw-pa-railq]')) {
+      hd.innerHTML =
+        '<div class="t"><b>Devices</b> <span class="muted">· click one to aim the selected photo at it</span></div>' +
+        '<div class="scw-pa-search"><svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
+          '<input type="text" data-scw-pa-railq placeholder="Number, name or MDF/IDF" aria-label="Find a device" autocomplete="off"></div>' +
+        '<label><input type="checkbox" data-scw-pa-needfirst' + (st.railNeedFirst ? ' checked' : '') + '> Devices still missing a required photo first</label>';
+    }
+    var sel = selectedIds().map(rowById).filter(Boolean);
+    if (!sel.length && st.finderRow) { var fr = rowById(st.finderRow); if (fr) sel = [fr]; }
+    var hits = railHits();
+    var groups = [], byId = Object.create(null);
+    for (var i = 0; i < hits.length; i++) {
+      var c = hits[i];
+      if (!byId[c.mdf.id]) { byId[c.mdf.id] = { id: c.mdf.id, label: c.mdf.label, items: [] }; groups.push(byId[c.mdf.id]); }
+      byId[c.mdf.id].items.push(c);
+    }
+    var h = '';
+    if (!hits.length) h = '<div style="padding:16px 12px;color:#64748b;font-size:12.5px">No device matches "' + esc(st.railQuery) + '".</div>';
+    for (var g = 0; g < groups.length; g++) {
+      var items = railOrdered(groups[g].items);
+      h += '<div class="scw-pa-grp"><span>' + esc(groups[g].label) + '</span>' +
+        (selectedIds().length && items.length > 1 ? '<button type="button" data-scw-pa-tickgrp="' + esc(groups[g].id) + '">Tick all ' + items.length + '</button>' : '') + '</div>';
+      for (var k = 0; k < items.length; k++) h += devRowHtml(items[k], sel);
+    }
+    list.innerHTML = h;
+  }
+  function devRowHtml(c, sel) {
+    var info = deviceInfo(c.id);
+    var have = 0, hit = null;
+    for (var i = 0; i < sel.length; i++) { var t = targetOf(sel[i], c.id); if (t) { have++; hit = hit || t; } }
+    var queued = 0;
+    for (var r = 0; r < _state.rows.length; r++) {
+      var row = _state.rows[r];
+      if (row.status === 'done' || row.status === 'too-big') continue;
+      if (targetOf(row, c.id)) queued++;
+    }
+    var box = have === 0 ? '' : (have === sel.length ? ' on' : ' some');
+    var stCls = '', stTxt = '';
+    if (hit && sel.length === 1) { stCls = 'q'; stTxt = 'this photo → ' + describeTarget(hit); }
+    else if (have) { stCls = 'q'; stTxt = have + ' of ' + sel.length + ' selected → here'; }
+    else if (info.reqTotal) {
+      stTxt = (info.reqTotal - info.reqOpen) + ' of ' + info.reqTotal + ' required' + (queued ? ' · ' + queued + ' queued' : '');
+      stCls = info.reqOpen ? '' : 'full';
+    } else { stCls = 'none'; stTxt = queued ? queued + ' queued' : 'no required slots'; }
+    return '<div class="scw-pa-dev' + (have ? ' is-hit' : '') + '" data-scw-pa-dev-row="' + esc(c.id) + '" title="' + esc(c.label) + '">' +
+      '<span class="box' + box + '" aria-hidden="true"></span>' +
+      '<span class="id">' + esc(c.drop || '—') + '</span>' +
+      '<span class="nm">' + esc(c.product || c.label) + '</span>' +
+      '<span class="st ' + stCls + '">' + esc(stTxt) + '</span></div>';
+  }
+  function counts() {
+    var st = _state, out = { photos: 0, aimed: 0, dest: 0, fills: 0, news: 0, unaimed: 0, tooBig: 0, done: 0, guessed: 0 };
+    for (var i = 0; i < st.rows.length; i++) {
+      var r = st.rows[i];
+      if (r.status === 'too-big') { out.tooBig++; continue; }
+      if (r.status === 'done') { out.done++; continue; }
+      out.photos++;
+      if (!r.targets.length) { out.unaimed++; continue; }
+      out.aimed++;
+      var g = false;
+      for (var t = 0; t < r.targets.length; t++) {
+        out.dest++;
+        if (r.targets[t].mode === 'slot') out.fills++; else out.news++;
+        if (r.targets[t].guessed) g = true;
+      }
+      if (g) out.guessed++;
+    }
+    return out;
+  }
+  function renderFooter() {
+    var sum = q('.scw-pa-summary'), sendBtn = q('[data-scw-pa-send]'), clearBtn = q('[data-scw-pa-clear]');
+    if (!sum || !sendBtn) return;
+    var st = _state, c = counts();
+    var parts = [];
+    if (c.photos) {
+      parts.push('<b>' + plural(c.photos, 'photo') + ' → ' + plural(c.dest, 'destination') + '</b>');
+      if (c.fills) parts.push(c.fills + ' fill a slot');
+      if (c.news) parts.push(plural(c.news, 'new photo'));
+      if (c.guessed) parts.push(plural(c.guessed, 'guess', 'guesses') + ' to confirm');
+      if (c.unaimed) parts.push('<span style="color:#92400e">' + plural(c.unaimed, 'photo') + ' still need' + (c.unaimed === 1 ? 's' : '') + ' a device</span>');
+    }
+    if (c.done) parts.push(plural(c.done, 'sent photo'));
+    if (c.tooBig) parts.push(plural(c.tooBig, 'too big'));
+    sum.innerHTML = parts.join(' · ');
+    sendBtn.disabled = st.sending || !c.aimed;
+    sendBtn.textContent = st.sending ? 'Sending…' : (c.aimed ? 'Send ' + plural(c.aimed, 'photo') : 'Send');
+    sendBtn.title = c.unaimed && c.aimed ? 'The ' + plural(c.unaimed, 'unaimed photo') + ' stay in the queue' : '';
+    if (clearBtn) clearBtn.disabled = st.sending || !st.rows.length;
+  }
+  function renderNotes() {
+    var er = q('.scw-pa-errors'), dn = q('.scw-pa-done');
+    if (er) { er.hidden = !_state.errors.length; er.innerHTML = _state.errors.map(function (e) { return '<div>' + esc(e) + '</div>'; }).join(''); }
+    if (dn) { dn.hidden = !_state.done; dn.textContent = _state.done; }
   }
 
   // ── Plan + send ───────────────────────────────────────────────────
-  /** Every write the batch will make, or the reasons it can't. */
+  /** Every write the batch will make, or the reasons it can't. Aimed rows
+   *  only; unaimed rows are left in the queue, never an error. */
   function buildPlan() {
-    var st = _state;
-    var errs = [], ops = [];
+    var st = _state, errs = [], ops = [];
     if (!st) return { ops: ops, errs: ['Nothing to send.'] };
-    var vk = st.viewKey;
-    var saveView = saveViewFor(vk);
-    var hook = webhookUrl();
-    function create(row, targetId, typeId, typeLabel) {
-      ops.push({ kind: 'create', rowId: row.id, targetId: targetId, typeId: typeId || '', typeLabel: typeLabel || '' });
-    }
-    function fill(row, targetId, slot) {
-      ops.push({ kind: 'fill', rowId: row.id, targetId: targetId, slotId: slot.id, slotType: slot.type, slotRequired: slot.required, history: slot.history || '' });
-    }
-    if (st.mode === 'copy') {
-      var row = st.rows[0];
-      if (!row || row.status === 'too-big') errs.push('Queue one photo to copy.');
-      else if (!st.copy.targetIds.length) errs.push('Pick at least one device to copy the photo to.');
-      else {
-        var rule = st.copy.rule || 'new';
-        for (var i = 0; i < st.copy.targetIds.length; i++) {
-          var tid = st.copy.targetIds[i];
-          if (rule.indexOf('fill:') === 0) {
-            var want = rule.slice(5);
-            var slots = slotsCached(tid), hit = null;
-            for (var s = 0; s < slots.length; s++) {
-              if (String(slots[s].type).trim().toLowerCase() === want.trim().toLowerCase()) { hit = slots[s]; break; }
-            }
-            if (hit) fill(row, tid, hit);
-            else create(row, tid, typeIdByLabel(want), want);
-          } else {
-            create(row, tid, '', '');
-          }
-        }
-      }
-    } else {
-      for (var r = 0; r < st.rows.length; r++) {
-        var rw = st.rows[r];
-        if (rw.status === 'too-big') continue;
-        if (!rw.targetId) { errs.push(rw.filename + ': pick a device.'); continue; }
-        if (rw.slot && rw.slot.indexOf('slot:') === 0) {
-          var sid = rw.slot.slice(5), sl = null, cs = slotsCached(rw.targetId);
-          for (var k = 0; k < cs.length; k++) if (cs[k].id === sid) { sl = cs[k]; break; }
-          if (!sl) { errs.push(rw.filename + ': that slot is no longer open — pick again.'); continue; }
-          fill(rw, rw.targetId, sl);
-        } else if (rw.slot && rw.slot.indexOf('type:') === 0) {
-          var tid2 = rw.slot.slice(5);
-          create(rw, rw.targetId, tid2, typeLabelById(tid2));
+    var saveView = saveViewFor(st.viewKey), hook = webhookUrl();
+    for (var r = 0; r < st.rows.length; r++) {
+      var row = st.rows[r];
+      if (row.status === 'too-big' || row.status === 'done' || !row.targets.length) continue;
+      for (var t = 0; t < row.targets.length; t++) {
+        var tg = row.targets[t];
+        if (tg.mode === 'slot') {
+          if (slotTakenBy(tg.slotId, row.id)) { errs.push(row.filename + ': two photos aim at the same slot (' + describeTargetLong(tg).replace(/^Fill /, '') + ').'); continue; }
+          ops.push({ kind: 'fill', rowId: row.id, target: tg });
         } else {
-          create(rw, rw.targetId, '', '');
+          ops.push({ kind: 'create', rowId: row.id, target: tg });
         }
       }
     }
     var fills = ops.filter(function (o) { return o.kind === 'fill'; }).length;
     var creates = ops.filter(function (o) { return o.kind === 'create'; }).length;
-    if (fills && !saveView) {
-      errs.push('This page has no photo save view mapped (photo-edit-panel.js SAVE_VIEWS), so slots cannot be filled from here.');
-    }
+    if (fills && !saveView) errs.push('This page has no photo save view mapped (photo-edit-panel.js SAVE_VIEWS), so slots cannot be filled from here.');
     if (creates && !hook) {
-      errs.push(creates + ' new photo' + (creates === 1 ? '' : 's') + ' would need the Make webhook (SCW.CONFIG.' + CONFIG.WEBHOOK_KEY +
+      errs.push(plural(creates, 'new photo') + ' would need the Make webhook (SCW.CONFIG.' + CONFIG.WEBHOOK_KEY +
         '), which is not configured yet — aim those photos at open slots instead.');
     }
-    if (!ops.length && !errs.length) errs.push('Nothing to send.');
+    if (!ops.length && !errs.length) errs.push('Nothing to send — aim a photo at a device first.');
     return { ops: ops, errs: errs, saveView: saveView, hook: hook };
   }
-
   function uploadRow(row) {
     var u = pepUtil();
     if (!u || typeof u.uploadImage !== 'function') return Promise.reject(new Error('photo upload machinery not loaded'));
     row.status = 'uploading'; row.error = '';
-    render();
+    renderTile(row.id);
     return u.uploadImage(row.blob, row.filename).then(function (assetId) {
       if (!assetId) throw new Error('no asset id returned');
       row.assetId = String(assetId);
       row.status = 'uploaded';
-      render();
+      renderTile(row.id);
       return row.assetId;
     }).catch(function (err) {
       row.status = 'failed';
       row.error = 'Upload failed: ' + ((err && err.message) || err);
-      render();
+      renderTile(row.id);
       return '';
     });
   }
@@ -1034,33 +1436,31 @@
     return existing ? safe + '<br>' + existing : safe;
   }
   function doFill(op, row, saveView) {
-    var u = pepUtil();
-    var PF = CONFIG.PHOTO_FIELDS;
+    var u = pepUtil(), PF = CONFIG.PHOTO_FIELDS, tg = op.target;
     var body = {}; body[PF.img] = row.assetId;
-    return u.putRecord(saveView, op.slotId, body).then(function () {
-      // Best-effort completion stamp + history — never fails the fill.
+    return u.putRecord(saveView, tg.slotId, body).then(function () {
       var extra = {};
       extra[PF.completed] = 'Yes';
-      extra[PF.history] = historyLine(op.history, row.filename);
-      return Promise.resolve(u.putRecord(saveView, op.slotId, extra)).catch(function (err) {
-        console.warn('[scw-photo-assign] completion stamp skipped on ' + op.slotId + ':', (err && err.message) || err);
+      extra[PF.history] = historyLine(tg.history, row.filename);
+      return Promise.resolve(u.putRecord(saveView, tg.slotId, extra)).catch(function (err) {
+        console.warn('[scw-photo-assign] completion stamp skipped on ' + tg.slotId + ':', (err && err.message) || err);
       });
     }).then(function () {
-      return { ok: true, kind: 'fill', op: op };
+      return { ok: true, op: op };
     }).catch(function (err) {
-      return { ok: false, kind: 'fill', op: op, error: (err && err.message) || String(err) };
+      return { ok: false, op: op, error: (err && err.message) || String(err) };
     });
   }
   function manifestFor(op, row) {
-    var c = candidateById(op.targetId);
+    var tg = op.target, c = candidateById(tg.deviceId);
     return {
       uploadKind: 'photo_assign',
       batchId:    _state.batchId,
-      uploadId:   row.uploadId + ':' + op.targetId,
+      uploadId:   row.uploadId + ':' + tg.deviceId,
       asset:      { id: row.assetId, filename: row.filename, mimeType: row.mimeType, sizeBytes: row.sizeBytes },
-      target:     { kind: targetKind(), recordId: op.targetId, label: c ? c.label : '' },
+      target:     { kind: targetKind(), recordId: tg.deviceId, label: c ? c.label : '' },
       slot:       null,
-      photoType:  op.typeId ? { id: op.typeId, label: op.typeLabel || '' } : null,
+      photoType:  tg.typeId ? { id: tg.typeId, label: tg.typeLabel || '' } : null,
       required:   false,
       scope:      resolveScope(_state.viewKey),
       sourceViewId: _state.viewKey,
@@ -1068,23 +1468,18 @@
     };
   }
   function doCreate(op, row, hook) {
-    var body = JSON.stringify(manifestFor(op, row));
-    var p;
-    try {
-      p = fetch(hook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body });
-    } catch (e) { p = Promise.reject(e); }
+    var body = JSON.stringify(manifestFor(op, row)), p;
+    try { p = fetch(hook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body }); }
+    catch (e) { p = Promise.reject(e); }
     // Optimistic, like bulk-upload.js: Make often answers without CORS
     // headers, which rejects the fetch AFTER the request was delivered.
-    return Promise.resolve(p).then(function () {
-      return { ok: true, kind: 'create', op: op };
-    }, function (err) {
+    return Promise.resolve(p).then(function () { return { ok: true, op: op }; }, function (err) {
       console.warn('[scw-photo-assign] manifest send error (treated as sent):', (err && err.message) || err);
-      return { ok: true, kind: 'create', op: op, unconfirmed: true };
+      return { ok: true, op: op, unconfirmed: true };
     });
   }
   function runQueue(tasks, limit) {
-    var results = new Array(tasks.length);
-    var next = 0, active = 0;
+    var results = new Array(tasks.length), next = 0, active = 0;
     return new Promise(function (resolve) {
       function pump() {
         if (next >= tasks.length && active === 0) { resolve(results); return; }
@@ -1099,19 +1494,14 @@
       pump();
     });
   }
-  function describeOp(op) {
-    var c = candidateById(op.targetId);
-    var dev = c ? (c.drop || c.label) : 'device';
-    if (op.kind === 'fill') return 'Filled ' + (op.slotType || 'slot') + ' on ' + dev;
-    return 'New ' + (op.typeLabel ? '"' + op.typeLabel + '" ' : '') + 'photo on ' + dev + ' (sent to Make)';
-  }
-  /** Upload every needed file once, then write every planned op with the
+  /** Upload every aimed photo once, then write every destination with the
    *  concurrency cap. Resolves the summary; never rejects. */
   function send() {
-    if (!_state || _state.sending || _state.done) return Promise.resolve(null);
+    if (!_state || _state.sending) return Promise.resolve(null);
     var st = _state;
+    closeMenu();
     var plan = buildPlan();
-    st.errors = plan.errs;
+    st.errors = plan.errs; st.done = '';
     if (plan.errs.length) { render(); return Promise.resolve({ errors: plan.errs }); }
     st.sending = true;
     render();
@@ -1120,53 +1510,51 @@
       var row = rowById(plan.ops[i].rowId);
       if (row && needed.indexOf(row) === -1) needed.push(row);
     }
+    var guessed = 0;
+    for (var g = 0; g < needed.length; g++) {
+      for (var gt = 0; gt < needed[g].targets.length; gt++) if (needed[g].targets[gt].guessed) { guessed++; break; }
+    }
     var up = Promise.resolve();
     needed.forEach(function (row) { up = up.then(function () { return uploadRow(row); }); });
     return up.then(function () {
       var tasks = plan.ops.map(function (op) {
         return function () {
           var row = rowById(op.rowId);
-          if (!row || !row.assetId) return { ok: false, kind: op.kind, op: op, error: 'upload failed', skipped: true };
+          if (!row || !row.assetId) return { ok: false, op: op, error: 'upload failed', skipped: true };
           return op.kind === 'fill' ? doFill(op, row, plan.saveView) : doCreate(op, row, plan.hook);
         };
       });
       return runQueue(tasks, CONFIG.WRITES_IN_FLIGHT);
     }).then(function (results) {
-      var filled = 0, created = 0, failed = 0;
-      var perRow = Object.create(null);
-      st.copy.results = [];
+      var filled = 0, created = 0, failed = 0, perRow = Object.create(null);
       for (var r = 0; r < results.length; r++) {
         var res = results[r] || { ok: false, error: 'unknown' };
         var op = res.op || plan.ops[r];
-        if (res.ok) { if (res.kind === 'fill') filled++; else created++; } else failed++;
-        var text = res.ok ? describeOp(op) : ('Failed: ' + (res.error || 'unknown'));
-        if (st.mode === 'copy') st.copy.results.push({ targetId: op.targetId, ok: !!res.ok, text: text });
-        if (!perRow[op.rowId]) perRow[op.rowId] = { ok: 0, fail: 0, text: '' };
-        if (res.ok) perRow[op.rowId].ok++; else perRow[op.rowId].fail++;
-        perRow[op.rowId].text = text;
+        if (res.ok) { if (op.kind === 'fill') filled++; else created++; } else failed++;
+        var pr = perRow[op.rowId] || (perRow[op.rowId] = { ok: 0, fail: 0, texts: [] });
+        if (res.ok) pr.ok++; else pr.fail++;
+        pr.texts.push(res.ok ? describeTargetLong(op.target) + (op.kind === 'create' ? ' (sent to Make)' : '') : 'Failed: ' + (res.error || 'unknown'));
       }
       for (var k = 0; k < st.rows.length; k++) {
-        var rw = st.rows[k], pr = perRow[rw.id];
-        if (!pr) continue;
-        if (rw.status === 'failed') continue;
-        if (st.mode === 'copy') {
-          rw.status = pr.fail ? (pr.ok ? 'done' : 'failed') : 'done';
-          rw.result = pr.ok + ' of ' + (pr.ok + pr.fail) + ' devices written';
-          if (!pr.ok) rw.error = 'Every write failed';
-        } else {
-          rw.status = pr.fail ? 'failed' : 'done';
-          rw.result = pr.text;
-          if (pr.fail) rw.error = pr.text;
+        var rw = st.rows[k], p = perRow[rw.id];
+        if (!p || rw.status === 'failed') continue;
+        if (p.fail) { rw.status = 'failed'; rw.error = p.texts.join(' · '); }
+        else {
+          rw.status = 'done'; rw.result = p.texts.join(' · ');
+          for (var tg2 = 0; tg2 < rw.targets.length; tg2++) rw.targets[tg2].guessed = false;
+          delete st.selected[rw.id];
         }
       }
-      var summary = {
-        filled: filled, created: created, failed: failed,
-        uploaded: needed.filter(function (n) { return n.assetId; }).length
-      };
-      st.done = (filled ? filled + ' slot' + (filled === 1 ? '' : 's') + ' filled' : '') +
-        (created ? (filled ? ' · ' : '') + created + ' new photo' + (created === 1 ? '' : 's') + ' sent to Make' : '') +
-        (failed ? (filled || created ? ' · ' : '') + failed + ' failed' : '');
-      if (!st.done) st.done = 'Nothing was written.';
+      var uploaded = needed.filter(function (n) { return n.assetId; }).length;
+      var summary = { sent: uploaded, uploaded: uploaded, filled: filled, created: created, failed: failed, guessed: guessed,
+                      leftover: st.rows.filter(function (x) { return x.status === 'queued' && !x.targets.length; }).length };
+      var bits = [];
+      if (filled) bits.push(plural(filled, 'slot') + ' filled');
+      if (created) bits.push(plural(created, 'new photo') + ' sent to Make');
+      if (guessed) bits.push(plural(guessed, 'guess', 'guesses') + ' confirmed');
+      if (failed) bits.push(failed + ' failed');
+      if (summary.leftover) bits.push(plural(summary.leftover, 'photo') + ' still in the queue');
+      st.done = bits.length ? bits.join(' · ') : 'Nothing was written.';
       st.sending = false;
       render();
       refreshAfter(st.viewKey, created > 0);
@@ -1192,7 +1580,6 @@
       e.preventDefault(); e.stopPropagation();
       open(b.getAttribute('data-scw-pa-open'));
     });
-    // Any worksheet-v2 view that renders gets the button once its toolbar is up.
     try {
       if (typeof $ === 'function' && $(document).on) {
         $(document).on('knack-view-render.any.scwPhotoAssign', function (e, view) {
@@ -1205,29 +1592,33 @@
   }
 
   ns.photoAssign = {
-    CONFIG:        CONFIG,
-    open:          open,
-    close:         close,
-    inject:        inject,
-    watch:         watch,
-    isAllowed:     isAllowed,
-    candidatesFor: candidatesFor,
-    matchFile:     matchFile,
-    tokensOf:      tokensOf,
-    openSlotsFor:  openSlotsFor,
-    targetKind:    targetKind,
-    resolveScope:  resolveScope,
-    addFiles:      addFiles,
-    setTarget:     function (rowId, targetId) { setTarget(rowId, targetId); render(); },
-    setSlot:       function (rowId, slot) { var r = rowById(rowId); if (r) { r.slot = slot; render(); } },
-    setMode:       setMode,
-    setCopyTargets: function (ids) { setCopyTargets(ids); render(); },
-    setCopyRule:   function (rule) { if (_state) { _state.copy.rule = rule; render(); } },
-    pairInOrder:   function (ids) { pairInOrder(ids); render(); },
-    applyToAll:    function (rule) { applyToAll(rule); render(); },
-    buildPlan:     buildPlan,
-    send:          send,
-    state:         function () { return _state; }
+    CONFIG:            CONFIG,
+    open:              open,
+    close:             close,
+    inject:            inject,
+    watch:             watch,
+    isAllowed:         isAllowed,
+    candidatesFor:     candidatesFor,
+    buildMatchContext: buildMatchContext,
+    matchFile:         matchFile,
+    tokensOf:          tokensOf,
+    openSlotsFor:      openSlotsFor,
+    targetKind:        targetKind,
+    resolveScope:      resolveScope,
+    addFiles:          addFiles,
+    select:            function (rowId, on) { if (!_state) return; if (on === false) delete _state.selected[rowId]; else _state.selected[rowId] = true; render(); },
+    clickDevice:       clickDevice,
+    tickGroup:         tickGroup,
+    setFinderQuery:    setFinderQuery,
+    finderEnter:       finderEnter,
+    railHits:          function () { return railOrdered(railHits()).map(function (c) { return c.id; }); },
+    setTarget:         function (rowId, deviceId, spec) { var r = rowById(rowId); if (r) r.match = null; var ok = addTarget(rowId, deviceId, spec || null); render(); return ok; },
+    removeTarget:      function (rowId, deviceId) { removeTarget(rowId, deviceId); render(); },
+    setRule:           setRule,
+    pairInOrder:       function (ids) { pairInOrder(ids); render(); },
+    buildPlan:         buildPlan,
+    send:              send,
+    state:             function () { return _state; }
   };
 })();
 /*** END WORKSHEET V2 — BULK PHOTO ASSIGN *************************************/
