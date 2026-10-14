@@ -1684,6 +1684,10 @@
   window.SCW.bulkUpload = {
     open:                openModal,
     config:              CONFIG,
+    // HEIC → JPEG + oversized-raster downscale, exported for the v2 photo
+    // assign modal (worksheet-v2/photo-assign.js) so both uploaders queue
+    // the same bytes.
+    prepareFile:         prepareFile,
     dbGetAll:            dbGetAll,
     dbClear:             dbClear,
     refreshSingleRecord: refreshSingleRecord

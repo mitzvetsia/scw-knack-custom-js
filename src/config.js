@@ -710,6 +710,38 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   PHOTO_ADD_BULK_MODAL: true,
 
   // ─────────────────────────────────────────────────────────────
+  // v2 bulk photo ASSIGN modal (worksheet-v2/photo-assign.js) — preview
+  // ─────────────────────────────────────────────────────────────
+  // The browser uploads each photo STRAIGHT to Knack's asset store with the
+  // user's session token (no API key) and then, per target device, either
+  // FILLS an open slot itself (view-based PUT of the asset id onto the
+  // existing DOC_photos record — no Make involved) or posts ONE small
+  // manifest here so Make CREATES a new DOC_photos record. No file bytes
+  // ever ride this hook. Request body (application/json), one per target:
+  //   {
+  //     uploadKind:  'photo_assign',            // branch on this
+  //     batchId:     <uuid>,  uploadId: <uuid:targetId>,   // idempotency key
+  //     asset:       { id: <knack asset id>, filename, mimeType, sizeBytes },
+  //     target:      { kind: 'installLineItemID' | 'sowLineItemID' | 'surveyLineItemID',
+  //                    recordId: <24-hex line item>, label: 'E-004 · Vista Dome' },
+  //     slot:        null,                       // fills never reach Make
+  //     photoType:   { id: <CONFIG_photo type id>, label } | null,
+  //     required:    false,
+  //     scope:       { linkField: 'deploymentID' | 'projectID' | 'sowID' | 'surveyID',
+  //                    recordId: <24-hex> } | null,   // the parent the v1 upload ships
+  //     sourceViewId: 'view_4093',
+  //     triggeredBy: { id, name, email }
+  //   }
+  // Make: search DOC_photos by uploadId (resend-safe) → create the record
+  // with field_771 = asset.id, field_2445 = photoType.id (when given),
+  // field_2446 = No, and the connections the bulk-upload scenario already
+  // writes for target.kind + scope. Copy mode sends the SAME asset.id in
+  // every manifest of the batch. Response is ignored (optimistic send).
+  // Blank / PLACEHOLDER = the modal refuses batches that need a create and
+  // says so; slot fills work without it.
+  MAKE_PHOTO_ASSIGN_WEBHOOK: "PLACEHOLDER",
+
+  // ─────────────────────────────────────────────────────────────
   // Bulk Add Mounting Box (device-worksheet → Add Mount Box button)
   // ─────────────────────────────────────────────────────────────
   // Fires when the user checks N rows on a device worksheet, clicks
