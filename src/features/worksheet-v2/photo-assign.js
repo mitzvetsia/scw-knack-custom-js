@@ -15,13 +15,17 @@
  * Three gestures, same result:
  *   · type on the tile — a photo with no device carries a finder; it
  *     filters the rail, Enter takes the top hit, Tab walks the unaimed;
- *   · select photos, click a device in the rail (toggles the destination);
- *   · drag a tile (or the selection) onto a device row.
- * One batch rule in the toolbar ("when a device has an open required slot:
- * fill it, otherwise add a new photo" / "always add a new photo") decides
- * what a fresh destination does; the chip's own menu is the per-photo
- * override. Two photos aimed at one device fill its open required slots in
- * order (a slot is never filled twice in one batch).
+ *   · select photos, click a device in the rail (toggles the destination)
+ *     — or click one of the device's OPEN SLOTS, listed as rows under it,
+ *     to aim at exactly that slot (rev 3, 2026-10-14: the batch-rule
+ *     select and "Assign in order…" are gone — the rail SAYS what is open,
+ *     and a slot is picked by clicking it);
+ *   · drag a tile (or the selection) onto a device row or a slot row.
+ * A device click fills the first open REQUIRED slot nobody else in the
+ * batch is filling, else adds a new photo; the chip's own menu and the slot
+ * rows are the per-photo override. A slot is never filled twice in one
+ * batch. The zoom button on a tile opens the photo full-size (← → walk the
+ * queue) so a photo can be recognised before it is aimed.
  *
  * FILE-NAME MATCHING (board 2 of the canvas): a name is read as letters and
  * digit runs, separators and case ignored, leading zeros dropped. A device
@@ -85,6 +89,10 @@
 
   var STYLE_ID = 'scw-photo-assign-css';
   var ROOT_ID  = 'scw-photo-assign';
+  // Rail rows a tile can be dropped on: a device, one of its open slots, or
+  // its "+ new photo" row.
+  var DROP_SEL = '[data-scw-pa-dev-row], [data-scw-pa-slot-row], [data-scw-pa-new-row]';
+  var ZOOM_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>';
   var _state = null;
   var _subscribed = Object.create(null);
 
@@ -238,8 +246,14 @@
   /** The label the card shows: the display label, else the alternate
    *  label (install rows often carry only field_2801). */
   function dropLabelOf(rec, F) {
-    return readText(rec, F.displayLabel || 'field_1950') ||
-           readText(rec, F.labelAlt || 'field_2365');
+    var d = readText(rec, F.displayLabel || 'field_1950') ||
+            readText(rec, F.labelAlt || 'field_2365');
+    if (d) return d;
+    // Neither label column served: compose the designator from its parts.
+    var pre = F.dropPrefix ? readText(rec, F.dropPrefix) : '';
+    var num = F.dropNumber ? readText(rec, F.dropNumber) : '';
+    if (pre && num) return pre + '-' + num;
+    return pre || num || '';
   }
   function productOf(rec, F) {
     return readText(rec, F.productName || '') || readText(rec, F.product || 'field_1949');
@@ -257,19 +271,24 @@
     if (d && p) return d + ' · ' + p;
     return d || p || rec.id || '';
   }
-  /** Photos attach to hardware: services, assumptions, licenses and
-   *  accessories (a mount rides its parent's strip) are never targets. */
-  function isPhotoTarget(rec, viewKey) {
+  /** Photos attach to hardware: services, assumptions and licenses are
+   *  never targets, nor are accessories — the rows the worksheet folds under
+   *  a parent card: anything in the mounting-hardware bucket (caught even
+   *  when the view serves no parent column) or pointing at a parent.
+   *  `why` (optional) tallies the skips for the console line open() logs. */
+  function isPhotoTarget(rec, viewKey, why) {
     if (!rec || !rec.id) return false;
-    var card = ns.card;
-    if (card && typeof card.bucketCategoryOf === 'function') {
-      var cat = card.bucketCategoryOf(rec, viewKey);
-      if (cat === 'services' || cat === 'assumptions') return false;
-    }
-    if (card && typeof card.isLicenseBucket === 'function' && card.isLicenseBucket(rec, viewKey)) return false;
+    function skip(reason) { if (why) why[reason] = (why[reason] || 0) + 1; return false; }
+    var card = ns.card, cat = 'default';
+    if (card && typeof card.bucketCategoryOf === 'function') cat = card.bucketCategoryOf(rec, viewKey);
+    if (cat === 'services' || cat === 'assumptions') return skip(cat);
+    if (card && typeof card.isLicenseBucket === 'function' && card.isLicenseBucket(rec, viewKey)) return skip('licenses');
+    var mh = '';
+    try { mh = (ns.cfg && typeof ns.cfg.bucket === 'function') ? ns.cfg.bucket('mountingHardware', viewKey) : ''; } catch (e) { mh = ''; }
+    if (mh && card && typeof card.bucketIdOf === 'function' && card.bucketIdOf(rec, viewKey) === mh) return skip('accessories');
     var F = fieldsFor(viewKey);
     var pr = rec[(F.parent || 'field_2464') + '_raw'];
-    if (Array.isArray(pr) ? pr.length > 0 : !!(pr && pr.id)) return false;
+    if (Array.isArray(pr) ? pr.length > 0 : !!(pr && pr.id)) return skip('parented');
     return true;
   }
   /** Label tokens: letters and digit runs, upper-cased, digit runs with
@@ -278,10 +297,11 @@
     var parts = String(s || '').toUpperCase().match(/[A-Z]+|\d+/g) || [];
     return parts.map(function (p) { return /^\d+$/.test(p) ? String(parseInt(p, 10)) : p; });
   }
-  function candidatesFor(viewKey) {
+  function candidatesFor(viewKey, why) {
     var recs = (ns.data && typeof ns.data.readRecords === 'function') ? ns.data.readRecords(viewKey) : [];
     var keep = [];
-    for (var i = 0; i < recs.length; i++) if (isPhotoTarget(recs[i], viewKey)) keep.push(recs[i]);
+    if (why) why.records = recs.length;
+    for (var i = 0; i < recs.length; i++) if (isPhotoTarget(recs[i], viewKey, why)) keep.push(recs[i]);
     if (ns.picker && typeof ns.picker.canonicalItemSort === 'function') {
       keep.sort(ns.picker.canonicalItemSort(function (r) { return labelOf(r, viewKey); }));
     }
@@ -423,14 +443,6 @@
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i].label;
     return '';
   }
-  function shortType(label) {
-    var s = String(label || '').trim();
-    if (s.length <= 16) return s;
-    var words = s.split(/\s+/).filter(Boolean);
-    if (words.length < 2) return s.slice(0, 14) + '…';
-    return words.map(function (w) { return w[0].toUpperCase(); }).join('');
-  }
-
   // ── Targets (the chips) ───────────────────────────────────────────
   function slotTakenBy(slotId, exceptRowId) {
     if (!_state) return null;
@@ -451,14 +463,13 @@
     return { deviceId: deviceId, mode: 'new', slotId: '', slotType: '', slotRequired: false, history: '',
              typeId: typeId || '', typeLabel: typeId ? typeLabelById(typeId) : '', guessed: !!guessed };
   }
-  /** What the batch rule does on a fresh destination: the first open
-   *  required slot nobody else in the batch is filling, else a new photo. */
+  /** What a plain device click does: the first open REQUIRED slot nobody
+   *  else in the batch is filling, else a new photo. The slot rows under
+   *  the device (and the chip menu) pick anything else explicitly. */
   function defaultTarget(deviceId, guessed) {
-    if (_state && _state.rule === 'fillfirst') {
-      var open = deviceInfo(deviceId).open;
-      for (var i = 0; i < open.length; i++) {
-        if (open[i].required && !slotTakenBy(open[i].id)) return slotTarget(deviceId, open[i], guessed);
-      }
+    var open = deviceInfo(deviceId).open;
+    for (var i = 0; i < open.length; i++) {
+      if (open[i].required && !slotTakenBy(open[i].id)) return slotTarget(deviceId, open[i], guessed);
     }
     return newTarget(deviceId, '', guessed);
   }
@@ -492,8 +503,8 @@
     row.targets = row.targets.filter(function (t) { return t.deviceId !== deviceId; });
   }
   function describeTarget(t) {
-    if (t.mode === 'slot') return 'fills ' + shortType(t.slotType || 'slot');
-    return t.typeLabel ? 'new: ' + shortType(t.typeLabel) : 'new';
+    if (t.mode === 'slot') return 'fills ' + (t.slotType || 'open slot');
+    return t.typeLabel ? 'new ' + t.typeLabel + ' photo' : 'new photo';
   }
   function describeTargetLong(t) {
     var c = candidateById(t.deviceId);
@@ -508,24 +519,23 @@
     var css = [
       '.scw-pa-overlay { position:fixed; inset:0; z-index:99990; background:rgba(15,23,42,.55); display:flex; align-items:center; justify-content:center;',
       '  font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif; color:#0f172a; }',
-      '.scw-pa { background:#fff; border-radius:12px; width:min(1340px,96vw); height:min(900px,94vh); display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.4); overflow:hidden; }',
+      '.scw-pa { position:relative; background:#fff; border-radius:12px; width:min(1440px,97vw); height:min(940px,95vh); display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.4); overflow:hidden; }',
       '.scw-pa-hd { padding:12px 18px; display:flex; align-items:center; justify-content:space-between; background:#07467c; color:#fff; flex:none; }',
       '.scw-pa-hd .scw-pa-title { font-weight:700; font-size:15px; }',
       '.scw-pa-hd .scw-pa-sub { font-size:12px; opacity:.85; margin-top:2px; }',
       '.scw-pa-hd button { background:none; border:none; color:#fff; font-size:22px; cursor:pointer; padding:0 4px; line-height:1; }',
       '.scw-pa-tb { padding:10px 18px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:none; }',
       '.scw-pa-tb .scw-pa-spacer { flex:1; }',
+      '.scw-pa-tbhint { font-size:12px; color:#64748b; max-width:520px; line-height:1.35; }',
       '.scw-pa-matchsum { display:flex; align-items:center; gap:8px; font-size:12.5px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; }',
       '.scw-pa-matchsum .ok { font-weight:700; color:#14532d; } .scw-pa-matchsum .gs { font-weight:700; color:#1e3a8a; } .scw-pa-matchsum .td { font-weight:700; color:#92400e; } .scw-pa-matchsum .dot { color:#cbd5e1; }',
-      '.scw-pa-tb label { display:flex; align-items:center; gap:6px; font-size:12.5px; color:#334155; }',
-      '.scw-pa-tb select { padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; font-size:12.5px; max-width:320px; }',
       '.scw-pa-main { display:flex; gap:14px; padding:12px 18px; flex:1; min-height:0; }',
       '.scw-pa-left { flex:1; min-width:0; display:flex; flex-direction:column; gap:10px; min-height:0; }',
       '.scw-pa-selbar { display:flex; align-items:center; gap:10px; font-size:12.5px; flex:none; flex-wrap:wrap; }',
       '.scw-pa-selbar .muted { color:#64748b; } .scw-pa-selbar .scw-pa-spacer { flex:1; }',
       '.scw-pa-gridwrap { flex:1; min-height:0; overflow-y:auto; border-radius:10px; padding:10px 8px 8px; }',
       '.scw-pa-gridwrap.is-over { outline:2px dashed #0284c7; outline-offset:-2px; background:#f0f9ff; }',
-      '.scw-pa-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:12px; align-content:start; }',
+      '.scw-pa-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(236px, 1fr)); gap:14px; align-content:start; }',
       '.scw-pa-empty { grid-column:1 / -1; padding:40px 16px; text-align:center; color:#64748b; font-size:13px; border:2px dashed #cbd5e1; border-radius:10px; background:#f8fafc; }',
       '.scw-pa-tile { background:#fff; border:2px solid #e2e8f0; border-radius:10px; display:flex; flex-direction:column; position:relative; }',
       '.scw-pa-tile.is-sel { border-color:#0284c7; box-shadow:0 0 0 3px rgba(2,132,199,.2); }',
@@ -533,19 +543,25 @@
       '.scw-pa-tile.is-done { opacity:.6; }',
       '.scw-pa-tile.is-dragging { opacity:.4; }',
       '.scw-pa-tile.has-menu { z-index:5; }',
-      '.scw-pa-thumb { height:118px; border-radius:8px 8px 0 0; background:#334155; display:flex; align-items:flex-end; justify-content:space-between; padding:6px 8px; box-sizing:border-box; color:#cbd5e1; font-size:11px; overflow:hidden; position:relative; cursor:pointer; border:0; width:100%; text-align:left; }',
-      '.scw-pa-thumb img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }',
-      '.scw-pa-thumb .sz { position:relative; z-index:1; background:rgba(15,23,42,.55); border-radius:4px; padding:1px 5px; margin-left:auto; }',
-      '.scw-pa-cb { position:absolute; right:8px; top:8px; width:18px; height:18px; border-radius:4px; border:2px solid #fff; background:rgba(255,255,255,.35); z-index:2; pointer-events:none; }',
+      /* The thumb shows the WHOLE photo (contain, not cover): a crop of the
+         middle of a pole is why nobody could tell which camera it was. */
+      '.scw-pa-thumb { height:176px; border-radius:8px 8px 0 0; background:#1f2937; display:flex; align-items:flex-end; justify-content:space-between; padding:6px 8px; box-sizing:border-box; color:#cbd5e1; font-size:11px; overflow:hidden; position:relative; cursor:pointer; border:0; width:100%; text-align:left; }',
+      '.scw-pa-thumb img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }',
+      '.scw-pa-thumb .sz { position:relative; z-index:1; background:rgba(15,23,42,.6); border-radius:4px; padding:1px 5px; margin-left:auto; }',
+      '.scw-pa-zoom { position:absolute; left:8px; top:8px; z-index:3; width:28px; height:28px; border-radius:7px; border:0; background:rgba(15,23,42,.62); color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; }',
+      '.scw-pa-zoom:hover { background:#0284c7; }',
+      '.scw-pa-cb { position:absolute; right:8px; top:8px; width:20px; height:20px; border-radius:4px; border:2px solid #fff; background:rgba(255,255,255,.35); z-index:2; pointer-events:none; }',
       '.scw-pa-tile.is-sel .scw-pa-cb { background:#0284c7; border-color:#0284c7; }',
-      '.scw-pa-tile.is-sel .scw-pa-cb::after { content:""; position:absolute; left:5px; top:1px; width:4px; height:9px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }',
+      '.scw-pa-tile.is-sel .scw-pa-cb::after { content:""; position:absolute; left:6px; top:1px; width:4px; height:10px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }',
       '.scw-pa-meta { padding:8px 10px 10px; display:flex; flex-direction:column; gap:6px; position:relative; }',
       '.scw-pa-name { font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
-      '.scw-pa-chip { display:flex; align-items:center; gap:6px; border-radius:7px; padding:5px 8px; font-size:12px; border:1px solid #86efac; background:#f0fdf4; color:#14532d; min-height:30px; box-sizing:border-box; cursor:pointer; width:100%; text-align:left; }',
+      /* A chip is a small card: the device on line 1 (wraps — install labels
+         can be a whole product name), what happens there on line 2. Nothing
+         is ever clipped. */
+      '.scw-pa-chip { display:flex; flex-direction:column; align-items:flex-start; gap:3px; border-radius:7px; padding:6px 8px; font-size:12px; border:1px solid #86efac; background:#f0fdf4; color:#14532d; box-sizing:border-box; cursor:pointer; width:100%; text-align:left; }',
       '.scw-pa-chip.is-guess { border-color:#93c5fd; background:#eff6ff; color:#1e3a8a; }',
-      '.scw-pa-chip .lbl { font-weight:700; white-space:nowrap; }',
-      '.scw-pa-chip .sub { opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }',
-      '.scw-pa-chip .slot { font-size:10.5px; font-weight:700; color:#312e81; background:#eef2ff; border-radius:4px; padding:1px 5px; white-space:nowrap; }',
+      '.scw-pa-chip .lbl { font-weight:700; white-space:normal; overflow-wrap:anywhere; line-height:1.3; }',
+      '.scw-pa-chip .slot { font-size:11px; font-weight:700; color:#312e81; background:#eef2ff; border-radius:4px; padding:1px 6px; white-space:normal; line-height:1.4; text-align:left; }',
       '.scw-pa-chip .slot.new { color:#475569; background:#f1f5f9; }',
       '.scw-pa-addmore { border:1px dashed #cbd5e1; border-radius:7px; padding:4px 8px; font-size:11.5px; color:#64748b; background:#fff; text-align:left; cursor:pointer; width:100%; }',
       '.scw-pa-finder { display:flex; align-items:center; gap:6px; border-radius:7px; padding:4px 6px; border:1px solid #f59e0b; background:#fffbeb; }',
@@ -562,27 +578,45 @@
       '.scw-pa-menu button.danger { color:#b91c1c; }',
       '.scw-pa-x { position:absolute; right:-7px; top:-7px; width:20px; height:20px; border-radius:999px; border:1px solid #cbd5e1; background:#fff; color:#64748b; font-size:13px; line-height:1; cursor:pointer; z-index:3; display:none; padding:0; }',
       '.scw-pa-tile:hover .scw-pa-x { display:block; }',
-      '.scw-pa-rail { width:400px; flex:none; border:1px solid #e2e8f0; border-radius:10px; display:flex; flex-direction:column; overflow:hidden; min-height:0; }',
+      /* Rail: every label wraps, nothing truncates; the product sits on its
+         own muted line; open slots are rows under the device. */
+      '.scw-pa-rail { width:460px; flex:none; border:1px solid #e2e8f0; border-radius:10px; display:flex; flex-direction:column; overflow:hidden; min-height:0; }',
       '.scw-pa-rail-hd { padding:10px 10px 8px; border-bottom:1px solid #e2e8f0; display:flex; flex-direction:column; gap:8px; flex:none; }',
       '.scw-pa-rail-hd .t { font-size:12.5px; } .scw-pa-rail-hd .t .muted { color:#64748b; }',
       '.scw-pa-search { display:flex; align-items:center; gap:8px; border:1px solid #cbd5e1; border-radius:6px; padding:6px 8px; }',
       '.scw-pa-search input { border:0; outline:0; flex:1; font:12.5px system-ui,sans-serif; min-width:0; }',
       '.scw-pa-rail-hd label { display:flex; align-items:center; gap:6px; font-size:12px; color:#334155; }',
+      '.scw-pa-railcount { font-size:12px; color:#92400e; } .scw-pa-railcount:empty { display:none; }',
+      '.scw-pa-railcount button { border:0; background:none; color:#07467c; font:600 12px system-ui,sans-serif; cursor:pointer; padding:0; text-decoration:underline; }',
       '.scw-pa-rail-list { flex:1; overflow-y:auto; min-height:0; padding:4px 0; }',
-      '.scw-pa-grp { font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#64748b; padding:10px 10px 4px; display:flex; justify-content:space-between; align-items:center; }',
-      '.scw-pa-grp button { border:0; background:none; color:#07467c; font:600 11px system-ui,sans-serif; cursor:pointer; text-transform:none; letter-spacing:0; }',
-      '.scw-pa-dev { display:grid; grid-template-columns:18px 56px 1fr auto; gap:8px; align-items:center; padding:7px 10px; margin:0 4px; border-radius:8px; border:1px solid transparent; font-size:12.5px; cursor:pointer; }',
+      '.scw-pa-grp { font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#64748b; padding:12px 10px 4px; display:flex; justify-content:space-between; align-items:center; gap:8px; }',
+      '.scw-pa-grp span { white-space:normal; }',
+      '.scw-pa-grp button { border:0; background:none; color:#07467c; font:600 11px system-ui,sans-serif; cursor:pointer; text-transform:none; letter-spacing:0; white-space:nowrap; }',
+      '.scw-pa-dev { display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:2px 10px; align-items:start; padding:8px 10px; margin:0 4px; border-radius:8px; border:1px solid transparent; font-size:12.5px; cursor:pointer; }',
       '.scw-pa-dev:hover { background:#f8fafc; }',
       '.scw-pa-dev.is-hit { background:#e0f2fe; border-color:#7dd3fc; }',
       '.scw-pa-dev.is-over { background:#e0f2fe; border-color:#0284c7; border-style:dashed; }',
-      '.scw-pa-dev .id { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
-      '.scw-pa-dev .nm { color:#475569; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
-      '.scw-pa-dev .st { font-size:11px; white-space:nowrap; color:#92400e; font-weight:700; }',
+      '.scw-pa-dev .id { font-weight:700; white-space:normal; overflow-wrap:anywhere; line-height:1.3; }',
+      '.scw-pa-dev .nm { grid-column:2; color:#64748b; font-size:11.5px; white-space:normal; overflow-wrap:anywhere; line-height:1.3; }',
+      '.scw-pa-dev .st { grid-column:3; grid-row:1 / span 2; font-size:11px; white-space:normal; text-align:right; max-width:150px; line-height:1.3; color:#92400e; font-weight:700; align-self:start; }',
       '.scw-pa-dev .st.full { color:#15803d; font-weight:400; } .scw-pa-dev .st.none { color:#94a3b8; font-weight:400; } .scw-pa-dev .st.q { color:#0369a1; font-weight:600; }',
-      '.scw-pa-dev .box { width:16px; height:16px; border-radius:4px; border:1.5px solid #cbd5e1; background:#fff; position:relative; }',
+      '.scw-pa-dev .box { width:16px; height:16px; border-radius:4px; border:1.5px solid #cbd5e1; background:#fff; position:relative; margin-top:1px; grid-row:1 / span 2; }',
       '.scw-pa-dev .box.on { background:#0284c7; border-color:#0284c7; }',
       '.scw-pa-dev .box.on::after { content:""; position:absolute; left:4px; top:1px; width:4px; height:8px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }',
       '.scw-pa-dev .box.some { background:#bae6fd; border-color:#0284c7; }',
+      '.scw-pa-slot { display:grid; grid-template-columns:14px minmax(0,1fr) auto; gap:8px; align-items:center; padding:4px 10px 4px 38px; margin:0 4px; border-radius:6px; border:1px solid transparent; font-size:12px; color:#334155; cursor:pointer; }',
+      '.scw-pa-slot:hover { background:#f8fafc; }',
+      '.scw-pa-slot.is-hit { background:#e0f2fe; border-color:#7dd3fc; }',
+      '.scw-pa-slot.is-over { background:#e0f2fe; border-color:#0284c7; border-style:dashed; }',
+      '.scw-pa-slot.is-taken { color:#94a3b8; }',
+      '.scw-pa-slot.new { color:#1e3a8a; }',
+      '.scw-pa-slot .box { width:14px; height:14px; border-radius:4px; border:1.5px solid #cbd5e1; background:#fff; position:relative; }',
+      '.scw-pa-slot .box.on { background:#0284c7; border-color:#0284c7; }',
+      '.scw-pa-slot .box.on::after { content:""; position:absolute; left:3px; top:0; width:4px; height:8px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }',
+      '.scw-pa-slot .sl { white-space:normal; overflow-wrap:anywhere; line-height:1.3; }',
+      '.scw-pa-slot .req { font-size:10px; font-weight:700; color:#92400e; background:#fffbeb; border:1px solid #fcd34d; border-radius:4px; padding:0 4px; margin-left:4px; white-space:nowrap; }',
+      '.scw-pa-slot .who { font-size:11px; color:#64748b; white-space:normal; text-align:right; max-width:140px; overflow-wrap:anywhere; }',
+      '.scw-pa-slot.is-hit .who { color:#0369a1; font-weight:600; }',
       '.scw-pa-rail-ft { padding:8px 10px; border-top:1px solid #e2e8f0; font-size:11.5px; color:#64748b; background:#f8fafc; flex:none; }',
       '.scw-pa-ft { padding:10px 18px; border-top:1px solid #e5e7eb; display:flex; gap:8px; justify-content:flex-end; align-items:center; background:#f8fafc; flex:none; }',
       '.scw-pa-ft .scw-pa-summary { margin-right:auto; color:#475569; font-size:13px; } .scw-pa-ft .scw-pa-summary b { color:#0f172a; }',
@@ -595,6 +629,18 @@
       '.scw-pa-errors div + div { margin-top:3px; }',
       '.scw-pa-done { margin:10px 18px 0; padding:8px 12px; border-radius:8px; background:#f0fdf4; border:1px solid #bbf7d0; color:#14532d; font-size:12.5px; flex:none; }',
       '.scw-pa-k { display:inline-block; border:1px solid #cbd5e1; border-bottom-width:2px; border-radius:4px; padding:0 5px; font-size:10.5px; color:#475569; background:#f8fafc; }',
+      /* Lightbox: the photo at full size inside the dialog, ← → walk the queue. */
+      '.scw-pa-lb { position:absolute; inset:0; z-index:20; background:rgba(15,23,42,.94); display:flex; flex-direction:column; color:#fff; }',
+      '.scw-pa-lb-hd { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:12px 18px; flex:none; }',
+      '.scw-pa-lb-name { font-weight:700; font-size:14px; } .scw-pa-lb-sub { font-size:12px; opacity:.8; margin-top:2px; }',
+      '.scw-pa-lb-hd button { background:none; border:0; color:#fff; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }',
+      '.scw-pa-lb-body { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; gap:10px; padding:0 12px; }',
+      '.scw-pa-lb-body img { max-width:100%; max-height:100%; object-fit:contain; flex:1; min-width:0; border-radius:6px; }',
+      '.scw-pa-lb-ph { font-size:40px; font-weight:700; color:#94a3b8; }',
+      '.scw-pa-lb-nav { flex:none; width:40px; height:72px; border-radius:8px; border:0; background:rgba(255,255,255,.12); color:#fff; font-size:30px; cursor:pointer; }',
+      '.scw-pa-lb-nav:hover { background:rgba(255,255,255,.25); }',
+      '.scw-pa-lb-ft { padding:10px 18px 14px; font-size:12px; opacity:.8; flex:none; text-align:center; }',
+      '.scw-pa-lb .scw-pa-k { color:#e2e8f0; background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.3); }',
       '@media (max-width: 900px) { .scw-pa-main { flex-direction:column; } .scw-pa-rail { width:auto; max-height:40%; } }'
     ].join('\n');
     var style = document.createElement('style');
@@ -641,7 +687,13 @@
     if (!isAllowed()) return null;
     injectStyles();
     close();
-    var cands = candidatesFor(viewKey);
+    var why = {};
+    var cands = candidatesFor(viewKey, why);
+    try {
+      var skipped = []; for (var wk in why) if (wk !== 'records') skipped.push(wk + ' ' + why[wk]);
+      console.info('[scw-photo-assign] ' + viewKey + ': ' + (why.records || 0) + ' records → ' + cands.length +
+        ' photo targets' + (skipped.length ? ' (skipped: ' + skipped.join(', ') + ')' : ''));
+    } catch (eLog) { /* console is optional */ }
     var idx = Object.create(null);
     for (var i = 0; i < cands.length; i++) idx[cands[i].id] = cands[i];
     _state = {
@@ -655,7 +707,7 @@
       hideAimed:  false,
       railQuery:  '',
       railNeedFirst: true,
-      rule:       'fillfirst',
+      zoomRow:    '',
       finderRow:  '',
       menuRow:    '',
       menuDevice: '',
@@ -688,7 +740,7 @@
           '<div class="scw-pa-rail">' +
             '<div class="scw-pa-rail-hd"></div>' +
             '<div class="scw-pa-rail-list"></div>' +
-            '<div class="scw-pa-rail-ft">Ticks show where the <b>selected</b> photo goes. Tick two devices and it is sent to both. Drag a tile onto a device for the same thing.</div>' +
+            '<div class="scw-pa-rail-ft">Ticks show where the <b>selected</b> photo goes. Click a device for its first open required slot (else a new photo), or click a slot under it to fill exactly that one. Drag works too.</div>' +
           '</div>' +
         '</div>' +
         '<div class="scw-pa-ft">' +
@@ -699,8 +751,10 @@
         '<input type="file" multiple accept="image/*,.heic,.heif" style="display:none" data-scw-pa-file>' +
       '</div>';
     document.body.appendChild(overlay);
+    overlay.tabIndex = -1;
     wire(overlay);
     render();
+    try { overlay.focus(); } catch (eF) { /* keys still work once anything inside is focused */ }
     return _state;
   }
   function close() {
@@ -727,11 +781,15 @@
       if (t.closest('[data-scw-pa-clear]')) { if (!_state.sending) clearAll(); return; }
       if (t.closest('[data-scw-pa-send]')) { send(); return; }
       if (t.closest('[data-scw-pa-add]')) { var inp = overlay.querySelector('[data-scw-pa-file]'); if (inp) inp.click(); return; }
-      if (t.closest('[data-scw-pa-order]')) { assignInOrder(); return; }
       if (t.closest('[data-scw-pa-rematch]')) { autoMatch(true); render(); return; }
       if (t.closest('[data-scw-pa-selunaimed]')) { selectUnaimed(); return; }
       if (t.closest('[data-scw-pa-hideaimed]')) { _state.hideAimed = !_state.hideAimed; render(); return; }
       if ((b = t.closest('[data-scw-pa-remove]'))) { removeRow(b.getAttribute('data-scw-pa-remove')); return; }
+      if ((b = t.closest('[data-scw-pa-zoom]'))) { openZoom(b.getAttribute('data-scw-pa-zoom')); return; }
+      if (t.closest('[data-scw-pa-lb-close]')) { closeZoom(); return; }
+      if (t.closest('[data-scw-pa-lb-prev]')) { zoomStep(-1); return; }
+      if (t.closest('[data-scw-pa-lb-next]')) { zoomStep(1); return; }
+      if (t.closest('.scw-pa-lb')) { if (t.closest('.scw-pa-lb-body') && !t.closest('img')) closeZoom(); return; }
       if ((b = t.closest('[data-scw-pa-toggle]'))) { toggleSelect(b.getAttribute('data-scw-pa-toggle')); return; }
       if ((b = t.closest('[data-scw-pa-chip]'))) { openMenu(b.getAttribute('data-scw-pa-chip'), b.getAttribute('data-scw-pa-dev')); return; }
       if ((b = t.closest('[data-scw-pa-more]'))) { focusRailFor(b.getAttribute('data-scw-pa-more')); return; }
@@ -739,7 +797,10 @@
       if ((b = t.closest('[data-scw-pa-menu-new]'))) { chooseFromMenu({ mode: 'new', typeId: b.getAttribute('data-scw-pa-menu-new') }); return; }
       if (t.closest('[data-scw-pa-menu-remove]')) { chooseFromMenu({ remove: true }); return; }
       if (t.closest('[data-scw-pa-menu-close]')) { closeMenu(); render(); return; }
+      if (t.closest('[data-scw-pa-railclear]')) { _state.railQuery = ''; var rqc = q('[data-scw-pa-railq]'); if (rqc) rqc.value = ''; renderRail(); return; }
       if ((b = t.closest('[data-scw-pa-tickgrp]'))) { tickGroup(b.getAttribute('data-scw-pa-tickgrp')); return; }
+      if ((b = t.closest('[data-scw-pa-slot-row]'))) { clickSlot(b.getAttribute('data-scw-pa-slot-dev'), b.getAttribute('data-scw-pa-slot-row')); return; }
+      if ((b = t.closest('[data-scw-pa-new-row]'))) { clickNew(b.getAttribute('data-scw-pa-new-row')); return; }
       if ((b = t.closest('[data-scw-pa-dev-row]'))) { clickDevice(b.getAttribute('data-scw-pa-dev-row')); return; }
       if (_state.menuRow && !t.closest('.scw-pa-menu')) { closeMenu(); render(); }
     });
@@ -750,8 +811,6 @@
       if (t.hasAttribute('data-scw-pa-file')) {
         addFiles(Array.prototype.slice.call(t.files || []));
         t.value = '';
-      } else if (t.hasAttribute('data-scw-pa-rule')) {
-        _state.rule = t.value === 'new' ? 'new' : 'fillfirst';
       } else if (t.hasAttribute('data-scw-pa-needfirst')) {
         _state.railNeedFirst = !!t.checked;
         renderRail();
@@ -769,6 +828,7 @@
         renderRail();
       } else if (t.hasAttribute('data-scw-pa-railq')) {
         _state.railQuery = t.value;
+        _state.finderRow = '';
         renderRail();
       }
     });
@@ -784,6 +844,12 @@
     overlay.addEventListener('keydown', function (e) {
       if (!_state) return;
       var t = e.target;
+      if (_state.zoomRow) {
+        if (e.key === 'Escape') { e.preventDefault(); closeZoom(); }
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); zoomStep(-1); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); zoomStep(1); }
+        return;
+      }
       if (t && t.hasAttribute && t.hasAttribute('data-scw-pa-finder')) {
         if (e.key === 'Enter') { e.preventDefault(); finderEnter(t.getAttribute('data-scw-pa-finder')); }
         else if (e.key === 'Escape') { e.preventDefault(); t.value = ''; _state.railQuery = ''; renderRail(); }
@@ -818,26 +884,25 @@
       for (var i = 0; i < d.length; i++) { d[i].classList.remove('is-dragging'); d[i].classList.remove('is-over'); }
     });
     overlay.addEventListener('dragover', function (e) {
-      var row = e.target && e.target.closest && e.target.closest('[data-scw-pa-dev-row]');
+      var row = e.target && e.target.closest && e.target.closest(DROP_SEL);
       var grid = e.target && e.target.closest && e.target.closest('.scw-pa-gridwrap');
       var hasFiles = e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') !== -1;
       if (row && _state && _state.dragIds) { e.preventDefault(); try { e.dataTransfer.dropEffect = 'copy'; } catch (e2) {} row.classList.add('is-over'); }
       else if (grid && hasFiles) { e.preventDefault(); try { e.dataTransfer.dropEffect = 'copy'; } catch (e3) {} grid.classList.add('is-over'); }
     });
     overlay.addEventListener('dragleave', function (e) {
-      var row = e.target && e.target.closest && e.target.closest('[data-scw-pa-dev-row]');
+      var row = e.target && e.target.closest && e.target.closest(DROP_SEL);
       if (row) row.classList.remove('is-over');
       var grid = e.target && e.target.closest && e.target.closest('.scw-pa-gridwrap');
       if (grid && e.target === grid) grid.classList.remove('is-over');
     });
     overlay.addEventListener('drop', function (e) {
-      var row = e.target && e.target.closest && e.target.closest('[data-scw-pa-dev-row]');
+      var row = e.target && e.target.closest && e.target.closest(DROP_SEL);
       var grid = e.target && e.target.closest && e.target.closest('.scw-pa-gridwrap');
       if (row && _state && _state.dragIds) {
         e.preventDefault();
         row.classList.remove('is-over');
-        var ids = _state.dragIds, dev = row.getAttribute('data-scw-pa-dev-row');
-        for (var i = 0; i < ids.length; i++) { var r = rowById(ids[i]); if (r) { r.match = null; addTarget(ids[i], dev, null); } }
+        dropOn(row, _state.dragIds);
         _state.dragIds = null;
         render();
       } else if (grid && e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
@@ -864,10 +929,12 @@
     if (row && row.thumbUrl) { try { URL.revokeObjectURL(row.thumbUrl); } catch (e) {} }
     _state.rows = _state.rows.filter(function (r) { return r.id !== id; });
     delete _state.selected[id];
+    if (_state.zoomRow === id) closeZoom();
     render();
   }
   function clearAll() {
     if (!_state) return;
+    closeZoom();
     for (var i = 0; i < _state.rows.length; i++) {
       if (_state.rows[i].thumbUrl) { try { URL.revokeObjectURL(_state.rows[i].thumbUrl); } catch (e) {} }
     }
@@ -1109,39 +1176,133 @@
     closeMenu();
     render();
   }
-  function setRule(rule) {
-    if (!_state) return;
-    _state.rule = rule === 'new' ? 'new' : 'fillfirst';
+  function nudge(text) {
+    var ft = q('.scw-pa-rail-ft');
+    if (ft) ft.innerHTML = '<b style="color:#92400e">' + esc(text) + '</b>';
+  }
+  /** The photos a rail click acts on: the selected tiles, else the tile
+   *  whose finder is open. */
+  function actingRows() {
+    var ids = selectedIds(), viaFinder = false;
+    if (!ids.length && _state.finderRow) { ids = [_state.finderRow]; viaFinder = true; }
+    return { ids: ids, viaFinder: viaFinder };
+  }
+  function finishFinder(rowId) {
+    _state.finderRow = ''; _state.railQuery = '';
+    render();
+    focusNextFinder(rowId);
+  }
+  /** A slot row click: aims ONE photo (the first selected, else the finder
+   *  row) at exactly that slot; the slot's own photo clicked again clears it. */
+  function clickSlot(deviceId, slotId) {
+    if (!_state || _state.sending || !candidateById(deviceId) || !slotId) return;
+    var act = actingRows(), ids = act.ids;
+    if (!ids.length) { nudge('Select a photo first — tick a tile (or type in its finder), then click the slot it should fill.'); return; }
+    var holder = slotTakenBy(slotId, null);
+    if (holder && ids.indexOf(holder) !== -1) { removeTarget(holder, deviceId); render(); return; }
+    if (holder) {
+      var h = rowById(holder);
+      nudge('That slot is already taken by ' + ((h && h.filename) || 'another photo in this batch') + ' — remove it from that tile first.');
+      return;
+    }
+    var row = rowById(ids[0]);
+    if (!row) return;
+    row.match = null;
+    if (!addTarget(ids[0], deviceId, { mode: 'slot', slotId: slotId })) return;
+    if (ids.length > 1) {
+      nudge('A slot takes one photo — ' + row.filename + ' fills it; the other ' + (ids.length - 1) +
+        ' selected ' + (ids.length === 2 ? 'photo was' : 'photos were') + ' left alone.');
+    }
+    if (act.viaFinder) { finishFinder(ids[0]); return; }
     render();
   }
-  /** Files in name order ↔ devices picked (canonical order) in the shared
-   *  record picker. Every queued row is re-aimed. */
-  function assignInOrder() {
-    if (!_state || _state.sending) return;
-    if (!(ns.picker && typeof ns.picker.open === 'function')) return;
-    var vk = _state.viewKey;
-    ns.picker.open({
-      fieldKey: 'scwPhotoAssignTarget', recordId: '__batch__', sourceViewKey: vk,
-      label: 'Pick the devices these photos belong to, in order',
-      multi: true, selectedIds: [], allowClear: false, pickOnly: true,
-      candidates: _state.candidates.map(function (c) { return c.rec; }),
-      itemLabel: function (r) { return labelOf(r, vk); },
-      groupBy: function (r) { return mdfOf(r, fieldsFor(vk)); },
-      onChoose: function (ids) { pairInOrder(ids || []); render(); }
-    });
+  /** The "+ new photo" row under a device: every acting photo becomes a new
+   *  photo of it (toggles off when they all already are). */
+  function clickNew(deviceId) {
+    if (!_state || _state.sending || !candidateById(deviceId)) return;
+    var act = actingRows(), ids = act.ids;
+    if (!ids.length) { nudge('Select a photo first — tick a tile, then click "+ new photo" under the device.'); return; }
+    var allNew = ids.every(function (id) { var r = rowById(id), t = r && targetOf(r, deviceId); return !!(t && t.mode === 'new'); });
+    for (var i = 0; i < ids.length; i++) {
+      var row = rowById(ids[i]);
+      if (!row) continue;
+      if (allNew) removeTarget(ids[i], deviceId);
+      else { row.match = null; addTarget(ids[i], deviceId, { mode: 'new' }); }
+    }
+    if (act.viaFinder && !allNew) { finishFinder(ids[0]); return; }
+    render();
   }
-  function pairInOrder(ids) {
+  /** A drop on a device row, a slot row or the "+ new photo" row. A slot
+   *  takes the first dropped photo; the rest get the device default. */
+  function dropOn(rowEl, ids) {
+    if (!rowEl || !ids) return;
+    var slotId = rowEl.getAttribute('data-scw-pa-slot-row') || '';
+    var isNew = rowEl.hasAttribute('data-scw-pa-new-row');
+    var dev = rowEl.getAttribute('data-scw-pa-dev-row') || rowEl.getAttribute('data-scw-pa-slot-dev') || rowEl.getAttribute('data-scw-pa-new-row');
+    for (var i = 0; i < ids.length; i++) {
+      var r = rowById(ids[i]);
+      if (!r) continue;
+      r.match = null;
+      var spec = null;
+      if (slotId && i === 0 && !slotTakenBy(slotId, ids[i])) spec = { mode: 'slot', slotId: slotId };
+      else if (isNew) spec = { mode: 'new' };
+      addTarget(ids[i], dev, spec);
+    }
+  }
+
+  // ── Lightbox ──────────────────────────────────────────────────────
+  function zoomList() {
+    return _state ? _state.rows.filter(function (r) { return r.status !== 'too-big'; }) : [];
+  }
+  function openZoom(rowId) {
+    if (!_state || !rowById(rowId)) return;
+    _state.zoomRow = rowId;
+    renderZoom();
+  }
+  function closeZoom() {
     if (!_state) return;
-    var order = [];
-    for (var c = 0; c < _state.candidates.length; c++) {
-      if (ids.indexOf(_state.candidates[c].id) !== -1) order.push(_state.candidates[c].id);
-    }
-    var rows = _state.rows.filter(function (r) { return r.status !== 'too-big' && r.status !== 'done'; });
-    rows.sort(function (a, b) { return natCmp(a.filename, b.filename); });
-    for (var i = 0; i < rows.length; i++) { rows[i].targets = []; rows[i].match = null; }
-    for (var j = 0; j < rows.length; j++) {
-      if (order[j]) addTarget(rows[j].id, order[j], null);
-    }
+    _state.zoomRow = '';
+    renderZoom();
+    // Focus back on the dialog so Esc / Tab keep working after the close
+    // button (which had focus) is gone.
+    var r = root();
+    if (r) { try { r.focus(); } catch (e) { /* ignore */ } }
+  }
+  function zoomStep(dir) {
+    if (!_state || !_state.zoomRow) return;
+    var list = zoomList();
+    if (!list.length) return;
+    var i = -1;
+    for (var k = 0; k < list.length; k++) if (list[k].id === _state.zoomRow) { i = k; break; }
+    _state.zoomRow = list[(i + dir + list.length) % list.length].id;
+    renderZoom();
+  }
+  function renderZoom() {
+    var r = root();
+    if (!r) return;
+    var old = r.querySelector('.scw-pa-lb');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    var row = _state && _state.zoomRow ? rowById(_state.zoomRow) : null;
+    if (!row) return;
+    var list = zoomList(), idx = 0;
+    for (var k = 0; k < list.length; k++) if (list[k].id === row.id) { idx = k; break; }
+    var where = row.targets.length ? row.targets.map(describeTargetLong).join(' · ') : 'Not aimed yet — close this and tick a device for it';
+    var ext = (row.filename.match(/\.([^.]+)$/) || [, '?'])[1].toUpperCase();
+    var lb = document.createElement('div');
+    lb.className = 'scw-pa-lb';
+    lb.innerHTML =
+      '<div class="scw-pa-lb-hd"><div><div class="scw-pa-lb-name">' + esc(row.filename) + '</div>' +
+        '<div class="scw-pa-lb-sub">' + esc(where) + ' · ' + (idx + 1) + ' of ' + list.length + ' · ' + esc(fmtBytes(row.sizeBytes)) + '</div></div>' +
+        '<button type="button" data-scw-pa-lb-close aria-label="Close">&times;</button></div>' +
+      '<div class="scw-pa-lb-body">' +
+        '<button type="button" class="scw-pa-lb-nav" data-scw-pa-lb-prev aria-label="Previous photo">&lsaquo;</button>' +
+        (row.thumbUrl ? '<img src="' + esc(row.thumbUrl) + '" alt="">' : '<div class="scw-pa-lb-ph">' + esc(ext) + '</div>') +
+        '<button type="button" class="scw-pa-lb-nav" data-scw-pa-lb-next aria-label="Next photo">&rsaquo;</button></div>' +
+      '<div class="scw-pa-lb-ft"><span class="scw-pa-k">&larr;</span> <span class="scw-pa-k">&rarr;</span> other photos · <span class="scw-pa-k">Esc</span> back to the queue</div>';
+    var host = r.querySelector('.scw-pa') || r;
+    host.appendChild(lb);
+    var cb = lb.querySelector('[data-scw-pa-lb-close]');
+    if (cb) { try { cb.focus(); } catch (e) { /* ignore */ } }
   }
 
   // ── Render ────────────────────────────────────────────────────────
@@ -1160,13 +1321,8 @@
         '<span class="gs">' + mc.guessed + ' guessed</span><span class="dot">·</span>' +
         '<span class="td">' + mc.todo + ' to pick</span>' +
         '<button type="button" class="scw-pa-btn sm" data-scw-pa-rematch' + dis + ' style="margin-left:4px" title="Re-read every file name">Re-match</button></div>' +
-      '<button type="button" class="scw-pa-btn" data-scw-pa-order' + dis + ' title="Pick devices in order; the files pair with them in name order">Assign in order…</button>' +
       '<span class="scw-pa-spacer"></span>' +
-      '<label>When a device has an open required slot:' +
-        '<select data-scw-pa-rule' + dis + '>' +
-          '<option value="fillfirst"' + (st.rule === 'fillfirst' ? ' selected' : '') + '>fill it, otherwise add a new photo</option>' +
-          '<option value="new"' + (st.rule === 'new' ? ' selected' : '') + '>always add a new photo</option>' +
-        '</select></label>';
+      '<span class="scw-pa-tbhint">Clicking a device fills its first open <b>required</b> slot, else adds a new photo. The slots listed under a device let you pick exactly which one a photo fills.</span>';
   }
   function renderSelbar() {
     var el = q('.scw-pa-selbar');
@@ -1183,9 +1339,10 @@
   function thumbHtml(row, canDrag) {
     var ext = (row.filename.match(/\.([^.]+)$/) || [, '?'])[1].toUpperCase();
     return '<button type="button" class="scw-pa-thumb" data-scw-pa-toggle="' + esc(row.id) + '" aria-label="Select ' + esc(row.filename) + '"' +
-      (canDrag ? ' draggable="true" title="Click to select · drag onto a device"' : '') + '>' +
+      (canDrag ? ' draggable="true" title="Click to select · drag onto a device or a slot"' : '') + '>' +
       (row.thumbUrl ? '<img src="' + esc(row.thumbUrl) + '" alt="">' : '<span style="position:relative;z-index:1">' + esc(ext) + '</span>') +
       '<span class="sz">' + esc(fmtBytes(row.sizeBytes)) + (row.origSize ? ' · resized' : '') + '</span></button>' +
+      '<button type="button" class="scw-pa-zoom" data-scw-pa-zoom="' + esc(row.id) + '" title="View larger" aria-label="View ' + esc(row.filename) + ' larger">' + ZOOM_SVG + '</button>' +
       '<span class="scw-pa-cb" aria-hidden="true"></span>';
   }
   function statusHtml(row) {
@@ -1202,10 +1359,11 @@
   }
   function chipHtml(row, t) {
     var c = candidateById(t.deviceId);
+    var dev = c ? (c.drop || c.product || c.label) : t.deviceId;
+    var product = c && c.drop && c.product ? c.product : '';
     return '<button type="button" class="scw-pa-chip' + (t.guessed ? ' is-guess' : '') + '" data-scw-pa-chip="' + esc(row.id) + '" data-scw-pa-dev="' + esc(t.deviceId) + '"' +
-      ' title="' + esc(describeTargetLong(t)) + (t.guessed ? ' — a guess from the file name; click to change, Send confirms' : ' — click to change') + '">' +
-      '<span class="lbl">' + esc(c ? (c.drop || c.label) : t.deviceId) + (t.guessed ? '?' : '') + '</span>' +
-      '<span class="sub">' + esc(c ? c.product : '') + '</span>' +
+      ' title="' + esc(describeTargetLong(t) + (product ? ' (' + product + ')' : '')) + (t.guessed ? ' — a guess from the file name; click to change, Send confirms' : ' — click to change') + '">' +
+      '<span class="lbl">' + esc(dev) + (t.guessed ? '?' : '') + (product ? ' <span style="font-weight:400;opacity:.8">· ' + esc(product) + '</span>' : '') + '</span> ' +
       '<span class="slot' + (t.mode === 'new' ? ' new' : '') + '">' + esc(describeTarget(t)) + '</span></button>';
   }
   function menuHtml(row) {
@@ -1289,20 +1447,35 @@
     var st = _state;
     if (!hd.querySelector('[data-scw-pa-railq]')) {
       hd.innerHTML =
-        '<div class="t"><b>Devices</b> <span class="muted">· click one to aim the selected photo at it</span></div>' +
+        '<div class="t"><b>Devices</b> <span class="muted">· click one, or one of its open slots, to aim the selected photo</span></div>' +
         '<div class="scw-pa-search"><svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
           '<input type="text" data-scw-pa-railq placeholder="Number, name or MDF/IDF" aria-label="Find a device" autocomplete="off"></div>' +
         '<label><input type="checkbox" data-scw-pa-needfirst' + (st.railNeedFirst ? ' checked' : '') + '> Devices still missing a required photo first</label>';
     }
+    // The search box always shows the query the list is filtered by — a
+    // finder that was cleared (Enter, a device click) clears it too.
+    var rq = hd.querySelector('[data-scw-pa-railq]');
+    if (rq && document.activeElement !== rq && rq.value !== (st.railQuery || '')) rq.value = st.railQuery || '';
     var sel = selectedIds().map(rowById).filter(Boolean);
     if (!sel.length && st.finderRow) { var fr = rowById(st.finderRow); if (fr) sel = [fr]; }
     var hits = railHits();
+    var cnt = hd.querySelector('.scw-pa-railcount');
+    if (!cnt) { cnt = document.createElement('div'); cnt.className = 'scw-pa-railcount'; hd.appendChild(cnt); }
+    cnt.innerHTML = hits.length < st.candidates.length
+      ? 'Showing <b>' + hits.length + ' of ' + st.candidates.length + '</b> devices for "' + esc(st.railQuery) + '" · <button type="button" data-scw-pa-railclear>show all</button>'
+      : '';
     var groups = [], byId = Object.create(null);
     for (var i = 0; i < hits.length; i++) {
       var c = hits[i];
       if (!byId[c.mdf.id]) { byId[c.mdf.id] = { id: c.mdf.id, label: c.mdf.label, items: [] }; groups.push(byId[c.mdf.id]); }
       byId[c.mdf.id].items.push(c);
     }
+    // Groups in name order (HEADEND before the IDFs), the no-location group last.
+    groups.sort(function (a, b) {
+      if (a.id === '__unknown') return 1;
+      if (b.id === '__unknown') return -1;
+      return natCmp(a.label, b.label);
+    });
     var h = '';
     if (!hits.length) h = '<div style="padding:16px 12px;color:#64748b;font-size:12.5px">No device matches "' + esc(st.railQuery) + '".</div>';
     for (var g = 0; g < groups.length; g++) {
@@ -1313,29 +1486,70 @@
     }
     list.innerHTML = h;
   }
+  function queuedOn(deviceId, mode) {
+    var n = 0;
+    for (var r = 0; r < _state.rows.length; r++) {
+      var row = _state.rows[r];
+      if (row.status === 'done' || row.status === 'too-big') continue;
+      var t = targetOf(row, deviceId);
+      if (t && (!mode || t.mode === mode)) n++;
+    }
+    return n;
+  }
+  /** A device row (label wraps; product on its own line) followed by one row
+   *  per OPEN slot and, when there are any, a "+ new photo" row — so a photo
+   *  can be aimed at exactly the slot it belongs in. */
   function devRowHtml(c, sel) {
     var info = deviceInfo(c.id);
     var have = 0, hit = null;
     for (var i = 0; i < sel.length; i++) { var t = targetOf(sel[i], c.id); if (t) { have++; hit = hit || t; } }
-    var queued = 0;
-    for (var r = 0; r < _state.rows.length; r++) {
-      var row = _state.rows[r];
-      if (row.status === 'done' || row.status === 'too-big') continue;
-      if (targetOf(row, c.id)) queued++;
-    }
+    var queued = queuedOn(c.id, '');
     var box = have === 0 ? '' : (have === sel.length ? ' on' : ' some');
     var stCls = '', stTxt = '';
     if (hit && sel.length === 1) { stCls = 'q'; stTxt = 'this photo → ' + describeTarget(hit); }
     else if (have) { stCls = 'q'; stTxt = have + ' of ' + sel.length + ' selected → here'; }
-    else if (info.reqTotal) {
-      stTxt = (info.reqTotal - info.reqOpen) + ' of ' + info.reqTotal + ' required' + (queued ? ' · ' + queued + ' queued' : '');
-      stCls = info.reqOpen ? '' : 'full';
-    } else { stCls = 'none'; stTxt = queued ? queued + ' queued' : 'no required slots'; }
-    return '<div class="scw-pa-dev' + (have ? ' is-hit' : '') + '" data-scw-pa-dev-row="' + esc(c.id) + '" title="' + esc(c.label) + '">' +
+    else {
+      if (info.open.length) {
+        stTxt = plural(info.open.length, 'open slot') + (info.reqOpen ? ' · ' + info.reqOpen + ' required' : '');
+        stCls = info.reqOpen ? '' : 'none';
+      } else if (info.reqTotal) { stTxt = 'required photos all in'; stCls = 'full'; }
+      else { stTxt = 'no slots'; stCls = 'none'; }
+      if (queued) stTxt += ' · ' + queued + ' queued';
+    }
+    var def = defaultTarget(c.id, false);
+    var main = c.drop || c.product || c.label || '—';
+    var sub = (c.drop && c.product) ? c.product : '';
+    var h = '<div class="scw-pa-dev' + (have ? ' is-hit' : '') + '" data-scw-pa-dev-row="' + esc(c.id) + '" title="' +
+        esc('Click → ' + (def.mode === 'slot' ? 'fills ' + def.slotType : 'adds a new photo') + (sub ? ' · ' + sub : '')) + '">' +
       '<span class="box' + box + '" aria-hidden="true"></span>' +
-      '<span class="id">' + esc(c.drop || '—') + '</span>' +
-      '<span class="nm">' + esc(c.product || c.label) + '</span>' +
-      '<span class="st ' + stCls + '">' + esc(stTxt) + '</span></div>';
+      '<span class="id">' + esc(main) + '</span>' +
+      '<span class="st ' + stCls + '">' + esc(stTxt) + '</span>' +
+      (sub ? '<span class="nm">' + esc(sub) + '</span>' : '') +
+      '</div>';
+    if (!info.open.length) return h;
+    for (var sIdx = 0; sIdx < info.open.length; sIdx++) {
+      var sl = info.open[sIdx];
+      var holder = slotTakenBy(sl.id, null), holderRow = holder ? rowById(holder) : null;
+      var mine = false;
+      for (var m = 0; m < sel.length; m++) {
+        var tt = targetOf(sel[m], c.id);
+        if (tt && tt.mode === 'slot' && tt.slotId === sl.id) { mine = true; break; }
+      }
+      var who = mine ? 'this photo' : (holderRow ? '← ' + holderRow.filename : 'open');
+      h += '<div class="scw-pa-slot' + (mine ? ' is-hit' : '') + (holder && !mine ? ' is-taken' : '') + '" data-scw-pa-slot-row="' + esc(sl.id) + '" data-scw-pa-slot-dev="' + esc(c.id) + '" title="' +
+          esc(mine ? 'Click to clear' : (holderRow ? 'Taken by ' + holderRow.filename + ' — remove it from that tile first' : 'Click to fill this slot with the selected photo')) + '">' +
+        '<span class="box' + (mine ? ' on' : '') + '" aria-hidden="true"></span>' +
+        '<span class="sl">' + esc(sl.type || 'Untyped slot') + (sl.required ? '<span class="req">required</span>' : '') + '</span>' +
+        '<span class="who">' + esc(who) + '</span></div>';
+    }
+    var newMine = false;
+    for (var m2 = 0; m2 < sel.length; m2++) { var t2 = targetOf(sel[m2], c.id); if (t2 && t2.mode === 'new') { newMine = true; break; } }
+    var newCount = queuedOn(c.id, 'new');
+    h += '<div class="scw-pa-slot new' + (newMine ? ' is-hit' : '') + '" data-scw-pa-new-row="' + esc(c.id) + '" title="Add the selected photo as a new photo of this device, leaving the open slots alone">' +
+      '<span class="box' + (newMine ? ' on' : '') + '" aria-hidden="true"></span>' +
+      '<span class="sl">+ new photo</span>' +
+      '<span class="who">' + esc(newMine ? 'this photo' : (newCount ? newCount + ' queued' : '')) + '</span></div>';
+    return h;
   }
   function counts() {
     var st = _state, out = { photos: 0, aimed: 0, dest: 0, fills: 0, news: 0, unaimed: 0, tooBig: 0, done: 0, guessed: 0 };
@@ -1614,8 +1828,11 @@
     railHits:          function () { return railOrdered(railHits()).map(function (c) { return c.id; }); },
     setTarget:         function (rowId, deviceId, spec) { var r = rowById(rowId); if (r) r.match = null; var ok = addTarget(rowId, deviceId, spec || null); render(); return ok; },
     removeTarget:      function (rowId, deviceId) { removeTarget(rowId, deviceId); render(); },
-    setRule:           setRule,
-    pairInOrder:       function (ids) { pairInOrder(ids); render(); },
+    clickSlot:         clickSlot,
+    clickNew:          clickNew,
+    openZoom:          openZoom,
+    closeZoom:         closeZoom,
+    zoomStep:          zoomStep,
     buildPlan:         buildPlan,
     send:              send,
     state:             function () { return _state; }

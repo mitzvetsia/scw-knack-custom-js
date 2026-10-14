@@ -2,7 +2,8 @@
 // one screen and no modes: photo tiles left, the device rail right; every photo is aimed at one or
 // more devices (chips), each chip fills an open slot (view-based PUT of the Knack asset id) or adds a
 // new photo (manifest to Make). File names aim rows with the board-2 rules; the label read falls back
-// to the alternate label install rows carry.
+// to the alternate label install rows carry. Rev 3: open slots are rows under each device (a photo
+// is aimed at exactly one), no batch rule, no "assign in order", a lightbox zoom, wrapping labels.
 const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
@@ -29,6 +30,8 @@ global.SCW = window.SCW;
 const posts = [];
 const fetchStub = (url, o) => { posts.push({ url, body: JSON.parse(o.body) }); return Promise.resolve({ ok: true, text: () => Promise.resolve('{"success":true}') }); };
 global.fetch = window.fetch = fetchStub;
+const infos = [];
+const realInfo = console.info; console.info = (m) => infos.push(String(m));
 
 for (const f of ['config.js', 'card.js', 'photo-assign.js']) {
   new Function('window', 'document', '$', 'Knack', 'SCW', 'fetch',
@@ -38,9 +41,13 @@ const ns = window.SCW.worksheetV2;
 const pa = ns.photoAssign;
 const V = 'view_4093';
 const CAM = ns.card.CAM_READER_BUCKET, NET = ns.card.NETWORKING_BUCKET, SVC = ns.card.SERVICES_BUCKET;
+const MH = ns.cfg.bucket('mountingHardware', V);
 const MDF1 = '6abd0251e5d0b1ca628ebb94', MDF2 = '6abd0286c3e527b8ea5499ef';
 // Install rows (view_4093 field map). r1 carries ONLY the alternate label (field_2801) — the shape that
-// made the first build match nothing on a deploy page.
+// made the first build match nothing on a deploy page. r7 is a bracket pointing at r1; r8 is a bracket
+// in the mounting-hardware bucket with NO parent column served (the shape that put brackets in the
+// rail); r9 is a camera-bucket row pointing at a parent — the worksheet folds it under that parent, so
+// it is not a target either.
 const irec = (id, label, prod, bucket, mdf, sort, extra) => Object.assign({
   id, field_2790: prod, field_2822_raw: [{ id: bucket, identifier: 'b' }],
   field_2818_raw: [{ id: mdf, identifier: mdf === MDF1 ? 'HEADEND: closet' : 'IDF: 01: shop' }], field_2218: sort
@@ -52,7 +59,9 @@ const installRecords = [
   irec('r4', '', 'Bullet 8MP', CAM, MDF2, 2, { field_2802: 'I-013' }),
   irec('r5', '', 'Imperial NVR', NET, MDF1, 1),
   irec('r6', '', 'Programming service', SVC, MDF1, 3),
-  irec('r7', '', 'Wall Mount Bracket', CAM, MDF1, 2, { field_2853_raw: [{ id: 'r1', identifier: 'I-010' }] })
+  irec('r7', '', 'Wall Mount Bracket', CAM, MDF1, 2, { field_2853_raw: [{ id: 'r1', identifier: 'I-010' }] }),
+  irec('r8', '', 'Electrical Box Mount', MH, MDF2, 4),
+  irec('r9', '', 'Vista Dome 4MP', CAM, MDF2, 2, { field_2802: 'I-014', field_2853_raw: [{ id: 'r5', identifier: 'NVR' }] })
 ];
 // SOW rows (view_3962 defaults) for the matcher's prefix rules.
 const srec = (id, label, prod) => ({ id, field_1950: label, field_1949: prod, field_2219_raw: [{ id: CAM, identifier: 'b' }], field_1946_raw: [{ id: MDF1, identifier: 'HEADEND' }], field_2218: 2 });
@@ -67,9 +76,8 @@ const photosByRecord = {
   r3: [{ id: 'p4', type: 'Proposed Mounting Location', required: true, imgUrl: 'https://x/p4.jpg' }]
 };
 ns.photos = { extractPhotoRecords: (vk, rid) => (photosByRecord[rid] || []).map(p => Object.assign({}, p)) };
-let lastPicker = null;
 ns.picker = {
-  open(opts) { lastPicker = opts; },
+  open() {},
   canonicalItemSort(itemLabel) {
     return (a, b) => {
       const sa = a.field_2218 == null ? Infinity : Number(a.field_2218), sb = b.field_2218 == null ? Infinity : Number(b.field_2218);
@@ -115,6 +123,10 @@ const rows = () => pa.state().rows;
 const rowByName = (n) => rows().find(r => r.filename === n);
 const tg = (r) => r.targets.map(t => [t.deviceId, t.mode, t.slotId || t.typeId || '', t.guessed]);
 const text = (sel) => { const el = modal().querySelector(sel); return el ? el.textContent.replace(/\s+/g, ' ').trim() : null; };
+const railRows = () => Array.from(modal().querySelectorAll('.scw-pa-dev')).map(d => d.querySelector('.id').textContent + ' ' + d.querySelector('.st').textContent);
+const slotRows = (dev) => Array.from(modal().querySelectorAll('[data-scw-pa-slot-dev="' + dev + '"]')).map(el => [el.getAttribute('data-scw-pa-slot-row'), el.className.replace('scw-pa-slot', '').trim(), el.querySelector('.who').textContent.trim()]);
+const newRow = (dev) => { const el = modal().querySelector('[data-scw-pa-new-row="' + dev + '"]'); return el ? [el.className.replace('scw-pa-slot', '').trim(), el.querySelector('.who').textContent.trim()] : null; };
+const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
 
 (async () => {
   // ── gate + button ──
@@ -130,10 +142,11 @@ const text = (sel) => { const el = modal().querySelector(sel); return el ? el.te
   email = 'Micah.Shearer@getscw.com';
 
   // ── candidates + matching ──
-  const cands = pa.candidatesFor(V);
-  check('candidates: hardware only, canonical order, the ALTERNATE label read when the display label is blank',
-    cands.map(x => x.id + '|' + x.drop + '|' + x.prefix + '|' + x.number),
-    ['r5||| ', 'r1|I-010|I|10', 'r2|I-011|I|11', 'r3|I-012|I|12', 'r4|I-013|I|13'].map(s => s.replace('||| ', '|||')));
+  const why = {};
+  const cands = pa.candidatesFor(V, why);
+  check('candidates: hardware only — accessories never (by bucket or by parent, as the worksheet folds them), the ALTERNATE label read when the display label is blank',
+    [cands.map(x => x.id + '|' + x.drop + '|' + x.prefix + '|' + x.number), why],
+    [['r5|||', 'r1|I-010|I|10', 'r2|I-011|I|11', 'r3|I-012|I|12', 'r4|I-013|I|13'], { records: 9, services: 1, parented: 2, accessories: 1 }]);
   const m = (n, list) => { const r = pa.matchFile(n, list || cands); return r ? [r.cand.id, r.confidence, r.via] : null; };
   check('board 2, install page: label / separators / zeros / bare number / leading 1 / sibling prefix / camera roll / ambiguous / words',
     [m('i10.png'), m('I_010 front.jpg'), m('i-10.heic'), m('10.jpg'), m('0010.jpg'), m('1.10.jpg'), m('E-013.jpg'),
@@ -149,37 +162,62 @@ const text = (sel) => { const el = modal().querySelector(sel); return el ? el.te
   // ── the one screen ──
   toolbarFixture();
   pa.open(V);
-  check('opens with the device count and both panes', [!!modal(), /5 devices/.test(text('.scw-pa-sub')), modal().querySelectorAll('.scw-pa-dev').length], [true, true, 5]);
+  check('opens with the device count, both panes, and a console line naming what was skipped',
+    [!!modal(), /5 devices/.test(text('.scw-pa-sub')), modal().querySelectorAll('.scw-pa-dev').length, infos.some(s => /view_4093: 9 records → 5 photo targets \(skipped: services 1, parented 2, accessories 1\)/.test(s))],
+    [true, true, 5, true]);
   await pa.addFiles([file('i10.png'), file('i11.png'), file('i13 front.jpg'), file('i13 back.jpg'), file('1.12.jpg'), file('IMG_4523.jpg')]);
   check('rows aim themselves: open required slots fill in strip order, no slot → new, a guess is flagged, IMG waits',
     rows().map(r => [r.filename, tg(r)]),
     [['i10.png', [['r1', 'slot', 'p1', false]]], ['i11.png', [['r2', 'slot', 'p3', false]]], ['i13 front.jpg', [['r4', 'new', '', false]]],
      ['i13 back.jpg', [['r4', 'new', '', false]]], ['1.12.jpg', [['r3', 'new', '', true]]], ['IMG_4523.jpg', []]]);
-  check('toolbar counts + footer + Send', [text('.scw-pa-matchsum .ok'), text('.scw-pa-matchsum .gs'), text('.scw-pa-matchsum .td'), text('.scw-pa-summary'), text('[data-scw-pa-send]'), modal().querySelector('[data-scw-pa-send]').disabled],
-    ['4 matched', '1 guessed', '1 to pick', '6 photos → 5 destinations · 2 fill a slot · 3 new photos · 1 guess to confirm · 1 photo still needs a device', 'Send 5 photos', false]);
-  check('DOM: six tiles, five chips (one blue guess), one finder on the unaimed tile, amber tiles for unaimed + guess-free',
-    [modal().querySelectorAll('.scw-pa-tile').length, modal().querySelectorAll('.scw-pa-chip').length, modal().querySelectorAll('.scw-pa-chip.is-guess').length,
-     modal().querySelectorAll('[data-scw-pa-finder]').length, modal().querySelectorAll('.scw-pa-tile.is-todo').length],
-    [6, 5, 1, 1, 1]);
-  check('rail rows say what is open and what is queued', Array.from(modal().querySelectorAll('.scw-pa-dev')).map(d => d.querySelector('.id').textContent + ' ' + d.querySelector('.st').textContent),
-    ['I-010 0 of 2 required · 1 queued', 'I-011 0 of 1 required · 1 queued', '— no required slots', 'I-012 1 of 1 required · 1 queued', 'I-013 2 queued']);   // devices still missing a required photo first; the rest in canonical order
+  check('toolbar counts + footer + Send; no batch rule, no "assign in order"',
+    [text('.scw-pa-matchsum .ok'), text('.scw-pa-matchsum .gs'), text('.scw-pa-matchsum .td'), text('.scw-pa-summary'), text('[data-scw-pa-send]'), modal().querySelector('[data-scw-pa-send]').disabled,
+     modal().querySelectorAll('[data-scw-pa-rule], [data-scw-pa-order]').length],
+    ['4 matched', '1 guessed', '1 to pick', '6 photos → 5 destinations · 2 fill a slot · 3 new photos · 1 guess to confirm · 1 photo still needs a device', 'Send 5 photos', false, 0]);
+  check('DOM: six tiles with a zoom button each, five chips (one blue guess) naming the slot in full, one finder on the unaimed tile, amber tiles for unaimed + guess-free',
+    [modal().querySelectorAll('.scw-pa-tile').length, modal().querySelectorAll('[data-scw-pa-zoom]').length, modal().querySelectorAll('.scw-pa-chip').length, modal().querySelectorAll('.scw-pa-chip.is-guess').length,
+     modal().querySelectorAll('[data-scw-pa-finder]').length, modal().querySelectorAll('.scw-pa-tile.is-todo').length, text('[data-scw-pa-chip="' + rowByName('i10.png').id + '"]')],
+    [6, 6, 5, 1, 1, 1, 'I-010 · Vista Dome 4MP fills Proposed Mounting Location']);
+  check('rail rows: label (or product when there is none) + what is open and queued; devices still missing a required photo first, groups by name',
+    railRows(),
+    ['I-010 2 open slots · 2 required · 1 queued', 'I-011 1 open slot · 1 required · 1 queued', 'Imperial NVR no slots',
+     'I-012 required photos all in · 1 queued', 'I-013 no slots · 2 queued']);
+  check('open slots are rows under the device (a taken one names its photo); a device with none has no slot rows',
+    [slotRows('r1'), newRow('r1'), slotRows('r4'), newRow('r4')],
+    [[['p1', 'is-taken', '← i10.png'], ['p2', '', 'open']], ['new', ''], [], null]);
+
+  // Slot rows: pick exactly which slot a photo fills.
+  const front = rowByName('i13 front.jpg');
+  pa.select(front.id);
+  pa.clickSlot('r1', 'p2');
+  check('a slot click aims the selected photo at exactly that slot',
+    [tg(front), slotRows('r1'), text('[data-scw-pa-dev-row="r1"] .st')],
+    [[['r4', 'new', '', false], ['r1', 'slot', 'p2', false]], [['p1', 'is-taken', '← i10.png'], ['p2', 'is-hit', 'this photo']], 'this photo → fills Camera View']);
+  pa.clickSlot('r1', 'p2');
+  check('clicking its slot again clears it', [tg(front), slotRows('r1')], [[['r4', 'new', '', false]], [['p1', 'is-taken', '← i10.png'], ['p2', '', 'open']]]);
+  pa.clickSlot('r1', 'p1');
+  check('a slot another photo fills is refused with a note', [tg(front), /already taken by i10\.png/.test(text('.scw-pa-rail-ft'))], [[['r4', 'new', '', false]], true]);
+  pa.clickNew('r1');
+  check('"+ new photo" under a device with open slots forces a new photo there', [tg(front), newRow('r1')], [[['r4', 'new', '', false], ['r1', 'new', '', false]], ['new is-hit', 'this photo']]);
+  pa.clickNew('r1');
+  check('and again removes it', tg(front), [['r4', 'new', '', false]]);
+  pa.select(front.id, false);
 
   // Two more photos of I-010: the next open required slot, then a new photo.
   await pa.addFiles([file('i10 extra.jpg'), file('i10 third.jpg')]);
   check('a second photo of the same device fills its next open required slot; a third becomes a new photo',
     [tg(rowByName('i10 extra.jpg')), tg(rowByName('i10 third.jpg'))], [[['r1', 'slot', 'p2', false]], [['r1', 'new', '', false]]]);
 
-  // Finder: type on the unaimed tile, Enter takes the top hit.
+  // Finder: type on the unaimed tile, Enter takes the top hit; the rail search mirrors the query and clears with it.
   const img = rowByName('IMG_4523.jpg');
   pa.setFinderQuery(img.id, '13');
-  check('the finder filters the rail', pa.railHits(), ['r4']);
+  check('the finder filters the rail, the search box shows the query, and the rail says it is filtered', [pa.railHits(), railq(), text('.scw-pa-railcount')], [['r4'], '13', 'Showing 1 of 5 devices for "13" · show all']);
   pa.finderEnter(img.id);
-  check('Enter aims the tile at the top hit and the finder goes away', [tg(img), modal().querySelectorAll('[data-scw-pa-finder]').length, pa.state().finderRow], [[['r4', 'new', '', false]], 0, '']);
+  check('Enter aims the tile at the top hit; the finder, the search box and the filter note clear', [tg(img), modal().querySelectorAll('[data-scw-pa-finder]').length, pa.state().finderRow, railq(), text('.scw-pa-railcount')], [[['r4', 'new', '', false]], 0, '', '', '']);
 
   // Rail click toggles the destination on the selected photos.
-  const front = rowByName('i13 front.jpg');
   pa.select(front.id);
-  check('selecting a tile ticks its device in the rail', [modal().querySelector('[data-scw-pa-dev-row="r4"] .box').className, text('[data-scw-pa-dev-row="r4"] .st')], ['box on', 'this photo → new']);
+  check('selecting a tile ticks its device in the rail', [modal().querySelector('[data-scw-pa-dev-row="r4"] .box').className, text('[data-scw-pa-dev-row="r4"] .st')], ['box on', 'this photo → new photo']);
   pa.clickDevice('r1');
   check('clicking another device adds a second chip: one upload, two copies (I-010 slots are taken → new)',
     [tg(front), text('[data-scw-pa-row="' + front.id + '"] .scw-pa-addmore')], [[['r4', 'new', '', false], ['r1', 'new', '', false]], '+ another device · one upload, 2 copies']);
@@ -190,13 +228,21 @@ const text = (sel) => { const el = modal().querySelector(sel); return el ? el.te
   check('chip menu lists this device\'s choices', Array.from(modal().querySelectorAll('.scw-pa-menu button')).map(b => b.textContent.replace(/\s+/g, ' ').trim()),
     ['New photo, no type', 'New photo: Camera View', 'New photo: Proposed Mounting Location', 'Remove this device', 'Close']);
   pa.setTarget(front.id, 'r4', { mode: 'new', typeId: 't-cv' });
-  check('a typed new photo', [tg(front), text('[data-scw-pa-chip="' + front.id + '"] .slot')], [[['r4', 'new', 't-cv', false]], 'new: Camera View']);
+  check('a typed new photo', [tg(front), text('[data-scw-pa-chip="' + front.id + '"] .slot')], [[['r4', 'new', 't-cv', false]], 'new Camera View photo']);
   const i10 = rowByName('i10.png');
   modal().querySelector('[data-scw-pa-chip="' + i10.id + '"]').click();
   check('a slot another photo fills is offered but disabled', Array.from(modal().querySelectorAll('.scw-pa-menu button[data-scw-pa-menu-slot]')).map(b => [b.getAttribute('data-scw-pa-menu-slot'), b.disabled, b.className]),
     [['p1', false, 'is-on'], ['p2', true, '']]);
   modal().querySelector('[data-scw-pa-menu-close]').click();
   pa.select(front.id, false);
+
+  // Lightbox: view a photo larger, walk the queue, Esc back.
+  pa.openZoom(front.id);
+  check('zoom opens the photo full-size with its destinations', [!!modal().querySelector('.scw-pa-lb'), text('.scw-pa-lb-name'), /New "Camera View" photo on I-013 · 3 of 8/.test(text('.scw-pa-lb-sub'))], [true, 'i13 front.jpg', true]);
+  pa.zoomStep(1);
+  check('→ walks to the next photo', text('.scw-pa-lb-name'), 'i13 back.jpg');
+  modal().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  check('Esc closes the lightbox, not the modal', [!!modal(), !!modal().querySelector('.scw-pa-lb')], [true, false]);
 
   // One photo left unaimed on purpose: it stays in the queue through a send.
   await pa.addFiles([file('lobby wide.jpg')]);
@@ -208,7 +254,7 @@ const text = (sel) => { const el = modal().querySelector(sel); return el ? el.te
     [res, uploads.length], [{ sent: 8, uploaded: 8, filled: 3, created: 5, failed: 0, guessed: 1, leftover: 1 }, 8]);
   check('fill = the asset id PUT onto the slot record through the save view, then the best-effort completion + history stamp',
     [puts.filter(p => p[2].field_771).map(p => [p[1], p[2].field_771]), puts.filter(p => p[2].field_2447).map(p => [p[1], p[2].field_2447, /UPLOADED PHOTO: bulk assign/.test(p[2].field_2865)])],
-    [['p1', 'asset-1'], ['p3', 'asset-2'], ['p2', 'asset-7']].length === 3 ? [[['p1', 'asset-1'], ['p3', 'asset-2'], ['p2', 'asset-7']], [['p1', 'Yes', true], ['p3', 'Yes', true], ['p2', 'Yes', true]]] : null);
+    [[['p1', 'asset-1'], ['p3', 'asset-2'], ['p2', 'asset-7']], [['p1', 'Yes', true], ['p3', 'Yes', true], ['p2', 'Yes', true]]]);
   check('manifests: no bytes, the target device, the type when chosen, the parent scope',
     posts.map(p => [p.body.uploadKind, p.body.target.kind, p.body.target.recordId, p.body.photoType && p.body.photoType.id, p.body.scope.linkField, p.body.asset.id]),
     [['photo_assign', 'installLineItemID', 'r4', 't-cv', 'deploymentID', 'asset-3'], ['photo_assign', 'installLineItemID', 'r4', null, 'deploymentID', 'asset-4'],
@@ -224,16 +270,12 @@ const text = (sel) => { const el = modal().querySelector(sel); return el ? el.te
   // ── helpers ──
   pa.close(); pa.open(V);
   await pa.addFiles([file('b.jpg'), file('a.jpg')]);
-  pa.pairInOrder(['r4', 'r1']);
-  check('assign in order: files in name order ↔ picked devices in canonical order', rows().map(r => [r.filename, tg(r)]), [['b.jpg', [['r4', 'new', '', false]]], ['a.jpg', [['r1', 'slot', 'p1', false]]]]);
   pa.select(rowByName('b.jpg').id);
+  pa.clickDevice('r4');
   pa.tickGroup(MDF2);
   check('tick all in a group adds every device of that MDF/IDF', tg(rowByName('b.jpg')), [['r4', 'new', '', false], ['r3', 'new', '', false]]);
-  pa.setRule('new');
-  pa.setTarget(rowByName('a.jpg').id, 'r2');
-  check('the batch rule "always add a new photo" skips open slots', tg(rowByName('a.jpg')), [['r1', 'slot', 'p1', false], ['r2', 'new', '', false]]);
   modal().querySelector('[data-scw-pa-hideaimed]').click();
-  check('hide aimed', modal().querySelectorAll('.scw-pa-tile').length, 0);
+  check('hide aimed leaves the unaimed tile', [modal().querySelectorAll('.scw-pa-tile').length, text('.scw-pa-tile .scw-pa-name')], [1, 'a.jpg']);
 
   // ── upload failure never writes ──
   pa.close(); pa.open(V);
@@ -243,6 +285,7 @@ const text = (sel) => { const el = modal().querySelector(sel); return el ? el.te
   res = await pa.send();
   check('a failed upload fails its row and skips its writes', [res.filled, res.created, res.failed, rows()[0].status, /Upload failed: 503/.test(rows()[0].error), puts.length, posts.length], [0, 0, 1, 'failed', true, 0, 0]);
 
+  console.info = realInfo;
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
 })().catch(e => { console.log('FAIL uncaught: ' + (e && e.stack || e)); process.exit(1); });

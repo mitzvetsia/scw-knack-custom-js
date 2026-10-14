@@ -750,6 +750,11 @@
     var mount = document.getElementById(cfg.mount);
     if (!mount) return;
     if (mount.classList.contains('scw-ws-v2-mode-summary')) {
+      // Once per worksheet mount. The click rebuilds the whole worksheet,
+      // and a mode write that does not stick (storage blocked, a stale
+      // class) must never turn the 5 s heartbeat into a repaint loop.
+      if (mount.hasAttribute('data-scw-bom-takedown')) return;
+      mount.setAttribute('data-scw-bom-takedown', '1');
       var other = mount.querySelector('.scw-ws-v2-toolbar-btn[data-scw-ws-v2-mode]:not([data-scw-ws-v2-mode="summary"])');
       if (other) other.click();
     }

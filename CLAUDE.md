@@ -547,6 +547,16 @@ Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-au
   "Sub", never a subcontractor name; the current tile is white with a navy frame
   (the navy fill was rejected as "yelly"); no descriptions in the "Also" rows.
 - **Tests**: `tests/deploy-page/` (jsdom). Run all four before every push.
+- **Repaint diagnostics** (2026-10-14, "the worksheet flashes every few seconds"): set
+  `localStorage.scwScrollSpy = '1'` in the console. The data layer logs every poll tick it SKIPS
+  (model unchanged) and init.js now logs every worksheet REBUILD with its dirty state and caller
+  (`[scw-ws-v2] view_4093 REBUILD — dirty: all=true records=0 — from: …`) — a repeating line names
+  the trigger (a KTL `_ar` auto-refresh on a view, a poll burst whose fetched model differs every
+  time, a module refetching). Periodic work on the page by design: deploy-page-nav's 3 s heartbeat
+  (sig-checked, no DOM churn when nothing changed), bom-tray's 5 s takedown (leaves a saved "Summary
+  only" mode ONCE per mount — the click rebuilds the worksheet, so it is guarded against looping),
+  poll.js (2 min; 15 s for 5 min after any knack-record-create/update, repainting only on a changed
+  model). photo-assign.js runs nothing periodic.
 - **Pending**: QA checklist per line item (Builder keys still needed — see the
   doc), contacts + pinned contacts, pinned files in the maps strip.
 
@@ -648,27 +658,36 @@ modal inherits from 05.01 (pre-existing, not changed): License qty is ignored (o
 product), exterior/plenum come from the PRODUCT not the toggles, Materials accessories (`field_2206`)
 create SOW Line Items (object_105), not survey items. Test: `tests/worksheet-v2/test-survey-add-item-form.js`.
 
-## Bulk photo ASSIGN modal — v2 "+ Add Photos (v2)" (PREVIEW 2026-10-14) — `src/features/worksheet-v2/photo-assign.js`
+## Bulk photo ASSIGN modal — v2 "+ Add Photos (v2)" (PREVIEW 2026-10-14, rev 3) — `src/features/worksheet-v2/photo-assign.js`
 
 Gated to `CONFIG.ALLOWED_EMAILS` (micah.shearer@getscw.com; empty = everyone): the listed users get a
 second amber "+ Add Photos (v2)" button right after the worksheet toolbar's "+ Add Photos" on every
 worksheet-v2 view; the v1 button + modal (`bulk-upload.js`) are untouched. Design: Claude Design canvas
-"Bulk Photo Assign v2" (rev 2, 2026-10-14 — the first cut's three modes were replaced by ONE screen).
-- **One screen, no modes**: photo tiles (big thumbnails) on the left, the worksheet's devices in a rail
-  on the right, always on screen. Every photo is AIMED at one or more devices; each destination is a
-  CHIP on the tile that FILLS an open slot (a DOC_photos record with a type and no image, from
-  `ns.photos.extractPhotoRecords`, in the strip's own order) or adds a NEW photo (typed from the
-  photo-type catalog, or untyped). A tile with two chips is the old "copy" case: one upload, N writes.
-  Three gestures, same result: the unaimed tile's FINDER (filters the rail, Enter = top hit, Tab walks
-  the unaimed), tick tiles + click a rail row (toggles; "Tick all N" per MDF/IDF group), or drag a tile
-  / the selection onto a rail row. One batch rule in the toolbar (`fillfirst`: first open required slot
-  nobody else in the batch fills, else new / `new`); the chip menu is the per-photo override (open
-  slots incl. ones another queued photo already takes, shown disabled; typed / untyped new; remove).
-  "Assign in order…" (canonical picker, `pickOnly`) pairs name-sorted files with the picked devices.
+"Bulk Photo Assign v2" (rev 2, 2026-10-14 — the first cut's three modes were replaced by ONE screen;
+rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing clipped).
+- **One screen, no modes**: photo tiles on the left (176px CONTAIN-fit thumbnails — the whole photo,
+  never a crop — each with a zoom button that opens a LIGHTBOX inside the dialog: ← → walk the queue,
+  Esc back), the worksheet's devices in a rail on the right, always on screen. Every photo is AIMED at
+  one or more devices; each destination is a CHIP on the tile (device on line 1, what happens there on
+  line 2, full slot names, text wraps) that FILLS an open slot (a DOC_photos record with a type and no
+  image, from `ns.photos.extractPhotoRecords`, in the strip's own order) or adds a NEW photo (typed from
+  the photo-type catalog, or untyped). A tile with two chips is the old "copy" case: one upload, N writes.
+- **The rail says what is open**: each device row (label wraps, product on its own muted line, groups
+  in MDF/IDF name order, "N open slots · M required · K queued") is followed by one row per OPEN slot
+  ("Proposed Mounting Location · required"; "← IMG_1.jpg" when another queued photo takes it) and a
+  "+ new photo" row. Three gestures, same result: the unaimed tile's FINDER (filters the rail — the
+  search box mirrors it, a filtered list says "Showing 3 of 30 · show all", and both clear with it —
+  Enter = top hit, Tab walks the unaimed), tick tiles + click a DEVICE row (the first open required
+  slot nobody else in the batch fills, else new) or a SLOT row (exactly that slot; a slot takes ONE
+  photo) or "+ new photo", or drag a tile / the selection onto any of those rows. The chip menu is the
+  per-photo override. The batch-rule select and "Assign in order…" are gone (both read as puzzles).
 - **Targets** = the worksheet's hardware (`ns.data.readRecords` minus services / assumptions /
-  licenses / accessories), label = the one the card shows: `displayLabel` else `labelAlt` (install
-  rows often carry only `field_2801` — reading only the display label is why the first build matched
-  nothing on a deploy page). Candidates carry `prefix` (letters) + `number`.
+  licenses, minus accessories = the mounting-hardware bucket OR a populated parent column — the same
+  rows the worksheet folds under a parent card), label = the one the card shows: `displayLabel` else
+  `labelAlt` (install rows often carry only `field_2801` — reading only the display label is why the
+  first build matched nothing on a deploy page) else prefix + number. `open()` logs one console line
+  ("view_4093: 42 records → 30 photo targets (skipped: services 3, accessories 9)") — read it when a
+  device is missing from the rail. Candidates carry `prefix` (letters) + `number`.
 - **File-name matching** (`matchFile(name, candidates, ctx)` → `{cand, confidence, via}` | null; canvas
   board 2): tokens = letters + zero-stripped digit runs (i10 / I-10 / I_010 / 0010 all read I,10). A
   whole label in the name = `matched` (longest label wins; two devices at the same length = null); a

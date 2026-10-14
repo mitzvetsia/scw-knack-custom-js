@@ -218,6 +218,19 @@
     // wrapping every render in the anchor's 600ms settle loop was pure waste
     // (and a heavy forced-reflow / rAF source) on the common edit case.
     if (!_skipRender) {
+      // Render spy (localStorage.scwScrollSpy = '1' — the data layer's own
+      // switch, which also logs the poll ticks it SKIPS): says why this
+      // worksheet is rebuilding and who asked. The line to read when a page
+      // repaints on its own every few seconds.
+      try {
+        if (window.localStorage && localStorage.scwScrollSpy === '1') {
+          var _pkSpy = (ns.data && typeof ns.data.peekDirty === 'function') ? ns.data.peekDirty(key) : null;
+          var _from = String((new Error()).stack || '').split('\n').slice(2, 7).join(' « ').replace(/\s+/g, ' ');
+          console.warn('[scw-ws-v2] ' + key + ' REBUILD — ' +
+            (_painted ? ('dirty: all=' + (_pkSpy ? _pkSpy.all : '?') + ' records=' + (_pkSpy ? _pkSpy.count : '?')) : 'first paint') +
+            (_q ? ' search="' + _q + '"' : '') + ' — from: ' + _from);
+        }
+      } catch (eSpy) { /* diagnostics only */ }
       ns.render.renderView(key, records);
       _lastSearchQ[key] = _q;
     }
