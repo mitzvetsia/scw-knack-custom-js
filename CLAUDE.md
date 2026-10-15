@@ -610,6 +610,17 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   creates Proposal/Acceptance (flags + reason on the Acceptance), writes `Accepted`, calls
   13.06b. The CO strip reads the Acceptance from a hidden grid (`ACC.view`, TBD). Gated by
   `CO_AUTHORIZE_NOT_BILLABLE_READY` / `CO_APPROVE_WITHOUT_SIGNATURE_READY` (false).
+- **CO add form — Mounting Hardware item type (2026-10-15)**: `co-add-item-form.js` offers the
+  mounting-hardware bucket (`594a94536877675816984cb9`) as its own chip: a **"Mounts on"** picker
+  (`parentCandidates`: this CO's own lines from view_4079 + the project's installed items from
+  view_4086, minus services / assumptions / licenses / materials / mounting hardware, accessories
+  and removed-by-CO rows), the hardware list narrowed to what the catalog says fits that device
+  (`accessoryCandidates`, either compatibility list; the whole bucket with a note when nothing
+  fits), the parent's MDF/IDF prefilled, qty. The payload adds `parentLineItemId` (the SOW line for
+  `field_2464` — an installed device's via `field_2819`, so view_4086 must serve that column),
+  `parentInstallItemId`, `parentProductId`, `parentLabel`, `parentSource`. **Make (02.xx CO add):
+  write `field_2464` = parentLineItemId when present and skip default-accessory auto-adds for this
+  bucket** — the client does not write the parent itself. Test: `tests/worksheet-v2/test-co-add-mounting.js`.
 - **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
   `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
   install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,

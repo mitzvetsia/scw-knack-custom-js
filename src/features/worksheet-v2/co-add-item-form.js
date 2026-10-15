@@ -43,6 +43,7 @@
   var B_ASSUMPTIONS = '697b7a023a31502ec68b3303';
   var B_MATERIALS   = '6a14eee134e422f3769ada00';
   var B_LICENSE     = '645554dce6f3a60028362a6a';
+  var B_MOUNTING    = '594a94536877675816984cb9';   // mounting hardware (brackets, boxes, pole adapters)
 
   var CAM_START_HELPER =
     'I.e. If you’re adding quantity 5 cameras here with a pre-fix of ' +
@@ -68,6 +69,19 @@
     ]},
     { id: B_OTHEREQUIP, name: 'Other Equipment', fields: [
       { t: 'product' },
+      { t: 'mdf', mode: 'opt' },
+      { t: 'qty' }
+    ]},
+    // Mounting hardware (2026-10-15): a bracket / box / pole adapter as its
+    // OWN change-order line, aimed at the device it mounts — a camera being
+    // added on this CO, or one already installed on the project. The parent
+    // rides the payload (parentLineItemId → the created line's field_2464;
+    // parentInstallItemId for the apply scenario) so the bracket folds under
+    // its device like any accessory, its MDF/IDF is prefilled from the
+    // device, and the product list narrows to hardware the catalog says fits.
+    { id: B_MOUNTING, name: 'Mounting Hardware', fields: [
+      { t: 'parent' },
+      { t: 'product', label: 'Mounting hardware' },
       { t: 'mdf', mode: 'opt' },
       { t: 'qty' }
     ]},
@@ -214,6 +228,61 @@
   }
   function sortByName(a, b) {
     return String(a.name).localeCompare(String(b.name), undefined, { numeric: true, sensitivity: 'base' });
+  }
+  function readRecords(viewKey) {
+    try { return (wv2.data && typeof wv2.data.readRecords === 'function') ? (wv2.data.readRecords(viewKey) || []) : []; }
+    catch (e) { return []; }
+  }
+  function firstConn(raw) {
+    if (Array.isArray(raw)) return (raw[0] && raw[0].id) ? raw[0] : null;
+    return (raw && raw.id) ? raw : null;
+  }
+  function hasConn(raw) { return !!firstConn(raw); }
+  var NOT_A_MOUNT_PARENT = {};
+  NOT_A_MOUNT_PARENT[B_SERVICE] = NOT_A_MOUNT_PARENT[B_ASSUMPTIONS] = NOT_A_MOUNT_PARENT[B_LICENSE] =
+    NOT_A_MOUNT_PARENT[B_MOUNTING] = NOT_A_MOUNT_PARENT[B_MATERIALS] = true;
+  // Devices a bracket can mount on, for the Mounting Hardware bucket:
+  //   · this change order's OWN lines (the CO worksheet, view_4079) — cameras,
+  //     readers, headend, other equipment; never services, assumptions,
+  //     licenses, materials or mounting hardware;
+  //   · the project's INSTALLED items (view_4086, the removal source) — same
+  //     buckets, minus accessories (install field_2853 back-pointer set) and
+  //     rows a CO already removed (field_2967).
+  // Each carries the SOW line item the created bracket's field_2464 can point
+  // at (an install row's via its source line, field_2819), the product (the
+  // compatibility filter) and the MDF/IDF (prefilled on the form).
+  function parentCandidates(viewKey) {
+    var co = [], inst = [], seen = Object.create(null);
+    var card = wv2.card;
+    var lines = readRecords(viewKey);
+    for (var i = 0; i < lines.length; i++) {
+      var r = lines[i];
+      if (!r || !r.id || seen[r.id]) continue;
+      var bk = firstConn(r.field_2219_raw);
+      if (bk && NOT_A_MOUNT_PARENT[bk.id]) continue;
+      if (hasConn(r.field_2464_raw)) continue;                  // an accessory itself
+      var prod = firstConn(r.field_1949_raw), mdf = firstConn(r.field_1946_raw);
+      var label = (card && typeof card.labelLineItem === 'function') ? card.labelLineItem(r) : (stripHtml(r.field_1950) || r.id);
+      seen[r.id] = 1;
+      co.push({ id: 'co:' + r.id, name: label + ' — on this change order', label: label, source: 'co',
+                sowLineId: r.id, installId: '', productId: prod ? prod.id : '', mdfId: mdf ? mdf.id : '' });
+    }
+    var installs = readRecords('view_4086');
+    for (var k = 0; k < installs.length; k++) {
+      var a = installs[k];
+      if (!a || !a.id) continue;
+      var ib = firstConn(a.field_2822_raw);
+      if (ib && NOT_A_MOUNT_PARENT[ib.id]) continue;
+      if (hasConn(a.field_2853_raw) || hasConn(a.field_2967_raw)) continue;   // an accessory, or removed by a CO
+      var il = stripHtml(a.field_2802) || stripHtml(a.field_2801) || '';
+      var ip = stripHtml(a.field_2790) || (firstConn(a.field_2846_raw) ? stripHtml(firstConn(a.field_2846_raw).identifier) : '');
+      var ilabel = il && ip ? il + ' · ' + ip : (il || ip || a.id);
+      var iprod = firstConn(a.field_2846_raw), isow = firstConn(a.field_2819_raw), imdf = firstConn(a.field_2818_raw);
+      inst.push({ id: 'inst:' + a.id, name: ilabel + ' — installed', label: ilabel, source: 'install',
+                  sowLineId: isow ? isow.id : '', installId: a.id, productId: iprod ? iprod.id : '', mdfId: imdf ? imdf.id : '' });
+    }
+    co.sort(sortByName); inst.sort(sortByName);
+    return co.concat(inst);
   }
   // Accessories: OPTIONAL accessories only — Make auto-adds a product's
   // default accessories, so the user picks additions. Same source + rule as
@@ -463,7 +532,7 @@
     var coSowId = getCoSowId();
     injectCss();
 
-    var st = { bucketId: '', productIds: [], mdfIds: [], accessoryIds: [] };
+    var st = { bucketId: '', productIds: [], mdfIds: [], accessoryIds: [], parent: null };
 
     var chrome =
       '<div class="scw-coadd__body"></div>' +
@@ -547,17 +616,28 @@
         var pMulti = b.id !== B_CAMERA;
         var row = labelRow(fd.label || (pMulti ? 'Products' : 'Product'));
         var host = document.createElement('div'); row.appendChild(host);
-        combos.product = makeCombo(host, {
-          candidates: productCandidates(st.bucketId, viewKey), multi: pMulti,
-          placeholder: pMulti ? 'Search products…' : 'Search products…',
-          emptyText: 'No products available on this scene',
+        combos.productHost = host; combos.productMulti = pMulti; combos.productBucket = b;
+        buildProductCombo();
+        return row;
+      }
+      if (t === 'parent') {
+        var parow = labelRow(fd.label || 'Mounts on (optional)',
+          'The camera or device this hardware mounts — a line on this change order, or an item already installed. ' +
+          'The bracket attaches to it, takes its MDF/IDF, and the list below narrows to hardware that fits it.');
+        var pahost = document.createElement('div'); parow.appendChild(pahost);
+        var pcands = parentCandidates(viewKey);
+        combos.parent = makeCombo(pahost, {
+          candidates: pcands, multi: false,
+          placeholder: 'Search devices…',
+          emptyText: 'No devices on this change order or installed on the project',
           onChange: function (ids) {
-            st.productIds = ids;
-            if (b.id === B_ASSUMPTIONS) syncAssumptionDesc();
-            rebuildAccessoryCombo();   // optional accessories depend on the product
+            st.parent = null;
+            for (var pi = 0; pi < pcands.length; pi++) if (pcands[pi].id === ids[0]) { st.parent = pcands[pi]; break; }
+            prefillMdfFromParent();
+            rebuildProductCombo();
           }
         });
-        return row;
+        return parow;
       }
       if (t === 'mdf') {
         var req = fd.mode === 'single' || fd.mode === 'multi';
@@ -632,6 +712,60 @@
       return null;
     }
 
+    // The product list. For Mounting Hardware with a parent chosen it narrows
+    // to the hardware the catalog says fits that device (the same
+    // compatibility rule the optional-accessory combo uses), when the
+    // catalog knows any — else the whole bucket, with a note.
+    function productListFor(b) {
+      var all = productCandidates(st.bucketId, viewKey);
+      if (!b || b.id !== B_MOUNTING || !st.parent || !st.parent.productId) return { list: all, narrowed: false, none: false };
+      var fits = accessoryCandidates([st.parent.productId]);
+      if (!fits.length) return { list: all, narrowed: false, none: true };
+      var inBucket = Object.create(null);
+      for (var i = 0; i < all.length; i++) inBucket[all[i].id] = true;
+      var kept = fits.filter(function (p) { return inBucket[p.id]; });
+      return { list: kept.length ? kept : fits, narrowed: true, none: false };
+    }
+    function buildProductCombo() {
+      var host = combos.productHost;
+      if (!host) return;
+      var b = combos.productBucket;
+      host.innerHTML = '';
+      host.className = '';   // makeCombo re-adds .scw-coadd__combo
+      st.productIds = [];
+      var pl = productListFor(b);
+      var row = host.parentNode;
+      var note = row && row.querySelector('[data-parent-note]');
+      if (note) note.parentNode.removeChild(note);
+      if (row && st.parent && (pl.narrowed || pl.none)) {
+        var txt = pl.narrowed
+          ? 'Showing the ' + pl.list.length + ' item' + (pl.list.length === 1 ? '' : 's') + ' the catalog lists as fitting ' + st.parent.label + '.'
+          : 'Nothing in the catalog lists ' + st.parent.label + ' as compatible — showing all mounting hardware.';
+        row.insertAdjacentHTML('beforeend', '<p class="scw-coadd__help" data-parent-note>' + esc(txt) + '</p>');
+      }
+      combos.product = makeCombo(host, {
+        candidates: pl.list, multi: combos.productMulti,
+        placeholder: 'Search products…',
+        emptyText: 'No products available on this scene',
+        onChange: function (ids) {
+          st.productIds = ids;
+          if (b && b.id === B_ASSUMPTIONS) syncAssumptionDesc();
+          rebuildAccessoryCombo();   // optional accessories depend on the product
+        }
+      });
+    }
+    function rebuildProductCombo() { if (combos.productHost) buildProductCombo(); }
+    // A bracket lives where its device does: tick the parent's MDF/IDF when
+    // the form has one and nothing is ticked yet.
+    function prefillMdfFromParent() {
+      if (!st.parent || !st.parent.mdfId || st.mdfIds.length) return;
+      var box = body.querySelector('.scw-coadd__checks input[value="' + st.parent.mdfId + '"]');
+      if (!box || box.checked) return;
+      box.checked = true;
+      try { box.dispatchEvent(new Event('change', { bubbles: true })); }
+      catch (e) { var ev = document.createEvent('Event'); ev.initEvent('change', true, true); box.dispatchEvent(ev); }
+    }
+
     function syncAssumptionDesc() {
       var descRow = body.querySelector('[data-cond="customAssumption"]');
       if (!descRow) return;
@@ -671,7 +805,7 @@
     // (and reset) each time; within a bucket they manage themselves.
     function render() {
       combos = {};
-      st.productIds = []; st.mdfIds = []; st.accessoryIds = [];
+      st.productIds = []; st.mdfIds = []; st.accessoryIds = []; st.parent = null;
       body.innerHTML = '';
 
       var chipRow = document.createElement('div'); chipRow.className = 'scw-coadd__row';
@@ -751,6 +885,16 @@
         serviceCost:     readField('serviceCost') || '',
         description:     readField('description') || '',
         notes:           readField('notes') || '',
+        // Mounting Hardware only — the device the hardware mounts (see the
+        // bucket's comment above; '' elsewhere). parentLineItemId is the SOW
+        // line item for field_2464; parentInstallItemId the install record
+        // when the device is already installed (its source line is the
+        // former, when view_4086 serves field_2819).
+        parentLineItemId:    (st.parent && st.parent.sowLineId) || '',
+        parentInstallItemId: (st.parent && st.parent.installId) || '',
+        parentProductId:     (st.parent && st.parent.productId) || '',
+        parentLabel:         (st.parent && st.parent.label) || '',
+        parentSource:        (st.parent && st.parent.source) || '',
         triggeredBy:     triggeredBy(),
         // Structural origin (see ORIGINS above): 'sub' = the sub portal's
         // pricing page, 'ops' = the internal build-CO page. An unknown
@@ -796,6 +940,6 @@
     render();
   }
 
-  wv2.coAddForm = { open: open };
+  wv2.coAddForm = { open: open, parentCandidates: parentCandidates, BUCKETS: BUCKETS };
 })();
 /*** END: CO add-item modal ***********************************************/

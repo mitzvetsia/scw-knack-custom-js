@@ -196,6 +196,16 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //     qty, prefix, startNumber,      // startNumber/prefix: cameras only
   //     existingCabling, exterior, plenum,   // cameras only (bool)
   //     serviceCost, description, notes,
+  //     // Mounting Hardware bucket (594a94536877675816984cb9) only — the device
+  //     // the hardware mounts, '' elsewhere:
+  //     parentLineItemId,              // SOW line item → write it to the created
+  //                                    // line's field_2464 (accessory parent) so
+  //                                    // the bracket folds under its device
+  //     parentInstallItemId,           // the install record when the device is
+  //                                    // already installed (field_2819 of it is
+  //                                    // parentLineItemId when view_4086 serves it)
+  //     parentProductId, parentLabel, parentSource: 'co'|'install'|'',
+  //     // Skip default-accessory auto-adds for this bucket (a bracket has none).
   //     triggeredBy: { id, name, email },
   //     origin: 'sub'|'ops',           // STRUCTURAL initiator: which page fired
   //                                    // the add — 'sub' = sub portal Manage CO
