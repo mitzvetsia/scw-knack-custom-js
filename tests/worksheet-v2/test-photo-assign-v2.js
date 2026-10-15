@@ -57,7 +57,7 @@ const installRecords = [
   irec('r2', '', 'Vista Dome 4MP', CAM, MDF1, 2, { field_2802: 'I-011' }),
   irec('r3', '', 'Bullet 8MP', CAM, MDF2, 2, { field_2802: 'I-012' }),
   irec('r4', '', 'Bullet 8MP', CAM, MDF2, 2, { field_2802: 'I-013' }),
-  irec('r5', '', 'Imperial NVR', NET, MDF1, 1),
+  irec('r5', '', 'Imperial NVR 16 Channel 4K', NET, MDF1, 1, { field_2802: 'Imperial NVR 16 Chan Main Office' }),   // install label = truncated product + location
   irec('r6', '', 'Programming service', SVC, MDF1, 3),
   irec('r7', '', 'Wall Mount Bracket', CAM, MDF1, 2, { field_2853_raw: [{ id: 'r1', identifier: 'I-010' }] }),
   irec('r8', '', 'Electrical Box Mount', MH, MDF2, 4),
@@ -148,7 +148,11 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   const cands = pa.candidatesFor(V, why);
   check('candidates: hardware only — attached accessories never (the worksheet rule, incl. the mutual-parent tie-break that keeps the camera), mounting-hardware never, the ALTERNATE label read when the display label is blank',
     [cands.map(x => x.id + '|' + x.drop + '|' + x.prefix + '|' + x.number), why, Object.keys(pa.attachedAccessoryIds(installRecords, V)).sort()],
-    [['r5|||', 'r1|I-010|I|10', 'r2|I-011|I|11', 'r3|I-012|I|12', 'r4|I-013|I|13', 'r9|I-014|I|14'], { records: 10, services: 1, attached: 2, accessories: 1 }, ['r10', 'r7']]);
+    [['r5|Imperial NVR 16 Chan Main Office|IMPERIALNVRCHANMAINOFFICE|16', 'r1|I-010|I|10', 'r2|I-011|I|11', 'r3|I-012|I|12', 'r4|I-013|I|13', 'r9|I-014|I|14'], { records: 10, services: 1, attached: 2, accessories: 1 }, ['r10', 'r7']]);
+  check('a label that already carries the product (whole, or a truncated run of it) needs no product line; a camera label does not',
+    [pa.labelCarriesProduct('Admiral Pro 32 v5 Main Office', 'Admiral Pro 32 v5'), pa.labelCarriesProduct('[SPECIAL ORDER] Network Aggreg Main Office', '[SPECIAL ORDER] Network Aggregate Switch 8x2.5GbE Plus 2 x SFP'),
+     pa.labelCarriesProduct('E-04', 'Deputy 8.0 v5'), pa.labelCarriesProduct('RA-E-011', 'Viking 8.0 v5'), pa.labelCarriesProduct('I-010', 'I/O module')],
+    [true, true, false, false, false]);
   const m = (n, list) => { const r = pa.matchFile(n, list || cands); return r ? [r.cand.id, r.confidence, r.via] : null; };
   check('board 2, install page: label / separators / zeros / bare number / leading 1 / sibling prefix / camera roll / ambiguous / words',
     [m('i10.png'), m('I_010 front.jpg'), m('i-10.heic'), m('10.jpg'), m('0010.jpg'), m('1.10.jpg'), m('E-013.jpg'),
@@ -182,21 +186,33 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
     [6, 6, 5, 1, 1, 1, 'I-010 · Vista Dome 4MP fills Proposed Mounting Location']);
   check('rail rows: label (or product when there is none) + what is open and queued; devices still missing a required photo first, groups by name',
     railRows(),
-    ['I-010 2 open slots · 2 required · 1 queued', 'I-011 1 open slot · 1 required · 1 queued', 'Imperial NVR no slots',
+    ['I-010 2 open slots · 2 required · 1 queued', 'I-011 1 open slot · 1 required · 1 queued', 'Imperial NVR 16 Chan Main Office no slots',
      'I-012 required photos all in · 1 queued', 'I-013 no slots · 2 queued', 'I-014 no slots']);
-  check('open slots are rows under the device (a taken one names its photo); a device with none has no slot rows',
-    [slotRows('r1'), newRow('r1'), slotRows('r4'), newRow('r4')],
-    [[['p1', 'is-taken', '← i10.png'], ['p2', '', 'open']], ['new', ''], [], null]);
+  check('the product line shows only when the label does not already carry it',
+    [text('[data-scw-pa-dev-row="r1"] .nm'), modal().querySelector('[data-scw-pa-dev-row="r5"] .nm')], ['Vista Dome 4MP', null]);
+  check('slot rows are collapsed by default; the status text is the toggle; a device with no open slots has no toggle',
+    [slotRows('r1'), newRow('r1'), modal().querySelector('[data-scw-pa-slots-toggle="r1"]').getAttribute('aria-expanded'), modal().querySelector('[data-scw-pa-slots-toggle="r4"]')],
+    [[], null, 'false', null]);
+  modal().querySelector('[data-scw-pa-slots-toggle="r1"]').click();
+  check('opened: one row per open slot (a taken one names its photo) and a "+ new photo" row',
+    [slotRows('r1'), newRow('r1'), modal().querySelector('[data-scw-pa-slots-toggle="r1"]').getAttribute('aria-expanded')],
+    [[['p1', 'is-taken', '← i10.png'], ['p2', '', 'open']], ['new', ''], 'true']);
+  modal().querySelector('[data-scw-pa-slots-toggle="r1"]').click();
+  check('and closed again', slotRows('r1'), []);
+  pa.setShowSlots(true);
+  check('"Show open slots under every device" opens them all and is remembered', [slotRows('r2'), window.localStorage.getItem('scw:pa:show-slots')], [[['p3', 'is-taken', '← i11.png']], '1']);
+  pa.setShowSlots(false);
+  check('…and off again', [slotRows('r2'), window.localStorage.getItem('scw:pa:show-slots')], [[], '0']);
 
-  // Slot rows: pick exactly which slot a photo fills.
+  // Slot rows: pick exactly which slot a photo fills. The device a selected photo is aimed at opens by itself.
   const front = rowByName('i13 front.jpg');
   pa.select(front.id);
   pa.clickSlot('r1', 'p2');
-  check('a slot click aims the selected photo at exactly that slot',
+  check('a slot click aims the selected photo at exactly that slot (its rows open)',
     [tg(front), slotRows('r1'), text('[data-scw-pa-dev-row="r1"] .st')],
     [[['r4', 'new', '', false], ['r1', 'slot', 'p2', false]], [['p1', 'is-taken', '← i10.png'], ['p2', 'is-hit', 'this photo']], 'this photo → fills Camera View']);
   pa.clickSlot('r1', 'p2');
-  check('clicking its slot again clears it', [tg(front), slotRows('r1')], [[['r4', 'new', '', false]], [['p1', 'is-taken', '← i10.png'], ['p2', '', 'open']]]);
+  check('clicking its slot again clears it (a device whose slots were worked stays open)', [tg(front), slotRows('r1')], [[['r4', 'new', '', false]], [['p1', 'is-taken', '← i10.png'], ['p2', '', 'open']]]);
   pa.clickSlot('r1', 'p1');
   check('a slot another photo fills is refused with a note', [tg(front), /already taken by i10\.png/.test(text('.scw-pa-rail-ft'))], [[['r4', 'new', '', false]], true]);
   pa.clickNew('r1');

@@ -552,7 +552,11 @@ Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-au
   (model unchanged) and init.js now logs every worksheet REBUILD with its dirty state and caller
   (`[scw-ws-v2] view_4093 REBUILD — dirty: all=true records=0 — from: …`) — a repeating line names
   the trigger (a KTL `_ar` auto-refresh on a view, a poll burst whose fetched model differs every
-  time, a module refetching). Periodic work on the page by design: deploy-page-nav's 3 s heartbeat
+  time, a module refetching). **Found 2026-10-15**: `moveChangeOrders` re-applied the pre-wrap hide
+  (`scw-deploy-prewrap`: visibility hidden + max-height 0) to the moved Change Orders grid on EVERY
+  3 s heartbeat while it sat outside a KTL wrapper, and its 2.5 s timer revealed it again — the strip
+  blinked at a 3 s beat and the worksheet under it jumped with it. Now once per grid element
+  (`data-scw-prewrap`). Periodic work on the page by design: deploy-page-nav's 3 s heartbeat
   (sig-checked, no DOM churn when nothing changed), bom-tray's 5 s takedown (leaves a saved "Summary
   only" mode ONCE per mount — the click rebuilds the worksheet, so it is guarded against looping),
   poll.js (2 min; 15 s for 5 min after any knack-record-create/update, repainting only on a changed
@@ -672,10 +676,15 @@ rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing c
   line 2, full slot names, text wraps) that FILLS an open slot (a DOC_photos record with a type and no
   image, from `ns.photos.extractPhotoRecords`, in the strip's own order) or adds a NEW photo (typed from
   the photo-type catalog, or untyped). A tile with two chips is the old "copy" case: one upload, N writes.
-- **The rail says what is open**: each device row (label wraps, product on its own muted line, groups
-  in MDF/IDF name order, "N open slots · M required · K queued") is followed by one row per OPEN slot
-  ("Proposed Mounting Location · required"; "← IMG_1.jpg" when another queued photo takes it) and a
-  "+ new photo" row. Three gestures, same result: the unaimed tile's FINDER (filters the rail — the
+- **The rail says what is open**: each device row (label wraps; the product on its own muted line ONLY
+  when the label does not already carry it — `labelCarriesProduct`: the install label of a non-camera
+  row is "<product, often truncated> <location>", so the whole name or a 12+ character opening run of
+  it counts; groups in MDF/IDF name order; "N open slots · M required · K queued") can unfold one row
+  per OPEN slot ("Proposed Mounting Location · required"; "← IMG_1.jpg" when another queued photo
+  takes it) and a "+ new photo" row. The slot rows are COLLAPSED by default (2026-10-15): the status
+  text is the toggle (sticky for the session once a device's slots were worked), a device a selected
+  photo is aimed at opens by itself, and "Show open slots under every device" in the rail header
+  persists (`scw:pa:show-slots`). Three gestures, same result: the unaimed tile's FINDER (filters the rail — the
   search box mirrors it, a filtered list says "Showing 3 of 30 · show all", and both clear with it —
   Enter = top hit, Tab walks the unaimed), tick tiles + click a DEVICE row (the first open required
   slot nobody else in the batch fills, else new) or a SLOT row (exactly that slot; a slot takes ONE

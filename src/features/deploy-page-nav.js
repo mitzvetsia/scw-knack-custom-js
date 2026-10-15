@@ -579,7 +579,14 @@
     // drawer. Keep it out of sight until it is wrapped and classified
     // (parkSections lifts the class); never longer than the curtain max,
     // so a grid ktl-accordion never wraps still shows.
-    if (grid && !grid.closest('.scw-ktl-accordion') && !grid.classList.contains(PREWRAP_CLS)) {
+    // ONCE per grid element. This pass runs on every 3 s heartbeat, and a
+    // grid ktl-accordion never wraps was re-hidden on each tick and shown
+    // again 2.5 s later by the timer: a strip blinking at a 3 s beat and
+    // the worksheet under it jumping with it (seen live 2026-10-15, "the
+    // page is constantly painting and repainting"). A fresh element (a
+    // scene re-render) earns one more pre-wrap, never a second on the same.
+    if (grid && !grid.closest('.scw-ktl-accordion') && !grid.hasAttribute('data-scw-prewrap')) {
+      grid.setAttribute('data-scw-prewrap', '1');
       grid.classList.add(PREWRAP_CLS);
       setTimeout(function () { grid.classList.remove(PREWRAP_CLS); }, CURTAIN_MAX_MS);
     }

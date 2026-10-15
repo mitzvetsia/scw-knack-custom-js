@@ -70,6 +70,8 @@
     BUTTON_LABEL:   '+ Add Photos (v2)',
     BUTTON_TITLE:   'Bulk photo assign (v2) — preview: only the listed users see this button',
     WEBHOOK_KEY:    'MAKE_PHOTO_ASSIGN_WEBHOOK',
+    // localStorage: "Show open slots under every device" (rail header).
+    SHOW_SLOTS_KEY: 'scw:pa:show-slots',
     // Slot writes are view-based PUTs against Knack (~10 req/s): cap them.
     WRITES_IN_FLIGHT: 3,
     // Make creates the records on its own schedule after the ack; refetch
@@ -92,6 +94,7 @@
   // Rail rows a tile can be dropped on: a device, one of its open slots, or
   // its "+ new photo" row.
   var DROP_SEL = '[data-scw-pa-dev-row], [data-scw-pa-slot-row], [data-scw-pa-new-row]';
+  var CHEV_SVG = '<svg class="chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>';
   var ZOOM_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>';
   var _state = null;
   var _subscribed = Object.create(null);
@@ -264,6 +267,27 @@
       return { id: raw[0].id, label: stripHtml(raw[0].identifier) || 'MDF / IDF' };
     }
     return { id: '__unknown', label: 'No MDF / IDF' };
+  }
+  function normTxt(str) { return String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+  /** True when the device label already carries the product name, so a
+   *  product line under it would only repeat it. The install label of a
+   *  non-camera row is "<product, often truncated> <location>" — so the
+   *  whole product name inside the label counts, and so does a label that
+   *  opens with a good run of it (12+ characters, or all of a short one).
+   *  Camera labels (E-04) never do, and keep their product line. */
+  function labelCarriesProduct(drop, product) {
+    var d = normTxt(drop), p = normTxt(product);
+    if (!d || !p) return false;
+    if (d.indexOf(p) !== -1) return true;
+    var n = 0, max = Math.min(d.length, p.length);
+    while (n < max && d.charCodeAt(n) === p.charCodeAt(n)) n++;
+    return n >= 12 || (n >= 6 && n === p.length);
+  }
+  function loadShowSlots() {
+    try { return !!window.localStorage && window.localStorage.getItem(CONFIG.SHOW_SLOTS_KEY) === '1'; } catch (e) { return false; }
+  }
+  function saveShowSlots(on) {
+    try { if (window.localStorage) window.localStorage.setItem(CONFIG.SHOW_SLOTS_KEY, on ? '1' : '0'); } catch (e) { /* optional */ }
   }
   function labelOf(rec, viewKey) {
     var F = fieldsFor(viewKey);
@@ -654,6 +678,10 @@
       '.scw-pa-dev .nm { grid-column:2; color:#64748b; font-size:11.5px; white-space:normal; overflow-wrap:anywhere; line-height:1.3; }',
       '.scw-pa-dev .st { grid-column:3; grid-row:1 / span 2; font-size:11px; white-space:normal; text-align:right; max-width:150px; line-height:1.3; color:#92400e; font-weight:700; align-self:start; }',
       '.scw-pa-dev .st.full { color:#15803d; font-weight:400; } .scw-pa-dev .st.none { color:#94a3b8; font-weight:400; } .scw-pa-dev .st.q { color:#0369a1; font-weight:600; }',
+      '.scw-pa-dev button.st { background:none; border:0; padding:0; cursor:pointer; font:inherit; display:inline-flex; align-items:center; justify-content:flex-end; gap:3px; flex-wrap:wrap; }',
+      '.scw-pa-dev button.st:hover { text-decoration:underline; }',
+      '.scw-pa-dev .st .chev { flex:none; transition:transform .12s; }',
+      '.scw-pa-dev .st[aria-expanded="true"] .chev { transform:rotate(90deg); }',
       '.scw-pa-dev .box { width:16px; height:16px; border-radius:4px; border:1.5px solid #cbd5e1; background:#fff; position:relative; margin-top:1px; grid-row:1 / span 2; }',
       '.scw-pa-dev .box.on { background:#0284c7; border-color:#0284c7; }',
       '.scw-pa-dev .box.on::after { content:""; position:absolute; left:4px; top:1px; width:4px; height:8px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }',
@@ -761,6 +789,8 @@
       hideAimed:  false,
       railQuery:  '',
       railNeedFirst: true,
+      showSlots:  loadShowSlots(),            // every device's open slots listed
+      slotsOpen:  Object.create(null),        // per device, this session (sticky once touched)
       zoomRow:    '',
       finderRow:  '',
       menuRow:    '',
@@ -853,6 +883,7 @@
       if (t.closest('[data-scw-pa-menu-close]')) { closeMenu(); render(); return; }
       if (t.closest('[data-scw-pa-railclear]')) { _state.railQuery = ''; var rqc = q('[data-scw-pa-railq]'); if (rqc) rqc.value = ''; renderRail(); return; }
       if ((b = t.closest('[data-scw-pa-tickgrp]'))) { tickGroup(b.getAttribute('data-scw-pa-tickgrp')); return; }
+      if ((b = t.closest('[data-scw-pa-slots-toggle]'))) { toggleSlots(b.getAttribute('data-scw-pa-slots-toggle')); return; }
       if ((b = t.closest('[data-scw-pa-slot-row]'))) { clickSlot(b.getAttribute('data-scw-pa-slot-dev'), b.getAttribute('data-scw-pa-slot-row')); return; }
       if ((b = t.closest('[data-scw-pa-new-row]'))) { clickNew(b.getAttribute('data-scw-pa-new-row')); return; }
       if ((b = t.closest('[data-scw-pa-dev-row]'))) { clickDevice(b.getAttribute('data-scw-pa-dev-row')); return; }
@@ -868,6 +899,8 @@
       } else if (t.hasAttribute('data-scw-pa-needfirst')) {
         _state.railNeedFirst = !!t.checked;
         renderRail();
+      } else if (t.hasAttribute('data-scw-pa-showslots')) {
+        setShowSlots(!!t.checked);
       }
     });
     overlay.addEventListener('input', function (e) {
@@ -1252,6 +1285,7 @@
     if (!_state || _state.sending || !candidateById(deviceId) || !slotId) return;
     var act = actingRows(), ids = act.ids;
     if (!ids.length) { nudge('Select a photo first — tick a tile (or type in its finder), then click the slot it should fill.'); return; }
+    _state.slotsOpen[deviceId] = true;        // the user is working this device's slots
     var holder = slotTakenBy(slotId, null);
     if (holder && ids.indexOf(holder) !== -1) { removeTarget(holder, deviceId); render(); return; }
     if (holder) {
@@ -1276,6 +1310,7 @@
     if (!_state || _state.sending || !candidateById(deviceId)) return;
     var act = actingRows(), ids = act.ids;
     if (!ids.length) { nudge('Select a photo first — tick a tile, then click "+ new photo" under the device.'); return; }
+    _state.slotsOpen[deviceId] = true;
     var allNew = ids.every(function (id) { var r = rowById(id), t = r && targetOf(r, deviceId); return !!(t && t.mode === 'new'); });
     for (var i = 0; i < ids.length; i++) {
       var row = rowById(ids[i]);
@@ -1293,6 +1328,7 @@
     var slotId = rowEl.getAttribute('data-scw-pa-slot-row') || '';
     var isNew = rowEl.hasAttribute('data-scw-pa-new-row');
     var dev = rowEl.getAttribute('data-scw-pa-dev-row') || rowEl.getAttribute('data-scw-pa-slot-dev') || rowEl.getAttribute('data-scw-pa-new-row');
+    if (slotId || isNew) _state.slotsOpen[dev] = true;
     for (var i = 0; i < ids.length; i++) {
       var r = rowById(ids[i]);
       if (!r) continue;
@@ -1302,6 +1338,20 @@
       else if (isNew) spec = { mode: 'new' };
       addTarget(ids[i], dev, spec);
     }
+  }
+
+  function toggleSlots(deviceId) {
+    if (!_state || !deviceId) return;
+    _state.slotsOpen[deviceId] = !_state.slotsOpen[deviceId];
+    renderRail();
+  }
+  function setShowSlots(on) {
+    if (!_state) return;
+    _state.showSlots = !!on;
+    saveShowSlots(_state.showSlots);
+    var cb = q('[data-scw-pa-showslots]');
+    if (cb && cb.checked !== _state.showSlots) cb.checked = _state.showSlots;
+    renderRail();
   }
 
   // ── Lightbox ──────────────────────────────────────────────────────
@@ -1414,7 +1464,7 @@
   function chipHtml(row, t) {
     var c = candidateById(t.deviceId);
     var dev = c ? (c.drop || c.product || c.label) : t.deviceId;
-    var product = c && c.drop && c.product ? c.product : '';
+    var product = (c && c.drop && c.product && !labelCarriesProduct(c.drop, c.product)) ? c.product : '';
     return '<button type="button" class="scw-pa-chip' + (t.guessed ? ' is-guess' : '') + '" data-scw-pa-chip="' + esc(row.id) + '" data-scw-pa-dev="' + esc(t.deviceId) + '"' +
       ' title="' + esc(describeTargetLong(t) + (product ? ' (' + product + ')' : '')) + (t.guessed ? ' — a guess from the file name; click to change, Send confirms' : ' — click to change') + '">' +
       '<span class="lbl">' + esc(dev) + (t.guessed ? '?' : '') + (product ? ' <span style="font-weight:400;opacity:.8">· ' + esc(product) + '</span>' : '') + '</span> ' +
@@ -1504,7 +1554,8 @@
         '<div class="t"><b>Devices</b> <span class="muted">· click one, or one of its open slots, to aim the selected photo</span></div>' +
         '<div class="scw-pa-search"><svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
           '<input type="text" data-scw-pa-railq placeholder="Number, name or MDF/IDF" aria-label="Find a device" autocomplete="off"></div>' +
-        '<label><input type="checkbox" data-scw-pa-needfirst' + (st.railNeedFirst ? ' checked' : '') + '> Devices still missing a required photo first</label>';
+        '<label><input type="checkbox" data-scw-pa-needfirst' + (st.railNeedFirst ? ' checked' : '') + '> Devices still missing a required photo first</label>' +
+        '<label><input type="checkbox" data-scw-pa-showslots' + (st.showSlots ? ' checked' : '') + '> Show open slots under every device</label>';
     }
     // The search box always shows the query the list is filtered by — a
     // finder that was cleared (Enter, a device click) clears it too.
@@ -1554,6 +1605,7 @@
    *  per OPEN slot and, when there are any, a "+ new photo" row — so a photo
    *  can be aimed at exactly the slot it belongs in. */
   function devRowHtml(c, sel) {
+    var st = _state;
     var info = deviceInfo(c.id);
     var have = 0, hit = null;
     for (var i = 0; i < sel.length; i++) { var t = targetOf(sel[i], c.id); if (t) { have++; hit = hit || t; } }
@@ -1572,15 +1624,21 @@
     }
     var def = defaultTarget(c.id, false);
     var main = c.drop || c.product || c.label || '—';
-    var sub = (c.drop && c.product) ? c.product : '';
+    var sub = (c.drop && c.product && !labelCarriesProduct(c.drop, c.product)) ? c.product : '';
+    // Slot rows show when asked for (the header switch, or this device's
+    // toggle — sticky once its slots were worked) and whenever a selected
+    // photo is aimed here, so what it does there is in view.
+    var expanded = !!(st.showSlots || st.slotsOpen[c.id] || have);
     var h = '<div class="scw-pa-dev' + (have ? ' is-hit' : '') + '" data-scw-pa-dev-row="' + esc(c.id) + '" title="' +
         esc('Click → ' + (def.mode === 'slot' ? 'fills ' + def.slotType : 'adds a new photo') + (sub ? ' · ' + sub : '')) + '">' +
       '<span class="box' + box + '" aria-hidden="true"></span>' +
       '<span class="id">' + esc(main) + '</span>' +
-      '<span class="st ' + stCls + '">' + esc(stTxt) + '</span>' +
+      (info.open.length
+        ? '<button type="button" class="st ' + stCls + ' scw-pa-st-tg" data-scw-pa-slots-toggle="' + esc(c.id) + '" aria-expanded="' + (expanded ? 'true' : 'false') + '" title="' + (expanded ? 'Hide' : 'Show') + ' the open slots">' + esc(stTxt) + CHEV_SVG + '</button>'
+        : '<span class="st ' + stCls + '">' + esc(stTxt) + '</span>') +
       (sub ? '<span class="nm">' + esc(sub) + '</span>' : '') +
       '</div>';
-    if (!info.open.length) return h;
+    if (!info.open.length || !expanded) return h;
     for (var sIdx = 0; sIdx < info.open.length; sIdx++) {
       var sl = info.open[sIdx];
       var holder = slotTakenBy(sl.id, null), holderRow = holder ? rowById(holder) : null;
@@ -1885,6 +1943,9 @@
     removeTarget:      function (rowId, deviceId) { removeTarget(rowId, deviceId); render(); },
     clickSlot:         clickSlot,
     clickNew:          clickNew,
+    toggleSlots:       toggleSlots,
+    setShowSlots:      setShowSlots,
+    labelCarriesProduct: labelCarriesProduct,
     openZoom:          openZoom,
     closeZoom:         closeZoom,
     zoomStep:          zoomStep,
