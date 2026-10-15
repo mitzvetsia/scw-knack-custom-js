@@ -660,7 +660,7 @@ create SOW Line Items (object_105), not survey items. Test: `tests/worksheet-v2/
 
 ## Bulk photo ASSIGN modal — v2 "+ Add Photos (v2)" (PREVIEW 2026-10-14, rev 3) — `src/features/worksheet-v2/photo-assign.js`
 
-Gated to `CONFIG.ALLOWED_EMAILS` (micah.shearer@getscw.com; empty = everyone): the listed users get a
+Gated to `CONFIG.ALLOWED_EMAILS` (micah.shearer@getscw.com + jon.carter@getscw.com since 2026-10-15; empty = everyone): the listed users get a
 second amber "+ Add Photos (v2)" button right after the worksheet toolbar's "+ Add Photos" on every
 worksheet-v2 view; the v1 button + modal (`bulk-upload.js`) are untouched. Design: Claude Design canvas
 "Bulk Photo Assign v2" (rev 2, 2026-10-14 — the first cut's three modes were replaced by ONE screen;
@@ -682,8 +682,11 @@ rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing c
   photo) or "+ new photo", or drag a tile / the selection onto any of those rows. The chip menu is the
   per-photo override. The batch-rule select and "Assign in order…" are gone (both read as puzzles).
 - **Targets** = the worksheet's hardware (`ns.data.readRecords` minus services / assumptions /
-  licenses, minus accessories = the mounting-hardware bucket OR a populated parent column — the same
-  rows the worksheet folds under a parent card), label = the one the card shows: `displayLabel` else
+  licenses, minus accessories = the rows the worksheet folds under a parent card — `attachedAccessoryIds`
+  is a copy of groups.js `collectAttachedAccessoryIds`, INCLUDING its mutual-parent tie-break: live
+  install data has cameras and their mounts naming each other as parent, and a plain "has a parent"
+  test dropped every camera with a bracket (2026-10-15) — plus anything in the mounting-hardware
+  bucket), label = the one the card shows: `displayLabel` else
   `labelAlt` (install rows often carry only `field_2801` — reading only the display label is why the
   first build matched nothing on a deploy page) else prefix + number. `open()` logs one console line
   ("view_4093: 42 records → 30 photo targets (skipped: services 3, accessories 9)") — read it when a

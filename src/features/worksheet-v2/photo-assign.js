@@ -66,9 +66,9 @@
 
   var CONFIG = {
     // Preview gate. Empty list = everyone.
-    ALLOWED_EMAILS: ['micah.shearer@getscw.com'],
+    ALLOWED_EMAILS: ['micah.shearer@getscw.com', 'jon.carter@getscw.com'],
     BUTTON_LABEL:   '+ Add Photos (v2)',
-    BUTTON_TITLE:   'Bulk photo assign (v2) — preview: only you see this button',
+    BUTTON_TITLE:   'Bulk photo assign (v2) — preview: only the listed users see this button',
     WEBHOOK_KEY:    'MAKE_PHOTO_ASSIGN_WEBHOOK',
     // Slot writes are view-based PUTs against Knack (~10 req/s): cap them.
     WRITES_IN_FLIGHT: 3,
@@ -271,24 +271,78 @@
     if (d && p) return d + ' · ' + p;
     return d || p || rec.id || '';
   }
+  function mountingBucket(viewKey) {
+    try { return (ns.cfg && typeof ns.cfg.bucket === 'function') ? (ns.cfg.bucket('mountingHardware', viewKey) || '') : ''; }
+    catch (e) { return ''; }
+  }
+  function bucketIdOf(rec, viewKey) {
+    var card = ns.card;
+    return (card && typeof card.bucketIdOf === 'function') ? (card.bucketIdOf(rec, viewKey) || '') : '';
+  }
+  /** The records the worksheet folds under a parent card — the SAME rule as
+   *  groups.js collectAttachedAccessoryIds (copied, not shared: that one
+   *  runs on module state the last render set). Services never attach; on
+   *  install (config accessoriesAlwaysAttach) any other record naming a
+   *  LOADED parent is attached, elsewhere only when its Require Sub Bid is
+   *  No/false; and when two records name EACH OTHER as parent (seen live on
+   *  the install worksheet: a camera and its mount, a corrupt reciprocal
+   *  link) the mounting-hardware side stays attached and the device
+   *  un-hides — both stay visible when the buckets cannot tell them apart.
+   *  Without this tie-break every camera with a bracket read as "parented"
+   *  and vanished from the rail (2026-10-15). */
+  function attachedAccessoryIds(records, viewKey) {
+    var F = fieldsFor(viewKey), vc = viewCfg(viewKey), card = ns.card;
+    var parentKey = F.parent || 'field_2464';
+    var rsbKey = F.requireSubBid || 'field_2479';
+    var always = !!(vc && vc.accessoriesAlwaysAttach);
+    var mh = mountingBucket(viewKey);
+    var byId = Object.create(null), attached = Object.create(null), parentOf = Object.create(null);
+    for (var i = 0; i < records.length; i++) if (records[i] && records[i].id) byId[records[i].id] = records[i];
+    function rsbNoOrFalse(rec) {
+      var raw = rec && rec[rsbKey + '_raw'];
+      if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
+      if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
+      var sv = (rec && rec[rsbKey] || '').toString().trim().toLowerCase();
+      return sv === 'no' || sv === 'false' || sv === '0';
+    }
+    for (var j = 0; j < records.length; j++) {
+      var rec = records[j];
+      if (!rec || !rec.id) continue;
+      if (card && typeof card.bucketCategoryOf === 'function' && card.bucketCategoryOf(rec, viewKey) === 'services') continue;
+      if (!always && !rsbNoOrFalse(rec)) continue;
+      var raw = rec[parentKey + '_raw'];
+      if (!Array.isArray(raw)) continue;
+      for (var k = 0; k < raw.length; k++) {
+        var pid = raw[k] && raw[k].id;
+        if (pid && pid !== rec.id && byId[pid]) { attached[rec.id] = true; parentOf[rec.id] = pid; break; }
+      }
+    }
+    for (var cid in parentOf) {
+      var p = parentOf[cid];
+      if (cid >= p || parentOf[p] !== cid) continue;          // each 2-cycle once
+      var cMount = !!mh && bucketIdOf(byId[cid], viewKey) === mh;
+      var pMount = !!mh && bucketIdOf(byId[p], viewKey) === mh;
+      if (cMount !== pMount) delete attached[cMount ? p : cid];   // the device side un-hides
+      else { delete attached[cid]; delete attached[p]; }          // ambiguous — show both
+    }
+    return attached;
+  }
   /** Photos attach to hardware: services, assumptions and licenses are
-   *  never targets, nor are accessories — the rows the worksheet folds under
-   *  a parent card: anything in the mounting-hardware bucket (caught even
-   *  when the view serves no parent column) or pointing at a parent.
-   *  `why` (optional) tallies the skips for the console line open() logs. */
-  function isPhotoTarget(rec, viewKey, why) {
+   *  never targets, nor are accessories — a record the worksheet folds
+   *  under a parent card (`attached`, above) or anything in the
+   *  mounting-hardware bucket (an orphan mount, or a view that serves no
+   *  parent column). `why` (optional) tallies the skips for the console
+   *  line open() logs. */
+  function isPhotoTarget(rec, viewKey, why, attached) {
     if (!rec || !rec.id) return false;
     function skip(reason) { if (why) why[reason] = (why[reason] || 0) + 1; return false; }
     var card = ns.card, cat = 'default';
     if (card && typeof card.bucketCategoryOf === 'function') cat = card.bucketCategoryOf(rec, viewKey);
     if (cat === 'services' || cat === 'assumptions') return skip(cat);
     if (card && typeof card.isLicenseBucket === 'function' && card.isLicenseBucket(rec, viewKey)) return skip('licenses');
-    var mh = '';
-    try { mh = (ns.cfg && typeof ns.cfg.bucket === 'function') ? ns.cfg.bucket('mountingHardware', viewKey) : ''; } catch (e) { mh = ''; }
-    if (mh && card && typeof card.bucketIdOf === 'function' && card.bucketIdOf(rec, viewKey) === mh) return skip('accessories');
-    var F = fieldsFor(viewKey);
-    var pr = rec[(F.parent || 'field_2464') + '_raw'];
-    if (Array.isArray(pr) ? pr.length > 0 : !!(pr && pr.id)) return skip('parented');
+    if (attached && attached[rec.id]) return skip('attached');
+    var mh = mountingBucket(viewKey);
+    if (mh && bucketIdOf(rec, viewKey) === mh) return skip('accessories');
     return true;
   }
   /** Label tokens: letters and digit runs, upper-cased, digit runs with
@@ -299,9 +353,9 @@
   }
   function candidatesFor(viewKey, why) {
     var recs = (ns.data && typeof ns.data.readRecords === 'function') ? ns.data.readRecords(viewKey) : [];
-    var keep = [];
+    var keep = [], attached = attachedAccessoryIds(recs, viewKey);
     if (why) why.records = recs.length;
-    for (var i = 0; i < recs.length; i++) if (isPhotoTarget(recs[i], viewKey, why)) keep.push(recs[i]);
+    for (var i = 0; i < recs.length; i++) if (isPhotoTarget(recs[i], viewKey, why, attached)) keep.push(recs[i]);
     if (ns.picker && typeof ns.picker.canonicalItemSort === 'function') {
       keep.sort(ns.picker.canonicalItemSort(function (r) { return labelOf(r, viewKey); }));
     }
@@ -726,7 +780,7 @@
         '<div class="scw-pa-hd">' +
           '<div><div class="scw-pa-title">Add Photos (v2)</div>' +
             '<div class="scw-pa-sub">' + esc((vc && vc.label) || 'This worksheet') + ' · ' +
-              plural(cands.length, 'device') + ' · aim each photo at one or more devices · preview: only you see this</div></div>' +
+              plural(cands.length, 'device') + ' · aim each photo at one or more devices · preview</div></div>' +
           '<button type="button" data-scw-pa-close aria-label="Close">&times;</button>' +
         '</div>' +
         '<div class="scw-pa-tb"></div>' +
@@ -1813,6 +1867,7 @@
     watch:             watch,
     isAllowed:         isAllowed,
     candidatesFor:     candidatesFor,
+    attachedAccessoryIds: attachedAccessoryIds,
     buildMatchContext: buildMatchContext,
     matchFile:         matchFile,
     tokensOf:          tokensOf,

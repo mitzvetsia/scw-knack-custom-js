@@ -46,8 +46,8 @@ const MDF1 = '6abd0251e5d0b1ca628ebb94', MDF2 = '6abd0286c3e527b8ea5499ef';
 // Install rows (view_4093 field map). r1 carries ONLY the alternate label (field_2801) — the shape that
 // made the first build match nothing on a deploy page. r7 is a bracket pointing at r1; r8 is a bracket
 // in the mounting-hardware bucket with NO parent column served (the shape that put brackets in the
-// rail); r9 is a camera-bucket row pointing at a parent — the worksheet folds it under that parent, so
-// it is not a target either.
+// rail); r9 + r10 are a camera and its bracket naming EACH OTHER as parent (the corrupt reciprocal link
+// seen live) — the worksheet keeps the bracket attached and un-hides the camera, so does the modal.
 const irec = (id, label, prod, bucket, mdf, sort, extra) => Object.assign({
   id, field_2790: prod, field_2822_raw: [{ id: bucket, identifier: 'b' }],
   field_2818_raw: [{ id: mdf, identifier: mdf === MDF1 ? 'HEADEND: closet' : 'IDF: 01: shop' }], field_2218: sort
@@ -61,7 +61,8 @@ const installRecords = [
   irec('r6', '', 'Programming service', SVC, MDF1, 3),
   irec('r7', '', 'Wall Mount Bracket', CAM, MDF1, 2, { field_2853_raw: [{ id: 'r1', identifier: 'I-010' }] }),
   irec('r8', '', 'Electrical Box Mount', MH, MDF2, 4),
-  irec('r9', '', 'Vista Dome 4MP', CAM, MDF2, 2, { field_2802: 'I-014', field_2853_raw: [{ id: 'r5', identifier: 'NVR' }] })
+  irec('r9', '', 'Vista Dome 4MP', CAM, MDF2, 2, { field_2802: 'I-014', field_2853_raw: [{ id: 'r10', identifier: 'Wall Mount Bracket' }] }),
+  irec('r10', '', 'Wall Mount Bracket', MH, MDF2, 4, { field_2853_raw: [{ id: 'r9', identifier: 'I-014' }] })
 ];
 // SOW rows (view_3962 defaults) for the matcher's prefix rules.
 const srec = (id, label, prod) => ({ id, field_1950: label, field_1949: prod, field_2219_raw: [{ id: CAM, identifier: 'b' }], field_1946_raw: [{ id: MDF1, identifier: 'HEADEND' }], field_2218: 2 });
@@ -130,7 +131,8 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
 
 (async () => {
   // ── gate + button ──
-  check('allowed: the listed email, case-insensitive', pa.isAllowed(), true);
+  check('allowed: the listed emails, case-insensitive', [pa.isAllowed(), (email = 'Jon.Carter@getscw.com', pa.isAllowed())], [true, true]);
+  email = 'Micah.Shearer@getscw.com';
   let c = toolbarFixture();
   check('inject puts the amber v2 button right after "+ Add Photos", once',
     [pa.inject(V), pa.inject(V), Array.from(c.querySelectorAll('.scw-ws-v2-toolbar button')).map(b => b.textContent),
@@ -144,9 +146,9 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   // ── candidates + matching ──
   const why = {};
   const cands = pa.candidatesFor(V, why);
-  check('candidates: hardware only — accessories never (by bucket or by parent, as the worksheet folds them), the ALTERNATE label read when the display label is blank',
-    [cands.map(x => x.id + '|' + x.drop + '|' + x.prefix + '|' + x.number), why],
-    [['r5|||', 'r1|I-010|I|10', 'r2|I-011|I|11', 'r3|I-012|I|12', 'r4|I-013|I|13'], { records: 9, services: 1, parented: 2, accessories: 1 }]);
+  check('candidates: hardware only — attached accessories never (the worksheet rule, incl. the mutual-parent tie-break that keeps the camera), mounting-hardware never, the ALTERNATE label read when the display label is blank',
+    [cands.map(x => x.id + '|' + x.drop + '|' + x.prefix + '|' + x.number), why, Object.keys(pa.attachedAccessoryIds(installRecords, V)).sort()],
+    [['r5|||', 'r1|I-010|I|10', 'r2|I-011|I|11', 'r3|I-012|I|12', 'r4|I-013|I|13', 'r9|I-014|I|14'], { records: 10, services: 1, attached: 2, accessories: 1 }, ['r10', 'r7']]);
   const m = (n, list) => { const r = pa.matchFile(n, list || cands); return r ? [r.cand.id, r.confidence, r.via] : null; };
   check('board 2, install page: label / separators / zeros / bare number / leading 1 / sibling prefix / camera roll / ambiguous / words',
     [m('i10.png'), m('I_010 front.jpg'), m('i-10.heic'), m('10.jpg'), m('0010.jpg'), m('1.10.jpg'), m('E-013.jpg'),
@@ -163,8 +165,8 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   toolbarFixture();
   pa.open(V);
   check('opens with the device count, both panes, and a console line naming what was skipped',
-    [!!modal(), /5 devices/.test(text('.scw-pa-sub')), modal().querySelectorAll('.scw-pa-dev').length, infos.some(s => /view_4093: 9 records → 5 photo targets \(skipped: services 1, parented 2, accessories 1\)/.test(s))],
-    [true, true, 5, true]);
+    [!!modal(), /6 devices/.test(text('.scw-pa-sub')), modal().querySelectorAll('.scw-pa-dev').length, infos.some(s => /view_4093: 10 records → 6 photo targets \(skipped: services 1, attached 2, accessories 1\)/.test(s))],
+    [true, true, 6, true]);
   await pa.addFiles([file('i10.png'), file('i11.png'), file('i13 front.jpg'), file('i13 back.jpg'), file('1.12.jpg'), file('IMG_4523.jpg')]);
   check('rows aim themselves: open required slots fill in strip order, no slot → new, a guess is flagged, IMG waits',
     rows().map(r => [r.filename, tg(r)]),
@@ -181,7 +183,7 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   check('rail rows: label (or product when there is none) + what is open and queued; devices still missing a required photo first, groups by name',
     railRows(),
     ['I-010 2 open slots · 2 required · 1 queued', 'I-011 1 open slot · 1 required · 1 queued', 'Imperial NVR no slots',
-     'I-012 required photos all in · 1 queued', 'I-013 no slots · 2 queued']);
+     'I-012 required photos all in · 1 queued', 'I-013 no slots · 2 queued', 'I-014 no slots']);
   check('open slots are rows under the device (a taken one names its photo); a device with none has no slot rows',
     [slotRows('r1'), newRow('r1'), slotRows('r4'), newRow('r4')],
     [[['p1', 'is-taken', '← i10.png'], ['p2', '', 'open']], ['new', ''], [], null]);
@@ -211,7 +213,7 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   // Finder: type on the unaimed tile, Enter takes the top hit; the rail search mirrors the query and clears with it.
   const img = rowByName('IMG_4523.jpg');
   pa.setFinderQuery(img.id, '13');
-  check('the finder filters the rail, the search box shows the query, and the rail says it is filtered', [pa.railHits(), railq(), text('.scw-pa-railcount')], [['r4'], '13', 'Showing 1 of 5 devices for "13" · show all']);
+  check('the finder filters the rail, the search box shows the query, and the rail says it is filtered', [pa.railHits(), railq(), text('.scw-pa-railcount')], [['r4'], '13', 'Showing 1 of 6 devices for "13" · show all']);
   pa.finderEnter(img.id);
   check('Enter aims the tile at the top hit; the finder, the search box and the filter note clear', [tg(img), modal().querySelectorAll('[data-scw-pa-finder]').length, pa.state().finderRow, railq(), text('.scw-pa-railcount')], [[['r4', 'new', '', false]], 0, '', '', '']);
 
@@ -273,7 +275,7 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   pa.select(rowByName('b.jpg').id);
   pa.clickDevice('r4');
   pa.tickGroup(MDF2);
-  check('tick all in a group adds every device of that MDF/IDF', tg(rowByName('b.jpg')), [['r4', 'new', '', false], ['r3', 'new', '', false]]);
+  check('tick all in a group adds every device of that MDF/IDF', tg(rowByName('b.jpg')), [['r4', 'new', '', false], ['r3', 'new', '', false], ['r9', 'new', '', false]]);
   modal().querySelector('[data-scw-pa-hideaimed]').click();
   check('hide aimed leaves the unaimed tile', [modal().querySelectorAll('.scw-pa-tile').length, text('.scw-pa-tile .scw-pa-name')], [1, 'a.jpg']);
 
