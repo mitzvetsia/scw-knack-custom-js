@@ -561,6 +561,17 @@ Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-au
   only" mode ONCE per mount — the click rebuilds the worksheet, so it is guarded against looping),
   poll.js (2 min; 15 s for 5 min after any knack-record-create/update, repainting only on a changed
   model). photo-assign.js runs nothing periodic.
+- **Ad-hoc photo delete (2026-10-15)**: on view_4093 a photo that is NOT required and has NO photo
+  type may be deleted outright — `photos.js` `canDeleteAdhoc` (`PHOTO_DELETE_ADHOC_VIEWS`) puts the
+  red trash on that card next to the amber disconnect, and the photo modal's viewer bar gets a
+  filled-red "Delete photo" (`qa-popover.js`, `snapshot.canDelete`). Both go through the shared
+  `ns.photos.confirmPhotoDelete` ("Are you SURE? This deletes the photo." · Keep it | Yes, delete
+  it — every photo delete now uses this prompt) and `ns.photos.deletePhotoRecord` (native
+  kn-link-delete on the photo's row, else a REST DELETE through `PHOTO_GRID_FALLBACK_VIEWS`, now
+  `view_4093 → view_3937`; resolves false when neither lands, and the modal says so). Required or
+  typed photos keep Remove photo (image cleared, slot kept) + disconnect. **Builder**: view_3937
+  needs its Delete link enabled or the REST fallback 403s and the card comes back after the refetch.
+  Test: `tests/worksheet-v2/test-photo-delete-adhoc.js`.
 - **Pending**: QA checklist per line item (Builder keys still needed — see the
   doc), contacts + pinned contacts, pinned files in the maps strip.
 

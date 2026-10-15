@@ -463,8 +463,25 @@
   var SURVEY_PHOTO_GRID = 'view_4070';
   var REVIEW_PHOTO_GRID = 'view_4098';
   var PHOTO_GRID_FALLBACK_VIEWS = {
-    view_3962: 'view_3584', view_3921: REVIEW_PHOTO_GRID, view_3505: SURVEY_PHOTO_GRID
+    view_3962: 'view_3584', view_3921: REVIEW_PHOTO_GRID, view_3505: SURVEY_PHOTO_GRID,
+    view_4093: 'view_3937'   // deploy scene DOC_photos grid (also the save view)
   };
+
+  // ── Ad-hoc photo delete (deploy page, 2026-10-15) ───────────────────
+  // On the ops deployment worksheet a photo that is NOT required and has
+  // NO photo type is a loose photo — no QA slot depends on it — so ops may
+  // delete the record outright, after an explicit are-you-SURE prompt
+  // (confirmPhotoDelete). Required or typed photos keep "Remove photo"
+  // (clears the image, keeps the slot) and the disconnect button; they
+  // never get the trash here. Rides the same two delete paths as
+  // PHOTO_DELETE_VIEWS (native kn-link-delete on the photo's row in
+  // view_3937, else a REST DELETE through it — Builder must have Delete
+  // enabled on that grid for the fallback to land).
+  var PHOTO_DELETE_ADHOC_VIEWS = { view_4093: 1 };
+  function canDeleteAdhoc(viewKey, p) {
+    return !!(viewKey && PHOTO_DELETE_ADHOC_VIEWS[viewKey] && p && p.id &&
+              !p.required && !String(p.type || '').trim());
+  }
 
   // ── Photo disconnect (install/deploy surfaces only) ─────────────────
   // "Disconnect" ≠ delete: it drops THIS line item from the photo's own
@@ -850,11 +867,17 @@
         (p.imgUrl ? ' data-scw-ws-v2-photo-drag="1"' : '');
       // OPS-only photo delete (see PHOTO_DELETE_VIEWS). Only on cards that
       // hold a real photo record; placeholders have nothing to delete.
-      var delBtn = (PHOTO_DELETE_VIEWS[sourceViewKey] && p.id)
+      // Deploy page: ad-hoc photos only (canDeleteAdhoc — not required, no
+      // type); the rest of that page's cards keep disconnect + Remove photo.
+      var adhocDel = canDeleteAdhoc(sourceViewKey, p);
+      var delBtn = ((PHOTO_DELETE_VIEWS[sourceViewKey] || adhocDel) && p.id)
         ? '<button type="button" class="scw-ws-v2-photo-del" ' +
             'data-scw-ws-v2-photo-del="' + escapeHtml(p.id) + '" ' +
             'data-scw-ws-v2-photo-view="' + escapeHtml(sourceViewKey) + '" ' +
-            'title="Delete photo">' + PHOTO_TRASH_SVG + '</button>'
+            (adhocDel ? 'data-scw-ws-v2-photo-adhoc="1" ' : '') +
+            'title="' + (adhocDel
+              ? 'Delete this photo (not required, no photo type)'
+              : 'Delete photo') + '">' + PHOTO_TRASH_SVG + '</button>'
         : '';
       // Install/deploy-only photo disconnect (see PHOTO_DISCONNECT_VIEWS) —
       // drops this line item from the photo's own connection field, keeps
@@ -1129,83 +1152,105 @@
       var viewKey = btn.getAttribute('data-scw-ws-v2-photo-view') || '';
       if (!photoId) return;
 
-      function refetchSoon() {
-        setTimeout(function () {
-          if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
-          if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
-            ns.data.refetchAndNotify(viewKey);
-          }
-        }, 1500);
-      }
       function dropCard() {
         var card = btn.closest('.scw-ws-v2-photo-card');
         if (card && card.parentNode) card.parentNode.removeChild(card);
       }
-
-      // The actual delete — run only after the user confirms (below).
-      function doDelete() {
-        // Pin the viewport through the delete's re-render cascade (native
-        // grid re-render → refetch → worksheet rebuild → group re-apply).
-        holdScroll(4000);
-        // Path 1 — the photo record's row in the photos source grid, if the
-        // grid is on the page AND the row is on its current pagination page.
-        // Photo ids are 24-hex and unique, so a page-wide lookup is safe.
-        var link = document.querySelector(
-          'tr[id="' + photoId + '"] a.kn-link-delete'
-        );
-        if (link) {
-          pendingPhotoDeletes[photoId] = Date.now();
-          dropCard();
-          if (typeof ns.autoConfirmKnackDelete === 'function') ns.autoConfirmKnackDelete();
-          link.click();
-          refetchSoon();
-          return;
-        }
-
-        // Path 2 — view-scoped REST DELETE through the photos grid. Covers
-        // the common case where the grid is paginated and the photo's row
-        // isn't in the DOM. Works for any delete-enabled view on the
-        // CURRENT scene (knackRecordUrl is pages/<current scene>/views/…).
-        var gridKey = PHOTO_GRID_FALLBACK_VIEWS[viewKey] || '';
-        if (gridKey && window.SCW && typeof SCW.knackAjax === 'function' &&
-            typeof SCW.knackRecordUrl === 'function') {
-          pendingPhotoDeletes[photoId] = Date.now();
-          dropCard();
-          SCW.knackAjax({
-            url:  SCW.knackRecordUrl(gridKey, photoId),
-            type: 'DELETE',
-            success: function () { refetchSoon(); },
-            error: function (xhr) {
-              console.warn('[scw-ws-v2] photo delete: REST DELETE via ' + gridKey +
-                ' failed for ' + photoId, xhr && xhr.status, xhr && xhr.responseText);
-              // Let the card come back — the delete didn't land.
-              delete pendingPhotoDeletes[photoId];
-              refetchSoon();
-            }
-          });
-          return;
-        }
-
-        console.warn('[scw-ws-v2] photo delete: no kn-link-delete row for ' +
-          photoId + ' and no fallback grid configured for ' + viewKey +
-          ' — is the DOC_photos grid (with Delete enabled) on this page?');
-      }
-
-      // Confirm first — deleting a photo is destructive and can't be undone.
-      // Reuse the shared confirm modal (Cancel | Delete photo); fall back to a
-      // native confirm if it isn't available.
-      if (ns.confirmModal && typeof ns.confirmModal === 'function') {
-        ns.confirmModal({
-          title: 'Delete this photo?',
-          body: 'This permanently removes the photo from this line item and ' +
-                'can’t be undone.',
-          okLabel: 'Delete photo',
-          cancelLabel: 'Cancel'
-        }).then(function (ok) { if (ok) doDelete(); });
-      } else if (window.confirm('Delete this photo? This can’t be undone.')) {
-        doDelete();
-      }
+      // Are-you-SURE first — then the shared delete (the card drops the
+      // moment a delete is issued; a failed REST DELETE lets it come back).
+      confirmPhotoDelete({ adhoc: btn.hasAttribute('data-scw-ws-v2-photo-adhoc') })
+        .then(function (ok) {
+          if (ok) deletePhotoRecord(photoId, viewKey, { onIssued: dropCard });
+        });
     }, true);
+  }
+
+  /** The are-you-SURE prompt every photo delete goes through (the card
+   *  trash AND the photo modal's Delete button). Resolves true only on an
+   *  explicit "Yes, delete it". opts.adhoc adds the deploy-page wording
+   *  (why this photo may go: not required, no type). Falls back to a
+   *  native confirm when the worksheet's confirm modal isn't loaded. */
+  function confirmPhotoDelete(opts) {
+    opts = opts || {};
+    var why = opts.adhoc
+      ? ' This photo is not required and has no photo type, so no QA slot is lost — but'
+      : ' This';
+    var body = 'This permanently deletes the photo record and its image.' + why +
+               ' it can’t be undone.';
+    if (ns.confirmModal && typeof ns.confirmModal === 'function') {
+      return ns.confirmModal({
+        title: 'Are you SURE? This deletes the photo.',
+        body: body,
+        okLabel: 'Yes, delete it',
+        cancelLabel: 'Keep it'
+      });
+    }
+    return Promise.resolve(
+      !!window.confirm('Are you SURE? This deletes the photo.\n\n' + body));
+  }
+
+  /** Delete a DOC_photos record through whatever delete plumbing the scene
+   *  has. Path 1 — the native kn-link-delete on the photo's row in a
+   *  DOC_photos grid on the page (when the grid is here AND the row is on
+   *  its current pagination page; photo ids are 24-hex and unique, so a
+   *  page-wide lookup is safe). Path 2 — a view-scoped REST DELETE through
+   *  PHOTO_GRID_FALLBACK_VIEWS (any delete-enabled view on the CURRENT
+   *  scene; knackRecordUrl is pages/<current scene>/views/…). Resolves true
+   *  once a delete was issued (Path 1 cannot report failure), false when
+   *  the scene has no delete plumbing or the REST DELETE failed.
+   *  opts.onIssued runs right before the request (the caller's optimistic
+   *  card drop). The pendingPhotoDeletes registry keeps the photo out of
+   *  strip rebuilds until the refetch confirms it is gone. */
+  function deletePhotoRecord(photoId, viewKey, opts) {
+    opts = opts || {};
+    if (!photoId) return Promise.resolve(false);
+    function refetchSoon() {
+      setTimeout(function () {
+        if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
+        if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+          ns.data.refetchAndNotify(viewKey);
+        }
+      }, 1500);
+    }
+    function issued() {
+      pendingPhotoDeletes[photoId] = Date.now();
+      if (typeof opts.onIssued === 'function') { try { opts.onIssued(); } catch (e) {} }
+    }
+    // Pin the viewport through the delete's re-render cascade (native grid
+    // re-render → refetch → worksheet rebuild → group re-apply).
+    holdScroll(4000);
+    var link = document.querySelector('tr[id="' + photoId + '"] a.kn-link-delete');
+    if (link) {
+      issued();
+      if (typeof ns.autoConfirmKnackDelete === 'function') ns.autoConfirmKnackDelete();
+      link.click();
+      refetchSoon();
+      return Promise.resolve(true);
+    }
+    var gridKey = PHOTO_GRID_FALLBACK_VIEWS[viewKey] || '';
+    if (gridKey && window.SCW && typeof SCW.knackAjax === 'function' &&
+        typeof SCW.knackRecordUrl === 'function') {
+      issued();
+      return new Promise(function (resolve) {
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(gridKey, photoId),
+          type: 'DELETE',
+          success: function () { refetchSoon(); resolve(true); },
+          error: function (xhr) {
+            console.warn('[scw-ws-v2] photo delete: REST DELETE via ' + gridKey +
+              ' failed for ' + photoId, xhr && xhr.status, xhr && xhr.responseText);
+            // Let the card come back — the delete didn't land.
+            delete pendingPhotoDeletes[photoId];
+            refetchSoon();
+            resolve(false);
+          }
+        });
+      });
+    }
+    console.warn('[scw-ws-v2] photo delete: no kn-link-delete row for ' +
+      photoId + ' and no fallback grid configured for ' + viewKey +
+      ' — is the DOC_photos grid (with Delete enabled) on this page?');
+    return Promise.resolve(false);
   }
 
   // Delegated photo-disconnect (install/deploy surfaces only — see
@@ -1364,6 +1409,12 @@
     if (policy && policy.qa === 'none') needsQa = false;
 
     var resolvedImg = imgUrl || el.getAttribute('data-qa-img') || '';
+    // The chit itself may not carry data-photo-required — resolve from the
+    // nearest element that does (the photo card).
+    var isRequired = (function () {
+      var reqEl = (el.closest && el.closest('[data-photo-required]')) || el;
+      return reqEl.getAttribute('data-photo-required') === 'true';
+    })();
     var snapshot = {
       type:          type || el.getAttribute('data-qa-type') || '',
       imgUrl:        resolvedImg,
@@ -1377,12 +1428,11 @@
       completed:     !!resolvedImg,
       needsQa:       !!needsQa,
       // Photo-add + classify support in the QA modal (qa-popover.js).
-      // The chit itself may not carry data-photo-required — resolve from
-      // the nearest element that does (the photo card).
-      required:      (function () {
-        var reqEl = (el.closest && el.closest('[data-photo-required]')) || el;
-        return reqEl.getAttribute('data-photo-required') === 'true';
-      })(),
+      required:      isRequired,
+      // Deploy-page ad-hoc delete (canDeleteAdhoc): the modal's viewer bar
+      // offers "Delete photo" only for a photo that is not required and has
+      // no type; the are-you-SURE prompt + delete run through ns.photos.
+      canDelete:     canDeleteAdhoc(viewKey, { id: photoId, required: isRequired, type: type }),
       viewKey:       viewKey,
       // Line-item context for the QA-fail notification payload: the chit
       // lives inside the card's photo strip (data-scw-ws-v2-photos = the
@@ -1883,7 +1933,11 @@
     buildStripFromPhotos: buildStripFromPhotos,
     extractPhotoRecords:  extractPhotoRecords,
     refreshStrips:        refreshStrips,
-    openLightbox:         openLightbox
+    openLightbox:         openLightbox,
+    // Photo delete plumbing shared with the photo modal (qa-popover.js).
+    canDeleteAdhoc:       canDeleteAdhoc,
+    confirmPhotoDelete:   confirmPhotoDelete,
+    deletePhotoRecord:    deletePhotoRecord
   };
 })();
 /*** END WORKSHEET V2 — PHOTOS ************************************************/

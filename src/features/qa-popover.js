@@ -262,6 +262,9 @@
       '.scw-qa-modal__viewer-bar button:hover { background: #334155; color: #fff; }',
       '.scw-qa-modal__viewer-bar button.is-danger { color: #fca5a5; border-color: #7f1d1d; }',
       '.scw-qa-modal__viewer-bar button.is-danger:hover { background: #450a0a; }',
+      /* Delete photo (deploy-page ad-hoc photos): filled red, unlike Remove. */
+      '.scw-qa-modal__viewer-bar button.is-delete { background: #7f1d1d; color: #fff; border-color: #991b1b; }',
+      '.scw-qa-modal__viewer-bar button.is-delete:hover { background: #991b1b; color: #fff; }',
       '.scw-qa-modal__viewer-bar button:disabled { opacity: .5; cursor: not-allowed; }',
       /* Classify bar — Type select + Required checkbox (deploy scene). */
       '.scw-qa-modal__classify { flex: 0 0 auto; align-self: stretch; display: flex;',
@@ -1194,6 +1197,48 @@
       });
       document.body.appendChild(input);
       input.click();
+    }
+
+    // Delete photo — only when the host said this photo may go outright
+    // (deploy page, not required, no photo type). Never locked by QA: a
+    // photo that was never QA'd has nothing to sign off. The prompt and the
+    // delete itself are the worksheet's shared photo-delete plumbing, so the
+    // card trash and this button behave identically. Leftmost of the
+    // actions: destructive first.
+    var ph = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.photos;
+    if (photo.canDelete && ph && typeof ph.deletePhotoRecord === 'function') {
+      var delB = document.createElement('button');
+      delB.type = 'button';
+      delB.className = 'is-danger is-delete';
+      delB.textContent = 'Delete photo';
+      delB.title = 'Not required and no photo type — this photo can be deleted outright';
+      delB.addEventListener('click', function () {
+        if (delB.disabled) return;
+        var ask = (typeof ph.confirmPhotoDelete === 'function')
+          ? ph.confirmPhotoDelete({ adhoc: true })
+          : Promise.resolve(!!window.confirm(
+              'Are you SURE? This deletes the photo.\n\nThis permanently deletes the ' +
+              'photo record and its image. It can’t be undone.'));
+        ask.then(function (ok) {
+          if (!ok) return;
+          delB.disabled = true;
+          delB.textContent = 'Deleting…';
+          return ph.deletePhotoRecord(photo.id, photo.viewKey).then(function (issued) {
+            if (!issued) {
+              delB.disabled = false;
+              delB.textContent = 'Delete photo';
+              alert('Delete failed — the photo is still there. Is the DOC_photos grid on ' +
+                    'this page delete-enabled?');
+              return;
+            }
+            // The host refetches the worksheet (its onSaved) and the strip
+            // keeps the photo out of rebuilds until the refetch confirms it.
+            notifyHostSaved(photo);
+            closePopover(true);
+          });
+        });
+      });
+      bar.appendChild(delB);
     }
 
     var repB = document.createElement('button');
@@ -2190,7 +2235,11 @@
       lockClassify:  !!snapshot.lockClassify,
       // Restricted surfaces: QA sidebar renders READ-ONLY (subs see SCW's
       // verdict but can't touch it), and Pass freezes replace/remove.
-      qaReadOnly:    !!snapshot.qaReadOnly
+      qaReadOnly:    !!snapshot.qaReadOnly,
+      // Deploy-page ad-hoc photo (not required, no type): the viewer bar
+      // offers "Delete photo" — are-you-SURE prompt + delete through
+      // SCW.worksheetV2.photos (photos.js canDeleteAdhoc decides).
+      canDelete:     !!snapshot.canDelete
     };
 
     _photoId = photoId;
