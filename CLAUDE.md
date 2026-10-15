@@ -741,9 +741,17 @@ rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing c
   ones stay queued (still carrying their finder) and can be aimed and sent afterwards; the worksheet
   refetches after the batch (again 9s later when Make was sent anything).
   `SCW.bulkUpload.prepareFile` (HEIC → JPEG, downscale) is exported for it.
+- **Make side (reworked 2026-10-15)**: the user's duplicate of 20.04 ("… (v2 Modal)", the live hook)
+  was rebuilt for the manifests — no base64 / filename matching; the v1 branches are gone from that
+  copy (the original 20.04 still serves the v1 uploader). Flow: resend guard (search DOC_photos
+  `field_2865` contains uploadId → aggregate → creates require 0 hits) → router on `target.kind`
+  (install / SOW line / survey item, each fetching its record for the connections; `none` branches on
+  `links.page`: SOW page reads the project off the SOW, survey page off the request, project / deploy
+  pages take `links.projectId`). Every create: `field_771` = asset.id, `field_2445` = photoType.id,
+  required No, complete Yes, a history line carrying the uploadId. The full mapping lives in the
+  `MAKE_PHOTO_ASSIGN_WEBHOOK` comment in `src/config.js`; the blueprint itself is not in the repo.
 - **Not carried over (yet)**: the IndexedDB queue / resume banner; the phone layout (canvas board 5)
-  is a future state. Make side: scenario for the `photo_assign` manifest (create route only) still to
-  build. Test: `tests/worksheet-v2/test-photo-assign-v2.js`.
+  is a future state. Test: `tests/worksheet-v2/test-photo-assign-v2.js`.
 
 ## Worksheet scope strip (live 2026-10-09) — `src/features/worksheet-v2/summary.js`
 

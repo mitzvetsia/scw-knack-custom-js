@@ -760,15 +760,34 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //     sourceViewId: 'view_4093',
   //     triggeredBy: { id, name, email }
   //   }
-  // Make: search DOC_photos by uploadId (resend-safe) → create the record
-  // with field_771 = asset.id, field_2445 = photoType.id (when given),
-  // field_2446 = No, field_2447 = Yes, connected to target.recordId through
-  // the field target.kind names AND to every populated link that has a
-  // connection on DOC_photos (project / SOW / survey / deployment / the
-  // matching SOW line item). Copy mode sends the SAME asset.id in every
-  // manifest of the batch. Response is ignored (optimistic send). Blank /
-  // PLACEHOLDER = the modal refuses batches that need a create and says so;
-  // slot fills work without it.
+  // Make (scenario "20.04 … (v2 Modal)", reworked 2026-10-15 from the v1
+  // 20.04 blueprint — the v1 bulk / filename-matching branches are gone from
+  // that copy; the original 20.04 still serves the v1 uploader's hook):
+  //   [301] search DOC_photos where field_2865 (QA_history) contains
+  //         uploadId → [302] aggregate → every create route also requires
+  //         0 hits, so a resent manifest creates nothing (the create stamps
+  //         "… UPLOADED PHOTO: bulk assign (<file>) · upload <uploadId>" into
+  //         field_2865 — that line IS the resend guard; keep writing it).
+  //   [303] router on target.kind:
+  //     installLineItemID → get object_128 → create: project field_2815,
+  //                         install item field_2849 (SOW line NOT linked).
+  //     sowLineItemID     → get object_105 → survey items whose field_2404
+  //                         names it → create: project field_1948, SOW(s)
+  //                         field_2154, SOW line, matching survey items.
+  //     surveyLineItemID  → get object_114 → its request object_113 → create:
+  //                         project field_2346, SOWs field_2348, the matching
+  //                         SOW line(s) field_2404, survey item, bids
+  //                         field_2415, request field_2360.
+  //     none              → by links.page: sow → get object_106 (project
+  //                         field_2119) + the page's SOW; survey → get the
+  //                         request (project + SOWs) + request; project /
+  //                         deploy → links.projectId (no deployment field
+  //                         exists on DOC_photos).
+  //   Every create: field_771 = asset.id, field_2445 = photoType.id (empty
+  //   array when null), field_2446 No, field_2447 Yes. Copy mode sends the
+  //   SAME asset.id in every manifest of the batch. Response is ignored
+  //   (optimistic send). Blank / PLACEHOLDER = the modal refuses batches
+  //   that need a create and says so; slot fills work without it.
   MAKE_PHOTO_ASSIGN_WEBHOOK: "https://hook.us1.make.com/hwu1gj1d7u1obbq5fo6bx98y2nxghiqd",
 
   // ─────────────────────────────────────────────────────────────
