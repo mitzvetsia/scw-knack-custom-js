@@ -744,7 +744,9 @@ rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing c
 - **Make side (reworked 2026-10-15)**: the user's duplicate of 20.04 ("… (v2 Modal)", the live hook)
   was rebuilt for the manifests — no base64 / filename matching; the v1 branches are gone from that
   copy (the original 20.04 still serves the v1 uploader). Flow: resend guard (search DOC_photos
-  `field_2865` contains uploadId → aggregate → creates require 0 hits) → router on `target.kind`
+  `field_2865` contains uploadId → aggregate → the router runs only when no found history TEXT
+  contains the uploadId — never the bundle count, which blocked every create on the first import) →
+  router on `target.kind` (case-insensitive)
   (install / SOW line / survey item, each fetching its record for the connections; `none` branches on
   `links.page`: SOW page reads the project off the SOW, survey page off the request, project / deploy
   pages take `links.projectId`). Every create: `field_771` = asset.id, `field_2445` = photoType.id,

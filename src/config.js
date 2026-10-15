@@ -764,11 +764,17 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // 20.04 blueprint — the v1 bulk / filename-matching branches are gone from
   // that copy; the original 20.04 still serves the v1 uploader's hook):
   //   [301] search DOC_photos where field_2865 (QA_history) contains
-  //         uploadId → [302] aggregate → every create route also requires
-  //         0 hits, so a resent manifest creates nothing (the create stamps
-  //         "… UPLOADED PHOTO: bulk assign (<file>) · upload <uploadId>" into
-  //         field_2865 — that line IS the resend guard; keep writing it).
-  //   [303] router on target.kind:
+  //         uploadId → [302] aggregate {id, field_2865} → the router [303]
+  //         runs only when NO aggregated history text contains the uploadId
+  //         (`contains(join(map(302.array; "field_2865"); ""); 1.uploadId)`
+  //         — never the bundle COUNT: Knack's search can emit an empty
+  //         bundle, and an ignored filter returns an arbitrary record; both
+  //         read as "found" by count and blocked every create on 2026-10-15).
+  //         The create stamps "… UPLOADED PHOTO: bulk assign (<file>) ·
+  //         upload <uploadId>" into field_2865 — that line IS the resend
+  //         guard; keep writing it.
+  //   [303] router on target.kind (case-insensitive; the short aliases
+  //         install / sow / survey are accepted too):
   //     installLineItemID → get object_128 → create: project field_2815,
   //                         install item field_2849 (SOW line NOT linked).
   //     sowLineItemID     → get object_105 → survey items whose field_2404
