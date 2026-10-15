@@ -26,6 +26,8 @@ window.Knack = {
 };
 global.Knack = window.Knack;
 window.SCW = { CONFIG: { MAKE_PHOTO_ASSIGN_WEBHOOK: 'PLACEHOLDER' }, worksheetV2: {}, debug() {}, onViewRender() {}, onSceneRender() {} };
+// A loaded survey-request record (any view) carrying the request's project — the survey page's projectId source.
+window.Knack.views.view_3617 = { model: { data: { models: [{ attributes: { id: 'req1', field_2346_raw: [{ id: 'proj9', identifier: 'P' }] } }] } } };
 global.SCW = window.SCW;
 const posts = [];
 const fetchStub = (url, o) => { posts.push({ url, body: JSON.parse(o.body) }); return Promise.resolve({ ok: true, text: () => Promise.resolve('{"success":true}') }); };
@@ -56,7 +58,7 @@ const installRecords = [
   irec('r1', '', 'Vista Dome 4MP', CAM, MDF1, 2, { field_2801: 'I-010' }),
   irec('r2', '', 'Vista Dome 4MP', CAM, MDF1, 2, { field_2802: 'I-011' }),
   irec('r3', '', 'Bullet 8MP', CAM, MDF2, 2, { field_2802: 'I-012' }),
-  irec('r4', '', 'Bullet 8MP', CAM, MDF2, 2, { field_2802: 'I-013' }),
+  irec('r4', '', 'Bullet 8MP', CAM, MDF2, 2, { field_2802: 'I-013', field_2819_raw: [{ id: 'sl4', identifier: 'I-013' }] }),
   irec('r5', '', 'Imperial NVR 16 Channel 4K', NET, MDF1, 1, { field_2802: 'Imperial NVR 16 Chan Main Office' }),   // install label = truncated product + location
   irec('r6', '', 'Programming service', SVC, MDF1, 3),
   irec('r7', '', 'Wall Mount Bracket', CAM, MDF1, 2, { field_2853_raw: [{ id: 'r1', identifier: 'I-010' }] }),
@@ -124,7 +126,7 @@ const rows = () => pa.state().rows;
 const rowByName = (n) => rows().find(r => r.filename === n);
 const tg = (r) => r.targets.map(t => [t.deviceId, t.mode, t.slotId || t.typeId || '', t.guessed]);
 const text = (sel) => { const el = modal().querySelector(sel); return el ? el.textContent.replace(/\s+/g, ' ').trim() : null; };
-const railRows = () => Array.from(modal().querySelectorAll('.scw-pa-dev')).map(d => d.querySelector('.id').textContent + ' ' + d.querySelector('.st').textContent);
+const railRows = () => Array.from(modal().querySelectorAll('.scw-pa-dev:not(.scw-pa-dev--scope)')).map(d => d.querySelector('.id').textContent + ' ' + d.querySelector('.st').textContent);
 const slotRows = (dev) => Array.from(modal().querySelectorAll('[data-scw-pa-slot-dev="' + dev + '"]')).map(el => [el.getAttribute('data-scw-pa-slot-row'), el.className.replace('scw-pa-slot', '').trim(), el.querySelector('.who').textContent.trim()]);
 const newRow = (dev) => { const el = modal().querySelector('[data-scw-pa-new-row="' + dev + '"]'); return el ? [el.className.replace('scw-pa-slot', '').trim(), el.querySelector('.who').textContent.trim()] : null; };
 const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
@@ -164,12 +166,29 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
     [m('RA-E-001.jpg', sow), m('E-001.jpg', sow), m('1.jpg', sow), m('E-003 front.jpg', sow), m('E-9.jpg', sow)],
     [['s2', 'matched', 'label'], ['s1', 'matched', 'label'], null, ['s3', 'matched', 'label'], null]);
   check('route: install line items under a deployment', [pa.targetKind(), pa.resolveScope(V)], ['installLineItemID', { linkField: 'deploymentID', recordId: PID }]);
+  const DEP = '6a0000000000000000000d01', SOW = '6a0000000000000000000501', REQ = '6a0000000000000000000701';
+  check('links per page — deploy: deployment + project from the route, the install item\'s source SOW line',
+    pa.linksFor(V, installRecords[3], '#team-calendar/project-dashboard/' + PID + '/deploy/' + DEP),
+    { page: 'deploy', projectId: PID, deploymentId: DEP, sowId: '', sowIds: [], surveyId: '', sowLineItemId: 'sl4', sowLineItemIds: ['sl4'] });
+  check('links — sub deployment dashboard: the deployment only',
+    pa.linksFor('view_4056', installRecords[0], '#subcontractor-portal/deployment-dashboard/' + DEP),
+    { page: 'deploy', projectId: '', deploymentId: DEP, sowId: '', sowIds: [], surveyId: '', sowLineItemId: '', sowLineItemIds: [] });
+  check('links — ops project page: the project from the route, the item\'s SOW headers (one SOW = sowId, two = sowIds only)',
+    [pa.linksFor('view_3962', Object.assign({}, sowRecords[0], { field_2154_raw: [{ id: 'sw1' }] }), '#team-calendar/project-dashboard/' + PID + '/build-sow/' + PID),
+     pa.linksFor('view_3962', Object.assign({}, sowRecords[0], { field_2154_raw: [{ id: 'sw1' }, { id: 'sw2' }] }), '#team-calendar/project-dashboard/' + PID + '/build-sow/' + PID).sowId],
+    [{ page: 'project', projectId: PID, deploymentId: '', sowId: 'sw1', sowIds: ['sw1'], surveyId: '', sowLineItemId: '', sowLineItemIds: [] }, '']);
+  check('links — sales SOW page: the page\'s SOW from the route (never the project), plus every SOW the item is on',
+    pa.linksFor('view_3586', Object.assign({}, sowRecords[0], { field_2154_raw: [{ id: SOW }, { id: 'sw2' }] }), '#sales-dashboard/scope-of-work-details/' + SOW),
+    { page: 'sow', projectId: '', deploymentId: '', sowId: SOW, sowIds: [SOW, 'sw2'], surveyId: '', sowLineItemId: '', sowLineItemIds: [] });
+  check('links — survey page: the request from the route, its project from a loaded record, the survey item\'s matching SOW line(s)',
+    pa.linksFor('view_3505', { id: 'sv1', field_2404_raw: [{ id: 'sl1' }, { id: 'sl2' }] }, '#subcontractor-portal/site-survey-request-details/' + REQ),
+    { page: 'survey', projectId: 'proj9', deploymentId: '', sowId: '', sowIds: [], surveyId: REQ, sowLineItemId: 'sl1', sowLineItemIds: ['sl1', 'sl2'] });
 
   // ── the one screen ──
   toolbarFixture();
   pa.open(V);
   check('opens with the device count, both panes, and a console line naming what was skipped',
-    [!!modal(), /6 devices/.test(text('.scw-pa-sub')), modal().querySelectorAll('.scw-pa-dev').length, infos.some(s => /view_4093: 10 records → 6 photo targets \(skipped: services 1, attached 2, accessories 1\)/.test(s))],
+    [!!modal(), /6 devices/.test(text('.scw-pa-sub')), modal().querySelectorAll('.scw-pa-dev:not(.scw-pa-dev--scope)').length, infos.some(s => /view_4093: 10 records → 6 photo targets \(skipped: services 1, attached 2, accessories 1\)/.test(s))],
     [true, true, 6, true]);
   await pa.addFiles([file('i10.png'), file('i11.png'), file('i13 front.jpg'), file('i13 back.jpg'), file('1.12.jpg'), file('IMG_4523.jpg')]);
   check('rows aim themselves: open required slots fill in strip order, no slot → new, a guess is flagged, IMG waits',
@@ -273,6 +292,9 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   check('fill = the asset id PUT onto the slot record through the save view, then the best-effort completion + history stamp',
     [puts.filter(p => p[2].field_771).map(p => [p[1], p[2].field_771]), puts.filter(p => p[2].field_2447).map(p => [p[1], p[2].field_2447, /UPLOADED PHOTO: bulk assign/.test(p[2].field_2865)])],
     [[['p1', 'asset-1'], ['p3', 'asset-2'], ['p2', 'asset-7']], [['p1', 'Yes', true], ['p3', 'Yes', true], ['p2', 'Yes', true]]]);
+  check('every manifest carries the page\'s links (deploy: deployment + project + the item\'s source SOW line)',
+    [posts[0].body.links, posts[2].body.links.sowLineItemId],
+    [{ page: 'deploy', projectId: PID, deploymentId: PID, sowId: '', sowIds: [], surveyId: '', sowLineItemId: 'sl4', sowLineItemIds: ['sl4'] }, '']);
   check('manifests: no bytes, the target device, the type when chosen, the parent scope',
     posts.map(p => [p.body.uploadKind, p.body.target.kind, p.body.target.recordId, p.body.photoType && p.body.photoType.id, p.body.scope.linkField, p.body.asset.id]),
     [['photo_assign', 'installLineItemID', 'r4', 't-cv', 'deploymentID', 'asset-3'], ['photo_assign', 'installLineItemID', 'r4', null, 'deploymentID', 'asset-4'],
@@ -284,6 +306,20 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   const lobby = rowByName('lobby wide.jpg');
   pa.setTarget(lobby.id, 'r2');
   check('aiming the leftover re-enables Send for just that photo', [text('[data-scw-pa-send]'), modal().querySelector('[data-scw-pa-send]').disabled], ['Send 1 photo', false]);
+
+  // ── "not tied to a device": the pinned rail row, a target of kind 'none' ──
+  pa.close(); pa.open(V);
+  await pa.addFiles([file('site overview.jpg')]);
+  const site = rowByName('site overview.jpg');
+  check('the rail opens with a pinned "not tied to a device" row that is not a device (not matched, not grouped, not ticked by a group)',
+    [text('[data-scw-pa-dev-row="__scope__"] .id'), modal().querySelectorAll('.scw-pa-dev').length, tg(site), pa.railHits().indexOf('__scope__')],
+    ['Deployment photo — not tied to a device', 7, [], -1]);
+  pa.select(site.id);
+  pa.clickDevice('__scope__');
+  check('aiming at it is an ordinary chip', [tg(site), text('[data-scw-pa-chip="' + site.id + '"]')], [[['__scope__', 'new', '', false]], 'Deployment photo — not tied to a device new photo']);
+  posts.length = 0;
+  res = await pa.send();
+  check('its manifest has target.kind none, no record, and the page links', [res.created, posts[0].body.target, posts[0].body.links.deploymentId], [1, { kind: 'none', recordId: '', label: 'Deployment photo — not tied to a device' }, PID]);
 
   // ── helpers ──
   pa.close(); pa.open(V);

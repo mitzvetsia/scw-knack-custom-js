@@ -183,6 +183,98 @@
 
   // ── Route → target kind + parent scope (what Make connects a NEW photo to)
   function hashStr() { return window.location.hash || ''; }
+  /** Every record id the route names, keyed by the segment before it
+   *  (#team-calendar/project-dashboard/<p>/deploy/<d> → { 'project-dashboard': p, deploy: d }). */
+  function routeIdsOf(hash) {
+    var segs = String(hash || '').replace(/^#/, '').split('?')[0].split('/'), out = {};
+    for (var i = 1; i < segs.length; i++) {
+      if (/^[a-f0-9]{24}$/i.test(segs[i]) && segs[i - 1] && !/^[a-f0-9]{24}$/i.test(segs[i - 1])) out[segs[i - 1]] = segs[i];
+    }
+    return out;
+  }
+  function pageKindOf(r) {
+    if (r['deploy'] || r['deployment-dashboard']) return 'deploy';
+    if (r['site-survey-request-details']) return 'survey';
+    if (r['scope-of-work-details']) return 'sow';
+    return 'project';
+  }
+  function idsOf(raw) {
+    var out = [];
+    if (Array.isArray(raw)) { for (var i = 0; i < raw.length; i++) if (raw[i] && raw[i].id) out.push(raw[i].id); }
+    else if (raw && raw.id) out.push(raw.id);
+    return out;
+  }
+  /** First non-empty value fn() returns over every loaded view's records. */
+  function scanViewRecords(fn) {
+    try {
+      var views = (typeof Knack !== 'undefined' && Knack.views) || {};
+      for (var k in views) {
+        if (!Object.prototype.hasOwnProperty.call(views, k)) continue;
+        var v = views[k], models = v && v.model && v.model.data && v.model.data.models;
+        if (!models) continue;
+        for (var i = 0; i < models.length; i++) {
+          var a = models[i] && models[i].attributes;
+          if (!a) continue;
+          var r = fn(a);
+          if (r) return r;
+        }
+      }
+    } catch (e) { /* no Knack (tests) */ }
+    return '';
+  }
+  /** Everything Make may connect a NEW photo to on this page besides the
+   *  device itself (the manifest's `links`):
+   *    deploy pages   — deploymentId + projectId from the route, and the
+   *                     install item's source SOW line (field_2819);
+   *    project page   — projectId from the route, the line item's SOW
+   *                     header(s) (field_2154 → sowIds; sowId when it has one);
+   *    sales SOW page — sowId from the route (the page IS one SOW) + the
+   *                     item's SOW headers; projectId '' (Make reads it off
+   *                     the SOW — the route does not carry it);
+   *    survey page    — surveyId from the route, the request's project
+   *                     (field_2346 on any loaded record) and the survey
+   *                     item's MATCHING SOW line item(s) (field_2404). */
+  function linksFor(viewKey, rec, hash) {
+    var r = routeIdsOf(hash == null ? hashStr() : hash);
+    var F = fieldsFor(viewKey);
+    var out = {
+      page:           pageKindOf(r),
+      projectId:      r['project-dashboard'] || r['build-sow'] || '',
+      deploymentId:   r['deploy'] || r['deployment-dashboard'] || '',
+      sowId:          r['scope-of-work-details'] || '',
+      sowIds:         [],
+      surveyId:       r['site-survey-request-details'] || '',
+      sowLineItemId:  '',
+      sowLineItemIds: []
+    };
+    // v1 parity: the deploy scene keys on the project id when the route has no deploy segment.
+    if (out.page === 'deploy' && !out.deploymentId) out.deploymentId = out.projectId;
+    if (out.page === 'survey' && !out.projectId) {
+      out.projectId = scanViewRecords(function (a) { var ids = idsOf(a.field_2346_raw); return ids[0] || ''; });
+    }
+    if (rec) {
+      if (out.page === 'project' || out.page === 'sow') {
+        out.sowIds = idsOf(rec[(F.sow || 'field_2154') + '_raw']);
+        if (!out.sowId && out.sowIds.length === 1) out.sowId = out.sowIds[0];
+      } else if (out.page === 'deploy') {
+        out.sowLineItemIds = idsOf(rec.field_2819_raw);
+      } else if (out.page === 'survey') {
+        out.sowLineItemIds = idsOf(rec[(F.sowLineItem || 'field_2404') + '_raw']);
+      }
+      out.sowLineItemId = out.sowLineItemIds[0] || '';
+    }
+    return out;
+  }
+  // The rail's "not tied to a device" destination: a photo of the site, the
+  // building, the closet — connected to the page's scope (links) only.
+  var SCOPE_ID = '__scope__';
+  var SCOPE_LABELS = { deploy: 'Deployment photo', project: 'Project photo', sow: 'SOW photo', survey: 'Survey photo' };
+  function scopeTarget() {
+    var kind = pageKindOf(routeIdsOf(hashStr()));
+    var label = (SCOPE_LABELS[kind] || 'Project photo') + ' — not tied to a device';
+    return { id: SCOPE_ID, label: label, drop: label, product: '', tokens: [], prefix: '', number: '',
+             mdf: { id: '__scope', label: '' }, rec: null, scopeOnly: true, kind: kind };
+  }
   /** The line-item object this worksheet renders, as the bulk-upload
    *  linkField names it — the same routing photos.js uses for the v1
    *  "+ Add photo" pill (survey / deploy / sub-deploy / SOW). */
@@ -674,6 +766,8 @@
       '.scw-pa-dev:hover { background:#f8fafc; }',
       '.scw-pa-dev.is-hit { background:#e0f2fe; border-color:#7dd3fc; }',
       '.scw-pa-dev.is-over { background:#e0f2fe; border-color:#0284c7; border-style:dashed; }',
+      '.scw-pa-dev--scope { margin:6px 4px 2px; border-color:#e2e8f0; border-style:dashed; background:#fafafa; }',
+      '.scw-pa-dev--scope .id { color:#334155; }',
       '.scw-pa-dev .id { font-weight:700; white-space:normal; overflow-wrap:anywhere; line-height:1.3; }',
       '.scw-pa-dev .nm { grid-column:2; color:#64748b; font-size:11.5px; white-space:normal; overflow-wrap:anywhere; line-height:1.3; }',
       '.scw-pa-dev .st { grid-column:3; grid-row:1 / span 2; font-size:11px; white-space:normal; text-align:right; max-width:150px; line-height:1.3; color:#92400e; font-weight:700; align-self:start; }',
@@ -778,6 +872,7 @@
     } catch (eLog) { /* console is optional */ }
     var idx = Object.create(null);
     for (var i = 0; i < cands.length; i++) idx[cands[i].id] = cands[i];
+    idx[SCOPE_ID] = scopeTarget();           // aimable, never matched or grouped
     _state = {
       viewKey:    viewKey,
       rows:       [],
@@ -1582,7 +1677,9 @@
       return natCmp(a.label, b.label);
     });
     var h = '';
-    if (!hits.length) h = '<div style="padding:16px 12px;color:#64748b;font-size:12.5px">No device matches "' + esc(st.railQuery) + '".</div>';
+    var scope = candidateById(SCOPE_ID);
+    if (scope) h += devRowHtml(scope, sel, 'scw-pa-dev--scope');
+    if (!hits.length) h += '<div style="padding:16px 12px;color:#64748b;font-size:12.5px">No device matches "' + esc(st.railQuery) + '".</div>';
     for (var g = 0; g < groups.length; g++) {
       var items = railOrdered(groups[g].items);
       h += '<div class="scw-pa-grp"><span>' + esc(groups[g].label) + '</span>' +
@@ -1604,7 +1701,7 @@
   /** A device row (label wraps; product on its own line) followed by one row
    *  per OPEN slot and, when there are any, a "+ new photo" row — so a photo
    *  can be aimed at exactly the slot it belongs in. */
-  function devRowHtml(c, sel) {
+  function devRowHtml(c, sel, extraCls) {
     var st = _state;
     var info = deviceInfo(c.id);
     var have = 0, hit = null;
@@ -1619,7 +1716,7 @@
         stTxt = plural(info.open.length, 'open slot') + (info.reqOpen ? ' · ' + info.reqOpen + ' required' : '');
         stCls = info.reqOpen ? '' : 'none';
       } else if (info.reqTotal) { stTxt = 'required photos all in'; stCls = 'full'; }
-      else { stTxt = 'no slots'; stCls = 'none'; }
+      else { stTxt = c.scopeOnly ? 'no device' : 'no slots'; stCls = 'none'; }
       if (queued) stTxt += ' · ' + queued + ' queued';
     }
     var def = defaultTarget(c.id, false);
@@ -1629,8 +1726,10 @@
     // toggle — sticky once its slots were worked) and whenever a selected
     // photo is aimed here, so what it does there is in view.
     var expanded = !!(st.showSlots || st.slotsOpen[c.id] || have);
-    var h = '<div class="scw-pa-dev' + (have ? ' is-hit' : '') + '" data-scw-pa-dev-row="' + esc(c.id) + '" title="' +
-        esc('Click → ' + (def.mode === 'slot' ? 'fills ' + def.slotType : 'adds a new photo') + (sub ? ' · ' + sub : '')) + '">' +
+    var h = '<div class="scw-pa-dev' + (have ? ' is-hit' : '') + (extraCls ? ' ' + extraCls : '') + '" data-scw-pa-dev-row="' + esc(c.id) + '" title="' +
+        esc(c.scopeOnly
+          ? 'Click → a photo connected to the ' + String(c.label).replace(/ photo.*$/, '').toLowerCase() + ' only, no device'
+          : 'Click → ' + (def.mode === 'slot' ? 'fills ' + def.slotType : 'adds a new photo') + (sub ? ' · ' + sub : '')) + '">' +
       '<span class="box' + box + '" aria-hidden="true"></span>' +
       '<span class="id">' + esc(main) + '</span>' +
       (info.open.length
@@ -1779,16 +1878,18 @@
   }
   function manifestFor(op, row) {
     var tg = op.target, c = candidateById(tg.deviceId);
+    var scopeOnly = !!(c && c.scopeOnly);
     return {
       uploadKind: 'photo_assign',
       batchId:    _state.batchId,
       uploadId:   row.uploadId + ':' + tg.deviceId,
       asset:      { id: row.assetId, filename: row.filename, mimeType: row.mimeType, sizeBytes: row.sizeBytes },
-      target:     { kind: targetKind(), recordId: tg.deviceId, label: c ? c.label : '' },
+      target:     { kind: scopeOnly ? 'none' : targetKind(), recordId: scopeOnly ? '' : tg.deviceId, label: c ? c.label : '' },
       slot:       null,
       photoType:  tg.typeId ? { id: tg.typeId, label: tg.typeLabel || '' } : null,
       required:   false,
       scope:      resolveScope(_state.viewKey),
+      links:      linksFor(_state.viewKey, c ? c.rec : null),
       sourceViewId: _state.viewKey,
       triggeredBy: triggeredBy()
     };
@@ -1932,6 +2033,9 @@
     openSlotsFor:      openSlotsFor,
     targetKind:        targetKind,
     resolveScope:      resolveScope,
+    linksFor:          linksFor,
+    routeIds:          routeIdsOf,
+    SCOPE_ID:          SCOPE_ID,
     addFiles:          addFiles,
     select:            function (rowId, on) { if (!_state) return; if (on === false) delete _state.selected[rowId]; else _state.selected[rowId] = true; render(); },
     clickDevice:       clickDevice,

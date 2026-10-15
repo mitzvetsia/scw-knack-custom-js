@@ -732,24 +732,44 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //     uploadKind:  'photo_assign',            // branch on this
   //     batchId:     <uuid>,  uploadId: <uuid:targetId>,   // idempotency key
   //     asset:       { id: <knack asset id>, filename, mimeType, sizeBytes },
-  //     target:      { kind: 'installLineItemID' | 'sowLineItemID' | 'surveyLineItemID',
-  //                    recordId: <24-hex line item>, label: 'E-004 · Vista Dome' },
+  //     target:      { kind: 'installLineItemID' | 'sowLineItemID' | 'surveyLineItemID'
+  //                          | 'none',          // 'none' = the rail's "not tied to a
+  //                                             //   device" row: connect the photo to
+  //                                             //   the page's scope (links) only
+  //                    recordId: <24-hex line item> | '', label: 'E-004 · Vista Dome' },
   //     slot:        null,                       // fills never reach Make
   //     photoType:   { id: <CONFIG_photo type id>, label } | null,
   //     required:    false,
   //     scope:       { linkField: 'deploymentID' | 'projectID' | 'sowID' | 'surveyID',
   //                    recordId: <24-hex> } | null,   // the parent the v1 upload ships
+  //     links:       {                           // EVERYTHING else the page knows —
+  //       page:          'deploy' | 'project' | 'sow' | 'survey',   // connect what fits:
+  //       projectId:     <24-hex> | '',   // deploy + project pages: the route; survey:
+  //                                       //   the request's project (field_2346); the
+  //                                       //   sales SOW page: '' — read it off the SOW
+  //       deploymentId:  <24-hex> | '',   // deploy pages (the route)
+  //       sowId:         <24-hex> | '',   // sales SOW page: the page's SOW; project
+  //                                       //   page: the item's SOW when it has one
+  //       sowIds:        [<24-hex>…],     // every SOW header the line item is on
+  //                                       //   (field_2154) — project + sales pages
+  //       surveyId:      <24-hex> | '',   // survey page (the route)
+  //       sowLineItemId: <24-hex> | '',   // the MATCHING SOW line item: a survey
+  //       sowLineItemIds:[<24-hex>…]      //   item's field_2404 (multi), an install
+  //                                       //   item's source line field_2819
+  //     },
   //     sourceViewId: 'view_4093',
   //     triggeredBy: { id, name, email }
   //   }
   // Make: search DOC_photos by uploadId (resend-safe) → create the record
   // with field_771 = asset.id, field_2445 = photoType.id (when given),
-  // field_2446 = No, and the connections the bulk-upload scenario already
-  // writes for target.kind + scope. Copy mode sends the SAME asset.id in
-  // every manifest of the batch. Response is ignored (optimistic send).
-  // Blank / PLACEHOLDER = the modal refuses batches that need a create and
-  // says so; slot fills work without it.
-  MAKE_PHOTO_ASSIGN_WEBHOOK: "PLACEHOLDER",
+  // field_2446 = No, field_2447 = Yes, connected to target.recordId through
+  // the field target.kind names AND to every populated link that has a
+  // connection on DOC_photos (project / SOW / survey / deployment / the
+  // matching SOW line item). Copy mode sends the SAME asset.id in every
+  // manifest of the batch. Response is ignored (optimistic send). Blank /
+  // PLACEHOLDER = the modal refuses batches that need a create and says so;
+  // slot fills work without it.
+  MAKE_PHOTO_ASSIGN_WEBHOOK: "https://hook.us1.make.com/hwu1gj1d7u1obbq5fo6bx98y2nxghiqd",
 
   // ─────────────────────────────────────────────────────────────
   // Bulk Add Mounting Box (device-worksheet → Add Mount Box button)

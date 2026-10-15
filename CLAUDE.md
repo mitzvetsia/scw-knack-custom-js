@@ -724,11 +724,20 @@ rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing c
   token (`SCW.photoEditPanel.util.uploadImage`, one asset per photo); a FILL is a view-based PUT of
   the asset id onto the slot record through the scene's save view (`photo-edit-panel.js
   SAVE_VIEWS`) plus a best-effort second PUT (`field_2447` Yes + a `field_2865` history line) that
-  never fails the fill; a CREATE posts a byte-less manifest to `MAKE_PHOTO_ASSIGN_WEBHOOK`
-  (contract in `src/config.js`: `uploadKind: 'photo_assign'`, asset, target kind/record, photoType,
-  scope = the v1 upload's parent linkField/recordId, uploadId `<row>:<device>` for idempotency).
-  While that hook is PLACEHOLDER the Send refuses batches needing a create and says so; fills work
-  without Make. Writes run through a 3-wide queue. **Send takes the aimed photos only** — unaimed
+  never fails the fill; a CREATE posts a byte-less manifest to `MAKE_PHOTO_ASSIGN_WEBHOOK` (LIVE
+  2026-10-15; contract in `src/config.js`: `uploadKind: 'photo_assign'`, asset, target kind/record,
+  photoType, scope = the v1 upload's parent linkField/recordId, uploadId `<row>:<device>` for
+  idempotency, and **`links`** — everything else the page knows, `linksFor(viewKey, rec)`: deploy
+  pages → deploymentId + projectId from the route + the install item's source SOW line
+  (`field_2819`); the ops project page → projectId + the item's SOW headers (`field_2154` → sowIds,
+  sowId when it has one); the sales SOW page → sowId from the route (the page IS one SOW; projectId
+  '' — Make reads it off the SOW) + the item's SOW headers; the survey page → surveyId + the
+  request's project (`field_2346` on any loaded record) + the survey item's MATCHING SOW line(s)
+  (`field_2404`)). The rail also carries a pinned **"… photo — not tied to a device"** row
+  (`SCOPE_ID`, labelled Deployment / Project / SOW / Survey photo by page): aimable like a device,
+  never matched or grouped, its manifest has `target.kind: 'none'` and the links only. Were the hook
+  blank the Send would refuse batches needing a create; fills work without Make. Writes run through
+  a 3-wide queue. **Send takes the aimed photos only** — unaimed
   ones stay queued (still carrying their finder) and can be aimed and sent afterwards; the worksheet
   refetches after the batch (again 9s later when Make was sent anything).
   `SCW.bulkUpload.prepareFile` (HEIC → JPEG, downscale) is exported for it.
