@@ -1263,6 +1263,20 @@
     '.scw-bid-review-v2__no-bid-badge--removed {',
     '  background: #fee2e2; color: #991b1b;',
     '}',
+    /* Bid line whose line item is not on THIS SOW (on another SOW, or on
+       none) — rose, one badge for both kinds; the SOW cell says which. */
+    '.scw-bid-review-v2__no-bid-badge--not-on-sow {',
+    '  background: #ffe4e6; color: #9f1239;',
+    '}',
+    /* The SOW cell of such a row: empty shape + one context line
+       ("Not on this SOW. On 1684." / "Not on any SOW.") over the actions. */
+    '.scw-bid-review-v2__sow-not-on-sow {',
+    '  margin: 6px 0 8px; font-size: 11.5px; font-weight: 600; color: #334155;',
+    '  line-height: 1.35; overflow-wrap: anywhere;',
+    '}',
+    '.scw-bid-review-v2__sow-cell--not-on-sow .scw-bid-review-v2__cell-actions {',
+    '  justify-content: center;',
+    '}',
     /* Removed-items group: muted red header, pinned at the top. */
     '.scw-bid-review-v2__group-header--removed .scw-bid-review-v2__grp-inner {',
     '  background: #fef2f2; color: #991b1b;',
@@ -1400,10 +1414,6 @@
     '}',
     '.scw-bid-review-v2__group-header--bid-only .scw-bid-review-v2__grp-title {',
     '  font-weight: 700;',
-    '}',
-    /* "on SW-####" note under a SOW item that lives on another SOW. */
-    '.scw-bid-review-v2__sow-elsewhere {',
-    '  margin-top: 6px; font-size: 11px; font-weight: 600; color: #2563eb;',
     '}',
     '.scw-bid-review-v2__cell-product {',
     '  font-weight: 600; font-size: 13px; color: #0f172a;',

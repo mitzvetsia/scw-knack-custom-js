@@ -1487,12 +1487,15 @@
           otherRecs.push(orec);
         }
       }
-      // "Other items" split into TWO kinds, treated differently:
-      //   • on-another-SOW — the bid item HAS a SOW line item, it just
-      //     belongs to a different SOW. Informational (cut-out, shows
-      //     which SOW it's on).
-      //   • bid-only — added to the bid with NO corresponding SOW item
-      //     anywhere. Actionable: the SOW cell offers "+ Add to SOW".
+      // "Other items" — bid lines whose line item is NOT on this SOW. Two
+      // kinds, BOTH rendered as grid rows with the same two actions (Remove
+      // from bid · + Add to this SOW); only the copy and the add WRITE differ:
+      //   • other-sow — the bid item HAS a SOW line item, on a different
+      //     SOW. addMode 'union': "+ Add to this SOW (also)" PUTs field_2154
+      //     on that existing item as a union (sow-item-tray.js addToSow).
+      //   • bid-only — NO corresponding SOW item anywhere (or not loaded).
+      //     addMode 'create': "+ Add to this SOW" is the row_add_to_sow CR
+      //     (Make creates the line item and re-points the bid record).
       var builtOther = otherRecs.length ? buildRowsForSow(otherRecs) : [];
       var otherSowRows = [], bidOnlyRows = [];
       for (var orw = 0; orw < builtOther.length; orw++) {
@@ -1525,8 +1528,12 @@
         var otherSowIds = (oIdx && oIdx.sowIds)
           ? Object.keys(oIdx.sowIds).filter(function (id) { return id !== sow.id; })
           : [];
+        // Either kind: the SOW cell renders the empty shape and offers the
+        // two remedies (card.js buildSowCell keys off needsSow).
+        orr.needsSow = true;
         if (otherSowIds.length) {
           orr.otherKind = 'other-sow';
+          orr.addMode   = 'union';    // the existing line item gains this SOW
           // Names of the OTHER SOW(s) this item belongs to, for display.
           orr.otherSowNames = otherSowIds
             .map(function (id) { return sowNameById[id] || ''; })
@@ -1534,7 +1541,7 @@
           otherSowRows.push(orr);
         } else {
           orr.otherKind = 'bid-only';
-          orr.needsSow  = true;   // → SOW cell offers "+ Add to SOW"
+          orr.addMode   = 'create';   // no line item anywhere — Make creates one
           bidOnlyRows.push(orr);
         }
       }
@@ -1550,28 +1557,35 @@
       otherSowRows        = dedupeRowsBySowItem(otherSowRows, _seenSowItem, false);
       bidOnlyRows         = dedupeRowsBySowItem(bidOnlyRows, _seenSowItem, false);
 
-      // ── Basis-filter interaction: bid-only rows with no VISIBLE cell ──
+      // Every bid line not on this SOW — other-sow AND bid-only — is a grid
+      // row (2026-10-16). Until then only the bid-only rows rendered; the
+      // other-sow rows fed the column totals and the "Items not on this SOW"
+      // tray, so a basis bid's priced line that sat on a sibling SOW had no
+      // row to act on (13 of Bid 8's lines on SOW 1105, all on 1684).
+      var notOnSowRows = otherSowRows.concat(bidOnlyRows);
+
+      // ── Basis-filter interaction: not-on-SOW rows with no VISIBLE cell ──
       // With a basis bid chosen, non-basis columns are display:none'd
-      // (basis-filter.js). A bid-only row whose EVERY cell sits on a hidden
-      // column renders as a husk — empty SOW cell plus a cutout on the
-      // displayed bid — while the bid that actually carries it is invisible.
-      // Route those into the collapsed Removed subgroup ("not on this SOW or
+      // (basis-filter.js). A row whose EVERY cell sits on a hidden column
+      // renders as a husk — empty SOW cell plus a cutout on the displayed
+      // bid — while the bid that actually carries it is invisible. Route
+      // those into the collapsed Removed subgroup ("not on this SOW or
       // displayed bid — still on another bid"). The show-all toggle and
       // basis changes trigger a rebuild (basis-filter.js rebuildGrid), so
       // the row returns to the main grid whenever its column is shown.
       var hiddenPkg = (ns.basisFilter && typeof ns.basisFilter.hiddenFor === 'function')
         ? ns.basisFilter.hiddenFor(sow.id, packages.map(function (p) { return p.id; }))
         : null;
-      if (hiddenPkg && bidOnlyRows.length) {
-        var keptBidOnly = [];
-        for (var hb = 0; hb < bidOnlyRows.length; hb++) {
-          var hbr = bidOnlyRows[hb];
+      if (hiddenPkg && notOnSowRows.length) {
+        var keptNotOnSow = [];
+        for (var hb = 0; hb < notOnSowRows.length; hb++) {
+          var hbr = notOnSowRows[hb];
           var hbPids = Object.keys(hbr.cellsByPackage || {});
           var hbVisible = !hbPids.length;   // no cells at all → not a husk, keep
           for (var hv = 0; hv < hbPids.length; hv++) {
             if (!hiddenPkg[hbPids[hv]]) { hbVisible = true; break; }
           }
-          if (hbVisible) { keptBidOnly.push(hbr); continue; }
+          if (hbVisible) { keptNotOnSow.push(hbr); continue; }
           hbr.removed       = true;
           hbr.hiddenBidOnly = true;
           hbr.hasBidRecord  = true;
@@ -1589,10 +1603,10 @@
           }
           removedRowsGrid.push(hbr);
         }
-        bidOnlyRows = keptBidOnly;
+        notOnSowRows = keptNotOnSow;
       }
 
-      var otherRows = otherSowRows.concat(bidOnlyRows);
+      var otherRows = notOnSowRows;
 
       // Rows used for totals/grid include the "other" items; rendering
       // keeps them in dedicated bottom groups so the matched grid is
@@ -1668,38 +1682,31 @@
         if (isChildOnlyAccessory(frow)) continue;
         displayRows.push(frow);
       }
-      // Bid-only items (on these bids, no SOW item yet) render INSIDE the
+      // Bid lines not on this SOW (bid-only AND other-sow) render INSIDE the
       // MDF/IDF group their bid record's field_2375 matches — or a synthetic
-      // Unassigned / Project Wide group when they have no location — rather
-      // than being pulled out into a separate "On Bid — not on SOW" block.
-      // They keep offSow/needsSow so the SOW cell still cuts out and offers
-      // "+ Add to SOW"; they just sit in context with the matched rows.
-      // Removed rows are bucketed into their MDF/IDF L1 as a collapsed
-      // "Removed" subgroup (groupRows handles it) — no longer a single
-      // pile pinned to the top.
+      // Unassigned / Project Wide group when they have no location — in
+      // context with the matched rows, never in a separate block. They keep
+      // offSow/needsSow so the SOW cell renders the empty shape ("Not on this
+      // SOW. On 1684." / "Not on any SOW.") with Remove from bid · + Add to
+      // this SOW (card.js buildSowCell). Removed rows are bucketed into their
+      // MDF/IDF L1 as a collapsed "Removed" subgroup (groupRows handles it).
+      //
+      // RULE (2026-10-16): with a basis bid chosen, EVERY basis-bid line whose
+      // line item is not on this SOW gets a row here, whether that line item
+      // lives on another SOW or on none. The earlier "On these bids — belong
+      // to another SOW" block had been dropped as a contradiction and its rows
+      // moved to the tray (sow-item-tray.js) — which left the sub's priced
+      // lines with no row at all on the SOW being reviewed. The row passes no
+      // judgment on which SOW the item belongs to: it is a line the sub
+      // priced on this bid, and the two actions are the two honest remedies.
+      // Nothing here is gated on the bid package's field_2387. The tray keeps
+      // only the items NOT on this section's bid. Accepted consequence: a bid
+      // assigned to two SOWs shows each of its lines on both grids — matched
+      // on the owner, "Not on this SOW" on the other.
       var groups = groupRows(
-        bidOnlyRows.length ? displayRows.concat(bidOnlyRows) : displayRows,
+        notOnSowRows.length ? displayRows.concat(notOnSowRows) : displayRows,
         removedRowsGrid
       );
-      // NOTE: there is deliberately NO "On these bids — belong to another SOW"
-      // group any more.
-      //
-      // It put rows for line items that are NOT on this SOW into this SOW's
-      // grid, and every framing of that was wrong somewhere. With no basis
-      // picked the bid columns are hidden, so "On these bids" sat beside no
-      // bids at all; and the row itself belongs to a different SOW, so the
-      // grid was asserting two things the page was visibly contradicting.
-      // Gating it on the bid columns being visible only fixed half of that —
-      // the row still didn't belong to this SOW.
-      //
-      // Items not on this SOW now live in the collapsed tray below the grid
-      // (sow-item-tray.js), which is built for exactly this: grouped by the
-      // SOW they DO belong to, badged when they're on this section's bid, and
-      // offering "+ Add to this SOW". The bid record itself still renders in
-      // full in the grid of the SOW it actually belongs to.
-      //
-      // otherSowRows is still computed above — it feeds `otherRows` for the
-      // column totals, which must keep counting the sub's priced lines.
 
       sowGrids.push({
         sowId:    sow.id,

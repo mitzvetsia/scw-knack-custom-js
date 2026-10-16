@@ -172,7 +172,7 @@
     }
     h.push('<div style="margin:0 0 12px;">' +
       stat(c.added || 0, 'Not bid') +
-      stat(c.orphan || 0, 'Bid only') +
+      stat(c.orphan || 0, 'Not on this SOW') +
       stat(c.material || 0, 'Labor change') +
       stat(c.spec || 0, 'Spec change') +
       '<span style="display:inline-block;white-space:nowrap;">' +
@@ -230,8 +230,9 @@
    *  blob's structured data (counts / exceptions / laborDelta) survives any
    *  read-path mangling because it's plain text — unlike the embedded
    *  bidHtml/diffHtml fragments, which lose their tags when the blob is
-   *  recovered from the rendered DOM. Per-exception notes aren't stored on
-   *  the blob; the coverage-tier ones are derivable. */
+   *  recovered from the rendered DOM. Per-exception notes are stored on the
+   *  blob since 2026-10-16 ("on 1684" / "on no SOW"); older blobs derive
+   *  the coverage-tier ones. */
   function renderDiffFromSnapshot(snap) {
     if (!snap || !snap.basisBidId) return '';
     var res = {
@@ -243,8 +244,9 @@
           tier: e.tier, label: e.label, product: e.product,
           fields: e.fields || [], sowFee: e.sowFee, bidLabor: e.bidLabor,
           delta: e.delta,
-          note: e.tier === 'added' ? 'not on basis bid'
-              : (e.tier === 'orphan' ? 'not on this SOW' : '')
+          note: (e.note != null && e.note !== '') ? e.note
+              : (e.tier === 'added' ? 'not on basis bid'
+              : (e.tier === 'orphan' ? 'on no SOW' : ''))
         };
       })
     };

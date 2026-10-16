@@ -459,6 +459,27 @@
         return;
       }
 
+      // "+ Add to this SOW (also)" on a row whose line item lives on ANOTHER
+      // SOW (transform.js addMode 'union'): the line item exists, so no CR and
+      // no new record — the tray's union PUT of field_2154 through view_3921
+      // (sow-item-tray.js addToSow) adds this SOW and keeps the item's others.
+      // Its success path refetches (data.refetchAll), and the row comes back
+      // as a matched row. Must run before the generic cell-action dispatch
+      // below, which would hand a row_* action to v1's CR handler.
+      var unionBtn = e.target.closest('[data-action="row_add_item_to_sow"]');
+      if (unionBtn) {
+        e.preventDefault(); e.stopPropagation();
+        var tray     = window.SCW.sowItemTray;
+        var unionItem = unionBtn.getAttribute('data-sow-item-id');
+        var unionSow  = unionBtn.getAttribute('data-sow-id');
+        if (tray && typeof tray.addToSow === 'function' && unionItem && unionSow) {
+          tray.addToSow(unionItem, unionSow, unionBtn);
+        } else if (typeof v1.renderToast === 'function') {
+          v1.renderToast('Could not add that line item — refresh and retry', 'error');
+        }
+        return;
+      }
+
       // Cell CR buttons (Revise / Remove / + Add to bid).
       var cellBtn = e.target.closest('.scw-bid-review-v2__cell-action[data-action]');
       if (cellBtn) {

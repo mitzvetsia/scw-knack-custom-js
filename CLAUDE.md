@@ -972,6 +972,41 @@ The top of the reconcile-bids page (scene_1155, bid-review-v2) reworked per the 
   reconciled on their own scene. Test: `tests/bid-review-v2/test-hide-change-orders.js`.
 - Test: `tests/bid-review-v2/test-header-rework.js`.
 
+## Reconcile grid: every bid line not on this SOW is a row (live 2026-10-16)
+
+With a basis bid chosen, **every** basis-bid line whose line item (`field_2404`) is not on the SOW
+being reviewed renders as a grid row — whether that line item lives on ANOTHER SOW or on none
+(`bid-review-v2/transform.js`: both `otherKind` values, `other-sow` and `bid-only`, carry
+`needsSow: true` and flow through the same basis-filter husk routing into `groupRows`; before, the
+other-sow rows only fed the column totals and the tray, so 13 of Bid 8's priced lines had no row on
+SOW 1105 — they were on 1684). Nothing is gated on the bid package's `field_2387`; no "wrong SOW" /
+"errant" copy anywhere — the row is the sub's priced line, and the two actions are the remedies.
+- **SOW cell** (`card.js` `buildSowCell`, any `needsSow` row): the EMPTY shape (`--empty` +
+  `--off-sow` + `--not-on-sow`), the dash, one context line — `Not on this SOW. On 1684.`
+  (`otherSowNames` joined) / `Not on any SOW.` — then `Remove from bid | + Add to this SOW`
+  (destructive first). Never the other SOW's line details in the blue cut-out. Remove is
+  `cell_remove_from_bid` on the SOW's basis column when the row has a cell there (else its first
+  bid), carrying that cell's bid record id for v1's `resolveBidTarget`. A husk parked in the
+  Removed subgroup (cells only on basis-hidden columns) shows the line, no actions. **Bid cell**: a
+  rose `Not on this SOW` badge (`__no-bid-badge--not-on-sow`) on both kinds; its own Revise /
+  Re-link / Remove stay. The old `__sow-elsewhere` "on 1684" line is gone.
+- **Two add writes** by `row.addMode`: `create` (bid-only) = the existing `row_add_to_sow` CR
+  (Make creates the line item and re-points the bid record); `union` (other-sow, button reads
+  `+ Add to this SOW (also)`) = `row_add_item_to_sow`, routed by `bid-review-v2/init.js` to
+  `SCW.sowItemTray.addToSow(itemId, sowId, btn)` — the tray's union PUT of `field_2154` through
+  view_3921 (never replace: the item keeps 1684 and gains 1105), then `data.refetchAll()` and the
+  row rebuilds as a matched row. One PUT per click, no queue needed.
+- **Diff panel** (`sub-bid-diff`): the orphan tier / tally / PDF stat read `Not on this SOW`; the
+  row note says where (`on 1684` / `on no SOW`, now stored on the `field_2941` snapshot so a PDF
+  rebuilt from it keeps it; older blobs fall back to `on no SOW`); the `$0 → covered` suppression
+  no longer applies to a line scoped on another SOW. Panel rows jump to the new grid rows
+  (`jumpAttr 'bid'`, the row's `data-row-id` is the bid record id).
+- **Tray** (`sow-item-tray.js`): items on one of the section's bids are grid rows now, so
+  `buildGroups` leaves them out (a group emptied by that is dropped); the "on this bid" badges and
+  the open-by-default-when-on-bid rule are gone. The tray is only the lines NO bid here prices.
+- Accepted consequence: a bid assigned to two SOWs shows each line on both grids — matched on the
+  owner, "Not on this SOW" on the other. Test: `tests/bid-review-v2/test-not-on-sow-rows.js`.
+
 ## Margin-low recovery on the reconcile page — `src/features/bid-review/margin.js` (2026-10-16)
 
 The "Margin is low" block under a SOW's Next step (v1 `buildSowStatusBar`, mounted in the v2

@@ -126,7 +126,7 @@
       spec:    { rank: 1, label: 'Spec change',   color: '#4f46e5' }, // matched, non-labor attr differs
       material:{ rank: 2, label: 'Labor change',  color: '#b45309' }, // matched, labor delta ≠ 0
       added:   { rank: 3, label: 'Not bid',       color: '#be123c' }, // SOW line w/ no bid item (coverage gap)
-      orphan:  { rank: 3, label: 'Bid only',      color: '#be123c' }  // bid item w/ no live SOW line
+      orphan:  { rank: 3, label: 'Not on this SOW', color: '#be123c' } // bid line whose item is not on this SOW (another SOW or none)
     },
 
     // Money equality tolerance (cents) — avoids float-noise "labor change".

@@ -523,6 +523,64 @@
     var td = document.createElement('td');
     td.className = 'scw-bid-review-v2__sow-cell';
 
+    // A bid line whose line item is NOT on this SOW (transform.js needsSow:
+    // other-sow = the item lives on another SOW, bid-only = on none). The
+    // SOW side renders the EMPTY shape either way — never the other SOW's
+    // line details in the blue cut-out, which read as if the item were here
+    // — one context line saying where the item is, then the two remedies,
+    // destructive first, primary last: Remove from bid · + Add to this SOW.
+    // The add WRITE differs by addMode: 'union' PUTs field_2154 on the
+    // existing line item (init.js → sow-item-tray addToSow, keeps its other
+    // SOWs), 'create' is the row_add_to_sow CR that has Make create a new
+    // line item and re-point the bid record. A husk parked in the Removed
+    // subgroup (only cells on basis-hidden columns) shows what the line is
+    // and no actions — its bid is not displayed.
+    if (row && row.needsSow) {
+      td.classList.add('scw-bid-review-v2__sow-cell--empty');
+      td.classList.add('scw-bid-review-v2__sow-cell--off-sow');
+      td.classList.add('scw-bid-review-v2__sow-cell--not-on-sow');
+      var isUnion   = row.addMode === 'union' ||
+                      (!row.addMode && row.otherKind === 'other-sow');
+      var elsewhere = (row.otherSowNames && row.otherSowNames.length)
+        ? row.otherSowNames.join(', ') : '';
+      var contextTxt = isUnion
+        ? ('Not on this SOW.' + (elsewhere ? ' On ' + elsewhere + '.' : ''))
+        : 'Not on any SOW.';
+      var nsActions = '';
+      if (!row.removed) {
+        var rmPkgId = removePkgFor(row, sowId);
+        var rmCell  = (rmPkgId && row.cellsByPackage) ? row.cellsByPackage[rmPkgId] : null;
+        var rmBtn = rmPkgId
+          ? '<button type="button" class="scw-bid-review__cell-action ' +
+              'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
+              crAttrs('cell_remove_from_bid', row.id, rmPkgId, sowId, rmCell && rmCell.id) +
+              ' title="Take this line off the bid">Remove from bid</button>'
+          : '';
+        var addBtn = isUnion
+          ? '<button type="button" class="scw-bid-review__cell-action ' +
+              'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+              crAttrs('row_add_item_to_sow', row.id, rmPkgId, sowId) +
+              ' data-sow-item-id="' + escapeHtml(row.sowItem || '') + '"' +
+              ' data-label="+ Add to this SOW (also)"' +
+              ' title="Connect this line item to this SOW as well — it stays on ' +
+                escapeHtml(elsewhere || 'the SOW it is on') + '"' +
+              '>+ Add to this SOW (also)</button>'
+          : '<button type="button" class="scw-bid-review__cell-action ' +
+              'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+              crAttrs('row_add_to_sow', row.id, '', sowId) +
+              ' title="Create a line item for this bid item on this SOW"' +
+              '>+ Add to this SOW</button>';
+        nsActions = '<div class="scw-bid-review-v2__cell-actions">' + rmBtn + addBtn + '</div>';
+      }
+      var nsDetail = (row.removed && row.detail) ? detailBlockHtml(row.detail) : '';
+      td.innerHTML =
+        '<span class="scw-bid-review-v2__cell-empty-mark">—</span>' +
+        '<div class="scw-bid-review-v2__sow-not-on-sow" title="' + escapeHtml(contextTxt) + '">' +
+          escapeHtml(contextTxt) + '</div>' +
+        nsDetail + nsActions;
+      return td;
+    }
+
     // No SOW item record exists for this row.
     if (!sowItemData) {
       td.classList.add('scw-bid-review-v2__sow-cell--empty');
@@ -644,11 +702,7 @@
           escapeHtml((sowItemData && sowItemData.mdfIdf) || '(none)') + '">' +
           '<label>MDF&nbsp;/&nbsp;IDF</label>' +
           escapeHtml((sowItemData && sowItemData.mdfIdf) || '(none)') +
-        '</div>' : '') +
-      // "belongs to another SOW" rows note which SOW(s) the item is on.
-      ((row && row.otherKind === 'other-sow' && row.otherSowNames && row.otherSowNames.length) ?
-        '<div class="scw-bid-review-v2__sow-elsewhere">on ' +
-          escapeHtml(row.otherSowNames.join(', ')) + '</div>' : '');
+        '</div>' : '');
     return td;
   }
 
@@ -681,6 +735,23 @@
       'data-package-id="' + escapeHtml(pkgId || '') + '" ' +
       'data-sow-id="' + escapeHtml(sowId || '') + '"' +
       (bidRecordId ? ' data-bid-record-id="' + escapeHtml(bidRecordId) + '"' : '');
+  }
+  // The bid package the SOW cell's "Remove from bid" acts on for a row not on
+  // this SOW: the SOW's basis bid when the row has a cell there (the line the
+  // reviewer is looking at), else the first bid the row is on. The button also
+  // carries that cell's bid record id, so v1's resolveBidTarget lands on the
+  // exact record even though the row is not in v1's own state for this SOW.
+  function removePkgFor(row, sowId) {
+    var cbp  = (row && row.cellsByPackage) || {};
+    var pids = Object.keys(cbp);
+    if (!pids.length) return '';
+    var basis = '';
+    try {
+      if (ns.basisFilter && typeof ns.basisFilter.basisOf === 'function') {
+        basis = ns.basisFilter.basisOf(sowId) || '';
+      }
+    } catch (e) { basis = ''; }
+    return (basis && cbp[basis]) ? basis : pids[0];
   }
   // Revise + Remove stack for a populated bid cell. CR buttons require
   // sub-bid to be wanted on EITHER side: the bid record (field_2478 →
@@ -1115,7 +1186,14 @@
         '</div>'
       : '';
 
-    var primaryHtml =
+    // A bid line whose line item is not on THIS SOW (another SOW or none):
+    // one rose badge, the same for both kinds, so every such row reads as one
+    // class of thing. The SOW cell carries the specifics and the remedies.
+    var notOnSowBadge = (row && row.needsSow)
+      ? '<span class="scw-bid-review-v2__no-bid-badge ' +
+          'scw-bid-review-v2__no-bid-badge--not-on-sow">Not on this SOW</span>'
+      : '';
+    var primaryHtml = notOnSowBadge +
       (cell.productName ?
         '<div class="scw-bid-review-v2__cell-product"' + prodHover + ' title="' +
           escapeHtml(cell.productName) + '">' +
@@ -2287,6 +2365,7 @@
     buildSowSection: buildSowSection,
     buildBidRow:     buildBidRow,
     buildBidCell:    buildBidCell,
+    buildSowCell:    buildSowCell,
     buildL1HeaderRow: buildL1HeaderRow,
     isLicense:       isLicense,
     buildColLabelsRow: buildColLabelsRow,

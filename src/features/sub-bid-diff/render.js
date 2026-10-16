@@ -10,7 +10,8 @@
  * Included exception types (everything else is suppressed):
  *   - material : matched line, SOW fee ≠ sub bid labor
  *   - added    : SOW line that REQUIRES a bid (field_2479 ≠ No) but has none
- *   - orphan   : bid line pointing outside THIS SOW (bid-only or other-SOW)
+ *   - orphan   : bid line pointing outside THIS SOW (bid-only or other-SOW);
+ *                labelled "Not on this SOW" (2026-10-16), note says where
  * Excluded: covered (equal), field_2479=No, and removed (on neither side —
  * v2 already drops those from grid.rows).
  ****************************************************************************/
@@ -530,7 +531,10 @@
       basisTotal: res.basisTotal,
       exceptions: res.exceptions.map(function (e) {
         return { tier: e.tier, label: e.label, product: e.product, fields: e.fields || [],
-                 sowFee: e.sowFee, bidLabor: e.bidLabor, delta: e.delta, jumpId: e.jumpId || '' };
+                 sowFee: e.sowFee, bidLabor: e.bidLabor, delta: e.delta, jumpId: e.jumpId || '',
+                 // Where an off-SOW line is ("on 1684" / "on no SOW") — stored
+                 // since 2026-10-16 so pdf-html's snapshot rebuild keeps it.
+                 note: e.note || '' };
       }),
       note: currentNote(sowId),
       bidHtml: bidHtml, diffHtml: diffHtml
@@ -747,16 +751,19 @@
         // Absent vs $0 reads as a MATCH (user rule 2026-07-14): a $0 bid-only
         // line (Wattbox/UPS placeholders the sub listed but didn't price)
         // moves no money and isn't a coverage gap — suppress it like any
-        // covered line instead of stacking "Bid only" exceptions.
-        if (moneyEq(ol, 0)) continue;
+        // covered line instead of stacking "Not on this SOW" exceptions.
+        // NOT for a line scoped on ANOTHER SOW (2026-10-16): a $0 placeholder
+        // is noise, a $0 line that another SOW carries is still a gap here.
+        if (moneyEq(ol, 0) && row.otherKind !== 'other-sow') continue;
         laborDelta -= ol; counts.orphan++;
         ex.push({
           tier: 'orphan',
           label: row.displayLabel || row.productName ||
                  (cell.productName || '') || '(bid item)',
           product: cell.productName || row.productName || '',
+          // The tier name says "Not on this SOW"; the note says where it is.
           note: (row.otherSowNames && row.otherSowNames.length)
-                  ? 'on ' + row.otherSowNames.join(', ') : 'not on this SOW',
+                  ? 'on ' + row.otherSowNames.join(', ') : 'on no SOW',
           sowFee: 0, bidLabor: ol, delta: -ol,
           jumpId: row.id || '', jumpAttr: 'bid'   // off-sow rows keyed by bid record id
         });
@@ -1103,7 +1110,7 @@
     var dCls = Math.abs(d) <= C.moneyEps ? 'zero' : (d > 0 ? 'pos' : 'neg');
     return '<div class="scw-sbd-tally">' +
       stat(res.counts.added, 'Not bid') +
-      stat(res.counts.orphan, 'Bid only') +
+      stat(res.counts.orphan, 'Not on this SOW') +
       stat(res.counts.material, 'Labor change') +
       stat(res.counts.spec, 'Spec change') +
       '<div class="scw-sbd-stat scw-sbd-stat--delta"><span class="scw-sbd-stat__n ' + dCls +

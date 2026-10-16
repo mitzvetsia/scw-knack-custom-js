@@ -5,11 +5,13 @@
  * leaving the comparison grid.
  *
  * WHY A TRAY AND NOT MORE GRID ROWS:
- *   The grid is a comparison surface — SOW vs bid, for the items on THIS SOW.
- *   Items belonging to other SOWs are shopping, not comparison, and mixing
- *   them into the same rows is what made "On these bids — belong to another
- *   SOW" read as a contradiction. The tray is deliberately separated, sits
- *   below the table, and is collapsed until asked for.
+ *   The grid is a comparison surface — SOW vs bid. Items belonging to other
+ *   SOWs that NO bid on this section prices are shopping, not comparison, so
+ *   they live here: separated, below the table, collapsed until asked for.
+ *   Items a bid on this section DOES price are grid rows (transform.js:
+ *   every bid line whose line item is not on this SOW renders with Remove
+ *   from bid · + Add to this SOW) — the tray leaves those out (buildGroups),
+ *   so a line item never shows in both places (2026-10-16).
  *
  * GROUPING (the order the user asked for):
  *   1. "Not on any SOW"   — line items with no field_2154 connection at all.
@@ -18,10 +20,8 @@
  *   then natural label) via worksheet-v2's exported comparator, so the tray
  *   reads in the same sequence as every other record list in the app.
  *
- * COLLAPSE: the tray itself starts closed. Inside, a group starts closed too
- *   UNLESS it holds an item that is already on this section's bid — those are
- *   the ones a reviewer is most likely acting on, so they open on sight while
- *   everything else stays out of the way. Both states persist per SOW.
+ * COLLAPSE: the tray itself starts closed, and so does every group inside it.
+ *   Both states persist per SOW.
  *
  * ADDING: field_2154 is a MULTI connection, so "add to this SOW" is a union,
  *   never a replace — the item keeps every SOW it was already on and gains
@@ -103,11 +103,10 @@
 
   /** sowItemId → { packageId: true } across every loaded bid record.
    *
-   *  This used to be answered by looking for the row in the section's DOM,
-   *  which worked only while the grid still rendered an "other SOW" row for
-   *  it. That group is gone (transform.js), so the question has to be asked
-   *  of the DATA: does any bid line point at this item, and does that line
-   *  belong to a package this section shows? */
+   *  Answers "is this line item on one of this section's bids?" from the
+   *  DATA, not the DOM: does any bid line point at this item, and does that
+   *  line belong to a package this section shows? Such items are grid rows
+   *  (transform.js) and are left out of the tray. */
   function bidIndex() {
     var recs = readView(CFG.bidViewKey);
     var idx = Object.create(null);
@@ -232,24 +231,30 @@
       groups.push(g);
     }
 
-    // "On this bid" — asked of the bid records, not the DOM: a bid line
-    // points at this item AND belongs to one of this section's packages.
+    // Items already on one of this section's bids are GRID ROWS (transform.js
+    // renders every bid line whose line item is not on this SOW, with Remove
+    // from bid · + Add to this SOW) — leave them out so the tray never shows a
+    // line the grid already does. Asked of the bid records, not the DOM: a
+    // bid line points at this item AND belongs to one of this section's
+    // packages. A group emptied by that is dropped.
     var idx = bidIndex();
     var pkgs = sectionPackages(section);
+    var out = [];
     for (var gi = 0; gi < groups.length; gi++) {
-      var grp = groups[gi];
-      grp.onBid = 0;
+      var grp = groups[gi], kept = [];
       for (var it = 0; it < grp.items.length; it++) {
         var bucket = idx[grp.items[it].id];
         var on = false;
         for (var p = 0; bucket && !on && p < pkgs.length; p++) {
           if (bucket[pkgs[p]]) on = true;
         }
-        grp.items[it]._onBid = on;
-        if (on) grp.onBid++;
+        if (!on) kept.push(grp.items[it]);
       }
+      if (!kept.length) continue;
+      grp.items = kept;
+      out.push(grp);
     }
-    return groups;
+    return out;
   }
 
   // ── Write ───────────────────────────────────────────────────────────────
@@ -357,12 +362,6 @@
       '.' + P + '-grp--open .' + P + '-gchev { transform: rotate(180deg); }',
       '.' + P + '-glabel { font: 700 12px/1.2 system-ui, sans-serif; color: #0f4c75; }',
       '.' + P + '-gcount { color: #64748b; font-size: 11.5px; }',
-      '.' + P + '-gbid {',
-      '  margin-left: auto; display: inline-flex; align-items: center;',
-      '  padding: 1px 8px; border-radius: 999px;',
-      '  background: #e0e7ff; border: 1px solid #c7d2fe; color: #4338ca;',
-      '  font: 700 10.5px/1.5 system-ui, sans-serif;',
-      '}',
       '.' + P + '-glist { display: none; border-top: 1px solid #eef2f7; }',
       '.' + P + '-grp--open .' + P + '-glist { display: block; }',
       // Rows
@@ -374,11 +373,6 @@
       '.' + P + '-item:hover { background: #f8fafc; }',
       '.' + P + '-il { flex: 1 1 auto; min-width: 0; color: #0f172a;',
       '  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
-      '.' + P + '-ibid {',
-      '  flex: 0 0 auto; padding: 1px 7px; border-radius: 999px;',
-      '  background: #e0e7ff; border: 1px solid #c7d2fe; color: #4338ca;',
-      '  font: 700 10px/1.5 system-ui, sans-serif;',
-      '}',
       '.' + P + '-ifee { flex: 0 0 auto; color: #475569; font-weight: 600;',
       '  font-size: 11.5px; white-space: nowrap; }',
       '.' + P + '-add {',
@@ -404,9 +398,8 @@
   // ── Render ──────────────────────────────────────────────────────────────
 
   function groupHtml(sowId, grp) {
-    // Closed unless it holds something already on this section's bid.
     var openKey = sowId + ':g:' + grp.key;
-    var open = readFlag(openKey, grp.onBid > 0);
+    var open = readFlag(openKey, false);
 
     var rows = '';
     for (var i = 0; i < grp.items.length; i++) {
@@ -415,7 +408,6 @@
       rows += '<div class="' + P + '-item">' +
         '<span class="' + P + '-il" title="' + esc(itemLabel(rec)) + '">' +
           esc(itemLabel(rec)) + '</span>' +
-        (rec._onBid ? '<span class="' + P + '-ibid">on this bid</span>' : '') +
         (fee ? '<span class="' + P + '-ifee">' + esc(fee) + '</span>' : '') +
         '<button type="button" class="' + P + '-add" data-scw-tray-add="' +
           esc(rec.id) + '" data-sow-id="' + esc(sowId) + '" ' +
@@ -432,19 +424,14 @@
         '<span class="' + P + '-glabel">' + esc(grp.label) + '</span>' +
         '<span class="' + P + '-gcount">' + grp.items.length + ' item' +
           (grp.items.length === 1 ? '' : 's') + '</span>' +
-        (grp.onBid ? '<span class="' + P + '-gbid">' + grp.onBid +
-          ' on this bid</span>' : '') +
       '</button>' +
       '<div class="' + P + '-glist">' + rows + '</div>' +
     '</div>';
   }
 
   function trayHtml(sowId, groups) {
-    var total = 0, onBid = 0;
-    for (var i = 0; i < groups.length; i++) {
-      total += groups[i].items.length;
-      onBid += groups[i].onBid;
-    }
+    var total = 0;
+    for (var i = 0; i < groups.length; i++) total += groups[i].items.length;
     if (!total) return '';
 
     var open = readFlag(sowId + ':tray', false);
@@ -457,7 +444,6 @@
         '<span class="' + P + '-chev">' + CHEV + '</span>' +
         '<span class="' + P + '-title">Items not on this SOW</span>' +
         '<span class="' + P + '-count">' + total + '</span>' +
-        (onBid ? '<span class="' + P + '-gbid">' + onBid + ' on this bid</span>' : '') +
         '<span class="' + P + '-hint">add any of them to this SOW</span>' +
       '</button>' +
       '<div class="' + P + '-body">' + body + '</div>' +
@@ -562,6 +548,9 @@
   SCW.onSceneRender(CFG.sceneKey, boot, CFG.eventNs);
   SCW.onViewRender(CFG.itemsViewKey, boot, CFG.eventNs);
 
-  SCW.sowItemTray = { mount: mount, buildGroups: buildGroups, CONFIG: CFG };
+  // addToSow is shared with the reconcile grid: the "+ Add to this SOW (also)"
+  // action on a row whose line item lives on another SOW (bid-review-v2
+  // init.js) is the same union PUT.
+  SCW.sowItemTray = { mount: mount, buildGroups: buildGroups, addToSow: addToSow, CONFIG: CFG };
 })();
 /*** END SOW ITEM TRAY *******************************************************/
