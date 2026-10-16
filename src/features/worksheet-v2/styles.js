@@ -3711,6 +3711,9 @@
     '.scw-ws-v2-sowctx-badge--mixed     { background: #d97706 !important; color: #fff !important; }',
     '.scw-ws-v2-sowctx-badge--blank     { background: #e2e8f0 !important; color: #475569 !important; }',
     '.scw-ws-v2-sowctx-badge--viewonly  { background: #f1f5f9 !important; color: #475569 !important; border: 1px solid #cbd5e1 !important; gap: 4px !important; }',
+    /* Bid context (survey page): the BIDs grid's status text / a generated bid PDF. */
+    '.scw-ws-v2-sowctx-badge--status    { background: #f1f5f9 !important; color: #334155 !important; border: 1px solid #cbd5e1 !important; text-transform: none !important; letter-spacing: 0 !important; }',
+    '.scw-ws-v2-sowctx-badge--submitted { background: #dcfce7 !important; color: #166534 !important; }',
     '.scw-ws-v2-sowctx-lock { display: inline-flex !important; align-items: center !important; color: #64748b !important; }',
     '.scw-ws-v2-sowctx-tab.is-on .scw-ws-v2-sowctx-lock { color: rgba(255, 255, 255, .85) !important; }',
     '.scw-ws-v2-sowctx-meta { font: 500 12px/1.3 system-ui, sans-serif !important; color: #475569 !important; }',
@@ -3725,6 +3728,8 @@
     '.scw-ws-v2-sowctx-tab:hover { background: #f1f5f9 !important; }',
     '.scw-ws-v2-sowctx-tab.is-on { background: #163c6e !important; border-color: #163c6e !important; color: #fff !important; }',
     '.scw-ws-v2-sowctx-tab-kind { font: 700 9.5px/1 system-ui, sans-serif !important; letter-spacing: .06em !important; text-transform: uppercase !important; opacity: .8 !important; }',
+    /* Bid tabs carry the friendly name (bids are told apart by it, not the BD number). */
+    '.scw-ws-v2-sowctx-tab-name { font: 500 11.5px/1.2 system-ui, sans-serif !important; opacity: .85 !important; max-width: 180px !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }',
     '.scw-ws-v2-sowctx-tab-n { font: 700 11px/1 system-ui, sans-serif !important; font-variant-numeric: tabular-nums !important; padding: 1px 6px !important; border-radius: 999px !important; background: rgba(15, 23, 42, .08) !important; }',
     '.scw-ws-v2-sowctx-tab.is-on .scw-ws-v2-sowctx-tab-n { background: rgba(255, 255, 255, .22) !important; }',
     '.scw-ws-v2-sowctx-tab--all, .scw-ws-v2-sowctx-tab--blank { border-style: dashed !important; color: #64748b !important; }',

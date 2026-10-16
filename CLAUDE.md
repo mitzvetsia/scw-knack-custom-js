@@ -890,7 +890,26 @@ true, and nothing said "you are on SW1589 — Alternate"). A **sticky bar above 
   "Type is not change order"; the bundle does not depend on it.
 - The scope strip's meta line leads with `describe(viewKey)` ("on 1589 (alternate)" / "across 2
   scopes, mixed"). Sticky offset follows the project header's pinned bar (`#scw-phn-bar`).
-- Test: `tests/worksheet-v2/test-sow-context.js`.
+- **Bid context on the survey / bid worksheet (view_3505, scene_1140 — 2026-10-16)**: the same bar
+  for a survey request's BIDS, via a per-view VOCABULARY in sow-context.js (`VOCAB.sow` / `VOCAB.bid`,
+  picked by `sowContext.kind`) — not a second module. view_3505 carries `sowContext: { kind: 'bid',
+  requireChoice: true, listView: 'view_3507', idField: 'field_2414', nameField: 'field_2636',
+  statusField: 'field_2550', pdfField: 'field_2626' }`. The bar names the bid being worked on (BD-n ·
+  friendly name · **Base / Variant** — the SOW rule on the BD number: lowest = Base, the rest Variant,
+  what "Create Variant Bid" makes · the BIDs grid's status text as a chip, else **Submitted** when the
+  grid shows a bid PDF), bid TABS with the friendly name + count, "(no bid)" (items taken off every
+  bid: "Not on any bid · Unassigned"), "All · mixed" (amber), and the chooser "Which bid are you working
+  on?" when the request has 2+ bids and nothing is stored. The choice IS the Bid filter's selection
+  (`sow-filter.js` filterPills on `field_2415`, stored per scene + view + request id); the pills strip
+  hides under the bar as on the SOW pages; `describe()` feeds the scope strip ("on BD-1 (base)"). The
+  bar's connection field comes from `sowFilter.filterSpec(viewKey).fieldKey` (SOW `field_2154` by
+  default), never from `cfg.fields().sow`. **`filterPills.listAll` + `labelField`** (view_3505): the Bid
+  list also takes every row of the name grids (view_3507) that no item connects to yet, so a freshly
+  created variant bid has a pill / tab / chooser option with 0 items and a stored choice of it is not
+  dropped as stale. New mode `only` (one scope / bid on the page): the bar states it calmly — white, no
+  tabs, no chooser — where it used to carry the amber "all" styling. `statusField` reads only when
+  view_3507 serves that column (Builder: add Bid status `field_2550` to view_3507 for the chip).
+- Tests: `tests/worksheet-v2/test-sow-context.js`, `tests/worksheet-v2/test-bid-context.js`.
 
 ## Reconcile Bids header rework (live 2026-10-09) — `src/features/bid-review-v2/header.js`
 

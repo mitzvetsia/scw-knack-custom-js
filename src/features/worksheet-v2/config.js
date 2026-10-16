@@ -496,7 +496,26 @@
                              // Append the friendly bid name (field_2636) to each
                              // pill, resolved from the BIDs grid (view_3507).
                              nameViews: ['view_3507'], nameField: 'field_2636',
-                             appendName: true },
+                             appendName: true,
+                             // Every bid on the BIDs grid is listed (pill / context
+                             // tab / chooser option) even before it has an item — a
+                             // freshly created variant bid is otherwise invisible.
+                             // labelField = the grid's bid identifier column.
+                             labelField: 'field_2414', listAll: true },
+        // Bid context (sow-context.js kind:'bid', 2026-10-16): the build-SOW
+        // page's "which scope am I on?" bar, for this request's BIDS. A sticky
+        // bar names the bid being worked on (BD-n · friendly name · Base /
+        // Variant by BD number · the BIDs grid's status text, or "Submitted"
+        // when the grid shows a bid PDF), carries the bid tabs with counts,
+        // "(no bid)" for items taken off every bid, "All · mixed" (amber), and
+        // gates the body behind "Which bid are you working on?" when the
+        // request has 2+ bids and nothing is stored. The choice IS the Bid
+        // filter's selection (per survey request). listView = the BIDs grid
+        // the names / status / PDF come from; statusField is read only when
+        // view_3507 serves that column.
+        sowContext:        { kind: 'bid', requireChoice: true, listView: 'view_3507',
+                             idField: 'field_2414', nameField: 'field_2636',
+                             statusField: 'field_2550', pdfField: 'field_2626' },
         noAccessories:     true,            // Survey Line Items have no accessory
                                             // relationship yet (CLAUDE.md #16) — hide
                                             // the bulk Add/Remove accessories buttons

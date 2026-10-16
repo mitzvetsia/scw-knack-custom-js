@@ -126,7 +126,13 @@
         label:      fp.label || 'Filter',
         nameViews:  fp.nameViews || null,
         nameField:  fp.nameField || null,
-        appendName: !!fp.appendName   // show friendly name ON the pill, not just hover
+        appendName: !!fp.appendName,  // show friendly name ON the pill, not just hover
+        // listAll: every row of the name grids is a pill / context tab even
+        // when no record on the view connects to it yet (the survey page's
+        // BIDs grid: a freshly created variant bid has no items). labelField
+        // is the grid column that carries the identifier for such rows.
+        listAll:    !!fp.listAll,
+        labelField: fp.labelField || null
       };
     }
     var sowK = (ns.cfg && ns.cfg.fields(viewKey).sow) || 'field_2154';
@@ -135,7 +141,9 @@
       label:     'SOW',
       nameViews: ['view_3325', 'view_3918'],
       nameField: 'field_2126',
-      typeField: 'field_2952'   // SOW Type ("change order") when the grid loads it
+      typeField: 'field_2952',  // SOW Type ("change order") when the grid loads it
+      listAll:   false,
+      labelField: null
     };
   }
 
@@ -169,9 +177,9 @@
    *  recognise a CO ref by id). */
   function collectSowList(viewKey, opts) {
     var v = window.Knack && Knack.views && Knack.views[viewKey];
-    if (!v || !v.model || !v.model.data) return [];
-    var models = v.model.data.models || [];
     var spec = filterSpec(viewKey);
+    if ((!v || !v.model || !v.model.data) && !spec.listAll) return [];
+    var models = (v && v.model && v.model.data && v.model.data.models) || [];
     var SOWK = spec.fieldKey + '_raw';
     var typeMap = Object.create(null);
     var nameMap = nameById(spec, typeMap);
@@ -200,6 +208,21 @@
           // suffix on the identifier / name.
           isCo: /change\s*order/i.test(typeMap[s.id] || '') || coLabel(s.identifier) || coLabel(name)
         });
+      }
+    }
+    // listAll: the name grids' own rows that no record connects to (yet).
+    if (spec.listAll && spec.nameViews) {
+      for (var gi = 0; gi < spec.nameViews.length; gi++) {
+        var gv = window.Knack && Knack.views && Knack.views[spec.nameViews[gi]];
+        var gm = (gv && gv.model && gv.model.data && gv.model.data.models) || [];
+        for (var g = 0; g < gm.length; g++) {
+          var ga = gm[g] && gm[g].attributes;
+          if (!ga || !ga.id || seen[ga.id]) continue;
+          seen[ga.id] = true;
+          var gLabel = (spec.labelField ? stripHtml(ga[spec.labelField]) : '') || nameMap[ga.id] || ga.id;
+          list.push({ id: ga.id, label: gLabel, name: nameMap[ga.id] || '',
+                      isCo: /change\s*order/i.test(typeMap[ga.id] || '') || coLabel(gLabel) });
+        }
       }
     }
     if (hidesChangeOrders(viewKey) && !(opts && opts.includeCo)) {
@@ -473,6 +496,7 @@
 
   ns.sowFilter = {
     mount:          mount,
+    filterSpec:     filterSpec,
     loadActive:     loadActive,
     setActive:      setActive,
     collectSowList: collectSowList,
