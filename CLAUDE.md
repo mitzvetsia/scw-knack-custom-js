@@ -1550,7 +1550,7 @@ too, since it catches the next regression where someone is actually looking.
   Replace module (Pattern ` [a-zA-Z-]+="\\"`, New value empty, Global match yes)
   between the Get Record and the Parse JSON.
 
-### 26. Make 06.04 "Update Bid from SOW" did not true the bid to the SOW (v2 patched blueprint delivered 2026-10-16)
+### 26. Make 06.04 "Update Bid from SOW" did not true the bid to the SOW (v3 patched blueprint delivered 2026-10-16)
 - **Scenario**: `06.04 | BID RECONCILIATION | SOW -> BID - Create Alternative / Update Bid from SOW`
   (ops stepper `request-alt-bid` / `update-matching-bid`, one hook, branches on `actionLabel`). It
   copies the SOW lines (`1.json.view_3896`, from view_4140) onto the survey items (`object_114`,
@@ -1568,26 +1568,30 @@ too, since it catches the next regression where someone is actually looking.
   copied from 13.06b's item feeder [87]), always empty, so the aggregator stopped; the update copy also
   searched the parent (`58.id`) instead of the child; (6) items the SOW no longer carries were never
   taken off the bid.
-- **Patch v2 (blueprint export, imported INTO the scenario so the hook URL stays)**: item filter = one
-  AND group on `field_2479_raw`; [61] full parity with the create path (`_raw` reads, + `field_2409`,
-  + `field_2463` via a cloned mount-list iterator/aggregator ahead of it, bids `distinct(add(…; 88.id))`,
+- **Patch v3 (blueprint export, imported INTO the scenario so the hook URL stays)**: item filter = one
+  AND group on `field_2479_raw`; [61] parity with the create path for the SOW-derived fields (`_raw`
+  reads, + `field_2463` via a cloned mount-list iterator/aggregator ahead of it, bids `distinct(add(…; 88.id))`,
   connections reset with `{{emptyarray}}` — a literal `[]` in a blueprint is an UNMAPPED array field);
   create paths' notes → `field_1953_raw`; the dead branches removed; a SECOND PASS route after each item
   loop (router [86] route 1, router [120] route 1): iterate the payload's SOW lines → (filter
   `length(field_1957_raw) > 0`) search the parent's survey item → iterate `map(field_1957_raw; "id")` →
   search the child's survey item → child `field_2381 = [parent]` → aggregate (stop-if-empty OFF) → parent
-  `field_2380 = exactly the children on this survey`; and an ORPHAN pass (router [86] route 2, guarded by
+  `field_2380 = exactly the children on this survey`; and an UNLINK pass (router [86] route 2, guarded by
   `length(1.json.view_3896) > 0`): aggregate the SOW line ids that pass the item rule into a
   `includedSowIds` variable, search this bid's survey items, `field_2415 = remove(own bids; this bid)`
-  for every item whose `field_2404` SOW line is not in the set — sub-added items (no `field_2404`) are
-  never touched, nothing is deleted. Sub inputs stay the sub's: labor $ `field_2400`, survey notes
-  `field_2412`, mounting height `field_2455`, photos, bid PDF. **Verify live**: remove a camera from an
+  for every item with NO `field_2404` (a deleted SOW line — Knack blanks the connection — or a
+  sub-added item) OR whose SOW line is not in the set; nothing is deleted (the items stay on the survey
+  under "(no bid)"). The update path never writes the sub's labor $ `field_2400` or the labor
+  description `field_2409` (v2 briefly re-copied the description; reverted 2026-10-16) — both are only
+  SEEDED at create ([16]/[65], original behaviour); survey notes `field_2412`, mounting height
+  `field_2455`, photos and the bid PDF stay the sub's too. **Verify live**: remove a camera from an
   NVR on the SOW → Update → its Connected To must blank (else the module dropped `{{emptyarray}}` → a
   Knack "Make an API Call" PUT with `{"field_2380": [], "field_2381": []}` ahead of [61]); delete a SOW
   line → Update → its item leaves the bid.
-- **Decisions flagged, not made**: `field_2409` (sub-editable) is now overwritten on every Update;
-  `field_1953` vs `field_2263` for SCW notes; orphans unlinked (not deleted); licenses / Require-Sub-Bid
-  = No items already on bids leave them on the next Update.
+- **Decisions flagged, not made**: sub-added items leave the bid on Update unless adopted into the SOW
+  first; `field_1953` vs `field_2263` for SCW notes; unlinked items stay on the survey (not deleted);
+  licenses / Require-Sub-Bid = No items already on bids leave them on the next Update; new items still
+  seed labor $ / description from the SOW line.
 
 ### 25. Sales page photo modal (view_3586) — restricted, QA read-only; Builder activation pending
 - **Shipped 2026-09-17**: the worksheet-v2 photo modal now has a per-surface policy
