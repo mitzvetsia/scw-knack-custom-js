@@ -190,11 +190,28 @@
   // worksheet (the standalone Licenses grid view_3369 is retired).
   var SYNTHETIC_LICENSE_LABEL     = 'Licenses';
   var SYNTHETIC_LICENSE_ID        = '__synthetic__licenses';
+  var LICENSE_BUCKET_ID           = '645554dce6f3a60028362a6a';   // = card.js LICENSE_BUCKET
+  var LICENSE_LABEL_RE            = /^\s*licen[cs]e/i;
   function isLicenseRecord(rec, bucketLabel) {
+    // Resolve off the per-view BUCKET FIELD first (FIELD_BUCKET is set per
+    // call from opts.fields: the SOW's field_2219, the survey's field_2366,
+    // the INSTALL object's field_2822). The card helper below answers the
+    // same question through a view key — but render.js's group build never
+    // carried one, so on the deploy worksheets the lookup fell back to the
+    // SOW field, found nothing, and every license landed in "Unassigned"
+    // (seen 2026-10-16 on view_4093). The field map is authoritative here.
+    var raw = rec && rec[FIELD_BUCKET + '_raw'];
+    var b = Array.isArray(raw) ? raw[0] : raw;
+    if (b && typeof b === 'object') {
+      var lid = (ns.card && ns.card.LICENSE_BUCKET) || LICENSE_BUCKET_ID;
+      if (b.id === lid) return true;
+      if (LICENSE_LABEL_RE.test(String(b.identifier || ''))) return true;
+    }
     try {
-      if (ns.card && typeof ns.card.isLicenseBucket === 'function') return ns.card.isLicenseBucket(rec, GF.__viewKey);
+      if (ns.card && typeof ns.card.isLicenseBucket === 'function' &&
+          ns.card.isLicenseBucket(rec, GF.__viewKey)) return true;
     } catch (e) { /* label below */ }
-    return /^\s*licen[cs]e/i.test(String(bucketLabel || ''));
+    return LICENSE_LABEL_RE.test(String(bucketLabel || ''));
   }
 
   /** Extract { id, label } from a connection-field _raw array. */

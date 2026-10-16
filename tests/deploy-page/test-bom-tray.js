@@ -30,6 +30,10 @@ const install = [
   { id: 'n5', field_2790: 'Cat6 Uplink', field_2789: 1, field_2218: 20, field_2822_raw: conn(NET, 'Networking or Headend') },
   { id: 'm1', field_2790: 'Junction Box', field_2789: 5, field_2818_raw: conn('L1', 'Default MDF'), field_2218: 30, field_2822_raw: conn(MNT, 'Mounting Hardware'), field_2819_raw: conn('s4', 'x') },
   { id: 'v1', field_2790: 'Travel', field_2789: 2, field_2822_raw: conn(SVC, 'Other Services') },
+  // A recurring license (License bucket): nothing ships, nothing is installed — never in the BOM
+  // (it has its own card, licenses-strip.js). The stubbed card helper above has no isLicenseBucket,
+  // so this exercises the bucket-label fallback.
+  { id: 'k1', field_2790: 'Avigilon Alta Software License Pack Enterprise- 10 Entries', field_2789: 1, field_2218: 90, field_2822_raw: conn('lic', 'License'), field_2819_raw: conn('s1', 'x') },
   { id: 'x1', field_2790: 'Removed Camera', field_2789: 1, field_2807: 'No', field_2218: 10, field_2822_raw: conn(CAM, 'Camera / Reader'), field_2967_raw: conn('co1', 'CO 1') }
 ];
 // The SKU column on the hidden SOW grid is whatever field the Builder exposed under a "SKU" header
@@ -94,6 +98,7 @@ setTimeout(() => {
   check('head: new drops vs existing cable (removed-by-CO rows ignored)', tray.querySelector('.scw-bom__drops').textContent.replace(/\s+/g, ' '), '3 new drops · 2 on existing cable');
   const groups = [...tray.querySelectorAll('.scw-bom__table')][0].querySelectorAll('.scw-bom__group td');
   check('Shipping groups by bucket, cameras first; services and assumptions never appear', [...groups].map(g => g.textContent), ['Camera / Reader', 'Networking or Headend', 'Mounting Hardware']);
+  check('a recurring license is never in the BOM (not shipping, not "not shipping")', /License Pack/.test(tray.textContent), false);
   const ship = tray.querySelectorAll('.scw-bom__table')[0];
   const rows = [...ship.querySelectorAll('tbody tr:not(.scw-bom__group):not(.scw-bom__total):not(.scw-bom__subtotal):not(.scw-bom__sub)')].map(cells);
   check('one row per product: designators compacted, no location run-on, drops chip, SKU + extended pricing from the SOW item',

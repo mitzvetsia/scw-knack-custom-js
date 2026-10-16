@@ -381,6 +381,16 @@
     if (/assumption/i.test(b)) return 'assumptions';
     return 'default';
   }
+  /** Recurring licenses (License bucket) never go in the box: nothing ships
+   *  and nothing is installed. They have their own card on the deploy page
+   *  (licenses-strip.js) and their own "Licenses" group on the worksheet. */
+  function isLicense(rec, cfg) {
+    var ns = window.SCW && SCW.worksheetV2;
+    try {
+      if (ns && ns.card && typeof ns.card.isLicenseBucket === 'function') return !!ns.card.isLicenseBucket(rec, cfg.installView);
+    } catch (e) { /* fall through */ }
+    return /^\s*licen[cs]e/i.test(connLabel(rec, IF.bucket));
+  }
 
   // ── Model ──────────────────────────────────────────────────────────
   /** One entry per install line item worth listing. */
@@ -391,7 +401,7 @@
       var r = recs[i];
       if (!r || !r.id) continue;
       var cat = categoryOf(r, cfg);
-      if (cat === 'services' || cat === 'assumptions') continue;
+      if (cat === 'services' || cat === 'assumptions' || isLicense(r, cfg)) continue;
       var name = plain(r[IF.productName]) || connLabel(r, IF.product) || '(unnamed)';
       var removed = hasValue(r, IF.removedByCo);
       var recCat = cat === 'cam' ? 'cam' : (MOUNT_RE.test(connLabel(r, IF.bucket)) || (!connLabel(r, IF.bucket) && MOUNT_RE.test(name)) ? 'mount' : 'default');

@@ -430,6 +430,16 @@
     '  background: #fef2f2 !important; color: #b91c1c !important;',
     '  border-color: #fecaca !important;',
     '}',
+    /* "Recurring" chit on a license row of the install worksheets — the same
+       muted indigo as the Licenses L1 header (card.js buildRow_installLicense). */
+    '.scw-ws-v2-cell--install-flags .scw-ws-v2-chip--license {',
+    '  background: #eef2ff !important; color: #4338ca !important;',
+    '  border-color: #c7d2fe !important;',
+    '}',
+    '.scw-ws-v2-install-detail .scw-ws-v2-license-note {',
+    '  font-size: 12px; line-height: 1.5; color: #4338ca; background: #eef2ff;',
+    '  border: 1px solid #c7d2fe; border-radius: 6px; padding: 6px 10px;',
+    '}',
     '.scw-ws-v2-chip--ro { cursor: default !important; }',
     '.scw-ws-v2-card--install .scw-ws-v2-cell--product.scw-ws-v2-cell--ro {',
     '  cursor: default !important;',

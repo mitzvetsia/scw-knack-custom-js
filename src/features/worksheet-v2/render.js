@@ -958,6 +958,7 @@
     var _ag = _PF ? SCW._now() : 0;
     var tree = ns.groups.buildGroupTree(effectiveRecords, seedGroups, {
       sortPreset: sortPreset,
+      viewKey: sourceViewKey,
       // Per-view field map so L1 (MDF/IDF) / L2 (bucket) / sort resolve for
       // non-SOW objects (survey view_3505 groups by field_2375 / field_2366).
       fields: (ns.cfg && typeof ns.cfg.fields === 'function')

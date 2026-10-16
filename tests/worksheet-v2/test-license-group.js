@@ -86,5 +86,43 @@ check('ops CO worksheet (view_4079): the Equipment $ stack + net total survive (
 const cam = cardOn('view_3962', records[0]);
 check('a camera card is untouched (MDF/IDF connection still on it, no license class)',
   [has(cam, '[data-scw-ws-v2-conn="field_1946"]'), has(cam, '.scw-ws-v2-row--license')], [true, false]);
+
+// ── the deploy worksheets (install object — view_4093 ops / view_4056 sub) ─────────────────
+// 2026-10-16: the install object keeps its bucket on field_2822 (not the SOW's field_2219). render.js
+// hands the group builder the per-view field map but no view key, so the license test has to read
+// the bucket off that map — before this, every license on the deploy page landed in "Unassigned".
+const INST_F = ns.cfg.fields('view_4093');
+const inst = [
+  { id: 'i1', field_2790: 'Customer Supplied Reader', field_2801: 'AC-01', field_2789: 1, field_2218: 10,
+    field_2822_raw: conn(CAM, 'Camera / Reader'), field_2818_raw: conn('M1', 'HEADEND: : MDF') },
+  { id: 'i2', field_2790: 'Avigilon Alta 8 Door Hub', field_2789: 1, field_2218: 20,
+    field_2822_raw: conn(NET, 'Networking or Headend'), field_2818_raw: conn('M1', 'HEADEND: : MDF') },
+  // A license carrying an MDF/IDF still goes to the Licenses group (a license is not installed anywhere).
+  { id: 'il', field_2790: 'Avigilon Alta Software License Pack Enterprise- 10 Entries', field_2789: 2, field_2218: 90,
+    field_2809: 'Annual cloud license, 10 entries', field_2822_raw: conn(LIC, 'License'), field_2818_raw: conn('M1', 'HEADEND: : MDF') },
+  { id: 'il2', field_2790: 'Health Monitoring License', field_2789: 1, field_2218: 90, field_2822_raw: conn('lic2', 'Licenses (annual)') }
+];
+const itree = ns.groups.buildGroupTree(inst, [], { fields: INST_F });   // no viewKey, as render.js called it
+check('deploy worksheet: licenses get the Licenses group (last, flagged, 2 records) — never "Unassigned" — even with no view key',
+  [itree.map(l1 => l1.label), itree[itree.length - 1].isLicense === true, itree[itree.length - 1].recordCount],
+  [['HEADEND: : MDF', 'Licenses'], true, 2]);
+const ic = cardOn('view_4093', inst[2]);
+check('deploy worksheet: the license card — install grid + license row, read-only product, "Recurring ×2" chit, SCW Notes still editable',
+  [ic.classList.contains('scw-ws-v2-card--install'), ic.classList.contains('scw-ws-v2-card--license'),
+   has(ic, '.scw-ws-v2-row--license.scw-ws-v2-row--install'), ic.querySelector('.scw-ws-v2-product-name').textContent,
+   ic.querySelector('.scw-ws-v2-cell--install-flags .scw-ws-v2-chip--license').textContent,
+   has(ic, 'textarea[data-scw-ws-v2-field="field_2808"]')],
+  [true, true, true, 'Avigilon Alta Software License Pack Enterprise- 10 Entries', 'Recurring ×2', true]);
+const icDetail = ic.querySelector('.scw-ws-v2-detail');
+check('deploy worksheet: the detail is qty + description, read-only — no MDF/IDF picker, Parent, Connected Devices or Mounting Hardware',
+  [has(ic, '[data-scw-ws-v2-conn="field_2818"]'), has(ic, '[data-scw-ws-v2-conn="field_2853"]'), has(ic, '[data-scw-ws-v2-conn="field_2820"]'),
+   has(ic, '.scw-ws-v2-mh-chips'), has(ic, '.scw-ws-v2-conn-btn'),
+   /Qty/.test(icDetail.textContent) && /Annual cloud license, 10 entries/.test(icDetail.textContent),
+   /billed separately/.test(icDetail.textContent)],
+  [false, false, false, false, false, true, true]);
+check('deploy worksheet: a single license reads plain "Recurring"', cardOn('view_4093', inst[3]).querySelector('.scw-ws-v2-chip--license').textContent, 'Recurring');
+const icam = cardOn('view_4093', inst[0]);
+check('deploy worksheet: a reader card is untouched (MDF/IDF picker still on it, no license row)',
+  [has(icam, '[data-scw-ws-v2-conn="field_2818"]'), has(icam, '.scw-ws-v2-row--license'), has(icam, '.scw-ws-v2-chip--license')], [true, false, false]);
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

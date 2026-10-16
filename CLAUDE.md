@@ -528,7 +528,19 @@ are added through "+ Add to SOW" (the modal offers the License bucket on both pa
 - **Create Alternate SOW** (`create-sow-option-btn.js`): `licenseRecurringIds` (view_3471) drops any
   id the checklist already sends in `linkIds` / `cloneItems`, so a license never rides the payload
   twice once it also flows through view_3586.
-- Tests: `tests/worksheet-v2/test-license-group.js`, `tests/bid-review-v2/test-license-group.js`.
+- **Deploy worksheets (view_4093 ops / view_4056 sub) — same treatment (2026-10-16)**: licenses were
+  landing in "Unassigned" there because `groups.js` `isLicenseRecord` asked the card helper with a view
+  key render.js never passed, so the bucket fell back to the SOW's `field_2219` (the install object's
+  is `field_2822`). It now reads the bucket off the per-view field map FIRST (`FIELD_BUCKET`: id =
+  the License bucket or a label starting "Licen[cs]e"), and render.js hands `viewKey` through. The
+  install license CARD (`card.js` `buildRow_installLicense` / `buildDetail_installLicense`) keeps the
+  install grid — blank label, read-only product, an indigo "Recurring (×qty)" chit in Flags (plus the
+  Removed-by-CO chip when a signed CO dropped it), editable SCW Notes — and a read-only detail of qty +
+  description + a note; no MDF/IDF picker, Parent, Connected Devices or Mounting Hardware. The BOM tray
+  (`bom-tray.js` `isLicense`) leaves licenses out of the box; the deploy page's own "Recurring
+  licenses" card (`licenses-strip.js`) is where they are priced.
+- Tests: `tests/worksheet-v2/test-license-group.js`, `tests/bid-review-v2/test-license-group.js`,
+  `tests/deploy-page/test-bom-tray.js` (license exclusion).
 
 ## Manage Deployment page (scene_1311) redesign — full reference: docs/deploy-page-redesign.md
 

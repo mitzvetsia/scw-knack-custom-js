@@ -2850,6 +2850,58 @@
     '</div>';
   }
 
+  // ── License rows on the install worksheets (view_4093 ops / view_4056 sub)
+  // The deploy-page analogue of buildRow_license: a license is a recurring
+  // subscription, not a device — nothing is installed, located, mounted or
+  // wired, so the card must not offer any of that. groups.js puts the record
+  // in the "Licenses" L1 (last, indigo) whatever MDF/IDF it carries; here:
+  //   • the install row template is kept (chevron · label · product · flags ·
+  //     SCW notes · warn · trash) so the columns line up with the rest of the
+  //     worksheet — the label track is blank, the product is the read-only
+  //     stored name, the Flags cell carries a "Recurring" chit (with the qty
+  //     when > 1, and the Removed-by-CO chip when a signed CO dropped the
+  //     license), and SCW Notes stays editable like every install row;
+  //   • the detail is qty + description, read-only — NO MDF / IDF picker, no
+  //     Parent, no Connected Devices, no Mounting Hardware. Edit history
+  //     (auditField views) still shows.
+  function buildRow_installLicense(rec, viewKey) {
+    var F   = fieldsFor(viewKey);
+    var q   = parseFloat(readNum(rec, F.qty || 'field_2789'));
+    var chips = installRemovedChip(rec, viewKey) +
+      '<span class="scw-ws-v2-chip scw-ws-v2-chip--ro scw-ws-v2-chip--license" ' +
+        'title="Recurring license — billed separately; nothing is installed">' +
+        'Recurring' + ((isFinite(q) && q > 1) ? ' ×' + q : '') + '</span>';
+    var scwNotesCell = surveyFill(rec, viewKey, F.scwNotes || 'field_2808',
+      'SCW Notes', 'scw-ws-v2-cell--install-scwnotes');
+    return '<div class="scw-ws-v2-row scw-ws-v2-row--default scw-ws-v2-row--license scw-ws-v2-row--install">' +
+      chevronCell(rec) +
+      empty('scw-ws-v2-cell--label') +
+      installProductCell(rec, F) +
+      '<div class="scw-ws-v2-cell scw-ws-v2-cell--install-flags">' + chips + '</div>' +
+      scwNotesCell +
+      warnCell(rec) +
+      kebabCell(rec, viewKey) +
+    '</div>';
+  }
+
+  function buildDetail_installLicense(rec, viewKey) {
+    var F = fieldsFor(viewKey);
+    var items = '';
+    items += sdItem(detailReadOnly(rec, F.qty || 'field_2789', 'Qty'), 'scw-ws-v2-sd--num');
+    items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Description'), 'scw-ws-v2-sd--wide');
+    items += sdItem(
+      '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--ro scw-ws-v2-license-note">' +
+        'Recurring license — billed separately, not part of the install scope. Nothing is ' +
+        'installed, located or wired, so there is no MDF / IDF, parent or connection to set here.' +
+      '</div>', 'scw-ws-v2-sd--wide');
+    var auditHtml = (ns.audit && typeof ns.audit.detailSection === 'function')
+      ? ns.audit.detailSection(rec, viewKey) : '';
+    return '<div class="scw-ws-v2-detail' + (auditHtml ? ' scw-ws-v2-detail--audit' : '') + '">' +
+      '<div class="scw-ws-v2-survey-detail scw-ws-v2-install-detail">' + items + '</div>' +
+      auditHtml +
+    '</div>';
+  }
+
   // ── Public entry point ─────────────────────────────────────
 
   function buildCard(rec, sourceViewKey) {
@@ -2944,8 +2996,15 @@
       row = buildRow_survey(rec, sourceViewKey, cat);
       det = buildDetail_survey(rec, sourceViewKey, cat);
     } else if (install) {
-      row = buildRow_install(rec, sourceViewKey, cat);
-      det = buildDetail_install(rec, sourceViewKey, cat);
+      if (isLicenseBucket(rec, sourceViewKey)) {
+        // Licenses on the deploy worksheets: the install grid, but nothing
+        // to locate, mount or wire — see buildRow_installLicense.
+        row = buildRow_installLicense(rec, sourceViewKey);
+        det = buildDetail_installLicense(rec, sourceViewKey);
+      } else {
+        row = buildRow_install(rec, sourceViewKey, cat);
+        det = buildDetail_install(rec, sourceViewKey, cat);
+      }
     } else if (isLicenseBucket(rec, sourceViewKey)) {
       // Licenses (cat 'default' by bucket, but nothing to install / bid):
       // product · description · qty · the view's own price, notes only.
