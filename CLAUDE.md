@@ -1550,6 +1550,35 @@ too, since it catches the next regression where someone is actually looking.
   Replace module (Pattern ` [a-zA-Z-]+="\\"`, New value empty, Global match yes)
   between the Get Record and the Parse JSON.
 
+### 26. Make 06.04 "Update Bid from SOW" never trued the survey items' CONNECTED RECORDS (patched blueprint delivered 2026-10-16)
+- **Scenario**: `06.04 | BID RECONCILIATION | SOW -> BID - Create Alternative / Update Bid from SOW`
+  (ops stepper `request-alt-bid` / `update-matching-bid`, one hook, branches on `actionLabel`). It
+  copies the SOW lines (`1.json.view_3896`) onto the survey items (`object_114`, `field_2404` = SOW
+  line) but the survey pair `field_2380` (Connected Devices) / `field_2381` (Connected To) was never
+  derived from the SOW's `field_1957`: the UPDATE module ([61], item already on the survey) maps 22
+  fields and neither connection; the in-loop "NETWORK CONNECTIONS" branches ([37] route 2 / [69]
+  route 2) were dead — their second iterator read `field_1957_raw` off a CONNECTION bundle (`{id,
+  identifier}`, copied from 13.06b's item feeder [87]), always empty, so the aggregator stopped; the
+  update copy also searched the parent (`58.id`) instead of the child; and the branch ran inside the
+  per-item loop, so a parent earlier in the payload than its cameras could not find them yet. Side
+  finding: [61] `field_2415 = {{88.id}}` REPLACES the item's bids — with a variant bid (BD-1 + BD-2)
+  [88] returns both and the last run wins.
+- **Patch (blueprint export, imported INTO the scenario so the hook URL stays)**: the dead branches
+  removed; [61] resets `field_2380: []` / `field_2381: []` and keeps other bids
+  (`distinct(add(map(59.field_2415_raw; "id"); 88.id))`); a SECOND PASS route after each item loop
+  (router [86] route 1 for Update, router [120] route 1 for Alt Bid): iterate the payload's SOW lines
+  → (filter `field_1957_raw` exists) search the parent's survey item (`field_2404 is <sow id>` AND
+  `field_2360 contains <survey>`) → iterate `map(field_1957_raw; "id")` → search the child's survey
+  item → child `field_2381 = [parent]` → aggregate (stop-if-empty OFF) → parent `field_2380 = exactly
+  the children on this survey`. Derived from `field_1957` only (Known Issue #12's canonical side).
+  **Verify live**: remove a camera from an NVR on the SOW → Update → the camera's Connected To must
+  blank; if it keeps the old link Make dropped the `[]` mappings — use `{{emptyarray}}` or a Knack
+  "Make an API Call" PUT with `{"field_2380": [], "field_2381": []}` ahead of [61].
+- **Still open in that scenario**: [61] does not sync labor description (`field_2409` ← `field_2020`,
+  sub-editable — product call) or the mounting list (`field_2463`); display-vs-`_raw` mix on
+  `field_2367` / `field_2418`; SOW items deleted or newly excluded (License / Mounting / Require Sub
+  Bid = No) are never unlinked from the survey.
+
 ### 25. Sales page photo modal (view_3586) — restricted, QA read-only; Builder activation pending
 - **Shipped 2026-09-17**: the worksheet-v2 photo modal now has a per-surface policy
   (`worksheet-v2/photos.js` `PHOTO_MODAL_POLICY`): ops (view_4093) editable QA; sub
