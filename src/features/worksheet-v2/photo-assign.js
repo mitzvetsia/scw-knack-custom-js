@@ -65,8 +65,16 @@
   var ns = window.SCW.worksheetV2 = window.SCW.worksheetV2 || {};
 
   var CONFIG = {
-    // Preview gate. Empty list = everyone.
-    ALLOWED_EMAILS: ['micah.shearer@getscw.com', 'jon.carter@getscw.com'],
+    // Who gets v2: any listed email, or any email on a listed domain
+    // (2026-10-16: everyone @getscw.com). Both lists empty = everyone.
+    ALLOWED_EMAILS:  [],
+    ALLOWED_DOMAINS: ['getscw.com'],
+    // true (2026-10-16): for allowed users v2 REPLACES the v1 uploader — the
+    // toolbar's "+ Add Photos" (toolbar.js) and every card's "+ Add Photos"
+    // (photos.js, device preset) open this modal via replacesV1(); no second
+    // button. false: the 2026-10-14 preview — a second amber "(v2)" button
+    // beside v1, which keeps working.
+    REPLACE_V1:      true,
     BUTTON_LABEL:   '+ Add Photos (v2)',
     BUTTON_TITLE:   'Bulk photo assign (v2) — preview: only the listed users see this button',
     WEBHOOK_KEY:    'MAKE_PHOTO_ASSIGN_WEBHOOK',
@@ -152,14 +160,23 @@
     return { id: u.id || '', name: userName(), email: u.email || '' };
   }
   function isAllowed() {
-    if (!CONFIG.ALLOWED_EMAILS.length) return true;
+    var emails = CONFIG.ALLOWED_EMAILS || [], domains = CONFIG.ALLOWED_DOMAINS || [];
+    if (!emails.length && !domains.length) return true;
     var email = userEmail();
     if (!email) return false;
-    for (var i = 0; i < CONFIG.ALLOWED_EMAILS.length; i++) {
-      if (String(CONFIG.ALLOWED_EMAILS[i]).toLowerCase() === email) return true;
+    for (var i = 0; i < emails.length; i++) {
+      if (String(emails[i]).toLowerCase() === email) return true;
+    }
+    var at = email.lastIndexOf('@'), dom = at >= 0 ? email.slice(at + 1) : '';
+    for (var d = 0; d < domains.length; d++) {
+      if (dom && String(domains[d]).toLowerCase().replace(/^@/, '') === dom) return true;
     }
     return false;
   }
+  /** v2 stands in for the v1 uploader for this user (REPLACE_V1 + allowed):
+   *  toolbar.js routes the toolbar's "+ Add Photos" here and photos.js
+   *  routes each card's "+ Add Photos" here with that device preset. */
+  function replacesV1() { return !!CONFIG.REPLACE_V1 && isAllowed(); }
   function webhookUrl() {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG[CONFIG.WEBHOOK_KEY]) || '';
     return (!url || /PLACEHOLDER/.test(url)) ? '' : String(url);
@@ -834,7 +851,14 @@
     if (!container) return false;
     var bar = container.querySelector(':scope > .scw-ws-v2-toolbar');
     if (!bar) return false;
-    if (bar.querySelector('[data-scw-pa-open]')) return true;
+    var mine = bar.querySelector('[data-scw-pa-open]');
+    if (replacesV1()) {
+      // The toolbar's own "+ Add Photos" opens v2 (toolbar.js asks
+      // replacesV1()) — no second button; drop a preview one if present.
+      if (mine && mine.parentNode) mine.parentNode.removeChild(mine);
+      return true;
+    }
+    if (mine) return true;
     var ref = bar.querySelector('[data-scw-ws-v2-action="add-photos"]');
     if (!ref || !ref.parentNode) return false;
     var btn = document.createElement('button');
@@ -859,8 +883,9 @@
   }
 
   // ── Modal ─────────────────────────────────────────────────────────
-  function open(viewKey) {
+  function open(viewKey, opts) {
     if (!isAllowed()) return null;
+    opts = opts || {};
     injectStyles();
     close();
     var why = {};
@@ -873,8 +898,12 @@
     var idx = Object.create(null);
     for (var i = 0; i < cands.length; i++) idx[cands[i].id] = cands[i];
     idx[SCOPE_ID] = scopeTarget();           // aimable, never matched or grouped
+    // Opened from one card's "+ Add Photos": every photo added goes to that
+    // device (addFiles) — the chips stay editable.
+    var preset = (opts.deviceId && idx[opts.deviceId] && !idx[opts.deviceId].scopeOnly) ? idx[opts.deviceId] : null;
     _state = {
       viewKey:    viewKey,
+      presetDeviceId: preset ? preset.id : '',
       rows:       [],
       candidates: cands,
       candIndex:  idx,
@@ -903,9 +932,12 @@
     overlay.innerHTML =
       '<div class="scw-pa" role="dialog" aria-modal="true">' +
         '<div class="scw-pa-hd">' +
-          '<div><div class="scw-pa-title">Add Photos (v2)</div>' +
+          '<div><div class="scw-pa-title">Add Photos' + (replacesV1() ? '' : ' (v2)') + '</div>' +
             '<div class="scw-pa-sub">' + esc((vc && vc.label) || 'This worksheet') + ' · ' +
-              plural(cands.length, 'device') + ' · aim each photo at one or more devices · preview</div></div>' +
+              plural(cands.length, 'device') +
+              (preset ? ' · photos you add here go to <b>' + esc(preset.label) + '</b> (change a chip to send one elsewhere)'
+                      : ' · aim each photo at one or more devices') +
+              (replacesV1() ? '' : ' · preview') + '</div></div>' +
           '<button type="button" data-scw-pa-close aria-label="Close">&times;</button>' +
         '</div>' +
         '<div class="scw-pa-tb"></div>' +
@@ -1198,7 +1230,17 @@
       });
     })).then(function (rows) {
       if (_state !== st) return [];
-      autoMatch(false);
+      if (st.presetDeviceId && st.candIndex[st.presetDeviceId]) {
+        // Opened from one card: everything added here is for that device
+        // (its first open required slot, else a new photo). File names are
+        // not consulted; the chip menu still moves a photo elsewhere.
+        for (var pi = 0; pi < rows.length; pi++) {
+          var pr = rows[pi];
+          if (pr && pr.status !== 'too-big' && !pr.targets.length) addTarget(pr.id, st.presetDeviceId, null);
+        }
+      } else {
+        autoMatch(false);
+      }
       st.done = '';
       render();
       return rows.filter(Boolean);
@@ -2025,6 +2067,7 @@
     inject:            inject,
     watch:             watch,
     isAllowed:         isAllowed,
+    replacesV1:        replacesV1,
     candidatesFor:     candidatesFor,
     attachedAccessoryIds: attachedAccessoryIds,
     buildMatchContext: buildMatchContext,

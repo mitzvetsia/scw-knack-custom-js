@@ -133,16 +133,28 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
 
 (async () => {
   // ── gate + button ──
-  check('allowed: the listed emails, case-insensitive', [pa.isAllowed(), (email = 'Jon.Carter@getscw.com', pa.isAllowed())], [true, true]);
+  check('allowed: anyone @getscw.com, case-insensitive; other domains and no email are not',
+    [pa.isAllowed(), (email = 'Jon.Carter@getscw.com', pa.isAllowed()), (email = 'someone@GetSCW.com', pa.isAllowed()),
+     (email = 'sub@acmeinstalls.com', pa.isAllowed()), (email = '', pa.isAllowed())],
+    [true, true, true, false, false]);
   email = 'Micah.Shearer@getscw.com';
   let c = toolbarFixture();
-  check('inject puts the amber v2 button right after "+ Add Photos", once',
-    [pa.inject(V), pa.inject(V), Array.from(c.querySelectorAll('.scw-ws-v2-toolbar button')).map(b => b.textContent),
-     c.querySelector('[data-scw-pa-open]').className.includes('scw-ws-v2-toolbar-btn--preview')],
-    [true, true, ['+ Add MDF/IDF', '+ Add Photos', '+ Add Photos (v2)'], true]);
-  email = 'someone@getscw.com';
+  check('replace mode: v2 stands in for v1 — no second button, the toolbar keeps its own "+ Add Photos"',
+    [pa.replacesV1(), pa.inject(V), Array.from(c.querySelectorAll('.scw-ws-v2-toolbar button')).map(b => b.textContent),
+     c.querySelectorAll('[data-scw-pa-open]').length],
+    [true, true, ['+ Add MDF/IDF', '+ Add Photos'], 0]);
+  pa.CONFIG.REPLACE_V1 = false;
   c = toolbarFixture();
-  check('another user: not allowed, no button', [pa.isAllowed(), pa.inject(V), c.querySelectorAll('[data-scw-pa-open]').length], [false, false, 0]);
+  check('preview mode (REPLACE_V1 off): the amber v2 button right after "+ Add Photos", once',
+    [pa.replacesV1(), pa.inject(V), pa.inject(V), Array.from(c.querySelectorAll('.scw-ws-v2-toolbar button')).map(b => b.textContent),
+     c.querySelector('[data-scw-pa-open]').className.includes('scw-ws-v2-toolbar-btn--preview')],
+    [false, true, true, ['+ Add MDF/IDF', '+ Add Photos', '+ Add Photos (v2)'], true]);
+  pa.CONFIG.REPLACE_V1 = true;
+  check('back in replace mode, inject drops the preview button', [pa.inject(V), c.querySelectorAll('[data-scw-pa-open]').length], [true, 0]);
+  email = 'sub@acmeinstalls.com';
+  c = toolbarFixture();
+  check('another domain: not allowed, nothing injected, v1 stays',
+    [pa.isAllowed(), pa.replacesV1(), pa.inject(V), c.querySelectorAll('[data-scw-pa-open]').length], [false, false, false, 0]);
   email = 'Micah.Shearer@getscw.com';
 
   // ── candidates + matching ──
@@ -340,6 +352,16 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   check('a failed upload fails its row and skips its writes', [res.filled, res.created, res.failed, rows()[0].status, /Upload failed: 503/.test(rows()[0].error), puts.length, posts.length], [0, 0, 1, 'failed', true, 0, 0]);
 
   console.info = realInfo;
+  // ── a card's "+ Add Photos": the modal opens with that device preset ──
+  pa.close(); pa.open(V, { deviceId: 'r1' });
+  check('preset device is remembered and the header says where photos go',
+    [pa.state().presetDeviceId, /photos you add here go to/.test(text('.scw-pa-sub')), text('.scw-pa-title')], ['r1', true, 'Add Photos']);
+  await pa.addFiles([file('IMG_7001.jpg'), file('I-005.jpg')]);
+  check('every photo added goes to the preset device — file names are not consulted',
+    rows().map(r => r.targets.map(t => t.deviceId)), [['r1'], ['r1']]);
+  pa.close(); pa.open(V, { deviceId: '__scope__' });
+  check('the scope row is never a preset', pa.state().presetDeviceId, '');
+
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
 })().catch(e => { console.log('FAIL uncaught: ' + (e && e.stack || e)); process.exit(1); });

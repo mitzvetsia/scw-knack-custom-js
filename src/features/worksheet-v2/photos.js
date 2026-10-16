@@ -1106,6 +1106,19 @@
       var addBtn = e.target && e.target.closest &&
                    e.target.closest('.scw-ws-v2-photo-add');
       if (!addBtn) return;
+      // v2 bulk photo assign stands in for the v1 uploader for allowed users
+      // (photo-assign.js replacesV1): open it with this device preset, so
+      // every photo added lands on this line item.
+      var pa2 = ns && ns.photoAssign;
+      var vk2 = addBtn.getAttribute('data-scw-ws-v2-photo-view') || '';
+      var line2 = addBtn.getAttribute('data-scw-line-id') || '';
+      if (vk2 && line2 && pa2 && typeof pa2.replacesV1 === 'function' && pa2.replacesV1() &&
+          typeof pa2.open === 'function') {
+        e.preventDefault();
+        e.stopPropagation();
+        pa2.open(vk2, { deviceId: line2 });
+        return;
+      }
       if (!(window.SCW && SCW.CONFIG && SCW.CONFIG.PHOTO_ADD_BULK_MODAL)) return;
       if (!(window.SCW && SCW.bulkUpload && typeof SCW.bulkUpload.open === 'function')) return;
       var lineId = addBtn.getAttribute('data-scw-line-id');

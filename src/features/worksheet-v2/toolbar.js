@@ -471,6 +471,14 @@
       return;
     }
     if (action === 'add-photos') {
+      // v2 bulk photo assign stands in for the v1 uploader for allowed
+      // users (photo-assign.js REPLACE_V1 + ALLOWED_DOMAINS); everyone
+      // else keeps the v1 modal.
+      var pa = ns && ns.photoAssign;
+      if (pa && typeof pa.replacesV1 === 'function' && pa.replacesV1() && typeof pa.open === 'function') {
+        pa.open(viewKey);
+        return;
+      }
       openBulkPhotoUpload(viewKey);
       return;
     }

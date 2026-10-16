@@ -684,11 +684,16 @@ modal inherits from 05.01 (pre-existing, not changed): License qty is ignored (o
 product), exterior/plenum come from the PRODUCT not the toggles, Materials accessories (`field_2206`)
 create SOW Line Items (object_105), not survey items. Test: `tests/worksheet-v2/test-survey-add-item-form.js`.
 
-## Bulk photo ASSIGN modal — v2 "+ Add Photos (v2)" (PREVIEW 2026-10-14, rev 3) — `src/features/worksheet-v2/photo-assign.js`
+## Bulk photo ASSIGN modal — v2 "+ Add Photos" (LIVE for @getscw.com 2026-10-16, rev 3) — `src/features/worksheet-v2/photo-assign.js`
 
-Gated to `CONFIG.ALLOWED_EMAILS` (micah.shearer@getscw.com + jon.carter@getscw.com since 2026-10-15; empty = everyone): the listed users get a
-second amber "+ Add Photos (v2)" button right after the worksheet toolbar's "+ Add Photos" on every
-worksheet-v2 view; the v1 button + modal (`bulk-upload.js`) are untouched. Design: Claude Design canvas
+Gate: `CONFIG.ALLOWED_DOMAINS` (`['getscw.com']` since 2026-10-16) + `ALLOWED_EMAILS` for one-offs (both
+empty = everyone). For allowed users v2 REPLACES the v1 uploader (`REPLACE_V1: true`): the worksheet
+toolbar's own "+ Add Photos" opens it (`toolbar.js` asks `ns.photoAssign.replacesV1()`), and each card's
+"+ Add Photos" opens it with that DEVICE PRESET (`photos.js` → `open(viewKey, { deviceId })`: every photo
+added goes to that device — first open required slot, else new — file names are not consulted, the chips
+stay editable, the header says where they go); no second button is injected. Subs and every other domain
+keep the v1 button + modal (`bulk-upload.js`), untouched. `REPLACE_V1: false` restores the 2026-10-14
+preview (a second amber "+ Add Photos (v2)" button beside v1). Design: Claude Design canvas
 "Bulk Photo Assign v2" (rev 2, 2026-10-14 — the first cut's three modes were replaced by ONE screen;
 rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing clipped).
 - **One screen, no modes**: photo tiles on the left (176px CONTAIN-fit thumbnails — the whole photo,
