@@ -187,9 +187,10 @@ const tray = opened && opened.el;
 check('open() puts the tray in the deploy drawer, titled and tagged for the drawer to clear',
   [opened && opened.title, opened && opened.eyebrow, tray && tray.classList.contains('scw-deploy-drawer__custom')],
   ['Shipments', '3 · Installation', true]);
-check('the drawer leads with freshness and the re-check button',
-  [tray.querySelector('.scw-ships__freshness').textContent, !!tray.querySelector('[data-scw-ships-resync]'), tray.querySelector('.scw-ships__stalebanner') === null],
-  ['Last synced 1 hour ago', true, true]);
+check('the drawer leads with freshness; the re-check (re-pull) control is OFF by default (2026-10-16) and nothing in the drawer invites one',
+  [tray.querySelector('.scw-ships__freshness').textContent, api.resyncEnabled(), !!tray.querySelector('[data-scw-ships-resync]'),
+   !!tray.querySelector('[data-scw-ships-ref]'), /re-?check|resync|re-?pull/i.test(tray.textContent), tray.querySelector('.scw-ships__stalebanner') === null],
+  ['Last synced 1 hour ago', false, false, false, false, true]);
 check('counts: total, shipped, not shipped, and the missing-in-OMS warning',
   [...tray.querySelectorAll('.scw-ships__counts span')].map(s => s.textContent),
   ['3shipments', '2shipped', '1not shipped', '1missing in OMS']);
@@ -243,10 +244,11 @@ check('a name with no compatibility list and no model code is left exactly as it
    ['1×', 'The Lookout Mini 5.0', '26ZV5M-MINI-V2 · 0235UL3C', 'Serial 210235UL3C325B000013']]);
 check('a product name with a quote survives, because the blob percent-encodes every string',
   cards[1].querySelector('.scw-ships__item-name').textContent, 'The 6" \'Big\' Bracket, v2');
-check('no contents blob → no disclosure, but NEVER a silent blank: the card says the snapshot is missing and that a resync fills it',
+check('no contents blob → no disclosure, but NEVER a silent blank: the card says the snapshot is missing and that the OMS sync fills it (no resync hint while re-check is off)',
   [cards[0].querySelector('.scw-ships__more--items'),
+   /OMS sync fills this in/i.test(cards[0].querySelector('.scw-ships__nocontents').textContent),
    /resync/i.test(cards[0].querySelector('.scw-ships__nocontents').textContent)],
-  [null, true]);
+  [null, true, false]);
 // The other way contents can be empty: nobody put the JSON column on the view.
 // Same blank to the eye, completely different fix — so the card must name it.
 (() => {
@@ -263,10 +265,10 @@ check('an unlinkable carrier still shows the number, as text rather than a broke
   ['SPAN', true, 'FedEx 77', null]);
 check('the four address parts compose into one line',
   [...cards[2].querySelectorAll('.scw-ships__dl dd')][2].textContent, '12 Main St · Durham, NC 27701');
-check('NOTHING ABOUT A SHIPMENT IS EDITABLE — the OMS owns these facts; the only controls are the re-check button, its optional reference box, and the disclosures',
+check('NOTHING ABOUT A SHIPMENT IS EDITABLE — the OMS owns these facts; with re-check off the only controls are the disclosures',
   [[...tray.querySelectorAll('input, select, textarea, [contenteditable]')].map(i => i.getAttribute('data-scw-ships-ref') ? 'ref' : i.tagName),
    [...tray.querySelectorAll('button')].map(b => b.getAttribute('data-scw-ships-resync') ? 'resync' : b.tagName)],
-  [['ref'], ['resync']]);
+  [[], []]);
 check('the drawer states plainly that delivery is not tracked, and points at the carrier link instead',
   [/Delivery is not tracked yet/.test(tray.textContent), /no arrival date here/.test(tray.textContent)], [true, true]);
 check('NOTHING in the drawer claims a delivery or an ETA (word-boundaried — "details" contains "eta")',
@@ -319,8 +321,14 @@ check('when NO reference carries a proposal number the payload flags it, and the
   [true, ['62489857827-SW1454', '62489857827-SW1455']]);
 check('the project number rides at the top level — the one needle for a contains pass when an exact lookup cannot be used',
   api.resyncPayload().projectNo, '62489857827');
+// The control itself still works when switched back on (the payload builder and POST are intact).
+api.setResyncEnabled(true);
 api.open();
 const t2 = opened.el;
+check('switched on, the drawer carries the re-check button, its reference box and the resync hints again',
+  [!!t2.querySelector('[data-scw-ships-resync]'), !!t2.querySelector('[data-scw-ships-ref]'),
+   /resync to pull/i.test(t2.textContent) || /Re-check shipments/.test(t2.textContent)],
+  [true, true, true]);
 const btn = t2.querySelector('[data-scw-ships-resync]');
 ajaxCalls.length = 0;
 btn.click();

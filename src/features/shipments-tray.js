@@ -102,6 +102,14 @@
   var STYLE_ID = 'scw-ships-css';
   var EVENT_NS = '.scwShipments';
   var STALE_MS = 24 * 60 * 60 * 1000;   // older than this and the facts are not trustworthy
+  // 2026-10-16: the Re-check (resync / "re-pull") control is OFF on the
+  // deploy page. The drawer shows the shipment records as the OMS sync last
+  // left them — counts, cards, tracking links, contents — with no way to
+  // trigger a re-pull from here: the button, its reference box and every
+  // "re-check / resync" hint go with it. The payload builder stays for the
+  // day it comes back; flip this constant (or, in tests,
+  // SCW.shipments.setResyncEnabled(true)) to restore the control.
+  var RESYNC_ENABLED = false;
 
   // Header text → logical field, most specific first. Matched against the
   // column header lowercased with non-alphanumerics collapsed to spaces
@@ -969,7 +977,9 @@
       // broken feature, and the two reasons it can be empty have
       // completely different fixes — say which one this is.
       contents = '<div class="scw-ships__nocontents">' + (sh.hasBlobField
-        ? 'Contents not captured yet &mdash; resync to pull this order\u2019s items from the OMS.'
+        ? (RESYNC_ENABLED
+            ? 'Contents not captured yet &mdash; resync to pull this order\u2019s items from the OMS.'
+            : 'Contents not captured yet &mdash; the next OMS sync fills this in.')
         : 'Contents are not on this view yet &mdash; add the items-JSON field as a column on the shipments source view.') +
         '</div>';
     }
@@ -1015,11 +1025,10 @@
                 (s.neverSynced ? ' · ' + s.neverSynced + ' never synced' : '')
               : 'Last synced <b>' + esc(s.syncedText) + '</b>' +
                 (s.neverSynced ? ' · ' + s.neverSynced + ' never synced' : '')));
-    var html =
-      '<div class="scw-ships__bar">' +
-        '<span class="scw-ships__freshness' + (s.stale ? ' is-stale' : '') + '">' + fresh + '</span>' +
-        '<span class="scw-ships__spring"></span>' +
-        '<label class="scw-ships__reflabel">' +
+    // The re-pull controls render only while RESYNC_ENABLED — the drawer is
+    // otherwise a read-only mirror of what the OMS sync last wrote.
+    var controls = RESYNC_ENABLED
+      ? '<label class="scw-ships__reflabel">' +
           '<span class="scw-ships__reftitle">Also search a reference</span>' +
           '<input type="text" class="scw-ships__ref" data-scw-ships-ref="1" autocomplete="off" spellcheck="false" ' +
             'placeholder="e.g. 62489857827-SW1234 | Q5678" value="' + esc(keepRef) + '">' +
@@ -1027,15 +1036,23 @@
         '<button type="button" class="scw-ships__resync" data-scw-ships-resync="1">Re-check shipments</button>' +
         '<div class="scw-ships__refnote">Optional. The reference must match the ShipEdge order reference ' +
           '<b>exactly</b> — same characters, spacing and punctuation. ShipEdge has no partial match. ' +
-          'Separate several with commas.</div>' +
+          'Separate several with commas.</div>'
+      : '';
+    var html =
+      '<div class="scw-ships__bar">' +
+        '<span class="scw-ships__freshness' + (s.stale ? ' is-stale' : '') + '">' + fresh + '</span>' +
+        '<span class="scw-ships__spring"></span>' +
+        controls +
       '</div>';
     if (s.stale && s.total) {
       html += '<div class="scw-ships__stalebanner">These figures come from the last sync, not from the OMS right now. ' +
-        'Treat the statuses and ETAs below as last known, and re-check before you rely on them.</div>';
+        'Treat the statuses below as last known' +
+        (RESYNC_ENABLED ? ', and re-check before you rely on them.' : '.') + '</div>';
     }
     if (!s.total) {
       html += '<div class="scw-ships__empty">Nothing has been ordered for this project yet, or an order exists in the OMS ' +
-        'that nobody has attributed to this project. Re-check shipments pulls the latest from the OMS.</div>';
+        'that nobody has attributed to this project.' +
+        (RESYNC_ENABLED ? ' Re-check shipments pulls the latest from the OMS.' : '') + '</div>';
     } else {
       html += '<div class="scw-ships__counts">' +
         '<span><b>' + s.total + '</b>' + (s.total === 1 ? 'shipment' : 'shipments') + '</span>' +
@@ -1126,6 +1143,8 @@
     shipments: function () { var c = activeScene(); return c ? shipments(c) : []; },
     summarize: summarize,
     resyncPayload: function (extraRefs) { var c = activeScene(); return c ? resyncPayload(c, extraRefs) : null; },
+    resyncEnabled: function () { return RESYNC_ENABLED; },
+    setResyncEnabled: function (on) { RESYNC_ENABLED = !!on; },
     splitExtraRefs: splitExtraRefs,
     parseReference: parseReference,
     fields: function () { var c = activeScene(); return c ? fields(c) : {}; },

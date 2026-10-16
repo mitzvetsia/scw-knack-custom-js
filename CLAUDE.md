@@ -572,6 +572,12 @@ Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-au
   typed photos keep Remove photo (image cleared, slot kept) + disconnect. **Builder**: view_3937
   needs its Delete link enabled or the REST fallback 403s and the card comes back after the refetch.
   Test: `tests/worksheet-v2/test-photo-delete-adhoc.js`.
+- **Shipments drawer = records only (2026-10-16)**: the Installation tile's "Shipments ›" line still
+  opens the OMS order mirrors (counts, per-order cards, tracking links, contents), but the
+  "Re-check shipments" re-pull button, its reference box and every resync hint are off
+  (`shipments-tray.js` `RESYNC_ENABLED = false`; `SCW.shipments.setResyncEnabled(true)` in tests).
+  The mirrors refresh on the OMS sync's own schedule. The line renders only when the view_4163
+  grid is on scene_1311.
 - **Pending**: QA checklist per line item (Builder keys still needed — see the
   doc), contacts + pinned contacts, pinned files in the maps strip.
 

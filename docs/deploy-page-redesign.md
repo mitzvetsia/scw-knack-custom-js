@@ -294,7 +294,10 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   last ship date → none shipped yet, and **staleness outranks every other
   headline**. It never says "in transit" or "out": both imply a location
   the OMS never reports. All we know is how many shipments exist and when
-  the last one left; the tracking link is what knows where a parcel is. Drawer: freshness bar + "Re-check shipments", a stale
+  the last one left; the tracking link is what knows where a parcel is. Drawer: freshness bar (the
+  "Re-check shipments" button + its reference box are **OFF since 2026-10-16** — `RESYNC_ENABLED` in
+  shipments-tray.js; the drawer is a read-only mirror refreshed by the OMS sync on its own
+  schedule, and every re-check / resync hint goes with the button), a stale
   banner, counts, then one card per order leading with its ship date. **The
   two things a PM clicks are full-size buttons on the card**: `Track ·
   <carrier> <number>` (the carrier's page; an unrecognised carrier has no
