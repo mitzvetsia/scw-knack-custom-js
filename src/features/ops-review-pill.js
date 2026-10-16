@@ -597,6 +597,7 @@
       btn.type = 'button';
       btn.className = 'scw-ops-margin-warning__btn';
       btn.textContent = bcfg.label;
+      if (bcfg.title) btn.title = bcfg.title;
       if (bcfg.dataAttrs) {
         var dKeys = Object.keys(bcfg.dataAttrs);
         for (var di = 0; di < dKeys.length; di++) {
@@ -1147,30 +1148,42 @@
       }
     }];
 
-    // Compute the new margin target — same math as bid-review.
-    // Knack stores field_2158 as decimal margin (gross). We want the
-    // EFFECTIVE margin after survey costs to land at 12%:
-    //   margin = (0.12 × subBidTotal + surveyCosts) / (subBidTotal + surveyCosts)
-    // If subBidTotal isn't readable (column not on view, missing
-    // data), skip the second button — there's nothing meaningful to
-    // suggest.
-    var subBidTotal = parseFloat(
-      String(readText(tr, SUB_BID_TOTAL_FIELD) || '').replace(/[$,]/g, '')
-    ) || 0;
-    var surveyCosts = parseFloat(
-      String(readText(tr, SURVEY_COSTS_FIELD) || '').replace(/[$,]/g, '')
-    ) || 0;
-    if (subBidTotal > 0) {
-      var newMargin = (EFFECTIVE_MARGIN_TARGET * subBidTotal + surveyCosts) /
-                      (subBidTotal + surveyCosts);
-      var newMarginPct = Math.ceil(newMargin * 1000) / 10;
+    // The new margin target — the ONE implementation is bid-review/margin.js
+    // (SCW.bidReview.margin.target: gross-margin model, checked against the
+    // row's own numbers when it carries the project margin). The local
+    // formula below is only the fallback for a bundle without it. If the sub
+    // bid total isn't readable (column not on view, missing data) there is
+    // nothing meaningful to suggest and the second button is skipped.
+    var subBidRaw = readText(tr, SUB_BID_TOTAL_FIELD);
+    var surveyRaw = readText(tr, SURVEY_COSTS_FIELD);
+    var shared = window.SCW && SCW.bidReview && SCW.bidReview.margin;
+    var tgt = null;
+    if (shared && typeof shared.target === 'function') {
+      tgt = shared.target(subBidRaw, surveyRaw, {
+        sowId:          sowId,
+        currentMargin:  readText(tr, PROJECT_MARGIN_FIELD),
+        observedMargin: readText(tr, MARGIN_FIELD),
+        target:         EFFECTIVE_MARGIN_TARGET
+      });
+    } else {
+      var subBidTotal = parseFloat(String(subBidRaw || '').replace(/[$,]/g, '')) || 0;
+      var surveyCosts = parseFloat(String(surveyRaw || '').replace(/[$,]/g, '')) || 0;
+      if (subBidTotal > 0) {
+        var newMargin = (EFFECTIVE_MARGIN_TARGET * subBidTotal + surveyCosts) /
+                        (subBidTotal + surveyCosts);
+        var newMarginPct = Math.ceil(newMargin * 1000) / 10;
+        tgt = { decimal: Math.round(newMarginPct * 100) / 10000, pctLabel: newMarginPct.toFixed(1) };
+      }
+    }
+    if (tgt) {
       buttons.push({
-        label: 'Increase project margin to ' + newMarginPct.toFixed(1) + '%',
+        label: 'Increase project margin to ' + tgt.pctLabel + '%',
+        title: (shared && typeof shared.describe === 'function') ? shared.describe(tgt) : '',
         dataAttrs: {
           'data-action':       'set_project_margin',
           'data-sow-id':       sowId,
-          'data-margin-value': String(newMargin),
-          'data-margin-pct':   newMarginPct.toFixed(1),
+          'data-margin-value': String(tgt.decimal),
+          'data-margin-pct':   tgt.pctLabel,
           'data-margin-field': PROJECT_MARGIN_FIELD
         }
       });

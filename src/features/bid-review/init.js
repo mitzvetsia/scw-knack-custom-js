@@ -1392,15 +1392,71 @@
   // its update-record event (or after a 3s timeout fallback).
   var MARGIN_FORM_VIEW = 'view_3923';
 
+  /** Refetch the next-step SOW grid (view_3918). Its re-render is what the
+   *  page listens for: v1's onViewRender hook asks v2 to repaint, and v2's
+   *  section signature now carries this row (margin.js rowSignature), so
+   *  the SOW header rebuilds with the fresh margin / survey costs. */
+  function refetchNextStepView() {
+    try {
+      var v = Knack && Knack.views && Knack.views[CFG.nextStepViewKey];
+      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+    } catch (e) { /* ignore */ }
+  }
+
   function handleSetProjectMargin(button) {
+    var sowId     = button.getAttribute('data-sow-id') || '';
     var marginVal = parseFloat(button.getAttribute('data-margin-value'));
     var marginPct = button.getAttribute('data-margin-pct') || '';
+    if (!isFinite(marginVal)) marginVal = parseFloat(marginPct) / 100;
     if (!isFinite(marginVal)) return;
 
     if (!window.confirm(
       'Bump project margin to ' + marginPct + '% on this SOW?'
     )) return;
 
+    var decNum = Math.round(marginVal * 10000) / 10000;
+    if (!ns.margin || typeof ns.margin.save !== 'function') {
+      legacyMarginFormSubmit(button, decNum, marginPct);
+      return;
+    }
+    // Direct view-based PUT (margin.js save): the record the write form
+    // addresses, verified from the response record. No form submit, no page
+    // reload — the SOW header repaints from the refetched row instead.
+    setBusy(button, true);
+    ns.margin.save({ sowId: sowId, decimal: decNum, writeView: CFG.marginWriteView || MARGIN_FORM_VIEW },
+      function (res) {
+        if (res.ok) {
+          ns.renderToast('Project margin set to ' + marginPct + '%' +
+            (res.scope === 'form' ? ' (the project-level margin — every SOW on it)' : '') +
+            ' — recalculating…', 'success');
+          setBusy(button, false);
+          button.disabled = true;      // the rebuilt header brings the right buttons back
+          refetchNextStepView();
+          return;
+        }
+        setBusy(button, false);
+        if (res.reason === 'ignored') {
+          ns.renderToast('Knack didn’t keep the margin — ' + (CFG.projectMarginField || 'field_2158') +
+            ' isn’t editable on ' + res.view + '. Add it to that form in Builder.', 'error');
+          return;
+        }
+        if (res.reason === 'unavailable' || res.reason === 'no-record' ||
+            (res.reason === 'http' && res.status >= 400 && res.status < 500)) {
+          // The view-based write can't reach the record from here — the old
+          // form-submit flow edits whatever record the form is bound to.
+          console.warn('[BidReview] set_project_margin: view-based PUT ' + res.reason +
+            (res.status ? ' (HTTP ' + res.status + ')' : '') + ' — falling back to the form submit', res);
+          legacyMarginFormSubmit(button, decNum, marginPct);
+          return;
+        }
+        ns.renderToast('Margin update failed' + (res.status ? ' (HTTP ' + res.status + ')' : '') +
+          ' — please try again', 'error');
+      });
+  }
+
+  // The pre-2026-10-16 path, kept as the fallback: set the hidden form's
+  // input, submit the form, reload once Knack confirms the update.
+  function legacyMarginFormSubmit(button, marginVal, marginPct) {
     setBusy(button, true);
 
     // Knack inconsistently prefixes form-input ids with the view key.
@@ -1597,6 +1653,9 @@
       } else {
         refreshSilently();
       }
+      // The new line item moves the SOW's totals + margin on labor: refetch
+      // the next-step grid too so the header's margin / warning repaint.
+      refetchNextStepView();
     }).always(function () {
       setBusy(button, false);
     });

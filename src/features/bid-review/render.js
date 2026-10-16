@@ -2497,25 +2497,29 @@
         }
       }];
 
-      // Knack stores field_2158 as gross margin (price-cost)/price, so:
-      //   installFee     = subBidTotal / (1 - margin)
-      //   effective gross = (installFee - subBidTotal - surveyCosts) / installFee
-      //                   = margin - surveyCosts × (1 - margin) / subBidTotal
-      // Solve for margin given a 12% effective target:
-      //   margin = (0.12 × subBidTotal + surveyCosts) / (subBidTotal + surveyCosts)
-      var EFFECTIVE_TARGET = 0.12;
-      var subBidTotal  = parseFloat(readRowFieldText(tr, CFG.subBidTotalField).replace(/[$,]/g, '')) || 0;
-      var surveyCosts  = parseFloat(readRowFieldText(tr, CFG.surveyCostsField).replace(/[$,]/g, '')) || 0;
-      if (subBidTotal > 0) {
-        var newMargin = (EFFECTIVE_TARGET * subBidTotal + surveyCosts) / (subBidTotal + surveyCosts);
-        var newMarginPct = Math.ceil(newMargin * 1000) / 10; // round up to nearest 0.1%
+      // The project margin that puts the margin on labor (field_2749) back at
+      // the recovery target — the math lives ONCE in bid-review/margin.js
+      // (shared with ops-review-pill.js). The row's current project margin
+      // and its margin on labor, when view_3918 carries them, let the model
+      // be checked against Knack's own numbers before it is inverted; the
+      // button's tooltip spells out the inputs so the figure can be audited.
+      var marginTgt = (ns.margin && typeof ns.margin.target === 'function')
+        ? ns.margin.target(readRowFieldText(tr, CFG.subBidTotalField),
+                           readRowFieldText(tr, CFG.surveyCostsField), {
+            sowId:          sowId,
+            currentMargin:  readRowFieldText(tr, CFG.projectMarginField),
+            observedMargin: readRowFieldText(tr, CFG.marginField)
+          })
+        : null;
+      if (marginTgt) {
         marginButtons.push({
-          label: 'Increase project margin to ' + newMarginPct.toFixed(1) + '%',
+          label: 'Increase project margin to ' + marginTgt.pctLabel + '%',
+          title: ns.margin.describe(marginTgt),
           dataAttrs: {
             'data-action':       'set_project_margin',
             'data-sow-id':       sowId,
-            'data-margin-value': String(newMargin),
-            'data-margin-pct':   newMarginPct.toFixed(1),
+            'data-margin-value': String(marginTgt.decimal),
+            'data-margin-pct':   marginTgt.pctLabel,
             'data-margin-field': CFG.projectMarginField || ''
           }
         });

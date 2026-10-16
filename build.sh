@@ -66,6 +66,7 @@ cat \
   src/features/secure-proposal-link.js \
   src/features/bid-items-grid.js \
   src/features/bid-review/config.js \
+  src/features/bid-review/margin.js \
   src/features/bid-review/styles.js \
   src/features/bid-review/adapters.js \
   src/features/bid-review/transform.js \

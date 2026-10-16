@@ -38,6 +38,13 @@
     try { var s = JSON.stringify(obj); return s.length.toString(36) + '.' + hashStr(s); }
     catch (e) { return 'x' + Math.random().toString(36).slice(2); }   // unparseable → always rebuild
   }
+  function nextStepSig(sowId) {
+    try {
+      var v1 = window.SCW && window.SCW.bidReview;
+      if (v1 && typeof v1.nextStepRowSignature === 'function') return v1.nextStepRowSignature(sowId) || '';
+    } catch (e) { /* fall through */ }
+    return '';
+  }
   function indexExistingSections(body) {
     var map = Object.create(null);
     var nodes = body.querySelectorAll('.scw-bid-review-v2__sow[data-sow-id]');
@@ -181,8 +188,13 @@
     for (var i = 0; i < state.sowGrids.length; i++) {
       var grid = state.sowGrids[i];
       try {
-        var sig = sigOf(grid) + '|' + globalAuxSig;
         var sid = grid && grid.sowId;
+        // The SOW header's survey costs / margin / margin-low buttons are read
+        // off the next-step grid's row (view_3918), not off `grid` — so that
+        // row is part of the signature, or a Survey Costs save (whose refetch
+        // re-renders view_3918 → v1 asks us to repaint) reused the stale header
+        // and the margin only caught up on a page refresh (2026-10-16).
+        var sig = sigOf(grid) + '|' + globalAuxSig + '|' + nextStepSig(sid);
         var ex  = sid && existing[sid];
         if (ex && ex.getAttribute('data-scw-sig') === sig) {
           // Unchanged section — reuse its DOM node verbatim (keeps expanded

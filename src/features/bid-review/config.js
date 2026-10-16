@@ -37,6 +37,11 @@
     marginField:          'field_2749',  // SOW margin % (read-only display)
     subBidTotalField:     'field_2162',  // SOW sub-bid total (project-wide)
     projectMarginField:   'field_2158',  // SOW project margin % (input)
+    // "Increase project margin to X%" (margin.js): the hidden update form the
+    // margin is written through (a view-based PUT — see margin.js save), and
+    // the margin on labor the suggested project margin aims for.
+    marginWriteView:      'view_3923',
+    marginRecoveryTarget: 0.12,
     sowNameField:         'field_2126',  // SOW Name (editable text)
     // Write-target view for the Survey Costs + SOW Name inputs. Knack
     // writes go through a view (not a raw object_id endpoint) so the

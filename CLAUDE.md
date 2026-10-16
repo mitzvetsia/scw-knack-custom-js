@@ -936,6 +936,31 @@ The top of the reconcile-bids page (scene_1155, bid-review-v2) reworked per the 
   reconciled on their own scene. Test: `tests/bid-review-v2/test-hide-change-orders.js`.
 - Test: `tests/bid-review-v2/test-header-rework.js`.
 
+## Margin-low recovery on the reconcile page — `src/features/bid-review/margin.js` (2026-10-16)
+
+The "Margin is low" block under a SOW's Next step (v1 `buildSowStatusBar`, mounted in the v2
+header; the same block on the ops SOW list via `ops-review-pill.js`) offers "Add Project
+Management & Mobilization line item" and "Increase project margin to X%". Three things changed:
+- **The number lives once** — `SCW.bidReview.margin.target(subBidTotal, surveyCosts, opts)`.
+  House model (calc-install-fee-adjustment.js): project margin `field_2158` is a GROSS margin,
+  install fee = sub bid / (1 − m), and the margin on labor Knack shows (`field_2749`) is what is
+  left after survey costs: `m − (C/S)(1 − m)`; the target that lands at `marginRecoveryTarget`
+  (12%) is `(t + C/S)/(1 + C/S)`. When view_3918's row also carries the current project margin
+  the row's own numbers pick the model (gross vs plain markup `fee = S(1 + m)`) before inverting;
+  a row fitting neither logs the four numbers once (read `field_2749`'s formula in Builder). The
+  written decimal is the labelled percent; the button tooltip spells out the inputs.
+- **The write is a verified view-based PUT** (`margin.save`) through the hidden update form
+  `marginWriteView` (view_3923): to the SOW the button names when that form edits SOW records,
+  else to the record the form is bound to ("Update Installation Project" → the page's project —
+  the toast says so). A 200 whose record does not echo the value reads as "field not editable on
+  the view". No form submit, no page reload (the old flow's jQuery value/change never reached the
+  form's model, so its watchdog reloaded an unchanged page). The pre-2026-10-16 form-submit flow
+  stays as the fallback when the PUT cannot reach the record (4xx / no record).
+- **Live refresh**: v2's SOW section signature now includes `nextStepRowSignature(sowId)` (the
+  view_3918 row's text), so the refetch every save already fires (survey costs, margin, PM line)
+  rebuilds that SOW's header — margin, warning, button targets — instead of reusing the stale one.
+- Test: `tests/bid-review-v2/test-margin-recovery.js`.
+
 ## Alternative SOWs: Share vs Consolidate (view_3869) — `src/features/import-unique-items-btn.js`
 
 On the SOW page, view_3869 lists the project's OTHER SOWs. Per row: "Add (N) unique items"
