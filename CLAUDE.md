@@ -789,8 +789,25 @@ rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing c
   pages take `links.projectId`). Every create: `field_771` = asset.id, `field_2445` = photoType.id,
   required No, complete Yes, a history line carrying the uploadId. The full mapping lives in the
   `MAKE_PHOTO_ASSIGN_WEBHOOK` comment in `src/config.js`; the blueprint itself is not in the repo.
+- **Batch controls + rate limiting (2026-10-16, from the first live batch)**: the grid has **Select
+  all N** / **Clear selection** (⌘/Ctrl+A outside a text box = select all) and **shift-click** selects
+  the range from the last plain-clicked tile (`anchorRow`; nothing already ticked is dropped). The
+  rail has **family pills** — All · Cameras / Readers / Cameras & readers (by product name) · Headend &
+  networking · Other equipment, with counts, only when the worksheet carries 2+ families — that
+  combine with the search (`railHits`, `candidate.family` from `summary.familyOf`, card fallback;
+  "show all" clears both). **Sending locks the dialog** (`.scw-pa.is-sending`: toolbar / grid / rail
+  grayed and inert, close box off, `beforeunload` warning) and the footer carries a **progress bar**
+  (uploads first, then writes, retry notes). **Writes follow the CLAUDE.md rate-limit rule now**: 2 in
+  flight, starts 150 ms apart (`runQueue(tasks, limit, gapMs)`), and every upload / fill PUT / stamp
+  PUT / manifest POST goes through `withRetry` — 429 / 408 / 5xx / network backed off
+  `RETRY_BASE_MS × 2^(n−1)` + jitter up to `RETRY_ATTEMPTS`, permanent 4xx failing at once (a Make
+  webhook 429 counts; a CORS-rejected fetch still counts as delivered). The first batch had lost
+  writes after the first few fills: 3 concurrent fills × 2 PUTs each with no retry. A row whose writes
+  failed keeps its asset, so Send again re-writes it without a second upload; an unexpected throw
+  unlocks the dialog and says so instead of leaving it stuck.
 - **Not carried over (yet)**: the IndexedDB queue / resume banner; the phone layout (canvas board 5)
-  is a future state. Test: `tests/worksheet-v2/test-photo-assign-v2.js`.
+  is a future state; per-destination resume after a partial failure (today the whole row re-sends).
+  Test: `tests/worksheet-v2/test-photo-assign-v2.js`.
 
 ## Worksheet scope strip (live 2026-10-09) — `src/features/worksheet-v2/summary.js`
 

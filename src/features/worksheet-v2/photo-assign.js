@@ -80,8 +80,17 @@
     WEBHOOK_KEY:    'MAKE_PHOTO_ASSIGN_WEBHOOK',
     // localStorage: "Show open slots under every device" (rail header).
     SHOW_SLOTS_KEY: 'scw:pa:show-slots',
-    // Slot writes are view-based PUTs against Knack (~10 req/s): cap them.
-    WRITES_IN_FLIGHT: 3,
+    // Slot writes are view-based PUTs against Knack (~10 req/s): cap them,
+    // SPACE their starts, and RETRY the transient failures (429 / 5xx /
+    // network) with exponential backoff + jitter — the CLAUDE.md rule for
+    // anything that fires more than a handful of writes in one gesture. A
+    // first live batch (2026-10-16) lost writes after the first few fills:
+    // three concurrent fills × two PUTs each outran the limit with no retry.
+    WRITES_IN_FLIGHT: 2,
+    WRITES_GAP_MS:    150,
+    RETRY_ATTEMPTS:   4,
+    RETRY_BASE_MS:    600,
+    RETRY_MAX_MS:     8000,
     // Make creates the records on its own schedule after the ack; refetch
     // the worksheet once more this long after a batch that sent any.
     MAKE_REFRESH_DELAY_MS: 9000,
@@ -478,6 +487,47 @@
     if (mh && bucketIdOf(rec, viewKey) === mh) return skip('accessories');
     return true;
   }
+  /** The rail's family filter: cam (cameras / readers) | headend (switches,
+   *  NVRs, hubs — the networking bucket) | other. summary.js's familyOf is
+   *  the one classifier when it is loaded; the card helpers are the fallback. */
+  function familyFor(rec, viewKey) {
+    try {
+      if (ns.summary && typeof ns.summary.familyOf === 'function') {
+        var f = ns.summary.familyOf(rec, viewKey);
+        return (f === 'cam' || f === 'headend') ? f : 'other';
+      }
+    } catch (e) { /* fall through */ }
+    var card = ns.card;
+    if (card && typeof card.bucketCategoryOf === 'function' && card.bucketCategoryOf(rec, viewKey) === 'cam') return 'cam';
+    if (card && card.NETWORKING_BUCKET && bucketIdOf(rec, viewKey) === card.NETWORKING_BUCKET) return 'headend';
+    return 'other';
+  }
+  var FAMILY_LABELS = { cam: 'Cameras & readers', headend: 'Headend & networking', other: 'Other equipment' };
+  /** Cameras, Readers, or both — by the products on this worksheet. */
+  function familyLabel(fam, cands) {
+    if (fam !== 'cam') return FAMILY_LABELS[fam] || fam;
+    var readers = 0, cams = 0;
+    for (var i = 0; i < cands.length; i++) {
+      if (cands[i].family !== 'cam') continue;
+      if (/\breader\b/i.test(cands[i].product || '')) readers++; else cams++;
+    }
+    return readers && !cams ? 'Readers' : (cams && !readers ? 'Cameras' : 'Cameras & readers');
+  }
+  /** The rail's family pills — one per family present, with counts; nothing
+   *  when the worksheet carries a single family (nothing to filter by). */
+  function familyPillsHtml(cands) {
+    var counts = { cam: 0, headend: 0, other: 0 }, total = 0;
+    for (var i = 0; i < cands.length; i++) { if (counts[cands[i].family] != null) counts[cands[i].family]++; total++; }
+    var present = ['cam', 'headend', 'other'].filter(function (f) { return counts[f] > 0; });
+    if (present.length < 2) return '';
+    var h = '<div class="scw-pa-fams" role="group" aria-label="Show only">' +
+      '<button type="button" class="scw-pa-fam is-on" data-scw-pa-fam="" aria-pressed="true">All <span>' + total + '</span></button>';
+    for (var p = 0; p < present.length; p++) {
+      h += '<button type="button" class="scw-pa-fam" data-scw-pa-fam="' + present[p] + '" aria-pressed="false">' +
+        esc(familyLabel(present[p], cands)) + ' <span>' + counts[present[p]] + '</span></button>';
+    }
+    return h + '</div>';
+  }
   /** Label tokens: letters and digit runs, upper-cased, digit runs with
    *  leading zeros dropped — so E-001, E001, e1 and E-1 all read E,1. */
   function tokensOf(s) {
@@ -502,6 +552,7 @@
       }
       return {
         id: r.id, label: labelOf(r, viewKey), drop: drop, product: productOf(r, F),
+        family: familyFor(r, viewKey),
         tokens: toks, prefix: letters.join(''), number: number, mdf: mdfOf(r, F), rec: r
       };
     });
@@ -732,7 +783,7 @@
       '.scw-pa-tile.has-menu { z-index:5; }',
       /* The thumb shows the WHOLE photo (contain, not cover): a crop of the
          middle of a pole is why nobody could tell which camera it was. */
-      '.scw-pa-thumb { height:176px; border-radius:8px 8px 0 0; background:#1f2937; display:flex; align-items:flex-end; justify-content:space-between; padding:6px 8px; box-sizing:border-box; color:#cbd5e1; font-size:11px; overflow:hidden; position:relative; cursor:pointer; border:0; width:100%; text-align:left; }',
+      '.scw-pa-thumb { height:176px; border-radius:8px 8px 0 0; background:#1f2937; display:flex; align-items:flex-end; justify-content:space-between; padding:6px 8px; box-sizing:border-box; color:#cbd5e1; font-size:11px; overflow:hidden; position:relative; cursor:pointer; border:0; width:100%; text-align:left; user-select:none; }',
       '.scw-pa-thumb img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }',
       '.scw-pa-thumb .sz { position:relative; z-index:1; background:rgba(15,23,42,.6); border-radius:4px; padding:1px 5px; margin-left:auto; }',
       '.scw-pa-zoom { position:absolute; left:8px; top:8px; z-index:3; width:28px; height:28px; border-radius:7px; border:0; background:rgba(15,23,42,.62); color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; }',
@@ -775,6 +826,11 @@
       '.scw-pa-rail-hd label { display:flex; align-items:center; gap:6px; font-size:12px; color:#334155; }',
       '.scw-pa-railcount { font-size:12px; color:#92400e; } .scw-pa-railcount:empty { display:none; }',
       '.scw-pa-railcount button { border:0; background:none; color:#07467c; font:600 12px system-ui,sans-serif; cursor:pointer; padding:0; text-decoration:underline; }',
+      /* Family pills — show only cameras / readers, headend & networking, other. */
+      '.scw-pa-fams { display:flex; flex-wrap:wrap; gap:4px; }',
+      '.scw-pa-fam { border:1px solid #cbd5e1; border-radius:999px; padding:2px 9px; font:600 11px/1.6 system-ui,sans-serif; background:#fff; color:#334155; cursor:pointer; }',
+      '.scw-pa-fam span { font-weight:500; color:#64748b; }',
+      '.scw-pa-fam.is-on { background:#07467c; color:#fff; border-color:#07467c; } .scw-pa-fam.is-on span { color:#cbd5e1; }',
       '.scw-pa-rail-list { flex:1; overflow-y:auto; min-height:0; padding:4px 0; }',
       '.scw-pa-grp { font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#64748b; padding:12px 10px 4px; display:flex; justify-content:space-between; align-items:center; gap:8px; }',
       '.scw-pa-grp span { white-space:normal; }',
@@ -811,7 +867,17 @@
       '.scw-pa-slot .who { font-size:11px; color:#64748b; white-space:normal; text-align:right; max-width:140px; overflow-wrap:anywhere; }',
       '.scw-pa-slot.is-hit .who { color:#0369a1; font-weight:600; }',
       '.scw-pa-rail-ft { padding:8px 10px; border-top:1px solid #e2e8f0; font-size:11.5px; color:#64748b; background:#f8fafc; flex:none; }',
-      '.scw-pa-ft { padding:10px 18px; border-top:1px solid #e5e7eb; display:flex; gap:8px; justify-content:flex-end; align-items:center; background:#f8fafc; flex:none; }',
+      '.scw-pa-ft { padding:10px 18px; border-top:1px solid #e5e7eb; display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; background:#f8fafc; flex:none; }',
+      /* Sending: a progress bar on its own line of the footer, and the dialog locked. */
+      '.scw-pa-progress { flex:1 1 100%; display:flex; align-items:center; gap:10px; font-size:12.5px; color:#0f172a; }',
+      '.scw-pa-progress-track { flex:1; height:8px; border-radius:999px; background:#e2e8f0; overflow:hidden; }',
+      '.scw-pa-progress-fill { height:100%; width:0; background:#0284c7; border-radius:999px; transition:width .25s ease; }',
+      '.scw-pa-progress.is-retrying .scw-pa-progress-fill { background:#b45309; }',
+      '.scw-pa-progress-txt { flex:none; max-width:60%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
+      '.scw-pa.is-sending .scw-pa-tb, .scw-pa.is-sending .scw-pa-main, .scw-pa.is-sending .scw-pa-errors, .scw-pa.is-sending .scw-pa-done {',
+      '  pointer-events:none; opacity:.55; filter:grayscale(.35); user-select:none; }',
+      '.scw-pa.is-sending .scw-pa-hd [data-scw-pa-close] { pointer-events:none; opacity:.4; }',
+      '.scw-pa.is-sending .scw-pa-ft .scw-pa-btn { pointer-events:none; }',
       '.scw-pa-ft .scw-pa-summary { margin-right:auto; color:#475569; font-size:13px; } .scw-pa-ft .scw-pa-summary b { color:#0f172a; }',
       '.scw-pa-btn { padding:7px 12px; border-radius:6px; border:1px solid #cbd5e1; cursor:pointer; font:600 12.5px/1 system-ui,sans-serif; background:#fff; color:#0f172a; }',
       '.scw-pa-btn.primary { background:#07467c; color:#fff; border-color:#053659; }',
@@ -910,8 +976,10 @@
       matchCtx:   buildMatchContext(cands),
       photoCache: Object.create(null),
       selected:   Object.create(null),
+      anchorRow:  '',                          // last plain-clicked tile — shift-click selects from here
       hideAimed:  false,
       railQuery:  '',
+      railFamily: '',                          // rail family filter: '' | 'cam' | 'headend' | 'other'
       railNeedFirst: true,
       showSlots:  loadShowSlots(),            // every device's open slots listed
       slotsOpen:  Object.create(null),        // per device, this session (sticky once touched)
@@ -921,6 +989,7 @@
       menuDevice: '',
       dragIds:    null,
       sending:    false,
+      progress:   null,                        // { done, total, text, retry } while sending
       errors:     [],
       done:       '',
       batchId:    uuid()
@@ -994,6 +1063,9 @@
       if (t.closest('[data-scw-pa-add]')) { var inp = overlay.querySelector('[data-scw-pa-file]'); if (inp) inp.click(); return; }
       if (t.closest('[data-scw-pa-rematch]')) { autoMatch(true); render(); return; }
       if (t.closest('[data-scw-pa-selunaimed]')) { selectUnaimed(); return; }
+      if (t.closest('[data-scw-pa-selall]')) { selectAll(); return; }
+      if (t.closest('[data-scw-pa-selnone]')) { clearSelection(); return; }
+      if ((b = t.closest('[data-scw-pa-fam]'))) { setRailFamily(b.getAttribute('data-scw-pa-fam')); return; }
       if (t.closest('[data-scw-pa-hideaimed]')) { _state.hideAimed = !_state.hideAimed; render(); return; }
       if ((b = t.closest('[data-scw-pa-remove]'))) { removeRow(b.getAttribute('data-scw-pa-remove')); return; }
       if ((b = t.closest('[data-scw-pa-zoom]'))) { openZoom(b.getAttribute('data-scw-pa-zoom')); return; }
@@ -1001,14 +1073,14 @@
       if (t.closest('[data-scw-pa-lb-prev]')) { zoomStep(-1); return; }
       if (t.closest('[data-scw-pa-lb-next]')) { zoomStep(1); return; }
       if (t.closest('.scw-pa-lb')) { if (t.closest('.scw-pa-lb-body') && !t.closest('img')) closeZoom(); return; }
-      if ((b = t.closest('[data-scw-pa-toggle]'))) { toggleSelect(b.getAttribute('data-scw-pa-toggle')); return; }
+      if ((b = t.closest('[data-scw-pa-toggle]'))) { if (e.shiftKey) e.preventDefault(); toggleSelect(b.getAttribute('data-scw-pa-toggle'), !!e.shiftKey); return; }
       if ((b = t.closest('[data-scw-pa-chip]'))) { openMenu(b.getAttribute('data-scw-pa-chip'), b.getAttribute('data-scw-pa-dev')); return; }
       if ((b = t.closest('[data-scw-pa-more]'))) { focusRailFor(b.getAttribute('data-scw-pa-more')); return; }
       if ((b = t.closest('[data-scw-pa-menu-slot]'))) { chooseFromMenu({ mode: 'slot', slotId: b.getAttribute('data-scw-pa-menu-slot') }); return; }
       if ((b = t.closest('[data-scw-pa-menu-new]'))) { chooseFromMenu({ mode: 'new', typeId: b.getAttribute('data-scw-pa-menu-new') }); return; }
       if (t.closest('[data-scw-pa-menu-remove]')) { chooseFromMenu({ remove: true }); return; }
       if (t.closest('[data-scw-pa-menu-close]')) { closeMenu(); render(); return; }
-      if (t.closest('[data-scw-pa-railclear]')) { _state.railQuery = ''; var rqc = q('[data-scw-pa-railq]'); if (rqc) rqc.value = ''; renderRail(); return; }
+      if (t.closest('[data-scw-pa-railclear]')) { _state.railQuery = ''; _state.railFamily = ''; var rqc = q('[data-scw-pa-railq]'); if (rqc) rqc.value = ''; renderRail(); return; }
       if ((b = t.closest('[data-scw-pa-tickgrp]'))) { tickGroup(b.getAttribute('data-scw-pa-tickgrp')); return; }
       if ((b = t.closest('[data-scw-pa-slots-toggle]'))) { toggleSlots(b.getAttribute('data-scw-pa-slots-toggle')); return; }
       if ((b = t.closest('[data-scw-pa-slot-row]'))) { clickSlot(b.getAttribute('data-scw-pa-slot-dev'), b.getAttribute('data-scw-pa-slot-row')); return; }
@@ -1077,6 +1149,11 @@
           return;
         }
         if (e.key === 'Escape' && t.value) { e.preventDefault(); t.value = ''; _state.railQuery = ''; renderRail(); return; }
+      }
+      // ⌘/Ctrl+A outside a text box: select every photo in the grid.
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A') &&
+          !(t && /^(INPUT|TEXTAREA)$/.test(t.tagName || ''))) {
+        e.preventDefault(); selectAll(); return;
       }
       if (e.key === 'Escape') {
         if (_state.menuRow) { closeMenu(); render(); }
@@ -1157,10 +1234,42 @@
     _state.errors = []; _state.done = '';
     render();
   }
-  function toggleSelect(id) {
+  function selectableRow(r) { return !!r && r.status !== 'too-big' && r.status !== 'done'; }
+  /** A plain click toggles one tile (and anchors the range); a shift-click
+   *  selects every visible tile between the anchor and this one. */
+  function toggleSelect(id, shift) {
     if (!_state || _state.sending) return;
-    if (_state.selected[id]) delete _state.selected[id]; else _state.selected[id] = true;
+    var st = _state;
+    if (shift && st.anchorRow && st.anchorRow !== id) {
+      var vis = visibleRows().filter(selectableRow), a = -1, b = -1;
+      for (var i = 0; i < vis.length; i++) { if (vis[i].id === st.anchorRow) a = i; if (vis[i].id === id) b = i; }
+      if (a !== -1 && b !== -1) {
+        for (var k = Math.min(a, b); k <= Math.max(a, b); k++) st.selected[vis[k].id] = true;
+        renderGrid(); renderSelbar(); renderRail();
+        return;
+      }
+    }
+    if (st.selected[id]) delete st.selected[id]; else st.selected[id] = true;
+    st.anchorRow = id;
     renderTile(id); renderSelbar(); renderRail();
+  }
+  /** Every visible, still-sendable tile. */
+  function selectAll() {
+    if (!_state || _state.sending) return;
+    var vis = visibleRows().filter(selectableRow);
+    for (var i = 0; i < vis.length; i++) _state.selected[vis[i].id] = true;
+    render();
+  }
+  function clearSelection() {
+    if (!_state) return;
+    _state.selected = Object.create(null);
+    render();
+  }
+  /** Rail family pill: the same family again (or "All") clears the filter. */
+  function setRailFamily(fam) {
+    if (!_state) return;
+    _state.railFamily = (!fam || _state.railFamily === fam) ? '' : fam;
+    renderRail();
   }
   function selectUnaimed() {
     if (!_state) return;
@@ -1324,6 +1433,7 @@
     var out = [];
     for (var i = 0; i < _state.candidates.length; i++) {
       var c = _state.candidates[i];
+      if (_state.railFamily && c.family !== _state.railFamily) continue;
       if (!raw) { out.push(c); continue; }
       var hay = tokensOf(c.drop + ' ' + c.product + ' ' + c.mdf.label);
       var ok = query.length > 0 && containsSeq(hay, query);
@@ -1569,12 +1679,16 @@
     var el = q('.scw-pa-selbar');
     if (!el) return;
     var st = _state, sel = selectedIds().length, dis = st.sending ? ' disabled' : '';
-    var unaimed = st.rows.filter(function (r) { return r.status !== 'too-big' && r.status !== 'done' && !r.targets.length; }).length;
+    var unaimed = st.rows.filter(function (r) { return selectableRow(r) && !r.targets.length; }).length;
+    var selectable = visibleRows().filter(selectableRow).length;
     el.innerHTML =
       (sel ? '<b>' + plural(sel, 'photo') + ' selected</b><span class="muted">· click a device on the right, or drag onto it</span>'
-           : '<span class="muted">Tick photos, then click a device on the right — or type in a tile\'s finder. <span class="scw-pa-k">Tab</span> walks the unaimed ones.</span>') +
+           : '<span class="muted">Tick photos, then click a device on the right — or type in a tile\'s finder. ' +
+             '<span class="scw-pa-k">Shift</span>+click selects a range, <span class="scw-pa-k">Tab</span> walks the unaimed ones.</span>') +
       '<span class="scw-pa-spacer"></span>' +
-      (unaimed ? '<button type="button" class="scw-pa-btn sm" data-scw-pa-selunaimed' + dis + '>Select the ' + unaimed + ' unaimed</button>' : '') +
+      (selectable && sel < selectable ? '<button type="button" class="scw-pa-btn sm" data-scw-pa-selall' + dis + ' title="Select every photo in the grid (⌘/Ctrl+A)">Select all ' + selectable + '</button>' : '') +
+      (unaimed && unaimed !== selectable ? '<button type="button" class="scw-pa-btn sm" data-scw-pa-selunaimed' + dis + '>Select the ' + unaimed + ' unaimed</button>' : '') +
+      (sel ? '<button type="button" class="scw-pa-btn sm" data-scw-pa-selnone' + dis + '>Clear selection</button>' : '') +
       '<button type="button" class="scw-pa-btn sm" data-scw-pa-hideaimed' + dis + '>' + (st.hideAimed ? 'Show aimed' : 'Hide aimed') + '</button>';
   }
   function thumbHtml(row, canDrag) {
@@ -1692,7 +1806,14 @@
         '<div class="scw-pa-search"><svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
           '<input type="text" data-scw-pa-railq placeholder="Number, name or MDF/IDF" aria-label="Find a device" autocomplete="off"></div>' +
         '<label><input type="checkbox" data-scw-pa-needfirst' + (st.railNeedFirst ? ' checked' : '') + '> Devices still missing a required photo first</label>' +
-        '<label><input type="checkbox" data-scw-pa-showslots' + (st.showSlots ? ' checked' : '') + '> Show open slots under every device</label>';
+        '<label><input type="checkbox" data-scw-pa-showslots' + (st.showSlots ? ' checked' : '') + '> Show open slots under every device</label>' +
+        familyPillsHtml(st.candidates);
+    }
+    var pills = hd.querySelectorAll('[data-scw-pa-fam]');
+    for (var pi = 0; pi < pills.length; pi++) {
+      var on = pills[pi].getAttribute('data-scw-pa-fam') === (st.railFamily || '');
+      pills[pi].classList.toggle('is-on', on);
+      pills[pi].setAttribute('aria-pressed', on ? 'true' : 'false');
     }
     // The search box always shows the query the list is filtered by — a
     // finder that was cleared (Enter, a device click) clears it too.
@@ -1703,8 +1824,13 @@
     var hits = railHits();
     var cnt = hd.querySelector('.scw-pa-railcount');
     if (!cnt) { cnt = document.createElement('div'); cnt.className = 'scw-pa-railcount'; hd.appendChild(cnt); }
+    var famLbl = st.railFamily ? familyLabel(st.railFamily, st.candidates) : '';
+    var rq0 = String(st.railQuery || '').trim();
     cnt.innerHTML = hits.length < st.candidates.length
-      ? 'Showing <b>' + hits.length + ' of ' + st.candidates.length + '</b> devices for "' + esc(st.railQuery) + '" · <button type="button" data-scw-pa-railclear>show all</button>'
+      ? 'Showing <b>' + hits.length + ' of ' + st.candidates.length + '</b> devices' +
+        (famLbl ? ' · ' + esc(famLbl) : '') +
+        (rq0 ? ' for "' + esc(st.railQuery) + '"' : '') +
+        ' · <button type="button" data-scw-pa-railclear>show all</button>'
       : '';
     var groups = [], byId = Object.create(null);
     for (var i = 0; i < hits.length; i++) {
@@ -1721,7 +1847,12 @@
     var h = '';
     var scope = candidateById(SCOPE_ID);
     if (scope) h += devRowHtml(scope, sel, 'scw-pa-dev--scope');
-    if (!hits.length) h += '<div style="padding:16px 12px;color:#64748b;font-size:12.5px">No device matches "' + esc(st.railQuery) + '".</div>';
+    if (!hits.length) {
+      h += '<div style="padding:16px 12px;color:#64748b;font-size:12.5px">' +
+        (famLbl && !rq0 ? 'No ' + esc(famLbl.toLowerCase()) + ' on this worksheet.'
+                        : 'No ' + (famLbl ? esc(famLbl.toLowerCase()) + ' match' : 'device matches') + ' "' + esc(st.railQuery) + '".') +
+        '</div>';
+    }
     for (var g = 0; g < groups.length; g++) {
       var items = railOrdered(groups[g].items);
       h += '<div class="scw-pa-grp"><span>' + esc(groups[g].label) + '</span>' +
@@ -1842,7 +1973,42 @@
     sendBtn.textContent = st.sending ? 'Sending…' : (c.aimed ? 'Send ' + plural(c.aimed, 'photo') : 'Send');
     sendBtn.title = c.unaimed && c.aimed ? 'The ' + plural(c.unaimed, 'unaimed photo') + ' stay in the queue' : '';
     if (clearBtn) clearBtn.disabled = st.sending || !st.rows.length;
+    renderProgress();
   }
+  /** While sending the dialog is LOCKED — grayed, nothing clickable, the
+   *  close box off — and the footer carries a progress bar: the uploads
+   *  first, then the writes, with a note while a rate-limited request
+   *  waits for its retry. */
+  function renderProgress() {
+    var dlg = q('.scw-pa'), ft = q('.scw-pa-ft');
+    if (!dlg || !ft || !_state) return;
+    var st = _state, p = st.progress;
+    dlg.classList.toggle('is-sending', !!st.sending);
+    dlg.setAttribute('aria-busy', st.sending ? 'true' : 'false');
+    var bar = ft.querySelector('.scw-pa-progress');
+    if (!st.sending || !p) { if (bar && bar.parentNode) bar.parentNode.removeChild(bar); return; }
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.className = 'scw-pa-progress';
+      bar.setAttribute('role', 'progressbar');
+      bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100');
+      bar.innerHTML = '<div class="scw-pa-progress-track"><div class="scw-pa-progress-fill"></div></div>' +
+        '<div class="scw-pa-progress-txt"></div>';
+      ft.insertBefore(bar, ft.firstChild);
+    }
+    var pct = p.total ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0;
+    bar.setAttribute('aria-valuenow', String(pct));
+    bar.querySelector('.scw-pa-progress-fill').style.width = pct + '%';
+    bar.querySelector('.scw-pa-progress-txt').textContent =
+      (p.text || 'Sending…') + ' · ' + pct + '%' + (p.retry ? ' · ' + p.retry : '');
+    bar.classList.toggle('is-retrying', !!p.retry);
+  }
+  function setProgress(patch) {
+    if (!_state || !_state.progress) return;
+    for (var k in patch) if (Object.prototype.hasOwnProperty.call(patch, k)) _state.progress[k] = patch[k];
+    renderProgress();
+  }
+  function warnUnload(e) { e.preventDefault(); e.returnValue = ''; return ''; }
   function renderNotes() {
     var er = q('.scw-pa-errors'), dn = q('.scw-pa-done');
     if (er) { er.hidden = !_state.errors.length; er.innerHTML = _state.errors.map(function (e) { return '<div>' + esc(e) + '</div>'; }).join(''); }
@@ -1884,7 +2050,12 @@
     if (!u || typeof u.uploadImage !== 'function') return Promise.reject(new Error('photo upload machinery not loaded'));
     row.status = 'uploading'; row.error = '';
     renderTile(row.id);
-    return u.uploadImage(row.blob, row.filename).then(function (assetId) {
+    // A row whose writes failed last time still holds its asset: re-sending
+    // reuses it instead of uploading the same bytes again.
+    var upload = row.assetId
+      ? Promise.resolve(row.assetId)
+      : withRetry(function () { return u.uploadImage(row.blob, row.filename); }, 'upload ' + row.filename);
+    return upload.then(function (assetId) {
       if (!assetId) throw new Error('no asset id returned');
       row.assetId = String(assetId);
       row.status = 'uploaded';
@@ -1905,11 +2076,11 @@
   function doFill(op, row, saveView) {
     var u = pepUtil(), PF = CONFIG.PHOTO_FIELDS, tg = op.target;
     var body = {}; body[PF.img] = row.assetId;
-    return u.putRecord(saveView, tg.slotId, body).then(function () {
+    return withRetry(function () { return u.putRecord(saveView, tg.slotId, body); }, 'fill ' + tg.slotId).then(function () {
       var extra = {};
       extra[PF.completed] = 'Yes';
       extra[PF.history] = historyLine(tg.history, row.filename);
-      return Promise.resolve(u.putRecord(saveView, tg.slotId, extra)).catch(function (err) {
+      return withRetry(function () { return u.putRecord(saveView, tg.slotId, extra); }, 'stamp ' + tg.slotId).catch(function (err) {
         console.warn('[scw-photo-assign] completion stamp skipped on ' + tg.slotId + ':', (err && err.message) || err);
       });
     }).then(function () {
@@ -1937,22 +2108,72 @@
     };
   }
   function doCreate(op, row, hook) {
-    var body = JSON.stringify(manifestFor(op, row)), p;
-    try { p = fetch(hook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body }); }
-    catch (e) { p = Promise.reject(e); }
-    // Optimistic, like bulk-upload.js: Make often answers without CORS
-    // headers, which rejects the fetch AFTER the request was delivered.
-    return Promise.resolve(p).then(function () { return { ok: true, op: op }; }, function (err) {
-      console.warn('[scw-photo-assign] manifest send error (treated as sent):', (err && err.message) || err);
-      return { ok: true, op: op, unconfirmed: true };
+    var body = JSON.stringify(manifestFor(op, row));
+    return withRetry(function () {
+      var p;
+      try { p = fetch(hook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body }); }
+      catch (e) { p = Promise.reject(e); }
+      return Promise.resolve(p).then(function (res) {
+        // Make answered with a throttle / server error: the manifest was NOT
+        // taken — a transient failure withRetry backs off on.
+        if (res && typeof res.status === 'number' && res.status !== 0 && isTransient(res.status)) {
+          var err = new Error('webhook answered ' + res.status); err.status = res.status; throw err;
+        }
+        return { ok: true, op: op };
+      }, function (err) {
+        // Optimistic, like bulk-upload.js: Make often answers without CORS
+        // headers, which rejects the fetch AFTER the request was delivered.
+        console.warn('[scw-photo-assign] manifest send error (treated as sent):', (err && err.message) || err);
+        return { ok: true, op: op, unconfirmed: true };
+      });
+    }, 'manifest ' + row.filename).catch(function (err) {
+      return { ok: false, op: op, error: (err && err.message) || String(err) };
     });
   }
-  function runQueue(tasks, limit) {
-    var results = new Array(tasks.length), next = 0, active = 0;
+  // ── Rate limiting: spaced starts + retry with backoff ──────────────
+  function statusOfError(err) {
+    if (err && typeof err.status === 'number') return err.status;
+    var msg = String((err && err.message) || err || '');
+    var m = msg.match(/\((\d+)\)/) || msg.match(/\b([1-5]\d\d)\b/);   // "save failed (429)" / "503"
+    var st = m ? parseInt(m[1], 10) : NaN;
+    return isFinite(st) ? st : 0;      // "upload failed (undefined)" = the network, not Knack
+  }
+  function isTransient(status) {
+    return status === 429 || status === 408 || status === 0 || (status >= 500 && status < 600);
+  }
+  /** Run fn (→ promise). A transient failure (429 / 408 / 5xx / network)
+   *  waits RETRY_BASE_MS × 2^(n−1) + jitter and tries again, up to
+   *  RETRY_ATTEMPTS; a permanent 4xx (403 / 404 / 400) rethrows at once.
+   *  The progress bar says so while a retry waits. */
+  function withRetry(fn, label, attempt) {
+    attempt = attempt || 1;
+    return Promise.resolve().then(fn).catch(function (err) {
+      var status = statusOfError(err);
+      if (attempt >= CONFIG.RETRY_ATTEMPTS || !isTransient(status)) throw err;
+      var wait = Math.min(CONFIG.RETRY_MAX_MS, CONFIG.RETRY_BASE_MS * Math.pow(2, attempt - 1)) + Math.round(Math.random() * 250);
+      if (window.console && console.warn) {
+        console.warn('[scw-photo-assign] ' + label + ' failed (' + status + ') — retry ' + attempt + ' of ' +
+          (CONFIG.RETRY_ATTEMPTS - 1) + ' in ' + wait + 'ms');
+      }
+      setProgress({ retry: (status === 429 ? 'Knack asked us to slow down' : 'a request failed (' + status + ')') +
+        ' — retrying in ' + Math.max(1, Math.ceil(wait / 1000)) + 's' });
+      return new Promise(function (res) { setTimeout(res, wait); }).then(function () {
+        setProgress({ retry: '' });
+        return withRetry(fn, label, attempt + 1);
+      });
+    });
+  }
+  /** Up to `limit` tasks in flight, each start at least `gapMs` after the
+   *  previous one — so a burst of fast PUTs can't outrun Knack's ~10 req/s. */
+  function runQueue(tasks, limit, gapMs) {
+    var results = new Array(tasks.length), next = 0, active = 0, lastStart = 0, timer = null;
     return new Promise(function (resolve) {
       function pump() {
         if (next >= tasks.length && active === 0) { resolve(results); return; }
         while (active < limit && next < tasks.length) {
+          var wait = gapMs ? (lastStart + gapMs - Date.now()) : 0;
+          if (wait > 0) { if (!timer) timer = setTimeout(function () { timer = null; pump(); }, wait); return; }
+          lastStart = Date.now();
           (function (i) {
             active++;
             Promise.resolve().then(tasks[i]).then(function (r) { results[i] = r; }, function (e) { results[i] = { ok: false, error: String(e) }; })
@@ -1973,27 +2194,43 @@
     st.errors = plan.errs; st.done = '';
     if (plan.errs.length) { render(); return Promise.resolve({ errors: plan.errs }); }
     st.sending = true;
+    st.progress = { done: 0, total: 0, text: 'Preparing…', retry: '' };
+    try { window.addEventListener('beforeunload', warnUnload); } catch (eU) { /* ignore */ }
     render();
     var needed = [];
     for (var i = 0; i < plan.ops.length; i++) {
       var row = rowById(plan.ops[i].rowId);
       if (row && needed.indexOf(row) === -1) needed.push(row);
     }
+    st.progress.total = needed.length + plan.ops.length;
     var guessed = 0;
     for (var g = 0; g < needed.length; g++) {
       for (var gt = 0; gt < needed[g].targets.length; gt++) if (needed[g].targets[gt].guessed) { guessed++; break; }
     }
-    var up = Promise.resolve();
-    needed.forEach(function (row) { up = up.then(function () { return uploadRow(row); }); });
+    var up = Promise.resolve(), upDone = 0;
+    needed.forEach(function (row) {
+      up = up.then(function () {
+        setProgress({ text: 'Uploading photo ' + (upDone + 1) + ' of ' + needed.length + ' — ' + row.filename, retry: '' });
+        return uploadRow(row).then(function () { upDone++; setProgress({ done: upDone }); });
+      });
+    });
     return up.then(function () {
+      var written = 0;
+      setProgress({ text: 'Writing 0 of ' + plural(plan.ops.length, 'destination') + '…', retry: '' });
       var tasks = plan.ops.map(function (op) {
         return function () {
           var row = rowById(op.rowId);
-          if (!row || !row.assetId) return { ok: false, op: op, error: 'upload failed', skipped: true };
-          return op.kind === 'fill' ? doFill(op, row, plan.saveView) : doCreate(op, row, plan.hook);
+          var p = (!row || !row.assetId)
+            ? Promise.resolve({ ok: false, op: op, error: 'upload failed', skipped: true })
+            : (op.kind === 'fill' ? doFill(op, row, plan.saveView) : doCreate(op, row, plan.hook));
+          return Promise.resolve(p).then(function (res) {
+            written++;
+            setProgress({ done: upDone + written, text: 'Writing ' + written + ' of ' + plural(plan.ops.length, 'destination') + '…', retry: '' });
+            return res;
+          });
         };
       });
-      return runQueue(tasks, CONFIG.WRITES_IN_FLIGHT);
+      return runQueue(tasks, CONFIG.WRITES_IN_FLIGHT, CONFIG.WRITES_GAP_MS);
     }).then(function (results) {
       var filled = 0, created = 0, failed = 0, perRow = Object.create(null);
       for (var r = 0; r < results.length; r++) {
@@ -2024,10 +2261,18 @@
       if (failed) bits.push(failed + ' failed');
       if (summary.leftover) bits.push(plural(summary.leftover, 'photo') + ' still in the queue');
       st.done = bits.length ? bits.join(' · ') : 'Nothing was written.';
-      st.sending = false;
+      st.sending = false; st.progress = null;
+      try { window.removeEventListener('beforeunload', warnUnload); } catch (eU2) { /* ignore */ }
       render();
       refreshAfter(st.viewKey, created > 0);
       return summary;
+    }).catch(function (err) {
+      // Never leave the dialog locked: an unexpected throw unlocks it and says so.
+      st.sending = false; st.progress = null;
+      try { window.removeEventListener('beforeunload', warnUnload); } catch (eU3) { /* ignore */ }
+      st.errors = ['Send stopped: ' + ((err && err.message) || err) + ' — the photos that were written are marked; try Send again for the rest.'];
+      render();
+      return { failed: 1, error: String((err && err.message) || err) };
     });
   }
   function refreshAfter(viewKey, sentToMake) {
@@ -2081,6 +2326,13 @@
     SCOPE_ID:          SCOPE_ID,
     addFiles:          addFiles,
     select:            function (rowId, on) { if (!_state) return; if (on === false) delete _state.selected[rowId]; else _state.selected[rowId] = true; render(); },
+    toggleSelect:      toggleSelect,
+    selectAll:         selectAll,
+    clearSelection:    clearSelection,
+    setRailFamily:     setRailFamily,
+    familyFor:         familyFor,
+    withRetry:         withRetry,
+    runQueue:          runQueue,
     clickDevice:       clickDevice,
     tickGroup:         tickGroup,
     setFinderQuery:    setFinderQuery,

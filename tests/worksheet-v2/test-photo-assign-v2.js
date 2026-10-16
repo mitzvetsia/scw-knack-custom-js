@@ -41,6 +41,8 @@ for (const f of ['config.js', 'card.js', 'photo-assign.js']) {
 }
 const ns = window.SCW.worksheetV2;
 const pa = ns.photoAssign;
+// Retries back off for real in the app; here they only need to happen.
+pa.CONFIG.RETRY_BASE_MS = 5; pa.CONFIG.RETRY_MAX_MS = 10; pa.CONFIG.WRITES_GAP_MS = 0;
 const V = 'view_4093';
 const CAM = ns.card.CAM_READER_BUCKET, NET = ns.card.NETWORKING_BUCKET, SVC = ns.card.SERVICES_BUCKET;
 const MH = ns.cfg.bucket('mountingHardware', V);
@@ -361,6 +363,90 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
     rows().map(r => r.targets.map(t => t.deviceId)), [['r1'], ['r1']]);
   pa.close(); pa.open(V, { deviceId: '__scope__' });
   check('the scope row is never a preset', pa.state().presetDeviceId, '');
+
+  // ── 2026-10-16: select all / shift-click / family pills / sending lock + rate-limit retry ──
+  pa.close(); pa.open(V);
+  await pa.addFiles([file('p1.jpg'), file('p2.jpg'), file('p3.jpg'), file('p4.jpg'), file('p5.jpg')]);
+  const tileBtn = (name) => modal().querySelector('[data-scw-pa-toggle="' + rowByName(name).id + '"]');
+  const selNames = () => rows().filter(r => pa.state().selected[r.id]).map(r => r.filename);
+  const shiftClick = (el) => el.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
+  tileBtn('p2.jpg').click();
+  shiftClick(tileBtn('p4.jpg'));
+  check('shift-click selects the range from the last plain click', selNames(), ['p2.jpg', 'p3.jpg', 'p4.jpg']);
+  shiftClick(tileBtn('p1.jpg'));
+  check('another shift-click extends from the same anchor; nothing already ticked is dropped', selNames(), ['p1.jpg', 'p2.jpg', 'p3.jpg', 'p4.jpg']);
+  check('the selection bar offers Select all / Clear selection', [text('[data-scw-pa-selall]'), !!modal().querySelector('[data-scw-pa-selnone]')], ['Select all 5', true]);
+  modal().querySelector('[data-scw-pa-selall]').click();
+  check('Select all ticks every sendable tile and the button goes away', [selNames().length, !!modal().querySelector('[data-scw-pa-selall]')], [5, false]);
+  modal().querySelector('[data-scw-pa-selnone]').click();
+  check('Clear selection empties it', selNames(), []);
+  modal().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'a', metaKey: true, bubbles: true }));
+  check('⌘A (outside a text box) selects all', selNames().length, 5);
+  tileBtn('p1.jpg').click();
+  check('a plain click still toggles one tile off', selNames().length, 4);
+  // Family pills on the rail.
+  const pillTexts = () => Array.from(modal().querySelectorAll('[data-scw-pa-fam]')).map(b => b.textContent.replace(/\s+/g, ' ').trim());
+  check('the rail offers one pill per family present, with counts (no "other" on this worksheet)', pillTexts(), ['All 6', 'Cameras 5', 'Headend & networking 1']);
+  modal().querySelector('[data-scw-pa-fam="headend"]').click();
+  check('"Headend & networking" shows only the NVR, the count line says so, the scope row stays',
+    [pa.railHits(), text('.scw-pa-railcount'), !!modal().querySelector('[data-scw-pa-dev-row="__scope__"]'), modal().querySelector('[data-scw-pa-fam="headend"]').classList.contains('is-on')],
+    [['r5'], 'Showing 1 of 6 devices · Headend & networking · show all', true, true]);
+  const rqEl = modal().querySelector('[data-scw-pa-railq]'); rqEl.value = '13'; rqEl.dispatchEvent(new window.Event('input', { bubbles: true }));
+  check('the family filter and the search combine', [pa.railHits(), text('.scw-pa-railcount'), /No headend & networking match "13"\./.test(text('.scw-pa-rail-list'))],
+    [[], 'Showing 0 of 6 devices · Headend & networking for "13" · show all', true]);
+  modal().querySelector('[data-scw-pa-fam="cam"]').click();
+  check('switching to Cameras keeps the query: I-013 only', pa.railHits(), ['r4']);
+  modal().querySelector('[data-scw-pa-fam="cam"]').click();
+  check('clicking the active pill again clears the family (the query stays)', [pa.state().railFamily, railq()], ['', '13']);
+  modal().querySelector('[data-scw-pa-fam="headend"]').click();
+  modal().querySelector('[data-scw-pa-railclear]').click();
+  check('"show all" clears both the family and the query', [pa.railHits().length, railq(), modal().querySelector('[data-scw-pa-fam=""]').classList.contains('is-on')], [6, '', true]);
+  check('a candidate carries its family', [pa.state().candIndex.r1.family, pa.state().candIndex.r5.family], ['cam', 'headend']);
+  // Sending: the dialog locks, a progress bar shows, a 429 on a fill is retried with backoff.
+  pa.close(); pa.open(V);
+  // The upload-failure section above left the upload stub broken — a working one again.
+  window.SCW.photoEditPanel.util.uploadImage = (blob, name) => { uploads.push(name); return Promise.resolve('asset-' + (++assetN)); };
+  await pa.addFiles([file('i10.png')]);     // → r1's first open required slot (p1): a fill
+  let failOnce = 1;
+  const realPut = window.SCW.photoEditPanel.util.putRecord;
+  window.SCW.photoEditPanel.util.putRecord = (view, id, body) => {
+    if (body.field_771 && failOnce-- > 0) return Promise.reject(new Error('save failed (429)'));
+    return realPut(view, id, body);
+  };
+  puts.length = 0; uploads.length = 0;
+  const pending = pa.send();
+  check('while sending the dialog is locked and a progress bar shows',
+    [modal().querySelector('.scw-pa').classList.contains('is-sending'), !!modal().querySelector('.scw-pa-progress'), modal().querySelector('[data-scw-pa-send]').disabled, modal().querySelector('.scw-pa').getAttribute('aria-busy')],
+    [true, true, true, 'true']);
+  res = await pending;
+  window.SCW.photoEditPanel.util.putRecord = realPut;
+  check('a 429 on the slot write is retried and the fill lands; the lock lifts and the bar goes',
+    [res.filled, res.failed, puts.filter(p => p[2].field_771).length, uploads.length, modal().querySelector('.scw-pa').classList.contains('is-sending'), !!modal().querySelector('.scw-pa-progress')],
+    [1, 0, 1, 1, false, false]);
+  let calls = 0;
+  await pa.withRetry(() => { calls++; return Promise.reject(new Error('save failed (403)')); }, 'x').catch(() => {});
+  check('withRetry: a permanent 4xx fails at once', calls, 1);
+  calls = 0;
+  await pa.withRetry(() => { calls++; return calls < 3 ? Promise.reject(new Error('save failed (429)')) : Promise.resolve('ok'); }, 'x');
+  check('withRetry: 429s back off and succeed on the third try', calls, 3);
+  calls = 0;
+  await pa.withRetry(() => { calls++; return Promise.reject(new Error('upload failed (undefined)')); }, 'x').catch(() => {});
+  check('withRetry: a network failure (no status) is transient — every attempt is used', calls, pa.CONFIG.RETRY_ATTEMPTS);
+  const starts = [];
+  await pa.runQueue([1, 2, 3, 4].map(n => () => { starts.push(Date.now()); return Promise.resolve(n); }), 2, 40);
+  check('runQueue spaces task starts by the gap even when slots are free', starts.slice(1).every((t, i) => t - starts[i] >= 35), true);
+  // A row whose writes failed keeps its asset: Send again reuses it instead of re-uploading.
+  pa.close(); pa.open(V);
+  await pa.addFiles([file('i11.png')]);     // → r2's open required slot p3
+  let alwaysFail = true;
+  window.SCW.photoEditPanel.util.putRecord = (view, id, body) => (body.field_771 && alwaysFail) ? Promise.reject(new Error('save failed (403)')) : realPut(view, id, body);
+  uploads.length = 0;
+  res = await pa.send();
+  check('a permanent failure marks the row failed (no retry storm) and Send stays available for it', [res.failed, rowByName('i11.png').status, uploads.length, modal().querySelector('[data-scw-pa-send]').disabled], [1, 'failed', 1, false]);
+  alwaysFail = false;
+  res = await pa.send();
+  window.SCW.photoEditPanel.util.putRecord = realPut;
+  check('Send again writes the failed row without uploading the photo a second time', [res.filled, uploads.length, rowByName('i11.png').status], [1, 1, 'done']);
 
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
