@@ -322,7 +322,10 @@ Branch `claude/sow-sync-bid-compare-auk1dh`; every push is live at
   plainly that delivery is not tracked. **Everything is read-only** — nothing writes a record; a
   "fix" typed in Knack is overwritten by the next reconcile pass.
   `field_2967`-style guessing is avoided entirely: **field keys are
-  discovered from view_4163's own column headers by LABEL** (`fields()`,
+  discovered from the scene's Shipments grid's own column headers by LABEL**
+  (view_4163 on scene_1311; view_4165 on the sub dashboard scene_1353 since
+  2026-10-16, whose `SCENES` entry is `sub: true` — no "Open in ShipEdge"
+  link, no unlinked-queue attribution hint) (`fields()`,
   the trick bom-tray.js uses for SKU), confirmed against the live view
   (field_3281…field_3305). **Two spec fields are NOT on the view** —
   `SHIP_eta` and `OMS_order total` — so no arrival date is implied and

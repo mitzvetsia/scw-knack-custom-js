@@ -374,5 +374,52 @@ btn3.click();
 check('an unconfigured webhook fires nothing and says so, rather than failing silently',
   [ajaxCalls.length, btn3.textContent, btn3.classList.contains('is-err')], [0, 'Re-check not configured', true]);
 
+// ── Sub deployment dashboard (scene_1353 / view_4165) ──────────────
+// 2026-10-16: the sub-facing deploy page carries its own Shipments grid (view_4165 — same object,
+// same column labels). The tray has to activate there too (before this, the grid sat on the page
+// as a raw table and the Installation tile had no shipments line): tile line + drawer off
+// view_4165, the records reading exactly as on the ops page — but the ShipEdge order link (an SCW
+// login the sub has not got) and the ops-only attribution hint stay off the drawer.
+window.SCW.CONFIG.MAKE_SHIPMENTS_RESYNC_WEBHOOK = 'https://hook.example/ships';
+api.setResyncEnabled(false);
+window.Knack.router.current_scene_key = 'scene_1353';
+window.Knack.views = {};
+document.body.innerHTML = '<div id="kn-scene_1353">' +
+  '<div class="kn-table kn-view" id="view_4165"><table><thead><tr>' +
+    COLS.map(([k, label]) => '<th class="' + k + '"><span class="table-fixed-label"><a class="kn-sort"><span>' + label + '</span></a></span></th>').join('') +
+  '</tr></thead><tbody></tbody></table></div>' +
+'</div>';
+window.Knack.views.view_4165 = models([
+  shipRec({ id: 'u1', orderNo: 'autobot_10112', omsId: '64261', omsUrl: 'https://oms/64261', status: 'shipped',
+            carrier: 'UPS', tracking: '1ZY8557F4296204605', trackUrl: 'https://ups/1ZY8557F4296204605',
+            shipDate: now - 2 * DAY, synced: now - 3600000 }),
+  shipRec({ id: 'u2', orderNo: 'autobot_10130_cp', omsId: '64682', omsUrl: 'https://oms/64682', orderStatus: 'hold',
+            synced: now - 3600000 })
+]);
+check('sub dashboard: field keys are discovered off view_4165\'s own headers',
+  (() => { const f = api.fields(); return [f.orderNo, f.omsUrl, f.shipStatus, f.trackingNo, f.itemsJson]; })(),
+  ['field_3281', 'field_3283', 'field_3290', 'field_3292', 'field_3307']);
+check('sub dashboard: the Installation tile gets the shipments line, read off view_4165',
+  [lineText(), lineTone()],
+  ['2 shipments · 1 not shipped yet · last shipped ' + new Date(now - 2 * DAY).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), 'go']);
+opened = null;
+check('sub dashboard: the drawer opens with one card per record', [api.open(), opened.el.querySelectorAll('.scw-ships__card').length], [true, 2]);
+const sub = opened.el;
+check('sub dashboard: the records read the same — order no, status chip, carrier tracking link',
+  [sub.textContent.indexOf('autobot_10112') >= 0, sub.textContent.indexOf('autobot_10130_cp') >= 0,
+   !!sub.querySelector('.scw-ships__chip'), !!sub.querySelector('.scw-ships__btn--track'),
+   sub.querySelector('.scw-ships__btn--track').getAttribute('href')],
+  [true, true, true, true, 'https://ups/1ZY8557F4296204605']);
+check('sub dashboard: no "Open in ShipEdge" link (the sub has no OMS login) even though the records carry the URL',
+  [!!sub.querySelector('.scw-ships__btn--oms'), /ShipEdge/.test(sub.textContent)], [false, false]);
+check('sub dashboard: the ops-only attribution hint (unlinked-shipments queue) is left off; the read-only note stays',
+  [/unlinked-shipments queue/.test(sub.textContent), /read-only here/.test(sub.textContent)], [false, true]);
+check('sub dashboard: still no re-check control', [!!sub.querySelector('[data-scw-ships-resync]'), !!sub.querySelector('[data-scw-ships-ref]')], [false, false]);
+// Back on the ops page the ShipEdge link is still offered (the sub flag is per scene, not global).
+scene([shipRec({ id: 's1', orderNo: 'SO-1001', omsUrl: 'https://oms/1', status: 'shipped', synced: now - 3600000, shipDate: now - DAY })]);
+api.open();
+check('ops page: the ShipEdge link and the attribution hint are unchanged',
+  [!!opened.el.querySelector('.scw-ships__btn--oms'), /unlinked-shipments queue/.test(opened.el.textContent)], [true, true]);
+
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

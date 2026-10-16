@@ -1,4 +1,4 @@
-/*** SHIPMENTS — Installation tile line + drawer (scene_1311) ****************
+/*** SHIPMENTS — Installation tile line + drawer (scene_1311 + scene_1353) ***
  *
  * A Shipment record mirrors ONE order in the third-party OMS (an OMS order
  * has exactly one shipment, so order and shipment are one object here). The
@@ -96,8 +96,15 @@
 (function () {
   'use strict';
 
+  // One entry per deployment page that carries a Shipments grid. Field
+  // keys are discovered off THAT grid's headers, so the two grids only
+  // have to show the same columns, not the same field order.
+  //   sub: a subcontractor-facing scene. The records read the same, but
+  //        the ShipEdge order link (an SCW login the sub does not have)
+  //        and the ops-only attribution hint are left off the drawer.
   var SCENES = [
-    { sceneId: 'scene_1311', view: 'view_4163' }     // internal ops deploy page
+    { sceneId: 'scene_1311', view: 'view_4163' },              // internal ops deploy page
+    { sceneId: 'scene_1353', view: 'view_4165', sub: true }    // subcontractor deployment dashboard
   ];
   var STYLE_ID = 'scw-ships-css';
   var EVENT_NS = '.scwShipments';
@@ -181,7 +188,9 @@
     return models.map(function (m) { return m.attributes || (m.toJSON ? m.toJSON() : m); });
   }
 
-  /** logical name → field key, read off view_4163's own column headers.
+  /** logical name → field key, read off the scene's shipments grid's own
+   *  column headers (view_4163 on the ops page, view_4165 on the sub
+   *  dashboard — same object, same labels).
    *  Cached per header signature so a Builder change is picked up without
    *  a reload. */
   var _fieldCache = null, _fieldSig = '';
@@ -881,7 +890,7 @@
   }
 
   // ── Drawer ────────────────────────────────────────────────────────
-  function cardHtml(sh, stale, now) {
+  function cardHtml(sh, stale, now, cfg) {
     var t = tone(sh.shipStatus || sh.orderStatus);
     var cls = 'scw-ships__card' +
               ((isMissing(sh) || isNoProject(sh) || isUnlinked(sh)) ? ' is-warnsync' : '');
@@ -922,7 +931,7 @@
         : '<span class="scw-ships__btn scw-ships__btn--num" title="No tracking link for this carrier — the number is here to copy">' +
             trackLabel + '</span>';
     }
-    if (sh.omsUrl) {
+    if (sh.omsUrl && !(cfg && cfg.sub)) {
       actions += '<a class="scw-ships__btn scw-ships__btn--oms" href="' + esc(sh.omsUrl) + '" ' +
         'target="_blank" rel="noopener" title="Open this order in ShipEdge">' +
         'Open in ShipEdge<span class="scw-ships__ext">↗</span></a>';
@@ -1061,13 +1070,15 @@
         (s.missing ? '<span class="scw-ships__count--warn"><b>' + s.missing + '</b>missing in OMS</span>' : '') +
       '</div>';
       var cards = '';
-      for (var i = 0; i < list.length; i++) cards += cardHtml(list[i], s.stale, now);
+      for (var i = 0; i < list.length; i++) cards += cardHtml(list[i], s.stale, now, cfg);
       html += '<div class="scw-ships__list">' + cards + '</div>';
       html += '<div class="scw-ships__note">Delivery is not tracked yet: the OMS stops at "shipped", so ' +
         'there is no arrival date here. Use the tracking link for where a parcel actually is.</div>';
       html += '<div class="scw-ships__note">Order facts come from the OMS and are read-only here — ' +
-        'a change typed in Knack is overwritten by the next sync. Attribution (which project an order belongs to) ' +
-        'lives on the unlinked-shipments queue.</div>';
+        'a change typed in Knack is overwritten by the next sync.' +
+        // The unlinked-shipments queue is an ops page; a sub cannot reach it.
+        (cfg.sub ? '' : ' Attribution (which project an order belongs to) lives on the unlinked-shipments queue.') +
+        '</div>';
     }
     el.innerHTML = html;
   }
