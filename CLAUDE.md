@@ -713,7 +713,11 @@ toolbar's own "+ Add Photos" opens it (`toolbar.js` asks `ns.photoAssign.replace
 "+ Add Photos" opens it with that DEVICE PRESET (`photos.js` → `open(viewKey, { deviceId })`: every photo
 added goes to that device — first open required slot, else new — file names are not consulted, the chips
 stay editable, the header says where they go); no second button is injected. Subs and every other domain
-keep the v1 button + modal (`bulk-upload.js`), untouched. `REPLACE_V1: false` restores the 2026-10-14
+keep the v1 button + modal (`bulk-upload.js`), untouched — except the **alongside** lists (2026-10-19):
+`ALONGSIDE_DOMAINS` (`['securevisionsolutions.com']`) + `ALONGSIDE_EMAILS` get v2 BESIDE v1 — the second amber
+"+ Add Photos (v2)" toolbar button, with the v1 button + modal and the card-level "+ Add Photos" untouched
+(`isAlongside()`, which wins over the ALLOWED lists for a user on both; `replacesV1()` is false for them and
+the modal header reads "(v2)" without "preview"). `REPLACE_V1: false` restores the 2026-10-14
 preview (a second amber "+ Add Photos (v2)" button beside v1). Design: Claude Design canvas
 "Bulk Photo Assign v2" (rev 2, 2026-10-14 — the first cut's three modes were replaced by ONE screen;
 rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing clipped).

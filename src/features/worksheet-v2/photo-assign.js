@@ -1,9 +1,12 @@
 /*** WORKSHEET V2 — BULK PHOTO ASSIGN (the v2 "Add Photos" modal) *************
  *
- * PREVIEW — gated to CONFIG.ALLOWED_EMAILS. The listed users get a second,
- * amber "+ Add Photos (v2)" button beside the worksheet toolbar's existing
- * "+ Add Photos"; everyone else sees nothing. The v1 button and modal
- * (bulk-upload.js) are untouched.
+ * WHO SEES IT (CONFIG): ALLOWED_EMAILS / ALLOWED_DOMAINS get v2 IN PLACE of
+ * the v1 uploader (REPLACE_V1 — the toolbar's and every card's "+ Add
+ * Photos" open this modal); ALONGSIDE_EMAILS / ALONGSIDE_DOMAINS (2026-10-19:
+ * everyone @securevisionsolutions.com) get a second, amber "+ Add Photos
+ * (v2)" button beside the worksheet toolbar's existing "+ Add Photos", with
+ * the v1 button and modal (bulk-upload.js) untouched; everyone else sees
+ * nothing of v2.
  *
  * ONE SCREEN, NO MODES (design canvas "Bulk Photo Assign v2", rev 2). Photos
  * are tiles on the left; the worksheet's devices are a rail on the right,
@@ -69,14 +72,21 @@
     // (2026-10-16: everyone @getscw.com). Both lists empty = everyone.
     ALLOWED_EMAILS:  [],
     ALLOWED_DOMAINS: ['getscw.com'],
-    // true (2026-10-16): for allowed users v2 REPLACES the v1 uploader — the
-    // toolbar's "+ Add Photos" (toolbar.js) and every card's "+ Add Photos"
-    // (photos.js, device preset) open this modal via replacesV1(); no second
-    // button. false: the 2026-10-14 preview — a second amber "(v2)" button
-    // beside v1, which keeps working.
+    // Who gets v2 BESIDE v1 instead of in place of it (2026-10-19: everyone
+    // @securevisionsolutions.com): the second amber "+ Add Photos (v2)"
+    // button in the worksheet toolbar, with the v1 button + modal untouched
+    // — the card-level "+ Add Photos" stays v1 for them. Wins over the
+    // ALLOWED lists for a user on both.
+    ALONGSIDE_EMAILS:  [],
+    ALONGSIDE_DOMAINS: ['securevisionsolutions.com'],
+    // true (2026-10-16): for allowed users (ALONGSIDE users excepted) v2
+    // REPLACES the v1 uploader — the toolbar's "+ Add Photos" (toolbar.js)
+    // and every card's "+ Add Photos" (photos.js, device preset) open this
+    // modal via replacesV1(); no second button. false: the 2026-10-14
+    // preview — a second amber "(v2)" button beside v1, which keeps working.
     REPLACE_V1:      true,
     BUTTON_LABEL:   '+ Add Photos (v2)',
-    BUTTON_TITLE:   'Bulk photo assign (v2) — preview: only the listed users see this button',
+    BUTTON_TITLE:   'Bulk photo assign (v2) — aim each photo at a device; the original + Add Photos still works',
     WEBHOOK_KEY:    'MAKE_PHOTO_ASSIGN_WEBHOOK',
     // localStorage: "Show open slots under every device" (rail header).
     SHOW_SLOTS_KEY: 'scw:pa:show-slots',
@@ -168,11 +178,9 @@
     var u = userAttrs() || {};
     return { id: u.id || '', name: userName(), email: u.email || '' };
   }
-  function isAllowed() {
-    var emails = CONFIG.ALLOWED_EMAILS || [], domains = CONFIG.ALLOWED_DOMAINS || [];
-    if (!emails.length && !domains.length) return true;
-    var email = userEmail();
+  function emailMatches(email, emails, domains) {
     if (!email) return false;
+    emails = emails || []; domains = domains || [];
     for (var i = 0; i < emails.length; i++) {
       if (String(emails[i]).toLowerCase() === email) return true;
     }
@@ -182,10 +190,26 @@
     }
     return false;
   }
-  /** v2 stands in for the v1 uploader for this user (REPLACE_V1 + allowed):
-   *  toolbar.js routes the toolbar's "+ Add Photos" here and photos.js
-   *  routes each card's "+ Add Photos" here with that device preset. */
-  function replacesV1() { return !!CONFIG.REPLACE_V1 && isAllowed(); }
+  /** v2 is offered BESIDE v1 for this user (the ALONGSIDE lists): the second
+   *  toolbar button, never the replacement. Never "everyone" — an empty list
+   *  names nobody. */
+  function isAlongside() {
+    return emailMatches(userEmail(), CONFIG.ALONGSIDE_EMAILS, CONFIG.ALONGSIDE_DOMAINS);
+  }
+  function isAllowed() {
+    var emails = CONFIG.ALLOWED_EMAILS || [], domains = CONFIG.ALLOWED_DOMAINS || [];
+    if (!emails.length && !domains.length) return true;
+    return emailMatches(userEmail(), emails, domains) || isAlongside();
+  }
+  /** v2 stands in for the v1 uploader for this user (REPLACE_V1 + allowed,
+   *  and not an ALONGSIDE user): toolbar.js routes the toolbar's "+ Add
+   *  Photos" here and photos.js routes each card's "+ Add Photos" here with
+   *  that device preset. */
+  function replacesV1() { return !!CONFIG.REPLACE_V1 && isAllowed() && !isAlongside(); }
+  /** The 2026-10-14 preview framing (REPLACE_V1 off) — "· preview" in the
+   *  modal header. An alongside user has v2 as a live second button, not a
+   *  preview. */
+  function isPreview() { return !replacesV1() && !isAlongside(); }
   function webhookUrl() {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG[CONFIG.WEBHOOK_KEY]) || '';
     return (!url || /PLACEHOLDER/.test(url)) ? '' : String(url);
@@ -1006,7 +1030,7 @@
               plural(cands.length, 'device') +
               (preset ? ' · photos you add here go to <b>' + esc(preset.label) + '</b> (change a chip to send one elsewhere)'
                       : ' · aim each photo at one or more devices') +
-              (replacesV1() ? '' : ' · preview') + '</div></div>' +
+              (isPreview() ? ' · preview' : '') + '</div></div>' +
           '<button type="button" data-scw-pa-close aria-label="Close">&times;</button>' +
         '</div>' +
         '<div class="scw-pa-tb"></div>' +
@@ -2312,6 +2336,7 @@
     inject:            inject,
     watch:             watch,
     isAllowed:         isAllowed,
+    isAlongside:       isAlongside,
     replacesV1:        replacesV1,
     candidatesFor:     candidatesFor,
     attachedAccessoryIds: attachedAccessoryIds,

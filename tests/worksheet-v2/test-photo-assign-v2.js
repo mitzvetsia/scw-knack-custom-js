@@ -157,6 +157,18 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   c = toolbarFixture();
   check('another domain: not allowed, nothing injected, v1 stays',
     [pa.isAllowed(), pa.replacesV1(), pa.inject(V), c.querySelectorAll('[data-scw-pa-open]').length], [false, false, false, 0]);
+  // ALONGSIDE (2026-10-19): @securevisionsolutions.com gets v2 as a second button BESIDE v1, never in place of it.
+  email = 'tech@SecureVisionSolutions.com';
+  c = toolbarFixture();
+  check('alongside domain: allowed but no replacement — the amber v2 button right after "+ Add Photos" (v1 kept), once',
+    [pa.isAllowed(), pa.isAlongside(), pa.replacesV1(), pa.inject(V), pa.inject(V),
+     Array.from(c.querySelectorAll('.scw-ws-v2-toolbar button')).map(b => b.textContent)],
+    [true, true, false, true, true, ['+ Add MDF/IDF', '+ Add Photos', '+ Add Photos (v2)']]);
+  pa.CONFIG.ALONGSIDE_EMAILS = ['micah.shearer@getscw.com'];
+  email = 'Micah.Shearer@getscw.com';
+  check('a listed alongside email wins over its allowed domain', [pa.isAlongside(), pa.replacesV1()], [true, false]);
+  pa.CONFIG.ALONGSIDE_EMAILS = [];
+  check('empty alongside lists name nobody (never "everyone")', [pa.isAlongside(), pa.replacesV1()], [false, true]);
   email = 'Micah.Shearer@getscw.com';
 
   // ── candidates + matching ──
