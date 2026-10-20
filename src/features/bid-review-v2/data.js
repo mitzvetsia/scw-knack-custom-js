@@ -101,8 +101,9 @@
   // Render diary (localStorage.scwScrollSpy = '1'): which source view
   // re-rendered, how many records it holds and how long since its previous
   // render — the line that names a view re-rendering on its own every few
-  // seconds (a KTL auto-refresh, a fetch loop) when the page repaints with
-  // no user action. render.js logs the REBUILD each one causes, naming
+  // seconds — a fetch loop in a module bound to its render; KTL is gone from
+  // the app, it is never that — when the page repaints with no user action.
+  // render.js logs the REBUILD each one causes, naming
   // this trigger.
   var _lastRenderAt = Object.create(null);
   function noteTrigger(kind, key) {
@@ -197,7 +198,19 @@
     // duplicate binding across re-inits.
     if (!document.documentElement.hasAttribute('data-scw-br-v2-cascade-bound')) {
       document.documentElement.setAttribute('data-scw-br-v2-cascade-bound', '1');
-      document.addEventListener('scw-cascade-idle', function () {
+      document.addEventListener('scw-cascade-idle', function (e) {
+        // A SILENT batch — background repairs only (the connection-sync
+        // accessory-SOW sweep on page render) — patched its own local models
+        // and nothing the user did is waiting on fresh server data. Rebuild
+        // from the models; do NOT refetch the source grids: every one is a
+        // hidden Knack grid whose native re-render scrolls the page to the
+        // top, and a drifted project used to pay that six times per load
+        // (2026-10-20 deep dive).
+        if (e && e.detail && e.detail.silent) {
+          noteTrigger('cascade-idle (silent: models patched, no refetch)', 'sweep');
+          notifyDebounced();
+          return;
+        }
         // A cascade (e.g. Connected Devices) can move a child's row into a
         // DIFFERENT MDF/IDF group, or change the parent's device-list text
         // enough to change its row height — a real layout shift the plain

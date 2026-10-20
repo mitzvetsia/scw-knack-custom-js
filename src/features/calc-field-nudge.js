@@ -76,6 +76,9 @@
     maxAttempts:   4,
     baseBackoffMs: 500,
     sweepDebounceMs: 1500,
+    // Delay before the post-nudge read-back of the nudged records (Knack's
+    // equation recompute lands a beat after the PUT acknowledges).
+    readbackDelayMs: 1200,
     // Cross-page-load cooldowns (localStorage). A nudged record isn't
     // re-nudged for retryCooldownMs; a record that STAYED stuck after a
     // nudge clearly can't be healed this way (legitimately $0, or a deeper
@@ -309,37 +312,101 @@
       (CONFIG.debug ? ': ' + jobs.map(function (j) { return j.recordId; }).join(', ') : ''));
 
     var pending = jobs.length;
-    var anyOk = false;
-    function onDone(ok) {
-      if (ok) anyOk = true;
+    var landed = [];
+    function onDone(ok, recordId) {
+      if (ok) landed.push(recordId);
       pending--;
-      if (pending === 0 && anyOk) scheduleRefetch(viewKey);
+      if (pending === 0 && landed.length) scheduleRefetch(viewKey, landed);
     }
     for (var j = 0; j < jobs.length; j++) {
       nudgedOnce[jobs[j].recordId] = true;
       nudgedThisLoad++;
       memo[jobs[j].recordId] = { t: Date.now() };
-      jobs[j].done = onDone;
+      jobs[j].done = (function (rid) { return function (ok) { onDone(ok, rid); }; })(jobs[j].recordId);
       queue.push(jobs[j]);
     }
     memoSave();
     pump();
   }
 
-  /** One refetch after a nudge batch so the computed values surface.
-   *  worksheet-v2 views go through refetchAndNotify (rebuilds the cards);
-   *  anything else falls back to a plain model fetch. */
-  function scheduleRefetch(viewKey) {
-    setTimeout(function () {
+  // ── read-back after a nudge batch ───────────────────────────────
+  // The computed fee lands on the record a beat after the PUT acknowledges.
+  // Re-read JUST the nudged records through the same view-scoped session
+  // endpoint the PUT used (SCW.knackRecordUrl GET), patch each into the
+  // view's Backbone model (SCW.syncKnackModel — marks it dirty for
+  // worksheet-v2) and tell the consumers to rebuild from the model. Until
+  // 2026-10-20 this was a FULL model.fetch() of the view: Knack re-rendered
+  // its native grid — hidden on the reconcile page — and Knack's deferred
+  // post-render scroll put the page at the top, up to twice per page load
+  // with no user action. A GET re-renders nothing. The full refetch stays
+  // as the fallback for a page without the record endpoint or the sync.
+  function notifyConsumers(viewKey) {
+    try {
       var ws = window.SCW && SCW.worksheetV2;
-      if (ws && ws.data && typeof ws.data.refetchAndNotify === 'function' &&
+      if (ws && ws.data && typeof ws.data.notify === 'function' &&
           ws.cfg && typeof ws.cfg.viewCfg === 'function' && ws.cfg.viewCfg(viewKey)) {
-        ws.data.refetchAndNotify(viewKey);
-        return;
+        ws.data.notify(viewKey);
       }
-      var v = window.Knack && Knack.views && Knack.views[viewKey];
-      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
-    }, 1200);
+    } catch (e) { /* best-effort */ }
+    try {
+      var br = window.SCW && SCW.bidReviewV2;
+      var keys = br && br.CONFIG && br.CONFIG.sourceViewKeys;
+      if (keys && keys.indexOf(viewKey) !== -1 && br.data &&
+          typeof br.data.notifyDebounced === 'function') {
+        br.data.notifyDebounced();
+      }
+    } catch (e2) { /* best-effort */ }
+  }
+
+  function fullRefetch(viewKey) {
+    var ws = window.SCW && SCW.worksheetV2;
+    if (ws && ws.data && typeof ws.data.refetchAndNotify === 'function' &&
+        ws.cfg && typeof ws.cfg.viewCfg === 'function' && ws.cfg.viewCfg(viewKey)) {
+      ws.data.refetchAndNotify(viewKey);
+      return;
+    }
+    var v = window.Knack && Knack.views && Knack.views[viewKey];
+    if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+  }
+
+  function scheduleRefetch(viewKey, recordIds) {
+    setTimeout(function () {
+      var canRead = !!(window.SCW && typeof SCW.knackAjax === 'function' &&
+        typeof SCW.knackRecordUrl === 'function' &&
+        typeof SCW.syncKnackModel === 'function' && recordIds && recordIds.length);
+      if (!canRead) { fullRefetch(viewKey); return; }
+      var idx = 0, active = 0, left = recordIds.length, patched = 0;
+      function finish() {
+        log('read back ' + patched + '/' + recordIds.length + ' nudged record(s) on ' + viewKey);
+        notifyConsumers(viewKey);
+      }
+      function settle() {
+        active--;
+        if (--left === 0) finish(); else next();
+      }
+      function next() {
+        while (active < CONFIG.maxConcurrent && idx < recordIds.length) {
+          (function (rid) {
+            active++;
+            SCW.knackAjax({
+              url:  SCW.knackRecordUrl(viewKey, rid),
+              type: 'GET',
+              success: function (resp) {
+                try {
+                  var rec = (resp && resp.record && resp.record.id) ? resp.record : resp;
+                  SCW.syncKnackModel(viewKey, rid, rec, CONFIG.calcField,
+                    rec ? rec[CONFIG.calcField + '_raw'] : undefined);
+                  patched++;
+                } catch (e) { /* best-effort */ }
+                settle();
+              },
+              error: function () { settle(); }
+            });
+          })(recordIds[idx++]);
+        }
+      }
+      next();
+    }, CONFIG.readbackDelayMs);
   }
 
   // ── bind ────────────────────────────────────────────────────────

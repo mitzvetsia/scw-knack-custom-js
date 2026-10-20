@@ -1,3 +1,8 @@
+/* ⚠ RETIRED (2026-10-20): KTL has been removed from the Knack application
+ * entirely, so this gate has nothing to skip. Kept for history only — do not
+ * re-paste it into Builder, and do not cite KTL (or `_ar` auto-refresh
+ * keywords) when diagnosing re-renders: there is no KTL on any page.
+ * ------------------------------------------------------------------------ */
 /* ============================================================
  * KTL LOADER GATE (Knack-side snippet — NOT in the CDN bundle)
  * ============================================================

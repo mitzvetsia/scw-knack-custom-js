@@ -548,10 +548,16 @@
     // idle event so the cards stay accurate.
     if (!document.documentElement.hasAttribute('data-scw-ws-v2-cascade-bound')) {
       document.documentElement.setAttribute('data-scw-ws-v2-cascade-bound', '1');
-      document.addEventListener('scw-cascade-idle', function () {
+      document.addEventListener('scw-cascade-idle', function (e) {
         var vs = (ns.CONFIG && ns.CONFIG.views) || [];
+        // A silent batch (background sweep repairs only — see mirror-
+        // connection-sync cascadeEnd, 2026-10-20) patched the accessory's
+        // local model itself: rebuild from the models, no native refetch
+        // (so no Knack re-render and no deferred scroll under the user).
+        var silent = !!(e && e.detail && e.detail.silent);
         for (var i = 0; i < vs.length; i++) {
-          refetchAndNotify(vs[i].sourceViewKey);
+          if (silent) notify(vs[i].sourceViewKey);
+          else refetchAndNotify(vs[i].sourceViewKey);
         }
       });
     }

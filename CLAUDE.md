@@ -563,8 +563,8 @@ Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-au
   `localStorage.scwScrollSpy = '1'` in the console. The data layer logs every poll tick it SKIPS
   (model unchanged) and init.js now logs every worksheet REBUILD with its dirty state and caller
   (`[scw-ws-v2] view_4093 REBUILD — dirty: all=true records=0 — from: …`) — a repeating line names
-  the trigger (a KTL `_ar` auto-refresh on a view, a poll burst whose fetched model differs every
-  time, a module refetching). **Found 2026-10-15**: `moveChangeOrders` re-applied the pre-wrap hide
+  the trigger (a poll burst whose fetched model differs every time, a module refetching — never
+  KTL, which is gone from the app). **Found 2026-10-15**: `moveChangeOrders` re-applied the pre-wrap hide
   (`scw-deploy-prewrap`: visibility hidden + max-height 0) to the moved Change Orders grid on EVERY
   3 s heartbeat while it sat outside a KTL wrapper, and its 2.5 s timer revealed it again — the strip
   blinked at a 3 s beat and the worksheet under it jumped with it. Now once per grid element
@@ -1032,8 +1032,55 @@ grid's offset is the top of the page. Two changes and a diagnostic:
   jumps with the active element); data.js logs every source-view render (`view_3680 render — 812
   records, 2.4s since its last render`), render.js every `REBUILD — N section(s) reused, M rebuilt —
   trigger: view_3921 render`, and `[scw-v2-guard]` lines say what the guard saw and did. A view
-  re-rendering on its own every few seconds names the loop: a KTL `_ar` auto-refresh on that view in
-  Builder, or a fetch loop in a module bound to its render.
+  re-rendering on its own every few seconds names the loop: a fetch loop in a module bound to its
+  render — never KTL, which is gone from the app. `SCW.traceChurn('view_3680')` (util.js) names the
+  fetcher directly: it wraps that view's `model.fetch` for 8 s and logs every call WITH its caller
+  stack. The 2026-10-20 deep dive below lists every fetcher on the scene.
+
+## Reconcile page re-render sources — deep dive (2026-10-20, build `1b0019bb`)
+
+**KTL is not on the page.** It was removed from the application entirely; no `_ar` auto-refresh
+exists anywhere. A Knack view re-renders only after a `model.fetch()` — Knack's own (per-page / sort /
+filter / inline-edit handlers) or a bundle module's — so a repaint "with no user action" always has a
+fetch caller in this bundle. The console pair the report showed is one cycle: the long `'message'`
+handler in Knack's app file is Knack-side deferred render work for a hidden source grid (plus every
+bundle handler bound synchronously to its `knack-view-render`), and the ~70 ms `'setTimeout'` handler
+at minified line 1126 is `bid-review-v2/data.js` `notifyDebounced` rebuilding the reconcile grid after
+it — the minifier keeps one module per line and the `[scw-br-v2]` strings sit on that line.
+
+Every `model.fetch()`, per-page `change` and synthetic `knack-view-render` reachable on scene_1155
+was read. None is unbounded; the sustained "loop" is a long load-time burst on a project whose data has
+drifted, and each step re-rendered a hidden grid, which scrolled the page to the top until the
+scroll guard above. The sources, and what changed:
+- **Knack per-page push** — `change-record-limit.js` (once per view element) and v1 `bid-review/init.js`
+  `ensureFullPage` (once per view instance since 688e7d93; every per-page dropdown in this app offers
+  1000, so the earlier unbounded version converged too). The first view to render on the scene is the
+  one the `.any` prefilter cannot stamp before its fetch — hence the `view_3680_page=1` URL param: one
+  extra fetch of view_3680 per scene load.
+- **Truncation repair** — `bid-review-v2/data.js` `repairTruncated`: ≤2 refetches per view per page
+  lifetime, only while loaded < server total.
+- **Calc-field nudge** — `calc-field-nudge.js` on view_3921: up to 2 sweeps per load (40 records, then
+  sticky per browser for 30 days). Each sweep used to end in a FULL `model.fetch()` of the hidden grid;
+  it now re-reads only the nudged records (view-scoped GETs → `SCW.syncKnackModel`) and notifies the
+  consumers (`SCW.worksheetV2.data.notify`, `SCW.bidReviewV2.data.notifyDebounced`) — no native
+  re-render. `readbackDelayMs` in its CONFIG.
+- **Accessory-SOW reconcile sweep** — `mirror-connection-sync.js` (view_3921 instance, accessories from
+  view_3927), 1.5 s after every render of either view: one silent repair PUT per accessory whose
+  `field_2154` set differs from its parent's (once per accessory+set per load). Its `cascadeEnd` fired
+  `scw-cascade-idle`, and the reconcile data layer answered with `refetchAll()` — SIX hidden grids
+  refetched and re-rendered on every load of a drifted project — plus the worksheet data layer's own
+  refetch of its views. Now a batch with no loud (user) write dispatches the idle with
+  `detail.silent = true`; the sweep patches the accessory's local model copies on success
+  (`patchLocalAccessorySow`) and both data layers rebuild from the models instead of refetching.
+- **After a save** (user action, unchanged): `scw-ws-v2-record-saved` → `refetchAll()`; a loud cascade →
+  `refetchAll()` + the worksheet refetch; `refetchNextStepView` after margin / survey-cost / SOW-name
+  saves; the diff panel's snapshot auto-save is a PUT only (signature-guarded, never a fetch).
+- **Not on this scene**: worksheet-v2 `poll.js` (view_3921 has no worksheet config entry), the
+  ops-review pill, the CO stage strip and the stepper polls — their views are absent here, so their
+  ticks fetch nothing.
+- **Still open**: view_3927 (the accessories grid) is not in `change-record-limit.js`, so it loads 25
+  rows (Builder default); the sweep and `transform.js`'s bracket back-connections see only those.
+Tests: `tests/bid-review-v2/test-cascade-idle-silent.js`, `tests/misc/test-calc-nudge-readback.js`.
 
 ## Margin-low recovery on the reconcile page — `src/features/bid-review/margin.js` (2026-10-16)
 
@@ -1214,7 +1261,14 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **dist/knack-bundle.js must be rebuilt** after any source change. Run `bash build.sh`.
 - **build.sh file order** is the include order. Dependencies must come first.
 - **Knack re-renders the entire view** after inline edits. Features must be idempotent and handle re-initialization gracefully.
-- **KTL (Knack Toolkit Library)** is loaded alongside this bundle. Some features interact with KTL's keyword system (`ktlKeywords`), accordion state, and hide/show buttons.
+- **KTL (Knack Toolkit Library) is GONE.** It was removed from the application entirely (confirmed
+  2026-10-20). Nothing on any page is KTL: no `_ar` auto-refresh keywords, no KTL accordions, no KTL
+  hide/show buttons. The `ktl-*` module names (`ktl-accordion.js`, `ktl-hide-show-state.js`), the
+  `.scw-ktl-accordion` class and the `window.ktlKeywords` reads are historical — the bundle's own
+  accordion engine owns every section and the keyword readers fall back to the Knack model.
+  **Never attribute a re-render, auto-refresh or repaint to KTL when diagnosing**: every view
+  re-render is a `model.fetch()` from Knack's own handlers or from a bundle module (`SCW.traceChurn`
+  names the caller). `knack-snippets/ktl-loader-gate.snippet.js` is retired, kept for history only.
 - **`save.sh` excludes dist/** — use it for source-only commits during development. Only `release.sh` includes the built bundle.
 
 ## Known Issues (TODO)
@@ -1230,7 +1284,7 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Symptom**: After form submission on view_3679 (which fires a webhook and redirects to parent page scene_1140), the blue "Generating subcontractor bid PDF…" toast and field overlay persist. The 60s timeout DOES eventually stop it, but it should stop sooner when the PDF is actually ready.
 - **How it works**: Poll stores flags in sessionStorage before redirect. On parent page scene render, it starts polling view_3507 every 4s via `Knack.views[viewId].model.fetch()`. It watches for `field_2626` (PDF file field) text content to change from its initial value.
 - **What we tried**: Added direct field check in setInterval (not just on view re-render). The 60s timeout works, but the field change detection doesn't fire before timeout.
-- **Suspected root cause**: Either `model.fetch()` isn't causing the view to re-render (KTL accordion may interfere), or Make's PDF generation takes longer than 60s, or the PDF filename doesn't change (same version uploaded). Needs console logging to check: (a) whether `model.fetch()` actually fires, (b) what `readFieldText` returns each poll cycle, (c) whether the field value genuinely changes after Make processes.
+- **Suspected root cause**: Either `model.fetch()` isn't causing the view to re-render (the accordion wrapper may interfere), or Make's PDF generation takes longer than 60s, or the PDF filename doesn't change (same version uploaded). Needs console logging to check: (a) whether `model.fetch()` actually fires, (b) what `readFieldText` returns each poll cycle, (c) whether the field value genuinely changes after Make processes.
 
 ### 3. Edit Revision modal needs field/choice rules (TEMPORARILY DISABLED)
 - **Location**: `src/features/bid-revision-inject.js` → `openEditModal()`
@@ -1300,7 +1354,7 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **What's coupled**:
   - **Per-row accent variable.** `group-collapse.js` sets `--scw-grp-accent` and `--scw-grp-accent-rgb` on each L1 `<tr>` in JS (orange default `#ed8326`, or HSV-extracted colour from `extract-hsv-color.js`, or a per-view override from `VIEW_OVERRIDES` like `view_3374` `#124E85`, `view_3475` `#5F6B7A`). Background, left border, chevron, hover background, bottom border, and the bridge rule on the *content row beneath* the header all read the same variable.
   - **Bridge to content rows.** `tr:not(.kn-table-group) + tr > td:first-child` continues the accent left border so the worksheet card looks like one unit with its header. `.scw-ws-card` border-top is also retinted to match. Drop the accent on the header without retinting these and the card visually detaches.
-  - **KTL + scene-tweaks layering.** `VIEW_OVERRIDES` in `group-collapse.js` sets per-view L1 backgrounds (`view_3374`, `view_3325`, `view_3331`, `view_3475`). These ride on the variable system. A flat-slate rule with `!important` clobbers them and they go undifferentiated.
+  - **Accordion + scene-tweaks layering.** `VIEW_OVERRIDES` in `group-collapse.js` sets per-view L1 backgrounds (`view_3374`, `view_3325`, `view_3331`, `view_3475`). These ride on the variable system. A flat-slate rule with `!important` clobbers them and they go undifferentiated.
   - **L1 ↔ L2 contrast.** L2 is hardcoded `#0f4c75` text on `#f8fafc`, designed to sit *under* the orange-tinted L1. Slate L1 + slate-blue L2 reads as one undifferentiated band — visually loses the hierarchy.
 - **What we want**: a clean, named theming surface (e.g. `data-scw-l1-theme="comparison-grid"` on the view, or a token map `L1_THEME_TOKENS`) that bundles all the coupled pieces (bg, hover, accent, chevron, bridge, card top-border, L2 contrast adjustment) so swapping themes per view is a single attribute / single config object change instead of nine coordinated CSS edits. Should preserve existing per-view overrides via the same surface.
 - **Sibling to copy from**: `bid-items-grid.js` design tokens; `proposal-grid.js` for per-view theming entry points. The bid-review comparison grid (`src/features/bid-review/styles.js` lines 468–550) is the visual target some users prefer.
@@ -1391,6 +1445,7 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Root cause**: `knack-snippets/ktl-loader-gate.snippet.js` calls `callback()` immediately on gated scenes, letting Knack render while `dist/knack-bundle.js` is still downloading in parallel (loaded separately by the Builder JS). Until the bundle lands, none of its injected CSS (veil, v1 cutover hides, hide-data-source views) exists.
 - **Fix direction (Builder-side)**: in the gate snippet's `skip` branch, load the CDN bundle FIRST (LazyLoad is already available there), then call `callback()`. SHA-pinned jsDelivr is immutable + browser-cached, so warm cost is small. Needs a guard so the Builder JS's existing bundle loader doesn't double-load. Update the snippet file in `knack-snippets/` and re-paste into Builder.
 - **Status**: parked 2026-07-07 mid-testing ("we'll come back to this") after the in-bundle reveal gating (quiet-window + transform markers incl. `#scw-step-initiate-install`) fixed the post-veil flashes.
+- **2026-10-20**: KTL has since been removed from the app entirely and the loader-gate snippet is retired (kept in `knack-snippets/` for history). Whatever Builder boot code loads the bundle now, the fix shape is unchanged: load the CDN bundle before letting Knack render.
 
 ### 19. Delete the dead v1 bid-review GRID code (decided 2026-07-14: v1 grid is dead and gone)
 - **Runtime state (done 2026-07-14)**: with `bid-review-v2/config.js` `replaceV1: true`, v1's

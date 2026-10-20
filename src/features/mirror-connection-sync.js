@@ -376,9 +376,21 @@
     window.removeEventListener('beforeunload', cascadeUnloadHandler);
   }
 
+  // True while the current batch holds at least one LOUD (user-initiated)
+  // write. A batch of ONLY silent writes — the accessory-SOW reconcile
+  // sweep's repairs on page render — still fires scw-cascade-idle so the
+  // consumers rebuild, but flags it `detail.silent`: they rebuild from the
+  // local models the sweep patched instead of refetching every hidden
+  // source grid. On the reconcile page that refetch was SIX hidden grids
+  // (two of them heavy) re-rendered on every load of a project with drifted
+  // accessories, each native re-render scrolling the page to the top with
+  // no user action (2026-10-20 deep dive).
+  var _cascadeHadLoud = false;
+
   function cascadeBegin(silent) {
     _cascadeInFlight++;
     if (silent) return;
+    _cascadeHadLoud = true;
     _cascadeLoud++;
     if (_cascadeLoud === 1) {
       showCascadeToast();
@@ -411,8 +423,11 @@
       // Broadcast — any module that wants to refetch dependent data
       // (worksheet-v2's hidden source view, downstream summaries, etc.)
       // can listen for this event instead of polling.
+      var silentBatch = !_cascadeHadLoud;
+      _cascadeHadLoud = false;
       try {
-        document.dispatchEvent(new CustomEvent('scw-cascade-idle'));
+        document.dispatchEvent(new CustomEvent('scw-cascade-idle',
+          { detail: { silent: silentBatch } }));
       } catch (e) { /* ancient browser fallback isn't a concern */ }
 
       // Resolve any pending whenIdle() promises and clear the queue.
@@ -2182,6 +2197,44 @@
   // from any instance (same fields, same parent set), so one shared guard
   // dedupes them.
   var sowSweepWritten = _sowSweepWritten;
+  /** After a sweep repair lands, mirror the parent's SOW set onto the
+   *  accessory's LOCAL model copies — its row in the accessories grid and,
+   *  when the accessory is also a row of this view (SOW line items are),
+   *  that one too — so the silent scw-cascade-idle that follows rebuilds the
+   *  corrected membership from the models without a network refetch. */
+  function patchLocalAccessorySow(accessoryId, parentAttrs) {
+    if (!accessoryId || !parentAttrs) return;
+    var raw = parentAttrs[SOW_FIELD + '_raw'];
+    var disp = parentAttrs[SOW_FIELD];
+    function copyRaw() {
+      try { return Array.isArray(raw) ? JSON.parse(JSON.stringify(raw)) : []; }
+      catch (e) { return []; }
+    }
+    function patch(a) {
+      if (!a) return;
+      a[SOW_FIELD + '_raw'] = copyRaw();
+      if (typeof disp === 'string') a[SOW_FIELD] = disp;
+    }
+    try {
+      var av = window.Knack && Knack.views && Knack.views[ACCESSORIES_VIEW_ID];
+      var ms = av && av.model && av.model.data && av.model.data.models;
+      if (ms) {
+        for (var i = 0; i < ms.length; i++) {
+          if (ms[i] && ms[i].id === accessoryId) patch(ms[i].attributes || ms[i]);
+        }
+      }
+    } catch (e) { /* best-effort */ }
+    try { patch(getModelAttrs(accessoryId)); } catch (e2) { /* best-effort */ }
+    // Direct attribute mutation fires no Backbone 'change' — tell worksheet-
+    // v2's keyed rebuild the record changed so its card repaints.
+    try {
+      var wd = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.data;
+      if (wd && typeof wd.markDirty === 'function') {
+        wd.markDirty(VIEW_ID, accessoryId);
+        if (ACCESSORIES_VIEW_ID !== VIEW_ID) wd.markDirty(ACCESSORIES_VIEW_ID, accessoryId);
+      }
+    } catch (e3) { /* best-effort */ }
+  }
   function accessorySowSweep() {
     if (!SOW_FIELD || !ACCESSORIES_VIEW_ID || !ACCESSORIES_PARENT_FIELD) return;
     try {
@@ -2229,7 +2282,14 @@
           '] — re-aligning to the parent\'s set');
         // silent=true: background repair on page render, NOT a user save —
         // must not raise the "Saving changes — please don't leave" toast.
-        fireAccessorySowPut(attrs.id, sowIdsFromAttrs(parentAttrs), null, true);
+        // Landed → patch the accessory's local model copies, so the silent
+        // idle this batch ends with rebuilds the right membership without
+        // refetching (and re-rendering) the hidden source grids.
+        (function (accId, pAttrs) {
+          fireAccessorySowPut(accId, sowIdsFromAttrs(pAttrs), function (err) {
+            if (!err) patchLocalAccessorySow(accId, pAttrs);
+          }, true);
+        })(attrs.id, parentAttrs);
         repaired++;
       }
       if (repaired) log('accessory-SOW sweep: ' + repaired + ' repair PUT(s) queued');
