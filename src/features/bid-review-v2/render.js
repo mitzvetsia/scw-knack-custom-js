@@ -63,8 +63,13 @@
     // (data-scw-ws-v2-field) inside an expanded row's SOW editor. Without the
     // ws-v2 check, editing a SOW field + tabbing fired a refetch that rebuilt
     // the grid and tore down the panel mid-edit, dropping the in-progress edit.
+    // …or the sub-bid diff panel's reviewer note (data-scw-sbd-note), which
+    // lives inside the SOW section: rebuilding the section while it is
+    // focused replaced the textarea with no blur, so the keystrokes after
+    // that went nowhere and the note "didn't save" (2026-10-20).
     if (!a.hasAttribute('data-scw-br-v2-field') &&
-        !a.hasAttribute('data-scw-ws-v2-field')) return false;
+        !a.hasAttribute('data-scw-ws-v2-field') &&
+        !a.hasAttribute('data-scw-sbd-note')) return false;
     return container.contains(a);
   }
 

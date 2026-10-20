@@ -1089,6 +1089,34 @@ scroll guard above. The sources, and what changed:
   rows (Builder default); the sweep and `transform.js`'s bracket back-connections see only those.
 Tests: `tests/bid-review-v2/test-cascade-idle-silent.js`, `tests/misc/test-calc-nudge-readback.js`.
 
+## Reviewer note on the reconcile page — durable save (2026-10-20) — `src/features/sub-bid-diff/render.js`
+
+"The reviewer note is not reliably saving." The note rides the `field_2941` snapshot blob (written
+through view_3918 with the diff + `field_2942`), and it used to persist ONLY on the textarea's blur.
+Three ways text was lost, all fixed: (1) a data tick rebuilt the SOW section while the reviewer typed
+— `bid-review-v2/render.js` `hasFocusInPanel` did not count the note textarea as mid-edit, the
+textarea was replaced with no blur, and everything typed after that went nowhere; it now defers the
+rebuild for `data-scw-sbd-note` too. (2) A SOW whose basis is only the Builder-assigned soft default
+never writes a blob (`isDefaulted` — the award must stay a human gesture) while the bar still said
+"saves automatically"; the bar now reads "not saved yet — this bid is only the default … Save as
+basis and the note saves with it" (amber `--pending`). (3) Another tab with a stale snapshot wrote its
+blob, stale note included, over a fresh one. Now:
+- every keystroke is kept in `noteByGrid` AND a per-device draft (`localStorage` `scwSbdNoteDraft`,
+  14-day TTL; resumed by `currentNote` when nothing is persisted) and persisted after a 1.5 s idle
+  (`scheduleNoteSave` → the same guarded `autoSave`); blur still saves at once;
+- `writeSnapshotWith` re-reads the record first (view-scoped GET) and, when this tab has no
+  in-session note edit, keeps the server's note over the model's stale copy; on success it mirrors the
+  blob onto the local model (`patchLocalSnapshot`) and retires the draft / in-session copy, so the
+  textarea never reverts to an older note;
+- failures back off (2 s … 60 s, six tries; a 400/403/404 stops at once) and show in the status line
+  (`noteStatusHtml`, refreshed in place by `refreshNoteStatus` so a focused textarea is never rebuilt)
+  instead of the old render → autoSave → 400 ms retry loop;
+- `persistedSnapshot` parses the verbatim JSON first and only then entity-decodes or strips tags —
+  a `<` typed into a note used to make the old strip-first parser swallow the blob up to the next `>`
+  inside `bidHtml`, so a saved note read back as nothing after a reload.
+Test: `tests/bid-review-v2/test-reviewer-note-save.js` (drives the real module: idle save, draft,
+cross-tab merge, backoff, tolerant parse, defaulted basis).
+
 ## Margin-low recovery on the reconcile page — `src/features/bid-review/margin.js` (2026-10-16)
 
 The "Margin is low" block under a SOW's Next step (v1 `buildSowStatusBar`, mounted in the v2

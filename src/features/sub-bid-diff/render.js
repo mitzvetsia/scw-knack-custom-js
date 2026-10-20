@@ -121,7 +121,12 @@
       savingGrid[sowId] = false;
       if (pkgId) savedByGrid[sowId] = true; else delete savedByGrid[sowId];
       if (C.snapshotField) {
-        if (blob) { savedSnap[sowId] = true; lastWrittenSig[sowId] = sig; }
+        if (blob) {
+          savedSnap[sowId] = true; lastWrittenSig[sowId] = sig;
+          patchLocalSnapshot(sowId, JSON.stringify(blob));
+          if ((sowId in noteByGrid) && noteByGrid[sowId] === blob.note) delete noteByGrid[sowId];
+          if (draftNote(sowId) === blob.note) clearDraft(sowId);
+        }
         else if (!pkgId) { savedSnap[sowId] = false; delete lastWrittenSig[sowId]; }
       }
       render();
@@ -401,6 +406,27 @@
   var savedSnap  = Object.create(null);  // sowId → true after a successful save
   var savingSnap = Object.create(null);  // sowId → true while a save is in flight
 
+  /** Tolerant parse of a stored field_2941 value: the verbatim JSON first
+   *  (exactly what the PUT wrote), then HTML-entity-decoded, then tag-stripped
+   *  (a value that came back through Knack's paragraph renderer — <p> wrapper,
+   *  <br>, or the attribute-quote mangling of Known Issue #24 inside the HTML
+   *  fragments). Stripping FIRST was the old order, and a '<' typed into a
+   *  reviewer note ("under <$500") swallowed everything up to the next '>' in
+   *  bidHtml — a valid blob that read back as null: note gone on reload. */
+  function parseSnapshotString(raw) {
+    if (raw == null) return null;
+    var t = String(raw).trim();
+    if (!t) return null;
+    try { return JSON.parse(t); } catch (e0) { /* next */ }
+    try {
+      var ta = document.createElement('textarea');
+      ta.innerHTML = t;
+      return JSON.parse(String(ta.value).trim());
+    } catch (e1) { /* next */ }
+    try { return JSON.parse(t.replace(/<[^>]*>/g, '').trim()); } catch (e2) { /* give up */ }
+    return null;
+  }
+
   /** Parsed field_2941 JSON for a SOW, or null. */
   function persistedSnapshot(sowId) {
     if (!C.snapshotField) return null;
@@ -409,14 +435,58 @@
       if (sows[i] && sows[i].id === sowId) {
         var raw = sows[i][C.snapshotField + '_raw'];
         if (raw == null) raw = sows[i][C.snapshotField];
-        if (raw == null) return null;
-        var s = String(raw).replace(/<[^>]*>/g, '').trim();
-        if (!s) return null;
-        try { return JSON.parse(s); } catch (e) { return null; }
+        return parseSnapshotString(raw);
       }
     }
     return null;
   }
+
+  // ── Reviewer-note durability (2026-10-20: "not reliably saving") ───────
+  // The note used to persist ONLY on the textarea's `change` (blur). Three
+  // ways that lost text: (1) a data tick rebuilt the SOW section while the
+  // reviewer typed — the textarea was replaced, no blur ever fired, and the
+  // keystrokes after that went nowhere; (2) the basis was only the
+  // Builder-assigned default, so autoSave (correctly) never wrote a blob
+  // while the bar still said "saves automatically"; (3) another tab with a
+  // stale snapshot wrote its own blob — and the stale note in it — over the
+  // fresh one. Now every keystroke is kept in a per-device draft and
+  // persisted after a short idle, the blob write re-reads the record first
+  // and keeps a note another tab saved, failures back off and show in the
+  // bar, and a defaulted basis says plainly that the note waits for it.
+  var NOTE_DRAFT_LS     = 'scwSbdNoteDraft';
+  var NOTE_DRAFT_TTL_MS = 14 * 24 * 3600 * 1000;
+  var NOTE_IDLE_SAVE_MS = 1500;
+  function loadDrafts() {
+    try { return JSON.parse(localStorage.getItem(NOTE_DRAFT_LS)) || {}; }
+    catch (e) { return {}; }
+  }
+  function saveDraft(sowId, note) {
+    try {
+      var d = loadDrafts(), now = Date.now();
+      for (var k in d) { if (!d[k] || (now - (d[k].t || 0)) > NOTE_DRAFT_TTL_MS) delete d[k]; }
+      if (String(note || '').trim()) d[sowId] = { t: now, note: String(note) };
+      else delete d[sowId];
+      localStorage.setItem(NOTE_DRAFT_LS, JSON.stringify(d));
+    } catch (e) { /* storage unavailable — the in-session copy still works */ }
+  }
+  function clearDraft(sowId) {
+    try {
+      var d = loadDrafts();
+      if (!(sowId in d)) return;
+      delete d[sowId];
+      localStorage.setItem(NOTE_DRAFT_LS, JSON.stringify(d));
+    } catch (e) { /* ignore */ }
+  }
+  function draftNote(sowId) {
+    var d = loadDrafts()[sowId];
+    if (!d || !d.note) return '';
+    if ((Date.now() - (d.t || 0)) > NOTE_DRAFT_TTL_MS) return '';
+    return String(d.note);
+  }
+  var lastSaveError  = Object.create(null);   // sowId → { status, at } of the last failed write
+  var saveFailCount  = Object.create(null);   // sowId → consecutive failures
+  var saveBlockedSig = Object.create(null);   // sowId → content signature we gave up on
+  var noteIdleTimers = Object.create(null);   // sowId → idle-save timer
 
   var lastWrittenSig = Object.create(null);  // sowId → signature last PUT to field_2941
   var autoTimers     = Object.create(null);  // sowId → pending debounce timer
@@ -426,7 +496,14 @@
   function currentNote(sowId) {
     if (sowId in noteByGrid) return noteByGrid[sowId] || '';
     var snap = persistedSnapshot(sowId);
-    return (snap && snap.note) || '';
+    var persisted = (snap && snap.note) || '';
+    if (persisted) return persisted;
+    // Nothing saved, but this device kept a draft (typed before a reload, or
+    // while the basis was still the soft default): resume it as the
+    // in-session note so the next blob write carries it.
+    var draft = draftNote(sowId);
+    if (draft) { noteByGrid[sowId] = draft; return draft; }
+    return '';
   }
 
   // Bump when the bidHtml/diffHtml RENDER changes (pdf-html.js) — the
@@ -577,37 +654,175 @@
     }
   }
 
-  /** Persist a blob to field_2941. Records its signature so auto-save won't
-   *  re-write the same content (the local model isn't refetched after a PUT). */
+  /** Read the SOW record fresh (view-scoped GET, the endpoint the PUT uses)
+   *  and hand back its parsed snapshot — null on any failure. */
+  function readRemoteSnapshot(sowId, cb) {
+    try {
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(C.basisBidView, sowId), type: 'GET',
+        success: function (resp) {
+          var rec = (resp && resp.record && resp.record.id) ? resp.record : resp;
+          var raw = rec ? rec[C.snapshotField + '_raw'] : null;
+          if (raw == null && rec) raw = rec[C.snapshotField];
+          cb(parseSnapshotString(raw));
+        },
+        error: function () { cb(null); }
+      });
+    } catch (e) { cb(null); }
+  }
+
+  /** Mirror a written blob onto the local model row so persistedSnapshot()
+   *  reads it without a refetch (and the in-session copies can retire). */
+  function patchLocalSnapshot(sowId, jsonStr) {
+    try {
+      var v = Knack.views[C.basisBidView];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var m = models[i];
+        if (!m || m.id !== sowId) continue;
+        var a = m.attributes || m;
+        a[C.snapshotField + '_raw'] = jsonStr;
+        a[C.snapshotField] = jsonStr;
+      }
+    } catch (e) { /* best-effort */ }
+  }
+
+  /** The textarea's status line (saving / saved / draft / error / waiting on
+   *  the basis) — rendered by noteBar and refreshed in place by
+   *  refreshNoteStatus so a focused textarea is never rebuilt under the user. */
+  function saveErrorText(err) {
+    var s = err && err.status;
+    if (s === 403 || s === 400 || s === 404) {
+      return 'not saved (HTTP ' + s + ') — ' + C.snapshotField +
+        ' must be inline-editable on ' + C.basisBidView;
+    }
+    if (s === 413) return 'not saved (HTTP 413) — the snapshot is too large for the field';
+    if (!s) return 'not saved — network error, retrying';
+    return 'not saved (HTTP ' + s + ') — retrying';
+  }
+  function noteStatusHtml(sowId) {
+    var msg = '', hint = 'Saves automatically as you type and when you click away.';
+    var err = lastSaveError[sowId];
+    if (savingSnap[sowId]) {
+      msg = '<span class="scw-sbd-savemsg">saving…</span>';
+    } else if (err) {
+      msg = '<span class="scw-sbd-savemsg scw-sbd-savemsg--err">' + esc(saveErrorText(err)) + '</span>';
+    } else if (basisFor(sowId) && isDefaulted(sowId)) {
+      msg = '<span class="scw-sbd-savemsg scw-sbd-savemsg--pending">not saved yet — this bid is only the default</span>';
+      hint = 'Save it as the basis (▾ Save as basis) and the note saves with it. Kept as a draft on this device until then.';
+    } else if (savedSnap[sowId]) {
+      msg = '<span class="scw-sbd-savemsg scw-sbd-savemsg--ok">✓ auto-saved</span>';
+    } else {
+      var snap = persistedSnapshot(sowId);
+      if (snap && snap.savedAt) {
+        msg = '<span class="scw-sbd-savemsg">saved ' + esc(String(snap.savedAt).slice(0, 10)) + '</span>';
+      } else if (draftNote(sowId)) {
+        msg = '<span class="scw-sbd-savemsg">draft kept on this device</span>';
+      }
+    }
+    return msg + '<span class="scw-sbd-hint">' + esc(hint) + '</span>';
+  }
+  function refreshNoteStatus(sowId) {
+    var sec = document.querySelector('.scw-bid-review-v2__sow[data-sow-id="' + sowId + '"]');
+    var row = sec && sec.querySelector('.scw-sbd-inline .scw-sbd-noterow');
+    if (row) row.innerHTML = noteStatusHtml(sowId);
+  }
+
+  /** Grid for a SOW from the current (v2-published or memoized) state. */
+  function gridForSow(sowId) {
+    var v2t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
+    if (!v2t || typeof v2t.buildState !== 'function') return null;
+    var state = currentState(v2t);
+    if (!state || !state.sowGrids) return null;
+    for (var i = 0; i < state.sowGrids.length; i++) {
+      if (state.sowGrids[i].sowId === sowId) return state.sowGrids[i];
+    }
+    return null;
+  }
+  /** Persist a note the reviewer is still typing: a short idle after the last
+   *  keystroke, through the same guarded autoSave — render() skips a focused
+   *  block, so only the status line under the textarea changes. */
+  function scheduleNoteSave(sowId) {
+    if (noteIdleTimers[sowId]) clearTimeout(noteIdleTimers[sowId]);
+    noteIdleTimers[sowId] = setTimeout(function () {
+      noteIdleTimers[sowId] = null;
+      var grid = gridForSow(sowId);
+      if (grid) autoSave(grid);
+      refreshNoteStatus(sowId);
+    }, NOTE_IDLE_SAVE_MS);
+  }
+
+  /** Persist a blob to field_2941. Re-reads the record first so a note another
+   *  tab saved is kept, records the written signature so auto-save won't
+   *  re-write the same content, mirrors the blob onto the local model, and
+   *  backs off on failure (shown in the note bar) instead of looping. */
   function writeSnapshotWith(grid, sig) {
     if (!C.snapshotField || !grid) return;
     if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) return;
     warnIfFieldMissingFromWriteView();
     var sowId = grid.sowId;
-    var blob = buildBlobWith(grid);
-    if (!blob) return;
-    if (!sig) sig = blobSig(blob);
-    var body = {};
-    body[C.snapshotField] = JSON.stringify(blob);
-    // field_2942 rides in the same PUT, set to the basis this blob was built
-    // for — snapshot and basis connection stay consistent no matter which
-    // write path (or which tab) lands last. K1 is a sentinel, not a record
-    // id — never write it into the connection (writeBasis already cleared it).
-    if (C.basisBidField && blob.basisBidId && blob.basisBidId !== K1_ID) {
-      body[C.basisBidField] = [blob.basisBidId];
-    }
-    savingSnap[sowId] = true; render();
-    SCW.knackAjax({
-      url: SCW.knackRecordUrl(C.basisBidView, sowId),
-      type: 'PUT', data: JSON.stringify(body)
-    }).then(function () {
-      savingSnap[sowId] = false; savedSnap[sowId] = true;
-      if (C.basisBidField && blob.basisBidId) savedByGrid[sowId] = true;
-      lastWrittenSig[sowId] = sig; render();
-    }, function (xhr) {
-      savingSnap[sowId] = false;
-      console.warn('[scw-sub-bid-diff] snapshot write failed', sowId, xhr && xhr.status);
-      render();
+    savingSnap[sowId] = true; render(); refreshNoteStatus(sowId);
+    // Read-before-write: another tab (or another reviewer) may have saved a
+    // note since this model loaded. When THIS tab has no in-session edit of
+    // the note, the record's current note wins over the stale model copy —
+    // otherwise an unrelated diff change here would write the old note back.
+    readRemoteSnapshot(sowId, function (remote) {
+      var blob = buildBlobWith(grid);
+      if (!blob) { savingSnap[sowId] = false; refreshNoteStatus(sowId); return; }
+      if (!(sowId in noteByGrid) && remote && typeof remote.note === 'string' &&
+          remote.note.trim() && remote.note !== blob.note) {
+        blob.note = remote.note;
+      }
+      var wroteSig = blobSig(blob);
+      var jsonStr = JSON.stringify(blob);
+      var body = {};
+      body[C.snapshotField] = jsonStr;
+      // field_2942 rides in the same PUT, set to the basis this blob was built
+      // for — snapshot and basis connection stay consistent no matter which
+      // write path (or which tab) lands last. K1 is a sentinel, not a record
+      // id — never write it into the connection (writeBasis already cleared it).
+      if (C.basisBidField && blob.basisBidId && blob.basisBidId !== K1_ID) {
+        body[C.basisBidField] = [blob.basisBidId];
+      }
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(C.basisBidView, sowId),
+        type: 'PUT', data: JSON.stringify(body)
+      }).then(function () {
+        savingSnap[sowId] = false; savedSnap[sowId] = true;
+        if (C.basisBidField && blob.basisBidId) savedByGrid[sowId] = true;
+        lastWrittenSig[sowId] = wroteSig;
+        saveFailCount[sowId] = 0; delete lastSaveError[sowId]; delete saveBlockedSig[sowId];
+        // The model now holds what the server holds, so the in-session copy
+        // and the device draft have done their job — unless the reviewer kept
+        // typing meanwhile; then the newer text stays and saves next.
+        patchLocalSnapshot(sowId, jsonStr);
+        if ((sowId in noteByGrid) && noteByGrid[sowId] === blob.note) delete noteByGrid[sowId];
+        if (draftNote(sowId) === blob.note) clearDraft(sowId);
+        render(); refreshNoteStatus(sowId);
+      }, function (xhr) {
+        savingSnap[sowId] = false;
+        var status = (xhr && xhr.status) || 0;
+        var n = (saveFailCount[sowId] || 0) + 1;
+        saveFailCount[sowId] = n;
+        lastSaveError[sowId] = { status: status, at: Date.now() };
+        console.warn('[scw-sub-bid-diff] snapshot write failed', sowId, status, '(attempt ' + n + ')');
+        // Back off instead of the old render → autoSave → 400 ms retry loop:
+        // transient failures retry at 2 s, 4 s, 8 s … up to a minute, six
+        // times; a permanent 4xx (the field is not editable on the view)
+        // stops at once. Either way the bar shows it until the content
+        // changes, which re-arms the save.
+        var permanent = status === 400 || status === 403 || status === 404;
+        if (permanent || n >= 6) {
+          saveBlockedSig[sowId] = wroteSig;
+        } else {
+          var wait = Math.min(60000, 2000 * Math.pow(2, n - 1));
+          autoTimers[sowId] = setTimeout(function () {
+            autoTimers[sowId] = null;
+            writeSnapshotWith(grid, wroteSig);
+          }, wait);
+        }
+        render(); refreshNoteStatus(sowId);
+      });
     });
   }
 
@@ -626,6 +841,10 @@
     var blob = buildBlobWith(grid);
     if (!blob) return;
     var sig = blobSig(blob);
+    if (saveBlockedSig[sowId]) {
+      if (saveBlockedSig[sowId] === sig) return;         // gave up on this exact content — wait for a change
+      delete saveBlockedSig[sowId]; saveFailCount[sowId] = 0; delete lastSaveError[sowId];
+    }
     if (lastWrittenSig[sowId] === sig) return;          // already persisted this exact diff
     var snap = persistedSnapshot(sowId);
     if (snap && blobSig(snap) === sig) {                // model already has it
@@ -1473,25 +1692,18 @@
    *  to field_2941 when the reviewer clicks away. Required when diffs exist. */
   function noteBar(sowId, needsNote) {
     var noteVal = currentNote(sowId);
-    var msg = '';
-    if (savingSnap[sowId]) msg = '<span class="scw-sbd-savemsg">saving…</span>';
-    else if (savedSnap[sowId]) msg = '<span class="scw-sbd-savemsg scw-sbd-savemsg--ok">✓ auto-saved</span>';
-    else {
-      var snap = persistedSnapshot(sowId);
-      if (snap && snap.savedAt) msg = '<span class="scw-sbd-savemsg">saved ' +
-        esc(String(snap.savedAt).slice(0, 10)) + '</span>';
-    }
+    var pending = !!(basisFor(sowId) && isDefaulted(sowId));   // the blob can't be written yet
     var reqLbl = needsNote
       ? ' <span class="scw-sbd-req">(required — there are differences)</span>'
       : ' (optional)';
-    return '<div class="scw-sbd-notebar' + (needsNote ? ' scw-sbd-notebar--req' : '') + '">' +
+    return '<div class="scw-sbd-notebar' + (needsNote ? ' scw-sbd-notebar--req' : '') +
+        (pending ? ' scw-sbd-notebar--pending' : '') + '">' +
       '<label class="scw-sbd-note-label">Reviewer note — why we’re proceeding with this diff' +
         reqLbl + '</label>' +
       '<textarea class="scw-sbd-note" data-scw-sbd-note data-sow-id="' + esc(sowId) + '" ' +
         'rows="2" placeholder="e.g. labor delta approved with sub; descriptions reworded, scope unchanged.">' +
         esc(noteVal) + '</textarea>' +
-      '<div class="scw-sbd-noterow">' + msg +
-        '<span class="scw-sbd-hint">Saves automatically when you click away.</span></div></div>';
+      '<div class="scw-sbd-noterow">' + noteStatusHtml(sowId) + '</div></div>';
   }
 
   /** Inject/refresh a per-SOW diff block inside each v2 SOW section. Deferred
@@ -1676,17 +1888,26 @@
       var nt = e.target.closest && e.target.closest('[data-scw-sbd-note]');
       if (nt) {
         var nsow = nt.getAttribute('data-sow-id');
-        if (nsow) { noteByGrid[nsow] = nt.value; render(); }  // render → autoSave persists the note
+        if (nsow) {
+          noteByGrid[nsow] = nt.value; saveDraft(nsow, nt.value);
+          if (noteIdleTimers[nsow]) { clearTimeout(noteIdleTimers[nsow]); noteIdleTimers[nsow] = null; }
+          render();   // render → autoSave persists the note
+        }
       }
     });
     // Capture the reviewer note live (no re-render → caret stays put; render()
-    // also skips rebuilds while a note is focused). The actual save happens on
-    // 'change' (blur) above.
+    // also skips rebuilds while a note is focused), keep a per-device draft,
+    // and persist after a short idle — so a section rebuild or a reload
+    // mid-sentence never loses what was typed. 'change' (blur) above still
+    // saves at once.
     document.addEventListener('input', function (e) {
       var n = e.target.closest && e.target.closest('[data-scw-sbd-note]');
       if (!n) return;
       var sowId = n.getAttribute('data-sow-id');
-      if (sowId) noteByGrid[sowId] = n.value;
+      if (!sowId) return;
+      noteByGrid[sowId] = n.value;
+      saveDraft(sowId, n.value);
+      scheduleNoteSave(sowId);
     });
     document.addEventListener('click', function (e) {
       // K1 bid PDF — one button opens the shared upload modal.
