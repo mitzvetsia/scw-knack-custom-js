@@ -899,7 +899,9 @@
     //                    post-fire flip until the field_2966 reciprocal is
     //                    exposed on view_4086 — see docs/change-orders.md #7.)
     clone.remove = {
-      label:          'Remove from Change Order',
+      // Copy lives in co-remove.js (the click ADDS a Remove line to the CO;
+      // it removes nothing from it). Kept here as the gesture's name only.
+      label:          'Add Removal to CO',
       targetField:    'field_2966',
       removedByField: 'field_2967'
     };

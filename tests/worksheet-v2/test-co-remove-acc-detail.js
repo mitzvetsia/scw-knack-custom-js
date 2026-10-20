@@ -81,7 +81,7 @@ rendered.view_4086();
 
 const wLive = wrapOf('acc-live'), wDrafted = wrapOf('acc-drafted'), wSigned = wrapOf('acc-signed');
 check('live accessory: a labelled REMOVE button on the detail chip, not flagged',
-  [!!btnOf(wLive), btnOf(wLive) && btnOf(wLive).textContent, flagged(wLive)], [true, 'Remove', false]);
+  [!!btnOf(wLive), btnOf(wLive) && btnOf(wLive).textContent, flagged(wLive)], [true, 'Add Removal', false]);
 check('the button names the accessory and the view',
   [btnOf(wLive).getAttribute('data-scw-co-remove-acc'), btnOf(wLive).getAttribute('data-scw-co-remove-acc-label'),
    btnOf(wLive).getAttribute('data-scw-co-remove-view')], ['acc-live', 'Electrical Box Mount', 'view_4086']);

@@ -653,6 +653,13 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   `parentInstallItemId`, `parentProductId`, `parentLabel`, `parentSource`. **Make (02.xx CO add):
   write `field_2464` = parentLineItemId when present and skip default-accessory auto-adds for this
   bucket** — the client does not write the parent itself. Test: `tests/worksheet-v2/test-co-add-mounting.js`.
+- **Remove gesture copy (2026-10-20)**: on the CO scene's install-items panel (`co-remove.js`,
+  view_4086 / sub view_4116) the verb is **ADD** — card button `Add Removal`, bulk toolbar
+  `Add Removal to CO` / `Add N Removals to CO`, confirm "Add a removal to the change order?" with the
+  same OK label, busy text `Adding removal…`, accessory controls "Add removal for accessory …". The
+  click drafts a Remove LINE on the CO (a credit against a greenlit install item); it removes nothing
+  from the CO. "Remove from change order" is reserved for the UNLINK of an adopted row (init.js). The
+  result pill still reads "− Slated for removal".
 - **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
   `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
   install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,

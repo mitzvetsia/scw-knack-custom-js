@@ -4,9 +4,12 @@
  * view_4086 deployment in config.js, flagged `remove`). Sibling of
  * co-adopt.js: the project's ACTIVE install line items are shown in the
  * familiar device-worksheet card style — same grouping + warnings the team
- * knows — each with a "− Remove" control (+ multi-select bulk).
+ * knows — each with an "Add Removal" control (+ multi-select bulk "Add
+ * Removal to CO"). The verb is ADD on purpose (2026-10-20): the click puts a
+ * Remove LINE on the change order; it does not remove anything from the CO —
+ * "Remove from change order" is the UNLINK of an adopted row (init.js).
  *
- *   [☐] chevron · label · product · flags · notes · warn · [− Remove]
+ *   [☐] chevron · label · product · flags · notes · warn · [Add Removal]
  *
  * Removal is NOT a delete. Flagging an install item creates a Remove LINE on
  * the change order — a SOW Line Item with CO Action = Remove and a
@@ -61,7 +64,7 @@
  * ⚠️ SHIP STATE (2026-07-07): the panel UI is live, but the write path is
  * gated on Builder fields that don't exist yet (SOW Line Item `CO Action` +
  * `Target install item`; install object `Removed by CO`) AND a Make scenario.
- * Until MAKE_CO_REMOVE_ITEMS_WEBHOOK is a real URL, "− Remove" reports "not
+ * Until MAKE_CO_REMOVE_ITEMS_WEBHOOK is a real URL, "Add Removal" reports "not
  * configured" (same graceful stub adoption shipped with). Once the target
  * field exists, set config `remove.targetField` so already-flagged items can
  * be detected across reloads instead of flipping optimistically.
@@ -106,7 +109,7 @@
   // true. field_2967 (Removed by CO) is what durably marks an item as slated
   // for removal, but Make writes it a beat after the webhook returns — so a
   // worksheet rebuild in that gap would read field_2967 still-blank and revert
-  // the just-removed item to a live "− Remove" button (the double-remove
+  // the just-removed item to a live "Add Removal" button (the double-remove
   // window). decorate() ORs this set with isFlagged() so the red flagged state
   // sticks from the moment of removal. Cleared only on full reload; once
   // field_2967 lands it's redundant. (A future Restore-via-CO flow would need
@@ -188,7 +191,7 @@
       '    minmax(0px, auto)     /* flag chits (RO, only-if-true) */',
       '    minmax(0px, 1.2fr)    /* SCW Notes (read-only here) */',
       '    28px                  /* warning */',
-      '    215px                 /* actions ("− Remove ⇄ Swap Product" / pills) */ !important;',
+      '    240px                 /* actions ("Add Removal ⇄ Swap Product" / pills) */ !important;',
       '}',
 
       // Non-cam install rows hide the (blank) label + flag cells and pin the
@@ -679,8 +682,8 @@
             'data-scw-co-remove-acc="' + aRec.id + '" ' +
             'data-scw-co-remove-acc-label="' + escHtml(lbl) + '" ' +
             'data-scw-co-remove-view="' + viewKey + '" ' +
-            'title="Remove just this accessory on the change order — the device stays" ' +
-            'aria-label="Remove accessory ' + escHtml(lbl) + '">&times;</button>' +
+            'title="Add a removal for just this accessory — the device stays installed" ' +
+            'aria-label="Add removal for accessory ' + escHtml(lbl) + '">&times;</button>' +
           '</span>';
       }
     }
@@ -727,9 +730,9 @@
       btn.setAttribute('data-scw-co-remove-acc', accId);
       btn.setAttribute('data-scw-co-remove-acc-label', lbl);
       btn.setAttribute('data-scw-co-remove-view', viewKey);
-      btn.title = 'Remove just this accessory on the change order \u2014 the device stays';
-      btn.setAttribute('aria-label', 'Remove accessory ' + lbl);
-      btn.textContent = 'Remove';
+      btn.title = 'Add a removal for just this accessory \u2014 the device stays installed';
+      btn.setAttribute('aria-label', 'Add removal for accessory ' + lbl);
+      btn.textContent = 'Add Removal';
       wrap.appendChild(btn);
     }
   }
@@ -826,7 +829,8 @@
         act.innerHTML = '<button type="button" class="' + BTN_CLS + '" ' +
           'data-scw-co-remove="' + rid + '" ' +
           'data-scw-co-remove-view="' + viewKey + '" ' +
-          'title="Flag this install item for removal on the change order">− Remove</button>' +
+          'title="Add a Remove line to the change order for this install item — ' +
+          'it stays installed until the CO is signed">Add Removal</button>' +
           (canSwap
             ? '<button type="button" class="scw-co-swap-btn" ' +
               'data-scw-co-swap="' + rid + '" ' +
@@ -998,7 +1002,7 @@
     _toolbar.innerHTML =
       '<span class="scw-ws-v2-bulk-count">0 selected</span>' +
       '<button type="button" class="' + BULK_CLS + '" ' +
-        'data-scw-co-remove-bulk="' + viewKey + '">Remove from Change Order</button>' +
+        'data-scw-co-remove-bulk="' + viewKey + '">Add Removal to CO</button>' +
       '<button type="button" class="scw-co-swap-bulk" ' +
         'data-scw-co-swap-bulk="' + viewKey + '">⇄ Swap Product</button>' +
       '<button type="button" class="scw-co-remove-clear" ' +
@@ -1048,6 +1052,12 @@
     }
   }
 
+  /** Bulk button label: the verb is ADD — the click drafts Remove lines on
+   *  the CO, it removes nothing from it. Count-aware past one selection. */
+  function bulkRemoveLabel(n) {
+    return n > 1 ? 'Add ' + n + ' Removals to CO' : 'Add Removal to CO';
+  }
+
   function updateBulkToolbar(viewKey) {
     var n = selCount();
     var bar = ensureBulkToolbar(viewKey);
@@ -1056,6 +1066,13 @@
     // Swap applies to the swappable subset — show its count when it differs
     // from the selection, disable at 0. Skipped while a batch is drafting so
     // a mid-batch re-render can't clobber the progress label.
+    var rb = bar.querySelector('.' + BULK_CLS);
+    if (rb && !rb.hasAttribute('data-scw-co-remove-busy')) {
+      rb.textContent = bulkRemoveLabel(n);
+      rb.title = 'Add a Remove line to the change order for ' +
+        (n === 1 ? 'the selected item' : 'each selected item') +
+        ' — nothing leaves install scope until the CO is signed';
+    }
     var sw = bar.querySelector('.scw-co-swap-bulk');
     if (sw && !sw.hasAttribute('data-scw-co-swap-busy')) {
       var swN = n ? swappableSelection(viewKey).length : 0;
@@ -1185,7 +1202,7 @@
       }
       ui.fail();
       alert((data && (data.error || data.message)) ||
-        'Failed to flag the item' + (ids.length > 1 ? 's' : '') + ' for removal.');
+        'Failed to add the removal' + (ids.length > 1 ? 's' : '') + ' to the change order.');
     }).catch(function (err) {
       ui.fail();
       alert('Webhook error: ' + (err && err.message ? err.message : err));
@@ -1227,7 +1244,7 @@
       parentLbl = one ? String(one.identifier || '').replace(/<[^>]*>/g, '').trim() : '';
       break;
     }
-    var title = 'Remove this accessory?';
+    var title = 'Add a removal for this accessory?';
     var lead = '<b>' + escHtml(label || 'This accessory') + '</b> gets its own ' +
       '<b>Remove</b> line on the change order. ' +
       (parentLbl ? 'Its device (<b>' + escHtml(parentLbl) + '</b>)' : 'Its device') +
@@ -1236,7 +1253,7 @@
     if (ns.confirmModal && typeof ns.confirmModal === 'function') {
       ns.confirmModal({
         title: title, body: lead,
-        okLabel: 'Flag for removal', cancelLabel: 'Cancel'
+        okLabel: 'Add Removal to CO', cancelLabel: 'Cancel'
       }).then(function (ok) { if (ok) go(); });
       return;
     }
@@ -1270,11 +1287,13 @@
         !(ns.confirmModal && typeof ns.confirmModal === 'function')) {
       // No accessories involved (or no modal to host the choice — then
       // accessories ride along by default, stated in the prompt).
-      var msg = 'Flag ' + (one ? 'this install item' : n + ' selected install items') +
-        ' for removal on the change order?' +
+      var msg = 'Add ' + (one ? 'a removal' : n + ' removals') + ' to the change order for ' +
+        (one ? 'this install item' : 'the ' + n + ' selected install items') + '?' +
+        '\n\nThe installed item' + (one ? ' stays' : 's stay') +
+        ' in place until the CO is signed.' +
         (accIds.length
-          ? '\n\n(' + (one ? 'Its ' : 'Their ') + accIds.length +
-            ' associated accessor' + (accIds.length === 1 ? 'y is' : 'ies are') +
+          ? '\n\n(Removals for ' + (one ? 'its ' : 'their ') + accIds.length +
+            ' associated accessor' + (accIds.length === 1 ? 'y are' : 'ies are') +
             ' included.)'
           : '');
       if (!window.confirm(msg)) return;
@@ -1284,11 +1303,12 @@
     var includeAccs = true;   // default: the mounting goes with the device
     var accWord = 'accessor' + (accIds.length === 1 ? 'y' : 'ies');
     var body =
-      'This drafts a <b>Remove</b> line on the change order for each item — ' +
-      'nothing leaves install scope until the CO is signed.' +
+      'This adds a <b>Remove</b> line to the change order for ' +
+      (one ? 'this item' : 'each item') + ' and credits it back — the installed ' +
+      (one ? 'item stays' : 'items stay') + ' in place until the CO is signed.' +
       '<label class="scw-co-remove-accopt">' +
         '<input type="checkbox" id="scw-co-remove-incacc" checked>' +
-        '<span>Also remove ' + (one ? 'its' : 'their') + ' <b>' +
+        '<span>Also add removals for ' + (one ? 'its' : 'their') + ' <b>' +
           accIds.length + ' associated ' + accWord + '</b> ' +
           '(the mounting hardware is credited on the CO too)</span>' +
       '</label>' +
@@ -1296,10 +1316,10 @@
         accWord + ' installed — e.g. when the mount stays in place for a ' +
         'future device.</span>';
     ns.confirmModal({
-      title: one ? 'Flag this install item for removal?'
-                 : 'Flag ' + n + ' install items for removal?',
+      title: one ? 'Add a removal to the change order?'
+                 : 'Add ' + n + ' removals to the change order?',
       body: body,
-      okLabel: 'Flag for removal',
+      okLabel: bulkRemoveLabel(n),
       cancelLabel: 'Cancel'
     }).then(function (ok) {
       if (!ok) return;
@@ -1965,7 +1985,7 @@
         });
       return;
     }
-    // Single-row "− Remove".
+    // Single-row "Add Removal".
     var btn = e.target && e.target.closest &&
       e.target.closest('.' + BTN_CLS + '[data-scw-co-remove]');
     if (btn && !btn.disabled) {
@@ -1976,10 +1996,10 @@
       confirmRemove([rid], vk, {
         busy: function () {
           btn.disabled = true;
-          btn.innerHTML = '<span class="scw-co-remove-spin"></span> Removing…';
+          btn.innerHTML = '<span class="scw-co-remove-spin"></span> Adding removal…';
         },
         done: function () { /* row flipped to Flagged by fireRemove */ },
-        fail: function () { btn.disabled = false; btn.textContent = '− Remove'; }
+        fail: function () { btn.disabled = false; btn.textContent = 'Add Removal'; }
       });
       return;
     }
@@ -2002,7 +2022,7 @@
       });
       return;
     }
-    // Bulk "Remove from Change Order" in the floating toolbar.
+    // Bulk "Add Removal to CO" in the floating toolbar.
     var bulk = e.target && e.target.closest &&
       e.target.closest('.' + BULK_CLS + '[data-scw-co-remove-bulk]');
     if (bulk && !bulk.disabled) {
@@ -2014,16 +2034,20 @@
       confirmRemove(ids, vkB, {
         busy: function () {
           bulk.disabled = true;
-          bulk.innerHTML = '<span class="scw-co-remove-spin"></span> Removing…';
+          bulk.setAttribute('data-scw-co-remove-busy', '1');   // keep the progress label through re-renders
+          bulk.innerHTML = '<span class="scw-co-remove-spin"></span> Adding removal' +
+            (ids.length > 1 ? 's' : '') + '…';
         },
         done: function () {
           bulk.disabled = false;
-          bulk.textContent = 'Remove from Change Order';
+          bulk.removeAttribute('data-scw-co-remove-busy');
+          bulk.textContent = bulkRemoveLabel(0);
           updateBulkToolbar(vkB);
         },
         fail: function () {
           bulk.disabled = false;
-          bulk.textContent = 'Remove from Change Order';
+          bulk.removeAttribute('data-scw-co-remove-busy');
+          bulk.textContent = bulkRemoveLabel(0);
           updateBulkToolbar(vkB);
         }
       });
