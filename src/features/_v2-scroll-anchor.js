@@ -360,6 +360,16 @@
     raf(tick);
   }
 
-  window.SCW.v2ScrollAnchor = { around: around, guard: guard };
+  /** Stop any active guard / settle loop. Call right before a DELIBERATE
+   *  programmatic scroll (a jump-to-row, a scope tile, a diff-panel row) so
+   *  a guard armed by a recent render does not chase the page back to where
+   *  it was (2026-10-20 — the reconcile page arms the guard on every
+   *  source-view render, which can be moments before such a click). */
+  function cancel() {
+    _guardToken++; _guardUntil = 0; _runToken++;
+    guardLog('cancelled (deliberate scroll)');
+  }
+
+  window.SCW.v2ScrollAnchor = { around: around, guard: guard, cancel: cancel };
 })();
 /*** END V2 SCROLL ANCHOR ***************************************************/

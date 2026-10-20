@@ -80,6 +80,46 @@
     }, NOTIFY_DEBOUNCE_MS);
   }
 
+  // ── Scroll guard around native re-renders (2026-10-20) ─────────────
+  // Every source view here is a HIDDEN Knack grid. When one re-renders after
+  // a model.fetch (ours, a cascade's, a truncation repair's, anything
+  // Knack-side), Knack's own deferred post-render scroll fires — and a
+  // hidden grid's offset is the top of the page, so the reconcile grid jumps
+  // to the top under the user ("repeatedly jumping to top" on ILJIN, then
+  // Sonaca, with no user action). Arm the row-anchored capture-early /
+  // restore-late guard (_v2-scroll-anchor.js — the one worksheet-v2 arms on
+  // its own source-view renders) BEFORE each fetch and again on the render
+  // event: whatever scrolls the window in the next ~3s is put back; a user
+  // gesture cancels it. Anchored on this grid's rows, not worksheet-v2's.
+  var ROW_SEL = '.scw-bid-review-v2__row[data-row-id]';
+  function armGuard() {
+    try {
+      var a = window.SCW && SCW.v2ScrollAnchor;
+      if (a && typeof a.guard === 'function') a.guard(undefined, ROW_SEL, 'data-row-id');
+    } catch (e) { /* best-effort */ }
+  }
+  // Render diary (localStorage.scwScrollSpy = '1'): which source view
+  // re-rendered, how many records it holds and how long since its previous
+  // render — the line that names a view re-rendering on its own every few
+  // seconds (a KTL auto-refresh, a fetch loop) when the page repaints with
+  // no user action. render.js logs the REBUILD each one causes, naming
+  // this trigger.
+  var _lastRenderAt = Object.create(null);
+  function noteTrigger(kind, key) {
+    ns._lastRenderTrigger = key + ' ' + kind;
+    try {
+      if (!(window.localStorage && localStorage.scwScrollSpy === '1')) return;
+      var now = Date.now();
+      var prev = _lastRenderAt[key];
+      _lastRenderAt[key] = now;
+      var v = Knack.views && Knack.views[key];
+      var n = (v && v.model && v.model.data && v.model.data.models) ? v.model.data.models.length : '?';
+      console.warn('[scw-br-v2] ' + key + ' ' + kind + ' — ' + n + ' records' +
+        (prev ? ', ' + ((now - prev) / 1000).toFixed(1) + 's since its last render' : ', first render') +
+        ' — y=' + Math.round(window.pageYOffset || 0));
+    } catch (e) { /* diagnostics only */ }
+  }
+
   /**
    * Refetch every source view's Backbone model from the server, then
    * notify once they've all settled. Used by the cascade-idle handler:
@@ -90,6 +130,7 @@
    */
   function refetchAll() {
     var keys = (ns.CONFIG && ns.CONFIG.sourceViewKeys) || [];
+    armGuard();   // capture the user's place BEFORE Knack re-renders the grids
     var pending = 0;
     var settled = false;
     function finish() {
@@ -136,10 +177,17 @@
     keys.forEach(function (key) {
       $(document)
         .off('knack-view-render.' + key + nsEvt)
-        .on('knack-view-render.' + key + nsEvt, notifyDebounced);
+        .on('knack-view-render.' + key + nsEvt, function () {
+          armGuard();                 // Knack's deferred scroll is still ahead
+          noteTrigger('render', key);
+          notifyDebounced();
+        });
       $(document)
         .off('knack-cell-update.' + key + nsEvt)
-        .on('knack-cell-update.' + key + nsEvt, notifyDebounced);
+        .on('knack-cell-update.' + key + nsEvt, function () {
+          noteTrigger('cell-update', key);
+          notifyDebounced();
+        });
     });
 
     // mirror-connection-sync emits scw-cascade-idle once all its PUTs
@@ -250,6 +298,7 @@
         mv.rows_per_page = 1000;
         if (mv.source) mv.source.limit = 1000;
       }
+      armGuard();   // the repair re-renders the hidden grid too
       var p = v.model.fetch();   // completion fires knack-view-render → notifyDebounced → rebuild
       _truncRepairInflight[k] = true;
       var clear = function () { _truncRepairInflight[k] = false; };
@@ -304,6 +353,7 @@
     notify:          notify,
     notifyDebounced: notifyDebounced,
     refetchAll:      refetchAll,
+    armGuard:        armGuard,
     attachListeners: attachListeners,
     warnIfTruncated: warnIfTruncated,
     truncationRepairPending: truncationRepairPending

@@ -308,6 +308,7 @@
     }
     if (!matches.length) return matches;
     revealRow(matches[0]);
+    try { if (window.SCW && SCW.v2ScrollAnchor && SCW.v2ScrollAnchor.cancel) SCW.v2ScrollAnchor.cancel(); } catch (eG) { /* ignore */ }
     try { matches[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* jsdom */ }
     for (var m = 0; m < matches.length; m++) {
       (function (tr) {
@@ -491,7 +492,10 @@
         var rows = section.querySelectorAll('tr.scw-bid-review-v2__row[data-sow-item-id="' + ids[i] + '"]');
         for (var k = 0; k < rows.length; k++) { rows[k].classList.add(ROW_HL); if (!first) first = rows[k]; }
       }
-      if (first) { try { first.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (err) { /* ignore */ } }
+      if (first) {
+        try { if (window.SCW && SCW.v2ScrollAnchor && SCW.v2ScrollAnchor.cancel) SCW.v2ScrollAnchor.cancel(); } catch (eG) { /* ignore */ }
+        try { first.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (err) { /* ignore */ }
+      }
     });
   }
 

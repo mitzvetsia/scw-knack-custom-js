@@ -831,6 +831,7 @@
       }
     }
     if (first) {
+      try { if (window.SCW && SCW.v2ScrollAnchor && SCW.v2ScrollAnchor.cancel) SCW.v2ScrollAnchor.cancel(); } catch (eG) { /* ignore */ }
       try { first.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (err) { /* ignore */ }
     }
   }
@@ -917,6 +918,7 @@
           var fold = block.querySelector('[data-scw-sbd-collapse]');
           if (fold) fold.click();
         }
+        try { if (window.SCW && SCW.v2ScrollAnchor && SCW.v2ScrollAnchor.cancel) SCW.v2ScrollAnchor.cancel(); } catch (eG) { /* ignore */ }
         try { block.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (err) { /* ignore */ }
         return;
       }

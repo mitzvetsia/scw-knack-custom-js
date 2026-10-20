@@ -212,6 +212,19 @@
         console.warn('[scw-br-v2] buildSowSection threw', grid && grid.sowId, e);
       }
     }
+    // Rebuild diary (localStorage.scwScrollSpy = '1'): how much of the grid
+    // this render actually rebuilt and what asked for it — read it next to
+    // data.js's per-view render lines when the page repaints on its own.
+    try {
+      if (window.localStorage && localStorage.scwScrollSpy === '1') {
+        var _from = String((new Error()).stack || '').split('\n').slice(2, 6).join(' « ').replace(/\s+/g, ' ');
+        console.warn('[scw-br-v2] REBUILD — ' + reused + ' section(s) reused, ' +
+          (state.sowGrids.length - reused) + ' rebuilt — trigger: ' +
+          (ns._lastRenderTrigger || 'notify()') + ' — y=' + Math.round(window.pageYOffset || 0) +
+          ' — from: ' + _from);
+      }
+    } catch (eSpy) { /* diagnostics only */ }
+    ns._lastRenderTrigger = '';
     body.innerHTML = '';
     body.appendChild(frag);
 

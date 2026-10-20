@@ -1011,6 +1011,30 @@ SOW 1105 — they were on 1684). Nothing is gated on the bid package's `field_23
 - Accepted consequence: a bid assigned to two SOWs shows each line on both grids — matched on the
   owner, "Not on this SOW" on the other. Test: `tests/bid-review-v2/test-not-on-sow-rows.js`.
 
+## Reconcile page scroll guard + render diary (2026-10-20)
+
+"The Reconcile Bid page repeatedly jumps to the top" (ILJIN, then Sonaca; paired `'message'` /
+`'setTimeout'` console violations every few seconds with no user action). Every source view on
+scene_1155 is a HIDDEN Knack grid: when one re-renders after a `model.fetch` (ours, a cascade's, a
+truncation repair's, anything Knack-side) Knack's own deferred post-render scroll fires, and a hidden
+grid's offset is the top of the page. Two changes and a diagnostic:
+- `bid-review-v2/data.js` arms the row-anchored capture-early / restore-late guard
+  (`SCW.v2ScrollAnchor.guard`, the one worksheet-v2 arms on its source-view renders) on every
+  source-view `knack-view-render` and before every fetch it issues (`refetchAll`, truncation
+  repair), anchored on `.scw-bid-review-v2__row[data-row-id]`. A user gesture cancels it, and the
+  deliberate jumps (scope tiles, warning chips, diff-panel row jumps) call
+  `SCW.v2ScrollAnchor.cancel()` first so the guard never chases them back.
+- v1 `bid-review/init.js` `ensureFullPage` is bounded: one push to 1000 rows per view instance, and
+  only when the dropdown offers 1000. Unbounded, a dropdown that could not take the value re-triggered
+  `change` on every render — a silent fetch → render → scroll loop.
+- **Diagnostics**: `localStorage.scwScrollSpy = '1'` + reload. `_scroll-spy.js` is back in the bundle
+  (opt-in, zero cost when disarmed: traces every programmatic scroll with a stack and logs no-gesture
+  jumps with the active element); data.js logs every source-view render (`view_3680 render — 812
+  records, 2.4s since its last render`), render.js every `REBUILD — N section(s) reused, M rebuilt —
+  trigger: view_3921 render`, and `[scw-v2-guard]` lines say what the guard saw and did. A view
+  re-rendering on its own every few seconds names the loop: a KTL `_ar` auto-refresh on that view in
+  Builder, or a fetch loop in a module bound to its render.
+
 ## Margin-low recovery on the reconcile page — `src/features/bid-review/margin.js` (2026-10-16)
 
 The "Margin is low" block under a SOW's Next step (v1 `buildSowStatusBar`, mounted in the v2

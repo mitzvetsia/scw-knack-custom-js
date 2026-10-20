@@ -705,6 +705,7 @@
       }
       if (!clicked) break;
     }
+    try { if (window.SCW && SCW.v2ScrollAnchor && SCW.v2ScrollAnchor.cancel) SCW.v2ScrollAnchor.cancel(); } catch (eG) { /* ignore */ }
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     // Flash the host row AND (when the target is a dupe sub-item) the dupe
     // block itself — the row-level flash is the visible cue, the block-level

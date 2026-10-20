@@ -4866,13 +4866,24 @@
    * had 1000 selected (ready to proceed); false if we just changed it
    * (Knack will re-render the view with full data).
    */
+  // Bounded (2026-10-20): ONE push to 1000 per view instance, and only when
+  // the dropdown actually offers 1000. Unbounded, a dropdown that could not
+  // take the value (no such option, or Knack re-rendering it back to the
+  // Builder default) re-triggered `change` on EVERY render → Knack refetched
+  // and re-rendered the 1000-row grid every couple of seconds, and its
+  // deferred post-render scroll jumped the reconcile page to the top each
+  // time — a silent fetch loop (paired 'message' / 'setTimeout' violations
+  // in the console, nothing else). change-record-limit.js already runs the
+  // same push once per view instance; this is only the belt-and-braces copy.
   function ensureFullPage(viewKey) {
-    var $select = $('#' + viewKey + ' select[name="limit"]');
-    if ($select.length && $select.val() !== '1000') {
-      $select.val('1000').trigger('change');
-      return false; // Knack will re-render — not ready yet
-    }
-    return true; // already at 1000 (or no dropdown found)
+    var $view = $('#' + viewKey);
+    var $select = $view.find('select[name="limit"]');
+    if (!$select.length || $select.val() === '1000') return true;
+    if ($view.data('scwBrFullPage')) return true;                  // one push per view instance
+    if (!$select.find('option[value="1000"]').length) return true;  // Knack cannot take it
+    $view.data('scwBrFullPage', true);
+    $select.val('1000').trigger('change');
+    return false; // Knack will re-render — not ready yet
   }
 
   // ── multi-view readiness tracking ────────────────────────────
