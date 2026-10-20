@@ -446,13 +446,13 @@
   // ways that lost text: (1) a data tick rebuilt the SOW section while the
   // reviewer typed — the textarea was replaced, no blur ever fired, and the
   // keystrokes after that went nowhere; (2) the basis was only the
-  // Builder-assigned default, so autoSave (correctly) never wrote a blob
-  // while the bar still said "saves automatically"; (3) another tab with a
-  // stale snapshot wrote its own blob — and the stale note in it — over the
-  // fresh one. Now every keystroke is kept in a per-device draft and
-  // persisted after a short idle, the blob write re-reads the record first
-  // and keeps a note another tab saved, failures back off and show in the
-  // bar, and a defaulted basis says plainly that the note waits for it.
+  // Builder-assigned default, so autoSave never wrote a blob while the bar
+  // still said "saves automatically"; (3) another tab with a stale snapshot
+  // wrote its own blob — and the stale note in it — over the fresh one. Now
+  // every keystroke is kept in a per-device draft and persisted after a
+  // short idle, a defaulted basis writes a NOTE-ONLY blob (see
+  // buildBlobWith), the blob write re-reads the record first and keeps a
+  // note another tab saved, and failures back off and show in the bar.
   var NOTE_DRAFT_LS     = 'scwSbdNoteDraft';
   var NOTE_DRAFT_TTL_MS = 14 * 24 * 3600 * 1000;
   var NOTE_IDLE_SAVE_MS = 1500;
@@ -537,6 +537,26 @@
     var sowId = grid.sowId;
     var pkgId = basisFor(sowId);
     if (!pkgId) return null;
+    // Soft REL_SOW default (nothing chosen, nothing persisted): the basis pick
+    // is the award moment and must stay a human gesture, so the DIFF is not
+    // frozen and no basis id is written — a blob with a basisBidId reads as
+    // "basis chosen" downstream (ops publish gate). The reviewer NOTE still
+    // saves (2026-10-20: "just update the field"): a note-only blob, no
+    // basis, no fragments, no field_2942. Save-as-basis / a pick builds the
+    // full blob and carries the note forward (currentNote reads it back).
+    if (isDefaulted(sowId)) {
+      return {
+        v: 1, rv: PDF_RENDER_VERSION, sowId: sowId, sowName: grid.sowName || '',
+        basisBidId: '', basisBidName: '', basisSubId: '', basisSubName: '',
+        savedAt: new Date().toISOString(),
+        laborDelta: 0, counts: { material: 0, spec: 0, added: 0, orphan: 0 },
+        coverageGaps: 0, total: 0, exceptions: [], basisTotal: null,
+        note: currentNote(sowId),
+        noteOnly: true,            // written before any basis was saved
+        defaultBidId: pkgId,       // the Builder-assigned bid the panel was showing
+        bidHtml: '', diffHtml: ''
+      };
+    }
     // K1 sentinel — no bid to diff against. A minimal, well-formed blob so
     // every snapshot reader (ops stepper, publish payload) sees a truthy
     // basisBidId with zero differences and no HTML fragments.
@@ -707,9 +727,6 @@
       msg = '<span class="scw-sbd-savemsg">saving…</span>';
     } else if (err) {
       msg = '<span class="scw-sbd-savemsg scw-sbd-savemsg--err">' + esc(saveErrorText(err)) + '</span>';
-    } else if (basisFor(sowId) && isDefaulted(sowId)) {
-      msg = '<span class="scw-sbd-savemsg scw-sbd-savemsg--pending">not saved yet — this bid is only the default</span>';
-      hint = 'Save it as the basis (▾ Save as basis) and the note saves with it. Kept as a draft on this device until then.';
     } else if (savedSnap[sowId]) {
       msg = '<span class="scw-sbd-savemsg scw-sbd-savemsg--ok">✓ auto-saved</span>';
     } else {
@@ -833,11 +850,16 @@
     if (!C.snapshotField || !grid) return;
     var sowId = grid.sowId;
     if (!basisFor(sowId)) return;
-    // Soft REL_SOW default: never snapshot it. A field_2941 blob with a
-    // basisBidId reads as "basis chosen" downstream (ops publish gate), and
-    // a Builder connection nobody confirmed must not open that gate. The
-    // moment the user picks (or Save-as-basis promotes it), this clears.
-    if (isDefaulted(sowId)) return;
+    // Soft REL_SOW default: buildBlobWith returns a NOTE-ONLY blob (no basis
+    // id, so the publish gate stays closed). Write it only when the NOTE
+    // differs from what is persisted — never because a blob merely exists —
+    // so a load with nothing typed writes nothing (no empty blob per
+    // defaulted SOW, and an older full blob is not downgraded on its own).
+    if (isDefaulted(sowId)) {
+      var ps = persistedSnapshot(sowId);
+      var persistedNote = (ps && typeof ps.note === 'string') ? ps.note : '';
+      if (String(currentNote(sowId) || '') === persistedNote) return;
+    }
     var blob = buildBlobWith(grid);
     if (!blob) return;
     var sig = blobSig(blob);
@@ -1692,12 +1714,10 @@
    *  to field_2941 when the reviewer clicks away. Required when diffs exist. */
   function noteBar(sowId, needsNote) {
     var noteVal = currentNote(sowId);
-    var pending = !!(basisFor(sowId) && isDefaulted(sowId));   // the blob can't be written yet
     var reqLbl = needsNote
       ? ' <span class="scw-sbd-req">(required — there are differences)</span>'
       : ' (optional)';
-    return '<div class="scw-sbd-notebar' + (needsNote ? ' scw-sbd-notebar--req' : '') +
-        (pending ? ' scw-sbd-notebar--pending' : '') + '">' +
+    return '<div class="scw-sbd-notebar' + (needsNote ? ' scw-sbd-notebar--req' : '') + '">' +
       '<label class="scw-sbd-note-label">Reviewer note — why we’re proceeding with this diff' +
         reqLbl + '</label>' +
       '<textarea class="scw-sbd-note" data-scw-sbd-note data-sow-id="' + esc(sowId) + '" ' +

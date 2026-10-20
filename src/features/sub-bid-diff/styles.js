@@ -195,8 +195,6 @@
     '.scw-sbd-noterow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }',
     '.scw-sbd-savemsg { font-size: 12px; color: #64748b; }',
     '.scw-sbd-savemsg--ok { color: #047857; font-weight: 600; }',
-    '.scw-sbd-savemsg--pending { color: #b45309; font-weight: 600; }',
-    '.scw-sbd-notebar--pending { background: #fffbeb; border-top-color: #fde68a; }',
     '.scw-sbd-hint { font-size: 11px; color: #94a3b8; margin-left: auto; }',
 
     '.scw-sbd-empty { padding: 22px 14px; color: #94a3b8; text-align: center; font-size: 13px; }'

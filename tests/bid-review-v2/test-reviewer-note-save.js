@@ -8,8 +8,9 @@
 //   4. a permanent write failure stops retrying and is shown in the bar, and a content change
 //      re-arms the save;
 //   5. a stored blob whose NOTE contains '<' still parses (the old tag-stripping parser lost it);
-//   6. a SOW whose basis is only the Builder-assigned default says the note is not saved yet, keeps
-//      the draft, and writes nothing.
+//   6. a SOW whose basis is only the Builder-assigned default still saves the note — as a note-only
+//      blob (no basis id, no field_2942), so the award gesture and the publish gate are untouched; an
+//      empty note on such a SOW writes nothing.
 const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
@@ -163,14 +164,36 @@ const drafts = () => JSON.parse(store.get('scwSbdNoteDraft') || '{}');
   sbd.render.render();
   check('a note with "<" reads back from the stored blob', ta(secA).value, 'under <$500 delta');
 
-  // 6. defaulted basis: honest status, draft kept, nothing written
-  const beforeC = puts.filter(p => p.sowId === SOW_C).length;
-  check('the defaulted SOW\'s bar says the note is not saved yet and why',
-    [/not saved yet/.test(status(secC)), /Save as basis/.test(status(secC)), !!secC.querySelector('.scw-sbd-notebar--pending')], [true, true, true]);
-  type(secC, 'waiting on basis');
+  // 6. defaulted basis: the note saves as a note-only blob; no basis id, no field_2942
+  check('an empty note on a defaulted basis wrote nothing so far', puts.filter(p => p.sowId === SOW_C).length, 0);
+  type(secC, 'note before the award');
   await sleep(2400);
-  check('typing on a defaulted basis writes nothing but keeps the draft',
-    [puts.filter(p => p.sowId === SOW_C).length - beforeC, drafts()[SOW_C] && drafts()[SOW_C].note], [0, 'waiting on basis']);
+  const cPuts = puts.filter(p => p.sowId === SOW_C);
+  const cBlob = cPuts.length ? JSON.parse(cPuts[cPuts.length - 1].body.field_2941) : null;
+  check('typing on a defaulted basis writes the note', [cPuts.length, cBlob && cBlob.note], [1, 'note before the award']);
+  check('…as a note-only blob: no basis id, no diff, flagged, the default bid named for information',
+    cBlob && [cBlob.basisBidId, cBlob.noteOnly, cBlob.total, cBlob.exceptions.length, cBlob.defaultBidId, cBlob.bidHtml],
+    ['', true, 0, 0, PKG9, '']);
+  check('…and field_2942 is NOT written (the award stays a human gesture)', 'field_2942' in cPuts[cPuts.length - 1].body, false);
+  ta(secC).blur();
+  check('the draft retires and the bar reads auto-saved', [drafts()[SOW_C], /auto-saved/.test(status(secC))], [undefined, true]);
+  check('the panel still treats the bid as the soft default (nothing chosen)', JSON.parse(sowC.field_2941_raw).basisBidId, '');
+
+  // 7. a later render with the note-only blob persisted and nothing typed writes nothing more:
+  //    the guard compares the note with the persisted one — a blob merely existing is no reason to write
+  const cBefore = puts.filter(p => p.sowId === SOW_C).length;
+  sbd.render.markDirty(); sbd.render.render();
+  await sleep(700);
+  check('a re-render with the note-only blob persisted and nothing typed writes nothing more',
+    puts.filter(p => p.sowId === SOW_C).length, cBefore);
+
+  // 8. clearing the note on a defaulted basis persists the clearing (still no basis id)
+  type(secC, '');
+  await sleep(2400);
+  const cAfter = puts.filter(p => p.sowId === SOW_C);
+  const cLast = cAfter.length ? JSON.parse(cAfter[cAfter.length - 1].body.field_2941) : null;
+  check('clearing the note on a defaulted basis writes the empty note-only blob',
+    [cAfter.length - cBefore, cLast && cLast.note, cLast && cLast.basisBidId], [1, '', '']);
 
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);

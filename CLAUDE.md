@@ -1097,10 +1097,13 @@ Three ways text was lost, all fixed: (1) a data tick rebuilt the SOW section whi
 — `bid-review-v2/render.js` `hasFocusInPanel` did not count the note textarea as mid-edit, the
 textarea was replaced with no blur, and everything typed after that went nowhere; it now defers the
 rebuild for `data-scw-sbd-note` too. (2) A SOW whose basis is only the Builder-assigned soft default
-never writes a blob (`isDefaulted` — the award must stay a human gesture) while the bar still said
-"saves automatically"; the bar now reads "not saved yet — this bid is only the default … Save as
-basis and the note saves with it" (amber `--pending`). (3) Another tab with a stale snapshot wrote its
-blob, stale note included, over a fresh one. Now:
+never wrote a blob (`isDefaulted` — the award must stay a human gesture) while the bar still said
+"saves automatically". It now writes a **note-only blob** (`buildBlobWith`: `basisBidId: ''`,
+`noteOnly: true`, `defaultBidId`, no fragments, no `field_2942`), so the note lands while the publish
+gate and the award gesture stay exactly as they were; it is written only when the note differs from
+the persisted one (a load with nothing typed writes nothing, and an older full blob is never downgraded
+on its own). Save-as-basis / a pick then builds the full blob and carries the note forward. (3) Another
+tab with a stale snapshot wrote its blob, stale note included, over a fresh one. Now:
 - every keystroke is kept in `noteByGrid` AND a per-device draft (`localStorage` `scwSbdNoteDraft`,
   14-day TTL; resumed by `currentNote` when nothing is persisted) and persisted after a 1.5 s idle
   (`scheduleNoteSave` → the same guarded `autoSave`); blur still saves at once;
