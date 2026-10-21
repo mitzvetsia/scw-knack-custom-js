@@ -199,6 +199,20 @@
     });
   }
 
+  /** Does a submitted revision belong on THIS SOW's page? Its stored
+   *  payload (field_2696 json.sowId — written into every item's JSON since
+   *  2026-10-21) names the SOW page it was raised on. A line item shared
+   *  by the original and an alternate SOW renders on both pages, but the
+   *  request was raised on one of them — showing its strip on the other
+   *  page is what read as "the revision came through on the original
+   *  scope of work". Rows without the id (older revisions) stay visible
+   *  wherever their item renders, as before. */
+  function revisionOnThisSow(rev) {
+    var raisedOn = rev && rev.json && rev.json.sowId;
+    if (!raisedOn || !_sowRecordId) return true;
+    return String(raisedOn) === String(_sowRecordId);
+  }
+
   // ═══════════════════════════════════════════════════════════
   //  DOM HELPERS
   // ═══════════════════════════════════════════════════════════
@@ -343,6 +357,7 @@
   ns.showToast           = showToast;
   ns.setDraftRecordId    = setDraftRecordId;
   ns.detectSowRecordId   = detectSowRecordId;
+  ns.revisionOnThisSow   = revisionOnThisSow;
   ns.rehydrateFromKnack  = rehydrateFromKnack;
   ns.dismissAll          = dismissAll;
   ns.dismissIds          = dismissIds;

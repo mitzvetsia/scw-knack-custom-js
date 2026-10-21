@@ -1018,6 +1018,36 @@ SOW 1105 — they were on 1684). Nothing is gated on the bid package's `field_23
 - Accepted consequence: a bid assigned to two SOWs shows each line on both grids — matched on the
   owner, "Not on this SOW" on the other. Test: `tests/bid-review-v2/test-not-on-sow-rows.js`.
 
+## Sales change request: the SOW rides with the request (2026-10-21) — `src/features/sales-change-request/`
+
+"When sales puts in a revision request it does not allow us to choose which scope of work the
+revision goes on, and even if we enter the revision on the alternate, it comes through as the original
+scope of work." The first half is the design: the request is scoped to the SOW PAGE the rep is on
+(`state.js` `sowIdFromHash`, `…/scope-of-work-details/<sowId>/` on the sales build page), there is no
+picker. The second half is a shared-line-item effect: "Create Alternate SOW" / Share puts ONE line item
+on two SOWs (`field_2154` lists both), so a revision record that only points at the line item
+(`field_2708` / `field_2644`) renders on BOTH SOW pages and under BOTH SOW tabs of the reconcile
+grid — the Original opens first, and that read as "it came through on the original". The envelope has
+carried `sowId` + `sowLabel` since 2026-09-15 (7a2b836f), but the per-item JSON a revision line stores
+(`field_2696`) did not, so nothing downstream could tell. Now:
+- `payload.js` stamps `sowId` + `sowLabel` on EVERY item (so each stored revision line's JSON carries
+  the SOW it was raised on) and the combined HTML header reads "For SOW 1980" (plain text already did);
+  `ns.sowDisplayLabel` is exported. `render.js`'s bar reads "N pending changes · for SOW 1980" and
+  `submit.js`'s confirm names the SOW.
+- `state.js` `revisionOnThisSow(rev)`: a submitted revision whose JSON names a DIFFERENT SOW is not
+  this page's — `revision-inject.js` (v1 strips) and `render-v2.js` (card strips) skip it; rows with no
+  SOW on record (older revisions) show wherever their item renders, as before.
+- `sales-revision-column.js` (reconcile page): pending cards, the per-item cell history and the
+  per-SOW history strip place a revision by `json.sowId` when it has one (`forSection` /
+  `raisedOnSow`), else by its row; the card reads "Raised on SOW 1980" and the history head carries a
+  "SOW 1980" chip. Test seams: `SCW.salesRevHistory._setRevisionData` / `injectIntoV2` / `forSection`.
+- **Make (jlbup3qu…, the sales CR scenario) is the half the bundle cannot fix**: whatever it writes
+  as the SOW of the BID_revision request / line items must come from the payload's `sowId` (envelope,
+  and now every `items[].sowId`), never be derived from the line item's `field_2154` — on a shared
+  item that connection lists the original first. Verify there if the record itself still says the
+  original.
+- Tests: `tests/sow-page/test-sales-cr-sow-scope.js`, `tests/bid-review-v2/test-revision-sow-scope.js`.
+
 ## Reconcile page scroll guard + render diary (2026-10-20)
 
 "The Reconcile Bid page repeatedly jumps to the top" (ILJIN, then Sonaca; paired `'message'` /

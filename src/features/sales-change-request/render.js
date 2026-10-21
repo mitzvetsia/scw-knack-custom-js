@@ -396,6 +396,16 @@
     if (count > 0) countEl.appendChild(chevron);
     countEl.appendChild(H.el('span', P + '-bar-num', String(count)));
     countEl.appendChild(document.createTextNode(' pending change' + (count === 1 ? '' : 's')));
+    // Name the SOW this bar files against — the page the rep is on. A
+    // project with an alternate SOW shows the same line items on two
+    // pages; the request goes to the one named here (2026-10-21).
+    var sowLbl = (typeof ns.sowDisplayLabel === 'function') ? ns.sowDisplayLabel() : '';
+    if (sowLbl) {
+      var sowTag = H.el('span', P + '-bar-sow', 'for SOW ' + sowLbl);
+      sowTag.title = 'Changes submitted from this bar are filed against SOW ' + sowLbl +
+        ' \u2014 the scope of work this page shows';
+      countEl.appendChild(sowTag);
+    }
     if (count > 0) {
       countEl.addEventListener('click', function () {
         _panelOpen = !_panelOpen;

@@ -26,7 +26,9 @@
     var count = ns.pendingCount();
     if (!count) { ns.showToast('No pending changes to submit', 'info'); return; }
 
-    if (!window.confirm('Submit ' + count + ' change(s)?\n\nThis will send the change request for review.')) return;
+    var sowLbl = (typeof ns.sowDisplayLabel === 'function') ? ns.sowDisplayLabel() : '';
+    if (!window.confirm('Submit ' + count + ' change(s)' + (sowLbl ? ' for SOW ' + sowLbl : '') +
+        '?\n\nThis will send the change request for review.')) return;
 
     var payload = ns.buildPayload(false);
     payload.html      = ns.buildHtml();

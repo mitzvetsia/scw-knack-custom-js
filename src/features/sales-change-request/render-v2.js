@@ -206,6 +206,8 @@
     var revData = S.revisionData() || [];
     for (var r = 0; r < revData.length; r++) {
       if (!revData[r].sowItemId) continue;
+      // Raised on another SOW's page → not this page's revision.
+      if (typeof ns.revisionOnThisSow === 'function' && !ns.revisionOnThisSow(revData[r])) continue;
       if (!revBySow[revData[r].sowItemId]) revBySow[revData[r].sowItemId] = [];
       revBySow[revData[r].sowItemId].push(revData[r]);
     }

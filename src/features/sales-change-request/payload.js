@@ -294,6 +294,13 @@
     var pending = S.pending();
     var ids = Object.keys(pending);
     var items = [];
+    // The SOW this request is raised on = the page the rep is on. Stamped
+    // on EVERY item (and so into each stored revision line's JSON), not
+    // only on the envelope: a line item shared by the original and an
+    // alternate SOW cannot say which page the request came from — only
+    // the request can (2026-10-21, "it comes through as the original").
+    var sowId    = S.sowRecordId() || '';
+    var sowLabel = sowDisplayLabel();
 
     for (var i = 0; i < ids.length; i++) {
       var it = pending[ids[i]];
@@ -303,6 +310,8 @@
         action:       it.action,
         rowId:        it.rowId || null,
         sowItemId:    it.action !== 'add' ? (it.rowId || '') : '',
+        sowId:        sowId,
+        sowLabel:     sowLabel,
         displayLabel: H.readableVal(it.displayLabel) || '',
         productName:  H.readableVal(it.productName) || '',
         descText:     H.readableVal(it.descText) || '',
@@ -350,8 +359,8 @@
       actionType: 'sales_change_request',
       isDraft:    isDraft,
       timestamp:  new Date().toISOString(),
-      sowId:      S.sowRecordId() || '',
-      sowLabel:   sowDisplayLabel(),
+      sowId:      sowId,
+      sowLabel:   sowLabel,
       user:       getUser(),
       itemCount:  items.length,
       items:      items,
@@ -420,6 +429,12 @@
     // Header
     h.push('<div style="border-bottom:2px solid #3b82f6;padding-bottom:8px;margin-bottom:16px;">');
     h.push('<div style="font-size:18px;font-weight:700;color:#0f172a;">Sales Change Request</div>');
+    // Name the SOW up front — the plain text already does ("For SOW: …").
+    var sowLbl = sowDisplayLabel();
+    if (sowLbl) {
+      h.push('<div style="font-size:13px;font-weight:600;color:#0f4c75;margin-top:4px;">For SOW ' +
+        esc(sowLbl) + '</div>');
+    }
     h.push('<div style="font-size:13px;color:#64748b;margin-top:2px;">');
     h.push(ids.length + ' item(s) &mdash; ' + esc(new Date().toLocaleString()));
     h.push('</div></div>');
@@ -468,8 +483,9 @@
   }
 
   // ── Public API ──
-  ns.buildPayload   = buildPayload;
-  ns.buildHtml      = buildHtml;
-  ns.buildPlainText = buildPlainText;
+  ns.buildPayload    = buildPayload;
+  ns.buildHtml       = buildHtml;
+  ns.buildPlainText  = buildPlainText;
+  ns.sowDisplayLabel = sowDisplayLabel;
 
 })();

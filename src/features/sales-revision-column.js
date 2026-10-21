@@ -93,6 +93,7 @@
       '}',
       '.' + P + '-card > div { max-width: 100% !important; }',
       '.' + P + '-card > div > div { max-width: 100% !important; }',
+      '.scw-bid-cr-card__sow { font: 600 11px/1.3 system-ui, sans-serif; color: #0f4c75; margin: 2px 0 4px; }',
 
       '.' + P + '-actions {',
       '  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;',
@@ -339,6 +340,42 @@
       map[r.sowItemId].push(r);
     }
     return map;
+  }
+
+  // ── The SOW a revision was raised on ────────────────────────
+  // field_2696 json.sowId — the sales page writes the SOW it is on into
+  // every item's JSON (2026-10-21). A line item shared by the original
+  // and an alternate SOW is a row in BOTH SOW sections of this grid;
+  // following the ROW put a revision filed from the alternate's page
+  // under the Original tab too ("it comes through as the original scope
+  // of work"). '' for older rows, which keep following their item.
+  function raisedOnSow(rev) {
+    var j = rev && rev.json;
+    return (j && j.sowId) ? String(j.sowId) : '';
+  }
+  /** The revisions that belong in a SOW section: raised there, or raised
+   *  before the SOW rode along (then wherever the item renders). */
+  function forSection(revs, sectionSowId) {
+    if (!sectionSowId) return revs;
+    var out = [];
+    for (var i = 0; i < revs.length; i++) {
+      var on = raisedOnSow(revs[i]);
+      if (!on || on === sectionSowId) out.push(revs[i]);
+    }
+    return out;
+  }
+  function sectionSowOf(tr) {
+    var sec = tr && tr.closest ? tr.closest('section.scw-bid-review-v2__sow[data-sow-id]') : null;
+    return sec ? (sec.getAttribute('data-sow-id') || '') : '';
+  }
+  /** The SOW label a request's items carry (first one found), for the
+   *  history head and the card. */
+  function groupSowLabel(items) {
+    for (var i = 0; i < items.length; i++) {
+      var j = items[i] && items[i].json;
+      if (j && j.sowLabel) return String(j.sowLabel);
+    }
+    return '';
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1669,6 +1706,14 @@
     header.textContent = (rev.origin || 'Sales') + ': ' +
       (action === 'remove' ? 'Remove' : action === 'add' ? 'Add' : 'Revise');
     card.appendChild(header);
+    // The SOW the request was raised on — the one line that settles
+    // "which scope of work is this for?" on a shared line item.
+    if (json.sowLabel) {
+      var sowTag = document.createElement('div');
+      sowTag.className = 'scw-bid-cr-card__sow';
+      sowTag.textContent = 'Raised on SOW ' + json.sowLabel;
+      card.appendChild(sowTag);
+    }
 
     var cardProduct = json.productName || '';
     var jr = json.requested || {};
@@ -1840,7 +1885,8 @@
         if (prevHist && prevHist.parentNode) prevHist.parentNode.removeChild(prevHist);
 
         var sowItemId = tr.getAttribute('data-sow-item-id') || '';
-        var revs = sowItemId ? (bySow[sowItemId] || []) : [];
+        var secSow = sectionSowOf(tr);
+        var revs = forSection(sowItemId ? (bySow[sowItemId] || []) : [], secSow);
         if (revs.length) {
           var block = document.createElement('div');
           block.className = V2_BLOCK_CLASS;
@@ -1859,7 +1905,7 @@
 
         // Collapsed per-item history beneath — "this line item has been
         // revised before" stays visible on the row without opening it.
-        var histRevs = sowItemId ? (histBySow[sowItemId] || []) : [];
+        var histRevs = forSection(sowItemId ? (histBySow[sowItemId] || []) : [], secSow);
         if (histRevs.length) {
           sowCell.appendChild(buildScopedHistory(histRevs, {
             cls: 'scw-sr-cellhist',
@@ -1982,6 +2028,8 @@
       '.scw-sr-req__dir--ops     { background: #ede9fe; border-color: #ddd6fe; color: #5b21b6; }',
       '.scw-sr-req__dir--unknown { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }',
       '.scw-sr-req__count { margin-left: auto; color: #64748b; font-size: 11.5px; }',
+      '.scw-sr-req__sow { font: 600 11px/1 system-ui, sans-serif; color: #0f4c75; background: #eff6ff;',
+      '  border: 1px solid #bfdbfe; border-radius: 999px; padding: 3px 7px; white-space: nowrap; }',
       '.scw-sr-req__items { padding: 2px 0; }',
       // Item rows — one line each, not a card
       '.scw-sr-hitem { padding: 5px 12px; border-top: 1px solid #f8fafc; }',
@@ -2209,6 +2257,15 @@
       dirEl.textContent = dir.label;
       head.appendChild(dirEl);
 
+      var sowLbl = groupSowLabel(grp.items);
+      if (sowLbl) {
+        var sowEl = document.createElement('span');
+        sowEl.className = 'scw-sr-req__sow';
+        sowEl.textContent = 'SOW ' + sowLbl;
+        sowEl.title = 'Raised on SOW ' + sowLbl;
+        head.appendChild(sowEl);
+      }
+
       var count = document.createElement('span');
       count.className = 'scw-sr-req__count';
       count.textContent = grp.items.length + ' item' +
@@ -2360,17 +2417,17 @@
         var tid = trs[t].getAttribute('data-sow-item-id');
         if (tid) idSet[tid] = true;
       }
-      // Two match paths, because row-presence alone loses exactly the
-      // revisions that changed the SOW most: an accepted REMOVE deletes
-      // its item, so no row ever renders for it again. The stored payload
-      // (field_2696 JSON) carries the SOW the request was raised from —
-      // match on that too, so history survives its item leaving the grid.
+      // A revision that names the SOW it was raised on belongs to THAT
+      // section only — a shared item's row on the other SOW is the same
+      // item, not the same request — and it survives its item leaving the
+      // grid (an accepted REMOVE deletes the item, so no row renders for
+      // it again). One without the SOW (older rows) follows its item.
       var revs = [];
       for (var i = 0; i < _revisionData.length; i++) {
         var r = _revisionData[i];
-        var byRow = r.sowItemId && idSet[r.sowItemId];
-        var bySowId = r.json && r.json.sowId && r.json.sowId === sowId;
-        if (byRow || bySowId) revs.push(r);
+        var on = raisedOnSow(r);
+        var hit = on ? (on === sowId) : !!(r.sowItemId && idSet[r.sowItemId]);
+        if (hit) revs.push(r);
       }
       if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
       if (!revs.length) continue;
@@ -2395,8 +2452,12 @@
   // "looking at a specific line item" surface. Null when the item has no
   // revisions (or data hasn't loaded), so callers can append-or-skip.
   window.SCW.salesRevHistory = {
-    /** Test seam: the timeline builder, fed revision rows directly. */
+    /** Test seams: the timeline builder, fed revision rows directly; the
+     *  grid injector over a seeded revision set. */
     buildHistory: buildHistory,
+    _setRevisionData: function (rows) { _revisionData = rows || []; },
+    injectIntoV2: injectIntoV2,
+    forSection: forSection,
     blockForItem: function (sowItemId) {
       if (!sowItemId || !_revisionData.length) return null;
       var revs = [];

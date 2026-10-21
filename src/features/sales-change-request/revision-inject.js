@@ -91,6 +91,9 @@
     for (var i = 0; i < revData.length; i++) {
       var rev = revData[i];
       if (!rev.sowItemId) continue;
+      // Raised on another SOW's page — a shared line item renders on both
+      // pages, the request belongs to one (state.js revisionOnThisSow).
+      if (typeof ns.revisionOnThisSow === 'function' && !ns.revisionOnThisSow(rev)) continue;
       if (!bySow[rev.sowItemId]) bySow[rev.sowItemId] = [];
       bySow[rev.sowItemId].push(rev);
     }
