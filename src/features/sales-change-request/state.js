@@ -90,12 +90,65 @@
 
   function setDraftRecordId(id) { _sowRecordId = id; }
 
-  /** Parse the SOW record id out of the current URL hash (pure read).
-   *  '' when the hash isn't a scope-of-work-details route. */
+  var HEX24 = /^[a-f0-9]{24}$/i;
+
+  /** The DEEPEST scope-of-work-details/<id> in the hash (pure read). Knack
+   *  nests a page under the page it was opened from: hopping from SOW A to
+   *  SOW B inside the app yields …/scope-of-work-details/<A>/scope-of-work-
+   *  details/<B>, so the FIRST match is A — the page the rep left. '' when
+   *  the hash isn't a scope-of-work-details route. */
   function sowIdFromHash() {
     var hash = window.location.hash || '';
-    var match = hash.match(/scope-of-work-details\/([a-f0-9]{24})/i);
-    return match ? match[1] : '';
+    var re = /scope-of-work-details\/([a-f0-9]{24})/gi;
+    var m, last = '';
+    while ((m = re.exec(hash))) last = m[1];
+    return last;
+  }
+
+  /** The record id a details / form view's model carries (a grid's model is
+   *  a collection and names no record of its own). */
+  function singleRecordId(v) {
+    var a = v && v.model && v.model.attributes;
+    var id = a && a.id;
+    return (id && HEX24.test(String(id))) ? String(id) : '';
+  }
+
+  /** The page's SOW from a SOW-bound single-record view on the scene — the
+   *  hidden SOW details view / edit form / totals view (CFG.sowRecordViews),
+   *  then any details / form view of the SOW object. Knack renders the scene
+   *  for the record at the END of the hash chain, so these models hold the
+   *  SOW actually on screen whatever the hash looks like. */
+  function sowIdFromViews() {
+    var views = window.Knack && Knack.views;
+    if (!views) return '';
+    var listed = CFG.sowRecordViews || [];
+    var i, id;
+    for (i = 0; i < listed.length; i++) {
+      id = singleRecordId(views[listed[i]]);
+      if (id) return id;
+    }
+    if (!CFG.sowObject) return '';
+    for (var k in views) {
+      if (!Object.prototype.hasOwnProperty.call(views, k)) continue;
+      var v = views[k];
+      var vw = v && v.model && v.model.view;
+      if (!vw || !vw.source || vw.source.object !== CFG.sowObject) continue;
+      if (vw.type && vw.type !== 'details' && vw.type !== 'form') continue;
+      id = singleRecordId(v);
+      if (id) return id;
+    }
+    return '';
+  }
+
+  /** The SOW this page is about: the views first, the hash second. */
+  function resolveSowRecordId() {
+    var fromViews = sowIdFromViews();
+    var fromHash = sowIdFromHash();
+    if (CFG.debug && fromViews && fromHash && fromViews !== fromHash) {
+      console.warn('[SalesCR] page SOW ' + fromViews + ' (view model) differs from the hash\'s ' +
+        fromHash + ' — using the view');
+    }
+    return fromViews || fromHash;
   }
 
   /** Extract the SOW record ID from the URL hash and adopt it.
@@ -113,7 +166,7 @@
    *  rehydrateFromKnack afterwards (init resets its _rehydrated gate
    *  when it sees the id change). */
   function detectSowRecordId() {
-    var id = sowIdFromHash();
+    var id = resolveSowRecordId();
     if (!id || id === _sowRecordId) return;
     if (_sowRecordId && (_saveTimer || Object.keys(_pending).length)) {
       forceSaveDraft();   // writes under the OLD id — before the swap
@@ -358,6 +411,8 @@
   ns.setDraftRecordId    = setDraftRecordId;
   ns.detectSowRecordId   = detectSowRecordId;
   ns.revisionOnThisSow   = revisionOnThisSow;
+  ns._resolveSowRecordId = resolveSowRecordId;   // test seams
+  ns._sowIdFromHash      = sowIdFromHash;
   ns.rehydrateFromKnack  = rehydrateFromKnack;
   ns.dismissAll          = dismissAll;
   ns.dismissIds          = dismissIds;

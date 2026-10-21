@@ -41,7 +41,15 @@
       var a = v && v.model && v.model.attributes;
       if (a && /^[a-f0-9]{24}$/i.test(a.id || '')) return a.id;
     } catch (e) { /* fall through */ }
-    var m = (window.location.hash || '').match(/[a-f0-9]{24}/g);
+    // Deepest scope-of-work-details/<id>: Knack nests pages, so after a hop
+    // from SOW A to SOW B the hash reads …/<A>/scope-of-work-details/<B> and
+    // the second token is A, the page the rep LEFT (2026-10-21). The old
+    // second-token read stays as the last resort for unknown routes.
+    var hash = window.location.hash || '';
+    var re = /scope-of-work-details\/([a-f0-9]{24})/gi, d, deepest = '';
+    while ((d = re.exec(hash))) deepest = d[1];
+    if (deepest) return deepest;
+    var m = hash.match(/[a-f0-9]{24}/g);
     return (m && m[1]) || '';
   }
 

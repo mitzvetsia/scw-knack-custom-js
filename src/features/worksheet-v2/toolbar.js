@@ -262,7 +262,11 @@
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
-      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
+      // Greedy through NESTED SOW segments: hopping from SOW A to SOW B inside
+      // the app leaves …/scope-of-work-details/<A>/scope-of-work-details/<B>,
+      // and a base cut at A sends every child page back to the SOW the user
+      // LEFT (2026-10-21).
+      /(sales-portal\/company-details\/[a-f0-9]{24}(?:\/scope-of-work-details\/[a-f0-9]{24})+)/,
       /(proposals\/scope-of-work\/[a-f0-9]{24})/
     ];
     for (var i = 0; i < patterns.length; i++) {
@@ -569,9 +573,19 @@
     }
     var recordId = '', linkField = '';
     for (var c = 0; c < contexts.length; c++) {
-      var m = hash.match(contexts[c].hashPattern);
-      if (m && m[1]) {
-        recordId  = m[1];
+      // LAST match of the pattern: Knack nests a page under the page it was
+      // opened from (…/scope-of-work-details/<A>/scope-of-work-details/<B>
+      // after hopping from SOW A to SOW B), and the first match is the page
+      // the user LEFT — photos uploaded on B linked to A (2026-10-21).
+      var pat = contexts[c].hashPattern;
+      var re = new RegExp(pat.source, (pat.ignoreCase ? 'i' : '') + 'g');
+      var m, lastId = '';
+      while ((m = re.exec(hash))) {
+        if (m[1]) lastId = m[1];
+        if (!m[0]) re.lastIndex++;
+      }
+      if (lastId) {
+        recordId  = lastId;
         linkField = contexts[c].linkField;
         break;
       }

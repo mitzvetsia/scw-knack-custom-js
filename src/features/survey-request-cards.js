@@ -156,9 +156,22 @@
     return '';
   }
 
-  // The page's SOW record id — second 24-hex segment in the hash.
+  // The page's SOW record id: the SOW details view's own record first, then
+  // the DEEPEST scope-of-work-details/<id> in the hash (Knack nests pages:
+  // after a hop from SOW A to SOW B the hash reads …/<A>/scope-of-work-
+  // details/<B>, and the second token is A, the page the rep LEFT —
+  // 2026-10-21), then the old second-token read for unknown routes.
   function currentSowId() {
-    var m = (window.location.hash || '').match(/[a-f0-9]{24}/g);
+    try {
+      var v = Knack.views && Knack.views[SOW_VIEW];
+      var a = v && v.model && v.model.attributes;
+      if (a && /^[a-f0-9]{24}$/i.test(a.id || '')) return a.id;
+    } catch (e) { /* fall through */ }
+    var hash = window.location.hash || '';
+    var re = /scope-of-work-details\/([a-f0-9]{24})/gi, d, deepest = '';
+    while ((d = re.exec(hash))) deepest = d[1];
+    if (deepest) return deepest;
+    var m = hash.match(/[a-f0-9]{24}/g);
     return (m && m[1]) || '';
   }
 

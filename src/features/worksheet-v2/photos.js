@@ -350,7 +350,10 @@
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
       /(subcontractor-portal\/deployment-dashboard\/[a-f0-9]{24})/,
-      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
+      // Greedy through NESTED SOW segments (…/<A>/scope-of-work-details/<B>
+      // after hopping SOW A → B): a base cut at A opens every photo page
+      // under the SOW the user LEFT (2026-10-21).
+      /(sales-portal\/company-details\/[a-f0-9]{24}(?:\/scope-of-work-details\/[a-f0-9]{24})+)/,
       /(proposals\/scope-of-work\/[a-f0-9]{24})/
     ];
     for (var i = 0; i < patterns.length; i++) {

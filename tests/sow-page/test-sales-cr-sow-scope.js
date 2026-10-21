@@ -79,5 +79,38 @@ ns.detectSowRecordId();
 check('after a hop to the original, the id follows the route', ns._state.sowRecordId(), SOW_A);
 check('and the label follows it', ns.sowDisplayLabel(), '1979');
 
+
+// ── Knack nests pages: the hash is NOT the page (2026-10-21, "the payload came across as 1642").
+// Hopping from SOW A to SOW B inside the app leaves …/scope-of-work-details/<A>/scope-of-work-details/<B>.
+window.location.hash = '#sales-portal/company-details/' + COMPANY + '/scope-of-work-details/' + SOW_A +
+  '/scope-of-work-details/' + SOW_B + '/';
+check('hash reader takes the DEEPEST SOW segment, not the first', ns._sowIdFromHash(), SOW_B);
+ns.detectSowRecordId();
+check('a nested route resolves to the SOW on screen (B), not the one the rep left (A)', ns._state.sowRecordId(), SOW_B);
+check('and the request names that SOW', ns.buildPayload(false).sowLabel, '1980');
+
+// The page's own SOW-bound view beats the hash entirely.
+window.location.hash = '#sales-portal/company-details/' + COMPANY + '/scope-of-work-details/' + SOW_A + '/';
+ns.detectSowRecordId();
+check('hash-only read lands on A first', ns._state.sowRecordId(), SOW_A);
+window.Knack.views.view_3827 = { model: { attributes: { id: SOW_B, field_2126: 'Alt' },
+  view: { type: 'details', source: { object: 'object_106' } } } };
+ns.detectSowRecordId();
+check('the SOW details view on the scene wins over a hash that says A', ns._state.sowRecordId(), SOW_B);
+check('resolver prefers the view', ns._resolveSowRecordId(), SOW_B);
+
+// Any single-record view of the SOW object counts; a GRID of SOWs does not.
+delete window.Knack.views.view_3827;
+window.Knack.views.view_9001 = { model: { attributes: {}, data: { models: [] },
+  view: { type: 'table', source: { object: 'object_106' } } } };
+check('a SOW grid names no record → hash fallback (A)', ns._resolveSowRecordId(), SOW_A);
+window.Knack.views.view_9002 = { model: { attributes: { id: SOW_B },
+  view: { type: 'form', source: { object: 'object_106' } } } };
+check('an unlisted SOW form view is found by its object', ns._resolveSowRecordId(), SOW_B);
+window.Knack.views.view_9003 = { model: { attributes: { id: '6a0000000000000000000ffff' },
+  view: { type: 'details', source: { object: 'object_3' } } } };
+check('a details view of another object is ignored', ns._resolveSowRecordId(), SOW_B);
+delete window.Knack.views.view_9001; delete window.Knack.views.view_9002; delete window.Knack.views.view_9003;
+
 console.log('RESULT ' + (fails ? fails + ' FAILED' : 'all passed'));
 process.exit(fails ? 1 : 0);

@@ -303,10 +303,20 @@
     } catch (e) { return { id: '', name: '', email: '' }; }
   }
 
+  // The LAST match wins. Knack nests a page under the page it was opened
+  // from — hopping from SOW A to SOW B inside the app yields
+  // …/scope-of-work-details/<A>/scope-of-work-details/<B> — and the first
+  // match is the page the user LEFT, so photos uploaded on B linked to A
+  // (2026-10-21).
   function getRecordId(hashPattern) {
     var hash = window.location.hash || '';
-    var m = hash.match(hashPattern);
-    return m ? m[1] : '';
+    var re = new RegExp(hashPattern.source, (hashPattern.ignoreCase ? 'i' : '') + 'g');
+    var m, last = '';
+    while ((m = re.exec(hash))) {
+      if (m[1]) last = m[1];
+      if (!m[0]) re.lastIndex++;
+    }
+    return last;
   }
 
   // ── INDEXEDDB ─────────────────────────────────────────────────────────

@@ -25,9 +25,16 @@
 
   /** Extract a record ID from the current URL hash using the given pattern. */
   function getRecordId(hashPattern) {
+    // LAST match: Knack nests pages (…/<slug>/<A>/<slug>/<B> after hopping
+    // from record A to B), and the first match is the page the user left.
     var hash = window.location.hash || '';
-    var match = hash.match(hashPattern);
-    return match ? match[1] : '';
+    var re = new RegExp(hashPattern.source, (hashPattern.ignoreCase ? 'i' : '') + 'g');
+    var m, last = '';
+    while ((m = re.exec(hash))) {
+      if (m[1]) last = m[1];
+      if (!m[0]) re.lastIndex++;
+    }
+    return last;
   }
 
   /** Build the JotForm iframe URL with optional pre-population. */

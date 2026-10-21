@@ -92,6 +92,19 @@
     draftField:       'field_2707',  // paragraph field on SOW record for cross-session draft
     draftView:        'view_3841',  // editable view on the same page for SOW record API calls
 
+    // ── The page's SOW record ──────────────────────────────
+    // Resolved from a SOW-bound single-record view on the scene FIRST (the
+    // hidden SOW details view / edit form / totals view): Knack renders the
+    // scene for the record at the END of the hash chain, so those models hold
+    // the SOW actually on screen. The hash is only the fallback, and then the
+    // DEEPEST scope-of-work-details/<id>, never the first: Knack NESTS a page
+    // under the page it was opened from, so hopping from SOW A to SOW B inside
+    // the app yields …/scope-of-work-details/<A>/scope-of-work-details/<B>,
+    // and the first match is A — the page the rep LEFT (2026-10-21: a request
+    // raised on 1980 filed, drafted and release-reverted as 1642).
+    sowObject:        'object_106',
+    sowRecordViews:   ['view_3827', 'view_3841', 'view_3418'],
+
     // ── Debug / styling ────────────────────────────────────
     // Gated on the global SCW.DEBUG flag — was hardcoded true, which
     // spammed [SalesCR] activation diagnostics on EVERY worksheet render

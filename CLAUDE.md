@@ -1048,6 +1048,27 @@ carried `sowId` + `sowLabel` since 2026-09-15 (7a2b836f), but the per-item JSON 
   original.
 - Tests: `tests/sow-page/test-sales-cr-sow-scope.js`, `tests/bid-review-v2/test-revision-sow-scope.js`.
 
+**The actual leak, found the same day ("the payload came across as 1642" from a rep who was on 1980):
+the hash is not the page.** Knack NESTS a page under the page it was opened from, so hopping from SOW A
+to SOW B inside the app (the context bar's "also on this project" link, the other-SOWs grid) leaves
+`…/scope-of-work-details/<A>/scope-of-work-details/<B>` (seen in the 2026-10 page dumps), and every
+first-match read of the hash returned A — the page the rep LEFT. The sales CR filed against A, kept its
+draft on A's `field_2707`, and `autoRevertValidation` revoked A's release. Fixed in three ways:
+- `state.js` `resolveSowRecordId`: the page's SOW comes from a SOW-bound SINGLE-RECORD view on the scene
+  first (`CFG.sowRecordViews` view_3827 / view_3841 / view_3418, then any details / form view whose
+  `model.view.source.object` is the SOW object `CFG.sowObject` = object_106 — Knack renders the scene for
+  the record at the END of the chain, so those models hold the SOW on screen), and only then the hash,
+  taking the DEEPEST `scope-of-work-details/<id>`.
+- The same first-match bug in every other reader on these pages: `bulk-upload.js` `getRecordId` and
+  `worksheet-v2/toolbar.js`'s upload contexts (photos uploaded on B linked to A), `jotform-embed-sow-
+  photos.js`, the three `buildSowBasePath` sales patterns (toolbar / photos / card: greedy through nested
+  SOW segments, else every child page — edit photo, add accessory — opened under A and dropped the user
+  back on A), and the "second 24-hex token" reads in `survey-request-sow-link.js`,
+  `survey-request-cards.js`, `survey-request-form.js`. `photo-assign.js` `routeIdsOf` and
+  `sow-add-item-form.js` `currentSowId` already took the last segment.
+- Rule going forward: **never take the FIRST match of a page slug in the hash.** Prefer the page's own
+  record view; when the hash is all there is, take the deepest occurrence of the slug.
+
 ## Reconcile page scroll guard + render diary (2026-10-20)
 
 "The Reconcile Bid page repeatedly jumps to the top" (ILJIN, then Sonaca; paired `'message'` /

@@ -1638,7 +1638,9 @@
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
-      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/
+      // Greedy through NESTED SOW segments (…/<A>/scope-of-work-details/<B>
+      // after hopping SOW A → B) — see toolbar.js / photos.js (2026-10-21).
+      /(sales-portal\/company-details\/[a-f0-9]{24}(?:\/scope-of-work-details\/[a-f0-9]{24})+)/
     ];
     for (var i = 0; i < patterns.length; i++) {
       var m = hash.match(patterns[i]);

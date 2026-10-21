@@ -179,10 +179,14 @@
       }
     }
     if (!ctx.sowId) {
-      // Hash fallback — second 24-hex token is the SOW on this page
-      // (same convention as survey-request-cards.js currentSowId()).
-      var m = (window.location.hash || '').match(/[a-f0-9]{24}/g);
-      ctx.sowId = (m && m[1]) || '';
+      // Hash fallback — the DEEPEST scope-of-work-details/<id> (Knack nests
+      // pages after an in-app hop, and the second token is then the SOW the
+      // rep LEFT — 2026-10-21), else the old second-token read.
+      var hash = window.location.hash || '';
+      var re = /scope-of-work-details\/([a-f0-9]{24})/gi, d, deepest = '';
+      while ((d = re.exec(hash))) deepest = d[1];
+      var m = hash.match(/[a-f0-9]{24}/g);
+      ctx.sowId = deepest || (m && m[1]) || '';
     }
     return ctx;
   }
