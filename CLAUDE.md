@@ -1136,8 +1136,11 @@ written to Knack. Mockup: Claude Design canvas "Client Deployment Report".
   `photos.extractPhotoRecords` (every photo with an image, typed or not — decided 2026-10-21; empty
   slots never print); the per-device configuration answers from `SCW.deliverables` (the active
   fields of the item's schema, answers from `field_2932`; a label or key matching
-  `CONFIG.CONFIG_EXCLUDE` — password, PIN, credential, token… — never prints); mounts from the
-  accessory back-pointer `field_2853`; the install status `field_2825` is read but NOT printed
+  `CONFIG.CONFIG_EXCLUDE` — password, PIN, credential, token… — never prints); the attached
+  accessories from the back-pointer `field_2853`, split by bucket into the card's "Mount" line
+  (mounting hardware) and "Accessories" line (anything else attached, e.g. a recorder's hard
+  drives; `SHOW_MOUNTS` / `SHOW_ACCESSORIES`) — an attached item is never a card and never counts
+  in a tile; the install status `field_2825` is read but NOT printed
   (`STATUS_CHIP: 'none'` — the field is not maintained; the first live run read "NOT STARTED" on
   every installed camera; `'done'` / `'all'` turn the chip back on); a cable line that is ONLY
   "New drop" / "Existing cable" (length,
@@ -1146,9 +1149,10 @@ written to Knack. Mockup: Claude Design canvas "Client Deployment Report".
   first); the project name off `field_4`; client and address by label off any details view on the
   scene; location names tidied (`cleanLocation`: "HEADEND: : 019 - …" → "HEADEND: 019 - …"); the
   site map images off view_3942 (site-maps-strip rules; a PDF plan is named, not embedded).
-- **Pages**: cover (scope tiles via `summary.aggregateScope`: Cameras OR Readers — never both —,
-  headend & network, other equipment, MDF / IDF locations = the worksheet's location groups with at
-  least one installed device, photos), one page per site map image, one page per location with
+- **Pages**: cover (scope tiles counted from the devices that get cards, qty-weighted — the
+  aggregate is only asked whether the family reads Cameras or Readers, never both; headend &
+  network; other equipment = the Other Equipment bucket, never mounting hardware; MDF / IDF
+  locations = the worksheet's location groups with at least one installed device; photos), one page per site map image, one page per location with
   THREE cards to a Letter page (compact head, one-column facts, four contain-fit photos to a row,
   a card never split across pages), the **network map on ONE page** (`networkRows`: a band per
   location in report order, one row per recorder or switch — node left, its devices as chips

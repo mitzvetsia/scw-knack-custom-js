@@ -64,6 +64,12 @@
     // prints it only when it reads done / installed / complete; 'all'
     // prints every value.
     STATUS_CHIP: 'none',
+    // The accessory lines on a device card: the mounting hardware attached
+    // to it ("Mount") and any other attached accessory ("Accessories", e.g.
+    // the hard drives in a recorder). Mounting hardware is never a card of
+    // its own and never counts as other equipment.
+    SHOW_MOUNTS: true,
+    SHOW_ACCESSORIES: true,
     // Every photo with an image prints, typed or not (decided 2026-10-21).
     INCLUDE_UNTYPED_PHOTOS: true,
     // Configuration answers whose field label or key matches never print.
@@ -364,8 +370,10 @@
     var all = records(viewKey);
     schemaCache = null;
 
-    // Accessories (mounts) by the parent they are attached to — the child's
-    // back-pointer is authoritative (CLAUDE.md, accessory pair).
+    // Attached accessories by the parent they hang off — the child's
+    // back-pointer is authoritative (CLAUDE.md, accessory pair). Mounting
+    // hardware and every other attached item (a recorder's hard drives) are
+    // kept apart so the card can label them.
     var accessoriesOf = Object.create(null), attached = Object.create(null);
     all.forEach(function (rec) {
       var p = connList(rec, F.parent)[0];
@@ -373,7 +381,8 @@
       attached[rec.id] = true;
       var name = productOf(rec, F);
       if (!name) return;
-      (accessoriesOf[p.id] = accessoriesOf[p.id] || []).push(name);
+      var acc = accessoriesOf[p.id] || (accessoriesOf[p.id] = { mounts: [], accessories: [] });
+      acc[familyOf(rec, viewKey) === 'mount' ? 'mounts' : 'accessories'].push(name);
     });
 
     var tree = n.groups.buildGroupTree(all, null, {
@@ -396,7 +405,8 @@
         connectedTo: connList(rec, F.connectedDevice)[0] || null,
         connectedDeviceIds: connList(rec, F.connectedDevices).map(function (c) { return c.id; }),
         connectedDevices: [],
-        mounts: accessoriesOf[rec.id] || [],
+        mounts: (accessoriesOf[rec.id] || {}).mounts || [],
+        accessories: (accessoriesOf[rec.id] || {}).accessories || [],
         cable: composeCable(rec, F),
         facts: configFacts(rec),
         photos: photosOf(viewKey, rec.id)
@@ -442,12 +452,18 @@
 
     var photoCount = 0;
     devices.forEach(function (d) { photoCount += d.photos.length; });
+    // The tiles count the devices that get cards (qty-weighted) — never an
+    // attached accessory, a mount, a service or a removed item. The scope
+    // aggregate is only asked which family name fits: Cameras or Readers.
     var scope = { title: 'Cameras', cameras: 0, headend: 0, other: 0 };
+    devices.forEach(function (d) {
+      var q = d.qty || 1;
+      if (d.family === 'cam') scope.cameras += q; else if (d.family === 'headend') scope.headend += q; else scope.other += q;
+    });
     try {
       if (n.summary && typeof n.summary.aggregateScope === 'function') {
         var a = n.summary.aggregateScope(all, { fields: F, viewKey: viewKey, hideMoney: true });
-        scope = { title: a.title || 'Cameras', cameras: (a.cam && a.cam.count) || 0,
-                  headend: (a.headend && a.headend.count) || 0, other: (a.other && a.other.count) || 0 };
+        if (a && a.title) scope.title = a.title;
       }
     } catch (e) { log('aggregateScope failed', e); }
     scope.locations = locations.length;
@@ -823,7 +839,8 @@
     if (d.connectedDevices.length) {
       pairs.push({ label: 'Connected devices', html: chipsHtml(d.connectedDevices.map(function (c) { return c.label; })) });
     }
-    if (d.mounts.length) pairs.push({ label: 'Mount', value: d.mounts.join(', ') });
+    if (CONFIG.SHOW_MOUNTS && d.mounts.length) pairs.push({ label: 'Mount', value: d.mounts.join(', ') });
+    if (CONFIG.SHOW_ACCESSORIES && d.accessories.length) pairs.push({ label: 'Accessories', value: d.accessories.join(', ') });
     if (d.cable) pairs.push({ label: 'Cable', value: d.cable });
     d.facts.forEach(function (f) { pairs.push(f); });
     h.push(factsHtml(pairs));

@@ -42,6 +42,10 @@ const install = [
     field_2818_raw: L1, field_2218: 30, field_2789: 1 },
   { id: 'm1', field_2801: 'Wall Mount Bracket', field_2790: 'Wall Mount Bracket', field_2822_raw: conn(MNT, 'Mounting Hardware'),
     field_2818_raw: L1, field_2218: 30, field_2789: 1, field_2853_raw: conn('c1', 'I-001') },
+  // a hard drive in the Other Equipment bucket, attached to the recorder: an accessory line on the
+  // NVR card, never a card or an "other equipment" count of its own
+  { id: 'h1', field_2801: 'Hard Drive, 24TB', field_2790: 'Hard Drive, 24TB', field_2822_raw: conn(OTH, 'Other Equipment'),
+    field_2818_raw: L1, field_2218: 30, field_2789: 1, field_2853_raw: conn('n1', 'NVR-01') },
   { id: 'sv1', field_2801: 'Lift rental', field_2790: '', field_2809: 'Lift rental', field_2822_raw: conn(SVC, 'Services'), field_2218: 40, field_2789: 1 }
 ];
 const photosById = {
@@ -150,6 +154,7 @@ const cfg = api.CONFIG.SCENES[0];
   const n1 = r.devices.find(d => d.id === 'n1');
   check('the recorder lists its connected devices from the union of forward list and back-pointers, in worksheet order',
     n1.connectedDevices.map(c => c.label), ['SW-02', 'I-001', 'SW-01']);
+  check('an attached hard drive is an accessory line on the recorder, not a mount and not a device', [n1.mounts, n1.accessories, r.devices.some(d => d.id === 'h1')], [[], ['Hard Drive, 24TB'], false]);
   check('removed by change order: apart from the locations, with the CO named', r.removed.map(d => [d.label, d.location, d.co]), [['I-002', 'MDF - Server Room', 'CO 1781']]);
   check('network: the recorder is the root; its direct camera is a leaf; each switch is a branch with its cameras; the unconnected camera is listed apart',
     [r.network.roots.map(n => [n.device.label, n.leaves.map(l => l.label), n.branches.map(b => [b.device.label, b.leaves.map(l => l.label)])]), r.network.unconnected.map(d => d.label)],
@@ -180,6 +185,7 @@ const cfg = api.CONFIG.SCENES[0];
     [has('scw-pid-banner'), has('Acme Logistics'), has('https://s3/maps/floor1.png'), has('Dock Door 1'), has('What connects to what'), has('Removed by change order'), has('CO 1781'), has('Device index'), has('Not connected to a recorder or switch')],
     [true, true, true, true, true, true, true, true, true]);
   check('never printed: the password, SCW notes, the service line', [has('hunter2'), has('internal note'), has('Lift rental')], [false, false, false]);
+  check('the recorder card labels its hard drive as an accessory, the camera its bracket as a mount', [has('<dt>Accessories</dt><dd>Hard Drive, 24TB</dd>'), has('<dt>Mount</dt><dd>Wall Mount Bracket</dd>')], [true, true]);
   check('the document title names the client', has('<title>Acme Logistics · Deployment report</title>'), true);
   check('photos print from the thumbnail with the full-size onerror fallback; the bar says so',
     [has('src="https://s3/thumb_14/ph1.jpg"'), has("onerror=\"this.onerror=null;this.src='https://s3/ph1.jpg'\""), has('3 photos: 3 at Knack')], [true, true, true]);
