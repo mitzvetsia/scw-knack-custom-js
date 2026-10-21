@@ -177,13 +177,15 @@ const cfg = api.CONFIG.SCENES[0];
     [L.lines.length, L.lines.filter(l => l.dashed).length, L.implied, L.scale], [8, 0, false, 1]);
   // a deployment like the first live one: the recorder records nothing, the switches record no uplink
   const mk = (id, label, product, family, loc, to) => ({ id, label, product, family, location: loc, photos: [], connectedDeviceIds: [], connectedTo: to ? { id: to, label: to.toUpperCase() } : null, mounts: [], accessories: [], facts: [], cable: '', qty: 0, status: '' });
-  const live = [mk('n', 'NVR-01', 'Imperial 128 Channel 4K NVR v3', 'headend', 'MDF'), mk('s', 'Pre-existing PoE Switch U17', 'Pre-existing PoE Switch', 'headend', 'IDF 01'), mk('c', 'RA-I-070', 'Sheriff 8.0', 'cam', 'IDF 01', 's')];
+  // the switch's LABEL carries "Server Room": the product, not the label, says what is a recorder
+  const live = [mk('n', 'NVR-01', 'Imperial 128 Channel 4K NVR v3', 'headend', 'MDF'), mk('s', 'Pre-existing PoE Switch 019 - Server Room', 'Pre-existing PoE Switch', 'headend', 'MDF'), mk('c', 'RA-I-067', 'Sheriff 8.0', 'cam', 'MDF', 's')];
   const net2 = api._internals.buildNetwork(live);
-  const L2 = api._internals.networkLayout({ network: net2, locations: [{ label: 'MDF', devices: [live[0]] }, { label: 'IDF 01', devices: [live[1], live[2]] }], devices: live });
-  check('live shape: a lone recorder with nothing recorded still becomes the hub, and the switch with no recorded uplink hangs off it by a dashed line',
-    [L2.hub && L2.hub.label, L2.nodes.map(n => n.kind), L2.lines.filter(l => l.dashed).length, L2.implied], ['NVR-01', ['hub', 'switch'], 1, true]);
+  const L2 = api._internals.networkLayout({ network: net2, locations: [{ label: 'MDF', devices: live }], devices: live });
+  check('live shape: a lone recorder with nothing recorded still becomes the hub — never the switch whose label says "Server Room" — and the switch with no recorded uplink hangs off it by a dashed line',
+    [L2.hub && L2.hub.label, L2.nodes.map(n => [n.kind, n.label]), L2.lines.filter(l => l.dashed).length, L2.implied],
+    ['NVR-01', [['hub', 'NVR-01'], ['switch', 'Pre-existing PoE Switch 019 - Server Room']], 1, true]);
   api.CONFIG.IMPLY_UPLINKS = false;
-  const L3 = api._internals.networkLayout({ network: net2, locations: [{ label: 'IDF 01', devices: [live[1], live[2]] }], devices: live });
+  const L3 = api._internals.networkLayout({ network: net2, locations: [{ label: 'MDF', devices: live }], devices: live });
   check('with implied uplinks off the switch stands alone: no hub, no trunk, no dashed line', [L3.hub, L3.nodes.map(n => n.kind), L3.lines.length], [null, ['switch'], 1]);
   api.CONFIG.IMPLY_UPLINKS = true;
 
@@ -207,7 +209,7 @@ const cfg = api.CONFIG.SCENES[0];
     [true, true, true, true, true, true, true, true, true, true, true]);
   check('never printed: the password, SCW notes, the service line', [has('hunter2'), has('internal note'), has('Lift rental')], [false, false, false]);
   check('the recorder card labels its hard drive as an accessory, the camera its bracket as a mount', [has('<dt>Accessories</dt><dd>Hard Drive, 24TB</dd>'), has('<dt>Mount</dt><dd>Wall Mount Bracket</dd>')], [true, true]);
-  check('the document title names the client', has('<title>Acme Logistics · Deployment report</title>'), true);
+  check('the document title (the saved PDF\'s file name) leads with the project number', has('<title>Project 61234567890 - Acme Logistics - Deployment report</title>'), true);
   check('photos print from the thumbnail with the full-size onerror fallback; the bar says so',
     [has('src="https://s3/thumb_14/ph1.jpg"'), has("onerror=\"this.onerror=null;this.src='https://s3/ph1.jpg'\""), has('3 photos: 3 at Knack')], [true, true, true]);
   check('install status chips are off (the field is not maintained); the locations tile is named', [has('class="cr-status'), has('Not Started'), has('MDF / IDF locations')], [false, false, true]);
@@ -220,7 +222,7 @@ const cfg = api.CONFIG.SCENES[0];
   api.CONFIG.PRINT_DELAY_MS = 20;
   const rep = await api.generate(cfg, btn());
   await sleep(60);
-  check('generate wrote the report into the new tab, triggered print, and put the button back', [!!rep, written.indexOf('Acme Logistics · Deployment report') !== -1, printed, btn().textContent, btn().disabled], [true, true, true, 'Client report (PDF)', false]);
+  check('generate wrote the report into the new tab, triggered print, and put the button back', [!!rep, written.indexOf('Project 61234567890 - Acme Logistics - Deployment report') !== -1, printed, btn().textContent, btn().disabled], [true, true, true, 'Client report (PDF)', false]);
 
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);

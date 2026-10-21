@@ -1128,8 +1128,9 @@ ops Manage Deployment page (scene_1311 / view_4093), gated by `CONFIG.ALLOWED_EM
 (`['micah.shearer@getscw.com']` while in preview; empty = everyone on the scene; the scene is watched
 with a MutationObserver so the button survives every toolbar rebuild). The click opens a new tab
 synchronously (pop-up blockers stay quiet), builds the report from the data already on the page,
-writes it into the tab and calls `print()` — the user saves as PDF. No Make, no API key, nothing is
-written to Knack. Mockup: Claude Design canvas "Client Deployment Report".
+writes it into the tab and calls `print()` — the user saves as PDF (the document title, which the browser uses as the file name, reads
+"Project <number> - <client> - Deployment report"). No Make, no API key, nothing is written to
+Knack. Mockup: Claude Design canvas "Client Deployment Report".
 - **Data** (`collect`): the worksheet's records (`SCW.worksheetV2.data.readRecords`) grouped with the
   worksheet's OWN `groups.buildGroupTree`, so the pages follow the worksheet — locations alphabetical
   (numeric-aware), within a location proposal-bucket sort order then label; photos from
@@ -1162,8 +1163,9 @@ written to Knack. Mockup: Claude Design canvas "Client Deployment Report".
   drawing taller than the page is scaled down to fit, to 55 %). The tree comes from `buildNetwork`
   (a child's own Connected To `field_2821` wins, a parent's Connected Devices `field_2820` adopts
   only a child that names no parent — the worksheet's authoritative union). `IMPLY_UPLINKS`: when
-  the deployment has exactly ONE recorder (product or label reads NVR / DVR / recorder / server)
-  and a switch records no uplink, the switch hangs off the recorder by a DASHED line and the
+  the deployment has exactly ONE recorder (`isRecorder`: the PRODUCT name reads NVR / DVR /
+  recorder / network video — never the label, which carries the location: "… 019 - Server Room"
+  once made a switch the hub) and a switch records no uplink, the switch hangs off the recorder by a DASHED line and the
   legend says the uplink is not recorded on the device — the first live run (one NVR recording
   nothing, six switches recording no uplink) otherwise drew six unrelated switches and no
   recorder. Then the items removed by change order (`field_2967`, "CO 1781" from the identifier)

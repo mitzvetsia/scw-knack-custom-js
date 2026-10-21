@@ -726,10 +726,10 @@
       '.nm-lines path { fill: none; stroke: #64748b; stroke-width: 1.5; stroke-linecap: round; }',
       '.nm-lines path.is-dashed { stroke-dasharray: 5 4; }',
       '.nm-node { display: flex; flex-direction: column; justify-content: center; padding: 4px 10px; border-radius: 6px; border: 1px solid #c9d4de; background: #eef4fb; font-size: 11.5px; line-height: 1.25; overflow: hidden; }',
-      '.nm-node b { display: block; font-size: 12px; color: ' + NAVY + '; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '.nm-node b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 12px; line-height: 1.2; color: ' + NAVY + '; overflow: hidden; overflow-wrap: anywhere; }',
       '.nm-node small { display: block; font-size: 10px; color: #4b5563; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
       '.nm-node--hub { background: ' + NAVY + '; border-color: ' + NAVY + '; }',
-      '.nm-node--hub b { color: #ffffff; font-size: 13px; }',
+      '.nm-node--hub b { color: #ffffff; font-size: 12.5px; }',
       '.nm-node--hub small { color: #dbe4ee; }',
       '.nm-node--direct { background: #ffffff; border-style: dashed; }',
       '.nm-cluster { display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start; padding: 8px; background: #ffffff; border: 1px solid #d0d7de; border-radius: 6px; }',
@@ -909,11 +909,17 @@
     });
     return groups;
   }
-  var NM = { WIDTH: 672, HUB_W: 168, HUB_H: 56, TRUNK_X: 200, SW_X: 232, SW_W: 152, SW_H: 44,
+  var NM = { WIDTH: 672, HUB_W: 168, HUB_H: 60, TRUNK_X: 200, SW_X: 232, SW_W: 152, SW_H: 52,
              CL_X: 432, CL_W: 240, CHIP_W: 70, CHIP_H: 18, CHIP_GAP: 4, CL_PAD: 8,
              ROW_GAP: 12, BAND_LABEL_H: 20, GROUP_GAP: 10, MAX_H: 800, MIN_SCALE: 0.55 };
+  // A recorder is told by its PRODUCT, never its label: install labels carry
+  // the location ("Pre-existing PoE Switch 019 - Server Room"), and "server"
+  // in a label once made a switch the hub. The label is read only when the
+  // record has no product name at all.
   function isRecorder(d) {
-    return d.family === 'headend' && /\bnvr\b|\bdvr\b|recorder|server/i.test((d.product || '') + ' ' + (d.label || ''));
+    if (d.family !== 'headend') return false;
+    var text = (d.product || '').trim() || (d.label || '');
+    return /\bnvr\b|\bdvr\b|recorder|network video/i.test(text);
   }
   // The map model: the hub (a recorder root, else — IMPLY_UPLINKS — the one
   // recorder on the deployment), then one row per switch in location order,
@@ -1059,7 +1065,10 @@
   }
 
   function buildHtml(report) {
-    var title = [report.client || report.projectName || 'Deployment', 'Deployment report'].filter(Boolean).join(' · ');
+    // The browser names the saved PDF after the document title: the project
+    // number first, then the client, then what it is.
+    var title = [report.projectNo ? 'Project ' + report.projectNo : '', report.client || report.projectName || '', 'Deployment report']
+      .filter(Boolean).join(' - ');
     return [
       '<!DOCTYPE html>',
       '<html lang="en"><head><meta charset="utf-8">',
