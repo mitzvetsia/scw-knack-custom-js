@@ -112,6 +112,27 @@
     window.addEventListener('touchmove', releaseFloor, { passive: true, once: true });
   }
 
+  /** Floor the document across a rebuild that runs OUTSIDE around(). The
+   *  reconcile grid's renderSnapshot calls this before it touches the DOM
+   *  (2026-10-21: every re-render of a hidden source grid on scene_1155 sent
+   *  the page to y=261 — the browser's clamp for the ~1260px page that is
+   *  left while the grid is detached or display:none mid-rebuild — and the
+   *  row guard could not help while the user was reading the header cards).
+   *  Same floor as around(): body min-height = the current scrollHeight for
+   *  FLOOR_MS, released early by a user gesture. Skipped at the top of the
+   *  page, where nothing can clamp. Returns the floored height, 0 when
+   *  skipped. */
+  function floor() {
+    var y = scrollY();
+    if (!(y > 0)) return 0;
+    var h = 0;
+    try { h = document.documentElement.scrollHeight; } catch (e) { return 0; }
+    if (!(h > 0)) return 0;
+    applyFloor(h);
+    guardLog('floor ' + h + 'px for ' + FLOOR_MS + 'ms (y=' + Math.round(y) + ')');
+    return h;
+  }
+
   function cssEsc(s) {
     if (window.CSS && CSS.escape) return CSS.escape(s);
     return String(s).replace(/["\\\]\[]/g, '\\$&');
@@ -299,6 +320,9 @@
     }
     _guardUntil = armT + ms;
     var token = ++_guardToken;   // a newer guard supersedes an EXPIRED one
+    // Pre-storm baseline: the pixel position (the fallback below) and the
+    // document height at arm time.
+    var prevY = scrollY();
     // Same nearest-visible-row capture as around() — but at SAVE time,
     // before any render can move the page.
     var anchor = null;
@@ -312,13 +336,29 @@
         var r = rows[i].getBoundingClientRect();
         if (r.bottom > guardPx && r.top < vh) { anchor = { key: key, top: r.top }; break; }
       }
-    } catch (e) { /* no anchor → guard is a no-op */ }
-    if (!anchor) { guardLog('arm SKIPPED — no visible anchor row'); return; }
-    guardLog('armed on ' + anchor.key + ' @top=' + Math.round(anchor.top) +
-      ' y=' + Math.round(scrollY()));
-    function cancel() {
+    } catch (e) { /* no anchor → pixel hold below */ }
+    if (!anchor) {
+      // No grid row in the viewport — the user is reading the header cards,
+      // the diff panel or the documents band. Every "arm SKIPPED" in the
+      // 2026-10-21 reconcile capture was this, and the jump that followed
+      // each one went uncorrected. Hold the PIXEL position instead: a big
+      // no-gesture displacement is put back as long as that position still
+      // exists. Nothing to hold at the top of the page — and a skipped arm
+      // must not leave the window "armed" (it did: the next renders logged
+      // "re-arm → window extended" against a guard that never ran).
+      if (!(prevY > 0)) {
+        _guardUntil = 0;
+        guardLog('arm SKIPPED — at the top of the page, nothing to hold');
+        return;
+      }
+      guardLog('armed (pixel hold) y=' + Math.round(prevY) + ' — no visible anchor row');
+    } else {
+      guardLog('armed on ' + anchor.key + ' @top=' + Math.round(anchor.top) +
+        ' y=' + Math.round(prevY));
+    }
+    function cancel(e) {
       if (token === _guardToken) { _guardToken++; _guardUntil = 0; }
-      guardLog('cancelled by user gesture');
+      guardLog('cancelled by user gesture' + (e && e.type ? ' (' + e.type + ')' : ''));
       cleanup();
     }
     function onKey(e) {
@@ -326,24 +366,47 @@
       var t = e.target;
       if (t && (t.isContentEditable ||
         /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
-      cancel();
+      cancel(e);
     }
     function cleanup() {
       window.removeEventListener('wheel', cancel, { passive: true });
       window.removeEventListener('touchmove', cancel, { passive: true });
+      window.removeEventListener('mousedown', cancel, true);
+      window.removeEventListener('touchstart', cancel, true);
       window.removeEventListener('keydown', onKey, true);
     }
     window.addEventListener('wheel', cancel, { passive: true });
     window.addEventListener('touchmove', cancel, { passive: true });
+    // A click is the user driving too: a group they fold or a row they
+    // expand moves the page on purpose and must never be "corrected" back.
+    // The save → refetch → render that a click may start re-arms a fresh
+    // guard on its own render event, after the click.
+    window.addEventListener('mousedown', cancel, true);
+    window.addEventListener('touchstart', cancel, { passive: true, capture: true });
     window.addEventListener('keydown', onKey, true);
+    // Pixel hold — no row anchor, or the anchor row is gone / hidden after
+    // the rebuild. Restores the arm-time scrollY after a big no-gesture
+    // displacement, but only while that position is still reachable: a page
+    // that genuinely got shorter is left where the browser put it.
+    function holdPixel() {
+      var cur = scrollY();
+      if (Math.abs(cur - prevY) <= GUARD_JUMP_PX) return;
+      var hNow = 0;
+      var vhNow = window.innerHeight || document.documentElement.clientHeight || 0;
+      try { hNow = document.documentElement.scrollHeight; } catch (eH) { /* ignore */ }
+      if (hNow > 0 && prevY + vhNow > hNow + 1) return;
+      guardLog('restoring y=' + Math.round(prevY) + ' from ' + Math.round(cur) +
+        ' (pixel hold' + (anchor ? ', anchor row not in view' : '') + ')');
+      window.scrollTo(0, prevY);
+    }
     function tick() {
       if (token !== _guardToken) { cleanup(); return; }
       // Deadline is the MODULE-level _guardUntil so mid-storm re-arms
       // extend this loop instead of racing a fixed closure window.
       if (nowMs() > _guardUntil) { guardLog('expired (no action pending)'); cleanup(); return; }
       try {
-        var el = document.querySelector(
-          '[' + idAttr + '="' + cssEsc(anchor.key) + '"]');
+        var el = anchor ? document.querySelector(
+          '[' + idAttr + '="' + cssEsc(anchor.key) + '"]') : null;
         // A row inside a collapsed group reads rect 0,0 — never anchor math
         // against a hidden element.
         if (el && el.getClientRects().length) {
@@ -353,6 +416,8 @@
               anchor.key + ' (y=' + Math.round(scrollY()) + ')');
             window.scrollBy(0, delta);
           }
+        } else {
+          holdPixel();
         }
       } catch (e2) { /* keep watching */ }
       raf(tick);
@@ -370,6 +435,6 @@
     guardLog('cancelled (deliberate scroll)');
   }
 
-  window.SCW.v2ScrollAnchor = { around: around, guard: guard, cancel: cancel };
+  window.SCW.v2ScrollAnchor = { around: around, guard: guard, cancel: cancel, floor: floor };
 })();
 /*** END V2 SCROLL ANCHOR ***************************************************/

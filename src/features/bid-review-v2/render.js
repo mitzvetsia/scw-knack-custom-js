@@ -55,6 +55,27 @@
     return map;
   }
 
+  // The tabs' "one SOW at a time" rule (header.js) hides every section
+  // without this class. A fresh section gets it at BUILD time when the tabs
+  // already know the active SOW, so no layout between the swap and
+  // header.afterRender ever sees the grid fully hidden.
+  var ACTIVE_CLS = 'scw-bid-review-v2__sow--active';
+
+  // Replace body's children with `nodes`, in order, in ONE pass with no
+  // layout read in between — the browser only clamps the scroll at a layout,
+  // and none can run inside a synchronous remove-then-append. Returns false
+  // (and touches nothing) when body already holds exactly these nodes in
+  // this order — a fully reused render leaves the DOM alone.
+  function swapChildren(body, nodes) {
+    var kids = body.children;
+    var same = kids.length === nodes.length;
+    for (var i = 0; same && i < nodes.length; i++) if (kids[i] !== nodes[i]) same = false;
+    if (same) return false;
+    while (body.firstChild) body.removeChild(body.firstChild);
+    for (var j = 0; j < nodes.length; j++) body.appendChild(nodes[j]);
+    return true;
+  }
+
   function hasFocusInPanel(container) {
     var a = document.activeElement;
     if (!a || !container || !a.hasAttribute) return false;
@@ -187,8 +208,36 @@
         '|' + pendingSig);
     } catch (e) { globalAuxSig = 'aux'; }
 
+    // ── Scroll-clamp guard (2026-10-21) ────────────────────────────────────
+    // Every re-render of a hidden source grid used to send this page to the
+    // top: not a scroll call (scroll-spy traced none, with every scroll API
+    // and the scrollTop setter patched) but the BROWSER'S CLAMP. The old
+    // swap moved reused sections into a fragment one by one (that detaches
+    // them from the page) and inserted fresh sections without the tabs'
+    // --active class (display:none under .scw-bid-review-v2--tabs until
+    // header.afterRender ran at the very end). Any layout flush inside
+    // either window — reopenExpandedRows' offsetParent probe, the diary's
+    // pageYOffset read — laid the page out ~1260px tall (hero + tabs), and
+    // Chrome clamped scrollY to that short page (y=261 on a 1000px viewport,
+    // twenty times in one capture); the grid came back, the scroll did not.
+    // Three measures, all synchronous with the rebuild:
+    //   1. floor the document's height for the rebuild (body min-height =
+    //      the pre-rebuild scrollHeight, _v2-scroll-anchor.js), so a short
+    //      intermediate layout can never clamp the scroll;
+    //   2. build fresh sections WITH the active class when the tabs know it;
+    //   3. swap the children in one pass with no layout read in between,
+    //      and not at all when the sections are unchanged.
+    var floored = 0;
+    if (window.SCW && SCW.v2ScrollAnchor && typeof SCW.v2ScrollAnchor.floor === 'function') {
+      try { floored = SCW.v2ScrollAnchor.floor() || 0; } catch (eFl) { floored = 0; }
+    }
+    var activeId = '';
+    if (ns.header && typeof ns.header.activeSowId === 'function') {
+      try { activeId = ns.header.activeSowId() || ''; } catch (eAct) { activeId = ''; }
+    }
+
     var existing = indexExistingSections(body);
-    var frag = document.createDocumentFragment();
+    var nodes = [];
     var reused = 0;
     for (var i = 0; i < state.sowGrids.length; i++) {
       var grid = state.sowGrids[i];
@@ -203,35 +252,40 @@
         var ex  = sid && existing[sid];
         if (ex && ex.getAttribute('data-scw-sig') === sig) {
           // Unchanged section — reuse its DOM node verbatim (keeps expanded
-          // rows, group-collapse state, focus-safe). Moving it into frag
-          // detaches it from body before the innerHTML wipe below.
+          // rows, group-collapse state, focus-safe). It stays ATTACHED until
+          // the swap below.
           delete existing[sid];
-          frag.appendChild(ex);
+          nodes.push(ex);
           reused++;
         } else {
           var node = ns.card.buildSowSection(grid);
-          if (node && node.setAttribute) node.setAttribute('data-scw-sig', sig);
-          frag.appendChild(node);
+          if (node && node.setAttribute) {
+            node.setAttribute('data-scw-sig', sig);
+            if (activeId && sid === activeId && node.classList) node.classList.add(ACTIVE_CLS);
+          }
+          if (node) nodes.push(node);
         }
       } catch (e) {
         console.warn('[scw-br-v2] buildSowSection threw', grid && grid.sowId, e);
       }
     }
+    var swapped = swapChildren(body, nodes);
     // Rebuild diary (localStorage.scwScrollSpy = '1'): how much of the grid
     // this render actually rebuilt and what asked for it — read it next to
     // data.js's per-view render lines when the page repaints on its own.
+    // After the swap on purpose: its pageYOffset read is a layout flush.
     try {
       if (window.localStorage && localStorage.scwScrollSpy === '1') {
         var _from = String((new Error()).stack || '').split('\n').slice(2, 6).join(' « ').replace(/\s+/g, ' ');
         console.warn('[scw-br-v2] REBUILD — ' + reused + ' section(s) reused, ' +
           (state.sowGrids.length - reused) + ' rebuilt — trigger: ' +
           (ns._lastRenderTrigger || 'notify()') + ' — y=' + Math.round(window.pageYOffset || 0) +
+          ' — floor ' + (floored ? floored + 'px' : 'off (at top)') +
+          (swapped ? ' — sections swapped' : ' — DOM untouched (same sections)') +
           ' — from: ' + _from);
       }
     } catch (eSpy) { /* diagnostics only */ }
     ns._lastRenderTrigger = '';
-    body.innerHTML = '';
-    body.appendChild(frag);
 
     // Discontinued-products bar under each section's status line (warnings.js,
     // 2026-10-13) — refreshed on reused sections too, since the catalog may

@@ -1044,6 +1044,33 @@ grid's offset is the top of the page. Two changes and a diagnostic:
   fetcher directly: it wraps that view's `model.fetch` for 8 s and logs every call WITH its caller
   stack. The 2026-10-20 deep dive below lists every fetcher on the scene.
 
+**Root cause found 2026-10-21 (console capture, build `52c83ad0`, spy armed): the jump is the BROWSER'S
+SCROLL CLAMP, not a scroll call.** Twenty "JUMP UP … → 261 (no user gesture)" lines, every one right after a
+`[scw-br-v2] REBUILD`, and not one traced `scrollTo` / `scrollBy` / `scrollTop` for them — the spy patches
+every scroll API, so nothing scrolled. 261 = (1263 − ~1000): the scene WITHOUT the grid measured 1263px on
+first paint, and a 1000px viewport clamps to 261 when the document is that short. `render.js`
+`renderSnapshot` made the page that short twice per rebuild: reused sections were moved into a fragment one
+by one (`frag.appendChild(ex)` DETACHES them) before the swap, and fresh sections had no
+`scw-bid-review-v2__sow--active` class until `header.afterRender` ran last — under the tabs CSS every
+section without it is `display:none`. Any layout flush inside either window (the `reopenExpandedRows`
+`offsetParent` probe runs right there; the diary's `pageYOffset` read when the spy is on) laid the page out
+at ~1260px and Chrome clamped scrollY to it; the grid came back, the scroll did not. The row guard could not
+help: the user was reading the header cards, so no grid row was in view ("arm SKIPPED — no visible anchor
+row", on every one of them) — and a skipped arm left `_guardUntil` set, so the next renders only logged
+"re-arm → window extended" against a guard that never ran. Fixes, all in the same task as the rebuild:
+- `render.js`: `SCW.v2ScrollAnchor.floor()` before the DOM is touched (body min-height = the pre-rebuild
+  scrollHeight for 1.5 s, released by a gesture — a short intermediate layout can no longer clamp); fresh
+  sections get the active class at BUILD time when `header.activeSowId()` knows it; `swapChildren` replaces
+  the body's children in one pass with no layout read in between and does nothing when the sections are
+  unchanged (a fully reused render leaves the DOM alone); the REBUILD diary moved after the swap and now
+  carries `floor NNNNpx` / `off (at top)` and `sections swapped` / `DOM untouched`.
+- `_v2-scroll-anchor.js` `guard()`: with no row in view it arms a **pixel hold** ("armed (pixel hold)
+  y=6700") — a no-gesture displacement > 120px is put back while the old position is still reachable; the
+  same fallback runs when the anchor row is gone or hidden after the rebuild; `mousedown` / `touchstart`
+  cancel the guard like wheel / touch / keys (a fold or expand the user clicked is never "corrected"); an arm
+  skipped at the top of the page resets the window; `floor()` is exported.
+- Test: `tests/bid-review-v2/test-render-scroll-clamp.js` (real render.js + anchor module under jsdom).
+
 ## Reconcile page re-render sources — deep dive (2026-10-20, build `1b0019bb`)
 
 **KTL is not on the page.** It was removed from the application entirely; no `_ar` auto-refresh
