@@ -166,6 +166,27 @@ const cfg = api.CONFIG.SCENES[0];
     api._internals.networkRows(r).map(g => [g.label, g.rows.map(row => [row.device.label, row.leaves.map(l => l.label), row.feeds.map(f => f.label), row.parent ? row.parent.label : null])]),
     [['IDF 01 - Mezzanine', [['SW-02', ['I-011'], [], 'NVR-01']]], ['MDF - Server Room', [['NVR-01', ['I-001'], ['SW-02', 'SW-01'], null], ['SW-01', ['I-003'], [], 'NVR-01']]]]);
 
+  // 4a. the drawn map: hub = the recorder, a trunk, one branch per switch, the hub's own camera as a
+  //     "direct" row, a band per location, unconnected cameras in an amber band — all recorded links solid
+  const L = api._internals.networkLayout(r);
+  check('map: the recorder is the hub; rows in location order (SW-02 in the IDF, then the hub\'s direct camera and SW-01 in the MDF); the unconnected camera gets its own band',
+    [L.hub.label, L.nodes.map(n => [n.kind, n.label]), L.bands.map(b => b.label), L.clusters.map(c => c.leaves.map(l => l.label))],
+    ['NVR-01', [['hub', 'NVR-01'], ['switch', 'SW-02'], ['direct', 'Direct connections'], ['switch', 'SW-01'], ['note', 'No connection recorded']],
+     ['IDF 01 - Mezzanine', 'MDF - Server Room', 'Not connected to a recorder or switch'], [['I-011'], ['I-001'], ['I-003'], ['I-012']]]);
+  check('map: a line from the trunk to every row, from every row to its cluster, the hub to the trunk and the trunk itself; nothing dashed (every link is recorded); fits one page unscaled',
+    [L.lines.length, L.lines.filter(l => l.dashed).length, L.implied, L.scale], [8, 0, false, 1]);
+  // a deployment like the first live one: the recorder records nothing, the switches record no uplink
+  const mk = (id, label, product, family, loc, to) => ({ id, label, product, family, location: loc, photos: [], connectedDeviceIds: [], connectedTo: to ? { id: to, label: to.toUpperCase() } : null, mounts: [], accessories: [], facts: [], cable: '', qty: 0, status: '' });
+  const live = [mk('n', 'NVR-01', 'Imperial 128 Channel 4K NVR v3', 'headend', 'MDF'), mk('s', 'Pre-existing PoE Switch U17', 'Pre-existing PoE Switch', 'headend', 'IDF 01'), mk('c', 'RA-I-070', 'Sheriff 8.0', 'cam', 'IDF 01', 's')];
+  const net2 = api._internals.buildNetwork(live);
+  const L2 = api._internals.networkLayout({ network: net2, locations: [{ label: 'MDF', devices: [live[0]] }, { label: 'IDF 01', devices: [live[1], live[2]] }], devices: live });
+  check('live shape: a lone recorder with nothing recorded still becomes the hub, and the switch with no recorded uplink hangs off it by a dashed line',
+    [L2.hub && L2.hub.label, L2.nodes.map(n => n.kind), L2.lines.filter(l => l.dashed).length, L2.implied], ['NVR-01', ['hub', 'switch'], 1, true]);
+  api.CONFIG.IMPLY_UPLINKS = false;
+  const L3 = api._internals.networkLayout({ network: net2, locations: [{ label: 'IDF 01', devices: [live[1], live[2]] }], devices: live });
+  check('with implied uplinks off the switch stands alone: no hub, no trunk, no dashed line', [L3.hub, L3.nodes.map(n => n.kind), L3.lines.length], [null, ['switch'], 1]);
+  api.CONFIG.IMPLY_UPLINKS = true;
+
   // 4b. photos: the image host refuses cross-origin reads (nothing loads under jsdom), so every
   //     photo falls back to Knack's thumbnail derivative with the full-size file as its onerror
   const s3 = 'https://s3.us-east-1.amazonaws.com/assets.knackhq.com/assets/' + 'a'.repeat(24) + '/' + 'b'.repeat(24) + '/original/cam.jpg';
@@ -182,8 +203,8 @@ const cfg = api.CONFIG.SCENES[0];
   const html = api.buildHtml(r);
   const has = s => html.indexOf(s) !== -1;
   check('the document carries the project banner first, the client, the map image, the device facts, the network map, the removed table and the index',
-    [has('scw-pid-banner'), has('Acme Logistics'), has('https://s3/maps/floor1.png'), has('Dock Door 1'), has('What connects to what'), has('Removed by change order'), has('CO 1781'), has('Device index'), has('Not connected to a recorder or switch')],
-    [true, true, true, true, true, true, true, true, true]);
+    [has('scw-pid-banner'), has('Acme Logistics'), has('https://s3/maps/floor1.png'), has('Dock Door 1'), has('What connects to what'), has('Removed by change order'), has('CO 1781'), has('Device index'), has('Not connected to a recorder or switch'), has('<svg class="nm-lines"'), has('nm-node--hub')],
+    [true, true, true, true, true, true, true, true, true, true, true]);
   check('never printed: the password, SCW notes, the service line', [has('hunter2'), has('internal note'), has('Lift rental')], [false, false, false]);
   check('the recorder card labels its hard drive as an accessory, the camera its bracket as a mount', [has('<dt>Accessories</dt><dd>Hard Drive, 24TB</dd>'), has('<dt>Mount</dt><dd>Wall Mount Bracket</dd>')], [true, true]);
   check('the document title names the client', has('<title>Acme Logistics · Deployment report</title>'), true);

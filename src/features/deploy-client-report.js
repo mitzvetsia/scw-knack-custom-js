@@ -70,6 +70,11 @@
     // its own and never counts as other equipment.
     SHOW_MOUNTS: true,
     SHOW_ACCESSORIES: true,
+    // Network map: when the deployment has exactly ONE recorder and a switch
+    // records no uplink, draw the switch under the recorder with a DASHED
+    // line (the legend says it is not recorded on the device). false = only
+    // recorded connections are drawn; such switches stand alone.
+    IMPLY_UPLINKS: true,
     // Every photo with an image prints, typed or not (decided 2026-10-21).
     INCLUDE_UNTYPED_PHOTOS: true,
     // Configuration answers whose field label or key matches never print.
@@ -706,19 +711,33 @@
       '.cr-table td.num, .cr-table th.num { text-align: right; }',
       '.cr-table--removed th { color: #9f1239; background: #fff1f2; border-bottom-color: #fecdd3; }',
       '.cr-removed { display: inline-block; color: #9f1239; background: #fff1f2; border: 1px solid #fecdd3; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 2px 8px; text-transform: uppercase; letter-spacing: .5px; }',
-      // Network map on ONE page: a band per location, one row per recorder
-      // or switch (node on the left, the devices connected to it as chips).
+      // Network map, DRAWN: the recorder as the hub, a trunk, one branch per
+      // switch with its cameras in a cluster box, a shaded band per location,
+      // the whole drawing scaled to fit one page.
       '.nm-intro { margin: 4px 0 12px; color: #4b5563; font-size: 12.5px; }',
-      '.nm-loc { margin: 0 0 10px; break-inside: avoid; page-break-inside: avoid; }',
-      '.nm-band { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: ' + NAVY + '; padding: 4px 0; border-bottom: 2px solid ' + NAVY + '; }',
-      '.nm-row { display: grid; grid-template-columns: 2.2in minmax(0, 1fr); gap: 10px; align-items: start; padding: 6px 0; border-bottom: 1px solid #e5e7eb; }',
-      '.nm-node { font-size: 12px; line-height: 1.3; }',
-      '.nm-node b { display: block; font-size: 13px; color: ' + NAVY + '; }',
-      '.nm-node small { display: block; font-size: 10.5px; color: #4b5563; }',
-      '.nm-node--root b { color: #0f172a; }',
-      '.nm-chips { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 2px; }',
-      '.nm-feeds { font-size: 10.5px; color: #4b5563; }',
-      '.nm-unconnected { margin-top: 14px; padding: 8px 12px; border: 1px solid #fde68a; background: #fffbeb; border-radius: 6px; break-inside: avoid; }',
+      '.nm-fit { position: relative; overflow: hidden; }',
+      '.nm-host { position: relative; transform-origin: top left; }',
+      '.nm-host > * { position: absolute; box-sizing: border-box; }',
+      '.nm-bandbg { background: #f8fafc; border-radius: 8px; }',
+      '.nm-bandbg--warn { background: #fffbeb; }',
+      '.nm-bandlbl { font-size: 10.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: ' + NAVY + '; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '.nm-bandlbl--warn { color: #92400e; }',
+      '.nm-lines { left: 0; top: 0; overflow: visible; pointer-events: none; }',
+      '.nm-lines path { fill: none; stroke: #64748b; stroke-width: 1.5; stroke-linecap: round; }',
+      '.nm-lines path.is-dashed { stroke-dasharray: 5 4; }',
+      '.nm-node { display: flex; flex-direction: column; justify-content: center; padding: 4px 10px; border-radius: 6px; border: 1px solid #c9d4de; background: #eef4fb; font-size: 11.5px; line-height: 1.25; overflow: hidden; }',
+      '.nm-node b { display: block; font-size: 12px; color: ' + NAVY + '; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '.nm-node small { display: block; font-size: 10px; color: #4b5563; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '.nm-node--hub { background: ' + NAVY + '; border-color: ' + NAVY + '; }',
+      '.nm-node--hub b { color: #ffffff; font-size: 13px; }',
+      '.nm-node--hub small { color: #dbe4ee; }',
+      '.nm-node--direct { background: #ffffff; border-style: dashed; }',
+      '.nm-cluster { display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start; padding: 8px; background: #ffffff; border: 1px solid #d0d7de; border-radius: 6px; }',
+      '.nm-cluster--warn { border-color: #fde68a; }',
+      '.nm-cluster--empty { border-style: dashed; color: #4b5563; font-size: 10.5px; }',
+      '.nm-chip { display: inline-block; width: 70px; height: 18px; line-height: 16px; box-sizing: border-box; font-size: 10px; font-weight: 600; text-align: center; color: #1f2937; border: 1px solid #c9d4de; border-radius: 999px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }',
+      '.nm-legend { margin-top: 8px; font-size: 10.5px; color: #4b5563; display: flex; gap: 16px; flex-wrap: wrap; }',
+      '.nm-legend svg { vertical-align: middle; margin-right: 4px; }',
       '.cr-footer { margin-top: 24px; }'
     ].join('\n');
   }
@@ -890,35 +909,127 @@
     });
     return groups;
   }
-  function chipList(devices) {
-    return devices.map(function (l) { return '<span class="cr-chip">' + esc(l.label) + '</span>'; }).join('');
+  var NM = { WIDTH: 672, HUB_W: 168, HUB_H: 56, TRUNK_X: 200, SW_X: 232, SW_W: 152, SW_H: 44,
+             CL_X: 432, CL_W: 240, CHIP_W: 70, CHIP_H: 18, CHIP_GAP: 4, CL_PAD: 8,
+             ROW_GAP: 12, BAND_LABEL_H: 20, GROUP_GAP: 10, MAX_H: 800, MIN_SCALE: 0.55 };
+  function isRecorder(d) {
+    return d.family === 'headend' && /\bnvr\b|\bdvr\b|recorder|server/i.test((d.product || '') + ' ' + (d.label || ''));
   }
+  // The map model: the hub (a recorder root, else — IMPLY_UPLINKS — the one
+  // recorder on the deployment), then one row per switch in location order,
+  // the hub's own cameras as a "direct" row, a switch with no recorded
+  // uplink hanging off the hub by an implied (dashed) link.
+  function networkMapModel(report) {
+    var groups = networkRows(report), rows = [];
+    groups.forEach(function (g) { g.rows.forEach(function (row) { rows.push(row); }); });
+    var hub = null, i;
+    for (i = 0; i < report.network.roots.length; i++) {
+      if (isRecorder(report.network.roots[i].device)) { hub = report.network.roots[i].device; break; }
+    }
+    if (!hub && CONFIG.IMPLY_UPLINKS) {
+      var recs = report.devices.filter(isRecorder);
+      if (recs.length === 1) hub = recs[0];
+    }
+    var out = [];
+    rows.forEach(function (row) {
+      if (hub && row.device.id === hub.id) {
+        if (row.leaves.length) out.push({ kind: 'direct', location: hub.location, leaves: row.leaves, parent: hub });
+        return;
+      }
+      var implied = !!(hub && !row.parent);
+      out.push({ kind: 'node', device: row.device, location: row.device.location, leaves: row.leaves,
+                 parent: row.parent || (implied ? hub : null), implied: implied, feeds: row.feeds });
+    });
+    return { hub: hub, rows: out, unconnected: report.network.unconnected };
+  }
+  function networkLayout(report) {
+    var m = networkMapModel(report);
+    var chipsPerRow = Math.max(1, Math.floor((NM.CL_W - 2 * NM.CL_PAD + NM.CHIP_GAP) / (NM.CHIP_W + NM.CHIP_GAP)));
+    var bands = [], nodes = [], clusters = [], lines = [];
+    var y = 0, curLoc = null, bandStart = 0, firstCenter = null, lastCenter = null, implied = false;
+    function closeBand(bottom, warn) { if (curLoc !== null) bands.push({ label: curLoc, top: bandStart, bottom: bottom, warn: !!warn }); }
+    function clusterHeight(n) {
+      var chipRows = Math.max(1, Math.ceil(n / chipsPerRow));
+      return NM.CL_PAD * 2 + chipRows * NM.CHIP_H + (chipRows - 1) * NM.CHIP_GAP;
+    }
+    if (m.hub) nodes.push({ kind: 'hub', x: 0, y: 0, w: NM.HUB_W, h: NM.HUB_H, label: m.hub.label, sub: labelCarries(m.hub.label, m.hub.product) ? '' : m.hub.product });
+    m.rows.forEach(function (row) {
+      var loc = row.location || 'No location assigned';
+      if (loc !== curLoc) {
+        if (curLoc !== null) { closeBand(y); y += NM.GROUP_GAP; }
+        curLoc = loc; bandStart = y; y += NM.BAND_LABEL_H;
+      }
+      var n = row.leaves.length, clH = clusterHeight(n), rowH = Math.max(clH, NM.SW_H), cy = y + rowH / 2;
+      if (row.kind === 'node') {
+        var sub = [row.device.product && !labelCarries(row.device.label, row.device.product) ? row.device.product : '',
+                   row.feeds && row.feeds.length ? 'feeds ' + row.feeds.map(function (f) { return f.label; }).join(', ') : ''].filter(Boolean).join(' · ');
+        nodes.push({ kind: 'switch', x: NM.SW_X, y: cy - NM.SW_H / 2, w: NM.SW_W, h: NM.SW_H, label: row.device.label, sub: sub });
+      } else {
+        nodes.push({ kind: 'direct', x: NM.SW_X, y: cy - NM.SW_H / 2, w: NM.SW_W, h: NM.SW_H, label: 'Direct connections', sub: 'on ' + row.parent.label });
+      }
+      clusters.push({ x: NM.CL_X, y: cy - clH / 2, w: NM.CL_W, h: clH, leaves: row.leaves });
+      if (m.hub) { lines.push({ x1: NM.TRUNK_X, y1: cy, x2: NM.SW_X, y2: cy, dashed: !!row.implied }); if (row.implied) implied = true; }
+      if (n) lines.push({ x1: NM.SW_X + NM.SW_W, y1: cy, x2: NM.CL_X, y2: cy });
+      if (firstCenter === null) firstCenter = cy;
+      lastCenter = cy;
+      y += rowH + NM.ROW_GAP;
+    });
+    if (curLoc !== null) { closeBand(y - NM.ROW_GAP); y = y - NM.ROW_GAP; }
+    if (m.hub && lastCenter !== null) {
+      var hy = NM.HUB_H / 2;
+      lines.push({ x1: NM.HUB_W, y1: hy, x2: NM.TRUNK_X, y2: hy });
+      lines.push({ x1: NM.TRUNK_X, y1: Math.min(hy, firstCenter), x2: NM.TRUNK_X, y2: Math.max(hy, lastCenter) });
+    }
+    if (m.unconnected.length) {
+      if (y > 0) y += NM.GROUP_GAP;
+      var ut = y; y += NM.BAND_LABEL_H;
+      var uh = clusterHeight(m.unconnected.length);
+      clusters.push({ x: NM.CL_X, y: y, w: NM.CL_W, h: uh, leaves: m.unconnected, warn: true });
+      nodes.push({ kind: 'note', x: NM.SW_X, y: y, w: NM.SW_W, h: Math.max(NM.SW_H, uh), label: 'No connection recorded', sub: plural(m.unconnected.length, 'device') });
+      y += Math.max(NM.SW_H, uh);
+      bands.push({ label: 'Not connected to a recorder or switch', top: ut, bottom: y, warn: true });
+    }
+    var height = Math.max(y, m.hub ? NM.HUB_H : 0);
+    var scale = height > NM.MAX_H ? Math.max(NM.MIN_SCALE, NM.MAX_H / height) : 1;
+    return { width: NM.WIDTH, height: height, scale: scale, bands: bands, nodes: nodes, clusters: clusters, lines: lines,
+             hub: m.hub, implied: implied, empty: !m.rows.length && !m.unconnected.length };
+  }
+  function px(n) { return Math.round(n) + 'px'; }
   function networkHtml(report) {
     var h = ['<section class="cr-page cr-network">'];
     h.push('<div class="cr-eyebrow">Network map</div><h2 class="cr-sec">What connects to what</h2>');
-    h.push('<p class="nm-intro">One row per recorder or switch; the chips are the devices connected to it, from the connection recorded on every device.</p>');
-    var groups = networkRows(report);
-    if (!groups.length) h.push('<p class="cr-muted">No connections are recorded on this deployment yet.</p>');
-    groups.forEach(function (g) {
-      h.push('<div class="nm-loc"><div class="nm-band">' + esc(g.label) + '</div>');
-      g.rows.forEach(function (row) {
-        var d = row.device;
-        var sub = [d.product && !labelCarries(d.label, d.product) ? d.product : '',
-                   row.parent ? 'uplinks to ' + row.parent.label : ''].filter(Boolean).join(' · ');
-        var chips = chipList(row.leaves);
-        if (row.feeds.length) {
-          chips += '<span class="nm-feeds">' + (row.leaves.length ? ' · ' : '') + 'feeds ' +
-            esc(row.feeds.map(function (f) { return f.label; }).join(', ')) + '</span>';
-        }
-        h.push('<div class="nm-row"><div class="nm-node' + (row.parent ? '' : ' nm-node--root') + '"><b>' + esc(d.label) + '</b>' +
-          (sub ? '<small>' + esc(sub) + '</small>' : '') + '</div><div class="nm-chips">' + chips + '</div></div>');
-      });
-      h.push('</div>');
-    });
-    if (report.network.unconnected.length) {
-      h.push('<div class="nm-unconnected"><div class="cr-meta-k" style="color:#92400e;margin-bottom:4px">Not connected to a recorder or switch</div>' +
-        '<div class="nm-chips">' + chipList(report.network.unconnected) + '</div></div>');
+    var L = networkLayout(report);
+    if (L.empty) {
+      h.push('<p class="cr-muted">No connections are recorded on this deployment yet.</p></section>');
+      return h.join('\n');
     }
+    h.push('<p class="nm-intro">' + (L.hub ? 'The recorder at the left; each switch branches from it, with the devices connected to that switch beside it.' :
+      'Each switch with the devices connected to it beside it.') + ' Drawn from the connection recorded on every device.</p>');
+    h.push('<div class="nm-fit" style="height: ' + px(L.height * L.scale) + '"><div class="nm-host" style="width: ' + px(L.width) + '; height: ' + px(L.height) + ';' +
+      (L.scale < 1 ? ' transform: scale(' + L.scale.toFixed(3) + ');' : '') + '">');
+    L.bands.forEach(function (b) {
+      h.push('<div class="nm-bandbg' + (b.warn ? ' nm-bandbg--warn' : '') + '" style="left: ' + px(NM.SW_X - 16) + '; top: ' + px(b.top) + '; width: ' + px(NM.WIDTH - NM.SW_X + 16) + '; height: ' + px(b.bottom - b.top) + '"></div>');
+      h.push('<div class="nm-bandlbl' + (b.warn ? ' nm-bandlbl--warn' : '') + '" style="left: ' + px(NM.SW_X - 8) + '; top: ' + px(b.top + 3) + '; width: ' + px(NM.WIDTH - NM.SW_X) + '">' + esc(b.label) + '</div>');
+    });
+    var paths = L.lines.map(function (l) {
+      return '<path class="' + (l.dashed ? 'is-dashed' : '') + '" d="M ' + Math.round(l.x1) + ' ' + Math.round(l.y1) + ' L ' + Math.round(l.x2) + ' ' + Math.round(l.y2) + '"></path>';
+    }).join('');
+    h.push('<svg class="nm-lines" width="' + L.width + '" height="' + Math.round(L.height) + '" viewBox="0 0 ' + L.width + ' ' + Math.round(L.height) + '" aria-hidden="true">' + paths + '</svg>');
+    L.nodes.forEach(function (n) {
+      h.push('<div class="nm-node' + (n.kind === 'hub' ? ' nm-node--hub' : n.kind === 'direct' || n.kind === 'note' ? ' nm-node--direct' : '') +
+        '" style="left: ' + px(n.x) + '; top: ' + px(n.y) + '; width: ' + px(n.w) + '; height: ' + px(n.h) + '"><b>' + esc(n.label) + '</b>' +
+        (n.sub ? '<small>' + esc(n.sub) + '</small>' : '') + '</div>');
+    });
+    L.clusters.forEach(function (c) {
+      h.push('<div class="nm-cluster' + (c.warn ? ' nm-cluster--warn' : '') + (c.leaves.length ? '' : ' nm-cluster--empty') +
+        '" style="left: ' + px(c.x) + '; top: ' + px(c.y) + '; width: ' + px(c.w) + '; height: ' + px(c.h) + '">' +
+        (c.leaves.length ? c.leaves.map(function (l) { return '<span class="nm-chip" title="' + esc(l.label) + '">' + esc(l.label) + '</span>'; }).join('') : 'no devices recorded') +
+        '</div>');
+    });
+    h.push('</div></div>');
+    var legend = ['<span><svg width="22" height="6" aria-hidden="true"><path d="M1 3 L21 3" stroke="#64748b" stroke-width="1.5"></path></svg>connection recorded on the device</span>'];
+    if (L.implied) legend.push('<span><svg width="22" height="6" aria-hidden="true"><path d="M1 3 L21 3" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 4"></path></svg>network uplink, not recorded on the device</span>');
+    h.push('<div class="nm-legend">' + legend.join('') + '</div>');
     h.push('</section>');
     return h.join('\n');
   }
@@ -1113,7 +1224,8 @@
     watch: watch,
     isAllowed: isAllowed,
     _internals: { composeCable: composeCable, coLabel: coLabel, buildNetwork: buildNetwork, configFacts: configFacts, mapsOf: mapsOf,
-                  hostForms: hostForms, resolvePhoto: resolvePhoto, cleanLocation: cleanLocation, networkRows: networkRows }
+                  hostForms: hostForms, resolvePhoto: resolvePhoto, cleanLocation: cleanLocation, networkRows: networkRows,
+                  networkLayout: networkLayout }
   };
   bind();
 })();

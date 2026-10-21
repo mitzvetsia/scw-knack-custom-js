@@ -1154,13 +1154,20 @@ written to Knack. Mockup: Claude Design canvas "Client Deployment Report".
   network; other equipment = the Other Equipment bucket, never mounting hardware; MDF / IDF
   locations = the worksheet's location groups with at least one installed device; photos), one page per site map image, one page per location with
   THREE cards to a Letter page (compact head, one-column facts, four contain-fit photos to a row,
-  a card never split across pages), the **network map on ONE page** (`networkRows`: a band per
-  location in report order, one row per recorder or switch — node left, its devices as chips
-  right, "feeds …" for the switches under a recorder, "uplinks to …" on a switch; built by
-  `buildNetwork`: a child's own Connected To `field_2821` wins, a parent's Connected Devices
-  `field_2820` adopts only a child that names no parent — the worksheet's authoritative union;
-  cameras with no connection listed apart), the items removed by change order (`field_2967`, "CO
-  1781" from the identifier) and the device index.
+  a card never split across pages), the **network map, DRAWN, on ONE page** (`networkLayout`,
+  rendered as absolutely placed nodes over one SVG of lines: the recorder is the hub at the top
+  left, a trunk runs down from it, one branch per switch in location order with that switch's
+  devices in a cluster box of chips beside it, the hub's own cameras as a "Direct connections"
+  row, a shaded band per location, cameras with no connection in an amber band at the end; a
+  drawing taller than the page is scaled down to fit, to 55 %). The tree comes from `buildNetwork`
+  (a child's own Connected To `field_2821` wins, a parent's Connected Devices `field_2820` adopts
+  only a child that names no parent — the worksheet's authoritative union). `IMPLY_UPLINKS`: when
+  the deployment has exactly ONE recorder (product or label reads NVR / DVR / recorder / server)
+  and a switch records no uplink, the switch hangs off the recorder by a DASHED line and the
+  legend says the uplink is not recorded on the device — the first live run (one NVR recording
+  nothing, six switches recording no uplink) otherwise drew six unrelated switches and no
+  recorder. Then the items removed by change order (`field_2967`, "CO 1781" from the identifier)
+  and the device index.
 - **Never printed**: SCW notes, labor descriptions, pricing, sub names, QA notes, edit history,
   services, assumptions, licenses, mounts as rows of their own.
 - **Photo weight (first live run 2026-10-21: 71 photos, an 18 MB PDF)**: the browser can redraw a
