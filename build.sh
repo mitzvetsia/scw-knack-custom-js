@@ -261,6 +261,7 @@ cat \
   src/features/survey-report-photo-lightbox.js \
   src/features/sales-change-request/render-v2.js \
   src/features/deliverables-worksheet.js \
+  src/features/deploy-client-report.js \
   src/features/customer-questionnaire.js \
   src/features/customer-account-link.js \
   src/features/customer-questionnaire-scene.js \

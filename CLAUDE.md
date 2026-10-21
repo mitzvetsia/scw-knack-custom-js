@@ -1120,6 +1120,48 @@ tab with a stale snapshot wrote its blob, stale note included, over a fresh one.
 Test: `tests/bid-review-v2/test-reviewer-note-save.js` (drives the real module: idle save, draft,
 cross-tab merge, backoff, tolerant parse, defaulted basis).
 
+## Client deployment report (preview, 2026-10-21) — `src/features/deploy-client-report.js`
+
+"Turn the deployment page into a client-facing deliverable, like the survey report: devices, device
+info, photos." A **"Client report (PDF)"** button in the install worksheet's toolbar CTA group on the
+ops Manage Deployment page (scene_1311 / view_4093), gated by `CONFIG.ALLOWED_EMAILS`
+(`['micah.shearer@getscw.com']` while in preview; empty = everyone on the scene; the scene is watched
+with a MutationObserver so the button survives every toolbar rebuild). The click opens a new tab
+synchronously (pop-up blockers stay quiet), builds the report from the data already on the page,
+writes it into the tab and calls `print()` — the user saves as PDF. No Make, no API key, nothing is
+written to Knack. Mockup: Claude Design canvas "Client Deployment Report".
+- **Data** (`collect`): the worksheet's records (`SCW.worksheetV2.data.readRecords`) grouped with the
+  worksheet's OWN `groups.buildGroupTree`, so the pages follow the worksheet — locations alphabetical
+  (numeric-aware), within a location proposal-bucket sort order then label; photos from
+  `photos.extractPhotoRecords` (every photo with an image, typed or not — decided 2026-10-21; empty
+  slots never print); the per-device configuration answers from `SCW.deliverables` (the active
+  fields of the item's schema, answers from `field_2932`; a label or key matching
+  `CONFIG.CONFIG_EXCLUDE` — password, PIN, credential, token… — never prints); mounts from the
+  accessory back-pointer `field_2853`; install status `field_2825`; a cable line from existing /
+  drop length / exterior / plenum / conduit; the project number through `SCW.projectId.resolve` +
+  `banner` / `footer` (house rule: the number prints first); the project name off `field_4`; client
+  and address by label off any details view on the scene; the site map images off view_3942
+  (site-maps-strip rules; a PDF plan is named, not embedded).
+- **Pages**: cover (scope tiles via `summary.aggregateScope`: Cameras OR Readers — never both —,
+  headend & network, other equipment, locations, photos), one page per site map image, one page per
+  location with a card per device (label · product · status · facts · photo grid, cards never split
+  across pages), the **network map** (`buildNetwork`: a child's own Connected To `field_2821` wins, a
+  parent's Connected Devices `field_2820` adopts only a child that names no parent — the same
+  authoritative union the worksheet displays; roots = devices with children and no parent, switches
+  are branches, cameras are leaves; cameras with no connection are listed apart), the items removed
+  by change order (`field_2967`, apart from the locations, "CO 1781" from the identifier) and the
+  device index.
+- **Never printed**: SCW notes, labor descriptions, pricing, sub names, QA notes, edit history,
+  services, assumptions, licenses, mounts as rows of their own.
+- **Photos** are redrawn in the browser to `PHOTO_MAX_DIM` (1000 px JPEG, 3 at a time) before the
+  document is written; an image the asset host refuses to serve cross-origin falls back to its URL,
+  which still prints in the same session. `PHOTO_MAX_DIM: 0` embeds the URLs untouched (tests).
+- **Not built (v2 of the 2026-10-21 estimate)**: a Make path — POST the same HTML, render the PDF,
+  store it as a DOC_files record so it lists under Files, email it to the client.
+- Test: `tests/deploy-page/test-client-report.js` (real worksheet-v2 config / card / groups / summary
+  modules under the report; the gate, the re-mount, the order, the facts, the network tree, the
+  print tab).
+
 ## Margin-low recovery on the reconcile page — `src/features/bid-review/margin.js` (2026-10-16)
 
 The "Margin is low" block under a SOW's Next step (v1 `buildSowStatusBar`, mounted in the v2
