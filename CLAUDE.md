@@ -1123,9 +1123,9 @@ cross-tab merge, backoff, tolerant parse, defaulted basis).
 ## Client deployment report (preview, 2026-10-21) — `src/features/deploy-client-report.js`
 
 "Turn the deployment page into a client-facing deliverable, like the survey report: devices, device
-info, photos." A **"Client report (PDF)"** button in the install worksheet's toolbar CTA group on the
+info, photos." A **"Deployment Report"** button in the install worksheet's toolbar CTA group on the
 ops Manage Deployment page (scene_1311 / view_4093), gated by `CONFIG.ALLOWED_EMAILS`
-(`['micah.shearer@getscw.com']` while in preview; empty = everyone on the scene; the scene is watched
+(micah.shearer, ben.larue and jon.carter @getscw.com while in preview; empty = everyone on the scene; the scene is watched
 with a MutationObserver so the button survives every toolbar rebuild). The click opens a new tab
 synchronously (pop-up blockers stay quiet), builds the report from the data already on the page,
 writes it into the tab and calls `print()` — the user saves as PDF (the document title, which the browser uses as the file name, reads

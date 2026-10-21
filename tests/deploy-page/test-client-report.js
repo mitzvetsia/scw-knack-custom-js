@@ -127,7 +127,7 @@ const cfg = api.CONFIG.SCENES[0];
   sceneHandlers.scene_1311();
   check('allowed login: the button sits in the toolbar CTA group, preview-styled',
     [!!btn(), btn() && btn().parentNode.classList.contains('scw-ws-v2-toolbar-group--cta'), btn() && btn().classList.contains('scw-ws-v2-toolbar-btn--preview'), btn() && btn().textContent],
-    [true, true, true, 'Client report (PDF)']);
+    [true, true, true, 'Deployment Report']);
 
   // 3. the worksheet rebuilds its toolbar on every render: the button comes back on its own
   const panel = document.getElementById('scw-ws-v2-view_4093');
@@ -222,7 +222,7 @@ const cfg = api.CONFIG.SCENES[0];
   api.CONFIG.PRINT_DELAY_MS = 20;
   const rep = await api.generate(cfg, btn());
   await sleep(60);
-  check('generate wrote the report into the new tab, triggered print, and put the button back', [!!rep, written.indexOf('Project 61234567890 - Acme Logistics - Deployment report') !== -1, printed, btn().textContent, btn().disabled], [true, true, true, 'Client report (PDF)', false]);
+  check('generate wrote the report into the new tab, triggered print, and put the button back', [!!rep, written.indexOf('Project 61234567890 - Acme Logistics - Deployment report') !== -1, printed, btn().textContent, btn().disabled], [true, true, true, 'Deployment Report', false]);
 
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);

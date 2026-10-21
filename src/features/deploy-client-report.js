@@ -1,6 +1,6 @@
 /*** DEPLOYMENT PAGE — CLIENT REPORT (browser print to PDF) *******************
  *
- * A "Client report (PDF)" button in the install worksheet's toolbar on the ops
+ * A "Deployment Report" button in the install worksheet's toolbar on the ops
  * Manage Deployment page (scene_1311, worksheet view_4093). It builds a
  * client-facing deployment report from the data already on the page, opens it
  * in a new tab and triggers the browser's Print dialog (Save as PDF). No Make
@@ -38,7 +38,7 @@
 
   var CONFIG = {
     // Preview gate. Empty = every user who can open the scene.
-    ALLOWED_EMAILS: ['micah.shearer@getscw.com'],
+    ALLOWED_EMAILS: ['micah.shearer@getscw.com', 'ben.larue@getscw.com', 'jon.carter@getscw.com'],
     SCENES: [
       { sceneId: 'scene_1311', viewKey: 'view_4093',
         // The scene's "Other Files" DOC_files grid (same source + rules as
@@ -46,7 +46,7 @@
         mapsView: 'view_3942',
         mapFields: { file: 'field_68', image: 'field_754', type: 'field_2877', notes: 'field_588' } }
     ],
-    BUTTON_LABEL: 'Client report (PDF)',
+    BUTTON_LABEL: 'Deployment Report',
     // Photos are redrawn in the browser to this longest side (JPEG) before
     // the report is written. That needs the image host to allow cross-origin
     // reads; when it refuses (the first live run: 71 originals, an 18 MB
