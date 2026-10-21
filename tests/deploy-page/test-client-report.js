@@ -35,7 +35,7 @@ const install = [
   { id: 'n1', field_2802: 'NVR-01', field_2801: 'NVR-01', field_2790: 'Imperial 128 Channel 4K NVR v3', field_2822_raw: conn(NET, 'Networking or Headend'),
     field_2818_raw: L1, field_2218: 20, field_2789: 1, field_2820_raw: conn('c1', 'I-001') },
   { id: 's1', field_2802: 'SW-01', field_2801: 'SW-01', field_2790: '24-port PoE switch', field_2822_raw: conn(NET, 'Networking or Headend'),
-    field_2818_raw: L1, field_2218: 20, field_2789: 1, field_2821_raw: conn('n1', 'NVR-01') },
+    field_2818_raw: L1, field_2218: 20, field_2789: 1, field_2821_raw: conn('n1', 'NVR-01'), field_2825: 'Not Started' },
   { id: 's2', field_2802: 'SW-02', field_2801: 'SW-02', field_2790: '8-port PoE switch', field_2822_raw: conn(NET, 'Networking or Headend'),
     field_2818_raw: L2, field_2218: 20, field_2789: 1, field_2821_raw: conn('n1', 'NVR-01') },
   { id: 'u1', field_2802: 'UPS-01', field_2801: 'UPS-01', field_2790: 'Rack UPS 1500VA', field_2822_raw: conn(OTH, 'Other Equipment'),
@@ -73,6 +73,7 @@ for (const f of ['config.js', 'card.js', 'groups.js', 'summary.js']) {
 const ns = window.SCW.worksheetV2;
 ns.data = { readRecords: () => install };
 ns.photos = { extractPhotoRecords: (vk, id) => photosById[id] || [] };
+window.SCW.knackImgThumb = (url, style) => url.replace(/\/([^/]+)$/, '/' + (style || 'thumb_14') + '/$1');
 window.SCW.projectId = {
   resolve: () => ({ id: '61234567890', source: 'field' }),
   banner: (id, o) => '<div class="scw-pid-banner">Project # ' + id + ' · ' + (o.right || []).join(' · ') + '</div>',
@@ -141,9 +142,9 @@ const cfg = api.CONFIG.SCENES[0];
     r.locations.map(l => [l.label, l.devices.map(d => d.label)]),
     [['IDF 01 - Mezzanine', ['I-011', 'I-012', 'SW-02']], ['MDF - Server Room', ['I-001', 'I-003', 'NVR-01', 'SW-01', 'UPS-01']]]);
   const c1 = r.devices.find(d => d.id === 'c1');
-  check('camera facts: connected to by label, the mount from the accessory back-pointer, the cable line, the config answers minus the password and the blank, arrays joined',
+  check('camera facts: connected to by label, the mount from the accessory back-pointer, the cable line (new vs existing only), the config answers minus the password and the blank, arrays joined',
     [c1.connectedTo.label, c1.mounts, c1.cable, c1.facts, c1.status],
-    ['NVR-01', ['Wall Mount Bracket'], 'New drop · 120 ft · interior · plenum-rated',
+    ['NVR-01', ['Wall Mount Bracket'], 'New drop',
      [{ label: 'Camera name', value: 'Dock Door 1' }, { label: 'Resolution', value: '4K' }, { label: 'Features', value: 'Night mode, WDR' }], 'Done']);
   check('every photo with an image prints, typed or not; empty slots never do', c1.photos.map(p => [p.url, p.type]), [['https://s3/ph1.jpg', 'Installed view'], ['https://s3/ph2.jpg', '']]);
   const n1 = r.devices.find(d => d.id === 'n1');
@@ -155,6 +156,22 @@ const cfg = api.CONFIG.SCENES[0];
     [[['NVR-01', ['I-001'], [['SW-02', ['I-011']], ['SW-01', ['I-003']]]]], ['I-012']]);
   check('scope tiles: Cameras (never readers), counts, locations, photos, removed', r.scope, { title: 'Cameras', cameras: 4, headend: 3, other: 1, locations: 2, photos: 3, removed: 1 });
   check('site maps: the image plan only, by its note; the PDF is not a map image', r.maps.map(m => [m.name, m.image]), [['Floor 1', true]]);
+  check('location display names are tidied (a HEADEND carries no number)', api._internals.cleanLocation('HEADEND: : 019 - Server Room'), 'HEADEND: 019 - Server Room');
+  check('network rows: one per recorder / switch, grouped by location in report order, each with its devices, what it feeds and what it uplinks to',
+    api._internals.networkRows(r).map(g => [g.label, g.rows.map(row => [row.device.label, row.leaves.map(l => l.label), row.feeds.map(f => f.label), row.parent ? row.parent.label : null])]),
+    [['IDF 01 - Mezzanine', [['SW-02', ['I-011'], [], 'NVR-01']]], ['MDF - Server Room', [['NVR-01', ['I-001'], ['SW-02', 'SW-01'], null], ['SW-01', ['I-003'], [], 'NVR-01']]]]);
+
+  // 4b. photos: the image host refuses cross-origin reads (nothing loads under jsdom), so every
+  //     photo falls back to Knack's thumbnail derivative with the full-size file as its onerror
+  const s3 = 'https://s3.us-east-1.amazonaws.com/assets.knackhq.com/assets/' + 'a'.repeat(24) + '/' + 'b'.repeat(24) + '/original/cam.jpg';
+  const apiU = 'https://api.knack.com/v1/applications/' + 'a'.repeat(24) + '/download/asset/' + 'b'.repeat(24) + '/cam.jpg';
+  check('both Knack asset addresses are tried, the api host first', [api._internals.hostForms(s3), api._internals.hostForms(apiU), api._internals.hostForms('https://x/y.jpg')],
+    [[apiU, s3], [apiU, s3], ['https://x/y.jpg']]);
+  api.CONFIG.PHOTO_LOAD_TIMEOUT_MS = 30;
+  await api.prepareImages(r, null);
+  check('no cross-origin read → every photo prints from the thumbnail derivative, full size kept as the fallback',
+    [r.photoStats, c1.photos.map(p => [p.mode, p.src, p.fallback])],
+    [{ total: 3, reduced: 0, thumb: 3, original: 0 }, [['thumb', 'https://s3/thumb_14/ph1.jpg', 'https://s3/ph1.jpg'], ['thumb', 'https://s3/thumb_14/ph2.jpg', 'https://s3/ph2.jpg']]]);
 
   // 5. buildHtml(): what the client sees, and what they never see
   const html = api.buildHtml(r);
@@ -164,6 +181,9 @@ const cfg = api.CONFIG.SCENES[0];
     [true, true, true, true, true, true, true, true, true]);
   check('never printed: the password, SCW notes, the service line', [has('hunter2'), has('internal note'), has('Lift rental')], [false, false, false]);
   check('the document title names the client', has('<title>Acme Logistics · Deployment report</title>'), true);
+  check('photos print from the thumbnail with the full-size onerror fallback; the bar says so',
+    [has('src="https://s3/thumb_14/ph1.jpg"'), has("onerror=\"this.onerror=null;this.src='https://s3/ph1.jpg'\""), has('3 photos: 3 at Knack')], [true, true, true]);
+  check('install status chips are off (the field is not maintained); the locations tile is named', [has('class="cr-status'), has('Not Started'), has('MDF / IDF locations')], [false, false, true]);
 
   // 6. generate(): opens the tab on the click, fills it, restores the button, prints
   let written = '', printed = false;

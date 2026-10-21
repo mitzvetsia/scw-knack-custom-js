@@ -48,12 +48,22 @@
     ],
     BUTTON_LABEL: 'Client report (PDF)',
     // Photos are redrawn in the browser to this longest side (JPEG) before
-    // the report is written, so a 70-photo report stays a few MB. 0 = embed
-    // the original URLs untouched (tests).
-    PHOTO_MAX_DIM: 1000,
-    PHOTO_QUALITY: 0.8,
+    // the report is written. That needs the image host to allow cross-origin
+    // reads; when it refuses (the first live run: 71 originals, an 18 MB
+    // PDF) the photo falls back to Knack's own thumbnail derivative
+    // (PHOTO_FALLBACK_STYLE — thumb_14 is the app's 300 px style, which
+    // needs no cross-origin access), and only then to the full-size file.
+    // 0 = embed the original URLs untouched (tests).
+    PHOTO_MAX_DIM: 800,
+    PHOTO_QUALITY: 0.72,
     PHOTO_CONCURRENCY: 3,
-    PHOTO_LOAD_TIMEOUT_MS: 20000,
+    PHOTO_LOAD_TIMEOUT_MS: 15000,
+    PHOTO_FALLBACK_STYLE: 'thumb_14',
+    // The install status chip on a card: 'none' (the status field is not
+    // maintained yet — 2026-10-21, every card read "NOT STARTED"); 'done'
+    // prints it only when it reads done / installed / complete; 'all'
+    // prints every value.
+    STATUS_CHIP: 'none',
     // Every photo with an image prints, typed or not (decided 2026-10-21).
     INCLUDE_UNTYPED_PHOTOS: true,
     // Configuration answers whose field label or key matches never print.
@@ -120,9 +130,6 @@
     }
     if (raw && typeof raw === 'object' && raw.id) return [{ id: raw.id, identifier: stripHtml(raw.identifier || raw.name || '') }];
     return [];
-  }
-  function fmtNum(n) {
-    return (Math.round(n * 100) / 100).toLocaleString('en-US');
   }
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
   function todayText() {
@@ -245,16 +252,16 @@
     return stripHtml(v);
   }
 
+  // New drop vs existing cable only (2026-10-21: length, interior /
+  // exterior, plenum and conduit were struck from the client copy).
   function composeCable(rec, F) {
-    var parts = [];
-    if (F.existCabling && hasValue(rec, F.existCabling)) parts.push(isYes(rec, F.existCabling) ? 'Existing cable' : 'New drop');
-    var len = F.dropLength ? readNum(rec, F.dropLength) : null;
-    if (len) parts.push(fmtNum(len) + ' ft');
-    if (F.exterior && hasValue(rec, F.exterior)) parts.push(isYes(rec, F.exterior) ? 'exterior' : 'interior');
-    if (F.plenum && isYes(rec, F.plenum)) parts.push('plenum-rated');
-    var cond = F.conduit ? readNum(rec, F.conduit) : null;
-    if (cond) parts.push(fmtNum(cond) + ' ft conduit');
-    return parts.join(' · ');
+    if (!F.existCabling || !hasValue(rec, F.existCabling)) return '';
+    return isYes(rec, F.existCabling) ? 'Existing cable' : 'New drop';
+  }
+  // Location display names arrive as "TYPE: ##: name"; a HEADEND carries no
+  // number, so its name reads "HEADEND: : 019 - Server Room". Tidy that.
+  function cleanLocation(label) {
+    return stripHtml(label).replace(/:\s*:/g, ':').replace(/^\s*:\s*/, '').replace(/\s{2,}/g, ' ').trim();
   }
   function coLabel(ident) {
     var s = stripHtml(ident);
@@ -398,7 +405,7 @@
     tree.forEach(function (l1) {
       var label = stripHtml(l1.label || '');
       if (l1.isSynthetic && /service|assumption|licen|orphan/i.test(label)) return;
-      var loc = { id: l1.id, label: (l1.isSynthetic ? 'No location assigned' : label) || 'Location', devices: [] };
+      var loc = { id: l1.id, label: (l1.isSynthetic ? 'No location assigned' : cleanLocation(label)) || 'Location', devices: [] };
       (l1.l2 || []).forEach(function (l2) {
         (l2.records || []).forEach(function (rec) {
           if (!rec || seen[rec.id]) return;
@@ -511,36 +518,85 @@
   }
 
   // ── Images: redraw every photo smaller before the document is written ──
-  function downsample(url, maxDim, quality) {
+  // A Knack image is reachable at two addresses (the api.knack.com download
+  // endpoint and the S3 asset path). The browser may redraw it only when the
+  // host it is loaded from allows cross-origin reads, so both are tried;
+  // when neither does, the photo prints from Knack's thumbnail derivative
+  // (no cross-origin access needed), and only as a last resort full size.
+  function hostForms(url) {
+    var s0 = String(url || ''), out = [];
+    var m = s0.match(/^https?:\/\/s3[^/]*\.amazonaws\.com\/assets\.knackhq\.com\/assets\/([a-f0-9]{24})\/([a-f0-9]{24})\/original\/(.+)$/i);
+    if (m) {
+      out.push('https://api.knack.com/v1/applications/' + m[1] + '/download/asset/' + m[2] + '/' + m[3]);
+      out.push(s0);
+      return out;
+    }
+    m = s0.match(/^https?:\/\/api\.knack\.com\/v1\/applications\/([a-f0-9]{24})\/download\/asset\/([a-f0-9]{24})\/(.+)$/i);
+    if (m) {
+      out.push(s0);
+      out.push('https://s3.us-east-1.amazonaws.com/assets.knackhq.com/assets/' + m[1] + '/' + m[2] + '/original/' + m[3]);
+      return out;
+    }
+    out.push(s0);
+    return out;
+  }
+  function loadCors(url) {
     return new Promise(function (resolve) {
       var done = false;
-      function finish(v) { if (!done) { done = true; resolve(v || url); } }
+      function finish(v) { if (!done) { done = true; resolve(v); } }
       var img;
-      try { img = new Image(); } catch (e) { finish(url); return; }
-      img.onload = function () {
-        try {
-          var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
-          if (!w || !h) { finish(url); return; }
-          var scale = Math.min(1, maxDim / Math.max(w, h));
-          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
-          var c = document.createElement('canvas');
-          c.width = cw; c.height = ch;
-          var ctx = c.getContext('2d');
-          if (!ctx) { finish(url); return; }
-          ctx.drawImage(img, 0, 0, cw, ch);
-          finish(c.toDataURL('image/jpeg', quality));
-        } catch (e) { finish(url); }           // tainted canvas: the original URL still prints in this session
-      };
-      img.onerror = function () { finish(url); };
+      try { img = new Image(); } catch (e) { finish(null); return; }
+      img.onload = function () { finish(img); };
+      img.onerror = function () { finish(null); };
       try { img.crossOrigin = 'anonymous'; } catch (e) { /* optional */ }
-      setTimeout(function () { finish(url); }, CONFIG.PHOTO_LOAD_TIMEOUT_MS);
+      setTimeout(function () { finish(null); }, CONFIG.PHOTO_LOAD_TIMEOUT_MS);
       img.src = url;
     });
+  }
+  function shrink(img, maxDim, quality) {
+    try {
+      var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+      if (!w || !h) return '';
+      var scale = Math.min(1, maxDim / Math.max(w, h));
+      var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+      var c = document.createElement('canvas');
+      c.width = cw; c.height = ch;
+      var ctx = c.getContext('2d');
+      if (!ctx) return '';
+      ctx.drawImage(img, 0, 0, cw, ch);
+      var out = c.toDataURL('image/jpeg', quality);
+      return /^data:image\/jpeg/.test(out || '') ? out : '';
+    } catch (e) { return ''; }                 // a tainted canvas throws here
+  }
+  function thumbOf(url) {
+    var style = CONFIG.PHOTO_FALLBACK_STYLE;
+    if (!style || !window.SCW || typeof window.SCW.knackImgThumb !== 'function') return '';
+    var t = window.SCW.knackImgThumb(url, style);
+    return t && t !== url ? t : '';
+  }
+  function resolvePhoto(p) {
+    var forms = hostForms(p.url), i = 0;
+    function tryNext() {
+      if (i >= forms.length) {
+        var t = thumbOf(p.url);
+        if (t) { p.src = t; p.fallback = p.url; p.mode = 'thumb'; }
+        else { p.src = p.url; p.mode = 'original'; }
+        return Promise.resolve(p);
+      }
+      var u = forms[i++];
+      return loadCors(u).then(function (img) {
+        var data = img ? shrink(img, CONFIG.PHOTO_MAX_DIM, CONFIG.PHOTO_QUALITY) : '';
+        if (data) { p.src = data; p.mode = 'reduced'; return p; }
+        return tryNext();
+      });
+    }
+    return tryNext();
   }
   function prepareImages(report, onProgress) {
     var jobs = [];
     report.devices.forEach(function (d) { d.photos.forEach(function (p) { jobs.push(p); }); });
     var total = jobs.length, doneCount = 0;
+    report.photoStats = { total: total, reduced: 0, thumb: 0, original: 0 };
     if (!total || !CONFIG.PHOTO_MAX_DIM) return Promise.resolve(report);
     return new Promise(function (resolve) {
       var i = 0, running = 0;
@@ -548,16 +604,28 @@
         while (running < CONFIG.PHOTO_CONCURRENCY && i < jobs.length) {
           (function (p) {
             running++;
-            downsample(p.url, CONFIG.PHOTO_MAX_DIM, CONFIG.PHOTO_QUALITY).then(function (src) {
-              p.src = src; running--; doneCount++;
+            resolvePhoto(p).then(function () {
+              running--; doneCount++;
+              report.photoStats[p.mode] = (report.photoStats[p.mode] || 0) + 1;
               if (onProgress) { try { onProgress(doneCount, total); } catch (e) { /* ui only */ } }
-              if (doneCount >= total) resolve(report); else next();
+              if (doneCount >= total) {
+                log('photos', report.photoStats);
+                resolve(report);
+              } else next();
             });
           })(jobs[i++]);
         }
       }
       next();
     });
+  }
+  function photoStatsText(st) {
+    if (!st || !st.total) return '';
+    var parts = [];
+    if (st.reduced) parts.push(st.reduced + ' reduced in the browser');
+    if (st.thumb) parts.push(st.thumb + ' at Knack\'s thumbnail size (the photo host blocks in-browser reduction)');
+    if (st.original) parts.push(st.original + ' at full size');
+    return st.total + ' photos: ' + parts.join(' · ');
   }
 
   // ── The document ───────────────────────────────────────────────────────
@@ -586,30 +654,33 @@
       '.cr-meta-v { font-size: 16px; }',
       '.cr-pn { font-size: 26px; font-weight: 800; color: ' + NAVY + '; line-height: 1.1; }',
       '.cr-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 24px; }',
+      '.cr-note { margin-top: 10px; font-size: 12px; color: #4b5563; }',
       '.cr-tile { padding: 12px; border: 1px solid #d0d7de; border-radius: 6px; }',
       '.cr-tile b { display: block; font-size: 28px; color: ' + NAVY + '; line-height: 1; margin-bottom: 6px; }',
       '.cr-tile span { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4b5563; }',
       '.cr-toc { margin-top: 24px; }',
       '.cr-toc div { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e5e7eb; }',
-      '.cr-lochead { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding-bottom: 10px; border-bottom: 2px solid ' + NAVY + '; margin: 0 0 16px; }',
-      '.cr-lochead h2 { font-size: 26px; line-height: 1.2; font-weight: 800; color: #111827; }',
-      '.cr-card { border: 1px solid #d0d7de; border-radius: 6px; padding: 14px; margin: 0 0 14px; break-inside: avoid; page-break-inside: avoid; }',
-      '.cr-card-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }',
-      '.cr-label { font-size: 20px; font-weight: 800; color: ' + NAVY + '; }',
-      '.cr-product { font-size: 15px; font-weight: 600; }',
-      '.cr-qty { font-size: 13px; color: #4b5563; }',
-      '.cr-status { margin-left: auto; font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #065f46; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 999px; padding: 2px 9px; }',
+      '.cr-lochead { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding-bottom: 8px; border-bottom: 2px solid ' + NAVY + '; margin: 0 0 12px; }',
+      '.cr-lochead h2 { font-size: 22px; line-height: 1.2; font-weight: 800; color: #111827; }',
+      // Three device cards to a Letter page: compact head, one-column facts,
+      // four photos to a row (the whole photo, never a crop), the card never
+      // split across pages.
+      '.cr-card { border: 1px solid #d0d7de; border-radius: 6px; padding: 10px 12px; margin: 0 0 10px; break-inside: avoid; page-break-inside: avoid; }',
+      '.cr-card-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }',
+      '.cr-label { font-size: 17px; font-weight: 800; color: ' + NAVY + '; }',
+      '.cr-product { font-size: 13.5px; font-weight: 600; }',
+      '.cr-qty { font-size: 12px; color: #4b5563; }',
+      '.cr-status { margin-left: auto; font-size: 10.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #065f46; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 999px; padding: 2px 8px; }',
       '.cr-status--open { color: #374151; background: #f3f4f6; border-color: #d1d5db; }',
-      '.cr-facts { display: grid; grid-template-columns: 112px minmax(0, 1fr) 112px minmax(0, 1fr); gap: 4px 12px; margin-top: 10px; font-size: 13px; }',
+      '.cr-facts { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 2px 10px; margin-top: 6px; font-size: 12px; line-height: 1.35; }',
       '.cr-facts dt { color: #4b5563; }',
       '.cr-facts dd { color: #1f2937; overflow-wrap: anywhere; }',
-      '.cr-facts--one { grid-template-columns: 112px minmax(0, 1fr); }',
-      '.cr-chips { display: flex; flex-wrap: wrap; gap: 6px; }',
-      '.cr-chip { font-size: 11px; font-weight: 600; border: 1px solid #c9d4de; border-radius: 999px; padding: 2px 8px; color: #1f2937; }',
-      '.cr-photos { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }',
-      '.cr-photo { width: calc(33.333% - 7px); }',
-      '.cr-photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; border: 1px solid #e5e7eb; border-radius: 4px; }',
-      '.cr-photo figcaption { font-size: 11px; color: #4b5563; margin-top: 3px; }',
+      '.cr-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; vertical-align: top; }',
+      '.cr-chip { font-size: 10.5px; font-weight: 600; border: 1px solid #c9d4de; border-radius: 999px; padding: 1px 7px; color: #1f2937; line-height: 1.4; }',
+      '.cr-photos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }',
+      '.cr-photo { width: calc(25% - 6px); }',
+      '.cr-photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #f3f4f6; display: block; border: 1px solid #e5e7eb; border-radius: 4px; }',
+      '.cr-photo figcaption { font-size: 10px; color: #4b5563; margin-top: 2px; line-height: 1.3; }',
       '.cr-map figure { margin-top: 16px; }',
       '.cr-map img { width: 100%; height: auto; max-height: 8.6in; object-fit: contain; display: block; border: 1px solid #d0d7de; border-radius: 6px; }',
       '.cr-map figcaption { font-size: 12px; color: #4b5563; margin-top: 6px; }',
@@ -619,21 +690,19 @@
       '.cr-table td.num, .cr-table th.num { text-align: right; }',
       '.cr-table--removed th { color: #9f1239; background: #fff1f2; border-bottom-color: #fecdd3; }',
       '.cr-removed { display: inline-block; color: #9f1239; background: #fff1f2; border: 1px solid #fecdd3; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 2px 8px; text-transform: uppercase; letter-spacing: .5px; }',
-      '.nm-intro { margin: 6px 0 16px; color: #4b5563; }',
-      '.nm-root { margin: 0 0 20px; break-inside: avoid; page-break-inside: avoid; }',
-      '.nm-band { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: ' + NAVY + '; margin: 0 0 6px; }',
-      '.nm-node { display: inline-block; padding: 6px 12px; border-radius: 6px; border: 1px solid #c9d4de; background: #eef4fb; font-size: 13px; line-height: 1.3; }',
-      '.nm-node b { font-size: 14px; color: ' + NAVY + '; }',
-      '.nm-node small { display: block; font-size: 11px; color: #4b5563; }',
-      '.nm-node--root { background: ' + NAVY + '; color: #ffffff; border-color: ' + NAVY + '; }',
-      '.nm-node--root b { color: #ffffff; }',
-      '.nm-node--root small { color: #dbe4ee; }',
-      '.nm-node--ports { background: #ffffff; }',
-      '.nm-branches { margin: 0 0 0 22px; border-left: 2px solid #94a3b8; padding: 6px 0 2px 22px; }',
-      '.nm-branch { position: relative; margin: 8px 0; }',
-      '.nm-branch::before { content: ""; position: absolute; left: -24px; top: 16px; width: 24px; border-top: 2px solid #94a3b8; }',
-      '.nm-leaves { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; }',
-      '.nm-unconnected { margin-top: 18px; padding: 12px 14px; border: 1px solid #fde68a; background: #fffbeb; border-radius: 6px; }',
+      // Network map on ONE page: a band per location, one row per recorder
+      // or switch (node on the left, the devices connected to it as chips).
+      '.nm-intro { margin: 4px 0 12px; color: #4b5563; font-size: 12.5px; }',
+      '.nm-loc { margin: 0 0 10px; break-inside: avoid; page-break-inside: avoid; }',
+      '.nm-band { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: ' + NAVY + '; padding: 4px 0; border-bottom: 2px solid ' + NAVY + '; }',
+      '.nm-row { display: grid; grid-template-columns: 2.2in minmax(0, 1fr); gap: 10px; align-items: start; padding: 6px 0; border-bottom: 1px solid #e5e7eb; }',
+      '.nm-node { font-size: 12px; line-height: 1.3; }',
+      '.nm-node b { display: block; font-size: 13px; color: ' + NAVY + '; }',
+      '.nm-node small { display: block; font-size: 10.5px; color: #4b5563; }',
+      '.nm-node--root b { color: #0f172a; }',
+      '.nm-chips { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 2px; }',
+      '.nm-feeds { font-size: 10.5px; color: #4b5563; }',
+      '.nm-unconnected { margin-top: 14px; padding: 8px 12px; border: 1px solid #fde68a; background: #fffbeb; border-radius: 6px; break-inside: avoid; }',
       '.cr-footer { margin-top: 24px; }'
     ].join('\n');
   }
@@ -678,7 +747,7 @@
     h.push('<div class="cr-tile"><b>' + s.cameras + '</b><span>' + esc(s.title) + '</span></div>');
     h.push('<div class="cr-tile"><b>' + s.headend + '</b><span>Headend &amp; network</span></div>');
     h.push('<div class="cr-tile"><b>' + s.other + '</b><span>Other equipment</span></div>');
-    h.push('<div class="cr-tile"><b>' + s.locations + '</b><span>Locations</span></div>');
+    h.push('<div class="cr-tile"><b>' + s.locations + '</b><span>MDF / IDF locations</span></div>');
     h.push('<div class="cr-tile"><b>' + s.photos + '</b><span>Photos</span></div>');
     h.push('</div>');
     h.push('<div class="cr-toc"><div class="cr-meta-k" style="border:0">In this report</div>');
@@ -707,9 +776,9 @@
     return h.join('\n');
   }
 
-  function factsHtml(pairs, oneColumn) {
+  function factsHtml(pairs) {
     if (!pairs.length) return '';
-    var h = ['<dl class="cr-facts' + (oneColumn ? ' cr-facts--one' : '') + '">'];
+    var h = ['<dl class="cr-facts">'];
     pairs.forEach(function (p) {
       h.push('<dt>' + esc(p.label) + '</dt><dd>' + (p.html ? p.html : esc(p.value)) + '</dd>');
     });
@@ -723,27 +792,41 @@
     if (!photos.length) return '';
     var h = ['<div class="cr-photos">'];
     photos.forEach(function (p) {
-      h.push('<figure class="cr-photo"><img src="' + esc(p.src || p.url) + '" alt="' + esc(p.type || 'Photo') + '">' +
+      h.push('<figure class="cr-photo"><img src="' + esc(p.src || p.url) + '" alt="' + esc(p.type || 'Photo') + '"' +
+        (p.fallback ? ' onerror="this.onerror=null;this.src=\'' + esc(p.fallback) + '\'"' : '') + '>' +
         '<figcaption>' + esc(p.type || 'Photo') + '</figcaption></figure>');
     });
     h.push('</div>');
     return h.join('');
   }
+  function normTxt(str) { return String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+  function labelCarries(label, product) {
+    var l = normTxt(label), p = normTxt(product);
+    return !!(l && p && l.indexOf(p) !== -1);
+  }
+  function statusChip(d) {
+    if (!d.status || CONFIG.STATUS_CHIP === 'none') return '';
+    var done = /done|install|complete|pass|finish/i.test(d.status);
+    if (CONFIG.STATUS_CHIP !== 'all' && !done) return '';
+    return '<span class="cr-status' + (done ? '' : ' cr-status--open') + '">' + esc(d.status) + '</span>';
+  }
   function deviceCardHtml(d) {
     var h = ['<article class="cr-card">'];
     h.push('<div class="cr-card-head"><span class="cr-label">' + esc(d.label) + '</span>' +
-      (d.product && d.product !== d.label ? '<span class="cr-product">' + esc(d.product) + '</span>' : '') +
-      (d.qty ? '<span class="cr-qty">× ' + d.qty + '</span>' : '') +
-      (d.status ? '<span class="cr-status' + (/done|install|complete|pass/i.test(d.status) ? '' : ' cr-status--open') + '">' + esc(d.status) + '</span>' : '') + '</div>');
+      (d.product && !labelCarries(d.label, d.product) ? '<span class="cr-product">' + esc(d.product) + '</span>' : '') +
+      (d.qty ? '<span class="cr-qty">× ' + d.qty + '</span>' : '') + statusChip(d) + '</div>');
     var pairs = [];
-    if (d.connectedTo) pairs.push({ label: 'Connected to', value: d.connectedTo.label + (d.connectedTo.product ? ' · ' + d.connectedTo.product : '') });
+    if (d.connectedTo) {
+      pairs.push({ label: 'Connected to', value: d.connectedTo.label +
+        (d.connectedTo.product && !labelCarries(d.connectedTo.label, d.connectedTo.product) ? ' · ' + d.connectedTo.product : '') });
+    }
     if (d.connectedDevices.length) {
       pairs.push({ label: 'Connected devices', html: chipsHtml(d.connectedDevices.map(function (c) { return c.label; })) });
     }
     if (d.mounts.length) pairs.push({ label: 'Mount', value: d.mounts.join(', ') });
     if (d.cable) pairs.push({ label: 'Cable', value: d.cable });
     d.facts.forEach(function (f) { pairs.push(f); });
-    h.push(factsHtml(pairs, d.connectedDevices.length > 0));
+    h.push(factsHtml(pairs));
     h.push(photosHtml(d.photos));
     h.push('</article>');
     return h.join('');
@@ -766,39 +849,58 @@
     return h.join('\n');
   }
 
-  function nodeHtml(d, cls, rootLocation) {
-    var sub = [d.product, d.location && d.location !== rootLocation ? d.location : ''].filter(Boolean).join(' · ');
-    return '<span class="nm-node' + (cls ? ' ' + cls : '') + '"><b>' + esc(d.label) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span>';
-  }
-  function leavesHtml(leaves) {
-    if (!leaves.length) return '';
-    return '<div class="nm-leaves">' + leaves.map(function (l) { return '<span class="cr-chip">' + esc(l.label) + '</span>'; }).join('') + '</div>';
-  }
-  function branchesHtml(node, rootLocation) {
-    if (!node.branches.length && !node.leaves.length) return '';
-    var h = ['<div class="nm-branches">'];
-    if (node.leaves.length) {
-      h.push('<div class="nm-branch"><span class="nm-node nm-node--ports"><b>Direct connections</b><small>' +
-        esc(plural(node.leaves.length, 'device')) + '</small></span>' + leavesHtml(node.leaves) + '</div>');
+  // Flatten the tree into rows (one per recorder / switch, in tree order),
+  // then group the rows by location in the report's location order.
+  function networkRows(report) {
+    var rows = [];
+    function walk(node, parent) {
+      rows.push({ device: node.device, parent: parent, leaves: node.leaves,
+                  feeds: node.branches.map(function (b) { return b.device; }) });
+      node.branches.forEach(function (b) { walk(b, node.device); });
     }
-    node.branches.forEach(function (b) {
-      h.push('<div class="nm-branch">' + nodeHtml(b.device, '', rootLocation) + branchesHtml(b, rootLocation) + '</div>');
+    report.network.roots.forEach(function (r) { walk(r, null); });
+    var order = {};
+    report.locations.forEach(function (l, i) { order[l.label] = i; });
+    var groups = [], byLoc = {};
+    rows.forEach(function (row) {
+      var key = row.device.location || 'No location assigned';
+      if (!byLoc[key]) { byLoc[key] = { label: key, rows: [] }; groups.push(byLoc[key]); }
+      byLoc[key].rows.push(row);
     });
-    h.push('</div>');
-    return h.join('');
+    groups.sort(function (a, b) {
+      var oa = order[a.label] == null ? 999 : order[a.label], ob = order[b.label] == null ? 999 : order[b.label];
+      return oa - ob;
+    });
+    return groups;
+  }
+  function chipList(devices) {
+    return devices.map(function (l) { return '<span class="cr-chip">' + esc(l.label) + '</span>'; }).join('');
   }
   function networkHtml(report) {
     var h = ['<section class="cr-page cr-network">'];
     h.push('<div class="cr-eyebrow">Network map</div><h2 class="cr-sec">What connects to what</h2>');
-    h.push('<p class="nm-intro">Each branch is a recorder or switch; the chips under it are the devices connected to it. Drawn from the connection recorded on every device.</p>');
-    if (!report.network.roots.length) h.push('<p class="cr-muted">No connections are recorded on this deployment yet.</p>');
-    report.network.roots.forEach(function (r) {
-      h.push('<div class="nm-root"><div class="nm-band">' + esc(r.device.location) + '</div>' +
-        nodeHtml(r.device, 'nm-node--root', r.device.location) + branchesHtml(r, r.device.location) + '</div>');
+    h.push('<p class="nm-intro">One row per recorder or switch; the chips are the devices connected to it, from the connection recorded on every device.</p>');
+    var groups = networkRows(report);
+    if (!groups.length) h.push('<p class="cr-muted">No connections are recorded on this deployment yet.</p>');
+    groups.forEach(function (g) {
+      h.push('<div class="nm-loc"><div class="nm-band">' + esc(g.label) + '</div>');
+      g.rows.forEach(function (row) {
+        var d = row.device;
+        var sub = [d.product && !labelCarries(d.label, d.product) ? d.product : '',
+                   row.parent ? 'uplinks to ' + row.parent.label : ''].filter(Boolean).join(' · ');
+        var chips = chipList(row.leaves);
+        if (row.feeds.length) {
+          chips += '<span class="nm-feeds">' + (row.leaves.length ? ' · ' : '') + 'feeds ' +
+            esc(row.feeds.map(function (f) { return f.label; }).join(', ')) + '</span>';
+        }
+        h.push('<div class="nm-row"><div class="nm-node' + (row.parent ? '' : ' nm-node--root') + '"><b>' + esc(d.label) + '</b>' +
+          (sub ? '<small>' + esc(sub) + '</small>' : '') + '</div><div class="nm-chips">' + chips + '</div></div>');
+      });
+      h.push('</div>');
     });
     if (report.network.unconnected.length) {
-      h.push('<div class="nm-unconnected"><div class="cr-meta-k" style="color:#92400e">Not connected to a recorder or switch</div>' +
-        leavesHtml(report.network.unconnected) + '</div>');
+      h.push('<div class="nm-unconnected"><div class="cr-meta-k" style="color:#92400e;margin-bottom:4px">Not connected to a recorder or switch</div>' +
+        '<div class="nm-chips">' + chipList(report.network.unconnected) + '</div></div>');
     }
     h.push('</section>');
     return h.join('\n');
@@ -837,7 +939,8 @@
       '<style>' + css() + '</style>',
       '</head><body>',
       '<div class="cr-screen"><button type="button" onclick="window.print()">Print / Save as PDF</button>' +
-        '<span>In the print dialog choose <b>Save as PDF</b>. This bar does not print.</span></div>',
+        '<span>In the print dialog choose <b>Save as PDF</b>. This bar does not print.' +
+        (photoStatsText(report.photoStats) ? ' · ' + esc(photoStatsText(report.photoStats)) : '') + '</span></div>',
       '<div class="cr-doc">',
       coverHtml(report),
       mapsHtml(report),
@@ -992,7 +1095,8 @@
     mount: mount,
     watch: watch,
     isAllowed: isAllowed,
-    _internals: { composeCable: composeCable, coLabel: coLabel, buildNetwork: buildNetwork, configFacts: configFacts, mapsOf: mapsOf }
+    _internals: { composeCable: composeCable, coLabel: coLabel, buildNetwork: buildNetwork, configFacts: configFacts, mapsOf: mapsOf,
+                  hostForms: hostForms, resolvePhoto: resolvePhoto, cleanLocation: cleanLocation, networkRows: networkRows }
   };
   bind();
 })();

@@ -1137,27 +1137,41 @@ written to Knack. Mockup: Claude Design canvas "Client Deployment Report".
   slots never print); the per-device configuration answers from `SCW.deliverables` (the active
   fields of the item's schema, answers from `field_2932`; a label or key matching
   `CONFIG.CONFIG_EXCLUDE` — password, PIN, credential, token… — never prints); mounts from the
-  accessory back-pointer `field_2853`; install status `field_2825`; a cable line from existing /
-  drop length / exterior / plenum / conduit; the project number through `SCW.projectId.resolve` +
-  `banner` / `footer` (house rule: the number prints first); the project name off `field_4`; client
-  and address by label off any details view on the scene; the site map images off view_3942
-  (site-maps-strip rules; a PDF plan is named, not embedded).
+  accessory back-pointer `field_2853`; the install status `field_2825` is read but NOT printed
+  (`STATUS_CHIP: 'none'` — the field is not maintained; the first live run read "NOT STARTED" on
+  every installed camera; `'done'` / `'all'` turn the chip back on); a cable line that is ONLY
+  "New drop" / "Existing cable" (length,
+  interior / exterior, plenum and conduit struck from the client copy, 2026-10-21); the project
+  number through `SCW.projectId.resolve` + `banner` / `footer` (house rule: the number prints
+  first); the project name off `field_4`; client and address by label off any details view on the
+  scene; location names tidied (`cleanLocation`: "HEADEND: : 019 - …" → "HEADEND: 019 - …"); the
+  site map images off view_3942 (site-maps-strip rules; a PDF plan is named, not embedded).
 - **Pages**: cover (scope tiles via `summary.aggregateScope`: Cameras OR Readers — never both —,
-  headend & network, other equipment, locations, photos), one page per site map image, one page per
-  location with a card per device (label · product · status · facts · photo grid, cards never split
-  across pages), the **network map** (`buildNetwork`: a child's own Connected To `field_2821` wins, a
-  parent's Connected Devices `field_2820` adopts only a child that names no parent — the same
-  authoritative union the worksheet displays; roots = devices with children and no parent, switches
-  are branches, cameras are leaves; cameras with no connection are listed apart), the items removed
-  by change order (`field_2967`, apart from the locations, "CO 1781" from the identifier) and the
-  device index.
+  headend & network, other equipment, MDF / IDF locations = the worksheet's location groups with at
+  least one installed device, photos), one page per site map image, one page per location with
+  THREE cards to a Letter page (compact head, one-column facts, four contain-fit photos to a row,
+  a card never split across pages), the **network map on ONE page** (`networkRows`: a band per
+  location in report order, one row per recorder or switch — node left, its devices as chips
+  right, "feeds …" for the switches under a recorder, "uplinks to …" on a switch; built by
+  `buildNetwork`: a child's own Connected To `field_2821` wins, a parent's Connected Devices
+  `field_2820` adopts only a child that names no parent — the worksheet's authoritative union;
+  cameras with no connection listed apart), the items removed by change order (`field_2967`, "CO
+  1781" from the identifier) and the device index.
 - **Never printed**: SCW notes, labor descriptions, pricing, sub names, QA notes, edit history,
   services, assumptions, licenses, mounts as rows of their own.
-- **Photos** are redrawn in the browser to `PHOTO_MAX_DIM` (1000 px JPEG, 3 at a time) before the
-  document is written; an image the asset host refuses to serve cross-origin falls back to its URL,
-  which still prints in the same session. `PHOTO_MAX_DIM: 0` embeds the URLs untouched (tests).
+- **Photo weight (first live run 2026-10-21: 71 photos, an 18 MB PDF)**: the browser can redraw a
+  photo smaller only when the image host allows cross-origin reads, and Knack's asset hosts did
+  not. `resolvePhoto` now tries BOTH addresses of an asset (`hostForms`: the api.knack.com
+  download endpoint, then the S3 path) with `crossOrigin`; a success is redrawn to
+  `PHOTO_MAX_DIM` (800 px JPEG) and embedded as data; when neither loads the photo prints from
+  Knack's thumbnail derivative (`PHOTO_FALLBACK_STYLE` `thumb_14`, the app's 300 px style, via
+  `SCW.knackImgThumb`, with the full-size file as the `<img>` onerror fallback), and only when
+  there is no derivative at full size. Photos are `object-fit: contain` (the whole photo, and no
+  re-rasterised crop in the PDF). The report tab's bar and `report.photoStats` say how many went
+  each way — read that line when a PDF comes out big. `PHOTO_MAX_DIM: 0` embeds the URLs untouched.
 - **Not built (v2 of the 2026-10-21 estimate)**: a Make path — POST the same HTML, render the PDF,
-  store it as a DOC_files record so it lists under Files, email it to the client.
+  store it as a DOC_files record so it lists under Files, email it to the client. A larger Knack
+  thumbnail style on the DOC_photos image field would lift the no-CORS print quality above 300 px.
 - Test: `tests/deploy-page/test-client-report.js` (real worksheet-v2 config / card / groups / summary
   modules under the report; the gate, the re-mount, the order, the facts, the network tree, the
   print tab).
