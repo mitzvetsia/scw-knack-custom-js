@@ -127,6 +127,15 @@
     }
     return '';
   }
+  /** The basis shown is only the Builder-assigned soft default (REL_SOW on
+   *  the bid package): compared, never written. The SOW record carries no
+   *  basis, so the proposal page's publish gate still asks for one — the
+   *  card says so instead of showing a plain BASIS badge (2026-10-22). */
+  function defaultedOf(sowId) {
+    var r = sbd();
+    if (!(r && typeof r.isDefaulted === 'function')) return false;
+    try { return !!r.isDefaulted(sowId); } catch (e) { return false; }
+  }
   function friendlyName(sowId) {
     var r = v1();
     if (r && typeof r.sowFriendlyName === 'function') {
@@ -332,6 +341,7 @@
     if (ok) parts.push('✓ reviewed');
     else if (!basis) parts.push('○ pick a basis bid');
     else if (basis === K1_ID) parts.push('● self-perform (K1)');
+    else if (defaultedOf(sowId)) parts.push('○ default bid shown · not saved as basis');
     else parts.push('● basis chosen');
     if (gaps) parts.push(gaps + ' ' + plural(gaps, 'gap'));
     if (cr) parts.push(cr + ' ' + plural(cr, 'change request') + ' queued');
@@ -474,7 +484,15 @@
     var section = document.querySelector('.' + CLS + '__sow[data-sow-id="' + sowId + '"]');
     var sel = section && section.querySelector('select[data-scw-sbd-basis]');
     if (!sel) return false;
-    if (sel.value === pkgId) return true;
+    if (sel.value === pkgId) {
+      // Already the selection — but a Builder DEFAULT is unsaved: this click
+      // is the award. Press the picker's own "Save as basis" (the same write
+      // the diff bar offers); without it, re-fire the change so the picker
+      // writes the basis itself.
+      if (!defaultedOf(sowId)) return true;
+      var save = section.querySelector('[data-scw-sbd-savedef][data-pkg-id="' + pkgId + '"]');
+      if (save) { save.click(); return true; }
+    }
     sel.value = pkgId;
     if (sel.value !== pkgId) return false;
     dispatch(sel, 'change');
@@ -734,6 +752,7 @@
     var sowId = section.getAttribute('data-sow-id');
     var grid = gridFor(sowId);
     var basis = basisOf(sowId);
+    var defaulted = !!basis && basis !== K1_ID && defaultedOf(sowId);
     var rd = readinessOf(section);
     var gaps = gapsOf(section);
 
@@ -757,17 +776,34 @@
       var pkg = pkgs[i];
       if (!pkg || !pkg.id) continue;
       var isBasis = basis === pkg.id;
+      var isDefault = isBasis && defaulted;
       var radio = section.querySelector('[data-scw-br-v2-basis-radio="' + pkg.id + '"]');
       if (radio) {
         radio.checked = isBasis;
         var lbl = radio.parentNode && radio.parentNode.querySelector('.' + CLS + '__basis-radio-label');
-        if (lbl) lbl.hidden = isBasis;
+        if (lbl) {
+          // A default is shown but unsaved: the label stays and reads as the award.
+          lbl.hidden = isBasis && !isDefault;
+          lbl.textContent = isDefault ? 'Save as basis' : 'Set as basis';
+        }
+        if (radio.parentNode) {
+          radio.parentNode.title = isDefault
+            ? 'Shown by default (assigned to this SOW in Builder) — not saved. Click to save it as the basis for this SOW → proposal.'
+            : 'Make this bid the basis for this SOW → proposal';
+        }
       }
       var titleTh = pkgCell(section, 'title', pkg.id);
       if (titleTh) {
         titleTh.classList.toggle(CLS + '__head-cell--basis', isBasis);
         var badge = titleTh.querySelector('.' + CLS + '__basis-badge');
-        if (badge) badge.hidden = !isBasis;
+        if (badge) {
+          badge.hidden = !isBasis;
+          badge.textContent = isDefault ? 'Default · not saved' : 'Basis';
+          badge.title = isDefault
+            ? 'Assigned to this SOW in Builder and shown by default. Not saved as the basis — the proposal page asks for one until it is.'
+            : '';
+          badge.classList.toggle(CLS + '__basis-badge--default', isDefault);
+        }
       }
       var gapBtn = section.querySelector('[data-scw-br-v2-gap="' + pkg.id + '"]');
       if (gapBtn) {
@@ -775,7 +811,10 @@
         gapBtn.textContent = gaps + ' ' + plural(gaps, 'gap');
       }
       var setB = section.querySelector('[data-scw-br-v2-setbasis="' + pkg.id + '"]');
-      if (setB) setB.hidden = isBasis;
+      if (setB) {
+        setB.hidden = isBasis && !isDefault;
+        setB.textContent = isDefault ? 'Save as basis bid' : 'Set as basis bid';
+      }
       var colLabel = section.querySelector('.' + CLS + '__collabel--pkg[data-pkg-id="' + pkg.id + '"] .' + CLS + '__collabel-basis');
       if (colLabel) colLabel.hidden = !isBasis;
     }
@@ -931,6 +970,14 @@
         r.checked = false;   // no picker yet — the next sync re-asserts the truth
       }
     });
+    // A click on the radio that is ALREADY checked fires no change event —
+    // and that is the gesture that saves a Builder default as the basis.
+    document.addEventListener('click', function (e) {
+      var r = e.target && e.target.closest && e.target.closest('[data-scw-br-v2-basis-radio]');
+      if (!r || !r.checked) return;
+      var sowId = r.getAttribute('data-sow-id'), pkgId = r.getAttribute('data-scw-br-v2-basis-radio');
+      if (defaultedOf(sowId) && basisOf(sowId) === pkgId) setBasis(sowId, pkgId);
+    });
 
     document.addEventListener('keydown', function (e) {
       var t = e.target;
@@ -1059,6 +1106,8 @@
       '.' + CLS + '__basis-badge { padding: 1px 7px; border-radius: 999px; background: #163c6e; color: #fff;',
       '  font-size: 9.5px; letter-spacing: .08em; font-weight: 800; text-transform: uppercase; }',
       '.' + CLS + '__basis-badge[hidden] { display: none !important; }',
+      /* A Builder default shown but unsaved: amber, so it never reads as the award. */
+      '.' + CLS + '__basis-badge--default { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; letter-spacing: .04em; }',
       T + '.' + CLS + '__basis-toggle { margin-left: auto; }',
       T + '.' + CLS + '__head-total-value { font-size: 15px; }',
       T + '.' + CLS + '__head-name-label { display: none !important; }',

@@ -1069,6 +1069,54 @@ draft on A's `field_2707`, and `autoRevertValidation` revoked A's release. Fixed
 - Rule going forward: **never take the FIRST match of a page slug in the hash.** Prefer the page's own
   record view; when the hash is all there is, take the deepest occurrence of the slug.
 
+## Three "it doesn't go anywhere" fixes from #install-operations-tools (2026-10-22)
+
+Thread https://securitycw.slack.com/archives/C02TSSJKKU2/p1792615081468539 (Lee, Gil). Three separate
+bugs, one symptom family: a click that should open / scroll to something did nothing or jumped.
+- **Deploy page "Change Orders" row jumped onto the worksheet's scope strip** (`deploy-page-nav.js`).
+  `moveChangeOrders` moved the bare CO grid into the strip above the worksheet and waited for the
+  accordion engine's NEXT render pass to wrap it; meanwhile `collectTargets` listed the strip itself
+  (`kind: 'co'`) and the row's click fell through `openDrawer` to `scrollIntoView` on a container
+  that is `visibility: hidden; max-height: 0` for 2.5 s (`scw-deploy-prewrap`) — so the viewport landed
+  on the next element, the scope strip. The engine wraps only on Knack render events, never on the nav's
+  heartbeat: when the CO grid was the last view to render the row stayed broken for the whole visit
+  (hence "intermittent", gone after a reload). A second variant: the engine had wrapped the grid first
+  and the move ripped the bare grid out, leaving an empty "Change orders" shell (a second row, an empty
+  drawer). Now the grid moves WITH its wrapper when it has one, a bare grid is wrapped on the spot
+  (`wrapNow` → `SCW.ktlAccordion.refresh()`, whose `enhance()` ends in `enhanceStandalone()`), the
+  fallback row only exists while no CO section does, `openDrawer` re-resolves a `kind: 'co'` target at
+  click time (`liveTarget` → `findCoAcc`, the strip's wrapper first), and nothing scrolls to an element
+  with no box (`hasBox`). Test: `tests/deploy-page/test-co-row-live-target.js`.
+- **Scope-strip tiles whose cards sit in a closed group did nothing** (Gil 2026-10-16, "the box for
+  Licenses doesn't go anywhere"; Lee's "tab to the right in Build SOW" is the same rightmost tile).
+  `highlightScopeFamily` (`worksheet-v2/init.js`) highlighted the cards and `scrollIntoView`'d the
+  first — which has no box inside a collapsed L1 (groups default closed above 30 records, `state.js`
+  `DEFAULT_OPEN_THRESHOLD`; the synthetic Licenses group is last and never opened) or inside the
+  collapsed Removed-by-CO subgroup. It now runs `applyScopeHighlight`, which opens the holding group
+  through `ns.summary.revealCard(card)` (the REAL head click, so the state persists, like the
+  warning-chip handler always did) and re-queries after the toggle before scrolling. Test: the
+  revealCard block in `tests/worksheet-v2/test-scope-strip.js`.
+- **Proposal preview said "select the basis bid" over a basis the reconcile page showed** (Lee
+  2026-10-22). The stepper (`ops-stepper.js`) gates Publish Final on the SOW RECORD (view_3861:
+  `field_2942` / the `field_2941` snapshot); the reconcile page can show a basis the record lacks:
+  (1) the **Builder-assigned soft default** (REL_SOW `field_2387` on the bid package) — shown, compared,
+  deliberately unsaved (`isDefaulted`) — used to wear the plain BASIS badge and read "✓ Reviewed";
+  (2) a basis picked seconds before Preview Proposal whose lone PUT was still landing or got a silent
+  429; (3) the stepper read the DOM once and never re-checked. Now: `sub-bid-diff/render.js`
+  readiness reads `needs-basis` "Default bid shown — save it as the basis" for a default (never ready),
+  `writeBasis` runs through `putWithRetry` (429 / 408 / 5xx / network backed off ×4, `_basisRetry` for
+  tests) and a final failure shows "⚠ basis NOT saved (HTTP n)" with a Retry (`basisWriteErr`,
+  `basisWriteError()` / `isSavingBasis()` / `isDefaulted()` exported on `ns.render`);
+  `bid-review-v2/header.js` renders the default as an amber "Default · not saved" badge, keeps the
+  radio label as "Save as basis" (the ⋮ item "Save as basis bid"), says "○ default bid shown · not
+  saved as basis" on the tab, and a click on the already-checked radio (no change event) saves it via
+  the picker's own Save-as-basis button (`setBasis` default path); `ops-stepper.js` re-reads the SOW
+  record once (view-scoped GET, 2.5 s after a BLOCKED render, `scheduleAutoRecheck`) and offers a
+  **Re-check** button on the blocked banner — the fresh record outranks the DOM for the basis and the
+  snapshot (`freshRecord` / `basisPresent` / `basisLabel`). Tests:
+  `tests/bid-review-v2/test-basis-write-retry.js`, the defaulted block in
+  `tests/bid-review-v2/test-header-rework.js`, `tests/misc/test-ops-stepper-recheck.js`.
+
 ## Reconcile page scroll guard + render diary (2026-10-20)
 
 "The Reconcile Bid page repeatedly jumps to the top" (ILJIN, then Sonaca; paired `'message'` /

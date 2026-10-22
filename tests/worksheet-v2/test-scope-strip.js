@@ -156,5 +156,30 @@ check('install header line: counts only, QA passed on the hover title, the remov
    [...iline.querySelectorAll('.scw-ws-v2-l1-scope-chip')].map(c => txt(c) + (c.classList.contains('scw-ws-v2-l1-scope-chip--removed') ? ' [removed]' : ''))],
   ['3 cameras · 1 headend', true, ['1 removed by CO [removed]']]);
 
+// ── Tile click → a card inside a closed group gets a box first (revealCard) ─────────────
+// "The box for Licenses doesn't go anywhere" (2026-10-16): the Licenses group is last and starts
+// closed on big worksheets, so the tile's scrollIntoView had nothing to scroll to. init.js now asks
+// summary.revealCard to open the holding group (the real head click, so state persists) and the
+// collapsed Removed-by-CO subgroup before scrolling.
+const host = document.createElement('div');
+host.innerHTML =
+  '<div class="scw-ws-v2-l1" data-scw-ws-v2-l1="L9"><button type="button" class="scw-ws-v2-l1-head" data-scw-ws-v2-l1-toggle="L9" aria-expanded="false">Licenses</button>' +
+    '<div class="scw-ws-v2-l1-body"><div class="scw-ws-v2-card" data-scw-ws-v2-record="l1">license</div>' +
+    '<div class="scw-ws-v2-removedsec"><button type="button" class="scw-ws-v2-removedsec-head" aria-expanded="false">Removed by CO</button>' +
+      '<div class="scw-ws-v2-removedsec-body"><div class="scw-ws-v2-card" data-scw-ws-v2-record="r1">removed</div></div></div></div></div>' +
+  '<div class="scw-ws-v2-l1 scw-ws-v2-l1--open" data-scw-ws-v2-l1="L1"><button type="button" data-scw-ws-v2-l1-toggle="L1">MDF</button>' +
+    '<div class="scw-ws-v2-card" data-scw-ws-v2-record="c1">camera</div></div>';
+document.body.appendChild(host);
+let l1Clicks = 0, secClicks = 0;
+host.querySelector('[data-scw-ws-v2-l1-toggle="L9"]').addEventListener('click', e => { l1Clicks++; e.target.closest('.scw-ws-v2-l1').classList.toggle('scw-ws-v2-l1--open'); });
+host.querySelector('.scw-ws-v2-removedsec-head').addEventListener('click', e => { secClicks++; e.target.closest('.scw-ws-v2-removedsec').classList.toggle('scw-ws-v2-removedsec--open'); });
+const lic = host.querySelector('[data-scw-ws-v2-record="l1"]'), rem = host.querySelector('[data-scw-ws-v2-record="r1"]'), camCard = host.querySelector('[data-scw-ws-v2-record="c1"]');
+check('a card in a closed L1: revealCard clicks the group head (persisting handler runs) and reports it opened',
+  [ns.summary.revealCard(lic), l1Clicks, lic.closest('.scw-ws-v2-l1').classList.contains('scw-ws-v2-l1--open')], [true, 1, true]);
+check('a card in the collapsed Removed-by-CO subgroup of an open group: the subgroup head is clicked, the L1 left alone',
+  [ns.summary.revealCard(rem), l1Clicks, secClicks, rem.closest('.scw-ws-v2-removedsec').classList.contains('scw-ws-v2-removedsec--open')], [true, 1, 1, true]);
+check('a card already visible: nothing clicked, nothing to wait for', [ns.summary.revealCard(camCard), ns.summary.revealCard(lic), l1Clicks, secClicks], [false, false, 1, 1]);
+check('no card → false', ns.summary.revealCard(null), false);
+
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

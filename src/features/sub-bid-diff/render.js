@@ -112,12 +112,8 @@
       // pkgId set but blob unresolvable → leave field_2941 out of the body;
       // the next auto-save will catch it up.
     }
-    savingGrid[sowId] = true; render();
-    SCW.knackAjax({
-      url: SCW.knackRecordUrl(C.basisBidView, sowId),
-      type: 'PUT',
-      data: JSON.stringify(body)
-    }).then(function () {
+    savingGrid[sowId] = true; delete basisWriteErr[sowId]; render();
+    putWithRetry({ url: SCW.knackRecordUrl(C.basisBidView, sowId), data: JSON.stringify(body) }).then(function () {
       savingGrid[sowId] = false;
       if (pkgId) savedByGrid[sowId] = true; else delete savedByGrid[sowId];
       if (C.snapshotField) {
@@ -132,8 +128,38 @@
       render();
     }, function (xhr) {
       savingGrid[sowId] = false;
+      // Every attempt failed: the record does NOT carry this basis. Say so
+      // in the bar, with a Retry — the proposal page's publish gate reads
+      // the record and was asking to "select the basis bid" over a pick
+      // that silently never landed (2026-10-22).
+      basisWriteErr[sowId] = { status: (xhr && xhr.status) || 0, pkgId: pkgId };
       console.warn('[scw-sub-bid-diff] basis write failed', sowId, xhr && xhr.status);
       render();
+    });
+  }
+
+  // Retry-with-backoff for the basis PUT (CLAUDE.md rate-limit rule): Knack
+  // answers 429 silently under load and a lone PUT lost the award. Transient
+  // = 429 / 408 / 5xx / network; a permanent 4xx fails at once.
+  var BASIS_RETRY = { attempts: 4, baseMs: 1500, jitterMs: 400 };
+  var basisWriteErr = Object.create(null);   // sowId → { status, pkgId } once every attempt failed
+  function transientStatus(s) { s = Number(s) || 0; return s === 0 || s === 408 || s === 429 || s >= 500; }
+  function putWithRetry(req) {
+    return new Promise(function (resolve, reject) {
+      function go(n) {
+        var p = SCW.knackAjax({ url: req.url, type: 'PUT', data: req.data });
+        if (!p || typeof p.then !== 'function') { resolve(); return; }
+        p.then(resolve, function (xhr) {
+          var st = xhr && xhr.status;
+          if (n < BASIS_RETRY.attempts && transientStatus(st)) {
+            var wait = BASIS_RETRY.baseMs * Math.pow(2, n - 1) + Math.random() * BASIS_RETRY.jitterMs;
+            setTimeout(function () { go(n + 1); }, wait);
+            return;
+          }
+          reject(xhr);
+        });
+      }
+      go(1);
     });
   }
 
@@ -1308,8 +1334,16 @@
         '</option>';
     }
     var note;
+    var werr = basisWriteErr[grid.sowId];
     if (savingGrid[grid.sowId]) {
       note = '<span class="scw-sbd-baseline__meta">saving…</span>';
+    } else if (werr && selId && werr.pkgId === selId) {
+      note = '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--req">⚠ basis NOT saved' +
+        (werr.status ? ' (HTTP ' + werr.status + ')' : ' (no response)') +
+        ' — the proposal page will not see it</span>' +
+        '<button type="button" class="scw-sbd-savedef" data-scw-sbd-savedef ' +
+          'data-sow-id="' + esc(grid.sowId) + '" data-pkg-id="' + esc(selId) + '"' +
+          ' title="Write the basis to the SOW again">Retry</button>';
     } else if (selId && isDefaulted(grid.sowId)) {
       // Soft REL_SOW default: shown, compared, but deliberately unsaved.
       // The button is the explicit award gesture (re-selecting the same
@@ -1507,8 +1541,13 @@
     } else {
       res = distill(grid, selId);
       needsNote = res.total > 0 && !currentNote(sowId).trim();
+      // A Builder-assigned default is shown and compared but NOT saved: the
+      // SOW record carries no basis, so the proposal page's publish gate
+      // still asks for one. Never call that reviewed (2026-10-22).
+      var defaulted = isDefaulted(sowId);
       if (needsNote)               rd = { state: 'needs-note',   label: 'Add a reviewer note' };
       else if (savingSnap[sowId])  rd = { state: 'needs-review', label: 'Saving…' };
+      else if (defaulted)          rd = { state: 'needs-basis',  label: 'Default bid shown — save it as the basis' };
       else                         rd = { state: 'ready',        label: '✓ Reviewed — auto-saved' };
     }
 
@@ -1985,6 +2024,13 @@
   // K1 snapshot sentinel), so the filter always agrees with the dropdown.
   ns.render = { render: render, bindOnce: bindOnce, distill: distill,
                 markDirty: markDirty, basisFor: basisFor,
+                // The soft Builder default shown but unsaved (header badge /
+                // status line), the basis write in flight, its last failure,
+                // and the retry knobs (tests shorten the backoff).
+                isDefaulted: isDefaulted,
+                isSavingBasis: function (sowId) { return !!savingGrid[sowId]; },
+                basisWriteError: function (sowId) { return basisWriteErr[sowId] || null; },
+                _basisRetry: BASIS_RETRY,
                 // K1 bid PDF: current file for a SOW (session / snapshot /
                 // SOW file field) + the upload entry point (tests, tooling).
                 currentK1Pdf: currentK1Pdf, uploadK1Pdf: uploadK1Pdf,

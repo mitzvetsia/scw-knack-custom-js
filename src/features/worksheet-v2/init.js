@@ -445,6 +445,17 @@
     tile.classList.add('is-on');
     tile.setAttribute('aria-pressed', 'true');
     var ids = (tile.getAttribute('data-scw-ws-v2-scope-ids') || '').split(',');
+    applyScopeHighlight(container, ids, 0);
+  }
+
+  /** Highlight every card in `ids` and scroll to the first. A card inside a
+   *  collapsed MDF/IDF group (or the collapsed Removed-by-CO subgroup) has
+   *  no box, so scrollIntoView did nothing — the Licenses group is last and
+   *  starts closed on big worksheets ("the box for Licenses doesn't go
+   *  anywhere", 2026-10-16). Open the group first (summary.revealCard: the
+   *  real head click, so the state persists), then re-query — the toggle
+   *  handler may rebuild the cards. */
+  function applyScopeHighlight(container, ids, attempt) {
     var first = null;
     for (var i = 0; i < ids.length; i++) {
       if (!ids[i]) continue;
@@ -454,7 +465,13 @@
         if (!first) first = cards[k];
       }
     }
-    if (first && typeof first.scrollIntoView === 'function') {
+    if (!first) return;
+    if (attempt < 3 && ns.summary && typeof ns.summary.revealCard === 'function' &&
+        ns.summary.revealCard(first)) {
+      setTimeout(function () { applyScopeHighlight(container, ids, attempt + 1); }, 60);
+      return;
+    }
+    if (typeof first.scrollIntoView === 'function') {
       try { first.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* ignore */ }
     }
   }

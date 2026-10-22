@@ -891,7 +891,10 @@
       '  font-size: 12.5px; color: #334155;' +
       '}' +
       '.scw-ops-subbid__note b { color: #0f172a; }' +
-      '.scw-ops-subbid__empty { padding: 12px; color: #94a3b8; font-size: 12.5px; }';
+      '.scw-ops-subbid__empty { padding: 12px; color: #94a3b8; font-size: 12.5px; }' +
+      '.scw-ops-subbid__recheck { margin-left: 8px; padding: 2px 9px; border-radius: 6px; border: 1px solid #fde68a;' +
+      '  background: #fff; color: #92400e; font: 600 11px/1.3 system-ui, sans-serif; cursor: pointer; vertical-align: middle; }' +
+      '.scw-ops-subbid__recheck[disabled] { opacity: .6; cursor: default; }';
 
     var s = document.createElement('style');
     s.id = STYLE_ID;
@@ -1126,6 +1129,80 @@
     return rows[0] || null;
   }
 
+  // ── Fresh re-read of the SOW record (view-scoped GET) ─────────────
+  // The gate reads view_3861's DOM once per render. A basis picked on the
+  // Bid Review page seconds earlier (its PUT still landing, or retried)
+  // reads as "no basis" here until something re-renders the view — and the
+  // banner said "select the basis bid" over a choice that WAS made
+  // (2026-10-22). One automatic re-read a few seconds after a blocked
+  // render, plus a Re-check link on the banner; the fresh record outranks
+  // the DOM wherever the gate reads the basis / the snapshot.
+  var RECHECK_DELAY_MS = 2500;
+  var _fresh = null;           // record from the last re-read
+  var _freshFor = '';          // …and the record id it belongs to
+  var _autoRechecked = '';     // record id already auto re-read this load
+  var _rechecking = false;
+  function freshRecord() {
+    var id = getSourceRecordId();
+    return (_fresh && id && _freshFor === id) ? _fresh : null;
+  }
+  function freshHas(key) {
+    var rec = freshRecord();
+    return !!(rec && ((key in rec) || ((key + '_raw') in rec)));
+  }
+  /** { id, label } of the basis connection on the fresh record, or null. */
+  function freshBasis() {
+    var rec = freshRecord();
+    var raw = rec && rec.field_2942_raw;
+    if (Array.isArray(raw) && raw[0] && raw[0].id) {
+      return { id: String(raw[0].id), label: String(raw[0].identifier || '') };
+    }
+    return null;
+  }
+  /** Is a basis connection (field_2942) on the record? The fresh re-read
+   *  outranks the DOM; else the rendered detail text. */
+  function basisPresent() {
+    if (freshHas('field_2942')) return !!freshBasis();
+    return fieldPresent('field_2942') && String(readField('field_2942') || '').trim() !== '';
+  }
+  function basisLabel() {
+    var fb = freshBasis();
+    return (fb && fb.label) || String(readField('field_2942') || '').trim() || 'selected bid';
+  }
+  function recheckSource(done) {
+    var id = getSourceRecordId();
+    var can = !!(id && window.SCW && typeof SCW.knackAjax === 'function' &&
+                 typeof SCW.knackRecordUrl === 'function');
+    if (!can || _rechecking) { if (done) done(false); return; }
+    _rechecking = true;
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(SOURCE_VIEW, id),
+      type: 'GET',
+      success: function (res) {
+        var rec = (res && res.record) || res;
+        if (rec && typeof rec === 'object') { _fresh = rec; _freshFor = id; }
+        _rechecking = false;
+        render();
+        if (done) done(true);
+      },
+      error: function () {
+        _rechecking = false;
+        render();
+        if (done) done(false);
+      }
+    });
+  }
+  /** One automatic re-read per SOW per page load, only while the gate is
+   *  blocked: the record on this page can trail a basis saved on the Bid
+   *  Review page by a few seconds. */
+  function scheduleAutoRecheck() {
+    var id = getSourceRecordId();
+    if (!id || _autoRechecked === id) return;
+    if (!publishFinalBlockReason()) return;
+    _autoRechecked = id;
+    setTimeout(function () { recheckSource(); }, RECHECK_DELAY_MS);
+  }
+
   /** Record id of the SOW's basis-bid connection (field_2942) as rendered on
    *  view_3861 — the 24-hex class on the connection-value span. '' when the
    *  field isn't on the view or is blank. Used to cross-check the field_2941
@@ -1133,6 +1210,7 @@
    *  actual basis connection has since moved to a different bid the snapshot
    *  is stale and must not be trusted (or published from). */
   function basisConnectionId() {
+    if (freshHas('field_2942')) { var fb = freshBasis(); return fb ? fb.id : ''; }
     var view = document.getElementById(SOURCE_VIEW);
     if (!view) return '';
     var els = view.querySelectorAll('.kn-detail.field_2942 span[data-kn="connection-value"]');
@@ -1149,6 +1227,11 @@
    *  strips the tags and corrupts the JSON. The model holds the value exactly
    *  as it was PUT, so it parses cleanly. DOM is the last-resort fallback. */
   function rawSubBidJson() {
+    if (freshHas('field_2941')) {
+      var fr = freshRecord();
+      var fv = fr.field_2941_raw != null ? fr.field_2941_raw : fr.field_2941;
+      return fv == null ? '' : String(fv);
+    }
     try {
       var v = window.Knack && Knack.views && Knack.views[SOURCE_VIEW];
       var a = v && v.model && v.model.attributes;
@@ -1214,8 +1297,7 @@
     // persisted basis so a reviewed bid (especially a zero-difference one)
     // isn't falsely blocked. When the snapshot IS present we still use it to
     // require a reviewer note on a differing bid.
-    var hasBasis = !!(snap && snap.basisBidId) ||
-      (fieldPresent('field_2942') && String(readField('field_2942') || '').trim() !== '');
+    var hasBasis = !!(snap && snap.basisBidId) || basisPresent();
 
     if (!hasBasis) {
       if (snap === null) return '';                     // field not on the view → fail open
@@ -1281,8 +1363,7 @@
     var noBids = !conditionMet({ field: 'field_2728', gt: 0 });
     // Basis chosen even when the snapshot didn't persist onto this view (see
     // publishFinalBlockReason) — read the basis connection (field_2942) too.
-    var hasBasis = !!(snap && snap.basisBidId) ||
-      (fieldPresent('field_2942') && String(readField('field_2942') || '').trim() !== '');
+    var hasBasis = !!(snap && snap.basisBidId) || basisPresent();
 
     var wrap = document.createElement('div');
     wrap.className = 'scw-ops-subbid';
@@ -1295,10 +1376,10 @@
     var snapStale = !!(snap && snap.basisBidId && basisId && snap.basisBidId !== basisId);
 
     var basis = snapStale
-      ? (String(readField('field_2942') || '').trim() || 'selected bid')
+      ? basisLabel()
       : ((snap && snap.basisBidId)
           ? (snap.basisBidName || 'selected bid')
-          : (hasBasis ? (String(readField('field_2942') || '').trim() || 'selected bid') : ''));
+          : (hasBasis ? basisLabel() : ''));
     var readyCls = reason ? 'warn' : 'ok';
     var readyTxt = reason ? 'Review needed' : (noBids ? 'Not required' : '✓ Reviewed');
     html += '<div class="scw-ops-subbid__bar">' +
@@ -1311,7 +1392,11 @@
     // Why-blocked banner (the missing "communication about why").
     if (reason) {
       html += '<div class="scw-ops-subbid__block">⚠ Publish as Final is blocked — ' +
-              escHtml(reason) + '</div>';
+              escHtml(reason) +
+              ' <button type="button" class="scw-ops-subbid__recheck" data-scw-ops-recheck' +
+              (_rechecking ? ' disabled' : '') +
+              ' title="Re-read this SOW from Knack — a basis saved on the Bid Review page moments ago may not have reached this page yet">' +
+              (_rechecking ? 'Re-checking…' : 'Re-check') + '</button></div>';
     } else if (snap && snap.basisBidId) {
       html += '<div class="scw-ops-subbid__ok">✓ Ready to publish as final.</div>';
     }
@@ -3141,6 +3226,7 @@
     if (!coMode) {
       var subBidPanel = buildSubBidPanel();
       if (subBidPanel) block.appendChild(subBidPanel);
+      scheduleAutoRecheck();
     }
 
     // Render every step in fixed order. Three possible states per step:
@@ -3211,6 +3297,20 @@
 
   // ── Bindings ─────────────────────────────────────────────
   function bind() {
+    // The banner's Re-check — delegated once; the panel is rebuilt per render.
+    if (document.documentElement && !document.documentElement.hasAttribute('data-scw-ops-recheck-bound')) {
+      document.documentElement.setAttribute('data-scw-ops-recheck-bound', '1');
+      document.addEventListener('click', function (e) {
+        var b = e.target && e.target.closest && e.target.closest('[data-scw-ops-recheck]');
+        if (!b) return;
+        e.preventDefault();
+        b.disabled = true; b.textContent = 'Re-checking…';
+        recheckSource(function (ok) {
+          var nb = document.querySelector('[data-scw-ops-recheck]');
+          if (nb && !ok) { nb.disabled = false; nb.textContent = 'Re-check failed — try again'; }
+        });
+      });
+    }
     $(document)
       .off('knack-view-render.' + HOST_VIEW + NS)
       .on('knack-view-render.' + HOST_VIEW + NS, function () { setTimeout(render, 200); });
@@ -3223,6 +3323,13 @@
       .off('knack-scene-render.any' + NS)
       .on('knack-scene-render.any' + NS, function () { setTimeout(render, 600); });
   }
+
+  window.SCW = window.SCW || {};
+  window.SCW.opsStepper = {
+    // Re-read the SOW record this page's publish gate reads (tooling, tests).
+    recheck: recheckSource,
+    setRecheckDelay: function (ms) { RECHECK_DELAY_MS = Number(ms) || RECHECK_DELAY_MS; }
+  };
 
   injectStyles();
   bind();

@@ -291,6 +291,43 @@ check('a diff-bar re-render re-syncs the Next step pill, the gap count, the tab 
    txt(q(container, '[data-scw-br-v2-tab="s1"] .scw-bid-review-v2__sowtab-state')), txt(q(container, '.scw-bid-review-v2__sowtabs-meta'))],
   ['Add a reviewer note', 'needs-note', '1 gap', '● basis chosen · 1 gap · 3 change requests queued', '0 of 2 scopes reviewed']);
 
+// ── A Builder-assigned default is shown but unsaved: the card says so, and the radio saves it ──
+// (2026-10-22: the proposal page's publish gate reads the SOW record, which carries no basis for a
+// soft default — "select the basis bid, though it has" — so the card must never show a plain BASIS
+// badge for it.)
+basisMap.s2 = 'pkgB';
+window.SCW.subBidDiff.render.isDefaulted = id => id === 's2';
+let saveDefClicks = 0;
+const selDef = q(s2, 'select[data-scw-sbd-basis]');
+selDef.value = 'pkgB';                                   // the picker shows the default, as the real one does
+const saveDefBtn = document.createElement('button'); saveDefBtn.type = 'button';
+saveDefBtn.setAttribute('data-scw-sbd-savedef', ''); saveDefBtn.setAttribute('data-sow-id', 's2'); saveDefBtn.setAttribute('data-pkg-id', 'pkgB');
+saveDefBtn.textContent = 'Save as basis'; saveDefBtn.addEventListener('click', () => saveDefClicks++);
+selDef.parentNode.appendChild(saveDefBtn);
+ns.header.syncAll();
+const radioDef = q(s2, '[data-scw-br-v2-basis-radio="pkgB"]');
+const badgeDef = q(s2, '.scw-bid-review-v2__head-cell--title[data-pkg-id="pkgB"] .scw-bid-review-v2__basis-badge');
+check('defaulted: radio checked, its label stays and reads "Save as basis", the badge is the amber "Default · not saved"',
+  [radioDef.checked, radioDef.parentNode.querySelector('.scw-bid-review-v2__basis-radio-label').hidden, txt(radioDef.parentNode.querySelector('.scw-bid-review-v2__basis-radio-label')),
+   badgeDef.hidden, txt(badgeDef), badgeDef.classList.contains('scw-bid-review-v2__basis-badge--default')],
+  [true, false, 'Save as basis', false, 'Default · not saved', true]);
+check('the ⋮ menu keeps "Save as basis bid" and the tab state says the default is not saved',
+  [q(s2, '[data-scw-br-v2-setbasis="pkgB"]').hidden, txt(q(s2, '[data-scw-br-v2-setbasis="pkgB"]')), txt(q(container, '[data-scw-br-v2-tab="s2"] .scw-bid-review-v2__sowtab-state'))],
+  [false, 'Save as basis bid', '○ default bid shown · not saved as basis']);
+radioDef.click();
+check('clicking the already-checked radio presses the picker\'s own Save as basis (no change event fires on a checked radio)', saveDefClicks, 1);
+q(s2, '[data-scw-br-v2-setbasis="pkgB"]').click();
+check('the menu item does the same', saveDefClicks, 2);
+window.SCW.subBidDiff.render.isDefaulted = () => false;   // the write landed: a saved basis now
+ns.header.syncAll();
+check('once saved: plain BASIS badge, label hidden, menu item hidden, state "basis chosen"',
+  [txt(badgeDef), badgeDef.classList.contains('scw-bid-review-v2__basis-badge--default'), radioDef.parentNode.querySelector('.scw-bid-review-v2__basis-radio-label').hidden,
+   q(s2, '[data-scw-br-v2-setbasis="pkgB"]').hidden, txt(q(container, '[data-scw-br-v2-tab="s2"] .scw-bid-review-v2__sowtab-state'))],
+  ['Basis', false, true, true, '● basis chosen']);
+basisMap.s2 = '';
+delete window.SCW.subBidDiff.render.isDefaulted;
+ns.header.syncAll();
+
 // ── Kill switch ────────────────────────────────────────────────────────────────────────
 ns.CONFIG.headerRework = false;
 ns.header.afterRender(body);

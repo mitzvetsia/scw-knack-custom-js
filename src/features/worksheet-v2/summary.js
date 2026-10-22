@@ -927,6 +927,30 @@
     return h;
   }
 
+  /** Give a card a box to scroll to: open the collapsed MDF/IDF group (L1)
+   *  and the collapsed "Removed by CO" subgroup that hold it. The heads are
+   *  CLICKED (not toggled by class) so the existing handlers persist the
+   *  state exactly as a user click would. Returns true when something was
+   *  opened — the caller re-queries after those handlers ran. A scroll to a
+   *  card inside a closed group is a no-op: the Licenses group is last and
+   *  starts closed on big worksheets, which read as "the box for Licenses
+   *  doesn't go anywhere" (2026-10-16). */
+  function revealCard(card) {
+    if (!card || typeof card.closest !== 'function') return false;
+    var opened = false;
+    var l1 = card.closest('.scw-ws-v2-l1');
+    if (l1 && !l1.classList.contains('scw-ws-v2-l1--open')) {
+      var head = l1.querySelector('[data-scw-ws-v2-l1-toggle]');
+      if (head) { head.click(); opened = true; }
+    }
+    var sec = card.closest('.scw-ws-v2-removedsec');
+    if (sec && !sec.classList.contains('scw-ws-v2-removedsec--open')) {
+      var sh = sec.querySelector('.scw-ws-v2-removedsec-head');
+      if (sh) { sh.click(); opened = true; }
+    }
+    return opened;
+  }
+
   ns.summary = {
     buildL1Summary:    buildL1Summary,
     buildGrandSummary: buildGrandSummary,
@@ -938,7 +962,8 @@
     grandIssueChips:   grandIssueChips,
     l1MoneyTotal:      l1MoneyTotal,
     fmtMoney:          fmtMoney,
-    persistOpen:       persistOpen
+    persistOpen:       persistOpen,
+    revealCard:        revealCard
   };
 })();
 /*** END WORKSHEET V2 — SUMMARY ***********************************************/

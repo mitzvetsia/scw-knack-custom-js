@@ -541,6 +541,49 @@
     return null;
   }
 
+  /** The Change Orders SECTION (accordion wrapper): the one inside the
+   *  strip first, else anywhere on the scene (an older build could leave a
+   *  shell at the Builder position — never the one to act on). */
+  function findCoAcc(scene) {
+    var strip = document.getElementById(STRIP_ID);
+    if (strip) {
+      var accs = strip.querySelectorAll('.scw-ktl-accordion');
+      for (var i = 0; i < accs.length; i++) {
+        if (/^change orders?$/i.test(origTitle(accs[i]))) return accs[i];
+      }
+    }
+    return scene ? findAcc(scene, /^change orders?$/i) : null;
+  }
+  /** Ask the accordion engine for a pass NOW. It otherwise runs 80 ms after
+   *  a Knack render — and with no further render a view moved bare stayed
+   *  bare for the whole visit. */
+  function wrapNow() {
+    try {
+      if (window.SCW && SCW.ktlAccordion && typeof SCW.ktlAccordion.refresh === 'function') SCW.ktlAccordion.refresh();
+    } catch (e) { /* the engine's own pass will catch up */ }
+  }
+  function hasBox(el) {
+    if (!el) return false;
+    if (el.offsetHeight > 0) return true;
+    try { return el.getBoundingClientRect().height > 0; } catch (e) { return false; }
+  }
+  /** Re-resolve a stored target at click time. The "Also on this project"
+   *  rows are built on a pass and clicked later: a Change Orders row that
+   *  captured the strip while its grid was still bare (kind 'co') must open
+   *  the SECTION that exists now — wrapping the grid on the spot when the
+   *  engine has not — never scroll to a container with no height. Seen live
+   *  2026-10-21: the click "jumped down a few lines" onto the worksheet's
+   *  scope strip instead of opening the drawer, until a reload. */
+  function liveTarget(t) {
+    if (!t || t.kind !== 'co') return t;
+    var active = activeScene();
+    var scene = active && active.el;
+    if (t.el && t.el.querySelector(':scope > .kn-view')) wrapNow();
+    var acc = findCoAcc(scene);
+    if (acc) return { label: t.label, count: t.count, el: acc, kind: 'accordion' };
+    return t;
+  }
+
   function moveChangeOrders(scene, cfg) {
     var anchor = document.getElementById(cfg.worksheetMount);
     if (!anchor || !anchor.parentNode) return;
@@ -572,7 +615,19 @@
     // its parent is the accordion body INSIDE the strip; a parentNode check
     // would rip the view back out of its wrapper every heartbeat.
     var grid = findCoGridView(scene);
-    if (grid && !strip.contains(grid)) strip.appendChild(grid);
+    if (grid && !strip.contains(grid)) {
+      // Move the grid WITH its wrapper when the engine already built one
+      // (the Project Notes idiom above). Pulling the bare grid out left an
+      // empty "Change orders" shell behind — a second "Also" row opening an
+      // empty drawer — and a bare grid the engine had to re-adopt.
+      var wrap = grid.closest('.scw-ktl-accordion');
+      strip.appendChild(wrap && !wrap.contains(strip) ? wrap : grid);
+      // A bare grid: wrap it NOW. The "Also on this project" row resolves
+      // its target from the wrapper; waiting for the engine's next render
+      // pass left the row pointing at the hidden strip whenever this grid
+      // was the last view to render (2026-10-21).
+      if (!grid.closest('.scw-ktl-accordion')) wrapNow();
+    }
     // Pre-adoption: the moved grid is a bare .kn-view until ktl-accordion
     // wraps it, so neither the curtain's unclassified rule nor parking
     // reaches it — it painted (CO cards and all) and then vanished into the
@@ -698,7 +753,7 @@
     // the sub scene — matched by link text either way). The strip can hold
     // TWO accordions, so match by title, not first-in-strip.
     mountProxyCta(
-      findAcc(scene, /^change orders?$/i),
+      findCoAcc(scene),
       findMenuLinkView(scene, /create change order/i),
       'scw-deploy-co-actionbar', 'scw-deploy-co-cta');
     // Project Notes ← "Add Project Note" (view_4133; ops scene only today).
@@ -842,10 +897,13 @@
         warn:  acc.hasAttribute('data-scw-attention')
       });
     }
-    // Pre-adoption fallback: the CO grid moved into the strip but
-    // ktl-accordion hasn't wrapped it yet — keep the section reachable.
+    // Pre-adoption fallback: the CO grid moved into the strip but the
+    // accordion engine hasn't wrapped it yet — keep the section reachable.
+    // Only while NO Change Orders section exists (moveChangeOrders wraps the
+    // moved grid at once; this covers a grid the engine never wraps), so
+    // the list never carries two Change Orders rows.
     var strip = document.getElementById(STRIP_ID);
-    if (strip && strip.querySelector(':scope > .kn-view')) {
+    if (strip && strip.querySelector(':scope > .kn-view') && !findCoAcc(scene)) {
       var rows = strip.querySelectorAll(':scope > .kn-view tbody tr[id]').length;
       out.push({ label: 'Change Orders', count: rows ? String(rows) : '', el: strip, kind: 'co' });
     }
@@ -1410,9 +1468,13 @@
   }
 
   function openDrawer(target) {
+    target = liveTarget(target);
     var acc = target && target.el;
     if (!acc || !acc.classList || !acc.classList.contains('scw-ktl-accordion')) {
-      if (target) scrollToTarget(target);
+      // Nothing to host: scroll to it — but only to an element with a box.
+      // A pre-wrap container has none, and scrolling to it lands on
+      // whatever follows it (the worksheet's scope strip, 2026-10-21).
+      if (target && hasBox(target.el)) scrollToTarget(target);
       return;
     }
     var d = ensureDrawer();
