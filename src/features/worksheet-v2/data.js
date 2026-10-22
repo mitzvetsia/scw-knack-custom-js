@@ -537,6 +537,26 @@
           .off('knack-view-render.' + mdfKey + '.scwWsV2-' + key)
           .on('knack-view-render.' + mdfKey + '.scwWsV2-' + key, function () { armGuard(); notify(key); });
       }
+      // The SOW / Bid filter's NAME grids (the BIDs grid view_3507 on the
+      // survey page, the SOW grids on the project page) and the context bar's
+      // list view feed the scope / bid list. Re-notify when one renders so a
+      // stored choice the list could not show yet (the grid rendered AFTER
+      // the worksheet) is applied the moment the grid is there (2026-10-22;
+      // sow-filter.js keeps such a choice instead of erasing it).
+      var nameKeys = [];
+      try {
+        var fspec = (ns.sowFilter && typeof ns.sowFilter.filterSpec === 'function') ? ns.sowFilter.filterSpec(key) : null;
+        if (fspec && Array.isArray(fspec.nameViews)) nameKeys = nameKeys.concat(fspec.nameViews);
+      } catch (eSpec) { /* filter module absent */ }
+      if (!nameKeys.length && vcfg.filterPills && Array.isArray(vcfg.filterPills.nameViews)) nameKeys = nameKeys.concat(vcfg.filterPills.nameViews);
+      if (vcfg.sowContext && vcfg.sowContext.listView) nameKeys.push(vcfg.sowContext.listView);
+      for (var nk = 0; nk < nameKeys.length; nk++) {
+        var nvKey = nameKeys[nk];
+        if (!nvKey || nvKey === key || nvKey === vcfg.mdfSourceViewKey) continue;
+        $(document)
+          .off('knack-view-render.' + nvKey + '.scwWsV2-' + key)
+          .on('knack-view-render.' + nvKey + '.scwWsV2-' + key, function () { armGuard(); notify(key); });
+      }
     });
 
     // mirror-connection-sync emits this when its reciprocal/cascade

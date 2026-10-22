@@ -57,7 +57,7 @@ const txt = el => el ? Array.from(el.childNodes).map(n => n.nodeType === 3 ? n.t
 const panel = (vk) => { const p = document.createElement('div'); p.id = 'scw-ws-v2-' + vk; p.className = 'scw-ws-v2';
   p.innerHTML = '<div class="scw-ws-v2-banner"><span class="scw-ws-v2-banner-title">x</span></div><div class="scw-ws-v2-body"></div>'; document.body.appendChild(p); return p; };
 const click = (el, init) => el.dispatchEvent(new window.MouseEvent('click', Object.assign({ bubbles: true, cancelable: true }, init || {})));
-try { window.localStorage.clear(); } catch (e) {}
+try { window.localStorage.clear(); window.sessionStorage.clear(); } catch (e) {}   // a fresh state = both stores (the live choice is per tab since 2026-10-22)
 
 // ── the bid list + badge rule ────────────────────────────────────────────────────────────────
 check('filter spec on the survey worksheet: the Bid connection, labelled Bid, listing the BIDs grid',
@@ -147,7 +147,7 @@ check('another request on the same scene has no stored choice (chooser back); th
   [true, [], ['__blank']]);
 
 // ── one bid on the request (the common sub case): no chooser, no amber, no tabs ──────────────
-try { window.localStorage.clear(); } catch (e) {}
+try { window.localStorage.clear(); window.sessionStorage.clear(); } catch (e) {}   // a fresh state = both stores (the live choice is per tab since 2026-10-22)
 const one = [rec('q1', [B1]), rec('q2', [B1])];
 window.Knack.views.view_3505.model.data.models = one.map(r => ({ attributes: r }));
 window.Knack.views.view_3507.model.data.models = [{ attributes: bidRows[0] }];

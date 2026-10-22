@@ -650,7 +650,14 @@
       e.preventDefault();
       var id = t.getAttribute('data-scw-ws-v2-sowctx-tab') || t.getAttribute('data-scw-ws-v2-sowctx-choose');
       if (id === ALL) { choose(viewKey, [ALL]); return; }
-      var current = (ns.sowFilter && ns.sowFilter.loadActive(viewKey) || []).filter(function (x) { return x !== ALL; });
+      // Only ids the page lists right now ride along: a stored id the list
+      // lacks at this instant is kept in storage by the filter (sow-filter.js
+      // mount, 2026-10-22) but never folded into a new choice.
+      var listed = Object.create(null);
+      listed[BLANK] = true;
+      var listNow = (ns.sowFilter && typeof ns.sowFilter.collectSowList === 'function') ? (ns.sowFilter.collectSowList(viewKey) || []) : [];
+      for (var li = 0; li < listNow.length; li++) listed[listNow[li].id] = true;
+      var current = (ns.sowFilter && ns.sowFilter.loadActive(viewKey) || []).filter(function (x) { return x !== ALL && listed[x]; });
       var additive = !!(e.shiftKey || e.metaKey || e.ctrlKey) && t.hasAttribute('data-scw-ws-v2-sowctx-tab');
       var next;
       if (additive) {

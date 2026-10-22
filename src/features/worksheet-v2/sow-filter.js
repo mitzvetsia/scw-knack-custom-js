@@ -7,7 +7,8 @@
  * AND SW-1060 shows every card connected to EITHER SOW; clicking
  * "(blank)" alongside SW-1001 also surfaces no-SOW rows.
  *
- * Storage: comma-separated list of selected ids in localStorage. The
+ * Storage: comma-separated list of selected ids — per TAB in sessionStorage,
+ * seeded from localStorage (see loadActive). The
  * sentinel `__blank` represents the "no SOW connection" filter.
  * Empty string = Show All (no filter active).
  *
@@ -85,18 +86,37 @@
     var rid = routeRecordId();
     return 'scw:ws-v2:sow-filter:' + getSceneId() + ':' + viewKey + (rid ? ':' + rid : '');
   }
-  function loadActive(viewKey) {
+  // The live choice is PER TAB (sessionStorage), seeded from the cross-tab
+  // memory (localStorage) only when this tab has none yet. 2026-10-22: a sub
+  // reviewing two variant bids in two tabs saw each tab flip to the other's
+  // bid "while just scrolling" — every background rebuild (poll ticks, the
+  // 15 s burst after an edit) re-read the SHARED localStorage key, so the
+  // last tab to click won in both. A reload keeps the tab's own choice; a
+  // fresh tab starts from the last choice made anywhere. An explicit
+  // "nothing selected" is kept as '' so it is never re-seeded from another
+  // tab's pick.
+  function storeGet(store, key) {
+    try { var st = window[store]; return st ? st.getItem(key) : null; } catch (e) { return null; }
+  }
+  function storeSet(store, key, val) {
     try {
-      var raw = localStorage.getItem(storageKey(viewKey)) || '';
-      if (!raw) return [];
-      return raw.split(',').filter(function (s) { return s.length; });
-    } catch (e) { return []; }
+      var st = window[store];
+      if (!st) return;
+      if (val === null) st.removeItem(key); else st.setItem(key, val);
+    } catch (e) {}
+  }
+  function loadActive(viewKey) {
+    var key = storageKey(viewKey);
+    var raw = storeGet('sessionStorage', key);
+    if (raw === null || raw === undefined) raw = storeGet('localStorage', key) || '';
+    if (!raw) return [];
+    return String(raw).split(',').filter(function (s) { return s.length; });
   }
   function saveActive(viewKey, ids) {
-    try {
-      if (!ids || !ids.length) localStorage.removeItem(storageKey(viewKey));
-      else                     localStorage.setItem(storageKey(viewKey), ids.join(','));
-    } catch (e) {}
+    var key = storageKey(viewKey);
+    var val = (ids && ids.length) ? ids.join(',') : '';
+    storeSet('sessionStorage', key, val);
+    storeSet('localStorage', key, val || null);
   }
 
   function stripHtml(s) {
@@ -406,8 +426,22 @@
     for (var s = 0; s < sows.length; s++) valid[sows[s].id] = true;
     valid[BLANK] = true;
     valid[ALL] = true;
-    var active = loadActive(viewKey).filter(function (id) { return valid[id]; });
-    saveActive(viewKey, active);
+    // Stored ids that are not on the list right now are KEPT (2026-10-22):
+    // the list is only what this instant's models show — the BIDs / SOW name
+    // grid may not have rendered yet, or Knack may be re-creating it — and
+    // the old write-back erased a sub's variant bid for good the moment it
+    // blinked out, dropping the page onto the other bid. The one thing still
+    // purged is an id the page positively knows as a change order on a view
+    // that hides them (never transient). The display applies the valid subset.
+    var stored = loadActive(viewKey);
+    var coIds = Object.create(null);
+    if (hidesChangeOrders(viewKey)) {
+      var everything = collectSowList(viewKey, { includeCo: true });
+      for (var c = 0; c < everything.length; c++) if (everything[c].isCo) coIds[everything[c].id] = true;
+    }
+    var kept = stored.filter(function (id) { return !coIds[id]; });
+    if (kept.length !== stored.length) saveActive(viewKey, kept);
+    var active = kept.filter(function (id) { return valid[id]; });
     applyFilter(container, active, viewKey);
 
     if (!strip.hasAttribute('data-scw-bound')) {
@@ -416,7 +450,9 @@
         var pill = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-sow-pill]');
         if (!pill) return;
         var id = pill.getAttribute('data-scw-ws-v2-sow-pill');
-        var current = loadActive(viewKey).filter(function (s) { return s !== ALL; });
+        // Build from the ids the strip shows: a stored id the list lacks right
+        // now (see mount) must not ride along into the user's new choice.
+        var current = loadActive(viewKey).filter(function (s) { return s !== ALL && valid[s]; });
         var next;
         if (id === '__all') {
           // A view that requires a scope choice remembers "all" explicitly.

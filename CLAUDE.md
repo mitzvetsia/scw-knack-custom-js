@@ -712,6 +712,32 @@ modal inherits from 05.01 (pre-existing, not changed): License qty is ignored (o
 product), exterior/plenum come from the PRODUCT not the toggles, Materials accessories (`field_2206`)
 create SOW Line Items (object_105), not survey items. Test: `tests/worksheet-v2/test-survey-add-item-form.js`.
 
+## Bid / SOW filter choice: per tab, never erased by a rebuild (2026-10-22) — `worksheet-v2/sow-filter.js`
+
+Slack (SVS, survey / bid page view_3505): "as I am reviewing the different variants … Knack is resetting
+and switching off the variant I'm on to the other one … just scrolling". Two causes, both in how the
+Bid / SOW filter stored its choice:
+- **The choice lived in ONE shared localStorage key and was re-read on every rebuild.** The worksheet
+  rebuilds with no click (poll.js: every 2 min, every 15 s for 5 min after any record save), and each
+  rebuild re-ran `sow-filter.mount` → `loadActive`. Two tabs on the same request (one per variant) share
+  the key, so the last tab to click won in BOTH — the other tab flipped on its next tick. Now the live
+  choice is PER TAB in `sessionStorage` (survives a reload of that tab); `localStorage` only SEEDS a tab
+  that has no choice yet (the last pick made anywhere). An explicit "nothing selected" is stored as `''`
+  so another tab's later pick never re-seeds it.
+- **`mount` filtered the stored ids against the list visible at that instant and WROTE the result back.**
+  The list is only what the models show right then: a variant with no items is listed only through the
+  BIDs grid view_3507, so a rebuild while that grid was not rendered (first paint, Knack re-creating it
+  after a child page) erased the choice for good — with one bid left the bar went to `only` mode on the
+  other bid; later, the chooser. Now a stored id the list lacks is KEPT (display applies the valid
+  subset) and the only purge left is an id the page positively knows as a change order on a view that
+  hides them. Clicks never carry a stale id along: the pills strip and the context bar's tab / chooser
+  build the next choice from the ids listed right now (`sow-context.js` `bind`). `data.js` also
+  re-notifies the worksheet when a filter's NAME grid renders (`filterSpec(key).nameViews`, the context
+  bar's `listView`), so a choice the list could not show yet applies the moment the grid is there.
+- Tests: `tests/worksheet-v2/test-bid-filter-tab-storage.js` (two tabs, fresh-tab seed, grid absent on a
+  rebuild, stale id on a click, explicit empty, CO purge); `test-bid-context.js` clears both stores for a
+  fresh state.
+
 ## Add accessories — multi-select (2026-10-22) — `src/features/worksheet-v2/toolbar.js`
 
 ClickUp 86bb8bhu2 ("need ability to add more than one accessory to products at a time"). The add-accessory
