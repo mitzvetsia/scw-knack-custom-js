@@ -4267,7 +4267,7 @@
   // keyed by the BID RECORD id (cell.id), not the grid row's meta id, so an
   // off-SOW row shared across bids targets the right bid record. Returns
   // { applied, skipped }. Driven by bid-review-v2's bulk-CR modal.
-  ns.addBulkRemoveFromBid = function (pkgId, sowItemIds, changeNotes) {
+  ns.addBulkRemoveFromBid = function (pkgId, sowItemIds, changeNotes, opts) {
     if (!_state || !_state.sowGrids || !ns.changeRequests) return { applied: 0, skipped: 0 };
 
     var want = Object.create(null);
@@ -4294,6 +4294,10 @@
           proposalBucket:   row.proposalBucket || '',
           proposalBucketId: row.proposalBucketId || '',
           removeFromBid:    true,
+          // Opt-in SOW unlink on submit (change-requests.js "Remove from the
+          // SOW on submit") — the bulk modal's second box.
+          removeFromSow:     !!(opts && opts.removeFromSow),
+          removeFromSowName: grid.sowName || '',
           current:          {},
           requested:        {},
           changeNotes:      (changeNotes || '').trim()

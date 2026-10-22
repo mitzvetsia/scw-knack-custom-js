@@ -712,6 +712,36 @@ modal inherits from 05.01 (pre-existing, not changed): License qty is ignored (o
 product), exterior/plenum come from the PRODUCT not the toggles, Materials accessories (`field_2206`)
 create SOW Line Items (object_105), not survey items. Test: `tests/worksheet-v2/test-survey-add-item-form.js`.
 
+## Change request "Remove from bid" can also remove the item from the SOW (2026-10-22) — `bid-review/change-requests.js`
+
+ClickUp 86bcdrp7m ("Can a bid revision request to SVS to remove items from a bid also remove those items
+from the SoW?"). Yes, as an OPT-IN per removal, and the SOW half is done by the page on SUBMISSION — not by
+Make, not on the sub's acceptance (decided 2026-10-22):
+- **Where**: the Remove modal (`openRemoveModal`) carries an **"Also remove this item from SOW <n>"** box,
+  offered only when the bid line maps to a SOW line item (`params.sowItemId`; a bid-only line has nothing to
+  unlink), with a hint that reads the item's SOW set off the view_3921 model: "It stays on SOW 1628." /
+  "It is on no other SOW, so it will be left unassigned — it is not deleted." Re-opening a pending removal
+  prefills its note and its choice. The bulk modal (`bid-review-v2/bulk-cr.js`) has the same box under
+  "Remove from bid" (`data-remove-sow`, enabled only in removal mode) → `addBulkRemoveFromBid(pkgId, ids,
+  note, { removeFromSow })`.
+- **The flag** `removeFromSow` (+ `removeFromSowName`) rides the pending item through the draft
+  (sessionStorage + `field_2684`), the pending card ("Also leaves SOW 1589 when submitted"), the webhook
+  payload (`entry.removeFromSow`, informational — Make does not act on it), the submit HTML and the plain
+  text ("Also removed from SOW 1589 when this request was submitted").
+- **On submit** (`submitChangeRequest` → `onSent`, on a 200 AND on the CORS-opaque status 0 the module
+  already treats as sent): `removeItemsFromSow(items, sowId)` — per item an authoritative GET of the SOW
+  line item through view_3921 (`CFG.sowItemsViewKey`), then a PUT of `field_2154` minus this SOW (a no-op
+  when it is already off); the tray's "+ Add to this SOW" write in reverse. 2 in flight, 150 ms apart,
+  0 / 408 / 429 / 5xx retried ×4 with backoff, a permanent 4xx reported (`UNLINK`, exported as
+  `_unlink` for tests). Each landed PUT fires Knack's own `knack-cell-update.view_3921` (`[{key}, record,
+  'field_2154']`) so `mirror-connection-sync`'s SOW cascade runs exactly as for an inline edit: accessories
+  follow the parent off the SOW, connected devices that no longer share a SOW with it are disconnected.
+  Toast: "Removed N items from SOW 1589" or the failures by label with "take them off on the worksheet";
+  then the existing refresh schedule re-reads both grids. Nothing is deleted.
+- Test: `tests/bid-review-v2/test-cr-remove-from-sow.js` (drives the real module: the box + hints, the
+  card / payload / HTML / text, the 2-wide GET → PUT queue, the cell-update dispatch, the status-0 webhook,
+  a 500 retry, a 403 report, the already-off no-op).
+
 ## Bid / SOW filter choice: per tab, never erased by a rebuild (2026-10-22) — `worksheet-v2/sow-filter.js`
 
 Slack (SVS, survey / bid page view_3505): "as I am reviewing the different variants … Knack is resetting

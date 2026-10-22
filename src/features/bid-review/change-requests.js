@@ -305,6 +305,10 @@
       '}',
       '.scw-bid-cr-modal__checkbox-item input { margin: 3px 0 0; cursor: pointer; flex-shrink: 0; }',
       '.scw-bid-cr-modal__checkbox-item label { cursor: pointer; }',
+      '.scw-bid-cr-modal__sowunlink { margin-top: 10px; padding: 8px 10px; border: 1px solid #fecaca; border-radius: 5px; background: #fff7f7; }',
+      '.scw-bid-cr-modal__sowunlink .scw-bid-cr-modal__checkbox-item { padding: 0; font-weight: 600; color: #991b1b; }',
+      '.scw-bid-cr-modal__sowunlink-hint { font-size: 11.5px; color: #64748b; margin: 4px 0 0 20px; line-height: 1.4; }',
+      '.scw-bid-cr-card__row--sow { color: #991b1b; font-weight: 600; }',
       '.scw-bid-cr-modal__conn-info { font-size: 11px; color: #94a3b8; font-style: italic; width: 100%; padding-left: 20px; }',
       '.scw-bid-cr-modal__checkbox-empty {',
       '  font-size: 12px; color: #94a3b8; font-style: italic; padding: 4px 0;',
@@ -1255,6 +1259,11 @@
 
     if (item.removeFromBid) {
       card.appendChild(el('div', 'scw-bid-cr-card__row', 'Requesting removal'));
+      if (item.removeFromSow) {
+        var rmSow = (_pending[pkgId] && _pending[pkgId].sowName) || item.removeFromSowName || '';
+        card.appendChild(el('div', 'scw-bid-cr-card__row scw-bid-cr-card__row--sow',
+          'Also leaves ' + (rmSow ? 'SOW ' + rmSow : 'this SOW') + ' when submitted'));
+      }
       if (item.changeNotes) {
         card.appendChild(el('div', 'scw-bid-cr-card__notes', '\u201c' + item.changeNotes + '\u201d'));
       }
@@ -1486,6 +1495,11 @@
       h.push('<span style="color:#64748b;font-size:12px;">&mdash; ' + escHtml(item.productName) + '</span>');
     }
     h.push('</div>');
+    if (action === 'remove' && item.removeFromSow) {
+      h.push('<div style="font-size:12px;color:#991b1b;font-weight:600;margin-bottom:4px;">Also removed from ' +
+        (item.removeFromSowName ? 'SOW ' + escHtml(item.removeFromSowName) : 'the SOW') +
+        ' when this request was submitted.</div>');
+    }
 
     var renderedTable = false;
     if (action !== 'remove' && fieldList && fieldList.length) {
@@ -1601,6 +1615,10 @@
     // those branches, so it never reached ClickUp for other item shapes.
     if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
     else if (action === 'remove') lines.push('  Requesting removal');
+    if (action === 'remove' && item.removeFromSow) {
+      lines.push('  Also removed from ' + (item.removeFromSowName ? 'SOW ' + item.removeFromSowName : 'the SOW') +
+        ' when this request was submitted');
+    }
 
     return lines.join('\n');
   }
@@ -1653,6 +1671,10 @@
       // action is 'reinstate' (via itemActionType). This is what lets the Make
       // scenario branch reinstate vs. add vs. revise.
       if (it.reinstate) entry.reinstate = true;
+      // The SOW half of a removal is done by this page on submit (see "Remove
+      // from the SOW on submit"); the flag rides along so the stored change
+      // JSON / ClickUp show it. Make does not act on it.
+      if (it.removeFromBid) entry.removeFromSow = !!it.removeFromSow;
 
       // Proposal bucket + sort order
       entry.proposalBucket   = it.proposalBucket || '';
@@ -1937,6 +1959,12 @@
             h.push('&ldquo;' + escHtml(item.changeNotes) + '&rdquo;');
             h.push('</div>');
           }
+          // The SOW half of the removal (done by this page on submit).
+          if (item.removeFromSow) {
+            h.push('<div style="font-size:12px;color:#991b1b;font-weight:600;margin-top:4px;">Also removed from ' +
+              (item.removeFromSowName ? 'SOW ' + escHtml(item.removeFromSowName) : 'the SOW') +
+              ' when this request was submitted.</div>');
+          }
         } else {
           // Revise or Add — show field changes in a compact table
           var fields = buildItemFields(item);
@@ -2076,7 +2104,32 @@
       SCW.debug('[BidReview CR] HTML preview:', html.substring(0, 500) + '...');
     }
 
+    // Removals whose "Also remove from SOW" box was ticked: this page unlinks
+    // their SOW line items the moment the webhook accepts the request (see
+    // "Remove from the SOW on submit"). Captured BEFORE the POST — the pending
+    // package is deleted on success.
+    var unlinkItems = [];
+    for (var ui = 0; ui < pkg.items.length; ui++) {
+      var uit = pkg.items[ui];
+      if (uit && uit.removeFromBid && uit.removeFromSow && uit.sowItemId) unlinkItems.push(uit);
+    }
+    var unlinkSowId = pkg.sowId, unlinkSowName = pkg.sowName;
+
     var deferred = $.Deferred();
+
+    function onSent(resp) {
+      delete _pending[pkgId];
+      persist();
+      triggerRerender();
+      ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
+      if (unlinkItems.length && unlinkSowId) {
+        removeItemsFromSow(unlinkItems, unlinkSowId).then(function (results) {
+          reportUnlink(results, unlinkSowName);
+          refreshBoth();
+        });
+      }
+      deferred.resolve(resp);
+    }
 
     SCW.knackAjax({
       url:  CFG.changeRequestWebhook,
@@ -2084,22 +2137,14 @@
       data: JSON.stringify(payload),
       success: function (resp) {
         if (CFG.debug) SCW.debug('[BidReview CR] Submit success:', resp);
-        delete _pending[pkgId];
-        persist();
-        triggerRerender();
-        ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
-        deferred.resolve(resp);
+        onSent(resp);
       },
       error: function (xhr) {
         // CORS may block the response even though Make received and
         // processed the request (status 0). Treat as success if so.
         if (xhr && xhr.status === 0) {
           if (CFG.debug) SCW.debug('[BidReview CR] Webhook CORS-blocked (status 0) — treating as success');
-          delete _pending[pkgId];
-          persist();
-          triggerRerender();
-          ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
-          deferred.resolve();
+          onSent();
         } else {
           console.error('[BidReview CR] Submit failed:', xhr.status, xhr.responseText);
           ns.renderToast('Failed to submit change request — please try again', 'error');
@@ -2121,13 +2166,13 @@
     // and catches whatever Make has committed by then — the later ticks mop
     // up the slow tail without the user hand-refreshing. Refresh BOTH v1
     // (ns.refresh) and the displayed v2 grid (refetchAll) each tick.
-    var refreshBoth = function () {
+    function refreshBoth() {
       try { if (ns.refresh) ns.refresh(); } catch (e) { /* ignore */ }
       try {
         var v2 = window.SCW && SCW.bidReviewV2 && SCW.bidReviewV2.data;
         if (v2 && typeof v2.refetchAll === 'function') v2.refetchAll();
       } catch (e2) { /* ignore */ }
-    };
+    }
     var REFRESH_SCHEDULE_MS = [3000, 7000, 13000, 22000, 35000];
     for (var rs = 0; rs < REFRESH_SCHEDULE_MS.length; rs++) {
       setTimeout(refreshBoth, REFRESH_SCHEDULE_MS[rs]);
@@ -2195,6 +2240,201 @@
     document.body.appendChild(overlay);
   }
 
+  // ── Remove from the SOW on submit (2026-10-22, ClickUp 86bcdrp7m) ─────
+  // "Can a revision request to remove items from a bid also remove them from
+  // the SOW?" Yes, as an opt-in per removal: the Remove modal (and the bulk
+  // remove) carry an "Also remove from SOW <n>" box; the flag rides the pending
+  // item (`removeFromSow`) through the draft + the webhook payload, and the
+  // moment the change request is SUBMITTED this page unlinks the line item
+  // from the SOW itself — a view-based PUT of field_2154 through view_3921
+  // (the tray's "+ Add to this SOW" write in reverse), one per item through a
+  // capped queue with retry, then the same knack-cell-update Knack fires for
+  // an inline SOW edit so mirror-connection-sync's cascade runs (accessories
+  // follow the parent off the SOW; connected devices that no longer share a
+  // SOW are disconnected). Nothing is deleted: an item on no other SOW is left
+  // unassigned. Make is not involved in the SOW half.
+  var UNLINK = { concurrency: 2, gapMs: 150, attempts: 4, baseMs: 1200, jitterMs: 400 };
+  function sowItemsViewKey() { return CFG.sowItemsViewKey || 'view_3921'; }
+  function sowConnKey() {
+    return (CFG.sowItemFieldKeys && CFG.sowItemFieldKeys.sow) || (FK && FK.sow) || 'field_2154';
+  }
+  function sowRefsOf(rec) {
+    var raw = rec ? rec[sowConnKey() + '_raw'] : null;
+    if (Array.isArray(raw)) return raw.filter(function (r) { return r && r.id; });
+    if (raw && raw.id) return [raw];
+    return [];
+  }
+  /** The loaded SOW line item (the view_3921 model) — for the modal's hint. */
+  function loadedSowItem(itemId) {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[sowItemsViewKey()];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i] && models[i].attributes;
+        if (a && a.id === itemId) return a;
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+  /** What unlinking this item from `sowId` leaves behind, in words. */
+  function sowUnlinkHint(itemId, sowId) {
+    var rec = loadedSowItem(itemId);
+    var lead = 'Happens on this page the moment the change request is submitted — Make is not involved. ';
+    if (!rec) return lead + 'The line item leaves this scope of work.';
+    var others = [];
+    var refs = sowRefsOf(rec);
+    for (var i = 0; i < refs.length; i++) {
+      if (refs[i].id === sowId) continue;
+      others.push(stripMarkup(refs[i].identifier || '') || refs[i].id);
+    }
+    if (!others.length) {
+      return lead + 'It is on no other SOW, so it will be left unassigned (on no scope of work) — it is not deleted.';
+    }
+    return lead + 'It stays on ' + (others.length === 1 ? 'SOW ' : 'SOWs ') + others.join(', ') + '.';
+  }
+  function transientStatus(st) {
+    return st === 0 || st === 408 || st === 429 || (st >= 500 && st <= 599);
+  }
+  /** One Knack view-based request as a promise (never hangs when Knack is absent). */
+  function knackReq(opts) {
+    return new Promise(function (resolve, reject) {
+      var o = {};
+      for (var k in opts) o[k] = opts[k];
+      o.success = function (resp) { resolve(resp); };
+      o.error   = function (xhr) { reject(xhr || { status: 0 }); };
+      try {
+        var r = SCW.knackAjax(o);
+        if (r === undefined && typeof Knack === 'undefined') reject({ status: 0 });
+      } catch (e) { reject({ status: 0, error: e }); }
+    });
+  }
+  /** Retry a request on 0 / 408 / 429 / 5xx with exponential backoff + jitter. */
+  function withRetry(makeReq) {
+    return new Promise(function (resolve, reject) {
+      var attempt = 0;
+      function go() {
+        attempt++;
+        makeReq().then(resolve, function (xhr) {
+          var st = (xhr && xhr.status) || 0;
+          if (transientStatus(st) && attempt < UNLINK.attempts) {
+            setTimeout(go, UNLINK.baseMs * Math.pow(2, attempt - 1) + Math.random() * UNLINK.jitterMs);
+            return;
+          }
+          reject(xhr || { status: st });
+        });
+      }
+      go();
+    });
+  }
+  /** Run promise-returning tasks at most `limit` at a time, starts at least
+   *  `gapMs` apart; resolves to the results array. Never rejects. */
+  function runQueue(tasks, limit, gapMs) {
+    return new Promise(function (resolve) {
+      var results = new Array(tasks.length);
+      var next = 0, active = 0, finished = 0, lastStart = 0;
+      if (!tasks.length) { resolve(results); return; }
+      function settle(i, r) {
+        results[i] = r;
+        active--; finished++;
+        if (finished === tasks.length) resolve(results);
+        else launch();
+      }
+      function start(i, wait) {
+        setTimeout(function () {
+          var p;
+          try { p = Promise.resolve(tasks[i]()); }
+          catch (e) { p = Promise.resolve({ ok: false, status: 0, error: String((e && e.message) || e) }); }
+          p.then(function (r) { settle(i, r); },
+                 function (e) { settle(i, { ok: false, status: 0, error: String((e && e.message) || e) }); });
+        }, wait);
+      }
+      function launch() {
+        while (active < limit && next < tasks.length) {
+          var i = next++;
+          active++;
+          var now = Date.now();
+          var at = Math.max(now, lastStart + gapMs);
+          lastStart = at;
+          start(i, at - now);
+        }
+      }
+      launch();
+    });
+  }
+  function withBase(base, extra) {
+    var out = {};
+    for (var k in base) out[k] = base[k];
+    for (var j in extra) out[j] = extra[j];
+    return out;
+  }
+  function mergeSow(rec, key, ids) {
+    var out = {};
+    for (var k in rec) out[k] = rec[k];
+    out[key + '_raw'] = ids.map(function (id) { return { id: id }; });
+    return out;
+  }
+  /** The event Knack fires after an inline SOW edit on this grid — so the
+   *  mirror cascade (and every other listener) treats our PUT as one. */
+  function fireSowCellUpdate(view, record, fieldKey) {
+    try { $(document).trigger('knack-cell-update.' + view, [{ key: view }, record, fieldKey]); }
+    catch (e) { /* listeners are best-effort */ }
+  }
+  /** Unlink each pending removal's SOW line item from `sowId`: an
+   *  authoritative GET of the record, then a PUT of its SOW set minus this
+   *  SOW (a no-op when it is already off). Resolves (never rejects) to one
+   *  { ok, itemId, label, status?, noop?, remaining? } per item. */
+  function removeItemsFromSow(items, sowId) {
+    var key = sowConnKey(), view = sowItemsViewKey();
+    var tasks = [];
+    for (var i = 0; i < items.length; i++) {
+      (function (it) {
+        tasks.push(function () {
+          var url  = SCW.knackRecordUrl(view, it.sowItemId);
+          var base = { itemId: it.sowItemId, label: it.displayLabel || it.productName || it.sowItemId };
+          return withRetry(function () { return knackReq({ url: url, type: 'GET' }); })
+            .then(function (rec) {
+              var ids = [];
+              var refs = sowRefsOf(rec);
+              for (var r = 0; r < refs.length; r++) ids.push(refs[r].id);
+              var next = [];
+              for (var n = 0; n < ids.length; n++) if (ids[n] !== sowId) next.push(ids[n]);
+              if (next.length === ids.length) return withBase(base, { ok: true, noop: true, remaining: next.length });
+              var body = {};
+              body[key] = next;
+              return withRetry(function () { return knackReq({ url: url, type: 'PUT', data: JSON.stringify(body) }); })
+                .then(function (resp) {
+                  fireSowCellUpdate(view, (resp && resp.id) ? resp : mergeSow(rec, key, next), key);
+                  return withBase(base, { ok: true, remaining: next.length });
+                });
+            })
+            .then(null, function (xhr) {
+              return withBase(base, { ok: false, status: (xhr && xhr.status) || 0 });
+            });
+        });
+      })(items[i]);
+    }
+    return runQueue(tasks, UNLINK.concurrency, UNLINK.gapMs);
+  }
+  function reportUnlink(results, sowName) {
+    var ok = 0, failed = [];
+    for (var i = 0; i < results.length; i++) {
+      if (results[i] && results[i].ok) ok++;
+      else failed.push(results[i] || { label: 'item', status: 0 });
+    }
+    var where = sowName ? 'SOW ' + sowName : 'the SOW';
+    if (!failed.length) {
+      ns.renderToast('Removed ' + ok + ' item' + (ok === 1 ? '' : 's') + ' from ' + where, 'success');
+      return;
+    }
+    var names = [];
+    for (var f = 0; f < failed.length; f++) {
+      names.push(failed[f].label + (failed[f].status ? ' (HTTP ' + failed[f].status + ')' : ''));
+    }
+    console.warn('[BidReview CR] remove from SOW failed', failed);
+    ns.renderToast((ok ? ok + ' of ' + results.length + ' removed from ' + where + '. ' : '') +
+      'Could not remove from ' + where + ': ' + names.join('; ') +
+      ' — take them off on the worksheet.', 'error');
+  }
   // ── Remove from Bid ─────────────────────────────────────
   function openRemoveModal(params) {
     injectCrStyles();
@@ -2229,6 +2469,31 @@
     if (params.prefillNotes) ta.value = params.prefillNotes;
     notesRow.appendChild(ta);
     body.appendChild(notesRow);
+
+    // Opt-in: also take the line item OFF this SOW when the request is
+    // submitted (see "Remove from the SOW on submit" above). Offered only
+    // when the bid line maps to a SOW line item — a bid-only line has nothing
+    // to unlink. A re-opened pending removal shows its stored note + choice.
+    var existingRm = findPendingItem(params.pkgId, (params.cell && params.cell.id) || params.rowId) ||
+                     findPendingItem(params.pkgId, params.rowId);
+    if (!params.prefillNotes && existingRm && existingRm.removeFromBid && existingRm.changeNotes) {
+      ta.value = existingRm.changeNotes;
+    }
+    var sowChk = null;
+    if (params.sowItemId && params.sowId) {
+      var sowLbl = params.sowName ? 'SOW ' + params.sowName : 'this SOW';
+      var unlinkBox = el('div', 'scw-bid-cr-modal__sowunlink');
+      var unlinkRow = el('label', 'scw-bid-cr-modal__checkbox-item');
+      sowChk = document.createElement('input');
+      sowChk.type = 'checkbox';
+      sowChk.setAttribute('data-scw-cr-remove-sow', '1');
+      sowChk.checked = !!(params.prefillRemoveFromSow || (existingRm && existingRm.removeFromSow));
+      unlinkRow.appendChild(sowChk);
+      unlinkRow.appendChild(document.createTextNode('Also remove this item from ' + sowLbl));
+      unlinkBox.appendChild(unlinkRow);
+      unlinkBox.appendChild(el('div', 'scw-bid-cr-modal__sowunlink-hint', sowUnlinkHint(params.sowItemId, params.sowId)));
+      body.appendChild(unlinkBox);
+    }
     modal.appendChild(body);
 
     var footer = el('div', 'scw-bid-cr-modal__footer');
@@ -2254,6 +2519,9 @@
         proposalBucket: params.proposalBucket || '',
         proposalBucketId: params.proposalBucketId || '',
         removeFromBid: true,
+        // Opt-in SOW unlink on submit (see "Remove from the SOW on submit").
+        removeFromSow:     !!(sowChk && sowChk.checked),
+        removeFromSowName: params.sowName || '',
         current:       {},
         requested:     {},
         changeNotes:   ta.value.trim(),
@@ -2261,7 +2529,9 @@
       applyRevMeta(rmItem, params);
       addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, rmItem, params.surveyId);
       closeModal();
-      ns.renderToast('Removal added to change request', 'success');
+      ns.renderToast(rmItem.removeFromSow
+        ? 'Removal added to change request — the item also leaves ' + (params.sowName ? 'SOW ' + params.sowName : 'this SOW') + ' when it is submitted'
+        : 'Removal added to change request', 'success');
     });
     footer.appendChild(removeBtn);
     modal.appendChild(footer);
@@ -2605,6 +2875,11 @@
      *  Cancel | Submit footer. */
     preview:          openSubmitPreview,
     clear:            function () { _pending = {}; sclear(); saveToKnack(); triggerRerender(); },
+    /** Remove-from-SOW-on-submit plumbing (ClickUp 86bcdrp7m): the hint the
+     *  Remove modal shows, the unlink batch itself, and its knobs for tests. */
+    sowUnlinkHint:      sowUnlinkHint,
+    removeItemsFromSow: removeItemsFromSow,
+    _unlink:            UNLINK,
     /** Silently add a pending item (no modal). Used by Convert All. */
     addSilent:        function (pkgId, pkgName, sowId, sowName, item, surveyId) {
       addPendingItem(pkgId, pkgName, sowId, sowName, item, surveyId);

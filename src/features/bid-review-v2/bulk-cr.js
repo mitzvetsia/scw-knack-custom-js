@@ -86,7 +86,10 @@
       '  background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 10px;',
       '}',
       '.scw-br-v2-bulkcr-remove > label { color: #991b1b; margin-bottom: 0; }',
-      '.scw-br-v2-bulkcr-remove-hint { font-size: 11px; color: #b91c1c; margin-top: 3px; }'
+      '.scw-br-v2-bulkcr-remove-hint { font-size: 11px; color: #b91c1c; margin-top: 3px; }',
+      '.scw-br-v2-bulkcr-sub { display: block; margin: 8px 0 0 22px; font-size: 12.5px; color: #991b1b; font-weight: 600; }',
+      '.scw-br-v2-bulkcr-sub input { margin-right: 6px; }',
+      '.scw-br-v2-bulkcr-sub-hint { font-size: 11px; color: #64748b; margin: 2px 0 0 44px; line-height: 1.4; }'
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
@@ -149,6 +152,11 @@
             '<label><input type="checkbox" data-remove> Remove from bid</label>' +
             '<div class="scw-br-v2-bulkcr-remove-hint">Queues a removal request for every ' +
               'selected item that has a bid on this package. Field changes above are ignored.</div>' +
+            '<label class="scw-br-v2-bulkcr-sub"><input type="checkbox" data-remove-sow disabled> ' +
+              'Also remove these items from this SOW</label>' +
+            '<div class="scw-br-v2-bulkcr-sub-hint">Happens on this page the moment the change request ' +
+              'is submitted — Make is not involved. An item on another SOW stays there; one on no other ' +
+              'SOW is left unassigned, not deleted.</div>' +
           '</div>' +
           '<div class="scw-br-v2-bulkcr-field">' +
             '<label>Note to bidder (optional)</label>' +
@@ -190,6 +198,8 @@
         noteTa.placeholder = rm
           ? 'Why should these items be removed…'
           : 'Add an instruction the bidder will see';
+        var subChk = overlay.querySelector('[data-remove-sow]');
+        if (subChk) { subChk.disabled = !rm; if (!rm) subChk.checked = false; }
         return;
       }
       var ab = t.getAttribute && t.getAttribute('data-apply');
@@ -209,12 +219,15 @@
           status.textContent = 'Bulk removal unavailable — refresh the page.';
           return;
         }
-        var rres = v1.addBulkRemoveFromBid(opts.pkgId, ids, note);
+        var subChk2 = overlay.querySelector('[data-remove-sow]');
+        var alsoSow = !!(subChk2 && subChk2.checked);
+        var rres = v1.addBulkRemoveFromBid(opts.pkgId, ids, note, { removeFromSow: alsoSow });
         var rApplied = (rres && rres.applied) || 0;
         var rSkipped = (rres && rres.skipped) || 0;
         if (v1.renderToast) {
           if (rApplied) {
             v1.renderToast('Removal queued on ' + rApplied + ' item' + (rApplied === 1 ? '' : 's') +
+              (alsoSow ? ' — they also leave this SOW when the request is submitted' : '') +
               (rSkipped ? ' (' + rSkipped + ' skipped — no bid on this package)' : ''), 'success');
           } else {
             v1.renderToast('No removals queued' +
