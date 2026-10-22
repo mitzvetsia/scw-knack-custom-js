@@ -608,6 +608,125 @@
     bu.open(cfgForUpload, recordId);
   }
 
+  // ── Add-accessory webhook plumbing (2026-10-22, ClickUp 86bb8bhu2) ─────
+  // The modal posts ONE webhook call per ticked accessory product; the
+  // calls run through a capped queue with retry + backoff (the CLAUDE.md
+  // rule for every multi-write gesture). Knobs exported on ns.toolbar for
+  // the jsdom test (_accQueue / _accRetry / _accRefresh).
+  var ACC_QUEUE   = { concurrency: 2, gapMs: 150 };
+  var ACC_RETRY   = { attempts: 4, baseMs: 1200, jitterMs: 400 };
+  var ACC_REFRESH = { firstMs: 1500, secondMs: 6000 };
+  var FILTER_MIN  = 8;   // the filter box appears above lists longer than this
+
+  function transientStatus(st) {
+    return st === 408 || st === 429 || (st >= 500 && st <= 599);
+  }
+  /** POST one payload; resolves (never rejects) to { ok, status, productId,
+   *  productName, attempts, timeout? }. Make webhooks are often CORS-blocked
+   *  while the scenario still fires, so a status-0 error that is NOT a
+   *  timeout counts as delivered — exactly how the single-product modal
+   *  always read it. 408 / 429 / 5xx back off and retry; a timeout is NOT
+   *  retried (the run may have happened — a retry would double-create). */
+  function postWithRetry(url, payload) {
+    return new Promise(function (resolve) {
+      var attempt = 0;
+      function finish(ok, status, extra) {
+        var r = { ok: ok, status: status, attempts: attempt,
+                  productId: payload.productId, productName: payload.productName };
+        if (extra) for (var k in extra) r[k] = extra[k];
+        resolve(r);
+      }
+      function fire() {
+        attempt++;
+        $.ajax({
+          url: url, type: 'POST', contentType: 'application/json',
+          data: JSON.stringify(payload), crossDomain: true, timeout: 60000,
+          success: function () { finish(true, 200); },
+          error: function (xhr, st) {
+            var code = (xhr && xhr.status) || 0;
+            if (st === 'timeout') { finish(false, 0, { timeout: true }); return; }
+            if (code === 0) { finish(true, 0, { opaque: true }); return; }
+            if (transientStatus(code) && attempt < ACC_RETRY.attempts) {
+              var wait = ACC_RETRY.baseMs * Math.pow(2, attempt - 1) +
+                         Math.random() * ACC_RETRY.jitterMs;
+              setTimeout(fire, wait);
+              return;
+            }
+            finish(false, code, { statusText: st || '' });
+          }
+        });
+      }
+      fire();
+    });
+  }
+  /** Run promise-returning tasks at most `limit` at a time, starts at
+   *  least `gapMs` apart; resolves to the results array (a thrown task
+   *  settles as { ok:false }). Never rejects. */
+  function runQueue(tasks, limit, gapMs) {
+    return new Promise(function (resolve) {
+      var results = new Array(tasks.length);
+      var next = 0, active = 0, finished = 0, lastStart = 0;
+      if (!tasks.length) { resolve(results); return; }
+      function settle(i, r) {
+        results[i] = r;
+        active--; finished++;
+        if (finished === tasks.length) resolve(results);
+        else launch();
+      }
+      function start(i, wait) {
+        setTimeout(function () {
+          var p;
+          try { p = Promise.resolve(tasks[i]()); }
+          catch (e) { p = Promise.resolve({ ok: false, status: 0, error: String((e && e.message) || e) }); }
+          p.then(function (r) { settle(i, r); },
+                 function (e) { settle(i, { ok: false, status: 0, error: String((e && e.message) || e) }); });
+        }, wait);
+      }
+      function launch() {
+        while (active < limit && next < tasks.length) {
+          var i = next++;
+          active++;
+          var now = Date.now();
+          var at = Math.max(now, lastStart + gapMs);
+          lastStart = at;
+          start(i, at - now);
+        }
+      }
+      launch();
+    });
+  }
+  /** Catalog entries → [{ label, items }] in display order: grouped by
+   *  proposal bucket ("Other" sinks to the bottom), alphabetical inside a
+   *  group; one unlabelled flat alphabetical group when NO entry carries a
+   *  bucket (no pointless "Other" heading). */
+  function groupProducts(products) {
+    var byName = function (a, b) {
+      return String(a.name).localeCompare(String(b.name), undefined,
+        { numeric: true, sensitivity: 'base' });
+    };
+    var anyBucket = false;
+    for (var bi = 0; bi < products.length; bi++) {
+      if (products[bi] && products[bi].bucketId) { anyBucket = true; break; }
+    }
+    if (!anyBucket) return [{ label: '', items: products.slice().sort(byName) }];
+    var grouped = Object.create(null);
+    for (var pi = 0; pi < products.length; pi++) {
+      var p = products[pi];
+      var key   = p.bucketId   || '__other';
+      var label = p.bucketName || 'Other';
+      if (!grouped[key]) grouped[key] = { label: label, items: [] };
+      grouped[key].items.push(p);
+    }
+    var list = Object.keys(grouped).map(function (k) { return grouped[k]; });
+    list.sort(function (a, b) {
+      if (a.label === 'Other' && b.label !== 'Other') return 1;
+      if (b.label === 'Other' && a.label !== 'Other') return -1;
+      return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' });
+    });
+    for (var li = 0; li < list.length; li++) list[li].items.sort(byName);
+    return list;
+  }
+
   /** Add-accessory modal. `presetSel` ({ids, labels}) lets a per-item
    *  "+ Add" open the modal scoped to one row without checkbox
    *  selection — used on sales scenes that have no Knack add-accessory
@@ -745,14 +864,40 @@
     }
     var hasList  = products && products.length > 0;
 
+    // Products in display order — grouped by proposal bucket ("Other" sinks
+    // to the bottom), alphabetical inside each group; a flat alphabetical list
+    // when no catalog entry carries a bucket. The same order the old single
+    // <select> used, now rendered as CHECKBOXES (2026-10-22, ClickUp
+    // 86bb8bhu2): a device usually needs a bracket AND a box AND a conduit
+    // adapter, and one product per round meant opening the modal three times.
+    var groups     = groupProducts(products);
+    var nRows      = sel.ids.length;
+    var rowsWord   = nRows + ' row' + (nRows === 1 ? '' : 's');
+    var showFilter = products.length > FILTER_MIN;
+
+    var listHtml = '';
+    for (var gi = 0; gi < groups.length; gi++) {
+      var grp = groups[gi];
+      if (grp.label) {
+        listHtml += '<div class="scw-ws-v2-mb-pgroup" data-scw-mb-group="' + gi + '">' +
+          esc(grp.label) + '</div>';
+      }
+      for (var gj = 0; gj < grp.items.length; gj++) {
+        var gp = grp.items[gj];
+        listHtml += '<label class="scw-ws-v2-mb-prow" data-scw-mb-group="' + gi + '">' +
+          '<input type="checkbox" class="scw-ws-v2-mb-check" value="' + esc(gp.id) + '" ' +
+            'data-name="' + esc(gp.name) + '">' +
+          '<span>' + esc(gp.name) + '</span></label>';
+      }
+    }
+
     var overlay = document.createElement('div');
     overlay.className = 'scw-ws-v2-mb-overlay';
     overlay.innerHTML =
       '<div class="scw-ws-v2-mb-modal">' +
-        '<div class="scw-ws-v2-mb-title">Add accessory to ' +
-          sel.ids.length + ' row' + (sel.ids.length === 1 ? '' : 's') + '</div>' +
-        '<div class="scw-ws-v2-mb-sub">One accessory line item will be created per ' +
-          'selected row, connected back to the parent.</div>' +
+        '<div class="scw-ws-v2-mb-title">Add accessories to ' + rowsWord + '</div>' +
+        '<div class="scw-ws-v2-mb-sub">Tick one or more accessories. One accessory line item is ' +
+          'created per accessory per selected row, connected back to the parent.</div>' +
         '<div class="scw-ws-v2-mb-rowlist">' +
           labels.map(function (l) {
             return '<div>' + esc(l) + '</div>';
@@ -761,8 +906,14 @@
         // No free-text path — accessories must come from the catalog.
         // When there\'s nothing to pick, say why and keep submit disabled.
         (hasList
-          ? '<label class="scw-ws-v2-mb-label">Accessory product</label>' +
-            '<select class="scw-ws-v2-mb-input"></select>'
+          ? '<label class="scw-ws-v2-mb-label">Accessory products ' +
+              '<span class="scw-ws-v2-mb-count" data-scw-mb-count>none selected</span></label>' +
+            (showFilter
+              ? '<input type="search" class="scw-ws-v2-mb-filter" placeholder="Filter accessories…" ' +
+                  'aria-label="Filter accessories">'
+              : '') +
+            '<div class="scw-ws-v2-mb-plist" role="group" aria-label="Accessory products">' +
+              listHtml + '</div>'
           : '<div class="scw-ws-v2-mb-note">' + (noCompatible
               ? 'No compatible accessory products found for the selected ' +
                 'product(s). Yell at Install Ops if this isn\'t expected.'
@@ -774,96 +925,107 @@
         '<div class="scw-ws-v2-mb-status"></div>' +
         '<div class="scw-ws-v2-mb-actions">' +
           '<button type="button" class="scw-ws-v2-mb-cancel">Cancel</button>' +
-          '<button type="button" class="scw-ws-v2-mb-submit">' +
-            'Add to ' + sel.ids.length + ' row' + (sel.ids.length === 1 ? '' : 's') +
-          '</button>' +
+          '<button type="button" class="scw-ws-v2-mb-submit">Add to ' + rowsWord + '</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(overlay);
 
-    if (hasList) {
-      var selEl = overlay.querySelector('select.scw-ws-v2-mb-input');
-      var blank = document.createElement('option');
-      blank.value = ''; blank.textContent = '— Choose an accessory —';
-      selEl.appendChild(blank);
-
-      // Group products by their proposal bucket. Entries that don\'t
-      // carry a bucket (e.g. catalog rows pre-dating the snippet\'s
-      // bucket field) land in a single "Other" group at the bottom so
-      // they\'re still pickable. Each group sorts its products by
-      // name alphabetically. If NO entry carries bucket metadata (the
-      // snippet doesn\'t emit it), skip optgroups entirely and render
-      // a flat alphabetical list — no pointless "Other" heading.
-      var anyBucket = false;
-      for (var bi = 0; bi < products.length; bi++) {
-        if (products[bi] && products[bi].bucketId) { anyBucket = true; break; }
-      }
-      if (!anyBucket) {
-        var flat = products.slice().sort(function (a, b) {
-          return String(a.name).localeCompare(String(b.name), undefined,
-            { numeric: true, sensitivity: 'base' });
-        });
-        flat.forEach(function (p) {
-          var opt = document.createElement('option');
-          opt.value = p.id;
-          opt.textContent = p.name;
-          opt.dataset.name = p.name;
-          selEl.appendChild(opt);
-        });
-      } else {
-      var grouped = Object.create(null);
-      for (var pi = 0; pi < products.length; pi++) {
-        var p = products[pi];
-        var key   = p.bucketId   || '__other';
-        var label = p.bucketName || 'Other';
-        if (!grouped[key]) grouped[key] = { label: label, items: [] };
-        grouped[key].items.push(p);
-      }
-      var groupList = Object.keys(grouped).map(function (k) { return grouped[k]; });
-      groupList.sort(function (a, b) {
-        // "Other" sinks to the bottom; everything else alphabetical.
-        if (a.label === 'Other' && b.label !== 'Other') return 1;
-        if (b.label === 'Other' && a.label !== 'Other') return -1;
-        return a.label.localeCompare(b.label, undefined,
-          { numeric: true, sensitivity: 'base' });
-      });
-      groupList.forEach(function (g) {
-        g.items.sort(function (a, b) {
-          return String(a.name).localeCompare(String(b.name), undefined,
-            { numeric: true, sensitivity: 'base' });
-        });
-        var og = document.createElement('optgroup');
-        og.label = g.label;
-        g.items.forEach(function (p) {
-          var opt = document.createElement('option');
-          opt.value = p.id;
-          opt.textContent = p.name;
-          opt.dataset.name = p.name;
-          og.appendChild(opt);
-        });
-        selEl.appendChild(og);
-      });
-      }
-    }
-
-    var picker  = overlay.querySelector('.scw-ws-v2-mb-input');
+    var plist   = overlay.querySelector('.scw-ws-v2-mb-plist');
+    var filter  = overlay.querySelector('.scw-ws-v2-mb-filter');
+    var count   = overlay.querySelector('[data-scw-mb-count]');
     var status  = overlay.querySelector('.scw-ws-v2-mb-status');
     var cancel  = overlay.querySelector('.scw-ws-v2-mb-cancel');
     var submit  = overlay.querySelector('.scw-ws-v2-mb-submit');
+    var busy    = false;
 
     // Nothing pickable → the modal is informational only.
     if (!hasList) submit.disabled = true;
 
-    function close() { overlay.parentNode && overlay.parentNode.removeChild(overlay); }
+    function close() {
+      if (busy) return;
+      overlay.parentNode && overlay.parentNode.removeChild(overlay);
+    }
     cancel.addEventListener('click', close);
     overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
 
+    function boxes() { return plist ? plist.querySelectorAll('.scw-ws-v2-mb-check') : []; }
+    function chosen() {
+      var out = [], all = boxes();
+      for (var i = 0; i < all.length; i++) {
+        if (all[i].checked) out.push({ id: all[i].value, name: all[i].getAttribute('data-name') || '' });
+      }
+      return out;
+    }
+    function syncCount() {
+      var k = chosen().length;
+      if (count) count.textContent = k ? k + ' selected' : 'none selected';
+      submit.textContent = k
+        ? 'Add ' + k + (k === 1 ? ' accessory' : ' accessories') + ' to ' + rowsWord
+        : 'Add to ' + rowsWord;
+    }
+    if (plist) plist.addEventListener('change', syncCount);
+
+    // Filter box (long lists only): hides rows whose name doesn\'t contain
+    // the text, and a group heading once none of its rows show. Ticked
+    // boxes stay ticked while hidden — the count still says so.
+    if (filter) {
+      filter.addEventListener('input', function () {
+        var needle = String(filter.value || '').trim().toLowerCase();
+        var rows = plist.querySelectorAll('.scw-ws-v2-mb-prow');
+        var visibleByGroup = Object.create(null);
+        for (var i = 0; i < rows.length; i++) {
+          var name = (rows[i].querySelector('input').getAttribute('data-name') || '').toLowerCase();
+          var show = !needle || name.indexOf(needle) !== -1;
+          rows[i].classList.toggle('is-hidden', !show);
+          if (show) visibleByGroup[rows[i].getAttribute('data-scw-mb-group')] = true;
+        }
+        var heads = plist.querySelectorAll('.scw-ws-v2-mb-pgroup');
+        for (var h = 0; h < heads.length; h++) {
+          heads[h].classList.toggle('is-hidden',
+            !visibleByGroup[heads[h].getAttribute('data-scw-mb-group')]);
+        }
+      });
+    }
+
+    function setBusy(on) {
+      busy = on;
+      overlay.classList.toggle('is-busy', on);
+      submit.disabled = on;
+      cancel.disabled = on;
+      if (filter) filter.disabled = on;
+      var all = boxes();
+      for (var i = 0; i < all.length; i++) all[i].disabled = on;
+    }
+
+    // Refresh after Make creates the accessory records. The worksheet-v2
+    // pipeline auto-updates via its own refetch; but the bid-review-v2
+    // comparison grid (which reuses this same modal) is a SEPARATE pipeline
+    // that never sees the new server-side record — Make fires no
+    // knack-view-render — so it would stay stale until a manual refresh.
+    // ALSO emit scw-cascade-idle, the shared "records changed, re-read"
+    // signal both pipelines already subscribe to (mirror-connection-sync
+    // emits it too), so the comparison grid refetches + rebuilds itself. Both
+    // pipelines coalesce/guard their own refetches, so the extra signal is
+    // cheap on the worksheet and the only path to a refresh on the bid grid.
+    // A multi-product batch is one Make run PER product, and the later runs
+    // land after the first refetch — read once more a few seconds on.
+    function refreshAfterAdd(sentCount) {
+      function kick() {
+        if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+          ns.data.refetchAndNotify(viewKey);
+        }
+        if (ns.poll && ns.poll.triggerBurst) ns.poll.triggerBurst(viewKey);
+        try { document.dispatchEvent(new CustomEvent('scw-cascade-idle')); }
+        catch (e) { /* CustomEvent unsupported → worksheet path still refreshed */ }
+      }
+      setTimeout(kick, ACC_REFRESH.firstMs);
+      if (sentCount > 1) setTimeout(kick, ACC_REFRESH.secondMs);
+    }
+
     submit.addEventListener('click', function () {
-      if (!hasList) return;
-      var productId = picker.value;
-      var opt2 = picker.options[picker.selectedIndex];
-      var productName = opt2 ? (opt2.dataset.name || opt2.textContent) : '';
-      if (!productId) { status.textContent = 'Pick an accessory product first.'; return; }
+      if (!hasList || busy) return;
+      var picks = chosen();
+      if (!picks.length) { status.textContent = 'Tick at least one accessory product first.'; return; }
 
       // Make mirrors each PARENT's SOW (field_2154) onto the accessory it
       // creates — a parent with no SOW manufactures a SOW-less accessory
@@ -902,65 +1064,71 @@
         return;
       }
 
-      submit.disabled = true;
-      cancel.disabled = true;
+      // One webhook call PER accessory product — the Make scenario is the
+      // single-product one (it fans out over parentRecordIds itself) and is
+      // unchanged. The calls go through the capped queue + retry/backoff the
+      // CLAUDE.md rate-limit rule asks of every multi-write gesture.
+      // presetSel.sowId is set by callers whose hash doesn't pin the SOW —
+      // e.g. the bid-review-v2 grid, whose review-bids hash carries the
+      // PROJECT id, not the SOW id. Fall back to the hash for the worksheet.
+      var sowId = (presetSel && presetSel.sowId) || getSowIdFromHash();
+      var done  = 0;
+      setBusy(true);
       submit.textContent = 'Submitting…';
-
-      var payload = {
-        // presetSel.sowId is set by callers whose hash doesn't pin the SOW —
-        // e.g. the bid-review-v2 grid, whose review-bids hash carries the
-        // PROJECT id, not the SOW id. Fall back to the hash for the worksheet.
-        sowId:           (presetSel && presetSel.sowId) || getSowIdFromHash(),
-        productId:       productId || '',
-        productName:     productName,
-        parentRecordIds: sel.ids,
-        parentLabels:    labels,
-        sourceViewId:    viewKey,
-        triggeredBy:     getTriggeredBy()
-      };
-
-      // Refresh after Make creates the accessory record. The worksheet-v2
-      // pipeline auto-updates via its own refetch; but the bid-review-v2
-      // comparison grid (which reuses this same modal) is a SEPARATE pipeline
-      // that never sees the new server-side record — Make fires no
-      // knack-view-render — so it would stay stale until a manual refresh.
-      // ALSO emit scw-cascade-idle, the shared "records changed, re-read"
-      // signal both pipelines already subscribe to (mirror-connection-sync
-      // emits it too), so the comparison grid refetches + rebuilds itself. Both
-      // pipelines coalesce/guard their own refetches, so the extra signal is
-      // cheap on the worksheet and the only path to a refresh on the bid grid.
-      function refreshAfterAdd() {
-        setTimeout(function () {
-          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-            ns.data.refetchAndNotify(viewKey);
-          }
-          if (ns.poll && ns.poll.triggerBurst) ns.poll.triggerBurst(viewKey);
-          try { document.dispatchEvent(new CustomEvent('scw-cascade-idle')); }
-          catch (e) { /* CustomEvent unsupported → worksheet path still refreshed */ }
-        }, 1500);
-      }
-
-      $.ajax({
-        url: url, type: 'POST', contentType: 'application/json',
-        data: JSON.stringify(payload), crossDomain: true, timeout: 60000,
-        success: function () {
-          close();
-          status.textContent = '';
-          refreshAfterAdd();
-        },
-        error: function (xhr, st) {
-          // Make webhooks often blocked by CORS but the scenario fires.
-          if (xhr && xhr.status === 0) {
-            close();
-            refreshAfterAdd();
-            return;
-          }
-          submit.disabled = false;
-          cancel.disabled = false;
-          submit.textContent = 'Add to ' + sel.ids.length + ' row' +
-                               (sel.ids.length === 1 ? '' : 's');
-          status.textContent = 'Webhook failed (' + st + '). Try again.';
+      status.className = 'scw-ws-v2-mb-status scw-ws-v2-mb-status--progress';
+      status.textContent = 'Sending 1 of ' + picks.length + '…';
+      var tasks = picks.map(function (p) {
+        return function () {
+          var payload = {
+            sowId:           sowId,
+            productId:       p.id || '',
+            productName:     p.name,
+            parentRecordIds: sel.ids,
+            parentLabels:    labels,
+            sourceViewId:    viewKey,
+            triggeredBy:     getTriggeredBy()
+          };
+          return postWithRetry(url, payload).then(function (r) {
+            done++;
+            if (done < picks.length) {
+              status.textContent = 'Sending ' + (done + 1) + ' of ' + picks.length + '…';
+            }
+            return r;
+          });
+        };
+      });
+      runQueue(tasks, ACC_QUEUE.concurrency, ACC_QUEUE.gapMs).then(function (results) {
+        var okCount = 0, failed = [];
+        for (var i = 0; i < results.length; i++) {
+          if (results[i] && results[i].ok) okCount++;
+          else failed.push(results[i] || { ok: false, status: 0, productName: picks[i].name, productId: picks[i].id });
         }
+        if (!failed.length) {
+          setBusy(false);
+          overlay.parentNode && overlay.parentNode.removeChild(overlay);
+          refreshAfterAdd(okCount);
+          return;
+        }
+        // Partial / total failure: the modal stays, the products that landed
+        // are un-ticked so "Add" again re-sends ONLY the failed ones.
+        var all = boxes();
+        for (var b = 0; b < all.length; b++) {
+          for (var r = 0; r < results.length; r++) {
+            if (results[r] && results[r].ok && results[r].productId === all[b].value) all[b].checked = false;
+          }
+        }
+        setBusy(false);
+        syncCount();
+        if (okCount) refreshAfterAdd(okCount);
+        var names = failed.map(function (f) {
+          return (f.productName || f.productId || 'accessory') +
+            (f.timeout ? ' (no response — it may still have gone through; check the worksheet before retrying)'
+                       : (f.status ? ' (HTTP ' + f.status + ')' : ' (network error)'));
+        });
+        status.className = 'scw-ws-v2-mb-status';
+        status.textContent = okCount + ' of ' + results.length + ' sent. Failed: ' + names.join('; ') +
+          '. Add again sends only the failed ones.';
+        if (window.console) console.warn('[scw-ws-v2] add-accessory: failed products', failed);
       });
     });
   }
@@ -1142,7 +1310,11 @@
     // Exposed so the floating bulk panel (bulk.js) can open the
     // add-accessory modal — it applies to a row selection, same as the
     // bulk Remove-accessories action, so both live together there.
-    openAddAccessories: openMountingBoxModal
+    openAddAccessories: openMountingBoxModal,
+    // Test seams for the multi-accessory batch (queue width / retry / refresh).
+    _accQueue:   ACC_QUEUE,
+    _accRetry:   ACC_RETRY,
+    _accRefresh: ACC_REFRESH
   };
 })();
 /*** END WORKSHEET V2 — TOOLBAR ***********************************************/

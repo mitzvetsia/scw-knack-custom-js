@@ -202,10 +202,19 @@ check('who-row keeps the sub name (the existing title element, moved) + the bid 
   [txt(q(titleA, '.scw-bid-review-v2__card-who .scw-bid-review-v2__head-title')), txt(q(titleA, '.scw-bid-review-v2__card-pkglabel'))], ['SVS', 'BD-141']);
 check('basis-filter still parks its "Show all bids" pill on the basis column and hides the other column',
   [!!q(titleA, '.scw-bid-review-v2__basis-toggle'), titleB.classList.contains('scw-bid-review-v2__pkg-col--basis-hidden')], [true, true]);
-check('money rule: a difference is never good news — "$X off the SOW", amber; a match is green',
+check('money rule: a difference is never good news — amber, and since 2026-10-22 it SAYS which way (bid − SOW < 0 = under); a match is green',
   [txt(q(s1, '.scw-bid-review-v2__head-cell--totals[data-pkg-id="pkgA"] .scw-bid-review-v2__head-delta')), q(s1, '.scw-bid-review-v2__head-cell--totals[data-pkg-id="pkgA"] .scw-bid-review-v2__head-delta').className.indexOf('--gap') > 0,
+   q(s1, '.scw-bid-review-v2__head-cell--totals[data-pkg-id="pkgA"] .scw-bid-review-v2__head-delta').getAttribute('title'),
    txt(q(s1, '.scw-bid-review-v2__head-cell--totals[data-pkg-id="pkgB"] .scw-bid-review-v2__head-delta'))],
-  ['$1,580.00 off the SOW', true, '✓ matches the SOW']);
+  ['−$1,580.00 under the SOW', true, 'Bid sub total $29,900.00 is $1,580.00 under the SOW sub-bid total of $31,480.00', '✓ matches the SOW']);
+{
+  // A bid that came in HIGH reads "+$X over the SOW" — same amber class.
+  const secHigh = ns.card.buildSowSection(Object.assign({}, grid1, { packages: [Object.assign({}, pkgA, { subBidTotal: 33060, deltaVsSow: 1580 })] }));
+  const dHigh = q(secHigh, '.scw-bid-review-v2__head-cell--totals[data-pkg-id="pkgA"] .scw-bid-review-v2__head-delta');
+  check('a bid above the SOW reads "+$X over the SOW", still amber',
+    [txt(dHigh), dHigh.className.indexOf('--gap') > 0, dHigh.getAttribute('title')],
+    ['+$1,580.00 over the SOW', true, 'Bid sub total $33,060.00 is $1,580.00 over the SOW sub-bid total of $31,480.00']);
+}
 const detA = q(s1, '.scw-bid-review-v2__head-cell--details[data-pkg-id="pkgA"]');
 const detB = q(s1, '.scw-bid-review-v2__head-cell--details[data-pkg-id="pkgB"]');
 check('status line of the sub card: PDF · Submitted · Reopen Bid on one line',

@@ -1987,16 +1987,24 @@
   function pkgTotalsCell(pkg) {
     var delta;
     // Money rule (2026-10-09): a bid total that differs from the SOW is never
-    // good news, whichever way it differs — amber, "$X off the SOW". The one
-    // success is a match, called out green.
+    // good news, whichever way it differs — amber either way. The one success
+    // is a match, called out green. Since 2026-10-22 (ClickUp 86bchp573) the
+    // chip SAYS which way: deltaVsSow is bid − SOW, so a negative delta reads
+    // "−$X under the SOW" and a positive one "+$X over the SOW" — the old
+    // "$X off the SOW" left reviewers guessing whether the sub came in high or
+    // low. The tooltip spells out both totals.
     if (pkg.matchesSow) {
       delta = '<div class="scw-bid-review-v2__head-delta scw-bid-review-v2__head-delta--match">' +
         '✓ matches the SOW</div>';
     } else {
-      var sign = pkg.deltaVsSow > 0 ? '+' : '−';
+      var over   = pkg.deltaVsSow > 0;
+      var amount = fmtMoney(Math.abs(pkg.deltaVsSow)) || '$0.00';
+      var sowSub = (pkg.subBidTotal || 0) - (pkg.deltaVsSow || 0);
       delta = '<div class="scw-bid-review-v2__head-delta scw-bid-review-v2__head-delta--gap" title="' +
-        sign + escapeHtml(fmtMoney(Math.abs(pkg.deltaVsSow)) || '$0.00') + ' vs the SOW sub-bid total">' +
-        (fmtMoney(Math.abs(pkg.deltaVsSow)) || '$0.00') + ' off the SOW</div>';
+        'Bid sub total ' + escapeHtml(fmtMoney(pkg.subBidTotal || 0) || '$0.00') +
+        ' is ' + escapeHtml(amount) + (over ? ' over' : ' under') +
+        ' the SOW sub-bid total of ' + escapeHtml(fmtMoney(sowSub) || '$0.00') + '">' +
+        (over ? '+' : '−') + escapeHtml(amount) + (over ? ' over the SOW' : ' under the SOW') + '</div>';
     }
     return pkgTh(pkg, 'scw-bid-review-v2__head-cell--totals',
       '<div class="scw-bid-review-v2__head-totals">' +

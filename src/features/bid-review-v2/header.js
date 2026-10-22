@@ -19,8 +19,8 @@
  *                 from the diff bar's readiness) ahead of Preview Proposal.
  *                 Each sub's card: a radio that sets it as the basis, the
  *                 BASIS badge and basis-filter's "Show all bids (+N)" pill,
- *                 its total with "$X off the SOW" (never good news, whichever
- *                 way it differs) or "✓ matches the SOW", status · PDF ·
+ *                 its total with "−$X under the SOW" / "+$X over the SOW"
+ *                 (amber either way) or "✓ matches the SOW", status · PDF ·
  *                 Reopen Bid, the gap count (basis card), and "N change
  *                 requests queued for <sub>" over "Review & send to <sub>"
  *                 (today's Preview Change Request modal — Cancel | Submit at

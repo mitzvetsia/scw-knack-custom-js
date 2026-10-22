@@ -712,6 +712,25 @@ modal inherits from 05.01 (pre-existing, not changed): License qty is ignored (o
 product), exterior/plenum come from the PRODUCT not the toggles, Materials accessories (`field_2206`)
 create SOW Line Items (object_105), not survey items. Test: `tests/worksheet-v2/test-survey-add-item-form.js`.
 
+## Add accessories — multi-select (2026-10-22) — `src/features/worksheet-v2/toolbar.js`
+
+ClickUp 86bb8bhu2 ("need ability to add more than one accessory to products at a time"). The add-accessory
+modal (`openMountingBoxModal`, reached from the bulk panel's "Add accessories" and every card's "+ Add" on
+the Mounting Hardware line, and reused by the reconcile grid) used to be ONE `<select>`: one product per
+round for the selected rows, so a device that needs a bracket, a box and a conduit adapter took three
+rounds. It is now a CHECKBOX list — the same compatibility filter (either compatibility list names every
+selected row's product), the same bucket grouping and order, a filter box above lists longer than 8 — and
+**Add posts ONE call per ticked product** to `MAKE_BULK_ADD_MOUNTING_BOX_WEBHOOK` with the unchanged
+single-product payload (`productId`, `parentRecordIds`, …; the Make scenario fans out over the parents
+itself and did not change). The calls run through the module's capped queue (`runQueue`: 2 in flight,
+150 ms apart) with `postWithRetry` (408 / 429 / 5xx back off ×4; a CORS-opaque status 0 counts as delivered
+as it always did; a TIMEOUT is not retried — the run may have happened — and is reported as "no response").
+Results settle, never reject: when every product lands the dialog closes and the worksheet refetches (twice
+for a batch — the later Make runs land after the first read); on a partial failure the dialog stays, the
+products that landed are un-ticked and the status names the failures, so "Add" again re-sends only those.
+The dialog is inert while sending. Test seams: `ns.toolbar._accQueue` / `_accRetry` / `_accRefresh`.
+Test: `tests/worksheet-v2/test-add-accessories-multi.js`.
+
 ## Bulk photo ASSIGN modal — v2 "+ Add Photos" (LIVE for @getscw.com 2026-10-16, rev 3) — `src/features/worksheet-v2/photo-assign.js`
 
 Gate: `CONFIG.ALLOWED_DOMAINS` (`['getscw.com']` since 2026-10-16) + `ALLOWED_EMAILS` for one-offs (both
@@ -953,7 +972,8 @@ The top of the reconcile-bids page (scene_1155, bid-review-v2) reworked per the 
   "— auto-saved" trimmed) ahead of Preview Proposal. Each sub card: a **radio** that sets the basis
   (bridged: sets the select + dispatches ONE `change`, so sub-bid-diff persists `field_2942` and
   basis-filter repaints exactly as for a dropdown pick), BASIS badge + navy top rule, basis-filter's
-  "Show all bids (+N)" pill (untouched), `$X off the SOW` (amber, never signed/positive) or
+  "Show all bids (+N)" pill (untouched), `−$X under the SOW` / `+$X over the SOW` (amber either way;
+  signed + worded since 2026-10-22, ClickUp 86bchp573 — it read `$X off the SOW` before) or
   `✓ matches the SOW` (card.js `pkgTotalsCell`), status · PDF · Reopen Bid on one line, the gap count
   (mirror of `.scw-sbd-bargap`, basis card only; click unfolds the diff panel), then "N change
   requests queued for <sub>, not sent yet" over ONE primary — `cr_preview` relabelled **"Review &
