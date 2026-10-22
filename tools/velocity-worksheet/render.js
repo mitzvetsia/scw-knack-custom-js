@@ -15,6 +15,7 @@ const st = C.stats(DATA, results);
 const esc = C.esc, fmt = C.fmt, money = C.money;
 const asOfLabel = C.monthLabel(DATA.asOf), firstLabel = C.monthLabel(DATA.months[0]);
 const types = Array.from(new Set(DATA.skus.map(s => s.type).filter(Boolean))).sort();
+const suppliers = Array.from(new Set(DATA.skus.map(s => s.supplier).filter(Boolean))).sort();
 const notMaster = DATA.skus.filter(s => s.status === 'NOT IN MASTER').sort((a, b) => b.total - a.total);
 const unresolvedCusts = Object.keys(custs).filter(k => custs[k].kind === 'order');
 const unresolvedUnits = DATA.skus.reduce((n, s) => n + s.customers.filter(c => custs[c.cid] && custs[c.cid].kind === 'order').reduce((m, c) => m + c.total, 0), 0);
@@ -106,7 +107,8 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 td.fwd b{font-size:14px}
 .skutd{min-width:230px;max-width:320px;display:flex;gap:6px;align-items:flex-start}
 .skutd .nm{font-weight:600;line-height:1.3;overflow-wrap:anywhere}
-.skutd .ids{display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px;margin-top:1px}
+.skutd .ids{display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px;margin-top:1px;align-items:center}
+.skutd .sup{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);background:var(--mut-soft);border-radius:4px;padding:0 5px}
 .tgl{width:18px;height:18px;flex:0 0 18px;border:none;background:transparent;color:var(--ink2);cursor:pointer;padding:0;margin-top:2px;border-radius:4px}
 .tgl::before{content:"▸";display:inline-block;transition:transform .12s} .tgl:hover{color:var(--accent)}
 tr.prow[data-open] .tgl::before{transform:rotate(90deg)}
@@ -215,8 +217,9 @@ const html = `<title>Velocity Worksheet</title>
   <div class="filters">
     <input type="search" id="plan-q" placeholder="Search SKU, name, BOM…" aria-label="Search SKUs">
     <select id="plan-type" aria-label="Type"><option value="">All types</option>${types.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
+    <select id="plan-supplier" aria-label="Supplier"><option value="">All suppliers</option>${suppliers.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
     <select id="plan-only" aria-label="Show"><option value="all">Everything</option><option value="order">Suggested order &gt; 0</option><option value="low">Under 3 months cover</option><option value="drivers">Has drivers</option><option value="undecided">Suggested but undecided</option><option value="decided">Decided</option></select>
-    <select id="plan-sort" aria-label="Sort"><option value="cover">Sort: cover (thin first)</option><option value="sug">Sort: suggested qty</option><option value="u12">Sort: 12‑month units</option><option value="drv">Sort: drivers</option><option value="name">Sort: name</option></select>
+    <select id="plan-sort" aria-label="Sort"><option value="cover">Sort: cover (thin first)</option><option value="sug">Sort: suggested qty</option><option value="u12">Sort: 12‑month units</option><option value="drv">Sort: drivers</option><option value="supplier">Sort: supplier, then cover</option><option value="name">Sort: name</option></select>
     <label class="ck"><input type="checkbox" id="plan-nm"> include items not in the master</label>
     <button type="button" id="expand-all" class="mini">Expand shown</button><button type="button" id="collapse-all" class="mini">Collapse</button>
     <span class="count" id="plan-count"></span>

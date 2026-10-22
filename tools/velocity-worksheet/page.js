@@ -4,7 +4,7 @@
   var C = window.VelocityCore, DATA = window.VELOCITY_DATA, custs = DATA.customers;
   var state = { settings: Object.assign({}, C.DEFAULT_SETTINGS), outlooks: {}, decisions: {}, store: 'connecting' };
   var results = C.computeAll(DATA, state.settings, state.outlooks);
-  var ui = { tab: 'plan', q: '', type: '', only: 'all', sort: 'cover', notMaster: false, expanded: {}, cq: '' };
+  var ui = { tab: 'plan', q: '', type: '', supplier: '', only: 'all', sort: 'cover', notMaster: false, expanded: {}, cq: '' };
   var db = null, pendingRender = false, timers = {};
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
@@ -57,6 +57,7 @@
       if (!ui.notMaster && r.dataset.status === 'NOT IN MASTER') ok = false;
       if (ui.q && r.dataset.name.indexOf(ui.q) < 0) ok = false;
       if (ui.type && r.dataset.type !== ui.type) ok = false;
+      if (ui.supplier && r.dataset.supplier !== ui.supplier) ok = false;
       if (ui.only === 'order' && !(+r.dataset.sug > 0)) ok = false;
       if (ui.only === 'low' && !(+r.dataset.cover < 3)) ok = false;
       if (ui.only === 'drivers' && !(+r.dataset.drv > 0)) ok = false;
@@ -73,6 +74,7 @@
       if (key === 'sug') return (+y.sug) - (+x.sug) || (+y.u12) - (+x.u12);
       if (key === 'u12') return (+y.u12) - (+x.u12);
       if (key === 'drv') return (+y.drv) - (+x.drv) || (+y.u12) - (+x.u12);
+      if (key === 'supplier') return (x.supplier || '~').localeCompare(y.supplier || '~') || (+x.cover) - (+y.cover) || (+y.u12) - (+x.u12);
       return x.name < y.name ? -1 : x.name > y.name ? 1 : 0;
     });
     pairs.forEach(function (p) { tb.appendChild(p.r); if (p.d) tb.appendChild(p.d); });
@@ -191,6 +193,7 @@
   document.addEventListener('change', function (ev) {
     var el = ev.target;
     if (el.id === 'plan-type') { ui.type = el.value; applyFilters(); }
+    if (el.id === 'plan-supplier') { ui.supplier = el.value; applyFilters(); }
     if (el.id === 'plan-only') { ui.only = el.value; applyFilters(); }
     if (el.id === 'plan-sort') { ui.sort = el.value; applyFilters(); }
     if (el.id === 'plan-nm') { ui.notMaster = el.checked; applyFilters(); }
