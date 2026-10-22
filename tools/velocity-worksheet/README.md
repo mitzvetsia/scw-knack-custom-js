@@ -4,7 +4,8 @@ Purchasing worksheet for SCW: per-SKU 12 / 6 / 3-month velocity from Adam's
 monthly Shipedge export, with high-volume customers ("drivers") resolved
 through HubSpot and pulled out so they can be assessed separately before a PO.
 
-The deliverable is a claude.ai artifact page (title **Velocity Worksheet**)
+The deliverable is the claude.ai artifact **Velocity Worksheet**
+(https://claude.ai/artifact/W8P21sMRbRU84C4wvBJ3hA)
 that Micah and Adam work from together. The page keeps its human inputs
 (driver rule, horizon, driver outlooks, per-SKU decision / qty / note) in the
 artifact's shared store, so a rebuild never touches them.
@@ -38,11 +39,11 @@ which is why the HubSpot hop exists.
 
 1. Download the sheet as xlsx (Google Drive connector, export mime
    `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`).
-2. `python3 -I build_data.py experimenting.xlsx - keys-only` is not needed:
-   run `build_data.py` once with the current `deals.json`; the Method tab's
-   "unresolved" count tells you how many new keys there are. Build the key
-   list (see `build_data.py` `key()`), resolve the new ones in HubSpot, merge
-   into `deals.json`.
+2. Resolve the new month's orders: `hubspot_batch.py` prints the IN-lists
+   of order keys (see `build_data.py` `key()` for how a key is derived from
+   `Ref#` / `Order#`) that are not yet in `deals.json`; run each through the
+   HubSpot SQL query above, append the TSV results, and `hubspot_parse.py`
+   merges them into `deals.json`. Only keys with 3+ units need resolving.
 3. `python3 -I build_data.py experimenting.xlsx deals.json data.json`
 4. `node render.js data.json page.html`
 5. Publish `page.html` to the existing artifact URL (Artifact tool, same
