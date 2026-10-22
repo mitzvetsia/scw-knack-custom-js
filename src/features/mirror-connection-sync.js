@@ -1996,15 +1996,14 @@
     });
 
   // ======================================================================
-  // SOW cascade: parent's SOW (SOW_FIELD, e.g. field_2154) edited → keep
-  // its children on the parent's SOW.
+  // SOW cascade: parent's SOW (SOW_FIELD, e.g. field_2154) edited.
   // ----------------------------------------------------------------------
   //   • Accessories (ACCESSORIES_PARENT_FIELD children): ALWAYS set to the
   //     parent's exact SOW set — an accessory's SOW must mirror its parent.
-  //   • Connected devices (CONNECTIONS_FIELD children): only touched when
-  //     the child is on a SOW the parent does NOT also include; then the
-  //     child is re-aligned to the parent's exact SOW set. A child whose
-  //     SOWs are a subset of the parent's is left alone (no spurious PUT).
+  //   • Connected devices (CONNECTIONS_FIELD children): their SOW membership
+  //     is NEVER changed. A child that no longer shares any SOW with the
+  //     parent is disconnected (back-pointer cleared, dropped from the
+  //     parent's forward list) and keeps its place in its own SOW's scope.
   // Fires only on a genuine SOW_FIELD edit (the v2 picker reports the edited
   // field key; native inline edits supply none → fall back to a cache diff).
   // ======================================================================
@@ -2098,70 +2097,108 @@
         lastSowSeen[record.id] = curr;
 
         var parentSowIds = sowIdsFromAttrs(record);
-        // Parent SOW cleared entirely: accessories must FOLLOW the parent
-        // off the SOW ("an accessory's SOW mirrors its parent's exact
-        // set" — an empty set is a valid set; leaving them behind is the
-        // orphaned-accessory bug). Connected DEVICES stay untouched on a
-        // clear — removing an NVR from a SOW must not pull its cameras
-        // off it. Skip only when the empty read isn't authoritative.
-        if (!parentSowIds.length) {
-          if (!sowSetKnown(record)) {
-            log('sow-cascade: parent ' + record.id + ' SOW read is unverifiable — leaving children alone');
-            return;
-          }
-          var accIdsClr = findAccessoryIdsForParent(record.id);
-          for (var ac = 0; ac < accIdsClr.length; ac++) {
-            fireAccessorySowPut(accIdsClr[ac], []);
-          }
-          log('sow-cascade: parent ' + record.id + ' SOW cleared — ' +
-              accIdsClr.length + ' accessory(ies) cleared with it');
+        // An empty parent set is honoured only when the read is authoritative
+        // (the view projects SOW_FIELD); an unverifiable empty read proves
+        // nothing and must not drive a clear.
+        if (!parentSowIds.length && !sowSetKnown(record)) {
+          log('sow-cascade: parent ' + record.id + ' SOW read is unverifiable — leaving children alone');
           return;
         }
         var parentSowSet = {};
         for (var p = 0; p < parentSowIds.length; p++) parentSowSet[parentSowIds[p]] = true;
 
-        var parentSowDisplay = record[SOW_FIELD];
-        var parentSowRaw = record[SOW_FIELD + '_raw'] || [];
-
-        // 1) Accessories — ALWAYS exact-match the parent's SOW.
+        // 1) Accessories — ALWAYS exact-match the parent's SOW set, an empty
+        //    set included ("an accessory's SOW mirrors its parent's exact
+        //    set"; leaving them behind is the orphaned-accessory bug).
         var accIds = findAccessoryIdsForParent(record.id);
         for (var a = 0; a < accIds.length; a++) {
           fireAccessorySowPut(accIds[a], parentSowIds);
         }
 
-        // 2) Connected devices — only when the child sits on a SOW the
-        //    parent does NOT also include; then re-align to the parent's
-        //    exact SOW set.
+        // 2) Connected devices — NEVER moved. A camera's SOW membership is
+        //    its own; the parent's edit only decides whether the CONNECTION
+        //    still makes sense. A child that no longer shares a single SOW
+        //    with its parent is DISCONNECTED — its CONNECTIONS_FIELD cleared
+        //    and the child dropped from the parent's TRIGGER_FIELD list (two
+        //    mirrored fields, both written) — so it stays in its SOW's scope
+        //    and wears the "disconnected" warning there. A child still
+        //    sharing a SOW keeps the connection; a child whose SOW read is
+        //    unverifiable is left alone.
+        //    Until 2026-10-22 a child on a SOW the parent lacked was
+        //    RE-ALIGNED to the parent's new set, so taking a switch / NVR off
+        //    one of two SOWs pulled every camera on the first SOW off it
+        //    (ClickUp 86bcjbxwp). Children are found by their back-pointer
+        //    AND the parent's forward list, so a drifted pair is judged too.
         var childIds = findRowsPointingTo(record.id);
-        var realigned = 0;
+        var fwdRawAll = Array.isArray(record[TRIGGER_FIELD + '_raw'])
+          ? record[TRIGGER_FIELD + '_raw']
+          : ((getModelAttrs(record.id) || {})[TRIGGER_FIELD + '_raw']);
+        if (Array.isArray(fwdRawAll)) {
+          for (var fw = 0; fw < fwdRawAll.length; fw++) {
+            var fid = fwdRawAll[fw] && fwdRawAll[fw].id;
+            if (fid && childIds.indexOf(fid) === -1) childIds.push(fid);
+          }
+        }
+        var broken = [], brokenSet = {}, kept = 0, unjudged = 0;
         for (var c = 0; c < childIds.length; c++) {
           var childId = childIds[c];
           if (childId === record.id) continue;
-          var childSowIds = sowIdsFromAttrs(getModelAttrs(childId));
-          var hasForeignSow = false;
+          var childAttrs = getModelAttrs(childId);
+          if (!childAttrs || !sowSetKnown(childAttrs)) { unjudged++; continue; }
+          var childSowIds = sowIdsFromAttrs(childAttrs);
+          var shares = false;
           for (var s = 0; s < childSowIds.length; s++) {
-            if (!parentSowSet[childSowIds[s]]) { hasForeignSow = true; break; }
+            if (parentSowSet[childSowIds[s]]) { shares = true; break; }
           }
-          if (!hasForeignSow) continue;   // child SOWs ⊆ parent's → leave alone
-          var body = {};
-          body[SOW_FIELD] = parentSowIds;
-          // Patch the local model so the v2 tree rebuild on scw-cascade-idle
-          // reflects the new SOW without waiting for the PUT to land.
-          syncModelChild(childId, (function () {
-            var pp = {};
-            pp[SOW_FIELD] = parentSowDisplay;
-            pp[SOW_FIELD + '_raw'] = parentSowRaw;
-            return pp;
-          })());
-          log('sow-cascade: connected device ' + childId +
-              ' on a SOW the parent lacks → re-aligning to ' + JSON.stringify(parentSowIds));
-          firePut(childId, body);
-          realigned++;
+          if (shares) { kept++; continue; }
+          broken.push(childId);
+          brokenSet[childId] = true;
+        }
+        for (var b = 0; b < broken.length; b++) {
+          var bId = broken[b], bAttrs = getModelAttrs(bId);
+          // Child side: clear the back-pointer — only when it names this
+          // parent (a drifted child found through the forward list alone
+          // has nothing to clear). Prime the reciprocal cache so the -recip
+          // handler reads the clear as a no-op, not a fresh re-parent.
+          var bRaw = bAttrs && bAttrs[CONNECTIONS_FIELD + '_raw'];
+          var pointsHere = Array.isArray(bRaw) && bRaw.some(function (r) { return r && r.id === record.id; });
+          if (pointsHere) {
+            if (typeof lastReciprocalSeen !== 'undefined') lastReciprocalSeen[bId] = '';
+            syncModelChild(bId, (function () {
+              var pp = {};
+              pp[CONNECTIONS_FIELD] = '';
+              pp[CONNECTIONS_FIELD + '_raw'] = [];
+              return pp;
+            })());
+            var cb = {};
+            cb[CONNECTIONS_FIELD] = [];
+            log('sow-cascade: connected device ' + bId + ' shares no SOW with its parent any more → ' +
+                'disconnecting (its own SOWs untouched)');
+            firePut(bId, cb);
+          }
+        }
+        // Parent side: drop the disconnected children from TRIGGER_FIELD.
+        if (broken.length && Array.isArray(fwdRawAll)) {
+          var remainingRaw = [], remainingIds = [];
+          for (var f = 0; f < fwdRawAll.length; f++) {
+            var fr = fwdRawAll[f];
+            if (fr && fr.id && !brokenSet[fr.id]) { remainingRaw.push(fr); remainingIds.push(fr.id); }
+          }
+          if (remainingIds.length !== fwdRawAll.length) {
+            syncModelChild(record.id, (function () {
+              var pp = {};
+              pp[TRIGGER_FIELD + '_raw'] = remainingRaw;
+              return pp;
+            })());
+            var pb = {};
+            pb[TRIGGER_FIELD] = remainingIds;
+            firePut(record.id, pb);
+          }
         }
 
         log('sow-cascade done for parent ' + record.id + ': ' + accIds.length +
-            ' accessory PUT(s), ' + realigned + '/' + childIds.length +
-            ' connected device(s) re-aligned');
+            ' accessory PUT(s), ' + broken.length + ' connected device(s) disconnected, ' +
+            kept + ' kept, ' + unjudged + ' unjudged, 0 moved');
       } catch (e) {
         console.warn(LOG_PREFIX, 'sow-cascade handler threw', e);
       }

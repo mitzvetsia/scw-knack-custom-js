@@ -93,6 +93,7 @@ cat \
   src/features/bid-review-v2/bulk-cr.js \
   src/features/bid-review-v2/render.js \
   src/features/bid-review-v2/init.js \
+  src/features/bid-review-v2/sow-drop-audit.js \
   src/features/sub-bid-diff/config.js \
   src/features/sub-bid-diff/styles.js \
   src/features/sub-bid-diff/render.js \

@@ -1069,6 +1069,36 @@ draft on A's `field_2707`, and `autoRevertValidation` revoked A's release. Fixed
 - Rule going forward: **never take the FIRST match of a page slug in the hash.** Prefer the page's own
   record view; when the hash is all there is, take the deepest occurrence of the slug.
 
+## SOW cascade: a parent's SOW edit never moves its connected devices (2026-10-22)
+
+ClickUp 86bcjbxwp ("URGENT: Removing a switch/NVR from a SOW removes its linked cameras too"). The
+SOW cascade in `mirror-connection-sync.js` (`knack-cell-update … -sow` handler; instances view_3610 /
+view_3962 / view_3921 / view_4079 / view_4112, `SOW_FIELD` = `field_2154`) used to RE-ALIGN every
+connected device (a child whose `field_2197` names the parent) that sat on a SOW the parent no longer
+included to the parent's exact new set (7a2b836f, 2026-09-15: "keep its children on the parent's
+SOW"). So taking a switch off ONE of two SOWs ([A,B] → [B]) rewrote every camera on A to [B] — the
+cameras vanished from SOW A. (A parent cleared to [] already left devices alone.) Now:
+- **Connected devices' SOW membership is never written by the cascade.** For each child (found by
+  back-pointer AND by the parent's `field_1957` list) with an authoritative SOW read: shares a SOW
+  with the parent's new set → untouched; shares none → **disconnected** — its `field_2197` cleared
+  and it is dropped from the parent's `field_1957` (two mirrored fields, both written through the
+  capped queue, local models patched), so it stays in its SOW's scope wearing the "disconnected"
+  warning. An unverifiable child SOW read is left alone. A cleared parent disconnects every
+  judgeable child. **Behaviour change on a MOVE** ([A] → [B]): the cameras used to be dragged
+  along; now they stay on A, disconnected — the user re-connects them on B's worksheet if that was
+  the intent.
+- **Accessories are unchanged**: they still mirror the parent's exact set (empty included); the
+  accessory-SOW reconcile sweep is unchanged.
+- **Recovery** — `bid-review-v2/sow-drop-audit.js`, console only, on a project's Reconcile Bids
+  page: `SCW.sowAudit.scan()` lists every "Not on this SOW" row whose line item is a connected
+  device (back-pointer or a parent's list), with the parent and whether it is on that SOW;
+  `scan({ all: true })` lists every off-SOW line; `SCW.sowAudit.restore()` / `restore(sowId)`
+  union-adds them through `SCW.sowItemTray.addToSow` (the item keeps its other SOWs), one write
+  every 400 ms. The grid's own "+ Add to this SOW (also)" button is the same write per row. Bid lines
+  are the signal: a camera dropped from A still has its bid line on A.
+- Tests: `tests/misc/test-sow-cascade-connected-devices.js` (the real module's view_3962 instance:
+  removal, clear, add, move), `tests/bid-review-v2/test-sow-drop-audit.js`.
+
 ## Three "it doesn't go anywhere" fixes from #install-operations-tools (2026-10-22)
 
 Thread https://securitycw.slack.com/archives/C02TSSJKKU2/p1792615081468539 (Lee, Gil). Three separate
