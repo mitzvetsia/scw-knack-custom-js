@@ -103,8 +103,23 @@
           ['field_2220','FLAG_deliverables schema'],
         ],
 
-//other services
-        '6977caa7f246edf67b52cbcd': [],
+//other services — productized 2026-10-23 (the add-item modals offer the
+//Services bucket's products, "Custom Service" included; Make 02.01 reads
+//the product's default labor description / default sub bid onto the line).
+//An empty list here hid EVERY field but the bucket, so no service product
+//could be created on this form. No SKU / source / default qty / equipment flags.
+        '6977caa7f246edf67b52cbcd': [
+          ['field_133','REL_equipment bucket'],
+          ['field_956','FLAG_product status'],
+          ['field_1563','FLAG_type of system'],
+          ['field_35','INPUT_product name'],
+          ['field_57','INPUT_description'],
+          ['field_146','INPUT_retail price'],
+          ['field_1562','FLAG_eligible for discount'],
+          ['field_2021','INPUT_default labor description'],
+          ['field_2166','INPUT_default sub bid'],
+          ['field_1517','INPUT_default installation hours'],
+        ],
 
 //assumptions
         '697b7a023a31502ec68b3303': [

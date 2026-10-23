@@ -753,6 +753,14 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
   the variables, the product-derived fields (`field_1958/1960/1962/1963/1981`) as every product-backed
   line gets them. The description-only path (router 17 route 4 "no product" → [177]/[178]) is unchanged.
   **05.01 (survey) still needs the same change** — same shape, its own export.
+- **Add Product form (view_466) — `bucket-field-visibility_add-product.js`** (same day): the form shows
+  only the fields whitelisted for the chosen bucket (`field_133`), and the Other Services bucket mapped
+  to an EMPTY list — every field but the bucket hid, so no service product (Custom Service included)
+  could be created there. It now shows bucket · status · type of system · name · description · retail
+  price · eligible for discount · default labor description (`field_2021`, the catalog copy the Make
+  route reads) · default sub bid (`field_2166`) · default installation hours; SKU, source, default qty
+  and the equipment-only flags stay hidden; fields the module does not list (the sub-can-add /
+  sales-allowed flags) are never touched. Test: `tests/misc/test-add-product-bucket-rules.js`.
 - The product-first list (no chip picked) now offers services, bucket-labelled; picking one selects
   the Services chip. The CO add form (`co-add-item-form.js`) keeps its own product-less Services
   bucket — not in scope.
