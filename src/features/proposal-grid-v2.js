@@ -212,39 +212,50 @@
       .replace(/<\s*br\s*\/?\s*>/gi, '<br />');
   }
   // Product description (field_1962, the stored copy of the product's rich
-  // text) → limited HTML that KEEPS THE AUTHOR'S LINE STRUCTURE. Knack rich
-  // text is one <p> per paragraph (plus <br>s and lists); sanitizeLimited
+  // text) → limited HTML that KEEPS THE AUTHOR'S STRUCTURE. Knack rich text
+  // is one <p> per paragraph (plus <br>s, bold and lists); sanitizeLimited
   // alone strips the <p>s and runs every paragraph into one line, and the
   // plain-text read (readText) did the same — a six-paragraph license
-  // description read as one 90-word run (2026-10-23). Block boundaries
-  // become <br />, empty paragraphs are dropped, and bold / lists survive
-  // on the labor-description allowlist (b / br / ul / ol / li).
+  // description read as one 90-word run (2026-10-23). Paragraphs stay
+  // PARAGRAPHS (<p>, so the renderers can put half a line between them —
+  // a <br /> made a paragraph break look like a line break), a <br> inside
+  // one stays a line break, a list is a block of its own, empty paragraphs
+  // are dropped, and only b / br / p / ul / ol / li survive — WITHOUT
+  // attributes (the stored snapshot must never carry one).
+  var DESC_PARA = '\u2029';   // paragraph-boundary marker while converting
   function descHtmlOf(html) {
     if (!html) return '';
-    var s = decodeEntities(String(html))
+    var s = decodeEntities(String(html));
+    // Lists first, one block each. Inside an item the editor often wraps
+    // the text in <p>; those read as line breaks so an item never splits
+    // the list.
+    s = s.replace(/<(ul|ol)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi, function (m, tag, inner) {
+      inner = inner
+        .replace(/<li\b[^>]*>\s*<(?:p|div)\b[^>]*>/gi, '<li>')
+        .replace(/<\/(?:p|div)\s*>\s*<\/li\s*>/gi, '</li>')
+        .replace(/<\/(?:p|div)\s*>\s*<(?:p|div)\b[^>]*>/gi, '<br />')
+        .replace(/<\/?(?:p|div)\b[^>]*>/gi, '');
+      tag = tag.toLowerCase();
+      return DESC_PARA + '<' + tag + '>' + inner + '</' + tag + '>' + DESC_PARA;
+    });
+    s = s
       .replace(/<\s*br\s*\/?\s*>/gi, '\n')
-      .replace(/<\/\s*(p|div|h[1-6]|blockquote|pre|tr|table)\s*>/gi, '\n')
+      .replace(/<\/\s*(p|div|h[1-6]|blockquote|pre|tr|table)\s*>/gi, DESC_PARA)
       .replace(/<\s*(p|div|h[1-6]|blockquote|pre|tr|table)\b[^>]*>/gi, '')
-      // a list is its own line(s): boundaries on both sides
-      .replace(/<\s*(ul|ol)\b[^>]*>/gi, '\n<$1>')
-      .replace(/<\/\s*(ul|ol)\s*>/gi, '</$1>\n')
       .replace(/<\/?strong\b[^>]*>/gi, function (t) { return t.replace(/strong/gi, 'b'); })
       .replace(/<(?!\/?(b|ul|ol|li)\b)[^>]*>/gi, '')
-      // kept tags lose their attributes (<ul class="ak-ul"> → <ul>): the
-      // stored snapshot must never carry an attribute (see stripHtmlTagAttrs)
       .replace(/<(\/?)(b|ul|ol|li)\b[^>]*>/gi, '<$1$2>');
-    var lines = [];
-    s.split('\n').forEach(function (ln) {
-      var t = norm(ln);
-      if (t && !isBlankish(t)) lines.push(t);
-    });
-    // <br /> between lines — but never beside a list: <ul> / <ol> is a
-    // block of its own, and a <br /> next to one renders as a blank line.
     var out = '';
-    for (var i = 0; i < lines.length; i++) {
-      if (i && !/<\/(ul|ol)>$/i.test(lines[i - 1]) && !/^<(ul|ol)>/i.test(lines[i])) out += '<br />';
-      out += lines[i];
-    }
+    s.split(DESC_PARA).forEach(function (para) {
+      var lines = [];
+      para.split('\n').forEach(function (ln) {
+        var t = norm(ln);
+        if (t && !isBlankish(t)) lines.push(t);
+      });
+      if (!lines.length) return;
+      var body = lines.join('<br />');
+      out += /^<(ul|ol)>/i.test(body) ? body : '<p>' + body + '</p>';
+    });
     return out;
   }
   // MDF/IDF display names ("TYPE: ##: Name") leave an empty middle segment
@@ -846,7 +857,7 @@
         var pDescHtml = productDescHtmlOf(product.items, bctx.descKind);
         if (pDescHtml) {
           pushRow('scw-pg2-l3desc' + tintCls, [
-            { html: '<span class="scw-pg2-l3-desc">' + pDescHtml + '</span>' },
+            { html: '<div class="scw-pg2-l3-desc">' + pDescHtml + '</div>' },
             { html: '' }, { html: '' }
           ]);
         }
@@ -1896,7 +1907,11 @@
       '.scw-pg2-l3desc td { padding-top: 2px; border-top: 0; font-weight: 300; color: #64748b; }',
       '.scw-pg2-l3-desc { display: block; font-size: 13px; line-height: 1.35; max-width: 110ch; }',
       '.scw-pg2-l3-desc b { font-weight: 600; }',
-      '.scw-pg2-l3-desc ul, .scw-pg2-l3-desc ol { margin: 2px 0 2px 18px; padding: 0; }',
+      // Paragraphs / lists are blocks; half a line between them (a paragraph
+      // break must read as more than a line break), none above the first.
+      '.scw-pg2-l3desc .scw-pg2-l3-desc p { margin: 0; }',
+      '.scw-pg2-l3desc .scw-pg2-l3-desc ul, .scw-pg2-l3desc .scw-pg2-l3-desc ol { margin: 0 0 0 18px; padding: 0; }',
+      '.scw-pg2-l3desc .scw-pg2-l3-desc > :not(:first-child) { margin-top: 0.5em; }',
       // Callouts: orange for the LABEL only; the designator list itself is
       // quiet gray fine print (dense projects were a wall of bold orange).
       '.scw-pg2-l4-conn { display: block; margin-top: 4px; line-height: 1.4; font-size: 12px; color: #64748b; font-weight: 400; max-width: 110ch; }',

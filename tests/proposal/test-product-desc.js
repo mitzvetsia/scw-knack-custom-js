@@ -147,26 +147,30 @@ const RICH = '<p>Per camera, per month &middot; <strong>12-month commitment</str
   '<p>Remote guarding for sites that are unoccupied on weekends.<br>Coverage: Saturday and Sunday, in the site\u2019s local time.</p>' +
   '<p class="ak-p" style="margin:0">Equipment: provided per site.</p><ul class="ak-ul"><li>RTSP or ONVIF streams at 720p</li><li>2 Mbps upload per camera</li></ul>' +
   '<p>Not included: cameras, speakers, alarm permits.</p><p>&nbsp;</p>';
-check('descHtmlOf: paragraphs and <br>s become <br />, empty paragraphs vanish, bold stays (<strong> → <b>), lists stay, attributes and every other tag are gone',
+check('descHtmlOf: paragraphs stay <p> blocks, a <br> inside one stays a line break, empty paragraphs vanish, bold stays (<strong> → <b>), lists stay, attributes and every other tag are gone',
   grid.descHtmlOf(RICH),
-  'Per camera, per month · <b>12-month commitment</b><br />Remote guarding for sites that are unoccupied on weekends.<br />Coverage: Saturday and Sunday, in the site\u2019s local time.<br />' +
-  'Equipment: provided per site.<ul><li>RTSP or ONVIF streams at 720p</li><li>2 Mbps upload per camera</li></ul>Not included: cameras, speakers, alarm permits.');
-check('descHtmlOf: a list is a block of its own — no <br /> beside it (that reads as a blank line) — and never carries attributes',
-  [grid.descHtmlOf('<p>Needs:</p><ul class="x"><li style="a">One</li></ul><p>Then.</p>'), grid.descHtmlOf('<ol><li>A</li></ol>')],
-  ['Needs:<ul><li>One</li></ul>Then.', '<ol><li>A</li></ol>']);
-check('descHtmlOf: plain text passes through; blank / tag-only input is empty', [grid.descHtmlOf('Just one line.'), grid.descHtmlOf('<p><br></p><p>&nbsp;</p>'), grid.descHtmlOf('')], ['Just one line.', '', '']);
+  '<p>Per camera, per month · <b>12-month commitment</b></p><p>Remote guarding for sites that are unoccupied on weekends.<br />Coverage: Saturday and Sunday, in the site\u2019s local time.</p>' +
+  '<p>Equipment: provided per site.</p><ul><li>RTSP or ONVIF streams at 720p</li><li>2 Mbps upload per camera</li></ul><p>Not included: cameras, speakers, alarm permits.</p>');
+check('descHtmlOf: a list is a block of its own between paragraphs, never carries attributes, and paragraph tags inside an item read as line breaks (the item never splits the list)',
+  [grid.descHtmlOf('<p>Needs:</p><ul class="x"><li style="a">One</li></ul><p>Then.</p>'), grid.descHtmlOf('<ol><li>A</li></ol>'),
+   grid.descHtmlOf('<ul><li><p>A</p></li><li><p>B</p><p>C</p></li></ul>'), grid.descHtmlOf('Intro<ul><li>x</li></ul>')],
+  ['<p>Needs:</p><ul><li>One</li></ul><p>Then.</p>', '<ol><li>A</li></ol>', '<ul><li>A</li><li>B<br />C</li></ul>', '<p>Intro</p><ul><li>x</li></ul>']);
+check('descHtmlOf: plain text is one paragraph; blank / tag-only input is empty', [grid.descHtmlOf('Just one line.'), grid.descHtmlOf('<p><br></p><p>&nbsp;</p>'), grid.descHtmlOf('')], ['<p>Just one line.</p>', '', '']);
 const richLic = Object.assign({}, licRec, { id: 'r7', field_2208: 'Pro Video Monitoring — 12 Hour Weekdays PVM-1C-M-24HWEEKENDS', [DESC]: RICH });
 window.Knack.views.view_3371 = { model: { data: { models: [{ attributes: richLic }] } } };
 const richData = grid.buildPublishData('view_3371');
 const richProd = richData.sections[0].buckets[0].products[0];
-check('payload: productDesc stays the flat one-line text; productDescHtml carries the line breaks',
-  [richProd.productDesc.indexOf('<') === -1, /commitment Remote guarding/.test(richProd.productDesc), (richProd.productDescHtml.match(/<br \/>/g) || []).length, /<b>12-month commitment<\/b>/.test(richProd.productDescHtml)],
-  [true, true, 3, true]);
+check('payload: productDesc stays the flat one-line text; productDescHtml carries the paragraphs and the one in-paragraph break',
+  [richProd.productDesc.indexOf('<') === -1, /commitment Remote guarding/.test(richProd.productDesc), (richProd.productDescHtml.match(/<p>/g) || []).length, (richProd.productDescHtml.match(/<br \/>/g) || []).length, /<b>12-month commitment<\/b>/.test(richProd.productDescHtml)],
+  [true, true, 4, 1, true]);
 const richHtml = pdf.buildPdfHtml({ views: [Object.assign({ type: 'grid', title: 'Recurring Services or Licenses (billed separately)', isRecurring: true }, richData)] });
 const richCell = new DOMParser().parseFromString(richHtml, 'text/html').querySelector('tr.l4-proddesc td.l4-desc');
-check('PDF: the description cell renders the HTML variant — line breaks, inline-styled bold (no <b>), the list — in the quiet row',
-  [richCell.querySelectorAll('br').length, richCell.querySelectorAll('span[style*="font-weight:700"]').length, richCell.querySelectorAll('b').length, richCell.querySelectorAll('li').length, richCell.textContent.indexOf('Not included') > 0],
-  [3, 1, 0, 2, true]);
+check('PDF: the description cell renders the HTML variant — paragraphs as <div>s (no <p>), the in-paragraph break, inline-styled bold (no <b>), the list — in the quiet row',
+  [richCell.querySelectorAll(':scope > div').length, richCell.querySelectorAll('p').length, richCell.querySelectorAll('br').length, richCell.querySelectorAll('span[style*="font-weight:700"]').length, richCell.querySelectorAll('b').length, richCell.querySelectorAll('li').length, richCell.textContent.indexOf('Not included') > 0],
+  [4, 0, 1, 1, 0, 2, true]);
+check('PDF: every block after the first opens half a line down by INLINE style (the published page keeps inline styles, not <style>); the first block has none; the list is one of the blocks',
+  Array.prototype.map.call(richCell.children, el => el.tagName.toLowerCase() + (el.getAttribute('style') || '').replace(/\s/g, '')),
+  ['div', 'divmargin-top:0.5em', 'divmargin-top:0.5em', 'ulmargin-top:0.5em', 'divmargin-top:0.5em']);
 check('e-sign manifest: the description cell reads as words with spaces at every break, never glued across a <br />',
   (() => { const els = pdf.buildSowDocumentElements(richHtml); const tbl = els.find(e => e.type === 'table');
            const row = tbl && tbl.table_cells.find(r => /Per camera/.test(r[0].text));

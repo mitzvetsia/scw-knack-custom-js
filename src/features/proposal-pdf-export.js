@@ -1924,14 +1924,22 @@
 
               // Catalog description (grid-v2 payload `productDesc`): a quiet
               // sub-row under the product name, before any labor description.
-              // `productDescHtml` (limited HTML — the author's paragraph breaks
-              // as <br />, bold, lists) when the payload carries it, the flat
-              // text otherwise; bold inline-styled as on the labor lines.
+              // `productDescHtml` (limited HTML — the author's paragraphs as
+              // <p>, line breaks, bold, lists) when the payload carries it, the
+              // flat text otherwise. Bold inline-styled as on the labor lines;
+              // <p> → <div> as there (Knack's rich-text field and the PDF
+              // renderer leave <div> alone); every block after the first
+              // opens half a line down — INLINE, so the published page (Knack
+              // keeps inline styles, strips <style>) and the PDF agree; the
+              // stylesheet rule below is the twin.
               if (prod.productDesc || prod.productDescHtml) {
                 var pdContent = prod.productDescHtml
                   ? String(prod.productDescHtml)
                       .replace(/<b>/gi, '<span style="font-weight:700">')
                       .replace(/<\/b>/gi, '</span>')
+                      .replace(/(<\/(?:p|ul|ol)>)\s*<(p|ul|ol)>/gi, '$1<$2 style="margin-top:0.5em">')
+                      .replace(/<p(\s[^>]*)?>/gi, function (m, a) { return '<div' + (a || '') + '>'; })
+                      .replace(/<\/p>/gi, '</div>')
                   : esc(prod.productDesc);
                 html.push('<tr class="l4-row l4-proddesc">');
                 html.push('<td class="l4-desc"' + (prod.hideCost ? ' colspan="3"' : '') + '>' + pdContent + '</td>');
@@ -2397,7 +2405,9 @@
       '/* Accessory rollups muted slate — secondary to the product (v2). */',
       '.l4-row.l4-acc td { color: #5f6b7a; font-weight: 400; }',
       '.l4-row.l4-proddesc td { color: #6b7280; line-height: 1.4; }',
-      '.l4-row.l4-proddesc td ul, .l4-row.l4-proddesc td ol { margin: 2px 0 2px 14px; padding: 0; }',
+      '.l4-row.l4-proddesc td ul, .l4-row.l4-proddesc td ol { margin: 0 0 0 14px; padding: 0; }',
+      '/* half a line between the description\'s paragraphs / lists (twin of the inline margin) */',
+      '.l4-row.l4-proddesc td > :not(:first-child) { margin-top: 0.5em; }',
       '.l4-row.l4-acc td.col-qty, .l4-row.l4-acc td.col-cost { color: #5f6b7a; }',
       '',
       '/* ── L2 Footer ── */',

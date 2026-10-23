@@ -818,14 +818,20 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
   get the same quiet `l4-proddesc` row. **Line structure (same day — "no line breaks here is
   brutal")**: `field_1962` is Knack rich text (one `<p>` per paragraph, `<br>`s, bold, lists) and the
   flat `readText` read ran a six-paragraph license description into one 90-word run. `descHtmlOf(html)`
-  keeps the author's lines as limited HTML — block boundaries (`</p>`, `<br>`, `</div>`, headings, list
-  edges) → `<br />`, empty paragraphs dropped, `b` / `ul` / `ol` / `li` kept WITHOUT attributes (the
-  snapshot rule), every other tag gone, and never a `<br />` beside a list (a list is a block; a break
-  next to it reads as a blank line). `productDescRec` finds the record once; `productDescOf` is the
-  flat text (payload `productDesc`, the fallback), `productDescHtmlOf` the HTML (the grid's
-  `.scw-pg2-l3-desc` row and payload `productDescHtml`); proposal-pdf-export renders `productDescHtml`
-  when present (`<b>` → inline-styled span as on labor lines) else the escaped flat text; the e-sign
-  manifest's `cellText` turns tags into spaces, so the words never glue across a break. **Reconcile grid** (`bid-review-v2`, same day — "I need to see the
+  keeps the author's STRUCTURE as limited HTML: paragraphs stay `<p>` blocks (a `<br />` between them
+  made a paragraph break look like a line break — "still need a space or half line space between actual
+  paragraphs"), a `<br>` inside one stays `<br />`, a list is a block of its own (paragraph tags inside
+  an item read as line breaks so an item never splits the list), empty paragraphs dropped, only
+  `b` / `br` / `p` / `ul` / `ol` / `li` survive and WITHOUT attributes (the snapshot rule). `productDescRec`
+  finds the record once; `productDescOf` is the flat text (payload `productDesc`, the fallback),
+  `productDescHtmlOf` the HTML (the grid's `.scw-pg2-l3-desc` block and payload `productDescHtml`). The
+  gap: every block after the first opens half a line down (`margin-top: 0.5em`) — the grid by CSS
+  (`.scw-pg2-l3desc .scw-pg2-l3-desc > :not(:first-child)`), the PDF / published page by an INLINE style
+  pdf-export stamps on each following block (Knack's `field_2680` keeps inline styles and strips
+  `<style>`; the stylesheet rule `.l4-row.l4-proddesc td > :not(:first-child)` is its twin) with `<p>` →
+  `<div>` and `<b>` → inline-styled span exactly as the labor lines; the flat text renders escaped when the
+  payload has no HTML; the e-sign manifest's `cellText` turns tags into spaces, so the words never glue
+  across a break. **Reconcile grid** (`bid-review-v2`, same day — "I need to see the
   product description of this service product"): `bid-review/config.js` `sowItemFieldKeys.productDesc =
   'field_1962'`, carried on the transform's SOW item index (`productDesc`, rich text), and `card.js`
   `buildSowCell` renders it as a quiet `__sow-proddesc` line between the product name and the numbers on
