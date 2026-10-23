@@ -135,8 +135,8 @@ chip(B_OTH);
 check('Other Equipment: products (multi) · qty · MDF optional · labor bid · survey notes',
   fieldLabels(), ['Products', 'Quantity', 'MDF / IDF (optional)', 'Labor bid ($ each)', 'Survey notes']);
 chip(B_SVC);
-check('Other Services (product-less): description · labor bid · qty · MDF optional · survey notes',
-  fieldLabels(), ['Service description', 'Labor bid ($)', 'Quantity', 'MDF / IDF (optional)', 'Survey notes']);
+check('Other Services (productized 2026-10-23): service picker · describe (shown while nothing / Custom Service is picked) · labor bid · qty · MDF optional · survey notes',
+  [fieldLabels(), q('[data-cond="customService"]').style.display], [['Service', 'Describe the service', 'Labor bid ($)', 'Quantity', 'MDF / IDF (optional)', 'Survey notes'], '']);
 chip(B_ASM);
 check('Assumptions: assumption(s) · custom detail (hidden until Custom Assumption) · MDF optional · survey notes',
   [fieldLabels(), q('[data-cond="customAssumption"]').style.display], [['Assumption(s)', 'Detail custom assumption', 'MDF / IDF (optional)', 'Survey notes'], 'none']);
@@ -198,21 +198,57 @@ setTimeout(() => {
     [2, 12, null, [{ id: PREFIX_E, identifier: 'E-' }], 'E-', true, 'Yes', false, 'Ceiling tiles loose', false, [], [], []]);
   check('the modal closed after the accepted POST', !!q('.scw-sowadd'), false);
 
-  // Service flow: description required; labor + qty carried as the DTO's field_2233 / field_2183; no product keys
+  // Service flow (productized 2026-10-23): a service picker over the catalog's Services bucket incl.
+  // "Custom Service"; the description is the line when nothing is picked (the product-less path stays)
+  // and the detail of a Custom Service; a catalog service needs none. The product rides the DTO's
+  // optional service product field_2195 + unified field_2246, as the DTO form did.
+  const SVC = '6481e5ba38f28300289a0001', CSVC = '6481e5ba38f28300289a0002';
+  window.SCW.productMap[SVC] = { name: 'Lift rental (daily)', subAllowed: 'Yes' };
+  window.SCW.productMap[CSVC] = { name: 'Custom Service', subAllowed: 'Yes' };
+  window.SCW.productBucketMap[SVC] = [B_SVC]; window.SCW.productBucketMap[CSVC] = [B_SVC];
   form.open({ viewKey: 'view_3505' });
   chip(B_SVC);
+  check('the service picker lists the Services-bucket products', texts('.scw-sowadd__opt'), ['Custom Service', 'Lift rental (daily)']);
   q('[data-act="submit"]').click();
-  check('service: the description defines the line', q('.scw-sowadd__err').textContent, 'Enter a description — it defines this line item.');
+  check('service: nothing picked and nothing described → asks for one or the other', q('.scw-sowadd__err').textContent, 'Pick a service, or describe the service.');
   q('[data-f="description"]').value = 'Lift rental'; q('[data-f="serviceCost"]').value = '450'; q('[data-f="notes"]').value = 'Two days';
   // un-check the pre-checked bid → an item on the survey only
   const bidBox = qa('.scw-sowadd__checks')[0].querySelectorAll('input')[1]; bidBox.checked = false; bidBox.dispatchEvent(new window.Event('change', { bubbles: true }));
   q('[data-act="submit"]').click();
   setTimeout(() => {
     const s = posts[1] && posts[1].body;
-    check('service POST: product-less bucket, description + labor + notes, no bids (survey only), MDF optional left empty',
-      [posts.length, s.bucketId, s.productIds, s.field_2210, s.field_2233_raw, s.field_2183_raw, s.field_2432, s.bidIds, s.field_2427_raw, s.field_2250_raw, s.field_2193_raw, s.field_2246_raw],
-      [2, B_SVC, [], 'Lift rental', 450, 1, 'Two days', [], [], [], [], []]);
-    console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
-    process.exit(fails ? 1 : 0);
+    check('service POST (product-less path kept): description + labor + notes, no product, not custom, no bids, MDF optional left empty',
+      [posts.length, s.bucketId, s.productIds, s.customService, s.field_2210, s.field_2233_raw, s.field_2183_raw, s.field_2432, s.bidIds, s.field_2427_raw, s.field_2250_raw, s.field_2195_raw, s.field_2246_raw],
+      [2, B_SVC, [], false, 'Lift rental', 450, 1, 'Two days', [], [], [], [], []]);
+    // A catalog service: the description folds away; the product rides field_2195 + field_2246.
+    form.open({ viewKey: 'view_3505' });
+    chip(B_SVC);
+    md(qa('.scw-sowadd__opt').find(o => o.textContent.trim() === 'Lift rental (daily)'));
+    check('a catalog service picked: the describe row folds away', q('[data-cond="customService"]').style.display, 'none');
+    q('[data-f="serviceCost"]').value = '300';
+    q('[data-act="submit"]').click();
+    setTimeout(() => {
+      const c = posts[2] && posts[2].body;
+      check('catalog service POST: the product under the DTO\'s optional service product (field_2195) + unified field_2246, no description, not custom',
+        [posts.length, c.productIds, c.customService, c.field_2195_raw, c.field_2246_raw, c.field_2210, c.field_2233_raw],
+        [3, [SVC], false, [{ id: SVC, identifier: 'Lift rental (daily)' }], [{ id: SVC, identifier: 'Lift rental (daily)' }], '', 300]);
+      // Custom Service: the description comes back and is required.
+      form.open({ viewKey: 'view_3505' });
+      chip(B_SVC);
+      md(qa('.scw-sowadd__opt').find(o => o.textContent.trim() === 'Custom Service'));
+      check('"Custom Service" picked: the describe row is back', q('[data-cond="customService"]').style.display, '');
+      q('[data-act="submit"]').click();
+      check('…and required', q('.scw-sowadd__err').textContent, 'Describe the custom service.');
+      q('[data-f="description"]').value = 'Walk the site with the fire marshal'; q('[data-f="serviceCost"]').value = '120';
+      q('[data-act="submit"]').click();
+      setTimeout(() => {
+        const k = posts[3] && posts[3].body;
+        check('custom service POST: the Custom Service product + the description + the customService flag',
+          [posts.length, k.productIds, k.customService, k.field_2195_raw, k.field_2210, k.field_2233_raw],
+          [4, [CSVC], true, [{ id: CSVC, identifier: 'Custom Service' }], 'Walk the site with the fire marshal', 120]);
+        console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
+        process.exit(fails ? 1 : 0);
+      }, 50);
+    }, 50);
   }, 50);
 }, 50);

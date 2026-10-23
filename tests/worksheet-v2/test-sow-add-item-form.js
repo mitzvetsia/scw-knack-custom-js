@@ -182,8 +182,53 @@ setTimeout(() => {
     [p.field_2183_raw, p.field_2183, p.field_2184_raw, p.field_2233_raw, p.field_2462_raw, p.field_2462, p.field_2739_raw, p.field_2740_raw, p.field_2210, p.field_2466],
     [2, '2', null, null, false, 'No', false, false, '', '']);
   check('the modal closed after the accepted POST', !!q('.scw-sowadd'), false);
-  console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
-  process.exit(fails ? 1 : 0);
+  servicesFlow();
 }, 50);
 }, 5);
 }, 5);
+
+// ── Productized services (2026-10-23): the Services bucket carries a service picker over the catalog's
+// Services bucket incl. "Custom Service". Nothing picked → the description defines the line (the
+// product-less path stays); a catalog service → no description, the product rides field_2195 + field_2246;
+// Custom Service → the description is back and required. ──
+function servicesFlow() {
+  const B_SVC = '6977caa7f246edf67b52cbcd', SVC = '6481e5ba38f28300289a0001', CSVC = '6481e5ba38f28300289a0002';
+  window.SCW.productMap[SVC] = { name: 'Lift rental (daily)' }; window.SCW.productMap[CSVC] = { name: 'Custom Service' };
+  window.SCW.productBucketMap[SVC] = [B_SVC]; window.SCW.productBucketMap[CSVC] = [B_SVC];
+  const md = el => el.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+  const labels = () => texts('.scw-sowadd__lbl').slice(2);   // after the item-type question + the SOW row
+  const tickSow = () => { const b = qa('.scw-sowadd__checks')[0].querySelectorAll('input')[0]; b.checked = true; b.dispatchEvent(new window.Event('change', { bubbles: true })); };
+  form.open({ viewKey: 'view_3962' });
+  check('product-first list now carries the services, bucket-labelled', texts('.scw-sowadd__opt').filter(t => /Other Services/.test(t)), ['Custom Service · Other Services', 'Lift rental (daily) · Other Services']);
+  q('.scw-sowadd__chip[data-bucket="' + B_SVC + '"]').click();
+  check('Other Services: service picker · describe · expected sub bid · qty · MDF optional; the describe row shows while nothing is picked',
+    [labels(), q('[data-cond="customService"]').style.display], [['Service', 'Describe the service', 'Expected sub bid ($)', 'Quantity', 'MDF / IDF (optional)'], '']);
+  tickSow();
+  q('[data-act="submit"]').click();
+  check('nothing picked, nothing described → one or the other', q('.scw-sowadd__err').textContent, 'Pick a service, or describe the service.');
+  md(qa('.scw-sowadd__opt').find(o => o.textContent.trim() === 'Lift rental (daily)'));
+  check('a catalog service folds the describe row away', q('[data-cond="customService"]').style.display, 'none');
+  q('[data-f="serviceCost"]').value = '450';
+  q('[data-act="submit"]').click();
+  setTimeout(() => {
+    const s = posts[1] && posts[1].body;
+    check('catalog service POST: product under field_2195 + unified field_2246, no description, not custom, cost + SOW carried',
+      [posts.length, s.bucketId, s.productIds, s.customService, s.field_2195_raw, s.field_2246_raw, s.field_2210, s.field_2233_raw, s.sowIds],
+      [2, B_SVC, [SVC], false, [{ id: SVC, identifier: 'Lift rental (daily)' }], [{ id: SVC, identifier: 'Lift rental (daily)' }], '', 450, [SOW]]);
+    form.open({ viewKey: 'view_3962' });
+    q('.scw-sowadd__chip[data-bucket="' + B_SVC + '"]').click();
+    md(qa('.scw-sowadd__opt').find(o => o.textContent.trim() === 'Custom Service'));
+    tickSow();
+    q('[data-act="submit"]').click();
+    check('"Custom Service": the describe row is back and required', [q('[data-cond="customService"]').style.display, q('.scw-sowadd__err').textContent], ['', 'Describe the custom service.']);
+    q('[data-f="description"]').value = 'Walk the site with the fire marshal';
+    q('[data-act="submit"]').click();
+    setTimeout(() => {
+      const k = posts[2] && posts[2].body;
+      check('custom service POST: the Custom Service product + the description + the customService flag',
+        [posts.length, k.productIds, k.customService, k.field_2195_raw, k.field_2210], [3, [CSVC], true, [{ id: CSVC, identifier: 'Custom Service' }], 'Walk the site with the fire marshal']);
+      console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
+      process.exit(fails ? 1 : 0);
+    }, 50);
+  }, 50);
+}

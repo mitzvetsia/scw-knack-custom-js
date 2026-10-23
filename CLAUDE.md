@@ -704,13 +704,46 @@ native add link. **Preview gate** (for staging future changes): set `sowAddModal
 the native button returns for everyone while only the listed users get a second amber
 "+ Add Survey/Bid Item (new)" button that opens the modal (webhook or not; submit reports an
 unconfigured one). Clear the list to make the modal the add button again. **Sub-can-add**: survey mode offers only products with `field_2433`
-FLAG_subcontractor can add = Yes and hides buckets with no eligible product (product-less Services
-stays). Flag source: `sowAddModal.subCanAddView` (a Products grid on the scene, Builder TBD) else
+FLAG_subcontractor can add = Yes and hides buckets with no eligible product (the product-optional
+Services chip stays — see "Services productized" below). Flag source: `sowAddModal.subCanAddView` (a Products grid on the scene, Builder TBD) else
 `SCW.productMap[id].subCanAdd` (extend the productMap Builder snippet with `field_2433_raw`); with
 neither on the page the modal shows every product behind an amber notice + console warning. Behaviors the
 modal inherits from 05.01 (pre-existing, not changed): License qty is ignored (one line per license
 product), exterior/plenum come from the PRODUCT not the toggles, Materials accessories (`field_2206`)
 create SOW Line Items (object_105), not survey items. Test: `tests/worksheet-v2/test-survey-add-item-form.js`.
+
+## Services productized in the add-item modals (2026-10-23) — `worksheet-v2/sow-add-item-form.js`
+
+"I need to be able to productize services just like assumptions on the add-to-SOW and add-to-survey
+modals, with the same 'select custom service' and get an option to describe the service." The Other
+Services bucket was product-less by design (description · cost · qty · MDF). Both suites (`BUCKETS` for
+"+ Add to SOW" on view_3962 / view_3586 / the reconcile host, `SURVEY_BUCKETS` for "+ Add Survey/Bid
+Item" on view_3505) now lead with a **Service** picker over the catalog's Services bucket
+(`productOptional` stays true), the same shape as Assumptions:
+- **Three ways to fill the line**: pick a catalog service (the describe row folds away — the product is
+  the line); pick **"Custom Service"** (the describe row returns and is required: "Describe the custom
+  service."); pick nothing and describe it (the pre-existing product-less path, kept so nothing that
+  worked stops: "Pick a service, or describe the service." when both are empty). `syncServiceDesc`
+  drives the `data-cond="customService"` row on every product change and at the end of each render.
+- **"Custom Service" is a PRODUCT RECORD in the Services bucket** (Builder: create it, like Custom
+  Assumption `69ce7098172caa5786d3767d`). It is recognised by id once `CUSTOM_SERVICE_ID` is filled, and
+  by NAME until then (`CUSTOM_SERVICE_NAME` = a product in that bucket named "Custom Service…", read
+  off the picker label or `SCW.productMap`). In survey mode the sub sees it only when its
+  `field_2433` sub-can-add flag is Yes (same gate as every product); the Services chip itself is never
+  hidden by `hideEmptySurveyBuckets` (a product-optional bucket is always addable).
+- **Payload**: the product rides `productIds` / `productLabels` and the DTO mirror's
+  `field_2195_raw` — the DTO form's OPTIONAL service product field (view_4100,
+  `set_unified_product_field.js` PARENTS / SINGLE_PRIORITY) — and the unified `field_2246_raw`
+  (`UNIFIED_PRODUCT_BUCKETS` now includes Services); `customService: true` when the picked service is
+  the Custom Service product; `description` carries the text as before (`field_2210`). **Make
+  (02.01 SOW / 05.01 survey): the Services route must map the line item's product from
+  `field_2246_raw` / `field_2195_raw` (or `productIds[0]`)** — the DTO forms rarely sent one for a
+  service, so verify the route does not drop it; the description mapping is unchanged.
+- The product-first list (no chip picked) now offers services, bucket-labelled; picking one selects
+  the Services chip. The CO add form (`co-add-item-form.js`) keeps its own product-less Services
+  bucket — not in scope.
+- Tests: the service flows in `tests/worksheet-v2/test-sow-add-item-form.js` and
+  `tests/worksheet-v2/test-survey-add-item-form.js` (picker, the three paths, the fold, both POSTs).
 
 ## Change request "Remove from bid" can also remove the item from the SOW (2026-10-22) — `bid-review/change-requests.js`
 

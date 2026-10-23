@@ -114,6 +114,24 @@
   var STYLE_ID = 'scw-sow-add-form-css';
   var HEX24    = /^[a-f0-9]{24}$/i;
   var CUSTOM_ASSUMPTION_ID = '69ce7098172caa5786d3767d';
+  // "Custom Service" — the Services bucket's free-text product (2026-10-23,
+  // services productized like assumptions): picked, it reveals + requires
+  // the service description. Matched by id once the product record exists
+  // (fill CUSTOM_SERVICE_ID), and by NAME until then — a catalog product in
+  // the Services bucket named "Custom Service…".
+  var CUSTOM_SERVICE_ID   = '';
+  var CUSTOM_SERVICE_NAME = /^\s*custom\s+service/i;
+  function isCustomService(id, labels) {
+    if (!id) return false;
+    if (CUSTOM_SERVICE_ID && id === CUSTOM_SERVICE_ID) return true;
+    var name = (labels && labels[id]) ||
+      ((window.SCW && SCW.productMap && SCW.productMap[id] && SCW.productMap[id].name) || '');
+    return CUSTOM_SERVICE_NAME.test(stripHtml(name));
+  }
+  function hasCustomService(ids, labels) {
+    for (var i = 0; i < (ids || []).length; i++) if (isCustomService(ids[i], labels)) return true;
+    return false;
+  }
 
   function log() { if (CONFIG.debug) { try { console.info.apply(console, ['[scw-sow-add]'].concat([].slice.call(arguments))); } catch (e) { /* ignore */ } } }
 
@@ -172,10 +190,17 @@
       { t: 'qty' },
       { t: 'mdf', mode: 'opt' }
     ]},
-    // Product-less by design: field_2233 expected sub bid · field_2183 qty ·
-    // field_2210 service description · field_2250 MDF (optional)
+    // Productized (2026-10-23, like Assumptions): field_2195 service product
+    // (optional — the catalog's Services bucket, "Custom Service" included; the
+    // DTO form's optional service product rode field_2195 → unified field_2246)
+    // · field_2210 service description — the line itself when NO service is
+    // picked (the product-less path stays), the detail of a Custom Service,
+    // folded away under a catalog service · field_2233 expected sub bid ·
+    // field_2183 qty · field_2250 MDF (optional)
     { id: B_SERVICE, name: 'Other Services', productOptional: true, fields: [
-      { t: 'description', label: 'Service description' },
+      { t: 'product', label: 'Service', placeholder: 'Search services…',
+        helper: 'Pick a service from the catalog, or "Custom Service" to describe one.' },
+      { t: 'description', label: 'Describe the service', conditional: 'customService' },
       { t: 'serviceCost', label: 'Expected sub bid ($)' },
       { t: 'qty' },
       { t: 'mdf', mode: 'opt' }
@@ -245,10 +270,14 @@
       { t: 'serviceCost', label: SURVEY_LABOR_LABEL, helper: SURVEY_LABOR_HELPER },
       { t: 'notes', label: 'Survey notes' }
     ]},
-    // Product-less: field_2250 MDF (optional) · field_2233 labor bid · field_2183 qty ·
-    // field_2210 service description · field_2432 survey notes
+    // Productized (2026-10-23, same rules as the SOW suite): field_2195 service
+    // product (optional, "Custom Service" included) · field_2210 description
+    // (shown while nothing / Custom Service is picked) · field_2233 labor bid ·
+    // field_2183 qty · field_2250 MDF (optional) · field_2432 survey notes
     { id: B_SERVICE, name: 'Other Services', productOptional: true, fields: [
-      { t: 'description', label: 'Service description' },
+      { t: 'product', label: 'Service', placeholder: 'Search services…',
+        helper: 'Pick a service from the catalog, or "Custom Service" to describe one.' },
+      { t: 'description', label: 'Describe the service', conditional: 'customService' },
       { t: 'serviceCost', label: 'Labor bid ($)', helper: 'Your price for this service.' },
       { t: 'qty' },
       { t: 'mdf', mode: 'opt' },
@@ -345,6 +374,10 @@
   DTO_PRODUCT_FIELD[B_LICENSE]     = 'field_2224';   // REL_products for licenses
   DTO_PRODUCT_FIELD[B_ASSUMPTIONS] = 'field_2248';   // REL_products for assumptions
   DTO_PRODUCT_FIELD[B_MATERIALS]   = 'field_2913';   // REL_products for materials
+  // The Services bucket's OPTIONAL product (2026-10-23): the DTO form carried
+  // it on field_2195 (the other-equipment product field — view_4100, see
+  // set_unified_product_field.js) and funnelled it into unified field_2246.
+  DTO_PRODUCT_FIELD[B_SERVICE]     = 'field_2195';
   var DTO_MDF_FIELD = { single: 'field_2211', multi: 'field_2180', opt: 'field_2250' };
   var DTO_ARRAY_KEYS = ['field_2193', 'field_2194', 'field_2195', 'field_2224', 'field_2248', 'field_2913',
                         'field_2211', 'field_2180', 'field_2250', 'field_2206', 'field_2241', 'field_2181',
@@ -352,7 +385,7 @@
   // field_2246 "unified product" = the first filled product field in this
   // priority (set_unified_product_field.js SINGLE_PRIORITY) — the buckets
   // whose product field is one of them.
-  var UNIFIED_PRODUCT_BUCKETS = [B_CAMERA, B_NETWORKING, B_OTHEREQUIP, B_MATERIALS];
+  var UNIFIED_PRODUCT_BUCKETS = [B_CAMERA, B_NETWORKING, B_OTHEREQUIP, B_MATERIALS, B_SERVICE];
   function conn(ids, labels) {
     var out = [];
     for (var i = 0; i < ids.length; i++) out.push({ id: ids[i], identifier: (labels && labels[ids[i]]) || '' });
@@ -524,7 +557,9 @@
     }
     return buckets.filter(function (b) {
       var hasProductField = b.fields.some(function (f) { return f.t === 'product'; });
-      return !hasProductField || !!has[b.id];
+      // A product-optional bucket (Other Services) is always addable — the
+      // description alone defines a line there.
+      return !hasProductField || !!b.productOptional || !!has[b.id];
     });
   }
   /** Product-first list: every product whose bucket this view offers,
@@ -1144,6 +1179,7 @@
           onChange: function (ids, labels) {
             st.productIds = ids; st.productLabels = labels || {};
             if (b.id === B_ASSUMPTIONS) syncAssumptionDesc();
+            if (b.id === B_SERVICE)     syncServiceDesc();
             rebuildAccessoryCombo();
           }
         });
@@ -1202,6 +1238,7 @@
         var drow = labelRow(fd.label || 'Description');
         drow.insertAdjacentHTML('beforeend', '<textarea class="scw-sowadd__in" data-f="description"></textarea>');
         if (fd.conditional === 'customAssumption') { drow.setAttribute('data-cond', 'customAssumption'); drow.style.display = 'none'; }
+        if (fd.conditional === 'customService')    { drow.setAttribute('data-cond', 'customService'); }
         return drow;
       }
       if (t === 'notes') {
@@ -1228,6 +1265,14 @@
       var descRow = body.querySelector('[data-cond="customAssumption"]');
       if (!descRow) return;
       descRow.style.display = st.productIds.indexOf(CUSTOM_ASSUMPTION_ID) !== -1 ? '' : 'none';
+    }
+    // Services: the description IS the line while nothing is picked (the
+    // product-less path) and the detail of a "Custom Service"; a catalog
+    // service needs none, so the row folds away.
+    function syncServiceDesc() {
+      var row = body.querySelector('[data-cond="customService"]');
+      if (!row) return;
+      row.style.display = (!st.productIds.length || hasCustomService(st.productIds, st.productLabels)) ? '' : 'none';
     }
 
     function buildAccessoryCombo() {
@@ -1351,6 +1396,7 @@
         if (el) body.appendChild(el);
       }
       if (b.id === B_ASSUMPTIONS) syncAssumptionDesc();
+      if (b.id === B_SERVICE)     syncServiceDesc();
     }
 
     function readField(f) {
@@ -1373,11 +1419,15 @@
       if (!st.productIds.length && !b.productOptional) {
         showErr(b.id === B_ASSUMPTIONS ? 'Pick at least one assumption.' : 'Pick a product.'); return;
       }
-      if (b.productOptional && !String(readField('description') || '').trim()) {
-        showErr('Enter a description — it defines this line item.'); return;
+      var descText = String(readField('description') || '').trim();
+      if (b.productOptional && !st.productIds.length && !descText) {
+        showErr(b.id === B_SERVICE ? 'Pick a service, or describe the service.'
+                                   : 'Enter a description — it defines this line item.'); return;
       }
-      if (b.id === B_ASSUMPTIONS && st.productIds.indexOf(CUSTOM_ASSUMPTION_ID) !== -1 &&
-          !String(readField('description') || '').trim()) {
+      if (b.id === B_SERVICE && hasCustomService(st.productIds, st.productLabels) && !descText) {
+        showErr('Describe the custom service.'); return;
+      }
+      if (b.id === B_ASSUMPTIONS && st.productIds.indexOf(CUSTOM_ASSUMPTION_ID) !== -1 && !descText) {
         showErr('Detail the custom assumption.'); return;
       }
       var mdfField = null;
@@ -1410,6 +1460,8 @@
         plenum:          !!readField('plenum'),
         serviceCost:     readField('serviceCost') || '',
         description:     readField('description') || '',
+        // Services: the picked service is the "Custom Service" product (its description is the service).
+        customService:   b.id === B_SERVICE && hasCustomService(st.productIds, st.productLabels),
         notes:           readField('notes') || '',
         triggeredBy:     triggeredBy(),
         origin:          org.origin || 'ops',
