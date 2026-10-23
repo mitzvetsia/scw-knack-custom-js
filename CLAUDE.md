@@ -804,10 +804,18 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
   non-blank (the blank-label gate hides it for description-only lines, which still ride the
   label-less synthetic L3 with qty/cost, as before); `fields.productDesc = 'field_1962'` turns the
   quiet catalog-description sub-row ON (**Builder: `field_1962` must be a column on view_4140 and
-  view_3371** — not a probe field, nothing renders until it is) and `productDescKinds: ['services']`
-  limits the sub-row to services (`null` = every product; widening it puts a description under every
-  device on every proposal). proposal-pdf-export / the published proposal follow the grid payload
-  (`productDesc` on the L3 entry). **Reconcile grid** (`bid-review-v2`, same day — "I need to see the
+  view_3371** — not a probe field, nothing renders until it is) and `productDescKinds: ['services',
+  'license']` limits the sub-row to services and licenses (`null` = every product; widening it puts a
+  description under every device on every proposal). **Licenses (same day — "licenses need the product
+  description on the proposal as well")**: the "Recurring Services or Licenses (billed separately)"
+  section (view_3371) lists each license as product name · qty · cost and nothing else, so the catalog
+  description is the line's only detail. The License bucket stays `'default'` to `bucketKind` (no
+  rendering rule of its own); the gate reads a description-only kind instead — `descKindOf(bucket,
+  kind)` → `'license'` when `isLicenseBucket` (id in `licenseBucketIds` = `645554dce6f3a60028362a6a`,
+  or a label starting "Licen[cs]e"), else the bucketKind — carried as `bctx.descKind` and read by both
+  `productDescOf` call sites (DOM render + publish payload). proposal-pdf-export / the published
+  proposal follow the grid payload (`productDesc` on the L3 entry) — the recurring section's PDF rows
+  get the same quiet `l4-proddesc` row. **Reconcile grid** (`bid-review-v2`, same day — "I need to see the
   product description of this service product"): `bid-review/config.js` `sowItemFieldKeys.productDesc =
   'field_1962'`, carried on the transform's SOW item index (`productDesc`, rich text), and `card.js`
   `buildSowCell` renders it as a quiet `__sow-proddesc` line between the product name and the numbers on
@@ -818,9 +826,9 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
   `tests/worksheet-v2/test-survey-add-item-form.js` (picker, the three paths, the fold, both POSTs, no
   MDF row, the multi picks: two catalog services hide the sub-bid box, a Custom Service among them
   relabels it, `customServiceId` on the payload); `tests/worksheet-v2/test-service-product.js` (ops / sales / survey rows with and without a
-  product, the detail description); `tests/proposal/test-product-desc.js` (the services-only gate: the
+  product, the detail description); `tests/proposal/test-product-desc.js` (the services + licenses gate: the
   productized service's L3 + description sub-row, the equipment product without one, the
-  description-only service unchanged); `tests/bid-review-v2/test-service-product-desc.js` (the SOW
+  description-only service unchanged, the view_3371 licenses by bucket id and by label, the PDF rows); `tests/bid-review-v2/test-service-product-desc.js` (the SOW
   cell line: order, rich text, services only, description-only and label-only rows).
 
 ## Change request "Remove from bid" can also remove the item from the SOW (2026-10-22) — `bid-review/change-requests.js`

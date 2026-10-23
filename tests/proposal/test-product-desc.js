@@ -97,5 +97,45 @@ const svcHtml = pdf.buildPdfHtml({ views: [Object.assign({ type: 'grid', title: 
 const jName = svcHtml.indexOf('Onboarding Fee'), jDesc = svcHtml.indexOf('Remote onboarding of the system'), jLabor = svcHtml.indexOf('Technician plugs in the onboarding hardware.');
 check('PDF: "Onboarding Fee" product row, the quiet description under it, the labor description below that',
   [jName > 0, jDesc > jName, jLabor > jDesc, svcHtml.indexOf('Permit filing with the city.') > 0], [true, true, true, true]);
+// ── Licenses (2026-10-23: "licenses need the product description on the proposal as well") ──
+// The "Recurring Services or Licenses (billed separately)" section (view_3371, self-hosted) lists
+// each license as product name + qty + cost and nothing else — the description is the line's only
+// detail. The License bucket is 'default' to bucketKind (no rendering rule of its own), so the
+// gate reads a description-only kind: 'license' by bucket id or by a label starting "Licen[cs]e".
+const LIC = '645554dce6f3a60028362a6a';
+const licRec = Object.assign({}, rec, {
+  id: 'r4', field_1946_raw: [], field_1946: '', field_2219_raw: conn(LIC, 'License'), field_2219: 'License', field_2218_raw: conn('so3', '90'), field_2218: '90',
+  field_2208: 'Pro Video Monitoring / Remote Guarding - 40 cameras - RG-SB-LT-40', field_2019: '',
+  field_1964_raw: 1, field_1964: '1', field_2028_raw: 0, field_2028: '$0.00', field_2201_raw: 1200, field_2201: '$1,200.00', field_2203_raw: 1200, field_2203: '$1,200.00',
+  field_2464_raw: undefined, field_2464: undefined,
+  [DESC]: '<p>24/7 remote video monitoring of up to 40 cameras with live voice-down and dispatch; billed monthly.</p>'
+});
+delete licRec.field_2464_raw; delete licRec.field_2464;   // view_3371 serves no accessory column (noAccessories)
+const licByLabel = Object.assign({}, licRec, { id: 'r5', field_2219_raw: conn('bk-unknown', 'Licenses'), field_2219: 'Licenses',
+  field_2208: 'Cloud Storage - 30 days - CS-30', [DESC]: '<p>Cloud retention of every camera for 30 days.</p>' });
+const licNoDesc = Object.assign({}, licRec, { id: 'r6', field_2208: 'Analytics License - AN-1', [DESC]: '' });
+window.Knack.views.view_3371 = { model: { data: { models: [{ attributes: licRec }, { attributes: licByLabel }, { attributes: licNoDesc }] } } };
+grid.CONFIG.productDescKinds = ['services', 'license'];   // the shipped default
+const lic = grid.buildPublishData('view_3371');
+const licProducts = lic.sections.reduce((a, s) => a.concat(s.buckets || []), []).reduce((a, b) => a.concat(b.products || []), []);
+check('licenses view: every license is an L3 product entry; the description rides it when populated — by bucket id and by a "Licenses" label alike; a license without one carries none',
+  licProducts.map(p => [p.label, p.qty, p.productDesc || '']),
+  // (the two lines on the License bucket id group together; the label-only "Licenses" bucket is its own group after them)
+  [['Pro Video Monitoring / Remote Guarding - 40 cameras - RG-SB-LT-40', 1, '24/7 remote video monitoring of up to 40 cameras with live voice-down and dispatch; billed monthly.'],
+   ['Analytics License - AN-1', 1, ''],
+   ['Cloud Storage - 30 days - CS-30', 1, 'Cloud retention of every camera for 30 days.']]);
+const licHtml = pdf.buildPdfHtml({ views: [Object.assign({ type: 'grid', title: 'Recurring Services or Licenses (billed separately)', isRecurring: true }, lic)] });
+const kName = licHtml.indexOf('RG-SB-LT-40'), kDesc = licHtml.indexOf('24/7 remote video monitoring'), kNext = licHtml.indexOf('CS-30');
+check('PDF: the license product row, its quiet description directly under it, before the next license',
+  [kName > 0, kDesc > kName, kNext > kDesc, (licHtml.match(/class="l4-row l4-proddesc"/g) || []).length], [true, true, true, 2]);
+check('the shipped gate is still services + licenses only: the equipment product on the main grid carries no description',
+  (() => { window.Knack.views.view_4140 = { model: { data: { models: [{ attributes: rec }, { attributes: svcRec }] } } };
+           const d = grid.buildPublishData('view_3341'); const bs = d.sections.reduce((a, s) => a.concat(s.buckets || []), []);
+           return [bs.find(b => /other equipment/i.test(b.label || '')).products[0].productDesc, bs.find(b => /service/i.test(b.label || '')).products[0].productDesc]; })(),
+  ['', 'Remote onboarding of the system: accounts, users, alerts and a 1-hour training session.']);
+check('taking "license" out of productDescKinds switches the license description off again (config, not code)',
+  (() => { grid.CONFIG.productDescKinds = ['services']; const d = grid.buildPublishData('view_3371'); grid.CONFIG.productDescKinds = ['services', 'license'];
+           return d.sections.reduce((a, s) => a.concat(s.buckets || []), []).reduce((a, b) => a.concat(b.products || []), []).map(p => p.productDesc || ''); })(),
+  ['', '', '']);
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

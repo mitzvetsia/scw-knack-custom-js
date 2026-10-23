@@ -102,10 +102,15 @@
       productDesc:   'field_1962'
     },
     // Which bucket kinds render the catalog-description sub-row: an array of
-    // bucketKind() values ('services' | 'assumptions' | 'cam' | …), or null
-    // for every bucket. Services only for now — widening it to every product
-    // puts a description line under every device on every proposal.
-    productDescKinds: ['services'],
+    // descKindOf() values — bucketKind()'s 'services' | 'assumptions' |
+    // 'default', plus 'license' for the License bucket (licenseBucketIds / a
+    // bucket label starting "Licen[cs]e") — or null for every bucket.
+    // Services + licenses only: a license line is the product name, qty and
+    // cost and nothing else, so the catalog description IS its detail
+    // ("Pro Video Monitoring / Remote Guarding" says nothing about what is
+    // monitored, 2026-10-23). Widening it to every product puts a
+    // description line under every device on every proposal.
+    productDescKinds: ['services', 'license'],
 
     // Detail views already on the scene (rendered hidden) that v1 also reads.
     sowDetailView:      'view_3861',  // field_2725 FLAG_released to sales
@@ -133,6 +138,10 @@
     camReaderBucketId:   '6481e5ba38f283002898113c',
     servicesBucketIds:   ['6977caa7f246edf67b52cbcd'],
     assumptionsBucketIds: ['697b7a023a31502ec68b3303'],
+    // License bucket (view_3371's lines) — read by descKindOf() for the
+    // catalog-description gate only; bucketKind() keeps licenses 'default'
+    // (they have no rendering rule of their own).
+    licenseBucketIds:    ['645554dce6f3a60028362a6a'],
 
     // L2 label context by (possibly renamed) label — mirrors v1's l2Context.
     contextByLabel: {
@@ -227,7 +236,8 @@
   }
   function readText(rec, f) { return norm(stripHtml(rec && rec[f])); }
   // First non-blank product description across the L3's records ('' when the
-  // field isn't configured / not a column). One product → one description.
+  // field isn't configured / not a column, or when the bucket's descKind is
+  // not in CONFIG.productDescKinds). One product → one description.
   function productDescOf(recs, kind) {
     var f = CONFIG.fields.productDesc;
     if (!f) return '';
@@ -497,6 +507,19 @@
     if (lb === 'services') return 'services';
     if (CONFIG.assumptionsLabels.indexOf(lb) !== -1) return 'assumptions';
     return 'default';
+  }
+  // The License bucket, by id or by label ("License", "Licenses",
+  // "Licence…") — the same test worksheet-v2 groups.js / bid-review-v2
+  // transform.js use to route licenses to their synthetic group.
+  function isLicenseBucket(bucket) {
+    if (!bucket) return false;
+    if (bucket.bucketId && CONFIG.licenseBucketIds.indexOf(bucket.bucketId) !== -1) return true;
+    return /^\s*licen[cs]e/i.test(norm(bucket.label));
+  }
+  // Kind for the catalog-description gate (productDescKinds) ONLY: a
+  // license bucket reads 'license', everything else its bucketKind().
+  function descKindOf(bucket, kind) {
+    return isLicenseBucket(bucket) ? 'license' : kind;
   }
   function contextOf(displayLabel, bucket) {
     if (bucket.bucketId === CONFIG.camReaderBucketId) return 'drop';
@@ -771,7 +794,7 @@
         ]);
         // Quiet catalog-description sub-row, directly under the name and
         // above the labor description(s). No qty / cost of its own.
-        var pDesc = productDescOf(product.items, bctx.kind);
+        var pDesc = productDescOf(product.items, bctx.descKind);
         if (pDesc) {
           pushRow('scw-pg2-l3desc' + tintCls, [
             { html: '<span class="scw-pg2-l3-desc">' + esc(pDesc) + '</span>' },
@@ -1022,6 +1045,7 @@
         if (promoted && kind === 'assumptions') displayLabel = 'General Project Assumptions';
         var bctx = {
           kind: kind,
+          descKind: descKindOf(bucket, kind),
           displayLabel: displayLabel,
           context: contextOf(displayLabel, bucket),
           // Services: the product-name header shows only when the line HAS
@@ -1528,7 +1552,7 @@
             connectedDeviceGroups: cdGroups || undefined,
             // Catalog description — proposal-pdf-export renders it as the
             // quiet l4-proddesc row under the product name ('' → no row).
-            productDesc: productDescOf(product.items, bctx.kind),
+            productDesc: productDescOf(product.items, bctx.descKind),
             isMountingHardware: bctx.isMounting, lineItems: [],
           };
           products.push(prod);
@@ -1700,7 +1724,7 @@
         if (rule && rule.renames[displayLabel]) displayLabel = rule.renames[displayLabel];
         if (promoted && kind === 'assumptions') displayLabel = 'General Project Assumptions';
         var bctx = {
-          kind: kind, displayLabel: displayLabel,
+          kind: kind, descKind: descKindOf(bucket, kind), displayLabel: displayLabel,
           context: contextOf(displayLabel, bucket),
           hideL3: kind === 'assumptions',   // services: shown when the line has a product (2026-10-23)
           isMounting: norm(displayLabel).toLowerCase() === CONFIG.mountingHardwareLabel,
