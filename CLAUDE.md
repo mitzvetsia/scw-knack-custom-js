@@ -735,10 +735,24 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
   `field_2195_raw` — the DTO form's OPTIONAL service product field (view_4100,
   `set_unified_product_field.js` PARENTS / SINGLE_PRIORITY) — and the unified `field_2246_raw`
   (`UNIFIED_PRODUCT_BUCKETS` now includes Services); `customService: true` when the picked service is
-  the Custom Service product; `description` carries the text as before (`field_2210`). **Make
-  (02.01 SOW / 05.01 survey): the Services route must map the line item's product from
-  `field_2246_raw` / `field_2195_raw` (or `productIds[0]`)** — the DTO forms rarely sent one for a
-  service, so verify the route does not drop it; the description mapping is unchanged.
+  the Custom Service product; `description` carries the text as before (`field_2210`).
+- **Make 02.01 (SOW) — patched blueprint delivered 2026-10-23** ("… v2-services.blueprint.json", built
+  from the user's export by `scratchpad/tools/bp_patch_0201_services.py`; import INTO the scenario so
+  the hook stays). Before it, a service WITH a product fell into the EQUIPMENT path (router 17 route 1:
+  [151] "NOT assumption" → [99] HAS PRODUCT → [5]/[130]), which wrote the product's copy over the typed
+  description, the product's default labor over the typed sub bid, repeated the line per qty with label
+  numbers and ran the default-accessory search. Now: [151]'s filter also excludes the Services bucket
+  (`6977caa7f246edf67b52cbcd`), and a NEW route 3 on router 17 — a clone of the assumption route —
+  handles "IS service WITH product" (`field_2223` = Services AND `length(map(field_2195_raw; "id")) > 0`):
+  [244] feeder over `field_2195_raw` → [245] get product → [246] variables `service copy` =
+  `ifempty(field_2210_raw; product field_2021_raw)` (the typed description wins, else the catalog copy —
+  so Custom Service needs no hardcoded id in Make), `service sub bid` = `ifempty(field_2233_raw;
+  product field_2166_raw)`, `service require sub bid` = product `field_2477_raw` else true → [247]
+  router → [249] (per MDF) / [250] (no MDF) "Create Service Line Item": ONE line, `field_1949` = the
+  service product, qty `ifempty(field_2183_raw; 1)`, `field_2020` / `field_2150` / `field_2479` from
+  the variables, the product-derived fields (`field_1958/1960/1962/1963/1981`) as every product-backed
+  line gets them. The description-only path (router 17 route 4 "no product" → [177]/[178]) is unchanged.
+  **05.01 (survey) still needs the same change** — same shape, its own export.
 - The product-first list (no chip picked) now offers services, bucket-labelled; picking one selects
   the Services chip. The CO add form (`co-add-item-form.js`) keeps its own product-less Services
   bucket — not in scope.
