@@ -262,7 +262,11 @@
     var label = BUCKET_LABELS[bucketId];
     if (label) {
       var $allProduct = $tr.find('td.field_2379');
-      if ($allProduct.length) {
+      // Productized services (2026-10-23): a service row WITH a product keeps
+      // its product name — the label overlay would paint "SERVICE" over it.
+      var productText = $allProduct.length
+        ? ($allProduct.first().text() || '').replace(/\u00a0/g, ' ').trim() : '';
+      if ($allProduct.length && !productText) {
         $allProduct.first().attr('data-scw-bucket-label', label);
       }
     }

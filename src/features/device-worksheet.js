@@ -2927,6 +2927,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var rule = viewCfg.bucketRules[bucketId];
     if (!rule) return;
 
+    // Productized services (2026-10-23): a bucket rule that hides the
+    // product (Services) applies only to a row WITHOUT one — a service line
+    // that carries a product keeps its product cell, the bucket chit beside
+    // it, and the field's own "Labor description" label.
+    if (rule.hideProduct && viewCfg.fields && viewCfg.fields.product) {
+      var pKey = viewCfg.fields.product.key;
+      var pTd  = tr.querySelector('td.' + pKey) || card.querySelector('td[data-field-key="' + pKey + '"]');
+      var pTxt = pTd ? (pTd.textContent || '').replace(/\u00a0/g, ' ').trim() : '';
+      if (pTxt) {
+        var kept = {};
+        Object.keys(rule).forEach(function (k) { kept[k] = rule[k]; });
+        kept.hideProduct = false;
+        kept.descLabel = null;
+        kept.hideFields = (rule.hideFields || []).filter(function (f) { return f !== pKey; });
+        rule = kept;
+      }
+    }
+
     // ── Hide summary groups containing fields in hideFields ──
     var hideSet = new Set(rule.hideFields || []);
     if (hideSet.size) {

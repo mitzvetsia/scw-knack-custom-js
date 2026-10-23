@@ -135,8 +135,8 @@ chip(B_OTH);
 check('Other Equipment: products (multi) · qty · MDF optional · labor bid · survey notes',
   fieldLabels(), ['Products', 'Quantity', 'MDF / IDF (optional)', 'Labor bid ($ each)', 'Survey notes']);
 chip(B_SVC);
-check('Other Services (productized 2026-10-23): service picker · describe (shown while nothing / Custom Service is picked) · labor bid · qty · MDF optional · survey notes',
-  [fieldLabels(), q('[data-cond="customService"]').style.display], [['Service', 'Describe the service', 'Labor bid ($)', 'Quantity', 'MDF / IDF (optional)', 'Survey notes'], '']);
+check('Other Services (productized 2026-10-23): service picker · describe (shown while nothing / Custom Service is picked) · labor bid · qty · survey notes — NO MDF/IDF row',
+  [fieldLabels(), q('[data-cond="customService"]').style.display], [['Service', 'Describe the service', 'Labor bid ($)', 'Quantity', 'Survey notes'], '']);
 chip(B_ASM);
 check('Assumptions: assumption(s) · custom detail (hidden until Custom Assumption) · MDF optional · survey notes',
   [fieldLabels(), q('[data-cond="customAssumption"]').style.display], [['Assumption(s)', 'Detail custom assumption', 'MDF / IDF (optional)', 'Survey notes'], 'none']);

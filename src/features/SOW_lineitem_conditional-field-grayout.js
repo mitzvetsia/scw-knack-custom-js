@@ -384,7 +384,14 @@
     if (label) {
       var $target = $tr.find('td.' + cfg.labelTarget);
 
-      if (cfg.labelMode === 'replace') {
+      // Productized services (2026-10-23): a service row WITH a product keeps
+      // its product cell as is — the label+desc overlay (replace mode) would
+      // hide the product; prefix mode still labels it above the name.
+      var targetHasProduct = $target.length &&
+        ($target.first().text() || '').replace(/\u00a0/g, ' ').trim() !== '';
+      if (cfg.labelMode === 'replace' && targetHasProduct) {
+        // keep the product visible; no overlay
+      } else if (cfg.labelMode === 'replace') {
         // view_3456: combine label + labor desc, show via ::after on grayed product cell
         var laborField = cfg.laborDescField;
         var laborText = '';

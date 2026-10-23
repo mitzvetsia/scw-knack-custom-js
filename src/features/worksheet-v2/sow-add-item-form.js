@@ -196,14 +196,16 @@
     // · field_2210 service description — the line itself when NO service is
     // picked (the product-less path stays), the detail of a Custom Service,
     // folded away under a catalog service · field_2233 expected sub bid ·
-    // field_2183 qty · field_2250 MDF (optional)
+    // field_2183 qty. NO MDF/IDF (2026-10-23): the worksheets never place a
+    // service by location — groups.js / bid-review-v2 transform.js route every
+    // Services line to the synthetic "Project Wide Services" group — so the
+    // row only read as a requirement. field_2250_raw rides the payload as [].
     { id: B_SERVICE, name: 'Other Services', productOptional: true, fields: [
       { t: 'product', label: 'Service', placeholder: 'Search services…',
         helper: 'Pick a service from the catalog, or "Custom Service" to describe one.' },
       { t: 'description', label: 'Describe the service', conditional: 'customService' },
       { t: 'serviceCost', label: 'Expected sub bid ($)' },
-      { t: 'qty' },
-      { t: 'mdf', mode: 'opt' }
+      { t: 'qty' }
     ]},
     // field_2248 assumption catalog (Products in the Assumptions bucket) ·
     // field_2210 description, shown only when "Custom Assumption" is picked ·
@@ -273,14 +275,14 @@
     // Productized (2026-10-23, same rules as the SOW suite): field_2195 service
     // product (optional, "Custom Service" included) · field_2210 description
     // (shown while nothing / Custom Service is picked) · field_2233 labor bid ·
-    // field_2183 qty · field_2250 MDF (optional) · field_2432 survey notes
+    // field_2183 qty · field_2432 survey notes. NO MDF/IDF (2026-10-23, same
+    // reason as the SOW suite: a service is project-wide on every worksheet).
     { id: B_SERVICE, name: 'Other Services', productOptional: true, fields: [
       { t: 'product', label: 'Service', placeholder: 'Search services…',
         helper: 'Pick a service from the catalog, or "Custom Service" to describe one.' },
       { t: 'description', label: 'Describe the service', conditional: 'customService' },
       { t: 'serviceCost', label: 'Labor bid ($)', helper: 'Your price for this service.' },
       { t: 'qty' },
-      { t: 'mdf', mode: 'opt' },
       { t: 'notes', label: 'Survey notes' }
     ]},
     // field_2250 MDF (optional) · field_2432 · field_2248 assumptions

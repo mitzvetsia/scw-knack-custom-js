@@ -46,8 +46,10 @@ const off = grid.buildPublishData('view_3341');
 check('field not configured → payload has no description, PDF has no l4-proddesc row',
   [firstProduct(off).productDesc, pdf.buildPdfHtml({ views: [Object.assign({ type: 'grid', title: 'T' }, off)] }).indexOf('class="l4-row l4-proddesc"')], ['', -1]);
 
-// ── Configured to the Builder column ─────────────────────────────────
+// ── Configured to the Builder column, every bucket ────────────────────
+// (productDescKinds: null = every bucket; the shipped default is ['services'] — see below)
 grid.CONFIG.fields.productDesc = DESC;
+grid.CONFIG.productDescKinds = null;
 const on = grid.buildPublishData('view_3341');
 check('payload carries the description, HTML stripped and whitespace-normalized',
   firstProduct(on).productDesc, 'Rack-mountable 18-channel 12V DC power supply, 10A total, individually fused outputs.');
@@ -63,5 +65,37 @@ check('the e-sign element manifest carries the description as an unbolded cell',
   (() => { const els = pdf.buildSowDocumentElements(html); const tbl = els.find(e => e.type === 'table');
            const row = tbl && tbl.table_cells.find(r => /Rack-mountable/.test(r[0].text)); return [!!row, row && (row[0].styles || []).includes('bold')]; })(),
   [true, false]);
+// ── Services only (the shipped default, 2026-10-23: productized services) ──
+// An onboarding fee is a Services-bucket PRODUCT whose detail lives in the catalog description,
+// with a separate labor description. The service shows its product header (hideL3 used to hide
+// every services L3) and the description sub-row; an equipment product's description stays off
+// under this gate; a description-only service (no product) renders as before — no L3, its text
+// as the line.
+const SVC = '6977caa7f246edf67b52cbcd';
+const svcRec = Object.assign({}, rec, {
+  id: 'r2', field_1946_raw: [], field_1946: '', field_2219_raw: conn(SVC, 'Other Services'), field_2219: 'Other Services', field_2218_raw: conn('so2', '60'), field_2218: '60',
+  field_2208: 'Onboarding Fee', field_2019: 'Technician plugs in the onboarding hardware.',
+  field_1964_raw: 1, field_1964: '1', field_2028_raw: 150, field_2028: '$150.00', field_2201_raw: 500, field_2201: '$500.00', field_2203_raw: 650, field_2203: '$650.00',
+  [DESC]: '<p>Remote onboarding of the system: accounts, users, alerts and a 1-hour training session.</p>'
+});
+const plainSvc = Object.assign({}, svcRec, { id: 'r3', field_2208: '', field_2019: 'Permit filing with the city.', field_2201_raw: 0, field_2201: '$0.00', field_2028_raw: 250, field_2028: '$250.00', field_2203_raw: 250, field_2203: '$250.00', [DESC]: '' });
+window.Knack.views.view_4140 = { model: { data: { models: [{ attributes: rec }, { attributes: svcRec }, { attributes: plainSvc }] } } };
+grid.CONFIG.productDescKinds = ['services'];
+const svcOnly = grid.buildPublishData('view_3341');
+const allBuckets = svcOnly.sections.reduce((a, s) => a.concat(s.buckets || []), []);
+const svcBucket = allBuckets.find(b => /service/i.test(b.label || ''));
+const eqBucket  = allBuckets.find(b => /other equipment/i.test(b.label || ''));
+check('services bucket: the productized service is a real L3 product entry (name, qty) carrying the description; the description-only one rides the label-less synthetic entry, as every service did before',
+  svcBucket && svcBucket.products.map(p => [p.label, p.qty, p.productDesc || '']),
+  [['Onboarding Fee', 1, 'Remote onboarding of the system: accounts, users, alerts and a 1-hour training session.'], ['', 0, '']]);
+check('the productized service carries its labor line; the description-only service is its own line with the cost kept (never hidden like an assumption)',
+  (() => { const prod = svcBucket.products[0], synth = svcBucket.products[1];
+           return [prod.lineItems.map(li => li.label), synth.lineItems.map(li => li.label), synth.hideCost]; })(),
+  [['Technician plugs in the onboarding hardware.'], ['Permit filing with the city.'], false]);
+check('under the services-only gate the equipment product carries no description', eqBucket && eqBucket.products[0].productDesc, '');
+const svcHtml = pdf.buildPdfHtml({ views: [Object.assign({ type: 'grid', title: 'T' }, svcOnly)] });
+const jName = svcHtml.indexOf('Onboarding Fee'), jDesc = svcHtml.indexOf('Remote onboarding of the system'), jLabor = svcHtml.indexOf('Technician plugs in the onboarding hardware.');
+check('PDF: "Onboarding Fee" product row, the quiet description under it, the labor description below that',
+  [jName > 0, jDesc > jName, jLabor > jDesc, svcHtml.indexOf('Permit filing with the city.') > 0], [true, true, true, true]);
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

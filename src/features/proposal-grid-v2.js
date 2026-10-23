@@ -93,12 +93,19 @@
       coAction:      'field_2965',
       // Product's catalog description — a quiet sub-row under the L3 product
       // name (the name alone doesn't say what a "[SPECIAL ORDER] SCW-PS18C"
-      // is). OPTIONAL: '' until the SOW Line Item object carries a stored /
-      // formula copy of the product description AND it is a column on every
-      // dataViewKey above (view_4140, view_3371). Not a PROBE_FIELD — the grid
-      // renders without it; the row simply doesn't appear.
-      productDesc:   ''
+      // is). field_1962 is the SOW Line Item's STORED copy of the product's
+      // description (Make 02.01 writes it at create from the product's
+      // field_57). Builder: it must be a column on every dataViewKey above
+      // (view_4140, view_3371) — not a PROBE_FIELD, the grid renders without
+      // it and the row simply doesn't appear. Set 2026-10-23 for productized
+      // services (an onboarding fee's detail lives in the product description).
+      productDesc:   'field_1962'
     },
+    // Which bucket kinds render the catalog-description sub-row: an array of
+    // bucketKind() values ('services' | 'assumptions' | 'cam' | …), or null
+    // for every bucket. Services only for now — widening it to every product
+    // puts a description line under every device on every proposal.
+    productDescKinds: ['services'],
 
     // Detail views already on the scene (rendered hidden) that v1 also reads.
     sowDetailView:      'view_3861',  // field_2725 FLAG_released to sales
@@ -221,9 +228,11 @@
   function readText(rec, f) { return norm(stripHtml(rec && rec[f])); }
   // First non-blank product description across the L3's records ('' when the
   // field isn't configured / not a column). One product → one description.
-  function productDescOf(recs) {
+  function productDescOf(recs, kind) {
     var f = CONFIG.fields.productDesc;
     if (!f) return '';
+    var kinds = CONFIG.productDescKinds;
+    if (Array.isArray(kinds) && kinds.indexOf(kind || '') === -1) return '';
     for (var i = 0; i < (recs || []).length; i++) {
       var t = readText(recs[i], f);
       if (t && !isBlankish(t)) return t;
@@ -762,7 +771,7 @@
         ]);
         // Quiet catalog-description sub-row, directly under the name and
         // above the labor description(s). No qty / cost of its own.
-        var pDesc = productDescOf(product.items);
+        var pDesc = productDescOf(product.items, bctx.kind);
         if (pDesc) {
           pushRow('scw-pg2-l3desc' + tintCls, [
             { html: '<span class="scw-pg2-l3-desc">' + esc(pDesc) + '</span>' },
@@ -1015,10 +1024,12 @@
           kind: kind,
           displayLabel: displayLabel,
           context: contextOf(displayLabel, bucket),
-          // Services hide the product-name headers but KEEP qty/cost and
-          // the subtotal (matches v1's live rendering of "Other Services");
-          // assumptions hide all of it.
-          hideL3: kind === 'services' || kind === 'assumptions',
+          // Services: the product-name header shows only when the line HAS
+          // a product (productized services, 2026-10-23 — the blank-label
+          // gate below hides it for description-only lines, as before);
+          // qty/cost and the subtotal are kept either way. Assumptions hide
+          // all of it.
+          hideL3: kind === 'assumptions',
           hideQtyCost: kind === 'assumptions',
           prods: [], parentRecs: [], allRecs: []
         };
@@ -1517,7 +1528,7 @@
             connectedDeviceGroups: cdGroups || undefined,
             // Catalog description — proposal-pdf-export renders it as the
             // quiet l4-proddesc row under the product name ('' → no row).
-            productDesc: productDescOf(product.items),
+            productDesc: productDescOf(product.items, bctx.kind),
             isMountingHardware: bctx.isMounting, lineItems: [],
           };
           products.push(prod);
@@ -1691,7 +1702,7 @@
         var bctx = {
           kind: kind, displayLabel: displayLabel,
           context: contextOf(displayLabel, bucket),
-          hideL3: kind === 'services' || kind === 'assumptions',
+          hideL3: kind === 'assumptions',   // services: shown when the line has a product (2026-10-23)
           isMounting: norm(displayLabel).toLowerCase() === CONFIG.mountingHardwareLabel,
           prods: [], parentRecs: [], allRecs: []
         };

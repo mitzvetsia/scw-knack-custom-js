@@ -201,8 +201,8 @@ function servicesFlow() {
   form.open({ viewKey: 'view_3962' });
   check('product-first list now carries the services, bucket-labelled', texts('.scw-sowadd__opt').filter(t => /Other Services/.test(t)), ['Custom Service · Other Services', 'Lift rental (daily) · Other Services']);
   q('.scw-sowadd__chip[data-bucket="' + B_SVC + '"]').click();
-  check('Other Services: service picker · describe · expected sub bid · qty · MDF optional; the describe row shows while nothing is picked',
-    [labels(), q('[data-cond="customService"]').style.display], [['Service', 'Describe the service', 'Expected sub bid ($)', 'Quantity', 'MDF / IDF (optional)'], '']);
+  check('Other Services: service picker · describe · expected sub bid · qty — NO MDF/IDF row (a service is project-wide); the describe row shows while nothing is picked',
+    [labels(), q('[data-cond="customService"]').style.display], [['Service', 'Describe the service', 'Expected sub bid ($)', 'Quantity'], '']);
   tickSow();
   q('[data-act="submit"]').click();
   check('nothing picked, nothing described → one or the other', q('.scw-sowadd__err').textContent, 'Pick a service, or describe the service.');

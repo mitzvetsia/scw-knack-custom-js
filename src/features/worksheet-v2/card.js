@@ -1397,9 +1397,13 @@
   }
 
   function buildRow_services(rec, viewKey) {
-    // Services: hide product. Keep labor desc + qty + money + fee +
-    // sow. Mirrors v1's bucketRules['6977caa7f246edf67b52cbcd']
-    // which hideProduct + descLabel: 'Service'.
+    // Services: the PRODUCT when the line has one (productized services,
+    // 2026-10-23 — an onboarding fee is a catalog product with its own
+    // description and a separate labor description), else the "Service"
+    // tag in the product slot (the description-only line, as before).
+    // Keep labor desc + qty + money + fee + sow. Mirrors v1's
+    // bucketRules['6977caa7f246edf67b52cbcd'].
+    var product     = readField(rec, 'field_1949');
     var laborDesc   = readField(rec, 'field_2020');
     var qty         = readNum(rec,   'field_1964');
     var subBid      = readNum(rec,   'field_2150');
@@ -1423,8 +1427,8 @@
       // Share the cam/default column template so labor desc lines up.
       // Tag occupies the product slot; label slot is empty.
       labelCellOrBlank(rec) +
-      ro('Service', 'scw-ws-v2-cell--tag') +
-      rowFillCell(rec, viewKey, 'Service description') +
+      (product ? productCell(rec, viewKey, product) : ro('Service', 'scw-ws-v2-cell--tag')) +
+      rowFillCell(rec, viewKey, product ? 'Labor description' : 'Service description') +
       qtySlot +
       moneyCells(rec, viewKey) +
       sowSlot(rec, viewKey) +
@@ -2040,6 +2044,10 @@
     // shown once a parent is set so it can be changed or cleared. The
     // same picker + field_2207 cascade as accessory parenting (init.js).
     var showParent = hasServiceParent(viewKey) || !!readParentRef(rec);
+    // The product's catalog description (field_1962, the stored copy 02.01
+    // writes at create) — read-only, only when the view serves it and it
+    // is populated (productized services, 2026-10-23).
+    var prodDesc = readField(rec, 'field_1962');
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones scw-ws-v2-detail-zones--no-identity">' +
         salesPricingDetail(rec, viewKey) +
@@ -2048,6 +2056,9 @@
           detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
+      (prodDesc
+        ? '<div class="scw-ws-v2-detail-notes">' + detailReadOnly(rec, 'field_1962', 'Product description') + '</div>'
+        : '') +
       detailNotesSection(rec, viewKey) +
       detailSubBidSection(rec, viewKey) +
     '</div>';
@@ -2255,10 +2266,14 @@
       ? ro(label, 'scw-ws-v2-cell--label', label)
       : empty('scw-ws-v2-cell--label');
 
+    // Services: the product when the item has one (productized services,
+    // 2026-10-23), else the "Service" tag.
+    var svcHasProduct = cat === 'services' &&
+      !!(readField(rec, F.productName || 'field_2379') || readField(rec, F.product || 'field_2627'));
     var productSlot;
-    if (cat === 'services')          productSlot = ro('Service', 'scw-ws-v2-cell--tag');
-    else if (cat === 'assumptions')  productSlot = empty('scw-ws-v2-cell--product');
-    else                             productSlot = surveyProductCell(rec, viewKey, F);
+    if (cat === 'assumptions')                      productSlot = empty('scw-ws-v2-cell--product');
+    else if (cat === 'services' && !svcHasProduct)  productSlot = ro('Service', 'scw-ws-v2-cell--tag');
+    else                                            productSlot = surveyProductCell(rec, viewKey, F);
 
     // Two fill cells: Survey Notes (LEFT) then Labor Description. SCW Notes
     // lives in the detail panel (first/leftmost field).

@@ -764,8 +764,42 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
 - The product-first list (no chip picked) now offers services, bucket-labelled; picking one selects
   the Services chip. The CO add form (`co-add-item-form.js`) keeps its own product-less Services
   bucket — not in scope.
+- **No MDF/IDF on the Services form (same day)**: both suites dropped the `{ t: 'mdf', mode: 'opt' }`
+  row. A service's location is never used — `groups.js` routes every Services line to the synthetic
+  "Project Wide Services" group whatever `field_1946` says (bid-review-v2 `transform.js` the same) —
+  so the row only ever read as a requirement. `field_2250_raw` still rides the payload as `[]`
+  (`DTO_ARRAY_KEYS`); Make's MDF handling is unchanged (`154.MDFs` = `[""]` → one line, blank MDF).
+- **A service WITH a product shows the product everywhere (same day — "onboarding fee")**: the
+  onboarding fee is a Services-bucket PRODUCT whose detail lives in the product's catalog description
+  (`field_57` → the line item's STORED copy `field_1962`, written by 02.01 at create) with a separate
+  labor description (`field_2021` → `field_2020`: the tech plugs in hardware). Every surface used to
+  hide the product for services; each now hides it only on a description-only line:
+  `worksheet-v2/card.js` `buildRow_services` renders `productCell` (the editable product picker)
+  instead of the "Service" tag when `field_1949` is set and labels the fill cell "Labor description"
+  (else "Service description"), `buildDetail_services` adds a read-only "Product description"
+  (`field_1962`, only when the view serves it and it is populated — Builder: add the column to the
+  worksheet grids to see it), the survey row (`buildRow_survey`, view_3505) renders
+  `surveyProductCell` when `field_2379` / `field_2627` carry a product; v1 `device-worksheet.js`
+  `applyBucketRules` keeps the product (and its bucket chit) for a `hideProduct` rule when the row's
+  product cell has text; `SOW_lineitem_conditional-field-grayout.js` (view_3456 replace mode) and
+  `SURVEY_lineitem_conditional-field-grayout.js` skip the "SERVICE — …" / "SERVICE" overlay on a
+  product cell that has text; the bid items grid's L3 product-name injection never excluded
+  services, so it shows the name as soon as the row has one. **Proposal (`proposal-grid-v2.js`)**:
+  `hideL3` is now `kind === 'assumptions'` only — a services L3 shows when the product label is
+  non-blank (the blank-label gate hides it for description-only lines, which still ride the
+  label-less synthetic L3 with qty/cost, as before); `fields.productDesc = 'field_1962'` turns the
+  quiet catalog-description sub-row ON (**Builder: `field_1962` must be a column on view_4140 and
+  view_3371** — not a probe field, nothing renders until it is) and `productDescKinds: ['services']`
+  limits the sub-row to services (`null` = every product; widening it puts a description under every
+  device on every proposal). proposal-pdf-export / the published proposal follow the grid payload
+  (`productDesc` on the L3 entry). bid-review-v2 already displayed `productName` generically.
+  Deploy-client-report still skips services by design.
 - Tests: the service flows in `tests/worksheet-v2/test-sow-add-item-form.js` and
-  `tests/worksheet-v2/test-survey-add-item-form.js` (picker, the three paths, the fold, both POSTs).
+  `tests/worksheet-v2/test-survey-add-item-form.js` (picker, the three paths, the fold, both POSTs, no
+  MDF row); `tests/worksheet-v2/test-service-product.js` (ops / sales / survey rows with and without a
+  product, the detail description); `tests/proposal/test-product-desc.js` (the services-only gate: the
+  productized service's L3 + description sub-row, the equipment product without one, the
+  description-only service unchanged).
 
 ## Change request "Remove from bid" can also remove the item from the SOW (2026-10-22) — `bid-review/change-requests.js`
 
