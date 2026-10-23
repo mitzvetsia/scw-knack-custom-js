@@ -1061,6 +1061,10 @@
         installFee:  num(s, SFK.installFee),
         equipmentTotal: num(s, SFK.equipmentTotal),
         laborDesc:   rawHtml(s, SFK.laborDesc),
+        // The product's catalog description (stored copy, field_1962) — the
+        // SOW cell shows it under the product name on service rows when the
+        // view serves the column (productized services, 2026-10-23).
+        productDesc: SFK.productDesc ? rawHtml(s, SFK.productDesc) : '',
         displayLabel: raw(s, SFK.displayLabel),
         surveyNotes: raw(s, SFK.notes),
         scwNotes:    raw(s, SFK.scwNotes),

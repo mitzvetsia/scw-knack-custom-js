@@ -1117,6 +1117,13 @@
     '  margin-bottom: 10px; line-height: 1.35;',
     '  overflow-wrap: anywhere; word-break: break-word;',
     '}',
+    /* Product's catalog description under a SERVICE row's product name
+       (productized services, 2026-10-23) — quiet, tucked up under the name. */
+    '.scw-bid-review-v2__sow-proddesc {',
+    '  margin: -6px 0 10px; font-size: 11.5px; line-height: 1.45; color: #475569;',
+    '  overflow-wrap: anywhere; word-break: break-word;',
+    '}',
+    '.scw-bid-review-v2__sow-proddesc p { margin: 0 0 3px; }',
     /* When warning chips are pinned top-right, keep the product name clear
        of them so a long name never slides under the chip cluster.
        (card.js stamps --has-warns when it renders chips — was :has().) */

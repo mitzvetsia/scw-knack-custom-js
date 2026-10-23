@@ -219,6 +219,16 @@
     if (row.proposalBucketId === '645554dce6f3a60028362a6a') return true;
     return /^\s*licen[cs]e/i.test(String(row.proposalBucket || ''));
   }
+  // A Services-bucket row — the same test transform.js uses to route a line
+  // to the "Project Wide Services" group (bucket id, else a label naming
+  // "service"). Productized services (2026-10-23): these rows show the
+  // product's catalog description under the product name.
+  var SERVICES_BUCKET_ID = '6977caa7f246edf67b52cbcd';
+  function isServiceRow(row) {
+    if (!row) return false;
+    if (row.proposalBucketId === SERVICES_BUCKET_ID) return true;
+    return /service/i.test(String(row.proposalBucket || ''));
+  }
 
   // PDF document icon — same shape v1's bid PDF link uses.
   var PDF_SVG =
@@ -668,6 +678,13 @@
           '<label>Accessories</label>' + escapeHtml(accList.join(', ')) +
         '</div>'
       : '';
+    // Product's catalog description (stored copy, field_1962) — service rows
+    // only, under the product name, when the grid serves it and it is set.
+    var prodDescTxt = isServiceRow(row) ? ns.transform.stripHtml(sowItemData.productDesc || '') : '';
+    var prodDescHtml = prodDescTxt
+      ? '<div class="scw-bid-review-v2__sow-proddesc" data-scw-sow-field="productDesc" title="' +
+          escapeHtml(prodDescTxt) + '">' + richTextHtml(sowItemData.productDesc || '') + '</div>'
+      : '';
     td.innerHTML =
       warnHtml +
       attachHtml +
@@ -676,6 +693,7 @@
           escapeHtml(sowItemData.productName) + '">' +
           escapeHtml(sowItemData.productName) +
         '</div>' : '') +
+      prodDescHtml +
       '<div class="scw-bid-review-v2__sow-numbers">' +
         '<span class="scw-bid-review-v2__sow-num" data-scw-sow-field="qty"><label>Qty</label>' +
           escapeHtml(qtyTxt) + '</span>' +

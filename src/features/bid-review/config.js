@@ -164,6 +164,11 @@
       product:         'field_1949',   // product connection (display label)
       productName:     'field_1958',   // stored product name
       laborDesc:       'field_2020',   // labor description
+      productDesc:     'field_1962',   // STORED copy of the product's catalog description
+                                       // (02.01 writes it at create) — shown under the
+                                       // product name on SERVICE rows when populated
+                                       // (productized services, 2026-10-23). Builder:
+                                       // view_3921 must carry the column.
       qty:             'field_1964',   // quantity
       fee:             'field_2151',   // sub bid total / install fee
       installFee:      'field_2028',   // INSTALL FEE CALC_installation price extended

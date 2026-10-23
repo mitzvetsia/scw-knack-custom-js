@@ -792,14 +792,20 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
   view_3371** — not a probe field, nothing renders until it is) and `productDescKinds: ['services']`
   limits the sub-row to services (`null` = every product; widening it puts a description under every
   device on every proposal). proposal-pdf-export / the published proposal follow the grid payload
-  (`productDesc` on the L3 entry). bid-review-v2 already displayed `productName` generically.
+  (`productDesc` on the L3 entry). **Reconcile grid** (`bid-review-v2`, same day — "I need to see the
+  product description of this service product"): `bid-review/config.js` `sowItemFieldKeys.productDesc =
+  'field_1962'`, carried on the transform's SOW item index (`productDesc`, rich text), and `card.js`
+  `buildSowCell` renders it as a quiet `__sow-proddesc` line between the product name and the numbers on
+  SERVICE rows (`isServiceRow`: bucket id, else a label naming "service") when populated — the labor
+  description keeps its own line below. **Builder: view_3921 must carry `field_1962` as a column.**
   Deploy-client-report still skips services by design.
 - Tests: the service flows in `tests/worksheet-v2/test-sow-add-item-form.js` and
   `tests/worksheet-v2/test-survey-add-item-form.js` (picker, the three paths, the fold, both POSTs, no
   MDF row); `tests/worksheet-v2/test-service-product.js` (ops / sales / survey rows with and without a
   product, the detail description); `tests/proposal/test-product-desc.js` (the services-only gate: the
   productized service's L3 + description sub-row, the equipment product without one, the
-  description-only service unchanged).
+  description-only service unchanged); `tests/bid-review-v2/test-service-product-desc.js` (the SOW
+  cell line: order, rich text, services only, description-only and label-only rows).
 
 ## Change request "Remove from bid" can also remove the item from the SOW (2026-10-22) — `bid-review/change-requests.js`
 
