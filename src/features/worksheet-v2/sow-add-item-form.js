@@ -213,7 +213,12 @@
         helper: 'Pick one or more services from the catalog, or "Custom Service" to describe one.' },
       { t: 'description', label: 'Describe the service', conditional: 'customService' },
       { t: 'serviceCost', label: 'Expected sub bid ($)' },
-      { t: 'qty' }
+      { t: 'qty' },
+      // Optional — "it should ask" (2026-10-23): the worksheets file every
+      // service under Project Wide Services whatever this says, but the
+      // PROPOSAL groups lines by MDF/IDF, so a located service lists under
+      // its location there.
+      { t: 'mdf', mode: 'opt' }
     ]},
     // field_2248 assumption catalog (Products in the Assumptions bucket) ·
     // field_2210 description, shown only when "Custom Assumption" is picked ·
@@ -291,6 +296,7 @@
       { t: 'description', label: 'Describe the service', conditional: 'customService' },
       { t: 'serviceCost', label: 'Labor bid ($)', helper: 'Your price for this service.' },
       { t: 'qty' },
+      { t: 'mdf', mode: 'opt' },   // optional — asked, never required (2026-10-23)
       { t: 'notes', label: 'Survey notes' }
     ]},
     // field_2250 MDF (optional) · field_2432 · field_2248 assumptions

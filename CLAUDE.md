@@ -796,11 +796,15 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
   `service sub bid` = typed-else-default on the Custom Service line or on a lone pick
   (`length(243.field_2195_raw) = 1`), the catalog default `field_2166_raw` otherwise. [244] already
   iterates `field_2195_raw`, so N picks = N lines. Nested `if()`s, no `or` operator.
-- **No MDF/IDF on the Services form (same day)**: both suites dropped the `{ t: 'mdf', mode: 'opt' }`
-  row. A service's location is never used — `groups.js` routes every Services line to the synthetic
-  "Project Wide Services" group whatever `field_1946` says (bid-review-v2 `transform.js` the same) —
-  so the row only ever read as a requirement. `field_2250_raw` still rides the payload as `[]`
-  (`DTO_ARRAY_KEYS`); Make's MDF handling is unchanged (`154.MDFs` = `[""]` → one line, blank MDF).
+- **MDF/IDF on the Services form is OPTIONAL, and asked (same day, twice)**: "service add modal shouldn't
+  require an MDF/IDF" first removed the `{ t: 'mdf', mode: 'opt' }` row from both suites; "it should
+  ask" put it back the same afternoon (the user had the SOW picker's requirement in mind). The row was
+  never mandatory (`mode: 'opt'` renders "MDF / IDF (optional)"). The worksheets file every Services
+  line under the synthetic "Project Wide Services" group whatever `field_1946` says (`groups.js`;
+  bid-review-v2 `transform.js` the same), but the PROPOSAL (`proposal-grid-v2.js`) groups lines by
+  `field_1946`, so a located service lists under its location there. The payload carries the picks as
+  `field_2250_raw` (`DTO_MDF_FIELD.opt`; `[]` when none); Make 02.01 / 05.01's service routes fan out
+  per MDF through `154.MDFs` exactly as the assumption route does (blank → one line, no MDF).
 - **A service WITH a product shows the product everywhere (same day — "onboarding fee")**: the
   onboarding fee is a Services-bucket PRODUCT whose detail lives in the product's catalog description
   (`field_57` → the line item's STORED copy `field_1962`, written by 02.01 at create) with a separate
