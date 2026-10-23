@@ -758,7 +758,18 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
   service product, qty `ifempty(field_2183_raw; 1)`, `field_2020` / `field_2150` / `field_2479` from
   the variables, the product-derived fields (`field_1958/1960/1962/1963/1981`) as every product-backed
   line gets them. The description-only path (router 17 route 4 "no product" → [177]/[178]) is unchanged.
-  **05.01 (survey) still needs the same change** — same shape, its own export.
+  **05.01 (survey) — patched blueprint delivered 2026-10-23** ("05.01 … v2-services.blueprint.json",
+  built from the user's export by `scratchpad/tools/bp_patch_0501_services.py`; import INTO the scenario so
+  the hook stays): [151]'s "NOT assumption" filter also excludes the Services bucket, and a NEW route 3 on
+  router 17 (a clone of the assumption route [182]→[188], ids 220–226) handles "IS service WITH product":
+  [220] feeder over `field_2195_raw` → [221] get product → [222] variables with the 02.01 **v3** rules
+  (`service copy` = typed `field_2210_raw` on the Custom Service line by `customServiceId` or by product
+  name, else the product's `field_2021_raw`; `service sub bid` = typed-else-default on the Custom Service
+  line or a lone pick, else `field_2166_raw`; `service require sub bid` = `field_2477_raw` else true) →
+  [223] router → [225] (per MDF) / [226] (no MDF) "Create Service Line Item" on object_114: `field_2627` =
+  the product, `field_2379` its name, qty `ifempty(field_2183_raw; 1)`, `field_2409` / `field_2400` /
+  `field_2478` from the variables, bids `map(field_2427_raw; "id")`, request, notes. The "no product" route
+  ([209]) is unchanged. ClickUp: *Make 05.01 (survey add-item): services-with-product route*.
 - **Add Product form (view_466) — `bucket-field-visibility_add-product.js`** (same day): the form shows
   only the fields whitelisted for the chosen bucket (`field_133`), and the Other Services bucket mapped
   to an EMPTY list — every field but the bucket hid, so no service product (Custom Service included)
