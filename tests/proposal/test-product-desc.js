@@ -156,6 +156,19 @@ check('descHtmlOf: a list is a block of its own between paragraphs, never carrie
    grid.descHtmlOf('<ul><li><p>A</p></li><li><p>B</p><p>C</p></li></ul>'), grid.descHtmlOf('Intro<ul><li>x</li></ul>')],
   ['<p>Needs:</p><ul><li>One</li></ul><p>Then.</p>', '<ol><li>A</li></ol>', '<ul><li>A</li><li>B<br />C</li></ul>', '<p>Intro</p><ul><li>x</li></ul>']);
 check('descHtmlOf: plain text is one paragraph; blank / tag-only input is empty', [grid.descHtmlOf('Just one line.'), grid.descHtmlOf('<p><br></p><p>&nbsp;</p>'), grid.descHtmlOf('')], ['<p>Just one line.</p>', '', '']);
+// The live license descriptions (2026-10-23): ONE <p> whose paragraphs are separated by <br> — the
+// editor never wrote a second <p>. Every line is a paragraph then; two <br>s in a row are a paragraph
+// break anywhere; with 2+ real paragraphs a lone <br> inside one stays a line break.
+check('descHtmlOf: one paragraph of <br>-separated lines → every line its own paragraph (gaps between them)',
+  grid.descHtmlOf('<p>Per camera, per month · 12-month commitment<br>Continuous remote guarding for sites that need coverage around the clock.<br>Coverage: up to 24 hours a day.<br>Not included: cameras, speakers.</p>'),
+  '<p>Per camera, per month · 12-month commitment</p><p>Continuous remote guarding for sites that need coverage around the clock.</p><p>Coverage: up to 24 hours a day.</p><p>Not included: cameras, speakers.</p>');
+check('descHtmlOf: <br><br> is a paragraph break; a lone <br> inside a multi-paragraph description stays a line break; bare newlines read as <br>s',
+  [grid.descHtmlOf('<p>A<br>B<br><br>C</p><p>D</p>'), grid.descHtmlOf('A<br>B<br /><br/>C'), grid.descHtmlOf('One\nTwo')],
+  // (A<br>B<br><br>C: the author told a line break from a paragraph break — A and B stay together, C gets the gap)
+  ['<p>A<br />B</p><p>C</p><p>D</p>', '<p>A<br />B</p><p>C</p>', '<p>One</p><p>Two</p>']);
+check('descBlocksSpaced (the grid): every block after the first carries the inline half-line gap; the first has none; a single block is untouched',
+  [grid.descBlocksSpaced('<p>A</p><ul><li>x</li></ul><p>B</p>'), grid.descBlocksSpaced('<p>Only</p>')],
+  ['<p>A</p><ul style="margin-top:0.5em"><li>x</li></ul><p style="margin-top:0.5em">B</p>', '<p>Only</p>']);
 const richLic = Object.assign({}, licRec, { id: 'r7', field_2208: 'Pro Video Monitoring — 12 Hour Weekdays PVM-1C-M-24HWEEKENDS', [DESC]: RICH });
 window.Knack.views.view_3371 = { model: { data: { models: [{ attributes: richLic }] } } };
 const richData = grid.buildPublishData('view_3371');

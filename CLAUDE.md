@@ -822,11 +822,17 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
   made a paragraph break look like a line break — "still need a space or half line space between actual
   paragraphs"), a `<br>` inside one stays `<br />`, a list is a block of its own (paragraph tags inside
   an item read as line breaks so an item never splits the list), empty paragraphs dropped, only
-  `b` / `br` / `p` / `ul` / `ol` / `li` survive and WITHOUT attributes (the snapshot rule). `productDescRec`
+  `b` / `br` / `p` / `ul` / `ol` / `li` survive and WITHOUT attributes (the snapshot rule). **The live
+  license descriptions are ONE `<p>` whose paragraphs are separated by `<br>`** (the editor never wrote
+  a second `<p>`, confirmed from the rendered markup 2026-10-23 — "nope"), so: a description that
+  converts to a single paragraph of several lines has every line promoted to its own paragraph; two or
+  more `<br>`s in a row are a paragraph break anywhere; with 2+ real paragraphs a lone `<br>` inside one
+  stays a line break (`A<br>B<br><br>C` → A/B together, gap, C). `productDescRec`
   finds the record once; `productDescOf` is the flat text (payload `productDesc`, the fallback),
   `productDescHtmlOf` the HTML (the grid's `.scw-pg2-l3-desc` block and payload `productDescHtml`). The
   gap: every block after the first opens half a line down (`margin-top: 0.5em`) — the grid by CSS
-  (`.scw-pg2-l3desc .scw-pg2-l3-desc > :not(:first-child)`), the PDF / published page by an INLINE style
+  (`.scw-pg2-l3desc .scw-pg2-l3-desc > :not(:first-child)`) AND the same inline style via
+  `descBlocksSpaced` (Knack's own `p` rules can never swallow it), the PDF / published page by an INLINE style
   pdf-export stamps on each following block (Knack's `field_2680` keeps inline styles and strips
   `<style>`; the stylesheet rule `.l4-row.l4-proddesc td > :not(:first-child)` is its twin) with `<p>` →
   `<div>` and `<b>` → inline-styled span exactly as the labor lines; the flat text renders escaped when the

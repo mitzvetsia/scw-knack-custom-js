@@ -240,23 +240,41 @@
     });
     s = s
       .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+      // two or more <br>s in a row = a blank line = a paragraph break
+      .replace(/\n(?:[^\S\n]*\n)+/g, DESC_PARA)
       .replace(/<\/\s*(p|div|h[1-6]|blockquote|pre|tr|table)\s*>/gi, DESC_PARA)
       .replace(/<\s*(p|div|h[1-6]|blockquote|pre|tr|table)\b[^>]*>/gi, '')
       .replace(/<\/?strong\b[^>]*>/gi, function (t) { return t.replace(/strong/gi, 'b'); })
       .replace(/<(?!\/?(b|ul|ol|li)\b)[^>]*>/gi, '')
       .replace(/<(\/?)(b|ul|ol|li)\b[^>]*>/gi, '<$1$2>');
-    var out = '';
+    var paras = [];
     s.split(DESC_PARA).forEach(function (para) {
       var lines = [];
       para.split('\n').forEach(function (ln) {
         var t = norm(ln);
         if (t && !isBlankish(t)) lines.push(t);
       });
-      if (!lines.length) return;
+      if (lines.length) paras.push(lines);
+    });
+    // ONE paragraph of several lines: the editor that wrote it separates
+    // paragraphs with <br> (there are no <p>s to read — the live license
+    // descriptions, 2026-10-23), so every line is a paragraph. With 2+
+    // paragraphs a <br> inside one is a deliberate line break and stays.
+    if (paras.length === 1 && paras[0].length > 1 && !/^<(ul|ol)>/i.test(paras[0][0])) {
+      paras = paras[0].map(function (ln) { return [ln]; });
+    }
+    var out = '';
+    paras.forEach(function (lines) {
       var body = lines.join('<br />');
       out += /^<(ul|ol)>/i.test(body) ? body : '<p>' + body + '</p>';
     });
     return out;
+  }
+  // Half a line between the description's blocks, stamped INLINE on every
+  // block after the first (the grid's stylesheet rule is its twin; an
+  // inline margin survives whatever Knack's own CSS says about <p>).
+  function descBlocksSpaced(html) {
+    return String(html || '').replace(/(<\/(?:p|ul|ol)>)\s*<(p|ul|ol)>/gi, '$1<$2 style="margin-top:0.5em">');
   }
   // MDF/IDF display names ("TYPE: ##: Name") leave an empty middle segment
   // on HEADENDs, which never carry a ## — "HEADEND: : Chief's Office".
@@ -857,7 +875,7 @@
         var pDescHtml = productDescHtmlOf(product.items, bctx.descKind);
         if (pDescHtml) {
           pushRow('scw-pg2-l3desc' + tintCls, [
-            { html: '<div class="scw-pg2-l3-desc">' + pDescHtml + '</div>' },
+            { html: '<div class="scw-pg2-l3-desc">' + descBlocksSpaced(pDescHtml) + '</div>' },
             { html: '' }, { html: '' }
           ]);
         }
@@ -2440,8 +2458,10 @@
     // proposal-pdf-export delegates its grid scrape here when v2 owns
     // the view — see scrapeGridView() in proposal-pdf-export.js.
     buildPublishData: buildPublishData,
-    // Rich text → limited HTML with its line breaks (the description rows).
+    // Rich text → limited HTML with its paragraphs (the description rows),
+    // and the inline half-line gap the grid stamps between its blocks.
     descHtmlOf: descHtmlOf,
+    descBlocksSpaced: descBlocksSpaced,
     // Dump the v1 view's Builder grouping config — used to verify the
     // derived grouping fields match what Knack actually groups by.
     dumpV1Groups: function (viewKey) {
