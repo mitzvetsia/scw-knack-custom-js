@@ -192,17 +192,19 @@ setTimeout(() => {
 // product-less path stays); a catalog service → no description, the product rides field_2195 + field_2246;
 // Custom Service → the description is back and required. ──
 function servicesFlow() {
-  const B_SVC = '6977caa7f246edf67b52cbcd', SVC = '6481e5ba38f28300289a0001', CSVC = '6481e5ba38f28300289a0002';
-  window.SCW.productMap[SVC] = { name: 'Lift rental (daily)' }; window.SCW.productMap[CSVC] = { name: 'Custom Service' };
-  window.SCW.productBucketMap[SVC] = [B_SVC]; window.SCW.productBucketMap[CSVC] = [B_SVC];
+  const B_SVC = '6977caa7f246edf67b52cbcd', SVC = '6481e5ba38f28300289a0001', CSVC = '6481e5ba38f28300289a0002', SVC2 = '6481e5ba38f28300289a0003';
+  window.SCW.productMap[SVC] = { name: 'Lift rental (daily)' }; window.SCW.productMap[CSVC] = { name: 'Custom Service' }; window.SCW.productMap[SVC2] = { name: 'Onboarding Fee' };
+  window.SCW.productBucketMap[SVC] = [B_SVC]; window.SCW.productBucketMap[CSVC] = [B_SVC]; window.SCW.productBucketMap[SVC2] = [B_SVC];
+  const costRow = () => q('[data-cond="serviceCost"]');
+  const costLabel = () => costRow().querySelector('.scw-sowadd__lbl').textContent;
   const md = el => el.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
   const labels = () => texts('.scw-sowadd__lbl').slice(2);   // after the item-type question + the SOW row
   const tickSow = () => { const b = qa('.scw-sowadd__checks')[0].querySelectorAll('input')[0]; b.checked = true; b.dispatchEvent(new window.Event('change', { bubbles: true })); };
   form.open({ viewKey: 'view_3962' });
-  check('product-first list now carries the services, bucket-labelled', texts('.scw-sowadd__opt').filter(t => /Other Services/.test(t)), ['Custom Service · Other Services', 'Lift rental (daily) · Other Services']);
+  check('product-first list now carries the services, bucket-labelled', texts('.scw-sowadd__opt').filter(t => /Other Services/.test(t)), ['Custom Service · Other Services', 'Lift rental (daily) · Other Services', 'Onboarding Fee · Other Services']);
   q('.scw-sowadd__chip[data-bucket="' + B_SVC + '"]').click();
-  check('Other Services: service picker · describe · expected sub bid · qty — NO MDF/IDF row (a service is project-wide); the describe row shows while nothing is picked',
-    [labels(), q('[data-cond="customService"]').style.display], [['Service', 'Describe the service', 'Expected sub bid ($)', 'Quantity'], '']);
+  check('Other Services: MULTI service picker · describe · expected sub bid · qty — NO MDF/IDF row (a service is project-wide); the describe row shows while nothing is picked',
+    [labels(), q('[data-cond="customService"]').style.display, costRow().style.display], [['Services', 'Describe the service', 'Expected sub bid ($)', 'Quantity'], '', '']);
   tickSow();
   q('[data-act="submit"]').click();
   check('nothing picked, nothing described → one or the other', q('.scw-sowadd__err').textContent, 'Pick a service, or describe the service.');
@@ -225,10 +227,39 @@ function servicesFlow() {
     q('[data-act="submit"]').click();
     setTimeout(() => {
       const k = posts[2] && posts[2].body;
-      check('custom service POST: the Custom Service product + the description + the customService flag',
-        [posts.length, k.productIds, k.customService, k.field_2195_raw, k.field_2210], [3, [CSVC], true, [{ id: CSVC, identifier: 'Custom Service' }], 'Walk the site with the fire marshal']);
-      console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
-      process.exit(fails ? 1 : 0);
+      check('custom service POST: the Custom Service product + the description + the customService flag + its id',
+        [posts.length, k.productIds, k.customService, k.customServiceId, k.field_2195_raw, k.field_2210], [3, [CSVC], true, CSVC, [{ id: CSVC, identifier: 'Custom Service' }], 'Walk the site with the fire marshal']);
+      // ── MULTI-select (2026-10-23): several services in one add ──
+      form.open({ viewKey: 'view_3962' });
+      q('.scw-sowadd__chip[data-bucket="' + B_SVC + '"]').click();
+      md(qa('.scw-sowadd__opt').find(o => o.textContent.trim() === 'Lift rental (daily)'));
+      md(qa('.scw-sowadd__opt').find(o => o.textContent.trim() === 'Onboarding Fee'));
+      check('two catalog services picked: both stay picked; the describe row stays folded; the sub bid box HIDES (each line takes its catalog default)',
+        [qa('.scw-sowadd__chipsel, .scw-sowadd__sel').length >= 0, q('[data-cond="customService"]').style.display, costRow().style.display], [true, 'none', 'none']);
+      tickSow();
+      q('[data-act="submit"]').click();
+      setTimeout(() => {
+        const m = posts[3] && posts[3].body;
+        check('multi POST: both services under field_2195 / field_2246, no custom id, no sub bid sent, no description',
+          [posts.length, m.productIds, m.customService, m.customServiceId, m.field_2195_raw.map(x => x.id), m.field_2246_raw.length, m.field_2233_raw, m.serviceCost, m.field_2210],
+          [4, [SVC, SVC2], false, '', [SVC, SVC2], 2, null, '', '']);
+        form.open({ viewKey: 'view_3962' });
+        q('.scw-sowadd__chip[data-bucket="' + B_SVC + '"]').click();
+        md(qa('.scw-sowadd__opt').find(o => o.textContent.trim() === 'Onboarding Fee'));
+        md(qa('.scw-sowadd__opt').find(o => o.textContent.trim() === 'Custom Service'));
+        check('a catalog service + Custom Service: the describe row is back and the sub bid box is relabelled for the custom one',
+          [q('[data-cond="customService"]').style.display, costRow().style.display, costLabel()], ['', '', 'Custom service sub bid ($)']);
+        q('[data-f="description"]').value = 'Pull the permits'; q('[data-f="serviceCost"]').value = '275';
+        tickSow();
+        q('[data-act="submit"]').click();
+        setTimeout(() => {
+          const n = posts[4] && posts[4].body;
+          check('mixed POST: both products, customServiceId = the Custom Service, the description and the sub bid ride for Make to aim at that line',
+            [posts.length, n.productIds, n.customService, n.customServiceId, n.field_2210, n.field_2233_raw], [5, [SVC2, CSVC], true, CSVC, 'Pull the permits', 275]);
+          console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
+          process.exit(fails ? 1 : 0);
+        }, 50);
+      }, 50);
     }, 50);
   }, 50);
 }

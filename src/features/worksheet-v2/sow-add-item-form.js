@@ -132,6 +132,10 @@
     for (var i = 0; i < (ids || []).length; i++) if (isCustomService(ids[i], labels)) return true;
     return false;
   }
+  function customServiceIdOf(ids, labels) {
+    for (var i = 0; i < (ids || []).length; i++) if (isCustomService(ids[i], labels)) return ids[i];
+    return '';
+  }
 
   function log() { if (CONFIG.debug) { try { console.info.apply(console, ['[scw-sow-add]'].concat([].slice.call(arguments))); } catch (e) { /* ignore */ } } }
 
@@ -200,9 +204,13 @@
     // service by location — groups.js / bid-review-v2 transform.js route every
     // Services line to the synthetic "Project Wide Services" group — so the
     // row only read as a requirement. field_2250_raw rides the payload as [].
-    { id: B_SERVICE, name: 'Other Services', productOptional: true, fields: [
-      { t: 'product', label: 'Service', placeholder: 'Search services…',
-        helper: 'Pick a service from the catalog, or "Custom Service" to describe one.' },
+    // MULTI-select (2026-10-23): several services at once, one line each (Make
+    // 02.01 iterates field_2195_raw). The typed description + sub bid belong to
+    // the Custom Service line (or to a lone pick); other catalog services take
+    // their own defaults — the sub bid box follows the picks (syncServiceCost).
+    { id: B_SERVICE, name: 'Other Services', productOptional: true, productMulti: true, fields: [
+      { t: 'product', label: 'Services', placeholder: 'Search services…',
+        helper: 'Pick one or more services from the catalog, or "Custom Service" to describe one.' },
       { t: 'description', label: 'Describe the service', conditional: 'customService' },
       { t: 'serviceCost', label: 'Expected sub bid ($)' },
       { t: 'qty' }
@@ -277,9 +285,9 @@
     // (shown while nothing / Custom Service is picked) · field_2233 labor bid ·
     // field_2183 qty · field_2432 survey notes. NO MDF/IDF (2026-10-23, same
     // reason as the SOW suite: a service is project-wide on every worksheet).
-    { id: B_SERVICE, name: 'Other Services', productOptional: true, fields: [
-      { t: 'product', label: 'Service', placeholder: 'Search services…',
-        helper: 'Pick a service from the catalog, or "Custom Service" to describe one.' },
+    { id: B_SERVICE, name: 'Other Services', productOptional: true, productMulti: true, fields: [
+      { t: 'product', label: 'Services', placeholder: 'Search services…',
+        helper: 'Pick one or more services from the catalog, or "Custom Service" to describe one.' },
       { t: 'description', label: 'Describe the service', conditional: 'customService' },
       { t: 'serviceCost', label: 'Labor bid ($)', helper: 'Your price for this service.' },
       { t: 'qty' },
@@ -1181,7 +1189,7 @@
           onChange: function (ids, labels) {
             st.productIds = ids; st.productLabels = labels || {};
             if (b.id === B_ASSUMPTIONS) syncAssumptionDesc();
-            if (b.id === B_SERVICE)     syncServiceDesc();
+            if (b.id === B_SERVICE)     { syncServiceDesc(); syncServiceCost(); }
             rebuildAccessoryCombo();
           }
         });
@@ -1234,6 +1242,7 @@
       if (t === 'serviceCost') {
         var crow = labelRow(fd.label || 'Expected sub bid ($)', fd.helper);
         crow.insertAdjacentHTML('beforeend', '<input type="number" step="0.01" class="scw-sowadd__in" data-f="serviceCost">');
+        if (b.id === B_SERVICE) { crow.setAttribute('data-cond', 'serviceCost'); crow.setAttribute('data-label', fd.label || 'Expected sub bid ($)'); }
         return crow;
       }
       if (t === 'description') {
@@ -1275,6 +1284,24 @@
       var row = body.querySelector('[data-cond="customService"]');
       if (!row) return;
       row.style.display = (!st.productIds.length || hasCustomService(st.productIds, st.productLabels)) ? '' : 'none';
+    }
+    // Services: with SEVERAL services picked, each catalog service takes its
+    // own default sub bid, so the one sub-bid box applies to the Custom
+    // Service among them (relabelled) — or hides when there is none. With one
+    // pick (or none) it is the line's own sub bid, as before.
+    function serviceCostApplies() {
+      return st.productIds.length < 2 || hasCustomService(st.productIds, st.productLabels);
+    }
+    function syncServiceCost() {
+      var row = body.querySelector('[data-cond="serviceCost"]');
+      if (!row) return;
+      var base = row.getAttribute('data-label') || 'Expected sub bid ($)';
+      var multiCustom = st.productIds.length >= 2 && hasCustomService(st.productIds, st.productLabels);
+      var lbl = row.querySelector('.scw-sowadd__lbl');
+      if (lbl) lbl.textContent = multiCustom
+        ? 'Custom service ' + base.replace(/^expected\s+/i, '').charAt(0).toLowerCase() + base.replace(/^expected\s+/i, '').slice(1)
+        : base;
+      row.style.display = serviceCostApplies() ? '' : 'none';
     }
 
     function buildAccessoryCombo() {
@@ -1398,7 +1425,7 @@
         if (el) body.appendChild(el);
       }
       if (b.id === B_ASSUMPTIONS) syncAssumptionDesc();
-      if (b.id === B_SERVICE)     syncServiceDesc();
+      if (b.id === B_SERVICE)     { syncServiceDesc(); syncServiceCost(); }
     }
 
     function readField(f) {
@@ -1460,10 +1487,14 @@
         existingCabling: !!readField('existingCabling'),
         exterior:        !!readField('exterior'),
         plenum:          !!readField('plenum'),
-        serviceCost:     readField('serviceCost') || '',
+        // Services with several catalog picks and no Custom Service: no single
+        // sub bid applies (each line takes its catalog default) — send none.
+        serviceCost:     (b.id === B_SERVICE && !serviceCostApplies()) ? '' : (readField('serviceCost') || ''),
         description:     readField('description') || '',
-        // Services: the picked service is the "Custom Service" product (its description is the service).
+        // Services: a picked service is the "Custom Service" product (its description is the service).
+        // customServiceId names it so Make can aim the typed description / sub bid at that line.
         customService:   b.id === B_SERVICE && hasCustomService(st.productIds, st.productLabels),
+        customServiceId: b.id === B_SERVICE ? customServiceIdOf(st.productIds, st.productLabels) : '',
         notes:           readField('notes') || '',
         triggeredBy:     triggeredBy(),
         origin:          org.origin || 'ops',

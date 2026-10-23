@@ -764,6 +764,21 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
 - The product-first list (no chip picked) now offers services, bucket-labelled; picking one selects
   the Services chip. The CO add form (`co-add-item-form.js`) keeps its own product-less Services
   bucket — not in scope.
+- **Services are MULTI-select (same day)**: both suites carry `productMulti: true` (label "Services") —
+  several services in one add, one line each. The one description / sub-bid pair belongs to the
+  **Custom Service** line (or to a lone pick): `syncServiceCost` HIDES the sub-bid box when 2+ catalog
+  services are picked with no Custom Service (each line takes its catalog default `field_2166`; the
+  payload sends `serviceCost: ''` / `field_2233_raw: null`) and relabels it "Custom service sub bid ($)"
+  / "Custom service labor bid ($)" when a Custom Service is among several; the payload adds
+  `customServiceId` (the picked id the modal recognises as Custom Service, else ''). **Make 02.01 v3
+  ("… v3-multi-services.blueprint.json", `scratchpad/tools/bp_patch_0201_services_v3.py`, built on the
+  user's re-export of v2 — import INTO the scenario)**: only [246] changed — `service copy` =
+  `if(245.id = 243.customServiceId; typed; if(contains(lower(245.field_35); "custom service"); typed;
+  245.field_2021_raw))` (the typed description lands on the Custom Service line by id, or by the product
+  NAME when the webhook does not carry the new key; every other service takes its catalog copy) and
+  `service sub bid` = typed-else-default on the Custom Service line or on a lone pick
+  (`length(243.field_2195_raw) = 1`), the catalog default `field_2166_raw` otherwise. [244] already
+  iterates `field_2195_raw`, so N picks = N lines. Nested `if()`s, no `or` operator.
 - **No MDF/IDF on the Services form (same day)**: both suites dropped the `{ t: 'mdf', mode: 'opt' }`
   row. A service's location is never used — `groups.js` routes every Services line to the synthetic
   "Project Wide Services" group whatever `field_1946` says (bid-review-v2 `transform.js` the same) —
@@ -801,7 +816,8 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
   Deploy-client-report still skips services by design.
 - Tests: the service flows in `tests/worksheet-v2/test-sow-add-item-form.js` and
   `tests/worksheet-v2/test-survey-add-item-form.js` (picker, the three paths, the fold, both POSTs, no
-  MDF row); `tests/worksheet-v2/test-service-product.js` (ops / sales / survey rows with and without a
+  MDF row, the multi picks: two catalog services hide the sub-bid box, a Custom Service among them
+  relabels it, `customServiceId` on the payload); `tests/worksheet-v2/test-service-product.js` (ops / sales / survey rows with and without a
   product, the detail description); `tests/proposal/test-product-desc.js` (the services-only gate: the
   productized service's L3 + description sub-row, the equipment product without one, the
   description-only service unchanged); `tests/bid-review-v2/test-service-product-desc.js` (the SOW

@@ -136,7 +136,7 @@ check('Other Equipment: products (multi) · qty · MDF optional · labor bid · 
   fieldLabels(), ['Products', 'Quantity', 'MDF / IDF (optional)', 'Labor bid ($ each)', 'Survey notes']);
 chip(B_SVC);
 check('Other Services (productized 2026-10-23): service picker · describe (shown while nothing / Custom Service is picked) · labor bid · qty · survey notes — NO MDF/IDF row',
-  [fieldLabels(), q('[data-cond="customService"]').style.display], [['Service', 'Describe the service', 'Labor bid ($)', 'Quantity', 'Survey notes'], '']);
+  [fieldLabels(), q('[data-cond="customService"]').style.display], [['Services', 'Describe the service', 'Labor bid ($)', 'Quantity', 'Survey notes'], '']);
 chip(B_ASM);
 check('Assumptions: assumption(s) · custom detail (hidden until Custom Assumption) · MDF optional · survey notes',
   [fieldLabels(), q('[data-cond="customAssumption"]').style.display], [['Assumption(s)', 'Detail custom assumption', 'MDF / IDF (optional)', 'Survey notes'], 'none']);
@@ -202,13 +202,14 @@ setTimeout(() => {
   // "Custom Service"; the description is the line when nothing is picked (the product-less path stays)
   // and the detail of a Custom Service; a catalog service needs none. The product rides the DTO's
   // optional service product field_2195 + unified field_2246, as the DTO form did.
-  const SVC = '6481e5ba38f28300289a0001', CSVC = '6481e5ba38f28300289a0002';
+  const SVC = '6481e5ba38f28300289a0001', CSVC = '6481e5ba38f28300289a0002', SVC2 = '6481e5ba38f28300289a0003';
   window.SCW.productMap[SVC] = { name: 'Lift rental (daily)', subAllowed: 'Yes' };
   window.SCW.productMap[CSVC] = { name: 'Custom Service', subAllowed: 'Yes' };
-  window.SCW.productBucketMap[SVC] = [B_SVC]; window.SCW.productBucketMap[CSVC] = [B_SVC];
+  window.SCW.productMap[SVC2] = { name: 'Onboarding Fee', subAllowed: 'Yes' };
+  window.SCW.productBucketMap[SVC] = [B_SVC]; window.SCW.productBucketMap[CSVC] = [B_SVC]; window.SCW.productBucketMap[SVC2] = [B_SVC];
   form.open({ viewKey: 'view_3505' });
   chip(B_SVC);
-  check('the service picker lists the Services-bucket products', texts('.scw-sowadd__opt'), ['Custom Service', 'Lift rental (daily)']);
+  check('the service picker lists the Services-bucket products', texts('.scw-sowadd__opt'), ['Custom Service', 'Lift rental (daily)', 'Onboarding Fee']);
   q('[data-act="submit"]').click();
   check('service: nothing picked and nothing described → asks for one or the other', q('.scw-sowadd__err').textContent, 'Pick a service, or describe the service.');
   q('[data-f="description"]').value = 'Lift rental'; q('[data-f="serviceCost"]').value = '450'; q('[data-f="notes"]').value = 'Two days';
@@ -243,11 +244,28 @@ setTimeout(() => {
       q('[data-act="submit"]').click();
       setTimeout(() => {
         const k = posts[3] && posts[3].body;
-        check('custom service POST: the Custom Service product + the description + the customService flag',
-          [posts.length, k.productIds, k.customService, k.field_2195_raw, k.field_2210, k.field_2233_raw],
-          [4, [CSVC], true, [{ id: CSVC, identifier: 'Custom Service' }], 'Walk the site with the fire marshal', 120]);
-        console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
-        process.exit(fails ? 1 : 0);
+        check('custom service POST: the Custom Service product + the description + the customService flag + its id',
+          [posts.length, k.productIds, k.customService, k.customServiceId, k.field_2195_raw, k.field_2210, k.field_2233_raw],
+          [4, [CSVC], true, CSVC, [{ id: CSVC, identifier: 'Custom Service' }], 'Walk the site with the fire marshal', 120]);
+        // MULTI-select: two catalog services → the labor bid box hides (each takes its default); add Custom Service → it returns, relabelled.
+        form.open({ viewKey: 'view_3505' });
+        chip(B_SVC);
+        md(qa('.scw-sowadd__opt').find(o => o.textContent.trim() === 'Lift rental (daily)'));
+        md(qa('.scw-sowadd__opt').find(o => o.textContent.trim() === 'Onboarding Fee'));
+        const costRow = () => q('[data-cond="serviceCost"]');
+        check('survey multi: two catalog services → labor bid box hidden, describe row folded', [costRow().style.display, q('[data-cond="customService"]').style.display], ['none', 'none']);
+        md(qa('.scw-sowadd__opt').find(o => o.textContent.trim() === 'Custom Service'));
+        check('…plus Custom Service → the labor bid box is back as the custom service\'s, the describe row too',
+          [costRow().style.display, costRow().querySelector('.scw-sowadd__lbl').textContent, q('[data-cond="customService"]').style.display], ['', 'Custom service labor bid ($)', '']);
+        q('[data-f="description"]').value = 'Pull the permits'; q('[data-f="serviceCost"]').value = '275';
+        q('[data-act="submit"]').click();
+        setTimeout(() => {
+          const m = posts[4] && posts[4].body;
+          check('survey multi POST: three products under field_2195, customServiceId names the Custom Service, description + labor bid ride along',
+            [posts.length, m.productIds, m.customServiceId, m.field_2195_raw.length, m.field_2210, m.field_2233_raw], [5, [SVC, SVC2, CSVC], CSVC, 3, 'Pull the permits', 275]);
+          console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
+          process.exit(fails ? 1 : 0);
+        }, 50);
       }, 50);
     }, 50);
   }, 50);
