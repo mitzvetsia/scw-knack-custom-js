@@ -815,7 +815,17 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
   or a label starting "Licen[cs]e"), else the bucketKind — carried as `bctx.descKind` and read by both
   `productDescOf` call sites (DOM render + publish payload). proposal-pdf-export / the published
   proposal follow the grid payload (`productDesc` on the L3 entry) — the recurring section's PDF rows
-  get the same quiet `l4-proddesc` row. **Reconcile grid** (`bid-review-v2`, same day — "I need to see the
+  get the same quiet `l4-proddesc` row. **Line structure (same day — "no line breaks here is
+  brutal")**: `field_1962` is Knack rich text (one `<p>` per paragraph, `<br>`s, bold, lists) and the
+  flat `readText` read ran a six-paragraph license description into one 90-word run. `descHtmlOf(html)`
+  keeps the author's lines as limited HTML — block boundaries (`</p>`, `<br>`, `</div>`, headings, list
+  edges) → `<br />`, empty paragraphs dropped, `b` / `ul` / `ol` / `li` kept WITHOUT attributes (the
+  snapshot rule), every other tag gone, and never a `<br />` beside a list (a list is a block; a break
+  next to it reads as a blank line). `productDescRec` finds the record once; `productDescOf` is the
+  flat text (payload `productDesc`, the fallback), `productDescHtmlOf` the HTML (the grid's
+  `.scw-pg2-l3-desc` row and payload `productDescHtml`); proposal-pdf-export renders `productDescHtml`
+  when present (`<b>` → inline-styled span as on labor lines) else the escaped flat text; the e-sign
+  manifest's `cellText` turns tags into spaces, so the words never glue across a break. **Reconcile grid** (`bid-review-v2`, same day — "I need to see the
   product description of this service product"): `bid-review/config.js` `sowItemFieldKeys.productDesc =
   'field_1962'`, carried on the transform's SOW item index (`productDesc`, rich text), and `card.js`
   `buildSowCell` renders it as a quiet `__sow-proddesc` line between the product name and the numbers on
@@ -828,7 +838,8 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
   relabels it, `customServiceId` on the payload); `tests/worksheet-v2/test-service-product.js` (ops / sales / survey rows with and without a
   product, the detail description); `tests/proposal/test-product-desc.js` (the services + licenses gate: the
   productized service's L3 + description sub-row, the equipment product without one, the
-  description-only service unchanged, the view_3371 licenses by bucket id and by label, the PDF rows); `tests/bid-review-v2/test-service-product-desc.js` (the SOW
+  description-only service unchanged, the view_3371 licenses by bucket id and by label, the PDF rows, `descHtmlOf` + the
+  `productDescHtml` payload / PDF / manifest / flat-fallback path); `tests/bid-review-v2/test-service-product-desc.js` (the SOW
   cell line: order, rich text, services only, description-only and label-only rows).
 
 ## Change request "Remove from bid" can also remove the item from the SOW (2026-10-22) — `bid-review/change-requests.js`

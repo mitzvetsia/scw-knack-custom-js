@@ -137,5 +137,45 @@ check('taking "license" out of productDescKinds switches the license description
   (() => { grid.CONFIG.productDescKinds = ['services']; const d = grid.buildPublishData('view_3371'); grid.CONFIG.productDescKinds = ['services', 'license'];
            return d.sections.reduce((a, s) => a.concat(s.buckets || []), []).reduce((a, b) => a.concat(b.products || []), []).map(p => p.productDesc || ''); })(),
   ['', '', '']);
+// ── Line structure (2026-10-23: "no line breaks here is brutal") ─────────────────────────────
+// The stored description is Knack rich text — one <p> per paragraph, <br>s, bold, lists. The flat
+// read ran a six-paragraph license description into one 90-word run. descHtmlOf keeps the author's
+// lines as <br />s (empty paragraphs dropped, bold + lists kept, every other tag gone); the payload
+// carries it as productDescHtml beside the flat productDesc, the PDF renders the HTML variant and
+// the e-sign manifest still reads the words with spaces between them.
+const RICH = '<p>Per camera, per month &middot; <strong>12-month commitment</strong></p><p><br></p>' +
+  '<p>Remote guarding for sites that are unoccupied on weekends.<br>Coverage: Saturday and Sunday, in the site\u2019s local time.</p>' +
+  '<p class="ak-p" style="margin:0">Equipment: provided per site.</p><ul class="ak-ul"><li>RTSP or ONVIF streams at 720p</li><li>2 Mbps upload per camera</li></ul>' +
+  '<p>Not included: cameras, speakers, alarm permits.</p><p>&nbsp;</p>';
+check('descHtmlOf: paragraphs and <br>s become <br />, empty paragraphs vanish, bold stays (<strong> → <b>), lists stay, attributes and every other tag are gone',
+  grid.descHtmlOf(RICH),
+  'Per camera, per month · <b>12-month commitment</b><br />Remote guarding for sites that are unoccupied on weekends.<br />Coverage: Saturday and Sunday, in the site\u2019s local time.<br />' +
+  'Equipment: provided per site.<ul><li>RTSP or ONVIF streams at 720p</li><li>2 Mbps upload per camera</li></ul>Not included: cameras, speakers, alarm permits.');
+check('descHtmlOf: a list is a block of its own — no <br /> beside it (that reads as a blank line) — and never carries attributes',
+  [grid.descHtmlOf('<p>Needs:</p><ul class="x"><li style="a">One</li></ul><p>Then.</p>'), grid.descHtmlOf('<ol><li>A</li></ol>')],
+  ['Needs:<ul><li>One</li></ul>Then.', '<ol><li>A</li></ol>']);
+check('descHtmlOf: plain text passes through; blank / tag-only input is empty', [grid.descHtmlOf('Just one line.'), grid.descHtmlOf('<p><br></p><p>&nbsp;</p>'), grid.descHtmlOf('')], ['Just one line.', '', '']);
+const richLic = Object.assign({}, licRec, { id: 'r7', field_2208: 'Pro Video Monitoring — 12 Hour Weekdays PVM-1C-M-24HWEEKENDS', [DESC]: RICH });
+window.Knack.views.view_3371 = { model: { data: { models: [{ attributes: richLic }] } } };
+const richData = grid.buildPublishData('view_3371');
+const richProd = richData.sections[0].buckets[0].products[0];
+check('payload: productDesc stays the flat one-line text; productDescHtml carries the line breaks',
+  [richProd.productDesc.indexOf('<') === -1, /commitment Remote guarding/.test(richProd.productDesc), (richProd.productDescHtml.match(/<br \/>/g) || []).length, /<b>12-month commitment<\/b>/.test(richProd.productDescHtml)],
+  [true, true, 3, true]);
+const richHtml = pdf.buildPdfHtml({ views: [Object.assign({ type: 'grid', title: 'Recurring Services or Licenses (billed separately)', isRecurring: true }, richData)] });
+const richCell = new DOMParser().parseFromString(richHtml, 'text/html').querySelector('tr.l4-proddesc td.l4-desc');
+check('PDF: the description cell renders the HTML variant — line breaks, inline-styled bold (no <b>), the list — in the quiet row',
+  [richCell.querySelectorAll('br').length, richCell.querySelectorAll('span[style*="font-weight:700"]').length, richCell.querySelectorAll('b').length, richCell.querySelectorAll('li').length, richCell.textContent.indexOf('Not included') > 0],
+  [3, 1, 0, 2, true]);
+check('e-sign manifest: the description cell reads as words with spaces at every break, never glued across a <br />',
+  (() => { const els = pdf.buildSowDocumentElements(richHtml); const tbl = els.find(e => e.type === 'table');
+           const row = tbl && tbl.table_cells.find(r => /Per camera/.test(r[0].text));
+           return [!!row, row && /commitment Remote guarding/.test(row[0].text), row && /weekends\. Coverage/.test(row[0].text), row && /720p 2 Mbps/.test(row[0].text)]; })(),
+  [true, true, true, true]);
+check('an older payload with only the flat productDesc still renders the row as escaped text',
+  (() => { const d = JSON.parse(JSON.stringify(richData)); const pr = d.sections[0].buckets[0].products[0]; delete pr.productDescHtml; pr.productDesc = 'Flat <text> & more';
+           const h = pdf.buildPdfHtml({ views: [Object.assign({ type: 'grid', title: 'T' }, d)] });
+           const td = new DOMParser().parseFromString(h, 'text/html').querySelector('tr.l4-proddesc td.l4-desc'); return [td.textContent, td.querySelectorAll('br').length]; })(),
+  ['Flat <text> & more', 0]);
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

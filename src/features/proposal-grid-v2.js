@@ -211,6 +211,42 @@
       .replace(/<(?!\/?(br|b|ul|ol|li)\b)[^>]*>/gi, '')
       .replace(/<\s*br\s*\/?\s*>/gi, '<br />');
   }
+  // Product description (field_1962, the stored copy of the product's rich
+  // text) → limited HTML that KEEPS THE AUTHOR'S LINE STRUCTURE. Knack rich
+  // text is one <p> per paragraph (plus <br>s and lists); sanitizeLimited
+  // alone strips the <p>s and runs every paragraph into one line, and the
+  // plain-text read (readText) did the same — a six-paragraph license
+  // description read as one 90-word run (2026-10-23). Block boundaries
+  // become <br />, empty paragraphs are dropped, and bold / lists survive
+  // on the labor-description allowlist (b / br / ul / ol / li).
+  function descHtmlOf(html) {
+    if (!html) return '';
+    var s = decodeEntities(String(html))
+      .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+      .replace(/<\/\s*(p|div|h[1-6]|blockquote|pre|tr|table)\s*>/gi, '\n')
+      .replace(/<\s*(p|div|h[1-6]|blockquote|pre|tr|table)\b[^>]*>/gi, '')
+      // a list is its own line(s): boundaries on both sides
+      .replace(/<\s*(ul|ol)\b[^>]*>/gi, '\n<$1>')
+      .replace(/<\/\s*(ul|ol)\s*>/gi, '</$1>\n')
+      .replace(/<\/?strong\b[^>]*>/gi, function (t) { return t.replace(/strong/gi, 'b'); })
+      .replace(/<(?!\/?(b|ul|ol|li)\b)[^>]*>/gi, '')
+      // kept tags lose their attributes (<ul class="ak-ul"> → <ul>): the
+      // stored snapshot must never carry an attribute (see stripHtmlTagAttrs)
+      .replace(/<(\/?)(b|ul|ol|li)\b[^>]*>/gi, '<$1$2>');
+    var lines = [];
+    s.split('\n').forEach(function (ln) {
+      var t = norm(ln);
+      if (t && !isBlankish(t)) lines.push(t);
+    });
+    // <br /> between lines — but never beside a list: <ul> / <ol> is a
+    // block of its own, and a <br /> next to one renders as a blank line.
+    var out = '';
+    for (var i = 0; i < lines.length; i++) {
+      if (i && !/<\/(ul|ol)>$/i.test(lines[i - 1]) && !/^<(ul|ol)>/i.test(lines[i])) out += '<br />';
+      out += lines[i];
+    }
+    return out;
+  }
   // MDF/IDF display names ("TYPE: ##: Name") leave an empty middle segment
   // on HEADENDs, which never carry a ## — "HEADEND: : Chief's Office".
   // Collapse the empty segment so headers read "HEADEND: Chief's Office".
@@ -235,19 +271,32 @@
     return null;
   }
   function readText(rec, f) { return norm(stripHtml(rec && rec[f])); }
-  // First non-blank product description across the L3's records ('' when the
-  // field isn't configured / not a column, or when the bucket's descKind is
-  // not in CONFIG.productDescKinds). One product → one description.
-  function productDescOf(recs, kind) {
+  // First record among the L3's with a non-blank product description (null
+  // when the field isn't configured / not a column, when the bucket's
+  // descKind is not in CONFIG.productDescKinds, or when every record is
+  // blank). One product → one description.
+  function productDescRec(recs, kind) {
     var f = CONFIG.fields.productDesc;
-    if (!f) return '';
+    if (!f) return null;
     var kinds = CONFIG.productDescKinds;
-    if (Array.isArray(kinds) && kinds.indexOf(kind || '') === -1) return '';
+    if (Array.isArray(kinds) && kinds.indexOf(kind || '') === -1) return null;
     for (var i = 0; i < (recs || []).length; i++) {
       var t = readText(recs[i], f);
-      if (t && !isBlankish(t)) return t;
+      if (t && !isBlankish(t)) return recs[i];
     }
-    return '';
+    return null;
+  }
+  // The description as flat text (whitespace-collapsed, one line) — the
+  // payload's `productDesc`, the fallback every renderer keeps.
+  function productDescOf(recs, kind) {
+    var rec = productDescRec(recs, kind);
+    return rec ? readText(rec, CONFIG.fields.productDesc) : '';
+  }
+  // The description as limited HTML with its line breaks (descHtmlOf) —
+  // what the grid renders and the payload's `productDescHtml`.
+  function productDescHtmlOf(recs, kind) {
+    var rec = productDescRec(recs, kind);
+    return rec ? descHtmlOf(rec[CONFIG.fields.productDesc]) : '';
   }
   function readNum(rec, f) {
     var raw = rec && rec[f + '_raw'];
@@ -794,10 +843,10 @@
         ]);
         // Quiet catalog-description sub-row, directly under the name and
         // above the labor description(s). No qty / cost of its own.
-        var pDesc = productDescOf(product.items, bctx.descKind);
-        if (pDesc) {
+        var pDescHtml = productDescHtmlOf(product.items, bctx.descKind);
+        if (pDescHtml) {
           pushRow('scw-pg2-l3desc' + tintCls, [
-            { html: '<span class="scw-pg2-l3-desc">' + esc(pDesc) + '</span>' },
+            { html: '<span class="scw-pg2-l3-desc">' + pDescHtml + '</span>' },
             { html: '' }, { html: '' }
           ]);
         }
@@ -1551,8 +1600,11 @@
             connectedDevicesCount: cd.count,
             connectedDeviceGroups: cdGroups || undefined,
             // Catalog description — proposal-pdf-export renders it as the
-            // quiet l4-proddesc row under the product name ('' → no row).
+            // quiet l4-proddesc row under the product name ('' → no row):
+            // the HTML variant (line breaks, bold, lists) when present,
+            // the flat text as the fallback.
             productDesc: productDescOf(product.items, bctx.descKind),
+            productDescHtml: productDescHtmlOf(product.items, bctx.descKind),
             isMountingHardware: bctx.isMounting, lineItems: [],
           };
           products.push(prod);
@@ -1843,6 +1895,8 @@
       // Catalog description under the product name: quiet, no top rule.
       '.scw-pg2-l3desc td { padding-top: 2px; border-top: 0; font-weight: 300; color: #64748b; }',
       '.scw-pg2-l3-desc { display: block; font-size: 13px; line-height: 1.35; max-width: 110ch; }',
+      '.scw-pg2-l3-desc b { font-weight: 600; }',
+      '.scw-pg2-l3-desc ul, .scw-pg2-l3-desc ol { margin: 2px 0 2px 18px; padding: 0; }',
       // Callouts: orange for the LABEL only; the designator list itself is
       // quiet gray fine print (dense projects were a wall of bold orange).
       '.scw-pg2-l4-conn { display: block; margin-top: 4px; line-height: 1.4; font-size: 12px; color: #64748b; font-weight: 400; max-width: 110ch; }',
@@ -2371,6 +2425,8 @@
     // proposal-pdf-export delegates its grid scrape here when v2 owns
     // the view — see scrapeGridView() in proposal-pdf-export.js.
     buildPublishData: buildPublishData,
+    // Rich text → limited HTML with its line breaks (the description rows).
+    descHtmlOf: descHtmlOf,
     // Dump the v1 view's Builder grouping config — used to verify the
     // derived grouping fields match what Knack actually groups by.
     dumpV1Groups: function (viewKey) {
