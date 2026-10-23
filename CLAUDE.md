@@ -584,11 +584,17 @@ Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-au
   typed photos keep Remove photo (image cleared, slot kept) + disconnect. **Builder**: view_3937
   needs its Delete link enabled or the REST fallback 403s and the card comes back after the refetch.
   Test: `tests/worksheet-v2/test-photo-delete-adhoc.js`.
-- **Shipments drawer = records only (2026-10-16)**: the Installation tile's "Shipments ›" line still
-  opens the OMS order mirrors (counts, per-order cards, tracking links, contents), but the
-  "Re-check shipments" re-pull button, its reference box and every resync hint are off
-  (`shipments-tray.js` `RESYNC_ENABLED = false`; `SCW.shipments.setResyncEnabled(true)` in tests).
-  The mirrors refresh on the OMS sync's own schedule. The line renders where a Shipments grid is
+- **Shipments drawer (2026-10-16 → 2026-10-23)**: the Installation tile's "Shipments ›" line
+  opens the OMS order mirrors (counts, per-order cards, tracking links, contents). The "Re-check
+  shipments" re-pull button, its reference box and every resync hint went OFF on 2026-10-16
+  (records only); since 2026-10-23 ("my re-check for shipments is MISSING from the SCW deployment
+  dashboard") they are BACK on the SCW (ops) dashboard scene_1311 for **@getscw.com logins only**
+  (`shipments-tray.js` `resyncEnabled(cfg)`: `RESYNC_DOMAINS = ['getscw.com']` + `RESYNC_EMAILS`,
+  both empty = nobody; `RESYNC_FOR_EVERYONE = true` is the pre-10-16 behaviour) and never on a
+  `sub: true` scene — the sub dashboard stays records only whatever the login. Tests:
+  `SCW.shipments.setResyncEnabled(true | false)` overrides the login gate (never the sub-scene rule),
+  `setResyncEnabled(null)` computes again. The mirrors otherwise refresh on the OMS sync's own
+  schedule. The line renders where a Shipments grid is
   on the scene: view_4163 on scene_1311 (ops) and, since 2026-10-16, view_4165 on the sub
   deployment dashboard scene_1353 (`SCENES` entry `sub: true` — same records, but no "Open in
   ShipEdge" link and no unlinked-queue attribution hint, neither of which a sub can use; both grids

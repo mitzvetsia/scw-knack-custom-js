@@ -421,5 +421,42 @@ api.open();
 check('ops page: the ShipEdge link and the attribution hint are unchanged',
   [!!opened.el.querySelector('.scw-ships__btn--oms'), /unlinked-shipments queue/.test(opened.el.textContent)], [true, true]);
 
+// ── Login gate (2026-10-23: "my re-check for shipments is MISSING from the SCW deployment dashboard") ──
+// The control is back on the SCW (ops) dashboard for @getscw.com logins (RESYNC_DOMAINS), off for every
+// other login, and never on the sub dashboard. setResyncEnabled(null) lets the gate compute.
+api.setResyncEnabled(null);
+const okRec = () => shipRec({ id: 'g1', orderNo: 'SO-2001', omsUrl: 'https://oms/2', status: 'shipped', synced: now - 3600000, shipDate: now - DAY });
+function gateState(el) {
+  return [api.resyncEnabled(), !!el.querySelector('[data-scw-ships-resync]'), !!el.querySelector('[data-scw-ships-ref]'),
+          /Re-check shipments/.test(el.textContent)];
+}
+window.Knack.getUserAttributes = () => ({ email: 'Lee@GetSCW.com' });
+scene([okRec()]); api.open();
+check('ops dashboard + an @getscw.com login (any case) → the re-check button, its reference box and the hint are back',
+  gateState(opened.el), [true, true, true, true]);
+window.Knack.getUserAttributes = () => ({ email: 'tech@securevisionsolutions.com' });
+scene([okRec()]); api.open();
+check('ops dashboard + another domain → nothing re-check related, the records as before',
+  gateState(opened.el).concat([opened.el.querySelectorAll('.scw-ships__card').length]), [false, false, false, false, 1]);
+window.Knack.getUserAttributes = () => null;
+scene([okRec()]); api.open();
+check('no login on record → off (the allow-list names nobody by default)', gateState(opened.el), [false, false, false, false]);
+window.Knack.getUserAttributes = () => ({ email: 'ops@getscw.com' });
+scene([]); api.open();
+check('empty project + @getscw.com → the empty-state hint says what Re-check does, and the button is there to do it',
+  [/Re-check shipments pulls the latest from the OMS/.test(opened.el.textContent), !!opened.el.querySelector('[data-scw-ships-resync]')], [true, true]);
+// Sub dashboard with an SCW login: still nothing — the sub scene never offers OMS actions.
+window.Knack.router.current_scene_key = 'scene_1353';
+window.Knack.views = {};
+document.body.innerHTML = '<div id="kn-scene_1353"><div class="kn-table kn-view" id="view_4165"><table><thead><tr>' +
+  COLS.map(([k, label]) => '<th class="' + k + '"><span class="table-fixed-label"><a class="kn-sort"><span>' + label + '</span></a></span></th>').join('') +
+  '</tr></thead><tbody></tbody></table></div></div>';
+window.Knack.views.view_4165 = models([shipRec({ id: 'u9', orderNo: 'autobot_10200', omsId: '64900', status: 'shipped', synced: now - 3600000 })]);
+api.open();
+check('sub dashboard + an @getscw.com login → still no re-check control (the scene rule beats the login)',
+  gateState(opened.el), [false, false, false, false]);
+check('a forced true (the test seam) never reaches the sub dashboard either',
+  (() => { api.setResyncEnabled(true); api.open(); const r = gateState(opened.el); api.setResyncEnabled(null); return r; })(),
+  [false, false, false, false]);
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

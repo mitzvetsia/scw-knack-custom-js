@@ -109,14 +109,48 @@
   var STYLE_ID = 'scw-ships-css';
   var EVENT_NS = '.scwShipments';
   var STALE_MS = 24 * 60 * 60 * 1000;   // older than this and the facts are not trustworthy
-  // 2026-10-16: the Re-check (resync / "re-pull") control is OFF on the
-  // deploy page. The drawer shows the shipment records as the OMS sync last
-  // left them — counts, cards, tracking links, contents — with no way to
-  // trigger a re-pull from here: the button, its reference box and every
-  // "re-check / resync" hint go with it. The payload builder stays for the
-  // day it comes back; flip this constant (or, in tests,
-  // SCW.shipments.setResyncEnabled(true)) to restore the control.
-  var RESYNC_ENABLED = false;
+  // 2026-10-16: the Re-check (resync / "re-pull") control went OFF: the
+  // drawer shows the shipment records as the OMS sync last left them —
+  // counts, cards, tracking links, contents — and the button, its reference
+  // box and every "re-check / resync" hint went with it.
+  // 2026-10-23 ("my re-check for shipments is MISSING from the SCW
+  // deployment dashboard"): it is BACK on the SCW (ops) deployment dashboard
+  // for @getscw.com logins — and stays off for every other login and on the
+  // subcontractor dashboard (SCENES `sub: true`: a sub cannot use the OMS).
+  // The control and every hint follow resyncEnabled(cfg) together.
+  // RESYNC_DOMAINS / RESYNC_EMAILS are the allow-list (both empty = nobody);
+  // RESYNC_FOR_EVERYONE = true is the pre-2026-10-16 behaviour (every login
+  // on the ops scene). Tests: SCW.shipments.setResyncEnabled(true | false)
+  // overrides the LOGIN gate (never the sub-scene rule);
+  // setResyncEnabled(null) lets it compute again.
+  var RESYNC_DOMAINS = ['getscw.com'];
+  var RESYNC_EMAILS = [];
+  var RESYNC_FOR_EVERYONE = false;
+  var RESYNC_FORCE = null;
+  function userEmail() {
+    try {
+      var u = typeof Knack !== 'undefined' && Knack.getUserAttributes && Knack.getUserAttributes();
+      return u && u.email ? String(u.email).trim().toLowerCase() : '';
+    } catch (e) { return ''; }
+  }
+  function emailMatches(email, emails, domains) {
+    if (!email) return false;
+    emails = emails || []; domains = domains || [];
+    for (var i = 0; i < emails.length; i++) {
+      if (String(emails[i]).toLowerCase() === email) return true;
+    }
+    var at = email.lastIndexOf('@'), dom = at >= 0 ? email.slice(at + 1) : '';
+    for (var d = 0; d < domains.length; d++) {
+      if (dom && String(domains[d]).toLowerCase().replace(/^@/, '') === dom) return true;
+    }
+    return false;
+  }
+  function resyncEnabled(cfg) {
+    if (cfg && cfg.sub) return false;
+    if (RESYNC_FORCE !== null) return RESYNC_FORCE;
+    if (RESYNC_FOR_EVERYONE) return true;
+    return emailMatches(userEmail(), RESYNC_EMAILS, RESYNC_DOMAINS);
+  }
 
   // Header text → logical field, most specific first. Matched against the
   // column header lowercased with non-alphanumerics collapsed to spaces
@@ -986,7 +1020,7 @@
       // broken feature, and the two reasons it can be empty have
       // completely different fixes — say which one this is.
       contents = '<div class="scw-ships__nocontents">' + (sh.hasBlobField
-        ? (RESYNC_ENABLED
+        ? (resyncEnabled(cfg)
             ? 'Contents not captured yet &mdash; resync to pull this order\u2019s items from the OMS.'
             : 'Contents not captured yet &mdash; the next OMS sync fills this in.')
         : 'Contents are not on this view yet &mdash; add the items-JSON field as a column on the shipments source view.') +
@@ -1034,9 +1068,11 @@
                 (s.neverSynced ? ' · ' + s.neverSynced + ' never synced' : '')
               : 'Last synced <b>' + esc(s.syncedText) + '</b>' +
                 (s.neverSynced ? ' · ' + s.neverSynced + ' never synced' : '')));
-    // The re-pull controls render only while RESYNC_ENABLED — the drawer is
-    // otherwise a read-only mirror of what the OMS sync last wrote.
-    var controls = RESYNC_ENABLED
+    // The re-pull controls render only for a login resyncEnabled(cfg) admits
+    // — the drawer is otherwise a read-only mirror of what the OMS sync last
+    // wrote.
+    var canResync = resyncEnabled(cfg);
+    var controls = canResync
       ? '<label class="scw-ships__reflabel">' +
           '<span class="scw-ships__reftitle">Also search a reference</span>' +
           '<input type="text" class="scw-ships__ref" data-scw-ships-ref="1" autocomplete="off" spellcheck="false" ' +
@@ -1056,12 +1092,12 @@
     if (s.stale && s.total) {
       html += '<div class="scw-ships__stalebanner">These figures come from the last sync, not from the OMS right now. ' +
         'Treat the statuses below as last known' +
-        (RESYNC_ENABLED ? ', and re-check before you rely on them.' : '.') + '</div>';
+        (canResync ? ', and re-check before you rely on them.' : '.') + '</div>';
     }
     if (!s.total) {
       html += '<div class="scw-ships__empty">Nothing has been ordered for this project yet, or an order exists in the OMS ' +
         'that nobody has attributed to this project.' +
-        (RESYNC_ENABLED ? ' Re-check shipments pulls the latest from the OMS.' : '') + '</div>';
+        (canResync ? ' Re-check shipments pulls the latest from the OMS.' : '') + '</div>';
     } else {
       html += '<div class="scw-ships__counts">' +
         '<span><b>' + s.total + '</b>' + (s.total === 1 ? 'shipment' : 'shipments') + '</span>' +
@@ -1154,8 +1190,8 @@
     shipments: function () { var c = activeScene(); return c ? shipments(c) : []; },
     summarize: summarize,
     resyncPayload: function (extraRefs) { var c = activeScene(); return c ? resyncPayload(c, extraRefs) : null; },
-    resyncEnabled: function () { return RESYNC_ENABLED; },
-    setResyncEnabled: function (on) { RESYNC_ENABLED = !!on; },
+    resyncEnabled: function () { return resyncEnabled(activeScene()); },
+    setResyncEnabled: function (on) { RESYNC_FORCE = (on === null || on === undefined) ? null : !!on; },
     splitExtraRefs: splitExtraRefs,
     parseReference: parseReference,
     fields: function () { var c = activeScene(); return c ? fields(c) : {}; },
