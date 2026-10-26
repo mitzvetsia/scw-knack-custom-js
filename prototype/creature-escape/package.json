@@ -1,0 +1,11 @@
+{
+  "name": "creature-escape-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Phase 1 prototype: biological state system + procedural routes over handcrafted areas + idempotent save/resume",
+  "scripts": {
+    "test": "node tests/run.js",
+    "serve": "python3 -m http.server 8080"
+  }
+}

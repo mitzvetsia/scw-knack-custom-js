@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Creature Escape</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#2a2f3a; --text:#e6e6e6; --dim:#9aa3b2; --accent:#7ed6a5; --warn:#e0a84a; --bad:#e06a6a; --ok:#7ed6a5; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, sans-serif; }
+  header { padding:12px 16px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:center; flex-wrap:wrap }
+  header h1 { font-size:16px; margin:0 12px 0 0 }
+  .stat { color:var(--dim) } .stat b { color:var(--text) }
+  main { display:grid; grid-template-columns: 1.1fr 1fr 1fr; gap:12px; padding:12px 16px; }
+  @media (max-width: 1000px) { main { grid-template-columns:1fr } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; min-height:120px }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 8px }
+  button { background:#232835; color:var(--text); border:1px solid #3a4150; border-radius:6px; padding:6px 10px; cursor:pointer; margin:2px 4px 2px 0; font:inherit }
+  button:hover { border-color:var(--accent) } button:disabled { opacity:.45; cursor:default }
+  button.primary { border-color:var(--accent) } button.danger { border-color:var(--bad) }
+  .card { border:1px solid var(--line); border-radius:6px; padding:8px; margin:6px 0; background:#121520 }
+  .card h3 { margin:0 0 4px; font-size:14px } .muted { color:var(--dim); font-size:12px }
+  .tag { display:inline-block; font-size:11px; padding:1px 6px; border-radius:10px; border:1px solid var(--line); color:var(--dim); margin-left:4px }
+  .active { color:var(--ok) } .obstructed, .unsupported { color:var(--bad) } .limited, .impaired { color:var(--warn) } .replaced { color:var(--dim); text-decoration:line-through }
+  #log { font-family:ui-monospace, monospace; font-size:12px; max-height:320px; overflow:auto; white-space:pre-wrap; color:#c9d1dc }
+  .bar { height:8px; background:#2a2f3a; border-radius:4px; overflow:hidden; margin:2px 0 6px } .bar i { display:block; height:100% }
+  .hp i { background:var(--bad) } .rs i { background:var(--accent) }
+  .enemy { display:flex; justify-content:space-between; align-items:center }
+  .items span { display:inline-block; margin:2px 6px 2px 0 }
+  .secured { color:var(--ok) } .risk { color:var(--warn) }
+  .end { font-size:18px; padding:10px; text-align:center }
+</style>
+</head>
+<body>
+<header>
+  <h1>Creature Escape — Phase 1 prototype</h1>
+  <span class="stat">Imprints <b id="imprints">0</b></span>
+  <span class="stat">Storage <b id="storageCount">0</b></span>
+  <span class="stat" id="runStat"></span>
+  <span style="flex:1"></span>
+  <button id="btnNew">New run</button>
+  <button id="btnResume">Resume saved run</button>
+  <button id="btnQuit" title="Saves and leaves the run; resume later">Quit (save)</button>
+  <button id="btnReset" class="danger" title="Wipe profile and save">Reset all</button>
+</header>
+<main>
+  <section id="colRoute">
+    <h2 id="routeTitle">Route</h2>
+    <div id="route"></div>
+    <h2 style="margin-top:12px">Log</h2>
+    <div id="log"></div>
+  </section>
+  <section>
+    <h2>Creature</h2>
+    <div id="vitals"></div>
+    <div id="anatomy"></div>
+    <h2 style="margin-top:12px">Active abilities</h2>
+    <div id="abilities"></div>
+    <h2 style="margin-top:12px">Why</h2>
+    <div id="explain" class="muted"></div>
+  </section>
+  <section>
+    <h2>Evolution offers</h2>
+    <div id="offers"></div>
+    <h2 style="margin-top:12px">Items</h2>
+    <div id="items" class="items"></div>
+    <h2 style="margin-top:12px">Evolution history</h2>
+    <div id="history" class="muted"></div>
+  </section>
+</main>
+<script type="module">
+import { createGame, ITEMS } from './src/game.js';
+import { localStorageStore } from './src/meta/profile.js';
+import { getMutation } from './src/biology/mutations.js';
+
+const game = createGame(localStorageStore(window.localStorage));
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function act(type, ...args) {
+  try { game.act(type, ...args); }
+  catch (e) { game.run.log.push('! ' + e.message); game.save(); }
+  render();
+}
+window.act = act;
+
+$('btnNew').onclick = () => { if (game.hasSave() && !confirm('Abandon the saved run? (Imprints already committed are kept.)')) return; game.newRun((Date.now() ^ (Math.random() * 1e9)) >>> 0); render(); };
+$('btnResume').onclick = () => { game.resume(); render(); };
+$('btnQuit').onclick = () => { game.save(); location.reload(); };
+$('btnReset').onclick = () => { if (confirm('Wipe profile, storage and the saved run?')) { game.profile.reset(); game.abandon(); render(); } };
+
+function render() {
+  const p = game.profile.data;
+  $('imprints').textContent = p.imprints;
+  $('storageCount').textContent = p.storage.length;
+  $('btnResume').disabled = !game.hasSave() || !!game.run;
+  const v = game.view();
+  if (!v) {
+    $('runStat').textContent = `${p.escapes} escapes · ${p.deaths} deaths`;
+    $('route').innerHTML = `<div class="card">No run in progress. ${game.hasSave() ? 'A saved run is waiting — Resume it, or start a new one.' : 'Start a new run.'}</div>` +
+      (p.storage.length ? `<div class="card"><b>Persistent storage</b><br>${p.storage.map(i => esc(ITEMS[i].name)).join(', ')}</div>` : '');
+    for (const id of ['log', 'vitals', 'anatomy', 'abilities', 'explain', 'offers', 'items', 'history']) $(id).innerHTML = '';
+    return;
+  }
+  $('runStat').textContent = `Zone ${v.pos.zone + 1}/${v.zoneCount} · ${v.zone.theme} · area ${v.pos.step + 1}/${v.stepCount} · run Imprints ${v.imprintsThisRun}`;
+  $('vitals').innerHTML = `HP ${v.hp}/${v.maxHp}<div class="bar hp"><i style="width:${100 * v.hp / v.maxHp}%"></i></div>Reserve ${v.reserve}/${v.maxReserve}<div class="bar rs"><i style="width:${100 * v.reserve / v.maxReserve}%"></i></div>` +
+    `<div class="muted">${esc(v.bio.frame.name)} · mass ${v.bio.mass} · speed ${v.bio.stats.speed} turn ${v.bio.stats.turn} stop ${v.bio.stats.stop} force ${v.bio.stats.force} armor ${v.bio.capabilities.armor || 0} · appendages free ${v.bio.frame.freeAppendages}/${v.bio.frame.appendageBudget} · stomach ${v.stomach.reduce((s, i) => s + i.size, 0)}/${v.bio.stomachCapacity}</div>`;
+  $('anatomy').innerHTML = v.bio.anatomy.length ? v.bio.anatomy.map(e => `<div><span class="${e.status}">${esc(e.name)}</span> <span class="tag">${e.status}</span>${e.reason ? `<div class="muted">${esc(e.reason)}</div>` : ''}</div>`).join('') : '<div class="muted">Baseline specimen. No mutations yet.</div>';
+  $('abilities').innerHTML = v.bio.abilities.map(a => `<div>${esc(a.name)} <span class="tag">${a.kind}</span>${a.damage ? `<span class="tag">dmg ${a.damage} · spd ${a.speed}</span>` : ''}${a.flags.map(f => `<span class="tag">${f}</span>`).join('')}${a.effects.map(f => `<span class="tag">${f.type}</span>`).join('')}</div>`).join('');
+  $('explain').innerHTML = v.bio.explanations.map(l => `<div>· ${esc(l)}</div>`).join('') || 'Nothing is in conflict.';
+  $('history').innerHTML = v.bio.history.map(h => `${h.order}. ${esc(h.name)}`).join('<br>') || '—';
+  $('log').innerHTML = v.log.map(esc).join('\n');
+  $('log').scrollTop = $('log').scrollHeight;
+
+  // Offers
+  const canEvolve = v.phase === 'choose' ? true : (v.phase === 'area' && !v.encounter.enemies.some(e => e.hp > 0));
+  $('offers').innerHTML = v.offers.length ? v.offers.map(id => { const m = getMutation(id); return `<div class="card"><h3>${esc(m.name)} <span class="tag">${m.category}</span></h3><div class="muted">${esc(m.text || '')}</div><button class="primary" ${canEvolve ? '' : 'disabled'} onclick="act('evolve','${id}')">Evolve</button></div>`; }).join('') : '<div class="muted">No offers here.</div>';
+
+  // Items
+  const floorItems = v.floor.filter(x => ITEMS[x]);
+  const food = v.floor.filter(x => x.startsWith('biomass:') || x === 'nutrient-brick');
+  $('items').innerHTML =
+    `<div><b class="secured">Inside you (safe for the run):</b> ${v.stomach.map(i => `<span>${esc(i.name)}${i.biomass ? ` <button onclick="act('eat','${i.id}')">eat</button>` : ''}</span>`).join('') || '<span class="muted">empty</span>'}</div>` +
+    `<div><b class="risk">In this area (lost if you die before the zone exit):</b> ${floorItems.map((x, i) => `<span>${esc(ITEMS[x].name)} ${v.phase === 'area' ? `<button onclick="act('swallow','${x}')">swallow</button>` : ''}</span>`).join('') || '<span class="muted">nothing</span>'}</div>` +
+    (food.length && v.phase === 'area' ? `<div><b>Feed:</b> ${food.map(x => `<button onclick="act('eat','${x}')">${x.startsWith('biomass:') ? 'eat corpse (' + x.split(':')[2] + ')' : 'eat nutrient brick'}</button>`).join('')}</div>` : '') +
+    `<div class="muted">At risk elsewhere in this zone: ${v.atRisk.length} · Secured in storage: ${v.storage.length}</div>`;
+
+  // Route column
+  if (v.phase === 'dead' || v.phase === 'escaped') {
+    $('routeTitle').textContent = v.phase === 'escaped' ? 'Escaped' : 'Dead';
+    $('route').innerHTML = `<div class="end">${v.phase === 'escaped' ? 'The creature breaches the facility perimeter.' : 'The specimen is terminated.'}<br><span class="muted">${v.imprintsThisRun} Imprints committed this run.</span></div><button class="primary" onclick="document.getElementById('btnNew').click()">New run</button>`;
+    return;
+  }
+  if (v.phase === 'choose') {
+    $('routeTitle').textContent = v.routeOptions.length > 1 ? 'Route junction — choose' : 'Ahead';
+    $('route').innerHTML = v.routeOptions.map(o => `<div class="card"><h3>${esc(o.name)} <span class="tag">${o.type}</span>${o.tight ? '<span class="tag">tight</span>' : ''}${o.skip ? '<span class="tag">skips ahead</span>' : ''}</h3><div class="muted">${esc(o.clue)} — ${esc(o.hint)}</div><button class="primary" onclick="act('choose',${o.index})">Go</button></div>`).join('');
+    return;
+  }
+  if (v.phase === 'exit') {
+    $('routeTitle').textContent = `Zone exit — ${v.current.name}`;
+    $('route').innerHTML = `<div class="muted">A constrained escape, not a fight: pick the path your anatomy and inventory open.</div>` + v.exitPaths.map(p => `<div class="card"><h3>${esc(p.name)}</h3><div class="muted">Needs: ${esc(JSON.stringify(p.needs)) === '{}' ? 'nothing' : esc(describeNeeds(p.needs))} · Cost: ${esc(describeCost(p.cost))}</div><button ${p.available ? 'class="primary"' : 'disabled'} onclick="act('exit','${p.id}')">${p.available ? 'Take this path' : 'Not possible for this body'}</button></div>`).join('');
+    return;
+  }
+  // area
+  $('routeTitle').textContent = v.current.name;
+  const live = v.encounter.enemies.filter(e => e.hp > 0);
+  const attacks = v.bio.abilities.filter(a => a.kind === 'attack');
+  $('route').innerHTML = `<div class="muted">${esc(v.current.clue)}</div>` +
+    v.encounter.enemies.map(e => `<div class="card enemy"><div>${esc(e.name)} <span class="tag">${e.hp <= 0 ? 'down' : 'HP ' + e.hp + '/' + e.maxHp}</span>${e.poison ? '<span class="tag">envenomed</span>' : ''}</div><div>${e.hp > 0 ? attacks.map(a => `<button onclick="act('attack','${a.id}',${e.slot})" title="dmg ${a.damage}${a.reserveCost ? ', reserve ' + a.reserveCost : ''}${a.pool ? ', ' + a.pool + ' pool' : ''}">${esc(a.name)}</button>`).join('') : ''}</div></div>`).join('') +
+    (live.length ? '' : `<button class="primary" onclick="act('leave')">Move on${v.current.skip ? ' (skip ahead)' : ''}</button>`);
+}
+function describeNeeds(n) {
+  if (n.ability) return 'ability ' + n.ability; if (n.capability) return 'capability ' + n.capability;
+  if (n.item) return ITEMS[n.item].name; if (n.stat) return `${n.stat[0]} ≥ ${n.stat[1]}`; return 'nothing';
+}
+function describeCost(c) {
+  const parts = []; if (c.hp) parts.push(`-${c.hp} HP`); if (c.reserve) parts.push(`-${c.reserve} reserve`);
+  if (c.item) parts.push('uses ' + ITEMS[c.item].name); if (c.pool) parts.push(c.pool + ' pool'); return parts.join(', ') || 'none';
+}
+if (game.hasSave()) game.resume();
+render();
+</script>
+</body>
+</html>
