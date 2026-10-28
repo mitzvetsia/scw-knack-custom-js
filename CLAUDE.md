@@ -1115,6 +1115,15 @@ too, since it catches the next regression where someone is actually looking.
   the receivable side of the pending accounts. Exclude them from receivables, collections
   targets, and DSO. Likewise `SVS Estimates` bills and the `ESTIMATED Install Services
   Subcontractors` expense line are placeholders for estimated sub labor, not real payables.
+- **The contact is NOT the marker for a pending install invoice.** Pending install invoices
+  are created by Make 10.01 at acceptance with a ~180-day due date and may sit on the REAL
+  customer contact (e.g. INV-11795 Town of Haverstraw, coded 4058/4059). Identify them by the
+  180-day due date and/or 4058/4059 coding. On 2026-10-28 about $395K of them sat on real
+  contacts on top of the $849K on the placeholder contact.
+- **Coding is inconsistent**: many pending install invoices are coded to the live accounts
+  4053/4054 (Installation Services Revenue) instead of 4058/4059. Accrual install revenue is
+  therefore contaminated even after subtracting the Pending accounts. Treat accrual install
+  revenue as unreliable; the cash-basis P&L is the only clean read.
 - Lead with **cash-basis** figures for any "how is cash doing" question; use accrual only
   after stripping the placeholders above.
 - **TODO (2026-10-28): dive into the Freight & Delivery account.** Accrual freight ran
