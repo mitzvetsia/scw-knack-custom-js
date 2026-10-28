@@ -1117,3 +1117,7 @@ too, since it catches the next regression where someone is actually looking.
   Subcontractors` expense line are placeholders for estimated sub labor, not real payables.
 - Lead with **cash-basis** figures for any "how is cash doing" question; use accrual only
   after stripping the placeholders above.
+- **TODO (2026-10-28): dive into the Freight & Delivery account.** Accrual freight ran
+  $102K Aug–Oct vs $46K the prior quarter (+119%) while COGS fell 22%. Pull the transactions,
+  split carrier/inbound/outbound, and check for duplicate UPS bills (two UPS invoices totaling
+  $47K were sitting overdue in payables on 2026-10-28).
