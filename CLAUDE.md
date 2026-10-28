@@ -1990,10 +1990,15 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   the flags they found. In the exports, the routes the accessory work rewrote were OFF: 04.04 / K2 / 04.01a router [66]
   route 3 (the parent-link pass) and router [109] route 0 inside it — so new surveys got brackets with no REL_parent —
   and 05.01 routes 0 / 1 of routers [49] and [131] (picked + default accessories; off because they made stray SOW lines).
-  The "(… routes on)" blueprints switch exactly those on and change nothing else. Left as found (unrelated): 06.02
-  router [68] route 0 (old path, copies the parent's MDF onto accessories), 06.02 router [73] route 3 (the network pass —
-  a sync does not carry Connected Devices to the SOW), 06.03 router [20] route 5 ([63], re-points the bid package's
-  REL_SOW to the new SOW). Scan an export for `"disabled": true` on route objects before reasoning about what runs.
+  The "(… routes on)" blueprints switch exactly those on and change nothing else. Left as found: 06.02 router [68] route 0
+  (route 0's update copies the parent's MDF onto its SOW accessories — harmless, not needed now that brackets ride their own
+  bid lines); 06.02 router [73] route 3 (route 1's network pass — **do not switch on**: [133] keeps only the NVR's current
+  connections that are on THIS SOW, so a shared NVR loses its other-SOW cameras while they still name it in field_2197; it
+  only adds; a camera moved to another NVR stays listed under the old one. It is also redundant: route 0's own network
+  pass, router [20] route 3, is on and runs for the page's action); 06.03 router [20] route 5 ([63]: REPLACES the bid
+  package's REL_SOW `field_2387` with the new SOW — the bid stops being the old SOW's soft default and 06.04's Update
+  from the old SOW can no longer find it; the bid still shows on the old SOW's grid while it prices items there). Scan an
+  export for `"disabled": true` on route objects before reasoning about what runs.
 - **view_3505 hid every bracket (found 2026-10-28)**: its Builder source filter carried two "match at least one" groups —
   (MDF/IDF not blank OR bucket is not Mounting Hardware) AND (MDF/IDF blank OR bucket is not Mounting Hardware) — which
   together read "never Mounting Hardware". With brackets now on surveys the user removed both groups; the grid's own
@@ -2026,6 +2031,14 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   this SOW; survey `field_2404`, SOW `field_2630`, photos); an extra gets its own SOW line with `field_2464` = the parent's,
   is linked, and joins the parent's `field_2207`. A default the search cannot find (removed from the SOW meanwhile) stays
   unlinked and the next 06.04 Update takes it off the bid. Import 06.02 before 05.01.
+  **Both paths run (found 2026-10-28)**: the reconcile page's "Update SOW to match this bid" sends actionType
+  `package_copy_to_sow`, so router [69] runs route 0 (the page's updates / creates / removals lists, labelled "OLD WAY" but
+  live) and then route 1 (searches the bid). The "(survey accessories v2)" blueprint closes route 0 too: [168] reads the
+  bid line's survey item and router [43] creates only lines with no REL_parent; [46] (route 0's default accessories) takes
+  the product's Require Sub Bid; the accessory pass finds a default's SOW line by parent + product and puts it back on this
+  SOW (route 1's REMOVE runs before the pass and takes off a non-mounting default that requires a sub bid). Route 0's
+  removals still come from the page's list (bid-review/actions.js skips licenses and accessories of a covered parent only),
+  so SCW-provided items an older bid never carried are listed for removal in the confirm modal.
 - **06.03 Create NEW SOW to match Bid (patched blueprint 2026-10-28, "… (accessory links)", built on the no-double-links
   import)**: route 1 of router [20] ([18] -> [19] -> [29]) creates a SOW line for each bid-only record in the bundle's
   `orphanBidRecords` payload (bid-review/actions.js) with no parent link and a blank Require Sub Bid. A new route right
