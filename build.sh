@@ -253,6 +253,7 @@ cat \
   src/features/worksheet-v2/co-value.js \
   src/features/worksheet-v2/co-sub-lock.js \
   src/features/worksheet-v2/co-ops-lock.js \
+  src/features/role-readonly.js \
   src/features/worksheet-v2/co-review-diff.js \
   src/features/worksheet-v2/co-swap-pairs.js \
   src/features/worksheet-v2/focus-link.js \
