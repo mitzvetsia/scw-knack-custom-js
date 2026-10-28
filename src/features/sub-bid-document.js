@@ -624,8 +624,10 @@
   function bodyHtml(model, opts) {
     opts = opts || {};
     var h = model.header || {}, T = model.totals;
+    // On the page the document fills the view like the other grids do; the
+    // PDF is letter-width through @page.
     var pad = opts.pdf ? '0' : '28px 40px 40px';
-    var out = '<div class="scw-bid-doc-body" style="box-sizing:border-box;' + (opts.pdf ? '' : 'max-width:816px;margin:0 auto;') +
+    var out = '<div class="scw-bid-doc-body" style="box-sizing:border-box;width:100%;' +
       'padding:' + pad + ';background:#fff;font-family:' + FONT + ';color:#1f2937;font-size:12px;line-height:1.45;">';
     out += bannerHtml(h);
     if (h.title || h.expires) {
@@ -791,11 +793,13 @@
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = [
-      '.scw-bid-doc-host .kn-table-wrapper, .scw-bid-doc-host .kn-records-nav, .scw-bid-doc-host > .view-header { display: none !important; }',
+      // Everything Knack renders for the grid (view header, filter bar, "Showing
+      // 1-18 of 18", the table, the records nav) stays in the DOM, hidden.
+      '.scw-bid-doc-host > :not(.' + ROOT_CLASS + ') { display: none !important; }',
       '.scw-bid-doc-hidden { display: none !important; }',
       '.' + ROOT_CLASS + ' { margin: 0 0 24px; }',
       '.' + ROOT_CLASS + ' .scw-bid-doc-body { box-shadow: 0 1px 3px rgba(15, 23, 42, .12), 0 0 0 1px #e2e8f0; border-radius: 4px; }',
-      '.' + ROOT_CLASS + ' .scw-bid-doc-note { max-width: 816px; margin: 0 auto 10px; padding: 8px 12px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 4px; font: 12px/1.45 ' + FONT + '; color: #92400e; }',
+      '.' + ROOT_CLASS + ' .scw-bid-doc-note { margin: 0 0 10px; padding: 8px 12px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 4px; font: 12px/1.45 ' + FONT + '; color: #92400e; }',
       '@media (max-width: 720px) { .' + ROOT_CLASS + ' .scw-bid-doc-body { padding: 16px !important; } }'
     ].join('\n');
     document.head.appendChild(s);
