@@ -1104,3 +1104,16 @@ too, since it catches the next regression where someone is actually looking.
   point the SAVE_VIEWS entry at it.
 - **Not changed**: the survey worksheet (view_3505) still opens the FULL editable QA modal
   for the sub on empty required slots — same class of leak, decide separately.
+
+## Xero / financial reporting conventions (READ BEFORE ANY CASH OR P&L ANALYSIS)
+
+- **"Pending" accounts are NOT revenue.** `Pending Installation Services Revenue` and
+  `Pending Equipment Revenue` are placeholders for work not yet earned. Subtract them from
+  accrual income and profit before reporting anything. Never describe them as revenue,
+  profit, or "money owed to you."
+- **The `PLACE HOLDER FOR INSTALL INVOICES` contact is not a customer.** Its invoices are
+  the receivable side of the pending accounts. Exclude them from receivables, collections
+  targets, and DSO. Likewise `SVS Estimates` bills and the `ESTIMATED Install Services
+  Subcontractors` expense line are placeholders for estimated sub labor, not real payables.
+- Lead with **cash-basis** figures for any "how is cash doing" question; use accrual only
+  after stripping the placeholders above.
