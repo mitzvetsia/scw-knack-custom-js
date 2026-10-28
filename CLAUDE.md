@@ -1956,12 +1956,17 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   so it runs after every item for that SOW exists, like the network pass), [110] finds the accessory's survey item, [113]
   its parent's (`field_2404` = the parent SOW line, same request), [116] writes `field_2416` = that parent on the
   accessory; [111]/[112]/[115]/[117] removed ([117] lowercased the accessory's stored product name and cut it at
-  "for the"); [210]'s mounting-list text splits on `" for "` (was `"for"`, which cut "Platform"). **Pending**: 06.04
-  "Update bid from SOW" needs the same item rule (everything but licenses, `require sub bid = No` items included), the
-  same parent pass and a matching unlink rule, or the next update leaves brackets off / unlinked; 05.01 (survey add)
-  still creates Materials accessories as SOW line items; bundle — view_3505 / view_3550 / view_3680 need the `field_2416`
-  column, the survey card needs the accessory fold (worksheet-v2 `parent` slot), and the line-item bid PDF reads it
-  directly. Until then brackets show on the survey worksheet as their own Mounting Hardware cards with labor hidden.
+  "for the"); [210]'s mounting-list text splits on `" for "` (was `"for"`, which cut "Platform"). [65] also SEEDS the SOW's
+  estimates now (decided 2026-10-28: "SOW estimates SHOULD seed the survey"): drop length `field_2367` ← SOW `field_1965`,
+  conduit `field_2368` ← SOW `field_2035`; mounting height has no SOW source and stays the sub's. Photo slots need no
+  change: every create path (04.04 / K2 [162]–[163], 06.04 [35]–[40] / [67]–[72]) seeds survey-phase photo requirements
+  for ANY new item whose product has a deliverables schema, so brackets get slots the day their product asks for them.
+  **06.04 and 06.02 patched the same day** (see Known Issue #26). **Pending**: 05.01 (survey add) still creates Materials
+  accessories as SOW line items; bundle — view_3505 / view_3550 / view_3680 need the `field_2416` column, the survey card
+  needs the accessory fold (worksheet-v2 `parent` slot), and the line-item bid PDF reads it directly. Until then brackets
+  show on the survey worksheet as their own Mounting Hardware cards with labor hidden. Backfill = "Update Subcontractor
+  Bid Request" on each open bid once 06.04 is imported. Pre-existing, not touched: 04.04's contact branch merge [174]
+  still maps a deleted module 176, so a POC with no matching contact passes no contact id on.
 
 ### 18. Pre-bundle flash on gated scenes — raw scene paints before the bundle's CSS exists
 - **Symptom (scene_1116, likely all NO_KTL_SCENES)**: on load the raw Knack views paint for ~a second, THEN the scene-load veil/spinner appears, then the styled reveal. All in-bundle veil work (scene-tweaks.js `scw-scene-ready` gating, 2026-07-07) only helps AFTER the bundle executes — the first paint races the bundle download and wins.
@@ -2233,6 +2238,23 @@ too, since it catches the next regression where someone is actually looking.
   first; `field_1953` vs `field_2263` for SCW notes; unlinked items stay on the survey (not deleted);
   licenses / Require-Sub-Bid = No items already on bids leave them on the next Update; new items still
   seed labor $ / description from the SOW line.
+- **v4 (2026-10-28) — the v3 item rule is REVERSED**: v3's "no License / Mounting / Require Sub Bid = No" rule
+  ([8], [59], and the unlink pass's [141]) kept SCW-provided equipment off bids AND unlinked it on every Update — and
+  06.02 "Sync SOW to match Bid" removes any SOW line its bid does not carry (its [110] skipped only mounting hardware and
+  licenses), so a sync after a v3 Update could drop no-sub-bid equipment from the SOW. The 2026-10-28 export showed 159
+  no-sub-bid survey items on NO bid across 35 survey requests. v4: all three filters are **License only** (mounting
+  hardware and Require Sub Bid = No ride the bid, priced or not); new parent passes after the loop on both paths
+  (Request Alt Bid router [120] route 2 = [145]–[148], Update router [86] route 2 = [149]–[152]: payload SOW lines with a
+  `field_2464` parent → the accessory's survey item → its parent's on the same request → `field_2416` REL_parent =
+  [parent]); [61] clears `field_2416` (`{{emptyarray}}`) so the pass sets the current parent; [16] / [65] seed conduit
+  `field_2368` ← `field_2035` (drop length was already seeded; [61] still re-copies drop length on every update, as
+  before — conduit is create-only); mount-list splits on `" for "`; the unlink search [143] limit 500 → 10000.
+  **Builder**: view_4140 (the payload's SOW lines) must carry the conduit column `field_2035` for the seed to land; it
+  already carries `field_1965` and the parent `field_2464` (proposal-grid-v2 requires it). **06.02 patched with it**:
+  [110] also skips `field_2479 = No` lines (a sub's bid prices labor; it never decides whether SCW-provided equipment
+  stays on the SOW, and pre-v4 bids never carried those lines), and [78] keeps an accessory's own Require Sub Bid
+  (`if(length(80.field_2464_raw) > 0; 80.field_2479_raw; 77.field_2477_raw)`) instead of resetting it from the product,
+  so a sync never pops a bracket out from under its device. Import order: 06.02, 06.04, then 04.04 / K2.
 
 ### 25. Sales page photo modal (view_3586) — restricted, QA read-only; Builder activation pending
 - **Shipped 2026-09-17**: the worksheet-v2 photo modal now has a per-surface policy
