@@ -1968,11 +1968,21 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   match Bid" needed only de-duplication: a bracket now reaches the new SOW both as its own matched bid line ([52]) and
   through its parent's `field_2207` list ([58]) — both writes are `distinct(add(…))`; bid-only accessory lines would
   land without a parent, but none exist until 05.01 creates accessory survey items. Pre-existing, not touched: 06.03's
-  default-assumptions route ([64]–[69]) lost its create/update modules 67 / 68, so it adds nothing to the new SOW. **Pending**: 05.01 (survey add) still creates Materials
-  accessories as SOW line items; bundle — view_3505 / view_3550 / view_3680 need the `field_2416` column, the survey card
-  needs the accessory fold (worksheet-v2 `parent` slot), and the line-item bid PDF reads it directly. Until then brackets
-  show on the survey worksheet as their own Mounting Hardware cards with labor hidden. Backfill = "Update Subcontractor
-  Bid Request" on each open bid once 06.04 is imported. Pre-existing, not touched: 04.04's contact branch merge [174]
+  default-assumptions route ([64]–[69]) lost its create/update modules 67 / 68, so it adds nothing to the new SOW. **Survey worksheet (bundle, same day)**: view_3505
+  maps `parent: 'field_2416'` (worksheet-v2/config.js). A Require Sub Bid = No accessory folds under its parent card (whose
+  read-only Mounting Hardware line, `field_2463`, already names it), a priced one sits beside it in the parent's MDF/IDF,
+  and one whose parent is not loaded lands in "Orphaned Accessories" — where EVERY bracket lands without the mapping or
+  without the column (**Builder: `field_2416` must be a column on view_3505**; groups.js warns in the console when it is
+  missing). The catalog's wrong-accessory warning is off on `noAccessories` views (warnings.js — the sub cannot act on
+  it), and `accessoryFollow: ['bid', 'mdfIdf']` makes a Bid or MDF/IDF edit on a parent carry its accessories (bulk.js
+  `propagateToAccessories` in the bulk modal, `followParent` for the card's per-row pickers — capped retry queue; a
+  cleared bid carries a survey note so survey-bid-validate's gate passes). Test:
+  `tests/worksheet-v2/test-survey-accessory-fold.js`. **Pending**: 05.01 (survey add) still creates Materials accessories
+  as SOW line items; the line-item bid PDF will read `field_2416` when it is rebuilt — until then brackets print in
+  view_3550's Mounting Hardware section. **Backfill**: not a blanket Update. 06.04's Update also takes off the bid every
+  item whose SOW line is not on that SOW (the reconcile grid's "Not on this SOW" rows — 1,148 such items across 367
+  requests in the 2026-10-28 export, most of them on closed requests) and re-copies the SOW's drop length over the sub's;
+  existing surveys pick their brackets up on their next real Update. Pre-existing, not touched: 04.04's contact branch merge [174]
   still maps a deleted module 176, so a POC with no matching contact passes no contact id on.
 
 ### 18. Pre-bundle flash on gated scenes — raw scene paints before the bundle's CSS exists

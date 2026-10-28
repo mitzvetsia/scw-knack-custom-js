@@ -413,17 +413,21 @@
       //    Qty (field_2399), and the line's bid membership is a connection
       //    (field_2415). card.js branches on this (see isSurveyMoney).
       //
-      // ⚠️ PARENT/CHILD: Survey Line Items have NO accessory parent/child
-      //    denormalization yet (no analogue of the SOW's field_1957↔2197
-      //    cascade or field_2464 accessory→parent). connectedDevices
-      //    (field_2380, on NVR/switch) and connectedDevice (field_2381,
-      //    "Connected To" on a cam/reader) exist as PLAIN Knack
-      //    connections — they are NOT backed by mirror-connection-sync.
-      //    `accessories`/`children`/`parent`/`accessoryMatch` are
-      //    intentionally UNMAPPED here and the survey card path renders no
-      //    mounting-hardware/accessory UI. When that relationship is added
-      //    to the survey object (see CLAUDE.md), it maps into these same
-      //    logical slots — config-only at that point.
+      // ⚠️ PARENT/CHILD (2026-10-28): field_2416 is REL_parent — each
+      //    Survey Line Item names ONE parent, the survey twin of the SOW's
+      //    field_2464. Make writes it (04.04 / K2 / 04.01a at create, 06.04
+      //    on Request Alt Bid / Update) from the SOW line's parent; nothing
+      //    on this page edits it, and there is no forward children list to
+      //    keep in sync (`children` stays unmapped). Mapped as `parent`, so
+      //    groups.js folds a Require Sub Bid = No accessory under its parent
+      //    card (the parent's read-only "Mounting Hardware" line, field_2463,
+      //    already names it), a priced one sits next to its parent, and one
+      //    whose parent is not loaded lands in "Orphaned Accessories". The
+      //    survey card still renders no accessory chips or add/remove UI
+      //    (noAccessories below). ⚠️ Builder: field_2416 must be a COLUMN on
+      //    view_3505 — without it every bracket reads as an orphan.
+      //    connectedDevices (field_2380) / connectedDevice (field_2381) are
+      //    the network pair, kept aligned by mirror-connection-sync.
       ,{
         // Survey card path lives in card.js (moneyMode:'survey' branch +
         // buildRow_survey/buildDetail_survey + bucket resolution via
@@ -516,9 +520,15 @@
         sowContext:        { kind: 'bid', requireChoice: true, listView: 'view_3507',
                              idField: 'field_2414', nameField: 'field_2636',
                              statusField: 'field_2550', pdfField: 'field_2626' },
-        noAccessories:     true,            // Survey Line Items have no accessory
-                                            // relationship yet (CLAUDE.md #16) — hide
-                                            // the bulk Add/Remove accessories buttons
+        noAccessories:     true,            // the sub never adds / removes accessories
+                                            // (Make copies them from the SOW): hide the
+                                            // bulk Add/Remove accessories buttons and
+                                            // the catalog's wrong-accessory warning
+        accessoryFollow:   ['bid', 'mdfIdf'], // a Bid or MDF/IDF edit on a parent (bulk or
+                                            // the card's pickers) carries its accessories
+                                            // along (bulk.js followParent), so a bracket
+                                            // never stays on a bid or in an IDF its
+                                            // camera left
         // When a bulk edit CLEARS this connection, require a note ONCE and
         // write it into every clearing row's PUT (so the rows carry the note
         // and survey-bid-validate's bid-gate doesn't re-prompt). Logical names.
@@ -584,9 +594,10 @@
           qtyOne:         'field_2373',     // FLAG_limit to quantity one
           locked:         'field_2551',     // FLAG_locked
           warningCount:   'field_2454',     // SYS_incomplete photos
-          // connections (plain — NO mirror-sync cascade; see note above)
+          // connections (network pair — mirror-connection-sync view_3505 instance)
           connectedDevices: 'field_2380',   // on NVR/switch (multi)
           connectedDevice:  'field_2381',   // "Connected To" on cam/reader (single)
+          parent:           'field_2416',   // REL_parent (child → parent, single; Make-owned)
           // detail
           dropLength:     'field_2367',
           conduit:        'field_2368',

@@ -1715,12 +1715,26 @@
         // requirement is satisfied without a second modal.
         if (fieldKey === (SF.bid || 'field_2415')) {
           var _noteKey = SF.surveyNotes || 'field_2412';
+          var _clearNoteText = '';
           ns.picker.open({
             sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
             fieldKey: fieldKey, label: 'Bid', selectedIds: sel,
             candidates: surveyCandidates(['view_3507'], 'field_2414', fieldKey, 'field_2636'), groupBy: false,
             itemLabel: function (r) { return r.name || r.id; },
-            multi: true, onSaved: surveyRefetch,
+            multi: true,
+            // The item's accessories (REL_parent, config accessoryFollow) take
+            // the same bids, so a bracket never stays on a bid its camera
+            // left; refetch once they have settled.
+            onSaved: function (ids) {
+              var vals = {};
+              vals[fieldKey] = Array.isArray(ids) ? ids : [];
+              var follow = (ns.bulk && typeof ns.bulk.followParent === 'function')
+                ? ns.bulk.followParent(viewKey, recordId, vals,
+                    { fieldKey: _noteKey, text: _clearNoteText })
+                : null;
+              if (follow && typeof follow.then === 'function') follow.then(surveyRefetch, surveyRefetch);
+              else surveyRefetch();
+            },
             // Clearing every bid requires a survey note written in the SAME
             // PUT. The note field is integrated into the picker (shown only
             // when all selections are cleared) and prefilled with the current
@@ -1736,6 +1750,7 @@
               // Suppress survey-bid-validate's knack-cell-update gate so it
               // doesn't re-prompt (and clobber) on the picker's own refresh.
               onClear: function (note) {
+                _clearNoteText = note || '';
                 if (SCW.surveyBidValidate &&
                     typeof SCW.surveyBidValidate.markOwnBidWrite === 'function') {
                   SCW.surveyBidValidate.markOwnBidWrite(recordId, note);
@@ -1754,7 +1769,16 @@
             fieldKey: fieldKey, label: 'MDF / IDF', selectedIds: sel,
             candidates: surveyCandidates(['view_3617'], 'field_1642', fieldKey), groupBy: false,
             itemLabel: function (r) { return r.name || r.id; },
-            multi: false, onSaved: surveyRefetch
+            multi: false,
+            // Accessories move with their parent (config accessoryFollow).
+            onSaved: function (ids) {
+              var vals = {};
+              vals[fieldKey] = Array.isArray(ids) ? ids : [];
+              var follow = (ns.bulk && typeof ns.bulk.followParent === 'function')
+                ? ns.bulk.followParent(viewKey, recordId, vals, null) : null;
+              if (follow && typeof follow.then === 'function') follow.then(surveyRefetch, surveyRefetch);
+              else surveyRefetch();
+            }
           });
           return;
         }

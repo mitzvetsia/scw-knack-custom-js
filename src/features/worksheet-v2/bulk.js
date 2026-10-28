@@ -1323,6 +1323,92 @@
     return accIds;
   }
 
+  /** Membership fields an accessory always shares with its parent: the SOW
+   *  (field_2154) on every view, plus the view's config accessoryFollow
+   *  (logical names via cfg.fields — the survey worksheet's Bid, field_2415). */
+  function accessoryFollowKeys(sourceViewKey) {
+    var keys = ['field_2154'];
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      var F = (ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(sourceViewKey)) || {};
+      var extra = (vc && vc.accessoryFollow) || [];
+      for (var i = 0; i < extra.length; i++) {
+        var k = F[extra[i]] || extra[i];
+        if (k && keys.indexOf(k) === -1) keys.push(k);
+      }
+    } catch (e) { /* SOW only */ }
+    return keys;
+  }
+
+  /** When a bulk edit touches one of those fields, copy each parent's
+   *  RESULTING value (post replace/add) onto its accessory children (the
+   *  view's child → parent back-pointer) so they are not left behind on the
+   *  old SOW / bid. Overrides any value an accessory got from being selected
+   *  directly — the match invariant wins. Mutates jobsByKey. */
+  function propagateToAccessories(jobsByKey, ids, appliedKeys, sourceViewKey) {
+    var keys = accessoryFollowKeys(sourceViewKey).filter(function (k) {
+      return appliedKeys.indexOf(k) !== -1;
+    });
+    if (!keys.length) return;
+    var accMap = accessoriesByParent(ids, sourceViewKey);
+    ids.forEach(function (rid) {
+      var parentJob = jobsByKey[sourceViewKey + '|' + rid];
+      if (!parentJob) return;
+      keys.forEach(function (key) {
+        if (!(key in parentJob.body)) return;
+        var parentVal = parentJob.body[key];
+        (accMap[rid] || []).forEach(function (accId) {
+          var jk = sourceViewKey + '|' + accId;
+          if (!jobsByKey[jk]) jobsByKey[jk] = { viewKey: sourceViewKey, recordId: accId, body: {} };
+          jobsByKey[jk].body[key] = parentVal;
+        });
+      });
+    });
+  }
+
+  /** The same rule for an edit made OUTSIDE the bulk modal (the survey card's
+   *  per-row Bid picker): PUT the parent's new values onto its accessories
+   *  through the capped retry queue. `values` = { fieldKey: value }; keys off
+   *  the view's follow list are ignored. `clearNote` (optional) = { fieldKey,
+   *  text }: when a value empties the field, each accessory's PUT carries a
+   *  note (its own if it has one, else `text`) — the bid-clear gate's rule,
+   *  as maybePromptClearNote applies it. Resolves to the settled
+   *  { ok, recordId, status } results ([] when there is nothing to carry). */
+  function followParent(sourceViewKey, parentId, values, clearNote) {
+    var keys = accessoryFollowKeys(sourceViewKey);
+    var body = {}, any = false, empties = false;
+    for (var k in values) {
+      if (!Object.prototype.hasOwnProperty.call(values, k) || keys.indexOf(k) === -1) continue;
+      var v = values[k];
+      body[k] = v; any = true;
+      if (Array.isArray(v) ? !v.length : (v == null || v === '')) empties = true;
+    }
+    var accIds = any ? (accessoriesByParent([parentId], sourceViewKey)[parentId] || []) : [];
+    if (!accIds.length) return runQueue([]);
+    var idx = (empties && clearNote && clearNote.fieldKey) ? attrsIndex(sourceViewKey) : null;
+    var jobs = accIds.map(function (accId) {
+      var b = {};
+      for (var bk in body) b[bk] = body[bk];
+      if (idx) {
+        var a = idx[accId] || {};
+        var raw = a[clearNote.fieldKey + '_raw'];
+        var own = (typeof raw === 'string') ? raw : a[clearNote.fieldKey];
+        var ownText = (own != null) ? String(own).replace(/<[^>]*>/g, '').trim() : '';
+        b[clearNote.fieldKey] = ownText ? own : (clearNote.text || '');
+      }
+      return { viewKey: sourceViewKey, recordId: accId, body: b };
+    });
+    return runQueue(jobs).then(function (results) {
+      var failed = results.filter(function (r) { return !r.ok; });
+      if (failed.length) {
+        console.warn('[scw-ws-v2-bulk] ' + failed.length + ' of ' + results.length +
+          ' accessories of ' + parentId + ' did not follow ' + Object.keys(body).join(', '),
+          failed);
+      }
+      return results;
+    });
+  }
+
   /** Map each given parent id → its accessory line-item ids (field_2464
    *  back-mirror), read from the source view\'s model. Like collectAccessoryIds
    *  but keyed per-parent, so each accessory can be matched to ITS parent\'s
@@ -2615,26 +2701,9 @@
         });
       });
 
-      // Accessory SOW must ALWAYS match its parent's SOW. When the bulk edit
-      // touches the SOW field (field_2154), propagate each parent's RESULTING
-      // SOW value down to its accessory children (field_2464 back-mirror) so
-      // they don't get left behind on the old SOW. Uses the parent's final
-      // value (post replace/add), and overrides any value the accessory may
-      // have gotten from being selected directly — the match invariant wins.
-      var SOW_FIELD = 'field_2154';
-      if (appliedKeys.indexOf(SOW_FIELD) !== -1) {
-        var accMap = accessoriesByParent(ids, sourceViewKey);
-        ids.forEach(function (rid) {
-          var parentJob = jobsByKey[sourceViewKey + '|' + rid];
-          if (!parentJob || !(SOW_FIELD in parentJob.body)) return;
-          var parentVal = parentJob.body[SOW_FIELD];
-          (accMap[rid] || []).forEach(function (accId) {
-            var jk = sourceViewKey + '|' + accId;
-            if (!jobsByKey[jk]) jobsByKey[jk] = { viewKey: sourceViewKey, recordId: accId, body: {} };
-            jobsByKey[jk].body[SOW_FIELD] = parentVal;
-          });
-        });
-      }
+      // Accessory SOW (and the view's accessoryFollow fields — the survey's
+      // Bid) must ALWAYS match the parent's.
+      propagateToAccessories(jobsByKey, ids, appliedKeys, sourceViewKey);
 
       // Questionnaire answers: merge the applied common fields into each
       // selected record's JSON blob and ride it in that record's PUT (same
@@ -2788,7 +2857,10 @@
     },
     // FE-only delete primitives — callers must pass the view to DELETE through.
     deleteRecordFE:   deleteRecordFE,
-    queuedDeleteFE:   queuedDeleteFE
+    queuedDeleteFE:   queuedDeleteFE,
+    // Accessories follow their parent's SOW / accessoryFollow fields.
+    followParent:     followParent,
+    _propagateToAccessories: propagateToAccessories   // tests
   };
 })();
 /*** END WORKSHEET V2 — BULK EDIT *********************************************/

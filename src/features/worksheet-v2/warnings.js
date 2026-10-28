@@ -398,6 +398,14 @@
   function buildBracketMaps(viewKey, records) {
     var byAccessory = Object.create(null);
     var byParent = Object.create(null);
+    // A view whose user never adds or removes accessories (config
+    // noAccessories — the sub's survey worksheet, where Make copies them from
+    // the SOW) gets no wrong-accessory flag: there is nothing to act on there,
+    // and the SOW worksheet / reconcile page already raise it to ops.
+    try {
+      var vcfg = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      if (vcfg && vcfg.noAccessories) return { byAccessory: byAccessory, byParent: byParent };
+    } catch (e) { /* run the checks */ }
     var svc = servicesIdSet(viewKey);
 
     // (0) The catalog's own answer (product-catalog.js, 2026-10-13) — nothing
