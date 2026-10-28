@@ -1986,6 +1986,39 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   requests in the 2026-10-28 export, which carries no bid status, so open and closed alike) and re-copies the SOW's drop length over the sub's;
   existing surveys pick their brackets up on their next real Update. Pre-existing, not touched: 04.04's contact branch merge [174]
   still maps a deleted module 176, so a POC with no matching contact passes no contact id on.
+- **view_3505 hid every bracket (found 2026-10-28)**: its Builder source filter carried two "match at least one" groups —
+  (MDF/IDF not blank OR bucket is not Mounting Hardware) AND (MDF/IDF blank OR bucket is not Mounting Hardware) — which
+  together read "never Mounting Hardware". With brackets now on surveys the user removed both groups; the grid's own
+  "connected to this page's SURVEY_request" scope is the only filter it needs. A Mounting Hardware filter on any other
+  survey-item grid (the bid items grid view_3550, …) hides brackets the same way.
+- **05.01 "+ Add Survey/Bid Item" (patched blueprint 2026-10-28, "… (accessories on the survey)")**: its accessory branches
+  were the SOW scenario's, never adapted — picked (`field_2206`) and default (`field_2236` "add by default for these
+  products") accessories were created as SOW line items (object_105) with SOW-object reads off the survey item (no SOW, no
+  MDF), then [47] / [79] / [137] / [143] updated object_105 using the new SURVEY item's id. And the router's inbound filter
+  ("create accessory items": `field_2206_raw` exists) gated the default accessories AND the parent's photo slots on the sub
+  having picked an accessory. Now, on both parent paths ([5] qty-1 under router [49]; [130] qty>1 under [131]): the gate
+  moves to the picked iterator; picked extras ([35] / [134], skipping any that are also the parent product's defaults) and
+  defaults ([76] / [140]) are created as object_114 items — request, the parent's MDF/IDF and bids, product, bucket, default
+  labor + description, Require Sub Bid from the product, `field_2416` = the parent; qty = parent qty (picked) / parent qty x
+  the product's default quantity `field_74` (defaults, as 06.02 sizes them); the object_105 aggregators / variables /
+  updates are gone; a new route 3 searches the parent's accessories once, then writes the parent's mounting list
+  (`field_2463`, the 04.04 / 06.04 format) and seeds survey-phase photo slots for accessory products with a deliverables
+  schema (`field_2220`, the rule route 2 applies to the parent). Builder (pre-existing, noted): 05.01 reads the product's
+  schema from `field_2220`, 04.04 / 04.01a / 06.04 from `field_2321`.
+- **06.02 Sync SOW to match Bid (patched blueprint 2026-10-28, "… (survey accessories)", built on the bracket-safe import)**:
+  without it a sub-added camera would reach the SOW with its catalog default bracket ([91]–[100]) AND its survey bracket as
+  a second, parentless SOW line. [87] CREATE now skips bid items with a REL_parent; [93] takes the product's Require Sub Bid
+  (blank, the default showed as its own row and a non-mounting default fell to the REMOVE sweep); a new route on router [69]
+  after the create/update/remove pass ([153]–[167]) takes each bid item with a REL_parent and no SOW line whose parent is on
+  the SOW: a default of the parent's product is linked to the SOW line [93] made under that parent (`field_2464` + product +
+  this SOW; survey `field_2404`, SOW `field_2630`, photos); an extra gets its own SOW line with `field_2464` = the parent's,
+  is linked, and joins the parent's `field_2207`. A default the search cannot find (removed from the SOW meanwhile) stays
+  unlinked and the next 06.04 Update takes it off the bid. Import 06.02 before 05.01.
+- **Still open**: 06.03 "Create NEW SOW to match Bid" creates SOW lines from the bundle's `orphanBidRecords` payload
+  (bid-review/actions.js) with no parent — sub-added accessories land on the new SOW unattached until the payload carries
+  the REL_parent and 06.03 links `field_2464` / `field_2207`. 05.01's equipment route iterates the picked MDF/IDFs ([169]
+  over `154.MDFs`), so Other Equipment / Materials added with no MDF/IDF (optional in the modal) may create nothing —
+  untested.
 
 ### 18. Pre-bundle flash on gated scenes — raw scene paints before the bundle's CSS exists
 - **Symptom (scene_1116, likely all NO_KTL_SCENES)**: on load the raw Knack views paint for ~a second, THEN the scene-load veil/spinner appears, then the styled reveal. All in-bundle veil work (scene-tweaks.js `scw-scene-ready` gating, 2026-07-07) only helps AFTER the bundle executes — the first paint races the bundle download and wins.
@@ -2274,6 +2307,11 @@ too, since it catches the next regression where someone is actually looking.
   stays on the SOW, and pre-v4 bids never carried those lines), and [78] keeps an accessory's own Require Sub Bid
   (`if(length(80.field_2464_raw) > 0; 80.field_2479_raw; 77.field_2477_raw)`) instead of resetting it from the product,
   so a sync never pops a bracket out from under its device. Import order: 06.02, 06.04, then 04.04 / K2.
+- **v5 (2026-10-28, "… (keep sub values)", built on the v4 import)**: [61] (Update path, item already on the survey) keeps the
+  survey's drop length and conduit and fills only a blank from the SOW — `ifempty(59.field_2367_raw; 58.field_1965_raw)` /
+  `ifempty(59.field_2368_raw; 58.field_2035_raw)`. Before, every Update overwrote the sub's measured drop length with the
+  SOW estimate (and 06.02 then copied it back to the SOW); conduit never reached existing items. Trade-off: a revised SOW
+  estimate no longer replaces a value already on the survey. The alt-bid path's [15] only adds the bid and is unchanged.
 
 ### 25. Sales page photo modal (view_3586) — restricted, QA read-only; Builder activation pending
 - **Shipped 2026-09-17**: the worksheet-v2 photo modal now has a per-surface policy
