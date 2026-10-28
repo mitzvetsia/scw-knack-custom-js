@@ -1136,6 +1136,44 @@ rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing c
   is a future state; per-destination resume after a partial failure (today the whole row re-sends).
   Test: `tests/worksheet-v2/test-photo-assign-v2.js`.
 
+## Photo writes on the Build SOW page go through the edit-photo FORM (2026-10-28) — `photo-edit-panel.js`, `util.js`
+
+Slack #install-operations-tools (Heather Glen Townhomes): every photo upload from the ops Build SOW page
+(scene_1085, worksheet view_3962) failed right after the asset upload — `PUT …/pages/scene_1085/views/
+view_3584/records/<photo>` → 400 "Invalid request" (bulk fill) / 403 "Unauthorized view access" (the
+single-photo modal). Read off the public app schema (`https://us-api.knack.com/v1/applications/<app id>`,
+5.8 MB — the JSON Knack holds client-side as `Knack.scenes`): **view_3584 has no field columns (Edit +
+Delete links only) and inline editing off** — its Builder description says it exists "ONLY to house the
+edit photo link". Knack validates a view-based PUT against the view's editable fields, so it could never
+succeed; it was simply never exercised until v2 "+ Add Photos" replaced the v1 (Make webhook) uploader for
+@getscw.com on 2026-10-16. The same day's role read-only work (reverted, 83d0e7e) was unrelated. view_3917
+("Additional / Unassigned Photos", the page's editable DOC_photos grid) serves only photos with no SOW line
+item, so the slots being filled are outside it.
+- **Save view now = `view_3585`**, the edit-photo UPDATE FORM on child scene_1159 (image `field_771`, type
+  `field_2445`, required `field_2446`, notes `field_114`, the SOW / line-item connections; no record
+  rules) — `SAVE_VIEWS.view_3962` in photo-edit-panel.js.
+- **`SCW.knackRecordUrl(viewId, recordId)` addresses a view under the scene that OWNS it**
+  (`SCW.sceneOfView`, memoized from `Knack.scenes`), the scene on screen only when the schema does not
+  list the view. "View-based PUTs are same-scene only" (older comments) was wrong: Knack's page-based API
+  resolves the view under its own scene whatever page is showing — a view keyed under the wrong scene
+  404s, nothing more. So a form on a child scene is a save view, and qa-popover's hardcoded view_3937
+  reaches the deploy scene from any page.
+- **`putRecord` drops the fields a FORM save view has no input for** (`SCW.viewWritableFields`: the form's
+  inputs minus read-only ones; null for a grid = sent as-is, the deploy page unchanged) — one console line
+  per view + field set names them — and REJECTS (status 400, no request) when nothing is left, so a
+  200-without-write never reads as saved. On this page the fill's completion stamp (`field_2447` +
+  `field_2865`) and Remove photo's flag are dropped until Builder adds them; the QA sidebar's saves fail
+  the same honest way (QA is a deploy-page concern).
+- **Builder (optional, a minute)**: add FLAG_complete `field_2447` and QA_history `field_2865` as inputs on
+  view_3585 ("Edit DOC_photo", scene_1159) — nothing in the bundle changes, the stamp lands from then on.
+  The other shape works too: a hidden no-filter DOC_photos grid on scene_1085 with those columns
+  inline-editable (the view_3937 pattern), then point `SAVE_VIEWS.view_3962` at it.
+- Delete paths are unchanged: `PHOTO_GRID_FALLBACK_VIEWS` / `mdf-notes.js` still DELETE through view_3584
+  (it has the Delete link). The schema read is the quickest way to answer "what does Builder say about
+  view X": `python3 -I` over the downloaded JSON, `application.scenes[].views[]` (`source.criteria`,
+  `options.cell_editor`, `columns[].ignore_edit`, a form's `groups[].columns[].inputs[]`).
+- Test: `tests/misc/test-photo-save-view.js`.
+
 ## Worksheet scope strip (live 2026-10-09) — `src/features/worksheet-v2/summary.js`
 
 The worksheet-v2 grand "Summary" panel is now the **scope strip** (`buildScopeStrip`): one tile

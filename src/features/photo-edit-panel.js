@@ -21,10 +21,18 @@
  *                              rendered on the current scene (incomplete by
  *                              construction: only types already in use).
  *
- * SAVE_VIEWS maps each worksheet source view → the DOC_photos view ON THE
- * SAME SCENE that PUTs go through (view-based PUTs only work against views
- * on the current scene). Those views must expose field_771 / field_2445 /
- * field_2446 as inline-editable or Knack rejects the write.
+ * SAVE_VIEWS maps each worksheet source view → the DOC_photos view that
+ * PUTs go through: a grid with field_771 / field_2445 / field_2446 inline-
+ * editable, or an UPDATE FORM whose inputs carry them. The PUT is addressed
+ * under the scene that OWNS the save view (util.js knackRecordUrl →
+ * sceneOfView), so the view need not be on the page — a form on a child
+ * scene works (view_3585 below). A view with no editable field for what is
+ * sent is a 400 "Invalid request" / 403 "Unauthorized view access" from
+ * Knack, whatever page it sits on (view_3584 on the Build SOW page, found
+ * 2026-10-28: Edit + Delete links only, inline editing off). putRecord drops
+ * the fields a FORM save view has no input for (one console line names
+ * them) and rejects when nothing is left, so a stamp the form cannot take
+ * fails honestly instead of 200ing without a write.
  ****************************************************************************/
 (function () {
   'use strict';
@@ -40,7 +48,20 @@
     // inline-editable (view-based PUTs are same-scene only — view_3937
     // 404s from there). view_4158 is that grid (added 2026-09-03).
     view_4056: 'view_4158',  // sub deployment scene DOC_photos grid
-    view_3962: 'view_3584',   // build-SOW scene DOC_photos grid
+    // view_3962 (ops Build SOW page, scene_1085): the edit-photo FORM on the
+    // child scene_1159 — image / type / required / notes inputs, no record
+    // rules. It replaced view_3584 on 2026-10-28 (Slack, photo uploads
+    // failing on the Build SOW page): view_3584 is the grid that only houses
+    // the photo strip's Edit link — no field columns, inline editing off, so
+    // every PUT through it was a 400 / 403 (it was never exercised until v2
+    // "+ Add Photos" replaced the v1 uploader for @getscw.com on
+    // 2026-10-16). view_3917, the page's editable DOC_photos grid, serves
+    // only unassigned photos (source filter "REL_sow line items is blank"),
+    // so the slots being filled are outside it. ⚠️ Builder (optional): add
+    // FLAG_complete (field_2447) and QA_history (field_2865) as inputs on
+    // view_3585 and the fill's completion stamp / Remove-photo flag land
+    // from this page too — until then putRecord drops them (console line).
+    view_3962: 'view_3585',   // build-SOW: edit-photo form (scene_1159)
     view_3505: 'view_4070',   // survey scene DOC_photos grid
     // view_3586 (sales scope-of-work page, scene_1116): the RESTRICTED
     // modal with NO QA (photos.js PHOTO_MODAL_POLICY qa:'none'). Before this
@@ -212,16 +233,50 @@
     });
   }
 
+  // A FORM save view can only write the fields its inputs carry (util.js
+  // viewWritableFields; null for a grid or an unknown view = send as-is).
+  // Fields it lacks are dropped — one console line per view + field set
+  // names them, so the Builder fix is spelled out — and a body with nothing
+  // left REJECTS (status 400, no request): a 200 that wrote nothing would
+  // read as saved. Callers that treat a stamp as best-effort (photo-assign's
+  // completion stamp) already catch and move on.
+  var _droppedOnce = {};
+  function writableBody(saveView, data) {
+    var allowed = null;
+    try { allowed = (typeof SCW.viewWritableFields === 'function') ? SCW.viewWritableFields(saveView) : null; }
+    catch (e) { allowed = null; }
+    var body = {}, dropped = [];
+    for (var k in data) {
+      if (!Object.prototype.hasOwnProperty.call(data, k)) continue;
+      if (allowed && allowed.indexOf(k) < 0) dropped.push(k); else body[k] = data[k];
+    }
+    return { body: body, dropped: dropped };
+  }
   function putRecord(saveView, recordId, data) {
     var url = SCW.knackRecordUrl(saveView, recordId);
+    var w = writableBody(saveView, data || {});
+    if (w.dropped.length) {
+      var sig = saveView + ':' + w.dropped.join(',');
+      if (!_droppedOnce[sig]) {
+        _droppedOnce[sig] = true;
+        console.info('[scw-pep] ' + saveView + ' has no input for ' + w.dropped.join(', ') +
+          ' — not sent. Add the field(s) to that form in Builder to write them from this page.');
+      }
+    }
+    if (!Object.keys(w.body).length) {
+      var err = new Error('save skipped: ' + saveView + ' has no input for ' + w.dropped.join(', '));
+      err.status = 400;
+      err.knackMessage = 'no writable field on ' + saveView;
+      return Promise.reject(err);
+    }
     return new Promise(function (resolve, reject) {
       SCW.knackAjax({
         url: url,
         type: 'PUT',
-        data: JSON.stringify(data),
+        data: JSON.stringify(w.body),
         success: resolve,
         error: function (xhr) {
-          reject(failError('save', xhr, url, 'fields: ' + Object.keys(data || {}).join(', ')));
+          reject(failError('save', xhr, url, 'fields: ' + Object.keys(w.body).join(', ')));
         }
       });
     });

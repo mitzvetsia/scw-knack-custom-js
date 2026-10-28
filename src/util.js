@@ -548,10 +548,90 @@ window.SCW = window.SCW || {};
   };
 
   /**
+   * SCW.sceneOfView(viewKey) — the key of the scene that OWNS a view, read
+   * off the app schema Knack loads client-side (Knack.scenes). '' when the
+   * schema is not there or the view is not in it. A view belongs to exactly
+   * one scene and the schema never changes in-session, so the walk is
+   * memoized; a miss re-walks once (the schema may not have been there yet).
+   */
+  var _viewIndex = null;
+  function walkViewIndex() {
+    var scenes = (typeof Knack !== 'undefined' && Knack.scenes &&
+                  (Knack.scenes.models || Knack.scenes)) || [];
+    if (!scenes.length) return null;
+    var map = {};
+    for (var i = 0; i < scenes.length; i++) {
+      var sc = scenes[i];
+      if (!sc) continue;
+      var sceneKey = (sc.attributes && sc.attributes.key) || sc.key || sc.id || '';
+      var views = (sc.views && sc.views.models) || (sc.attributes && sc.attributes.views) || sc.views || [];
+      for (var j = 0; j < views.length; j++) {
+        var v = views[j];
+        if (!v) continue;
+        var attrs = v.attributes || v;
+        var viewKey = attrs.key || v.key || v.id || '';
+        if (viewKey && sceneKey && !map[viewKey]) map[viewKey] = { scene: sceneKey, view: attrs };
+      }
+    }
+    return map;
+  }
+  function viewIndexEntry(viewKey) {
+    if (!viewKey) return null;
+    if (_viewIndex && _viewIndex[viewKey]) return _viewIndex[viewKey];
+    try {
+      var fresh = walkViewIndex();
+      if (fresh) _viewIndex = fresh;   // keep only a walk that found scenes
+    } catch (e) { /* schema not readable */ }
+    return (_viewIndex && _viewIndex[viewKey]) || null;
+  }
+  namespace.sceneOfView = function (viewKey) {
+    var e = viewIndexEntry(viewKey);
+    return e ? e.scene : '';
+  };
+
+  /**
+   * SCW.viewWritableFields(viewKey) — the field keys a view-based PUT/POST
+   * through this view can write, or null when the schema cannot say:
+   *   form  → the fields of its inputs, minus read-only inputs;
+   *   table → null (the inline-editable columns are not derived here; the
+   *           body is sent as-is, as it always was).
+   */
+  namespace.viewWritableFields = function (viewKey) {
+    var e = viewIndexEntry(viewKey);
+    var v = e && e.view;
+    if (!v || v.type !== 'form') return null;
+    var out = [];
+    var groups = v.groups || [];
+    for (var g = 0; g < groups.length; g++) {
+      var cols = (groups[g] && groups[g].columns) || [];
+      for (var c = 0; c < cols.length; c++) {
+        var inputs = (cols[c] && cols[c].inputs) || [];
+        for (var i = 0; i < inputs.length; i++) {
+          var inp = inputs[i];
+          if (!inp || inp.read_only) continue;
+          var fk = (inp.field && inp.field.key) || inp.id || '';
+          if (/^field_\d+$/.test(fk) && out.indexOf(fk) < 0) out.push(fk);
+        }
+      }
+    }
+    return out;
+  };
+
+  /**
    * Build a standard Knack record URL for a view-based PUT/GET.
+   *
+   * The URL names the scene that OWNS the view (sceneOfView), not the scene
+   * on screen: Knack's page-based API resolves the view under its own scene
+   * whatever page the browser shows, so a form on a child scene (the
+   * edit-photo form on scene_1159, written from the Build SOW page) is as
+   * good a save view as a grid on the current one — and a view keyed under
+   * the wrong scene can only 404. Falls back to the current scene when the
+   * schema does not list the view (older stubs, unknown keys), which is
+   * exactly what every caller got before.
    */
   namespace.knackRecordUrl = function (viewId, recordId) {
-    return Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+    var sceneKey = namespace.sceneOfView(viewId) || Knack.router.current_scene_key;
+    return Knack.api_url + '/v1/pages/' + sceneKey +
            '/views/' + viewId + '/records/' + recordId;
   };
 
