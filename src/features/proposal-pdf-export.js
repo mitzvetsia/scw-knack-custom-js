@@ -2959,6 +2959,11 @@
   //   bidExpirationDate    — field_2635
   //   surveyRequestId, clientSite, projectAddress, bidVersionCounter,
   //   cuTaskId, triggeredBy, sceneId, type
+  //   qboInvoiceCsv / qboInvoiceCsvName / qboInvoiceRows — the QuickBooks
+  //                          Online invoice-import CSV of the priced lines
+  //                          (2026-10-28, sub-bid-document.js); and
+  //   qboInvoiceCsvAssetId — the Knack asset the bundle already attached to
+  //                          the bid record, when Builder has the file field
   var BID_SUBMIT_DROP_KEYS = [
     'recordId', 'hash', 'sowId', 'htmlPdf',
     'equipmentTotal', 'installationTotal', 'expirationDate',
@@ -3603,7 +3608,18 @@
           (cfg.payloadType === 'subcontractor bid' ? 'bid' : 'PDF') +
           '...', false, true);
 
-        sendToWebhook(unified, cfg)
+        // Sub bid: the QuickBooks CSV goes onto the bid record first
+        // (sub-bid-document.js beforeSubmit — bounded, never rejects, a
+        // no-op until Builder has the file field). The webhook follows
+        // either way.
+        var pre = null;
+        if (cfg.payloadType === 'subcontractor bid' && window.SCW && window.SCW.bidDocument &&
+            typeof window.SCW.bidDocument.beforeSubmit === 'function') {
+          try { pre = window.SCW.bidDocument.beforeSubmit(extra.recordId); } catch (ePre) { pre = null; }
+        }
+        var fireWebhook = function (attached) {
+          if (attached && attached.assetId) unified.qboInvoiceCsvAssetId = attached.assetId;
+          sendToWebhook(unified, cfg)
           .done(function (resp, status, xhr) {
             console.log('[SCW PDF Webhook] success', {
               status: xhr && xhr.status,
@@ -3648,6 +3664,12 @@
             showPublishToast('Submission sent -- continuing...', false, false);
             authorizeAndResubmit(true);
           });
+        };
+        if (pre && typeof pre.then === 'function') {
+          pre.then(fireWebhook, function () { fireWebhook(null); });
+        } else {
+          fireWebhook(null);
+        }
       }
 
       // Click on the submit button — the path Knack intercepts.
@@ -5311,13 +5333,15 @@
     var bidDoc        = (cfg.payloadType === 'subcontractor bid' && window.SCW && window.SCW.bidDocument) || null;
     var bidDocHtml    = '';
     var bidDocLines   = null;
+    var bidDocCsv     = null;
     if (bidDoc) {
       try {
         bidDocHtml  = bidDoc.documentHtml() || '';
         bidDocLines = bidDocHtml ? bidDoc.lineItems() : null;
+        bidDocCsv   = bidDocHtml && typeof bidDoc.qboCsv === 'function' ? bidDoc.qboCsv() : null;
       } catch (eBdoc) {
         console.warn('[SCW PDF Export] bid document failed — rendering the scraped payload instead', eBdoc);
-        bidDocHtml = ''; bidDocLines = null;
+        bidDocHtml = ''; bidDocLines = null; bidDocCsv = null;
       }
     }
     var htmlStr       = bidDocHtml || buildPdfHtml(payload);
@@ -5381,6 +5405,14 @@
       // Named line-item projection for the subcontractor-bid scenario only
       // (undefined elsewhere → dropped by JSON.stringify). See buildBidLineItems.
       bidLineItems:          cfg.payloadType === 'subcontractor bid' ? (bidDocLines || buildBidLineItems(payload)) : undefined,
+      // QuickBooks Online invoice-import CSV of the priced bid lines
+      // (sub-bid-document.js qboCsv): the file's text + name, and the rows as
+      // objects. Make can store the text as a file on the bid record
+      // (toBinary → Knack upload) when the bundle's own attach is not
+      // configured (qboInvoiceCsvAssetId rides when it is).
+      qboInvoiceCsv:         bidDocCsv ? bidDocCsv.csv : undefined,
+      qboInvoiceCsvName:     bidDocCsv ? bidDocCsv.name : undefined,
+      qboInvoiceRows:        bidDocCsv ? bidDocCsv.rows : undefined,
       bidLabel:              cfg.payloadType === 'subcontractor bid' ? ((payload.bidHeader || {}).label || '') : undefined,
       bidExpirationDate:     cfg.payloadType === 'subcontractor bid' ? ((payload.bidHeader || {}).expires || '') : undefined,
       sowId:                 summary.sowId,

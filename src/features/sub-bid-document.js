@@ -81,6 +81,22 @@
     projectWideName: 'Project Wide Services',
     noLocationName:  'No MDF / IDF',
     accent: '#07467c',
+    // QuickBooks Online invoice-import CSV (Settings → Import data → Invoices,
+    // the "Download an example" layout): one row per PRICED bid line, the
+    // invoice number repeated on every row so QuickBooks groups them into one
+    // invoice. Built with the document, downloadable from the page, shipped on
+    // the submit payload (qboInvoiceCsv) and, when the two Builder keys below
+    // are filled, uploaded to the bid record on "Finalize & Submit".
+    qbo: {
+      customer: 'SCW',                  // the sub's customer display name for SCW in THEIR QuickBooks
+      terms: 'Net 30',
+      dueDays: 30,
+      item: 'Installation Labor',       // the Product/Service every line posts to (QuickBooks creates it at import when ticked)
+      fileSuffix: '_quickbooks-invoice.csv',
+      fileField: '',                    // Builder TBD: a File field on the bid package (object_115) for the CSV
+      saveView: '',                     // Builder TBD: an edit form view on scene_1149, bound to the bid, carrying that field
+      attachTimeoutMs: 10000            // the submit never waits longer than this on the upload
+    },
     debug: false
   };
 
@@ -696,6 +712,115 @@
       '</body></html>';
   }
 
+  // ── QuickBooks Online invoice-import CSV ─────────────────────────────
+  var QBO_HEADERS = ['*InvoiceNo', '*Customer', '*InvoiceDate', '*DueDate', 'Terms', 'Location', 'Memo',
+    'Item(Product/Service)', 'ItemDescription', 'ItemQuantity', 'ItemRate', '*ItemAmount',
+    'Shipping address', 'Ship via', 'Shipping date', 'Tracking no.', 'Shipping Charge', 'Service Date'];
+  function csvCell(v) {
+    var s = String(v == null ? '' : v);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function mdy(d) { return pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + '/' + d.getFullYear(); }
+  function qboInvoiceNo(h) {
+    var m = /\b(\d+-SR\d+-B\d+)\b/i.exec(h.title || '');
+    return (m ? m[1] : (h.title || 'BID')).slice(0, 21);      // QuickBooks custom transaction numbers: 21 characters
+  }
+  // opts.today: a Date (tests). Returns { name, csv, rows, invoiceNo }.
+  function qboCsv(model, opts) {
+    opts = opts || {};
+    var Q = CONFIG.qbo, h = model.header || {};
+    var today = opts.today instanceof Date ? opts.today : new Date();
+    var due = new Date(today.getTime());
+    due.setDate(due.getDate() + (Q.dueDays || 0));
+    var invoiceNo = qboInvoiceNo(h);
+    var memo = ['Project # ' + (h.projectNumber || 'n/a'), h.survey ? 'Survey ' + h.survey : '', h.bidNo ? 'Bid ' + h.bidNo : '']
+      .concat((h.facts || []).filter(function (f) { return /client/i.test(f.k); }).map(function (f) { return f.v; }))
+      .filter(Boolean).join(' · ');
+    var rows = [];
+    function push(row, L, hostLabel) {
+      var desc = [row.label ? '[' + row.label + ']' : '', row.product, row.descTitle, L.name].filter(Boolean).join(' — ');
+      if (hostLabel) desc += ' (accessory for ' + hostLabel + ')';
+      rows.push({
+        InvoiceNo: invoiceNo, Customer: Q.customer, InvoiceDate: mdy(today), DueDate: mdy(due), Terms: Q.terms || '',
+        Location: '', Memo: memo, Item: Q.item, ItemDescription: desc,
+        ItemQuantity: row.qty, ItemRate: row.rate.toFixed(2), ItemAmount: row.amount.toFixed(2)
+      });
+    }
+    model.locations.forEach(function (L) {
+      L.buckets.forEach(function (B) {
+        B.items.forEach(function (it) {
+          push(it, L, '');
+          it.children.forEach(function (c) { if (c.priced) push(c, L, it.label || it.product); });
+        });
+      });
+      L.provided.forEach(function (p) {
+        p.children.forEach(function (c) { if (c.priced) push(c, L, p.label || p.product); });
+      });
+    });
+    var lines = [QBO_HEADERS.join(',')].concat(rows.map(function (r) {
+      return [r.InvoiceNo, r.Customer, r.InvoiceDate, r.DueDate, r.Terms, r.Location, r.Memo, r.Item, r.ItemDescription,
+              r.ItemQuantity, r.ItemRate, r.ItemAmount, '', '', '', '', '', ''].map(csvCell).join(',');
+    }));
+    return {
+      name: invoiceNo.replace(/[^A-Za-z0-9._-]+/g, '_') + (Q.fileSuffix || '.csv'),
+      csv: lines.join('\r\n') + '\r\n',
+      rows: rows, invoiceNo: invoiceNo
+    };
+  }
+  function downloadCsv(file) {
+    try {
+      var blob = new Blob([file.csv], { type: 'text/csv;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = file.name;
+      document.body.appendChild(a); a.click(); a.parentNode.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+      return true;
+    } catch (e) {
+      console.warn(NS + ' CSV download failed', e);
+      return false;
+    }
+  }
+  // "Finalize & Submit": upload the CSV to Knack's asset store with the
+  // session token and PUT it onto the bid record through the configured edit
+  // view. Resolves { assetId, name } or null; never rejects, never waits
+  // longer than attachTimeoutMs — the submit goes on either way (the CSV also
+  // rides the webhook payload, so Make can store it instead).
+  var _attachNoted = false;
+  function attachCsv(bidId) {
+    var Q = CONFIG.qbo;
+    if (!Q.fileField || !Q.saveView) {
+      if (!_attachNoted) { _attachNoted = true; dbg('qbo.fileField / qbo.saveView not configured — the CSV rides the payload only'); }
+      return Promise.resolve(null);
+    }
+    var m = modelFor();
+    if (!m || !bidId) return Promise.resolve(null);
+    var file = qboCsv(m);
+    if (!file.rows.length) return Promise.resolve(null);
+    if (!(window.SCW && typeof window.SCW.knackAjax === 'function' && window.SCW.knackRecordUrl)) return Promise.resolve(null);
+    var fd = new FormData();
+    fd.append('files', new Blob([file.csv], { type: 'text/csv' }), file.name);
+    var work = Promise.resolve($.ajax({
+      url: Knack.api_url + '/v1/applications/' + Knack.application_id + '/assets/file/upload',
+      type: 'POST', data: fd, processData: false, contentType: false,
+      headers: { 'X-Knack-Application-Id': Knack.application_id, 'x-knack-rest-api-key': 'knack', 'Authorization': Knack.getUserToken() }
+    })).then(function (res) {
+      var asset = res && (res.asset && typeof res.asset === 'object' ? res.asset : res);
+      var assetId = asset && (asset.id || asset.asset_id);
+      if (!assetId) throw new Error('no asset id in the upload response');
+      var body = {};
+      body[Q.fileField] = String(assetId);
+      return Promise.resolve(window.SCW.knackAjax({ url: window.SCW.knackRecordUrl(Q.saveView, bidId), type: 'PUT', data: JSON.stringify(body) }))
+        .then(function () { return { assetId: String(assetId), name: file.name }; });
+    }).then(null, function (err) {
+      console.warn(NS + ' could not attach the QuickBooks CSV to the bid (the payload still carries it)', err);
+      return null;
+    });
+    var timeout = new Promise(function (resolve) { setTimeout(function () { resolve(null); }, Q.attachTimeoutMs || 10000); });
+    return Promise.race([work, timeout]);
+  }
+
   // The scrape-shaped projection proposal-pdf-export keeps in its payload
   // (sections / projectTotals); its own renderer is only a fallback for the
   // document above, but grandTotal and bidLineItems read from this shape.
@@ -800,6 +925,9 @@
       '.' + ROOT_CLASS + ' { margin: 0 0 24px; }',
       '.' + ROOT_CLASS + ' .scw-bid-doc-body { box-shadow: 0 1px 3px rgba(15, 23, 42, .12), 0 0 0 1px #e2e8f0; border-radius: 4px; }',
       '.' + ROOT_CLASS + ' .scw-bid-doc-note { margin: 0 0 10px; padding: 8px 12px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 4px; font: 12px/1.45 ' + FONT + '; color: #92400e; }',
+      '.' + ROOT_CLASS + ' .scw-bid-doc-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 0 12px; font: 12px/1.45 ' + FONT + '; color: #475569; }',
+      '.' + ROOT_CLASS + ' .scw-bid-doc-csv { appearance: none; background: #fff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 7px 12px; font: 600 12px/1.2 ' + FONT + '; color: #07467c; cursor: pointer; }',
+      '.' + ROOT_CLASS + ' .scw-bid-doc-csv:hover { border-color: #07467c; background: #eef6ff; }',
       '@media (max-width: 720px) { .' + ROOT_CLASS + ' .scw-bid-doc-body { padding: 16px !important; } }'
     ].join('\n');
     document.head.appendChild(s);
@@ -838,7 +966,25 @@
           esc(missing.join(', ')) + '. Those details are left off the page and the PDF until the columns exist. (Shown to SCW staff only.)</div>';
       }
     }
-    el.innerHTML = note + bodyHtml(model, { pdf: false });
+    // Page-only toolbar (never in the PDF): the QuickBooks CSV download.
+    var tools = model.lineItems.length
+      ? '<div class="scw-bid-doc-tools">' +
+          '<button type="button" class="scw-bid-doc-csv">Download QuickBooks invoice CSV</button>' +
+          '<span class="scw-bid-doc-tools-hint">' + esc(plural(model.lineItems.length, 'priced line', 'priced lines')) +
+          ' as one invoice, QuickBooks Online import layout. It is also attached to the bid when you submit.</span>' +
+        '</div>'
+      : '';
+    el.innerHTML = note + tools + bodyHtml(model, { pdf: false });
+    if (!el._scwBound) {
+      el._scwBound = true;
+      el.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('.scw-bid-doc-csv') : null;
+        if (!btn) return;
+        e.preventDefault();
+        var m = modelFor(viewKey);
+        if (m) downloadCsv(qboCsv(m));
+      });
+    }
     root.classList.add('scw-bid-doc-host');
     if (CONFIG.hideHeaderView && CONFIG.headerView) {
       var hv = document.getElementById(CONFIG.headerView);
@@ -870,9 +1016,18 @@
       var m = modelFor(viewKey);
       return m ? publishView(m, viewKey) : null;
     },
+    // QuickBooks Online invoice-import CSV of the priced lines: { name, csv,
+    // rows, invoiceNo }, or null when the model is not loaded.
+    qboCsv: function (viewKey, opts) { var m = modelFor(viewKey); return m ? qboCsv(m, opts) : null; },
+    qboCsvOf: qboCsv,
+    downloadCsv: downloadCsv,
+    // proposal-pdf-export calls this before the submit webhook (bid id = the
+    // page's record): the CSV lands on the bid record when Builder has the
+    // file field + save view; otherwise resolves null at once.
+    beforeSubmit: attachCsv,
     render: render,
     readHeader: readHeader,
-    _util: { text: text, num: num, bool: bool, conns: conns, laborParts: laborParts, money: money, tidyLocation: tidyLocation, natCompare: natCompare, lines: lines }
+    _util: { text: text, num: num, bool: bool, conns: conns, laborParts: laborParts, money: money, tidyLocation: tidyLocation, natCompare: natCompare, lines: lines, csvCell: csvCell }
   };
 
   // ── bindings ──────────────────────────────────────────────────────────

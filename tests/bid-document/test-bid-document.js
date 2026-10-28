@@ -235,5 +235,65 @@ const CAM_E011 = '6ae14fdd2c7afed0f49507bd', DET_E012 = '6ae14fe176522395133c17c
 }
 check('bindings: the module listens on the host view render', renders.map(r => r[0]), ['view_3550']);
 
-console.log(fails ? 'RESULT: ' + fails + ' FAILED' : 'RESULT: ALL PASS');
-process.exit(fails ? 1 : 0);
+// ════════════════════════════════════════════════════════════════════════
+// QuickBooks Online invoice-import CSV (the "Download an example" layout)
+// ════════════════════════════════════════════════════════════════════════
+scene({ title: '60524852230-SR20-B465', expires: '11/27/2026' });
+load(onBid(B465));
+bd.render('view_3550');
+const TODAY = new Date(2026, 9, 28);
+const csv465 = bd.qboCsv('view_3550', { today: TODAY });
+const csvLines = csv465.csv.split('\r\n');
+check('the header row is the QuickBooks example file verbatim; CRLF line ends; a trailing newline',
+  [csvLines[0], csvLines.length, csvLines[csvLines.length - 1]],
+  ['*InvoiceNo,*Customer,*InvoiceDate,*DueDate,Terms,Location,Memo,Item(Product/Service),ItemDescription,ItemQuantity,ItemRate,*ItemAmount,Shipping address,Ship via,Shipping date,Tracking no.,Shipping Charge,Service Date', 8, '']);
+check('one row per priced line, the invoice number (the bid id, ≤ 21 chars) repeated so QuickBooks groups them; invoice + due dates MM/DD/YYYY, Net 30',
+  [csv465.rows.length, csv465.invoiceNo, csv465.invoiceNo.length <= 21, csv465.rows.every(r => r.InvoiceNo === csv465.invoiceNo),
+   csv465.rows[0].InvoiceDate, csv465.rows[0].DueDate, csv465.rows[0].Terms, csv465.rows[0].Customer, csv465.rows[0].Item],
+  [6, '60524852230-SR20-B465', true, true, '10/28/2026', '11/27/2026', 'Net 30', 'SCW', 'Installation Labor']);
+check('each line: description = [label] — product — labor title — location; qty / rate / amount as plain numbers; memo names the project, survey, bid and client',
+  [csv465.rows[0].ItemDescription, csv465.rows[0].ItemQuantity, csv465.rows[0].ItemRate, csv465.rows[0].ItemAmount, csv465.rows[0].Memo],
+  ['[E-011] — Scout 8.0 — Mount Camera & Complete Cabling to Network — HEADEND: behind cashregister', 1, '625.00', '625.00',
+   'Project # 60524852230 · Survey SR20 · Bid B465 · Testies Coat Factory - Montague, MI']);
+check('the CSV line quotes fields with commas; the file is named after the invoice number',
+  [csvLines[1].indexOf('"Project # 60524852230 · Survey SR20 · Bid B465 · Testies Coat Factory - Montague, MI"') > 0, csvLines[2].split(',').length >= 18, csv465.name],
+  [true, true, '60524852230-SR20-B465_quickbooks-invoice.csv']);
+check('csvCell escaping: quotes doubled, commas and newlines quoted, plain text bare',
+  ['a,b', 'say "hi"', 'two\nlines', 'plain'].map(bd._util.csvCell), ['"a,b"', '"say ""hi"""', '"two\nlines"', 'plain']);
+check('unpriced SCW-provided rows are not invoice lines; a priced accessory is, with its parent named',
+  (() => { const rows = clone(); byId(rows, BR_E011).field_2400_raw = 40;
+           const f = bd.qboCsvOf(bd.build(rows, { title: '60524852230-SR20-B465' }), { today: TODAY });
+           return [f.rows.length, f.rows[1].ItemDescription, f.rows[1].ItemAmount, f.rows.map(r => r.ItemAmount).reduce((a, b) => a + Number(b), 0)]; })(),
+  [7, 'Electrical Box Mount for The Deputy, Sheriff, Informant, Scout - EBM26DFD — HEADEND: behind cashregister (accessory for E-011)', '40.00', 3790]);
+check('the page carries the download button above the document; the PDF document does not',
+  [!!document.querySelector('#view_3550 .scw-bid-doc .scw-bid-doc-tools .scw-bid-doc-csv'), document.querySelector('#view_3550 .scw-bid-doc-tools-hint').textContent.indexOf('6 priced lines') === 0,
+   bd.documentHtml('view_3550').indexOf('scw-bid-doc-tools') === -1],
+  [true, true, true]);
+check('the submit payload ships the CSV text, its name and the rows',
+  (() => { const p = pdf.buildPublishPayload('scene_1149');
+           return [typeof p.qboInvoiceCsv, p.qboInvoiceCsv.split('\r\n')[0] === csvLines[0], p.qboInvoiceCsvName, p.qboInvoiceRows.length, p.qboInvoiceCsvAssetId]; })(),
+  ['string', true, '60524852230-SR20-B465_quickbooks-invoice.csv', 6, undefined]);
+
+// ── attach to the bid: a no-op until Builder has the file field + save view; then upload + view PUT ──
+(async () => {
+  check('beforeSubmit without the Builder keys resolves null at once (no network)', await bd.beforeSubmit('6ae14fd6c1102c4a50124d4d'), null);
+  bd.CONFIG.qbo.fileField = 'field_9999'; bd.CONFIG.qbo.saveView = 'view_9999';
+  window.Knack.api_url = 'https://api.knack.com'; window.Knack.application_id = 'app1'; window.Knack.getUserToken = () => 'tok';
+  window.Knack.router.current_scene_key = 'scene_1149';
+  const calls = [];
+  jq.ajax = (o) => { calls.push(['upload', o.url, o.data instanceof window.FormData]); return Promise.resolve({ id: 'asset123', filename: 'x.csv' }); };
+  window.SCW.knackAjax = (o) => { calls.push(['put', o.url, o.type, JSON.parse(o.data)]); return Promise.resolve({ record: {} }); };
+  window.SCW.knackRecordUrl = (v, id) => 'https://api.knack.com/v1/pages/scene_1149/views/' + v + '/records/' + id;
+  global.FormData = window.FormData; global.Blob = window.Blob;
+  const att = await bd.beforeSubmit('6ae14fd6c1102c4a50124d4d');
+  check('with the keys: the CSV is uploaded to the asset store with the session token, then PUT onto the bid through the save view; the asset id comes back',
+    [att, calls], [{ assetId: 'asset123', name: '60524852230-SR20-B465_quickbooks-invoice.csv' },
+      [['upload', 'https://api.knack.com/v1/applications/app1/assets/file/upload', true],
+       ['put', 'https://api.knack.com/v1/pages/scene_1149/views/view_9999/records/6ae14fd6c1102c4a50124d4d', 'PUT', { field_9999: 'asset123' }]]]);
+  jq.ajax = () => Promise.reject({ status: 500 });
+  check('an upload failure resolves null (the submit goes on; the payload still carries the CSV)', await bd.beforeSubmit('6ae14fd6c1102c4a50124d4d'), null);
+  bd.CONFIG.qbo.fileField = ''; bd.CONFIG.qbo.saveView = '';
+  console.log(fails ? 'RESULT: ' + fails + ' FAILED' : 'RESULT: ALL PASS');
+  process.exit(fails ? 1 : 0);
+})();
+

@@ -925,10 +925,33 @@ the Claude Design mockup "Sub Bid PDF — Line-Item Mockup" built from survey SR
 - Make (bid submit, `SUBCONTRACTOR_BID_WEBHOOK`): `html` renders the PDF as before; check anything that
   reads `bidLineItems` for one-entry-per-item. `json` / `jsonString` / `bidLabel` / `bidExpirationDate` /
   extraFields are untouched.
+- **QuickBooks Online invoice-import CSV (same day)**: `qboCsv(model)` builds the sub's invoice to SCW in
+  the layout of QuickBooks' own example file (Settings → Import data → Invoices → Download an example;
+  Intuit's guide PDF shows the header row): `*InvoiceNo,*Customer,*InvoiceDate,*DueDate,Terms,Location,
+  Memo,Item(Product/Service),ItemDescription,ItemQuantity,ItemRate,*ItemAmount,Shipping address,Ship via,
+  Shipping date,Tracking no.,Shipping Charge,Service Date` — one row per PRICED line (priced accessories
+  included, "(accessory for E-011)"), the invoice number (the bid id `60524852230-SR20-B465`, ≤ 21 chars
+  = QuickBooks' custom transaction number limit) repeated on every row so the import groups them into one
+  invoice, Customer / Terms / Item from `CONFIG.qbo` (`customer: 'SCW'` — the display name the sub has SCW
+  under in THEIR QuickBooks; `item: 'Installation Labor'` — the one Product/Service every line posts to,
+  created at import when the sub ticks "add new products/services"), InvoiceDate = the day, DueDate =
+  +`dueDays` (30), MM/DD/YYYY (the import asks for the date format), Memo = project # · survey · bid ·
+  client, description = `[label] — product — labor title — location`, numbers plain (`625.00`). No tax
+  columns (sub labor to SCW); QuickBooks limits: 1,000 rows / 100 invoices per file, no negative lines.
+  Three outlets: a **"Download QuickBooks invoice CSV"** button above the document on the page (never in
+  the PDF; Blob download); the submit payload's `qboInvoiceCsv` / `qboInvoiceCsvName` / `qboInvoiceRows`
+  (Make can store the text as a file on the bid: `toBinary` → Knack upload); and `beforeSubmit(bidId)`,
+  which proposal-pdf-export awaits before the webhook: with `CONFIG.qbo.fileField` (a File field on the
+  bid package, Builder TBD) + `CONFIG.qbo.saveView` (an edit form view on scene_1149 bound to the bid
+  that carries the field — NOT the submit form view_3679, whose native submit could clear a file input)
+  it uploads the CSV to the asset store with the session token and PUTs the asset onto the bid
+  (`qboInvoiceCsvAssetId` then rides the payload); unset, it resolves at once. Bounded by
+  `attachTimeoutMs`; never blocks the submit.
 - Test: `tests/bid-document/test-bid-document.js` over `fixtures/sr20-bid-items.json` (the SR20 dump's rows
   in model shape: B465 with four brackets under their cameras, B24 with the closing list, the priced
-  no-sub-bid items, project-wide services; the submit payload end to end; the edge cases). Totals reconcile
-  to the Bid Total Knack recorded ($3,750 / $15,275).
+  no-sub-bid items, project-wide services; the submit payload end to end; the edge cases; the CSV header
+  verbatim, rows, escaping, dates, the page button, the payload keys, the attach path with and without the
+  Builder keys). Totals reconcile to the Bid Total Knack recorded ($3,750 / $15,275).
 
 ## Change request "Remove from bid" can also remove the item from the SOW (2026-10-22) — `bid-review/change-requests.js`
 
