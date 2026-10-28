@@ -18,7 +18,11 @@
  *                     "Add MDF/IDF" menu link (same auto-detect as
  *                     worksheet-v2's deploy-page button) — no config
  *                     needed, renders nothing when no such link exists.
- *   - + Add Photos  : SCW.bulkUpload modal (SOW photo context)
+ *   - + Add Photos  : the v2 photo modal (worksheet-v2/photo-assign.js) for
+ *                     the users it replaces v1 for (@getscw.com), over the
+ *                     page's SOW line items (view_3921) — 2026-10-28; the
+ *                     v1 SCW.bulkUpload modal (project photo context) for
+ *                     everyone else
  *
  * Reuses worksheet-v2's .scw-ws-v2-toolbar* CSS (injected globally).
  ****************************************************************************/
@@ -172,8 +176,24 @@
           'Make sure the Knack menu link is enabled on the scene.');
   }
 
-  // ── + Add Photos — SCW.bulkUpload modal (project context) ─────
+  // ── + Add Photos ──────────────────────────────────────────────
+  // v2 (worksheet-v2/photo-assign.js) for the users it replaces v1 for
+  // (@getscw.com since 2026-10-16): its targets are the SOW line items of
+  // view_3921 — the same object as the Build SOW page's view_3962, so the
+  // field map (the worksheet-v2 config default), the slot reader (the
+  // photo columns ride view_3921 too), the Make route (sowLineItemID) and
+  // the scope (the project from the route, resolveScope's view_3482 entry)
+  // are the Build SOW page's; the save view is the edit-photo form
+  // (photo-edit-panel.js SAVE_VIEWS view_3921). The reconcile page was the
+  // last ops surface still opening the v1 modal (2026-10-28). Everyone
+  // else keeps v1 below.
   function handleAddPhotos() {
+    var pa = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.photoAssign;
+    if (pa && typeof pa.replacesV1 === 'function' && pa.replacesV1() && typeof pa.open === 'function') {
+      var v1cfg = window.SCW && SCW.bidReview && SCW.bidReview.CONFIG;
+      pa.open((v1cfg && v1cfg.sowItemsViewKey) || 'view_3921', { label: 'Reconcile Bids · SOW line items' });
+      return;
+    }
     var bu = window.SCW && window.SCW.bulkUpload;
     if (!bu || typeof bu.open !== 'function' || !bu.config) {
       alert('Bulk upload is not loaded. Refresh the page and try again.');

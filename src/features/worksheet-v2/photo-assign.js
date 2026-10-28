@@ -1022,11 +1022,14 @@
     overlay.className = 'scw-pa-overlay';
     overlay.id = ROOT_ID;
     var vc = viewCfg(viewKey);
+    // opts.label: a host with no worksheet config entry names itself (the
+    // reconcile page opens this over view_3921, 2026-10-28).
+    var hostLabel = (opts && opts.label) || (vc && vc.label) || 'This worksheet';
     overlay.innerHTML =
       '<div class="scw-pa" role="dialog" aria-modal="true">' +
         '<div class="scw-pa-hd">' +
           '<div><div class="scw-pa-title">Add Photos' + (replacesV1() ? '' : ' (v2)') + '</div>' +
-            '<div class="scw-pa-sub">' + esc((vc && vc.label) || 'This worksheet') + ' · ' +
+            '<div class="scw-pa-sub">' + esc(hostLabel) + ' · ' +
               plural(cands.length, 'device') +
               (preset ? ' · photos you add here go to <b>' + esc(preset.label) + '</b> (change a chip to send one elsewhere)'
                       : ' · aim each photo at one or more devices') +

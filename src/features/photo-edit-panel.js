@@ -62,6 +62,11 @@
     // view_3585 and the fill's completion stamp / Remove-photo flag land
     // from this page too — until then putRecord drops them (console line).
     view_3962: 'view_3585',   // build-SOW: edit-photo form (scene_1159)
+    // view_3921 (Reconcile Bids page, scene_1155 — v2 "+ Add Photos" there
+    // since 2026-10-28): the same SOW line items, and the scene's only
+    // DOC_photos grid (view_4098) is a delete-only link grid, so the same
+    // edit-photo form serves it — a view is addressed under its own scene.
+    view_3921: 'view_3585',   // reconcile page: edit-photo form (scene_1159)
     view_3505: 'view_4070',   // survey scene DOC_photos grid
     // view_3586 (sales scope-of-work page, scene_1116): the RESTRICTED
     // modal with NO QA (photos.js PHOTO_MODAL_POLICY qa:'none'). Before this

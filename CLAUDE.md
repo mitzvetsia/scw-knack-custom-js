@@ -1132,6 +1132,20 @@ rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing c
   writes after the first few fills: 3 concurrent fills × 2 PUTs each with no retry. A row whose writes
   failed keeps its asset, so Send again re-writes it without a second upload; an unexpected throw
   unlocks the dialog and says so instead of leaving it stuck.
+- **Reconcile Bids page (2026-10-28)**: its toolbar's "+ Add Photos" (`bid-review-v2/toolbar.js`
+  `handleAddPhotos`) opens v2 for the users v2 replaces v1 for (`replacesV1()`), over the page's SOW line
+  items (`open('view_3921', { label })` — the last ops surface still opening the v1 bulk-upload modal). No
+  worksheet config entry is needed: view_3921 is the Build SOW page's object, so the field map and buckets
+  are the worksheet-v2 defaults, the slot reader finds the photo columns on view_3921's own rows, the Make
+  route is `sowLineItemID` with the project-page `links` (projectId from the route, the item's SOW
+  headers), `resolveScope` lands on the same `view_3482` bulk-upload entry + project route the v1 button
+  sent, the save view is the edit-photo form (`SAVE_VIEWS.view_3921 = 'view_3585'` — scene_1155's only
+  DOC_photos grid, view_4098, is a delete-only link grid), and the post-send `refetchAndNotify('view_3921')`
+  re-renders the hidden grid, which the reconcile data layer already rebuilds from. `open()` takes
+  `opts.label` for a host that has no config entry to name it. Every other login keeps v1 (project photo
+  context). The MDF/IDF band's "+ Add" tile stays v1 (MDF photos are not a v2 target). Test:
+  `tests/bid-review-v2/test-add-photos-v2.js` (real toolbar + modal; the rail, the console line, the links /
+  scope / target kind / save view, the v1 fallback for a sub login).
 - **Not carried over (yet)**: the IndexedDB queue / resume banner; the phone layout (canvas board 5)
   is a future state; per-destination resume after a partial failure (today the whole row re-sends).
   Test: `tests/worksheet-v2/test-photo-assign-v2.js`.
