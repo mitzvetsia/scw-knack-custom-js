@@ -1986,6 +1986,14 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   requests in the 2026-10-28 export, which carries no bid status, so open and closed alike) and re-copies the SOW's drop length over the sub's;
   existing surveys pick their brackets up on their next real Update. Pre-existing, not touched: 04.04's contact branch merge [174]
   still maps a deleted module 176, so a POC with no matching contact passes no contact id on.
+- **Switched-off routes (found 2026-10-28)**: Make's per-route "disabled" flag survives an import, and the patches kept
+  the flags they found. In the exports, the routes the accessory work rewrote were OFF: 04.04 / K2 / 04.01a router [66]
+  route 3 (the parent-link pass) and router [109] route 0 inside it — so new surveys got brackets with no REL_parent —
+  and 05.01 routes 0 / 1 of routers [49] and [131] (picked + default accessories; off because they made stray SOW lines).
+  The "(… routes on)" blueprints switch exactly those on and change nothing else. Left as found (unrelated): 06.02
+  router [68] route 0 (old path, copies the parent's MDF onto accessories), 06.02 router [73] route 3 (the network pass —
+  a sync does not carry Connected Devices to the SOW), 06.03 router [20] route 5 ([63], re-points the bid package's
+  REL_SOW to the new SOW). Scan an export for `"disabled": true` on route objects before reasoning about what runs.
 - **view_3505 hid every bracket (found 2026-10-28)**: its Builder source filter carried two "match at least one" groups —
   (MDF/IDF not blank OR bucket is not Mounting Hardware) AND (MDF/IDF blank OR bucket is not Mounting Hardware) — which
   together read "never Mounting Hardware". With brackets now on surveys the user removed both groups; the grid's own
