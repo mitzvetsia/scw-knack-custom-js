@@ -877,8 +877,20 @@
       onDone && onDone(new Error('SCW.knackAjax/knackRecordUrl unavailable'));
       return;
     }
+    // The page's own save view (photo-edit-panel SAVE_VIEWS by the host's
+    // viewKey; the deploy grid when unmapped). It used to be the deploy grid
+    // on every page — a SOW-phase photo (Build SOW / reconcile pages) is
+    // outside that grid's source, so the PUT could only 403. A save view
+    // that cannot take the QA fields fails here, plainly, before any request
+    // (openForAnchor never offers editable QA on such a page).
+    var qaSaveView = pepSaveView(_currentPhoto && _currentPhoto.viewKey);
+    if (!canWrite(qaSaveView, F.status)) {
+      onDone && onDone(new Error('QA fields are not editable from this page (save view ' +
+        qaSaveView + ' has no input for them)'));
+      return;
+    }
     SCW.knackAjax({
-      url: SCW.knackRecordUrl(PIC_SAVE_VIEW, _photoId),
+      url: SCW.knackRecordUrl(qaSaveView, _photoId),
       type: 'PUT',
       data: JSON.stringify(fields),
       success: function (resp) {
@@ -1075,6 +1087,20 @@
   function pepSaveView(viewKey) {
     var sv = window.SCW && SCW.photoEditPanel && SCW.photoEditPanel.SAVE_VIEWS;
     return (sv && viewKey && sv[viewKey]) || PIC_SAVE_VIEW;
+  }
+  /** Can this page's save view take a field? A FORM save view answers from
+   *  the app schema (util.js viewWritableFields — the edit-photo form the
+   *  Build SOW and reconcile pages save through, 2026-10-28); a grid or an
+   *  unknown view keeps the old rule: only the deploy grid (PIC_SAVE_VIEW)
+   *  is trusted to carry every field this module writes. */
+  function canWrite(saveView, fieldKey) {
+    var wf = null;
+    try {
+      wf = (window.SCW && typeof SCW.viewWritableFields === 'function')
+        ? SCW.viewWritableFields(saveView) : null;
+    } catch (e) { wf = null; }
+    if (wf) return wf.indexOf(fieldKey) >= 0;
+    return saveView === PIC_SAVE_VIEW;
   }
   function notifyHostSaved(photo) {
     if (_refreshHandler) { try { _refreshHandler({}, photo); } catch (e) {} }
@@ -1321,9 +1347,11 @@
 
   /** Classify bar — photo Type (field_2445 connection) + Required
    *  (field_2446 Yes/No) editors, auto-saving on change through the
-   *  scene's save view. Deploy-scene only: the fields are exposed
-   *  inline-editable on view_3937; other scenes' save views don't carry
-   *  them, so the bar is omitted there. Type options come from
+   *  scene's save view. Rendered where that save view can take the type
+   *  field (canWrite): the deploy grid view_3937 (inline-editable there),
+   *  and since 2026-10-28 the edit-photo FORM the Build SOW and reconcile
+   *  pages save through (its inputs carry both fields); a grid that does
+   *  not carry them omits the bar. Type options come from
    *  photo-edit-panel's collectTypeOptions() (full Builder-snippet
    *  catalog, scene-scrape fallback). onTypeChanged(label) lets the
    *  modal retitle itself when the type is reassigned. */
@@ -1333,7 +1361,7 @@
     if (photo.lockClassify) return null;
     var u = pepUtil();
     var saveView = pepSaveView(photo.viewKey);
-    if (!u || saveView !== PIC_SAVE_VIEW) return null;
+    if (!u || !canWrite(saveView, F.photoType)) return null;
     var options = u.collectTypeOptions();
     if (!options.length && photo.required == null) return null;
 
@@ -2241,6 +2269,16 @@
       // SCW.worksheetV2.photos (photos.js canDeleteAdhoc decides).
       canDelete:     !!snapshot.canDelete
     };
+    // QA is editable only where this page's save view can take the QA
+    // fields: the deploy grid can; the edit-photo FORM the Build SOW and
+    // reconcile pages save through cannot (2026-10-28). There the sidebar
+    // is read-only — and absent when the host served no QA columns for the
+    // photo (snapshot.qaServed === false: nothing to read either), so the
+    // modal is the viewer + Type / Required + replace / remove.
+    if (!photo.qaReadOnly && !canWrite(pepSaveView(photo.viewKey), F.status)) {
+      photo.qaReadOnly = true;
+      if (snapshot.qaServed === false) photo.needsQa = false;
+    }
 
     _photoId = photoId;
     _currentPhoto = photo;

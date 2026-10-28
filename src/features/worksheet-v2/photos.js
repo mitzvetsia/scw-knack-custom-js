@@ -705,6 +705,7 @@
       ' data-qa-by="'       + escapeHtml(p.qaCompletedBy || '')   + '"' +
       ' data-qa-date="'     + escapeHtml(p.qaCompletedDate || '') + '"' +
       ' data-qa-uploaded-by="' + escapeHtml(p.uploadedBy || '')  + '"' +
+      ' data-qa-served="'   + (p.qaColumns === false ? '0' : '1')  + '"' +
       ' data-qa-type="'     + escapeHtml(p.type || 'Photo')       + '"' +
       ' data-qa-img="'      + escapeHtml(p.imgUrl || '')          + '"' +
       ' title="Photo QA — ' + escapeHtml(qaChitLabel(state)) + ' (click to review)">' +
@@ -845,7 +846,12 @@
           ' data-qa-history="' + escapeHtml(p.qaHistory || '')       + '"' +
           ' data-qa-by="'      + escapeHtml(p.qaCompletedBy || '')   + '"' +
           ' data-qa-date="'    + escapeHtml(p.qaCompletedDate || '') + '"' +
-          ' data-qa-uploaded-by="' + escapeHtml(p.uploadedBy || '') + '"'
+          ' data-qa-uploaded-by="' + escapeHtml(p.uploadedBy || '') + '"' +
+          // Whether the source served the QA columns for this photo at all
+          // (p.qaColumns; undefined = served). The modal reads it: on a page
+          // whose save view cannot take the QA fields it shows no sidebar
+          // when nothing was served (qa-popover openForAnchor, 2026-10-28).
+          ' data-qa-served="'  + (p.qaColumns === false ? '0' : '1')  + '"'
         : '';
       var dataAttrs =
         ' data-scw-ws-v2-photo-url="'  + escapeHtml(p.imgUrl || '') + '"' +
@@ -1443,6 +1449,14 @@
       uploadedBy:    el.getAttribute('data-qa-uploaded-by') || '',
       completed:     !!resolvedImg,
       needsQa:       !!needsQa,
+      // Were the QA columns served for this photo (data-qa-served on the
+      // chit / card)? undefined when the host stamped nothing — the modal
+      // then keeps whatever needsQa says.
+      qaServed:      (function () {
+        var sEl = (el.closest && el.closest('[data-qa-served]')) || null;
+        if (!sEl) return undefined;
+        return sEl.getAttribute('data-qa-served') === '1';
+      })(),
       // Photo-add + classify support in the QA modal (qa-popover.js).
       required:      isRequired,
       // Deploy-page ad-hoc delete (canDeleteAdhoc): the modal's viewer bar

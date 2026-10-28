@@ -1186,6 +1186,19 @@ item, so the slots being filled are outside it.
   (it has the Delete link). The schema read is the quickest way to answer "what does Builder say about
   view X": `python3 -I` over the downloaded JSON, `application.scenes[].views[]` (`source.criteria`,
   `options.cell_editor`, `columns[].ignore_edit`, a form's `groups[].columns[].inputs[]`).
+- **The single-photo modal on these pages (same day, "make sure the modal can update photos on the
+  reconcile page")**: `qa-popover.js` used to assume the deploy grid twice — the Type / Required bar
+  rendered only when the save view WAS view_3937 (`buildClassifyBar`), and the QA sidebar's Save always
+  wrote to view_3937 (`saveFields`), which cannot hold a SOW-phase photo (403). Both now ask `canWrite(saveView,
+  field)`: a FORM answers from the schema (`SCW.viewWritableFields`), a grid keeps the old rule (only
+  view_3937 is trusted). So on the Build SOW and reconcile pages (save view = the edit-photo form) the modal
+  is the viewer + Type / Required + upload / replace / remove, and QA is never editable: `openForAnchor` makes
+  the sidebar read-only where the save view has no input for `field_2859`, and absent when the host served no
+  QA columns for the photo (`snapshot.qaServed`, from the `data-qa-served` marker photos.js now stamps on
+  cards and chits: `p.qaColumns`; undefined = served). `saveFields` PUTs through the page's mapped save view and
+  refuses plainly when it cannot take the QA fields. The reconcile page's row panel embeds the worksheet card
+  with view_3921 (`bid-review-v2/init.js`), so every write resolves through `SAVE_VIEWS.view_3921`. Test:
+  `tests/worksheet-v2/test-photo-modal-save-view.js` (real util + photo-edit-panel + qa-popover under jsdom).
 - Test: `tests/misc/test-photo-save-view.js`.
 
 ## Worksheet scope strip (live 2026-10-09) — `src/features/worksheet-v2/summary.js`
