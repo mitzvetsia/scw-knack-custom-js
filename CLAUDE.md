@@ -1981,7 +1981,7 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   as SOW line items; the line-item bid PDF will read `field_2416` when it is rebuilt — until then brackets print in
   view_3550's Mounting Hardware section. **Backfill**: not a blanket Update. 06.04's Update also takes off the bid every
   item whose SOW line is not on that SOW (the reconcile grid's "Not on this SOW" rows — 1,148 such items across 367
-  requests in the 2026-10-28 export, most of them on closed requests) and re-copies the SOW's drop length over the sub's;
+  requests in the 2026-10-28 export, which carries no bid status, so open and closed alike) and re-copies the SOW's drop length over the sub's;
   existing surveys pick their brackets up on their next real Update. Pre-existing, not touched: 04.04's contact branch merge [174]
   still maps a deleted module 176, so a POC with no matching contact passes no contact id on.
 
