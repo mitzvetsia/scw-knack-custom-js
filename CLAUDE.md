@@ -1941,6 +1941,27 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **What survey HAS today**: `field_2380` (Connected Devices, multi, on NVR/switch) ↔ `field_2381` ("Connected To", single, on cam/reader). **Correction (2026-06-16):** these ARE backed by a mirror-sync cascade — `mirror-connection-sync.js` registers a `createMirror({ VIEW_ID:'view_3505', TRIGGER_FIELD:'field_2380', CONNECTIONS_FIELD:'field_2381' })` instance (grouped by `field_2375`). The worksheet-v2 survey Connected Devices/To pickers route PUTs through view_3505 so it fires, same as the SOW `field_1957`/`field_2197` pair. What survey still LACKS is the **accessory** parent/child relationship — no accessory→parent field (`field_2464` analogue) and no `field_1958`/`field_2207` forward array — so the v2 survey card renders **no** mounting-hardware/accessory UI and maps no `accessories`/`children`/`parent`/`accessoryMatch` logical slots (see the `view_3505` config entry + card branch).
 - **What's needed (future)**: when the survey object gains the accessory relationship (+ a mirror-sync analogue for `field_2380`↔`field_2381`), map it into the same worksheet-v2 logical slots (`connectedDevices`/`connectedDevice`/`accessories`/`parent`/`children`). At that point it becomes config-only IF Known Issue #15 (full generalization) has landed; otherwise it needs the same Hybrid accessory-UI port the SOW card already has.
 - **Watch out**: don't assume writing one survey connection side updates the other — there's no cascade today, so they can drift exactly like the SOW pair did before `mirror-connection-sync.js`. Building the cascade should follow the canonical-side direction decided for the SOW pair (Known Issue #12), not re-create the bidirectional-ambiguity fragility.
+- **Progress (2026-10-28) — `field_2416` is now REL_parent (child → parent)**: the survey object's old `REL_accessories`
+  (`field_2416`, parent → children, multi) was EMPTY on all 14,257 survey items and was reworked in Builder into
+  **REL_parent**: each Survey Line Item connects with ONE Survey Line Item (its parent), a parent with many — the survey
+  twin of the SOW's `field_2464` ("REL_accessories mirror field"). Read it the way worksheet-v2 reads `field_2464`: the
+  child's own link is the truth, children are derived; there is no forward list to keep in sync. Why it was empty: both
+  survey-create scenarios — 04.04 "SURVEY CREATE | create survey request on pending survey" and "00.00 Request K2 Bid |
+  create Survey …" (identical item block, same module ids) — skipped the Mounting Hardware bucket in the SOW-item search
+  [63] (`field_2219` does not contain `594a94536877675816984cb9`), so no bracket ever reached a survey (0 of 14,257), and
+  their accessories pass (route 3 of router [66], [107]–[117]: the parent's `field_2416` from the SOW's forward list
+  `field_2207`) found nothing to link. **Patched blueprints delivered 2026-10-28** (import INTO each scenario so the hook
+  stays): [63] keeps only the License exclusion and its limit goes 100 → 1000 (SOW lines past the cap silently never
+  reached the survey); route 3 is a parent pass — [107] aggregates SOW lines that have a `field_2464` parent (feeder 61,
+  so it runs after every item for that SOW exists, like the network pass), [110] finds the accessory's survey item, [113]
+  its parent's (`field_2404` = the parent SOW line, same request), [116] writes `field_2416` = that parent on the
+  accessory; [111]/[112]/[115]/[117] removed ([117] lowercased the accessory's stored product name and cut it at
+  "for the"); [210]'s mounting-list text splits on `" for "` (was `"for"`, which cut "Platform"). **Pending**: 06.04
+  "Update bid from SOW" needs the same item rule (everything but licenses, `require sub bid = No` items included), the
+  same parent pass and a matching unlink rule, or the next update leaves brackets off / unlinked; 05.01 (survey add)
+  still creates Materials accessories as SOW line items; bundle — view_3505 / view_3550 / view_3680 need the `field_2416`
+  column, the survey card needs the accessory fold (worksheet-v2 `parent` slot), and the line-item bid PDF reads it
+  directly. Until then brackets show on the survey worksheet as their own Mounting Hardware cards with labor hidden.
 
 ### 18. Pre-bundle flash on gated scenes — raw scene paints before the bundle's CSS exists
 - **Symptom (scene_1116, likely all NO_KTL_SCENES)**: on load the raw Knack views paint for ~a second, THEN the scene-load veil/spinner appears, then the styled reveal. All in-bundle veil work (scene-tweaks.js `scw-scene-ready` gating, 2026-07-07) only helps AFTER the bundle executes — the first paint races the bundle download and wins.
