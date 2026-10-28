@@ -2003,8 +2003,12 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   the product's default quantity `field_74` (defaults, as 06.02 sizes them); the object_105 aggregators / variables /
   updates are gone; a new route 3 searches the parent's accessories once, then writes the parent's mounting list
   (`field_2463`, the 04.04 / 06.04 format) and seeds survey-phase photo slots for accessory products with a deliverables
-  schema (`field_2220`, the rule route 2 applies to the parent). Builder (pre-existing, noted): 05.01 reads the product's
-  schema from `field_2220`, 04.04 / 04.01a / 06.04 from `field_2321`.
+  schema (the rule route 2 applies to the parent). **Photo schema field**: the product's Deliverables Schema connection is
+  `field_2321` (CONFIG_deliverables schema) — what 04.04 / K2 / 04.01a / 06.04 read. `field_2220` (FLAG_deliverables
+  schema) no longer exists on the product object (confirmed 2026-10-28), yet 05.01's photo-slot routes read it, so items
+  added through "+ Add Survey/Bid Item" never got survey photo slots. The "… (accessories + photo schema)" blueprint reads
+  `field_2321` in all four schema lookups ([190] / [197] parents, [232] / [241] accessories). Every scenario now reads the
+  same field. `bucket-field-visibility_add-product.js` (view_466) still lists the deleted `field_2220`, which is inert.
 - **06.02 Sync SOW to match Bid (patched blueprint 2026-10-28, "… (survey accessories)", built on the bracket-safe import)**:
   without it a sub-added camera would reach the SOW with its catalog default bracket ([91]–[100]) AND its survey bracket as
   a second, parentless SOW line. [87] CREATE now skips bid items with a REL_parent; [93] takes the product's Require Sub Bid
@@ -2014,9 +2018,14 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   this SOW; survey `field_2404`, SOW `field_2630`, photos); an extra gets its own SOW line with `field_2464` = the parent's,
   is linked, and joins the parent's `field_2207`. A default the search cannot find (removed from the SOW meanwhile) stays
   unlinked and the next 06.04 Update takes it off the bid. Import 06.02 before 05.01.
-- **Still open**: 06.03 "Create NEW SOW to match Bid" creates SOW lines from the bundle's `orphanBidRecords` payload
-  (bid-review/actions.js) with no parent — sub-added accessories land on the new SOW unattached until the payload carries
-  the REL_parent and 06.03 links `field_2464` / `field_2207`. 05.01's equipment route iterates the picked MDF/IDFs ([169]
+- **06.03 Create NEW SOW to match Bid (patched blueprint 2026-10-28, "… (accessory links)", built on the no-double-links
+  import)**: route 1 of router [20] ([18] -> [19] -> [29]) creates a SOW line for each bid-only record in the bundle's
+  `orphanBidRecords` payload (bid-review/actions.js) with no parent link and a blank Require Sub Bid. A new route right
+  after it ([70]–[77]) re-reads each bid-only record's survey item (its `field_2404` was just set by [29]; REL_parent
+  `field_2416`): every one gets `field_2479` = the survey item's `field_2478`; an accessory whose parent has a SOW line
+  gets `field_2464` = that line and joins its `field_2207`. No bundle change — the payload already carries `bidRecordId`.
+  (The all-packages builder can list one survey item once per package cell; the per-bid "+ Create new SOW" sends one.)
+- **Still open**: 05.01's equipment route iterates the picked MDF/IDFs ([169]
   over `154.MDFs`), so Other Equipment / Materials added with no MDF/IDF (optional in the modal) may create nothing —
   untested.
 
