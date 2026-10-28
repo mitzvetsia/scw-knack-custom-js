@@ -1300,40 +1300,6 @@ The top of the reconcile-bids page (scene_1155, bid-review-v2) reworked per the 
   reconciled on their own scene. Test: `tests/bid-review-v2/test-hide-change-orders.js`.
 - Test: `tests/bid-review-v2/test-header-rework.js`.
 
-## Role read-only gate: "SCW Sales" sees Build SOWs + Reconcile Bids read-only (2026-10-28) — `src/features/role-readonly.js`
-
-"If a user role is SCW Sales they should be able to see and fully interact with the deploy page and its elements,
-but get read only for Build SOWs and Reconcile. If the roles contain SCW Install Ops or SCW Sales Manager or Admin
-they should get FULL access."
-- **Roles** (`util.js` `SCW.userRoleNames()` / `SCW.hasRole(name)`): the role NAMES the session carries —
-  `Knack.getUserRoleNames()`, `Knack.getUserRoles()` keys resolved through `Knack.objects`, or
-  `Knack.session.user.profile_keys` — unioned. `localStorage['scw:role-sim'] = 'SCW Sales'` REPLACES them for
-  that browser (ops can see a page as a role); remove the key to go back. A UI gate only — Builder's view /
-  object permissions are the boundary.
-- **Decision** (`CONFIG`): any `FULL_ACCESS_ROLES` entry (`SCW Install Ops`, `SCW Sales Manager`, `Admin` —
-  whole name or whole word, so "SCW Admin" counts) → full; else a `READ_ONLY_ROLES` entry (`SCW Sales`, exact)
-  → read-only on `SCENES` (scene_1085 Build SOWs, v2 panel view_3962; scene_1155 Reconcile Bids); no readable
-  role → full (fails OPEN). scene_1311 Manage Deployment is not listed: fully interactive, nothing changed there.
-- **Mechanics** (the CO-page lock pattern of `co-ops-lock.js`, page-wide): a sky banner at the top of the
-  scene; `body.scw-role-ro` + CSS (Knack inline edit dead, delete / edit / add-child links hidden, record forms
-  flattened with no Submit, the v2 panels `.scw-ws-v2--readonly` with no toolbar, the reconcile grid's cell
-  actions / ⋮ menus / basis radios / rename pencils / row boxes / bulk bar / tray adds / `[data-action]` buttons
-  hidden, the reviewer note + basis select locked); a BELT marks every other control `data-scw-ro-denied`
-  (buttons hidden, inputs / selects / textareas read-only + flattened) and re-runs on every DOM change
-  (MutationObserver); capture-phase click / submit / change / input / keydown blockers on the document, so
-  modals mounted on `<body>` are covered too. **Deny by default**: a control is live only inside
-  `ALLOW_CONTAINERS` (Knack filters / search / pagination / per-page, the SOW + bid context bar, worksheet
-  search + sort, the scope strip, the SOW tabs, the lightbox, the project header, accordion heads), or when it
-  matches `ALLOW_SELF` (toggle / tab / caret / close / expand / collapse / chooser classes, `aria-expanded`,
-  photo cards → the viewer opens, its editing is denied) or `ALLOW_TEXT_RE` (Close, Cancel, Show all, Expand
-  all…). `DENY_ALWAYS` wins over every allow (the rename pencil lives INSIDE the SOW tabs and is named like a
-  tab). Plain links stay live (navigation); `[data-scw-ro-allow]` opts any element in.
-- **Known gaps to check live**: links to pages outside the two scenes stay live — the proposal preview page's
-  own Publish / Mark Ready buttons are not gated (the stepper link on Build SOWs leads there); a button whose
-  class carries a viewing word (toggle / expand / tab…) but edits something slips through — name it in
-  `DENY_ALWAYS`. `SCW.roleReadonly.decide()` says what the gate thinks of the current user; `.isLocked()`,
-  `.refresh()`. Test: `tests/misc/test-role-readonly.js`.
-
 ## Reconcile grid: the bid line's designator, and "Update SOW to match bid" waits for Make (2026-10-28)
 
 "On the reconcile bid grid we need to be displaying the label / designator (I-002 etc) on the BID line item
