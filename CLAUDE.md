@@ -1961,7 +1961,14 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   conduit `field_2368` ← SOW `field_2035`; mounting height has no SOW source and stays the sub's. Photo slots need no
   change: every create path (04.04 / K2 [162]–[163], 06.04 [35]–[40] / [67]–[72]) seeds survey-phase photo requirements
   for ANY new item whose product has a deliverables schema, so brackets get slots the day their product asks for them.
-  **06.04 and 06.02 patched the same day** (see Known Issue #26). **Pending**: 05.01 (survey add) still creates Materials
+  **06.04 and 06.02 patched the same day** (see Known Issue #26). **04.01a** "SURVEY CREATE | Survey Requested → Already
+  validated | Not Validated → Create Survey Records" carries the SAME item block (identical module ids, only [61]'s SOW
+  source differs) and got the same patch; its legacy quote → SOW path also missed the parent on the Other Equipment
+  branch's mounting lines ([296] now sets `field_2464` = {{294.id}}, like [277] / [289]). **06.03** "Create NEW SOW to
+  match Bid" needed only de-duplication: a bracket now reaches the new SOW both as its own matched bid line ([52]) and
+  through its parent's `field_2207` list ([58]) — both writes are `distinct(add(…))`; bid-only accessory lines would
+  land without a parent, but none exist until 05.01 creates accessory survey items. Pre-existing, not touched: 06.03's
+  default-assumptions route ([64]–[69]) lost its create/update modules 67 / 68, so it adds nothing to the new SOW. **Pending**: 05.01 (survey add) still creates Materials
   accessories as SOW line items; bundle — view_3505 / view_3550 / view_3680 need the `field_2416` column, the survey card
   needs the accessory fold (worksheet-v2 `parent` slot), and the line-item bid PDF reads it directly. Until then brackets
   show on the survey worksheet as their own Mounting Hardware cards with labor hidden. Backfill = "Update Subcontractor
