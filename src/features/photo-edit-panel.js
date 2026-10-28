@@ -141,12 +141,57 @@
     }).catch(function () { return file.size <= CAP_BYTES ? file : null; });
   }
 
+  // Knack's own error text for a failed request — its REST endpoints answer
+  // 400 / 403 with {"errors":[{"message":"…"}]} — so a failure names its
+  // CAUSE, not only its status. 2026-10-28: three users saw "save failed
+  // (400)" / "(403)" on every photo upload of one project and nothing on the
+  // page said why (view not on the page? field not editable? record outside
+  // the view's source?). The message now rides the error the modals show,
+  // and one console line carries the request that failed.
+  function knackErrorText(xhr) {
+    var msg = '';
+    try {
+      var j = xhr && (xhr.responseJSON ||
+        (typeof xhr.responseText === 'string' && /^\s*[\[{]/.test(xhr.responseText)
+          ? JSON.parse(xhr.responseText) : null));
+      if (j) {
+        if (Array.isArray(j.errors)) {
+          msg = j.errors.map(function (e) {
+            return (e && (e.message || e.msg)) || (typeof e === 'string' ? e : '');
+          }).filter(Boolean).join('; ');
+        } else if (j.message) msg = String(j.message);
+        else if (j.error) msg = String(j.error);
+      }
+    } catch (e) { /* not JSON */ }
+    if (!msg && xhr && typeof xhr.responseText === 'string') {
+      msg = xhr.responseText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+    }
+    return msg;
+  }
+  function failError(kind, xhr, url, detail) {
+    var status = xhr ? xhr.status : undefined;
+    var txt = knackErrorText(xhr);
+    var m = kind + ' failed (' + status + ')' + (txt ? ': ' + txt : '');
+    try {
+      console.warn('[scw-pep] ' + m + (url ? ' — ' + (xhr && xhr.status === 0 ? 'no response (network / CORS) ' : '') + url : '') +
+        (detail ? ' — ' + detail : '') +
+        ((status === 400 || status === 403) && /pages\//.test(url || '')
+          ? ' — a 400 / 403 on a view-based PUT usually means the view is not on this page, the field is not inline-editable on it, or the record is outside the view\'s source'
+          : ''));
+    } catch (e) { /* console unavailable */ }
+    var err = new Error(m);
+    err.status = status;
+    err.knackMessage = txt;
+    return err;
+  }
+
   function uploadImage(blob, filename) {
     var fd = new FormData();
     fd.append('files', blob, filename || 'photo.jpg');
+    var uploadUrl = Knack.api_url + '/v1/applications/' + Knack.application_id + '/assets/image/upload';
     return new Promise(function (resolve, reject) {
       $.ajax({
-        url: Knack.api_url + '/v1/applications/' + Knack.application_id + '/assets/image/upload',
+        url: uploadUrl,
         type: 'POST',
         data: fd,
         processData: false,
@@ -160,19 +205,24 @@
           var id = res && (res.id || (res.asset && res.asset.id));
           id ? resolve(id) : reject(new Error('no asset id in response'));
         },
-        error: function (xhr) { reject(new Error('upload failed (' + (xhr && xhr.status) + ')')); }
+        error: function (xhr) {
+          reject(failError('upload', xhr, uploadUrl, (blob && blob.size) ? Math.round(blob.size / 1024) + ' KB' : ''));
+        }
       });
     });
   }
 
   function putRecord(saveView, recordId, data) {
+    var url = SCW.knackRecordUrl(saveView, recordId);
     return new Promise(function (resolve, reject) {
       SCW.knackAjax({
-        url: SCW.knackRecordUrl(saveView, recordId),
+        url: url,
         type: 'PUT',
         data: JSON.stringify(data),
         success: resolve,
-        error: function (xhr) { reject(new Error('save failed (' + (xhr && xhr.status) + ')')); }
+        error: function (xhr) {
+          reject(failError('save', xhr, url, 'fields: ' + Object.keys(data || {}).join(', ')));
+        }
       });
     });
   }
@@ -276,6 +326,7 @@
       uploadImage: uploadImage,
       putRecord: putRecord,
       clearFileField: clearFileField,
+      knackErrorText: knackErrorText,
       collectTypeOptions: collectTypeOptions,
       FIELDS: F
     }
