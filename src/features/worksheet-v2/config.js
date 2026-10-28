@@ -525,6 +525,12 @@
                              idField: 'field_2414', nameField: 'field_2636',
                              statusField: 'field_2550', pdfField: 'field_2626' },
         noAccessories:     true,            // the sub never adds / removes accessories
+        // …but can RE-PARENT one (2026-10-28): the card's Parent picker
+        // (buildDetail_survey) re-links an orphan, and the parent's read-only
+        // Mounting Hardware chips carry an unlink (detailMountingHardwareRO)
+        // that clears the accessory's field_2416 — it becomes an orphan card
+        // again, nothing deleted, nothing written on the parent.
+        accessoryRelink:   true,
                                             // (Make copies them from the SOW): hide the
                                             // bulk Add/Remove accessories buttons and
                                             // the catalog's wrong-accessory warning

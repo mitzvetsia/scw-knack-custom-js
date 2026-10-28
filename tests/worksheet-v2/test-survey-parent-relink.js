@@ -156,5 +156,51 @@ ok(ajax.length === 2 && ajax.some(a => a.url === '/v/view_3962/sb1' && JSON.stri
 ok(ajax.some(a => a.url === '/v/view_3962/sc1' && JSON.stringify(a.body) === JSON.stringify({ field_2207: ['sb1'] })),
   'SOW: the parent\'s forward list field_2207 is rewritten from the back-pointers, as before');
 
+// ── un-parent (2026-10-28 "need to be able to also un-parent") ──
+// A priced accessory has its own card: the picker's "(no selection)" row clears it (onSaved([])
+// above). A folded (Require Sub Bid = No) accessory has NO card — its chip on the parent's
+// Mounting Hardware line carries the unlink instead.
+window.Knack.router.current_scene_key = 'scene_1140';
+ns.idxGen = (ns.idxGen || 0) + 1;
+const c1card = ns.card.buildCard(survey.find(r => r.id === 'c1'), 'view_3505');
+const wrap = document.createElement('div'); wrap.id = 'scw-ws-v2-view_3505'; wrap.appendChild(c1card); document.body.appendChild(wrap);
+const unlink = c1card.querySelector('[data-scw-ws-v2-mh-unlink="b1"]');
+ok(!!unlink && unlink.getAttribute('data-scw-ws-v2-mh-uparent') === 'c1', 'the folded bracket\'s chip on its camera carries an unlink (b1 → c1)');
+ok(!!c1card.querySelector('[data-scw-ws-v2-acc-chip="b1"] .scw-ws-v2-mh-chip--inert'), 'the chip itself stays inert (no edit link, no qty stepper, no delete)');
+ajax.length = 0;
+unlink.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+ok(ajax.length === 1 && ajax[0].type === 'PUT' && ajax[0].url === '/v/view_3505/b1' && JSON.stringify(ajax[0].body) === JSON.stringify({ field_2416: [] }),
+  'click → one PUT clearing the bracket\'s field_2416 through view_3505 (' + ajax.map(a => a.url + ' ' + JSON.stringify(a.body)).join(' ; ') + ')');
+ok(!ajax.some(a => a.url === '/v/view_3505/c1'), 'nothing written on the camera (no forward list on the survey)');
+ok(survey.find(r => r.id === 'b1').field_2416_raw.length === 0, 'the local pointer is cleared, so the bracket regroups as an orphan card on the next render');
+ok(!c1card.querySelector('[data-scw-ws-v2-acc-chip="b1"]'), 'the chip is dropped from the card at once');
+ok(opened && opened.allowClear !== false, 'the Parent picker keeps its "(no selection)" row, so a priced accessory\'s own card can un-parent too');
+
+// Install surfaces keep inert chips (no accessoryRelink): same builder, no unlink.
+ns.idxGen = (ns.idxGen || 0) + 1;
+const install = [
+  { id: 'i1', field_2790: 'Deputy 8.0 v5', field_2801: 'I-001', field_2822_raw: conn(CAM, 'Camera / Reader'), field_2818_raw: MDF, field_2218: 2 },
+  { id: 'ia', field_2790: 'Wall Mount Bracket', field_2822_raw: conn(MOUNT, 'Mounting Hardware'), field_2818_raw: MDF, field_2218: 4, field_2853_raw: conn('i1', 'I-001') }
+];
+byView.view_4093 = install;
+window.Knack.router.current_scene_key = 'scene_1311';
+let iCard = null, iErr = '';
+try { iCard = ns.card.buildCard(install[0], 'view_4093'); } catch (e) { iErr = String(e && e.message || e); }
+ok(!!iCard && !!iCard.querySelector('[data-scw-ws-v2-acc-chip="ia"]') && !iCard.querySelector('[data-scw-ws-v2-mh-unlink]'),
+  'install card: the attached bracket\'s chip has no unlink (accessoryRelink is survey-only)' + (iErr ? ' — threw: ' + iErr : ''));
+
+// The SOW chip unlink is unchanged: clears field_2464, then rewrites the parent's field_2207.
+window.Knack.router.current_scene_key = 'scene_1085';
+ns.idxGen = (ns.idxGen || 0) + 1;
+const sc1card = ns.card.buildCard(sow[0], 'view_3962');
+const swrap = document.createElement('div'); swrap.id = 'scw-ws-v2-view_3962'; swrap.appendChild(sc1card); document.body.appendChild(swrap);
+const sUnlink = sc1card.querySelector('[data-scw-ws-v2-mh-unlink="sb1"]');
+ok(!!sUnlink, 'SOW card: the accessory chip carries its unlink as before');
+ajax.length = 0;
+sUnlink.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+ok(ajax.length === 2 && ajax[0].url === '/v/view_3962/sb1' && JSON.stringify(ajax[0].body) === JSON.stringify({ field_2464: [] }) &&
+   ajax[1].url === '/v/view_3962/sc1' && JSON.stringify(ajax[1].body) === JSON.stringify({ field_2207: [] }),
+  'SOW: clears field_2464 on the accessory, then rewrites the parent\'s forward list field_2207 (' + ajax.map(a => a.url + ' ' + JSON.stringify(a.body)).join(' ; ') + ')');
+
 console.log('RESULT ' + (n - fails) + '/' + n + (fails ? ' FAILED' : ' passed'));
 process.exit(fails ? 1 : 0);

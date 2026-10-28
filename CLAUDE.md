@@ -2171,9 +2171,16 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   applies when the PARENT is edited) and writes NOTHING on the parents: an object that maps neither
   `children` nor `accessories` has no forward list (the branch used to default to the install key
   `field_2852`; the install entries map it explicitly, so they are unchanged). The SOW pair is untouched
-  (SOW + MDF/IDF inherit, `field_2207` rewrite). Test: `tests/worksheet-v2/test-survey-parent-relink.js`
-  — it drives the real `init.js` under jsdom (deferred mount neutralised, picker stubbed), the first
-  test to load it; copy its harness for other init.js handlers.
+  (SOW + MDF/IDF inherit, `field_2207` rewrite). **Un-parent (same day, "need to be able to also
+  un-parent")**: a priced accessory's own card clears through the picker's "(no selection)" row; a FOLDED
+  (Require Sub Bid = No) accessory has no card, so its chip on the parent's read-only Mounting Hardware line
+  carries the SOW chip's unlink (`detailMountingHardwareRO`, gated by the view config's `accessoryRelink:
+  true` — survey only; install / CO surfaces keep inert chips). The init.js unlink handler is generalised
+  over the view's `parent` / `children` keys: it clears the accessory's pointer through the view and rewrites
+  the parent's forward list only where one exists (SOW `field_2207`); the accessory keeps its Bid + MDF/IDF
+  and lands in "Orphaned Accessories". Test: `tests/worksheet-v2/test-survey-parent-relink.js` — it drives
+  the real `init.js` under jsdom (deferred mount neutralised, picker stubbed), the first test to load it;
+  copy its harness for other init.js handlers.
 - **Switched-off routes (found 2026-10-28)**: Make's per-route "disabled" flag survives an import, and the patches kept
   the flags they found. In the exports, the routes the accessory work rewrote were OFF: 04.04 / K2 / 04.01a router [66]
   route 3 (the parent-link pass) and router [109] route 0 inside it — so new surveys got brackets with no REL_parent —

@@ -2780,6 +2780,14 @@
     try { kids = backIndex(viewKey, parentKey)[rec.id] || []; }
     catch (e) { return ''; }
     if (!kids.length) return '';
+    // accessoryRelink (config, survey view_3505 — 2026-10-28 "need to be
+    // able to also un-parent"): a folded accessory has no card of its own,
+    // so its chip here carries the SOW chip's unlink — the init.js handler
+    // clears the accessory's parent pointer through this view (nothing
+    // deleted; it becomes an orphan card the Parent picker can re-link).
+    // Off everywhere else (install / CO surfaces keep inert chips).
+    var _roVc = (ns.cfg && typeof ns.cfg.viewCfg === 'function') ? ns.cfg.viewCfg(viewKey) : null;
+    var relink = !!(_roVc && _roVc.accessoryRelink);
     var HEX_24 = /^[a-f0-9]{24}(\s|\b|$)/i;
     var chipsHtml = '';
     for (var i = 0; i < kids.length; i++) {
@@ -2812,6 +2820,14 @@
           'title="' + escapeHtml(lbl + (gone ? ' — removed from install scope by a change order' : '')) + '">' +
           escapeHtml(lbl + qtySuffix) +
         '</span>' +
+        ((relink && !gone)
+          ? '<button type="button" class="scw-ws-v2-mh-unlink" ' +
+              'data-scw-ws-v2-mh-unlink="' + escapeHtml(aA.id) + '" ' +
+              'data-scw-ws-v2-mh-uparent="' + escapeHtml(rec.id) + '" ' +
+              'title="Unlink ' + escapeHtml(lbl) +
+              ' from this item (keeps it — it becomes an unparented accessory)">' +
+              UNLINK_SVG + '</button>'
+          : '') +
         (gone ? '<span class="scw-ws-v2-mh-removed">removed</span>' : '') +
       '</span>';
     }

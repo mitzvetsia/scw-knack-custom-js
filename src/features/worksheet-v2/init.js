@@ -930,11 +930,14 @@
   }
 
   // Mounting-hardware chip UNLINK — clears the accessory's parent
-  // (field_2464) WITHOUT deleting the record: the accessory detaches from
-  // this parent and becomes a standalone line item. Also repairs the old
+  // (the view's `parent` field: SOW field_2464, survey field_2416) WITHOUT
+  // deleting the record: the accessory detaches from this parent and
+  // becomes a standalone line item. On the SOW pair it also repairs the old
   // parent's forward list (field_2207, derived from the live field_2464
-  // back-pointers) so the denormalized pair doesn't drift server-side.
-  // SOW/MDF are deliberately left untouched on unlink.
+  // back-pointers) so the denormalized pair doesn't drift server-side; an
+  // object with no forward list (the survey, 2026-10-28 "need to be able to
+  // also un-parent") writes nothing on the parent. SOW/MDF/Bid are
+  // deliberately left untouched on unlink.
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-mhunlink-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-mhunlink-bound', '1');
     document.addEventListener('click', function (e) {
@@ -956,6 +959,12 @@
         var unlViewNode = unlCard && unlCard.querySelector('[data-scw-ws-v2-view]');
         viewKey = (unlViewNode && unlViewNode.getAttribute('data-scw-ws-v2-view')) || 'view_3962';
       }
+      // Per-view keys: the child's pointer we clear, and the parent's
+      // forward list we repair — none on an object that maps neither
+      // `children` nor `accessories` (survey).
+      var _uF = (ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(viewKey)) || {};
+      var _uParentKey = _uF.parent || 'field_2464';
+      var _uChildKey  = (_uParentKey === 'field_2464') ? 'field_2207' : (_uF.children || _uF.accessories || '');
 
       // Optimistic: patch the local model's back-pointer (chips are
       // back-pointer-sourced, so the chip won't resurrect on rebuilds)
@@ -964,7 +973,12 @@
         var sv  = Knack.views && Knack.views[viewKey];
         var rec = sv && sv.model && sv.model.data &&
                   sv.model.data.get && sv.model.data.get(accId);
-        if (rec) rec.set({ field_2464_raw: [], field_2464: '' }, { silent: true });
+        if (rec) {
+          var _uSet = {};
+          _uSet[_uParentKey + '_raw'] = [];
+          _uSet[_uParentKey] = '';
+          rec.set(_uSet, { silent: true });
+        }
       } catch (ePatch) { /* best-effort */ }
       var wrap = btn.closest('.scw-ws-v2-mh-chip-wrap');
       if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);
@@ -977,14 +991,16 @@
         }, 800);
       }
 
+      var _uBody = {};
+      _uBody[_uParentKey] = [];
       SCW.knackAjax({
         url:  SCW.knackRecordUrl(viewKey, accId),
         type: 'PUT',
-        data: JSON.stringify({ field_2464: [] }),
+        data: JSON.stringify(_uBody),
         success: function () {
           // Repair the old parent's forward list: every record still
-          // pointing at it via field_2464, minus the one just unlinked.
-          if (parentId && typeof SCW.knackRecordUrl === 'function') {
+          // pointing at it via the parent key, minus the one just unlinked.
+          if (parentId && _uChildKey && typeof SCW.knackRecordUrl === 'function') {
             var ids = [];
             try {
               var sv2 = Knack.views && Knack.views[viewKey];
@@ -994,15 +1010,17 @@
               for (var i = 0; i < rs.length; i++) {
                 var r = rs[i];
                 if (!r || !r.id || r.id === accId) continue;
-                var raw = r.field_2464_raw;
+                var raw = r[_uParentKey + '_raw'];
                 if (Array.isArray(raw) && raw.length && raw[0] &&
                     raw[0].id === parentId) ids.push(r.id);
               }
             } catch (eScan) { /* swallow */ }
+            var _uFwd = {};
+            _uFwd[_uChildKey] = ids;
             SCW.knackAjax({
               url:  SCW.knackRecordUrl(viewKey, parentId),
               type: 'PUT',
-              data: JSON.stringify({ field_2207: ids }),
+              data: JSON.stringify(_uFwd),
               success: refetchSoon,
               error:   function () { refetchSoon(); }
             });
