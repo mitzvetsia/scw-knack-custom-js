@@ -139,6 +139,9 @@
                      ns.data.truncationRepairPending());
     container.classList.toggle('scw-bid-review-v2--partial', partial);
     var state = ns.transform.buildState(bidRecords, sowItems, bidPackages);
+    // The state on screen — v1's copy-to-SOW poll reads it to tell when a
+    // sync has landed (bid-review/init.js copySyncRemaining).
+    ns.lastState = state;
 
     // Publish the freshly-built comparison state so co-located consumers
     // (sub-bid-diff, which injects a per-SOW diff into these same sections)

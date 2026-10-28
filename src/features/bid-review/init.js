@@ -2240,13 +2240,45 @@
     setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
   }
 
-  function startCopyPoll() {
+  // Poll while a copy-to-SOW sync runs in Make. Each tick re-reads the grid
+  // (the v2 data layer's refetchAll — every source view from the server, one
+  // rebuild — else v1's silent refresh). With `opts` naming the SOW + bid
+  // being synced, the poll also watches the v2 grid's remaining differences
+  // for that bid's cells on that SOW and stops on its own: none left for two
+  // ticks → done; the same count for COPY_STABLE_TICKS ticks in a row → Make
+  // is done and what is left is not something the sync writes (the toast
+  // says how many lines still differ). Neither is judged before COPY_GRACE_MS
+  // (Make has not necessarily started). Otherwise it runs to COPY_TIMEOUT_MS.
+  var COPY_STABLE_TICKS = 4;       // 4 × COPY_POLL_MS with no change → settled
+  var COPY_GRACE_MS     = 15000;   // no verdict before Make had this long
+  function startCopyPoll(opts) {
     stopCopyPoll();
-    var elapsed = 0;
+    var elapsed = 0, lastCount = null, stable = 0, zeros = 0;
 
     _copyPollTimer = setInterval(function () {
       elapsed += COPY_POLL_MS;
-      refreshSilently();
+      // What the grid shows NOW — the previous tick's re-read has landed.
+      var remaining = opts ? copySyncRemaining(opts.sowId, opts.pkgId) : null;
+      if (remaining != null && elapsed >= COPY_GRACE_MS) {
+        zeros  = (remaining === 0) ? zeros + 1 : 0;
+        stable = (remaining === lastCount) ? stable + 1 : 0;
+        if (zeros >= 2) {
+          stopCopyPoll();
+          hideCopyToast();
+          ns.renderToast(opts.sowName + ' now matches ' + opts.pkgName, 'success');
+          return;
+        }
+        if (stable >= COPY_STABLE_TICKS) {
+          stopCopyPoll();
+          hideCopyToast();
+          ns.renderToast('Sync applied \u2014 ' + remaining + ' line' + (remaining === 1 ? '' : 's') +
+            ' on ' + opts.sowName + ' still differ' + (remaining === 1 ? 's' : '') + ' from ' +
+            opts.pkgName + ' (see the flagged cells)', 'info');
+          return;
+        }
+      }
+      lastCount = remaining;
+      copyPollTick();
 
       if (elapsed >= COPY_TIMEOUT_MS) {
         stopCopyPoll();
@@ -2255,6 +2287,49 @@
       }
     }, COPY_POLL_MS);
   }
+  // One re-read of the grid: the v2 data layer refetches every source view
+  // from the server and rebuilds once; v1's silent refresh otherwise.
+  function copyPollTick() {
+    try {
+      var v2d = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.data;
+      if (v2d && typeof v2d.refetchAll === 'function') { v2d.refetchAll(); return; }
+    } catch (e) {}
+    refreshSilently();
+  }
+  // Differences the v2 grid still shows between this bid's cells and the SOW
+  // items on this SOW (getMismatches .any per matched row, over every group
+  // and subgroup of that SOW's grid) — null when the v2 state is not there.
+  function copySyncRemaining(sowId, pkgId) {
+    var v2 = window.SCW.bidReviewV2;
+    var st = v2 && v2.lastState, T = v2 && v2.transform;
+    if (!st || !st.sowGrids || !T || typeof T.getMismatches !== 'function') return null;
+    for (var g = 0; g < st.sowGrids.length; g++) {
+      var grid = st.sowGrids[g];
+      if (!grid || grid.sowId !== sowId) continue;
+      var lists = [grid.rows || []], groups = grid.groups || [];
+      for (var i = 0; i < groups.length; i++) {
+        lists.push(groups[i].rows || []);
+        var subs = groups[i].subgroups || [];
+        for (var j = 0; j < subs.length; j++) lists.push(subs[j].rows || []);
+      }
+      var n = 0, seen = {};
+      for (var l = 0; l < lists.length; l++) {
+        for (var r = 0; r < lists[l].length; r++) {
+          var row = lists[l][r];
+          if (!row || !row.sowItem || seen[row.id]) continue;
+          seen[row.id] = true;
+          var cell = row.cellsByPackage && row.cellsByPackage[pkgId];
+          if (!cell) continue;
+          var m = null;
+          try { m = T.getMismatches(row, cell); } catch (e) {}
+          if (m && m.any) n++;
+        }
+      }
+      return n;
+    }
+    return null;   // that SOW's grid is not in the state (yet)
+  }
+  ns.copySyncRemaining = copySyncRemaining;   // test seam
 
   function stopCopyPoll() {
     if (_copyPollTimer) {
@@ -2628,21 +2703,23 @@
         if (disc2) summary.push(disc2 + ' duplicate bid item(s) disconnected');
 
         showCopyToast('Updating ' + grid.sowName + ' to match ' + pkgName + ': ' + summary.join(', ') + '\u2026');
-        startCopyPoll();
+        startCopyPoll({ sowId: grid.sowId, pkgId: pkgId, sowName: grid.sowName, pkgName: pkgName });
 
         setBusy(button, true);
 
         ns.submitAction(payload)
           .done(function () {
-        // Webhook responded 200 — Make scenario is complete. Reload the
-        // whole page so every view (grid, totals, SOW tables) re-fetches
-        // from scratch rather than relying on a silent partial refresh.
-        if (CFG.debug) SCW.debug('[BidReview] Copy to SOW webhook completed — reloading page');
-        stopCopyPoll();
-        // Persist the open/closed accordion state so it survives the
-        // reload instead of coming back all-collapsed.
-        if (ns.persistAccordionState) ns.persistAccordionState();
-        window.location.reload();
+        // The 200 means RECEIVED, not done: 06.02's Webhook Response module
+        // sits right after its trigger, so Make answers before a single SOW
+        // write, and the sync itself runs for tens of seconds on a real bid.
+        // Reloading here (the behaviour until 2026-10-28) put the PRE-sync
+        // grid back on screen — "the scenario does not appear to be syncing
+        // the labels". The poll started above keeps re-reading the grid in
+        // place until this bid's cells on this SOW stop differing from the
+        // SOW items (see startCopyPoll); only the toast changes here.
+        if (CFG.debug) SCW.debug('[BidReview] Copy to SOW webhook accepted — polling until the sync lands');
+        updateCopyToastMessage('Updating ' + grid.sowName + ' to match ' + pkgName +
+          ' \u2014 Make is applying the changes; the grid re-reads every few seconds\u2026');
       })
       .fail(function (xhr) {
         // Timeout or error — keep polling; Make may still be processing

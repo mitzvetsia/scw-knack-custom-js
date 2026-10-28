@@ -1300,6 +1300,49 @@ The top of the reconcile-bids page (scene_1155, bid-review-v2) reworked per the 
   reconciled on their own scene. Test: `tests/bid-review-v2/test-hide-change-orders.js`.
 - Test: `tests/bid-review-v2/test-header-rework.js`.
 
+## Reconcile grid: the bid line's designator, and "Update SOW to match bid" waits for Make (2026-10-28)
+
+"On the reconcile bid grid we need to be displaying the label / designator (I-002 etc) on the BID line item
+AND flagging any discrepancies between the two. Also — this scenario [06.02] does not appear to be syncing the
+label / designators."
+- **A designator is prefix + number, computed server-side**: SOW `field_1950` from `field_2240` + `field_1951`,
+  survey `field_2365` from `field_2361` + `field_2362` (the worksheets refetch after a prefix / number edit for
+  exactly this reason). Nothing writes either label field; 06.02 writes the INPUTS on all eight SOW writers (route 0
+  [54] / [3] / [19] / [56] from the page payload, route 1 [78] / [83] / [89] / [103] from the survey item), so the
+  SOW label follows the bid's once the run lands. Non-device rows carry a product-based label there ("NVR (MDF)",
+  "<recordId> (<mdf>)"), never a designator.
+- **Bid cell** (`bid-review-v2/card.js` `buildBidCell`): every bid cell now opens with a **Label** line = the bid
+  line's own designator (`transform.js` `designatorOf`: `field_2365` when it is drop-shaped — `DROP_LABEL_RE`,
+  "E-001" / "I-038" / "RA-E-200" — else composed from the bid's prefix identifier + 3-digit padded number;
+  `cell.designator`, `cell.dropPrefix` / `cell.dropNumber`). `getMismatches.designator` compares `designatorKey`
+  (case-, whitespace- and zero-padding-insensitive: "i-1" == "I-001") of the bid vs the SOW item's designator
+  (`field_1950`, else `field_2240` + `field_1951` — `sowItemFieldKeys.dropPrefix` / `dropNumber`, columns view_3921
+  already serves). **ANY discrepancy flags, a one-sided designator included** (a matched bid line was seeded with
+  the SOW's prefix + number, so "none on bid" is a real difference); only with the SOW item loaded. The flagged
+  line wears the diff pill, reads "SOW: I-003" beside the value, and hover-links to the row-label cell
+  (`data-scw-sow-field="label"`; `init.js hoverField` looks in `__row-label-cell` too). A row with no designator
+  on either side has no Label line. Builder: view_3680 must serve `field_2361` + `field_2362` (it does — the
+  copy-to-SOW payload has always read them).
+- **Why the SOW "did not sync" — the page reloaded before Make finished.** 06.02's Webhook Response module [151]
+  is the SECOND module (right after the trigger), so the hook's 200 arrives before a single SOW write, and
+  `handleCopyToSow` (`bid-review/init.js`) reloaded the page on that 200 — the pre-sync grid came back on screen
+  (and a 06.02 run on a real bid takes tens of seconds). Now: no reload. `startCopyPoll(opts)` keeps the toast
+  and re-reads the grid in place every 5 s (`copyPollTick` = v2 `data.refetchAll()`, every source view from the
+  server + one rebuild; v1's silent refresh without v2) and watches `copySyncRemaining(sowId, pkgId)` — the rows
+  of that SOW's grid whose cell for that bid still has `getMismatches().any`, read off `SCW.bidReviewV2.lastState`
+  (render.js stashes every state it renders). After a 15 s grace: two zero reads → "<SOW> now matches <bid>";
+  four equal reads → "Sync applied — N lines still differ (see the flagged cells)" (Make is done; what is left is
+  not something the sync writes); else the 120 s timeout toast as before. Moving [151] to the end of 06.02 would
+  not replace this: Make answers "Accepted" on its own after 40 s anyway.
+- **06.02 "(designators)" blueprint** (scratchpad `tools/bp_patch_0602_labels.py`; import INTO the scenario so
+  the hook stays): route 0 reads the prefix / number off the bid RECORD (`bidRecord.field_2361_raw` /
+  `field_2362_raw`; [168]'s fresh GET for the creates) with the payload keys as the fallback and never writes
+  the page's `0` for a blank number (v1 `num()` turns a blank into 0 — [54] / [3] / [19] / [56] used to WRITE it);
+  [89] / [103] take `field_2362_raw` (the raw number) instead of the formatted display. An empty mapped value is
+  not sent, so a bid line with no designator leaves the SOW's alone.
+- Test: `tests/bid-review-v2/test-bid-designator.js` (helpers, the derived designators both sides, every drift
+  case, the Label line unflagged / flagged / "none on bid" / "SOW: none", the hover target).
+
 ## Reconcile grid: every bid line not on this SOW is a row (live 2026-10-16)
 
 With a basis bid chosen, **every** basis-bid line whose line item (`field_2404`) is not on the SOW

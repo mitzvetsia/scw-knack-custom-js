@@ -89,6 +89,36 @@
   }
   // Every connected identifier (not just the first) — used for multi-value
   // connections like accessories, where each attached record's label matters.
+  // ── Designator (drop label: E-001, I-038, RA-E-200) ──────────────────────
+  // The label a device carries is server-computed from its drop prefix + drop
+  // number (SOW field_1950 from field_2240 + field_1951; survey field_2365
+  // from field_2361 + field_2362). Non-device rows render a product-based
+  // label there ("NVR (MDF)" / "<recordId> (<mdf>)"), so a label counts as a
+  // designator only when it is drop-shaped; otherwise the designator is
+  // composed from the prefix identifier + the number (3-digit padded, the
+  // rule the computed labels follow) when the record carries them.
+  var DROP_LABEL_RE = /^[A-Za-z]{1,6}(?:-[A-Za-z]{1,6})*-?\d{1,5}$/;
+  function designatorOfLabel(label) {
+    var s = String(label == null ? '' : label).replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ').trim();
+    return DROP_LABEL_RE.test(s) ? s : '';
+  }
+  function composeDesignator(prefix, number) {
+    var p = String(prefix == null ? '' : prefix).replace(/<[^>]*>/g, '').trim();
+    var n = String(number == null ? '' : number).replace(/[,\s]/g, '');
+    if (!p || !/^\d+$/.test(n)) return '';
+    return p + (n.length < 3 ? ('000' + n).slice(-3) : n);
+  }
+  function designatorOf(rec, labelKey, prefixKey, numberKey) {
+    return designatorOfLabel(raw(rec, labelKey)) ||
+           composeDesignator(connectionLabel(rec, prefixKey), raw(rec, numberKey));
+  }
+  // Comparison key: case-, whitespace- and zero-padding-insensitive, so
+  // "E-001" and "e-1" read as the same designator.
+  function designatorKey(d) {
+    var s = String(d == null ? '' : d).toLowerCase().replace(/\s+/g, '');
+    return s.replace(/(\d+)$/, function (m) { return String(parseInt(m, 10)); });
+  }
   function connectionLabels(rec, key) {
     var c = connectionAll(rec, key);
     var out = [];
@@ -405,6 +435,12 @@
           // Bid record's own display label (field_2365) — diffed against the
           // SOW line item's authoritative label so drift is visible per cell.
           label:        raw(rec, FK.displayLabel),
+          // The bid line's designator (E-001 …): its label when drop-shaped,
+          // else composed from its own prefix + number (field_2361/2362).
+          // Shown on every bid cell and diffed against the SOW item's.
+          designator:   designatorOf(rec, FK.displayLabel, FK.dropPrefix, FK.dropNumber),
+          dropPrefix:   connectionLabel(rec, FK.dropPrefix),
+          dropNumber:   raw(rec, FK.dropNumber),
           productName:  raw(rec, FK.productName),
           qty:          num(rec, FK.qty),
           rate:         num(rec, FK.rate),
@@ -1066,6 +1102,11 @@
         // view serves the column (productized services, 2026-10-23).
         productDesc: SFK.productDesc ? rawHtml(s, SFK.productDesc) : '',
         displayLabel: raw(s, SFK.displayLabel),
+        // The SOW line item's designator — field_1950 when drop-shaped, else
+        // composed from its prefix + number (field_2240 / field_1951).
+        designator:  designatorOf(s, SFK.displayLabel, SFK.dropPrefix, SFK.dropNumber),
+        dropPrefix:  connectionLabel(s, SFK.dropPrefix),
+        dropNumber:  raw(s, SFK.dropNumber),
         surveyNotes: raw(s, SFK.notes),
         scwNotes:    raw(s, SFK.scwNotes),
         // Attached accessories (field_2207, "REL_Accessories" — the parent's
@@ -1846,14 +1887,19 @@
     // Cabling diffs anchor on the BID carrying a value (incl. 0), so a bid that
     // simply didn't capture conduit/drop (blank) doesn't flag every row against
     // a spec that has one. Booleans flag on any true≠false delta.
-    // Designator drift — the bid record's copy of the display label
-    // (field_2365, cell.label) vs the SOW line item's authoritative label
-    // (field_1950, swapped onto row.displayLabel by buildState). Both
-    // sides must carry a label — a missing one is data lag, not a change.
-    var sowLblD = norm(row.displayLabel), bidLblD = norm(cell.label);
+    // Designator drift — the bid line's designator (field_2365 when drop-
+    // shaped, else its prefix + number) vs the SOW line item's (field_1950,
+    // else field_2240 + field_1951), compared case- and padding-insensitive.
+    // ANY discrepancy flags, a one-sided designator included: a matched bid
+    // line is seeded with the SOW's prefix + number, so a bid that lost its
+    // designator (or carries one the SOW lacks) is a real difference, not
+    // data lag. Only with the SOW item loaded — nothing to compare otherwise.
+    var sowDesK = row.sowItemData ? designatorKey(row.sowItemData.designator) : '';
+    var bidDesK = designatorKey(cell.designator);
+    var desDiff = (!!row.sowItemData && (sowDesK || bidDesK)) ? (sowDesK !== bidDesK) : false;
 
     var m = {
-      designator: (sowLblD && bidLblD) ? sowLblD !== bidLblD : false,
+      designator: desDiff,
       product:    productDiff,
       laborDesc:  wseq(sowDesc) !== wseq(cell.laborDesc),
       // Anchor qty on the SOW side carrying a value (mirrors the conn anchors)
@@ -1895,6 +1941,10 @@
     buildState:       buildState,
     groupRows:        groupRows,
     getMismatches:    getMismatches,
+    designatorOf:     designatorOf,
+    designatorOfLabel: designatorOfLabel,
+    composeDesignator: composeDesignator,
+    designatorKey:    designatorKey,
     stripHtml:        stripHtml,
     raw:              raw,
     rawHtml:          rawHtml,

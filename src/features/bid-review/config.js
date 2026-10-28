@@ -177,6 +177,8 @@
       proposalBucket:  'field_2219',   // proposal bucket (NOTE: differs from bid field_2366)
       sortOrder:       'field_2218',   // sort order (same key)
       displayLabel:    'field_1950',   // display label
+      dropPrefix:      'field_2240',   // LABEL_drop prefix (connection) — the designator's
+      dropNumber:      'field_1951',   // inputs; field_1950 is computed from them server-side
       existCabling:    'field_2461',   // existing cabling (same as SOW side)
       connDevice:      'field_1957',   // Connected Devices (SOW side)
       connTo:          'field_2197',   // Connected To (SOW side — camera/reader)

@@ -1452,6 +1452,23 @@
     '  color: #64748b; font-size: 10px; font-weight: 700;',
     '  text-transform: uppercase; letter-spacing: .03em;',
     '}',
+    /* Designator line at the top of a bid cell ("LABEL E-001"). The value
+       wears __field-diff when it differs from the SOW item's designator, and
+       the SOW value then reads beside it; a bid line with none says so. */
+    '.scw-bid-review-v2__cell-label {',
+    '  margin: 0 0 3px; font-size: 11.5px; line-height: 1.4; color: #0f172a;',
+    '  overflow-wrap: anywhere; word-break: break-word;',
+    '}',
+    '.scw-bid-review-v2__cell-label label {',
+    '  display: inline-block; margin-right: 5px;',
+    '  color: #64748b; font-size: 10px; font-weight: 700;',
+    '  text-transform: uppercase; letter-spacing: .03em;',
+    '}',
+    '.scw-bid-review-v2__cell-label-val { font-weight: 700; }',
+    '.scw-bid-review-v2__cell-label-val--none {',
+    '  font-weight: 400; font-style: italic; color: #64748b;',
+    '}',
+    '.scw-bid-review-v2__cell-label-sow { margin-left: 6px; color: #64748b; font-size: 11px; }',
     /* Connected-devices membership groups (SOW column, connLineHtml). When
        any connected device is off this SOW the list breaks into one line per
        group — This SOW / SOW <n> / No SOW — each label naming only ITS

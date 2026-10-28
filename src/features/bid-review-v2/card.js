@@ -1189,20 +1189,40 @@
     var descHover = (diffs && diffs.laborDesc) ? ' data-scw-diff-field="desc"' : '';
     var qtyDiff   = (diffs && diffs.qty) ? DIFF : '';
     var qtyHover  = (diffs && diffs.qty) ? ' data-scw-diff-field="qty"' : '';
-    // Label drift — the bid record's copy of the display label (field_2365)
-    // no longer matches the SOW line item's authoritative label (field_1950,
-    // swapped onto row.displayLabel by the transform). Surface the bid's
-    // stale label as a flagged line so the drift is visible instead of the
-    // bid label silently winning the row title. Sourced from the SAME
-    // getMismatches designator flag that flips diffs.any, so a designator
-    // change also unlocks the Revise ▾ / Match SOW values menu.
-    var labelDriftHtml = (diffs && diffs.designator)
-      ? '<div class="scw-bid-review-v2__cell-conn scw-bid-review-v2__field-diff"' +
-          ' data-scw-diff-field="label" title="Bid label: ' +
-          escapeHtml(cell.label) + ' — SOW: ' + escapeHtml(row.displayLabel) + '">' +
-          '<label>Label</label>' + escapeHtml(cell.label) +
-        '</div>'
-      : '';
+    // Designator line — the bid line's OWN designator (field_2365 when drop-
+    // shaped, else its prefix + number; transform.js designatorOf) at the top
+    // of every bid cell, so the reviewer reads "I-002" on the bid side as well
+    // as in the row-label column. Flagged by the SAME getMismatches designator
+    // flag that flips diffs.any (so a designator change also unlocks Revise ▾ /
+    // Match SOW values) whenever it differs from the SOW item's designator: the
+    // value wears the diff pill, the SOW value reads beside it, and a bid line
+    // with no designator says so instead of hiding the line.
+    var sowDes  = (row && row.sowItemData && row.sowItemData.designator) || '';
+    var bidDes  = cell.designator || '';
+    var desDiff = !!(diffs && diffs.designator);
+    var designatorLineHtml = '';
+    if (bidDes || desDiff) {
+      var desTitle = 'Bid label: ' + (bidDes || 'none') +
+        (desDiff ? ' — SOW: ' + (sowDes || 'none') : '') +
+        ((cell.dropPrefix || cell.dropNumber)
+          ? ' (prefix ' + (cell.dropPrefix || '—') + ', number ' + (cell.dropNumber || '—') + ')'
+          : '');
+      designatorLineHtml =
+        '<div class="scw-bid-review-v2__cell-label"' +
+          (desDiff ? ' data-scw-diff-field="label"' : '') +
+          ' title="' + escapeHtml(desTitle) + '">' +
+          '<label>Label</label>' +
+          '<span class="scw-bid-review-v2__cell-label-val' +
+            (bidDes ? '' : ' scw-bid-review-v2__cell-label-val--none') +
+            (desDiff ? ' scw-bid-review-v2__field-diff' : '') + '">' +
+            (bidDes ? escapeHtml(bidDes) : 'none on bid') +
+          '</span>' +
+          (desDiff
+            ? '<span class="scw-bid-review-v2__cell-label-sow">SOW: ' +
+                escapeHtml(sowDes || 'none') + '</span>'
+            : '') +
+        '</div>';
+    }
 
     // A bid line whose line item is not on THIS SOW (another SOW or none):
     // one rose badge, the same for both kinds, so every such row reads as one
@@ -1211,7 +1231,7 @@
       ? '<span class="scw-bid-review-v2__no-bid-badge ' +
           'scw-bid-review-v2__no-bid-badge--not-on-sow">Not on this SOW</span>'
       : '';
-    var primaryHtml = notOnSowBadge +
+    var primaryHtml = notOnSowBadge + designatorLineHtml +
       (cell.productName ?
         '<div class="scw-bid-review-v2__cell-product"' + prodHover + ' title="' +
           escapeHtml(cell.productName) + '">' +
@@ -1245,7 +1265,6 @@
           '<label>MDF&nbsp;/&nbsp;IDF</label>' +
           escapeHtml(cell.mdfIdf || '(none)') +
         '</div>' : '') +
-      labelDriftHtml +
       // Survey note (field_2412) on the bid record — v1 parity: populated
       // cells render the sub's note too, not just the no-bid cutouts.
       surveyNoteHtml(cell.notes) +
@@ -1381,7 +1400,9 @@
     var labelHtml = '';
     if (isCamReader(row) && row.displayLabel) {
       labelHtml +=
-        '<div class="scw-bid-review-v2__row-label">' +
+        // data-scw-sow-field: the hover target of the bid cell's flagged
+        // designator line (init.js hoverField looks in this cell too).
+        '<div class="scw-bid-review-v2__row-label" data-scw-sow-field="label">' +
           escapeHtml(row.displayLabel) + '</div>';
     }
     // Per-row SOW totals — Equipment Total above Install Fee, mirroring

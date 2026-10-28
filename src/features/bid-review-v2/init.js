@@ -318,8 +318,11 @@
       var tr = f.closest('tr');
       if (!tr) return;
       var type = f.getAttribute('data-scw-diff-field');
+      // The SOW side of a field lives in the SOW cell — except the designator,
+      // whose SOW value is the row-label cell (E-001 column).
       var target = tr.querySelector(
-        '.scw-bid-review-v2__sow-cell [data-scw-sow-field="' + type + '"]');
+        '.scw-bid-review-v2__sow-cell [data-scw-sow-field="' + type + '"], ' +
+        '.scw-bid-review-v2__row-label-cell [data-scw-sow-field="' + type + '"]');
       if (target) target.classList.toggle('scw-bid-review-v2__sow-field-hl', on);
     }
     document.addEventListener('mouseover', function (e) { hoverField(e, true); });
