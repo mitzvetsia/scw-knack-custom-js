@@ -172,6 +172,10 @@
           var _ipCd = ns.card.connDevicesSig(recById[id], sourceViewKey);
           if (_ipCd) _ipSig += '|cd:' + _ipCd;
         }
+        if (ns.card && typeof ns.card.accessoriesSig === 'function') {
+          var _ipAc = ns.card.accessoriesSig(recById[id], sourceViewKey);
+          if (_ipAc) _ipSig += '|ac:' + _ipAc;
+        }
         fresh.setAttribute('data-scw-sig', _ipSig);
       } catch (e) { /* ignore */ }
       if (openIds[id] && fresh.classList) fresh.classList.add('scw-ws-v2-card--open');
@@ -1123,12 +1127,17 @@
       // also folds in the reciprocal Connected-Devices fingerprint so a
       // PARENT rebuilds when one of its children's Connected To changes
       // (its own JSON wouldn't change, so it'd otherwise serve a stale
-      // "Connected Devices" display until a full reload).
+      // "Connected Devices" display until a full reload) — and the same for
+      // the accessories that name it as their parent (Mounting Hardware chips).
       var _ss = _PF ? SCW._now() : 0;
       var sig = cardSig(record);
       if (ns.card && typeof ns.card.connDevicesSig === 'function') {
         var _cd = ns.card.connDevicesSig(record, viewKey);
         if (_cd) sig += '|cd:' + _cd;
+      }
+      if (ns.card && typeof ns.card.accessoriesSig === 'function') {
+        var _ac = ns.card.accessoriesSig(record, viewKey);
+        if (_ac) sig += '|ac:' + _ac;
       }
       if (_PF) _pfSig += SCW._now() - _ss;
       if (ex && ex.getAttribute('data-scw-sig') === sig) {

@@ -1969,8 +1969,10 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   through its parent's `field_2207` list ([58]) — both writes are `distinct(add(…))`; bid-only accessory lines would
   land without a parent, but none exist until 05.01 creates accessory survey items. Pre-existing, not touched: 06.03's
   default-assumptions route ([64]–[69]) lost its create/update modules 67 / 68, so it adds nothing to the new SOW. **Survey worksheet (bundle, same day)**: view_3505
-  maps `parent: 'field_2416'` (worksheet-v2/config.js). A Require Sub Bid = No accessory folds under its parent card (whose
-  read-only Mounting Hardware line, `field_2463`, already names it), a priced one sits beside it in the parent's MDF/IDF,
+  maps `parent: 'field_2416'` (worksheet-v2/config.js). A Require Sub Bid = No accessory folds under its parent card, whose
+  Mounting Hardware line lists the linked accessory records as read-only chips (card.js `detailMountingHardwareRO`; the
+  stored `field_2463` text only when none is linked; `accessoriesSig` in the card signature repaints the parent when one
+  is linked), a priced one sits beside it in the parent's MDF/IDF,
   and one whose parent is not loaded lands in "Orphaned Accessories" — where EVERY bracket lands without the mapping or
   without the column (**Builder: `field_2416` must be a column on view_3505**; groups.js warns in the console when it is
   missing). The catalog's wrong-accessory warning is off on `noAccessories` views (warnings.js — the sub cannot act on

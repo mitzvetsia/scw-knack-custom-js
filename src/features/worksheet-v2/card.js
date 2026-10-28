@@ -497,6 +497,28 @@
     } catch (e) { return ''; }
   }
 
+  /** Accessory fingerprint for a record — the sorted ids of every record
+   *  whose child → parent back-pointer (the view's `parent` field) names it.
+   *  Folded into the card's render signature like connDevicesSig: chips
+   *  derived from the children (the survey worksheet's Mounting Hardware)
+   *  would otherwise go stale, since the parent's own JSON does not change
+   *  when an accessory is linked to it. '' when the view maps no parent. */
+  function accessoriesSig(rec, viewKey) {
+    try {
+      if (!rec || !rec.id) return '';
+      var parentKey = fieldsFor(viewKey).parent;
+      if (!parentKey) return '';
+      var kids = backIndex(viewKey, parentKey)[rec.id];
+      if (!kids || !kids.length) return '';
+      var ids = [];
+      for (var i = 0; i < kids.length; i++) {
+        if (kids[i] && kids[i].id) ids.push(kids[i].id);
+      }
+      ids.sort();
+      return ids.join(',');
+    } catch (e) { return ''; }
+  }
+
   /** Count on field_2586 ("associated survey line items"). >0 means a survey
    *  line-item record has been created for this SOW line item (i.e. it's an
    *  existing/committed item), vs a brand-new sales addition (0). */
@@ -2379,11 +2401,14 @@
     // editable detailConnection button (picker wired in init.js).
     var groups = '';
 
-    // SCW Notes (field_2418) over Mounting Hardware (field_2463) — both
-    // read-only, owned upstream. They share column 2 (after the Label column).
+    // SCW Notes (field_2418) over Mounting Hardware — both read-only, owned
+    // upstream. They share column 2 (after the Label column). Mounting
+    // Hardware is the item's linked accessory records (REL_parent children,
+    // read-only chips) when it has any, else the stored list text (field_2463).
+    var mhChips = detailMountingHardwareRO(rec, viewKey);
     var notesCol = sdGroup(
       sdItem(detailNotesReadOnly(rec, F.scwNotes || 'field_2418', 'SCW Notes'), 'scw-ws-v2-sd--paragraph') +
-      sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'), 'scw-ws-v2-sd--paragraph'),
+      sdItem(mhChips || detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'), 'scw-ws-v2-sd--paragraph'),
       'scw-ws-v2-sd-group--notes');
 
     // MDF/IDF (field_2375) — present on EVERY card; rendered FIRST in the
@@ -3196,6 +3221,7 @@
     // Reciprocal Connected-Devices fingerprint — folded into the render
     // signature so a parent rebuilds when a child's Connected To changes.
     connDevicesSig:      connDevicesSig,
+    accessoriesSig:      accessoriesSig,
     // Install designator cell (read ↔ edit) — designator-edit.js re-renders
     // just this cell when a row enters / leaves edit mode.
     installDesignatorCell: installDesignatorCell

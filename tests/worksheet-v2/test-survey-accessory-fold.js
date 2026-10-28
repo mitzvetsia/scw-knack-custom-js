@@ -84,6 +84,26 @@ const tree2 = ns.groups.buildGroupTree(noCol, [], { viewKey: 'view_3505', fields
 check('no field_2416 column on view_3505 → all three brackets read as orphans',
   idsByL1(tree2)['Orphaned Accessories'], ['b1', 'b2', 'b3']);
 
+// ── the camera's Mounting Hardware line shows its linked accessories ──────
+const withText = survey.map(r => r.id === 'c1' ? Object.assign({}, r, { field_2463: 'wall mount bracket' }) : r)
+  .concat([{ id: 'c2', field_2379: 'Warrior 8.0', field_2365: 'E-002', field_2399: 1, field_2366_raw: conn(CAM, 'Camera / Reader'),
+    field_2375_raw: MDF, field_2416_raw: [], field_2463: 'corner mount bracket' }]);
+ns.data = { readRecords: () => withText };
+ns.idxGen = (ns.idxGen || 0) + 1;
+const mhOf = id => {
+  const card = ns.card.buildCard(withText.find(r => r.id === id), 'view_3505');
+  const field = [...card.querySelectorAll('.scw-ws-v2-detail-label')].find(l => /Mounting Hardware/.test(l.textContent));
+  const box = field && field.parentNode;
+  return box ? [...box.querySelectorAll('.scw-ws-v2-mh-chip')].map(c => c.textContent.trim()).concat(
+    box.querySelector('.scw-ws-v2-mh-chip') ? [] : [box.textContent.replace('Mounting Hardware', '').trim()]) : null;
+};
+check('E-001 lists its two linked brackets as chips (not the stored text); E-002, with none linked, keeps the stored text',
+  [mhOf('c1').sort(), mhOf('c2')], [['Pole Mount Adapter', 'Wall Mount Bracket'], ['corner mount bracket']]);
+check('the card signature carries the linked accessories, so a newly linked bracket repaints its camera',
+  [ns.card.accessoriesSig(withText[0], 'view_3505'), ns.card.accessoriesSig(withText.find(r => r.id === 'c2'), 'view_3505')],
+  ['b1,b2', '']);
+delete ns.data;
+
 // ── the catalog's wrong-accessory flag stays off the sub's page ───────────
 window.SCW.catalog = { auditAccessories: () => ({ ready: true, ok: {}, wrong: { b1: 'c1' } }) };
 const surveyIssues = ns.warnings.analyze(survey, 'view_3505');
