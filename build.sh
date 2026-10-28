@@ -58,6 +58,7 @@ cat \
   src/features/ratking/scene-776-stub.js \
   src/features/modal-form-connection-sync.js \
   src/features/proposal-grid-v2.js \
+  src/features/sub-bid-document.js \
   src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \
   src/features/proposal-preview-images.js \
@@ -65,7 +66,6 @@ cat \
   src/features/published-proposal-render.js \
   src/features/accept-proposal-guard.js \
   src/features/secure-proposal-link.js \
-  src/features/bid-items-grid.js \
   src/features/bid-review/config.js \
   src/features/bid-review/margin.js \
   src/features/bid-review/styles.js \

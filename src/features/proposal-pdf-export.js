@@ -1457,6 +1457,20 @@
       var data = null;
 
       if (viewType === 'grid') {
+        // Sub bid document (scene_1149, view_3550): the bid items come from
+        // the grid's model through sub-bid-document.js — the same build the
+        // preview page shows — never from the table (the DOM scrape missed
+        // the no-sub-bid rows the old transform parked in "Other Associated
+        // Equipment"). Falls through to the scrape only when the model is
+        // not loaded.
+        var bdoc = window.SCW && window.SCW.bidDocument;
+        if (bdoc && typeof bdoc.owns === 'function' && bdoc.owns(viewId)) {
+          var bdData = null;
+          try { bdData = bdoc.publishView(viewId); }
+          catch (eBd) { console.warn('[SCW PDF Export] bid document failed — falling back to the table scrape', eBd); }
+          if (bdData) { result.views.push(bdData); continue; }
+          SCW.debug('[SCW PDF Export]', viewId, '→ bid document model not ready, scraping the table');
+        }
         // proposal-grid-v2 data view (e.g. view_4140): while the owning
         // v1 Builder view still exists it handles publish at its own DOM
         // position — never raw-scrape the hidden flat grid. Once the v1
@@ -5291,7 +5305,22 @@
     // Make/e-sign templates, and buildPdfHtml(payload,
     // { includeCoSummary: true }) remains available if a summary variant
     // is ever wanted again.
-    var htmlStr       = buildPdfHtml(payload);
+    // Subcontractor bid: the document IS the preview page's render
+    // (sub-bid-document.js builds both from the grid's model). The generic
+    // renderer below is the fallback for a model that is not loaded.
+    var bidDoc        = (cfg.payloadType === 'subcontractor bid' && window.SCW && window.SCW.bidDocument) || null;
+    var bidDocHtml    = '';
+    var bidDocLines   = null;
+    if (bidDoc) {
+      try {
+        bidDocHtml  = bidDoc.documentHtml() || '';
+        bidDocLines = bidDocHtml ? bidDoc.lineItems() : null;
+      } catch (eBdoc) {
+        console.warn('[SCW PDF Export] bid document failed — rendering the scraped payload instead', eBdoc);
+        bidDocHtml = ''; bidDocLines = null;
+      }
+    }
+    var htmlStr       = bidDocHtml || buildPdfHtml(payload);
     var summary       = extractSummaryFields(payload);
     var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
     var plaintextStr  = htmlToPlaintext(htmlStr);
@@ -5351,7 +5380,7 @@
       type:                  cfg.payloadType,
       // Named line-item projection for the subcontractor-bid scenario only
       // (undefined elsewhere → dropped by JSON.stringify). See buildBidLineItems.
-      bidLineItems:          cfg.payloadType === 'subcontractor bid' ? buildBidLineItems(payload) : undefined,
+      bidLineItems:          cfg.payloadType === 'subcontractor bid' ? (bidDocLines || buildBidLineItems(payload)) : undefined,
       bidLabel:              cfg.payloadType === 'subcontractor bid' ? ((payload.bidHeader || {}).label || '') : undefined,
       bidExpirationDate:     cfg.payloadType === 'subcontractor bid' ? ((payload.bidHeader || {}).expires || '') : undefined,
       sowId:                 summary.sowId,

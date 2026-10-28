@@ -1,0 +1,3485 @@
+[
+ {
+  "id": "6a14c1690140a9b2da9a6a3c",
+  "field_2365": "Appointed Representative",
+  "field_2365_raw": "Appointed Representative",
+  "field_2379": "Appointed Representative",
+  "field_2379_raw": "Appointed Representative",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "698a28799197236630b15144",
+    "identifier": "Default: Appointed Representative -"
+   }
+  ],
+  "field_2627": "<span class=\"698a28799197236630b15144\">Default: Appointed Representative -</span>",
+  "field_2366_raw": [
+   {
+    "id": "697b7a023a31502ec68b3303",
+    "identifier": "Assumptions"
+   }
+  ],
+  "field_2366": "<span class=\"697b7a023a31502ec68b3303\">Assumptions</span>",
+  "field_2375_raw": [],
+  "field_2375": "",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   },
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span><span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": "",
+  "field_2362": "",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 8,
+  "field_2218": "8",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>An appointed representative, to act as a single point of contact for the SCW onsite foreman or personnel, is required. The client designee will have the authority to execute written change orders upon an agreement of both parties.</p>",
+  "field_2409": "<p>An appointed representative, to act as a single point of contact for the SCW onsite foreman or personnel, is required. The client designee will have the authority to execute written change orders upon an agreement of both parties.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c16a3a13b60ab54d5410",
+  "field_2365": "Credentialing Platforms & Permits",
+  "field_2365_raw": "Credentialing Platforms & Permits",
+  "field_2379": "Credentialing Platforms & Permits",
+  "field_2379_raw": "Credentialing Platforms & Permits",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "698a28ca3e2c99ff7ae1befe",
+    "identifier": "Default: Credentialing Platforms & Permits -"
+   }
+  ],
+  "field_2627": "<span class=\"698a28ca3e2c99ff7ae1befe\">Default: Credentialing Platforms &amp; Permits -</span>",
+  "field_2366_raw": [
+   {
+    "id": "697b7a023a31502ec68b3303",
+    "identifier": "Assumptions"
+   }
+  ],
+  "field_2366": "<span class=\"697b7a023a31502ec68b3303\">Assumptions</span>",
+  "field_2375_raw": [],
+  "field_2375": "",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   },
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span><span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": "",
+  "field_2362": "",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 8,
+  "field_2218": "8",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>Client agrees to reimburse SCW for any fees for required vendor credentialing platforms and permits.</p>",
+  "field_2409": "<p>Client agrees to reimburse SCW for any fees for required vendor credentialing platforms and permits.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c16c0140a9b2da9a9cd6",
+  "field_2365": "Default Lift Assumption",
+  "field_2365_raw": "Default Lift Assumption",
+  "field_2379": "Default Lift Assumption",
+  "field_2379_raw": "Default Lift Assumption",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "69f0cc408265bf3ece8e1cc7",
+    "identifier": "Default: Lift Assumption -"
+   }
+  ],
+  "field_2627": "<span class=\"69f0cc408265bf3ece8e1cc7\">Default: Lift Assumption -</span>",
+  "field_2366_raw": [
+   {
+    "id": "697b7a023a31502ec68b3303",
+    "identifier": "Assumptions"
+   }
+  ],
+  "field_2366": "<span class=\"697b7a023a31502ec68b3303\">Assumptions</span>",
+  "field_2375_raw": [],
+  "field_2375": "",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   },
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span><span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": "",
+  "field_2362": "",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 8,
+  "field_2218": "8",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>Proposal assumes lift or aerial platform work is not required unless specifically identified under Additional Services. If a lift or aerial platform work is included in this quote, the quoted price is limited to the period specified. A change order may be applied if delays due to adverse weather conditions or unexpected or unforeseen subsidence or unstable ground conditions requires an extension of the equipment rental period.</p>",
+  "field_2409": "<p>Proposal assumes lift or aerial platform work is not required unless specifically identified under Additional Services. If a lift or aerial platform work is included in this quote, the quoted price is limited to the period specified. A change order may be applied if delays due to adverse weather conditions or unexpected or unforeseen subsidence or unstable ground conditions requires an extension of the equipment rental period.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c16d00a81d123f9832fd",
+  "field_2365": "No Conduit unless Specifically Identified",
+  "field_2365_raw": "No Conduit unless Specifically Identified",
+  "field_2379": "No Conduit unless Specifically Identified",
+  "field_2379_raw": "No Conduit unless Specifically Identified",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "69f0cbf05bf354ed446a855b",
+    "identifier": "Default: No Conduit unless Specifically Identified -"
+   }
+  ],
+  "field_2627": "<span class=\"69f0cbf05bf354ed446a855b\">Default: No Conduit unless Specifically Identified -</span>",
+  "field_2366_raw": [
+   {
+    "id": "697b7a023a31502ec68b3303",
+    "identifier": "Assumptions"
+   }
+  ],
+  "field_2366": "<span class=\"697b7a023a31502ec68b3303\">Assumptions</span>",
+  "field_2375_raw": [],
+  "field_2375": "",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   },
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span><span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": "",
+  "field_2362": "",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 8,
+  "field_2218": "8",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>Unless explicitly specified elsewhere in this quote, all conduit work, trenching, pulls strings, and sleeves for all security devices will be provided by others.</p>",
+  "field_2409": "<p>Unless explicitly specified elsewhere in this quote, all conduit work, trenching, pulls strings, and sleeves for all security devices will be provided by others.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c16d62319898a5a6088f",
+  "field_2365": "Obstructions Cleared",
+  "field_2365_raw": "Obstructions Cleared",
+  "field_2379": "Obstructions Cleared",
+  "field_2379_raw": "Obstructions Cleared",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "698a28a6a20493a3b2335839",
+    "identifier": "Default: Obstructions Cleared -"
+   }
+  ],
+  "field_2627": "<span class=\"698a28a6a20493a3b2335839\">Default: Obstructions Cleared -</span>",
+  "field_2366_raw": [
+   {
+    "id": "697b7a023a31502ec68b3303",
+    "identifier": "Assumptions"
+   }
+  ],
+  "field_2366": "<span class=\"697b7a023a31502ec68b3303\">Assumptions</span>",
+  "field_2375_raw": [],
+  "field_2375": "",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   },
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span><span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": "",
+  "field_2362": "",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 8,
+  "field_2218": "8",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>Client agrees to clear all camera mounting locations and cable pathways of obstructions so that SCW can easily access the location and place ladders as necessary to perform the service in a timely and cost effective manner.</p>",
+  "field_2409": "<p>Client agrees to clear all camera mounting locations and cable pathways of obstructions so that SCW can easily access the location and place ladders as necessary to perform the service in a timely and cost effective manner.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c16e99b5623b48d1bb7c",
+  "field_2365": "Site Access",
+  "field_2365_raw": "Site Access",
+  "field_2379": "Site Access",
+  "field_2379_raw": "Site Access",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "698a289117fa6ac5f17759c5",
+    "identifier": "Default: Site Access -"
+   }
+  ],
+  "field_2627": "<span class=\"698a289117fa6ac5f17759c5\">Default: Site Access -</span>",
+  "field_2366_raw": [
+   {
+    "id": "697b7a023a31502ec68b3303",
+    "identifier": "Assumptions"
+   }
+  ],
+  "field_2366": "<span class=\"697b7a023a31502ec68b3303\">Assumptions</span>",
+  "field_2375_raw": [],
+  "field_2375": "",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   },
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span><span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": "",
+  "field_2362": "",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 8,
+  "field_2218": "8",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>Client will provide installation personnel with access keys or escorts for SCW to perform the service in a timely and cost effective manner.</p>",
+  "field_2409": "<p>Client will provide installation personnel with access keys or escorts for SCW to perform the service in a timely and cost effective manner.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c170216e24920252e335",
+  "field_2365": "Special Order Equipment",
+  "field_2365_raw": "Special Order Equipment",
+  "field_2379": "Special Order Equipment",
+  "field_2379_raw": "Special Order Equipment",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "698a28e4d3f907e982590dd9",
+    "identifier": "Default: Special Order Equipment -"
+   }
+  ],
+  "field_2627": "<span class=\"698a28e4d3f907e982590dd9\">Default: Special Order Equipment -</span>",
+  "field_2366_raw": [
+   {
+    "id": "697b7a023a31502ec68b3303",
+    "identifier": "Assumptions"
+   }
+  ],
+  "field_2366": "<span class=\"697b7a023a31502ec68b3303\">Assumptions</span>",
+  "field_2375_raw": [],
+  "field_2375": "",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   },
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span><span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": "",
+  "field_2362": "",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 8,
+  "field_2218": "8",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>Any equipment labeled as Special-Order is not eligible for return once delivered to project site.</p>",
+  "field_2409": "<p>Any equipment labeled as Special-Order is not eligible for return once delivered to project site.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c17172421996028edc7c",
+  "field_2365": "8 Port Gigabit PoE Switch (behind cashregister)",
+  "field_2365_raw": "8 Port Gigabit PoE Switch (behind cashregister)",
+  "field_2379": "8 Port Gigabit PoE Switch",
+  "field_2379_raw": "8 Port Gigabit PoE Switch",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "65fc868d4ae04c0026bd0b4f",
+    "identifier": "8 Port Gigabit PoE Switch - SW10P-EXT-GB"
+   }
+  ],
+  "field_2627": "<span class=\"65fc868d4ae04c0026bd0b4f\">8 Port Gigabit PoE Switch - SW10P-EXT-GB</span>",
+  "field_2366_raw": [
+   {
+    "id": "647953bb54b4e1002931ed97",
+    "identifier": "Networking or Headend"
+   }
+  ],
+  "field_2366": "<span class=\"647953bb54b4e1002931ed97\">Networking or Headend</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [
+   {
+    "id": "6a3409aa0a40bdff618b3739",
+    "identifier": "E-001"
+   },
+   {
+    "id": "6a14c1748c9a429c7c8144d9",
+    "identifier": "E-001"
+   },
+   {
+    "id": "6a14c1780140a9b2da9b8b7a",
+    "identifier": "E-003"
+   },
+   {
+    "id": "6a14c17b48c8ff555e709f89",
+    "identifier": "E-004"
+   },
+   {
+    "id": "6a14c17e9c05232d1003612a",
+    "identifier": "E-005"
+   },
+   {
+    "id": "6a14c181e9dc780eb37cc356",
+    "identifier": "E-010"
+   },
+   {
+    "id": "6a14c19ce9dc780eb37de9c8",
+    "identifier": "RA-E-003"
+   }
+  ],
+  "field_2380": "<span class=\"6a3409aa0a40bdff618b3739\">E-001</span><span class=\"6a14c1748c9a429c7c8144d9\">E-001</span><span class=\"6a14c1780140a9b2da9b8b7a\">E-003</span><span class=\"6a14c17b48c8ff555e709f89\">E-004</span><span class=\"6a14c17e9c05232d1003612a\">E-005</span><span class=\"6a14c181e9dc780eb37cc356\">E-010</span><span class=\"6a14c19ce9dc780eb37de9c8\">RA-E-003</span>",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 1,
+  "field_2362": "1",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 0,
+  "field_2218": "0",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 1000.0,
+  "field_2400": "$1,000.00",
+  "field_2401_raw": 1000.0,
+  "field_2401": "$1000.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>Installation and provisioning of the network switch, including basic configuration and connectivity.</p>",
+  "field_2409": "<p>Installation and provisioning of the network switch, including basic configuration and connectivity.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c19a3e51a131bbe543e6",
+  "field_2365": "Imperial 32 v3 (behind cashregister)",
+  "field_2365_raw": "Imperial 32 v3 (behind cashregister)",
+  "field_2379": "Imperial 32 v3",
+  "field_2379_raw": "Imperial 32 v3",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "697a3f5a95121e03032e8906",
+    "identifier": "Imperial 32 v3 - IMP32-V3"
+   }
+  ],
+  "field_2627": "<span class=\"697a3f5a95121e03032e8906\">Imperial 32 v3 - IMP32-V3</span>",
+  "field_2366_raw": [
+   {
+    "id": "647953bb54b4e1002931ed97",
+    "identifier": "Networking or Headend"
+   }
+  ],
+  "field_2366": "<span class=\"647953bb54b4e1002931ed97\">Networking or Headend</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 1,
+  "field_2362": "1",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 0,
+  "field_2218": "0",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 0.0,
+  "field_2400": "$0.00",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>Installation and provisioning of the Network Video Recorder (NVR), including patch panel termination if installed in customer or SCW provided rack, full system configuration, and final review by the SCW Tech Support Team. This includes establishing connectivity to the client-provided LAN and configuring remote viewing, provided the client supplies an active ISP connection.</p>",
+  "field_2409": "<p>Installation and provisioning of the Network Video Recorder (NVR), including patch panel termination if installed in customer or SCW provided rack, full system configuration, and final review by the SCW Tech Support Team. This includes establishing connectivity to the client-provided LAN and configuring remote viewing, provided the client supplies an active ISP connection.</p>",
+  "field_2412_raw": "asdfasdfasf -- testing second removal",
+  "field_2412": "asdfasdfasf -- testing second removal"
+ },
+ {
+  "id": "6ac8fd63b1828c5dcbbf0f7d",
+  "field_2365": "Imperial 256 Channel 4K NVR (behind cashregister)",
+  "field_2365_raw": "Imperial 256 Channel 4K NVR (behind cashregister)",
+  "field_2379": "Imperial 256 Channel 4K NVR",
+  "field_2379_raw": "Imperial 256 Channel 4K NVR",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "648a0f5e64eac8002812de19",
+    "identifier": "Imperial 256 Channel 4K NVR - IMP256"
+   }
+  ],
+  "field_2627": "<span class=\"648a0f5e64eac8002812de19\">Imperial 256 Channel 4K NVR - IMP256</span>",
+  "field_2366_raw": [
+   {
+    "id": "647953bb54b4e1002931ed97",
+    "identifier": "Networking or Headend"
+   }
+  ],
+  "field_2366": "<span class=\"647953bb54b4e1002931ed97\">Networking or Headend</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 1,
+  "field_2362": "1",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 0,
+  "field_2218": "0",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 350.0,
+  "field_2400": "$350.00",
+  "field_2401_raw": 350.0,
+  "field_2401": "$350.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>Installation and provisioning of the Network Video Recorder (NVR), including patch panel termination if installed in customer or SCW provided rack, full system configuration, and final review by the SCW Tech Support Team. This includes establishing connectivity to the client-provided LAN and configuring remote viewing, provided the client supplies an active ISP connection.</p>",
+  "field_2409": "<p>Installation and provisioning of the Network Video Recorder (NVR), including patch panel termination if installed in customer or SCW provided rack, full system configuration, and final review by the SCW Tech Support Team. This includes establishing connectivity to the client-provided LAN and configuring remote viewing, provided the client supplies an active ISP connection.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c199a90f6e1ae0693cec",
+  "field_2365": "Hard Drive, 24TB",
+  "field_2365_raw": "Hard Drive, 24TB",
+  "field_2379": "Hard Drive, 24TB",
+  "field_2379_raw": "Hard Drive, 24TB",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "698a3b20d3f907e982d0e830",
+    "identifier": "Hard Drive, 24TB - 24TB-HD"
+   }
+  ],
+  "field_2627": "<span class=\"698a3b20d3f907e982d0e830\">Hard Drive, 24TB - 24TB-HD</span>",
+  "field_2366_raw": [
+   {
+    "id": "5df12ce036f91b0015404d78",
+    "identifier": "Other Equipment"
+   }
+  ],
+  "field_2366": "<span class=\"5df12ce036f91b0015404d78\">Other Equipment</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 1,
+  "field_2362": "1",
+  "field_2399_raw": 3,
+  "field_2399": "3",
+  "field_2218_raw": 1,
+  "field_2218": "1",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": false,
+  "field_2478": "No",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "",
+  "field_2409": "",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c1a1439469faa81f04c7",
+  "field_2365": "[SPECIAL ORDER] 9u 600mm Networking Cabinet",
+  "field_2365_raw": "[SPECIAL ORDER] 9u 600mm Networking Cabinet",
+  "field_2379": "[SPECIAL ORDER] 9u 600mm Networking Cabinet",
+  "field_2379_raw": "[SPECIAL ORDER] 9u 600mm Networking Cabinet",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "6a04b3df9bf96a473514c98b",
+    "identifier": "[SPECIAL ORDER] 9u 600mm Networking Cabinet - SCW-9U6NC"
+   }
+  ],
+  "field_2627": "<span class=\"6a04b3df9bf96a473514c98b\">[SPECIAL ORDER] 9u 600mm Networking Cabinet - SCW-9U6NC</span>",
+  "field_2366_raw": [
+   {
+    "id": "5df12ce036f91b0015404d78",
+    "identifier": "Other Equipment"
+   }
+  ],
+  "field_2366": "<span class=\"5df12ce036f91b0015404d78\">Other Equipment</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 1,
+  "field_2362": "1",
+  "field_2399_raw": 2,
+  "field_2399": "2",
+  "field_2218_raw": 1,
+  "field_2218": "1",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 1000.0,
+  "field_2400": "$1,000.00",
+  "field_2401_raw": 2000.0,
+  "field_2401": "$2000.00",
+  "field_2478_raw": false,
+  "field_2478": "No",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>Install and assemble MDF/IDF rack or cabinet, including installation of wall-mounted backboard and mounting of all associated equipment.</p>",
+  "field_2409": "<p>Install and assemble MDF/IDF rack or cabinet, including installation of wall-mounted backboard and mounting of all associated equipment.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c1a2216e2492025472b1",
+  "field_2365": "Standby UPS & Battery Pack, 8 Outlets, 850VA",
+  "field_2365_raw": "Standby UPS & Battery Pack, 8 Outlets, 850VA",
+  "field_2379": "Standby UPS & Battery Pack, 8 Outlets, 850VA",
+  "field_2379_raw": "Standby UPS & Battery Pack, 8 Outlets, 850VA",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "64d144e6793cc800298f6315",
+    "identifier": "Standby UPS & Battery Pack, 8 Outlets, 850VA - SAWBUPS850"
+   }
+  ],
+  "field_2627": "<span class=\"64d144e6793cc800298f6315\">Standby UPS &amp; Battery Pack, 8 Outlets, 850VA - SAWBUPS850</span>",
+  "field_2366_raw": [
+   {
+    "id": "5df12ce036f91b0015404d78",
+    "identifier": "Other Equipment"
+   }
+  ],
+  "field_2366": "<span class=\"5df12ce036f91b0015404d78\">Other Equipment</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 1,
+  "field_2362": "1",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 1,
+  "field_2218": "1",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": false,
+  "field_2478": "No",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>wtf</p>",
+  "field_2409": "<p>wtf</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c1a30140a9b2da9d04e6",
+  "field_2365": "WattBox IP Power Conditioner (Compact) with OvrC Home | 3 Controlled Outlets",
+  "field_2365_raw": "WattBox IP Power Conditioner (Compact) with OvrC Home | 3 Controlled Outlets",
+  "field_2379": "WattBox IP Power Conditioner (Compact) with OvrC Home | 3 Controlled Outlets",
+  "field_2379_raw": "WattBox IP Power Conditioner (Compact) with OvrC Home | 3 Controlled Outlets",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "62bc866b0c6283001efec1c3",
+    "identifier": "WattBox IP Power Conditioner (Compact) with OvrC Home | 3 Controlled Outlets - SAWB300"
+   }
+  ],
+  "field_2627": "<span class=\"62bc866b0c6283001efec1c3\">WattBox IP Power Conditioner (Compact) with OvrC Home | 3 Controlled Outlets - SAWB300</span>",
+  "field_2366_raw": [
+   {
+    "id": "5df12ce036f91b0015404d78",
+    "identifier": "Other Equipment"
+   }
+  ],
+  "field_2366": "<span class=\"5df12ce036f91b0015404d78\">Other Equipment</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 1,
+  "field_2362": "1",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 1,
+  "field_2218": "1",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": false,
+  "field_2478": "No",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>wtf</p>",
+  "field_2409": "<p>wtf</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c1748c9a429c7c8144d9",
+  "field_2365": "E-001",
+  "field_2365_raw": "E-001",
+  "field_2379": "The Deputy 8.0",
+  "field_2379_raw": "The Deputy 8.0",
+  "field_2455": "Over 24'",
+  "field_2455_raw": "Over 24'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "62e75b7b6aba86071d34c8c4",
+    "identifier": "Deputy 8.0 - 26DF8M-V4"
+   }
+  ],
+  "field_2627": "<span class=\"62e75b7b6aba86071d34c8c4\">Deputy 8.0 - 26DF8M-V4</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [],
+  "field_2415": "",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c17172421996028edc7c",
+    "identifier": "8 Port Gigabit PoE Switch (behind cashregister)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c17172421996028edc7c\">8 Port Gigabit PoE Switch (behind cashregister)</span>",
+  "field_2362_raw": 1,
+  "field_2362": "1",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 750.0,
+  "field_2400": "$750.00",
+  "field_2401_raw": 750.0,
+  "field_2401": "$750.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": true,
+  "field_2370": "Yes",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p>wtf</p>",
+  "field_2409": "<p>wtf</p>",
+  "field_2412_raw": "testingw",
+  "field_2412": "testingw"
+ },
+ {
+  "id": "6a14c1780140a9b2da9b8b7a",
+  "field_2365": "E-003",
+  "field_2365_raw": "E-003",
+  "field_2379": "The Warrior 8.0 v5",
+  "field_2379_raw": "The Warrior 8.0 v5",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "69d94e0f612f6032290ad82b",
+    "identifier": "Warrior 8.0 v5 - 26BF8-V5"
+   }
+  ],
+  "field_2627": "<span class=\"69d94e0f612f6032290ad82b\">Warrior 8.0 v5 - 26BF8-V5</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c17172421996028edc7c",
+    "identifier": "8 Port Gigabit PoE Switch (behind cashregister)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c17172421996028edc7c\">8 Port Gigabit PoE Switch (behind cashregister)</span>",
+  "field_2362_raw": 3,
+  "field_2362": "3",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 750.0,
+  "field_2400": "$750.00",
+  "field_2401_raw": 750.0,
+  "field_2401": "$750.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p><b>Mount Cameras and Connect to Existing Cabling<br></b>Mount cameras at designated locations using existing client-provided cabling. Proposal assumes all existing cabling is functional, properly terminated, and within standard distance limitations for IP cameras and PoE switches.</p>",
+  "field_2409": "<p><b>Mount Cameras and Connect to Existing Cabling<br></b>Mount cameras at designated locations using existing client-provided cabling. Proposal assumes all existing cabling is functional, properly terminated, and within standard distance limitations for IP cameras and PoE switches.</p>",
+  "field_2412_raw": "this is anote about why something was removed\ntesting appending to bid does the new modal work?",
+  "field_2412": "this is anote about why something was removed<br>testing appending to bid does the new modal work?"
+ },
+ {
+  "id": "6a14c17b48c8ff555e709f89",
+  "field_2365": "E-004",
+  "field_2365_raw": "E-004",
+  "field_2379": "Informant Dual Vision",
+  "field_2379_raw": "Informant Dual Vision",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "65a938b4f2f4f3002842874f",
+    "identifier": "Informant Dual Vision - 26DF4-DV"
+   }
+  ],
+  "field_2627": "<span class=\"65a938b4f2f4f3002842874f\">Informant Dual Vision - 26DF4-DV</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c17172421996028edc7c",
+    "identifier": "8 Port Gigabit PoE Switch (behind cashregister)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c17172421996028edc7c\">8 Port Gigabit PoE Switch (behind cashregister)</span>",
+  "field_2362_raw": 4,
+  "field_2362": "4",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 750.0,
+  "field_2400": "$750.00",
+  "field_2401_raw": 750.0,
+  "field_2401": "$750.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p>Mount Camera &amp; Complete Cabling to Network Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras. CHANGE HERE</p>",
+  "field_2409": "<p>Mount Camera &amp; Complete Cabling to Network Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras. CHANGE HERE</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c17e9c05232d1003612a",
+  "field_2365": "E-005",
+  "field_2365_raw": "E-005",
+  "field_2379": "The Warrior 8.0 v5",
+  "field_2379_raw": "The Warrior 8.0 v5",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "69d94e0f612f6032290ad82b",
+    "identifier": "Warrior 8.0 v5 - 26BF8-V5"
+   }
+  ],
+  "field_2627": "<span class=\"69d94e0f612f6032290ad82b\">Warrior 8.0 v5 - 26BF8-V5</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c17172421996028edc7c",
+    "identifier": "8 Port Gigabit PoE Switch (behind cashregister)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c17172421996028edc7c\">8 Port Gigabit PoE Switch (behind cashregister)</span>",
+  "field_2362_raw": 5,
+  "field_2362": "5",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 750.0,
+  "field_2400": "$750.00",
+  "field_2401_raw": 750.0,
+  "field_2401": "$750.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c181e9dc780eb37cc356",
+  "field_2365": "E-010",
+  "field_2365_raw": "E-010",
+  "field_2379": "The Detective 8.0 v5",
+  "field_2379_raw": "The Detective 8.0 v5",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "69850cc0524a44d227dedaa3",
+    "identifier": "Detective 8.0 v5 - 26DV8-V5"
+   }
+  ],
+  "field_2627": "<span class=\"69850cc0524a44d227dedaa3\">Detective 8.0 v5 - 26DV8-V5</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c17172421996028edc7c",
+    "identifier": "8 Port Gigabit PoE Switch (behind cashregister)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c17172421996028edc7c\">8 Port Gigabit PoE Switch (behind cashregister)</span>",
+  "field_2362_raw": 10,
+  "field_2362": "10",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 750.0,
+  "field_2400": "$750.00",
+  "field_2401_raw": 750.0,
+  "field_2401": "$750.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c19ce9dc780eb37de9c8",
+  "field_2365": "RA-E-003",
+  "field_2365_raw": "RA-E-003",
+  "field_2379": "Beacon 8.0",
+  "field_2379_raw": "Beacon 8.0",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23f4918bb194da5559e1",
+    "identifier": "RA-E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23f4918bb194da5559e1\">RA-E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "62e75b4d6aba86071d34c830",
+    "identifier": "Beacon 8.0 - 26ZV8M"
+   }
+  ],
+  "field_2627": "<span class=\"62e75b4d6aba86071d34c830\">Beacon 8.0 - 26ZV8M</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c17172421996028edc7c",
+    "identifier": "8 Port Gigabit PoE Switch (behind cashregister)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c17172421996028edc7c\">8 Port Gigabit PoE Switch (behind cashregister)</span>",
+  "field_2362_raw": 3,
+  "field_2362": "3",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 750.0,
+  "field_2400": "$750.00",
+  "field_2401_raw": 750.0,
+  "field_2401": "$750.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": true,
+  "field_2370": "Yes",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a3409aa0a40bdff618b3739",
+  "field_2365": "E-001",
+  "field_2365_raw": "E-001",
+  "field_2379": "The Deputy 4.0 v4",
+  "field_2379_raw": "The Deputy 4.0 v4",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "683f141540641e02e541ad37",
+    "identifier": "Deputy 4.0 v4 - 26DF4M-V4"
+   }
+  ],
+  "field_2627": "<span class=\"683f141540641e02e541ad37\">Deputy 4.0 v4 - 26DF4M-V4</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c17172421996028edc7c",
+    "identifier": "8 Port Gigabit PoE Switch (behind cashregister)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c17172421996028edc7c\">8 Port Gigabit PoE Switch (behind cashregister)</span>",
+  "field_2362_raw": 1,
+  "field_2362": "1",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": 150,
+  "field_2367": "150",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 750.0,
+  "field_2400": "$750.00",
+  "field_2401_raw": 750.0,
+  "field_2401": "$750.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6ae14fdd2c7afed0f49507bd",
+  "field_2365": "E-011",
+  "field_2365_raw": "E-011",
+  "field_2379": "Scout 8.0",
+  "field_2379_raw": "Scout 8.0",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "681cd6d1d7572002ae6ce984",
+    "identifier": "Scout 8.0 - 26DF8M-180"
+   }
+  ],
+  "field_2627": "<span class=\"681cd6d1d7572002ae6ce984\">Scout 8.0 - 26DF8M-180</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 11,
+  "field_2362": "11",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": 150,
+  "field_2367": "150",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 625.0,
+  "field_2400": "$625.00",
+  "field_2401_raw": 625.0,
+  "field_2401": "$625.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6ae14fe176522395133c17c4",
+  "field_2365": "E-012",
+  "field_2365_raw": "E-012",
+  "field_2379": "[PRICING INCREASE EFFECTIVE UPON PROPOSAL EXPIRATION] The Detective 8.0",
+  "field_2379_raw": "[PRICING INCREASE EFFECTIVE UPON PROPOSAL EXPIRATION] The Detective 8.0",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "651acedd727b0c0027b7683d",
+    "identifier": "[PRICING INCREASE EFFECTIVE UPON PROPOSAL EXPIRATION] The Detective 8.0 - 26DV8M-A"
+   }
+  ],
+  "field_2627": "<span class=\"651acedd727b0c0027b7683d\">[PRICING INCREASE EFFECTIVE UPON PROPOSAL EXPIRATION] The Detective 8.0 - 26DV8M-A</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 12,
+  "field_2362": "12",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": 150,
+  "field_2367": "150",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": false,
+  "field_2478": "No",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6ae14fe23388147407b4f507",
+  "field_2365": "E-013",
+  "field_2365_raw": "E-013",
+  "field_2379": "The Viking 8.0",
+  "field_2379_raw": "The Viking 8.0",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "62e75b8a6aba86071d34c8f2",
+    "identifier": "Discontinued Item - 26BV8M-A"
+   }
+  ],
+  "field_2627": "<span class=\"62e75b8a6aba86071d34c8f2\">Discontinued Item - 26BV8M-A</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 13,
+  "field_2362": "13",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": 150,
+  "field_2367": "150",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 625.0,
+  "field_2400": "$625.00",
+  "field_2401_raw": 625.0,
+  "field_2401": "$625.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6ae14fe654b6cbf392457a83",
+  "field_2365": "E-014",
+  "field_2365_raw": "E-014",
+  "field_2379": "The Observer 5.0 Multi-Sensor",
+  "field_2379_raw": "The Observer 5.0 Multi-Sensor",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "6792610e5804230313e3098c",
+    "identifier": "Observer 5.0 Multi-Sensor - 26DV5-MS"
+   }
+  ],
+  "field_2627": "<span class=\"6792610e5804230313e3098c\">Observer 5.0 Multi-Sensor - 26DV5-MS</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 14,
+  "field_2362": "14",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": 150,
+  "field_2367": "150",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 625.0,
+  "field_2400": "$625.00",
+  "field_2401_raw": 625.0,
+  "field_2401": "$625.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6ae14fea38d45eb39c351f68",
+  "field_2365": "RA-E-200",
+  "field_2365_raw": "RA-E-200",
+  "field_2379": "Beacon 8.0",
+  "field_2379_raw": "Beacon 8.0",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23f4918bb194da5559e1",
+    "identifier": "RA-E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23f4918bb194da5559e1\">RA-E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "62e75b4d6aba86071d34c830",
+    "identifier": "Beacon 8.0 - 26ZV8M"
+   }
+  ],
+  "field_2627": "<span class=\"62e75b4d6aba86071d34c830\">Beacon 8.0 - 26ZV8M</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 200,
+  "field_2362": "200",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": 150,
+  "field_2367": "150",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 625.0,
+  "field_2400": "$625.00",
+  "field_2401_raw": 625.0,
+  "field_2401": "$625.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6ae14fed1f0bb8e66d99e4ef",
+  "field_2365": "E-012",
+  "field_2365_raw": "E-012",
+  "field_2379": "[SPECIAL ORDER] AXIS XFQ1656 4MP Outdoor Explosion-Protected Camera + Wall Mount",
+  "field_2379_raw": "[SPECIAL ORDER] AXIS XFQ1656 4MP Outdoor Explosion-Protected Camera + Wall Mount",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "691cadfa6b86970ea26cc468",
+    "identifier": "[SPECIAL ORDER] AXIS XFQ1656 4MP Outdoor Explosion-Protected Camera + Wall Mount - SCW-OEPC"
+   }
+  ],
+  "field_2627": "<span class=\"691cadfa6b86970ea26cc468\">[SPECIAL ORDER] AXIS XFQ1656 4MP Outdoor Explosion-Protected Camera + Wall Mount - SCW-OEPC</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 12,
+  "field_2362": "12",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": 150,
+  "field_2367": "150",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 625.0,
+  "field_2400": "$625.00",
+  "field_2401_raw": 625.0,
+  "field_2401": "$625.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": true,
+  "field_2370": "Yes",
+  "field_2371_raw": true,
+  "field_2371": "Yes",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p><b>Mount Cameras and Connect to Existing Cabling<br></b>Mount cameras at designated locations using existing client-provided cabling. Proposal assumes all existing cabling is functional, properly terminated, and within standard distance limitations for IP cameras and PoE switches.</p>",
+  "field_2409": "<p><b>Mount Cameras and Connect to Existing Cabling<br></b>Mount cameras at designated locations using existing client-provided cabling. Proposal assumes all existing cabling is functional, properly terminated, and within standard distance limitations for IP cameras and PoE switches.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6ae14ff055b55c39cfe68717",
+  "field_2365": "E-013",
+  "field_2365_raw": "E-013",
+  "field_2379": "[SPECIAL ORDER] AXIS XFQ1656 4MP Outdoor Explosion-Protected Camera + Wall Mount",
+  "field_2379_raw": "[SPECIAL ORDER] AXIS XFQ1656 4MP Outdoor Explosion-Protected Camera + Wall Mount",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "691cadfa6b86970ea26cc468",
+    "identifier": "[SPECIAL ORDER] AXIS XFQ1656 4MP Outdoor Explosion-Protected Camera + Wall Mount - SCW-OEPC"
+   }
+  ],
+  "field_2627": "<span class=\"691cadfa6b86970ea26cc468\">[SPECIAL ORDER] AXIS XFQ1656 4MP Outdoor Explosion-Protected Camera + Wall Mount - SCW-OEPC</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 13,
+  "field_2362": "13",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": 150,
+  "field_2367": "150",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 625.0,
+  "field_2400": "$625.00",
+  "field_2401_raw": 625.0,
+  "field_2401": "$625.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": true,
+  "field_2370": "Yes",
+  "field_2371_raw": true,
+  "field_2371": "Yes",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p><b>Mount Cameras and Connect to Existing Cabling<br></b>Mount cameras at designated locations using existing client-provided cabling. Proposal assumes all existing cabling is functional, properly terminated, and within standard distance limitations for IP cameras and PoE switches.</p>",
+  "field_2409": "<p><b>Mount Cameras and Connect to Existing Cabling<br></b>Mount cameras at designated locations using existing client-provided cabling. Proposal assumes all existing cabling is functional, properly terminated, and within standard distance limitations for IP cameras and PoE switches.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6ae14fe04379b15e61877405",
+  "field_2365": "",
+  "field_2365_raw": "",
+  "field_2379": "Electrical Box Mount for The Deputy, Sheriff, Informant, Scout - EBM26DFD",
+  "field_2379_raw": "Electrical Box Mount for The Deputy, Sheriff, Informant, Scout - EBM26DFD",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "651c583065493c0027ce4c0d",
+    "identifier": "Electrical Box Mount for The Deputy, Sheriff, Informant, Scout - EBM26DFD - EBM26DFD"
+   }
+  ],
+  "field_2627": "<span class=\"651c583065493c0027ce4c0d\">Electrical Box Mount for The Deputy, Sheriff, Informant, Scout - EBM26DFD - EBM26DFD</span>",
+  "field_2366_raw": [
+   {
+    "id": "594a94536877675816984cb9",
+    "identifier": "Mounting Hardware"
+   }
+  ],
+  "field_2366": "<span class=\"594a94536877675816984cb9\">Mounting Hardware</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [
+   {
+    "id": "6ae14fdd2c7afed0f49507bd",
+    "identifier": "E-011"
+   }
+  ],
+  "field_2416": "<span class=\"6ae14fdd2c7afed0f49507bd\">E-011</span>",
+  "field_2415_raw": [
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": "",
+  "field_2362": "",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 3,
+  "field_2218": "3",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": false,
+  "field_2478": "No",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "",
+  "field_2409": "",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6ae14fe53388147407b541a7",
+  "field_2365": "",
+  "field_2365_raw": "",
+  "field_2379": "Electrical Box Mount for Viking; Knight; Archer v1; Archer v2; Sharpshooter; Lookout Mini; Commander",
+  "field_2379_raw": "Electrical Box Mount for Viking; Knight; Archer v1; Archer v2; Sharpshooter; Lookout Mini; Commander",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "69839b60628e0cb38f6a33e2",
+    "identifier": "Electrical Box Mount for Viking; Knight; Archer v1; Archer v2; Sharpshooter; Lookout Mini; Commander - EMB26BV-V2"
+   }
+  ],
+  "field_2627": "<span class=\"69839b60628e0cb38f6a33e2\">Electrical Box Mount for Viking; Knight; Archer v1; Archer v2; Sharpshooter; Lookout Mini; Commander - EMB26BV-V2</span>",
+  "field_2366_raw": [
+   {
+    "id": "594a94536877675816984cb9",
+    "identifier": "Mounting Hardware"
+   }
+  ],
+  "field_2366": "<span class=\"594a94536877675816984cb9\">Mounting Hardware</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [
+   {
+    "id": "6ae14fe23388147407b4f507",
+    "identifier": "E-013"
+   }
+  ],
+  "field_2416": "<span class=\"6ae14fe23388147407b4f507\">E-013</span>",
+  "field_2415_raw": [
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": "",
+  "field_2362": "",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 3,
+  "field_2218": "3",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": false,
+  "field_2478": "No",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "",
+  "field_2409": "",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6ae14fe9c963aef8cedb93bc",
+  "field_2365": "",
+  "field_2365_raw": "",
+  "field_2379": "Electrical Box Mount for The Lookout, Laser, Watchkeeper, Spotlight, Scope, Beacon, Observer",
+  "field_2379_raw": "Electrical Box Mount for The Lookout, Laser, Watchkeeper, Spotlight, Scope, Beacon, Observer",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "69650894311277885b5841ac",
+    "identifier": "Electrical Box Mount for The Lookout, Laser, Watchkeeper, Spotlight, Scope, Beacon, Observer - EBM26ZV-2"
+   }
+  ],
+  "field_2627": "<span class=\"69650894311277885b5841ac\">Electrical Box Mount for The Lookout, Laser, Watchkeeper, Spotlight, Scope, Beacon, Observer - EBM26ZV-2</span>",
+  "field_2366_raw": [
+   {
+    "id": "594a94536877675816984cb9",
+    "identifier": "Mounting Hardware"
+   }
+  ],
+  "field_2366": "<span class=\"594a94536877675816984cb9\">Mounting Hardware</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [
+   {
+    "id": "6ae14fe654b6cbf392457a83",
+    "identifier": "E-014"
+   }
+  ],
+  "field_2416": "<span class=\"6ae14fe654b6cbf392457a83\">E-014</span>",
+  "field_2415_raw": [
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": "",
+  "field_2362": "",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 3,
+  "field_2218": "3",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": false,
+  "field_2478": "No",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "",
+  "field_2409": "",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6ae14fec3388147407b5a975",
+  "field_2365": "",
+  "field_2365_raw": "",
+  "field_2379": "Electrical Box Mount for The Lookout, Laser, Watchkeeper, Spotlight, Scope, Beacon, Observer",
+  "field_2379_raw": "Electrical Box Mount for The Lookout, Laser, Watchkeeper, Spotlight, Scope, Beacon, Observer",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23f4918bb194da5559e1",
+    "identifier": "RA-E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23f4918bb194da5559e1\">RA-E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "69650894311277885b5841ac",
+    "identifier": "Electrical Box Mount for The Lookout, Laser, Watchkeeper, Spotlight, Scope, Beacon, Observer - EBM26ZV-2"
+   }
+  ],
+  "field_2627": "<span class=\"69650894311277885b5841ac\">Electrical Box Mount for The Lookout, Laser, Watchkeeper, Spotlight, Scope, Beacon, Observer - EBM26ZV-2</span>",
+  "field_2366_raw": [
+   {
+    "id": "594a94536877675816984cb9",
+    "identifier": "Mounting Hardware"
+   }
+  ],
+  "field_2366": "<span class=\"594a94536877675816984cb9\">Mounting Hardware</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [
+   {
+    "id": "6ae14fea38d45eb39c351f68",
+    "identifier": "RA-E-200"
+   }
+  ],
+  "field_2416": "<span class=\"6ae14fea38d45eb39c351f68\">RA-E-200</span>",
+  "field_2415_raw": [
+   {
+    "id": "6ae14fd6c1102c4a50124d4d",
+    "identifier": "465"
+   }
+  ],
+  "field_2415": "<span class=\"6ae14fd6c1102c4a50124d4d\">465</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 200,
+  "field_2362": "200",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 3,
+  "field_2218": "3",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": "",
+  "field_2400": "",
+  "field_2401_raw": 0.0,
+  "field_2401": "$0.00",
+  "field_2478_raw": false,
+  "field_2478": "No",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "",
+  "field_2409": "",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a31624541124c270a2ca956",
+  "field_2365": "configure alarm input / outputs",
+  "field_2365_raw": "configure alarm input / outputs",
+  "field_2379": "",
+  "field_2379_raw": "",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [],
+  "field_2627": "",
+  "field_2366_raw": [
+   {
+    "id": "6977caa7f246edf67b52cbcd",
+    "identifier": "Other Services"
+   }
+  ],
+  "field_2366": "<span class=\"6977caa7f246edf67b52cbcd\">Other Services</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a13522d75d711a5a6da4b0f",
+    "identifier": "HEADEND: : behind cashregister"
+   }
+  ],
+  "field_2375": "<span class=\"6a13522d75d711a5a6da4b0f\">HEADEND: : behind cashregister</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": "",
+  "field_2362": "",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 4,
+  "field_2218": "4",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 750.0,
+  "field_2400": "$750.00",
+  "field_2401_raw": 750.0,
+  "field_2401": "$750.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>configure alarm input / outputs</p>",
+  "field_2409": "<p>configure alarm input / outputs</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c19f2579a5490554830f",
+  "field_2365": "SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)",
+  "field_2365_raw": "SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)",
+  "field_2379": "SCW 24 Port PoE Switch with Extended Transmission",
+  "field_2379_raw": "SCW 24 Port PoE Switch with Extended Transmission",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [
+   {
+    "id": "62e75b716aba86071d34c89f",
+    "identifier": "SCW 24 Port PoE Switch with Extended Transmission - SW24PEXT-V2"
+   }
+  ],
+  "field_2627": "<span class=\"62e75b716aba86071d34c89f\">SCW 24 Port PoE Switch with Extended Transmission - SW24PEXT-V2</span>",
+  "field_2366_raw": [
+   {
+    "id": "647953bb54b4e1002931ed97",
+    "identifier": "Networking or Headend"
+   }
+  ],
+  "field_2366": "<span class=\"647953bb54b4e1002931ed97\">Networking or Headend</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a14a55d60ad8676175423be",
+    "identifier": "IDF: 01: Guard Shack"
+   }
+  ],
+  "field_2375": "<span class=\"6a14a55d60ad8676175423be\">IDF: 01: Guard Shack</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [
+   {
+    "id": "6a2194d130f91941d23f5948",
+    "identifier": "E-001"
+   },
+   {
+    "id": "6a14c18400a81d123f994fbe",
+    "identifier": "E-010"
+   },
+   {
+    "id": "6a14c1899a5ee8ab67834a20",
+    "identifier": "E-011"
+   },
+   {
+    "id": "6a14c1868c9a429c7c81f162",
+    "identifier": "E-011"
+   },
+   {
+    "id": "6a14c18cd3cfecec0475c4be",
+    "identifier": "E-012"
+   },
+   {
+    "id": "6a14c190e9dc780eb37d6506",
+    "identifier": "E-013"
+   },
+   {
+    "id": "6a14c18e62319898a5a8b7b3",
+    "identifier": "E-013"
+   },
+   {
+    "id": "6a14c19574778e1e8b2d39a7",
+    "identifier": "E-014"
+   },
+   {
+    "id": "6a14c19362319898a5a92cc8",
+    "identifier": "E-014"
+   }
+  ],
+  "field_2380": "<span class=\"6a2194d130f91941d23f5948\">E-001</span><span class=\"6a14c18400a81d123f994fbe\">E-010</span><span class=\"6a14c1899a5ee8ab67834a20\">E-011</span><span class=\"6a14c1868c9a429c7c81f162\">E-011</span><span class=\"6a14c18cd3cfecec0475c4be\">E-012</span><span class=\"6a14c190e9dc780eb37d6506\">E-013</span><span class=\"6a14c18e62319898a5a8b7b3\">E-013</span><span class=\"6a14c19574778e1e8b2d39a7\">E-014</span><span class=\"6a14c19362319898a5a92cc8\">E-014</span>",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": 1,
+  "field_2362": "1",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 0,
+  "field_2218": "0",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 725.0,
+  "field_2400": "$725.00",
+  "field_2401_raw": 725.0,
+  "field_2401": "$725.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p>Installation and provisioning of the network switch, including basic configuration and connectivity.</p>",
+  "field_2409": "<p>Installation and provisioning of the network switch, including basic configuration and connectivity.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c18400a81d123f994fbe",
+  "field_2365": "E-010",
+  "field_2365_raw": "E-010",
+  "field_2379": "The Detective 8.0 v5",
+  "field_2379_raw": "The Detective 8.0 v5",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "69850cc0524a44d227dedaa3",
+    "identifier": "Detective 8.0 v5 - 26DV8-V5"
+   }
+  ],
+  "field_2627": "<span class=\"69850cc0524a44d227dedaa3\">Detective 8.0 v5 - 26DV8-V5</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a14a55d60ad8676175423be",
+    "identifier": "IDF: 01: Guard Shack"
+   }
+  ],
+  "field_2375": "<span class=\"6a14a55d60ad8676175423be\">IDF: 01: Guard Shack</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c19f2579a5490554830f",
+    "identifier": "SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c19f2579a5490554830f\">SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)</span>",
+  "field_2362_raw": 10,
+  "field_2362": "10",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 800.0,
+  "field_2400": "$800.00",
+  "field_2401_raw": 800.0,
+  "field_2401": "$800.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "this is a survey ntoe",
+  "field_2412": "this is a survey ntoe"
+ },
+ {
+  "id": "6a14c1868c9a429c7c81f162",
+  "field_2365": "E-011",
+  "field_2365_raw": "E-011",
+  "field_2379": "Scout 8.0",
+  "field_2379_raw": "Scout 8.0",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "681cd6d1d7572002ae6ce984",
+    "identifier": "Scout 8.0 - 26DF8M-180"
+   }
+  ],
+  "field_2627": "<span class=\"681cd6d1d7572002ae6ce984\">Scout 8.0 - 26DF8M-180</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a14a55d60ad8676175423be",
+    "identifier": "IDF: 01: Guard Shack"
+   }
+  ],
+  "field_2375": "<span class=\"6a14a55d60ad8676175423be\">IDF: 01: Guard Shack</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [],
+  "field_2415": "",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c19f2579a5490554830f",
+    "identifier": "SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c19f2579a5490554830f\">SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)</span>",
+  "field_2362_raw": 11,
+  "field_2362": "11",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 725.0,
+  "field_2400": "$725.00",
+  "field_2401_raw": 725.0,
+  "field_2401": "$725.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "this is a survey ntoe",
+  "field_2412": "this is a survey ntoe"
+ },
+ {
+  "id": "6a14c1899a5ee8ab67834a20",
+  "field_2365": "E-011",
+  "field_2365_raw": "E-011",
+  "field_2379": "Scout 8.0",
+  "field_2379_raw": "Scout 8.0",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "681cd6d1d7572002ae6ce984",
+    "identifier": "Scout 8.0 - 26DF8M-180"
+   }
+  ],
+  "field_2627": "<span class=\"681cd6d1d7572002ae6ce984\">Scout 8.0 - 26DF8M-180</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a14a55d60ad8676175423be",
+    "identifier": "IDF: 01: Guard Shack"
+   }
+  ],
+  "field_2375": "<span class=\"6a14a55d60ad8676175423be\">IDF: 01: Guard Shack</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c19f2579a5490554830f",
+    "identifier": "SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c19f2579a5490554830f\">SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)</span>",
+  "field_2362_raw": 11,
+  "field_2362": "11",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 725.0,
+  "field_2400": "$725.00",
+  "field_2401_raw": 725.0,
+  "field_2401": "$725.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "this is a survey ntoe",
+  "field_2412": "this is a survey ntoe"
+ },
+ {
+  "id": "6a14c18cd3cfecec0475c4be",
+  "field_2365": "E-012",
+  "field_2365_raw": "E-012",
+  "field_2379": "The Warrior 8.0 v5",
+  "field_2379_raw": "The Warrior 8.0 v5",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "69d94e0f612f6032290ad82b",
+    "identifier": "Warrior 8.0 v5 - 26BF8-V5"
+   }
+  ],
+  "field_2627": "<span class=\"69d94e0f612f6032290ad82b\">Warrior 8.0 v5 - 26BF8-V5</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a14a55d60ad8676175423be",
+    "identifier": "IDF: 01: Guard Shack"
+   }
+  ],
+  "field_2375": "<span class=\"6a14a55d60ad8676175423be\">IDF: 01: Guard Shack</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c19f2579a5490554830f",
+    "identifier": "SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c19f2579a5490554830f\">SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)</span>",
+  "field_2362_raw": 12,
+  "field_2362": "12",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 725.0,
+  "field_2400": "$725.00",
+  "field_2401_raw": 725.0,
+  "field_2401": "$725.00",
+  "field_2478_raw": false,
+  "field_2478": "No",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p><b>Mount Cameras and Connect to Existing Cabling<br></b>Mount cameras at designated locations using existing client-provided cabling. Proposal assumes all existing cabling is functional, properly terminated, and within standard distance limitations for IP cameras and PoE switches.</p>",
+  "field_2409": "<p><b>Mount Cameras and Connect to Existing Cabling<br></b>Mount cameras at designated locations using existing client-provided cabling. Proposal assumes all existing cabling is functional, properly terminated, and within standard distance limitations for IP cameras and PoE switches.</p>",
+  "field_2412_raw": "this is a survey ntoe",
+  "field_2412": "this is a survey ntoe"
+ },
+ {
+  "id": "6a14c18e62319898a5a8b7b3",
+  "field_2365": "E-013",
+  "field_2365_raw": "E-013",
+  "field_2379": "The Viking 8.0",
+  "field_2379_raw": "The Viking 8.0",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "62e75b8a6aba86071d34c8f2",
+    "identifier": "Discontinued Item - 26BV8M-A"
+   }
+  ],
+  "field_2627": "<span class=\"62e75b8a6aba86071d34c8f2\">Discontinued Item - 26BV8M-A</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a14a55d60ad8676175423be",
+    "identifier": "IDF: 01: Guard Shack"
+   }
+  ],
+  "field_2375": "<span class=\"6a14a55d60ad8676175423be\">IDF: 01: Guard Shack</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c19f2579a5490554830f",
+    "identifier": "SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c19f2579a5490554830f\">SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)</span>",
+  "field_2362_raw": 13,
+  "field_2362": "13",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 725.0,
+  "field_2400": "$725.00",
+  "field_2401_raw": 725.0,
+  "field_2401": "$725.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c190e9dc780eb37d6506",
+  "field_2365": "E-013",
+  "field_2365_raw": "E-013",
+  "field_2379": "The Viking 8.0",
+  "field_2379_raw": "The Viking 8.0",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "62e75b8a6aba86071d34c8f2",
+    "identifier": "Discontinued Item - 26BV8M-A"
+   }
+  ],
+  "field_2627": "<span class=\"62e75b8a6aba86071d34c8f2\">Discontinued Item - 26BV8M-A</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a14a55d60ad8676175423be",
+    "identifier": "IDF: 01: Guard Shack"
+   }
+  ],
+  "field_2375": "<span class=\"6a14a55d60ad8676175423be\">IDF: 01: Guard Shack</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c19f2579a5490554830f",
+    "identifier": "SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c19f2579a5490554830f\">SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)</span>",
+  "field_2362_raw": 13,
+  "field_2362": "13",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 725.0,
+  "field_2400": "$725.00",
+  "field_2401_raw": 725.0,
+  "field_2401": "$725.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c19362319898a5a92cc8",
+  "field_2365": "E-014",
+  "field_2365_raw": "E-014",
+  "field_2379": "The Observer 5.0 Multi-Sensor",
+  "field_2379_raw": "The Observer 5.0 Multi-Sensor",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "6792610e5804230313e3098c",
+    "identifier": "Observer 5.0 Multi-Sensor - 26DV5-MS"
+   }
+  ],
+  "field_2627": "<span class=\"6792610e5804230313e3098c\">Observer 5.0 Multi-Sensor - 26DV5-MS</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a14a55d60ad8676175423be",
+    "identifier": "IDF: 01: Guard Shack"
+   }
+  ],
+  "field_2375": "<span class=\"6a14a55d60ad8676175423be\">IDF: 01: Guard Shack</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c19f2579a5490554830f",
+    "identifier": "SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c19f2579a5490554830f\">SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)</span>",
+  "field_2362_raw": 14,
+  "field_2362": "14",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 725.0,
+  "field_2400": "$725.00",
+  "field_2401_raw": 725.0,
+  "field_2401": "$725.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a14c19574778e1e8b2d39a7",
+  "field_2365": "E-014",
+  "field_2365_raw": "E-014",
+  "field_2379": "The Observer 5.0 Multi-Sensor",
+  "field_2379_raw": "The Observer 5.0 Multi-Sensor",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "6792610e5804230313e3098c",
+    "identifier": "Observer 5.0 Multi-Sensor - 26DV5-MS"
+   }
+  ],
+  "field_2627": "<span class=\"6792610e5804230313e3098c\">Observer 5.0 Multi-Sensor - 26DV5-MS</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a14a55d60ad8676175423be",
+    "identifier": "IDF: 01: Guard Shack"
+   }
+  ],
+  "field_2375": "<span class=\"6a14a55d60ad8676175423be\">IDF: 01: Guard Shack</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c19f2579a5490554830f",
+    "identifier": "SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c19f2579a5490554830f\">SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)</span>",
+  "field_2362_raw": 14,
+  "field_2362": "14",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 725.0,
+  "field_2400": "$725.00",
+  "field_2401_raw": 725.0,
+  "field_2401": "$725.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2409": "<p><b>Mount Camera &amp; Complete Cabling to Network<br></b>Install and terminate new structured network cabling to designated camera locations. Mount, aim, aim and provision cameras.</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ },
+ {
+  "id": "6a2194d130f91941d23f5948",
+  "field_2365": "E-001",
+  "field_2365_raw": "E-001",
+  "field_2379": "The Deputy 8.0",
+  "field_2379_raw": "The Deputy 8.0",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [
+   {
+    "id": "697c23e95fcd43d578c31963",
+    "identifier": "E-"
+   }
+  ],
+  "field_2361": "<span class=\"697c23e95fcd43d578c31963\">E-</span>",
+  "field_2627_raw": [
+   {
+    "id": "62e75b7b6aba86071d34c8c4",
+    "identifier": "Deputy 8.0 - 26DF8M-V4"
+   }
+  ],
+  "field_2627": "<span class=\"62e75b7b6aba86071d34c8c4\">Deputy 8.0 - 26DF8M-V4</span>",
+  "field_2366_raw": [
+   {
+    "id": "6481e5ba38f283002898113c",
+    "identifier": "Camera or Reader"
+   }
+  ],
+  "field_2366": "<span class=\"6481e5ba38f283002898113c\">Camera or Reader</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a14a55d60ad8676175423be",
+    "identifier": "IDF: 01: Guard Shack"
+   }
+  ],
+  "field_2375": "<span class=\"6a14a55d60ad8676175423be\">IDF: 01: Guard Shack</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a14c1687cae8915d175c51c",
+    "identifier": "24"
+   },
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a14c1687cae8915d175c51c\">24</span><span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [
+   {
+    "id": "6a14c19f2579a5490554830f",
+    "identifier": "SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)"
+   }
+  ],
+  "field_2381": "<span class=\"6a14c19f2579a5490554830f\">SCW 24 Port PoE Switch with Extended Transmission (Guard Shack)</span>",
+  "field_2362_raw": 1,
+  "field_2362": "1",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 2,
+  "field_2218": "2",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 1000,
+  "field_2368": "1000",
+  "field_2400_raw": 800.0,
+  "field_2400": "$800.00",
+  "field_2401_raw": 800.0,
+  "field_2401": "$800.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": true,
+  "field_2372": "Yes",
+  "field_2409_raw": "<p>wtf</p>",
+  "field_2409": "<p>wtf</p>",
+  "field_2412_raw": "(VARIANT FOR E-001) - test",
+  "field_2412": "(VARIANT FOR E-001) - test"
+ },
+ {
+  "id": "6a343d12ff024dbb4478e2f0",
+  "field_2365": "this is a service",
+  "field_2365_raw": "this is a service",
+  "field_2379": "",
+  "field_2379_raw": "",
+  "field_2455": "Under 16'",
+  "field_2455_raw": "Under 16'",
+  "field_2361_raw": [],
+  "field_2361": "",
+  "field_2627_raw": [],
+  "field_2627": "",
+  "field_2366_raw": [
+   {
+    "id": "6977caa7f246edf67b52cbcd",
+    "identifier": "Other Services"
+   }
+  ],
+  "field_2366": "<span class=\"6977caa7f246edf67b52cbcd\">Other Services</span>",
+  "field_2375_raw": [
+   {
+    "id": "6a14a55d60ad8676175423be",
+    "identifier": "IDF: 01: Guard Shack"
+   }
+  ],
+  "field_2375": "<span class=\"6a14a55d60ad8676175423be\">IDF: 01: Guard Shack</span>",
+  "field_2416_raw": [],
+  "field_2416": "",
+  "field_2415_raw": [
+   {
+    "id": "6a219420549204a6275bd5a7",
+    "identifier": "69"
+   }
+  ],
+  "field_2415": "<span class=\"6a219420549204a6275bd5a7\">69</span>",
+  "field_2380_raw": [],
+  "field_2380": "",
+  "field_2381_raw": [],
+  "field_2381": "",
+  "field_2362_raw": "",
+  "field_2362": "",
+  "field_2399_raw": 1,
+  "field_2399": "1",
+  "field_2218_raw": 4,
+  "field_2218": "4",
+  "field_2367_raw": "",
+  "field_2367": "",
+  "field_2368_raw": 0,
+  "field_2368": "0",
+  "field_2400_raw": 100000.0,
+  "field_2400": "$100,000.00",
+  "field_2401_raw": 100000.0,
+  "field_2401": "$100000.00",
+  "field_2478_raw": true,
+  "field_2478": "Yes",
+  "field_2370_raw": false,
+  "field_2370": "No",
+  "field_2371_raw": false,
+  "field_2371": "No",
+  "field_2372_raw": false,
+  "field_2372": "No",
+  "field_2409_raw": "<p>this is a service</p>",
+  "field_2409": "<p>this is a service</p>",
+  "field_2412_raw": "",
+  "field_2412": ""
+ }
+]

@@ -22,7 +22,7 @@ src/
     preserve-scroll-on-refresh.js  # Scroll preservation + post-edit restoration coordinator
     extract-hsv-color.js       # Per-view color theming via _hsvcolor= keyword
     inline-photo-row.js        # Photo strip rows beneath device worksheets
-    bid-items-grid.js          # Bid items grid enhancements
+    sub-bid-document.js        # Sub preview-bid page: the bid document (page + PDF, one build)
     proposal-grid.js           # Proposal grid enhancements
     ...                        # ~40+ feature modules total
     ratking/                   # Legacy "ratking" modules split into focused files
@@ -874,6 +874,61 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
   description-only service unchanged, the view_3371 licenses by bucket id and by label, the PDF rows, `descHtmlOf` + the
   `productDescHtml` payload / PDF / manifest / flat-fallback path); `tests/bid-review-v2/test-service-product-desc.js` (the SOW
   cell line: order, rich text, services only, description-only and label-only rows).
+
+## Sub bid document: the preview page IS the bid PDF (2026-10-28) — `src/features/sub-bid-document.js`
+
+"The PDF needs to reflect what the user sees when they select Preview bid." On the sub's preview / submit bid
+page (scene_1149) the Bid Items grid view_3550 is no longer transformed in place: `SCW.bidDocument` builds ONE
+document from the grid's Backbone model and (a) renders it on the page inside `#view_3550` (the Knack table,
+its records nav and the view header are CSS-hidden, the table stays in the DOM; the bid header details view
+view_3552 is hidden too — `CONFIG.hideHeaderView` — because the document's header carries every row it
+shows, read off that view's DOM), and (b) hands proposal-pdf-export the same build on "Finalize & Submit to
+SCW": `scrapeAllViews` takes `publishView(viewId)` for a view `owns()` (sections / projectTotals in the
+scrape's shape, so `grandTotal` still reads "Grand Total" off `projectTotals`), and `buildPublishPayload`
+takes `html` from `documentHtml()` and `bidLineItems` from `lineItems()`; both fall back to the old table
+scrape only when the model is not loaded. **Why**: K-Bin 2026-10-28, "the PC and the TV are missing from the
+bid" — `bid-items-grid.js` parked no-sub-bid items in an on-page "Other Associated Equipment" block the DOM
+scrape never captured, and the page and the PDF were two renders. `bid-items-grid.js` moved to
+`src/features/legacy/` and is out of the build (it served only view_3550). Rules, decided the same day on
+the Claude Design mockup "Sub Bid PDF — Line-Item Mockup" built from survey SR20's real bids:
+- every item is its own line, grouped by MDF/IDF (HEADEND first, IDFs by number, "No MDF / IDF", then
+  "Project Wide Services" last) and, inside a location, by category — the proposal bucket, titled as the old
+  grid renamed it per type of system (`field_2228`: Video → "NVRs, Switches, and Networking", Access Control →
+  "Entries" / "AC Controllers…"; default "Cameras" / "Networking and Headend"); Other Services lines sit under
+  Project Wide Services whatever their MDF/IDF; Assumptions are the "General Project Assumptions" section
+  (product name + catalog text, no money). Canonical order inside a category: `field_2218` → label (natural)
+  → record id.
+- **an item that names a REL_parent (`field_2416`) on this bid sits UNDER that parent** (its top-level
+  ancestor; a cycle = both stand alone), priced or not: a sub bid amount (`field_2400` > 0) or Require Sub Bid
+  = Yes / blank makes it a priced "Accessory" child (rate + total in the money columns, counted in the totals
+  and in `bidLineItems` with `parent` = the host's label and its OWN category); Require Sub Bid = No with no
+  amount is an "SCW-provided · Not priced" child. A parent in the closing list carries its children there.
+- **a dollar amount in the sub bid field prices the line whatever Require Sub Bid says** (the cabinets on
+  B24: RSB = No, $1,000 each — a normal priced line, no flag). Require Sub Bid = No AND no amount, no parent
+  on the bid → the location's closing "Other SCW-provided equipment · no install labor" list (label, product,
+  category, qty, Not priced). A REL_parent that is not on this bid: the item stands alone and names it
+  ("Goes with E-001" on a priced line, "· for E-001" in the closing list).
+- The page and the PDF are the same `bodyHtml` (inline styles throughout; `documentHtml` wraps it with the
+  `@page` / Inter css in `<head>` AND at the top of `<body>` — the HTML→PDF module may wrap the input).
+  `SCW.projectId.banner` / `.footer` print the project number first; the header reads field_2638 (title,
+  trailing "|" trimmed), field_2635 (expires) and every other `.kn-detail` row of view_3552 as facts.
+- `bidLineItems` keeps the Make keys (`mdfIdf`, `bucket`, `description` = product + labor as before,
+  `productName`, `laborDescription`, `qty` number, `rate` / `cost` money strings) and adds `label`,
+  `recordId`, `parent`, `amount`; it is one entry per PRICED line (the old scrape grouped by labor
+  description + rate). Unpriced SCW-provided rows are not in it, as before.
+- **Builder: every `CONFIG.fields` key must be a column on view_3550** — `field_2416` parent, `field_2412`
+  survey notes, `field_2367` / `field_2368` / `field_2370` / `field_2371` / `field_2372` / `field_2455`
+  install details, `field_2380` / `field_2381` connections, `field_2379` product, plus the ones the grid
+  already had. Hidden columns are fine. A missing one is one console warning naming it and, for @getscw.com
+  logins only, an amber note above the document; the detail is simply left off until the column exists. No
+  "bucket is not Mounting Hardware" filter on view_3550 (the one that hid brackets on view_3505).
+- Make (bid submit, `SUBCONTRACTOR_BID_WEBHOOK`): `html` renders the PDF as before; check anything that
+  reads `bidLineItems` for one-entry-per-item. `json` / `jsonString` / `bidLabel` / `bidExpirationDate` /
+  extraFields are untouched.
+- Test: `tests/bid-document/test-bid-document.js` over `fixtures/sr20-bid-items.json` (the SR20 dump's rows
+  in model shape: B465 with four brackets under their cameras, B24 with the closing list, the priced
+  no-sub-bid items, project-wide services; the submit payload end to end; the edge cases). Totals reconcile
+  to the Bid Total Knack recorded ($3,750 / $15,275).
 
 ## Change request "Remove from bid" can also remove the item from the SOW (2026-10-22) — `bid-review/change-requests.js`
 
@@ -1750,7 +1805,7 @@ The same principle applies to **git history** on this repo — it can dump enorm
 
 This is a **copy-paste-and-modify codebase, not a design space.** Every feature follows the same skeleton: IIFE wrapper + `CONFIG`/`VIEWS` constant at top + `SCW.onViewRender` / `SCW.onSceneRender` binding + idempotent init + unique-ID CSS injection. There is no test framework, no linter, and no type system. Planning phases do not catch bugs here — manual testing against the live Knack app does. **Bias hard toward producing a diff the user can look at.**
 
-1. **Copy the closest sibling feature.** Grid work → start from `bid-items-grid.js` or `proposal-grid.js`. Worksheet work → `device-worksheet.js`. Collapsible-table work → `group-collapse.js`. Match file layout, naming, event namespacing, and the CSS injection idiom. Do not redesign the module shape — it's already decided.
+1. **Copy the closest sibling feature.** Grid work → start from `proposal-grid-v2.js` (model-driven) or `proposal-grid.js`. Worksheet work → `device-worksheet.js`. Collapsible-table work → `group-collapse.js`. Match file layout, naming, event namespacing, and the CSS injection idiom. Do not redesign the module shape — it's already decided.
 2. **Read each file once, in full.** For files under ~1500 lines, call `Read` with no `offset`/`limit` and be done. Reading overlapping chunks of the same file wastes context and usually means you're re-searching instead of building a mental model. (The explicit exception is `dist/knack-bundle.js` — see Context Hygiene.)
 3. **Commit to one approach before you write code.** Do not enumerate alternatives in assistant text ("we could do X, or Y, or Z…"). Pick the option with the smallest diff against existing code and write it. If two approaches look equal, the one that matches the nearest sibling feature wins by default.
 4. **Refactor with `Write`, not a chain of `Edit`s.** For anything larger than a couple of lines, produce the finished source in one `Write`, then `bash build.sh`, then commit. Don't narrate the design — write the code.
