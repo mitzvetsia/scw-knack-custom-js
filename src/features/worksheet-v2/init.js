@@ -2421,17 +2421,37 @@
         var _isSowPair    = (_pk === 'field_2464');
         // Forward children-array key(s): the one we PUT, and the set we
         // scan to find old parents. SOW carries TWO denormalized forward
-        // fields (field_2207 + field_1958); install has just field_2852.
+        // fields (field_2207 + field_1958); install maps field_2852 as
+        // both `children` and `accessories`. An object with NO forward
+        // list maps neither — the survey's REL_parent field_2416 (the
+        // child's link is the only truth, 2026-10-28): nothing is written
+        // on the parents there, only the child's own pointer.
         var _childPutKey  = _isSowPair
           ? 'field_2207'
-          : (_pF.children || _pF.accessories || 'field_2852');
+          : (_pF.children || _pF.accessories || '');
         var _childScanKeys = _isSowPair
           ? ['field_2207', 'field_1958']
-          : [_childPutKey];
+          : (_childPutKey ? [_childPutKey] : []);
         var _mdfKey = _pF.mdfIdf || 'field_1946';
         // Accessories inherit the parent's SOW membership on the SOW
         // object only — install line items carry no SOW connection.
         var _sowKey = _isSowPair ? 'field_2154' : null;
+        // What the accessory takes from its NEW parent: the SOW pair mirrors
+        // SOW + MDF/IDF; any other object follows its view config's
+        // accessoryFollow list (survey: Bid + MDF/IDF — the rule bulk.js
+        // followParent applies when the PARENT is edited), else the MDF/IDF.
+        var _vcParent = (ns.cfg && typeof ns.cfg.viewCfg === 'function') ? ns.cfg.viewCfg(viewKey) : null;
+        var _inheritKeys = [];
+        if (_isSowPair) {
+          _inheritKeys = [_sowKey, _mdfKey];
+        } else {
+          var _follow = (_vcParent && Array.isArray(_vcParent.accessoryFollow)) ? _vcParent.accessoryFollow : [];
+          for (var _fi = 0; _fi < _follow.length; _fi++) {
+            var _fk = _pF[_follow[_fi]] || (/^field_\d+$/.test(String(_follow[_fi])) ? _follow[_fi] : '');
+            if (_fk && _inheritKeys.indexOf(_fk) < 0) _inheritKeys.push(_fk);
+          }
+          if (!_inheritKeys.length) _inheritKeys = [_mdfKey];
+        }
         // Parent candidates are EVERY primary line item on the source view —
         // all buckets (cameras, readers, NVRs/switches, enclosures, services,
         // assumptions, …), not just Cam/Reader + Networking/Headend. They're
@@ -2461,7 +2481,18 @@
           candidates:    parentCands,
           multi:         false,
           // Grouped by MDF/IDF + canonically sorted by the picker default
-          // (see CLAUDE.md "Picker conventions").
+          // (see CLAUDE.md "Picker conventions") — by the view's OWN MDF/IDF
+          // field where it is not the SOW's field_1946 (survey field_2375),
+          // or every candidate would sink to "No MDF / IDF".
+          groupBy: (_mdfKey === 'field_1946') ? undefined : function (r) {
+            var _ga = r && (r.attributes || r);
+            var _graw = _ga && _ga[_mdfKey + '_raw'];
+            if (Array.isArray(_graw) && _graw.length && _graw[0] && _graw[0].id) {
+              var _glbl = String(_graw[0].identifier || '').replace(/<[^>]*>/g, '').trim();
+              return { id: _graw[0].id, label: _glbl || 'MDF / IDF' };
+            }
+            return { id: '__unknown', label: 'No MDF / IDF' };
+          },
           itemLabel: function (r) {
             // SOW: share the same product/drop resolver the card display
             // uses — it strips Knack\'s "<recordId> (<mdfLabel>)"
@@ -2575,29 +2606,24 @@
                 var pAttrs = pRec && (pRec.attributes ||
                   (typeof pRec.toJSON === 'function' ? pRec.toJSON() : null));
                 if (pAttrs) {
-                  var pSowRaw = (_sowKey && Array.isArray(pAttrs[_sowKey + '_raw']))
-                    ? pAttrs[_sowKey + '_raw'] : [];
-                  var pMdfRaw = Array.isArray(pAttrs[_mdfKey + '_raw'])
-                    ? pAttrs[_mdfKey + '_raw'] : [];
-                  var sowIds = [], si;
-                  for (si = 0; si < pSowRaw.length; si++) {
-                    if (pSowRaw[si] && pSowRaw[si].id) sowIds.push(pSowRaw[si].id);
-                  }
-                  var mdfIds = [];
-                  for (si = 0; si < pMdfRaw.length; si++) {
-                    if (pMdfRaw[si] && pMdfRaw[si].id) mdfIds.push(pMdfRaw[si].id);
+                  // _inheritKeys (above): SOW + MDF/IDF on the SOW pair, the
+                  // view's accessoryFollow fields (survey: Bid + MDF/IDF) or
+                  // just the MDF/IDF elsewhere — each copied EXACTLY, blanks
+                  // included.
+                  var _inhSet = {}, _inhBody = {};
+                  for (var _ik = 0; _ik < _inheritKeys.length; _ik++) {
+                    var _ikey = _inheritKeys[_ik];
+                    var _pRaw = Array.isArray(pAttrs[_ikey + '_raw']) ? pAttrs[_ikey + '_raw'] : [];
+                    var _pIds = [];
+                    for (var si = 0; si < _pRaw.length; si++) {
+                      if (_pRaw[si] && _pRaw[si].id) _pIds.push(_pRaw[si].id);
+                    }
+                    _inhSet[_ikey + '_raw'] = _pRaw.slice();
+                    _inhBody[_ikey] = _pIds;
                   }
                   if (srcRec) {
-                    try {
-                      var _inhSet = {};
-                      if (_sowKey) _inhSet[_sowKey + '_raw'] = pSowRaw.slice();
-                      _inhSet[_mdfKey + '_raw'] = pMdfRaw.slice();
-                      srcRec.set(_inhSet, { silent: true });
-                    } catch (eSet) { /* best-effort */ }
+                    try { srcRec.set(_inhSet, { silent: true }); } catch (eSet) { /* best-effort */ }
                   }
-                  var _inhBody = {};
-                  if (_sowKey) _inhBody[_sowKey] = sowIds;
-                  _inhBody[_mdfKey] = mdfIds;
                   pending++;
                   SCW.knackAjax({
                     url:  SCW.knackRecordUrl(viewKey, recordId),
@@ -2697,10 +2723,14 @@
               });
             }
 
-            oldParentCandidates.forEach(function (opid) {
-              if (opid !== newParentId) rewriteParent(opid, 'remove');
-            });
-            if (newParentId) rewriteParent(newParentId, 'add');
+            // No forward list on this object (survey): the child's pointer
+            // the picker already wrote IS the link — nothing to rewrite.
+            if (_childPutKey) {
+              oldParentCandidates.forEach(function (opid) {
+                if (opid !== newParentId) rewriteParent(opid, 'remove');
+              });
+              if (newParentId) rewriteParent(newParentId, 'add');
+            }
 
             // Immediate re-render so the accessory regroups under the
             // new parent based on the field_2464_raw patch above. The

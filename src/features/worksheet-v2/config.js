@@ -416,9 +416,13 @@
       // ⚠️ PARENT/CHILD (2026-10-28): field_2416 is REL_parent — each
       //    Survey Line Item names ONE parent, the survey twin of the SOW's
       //    field_2464. Make writes it (04.04 / K2 / 04.01a at create, 06.04
-      //    on Request Alt Bid / Update) from the SOW line's parent; nothing
-      //    on this page edits it, and there is no forward children list to
-      //    keep in sync (`children` stays unmapped). Mapped as `parent`, so
+      //    on Request Alt Bid / Update) from the SOW line's parent; the
+      //    card's Parent picker re-links it (2026-10-28 — orphans had no
+      //    way back; the picker also carries the parent's Bid + MDF/IDF onto
+      //    the accessory per accessoryFollow), and there is no forward
+      //    children list to keep in sync (`children` stays unmapped — the
+      //    generic parent branch in init.js then writes nothing on the
+      //    parents). Mapped as `parent`, so
       //    groups.js folds a Require Sub Bid = No accessory under its parent
       //    card (the parent's read-only "Mounting Hardware" line, field_2463,
       //    already names it), a priced one sits next to its parent, and one

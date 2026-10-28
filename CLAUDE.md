@@ -2145,6 +2145,21 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   requests in the 2026-10-28 export, which carries no bid status, so open and closed alike) and re-copies the SOW's drop length over the sub's;
   existing surveys pick their brackets up on their next real Update. Pre-existing, not touched: 04.04's contact branch merge [174]
   still maps a deleted module 176, so a POC with no matching contact passes no contact id on.
+- **Survey card Parent is EDITABLE (2026-10-28 — "these items show up as orphaned on the SVS side and I
+  don't have a way to relink")**: `card.js buildDetail_survey` leads the connection column with a Parent
+  picker on every default-category row that is not Networking / Headend (never a camera, service,
+  assumption or license), and always once a parent exists so it can be re-pointed or cleared. It rides the
+  generic parent branch in `init.js` (`fieldKey === fields.parent`): candidates = the survey's primary items
+  (not the row itself, not an accessory), grouped by the view's OWN MDF/IDF field (`field_2375` — the picker
+  default reads the SOW's `field_1946`, under which every survey item sank to "No MDF / IDF"); the picker
+  PUTs `field_2416` through view_3505 (inline-editable there, checked in the schema); a pick copies the
+  parent's Bid + MDF/IDF onto the accessory (the view's `accessoryFollow` — the rule `bulk.js followParent`
+  applies when the PARENT is edited) and writes NOTHING on the parents: an object that maps neither
+  `children` nor `accessories` has no forward list (the branch used to default to the install key
+  `field_2852`; the install entries map it explicitly, so they are unchanged). The SOW pair is untouched
+  (SOW + MDF/IDF inherit, `field_2207` rewrite). Test: `tests/worksheet-v2/test-survey-parent-relink.js`
+  — it drives the real `init.js` under jsdom (deferred mount neutralised, picker stubbed), the first
+  test to load it; copy its harness for other init.js handlers.
 - **Switched-off routes (found 2026-10-28)**: Make's per-route "disabled" flag survives an import, and the patches kept
   the flags they found. In the exports, the routes the accessory work rewrote were OFF: 04.04 / K2 / 04.01a router [66]
   route 3 (the parent-link pass) and router [109] route 0 inside it — so new surveys got brackets with no REL_parent —

@@ -2453,10 +2453,29 @@
       // mapConn Yes).
       groups += notesCol;
 
+      // Parent (REL_parent, F.parent = field_2416) — EDITABLE (2026-10-28:
+      // "these items show up as orphaned on the SVS side and I don't have
+      // a way to relink"). The SOW card's rule: any default-category row
+      // that is not Networking / Headend (and never a license), and always
+      // once a parent exists so it can be re-pointed or cleared. Cameras
+      // never show it. The picker (init.js, generic parent branch) writes
+      // the child's own pointer through view_3505 and carries the parent's
+      // Bid + MDF/IDF onto the accessory (config accessoryFollow); the survey
+      // object has no forward children list, so nothing else is written.
+      var parentItem = '';
+      if (F.parent && cat === 'default' && !isLicenseBucket(rec, viewKey)) {
+        var pRaw = rec[F.parent + '_raw'];
+        var hasP = !!(Array.isArray(pRaw) && pRaw.length && pRaw[0] && pRaw[0].id);
+        if (hasP || bucketIdOf(rec, viewKey) !== NETWORKING_BUCKET) {
+          parentItem = sdItem(detailConnection(rec, viewKey, F.parent, 'Parent'), 'scw-ws-v2-sd--conn');
+        }
+      }
+
       var devItem = (cat === 'default' && readBool(rec, F.mapConn || 'field_2374') === 'Yes')
         ? sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2380', 'Connected Devices'), 'scw-ws-v2-sd--conn')
         : '';
       groups += sdGroup(
+        parentItem +
         mdfItem +
         devItem,
         'scw-ws-v2-sd-group--conn');
