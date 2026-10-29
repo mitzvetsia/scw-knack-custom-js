@@ -4350,17 +4350,27 @@
     var want = Object.create(null);
     for (var i = 0; i < (sowItemIds || []).length; i++) want[sowItemIds[i]] = true;
 
-    var applied = 0, skipped = 0, seenRows = Object.create(null);
-    for (var g = 0; g < _state.sowGrids.length; g++) {
-      var grid = _state.sowGrids[g];
+    // The grid the user selected the rows in comes first (`opts.sowId`, the
+    // section's SOW): a SOW item the page shows on two SOW tabs (matched on its
+    // own, "Not on this SOW" on the other) is queued ONCE, for that section —
+    // its "Also remove from SOW" then names the SOW being reviewed, not
+    // whichever tab v1's state lists first (2026-10-29).
+    var grids = _state.sowGrids.slice();
+    var preferred = (opts && opts.sowId) ? findSowGrid(opts.sowId) : null;
+    if (preferred) { grids.splice(grids.indexOf(preferred), 1); grids.unshift(preferred); }
+
+    var applied = 0, skipped = 0, seenRows = Object.create(null), seenItems = Object.create(null);
+    for (var g = 0; g < grids.length; g++) {
+      var grid = grids[g];
       var pkgName  = findPackageName(grid, pkgId);
       var surveyId = findPackageSurveyId(grid, pkgId);
       for (var r = 0; r < grid.rows.length; r++) {
         var row = grid.rows[r];
-        if (!row || !row.sowItem || !want[row.sowItem] || seenRows[row.id]) continue;
+        if (!row || !row.sowItem || !want[row.sowItem] || seenRows[row.id] || seenItems[row.sowItem]) continue;
         var cell = row.cellsByPackage && row.cellsByPackage[pkgId];
         if (!cell || !cell.id) { skipped++; continue; }   // no bid on this package
         seenRows[row.id] = true;
+        seenItems[row.sowItem] = true;
 
         ns.changeRequests.addSilent(pkgId, pkgName, grid.sowId, grid.sowName, {
           rowId:            cell.id,
@@ -4372,8 +4382,10 @@
           proposalBucketId: row.proposalBucketId || '',
           removeFromBid:    true,
           // Opt-in SOW unlink on submit (change-requests.js "Remove from the
-          // SOW on submit") — the bulk modal's second box.
+          // SOW on submit") — the bulk modal's second box. The SOW is the
+          // grid's own, stamped on the item (the package may span SOW tabs).
           removeFromSow:     !!(opts && opts.removeFromSow),
+          removeFromSowId:   grid.sowId || '',
           removeFromSowName: grid.sowName || '',
           current:          {},
           requested:        {},

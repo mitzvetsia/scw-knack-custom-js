@@ -117,7 +117,8 @@
       '</div>';
   }
 
-  /** open({ pkgId, pkgName, sowItemIds }) */
+  /** open({ pkgId, pkgName, sowItemIds, sowId }) — `sowId` = the section the
+   *  rows were selected in (the SOW a removal's "also remove" acts on). */
   function open(opts) {
     opts = opts || {};
     var ids = (opts.sowItemIds || []).slice();
@@ -221,7 +222,7 @@
         }
         var subChk2 = overlay.querySelector('[data-remove-sow]');
         var alsoSow = !!(subChk2 && subChk2.checked);
-        var rres = v1.addBulkRemoveFromBid(opts.pkgId, ids, note, { removeFromSow: alsoSow });
+        var rres = v1.addBulkRemoveFromBid(opts.pkgId, ids, note, { removeFromSow: alsoSow, sowId: opts.sowId || '' });
         var rApplied = (rres && rres.applied) || 0;
         var rSkipped = (rres && rres.skipped) || 0;
         if (v1.renderToast) {

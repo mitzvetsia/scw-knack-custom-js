@@ -979,9 +979,29 @@ Make, not on the sub's acceptance (decided 2026-10-22):
   follow the parent off the SOW, connected devices that no longer share a SOW with it are disconnected.
   Toast: "Removed N items from SOW 1589" or the failures by label with "take them off on the worksheet";
   then the existing refresh schedule re-reads both grids. Nothing is deleted.
-- Test: `tests/bid-review-v2/test-cr-remove-from-sow.js` (drives the real module: the box + hints, the
-  card / payload / HTML / text, the 2-wide GET → PUT queue, the cell-update dispatch, the status-0 webhook,
-  a 500 retry, a 403 report, the already-off no-op).
+- **Hardened 2026-10-29 ("might not be firing after rebid request submit")**: a pending package is keyed by
+  the BID alone and took its SOW from whichever tab first queued an item, so a removal ticked on the Alternate's
+  tab of a bid shown on two SOW tabs was unlinked from the ORIGINAL (a no-op there, toast and all). Now every
+  flagged removal carries `removeFromSowId` (the Remove modal's `params.sowId` = the grid acted in; the bulk
+  path stamps `grid.sowId`, prefers the section the rows were selected in — `bulk-cr.open({ sowId })` from the
+  button's `data-sow-id` — and queues a SOW item once), `planSowUnlinks(pkg)` groups the flagged items per SOW
+  (the package's `sowId` only as the fallback; a removal with no SOW at all is reported, never silently
+  skipped), `startSowUnlinks` runs the groups one after another and shows ONE toast ("Removed 1 item from SOW
+  1589 and 1 item from SOW 1628", already-off items, failures by label + HTTP status), and `onSent` starts
+  the unlink BEFORE the draft / rerender / toast housekeeping, each in its own try. Every step logs
+  `[BidReview CR] remove from SOW …` (batch, already-off, PUT ok, FAILED) — read the console first next
+  time. **Accessories**: an accessory whose parent stays on the SOW IS unlinked, but `followsParentOn` (the
+  authoritative GET's `field_2464` + the loaded parent) makes the modal hint and the toast say it comes back
+  the next time the parent's SOW changes (mirror-connection-sync re-aligns accessories to the parent's exact
+  set; the reconcile page's own sweep is inert there because view_3927 does not serve `field_2154`) and to
+  remove it under the parent on the worksheet instead. Cross-session draft persistence (`readSowField` /
+  `writeSowField`: `field_2684` on the SOW HEADER through the line-items grid view_3921) cannot work — the
+  header is not a record of that view's object — so drafts live in sessionStorage only; not fixed here.
+- Test: `tests/bid-review-v2/test-cr-remove-from-sow.js` (drives the real module: the box + hints incl. the
+  accessory sentence, the card / payload / HTML / text, the per-SOW plan, the 2-wide GET → PUT queue per
+  group, the cell-update dispatch, the status-0 webhook, a 500 retry, a 403 report, two SOW tabs on one
+  package, the package fallback, the no-SOW report, rerender throwing, the accessory flag, the already-off
+  no-op).
 
 ## Bid / SOW filter choice: per tab, never erased by a rebuild (2026-10-22) — `worksheet-v2/sow-filter.js`
 

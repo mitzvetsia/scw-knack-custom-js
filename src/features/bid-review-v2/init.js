@@ -384,7 +384,8 @@
     ns.bulkCr.open({
       pkgId:      button.getAttribute('data-pkg-id') || button.getAttribute('data-package-id'),
       pkgName:    button.getAttribute('data-pkg-name') || '',
-      sowItemIds: ids
+      sowItemIds: ids,
+      sowId:      button.getAttribute('data-sow-id') || sowIdOf(button)
     });
   }
 

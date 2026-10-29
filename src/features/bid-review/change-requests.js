@@ -1260,7 +1260,7 @@
     if (item.removeFromBid) {
       card.appendChild(el('div', 'scw-bid-cr-card__row', 'Requesting removal'));
       if (item.removeFromSow) {
-        var rmSow = (_pending[pkgId] && _pending[pkgId].sowName) || item.removeFromSowName || '';
+        var rmSow = item.removeFromSowName || (_pending[pkgId] && _pending[pkgId].sowName) || '';
         card.appendChild(el('div', 'scw-bid-cr-card__row scw-bid-cr-card__row--sow',
           'Also leaves ' + (rmSow ? 'SOW ' + rmSow : 'this SOW') + ' when submitted'));
       }
@@ -2107,27 +2107,28 @@
     // Removals whose "Also remove from SOW" box was ticked: this page unlinks
     // their SOW line items the moment the webhook accepts the request (see
     // "Remove from the SOW on submit"). Captured BEFORE the POST — the pending
-    // package is deleted on success.
-    var unlinkItems = [];
-    for (var ui = 0; ui < pkg.items.length; ui++) {
-      var uit = pkg.items[ui];
-      if (uit && uit.removeFromBid && uit.removeFromSow && uit.sowItemId) unlinkItems.push(uit);
-    }
-    var unlinkSowId = pkg.sowId, unlinkSowName = pkg.sowName;
+    // package is deleted on success. Grouped by the SOW EACH REMOVAL NAMES
+    // (`removeFromSowId`, stamped by the Remove modal / the bulk modal from the
+    // grid the user acted in) — the package's own sowId is only the fallback
+    // for items queued before that stamp existed: a pending package is keyed by
+    // the bid alone, so one opened from the Original's tab used to send a
+    // removal ticked on the Alternate's tab to the Original (2026-10-29).
+    var unlinkGroups = planSowUnlinks(pkg);
 
     var deferred = $.Deferred();
 
     function onSent(resp) {
-      delete _pending[pkgId];
-      persist();
-      triggerRerender();
-      ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
-      if (unlinkItems.length && unlinkSowId) {
-        removeItemsFromSow(unlinkItems, unlinkSowId).then(function (results) {
-          reportUnlink(results, unlinkSowName);
-          refreshBoth();
-        });
-      }
+      // The SOW half starts FIRST and on its own: nothing the housekeeping
+      // below does (draft persistence, the v1 rerender + rehydrate, the toast)
+      // may skip it by throwing.
+      try { startSowUnlinks(unlinkGroups, refreshBoth); }
+      catch (eU) { console.error('[BidReview CR] remove from SOW did not start', eU); }
+      try { delete _pending[pkgId]; persist(); }
+      catch (eP) { console.error('[BidReview CR] draft housekeeping after submit failed', eP); }
+      try { triggerRerender(); }
+      catch (eR) { console.error('[BidReview CR] rerender after submit failed', eR); }
+      try { ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success'); }
+      catch (eT) { /* toast is decorative */ }
       deferred.resolve(resp);
     }
 
@@ -2253,6 +2254,16 @@
   // follow the parent off the SOW; connected devices that no longer share a
   // SOW are disconnected). Nothing is deleted: an item on no other SOW is left
   // unassigned. Make is not involved in the SOW half.
+  // 2026-10-29 ("might not be firing after submit"): each flagged removal
+  // carries the SOW it was ticked for (`removeFromSowId`, from the grid the
+  // user acted in — the package is keyed by the bid alone and could have been
+  // opened from another SOW's tab, which sent the unlink to THAT SOW); the
+  // unlinks are planned per SOW (`planSowUnlinks`), started before the submit
+  // housekeeping (`startSowUnlinks`, nothing can skip them by throwing), and
+  // every step logs under "[BidReview CR] remove from SOW". An accessory whose
+  // parent stays on the SOW is unlinked but flagged (`followsParentOn`): the
+  // cascade re-aligns it on the parent's next SOW edit, so the hint and the
+  // toast say to remove it under the parent on the worksheet instead.
   var UNLINK = { concurrency: 2, gapMs: 150, attempts: 4, baseMs: 1200, jitterMs: 400 };
   function sowItemsViewKey() { return CFG.sowItemsViewKey || 'view_3921'; }
   function sowConnKey() {
@@ -2287,10 +2298,16 @@
       if (refs[i].id === sowId) continue;
       others.push(stripMarkup(refs[i].identifier || '') || refs[i].id);
     }
-    if (!others.length) {
-      return lead + 'It is on no other SOW, so it will be left unassigned (on no scope of work) — it is not deleted.';
+    var tail = !others.length
+      ? 'It is on no other SOW, so it will be left unassigned (on no scope of work) — it is not deleted.'
+      : 'It stays on ' + (others.length === 1 ? 'SOW ' : 'SOWs ') + others.join(', ') + '.';
+    var parentLbl = followsParentOn(rec, sowId, null);
+    if (parentLbl) {
+      tail += ' It is an accessory of ' + parentLbl + ', which stays on this SOW: accessories follow their parent, ' +
+        'so it comes back the next time ' + parentLbl + '\'s SOW changes — to drop it for good, remove it under ' +
+        parentLbl + ' on the worksheet, or remove ' + parentLbl + ' from the SOW too.';
     }
-    return lead + 'It stays on ' + (others.length === 1 ? 'SOW ' : 'SOWs ') + others.join(', ') + '.';
+    return lead + tail;
   }
   function transientStatus(st) {
     return st === 0 || st === 408 || st === 429 || (st >= 500 && st <= 599);
@@ -2383,8 +2400,96 @@
    *  authoritative GET of the record, then a PUT of its SOW set minus this
    *  SOW (a no-op when it is already off). Resolves (never rejects) to one
    *  { ok, itemId, label, status?, noop?, remaining? } per item. */
+  /** The accessory back-pointer of a loaded / fetched SOW line item
+   *  (`field_2464`, the child's own link — authoritative per Known Issue #12). */
+  function parentRefOf(rec) {
+    var key = (CFG.sowItemFieldKeys && CFG.sowItemFieldKeys.accessoryParent) || 'field_2464';
+    var raw = rec ? rec[key + '_raw'] : null;
+    if (Array.isArray(raw)) return (raw[0] && raw[0].id) ? raw[0] : null;
+    return (raw && raw.id) ? raw : null;
+  }
+  function itemLabelOf(rec, fallback) {
+    var key = (CFG.sowItemFieldKeys && CFG.sowItemFieldKeys.displayLabel) || 'field_1950';
+    var v = rec ? stripMarkup(rec[key] || '') : '';
+    return v || fallback || (rec && rec.id) || '';
+  }
+  /** An accessory follows its parent's SOW set (mirror-connection-sync's
+   *  cascade re-aligns it on the parent's next SOW edit; Make's syncs do the
+   *  same), so taking it off a SOW its parent stays on holds only until then.
+   *  Returns the parent's label when `rec` is such an accessory of a LOADED
+   *  parent that carries `sowId` and is not itself being unlinked (`batch`),
+   *  else ''. Never fetches — a parent the page has not loaded is no claim. */
+  function followsParentOn(rec, sowId, batch) {
+    var pref = parentRefOf(rec);
+    if (!pref || (batch && batch[pref.id])) return '';
+    var parent = loadedSowItem(pref.id);
+    if (!parent) return '';
+    var refs = sowRefsOf(parent);
+    for (var i = 0; i < refs.length; i++) {
+      if (refs[i].id === sowId) return itemLabelOf(parent, stripMarkup(pref.identifier || ''));
+    }
+    return '';
+  }
+  /** The unlink plan for a package about to be submitted: one group per SOW
+   *  the flagged removals name (`removeFromSowId`, else the package's sowId),
+   *  plus the removals no SOW could be resolved for. */
+  function planSowUnlinks(pkg) {
+    var groups = [], byId = {}, noSow = [];
+    var items = (pkg && pkg.items) || [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (!(it && it.removeFromBid && it.removeFromSow && it.sowItemId)) continue;
+      var sowId = it.removeFromSowId || (pkg && pkg.sowId) || '';
+      if (!sowId) { noSow.push(it); continue; }
+      if (!byId[sowId]) {
+        byId[sowId] = { sowId: sowId, sowName: it.removeFromSowName || (pkg && pkg.sowName) || '', items: [] };
+        groups.push(byId[sowId]);
+      }
+      byId[sowId].items.push(it);
+    }
+    return { groups: groups, noSow: noSow };
+  }
+  /** Run the plan's groups one after another (each through the capped queue),
+   *  then ONE toast for all of them (renderToast shows a single toast at a
+   *  time) and `onDone`. Logs every step — read the console when a removal
+   *  "did not fire". */
+  function startSowUnlinks(plan, onDone) {
+    var groups = (plan && plan.groups) || [], noSow = (plan && plan.noSow) || [];
+    if (noSow.length) {
+      console.warn('[BidReview CR] remove from SOW: ' + noSow.length + ' flagged removal(s) name no SOW — skipped',
+        noSow.map(function (it) { return it.displayLabel || it.sowItemId; }));
+    }
+    if (!groups.length) {
+      // Reported on the next tick: the caller's "submitted" toast follows this
+      // call synchronously and renderToast shows one toast at a time.
+      return new Promise(function (resolve) {
+        setTimeout(function () {
+          if (noSow.length) reportUnlinkGroups([], noSow);
+          resolve([]);
+        }, 0);
+      });
+    }
+    var done = [];
+    var chain = Promise.resolve();
+    groups.forEach(function (g) {
+      chain = chain.then(function () {
+        return removeItemsFromSow(g.items, g.sowId).then(function (results) {
+          done.push({ sowId: g.sowId, sowName: g.sowName, results: results });
+        });
+      });
+    });
+    return chain.then(function () {
+      reportUnlinkGroups(done, noSow);
+      if (typeof onDone === 'function') onDone();
+      return done;
+    });
+  }
   function removeItemsFromSow(items, sowId) {
     var key = sowConnKey(), view = sowItemsViewKey();
+    var batch = {};
+    for (var b = 0; b < items.length; b++) if (items[b] && items[b].sowItemId) batch[items[b].sowItemId] = true;
+    console.info('[BidReview CR] remove from SOW ' + sowId + ': ' + items.length + ' item(s) through ' + view,
+      items.map(function (it) { return (it.displayLabel || it.productName || '') + ' (' + it.sowItemId + ')'; }));
     var tasks = [];
     for (var i = 0; i < items.length; i++) {
       (function (it) {
@@ -2398,42 +2503,75 @@
               for (var r = 0; r < refs.length; r++) ids.push(refs[r].id);
               var next = [];
               for (var n = 0; n < ids.length; n++) if (ids[n] !== sowId) next.push(ids[n]);
-              if (next.length === ids.length) return withBase(base, { ok: true, noop: true, remaining: next.length });
+              if (next.length === ids.length) {
+                console.info('[BidReview CR] remove from SOW: ' + base.label + ' is already off SOW ' + sowId +
+                  ' (on ' + (ids.length ? ids.join(', ') : 'no SOW') + ') — nothing to write');
+                return withBase(base, { ok: true, noop: true, remaining: next.length });
+              }
+              var follows = followsParentOn(rec, sowId, batch);
+              if (follows) {
+                console.warn('[BidReview CR] remove from SOW: ' + base.label + ' is an accessory of ' + follows +
+                  ', which stays on SOW ' + sowId + ' — the unlink lands, but accessories follow their parent, so the ' +
+                  'next change to the parent\'s SOW puts it back (remove it under the parent on the worksheet to drop it for good)');
+              }
               var body = {};
               body[key] = next;
               return withRetry(function () { return knackReq({ url: url, type: 'PUT', data: JSON.stringify(body) }); })
                 .then(function (resp) {
+                  console.info('[BidReview CR] remove from SOW: ' + base.label + ' PUT ok — now on ' +
+                    (next.length ? next.join(', ') : 'no SOW'));
                   fireSowCellUpdate(view, (resp && resp.id) ? resp : mergeSow(rec, key, next), key);
-                  return withBase(base, { ok: true, remaining: next.length });
+                  return withBase(base, { ok: true, remaining: next.length, followsParent: follows });
                 });
             })
             .then(null, function (xhr) {
-              return withBase(base, { ok: false, status: (xhr && xhr.status) || 0 });
+              var st = (xhr && xhr.status) || 0;
+              console.warn('[BidReview CR] remove from SOW: ' + base.label + ' FAILED (HTTP ' + st + ')', xhr);
+              return withBase(base, { ok: false, status: st });
             });
         });
       })(items[i]);
     }
     return runQueue(tasks, UNLINK.concurrency, UNLINK.gapMs);
   }
+  /** One toast for every group of the plan: what was removed from which SOW,
+   *  what was already off, what failed (by label, with the HTTP status), and
+   *  which accessories will follow their parent back. */
+  function reportUnlinkGroups(groups, noSow) {
+    var removed = [], already = [], failed = [], follows = [];
+    for (var g = 0; g < groups.length; g++) {
+      var grp = groups[g], where = grp.sowName ? 'SOW ' + grp.sowName : 'the SOW';
+      var n = 0, results = grp.results || [];
+      for (var i = 0; i < results.length; i++) {
+        var r = results[i] || { label: 'item', status: 0 };
+        if (!r.ok) { failed.push(r.label + (r.status ? ' (HTTP ' + r.status + ')' : '') + ' from ' + where); continue; }
+        if (r.noop) { already.push(r.label + ' was already off ' + where); continue; }
+        n++;
+        if (r.followsParent) {
+          follows.push(r.label + ' is an accessory of ' + r.followsParent + ' (still on ' + where +
+            ') and comes back the next time its SOW changes — remove it under ' + r.followsParent + ' on the worksheet to drop it for good');
+        }
+      }
+      if (n) removed.push(n + ' item' + (n === 1 ? '' : 's') + ' from ' + where);
+    }
+    var parts = [];
+    if (removed.length) parts.push('Removed ' + removed.join(' and '));
+    if (already.length) parts.push(already.join('; '));
+    if (failed.length) {
+      console.warn('[BidReview CR] remove from SOW failed', failed);
+      parts.push('Could not remove ' + failed.join('; ') + ' — take them off on the worksheet');
+    }
+    if (noSow && noSow.length) {
+      parts.push('Could not remove ' + noSow.length + ' item' + (noSow.length === 1 ? '' : 's') +
+        ' from the SOW — the request names no SOW; take them off on the worksheet');
+    }
+    if (follows.length) parts.push(follows.join('; '));
+    if (!parts.length) return;
+    ns.renderToast(parts.join('. ') + '.', (failed.length || (noSow && noSow.length)) ? 'error' : 'success');
+  }
+  /** One group — kept for callers of the pre-2026-10-29 shape. */
   function reportUnlink(results, sowName) {
-    var ok = 0, failed = [];
-    for (var i = 0; i < results.length; i++) {
-      if (results[i] && results[i].ok) ok++;
-      else failed.push(results[i] || { label: 'item', status: 0 });
-    }
-    var where = sowName ? 'SOW ' + sowName : 'the SOW';
-    if (!failed.length) {
-      ns.renderToast('Removed ' + ok + ' item' + (ok === 1 ? '' : 's') + ' from ' + where, 'success');
-      return;
-    }
-    var names = [];
-    for (var f = 0; f < failed.length; f++) {
-      names.push(failed[f].label + (failed[f].status ? ' (HTTP ' + failed[f].status + ')' : ''));
-    }
-    console.warn('[BidReview CR] remove from SOW failed', failed);
-    ns.renderToast((ok ? ok + ' of ' + results.length + ' removed from ' + where + '. ' : '') +
-      'Could not remove from ' + where + ': ' + names.join('; ') +
-      ' — take them off on the worksheet.', 'error');
+    reportUnlinkGroups([{ sowName: sowName, results: results }], []);
   }
   // ── Remove from Bid ─────────────────────────────────────
   function openRemoveModal(params) {
@@ -2520,7 +2658,11 @@
         proposalBucketId: params.proposalBucketId || '',
         removeFromBid: true,
         // Opt-in SOW unlink on submit (see "Remove from the SOW on submit").
+        // The SOW is the one the grid the user acted in reviews — stamped on
+        // the item itself, since the pending package (keyed by the bid) may
+        // have been opened from another SOW's tab.
         removeFromSow:     !!(sowChk && sowChk.checked),
+        removeFromSowId:   params.sowId || '',
         removeFromSowName: params.sowName || '',
         current:       {},
         requested:     {},
@@ -2879,6 +3021,7 @@
      *  Remove modal shows, the unlink batch itself, and its knobs for tests. */
     sowUnlinkHint:      sowUnlinkHint,
     removeItemsFromSow: removeItemsFromSow,
+    planSowUnlinks:     planSowUnlinks,
     _unlink:            UNLINK,
     /** Silently add a pending item (no modal). Used by Convert All. */
     addSilent:        function (pkgId, pkgName, sowId, sowName, item, surveyId) {
