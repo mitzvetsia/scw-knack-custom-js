@@ -460,6 +460,49 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   window.SCW.photoEditPanel.util.putRecord = realPut;
   check('Send again writes the failed row without uploading the photo a second time', [res.filled, uploads.length, rowByName('i11.png').status], [1, 1, 'done']);
 
+  // ── An uploaded photo as the tile (2026-10-29): "Copy to other slots…" from the single-photo modal ──
+  // The asset id + file name come off either Knack image URL form; the tile carries the asset from the
+  // start, so Send writes it without an upload; it is selected on open and never aimed by its file name.
+  check('assetFromUrl reads both Knack URL forms (asset id, file name, the app), nothing else',
+    [pa.assetFromUrl('https://api.knack.com/v1/applications/594319f83817c2580c853138/download/asset/68f1a2b3c4d5e6f7a8b9c0d1/IMG_0012.jpg?x=1'),
+     pa.assetFromUrl('https://s3.us-east-1.amazonaws.com/assets.knackhq.com/assets/594319f83817c2580c853138/68f1a2b3c4d5e6f7a8b9c0d1/thumb_14/I-010%20front.jpg'),
+     pa.assetFromUrl('blob:https://scwinstallation.knack.com/abc'), pa.assetFromUrl('')],
+    [{ id: '68f1a2b3c4d5e6f7a8b9c0d1', applicationId: '594319f83817c2580c853138', filename: 'IMG_0012.jpg' },
+     { id: '68f1a2b3c4d5e6f7a8b9c0d1', applicationId: '594319f83817c2580c853138', filename: 'I-010 front.jpg' }, null, null]);
+  const srcUrl = 'https://api.knack.com/v1/applications/594319f83817c2580c853138/download/asset/68f1a2b3c4d5e6f7a8b9c0d1/IMG_0012.jpg';
+  check('copyFromAllowed: an allowed login with a Knack image URL may open; a blob URL or a sub login may not',
+    [pa.copyFromAllowed(V, srcUrl), pa.copyFromAllowed(V, 'blob:x') !== '', (email = 'sub@acmeinstalls.com', pa.copyFromAllowed(V, srcUrl) !== '')],
+    ['', true, true]);
+  email = 'Micah.Shearer@getscw.com';
+  pa.close();
+  let st = pa.open(V, { existingPhoto: { photoId: 'p4', imgUrl: srcUrl, type: 'Proposed Mounting Location', deviceId: 'r3' } });
+  let ex = rows()[0];
+  check('open with existingPhoto: copy mode, ONE tile already carrying the asset, selected, no targets, no file name aim',
+    [st.copyMode, rows().length, ex.assetId, ex.filename, ex.status, !!pa.state().selected[ex.id], ex.targets.length, ex.match, ex.thumbUrl === srcUrl, ex.existing],
+    [true, 1, '68f1a2b3c4d5e6f7a8b9c0d1', 'IMG_0012.jpg', 'queued', true, 0, null, true,
+     { photoId: 'p4', deviceId: 'r3', deviceLabel: 'I-012', type: 'Proposed Mounting Location' }]);
+  check('the header and the tile say what it is', [text('.scw-pa-title'), /the Proposed Mounting Location on I-012 is queued below, already uploaded/.test(text('.scw-pa-sub')), text('.scw-pa-from'), text('.scw-pa-thumb .sz')],
+    ['Copy Photo', true, 'Copy of the Proposed Mounting Location on I-012', 'already uploaded']);
+  // Aim it: a device click fills r1's first open required slot, "+ new photo" under r2 adds a copy there.
+  pa.clickDevice('r1');
+  pa.clickNew('r2');
+  check('aimed at two destinations: a slot fill on I-010 and a new photo on I-011', tg(ex), [['r1', 'slot', 'p1', false], ['r2', 'new', '', false]]);
+  uploads.length = 0; puts.length = 0; posts.length = 0;
+  window.SCW.CONFIG.MAKE_PHOTO_ASSIGN_WEBHOOK = 'https://hook.us1.make.com/copy';
+  res = await pa.send();
+  const fillPut = puts.find(p => p[2].field_771), stampPut = puts.find(p => p[2].field_2865);
+  check('Send: nothing is uploaded; the slot takes the EXISTING asset id; the history line says it was copied and from where',
+    [res.filled, res.created, res.failed, uploads.length, fillPut && fillPut.slice(0, 2), fillPut && fillPut[2].field_771, /COPIED PHOTO: from I-012 \(IMG_0012\.jpg\)/.test(stampPut ? stampPut[2].field_2865 : '')],
+    [1, 1, 0, 0, ['view_3937', 'p1'], '68f1a2b3c4d5e6f7a8b9c0d1', true]);
+  check('the create manifest carries the same asset and names the source photo', [posts.length, posts[0].body.asset.id, posts[0].body.copyOf, posts[0].body.target.recordId],
+    [1, '68f1a2b3c4d5e6f7a8b9c0d1', { photoId: 'p4', deviceId: 'r3', deviceLabel: 'I-012' }, 'r2']);
+  check('the tile is done', [ex.status, ex.result], ['done', 'Fill Proposed Mounting Location on I-010 · New photo on I-011 (sent to Make)']);
+  // A URL with no asset id: the option is refused up front (open falls back to an ordinary empty modal).
+  pa.close();
+  st = pa.open(V, { existingPhoto: { photoId: 'p9', imgUrl: 'blob:https://x/y' } });
+  check('an existingPhoto whose URL carries no asset id opens an ordinary empty modal', [st.copyMode, rows().length, text('.scw-pa-title')], [false, 0, 'Add Photos']);
+  pa.close();
+
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
 })().catch(e => { console.log('FAIL uncaught: ' + (e && e.stack || e)); process.exit(1); });

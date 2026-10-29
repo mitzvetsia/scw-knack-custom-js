@@ -261,6 +261,9 @@
       '  font: 600 12px/1 system-ui, sans-serif; }',
       '.scw-qa-modal__viewer-bar button:hover { background: #334155; color: #fff; }',
       '.scw-qa-modal__viewer-bar button.is-danger { color: #fca5a5; border-color: #7f1d1d; }',
+      /* Copy to other slots… (hand-off to the v2 photo-assign modal): accent-blue. */
+      '.scw-qa-modal__viewer-bar button.is-copy { color: #bae6fd; border-color: #0369a1; }',
+      '.scw-qa-modal__viewer-bar button.is-copy:hover { background: #0c4a6e; color: #fff; }',
       '.scw-qa-modal__viewer-bar button.is-danger:hover { background: #450a0a; }',
       /* Delete photo (deploy-page ad-hoc photos): filled red, unlike Remove. */
       '.scw-qa-modal__viewer-bar button.is-delete { background: #7f1d1d; color: #fff; border-color: #991b1b; }',
@@ -1265,6 +1268,42 @@
         });
       });
       bar.appendChild(delB);
+    }
+
+    // Copy to other slots… (2026-10-29): hands this uploaded photo to the v2
+    // "+ Add Photos" modal (worksheet-v2/photo-assign.js) as its one tile —
+    // already uploaded, its Knack asset reused — so a copy can be aimed at
+    // other open slots, other line items or new photos. Only where that modal
+    // is enabled for the login and the image URL carries the asset id.
+    var pa = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.photoAssign;
+    var copyWhy = (pa && typeof pa.copyFromAllowed === 'function')
+      ? pa.copyFromAllowed(photo.viewKey, photo.imgUrl)
+      : 'the v2 photo modal is not loaded';
+    if (!copyWhy) {
+      var cpB = document.createElement('button');
+      cpB.type = 'button';
+      cpB.className = 'is-copy';
+      cpB.textContent = 'Copy to other slots…';
+      cpB.title = 'Push a copy of this photo to other photo slots or line items (the photo stays here too)';
+      cpB.addEventListener('click', function () {
+        if (cpB.disabled) return;
+        var handoff = {
+          photoId:     photo.id,
+          imgUrl:      photo.imgUrl,
+          type:        photo.type || '',
+          deviceId:    photo.lineItemId || '',
+          deviceLabel: photo.lineLabel || ''
+        };
+        var vk = photo.viewKey;
+        // Close first (autosaving a dirty QA sidebar as any close does), then
+        // open the assign modal over the same worksheet.
+        closePopover(false);
+        var st = pa.open(vk, { existingPhoto: handoff });
+        if (!st) alert('The photo modal could not open for this worksheet.');
+      });
+      bar.appendChild(cpB);
+    } else if (window.console && console.debug) {
+      console.debug('[scw-qa] no "Copy to other slots" on this photo: ' + copyWhy);
     }
 
     var repB = document.createElement('button');

@@ -1166,6 +1166,25 @@ rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing c
   context). The MDF/IDF band's "+ Add" tile stays v1 (MDF photos are not a v2 target). Test:
   `tests/bid-review-v2/test-add-photos-v2.js` (real toolbar + modal; the rail, the console line, the links /
   scope / target kind / save view, the v1 fallback for a sub login).
+- **Copy an uploaded photo to other slots / line items (2026-10-29)**: on the deploy page (and every
+  surface whose single-photo modal is the qa-popover and whose login has v2), a photo that HAS an image
+  carries **"Copy to other slots…"** in the modal's viewer bar (`qa-popover.js` `buildPhotoViewerBar`,
+  accent-blue `is-copy`, ahead of Replace / Remove; offered only when `photoAssign.copyFromAllowed(viewKey,
+  imgUrl)` is '' — the v2 gate + a Knack image URL). The click closes the modal and opens the assign modal
+  as `open(viewKey, { existingPhoto: { photoId, imgUrl, type, deviceId: lineItemId, deviceLabel } })`:
+  **"Copy Photo"** mode, ONE tile already uploaded — `addExisting` reads the asset id + file name off the
+  URL (`assetFromUrl`: both forms, `api.knack.com/…/download/asset/<asset>/<file>` and
+  `s3…/assets.knackhq.com/assets/<app>/<asset>/<style>/<file>`), sets `row.assetId` so `uploadRow` reuses
+  it (no bytes move, the source photo is untouched), shows the asset's own URL as the thumb (`close()` only
+  revokes blob: URLs), is selected on open and never aimed by its file name (that would point it at the
+  device it is already on). The user aims it exactly as any tile (device / slot / "+ new photo" rows,
+  drag, the chip menu); Send fills slots with the SAME asset id (the fill's history line reads
+  "COPIED PHOTO: from <device> (<file>)") and the create manifest carries `copyOf: { photoId, deviceId,
+  deviceLabel }` beside the usual `asset` (Make writes `field_771 = asset.id` as for any create). Shared
+  assets are the modal's existing idiom (a tile with two chips = one upload, N records). A URL with no
+  asset id (a blob: preview right after a Replace) gets no button. Tests:
+  `tests/worksheet-v2/test-photo-copy-entry.js` (the bar, the hand-off, the gates) and the copy block in
+  `test-photo-assign-v2.js` (URL forms, the preloaded tile, aims, Send without an upload, the manifest).
 - **Not carried over (yet)**: the IndexedDB queue / resume banner; the phone layout (canvas board 5)
   is a future state; per-destination resume after a partial failure (today the whole row re-sends).
   Test: `tests/worksheet-v2/test-photo-assign-v2.js`.

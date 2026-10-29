@@ -833,6 +833,7 @@
       '.scw-pa-hint { font-size:11px; color:#64748b; }',
       '.scw-pa-status { font-size:11.5px; color:#475569; }',
       '.scw-pa-status.is-ok { color:#15803d; font-weight:600; } .scw-pa-status.is-err { color:#b91c1c; font-weight:600; } .scw-pa-status.is-busy { color:#0369a1; }',
+      '.scw-pa-from { font-size:11.5px; color:#0369a1; } .scw-pa-from b { font-weight:600; }',
       '.scw-pa-menu { position:absolute; left:8px; right:8px; top:100%; margin-top:-6px; z-index:6; background:#fff; border:1px solid #cbd5e1; border-radius:10px; box-shadow:0 16px 40px rgba(15,23,42,.25); padding:6px; font-size:12px; }',
       '.scw-pa-menu .h { padding:4px 8px; font-size:10.5px; font-weight:700; letter-spacing:.04em; color:#64748b; text-transform:uppercase; }',
       '.scw-pa-menu button { display:flex; width:100%; justify-content:space-between; gap:8px; border:0; background:#fff; text-align:left; padding:7px 8px; border-radius:6px; font:12px system-ui,sans-serif; color:#0f172a; cursor:pointer; }',
@@ -991,9 +992,14 @@
     // Opened from one card's "+ Add Photos": every photo added goes to that
     // device (addFiles) — the chips stay editable.
     var preset = (opts.deviceId && idx[opts.deviceId] && !idx[opts.deviceId].scopeOnly) ? idx[opts.deviceId] : null;
+    // Opened from an UPLOADED photo (the single-photo modal's "Copy to other
+    // slots…", 2026-10-29): that photo is the one tile, already uploaded —
+    // its Knack asset is reused for every destination, no bytes move.
+    var existing = opts.existingPhoto && assetFromUrl(opts.existingPhoto.imgUrl) ? opts.existingPhoto : null;
     _state = {
       viewKey:    viewKey,
       presetDeviceId: preset ? preset.id : '',
+      copyMode:   !!existing,
       rows:       [],
       candidates: cands,
       candIndex:  idx,
@@ -1025,14 +1031,18 @@
     // opts.label: a host with no worksheet config entry names itself (the
     // reconcile page opens this over view_3921, 2026-10-28).
     var hostLabel = (opts && opts.label) || (vc && vc.label) || 'This worksheet';
+    var existingFrom = existing ? existingDeviceLabel(existing, idx) : '';
     overlay.innerHTML =
       '<div class="scw-pa" role="dialog" aria-modal="true">' +
         '<div class="scw-pa-hd">' +
-          '<div><div class="scw-pa-title">Add Photos' + (replacesV1() ? '' : ' (v2)') + '</div>' +
+          '<div><div class="scw-pa-title">' + (existing ? 'Copy Photo' : 'Add Photos') + (replacesV1() ? '' : ' (v2)') + '</div>' +
             '<div class="scw-pa-sub">' + esc(hostLabel) + ' · ' +
               plural(cands.length, 'device') +
-              (preset ? ' · photos you add here go to <b>' + esc(preset.label) + '</b> (change a chip to send one elsewhere)'
-                      : ' · aim each photo at one or more devices') +
+              (existing
+                ? ' · the ' + esc(existing.type || 'photo') + (existingFrom ? ' on <b>' + esc(existingFrom) + '</b>' : '') +
+                  ' is queued below, already uploaded — tick the devices or slots that should get a copy, then Send'
+                : (preset ? ' · photos you add here go to <b>' + esc(preset.label) + '</b> (change a chip to send one elsewhere)'
+                          : ' · aim each photo at one or more devices')) +
               (isPreview() ? ' · preview' : '') + '</div></div>' +
           '<button type="button" data-scw-pa-close aria-label="Close">&times;</button>' +
         '</div>' +
@@ -1060,6 +1070,7 @@
     document.body.appendChild(overlay);
     overlay.tabIndex = -1;
     wire(overlay);
+    if (existing) addExisting(existing);
     render();
     try { overlay.focus(); } catch (eF) { /* keys still work once anything inside is focused */ }
     return _state;
@@ -1069,10 +1080,84 @@
     if (el && el.parentNode) el.parentNode.removeChild(el);
     if (_state) {
       for (var i = 0; i < _state.rows.length; i++) {
-        if (_state.rows[i].thumbUrl) { try { URL.revokeObjectURL(_state.rows[i].thumbUrl); } catch (e) {} }
+        // Only a blob: URL is ours to release — an existing photo's tile
+        // shows the asset's own https URL.
+        var tu = _state.rows[i].thumbUrl;
+        if (tu && /^blob:/i.test(tu)) { try { URL.revokeObjectURL(tu); } catch (e) {} }
       }
     }
     _state = null;
+  }
+  // ── An already-uploaded photo as a tile (2026-10-29) ──────────────
+  // "Click an uploaded image and push a copy of it to other photo slots or
+  // line items." The single-photo modal (qa-popover.js) hands the photo
+  // over: its Knack asset id and file name are read off the image URL —
+  // both address forms Knack serves:
+  //   api.knack.com/v1/applications/<app>/download/asset/<asset>/<file>
+  //   s3…amazonaws.com/assets.knackhq.com/assets/<app>/<asset>/<style>/<file>
+  // The tile carries that asset id from the start, so Send skips the upload
+  // (uploadRow reuses a row's asset) and every fill / create writes the SAME
+  // asset — exactly what a tile with two chips does for a fresh upload ("one
+  // upload, N copies"). Nothing is re-uploaded and the source photo is never
+  // touched. The tile is not aimed by its file name (that would point it at
+  // the device it is already on) and is selected on open, so the first
+  // device / slot click aims it.
+  function assetFromUrl(url) {
+    var s = String(url || '').split('#')[0].split('?')[0];
+    var m = s.match(/^https?:\/\/api\.knack\.com\/v1\/applications\/([a-f0-9]{24})\/download\/asset\/([a-f0-9]{24})\/(.+)$/i) ||
+            s.match(/^https?:\/\/s3[^/]*\.amazonaws\.com\/assets\.knack(?:hq)?\.com\/assets\/([a-f0-9]{24})\/([a-f0-9]{24})\/[^/]+\/(.+)$/i);
+    if (!m) return null;
+    var name = m[3];
+    try { name = decodeURIComponent(name); } catch (e) { /* keep as served */ }
+    name = name.split('/').pop() || 'photo.jpg';
+    return { id: m[2].toLowerCase(), applicationId: m[1].toLowerCase(), filename: name };
+  }
+  function existingDeviceLabel(existing, idx) {
+    var c = existing && existing.deviceId ? ((idx || (_state && _state.candIndex) || {})[existing.deviceId] || null) : null;
+    return (c && (c.drop || c.label)) || (existing && existing.deviceLabel) || '';
+  }
+  /** '' when the modal can open with `imgUrl` as its tile on `viewKey`, else
+   *  the reason (for the caller's console line / tooltip). */
+  function copyFromAllowed(viewKey, imgUrl) {
+    if (!isAllowed()) return 'the v2 photo modal is not enabled for this login';
+    if (!viewKey) return 'no worksheet view';
+    if (!assetFromUrl(imgUrl)) return 'the photo URL carries no Knack asset id';
+    if (!(ns.data && typeof ns.data.readRecords === 'function')) return 'the worksheet data layer is not loaded';
+    return '';
+  }
+  function addExisting(existing) {
+    if (!_state) return null;
+    var asset = assetFromUrl(existing && existing.imgUrl);
+    if (!asset) return null;
+    var ext = (asset.filename.match(/\.([a-z0-9]+)$/i) || [, 'jpg'])[1].toLowerCase();
+    var mime = ext === 'png' ? 'image/png' : (ext === 'gif' ? 'image/gif' : (ext === 'webp' ? 'image/webp' : 'image/jpeg'));
+    var row = {
+      id:        uuid(),
+      file:      null,
+      blob:      null,
+      filename:  asset.filename,
+      mimeType:  mime,
+      sizeBytes: null,
+      origSize:  null,
+      status:    'queued',
+      error:     '',
+      targets:   [],
+      match:     null,
+      assetId:   asset.id,                       // reused by uploadRow — no upload
+      uploadId:  uuid(),
+      result:    '',
+      thumbUrl:  existing.imgUrl,
+      existing:  {
+        photoId:     existing.photoId || existing.id || '',
+        deviceId:    existing.deviceId || '',
+        deviceLabel: existingDeviceLabel(existing, _state.candIndex),
+        type:        existing.type || ''
+      }
+    };
+    _state.rows.push(row);
+    _state.selected[row.id] = true;
+    _state.anchorRow = row.id;
+    return row;
   }
   function root() { return document.getElementById(ROOT_ID); }
   function q(sel) { var r = root(); return r ? r.querySelector(sel) : null; }
@@ -1723,7 +1808,7 @@
     return '<button type="button" class="scw-pa-thumb" data-scw-pa-toggle="' + esc(row.id) + '" aria-label="Select ' + esc(row.filename) + '"' +
       (canDrag ? ' draggable="true" title="Click to select · drag onto a device or a slot"' : '') + '>' +
       (row.thumbUrl ? '<img src="' + esc(row.thumbUrl) + '" alt="">' : '<span style="position:relative;z-index:1">' + esc(ext) + '</span>') +
-      '<span class="sz">' + esc(fmtBytes(row.sizeBytes)) + (row.origSize ? ' · resized' : '') + '</span></button>' +
+      '<span class="sz">' + (row.existing ? 'already uploaded' : esc(fmtBytes(row.sizeBytes)) + (row.origSize ? ' · resized' : '')) + '</span></button>' +
       '<button type="button" class="scw-pa-zoom" data-scw-pa-zoom="' + esc(row.id) + '" title="View larger" aria-label="View ' + esc(row.filename) + ' larger">' + ZOOM_SVG + '</button>' +
       '<span class="scw-pa-cb" aria-hidden="true"></span>';
   }
@@ -1777,7 +1862,11 @@
       thumbHtml(row, !(st.sending || row.status === 'done' || row.status === 'too-big')) +
       '<button type="button" class="scw-pa-x" data-scw-pa-remove="' + esc(row.id) + '" title="Remove from the queue" aria-label="Remove ' + esc(row.filename) + '"' + (st.sending ? ' disabled' : '') + '>&times;</button>' +
       '<div class="scw-pa-meta">' +
-        '<div class="scw-pa-name" title="' + esc(row.filename) + '">' + esc(row.filename) + '</div>';
+        '<div class="scw-pa-name" title="' + esc(row.filename) + '">' + esc(row.filename) + '</div>' +
+        (row.existing
+          ? '<div class="scw-pa-from" title="This photo stays where it is; each destination gets a copy of the same image">Copy of the ' +
+              esc(row.existing.type || 'photo') + (row.existing.deviceLabel ? ' on <b>' + esc(row.existing.deviceLabel) + '</b>' : '') + '</div>'
+          : '');
     if (row.status === 'too-big') {
       h += statusHtml(row);
     } else {
@@ -2095,8 +2184,11 @@
       return '';
     });
   }
-  function historyLine(existing, filename) {
-    var line = nowStamp() + ' — ' + userName() + ' — UPLOADED PHOTO: bulk assign (' + String(filename || '') + ')';
+  function historyLine(existing, filename, row) {
+    var what = (row && row.existing)
+      ? 'COPIED PHOTO: from ' + (row.existing.deviceLabel || 'another item') + ' (' + String(filename || '') + ')'
+      : 'UPLOADED PHOTO: bulk assign (' + String(filename || '') + ')';
+    var line = nowStamp() + ' — ' + userName() + ' — ' + what;
     var safe = line.replace(/[<>]/g, function (c) { return c === '<' ? '&lt;' : '&gt;'; });
     return existing ? safe + '<br>' + existing : safe;
   }
@@ -2106,7 +2198,7 @@
     return withRetry(function () { return u.putRecord(saveView, tg.slotId, body); }, 'fill ' + tg.slotId).then(function () {
       var extra = {};
       extra[PF.completed] = 'Yes';
-      extra[PF.history] = historyLine(tg.history, row.filename);
+      extra[PF.history] = historyLine(tg.history, row.filename, row);
       return withRetry(function () { return u.putRecord(saveView, tg.slotId, extra); }, 'stamp ' + tg.slotId).catch(function (err) {
         console.warn('[scw-photo-assign] completion stamp skipped on ' + tg.slotId + ':', (err && err.message) || err);
       });
@@ -2124,6 +2216,9 @@
       batchId:    _state.batchId,
       uploadId:   row.uploadId + ':' + tg.deviceId,
       asset:      { id: row.assetId, filename: row.filename, mimeType: row.mimeType, sizeBytes: row.sizeBytes },
+      // A copy of an uploaded photo: the same asset, and where it came from
+      // (informational — Make writes field_771 = asset.id as for any create).
+      copyOf:     row.existing ? { photoId: row.existing.photoId, deviceId: row.existing.deviceId, deviceLabel: row.existing.deviceLabel } : null,
       target:     { kind: scopeOnly ? 'none' : targetKind(), recordId: scopeOnly ? '' : tg.deviceId, label: c ? c.label : '' },
       slot:       null,
       photoType:  tg.typeId ? { id: tg.typeId, label: tg.typeLabel || '' } : null,
@@ -2237,7 +2332,7 @@
     var up = Promise.resolve(), upDone = 0;
     needed.forEach(function (row) {
       up = up.then(function () {
-        setProgress({ text: 'Uploading photo ' + (upDone + 1) + ' of ' + needed.length + ' — ' + row.filename, retry: '' });
+        setProgress({ text: (row.existing ? 'Reusing the uploaded photo ' : 'Uploading photo ') + (upDone + 1) + ' of ' + needed.length + ' — ' + row.filename, retry: '' });
         return uploadRow(row).then(function () { upDone++; setProgress({ done: upDone }); });
       });
     });
@@ -2353,6 +2448,9 @@
     routeIds:          routeIdsOf,
     SCOPE_ID:          SCOPE_ID,
     addFiles:          addFiles,
+    addExisting:       function (existing) { var r = addExisting(existing); render(); return r; },
+    assetFromUrl:      assetFromUrl,
+    copyFromAllowed:   copyFromAllowed,
     select:            function (rowId, on) { if (!_state) return; if (on === false) delete _state.selected[rowId]; else _state.selected[rowId] = true; render(); },
     toggleSelect:      toggleSelect,
     selectAll:         selectAll,
