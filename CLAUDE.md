@@ -2513,7 +2513,16 @@ too, since it catches the next regression where someone is actually looking.
   attribute (`<ul class="\">` → `<ul>`); the attribute values are already lost and
   nothing downstream needs them. Verified against all 21 broken snapshots (0 hits
   in the 408 clean ones). Shipped for 11.04 as a textual blueprint patch
-  (2026-09-17); 13.06b / 11.06 still need the same edit.
+  (2026-09-17). **Confirmed live 2026-10-29**: SOW 1138's greenlight (a May 2026 proposal,
+  snapshot written before the bundle fix, 657,463 characters) failed Parse JSON in 11.04; the
+  formula above on module 6's input made it parse. 13.06b / 11.06 still need the same edit —
+  the next old proposal fails there instead. **Reading a long snapshot in Make**: the
+  execution inspector shows only the first 262,144 characters of a string and labels it
+  `IMTString(<real length>): …`; the cut lands mid-field and looks like truncation but is
+  not. To see the rest, map `{{substring(4.field_2671_raw; 262144; 524288)}}` (and the
+  next slice) into a Set variable module after the Get Record, or
+  `{{substring(4.field_2671_raw; 655000)}}` for the tail, which must end `"}]}` (a stray
+  `</p>` after the brace would be the sanitizer closing an unclosed tag).
   **Make formula gotchas** (learned the hard way): the regex MUST be a quoted
   string — bare, the editor tokenizes `/ - + =` as arithmetic operators. A literal
   `"` cannot be put inside a Make string: typing `\"` in the editor CLOSES the
