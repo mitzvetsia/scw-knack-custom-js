@@ -791,6 +791,16 @@ not-billable. Nothing about billability or the reason is written to the SOW.
   Approved without signature → amber **NO SIGNATURE** tag + "Accepted —
   approved without client signature. Why: …". Until the grid exists it falls
   open to the same-browser marker written at the click.
+- **Status drift (2026-10-29)**: because 13.06b [169] writes `Accepted` LAST and [15]
+  sets `field_2766` FIRST, a run that dies in between leaves the acceptance signed and
+  the SOW at Issued (seen on SW1855CO). The CO page strip (`acceptanceDrift()`: a signed /
+  approved acceptance on `ACC.view` while the status is Draft…Issued) swaps the stage
+  verbs for an amber "status not updated" notice naming the fix and tags the header
+  pill; the deploy drawers' CO cards (`co-cards.js`, acceptance grid view_3914 /
+  view_4066 or the through-connection `field_2766` column) wear the same amber tag. The
+  stored status is still what the pill shows — the tag says it is stale. Fix #2 above
+  (the caller writes Accepted) plus stored incomplete executions on 13.06b remove the
+  window; until then the flagged CO is repaired by hand after reading the 13.06b run.
 - **Manage Deployment acceptance cards** (`acceptance-card.js`): the signature
   pill reads the flags — "Approved without client signature" (green) instead
   of "Agreement not signed", plus a slate "Not billable" pill.

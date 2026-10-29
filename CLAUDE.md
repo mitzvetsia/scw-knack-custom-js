@@ -666,6 +666,23 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   click drafts a Remove LINE on the CO (a credit against a greenlit install item); it removes nothing
   from the CO. "Remove from change order" is reserved for the UNLINK of an adopted row (init.js). The
   result pill still reads "− Slated for removal".
+- **CO status drift flag (2026-10-29)**: Make 13.06b writes `field_2953 = Accepted` in its LAST module
+  and the acceptance's signed flag `field_2766` in one of its first, so a run that dies in between leaves
+  the acceptance signed and the CO at Issued (SW1855CO) — and the install records / invoice may be missing
+  too: read the 13.06b run, finish what it skipped, set the status by hand; never blindly re-run 13.06b on a
+  signed CO (no idempotency guard — a second run doubles the install records). The surfaces say so instead
+  of presenting Issued as fact: `co-cards.js` (deploy drawers) matches each pre-accepted card to its
+  acceptance — the CO grid's through-connection `field_2766` column, else the acceptance grid on the page
+  (`ACC_VIEWS` view_3914 / view_4066, by the SW####CO token in `field_2755`'s identifier) — and wears an
+  amber "Signed · status not updated" / "Approved · status not updated" tag (the pill keeps the stored
+  status, the accent turns amber, the sub dashboard's title never names Make, an acceptance grid rendering
+  after the CO grid re-scans every CO list); `co-stage-strip.js` (ops CO page) `acceptanceDrift()` reads the
+  same off `ACC.view` (view_4164) for the Draft…Issued stages, replaces the stage verbs with an amber notice
+  that names the fix (no Reopen on a signed CO) and tags the header pill; `SCW.coStage.getAcceptanceDrift()`.
+  Accepted / Declined / Void / blank statuses are never flagged. The durable fix is Make-side
+  (docs/change-orders.md fix #2: 00.00 writes Accepted before calling 13.06b; stored incomplete executions +
+  a failure notification on 13.06b; the Known Issue #24 repair on 13.06b module 73). Tests:
+  `tests/deploy-page/test-co-status-drift.js`, `tests/change-orders/test-co-status-drift-strip.js`.
 - **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
   `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
   install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,

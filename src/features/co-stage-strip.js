@@ -228,6 +228,13 @@
       '.scw-co-acc-facts{display:flex;flex-wrap:wrap;gap:0 14px;font:12px/1.5 system-ui,-apple-system,sans-serif;color:#475569;}',
       '.scw-co-acc-fact{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}',
       '.scw-co-acc-fact:before{content:"";width:5px;height:5px;border-radius:50%;background:#cbd5e1;}',
+      // Acceptance / status drift notice (amber: a warning, not a state)
+      '.scw-co-stage-drift{width:100%;max-width:640px;box-sizing:border-box;padding:12px 16px;',
+      'border-radius:12px;background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #d97706;}',
+      '.scw-co-stage-drift-title{font:700 11px/1.3 system-ui,-apple-system,sans-serif;',
+      'letter-spacing:.06em;text-transform:uppercase;color:#92400e;}',
+      '.scw-co-stage-drift-body{margin-top:5px;font:400 13px/1.5 system-ui,-apple-system,sans-serif;color:#78350f;}',
+      '.scw-co-stage-drift-body b{color:#0f172a;}',
       '.scw-co-nb-note{display:block;margin-top:5px;width:100%;box-sizing:border-box;',
       'border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;resize:vertical;',
       'font:400 12.5px/1.45 system-ui,-apple-system,sans-serif;color:#1e293b;}',
@@ -1202,6 +1209,41 @@
       var a = acceptanceInfo();
       return a && a.noSignature && !a.notBillable ? a : null;
     }
+    // { signed, noSignature, notBillable } when the ACCEPTANCE says this CO
+    // was accepted (e-signed, or approved on one of the no-signature paths)
+    // while the SOW's status is still a pre-accepted stage — 13.06b writes
+    // the status in its LAST module and the signed flag in one of its first,
+    // so a run that dies in between leaves exactly this (2026-10-29). Null
+    // for an Accepted / Declined / Void / unknown status, or when no
+    // accepted acceptance is on the grid. Ops only: the sub scene carries no
+    // acceptance grid.
+    function acceptanceDrift() {
+      if (!IS_OPS) return null;
+      var cur = stageIndex(getStatus());
+      if (cur < 0 || cur >= 4) return null;
+      var rec = readAcceptance();
+      if (!rec) return null;
+      var signed = accYes(rec, ACC.signed);
+      var nb     = accYes(rec, ACC.notBill);
+      var nsig   = accYes(rec, ACC.noSig) || nb;
+      if (!signed && !nsig) return null;
+      return { signed: signed, noSignature: nsig, notBillable: nb };
+    }
+    // The acceptance says accepted, the status says otherwise: say so in
+    // amber instead of the stage's verbs (none of them is right for a CO the
+    // client already signed), and name the fix.
+    function driftNoteHtml(dr) {
+      var what = dr.signed ? 'Signed by the client'
+        : dr.notBillable ? 'Authorized as not billable'
+        : 'Approved without a client signature';
+      return '<div class="scw-co-stage-drift">' +
+        '<div class="scw-co-stage-drift-title">' + esc(what) + ' \u2014 status not updated</div>' +
+        '<div class="scw-co-stage-drift-body">The acceptance on file says this change order was ' +
+          'accepted, but its status still reads <b>' + esc(getStatus() || 'unknown') + '</b>. ' +
+          'Make\u2019s apply scenario (13.06b) did not finish: check its run for this CO, confirm ' +
+          'the install records and the invoice landed, then set the CO status to Accepted.</div>' +
+      '</div>';
+    }
 
     // Raw-only record snapshot — the exact rule proposal-pdf-export.js
     // stripNonRawFields applies to the preview page's publish payload:
@@ -1634,6 +1676,8 @@
 
     function opsActionsHtml(status, cur, nb) {
       var s = String(status || '').toLowerCase();
+      var dr = acceptanceDrift();
+      if (dr) return driftNoteHtml(dr);
       if (cur === 0) {
         return '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--primary" ' +
           'data-scw-co-act="send">Send to Sub</button>' +
@@ -1831,17 +1875,22 @@
       var pill = form.querySelector('.scw-co-hdr-pill');
       var tag = form.querySelector('.scw-co-hdr-nb');
       var ns = !nb && noSignature();
-      if (!nb && !ns) { if (tag) tag.remove(); return; }
+      var dr = !nb && !ns && acceptanceDrift();
+      if (!nb && !ns && !dr) { if (tag) tag.remove(); return; }
       if (!pill) return;
       if (!tag) {
         tag = document.createElement('span');
         pill.parentNode.insertBefore(tag, pill.nextSibling);
       }
-      tag.className = 'scw-co-hdr-nb' + (ns ? ' scw-co-hdr-nb--nosig' : '');
-      tag.textContent = nb ? 'Not billable' : 'No signature';
+      tag.className = 'scw-co-hdr-nb' + ((ns || dr) ? ' scw-co-hdr-nb--nosig' : '');
+      tag.textContent = nb ? 'Not billable' : ns ? 'No signature'
+        : (dr.signed ? 'Signed \u00b7 status not updated' : 'Approved \u00b7 status not updated');
       tag.title = nb
         ? (nb.reason || 'Authorized without billing the client') + (nb.by ? ' — ' + nb.by : '')
-        : 'Approved and billed on client approval, no e-signature' + (ns.reason ? ' — ' + ns.reason : '');
+        : ns
+          ? 'Approved and billed on client approval, no e-signature' + (ns.reason ? ' — ' + ns.reason : '')
+          : 'The acceptance on file is accepted, but the CO status was never updated \u2014 ' +
+            'the apply scenario (13.06b) did not finish.';
       if (pill.nextSibling !== tag) pill.parentNode.insertBefore(tag, pill.nextSibling);
     }
 
@@ -1924,7 +1973,10 @@
       countDocLines: countDocLines, guardDocLines: guardDocLines,
       // { notBillable, noSignature, signed, reason, by, at } or null — the
       // Acceptance read (co-value.js zeroes the client column on it).
-      getAcceptance: acceptanceInfo
+      getAcceptance: acceptanceInfo,
+      // { signed, noSignature, notBillable } or null — accepted on the
+      // acceptance, not yet Accepted on the SOW (ops only).
+      getAcceptanceDrift: acceptanceDrift
     };
   }
 

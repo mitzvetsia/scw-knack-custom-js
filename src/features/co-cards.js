@@ -48,6 +48,7 @@
     noSig:   'field_3309',   // FLAG_approved without signature (Yes/No)
     notBill: 'field_3310',   // FLAG_not billable (Yes/No)
     reason:  'field_3311',   // INPUT_approved not billable reason
+    signed:  'field_2766',   // FLAG_agreement signed (Yes/No) — same shape, drives the drift tag
     // ── Net total ──
     // Preferred: ONE stored grand-total column (equation on the SOW object
     // = equipment rollup + installation rollup). CO lines carry signed
@@ -67,6 +68,24 @@
   // value, so a view without the column (e.g. the sub dashboard) simply
   // never shows the link.
   var ESIGN_URL_PREFIX = 'https://esignatures.com/contracts/';
+
+  // ── Acceptance cross-check (2026-10-29) ───────────────────────────────
+  // The CO status (field_2953) is the LAST write of Make 13.06b, the apply
+  // scenario, while the acceptance's "agreement signed" flag is one of its
+  // first — a run that dies in between leaves the acceptance saying signed
+  // and the CO saying Issued, and this drawer disagreeing with Agreements &
+  // Invoices. From Issued onward the acceptance is the truth
+  // (docs/change-orders.md), so a card whose status has not reached
+  // Accepted looks for its acceptance — the CO grid's own through-connection
+  // columns first, then the acceptance grids on the page (the ones
+  // acceptance-card.js reads; their tables stay in the DOM under its card),
+  // matched by the SW####CO token in the proposal identifier — and wears an
+  // amber "status not updated" tag when that acceptance is signed or
+  // approved. The pill keeps the STORED status: the tag says the status is
+  // stale, it never claims the apply ran.
+  var ACC_VIEWS = ['view_3914', 'view_4066'];   // ops / sub deploy acceptance grids
+  var ACC_F = { proposal: 'field_2755', signed: 'field_2766', noSig: 'field_3309', notBill: 'field_3310' };
+  var SETTLED_RE = /^(accepted|declined|void)/i;   // statuses the check leaves alone
 
   // Status pill palette — one entry per CO Status option (docs/change-orders).
   // Unknown/blank statuses fall back to the Draft slate.
@@ -127,6 +146,57 @@
     var today = new Date();
     today.setHours(0, 0, 0, 0);
     return d < today;
+  }
+
+  /** "63222296454-SW1855CO" / "63222296454-SW1855CO | 20261014-12069" →
+   *  "SW1855CO"; '' when the text names no change order. */
+  function coToken(s) {
+    var m = String(s == null ? '' : s).match(/\bSW\s*-?\s*(\d+)\s*CO\b/i);
+    return m ? 'SW' + m[1] + 'CO' : '';
+  }
+  /** The acceptance on this page for the CO with `token`, off the
+   *  acceptance grids: { signed, noSig, notBill } or null when none lists
+   *  one. An accepted row wins over an unsigned one (a re-issued CO leaves
+   *  its earlier, unsigned acceptance behind). */
+  function acceptanceFor(token) {
+    if (!token) return null;
+    var found = null;
+    for (var v = 0; v < ACC_VIEWS.length; v++) {
+      var viewEl = document.getElementById(ACC_VIEWS[v]);
+      if (!viewEl || !viewEl.querySelector('thead th.' + ACC_F.proposal)) continue;
+      var rows = viewEl.querySelectorAll('tbody tr[id]');
+      for (var r = 0; r < rows.length; r++) {
+        if (coToken(cellText(rows[r], ACC_F.proposal)) !== token) continue;
+        var rec = { signed:  isYes(cellText(rows[r], ACC_F.signed)),
+                    noSig:   isYes(cellText(rows[r], ACC_F.noSig)),
+                    notBill: isYes(cellText(rows[r], ACC_F.notBill)) };
+        if (rec.signed || rec.noSig || rec.notBill) return rec;
+        found = rec;
+      }
+    }
+    return found;
+  }
+  /** { signed, approved } when an acceptance says this CO was accepted
+   *  while its status has not reached Accepted; null otherwise. */
+  function acceptanceDrift(tr, status, number) {
+    if (SETTLED_RE.test(String(status || '').trim())) return null;
+    var signed   = isYes(cellAny(tr, F.signed));
+    var approved = isYes(cellAny(tr, F.noSig)) || isYes(cellAny(tr, F.notBill));
+    if (!signed && !approved) {
+      var acc = acceptanceFor(coToken(number));
+      if (acc) { signed = acc.signed; approved = acc.noSig || acc.notBill; }
+    }
+    return (signed || approved) ? { signed: signed, approved: approved } : null;
+  }
+  // The sub's dashboard never names Make — the sub cannot act on it.
+  function driftTitle(d) {
+    var what = d.signed ? 'The client signed the agreement' : 'SCW approved the acceptance';
+    if (document.getElementById('kn-' + SUB_SCENE)) {
+      return what + ' \u2014 SCW is finalizing this change order.';
+    }
+    return what + ', but the CO status was never updated: Make\u2019s apply scenario (13.06b) ' +
+      'did not finish. Check its run for this CO, confirm the install records and the invoice ' +
+      'landed, then set the status to Accepted.';
   }
 
   function injectCss() {
@@ -234,6 +304,8 @@
       '.scw-co-card__basis-tag:before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #94a3b8; }',
       '.scw-co-card__basis-tag--nosig { color: #92400e; }',
       '.scw-co-card__basis-tag--nosig:before { background: #d97706; }',
+      '.scw-co-card__basis-tag--drift { color: #b45309; font-weight: 700; }',
+      '.scw-co-card__basis-tag--drift:before { background: #d97706; }',
       '.scw-co-card__reason {',
       '  margin-top: 2px; font: 400 12px/1.4 system-ui, sans-serif; color: #475569;',
       '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;',
@@ -288,6 +360,8 @@
     var notBill = isYes(cellAny(tr, F.notBill));
     var noSig   = isYes(cellAny(tr, F.noSig)) || notBill;
     var reason  = cellAny(tr, F.reason);
+    // The acceptance says accepted, the status says otherwise (ACC_VIEWS).
+    var drift   = acceptanceDrift(tr, status, number);
     // Net: the grand-total column when configured/present, else the sum of
     // the equipment + installation rollups when BOTH columns are on the
     // grid (CO line money is signed, so the rollups sum to the net).
@@ -314,7 +388,7 @@
 
     var card = document.createElement('div');
     card.className = 'scw-co-card';
-    card.style.setProperty('--scw-co-accent', col.fg);
+    card.style.setProperty('--scw-co-accent', drift ? '#b45309' : col.fg);
     card.innerHTML =
       '<div class="scw-co-card__main">' +
         '<div class="scw-co-card__name">' + esc(main) + '</div>' +
@@ -337,6 +411,11 @@
         (status
           ? '<span class="scw-co-card__pill" style="background:' + col.bg +
             ';border-color:' + col.bd + ';color:' + col.fg + ';">' + esc(status) + '</span>'
+          : '') +
+        (drift
+          ? '<span class="scw-co-card__basis-tag scw-co-card__basis-tag--drift" title="' +
+              esc(driftTitle(drift)) + '">' + (drift.signed ? 'Signed' : 'Approved') +
+              ' \u00b7 status not updated</span>'
           : '') +
         // Acceptance basis — plain text + dot (deploy-page restraint: the
         // status pill is the only filled color on the card).
@@ -527,6 +606,9 @@
     .off('knack-view-render.any.scwCoCards')
     .on('knack-view-render.any.scwCoCards', function (event, view) {
       if (!view || !view.key) return;
+      // An acceptance grid landing after the CO grid changes what the cards
+      // can say — rebuild every CO list on the page.
+      if (ACC_VIEWS.indexOf(view.key) !== -1) { scanAll(); return; }
       transform(document.getElementById(view.key));
       try { renderAlert(); } catch (e) { /* chrome only */ }
     });
