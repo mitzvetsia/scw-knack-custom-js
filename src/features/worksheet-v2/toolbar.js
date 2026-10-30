@@ -739,6 +739,39 @@
       alert('Select one or more rows first — an accessory will be added to each selected row.');
       return;
     }
+    // CO Remove lines take no new accessories (2026-10-30): a Remove line
+    // credits an installed item, and its installed accessories are flagged
+    // for removal from the line's own card instead (co-remove.js). Drop them
+    // from the selection; refuse when nothing else is left.
+    var rmOk = ns.card && typeof ns.card.isCoRemoveOnCo === 'function' &&
+               ns.data && typeof ns.data.readRecords === 'function';
+    if (rmOk) {
+      var rmById = Object.create(null);
+      var rmRecs = ns.data.readRecords(viewKey) || [];
+      for (var rr = 0; rr < rmRecs.length; rr++) {
+        if (rmRecs[rr] && rmRecs[rr].id) rmById[rmRecs[rr].id] = rmRecs[rr];
+      }
+      var keepIds = [], keepLabels = [], dropped = 0;
+      for (var rs = 0; rs < sel.ids.length; rs++) {
+        var rmRec = rmById[sel.ids[rs]];
+        if (rmRec && ns.card.isCoRemoveOnCo(rmRec, viewKey)) { dropped++; continue; }
+        keepIds.push(sel.ids[rs]);
+        keepLabels.push((sel.labels || [])[rs]);
+      }
+      if (dropped) {
+        if (!keepIds.length) {
+          alert('Remove lines can\u2019t take new accessories. To take out an accessory ' +
+            'that is installed with the item, use "Add Removal" next to it on the ' +
+            'Remove line\u2019s Mounting Hardware.');
+          return;
+        }
+        var trimmed = {};
+        for (var sk in sel) trimmed[sk] = sel[sk];
+        trimmed.ids = keepIds;
+        trimmed.labels = keepLabels;
+        sel = trimmed;
+      }
+    }
     // Compatibility filter — only show accessory products whose
     // compatibility lists (field_2236 OR field_2205 on the product
     // object) contain the line item\'s product. Walks each selected

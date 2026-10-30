@@ -790,6 +790,26 @@
     return /remove/i.test(String(readField(rec, 'field_2965') || ''));
   }
 
+  /** A CO Remove line on a change-order worksheet (config coDeleteGuard —
+   *  view_4079 / view_4112). Nothing is ever added UNDER one: the card's
+   *  Mounting Hardware block, the add-accessory modal and the Parent picker
+   *  all skip it (2026-10-30). */
+  function isCoRemoveOnCo(rec, viewKey) {
+    if (!rec || !isCoRemoveLine(rec)) return false;
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.coDeleteGuard);
+    } catch (e) { return false; }
+  }
+
+  /** First connection id of a field on a record ('' when blank). */
+  function connIdOf(rec, key) {
+    var a = rec && (rec.attributes || rec);
+    var raw = a && a[key + '_raw'];
+    var one = Array.isArray(raw) ? raw[0] : raw;
+    return (one && one.id) || '';
+  }
+
   /** True when the view renders the custom-discount pricing zone in the
    *  detail panel (config pricingDetail — the ops CO worksheet). */
   function hasPricingDetail(viewKey) {
@@ -1708,6 +1728,17 @@
    */
   function detailMountingHardware(rec, viewKey) {
     var parentId = rec.id;
+    // CO Remove line (2026-10-30 — "on a remove item you shouldn't be able to
+    // add an accessory"): a Remove line credits an INSTALLED item, so nothing
+    // is added under it — no "+ Add", and the credit lines already under it
+    // (an accessory removed with its device) lose the qty stepper and the
+    // unlink: an accessory's credit belongs to its device's removal. Delete
+    // stays (it takes that accessory's removal back off the CO) and so does
+    // the edit modal (credit pricing). The block names the line and its
+    // target install item (field_2966) so co-remove.js can list the item's
+    // INSTALLED accessories in it, each with "Add Removal" (decorateCoView).
+    var coRmLine   = isCoRemoveOnCo(rec, viewKey);
+    var coRmTarget = coRmLine ? connIdOf(rec, 'field_2966') : '';
 
     // SINGLE authoritative source for the accessory chips: each accessory's
     // OWN field_2464 ("my parent"). An accessory asserts exactly one parent;
@@ -1753,7 +1784,8 @@
           .toString().replace(/<[^>]*>/g, '').trim();
       }
       if (!albl || HEX_24.test(albl)) albl = labelLineItem(arec);
-      chips.push({ id: arec.id, label: (albl && !HEX_24.test(albl)) ? albl : arec.id, href: '' });
+      chips.push({ id: arec.id, label: (albl && !HEX_24.test(albl)) ? albl : arec.id, href: '',
+                   target: coRmLine ? connIdOf(aA, 'field_2966') : '' });
     }
 
     // addHref fallback: the `add-accessory-line-item` slug differs between
@@ -1810,7 +1842,7 @@
         // that governs whether delX below is rendered at all.
         var minusDeletes  = curQty <= 1 && !!(chip.id && parentId);
         var minusDisabled = curQty <= 1 && !minusDeletes;
-        var stepperHtml = canMulti
+        var stepperHtml = (canMulti && !coRmLine)
           ? '<span class="scw-ws-v2-mh-stepper" data-scw-ws-v2-acc-id="' + escapeHtml(chip.id) + '">' +
               '<button type="button" class="scw-ws-v2-mh-step' +
                 (minusDeletes ? ' scw-ws-v2-mh-step--del' : '') + '" ' +
@@ -1829,7 +1861,7 @@
         // webhook).
         // Unlink — clears the accessory's field_2464 so it detaches from
         // this parent but keeps the line item (it becomes a standalone row).
-        var unlinkX = (chip.id && parentId)
+        var unlinkX = (chip.id && parentId && !coRmLine)
           ? '<button type="button" class="scw-ws-v2-mh-unlink" ' +
               'data-scw-ws-v2-mh-unlink="' + escapeHtml(chip.id) + '" ' +
               'data-scw-ws-v2-mh-uparent="' + escapeHtml(parentId) + '" ' +
@@ -1860,6 +1892,11 @@
           (accWrong ? ' scw-ws-v2-mh-chip-wrap--warn' : '') +
           (pendingDel ? ' scw-ws-v2-mh-chip-wrap--deleting' : '');
         var wrapTitle = pendingDel ? ' title="Deleting…"' : '';
+        // Under a Remove line: the install accessory this credit line takes
+        // out (its field_2966) — co-remove.js skips it when it lists the
+        // removed item's installed accessories, so none reads twice.
+        var wrapAttrs = wrapTitle + ((coRmLine && chip.target)
+          ? ' data-scw-co-line-target="' + escapeHtml(chip.target) + '"' : '');
         // On a view that opted into the accessory edit modal (config
         // accessoryEdit — the CO worksheet) the chip opens the modal
         // (init.js intercepts the click); the Knack edit page stays the
@@ -1868,7 +1905,7 @@
         var modalOk = !!(chip.id && ns.accessoryEdit &&
           typeof ns.accessoryEdit.canOpen === 'function' && ns.accessoryEdit.canOpen(viewKey));
         if (editHref || modalOk) {
-          chipsHtml += '<span class="' + wrapCls + '"' + wrapTitle + '>' +
+          chipsHtml += '<span class="' + wrapCls + '"' + wrapAttrs + '>' +
             '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref || '#') + '"' +
               (modalOk ? ' data-scw-ws-v2-mh-edit="' + escapeHtml(chip.id) + '"' +
                          ' data-scw-ws-v2-mh-eparent="' + escapeHtml(parentId || '') + '"' : '') +
@@ -1877,7 +1914,7 @@
             '</a>' + subBidMark + warnMark + tail +
           '</span>';
         } else {
-          chipsHtml += '<span class="' + wrapCls + '"' + wrapTitle + '>' +
+          chipsHtml += '<span class="' + wrapCls + '"' + wrapAttrs + '>' +
             '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert"' +
               ' title="' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
@@ -1889,7 +1926,7 @@
 
     // The href stays a placeholder; init.js intercepts the click
     // and resolves the right Knack-rendered link by text on the page.
-    var addHtml =
+    var addHtml = coRmLine ? '' :
       '<a class="scw-ws-v2-mh-add" href="#" ' +
         'data-scw-ws-v2-add-accessory="' + escapeHtml(parentId) + '" ' +
         'title="Add accessory">+ Add</a>';
@@ -1921,7 +1958,9 @@
       '</div>';
     }
 
-    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--mh">' +
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--mh"' +
+        (coRmLine ? ' data-scw-co-rm-line="' + escapeHtml(parentId) + '"' +
+                    ' data-scw-co-rm-target="' + escapeHtml(coRmTarget) + '"' : '') + '>' +
       '<div class="scw-ws-v2-detail-label">Mounting Hardware</div>' +
       '<div class="scw-ws-v2-mh-list">' + chipsHtml + '</div>' +
       (addHtml ? '<div class="scw-ws-v2-mh-addrow">' + addHtml + '</div>' : '') +
@@ -3252,6 +3291,10 @@
     bucketCategoryOf:    bucketCategoryOf,
     isLicenseBucket:     isLicenseBucket,
     labelLineItem:       labelLineItem,
+    // CO Remove lines take nothing new under them (add-accessory modal,
+    // Parent picker, co-remove.js's installed-accessory list).
+    isCoRemoveLine:      isCoRemoveLine,
+    isCoRemoveOnCo:      isCoRemoveOnCo,
     // Lock rule (sales survey-associated rows) + the fields that stay
     // editable on a locked row — consumed by the bulk-edit modal so it
     // offers the same whitelist (Product / SCW Notes / Custom Disc %).

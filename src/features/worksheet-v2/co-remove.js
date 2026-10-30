@@ -462,6 +462,23 @@
       '.scw-co-remove-toolbar .scw-co-swap-bulk[disabled] {',
       '  opacity: 0.55; cursor: default;',
       '}',
+      // CO worksheet: a Remove line's Mounting Hardware block lists the
+      // removed item's INSTALLED accessories (decorateCoView) under a muted
+      // caption, each with "Add Removal" or its removal state. The chips are
+      // the worksheet's own Mounting Hardware chips.
+      '.scw-co-tacc-row {',
+      '  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px;',
+      '  margin-top: 6px;',
+      '}',
+      '.scw-co-tacc-lbl {',
+      '  flex: 0 0 100%; font: 600 10.5px/1.3 system-ui, -apple-system, sans-serif;',
+      '  color: #64748b;',
+      '}',
+      // A locked CO (co-ops-lock / co-sub-lock stamp the worksheet read-only)
+      // drafts nothing: the states stay, the button goes. The removal panel
+      // is read-only by design and has no .scw-co-tacc chips, so its own
+      // per-accessory buttons are untouched.
+      '.scw-ws-v2--readonly .scw-co-tacc .scw-co-remove-acc-x { display: none !important; }',
       // Both floating toolbars (this one + the CO worksheet's bulk bar) pin
       // to the same bottom-center spot — when both are active, lift this one
       // above the other so neither set of actions is buried.
@@ -543,6 +560,140 @@
     if (_flaggedOptimistic[aRec.id] || _swappedOptimistic[aRec.id]) return true;
     if (tc && tc[aRec.id] >= 1) return true;
     return isFlagged(aRec, vcfgFor(viewKey));
+  }
+
+  // ── CO worksheet: a Remove line's installed accessories ──────────────
+  // 2026-10-30: "on a remove item you shouldn't be able to add an accessory —
+  // the only thing you should be able to do is identify that you want to
+  // remove one of the accessories attached to the deployment item you're
+  // removing." card.js drops the "+ Add" from a Remove line's Mounting
+  // Hardware block and names the line and its target install item on the
+  // block (data-scw-co-rm-line / -target). This lists that install item's
+  // accessories (install field_2853 back-pointers on the removal view) in the
+  // block — skipping any a credit line under the Remove line already takes
+  // out (data-scw-co-line-target) — each in one state:
+  //   live    → "Add Removal": a Remove line for JUST that accessory, through
+  //             the single-accessory path (confirmRemoveAccessory)
+  //   pending → the button disabled while the webhook runs
+  //   co      → struck rose + "on this CO" (a line on this CO targets it, the
+  //             session flag, or field_2967 names this CO or one of its lines)
+  //   removed → "removed" (field_2967 names another change order)
+  // Repainted on every render of the CO worksheet AND of the removal panel
+  // (the state lives on the removal view's records), and right after a
+  // removal ACKs: the Remove line's own card is not rebuilt when only an
+  // accessory's state changes.
+  var _pendingAcc = {};
+  function removalViewForCo(coViewKey) {
+    var vs = removeViews();
+    for (var i = 0; i < vs.length; i++) {
+      if (coViewFor(vs[i].sourceViewKey) === coViewKey) return vs[i];
+    }
+    return null;
+  }
+  function coAccState(aRec, vcfg, tc, coLineIds, coId) {
+    if (_pendingAcc[aRec.id]) return 'pending';
+    if (_flaggedOptimistic[aRec.id] || _swappedOptimistic[aRec.id]) return 'co';
+    if (tc && tc[aRec.id] >= 1) return 'co';
+    var rb = vcfg && vcfg.remove && vcfg.remove.removedByField;
+    var raw = rb ? aRec[rb + '_raw'] : null;
+    var one = Array.isArray(raw) ? raw[0] : raw;
+    if (one && one.id) return (coLineIds[one.id] || one.id === coId) ? 'co' : 'removed';
+    return isFlagged(aRec, vcfg) ? 'removed' : 'live';
+  }
+  function decorateCoView(coViewKey) {
+    var panel = document.getElementById('scw-ws-v2-' + coViewKey);
+    if (!panel) return;
+    var blocks = panel.querySelectorAll('[data-scw-co-rm-line]');
+    if (!blocks.length) return;
+    var vcfg = removalViewForCo(coViewKey);
+    if (!vcfg) return;
+    injectStyles();
+    var rk = vcfg.sourceViewKey;
+    var tc = coTargetCounts(rk);
+    var coLineIds = {};
+    var coRecs = (ns.data && typeof ns.data.readRecords === 'function')
+      ? ns.data.readRecords(coViewKey) : [];
+    for (var c = 0; c < coRecs.length; c++) {
+      if (coRecs[c] && coRecs[c].id) coLineIds[coRecs[c].id] = true;
+    }
+    var coId = getCoSowId();
+    var Fv = (ns.cfg && typeof ns.cfg.fields === 'function')
+      ? (ns.cfg.fields(rk) || {}) : {};
+    for (var b = 0; b < blocks.length; b++) {
+      var block = blocks[b];
+      var old = block.querySelector('.scw-co-tacc-row');
+      if (old) old.parentNode.removeChild(old);
+      var lineId = block.getAttribute('data-scw-co-rm-line') || '';
+      var target = block.getAttribute('data-scw-co-rm-target') || '';
+      var taken = {};
+      var credits = block.querySelectorAll('[data-scw-co-line-target]');
+      for (var t = 0; t < credits.length; t++) {
+        taken[credits[t].getAttribute('data-scw-co-line-target')] = true;
+      }
+      var accs = target ? accessoryChildren(rk, target) : [];
+      var html = '';
+      for (var a = 0; a < accs.length; a++) {
+        var aRec = accs[a];
+        if (!aRec || !aRec.id || taken[aRec.id]) continue;
+        var lbl = accessoryLabel(aRec, rk);
+        var q = parseFloat(readTxt(aRec, Fv.qty));
+        var shown = lbl + ((isFinite(q) && q > 1) ? ' \u00d7' + q : '');
+        var st = coAccState(aRec, vcfg, tc, coLineIds, coId);
+        var tip = st === 'co' ? ' \u2014 slated for removal on this change order'
+          : st === 'removed' ? ' \u2014 already removed by another change order'
+          : ' \u2014 installed with this item';
+        var tail;
+        if (st === 'co') {
+          tail = '<span class="scw-co-remove-acc-tag">on this CO</span>';
+        } else if (st === 'removed') {
+          tail = '<span class="scw-ws-v2-mh-removed">removed</span>';
+        } else {
+          tail = '<button type="button" class="scw-co-remove-acc-x scw-co-remove-acc-x--detail" ' +
+              'data-scw-co-remove-acc="' + escHtml(aRec.id) + '" ' +
+              'data-scw-co-remove-acc-label="' + escHtml(lbl) + '" ' +
+              'data-scw-co-remove-view="' + escHtml(rk) + '" ' +
+              'data-scw-co-remove-ctx="co-line" ' +
+              'data-scw-co-remove-line="' + escHtml(lineId) + '"' +
+              (st === 'pending' ? ' disabled' : '') + ' ' +
+              'title="Add a removal for this accessory \u2014 it gets its own Remove line on this change order" ' +
+              'aria-label="Add removal for accessory ' + escHtml(lbl) + '">' +
+              (st === 'pending' ? 'Adding\u2026' : 'Add Removal') +
+            '</button>';
+        }
+        html += '<span class="scw-ws-v2-mh-chip-wrap scw-co-tacc' +
+            (st === 'co' ? ' scw-co-remove-acc-chip--flagged' : '') +
+            (st === 'removed' ? ' scw-ws-v2-mh-chip-wrap--removed' : '') + '" ' +
+            'data-scw-co-tacc="' + escHtml(aRec.id) + '" ' +
+            'data-scw-co-tacc-state="' + st + '" ' +
+            'title="' + escHtml(shown + tip) + '">' +
+          '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert">' + escHtml(shown) + '</span>' +
+          tail +
+        '</span>';
+      }
+      // The "—" under an empty chip list would contradict the row below.
+      var empty = block.querySelector('.scw-ws-v2-mh-list > .scw-ws-v2-mh-empty');
+      if (empty) empty.style.display = html ? 'none' : '';
+      if (!html) continue;
+      var row = document.createElement('div');
+      row.className = 'scw-co-tacc-row';
+      row.innerHTML = '<span class="scw-co-tacc-lbl">Installed with this item</span>' + html;
+      var list = block.querySelector('.scw-ws-v2-mh-list');
+      if (list && list.parentNode === block) block.insertBefore(row, list.nextSibling);
+      else block.appendChild(row);
+    }
+  }
+  // Busy state for an "Add Removal" on a Remove line's card: the chip is
+  // rebuilt on every repaint, so the state lives in _pendingAcc.
+  function coLineUi(accId, removalKey) {
+    var coKey = coViewFor(removalKey);
+    function repaint() {
+      try { decorateCoView(coKey); } catch (e) { /* the next render repaints */ }
+    }
+    return {
+      busy: function () { _pendingAcc[accId] = true; repaint(); },
+      done: function () { delete _pendingAcc[accId]; repaint(); },
+      fail: function () { delete _pendingAcc[accId]; repaint(); }
+    };
   }
 
   // ── TEMPORARY DIAGNOSTIC ─────────────────────────────────────────────
@@ -1192,6 +1343,9 @@
           var row = card && card.querySelector('.scw-ws-v2-row');
           if (row) setRowState(row, allIds[k], viewKey, 'removed');
         }
+        // A Remove line's card on the CO worksheet lists these accessories
+        // too (decorateCoView) — repaint it now, not at the next render.
+        try { decorateCoView(coViewFor(viewKey)); } catch (eCo) { /* next render */ }
         updateBulkToolbar(viewKey);
         // Repatch the install grid — the refetch repopulates field_2967 so the
         // just-removed item(s) render in the red "slated for removal" state
@@ -1234,7 +1388,7 @@
   // top-level Remove line targeting the accessory's install record — there
   // is no device Remove line to parent it to.
   function confirmRemoveAccessory(accId, label, viewKey, ui) {
-    var parentLbl = '';
+    var parentLbl = '', parentId = '';
     var recs = (ns.data && typeof ns.data.readRecords === 'function')
       ? ns.data.readRecords(viewKey) : [];
     for (var i = 0; i < recs.length; i++) {
@@ -1242,13 +1396,28 @@
       var raw = recs[i][INSTALL_ACC_PARENT + '_raw'];
       var one = Array.isArray(raw) ? raw[0] : raw;
       parentLbl = one ? String(one.identifier || '').replace(/<[^>]*>/g, '').trim() : '';
+      parentId = (one && one.id) || '';
       break;
     }
+    // "Its device stays installed" is only true while the device is live:
+    // on a device already slated for removal (or a swap) on this CO — the
+    // Remove line card's "Add Removal" (decorateCoView) is always that case —
+    // the copy just names the device the accessory came with.
+    var tcP = parentId ? coTargetCounts(viewKey) : null;
+    var pRec = parentId ? recordIndex(viewKey)[parentId] : null;
+    var parentGoing = !!parentId && !!(_flaggedOptimistic[parentId] ||
+      _swappedOptimistic[parentId] || (tcP && tcP[parentId] >= 1) ||
+      (pRec && isFlagged(pRec, vcfgFor(viewKey))));
     var title = 'Add a removal for this accessory?';
-    var lead = '<b>' + escHtml(label || 'This accessory') + '</b> gets its own ' +
-      '<b>Remove</b> line on the change order. ' +
-      (parentLbl ? 'Its device (<b>' + escHtml(parentLbl) + '</b>)' : 'Its device') +
-      ' stays installed. Nothing leaves install scope until the CO is signed.';
+    var lead = parentGoing
+      ? '<b>' + escHtml(label || 'This accessory') + '</b>' +
+        (parentLbl ? ' (installed with <b>' + escHtml(parentLbl) + '</b>)' : '') +
+        ' gets its own <b>Remove</b> line on the change order. ' +
+        'Nothing leaves install scope until the CO is signed.'
+      : '<b>' + escHtml(label || 'This accessory') + '</b> gets its own ' +
+        '<b>Remove</b> line on the change order. ' +
+        (parentLbl ? 'Its device (<b>' + escHtml(parentLbl) + '</b>)' : 'Its device') +
+        ' stays installed. Nothing leaves install scope until the CO is signed.';
     function go() { fireRemove([accId], viewKey, ui, null); }
     if (ns.confirmModal && typeof ns.confirmModal === 'function') {
       ns.confirmModal({
@@ -1810,9 +1979,12 @@
       refetchAfterRemove(vk);
       decorateSoon(vs[i]);
     }
+    try { decorateCoView(coViewKey); } catch (e) { /* next render */ }
   }
   ns.coRemove = ns.coRemove || {};
   ns.coRemove.onCoLineDeleted = onCoLineDeleted;
+  ns.coRemove.decorateCoView   = decorateCoView;
+  ns.coRemove.removalViewForCo = removalViewForCo;
 
   // ── Wiring ────────────────────────────────────────────────────────────
   var views = removeViews();
@@ -1830,12 +2002,33 @@
     if (ns.data && typeof ns.data.subscribeRendered === 'function') {
       ns.data.subscribeRendered(vcfg.sourceViewKey, function () {
         try { decorate(vcfg); } catch (e) { decorateSoon(vcfg); }
+        // The CO worksheet's Remove-line cards list this panel's records
+        // (decorateCoView) — repaint them with the panel's fresh state.
+        try { decorateCoView(coViewFor(vcfg.sourceViewKey)); } catch (e2) { /* next render */ }
       });
     } else if (ns.data && typeof ns.data.subscribe === 'function') {
       ns.data.subscribe(vcfg.sourceViewKey, function () { decorateSoon(vcfg); });
     }
     $(document).on('knack-view-render.' + vcfg.sourceViewKey + '.scwCoRemove',
       function () { decorateSoon(vcfg); });
+  });
+
+  // The CO worksheet each panel feeds: re-list every Remove line's installed
+  // accessories after each render of the worksheet (the panel's own render
+  // repaints them too — see its subscriber above).
+  var _coWired = {};
+  views.forEach(function (vcfg) {
+    var coKey = coViewFor(vcfg.sourceViewKey);
+    if (_coWired[coKey]) return;
+    _coWired[coKey] = true;
+    function paint() {
+      try { decorateCoView(coKey); } catch (e) { /* the next render repaints */ }
+    }
+    if (ns.data && typeof ns.data.subscribeRendered === 'function') {
+      ns.data.subscribeRendered(coKey, paint);
+    }
+    $(document).on('knack-view-render.' + coKey + '.scwCoRemoveLines',
+      function () { setTimeout(paint, 0); });
   });
 
   // Shift-click range select — same anchor semantics as bulk.js: a plain
@@ -1975,14 +2168,23 @@
       e.preventDefault();
       e.stopPropagation();
       if (accBtn.disabled) return;
-      confirmRemoveAccessory(
-        accBtn.getAttribute('data-scw-co-remove-acc'),
-        accBtn.getAttribute('data-scw-co-remove-acc-label'),
-        accBtn.getAttribute('data-scw-co-remove-view'), {
-          busy: function () { accBtn.disabled = true; },
-          done: function () { /* chip flipped by fireRemove */ },
-          fail: function () { accBtn.disabled = false; }
-        });
+      // Locked CO worksheet (read-only panel): the CSS hides the button; this
+      // is the keyboard belt.
+      if (accBtn.getAttribute('data-scw-co-remove-ctx') === 'co-line' &&
+          accBtn.closest('.scw-ws-v2--readonly')) return;
+      var accId = accBtn.getAttribute('data-scw-co-remove-acc');
+      var accVk = accBtn.getAttribute('data-scw-co-remove-view');
+      // On a CO Remove line's card (decorateCoView) the chip is rebuilt on
+      // every repaint, so its busy state lives in _pendingAcc.
+      var accUi = accBtn.getAttribute('data-scw-co-remove-ctx') === 'co-line'
+        ? coLineUi(accId, accVk)
+        : {
+            busy: function () { accBtn.disabled = true; },
+            done: function () { /* chip flipped by fireRemove */ },
+            fail: function () { accBtn.disabled = false; }
+          };
+      confirmRemoveAccessory(accId, accBtn.getAttribute('data-scw-co-remove-acc-label'),
+        accVk, accUi);
       return;
     }
     // Single-row "Add Removal".

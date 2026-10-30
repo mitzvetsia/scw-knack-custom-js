@@ -2516,6 +2516,10 @@
           if (!r || !r.id || r.id === recordId) continue;
           var ownParentRaw = r[_pk + '_raw'];
           if (Array.isArray(ownParentRaw) && ownParentRaw.length) continue;
+          // A CO Remove line credits an installed item — nothing is parented
+          // under it (2026-10-30; card.js isCoRemoveOnCo).
+          if (ns.card && typeof ns.card.isCoRemoveOnCo === 'function' &&
+              ns.card.isCoRemoveOnCo(r, viewKey)) continue;
           parentCands.push(r);
         }
         // Route writes through v2's source view (view_3962). v1's

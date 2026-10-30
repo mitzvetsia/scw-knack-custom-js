@@ -931,6 +931,25 @@
     } catch (e) { return false; }
   }
 
+  /** Every selected row is a CO Remove line (card.js isCoRemoveOnCo — a
+   *  change-order worksheet only). */
+  function selOnlyCoRemoveLines(sourceViewKey) {
+    try {
+      if (!(ns.card && typeof ns.card.isCoRemoveOnCo === 'function')) return false;
+      var ids = selList();
+      if (!ids.length) return false;
+      var recs = (ns.data && typeof ns.data.readRecords === 'function')
+        ? (ns.data.readRecords(sourceViewKey) || []) : [];
+      var byId = Object.create(null);
+      for (var i = 0; i < recs.length; i++) { if (recs[i] && recs[i].id) byId[recs[i].id] = recs[i]; }
+      for (var j = 0; j < ids.length; j++) {
+        var r = byId[ids[j]];
+        if (!r || !ns.card.isCoRemoveOnCo(r, sourceViewKey)) return false;
+      }
+      return true;
+    } catch (e) { return false; }
+  }
+
   /** Config noDelete (install worksheets): nothing is deletable — install
    *  scope changes only via the change-order process. Hides bulk Delete. */
   function viewNoDelete(sourceViewKey) {
@@ -962,7 +981,13 @@
       // display:none and leave the button visible on noAccessories views.
       if (noAcc) addAccBtn.style.setProperty('display', 'none', 'important');
       else       addAccBtn.style.removeProperty('display');
-      addAccBtn.disabled = (n === 0);
+      // A selection of CO Remove lines only takes no new accessories
+      // (toolbar.js drops them from the modal; this says so up front).
+      var onlyRm = n > 0 && selOnlyCoRemoveLines(_sourceViewKey);
+      addAccBtn.disabled = (n === 0) || onlyRm;
+      addAccBtn.title = onlyRm
+        ? 'Remove lines take no new accessories \u2014 flag an installed accessory for removal on the Remove line instead'
+        : '';
     }
     var editAccBtn = toolbar.querySelector('.scw-ws-v2-bulk-edit-acc');
     if (editAccBtn) {

@@ -768,6 +768,27 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   `tests/worksheet-v2/test-accessory-edit.js` (drives card.js + init.js + bulk.js + the module under jsdom;
   its harness keeps Node's own timer for the global — handing jsdom's unbound `window.setTimeout` to
   `global.setTimeout` recurses, the "Maximum call stack" noise some older tests print).
+- **Remove lines take nothing new under them (2026-10-30)**: "on a 'remove' item like this for a swap you
+  shouldn't be able to 'add' an accessory — the only thing you should be able to do is identify that you want to
+  remove one of the accessories that is attached to the deployment item you're removing." On the CO worksheet
+  (view_4079 / view_4112, config `coDeleteGuard`; card.js `isCoRemoveOnCo`) a Remove line's Mounting Hardware
+  block has no "+ Add", and the credit lines already under it lose the qty stepper and the unlink (delete stays —
+  it takes that accessory's removal back off the CO — and so does the edit modal). The block names the line and
+  its target install item (`data-scw-co-rm-line` / `data-scw-co-rm-target` = `field_2966`); co-remove.js
+  `decorateCoView` lists that install item's accessories (install `field_2853` back-pointers on the removal view,
+  view_4086 / view_4116 via `removalViewForCo`) under "Installed with this item", skipping any a credit line
+  already takes out (`data-scw-co-line-target`): live → **Add Removal** (the single-accessory path — one
+  `MAKE_CO_REMOVE_ITEMS_WEBHOOK` call with the accessory as its own Remove line, top-level, not parented to the
+  device's line; `confirmRemoveAccessory`, whose copy now names the device the accessory came with instead of
+  "its device stays installed" whenever the device itself is going on this CO), "Adding…" while the webhook runs
+  (`_pendingAcc`), "on this CO" (a line here targets it, the session flag, or `field_2967` names this CO or one
+  of its lines), "removed" (`field_2967` names another CO). Repainted on every render of the CO worksheet and
+  of the removal panel, and right after a removal ACKs; the button is hidden on a locked CO (co-ops-lock /
+  co-sub-lock stamp `.scw-ws-v2--readonly`). The other add paths skip Remove lines too: the add-accessory modal
+  (toolbar.js drops them; a selection of only Remove lines gets an alert pointing at "Add Removal"), the bulk
+  bar's "Add accessories" (off, with a title), the Parent picker (init.js) and the CO add form's "Mounts on"
+  (co-add-item-form.js `parentCandidates`). Make: nothing new. Test:
+  `tests/worksheet-v2/test-co-remove-line-accessories.js`.
 - **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
   `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
   install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,

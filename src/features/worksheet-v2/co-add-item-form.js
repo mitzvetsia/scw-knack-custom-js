@@ -261,6 +261,10 @@
       var bk = firstConn(r.field_2219_raw);
       if (bk && NOT_A_MOUNT_PARENT[bk.id]) continue;
       if (hasConn(r.field_2464_raw)) continue;                  // an accessory itself
+      // A Remove line credits an installed item — a bracket never mounts on
+      // it (2026-10-30). Its installed accessories are flagged for removal
+      // from the Remove line's own card instead.
+      if (/remove/i.test(stripHtml(r.field_2965))) continue;
       var prod = firstConn(r.field_1949_raw), mdf = firstConn(r.field_1946_raw);
       var label = (card && typeof card.labelLineItem === 'function') ? card.labelLineItem(r) : (stripHtml(r.field_1950) || r.id);
       seen[r.id] = 1;
