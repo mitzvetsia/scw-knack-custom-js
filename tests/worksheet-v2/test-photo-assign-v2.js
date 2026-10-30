@@ -128,7 +128,7 @@ const rows = () => pa.state().rows;
 const rowByName = (n) => rows().find(r => r.filename === n);
 const tg = (r) => r.targets.map(t => [t.deviceId, t.mode, t.slotId || t.typeId || '', t.guessed]);
 const text = (sel) => { const el = modal().querySelector(sel); return el ? el.textContent.replace(/\s+/g, ' ').trim() : null; };
-const railRows = () => Array.from(modal().querySelectorAll('.scw-pa-dev:not(.scw-pa-dev--scope)')).map(d => d.querySelector('.id').textContent + ' ' + d.querySelector('.st').textContent);
+const railRows = () => Array.from(modal().querySelectorAll('.scw-pa-dev:not(.scw-pa-dev--scope):not(.scw-pa-dev--loc)')).map(d => d.querySelector('.id').textContent + ' ' + d.querySelector('.st').textContent);
 const slotRows = (dev) => Array.from(modal().querySelectorAll('[data-scw-pa-slot-dev="' + dev + '"]')).map(el => [el.getAttribute('data-scw-pa-slot-row'), el.className.replace('scw-pa-slot', '').trim(), el.querySelector('.who').textContent.trim()]);
 const newRow = (dev) => { const el = modal().querySelector('[data-scw-pa-new-row="' + dev + '"]'); return el ? [el.className.replace('scw-pa-slot', '').trim(), el.querySelector('.who').textContent.trim()] : null; };
 const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
@@ -214,7 +214,7 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   toolbarFixture();
   pa.open(V);
   check('opens with the device count, both panes, and a console line naming what was skipped',
-    [!!modal(), /6 devices/.test(text('.scw-pa-sub')), modal().querySelectorAll('.scw-pa-dev:not(.scw-pa-dev--scope)').length, infos.some(s => /view_4093: 10 records → 6 photo targets \(skipped: services 1, attached 2, accessories 1\)/.test(s))],
+    [!!modal(), /6 devices/.test(text('.scw-pa-sub')), modal().querySelectorAll('.scw-pa-dev:not(.scw-pa-dev--scope):not(.scw-pa-dev--loc)').length, infos.some(s => /view_4093: 10 records → 6 photo targets \(skipped: services 1, attached 2, accessories 1\)/.test(s))],
     [true, true, 6, true]);
   await pa.addFiles([file('i10.png'), file('i11.png'), file('i13 front.jpg'), file('i13 back.jpg'), file('1.12.jpg'), file('IMG_4523.jpg')]);
   check('rows aim themselves: open required slots fill in strip order, no slot → new, a guess is flagged, IMG waits',
@@ -338,7 +338,7 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   await pa.addFiles([file('site overview.jpg')]);
   const site = rowByName('site overview.jpg');
   check('the rail opens with a pinned "not tied to a device" row that is not a device (not matched, not grouped, not ticked by a group)',
-    [text('[data-scw-pa-dev-row="__scope__"] .id'), modal().querySelectorAll('.scw-pa-dev').length, tg(site), pa.railHits().indexOf('__scope__')],
+    [text('[data-scw-pa-dev-row="__scope__"] .id'), modal().querySelectorAll('.scw-pa-dev:not(.scw-pa-dev--loc)').length, tg(site), pa.railHits().indexOf('__scope__')],
     ['Deployment photo — not tied to a device', 7, [], -1]);
   pa.select(site.id);
   pa.clickDevice('__scope__');

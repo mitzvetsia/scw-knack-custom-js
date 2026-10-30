@@ -733,10 +733,15 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //     batchId:     <uuid>,  uploadId: <uuid:targetId>,   // idempotency key
   //     asset:       { id: <knack asset id>, filename, mimeType, sizeBytes },
   //     target:      { kind: 'installLineItemID' | 'sowLineItemID' | 'surveyLineItemID'
-  //                          | 'none',          // 'none' = the rail's "not tied to a
+  //                          | 'none'           // 'none' = the rail's "not tied to a
   //                                             //   device" row: connect the photo to
   //                                             //   the page's scope (links) only
-  //                    recordId: <24-hex line item> | '', label: 'E-004 · Vista Dome' },
+  //                          | 'mdfIdfID',      // 2026-10-30: the rail's MDF / IDF
+  //                                             //   location rows — recordId is the
+  //                                             //   LOCATION record; connect the photo
+  //                                             //   to it (the v1 20.04 mdfIdfID branch's
+  //                                             //   write) plus the page links
+  //                    recordId: <24-hex line item | location> | '', label: 'E-004 · Vista Dome' },
   //     slot:        null,                       // fills never reach Make
   //     photoType:   { id: <CONFIG_photo type id>, label } | null,
   //     required:    false,
@@ -749,7 +754,12 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //                                       //   sales SOW page: '' — read it off the SOW
   //       deploymentId:  <24-hex> | '',   // deploy pages (the route)
   //       sowId:         <24-hex> | '',   // sales SOW page: the page's SOW; project
-  //                                       //   page: the item's SOW when it has one
+  //                                       //   page: the item's SOW when it has one;
+  //                                       //   a 'none' target from a "<page> photo ·
+  //                                       //   SOW n" rail row (2026-10-30): the SOW the
+  //                                       //   user CHOSE — connect it on the project /
+  //                                       //   deploy / reconcile pages too (sowIds =
+  //                                       //   [that SOW])
   //       sowIds:        [<24-hex>…],     // every SOW header the line item is on
   //                                       //   (field_2154) — project + sales pages
   //       surveyId:      <24-hex> | '',   // survey page (the route)
@@ -788,7 +798,11 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //                         field_2119) + the page's SOW; survey → get the
   //                         request (project + SOWs) + request; project /
   //                         deploy → links.projectId (no deployment field
-  //                         exists on DOC_photos).
+  //                         exists on DOC_photos) — AND links.sowId when
+  //                         present (a chosen SOW, 2026-10-30; TODO Make).
+  //     mdfIdfID          → connect the photo to the MDF / IDF location
+  //                         target.recordId plus links.projectId (TODO Make:
+  //                         a new route — copy the v1 20.04 mdfIdfID branch).
   //   Every create: field_771 = asset.id, field_2445 = photoType.id (empty
   //   array when null), field_2446 No, field_2447 Yes. Copy mode sends the
   //   SAME asset.id in every manifest of the batch. Response is ignored

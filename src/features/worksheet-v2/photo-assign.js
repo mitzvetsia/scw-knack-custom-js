@@ -325,6 +325,115 @@
     return { id: SCOPE_ID, label: label, drop: label, product: '', tokens: [], prefix: '', number: '',
              mdf: { id: '__scope', label: '' }, rec: null, scopeOnly: true, kind: kind };
   }
+  // ── MDF / IDF locations and SOW-scoped page photos (2026-10-30) ──────
+  // "I want to be able to ALSO add photos to one or many MDF/IDFs", and
+  // "upload a photo to a project AND connect it to a specific SOW (but no
+  // specific line items)". Both are RAIL ROWS aimed like any device (click,
+  // drag, the chip menu), never matched by a file name and never grouped:
+  //   loc:<mdfId>  — one row per MDF/IDF location on the page (the
+  //                  worksheet records' own locations plus the page's MDF
+  //                  grids, so a location with no device yet is offered
+  //                  too). Its manifest is target.kind 'mdfIdfID' with the
+  //                  location's record id.
+  //   sow:<sowId>  — one row per SOW the page knows, under the pinned
+  //                  "not tied to a device" row: the same 'none' target,
+  //                  with links.sowId / sowIds = that SOW. Not on the sales
+  //                  SOW page (the page IS one SOW; links.sowId already
+  //                  names it).
+  var LOC_PREFIX = 'loc:';
+  var SOW_SCOPE_PREFIX = 'sow:';
+  var SOW_GRIDS = {              // pages whose SOWs live in a grid, not on the records
+    view_4093: 'view_4161',      // ops deploy: "All Associated SOWs"
+    view_4056: 'view_4161',      // sub deploy (same grid when the scene carries it)
+    view_3921: 'view_3918'       // reconcile page: the SOW headers grid
+  };
+  var SOW_ID_FIELD = 'field_2122', SOW_NAME_FIELD = 'field_2126';
+  var MDF_NAME_FIELDS = ['field_1642', 'field_1943'];   // display name, else the bare name
+  function isVirtualId(id) {
+    return id === SCOPE_ID || String(id || '').indexOf(LOC_PREFIX) === 0 || String(id || '').indexOf(SOW_SCOPE_PREFIX) === 0;
+  }
+  function modelRecords(viewKey) {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[viewKey];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      var out = [];
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i] && (models[i].attributes || models[i]);
+        if (!a) continue;
+        var id = a.id || models[i].id;
+        if (id) out.push({ id: id, attrs: a });
+      }
+      return out;
+    } catch (e) { return []; }
+  }
+  function sowToken(s) {
+    var m = String(s || '').match(/\bSW\s*-?\s*(\d+\s*(?:CO)?)\b/i);
+    return m ? m[1].replace(/\s+/g, '') : stripHtml(s);
+  }
+  /** Every MDF / IDF location on the page: the worksheet records' own
+   *  (mdfOf) plus the rows of the view's MDF grids (mdfManage.viewKey /
+   *  mdfSourceViewKey), name order. */
+  function locationsFor(viewKey) {
+    var byId = Object.create(null), list = [];
+    function add(id, label) {
+      if (!id || byId[id]) { if (id && label && byId[id] && !byId[id].label) byId[id].label = label; return; }
+      byId[id] = { id: id, label: label || '' };
+      list.push(byId[id]);
+    }
+    var F = fieldsFor(viewKey);
+    var recs = (ns.data && typeof ns.data.readRecords === 'function') ? ns.data.readRecords(viewKey) : [];
+    for (var i = 0; i < recs.length; i++) {
+      var m = mdfOf(recs[i], F);
+      if (m.id && m.id !== '__unknown') add(m.id, m.label);
+    }
+    var vc = viewCfg(viewKey), grids = [];
+    if (vc && vc.mdfManage && vc.mdfManage.viewKey) grids.push(vc.mdfManage.viewKey);
+    if (vc && vc.mdfSourceViewKey && grids.indexOf(vc.mdfSourceViewKey) < 0) grids.push(vc.mdfSourceViewKey);
+    for (var g = 0; g < grids.length; g++) {
+      var rows = modelRecords(grids[g]);
+      for (var r = 0; r < rows.length; r++) {
+        var name = '';
+        for (var f = 0; f < MDF_NAME_FIELDS.length && !name; f++) name = stripHtml(rows[r].attrs[MDF_NAME_FIELDS[f]]);
+        add(rows[r].id, name);
+      }
+    }
+    for (var k = 0; k < list.length; k++) if (!list[k].label) list[k].label = 'MDF / IDF';
+    list.sort(function (a, b) { return natCmp(a.label, b.label); });
+    return list.map(function (l) {
+      return { id: LOC_PREFIX + l.id, label: l.label, drop: l.label, product: '', tokens: [], prefix: '', number: '',
+               mdf: { id: '__loc', label: '' }, rec: null, locationOnly: true, mdfId: l.id,
+               hint: 'Click → a photo of this MDF / IDF location (connected to the location, no device)' };
+    });
+  }
+  /** The SOWs a page photo can be filed under: the worksheet's SOW filter
+   *  list (project page), else the page's SOW grid (deploy / reconcile);
+   *  none on the sales SOW page, which is one SOW already. */
+  function sowScopesFor(viewKey) {
+    var kind = pageKindOf(routeIdsOf(hashStr()));
+    if (kind === 'sow') return [];
+    var list = [];
+    try {
+      if (ns.sowFilter && typeof ns.sowFilter.collectSowList === 'function') {
+        var l = ns.sowFilter.collectSowList(viewKey) || [];
+        for (var i = 0; i < l.length; i++) if (l[i] && l[i].id) list.push({ id: l[i].id, label: l[i].label || '', name: l[i].name || '' });
+      }
+    } catch (e) { list = []; }
+    if (!list.length && SOW_GRIDS[viewKey]) {
+      var rows = modelRecords(SOW_GRIDS[viewKey]);
+      for (var r = 0; r < rows.length; r++) {
+        list.push({ id: rows[r].id, label: stripHtml(rows[r].attrs[SOW_ID_FIELD]) || rows[r].id, name: stripHtml(rows[r].attrs[SOW_NAME_FIELD]) });
+      }
+      list.sort(function (a, b) { return natCmp(a.label, b.label); });
+    }
+    var scopeLbl = SCOPE_LABELS[kind] || 'Project photo';
+    return list.map(function (x) {
+      var tok = sowToken(x.label);
+      return { id: SOW_SCOPE_PREFIX + x.id, label: scopeLbl + ' \u00b7 SOW ' + tok, drop: scopeLbl + ' \u00b7 SOW ' + tok,
+               product: x.name || '', tokens: [], prefix: '', number: '', mdf: { id: '__scope', label: '' }, rec: null,
+               scopeOnly: true, sowId: x.id, sowLabel: tok, kind: kind,
+               hint: 'Click → a photo connected to the ' + scopeLbl.replace(/ photo.*$/, '').toLowerCase() + ' AND SOW ' + tok + ', no device' };
+    });
+  }
   /** The line-item object this worksheet renders, as the bulk-upload
    *  linkField names it — the same routing photos.js uses for the v1
    *  "+ Add photo" pill (survey / deploy / sub-deploy / SOW). */
@@ -664,6 +773,7 @@
 
   // ── Slots + types ─────────────────────────────────────────────────
   function photoList(viewKey, deviceId) {
+    if (isVirtualId(deviceId)) return [];   // locations / page photos have no slots
     var ph = (ns.photos && typeof ns.photos.extractPhotoRecords === 'function')
       ? ns.photos.extractPhotoRecords(viewKey, deviceId) : [];
     var out = [];
@@ -866,6 +976,9 @@
       '.scw-pa-dev.is-over { background:#e0f2fe; border-color:#0284c7; border-style:dashed; }',
       '.scw-pa-dev--scope { margin:6px 4px 2px; border-color:#e2e8f0; border-style:dashed; background:#fafafa; }',
       '.scw-pa-dev--scope .id { color:#334155; }',
+      '.scw-pa-dev--sow { margin:2px 4px 2px 22px; background:#fff; }',
+      '.scw-pa-dev--loc { border-color:#e2e8f0; background:#fffdf5; }',
+      '.scw-pa-dev--loc .id { color:#7c5e10; }',
       '.scw-pa-dev .id { font-weight:700; white-space:normal; overflow-wrap:anywhere; line-height:1.3; }',
       '.scw-pa-dev .nm { grid-column:2; color:#64748b; font-size:11.5px; white-space:normal; overflow-wrap:anywhere; line-height:1.3; }',
       '.scw-pa-dev .st { grid-column:3; grid-row:1 / span 2; font-size:11px; white-space:normal; text-align:right; max-width:150px; line-height:1.3; color:#92400e; font-weight:700; align-self:start; }',
@@ -989,6 +1102,9 @@
     var idx = Object.create(null);
     for (var i = 0; i < cands.length; i++) idx[cands[i].id] = cands[i];
     idx[SCOPE_ID] = scopeTarget();           // aimable, never matched or grouped
+    var locs = locationsFor(viewKey), sowScopes = sowScopesFor(viewKey);
+    for (var li = 0; li < locs.length; li++) idx[locs[li].id] = locs[li];
+    for (var si = 0; si < sowScopes.length; si++) idx[sowScopes[si].id] = sowScopes[si];
     // Opened from one card's "+ Add Photos": every photo added goes to that
     // device (addFiles) — the chips stay editable.
     var preset = (opts.deviceId && idx[opts.deviceId] && !idx[opts.deviceId].scopeOnly) ? idx[opts.deviceId] : null;
@@ -1002,6 +1118,8 @@
       copyMode:   !!existing,
       rows:       [],
       candidates: cands,
+      locations:  locs,                        // MDF / IDF rows (aimable, never matched)
+      sowScopes:  sowScopes,                   // "page photo on SOW …" rows
       candIndex:  idx,
       matchCtx:   buildMatchContext(cands),
       photoCache: Object.create(null),
@@ -1037,7 +1155,7 @@
         '<div class="scw-pa-hd">' +
           '<div><div class="scw-pa-title">' + (existing ? 'Copy Photo' : 'Add Photos') + (replacesV1() ? '' : ' (v2)') + '</div>' +
             '<div class="scw-pa-sub">' + esc(hostLabel) + ' · ' +
-              plural(cands.length, 'device') +
+              plural(cands.length, 'device') + (locs.length ? ' · ' + plural(locs.length, 'location') : '') +
               (existing
                 ? ' · the ' + esc(existing.type || 'photo') + (existingFrom ? ' on <b>' + esc(existingFrom) + '</b>' : '') +
                   ' is queued below, already uploaded — tick the devices or slots that should get a copy, then Send'
@@ -1555,6 +1673,17 @@
     }
     return out;
   }
+  /** The location rows the rail search keeps (by name; no family). */
+  function locationHits() {
+    if (!_state) return [];
+    var raw = String(_state.railQuery || '').trim().toLowerCase();
+    var out = [];
+    for (var i = 0; i < (_state.locations || []).length; i++) {
+      var c = _state.locations[i];
+      if (!raw || String(c.label).toLowerCase().indexOf(raw) !== -1 || containsSeq(tokensOf(c.label), tokensOf(raw))) out.push(c);
+    }
+    return out;
+  }
   function railOrdered(list) {
     if (!_state || !_state.railNeedFirst) return list;
     // Devices still missing a required photo first; canonical order kept
@@ -1963,6 +2092,13 @@
     var h = '';
     var scope = candidateById(SCOPE_ID);
     if (scope) h += devRowHtml(scope, sel, 'scw-pa-dev--scope');
+    var sows = st.sowScopes || [];
+    for (var sw = 0; sw < sows.length; sw++) h += devRowHtml(sows[sw], sel, 'scw-pa-dev--scope scw-pa-dev--sow');
+    var locs = locationHits();
+    if (locs.length) {
+      h += '<div class="scw-pa-grp"><span>MDF / IDF locations</span></div>';
+      for (var lo = 0; lo < locs.length; lo++) h += devRowHtml(locs[lo], sel, 'scw-pa-dev--loc');
+    }
     if (!hits.length) {
       h += '<div style="padding:16px 12px;color:#64748b;font-size:12.5px">' +
         (famLbl && !rq0 ? 'No ' + esc(famLbl.toLowerCase()) + ' on this worksheet.'
@@ -2005,7 +2141,7 @@
         stTxt = plural(info.open.length, 'open slot') + (info.reqOpen ? ' · ' + info.reqOpen + ' required' : '');
         stCls = info.reqOpen ? '' : 'none';
       } else if (info.reqTotal) { stTxt = 'required photos all in'; stCls = 'full'; }
-      else { stTxt = c.scopeOnly ? 'no device' : 'no slots'; stCls = 'none'; }
+      else { stTxt = c.scopeOnly ? 'no device' : (c.locationOnly ? 'location' : 'no slots'); stCls = 'none'; }
       if (queued) stTxt += ' · ' + queued + ' queued';
     }
     var def = defaultTarget(c.id, false);
@@ -2016,9 +2152,9 @@
     // photo is aimed here, so what it does there is in view.
     var expanded = !!(st.showSlots || st.slotsOpen[c.id] || have);
     var h = '<div class="scw-pa-dev' + (have ? ' is-hit' : '') + (extraCls ? ' ' + extraCls : '') + '" data-scw-pa-dev-row="' + esc(c.id) + '" title="' +
-        esc(c.scopeOnly
+        esc(c.hint ? c.hint : (c.scopeOnly
           ? 'Click → a photo connected to the ' + String(c.label).replace(/ photo.*$/, '').toLowerCase() + ' only, no device'
-          : 'Click → ' + (def.mode === 'slot' ? 'fills ' + def.slotType : 'adds a new photo') + (sub ? ' · ' + sub : '')) + '">' +
+          : 'Click → ' + (def.mode === 'slot' ? 'fills ' + def.slotType : 'adds a new photo') + (sub ? ' · ' + sub : ''))) + '">' +
       '<span class="box' + box + '" aria-hidden="true"></span>' +
       '<span class="id">' + esc(main) + '</span>' +
       (info.open.length
@@ -2210,7 +2346,11 @@
   }
   function manifestFor(op, row) {
     var tg = op.target, c = candidateById(tg.deviceId);
-    var scopeOnly = !!(c && c.scopeOnly);
+    var scopeOnly = !!(c && c.scopeOnly), loc = !!(c && c.locationOnly);
+    var links = linksFor(_state.viewKey, (c && c.rec) ? c.rec : null);
+    // A "page photo on SOW …" row: the page's links plus the SOW the user
+    // chose — Make connects the SOW as well as the project / deployment.
+    if (c && c.sowId) { links.sowId = c.sowId; links.sowIds = [c.sowId]; }
     return {
       uploadKind: 'photo_assign',
       batchId:    _state.batchId,
@@ -2219,12 +2359,13 @@
       // A copy of an uploaded photo: the same asset, and where it came from
       // (informational — Make writes field_771 = asset.id as for any create).
       copyOf:     row.existing ? { photoId: row.existing.photoId, deviceId: row.existing.deviceId, deviceLabel: row.existing.deviceLabel } : null,
-      target:     { kind: scopeOnly ? 'none' : targetKind(), recordId: scopeOnly ? '' : tg.deviceId, label: c ? c.label : '' },
+      target:     { kind: loc ? 'mdfIdfID' : (scopeOnly ? 'none' : targetKind()),
+                    recordId: loc ? c.mdfId : (scopeOnly ? '' : tg.deviceId), label: c ? c.label : '' },
       slot:       null,
       photoType:  tg.typeId ? { id: tg.typeId, label: tg.typeLabel || '' } : null,
       required:   false,
       scope:      resolveScope(_state.viewKey),
-      links:      linksFor(_state.viewKey, c ? c.rec : null),
+      links:      links,
       sourceViewId: _state.viewKey,
       triggeredBy: triggeredBy()
     };
@@ -2447,6 +2588,10 @@
     linksFor:          linksFor,
     routeIds:          routeIdsOf,
     SCOPE_ID:          SCOPE_ID,
+    LOC_PREFIX:        LOC_PREFIX,
+    SOW_SCOPE_PREFIX:  SOW_SCOPE_PREFIX,
+    locationsFor:      locationsFor,
+    sowScopesFor:      sowScopesFor,
     addFiles:          addFiles,
     addExisting:       function (existing) { var r = addExisting(existing); render(); return r; },
     assetFromUrl:      assetFromUrl,

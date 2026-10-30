@@ -81,7 +81,7 @@ infos.length = 0;
 click(btn());
 ok(!!modal() && v1Opens.length === 0, 'click → the v2 modal opens, v1 is not called');
 ok(pa.state() && pa.state().viewKey === 'view_3921', 'the modal is open over view_3921 (' + (pa.state() && pa.state().viewKey) + ')');
-const rail = Array.from(modal().querySelectorAll('.scw-pa-dev:not(.scw-pa-dev--scope) .id')).map(e => e.textContent.trim());
+const rail = Array.from(modal().querySelectorAll('.scw-pa-dev:not(.scw-pa-dev--scope):not(.scw-pa-dev--loc) .id')).map(e => e.textContent.trim());   // device rows only (location rows since 2026-10-30)
 ok(JSON.stringify(rail) === JSON.stringify(['Imperial NVR 16ch', 'E-001', 'E-002']) || JSON.stringify(rail.slice().sort()) === JSON.stringify(['E-001', 'E-002', 'Imperial NVR 16ch']),
   'the rail lists the hardware (cameras + the NVR), never the service (' + rail.join(', ') + ')');
 ok(/view_3921: 4 records → 3 photo targets \(skipped: services 1\)/.test(infos.join('\n')), 'console: "view_3921: 4 records → 3 photo targets (skipped: services 1)"');

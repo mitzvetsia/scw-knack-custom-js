@@ -1252,6 +1252,28 @@ rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing c
   asset id (a blob: preview right after a Replace) gets no button. Tests:
   `tests/worksheet-v2/test-photo-copy-entry.js` (the bar, the hand-off, the gates) and the copy block in
   `test-photo-assign-v2.js` (URL forms, the preloaded tile, aims, Send without an upload, the manifest).
+- **MDF / IDF locations and SOW-scoped page photos as targets (2026-10-30)**: "I want to be able to
+  ALSO add photos to one or many MDF/IDFs" and "upload a photo to a project AND connect it to a specific
+  SOW (but no specific line items)". Two new rail row families, aimed like any device (click, drag, chip
+  menu, a preset via `open(viewKey, { deviceId })`), never matched by a file name, never in the device
+  groups or the family filter, filtered by the rail search on their name: **`loc:<mdfId>`** rows under an
+  "MDF / IDF locations" group (`locationsFor(viewKey)`: the worksheet records' own locations via `mdfOf`
+  plus the rows of the view's `mdfManage.viewKey` / `mdfSourceViewKey` grids — `field_1642` display name,
+  else `field_1943` — so a location with no device yet is offered; name order) whose manifest is
+  `target.kind: 'mdfIdfID'`, `recordId` = the location record, links as for a page photo; and
+  **`sow:<sowId>`** rows under the pinned "not tied to a device" row ("Deployment photo · SOW 1589",
+  the SOW name on the sub line; `sowScopesFor(viewKey)`: the worksheet's `sowFilter.collectSowList`
+  on the project page, else the page's SOW grid per `SOW_GRIDS` — view_4161 on the deploy pages,
+  view_3918 on the reconcile host — `field_2122` / `field_2126`; none on the sales SOW page, which is
+  one SOW) whose manifest is the `none` target with `links.sowId` / `sowIds` = the chosen SOW. The
+  header counts "N devices · M locations"; `photoList` returns no slots for a virtual id. **Make (TODO,
+  both routes in the "(v2 Modal)" scenario)**: a `mdfIdfID` branch (copy the v1 20.04 one: connect
+  DOC_photos to the location + the project) and, on the `none` branch for project / deploy / reconcile
+  pages, connect `links.sowId` when present. Until then a location manifest is ignored by the router
+  and a SOW page photo lands on the project only. Test: `tests/worksheet-v2/test-photo-assign-targets.js`
+  (the row sources, the rail order, aiming at several locations, the manifests, the preset, the per-page
+  SOW lists); the device counts in `test-photo-assign-v2.js` / `bid-review-v2/test-add-photos-v2.js`
+  exclude the location rows.
 - **Not carried over (yet)**: the IndexedDB queue / resume banner; the phone layout (canvas board 5)
   is a future state; per-destination resume after a partial failure (today the whole row re-sends).
   Test: `tests/worksheet-v2/test-photo-assign-v2.js`.
