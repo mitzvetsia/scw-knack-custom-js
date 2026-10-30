@@ -85,11 +85,12 @@ r = render('view_3914', [row('a3', 'X-SW1210 | 2', {}), row('a7', 'X-SW1964CO | 
 check('a base agreement and a CO unsigned → "2 awaiting signature · 1 is a change order"',
   r.text, '2 awaiting signature · 1 is a change order');
 
-// 5. The no-signature rows sort with the settled rows, not in the attention tier at the top.
+// 5. Waiting never reorders the list (2026-10-30: base scope first, then COs oldest → newest —
+//    test-acceptance-order.js): the older CO (SW1838CO) stays ahead of the unsigned newer one.
 render('view_3914', [row('a7', 'X-SW1964CO | 4', {}), row('a1', 'X-SW1838CO | 1', { noSig: 'Yes', notBill: 'Yes' })]);
-check('the unsigned CO floats to the top; the approved CO sits with the settled rows',
+check('an unsigned CO does not float above an older approved one',
   [...document.querySelectorAll('.scw-acpt-row')].map(el => /SW1964CO/.test(el.textContent) ? 'unsigned' : /SW1838CO/.test(el.textContent) ? 'approved' : '?'),
-  ['unsigned', 'approved']);
+  ['approved', 'unsigned']);
 
 // 6. Sub dashboard: the thin grid has no flag columns, so only the signature can settle a row…
 r = render('view_4066', [row('a3', 'X-SW1210 | 2', { signed: 'Yes' }), row('a7', 'X-SW1964CO | 4', {})], true);

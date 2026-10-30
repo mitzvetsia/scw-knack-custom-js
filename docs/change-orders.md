@@ -809,6 +809,9 @@ not-billable. Nothing about billability or the reason is written to the SOW.
   tile is writable again the same day (it had rendered read-only): the pencil opens
   the uploader (replace / "Remove file"), the hover × removes the file after a
   confirm — a clear of `field_2767` through view_3914, nothing else changes.
+  Row order (same day): the base-scope acceptances first, then the change orders
+  oldest → newest by the proposal's quote number (`orderRows`); waiting rows no
+  longer float to the top.
 - **Ops lock** treats any `Accepted` as final; the sub strip reads "Approved by
   SCW — your pricing stands" on the not-billable path.
 

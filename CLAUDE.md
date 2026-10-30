@@ -709,6 +709,15 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   the write is a view-based PUT through view_3914, so `field_2767` / `field_2947` must be inline-editable
   columns there — the same requirement the upload always had; a 400 / 403 toast means they are not. Test:
   `tests/deploy-page/test-acceptance-file-remove.js`.
+- **Acceptance rows: base scope first, then COs oldest → newest (2026-10-30)**: "for the Agreements &
+  Invoices panel we need to always show the non-CO acceptances FIRST, followed by the COs in chronological
+  oldest to newest order." `acceptance-card.js` `orderRows` (both the ops view_3914 and the sub view_4066
+  variants): the non-CO rows, then the change orders, each group oldest → newest by `chronoKey` — the
+  proposal's quote number off the `field_2755` identifier ("59277492086-SW1838CO | 20261007-11977": publish
+  date + running sequence), the SOW number when a row has no quote (SW numbers only grow), then grid order.
+  The ops card's triage sort (unsigned / unpaid rows floated to the top) is gone — the rollup pill and the
+  deploy nav's amber dot still say what waits; the list itself never reshuffles. Test:
+  `tests/deploy-page/test-acceptance-order.js` (+ the order check in `test-acceptance-rollup.js`).
 - **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
   `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
   install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,

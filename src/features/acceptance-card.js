@@ -2929,10 +2929,11 @@
     var signedCount = 0, pendingCo = 0, noSigCount = 0, entries = [];
     var dups = dupTokensFor(VIEW, rows);
     _dupTokens = dups.byToken;
-    for (var ri = 0; ri < rows.length; ri++) {
-      if (isAcceptedRow(rows[ri])) { signedCount++; if (isNoSigRow(rows[ri])) noSigCount++; }
-      else if (isCoRow(VIEW, rows[ri])) pendingCo++;
-      var entry = buildSubRow(VIEW, rows[ri], bySow);
+    var ordered = orderRows(VIEW, rows);   // base scope first, then COs oldest → newest
+    for (var ri = 0; ri < ordered.length; ri++) {
+      if (isAcceptedRow(ordered[ri])) { signedCount++; if (isNoSigRow(ordered[ri])) noSigCount++; }
+      else if (isCoRow(VIEW, ordered[ri])) pendingCo++;
+      var entry = buildSubRow(VIEW, ordered[ri], bySow);
       entries.push(entry);
       card.appendChild(entry.el);
     }
@@ -2949,6 +2950,35 @@
   function isCoRow(viewKey, row) {
     if (/\bSW\d+CO\b/i.test(cellText(row, F.proposal))) return true;
     try { return isCoSnapshot(readSnapshot(viewKey, row)); } catch (e) { return false; }
+  }
+  /** Row order for both variants (2026-10-30: "always show the non-CO
+   *  acceptances FIRST, followed by the COs in chronological oldest to
+   *  newest order"): the base-scope acceptances, then the change orders,
+   *  each group oldest → newest. The clock is the proposal's quote number
+   *  off the identifier ("59277492086-SW1838CO | 20261007-11977": the
+   *  publish date and a running sequence), the SOW number when a row
+   *  carries no quote (SW numbers only grow), then the grid's own order.
+   *  The attention tier used to float unsigned rows to the top; the pill
+   *  and the amber dot still say what waits — the list no longer
+   *  reshuffles under a PM who knows where each agreement sits. */
+  function chronoKey(row, order) {
+    var txt = cellText(row, F.proposal);
+    var q  = txt.match(/\b(\d{8})-(\d{3,})\b/);
+    var sw = txt.match(/\bSW\s*-?\s*(\d+)/i);
+    return [q ? +q[1] : 0, q ? +q[2] : 0, sw ? +sw[1] : 0, order];
+  }
+  function orderRows(viewKey, rows) {
+    var list = [], i;
+    for (i = 0; i < rows.length; i++) {
+      list.push({ row: rows[i], co: isCoRow(viewKey, rows[i]) ? 1 : 0, key: chronoKey(rows[i], i) });
+    }
+    list.sort(function (a, b) {
+      if (a.co !== b.co) return a.co - b.co;
+      for (var k = 0; k < 4; k++) if (a.key[k] !== b.key[k]) return a.key[k] - b.key[k];
+      return 0;
+    });
+    for (i = 0; i < list.length; i++) list[i] = list[i].row;
+    return list;
   }
   /** Duplicate base acceptances: two (or more) non-CO rows for the same
    *  SOW — a rep accepted the proposal twice (accept-proposal-guard.js now
@@ -3059,37 +3089,29 @@
 
     // Rebuild from scratch — a project accrues one acceptance per signed
     // agreement (base proposal + each CO). ONE card, one compact list row
-    // per record in the grid's own order, so a testing pile of 20 doesn't
-    // eat the page.
+    // per record — base scope first, then the COs oldest → newest
+    // (orderRows) — so a testing pile of 20 doesn't eat the page.
     var prior = viewEl.querySelector(':scope > .scw-acpt-card');
     if (prior) prior.remove();
 
     var rows = viewEl.querySelectorAll('tbody tr[id]');
     if (!rows.length) return;
 
-    // Triage sort: rows still needing something (unsigned agreement, or a
-    // base acceptance with neither payment nor terms approval) float to the
-    // top so a 6-12 acceptance pile on a big project self-prioritizes.
+    // Fixed order (orderRows): the base-scope acceptances first, then the
+    // change orders oldest → newest. The tally below still counts what
+    // waits (the pill + the amber dot say so); it no longer reorders.
     var entries = [];
     var signedCount = 0, pendingCo = 0, noSigCount = 0;
     var dups = dupTokensFor(VIEW, rows);
     _dupTokens = dups.byToken;
-    for (var ri = 0; ri < rows.length; ri++) {
-      var r = rows[ri];
+    var ordered = orderRows(VIEW, rows);
+    for (var ri = 0; ri < ordered.length; ri++) {
+      var r = ordered[ri];
       // Settled = e-signed OR approved without a signature (isAcceptedRow).
-      var rSigned = isAcceptedRow(r);
-      var rPaid   = isYes(cellText(r, F.payment));
-      var rTerms  = isYes(cellText(r, F.terms));
-      var rIsCo   = isCoRow(VIEW, r);
-      var attention = !rSigned || (!rIsCo && !rTerms && !rPaid) || isDupRow(VIEW, r);
-      if (rSigned) { signedCount++; if (isNoSigRow(r)) noSigCount++; }
-      else if (rIsCo) pendingCo++;
-      entries.push({ row: r, attention: attention, order: ri });
+      if (isAcceptedRow(r)) { signedCount++; if (isNoSigRow(r)) noSigCount++; }
+      else if (isCoRow(VIEW, r)) pendingCo++;
+      entries.push({ row: r });
     }
-    entries.sort(function (a, b) {
-      if (a.attention !== b.attention) return a.attention ? -1 : 1;
-      return a.order - b.order;   // stable within each tier
-    });
 
     var card = document.createElement('div');
     card.className = 'scw-acpt-card';
