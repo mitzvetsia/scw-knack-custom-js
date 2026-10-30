@@ -683,6 +683,15 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   (docs/change-orders.md fix #2: 00.00 writes Accepted before calling 13.06b; stored incomplete executions +
   a failure notification on 13.06b; the Known Issue #24 repair on 13.06b module 73). Tests:
   `tests/deploy-page/test-co-status-drift.js`, `tests/change-orders/test-co-status-drift-strip.js`.
+- **No-signature approvals are settled paperwork (2026-10-30)**: the acceptance card's accordion tally
+  (`acceptance-card.js` `rollup`, both the ops view_3914 and the sub view_4066 loops) counted every row whose
+  `field_2766` was No as "awaiting signature", so two COs authorized as not billable kept the deploy page's
+  Paperwork tile on "Waiting · 2 change orders awaiting signature" (`deploy-page-nav.js` reads the pill's
+  class and text). `isAcceptedRow` = signed OR `field_3309` OR `field_3310` is now the settled test for the
+  tally and the row's attention tier; the pill reads "all accepted" when any settled row carries no signature
+  ("all signed" otherwise), and only a genuinely unsigned row waits. A thin sub grid without the flag columns
+  falls back to the signature alone. Test: `tests/deploy-page/test-acceptance-rollup.js` (the first test to
+  drive the real acceptance-card.js: a `setTimeout` that runs at once + `SCW.onViewRender` captured per view).
 - **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
   `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
   install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,

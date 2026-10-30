@@ -804,6 +804,8 @@ not-billable. Nothing about billability or the reason is written to the SOW.
 - **Manage Deployment acceptance cards** (`acceptance-card.js`): the signature
   pill reads the flags — "Approved without client signature" (green) instead
   of "Agreement not signed", plus a slate "Not billable" pill.
+  The accordion tally and the Paperwork tile count such a row as settled too
+  (2026-10-30: "all accepted", never "awaiting signature").
 - **Ops lock** treats any `Accepted` as final; the sub strip reads "Approved by
   SCW — your pricing stands" on the not-billable path.
 

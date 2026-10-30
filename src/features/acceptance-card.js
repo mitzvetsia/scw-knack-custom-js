@@ -1767,6 +1767,20 @@
     return '<span class="scw-acpt-pill ' + (yes ? 'is-yes' : 'is-no') + '">' +
       (yes ? CHECK_SVG : CLOCK_SVG) + '<span>' + esc(label) + '</span></span>';
   }
+  /** Accepted on the record: e-signed, or approved on one of the two
+   *  no-signature paths (field_3309 approved without signature / field_3310
+   *  not billable — the pills below already read them as approved). The
+   *  tallies count these as settled, never as "awaiting signature":
+   *  2026-10-30, two not-billable COs kept the Paperwork tile on "Waiting"
+   *  with "2 change orders awaiting signature". */
+  function isAcceptedRow(row) {
+    return isYes(cellText(row, F.signed)) ||
+           isYes(cellText(row, F.noSig)) || isYes(cellText(row, F.notBill));
+  }
+  function isNoSigRow(row) {
+    return !isYes(cellText(row, F.signed)) &&
+           (isYes(cellText(row, F.noSig)) || isYes(cellText(row, F.notBill)));
+  }
   // Signature pill honoring the no-e-signature paths: an acceptance SCW
   // approved without a client signature reads as approved (green), not
   // as "not signed" (amber clock); a not-billable one adds a slate pill.
@@ -2841,11 +2855,11 @@
       '</div>';
     // Per-SOW sub-bid sums, resolved ONCE for the whole card.
     var bySow = proposedSubBidBySow();
-    var signedCount = 0, pendingCo = 0, entries = [];
+    var signedCount = 0, pendingCo = 0, noSigCount = 0, entries = [];
     var dups = dupTokensFor(VIEW, rows);
     _dupTokens = dups.byToken;
     for (var ri = 0; ri < rows.length; ri++) {
-      if (isYes(cellText(rows[ri], F.signed))) signedCount++;
+      if (isAcceptedRow(rows[ri])) { signedCount++; if (isNoSigRow(rows[ri])) noSigCount++; }
       else if (isCoRow(VIEW, rows[ri])) pendingCo++;
       var entry = buildSubRow(VIEW, rows[ri], bySow);
       entries.push(entry);
@@ -2856,7 +2870,7 @@
     var foot = buildProjectMoney(entries, true);
     if (foot) card.appendChild(foot);
     viewEl.appendChild(card);
-    rollup(viewEl, rows.length - signedCount, pendingCo, dups.rows);
+    rollup(viewEl, rows.length - signedCount, pendingCo, dups.rows, noSigCount);
   }
 
   /** A change-order acceptance: the SOW number's CO suffix (SW1418CO) when
@@ -2890,7 +2904,7 @@
    *  Paperwork tile needs to know whether the base agreement or a CO is
    *  the holdup — and when the same SOW was accepted more than once.
    *  Shared by both variants. */
-  function rollup(viewEl, pending, pendingCo, dupRows) {
+  function rollup(viewEl, pending, pendingCo, dupRows, noSigCount) {
     var acc = viewEl.closest('.scw-ktl-accordion');
     if (!acc) return;
     dupRows = dupRows || 0;
@@ -2907,7 +2921,9 @@
     }
     roll.classList.toggle('scw-acpt-rollup--warn', pending > 0 || dupRows > 0);
     roll.classList.toggle('scw-acpt-rollup--ok', pending === 0 && dupRows === 0);
-    var text = 'all signed';
+    // "all signed" only when every settled row carries a signature; an
+    // approval without one reads "all accepted" (still green — nothing waits).
+    var text = noSigCount > 0 ? 'all accepted' : 'all signed';
     if (pending > 0) {
       pendingCo = pendingCo || 0;
       if (pendingCo === pending) {
@@ -2984,17 +3000,18 @@
     // base acceptance with neither payment nor terms approval) float to the
     // top so a 6-12 acceptance pile on a big project self-prioritizes.
     var entries = [];
-    var signedCount = 0, pendingCo = 0;
+    var signedCount = 0, pendingCo = 0, noSigCount = 0;
     var dups = dupTokensFor(VIEW, rows);
     _dupTokens = dups.byToken;
     for (var ri = 0; ri < rows.length; ri++) {
       var r = rows[ri];
-      var rSigned = isYes(cellText(r, F.signed));
+      // Settled = e-signed OR approved without a signature (isAcceptedRow).
+      var rSigned = isAcceptedRow(r);
       var rPaid   = isYes(cellText(r, F.payment));
       var rTerms  = isYes(cellText(r, F.terms));
       var rIsCo   = isCoRow(VIEW, r);
       var attention = !rSigned || (!rIsCo && !rTerms && !rPaid) || isDupRow(VIEW, r);
-      if (rSigned) signedCount++;
+      if (rSigned) { signedCount++; if (isNoSigRow(r)) noSigCount++; }
       else if (rIsCo) pendingCo++;
       entries.push({ row: r, attention: attention, order: ri });
     }
@@ -3059,7 +3076,7 @@
 
     // Rollup badge in the accordion header bar — visible without
     // expanding; the attention attribute feeds the deploy nav's amber dot.
-    rollup(viewEl, rows.length - signedCount, pendingCo, dups.rows);
+    rollup(viewEl, rows.length - signedCount, pendingCo, dups.rows, noSigCount);
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
