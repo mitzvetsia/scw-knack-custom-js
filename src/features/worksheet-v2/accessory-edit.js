@@ -341,6 +341,20 @@
         (bulk ? ' placeholder="leave as is"' : '') + '>' +
     '</label>';
   }
+  /** The sign convention, read off the object's own formulas (2026-10-30, "the
+   *  discount should be entered as a positive value, right?"): the unit
+   *  discount CALC_LI_unit_discount_amt_effective (field_2267) is the $ each
+   *  when its flag is on, else % × unit price, and the net unit price
+   *  (field_2268) is unit price MINUS that — so a positive number takes money
+   *  off, a negative one adds it (a line-level fee). Knack's conditional
+   *  rules switch the "custom discount entered" flags (field_2467 / 2468) on
+   *  when an input is not blank, and the $ amount wins over the % when both
+   *  are set. 10 in the % box means 10 %. */
+  function discountHintHtml(F) {
+    if (!F.lineDiscPct && !F.lineDiscAmt) return '';
+    return '<div class="scw-ws-v2-ae-hint scw-ws-v2-ae-field--wide">Enter a discount as a positive number — it comes off the unit price (net = unit price − discount); a negative number adds to it.' +
+      (F.lineDiscPct && F.lineDiscAmt ? ' 10 in the % box means 10 %. When both are set, the $ amount wins.' : '') + '</div>';
+  }
   function currentLine(rec, viewKey, F) {
     var bits = [];
     var q = readNum(rec, F.qty || 'field_1964');
@@ -394,7 +408,7 @@
         var d = defs[di];
         h += fieldInputHtml(d, F, d.kind === 'number' ? readNum(rec, F[d.key]) : readText(rec, F[d.key]), false);
       }
-      h += '</div>';
+      h += discountHintHtml(F) + '</div>';
     } else {
       // The bulk list: by parent (model order), the accessory and what it carries today.
       var rows = recs.slice().map(function (r) { return { rec: r, par: parentOf(r, viewKey), lbl: labelOf(r) }; });
@@ -420,7 +434,7 @@
       }
       h += '</div><div class="scw-ws-v2-ae-fields">';
       for (var bi = 0; bi < defs.length; bi++) h += fieldInputHtml(defs[bi], F, '', true);
-      h += '</div>';
+      h += discountHintHtml(F) + '</div>';
     }
     h += '<div class="scw-ws-v2-mb-status" aria-live="polite"></div>' +
       '<div class="scw-ws-v2-mb-actions">' +

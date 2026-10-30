@@ -754,6 +754,17 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   still carries the old value reads "Knack did not apply <field> … the column is not inline-editable on
   view_4079 (Builder)" — the same dependency as the card's own discount inputs (`field_2261` / `field_2262` /
   `field_2263` inline-editable on view_4079). One accessory under the selection opens the single form. Test:
+  **Sign convention (read off the object's formulas, same day — "the discount should be entered as a positive
+  value, right?")**: yes. `field_2267` CALC_LI_unit_discount_amt_effective = `field_2467 == 1 ? field_2262 :
+  field_2468 == 1 ? field_2261 × field_1960 : product default % × field_1960`, `field_2268` net unit =
+  `field_1960 − field_2267`, `field_2269` line total = net × qty, `field_2303` applied = `field_2267 × qty`.
+  A positive $ / % comes off the price; a negative one adds to it (a line-level fee). The "custom discount
+  entered" flags `field_2467` ($) / `field_2468` (%) are set by Knack conditional rules on the object ("when
+  the input is not blank → Yes") — nothing in the bundle writes them — and the $ amount wins over the % when
+  both are set. ⚠ The rules never switch a flag back OFF: a $ box cleared to blank leaves `field_2467` = Yes,
+  so a % on the same line stays ignored (the $ branch wins with a blank = $0) until Builder adds the
+  "blank → No" rules; the card's own inputs have the same quirk. The modal says so under the inputs
+  (`discountHintHtml`). Test:
   `tests/worksheet-v2/test-accessory-edit.js` (drives card.js + init.js + bulk.js + the module under jsdom;
   its harness keeps Node's own timer for the global — handing jsdom's unbound `window.setTimeout` to
   `global.setTimeout` recurses, the "Maximum call stack" noise some older tests print).
