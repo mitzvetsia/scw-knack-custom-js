@@ -1860,10 +1860,19 @@
           (accWrong ? ' scw-ws-v2-mh-chip-wrap--warn' : '') +
           (pendingDel ? ' scw-ws-v2-mh-chip-wrap--deleting' : '');
         var wrapTitle = pendingDel ? ' title="Deleting…"' : '';
-        if (editHref) {
+        // On a view that opted into the accessory edit modal (config
+        // accessoryEdit — the CO worksheet) the chip opens the modal
+        // (init.js intercepts the click); the Knack edit page stays the
+        // href fallback, '#' when there is none (init.js never lets that
+        // navigate). Other views keep the plain link.
+        var modalOk = !!(chip.id && ns.accessoryEdit &&
+          typeof ns.accessoryEdit.canOpen === 'function' && ns.accessoryEdit.canOpen(viewKey));
+        if (editHref || modalOk) {
           chipsHtml += '<span class="' + wrapCls + '"' + wrapTitle + '>' +
-            '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
-              ' title="Edit ' + escapeHtml(chip.label) + '">' +
+            '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref || '#') + '"' +
+              (modalOk ? ' data-scw-ws-v2-mh-edit="' + escapeHtml(chip.id) + '"' +
+                         ' data-scw-ws-v2-mh-eparent="' + escapeHtml(parentId || '') + '"' : '') +
+              ' title="Edit ' + escapeHtml(chip.label) + (modalOk ? ' (discount, qty)' : '') + '">' +
               escapeHtml(chip.label) +
             '</a>' + subBidMark + warnMark + tail +
           '</span>';

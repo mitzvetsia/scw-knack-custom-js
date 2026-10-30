@@ -733,6 +733,30 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   alone; an unsigned row with no figures adds no band. The sub card's footer splits the same way ("your
   total"). The per-row figures and the rollup are unchanged. Test:
   `tests/deploy-page/test-acceptance-pending-totals.js` (the live rows from the screenshot).
+- **Accessory edit modal on the CO worksheet (2026-10-30) — `worksheet-v2/accessory-edit.js`**: "need to be
+  able to edit the custom discount % and custom discount $ on child / accessory records — right now it's
+  opening a knack native form. Can we just do a custom modal that pushes inline edits?" + "I also need to be
+  able to bulk edit those accessories". The accessories folded under a card (the Mounting Hardware chips) have
+  no card, so their pricing was only reachable through the chip's link to Knack's edit page. On a view with
+  `accessoryEdit: true` (view_4079) the chip carries `data-scw-ws-v2-mh-edit` / `-eparent` (card.js
+  `detailMountingHardware`; the Knack page stays the href fallback, `#` when none resolves and then never
+  navigates) and init.js intercepts the click (capture phase; a modifier-click keeps the native page; a locked
+  card / read-only panel is left alone) → `ns.accessoryEdit.open(viewKey, [id])`: facts (unit price, applied
+  discount, net unit, line total — what the view serves), Qty (only when the product allows multi-qty, the
+  stepper's rule), Custom discount %, Custom discount $ each, Discount reason; Save = ONE view-based PUT with
+  only the changed fields (an emptied number clears the field), the model patched from the response (CALCs
+  included), `refetchRecordAndNotify`. **Bulk**: the bulk bar's **"Edit accessories (N)"** (bulk.js, shown on
+  opted-in views, N = the accessories under the selected cards) → `openForParents`: the same form over a
+  ticked list (accessory · on parent · current qty / discounts; Tick all / Untick all), no qty, a blank field
+  is left as it is on every accessory and 0 clears; Apply = one PUT per ticked accessory through a capped
+  retry queue (2 in flight, 150 ms apart, 429 / 408 / 5xx / network backed off ×4, a permanent 4xx reported),
+  then `refetchAndNotify`; the ones that failed stay ticked (re-Apply re-sends only those). A 200 whose record
+  still carries the old value reads "Knack did not apply <field> … the column is not inline-editable on
+  view_4079 (Builder)" — the same dependency as the card's own discount inputs (`field_2261` / `field_2262` /
+  `field_2263` inline-editable on view_4079). One accessory under the selection opens the single form. Test:
+  `tests/worksheet-v2/test-accessory-edit.js` (drives card.js + init.js + bulk.js + the module under jsdom;
+  its harness keeps Node's own timer for the global — handing jsdom's unbound `window.setTimeout` to
+  `global.setTimeout` recurses, the "Maximum call stack" noise some older tests print).
 - **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
   `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
   install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,

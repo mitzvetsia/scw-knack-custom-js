@@ -929,6 +929,38 @@
     });
   }
 
+  // Mounting-hardware chip → the accessory EDIT MODAL (accessory-edit.js) on
+  // a view that opted in (config accessoryEdit: the CO worksheet, 2026-10-30
+  // "edit the custom discount % and $ on child / accessory records … a
+  // custom modal that pushes inline edits"). Capture phase so Knack's own
+  // hash-link handling never sees the click; a modifier-click keeps the
+  // native page (new tab). Locked cards / read-only panels keep the link.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-accedit-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-accedit-bound', '1');
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest && e.target.closest('a.scw-ws-v2-mh-chip[data-scw-ws-v2-mh-edit]');
+      if (!a) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button === 1) return;
+      var ae = ns.accessoryEdit;
+      var card = a.closest('.scw-ws-v2-card');
+      var locked = (card && card.classList.contains('scw-ws-v2-card--locked')) || !!a.closest('.scw-ws-v2--readonly');
+      var container = a.closest('[id^="scw-ws-v2-"]');
+      var viewKey = container ? container.id.replace(/^scw-ws-v2-/, '') : '';
+      if (!viewKey) {
+        var vn = card && card.querySelector('[data-scw-ws-v2-view]');
+        viewKey = (vn && vn.getAttribute('data-scw-ws-v2-view')) || '';
+      }
+      if (locked || !ae || typeof ae.canOpen !== 'function' || !ae.canOpen(viewKey)) {
+        // No modal here: a '#' href must never navigate (Knack would bounce home).
+        if (a.getAttribute('href') === '#') { e.preventDefault(); e.stopPropagation(); }
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      ae.open(viewKey, [a.getAttribute('data-scw-ws-v2-mh-edit')], { parentId: a.getAttribute('data-scw-ws-v2-mh-eparent') || '' });
+    }, true);
+  }
+
   // Mounting-hardware chip UNLINK — clears the accessory's parent
   // (the view's `parent` field: SOW field_2464, survey field_2416) WITHOUT
   // deleting the record: the accessory detaches from this parent and

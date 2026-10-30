@@ -752,6 +752,15 @@
         // The same logical keys feed edit.js RECALC_DEPS (a discount edit
         // refetches the record so the CALC cells refresh).
         pricingDetail:      true,
+        // Accessory edit modal (worksheet-v2/accessory-edit.js, 2026-10-30):
+        // a mounting-hardware chip opens a modal for the accessory's Custom
+        // Disc % / Disc $ each / reason (+ qty) instead of the Knack edit page,
+        // and the bulk bar's "Edit accessories (N)" edits every accessory under
+        // the selected cards at once. Same Builder dependency as the card's
+        // own discount inputs (field_2261 / field_2262 / field_2263
+        // inline-editable on view_4079) — the modal reports a 200 that kept
+        // the old value as "not applied".
+        accessoryEdit:      true,
         // Service lines can be attached to a parent line item (field_2464)
         // — e.g. a restocking fee attached to the Remove line it applies
         // to. The service keeps its own card (never folds into the

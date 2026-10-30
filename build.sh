@@ -238,6 +238,7 @@ cat \
   src/features/worksheet-v2/search.js \
   src/features/worksheet-v2/native-filter.js \
   src/features/worksheet-v2/bulk.js \
+  src/features/worksheet-v2/accessory-edit.js \
   src/features/worksheet-v2/prefill-accessory-parent.js \
   src/features/worksheet-v2/change-requests.js \
   src/features/worksheet-v2/poll.js \

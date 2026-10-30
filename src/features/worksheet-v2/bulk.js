@@ -778,6 +778,8 @@
         '<span class="scw-ws-v2-bulk-duplicate-label">Duplicate</span>' +
       '</button>' +
       '<button type="button" class="scw-ws-v2-bulk-add-acc" disabled>Add accessories</button>' +
+      '<button type="button" class="scw-ws-v2-bulk-edit-acc" disabled ' +
+        'title="Discount / reason on every accessory under the selected items">Edit accessories</button>' +
       '<button type="button" class="scw-ws-v2-bulk-remove-acc" disabled>' +
         '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
           'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -832,6 +834,16 @@
       // compatibility-filter + webhook logic.
       if (ns.toolbar && typeof ns.toolbar.openAddAccessories === 'function') {
         ns.toolbar.openAddAccessories(_sourceViewKey || sourceViewKey);
+      }
+    });
+    // Edit accessories — the accessory edit modal (accessory-edit.js) over
+    // every accessory under the selected cards; shown on views that opted
+    // in (config accessoryEdit — the CO worksheet, 2026-10-30).
+    toolbar.querySelector('.scw-ws-v2-bulk-edit-acc').addEventListener('click', function () {
+      var ids = selList();
+      if (!ids.length) return;
+      if (ns.accessoryEdit && typeof ns.accessoryEdit.openForParents === 'function') {
+        ns.accessoryEdit.openForParents(_sourceViewKey || sourceViewKey, ids);
       }
     });
     toolbar.querySelector('.scw-ws-v2-bulk-clear').addEventListener('click', function () {
@@ -951,6 +963,17 @@
       if (noAcc) addAccBtn.style.setProperty('display', 'none', 'important');
       else       addAccBtn.style.removeProperty('display');
       addAccBtn.disabled = (n === 0);
+    }
+    var editAccBtn = toolbar.querySelector('.scw-ws-v2-bulk-edit-acc');
+    if (editAccBtn) {
+      var aeOn = !noAcc && !!(ns.accessoryEdit && typeof ns.accessoryEdit.canOpen === 'function' &&
+                              ns.accessoryEdit.canOpen(_sourceViewKey));
+      if (!aeOn) editAccBtn.style.setProperty('display', 'none', 'important');
+      else       editAccBtn.style.removeProperty('display');
+      var accN = 0;
+      if (aeOn && n) { try { accN = ns.accessoryEdit.accessoriesOf(_sourceViewKey, selList()).length; } catch (eAcc) { accN = 0; } }
+      editAccBtn.disabled = !accN;
+      editAccBtn.textContent = accN ? 'Edit accessories (' + accN + ')' : 'Edit accessories';
     }
     var delBtn = toolbar.querySelector('.scw-ws-v2-bulk-delete');
     var delLabel = delBtn.querySelector('.scw-ws-v2-bulk-delete-label');
