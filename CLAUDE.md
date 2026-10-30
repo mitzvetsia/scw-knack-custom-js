@@ -692,6 +692,23 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   ("all signed" otherwise), and only a genuinely unsigned row waits. A thin sub grid without the flag columns
   falls back to the signature alone. Test: `tests/deploy-page/test-acceptance-rollup.js` (the first test to
   drive the real acceptance-card.js: a `setTimeout` that runs at once + `SCW.onViewRender` captured per view).
+- **Remove (or replace) a signed PDF on an acceptance (2026-10-30)**: "I need the ability to remove a signed
+  PDF document from an acceptance record." The acceptance card's uploader modal had carried a "Remove file"
+  button since 2026-10-02, but `fileSlot`'s proposal-sourced guard read `fk !== F.bidPdf`, which sent a
+  POPULATED signed-agreement tile (`field_2767`) down the read-only branch — a plain link, no pencil, no modal —
+  so neither replace nor remove (nor the "Run check" greenlight re-check) was reachable once the PDF was on the
+  record; only the EMPTY slot ever opened the uploader. Now the acceptance's OWN file fields (`field_2767`
+  signed agreement, `field_2947` bid PDF stamp) render writable when populated: the open link and the pencil
+  open the uploader (current file shown, footer `Remove file | Cancel | Upload`), and a hover **×** before the
+  pencil removes the file right there — `confirmRemoveFile` names the file, `removeAcptFile` clears the field
+  (`clearAcptFile`: photo-edit-panel's verified `clearFileField` when loaded — null, then `''` when Knack
+  ignores null — else a plain null PUT through `putAcceptance`), refetches the grid and toasts; a failed PUT
+  restores the tile and toasts the HTTP status. The proposal-sourced bid PDF (`field_2945`) stays a read-only
+  link; the sub dashboard renders no remove. Removal touches nothing else: the asset is not destroyed, the
+  signed / approved flags stay, no webhook fires (the greenlight / CO fire is tied to an upload). **Builder**:
+  the write is a view-based PUT through view_3914, so `field_2767` / `field_2947` must be inline-editable
+  columns there — the same requirement the upload always had; a 400 / 403 toast means they are not. Test:
+  `tests/deploy-page/test-acceptance-file-remove.js`.
 - **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
   `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
   install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,

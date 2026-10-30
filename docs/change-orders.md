@@ -805,7 +805,10 @@ not-billable. Nothing about billability or the reason is written to the SOW.
   pill reads the flags — "Approved without client signature" (green) instead
   of "Agreement not signed", plus a slate "Not billable" pill.
   The accordion tally and the Paperwork tile count such a row as settled too
-  (2026-10-30: "all accepted", never "awaiting signature").
+  (2026-10-30: "all accepted", never "awaiting signature"). A populated signed-PDF
+  tile is writable again the same day (it had rendered read-only): the pencil opens
+  the uploader (replace / "Remove file"), the hover × removes the file after a
+  confirm — a clear of `field_2767` through view_3914, nothing else changes.
 - **Ops lock** treats any `Accepted` as final; the sub strip reads "Approved by
   SCW — your pricing stands" on the not-billable path.
 

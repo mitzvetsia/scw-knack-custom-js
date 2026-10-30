@@ -25,7 +25,14 @@
  * Document slots (agreement / bid-basis PDF / Xero invoice / Xero
  * estimate) turn GREEN once populated — the card doubles as a
  * completeness checklist. All four are editable in place: URL modal for
- * the links, file picker + Knack asset upload for the PDFs.
+ * the links, file picker + Knack asset upload for the PDFs. A populated
+ * PDF tile also carries a hover × that REMOVES the file (confirm → clear
+ * the field through this view → refetch); the uploader's "Remove file"
+ * button is the same gesture. 2026-10-30: a populated signed-agreement
+ * tile used to render READ-ONLY (the proposal-sourced guard in fileSlot
+ * caught it too), so neither replace nor remove was reachable once the
+ * PDF was on the record — "I need the ability to remove a signed PDF
+ * document from an acceptance record".
  *
  * COLUMN GUARD: the ops card only takes over a view whose table actually
  * has the proposal column (th.field_2755) — otherwise the native table
@@ -1274,6 +1281,11 @@
       '.scw-acpt-doc:hover .scw-acpt-doc__edit,',
       '.scw-acpt-doc:focus-within .scw-acpt-doc__edit { opacity: .65; }',
       '.scw-acpt-doc__edit:hover { opacity: 1 !important; background: #dcfce7; }',
+      // Remove (×) — rose, the destructive colour; sits before the pencil
+      // (destructive first). The tile greys while its clear is in flight.
+      '.scw-acpt-doc__rm { color: #be123c; }',
+      '.scw-acpt-doc__rm:hover { background: #fee2e2 !important; }',
+      '.scw-acpt-doc.is-removing { opacity: .55; pointer-events: none; }',
       'button.scw-acpt-doc--missing { box-sizing: border-box;',
       '  display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px 7px 10px;',
       '  border-radius: 8px; border: 1.5px dashed #cbd5e1; background: #fff;',
@@ -1809,6 +1821,12 @@
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
     'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
     '<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+  // Remove glyph for a populated file tile: the × beside the pencil clears
+  // the slot without opening the uploader.
+  var X_SVG =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
 
   // ── Own editors (view-based PUT through view_3914) ──────────────
   // The Knack cell-editor proxy proved unreliable against the Vue table
@@ -1835,6 +1853,30 @@
     var f = {};
     f[fieldKey] = null;
     return putAcceptance(viewKey, recId, f);
+  }
+  /** The one remove gesture for a file slot — the tile's × and the
+   *  uploader's "Remove file" both land here: confirm (confirmRemoveFile,
+   *  naming the file), clear the field, refetch the grid, toast. The slot
+   *  returns to its empty "+ add" state; the uploaded asset itself is not
+   *  destroyed, the signed / approved flags are not touched, and NO
+   *  webhook fires — the greenlight / CO fire is strictly tied to an
+   *  upload. */
+  function confirmRemoveFile(name) {
+    return window.confirm('Remove "' + (name || 'this file') + '" from this record?\n\n' +
+      'The slot goes back to empty — you can upload a new file any time.');
+  }
+  function removeAcptFile(viewKey, recId, fieldKey, title) {
+    return clearAcptFile(viewKey, recId, fieldKey).then(function () {
+      refreshAcptView(viewKey);
+      toast(title + ' removed.');
+    });
+  }
+  /** The file name Knack's asset anchor carries (data-file-name, else its
+   *  text) — what the confirm names. */
+  function anchorName(a) {
+    if (!a) return '';
+    return a.getAttribute('data-file-name') ||
+      (a.textContent || '').replace(/\s+/g, ' ').trim();
   }
 
   function putAcceptance(viewKey, recId, fields) {
@@ -1989,16 +2031,12 @@
       var foot = m.backdrop.querySelector('.scw-acpt-m__foot');
       foot.insertBefore(rmBtn, foot.firstChild);
       rmBtn.addEventListener('click', function () {
-        if (!window.confirm('Remove "' + (current.name || 'this file') +
-              '" from this record?\n\nThe slot goes back to empty — you can ' +
-              'upload a new file any time.')) return;
+        if (!confirmRemoveFile(current.name)) return;
         rmBtn.disabled = true;
         rmBtn.textContent = 'Removing…';
         m.ok.disabled = true;
-        clearAcptFile(viewKey, recId, fieldKey).then(function () {
+        removeAcptFile(viewKey, recId, fieldKey, title).then(function () {
           m.close();
-          refreshAcptView(viewKey);
-          toast(title + ' removed.');
         }).catch(function (err) {
           rmBtn.disabled = false;
           rmBtn.textContent = 'Remove file';
@@ -2259,7 +2297,13 @@
       // no data-edit-field. Previously this fell through to the editable
       // tile below with fk=field_2945 — the click handler only knows
       // F.bidPdf, so the pencil painted and the click did nothing.
-      if (fk !== F.bidPdf) {
+      // ⚠ Only the acceptance's OWN file fields are writable here — the
+      // signed agreement (F.agreement) as much as the bid PDF stamp. The
+      // guard used to read `fk !== F.bidPdf`, which sent a POPULATED
+      // signed agreement down this read-only branch: no pencil, no modal,
+      // no replace, no remove (2026-10-30).
+      var writable = (fk === F.agreement || fk === F.bidPdf);
+      if (!writable) {
         return '<span class="scw-acpt-doc scw-acpt-doc--ro">' +
           '<a class="scw-acpt-doc__open" target="_blank" rel="noopener" href="' +
             esc(anchor.getAttribute('href') || '') + '" title="Open ' + esc(full) +
@@ -2268,13 +2312,16 @@
           '</a>' +
         '</span>';
       }
-      // Populated: the WHOLE tile (main zone and pencil alike) opens the
-      // uploader modal, which shows the current file and takes a
-      // replacement — one behavior, no viewer/editor split.
+      // Populated: the main zone and the pencil open the uploader modal,
+      // which shows the current file, takes a replacement and carries
+      // "Remove file"; the × (destructive first, hover-revealed like the
+      // pencil) removes the file right here after a confirm — the one
+      // affordance on the tile that SAYS the file can be removed.
       return '<span class="scw-acpt-doc">' +
-        '<a class="scw-acpt-doc__open" data-edit-field="' + fk + '" href="javascript:void(0)" title="View or replace ' + esc(full) + '">' +
+        '<a class="scw-acpt-doc__open" data-edit-field="' + fk + '" href="javascript:void(0)" title="View, replace or remove ' + esc(full) + '">' +
           CHECK_SVG + '<span class="scw-acpt-doc__lbl">' + esc(label) + '</span>' +
         '</a>' +
+        '<button type="button" class="scw-acpt-doc__edit scw-acpt-doc__rm" data-remove-field="' + fk + '" title="Remove ' + esc(full) + '">' + X_SVG + '</button>' +
         '<button type="button" class="scw-acpt-doc__edit" data-edit-field="' + fk + '" title="' + esc(editTitle) + '">' + PENCIL_SVG + '</button>' +
       '</span>';
     }
@@ -2554,6 +2601,30 @@
                                 href: bidPdfA.getAttribute('href') || '' } : null
           });
         }
+      });
+    }
+    // The × on a populated file tile: confirm, clear through this view,
+    // refetch. The tile greys while the PUT is in flight; a failure
+    // restores it and says why (toast — the tile has no status line).
+    var rmBtns = card.querySelectorAll('[data-remove-field]');
+    for (var rb = 0; rb < rmBtns.length; rb++) {
+      rmBtns[rb].addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var btn   = this;
+        var fk    = btn.getAttribute('data-remove-field');
+        var isAgr = fk === F.agreement;
+        var what  = isAgr ? 'Signed agreement' : 'Bid basis PDF';
+        if (!confirmRemoveFile(anchorName(isAgr ? fileA : bidPdfA))) return;
+        var tile = btn.parentNode;
+        btn.disabled = true;
+        if (tile) tile.classList.add('is-removing');
+        removeAcptFile(viewKey, recId, fk, what).catch(function (err) {
+          btn.disabled = false;
+          if (tile) tile.classList.remove('is-removing');
+          toast('Could not remove the ' + what.toLowerCase() + ' — ' +
+            ((err && err.message) || 'save failed'), true);
+        });
       });
     }
     return { el: card, isCo: isCo, amount: amt ? amt.amount : null,
