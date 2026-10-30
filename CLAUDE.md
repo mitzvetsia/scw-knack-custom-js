@@ -1266,12 +1266,28 @@ rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing c
   on the project page, else the page's SOW grid per `SOW_GRIDS` — view_4161 on the deploy pages,
   view_3918 on the reconcile host — `field_2122` / `field_2126`; none on the sales SOW page, which is
   one SOW) whose manifest is the `none` target with `links.sowId` / `sowIds` = the chosen SOW. The
-  header counts "N devices · M locations"; `photoList` returns no slots for a virtual id. **Make (TODO,
-  both routes in the "(v2 Modal)" scenario)**: a `mdfIdfID` branch (copy the v1 20.04 one: connect
-  DOC_photos to the location + the project) and, on the `none` branch for project / deploy / reconcile
-  pages, connect `links.sowId` when present. Until then a location manifest is ignored by the router
-  and a SOW page photo lands on the project only. Test: `tests/worksheet-v2/test-photo-assign-targets.js`
-  (the row sources, the rail order, aiming at several locations, the manifests, the preset, the per-page
+  header counts "N devices · M locations"; `photoList` returns no slots for a virtual id. **Rail layout
+  (same day — "it looks like I can now ONLY add things to the MDF/IDFs")**: listed open above the devices,
+  a deploy page's first screen of rail was nothing but locations. The location rows are FOLDED under one
+  "MDF / IDF locations · N" header line (`renderRail` → `foldHdr` / `foldOpen` / `toggleFold`; Show / Hide
+  is sticky for the modal in `_state.folds`, and the fold opens on its own while a selected photo is aimed
+  inside it or the rail search matches a location — "1 of 7 match" / "none match"); the SOW rows stay
+  plain rows up to three and fold the same way past that ("Deployment photo on one SOW · 4"); the devices
+  follow as before. **Make (delivered 2026-10-30 — blueprint "20.04 … (v2 Modal) (locations + SOW)",
+  `scratchpad/tools/bp_patch_2004_targets.py` over the user's export + the app schema; import INTO the
+  scenario so the hook stays)**: `DOC_photos` has NO field pointing at an MDF/IDF (its `field_1801`
+  "Installed Location" is the historical drops object) — the link is the LOCATION's `field_1652` REL_photos
+  (object_96 OPS_MDF-IDF). New route 4 on router [303] for `target.kind` mdfIdfID: [351] get the location →
+  [352] create the photo on `links.projectId` (else the location's `field_1648` project) + `links.sowId` /
+  `links.surveyId` when the page names one → [353] update the location's `field_1652` = `distinct(add(its
+  photos; the new id))`. [346] (`none` on the project / deploy / reconcile pages) also connects `field_2341`
+  = `links.sowId` when present. The blueprint turns **Sequential processing ON**: [353] is a
+  read-modify-write and the modal sends a batch's manifests 150 ms apart, so two parallel runs for the same
+  location would drop a link; the cost is that a batch's creates land one after another (the worksheet's
+  second refetch 9 s after Send may not show the last ones yet — the poll does). Verify the checkbox after
+  the import (Scenario settings → Sequential processing). Test: `tests/worksheet-v2/test-photo-assign-targets.js`
+  (the row sources, the folded rail: Show / Hide, the auto-open on an aim and on a search hit, the
+  four-SOW fold, aiming at several locations, the manifests, the preset, the per-page
   SOW lists); the device counts in `test-photo-assign-v2.js` / `bid-review-v2/test-add-photos-v2.js`
   exclude the location rows.
 - **Not carried over (yet)**: the IndexedDB queue / resume banner; the phone layout (canvas board 5)

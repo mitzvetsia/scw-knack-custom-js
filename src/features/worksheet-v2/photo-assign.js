@@ -332,7 +332,9 @@
   // drag, the chip menu), never matched by a file name and never grouped:
   //   loc:<mdfId>  — one row per MDF/IDF location on the page (the
   //                  worksheet records' own locations plus the page's MDF
-  //                  grids, so a location with no device yet is offered
+  //                  grids, so a location with no device yet is offered;
+  //                  folded under one "MDF / IDF locations" header line so
+  //                  they never crowd the devices out — renderRail)
   //                  too). Its manifest is target.kind 'mdfIdfID' with the
   //                  location's record id.
   //   sow:<sowId>  — one row per SOW the page knows, under the pinned
@@ -970,6 +972,8 @@
       '.scw-pa-grp { font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#64748b; padding:12px 10px 4px; display:flex; justify-content:space-between; align-items:center; gap:8px; }',
       '.scw-pa-grp span { white-space:normal; }',
       '.scw-pa-grp button { border:0; background:none; color:#07467c; font:600 11px system-ui,sans-serif; cursor:pointer; text-transform:none; letter-spacing:0; white-space:nowrap; }',
+      '.scw-pa-grp--fold { padding:8px 10px 4px; }',
+      '.scw-pa-grp--fold button[aria-expanded="true"] { color:#475569; }',
       '.scw-pa-dev { display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:2px 10px; align-items:start; padding:8px 10px; margin:0 4px; border-radius:8px; border:1px solid transparent; font-size:12.5px; cursor:pointer; }',
       '.scw-pa-dev:hover { background:#f8fafc; }',
       '.scw-pa-dev.is-hit { background:#e0f2fe; border-color:#7dd3fc; }',
@@ -1129,6 +1133,8 @@
       railQuery:  '',
       railFamily: '',                          // rail family filter: '' | 'cam' | 'headend' | 'other'
       railNeedFirst: true,
+      folds:      Object.create(null),        // rail folds the user toggled: 'sows' | 'locs' → true / false
+      foldOpen:   Object.create(null),        // …and how each rendered last (the toggle flips it)
       showSlots:  loadShowSlots(),            // every device's open slots listed
       slotsOpen:  Object.create(null),        // per device, this session (sticky once touched)
       zoomRow:    '',
@@ -1313,6 +1319,7 @@
       if (t.closest('[data-scw-pa-railclear]')) { _state.railQuery = ''; _state.railFamily = ''; var rqc = q('[data-scw-pa-railq]'); if (rqc) rqc.value = ''; renderRail(); return; }
       if ((b = t.closest('[data-scw-pa-tickgrp]'))) { tickGroup(b.getAttribute('data-scw-pa-tickgrp')); return; }
       if ((b = t.closest('[data-scw-pa-slots-toggle]'))) { toggleSlots(b.getAttribute('data-scw-pa-slots-toggle')); return; }
+      if ((b = t.closest('[data-scw-pa-fold]'))) { toggleFold(b.getAttribute('data-scw-pa-fold')); return; }
       if ((b = t.closest('[data-scw-pa-slot-row]'))) { clickSlot(b.getAttribute('data-scw-pa-slot-dev'), b.getAttribute('data-scw-pa-slot-row')); return; }
       if ((b = t.closest('[data-scw-pa-new-row]'))) { clickNew(b.getAttribute('data-scw-pa-new-row')); return; }
       if ((b = t.closest('[data-scw-pa-dev-row]'))) { clickDevice(b.getAttribute('data-scw-pa-dev-row')); return; }
@@ -2092,12 +2099,28 @@
     var h = '';
     var scope = candidateById(SCOPE_ID);
     if (scope) h += devRowHtml(scope, sel, 'scw-pa-dev--scope');
+    // The page-photo-on-one-SOW rows and the MDF / IDF location rows are
+    // FOLDED (2026-10-30: listed open above the devices, a deploy page's
+    // first screen of rail was nothing but locations — "it looks like I can
+    // now ONLY add things to the MDF/IDFs"). A fold is one header line,
+    // closed by default (the SOW rows stay plain rows while there are three
+    // or fewer), opened by its button for the rest of the modal, and opened
+    // on its own while a selected photo is aimed inside it or the rail
+    // search matches a row in it. The devices follow, exactly as before.
     var sows = st.sowScopes || [];
-    for (var sw = 0; sw < sows.length; sw++) h += devRowHtml(sows[sw], sel, 'scw-pa-dev--scope scw-pa-dev--sow');
-    var locs = locationHits();
-    if (locs.length) {
-      h += '<div class="scw-pa-grp"><span>MDF / IDF locations</span></div>';
-      for (var lo = 0; lo < locs.length; lo++) h += devRowHtml(locs[lo], sel, 'scw-pa-dev--loc');
+    if (sows.length && sows.length <= 3) {
+      for (var sw = 0; sw < sows.length; sw++) h += devRowHtml(sows[sw], sel, 'scw-pa-dev--scope scw-pa-dev--sow');
+    } else if (sows.length) {
+      var sowOpen = foldOpen('sows', sows, sel, false);
+      h += foldHdr('sows', (scope ? String(scope.label).replace(/\s+—.*$/, '') : 'Project photo') + ' on one SOW', sows.length, sowOpen);
+      if (sowOpen) for (var sw2 = 0; sw2 < sows.length; sw2++) h += devRowHtml(sows[sw2], sel, 'scw-pa-dev--scope scw-pa-dev--sow');
+    }
+    var locs = locationHits(), locsAll = st.locations || [];
+    if (locsAll.length) {
+      var locOpen = foldOpen('locs', locs, sel, !!(rq0 && locs.length));
+      h += foldHdr('locs', 'MDF / IDF locations',
+        rq0 ? (locs.length ? locs.length + ' of ' + locsAll.length + ' match' : 'none match') : locsAll.length, locOpen);
+      if (locOpen) for (var lo = 0; lo < locs.length; lo++) h += devRowHtml(locs[lo], sel, 'scw-pa-dev--loc');
     }
     if (!hits.length) {
       h += '<div style="padding:16px 12px;color:#64748b;font-size:12.5px">' +
@@ -2112,6 +2135,30 @@
       for (var k = 0; k < items.length; k++) h += devRowHtml(items[k], sel);
     }
     list.innerHTML = h;
+  }
+  /** A folded rail group is open when its button said so (sticky for the
+   *  modal); otherwise while a selected photo is aimed at a row in it, or
+   *  when the caller's own rule (a rail-search hit) says so. */
+  function foldOpen(key, items, sel, auto) {
+    var st = _state, open;
+    if (st.folds[key] === true || st.folds[key] === false) open = st.folds[key];
+    else {
+      open = !!auto;
+      for (var i = 0; i < items.length && !open; i++)
+        for (var s = 0; s < sel.length && !open; s++) if (targetOf(sel[s], items[i].id)) open = true;
+    }
+    st.foldOpen[key] = open;
+    return open;
+  }
+  function foldHdr(key, label, count, open) {
+    return '<div class="scw-pa-grp scw-pa-grp--fold"><span>' + esc(label) + ' · ' + esc(String(count)) + '</span> ' +
+      '<button type="button" data-scw-pa-fold="' + esc(key) + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+      (open ? 'Hide' : 'Show') + '</button></div>';
+  }
+  function toggleFold(key) {
+    if (!_state || _state.sending) return;
+    _state.folds[key] = !_state.foldOpen[key];
+    renderRail();
   }
   function queuedOn(deviceId, mode) {
     var n = 0;

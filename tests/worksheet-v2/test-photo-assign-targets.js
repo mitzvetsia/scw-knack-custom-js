@@ -2,8 +2,10 @@
 // rail targets (2026-10-30). "I want to be able to ALSO add photos to one or many MDF/IDFs" and "upload
 // a photo to a project AND connect it to a specific SOW (but no specific line items)". The rail gains
 // one row per MDF/IDF location on the page (the records' own locations plus the page's MDF grids, so a
-// location with no device yet is offered) under an "MDF / IDF locations" group, and one "<page> photo ·
-// SOW <n>" row per SOW the page knows under the pinned "not tied to a device" row. Both aim like any
+// location with no device yet is offered) FOLDED under one "MDF / IDF locations" header line (so they never
+// crowd the devices out; Show / Hide, open on its own while a selected photo is aimed inside or the search
+// matches), and one "<page> photo · SOW <n>" row per SOW the page knows under the pinned "not tied to a
+// device" row (plain rows up to three, folded the same way past that). Both aim like any
 // device (click, drag, chip menu, preset), never match a file name, never join the device groups or the
 // family filter. A location's manifest is target.kind 'mdfIdfID' with the location's record id; a SOW
 // row's is the 'none' target with links.sowId / sowIds = the chosen SOW.
@@ -111,15 +113,25 @@ const LOC = (id) => pa.LOC_PREFIX + id, SOWR = (id) => pa.SOW_SCOPE_PREFIX + id;
   // ── the rail ──
   pa.open(V);
   check('the subtitle counts devices and locations', /4 devices · 3 locations/.test(text('.scw-pa-sub')), true);
-  check('rail order: the pinned scope row, the two SOW rows under it, the locations group, then the device groups',
-    [railIds('.scw-pa-dev--scope'), railIds('.scw-pa-dev--loc'), text('.scw-pa-grp'), railIds().slice(0, 6)],
-    [['__scope__', SOWR(SW1), SOWR(SW2)], [LOC(MDF1), LOC(MDF2), LOC(MDF3)], 'MDF / IDF locations', ['__scope__', SOWR(SW1), SOWR(SW2), LOC(MDF1), LOC(MDF2), LOC(MDF3)]]);
+  const foldBtn = (key) => modal().querySelector('[data-scw-pa-fold="' + (key || 'locs') + '"]');
+  const isDevice = (id) => /^r\d$/.test(id);
+  check('rail order: the pinned scope row, the SOW rows under it (three or fewer stay plain rows), the locations FOLDED to one header line, then the device groups',
+    [railIds('.scw-pa-dev--scope'), railIds('.scw-pa-dev--loc'), text('.scw-pa-grp--fold'), foldBtn().getAttribute('aria-expanded'),
+     railIds().slice(0, 3), railIds().slice(3).every(isDevice), railIds().length, foldBtn('sows')],
+    [['__scope__', SOWR(SW1), SOWR(SW2)], [], 'MDF / IDF locations · 3 Show', 'false', ['__scope__', SOWR(SW1), SOWR(SW2)], true, 7, null]);
+  foldBtn().click();
+  check('Show unfolds the locations in name order right under the SOW rows, the devices after them',
+    [railIds('.scw-pa-dev--loc'), text('.scw-pa-grp--fold'), railIds().slice(0, 6), railIds().slice(6).every(isDevice)],
+    [[LOC(MDF1), LOC(MDF2), LOC(MDF3)], 'MDF / IDF locations · 3 Hide', ['__scope__', SOWR(SW1), SOWR(SW2), LOC(MDF1), LOC(MDF2), LOC(MDF3)], true]);
   check('a location row reads as a location, a SOW row as a page photo with the SOW name beneath',
     [rowText(LOC(MDF3)), rowText(SOWR(SW1)), text('[data-scw-pa-dev-row="' + SOWR(SW1) + '"] .nm')],
     ['IDF: 02: warehouse | location', 'Deployment photo · SOW 1589 | no device', 'Original scope']);
   check('neither kind is a device: not in the match candidates, not in the rail hits, not grouped under a location',
     [pa.candidatesFor(V).length, pa.railHits().filter(id => id.indexOf('loc:') === 0 || id.indexOf('sow:') === 0).length, pa.state().candidates.length],
     [4, 0, 4]);
+  foldBtn().click();
+  check('Hide folds them again (the toggle is sticky for the modal)', [railIds('.scw-pa-dev--loc'), text('.scw-pa-grp--fold')], [[], 'MDF / IDF locations · 3 Show']);
+  pa.state().folds.locs = null;   // back to the default rule for the aiming checks below
   await pa.addFiles([file('HEADEND closet.jpg'), file('i10.png'), file('warehouse wide.jpg')]);
   const closet = rows()[0], i10 = rows()[1], wide = rows()[2];
   check('file names never aim at a location (only the device matched)', [tg(closet), tg(i10), tg(wide)], [[], [['r1', 'slot']], []]);
@@ -129,12 +141,12 @@ const LOC = (id) => pa.LOC_PREFIX + id, SOWR = (id) => pa.SOW_SCOPE_PREFIX + id;
   pa.clickDevice(LOC(MDF1));
   pa.clickDevice(SOWR(SW1));
   pa.clickDevice('r2');
-  check('one photo aimed at a location, a SOW page photo and a device: three chips, the rail rows ticked',
+  check('one photo aimed at a location, a SOW page photo and a device: three chips, the rail rows ticked — the locations fold opens on its own while the selected photo is aimed inside it',
     [tg(closet), modal().querySelector('[data-scw-pa-dev-row="' + LOC(MDF1) + '"] .box').className, text('[data-scw-pa-dev-row="' + SOWR(SW1) + '"] .st'),
-     Array.from(modal().querySelectorAll('[data-scw-pa-chip="' + closet.id + '"] .lbl')).map(e => e.textContent.trim())],
-    [[[LOC(MDF1), 'new'], [SOWR(SW1), 'new'], ['r2', 'new']], 'box on', 'this photo → new photo', ['HEADEND: closet', 'Deployment photo · SOW 1589 · Original scope', 'I-011 · Vista Dome 4MP']]);
+     Array.from(modal().querySelectorAll('[data-scw-pa-chip="' + closet.id + '"] .lbl')).map(e => e.textContent.trim()), foldBtn().getAttribute('aria-expanded')],
+    [[[LOC(MDF1), 'new'], [SOWR(SW1), 'new'], ['r2', 'new']], 'box on', 'this photo → new photo', ['HEADEND: closet', 'Deployment photo · SOW 1589 · Original scope', 'I-011 · Vista Dome 4MP'], 'true']);
   pa.clickDevice(LOC(MDF1));
-  check('clicking the location again clears it', tg(closet), [[SOWR(SW1), 'new'], ['r2', 'new']]);
+  check('clicking the location again clears it (nothing aimed inside: the fold closes)', [tg(closet), railIds('.scw-pa-dev--loc')], [[[SOWR(SW1), 'new'], ['r2', 'new']], []]);
   pa.clickDevice(LOC(MDF1));
   pa.select(closet.id, false);
   // Many locations at once: select the wide shot, click two locations.
@@ -145,7 +157,10 @@ const LOC = (id) => pa.LOC_PREFIX + id, SOWR = (id) => pa.SOW_SCOPE_PREFIX + id;
   pa.select(wide.id, false);
   // The rail search keeps locations by name.
   pa.setFinderQuery(i10.id, 'shop');
-  check('the rail search filters the locations by name as well as the devices', [railIds('.scw-pa-dev--loc'), pa.railHits()], [[LOC(MDF2)], ['r3']]);
+  check('the rail search filters the locations by name as well as the devices, and opens the fold on a hit',
+    [railIds('.scw-pa-dev--loc'), pa.railHits(), text('.scw-pa-grp--fold')], [[LOC(MDF2)], ['r3'], 'MDF / IDF locations · 1 of 3 match Hide']);
+  pa.setFinderQuery(i10.id, 'nowhere');
+  check('…and says so when nothing matches', [railIds('.scw-pa-dev--loc'), text('.scw-pa-grp--fold')], [[], 'MDF / IDF locations · none match Show']);
   pa.setFinderQuery(i10.id, '');
   pa.state().finderRow = '';
 
@@ -187,6 +202,20 @@ const LOC = (id) => pa.LOC_PREFIX + id, SOWR = (id) => pa.SOW_SCOPE_PREFIX + id;
   window.location.hash = '#sales-dashboard/scope-of-work-details/' + SW1;
   check('sales SOW page: no SOW rows (the page is one SOW; links.sowId already names it)', pa.sowScopesFor('view_3586'), []);
   window.location.hash = '#team-calendar/project-dashboard/' + PID + '/deploy/' + PID;
+
+  // ── more than three SOWs: the SOW rows fold the same way ──
+  const SW3 = '6a0000000000000000000503', SW4 = '6a0000000000000000000504';
+  window.Knack.views.view_4161.model.data.models.push(
+    { id: SW3, attributes: { id: SW3, field_2122: '60486704913-SW1700', field_2126: 'Alternate B' } },
+    { id: SW4, attributes: { id: SW4, field_2122: '60486704913-SW1781CO', field_2126: 'CO' } });
+  pa.open(V);
+  check('four SOWs: one "Deployment photo on one SOW · 4" header, closed, the devices right under the scope row',
+    [railIds('.scw-pa-dev--sow'), text('[data-scw-pa-fold="sows"]'), modal().querySelector('.scw-pa-grp--fold span').textContent, railIds().slice(0, 2)],
+    [[], 'Show', 'Deployment photo on one SOW · 4', ['__scope__', railIds()[1]]]);
+  foldBtn('sows').click();
+  check('…Show lists them', railIds('.scw-pa-dev--sow').length, 4);
+  pa.close();
+  window.Knack.views.view_4161.model.data.models.length = 2;
 
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);

@@ -738,9 +738,9 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //                                             //   the page's scope (links) only
   //                          | 'mdfIdfID',      // 2026-10-30: the rail's MDF / IDF
   //                                             //   location rows — recordId is the
-  //                                             //   LOCATION record; connect the photo
-  //                                             //   to it (the v1 20.04 mdfIdfID branch's
-  //                                             //   write) plus the page links
+  //                                             //   LOCATION record (object_96); Make
+  //                                             //   appends the photo to the location's
+  //                                             //   REL_photos field_1652 + the page links
   //                    recordId: <24-hex line item | location> | '', label: 'E-004 · Vista Dome' },
   //     slot:        null,                       // fills never reach Make
   //     photoType:   { id: <CONFIG_photo type id>, label } | null,
@@ -798,11 +798,21 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //                         field_2119) + the page's SOW; survey → get the
   //                         request (project + SOWs) + request; project /
   //                         deploy → links.projectId (no deployment field
-  //                         exists on DOC_photos) — AND links.sowId when
-  //                         present (a chosen SOW, 2026-10-30; TODO Make).
-  //     mdfIdfID          → connect the photo to the MDF / IDF location
-  //                         target.recordId plus links.projectId (TODO Make:
-  //                         a new route — copy the v1 20.04 mdfIdfID branch).
+  //                         exists on DOC_photos) + links.sowId when the
+  //                         photo was aimed at ONE SOW (the rail's "<page>
+  //                         photo · SOW n" rows, 2026-10-30).
+  //     mdfIdfID          → get the OPS_MDF-IDF location (object_96,
+  //                         target.recordId); create the photo on
+  //                         links.projectId (else the location's project
+  //                         field_1648) + links.sowId / links.surveyId when
+  //                         the page names one; then UPDATE the location's
+  //                         REL_photos field_1652 = its photos + the new id.
+  //                         DOC_photos has no field pointing at a location
+  //                         (field_1801 "Installed Location" is the
+  //                         historical drops object) — the link lives on the
+  //                         location, and that read-modify-write is why the
+  //                         scenario runs with Sequential processing ON
+  //                         (blueprint "(locations + SOW)", 2026-10-30).
   //   Every create: field_771 = asset.id, field_2445 = photoType.id (empty
   //   array when null), field_2446 No, field_2447 Yes. Copy mode sends the
   //   SAME asset.id in every manifest of the batch. Response is ignored
