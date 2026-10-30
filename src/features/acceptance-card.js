@@ -1460,6 +1460,23 @@
       '  letter-spacing: .1em; text-transform: uppercase; color: #475569; }',
       '.scw-acpt-foot .scw-acpt-line__val--total { font-size: 17px; }',
       '.scw-acpt-foot .scw-acpt-line__val--rate { font-size: 21px; }',
+      '.scw-acpt-foot__note { display: block; margin-top: 4px;',
+      '  font: 600 10.5px/1.45 system-ui, sans-serif; color: #94a3b8; }',
+      // NOT YET ACCEPTED — the unsigned rows\' tally under the project
+      // total: a dashed rule, an amber caption (waiting, like the rollup
+      // pill), muted figures (nothing here is agreed yet); the rate keeps
+      // its on / under colour — a thin CO is worth seeing before signature.
+      // Alone (nothing accepted yet) it sits directly under the rows and
+      // takes the footer\'s own rule.
+      '.scw-acpt-foot--pending { margin-top: 0; padding-top: 8px;',
+      '  border-top: 1px dashed #e2e8f0; }',
+      '.scw-acpt-card > .scw-acpt-foot--pending { margin-top: 4px; padding-top: 12px;',
+      '  border-top: 2px solid #e2e8f0; }',
+      '.scw-acpt-foot--pending .scw-acpt-foot__cap { color: #b45309; }',
+      '.scw-acpt-foot--pending .scw-acpt-line__val:not(.scw-acpt-line__val--rate) {',
+      '  color: #64748b; }',
+      '.scw-acpt-foot--pending .scw-acpt-line__val--total { font-size: 15px; }',
+      '.scw-acpt-foot--pending .scw-acpt-line__val--rate { font-size: 17px; }',
       // The bid + change-order split rides in the footer\'s identity cell,
       // beside the word PROJECT. It used to be a third band with its own
       // layout, whose Total poked past every other right edge — and that
@@ -2629,7 +2646,8 @@
     }
     return { el: card, isCo: isCo, amount: amt ? amt.amount : null,
              source: amt ? amt.source : '', billed: billed,
-             sowKey: sowRef.id || sowRef.token, survey: svyCost };
+             sowKey: sowRef.id || sowRef.token, survey: svyCost,
+             accepted: isAcceptedRow(row) };
   }
 
   /** SUB VARIANT — one read-only row per acceptance: the bid we're paying
@@ -2787,7 +2805,7 @@
       });
     }
     return { el: el, isCo: isCoRow, amount: amt ? amt.amount : null,
-             source: amt ? amt.source : '' };
+             source: amt ? amt.source : '', accepted: isAcceptedRow(row) };
   }
 
   /** Running tally for the sub: what the scope started at, what the change
@@ -2805,56 +2823,101 @@
    *  the sub is entitled to see: its own running total. No equipment, no
    *  billed-to-client, no survey cost, no margin — the ops-only figures
    *  are absent in content, not in position. */
-  function buildProjectMoney(entries, forSub) {
-    var eq = null, inst = null, sub = null, svy = null;
-    var billedRows = 0, derived = false;
+  /** Σ over a set of rows: billed equipment / install, the sub's bills
+   *  (with provenance), the survey cost ONCE PER SOW — two acceptances
+   *  against the same SOW (a re-issue, say) share its one survey, and
+   *  counting it twice would invent cost and understate the rate. */
+  function sumEntries(entries) {
+    var s = { eq: null, inst: null, sub: null, svy: null, billedRows: 0, derived: false };
     var seenSow = Object.create(null);
     for (var i = 0; i < entries.length; i++) {
       var e = entries[i], b = e.billed;
       if (b) {
-        billedRows++;
-        if (b.equip   != null) eq   = (eq   == null ? 0 : eq)   + b.equip;
-        if (b.install != null) inst = (inst == null ? 0 : inst) + b.install;
+        s.billedRows++;
+        if (b.equip   != null) s.eq   = (s.eq   == null ? 0 : s.eq)   + b.equip;
+        if (b.install != null) s.inst = (s.inst == null ? 0 : s.inst) + b.install;
       }
       if (e.amount != null) {
-        sub = (sub == null ? 0 : sub) + e.amount;
-        if (e.source === 'derived') derived = true;
+        s.sub = (s.sub == null ? 0 : s.sub) + e.amount;
+        if (e.source === 'derived') s.derived = true;
       }
-      // ONCE PER SOW. Two acceptances against the same SOW (a re-issue,
-      // say) share its one survey — counting it twice would invent cost
-      // and understate the project rate.
       if (e.survey != null && e.sowKey && !seenSow[e.sowKey]) {
         seenSow[e.sowKey] = 1;
-        svy = (svy == null ? 0 : svy) + e.survey;
+        s.svy = (s.svy == null ? 0 : s.svy) + e.survey;
       }
     }
+    return s;
+  }
+  /** One footer band on the rows' grid: caption (+ a quiet note and the
+   *  base / CO split) in the identity cell, the two money columns. */
+  function footBand(cls, cap, note, s, split, forSub) {
+    var el = document.createElement('div');
+    el.className = 'scw-acpt-foot' + (cls ? ' ' + cls : '');
+    el.innerHTML =
+      '<span class="scw-acpt-id">' +
+        '<span class="scw-acpt-foot__cap">' + esc(cap) + '</span>' +
+        (note ? '<span class="scw-acpt-foot__note">' + esc(note) + '</span>' : '') +
+        split +
+      '</span>' +
+      (forSub ? equipCell('') : clientStat(s.eq, s.inst, false)) +
+      (forSub
+        ? '<span class="scw-acpt-col scw-acpt-col--labor">' +
+            (s.sub == null ? '' : line(esc(money(s.sub)), 'your total' +
+              (s.derived ? ' <span class="scw-acpt-line__src" title="' +
+                esc(DERIVED_NOTE) + '">(line items)</span>' : ''))) +
+          '</span>'
+        : laborStat(s.inst, s.sub == null ? null : { amount: s.sub,
+            source: s.derived ? 'derived' : 'quoted' }, s.svy));
+    return el;
+  }
+  /** What is still waiting, as the note on the pending band — the
+   *  rollup pill's wording, so the header and the footer agree. */
+  function pendingNote(pend) {
+    var coN = 0;
+    for (var i = 0; i < pend.length; i++) if (pend[i].isCo) coN++;
+    if (pend.length === 1) {
+      return coN ? '1 change order awaiting signature' : '1 agreement awaiting signature';
+    }
+    return pend.length + ' awaiting signature' +
+      (coN ? ' \u00b7 ' + coN + (coN > 1 ? ' are change orders' : ' is a change order') : '');
+  }
+  /** The project footer sums ONLY the accepted rows — signed, or approved
+   *  on a no-signature path (isAcceptedRow); whatever is still unsigned is
+   *  tallied in its own quieter band underneath, NOT YET ACCEPTED, so the
+   *  headline never counts money the client has not agreed to (2026-10-30:
+   *  an unsigned CO's $3,231 rode the project's "billed to client"). A row
+   *  with no `accepted` flag counts as accepted. */
+  function buildProjectMoney(entries, forSub) {
+    var acc = [], pend = [], i;
+    for (i = 0; i < entries.length; i++) {
+      (entries[i].accepted === false ? pend : acc).push(entries[i]);
+    }
+    var ps = sumEntries(pend);
+    var pendBand = (pend.length && (ps.billedRows || ps.sub != null))
+      ? footBand('scw-acpt-foot--pending', 'Not yet accepted', pendingNote(pend), ps,
+                 splitLine(pend, forSub), forSub)
+      : null;
+    var s = sumEntries(acc);
     // The footer earns its place when it SUMS something — two or more
     // billed rows — or when there's a base-vs-CO split to explain. A view
     // with no billed columns still has the split, which is the whole
-    // footer in that case.
-    var split = splitLine(entries, forSub);
-    // On the sub card the split line IS the footer's reason to exist (it
-    // never has a billed column to sum), so a lone base row gets nothing —
-    // its own row already says the total.
-    if (billedRows < 2 && !split) return null;
-    var el = document.createElement('div');
-    el.className = 'scw-acpt-foot';
-    el.innerHTML =
-      '<span class="scw-acpt-id">' +
-        '<span class="scw-acpt-foot__cap">' +
-          (billedRows < 2 ? 'Project total' : 'Project') + '</span>' +
-        split +
-      '</span>' +
-      (forSub ? equipCell('') : clientStat(eq, inst, false)) +
-      (forSub
-        ? '<span class="scw-acpt-col scw-acpt-col--labor">' +
-            (sub == null ? '' : line(esc(money(sub)), 'your total' +
-              (derived ? ' <span class="scw-acpt-line__src" title="' +
-                esc(DERIVED_NOTE) + '">(line items)</span>' : ''))) +
-          '</span>'
-        : laborStat(inst, sub == null ? null : { amount: sub,
-            source: derived ? 'derived' : 'quoted' }, svy));
-    return el;
+    // footer in that case. On the sub card the split line IS the footer's
+    // reason to exist (it never has a billed column to sum), so a lone
+    // base row gets nothing — its own row already says the total. With a
+    // pending band underneath, the accepted total renders beside it so
+    // the two can be read against each other.
+    var split = splitLine(acc, forSub);
+    var main = (acc.length && (s.billedRows >= 2 || split || pendBand))
+      ? footBand('', s.billedRows < 2 && !pendBand ? 'Project total' : 'Project',
+                 pendBand ? 'accepted agreements only' : '', s, split, forSub)
+      : null;
+    if (!main) return pendBand;
+    if (!pendBand) return main;
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-acpt-foots';
+    wrap.appendChild(main);
+    wrap.appendChild(pendBand);
+    return wrap;
   }
 
   /** The base-scope + change-order split, as a line under PROJECT. It

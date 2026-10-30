@@ -718,6 +718,21 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   The ops card's triage sort (unsigned / unpaid rows floated to the top) is gone — the rollup pill and the
   deploy nav's amber dot still say what waits; the list itself never reshuffles. Test:
   `tests/deploy-page/test-acceptance-order.js` (+ the order check in `test-acceptance-rollup.js`).
+- **Project totals count accepted agreements only (2026-10-30)**: "if an agreement is not signed or accepted
+  in some fashion it shouldn't be lumped into the totals — maybe a section below that's 'not yet accepted'
+  numbers." The card's PROJECT footer (`acceptance-card.js` `buildProjectMoney`) summed every row, so an
+  unsigned CO's $3,231 rode "billed to client" and its $2,600 "billed by sub". Now each row carries
+  `accepted` (`isAcceptedRow`: signed, or approved on a no-signature path) and the footer splits:
+  PROJECT = the accepted rows (`sumEntries` / `footBand`, with the note "accepted agreements only" and the
+  base + CO split over the accepted COs), then a **NOT YET ACCEPTED** band (`.scw-acpt-foot--pending`:
+  dashed rule, amber caption, muted figures, the rate keeps its on / under colour) with the same columns
+  over the unsigned rows and the rollup's wording ("1 change order awaiting signature", "2 awaiting
+  signature · 1 is a change order"); the two ride in a `.scw-acpt-foots` wrapper. With a pending band the
+  project band renders even for a lone accepted row (the two read against each other); nothing pending →
+  the footer is exactly what it was (one band, no wrapper, no note); nothing accepted → the pending band
+  alone; an unsigned row with no figures adds no band. The sub card's footer splits the same way ("your
+  total"). The per-row figures and the rollup are unchanged. Test:
+  `tests/deploy-page/test-acceptance-pending-totals.js` (the live rows from the screenshot).
 - **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
   `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
   install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,

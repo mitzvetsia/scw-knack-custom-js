@@ -811,7 +811,8 @@ not-billable. Nothing about billability or the reason is written to the SOW.
   confirm — a clear of `field_2767` through view_3914, nothing else changes.
   Row order (same day): the base-scope acceptances first, then the change orders
   oldest → newest by the proposal's quote number (`orderRows`); waiting rows no
-  longer float to the top.
+  longer float to the top. The PROJECT footer sums accepted rows only; an
+  unsigned CO's money sits in a NOT YET ACCEPTED band under it (same day).
 - **Ops lock** treats any `Accepted` as final; the sub strip reads "Approved by
   SCW — your pricing stands" on the not-billable path.
 
