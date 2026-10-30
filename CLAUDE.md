@@ -1273,7 +1273,17 @@ rev 3 the same day from live feedback: slot rows, no batch rule, zoom, nothing c
   is sticky for the modal in `_state.folds`, and the fold opens on its own while a selected photo is aimed
   inside it or the rail search matches a location — "1 of 7 match" / "none match"); the SOW rows stay
   plain rows up to three and fold the same way past that ("Deployment photo on one SOW · 4"); the devices
-  follow as before. **Make (delivered 2026-10-30 — blueprint "20.04 … (v2 Modal) (locations + SOW)",
+  follow as before. The rail's family pills carry an **"MDF / IDF locations · N" pill** ("make MDF/IDF
+  locations a clickable option next to All / Headend & networking"): `familyPillsHtml(cands, locCount)`,
+  family `loc` — the rail lists the locations alone, open, no devices, no fold ("Showing 13 MDF / IDF
+  locations, no devices · show all"); the search narrows them; "show all" / the pill again returns to the
+  folded layout. **Non-image files are refused at the door** (same day — the first live batch queued an IDF
+  elevation PDF, Knack's image store answered 400 "Error saving image", and with no upload no manifest ever
+  reached Make: "the webhook is not firing"): `isImageFile` (an `image/*` type or an image / HEIC extension),
+  else `refusedRow` — a `too-big`-status tile reading "PDF file is not a photo — photos are images (JPG, PNG,
+  HEIC…). Drawings and documents go under Site Maps & Other Files.", never selectable, aimable or sent; the
+  footer reads "N files can't be sent (see the tile)". DOC_photos holds an IMAGE field, so a PDF can never be
+  a photo — a drawing belongs under the page's files. **Make (delivered 2026-10-30 — blueprint "20.04 … (v2 Modal) (locations + SOW)",
   `scratchpad/tools/bp_patch_2004_targets.py` over the user's export + the app schema; import INTO the
   scenario so the hook stays)**: `DOC_photos` has NO field pointing at an MDF/IDF (its `field_1801`
   "Installed Location" is the historical drops object) — the link is the LOCATION's `field_1652` REL_photos

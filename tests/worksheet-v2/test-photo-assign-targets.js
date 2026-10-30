@@ -134,7 +134,20 @@ const LOC = (id) => pa.LOC_PREFIX + id, SOWR = (id) => pa.SOW_SCOPE_PREFIX + id;
   pa.state().folds.locs = null;   // back to the default rule for the aiming checks below
   await pa.addFiles([file('HEADEND closet.jpg'), file('i10.png'), file('warehouse wide.jpg')]);
   const closet = rows()[0], i10 = rows()[1], wide = rows()[2];
+  function i10r() { return i10.id; }
   check('file names never aim at a location (only the device matched)', [tg(closet), tg(i10), tg(wide)], [[], [['r1', 'slot']], []]);
+  // The "MDF / IDF locations" pill (2026-10-30): the locations alone, open, no devices, no fold.
+  const pillTexts = () => Array.from(modal().querySelectorAll('[data-scw-pa-fam]')).map(b => b.textContent.replace(/\s+/g, ' ').trim());
+  check('the rail pills offer "MDF / IDF locations" next to the device families', pillTexts(), ['All 4', 'Cameras 3', 'Headend & networking 1', 'MDF / IDF locations 3']);
+  modal().querySelector('[data-scw-pa-fam="loc"]').click();
+  check('the locations pill lists every location, open, with no device rows and no fold button; the count line says so',
+    [railIds('.scw-pa-dev--loc'), railIds().filter(isDevice), foldBtn(), text('.scw-pa-grp'), text('.scw-pa-railcount'), railIds('.scw-pa-dev--scope')],
+    [[LOC(MDF1), LOC(MDF2), LOC(MDF3)], [], null, 'MDF / IDF locations · 3', 'Showing 3 MDF / IDF locations, no devices · show all', ['__scope__', SOWR(SW1), SOWR(SW2)]]);
+  pa.setFinderQuery(i10r(), 'shop');
+  check('…and the search narrows them', [railIds('.scw-pa-dev--loc'), text('.scw-pa-railcount')], [[LOC(MDF2)], 'Showing 1 of 3 MDF / IDF locations, no devices for "shop" · show all']);
+  pa.setFinderQuery(i10r(), '');
+  modal().querySelector('[data-scw-pa-railclear]').click();
+  check('"show all" returns the devices and folds the locations again', [railIds().filter(isDevice).length, railIds('.scw-pa-dev--loc'), text('.scw-pa-grp--fold')], [4, [], 'MDF / IDF locations · 3 Show']);
 
   // ── aiming ──
   pa.select(closet.id);
@@ -181,6 +194,16 @@ const LOC = (id) => pa.LOC_PREFIX + id, SOWR = (id) => pa.SOW_SCOPE_PREFIX + id;
   check('the device manifest is unchanged', [byKey.r2.target.kind, byKey.r2.target.recordId, byKey.r2.links.sowId], ['installLineItemID', 'r2', '']);
   check('the wide shot went to two locations', [byKey[MDF2].target.recordId, byKey[MDF3].target.recordId, byKey[MDF3].uploadId.split(':').slice(1).join(':')],
     [MDF2, MDF3, 'loc:' + MDF3]);
+  // A PDF (the live batch's IDF elevation drawing) is refused at the door — never uploaded, never sent.
+  uploads.length = 0; posts.length = 0;
+  await pa.addFiles([new window.File(['%PDF'], 'Tetra-Pak-IDF-05-Elevation-R04.pdf', { type: 'application/pdf' }), new window.File(['x'], 'elevation.dwg', { type: '' })]);
+  const pdfRow = rows().find(r => r.filename.endsWith('.pdf')), dwgRow = rows().find(r => r.filename.endsWith('.dwg'));
+  check('a PDF / a non-image is refused with the reason, cannot be selected or aimed, and the footer says so',
+    [pdfRow.status, pdfRow.error, dwgRow.error.slice(0, 23), pa.select(pdfRow.id) || Object.keys(pa.state().selected).length, pa.clickDevice(LOC(MDF1)) || tg(pdfRow),
+     /2 files can't be sent/.test(text('.scw-pa-sum') || modal().textContent)],
+    ['too-big', 'PDF file is not a photo — photos are images (JPG, PNG, HEIC…). Drawings and documents go under Site Maps & Other Files.', 'DWG file is not a photo', 0, [], true]);
+  const res2 = await pa.send();
+  check('…and Send has nothing to send: nothing uploaded, nothing posted, the plan says so', [Array.isArray(res2.errors), uploads.length, posts.length], [true, 0, 0]);
   check('the tiles say where each copy went', [closet.result, wide.result],
     ['New photo on Deployment photo · SOW 1589 (sent to Make) · New photo on I-011 (sent to Make) · New photo on HEADEND: closet (sent to Make)',
      'New photo on IDF: 01: shop (sent to Make) · New photo on IDF: 02: warehouse (sent to Make)']);

@@ -637,7 +637,7 @@
     if (card && card.NETWORKING_BUCKET && bucketIdOf(rec, viewKey) === card.NETWORKING_BUCKET) return 'headend';
     return 'other';
   }
-  var FAMILY_LABELS = { cam: 'Cameras & readers', headend: 'Headend & networking', other: 'Other equipment' };
+  var FAMILY_LABELS = { cam: 'Cameras & readers', headend: 'Headend & networking', other: 'Other equipment', loc: 'MDF / IDF locations' };
   /** Cameras, Readers, or both — by the products on this worksheet. */
   function familyLabel(fam, cands) {
     if (fam !== 'cam') return FAMILY_LABELS[fam] || fam;
@@ -648,12 +648,16 @@
     }
     return readers && !cams ? 'Readers' : (cams && !readers ? 'Cameras' : 'Cameras & readers');
   }
-  /** The rail's family pills — one per family present, with counts; nothing
-   *  when the worksheet carries a single family (nothing to filter by). */
-  function familyPillsHtml(cands) {
+  /** The rail's family pills — one per family present, with counts, plus
+   *  "MDF / IDF locations" when the page has any (2026-10-30: "make MDF/IDF
+   *  locations a clickable option next to All / Headend & networking…" — the
+   *  pill lists the locations alone, expanded, no devices); nothing when
+   *  there is a single family and no location (nothing to filter by). */
+  function familyPillsHtml(cands, locCount) {
     var counts = { cam: 0, headend: 0, other: 0 }, total = 0;
     for (var i = 0; i < cands.length; i++) { if (counts[cands[i].family] != null) counts[cands[i].family]++; total++; }
     var present = ['cam', 'headend', 'other'].filter(function (f) { return counts[f] > 0; });
+    if (locCount) { counts.loc = locCount; present.push('loc'); }
     if (present.length < 2) return '';
     var h = '<div class="scw-pa-fams" role="group" aria-label="Show only">' +
       '<button type="button" class="scw-pa-fam is-on" data-scw-pa-fam="" aria-pressed="true">All <span>' + total + '</span></button>';
@@ -1486,7 +1490,7 @@
         return;
       }
     }
-    if (st.selected[id]) delete st.selected[id]; else st.selected[id] = true;
+    if (st.selected[id]) delete st.selected[id]; else if (selectableRow(rowById(id))) st.selected[id] = true;
     st.anchorRow = id;
     renderTile(id); renderSelbar(); renderRail();
   }
@@ -1532,10 +1536,30 @@
     }
     return Promise.resolve({ blob: file, converted: false, triedResize: false });
   }
+  /** A photo is an image: DOC_photos holds an IMAGE field and Knack's image
+   *  store answers anything else with a 400 "Error saving image". The first
+   *  live batch (2026-10-30) queued an IDF elevation PDF, which failed at
+   *  upload time and read as "the webhook is not firing" — nothing reaches
+   *  Make before the upload lands. Refused here, with the reason. */
+  function isImageFile(f) {
+    if (String(f && f.type || '').toLowerCase().indexOf('image/') === 0) return true;
+    return /\.(jpe?g|png|gif|webp|bmp|tiff?|heic|heif)$/i.test(String(f && f.name || ''));
+  }
+  function refusedRow(f) {
+    var name = String(f.name || ''), m = name.match(/\.([a-z0-9]{1,5})$/i);
+    var what = m ? m[1].toUpperCase() + ' file' : 'This file';
+    return {
+      id: uuid(), file: f, blob: f, filename: name || 'file', mimeType: f.type || 'application/octet-stream',
+      sizeBytes: f.size, origSize: null, status: 'too-big',
+      error: what + ' is not a photo — photos are images (JPG, PNG, HEIC…). Drawings and documents go under Site Maps & Other Files.',
+      targets: [], match: null, assetId: '', uploadId: uuid(), result: '', thumbUrl: ''
+    };
+  }
   function addFiles(files) {
     if (!_state || !files || !files.length || _state.sending) return Promise.resolve([]);
     var st = _state;
     return Promise.all(files.map(function (f) {
+      if (!isImageFile(f)) { var rr = refusedRow(f); st.rows.push(rr); return Promise.resolve(rr); }
       return prepare(f).then(function (prep) {
         if (_state !== st) return null;
         var blob = prep && prep.blob;
@@ -2059,7 +2083,7 @@
           '<input type="text" data-scw-pa-railq placeholder="Number, name or MDF/IDF" aria-label="Find a device" autocomplete="off"></div>' +
         '<label><input type="checkbox" data-scw-pa-needfirst' + (st.railNeedFirst ? ' checked' : '') + '> Devices still missing a required photo first</label>' +
         '<label><input type="checkbox" data-scw-pa-showslots' + (st.showSlots ? ' checked' : '') + '> Show open slots under every device</label>' +
-        familyPillsHtml(st.candidates);
+        familyPillsHtml(st.candidates, (st.locations || []).length);
     }
     var pills = hd.querySelectorAll('[data-scw-pa-fam]');
     for (var pi = 0; pi < pills.length; pi++) {
@@ -2078,12 +2102,20 @@
     if (!cnt) { cnt = document.createElement('div'); cnt.className = 'scw-pa-railcount'; hd.appendChild(cnt); }
     var famLbl = st.railFamily ? familyLabel(st.railFamily, st.candidates) : '';
     var rq0 = String(st.railQuery || '').trim();
-    cnt.innerHTML = hits.length < st.candidates.length
-      ? 'Showing <b>' + hits.length + ' of ' + st.candidates.length + '</b> devices' +
-        (famLbl ? ' · ' + esc(famLbl) : '') +
+    var locMode = st.railFamily === 'loc';          // the "MDF / IDF locations" pill: the locations alone
+    var locs = locationHits(), locsAll = st.locations || [];
+    if (locMode) {
+      cnt.innerHTML = 'Showing <b>' + (rq0 ? locs.length + ' of ' + locsAll.length : locsAll.length) + '</b> MDF / IDF locations, no devices' +
         (rq0 ? ' for "' + esc(st.railQuery) + '"' : '') +
-        ' · <button type="button" data-scw-pa-railclear>show all</button>'
-      : '';
+        ' · <button type="button" data-scw-pa-railclear>show all</button>';
+    } else {
+      cnt.innerHTML = hits.length < st.candidates.length
+        ? 'Showing <b>' + hits.length + ' of ' + st.candidates.length + '</b> devices' +
+          (famLbl ? ' · ' + esc(famLbl) : '') +
+          (rq0 ? ' for "' + esc(st.railQuery) + '"' : '') +
+          ' · <button type="button" data-scw-pa-railclear>show all</button>'
+        : '';
+    }
     var groups = [], byId = Object.create(null);
     for (var i = 0; i < hits.length; i++) {
       var c = hits[i];
@@ -2115,14 +2147,22 @@
       h += foldHdr('sows', (scope ? String(scope.label).replace(/\s+—.*$/, '') : 'Project photo') + ' on one SOW', sows.length, sowOpen);
       if (sowOpen) for (var sw2 = 0; sw2 < sows.length; sw2++) h += devRowHtml(sows[sw2], sel, 'scw-pa-dev--scope scw-pa-dev--sow');
     }
-    var locs = locationHits(), locsAll = st.locations || [];
-    if (locsAll.length) {
+    if (locMode) {
+      // The pill: every location, open, no fold and no devices.
+      h += '<div class="scw-pa-grp"><span>MDF / IDF locations · ' +
+        (rq0 ? locs.length + ' of ' + locsAll.length + ' match' : locsAll.length) + '</span></div>';
+      for (var lp = 0; lp < locs.length; lp++) h += devRowHtml(locs[lp], sel, 'scw-pa-dev--loc');
+      if (!locs.length) {
+        h += '<div style="padding:16px 12px;color:#64748b;font-size:12.5px">' +
+          (rq0 ? 'No location matches "' + esc(st.railQuery) + '".' : 'No MDF / IDF locations on this page.') + '</div>';
+      }
+    } else if (locsAll.length) {
       var locOpen = foldOpen('locs', locs, sel, !!(rq0 && locs.length));
       h += foldHdr('locs', 'MDF / IDF locations',
         rq0 ? (locs.length ? locs.length + ' of ' + locsAll.length + ' match' : 'none match') : locsAll.length, locOpen);
       if (locOpen) for (var lo = 0; lo < locs.length; lo++) h += devRowHtml(locs[lo], sel, 'scw-pa-dev--loc');
     }
-    if (!hits.length) {
+    if (!hits.length && !locMode) {
       h += '<div style="padding:16px 12px;color:#64748b;font-size:12.5px">' +
         (famLbl && !rq0 ? 'No ' + esc(famLbl.toLowerCase()) + ' on this worksheet.'
                         : 'No ' + (famLbl ? esc(famLbl.toLowerCase()) + ' match' : 'device matches') + ' "' + esc(st.railQuery) + '".') +
@@ -2266,7 +2306,7 @@
       if (c.unaimed) parts.push('<span style="color:#92400e">' + plural(c.unaimed, 'photo') + ' still need' + (c.unaimed === 1 ? 's' : '') + ' a device</span>');
     }
     if (c.done) parts.push(plural(c.done, 'sent photo'));
-    if (c.tooBig) parts.push(plural(c.tooBig, 'too big'));
+    if (c.tooBig) parts.push('<span style="color:#be123c">' + plural(c.tooBig, 'file') + ' can\'t be sent (see the tile)</span>');
     sum.innerHTML = parts.join(' · ');
     sendBtn.disabled = st.sending || !c.aimed;
     sendBtn.textContent = st.sending ? 'Sending…' : (c.aimed ? 'Send ' + plural(c.aimed, 'photo') : 'Send');
@@ -2643,7 +2683,7 @@
     addExisting:       function (existing) { var r = addExisting(existing); render(); return r; },
     assetFromUrl:      assetFromUrl,
     copyFromAllowed:   copyFromAllowed,
-    select:            function (rowId, on) { if (!_state) return; if (on === false) delete _state.selected[rowId]; else _state.selected[rowId] = true; render(); },
+    select:            function (rowId, on) { if (!_state) return; if (on === false) delete _state.selected[rowId]; else if (selectableRow(rowById(rowId))) _state.selected[rowId] = true; render(); },
     toggleSelect:      toggleSelect,
     selectAll:         selectAll,
     clearSelection:    clearSelection,

@@ -398,7 +398,7 @@ const railq = () => modal().querySelector('[data-scw-pa-railq]').value;
   check('a plain click still toggles one tile off', selNames().length, 4);
   // Family pills on the rail.
   const pillTexts = () => Array.from(modal().querySelectorAll('[data-scw-pa-fam]')).map(b => b.textContent.replace(/\s+/g, ' ').trim());
-  check('the rail offers one pill per family present, with counts (no "other" on this worksheet)', pillTexts(), ['All 6', 'Cameras 5', 'Headend & networking 1']);
+  check('the rail offers one pill per family present, with counts (no "other" on this worksheet), plus the MDF / IDF locations', pillTexts(), ['All 6', 'Cameras 5', 'Headend & networking 1', 'MDF / IDF locations 2']);
   modal().querySelector('[data-scw-pa-fam="headend"]').click();
   check('"Headend & networking" shows only the NVR, the count line says so, the scope row stays',
     [pa.railHits(), text('.scw-pa-railcount'), !!modal().querySelector('[data-scw-pa-dev-row="__scope__"]'), modal().querySelector('[data-scw-pa-fam="headend"]').classList.contains('is-on')],
