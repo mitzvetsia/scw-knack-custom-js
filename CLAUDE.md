@@ -815,6 +815,17 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   and the sub-facing view (⚠️ gated on Known Issue #17 — no worksheet-v2
   surface to sub logins while the REST-key Builder snippet ships).
 
+## Locations: MDF/IDFs to the Site, then Positions (design 2026-11-02, NOT built) — full reference: docs/locations.md
+
+**Read `docs/locations.md` before touching MDF/IDFs, sites or designators.** Decided with Micah: MDF/IDF
+records (`object_96`) move to the Site (`field_2848` required; every project at a site sees every closet;
+the project link `field_1648` stays single = "created on"; duplicates are merged by a Make scenario into a
+survivor and kept as `merged` records); then **Positions** — one device's spot per record, owning the
+designator (prefix = kind of spot: E- / I- / AC- / ANT- / ENC- / SW- / NVR- / HUB-, frozen at creation,
+unique per site), products carry their allowed prefixes, a line with a parent shares the parent's Position,
+services / assumptions get a separate many "covers" link. The doc carries the schema facts, the views and
+scenarios to change, the data findings, the field cleanup list and the open questions.
+
 ## SOW add-item modal (live 2026-10-08) — `src/features/worksheet-v2/sow-add-item-form.js`
 
 The Knack DTO "Add to Scope" forms (view_3329 / view_4002 / view_3451 / view_3748) are
