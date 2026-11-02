@@ -159,6 +159,25 @@ Source each from "MDF/IDFs connected to this project's Site" (parent_source `obj
 - Fix SYS_set Label rule 1 to clear THIS record's label for HEADENDs.
 - Normalize the 65 type "MDF" records to HEADEND.
 
+### Cleanup kit (built 2026-11-02 from the 11-02 exports — `tools/mdf_site_cleanup.py`)
+Run: `python3 -I tools/mdf_site_cleanup.py <projects.csv> <sites.csv> <mdfidf.csv> <outdir>`. Results:
+- Every closet's project resolved by name (2,921, none ambiguous); 3,090 of 3,193 closets resolve to a site
+  (147 already had one, all agreeing); 103 cannot (40 Pour Taproom closets with no traceable quote, 30 on no
+  project and no quote, 26 whose project has no site, 7 whose project's site nickname is shared). "Pour Taproom
+  Asheville" is the OLDEST project record (`594359a8095db351c990ffef`) — consistent with a lookup falling back
+  to the first record.
+- 296 closets re-homed through their old quote's project (54 Pour Taproom + 242 quote-only), matched on the
+  quote number (`YYYYMMDD-NNNN`) in the project's Quotes column.
+- Import files (update existing records, matched on Record ID; no mapped column is ever blank):
+  `01_site_backfill` 2,943 · `02_project_rehome` 296 · `03_idf_numbers` 764 · `04_headend_type` 1,879 (every
+  HEADEND re-saved, so the fixed label rules clear their "01") · `05_location_to_notes` 434. `06_by_hand` 115.
+  Before importing: lifecycle option `merged`, the "Merged into" link, SYS_set Label rule 1 on THIS record and
+  rules 5 / 6 limited to IDFs.
+- `07_duplicate_review`: 368 actual groups (532 closets merge away; 279 are unnamed HEADENDs at one site;
+  232 span 2+ projects) and 121 possible groups (312 closets). Survivor rule: installed → has survey
+  requests → named → most photos / old equipment → oldest. The exports carry no line-item counts per closet.
+- Not built yet: the Make merge scenario (input = a reviewed group: survivor + losers).
+
 ### Next steps
 1. Ask Micah to re-upload: the MDF/IDF export, a **Projects** export (Record ID `field_2059`, name,
    Site, Quotes) and a **Sites** export (Record ID `field_2095`, Site ID, nickname, address, client).
