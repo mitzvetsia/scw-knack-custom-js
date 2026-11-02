@@ -173,16 +173,14 @@ for sk, rs in by_site.items():
                 continue  # same name, different numbers: possible (below)
         add(ms, 'actual', ('same name "%s"' % ms[0]['name']) + ('' if k[0] == 'H' else ', same or blank number'))
     # actual: unnamed HEADENDs
-    # an access control project's unnamed default HEADEND is not assumed to be the camera headend:
-    # door hubs often sit in another room. Unnamed groups merge within one system type only; the
-    # possible pass below then asks about the HEADENDs left across types.
-    for t in sorted({r['ptype'] for r in he}):
-        add([r for r in he if not r['nname'] and r['ptype'] == t], 'actual', 'unnamed HEADENDs at one site' + (' (%s projects)' % t if t else ''))
+    # one physical closet holds camera AND access control gear; the SOWs keep the work apart, so
+    # unnamed default closets merge across project types (the review file shows the type)
+    add([r for r in he if not r['nname']], 'actual', 'unnamed HEADENDs at one site')
     # actual: unnamed IDFs with the same number
     bynum = defaultdict(list)
     for r in idf:
-        if not r['nname'] and r['num'] is not None: bynum[(r['num'], r['ptype'])].append(r)
-    for (n, t), ms in bynum.items(): add(ms, 'actual', 'unnamed IDF %02d more than once' % n + (' (%s projects)' % t if t else ''))
+        if not r['nname'] and r['num'] is not None: bynum[r['num']].append(r)
+    for n, ms in bynum.items(): add(ms, 'actual', 'unnamed IDF %02d more than once' % n)
     # possible: compare what is left AFTER the actual merges — each actual group's survivor plus
     # every closet in no group. A closet appears in at most one possible group.
     reps = [g[3][0] for g in groups if g[0] == sk and g[1] == 'actual'] + [r for r in rs if r['id'] not in used]

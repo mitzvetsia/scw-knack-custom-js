@@ -173,24 +173,25 @@ Run: `python3 -I tools/mdf_site_cleanup.py <projects.csv> <sites.csv> <mdfidf.cs
   HEADEND re-saved, so the fixed label rules clear their "01") · `05_location_to_notes` 434. `06_by_hand` 115.
   Before importing: lifecycle option `merged`, the "Merged into" link, SYS_set Label rule 1 on THIS record and
   rules 5 / 6 limited to IDFs.
-- `07_duplicate_review`: 299 actual groups (432 closets merge away; 215 are unnamed HEADENDs at one site;
-  144 span 2+ projects) and 217 possible groups (508 closets). Survivor rule: installed → has survey
+- `07_duplicate_review`: 368 actual groups (532 closets merge away; 279 are unnamed HEADENDs at one site;
+  232 span 2+ projects) and 121 possible groups (312 closets). Survivor rule: installed → has survey
   requests → named → most photos / old equipment → oldest. The exports carry no line-item counts per closet.
-- **Camera and access control share sites** (97 sites have closets from both kinds of project). An access
-  control project's unnamed default HEADEND is NOT assumed to be the camera headend — door hubs often sit in
-  another room — so unnamed HEADENDs / unnamed same-number IDFs merge automatically only within one project
-  type (`REL_config_project type`); across types they land in the possible list (133 mixed groups). Closets
-  with the same NAME merge across types (17 groups, e.g. FMM's per-floor IDFs). The review file carries a
-  "Project type" column.
-- **Closet data that is really per project** becomes shared once closets live on the site: survey notes
-  (`field_2457`, 79 closets), notes (266 real ones), photos (`field_1652`) and the deliverables schema
-  (`field_2456`, one per closet). Direction: notes hold closet facts only; survey notes become a stamped,
-  append-only log (who / which survey / date) instead of one overwritten text; the photo band shows this
-  project's photos first with "N earlier photos at this closet" folded; the survey's closet photo
-  placeholders come from a schema chosen by the PROJECT TYPE (camera vs access control), created per survey
-  request + closet, not from the single schema on the closet. Never renumber an INSTALLED closet (its number
-  may be on cable labels) — renumber the newer one. Both subs (camera and AC companies) will see the shared
-  closet's photos and notes; photo uploader names (Created By) would show one sub's company to the other.
+  64 actual groups are unnamed IDFs merged on their number alone, 43 of them across projects that each
+  numbered their own closets from 01 — glance at those before merging.
+- **One closet, both systems; the SOWs keep the work apart** (Micah 2026-11-02: "they physically ARE one
+  closet… and they DO have both types of equipment in them… but I do need to keep the SOWs separate by
+  type"). 97 sites carry closets from both camera and access control projects; 117 actual groups merge a
+  camera project's closet with an access control project's. The closet is shared and carries no system
+  type; each SOW's lines point at it, so every worksheet, bid and proposal (all filtered by SOW) shows only
+  its own SOW's equipment under the closet. The review file has a "Project type" column for reference.
+- **What is stored on the closet but belongs to one SOW / survey** must move off it before closets are shared:
+  survey notes (`field_2457`, 79 closets) → a stamped, append-only log (who / which survey / date); photo
+  placeholders → created per survey request + closet from a schema picked by the SOW / project type (camera vs
+  access control), not the single `field_2456` on the closet; the closet's photo band shows this SOW's photos
+  first, "N earlier photos at this closet" folded. Notes (266 real ones) stay closet facts. One ## per closet
+  per site, shared by both SOWs; never renumber an INSTALLED closet (its number may be on cable labels). Both
+  subs see the shared closet's photos and notes; photo uploader names would show one sub's company to the
+  other. Optional later: "Also in this closet: N access control devices (SOW …)" on a closet card.
 - Not built yet: the Make merge scenario (input = a reviewed group: survivor + losers).
 
 ### Next steps
