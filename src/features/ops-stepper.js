@@ -746,6 +746,22 @@
       '  border: 1px solid #d1d5db; border-radius: 6px;' +
       '  font-family: inherit; font-size: 13px; background: #fff; color: #1f2937;' +
       '}' +
+      /* Recipient phone that can't go on a signature request (amber = warning) */
+      '.scw-ops-modal-rcp-row input.is-invalid {' +
+      '  border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,0.18);' +
+      '}' +
+      '.scw-ops-modal-rcp-warn {' +
+      '  margin: 6px 0 0 54px; padding: 7px 9px; border-radius: 6px;' +
+      '  font-size: 12px; line-height: 1.45; color: #b45309;' +
+      '  background: rgba(245,158,11,0.10); border: 1px solid rgba(245,158,11,0.35);' +
+      '}' +
+      '.scw-ops-modal-rcp-fix {' +
+      '  display: inline-block; margin: 6px 0 0; padding: 4px 10px; cursor: pointer;' +
+      '  font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1.3;' +
+      '  color: #92400e; background: #fff;' +
+      '  border: 1px solid rgba(180,83,9,0.45); border-radius: 6px;' +
+      '}' +
+      '.scw-ops-modal-rcp-fix:hover { background: #fffbeb; }' +
       /* Pending survey-request editor (Mark Ready) */
       '.scw-ops-modal-req-ro { font-size: 12px; color: #475569; margin-top: 6px; }' +
       '.scw-ops-modal-req-row {' +
@@ -2012,6 +2028,57 @@
     return String(v).replace(/<[^>]*>/g, '').trim();
   }
 
+  // ── Recipient phone check (Issue CO, 2026-11-02) ────────────────
+  // The chosen contact's Cell Phone (field_195) becomes the signer
+  // "mobile" on the eSignatures contract. A contact whose phone field
+  // holds a data fragment instead of a number — seen live:
+  //   (845) 406-1685 xt":null,"full":"8454061685","country":null,…
+  // (a phone OBJECT's text written into the field; Knack read the "ex" of
+  // "ext" as the extension marker and kept the rest as the extension) —
+  // made the contract body invalid JSON, and no text message could reach
+  // it anyway. phoneProblem() says what is wrong ('' = usable, or blank:
+  // whether a contract may go out without a mobile is the Make template's
+  // call, not this check's). phoneSuggestion() recovers the clean US
+  // number when the stored value still carries one.
+  var PHONE_EXT_RE = /^(.*?)\s*(?:x|ext\.?|extension)\s*\d{1,6}\s*$/i;
+  function phoneProblem(v) {
+    var s = String(v == null ? '' : v).replace(/\u00a0/g, ' ').trim();
+    if (!s) return '';
+    if (/["{}\[\]\\]|\bnull\b|\bundefined\b/i.test(s)) {
+      return 'it holds stray data, not just a number';
+    }
+    var m = s.match(PHONE_EXT_RE);
+    var main = (m ? m[1] : s).trim();
+    if (!/^\+?[\d\s().\-]+$/.test(main)) {
+      return 'it has text a phone number can’t carry';
+    }
+    var digits = main.replace(/\D/g, '');
+    if (main.charAt(0) === '+') {
+      return (digits.length >= 8 && digits.length <= 15) ? ''
+        : 'an international number needs 8 to 15 digits after the +';
+    }
+    if (digits.length === 10 || (digits.length === 11 && digits.charAt(0) === '1')) return '';
+    return 'it has ' + digits.length + ' digit' + (digits.length === 1 ? '' : 's') +
+      ' — a US number needs 10, with the area code';
+  }
+  function usPhoneDigits(s) {
+    var d = String(s == null ? '' : s).replace(/\D/g, '');
+    if (d.length === 11 && d.charAt(0) === '1') d = d.slice(1);
+    return d.length === 10 ? d : '';
+  }
+  function phoneSuggestion(raw, text) {
+    var d = '';
+    if (raw && typeof raw === 'object') {
+      d = usPhoneDigits(raw.full) ||
+          usPhoneDigits(String(raw.area || '') + String(raw.number || ''));
+    }
+    if (!d) {
+      var lead = String(text == null ? '' : text).match(/^[\s\d().+\-]+/);
+      d = lead ? usPhoneDigits(lead[0]) : '';
+    }
+    return d ? '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6) : '';
+  }
+
   function openNotesPromptModal(opts, onSubmit) {
     opts = opts || {};
     var overlay = document.createElement('div');
@@ -2156,6 +2223,7 @@
             id: a.id, name: name, phone: phone, email: email,
             nameIsObj: nameIsObj, first: first, last: last,
             nameRawObj: nameIsObj ? nameRaw : null,
+            phoneRawObj: (phoneRaw && typeof phoneRaw === 'object') ? phoneRaw : null,
             label: [name, phone, email].filter(Boolean).join(' — ').slice(0, 140) || a.id
           });
         }
@@ -2176,7 +2244,7 @@
           if (!nm && !ph2 && !em) continue;
           options.push({
             id: r.id, name: nm, phone: ph2, email: em,
-            nameIsObj: false, first: '', last: '', nameRawObj: null,
+            nameIsObj: false, first: '', last: '', nameRawObj: null, phoneRawObj: null,
             label: [nm, ph2, em].filter(Boolean).join(' — ').slice(0, 140)
           });
         }
@@ -2200,7 +2268,11 @@
       options.forEach(function (o) {
         var opt = document.createElement('option');
         opt.value = o.id;
-        opt.textContent = o.label;
+        // A garbled phone is named, not shown: its text is a data fragment.
+        opt.textContent = phoneProblem(o.phone)
+          ? ([o.name, '⚠ phone needs fixing', o.email].filter(Boolean)
+              .join(' — ').slice(0, 140) || o.id)
+          : o.label;
         sel.appendChild(opt);
       });
       wrap.appendChild(sel);
@@ -2227,6 +2299,12 @@
           inputs[def[0]] = inp;
           rowEls[def[0]] = row;
         });
+      // Amber note under Phone while the number can't go on a signature
+      // request; offers the clean number when the stored value carries one.
+      var phoneWarn = document.createElement('div');
+      phoneWarn.className = 'scw-ops-modal-rcp-warn';
+      phoneWarn.style.display = 'none';
+      fieldsWrap.appendChild(phoneWarn);
       var hint = document.createElement('div');
       hint.className = 'scw-ops-modal-rcp-hint';
       hint.textContent = 'Edits here update the contact record when you submit.';
@@ -2234,6 +2312,34 @@
       wrap.appendChild(fieldsWrap);
 
       var current = null; // the chosen option (original values for diffing)
+      function paintPhoneWarn() {
+        var val = inputs.phone.value || '';
+        var why = current ? phoneProblem(val) : '';
+        inputs.phone.classList.toggle('is-invalid', !!why);
+        phoneWarn.innerHTML = '';
+        if (!why) { phoneWarn.style.display = 'none'; return; }
+        var msg = document.createElement('span');
+        msg.textContent = 'This phone number can’t go on the signature request — ' +
+          why + '. Fix it here; the contact record is updated when you submit.';
+        phoneWarn.appendChild(msg);
+        // The stored number's own digits only while the input still shows
+        // the stored value; once edited, only what was typed.
+        var sugg = phoneSuggestion(val === current.phone ? current.phoneRawObj : null, val);
+        if (sugg) {
+          var use = document.createElement('button');
+          use.type = 'button';
+          use.className = 'scw-ops-modal-rcp-fix';
+          use.textContent = 'Use ' + sugg;
+          use.addEventListener('click', function () {
+            inputs.phone.value = sugg;
+            paintPhoneWarn();
+            inputs.phone.focus();
+          });
+          phoneWarn.appendChild(use);
+        }
+        phoneWarn.style.display = 'block';
+      }
+      inputs.phone.addEventListener('input', paintPhoneWarn);
       sel.addEventListener('change', function () {
         current = null;
         for (var i = 0; i < options.length; i++) {
@@ -2252,6 +2358,7 @@
         } else {
           fieldsWrap.style.display = 'none';
         }
+        paintPhoneWarn();
       });
 
       return {
@@ -2262,20 +2369,33 @@
           var name = current.nameIsObj
             ? ((inputs.first.value || '').trim() + ' ' + (inputs.last.value || '').trim()).trim()
             : (inputs.name.value || '').trim();
+          var email = (inputs.email.value || '').trim();
+          var phone = (inputs.phone.value || '').trim();
           return {
             id:    current.id,
             name:  name,
-            email: (inputs.email.value || '').trim(),
-            phone: (inputs.phone.value || '').trim(),
-            label: current.label
+            email: email,
+            phone: phone,
+            // Built from what is SENT, so a stored value that was fixed in
+            // the modal (a garbled phone) never rides the payload's label.
+            label: [name, phone, email].filter(Boolean).join(' — ').slice(0, 140) || current.id
           };
         },
+        // What is wrong with the phone as it stands in the input ('' = fine).
+        phoneProblem: function () { return current ? phoneProblem(inputs.phone.value) : ''; },
+        // The contact RECORD's own phone is unusable — the fix typed here
+        // must land in Knack before the CO goes out (Make reads the contact).
+        storedPhoneBad: function () { return !!(current && phoneProblem(current.phone)); },
+        focusPhone: function () { try { inputs.phone.focus(); } catch (e) { /* ignore */ } },
         // Write edited Name/Email/Phone back to the contact record via the
-        // grid view (inline edit must be enabled on it). Fire-and-forget —
-        // the webhook payload already carries the edited values, so a
-        // failed sync never blocks the CO. One record → one PUT, no queue.
+        // grid view (inline edit must be enabled on it). One record → one
+        // PUT, no queue. Returns a promise that always resolves — { ok,
+        // skipped } / { ok:false, status } — so the caller can wait for the
+        // write. A 200 whose record still carries an unusable phone counts
+        // as not saved (the column is not editable on the view). Never
+        // rejects; capped at 12 s.
         saveEdits: function () {
-          if (!current || !window.SCW || !SCW.knackAjax) return;
+          if (!current || !window.SCW || !SCW.knackAjax) return Promise.resolve({ ok: true, skipped: true });
           var data = {};
           var em = (inputs.email.value || '').trim();
           var pn = (inputs.phone.value || '').trim();
@@ -2296,19 +2416,44 @@
           }
           if (em !== current.email) data[F.email] = em;
           if (pn !== current.phone) data[F.phone] = pn;
-          if (!Object.keys(data).length) return;
+          if (!Object.keys(data).length) return Promise.resolve({ ok: true, skipped: true });
           var rid = current.id;
-          SCW.knackAjax({
-            url: SCW.knackRecordUrl(config.view, rid),
-            type: 'PUT',
-            data: JSON.stringify(data),
-            success: function () {
-              SCW.debug('[scw-ops-stepper] contact record updated:', rid, data);
-            },
-            error: function (xhr) {
-              console.warn('[scw-ops-stepper] contact update failed (' +
-                (xhr && xhr.status) + ') — the webhook payload still ' +
-                'carries the edited values.', rid, data);
+          return new Promise(function (resolve) {
+            var settled = false;
+            function done(res) { if (!settled) { settled = true; resolve(res); } }
+            setTimeout(function () { done({ ok: false, status: 'timeout' }); }, 12000);
+            try {
+              SCW.knackAjax({
+                url: SCW.knackRecordUrl(config.view, rid),
+                type: 'PUT',
+                data: JSON.stringify(data),
+                success: function (resp) {
+                  if (F.phone in data && resp && typeof resp === 'object' &&
+                      (resp[F.phone + '_raw'] != null || resp[F.phone] != null)) {
+                    var back = resp[F.phone + '_raw'];
+                    var backText = (back && typeof back === 'object')
+                      ? String(back.formatted || back.full || '')
+                      : stripHtml(back != null ? back : resp[F.phone]);
+                    if (phoneProblem(backText)) {
+                      console.warn('[scw-ops-stepper] contact phone PUT returned 200 but ' +
+                        'the record still reads "' + backText + '" — is ' + F.phone +
+                        ' inline-editable on ' + config.view + '?', rid);
+                      done({ ok: false, status: 'not applied' });
+                      return;
+                    }
+                  }
+                  SCW.debug('[scw-ops-stepper] contact record updated:', rid, data);
+                  done({ ok: true });
+                },
+                error: function (xhr) {
+                  console.warn('[scw-ops-stepper] contact update failed (' +
+                    (xhr && xhr.status) + ') — the webhook payload still ' +
+                    'carries the edited values.', rid, data);
+                  done({ ok: false, status: (xhr && xhr.status) || 0 });
+                }
+              });
+            } catch (eAjax) {
+              done({ ok: false, status: 0 });
             }
           });
         }
@@ -2622,9 +2767,9 @@
     setTimeout(function () { ta.focus(); }, 30);
 
     function close() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }
-    function setSubmitting(on) {
+    function setSubmitting(on, label) {
       submitBtn.disabled = !!on;
-      submitBtn.textContent = on ? 'Submitting…' : (opts.submitLabel || 'Submit');
+      submitBtn.textContent = on ? (label || 'Submitting…') : (opts.submitLabel || 'Submit');
       cancelBtn.disabled = !!on;
       if (secondaryBtn) secondaryBtn.disabled = !!on;
     }
@@ -2649,9 +2794,39 @@
         showError("Add an email for this contact — the CO can't go out for signature without one.");
         return { blocked: true };
       }
-      // Sync any Name/Email/Phone edits back to the contact record.
-      if (recipientPicker && rec && recipientPicker.saveEdits) recipientPicker.saveEdits();
+      // A phone that is not a phone number (a data fragment in the
+      // contact's Cell Phone) breaks the e-signature contract: never send it.
+      var phoneWhy = (recipientPicker && rec && recipientPicker.phoneProblem)
+        ? recipientPicker.phoneProblem() : '';
+      if (phoneWhy) {
+        showError('Fix the phone number before you submit — ' + phoneWhy + '.');
+        if (recipientPicker.focusPhone) recipientPicker.focusPhone();
+        return { blocked: true };
+      }
       return { blocked: false, recipient: rec };
+    }
+
+    // Sync any Name/Email/Phone edits back to the contact record, THEN
+    // submit: the write is awaited so the contact reads right by the time
+    // the CO goes out. When the record's own phone was unusable, the
+    // corrected number must land, or nothing is sent.
+    function afterContactSave(rec, go) {
+      if (!recipientPicker || !rec || !recipientPicker.saveEdits) { go(); return; }
+      var mustLand = !!(recipientPicker.storedPhoneBad && recipientPicker.storedPhoneBad());
+      var p = recipientPicker.saveEdits();
+      if (!p || typeof p.then !== 'function') { go(); return; }
+      setSubmitting(true, 'Saving contact…');
+      p.then(function (res) {
+        setSubmitting(false);
+        if (mustLand && !(res && res.ok)) {
+          var st = res && res.status;
+          showError('Couldn’t save the corrected phone number to the contact' +
+            (st ? ' (' + (typeof st === 'number' ? 'HTTP ' + st : st) + ')' : '') +
+            '. Fix the Cell Phone on the contact record in Knack, then submit again.');
+          return;
+        }
+        go();
+      });
     }
 
     // Required-branch gate (Mark Ready with an armed survey). At least
@@ -2678,15 +2853,17 @@
         showError((opts.notesLabel || 'A note') + ' is required.');
         return;
       }
-      onSubmit(notes, {
-        setSubmitting: setSubmitting, showError: showError, close: close,
-        mode: opts.primaryMode || null,
-        submission:    submissionGroup ? submissionGroup.getValue() : null,
-        clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
-        recipient:     gate.recipient || null,
-        branches:      bGate.branches || [],
-        surveyRequest: requestEditor ? requestEditor.getValue() : null,
-        po:            poInput ? (poInput.value || '').trim() : null
+      afterContactSave(gate.recipient, function () {
+        onSubmit(notes, {
+          setSubmitting: setSubmitting, showError: showError, close: close,
+          mode: opts.primaryMode || null,
+          submission:    submissionGroup ? submissionGroup.getValue() : null,
+          clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
+          recipient:     gate.recipient || null,
+          branches:      bGate.branches || [],
+          surveyRequest: requestEditor ? requestEditor.getValue() : null,
+          po:            poInput ? (poInput.value || '').trim() : null
+        });
       });
     });
     if (secondaryBtn) {
@@ -2698,15 +2875,17 @@
         if (bGate.blocked) return;
         if (requestEditor) requestEditor.saveEdits();
         var notes = (ta.value || '').trim();
-        onSubmit(notes, {
-          setSubmitting: setSubmitting, showError: showError, close: close,
-          mode: opts.secondaryMode || null,
-          submission:    submissionGroup ? submissionGroup.getValue() : null,
-          clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
-          recipient:     gate.recipient || null,
-          branches:      bGate.branches || [],
-          surveyRequest: requestEditor ? requestEditor.getValue() : null,
-          po:            poInput ? (poInput.value || '').trim() : null
+        afterContactSave(gate.recipient, function () {
+          onSubmit(notes, {
+            setSubmitting: setSubmitting, showError: showError, close: close,
+            mode: opts.secondaryMode || null,
+            submission:    submissionGroup ? submissionGroup.getValue() : null,
+            clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
+            recipient:     gate.recipient || null,
+            branches:      bGate.branches || [],
+            surveyRequest: requestEditor ? requestEditor.getValue() : null,
+            po:            poInput ? (poInput.value || '').trim() : null
+          });
         });
       });
     }
@@ -3328,7 +3507,12 @@
   window.SCW.opsStepper = {
     // Re-read the SOW record this page's publish gate reads (tooling, tests).
     recheck: recheckSource,
-    setRecheckDelay: function (ms) { RECHECK_DELAY_MS = Number(ms) || RECHECK_DELAY_MS; }
+    setRecheckDelay: function (ms) { RECHECK_DELAY_MS = Number(ms) || RECHECK_DELAY_MS; },
+    // The Issue CO recipient-phone check (tooling, tests).
+    phoneProblem: phoneProblem,
+    phoneSuggestion: phoneSuggestion,
+    // Open the notes modal directly (tests drive the recipient picker).
+    _openModal: openNotesPromptModal
   };
 
   injectStyles();

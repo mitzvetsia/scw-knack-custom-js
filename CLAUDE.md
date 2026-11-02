@@ -789,6 +789,26 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
   bar's "Add accessories" (off, with a title), the Parent picker (init.js) and the CO add form's "Mounts on"
   (co-add-item-form.js `parentCandidates`). Make: nothing new. Test:
   `tests/worksheet-v2/test-co-remove-line-accessories.js`.
+- **Issue CO refuses a garbled recipient phone (2026-11-02)**: "put a check on the issue CO modal that doesn't
+  allow a submit if the phone number is garbled like that." An eSignatures contract body came back invalid JSON
+  because the chosen contact's Cell Phone (`field_195`) held a data fragment, not a number — formatted
+  `(845) 406-1685 xt":null,"full":"8454061685",…` (a phone object's TEXT written into the field; Knack took the
+  "ex" of "ext" as the extension marker and kept the rest as the extension). The fix of the record is in Knack;
+  the modal now stops the next one. `ops-stepper.js` `phoneProblem(v)` ('' = usable): refuses quotes / braces /
+  brackets / backslashes / "null" (stray data), any text but digits, spaces, `( ) . -`, a leading `+` and a
+  numeric `x` / `ext` extension, a US number that is not 10 digits (11 with a leading 1), an international one
+  outside 8–15 digits; BLANK passes (whether a contract may go out without a mobile is the Make template's call).
+  In the recipient picker (Issue step, view_4124): a garbled contact reads "⚠ phone needs fixing" in the dropdown
+  instead of the fragment; choosing it shows an amber note under Phone with **"Use (845) 406-1685"**
+  (`phoneSuggestion`: the stored `full` digits, else area + number, else the clean run the text starts with); submit
+  is refused ("Fix the phone number before you submit — …") while the input is unusable. The contact write-back is
+  now AWAITED before the webhook ("Saving contact…") and, when the record's OWN phone was bad, must land — a
+  refused PUT or a 200 whose record still reads the fragment ("not applied": `field_195` not inline-editable on
+  view_4124) stops the CO with "Couldn't save the corrected phone number to the contact (HTTP n). Fix the Cell
+  Phone on the contact record in Knack…". Other edits stay non-fatal as before. `recipient.label` is built from the
+  values SENT (it used to carry the stored phone, fragment and all). The lasting Make fix stands: build the
+  contract body with Create JSON (a `"` in any name, title or note breaks a typed template the same way) and map
+  the mobile from `field_195_raw.full`. Test: `tests/change-orders/test-co-issue-phone-check.js`.
 - **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
   `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
   install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,
