@@ -206,13 +206,16 @@ site_label = lambda sk: clean(site_by_id[sk]['Site Nickname']) if sk in site_by_
 data = []
 for gi, (sk, cls, why, ms) in enumerate(sorted(groups, key=lambda g: (g[1] != 'actual', site_label(g[0]).lower())), 1):
     for j, m in enumerate(ms):
-        role = ('keep (suggested)' if j == 0 else 'merge into the kept one') if cls == 'possible' else ('SURVIVOR' if j == 0 else 'merge into survivor')
-        data.append([gi, cls, why, site_label(sk), sk, role, m['id'], m['display'], m['type'],
+        # nothing merges on its own (Micah 2026-11-02: "all merging should be human review"): the
+        # class is only a confidence ranking and the role only a suggestion; the Decision column is
+        # what a person fills, and the Make merge acts on nothing else
+        role = 'suggested keeper' if j == 0 else 'suggested merge'
+        data.append([gi, 'likely' if cls == 'actual' else cls, why, site_label(sk), sk, role, m['id'], m['display'], m['type'],
                      '' if m['num'] is None else '%02d' % m['num'], m['name'], (clean(m['proj_row']['INPUT_project name']) if m['proj_row'] else m['project']),
                      m['inc'], m['ptype'], m['lifecycle'], m['surveys'], m['photos'], m['equip'], ''])
 counts['07_duplicate_review.csv'] = w('07_duplicate_review.csv',
     ['Group', 'Class', 'Why', 'Site', 'Site Record ID', 'Suggested', 'Record ID', 'MDF/IDF', 'Type', '##', 'Name', 'Project',
-     'Auto increment (age)', 'Project type', 'Lifecycle', 'Survey requests', 'Photos', 'Old quote equipment', 'Decision (merge / keep separate)'], data)
+     'Auto increment (age)', 'Project type', 'Lifecycle', 'Survey requests', 'Photos', 'Old quote equipment', 'Decision (KEEP on one row + MERGE on the others, or SEPARATE)'], data)
 
 # ── summary ──
 st = Counter()

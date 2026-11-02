@@ -111,7 +111,10 @@ Source each from "MDF/IDFs connected to this project's Site" (parent_source `obj
   name - UPDATE ME", notes "this is a default Headend record -- please…"; 244 records) — none of
   the 8 blueprints above creates `object_96` records; (b) whatever stamped site + lifecycle
   "installed" on 147 closets (probably the install / greenlight path).
-- **Merge scenario (to build)**: input = survivor id + loser ids. Re-point every record pointing at a
+- **Merge scenario (to build)** — runs ONLY on a person's decision (a group in the review file marked KEEP on
+  one row + MERGE on others, or later the "Merge into…" action); nothing merges on its own. Input =
+  survivor id + loser ids. Survey notes need no append once they live on DOC_notes (below): re-point those
+  notes' closet link like the line items. Re-point every record pointing at a
   loser: `field_1946`, `field_2375`, `field_2818`, `field_2720` (single → survivor),
   `field_2144`, `field_2438` (many → swap loser for survivor, distinct). On the survivor: union
   `field_1652` photos, `field_2435`; append notes / survey notes with the loser's label. Loser:
@@ -173,25 +176,36 @@ Run: `python3 -I tools/mdf_site_cleanup.py <projects.csv> <sites.csv> <mdfidf.cs
   HEADEND re-saved, so the fixed label rules clear their "01") · `05_location_to_notes` 434. `06_by_hand` 115.
   Before importing: lifecycle option `merged`, the "Merged into" link, SYS_set Label rule 1 on THIS record and
   rules 5 / 6 limited to IDFs.
-- `07_duplicate_review`: 368 actual groups (532 closets merge away; 279 are unnamed HEADENDs at one site;
-  232 span 2+ projects) and 121 possible groups (312 closets). Survivor rule: installed → has survey
-  requests → named → most photos / old equipment → oldest. The exports carry no line-item counts per closet.
-  64 actual groups are unnamed IDFs merged on their number alone, 43 of them across projects that each
-  numbered their own closets from 01 — glance at those before merging.
+- `07_duplicate_review` — **suggestions only; every merge is a human decision** (Micah 2026-11-02: "I'm
+  extremely nervous about auto merging… all merging should be human review"). The file's Class is a confidence
+  ranking (likely 368 groups / 900 closets; possible 121 / 312), "Suggested" names a keeper (installed →
+  survey requests → named → most photos / old equipment → oldest), and the Decision column is filled by a
+  person: KEEP on one row + MERGE on the others, or SEPARATE. Blank rows are left alone. 64 likely groups are
+  unnamed IDFs matched on their number alone, 43 of them across projects that each numbered from 01. The
+  exports carry no line-item counts per closet.
 - **One closet, both systems; the SOWs keep the work apart** (Micah 2026-11-02: "they physically ARE one
   closet… and they DO have both types of equipment in them… but I do need to keep the SOWs separate by
-  type"). 97 sites carry closets from both camera and access control projects; 117 actual groups merge a
+  type"). 97 sites carry closets from both camera and access control projects; 117 likely groups pair a
   camera project's closet with an access control project's. The closet is shared and carries no system
   type; each SOW's lines point at it, so every worksheet, bid and proposal (all filtered by SOW) shows only
   its own SOW's equipment under the closet. The review file has a "Project type" column for reference.
-- **What is stored on the closet but belongs to one SOW / survey** must move off it before closets are shared:
-  survey notes (`field_2457`, 79 closets) → a stamped, append-only log (who / which survey / date); photo
-  placeholders → created per survey request + closet from a schema picked by the SOW / project type (camera vs
-  access control), not the single `field_2456` on the closet; the closet's photo band shows this SOW's photos
-  first, "N earlier photos at this closet" folded. Notes (266 real ones) stay closet facts. One ## per closet
-  per site, shared by both SOWs; never renumber an INSTALLED closet (its number may be on cable labels). Both
-  subs see the shared closet's photos and notes; photo uploader names would show one sub's company to the
-  other. Optional later: "Also in this closet: N access control devices (SOW …)" on a closet card.
+- **Survey notes → DOC_notes records** (decided 2026-11-02 over a JSON blob on the closet). `object_30`
+  DOC_notes already has Notes, Note Date, Created By, project / SOW connections and the pinned flag; add
+  "REL_mdf-idf" (one closet) and "REL_survey request" (one). Each survey's note on a closet is its own record
+  — no read-modify-write of a shared blob (two people saving never lose an entry), a sub's page views only
+  its own survey's notes (a blob would ship every sub's notes to every browser), and Make / Knack read plain
+  fields. Migration: the 79 closets with survey notes → one DOC_notes record each, on the closet's survey
+  request when it has exactly one. `field_2457` is then retired. Closet Notes `field_1643` (266 real ones)
+  stay closet facts ("key at front desk"). Bundle: `mdf-notes.js` and the reconcile / survey MDF bands render
+  and add the note records instead of editing `field_2457`.
+- **Closet photos are general photos of the closet and everything in it**; equipment-specific photos belong
+  on that equipment's line item. So ONE general closet photo schema (`field_2456`) serves every system —
+  no per-type schema. Photos stay on the closet (`field_1652`) and accumulate across projects (that is the
+  closet's history); each DOC_photos record already says which project / SOW / survey took it
+  (`field_675`, `field_2341`, `field_2423`) and when, so the photo band can show the current survey / SOW
+  first and fold the earlier ones by job. On sub surfaces show "Sub" / "SCW", never the uploader's company.
+- One ## per closet per site, shared by both SOWs; never renumber an INSTALLED closet (its number may be on
+  cable labels). Optional later: "Also in this closet: N access control devices (SOW …)" on a closet card.
 - Not built yet: the Make merge scenario (input = a reviewed group: survivor + losers).
 
 ### Next steps

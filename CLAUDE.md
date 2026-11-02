@@ -819,8 +819,8 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
 
 **Read `docs/locations.md` before touching MDF/IDFs, sites or designators.** Decided with Micah: MDF/IDF
 records (`object_96`) move to the Site (`field_2848` required; every project at a site sees every closet;
-the project link `field_1648` stays single = "created on"; duplicates are merged by a Make scenario into a
-survivor and kept as `merged` records); then **Positions** — one device's spot per record, owning the
+the project link `field_1648` stays single = "created on"; duplicates are merged ONLY on a person's decision, by a
+Make scenario, into a survivor and kept as `merged` records; survey notes move to DOC_notes records); then **Positions** — one device's spot per record, owning the
 designator (prefix = kind of spot: E- / I- / AC- / ANT- / ENC- / SW- / NVR- / HUB-, frozen at creation,
 unique per site), products carry their allowed prefixes, a line with a parent shares the parent's Position,
 services / assumptions get a separate many "covers" link. The doc carries the schema facts, the views and
