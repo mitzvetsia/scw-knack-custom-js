@@ -113,11 +113,11 @@ Source each from "MDF/IDFs connected to this project's Site" (parent_source `obj
   "installed" on 147 closets (probably the install / greenlight path).
 - **Merge scenario (to build)** — runs ONLY on a person's decision (a group in the review file marked KEEP on
   one row + MERGE on others, or later the "Merge into…" action); nothing merges on its own. Input =
-  survivor id + loser ids. Survey notes need no append once they live on DOC_notes (below): re-point those
-  notes' closet link like the line items. Re-point every record pointing at a
+  survivor id + loser ids. Re-point every record pointing at a
   loser: `field_1946`, `field_2375`, `field_2818`, `field_2720` (single → survivor),
   `field_2144`, `field_2438` (many → swap loser for survivor, distinct). On the survivor: union
-  `field_1652` photos, `field_2435`; append notes / survey notes with the loser's label. Loser:
+  `field_1652` photos, `field_2435`; append the loser's notes with its label, and its survey-notes entries
+  under the survivor's (both logs are newest first; keep each entry's own stamp). Loser:
   lifecycle `merged` + "Merged into" = survivor. Run sequentially (Make "Sequential processing")
   — the unions are read-modify-write. Skip DTO rows (transient).
 - **Why Make, not a CSV re-upload, for merges**: exports show a closet by its display name, and
@@ -194,15 +194,27 @@ Run: `python3 -I tools/mdf_site_cleanup.py <projects.csv> <sites.csv> <mdfidf.cs
   a per-survey copy + diff would recreate the duplicate problem the site rework is cleaning up. The survey adds
   OBSERVATIONS to the one closet, never a copy of it. Revisit only if ops finds itself regularly copying
   structured sub findings (rack space, power circuit…) into closet fields.
-- **Survey notes → a stamped log in the SAME field** (`field_2457`; recommended 2026-11-02, replacing the
-  DOC_notes idea, which would add records and views for no visible gain to the sub). The sub keeps typing in
-  the closet panel's survey-notes box exactly as today (`mdf-notes.js`: on the survey scene view_3617 the panel
-  already shows ops' Notes `field_1643` read-only and makes Survey Notes the editable field); the page
-  re-reads the field and APPENDS a stamped line — `[11/02/2026 · Sub · SR262] no free outlet on the rack` —
-  instead of overwriting, and renders the log newest first. Readable plain text everywhere (Knack, Make,
-  exports), no JSON. Two saves in the same second could still collide (rare); camera and access control subs
-  see each other's closet observations (facts about the customer's room — acceptable). Corrections to the
-  closet's own facts (name, ##, where) are applied by ops by hand; nothing applies automatically.
+- **Survey notes → a stamped log in the SAME field** (`field_2457`; BUILT 2026-11-02, replacing the DOC_notes
+  idea, which would add records and views for no visible gain to the sub). The stamp names the date and the
+  SURVEY RECORD only — never the person or the company (Micah: "let's not include the sub name … just
+  identifying by Survey Record would be enough"): `[11/02/2026 · SR262] no free outlet on the rack`. The sub
+  types in the closet band's survey-notes box as before (`mdf-notes.js`, survey scene view_3617), but the box
+  starts EMPTY and a blur ADDS the entry on top: `mdf-edit-core.js` `appendSurveyNote` GETs the record first
+  (an entry another survey added since the page loaded is kept), prepends, and saves through the shared PUT
+  (drop detection, model sync); it refuses to write when it cannot read the current notes. Text from before
+  the log is marked `[Earlier notes] …` by the first append so it stays its own entry. Readable plain text
+  everywhere (Knack, Make, exports), no JSON. Who sees what: sub surfaces (`mdfManage.surveyLog: 'own'` —
+  the survey page view_3505 and the sub deployment dashboard view_4056) show only the page's survey's entries
+  plus the earlier text, so one group never reads another group's survey notes on screen (the whole field
+  still rides in the page's data — anyone reading the network traffic sees it); ops surfaces (build SOW,
+  deploy, sales, reconcile, review surveys) show every entry, read-only. The location cards
+  (`mdf-idf-cards.js`) follow the same rule: an "add" box on a survey page, a read-only log elsewhere — never
+  an overwrite box. **Builder (recommended)**: turn off inline editing of `field_2457` on the grids outside
+  survey pages (view_3577, view_3602, view_3822, view_3892, view_3894, view_3932, view_4060, view_4084,
+  view_4114) — the native table toggle would still let a user overwrite the log there; the create form
+  view_3773 writes the first note unstamped (it reads as "Earlier notes"). Two saves in the same second could
+  still collide (rare). Corrections to the closet's own facts (name, ##, where) are applied by ops by hand;
+  nothing applies automatically. Test: `tests/worksheet-v2/test-mdf-survey-notes-log.js`.
 - **"What we know" on the survey page**: the panel's read-only part (name, ##, ops Notes, photos) plus the
   devices this survey home-runs there; once closets are site-level, also the equipment already INSTALLED there
   on past jobs (install items `field_2818`, site `field_2847` — a hidden install-items grid on the survey

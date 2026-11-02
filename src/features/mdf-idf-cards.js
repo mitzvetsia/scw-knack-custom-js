@@ -239,6 +239,11 @@
     var noteBits = [];
     for (var i = 0; i < NOTE_FIELDS.length; i++) {
       var f = NOTE_FIELDS[i];
+      if (f.key === F.surveyNotes && window.SCW && SCW.mdfEdit && SCW.mdfEdit.renderSurveyLog) {
+        var logBit = surveyNotesBit(viewKey, recId, tr, attrs);
+        if (logBit) noteBits.push(logBit);
+        continue;
+      }
       var v = val(attrs, tr, f.key);
       var editable = isEditable(tr, f.key);
       if (!editable && !v) continue;
@@ -258,12 +263,83 @@
     return card;
   }
 
+  // ── survey notes: a stamped log (mdf-edit-core.js, 2026-11-02) ──────────
+  // Never an overwrite box. On a survey page (the route names a survey
+  // request) whose grid lets the field be edited: this survey's entries
+  // (plus unstamped earlier text) and an empty "add a note" input that adds
+  // an entry "[11/02/2026 · SR1145] …" on top. Anywhere else: every entry,
+  // read-only — survey notes are the surveys' to write.
+  function surveyLogText(attrs, tr) {
+    if (attrs) {
+      var r = attrs[F.surveyNotes + '_raw'];
+      if (r != null && typeof r !== 'object') return String(r);
+      if (attrs[F.surveyNotes] != null && typeof attrs[F.surveyNotes] !== 'object') return String(attrs[F.surveyNotes]);
+    }
+    var td = tr && tr.querySelector('td.' + F.surveyNotes + ', td[data-field-key="' + F.surveyNotes + '"]');
+    return td ? td.innerHTML : '';   // the core turns <br> into line breaks
+  }
+  function surveyNotesBit(viewKey, recId, tr, attrs) {
+    var core = SCW.mdfEdit;
+    var ctx = core.surveyContext();
+    var canAdd = !!ctx && isEditable(tr, F.surveyNotes);
+    var log = core.renderSurveyLog(surveyLogText(attrs, tr),
+      { ownOnly: !!ctx, only: ctx ? ctx.label : '' });
+    if (!canAdd && !log) return '';
+    return '<div class="scw-mdf-note scw-mdf-note--log"><span class="scw-mdf-note__l">Survey notes</span>' +
+      '<div class="scw-mdf-svlog-wrap" data-scw-mdf-svlog="' + esc(recId) + '">' + log + '</div>' +
+      (canAdd
+        ? input(viewKey, recId, F.surveyNotes, '', 'scw-mdf-note__input',
+            'data-append="1" placeholder="Add a survey note" aria-label="Add a survey note"')
+        : '') +
+      '</div>';
+  }
+  function appendSurveyInput(el, viewKey, recId) {
+    var text = el.value;
+    if (!String(text).trim()) { el.value = ''; return; }
+    if (el.getAttribute('data-scw-sending') === '1') return;
+    var core = SCW.mdfEdit;
+    var ctx = core.surveyContext() || { label: '' };
+    el.setAttribute('data-scw-sending', '1');
+    el.classList.add('scw-mdf-input--saving');
+    function flagErr(a, b) {
+      el.removeAttribute('data-scw-sending');
+      el.classList.remove('scw-mdf-input--saving');
+      el.classList.add('scw-mdf-input--err');
+      var msg = typeof a === 'string' ? a : (typeof b === 'string' ? b : '');
+      if (msg) el.title = msg;
+      setTimeout(function () { el.classList.remove('scw-mdf-input--err'); }, 2500);
+    }
+    var started = core.appendSurveyNote({
+      viewKey: viewKey, recordId: recId, text: text, survey: ctx.label,
+      onDone: function (res) {
+        if (res.dropped.length) return;   // onDropped already flagged it
+        el.removeAttribute('data-scw-sending');
+        el.removeAttribute('title');
+        el.classList.remove('scw-mdf-input--saving');
+        var now = el.value;   // keep anything typed while the save was in flight
+        el.value = now.indexOf(text) === 0 ? now.slice(text.length).replace(/^\s+/, '') : now;
+        var note = el.closest('.scw-mdf-note');
+        var wrap = note && note.querySelector('[data-scw-mdf-svlog]');
+        if (wrap) wrap.innerHTML = core.renderSurveyLog(res.value, { ownOnly: true, only: ctx.label });
+        el.classList.add('scw-mdf-input--saved');
+        setTimeout(function () { el.classList.remove('scw-mdf-input--saved'); }, 1200);
+      },
+      onDropped: flagErr,
+      onError: flagErr
+    });
+    if (!started) { el.removeAttribute('data-scw-sending'); el.classList.remove('scw-mdf-input--saving'); }
+  }
+
   // ── inline save ─────────────────────────────────────────────
   function saveInput(el) {
     var viewKey = el.getAttribute('data-view');
     var recId   = el.getAttribute('data-rec');
     var field   = el.getAttribute('data-field');
     if (!viewKey || !recId || !field) return;
+    if (el.getAttribute('data-append') === '1') {
+      if (window.SCW && SCW.mdfEdit && SCW.mdfEdit.appendSurveyNote) appendSurveyInput(el, viewKey, recId);
+      return;
+    }
     if (el.getAttribute('data-scw-saved-val') === el.value) return;   // unchanged
     if (!(window.SCW && SCW.mdfEdit)) return;
     var value = el.value;
@@ -509,6 +585,8 @@
       '.scw-mdf-note { display: flex; flex-direction: column; gap: 3px; min-width: 0; }',
       '.scw-mdf-note__l { font: 700 10px/1 system-ui, sans-serif; text-transform: uppercase; letter-spacing: .4px; color: #94a3b8; }',
       '.scw-mdf-note__input { width: 100%; box-sizing: border-box; }',
+      '.scw-mdf-svlog-wrap { margin: 2px 0 4px; }',
+      '.scw-mdf-svlog-wrap:empty { display: none; }',
 
       '.scw-mdf-card__aside { flex: none; display: flex; align-items: center; gap: 6px; }',
       '.scw-mdf-photos { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px;',

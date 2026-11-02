@@ -569,9 +569,15 @@
         // editable band field and ops' Notes (field_1643) shows read-only in
         // the callout — matching which columns view_3617 inline-edits
         // (field_1643 has no cell-edit there, so a PUT would be dropped).
+        // Survey notes are a stamped LOG (mdf-edit-core.js, 2026-11-02): the
+        // band's box adds an entry "[11/02/2026 · SR1145] …" on top — never
+        // overwrites another survey's — and surveyLog 'own' shows this sub
+        // only this survey's entries (plus unstamped text written before the
+        // log existed). The stamp names the survey record, never the person.
         mdfManage: { viewKey: 'view_3617',
                      notesField: 'field_2457',  notesLabel: 'Survey Notes',
-                     calloutField: 'field_1643', calloutLabel: 'SCW Notes' },
+                     calloutField: 'field_1643', calloutLabel: 'SCW Notes',
+                     surveyLog: 'own' },
         // "+ Add MDF/IDF" toolbar CTA — clicks the (hidden) view_3509 menu
         // link (#new-add-mdfidf/<requestId>), replacing the standalone menu.
         addMdfMenuView:    'view_3509',
@@ -864,7 +870,12 @@
     // NOTE: view_4060 must have inline editing enabled in Builder on
     // field_1641/field_2458/field_1943/field_1643 (saves PUT through
     // it) and a Delete link for location delete to authorize.
-    clone.mdfManage          = { viewKey: 'view_4060', notesField: 'field_1643' };
+    // surveyLog 'own': the survey-notes callout shows the sub no stamped
+    // entry (this page is about no survey) — only unstamped earlier text.
+    // One group never reads another group's survey notes; SCW Notes is the
+    // shared channel.
+    clone.mdfManage          = { viewKey: 'view_4060', notesField: 'field_1643',
+                                 surveyLog: 'own' };
     // Designator editing is an SCW-ops gesture (deploy page only) — the sub
     // never re-labels installed items.
     delete clone.designatorEdit;

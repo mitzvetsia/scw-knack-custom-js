@@ -820,11 +820,21 @@ the changes. **Read `docs/change-orders.md` before touching anything CO-related*
 **Read `docs/locations.md` before touching MDF/IDFs, sites or designators.** Decided with Micah: MDF/IDF
 records (`object_96`) move to the Site (`field_2848` required; every project at a site sees every closet;
 the project link `field_1648` stays single = "created on"; duplicates are merged ONLY on a person's decision, by a
-Make scenario, into a survivor and kept as `merged` records; survey notes become a stamped log in `field_2457`; no per-survey closet records); then **Positions** — one device's spot per record, owning the
+Make scenario, into a survivor and kept as `merged` records; no per-survey closet records); then **Positions** — one device's spot per record, owning the
 designator (prefix = kind of spot: E- / I- / AC- / ANT- / ENC- / SW- / NVR- / HUB-, frozen at creation,
 unique per site), products carry their allowed prefixes, a line with a parent shares the parent's Position,
 services / assumptions get a separate many "covers" link. The doc carries the schema facts, the views and
 scenarios to change, the data findings, the field cleanup list and the open questions.
+
+**Closet survey notes are a stamped, append-only log (built 2026-11-02)** — `mdf-edit-core.js`
+`appendSurveyNote` / `renderSurveyLog`: a survey ADDS `[11/02/2026 · SR1145] text` on top of `field_2457` (GET
+first, then the shared PUT; the stamp names the survey record, NEVER the person or company; refuses to write
+when it cannot read the current notes; old unstamped text is marked `[Earlier notes]` by the first append).
+The survey page band (`mdf-notes.js`, view_3505 → view_3617) and the location cards on a survey route
+(`mdf-idf-cards.js`) offer an empty "add a survey note" box; everywhere else survey notes render read-only as
+entries (also the reconcile callout and survey review). `mdfManage.surveyLog: 'own'` (view_3505, view_4056)
+shows only the page's survey's entries + the earlier text. Builder: turn off inline edit of `field_2457` on
+the non-survey grids (list in docs/locations.md). Test: `tests/worksheet-v2/test-mdf-survey-notes-log.js`.
 
 ## SOW add-item modal (live 2026-10-08) — `src/features/worksheet-v2/sow-add-item-form.js`
 

@@ -52,6 +52,11 @@
  *                                          failure); message names the fix
  *     onError(message, xhr)              — HTTP error, message is
  *                                          user-displayable
+ *   Survey notes log (field_2457 — see the section above the export):
+ *   surveyContext(hash?)  — { id, label: 'SR1145' } of the page's survey, or null
+ *   composeSurveyEntry(text, label, date?) / parseSurveyLog(text)
+ *   visibleSurveyEntries(text, { ownOnly, only }) / renderSurveyLog(text, opts)
+ *   appendSurveyNote({ viewKey, recordId, text, survey, onDone, onDropped, onError })
  ****************************************************************************/
 (function () {
   'use strict';
@@ -338,13 +343,271 @@
     });
   }
 
+  // ── SURVEY NOTES LOG (field_2457) ──────────────────────────────────────
+  // A closet's survey notes are one field shared by every survey of the
+  // site, so a survey ADDS an entry instead of overwriting what an earlier
+  // survey wrote (decided 2026-11-02). Each entry opens with a stamp line
+  // naming the date and the SURVEY RECORD only — never the person or the
+  // company:
+  //
+  //     [11/02/2026 · SR1145] Rack is full; two open ports on the patch panel.
+  //
+  //     [10/14/2026 · SR1102] Closet locked — key with the front desk.
+  //
+  // Newest first (an append PREPENDS). Text written before the log existed
+  // has no stamp: the first append marks it "[Earlier notes] …" so it stays
+  // its own entry at the bottom instead of running into the entry above it.
+  // Sub-facing surfaces show only the current survey's entries (plus the
+  // unstamped earlier text, which every sub at the site could already
+  // read); ops surfaces show every entry.
+  var SURVEY_STAMP_RE = /^\[(\d{1,2}\/\d{1,2}\/\d{4})\s*·\s*([^\]\n]*)\]\s?(.*)$/;
+  var EARLIER_TAG = '[Earlier notes]';
+  var EARLIER_RE = /^\[Earlier notes\]\s?(.*)$/i;
+  var SURVEY_ROUTE_RE = /site-survey-request-details2?\/([a-f0-9]{24})/gi;
+  var SURVEY_ID_FIELD = 'field_2345';   // object_113 REQ_ID "60524852230-SR1145"
+  var LOG_STYLE_ID = 'scw-mdf-svlog-css';
+
+  function plainText(v) {
+    return String(v == null ? '' : v).replace(/\r\n?/g, '\n')
+      .replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  }
+
+  /** "60524852230-SR1145" / "SR-1145" → "SR1145"; anything else as given. */
+  function shortSurveyLabel(identifier) {
+    var s = plainText(identifier).trim();
+    var m = /SR\s*-?\s*(\d+)/i.exec(s);
+    return m ? 'SR' + m[1] : s;
+  }
+
+  function stampDate(d) {
+    d = d || new Date();
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return p(d.getMonth() + 1) + '/' + p(d.getDate()) + '/' + d.getFullYear();
+  }
+
+  /** The survey request this page is about: the DEEPEST
+   *  site-survey-request-details(2)/<id> segment of the route (Knack nests a
+   *  page under the page it was opened from — never take the first match),
+   *  labelled from any loaded record that names it. null off survey pages. */
+  var _ctxMemo = { id: '', label: '' };   // a found label, per survey id
+  function surveyContext(hash) {
+    var h = hash != null ? String(hash) : String((window.location && window.location.hash) || '');
+    var id = '', m;
+    SURVEY_ROUTE_RE.lastIndex = 0;
+    while ((m = SURVEY_ROUTE_RE.exec(h))) id = m[1];
+    if (!id) return null;
+    if (_ctxMemo.id === id && _ctxMemo.label) return { id: id, label: _ctxMemo.label };
+    var label = '';
+    var own = Object.prototype.hasOwnProperty;
+    function look(a) {
+      if (!a) return '';
+      if (a.id === id) {
+        var idf = a[SURVEY_ID_FIELD + '_raw'] != null ? a[SURVEY_ID_FIELD + '_raw'] : a[SURVEY_ID_FIELD];
+        if (idf) return plainText(idf);
+        if (a.identifier) return plainText(a.identifier);
+      }
+      for (var k in a) {
+        if (!own.call(a, k) || !/_raw$/.test(k) || !Array.isArray(a[k])) continue;
+        for (var i = 0; i < a[k].length; i++) {
+          var c = a[k][i];
+          if (c && c.id === id && c.identifier != null && c.identifier !== '') return plainText(c.identifier);
+        }
+      }
+      return '';
+    }
+    try {
+      var views = (window.Knack && Knack.views) || {};
+      for (var vk in views) {
+        if (!own.call(views, vk) || label) continue;
+        var mdl = views[vk] && views[vk].model;
+        if (!mdl) continue;
+        if (mdl.attributes && mdl.attributes.id) label = look(mdl.attributes);
+        var rows = (mdl.data && mdl.data.models) || [];
+        for (var r = 0; r < rows.length && !label; r++) label = look(rows[r] && (rows[r].attributes || rows[r]));
+      }
+    } catch (e) { /* not on a Knack page */ }
+    label = label ? shortSurveyLabel(label) : '';
+    if (label) _ctxMemo = { id: id, label: label };
+    return { id: id, label: label };
+  }
+
+  function composeSurveyEntry(text, surveyLabel, date) {
+    var body = plainText(text).replace(/\n{3,}/g, '\n\n').trim();
+    if (!body) return '';
+    return '[' + stampDate(date) + ' · ' + (String(surveyLabel || '').trim() || 'Survey') + '] ' + body;
+  }
+
+  /** Stored text → entries in stored order (newest first). The text after
+   *  an "[Earlier notes]" marker, and any unstamped text above the first
+   *  stamp (a field no survey has added to yet), is ONE legacy entry, kept
+   *  last. */
+  function parseSurveyLog(text) {
+    var lines = plainText(text).split('\n');
+    var entries = [], legacy = [], cur = null;
+    for (var i = 0; i < lines.length; i++) {
+      var m = SURVEY_STAMP_RE.exec(lines[i]);
+      var e = !m && EARLIER_RE.exec(lines[i]);
+      if (m) {
+        cur = { date: m[1], survey: m[2].trim(), lines: [m[3]], legacy: false };
+        entries.push(cur);
+      } else if (e) {
+        cur = { lines: legacy, legacy: true };
+        legacy.push(e[1]);
+      } else if (cur) {
+        cur.lines.push(lines[i]);
+      } else {
+        legacy.push(lines[i]);
+      }
+    }
+    var out = [];
+    for (var j = 0; j < entries.length; j++) {
+      var t = entries[j].lines.join('\n').trim();
+      if (t) out.push({ date: entries[j].date, survey: entries[j].survey, text: t, legacy: false });
+    }
+    var lt = legacy.join('\n').trim();
+    if (lt) out.push({ date: '', survey: '', text: lt, legacy: true });
+    return out;
+  }
+
+  /** The stored text with any unstamped, unmarked text that opens it marked
+   *  "[Earlier notes]" — done once, by the first append. */
+  function markEarlier(cur) {
+    if (!cur) return cur;
+    var first = cur.split('\n')[0];
+    return (SURVEY_STAMP_RE.test(first) || EARLIER_RE.test(first)) ? cur : EARLIER_TAG + ' ' + cur;
+  }
+
+  /** Entries a surface may show. opts.only = a survey label → that survey's
+   *  entries + the unstamped earlier text; opts.ownOnly with no label → the
+   *  earlier text alone (a sub surface that is about no survey). */
+  function visibleSurveyEntries(text, opts) {
+    var all = parseSurveyLog(text);
+    opts = opts || {};
+    if (!opts.ownOnly) return all;
+    var mine = String(opts.only || '').toUpperCase();
+    return all.filter(function (e) {
+      return e.legacy || (mine && String(e.survey).toUpperCase() === mine);
+    });
+  }
+
+  function injectLogStyles() {
+    if (document.getElementById(LOG_STYLE_ID)) return;
+    var style = document.createElement('style');
+    style.id = LOG_STYLE_ID;
+    style.textContent = [
+      '.scw-svlog { display: flex; flex-direction: column; gap: 8px; }',
+      '.scw-svlog__e { padding-left: 9px; border-left: 2px solid #cbd5e1; }',
+      '.scw-svlog__e--legacy { border-left-style: dashed; }',
+      '.scw-svlog__meta { font: 700 10px/1.3 system-ui, sans-serif; letter-spacing: .04em;',
+      '  text-transform: uppercase; color: #64748b; }',
+      '.scw-svlog__txt { font: 13px/1.5 system-ui, sans-serif; color: #1e293b; white-space: pre-line; }',
+      '.scw-svlog--empty { font: 13px/1.5 system-ui, sans-serif; color: #94a3b8; }'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+
+  /** The log as HTML (escaped). '' when nothing is visible, unless
+   *  opts.emptyText is given. */
+  function renderSurveyLog(text, opts) {
+    opts = opts || {};
+    var list = visibleSurveyEntries(text, opts);
+    injectLogStyles();
+    if (!list.length) {
+      return opts.emptyText
+        ? '<div class="scw-svlog scw-svlog--empty">' + esc(opts.emptyText) + '</div>' : '';
+    }
+    var html = '';
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i];
+      html += '<div class="scw-svlog__e' + (e.legacy ? ' scw-svlog__e--legacy' : '') + '">' +
+        '<div class="scw-svlog__meta">' +
+          (e.legacy ? 'Earlier notes' : esc(e.date + ' · ' + e.survey)) + '</div>' +
+        '<div class="scw-svlog__txt">' + esc(e.text) + '</div></div>';
+    }
+    return '<div class="scw-svlog">' + html + '</div>';
+  }
+
+  function rawFieldOf(rec, fk) {
+    if (!rec) return null;
+    var v = rec[fk + '_raw'] != null ? rec[fk + '_raw'] : rec[fk];
+    return v == null ? null : plainText(v);
+  }
+  function modelFieldOf(viewKey, recId, fk) {
+    try {
+      var v = Knack.views[viewKey];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        if (models[i] && models[i].id === recId) return rawFieldOf(models[i].attributes, fk);
+      }
+    } catch (e) { /* view not on scene */ }
+    return null;
+  }
+
+  /** Add one stamped entry to a closet's survey notes. Reads the record
+   *  first (another survey may have added an entry since this page loaded),
+   *  puts the new entry on top, and saves through save() — so the PUT gets
+   *  the same drop detection and model sync as every other closet edit.
+   *  opts: { viewKey, recordId, text, survey (label), date?, current?,
+   *          onDone({ value, entry, landed, dropped }), onDropped, onError }
+   *  `current` is the fallback when the read fails (the model's copy). */
+  function appendSurveyNote(opts) {
+    var entry = composeSurveyEntry(opts.text, opts.survey, opts.date);
+    if (!entry) return false;
+    var fk = F.surveyNotes;
+    function write(current) {
+      var cur = markEarlier(plainText(current == null ? '' : current).trim());
+      var value = cur ? entry + '\n\n' + cur : entry;
+      var fields = {}; fields[fk] = value;
+      save({
+        viewKey: opts.viewKey,
+        recordId: opts.recordId,
+        fields: fields,
+        onDone: function (res) {
+          if (opts.onDone) opts.onDone({ value: value, entry: entry, landed: res.landed, dropped: res.dropped, resp: res.resp });
+        },
+        onDropped: opts.onDropped,
+        onError: opts.onError
+      });
+    }
+    var fallback = opts.current != null ? opts.current : modelFieldOf(opts.viewKey, opts.recordId, fk);
+    // Never write blind: when neither the read nor the model carries the
+    // field, the PUT would replace every earlier entry with this one.
+    function writeOrRefuse(v) {
+      if (v != null) return write(v);
+      console.warn('[scw-mdf-edit] survey note NOT added — ' + fk + ' is not a column on ' +
+        opts.viewKey + ', so the existing notes could not be read.');
+      if (opts.onError) opts.onError('Not saved — the existing survey notes could not be read (' +
+        fk + ' is not a column on ' + opts.viewKey + ').', null);
+    }
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(opts.viewKey, opts.recordId),
+      type: 'GET',
+      success: function (resp) {
+        var v = rawFieldOf(recOf(resp), fk);
+        writeOrRefuse(v != null ? v : fallback);
+      },
+      error: function () { writeOrRefuse(fallback); }
+    });
+    return true;
+  }
+
   SCW.mdfEdit = {
     FIELDS: F,
     parseDisplayName: parseDisplayName,
     composeLabel: composeLabel,
     patchConnectionIdentifiers: patchConnectionIdentifiers,
     patchSourceViewDom: patchSourceViewDom,
-    save: save
+    save: save,
+    // survey notes log
+    surveyContext: surveyContext,
+    shortSurveyLabel: shortSurveyLabel,
+    composeSurveyEntry: composeSurveyEntry,
+    parseSurveyLog: parseSurveyLog,
+    visibleSurveyEntries: visibleSurveyEntries,
+    renderSurveyLog: renderSurveyLog,
+    appendSurveyNote: appendSurveyNote
   };
 })();
 /*** END MDF/IDF EDIT CORE ****************************************************/

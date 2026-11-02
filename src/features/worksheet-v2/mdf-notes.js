@@ -34,6 +34,13 @@
  * sub-facing survey scene (view_3505 → view_3617) inverts them — its
  * audience WRITES survey notes and only reads ops' notes (and view_3617
  * only inline-edits field_2457, so a field_1643 PUT would be dropped).
+ *
+ * Survey notes (field_2457) are a STAMPED LOG since 2026-11-02 (mdf-edit-core
+ * appendSurveyNote): where they are the edit field the box starts empty and
+ * what is typed is ADDED on top as "[11/02/2026 · SR1145] …" — never an
+ * overwrite of another survey's entry; where they are the callout they render
+ * as entries. `surveyLog: 'own'` (sub-facing) shows only the page's survey's
+ * entries plus the unstamped earlier text.
  ****************************************************************************/
 (function () {
   'use strict';
@@ -277,6 +284,9 @@
       '.' + P + '-band-ta--saving { border-color: #93c5fd !important; }',
       '.' + P + '-band-ta--saved  { background: #dcfce7 !important; border-color: #4ade80 !important; }',
       '.' + P + '-band-ta--err    { background: #fef2f2 !important; border-color: #fca5a5 !important; }',
+      /* Survey notes are a stamped log: entries above, an empty add box below. */
+      '.' + P + '-band-log { margin-bottom: 8px; }',
+      '.' + P + '-band-log:empty { display: none; }',
       '.' + P + '-band-notes { font: 13px/1.5 system-ui, sans-serif; color: #1e293b;',
       '  white-space: pre-line; }',
       '.' + P + '-band-notes--empty { color: #94a3b8; }',
@@ -466,8 +476,17 @@
       editField:    (cfg && cfg.notesField)   || F.notes,
       editLabel:    (cfg && cfg.notesLabel)   || 'SCW Notes',
       calloutField: (cfg && cfg.calloutField) || F.surveyNotes,
-      calloutLabel: (cfg && cfg.calloutLabel) || 'Survey Notes'
+      calloutLabel: (cfg && cfg.calloutLabel) || 'Survey Notes',
+      // Survey notes (field_2457) are a stamped log (mdf-edit-core.js). 'own' =
+      // a sub-facing surface: only the page's survey's entries (+ the
+      // unstamped earlier text) are shown; 'all' = every survey's entries.
+      logScope:     (cfg && cfg.surveyLog === 'own') ? 'own' : 'all'
     };
+  }
+
+  /** Which survey-notes entries a band may show (see notesCfg.logScope). */
+  function logOpts(nc, survey) {
+    return { ownOnly: nc.logScope === 'own', only: (survey && survey.label) || '' };
   }
 
   /** Optional per-deployment delete gate (config mdfManage.deleteGate):
@@ -563,6 +582,17 @@
 
     var sNotes = attrs ? fieldText(attrs, nc.calloutField) : '';
     var notes  = attrs ? fieldText(attrs, nc.editField) : '';
+    // Survey notes are a stamped log wherever they show: read-only in the
+    // callout (ops pages), entries + an empty "add a note" box where this
+    // page's audience writes them (the survey page).
+    var isLog = nc.editField === F.surveyNotes;
+    var survey = (isLog || nc.calloutField === F.surveyNotes) ? core.surveyContext() : null;
+    var calloutBody = '';
+    if (nc.calloutField === F.surveyNotes) {
+      calloutBody = core.renderSurveyLog(sNotes, logOpts(nc, survey));
+    } else if (sNotes) {
+      calloutBody = '<div class="' + P + '-callout-txt">' + esc(sNotes) + '</div>';
+    }
 
     // Per-photo ×: a hard DELETE on scenes with a delete-authorizing
     // DOC_photos view (ops surfaces), a soft REMOVE (image cleared, record
@@ -627,11 +657,11 @@
       // The callout field stays READ-ONLY (the other audience's territory —
       // same rule as the comparison page); the edit field saves on blur.
       // Which is which flips per deployment — see notesCfg.
-      (sNotes
+      (calloutBody
         ? '<div class="' + P + '-callout">' +
             '<span class="' + P + '-callout-ic">' + DOC_SVG + '</span>' +
             '<div><div class="' + P + '-callout-lbl">' + esc(nc.calloutLabel) + '</div>' +
-            '<div class="' + P + '-callout-txt">' + esc(sNotes) + '</div></div>' +
+            calloutBody + '</div>' +
           '</div>'
         : '') +
       '<div class="' + P + '-band-grid">' +
@@ -641,11 +671,23 @@
         '</div>' +
         '<div class="' + P + '-band-sec">' +
           '<div class="' + P + '-lbl">' + esc(nc.editLabel) + '</div>' +
-          '<textarea class="' + P + '-band-ta" placeholder="Add notes — saves when you click away"></textarea>' +
+          (isLog
+            ? '<div class="' + P + '-band-log" data-scw-ws-v2-mdf-log>' +
+                core.renderSurveyLog(notes, logOpts(nc, survey)) + '</div>' +
+              '<textarea class="' + P + '-band-ta" placeholder="Add a survey note — saves when you click away"></textarea>'
+            : '<textarea class="' + P + '-band-ta" placeholder="Add notes — saves when you click away"></textarea>') +
         '</div>' +
       '</div>';
     var ta = band.querySelector('.' + P + '-band-ta');
-    if (ta) {
+    if (ta && isLog) {
+      // An empty box: what is typed becomes a NEW stamped entry on top of
+      // the log — nothing an earlier survey wrote is ever replaced.
+      ta.value = '';
+      ta.addEventListener('blur', function () {
+        appendBandNote(ta, cfg.viewKey, l1.id, nc,
+          band.querySelector('[data-scw-ws-v2-mdf-log]'));
+      });
+    } else if (ta) {
       ta.value = notes;
       ta.setAttribute('data-scw-saved-val', notes);
       ta.addEventListener('blur', function () {
@@ -653,6 +695,50 @@
       });
     }
     return band;
+  }
+
+  /** Blur-save for the survey-notes box: ADD one entry stamped with the date
+   *  and the page's survey record (never the person or company) on top of
+   *  the closet's log — mdf-edit-core reads the record first, so an entry
+   *  another survey added since the page loaded is kept. The typed text
+   *  stays in the box when the save fails. */
+  function appendBandNote(ta, manageViewKey, recId, nc, logEl) {
+    var text = ta.value;
+    if (!String(text).trim()) { ta.value = ''; return; }
+    if (ta.getAttribute('data-scw-sending') === '1') return;
+    var survey = core.surveyContext() || { label: '' };
+    armScrollGuard();
+    ta.setAttribute('data-scw-sending', '1');
+    ta.classList.add(P + '-band-ta--saving');
+    function flagErr(a, b) {
+      ta.removeAttribute('data-scw-sending');
+      ta.classList.remove(P + '-band-ta--saving');
+      ta.classList.add(P + '-band-ta--err');
+      var msg = typeof a === 'string' ? a : (typeof b === 'string' ? b : '');
+      if (msg) ta.title = msg;
+      setTimeout(function () { ta.classList.remove(P + '-band-ta--err'); }, 2500);
+    }
+    var started = core.appendSurveyNote({
+      viewKey:  manageViewKey,
+      recordId: recId,
+      text:     text,
+      survey:   survey.label,
+      onDone: function (res) {
+        if (res.dropped.length) return;   // onDropped already flagged it
+        ta.removeAttribute('data-scw-sending');
+        ta.removeAttribute('title');
+        ta.classList.remove(P + '-band-ta--saving');
+        // Keep anything typed while the save was in flight.
+        var now = ta.value;
+        ta.value = now.indexOf(text) === 0 ? now.slice(text.length).replace(/^\s+/, '') : now;
+        if (logEl) logEl.innerHTML = core.renderSurveyLog(res.value, logOpts(nc, survey));
+        ta.classList.add(P + '-band-ta--saved');
+        setTimeout(function () { ta.classList.remove(P + '-band-ta--saved'); }, 1200);
+      },
+      onDropped: flagErr,
+      onError: flagErr
+    });
+    if (!started) { ta.removeAttribute('data-scw-sending'); ta.classList.remove(P + '-band-ta--saving'); }
   }
 
   /** Blur-save for the band's inline SCW Notes textarea — through the
@@ -1485,6 +1571,8 @@
 
   injectStyles();
 
-  ns.mdfNotes = { headerControl: headerControl, retrofit: retrofit };
+  // _detailBand: test seam only. The band reaches the page through retrofit()
+  // (render.js asks for a `detailBand` export this module does not publish).
+  ns.mdfNotes = { headerControl: headerControl, retrofit: retrofit, _detailBand: detailBand };
 })();
 /*** END WORKSHEET V2 — MDF/IDF LOCATION MANAGE *******************************/

@@ -1664,9 +1664,12 @@
     return String(v == null ? '' : v).replace(/<[^>]*>/g, ' ')
       .replace(/\s+/g, ' ').trim();
   }
+  // Survey notes are a stamped log (mdf-edit-core.js) — keep the line breaks
+  // so the entries stay apart.
   function notesFromRecord(rec) {
     if (!rec) return '';
-    return stripTags(rec.field_2457_raw != null ? rec.field_2457_raw : rec.field_2457);
+    return String(rec.field_2457_raw != null ? rec.field_2457_raw : (rec.field_2457 || ''))
+      .replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, ' ').replace(/[ \t]+/g, ' ').trim();
   }
   function notesFromModel(mdfIdfId, label) {
     var recs = [];
@@ -1733,7 +1736,9 @@
         '<span class="scw-bid-review-v2__l1-survey-notes-icon">' + SURVEY_NOTES_SVG + '</span>' +
         '<div class="scw-bid-review-v2__l1-survey-notes-body">' +
           '<div class="scw-bid-review-v2__l1-survey-notes-label">Survey Notes</div>' +
-          '<div class="scw-bid-review-v2__l1-survey-notes-text">' + escapeHtml(txt) + '</div>' +
+          ((window.SCW.mdfEdit && window.SCW.mdfEdit.renderSurveyLog)
+            ? window.SCW.mdfEdit.renderSurveyLog(txt)
+            : '<div class="scw-bid-review-v2__l1-survey-notes-text">' + escapeHtml(txt) + '</div>') +
         '</div>' +
       '</div>';
     tr.appendChild(td);

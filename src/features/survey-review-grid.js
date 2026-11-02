@@ -841,8 +841,10 @@
     // Photos: scrape from the v3894 row DOM (same lightbox pattern
     // as the cell photos — clicks routed through openPhotoLightbox).
     var photosHtml = scrapeCellHtml(tr, MDF_FIELD_PHOTOS);
-    var surveyNotes = (attrs && attrs[MDF_FIELD_SURVEY_NOTES])
-      ? String(attrs[MDF_FIELD_SURVEY_NOTES]).replace(/<[^>]*>/g, '').trim() : '';
+    var surveyNotesSrc = attrs ? (attrs[MDF_FIELD_SURVEY_NOTES + '_raw'] != null
+      ? attrs[MDF_FIELD_SURVEY_NOTES + '_raw'] : attrs[MDF_FIELD_SURVEY_NOTES]) : '';
+    var surveyNotes = surveyNotesSrc
+      ? String(surveyNotesSrc).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').trim() : '';
     var notes = (attrs && attrs[MDF_FIELD_NOTES])
       ? String(attrs[MDF_FIELD_NOTES]).replace(/<[^>]*>/g, '').trim() : '';
 
@@ -854,9 +856,13 @@
         photosHtml + '</div>');
     }
     if (surveyNotes) {
+      // A stamped log since 2026-11-02 (mdf-edit-core.js): one entry per
+      // survey, "[date · SR####]" — shown as entries, newest first.
+      var logHtml = (window.SCW && SCW.mdfEdit && SCW.mdfEdit.renderSurveyLog)
+        ? SCW.mdfEdit.renderSurveyLog(surveyNotes) : '';
       parts.push('<div class="scw-srv-mdf-notes">' +
         '<span class="scw-srv-mdf-notes-label">Surveyor notes:</span> ' +
-        escapeHtml(surveyNotes) + '</div>');
+        (logHtml || escapeHtml(surveyNotes)) + '</div>');
     }
     if (notes) {
       parts.push('<div class="scw-srv-mdf-notes">' +
