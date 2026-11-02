@@ -189,15 +189,25 @@ Run: `python3 -I tools/mdf_site_cleanup.py <projects.csv> <sites.csv> <mdfidf.cs
   camera project's closet with an access control project's. The closet is shared and carries no system
   type; each SOW's lines point at it, so every worksheet, bid and proposal (all filtered by SOW) shows only
   its own SOW's equipment under the closet. The review file has a "Project type" column for reference.
-- **Survey notes → DOC_notes records** (decided 2026-11-02 over a JSON blob on the closet). `object_30`
-  DOC_notes already has Notes, Note Date, Created By, project / SOW connections and the pinned flag; add
-  "REL_mdf-idf" (one closet) and "REL_survey request" (one). Each survey's note on a closet is its own record
-  — no read-modify-write of a shared blob (two people saving never lose an entry), a sub's page views only
-  its own survey's notes (a blob would ship every sub's notes to every browser), and Make / Knack read plain
-  fields. Migration: the 79 closets with survey notes → one DOC_notes record each, on the closet's survey
-  request when it has exactly one. `field_2457` is then retired. Closet Notes `field_1643` (266 real ones)
-  stay closet facts ("key at front desk"). Bundle: `mdf-notes.js` and the reconcile / survey MDF bands render
-  and add the note records instead of editing `field_2457`.
+- **No per-survey closet records** (recommended 2026-11-02 after Micah: "I really don't want to create 'MDF
+  Survey records'… keeping track of all that and diffing all that feels overwhelming"). A closet has few facts;
+  a per-survey copy + diff would recreate the duplicate problem the site rework is cleaning up. The survey adds
+  OBSERVATIONS to the one closet, never a copy of it. Revisit only if ops finds itself regularly copying
+  structured sub findings (rack space, power circuit…) into closet fields.
+- **Survey notes → a stamped log in the SAME field** (`field_2457`; recommended 2026-11-02, replacing the
+  DOC_notes idea, which would add records and views for no visible gain to the sub). The sub keeps typing in
+  the closet panel's survey-notes box exactly as today (`mdf-notes.js`: on the survey scene view_3617 the panel
+  already shows ops' Notes `field_1643` read-only and makes Survey Notes the editable field); the page
+  re-reads the field and APPENDS a stamped line — `[11/02/2026 · Sub · SR262] no free outlet on the rack` —
+  instead of overwriting, and renders the log newest first. Readable plain text everywhere (Knack, Make,
+  exports), no JSON. Two saves in the same second could still collide (rare); camera and access control subs
+  see each other's closet observations (facts about the customer's room — acceptable). Corrections to the
+  closet's own facts (name, ##, where) are applied by ops by hand; nothing applies automatically.
+- **"What we know" on the survey page**: the panel's read-only part (name, ##, ops Notes, photos) plus the
+  devices this survey home-runs there; once closets are site-level, also the equipment already INSTALLED there
+  on past jobs (install items `field_2818`, site `field_2847` — a hidden install-items grid on the survey
+  scene). Subs adding a closet see the site's closets first ("is it one of these?"); a new one is marked
+  proposed / added by sub for ops review — that is where duplicates are born.
 - **Closet photos are general photos of the closet and everything in it**; equipment-specific photos belong
   on that equipment's line item. So ONE general closet photo schema (`field_2456`) serves every system —
   no per-type schema. Photos stay on the closet (`field_1652`) and accumulate across projects (that is the
