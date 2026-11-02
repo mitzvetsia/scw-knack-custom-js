@@ -81,6 +81,7 @@ for m in M:
         elif len(c) > 1: how = 'old quote %s is on %d projects' % (qn[-1], len(c))
         else: how = 'no project and no traceable quote' if not r['project'] else 'Pour Taproom; no traceable quote'
     r['proj_row'], r['proj_how'] = tp, how
+    r['ptype'] = clean(tp['REL_config_project type']) if tp else ''
     r['rehome'] = bool(tp) and (r['project'] == POUR or not r['project'])
     site, note = (project_site(tp) if tp else (None, how))
     r['site_row'], r['site_note'] = site, note
@@ -172,12 +173,16 @@ for sk, rs in by_site.items():
                 continue  # same name, different numbers: possible (below)
         add(ms, 'actual', ('same name "%s"' % ms[0]['name']) + ('' if k[0] == 'H' else ', same or blank number'))
     # actual: unnamed HEADENDs
-    add([r for r in he if not r['nname']], 'actual', 'unnamed HEADENDs at one site')
+    # an access control project's unnamed default HEADEND is not assumed to be the camera headend:
+    # door hubs often sit in another room. Unnamed groups merge within one system type only; the
+    # possible pass below then asks about the HEADENDs left across types.
+    for t in sorted({r['ptype'] for r in he}):
+        add([r for r in he if not r['nname'] and r['ptype'] == t], 'actual', 'unnamed HEADENDs at one site' + (' (%s projects)' % t if t else ''))
     # actual: unnamed IDFs with the same number
     bynum = defaultdict(list)
     for r in idf:
-        if not r['nname'] and r['num'] is not None: bynum[r['num']].append(r)
-    for n, ms in bynum.items(): add(ms, 'actual', 'unnamed IDF %02d more than once' % n)
+        if not r['nname'] and r['num'] is not None: bynum[(r['num'], r['ptype'])].append(r)
+    for (n, t), ms in bynum.items(): add(ms, 'actual', 'unnamed IDF %02d more than once' % n + (' (%s projects)' % t if t else ''))
     # possible: compare what is left AFTER the actual merges — each actual group's survivor plus
     # every closet in no group. A closet appears in at most one possible group.
     reps = [g[3][0] for g in groups if g[0] == sk and g[1] == 'actual'] + [r for r in rs if r['id'] not in used]
@@ -206,10 +211,10 @@ for gi, (sk, cls, why, ms) in enumerate(sorted(groups, key=lambda g: (g[1] != 'a
         role = ('keep (suggested)' if j == 0 else 'merge into the kept one') if cls == 'possible' else ('SURVIVOR' if j == 0 else 'merge into survivor')
         data.append([gi, cls, why, site_label(sk), sk, role, m['id'], m['display'], m['type'],
                      '' if m['num'] is None else '%02d' % m['num'], m['name'], (clean(m['proj_row']['INPUT_project name']) if m['proj_row'] else m['project']),
-                     m['inc'], m['lifecycle'], m['surveys'], m['photos'], m['equip'], ''])
+                     m['inc'], m['ptype'], m['lifecycle'], m['surveys'], m['photos'], m['equip'], ''])
 counts['07_duplicate_review.csv'] = w('07_duplicate_review.csv',
     ['Group', 'Class', 'Why', 'Site', 'Site Record ID', 'Suggested', 'Record ID', 'MDF/IDF', 'Type', '##', 'Name', 'Project',
-     'Auto increment (age)', 'Lifecycle', 'Survey requests', 'Photos', 'Old quote equipment', 'Decision (merge / keep separate)'], data)
+     'Auto increment (age)', 'Project type', 'Lifecycle', 'Survey requests', 'Photos', 'Old quote equipment', 'Decision (merge / keep separate)'], data)
 
 # ── summary ──
 st = Counter()
