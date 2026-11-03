@@ -2073,6 +2073,30 @@ makes the user pick an intent and spells out what it leaves behind (this replace
   acts on `deleteSourceIds` has to be verified in Make — the client never deletes anything itself.
 - Test: `tests/sow-page/test-share-consolidate.js`.
 
+## Create Alternate SOW window (2026-11-03) — `src/features/create-sow-option-btn.js`
+
+"It is not obvious enough that we're creating an alternate SOW with SHARED options" + "swapping all the readers
+to a different type of reader — that's a LOT of clicks". Design: Claude Design canvas "Create Alternate SOW
+redesign". The window (button on view_3869's header, rows from view_3586's parent lines) now:
+- **Says shared three ways**: a band on open (SOW → the same line items → new alternate, "Everything starts
+  shared … change a shared item on either SOW and it changes on both"), folding to a one-line legend once
+  anything is copied; three counters (Shared with SOW n / Copies, alternate only / Left off); a chip on EVERY
+  row (Shared / Copy / Left off — "silence means shared" was what nobody read); a copy row reads "SOW n
+  keeps: <model>"; the button reads "Create alternate · N shared · M copies". Filter pills (All / Shared /
+  Copies / Left off) hide the other rows and empty locations.
+- **Swaps a model in one move**: "Swap a model on the alternate" lists each model the rows carry, most-used
+  first (6, then "Show N more models"), options = the bucket's other products (`productsForBucket`). One pick
+  sets every row with that model; "Pick locations…" limits it to ticked MDF/IDFs (same group ids as the list);
+  "Keep current model" undoes it. The item rows stay the ONE source of truth (`applyModel` only sets their
+  selects; `paintModel` reads them back — rows set by hand show "Set per row below"). An amber note counts the
+  copied lines whose attached hardware (`field_2464` back-pointers) the catalog says does not fit the new model
+  (`SCW.catalog.fits === false`; `null` says nothing).
+- Payload unchanged (`linkIds` / `sowLineItemIds` = shared rows, `cloneItems` = changed rows). ⚠ Whether Make
+  handles `cloneItems` (and copies a cloned device's accessories) is unverified — the module's header says a
+  model-changed row is otherwise simply absent from the new SOW, which a bulk swap turns from 1 row into
+  hundreds. Check the duplicate-SOW scenario before relying on swaps. Test seam `SCW.createAltSow.open(btn)`;
+  test: `tests/sow-page/test-alternate-sow-modal.js`.
+
 ## Scene veil (load gating) — `src/features/scene-veil.js`
 
 Heavy ops scenes are hidden behind a spinner until Knack's render stream goes quiet (600ms)
