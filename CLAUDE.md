@@ -2091,6 +2091,13 @@ redesign". The window (button on view_3869's header, rows from view_3586's paren
   selects; `paintModel` reads them back — rows set by hand show "Set per row below"). An amber note counts the
   copied lines whose attached hardware (`field_2464` back-pointers) the catalog says does not fit the new model
   (`SCW.catalog.fits === false`; `null` says nothing).
+- **Some of a model, not all (same day — "change 100 of these 188 readers")**: the swap's Where is "All N
+  lines" or "Pick locations or lines…" (`pickerHtml`). Pick opens EMPTY (nothing is a copy until ticked) with a
+  tick per MDF/IDF (all its lines; tri-state) that unfolds to a tick per line, Tick all / Untick all, a label
+  range "Lines AC-001 to AC-100" + Tick range / Enter (natural order, either way round, adds to the ticks),
+  shift-click across open locations, and "100 of 188 lines picked". The rows stay the truth: the picker mirrors
+  them (a row set by hand to the same model shows ticked, and puts an "All" swap into Pick); only two different
+  new models read "Set per row below".
 - Payload unchanged (`linkIds` / `sowLineItemIds` = shared rows, `cloneItems` = changed rows). ⚠ Whether Make
   handles `cloneItems` (and copies a cloned device's accessories) is unverified — the module's header says a
   model-changed row is otherwise simply absent from the new SOW, which a bulk swap turns from 1 row into
