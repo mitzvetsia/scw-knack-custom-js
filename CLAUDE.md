@@ -2104,6 +2104,14 @@ redesign". The window (button on view_3869's header, rows from view_3586's paren
   N lines") — `applyModel(mrow, force)` touches the rows only once a model is chosen, or on an explicit keep (the
   select back on Keep, the Keep button), so a row set by hand below survives; Keep current model shows only once a
   swap exists.
+- **Three steps (same day, the user's own outline)**: 1 **What goes on the alternate** (the item list with its carry
+  ticks; the model column hidden), 2 **New models** ("Which of these get a new model?": the swap panel rebuilt from
+  the CARRIED lines only — `rebuildSwap`, `rowsOfModel` skips left-off rows — plus the list without left-off rows;
+  Shared / Copy is shown on each line as information, never asked), 3 **Review and create** (`reviewHtml`: one
+  sentence, then Shared / Copies / Left off by model with line and location counts, the mounting-hardware note;
+  read-only). A numbered step strip under the title (click to move); footer `Cancel | Next: new models`, `Back |
+  Next: review`, `Back | Create alternate · N shared · M copies`. The band and the three counters stay on every
+  step. Nothing is sent before step 3's Create.
 - Payload unchanged (`linkIds` / `sowLineItemIds` = shared rows, `cloneItems` = changed rows). ⚠ Whether Make
   handles `cloneItems` (and copies a cloned device's accessories) is unverified — the module's header says a
   model-changed row is otherwise simply absent from the new SOW, which a bulk swap turns from 1 row into

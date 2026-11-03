@@ -273,6 +273,46 @@
       '.' + P + '-chip--off { background: #f1f5f9; color: #475569; }',
       '.' + P + '-noshow { padding: 18px 14px; color: #64748b; }',
 
+      // Steps: 1 what goes on it, 2 models, 3 review. A real sequence, so numbered.
+      '.' + P + '-steps { margin: 12px 24px 0; display: flex; gap: 6px; flex-wrap: wrap; }',
+      '.' + P + '-step { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px 5px 5px;',
+      '  border-radius: 999px; border: 1px solid #e2e8f0; background: #fff; color: #475569; cursor: pointer;',
+      '  font: 600 12.5px/1.2 system-ui, sans-serif; }',
+      '.' + P + '-step i { font-style: normal; width: 22px; height: 22px; border-radius: 999px; background: #e2e8f0;',
+      '  color: #334155; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; }',
+      '.' + P + '-step.is-on { border-color: #0f4c75; color: #0f4c75; box-shadow: inset 0 0 0 1px #0f4c75; }',
+      '.' + P + '-step.is-on i { background: #0f4c75; color: #fff; }',
+      '.' + P + '-step.is-done i { background: #e0f2fe; color: #075985; }',
+      '.' + P + '-step:disabled { cursor: not-allowed; opacity: .55; }',
+      // What each step shows.
+      '.' + P + '-modal[data-step="1"] [data-alt-swapcard], .' + P + '-modal[data-step="3"] [data-alt-swapcard],',
+      '.' + P + '-modal[data-step="3"] [data-alt-itemscard] { display: none; }',
+      '.' + P + '-modal:not([data-step="3"]) [data-alt-review] { display: none; }',
+      '.' + P + '-modal[data-step="1"] .' + P + '-row, .' + P + '-modal[data-step="1"] .' + P + '-cols {',
+      '  grid-template-columns: 22px minmax(0, 1fr) 96px; }',
+      '.' + P + '-modal[data-step="1"] .' + P + '-sel, .' + P + '-modal[data-step="1"] .' + P + '-col-model { display: none; }',
+      '.' + P + '-modal[data-step="2"] .' + P + '-row > input[type=checkbox], .' + P + '-modal[data-step="2"] .' + P + '-grp-cb {',
+      '  visibility: hidden; }',
+      '.' + P + '-modal[data-step="2"] [data-alt-filter="off"], .' + P + '-modal[data-step="2"] [data-alt-all],',
+      '.' + P + '-modal[data-step="2"] [data-alt-none] { display: none; }',
+      '.' + P + '-modal:not([data-step="2"]) [data-alt-reset] { display: none !important; }',
+      // Review (step 3): read-only.
+      '.' + P + '-review { display: flex; flex-direction: column; gap: 12px; }',
+      '.' + P + '-rv-sum { margin: 0; padding: 12px 14px; border-radius: 8px; background: #f8fafc;',
+      '  border: 1px solid #e2e8f0; font-size: 14px; color: #0f172a; }',
+      '.' + P + '-rv-sec { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }',
+      '.' + P + '-rv-h { display: flex; align-items: center; gap: 8px; padding: 9px 14px; font-weight: 700; }',
+      '.' + P + '-rv-h .n { font-variant-numeric: tabular-nums; }',
+      '.' + P + '-rv-note { padding: 7px 14px; color: #475569; font-size: 12.5px; }',
+      '.' + P + '-rv-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 7px 14px;',
+      '  border-top: 1px solid #f1f5f9; }',
+      '.' + P + '-rv-row .m { min-width: 0; }',
+      '.' + P + '-rv-row .c { color: #475569; white-space: nowrap; font-variant-numeric: tabular-nums; }',
+      '.' + P + '-rv--shared .' + P + '-rv-h { background: #e0f2fe; color: #075985; }',
+      '.' + P + '-rv--copy .' + P + '-rv-h { background: #ede9fe; color: #5b21b6; }',
+      '.' + P + '-rv--off .' + P + '-rv-h { background: #f1f5f9; color: #334155; }',
+      '.' + P + '-rv-to { color: #5b21b6; font-weight: 600; }',
+      '.' + P + '-rv-empty { padding: 7px 14px 10px; color: #64748b; border-top: 1px solid #f1f5f9; }',
       '.' + P + '-foot {',
       '  display: flex; gap: 10px; align-items: center;',
       '  padding: 14px 24px; border-top: 1px solid #eef2f7; flex-wrap: wrap;',
@@ -726,14 +766,27 @@
     modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('aria-labelledby', P + '-title');
 
-    var modelRows = '';
-    for (var mi = 0; mi < models.length; mi++) modelRows += modelRowHtml(models[mi], mi, sow.num);
-    var extra = Math.max(0, models.length - MODELS_SHOWN);
+    var step = 1;
+
+    function swapBodyHtml(ms) {
+      if (!ms.length) return '<div class="' + P + '-noshow">No line on the alternate has a model to change.</div>';
+      var h = '';
+      for (var mi = 0; mi < ms.length; mi++) h += modelRowHtml(ms[mi], mi, sow.num);
+      var extra = Math.max(0, ms.length - MODELS_SHOWN);
+      return '<div class="' + P + '-mlist" data-alt-mlist>' + h + '</div>' +
+        (extra ? '<div class="' + P + '-mfoot"><button type="button" class="' + P + '-link" data-alt-mall>' +
+          'Show ' + plural(extra, 'more model') + '</button></div>' : '');
+    }
 
     modal.innerHTML =
       '<div class="' + P + '-head">' +
         '<h3 class="' + P + '-title" id="' + P + '-title">Create Alternate SOW</h3>' +
         '<p class="' + P + '-sub">Starts from ' + esc(sow.num) + (sow.name ? ' · ' + esc(sow.name) : '') + '</p>' +
+      '</div>' +
+      '<div class="' + P + '-steps" role="list" aria-label="Steps">' +
+        '<button type="button" class="' + P + '-step" role="listitem" data-alt-stepnav="1"><i>1</i>What goes on the alternate</button>' +
+        '<button type="button" class="' + P + '-step" role="listitem" data-alt-stepnav="2"><i>2</i>New models</button>' +
+        '<button type="button" class="' + P + '-step" role="listitem" data-alt-stepnav="3"><i>3</i>Review and create</button>' +
       '</div>' +
       '<div class="' + P + '-band" data-alt-band>' +
         '<div class="' + P + '-band-full">' +
@@ -767,20 +820,15 @@
           '<span><b>Left off</b><br>not on the alternate</span></div>' +
       '</div>' +
       '<div class="' + P + '-scroll" data-alt-scroll>' +
-        (models.length
-          ? '<div class="' + P + '-card">' +
-              '<div class="' + P + '-card-h"><h3>Swap a model on the alternate</h3>' +
-                '<span class="' + P + '-hint">One change covers every line with that model, ' +
-                'or only the locations or lines you pick under it.</span></div>' +
-              '<div class="' + P + '-mlist" data-alt-mlist>' + modelRows + '</div>' +
-              (extra
-                ? '<div class="' + P + '-mfoot"><button type="button" class="' + P + '-link" data-alt-mall>' +
-                    'Show ' + plural(extra, 'more model') + '</button></div>'
-                : '') +
-            '</div>'
-          : '') +
-        '<div class="' + P + '-card">' +
-          '<div class="' + P + '-card-h"><h3>Items on the alternate</h3>' +
+        '<div class="' + P + '-card" data-alt-swapcard>' +
+          '<div class="' + P + '-card-h"><h3>Which of these get a new model?</h3>' +
+            '<span class="' + P + '-hint">Choose a new model for all of a model, or only the locations or lines you pick ' +
+            'under it. Lines with a new model become copies; the rest stay shared.</span></div>' +
+          '<div data-alt-swapbody>' + swapBodyHtml(models) + '</div>' +
+        '</div>' +
+        '<div class="' + P + '-card" data-alt-itemscard>' +
+          '<div class="' + P + '-card-h"><h3 data-alt-items-title>What goes on the alternate?</h3>' +
+            '<span class="' + P + '-hint" data-alt-items-hint></span>' +
             '<button type="button" class="' + P + '-pill is-on" data-alt-filter="all">All</button>' +
             '<button type="button" class="' + P + '-pill" data-alt-filter="shared">Shared</button>' +
             '<button type="button" class="' + P + '-pill" data-alt-filter="copy">Copies</button>' +
@@ -793,14 +841,15 @@
               '<button type="button" class="' + P + '-tbtn" data-alt-none>Select none</button>' +
             '</span>' +
           '</div>' +
-          '<div class="' + P + '-cols"><span></span><span>Item</span><span>Model on the alternate</span>' +
+          '<div class="' + P + '-cols"><span></span><span>Item</span><span class="' + P + '-col-model">Model on the alternate</span>' +
             '<span>On the alternate</span></div>' +
           '<div data-alt-body></div>' +
           '<div class="' + P + '-noshow" data-alt-noshow style="display:none">No items in this view.</div>' +
         '</div>' +
+        '<div class="' + P + '-review" data-alt-review></div>' +
       '</div>' +
       '<div class="' + P + '-foot">' +
-        '<span class="' + P + '-foot-note">Accessories travel with their device. Assumptions aren’t listed.</span>' +
+        '<span class="' + P + '-foot-note" data-alt-footnote></span>' +
         '<button type="button" class="' + P + '-btn ' + P + '-btn--cancel" data-alt-cancel>Cancel</button>' +
         '<button type="button" class="' + P + '-btn ' + P + '-btn--go" data-alt-go>Create alternate SOW</button>' +
       '</div>';
@@ -857,10 +906,94 @@
     }
     function stateOf(st) { return !st.on ? 'off' : (st.changed ? 'copy' : 'shared'); }
 
+    function rowOn(row) {
+      var cb = row.querySelector('input[type=checkbox]');
+      return !!(cb && cb.checked);
+    }
+
+    // Step 2 works only on the lines step 1 put on the alternate.
     function rowsOfModel(mid) {
       var out = [], rs = rows();
-      for (var i = 0; i < rs.length; i++) if (rs[i].getAttribute('data-from-id') === mid) out.push(rs[i]);
+      for (var i = 0; i < rs.length; i++) if (rs[i].getAttribute('data-from-id') === mid && rowOn(rs[i])) out.push(rs[i]);
       return out;
+    }
+
+    /** Rebuild the model list from the carried lines (entering step 2). The
+     *  rows keep any model already chosen, and paintModel reads it back. */
+    function rebuildSwap() {
+      var on = Object.create(null), rs = rows();
+      for (var i = 0; i < rs.length; i++) if (rowOn(rs[i])) on[rs[i].getAttribute('data-alt-row')] = true;
+      var carried = { groups: [] };
+      for (var g = 0; g < built.groups.length; g++) {
+        var items = built.groups[g].items.filter(function (rec) { return on[rec.id]; });
+        if (items.length) carried.groups.push({ id: built.groups[g].id, label: built.groups[g].label, items: items });
+      }
+      models = modelSummary(carried, allRecs);
+      modal.querySelector('[data-alt-swapbody]').innerHTML = swapBodyHtml(models);
+    }
+
+    /** Step 3: what the alternate will be, read-only. */
+    function reviewHtml() {
+      var rs = rows(), sec = { shared: {}, copy: {}, off: {} }, n = { shared: 0, copy: 0, off: 0 };
+      var bad = 0, cat = window.SCW && SCW.catalog;
+      for (var i = 0; i < rs.length; i++) {
+        var st = readRow(rs[i]), kind = stateOf(st);
+        n[kind]++;
+        var key = kind === 'copy' ? st.fromName + '\u0000' + st.toName : st.fromName;
+        var e = sec[kind][key] || (sec[kind][key] = { from: st.fromName || '(no model)', to: st.toName, n: 0, locs: {} });
+        e.n++;
+        e.locs[rs[i].getAttribute('data-alt-loc') || ''] = 1;
+        if (kind === 'copy' && cat && typeof cat.fits === 'function') {
+          var accs = accIdx[st.id] || [];
+          for (var a = 0; a < accs.length; a++) if (cat.fits(accs[a], st.toId) === false) { bad++; break; }
+        }
+      }
+      var carried = n.shared + n.copy;
+      var sum = carried
+        ? 'The alternate will have <b>' + plural(carried, 'line item') + '</b>: ' +
+          (n.shared ? '<b style="color:#075985">' + n.shared + ' shared</b> with ' + esc(sow.num) : '') +
+          (n.shared && n.copy ? ' and ' : '') +
+          (n.copy ? '<b style="color:#5b21b6">' + plural(n.copy, 'copy', 'copies') + '</b> with a new model' : '') + '.' +
+          (n.off ? ' <b>' + n.off + '</b> of ' + esc(sow.num) + '’s line items ' + (n.off === 1 ? 'stays' : 'stay') + ' off it.' : '')
+        : 'Nothing is going on the alternate. Go back to step 1 and tick what it should carry.';
+      function list(kind) {
+        var keys = Object.keys(sec[kind]).sort(function (a, b) { return sec[kind][b].n - sec[kind][a].n; });
+        if (!keys.length) return '<div class="' + P + '-rv-empty">None.</div>';
+        return keys.map(function (k) {
+          var e = sec[kind][k], nl = Object.keys(e.locs).length;
+          var name = kind === 'copy'
+            ? esc(e.from) + ' → <span class="' + P + '-rv-to">' + esc(e.to) + '</span>'
+            : esc(e.from);
+          return '<div class="' + P + '-rv-row"><span class="m">' + name + '</span>' +
+            '<span class="c">' + plural(e.n, 'line') + ' · ' + plural(nl, 'location') + '</span></div>';
+        }).join('');
+      }
+      function section(kind, icon, title, note) {
+        return '<div class="' + P + '-rv-sec ' + P + '-rv--' + kind + '">' +
+          '<div class="' + P + '-rv-h">' + icon + '<span>' + title + '</span><span class="n">' + n[kind] + '</span></div>' +
+          '<div class="' + P + '-rv-note">' + note + '</div>' + list(kind) + '</div>';
+      }
+      return '<p class="' + P + '-rv-sum">' + sum + '</p>' +
+        section('shared', LINK_SVG, 'Shared with ' + esc(sow.num),
+          'One record on both SOWs. A change to one of these on either SOW shows on both.') +
+        section('copy', COPY_SM_SVG, 'Copies with a new model',
+          'The alternate gets its own record with the new model. ' + esc(sow.num) + ' keeps its original, unchanged.') +
+        (bad ? '<div class="' + P + '-mwarn">' + WARN_SVG + '<span>On ' + plural(bad, 'copied line') +
+          ' the attached mounting hardware isn’t listed as fitting the new model. Check it on the alternate.</span></div>' : '') +
+        section('off', '', 'Left off', 'Not on the alternate. ' + esc(sow.num) + ' keeps them as they are.');
+    }
+
+    function setStep(nStep) {
+      step = nStep;
+      modal.setAttribute('data-step', String(step));
+      if (step === 2) {
+        rebuildSwap();
+        if (filter === 'off') filter = 'all';
+      }
+      if (step === 3) modal.querySelector('[data-alt-review]').innerHTML = reviewHtml();
+      var sc = modal.querySelector('[data-alt-scroll]');
+      if (sc) sc.scrollTop = 0;
+      repaint();
     }
 
     /** Push a model row's choice (target + where) onto its item rows. The
@@ -1039,7 +1172,7 @@
         if (st.changed) anyChanged = true;
         rs[i].classList.toggle(P + '-row--off', !st.on);
         rs[i].classList.toggle('is-copy', state === 'copy');
-        var show = filter === 'all' || filter === state;
+        var show = (filter === 'all' || filter === state) && !(step === 2 && !st.on);
         rs[i].classList.toggle('is-hidden', !show);
         if (show) visible++;
         var sel = rs[i].querySelector('select');
@@ -1117,9 +1250,31 @@
 
       var carried = counts.shared + counts.copy;
       goBtn.disabled = carried === 0;
-      goBtn.textContent = carried
-        ? 'Create alternate · ' + counts.shared + ' shared' + (counts.copy ? ' · ' + plural(counts.copy, 'copy', 'copies') : '')
+      goBtn.textContent = step === 1 ? 'Next: new models'
+        : step === 2 ? 'Next: review'
+        : carried ? 'Create alternate · ' + [counts.shared ? counts.shared + ' shared' : '',
+            counts.copy ? plural(counts.copy, 'copy', 'copies') : ''].filter(Boolean).join(' · ')
         : 'Create alternate SOW';
+      var cancelBtn = modal.querySelector('[data-alt-cancel]');
+      if (cancelBtn) cancelBtn.textContent = step === 1 ? 'Cancel' : 'Back';
+      var fn = modal.querySelector('[data-alt-footnote]');
+      if (fn) {
+        fn.textContent = step === 1 ? plural(carried, 'line') + ' of ' + total + ' go on the alternate. Accessories travel with their device; assumptions aren’t listed.'
+          : step === 2 ? counts.shared + ' shared · ' + plural(counts.copy, 'copy', 'copies') + '. Nothing is created until step 3.'
+          : 'Nothing is created until you click Create.';
+      }
+      var it = modal.querySelector('[data-alt-items-title]');
+      if (it) it.textContent = step === 1 ? 'What goes on the alternate?' : 'Lines on the alternate';
+      var ih = modal.querySelector('[data-alt-items-hint]');
+      if (ih) ih.textContent = step === 1 ? 'Untick anything the alternate should leave out.' : '';
+      var navs = modal.querySelectorAll('[data-alt-stepnav]');
+      for (var sn = 0; sn < navs.length; sn++) {
+        var k = +navs[sn].getAttribute('data-alt-stepnav');
+        navs[sn].classList.toggle('is-on', k === step);
+        navs[sn].classList.toggle('is-done', k < step);
+        navs[sn].disabled = k > 1 && carried === 0;
+        if (k === step) navs[sn].setAttribute('aria-current', 'step'); else navs[sn].removeAttribute('aria-current');
+      }
     }
 
     back.addEventListener('change', function (e) {
@@ -1163,7 +1318,9 @@
     back.addEventListener('click', function (e) {
       var t = e.target;
       if (!t || !t.closest) return;
-      if (t.closest('[data-alt-cancel]')) { closeModal(); return; }
+      if (t.closest('[data-alt-cancel]')) { if (step === 1) closeModal(); else setStep(step - 1); return; }
+      var nav = t.closest('[data-alt-stepnav]');
+      if (nav) { if (!nav.disabled) setStep(+nav.getAttribute('data-alt-stepnav')); return; }
       if (t.closest('[data-alt-all]') || t.closest('[data-alt-none]')) {
         var on = !!t.closest('[data-alt-all]');
         var rs = rows();
@@ -1244,7 +1401,7 @@
         for (var q = 0; q < mrs.length; q++) resetModelControls(mrs[q]);
         repaint(); return;
       }
-      if (t.closest('[data-alt-go]') && !goBtn.disabled) submit();
+      if (t.closest('[data-alt-go]') && !goBtn.disabled) { if (step < 3) setStep(step + 1); else submit(); }
     });
 
     function submit() {
@@ -1271,7 +1428,7 @@
       fireWebhook(btn, linkIds, cloneItems);
     }
 
-    repaint();
+    setStep(1);
   }
 
   function buildRow(rec, allRecs, sowNum) {

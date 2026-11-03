@@ -1,7 +1,7 @@
 // jsdom test: Create Alternate SOW window (2026-11-03). "It is not obvious enough that we're creating an
 // alternate SOW with SHARED options" and "swapping all the readers to a different type of reader — that's a
 // LOT of clicks". Drives the real create-sow-option-btn.js: the shared-by-default band + counters + a chip
-// on every row, the per-model swap (all lines / picked locations or lines — offered BEFORE a model is chosen: location ticks, single lines,
+// on every row, three steps (1 what goes on it, 2 new models, 3 review and create), the per-model swap (all lines / picked locations or lines — offered BEFORE a model is chosen: location ticks, single lines,
 // shift-click — "change 100 of these 188 readers"; no typed line range), rows set by hand (mirrored in the picker;
 // "Set per row below" for two new models), the mounting-hardware check, the filters, the undo, and the
 // link / clone payload.
@@ -100,7 +100,16 @@ const msel = () => readerRow().querySelector('[data-alt-msel]');
     [true, true, false, 'Starts from SOW 1980 · Access control']);
   check('counters: 5 shared, 0 copies, 0 left off; the accessory is not a row', counts(), ['5', '0', '0']);
   check('every row says Shared', ids.slice(0, 5).map(chip), ['Shared', 'Shared', 'Shared', 'Shared', 'Shared']);
-  check('the Create button carries the total', txt($1('[data-alt-go]')), 'Create alternate · 5 shared');
+  const stepOf = () => $1('.scw-alt-sow-modal').getAttribute('data-step');
+  const navState = () => $$('[data-alt-stepnav]').map(b => (b.classList.contains('is-on') ? 'on' : b.classList.contains('is-done') ? 'done' : '-'));
+  check('step 1 opens: what goes on the alternate, every line ticked, Cancel | Next',
+    [stepOf(), navState(), txt($1('[data-alt-items-title]')), txt($1('[data-alt-cancel]')), txt($1('[data-alt-go]')),
+     txt($1('[data-alt-footnote]')).slice(0, 33)],
+    ['1', ['on', '-', '-'], 'What goes on the alternate?', 'Cancel', 'Next: new models', '5 lines of 5 go on the alternate.']);
+  $1('[data-alt-go]').click();
+  check('Next goes to step 2: which of these get a new model, Back | Next: review',
+    [stepOf(), navState(), txt($1('[data-alt-swapcard] h3')), txt($1('[data-alt-cancel]')), txt($1('[data-alt-go]'))],
+    ['2', ['done', 'on', '-'], 'Which of these get a new model?', 'Back', 'Next: review']);
 
   // ── the model list ──
   check('models most-used first, with counts and locations',
@@ -143,7 +152,7 @@ const msel = () => readerRow().querySelector('[data-alt-msel]');
   check('counters, the band folds to its legend, the button and the model row say it',
     [counts(), $1('[data-alt-band]').classList.contains('is-compact'), txt($1('[data-alt-go]')),
      readerRow().classList.contains('is-swapped'), txt(readerRow().querySelector('[data-alt-mcopies]'))],
-    [['1', '4', '0'], true, 'Create alternate · 1 shared · 4 copies', true, '4 lines become copies']);
+    [['1', '4', '0'], true, 'Next: review', true, '4 lines become copies']);
   check('the mounting hardware the catalog says does not fit is flagged in amber',
     txt(readerRow().querySelector('[data-alt-mwarn]')),
     'On 1 of these lines the attached mounting hardware isn’t listed as fitting the new model. Check it on the alternate.');
@@ -206,10 +215,18 @@ const msel = () => readerRow().querySelector('[data-alt-msel]');
     [[ids[2], ids[3]], 2, ['All 5', 'Shared 3', 'Copies 2', 'Left off 0']]);
   $1('[data-alt-filter="all"]').click();
 
-  // ── leaving items off ──
+  // ── leaving items off is step 1's job: Back, untick, Next ──
+  $1('[data-alt-cancel]').click();
   const cb = row(ids[0]).querySelector('input[type=checkbox]');
   cb.checked = false; change(cb);
-  check('an unticked row is Left off and counted', [chip(ids[0]), counts()], ['Left off', ['2', '2', '1']]);
+  check('back on step 1, an unticked row is Left off and counted',
+    [stepOf(), chip(ids[0]), counts(), txt($1('[data-alt-footnote]')).slice(0, 33)],
+    ['1', 'Left off', ['2', '2', '1'], '4 lines of 5 go on the alternate.']);
+  $1('[data-alt-go]').click();
+  check('step 2 only works on what goes on the alternate: the left-off hub is not listed and its model is gone; the swaps kept',
+    [stepOf(), row(ids[0]).classList.contains('is-hidden'), $$('[data-alt-model]').map(m => m.getAttribute('data-alt-model')),
+     reader4(), pickN()],
+    ['2', true, [READER], ['Shared', 'Copy', 'Copy', 'Shared'], '2 of 4 lines picked']);
 
   // ── keep current model undoes the swap ──
   readerRow().querySelector('[data-alt-mkeep]').click();
@@ -228,8 +245,22 @@ const msel = () => readerRow().querySelector('[data-alt-msel]');
   check('Keep current model again: all lines, all shared', [readerRow().querySelector('[data-alt-mscope][value=all]').checked, reader4()],
     [true, ['Shared', 'Shared', 'Shared', 'Shared']]);
 
-  // ── submit ──
+  // ── step 3: review, then create ──
   msel().value = READER2; change(msel());
+  $1('[data-alt-go]').click();
+  const rv = () => txt($1('[data-alt-review]'));
+  const parts = el => [...el.children].map(c => txt(c)).filter(Boolean).join(' | ');
+  check('step 3 reviews the alternate read-only: the sentence, then Shared / Copies / Left off by model',
+    [stepOf(), navState(), txt($1('.scw-alt-sow-rv-sum')),
+     $$('.scw-alt-sow-rv-sec').map(sec => parts(sec.querySelector('.scw-alt-sow-rv-h'))),
+     $$('.scw-alt-sow-rv--copy .scw-alt-sow-rv-row').map(parts), $$('.scw-alt-sow-rv--off .scw-alt-sow-rv-row').map(parts),
+     /isn’t listed as fitting/.test(rv()), txt($1('[data-alt-cancel]')), txt($1('[data-alt-go]'))],
+    ['3', ['done', 'done', 'on'],
+     'The alternate will have 4 line items: 4 copies with a new model. 1 of SOW 1980’s line items stays off it.',
+     ['Shared with SOW 1980 | 0', 'Copies with a new model | 4', 'Left off | 1'],
+     ['Avigilon Alta Smart Door Reader Dual Freq → Avigilon Alta Smart Reader Pro | 4 lines · 2 locations'],
+     ['Avigilon Alta 8 Door Hub | 1 line · 1 location'],
+     true, 'Back', 'Create alternate · 4 copies']);
   $1('[data-alt-go]').click();
   await new Promise(r => setTimeout(r, 20));
   const p = posts[0] && posts[0].body;
