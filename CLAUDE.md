@@ -2112,6 +2112,14 @@ redesign". The window (button on view_3869's header, rows from view_3586's paren
   read-only). A numbered step strip under the title (click to move); footer `Cancel | Next: new models`, `Back |
   Next: review`, `Back | Create alternate · N shared · M copies`. The band and the three counters stay on every
   step. Nothing is sent before step 3's Create.
+- **Rows with no label (same day — eight services read "(unlabelled)" under No MDF / IDF)**: `field_1950` is a
+  device designator, so services and licenses have none. `rowName`: the label, else the product, else the service
+  description (`field_2020`, tags stripped, cut at 90 characters), else the bucket. Services go under "Project Wide
+  Services" and licenses under "Licenses" whatever MDF/IDF they carry (`kindOf`: bucket id, else the bucket name),
+  after the MDF/IDFs and "No MDF / IDF"; a SERVICE / LICENSE tag sits before the name (an unlabelled other row shows
+  its bucket). A bucket NAMED Assumptions is left out like the assumptions id. A line with no product has no model
+  dropdown ("No product" — a select would preselect the bucket's first product) and the review lists it as
+  "Services with no product". Test: `tests/sow-page/test-alternate-sow-labels.js`.
 - Payload unchanged (`linkIds` / `sowLineItemIds` = shared rows, `cloneItems` = changed rows). ⚠ Whether Make
   handles `cloneItems` (and copies a cloned device's accessories) is unverified — the module's header says a
   model-changed row is otherwise simply absent from the new SOW, which a bulk swap turns from 1 row into

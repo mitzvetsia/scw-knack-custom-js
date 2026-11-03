@@ -76,13 +76,22 @@
     label:    'field_1950',   // display label
     parent:   'field_2464',   // accessory → parent line item
     bucket:   'field_2219',   // proposal bucket
-    mdfIdf:   'field_1946'    // MDF/IDF location
+    mdfIdf:   'field_1946',   // MDF/IDF location
+    desc:     'field_2020'    // labor / service description (rich text)
   };
 
   // Proposal-wide assumption rows carry no product, so a model dropdown on
   // them is meaningless — they're excluded from the picker entirely. Same
   // bucket id worksheet-v2's bucketCategoryOf uses for 'assumptions'.
   var ASSUMPTIONS_BUCKET = '697b7a023a31502ec68b3303';
+  // Same ids worksheet-v2 card.js uses. Services and licenses are filed the
+  // way the worksheet files them: every service under "Project Wide
+  // Services", every license under "Licenses", whatever MDF/IDF they carry.
+  var SERVICES_BUCKET    = '6977caa7f246edf67b52cbcd';
+  var LICENSE_BUCKET     = '645554dce6f3a60028362a6a';
+  var GROUP_SERVICES     = { id: '__services', label: 'Project Wide Services' };
+  var GROUP_LICENSES     = { id: '__licenses', label: 'Licenses' };
+  var GROUP_RANK         = { __unknown: 1, __services: 2, __licenses: 3 };
 
   var P = 'scw-alt-sow';
 
@@ -262,6 +271,11 @@
       '.' + P + '-sel { width: 100%; height: 30px; padding: 0 7px; border: 1px solid #cbd5e1;',
       '  border-radius: 6px; font: inherit; font-size: 12px; background: #fff; color: #0f172a; }',
       '.' + P + '-sel:disabled { background: #f1f5f9; color: #64748b; }',
+      '.' + P + '-sel--none { display: flex; align-items: center; border-color: transparent;',
+      '  background: transparent; color: #94a3b8; font-style: italic; }',
+      '.' + P + '-kind { display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 4px;',
+      '  background: #f1f5f9; color: #475569; font-size: 10.5px; font-weight: 700; letter-spacing: .03em;',
+      '  text-transform: uppercase; vertical-align: 1px; }',
       // A changed model is what turns a share into a copy — flag it on the
       // control the user touched, in the copy colour.
       '.' + P + '-sel--changed { border: 2px solid #8b5cf6; color: #3b0764; font-weight: 600; }',
@@ -431,6 +445,38 @@
     return String(v == null ? '' : v).replace(/<[^>]*>/g, '').trim();
   }
 
+  function bucketOf(rec) {
+    var b = conn(rec, F.bucket);
+    return b && b.id ? { id: b.id, label: String(b.identifier || '').replace(/<[^>]*>/g, '').trim() } : null;
+  }
+
+  /** 'license' | 'assumption' | 'service' | '' — by bucket id, else the
+   *  bucket's name (a bucket renamed in Builder keeps its id). */
+  function kindOf(rec) {
+    var b = bucketOf(rec);
+    if (!b) return '';
+    if (b.id === LICENSE_BUCKET || /^\s*licen[cs]e/i.test(b.label)) return 'license';
+    if (b.id === ASSUMPTIONS_BUCKET || /assumption/i.test(b.label)) return 'assumption';
+    if (b.id === SERVICES_BUCKET || /service/i.test(b.label)) return 'service';
+    return '';
+  }
+
+  function descOf(rec) {
+    var v = rec && (rec[F.desc + '_raw'] != null ? rec[F.desc + '_raw'] : rec[F.desc]);
+    var t = String(v == null ? '' : v).replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    return t.length > 90 ? t.slice(0, 89).replace(/\s+\S*$/, '') + '…' : t;
+  }
+
+  /** What a row is called. field_1950 is a device designator, and services /
+   *  licenses usually have none — they read "(unlabelled)" (2026-11-03). So:
+   *  the label, else the product, else the service description, else the
+   *  bucket. */
+  function rowName(rec) {
+    return plain(rec, F.label) || plain(rec, F.product) || descOf(rec) ||
+      ((bucketOf(rec) || {}).label) || 'Line item';
+  }
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;',
@@ -511,16 +557,15 @@
     var parents = [];
     for (var i = 0; i < recs.length; i++) {
       if (conn(recs[i], F.parent)) continue;              // accessory — skip
-      var b = conn(recs[i], F.bucket);
-      if (b && b.id === ASSUMPTIONS_BUCKET) continue;     // assumption — no model
+      if (kindOf(recs[i]) === 'assumption') continue;     // assumption — no model
       parents.push(recs[i]);
     }
 
     var pk = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.picker;
     function itemLabel(rec) {
-      var l = plain(rec, F.label), p = plain(rec, F.product);
+      var l = rowName(rec), p = plain(rec, F.product);
       if (l && p && p !== l) return l + ' · ' + p;
-      return l || p || rec.id;
+      return l || rec.id;
     }
     var cmp = (pk && typeof pk.canonicalItemSort === 'function')
       ? pk.canonicalItemSort(itemLabel)
@@ -534,9 +579,16 @@
                        : { id: '__unknown', label: 'No MDF / IDF' };
     };
 
+    function groupOf(rec) {
+      var k = kindOf(rec);
+      if (k === 'license') return GROUP_LICENSES;
+      if (k === 'service') return GROUP_SERVICES;
+      return groupBy(rec) || { id: '__unknown', label: 'No MDF / IDF' };
+    }
+
     var map = Object.create(null), order = [];
     for (var q = 0; q < parents.length; q++) {
-      var g = groupBy(parents[q]) || { id: '__unknown', label: 'No MDF / IDF' };
+      var g = groupOf(parents[q]);
       if (!map[g.id]) { map[g.id] = { id: g.id, label: g.label || '', items: [] }; order.push(g.id); }
       map[g.id].items.push(parents[q]);
     }
@@ -546,7 +598,7 @@
       groups.push(map[order[o]]);
     }
     groups.sort(function (a, b) {
-      var au = a.id === '__unknown' ? 1 : 0, bu = b.id === '__unknown' ? 1 : 0;
+      var au = GROUP_RANK[a.id] || 0, bu = GROUP_RANK[b.id] || 0;
       if (au !== bu) return au - bu;
       return String(a.label).localeCompare(String(b.label), undefined,
         { numeric: true, sensitivity: 'base' });
@@ -625,7 +677,7 @@
         var loc = m.locs[m.locIdx[grp.id]];
         loc.count++;
         // Lines in the item list's own order, so "pick lines" reads like it.
-        loc.lines.push({ id: rec.id, label: plain(rec, F.label) || '(unlabelled)' });
+        loc.lines.push({ id: rec.id, label: rowName(rec) });
       }
     }
     var out = [];
@@ -939,8 +991,9 @@
       for (var i = 0; i < rs.length; i++) {
         var st = readRow(rs[i]), kind = stateOf(st);
         n[kind]++;
-        var key = kind === 'copy' ? st.fromName + '\u0000' + st.toName : st.fromName;
-        var e = sec[kind][key] || (sec[kind][key] = { from: st.fromName || '(no model)', to: st.toName, n: 0, locs: {} });
+        var fromLbl = st.fromName || rs[i].getAttribute('data-alt-noprod') || 'Lines with no product';
+        var key = kind === 'copy' ? fromLbl + '\u0000' + st.toName : fromLbl;
+        var e = sec[kind][key] || (sec[kind][key] = { from: fromLbl, to: st.toName, n: 0, locs: {} });
         e.n++;
         e.locs[rs[i].getAttribute('data-alt-loc') || ''] = 1;
         if (kind === 'copy' && cat && typeof cat.fits === 'function') {
@@ -1436,6 +1489,7 @@
     var fromId = pc && pc.id ? pc.id : '';
     var fromName = pc ? String(pc.identifier || '').replace(/<[^>]*>/g, '').trim() : '';
     var bucket = conn(rec, F.bucket);
+    var kind = kindOf(rec);
     var opts = productsForBucket(bucket && bucket.id, allRecs);
 
     // The current product must always be offered even when the catalog
@@ -1451,8 +1505,16 @@
     row.setAttribute('data-alt-row', rec.id);
     row.setAttribute('data-from-id', fromId);
     row.setAttribute('data-from-name', fromName);
+    if (!fromId) row.setAttribute('data-alt-noprod', kind === 'service' ? 'Services with no product'
+      : kind === 'license' ? 'Licenses with no product' : 'Lines with no product');
 
     var label = plain(rec, F.label);
+    var name = rowName(rec);
+    var bk = bucketOf(rec);
+    // Services and licenses say so; an unlabelled row names its bucket, so a
+    // product name or a description is never mistaken for a device label.
+    var tag = kind === 'service' ? 'Service' : kind === 'license' ? 'License'
+      : (!label && bk && bk.label ? bk.label : '');
     var optHtml = '';
     for (var q = 0; q < opts.length; q++) {
       optHtml += '<option value="' + esc(opts[q].id) + '"' +
@@ -1464,12 +1526,18 @@
     // off) — the default used to be silent, and "silence means shared" was
     // exactly what nobody read. A copy also names what this SOW keeps.
     row.innerHTML =
-      '<input type="checkbox" checked aria-label="Carry ' + esc(label || 'this item') + ' on the alternate SOW">' +
+      '<input type="checkbox" checked aria-label="Carry ' + esc(name) + ' on the alternate SOW">' +
       '<span class="' + P + '-name">' +
-        '<span class="' + P + '-name-l" title="' + esc(label) + '">' + esc(label || '(unlabelled)') + '</span>' +
+        '<span class="' + P + '-name-l" title="' + esc(name) + '">' +
+          (tag ? '<span class="' + P + '-kind" data-alt-kind>' + esc(tag) + '</span>' : '') +
+          '<span data-alt-name>' + esc(name) + '</span></span>' +
         '<span class="' + P + '-was" data-alt-was style="display:none"></span>' +
       '</span>' +
-      '<select class="' + P + '-sel" aria-label="Model on the alternate SOW">' + optHtml + '</select>' +
+      // A line with no product (a described service) has no model to change:
+      // no dropdown — one would preselect the bucket's first product.
+      (fromId
+        ? '<select class="' + P + '-sel" aria-label="Model on the alternate SOW">' + optHtml + '</select>'
+        : '<span class="' + P + '-sel ' + P + '-sel--none" data-alt-nomodel>No product</span>') +
       '<span class="' + P + '-chip ' + P + '-chip--shared" data-alt-chip></span>';
     return row;
   }
