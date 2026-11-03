@@ -229,6 +229,8 @@ const DAY = new Date(2026, 10, 2);
   }
   window.Knack.views.view_3803 = closetModel('view_3803', STORED);
   window.Knack.views.view_3892 = closetModel('view_3892', STORED);
+  // A browser that last chose the retired "Table view" must not get the raw table back.
+  window.localStorage.setItem('scwMdfIdfCardsMode', 'table');
   window.location.hash = '#survey-forms/site-survey-request-details2/' + REQ + '/';
   document.body.insertAdjacentHTML('beforeend', gridHtml('view_3803', true));
   load('mdf-idf-cards.js');
@@ -261,6 +263,11 @@ const DAY = new Date(2026, 10, 2);
   note = card && card.querySelector('.scw-mdf-note--log');
   check('off a survey page survey notes are read-only: every entry, no input that could overwrite them',
     [note && metas(note), note && note.querySelectorAll('input').length], [['10/14/2026 · SR1102', 'Earlier notes'], 0]);
+  const v3892 = document.getElementById('view_3892');
+  check('there is no "Table view" toggle: the raw grid (and its editable survey-notes cell) never shows',
+    [v3892.querySelectorAll('.scw-mdf-toggle, .scw-mdf-toolbar').length, v3892.classList.contains('scw-mdf-cards-on'),
+     window.localStorage.getItem('scwMdfIdfCardsMode')],
+    [0, true, null]);
 
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);

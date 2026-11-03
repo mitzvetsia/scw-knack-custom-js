@@ -833,8 +833,10 @@ when it cannot read the current notes; old unstamped text is marked `[Earlier no
 The survey page band (`mdf-notes.js`, view_3505 → view_3617) and the location cards on a survey route
 (`mdf-idf-cards.js`) offer an empty "add a survey note" box; everywhere else survey notes render read-only as
 entries (also the reconcile callout and survey review). `mdfManage.surveyLog: 'own'` (view_3505, view_4056)
-shows only the page's survey's entries + the earlier text. Builder: turn off inline edit of `field_2457` on
-the non-survey grids (list in docs/locations.md). Test: `tests/worksheet-v2/test-mdf-survey-notes-log.js`.
+shows only the page's survey's entries + the earlier text. The cards' "Table view" toggle is gone (2026-11-03 —
+the raw grid's editable `field_2457` cell was the last overwrite path); card grids must load every closet on one
+page (`change-record-limit.js`: view_3803 / view_3892 / view_3894 added). Test:
+`tests/worksheet-v2/test-mdf-survey-notes-log.js`.
 
 ## SOW add-item modal (live 2026-10-08) — `src/features/worksheet-v2/sow-add-item-form.js`
 

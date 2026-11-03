@@ -54,7 +54,13 @@
     'view_4112', 'view_4114', 'view_4116', 'view_4118',
     // proposal-grid-v2 flat data view (duplicate of view_3341, no
     // groupings) — v2 renders the whole grid off this model.
-    'view_4140'
+    'view_4140',
+    // MDF/IDF location grids shown as cards (mdf-idf-cards.js, 2026-11-03):
+    // the cards hide Knack's page controls and the "Table view" toggle that
+    // used to reach page 2 is gone, so every closet must be on the one page.
+    // view_3803 = Survey Forms request page, view_3892 / view_3894 = REVIEW
+    // SURVEYS (view_3894 is also survey-review-grid's MDF/IDF source).
+    'view_3803', 'view_3892', 'view_3894'
   ];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
@@ -91,7 +97,9 @@
     // Sub portal Manage Change Order views (see VIEW_IDS above)
     'view_4112', 'view_4114', 'view_4116', 'view_4118',
     // proposal-grid-v2 flat data view (see VIEW_IDS above)
-    'view_4140'
+    'view_4140',
+    // MDF/IDF location card grids (see VIEW_IDS above)
+    'view_3803', 'view_3892', 'view_3894'
   ];
 
   (function injectHidePaginationCss() {

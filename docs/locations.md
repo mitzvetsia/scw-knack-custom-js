@@ -209,10 +209,13 @@ Run: `python3 -I tools/mdf_site_cleanup.py <projects.csv> <sites.csv> <mdfidf.cs
   still rides in the page's data — anyone reading the network traffic sees it); ops surfaces (build SOW,
   deploy, sales, reconcile, review surveys) show every entry, read-only. The location cards
   (`mdf-idf-cards.js`) follow the same rule: an "add" box on a survey page, a read-only log elsewhere — never
-  an overwrite box. **Builder (recommended)**: turn off inline editing of `field_2457` on the grids outside
-  survey pages (view_3577, view_3602, view_3822, view_3892, view_3894, view_3932, view_4060, view_4084,
-  view_4114) — the native table toggle would still let a user overwrite the log there; the create form
-  view_3773 writes the first note unstamped (it reads as "Earlier notes"). Two saves in the same second could
+  an overwrite box. The cards' "Table view" toggle was REMOVED (2026-11-03): it was the one way left to reach
+  a raw Knack grid whose `field_2457` cell is inline-editable (every other closet grid is a hidden data source
+  or replaced by the worksheet), so no user can overwrite the log on screen and no Builder change is needed.
+  The table was also the only way to page through a grid (the cards hide Knack's page controls), so the three
+  visible card grids at 25 rows (view_3803, view_3892, view_3894) now load every closet
+  (`change-record-limit.js`). The create form view_3773 writes the first note unstamped (it reads as
+  "Earlier notes"). Two saves in the same second could
   still collide (rare). Corrections to the closet's own facts (name, ##, where) are applied by ops by hand;
   nothing applies automatically. Test: `tests/worksheet-v2/test-mdf-survey-notes-log.js`.
 - **"What we know" on the survey page**: the panel's read-only part (name, ##, ops Notes, photos) plus the

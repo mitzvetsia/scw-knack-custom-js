@@ -18,14 +18,21 @@
  * carrying the MDF/IDF signature (field_1641 type + field_1943 name + field_1642
  * computed display name) is transformed — so every sibling location grid picks
  * the design up automatically. The raw table is kept (display:none) for the
- * model + native links; a persisted "Table view" toggle restores it.
+ * model + native links. There is no way back to the raw table (the "Table
+ * view" toggle was removed 2026-11-03): its inline-editable survey-notes
+ * cell let anyone overwrite the closet's stamped survey-notes log, and the
+ * cards carry everything the table offered. A grid with more closets than
+ * its page size must be forced to one page (change-record-limit.js) — the
+ * cards hide Knack's page controls.
  ***************************************************************************/
 (function () {
   'use strict';
 
   var STYLE_ID = 'scw-mdf-idf-cards-css';
   var EVENT_NS = '.scwMdfIdfCards';
-  var MODE_LS  = 'scwMdfIdfCardsMode';   // 'cards' | 'table'
+  // Retired 2026-11-03 with the "Table view" toggle; cleared once so a
+  // browser that last chose the table is not left reading a stale key.
+  var MODE_LS  = 'scwMdfIdfCardsMode';
 
   // MDF/IDF location object fields (same object on every sibling view).
   var F = {
@@ -395,37 +402,8 @@
       return opts;
     };
   }
-  function currentMode() {
-    try { return localStorage.getItem(MODE_LS) === 'table' ? 'table' : 'cards'; }
-    catch (e) { return 'cards'; }
-  }
-  function applyMode(view, mode) {
-    if (mode === 'table') view.classList.remove('scw-mdf-cards-on');
-    else view.classList.add('scw-mdf-cards-on');
-    var btn = view.querySelector('.scw-mdf-toggle');
-    if (btn) btn.textContent = (mode === 'table') ? '▤ Card view' : '▤ Table view';
-  }
+  try { window.localStorage.removeItem(MODE_LS); } catch (e) { /* storage blocked */ }
   function ensureChrome(view, wrapper) {
-    if (!view.querySelector('.scw-mdf-toolbar')) {
-      var toolbar = document.createElement('div');
-      toolbar.className = 'scw-mdf-toolbar';
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'scw-mdf-toggle';
-      btn.addEventListener('click', function () {
-        var mode = view.classList.contains('scw-mdf-cards-on') ? 'table' : 'cards';
-        try { localStorage.setItem(MODE_LS, mode); } catch (e) {}
-        applyMode(view, mode);
-        // Re-inject photo strips into whichever surface is now visible —
-        // the cards (cards mode) or the native table rows (table mode).
-        if (window.SCW && SCW.inlinePhotoRow &&
-            typeof SCW.inlinePhotoRow.refresh === 'function') {
-          SCW.inlinePhotoRow.refresh(view.id);
-        }
-      });
-      toolbar.appendChild(btn);
-      wrapper.parentNode.insertBefore(toolbar, wrapper);
-    }
     var container = view.querySelector('.scw-mdf-cards');
     if (!container) {
       container = document.createElement('div');
@@ -440,7 +418,6 @@
   function teardown(view) {
     view.classList.remove('scw-mdf-cards-on');
     var c = view.querySelector('.scw-mdf-cards'); if (c && c.parentNode) c.parentNode.removeChild(c);
-    var t = view.querySelector('.scw-mdf-toolbar'); if (t && t.parentNode) t.parentNode.removeChild(t);
   }
 
   // True when a MOUNTED worksheet-v2 deployment manages this locations grid
@@ -489,9 +466,8 @@
     if (ae && ae.classList && ae.classList.contains('scw-mdf-input') && view.contains(ae)) return;
 
     var container = ensureChrome(view, wrapper);
-    // Delete gate also covers the raw-table fallback ("Table view" toggle):
-    // the native delete link hides while the gate is active, so the toggle
-    // can't be used to bypass it.
+    // Delete gate: the native delete link stays hidden while the gate is
+    // active (belt and braces — the raw table is never shown now).
     view.classList.toggle('scw-mdf-delgated', !!deleteGateActive(viewKey));
     var rows = table.querySelectorAll('tbody tr[id]');
     var typeOptions = typeOptionsFactory(rows);
@@ -514,7 +490,7 @@
     } else {
       container.appendChild(frag);
     }
-    applyMode(view, currentMode());
+    view.classList.add('scw-mdf-cards-on');   // always cards — no table view
 
     // Let inline-photo-row inject its photo strip into each card we just
     // built. Its own render pass targets the (now display:none) native
@@ -536,10 +512,6 @@
       '.scw-mdf-cards-on .kn-records-nav { display: none !important; }',
       '.kn-view:not(.scw-mdf-cards-on) .scw-mdf-cards { display: none !important; }',
 
-      '.scw-mdf-toolbar { display: flex; justify-content: flex-end; margin: 0 0 10px; }',
-      '.scw-mdf-toggle { background: #fff; border: 1px solid #cbd5e1; color: #475569;',
-      '  border-radius: 6px; padding: 4px 10px; font: 600 12px/1.2 system-ui, sans-serif; cursor: pointer; }',
-      '.scw-mdf-toggle:hover { background: #f1f5f9; }',
 
       '.scw-mdf-cards { display: flex; flex-direction: column; gap: 10px; }',
       '.scw-mdf-empty { padding: 24px; text-align: center; color: #94a3b8; background: #fff;',
