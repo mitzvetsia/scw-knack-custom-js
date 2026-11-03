@@ -1,8 +1,8 @@
 // jsdom test: Create Alternate SOW window (2026-11-03). "It is not obvious enough that we're creating an
 // alternate SOW with SHARED options" and "swapping all the readers to a different type of reader — that's a
 // LOT of clicks". Drives the real create-sow-option-btn.js: the shared-by-default band + counters + a chip
-// on every row, the per-model swap (all lines / picked locations or lines: location ticks, single lines,
-// shift-click, a label range — "change 100 of these 188 readers"), rows set by hand (mirrored in the picker;
+// on every row, the per-model swap (all lines / picked locations or lines — offered BEFORE a model is chosen: location ticks, single lines,
+// shift-click — "change 100 of these 188 readers"; no typed line range), rows set by hand (mirrored in the picker;
 // "Set per row below" for two new models), the mounting-hardware check, the filters, the undo, and the
 // link / clone payload.
 const fs = require('fs');
@@ -111,6 +111,28 @@ const msel = () => readerRow().querySelector('[data-alt-msel]');
   check('the swap list offers the bucket\'s other models, not the one itself',
     [...msel().options].map(o => o.textContent), ['Keep this model (shared)', 'Set per row below', 'Avigilon Alta Smart Reader Mini', 'Avigilon Alta Smart Reader Pro']);
 
+  // ── which lines BEFORE a model is chosen ("I don't know I get this until I select a different model") ──
+  check('every model with 2+ lines shows Which lines from the start; a one-line model does not; Keep is hidden',
+    [readerRow().querySelector('[data-alt-mmore]').style.display, txt(readerRow().querySelector('[data-alt-mmore]')).slice(0, 11),
+     $1('[data-alt-model="' + HUB + '"] [data-alt-mmore]').style.display, readerRow().querySelector('[data-alt-mkeep]').style.display],
+    ['', 'Which lines', 'none', 'none']);
+  const pickFirst = readerRow().querySelector('[data-alt-mscope][value=pick]');
+  pickFirst.checked = true; change(pickFirst);
+  const idfFirst = readerRow().querySelector('[data-alt-mloc="' + IDF + '"]');
+  idfFirst.checked = true; change(idfFirst);
+  check('pick first: the IDF lines are ticked, nothing is a copy yet, the row says what comes next',
+    [readerRow().querySelector('[data-alt-mlocs]').style.display, txt(readerRow().querySelector('[data-alt-mpick-n]')), counts(),
+     txt(readerRow().querySelector('[data-alt-mcopies]'))],
+    ['', '2 of 4 lines picked', ['5', '0', '0'], 'Now choose the new model for these 2 lines']);
+  msel().value = READER2; change(msel());
+  check('then the model: only the picked lines become copies',
+    [ids.slice(1, 5).map(chip), counts(), txt(readerRow().querySelector('[data-alt-mcopies]'))],
+    [['Shared', 'Shared', 'Copy', 'Copy'], ['3', '2', '0'], '2 lines become copies']);
+  readerRow().querySelector('[data-alt-mkeep]').click();
+  check('Keep current model puts them back and returns to All lines',
+    [ids.slice(1, 5).map(chip), readerRow().querySelector('[data-alt-mscope][value=all]').checked, readerRow().querySelector('[data-alt-mkeep]').style.display],
+    [['Shared', 'Shared', 'Shared', 'Shared'], true, 'none']);
+
   // ── one choice swaps every reader ──
   msel().value = READER2; change(msel());
   check('every reader row now uses the new model and is a Copy that names what SOW 1980 keeps',
@@ -129,7 +151,7 @@ const msel = () => readerRow().querySelector('[data-alt-msel]');
   // ── only some locations or lines ("change 100 of these 188 readers") ──
   const pickRadio = readerRow().querySelector('[data-alt-mscope][value=pick]');
   check('the swap offers all lines or a pick',
-    [...readerRow().querySelectorAll('[data-alt-mscope-wrap]')].map(txt), ['Where', 'All 4 lines', 'Pick locations or lines…']);
+    [...readerRow().querySelectorAll('[data-alt-mscope-wrap]')].map(txt), ['Which lines', 'All 4 lines', 'Pick locations or lines…']);
   check('a one-line model has no picker', !!$1('[data-alt-model="' + HUB + '"] [data-alt-mlocs]'), false);
   pickRadio.checked = true; change(pickRadio);
   const picker = () => readerRow().querySelector('[data-alt-mlocs]');
@@ -160,16 +182,10 @@ const msel = () => readerRow().querySelector('[data-alt-msel]');
   line(ids[4]).dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
   check('shift-click ticks every open line between the two clicks', [reader4(), pickN()], [['Copy', 'Copy', 'Copy', 'Copy'], '4 of 4 lines picked']);
   readerRow().querySelector('[data-alt-mpick-set="0"]').click();
-  readerRow().querySelector('[data-alt-mfrom]').value = 'AC-053';
-  readerRow().querySelector('[data-alt-mto]').value = 'ac-002';
-  readerRow().querySelector('[data-alt-mrange]').click();
-  check('a label range (either way round, any case) ticks the lines between',
-    [reader4(), pickN(), txt(readerRow().querySelector('[data-alt-mpick-msg]'))],
-    [['Shared', 'Copy', 'Copy', 'Shared'], '2 of 4 lines picked', 'Ticked 2 lines from ac-002 to AC-053.']);
-  readerRow().querySelector('[data-alt-mfrom]').value = 'AC-001';
-  readerRow().querySelector('[data-alt-mto]').value = '';
-  readerRow().querySelector('[data-alt-mfrom]').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-  check('Enter in a range box ticks it; one end alone is one line', [reader4(), pickN()], [['Copy', 'Copy', 'Copy', 'Shared'], '3 of 4 lines picked']);
+  line(ids[1]).click(); line(ids[2]).click(); line(ids[3]).click();
+  check('single lines ticked one by one; no typed line range anywhere',
+    [reader4(), pickN(), !!readerRow().querySelector('[data-alt-mfrom], [data-alt-mto], [data-alt-mrange]')],
+    [['Copy', 'Copy', 'Copy', 'Shared'], '3 of 4 lines picked', false]);
 
   // ── rows set by hand ──
   const r4 = row(ids[4]).querySelector('select');

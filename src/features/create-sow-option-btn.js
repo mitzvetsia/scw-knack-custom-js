@@ -189,11 +189,6 @@
       '.' + P + '-mpick-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;',
       '  padding: 8px 10px; border-bottom: 1px solid #f3e8ff; background: #faf5ff; border-radius: 8px 8px 0 0; }',
       '.' + P + '-mpick-n { color: #5b21b6; margin-right: 4px; }',
-      '.' + P + '-mrange { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }',
-      '.' + P + '-mrange input { width: 92px; height: 28px; padding: 0 7px; border: 1px solid #cbd5e1;',
-      '  border-radius: 6px; font: inherit; font-size: 12px; }',
-      '.' + P + '-mpick-msg { padding: 6px 10px 0; color: #5b21b6; font-size: 12px; }',
-      '.' + P + '-mpick-msg:empty { display: none; }',
       '.' + P + '-mlocs-list { max-height: 340px; overflow-y: auto; padding: 4px 0; }',
       '.' + P + '-mloc-h { display: flex; align-items: center; gap: 8px; padding: 5px 10px; }',
       '.' + P + '-mloc-h input { margin: 0; }',
@@ -635,20 +630,16 @@
 
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
 
-  function natCmp(a, b) {
-    return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
-  }
-
   /** The "Pick locations or lines…" picker of one model row: a tick per
-   *  MDF/IDF (all of its lines at once) that unfolds to a tick per line, a
-   *  label range ("AC-001 to AC-100"), Tick all / Untick all, and a count.
+   *  MDF/IDF (all of its lines at once) that unfolds to a tick per line,
+   *  Tick all / Untick all, and a count. (A typed label range was tried and
+   *  dropped, 2026-11-03: "this lines idea is bad".)
    *  "Change 100 of these 188 readers" is the case it exists for. */
   function pickerHtml(m, i) {
-    var labels = [], locs = '';
+    var locs = '';
     for (var l = 0; l < m.locs.length; l++) {
       var lc = m.locs[l], lines = '';
       for (var k = 0; k < lc.lines.length; k++) {
-        labels.push(lc.lines[k].label);
         lines += '<label class="' + P + '-mline" data-alt-mline-wrap>' +
           '<input type="checkbox" data-alt-mline="' + esc(lc.lines[k].id) + '" checked> ' +
           '<span>' + esc(lc.lines[k].label) + '</span></label>';
@@ -666,31 +657,12 @@
           '<div class="' + P + '-mlines" data-alt-mlines>' + lines + '</div>' +
         '</div>';
     }
-    var sorted = labels.slice().sort(natCmp);
-    var dl = '';
-    var seen = Object.create(null);
-    for (var s = 0; s < sorted.length; s++) {
-      if (seen[sorted[s]]) continue;
-      seen[sorted[s]] = 1;
-      dl += '<option value="' + esc(sorted[s]) + '"></option>';
-    }
-    var dlId = P + '-ml-' + i;
-    var first = sorted[0] || '', last = sorted[sorted.length - 1] || '';
     return '<div class="' + P + '-mpick" data-alt-mlocs style="display:none">' +
         '<div class="' + P + '-mpick-bar">' +
           '<b class="' + P + '-mpick-n" data-alt-mpick-n></b>' +
           '<button type="button" class="' + P + '-tbtn" data-alt-mpick-set="1">Tick all</button>' +
           '<button type="button" class="' + P + '-tbtn" data-alt-mpick-set="0">Untick all</button>' +
-          '<span class="' + P + '-mrange">' +
-            '<label>Lines <input type="text" data-alt-mfrom list="' + dlId + '" placeholder="' + esc(first) + '" ' +
-              'aria-label="First line of the range"></label>' +
-            '<label>to <input type="text" data-alt-mto list="' + dlId + '" placeholder="' + esc(last) + '" ' +
-              'aria-label="Last line of the range"></label>' +
-            '<button type="button" class="' + P + '-tbtn" data-alt-mrange>Tick range</button>' +
-          '</span>' +
-          '<datalist id="' + dlId + '">' + dl + '</datalist>' +
         '</div>' +
-        '<div class="' + P + '-mpick-msg" data-alt-mpick-msg></div>' +
         '<div class="' + P + '-mlocs-list">' + locs + '</div>' +
         '<div class="' + P + '-mpick-tip">Ticked lines take the new model; the rest stay shared. ' +
           'Open a location to tick single lines. Shift-click ticks every line between two clicks.</div>' +
@@ -712,8 +684,8 @@
         '<div class="' + P + '-mcount">' + plural(m.count, 'line') + '</div>' +
         '<select class="' + P + '-msel" data-alt-msel aria-label="Model to use on the alternate instead of ' + esc(m.name) + '">' +
           opts + '</select>' +
-        '<div class="' + P + '-mmore" data-alt-mmore style="display:none">' +
-          '<span class="' + P + '-mwhere" data-alt-mscope-wrap>Where</span>' +
+        '<div class="' + P + '-mmore" data-alt-mmore' + (m.count > 1 ? '' : ' style="display:none"') + '>' +
+          '<span class="' + P + '-mwhere" data-alt-mscope-wrap>Which lines</span>' +
           '<label data-alt-mscope-wrap><input type="radio" name="scw-alt-where-' + i + '" value="all" data-alt-mscope checked> ' +
             'All ' + plural(m.count, 'line') + '</label>' +
           (m.count > 1
@@ -721,7 +693,7 @@
                 (m.locs.length > 1 ? 'Pick locations or lines…' : 'Pick lines…') + '</label>'
             : '') +
           '<span class="' + P + '-mcopies" data-alt-mcopies></span>' +
-          '<button type="button" class="' + P + '-tbtn" data-alt-mkeep ' +
+          '<button type="button" class="' + P + '-tbtn" data-alt-mkeep style="display:none" ' +
             'title="Every line keeps this model and stays shared with ' + esc(sowNum) + '">Keep current model</button>' +
         '</div>' +
         (m.count > 1 ? pickerHtml(m, i) : '') +
@@ -799,7 +771,7 @@
           ? '<div class="' + P + '-card">' +
               '<div class="' + P + '-card-h"><h3>Swap a model on the alternate</h3>' +
                 '<span class="' + P + '-hint">One change covers every line with that model, ' +
-                'or only the locations or lines you pick.</span></div>' +
+                'or only the locations or lines you pick under it.</span></div>' +
               '<div class="' + P + '-mlist" data-alt-mlist>' + modelRows + '</div>' +
               (extra
                 ? '<div class="' + P + '-mfoot"><button type="button" class="' + P + '-link" data-alt-mall>' +
@@ -893,11 +865,15 @@
 
     /** Push a model row's choice (target + where) onto its item rows. The
      *  item rows stay the one source of truth; this only sets their selects. */
-    function applyModel(mrow) {
+    function applyModel(mrow, force) {
       var mid = mrow.getAttribute('data-alt-model');
       var sel = mrow.querySelector('[data-alt-msel]');
       var target = sel.value;
       if (target === '__mixed') return;
+      // No new model yet: picking lines (or All / Pick) only prepares the
+      // pick. Only an explicit "keep" (the select back on Keep, or the Keep
+      // button) puts the rows back, so a row set by hand below survives.
+      if (!target && !force) return;
       var label = sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].textContent : '';
       var pickEl = mrow.querySelector('[data-alt-mscope][value=pick]');
       var pick = !!(pickEl && pickEl.checked);
@@ -931,34 +907,6 @@
       var all = mrow.querySelector('[data-alt-mscope][value=all]');
       if (all) all.checked = true;
       setLines(mrow, true);
-      var msg = mrow.querySelector('[data-alt-mpick-msg]');
-      if (msg) msg.textContent = '';
-    }
-
-    /** "Lines AC-001 to AC-100" → tick every line whose label sorts between
-     *  the two (natural order, both ends included). Adds to what is ticked. */
-    function tickRange(mrow) {
-      var fromEl = mrow.querySelector('[data-alt-mfrom]');
-      var toEl = mrow.querySelector('[data-alt-mto]');
-      var msg = mrow.querySelector('[data-alt-mpick-msg]');
-      var a = fromEl ? fromEl.value.trim() : '', b = toEl ? toEl.value.trim() : '';
-      if (!a && !b) { if (msg) msg.textContent = 'Type the first and last line of the range.'; return false; }
-      if (!a) a = b;
-      if (!b) b = a;
-      if (natCmp(a, b) > 0) { var t = a; a = b; b = t; }
-      var ls = mrow.querySelectorAll('[data-alt-mline]'), hit = 0;
-      for (var l = 0; l < ls.length; l++) {
-        var wrap = ls[l].closest('[data-alt-mline-wrap]');
-        var lab = wrap ? wrap.textContent.trim() : '';
-        if (natCmp(lab, a) >= 0 && natCmp(lab, b) <= 0) {
-          if (!ls[l].checked) hit++;
-          ls[l].checked = true;
-        }
-      }
-      if (msg) msg.textContent = hit
-        ? 'Ticked ' + plural(hit, 'line') + ' from ' + a + ' to ' + b + '.'
-        : 'No unticked lines between ' + a + ' and ' + b + '.';
-      return hit > 0;
     }
 
     /** Reflect the item rows back onto one model row: its select, the
@@ -989,7 +937,8 @@
       } else {
         derived = '__mixed';   // two or more new models: only the rows can say it
       }
-      // The rows are the truth; the picker always mirrors them.
+      // The rows are the truth once a model is chosen; the picker mirrors
+      // them. Before that, the ticks are the user's pick and stay as set.
       if (pick && derived && derived !== '__mixed') {
         var byId = Object.create(null);
         for (var r = 0; r < rs.length; r++) byId[rs[r].getAttribute('data-alt-row')] = rs[r];
@@ -1005,7 +954,14 @@
             lw.title = lst && !lst.on ? 'Left off the alternate (ticked in the list below)' : '';
           }
         }
-        var picked = 0;
+      }
+      var picked = 0;
+      if (pick && derived !== '__mixed') {
+        var lsAll = mrow.querySelectorAll('[data-alt-mline]');
+        for (var la = 0; la < lsAll.length; la++) {
+          var lwa = lsAll[la].closest('[data-alt-mline-wrap]');
+          if (lwa) lwa.classList.toggle('is-on', lsAll[la].checked);
+        }
         var locsW = mrow.querySelectorAll('.' + P + '-mloc');
         for (var w2 = 0; w2 < locsW.length; w2++) {
           var lls = locsW[w2].querySelectorAll('[data-alt-mline]'), on = 0;
@@ -1033,13 +989,19 @@
       var swapped = !!derived;
       mrow.classList.toggle('is-swapped', swapped);
       var more = mrow.querySelector('[data-alt-mmore]');
-      if (more) more.style.display = swapped ? '' : 'none';
+      if (more) more.style.display = (swapped || rs.length > 1) ? '' : 'none';
       var scopes = mrow.querySelectorAll('[data-alt-mscope-wrap]');
       for (var s = 0; s < scopes.length; s++) scopes[s].style.display = derived === '__mixed' ? 'none' : '';
+      var keepBtn = mrow.querySelector('[data-alt-mkeep]');
+      if (keepBtn) keepBtn.style.display = swapped ? '' : 'none';
       var locsEl = mrow.querySelector('[data-alt-mlocs]');
-      if (locsEl) locsEl.style.display = (swapped && derived !== '__mixed' && pick) ? '' : 'none';
+      if (locsEl) locsEl.style.display = (pick && derived !== '__mixed') ? '' : 'none';
       var cEl = mrow.querySelector('[data-alt-mcopies]');
-      if (cEl) cEl.textContent = copiedOn ? (plural(copiedOn, 'line') + ' become ' + (copiedOn === 1 ? 'a copy' : 'copies')) : '';
+      if (cEl) {
+        cEl.textContent = copiedOn ? (plural(copiedOn, 'line') + ' become ' + (copiedOn === 1 ? 'a copy' : 'copies'))
+          : (pick && !derived) ? (picked ? 'Now choose the new model for these ' + plural(picked, 'line') : 'Tick the lines, then choose the new model')
+          : '';
+      }
 
       // Mounting hardware the catalog says does not fit the new model.
       var warn = mrow.querySelector('[data-alt-mwarn]');
@@ -1178,11 +1140,10 @@
         return;
       }
       if (mrow && (t.hasAttribute('data-alt-msel') || t.hasAttribute('data-alt-mline'))) {
-        applyModel(mrow);
+        applyModel(mrow, t.hasAttribute('data-alt-msel'));
         repaint();
         return;
       }
-      if (mrow && (t.hasAttribute('data-alt-mfrom') || t.hasAttribute('data-alt-mto'))) return;
       // A group checkbox drives its whole section, then the normal repaint
       // recomputes every tally from the rows.
       var gcb = t.closest('[data-alt-grp-cb]');
@@ -1258,20 +1219,12 @@
       if (mset) {
         var mrowS = mset.closest('[data-alt-model]');
         setLines(mrowS, mset.getAttribute('data-alt-mpick-set') === '1');
-        var msgS = mrowS.querySelector('[data-alt-mpick-msg]');
-        if (msgS) msgS.textContent = '';
         applyModel(mrowS); repaint(); return;
-      }
-      var mrg = t.closest('[data-alt-mrange]');
-      if (mrg) {
-        var mrowR = mrg.closest('[data-alt-model]');
-        if (tickRange(mrowR)) applyModel(mrowR);
-        repaint(); return;
       }
       var mk = t.closest('[data-alt-mkeep]');
       if (mk) {
         var mrowK = mk.closest('[data-alt-model]');
-        if (mrowK) { resetModelControls(mrowK); applyModel(mrowK); }
+        if (mrowK) { resetModelControls(mrowK); applyModel(mrowK, true); }
         repaint(); return;
       }
       var gh = t.closest('[data-alt-grp]');
@@ -1292,17 +1245,6 @@
         repaint(); return;
       }
       if (t.closest('[data-alt-go]') && !goBtn.disabled) submit();
-    });
-
-    // Enter in a range box = Tick range.
-    back.addEventListener('keydown', function (e) {
-      var t = e.target;
-      if (e.key !== 'Enter' || !t || !t.hasAttribute ||
-          !(t.hasAttribute('data-alt-mfrom') || t.hasAttribute('data-alt-mto'))) return;
-      e.preventDefault();
-      var mrowE = t.closest('[data-alt-model]');
-      if (mrowE && tickRange(mrowE)) applyModel(mrowE);
-      repaint();
     });
 
     function submit() {

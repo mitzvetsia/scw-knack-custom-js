@@ -2093,11 +2093,17 @@ redesign". The window (button on view_3869's header, rows from view_3586's paren
   (`SCW.catalog.fits === false`; `null` says nothing).
 - **Some of a model, not all (same day — "change 100 of these 188 readers")**: the swap's Where is "All N
   lines" or "Pick locations or lines…" (`pickerHtml`). Pick opens EMPTY (nothing is a copy until ticked) with a
-  tick per MDF/IDF (all its lines; tri-state) that unfolds to a tick per line, Tick all / Untick all, a label
-  range "Lines AC-001 to AC-100" + Tick range / Enter (natural order, either way round, adds to the ticks),
-  shift-click across open locations, and "100 of 188 lines picked". The rows stay the truth: the picker mirrors
+  tick per MDF/IDF (all its lines; tri-state) that unfolds to a tick per line, Tick all / Untick all,
+  shift-click across open locations, and "100 of 188 lines picked". (A typed label range "AC-001 to AC-100" was
+  built and REMOVED the same day — "this lines idea is bad. Don't do that." Do not bring it back.) The rows stay the truth: the picker mirrors
   them (a row set by hand to the same model shows ticked, and puts an "All" swap into Pick); only two different
-  new models read "Set per row below".
+  new models read "Set per row below". **"Which lines" is on screen BEFORE a model is chosen** (same day — "I don't
+  know I'm going to get this functionality until I select a different model"; three redesigns were mocked and
+  rejected in favour of this first window): every model with 2+ lines shows "Which lines: All N lines / Pick
+  locations or lines…" at rest; a pick made with no model yet only ticks lines ("Now choose the new model for these
+  N lines") — `applyModel(mrow, force)` touches the rows only once a model is chosen, or on an explicit keep (the
+  select back on Keep, the Keep button), so a row set by hand below survives; Keep current model shows only once a
+  swap exists.
 - Payload unchanged (`linkIds` / `sowLineItemIds` = shared rows, `cloneItems` = changed rows). ⚠ Whether Make
   handles `cloneItems` (and copies a cloned device's accessories) is unverified — the module's header says a
   model-changed row is otherwise simply absent from the new SOW, which a bulk swap turns from 1 row into
