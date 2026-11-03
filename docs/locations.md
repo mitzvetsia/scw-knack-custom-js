@@ -234,20 +234,19 @@ Run: `python3 -I tools/mdf_site_cleanup.py <projects.csv> <sites.csv> <mdfidf.cs
 - Not built yet: the Make merge scenario (input = a reviewed group: survivor + losers).
 
 ### Next steps
-1. Ask Micah to re-upload: the MDF/IDF export, a **Projects** export (Record ID `field_2059`, name,
-   Site, Quotes) and a **Sites** export (Record ID `field_2095`, Site ID, nickname, address, client).
-2. Build the **cleanup CSV keyed on Record ID**: site from the project's Site (project names used
-   by more than one project → review list, never guessed), Pour Taproom re-homed through their
-   quotes, numbers copied, HEADEND numbers blanked, "MDF" → HEADEND, Location folded into Notes.
-   Note that a Knack import matches a CONNECTION column by a field of the connected object — match
-   the site on a unique field (check Record ID / Site ID uniqueness in the Sites export).
-3. Build the **duplicate review list per site**: actual (same type + number, or both HEADEND, same
-   normalized name — or several unnamed defaults) vs possible (same number different names, same
-   name different numbers, similar names, two named HEADENDs). For each closet count what points at
-   it; suggest a survivor: installed first, then most install items, then oldest.
-4. Builder: lifecycle `merged` + "Merged into"; Site on the add forms; re-source the 10 grids +
-   view_3892 (after step 2's cleanup); field deletions above.
-5. Make: the merge scenario; site lookups in 04.04 / K2 / 04.01a; find the default-headend creator.
+Done 2026-11-02 / 11-03: the exports came in, the cleanup kit and the duplicate review list are built
+(see "Cleanup kit" above), and survey notes are a stamped log in the bundle. Nothing has been written
+to Knack yet. What is left, in order:
+1. **Builder, before any import**: lifecycle option `merged` + a "Merged into" connection; fix the
+   SYS_set Label rules (rule 1 to this record; rules 5 / 6 limited to IDFs).
+2. **Imports** (update existing records, matched on Record ID): `01_site_backfill.csv` →
+   `05_location_to_notes.csv`, in order; then the `06_by_hand.csv` rows by hand.
+3. **Duplicate review**: Micah marks KEEP / MERGE / SEPARATE in `07_duplicate_review.csv`; nothing
+   merges without that column.
+4. **Make**: the merge scenario (runs only on the reviewed groups); site lookups in 04.04 / K2 /
+   04.01a; find what creates the default headends.
+5. **Builder**: Site on the add forms; re-source the 10 grids + view_3892 to the site; delete the
+   fields in "Field cleanup".
 6. Then Part 2.
 
 ---
