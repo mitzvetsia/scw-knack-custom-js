@@ -2171,6 +2171,28 @@ DOM hidden as the source of truth; a Knack menu rebuild is re-adopted. The badge
 `.scw-pid-own` block so the adopt slot and footer survive data refreshes. Supersedes
 `nav-knack2-highlight.js` (deleted). Test: `tests/project-id/test-header-nav.js`.
 
+## A proposal needs a project zip code to be accepted or published final (2026-11-04) — `src/features/project-address-zip.js`
+
+"Are we able to BLOCK the acceptance of a proposal if there is no zip code in the project address?" — "go ahead and do
+it". The project address is CORE_project `field_22` (not required in Knack; a required address only means "not blank").
+`SCW.projectZip.read()` finds it on whatever view of the page shows `field_22` (field keys are unique, so no view key is
+configured): the model's `field_22_raw.zip` first, else the rendered text, where only a zip at the END counts (a
+five-digit street number never does); `state` is `ok` / `missing` (blank address or no zip) / `unknown` (no such view —
+every consumer fails open).
+- **Accept page** (`accept-proposal3`, scene_1324, form view_4043 — both Accept buttons open it, the client's public
+  link included): `accept-proposal-guard.js` `zipGate` replaces the form with an amber notice ("This proposal can't be
+  accepted yet … contact your SCW representative", the address on file, a staff line for @getscw.com logins, a link
+  back) and refuses a submit at capture; the source view is hidden (`scw-accept-zip-src`); "already accepted" wins.
+  **Builder: the page shows no project address today** — add a details view of CORE_project to scene_1324 connected
+  through the proposal's Scope of Work (`field_2666` → `field_2119`, the path view_3874 uses on scene_1279) with the
+  Address field. Until then the gate is off and the console says so once.
+- **Publish Final** (`ops-stepper.js`, scene_1096): `finalGateReason()` = `projectZipBlockReason()` (view_3349 "Project
+  Address" already shows `field_22`) || the sub-bid gate; the step locks with the reason on its tooltip, an amber line
+  under "Ops Actions", and a click-time alert. GFE / SOW-only publishes and the sales "Publish Proposal" are not gated
+  (only a final proposal offers Accept). Change orders are not gated.
+- A browser-side block: it stops anyone using the pages, not a write made through the API or a Make scenario.
+- Tests: `tests/proposal/test-accept-zip-gate.js`, `tests/misc/test-ops-stepper-zip.js`.
+
 ## Security & External Services
 
 ### ⚠️ Third-party image-resize proxy (proposal PDF Site Maps)

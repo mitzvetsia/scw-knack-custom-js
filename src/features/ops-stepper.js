@@ -1339,6 +1339,55 @@
     return '';
   }
 
+  // ── Project address zip (2026-11-04) ─────────────────────
+  // A FINAL proposal is the one the client can accept, and acceptance now
+  // refuses a project address with no zip (accept-proposal-guard.js). So
+  // Publish Final refuses it first: the client never receives a proposal they
+  // cannot accept. The address is CORE_project field_22 on view_3349 "Project
+  // Address" (SCW.projectZip reads any view on the page that shows it). No such
+  // view → '' (fail open), like the sub-bid gate.
+  var PROJECT_ADDRESS_VIEW = 'view_3349';
+
+  function projectZip() {
+    var z = window.SCW && SCW.projectZip;
+    return z && typeof z.read === 'function' ? z.read() : { state: 'unknown' };
+  }
+
+  function projectZipBlockReason() {
+    var r = projectZip();
+    if (r.state !== 'missing') return '';
+    return r.blank
+      ? 'The project has no address. Add the project address with its zip code, then publish — ' +
+        'the client can’t accept a proposal without it.'
+      : 'The project address has no zip code (' + r.address + '). Add the zip code to the ' +
+        'project’s address, then publish — the client can’t accept a proposal without it.';
+  }
+
+  /** Everything that locks "Post and/or Publish Final": the zip first, then
+   *  the sub-bid review. */
+  function finalGateReason() {
+    return projectZipBlockReason() || publishFinalBlockReason();
+  }
+
+  /** The amber line under the stepper title while the zip is missing. */
+  function buildZipNotice() {
+    var reason = projectZipBlockReason();
+    if (!reason) return null;
+    var el = document.createElement('div');
+    el.className = 'scw-ops-zip-warn';
+    el.setAttribute('data-scw-ops-zip', '');
+    el.setAttribute('style', 'display:flex;gap:8px;align-items:flex-start;margin:6px 0 10px;' +
+      'padding:8px 10px;border:1px solid #fcd34d;border-radius:8px;background:#fffbeb;' +
+      'color:#78350f;font-size:12.5px;line-height:1.4;');
+    el.innerHTML =
+      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#b45309" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;margin-top:2px" aria-hidden="true">' +
+      '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+      '<line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +
+      '<span><b style="color:#92400e">Publish Final is locked.</b> ' + escHtml(reason) + '</span>';
+    return el;
+  }
+
   function escHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
@@ -3128,7 +3177,7 @@
     // being present + saved. Fail open: if field_2941 isn't projected onto
     // view_3861 yet, the gate stays inactive (add the field to activate).
     if (step.id === 'publish-final') {
-      var gateReason = publishFinalBlockReason();
+      var gateReason = finalGateReason();
       if (gateReason) { alert('Can’t publish as final yet.\n\n' + gateReason); return; }
     }
 
@@ -3403,6 +3452,8 @@
     // Not applicable to a CO — its sub pricing is reconciled on the CO
     // drafting page (co-stage-strip), not via the base-scope bid review.
     if (!coMode) {
+      var zipNotice = buildZipNotice();
+      if (zipNotice) block.appendChild(zipNotice);
       var subBidPanel = buildSubBidPanel();
       if (subBidPanel) block.appendChild(subBidPanel);
       scheduleAutoRecheck();
@@ -3424,7 +3475,7 @@
       // Final-publish is additionally gated on the sub-bid review snapshot.
       var gateReason = '';
       if (!completed && available && step.id === 'publish-final') {
-        gateReason = publishFinalBlockReason();
+        gateReason = finalGateReason();
         if (gateReason) available = false;
       }
       var locked    = !completed && !available;
@@ -3499,6 +3550,10 @@
       .on('knack-view-render.' + SOURCE_VIEW + NS, function () { setTimeout(render, 200); });
 
     $(document)
+      .off('knack-view-render.' + PROJECT_ADDRESS_VIEW + NS)
+      .on('knack-view-render.' + PROJECT_ADDRESS_VIEW + NS, function () { setTimeout(render, 200); });
+
+    $(document)
       .off('knack-scene-render.any' + NS)
       .on('knack-scene-render.any' + NS, function () { setTimeout(render, 600); });
   }
@@ -3507,6 +3562,8 @@
   window.SCW.opsStepper = {
     // Re-read the SOW record this page's publish gate reads (tooling, tests).
     recheck: recheckSource,
+    // The project-address zip lock on Publish Final ('' = not locked).
+    zipBlockReason: projectZipBlockReason,
     setRecheckDelay: function (ms) { RECHECK_DELAY_MS = Number(ms) || RECHECK_DELAY_MS; },
     // The Issue CO recipient-phone check (tooling, tests).
     phoneProblem: phoneProblem,

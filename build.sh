@@ -63,6 +63,7 @@ cat \
   src/features/proposal-pdf-export.js \
   src/features/proposal-preview-images.js \
   src/features/proposal-preview-expiration.js \
+  src/features/project-address-zip.js \
   src/features/published-proposal-render.js \
   src/features/accept-proposal-guard.js \
   src/features/secure-proposal-link.js \
