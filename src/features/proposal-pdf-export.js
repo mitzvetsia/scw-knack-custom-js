@@ -494,7 +494,7 @@
     };
   }
 
-  function scrapeGridView(viewId, keys) {
+  function scrapeGridView(viewId, keys, gridOpts) {
     // proposal-grid-v2 (model-driven rebuild): when v2 owns this view it
     // builds the same intermediate structure straight from the Backbone
     // model — no DOM scrape, no dependency on v1's transformed rows.
@@ -504,7 +504,7 @@
     try {
       var pgV2 = window.SCW && window.SCW.proposalGridV2;
       if (pgV2 && typeof pgV2.buildPublishData === 'function') {
-        var v2data = pgV2.buildPublishData(viewId);
+        var v2data = pgV2.buildPublishData(viewId, { masked: !!(gridOpts && gridOpts.masked) });
         if (v2data) {
           console.log('[scw-pdf] grid payload for ' + viewId + ' built from proposal-grid-v2 model (no DOM scrape)');
           return {
@@ -1006,9 +1006,33 @@
       }
     }
 
+    // A grid scraped off the page (the v1 fallback) carries subtotals as the
+    // page printed them — for an Ops publisher, equipment + labor, which
+    // gives the masked labor away. Labor cannot be taken back out of a
+    // printed string, so those subtotals read TBD too. The v2 grid builds
+    // its subtotals equipment-only when masked (buildPublishData), so its
+    // figures stand.
+    function tbdifySubtotals(view) {
+      if (view.gridSource === 'v2' || !Array.isArray(view.sections)) return;
+      for (var s2 = 0; s2 < view.sections.length; s2++) {
+        var sec2 = view.sections[s2];
+        if (!sec2) continue;
+        var bks = Array.isArray(sec2.buckets) ? sec2.buckets : [];
+        for (var b2 = 0; b2 < bks.length; b2++) {
+          var ft = bks[b2] && bks[b2].footer;
+          if (ft && !ft.coBand) ft.cost = TBD;
+        }
+        var fl = sec2.footer && Array.isArray(sec2.footer.lines) ? sec2.footer.lines : [];
+        for (var l2 = 0; l2 < fl.length; l2++) {
+          if (fl[l2] && fl[l2].type !== 'disc') fl[l2].value = TBD;
+        }
+      }
+    }
+
     for (var v = 0; v < payload.views.length; v++) {
       var view = payload.views[v];
       if (!view) continue;
+      if (view.type === 'grid') tbdifySubtotals(view);
       if (Array.isArray(view.sections)) {
         for (var s = 0; s < view.sections.length; s++) {
           var section = view.sections[s];
@@ -1442,6 +1466,17 @@
     opts = opts || {};
     var result = { views: [], sceneId: cfg.sceneId, type: cfg.payloadType || '' };
 
+    // Decided BEFORE the scrape (it used to be read after): the v2 grid
+    // builds its subtotals without labor when the publish is TBD, so the
+    // subtotals can't give the masked labor away. See the TBD stamp below.
+    //   opts.tbdMode true  → force TBD (e.g. publish-sow-tbd from ops-stepper)
+    //   opts.tbdMode false → force NO TBD (e.g. publish-gfe / publish-final)
+    //   undefined          → fall back to shouldPublishAsTbd() (field_2725 read)
+    var tbdActive = (opts.tbdMode === true)  ? true
+                  : (opts.tbdMode === false) ? false
+                  : shouldPublishAsTbd();
+    var gridOpts = { masked: cfg.payloadType === 'proposal' && tbdActive };
+
     var sceneEl = document.getElementById('kn-' + cfg.sceneId);
     var allViewEls = sceneEl ? sceneEl.querySelectorAll('[id^="view_"]') : [];
 
@@ -1492,7 +1527,7 @@
             SCW.debug('[SCW PDF Export]', viewId, '→ v2 data view, owner ' + pg2Owner + ' present, skipping');
             continue;
           }
-          data = scrapeGridView(pg2Owner, cfg.gridKeys);
+          data = scrapeGridView(pg2Owner, cfg.gridKeys, gridOpts);
           if (!data) {
             SCW.debug('[SCW PDF Export]', viewId, '→ v2 payload unavailable for ' + pg2Owner + ', skipping');
             continue;
@@ -1517,7 +1552,7 @@
           }
         } catch (eReveal) { /* scrape proceeds with live visibility */ }
         try {
-          data = scrapeGridView(viewId, cfg.gridKeys);
+          data = scrapeGridView(viewId, cfg.gridKeys, gridOpts);
         } finally {
           if (restoreCollapsed) restoreCollapsed();
         }
@@ -1610,15 +1645,8 @@
 
     // Stamp TBD into every install-labor surface if the bid hasn't
     // been validated (field_2725 != Yes). Only applies to proposal
-    // payloads — subcontractor bids have different semantics.
-    //
-    // opts.tbdMode lets the caller override the field_2725 default:
-    //   true  → force TBD (e.g. publish-sow-tbd from ops-stepper)
-    //   false → force NO TBD (e.g. publish-gfe / publish-final)
-    //   undefined → fall back to shouldPublishAsTbd() (field_2725 read)
-    var tbdActive = (opts.tbdMode === true)  ? true
-                  : (opts.tbdMode === false) ? false
-                  : shouldPublishAsTbd();
+    // payloads — subcontractor bids have different semantics. tbdActive
+    // is decided at the top (opts.tbdMode, else field_2725).
     if (cfg.payloadType === 'proposal' && tbdActive) {
       applyTbdToPublishPayload(result);
     }
@@ -5649,6 +5677,7 @@
     // payload, and the e-signatures element manifest from that HTML.
     buildPdfHtml: buildPdfHtml,
     buildSowDocumentElements: buildSowDocumentElements,
+    applyTbdToPublishPayload: applyTbdToPublishPayload,
     // Render just the appended image sections (Site Maps / Additional
     // Photos) for a scene as an HTML string — the exact same markup the
     // published PDF/HTML appends at the end. proposal-preview-images.js

@@ -1532,8 +1532,17 @@
     return (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  function buildPublishData(v1ViewId) {
+  // popts.masked — the publish is TBD (bid not released, or a forced
+  // publish-sow-tbd): every subtotal carries EQUIPMENT ONLY, exactly as the
+  // masked on-page grid sums them (renderGrid laborSum). The TBD pass in
+  // proposal-pdf-export masks the labor lines and the Installation / Grand
+  // Total lines; without this the bucket and location subtotals still summed
+  // the labor in, so equipment subtracted from them gave the hidden labor
+  // away (SW2059, 2026-11-04: every subtotal = equipment + install, to the
+  // dollar, $102,752 in all).
+  function buildPublishData(v1ViewId, popts) {
     if (!CONFIG.enabled) return null;
+    var masked = !!(popts && popts.masked);
     var vcfg = CONFIG.views[v1ViewId];
     if (!vcfg || !vcfg.dataViewKey) return null;
     var records = readRecords(vcfg.dataViewKey);
@@ -1568,8 +1577,10 @@
       return { list: compressLabelsArr(names), count: names.length };
     }
 
+    function laborOf(recs) { return masked ? 0 : sumRecs(recs, F.labor); }
+
     function l1FooterData(title, recs) {
-      var subtotal = sumRecs(recs, F.hardware) + sumRecs(recs, F.labor);
+      var subtotal = sumRecs(recs, F.hardware) + laborOf(recs);
       if (Math.abs(subtotal) < 0.01) return null;
       // SIGNED (see pushL1Footer): a CO's removed-side discounts are negative.
       var discount = sumRecs(recs, F.lineDiscount);
@@ -1720,10 +1731,14 @@
     }
 
     function pubBucketFooter(bctx) {
+      var hw = sumRecs(bctx.allRecs, F.hardware);
+      var labor = laborOf(bctx.allRecs);
       return {
         label: bctx.displayLabel,
         qty: bctx.context === 'drop' ? Math.round(sumRecs(bctx.parentRecs, F.qty)) : 0,
-        cost: pubMoney(sumRecs(bctx.allRecs, F.hardware) + sumRecs(bctx.allRecs, F.labor)),
+        // Masked: a bucket with no equipment money (services) reads TBD, as
+        // the masked on-page footer does — never a $0.00 that looks priced.
+        cost: (masked && Math.abs(hw) < 0.005) ? 'TBD' : pubMoney(hw + labor),
       };
     }
 

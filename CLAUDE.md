@@ -2208,6 +2208,24 @@ validates" with the same line; a survey on the project, or no view_4155 on the p
 reads "Survey Request". Data fix for the Denso record (`692decdf2722050a70d47071`): set both fields, then Mark Ready
 sends it; or delete it and let sales submit a fresh request. Test: `tests/sow-page/test-survey-request-cards.js`.
 
+## A TBD proposal never prints labor inside its subtotals (2026-11-04) — `proposal-grid-v2.js`, `proposal-pdf-export.js`
+
+SW2059 (WestRock, quote 12348 v3) went out with every labor line, the Installation Total and the Grand Total as TBD
+(bid unreleased, `field_2725` = No), but each bucket footer and location Total was equipment + install to the dollar
+($102,752 in all) — subtract the equipment and the labor is there. Cause: the publish payload is built for the OPS user,
+whose on-page grid is unmasked, and `applyTbdToPublishPayload` masked only the labor lines and the lines named
+Installation / Grand Total. Now `scrapeAllViews` decides TBD BEFORE the scrape and passes it down:
+`buildPublishData(view, { masked: true })` sums EQUIPMENT ONLY into `pubBucketFooter` and `l1FooterData` (the masked
+on-page figures — `renderGrid`'s `laborSum`), a bucket with no equipment (services) reads TBD, and a location whose
+equipment is $0 gets no Total. A grid scraped off the page (the v1 fallback, no `gridSource: 'v2'`) gets TBD bucket and
+location subtotals, since labor cannot be taken out of a printed figure; discount lines stay. Unmasked publishes
+(publish-final / GFE / Issue CO) are unchanged. Test: `tests/proposal/test-tbd-subtotals.js`.
+
+**The Deputy 8.0 $8,888,350 on SW2059** is not a typo on the line: Make 06.02 [78] writes the SOW line's price from the
+PRODUCT (`77.field_146_raw`) and its active flag from the product status (`field_2912` = `field_956` is Enabled), and
+it wrote $8,888,350 + inactive for I-021 / I-022 — Deputy 8.0 26DF8M-V4 is disabled in the catalog with that price.
+The bid lines still name the retired product, so every sync writes it back; swap them to the current product.
+
 ## Security & External Services
 
 ### ⚠️ Third-party image-resize proxy (proposal PDF Site Maps)
