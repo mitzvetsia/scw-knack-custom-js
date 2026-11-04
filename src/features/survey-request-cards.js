@@ -54,6 +54,12 @@
   // SOW-header source view on this scene (hidden details view the
   // workflow stepper also reads) — used for the derived armed signal.
   var SOW_VIEW = 'view_3827';
+  // The project's SURVEY_requests (object_113, by REL_project) — what a
+  // request becomes once it is actually sent (Make 04.04 creates it). A
+  // request whose status says SUBMITTED while this grid is EMPTY was never
+  // sent (2026-11-04: Denso, a 12/01/2025 request stored SUBMITTED, no SOW
+  // link, no survey on the project — the card read "Submitted").
+  var SURVEY_VIEW = 'view_4155';
 
   var STYLE_ID = 'scw-srq-cards-css';
   var WRAP_ID  = 'scw-srq-cards';
@@ -92,6 +98,11 @@
       '.scw-srqc__partner { font-weight: 650; color: #0f172a; }' +
       '.scw-srqc__armed-note {' +
       '  margin-left: auto; font-size: 11.5px; font-weight: 600; color: #b45309;' +
+      '}' +
+      '.scw-srqc__unsent {' +
+      '  margin-top: 7px; padding: 7px 10px; border-radius: 7px; line-height: 1.4;' +
+      '  background: #fffbeb; border: 1px solid #f0c489; color: #b45309;' +
+      '  font-size: 12px; font-weight: 600;' +
       '}' +
       '.scw-srqc__dates {' +
       '  display: flex; gap: 14px; flex-wrap: wrap; margin-top: 7px;' +
@@ -279,12 +290,51 @@
     return out;
   }
 
+  // How many surveys went out on this project: the SURVEY_requests rows on
+  // the page. null when the grid is not on the page (no evidence either way).
+  function projectSurveyCount() {
+    var el = document.getElementById(SURVEY_VIEW);
+    if (!el) return null;
+    try {
+      var v = Knack.views && Knack.views[SURVEY_VIEW];
+      var data = v && v.model && v.model.data;
+      var models = data && (data.models || (Array.isArray(data) ? data : null));
+      if (models && models.length) return models.length;
+    } catch (e) { /* DOM below */ }
+    var n = 0;
+    var rows = el.querySelectorAll('tbody tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      if (/^[a-f0-9]{24}$/i.test(rows[i].id || '')) n++;
+    }
+    return n;
+  }
+
+  function isPendingStatus(rec) {
+    return String(rec.status || '').toLowerCase()
+      .indexOf(CONFIG.armedStatusMatch) !== -1;
+  }
+
+  // Stored SUBMITTED (or any non-pending status) with no survey on the
+  // project: it was never sent, whatever the status says.
+  function isUnsent(rec) {
+    return !!rec.status && !isPendingStatus(rec) && projectSurveyCount() === 0;
+  }
+
+  // Why Ops's Mark Ready will NOT send this request (ops-stepper.js reads
+  // view_4141: requests linked to THAT SOW through field_2329 whose status
+  // is PENDING). '' when it will.
+  function sendBlockers(rec) {
+    var out = [];
+    if (rec.status && !isPendingStatus(rec)) {
+      out.push('its status reads ' + rec.status + ', not PENDING');
+    }
+    if (!rec.sowId) out.push('it is not linked to a scope of work');
+    return out;
+  }
+
   function isArmed(rec) {
     // Real status field wins once it exists.
-    if (rec.status) {
-      return String(rec.status).toLowerCase()
-        .indexOf(CONFIG.armedStatusMatch) !== -1;
-    }
+    if (rec.status) return isPendingStatus(rec);
     // Project-level guard: ZERO SOWs on the project have a validated
     // survey → nothing has fired yet, so every request is still pending
     // — including sibling-SOW rows the per-SOW derivation below can't
@@ -297,7 +347,7 @@
   }
 
   function chipClass(rec) {
-    if (isArmed(rec)) return 'armed';
+    if (isArmed(rec) || isUnsent(rec)) return 'armed';
     var s = String(rec.status || '').toLowerCase();
     if (/schedul|progress|active/.test(s)) return 'active';
     return 'done';   // no status field yet: not-armed = sent
@@ -315,17 +365,40 @@
     return '<div class="scw-srqc__row"><b>' + esc(label) + '</b>' + esc(val) + '</div>';
   }
 
+  // The amber line under a request that has not gone out: why, and what
+  // to change on the request record so Mark Ready sends it.
+  function unsentHtml(rec, unsent, armed) {
+    if (!unsent && !armed) return '';
+    var why = sendBlockers(rec);
+    if (!unsent && !why.length) return '';
+    var lead = unsent
+      ? 'Marked ' + rec.status + ', but no survey request exists on this project, so it was never sent.'
+      : 'This request will not send when Ops validates.';
+    var fix = [];
+    if (rec.status && !isPendingStatus(rec)) fix.push('FLAG_status to PENDING');
+    if (!rec.sowId) fix.push('REL_scope of work to this SOW');
+    return '<div class="scw-srqc__unsent" data-scw-srqc-unsent>' + esc(lead) +
+      (why.length ? ' Ops’s Mark Ready will not send it: ' + esc(why.join(' and ')) + '.' : '') +
+      (fix.length ? ' To send it, set ' + esc(fix.join(' and ')) + ' on the request record.' : '') +
+      '</div>';
+  }
+
   function buildCard(rec) {
     var armed = isArmed(rec);
-    var chipText = armed ? 'Pending' : (rec.status || 'Submitted');
+    var unsent = !armed && isUnsent(rec);
+    var chipText = armed ? 'Pending' : unsent ? 'Not sent' : (rec.status || 'Submitted');
+    var note = armed
+      ? (sendBlockers(rec).length ? 'Will not send when Ops validates' : 'Sends when Ops validates')
+      : '';
     return '' +
-      '<div class="scw-srqc' + (armed ? ' scw-srqc--armed' : '') + '" data-req="' + esc(rec.id) + '">' +
+      '<div class="scw-srqc' + (armed || unsent ? ' scw-srqc--armed' : '') + '" data-req="' + esc(rec.id) + '">' +
         '<div class="scw-srqc__top">' +
           '<span class="scw-srqc__chip scw-srqc__chip--' + chipClass(rec) + '">' + esc(chipText) + '</span>' +
           (rec.sow ? '<span class="scw-srqc__req">' + esc(rec.sow) + '</span>' : '') +
           (rec.poc ? '<span class="scw-srqc__partner">POC: ' + esc(rec.poc) + '</span>' : '') +
-          (armed ? '<span class="scw-srqc__armed-note">Sends when Ops validates</span>' : '') +
+          (note ? '<span class="scw-srqc__armed-note">' + esc(note) + '</span>' : '') +
         '</div>' +
+        unsentHtml(rec, unsent, armed) +
         (rec.requested
           ? '<div class="scw-srqc__dates"><span class="scw-srqc__date">' +
             '<b>Requested</b>' + esc(rec.requested) + '</span></div>'
@@ -401,7 +474,7 @@
     }
 
     var html =
-      '<div class="scw-srqc-label">Submitted Survey Request' +
+      '<div class="scw-srqc-label">Survey Request' +
       (records.length > 1 ? 's' : '') + '</div>' +
       records.map(buildCard).join('');
     // Change-guarded — renders fire often on this scene.
@@ -491,6 +564,7 @@
     return getRecords().filter(isArmed).length;
   };
   SCW.surveyRequests.refresh = render;
+  SCW.surveyRequests.isUnsent = isUnsent;
 
   // ── Bindings ─────────────────────────────────────────────
   injectStyles();
@@ -508,6 +582,12 @@
     .off('knack-view-render.view_3827' + NS)
     .on('knack-view-render.view_3827' + NS, function () {
       setTimeout(render, 900);
+    });
+  // The project's surveys decide "Not sent" — repaint when they load.
+  $(document)
+    .off('knack-view-render.' + SURVEY_VIEW + NS)
+    .on('knack-view-render.' + SURVEY_VIEW + NS, function () {
+      setTimeout(render, 150);
     });
 
   // After the survey form (view_3853) submits, the new request should

@@ -2193,6 +2193,21 @@ every consumer fails open).
 - A browser-side block: it stops anyone using the pages, not a write made through the API or a Make scenario.
 - Tests: `tests/proposal/test-accept-zip-gate.js`, `tests/misc/test-ops-stepper-zip.js`.
 
+## Survey Request card: "Not sent" when nothing went out (2026-11-04) — `src/features/survey-request-cards.js`
+
+"Why is this showing submitted when the survey request is actually pending?" (Denso, SOW 1404). The card on the sales
+SOW page (scene_1116) printed the request record's stored `field_2992` FLAG_status. That 12/01/2025 request (object_72,
+created before the field existed) reads SUBMITTED, has no REL_scope of work (`field_2329`) and the project has no
+SURVEY_request (view_4155 empty): it was never sent, and Ops's Mark Ready never will send it — `ops-stepper.js` arms only
+on view_4141 rows (linked to that SOW through `field_2329`, status PENDING). The one-request-per-project guard keeps the
+form locked meanwhile. Nothing in Builder or the Make blueprints on hand writes SUBMITTED (the form's record rule writes
+PENDING; 04.04 / 04.01a leave `field_2992` alone), so legacy rows carry it from a bulk set. Now: a non-PENDING status with
+view_4155 on the page and EMPTY reads **"Not sent"** (amber) with the reasons and the fix ("set FLAG_status to PENDING and
+REL_scope of work to this SOW on the request record"); a PENDING request with no SOW link reads "Will not send when Ops
+validates" with the same line; a survey on the project, or no view_4155 on the page, keeps the stored status. The label
+reads "Survey Request". Data fix for the Denso record (`692decdf2722050a70d47071`): set both fields, then Mark Ready
+sends it; or delete it and let sales submit a fresh request. Test: `tests/sow-page/test-survey-request-cards.js`.
+
 ## Security & External Services
 
 ### ⚠️ Third-party image-resize proxy (proposal PDF Site Maps)
