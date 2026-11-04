@@ -2208,6 +2208,21 @@ validates" with the same line; a survey on the project, or no view_4155 on the p
 reads "Survey Request". Data fix for the Denso record (`692decdf2722050a70d47071`): set both fields, then Mark Ready
 sends it; or delete it and let sales submit a fresh request. Test: `tests/sow-page/test-survey-request-cards.js`.
 
+## Mark Ready never posts a survey send with no request id (2026-11-04) — `src/features/ops-stepper.js`
+
+SOW 2083 (Old Anson Rd., `6aeb71633f560fad802414fe`): Mark Ready posted `{ surveyRequestId: '', branchIds, sowId }` to
+`MAKE_SEND_PENDING_SURVEY_WEBHOOK`, and Make 04.04 stopped at module 326 (it reads the request by that id). The PENDING
+request `6aeb6eed0fe785aa1bff9b1a` was created at 12:44 PM ET, ten minutes before the SOW existed, so its REL_scope of
+work (`field_2329`) could not name SOW 2083 and view_4141 (PENDING requests linked to THIS SOW) was empty. The stepper still
+armed from the legacy flag fallback (`field_2706` = Yes, `field_2723` = No) and labelled the step "Send Pending Survey
+Request". Now: `armedSurveyCount` uses the flag fallback ONLY when view_4141 is not on the page; with the grid there and
+no linked PENDING row, the step is plain Mark Ready and, when `field_2706` = Yes, its modal says a survey is already
+requested (naming the project's surveys from view_3897, `field_2345`) and that nothing will be sent. The send is never
+posted without an id: the user is told the SOW was marked ready and no survey went out. **04.04 never moves a sent request
+off PENDING** (module 411 writes no status), so a request that produced a survey still reads Pending. Re-linking such a
+request and running Mark Ready again creates a SECOND survey; check the 04.04 run history first. Test:
+`tests/misc/test-ops-stepper-survey-send.js`.
+
 ## A TBD proposal never prints labor inside its subtotals (2026-11-04) — `proposal-grid-v2.js`, `proposal-pdf-export.js`
 
 SW2059 (WestRock, quote 12348 v3) went out with every labor line, the Installation Total and the Grand Total as TBD

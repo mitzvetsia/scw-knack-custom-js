@@ -997,11 +997,41 @@
         'connection (field_2329 blank) — not arming Mark Ready. Backfill ' +
         'the request’s REL_scope of work to attribute it.');
     }
+    // The flag fallback arms ONLY when the requests grid is not on the
+    // page at all. With the grid there and no PENDING row linked to this
+    // SOW there is nothing to send: field_2706 = Yes is written by the
+    // send itself (04.04 module 347), so 2706 = Yes / 2723 = No with an
+    // empty grid means the survey already went out (SW2083, 2026-11-04:
+    // SR438 on the project, the grid empty, the send posted with
+    // surveyRequestId '' and 04.04 stopped at its first module).
+    if (requestGridOnPage()) return 0;
     if (conditionMet({ field: 'field_2706', value: 'Yes' }) &&
         conditionMet({ field: 'field_2723', value: 'No' })) {
       return 1;
     }
     return 0;
+  }
+
+  function requestGridOnPage() {
+    return !!(PENDING_REQ_VIEW && document.getElementById(PENDING_REQ_VIEW));
+  }
+
+  // Surveys already on the project (view_3897, SITE SURVEY_requests): the
+  // REQ_ID cell of each row, "SR438". [] when the grid is not on the page.
+  var PROJECT_SURVEYS_VIEW = 'view_3897';
+  function projectSurveyIds() {
+    var el = document.getElementById(PROJECT_SURVEYS_VIEW);
+    if (!el) return [];
+    var out = [];
+    var rows = el.querySelectorAll('tbody tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      if (!/^[a-f0-9]{24}$/i.test(rows[i].id || '')) continue;
+      var td = rows[i].querySelector('td.field_2345');
+      var t = td ? (td.textContent || '').replace(/\s+/g, ' ').trim() : '';
+      var m = t.match(/SR\s*-?\s*\d+/i);
+      out.push(m ? m[0].replace(/[\s-]/g, '').toUpperCase() : (t.replace(/^[-\s]+/, '') || rows[i].id));
+    }
+    return out;
   }
 
   /** { id, label } options for the branch / tech-group picker.
@@ -3214,6 +3244,19 @@
             options: branchOpts
           };
         }
+      } else if (conditionMet({ field: 'field_2706', value: 'Yes' })) {
+        // Survey requested on this SOW, but no PENDING request linked to
+        // it: the send already happened (or the request is not linked to
+        // this SOW). Say so — never offer a send with no request to send.
+        var srs = projectSurveyIds();
+        overrides.banner = {
+          tone: 'info',
+          text: 'Validation only. A survey is already requested on this SOW' +
+                (srs.length ? ' (' + srs.join(', ') + ' on this project)' : '') +
+                ' and no PENDING survey request is linked to it, so nothing ' +
+                'will be sent. If a request still needs to go out, set its ' +
+                'FLAG_status to PENDING and its REL_scope of work to this SOW first.'
+        };
       } else {
         overrides.banner = {
           tone: 'info',
@@ -3356,7 +3399,18 @@
             var pr = readPendingRequest();
             reqId = (pr && pr.id) || '';
           }
-          if (actUrl && !/PLACEHOLDER/.test(actUrl)) {
+          if (!reqId) {
+            // 04.04 reads the request by this id (module 326) and stops
+            // without it — a send with no id does nothing but look sent.
+            console.warn('[scw-ops-stepper] no pending survey request id for SOW ' +
+              getSourceRecordId() + ' — survey send skipped.');
+            secondFire = Promise.resolve().then(function () {
+              alert('The SOW was marked ready, but no survey was sent: no ' +
+                    'PENDING survey request is linked to this SOW.\n\nIf one ' +
+                    'should go out, set the request’s FLAG_status to PENDING ' +
+                    'and its REL_scope of work to this SOW, then send it from Make.');
+            });
+          } else if (actUrl && !/PLACEHOLDER/.test(actUrl)) {
             secondFire = postWebhook(actUrl, {
               surveyRequestId: reqId,
               branchIds: (ctx.branches || []).map(function (b) { return b.id; }),
@@ -3564,6 +3618,8 @@
     recheck: recheckSource,
     // The project-address zip lock on Publish Final ('' = not locked).
     zipBlockReason: projectZipBlockReason,
+    // Pending survey requests Mark Ready would send (tooling, tests).
+    armedSurveyCount: armedSurveyCount,
     setRecheckDelay: function (ms) { RECHECK_DELAY_MS = Number(ms) || RECHECK_DELAY_MS; },
     // The Issue CO recipient-phone check (tooling, tests).
     phoneProblem: phoneProblem,
