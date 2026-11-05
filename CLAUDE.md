@@ -2347,8 +2347,8 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   the Ops team and ask them to re-open the bid, because Sales / Ops might say 'actually we'll push the client to close
   before the proposal expires'". Make gates `confirm-extension / reprice` on the SOW's `field_2135` (the proposal's
   mirror): expired → the re-price sequence (bid Draft + unlock, SOW Re-Pricing, tasks Waiting on Bid); still running (or
-  blank) → the bid stays locked, SOW `field_3314` = **`Re-Price Requested`** (Builder: add the option), the SCW task
-  gets a notify-all comment and the AE a Slack mention naming the choice. `statusKind` reads it as
+  blank) → the bid stays locked, SOW `field_3314` = **`Re-Price Requested`** (Builder: add the option), one SVS
+  comment ("SCW decides", mirrored to the deal task) and a Slack mention to the AE naming the choice. `statusKind` reads it as
   `reprice-requested`; the sales card shows the held line read-only (`.scw-qext--held`), the Ops rows offer
   **Keep quote as is** (`keep-quote`: status blank, flag No, tasks → Final Bid Submitted, the sub told) |
   **Reopen bid for re-pricing** (`reopen-reprice`: the expired path on the basis bid); the reconcile page's native
@@ -2361,9 +2361,12 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   confirm / nudge / cancel / reopen-reprice / keep-quote); every route's
   Webhook Response sits right after its Knack writes and before the ClickUp / Slack modules (Slack = Ignore
   handlers, deal-owner lookup = the source's Resume fallback); Sequential processing OFF (Make refuses a Webhook
-  Response in a sequential scenario). The sub is reached by a
-  ClickUp comment on the SVS task (Notify all) carrying the portal link
-  `#subcontractor-portal/site-survey-request-details/<sr>/edit-bid-package/<bid>/`. Verify live: `{{emptyarray}}`
+  Response in a sequential scenario). **ClickUp comments go on the SVS task ONLY** (2026-11-05: an existing mirror
+  automation — "New Coms with SVS, <author> says: …", outside the blueprints on hand — copies every SVS comment to
+  the deal task, so commenting on both doubled every line): one comment per click, worded for both readers (the
+  first ask carries the request record, the hold request, the portal link
+  `#subcontractor-portal/site-survey-request-details/<sr>/edit-bid-package/<bid>/` and the deal-task outcome; a
+  repeat ask is a one-line reminder; the no-basis path is Slack only). Verify live: `{{emptyarray}}`
   clears the multiple-choice `field_3314`; the literal status names in `editATaskAdvanced`.
 - **Not built (the other halves)**: the shared
   publish scenario's "status → blank" module (needs that scenario's export), the "quote never outruns the bid"

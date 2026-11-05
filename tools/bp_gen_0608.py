@@ -30,6 +30,8 @@ HOOK_BP = json.load(open(os.path.join(HERE, 'in/0608.json')))
 CH = 'C01FU6A2W4S'                     # project Slack channel (06.04 uses it)
 SCW_LIST, SVS_LIST = '48524051', '901400816107'
 ST_WAIT, ST_PREP, ST_FINAL = 'waiting on bid', 'prepare bid', 'final bid submitted'
+def bidname(n):   # "<bid id> | <friendly name>", the separator only when the name is set
+    return '{{%d.field_2414_raw}}{{if(%d.field_2636_raw; " | " + %d.field_2636_raw; "")}}' % (n, n, n)
 PORTAL = 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/'
 
 _id = [1]
@@ -165,29 +167,35 @@ auto = [
     upd_proposal('{{1.proposalRecordId}}', {'field_2659': '{{1.requestedDate}}'}, 'proposal expiration = requested', X + 900, -900, F('within the bid: extend at once', eq(W, 'true'))),
     upd_sow('{{1.sowId}}', {'field_2135': '{{1.requestedDate}}'}, 'SOW expiration = requested', X + 1200, -900),
     respond({'success': True, 'routedTo': 'auto', 'message': 'Extended to the requested date (within the bid).'}, 'respond: auto', X + 1350, -900),
-    cu_comment(SCW_TASK, 'Quote extended to {{1.requestedDate}} — within the bid\'s validity ({{%d.field_2635_raw.date}}), no sub action needed.\n\n{{1.requestText}}' % B, 'comment SCW task', X + 1500, -900),
+    cu_comment(SUB_TASK, 'Quote extended to {{1.requestedDate}} — within bid ' + bidname(B) + '\'s validity (it expires {{%d.field_2635_raw.date}}); nothing needed from you.\n\n{{1.requestText}}' % B, 'comment SVS task: extended within the bid', X + 1500, -900),
     slack_msg('Quote on *{{%d.field_2126_raw}}* extended to *{{1.requestedDate}}* (within the bid\'s validity) — requested by {{1.triggeredBy.name}}: "{{1.reason}}"\n\n<@{{%d.id}}>' % (S, OWN), THREAD, 'Slack: extended', X + 1800, -900),
 ]
 # 1b — past the bid: ask the sub
+FLAG = '{{%d.field_3316_raw}}' % B          # the bid's flag BEFORE this run's write ([bid_r] read it)
+REPEAT = eq(FLAG, 'true')
+FIRST = neq(FLAG, 'true')
+STATUS_LINE = ('{{if(lower(%d.status.status) = "final bid submitted"; "Deal tasks moved to Waiting on Bid."; '
+               '"Deal tasks not moved: SCW\'s task is in " + %d.status.status + ", not Final Bid Submitted.")}}' % (C, C))
+WARN = '{{if(1.riskAcknowledged; " WARNING: requested over discontinued products on the SOW (" + join(map(1.discontinuedProducts; "name"); ", ") + ") — risk acknowledged by the requester."; "")}}'
 ask = [
     upd_sow('{{1.sowId}}', {'field_3314': ['Requested'], 'field_3315': '{{1.requestedDate}}'}, 'SOW status = Requested', X + 900, -600, F('past the bid (or bid date blank): ask the sub', neq(W, 'true'))),
     upd_bid('{{%d.id}}' % B, {'field_3316': True, 'field_3317': '{{1.requestedDate}}'}, 'bid flag = Yes', X + 1200, -600),
     respond({'success': True, 'routedTo': 'svs', 'message': 'The sub has been asked to hold their bid.'}, 'respond: svs', X + 1350, -600),
-    cu_comment(SCW_TASK, '{{1.requestText}}\n\nSent to the sub (bid {{%d.field_2414_raw}} | {{%d.field_2636_raw}}, expires {{%d.field_2635_raw.date}}). Waiting on their answer.' % (B, B, B), 'comment SCW task', X + 1500, -600),
-    cu_comment(SUB_TASK, 'SCW asks you to hold bid {{%d.field_2414_raw}} | {{%d.field_2636_raw}} (currently expires {{%d.field_2635_raw.date}}) until {{1.requestedDate}}.\n\n{{1.requestText}}\n\nAnswer on your bid page (extend, re-price, or can\'t extend): %s' % (B, B, B, sub_link), 'comment SVS task (notify)', X + 1800, -600, notify=True),
-    slack_msg('Quote extension to *{{1.requestedDate}}* requested on *{{%d.field_2126_raw}}* by {{1.triggeredBy.name}} ({{1.requestedBy}}): "{{1.reason}}"\nPast the bid\'s expiration ({{%d.field_2635_raw.date}}) — the sub has been asked to hold their bid.{{if(1.riskAcknowledged; "\n:warning: requested over discontinued products — see the task comment."; "")}}\n\n<@{{%d.id}}>' % (S, B, OWN), THREAD, 'Slack: asked the sub', X + 2100, -600),
-    router(X + 2700, -600, [
-        [cu_status(SCW_TASK, ST_WAIT, 'SCW task → waiting on bid', X + 3000, -750, F('task is in final bid submitted and this is the first ask', at_final, neq('{{%d.field_3316_raw}}' % B, 'true'))),
-         cu_status(SUB_TASK, ST_WAIT, 'SVS task → waiting on bid', X + 3300, -750)],
-        [cu_comment(SCW_TASK, 'Not moved to Waiting on Bid: {{if(%d.field_3316_raw; "an extension was already pending on this bid (nudged instead)"; "the task is in " + %d.status.status + ", not Final Bid Submitted")}}.' % (B, C), 'comment: not moved', X + 3000, -450,
-                    filt={'name': 'otherwise: not in final bid submitted, or already pending', 'conditions': [[neq(SCW_STATUS, ST_FINAL)], [eq('{{%d.field_3316_raw}}' % B, 'true')]]})],
+    slack_msg('{{if(%s; "Repeat quote-extension request"; "Quote extension")}} to *{{1.requestedDate}}* requested on *{{%d.field_2126_raw}}* by {{1.triggeredBy.name}} ({{1.requestedBy}}): "{{1.reason}}"\n{{if(%s; "An ask was already pending on this bid — the sub was nudged."; "Past the bid\'s expiration (" + %d.field_2635_raw.date + ") — the sub has been asked to hold their bid.")}}{{if(1.riskAcknowledged; "\n:warning: requested over discontinued products — see the task comment."; "")}}\n\n<@{{%d.id}}>' % (FLAG, S, FLAG, B, OWN), THREAD, 'Slack: asked the sub', X + 1500, -600),
+    router(X + 1800, -600, [
+        # first ask: the full record on the SCW task (with the status outcome), a short hold request on the SVS task
+        [cu_comment(SUB_TASK, '{{1.requestText}}\n\nSCW asks you to hold bid %s (currently expires {{%d.field_2635_raw.date}}) until {{1.requestedDate}}. Answer on your bid page (extend, re-price, or can\'t extend): %s\n\n%s' % (bidname(B), B, sub_link, STATUS_LINE), 'comment SVS task: the request (notify)', X + 2100, -900, notify=True, filt=F('first ask on this bid', FIRST))],
+        # repeat ask while one is pending: one line each, nothing moves
+        [cu_comment(SUB_TASK, 'Reminder from {{1.triggeredBy.name}} ({{1.requestedBy}}): SCW is still waiting on your answer on bid %s — hold it until {{1.requestedDate}}? Answer on your bid page: %s' % (bidname(B), sub_link), 'comment SVS task: reminder (notify)', X + 2100, -600, notify=True, filt=F('repeat ask while one is pending', REPEAT))],
+        # the status moves (first ask, from Final Bid Submitted only)
+        [cu_status(SCW_TASK, ST_WAIT, 'SCW task → waiting on bid', X + 2100, -300, F('task is in final bid submitted and this is the first ask', at_final, FIRST)),
+         cu_status(SUB_TASK, ST_WAIT, 'SVS task → waiting on bid', X + 2400, -300)],
     ]),
 ]
 r_req = [bid_r, within, router(X + 750, -600, [auto, ask])]
 
 no_basis = [
     respond({'success': True, 'routedTo': 'ops', 'message': 'No basis bid on this SOW — sent to Ops.'}, 'respond: ops', X + 150, -300, F('no basis bid on the SOW', notexist(BASIS))),
-    cu_comment(SCW_TASK, 'Quote extension requested but this SOW has NO basis bid — there is no sub to ask. Ops: extend with the pencil on the reconcile / preview page.\n\n{{1.requestText}}', 'comment SCW task: no basis', X + 300, -300),
     slack_msg('Quote extension to *{{1.requestedDate}}* requested on *{{%d.field_2126_raw}}* by {{1.triggeredBy.name}}: "{{1.reason}}" — *no basis bid on this SOW*, Ops extends by hand.\n\n<@{{%d.id}}>' % (S, OWN), THREAD, 'Slack: no basis bid', X + 600, -300),
 ]
 route_request = [router(X, -450, [r_req, no_basis])]
@@ -210,8 +218,7 @@ extend = [
     upd_bid('{{1.bidPackageId}}', {'field_2635': '{{1.bidExpiration}}', 'field_3316': False}, 'bid: expiration = sub\'s date, flag = No', X + 600, Y2 - 300, F('extend', eq('{{1.outcome}}', 'extend'))),
     upd_sow('{{1.sowId}}', {'field_2135': Q, 'field_3314': '{{emptyarray}}'}, 'SOW: expiration = quoteDate, status = blank', X + 900, Y2 - 300),
     respond({'success': True, 'message': 'Bid and quote extended.'}, 'respond', X + 1050, Y2 - 300),
-    cu_comment(SCW_TASK, 'Sub extended bid {{%d.field_2414_raw}} to {{1.bidExpiration}}. Quote extended to %s.{{if(1.note; "\nSub\'s note: " + 1.note; "")}}' % (B2, Q), 'comment SCW task', X + 1200, Y2 - 300),
-    cu_comment(SUB_TASK, 'Thanks — bid {{%d.field_2414_raw}} extended to {{1.bidExpiration}}. The quote now runs to %s.' % (B2, Q), 'comment SVS task', X + 1500, Y2 - 300),
+    cu_comment(SUB_TASK, 'Bid %s extended to {{1.bidExpiration}} by {{1.triggeredBy.name}}. The quote now runs to %s.{{if(1.note; "\nNote: " + 1.note; "")}}' % (bidname(B2), Q), 'comment SVS task: extended', X + 1200, Y2 - 300),
     slack_msg('Sub extended their bid on *{{%d.field_2126_raw}}* to *{{1.bidExpiration}}* — quote extended to *%s*.{{if(1.note; "\nNote: " + 1.note; "")}}\n\n<@{{%d.id}}>' % (S, Q, OWN), THREAD, 'Slack: extended', X + 1800, Y2 - 300),
 ]
 extend_props = [clone('06.04#23', {'limit': '100', 'match': 'and', 'filters': [[{'a': 'field_2666', 'b': '{{1.sowId}}', 'o': 'text:contains'}, {'a': 'field_2658', 'b': 'Published', 'o': 'text:contains'}]],
@@ -222,15 +229,19 @@ extend.append(router(X + 2100, Y2 - 300, [
      cu_status(SUB_TASK, ST_FINAL, 'SVS task → final bid submitted', X + 2700, Y2 - 450)],
     extend_props,
 ]))
+# EVERY ClickUp comment goes on the SVS task ONLY (2026-11-05: "the automations copy any comment from the Sub bid
+# task to the SCW task — only drop the messages on the sub bid task"); the mirror carries it to the deal task.
 # The re-price sequence is used twice: the sub's answer when the quote has ALREADY expired, and Ops's
 # "Reopen bid for re-pricing" on a held request. Make has no subroutines, so the generator writes it out.
-def do_reprice(bid_id, BR, x, y, head, scw_text, svs_text, slack_text, respond_msg):
+def do_reprice(bid_id, BR, x, y, head, svs_text, slack_text, respond_msg):
+    status_line = ('{{if(lower(%d.status.status) = "final bid submitted"; " Deal tasks moved to Waiting on Bid."; '
+                   'if(lower(%d.status.status) = "waiting on bid"; " Deal tasks stay in Waiting on Bid."; '
+                   '" Deal tasks not moved: SCW\'s task is in " + %d.status.status + "."))}}' % (C, C, C))
     seq = [
         upd_bid(bid_id, {'field_2550': ['Draft'], 'field_3316': False}, 'bid: status = Draft, flag = No', x, y, head),
         upd_sow('{{1.sowId}}', {'field_3314': ['Re-Pricing']}, 'SOW status = Re-Pricing', x + 300, y),
         respond({'success': True, 'message': respond_msg}, 'respond', x + 450, y),
-        cu_comment(SCW_TASK, scw_text, 'comment SCW task (notify)', x + 600, y, notify=True),
-        cu_comment(SUB_TASK, svs_text, 'comment SVS task (notify)', x + 900, y, notify=True),
+        cu_comment(SUB_TASK, svs_text + status_line, 'comment SVS task: reopened for re-pricing (notify)', x + 600, y, notify=True),
         slack_msg(slack_text, THREAD, 'Slack: re-pricing', x + 1200, y),
     ]
     # Re-pricing is the SUB's work → both tasks in Waiting on Bid (they are there already when the request
@@ -242,8 +253,6 @@ def do_reprice(bid_id, BR, x, y, head, scw_text, svs_text, slack_text, respond_m
     seq.append(router(x + 1500, y, [
         [cu_status(SCW_TASK, ST_WAIT, 'SCW task → waiting on bid', x + 1800, y - 150, F('task is in final bid submitted', eq(SCW_STATUS, ST_FINAL))),
          cu_status(SUB_TASK, ST_WAIT, 'SVS task → waiting on bid', x + 2100, y - 150)],
-        [cu_comment(SCW_TASK, 'Not moved to Waiting on Bid: the task is in "{{%d.status.status}}".' % C, 'comment: not moved', x + 1800, y,
-                    filt={'name': 'neither final bid submitted nor waiting on bid', 'conditions': [[neq(SCW_STATUS, ST_FINAL), neq(SCW_STATUS, ST_WAIT)]]})],
         unlock,
     ]))
     return seq
@@ -255,16 +264,14 @@ expired_var = set_var('proposalExpired',
     'proposalExpired = quote expiration < today', X + 600, Y2, F('reprice', eq('{{1.outcome}}', 'reprice')))
 XP = '{{%d.proposalExpired}}' % expired_var['id']
 reprice_now = do_reprice('{{1.bidPackageId}}', B2, X + 900, Y2 - 150, F('quote already expired: reopen the bid now', eq(XP, 'true')),
-    'Sub is RE-PRICING bid {{%d.field_2414_raw}} instead of extending it. The quote expired {{%d.field_2135_raw.date}}, so the bid is reopened: back in Draft, lines unlocked; both tasks stay in Waiting on Bid while the sub re-prices. NEXT: the sub resubmits; Ops reconciles the re-priced bid and publishes the new proposal (that clears the SOW\'s Re-Pricing status).{{if(1.note; "\nSub\'s note: " + 1.note; "")}}' % (B2, S),
-    'Bid {{%d.field_2414_raw}} is reopened for re-pricing (the quote it was priced into has expired). NEXT: resubmit the bid when the new pricing is in.' % B2,
+    'Bid %s is reopened for re-pricing — the quote it was priced into expired {{%d.field_2135_raw.date}}: back in Draft, lines unlocked. Resubmit the bid when the new pricing is in; SCW reconciles and re-publishes.{{if(1.note; "\nNote: " + 1.note; "")}}' % (bidname(B2), S),
     'Sub is *re-pricing* their bid on *{{%d.field_2126_raw}}* instead of extending — the quote had expired, so the bid is reopened (Draft; tasks stay in Waiting on Bid while the sub re-prices). Ops reconciles and re-publishes when it comes back.{{if(1.note; "\nNote: " + 1.note; "")}}\n\n<@{{%d.id}}>' % (S, OWN),
     'Bid reopened for re-pricing (the quote had expired).')
 reprice_held = [
     upd_bid('{{1.bidPackageId}}', {'field_3316': False}, 'bid flag = No (answered); bid stays locked', X + 900, Y2 + 150, F('quote still runs: ask Ops first, keep the bid locked', neq(XP, 'true'))),
     upd_sow('{{1.sowId}}', {'field_3314': ['Re-Price Requested']}, 'SOW status = Re-Price Requested', X + 1200, Y2 + 150),
     respond({'success': True, 'message': 'SCW has been told you want to re-price. The quote it was priced into runs to {{%d.field_2135_raw.date}}, so the bid stays locked until SCW either reopens it for re-pricing or closes the deal first — you will get a comment on your task.' % S}, 'respond: held', X + 1350, Y2 + 150),
-    cu_comment(SCW_TASK, 'Sub wants to RE-PRICE bid {{%d.field_2414_raw}} instead of extending it, but the quote has NOT expired (it runs to {{%d.field_2135_raw.date}}) — the bid stays LOCKED. NEXT (Ops / AE): on the Reconcile Bids page choose "Reopen bid for re-pricing" (bid to Draft, tasks stay in Waiting on Bid while the sub works) or "Keep quote as is" if the client will close before {{%d.field_2135_raw.date}}.{{if(1.note; "\nSub\'s note: " + 1.note; "")}}' % (B2, S, S), 'comment SCW task (notify)', X + 1500, Y2 + 150, notify=True),
-    cu_comment(SUB_TASK, 'Thanks — SCW has your re-price request on bid {{%d.field_2414_raw}}. The quote it was priced into runs to {{%d.field_2135_raw.date}}, so the bid stays locked for now; SCW will either reopen it for re-pricing or close the deal first. You will get a comment here either way.' % (B2, S), 'comment SVS task (notify)', X + 1800, Y2 + 150, notify=True),
+    cu_comment(SUB_TASK, '{{1.triggeredBy.name}} asked to re-price bid %s instead of extending it. The quote it was priced into runs to {{%d.field_2135_raw.date}}, so the bid stays locked for now: SCW decides whether to reopen it for re-pricing or keep the quote and close before then — you will get a comment here either way.{{if(1.note; "\nNote: " + 1.note; "")}}' % (bidname(B2), S), 'comment SVS task: re-price held (notify)', X + 1500, Y2 + 150, notify=True),
     slack_msg('<@{{%d.id}}> Sub wants to *re-price* their bid on *{{%d.field_2126_raw}}* instead of extending it — but the quote runs to *{{%d.field_2135_raw.date}}*, so the bid stays locked. Decide on the Reconcile Bids page: *Reopen bid for re-pricing*, or *Keep quote as is* and push the client to close before it expires.{{if(1.note; "\nNote: " + 1.note; "")}}' % (OWN, S, S), THREAD, 'Slack: re-price held for Ops', X + 2100, Y2 + 150),
 ]
 reprice = [expired_var, router(X + 750, Y2, [reprice_now, reprice_held])]
@@ -272,8 +279,7 @@ decline = [
     upd_bid('{{1.bidPackageId}}', {'field_3316': False}, 'bid flag = No', X + 600, Y2 + 300, F('decline', eq('{{1.outcome}}', 'decline'))),
     upd_sow('{{1.sowId}}', {'field_3314': '{{emptyarray}}'}, 'SOW status = blank', X + 900, Y2 + 300),
     respond({'success': True, 'message': 'Declined — the quote keeps its expiration.'}, 'respond', X + 1050, Y2 + 300),
-    cu_comment(SCW_TASK, 'Sub CAN\'T extend bid {{%d.field_2414_raw}} (expires {{%d.field_2635_raw.date}}). The quote keeps its current expiration.{{if(1.note; "\nSub\'s note: " + 1.note; "")}}' % (B2, B2), 'comment SCW task', X + 1200, Y2 + 300),
-    cu_comment(SUB_TASK, 'Noted — bid {{%d.field_2414_raw}} will not be extended.' % B2, 'comment SVS task', X + 1500, Y2 + 300),
+    cu_comment(SUB_TASK, 'Bid %s will not be extended ({{1.triggeredBy.name}}: can\'t extend). The quote keeps its current expiration.{{if(1.note; "\nNote: " + 1.note; "")}}' % bidname(B2), 'comment SVS task: declined', X + 1200, Y2 + 300),
     slack_msg('Sub *can\'t extend* their bid on *{{%d.field_2126_raw}}* — the quote keeps its current expiration.{{if(1.note; "\nNote: " + 1.note; "")}}\n\n<@{{%d.id}}>' % (S, OWN), THREAD, 'Slack: declined', X + 1800, Y2 + 300),
     cu_status(SCW_TASK, ST_FINAL, 'SCW task → final bid submitted', X + 2100, Y2 + 300, F('task was parked in waiting on bid', eq(SCW_STATUS, ST_WAIT))),
     cu_status(SUB_TASK, ST_FINAL, 'SVS task → final bid submitted', X + 2400, Y2 + 300),
@@ -287,8 +293,7 @@ bid_n = get_bid(BASIS, 'get basis bid', X, Y3)
 BN = bid_n['id']
 bid_n['filter'] = F('basis bid on the SOW', exist(BASIS))
 route_nudge = [gate_nudge, router(X, Y3, [[bid_n,
-    cu_comment(SUB_TASK, 'Reminder: SCW is waiting on your answer on bid {{%d.field_2414_raw}} | {{%d.field_2636_raw}} — hold it until {{%d.field_3317_raw.date}}? Answer on your bid page: %s{{%d.field_2386_raw[].id}}/edit-bid-package/{{%d.id}}/' % (BN, BN, BN, PORTAL, BN, BN), 'nudge SVS task (notify)', X + 300, Y3, notify=True),
-    cu_comment(SCW_TASK, 'Extension reminder sent to the sub by {{1.triggeredBy.name}}.', 'comment SCW task', X + 600, Y3),
+    cu_comment(SUB_TASK, 'Reminder: SCW is waiting on your answer on bid ' + bidname(BN) + ' — hold it until {{%d.field_3317_raw.date}}? Answer on your bid page: %s{{%d.field_2386_raw[].id}}/edit-bid-package/{{%d.id}}/' % (BN, PORTAL, BN, BN), 'nudge SVS task (notify)', X + 300, Y3, notify=True),
     respond({'success': True, 'message': 'Reminder sent.'}, 'respond', X + 900, Y3)],
     [respond({'success': False, 'error': 'No basis bid on this SOW — there is no sub to nudge.'}, 'respond: no basis bid', X + 300, Y3 + 150, F('no basis bid on the SOW', notexist(BASIS)))]])]
 
@@ -298,8 +303,7 @@ gate_cancel = set_var('stepId', '{{1.stepId}}', 'cancel-extension', X - 300, Y4,
 route_cancel = [gate_cancel,
     upd_sow('{{1.sowId}}', {'field_3314': '{{emptyarray}}'}, 'SOW status = blank', X, Y4),
     respond({'success': True, 'message': 'Extension request cancelled.'}, 'respond', X + 300, Y4),
-    cu_comment(SCW_TASK, 'Extension request cancelled by {{1.triggeredBy.name}}. The quote keeps its current expiration.', 'comment SCW task', X + 600, Y4),
-    cu_comment(SUB_TASK, 'SCW withdrew the extension request on this bid — no action needed.', 'comment SVS task', X + 900, Y4),
+    cu_comment(SUB_TASK, 'SCW ({{1.triggeredBy.name}}) withdrew the extension request on this bid — no action needed; the quote keeps its current expiration.', 'comment SVS task: cancelled', X + 600, Y4),
     router(X + 1200, Y4, [
         [upd_bid(BASIS, {'field_3316': False}, 'bid flag = No', X + 1500, Y4 - 150, F('basis bid on the SOW', exist(BASIS)))],
         [cu_status(SCW_TASK, ST_FINAL, 'SCW task → final bid submitted', X + 1500, Y4 + 150, F('task was parked in waiting on bid', eq(SCW_STATUS, ST_WAIT))),
@@ -312,8 +316,7 @@ gate_reopen = set_var('stepId', '{{1.stepId}}', 'reopen-reprice', X - 300, Y5, F
 bid_ro = get_bid(BASIS, 'get basis bid', X, Y5)
 BR = bid_ro['id']
 route_reopen = [gate_reopen, bid_ro] + do_reprice('{{%d.id}}' % BR, BR, X + 300, Y5, None,
-    'Ops ({{1.triggeredBy.name}}) reopened bid {{%d.field_2414_raw}} for the sub\'s re-price: back in Draft, lines unlocked; both tasks stay in Waiting on Bid while the sub re-prices. NEXT: the sub resubmits; Ops reconciles the re-priced bid and publishes the new proposal (that clears the SOW\'s Re-Pricing status).' % BR,
-    'SCW reopened bid {{%d.field_2414_raw}} for re-pricing. NEXT: resubmit the bid when the new pricing is in.' % BR,
+    'SCW ({{1.triggeredBy.name}}) reopened bid %s for re-pricing: back in Draft, lines unlocked. Resubmit the bid when the new pricing is in.' % bidname(BR),
     'Ops ({{1.triggeredBy.name}}) reopened the bid on *{{%d.field_2126_raw}}* for the sub\'s re-price — Draft; tasks stay in Waiting on Bid while the sub re-prices. Ops reconciles and re-publishes when it comes back.\n\n<@{{%d.id}}>' % (S, OWN),
     'Bid reopened for re-pricing.')
 
@@ -323,8 +326,7 @@ gate_keep = set_var('stepId', '{{1.stepId}}', 'keep-quote', X - 300, Y6, F('keep
 route_keep = [gate_keep,
     upd_sow('{{1.sowId}}', {'field_3314': '{{emptyarray}}'}, 'SOW status = blank', X, Y6),
     respond({'success': True, 'message': 'Quote kept as is — the sub has been told.'}, 'respond', X + 300, Y6),
-    cu_comment(SCW_TASK, 'Ops ({{1.triggeredBy.name}}) is KEEPING the quote as is — the sub\'s re-price request is declined, the bid stays submitted and locked. NEXT: close the deal before the quote expires ({{%d.field_2135_raw.date}}).' % S, 'comment SCW task (notify)', X + 600, Y6, notify=True),
-    cu_comment(SUB_TASK, 'SCW is keeping the quote as it is — no re-price needed; your bid stays as submitted. Nothing to do.', 'comment SVS task (notify)', X + 900, Y6, notify=True),
+    cu_comment(SUB_TASK, 'SCW ({{1.triggeredBy.name}}) is keeping the quote as it is — no re-price; your bid stays as submitted. Nothing to do.', 'comment SVS task: quote kept (notify)', X + 600, Y6, notify=True),
     slack_msg('Ops ({{1.triggeredBy.name}}) kept the quote on *{{%d.field_2126_raw}}* as is — no re-price; the bid stays submitted. Close before *{{%d.field_2135_raw.date}}*.\n\n<@{{%d.id}}>' % (S, S, OWN), THREAD, 'Slack: quote kept', X + 1200, Y6),
     router(X + 1500, Y6, [
         [upd_bid(BASIS, {'field_3316': False}, 'bid flag = No', X + 1800, Y6 - 150, F('basis bid on the SOW', exist(BASIS)))],

@@ -402,12 +402,14 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //                 actually expired yet"):
   //                 · quote already expired → bid status → Draft + unlock lines; SOW
   //                   status = Re-Pricing; bid flag No; both CU tasks (stay / go) → Waiting on
-  //                   Bid — re-pricing is the sub's work (2026-11-05); notify
-  //                   the AE (Slack) + SCW (task comment, notify all) + the sub.
+  //                   Bid — re-pricing is the sub's work (2026-11-05); one SVS-task comment
+  //                   + Slack to the AE.
   //                 · quote still runs (or no date) → the bid stays LOCKED; bid flag No;
-  //                   SOW status = Re-Price Requested; comment (notify all) on the SCW task
-  //                   + Slack to the AE: "Reopen bid for re-pricing" or "Keep quote as is";
-  //                   the sub is told SCW decides first.
+  //                   SOW status = Re-Price Requested; one SVS-task comment ("SCW decides")
+  //                   + Slack to the AE: "Reopen bid for re-pricing" or "Keep quote as is".
+  //   EVERY CU comment goes on the SVS task only (2026-11-05): an existing mirror automation
+  //   copies SVS comments to the deal task ("New Coms with SVS, … says:"), so a comment on
+  //   both doubled every line. One comment per click, worded for both readers.
   //                 The PUBLISH of the re-priced proposal (the publish scenario) sets the
   //                 SOW status back to blank.
   //   'reopen-reprice' (Ops, the held request goes ahead; also fired by the reconcile page's

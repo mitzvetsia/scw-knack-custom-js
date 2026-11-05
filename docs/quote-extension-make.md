@@ -81,7 +81,7 @@ Payload: `bidPackageId, sowId, outcome ('extend' | 'reprice' | 'decline'), bidEx
 | Outcome | Writes | ClickUp (both tasks) | Notify |
 |---|---|---|---|
 | `extend` | bid `field_2635` = bidExpiration. Quote = the EARLIER of SOW `field_3315` and bidExpiration → proposal `field_2659` AND SOW `field_2135` in the same run. SOW `field_3314` = blank, `field_3315` = blank; bid `field_3316` = No, `field_3317` = blank. | → Final Bid Submitted. Comment: "Bid extended to …, quote extended to …" + the note. | the requester (the AE or Ops) |
-| `reprice` | **Gated on the quote's expiration** (SOW `field_2135`, the proposal's mirror — decided 2026-11-05). Quote already expired → bid `field_2550` → Draft + the Reopen Bid unlock (object_114 `field_2551` = No on the bid's items); SOW `field_3314` = `Re-Pricing`; bid `field_3316` = No. Quote still runs (or blank) → the bid stays LOCKED: bid `field_3316` = No, SOW `field_3314` = **`Re-Price Requested`** (new Builder option). | expired → both tasks **Waiting on Bid** (they are there already from the request; moved only from Final Bid Submitted — re-pricing is the sub's work, decided 2026-11-05), comment with the note. Held → nothing moves; comment (notify all) on the SCW task naming the choice: "Reopen bid for re-pricing" or "Keep quote as is" (close before the quote expires). | AE (Slack mention) + SCW (task comment, notify all) either way; the sub is told which |
+| `reprice` | **Gated on the quote's expiration** (SOW `field_2135`, the proposal's mirror — decided 2026-11-05). Quote already expired → bid `field_2550` → Draft + the Reopen Bid unlock (object_114 `field_2551` = No on the bid's items); SOW `field_3314` = `Re-Pricing`; bid `field_3316` = No. Quote still runs (or blank) → the bid stays LOCKED: bid `field_3316` = No, SOW `field_3314` = **`Re-Price Requested`** (new Builder option). | expired → both tasks **Waiting on Bid** (they are there already from the request; moved only from Final Bid Submitted — re-pricing is the sub's work, decided 2026-11-05), one SVS comment with the note. Held → nothing moves; one SVS comment ("SCW decides"); the Slack message to the AE names the choice: "Reopen bid for re-pricing" or "Keep quote as is" (close before the quote expires). | AE (Slack mention) either way; SCW reads the mirrored SVS comment |
 | `decline` | nothing on the dates. SOW `field_3314` = blank, `field_3315` = blank; bid `field_3316` = No, `field_3317` = blank. | → Final Bid Submitted. Comment with the note. | the requester + Ops |
 
 The proposal to write on `extend`: the SOW's published proposal(s) with status Published —
@@ -131,6 +131,17 @@ how the re-price cycle closes — the sales card stops saying "re-pricing" the m
 proposal is out. (Unconditional clearing is also fine: nothing else holds the field.)
 
 ## ClickUp specifics
+
+- **Every comment goes on the SVS task only (2026-11-05)**: "the automations copy any comment from the Sub bid task
+  to the SCW task — only drop the messages on the sub bid task". An existing mirror (outside the blueprints on hand;
+  it posts "New Coms with SVS, <author> says: …" on the deal task, the author being the Make connection's user)
+  carries each one to the SCW task, so a comment on both doubled every line. The scenario posts ONE comment per
+  click, on the SVS task (`custom_fields.Subcontractor Task ID` of the deal task), worded for both readers: the
+  first ask = the request record + the hold request + the bid-page link + the deal-task outcome ("Deal tasks moved
+  to Waiting on Bid" / "not moved: SCW's task is in X"); a repeat ask while one is pending = a one-line reminder
+  (nothing else changes); extend / decline / held re-price / reopen / keep / cancel = one line each with the
+  sub's note when there is one. The no-basis path has no sub to tell: Slack only. Ops-only instructions ("Reopen bid
+  for re-pricing or Keep quote as is") ride the Slack message to the AE, not a task comment.
 
 - Lists: Install Work `48524051` (the project's `field_1199` task), SVS `901400816107`.
 - Statuses used (both lists have them): `waiting on bid`, `final bid submitted`.
