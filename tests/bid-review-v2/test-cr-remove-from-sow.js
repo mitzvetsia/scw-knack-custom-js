@@ -310,6 +310,35 @@ const lastToast = () => toasts[toasts.length - 1];
   await sleep(10);
   check('one toast names both SOWs', lastToast(), ['success', 'Removed 2 items from SOW 1628 and 1 item from SOW 1700.']);
 
+  // ── the view-scoped GET reply comes wrapped as { record: {…} } (SOW 1273, 2026-11-05) ────────
+  // (read off the wrapper, the SOW list was empty → "already off — nothing to write" → the item
+  // stayed on the SOW; the toast said "was already off SOW 1273")
+  openRemove('bid3', 'li3', 'C-003');
+  q('[data-scw-cr-remove-sow]').checked = true; q('.scw-bid-cr-modal__btn--remove').click();
+  reqs.length = 0; toasts.length = 0; triggers.length = 0; logs.length = 0;
+  cr.submitForPackage('pkgA', { silent: true });
+  reqs[0].success({ success: true });
+  await sleep(10);
+  last('GET', /li3/).success({ record: items.li3 });
+  await sleep(10);
+  check('a wrapped GET reply is unwrapped: the PUT goes out with this SOW removed', bodies('PUT').map(b => [b.url, b.body.field_2154]), [['li3', [SOW_B]]]);
+  last('PUT', /li3/).success({ record: Object.assign({}, items.li3, { field_2154_raw: [{ id: SOW_B, identifier: '1628' }] }) });
+  await sleep(10);
+  check('a wrapped PUT reply feeds the cell-update with the record', triggers.filter(t => t.name === 'knack-cell-update.view_3921').map(t => [t.args[1].id, t.args[1].field_2154_raw.map(r => r.id)]), [['li3', [SOW_B]]]);
+  check('… and the toast reports the removal', lastToast(), ['success', 'Removed 1 item from SOW 1589.']);
+  // A reply that carries no SOW field at all is never "already off": reported, no PUT.
+  openRemove('bid5', 'li5', 'C-005');
+  q('[data-scw-cr-remove-sow]').checked = true; q('.scw-bid-cr-modal__btn--remove').click();
+  reqs.length = 0; toasts.length = 0; logs.length = 0;
+  cr.submitForPackage('pkgA', { silent: true });
+  reqs[0].success({ success: true });
+  await sleep(10);
+  last('GET', /li5/).success({ id: 'li5', field_1950: 'C-005' });
+  await sleep(10);
+  check('a reply without the SOW field: no PUT, an error toast, a console warning naming the field and the view',
+    [bodies('PUT').length, lastToast(), logs.some(l => l[0] === 'warn' && /C-005 — the read-back carries no field_2154 \(is it a column on view_3921\?\)/.test(l[1]))],
+    [0, ['error', 'Could not remove C-005 (its SOW list could not be read) from SOW 1589 — take them off on the worksheet.'], true]);
+
   console.log(fails ? 'RESULT: ' + fails + ' failed' : 'RESULT: all passed');
   process.exit(fails ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

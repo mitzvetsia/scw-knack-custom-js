@@ -2419,6 +2419,14 @@
     for (var j in extra) out[j] = extra[j];
     return out;
   }
+  /** A view-scoped GET / PUT reply, as the record: Knack may wrap it as
+   *  `{ record: {…} }` (ops-stepper's recheckSource and sub-bid-diff's
+   *  readRemoteSnapshot read theirs the same way). Read off the wrapper, the
+   *  SOW list was empty and every unlink ended "already off — nothing to
+   *  write" while the item stayed on the SOW (SOW 1273, 2026-11-05). */
+  function unwrapRecord(resp) {
+    return (resp && resp.record && typeof resp.record === 'object' && resp.record.id) ? resp.record : resp;
+  }
   function mergeSow(rec, key, ids) {
     var out = {};
     for (var k in rec) out[k] = rec[k];
@@ -2542,7 +2550,15 @@
           var url  = SCW.knackRecordUrl(view, it.sowItemId);
           var base = { itemId: it.sowItemId, label: it.displayLabel || it.productName || it.sowItemId };
           return withRetry(function () { return knackReq({ url: url, type: 'GET' }); })
-            .then(function (rec) {
+            .then(function (resp) {
+              var rec = unwrapRecord(resp);
+              // "Already off" is a verdict only a reply that CARRIES the SOW
+              // field may give; one without it is reported, never a no-op.
+              if (!rec || typeof rec !== 'object' || (rec[key] === undefined && rec[key + '_raw'] === undefined)) {
+                console.warn('[BidReview CR] remove from SOW: ' + base.label + ' — the read-back carries no ' + key +
+                  ' (is it a column on ' + view + '?) — not written', resp);
+                return withBase(base, { ok: false, status: 0, unreadable: true });
+              }
               var ids = [];
               var refs = sowRefsOf(rec);
               for (var r = 0; r < refs.length; r++) ids.push(refs[r].id);
@@ -2563,9 +2579,10 @@
               body[key] = next;
               return withRetry(function () { return knackReq({ url: url, type: 'PUT', data: JSON.stringify(body) }); })
                 .then(function (resp) {
+                  var put = unwrapRecord(resp);
                   console.info('[BidReview CR] remove from SOW: ' + base.label + ' PUT ok — now on ' +
                     (next.length ? next.join(', ') : 'no SOW'));
-                  fireSowCellUpdate(view, (resp && resp.id) ? resp : mergeSow(rec, key, next), key);
+                  fireSowCellUpdate(view, (put && put.id) ? put : mergeSow(rec, key, next), key);
                   return withBase(base, { ok: true, remaining: next.length, followsParent: follows });
                 });
             })
@@ -2589,7 +2606,10 @@
       var n = 0, results = grp.results || [];
       for (var i = 0; i < results.length; i++) {
         var r = results[i] || { label: 'item', status: 0 };
-        if (!r.ok) { failed.push(r.label + (r.status ? ' (HTTP ' + r.status + ')' : '') + ' from ' + where); continue; }
+        if (!r.ok) {
+          failed.push(r.label + (r.status ? ' (HTTP ' + r.status + ')' : (r.unreadable ? ' (its SOW list could not be read)' : '')) + ' from ' + where);
+          continue;
+        }
         if (r.noop) { already.push(r.label + ' was already off ' + where); continue; }
         n++;
         if (r.followsParent) {

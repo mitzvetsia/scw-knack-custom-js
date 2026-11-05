@@ -1176,6 +1176,16 @@ Make, not on the sub's acceptance (decided 2026-10-22):
   payload / HTML / text still read `removeFromSowName`, now the joined names); `planSowUnlinks` groups per id
   (an item on two other SOWs is read and written once per SOW). The bulk path (`init.js addBulkRemoveFromBid`)
   stamps the same target per selected row; its hint says so.
+- **The read-back was read off Knack's `{ record: {…} }` wrapper (same day — "this also fails to update the
+  SOW", SOW 1273, an item ON the tab's SOW)**: the view-scoped GET `removeItemsFromSow` makes before its PUT
+  can come back wrapped (ops-stepper `recheckSource` and sub-bid-diff `readRemoteSnapshot` unwrap theirs), so
+  `rec['field_2154_raw']` read undefined, the SOW list was empty, and every unlink ended "already off — nothing
+  to write" with the item still on the SOW (the toast read "… was already off SOW 1273"). `unwrapRecord(resp)`
+  now feeds both the GET and the PUT reply, and a reply that carries NEITHER `field_2154` nor its `_raw` is
+  never a no-op: it is reported ("its SOW list could not be read") with a console warning naming the field and
+  the view, and nothing is written. The tray's "+ Add to this SOW" (`sow-item-tray.js addToSow`) reads the set
+  off the loaded model and only PUTs, which is why adding always worked while removing did not. Rule: every
+  view-scoped GET / PUT reply goes through an `.record` unwrap before a field is read off it.
 - Test: `tests/bid-review-v2/test-cr-remove-from-sow.js` (drives the real module: the box + hints incl. the
   accessory sentence, the card / payload / HTML / text, the per-SOW plan, the 2-wide GET → PUT queue per
   group, the cell-update dispatch, the status-0 webhook, a 500 retry, a 403 report, two SOW tabs on one
