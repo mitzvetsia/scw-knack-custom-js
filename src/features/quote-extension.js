@@ -82,7 +82,14 @@
   var CONFIG = {
     webhookKey: 'MAKE_QUOTE_EXTENSION_WEBHOOK',
     defaultExtensionDays: 30,
-    previewKey: 'scwQuoteExtPreview',      // localStorage '1' → the buttons with no hook (QA)
+    previewKey: 'scwQuoteExtPreview',      // localStorage '1' → every surface on in THIS browser, whatever the login (QA)
+    hookOverrideKey: 'scwQuoteExtHook',    // localStorage: a hook URL for THIS browser while config.js still reads PLACEHOLDER
+    // Preview logins (2026-11-05 — "I need all of this live for ME to test — show everything only to
+    // micah.shearer@getscw.com"): while this list is NON-EMPTY every surface renders ONLY for these
+    // logins (plus a browser carrying the preview flag), with or without the hook; the POSTs go to the
+    // hook (config.js, else the per-browser override) and report "not configured" when there is none.
+    // EMPTY = everyone, hook permitting (the pre-2026-11-05 switch). Clearing the list is the launch.
+    previewEmails: ['micah.shearer@getscw.com'],
     // SOW header (Builder 2026-11-05): status = STATUS_expiration extension
     // (blank / Requested / Re-Pricing; a Yes/No flag would read Yes = Requested),
     // requestedDate = INPUT_requested quote expiration date. Read on every page
@@ -144,12 +151,31 @@
   }
   function hookUrl() {
     var u = (window.SCW && SCW.CONFIG && SCW.CONFIG[CONFIG.webhookKey]) || '';
-    return (u && !/PLACEHOLDER/.test(u)) ? u : '';
+    if (u && !/PLACEHOLDER/.test(u)) return u;
+    // A tester's own browser can point at the hook before the URL is committed (never ships to anyone else).
+    try {
+      var o = String(localStorage.getItem(CONFIG.hookOverrideKey) || '').trim();
+      if (/^https:\/\/hook\.[a-z0-9.-]+\.make\.com\/[A-Za-z0-9]+$/.test(o)) return o;
+    } catch (e) { /* no storage */ }
+    return '';
   }
   function previewOn() {
     try { return localStorage.getItem(CONFIG.previewKey) === '1'; } catch (e) { return false; }
   }
-  function canAsk() { return !!hookUrl() || previewOn(); }
+  function isPreviewUser() {
+    var list = CONFIG.previewEmails || [];
+    var e = String(user().email || '').trim().toLowerCase();
+    if (!e) return false;
+    for (var i = 0; i < list.length; i++) if (String(list[i]).trim().toLowerCase() === e) return true;
+    return false;
+  }
+  /** The switch for every surface: the preview flag (this browser) → on; a non-empty preview list →
+   *  only those logins; otherwise the hook URL. */
+  function canAsk() {
+    if (previewOn()) return true;
+    if ((CONFIG.previewEmails || []).length) return isPreviewUser();
+    return !!hookUrl();
+  }
   function user() {
     try {
       var a = (window.Knack && Knack.getUserAttributes && Knack.getUserAttributes()) || {};

@@ -40,6 +40,7 @@ global.SCW = window.SCW;
 window.confirm = () => true; global.confirm = window.confirm;
 new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.join(__dirname, '../../src/features/quote-extension.js'), 'utf8'))(window, document, jq, window.Knack, window.SCW);
 const qx = window.SCW.quoteExtension;
+qx.CONFIG.previewEmails = [];   // the launch switch (the hook) is what this file tests; the preview-login gate is in tests/sow-page/test-quote-extension.js
 let fails = 0;
 function check(label, got, want) {
   const ok = JSON.stringify(got) === JSON.stringify(want);

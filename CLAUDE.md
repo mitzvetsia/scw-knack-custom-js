@@ -2256,11 +2256,16 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
 `MAKE_QUOTE_EXTENSION_WEBHOOK`, one scenario routed on `stepId`: `request-extension` / `confirm-extension` /
 `nudge-extension` / `cancel-extension`; the reply's `routedTo` is `svs` | `ops` | `auto`). The rule the design adds:
 **the quote never outruns the bid** — a requested date past the bid's expiration goes to the sub first.
-- **The hook is the switch** ("add the fields, but don't show them to the user yet until we get Make wired up",
-  2026-11-05): while `MAKE_QUOTE_EXTENSION_WEBHOOK` is PLACEHOLDER NOTHING extension-related renders on any
-  surface — no buttons, no pending / re-pricing lines, no sub card, no reconcile chip (`bid-review-v2/header.js` asks
-  `SCW.quoteExtension.enabled()`) — whatever the Builder fields say. `localStorage.scwQuoteExtPreview = '1'` turns
-  every surface on for QA in that browser only. Setting the real URL in config.js is the launch.
+- **The switch** (`canAsk()`, 2026-11-05): (1) `localStorage.scwQuoteExtPreview = '1'` → every surface on in that
+  browser whatever the login; else (2) while `CONFIG.previewEmails` is NON-EMPTY (shipped as
+  `['micah.shearer@getscw.com']` — "I need all of this live for ME to test — show everything only to
+  micah.shearer@getscw.com") → only those logins, with or without the hook; else (3) the hook: while
+  `MAKE_QUOTE_EXTENSION_WEBHOOK` is PLACEHOLDER NOTHING extension-related renders on any surface — no buttons, no
+  pending / re-pricing lines, no sub card, no reconcile chip (`bid-review-v2/header.js` asks
+  `SCW.quoteExtension.enabled()`) — whatever the Builder fields say. A preview login's POSTs go to the hook in
+  config.js, else to a per-browser override `localStorage.scwQuoteExtHook = 'https://hook.us1.make.com/…'` (a
+  Make hook URL only), else report "not configured" in the modal. Sub-page testing under a sub login = the preview
+  flag in that browser. **Launch = the real URL in config.js AND `previewEmails: []`.**
 - **Shared state = ONE SOW field, three readings** (`CONFIG.sow.status`, Builder TBD: SOW `STATUS_quote extension`,
   blank / Requested / Re-pricing; a Yes/No flag reads Yes = Requested) + `CONFIG.sow.requestedDate` (`INPUT_requested
   expiration`). Make writes it at every turn: request → Requested, extend / decline / cancel → blank, re-price →

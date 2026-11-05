@@ -36,6 +36,8 @@ for (const f of ['published-quote-info.js', 'quote-extension.js']) {
   new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.join(__dirname, '../../src/features/' + f), 'utf8'))(window, document, jq, window.Knack, window.SCW);
 }
 const qx = window.SCW.quoteExtension;
+const PREVIEW_EMAILS = qx.CONFIG.previewEmails.slice();   // the shipped list — restored for the gate block below
+qx.CONFIG.previewEmails = [];                             // the rest of the file tests the launch switch (the hook)
 let fails = 0;
 function check(label, got, want) {
   const ok = JSON.stringify(got) === JSON.stringify(want);
@@ -292,6 +294,36 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   check('a repeat render keeps the element', dash() === dashEl, true);
   dashPage([bidRow(BID)], true); qx.renderDashboardBanner();
   check('the flag cleared (answered): the banner goes', !!dash(), false);
+
+  // ── the preview-login gate (2026-11-05: "show everything only to micah.shearer@getscw.com") ──
+  window.Knack.router.current_scene_key = 'scene_1116';
+  window.location.hash = '#sales/scope-of-work-details/' + SOW + '/';
+  qx.CONFIG.previewEmails = PREVIEW_EMAILS; hook = 'PLACEHOLDER';
+  check('the shipped preview list is the one login', PREVIEW_EMAILS, ['micah.shearer@getscw.com']);
+  let who = { name: 'Danny Mize', email: 'danny@getscw.com' };
+  window.Knack.getUserAttributes = () => who;
+  salesPage(future); cardRender(); await sleep(200);
+  check('preview list set, another login, no hook: nothing renders', !!q('.scw-qext'), false);
+  hook = 'https://hook.us1.make.com/qext'; salesPage(future); cardRender(); await sleep(200);
+  check('… nor with the hook configured (the list gates ahead of the hook)', [!!q('.scw-qext'), qx.enabled()], [false, false]);
+  who = { name: 'Micah Shearer', email: 'Micah.Shearer@getscw.com' }; hook = 'PLACEHOLDER';
+  salesPage(future); cardRender(); await sleep(200);
+  check('the listed login (case-insensitive), no hook: the button renders', [q('.scw-qext').getAttribute('data-scw-qext'), qx.enabled()], ['ready', true]);
+  q('[data-qext-request]').click(); q('[data-qext-reason]', modal()).value = 'x'; posts.length = 0; q('[data-qext-send]', modal()).click(); await sleep(10);
+  check('… a send with no hook posts nothing and says so in the modal', [posts.length, /extension webhook is not configured yet/.test(txt(q('[data-qext-err]', modal())))], [0, true]);
+  q('[data-qext-cancel]', modal()).click();
+  window.localStorage.setItem('scwQuoteExtHook', 'https://hook.us1.make.com/abc123XYZ');
+  q('[data-qext-request]').click(); q('[data-qext-reason]', modal()).value = 'x'; posts.length = 0; q('[data-qext-send]', modal()).click(); await sleep(10);
+  check('… the per-browser hook override (localStorage scwQuoteExtHook) is where the POST goes while config.js reads PLACEHOLDER', [posts.length, lastPost().url], [1, 'https://hook.us1.make.com/abc123XYZ']);
+  lastPost().success({ success: true, routedTo: 'svs' }); await sleep(10);
+  window.localStorage.setItem('scwQuoteExtHook', 'javascript:alert(1)');
+  q('[data-qext-cancel-req]').click(); posts.length = 0; await sleep(10);
+  check('… an override that is not a Make hook URL is ignored', posts.length, 0);
+  window.localStorage.removeItem('scwQuoteExtHook'); qx._marker.write(SOW, null);
+  who = { name: 'Danny Mize', email: 'danny@getscw.com' }; window.localStorage.setItem('scwQuoteExtPreview', '1');
+  salesPage(future); cardRender(); await sleep(200);
+  check('the preview flag still turns a browser on whatever the login', !!q('.scw-qext'), true);
+  window.localStorage.removeItem('scwQuoteExtPreview'); qx.CONFIG.previewEmails = [];
 
   // ── helpers ──
   check('normalizeMdy: shapes in, M/D/YYYY out, impossible dates out', [qx.normalizeMdy('11-31-2026'), qx.normalizeMdy('12.1.26'), qx.normalizeMdy('01022027'), qx.normalizeMdy('2/29/2027')], ['', '12/1/2026', '1/2/2027', '']);
