@@ -2262,10 +2262,11 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   micah.shearer@getscw.com") → only those logins, with or without the hook; else (3) the hook: while
   `MAKE_QUOTE_EXTENSION_WEBHOOK` is PLACEHOLDER NOTHING extension-related renders on any surface — no buttons, no
   pending / re-pricing lines, no sub card, no reconcile chip (`bid-review-v2/header.js` asks
-  `SCW.quoteExtension.enabled()`) — whatever the Builder fields say. A preview login's POSTs go to the hook in
-  config.js, else to a per-browser override `localStorage.scwQuoteExtHook = 'https://hook.us1.make.com/…'` (a
-  Make hook URL only), else report "not configured" in the modal. Sub-page testing under a sub login = the preview
-  flag in that browser. **Launch = the real URL in config.js AND `previewEmails: []`.**
+  `SCW.quoteExtension.enabled()`) — whatever the Builder fields say. The hook URL is in config.js since
+  2026-11-05 (the 06.08 scenario, hook 2866644), so the preview list is the only thing keeping the feature off
+  everyone else; a per-browser override `localStorage.scwQuoteExtHook` (a Make hook URL only) still wins over a
+  PLACEHOLDER. Sub-page testing under a sub login = the preview flag in that browser. **Launch = `previewEmails:
+  []`.**
 - **Shared state = ONE SOW field, three readings** (`CONFIG.sow.status`, Builder TBD: SOW `STATUS_quote extension`,
   blank / Requested / Re-pricing; a Yes/No flag reads Yes = Requested) + `CONFIG.sow.requestedDate` (`INPUT_requested
   expiration`). Make writes it at every turn: request → Requested, extend / decline / cancel → blank, re-price →
@@ -2364,7 +2365,7 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   ClickUp comment on the SVS task (Notify all) carrying the portal link
   `#subcontractor-portal/site-survey-request-details/<sr>/edit-bid-package/<bid>/`. Verify live: `{{emptyarray}}`
   clears the multiple-choice `field_3314`; the literal status names in `editATaskAdvanced`.
-- **Not built (the other halves)**: the hook URL in `src/config.js` (PLACEHOLDER = the feature is off), the shared
+- **Not built (the other halves)**: the shared
   publish scenario's "status → blank" module (needs that scenario's export), the "quote never outruns the bid"
   check on the Ops pencils / at publish, the lapsed-bid CU mover, the acceptance-date gate, the history-strip
   entries. Tests: `tests/sow-page/test-quote-extension.js` (sales:

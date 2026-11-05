@@ -434,7 +434,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // PLACEHOLDER = the request buttons are hidden (localStorage.scwQuoteExtPreview =
   // '1' shows them for QA) and the sub card still renders but reports an
   // unconfigured hook on send.
-  MAKE_QUOTE_EXTENSION_WEBHOOK: "PLACEHOLDER",
+  MAKE_QUOTE_EXTENSION_WEBHOOK: "https://hook.us1.make.com/axjcf4kfmwvsqc8wjqfpuf6lg6gjzp0m",
   // ── The two NO-E-SIGNATURE accepted paths (2026-10-01) ─────────────────
   // Both are stepId routes on the Issue scenario (13.03). Where the truth
   // lives: the SOW's CO Status is the STAGE only — every accepted path
