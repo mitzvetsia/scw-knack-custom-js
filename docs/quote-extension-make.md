@@ -81,7 +81,7 @@ Payload: `bidPackageId, sowId, outcome ('extend' | 'reprice' | 'decline'), bidEx
 | Outcome | Writes | ClickUp (both tasks) | Notify |
 |---|---|---|---|
 | `extend` | bid `field_2635` = bidExpiration. Quote = the EARLIER of SOW `field_3315` and bidExpiration → proposal `field_2659` AND SOW `field_2135` in the same run. SOW `field_3314` = blank, `field_3315` = blank; bid `field_3316` = No, `field_3317` = blank. | → Final Bid Submitted. Comment: "Bid extended to …, quote extended to …" + the note. | the requester (the AE or Ops) |
-| `reprice` | **Gated on the quote's expiration** (SOW `field_2135`, the proposal's mirror — decided 2026-11-05). Quote already expired → bid `field_2550` → Draft + the Reopen Bid unlock (object_114 `field_2551` = No on the bid's items); SOW `field_3314` = `Re-Pricing`; bid `field_3316` = No. Quote still runs (or blank) → the bid stays LOCKED: bid `field_3316` = No, SOW `field_3314` = **`Re-Price Requested`** (new Builder option). | expired → **Prepare Bid**, comment with the note. Held → nothing moves; comment (notify all) on the SCW task naming the choice: "Reopen bid for re-pricing" or "Keep quote as is" (close before the quote expires). | AE (Slack mention) + SCW (task comment, notify all) either way; the sub is told which |
+| `reprice` | **Gated on the quote's expiration** (SOW `field_2135`, the proposal's mirror — decided 2026-11-05). Quote already expired → bid `field_2550` → Draft + the Reopen Bid unlock (object_114 `field_2551` = No on the bid's items); SOW `field_3314` = `Re-Pricing`; bid `field_3316` = No. Quote still runs (or blank) → the bid stays LOCKED: bid `field_3316` = No, SOW `field_3314` = **`Re-Price Requested`** (new Builder option). | expired → both tasks **Waiting on Bid** (they are there already from the request; moved only from Final Bid Submitted — re-pricing is the sub's work, decided 2026-11-05), comment with the note. Held → nothing moves; comment (notify all) on the SCW task naming the choice: "Reopen bid for re-pricing" or "Keep quote as is" (close before the quote expires). | AE (Slack mention) + SCW (task comment, notify all) either way; the sub is told which |
 | `decline` | nothing on the dates. SOW `field_3314` = blank, `field_3315` = blank; bid `field_3316` = No, `field_3317` = blank. | → Final Bid Submitted. Comment with the note. | the requester + Ops |
 
 The proposal to write on `extend`: the SOW's published proposal(s) with status Published —
@@ -93,7 +93,7 @@ search object_125 by SOW (`field_2666` = sowId) and status `field_2658` = Publis
 Payload: `sowId, triggeredBy`. The bid = the SOW's basis bid (`field_2942`).
 
 - `reopen-reprice`: the expired-quote re-price sequence on that bid (Draft + unlock, SOW `Re-Pricing`, both tasks →
-  Prepare Bid, comments, Slack). The reconcile page's native **Reopen Bid** fires it too when the SOW reads
+  Waiting on Bid, comments, Slack). The reconcile page's native **Reopen Bid** fires it too when the SOW reads
   `Re-Price Requested` (`quote-extension.js` `afterReopenBid`, called by `bid-review/init.js handleReopenBid` after its
   PUTs land — Make's bid writes repeat them, idempotently).
 - `keep-quote`: SOW `field_3314` = blank, bid `field_3316` = No, both tasks → Final Bid Submitted (when parked in
@@ -118,7 +118,10 @@ carry an Ignore error handler and the deal-owner lookup the source scenarios' Re
 `var.organization.sales_fallback_slackID`); a ClickUp failure still shows in the run history. The
 search-and-iterate tails (published proposals on `extend`, the bid's line items on `reprice`) stay
 last. `nudge` has no writes, so its Response stays last. (Runs are short — no PDF — so the 40 s
-limit is not a concern.)
+limit is not a concern.) **Make rule the generator follows**: a filter that fails STOPS the rest of its flow
+line, so a filtered module (the bid write that needs a basis bid, a status move that needs Waiting on Bid) is
+never followed by a module that must run — the filtered tails and the search → iterate tails are parallel
+routes of a closing router.
 
 ## The shared publish scenario (hook `…mezrtqmf…`) — one added module
 
@@ -130,9 +133,10 @@ proposal is out. (Unconditional clearing is also fine: nothing else holds the fi
 ## ClickUp specifics
 
 - Lists: Install Work `48524051` (the project's `field_1199` task), SVS `901400816107`.
-- Statuses used (both lists have them): `waiting on bid`, `prepare bid`, `final bid submitted`.
+- Statuses used (both lists have them): `waiting on bid`, `final bid submitted`.
 - Guard: move only when the Install Work task is in `final bid submitted`; otherwise comment only.
-  No status is stashed — every close returns to Final Bid Submitted, a re-price goes to Prepare Bid.
+  No status is stashed — every close returns to Final Bid Submitted (only from Waiting on Bid); a re-price keeps
+  the tasks in Waiting on Bid (the sub is working) and the sub's resubmission moves them on as any bid submission does.
 
 ## Build plan — blueprint delivered 2026-11-05
 
@@ -151,7 +155,7 @@ Verify on the first runs (Make answers nothing of this at import time):
 - SOW `field_3314` cleared by `{{emptyarray}}` on extend / decline / cancel (modules "SOW status = blank").
   If Knack ignores it (the record still reads Requested), replace that mapping with a Knack "Make an API
   Call" PUT of `{"field_3314": ""}`, or add a third option "None" and have the bundle read it as blank.
-- The ClickUp status names `waiting on bid` / `prepare bid` / `final bid submitted` typed into
+- The ClickUp status names `waiting on bid` / `final bid submitted` typed into
   `editATaskAdvanced` (both lists carry them; the module takes the literal name).
 - Scenario settings → **Sequential processing OFF** — Make refuses a Webhook Response module in a sequential
   scenario ("Responder is not supported when scenario is configured for sequential processing", seen on the
@@ -175,7 +179,7 @@ card → extend / re-price / decline).
   on Bid; the sub's dashboard banner and bid card appear.
 - Sub: extend to an earlier date than asked → quote lands at the sub's date; flags clear; tasks
   back to Final Bid Submitted; the sales card returns to the button.
-- Sub: re-price on an EXPIRED quote → bid Draft, SOW Re-Pricing (the sales card says so), tasks Prepare Bid; a
+- Sub: re-price on an EXPIRED quote → bid Draft, SOW Re-Pricing (the sales card says so), tasks stay Waiting on Bid; a
   publish-final clears it.
 - Sub: re-price while the quote still runs → bid stays locked, SOW Re-Price Requested (sales card read-only, the Ops
   rows offer Keep quote as is | Reopen bid for re-pricing), AE Slack ping + SCW task comment; Reopen → the expired

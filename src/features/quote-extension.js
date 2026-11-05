@@ -627,7 +627,7 @@
           ? '<div class="scw-qext__row">' +
               '<button type="button" class="scw-qext__btn" data-qext-keep>Keep quote as is</button>' +
               '<button type="button" class="scw-qext__btn scw-qext__btn--primary" data-qext-reopen>Reopen bid for re-pricing</button>' +
-              '<span class="scw-qext__muted">Keep = the bid stays submitted and the sub is told; Reopen = bid back to Draft, tasks to Prepare Bid.</span>' +
+              '<span class="scw-qext__muted">Keep = the bid stays submitted and the sub is told; Reopen = bid back to Draft, the tasks stay in Waiting on Bid while the sub re-prices.</span>' +
             '</div>'
           : '<div class="scw-qext__muted">Ops decides on the Reconcile Bids page — tell them if the client will close before the quote expires.</div>');
     }
@@ -678,7 +678,7 @@
         'Quote kept — the sub has been told', 'The decision');
     });
     if (reopen) reopen.addEventListener('click', function (e) {
-      send(e.currentTarget, 'reopen-reprice', 'Reopen the bid for re-pricing? The bid goes back to Draft, its lines unlock, the SOW reads Re-Pricing and both deal tasks move to Prepare Bid.',
+      send(e.currentTarget, 'reopen-reprice', 'Reopen the bid for re-pricing? The bid goes back to Draft, its lines unlock, the SOW reads Re-Pricing and both deal tasks sit in Waiting on Bid while the sub re-prices.',
         'Bid reopened for re-pricing — the sub has been told', 'The reopen');
     });
   }

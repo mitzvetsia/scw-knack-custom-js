@@ -2306,7 +2306,8 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   (both lists — Install Work `48524051` = the project's `field_1199` task, SVS `901400816107` — carry Waiting on Bid,
   Prepare Bid and Final Bid Submitted). Make moves BOTH tasks → Waiting on Bid only when the internal task is in Final
   Bid Submitted (any other status: comment, move nothing); extend / decline / cancel → Final Bid Submitted; re-price →
-  **Prepare Bid** (Ops reviews the re-priced bid before finalizing; the stepper's normal flow moves it on from there).
+  **Waiting on Bid** (corrected 2026-11-05: "if we're re-pricing, that's still a Sub activity and that's still Waiting on
+  Bid" — the sub's resubmission moves the tasks on as any bid submission does; closes move only from Waiting on Bid).
 - **Sub bid page (scene_1149)**: `renderSubCard` mounts "SCW asks you to hold this bid until <date>" above the bid
   document (`#view_3550`) when the bid record (view_3552's model) carries the Builder flag `CONFIG.sub.requestedFlag`
   = Yes — the requested quote date beside the bid's own `field_2635`, an editable "Extend my bid to" date (an earlier
@@ -2339,7 +2340,7 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   re-price shouldn't automatically unlock it IF the associated proposal hasn't actually expired yet … it should ping
   the Ops team and ask them to re-open the bid, because Sales / Ops might say 'actually we'll push the client to close
   before the proposal expires'". Make gates `confirm-extension / reprice` on the SOW's `field_2135` (the proposal's
-  mirror): expired → the re-price sequence (bid Draft + unlock, SOW Re-Pricing, tasks Prepare Bid); still running (or
+  mirror): expired → the re-price sequence (bid Draft + unlock, SOW Re-Pricing, tasks Waiting on Bid); still running (or
   blank) → the bid stays locked, SOW `field_3314` = **`Re-Price Requested`** (Builder: add the option), the SCW task
   gets a notify-all comment and the AE a Slack mention naming the choice. `statusKind` reads it as
   `reprice-requested`; the sales card shows the held line read-only (`.scw-qext--held`), the Ops rows offer

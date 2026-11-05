@@ -401,7 +401,8 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //                 shouldn't automatically unlock it IF the associated proposal hasn't
   //                 actually expired yet"):
   //                 · quote already expired → bid status → Draft + unlock lines; SOW
-  //                   status = Re-Pricing; bid flag No; both CU tasks → Prepare Bid; notify
+  //                   status = Re-Pricing; bid flag No; both CU tasks (stay / go) → Waiting on
+  //                   Bid — re-pricing is the sub's work (2026-11-05); notify
   //                   the AE (Slack) + SCW (task comment, notify all) + the sub.
   //                 · quote still runs (or no date) → the bid stays LOCKED; bid flag No;
   //                   SOW status = Re-Price Requested; comment (notify all) on the SCW task
@@ -421,7 +422,8 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   'cancel-extension' → SOW status blank, bid flag No, both CU tasks → Final Bid
   //                        Submitted; comment both.  Both: { stepId, sowId, triggeredBy }.
   //   No CU status is stashed: an extension is only ever requested from Final Bid
-  //   Submitted, so every close returns there and a re-price goes to Prepare Bid.
+  //   Submitted, so every close returns there; a re-price keeps the tasks in Waiting on Bid
+  //   (the sub's resubmission moves them on as any bid submission does).
   //   Response: { success: true, routedTo: 'svs' | 'ops' | 'auto', message }
   //          or { success: false, error }. A bare 200 / CORS-opaque reply counts
   //          as delivered (routedTo unknown → the card says "awaiting a reply").
