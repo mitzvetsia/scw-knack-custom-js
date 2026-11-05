@@ -4372,6 +4372,17 @@
         seenRows[row.id] = true;
         seenItems[row.sowItem] = true;
 
+        // Where "Also remove from SOW" writes for THIS item: the grid's SOW, or —
+        // a "Not on this SOW" row — the SOW(s) the item is on (change-requests.js
+        // unlinkTarget). null = the item is on no SOW, nothing to unlink.
+        var also = !!(opts && opts.removeFromSow);
+        var target = null;
+        if (also) {
+          target = ns.changeRequests.unlinkTarget
+            ? ns.changeRequests.unlinkTarget(row.sowItem, grid.sowId, grid.sowName)
+            : { ids: [grid.sowId || ''], names: [grid.sowName || ''], onThis: true };
+        }
+
         ns.changeRequests.addSilent(pkgId, pkgName, grid.sowId, grid.sowName, {
           rowId:            cell.id,
           bidRecordId:      cell.id,
@@ -4384,9 +4395,11 @@
           // Opt-in SOW unlink on submit (change-requests.js "Remove from the
           // SOW on submit") — the bulk modal's second box. The SOW is the
           // grid's own, stamped on the item (the package may span SOW tabs).
-          removeFromSow:     !!(opts && opts.removeFromSow),
-          removeFromSowId:   grid.sowId || '',
-          removeFromSowName: grid.sowName || '',
+          removeFromSow:      also && !!target,
+          removeFromSowId:    target ? target.ids[0] : (grid.sowId || ''),
+          removeFromSowName:  target ? target.names.join(', ') : (grid.sowName || ''),
+          removeFromSowIds:   target ? target.ids.slice() : [],
+          removeFromSowNames: target ? target.names.slice() : [],
           current:          {},
           requested:        {},
           changeNotes:      (changeNotes || '').trim()

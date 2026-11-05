@@ -2287,26 +2287,61 @@
     } catch (e) { /* ignore */ }
     return null;
   }
-  /** What unlinking this item from `sowId` leaves behind, in words. */
-  function sowUnlinkHint(itemId, sowId) {
+  /** Where a ticked "Also remove this item from the SOW" writes, for one line
+   *  item: `{ ids, names, onThis }`. The grid's SOW when the item is on it.
+   *  On a "Not on this SOW" row the item is NOT on the grid's SOW, so that
+   *  write was a no-op — "already off", nothing changed (SOW 1580, 2026-11-05):
+   *  there the target is every SOW the item IS on. null when the loaded item
+   *  is on no SOW at all (nothing to unlink); the grid's SOW when the item is
+   *  not loaded (the pre-existing fail-open — the GET on submit decides). */
+  function unlinkTarget(itemId, sowId, sowName) {
+    var grid = sowId ? { ids: [sowId], names: [sowName || ''], onThis: true } : null;
+    var rec = loadedSowItem(itemId);
+    if (!rec) return grid;
+    var refs = sowRefsOf(rec), ids = [], names = [];
+    for (var i = 0; i < refs.length; i++) {
+      if (refs[i].id === sowId) return grid;
+      ids.push(refs[i].id);
+      names.push(stripMarkup(refs[i].identifier || '') || refs[i].id);
+    }
+    if (!ids.length) return null;
+    return { ids: ids, names: names, onThis: false };
+  }
+  function sowListLabel(names) {
+    return (names.length === 1 ? 'SOW ' : 'SOWs ') + names.join(', ');
+  }
+  function parentFollowsNote(parentLbl, where) {
+    return ' It is an accessory of ' + parentLbl + ', which stays on ' + where + ': accessories follow their parent, ' +
+      'so it comes back the next time ' + parentLbl + '\'s SOW changes — to drop it for good, remove it under ' +
+      parentLbl + ' on the worksheet, or remove ' + parentLbl + ' from the SOW too.';
+  }
+  /** What unlinking this item leaves behind, in words — `target` from unlinkTarget. */
+  function sowUnlinkHint(itemId, sowId, sowName, target) {
     var rec = loadedSowItem(itemId);
     var lead = 'Happens on this page the moment the change request is submitted — Make is not involved. ';
     if (!rec) return lead + 'The line item leaves this scope of work.';
+    var tail, parentLbl, t;
+    if (target && !target.onThis) {
+      tail = 'This item is not on ' + (sowName ? 'SOW ' + sowName : 'this SOW') + '; it is on ' +
+        sowListLabel(target.names) + '. It leaves ' + (target.names.length === 1 ? 'that SOW' : 'those SOWs') +
+        ' and will be left unassigned (on no scope of work) — it is not deleted.';
+      for (t = 0; t < target.ids.length; t++) {
+        parentLbl = followsParentOn(rec, target.ids[t], null);
+        if (parentLbl) { tail += parentFollowsNote(parentLbl, 'SOW ' + target.names[t]); break; }
+      }
+      return lead + tail;
+    }
     var others = [];
     var refs = sowRefsOf(rec);
     for (var i = 0; i < refs.length; i++) {
       if (refs[i].id === sowId) continue;
       others.push(stripMarkup(refs[i].identifier || '') || refs[i].id);
     }
-    var tail = !others.length
+    tail = !others.length
       ? 'It is on no other SOW, so it will be left unassigned (on no scope of work) — it is not deleted.'
-      : 'It stays on ' + (others.length === 1 ? 'SOW ' : 'SOWs ') + others.join(', ') + '.';
-    var parentLbl = followsParentOn(rec, sowId, null);
-    if (parentLbl) {
-      tail += ' It is an accessory of ' + parentLbl + ', which stays on this SOW: accessories follow their parent, ' +
-        'so it comes back the next time ' + parentLbl + '\'s SOW changes — to drop it for good, remove it under ' +
-        parentLbl + ' on the worksheet, or remove ' + parentLbl + ' from the SOW too.';
-    }
+      : 'It stays on ' + sowListLabel(others) + '.';
+    parentLbl = followsParentOn(rec, sowId, null);
+    if (parentLbl) tail += parentFollowsNote(parentLbl, 'this SOW');
     return lead + tail;
   }
   function transientStatus(st) {
@@ -2439,13 +2474,23 @@
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       if (!(it && it.removeFromBid && it.removeFromSow && it.sowItemId)) continue;
-      var sowId = it.removeFromSowId || (pkg && pkg.sowId) || '';
-      if (!sowId) { noSow.push(it); continue; }
-      if (!byId[sowId]) {
-        byId[sowId] = { sowId: sowId, sowName: it.removeFromSowName || (pkg && pkg.sowName) || '', items: [] };
-        groups.push(byId[sowId]);
+      // One id per SOW the item leaves (removeFromSowIds); older items carry one.
+      var ids = (it.removeFromSowIds && it.removeFromSowIds.length) ? it.removeFromSowIds
+              : [it.removeFromSowId || (pkg && pkg.sowId) || ''];
+      var names = (it.removeFromSowNames && it.removeFromSowNames.length) ? it.removeFromSowNames
+              : [it.removeFromSowName || (pkg && pkg.sowName) || ''];
+      var any = false;
+      for (var k = 0; k < ids.length; k++) {
+        var sowId = ids[k];
+        if (!sowId) continue;
+        any = true;
+        if (!byId[sowId]) {
+          byId[sowId] = { sowId: sowId, sowName: names[k] || '', items: [] };
+          groups.push(byId[sowId]);
+        }
+        byId[sowId].items.push(it);
       }
-      byId[sowId].items.push(it);
+      if (!any) noSow.push(it);
     }
     return { groups: groups, noSow: noSow };
   }
@@ -2617,9 +2662,14 @@
     if (!params.prefillNotes && existingRm && existingRm.removeFromBid && existingRm.changeNotes) {
       ta.value = existingRm.changeNotes;
     }
-    var sowChk = null;
-    if (params.sowItemId && params.sowId) {
-      var sowLbl = params.sowName ? 'SOW ' + params.sowName : 'this SOW';
+    var sowChk = null, target = null;
+    if (params.sowItemId && params.sowId) target = unlinkTarget(params.sowItemId, params.sowId, params.sowName);
+    if (target) {
+      // On this SOW → the grid's SOW. A "Not on this SOW" row → the SOW(s) the
+      // item is actually on (removing it from one it is not on wrote nothing).
+      var sowLbl = target.onThis
+        ? (params.sowName ? 'SOW ' + params.sowName : 'this SOW')
+        : sowListLabel(target.names);
       var unlinkBox = el('div', 'scw-bid-cr-modal__sowunlink');
       var unlinkRow = el('label', 'scw-bid-cr-modal__checkbox-item');
       sowChk = document.createElement('input');
@@ -2629,7 +2679,8 @@
       unlinkRow.appendChild(sowChk);
       unlinkRow.appendChild(document.createTextNode('Also remove this item from ' + sowLbl));
       unlinkBox.appendChild(unlinkRow);
-      unlinkBox.appendChild(el('div', 'scw-bid-cr-modal__sowunlink-hint', sowUnlinkHint(params.sowItemId, params.sowId)));
+      unlinkBox.appendChild(el('div', 'scw-bid-cr-modal__sowunlink-hint',
+        sowUnlinkHint(params.sowItemId, params.sowId, params.sowName, target)));
       body.appendChild(unlinkBox);
     }
     modal.appendChild(body);
@@ -2662,8 +2713,12 @@
         // the item itself, since the pending package (keyed by the bid) may
         // have been opened from another SOW's tab.
         removeFromSow:     !!(sowChk && sowChk.checked),
-        removeFromSowId:   params.sowId || '',
-        removeFromSowName: params.sowName || '',
+        removeFromSowId:   target ? target.ids[0] : (params.sowId || ''),
+        removeFromSowName: target ? target.names.join(', ') : (params.sowName || ''),
+        // Every SOW the unlink writes to (one, or — for a "Not on this SOW"
+        // row — each SOW the item is on); planSowUnlinks groups per id.
+        removeFromSowIds:   target ? target.ids.slice() : [],
+        removeFromSowNames: target ? target.names.slice() : [],
         current:       {},
         requested:     {},
         changeNotes:   ta.value.trim(),
@@ -2671,8 +2726,9 @@
       applyRevMeta(rmItem, params);
       addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, rmItem, params.surveyId);
       closeModal();
+      var leaves = target ? sowListLabel(target.names) : (params.sowName ? 'SOW ' + params.sowName : 'this SOW');
       ns.renderToast(rmItem.removeFromSow
-        ? 'Removal added to change request — the item also leaves ' + (params.sowName ? 'SOW ' + params.sowName : 'this SOW') + ' when it is submitted'
+        ? 'Removal added to change request — the item also leaves ' + leaves + ' when it is submitted'
         : 'Removal added to change request', 'success');
     });
     footer.appendChild(removeBtn);
@@ -3022,6 +3078,7 @@
     sowUnlinkHint:      sowUnlinkHint,
     removeItemsFromSow: removeItemsFromSow,
     planSowUnlinks:     planSowUnlinks,
+    unlinkTarget:       unlinkTarget,
     _unlink:            UNLINK,
     /** Silently add a pending item (no modal). Used by Convert All. */
     addSilent:        function (pkgId, pkgName, sowId, sowName, item, surveyId) {

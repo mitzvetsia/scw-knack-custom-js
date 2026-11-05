@@ -37,12 +37,15 @@ jq.fn = {}; jq.Deferred = Deferred; jq.when = function () { const d = Deferred()
 jq.extend = Object.assign; window.$ = jq; window.jQuery = jq; global.$ = jq;
 window.setInterval = function () {}; global.setInterval = function () {};
 // SOW line items on the reconcile grid's model (view_3921). li4 is a bracket whose parent is li1.
-const SOW_A = 'aaaaaaaaaaaaaaaaaaaaaaaa', SOW_B = 'bbbbbbbbbbbbbbbbbbbbbbbb';
-const li = (id, label, sows, extra) => Object.assign({ id, field_1950: label, field_1949: 'Vista Dome 4MP', field_2154_raw: sows.map(s => ({ id: s, identifier: s === SOW_A ? '1589' : '1628' })) }, extra || {});
+const SOW_A = 'aaaaaaaaaaaaaaaaaaaaaaaa', SOW_B = 'bbbbbbbbbbbbbbbbbbbbbbbb', SOW_C = 'cccccccccccccccccccccccc';
+const SOW_NAMES = { [SOW_A]: '1589', [SOW_B]: '1628', [SOW_C]: '1700' };
+const li = (id, label, sows, extra) => Object.assign({ id, field_1950: label, field_1949: 'Vista Dome 4MP', field_2154_raw: sows.map(s => ({ id: s, identifier: SOW_NAMES[s] })) }, extra || {});
 const items = {
   li1: li('li1', 'C-001', [SOW_A, SOW_B]), li2: li('li2', 'C-002', [SOW_A]), li3: li('li3', 'C-003', [SOW_A, SOW_B]),
   li4: li('li4', 'MB-001', [SOW_A, SOW_B], { field_1949: 'Wall Mount Bracket', field_2464_raw: [{ id: 'li1', identifier: 'C-001' }] }),
   li5: li('li5', 'C-005', [SOW_A, SOW_B]),
+  // "Not on this SOW" rows on 1589's tab: li6 lives on 1628 only, li8 on 1628 + 1700; li7 is on no SOW.
+  li6: li('li6', 'C-006', [SOW_B]), li7: li('li7', 'C-007', []), li8: li('li8', 'C-008', [SOW_B, SOW_C]),
 };
 window.Knack = {
   api_url: 'https://api.knack.com', router: { current_scene_key: 'scene_1155' },
@@ -265,6 +268,47 @@ const lastToast = () => toasts[toasts.length - 1];
   reqs.length = 0; toasts.length = 0;
   const res = await (async () => { const p = cr.removeItemsFromSow([{ sowItemId: 'li1', displayLabel: 'C-001' }], SOW_A); await sleep(5); last('GET').success(Object.assign({}, items.li1, { field_2154_raw: [{ id: SOW_B }] })); return p; })();
   check('an item that no longer carries the SOW is left alone (GET only, no PUT)', [res.map(r => [r.ok, r.noop]), bodies('PUT').length], [[[true, true]], 0]);
+
+  // ── a "Not on this SOW" row: the box aims at the SOW(s) the item IS on (2026-11-05) ──────────
+  // (SOW 1580's tab, the switch and its cameras on 1145 only: the box offered 1580, the write was
+  // "already off 1580", nothing left the SOW)
+  for (const k of Object.keys(cr.getPending())) { cr.getPending()[k].items.slice().forEach(i => cr.dismissPendingItem(k, i.rowId)); }
+  openRemove('bid6', 'li6', 'C-006');                                   // on 1628 only, opened on 1589's tab
+  check('the box names the SOW the item is on, not the tab\'s; the hint says so and that it will be left unassigned',
+    [txt(q('.scw-bid-cr-modal__sowunlink .scw-bid-cr-modal__checkbox-item')), txt(q('.scw-bid-cr-modal__sowunlink-hint'))],
+    ['Also remove this item from SOW 1628', 'Happens on this page the moment the change request is submitted — Make is not involved. This item is not on SOW 1589; it is on SOW 1628. It leaves that SOW and will be left unassigned (on no scope of work) — it is not deleted.']);
+  q('[data-scw-cr-remove-sow]').checked = true; q('.scw-bid-cr-modal__btn--remove').click();
+  check('the queued removal carries 1628 as its target; the toast and the card name it',
+    [lastToast()[1], (p => [p.removeFromSowId, p.removeFromSowName, p.removeFromSowIds, p.removeFromSowNames])(cr.getPending().pkgA.items[0]),
+     txt(cr.buildSummaryCard(cr.getPending().pkgA.items[0], 'pkgA', 'SVS').querySelector('.scw-bid-cr-card__row--sow'))],
+    ['Removal added to change request — the item also leaves SOW 1628 when it is submitted', [SOW_B, '1628', [SOW_B], ['1628']], 'Also leaves SOW 1628 when submitted']);
+  openRemove('bid7', 'li7', 'C-007');                                   // on no SOW at all
+  check('an item on no SOW offers no box (nothing to unlink)', !!q('[data-scw-cr-remove-sow]'), false);
+  q('.scw-bid-cr-modal__btn--cancel').click();
+  openRemove('bid8', 'li8', 'C-008');                                   // on 1628 + 1700
+  check('an item on two other SOWs: the box names both', txt(q('.scw-bid-cr-modal__sowunlink .scw-bid-cr-modal__checkbox-item')), 'Also remove this item from SOWs 1628, 1700');
+  q('[data-scw-cr-remove-sow]').checked = true; q('.scw-bid-cr-modal__btn--remove').click();
+  check('the plan: one group per SOW the items leave — 1628 (both), 1700 (C-008)',
+    cr.planSowUnlinks(cr.getPending().pkgA).groups.map(g => [g.sowName, g.items.map(i => i.sowItemId)]), [['1628', ['li6', 'li8']], ['1700', ['li8']]]);
+  check('the exported helper: on this SOW → the grid\'s; not on it → its own; on none → null',
+    [cr.unlinkTarget('li1', SOW_A, '1589'), cr.unlinkTarget('li6', SOW_A, '1589'), cr.unlinkTarget('li7', SOW_A, '1589'), cr.unlinkTarget('nope', SOW_A, '1589')],
+    [{ ids: [SOW_A], names: ['1589'], onThis: true }, { ids: [SOW_B], names: ['1628'], onThis: false }, null, { ids: [SOW_A], names: ['1589'], onThis: true }]);
+  reqs.length = 0; toasts.length = 0; triggers.length = 0;
+  cr.submitForPackage('pkgA', { silent: true });
+  reqs[0].success({ success: true });
+  await sleep(10);
+  last('GET', /li6/).success(items.li6); last('GET', /li8/).success(items.li8);
+  await sleep(10);
+  check('group 1628: C-006 goes to no SOW, C-008 keeps 1700', bodies('PUT').map(b => [b.url, b.body.field_2154]), [['li6', []], ['li8', [SOW_C]]]);
+  last('PUT', /li6/).success(Object.assign({}, items.li6, { field_2154_raw: [] }));
+  last('PUT', /li8/).success(Object.assign({}, items.li8, { field_2154_raw: [{ id: SOW_C, identifier: '1700' }] }));
+  await sleep(10);
+  last('GET', /li8/).success(Object.assign({}, items.li8, { field_2154_raw: [{ id: SOW_C, identifier: '1700' }] }));
+  await sleep(10);
+  check('group 1700: C-008 is read again and goes to no SOW', bodies('PUT').map(b => [b.url, b.body.field_2154]), [['li6', []], ['li8', [SOW_C]], ['li8', []]]);
+  last('PUT', /li8/).success(Object.assign({}, items.li8, { field_2154_raw: [] }));
+  await sleep(10);
+  check('one toast names both SOWs', lastToast(), ['success', 'Removed 2 items from SOW 1628 and 1 item from SOW 1700.']);
 
   console.log(fails ? 'RESULT: ' + fails + ' failed' : 'RESULT: all passed');
   process.exit(fails ? 1 : 0);

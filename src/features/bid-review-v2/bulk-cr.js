@@ -157,7 +157,8 @@
               'Also remove these items from this SOW</label>' +
             '<div class="scw-br-v2-bulkcr-sub-hint">Happens on this page the moment the change request ' +
               'is submitted — Make is not involved. An item on another SOW stays there; one on no other ' +
-              'SOW is left unassigned, not deleted.</div>' +
+              'SOW is left unassigned, not deleted. A &ldquo;Not on this SOW&rdquo; item leaves the SOW(s) ' +
+              'it is on instead.</div>' +
           '</div>' +
           '<div class="scw-br-v2-bulkcr-field">' +
             '<label>Note to bidder (optional)</label>' +

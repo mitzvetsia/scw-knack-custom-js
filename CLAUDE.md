@@ -1163,11 +1163,24 @@ Make, not on the sub's acceptance (decided 2026-10-22):
   remove it under the parent on the worksheet instead. Cross-session draft persistence (`readSowField` /
   `writeSowField`: `field_2684` on the SOW HEADER through the line-items grid view_3921) cannot work — the
   header is not a record of that view's object — so drafts live in sessionStorage only; not fixed here.
+- **A "Not on this SOW" row aims the box at the SOW(s) the item IS on (2026-11-05 — "remove from bid is
+  still not working here")**: on SOW 1580's tab the switch and its cameras read "Not on this SOW. On 1145.",
+  and the Remove modal offered "Also remove this item from SOW 1580" — the grid's SOW, which the item was not
+  on — so the submit's GET found 1580 absent, wrote nothing ("already off") and the item stayed on 1145. The
+  write path was never the problem (view_3921 has `field_2154` inline-editable). `unlinkTarget(itemId, sowId,
+  sowName)` → `{ ids, names, onThis }`: the grid's SOW when the loaded item is on it; otherwise every SOW the
+  item is on (the box reads "Also remove this item from SOW 1145" / "SOWs 1145, 1152", the hint "This item is
+  not on SOW 1580; it is on SOW 1145. It leaves that SOW and will be left unassigned…"); `null` when the item
+  is on no SOW (no box — nothing to unlink); the grid's SOW when the item is not loaded (fail-open as before).
+  The pending item carries `removeFromSowIds` / `removeFromSowNames` beside the single-id keys (the card /
+  payload / HTML / text still read `removeFromSowName`, now the joined names); `planSowUnlinks` groups per id
+  (an item on two other SOWs is read and written once per SOW). The bulk path (`init.js addBulkRemoveFromBid`)
+  stamps the same target per selected row; its hint says so.
 - Test: `tests/bid-review-v2/test-cr-remove-from-sow.js` (drives the real module: the box + hints incl. the
   accessory sentence, the card / payload / HTML / text, the per-SOW plan, the 2-wide GET → PUT queue per
   group, the cell-update dispatch, the status-0 webhook, a 500 retry, a 403 report, two SOW tabs on one
   package, the package fallback, the no-SOW report, rerender throwing, the accessory flag, the already-off
-  no-op).
+  no-op, the "Not on this SOW" targets: one other SOW, two, none, the two-group submit).
 
 ## Bid / SOW filter choice: per tab, never erased by a rebuild (2026-10-22) — `worksheet-v2/sow-filter.js`
 
