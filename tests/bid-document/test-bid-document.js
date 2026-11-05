@@ -81,6 +81,16 @@ const m465 = bd.model('view_3550');
 check('header: title (trailing | trimmed), expiration, the facts rows of view_3552 minus the hidden one, survey + bid tokens, project number',
   [m465.header.title, m465.header.expires, m465.header.facts.map(f => [f.k, f.v]), m465.header.survey, m465.header.bidNo, m465.header.projectNumber],
   ['60524852230-SR20-B465', '11/27/2026', [['Client Site', 'Testies Coat Factory - Montague, MI'], ['Project Address', '11 Richland Street, Asheville, NC 28806']], 'SR20', 'B465', '60524852230']);
+// The quote-extension fields on the bid package (quote-extension.js CONFIG.sub keys) are the sub's
+// answer card's business — never header facts, so the PDF never prints "Extension requested: Yes".
+window.SCW.quoteExtension = { CONFIG: { sub: { requestedFlag: 'field_9101', requestedDate: 'field_9102' } } };
+document.getElementById('view_3552').insertAdjacentHTML('beforeend',
+  '<div class="kn-detail field_9101"><div class="kn-detail-label">Extension requested</div><div class="kn-detail-body">Yes</div></div>' +
+  '<div class="kn-detail field_9102"><div class="kn-detail-label">Requested quote expiration</div><div class="kn-detail-body">12/31/2026</div></div>');
+check('the quote-extension flag + requested date on the bid record are skipped off the header facts',
+  bd.model('view_3550').header.facts.map(f => f.k), ['Client Site', 'Project Address']);
+delete window.SCW.quoteExtension;
+['field_9101', 'field_9102'].forEach(fk => { const r = document.querySelector('#view_3552 .' + fk); r.parentNode.removeChild(r); });
 check('one location, tidied name; one category; the six priced cameras in canonical order',
   [m465.locations.map(L => L.name), m465.locations[0].buckets.map(B => [B.title, B.items.map(i => i.label)])],
   [['HEADEND: behind cashregister'], [['Cameras', ['E-011', 'E-012', 'E-013', 'E-013', 'E-014', 'RA-E-200']]]]);

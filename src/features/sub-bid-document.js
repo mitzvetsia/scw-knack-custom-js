@@ -479,12 +479,21 @@
     }
     out.title = bodyText(H.title).replace(/[|\s]+$/, '');
     out.expires = bodyText(H.expires);
+    // The quote-extension fields on the bid package (FLAG_extension requested +
+    // INPUT_requested quote expiration) are the sub's answer card's business,
+    // never header facts of the bid document — skip them off the same keys
+    // quote-extension.js reads (blank until Builder has them).
+    var skip = H.skip.slice();
+    try {
+      var qx = window.SCW && window.SCW.quoteExtension && window.SCW.quoteExtension.CONFIG && window.SCW.quoteExtension.CONFIG.sub;
+      if (qx) { if (qx.requestedFlag) skip.push(qx.requestedFlag); if (qx.requestedDate) skip.push(qx.requestedDate); }
+    } catch (e) { /* no module: nothing extra to skip */ }
     if (root) {
       var rows = root.querySelectorAll('.kn-detail');
       for (var i = 0; i < rows.length; i++) {
         var row = rows[i], m = /\bfield_\d+\b/.exec(row.className || '');
         var fk = m ? m[0] : '';
-        if (!fk || fk === H.title || fk === H.expires || H.skip.indexOf(fk) !== -1) continue;
+        if (!fk || fk === H.title || fk === H.expires || skip.indexOf(fk) !== -1) continue;
         if (row.style && row.style.display === 'none') continue;
         var lab = row.querySelector('.kn-detail-label'), body = row.querySelector('.kn-detail-body');
         var k = lab ? norm(lab.textContent) : '', v = body ? norm(body.textContent) : '';

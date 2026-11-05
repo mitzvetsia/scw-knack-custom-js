@@ -2246,46 +2246,88 @@ off PENDING** (module 411 writes no status), so a request that produced a survey
 request and running Mark Ready again creates a SECOND survey; check the 04.04 run history first. Test:
 `tests/misc/test-ops-stepper-survey-send.js`.
 
-## Quote expiration extensions: the AE asks the basis bid's sub directly (bundle slice 2026-11-05) — `src/features/quote-extension.js`
+## Quote expiration extensions: the AE (or Ops) asks the basis bid's sub directly (bundle 2026-11-05) — `src/features/quote-extension.js`
 
-ClickUp 86ba5wg3f (design locked 2026-10-23). Three expiration dates, three records, no rule tying them: the bid's
-`field_2635` (SVS, honoured by nothing), the SOW's `field_2135` (copied into the proposal at publish), the proposal's
-`field_2659` (the customer gate). Only Ops could extend; sales saw "coordinate an extension with Ops" and the ask left
-the system (Slack: "extend expiration date" revision requests, ~weekly). The bundle half is built and **fail-open**;
-Make owns every write (contract: `src/config.js` `MAKE_QUOTE_EXTENSION_WEBHOOK`, one scenario routed on `stepId`:
-`request-extension` / `confirm-extension` / `nudge-extension` / `cancel-extension`; the reply's `routedTo` is
-`svs` | `ops` | `auto`).
+ClickUp 86ba5wg3f (design locked 2026-10-23; CU rules, the discontinued gate and the Ops surfaces decided 2026-11-05).
+Three expiration dates, three records, no rule tying them: the bid's `field_2635` (SVS, honoured by nothing), the SOW's
+`field_2135` (copied into the proposal at publish), the proposal's `field_2659` (the customer gate). Only Ops could
+extend; sales saw "coordinate an extension with Ops" and the ask left the system (Slack: "extend expiration date"
+revision requests, ~weekly). The bundle half is built and **fail-open**; Make owns every write (contract: `src/config.js`
+`MAKE_QUOTE_EXTENSION_WEBHOOK`, one scenario routed on `stepId`: `request-extension` / `confirm-extension` /
+`nudge-extension` / `cancel-extension`; the reply's `routedTo` is `svs` | `ops` | `auto`). The rule the design adds:
+**the quote never outruns the bid** — a requested date past the bid's expiration goes to the sub first.
+- **Shared state = ONE SOW field, three readings** (`CONFIG.sow.status`, Builder TBD: SOW `STATUS_quote extension`,
+  blank / Requested / Re-pricing; a Yes/No flag reads Yes = Requested) + `CONFIG.sow.requestedDate` (`INPUT_requested
+  expiration`). Make writes it at every turn: request → Requested, extend / decline / cancel → blank, re-price →
+  Re-pricing, and the PUBLISH of the re-priced proposal → blank. `extensionState(rec, sowId)` reads it off whatever SOW
+  record the page has (view_3827 / view_3918 row / view_3861); until the field exists a per-tab sessionStorage marker
+  `scw:qext:<sowId>` written on a successful send stands in (Requested only — a re-price can only come off the record).
 - **Sales SOW page (scene_1116)**: `published-proposal-sow-card.js` calls `SCW.quoteExtension.decorateSalesCard(body,
   proposal)` after it builds the card. With the hook configured (or `localStorage.scwQuoteExtPreview = '1'` for QA) a
-  **"Request extension"** button opens a modal — new date prefilled +30 days past the current expiration (never before
+  **"Request extension"** button opens the modal — new date prefilled +30 days past the current expiration (never before
   +30 days from today), a required one-line reason; refuses an invalid / past / not-later date — and POSTs
   `request-extension` with `sowId` (view_3827's record, else the DEEPEST `scope-of-work-details/<id>` in the hash),
-  `proposalRecordId`, `requestedDate`, `reason`, `currentQuoteExpiration`, `triggeredBy` and the fixed `requestText` /
-  `requestHtml` (project number first, SOW number via `SCW.salesCR.sowDisplayLabel()` — view_3827 serves neither the SOW
-  ID nor its name). `routedTo` `svs` / `ops` / unknown (a CORS-opaque 0) → the **pending** state: "Extension to 11/22
-  requested 10/23 · awaiting SVS / with Ops / awaiting a reply" with **Cancel request | Nudge** (`cancel-extension` /
-  `nudge-extension`); `auto` → extended at once, no pending state. Pending reads the SOW's Builder fields once
-  `CONFIG.sales.pendingFlag` / `requestedDate` are filled (a flag of No clears the stale marker), else a per-tab
-  sessionStorage marker `scw:qext:<sowId>` written on a successful send. An expired proposal's "coordinate with Ops"
-  note is reworded to point at the button. No hook and no preview flag → the card is exactly as before.
+  `proposalRecordId`, `requestedDate`, `reason`, `currentQuoteExpiration`, `triggeredBy`, `requestedBy: 'sales'` and the
+  fixed `requestText` / `requestHtml` (project number first, SOW number via `SCW.salesCR.sowDisplayLabel()` — view_3827
+  serves neither the SOW ID nor its name). `routedTo` `svs` / `ops` / unknown (a CORS-opaque 0) → **pending**:
+  "Extension to 11/22 requested 10/23 · awaiting SVS / with Ops / awaiting a reply" with **Cancel request | Nudge**
+  (`cancel-extension` / `nudge-extension`); `auto` → extended at once, no pending state; status Re-pricing → an indigo
+  "Re-pricing" line ("the quote keeps its current expiration until Ops publishes the re-priced proposal"), no buttons.
+  An expired proposal's "coordinate with Ops" note is reworded per state. No hook and no preview flag → the card is
+  exactly as before.
+- **Discontinued products BLOCK sales** ("the expiration request itself can be blocked on the Knack side for the sales
+  user with instructions"): `discontinuedIn(records)` asks `SCW.catalog.isDisabled(productId) === true` over the SOW's
+  line items (view_3586 on the sales page) — the worksheet's own discontinued verdict, nothing new. Any hit → the card
+  reads **"Extension unavailable"**, names each product with its line-item count, says "update those line items on the
+  worksheet below — swap each one to a current product", the button is disabled, and "Show them on the worksheet"
+  scrolls to the discontinued bar. Catalog not loaded = no block (the null contract) with a repaint queued through
+  `SCW.catalog.ready`; the click re-checks, so a product retired since the paint blocks instead of opening the modal.
+- **Ops pages — the same ask, with the warning instead of the block** ("allow Ops to request an extension with retired
+  products but ONLY after a big warning about the risks"): `decorateOps()` appends a compact `.scw-qext--ops` row under
+  every Published Proposal block (`.scw-pq-info[data-proposal-record-id]`) on the scenes in `CONFIG.ops` — the reconcile
+  page scene_1155 (one block per SOW header, the SOW from the block's `data-sow-record-id`, the row off view_3918, this
+  SOW's lines off view_3921 by `field_2154`) and the Preview Proposal page scene_1096 (the block in view_3883, the SOW
+  from the route, view_3861 + view_4140). Re-decorated after every `knack-view-render.any` (the blocks are rebuilt by
+  their hosts); an unchanged row is left in place. States: pending / re-pricing as sales; **no basis bid** (`field_2942`
+  served and empty) → "no sub to ask — extend with the pencil", no button (the pencils stay the direct-write path);
+  else **"Request extension from sub"**. With discontinued products the row warns and the click opens `openOpsWarning`
+  FIRST — a red-topped alertdialog listing the products and three risks (equipment SCW cannot supply at a price nobody
+  can hold; the sub's labor priced for products that will be swapped; every such line a change order / re-bid / loss
+  after acceptance), a checkbox "I understand the risk and want to request the extension anyway" that enables the solid
+  red **Request extension anyway** — then the request modal; the payload adds `requestedBy: 'ops'`,
+  `discontinuedProducts: [{ id, name, count }]`, `riskAcknowledged: true`, and `requestText` / `requestHtml` carry a
+  WARNING line Make puts on the CU comments and the sub's notification. A clean SOW goes straight to the modal.
+- **ClickUp (decided 2026-11-05 — no stash field)**: an extension is only ever requested from **Final Bid Submitted**
+  (both lists — Install Work `48524051` = the project's `field_1199` task, SVS `901400816107` — carry Waiting on Bid,
+  Prepare Bid and Final Bid Submitted). Make moves BOTH tasks → Waiting on Bid only when the internal task is in Final
+  Bid Submitted (any other status: comment, move nothing); extend / decline / cancel → Final Bid Submitted; re-price →
+  **Prepare Bid** (Ops reviews the re-priced bid before finalizing; the stepper's normal flow moves it on from there).
 - **Sub bid page (scene_1149)**: `renderSubCard` mounts "SCW asks you to hold this bid until <date>" above the bid
   document (`#view_3550`) when the bid record (view_3552's model) carries the Builder flag `CONFIG.sub.requestedFlag`
   = Yes — the requested quote date beside the bid's own `field_2635`, an editable "Extend my bid to" date (an earlier
   date than requested is fine), an optional note, and **Can't extend | Re-price instead | Extend bid to <date>**; each
   is ONE `confirm-extension` POST (`bidPackageId`, `sowId` from `field_2387`, `outcome`, `bidExpiration` on extend,
   `note`); a failed POST re-enables the buttons with the HTTP status; a sent answer replaces the card. With the flag
-  key blank the card never renders (one console warning).
-- **Reconcile page (scene_1155)**: `bid-review/config.js` `bidExpiration: 'field_2635'` (already a column on
+  key blank the card never renders (one console warning). `sub-bid-document.js` `readHeader` skips the two bid fields
+  off the same CONFIG keys, so the bid PDF never prints "Extension requested: Yes" as a header fact.
+- **Reconcile page sub card (scene_1155)**: `bid-review/config.js` `bidExpiration: 'field_2635'` (already a column on
   view_3573) → `transform.js` carries `pkg.bidExpiration` / `extensionPending` / `extensionRequestedDate` → the sub
   card's details cell gets a **"Bid expires 11/2/2026"** line (`bid-review-v2/header.js` `decoratePkgDetails`,
   `__bid-expiry`) with an amber **"Extension pending"** chip once `bidExtensionFlag` / `bidExtensionDate` (Builder TBD)
   are filled and the columns are on view_3573. `bidSub` stays TBD (`field_2954` REL_tech group is not on view_3573,
   and setting it also relabels the column headers).
-- **Not built (the other halves)**: the Builder fields (SOW `FLAG_extension pending` + `INPUT_requested expiration`;
-  bid package `FLAG_extension requested` + `INPUT_requested quote expiration`; a CU custom field to stash the pre-wait
-  status), the Make scenario, the "quote never outruns the bid" rule at publish / on the Ops pencil, the lapsed-bid CU
-  mover, the acceptance-date gate, the history-strip entries. Tests: `tests/sow-page/test-quote-extension.js`, the
-  bid-expiry check in `tests/bid-review-v2/test-header-rework.js`.
+- **Builder (the whole list)**: SOW header `STATUS_quote extension` (multiple choice: blank / Requested / Re-pricing) +
+  `INPUT_requested expiration` (date) as columns on view_3827, view_3918 and view_3861; bid package `FLAG_extension
+  requested` (Yes/No) + `INPUT_requested quote expiration` (date) on view_3552 and view_3573. Make writes all four
+  through the API — none needs inline editing. Nothing in ClickUp. Then fill `CONFIG.sow.*` / `CONFIG.sub.*` here and
+  `bidExtensionFlag` / `bidExtensionDate` in bid-review/config.js.
+- **Not built (the other halves)**: the Builder fields above, the Make scenario (and its publish-side "status → blank"
+  module), the hook URL, the "quote never outruns the bid" check on the Ops pencils / at publish, the lapsed-bid CU
+  mover, the acceptance-date gate, the history-strip entries. Tests: `tests/sow-page/test-quote-extension.js` (sales:
+  modal, POST, states incl. the status field's three readings, the discontinued block), `tests/misc/test-quote-extension-
+  ops.js` (both Ops scenes: ready / nobasis / pending / re-pricing, the warning → modal → payload, the SOW-scoped line
+  filter), the header-facts skip in `tests/bid-document/test-bid-document.js`, the bid-expiry check in
+  `tests/bid-review-v2/test-header-rework.js`.
 
 ## A TBD proposal never prints labor inside its subtotals (2026-11-04) — `proposal-grid-v2.js`, `proposal-pdf-export.js`
 

@@ -92,9 +92,9 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   posts.length = 0;
   q('[data-qext-send]', modal()).click();
   check('ONE POST request-extension with the contract keys', [posts.length, lastPost().type, lastPost().url, Object.keys(body()).sort()],
-    [1, 'POST', hook, ['currentQuoteExpiration', 'proposalRecordId', 'reason', 'requestHtml', 'requestText', 'requestedDate', 'sowId', 'stepId', 'triggeredBy']]);
-  check('the payload: SOW, proposal, dates, reason, who', [body().stepId, body().sowId, body().proposalRecordId, body().currentQuoteExpiration, body().requestedDate, body().reason, body().triggeredBy],
-    ['request-extension', SOW, PROP, future, plus(45), 'client decides at the 11/18 board meeting', { name: 'Danny Mize', email: 'danny@getscw.com' }]);
+    [1, 'POST', hook, ['currentQuoteExpiration', 'proposalRecordId', 'reason', 'requestHtml', 'requestText', 'requestedBy', 'requestedDate', 'sowId', 'stepId', 'triggeredBy']]);
+  check('the payload: SOW, proposal, dates, reason, who (sales — no discontinued keys)', [body().stepId, body().sowId, body().proposalRecordId, body().currentQuoteExpiration, body().requestedDate, body().reason, body().triggeredBy, body().requestedBy, body().discontinuedProducts],
+    ['request-extension', SOW, PROP, future, plus(45), 'client decides at the 11/18 board meeting', { name: 'Danny Mize', email: 'danny@getscw.com' }, 'sales', undefined]);
   check('the fixed request text names the project, the SOW, the dates, the reason and the AE',
     body().requestText.split('\n').slice(0, 5), ['Quote extension requested', 'Project 60486704913 · SOW 1589 · 20261009-12028', 'Current expiration: ' + future, 'Requested: ' + plus(45), 'Reason: client decides at the 11/18 board meeting']);
   // the sub is asked → pending
@@ -133,14 +133,46 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   lastPost().success({ success: false, error: 'No published proposal on this SOW' }); await sleep(10);
   check('a success:false reply keeps the modal open with Make\'s error', [!!modal(), txt(q('[data-qext-err]', modal()))], [true, 'No published proposal on this SOW']);
   q('[data-qext-cancel]', modal()).click();
-  // the Builder flag wins over the marker once configured
+  // the Builder status field wins over the marker once configured — three readings
   qx._marker.write(SOW, { requestedDate: '1/1/2030', at: '1/1/2026', routedTo: 'svs' });
-  qx.CONFIG.sales.pendingFlag = 'field_9001'; qx.CONFIG.sales.requestedDate = 'field_9002';
+  qx.CONFIG.sow.status = 'field_9001'; qx.CONFIG.sow.requestedDate = 'field_9002';
   salesPage(future, { field_9001: 'No', field_9001_raw: false }); cardRender(); await sleep(200);
-  check('Builder flag No: not pending, the stale marker is cleared', [q('.scw-qext').getAttribute('data-scw-qext'), qx._marker.read(SOW)], ['ready', null]);
+  check('a Yes/No flag reading No: not pending, the stale marker is cleared', [q('.scw-qext').getAttribute('data-scw-qext'), qx._marker.read(SOW)], ['ready', null]);
   salesPage(future, { field_9001: 'Yes', field_9001_raw: true, field_9002: '12/31/2026', field_9002_raw: { date_formatted: '12/31/2026' } }); cardRender(); await sleep(200);
-  check('Builder flag Yes: pending with the record\'s requested date', [q('.scw-qext').getAttribute('data-scw-qext'), /Extension to 12\/31\/2026/.test(txt(q('.scw-qext > div')))], ['pending', true]);
-  qx.CONFIG.sales.pendingFlag = ''; qx.CONFIG.sales.requestedDate = ''; qx._marker.write(SOW, null);
+  check('a Yes/No flag reading Yes: pending with the record\'s requested date', [q('.scw-qext').getAttribute('data-scw-qext'), /Extension to 12\/31\/2026/.test(txt(q('.scw-qext > div')))], ['pending', true]);
+  salesPage(future, { field_9001: 'Requested', field_9001_raw: 'Requested', field_9002: '12/31/2026', field_9002_raw: { date_formatted: '12/31/2026' } }); cardRender(); await sleep(200);
+  check('status "Requested": pending, Nudge / Cancel offered', [q('.scw-qext').getAttribute('data-scw-qext'), !!q('[data-qext-nudge]'), !!q('[data-qext-cancel-req]')], ['pending', true, true]);
+  salesPage(future, { field_9001: 'Re-pricing', field_9001_raw: 'Re-pricing' }); cardRender(); await sleep(200);
+  check('status "Re-pricing": the re-pricing line, no buttons, no request', [q('.scw-qext').getAttribute('data-scw-qext'), txt(q('.scw-qext')), q('.scw-qext button')],
+    ['repricing', 'Re-pricing The sub is re-pricing this bid. The quote keeps its current expiration until Ops publishes the re-priced proposal.', null]);
+  check('… extensionState reads the kind', qx.pendingState(SOW).kind, 'repricing');
+  salesPage('1/2/2026', { field_9001: 'Re-pricing', field_9001_raw: 'Re-pricing' }); cardRender(); await sleep(200);
+  check('… an expired proposal\'s note says a re-published proposal follows', /re-pricing the bid — a re-published proposal follows/.test(txt(q('.scw-pq-expired-note'))), true);
+  salesPage(future, { field_9001: '', field_9001_raw: '' }); cardRender(); await sleep(200);
+  check('status blank: the request button is back', q('.scw-qext').getAttribute('data-scw-qext'), 'ready');
+  qx.CONFIG.sow.status = ''; qx.CONFIG.sow.requestedDate = ''; qx._marker.write(SOW, null);
+
+  // ── the discontinued-products gate (sales is blocked, with instructions) ──
+  let catReady = false; const disabled = new Set(); const catWaiters = [];
+  window.SCW.catalog = { isReady: () => catReady, ready(fn) { catWaiters.push(fn); }, isDisabled(id) { return catReady ? disabled.has(id) : null; } };
+  const line = (id, pid, pname) => ({ id, field_1949: pname, field_1949_raw: [{ id: pid, identifier: pname }], field_2154_raw: [{ id: SOW, identifier: '1589' }] });
+  const lines = recs => { window.Knack.views.view_3586 = { model: { data: { models: recs.map(r => ({ attributes: r })) } } }; };
+  const sowLines = [line('li1', 'p1', 'Scout 8.0'), line('li2', 'p2', 'Deputy 8.0 26DF8M-V4'), line('li3', 'p2', 'Deputy 8.0 26DF8M-V4')];
+  salesPage(future); lines(sowLines); cardRender(); await sleep(200);
+  check('catalog not loaded: the button is offered (null is never a warning) and a repaint is queued for when it lands', [q('.scw-qext').getAttribute('data-scw-qext'), catWaiters.length], ['ready', 1]);
+  catReady = true; disabled.add('p2'); catWaiters.splice(0).forEach(fn => fn()); await sleep(10);
+  check('the catalog lands with a discontinued product on the SOW: the card repaints BLOCKED — the button disabled, the product named with its line count, the fix spelled out',
+    [q('.scw-qext').getAttribute('data-scw-qext'), q('.scw-qext').getAttribute('data-qext-discontinued'), q('[data-qext-request]').disabled,
+     /Deputy 8\.0 26DF8M-V4 \(2 line items\)/.test(txt(q('.scw-qext'))), /Update those line items on the worksheet below/.test(txt(q('.scw-qext'))), !!q('[data-qext-show]')],
+    ['blocked', '1', true, true, true, true]);
+  salesPage('1/2/2026'); lines(sowLines); cardRender(); await sleep(200);
+  check('… an expired proposal\'s note points at the discontinued products', /Update the discontinued products below before an extension can be requested/.test(txt(q('.scw-pq-expired-note'))), true);
+  check('… the block is an element of the card, never a modal', !!modal(), false);
+  disabled.clear(); salesPage(future); lines(sowLines); cardRender(); await sleep(200);
+  check('every product current again: the button is back', [q('.scw-qext').getAttribute('data-scw-qext'), q('[data-qext-request]').disabled], ['ready', false]);
+  disabled.add('p1'); q('[data-qext-request]').click(); await sleep(10);
+  check('a product retired since the paint: the click re-checks, blocks the card and opens no modal', [q('.scw-qext').getAttribute('data-scw-qext'), !!modal(), /Scout 8\.0 \(1 line item\)/.test(txt(q('.scw-qext')))], ['blocked', false, true]);
+  disabled.clear(); delete window.SCW.catalog; qx._marker.write(SOW, null);
   // an expired proposal: the "coordinate with Ops" note is replaced
   salesPage('1/2/2026'); cardRender(); await sleep(200);
   check('expired: the note points at the button instead of Ops', txt(q('.scw-pq-expired-note')), 'This proposal is expired. Request an extension below before re-sharing the customer link.');
