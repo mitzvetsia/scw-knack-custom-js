@@ -115,6 +115,11 @@
       bidSurvey:       'field_2386',   // REL_survey (connection on bid package, view_3573)
       bidStatus:       'field_2550',   // Bid status (text field on bid package, view_3573)
       bidName:         'field_2636',   // Bid friendly name (text field on bid package, view_3573)
+      bidExpiration:   'field_2635',   // INPUT_expiration date on the bid package (view_3573) —
+                                       // the sub card's "Bid expires" line (quote-extension, 2026-11-05)
+      bidExtensionFlag: '',            // Builder TBD: FLAG_extension requested on the bid package →
+                                       // the sub card's "Extension pending" chip (needs the column on view_3573)
+      bidExtensionDate: '',            // Builder TBD: INPUT_requested quote expiration on the bid package
       bidSub:          '',             // REL_subcontractor on the bid package — TBD: expose
                                        // the sub connection as a column on view_3573 and put
                                        // its field key here; the comparison-grid column

@@ -728,6 +728,25 @@
         var bidName = raw(rec, FK.bidName);
         if (bidName) info.bidName = bidName;
       }
+      // Bid expiration (field_2635) + the extension-pending marker (Builder
+      // TBD) — the reconcile sub card's "Bid expires" line and chip.
+      if (FK.bidExpiration) {
+        var beRaw = rec[FK.bidExpiration + '_raw'];
+        var bidExp = (beRaw && typeof beRaw === 'object' && !Array.isArray(beRaw))
+          ? String(beRaw.date_formatted || beRaw.date || '').trim()
+          : stripHtml(rec[FK.bidExpiration] || '');
+        if (bidExp) info.bidExpiration = bidExp;
+      }
+      if (FK.bidExtensionFlag && (rec[FK.bidExtensionFlag] !== undefined || rec[FK.bidExtensionFlag + '_raw'] !== undefined)) {
+        var efRaw = rec[FK.bidExtensionFlag + '_raw'];
+        info.extensionPending = (typeof efRaw === 'boolean') ? efRaw : /^(yes|true)$/i.test(stripHtml(rec[FK.bidExtensionFlag] || ''));
+        if (info.extensionPending && FK.bidExtensionDate) {
+          var edRaw = rec[FK.bidExtensionDate + '_raw'];
+          info.extensionRequestedDate = (edRaw && typeof edRaw === 'object' && !Array.isArray(edRaw))
+            ? String(edRaw.date_formatted || edRaw.date || '').trim()
+            : stripHtml(rec[FK.bidExtensionDate] || '');
+        }
+      }
       if (CFG.debug) {
         SCW.debug('[BidReview] Pkg', id, 'field_2550:', rec[FK.bidStatus], '_raw:', rec[FK.bidStatus + '_raw'], '→ status:', bidStatus);
       }
@@ -782,6 +801,9 @@
         if (info.bidStatus) allPkgs[pi].bidStatus = info.bidStatus;
         if (info.bidSowId) allPkgs[pi].bidSowId = info.bidSowId;
         if (info.bidName) allPkgs[pi].bidName = info.bidName;
+        if (info.bidExpiration) allPkgs[pi].bidExpiration = info.bidExpiration;
+        if (info.extensionPending !== undefined) allPkgs[pi].extensionPending = info.extensionPending;
+        if (info.extensionRequestedDate) allPkgs[pi].extensionRequestedDate = info.extensionRequestedDate;
       }
     }
 

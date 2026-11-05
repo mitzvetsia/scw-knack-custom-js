@@ -647,6 +647,23 @@
     if (pdf) statusline.insertBefore(pdf, statusline.firstChild);
     var reopen = statusline.querySelector('[data-action="package_reopen_bid"]');
     if (reopen) statusline.appendChild(reopen);
+    // "Bid expires <date>" — the bid's own validity (field_2635), the date a
+    // quote extension has to be asked against — and the "Extension pending"
+    // chip while the AE's request waits on this sub (quote-extension, 2026-11-05).
+    if (pkg.bidExpiration || pkg.extensionPending) {
+      var expLine = el('div', CLS + '__bid-expiry');
+      if (pkg.extensionPending) {
+        var chip = el('span', CLS + '__bid-expiry-chip', 'Extension pending');
+        chip.title = 'The AE asked for a quote extension' + (pkg.extensionRequestedDate ? ' to ' + pkg.extensionRequestedDate : '') +
+          ' — waiting on this sub to extend, re-price or decline';
+        expLine.appendChild(chip);
+        expLine.appendChild(document.createTextNode(' '));
+      }
+      if (pkg.bidExpiration) {
+        expLine.appendChild(document.createTextNode('Bid expires ' + pkg.bidExpiration));
+      }
+      th.appendChild(expLine);
+    }
     var gap = el('button', CLS + '__gap');
     gap.type = 'button';
     gap.hidden = true;
@@ -1180,7 +1197,10 @@
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
-    style.textContent = css;
+    style.textContent = css +
+      '.' + CLS + '__bid-expiry { margin-top: 4px; font: 500 11px/1.4 system-ui, sans-serif; color: #475569; }' +
+      '.' + CLS + '__bid-expiry-chip { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px;' +
+      '  font: 700 10px/1.6 system-ui, sans-serif; letter-spacing: .02em; text-transform: uppercase; background: #fef3c7; color: #b45309; }';
     document.head.appendChild(style);
   }
 

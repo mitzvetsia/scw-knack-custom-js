@@ -172,6 +172,7 @@ cat \
   src/features/revision-accept-reject.js \
   src/features/proposal-type-chip.js \
   src/features/published-quote-info.js \
+  src/features/quote-extension.js \
   src/features/proposal-expiration-mirror.js \
   src/features/ops-review-pill.js \
   src/features/pq-expiration-edit.js \

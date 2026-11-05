@@ -67,7 +67,8 @@ const qa = (root, sel) => Array.from(root.querySelectorAll(sel));
 const conn = (id, name) => [{ id, identifier: name }];
 
 // ── Fixture: two SOWs + the synthetic no-SOW grid ─────────────────────────────────────────
-const pkgA = { id: 'pkgA', label: 'BD-141', subName: 'SVS', bidName: 'SVS bid', pdfUrl: 'https://files/svs.pdf', bidStatus: 'Submitted', subBidTotal: 29900, deltaVsSow: -1580, matchesSow: false };
+const pkgA = { id: 'pkgA', label: 'BD-141', subName: 'SVS', bidName: 'SVS bid', pdfUrl: 'https://files/svs.pdf', bidStatus: 'Submitted', subBidTotal: 29900, deltaVsSow: -1580, matchesSow: false,
+  bidExpiration: '11/2/2026', extensionPending: true, extensionRequestedDate: '12/31/2026' };
 const pkgB = { id: 'pkgB', label: 'BD-93', subName: 'ACME', bidName: '', pdfUrl: '', bidStatus: 'Submitted', subBidTotal: 31480, deltaVsSow: 0, matchesSow: true };
 const flat = () => [{ key: '__all__', level: 0, rows: [], subgroups: [] }];
 const grid1 = { sowId: 's1', sowName: '1589', packages: [pkgA, pkgB], sowTotals: { subBid: 31480, install: 40000 }, rows: [], groups: flat() };
@@ -221,6 +222,9 @@ check('status line of the sub card: PDF · Submitted · Reopen Bid on one line',
   qa(q(detA, '.scw-bid-review-v2__head-statusline'), ':scope > *').map(e => e.className.split(' ')[0]),
   ['scw-bid-review-v2__pdf-link', 'scw-bid-review-v2__status-badge', 'scw-bid-review__btn']);
 check('the gap count mirrors into the BASIS card only', [q(detA, '.scw-bid-review-v2__gap').hidden, txt(q(detA, '.scw-bid-review-v2__gap')), q(detB, '.scw-bid-review-v2__gap').hidden], [false, '3 gaps', true]);
+check('the bid\'s own expiration and the extension-pending chip sit under the status line (quote-extension, 2026-11-05); a bid without either has no line',
+  [txt(q(detA, '.scw-bid-review-v2__bid-expiry')), /to 12\/31\/2026/.test(q(detA, '.scw-bid-review-v2__bid-expiry-chip').title), !!q(detB, '.scw-bid-review-v2__bid-expiry')],
+  ['Extension pending Bid expires 11/2/2026', true, false]);
 const actA = q(s1, '.scw-bid-review-v2__head-cell--actions[data-pkg-id="pkgA"]');
 const actB = q(s1, '.scw-bid-review-v2__head-cell--actions[data-pkg-id="pkgB"]');
 check('actions slot says what it acts on, over ONE primary: the preview modal, relabelled',

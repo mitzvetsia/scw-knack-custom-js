@@ -356,6 +356,45 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // included), so the record-creation modules are common and the branch
   // point is after them.
   MAKE_CO_ISSUE_WEBHOOK: "https://hook.us1.make.com/fwpbnldo3fkrywggxwu18qsh6ghgrg7w",
+  // ── Quote expiration extensions: AE → SVS direct (2026-11-05, ClickUp 86ba5wg3f)
+  // ONE scenario, router on payload.stepId. Posted by src/features/quote-extension.js.
+  //   'request-extension'  (sales SOW page, scene_1116 — the AE's ask):
+  //       { stepId, sowId, proposalRecordId, requestedDate: 'M/D/YYYY', reason,
+  //         currentQuoteExpiration: 'M/D/YYYY' | '', triggeredBy: { name, email },
+  //         requestText, requestHtml }          // the fixed record for the CU comments
+  //       Make: resolve the SOW's basis bid (field_2942) → its tech group
+  //       (field_2954) → bid expiration (field_2635) and the deal's CU tasks.
+  //         no basis bid            → comment on the internal task, notify Ops,
+  //                                   respond routedTo: 'ops'
+  //         requested ≤ bid expiry  → extend at once: proposal field_2659 + SOW
+  //                                   field_2135 = requestedDate; CU comment;
+  //                                   notify the AE; respond routedTo: 'auto'
+  //         requested > bid expiry  → internal task → Waiting on Bid (prior status
+  //         (or bid expiry blank)     stashed), request comment on BOTH tasks,
+  //                                   pending marker on the SOW + bid package,
+  //                                   custom notification to the sub with ONE link
+  //                                   to their bid page; respond routedTo: 'svs'
+  //   'confirm-extension'  (sub bid page, scene_1149 — the sub's answer):
+  //       { stepId, bidPackageId, sowId, outcome: 'extend' | 'reprice' | 'decline',
+  //         bidExpiration: 'M/D/YYYY' (extend only), note, triggeredBy }
+  //       extend  → bid field_2635 = bidExpiration; quote = min(requested, bid date)
+  //                 → proposal field_2659 AND SOW field_2135 in the same run; clear
+  //                 the pending marker; restore the CU status; comment both tasks
+  //       reprice → bid status → Draft + unlock lines; CU stays Waiting on Bid;
+  //                 notify Ops (reconcile + re-publish follows)
+  //       decline → quote unchanged; comment both tasks; notify AE + Ops; restore CU
+  //   'nudge-extension' / 'cancel-extension'  (sales card, pending state):
+  //       { stepId, sowId, triggeredBy }
+  //   Response: { success: true, routedTo: 'svs' | 'ops' | 'auto', message }
+  //          or { success: false, error }. A bare 200 / CORS-opaque reply counts
+  //          as delivered (routedTo unknown → the card says "awaiting a reply").
+  // Notification content (Make): project number FIRST, client, SOW number, bid
+  // BD-n + friendly name, current bid expiration, requested quote date, the AE's
+  // reason, the one link to the bid page.
+  // PLACEHOLDER = the sales button is hidden (localStorage.scwQuoteExtPreview =
+  // '1' shows it for QA) and the sub card still renders but reports an
+  // unconfigured hook on send.
+  MAKE_QUOTE_EXTENSION_WEBHOOK: "PLACEHOLDER",
   // ── The two NO-E-SIGNATURE accepted paths (2026-10-01) ─────────────────
   // Both are stepId routes on the Issue scenario (13.03). Where the truth
   // lives: the SOW's CO Status is the STAGE only — every accepted path

@@ -433,6 +433,12 @@
     var body = document.createElement('div');
     body.className = 'scw-pp-body';
     body.appendChild(block);
+    // "Request extension" + the pending state (quote-extension.js, 2026-11-05):
+    // the AE's ask goes to the basis bid's sub without an Ops gate.
+    if (window.SCW && SCW.quoteExtension && typeof SCW.quoteExtension.decorateSalesCard === 'function') {
+      try { SCW.quoteExtension.decorateSalesCard(body, proposal); }
+      catch (eQ) { console.warn('[scw-pp-sow-card] quote-extension decorate failed', eQ); }
+    }
 
     // Expiration is READ-ONLY here: scene_1116 is the sales-facing Build SOW
     // page and sales must NOT edit the proposal expiration. The date shows as
