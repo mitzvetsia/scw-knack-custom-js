@@ -650,9 +650,13 @@
     // "Bid expires <date>" — the bid's own validity (field_2635), the date a
     // quote extension has to be asked against — and the "Extension pending"
     // chip while the AE's request waits on this sub (quote-extension, 2026-11-05).
-    if (pkg.bidExpiration || pkg.extensionPending) {
+    // The chip waits for the quote-extension switch (the Make hook, or the QA
+    // preview flag): the Builder flag may be set before Make is wired.
+    var qx = window.SCW && window.SCW.quoteExtension;
+    var extPending = !!pkg.extensionPending && (!qx || typeof qx.enabled !== 'function' || qx.enabled());
+    if (pkg.bidExpiration || extPending) {
       var expLine = el('div', CLS + '__bid-expiry');
-      if (pkg.extensionPending) {
+      if (extPending) {
         var chip = el('span', CLS + '__bid-expiry-chip', 'Extension pending');
         chip.title = 'The AE asked for a quote extension' + (pkg.extensionRequestedDate ? ' to ' + pkg.extensionRequestedDate : '') +
           ' — waiting on this sub to extend, re-price or decline';

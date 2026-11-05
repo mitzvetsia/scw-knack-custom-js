@@ -53,11 +53,16 @@
  * fall back to a per-tab sessionStorage marker written after a successful
  * send (Requested only — a re-price can only be learned from the record).
  *
+ * THE HOOK IS THE SWITCH (2026-11-05, "don't show them to the user yet until we
+ * get Make wired up"): while `MAKE_QUOTE_EXTENSION_WEBHOOK` is PLACEHOLDER
+ * NOTHING extension-related renders on any surface — no buttons, no pending /
+ * re-pricing lines, no sub card, no reconcile chip (header.js asks
+ * `SCW.quoteExtension.enabled()`) — whatever the Builder fields say.
+ * localStorage.scwQuoteExtPreview = '1' turns every surface on for QA in that
+ * browser only (a send then reports the missing hook instead of pretending).
  * FAIL-OPEN: a field a view does not serve reads as "not configured" — the
  * sales / Ops pages fall back to the marker, the sub card does not render, the
- * reconcile chip stays off. With the webhook at PLACEHOLDER the buttons are
- * hidden unless localStorage.scwQuoteExtPreview = '1' (QA), and a send reports
- * the missing hook instead of pretending.
+ * reconcile chip stays off.
  *
  * Builder (fields created 2026-11-05): SOW header `STATUS_expiration extension`
  * field_3314 + `INPUT_requested quote expiration date` field_3315 — needed as
@@ -678,6 +683,7 @@
     injectStyles();
     var old = body.querySelector('.scw-qext');
     if (old) old.parentNode.removeChild(old);
+    if (!canAsk()) return;                     // the hook is the switch: nothing renders until Make is wired
     var sowId = salesSowId();
     var state = sowId ? pendingState(sowId) : null;
     var note = body.querySelector('.scw-pq-expired-note');
@@ -701,7 +707,6 @@
       body.appendChild(box);
       return;
     }
-    if (!canAsk()) return;                     // no hook yet: the card keeps its existing copy
     var disc = salesDiscontinued();
     if (!disc.ready) onCatalogReady('sales', function () { if (body.isConnected !== false && document.body.contains(body)) decorateSalesCard(body, proposal); });
     if (disc.items.length) {
@@ -780,7 +785,7 @@
   }
   function buildOpsBox(cfg, block) {
     var sowId = opsSowId(block, cfg);
-    if (!sowId) return null;
+    if (!sowId || !canAsk()) return null;      // the hook is the switch: nothing renders until Make is wired
     var sowRec = opsSowRecord(cfg, sowId);
     var state = extensionState(sowRec, sowId);
     var box = document.createElement('div');
@@ -800,7 +805,6 @@
       bindPendingButtons(box, sowId, function () { decorateOps(); refetchView(cfg.refetch); });
       return box;
     }
-    if (!canAsk()) return null;
     if (fieldServed(sowRec, CONFIG.basisField) && !connId(sowRec, CONFIG.basisField)) {
       box.setAttribute('data-scw-qext', 'nobasis');
       box.innerHTML = '<div class="scw-qext__muted">No basis bid on this SOW — there is no sub to ask. Extend the date with the pencil.</div>';
@@ -859,6 +863,7 @@
       if (existing) existing.parentNode.removeChild(existing);
       return;
     }
+    if (!canAsk()) { if (existing) existing.parentNode.removeChild(existing); return; }   // the hook is the switch
     var rec = subBidRecord();
     if (!rec || !rec.id) return;
     if (!fieldYes(rec, c.requestedFlag)) { if (existing) existing.parentNode.removeChild(existing); return; }
@@ -955,6 +960,7 @@
     openRequestModal: openRequestModal,
     openOpsWarning: openOpsWarning,
     renderSubCard: renderSubCard,
+    enabled: canAsk,                  // the hook (or the QA preview flag) — header.js gates its chip on it
     pendingState: pendingState,
     extensionState: extensionState,
     discontinuedIn: discontinuedIn,

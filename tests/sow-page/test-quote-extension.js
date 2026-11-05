@@ -184,6 +184,18 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   check('… nothing is posted and the modal says so', [posts.length, txt(q('[data-qext-err]', modal()))], [0, 'The request was not sent — the extension webhook is not configured yet.']);
   q('[data-qext-cancel]', modal()).click(); window.localStorage.removeItem('scwQuoteExtPreview');
 
+  // ── the hook is the switch: a pending / re-pricing record renders NOTHING without it ──
+  hook = 'PLACEHOLDER';
+  salesPage(future, { field_3314: 'Requested', field_3314_raw: 'Requested', field_3315: '12/31/2026', field_3315_raw: { date_formatted: '12/31/2026' } }); cardRender(); await sleep(200);
+  check('no hook: a SOW whose record reads Requested shows no extension block at all', !!q('.scw-qext'), false);
+  qx._marker.write(SOW, { requestedDate: '12/31/2026', at: '11/5/2026', routedTo: 'svs' });
+  salesPage(future); cardRender(); await sleep(200);
+  check('no hook: a session marker renders nothing either', !!q('.scw-qext'), false);
+  window.localStorage.setItem('scwQuoteExtPreview', '1');
+  salesPage(future); cardRender(); await sleep(200);
+  check('… the QA preview flag turns it on (pending off the marker)', q('.scw-qext') && q('.scw-qext').getAttribute('data-scw-qext'), 'pending');
+  window.localStorage.removeItem('scwQuoteExtPreview'); qx._marker.write(SOW, null);
+
   // ── the sub bid page (scene_1149) ──────────────────────────────────────────────────────────
   hook = 'https://hook.us1.make.com/qext';
   window.Knack.router.current_scene_key = 'scene_1149';
@@ -202,6 +214,14 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   check('the flag not served on view_3552 (column not added yet): no card (fail open)', !!subCard(), false);
   subPage({ field_3316: 'No', field_3316_raw: false }); qx.renderSubCard();
   check('flag No: no card', !!subCard(), false);
+  hook = 'PLACEHOLDER';
+  subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
+  check('no hook: flag Yes renders no card (the switch is off until Make is wired)', !!subCard(), false);
+  window.localStorage.setItem('scwQuoteExtPreview', '1'); qx.renderSubCard();
+  check('… the QA preview flag renders it', !!subCard(), true);
+  window.localStorage.removeItem('scwQuoteExtPreview'); qx.renderSubCard();
+  check('… and off again without it', !!subCard(), false);
+  hook = 'https://hook.us1.make.com/qext';
   subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
   check('flag Yes: the card above the document names the requested date and the bid\'s own expiration, with the three answers',
     [!!subCard(), subCard().nextElementSibling.id, /hold this bid until 12\/31\/2026/.test(txt(subCard())), /currently expires 11\/2\/2026/.test(txt(subCard())),

@@ -74,6 +74,11 @@ function reconcilePage(row, lines) {
 (async () => {
   reconcilePage(); qx.decorateOps();
   check('no hook, no preview: nothing is added under the block', !!box(), false);
+  reconcilePage(sowRow({ field_3314: 'Requested', field_3314_raw: 'Requested', field_3315: '12/31/2026', field_3315_raw: { date_formatted: '12/31/2026' } })); qx.decorateOps();
+  check('no hook: a Requested record renders nothing either (the switch is off until Make is wired)', !!box(), false);
+  window.localStorage.setItem('scwQuoteExtPreview', '1'); qx.decorateOps();
+  check('… the QA preview flag renders the pending row off the record', box() && box().getAttribute('data-scw-qext'), 'pending');
+  window.localStorage.removeItem('scwQuoteExtPreview');
   hook = 'https://hook.us1.make.com/qext';
   reconcilePage(); qx.decorateOps();
   check('with the hook: a compact row right after the block — ready, the button, no discontinued products counted',

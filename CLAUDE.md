@@ -2256,6 +2256,11 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
 `MAKE_QUOTE_EXTENSION_WEBHOOK`, one scenario routed on `stepId`: `request-extension` / `confirm-extension` /
 `nudge-extension` / `cancel-extension`; the reply's `routedTo` is `svs` | `ops` | `auto`). The rule the design adds:
 **the quote never outruns the bid** — a requested date past the bid's expiration goes to the sub first.
+- **The hook is the switch** ("add the fields, but don't show them to the user yet until we get Make wired up",
+  2026-11-05): while `MAKE_QUOTE_EXTENSION_WEBHOOK` is PLACEHOLDER NOTHING extension-related renders on any
+  surface — no buttons, no pending / re-pricing lines, no sub card, no reconcile chip (`bid-review-v2/header.js` asks
+  `SCW.quoteExtension.enabled()`) — whatever the Builder fields say. `localStorage.scwQuoteExtPreview = '1'` turns
+  every surface on for QA in that browser only. Setting the real URL in config.js is the launch.
 - **Shared state = ONE SOW field, three readings** (`CONFIG.sow.status`, Builder TBD: SOW `STATUS_quote extension`,
   blank / Requested / Re-pricing; a Yes/No flag reads Yes = Requested) + `CONFIG.sow.requestedDate` (`INPUT_requested
   expiration`). Make writes it at every turn: request → Requested, extend / decline / cancel → blank, re-price →

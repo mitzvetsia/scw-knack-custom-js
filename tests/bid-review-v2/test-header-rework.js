@@ -225,6 +225,18 @@ check('the gap count mirrors into the BASIS card only', [q(detA, '.scw-bid-revie
 check('the bid\'s own expiration and the extension-pending chip sit under the status line (quote-extension, 2026-11-05); a bid without either has no line',
   [txt(q(detA, '.scw-bid-review-v2__bid-expiry')), /to 12\/31\/2026/.test(q(detA, '.scw-bid-review-v2__bid-expiry-chip').title), !!q(detB, '.scw-bid-review-v2__bid-expiry')],
   ['Extension pending Bid expires 11/2/2026', true, false]);
+// The chip waits for the quote-extension switch (the Make hook / QA flag): with the module present and off,
+// the flag on the record renders no chip; the "Bid expires" line stays.
+window.SCW.quoteExtension = { enabled: () => false };
+{
+  // A throwaway render into a side container: the live sections (s1 / s2) stay as the later checks expect.
+  const keep = body.innerHTML; const live = Array.from(body.childNodes);
+  buildPage(); ns.header.afterRender(body);
+  const detOff = q(q(body, '.scw-bid-review-v2__sow[data-sow-id="s1"]'), '.scw-bid-review-v2__head-cell--details[data-pkg-id="pkgA"]');
+  check('quote-extension switch off: no chip, the expiration line alone', [txt(q(detOff, '.scw-bid-review-v2__bid-expiry')), !!q(detOff, '.scw-bid-review-v2__bid-expiry-chip')], ['Bid expires 11/2/2026', false]);
+  body.innerHTML = ''; live.forEach(n => body.appendChild(n)); void keep;
+}
+delete window.SCW.quoteExtension;
 const actA = q(s1, '.scw-bid-review-v2__head-cell--actions[data-pkg-id="pkgA"]');
 const actB = q(s1, '.scw-bid-review-v2__head-cell--actions[data-pkg-id="pkgB"]');
 check('actions slot says what it acts on, over ONE primary: the preview modal, relabelled',
