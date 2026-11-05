@@ -171,7 +171,8 @@ auto = [
     slack_msg('Quote on *{{%d.field_2126_raw}}* extended to *{{1.requestedDate}}* (within the bid\'s validity) — requested by {{1.triggeredBy.name}}: "{{1.reason}}"\n\n<@{{%d.id}}>' % (S, OWN), THREAD, 'Slack: extended', X + 1800, -900),
 ]
 # 1b — past the bid: ask the sub
-FLAG = '{{%d.field_3316_raw}}' % B          # the bid's flag BEFORE this run's write ([bid_r] read it)
+FLAG = '{{%d.field_3316_raw}}' % B          # the bid's flag BEFORE this run's write ([bid_r] read it) — a mapping token, for FILTERS
+FLAG_REF = '%d.field_3316_raw' % B           # the same reference BARE, for use inside an {{if(...)}} formula (a nested {{ }} is invalid IML)
 REPEAT = eq(FLAG, 'true')
 FIRST = neq(FLAG, 'true')
 STATUS_LINE = ('{{if(lower(%d.status.status) = "final bid submitted"; "Deal tasks moved to Waiting on Bid."; '
@@ -181,7 +182,7 @@ ask = [
     upd_sow('{{1.sowId}}', {'field_3314': ['Requested'], 'field_3315': '{{1.requestedDate}}'}, 'SOW status = Requested', X + 900, -600, F('past the bid (or bid date blank): ask the sub', neq(W, 'true'))),
     upd_bid('{{%d.id}}' % B, {'field_3316': True, 'field_3317': '{{1.requestedDate}}'}, 'bid flag = Yes', X + 1200, -600),
     respond({'success': True, 'routedTo': 'svs', 'message': 'The sub has been asked to hold their bid.'}, 'respond: svs', X + 1350, -600),
-    slack_msg('{{if(%s; "Repeat quote-extension request"; "Quote extension")}} to *{{1.requestedDate}}* requested on *{{%d.field_2126_raw}}* by {{1.triggeredBy.name}} ({{1.requestedBy}}): "{{1.reason}}"\n{{if(%s; "An ask was already pending on this bid — the sub was nudged."; "Past the bid\'s expiration (" + %d.field_2635_raw.date + ") — the sub has been asked to hold their bid.")}}{{if(1.riskAcknowledged; "\n:warning: requested over discontinued products — see the task comment."; "")}}\n\n<@{{%d.id}}>' % (FLAG, S, FLAG, B, OWN), THREAD, 'Slack: asked the sub', X + 1500, -600),
+    slack_msg('{{if(%s; "Repeat quote-extension request"; "Quote extension")}} to *{{1.requestedDate}}* requested on *{{%d.field_2126_raw}}* by {{1.triggeredBy.name}} ({{1.requestedBy}}): "{{1.reason}}"\n{{if(%s; "An ask was already pending on this bid — the sub was nudged."; "Past the bid\'s expiration (" + %d.field_2635_raw.date + ") — the sub has been asked to hold their bid.")}}{{if(1.riskAcknowledged; "\n:warning: requested over discontinued products — see the task comment."; "")}}\n\n<@{{%d.id}}>' % (FLAG_REF, S, FLAG_REF, B, OWN), THREAD, 'Slack: asked the sub', X + 1500, -600),
     router(X + 1800, -600, [
         # first ask: the full record on the SCW task (with the status outcome), a short hold request on the SVS task
         [cu_comment(SUB_TASK, '{{1.requestText}}\n\nSCW asks you to hold bid %s (currently expires {{%d.field_2635_raw.date}}) until {{1.requestedDate}}. Answer on your bid page (extend, re-price, or can\'t extend): %s\n\n%s' % (bidname(B), B, sub_link, STATUS_LINE), 'comment SVS task: the request (notify)', X + 2100, -900, notify=True, filt=F('first ask on this bid', FIRST))],
