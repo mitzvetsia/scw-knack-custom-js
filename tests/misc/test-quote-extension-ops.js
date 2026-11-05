@@ -11,7 +11,9 @@
 //     requestText; a clean SOW goes straight to the request modal;
 //   - the reply's routedTo svs → the pending row (Nudge / Cancel) through the session marker; Cancel posts
 //     and returns the row to ready;
-//   - the SOW status field once configured: Re-pricing / Requested / blank;
+//   - the SOW status field once configured: Re-pricing / Requested / blank, and Re-Price Requested (the sub's
+//     re-price held while the quote still runs): Keep quote as is / Reopen bid for re-pricing → their POSTs,
+//     the native Reopen Bid's afterReopenBid hook;
 //   - a repeat decorate leaves an unchanged row in place (no DOM churn).
 const fs = require('fs');
 const path = require('path');
@@ -152,6 +154,23 @@ function reconcilePage(row, lines) {
   check('status Re-Pricing (the Builder option): the re-pricing line, no buttons', [box().getAttribute('data-scw-qext'), q('button', box()), /re-pricing this bid/.test(txt(box()))], ['repricing', null, true]);
   reconcilePage(sowRow({ field_3314: 'Requested', field_3314_raw: 'Requested', field_3315: '12/31/2026', field_3315_raw: { date_formatted: '12/31/2026' } })); qx.decorateOps();
   check('status Requested: pending with the record\'s date', [box().getAttribute('data-scw-qext'), /Extension to 12\/31\/2026/.test(txt(box())), !!q('[data-qext-nudge]', box())], ['pending', true, true]);
+  // the sub answered "re-price" while the quote still ran: Make held the bid and asked Ops (2026-11-05)
+  reconcilePage(sowRow({ field_3314: 'Re-Price Requested', field_3314_raw: 'Re-Price Requested' })); qx.decorateOps();
+  check('status Re-Price Requested: the held row names the decision and offers Keep quote as is | Reopen bid for re-pricing',
+    [box().getAttribute('data-scw-qext'), /asked to re-price this bid instead of extending it/.test(txt(box())), [...box().querySelectorAll('button')].map(b => b.textContent)],
+    ['reprice-requested', true, ['Keep quote as is', 'Reopen bid for re-pricing']]);
+  posts.length = 0; q('[data-qext-keep]', box()).click();
+  check('Keep quote as is posts keep-quote for the SOW', [body().stepId, body().sowId, q('[data-qext-keep]', box()).disabled], ['keep-quote', SOW, true]);
+  lastPost().error({ status: 500 }); await sleep(10);
+  check('… a failed POST re-enables the button', q('[data-qext-keep]', box()).disabled, false);
+  posts.length = 0; q('[data-qext-reopen]', box()).click();
+  check('Reopen bid for re-pricing posts reopen-reprice for the SOW', [body().stepId, body().sowId], ['reopen-reprice', SOW]);
+  lastPost().success({ success: true }); await sleep(10);
+  // the native Reopen Bid on the reconcile page is the same decision
+  posts.length = 0; reconcilePage(sowRow({ field_3314: 'Re-Price Requested', field_3314_raw: 'Re-Price Requested' })); qx.decorateOps();
+  check('afterReopenBid on a held SOW posts reopen-reprice', [qx.afterReopenBid(SOW), body().stepId, body().sowId], [true, 'reopen-reprice', SOW]);
+  posts.length = 0; reconcilePage(sowRow({ field_3314: 'Requested', field_3314_raw: 'Requested' })); qx.decorateOps();
+  check('afterReopenBid on any other SOW posts nothing', [qx.afterReopenBid(SOW), posts.length], [false, 0]);
   qx._marker.write(SOW, { requestedDate: '1/1/2030', at: '1/1/2026', routedTo: 'svs' });
   reconcilePage(sowRow({ field_3314: '', field_3314_raw: '' })); qx.decorateOps();
   check('status blank: ready, and a stale marker is cleared', [box().getAttribute('data-scw-qext'), qx._marker.read(SOW)], ['ready', null]);

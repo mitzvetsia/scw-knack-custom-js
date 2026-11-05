@@ -2335,9 +2335,23 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   (the sub's dashboard banner). Until
   then every reader fails open (marker fallback on the sales / Ops pages, no sub card, no reconcile chip). Make writes
   all four through the API — none needs inline editing. Nothing in ClickUp.
+- **A sub's re-price never unlocks a bid while the quote still runs (2026-11-05)** — "a sub saying they need to
+  re-price shouldn't automatically unlock it IF the associated proposal hasn't actually expired yet … it should ping
+  the Ops team and ask them to re-open the bid, because Sales / Ops might say 'actually we'll push the client to close
+  before the proposal expires'". Make gates `confirm-extension / reprice` on the SOW's `field_2135` (the proposal's
+  mirror): expired → the re-price sequence (bid Draft + unlock, SOW Re-Pricing, tasks Prepare Bid); still running (or
+  blank) → the bid stays locked, SOW `field_3314` = **`Re-Price Requested`** (Builder: add the option), the SCW task
+  gets a notify-all comment and the AE a Slack mention naming the choice. `statusKind` reads it as
+  `reprice-requested`; the sales card shows the held line read-only (`.scw-qext--held`), the Ops rows offer
+  **Keep quote as is** (`keep-quote`: status blank, flag No, tasks → Final Bid Submitted, the sub told) |
+  **Reopen bid for re-pricing** (`reopen-reprice`: the expired path on the basis bid); the reconcile page's native
+  Reopen Bid calls `SCW.quoteExtension.afterReopenBid(sowId)` after its PUTs so a held SOW is closed the same way.
+  The sub's card shows Make's reply message after a re-price (held vs reopened). Tests: the held blocks in
+  `tests/misc/test-quote-extension-ops.js` and `tests/sow-page/test-quote-extension.js`.
 - **Make scenario 06.08 — blueprint delivered 2026-11-05** (`tools/bp_gen_0608.py` over the user's webhook-only
   06.08 export + modules cloned from the 00.00 / 06.02 / 06.03 / 06.04 exports; import INTO the scenario so hook
-  2866644 stays; spec + first-run verify list in `docs/quote-extension-make.md`). Routes on `stepId`; every route's
+  2866644 stays; spec + first-run verify list in `docs/quote-extension-make.md`). Routes on `stepId` (request /
+  confirm / nudge / cancel / reopen-reprice / keep-quote); every route's
   Webhook Response sits right after its Knack writes and before the ClickUp / Slack modules (Slack = Ignore
   handlers, deal-owner lookup = the source's Resume fallback); Sequential processing OFF (Make refuses a Webhook
   Response in a sequential scenario). The sub is reached by a

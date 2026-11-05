@@ -146,6 +146,10 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   check('status "Re-Pricing" (the Builder option, capital P): the re-pricing line, no buttons, no request', [q('.scw-qext').getAttribute('data-scw-qext'), txt(q('.scw-qext')), q('.scw-qext button')],
     ['repricing', 'Re-pricing The sub is re-pricing this bid. The quote keeps its current expiration until Ops publishes the re-priced proposal.', null]);
   check('… extensionState reads the kind', qx.pendingState(SOW).kind, 'repricing');
+  salesPage(future, { field_3314: 'Re-Price Requested', field_3314_raw: 'Re-Price Requested' }); cardRender(); await sleep(200);
+  check('status "Re-Price Requested" (the sub\'s re-price held while the quote runs): the held line, read-only for sales',
+    [q('.scw-qext').getAttribute('data-scw-qext'), qx.pendingState(SOW).kind, /asked to re-price this bid/.test(txt(q('.scw-qext'))), /Ops decides on the Reconcile Bids page/.test(txt(q('.scw-qext'))), q('.scw-qext button')],
+    ['reprice-requested', 'reprice-requested', true, true, null]);
   salesPage('1/2/2026', { field_3314: 'Re-pricing', field_3314_raw: 'Re-pricing' }); cardRender(); await sleep(200);
   check('… an expired proposal\'s note says a re-published proposal follows', /re-pricing the bid — a re-published proposal follows/.test(txt(q('.scw-pq-expired-note'))), true);
   salesPage(future, { field_3314: '', field_3314_raw: '' }); cardRender(); await sleep(200);
@@ -243,6 +247,13 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   lastPost().error({ status: 500 }); await sleep(10);
   check('a failed POST re-enables the buttons and says so', [[...subCard().querySelectorAll('[data-qext-outcome]')].every(b => !b.disabled), txt(q('[data-qext-sub-err]', subCard()))],
     [true, 'Your answer failed (HTTP 500) — try again.']);
+  q('[data-qext-outcome="reprice"]', subCard()).click();
+  lastPost().success({ success: true, message: 'SCW has been told you want to re-price. The quote it was priced into runs to 12/15/2026, so the bid stays locked until SCW either reopens it for re-pricing or closes the deal first — you will get a comment on your task.' }); await sleep(10);
+  check('a re-price reply shows Make\'s message (held while the quote runs, or reopened now)', [subCard().getAttribute('data-scw-qext-sub-done'), /bid stays locked until SCW either reopens it/.test(txt(subCard()))], ['reprice', true]);
+  subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
+  q('[data-qext-outcome="reprice"]', subCard()).click(); lastPost().error({ status: 0 }); await sleep(10);
+  check('… an opaque reply gets the generic line', /If the quote has already expired the bid reopens for re-pricing right away/.test(txt(subCard())), true);
+  subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
   posts.length = 0; q('[data-qext-outcome="decline"]', subCard()).click();
   check('decline posts its outcome', body().outcome, 'decline');
   lastPost().error({ status: 0 }); await sleep(10);

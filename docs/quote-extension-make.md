@@ -11,7 +11,7 @@ Every write. The pages only POST and read the four Builder fields:
 
 | Record | Field | Meaning |
 |---|---|---|
-| SOW header (object_106) | `field_3314` STATUS_expiration extension | blank / `Requested` / `Re-Pricing` |
+| SOW header (object_106) | `field_3314` STATUS_expiration extension | blank / `Requested` / `Re-Pricing` / `Re-Price Requested` (**Builder: add this 3rd option**, 2026-11-05) |
 | SOW header | `field_3315` INPUT_requested quote expiration date | the date asked for |
 | Bid package (object_115) | `field_3316` FLAG_expiration extension requested | Yes while the sub owes an answer |
 | Bid package | `field_3317` INPUT_requested expiration date | the quote date being asked for |
@@ -81,12 +81,23 @@ Payload: `bidPackageId, sowId, outcome ('extend' | 'reprice' | 'decline'), bidEx
 | Outcome | Writes | ClickUp (both tasks) | Notify |
 |---|---|---|---|
 | `extend` | bid `field_2635` = bidExpiration. Quote = the EARLIER of SOW `field_3315` and bidExpiration → proposal `field_2659` AND SOW `field_2135` in the same run. SOW `field_3314` = blank, `field_3315` = blank; bid `field_3316` = No, `field_3317` = blank. | → Final Bid Submitted. Comment: "Bid extended to …, quote extended to …" + the note. | the requester (the AE or Ops) |
-| `reprice` | bid `field_2550` → Draft + whatever "Reopen Bid" does today (copy the reconcile page's Reopen Bid write). SOW `field_3314` = `Re-Pricing`; bid `field_3316` = No, `field_3317` = blank. | → **Prepare Bid**. Comment with the note. | Ops |
+| `reprice` | **Gated on the quote's expiration** (SOW `field_2135`, the proposal's mirror — decided 2026-11-05). Quote already expired → bid `field_2550` → Draft + the Reopen Bid unlock (object_114 `field_2551` = No on the bid's items); SOW `field_3314` = `Re-Pricing`; bid `field_3316` = No. Quote still runs (or blank) → the bid stays LOCKED: bid `field_3316` = No, SOW `field_3314` = **`Re-Price Requested`** (new Builder option). | expired → **Prepare Bid**, comment with the note. Held → nothing moves; comment (notify all) on the SCW task naming the choice: "Reopen bid for re-pricing" or "Keep quote as is" (close before the quote expires). | AE (Slack mention) + SCW (task comment, notify all) either way; the sub is told which |
 | `decline` | nothing on the dates. SOW `field_3314` = blank, `field_3315` = blank; bid `field_3316` = No, `field_3317` = blank. | → Final Bid Submitted. Comment with the note. | the requester + Ops |
 
 The proposal to write on `extend`: the SOW's published proposal(s) with status Published —
 search object_125 by SOW (`field_2666` = sowId) and status `field_2658` = Published; write
 `field_2659` on each (one is the norm).
+
+### `reopen-reprice` / `keep-quote` (Ops rows on the reconcile / preview pages, the held re-price)
+
+Payload: `sowId, triggeredBy`. The bid = the SOW's basis bid (`field_2942`).
+
+- `reopen-reprice`: the expired-quote re-price sequence on that bid (Draft + unlock, SOW `Re-Pricing`, both tasks →
+  Prepare Bid, comments, Slack). The reconcile page's native **Reopen Bid** fires it too when the SOW reads
+  `Re-Price Requested` (`quote-extension.js` `afterReopenBid`, called by `bid-review/init.js handleReopenBid` after its
+  PUTs land — Make's bid writes repeat them, idempotently).
+- `keep-quote`: SOW `field_3314` = blank, bid `field_3316` = No, both tasks → Final Bid Submitted (when parked in
+  Waiting on Bid); the sub is told the bid stays as submitted; the SCW comment says "close before <quote expiration>".
 
 ### `nudge-extension` / `cancel-extension` (sales card, Ops rows)
 
@@ -164,8 +175,11 @@ card → extend / re-price / decline).
   on Bid; the sub's dashboard banner and bid card appear.
 - Sub: extend to an earlier date than asked → quote lands at the sub's date; flags clear; tasks
   back to Final Bid Submitted; the sales card returns to the button.
-- Sub: re-price → bid Draft, SOW Re-Pricing (the sales card says so), tasks Prepare Bid; a
+- Sub: re-price on an EXPIRED quote → bid Draft, SOW Re-Pricing (the sales card says so), tasks Prepare Bid; a
   publish-final clears it.
+- Sub: re-price while the quote still runs → bid stays locked, SOW Re-Price Requested (sales card read-only, the Ops
+  rows offer Keep quote as is | Reopen bid for re-pricing), AE Slack ping + SCW task comment; Reopen → the expired
+  path; Keep → status blank, tasks back, the sub told; the native Reopen Bid also closes the held state.
 - Sub: decline → dates untouched, flags clear, tasks back.
 - Sales: cancel and nudge from the pending card.
 - Ops: request over discontinued products → the WARNING line reaches both comments and the sub.

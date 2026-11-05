@@ -2120,6 +2120,13 @@
         } else if (statusRes.ok && failedItems === 0) {
           ns.renderToast('Bid reopened — status set to Draft and ' +
             unlocked + ' item' + (unlocked === 1 ? '' : 's') + ' unlocked', 'success');
+          // A sub's held re-price request (quote-extension: SOW status "Re-Price Requested"):
+          // this reopen IS the decision — tell Make so the status, the deal tasks and the
+          // sub's comment follow. No-op on any other SOW.
+          try {
+            var qx = window.SCW && SCW.quoteExtension;
+            if (qx && typeof qx.afterReopenBid === 'function') qx.afterReopenBid(sowId);
+          } catch (eQx) { /* never blocks the reopen */ }
         } else {
           var parts = [];
           parts.push(statusRes.ok ? 'status set to Draft' : 'status NOT updated');

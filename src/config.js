@@ -362,7 +362,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // Preview Proposal page (scene_1096). Make is the ONLY writer; the pages only
   // post and read the Builder fields below.
   //   SHARED STATE (Builder, created 2026-11-05): SOW header `STATUS_expiration extension`
-  //   field_3314 (blank / Requested / Re-Pricing) + `INPUT_requested quote expiration date`
+  //   field_3314 (blank / Requested / Re-Pricing / Re-Price Requested) + `INPUT_requested quote expiration date`
   //   field_3315; bid package `FLAG_expiration extension requested` field_3316 (Yes/No) +
   //   `INPUT_requested expiration date` field_3317. Make writes all four at every turn.
   //   'request-extension'  (the AE's or Ops's ask):
@@ -396,10 +396,25 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //       extend  → bid field_2635 = bidExpiration; quote = min(requested, bid date)
   //                 → proposal field_2659 AND SOW field_2135 in the same run; SOW status
   //                 blank, bid flag No; both CU tasks → Final Bid Submitted; comment both
-  //       reprice → bid status → Draft + unlock lines; SOW status = Re-pricing; bid flag
-  //                 No; both CU tasks → Prepare Bid (Ops reviews the re-priced bid before
-  //                 finalizing); notify Ops. The PUBLISH of the re-priced proposal (the
-  //                 publish scenario) sets the SOW status back to blank.
+  //       reprice → GATED on the quote's expiration (SOW field_2135, the proposal's
+  //                 mirror; decided 2026-11-05 — "a sub saying they need to re-price
+  //                 shouldn't automatically unlock it IF the associated proposal hasn't
+  //                 actually expired yet"):
+  //                 · quote already expired → bid status → Draft + unlock lines; SOW
+  //                   status = Re-Pricing; bid flag No; both CU tasks → Prepare Bid; notify
+  //                   the AE (Slack) + SCW (task comment, notify all) + the sub.
+  //                 · quote still runs (or no date) → the bid stays LOCKED; bid flag No;
+  //                   SOW status = Re-Price Requested; comment (notify all) on the SCW task
+  //                   + Slack to the AE: "Reopen bid for re-pricing" or "Keep quote as is";
+  //                   the sub is told SCW decides first.
+  //                 The PUBLISH of the re-priced proposal (the publish scenario) sets the
+  //                 SOW status back to blank.
+  //   'reopen-reprice' (Ops, the held request goes ahead; also fired by the reconcile page's
+  //                     native Reopen Bid when the SOW reads Re-Price Requested): the
+  //                     expired-quote re-price sequence on the SOW's basis bid.
+  //   'keep-quote'     (Ops, no re-price): SOW status blank, bid flag No, both CU tasks →
+  //                     Final Bid Submitted; the sub is told the bid stays as submitted.
+  //                     Both: { stepId, sowId, triggeredBy }.
   //       decline → quote unchanged; SOW status blank, bid flag No; both CU tasks →
   //                 Final Bid Submitted; comment both; notify the requester + Ops
   //   'nudge-extension'  → re-send the sub's notification; comment.

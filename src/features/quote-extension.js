@@ -315,6 +315,7 @@
       '  background: #f8fafc; font: 400 12px/1.45 system-ui, sans-serif; color: #334155; text-align: left; }' +
       '.scw-qext--pending, .scw-qext--blocked { border-color: #fcd34d; background: #fffbeb; }' +
       '.scw-qext--repricing { border-color: #c7d2fe; background: #eef2ff; }' +
+      '.scw-qext--held { border-color: #fcd34d; background: #fffbeb; }' +
       '.scw-qext--ops { margin: 6px 0 0; padding: 6px 8px; font-size: 11.5px; }' +
       '.scw-qext--sub { margin: 0 0 14px; padding: 14px 16px; border-color: #fcd34d; background: #fffbeb; }' +
       '.scw-qext__title { font-weight: 700; font-size: 13px; color: #0f172a; margin: 0 0 4px; }' +
@@ -339,6 +340,7 @@
       '.scw-qext__chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font: 700 10px/1.6 system-ui, sans-serif;' +
       '  letter-spacing: .02em; text-transform: uppercase; background: #fef3c7; color: #b45309; margin-right: 6px; }' +
       '.scw-qext__chip--repricing { background: #e0e7ff; color: #3730a3; }' +
+      '.scw-qext__chip--held { background: #fef3c7; color: #92400e; }' +
       '.scw-qext__input { font: 400 13px/1.2 system-ui, sans-serif; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; width: 120px; }' +
       '.scw-qext__ta { font: 400 13px/1.4 system-ui, sans-serif; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; min-height: 64px; box-sizing: border-box; }' +
       '.scw-qext__err { color: #b91c1c; margin-top: 6px; }' +
@@ -374,19 +376,23 @@
   function writeMarker(sowId, obj) {
     try { if (obj) sessionStorage.setItem(markerKey(sowId), JSON.stringify(obj)); else sessionStorage.removeItem(markerKey(sowId)); } catch (e) { /* ignore */ }
   }
-  /** 'requested' | 'repricing' | '' off the SOW record's status field;
-   *  undefined when the field is not configured or not served on the record. */
+  /** 'requested' | 'repricing' | 'reprice-requested' | '' off the SOW record's status
+   *  field; undefined when the field is not configured or not served on the record.
+   *  'reprice-requested' (Builder option "Re-Price Requested"): the sub answered
+   *  "re-price" while the proposal had NOT expired — the bid stays locked until Ops
+   *  reopens it or keeps the quote (2026-11-05). */
   function statusKind(rec) {
     var key = CONFIG.sow.status;
     if (!key || !fieldServed(rec, key)) return undefined;
     var raw = rec[key + '_raw'];
     if (typeof raw === 'boolean') return raw ? 'requested' : '';
     var t = strip(rec[key] != null ? rec[key] : raw).toLowerCase();
+    if (/re-?pric\w*[\s_-]*request/.test(t)) return 'reprice-requested';
     if (/re-?pric/.test(t)) return 'repricing';
     if (/request|pending|^yes$|^true$/.test(t)) return 'requested';
     return '';
   }
-  /** { kind: 'requested' | 'repricing', requestedDate, at, routedTo, source }
+  /** { kind: 'requested' | 'repricing' | 'reprice-requested', requestedDate, at, routedTo, source }
    *  when an extension is open on this SOW: the record's status field when
    *  configured and served, else the session marker (Requested only). */
   function extensionState(rec, sowId) {
@@ -605,10 +611,25 @@
   }
 
   // ── Shared pieces of the state boxes ────────────────────────────────────
-  function stateHtml(state) {
+  function stateHtml(state, opts) {
+    opts = opts || {};
     if (state.kind === 'repricing') {
       return '<div><span class="scw-qext__chip scw-qext__chip--repricing">Re-pricing</span> ' +
         'The sub is re-pricing this bid. The quote keeps its current expiration until Ops publishes the re-priced proposal.</div>';
+    }
+    if (state.kind === 'reprice-requested') {
+      // The sub answered "re-price" while the proposal had not expired: Make left the bid LOCKED
+      // and asked Ops. Ops decides here (the reconcile / preview rows); sales only reads it.
+      return '<div><span class="scw-qext__chip scw-qext__chip--held">Re-price requested</span> ' +
+        'The sub asked to <b>re-price</b> this bid instead of extending it. The proposal has not expired, so the bid stays locked ' +
+        'until Ops decides: reopen it for re-pricing, or keep the quote as it is and close before it expires.</div>' +
+        (opts.ops
+          ? '<div class="scw-qext__row">' +
+              '<button type="button" class="scw-qext__btn" data-qext-keep>Keep quote as is</button>' +
+              '<button type="button" class="scw-qext__btn scw-qext__btn--primary" data-qext-reopen>Reopen bid for re-pricing</button>' +
+              '<span class="scw-qext__muted">Keep = the bid stays submitted and the sub is told; Reopen = bid back to Draft, tasks to Prepare Bid.</span>' +
+            '</div>'
+          : '<div class="scw-qext__muted">Ops decides on the Reconcile Bids page — tell them if the client will close before the quote expires.</div>');
     }
     var where = state.routedTo === 'ops' ? 'with Ops' : state.routedTo === 'svs' ? 'awaiting SVS' : 'awaiting a reply';
     return '<div><span class="scw-qext__chip">Extension pending</span> ' +
@@ -637,6 +658,45 @@
         redraw();
       });
     });
+  }
+  /** The Ops decision on a held re-price: keep the quote (the bid stays submitted) or reopen
+   *  the bid for re-pricing. Each is ONE POST; Make writes the status and moves the tasks. */
+  function bindHeldButtons(box, sowId, redraw) {
+    var keep = box.querySelector('[data-qext-keep]'), reopen = box.querySelector('[data-qext-reopen]');
+    function send(btn, stepId, confirmText, okText, what) {
+      if (!window.confirm(confirmText)) return;
+      btn.disabled = true;
+      post({ stepId: stepId, sowId: sowId }).then(function (res) {
+        if (!res.ok) { btn.disabled = false; return toast(errText(res, what), 'error'); }
+        writeMarker(sowId, null);
+        toast(okText, 'success');
+        redraw();
+      });
+    }
+    if (keep) keep.addEventListener('click', function (e) {
+      send(e.currentTarget, 'keep-quote', 'Keep the quote as it is? The bid stays submitted and locked, the sub is told no re-price is needed, and the deal tasks return to Final Bid Submitted.',
+        'Quote kept — the sub has been told', 'The decision');
+    });
+    if (reopen) reopen.addEventListener('click', function (e) {
+      send(e.currentTarget, 'reopen-reprice', 'Reopen the bid for re-pricing? The bid goes back to Draft, its lines unlock, the SOW reads Re-Pricing and both deal tasks move to Prepare Bid.',
+        'Bid reopened for re-pricing — the sub has been told', 'The reopen');
+    });
+  }
+  /** Called by the reconcile page's native Reopen Bid (bid-review/init.js) after its PUTs land:
+   *  when the SOW is waiting on exactly that decision, tell Make so the status, the tasks and
+   *  the sub's comment follow (the bid writes Make repeats are idempotent). */
+  function afterReopenBid(sowId) {
+    try {
+      var cfg = opsCfg();
+      if (!cfg || !sowId || !canAsk()) return false;
+      var state = extensionState(opsSowRecord(cfg, sowId), sowId);
+      if (!state || state.kind !== 'reprice-requested') return false;
+      post({ stepId: 'reopen-reprice', sowId: sowId }).then(function (res) {
+        if (res.ok) { writeMarker(sowId, null); decorateOps(); refetchView(cfg.refetch); }
+        else toast(errText(res, 'Telling Make about the reopen'), 'error');
+      });
+      return true;
+    } catch (e) { return false; }
   }
   function projectNumber(scene) {
     try {
@@ -703,6 +763,14 @@
       box.setAttribute('data-scw-qext', 'repricing');
       box.innerHTML = stateHtml(state);
       if (note) note.innerHTML = '<strong>This proposal is expired.</strong> The sub is re-pricing the bid — a re-published proposal follows.';
+      body.appendChild(box);
+      return;
+    }
+    if (state && state.kind === 'reprice-requested') {
+      box.className += ' scw-qext--held';
+      box.setAttribute('data-scw-qext', 'reprice-requested');
+      box.innerHTML = stateHtml(state);
+      if (note) note.innerHTML = '<strong>This proposal is expired.</strong> The sub asked to re-price the bid — Ops decides whether to reopen it.';
       body.appendChild(box);
       return;
     }
@@ -806,6 +874,13 @@
       box.innerHTML = stateHtml(state);
       return box;
     }
+    if (state && state.kind === 'reprice-requested') {
+      box.className += ' scw-qext--held';
+      box.setAttribute('data-scw-qext', 'reprice-requested');
+      box.innerHTML = stateHtml(state, { ops: true });
+      bindHeldButtons(box, sowId, function () { decorateOps(); refetchView(cfg.refetch); });
+      return box;
+    }
     if (state) {
       box.className += ' scw-qext--pending';
       box.setAttribute('data-scw-qext', 'pending');
@@ -891,7 +966,9 @@
         (requested ? ': the requested quote expiration is <b>' + esc(requested) + '</b>' : '') + '.' +
         ' Your bid currently expires <b>' + esc(bidExp || '—') + '</b>.</div>' +
       '<div class="scw-qext__line scw-qext__muted">Extend if the price still stands (an earlier date than requested is fine — the quote follows your date). ' +
-        'Re-price if costs have moved; SCW will reconcile and re-publish. Can\'t extend leaves the quote as it is.</div>' +
+        'Re-price if costs have moved: if the quote has already expired the bid reopens for re-pricing right away; ' +
+        'if it has not, SCW decides first (reopen the bid, or close the deal before the quote expires) and comments on your task. ' +
+        'Can\'t extend leaves the quote as it is.</div>' +
       '<label class="scw-qext__line" style="margin-top:8px"><span class="scw-qext__muted">Extend my bid to</span> ' +
         '<input class="scw-qext__input" data-qext-sub-date type="text" inputmode="numeric" placeholder="M/D/YYYY" value="' + esc(requested) + '"></label>' +
       '<textarea class="scw-qext__ta" data-qext-sub-note placeholder="Note to SCW (optional)"></textarea>' +
@@ -931,9 +1008,12 @@
             err.textContent = errText(res, 'Your answer'); err.hidden = false;
             return;
           }
+          // Make's reply says which way a re-price went (reopened now, or held for Ops while the
+          // quote still runs); a bare / opaque reply gets the generic line.
+          var replyMsg = res.data && typeof res.data.message === 'string' ? res.data.message.trim() : '';
           card.innerHTML = '<div class="scw-qext__title">Sent to SCW</div><div class="scw-qext__ok">' + esc(
             outcome === 'extend' ? 'Your bid is extended to ' + payload.bidExpiration + '. The quote follows your date.' :
-            outcome === 'reprice' ? 'SCW will reopen the bid for re-pricing and reconcile when you resubmit.' :
+            outcome === 'reprice' ? (replyMsg || 'Sent. If the quote has already expired the bid reopens for re-pricing right away; otherwise SCW decides first and comments on your task.') :
             'SCW has been told the bid can\'t be extended.') + '</div>';
           card.setAttribute('data-scw-qext-sub-done', outcome);
         });
@@ -1014,6 +1094,7 @@
     renderSubCard: renderSubCard,
     renderDashboardBanner: renderDashboardBanner,
     enabled: canAsk,                  // the hook (or the QA preview flag) — header.js gates its chip on it
+    afterReopenBid: afterReopenBid,   // bid-review/init.js handleReopenBid → Make, when the SOW waits on that decision
     pendingState: pendingState,
     extensionState: extensionState,
     discontinuedIn: discontinuedIn,
