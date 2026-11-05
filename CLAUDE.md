@@ -2339,7 +2339,8 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   06.08 export + modules cloned from the 00.00 / 06.02 / 06.03 / 06.04 exports; import INTO the scenario so hook
   2866644 stays; spec + first-run verify list in `docs/quote-extension-make.md`). Routes on `stepId`; every route's
   Webhook Response sits right after its Knack writes and before the ClickUp / Slack modules (Slack = Ignore
-  handlers, deal-owner lookup = the source's Resume fallback); Sequential processing ON. The sub is reached by a
+  handlers, deal-owner lookup = the source's Resume fallback); Sequential processing OFF (Make refuses a Webhook
+  Response in a sequential scenario). The sub is reached by a
   ClickUp comment on the SVS task (Notify all) carrying the portal link
   `#subcontractor-portal/site-survey-request-details/<sr>/edit-bid-package/<bid>/`. Verify live: `{{emptyarray}}`
   clears the multiple-choice `field_3314`; the literal status names in `editATaskAdvanced`.

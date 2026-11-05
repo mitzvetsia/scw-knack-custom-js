@@ -142,8 +142,10 @@ Verify on the first runs (Make answers nothing of this at import time):
   Call" PUT of `{"field_3314": ""}`, or add a third option "None" and have the bundle read it as blank.
 - The ClickUp status names `waiting on bid` / `prepare bid` / `final bid submitted` typed into
   `editATaskAdvanced` (both lists carry them; the module takes the literal name).
-- Scenario settings → **Sequential processing ON** (the blueprint sets it; two requests on one SOW must not
-  race the status writes).
+- Scenario settings → **Sequential processing OFF** — Make refuses a Webhook Response module in a sequential
+  scenario ("Responder is not supported when scenario is configured for sequential processing", seen on the
+  first import 2026-11-05). Two requests on one SOW seconds apart could race the status writes; the routes are
+  idempotent, the last one wins, accepted.
 - The dates: the request route compares `requestedDate` with the bid's `field_2635` as epoch seconds
   (`formatDate(parseDate(…; "M/D/YYYY"); "X")`); a blank bid date routes to the sub. Knack date fields
   are written as `M/D/YYYY` strings with `_datetype: simple`.

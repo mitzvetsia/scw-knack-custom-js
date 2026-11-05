@@ -279,7 +279,7 @@ bp = {
     'flow': flow,
     'metadata': copy.deepcopy(HOOK_BP['metadata']),
 }
-bp['metadata']['scenario']['sequential'] = True   # two requests on one SOW must not race the status writes
+bp['metadata']['scenario']['sequential'] = False  # Make: "Responder is not supported when scenario is configured for sequential processing"
 bp['metadata']['notes'] = [{
     'moduleIds': [1], 'content': 'Contract: scw-knack-custom-js src/config.js MAKE_QUOTE_EXTENSION_WEBHOOK; spec docs/quote-extension-make.md. '
                                  'Generated 2026-11-05 from the 00.00 / 06.02 / 06.03 / 06.04 exports (bp0608/gen.py).',
