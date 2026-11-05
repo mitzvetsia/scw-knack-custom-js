@@ -2316,12 +2316,15 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   `__bid-expiry`) with an amber **"Extension pending"** chip once `bidExtensionFlag` / `bidExtensionDate` (Builder TBD)
   are filled and the columns are on view_3573. `bidSub` stays TBD (`field_2954` REL_tech group is not on view_3573,
   and setting it also relabels the column headers).
-- **Builder (the whole list)**: SOW header `STATUS_quote extension` (multiple choice: blank / Requested / Re-pricing) +
-  `INPUT_requested expiration` (date) as columns on view_3827, view_3918 and view_3861; bid package `FLAG_extension
-  requested` (Yes/No) + `INPUT_requested quote expiration` (date) on view_3552 and view_3573. Make writes all four
-  through the API — none needs inline editing. Nothing in ClickUp. Then fill `CONFIG.sow.*` / `CONFIG.sub.*` here and
-  `bidExtensionFlag` / `bidExtensionDate` in bid-review/config.js.
-- **Not built (the other halves)**: the Builder fields above, the Make scenario (and its publish-side "status → blank"
+- **Builder (fields created 2026-11-05, keys filled)**: SOW header `STATUS_expiration extension` **`field_3314`**
+  (multiple choice: blank / Requested / Re-Pricing) + `INPUT_requested quote expiration date` **`field_3315`**; bid
+  package `FLAG_expiration extension requested` **`field_3316`** (Yes/No) + `INPUT_requested expiration date`
+  **`field_3317`**. `CONFIG.sow.*` / `CONFIG.sub.*` here and `bidExtensionFlag` / `bidExtensionDate` in
+  bid-review/config.js carry them. **Still to add as COLUMNS** (schema read 2026-11-05 16:38: none of the five views
+  serve them yet): the SOW pair on view_3827, view_3918 and view_3861; the bid pair on view_3552 and view_3573. Until
+  then every reader fails open (marker fallback on the sales / Ops pages, no sub card, no reconcile chip). Make writes
+  all four through the API — none needs inline editing. Nothing in ClickUp.
+- **Not built (the other halves)**: the view columns above, the Make scenario (and its publish-side "status → blank"
   module), the hook URL, the "quote never outruns the bid" check on the Ops pencils / at publish, the lapsed-bid CU
   mover, the acceptance-date gate, the history-strip entries. Tests: `tests/sow-page/test-quote-extension.js` (sales:
   modal, POST, states incl. the status field's three readings, the discontinued block), `tests/misc/test-quote-extension-

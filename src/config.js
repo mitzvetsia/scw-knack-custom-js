@@ -361,9 +361,10 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // from the sales SOW page (scene_1116), the reconcile page (scene_1155) and the
   // Preview Proposal page (scene_1096). Make is the ONLY writer; the pages only
   // post and read the Builder fields below.
-  //   SHARED STATE (Builder): SOW header `STATUS_quote extension` (blank / Requested /
-  //   Re-pricing) + `INPUT_requested expiration`; bid package `FLAG_extension requested`
-  //   (Yes/No) + `INPUT_requested quote expiration`. Make writes all four at every turn.
+  //   SHARED STATE (Builder, created 2026-11-05): SOW header `STATUS_expiration extension`
+  //   field_3314 (blank / Requested / Re-Pricing) + `INPUT_requested quote expiration date`
+  //   field_3315; bid package `FLAG_expiration extension requested` field_3316 (Yes/No) +
+  //   `INPUT_requested expiration date` field_3317. Make writes all four at every turn.
   //   'request-extension'  (the AE's or Ops's ask):
   //       { stepId, sowId, proposalRecordId, requestedDate: 'M/D/YYYY', reason,
   //         currentQuoteExpiration: 'M/D/YYYY' | '', triggeredBy: { name, email },

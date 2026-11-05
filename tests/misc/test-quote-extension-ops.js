@@ -142,15 +142,14 @@ function reconcilePage(row, lines) {
   disabled.clear();
 
   // ── the SOW status field once configured ──
-  qx.CONFIG.sow.status = 'field_9001'; qx.CONFIG.sow.requestedDate = 'field_9002';
-  reconcilePage(sowRow({ field_9001: 'Re-pricing', field_9001_raw: 'Re-pricing' })); qx.decorateOps();
-  check('status Re-pricing: the re-pricing line, no buttons', [box().getAttribute('data-scw-qext'), q('button', box()), /re-pricing this bid/.test(txt(box()))], ['repricing', null, true]);
-  reconcilePage(sowRow({ field_9001: 'Requested', field_9001_raw: 'Requested', field_9002: '12/31/2026', field_9002_raw: { date_formatted: '12/31/2026' } })); qx.decorateOps();
+  check('the SOW Builder keys are wired', [qx.CONFIG.sow.status, qx.CONFIG.sow.requestedDate], ['field_3314', 'field_3315']);
+  reconcilePage(sowRow({ field_3314: 'Re-Pricing', field_3314_raw: 'Re-Pricing' })); qx.decorateOps();
+  check('status Re-Pricing (the Builder option): the re-pricing line, no buttons', [box().getAttribute('data-scw-qext'), q('button', box()), /re-pricing this bid/.test(txt(box()))], ['repricing', null, true]);
+  reconcilePage(sowRow({ field_3314: 'Requested', field_3314_raw: 'Requested', field_3315: '12/31/2026', field_3315_raw: { date_formatted: '12/31/2026' } })); qx.decorateOps();
   check('status Requested: pending with the record\'s date', [box().getAttribute('data-scw-qext'), /Extension to 12\/31\/2026/.test(txt(box())), !!q('[data-qext-nudge]', box())], ['pending', true, true]);
   qx._marker.write(SOW, { requestedDate: '1/1/2030', at: '1/1/2026', routedTo: 'svs' });
-  reconcilePage(sowRow({ field_9001: '', field_9001_raw: '' })); qx.decorateOps();
+  reconcilePage(sowRow({ field_3314: '', field_3314_raw: '' })); qx.decorateOps();
   check('status blank: ready, and a stale marker is cleared', [box().getAttribute('data-scw-qext'), qx._marker.read(SOW)], ['ready', null]);
-  qx.CONFIG.sow.status = ''; qx.CONFIG.sow.requestedDate = '';
 
   // ── the Preview Proposal page (scene_1096): the SOW from the route, a single-record SOW view ──
   window.Knack.router.current_scene_key = 'scene_1096';

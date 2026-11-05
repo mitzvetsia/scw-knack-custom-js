@@ -7,7 +7,7 @@
 //     decides the card: svs/ops/unknown → the pending state (chip, Nudge, Cancel → their POSTs),
 //     auto → no pending state; the pending state survives a re-render (session marker) and reads the
 //     Builder flag first once configured; an expired proposal's "coordinate with Ops" note is replaced;
-//   - sub bid page (scene_1149): no flag field configured → no card; flag Yes on the bid record → the
+//   - sub bid page (scene_1149): no flag field configured, or not served → no card; flag Yes on the bid record → the
 //     card with the requested date, the bid's expiration and three answers, each ONE POST
 //     `confirm-extension` (extend carries the (editable) date and refuses a bad one); flag No → no card.
 const fs = require('fs');
@@ -135,22 +135,22 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   q('[data-qext-cancel]', modal()).click();
   // the Builder status field wins over the marker once configured — three readings
   qx._marker.write(SOW, { requestedDate: '1/1/2030', at: '1/1/2026', routedTo: 'svs' });
-  qx.CONFIG.sow.status = 'field_9001'; qx.CONFIG.sow.requestedDate = 'field_9002';
-  salesPage(future, { field_9001: 'No', field_9001_raw: false }); cardRender(); await sleep(200);
+  check('the SOW Builder keys are wired (STATUS_expiration extension / INPUT_requested quote expiration date)', [qx.CONFIG.sow.status, qx.CONFIG.sow.requestedDate], ['field_3314', 'field_3315']);
+  salesPage(future, { field_3314: 'No', field_3314_raw: false }); cardRender(); await sleep(200);
   check('a Yes/No flag reading No: not pending, the stale marker is cleared', [q('.scw-qext').getAttribute('data-scw-qext'), qx._marker.read(SOW)], ['ready', null]);
-  salesPage(future, { field_9001: 'Yes', field_9001_raw: true, field_9002: '12/31/2026', field_9002_raw: { date_formatted: '12/31/2026' } }); cardRender(); await sleep(200);
+  salesPage(future, { field_3314: 'Yes', field_3314_raw: true, field_3315: '12/31/2026', field_3315_raw: { date_formatted: '12/31/2026' } }); cardRender(); await sleep(200);
   check('a Yes/No flag reading Yes: pending with the record\'s requested date', [q('.scw-qext').getAttribute('data-scw-qext'), /Extension to 12\/31\/2026/.test(txt(q('.scw-qext > div')))], ['pending', true]);
-  salesPage(future, { field_9001: 'Requested', field_9001_raw: 'Requested', field_9002: '12/31/2026', field_9002_raw: { date_formatted: '12/31/2026' } }); cardRender(); await sleep(200);
+  salesPage(future, { field_3314: 'Requested', field_3314_raw: 'Requested', field_3315: '12/31/2026', field_3315_raw: { date_formatted: '12/31/2026' } }); cardRender(); await sleep(200);
   check('status "Requested": pending, Nudge / Cancel offered', [q('.scw-qext').getAttribute('data-scw-qext'), !!q('[data-qext-nudge]'), !!q('[data-qext-cancel-req]')], ['pending', true, true]);
-  salesPage(future, { field_9001: 'Re-pricing', field_9001_raw: 'Re-pricing' }); cardRender(); await sleep(200);
-  check('status "Re-pricing": the re-pricing line, no buttons, no request', [q('.scw-qext').getAttribute('data-scw-qext'), txt(q('.scw-qext')), q('.scw-qext button')],
+  salesPage(future, { field_3314: 'Re-Pricing', field_3314_raw: 'Re-Pricing' }); cardRender(); await sleep(200);
+  check('status "Re-Pricing" (the Builder option, capital P): the re-pricing line, no buttons, no request', [q('.scw-qext').getAttribute('data-scw-qext'), txt(q('.scw-qext')), q('.scw-qext button')],
     ['repricing', 'Re-pricing The sub is re-pricing this bid. The quote keeps its current expiration until Ops publishes the re-priced proposal.', null]);
   check('… extensionState reads the kind', qx.pendingState(SOW).kind, 'repricing');
-  salesPage('1/2/2026', { field_9001: 'Re-pricing', field_9001_raw: 'Re-pricing' }); cardRender(); await sleep(200);
+  salesPage('1/2/2026', { field_3314: 'Re-pricing', field_3314_raw: 'Re-pricing' }); cardRender(); await sleep(200);
   check('… an expired proposal\'s note says a re-published proposal follows', /re-pricing the bid — a re-published proposal follows/.test(txt(q('.scw-pq-expired-note'))), true);
-  salesPage(future, { field_9001: '', field_9001_raw: '' }); cardRender(); await sleep(200);
+  salesPage(future, { field_3314: '', field_3314_raw: '' }); cardRender(); await sleep(200);
   check('status blank: the request button is back', q('.scw-qext').getAttribute('data-scw-qext'), 'ready');
-  qx.CONFIG.sow.status = ''; qx.CONFIG.sow.requestedDate = ''; qx._marker.write(SOW, null);
+  qx._marker.write(SOW, null);
 
   // ── the discontinued-products gate (sales is blocked, with instructions) ──
   let catReady = false; const disabled = new Set(); const catWaiters = [];
@@ -193,12 +193,16 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
       field_2387_raw: [{ id: SOW, identifier: '1589' }] }, bid || {}) } } };
   }
   const subCard = () => document.getElementById('scw-qext-sub');
-  subPage({ field_9101: 'Yes', field_9101_raw: true }); qx.renderSubCard();
+  check('the bid Builder keys are wired (FLAG_expiration extension requested / INPUT_requested expiration date)', [qx.CONFIG.sub.requestedFlag, qx.CONFIG.sub.requestedDate], ['field_3316', 'field_3317']);
+  qx.CONFIG.sub.requestedFlag = '';
+  subPage({ field_3316: 'Yes', field_3316_raw: true }); qx.renderSubCard();
   check('no flag field configured: no card', !!subCard(), false);
-  qx.CONFIG.sub.requestedFlag = 'field_9101'; qx.CONFIG.sub.requestedDate = 'field_9102';
-  subPage({ field_9101: 'No', field_9101_raw: false }); qx.renderSubCard();
+  qx.CONFIG.sub.requestedFlag = 'field_3316';
+  subPage({}); qx.renderSubCard();
+  check('the flag not served on view_3552 (column not added yet): no card (fail open)', !!subCard(), false);
+  subPage({ field_3316: 'No', field_3316_raw: false }); qx.renderSubCard();
   check('flag No: no card', !!subCard(), false);
-  subPage({ field_9101: 'Yes', field_9101_raw: true, field_9102: '12/31/2026', field_9102_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
+  subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
   check('flag Yes: the card above the document names the requested date and the bid\'s own expiration, with the three answers',
     [!!subCard(), subCard().nextElementSibling.id, /hold this bid until 12\/31\/2026/.test(txt(subCard())), /currently expires 11\/2\/2026/.test(txt(subCard())),
      [...subCard().querySelectorAll('[data-qext-outcome]')].map(b => b.textContent)],
@@ -213,7 +217,7 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
     [body().stepId, body().bidPackageId, body().sowId, body().outcome, body().bidExpiration, body().note], ['confirm-extension', BID, SOW, 'extend', '12/15/2026', 'ok through mid-December']);
   lastPost().success({ success: true }); await sleep(10);
   check('after the reply the card reads sent', [subCard().getAttribute('data-scw-qext-sub-done'), /extended to 12\/15\/2026/.test(txt(subCard()))], ['extend', true]);
-  subPage({ field_9101: 'Yes', field_9101_raw: true, field_9102: '12/31/2026', field_9102_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
+  subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
   posts.length = 0; q('[data-qext-outcome="reprice"]', subCard()).click();
   check('re-price posts its outcome, no date', [body().outcome, body().bidExpiration], ['reprice', undefined]);
   lastPost().error({ status: 500 }); await sleep(10);

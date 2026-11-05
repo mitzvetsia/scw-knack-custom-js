@@ -53,16 +53,18 @@
  * fall back to a per-tab sessionStorage marker written after a successful
  * send (Requested only — a re-price can only be learned from the record).
  *
- * FAIL-OPEN: every Builder key below is '' until the field exists. With the
- * webhook at PLACEHOLDER the buttons are hidden unless
- * localStorage.scwQuoteExtPreview = '1' (QA), and a send reports the missing
- * hook instead of pretending. The sub card never renders without its flag key.
+ * FAIL-OPEN: a field a view does not serve reads as "not configured" — the
+ * sales / Ops pages fall back to the marker, the sub card does not render, the
+ * reconcile chip stays off. With the webhook at PLACEHOLDER the buttons are
+ * hidden unless localStorage.scwQuoteExtPreview = '1' (QA), and a send reports
+ * the missing hook instead of pretending.
  *
- * Builder (TBD): SOW header `STATUS_quote extension` + `INPUT_requested
- * expiration` as columns on view_3827 / view_3918 / view_3861; bid package
- * `FLAG_extension requested` + `INPUT_requested quote expiration` on view_3552
- * / view_3573. Fill the keys in CONFIG when they exist (sub-bid-document.js
- * drops the two bid rows from the document header off the same keys).
+ * Builder (fields created 2026-11-05): SOW header `STATUS_expiration extension`
+ * field_3314 + `INPUT_requested quote expiration date` field_3315 — needed as
+ * columns on view_3827 / view_3918 / view_3861; bid package `FLAG_expiration
+ * extension requested` field_3316 + `INPUT_requested expiration date` field_3317
+ * — on view_3552 / view_3573 (sub-bid-document.js drops the two bid rows from
+ * the document header off the same keys).
  ******************************************************************************/
 (function () {
   'use strict';
@@ -71,10 +73,11 @@
     webhookKey: 'MAKE_QUOTE_EXTENSION_WEBHOOK',
     defaultExtensionDays: 30,
     previewKey: 'scwQuoteExtPreview',      // localStorage '1' → the buttons with no hook (QA)
-    // SOW header — Builder TBD. status: STATUS_quote extension (blank / Requested /
-    // Re-pricing; a Yes/No flag works too: Yes = Requested). requestedDate:
-    // INPUT_requested expiration. Read on every page that shows a SOW record.
-    sow: { status: '', requestedDate: '' },
+    // SOW header (Builder 2026-11-05): status = STATUS_expiration extension
+    // (blank / Requested / Re-Pricing; a Yes/No flag would read Yes = Requested),
+    // requestedDate = INPUT_requested quote expiration date. Read on every page
+    // that shows a SOW record — fail-open where the view does not serve them.
+    sow: { status: 'field_3314', requestedDate: 'field_3315' },
     // SOW line items (the discontinued-products gate): the product connection
     // and the SOW-header connection used to pick one SOW's lines off a grid.
     line: { product: 'field_1949', sow: 'field_2154' },
@@ -102,8 +105,8 @@
       bidExpiration: 'field_2635',
       bidSow: 'field_2387',
       bidLabel: 'field_2638',
-      requestedFlag: '',                    // Builder TBD: bid FLAG_extension requested (Yes/No)
-      requestedDate: ''                     // Builder TBD: bid INPUT_requested quote expiration (date)
+      requestedFlag: 'field_3316',          // bid FLAG_expiration extension requested (Yes/No, Builder 2026-11-05)
+      requestedDate: 'field_3317'           // bid INPUT_requested expiration date
     }
   };
 
