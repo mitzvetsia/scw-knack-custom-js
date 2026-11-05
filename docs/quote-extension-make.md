@@ -64,10 +64,11 @@ Date compare: `parseDate(requestedDate; "M/D/YYYY") <= parseDate(bid.field_2635;
 A second request while `field_3316` is already Yes = treat as a nudge (re-notify, comment), do
 not move tasks again.
 
-The sub's link: the Preview Bid page under the SURVEYS DASHBOARD —
-`https://scwinstallation.knack.com/installationservices#site-survey-request-details/<surveyRequestId>/edit-bid-package/<bidPackageId>/`
+The sub's link: the Preview Bid page under the SURVEYS DASHBOARD, with the portal's parent slugs (scene_1149 sits under
+scene_1140 under scene_1138 `subcontractor-portal`) —
+`https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/<surveyRequestId>/edit-bid-package/<bidPackageId>/`
 (`surveyRequestId` = the bid's `field_2386`; the dashboard alone,
-`…#site-survey-request-details/<surveyRequestId>/`, also works: the banner there links to the bid).
+`…#subcontractor-portal/site-survey-request-details/<surveyRequestId>/`, also works: the banner there links to the bid).
 Notification content, project number FIRST: project number, client, SOW number, bid id + friendly
 name, current bid expiration, requested quote date, the requester's reason, the WARNING line when
 present, the one link.
@@ -98,9 +99,15 @@ Payload: `sowId, triggeredBy`.
 ### Response (every route)
 
 Webhook Response, JSON: `{ "success": true, "routedTo": "svs" | "ops" | "auto", "message": "…" }`
-or `{ "success": false, "error": "…" }`. Put the Response module LAST: the pages read `routedTo`
-off the reply to decide the pending state, and a 200 before the writes would show "pending" on a
-request that then failed. (Runs are short — no PDF — so the 40 s limit is not a concern.)
+or `{ "success": false, "error": "…" }`. The Response module sits right AFTER the route's Knack writes
+and BEFORE the ClickUp / Slack modules: the pages read `routedTo` off the reply to decide the pending
+state, so a 200 before the writes would show "pending" on a request that then failed, while a ClickUp
+or Slack failure after the writes must not turn a landed request into a page error. The Slack modules
+carry an Ignore error handler and the deal-owner lookup the source scenarios' Resume (fallback
+`var.organization.sales_fallback_slackID`); a ClickUp failure still shows in the run history. The
+search-and-iterate tails (published proposals on `extend`, the bid's line items on `reprice`) stay
+last. `nudge` has no writes, so its Response stays last. (Runs are short — no PDF — so the 40 s
+limit is not a concern.)
 
 ## The shared publish scenario (hook `…mezrtqmf…`) — one added module
 
@@ -116,20 +123,37 @@ proposal is out. (Unconditional clearing is also fine: nothing else holds the fi
 - Guard: move only when the Install Work task is in `final bid submitted`; otherwise comment only.
   No status is stashed — every close returns to Final Bid Submitted, a re-price goes to Prepare Bid.
 
-## Build plan
+## Build plan — blueprint delivered 2026-11-05
 
-The scenario is generated as a blueprint from exports (the repo's usual path: a scratchpad
-`bp_patch_*.py` over an exported JSON, imported INTO a new scenario), so the Knack / ClickUp /
-notification modules carry the live connection ids and the exact lookups. Exports needed:
+`tools/bp_gen_0608.py` generated "06.08 BID RECONCILLIATION - request expiration date extension.blueprint.json"
+(76 modules, 7 error-handler directives) from the user's webhook-only 06.08 export (hook 2866644 kept) and
+modules cloned out of the 00.00 / 06.02 / 06.03 / 06.04 exports, so every Knack / ClickUp / Slack module
+carries the live connection ids and the proven lookups (project `field_1199` → `clickup:getATask` →
+`custom_fields.Subcontractor Task ID` = the SVS task; `Slack Thread` custom field → thread ts; deal owner by
+`field_1087`). **Import it INTO the 06.08 scenario** (Scenario → Import blueprint) so the hook stays. The
+sub is notified through a ClickUp comment on the SVS task with Notify all ON and the portal link (no email
+module — the tech-group recipient resolution from 04.04 was not needed). What is NOT in the blueprint: the
+publish scenario's status-clear module (below) — it needs that scenario's export.
 
-1. The QA-fail scenario (`MAKE_QA_FAIL_WEBHOOK`) — project → `field_1199` → SVS task, and the
-   sub-facing notification module.
-2. 04.04 (the survey send) — the sub's recipient resolution from the tech group, if the QA-fail
-   scenario does not carry it.
-3. The shared publish scenario — to add the status-clear module.
+Verify on the first runs (Make answers nothing of this at import time):
 
-Then: import, set the hook URL in `src/config.js`, QA with `localStorage.scwQuoteExtPreview = '1'`
-on a test SOW (sales card → Make → sub card → extend / re-price / decline), flip the switch.
+- SOW `field_3314` cleared by `{{emptyarray}}` on extend / decline / cancel (modules "SOW status = blank").
+  If Knack ignores it (the record still reads Requested), replace that mapping with a Knack "Make an API
+  Call" PUT of `{"field_3314": ""}`, or add a third option "None" and have the bundle read it as blank.
+- The ClickUp status names `waiting on bid` / `prepare bid` / `final bid submitted` typed into
+  `editATaskAdvanced` (both lists carry them; the module takes the literal name).
+- Scenario settings → **Sequential processing ON** (the blueprint sets it; two requests on one SOW must not
+  race the status writes).
+- The dates: the request route compares `requestedDate` with the bid's `field_2635` as epoch seconds
+  (`formatDate(parseDate(…; "M/D/YYYY"); "X")`); a blank bid date routes to the sub. Knack date fields
+  are written as `M/D/YYYY` strings with `_datetype: simple`.
+- The requested-date fields (`field_3315` / `field_3317`) are NOT blanked on extend / decline / cancel — an
+  empty mapped value is not sent by the Knack module and the readers key off the status / flag, so the
+  stale date is harmless; the next request overwrites it.
+
+Then: paste the new hook URL into `MAKE_QUOTE_EXTENSION_WEBHOOK` (`src/config.js`), rebuild, push (that is
+the launch); QA with `localStorage.scwQuoteExtPreview = '1'` on a test SOW first (sales card → Make → sub
+card → extend / re-price / decline).
 
 ## QA checklist (preview flag on, test SOW with a basis bid)
 

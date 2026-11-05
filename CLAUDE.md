@@ -2335,9 +2335,18 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   (the sub's dashboard banner). Until
   then every reader fails open (marker fallback on the sales / Ops pages, no sub card, no reconcile chip). Make writes
   all four through the API — none needs inline editing. Nothing in ClickUp.
-- **Not built (the other halves)**: the view columns above, the Make scenario (and its publish-side "status → blank"
-  module), the hook URL, the "quote never outruns the bid" check on the Ops pencils / at publish, the lapsed-bid CU
-  mover, the acceptance-date gate, the history-strip entries. Tests: `tests/sow-page/test-quote-extension.js` (sales:
+- **Make scenario 06.08 — blueprint delivered 2026-11-05** (`tools/bp_gen_0608.py` over the user's webhook-only
+  06.08 export + modules cloned from the 00.00 / 06.02 / 06.03 / 06.04 exports; import INTO the scenario so hook
+  2866644 stays; spec + first-run verify list in `docs/quote-extension-make.md`). Routes on `stepId`; every route's
+  Webhook Response sits right after its Knack writes and before the ClickUp / Slack modules (Slack = Ignore
+  handlers, deal-owner lookup = the source's Resume fallback); Sequential processing ON. The sub is reached by a
+  ClickUp comment on the SVS task (Notify all) carrying the portal link
+  `#subcontractor-portal/site-survey-request-details/<sr>/edit-bid-package/<bid>/`. Verify live: `{{emptyarray}}`
+  clears the multiple-choice `field_3314`; the literal status names in `editATaskAdvanced`.
+- **Not built (the other halves)**: the hook URL in `src/config.js` (PLACEHOLDER = the feature is off), the shared
+  publish scenario's "status → blank" module (needs that scenario's export), the "quote never outruns the bid"
+  check on the Ops pencils / at publish, the lapsed-bid CU mover, the acceptance-date gate, the history-strip
+  entries. Tests: `tests/sow-page/test-quote-extension.js` (sales:
   modal, POST, states incl. the status field's three readings, the discontinued block), `tests/misc/test-quote-extension-
   ops.js` (both Ops scenes: ready / nobasis / pending / re-pricing, the warning → modal → payload, the SOW-scoped line
   filter), the header-facts skip in `tests/bid-document/test-bid-document.js`, the bid-expiry check in
