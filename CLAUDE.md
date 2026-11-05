@@ -2314,7 +2314,12 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   is ONE `confirm-extension` POST (`bidPackageId`, `sowId` from `field_2387`, `outcome`, `bidExpiration` on extend,
   `note`); a failed POST re-enables the buttons with the HTTP status; a sent answer replaces the card. With the flag
   key blank the card never renders (one console warning). `sub-bid-document.js` `readHeader` skips the two bid fields
-  off the same CONFIG keys, so the bid PDF never prints "Extension requested: Yes" as a header fact.
+  off the same CONFIG keys, so the bid PDF never prints "Extension requested: Yes" as a header fact. **The sub's SURVEYS
+  DASHBOARD (scene_1140)** — where the portal and the notification's link land them — gets `renderDashboardBanner`: a
+  banner above the worksheet (`#view_3505`) with one row per bid of the request whose flag is Yes on the BID_packages grid
+  view_3507 (bid id · friendly name, the requested date, the bid's own expiration) and a **"Review & answer"** link to that
+  bid's Preview Bid page (the row's own link column, else composed under the current page); it goes when the flag clears.
+  Same switch, same keys (**Builder: field_3316 + field_3317 as columns on view_3507 too**).
 - **Reconcile page sub card (scene_1155)**: `bid-review/config.js` `bidExpiration: 'field_2635'` (already a column on
   view_3573) → `transform.js` carries `pkg.bidExpiration` / `extensionPending` / `extensionRequestedDate` → the sub
   card's details cell gets a **"Bid expires 11/2/2026"** line (`bid-review-v2/header.js` `decoratePkgDetails`,
@@ -2326,7 +2331,8 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   package `FLAG_expiration extension requested` **`field_3316`** (Yes/No) + `INPUT_requested expiration date`
   **`field_3317`**. `CONFIG.sow.*` / `CONFIG.sub.*` here and `bidExtensionFlag` / `bidExtensionDate` in
   bid-review/config.js carry them. **Still to add as COLUMNS** (schema read 2026-11-05 16:38: none of the five views
-  serve them yet): the SOW pair on view_3827, view_3918 and view_3861; the bid pair on view_3552 and view_3573. Until
+  serve them yet): the SOW pair on view_3827, view_3918 and view_3861; the bid pair on view_3552, view_3573 and view_3507
+  (the sub's dashboard banner). Until
   then every reader fails open (marker fallback on the sales / Ops pages, no sub card, no reconcile chip). Make writes
   all four through the API — none needs inline editing. Nothing in ClickUp.
 - **Not built (the other halves)**: the view columns above, the Make scenario (and its publish-side "status → blank"

@@ -248,6 +248,40 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   lastPost().error({ status: 0 }); await sleep(10);
   check('a CORS-opaque reply counts as sent', subCard().getAttribute('data-scw-qext-sub-done'), 'decline');
 
+  // ── the sub's SURVEYS DASHBOARD (scene_1140): a banner per flagged bid, linking to its page ──
+  window.Knack.router.current_scene_key = 'scene_1140';
+  window.location.hash = '#site-survey-request-details/6a465ad1bb00d991572419aa/';
+  const BID2 = '6a4ab0e1cc2d7f0a3c333333';
+  function dashPage(rows, withLinks) {
+    document.body.innerHTML = '<div id="kn-scene_1140"><div class="kn-view kn-table" id="view_3507"><table><tbody>' +
+      rows.map(r => '<tr id="' + r.id + '"><td class="kn-table-link">' + (withLinks ? '<a href="#site-survey-request-details/6a465ad1bb00d991572419aa/edit-bid-package/' + r.id + '/">Preview bid</a>' : '') + '</td></tr>').join('') +
+      '</tbody></table></div><div class="kn-view kn-table" id="view_3505"></div></div>';
+    window.Knack.views = { view_3507: { model: { data: { models: rows.map(r => ({ attributes: r })) } } } };
+  }
+  const bidRow = (id, extra) => Object.assign({ id, field_2414: '60486704913-SR20-B465', field_2636: 'Base', field_2635: '11/2/2026', field_2635_raw: { date_formatted: '11/2/2026' } }, extra || {});
+  const dash = () => document.getElementById('scw-qext-dash');
+  hook = 'PLACEHOLDER';
+  dashPage([bidRow(BID, { field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } })], true); qx.renderDashboardBanner();
+  check('dashboard, no hook: no banner even with the flag on', !!dash(), false);
+  hook = 'https://hook.us1.make.com/qext';
+  dashPage([bidRow(BID), bidRow(BID2, { field_2414: '60486704913-SR20-B466', field_2636: 'Variant' })], true); qx.renderDashboardBanner();
+  check('dashboard, no bid flagged: no banner', !!dash(), false);
+  dashPage([bidRow(BID, { field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }),
+            bidRow(BID2, { field_2414: '60486704913-SR20-B466', field_2636: 'Variant', field_3316: 'No', field_3316_raw: false })], true); qx.renderDashboardBanner();
+  check('one flagged bid: the banner sits above the worksheet, names the bid, the requested date and the bid\'s own expiration, and links to that bid\'s page off the grid row',
+    [!!dash(), dash().nextElementSibling.id, dash().getAttribute('data-scw-qext-dash'), txt(q('[data-qext-dash-bid]', dash())), q('[data-qext-dash-open]', dash()).getAttribute('href')],
+    [true, 'view_3505', '1', 'Bid 60486704913-SR20-B465 · Base — hold it until 12/31/2026 (it currently expires 11/2/2026) Review & answer',
+     '#site-survey-request-details/6a465ad1bb00d991572419aa/edit-bid-package/' + BID + '/']);
+  dashPage([bidRow(BID, { field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }),
+            bidRow(BID2, { field_2414: '60486704913-SR20-B466', field_2636: 'Variant', field_3316: 'Yes', field_3316_raw: true, field_3317: '1/15/2027', field_3317_raw: { date_formatted: '1/15/2027' } })], false); qx.renderDashboardBanner();
+  check('two flagged bids, the link column not rendered: two rows, the hrefs composed under the current page', [dash().querySelectorAll('[data-qext-dash-bid]').length, txt(q('.scw-qext__title', dash())),
+    [...dash().querySelectorAll('[data-qext-dash-open]')].map(a => a.getAttribute('href'))],
+    [2, 'SCW asks you to hold 2 bids on this survey', ['#site-survey-request-details/6a465ad1bb00d991572419aa/edit-bid-package/' + BID + '/', '#site-survey-request-details/6a465ad1bb00d991572419aa/edit-bid-package/' + BID2 + '/']]);
+  const dashEl = dash(); qx.renderDashboardBanner();
+  check('a repeat render keeps the element', dash() === dashEl, true);
+  dashPage([bidRow(BID)], true); qx.renderDashboardBanner();
+  check('the flag cleared (answered): the banner goes', !!dash(), false);
+
   // ── helpers ──
   check('normalizeMdy: shapes in, M/D/YYYY out, impossible dates out', [qx.normalizeMdy('11-31-2026'), qx.normalizeMdy('12.1.26'), qx.normalizeMdy('01022027'), qx.normalizeMdy('2/29/2027')], ['', '12/1/2026', '1/2/2027', '']);
   check('suggestedDate: +30 days past the current expiration, never before +30 days from today', [qx.suggestedDate(plus(5)), qx.suggestedDate('1/1/2020'), qx.suggestedDate('')], [plus(35), plus(30), plus(30)]);

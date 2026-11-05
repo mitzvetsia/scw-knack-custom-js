@@ -41,6 +41,11 @@
  *      quote date beside the bid's own expiration with three answers:
  *      Can't extend · Re-price instead · Extend bid to <date> (date editable,
  *      may be earlier). Each POSTs `confirm-extension`; the page writes nothing.
+ *      The sub's SURVEYS DASHBOARD (scene_1140, where the notification's link
+ *      and the portal both land them) gets a banner above the worksheet for
+ *      every bid of the request that carries the flag — the requested date,
+ *      the bid's own expiration and a "Review & answer" link to that bid's
+ *      page (`renderDashboardBanner`, off the BID_packages grid view_3507).
  *   4. Reconcile page sub card — the "Bid expires" line and the "Extension
  *      pending" chip live in bid-review-v2/header.js (fields from
  *      bid-review/config.js: bidExpiration / bidExtensionFlag).
@@ -111,7 +116,10 @@
       bidSow: 'field_2387',
       bidLabel: 'field_2638',
       requestedFlag: 'field_3316',          // bid FLAG_expiration extension requested (Yes/No, Builder 2026-11-05)
-      requestedDate: 'field_3317'           // bid INPUT_requested expiration date
+      requestedDate: 'field_3317',          // bid INPUT_requested expiration date
+      // The SURVEYS DASHBOARD (where the sub lands): one banner line per bid
+      // of the request that carries the flag, linking to that bid's page.
+      dashboard: { scene: 'scene_1140', bidsGrid: 'view_3507', bidPageSlug: 'edit-bid-package', mountBefore: 'view_3505' }
     }
   };
 
@@ -933,8 +941,50 @@
     });
   }
 
+  // ── The sub's SURVEYS DASHBOARD: a banner per flagged bid ──────────────
+  function bidPageHref(bidId) {
+    var grid = document.getElementById(CONFIG.sub.dashboard.bidsGrid);
+    var row = grid && grid.querySelector('tr[id="' + bidId + '"]');
+    var a = row && row.querySelector('a[href*="' + CONFIG.sub.dashboard.bidPageSlug + '"]');
+    if (a && a.getAttribute('href')) return a.getAttribute('href');
+    // The row's link column is not rendered yet: the page is a child of this one.
+    var base = String(window.location.hash || '#').replace(/\/+$/, '');
+    return base + '/' + CONFIG.sub.dashboard.bidPageSlug + '/' + bidId + '/';
+  }
+  function renderDashboardBanner() {
+    var c = CONFIG.sub, d = c.dashboard;
+    var existing = document.getElementById('scw-qext-dash');
+    function drop() { if (existing && existing.parentNode) existing.parentNode.removeChild(existing); }
+    if (!c.requestedFlag || !canAsk()) { drop(); return; }
+    var recs = viewRecords(d.bidsGrid), asked = [];
+    for (var i = 0; i < recs.length; i++) if (fieldYes(recs[i], c.requestedFlag)) asked.push(recs[i]);
+    if (!asked.length) { drop(); return; }
+    var mount = document.getElementById(d.mountBefore) || document.getElementById(d.bidsGrid);
+    if (!mount || !mount.parentNode) return;
+    injectStyles();
+    var box = existing || document.createElement('div');
+    box.id = 'scw-qext-dash';
+    box.className = 'scw-qext scw-qext--sub';
+    box.setAttribute('data-scw-qext-dash', String(asked.length));
+    box.innerHTML =
+      '<div class="scw-qext__title">SCW asks you to hold ' + (asked.length === 1 ? 'a bid' : asked.length + ' bids') + ' on this survey</div>' +
+      asked.map(function (rec) {
+        var requested = normalizeMdy(fieldText(rec, c.requestedDate)) || fieldText(rec, c.requestedDate);
+        var bidExp = normalizeMdy(fieldText(rec, c.bidExpiration)) || fieldText(rec, c.bidExpiration);
+        var label = [fieldText(rec, 'field_2414'), fieldText(rec, 'field_2636')].filter(Boolean).join(' · ') || fieldText(rec, c.bidLabel) || 'this bid';
+        return '<div class="scw-qext__row" data-qext-dash-bid="' + esc(rec.id) + '">' +
+          '<span>Bid <b>' + esc(label) + '</b>' + (requested ? ' — hold it until <b>' + esc(requested) + '</b>' : '') +
+            (bidExp ? ' <span class="scw-qext__muted">(it currently expires ' + esc(bidExp) + ')</span>' : '') + '</span> ' +
+          '<a class="scw-qext__btn scw-qext__btn--primary" data-qext-dash-open href="' + esc(bidPageHref(rec.id)) + '">Review &amp; answer</a>' +
+        '</div>';
+      }).join('') +
+      '<div class="scw-qext__line scw-qext__muted">Open the bid to extend it, re-price it, or tell SCW you can\'t extend.</div>';
+    if (!existing) mount.parentNode.insertBefore(box, mount);
+  }
+
   // ── Wiring ───────────────────────────────────────────────────────────────
   if (window.SCW && SCW.onSceneRender) {
+    SCW.onSceneRender(CONFIG.sub.dashboard.scene, function () { setTimeout(renderDashboardBanner, 200); }, NS);
     SCW.onSceneRender(CONFIG.sub.scene, function () { setTimeout(renderSubCard, 200); }, NS);
     for (var opsScene in CONFIG.ops) {
       if (Object.prototype.hasOwnProperty.call(CONFIG.ops, opsScene)) {
@@ -945,6 +995,8 @@
   if (window.SCW && SCW.onViewRender) {
     SCW.onViewRender(CONFIG.sub.bidView, function () { setTimeout(renderSubCard, 100); }, NS);
     SCW.onViewRender(CONFIG.sub.mountBefore, function () { setTimeout(renderSubCard, 100); }, NS);
+    SCW.onViewRender(CONFIG.sub.dashboard.bidsGrid, function () { setTimeout(renderDashboardBanner, 100); }, NS);
+    SCW.onViewRender(CONFIG.sub.dashboard.mountBefore, function () { setTimeout(renderDashboardBanner, 100); }, NS);
   }
   // The Published Proposal blocks are rebuilt on every render of their hosts
   // (the v2 header, ops-review-pill, view_3883): re-decorate after any render.
@@ -960,6 +1012,7 @@
     openRequestModal: openRequestModal,
     openOpsWarning: openOpsWarning,
     renderSubCard: renderSubCard,
+    renderDashboardBanner: renderDashboardBanner,
     enabled: canAsk,                  // the hook (or the QA preview flag) — header.js gates its chip on it
     pendingState: pendingState,
     extensionState: extensionState,
