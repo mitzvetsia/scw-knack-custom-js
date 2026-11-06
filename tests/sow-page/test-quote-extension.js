@@ -234,20 +234,20 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   check('flag Yes: the card above the document names the requested date and the bid\'s own expiration, with the three answers',
     [!!subCard(), subCard().nextElementSibling.id, /hold this bid until 12\/31\/2026/.test(txt(subCard())), /currently expires 11\/2\/2026/.test(txt(subCard())),
      [...subCard().querySelectorAll('[data-qext-outcome]')].map(b => b.textContent)],
-    [true, 'view_3550', true, true, ['Can\'t extend', 'Request re-price', 'Extend bid to 12/31/2026']]);
+    [true, 'view_3550', true, true, ['Can\'t extend', 'Request bid be reopened', 'Extend bid to 12/31/2026']]);
   // the re-price line shows ONLY the outcome that applies — never the if / then (2026-11-06)
   const repriceLine = () => txt([...subCard().querySelectorAll('.scw-qext__list li')][1]);
   check('the quote\'s expiration not served on the page: a neutral re-price line, no "if the quote has"',
     [subCard().getAttribute('data-scw-qext-reprice'), repriceLine(), /if the quote has|if it has not/i.test(txt(subCard()))],
-    ['unknown', 'Request re-price if you cannot extend without repricing — SCW reviews and reopens.', false]);
+    ['unknown', 'Request the bid be reopened if you cannot extend without repricing — SCW reviews and reopens.', false]);
   subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' }, field_2135: '01/15/2026', field_2135_raw: { date_formatted: '01/15/2026' } }); qx.renderSubCard();
   check('the quote already expired (field_2135 through the bid\'s SOW on view_3552): "reopens right away", the button reads Re-price instead',
     [subCard().getAttribute('data-scw-qext-reprice'), repriceLine(), txt(q('[data-qext-outcome="reprice"]', subCard()))],
     ['expired', 'Re-price instead if your costs have changed — the quote expired 1/15/2026, so your bid reopens for re-pricing right away.', 'Re-price instead']);
   subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' }, field_2135: plus(40), field_2135_raw: { date_formatted: plus(40) } }); qx.renderSubCard();
-  check('the quote still running: the sub REQUESTS a re-price (same line as unknown), the button reads Request re-price',
+  check('the quote still running: the sub REQUESTS the bid be reopened (same line as unknown), the button says so',
     [subCard().getAttribute('data-scw-qext-reprice'), repriceLine(), txt(q('[data-qext-outcome="reprice"]', subCard()))],
-    ['running', 'Request re-price if you cannot extend without repricing — SCW reviews and reopens.', 'Request re-price']);
+    ['running', 'Request the bid be reopened if you cannot extend without repricing — SCW reviews and reopens.', 'Request bid be reopened']);
   window.Knack.views.view_9999 = { model: { data: { models: [{ attributes: { id: 'x', field_2135: '02/01/2026', field_2135_raw: { date_formatted: '02/01/2026' } } }] } } };
   subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } });
   window.Knack.views.view_9999 = { model: { data: { models: [{ attributes: { id: 'x', field_2135: '02/01/2026', field_2135_raw: { date_formatted: '02/01/2026' } } }] } } };
@@ -311,7 +311,7 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
     [true, 'view_3505', '1', 'Bid 60486704913-SR20-B465 · Base — hold it until 12/31/2026 (it currently expires 11/2/2026) Open the bid to answer ›',
      '#site-survey-request-details/6a465ad1bb00d991572419aa/edit-bid-package/' + BID + '/']);
   check('the banner says what it is and what to do (2026-11-06: "communicate the existence of the request and the guidance to click through")',
-    [txt(q('.scw-qext__chip', dash())), txt(q('.scw-qext__title', dash())), /Open the bid and answer on its Preview Bid page: Extend it if the price still stands, Request re-price if you cannot extend without repricing, or Can't extend\. Nothing changes on your bid until you answer\./.test(txt(q('.scw-qext__line', dash())))],
+    [txt(q('.scw-qext__chip', dash())), txt(q('.scw-qext__title', dash())), /Open the bid and answer on its Preview Bid page: Extend it if the price still stands, Request the bid be reopened if you cannot extend without repricing, or Can't extend\. Nothing changes on your bid until you answer\./.test(txt(q('.scw-qext__line', dash())))],
     ['Action needed', 'SCW has asked you to extend a bid on this survey', true]);
   check('the BIDs grid row of the flagged bid carries the chip + the same link in its flag cell; the unflagged row does not',
     [q('#view_3507 tr[id="' + BID + '"] td.field_3316 .scw-qext-gridchip') ? txt(q('#view_3507 tr[id="' + BID + '"] td.field_3316 .scw-qext-gridchip')) : null,

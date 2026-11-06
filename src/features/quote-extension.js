@@ -39,7 +39,7 @@
  *      "extension requested" flag (CONFIG.sub.requestedFlag, read off
  *      view_3552's record), a card above the bid document shows the requested
  *      quote date beside the bid's own expiration with three answers:
- *      Can't extend · Request re-price (Re-price instead once the quote expired) · Extend bid to <date> (date editable,
+ *      Can't extend · Request bid be reopened (Re-price instead once the quote expired) · Extend bid to <date> (date editable,
  *      may be earlier). Each POSTs `confirm-extension`; the page writes nothing.
  *      The sub's SURVEYS DASHBOARD (scene_1140, where the notification's link
  *      and the portal both land them) gets a banner above the worksheet for
@@ -1019,12 +1019,12 @@
     return { kind: expired ? 'expired' : 'running', date: exp };
   }
   /** The re-price button's label: the quote already expired → the click reopens the bid itself;
-   *  otherwise it is a REQUEST SCW answers (2026-11-06: "Request re-price if you cannot extend
+   *  otherwise it is a REQUEST SCW answers (2026-11-06: "Request bid be reopened if you cannot extend
    *  without repricing — SCW reviews and reopens"). */
-  function repriceButtonLabel(o) { return o.kind === 'expired' ? 'Re-price instead' : 'Request re-price'; }
+  function repriceButtonLabel(o) { return o.kind === 'expired' ? 'Re-price instead' : 'Request bid be reopened'; }
   function repriceLineHtml(o) {
     if (o.kind === 'expired') return '<b>Re-price instead</b> if your costs have changed — the quote expired ' + esc(o.date) + ', so your bid reopens for re-pricing right away.';
-    return '<b>Request re-price</b> if you cannot extend without repricing — SCW reviews and reopens.';
+    return '<b>Request the bid be reopened</b> if you cannot extend without repricing — SCW reviews and reopens.';
   }
   function repriceSentText(o) {
     if (o.kind === 'expired') return 'Sent. Your bid is reopened for re-pricing.';
@@ -1147,7 +1147,7 @@
       '<div class="scw-qext__head"><span class="scw-qext__chip">Action needed</span></div>' +
       '<div class="scw-qext__title">SCW has asked you to extend ' + (asked.length === 1 ? 'a bid' : asked.length + ' bids') + ' on this survey</div>' +
       '<div class="scw-qext__line">The client needs more time on the quote. Open the bid and answer on its Preview Bid page: ' +
-        '<b>Extend</b> it if the price still stands, <b>Request re-price</b> if you cannot extend without repricing, or <b>Can\'t extend</b>. ' +
+        '<b>Extend</b> it if the price still stands, <b>Request the bid be reopened</b> if you cannot extend without repricing, or <b>Can\'t extend</b>. ' +
         'Nothing changes on your bid until you answer.</div>' +
       asked.map(function (rec) {
         var requested = normalizeMdy(fieldText(rec, c.requestedDate)) || fieldText(rec, c.requestedDate);
