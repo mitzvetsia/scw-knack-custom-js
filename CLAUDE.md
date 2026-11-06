@@ -2257,9 +2257,10 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
 `nudge-extension` / `cancel-extension`; the reply's `routedTo` is `svs` | `ops` | `auto`). The rule the design adds:
 **the quote never outruns the bid** — a requested date past the bid's expiration goes to the sub first.
 - **The switch** (`canAsk()`, 2026-11-05): (1) `localStorage.scwQuoteExtPreview = '1'` → every surface on in that
-  browser whatever the login; else (2) while `CONFIG.previewEmails` is NON-EMPTY (shipped as
+  browser whatever the login; else (2) while `CONFIG.previewEmails` is NON-EMPTY (shipped 2026-11-05 as
   `['micah.shearer@getscw.com']` — "I need all of this live for ME to test — show everything only to
-  micah.shearer@getscw.com") → only those logins, with or without the hook; else (3) the hook: while
+  micah.shearer@getscw.com"; widened 2026-11-06 to jon.carter, michael.mcgandy and ben.larue @getscw.com —
+  "turn these features on also for …") → only those logins, with or without the hook; else (3) the hook: while
   `MAKE_QUOTE_EXTENSION_WEBHOOK` is PLACEHOLDER NOTHING extension-related renders on any surface — no buttons, no
   pending / re-pricing lines, no sub card, no reconcile chip (`bid-review-v2/header.js` asks
   `SCW.quoteExtension.enabled()`) — whatever the Builder fields say. The hook URL is in config.js since

@@ -371,7 +371,7 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   window.Knack.router.current_scene_key = 'scene_1116';
   window.location.hash = '#sales/scope-of-work-details/' + SOW + '/';
   qx.CONFIG.previewEmails = PREVIEW_EMAILS; hook = 'PLACEHOLDER';
-  check('the shipped preview list is the one login', PREVIEW_EMAILS, ['micah.shearer@getscw.com']);
+  check('the shipped preview list is the four SCW logins (2026-11-06)', PREVIEW_EMAILS, ['micah.shearer@getscw.com', 'jon.carter@getscw.com', 'michael.mcgandy@getscw.com', 'ben.larue@getscw.com']);
   let who = { name: 'Danny Mize', email: 'danny@getscw.com' };
   window.Knack.getUserAttributes = () => who;
   salesPage(future); cardRender(); await sleep(200);

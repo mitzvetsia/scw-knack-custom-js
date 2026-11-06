@@ -2,7 +2,8 @@
 
 One feature, three audiences. Where it lives in the code: `src/features/quote-extension.js`; Make scenario 06.08;
 the full technical reference is the quote-extension section of `CLAUDE.md` and `docs/quote-extension-make.md`.
-Status on 2026-11-06: in preview (visible to micah.shearer@getscw.com only). Launch = empty the preview list.
+Status on 2026-11-06: in preview (visible to micah.shearer, jon.carter, michael.mcgandy and ben.larue @getscw.com only).
+Launch = empty the preview list.
 
 ---
 

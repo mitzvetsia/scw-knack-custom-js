@@ -89,7 +89,8 @@
     // logins (plus a browser carrying the preview flag), with or without the hook; the POSTs go to the
     // hook (config.js, else the per-browser override) and report "not configured" when there is none.
     // EMPTY = everyone, hook permitting (the pre-2026-11-05 switch). Clearing the list is the launch.
-    previewEmails: ['micah.shearer@getscw.com'],
+    // 2026-11-06: "turn these features on also for jon.carter, michael.mcgandy and ben.larue".
+    previewEmails: ['micah.shearer@getscw.com', 'jon.carter@getscw.com', 'michael.mcgandy@getscw.com', 'ben.larue@getscw.com'],
     // After a send this tab's marker outranks a BLANK status on the SOW record for this long: the
     // record on the page is the one loaded before Make wrote, and a blank read used to clear the
     // marker and put the "Request extension" button back until a reload (2026-11-06). The views

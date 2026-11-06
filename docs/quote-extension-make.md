@@ -179,7 +179,8 @@ Verify on the first runs (Make answers nothing of this at import time):
   empty mapped value is not sent by the Knack module and the readers key off the status / flag, so the
   stale date is harmless; the next request overwrites it.
 
-Then: QA as the preview login (`quote-extension.js` `CONFIG.previewEmails`, shipped as micah.shearer@getscw.com —
+Then: QA as a preview login (`quote-extension.js` `CONFIG.previewEmails`, shipped as micah.shearer, jon.carter,
+michael.mcgandy and ben.larue @getscw.com since 2026-11-06 —
 every surface renders for that login only; in that browser `localStorage.scwQuoteExtHook = '<the 06.08 hook URL>'`
 points the POSTs at the scenario before the URL is committed; sub-page testing under a sub login needs
 `localStorage.scwQuoteExtPreview = '1'` in that browser) on a test SOW (sales card → Make → sub card → extend /
