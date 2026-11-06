@@ -123,7 +123,7 @@ def ignore_errors(m, x, y):
 def slack_msg(text, thread, name, x, y, filt=None):
     # a Slack hiccup (bad thread ts, channel) must never block the Knack writes or the webhook response
     return ignore_errors(clone('06.04#119', {'text': text, 'parse': False, 'mrkdwn': True, 'channel': CH, 'username': 'SCW Autobots',
-                               'thread_ts': thread, 'icon_emoji': ':autobots:', 'channelWType': 'manualy'}, name, x, y, filt), x, y)
+                               'thread_ts': thread, 'icon_emoji': ':autobot:', 'channelWType': 'manualy'}, name, x, y, filt), x, y)
 def set_var(name_, value, label, x, y, filt=None):
     return clone('06.04#114', {'name': name_, 'scope': 'roundtrip', 'value': value}, label, x, y, filt)
 def respond(body_obj, name, x, y, filt=None):
