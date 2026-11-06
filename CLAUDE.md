@@ -583,7 +583,15 @@ Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-au
   `view_4093 → view_3937`; resolves false when neither lands, and the modal says so). Required or
   typed photos keep Remove photo (image cleared, slot kept) + disconnect. **Builder**: view_3937
   needs its Delete link enabled or the REST fallback 403s and the card comes back after the refetch.
-  Test: `tests/worksheet-v2/test-photo-delete-adhoc.js`.
+  Test: `tests/worksheet-v2/test-photo-delete-adhoc.js`. **A typed placeholder can be made deletable from
+  the modal (2026-11-06 — "change those 'camera view' placeholders to not having a photo type so that I can
+  delete them")**: the modal's Type select (`qa-popover.js` `buildClassifyBar`) leads with **"No type (loose
+  photo)"** on a typed photo, which PUTs `field_2445 = []` through the save view ("— no type —" on an untyped
+  one, a no-op; the display default "Photo" is never a type — `storedType`). After a Type or Required edit
+  `refreshCanDelete` re-asks `photos.js canDeleteAdhoc` and rebuilds the modal, so **Delete photo** appears the
+  moment a slot is untyped AND not required — on the filled viewer bar as before and now on an EMPTY slot too
+  (`buildDeleteButton`, shared; `.scw-qa-modal__viewer-bar--empty` under the upload pane). Closing the modal
+  shows the same red trash on the card. Test: `tests/worksheet-v2/test-photo-type-clear.js`.
 - **Shipments drawer (2026-10-16 → 2026-10-23)**: the Installation tile's "Shipments ›" line
   opens the OMS order mirrors (counts, per-order cards, tracking links, contents). The "Re-check
   shipments" re-pull button, its reference box and every resync hint went OFF on 2026-10-16

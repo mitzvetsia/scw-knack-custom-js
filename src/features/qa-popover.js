@@ -1187,6 +1187,50 @@
    *  keeps the record — viewer swaps to the upload pane in place, modal
    *  stays open). Locked once QA is signed off, same rule as the files
    *  popover. Returns null when the save machinery isn't available. */
+  /** "Delete photo" — only when the host said this record may go outright
+   *  (photo.canDelete: deploy page, not required, no photo type — photos.js
+   *  canDeleteAdhoc). Never locked by QA: a photo that was never QA'd has
+   *  nothing to sign off. The prompt and the delete itself are the
+   *  worksheet's shared photo-delete plumbing, so the card trash and this
+   *  button behave identically. Shared by the filled viewer bar and the
+   *  empty-slot pane. Returns null when the photo may not be deleted. */
+  function buildDeleteButton(photo, title) {
+    var ph = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.photos;
+    if (!(photo.canDelete && ph && typeof ph.deletePhotoRecord === 'function')) return null;
+    var delB = document.createElement('button');
+    delB.type = 'button';
+    delB.className = 'is-danger is-delete';
+    delB.textContent = 'Delete photo';
+    delB.title = title || 'Not required and no photo type — this photo can be deleted outright';
+    delB.addEventListener('click', function () {
+      if (delB.disabled) return;
+      var ask = (typeof ph.confirmPhotoDelete === 'function')
+        ? ph.confirmPhotoDelete({ adhoc: true })
+        : Promise.resolve(!!window.confirm(
+            'Are you SURE? This deletes the photo.\n\nThis permanently deletes the ' +
+            'photo record and its image. It can’t be undone.'));
+      ask.then(function (ok) {
+        if (!ok) return;
+        delB.disabled = true;
+        delB.textContent = 'Deleting…';
+        return ph.deletePhotoRecord(photo.id, photo.viewKey).then(function (issued) {
+          if (!issued) {
+            delB.disabled = false;
+            delB.textContent = 'Delete photo';
+            alert('Delete failed — the photo is still there. Is the DOC_photos grid on ' +
+                  'this page delete-enabled?');
+            return;
+          }
+          // The host refetches the worksheet (its onSaved) and the strip
+          // keeps the photo out of rebuilds until the refetch confirms it.
+          notifyHostSaved(photo);
+          closePopover(true);
+        });
+      });
+    });
+    return delB;
+  }
+
   function buildPhotoViewerBar(viewerEl, photo) {
     var u = pepUtil();
     var saveView = pepSaveView(photo.viewKey);
@@ -1234,41 +1278,8 @@
     // delete itself are the worksheet's shared photo-delete plumbing, so the
     // card trash and this button behave identically. Leftmost of the
     // actions: destructive first.
-    var ph = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.photos;
-    if (photo.canDelete && ph && typeof ph.deletePhotoRecord === 'function') {
-      var delB = document.createElement('button');
-      delB.type = 'button';
-      delB.className = 'is-danger is-delete';
-      delB.textContent = 'Delete photo';
-      delB.title = 'Not required and no photo type — this photo can be deleted outright';
-      delB.addEventListener('click', function () {
-        if (delB.disabled) return;
-        var ask = (typeof ph.confirmPhotoDelete === 'function')
-          ? ph.confirmPhotoDelete({ adhoc: true })
-          : Promise.resolve(!!window.confirm(
-              'Are you SURE? This deletes the photo.\n\nThis permanently deletes the ' +
-              'photo record and its image. It can’t be undone.'));
-        ask.then(function (ok) {
-          if (!ok) return;
-          delB.disabled = true;
-          delB.textContent = 'Deleting…';
-          return ph.deletePhotoRecord(photo.id, photo.viewKey).then(function (issued) {
-            if (!issued) {
-              delB.disabled = false;
-              delB.textContent = 'Delete photo';
-              alert('Delete failed — the photo is still there. Is the DOC_photos grid on ' +
-                    'this page delete-enabled?');
-              return;
-            }
-            // The host refetches the worksheet (its onSaved) and the strip
-            // keeps the photo out of rebuilds until the refetch confirms it.
-            notifyHostSaved(photo);
-            closePopover(true);
-          });
-        });
-      });
-      bar.appendChild(delB);
-    }
+    var delB = buildDeleteButton(photo, 'Not required and no photo type — this photo can be deleted outright');
+    if (delB) bar.appendChild(delB);
 
     // Copy to other slots… (2026-10-29): hands this uploaded photo to the v2
     // "+ Add Photos" modal (worksheet-v2/photo-assign.js) as its one tile —
@@ -1394,6 +1405,26 @@
    *  photo-edit-panel's collectTypeOptions() (full Builder-snippet
    *  catalog, scene-scrape fallback). onTypeChanged(label) lets the
    *  modal retitle itself when the type is reassigned. */
+  /** Re-derive photo.canDelete from the worksheet's ad-hoc rule (photos.js
+   *  canDeleteAdhoc: deploy page, not required, no type) after a Type /
+   *  Required edit. Returns true when the verdict changed. Hosts without
+   *  the rule (no worksheet-v2 photos module) keep the open-time value. */
+  /** The photo's STORED type: '' for an untyped record. The modal (and the
+   *  strip's chit attrs) label an untyped photo "Photo" for display, so that
+   *  word is never a type here. */
+  function storedType(photo) {
+    var t = String((photo && photo.type) || '').trim();
+    return (t.toLowerCase() === 'photo') ? '' : t;
+  }
+  function refreshCanDelete(photo) {
+    var ph = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.photos;
+    if (!ph || typeof ph.canDeleteAdhoc !== 'function') return false;
+    var next = !!ph.canDeleteAdhoc(photo.viewKey, { id: photo.id, required: photo.required, type: storedType(photo) });
+    var changed = next !== !!photo.canDelete;
+    photo.canDelete = next;
+    return changed;
+  }
+
   function buildClassifyBar(photo, onTypeChanged) {
     // Restricted surfaces (sub deployment dashboard): subs may upload into
     // a slot but never reclassify it — no Type/Required editors, period.
@@ -1422,9 +1453,16 @@
     typeWrap.className = 'scw-qa-modal__classify-item';
     typeWrap.appendChild(document.createTextNode('Type'));
     var sel = document.createElement('select');
+    // The first option is "No type": on a typed photo picking it CLEARS
+    // field_2445 (2026-11-06 — "change those 'camera view' placeholders to
+    // not having a photo type so that I can delete them"). A slot that is
+    // not required and has no type is a loose photo the deploy page may
+    // delete outright (photos.js canDeleteAdhoc), so clearing the type
+    // (and unticking Required) is how a seeded placeholder becomes
+    // deletable. On an untyped photo the option is the current state.
     var ph = document.createElement('option');
     ph.value = '';
-    ph.textContent = '— select type —';
+    ph.textContent = storedType(photo) ? 'No type (loose photo)' : '— no type —';
     sel.appendChild(ph);
     var currentLabel = (photo.type || '').trim().toLowerCase();
     options.forEach(function (o) {
@@ -1436,18 +1474,24 @@
     });
     sel.addEventListener('change', function () {
       var id = sel.value;
-      if (!id) return;
-      var label = sel.options[sel.selectedIndex].textContent;
+      var clearing = !id;
+      if (clearing && !storedType(photo)) return;   // already untyped — nothing to write
+      var label = clearing ? '' : sel.options[sel.selectedIndex].textContent;
       sel.disabled = true;
       flash('Saving…');
       var body = {};
-      body[F.photoType] = [id];
+      body[F.photoType] = clearing ? [] : [id];
       u.putRecord(saveView, photo.id, body).then(function () {
         photo.type = label;
         sel.disabled = false;
         flash('Saved ✓');
-        if (onTypeChanged) { try { onTypeChanged(label); } catch (e) {} }
+        if (onTypeChanged) { try { onTypeChanged(label || 'Photo'); } catch (e) {} }
         notifyHostSaved(photo);
+        // Deletable now? (not required + no type). The viewer bar / upload
+        // pane reads photo.canDelete at build time, so rebuild the modal
+        // when the verdict flips — the "Delete photo" button appears (or
+        // goes) without a close + reopen.
+        if (refreshCanDelete(photo)) rebuildModal(photo);
       }).catch(function (err) {
         sel.disabled = false;
         flash((err && err.message) || 'Save failed', true);
@@ -1474,6 +1518,7 @@
         // Required photos get QA served — swap the QA sidebar in (or out)
         // live instead of making the user close + reopen the viewer.
         photo.needsQa = want;
+        refreshCanDelete(photo);
         rebuildModal(photo);
       }).catch(function (err) {
         cb.checked = !want;
@@ -1672,6 +1717,17 @@
     } else {
       if (classify) viewer.appendChild(classify);
       viewer.appendChild(buildUploadPane(photo));
+      // An EMPTY slot that is not required and has no type is a loose
+      // record with nothing in it — offer the same delete the filled
+      // viewer bar offers (2026-11-06: seeded "Camera View" placeholders
+      // ops wants gone: clear the type above, untick Required, delete).
+      var delEmpty = buildDeleteButton(photo, 'Delete this empty slot (not required, no photo type)');
+      if (delEmpty) {
+        var delRow = document.createElement('div');
+        delRow.className = 'scw-qa-modal__viewer-bar scw-qa-modal__viewer-bar--empty';
+        delRow.appendChild(delEmpty);
+        viewer.appendChild(delRow);
+      }
     }
     splitBody.appendChild(viewer);
 
