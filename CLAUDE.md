@@ -2293,7 +2293,23 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   Preview Proposal row; `.scw-totals-proposal .scw-qext` is left-aligned inside that right-aligned panel). Rebuilt on
   every view_3418 / view_3814 / view_3827 render, so a redraw after Nudge / Cancel settles into place. Test:
   `tests/sow-page/test-totals-card-extension.js` (the first test to drive the real scene-tweaks.js: its veil
-  watchdog `setInterval` means the test must `process.exit`).
+  watchdog `setInterval` means the test must `process.exit`). **The state box is STACKED** (same day — "adjust the
+  design so it doesn't break weird"): `stateHtml` renders `.scw-qext__head` (the chip alone), then one fact per
+  `.scw-qext__line` ("Extension to 01/04/2027" / muted "Requested 10/23 · awaiting SVS"), then the button row — an
+  inline chip + sentence wrapped mid-sentence in that ~280px column. The blocked (discontinued) box has the same
+  shape. The compact `.scw-qext--ops` rows keep the one-line shape by CSS (head inline-flex, lines inline with a
+  "·" between them).
+- **The SUB's surfaces are gated by the hook alone (2026-11-06)**: `canShowSub()` = preview flag or hook — the
+  preview email list decides who may ASK, never whether the sub sees a request Make already flagged on their bid
+  record (a listed ops login's test request was invisible to the sub answering it). Applies to the bid-page card
+  (`renderSubCard`) and the SURVEYS DASHBOARD (`renderDashboardBanner`), which now says what it is and what to do
+  ("communicate the existence of the extension request and the guidance to click through"): an "Action needed" chip,
+  "SCW has asked you to extend a bid on this survey", one sentence naming the three answers on the Preview Bid page
+  and that nothing changes until they answer, one boxed row per flagged bid (bid · hold until · current expiration ·
+  **"Open the bid to answer ›"**), AND `decorateBidsGrid`: the flagged row of the BIDs grid view_3507 gets the same
+  chip + link appended to its flag cell (`td.field_3316` — Builder put the two columns on view_3507 on 2026-11-06),
+  cleared and re-stamped on every render so Knack's grid rebuild never doubles it, gone with the banner when the flag
+  clears. Tests: the dashboard block + the sub-gate block in `tests/sow-page/test-quote-extension.js`.
 - **Discontinued products BLOCK sales** ("the expiration request itself can be blocked on the Knack side for the sales
   user with instructions"): `discontinuedIn(records)` asks `SCW.catalog.isDisabled(productId) === true` over the SOW's
   line items (view_3586 on the sales page) — the worksheet's own discontinued verdict, nothing new. Any hit → the card

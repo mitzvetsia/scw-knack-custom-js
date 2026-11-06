@@ -103,8 +103,10 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   lastPost().success({ success: true, routedTo: 'svs' });
   await sleep(10);
   check('routedTo svs: the modal closes, the card shows the pending state with the date, the day and Nudge / Cancel',
-    [!!modal(), q('.scw-qext').getAttribute('data-scw-qext'), txt(q('.scw-qext > div')), !!q('[data-qext-nudge]'), !!q('[data-qext-cancel-req]')],
-    [false, 'pending', 'Extension pending Extension to ' + plus(45) + ' requested ' + mdy(new Date()) + ' · awaiting SVS', true, true]);
+    [!!modal(), q('.scw-qext').getAttribute('data-scw-qext'), txt(q('.scw-qext__head')), txt(q('.scw-qext__line')), txt(q('.scw-qext__line.scw-qext__muted')), !!q('[data-qext-nudge]'), !!q('[data-qext-cancel-req]')],
+    [false, 'pending', 'Extension pending', 'Extension to ' + plus(45), 'Requested ' + mdy(new Date()) + ' · awaiting SVS', true, true]);
+  check('the state is STACKED — chip line, fact lines, buttons — so a narrow column never wraps mid-sentence',
+    Array.from(q('.scw-qext').children).map(el => el.className), ['scw-qext__head', 'scw-qext__line', 'scw-qext__line scw-qext__muted', 'scw-qext__row']);
   check('the pending state is stored per SOW (survives a re-render)', qx.pendingState(SOW).requestedDate, plus(45));
   salesPage(future); cardRender(); await sleep(200);
   check('after a re-render the card is still pending', q('.scw-qext').getAttribute('data-scw-qext'), 'pending');
@@ -118,7 +120,7 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   // routed to Ops
   q('[data-qext-request]').click(); q('[data-qext-reason]', modal()).value = 'x'; posts.length = 0; q('[data-qext-send]', modal()).click();
   lastPost().success({ success: true, routedTo: 'ops' }); await sleep(10);
-  check('routedTo ops: pending "with Ops"', /with Ops$/.test(txt(q('.scw-qext > div'))), true);
+  check('routedTo ops: pending "with Ops"', /with Ops$/.test(txt(q('.scw-qext__line.scw-qext__muted'))), true);
   qx._marker.write(SOW, null);
   // auto-extended
   salesPage(future); cardRender(); await sleep(200);
@@ -128,7 +130,7 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   // CORS-opaque reply counts as delivered, routedTo unknown
   q('[data-qext-request]').click(); q('[data-qext-reason]', modal()).value = 'x'; posts.length = 0; q('[data-qext-send]', modal()).click();
   lastPost().error({ status: 0 }); await sleep(10);
-  check('a status-0 reply: pending, "awaiting a reply"', /awaiting a reply$/.test(txt(q('.scw-qext > div'))), true);
+  check('a status-0 reply: pending, "awaiting a reply"', /awaiting a reply$/.test(txt(q('.scw-qext__line.scw-qext__muted'))), true);
   // a refused send stays in the modal
   qx._marker.write(SOW, null); salesPage(future); cardRender(); await sleep(200);
   q('[data-qext-request]').click(); q('[data-qext-reason]', modal()).value = 'x'; posts.length = 0; q('[data-qext-send]', modal()).click();
@@ -141,12 +143,12 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   salesPage(future, { field_3314: 'No', field_3314_raw: false }); cardRender(); await sleep(200);
   check('a Yes/No flag reading No: not pending, the stale marker is cleared', [q('.scw-qext').getAttribute('data-scw-qext'), qx._marker.read(SOW)], ['ready', null]);
   salesPage(future, { field_3314: 'Yes', field_3314_raw: true, field_3315: '12/31/2026', field_3315_raw: { date_formatted: '12/31/2026' } }); cardRender(); await sleep(200);
-  check('a Yes/No flag reading Yes: pending with the record\'s requested date', [q('.scw-qext').getAttribute('data-scw-qext'), /Extension to 12\/31\/2026/.test(txt(q('.scw-qext > div')))], ['pending', true]);
+  check('a Yes/No flag reading Yes: pending with the record\'s requested date', [q('.scw-qext').getAttribute('data-scw-qext'), /Extension to 12\/31\/2026/.test(txt(q('.scw-qext__line')))], ['pending', true]);
   salesPage(future, { field_3314: 'Requested', field_3314_raw: 'Requested', field_3315: '12/31/2026', field_3315_raw: { date_formatted: '12/31/2026' } }); cardRender(); await sleep(200);
   check('status "Requested": pending, Nudge / Cancel offered', [q('.scw-qext').getAttribute('data-scw-qext'), !!q('[data-qext-nudge]'), !!q('[data-qext-cancel-req]')], ['pending', true, true]);
   salesPage(future, { field_3314: 'Re-Pricing', field_3314_raw: 'Re-Pricing' }); cardRender(); await sleep(200);
-  check('status "Re-Pricing" (the Builder option, capital P): the re-pricing line, no buttons, no request', [q('.scw-qext').getAttribute('data-scw-qext'), txt(q('.scw-qext')), q('.scw-qext button')],
-    ['repricing', 'Re-pricing The sub is re-pricing this bid. The quote keeps its current expiration until Ops publishes the re-priced proposal.', null]);
+  check('status "Re-Pricing" (the Builder option, capital P): the re-pricing chip + line, no buttons, no request', [q('.scw-qext').getAttribute('data-scw-qext'), txt(q('.scw-qext__head')), txt(q('.scw-qext__line')), q('.scw-qext button')],
+    ['repricing', 'Re-pricing', 'The sub is re-pricing this bid. The quote keeps its current expiration until Ops publishes the re-priced proposal.', null]);
   check('… extensionState reads the kind', qx.pendingState(SOW).kind, 'repricing');
   salesPage(future, { field_3314: 'Re-Price Requested', field_3314_raw: 'Re-Price Requested' }); cardRender(); await sleep(200);
   check('status "Re-Price Requested" (the sub\'s re-price held while the quote runs): the held line, read-only for sales',
@@ -267,7 +269,8 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   const BID2 = '6a4ab0e1cc2d7f0a3c333333';
   function dashPage(rows, withLinks) {
     document.body.innerHTML = '<div id="kn-scene_1140"><div class="kn-view kn-table" id="view_3507"><table><tbody>' +
-      rows.map(r => '<tr id="' + r.id + '"><td class="kn-table-link">' + (withLinks ? '<a href="#site-survey-request-details/6a465ad1bb00d991572419aa/edit-bid-package/' + r.id + '/">Preview bid</a>' : '') + '</td></tr>').join('') +
+      rows.map(r => '<tr id="' + r.id + '"><td class="kn-table-link">' + (withLinks ? '<a href="#site-survey-request-details/6a465ad1bb00d991572419aa/edit-bid-package/' + r.id + '/">Preview bid</a>' : '') + '</td>' +
+        '<td class="field_3316" data-field-key="field_3316"><span class="col-7">' + (r.field_3316 || '') + '</span></td><td class="field_3317" data-field-key="field_3317"><span class="col-8">' + (r.field_3317 || '') + '</span></td></tr>').join('') +
       '</tbody></table></div><div class="kn-view kn-table" id="view_3505"></div></div>';
     window.Knack.views = { view_3507: { model: { data: { models: rows.map(r => ({ attributes: r })) } } } };
   }
@@ -283,17 +286,40 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
             bidRow(BID2, { field_2414: '60486704913-SR20-B466', field_2636: 'Variant', field_3316: 'No', field_3316_raw: false })], true); qx.renderDashboardBanner();
   check('one flagged bid: the banner sits above the worksheet, names the bid, the requested date and the bid\'s own expiration, and links to that bid\'s page off the grid row',
     [!!dash(), dash().nextElementSibling.id, dash().getAttribute('data-scw-qext-dash'), txt(q('[data-qext-dash-bid]', dash())), q('[data-qext-dash-open]', dash()).getAttribute('href')],
-    [true, 'view_3505', '1', 'Bid 60486704913-SR20-B465 · Base — hold it until 12/31/2026 (it currently expires 11/2/2026) Review & answer',
+    [true, 'view_3505', '1', 'Bid 60486704913-SR20-B465 · Base — hold it until 12/31/2026 (it currently expires 11/2/2026) Open the bid to answer ›',
      '#site-survey-request-details/6a465ad1bb00d991572419aa/edit-bid-package/' + BID + '/']);
+  check('the banner says what it is and what to do (2026-11-06: "communicate the existence of the request and the guidance to click through")',
+    [txt(q('.scw-qext__chip', dash())), txt(q('.scw-qext__title', dash())), /Open the bid and answer on its Preview Bid page: Extend it if the price still stands, Re-price instead if costs have moved, or Can't extend\. Nothing changes on your bid until you answer\./.test(txt(q('.scw-qext__line', dash())))],
+    ['Action needed', 'SCW has asked you to extend a bid on this survey', true]);
+  check('the BIDs grid row of the flagged bid carries the chip + the same link in its flag cell; the unflagged row does not',
+    [q('#view_3507 tr[id="' + BID + '"] td.field_3316 .scw-qext-gridchip') ? txt(q('#view_3507 tr[id="' + BID + '"] td.field_3316 .scw-qext-gridchip')) : null,
+     q('#view_3507 tr[id="' + BID + '"] .scw-qext-gridchip [data-qext-dash-open]').getAttribute('href'), !!q('#view_3507 tr[id="' + BID2 + '"] .scw-qext-gridchip')],
+    ['Extension requestedHold until 12/31/2026Open the bid to answer ›', '#site-survey-request-details/6a465ad1bb00d991572419aa/edit-bid-package/' + BID + '/', false]);
+  qx.renderDashboardBanner();
+  check('a repeat render leaves ONE chip in the cell', document.querySelectorAll('.scw-qext-gridchip').length, 1);
   dashPage([bidRow(BID, { field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }),
             bidRow(BID2, { field_2414: '60486704913-SR20-B466', field_2636: 'Variant', field_3316: 'Yes', field_3316_raw: true, field_3317: '1/15/2027', field_3317_raw: { date_formatted: '1/15/2027' } })], false); qx.renderDashboardBanner();
   check('two flagged bids, the link column not rendered: two rows, the hrefs composed under the current page', [dash().querySelectorAll('[data-qext-dash-bid]').length, txt(q('.scw-qext__title', dash())),
     [...dash().querySelectorAll('[data-qext-dash-open]')].map(a => a.getAttribute('href'))],
-    [2, 'SCW asks you to hold 2 bids on this survey', ['#site-survey-request-details/6a465ad1bb00d991572419aa/edit-bid-package/' + BID + '/', '#site-survey-request-details/6a465ad1bb00d991572419aa/edit-bid-package/' + BID2 + '/']]);
+    [2, 'SCW has asked you to extend 2 bids on this survey', ['#site-survey-request-details/6a465ad1bb00d991572419aa/edit-bid-package/' + BID + '/', '#site-survey-request-details/6a465ad1bb00d991572419aa/edit-bid-package/' + BID2 + '/']]);
   const dashEl = dash(); qx.renderDashboardBanner();
   check('a repeat render keeps the element', dash() === dashEl, true);
   dashPage([bidRow(BID)], true); qx.renderDashboardBanner();
-  check('the flag cleared (answered): the banner goes', !!dash(), false);
+  check('the flag cleared (answered): the banner and the grid chips go', [!!dash(), document.querySelectorAll('.scw-qext-gridchip').length], [false, 0]);
+  // the sub's surfaces are gated by the hook alone — a request on the record is real whatever the login
+  qx.CONFIG.previewEmails = ['micah.shearer@getscw.com'];
+  window.Knack.getUserAttributes = () => ({ name: 'Sub Estimator', email: 'estimator@securevisionsolutions.com' });
+  dashPage([bidRow(BID, { field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } })], true); qx.renderDashboardBanner();
+  check('preview list set + a SUB login: the dashboard banner and chip still render (the list gates who may ASK, never the sub\'s answer)', [!!dash(), document.querySelectorAll('.scw-qext-gridchip').length, qx.enabled()], [true, 1, false]);
+  window.Knack.router.current_scene_key = 'scene_1149';
+  subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
+  check('… and so does the bid-page card', !!subCard(), true);
+  hook = 'PLACEHOLDER';
+  subPage({ field_3316: 'Yes', field_3316_raw: true }); qx.renderSubCard();
+  check('… but never without the hook (and no preview flag)', !!subCard(), false);
+  hook = 'https://hook.us1.make.com/qext';
+  qx.CONFIG.previewEmails = [];
+  window.Knack.getUserAttributes = () => ({ name: 'Danny Mize', email: 'danny@getscw.com' });
 
   // ── the preview-login gate (2026-11-05: "show everything only to micah.shearer@getscw.com") ──
   window.Knack.router.current_scene_key = 'scene_1116';

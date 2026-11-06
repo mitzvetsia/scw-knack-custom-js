@@ -190,7 +190,9 @@ re-price / decline). The URL is in `MAKE_QUOTE_EXTENSION_WEBHOOK` (`src/config.j
 
 - Sales: request within the bid → `auto`, dates on the proposal and SOW move, no pending state.
 - Sales: request past the bid → `svs`; SOW `field_3314` Requested; bid flag Yes; both tasks Waiting
-  on Bid; the sub's dashboard banner and bid card appear. The pending box shows in BOTH Published Proposal
+  on Bid; the sub's dashboard banner and bid card appear — under the SUB's own login (those two surfaces are
+  gated by the hook, not the preview email list), with "Action needed" + "Open the bid to answer" on the
+  dashboard and a chip in the flagged BIDs-grid row. The pending box shows in BOTH Published Proposal
   blocks on the sales page — the Totals panel (where sales looks) and the collapsed card at the bottom.
 - Sub: extend to an earlier date than asked → quote lands at the sub's date; flags clear; tasks
   back to Final Bid Submitted; the sales card returns to the button.

@@ -74,7 +74,7 @@ const future = (() => { const d = new Date(); d.setDate(d.getDate() + 20); retur
   salesPage(future, { field_3314: 'Requested', field_3315: '01/04/2027' });
   await renderTotals();
   check('the Totals panel renders its Published Proposal block', [!!panel(), txt(q('.scw-pq-info', panel())).indexOf('Published Proposal') !== -1], [true, true]);
-  check('the pending extension box is INSIDE the Totals panel, read off the SOW record', [!!box(), box() && box().getAttribute('data-scw-qext'), /Extension to 01\/04\/2027/.test(txt(box())), /awaiting SVS/.test(txt(box()))], [true, 'pending', true, true]);
+  check('the pending extension box is INSIDE the Totals panel, read off the SOW record', [!!box(), box() && box().getAttribute('data-scw-qext'), txt(q('.scw-qext__line', box())), txt(q('.scw-qext__line.scw-qext__muted', box()))], [true, 'pending', 'Extension to 01/04/2027', 'Awaiting SVS']);
   check('it carries Cancel request | Nudge', [!!q('[data-qext-cancel-req]', box()), !!q('[data-qext-nudge]', box())], [true, true]);
   const kids = Array.from(panel().children);
   check('it sits between the proposal block and the Preview Proposal row', [kids.indexOf(q('.scw-pq-info', panel())) < kids.indexOf(box()), kids.indexOf(box()) < kids.indexOf(q('a[href^="#proposals/proposal/"]', panel()).parentNode)], [true, true]);

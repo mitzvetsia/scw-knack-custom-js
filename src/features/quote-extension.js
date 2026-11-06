@@ -176,6 +176,11 @@
     if ((CONFIG.previewEmails || []).length) return isPreviewUser();
     return !!hookUrl();
   }
+  /** The SUB's surfaces (bid-page card, dashboard banner + grid chips) render off a flag Make set
+   *  on the bid record — a request that exists whatever login looks at it. The preview email list
+   *  only decides who may ASK; it never hides an open request from the sub it was sent to
+   *  (2026-11-06: a listed ops login's test request was invisible to the sub answering it). */
+  function canShowSub() { return previewOn() || !!hookUrl(); }
   function user() {
     try {
       var a = (window.Knack && Knack.getUserAttributes && Knack.getUserAttributes()) || {};
@@ -346,7 +351,16 @@
       '.scw-qext--ops { margin: 6px 0 0; padding: 6px 8px; font-size: 11.5px; }' +
       '.scw-qext--sub { margin: 0 0 14px; padding: 14px 16px; border-color: #fcd34d; background: #fffbeb; }' +
       '.scw-qext__title { font-weight: 700; font-size: 13px; color: #0f172a; margin: 0 0 4px; }' +
+      // The state box is STACKED: the chip on its own line, then one fact per line, then the buttons —
+      // an inline chip + sentence wrapped mid-sentence in the sales Totals panel's narrow column
+      // (2026-11-06). The compact ops rows (reconcile / preview pages, wide) keep the one-line shape.
+      '.scw-qext__head { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; }' +
+      '.scw-qext__head .scw-qext__chip { margin-right: 0; }' +
       '.scw-qext__line { margin: 2px 0; }' +
+      '.scw-qext__line b { white-space: nowrap; }' +
+      '.scw-qext--ops .scw-qext__head { display: inline-flex; margin: 0 6px 0 0; vertical-align: middle; }' +
+      '.scw-qext--ops .scw-qext__line { display: inline; margin: 0; }' +
+      '.scw-qext--ops .scw-qext__line + .scw-qext__line::before { content: " \\00b7 "; }' +
       '.scw-qext__muted { color: #64748b; }' +
       '.scw-qext__warn { color: #b45309; }' +
       '.scw-qext__row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }' +
@@ -367,6 +381,11 @@
       '.scw-qext__chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font: 700 10px/1.6 system-ui, sans-serif;' +
       '  letter-spacing: .02em; text-transform: uppercase; background: #fef3c7; color: #b45309; margin-right: 6px; }' +
       '.scw-qext__chip--repricing { background: #e0e7ff; color: #3730a3; }' +
+      '.scw-qext--sub .scw-qext__head { margin-bottom: 4px; }' +
+      '.scw-qext__dashrow { padding: 8px 10px; margin-top: 8px; border: 1px solid #fcd34d; border-radius: 6px; background: #fff; justify-content: space-between; }' +
+      '.scw-qext-gridchip { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 4px; font: 400 12px/1.4 system-ui, sans-serif; color: #334155; }' +
+      '.scw-qext-gridchip .scw-qext__chip { margin-right: 0; }' +
+      '.scw-qext-gridchip__link { font-weight: 600; color: #1e3a8a; text-decoration: underline; white-space: nowrap; }' +
       '.scw-qext__chip--held { background: #fef3c7; color: #92400e; }' +
       '.scw-qext__input { font: 400 13px/1.2 system-ui, sans-serif; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; width: 120px; }' +
       '.scw-qext__ta { font: 400 13px/1.4 system-ui, sans-serif; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; min-height: 64px; box-sizing: border-box; }' +
@@ -641,14 +660,14 @@
   function stateHtml(state, opts) {
     opts = opts || {};
     if (state.kind === 'repricing') {
-      return '<div><span class="scw-qext__chip scw-qext__chip--repricing">Re-pricing</span> ' +
-        'The sub is re-pricing this bid. The quote keeps its current expiration until Ops publishes the re-priced proposal.</div>';
+      return '<div class="scw-qext__head"><span class="scw-qext__chip scw-qext__chip--repricing">Re-pricing</span></div>' +
+        '<div class="scw-qext__line">The sub is re-pricing this bid. The quote keeps its current expiration until Ops publishes the re-priced proposal.</div>';
     }
     if (state.kind === 'reprice-requested') {
       // The sub answered "re-price" while the proposal had not expired: Make left the bid LOCKED
       // and asked Ops. Ops decides here (the reconcile / preview rows); sales only reads it.
-      return '<div><span class="scw-qext__chip scw-qext__chip--held">Re-price requested</span> ' +
-        'The sub asked to <b>re-price</b> this bid instead of extending it. The proposal has not expired, so the bid stays locked ' +
+      return '<div class="scw-qext__head"><span class="scw-qext__chip scw-qext__chip--held">Re-price requested</span></div>' +
+        '<div class="scw-qext__line">The sub asked to <b>re-price</b> this bid instead of extending it. The proposal has not expired, so the bid stays locked ' +
         'until Ops decides: reopen it for re-pricing, or keep the quote as it is and close before it expires.</div>' +
         (opts.ops
           ? '<div class="scw-qext__row">' +
@@ -659,8 +678,9 @@
           : '<div class="scw-qext__muted">Ops decides on the Reconcile Bids page — tell them if the client will close before the quote expires.</div>');
     }
     var where = state.routedTo === 'ops' ? 'with Ops' : state.routedTo === 'svs' ? 'awaiting SVS' : 'awaiting a reply';
-    return '<div><span class="scw-qext__chip">Extension pending</span> ' +
-      'Extension to <b>' + esc(state.requestedDate || '—') + '</b>' + (state.at ? ' requested ' + esc(state.at) : '') + ' · ' + esc(where) + '</div>' +
+    return '<div class="scw-qext__head"><span class="scw-qext__chip">Extension pending</span></div>' +
+      '<div class="scw-qext__line">Extension to <b>' + esc(state.requestedDate || '—') + '</b></div>' +
+      '<div class="scw-qext__line scw-qext__muted">' + (state.at ? 'Requested ' + esc(state.at) + ' · ' + esc(where) : esc(where.charAt(0).toUpperCase() + where.slice(1))) + '</div>' +
       '<div class="scw-qext__row">' +
         '<button type="button" class="scw-qext__btn scw-qext__btn--danger" data-qext-cancel-req>Cancel request</button>' +
         '<button type="button" class="scw-qext__btn" data-qext-nudge>Nudge</button>' +
@@ -817,7 +837,8 @@
       box.setAttribute('data-scw-qext', 'blocked');
       box.setAttribute('data-qext-discontinued', String(disc.items.length));
       box.innerHTML =
-        '<div><span class="scw-qext__chip">Extension unavailable</span> This scope of work carries ' +
+        '<div class="scw-qext__head"><span class="scw-qext__chip">Extension unavailable</span></div>' +
+        '<div class="scw-qext__line">This scope of work carries ' +
           esc(plural(disc.items.length, 'discontinued product', 'discontinued products')) + ' the catalog no longer offers: ' + productListHtml(disc.items) + '.</div>' +
         '<div class="scw-qext__line">Update those line items on the worksheet below — swap each one to a current product — then request the extension here.</div>' +
         '<div class="scw-qext__row">' +
@@ -973,7 +994,7 @@
       if (existing) existing.parentNode.removeChild(existing);
       return;
     }
-    if (!canAsk()) { if (existing) existing.parentNode.removeChild(existing); return; }   // the hook is the switch
+    if (!canShowSub()) { if (existing) existing.parentNode.removeChild(existing); return; }   // the hook is the switch
     var rec = subBidRecord();
     if (!rec || !rec.id) return;
     if (!fieldYes(rec, c.requestedFlag)) { if (existing) existing.parentNode.removeChild(existing); return; }
@@ -1058,14 +1079,18 @@
     var base = String(window.location.hash || '#').replace(/\/+$/, '');
     return base + '/' + CONFIG.sub.dashboard.bidPageSlug + '/' + bidId + '/';
   }
+  function dashBidLabel(rec) {
+    return [fieldText(rec, 'field_2414'), fieldText(rec, 'field_2636')].filter(Boolean).join(' · ') || fieldText(rec, CONFIG.sub.bidLabel) || 'this bid';
+  }
   function renderDashboardBanner() {
     var c = CONFIG.sub, d = c.dashboard;
     var existing = document.getElementById('scw-qext-dash');
-    function drop() { if (existing && existing.parentNode) existing.parentNode.removeChild(existing); }
-    if (!c.requestedFlag || !canAsk()) { drop(); return; }
+    function drop() { if (existing && existing.parentNode) existing.parentNode.removeChild(existing); clearBidsGridChips(); }
+    if (!c.requestedFlag || !canShowSub()) { drop(); return; }
     var recs = viewRecords(d.bidsGrid), asked = [];
     for (var i = 0; i < recs.length; i++) if (fieldYes(recs[i], c.requestedFlag)) asked.push(recs[i]);
     if (!asked.length) { drop(); return; }
+    decorateBidsGrid(asked);
     var mount = document.getElementById(d.mountBefore) || document.getElementById(d.bidsGrid);
     if (!mount || !mount.parentNode) return;
     injectStyles();
@@ -1074,19 +1099,49 @@
     box.className = 'scw-qext scw-qext--sub';
     box.setAttribute('data-scw-qext-dash', String(asked.length));
     box.innerHTML =
-      '<div class="scw-qext__title">SCW asks you to hold ' + (asked.length === 1 ? 'a bid' : asked.length + ' bids') + ' on this survey</div>' +
+      '<div class="scw-qext__head"><span class="scw-qext__chip">Action needed</span></div>' +
+      '<div class="scw-qext__title">SCW has asked you to extend ' + (asked.length === 1 ? 'a bid' : asked.length + ' bids') + ' on this survey</div>' +
+      '<div class="scw-qext__line">The client needs more time on the quote. Open the bid and answer on its Preview Bid page: ' +
+        '<b>Extend</b> it if the price still stands, <b>Re-price instead</b> if costs have moved, or <b>Can\'t extend</b>. ' +
+        'Nothing changes on your bid until you answer.</div>' +
       asked.map(function (rec) {
         var requested = normalizeMdy(fieldText(rec, c.requestedDate)) || fieldText(rec, c.requestedDate);
         var bidExp = normalizeMdy(fieldText(rec, c.bidExpiration)) || fieldText(rec, c.bidExpiration);
-        var label = [fieldText(rec, 'field_2414'), fieldText(rec, 'field_2636')].filter(Boolean).join(' · ') || fieldText(rec, c.bidLabel) || 'this bid';
-        return '<div class="scw-qext__row" data-qext-dash-bid="' + esc(rec.id) + '">' +
-          '<span>Bid <b>' + esc(label) + '</b>' + (requested ? ' — hold it until <b>' + esc(requested) + '</b>' : '') +
+        return '<div class="scw-qext__row scw-qext__dashrow" data-qext-dash-bid="' + esc(rec.id) + '">' +
+          '<span>Bid <b>' + esc(dashBidLabel(rec)) + '</b>' + (requested ? ' — hold it until <b>' + esc(requested) + '</b>' : '') +
             (bidExp ? ' <span class="scw-qext__muted">(it currently expires ' + esc(bidExp) + ')</span>' : '') + '</span> ' +
-          '<a class="scw-qext__btn scw-qext__btn--primary" data-qext-dash-open href="' + esc(bidPageHref(rec.id)) + '">Review &amp; answer</a>' +
+          '<a class="scw-qext__btn scw-qext__btn--primary" data-qext-dash-open href="' + esc(bidPageHref(rec.id)) + '">Open the bid to answer &rsaquo;</a>' +
         '</div>';
-      }).join('') +
-      '<div class="scw-qext__line scw-qext__muted">Open the bid to extend it, re-price it, or tell SCW you can\'t extend.</div>';
+      }).join('');
     if (!existing) mount.parentNode.insertBefore(box, mount);
+  }
+  /** The BIDs grid (view_3507) row of each flagged bid: its flag cell reads a chip + the same link,
+   *  so the request is visible where the sub looks at their bids, not only in the banner above
+   *  the worksheet. Idempotent across Knack's grid re-renders (the cell is rebuilt each time). */
+  function decorateBidsGrid(asked) {
+    var c = CONFIG.sub, d = c.dashboard;
+    var grid = document.getElementById(d.bidsGrid);
+    if (!grid) return;
+    clearBidsGridChips();
+    for (var i = 0; i < asked.length; i++) {
+      var rec = asked[i];
+      var row = grid.querySelector('tr[id="' + rec.id + '"]');
+      var cell = row && (row.querySelector('td.' + c.requestedFlag) || row.querySelector('td[data-field-key="' + c.requestedFlag + '"]'));
+      if (!cell) continue;
+      var requested = normalizeMdy(fieldText(rec, c.requestedDate)) || fieldText(rec, c.requestedDate);
+      var chip = document.createElement('div');
+      chip.className = 'scw-qext-gridchip';
+      chip.setAttribute('data-qext-gridchip', rec.id);
+      chip.innerHTML =
+        '<span class="scw-qext__chip">Extension requested</span>' +
+        (requested ? '<span class="scw-qext-gridchip__text">Hold until <b>' + esc(requested) + '</b></span>' : '') +
+        '<a class="scw-qext-gridchip__link" data-qext-dash-open href="' + esc(bidPageHref(rec.id)) + '">Open the bid to answer &rsaquo;</a>';
+      cell.appendChild(chip);
+    }
+  }
+  function clearBidsGridChips() {
+    var olds = document.querySelectorAll('.scw-qext-gridchip');
+    for (var i = 0; i < olds.length; i++) if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]);
   }
 
   // ── Wiring ───────────────────────────────────────────────────────────────
