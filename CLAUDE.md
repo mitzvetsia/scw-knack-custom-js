@@ -2299,10 +2299,11 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   inline chip + sentence wrapped mid-sentence in that ~280px column. The blocked (discontinued) box has the same
   shape. The compact `.scw-qext--ops` rows keep the one-line shape by CSS (head inline-flex, lines inline with a
   "·" between them).
-- **The SUB's surfaces are gated by the hook alone (2026-11-06)**: `canShowSub()` = preview flag or hook — the
-  preview email list decides who may ASK, never whether the sub sees a request Make already flagged on their bid
-  record (a listed ops login's test request was invisible to the sub answering it). Applies to the bid-page card
-  (`renderSubCard`) and the SURVEYS DASHBOARD (`renderDashboardBanner`), which now says what it is and what to do
+- **The SUB's surfaces use the SAME switch (2026-11-06)**: `canShowSub()` = `canAsk()` — while the preview list is set
+  it gates the bid-page card (`renderSubCard`), the dashboard banner and the grid chips too ("this should still gate to
+  micah.shearer@getscw.com"; a short-lived hook-only gate was reverted the same hour). Testing under a sub login =
+  `localStorage.scwQuoteExtPreview = '1'` in that browser. The SURVEYS DASHBOARD (`renderDashboardBanner`) now says
+  what it is and what to do
   ("communicate the existence of the extension request and the guidance to click through"): an "Action needed" chip,
   "SCW has asked you to extend a bid on this survey", one sentence naming the three answers on the Preview Bid page
   and that nothing changes until they answer, one boxed row per flagged bid (bid · hold until · current expiration ·

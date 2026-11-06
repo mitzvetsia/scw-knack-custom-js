@@ -306,18 +306,26 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   check('a repeat render keeps the element', dash() === dashEl, true);
   dashPage([bidRow(BID)], true); qx.renderDashboardBanner();
   check('the flag cleared (answered): the banner and the grid chips go', [!!dash(), document.querySelectorAll('.scw-qext-gridchip').length], [false, 0]);
-  // the sub's surfaces are gated by the hook alone — a request on the record is real whatever the login
+  // the sub's surfaces use the SAME switch as everything else: while the preview list is set, only the
+  // listed login (or the per-browser preview flag) sees them — "this should still gate to micah.shearer@getscw.com"
   qx.CONFIG.previewEmails = ['micah.shearer@getscw.com'];
   window.Knack.getUserAttributes = () => ({ name: 'Sub Estimator', email: 'estimator@securevisionsolutions.com' });
-  dashPage([bidRow(BID, { field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } })], true); qx.renderDashboardBanner();
-  check('preview list set + a SUB login: the dashboard banner and chip still render (the list gates who may ASK, never the sub\'s answer)', [!!dash(), document.querySelectorAll('.scw-qext-gridchip').length, qx.enabled()], [true, 1, false]);
+  const flaggedRows = () => [bidRow(BID, { field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } })];
+  dashPage(flaggedRows(), true); qx.renderDashboardBanner();
+  check('preview list set + a SUB login: no dashboard banner, no grid chip', [!!dash(), document.querySelectorAll('.scw-qext-gridchip').length, qx.enabled()], [false, 0, false]);
+  window.localStorage.setItem('scwQuoteExtPreview', '1'); qx.renderDashboardBanner();
+  check('… the per-browser preview flag shows them under that sub login (how the sub side is tested)', [!!dash(), document.querySelectorAll('.scw-qext-gridchip').length], [true, 1]);
+  window.localStorage.removeItem('scwQuoteExtPreview'); qx.renderDashboardBanner();
+  check('… flag cleared: gone again', [!!dash(), document.querySelectorAll('.scw-qext-gridchip').length], [false, 0]);
+  window.Knack.getUserAttributes = () => ({ name: 'Micah Shearer', email: 'Micah.Shearer@getscw.com' });
+  dashPage(flaggedRows(), true); qx.renderDashboardBanner();
+  check('… the listed login sees the banner and the chip', [!!dash(), document.querySelectorAll('.scw-qext-gridchip').length], [true, 1]);
   window.Knack.router.current_scene_key = 'scene_1149';
   subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
-  check('… and so does the bid-page card', !!subCard(), true);
-  hook = 'PLACEHOLDER';
-  subPage({ field_3316: 'Yes', field_3316_raw: true }); qx.renderSubCard();
-  check('… but never without the hook (and no preview flag)', !!subCard(), false);
-  hook = 'https://hook.us1.make.com/qext';
+  check('… and the bid-page card', !!subCard(), true);
+  window.Knack.getUserAttributes = () => ({ name: 'Sub Estimator', email: 'estimator@securevisionsolutions.com' });
+  subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
+  check('… which a sub login outside the list does not get', !!subCard(), false);
   qx.CONFIG.previewEmails = [];
   window.Knack.getUserAttributes = () => ({ name: 'Danny Mize', email: 'danny@getscw.com' });
 

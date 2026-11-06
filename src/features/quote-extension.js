@@ -176,11 +176,11 @@
     if ((CONFIG.previewEmails || []).length) return isPreviewUser();
     return !!hookUrl();
   }
-  /** The SUB's surfaces (bid-page card, dashboard banner + grid chips) render off a flag Make set
-   *  on the bid record — a request that exists whatever login looks at it. The preview email list
-   *  only decides who may ASK; it never hides an open request from the sub it was sent to
-   *  (2026-11-06: a listed ops login's test request was invisible to the sub answering it). */
-  function canShowSub() { return previewOn() || !!hookUrl(); }
+  /** The SUB's surfaces (bid-page card, dashboard banner + grid chips) use the SAME switch as
+   *  every other surface — while the feature is in preview the list gates them too (decided
+   *  2026-11-06: "this should still gate to micah.shearer@getscw.com"). To see them under a sub
+   *  login, set the per-browser preview flag (localStorage.scwQuoteExtPreview = '1') in that browser. */
+  function canShowSub() { return canAsk(); }
   function user() {
     try {
       var a = (window.Knack && Knack.getUserAttributes && Knack.getUserAttributes()) || {};
