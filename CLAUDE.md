@@ -2273,6 +2273,16 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   Re-pricing, and the PUBLISH of the re-priced proposal → blank. `extensionState(rec, sowId)` reads it off whatever SOW
   record the page has (view_3827 / view_3918 row / view_3861); until the field exists a per-tab sessionStorage marker
   `scw:qext:<sowId>` written on a successful send stands in (Requested only — a re-price can only come off the record).
+  **The box refreshes on its own after a send (2026-11-06 — "can this dialogue refresh automatically when the Make
+  response says the request has been sent?")**: it did not, once view_3827 served `field_3314` — the redraw re-read the
+  SOW record loaded BEFORE Make wrote, the blank status cleared the marker the send had just written, and the button
+  came back until a reload. Now `writeMarker` stamps `ts`, `extensionState` lets a marker younger than
+  `CONFIG.markerGraceMs` (2 min) outrank a BLANK served status (`source: 'marker'`; past the window a blank record wins
+  and clears it), the sales `redraw` refetches the SOW record view (`CONFIG.sales.sowView` view_3827) as well as the
+  proposal view (both sales blocks rebuild from those renders), and `decorateSalesCard` puts the redrawn box back where
+  the old one sat (the Totals panel has the Preview Proposal row after it). The Ops rows already refetched their SOW
+  grid. Tests: the grace / stale-marker / refetch checks in `tests/sow-page/test-quote-extension.js` (a test that
+  hand-writes a STALE marker must give it `ts: 1`).
 - **Sales SOW page (scene_1116)**: `published-proposal-sow-card.js` calls `SCW.quoteExtension.decorateSalesCard(body,
   proposal)` after it builds the card. With the hook configured (or `localStorage.scwQuoteExtPreview = '1'` for QA) a
   **"Request extension"** button opens the modal — new date prefilled +30 days past the current expiration (never before
@@ -2306,8 +2316,9 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   what it is and what to do
   ("communicate the existence of the extension request and the guidance to click through"): an "Action needed" chip,
   "SCW has asked you to extend a bid on this survey", one sentence naming the three answers on the Preview Bid page
-  and that nothing changes until they answer, one boxed row per flagged bid (bid · hold until · current expiration ·
-  **"Open the bid to answer ›"**), AND `decorateBidsGrid`: the flagged row of the BIDs grid view_3507 gets the same
+  and that nothing changes until they answer ("Preview the bid to answer: …" — the page is called Preview Bid, same
+  day), one boxed row per flagged bid (bid · hold until · current expiration · **"Preview bid to answer ›"**), AND
+  `decorateBidsGrid`: the flagged row of the BIDs grid view_3507 gets the same
   chip + link appended to its flag cell (`td.field_3316` — Builder put the two columns on view_3507 on 2026-11-06),
   cleared and re-stamped on every render so Knack's grid rebuild never doubles it, gone with the banner when the flag
   clears. Tests: the dashboard block + the sub-gate block in `tests/sow-page/test-quote-extension.js`.

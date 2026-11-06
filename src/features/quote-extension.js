@@ -90,6 +90,11 @@
     // hook (config.js, else the per-browser override) and report "not configured" when there is none.
     // EMPTY = everyone, hook permitting (the pre-2026-11-05 switch). Clearing the list is the launch.
     previewEmails: ['micah.shearer@getscw.com'],
+    // After a send this tab's marker outranks a BLANK status on the SOW record for this long: the
+    // record on the page is the one loaded before Make wrote, and a blank read used to clear the
+    // marker and put the "Request extension" button back until a reload (2026-11-06). The views
+    // that carry the record are refetched after every send, so the record itself catches up.
+    markerGraceMs: 2 * 60 * 1000,
     // SOW header (Builder 2026-11-05): status = STATUS_expiration extension
     // (blank / Requested / Re-Pricing; a Yes/No flag would read Yes = Requested),
     // requestedDate = INPUT_requested quote expiration date. Read on every page
@@ -427,8 +432,13 @@
     try { var v = sessionStorage.getItem(markerKey(sowId)); return v ? JSON.parse(v) : null; } catch (e) { return null; }
   }
   function writeMarker(sowId, obj) {
-    try { if (obj) sessionStorage.setItem(markerKey(sowId), JSON.stringify(obj)); else sessionStorage.removeItem(markerKey(sowId)); } catch (e) { /* ignore */ }
+    try {
+      if (obj) { if (!obj.ts) obj.ts = Date.now(); sessionStorage.setItem(markerKey(sowId), JSON.stringify(obj)); }
+      else sessionStorage.removeItem(markerKey(sowId));
+    } catch (e) { /* ignore */ }
   }
+  /** A marker written moments ago (this tab's own send) — the record on the page predates the write. */
+  function markerFresh(mk) { return !!(mk && mk.ts && (Date.now() - mk.ts) < (CONFIG.markerGraceMs || 0)); }
   /** 'requested' | 'repricing' | 'reprice-requested' | '' off the SOW record's status
    *  field; undefined when the field is not configured or not served on the record.
    *  'reprice-requested' (Builder option "Re-Price Requested"): the sub answered
@@ -451,7 +461,12 @@
   function extensionState(rec, sowId) {
     var kind = statusKind(rec);
     if (kind !== undefined) {
-      if (!kind) { writeMarker(sowId, null); return null; }
+      if (!kind) {
+        var fresh = readMarker(sowId);
+        if (markerFresh(fresh)) return { kind: 'requested', requestedDate: fresh.requestedDate, at: fresh.at, routedTo: fresh.routedTo || '', source: 'marker' };
+        writeMarker(sowId, null);
+        return null;
+      }
       var m = readMarker(sowId) || {};
       return { kind: kind, requestedDate: fieldText(rec, CONFIG.sow.requestedDate) || m.requestedDate || '',
                at: m.at || '', routedTo: m.routedTo || 'svs', source: 'record' };
@@ -804,6 +819,7 @@
     if (!body || !proposal) return;
     injectStyles();
     var old = body.querySelector('.scw-qext');
+    var oldNext = old ? old.nextSibling : null;   // a redraw keeps the box where it sat (the Totals panel has a row after it)
     if (old) old.parentNode.removeChild(old);
     if (!canAsk()) return;                     // the hook is the switch: nothing renders until Make is wired
     var sowId = salesSowId();
@@ -811,13 +827,17 @@
     var note = body.querySelector('.scw-pq-expired-note');
     var box = document.createElement('div');
     box.className = 'scw-qext';
-    function redraw() { decorateSalesCard(body, proposal); refetchView(CONFIG.sales.proposalView); }
+    function place(el) { if (oldNext && oldNext.parentNode === body) body.insertBefore(el, oldNext); else body.appendChild(el); }
+    // After a send: repaint at once (the marker carries the state), then refetch the proposal view
+    // AND the SOW record view — the status lives on the SOW record, and both blocks on the page
+    // rebuild from those views' renders.
+    function redraw() { decorateSalesCard(body, proposal); refetchView(CONFIG.sales.proposalView); refetchView(CONFIG.sales.sowView); }
     if (state && state.kind === 'repricing') {
       box.className += ' scw-qext--repricing';
       box.setAttribute('data-scw-qext', 'repricing');
       box.innerHTML = stateHtml(state);
       if (note) note.innerHTML = '<strong>This proposal is expired.</strong> The sub is re-pricing the bid — a re-published proposal follows.';
-      body.appendChild(box);
+      place(box);
       return;
     }
     if (state && state.kind === 'reprice-requested') {
@@ -825,7 +845,7 @@
       box.setAttribute('data-scw-qext', 'reprice-requested');
       box.innerHTML = stateHtml(state);
       if (note) note.innerHTML = '<strong>This proposal is expired.</strong> The sub asked to re-price the bid — Ops decides whether to reopen it.';
-      body.appendChild(box);
+      place(box);
       return;
     }
     if (state) {
@@ -834,7 +854,7 @@
       box.innerHTML = stateHtml(state);
       if (note) note.innerHTML = '<strong>This proposal is expired.</strong> An extension is pending — the customer link stays off until it lands.';
       bindPendingButtons(box, sowId, redraw);
-      body.appendChild(box);
+      place(box);
       return;
     }
     var disc = salesDiscontinued();
@@ -854,7 +874,7 @@
         '</div>';
       if (note) note.innerHTML = '<strong>This proposal is expired.</strong> Update the discontinued products below before an extension can be requested.';
       box.querySelector('[data-qext-show]').addEventListener('click', scrollToWorksheet);
-      body.appendChild(box);
+      place(box);
       return;
     }
     box.setAttribute('data-scw-qext', 'ready');
@@ -870,7 +890,7 @@
       if (salesDiscontinued().items.length) { decorateSalesCard(body, proposal); return; }
       openRequestModal(proposal, redraw, { requestedBy: 'sales' });
     });
-    body.appendChild(box);
+    place(box);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1146,7 +1166,7 @@
     box.innerHTML =
       '<div class="scw-qext__head"><span class="scw-qext__chip">Action needed</span></div>' +
       '<div class="scw-qext__title">SCW has asked you to extend ' + (asked.length === 1 ? 'a bid' : asked.length + ' bids') + ' on this survey</div>' +
-      '<div class="scw-qext__line">The client needs more time on the quote. Open the bid and answer on its Preview Bid page: ' +
+      '<div class="scw-qext__line">The client needs more time on the quote. Preview the bid to answer: ' +
         '<b>Extend</b> it if the price still stands, <b>Request the bid be reopened</b> if you cannot extend without repricing, or <b>Can\'t extend</b>. ' +
         'Nothing changes on your bid until you answer.</div>' +
       asked.map(function (rec) {
@@ -1155,7 +1175,7 @@
         return '<div class="scw-qext__row scw-qext__dashrow" data-qext-dash-bid="' + esc(rec.id) + '">' +
           '<span>Bid <b>' + esc(dashBidLabel(rec)) + '</b>' + (requested ? ' — hold it until <b>' + esc(requested) + '</b>' : '') +
             (bidExp ? ' <span class="scw-qext__muted">(it currently expires ' + esc(bidExp) + ')</span>' : '') + '</span> ' +
-          '<a class="scw-qext__btn scw-qext__btn--primary" data-qext-dash-open href="' + esc(bidPageHref(rec.id)) + '">Open the bid to answer &rsaquo;</a>' +
+          '<a class="scw-qext__btn scw-qext__btn--primary" data-qext-dash-open href="' + esc(bidPageHref(rec.id)) + '">Preview bid to answer &rsaquo;</a>' +
         '</div>';
       }).join('');
     if (!existing) mount.parentNode.insertBefore(box, mount);
@@ -1180,7 +1200,7 @@
       chip.innerHTML =
         '<span class="scw-qext__chip">Extension requested</span>' +
         (requested ? '<span class="scw-qext-gridchip__text">Hold until <b>' + esc(requested) + '</b></span>' : '') +
-        '<a class="scw-qext-gridchip__link" data-qext-dash-open href="' + esc(bidPageHref(rec.id)) + '">Open the bid to answer &rsaquo;</a>';
+        '<a class="scw-qext-gridchip__link" data-qext-dash-open href="' + esc(bidPageHref(rec.id)) + '">Preview bid to answer &rsaquo;</a>';
       cell.appendChild(chip);
     }
   }

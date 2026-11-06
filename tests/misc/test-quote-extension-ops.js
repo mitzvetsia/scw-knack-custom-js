@@ -172,7 +172,7 @@ function reconcilePage(row, lines) {
   check('afterReopenBid on a held SOW posts reopen-reprice', [qx.afterReopenBid(SOW), body().stepId, body().sowId], [true, 'reopen-reprice', SOW]);
   posts.length = 0; reconcilePage(sowRow({ field_3314: 'Requested', field_3314_raw: 'Requested' })); qx.decorateOps();
   check('afterReopenBid on any other SOW posts nothing', [qx.afterReopenBid(SOW), posts.length], [false, 0]);
-  qx._marker.write(SOW, { requestedDate: '1/1/2030', at: '1/1/2026', routedTo: 'svs' });
+  qx._marker.write(SOW, { requestedDate: '1/1/2030', at: '1/1/2026', routedTo: 'svs', ts: 1 });   // a stale marker (older than the grace window)
   reconcilePage(sowRow({ field_3314: '', field_3314_raw: '' })); qx.decorateOps();
   check('status blank: ready, and a stale marker is cleared', [box().getAttribute('data-scw-qext'), qx._marker.read(SOW)], ['ready', null]);
 
