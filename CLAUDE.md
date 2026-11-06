@@ -2285,7 +2285,15 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   (`cancel-extension` / `nudge-extension`); `auto` → extended at once, no pending state; status Re-pricing → an indigo
   "Re-pricing" line ("the quote keeps its current expiration until Ops publishes the re-priced proposal"), no buttons.
   An expired proposal's "coordinate with Ops" note is reworded per state. No hook and no preview flag → the card is
-  exactly as before.
+  exactly as before. **The page shows the published proposal TWICE, and both carry the state (2026-11-06 — "pending
+  on the reconcile page but not on the sales build page")**: that card sits collapsed at the very bottom of the page
+  (view_3827's column), so the box there was never seen; the Totals panel's Published Proposal block
+  (`scene-tweaks.js` `injectProposalInfo`, the `.scw-totals-proposal` wrap in view_3418 — where sales looks) now calls
+  the same `decorateSalesCard(wrap, proposal)` after it appends the block (the box lands between the block and the
+  Preview Proposal row; `.scw-totals-proposal .scw-qext` is left-aligned inside that right-aligned panel). Rebuilt on
+  every view_3418 / view_3814 / view_3827 render, so a redraw after Nudge / Cancel settles into place. Test:
+  `tests/sow-page/test-totals-card-extension.js` (the first test to drive the real scene-tweaks.js: its veil
+  watchdog `setInterval` means the test must `process.exit`).
 - **Discontinued products BLOCK sales** ("the expiration request itself can be blocked on the Knack side for the sales
   user with instructions"): `discontinuedIn(records)` asks `SCW.catalog.isDisabled(productId) === true` over the SOW's
   line items (view_3586 on the sales page) — the worksheet's own discontinued verdict, nothing new. Any hit → the card

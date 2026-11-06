@@ -342,6 +342,7 @@
       '.scw-qext--pending, .scw-qext--blocked { border-color: #fcd34d; background: #fffbeb; }' +
       '.scw-qext--repricing { border-color: #c7d2fe; background: #eef2ff; }' +
       '.scw-qext--held { border-color: #fcd34d; background: #fffbeb; }' +
+      '.scw-totals-proposal .scw-qext { text-align: left; margin-top: 12px; }' +   // the sales Totals panel is right-aligned (scene-tweaks.js)
       '.scw-qext--ops { margin: 6px 0 0; padding: 6px 8px; font-size: 11.5px; }' +
       '.scw-qext--sub { margin: 0 0 14px; padding: 14px 16px; border-color: #fcd34d; background: #fffbeb; }' +
       '.scw-qext__title { font-weight: 700; font-size: 13px; color: #0f172a; margin: 0 0 4px; }' +

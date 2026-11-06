@@ -626,6 +626,20 @@
           block.style.textAlign = 'right';
           wrap.appendChild(block);
         }
+        // Quote expiration extension state (quote-extension.js): the same
+        // box published-proposal-sow-card.js carries — pending / held /
+        // re-pricing / "Request extension". That card sits collapsed at the
+        // bottom of the page; this panel is where sales looks, so the state
+        // has to show HERE too ("pending on the reconcile page but not on
+        // the sales build page", 2026-11-06). Appended to the wrap so the
+        // expired-note rewording inside the block still applies; a
+        // quote-extension.js rule left-aligns it inside this right-aligned
+        // panel.
+        var qx = window.SCW && SCW.quoteExtension;
+        if (qx && typeof qx.decorateSalesCard === 'function') {
+          try { qx.decorateSalesCard(wrap, proposal); }
+          catch (e) { console.warn('[scw-totals] quote extension state failed', e); }
+        }
       }
 
       // Preview Proposal — always available when the SOW id resolves.
