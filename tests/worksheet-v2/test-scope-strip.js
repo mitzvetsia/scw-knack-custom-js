@@ -132,16 +132,22 @@ const inst = (id, name, extra) => Object.assign({
 const install = [
   inst('i1', 'Vista Dome 4MP', { field_2830: yes }),
   inst('i2', 'Vista Dome 4MP', { field_2830_raw: true, field_2807: yes }),
-  inst('i3', 'Vista Bullet 8MP', { field_2805: yes }),
+  inst('i3', 'Vista Bullet 8MP', { field_2805: yes, field_2801: 'AC-03' }),   // QA open: the item's QA passed flag is No
   inst('i4', 'Deputy PTZ 4K', { field_2967_raw: conn('co1', '60486704913-SW1418CO') }),   // removed by CO → counted apart
   { id: 'i5', field_2790: 'Admiral 32 Channel NVR', field_2789: 1, field_2822_raw: conn(NET, 'Networking or Headend'), field_2818_raw: mdf('L1', 'MDF - Clubhouse'), field_2218: 20 }
 ];
 const iopts = { viewKey: 'view_4093', fields: FI, hideMoney: true };
+// The photo reader the strip asks WHY an item is still open (photos.extractPhotoRecords reads the
+// source grid's row): i3 has one required photo passed and one required slot never uploaded.
+const photoSlots = { i3: [{ required: true, imgUrl: 'u1', qaStatus: 'Pass' }, { required: true, imgUrl: '', qaStatus: 'Pending' }, { required: false, imgUrl: '', qaStatus: 'Pending' }] };
+ns.photos = { extractPhotoRecords(viewKey, id) { return viewKey === 'view_4093' ? (photoSlots[id] || []) : []; } };
 const ia = ns.summary.aggregateScope(install, iopts);
 check('install: cameras counted from the install object\'s own fields; the removed-by-CO row is counted apart, not as a camera',
   [ia.cam.count, ia.cam.existing, ia.cam.newDrops, ia.cam.exterior, ia.cam.interior, ia.headend.count, ia.removed.count, ia.removed.labels, ia.lineItems, ia.hideMoney],
   [3, 1, 2, 1, 2, 1, 1, ['60486704913-SW1418CO'], 4, true]);
 check('install: QA passed counts from field_2830 (Yes or raw true)', [ia.hasQa, ia.cam.qaPassed, ia.cam.qaOpen], [true, 2, 1]);
+check('install: the open item is NAMED (card label, else product) with the reason read off its required photo slots',
+  [ia.cam.qaOpenIds, ia.cam.qaOpenItems], [['i3'], [{ id: 'i3', label: 'AC-03', reason: '1 required photo not uploaded yet' }]]);
 const itree = ns.groups.buildGroupTree(install, [], { viewKey: 'view_4093', fields: FI });
 const istrip = ns.summary.buildScopeStrip(itree, iopts);
 const itiles = [...istrip.querySelectorAll('[data-scw-ws-v2-scope-tile]')];
@@ -149,7 +155,53 @@ check('install strip: no money anywhere, a green QA bar in the camera tile, a ro
   [istrip.querySelectorAll('.scw-ws-v2-scope-corner').length, /\$/.test(istrip.textContent), [...itiles[0].querySelectorAll('.scw-ws-v2-scope-bar')].map(txt),
    itiles[0].querySelector('.scw-ws-v2-scope-bar-a--ok') != null, itiles.map(t => t.getAttribute('data-scw-ws-v2-scope-tile')),
    itiles[itiles.length - 1].classList.contains('scw-ws-v2-scope-tile--removed'), txt(itiles[itiles.length - 1].querySelector('.scw-ws-v2-scope-sub'))],
-  [0, false, ['2 new drops1 existing cable', '2 interior1 exterior', '2 QA passed1 open'], true, ['cam', 'headend', 'removed'], true, '60486704913-SW1418CO']);
+  [0, false, ['2 new drops1 existing cable', '2 interior1 exterior', '2 QA passed1 QA open ›'], true, ['cam', 'headend', 'removed'], true, '60486704913-SW1418CO']);
+// ── QA open: the bar's open side is a link to the open items, and a line under the bars names them ──
+// 2026-11-06: "it's still yelling me about something that's failing QA but ... the other status tile says all
+// are reviewed. Can you allow me to click to the 1 that is open? Flag it in some other way?" — the Installation
+// tile counts PHOTOS waiting on review; this bar counts ITEMS whose QA passed flag is not Yes.
+const qaSeg = itiles[0].querySelector('.scw-ws-v2-scope-bar-b--qa');
+check('the open segment carries the open ids, reads as a button and names the item + reason on hover',
+  [qaSeg && qaSeg.getAttribute('data-scw-ws-v2-scope-qa-open'), qaSeg && qaSeg.getAttribute('data-scw-ws-v2-scope-ids'), qaSeg && qaSeg.getAttribute('role'),
+   qaSeg && qaSeg.getAttribute('aria-pressed'), qaSeg && qaSeg.getAttribute('title')],
+  ['all', 'i3', 'button', 'false', 'Not yet QA passed: AC-03 (1 required photo not uploaded yet). Click to show it in the worksheet.']);
+const qaLine = itiles[0].querySelector('.scw-ws-v2-scope-qa');
+check('a line under the bars names the open item with its reason as a chip aimed at that one card',
+  [qaLine && txt(qaLine), qaLine && [...qaLine.querySelectorAll('.scw-ws-v2-scope-qa-item')].map(c => c.getAttribute('data-scw-ws-v2-scope-ids')),
+   qaLine && qaLine.querySelector('.scw-ws-v2-scope-qa-item').getAttribute('title')],
+  ['Not yet QA passedAC-031 required photo not uploaded yet ›', ['i3'], 'AC-03 — 1 required photo not uploaded yet. Click to show it in the worksheet.']);
+check('the open segment and the chips sit INSIDE the tile button (the tile click still highlights every camera)',
+  [qaSeg.closest('[data-scw-ws-v2-scope-tile]') === itiles[0], qaLine.closest('[data-scw-ws-v2-scope-tile]') === itiles[0]], [true, true]);
+// Every reason shape, and the "+ N more" chip past two open items.
+const install2 = [
+  inst('j1', 'Reader A', { field_2801: 'AC-01' }), inst('j2', 'Reader B', { field_2801: 'AC-02' }), inst('j3', 'Reader C', { field_2801: 'AC-03' }),
+  inst('j4', 'Reader D', { field_2801: 'AC-04' }), inst('j5', 'Reader E', { field_2801: 'AC-05' })
+];
+Object.assign(photoSlots, {
+  j1: [{ required: true, imgUrl: 'u', qaStatus: 'Fail' }, { required: true, imgUrl: 'u', qaStatus: 'Pending' }],
+  j2: [{ required: true, imgUrl: 'u', qaStatus: 'Pass' }],
+  j3: [],
+  j4: [{ required: true, imgUrl: 'u', qaStatus: 'Pass' }, { required: true, imgUrl: '', qaStatus: 'Pending' }, { required: true, imgUrl: '', qaStatus: 'Pending' }],
+  j5: [{ required: true, imgUrl: 'u', qaStatus: 'Pending' }]
+});
+const ia2 = ns.summary.aggregateScope(install2, iopts);
+check('reasons: a failed photo + one waiting, every photo passed but no verdict on the item, no required photos at all, two never uploaded, one waiting',
+  ia2.cam.qaOpenItems.map(it => it.reason),
+  ['1 photo failed QA · 1 photo waiting on SCW review', 'photos passed · item not marked QA passed yet', 'no QA verdict on the item yet',
+   '2 required photos not uploaded yet', '1 photo waiting on SCW review']);
+const strip2 = ns.summary.buildScopeStrip(ns.groups.buildGroupTree(install2, [], { viewKey: 'view_4093', fields: FI }), iopts);
+const seg2 = strip2.querySelector('.scw-ws-v2-scope-bar-b--qa'), chips2 = [...strip2.querySelectorAll('.scw-ws-v2-scope-qa-item')];
+check('nothing passed: the open segment reads "0 QA passed · 5 QA open" and carries all five; two chips, then "+ 3 more" with the rest',
+  [txt(seg2), seg2.getAttribute('data-scw-ws-v2-scope-ids'), chips2.map(c => txt(c).replace(/›$/, '').trim()), chips2[2].getAttribute('data-scw-ws-v2-scope-ids'), chips2[2].getAttribute('title')],
+  ['0 QA passed · 5 QA open ›', 'j1,j2,j3,j4,j5', ['AC-011 photo failed QA · 1 photo waiting on SCW review', 'AC-02photos passed · item not marked QA passed yet', '+ 3 more'],
+   'j3,j4,j5', 'Also not yet QA passed: AC-03, AC-04, AC-05. Click to show them.']);
+const clean = [inst('k1', 'Reader A', { field_2830: yes }), inst('k2', 'Reader B', { field_2830_raw: true })];
+const strip3 = ns.summary.buildScopeStrip(ns.groups.buildGroupTree(clean, [], { viewKey: 'view_4093', fields: FI }), iopts);
+check('QA clean: a full green bar, no link, no line under the bars',
+  [[...strip3.querySelectorAll('.scw-ws-v2-scope-bar')].map(txt).pop(), strip3.querySelector('[data-scw-ws-v2-scope-qa-open]'), strip3.querySelector('.scw-ws-v2-scope-qa')],
+  ['2 QA passed · 0 QA open', null, null]);
+const sowStrip = ns.summary.buildScopeStrip(ns.groups.buildGroupTree(sow, [], { viewKey: 'view_3962', fields: ns.cfg.fields('view_3962') }), { viewKey: 'view_3962', fields: ns.cfg.fields('view_3962') });
+check('a worksheet with no QA field (Build SOW) renders no QA bar and no open line', [sowStrip.querySelector('.scw-ws-v2-scope-bar-b--qa'), sowStrip.querySelector('.scw-ws-v2-scope-qa')], [null, null]);
 const iline = document.createElement('div'); iline.innerHTML = ns.summary.l1ScopeLine(itree[0], iopts);
 check('install header line: counts only, QA passed on the hover title, the removed-by-CO count as the one rose chip',
   [txt(iline.querySelector('.scw-ws-v2-l1-scope-text')), /2 QA passed/.test(iline.querySelector('.scw-ws-v2-l1-scope-text').getAttribute('title')),

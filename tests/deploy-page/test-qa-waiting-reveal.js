@@ -45,6 +45,10 @@ document.body.innerHTML =
   '<div id="kn-scene_1311" class="kn-scene">' +
     acc('ACCEPTANCE', '1') + acc('System Setup Questionnaire', '1') + acc('CLOSEOUT', '1') +
     '<div id="scw-ws-v2-view_4093">' +
+      // the scope strip's own "N QA open" segment (summary.js): the ITEMS whose QA passed flag is not Yes —
+      // a different measure from the photos waiting on review, so the tile names both
+      '<div class="scw-ws-v2-scope"><span class="scw-ws-v2-scope-bar-b--qa" role="button" aria-pressed="false" data-scw-ws-v2-scope-qa-open="all" data-scw-ws-v2-scope-ids="r2" ' +
+        'title="Not yet QA passed: AC-07 (1 required photo not uploaded yet). Click to show it in the worksheet.">1 QA open ›</span></div>' +
       '<div class="scw-ws-v2-banner"><span class="scw-ws-v2-count">12 records</span></div>' +
       // an OPEN group with a reviewed photo
       '<div class="scw-ws-v2-l1 scw-ws-v2-l1--open"><div data-scw-ws-v2-l1-toggle="1"><span class="scw-ws-v2-l1-label">HEADEND: 019 - Server Room<span class="scw-ws-v2-l1-sub">x</span></span></div>' +
@@ -72,7 +76,17 @@ setTimeout(() => {
   const tile = nav && [...nav.querySelectorAll('.scw-deploy-tile')].find(t => /Install/i.test(t.querySelector('.scw-deploy-tile__eyebrow').textContent));
   check('the Installation tile renders', !!tile, true);
   const scwBar = [...tile.querySelectorAll('.scw-deploy-bars > span:not(.scw-deploy-bar)')].map(s => s.textContent);
-  check('the SCW bar counts the hidden photo and says so', scwBar[1], '1 of 3 reviewed · 1 waiting (hidden)');
+  check('the SCW bar counts the hidden photo and says so, and names the item the strip still has open on QA',
+    scwBar[1], '1 of 3 reviewed · 1 waiting (hidden) · 1 item not yet QA passed');
+  const openBtn = tile.querySelector('[data-scw-tile-qa-open]');
+  let segClicks = 0;
+  const seg = document.querySelector('[data-scw-ws-v2-scope-qa-open="all"]');
+  seg.addEventListener('click', () => { segClicks++; seg.setAttribute('aria-pressed', segClicks % 2 ? 'true' : 'false'); });
+  openBtn.click();
+  openBtn.click();   // already pressed → re-run (off, then on again), never a toggle off
+  check('"1 item not yet QA passed" carries the strip\'s title and hands its click to the strip\'s own segment',
+    [openBtn.getAttribute('title'), segClicks, seg.getAttribute('aria-pressed')],
+    ['Not yet QA passed: AC-07 (1 required photo not uploaded yet). Click to show it in the worksheet.', 3, 'true']);
   const btn = tile.querySelector('[data-scw-tile-qa-waiting]');
   check('the waiting count is a button whose title names the item, its group and that it is collapsed',
     btn && btn.getAttribute('title'),
@@ -94,7 +108,7 @@ setTimeout(() => {
       const bar2 = [...tile2.querySelectorAll('.scw-deploy-bars > span:not(.scw-deploy-bar)')].map(s => s.textContent);
       check('once the group is open the count reads plain "1 waiting" with the item still named',
         [bar2[1], /AC-03/.test(tile2.querySelector('[data-scw-tile-qa-waiting]').getAttribute('title')), /collapsed/.test(tile2.querySelector('[data-scw-tile-qa-waiting]').getAttribute('title'))],
-        ['1 of 3 reviewed · 1 waiting', true, false]);
+        ['1 of 3 reviewed · 1 waiting · 1 item not yet QA passed', true, false]);
       console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
       process.exit(fails ? 1 : 0);
     }, 400);

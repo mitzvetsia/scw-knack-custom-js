@@ -1102,6 +1102,20 @@
               revealWaitingPhotos(mdl.target && mdl.target.el);
               return;
             }
+            // "N items not yet QA passed": hand the click to the scope strip's
+            // own "QA open" segment, whose handler highlights those cards and
+            // opens the group that holds them.
+            var qaOpenBtn = e.target.closest && e.target.closest('[data-scw-tile-qa-open]');
+            if (qaOpenBtn) {
+              e.stopPropagation();
+              var ws0 = mdl.target && mdl.target.el;
+              var seg = ws0 && ws0.querySelector('.scw-ws-v2-scope [data-scw-ws-v2-scope-qa-open="all"]');
+              if (seg) {
+                if (seg.getAttribute('aria-pressed') === 'true') seg.click();   // re-run, never toggle off
+                seg.click();
+              }
+              return;
+            }
             if (mdl.target.kind === 'worksheet') scrollToTarget(mdl.target);
             else openDrawer(mdl.target);
           });
@@ -1681,8 +1695,27 @@
       pending:  pendingChits.length,
       pendingItems: waitingItems(pendingChits),
       failed:   ws.querySelectorAll('.scw-ws-v2-photo-qa-chit.is-fail').length,
-      passed:   ws.querySelectorAll('.scw-ws-v2-photo-qa-chit.is-done, .scw-ws-v2-photo-qa-chit.is-half-pass').length
+      passed:   ws.querySelectorAll('.scw-ws-v2-photo-qa-chit.is-done, .scw-ws-v2-photo-qa-chit.is-half-pass').length,
+      qaOpen:   qaOpenItems(ws)
     };
+  }
+  /** The ITEMS the worksheet's scope strip still counts as open on QA (the
+   *  install record's QA passed flag is not Yes) — a different measure from
+   *  the photos waiting on review above, and the two can disagree: every
+   *  photo reviewed while one item is still open (2026-11-06, "the other
+   *  status tile says all are reviewed"). Read off the strip's own "N QA
+   *  open" segment so the tile and the strip can never say different things. */
+  function qaOpenItems(ws) {
+    var seg = ws.querySelector('.scw-ws-v2-scope [data-scw-ws-v2-scope-qa-open="all"]');
+    if (!seg) return { count: 0, title: '' };
+    var ids = (seg.getAttribute('data-scw-ws-v2-scope-ids') || '').split(',').filter(Boolean);
+    return { count: ids.length, title: seg.getAttribute('title') || '' };
+  }
+  function qaOpenHtml(ps) {
+    var n = ps.qaOpen && ps.qaOpen.count;
+    if (!n) return '';
+    return ' · <button type="button" class="scw-deploy-tile__qa-waiting" data-scw-tile-qa-open="1" title="' +
+      esc(ps.qaOpen.title) + '">' + n + (n === 1 ? ' item' : ' items') + ' not yet QA passed</button>';
   }
   /** The line items whose photos are waiting on SCW QA, one entry per card:
    *  { id, label, where, hidden } — `where` is the MDF/IDF group (or
@@ -1799,7 +1832,7 @@
               '<span style="width:' + pct(ps.failed, ps.inCount) + '%;background:#e11d48"></span>' +
             '</span>' +
             '<span>' + (ps.inCount
-              ? (ps.passed + ps.failed) + ' of ' + ps.inCount + ' reviewed · ' + waitingHtml(ps)
+              ? (ps.passed + ps.failed) + ' of ' + ps.inCount + ' reviewed · ' + waitingHtml(ps) + qaOpenHtml(ps)
               : 'Nothing to review yet') + '</span>' +
           '</span>';
       }
@@ -1808,7 +1841,8 @@
       if (disconnected) facts.push(disconnected + ' disconnected');
       model.fact = facts.join(' · ');
       model.sig = [recs, ps.required, ps.missing, ps.pending, ps.failed, ps.passed, missingItems, disconnected,
-                   ps.pendingItems.map(function (it) { return it.id + (it.hidden ? '!' : ''); }).join('+')].join(',');
+                   ps.pendingItems.map(function (it) { return it.id + (it.hidden ? '!' : ''); }).join('+'),
+                   'qa:' + (ps.qaOpen ? ps.qaOpen.count : 0)].join(',');
       return model;
     }
 

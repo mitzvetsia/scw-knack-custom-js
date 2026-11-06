@@ -402,6 +402,18 @@
         highlightIssueType(chip);
         return;
       }
+      // "N QA open" segment / an open item's chip inside the camera tile →
+      // highlight ONLY the items still open on QA (2026-11-06: "allow me to
+      // click to the 1 that is open"). Checked before the tile: the chip
+      // sits inside the tile button.
+      var qaOpen = e.target && e.target.closest &&
+                   e.target.closest('[data-scw-ws-v2-scope-qa-open]');
+      if (qaOpen) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        highlightScopeFamily(qaOpen);
+        return;
+      }
       // Scope-strip tile → highlight that family's cards (toggle; one
       // family at a time), the same gesture as the warning chips.
       var tile = e.target && e.target.closest &&
@@ -429,12 +441,14 @@
   }
 
   /** Scope-strip tile click: toggle a highlight on every card of that
-   *  family (ids ride on the tile) within the strip's own worksheet. */
+   *  family (ids ride on the tile) within the strip's own worksheet. Also
+   *  takes the QA-open segment / item chips (data-scw-ws-v2-scope-qa-open):
+   *  one pressed target at a time, tile or chip. */
   function highlightScopeFamily(tile) {
     var strip = tile.closest('.scw-ws-v2-scope');
     var container = (strip && strip.closest('[id^="scw-ws-v2-"]')) || document;
     var wasOn = tile.getAttribute('aria-pressed') === 'true';
-    var tiles = (strip || container).querySelectorAll('[data-scw-ws-v2-scope-tile]');
+    var tiles = (strip || container).querySelectorAll('[data-scw-ws-v2-scope-tile], [data-scw-ws-v2-scope-qa-open]');
     for (var t = 0; t < tiles.length; t++) {
       tiles[t].classList.remove('is-on');
       tiles[t].setAttribute('aria-pressed', 'false');

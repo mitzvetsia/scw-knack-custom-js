@@ -655,6 +655,39 @@
     delete fam.byProduct;
     return fam;
   }
+  /** The label the card shows: the display label (SOW field_1950 / install
+   *  field_2802), else the install row's set-by-bucket label (field_2801). */
+  function itemLabel(r, F) {
+    return stripHtml(r[F.displayLabel || 'field_1950']) || (F.labelAlt ? stripHtml(r[F.labelAlt]) : '');
+  }
+  /** Why an item is still open on QA, read off its REQUIRED photo slots on
+   *  the source grid (photos.extractPhotoRecords): a photo that failed, one
+   *  with an image and no verdict (waiting on SCW), one never uploaded
+   *  (waiting on the sub) — or none of those, in which case every photo has
+   *  passed and only the item's own QA verdict is missing. '' when the page
+   *  has no photo reader (the SOW / sales worksheets). */
+  function qaOpenReason(viewKey, recordId) {
+    if (!viewKey || !recordId || !ns.photos || typeof ns.photos.extractPhotoRecords !== 'function') return '';
+    var list;
+    try { list = ns.photos.extractPhotoRecords(viewKey, recordId) || []; } catch (e) { return ''; }
+    var failed = 0, waiting = 0, missing = 0, required = 0;
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i];
+      if (!p || !p.required) continue;
+      required++;
+      var st = String(p.qaStatus || '');
+      if (!p.imgUrl) missing++;
+      else if (/^pass/i.test(st)) continue;
+      else if (/^fail/i.test(st)) failed++;
+      else waiting++;
+    }
+    var parts = [];
+    if (failed)  parts.push(failed + ' ' + plural(failed, 'photo') + ' failed QA');
+    if (waiting) parts.push(waiting + ' ' + plural(waiting, 'photo') + ' waiting on SCW review');
+    if (missing) parts.push(missing + ' required ' + plural(missing, 'photo') + ' not uploaded yet');
+    if (!parts.length) parts.push(required ? 'photos passed · item not marked QA passed yet' : 'no QA verdict on the item yet');
+    return parts.join(' · ');
+  }
   /** The scope aggregate for a set of records (same opts as aggregate()). */
   function aggregateScope(records, opts) {
     opts = opts || {};
@@ -676,6 +709,12 @@
     var cam = fams.cam;
     cam.newDrops = 0; cam.existing = 0; cam.interior = 0; cam.exterior = 0; cam.plenum = 0;
     cam.qaPassed = 0; cam.qaOpen = 0; cam.readers = 0;
+    // The items still open on QA, so the strip can NAME them and the open
+    // segment can take the user there (2026-11-06: "it's still yelling me
+    // about something that's failing QA ... allow me to click to the 1 that
+    // is open" — the Installation tile counts PHOTOS waiting on review, this
+    // bar counts ITEMS whose QA passed flag is not Yes; both were true).
+    cam.qaOpenIds = []; cam.qaOpenItems = [];
     var removed = { count: 0, ids: [], labels: [] };
     var lineItems = 0, total = 0;
     for (var i = 0; i < records.length; i++) {
@@ -712,7 +751,12 @@
         if (fQaPassed || fQaStatus) {
           var passed = (fQaPassed && isYes(r, fQaPassed)) ||
                        (fQaStatus && /^pass/i.test(stripHtml(r[fQaStatus])));
-          if (passed) cam.qaPassed += qty; else cam.qaOpen += qty;
+          if (passed) cam.qaPassed += qty;
+          else {
+            cam.qaOpen += qty;
+            cam.qaOpenIds.push(r.id);
+            cam.qaOpenItems.push({ id: r.id, label: itemLabel(r, F) || name, reason: qaOpenReason(viewKey, r.id) });
+          }
         }
       }
     }
@@ -751,6 +795,53 @@
       '<span class="' + aCls + '" style="width:' + pct(aN, whole) + '%">' + aN + ' ' + esc(la) + '</span>' +
       '<span class="scw-ws-v2-scope-bar-b">' + bN + ' ' + esc(lb) + '</span>' +
     '</span>';
+  }
+  /** The QA split with a CLICKABLE open side: the "N QA open" segment carries
+   *  the open items' ids (data-scw-ws-v2-scope-qa-open) and names them on
+   *  hover; init.js highlights exactly those cards and opens their group.
+   *  A span with role=button, never a nested <button> (the tile is one). */
+  function qaOpenTitle(cam) {
+    var names = [];
+    for (var i = 0; i < cam.qaOpenItems.length; i++) {
+      var it = cam.qaOpenItems[i];
+      names.push(it.label + (it.reason ? ' (' + it.reason + ')' : ''));
+    }
+    return 'Not yet QA passed: ' + names.join(', ') + '. Click to show ' + (names.length === 1 ? 'it' : 'them') + ' in the worksheet.';
+  }
+  function qaBar(cam) {
+    var aN = cam.qaPassed, bN = cam.qaOpen, whole = aN + bN;
+    if (!whole) return '';
+    if (!bN) return scopeBar(aN, 'QA passed', 0, 'QA open', 'ok');
+    var open = '<span class="scw-ws-v2-scope-bar-b scw-ws-v2-scope-bar-b--qa" role="button" aria-pressed="false" ' +
+      'data-scw-ws-v2-scope-qa-open="all" data-scw-ws-v2-scope-ids="' + esc(cam.qaOpenIds.join(',')) + '" ' +
+      'title="' + esc(qaOpenTitle(cam)) + '">' + (aN ? '' : '0 QA passed · ') + bN + ' QA open ›</span>';
+    var fill = aN
+      ? '<span class="scw-ws-v2-scope-bar-a scw-ws-v2-scope-bar-a--ok" style="width:' + pct(aN, whole) + '%">' + aN + ' QA passed</span>'
+      : '';
+    return '<span class="scw-ws-v2-scope-bar">' + fill + open + '</span>';
+  }
+  /** One line under the bars naming the items still open on QA (up to two,
+   *  then "+N more"), each a chip that highlights THAT card. The reason rides
+   *  in the chip (small) and on its hover. Nothing renders when QA is clean. */
+  function qaOpenLine(cam) {
+    var items = cam.qaOpenItems || [];
+    if (!items.length) return '';
+    var MAX = 2, h = '';
+    for (var i = 0; i < Math.min(items.length, MAX); i++) {
+      var it = items[i];
+      h += '<span class="scw-ws-v2-scope-qa-item" role="button" aria-pressed="false" ' +
+        'data-scw-ws-v2-scope-qa-open="' + esc(it.id) + '" data-scw-ws-v2-scope-ids="' + esc(it.id) + '" ' +
+        'title="' + esc(it.label + (it.reason ? ' — ' + it.reason : '') + '. Click to show it in the worksheet.') + '">' +
+        esc(it.label) + (it.reason ? '<small>' + esc(it.reason) + '</small>' : '') + ' ›</span>';
+    }
+    if (items.length > MAX) {
+      var rest = items.slice(MAX), ids = [], names = [];
+      for (var k = 0; k < rest.length; k++) { ids.push(rest[k].id); names.push(rest[k].label); }
+      h += '<span class="scw-ws-v2-scope-qa-item scw-ws-v2-scope-qa-more" role="button" aria-pressed="false" ' +
+        'data-scw-ws-v2-scope-qa-open="more" data-scw-ws-v2-scope-ids="' + esc(ids.join(',')) + '" ' +
+        'title="' + esc('Also not yet QA passed: ' + names.join(', ') + '. Click to show them.') + '">+ ' + rest.length + ' more ›</span>';
+    }
+    return '<span class="scw-ws-v2-scope-qa"><span class="scw-ws-v2-scope-qa-k">Not yet QA passed</span>' + h + '</span>';
   }
   function scopeProductList(fam, max) {
     max = max || 6;
@@ -831,8 +922,9 @@
         bars += scopeBar(a.cam.newDrops, ['new drop', 'new drops'], a.cam.existing, 'existing cable');
         bars += scopeBar(a.cam.interior, 'interior', a.cam.exterior, 'exterior');
         if (a.cam.plenum) bars += scopeBar(a.cam.plenum, 'plenum', a.cam.count - a.cam.plenum, 'not plenum');
-        if (a.hasQa && (a.cam.qaPassed || a.cam.qaOpen)) bars += scopeBar(a.cam.qaPassed, 'QA passed', a.cam.qaOpen, 'open', 'ok');
+        if (a.hasQa && (a.cam.qaPassed || a.cam.qaOpen)) bars += qaBar(a.cam);
       }
+      var qaLine = (a.cam.count && a.hasQa) ? qaOpenLine(a.cam) : '';
       var mountsLine = a.mounts.count
         ? '<span class="scw-ws-v2-scope-mounts" data-scw-ws-v2-scope-ids="' + esc(a.mounts.ids.join(',')) + '">' +
             '<span><b>' + a.mounts.count + '</b> ' + plural(a.mounts.count, 'mount') + '</span>' +
@@ -840,7 +932,7 @@
         : '';
       var camFam = a.cam.count ? a.cam : a.mounts;
       tiles += scopeTile(camFam, a.cam.count ? 'cam' : 'mount', a.cam.count ? a.title : 'Mounts', 'scw-ws-v2-scope-tile--cam',
-        (bars ? '<span class="scw-ws-v2-scope-bars">' + bars + '</span>' : '') + (a.cam.count ? mountsLine : ''),
+        (bars ? '<span class="scw-ws-v2-scope-bars">' + bars + '</span>' : '') + qaLine + (a.cam.count ? mountsLine : ''),
         money(a.cam.count ? a.cam.money : a.mounts.money));
     }
     if (a.headend.count) tiles += scopeTile(a.headend, 'headend', 'Headend & networking', 'scw-ws-v2-scope-tile--headend', scopeProductList(a.headend, 6), money(a.headend.money));

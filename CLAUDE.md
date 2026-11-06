@@ -605,6 +605,24 @@ Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-au
   click (`revealWaitingPhotos`) opens the holding group through `summary.revealCard`, highlights the cards
   (`scw-ws-v2-card--scope-hl`) and scrolls to the first — the tile's own scroll is suppressed for that click.
   Test: `tests/deploy-page/test-qa-waiting-reveal.js`.
+- **The scope strip's QA bar names and links the items still open (2026-11-06 — "it's still yelling me about something
+  that's failing QA but ... the other status tile says all are reviewed. Can you allow me to click to the 1 that is open?")**:
+  two measures were on screen — the Installation tile counts PHOTOS waiting on review (image, no verdict), the camera /
+  reader tile's bar counts ITEMS whose QA passed flag (`qaPassed` = install `field_2830`, or `qaStatus` ≠ Pass) is not Yes —
+  so "21 of 21 reviewed · 0 waiting" and "1 open" were both true (a required photo never uploaded, or every photo passed
+  with no verdict on the item). `summary.js` `aggregateScope` now carries `cam.qaOpenIds` / `cam.qaOpenItems` (`{ id,
+  label, reason }`: the card label, else the product; the reason read off the item's REQUIRED photo slots through
+  `photos.extractPhotoRecords` — "1 photo failed QA", "N photos waiting on SCW review", "N required photos not uploaded
+  yet", else "photos passed · item not marked QA passed yet" / "no QA verdict on the item yet"; '' where the page has no
+  photo reader). `qaBar` renders the open side as an amber `role=button` segment ("1 QA open ›", `data-scw-ws-v2-scope-qa-open
+  ="all"` + the ids, the items and reasons on its title) and `qaOpenLine` adds a line under the bars — "NOT YET QA PASSED"
+  + one chip per open item (label, reason small, two then "+ N more"). `init.js` routes a click on either
+  (`[data-scw-ws-v2-scope-qa-open]`, checked before the tile it sits in) through `highlightScopeFamily`: only those cards
+  are lit, the holding group opened (`revealCard`), the first scrolled to; one pressed target at a time, tile or chip.
+  The Installation tile's SCW line appends "· N items not yet QA passed" (`deploy-page-nav.js` `qaOpenItems`, read off
+  the strip's own segment so the two can never disagree; the click hands off to that segment). Amber, never red: nothing
+  has failed. Tests: `tests/worksheet-v2/test-scope-qa-open-click.js` (real init.js), the QA-open block in
+  `tests/worksheet-v2/test-scope-strip.js`, the tile line in `tests/deploy-page/test-qa-waiting-reveal.js`.
 - **Shipments drawer (2026-10-16 → 2026-10-23)**: the Installation tile's "Shipments ›" line
   opens the OMS order mirrors (counts, per-order cards, tracking links, contents). The "Re-check
   shipments" re-pull button, its reference box and every resync hint went OFF on 2026-10-16
