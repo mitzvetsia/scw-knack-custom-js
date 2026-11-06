@@ -2345,7 +2345,15 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   date than requested is fine), an optional note, and **Can't extend | Re-price instead | Extend bid to <date>**; each
   is ONE `confirm-extension` POST (`bidPackageId`, `sowId` from `field_2387`, `outcome`, `bidExpiration` on extend,
   `note`); a failed POST re-enables the buttons with the HTTP status; a sent answer replaces the card. With the flag
-  key blank the card never renders (one console warning). `sub-bid-document.js` `readHeader` skips the two bid fields
+  key blank the card never renders (one console warning). **The card shows the sub only the re-price outcome that
+  applies (2026-11-06 — "we need to show the sub less if/then … show them the outcome that actually applies")**:
+  `repriceOutcome()` reads the QUOTE's expiration (`CONFIG.sub.quoteExpiration` = SOW `field_2135`, off the bid record
+  first, else any view on scene_1149 that serves it — **Builder: add the Matching SOW's expiration, `field_2135` through
+  `field_2387`, as a column on view_3552**) and the three-line list reads "Re-price instead if your costs have changed —
+  the quote expired 1/15/2026, so your bid reopens for re-pricing right away." / "… the quote runs until 2/10/2027, so SCW
+  decides whether to reopen your bid and answers on your task." / (not served) "… SCW reviews it and answers on your
+  task."; the re-price send's fallback line (when Make's `message` is absent) follows the same reading. The card wears
+  `data-scw-qext-reprice` = expired / running / unknown. The old copy spelled out both branches. `sub-bid-document.js` `readHeader` skips the two bid fields
   off the same CONFIG keys, so the bid PDF never prints "Extension requested: Yes" as a header fact. **The sub's SURVEYS
   DASHBOARD (scene_1140)** — where the portal and the notification's link land them — gets `renderDashboardBanner`: a
   banner above the worksheet (`#view_3505`) with one row per bid of the request whose flag is Yes on the BID_packages grid
@@ -2363,8 +2371,9 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   package `FLAG_expiration extension requested` **`field_3316`** (Yes/No) + `INPUT_requested expiration date`
   **`field_3317`**. `CONFIG.sow.*` / `CONFIG.sub.*` here and `bidExtensionFlag` / `bidExtensionDate` in
   bid-review/config.js carry them. **Still to add as COLUMNS** (schema read 2026-11-05 16:38: none of the five views
-  serve them yet): the SOW pair on view_3827, view_3918 and view_3861; the bid pair on view_3552, view_3573 and view_3507
-  (the sub's dashboard banner). Until
+  served them; view_3507 and view_3827 got theirs on 2026-11-06): the SOW pair on view_3918 and view_3861; the bid pair
+  on view_3552 and view_3573; plus the SOW's `field_2135` through `field_2387` on view_3552 (the sub card's applicable
+  re-price outcome). Until
   then every reader fails open (marker fallback on the sales / Ops pages, no sub card, no reconcile chip). Make writes
   all four through the API — none needs inline editing. Nothing in ClickUp.
 - **A sub's re-price never unlocks a bid while the quote still runs (2026-11-05)** — "a sub saying they need to

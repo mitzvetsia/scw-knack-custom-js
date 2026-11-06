@@ -235,6 +235,25 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
     [!!subCard(), subCard().nextElementSibling.id, /hold this bid until 12\/31\/2026/.test(txt(subCard())), /currently expires 11\/2\/2026/.test(txt(subCard())),
      [...subCard().querySelectorAll('[data-qext-outcome]')].map(b => b.textContent)],
     [true, 'view_3550', true, true, ['Can\'t extend', 'Re-price instead', 'Extend bid to 12/31/2026']]);
+  // the re-price line shows ONLY the outcome that applies — never the if / then (2026-11-06)
+  const repriceLine = () => txt([...subCard().querySelectorAll('.scw-qext__list li')][1]);
+  check('the quote\'s expiration not served on the page: a neutral re-price line, no "if the quote has"',
+    [subCard().getAttribute('data-scw-qext-reprice'), repriceLine(), /if the quote has|if it has not/i.test(txt(subCard()))],
+    ['unknown', 'Re-price instead if your costs have changed — SCW reviews it and answers on your task.', false]);
+  subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' }, field_2135: '01/15/2026', field_2135_raw: { date_formatted: '01/15/2026' } }); qx.renderSubCard();
+  check('the quote already expired (field_2135 through the bid\'s SOW on view_3552): "reopens right away"',
+    [subCard().getAttribute('data-scw-qext-reprice'), repriceLine()],
+    ['expired', 'Re-price instead if your costs have changed — the quote expired 1/15/2026, so your bid reopens for re-pricing right away.']);
+  subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' }, field_2135: plus(40), field_2135_raw: { date_formatted: plus(40) } }); qx.renderSubCard();
+  check('the quote still running: "SCW decides"',
+    [subCard().getAttribute('data-scw-qext-reprice'), repriceLine()],
+    ['running', 'Re-price instead if your costs have changed — the quote runs until ' + plus(40) + ', so SCW decides whether to reopen your bid and answers on your task.']);
+  window.Knack.views.view_9999 = { model: { data: { models: [{ attributes: { id: 'x', field_2135: '02/01/2026', field_2135_raw: { date_formatted: '02/01/2026' } } }] } } };
+  subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } });
+  window.Knack.views.view_9999 = { model: { data: { models: [{ attributes: { id: 'x', field_2135: '02/01/2026', field_2135_raw: { date_formatted: '02/01/2026' } } }] } } };
+  qx.renderSubCard();
+  check('the expiration served by ANY view on the scene counts', subCard().getAttribute('data-scw-qext-reprice'), 'expired');
+  subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
   // extend with a bad date
   q('[data-qext-sub-date]', subCard()).value = '2/30/2027'; posts.length = 0; q('[data-qext-outcome="extend"]', subCard()).click();
   check('extend refuses an invalid date, posts nothing', [posts.length, txt(q('[data-qext-sub-err]', subCard()))], [0, 'Enter the date to extend to as M/D/YYYY.']);
@@ -256,7 +275,10 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   check('a re-price reply shows Make\'s message (held while the quote runs, or reopened now)', [subCard().getAttribute('data-scw-qext-sub-done'), /bid stays locked until SCW either reopens it/.test(txt(subCard()))], ['reprice', true]);
   subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
   q('[data-qext-outcome="reprice"]', subCard()).click(); lastPost().error({ status: 0 }); await sleep(10);
-  check('… an opaque reply gets the generic line', /If the quote has already expired the bid reopens for re-pricing right away/.test(txt(subCard())), true);
+  check('… an opaque reply gets the neutral line (the quote\'s expiration not served)', txt(q('.scw-qext__ok', subCard())), 'Sent. SCW reviews it and answers on your task.');
+  subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' }, field_2135: '01/15/2026', field_2135_raw: { date_formatted: '01/15/2026' } }); qx.renderSubCard();
+  q('[data-qext-outcome="reprice"]', subCard()).click(); lastPost().error({ status: 0 }); await sleep(10);
+  check('… with the quote expired the fallback says the bid is reopened', txt(q('.scw-qext__ok', subCard())), 'Sent. Your bid is reopened for re-pricing.');
   subPage({ field_3316: 'Yes', field_3316_raw: true, field_3317: '12/31/2026', field_3317_raw: { date_formatted: '12/31/2026' } }); qx.renderSubCard();
   posts.length = 0; q('[data-qext-outcome="decline"]', subCard()).click();
   check('decline posts its outcome', body().outcome, 'decline');

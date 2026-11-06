@@ -198,6 +198,8 @@ re-price / decline). The URL is in `MAKE_QUOTE_EXTENSION_WEBHOOK` (`src/config.j
   back to Final Bid Submitted; the sales card returns to the button.
 - Sub: re-price on an EXPIRED quote → bid Draft, SOW Re-Pricing (the sales card says so), tasks stay Waiting on Bid; a
   publish-final clears it.
+- Sub: the card's "Re-price instead" line names the outcome that applies once view_3552 serves the SOW's
+  `field_2135` (expired → "reopens right away"; running → "SCW decides"); without it, "SCW reviews it".
 - Sub: re-price while the quote still runs → bid stays locked, SOW Re-Price Requested (sales card read-only, the Ops
   rows offer Keep quote as is | Reopen bid for re-pricing), AE Slack ping + SCW task comment; Reopen → the expired
   path; Keep → status blank, tasks back, the sub told; the native Reopen Bid also closes the held state.

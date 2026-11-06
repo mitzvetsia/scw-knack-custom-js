@@ -124,6 +124,11 @@
       bidLabel: 'field_2638',
       requestedFlag: 'field_3316',          // bid FLAG_expiration extension requested (Yes/No, Builder 2026-11-05)
       requestedDate: 'field_3317',          // bid INPUT_requested expiration date
+      // The QUOTE's expiration (SOW field_2135, the proposal's mirror — what Make gates a re-price on):
+      // read off the bid record first, else off any view on the scene that serves it. Builder: add the
+      // Matching SOW's expiration date (field_2135 through field_2387) as a column on view_3552. Until it is
+      // served the card cannot say which re-price outcome applies and says "SCW reviews it" instead.
+      quoteExpiration: 'field_2135',
       // The SURVEYS DASHBOARD (where the sub lands): one banner line per bid
       // of the request that carries the flag, linking to that bid's page.
       dashboard: { scene: 'scene_1140', bidsGrid: 'view_3507', bidPageSlug: 'edit-bid-package', mountBefore: 'view_3505' }
@@ -986,6 +991,41 @@
   // 3. SUB BID PAGE
   // ═══════════════════════════════════════════════════════════════════════
   function subBidRecord() { return viewRecord(CONFIG.sub.bidView); }
+  /** The quote's expiration as M/D/YYYY, '' when no view on the page serves it. */
+  function subQuoteExpiration() {
+    var key = CONFIG.sub.quoteExpiration;
+    if (!key) return '';
+    var v = normalizeMdy(fieldText(subBidRecord(), key));
+    if (v) return v;
+    try {
+      var views = (window.Knack && Knack.views) || {};
+      for (var k in views) {
+        if (!Object.prototype.hasOwnProperty.call(views, k)) continue;
+        var recs = viewRecords(k);
+        for (var i = 0; i < recs.length; i++) { v = normalizeMdy(fieldText(recs[i], key)); if (v) return v; }
+      }
+    } catch (e) { /* no page data */ }
+    return '';
+  }
+  /** Which re-price path applies to THIS bid (the rule Make applies): the quote has expired → the bid
+   *  reopens at once; still running → SCW decides first; unknown → the page cannot say.
+   *  The sub is shown only the outcome that applies, never the if / then (2026-11-06). */
+  function repriceOutcome() {
+    var exp = subQuoteExpiration();
+    if (!exp) return { kind: 'unknown', date: '' };
+    var expired = mdyToDate(exp) < mdyToDate(todayMdy());
+    return { kind: expired ? 'expired' : 'running', date: exp };
+  }
+  function repriceOutcomeText(o) {
+    if (o.kind === 'expired') return 'the quote expired ' + esc(o.date) + ', so your bid reopens for re-pricing right away.';
+    if (o.kind === 'running') return 'the quote runs until ' + esc(o.date) + ', so SCW decides whether to reopen your bid and answers on your task.';
+    return 'SCW reviews it and answers on your task.';
+  }
+  function repriceSentText(o) {
+    if (o.kind === 'expired') return 'Sent. Your bid is reopened for re-pricing.';
+    if (o.kind === 'running') return 'Sent. The quote runs until ' + o.date + ', so SCW decides whether to reopen your bid — you will hear on your task.';
+    return 'Sent. SCW reviews it and answers on your task.';
+  }
   function renderSubCard() {
     var c = CONFIG.sub;
     var existing = document.getElementById('scw-qext-sub');
@@ -1008,15 +1048,16 @@
     card.id = 'scw-qext-sub';
     card.className = 'scw-qext scw-qext--sub';
     card.setAttribute('data-scw-qext-sub', rec.id);
+    var outcome = repriceOutcome();
+    card.setAttribute('data-scw-qext-reprice', outcome.kind);
     card.innerHTML =
       '<div class="scw-qext__title">SCW asks you to hold this bid' + (requested ? ' until ' + esc(requested) : '') + '</div>' +
-      '<div class="scw-qext__line">The client needs more time on the quote this bid is priced into' +
-        (requested ? ': the requested quote expiration is <b>' + esc(requested) + '</b>' : '') + '.' +
-        ' Your bid currently expires <b>' + esc(bidExp || '—') + '</b>.</div>' +
-      '<div class="scw-qext__line scw-qext__muted">Extend if the price still stands (an earlier date than requested is fine — the quote follows your date). ' +
-        'Re-price if costs have moved: if the quote has already expired the bid reopens for re-pricing right away; ' +
-        'if it has not, SCW decides first (reopen the bid, or close the deal before the quote expires) and comments on your task. ' +
-        'Can\'t extend leaves the quote as it is.</div>' +
+      '<div class="scw-qext__line">The client needs more time on the quote. Your bid currently expires <b>' + esc(bidExp || '—') + '</b>.</div>' +
+      '<ul class="scw-qext__list scw-qext__muted">' +
+        '<li><b>Extend</b> if your price still stands — an earlier date than requested is fine; the quote follows your date.</li>' +
+        '<li><b>Re-price instead</b> if your costs have changed — ' + repriceOutcomeText(outcome) + '</li>' +
+        '<li><b>Can\'t extend</b> — the quote keeps its current expiration.</li>' +
+      '</ul>' +
       '<label class="scw-qext__line" style="margin-top:8px"><span class="scw-qext__muted">Extend my bid to</span> ' +
         '<input class="scw-qext__input" data-qext-sub-date type="text" inputmode="numeric" placeholder="M/D/YYYY" value="' + esc(requested) + '"></label>' +
       '<textarea class="scw-qext__ta" data-qext-sub-note placeholder="Note to SCW (optional)"></textarea>' +
@@ -1061,7 +1102,7 @@
           var replyMsg = res.data && typeof res.data.message === 'string' ? res.data.message.trim() : '';
           card.innerHTML = '<div class="scw-qext__title">Sent to SCW</div><div class="scw-qext__ok">' + esc(
             outcome === 'extend' ? 'Your bid is extended to ' + payload.bidExpiration + '. The quote follows your date.' :
-            outcome === 'reprice' ? (replyMsg || 'Sent. If the quote has already expired the bid reopens for re-pricing right away; otherwise SCW decides first and comments on your task.') :
+            outcome === 'reprice' ? (replyMsg || repriceSentText(repriceOutcome())) :
             'SCW has been told the bid can\'t be extended.') + '</div>';
           card.setAttribute('data-scw-qext-sub-done', outcome);
         });
