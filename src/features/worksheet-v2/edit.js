@@ -214,7 +214,11 @@
         });
       }
       var ov = document.createElement('div');
-      ov.className = 'scw-ws-v2-bulk-overlay';
+      // --confirm lifts the overlay above every dialog that can open it (the photo
+      // modal at 10000, the bulk modal at 9999, photo-assign at 99990): a yes/no must
+      // never sit BEHIND the thing asking (2026-11-06, "the are-you-sure modal is
+      // showing up behind the photo modal"). The note prompt below rides the same class.
+      ov.className = 'scw-ws-v2-bulk-overlay scw-ws-v2-bulk-overlay--confirm';
       ov.innerHTML =
         '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
           '<div class="scw-ws-v2-bulk-modal-head">' +
@@ -250,7 +254,7 @@
         });
       }
       var ov = document.createElement('div');
-      ov.className = 'scw-ws-v2-bulk-overlay';
+      ov.className = 'scw-ws-v2-bulk-overlay scw-ws-v2-bulk-overlay--confirm';
       ov.innerHTML =
         '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
           '<div class="scw-ws-v2-bulk-modal-head">' +

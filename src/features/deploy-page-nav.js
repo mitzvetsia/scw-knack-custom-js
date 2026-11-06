@@ -228,6 +228,9 @@
       '  font-variant-numeric: tabular-nums;',
       '}',
       '.scw-deploy-bars b { font-weight: 700; color: #0f172a; }',
+      '.scw-deploy-tile__qa-waiting { background: none; border: 0; padding: 0; margin: 0; font: inherit;',
+      '  color: #b45309; text-decoration: underline dotted; text-underline-offset: 2px; cursor: pointer; }',
+      '.scw-deploy-tile__qa-waiting:hover { color: #92400e; text-decoration-style: solid; }',
       '.scw-deploy-bar {',
       '  display: flex; height: 6px; border-radius: 999px; overflow: hidden;',
       '  background: #e2e8f0;',
@@ -1091,6 +1094,14 @@
               if (window.SCW && SCW.shipments && typeof SCW.shipments.open === 'function') SCW.shipments.open();
               return;
             }
+            // "N waiting" on the Installation tile: open the group(s) that
+            // hold the photos waiting on SCW QA and highlight their cards.
+            var qaBtn = e.target.closest && e.target.closest('[data-scw-tile-qa-waiting]');
+            if (qaBtn) {
+              e.stopPropagation();
+              revealWaitingPhotos(mdl.target && mdl.target.el);
+              return;
+            }
             if (mdl.target.kind === 'worksheet') scrollToTarget(mdl.target);
             else openDrawer(mdl.target);
           });
@@ -1662,14 +1673,82 @@
   function photoStats(ws) {
     var req = ws.querySelectorAll('.scw-ws-v2-photo-card--required').length;
     var missing = ws.querySelectorAll('.scw-ws-v2-photo-card--required.scw-ws-v2-photo-card--missing').length;
+    var pendingChits = ws.querySelectorAll('.scw-ws-v2-photo-qa-chit.is-pending');
     return {
       required: req,
       missing:  missing,
       inCount:  Math.max(0, req - missing),
-      pending:  ws.querySelectorAll('.scw-ws-v2-photo-qa-chit.is-pending').length,
+      pending:  pendingChits.length,
+      pendingItems: waitingItems(pendingChits),
       failed:   ws.querySelectorAll('.scw-ws-v2-photo-qa-chit.is-fail').length,
       passed:   ws.querySelectorAll('.scw-ws-v2-photo-qa-chit.is-done, .scw-ws-v2-photo-qa-chit.is-half-pass').length
     };
+  }
+  /** The line items whose photos are waiting on SCW QA, one entry per card:
+   *  { id, label, where, hidden } — `where` is the MDF/IDF group (or
+   *  "Removed by change order"), `hidden` when the card sits in a closed
+   *  group, which is why "1 waiting" can show with nothing on screen
+   *  (2026-11-06: "we're still showing 1 item to QA but there is no item to
+   *  QA" — the photo was on a card nobody could see). */
+  function waitingItems(chits) {
+    var seen = {}, out = [];
+    for (var i = 0; i < chits.length; i++) {
+      var card = chits[i].closest && chits[i].closest('.scw-ws-v2-card');
+      if (!card) continue;
+      var id = card.getAttribute('data-scw-ws-v2-record') || '';
+      if (!id || seen[id]) continue;
+      seen[id] = 1;
+      var labEl = card.querySelector('.scw-ws-v2-cell--label');
+      var label = labEl ? txt(labEl) : '';
+      var l1 = card.closest('.scw-ws-v2-l1');
+      var l1Lab = l1 && l1.querySelector('.scw-ws-v2-l1-label');
+      var where = l1Lab ? txt(l1Lab.firstChild && l1Lab.firstChild.nodeType === 3 ? l1Lab.firstChild : l1Lab) : '';
+      var removed = card.closest('.scw-ws-v2-removedsec');
+      if (removed) where = 'Removed by change order' + (where ? ' · ' + where : '');
+      var hidden = (l1 && !l1.classList.contains('scw-ws-v2-l1--open')) ||
+                   (removed && !removed.classList.contains('scw-ws-v2-removedsec--open'));
+      out.push({ id: id, label: label || '(no label)', where: where, hidden: !!hidden });
+    }
+    return out;
+  }
+  /** Click on "N waiting": open the group(s) holding those cards, highlight
+   *  them (the scope-tile gesture) and scroll to the first. */
+  function revealWaitingPhotos(ws) {
+    if (!ws) return;
+    var items = waitingItems(ws.querySelectorAll('.scw-ws-v2-photo-qa-chit.is-pending'));
+    var all = ws.querySelectorAll('.scw-ws-v2-card--scope-hl');
+    for (var c = 0; c < all.length; c++) all[c].classList.remove('scw-ws-v2-card--scope-hl');
+    var first = null;
+    for (var i = 0; i < items.length; i++) {
+      var cards = ws.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record="' + items[i].id + '"]');
+      for (var k = 0; k < cards.length; k++) {
+        cards[k].classList.add('scw-ws-v2-card--scope-hl');
+        if (!first) first = cards[k];
+      }
+    }
+    if (!first) return;
+    var summary = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.summary;
+    var opened = !!(summary && typeof summary.revealCard === 'function' && summary.revealCard(first));
+    var go = function () {
+      if (typeof first.scrollIntoView === 'function') {
+        try { first.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* ignore */ }
+      }
+    };
+    if (opened) setTimeout(go, 80); else go();
+  }
+  function waitingHtml(ps) {
+    if (!ps.pending) return '0 waiting';
+    var hiddenN = 0, names = [];
+    for (var i = 0; i < ps.pendingItems.length; i++) {
+      var it = ps.pendingItems[i];
+      if (it.hidden) hiddenN++;
+      names.push(it.label + (it.where ? ' (' + it.where + ')' : ''));
+    }
+    var title = (names.length ? 'Waiting on SCW QA: ' + names.join(', ') : 'Photos waiting on SCW QA') +
+      (hiddenN ? ' — ' + hiddenN + ' of these ' + (hiddenN === 1 ? 'sits' : 'sit') + ' in a collapsed group' : '') +
+      '. Click to show ' + (names.length === 1 ? 'it' : 'them') + '.';
+    return '<button type="button" class="scw-deploy-tile__qa-waiting" data-scw-tile-qa-waiting="1" title="' +
+      esc(title) + '">' + ps.pending + ' waiting' + (hiddenN ? ' (hidden)' : '') + '</button>';
   }
   function bannerChip(ws, type) {
     var el = ws.querySelector('.scw-ws-v2-banner [data-scw-ws-v2-warn-chip="' + type + '"] .scw-ws-v2-warn-chip-n');
@@ -1720,7 +1799,7 @@
               '<span style="width:' + pct(ps.failed, ps.inCount) + '%;background:#e11d48"></span>' +
             '</span>' +
             '<span>' + (ps.inCount
-              ? (ps.passed + ps.failed) + ' of ' + ps.inCount + ' reviewed · ' + ps.pending + ' waiting'
+              ? (ps.passed + ps.failed) + ' of ' + ps.inCount + ' reviewed · ' + waitingHtml(ps)
               : 'Nothing to review yet') + '</span>' +
           '</span>';
       }
@@ -1728,7 +1807,8 @@
       if (missingItems) facts.push(missingItems + ' items missing photos');
       if (disconnected) facts.push(disconnected + ' disconnected');
       model.fact = facts.join(' · ');
-      model.sig = [recs, ps.required, ps.missing, ps.pending, ps.failed, ps.passed, missingItems, disconnected].join(',');
+      model.sig = [recs, ps.required, ps.missing, ps.pending, ps.failed, ps.passed, missingItems, disconnected,
+                   ps.pendingItems.map(function (it) { return it.id + (it.hidden ? '!' : ''); }).join('+')].join(',');
       return model;
     }
 

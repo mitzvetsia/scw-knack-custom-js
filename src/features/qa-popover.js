@@ -286,6 +286,9 @@
       '.scw-qa-modal__classify-status { font: 500 11px/1.2 system-ui, sans-serif; color: #86efac; }',
       '.scw-qa-modal__classify-status.is-err { color: #fca5a5; }',
       '.scw-qa-modal__uploadwrap { width: 100%; max-width: 420px; }',
+      /* Empty slot: the action bar pins to the top, the upload pane centres in the rest. */
+      '.scw-qa-modal__viewer-fill { flex: 1 1 auto; align-self: stretch; min-height: 0;',
+      '  display: flex; align-items: center; justify-content: center; }',
       '.scw-qa-modal__drop { display: flex; flex-direction: column; align-items: center; gap: 8px;',
       '  justify-content: center; min-height: 150px; border: 2px dashed #6b7280; border-radius: 10px;',
       '  background: #111827; color: #9ca3af; cursor: pointer; text-align: center; padding: 16px;',
@@ -1715,19 +1718,24 @@
       img.addEventListener('click', function () { window.open(photo.imgUrl, '_blank'); });
       viewer.appendChild(img);
     } else {
-      if (classify) viewer.appendChild(classify);
-      viewer.appendChild(buildUploadPane(photo));
-      // An EMPTY slot that is not required and has no type is a loose
-      // record with nothing in it — offer the same delete the filled
-      // viewer bar offers (2026-11-06: seeded "Camera View" placeholders
-      // ops wants gone: clear the type above, untick Required, delete).
+      // Empty slot: the SAME top action bar as the filled viewer — Type /
+      // Required on the left, Delete on the right — then the upload pane
+      // centred in the space below (2026-11-06: "the placement of the
+      // delete button — and the type and required fields — should be at
+      // the top"). An EMPTY slot that is not required and has no type is a
+      // loose record with nothing in it, so it gets the same delete the
+      // filled viewer bar offers (seeded "Camera View" placeholders ops
+      // wants gone: clear the type, untick Required, delete).
+      var topBar = document.createElement('div');
+      topBar.className = 'scw-qa-modal__viewer-bar scw-qa-modal__viewer-bar--empty';
+      if (classify) topBar.appendChild(classify);
       var delEmpty = buildDeleteButton(photo, 'Delete this empty slot (not required, no photo type)');
-      if (delEmpty) {
-        var delRow = document.createElement('div');
-        delRow.className = 'scw-qa-modal__viewer-bar scw-qa-modal__viewer-bar--empty';
-        delRow.appendChild(delEmpty);
-        viewer.appendChild(delRow);
-      }
+      if (delEmpty) topBar.appendChild(delEmpty);
+      if (topBar.childNodes.length) viewer.appendChild(topBar);
+      var fill = document.createElement('div');
+      fill.className = 'scw-qa-modal__viewer-fill';
+      fill.appendChild(buildUploadPane(photo));
+      viewer.appendChild(fill);
     }
     splitBody.appendChild(viewer);
 

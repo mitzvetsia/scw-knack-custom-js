@@ -2419,6 +2419,9 @@
     '  display: flex !important; align-items: center !important; justify-content: center !important;',
     '  z-index: 9999 !important;',
     '}',
+    /* A yes/no confirm or note prompt (edit.js) always sits above whatever asked: the photo
+       modal (10000), photo-assign (99990), the CR / CO dialogs (100001). */
+    '.scw-ws-v2-bulk-overlay--confirm { z-index: 100010 !important; }',
     '.scw-ws-v2-bulk-modal {',
     '  background: #fff !important;',
     '  border-radius: 8px !important;',

@@ -590,8 +590,21 @@ Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-au
   one, a no-op; the display default "Photo" is never a type — `storedType`). After a Type or Required edit
   `refreshCanDelete` re-asks `photos.js canDeleteAdhoc` and rebuilds the modal, so **Delete photo** appears the
   moment a slot is untyped AND not required — on the filled viewer bar as before and now on an EMPTY slot too
-  (`buildDeleteButton`, shared; `.scw-qa-modal__viewer-bar--empty` under the upload pane). Closing the modal
-  shows the same red trash on the card. Test: `tests/worksheet-v2/test-photo-type-clear.js`.
+  (`buildDeleteButton`, shared). On an empty slot the Type / Required bar and Delete sit in the SAME top action bar
+  as the filled viewer (`.scw-qa-modal__viewer-bar--empty`), the upload pane centred below it
+  (`.scw-qa-modal__viewer-fill`) — they used to float mid-column. Closing the modal shows the same red trash on
+  the card. The worksheet's yes/no confirm and note prompt (`edit.js` `confirmModal` / the note prompt) carry
+  `scw-ws-v2-bulk-overlay--confirm` (z-index 100010): the bulk overlay's 9999 put "Are you SURE?" BEHIND the
+  photo modal (10000). Test: `tests/worksheet-v2/test-photo-type-clear.js`.
+- **"N waiting" on the Installation tile names its photos (2026-11-06 — "we're still showing 1 item to QA but
+  there is no item to QA")**: the SCW bar's count (`deploy-page-nav.js` `photoStats` → `.scw-ws-v2-photo-qa-chit
+  .is-pending`, a REQUIRED photo WITH an image and no Pass / Fail) is taken over the whole worksheet DOM, so a
+  photo on a card inside a closed MDF/IDF group or the collapsed "Removed by change order" section counted while
+  nothing showed. `waitingItems` names each card (label, group, hidden or not); the count renders as a button
+  (`data-scw-tile-qa-waiting`, "1 waiting (hidden)" when a card is folded away) whose title lists them, and a
+  click (`revealWaitingPhotos`) opens the holding group through `summary.revealCard`, highlights the cards
+  (`scw-ws-v2-card--scope-hl`) and scrolls to the first — the tile's own scroll is suppressed for that click.
+  Test: `tests/deploy-page/test-qa-waiting-reveal.js`.
 - **Shipments drawer (2026-10-16 → 2026-10-23)**: the Installation tile's "Shipments ›" line
   opens the OMS order mirrors (counts, per-order cards, tracking links, contents). The "Re-check
   shipments" re-pull button, its reference box and every resync hint went OFF on 2026-10-16
