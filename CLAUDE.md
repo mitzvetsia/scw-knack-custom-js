@@ -2350,9 +2350,11 @@ revision requests, ~weekly). The bundle half is built and **fail-open**; Make ow
   `repriceOutcome()` reads the QUOTE's expiration (`CONFIG.sub.quoteExpiration` = SOW `field_2135`, off the bid record
   first, else any view on scene_1149 that serves it — **Builder: add the Matching SOW's expiration, `field_2135` through
   `field_2387`, as a column on view_3552**) and the three-line list reads "Re-price instead if your costs have changed —
-  the quote expired 1/15/2026, so your bid reopens for re-pricing right away." / "… the quote runs until 2/10/2027, so SCW
-  decides whether to reopen your bid and answers on your task." / (not served) "… SCW reviews it and answers on your
-  task."; the re-price send's fallback line (when Make's `message` is absent) follows the same reading. The card wears
+  the quote expired 1/15/2026, so your bid reopens for re-pricing right away." with the button **Re-price instead**, or —
+  quote still running OR not served — "**Request re-price** if you cannot extend without repricing — SCW reviews and
+  reopens." with the button **Request re-price** (the user's wording, same day: a request SCW answers, not a re-price the
+  sub performs; the dashboard banner's sentence names the same three answers); the re-price send's fallback line (when
+  Make's `message` is absent) follows the same reading. The payload `outcome` stays `reprice` either way. The card wears
   `data-scw-qext-reprice` = expired / running / unknown. The old copy spelled out both branches. `sub-bid-document.js` `readHeader` skips the two bid fields
   off the same CONFIG keys, so the bid PDF never prints "Extension requested: Yes" as a header fact. **The sub's SURVEYS
   DASHBOARD (scene_1140)** — where the portal and the notification's link land them — gets `renderDashboardBanner`: a
