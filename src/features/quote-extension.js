@@ -394,6 +394,8 @@
       '.scw-qext__chip--held { background: #fef3c7; color: #92400e; }' +
       '.scw-qext__input { font: 400 13px/1.2 system-ui, sans-serif; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; width: 120px; }' +
       '.scw-qext__ta { font: 400 13px/1.4 system-ui, sans-serif; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; min-height: 64px; box-sizing: border-box; }' +
+      '.scw-qext--sub label.scw-qext__line { display: block; margin: 12px 0 0; }' +          // the "Extend my bid to" row
+      '.scw-qext--sub .scw-qext__ta { margin-top: 10px; display: block; }' +                  // breathing room above the note box
       '.scw-qext__err { color: #b91c1c; margin-top: 6px; }' +
       '.scw-qext__ok { color: #166534; margin-top: 6px; }' +
       '.scw-qext__list { margin: 6px 0 0; padding-left: 18px; }' +
