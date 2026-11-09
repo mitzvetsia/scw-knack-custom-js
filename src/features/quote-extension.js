@@ -90,7 +90,9 @@
     // hook (config.js, else the per-browser override) and report "not configured" when there is none.
     // EMPTY = everyone, hook permitting (the pre-2026-11-05 switch). Clearing the list is the launch.
     // 2026-11-06: "turn these features on also for jon.carter, michael.mcgandy and ben.larue".
-    previewEmails: ['micah.shearer@getscw.com', 'jon.carter@getscw.com', 'michael.mcgandy@getscw.com', 'ben.larue@getscw.com'],
+    // 2026-11-09: LAUNCHED — "push the expiration date extension live for everyone". Re-fill the list
+    // to stage a future change behind named logins again.
+    previewEmails: [],
     // After a send this tab's marker outranks a BLANK status on the SOW record for this long: the
     // record on the page is the one loaded before Make wrote, and a blank read used to clear the
     // marker and put the "Request extension" button back until a reload (2026-11-06). The views

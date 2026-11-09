@@ -184,8 +184,8 @@ michael.mcgandy and ben.larue @getscw.com since 2026-11-06 —
 every surface renders for that login only; in that browser `localStorage.scwQuoteExtHook = '<the 06.08 hook URL>'`
 points the POSTs at the scenario before the URL is committed; sub-page testing under a sub login needs
 `localStorage.scwQuoteExtPreview = '1'` in that browser) on a test SOW (sales card → Make → sub card → extend /
-re-price / decline). The URL is in `MAKE_QUOTE_EXTENSION_WEBHOOK` (`src/config.js`) since 2026-11-05; launch =
-`previewEmails: []`, rebuild, push.
+re-price / decline). The URL is in `MAKE_QUOTE_EXTENSION_WEBHOOK` (`src/config.js`) since 2026-11-05. **Launched
+2026-11-09**: `previewEmails: []`, live for everyone.
 
 ## QA checklist (preview flag on, test SOW with a basis bid)
 

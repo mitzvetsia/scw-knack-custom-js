@@ -370,8 +370,8 @@ new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.joi
   // ── the preview-login gate (2026-11-05: "show everything only to micah.shearer@getscw.com") ──
   window.Knack.router.current_scene_key = 'scene_1116';
   window.location.hash = '#sales/scope-of-work-details/' + SOW + '/';
-  qx.CONFIG.previewEmails = PREVIEW_EMAILS; hook = 'PLACEHOLDER';
-  check('the shipped preview list is the four SCW logins (2026-11-06)', PREVIEW_EMAILS, ['micah.shearer@getscw.com', 'jon.carter@getscw.com', 'michael.mcgandy@getscw.com', 'ben.larue@getscw.com']);
+  check('the shipped preview list is EMPTY: live for everyone, hook permitting (launched 2026-11-09)', PREVIEW_EMAILS, []);
+  qx.CONFIG.previewEmails = ['micah.shearer@getscw.com']; hook = 'PLACEHOLDER';   // the gate mechanics, for the next staged change
   let who = { name: 'Danny Mize', email: 'danny@getscw.com' };
   window.Knack.getUserAttributes = () => who;
   salesPage(future); cardRender(); await sleep(200);
