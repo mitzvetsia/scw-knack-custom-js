@@ -660,32 +660,42 @@
   function itemLabel(r, F) {
     return stripHtml(r[F.displayLabel || 'field_1950']) || (F.labelAlt ? stripHtml(r[F.labelAlt]) : '');
   }
-  /** Why an item is still open on QA, read off its REQUIRED photo slots on
-   *  the source grid (photos.extractPhotoRecords): a photo that failed, one
-   *  with an image and no verdict (waiting on SCW), one never uploaded
-   *  (waiting on the sub) — or none of those, in which case every photo has
-   *  passed and only the item's own QA verdict is missing. '' when the page
-   *  has no photo reader (the SOW / sales worksheets). */
-  function qaOpenReason(viewKey, recordId) {
-    if (!viewKey || !recordId || !ns.photos || typeof ns.photos.extractPhotoRecords !== 'function') return '';
+  /** An item's QA state from its REQUIRED photo slots on the source grid
+   *  (photos.extractPhotoRecords): { required, passed, failed, waiting,
+   *  missing }, or null where the page has no photo reader (the SOW / sales
+   *  worksheets). The item-level QA_passed flag (install field_2830) is meant
+   *  to be written by the per-item QA checklist, which is not built yet, and
+   *  the design rule until then is that an item with no checklist is complete
+   *  once its required photos are (docs/deploy-page-redesign.md "Rolling up").
+   *  So the photos decide, and the flag only speaks for an item with no
+   *  required photos (2026-11-09: "it says 1 QA open but there's nothing here
+   *  with QA required?" — AC-010's two required photos were signed off while
+   *  its flag, which no surface on the page can set, still read No). */
+  function qaPhotoState(viewKey, recordId) {
+    if (!viewKey || !recordId || !ns.photos || typeof ns.photos.extractPhotoRecords !== 'function') return null;
     var list;
-    try { list = ns.photos.extractPhotoRecords(viewKey, recordId) || []; } catch (e) { return ''; }
-    var failed = 0, waiting = 0, missing = 0, required = 0;
+    try { list = ns.photos.extractPhotoRecords(viewKey, recordId) || []; } catch (e) { return null; }
+    var st = { required: 0, passed: 0, failed: 0, waiting: 0, missing: 0 };
     for (var i = 0; i < list.length; i++) {
       var p = list[i];
       if (!p || !p.required) continue;
-      required++;
-      var st = String(p.qaStatus || '');
-      if (!p.imgUrl) missing++;
-      else if (/^pass/i.test(st)) continue;
-      else if (/^fail/i.test(st)) failed++;
-      else waiting++;
+      st.required++;
+      var q = String(p.qaStatus || '');
+      if (!p.imgUrl) st.missing++;
+      else if (/^pass/i.test(q)) st.passed++;
+      else if (/^fail/i.test(q)) st.failed++;
+      else st.waiting++;
     }
+    return st;
+  }
+  /** Why an item is still open on QA, in the Installation tile's words. */
+  function qaOpenReason(st) {
+    if (!st) return '';
+    if (!st.required) return 'no required photos · no QA verdict on the item';
     var parts = [];
-    if (failed)  parts.push(failed + ' ' + plural(failed, 'photo') + ' failed QA');
-    if (waiting) parts.push(waiting + ' ' + plural(waiting, 'photo') + ' waiting on SCW review');
-    if (missing) parts.push(missing + ' required ' + plural(missing, 'photo') + ' not uploaded yet');
-    if (!parts.length) parts.push(required ? 'photos passed · item not marked QA passed yet' : 'no QA verdict on the item yet');
+    if (st.failed)  parts.push(st.failed + ' ' + plural(st.failed, 'photo') + ' failed QA');
+    if (st.waiting) parts.push(st.waiting + ' ' + plural(st.waiting, 'photo') + ' waiting on SCW review');
+    if (st.missing) parts.push(st.missing + ' required ' + plural(st.missing, 'photo') + ' not uploaded yet');
     return parts.join(' · ');
   }
   /** The scope aggregate for a set of records (same opts as aggregate()). */
@@ -749,13 +759,19 @@
         }
         if (isYes(r, fPlenum)) cam.plenum += qty;
         if (fQaPassed || fQaStatus) {
-          var passed = (fQaPassed && isYes(r, fQaPassed)) ||
-                       (fQaStatus && /^pass/i.test(stripHtml(r[fQaStatus])));
+          // Required photos decide when the item has any (every one passed =
+          // QA passed, whatever the flag says); the stored flag decides only
+          // for an item with none, or where the page has no photo reader.
+          var pst = qaPhotoState(viewKey, r.id);
+          var passed = (pst && pst.required)
+            ? pst.passed === pst.required
+            : ((fQaPassed && isYes(r, fQaPassed)) ||
+               (fQaStatus && /^pass/i.test(stripHtml(r[fQaStatus]))));
           if (passed) cam.qaPassed += qty;
           else {
             cam.qaOpen += qty;
             cam.qaOpenIds.push(r.id);
-            cam.qaOpenItems.push({ id: r.id, label: itemLabel(r, F) || name, reason: qaOpenReason(viewKey, r.id) });
+            cam.qaOpenItems.push({ id: r.id, label: itemLabel(r, F) || name, reason: qaOpenReason(pst) });
           }
         }
       }

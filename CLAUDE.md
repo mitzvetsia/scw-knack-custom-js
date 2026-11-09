@@ -623,6 +623,16 @@ Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-au
   the strip's own segment so the two can never disagree; the click hands off to that segment). Amber, never red: nothing
   has failed. Tests: `tests/worksheet-v2/test-scope-qa-open-click.js` (real init.js), the QA-open block in
   `tests/worksheet-v2/test-scope-strip.js`, the tile line in `tests/deploy-page/test-qa-waiting-reveal.js`.
+  **The REQUIRED PHOTOS decide an item's QA, not the flag (2026-11-09 — "it says 1 QA open but there's nothing here
+  with QA required?" / "contradictory information?")**: AC-010's two required photos were signed off and its
+  `field_2830` still read No. That flag is a plain Yes/No (default No) meant to be written by the per-item QA checklist,
+  which is NOT built, and nothing in the bundle or the Make exports writes it, so the open count named an item nobody
+  could clear. The doc's rule until the checklist exists: an item with no checklist is complete once its required
+  photos are. `qaPhotoState` reads the required slots (`{ required, passed, failed, waiting, missing }`, null with no
+  photo reader); an item WITH required photos is QA passed when every one passed, whatever the flag says (a Yes with a
+  failed photo is open too, so the strip and the Installation tile agree); the flag decides only for an item with no
+  required photos ("no required photos · no QA verdict on the item") or where the page has no photo reader. When the
+  checklist lands it writes the flag, and the flag can take back its say.
 - **Shipments drawer (2026-10-16 → 2026-10-23)**: the Installation tile's "Shipments ›" line
   opens the OMS order mirrors (counts, per-order cards, tracking links, contents). The "Re-check
   shipments" re-pull button, its reference box and every resync hint went OFF on 2026-10-16

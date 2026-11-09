@@ -185,16 +185,26 @@ Object.assign(photoSlots, {
   j5: [{ required: true, imgUrl: 'u', qaStatus: 'Pending' }]
 });
 const ia2 = ns.summary.aggregateScope(install2, iopts);
-check('reasons: a failed photo + one waiting, every photo passed but no verdict on the item, no required photos at all, two never uploaded, one waiting',
-  ia2.cam.qaOpenItems.map(it => it.reason),
-  ['1 photo failed QA · 1 photo waiting on SCW review', 'photos passed · item not marked QA passed yet', 'no QA verdict on the item yet',
-   '2 required photos not uploaded yet', '1 photo waiting on SCW review']);
+check('reasons: a failed photo + one waiting, no required photos and no verdict, two never uploaded, one waiting',
+  [ia2.cam.qaOpenIds, ia2.cam.qaOpenItems.map(it => it.reason)],
+  [['j1', 'j3', 'j4', 'j5'], ['1 photo failed QA · 1 photo waiting on SCW review', 'no required photos · no QA verdict on the item',
+   '2 required photos not uploaded yet', '1 photo waiting on SCW review']]);
+check('every required photo passed = QA passed although the item flag reads No (AC-010, 2026-11-09: nothing on the page can set that flag)',
+  [ia2.cam.qaPassed, ia2.cam.qaOpenIds.indexOf('j2')], [1, -1]);
+// …and the photos win the other way too: a flag of Yes does not hide a required photo that failed.
+photoSlots.k9 = [{ required: true, imgUrl: 'u', qaStatus: 'Pass' }, { required: true, imgUrl: 'u', qaStatus: 'Fail' }];
+const ia3 = ns.summary.aggregateScope([inst('k9', 'Reader F', { field_2801: 'AC-09', field_2830: yes })], iopts);
+check('a flag of Yes with a failed required photo is still open, and says why', [ia3.cam.qaPassed, ia3.cam.qaOpenItems],
+  [0, [{ id: 'k9', label: 'AC-09', reason: '1 photo failed QA' }]]);
 const strip2 = ns.summary.buildScopeStrip(ns.groups.buildGroupTree(install2, [], { viewKey: 'view_4093', fields: FI }), iopts);
 const seg2 = strip2.querySelector('.scw-ws-v2-scope-bar-b--qa'), chips2 = [...strip2.querySelectorAll('.scw-ws-v2-scope-qa-item')];
-check('nothing passed: the open segment reads "0 QA passed · 5 QA open" and carries all five; two chips, then "+ 3 more" with the rest',
+check('the open segment carries the four open items; two chips, then "+ 2 more" with the rest',
   [txt(seg2), seg2.getAttribute('data-scw-ws-v2-scope-ids'), chips2.map(c => txt(c).replace(/›$/, '').trim()), chips2[2].getAttribute('data-scw-ws-v2-scope-ids'), chips2[2].getAttribute('title')],
-  ['0 QA passed · 5 QA open ›', 'j1,j2,j3,j4,j5', ['AC-011 photo failed QA · 1 photo waiting on SCW review', 'AC-02photos passed · item not marked QA passed yet', '+ 3 more'],
-   'j3,j4,j5', 'Also not yet QA passed: AC-03, AC-04, AC-05. Click to show them.']);
+  ['4 QA open ›', 'j1,j3,j4,j5', ['AC-011 photo failed QA · 1 photo waiting on SCW review', 'AC-03no required photos · no QA verdict on the item', '+ 2 more'],
+   'j4,j5', 'Also not yet QA passed: AC-04, AC-05. Click to show them.']);
+const none = ns.summary.aggregateScope([inst('z1', 'Reader Z', { field_2801: 'AC-30' }), inst('z2', 'Reader Y', { field_2801: 'AC-31' })], iopts);
+const stripNone = ns.summary.buildScopeStrip(ns.groups.buildGroupTree([inst('z1', 'Reader Z', { field_2801: 'AC-30' })], [], { viewKey: 'view_4093', fields: FI }), iopts);
+check('nothing passed: the open segment reads "0 QA passed · N QA open"', [none.cam.qaPassed, txt(stripNone.querySelector('.scw-ws-v2-scope-bar-b--qa'))], [0, '0 QA passed · 1 QA open ›']);
 const clean = [inst('k1', 'Reader A', { field_2830: yes }), inst('k2', 'Reader B', { field_2830_raw: true })];
 const strip3 = ns.summary.buildScopeStrip(ns.groups.buildGroupTree(clean, [], { viewKey: 'view_4093', fields: FI }), iopts);
 check('QA clean: a full green bar, no link, no line under the bars',
