@@ -437,6 +437,23 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // '1' shows them for QA) and the sub card still renders but reports an
   // unconfigured hook on send.
   MAKE_QUOTE_EXTENSION_WEBHOOK: "https://hook.us1.make.com/axjcf4kfmwvsqc8wjqfpuf6lg6gjzp0m",
+  // ── MDF/IDFs at the SITE (docs/locations.md, 2026-11-10) ─────────────────
+  // Used only on the site route (mdf-site-route.js / mdf-site-tools.js), which is in preview.
+  // 22.02 | MDF-IDF | MDF/IDF create, ensure default, list (webhook) — POST
+  //   { action: 'create' | 'ensure-default' | 'list', projectId, surveyRequestId?, type: 'HEADEND' |
+  //     'IDF', number? (IDF; blank = next free at the site), name?, notes?, lifecycle? ('approved'
+  //     default; 'proposed' for a sub), triggeredBy?, source? }
+  //   Make reads the project's Site (field_1259) and answers JSON: create → { ok, created, id,
+  //   number, type } | 409 { ok:false, error:'number-taken', message } | 422 { ok:false,
+  //   error:'no-site' }; ensure-default → { ok, created, id, ids: 'a,b' } (the site's live HEADENDs,
+  //   one created only when there is none); list → { ok, siteId, closets: [{ id, type, number, name,
+  //   label, display, lifecycle, projectId, projectName, photos, surveyRequests, seq, notes }] }.
+  MAKE_MDF_IDF_WEBHOOK: "https://hook.us1.make.com/16im79b6xkk64bf4tmzu3orj6vkv9udk",
+  // 22.03 | MDF-IDF | MDF/IDF merge -> move connected records to keeper — POST
+  //   { keeperId, loserIds: [ids], keeperLabel?, loserLabels?, projectId?, triggeredBy?, source? }
+  //   Sequential processing, NO reply (Make refuses a Webhook Response in a sequential scenario):
+  //   the page re-reads the site grid until the losers read merged / drop out of it.
+  MAKE_MDF_MERGE_WEBHOOK: "https://hook.us1.make.com/nun7zdr15ewlmmxryd74h6ujy3aeb1qe",
   // ── The two NO-E-SIGNATURE accepted paths (2026-10-01) ─────────────────
   // Both are stepId routes on the Issue scenario (13.03). Where the truth
   // lives: the SOW's CO Status is the STAGE only — every accepted path

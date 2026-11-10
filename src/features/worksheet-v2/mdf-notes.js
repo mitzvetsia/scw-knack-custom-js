@@ -68,7 +68,10 @@
   // sub portal — ops surfaces only).
   var MDF_PHOTO_DELETE_VIEWS = {
     view_3932: 'view_3937',   // deploy scene_1311 — qa-popover's DOC_photos save view
-    view_3577: 'view_3584'    // build-SOW scene — its delete-enabled DOC_photos grid
+    view_3577: 'view_3584',   // build-SOW scene — its delete-enabled DOC_photos grid
+    // their site-sourced twins (mdf-site-route.js preview), same scenes
+    view_4168: 'view_3937',
+    view_4166: 'view_3584'
   };
 
   // ── MDF photo REMOVE (soft) — the sub-facing scenes ──────────────────
@@ -1309,6 +1312,9 @@
         '<input type="text" data-fk="' + F.name + '" value="' + esc(name) + '" placeholder="Location name">' +
       '</div>' +
       '<div class="' + P + '-actions">' +
+        ((window.SCW.mdfSiteTools && SCW.mdfSiteTools.canMerge(cfg.viewKey)) ?
+          '<button type="button" class="' + P + '-btn ' + P + '-btn--merge" ' +
+            'title="Merge duplicates of this MDF/IDF at the site into it">Merge&hellip;</button>' : '') +
         '<button type="button" class="' + P + '-btn ' + P + '-btn--delete">Delete&hellip;</button>' +
         '<span class="' + P + '-status">Enter saves &middot; Esc cancels</span>' +
       '</div>';
@@ -1324,6 +1330,18 @@
 
     var status  = panel.querySelector('.' + P + '-status');
     var inputs  = panel.querySelectorAll('[data-fk]');
+
+    var mergeBtn = panel.querySelector('.' + P + '-btn--merge');
+    if (mergeBtn) {
+      mergeBtn.addEventListener('click', function () {
+        var lblEl = block.querySelector('.scw-ws-v2-l1-label');
+        closePanels();
+        SCW.mdfSiteTools.openMerge({
+          viewKey: sourceViewKey, gridKey: cfg.viewKey, keeperId: l1Id,
+          keeperLabel: (lblEl && lblEl.textContent.trim()) || fieldText(attrs, F.displayName) || ''
+        });
+      });
+    }
 
     // Delete — only for locations with NOTHING under them. Not-empty
     // locations get a disabled button with the reason, so the capability

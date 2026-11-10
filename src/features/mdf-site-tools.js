@@ -1,0 +1,555 @@
+/*** MDF/IDF SITE TOOLS (preview) — "+ Add MDF/IDF" modal (Make 22.02) + "Merge…" (Make 22.03) ***/
+/**
+ * Rides the site route (mdf-site-route.js): only a login the route is ON for gets these, on the
+ * three pages that carry a site closet grid — Build SOW (worksheet view_3962, grid view_4166),
+ * Reconcile Bids (bid-review-v2, grid view_4167), Manage Deployment (worksheet view_4093, grid
+ * view_4168). Everyone else keeps the native Knack add forms and has no Merge.
+ *
+ * "+ Add MDF/IDF" (worksheet toolbar, reconcile toolbar) opens a modal that lists the closets
+ * ALREADY at the project's site first ("is it one of these?"), then type / ## / name / notes.
+ * The ## is prefilled with the next free IDF number at the site and refused when taken (HEADENDs
+ * never carry one). Submit = one POST to MAKE_MDF_IDF_WEBHOOK, action 'create'; Make reads the
+ * project's site, re-checks the ##, creates the closet on the project ("created on") AND the site,
+ * and answers { ok, id } (409 number-taken, 422 no-site).
+ *
+ * "Merge…" (the closet's pencil panel on the worksheets, its gear panel on the reconcile grid):
+ * the closet the panel is open on is the KEEPER; the modal lists the site's other closets, the
+ * user ticks the duplicates (amber note when the type or ## differ) and confirms twice. One POST
+ * to MAKE_MDF_MERGE_WEBHOOK { keeperId, loserIds }; 22.03 runs sequentially and sends no reply,
+ * so the page re-reads the site grid on a schedule until every loser is gone from it (the site
+ * grids filter "lifecycle is not merged") or reads merged, then refreshes the worksheet.
+ */
+(function () {
+  'use strict';
+
+  window.SCW = window.SCW || {};
+
+  var CONFIG = {
+    fields: {
+      type: 'field_1641', num: 'field_2458', name: 'field_1943', display: 'field_1642',
+      notes: 'field_1643', lifecycle: 'field_2845', project: 'field_1648'
+    },
+    pageSlugs: ['build-sow', 'review-bids', 'deploy'],
+    mergePollMs: [5000, 12000, 25000, 45000, 75000, 120000],
+    createRefreshMs: [1500, 6000],
+    requestTimeoutMs: 40000,
+    styleId: 'scw-mdf-site-tools-css'
+  };
+  var P = 'scw-mst';
+
+  // ── switches ─────────────────────────────────────────────────────────
+  function hook(key) {
+    var u = (SCW.CONFIG || {})[key];
+    return (typeof u === 'string' && /^https:\/\/hook\./.test(u)) ? u : '';
+  }
+  function routeOn() { return !!(SCW.mdfSiteRoute && SCW.mdfSiteRoute.active()); }
+  function siteGrid(key) { return !!(key && SCW.mdfSiteRoute && SCW.mdfSiteRoute.isSiteGrid(key)); }
+  /** gridKey = the closet grid the page reads; the tools run only when it is a site grid. */
+  function canAdd(gridKey) { return routeOn() && siteGrid(gridKey) && !!hook('MAKE_MDF_IDF_WEBHOOK'); }
+  function canMerge(gridKey) { return routeOn() && siteGrid(gridKey) && !!hook('MAKE_MDF_MERGE_WEBHOOK'); }
+
+  // ── helpers ──────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function text(v) {
+    if (v == null) return '';
+    if (Array.isArray(v)) return v.map(text).filter(Boolean).join(', ');
+    if (typeof v === 'object') return text(v.identifier || v.value || '');
+    var d = document.createElement('div');
+    d.innerHTML = String(v);
+    return (d.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+  function email() {
+    try {
+      var a = window.Knack && Knack.getUserAttributes && Knack.getUserAttributes();
+      return String((a && a.email) || '');
+    } catch (e) { return ''; }
+  }
+  /** The page's project: the record after the page slug, deepest occurrence first (Knack nests
+   *  pages, so the hash can carry several; never take the first match). */
+  function projectId() {
+    var h = String(window.location.hash || '');
+    var best = '';
+    for (var i = 0; i < CONFIG.pageSlugs.length; i++) {
+      var re = new RegExp('(?:^|/)' + CONFIG.pageSlugs[i] + '/([0-9a-f]{24})', 'g');
+      var m;
+      while ((m = re.exec(h))) best = m[1];
+      if (best) return best;
+    }
+    var all = h.match(/[0-9a-f]{24}/g);
+    return all ? all[all.length - 1] : '';
+  }
+
+  /** The closets a site grid holds, as plain objects. */
+  function closets(gridKey) {
+    var out = [];
+    try {
+      var v = window.Knack && Knack.views && Knack.views[gridKey];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      var F = CONFIG.fields;
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i].attributes || models[i];
+        if (!a || !a.id) continue;
+        var type = text(a[F.type]).toUpperCase();
+        var numRaw = a[F.num + '_raw'];
+        var num = (numRaw === '' || numRaw == null) ? text(a[F.num]) : String(numRaw);
+        var proj = a[F.project + '_raw'];
+        out.push({
+          id: a.id,
+          type: /HEADEND|MDF/.test(type) ? 'HEADEND' : (type ? 'IDF' : ''),
+          number: num,
+          name: text(a[F.name]),
+          display: text(a[F.display]),
+          notes: text(a[F.notes]),
+          lifecycle: text(a[F.lifecycle]).toLowerCase(),
+          projectId: Array.isArray(proj) && proj[0] ? proj[0].id : ''
+        });
+      }
+    } catch (e) { /* model not loaded */ }
+    return out;
+  }
+  function live(list) { return list.filter(function (c) { return c.lifecycle !== 'merged'; }); }
+  function labelOf(c) {
+    if (c.display) return c.display;
+    var t = c.type || 'MDF/IDF';
+    return t + (c.type === 'IDF' && c.number ? ' ' + pad(c.number) : '') + (c.name ? ': ' + c.name : '');
+  }
+  function pad(n) { var s = String(n); return /^\d$/.test(s) ? '0' + s : s; }
+  function usedNumbers(list) {
+    var used = {};
+    live(list).forEach(function (c) {
+      if (c.type === 'IDF' && c.number !== '' && !isNaN(parseFloat(c.number))) used[String(parseFloat(c.number))] = c;
+    });
+    return used;
+  }
+  function nextFree(list) {
+    var used = usedNumbers(list), max = 0;
+    for (var k in used) max = Math.max(max, parseFloat(k));
+    return String(max + 1);
+  }
+
+  /** Line items on this page that point at each closet (the worksheet's own records). */
+  function pageCounts(viewKey) {
+    var counts = {};
+    try {
+      var wv2 = SCW.worksheetV2;
+      var recs = (wv2 && wv2.data && typeof wv2.data.readRecords === 'function') ? wv2.data.readRecords(viewKey) : [];
+      for (var i = 0; i < recs.length; i++) {
+        var r = recs[i];
+        ['field_1946_raw', 'field_2818_raw'].forEach(function (k) {
+          var v = r[k];
+          var id = Array.isArray(v) && v[0] ? v[0].id : '';
+          if (id) counts[id] = (counts[id] || 0) + 1;
+        });
+      }
+    } catch (e) { /* not a worksheet page */ }
+    return counts;
+  }
+
+  // ── refresh ──────────────────────────────────────────────────────────
+  function refetchGrid(gridKey) {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[gridKey];
+      if (v && v.model && typeof v.model.fetch === 'function') return v.model.fetch();
+    } catch (e) { /* not on the page */ }
+    return null;
+  }
+  function refreshHost(viewKey) {
+    try {
+      var wv2 = SCW.worksheetV2;
+      if (wv2 && wv2.cfg && wv2.cfg.viewCfg(viewKey) && wv2.data && typeof wv2.data.refetchAndNotify === 'function') {
+        wv2.data.refetchAndNotify(viewKey);
+        return;
+      }
+      var br2 = SCW.bidReviewV2;
+      if (br2 && br2.data && typeof br2.data.refetchAll === 'function') br2.data.refetchAll();
+    } catch (e) { /* host gone */ }
+  }
+
+  // ── POST ─────────────────────────────────────────────────────────────
+  /** → Promise<{ status, json }>; a CORS-opaque reply is status 0. */
+  function post(url, payload) {
+    var ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, CONFIG.requestTimeoutMs) : null;
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: ctrl ? ctrl.signal : undefined
+    }).then(function (res) {
+      if (timer) clearTimeout(timer);
+      return res.text().then(function (t) {
+        var json = null;
+        try { json = JSON.parse(t); } catch (e) { /* "Accepted" or empty */ }
+        return { status: res.status, json: json, text: t };
+      });
+    }, function (err) {
+      if (timer) clearTimeout(timer);
+      var aborted = err && err.name === 'AbortError';
+      return { status: aborted ? -1 : 0, json: null, text: '' };
+    });
+  }
+
+  // ── UI ───────────────────────────────────────────────────────────────
+  function injectCss() {
+    if (document.getElementById(CONFIG.styleId)) return;
+    var css = [
+      '.' + P + '-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 100010;',
+      '  display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; overflow: auto; }',
+      '.' + P + '-modal { background: #fff; border-radius: 10px; width: 100%; max-width: 560px;',
+      '  box-shadow: 0 20px 50px rgba(15,23,42,.3); font-size: 14px; color: #0f172a; }',
+      '.' + P + '-head { padding: 16px 20px 8px; font-size: 17px; font-weight: 700; }',
+      '.' + P + '-sub { padding: 0 20px 10px; color: #475569; line-height: 1.45; }',
+      '.' + P + '-body { padding: 4px 20px 8px; }',
+      '.' + P + '-sec { margin: 10px 0 4px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #64748b; }',
+      '.' + P + '-list { max-height: 220px; overflow: auto; border: 1px solid #e2e8f0; border-radius: 8px; }',
+      '.' + P + '-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-top: 1px solid #f1f5f9; }',
+      '.' + P + '-row:first-child { border-top: 0; }',
+      '.' + P + '-row label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; flex: 1; }',
+      '.' + P + '-row small { display: block; color: #64748b; }',
+      '.' + P + '-row .' + P + '-warn { color: #b45309; }',
+      '.' + P + '-here { font-size: 11px; color: #1d4ed8; white-space: nowrap; }',
+      '.' + P + '-empty { padding: 10px; color: #64748b; }',
+      '.' + P + '-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }',
+      '.' + P + '-fld { display: flex; flex-direction: column; gap: 4px; }',
+      '.' + P + '-fld--wide { grid-column: 1 / -1; }',
+      '.' + P + '-fld span { font-size: 12px; font-weight: 600; color: #334155; }',
+      '.' + P + '-fld input, .' + P + '-fld textarea, .' + P + '-fld select { border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px 9px; font: inherit; }',
+      '.' + P + '-fld textarea { min-height: 64px; resize: vertical; }',
+      '.' + P + '-chips { display: flex; gap: 6px; }',
+      '.' + P + '-chip { border: 1px solid #cbd5e1; background: #fff; border-radius: 999px; padding: 6px 14px; cursor: pointer; font-weight: 600; }',
+      '.' + P + '-chip[aria-pressed="true"] { background: #0f4c75; border-color: #0f4c75; color: #fff; }',
+      '.' + P + '-note { margin-top: 8px; color: #b45309; min-height: 1.2em; }',
+      '.' + P + '-err { color: #b91c1c; }',
+      '.' + P + '-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px 16px; border-top: 1px solid #f1f5f9; }',
+      '.' + P + '-btn { border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer; }',
+      '.' + P + '-btn--go { background: #0f4c75; border-color: #0f4c75; color: #fff; }',
+      '.' + P + '-btn--danger { background: #b91c1c; border-color: #b91c1c; color: #fff; }',
+      '.' + P + '-btn[disabled] { opacity: .55; cursor: default; }',
+      '.' + P + '-btn--merge { margin-right: auto; }',
+      '.' + P + '-toast { position: fixed; right: 18px; bottom: 18px; z-index: 100011; max-width: 380px; background: #0f172a; color: #fff;',
+      '  padding: 10px 14px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.25); line-height: 1.4; }',
+      '.' + P + '-toast--warn { background: #92400e; }'
+    ].join('\n');
+    var st = document.createElement('style');
+    st.id = CONFIG.styleId;
+    st.textContent = css;
+    document.head.appendChild(st);
+  }
+
+  var _toastTimer = null;
+  function toast(msg, warn) {
+    injectCss();
+    var el = document.querySelector('.' + P + '-toast');
+    if (!el) { el = document.createElement('div'); document.body.appendChild(el); }
+    el.className = P + '-toast' + (warn ? ' ' + P + '-toast--warn' : '');
+    el.textContent = msg;
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 7000);
+  }
+
+  function shell(title, sub) {
+    injectCss();
+    closeModal();
+    var ov = document.createElement('div');
+    ov.className = P + '-overlay';
+    ov.innerHTML = '<div class="' + P + '-modal" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">' +
+      '<div class="' + P + '-head">' + esc(title) + '</div>' +
+      (sub ? '<div class="' + P + '-sub">' + sub + '</div>' : '') +
+      '<div class="' + P + '-body"></div>' +
+      '<div class="' + P + '-foot"></div></div>';
+    ov.addEventListener('mousedown', function (e) { if (e.target === ov && !ov._busy) closeModal(); });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(ov);
+    return ov;
+  }
+  function onKey(e) {
+    var ov = document.querySelector('.' + P + '-overlay');
+    if (e.key === 'Escape' && ov && !ov._busy) { e.stopPropagation(); closeModal(); }
+  }
+  function closeModal() {
+    var ov = document.querySelector('.' + P + '-overlay');
+    if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+    document.removeEventListener('keydown', onKey, true);
+  }
+
+  // ── "+ Add MDF/IDF" ──────────────────────────────────────────────────
+  /** opts: { viewKey (host), gridKey (the site grid) } */
+  function openAdd(opts) {
+    opts = opts || {};
+    var gridKey = opts.gridKey;
+    var site = live(closets(gridKey));
+    var pid = projectId();
+    var ov = shell('Add MDF/IDF',
+      'MDF/IDFs belong to the <b>site</b>: a new one shows on every project at this site. ' +
+      'Check it is not already here first.');
+    var body = ov.querySelector('.' + P + '-body');
+    var rows = site.slice().sort(function (a, b) {
+      if (a.type !== b.type) return a.type === 'HEADEND' ? -1 : 1;
+      return (parseFloat(a.number) || 0) - (parseFloat(b.number) || 0) || labelOf(a).localeCompare(labelOf(b));
+    }).map(function (c) {
+      return '<div class="' + P + '-row"><div>' + esc(labelOf(c)) +
+        (c.projectId && c.projectId !== pid ? '<small>created on another project at this site</small>' : '') + '</div></div>';
+    }).join('');
+    body.innerHTML =
+      '<div class="' + P + '-sec">Already at this site (' + site.length + ')</div>' +
+      '<div class="' + P + '-list">' + (rows || '<div class="' + P + '-empty">None yet.</div>') + '</div>' +
+      '<div class="' + P + '-sec">New</div>' +
+      '<div class="' + P + '-grid">' +
+        '<div class="' + P + '-fld"><span>Type</span><div class="' + P + '-chips">' +
+          '<button type="button" class="' + P + '-chip" data-type="HEADEND" aria-pressed="false">HEADEND</button>' +
+          '<button type="button" class="' + P + '-chip" data-type="IDF" aria-pressed="true">IDF</button></div></div>' +
+        '<label class="' + P + '-fld" data-num-fld><span>IDF ##</span><input type="text" inputmode="numeric" data-in="number" value="' + esc(nextFree(site)) + '"></label>' +
+        '<label class="' + P + '-fld ' + P + '-fld--wide"><span>Name</span><input type="text" data-in="name" placeholder="e.g. Warehouse network closet"></label>' +
+        '<label class="' + P + '-fld ' + P + '-fld--wide"><span>Notes</span><textarea data-in="notes" placeholder="Where it is, what is in it"></textarea></label>' +
+      '</div>' +
+      '<div class="' + P + '-note" aria-live="polite"></div>';
+    var foot = ov.querySelector('.' + P + '-foot');
+    foot.innerHTML = '<button type="button" class="' + P + '-btn" data-act="cancel">Cancel</button>' +
+      '<button type="button" class="' + P + '-btn ' + P + '-btn--go" data-act="add">Add MDF/IDF</button>';
+    var note = body.querySelector('.' + P + '-note');
+    var numIn = body.querySelector('[data-in="number"]');
+    var numFld = body.querySelector('[data-num-fld]');
+    var type = 'IDF';
+
+    function check() {
+      note.className = P + '-note';
+      if (type !== 'IDF') { note.textContent = ''; return true; }
+      var v = String(numIn.value || '').trim();
+      if (v === '') { note.textContent = 'Blank takes the next free number at the site.'; return true; }
+      if (!/^\d+$/.test(v)) { note.textContent = 'The ## is a whole number.'; return false; }
+      var taken = usedNumbers(site)[String(parseFloat(v))];
+      if (taken) { note.textContent = 'IDF ' + pad(v) + ' already exists at this site (' + labelOf(taken) + ').'; return false; }
+      note.textContent = '';
+      return true;
+    }
+    body.querySelectorAll('.' + P + '-chip').forEach(function (b) {
+      b.addEventListener('click', function () {
+        type = b.getAttribute('data-type');
+        body.querySelectorAll('.' + P + '-chip').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
+        numFld.style.display = type === 'IDF' ? '' : 'none';
+        check();
+      });
+    });
+    numIn.addEventListener('input', check);
+    foot.querySelector('[data-act="cancel"]').addEventListener('click', closeModal);
+    var addBtn = foot.querySelector('[data-act="add"]');
+    addBtn.addEventListener('click', function () {
+      if (!check()) return;
+      if (!pid) { note.className = P + '-note ' + P + '-err'; note.textContent = 'Could not tell which project this page is.'; return; }
+      var payload = {
+        action: 'create',
+        projectId: pid,
+        type: type,
+        number: type === 'IDF' ? String(numIn.value || '').trim() : '',
+        name: String(body.querySelector('[data-in="name"]').value || '').trim(),
+        notes: String(body.querySelector('[data-in="notes"]').value || '').trim(),
+        lifecycle: 'approved',
+        triggeredBy: email(),
+        source: 'modal',
+        viewKey: opts.viewKey || ''
+      };
+      ov._busy = true;
+      addBtn.disabled = true;
+      addBtn.textContent = 'Adding…';
+      post(hook('MAKE_MDF_IDF_WEBHOOK'), payload).then(function (r) {
+        var j = r.json;
+        if (j && j.ok) {
+          closeModal();
+          var what = j.type === 'IDF' || type === 'IDF' ? 'IDF ' + pad(j.number || payload.number) : 'HEADEND';
+          toast('Added ' + what + (payload.name ? ': ' + payload.name : '') + '. It shows on every project at this site.');
+          CONFIG.createRefreshMs.forEach(function (ms, i) {
+            setTimeout(function () {
+              var p = refetchGrid(gridKey);
+              if (i === 0) {
+                if (p && typeof p.then === 'function') p.then(function () { refreshHost(opts.viewKey); });
+                else refreshHost(opts.viewKey);
+              }
+            }, ms);
+          });
+          return;
+        }
+        if (j && j.ok === false) {
+          ov._busy = false;
+          addBtn.disabled = false;
+          addBtn.textContent = 'Add MDF/IDF';
+          note.className = P + '-note ' + P + '-err';
+          note.textContent = j.message || 'Make refused it (' + (j.error || r.status) + ').';
+          return;
+        }
+        if (r.status === 0 || (r.status >= 200 && r.status < 300)) {
+          // Delivered, but no answer we can read ("Accepted", a CORS-opaque reply).
+          closeModal();
+          toast('Sent. The list refreshes when Make has created it.');
+          CONFIG.mergePollMs.slice(0, 3).forEach(function (ms) {
+            setTimeout(function () { refetchGrid(gridKey); refreshHost(opts.viewKey); }, ms);
+          });
+          return;
+        }
+        ov._busy = false;
+        addBtn.disabled = false;
+        addBtn.textContent = 'Add MDF/IDF';
+        note.className = P + '-note ' + P + '-err';
+        note.textContent = r.status === -1 ? 'No answer from Make in time. Check the list before trying again.'
+                                           : 'Make did not take it (HTTP ' + r.status + ').';
+      });
+    });
+    setTimeout(function () { var n = body.querySelector('[data-in="name"]'); if (n) n.focus(); }, 0);
+    return ov;
+  }
+
+  // ── "Merge…" ─────────────────────────────────────────────────────────
+  /** opts: { viewKey (host), gridKey (site grid), keeperId, keeperLabel } */
+  function openMerge(opts) {
+    opts = opts || {};
+    var gridKey = opts.gridKey;
+    var all = live(closets(gridKey));
+    var keeper = null;
+    for (var i = 0; i < all.length; i++) if (all[i].id === opts.keeperId) keeper = all[i];
+    var keeperLabel = keeper ? labelOf(keeper) : (opts.keeperLabel || 'this MDF/IDF');
+    var others = all.filter(function (c) { return c.id !== opts.keeperId; });
+    var counts = pageCounts(opts.viewKey);
+    var pid = projectId();
+    others.sort(function (a, b) {
+      var ka = keeper && a.type === keeper.type ? 0 : 1, kb = keeper && b.type === keeper.type ? 0 : 1;
+      return ka - kb || labelOf(a).localeCompare(labelOf(b), undefined, { numeric: true });
+    });
+    var ov = shell('Merge into ' + keeperLabel,
+      'Keep <b>' + esc(keeperLabel) + '</b>. Tick the duplicates of it. Everything pointing at them moves here: SOW lines, ' +
+      'survey items, install items, bid revision lines, survey requests and photos; their notes are added below this one\'s. ' +
+      'They stay as records marked <b>merged</b> and drop out of every list.');
+    var body = ov.querySelector('.' + P + '-body');
+    function warnFor(c) {
+      if (!keeper) return '';
+      if (c.type && keeper.type && c.type !== keeper.type) return 'a ' + c.type + ', this is a ' + keeper.type;
+      if (c.type === 'IDF' && keeper.type === 'IDF' && c.number && keeper.number &&
+          parseFloat(c.number) !== parseFloat(keeper.number)) return 'IDF ' + pad(c.number) + ', this is IDF ' + pad(keeper.number);
+      return '';
+    }
+    body.innerHTML =
+      '<div class="' + P + '-sec">Other MDF/IDFs at this site (' + others.length + ')</div>' +
+      '<div class="' + P + '-list">' + (others.map(function (c) {
+        var w = warnFor(c);
+        var here = counts[c.id] ? '<span class="' + P + '-here">' + counts[c.id] + ' item' + (counts[c.id] === 1 ? '' : 's') + ' here</span>' : '';
+        return '<div class="' + P + '-row"><label><input type="checkbox" data-id="' + esc(c.id) + '">' +
+          '<span>' + esc(labelOf(c)) +
+          (c.projectId && c.projectId !== pid ? '<small>created on another project at this site</small>' : '') +
+          (c.notes ? '<small>' + esc(c.notes.slice(0, 120)) + (c.notes.length > 120 ? '…' : '') + '</small>' : '') +
+          (w ? '<small class="' + P + '-warn">Different: ' + esc(w) + '</small>' : '') +
+          '</span></label>' + here + '</div>';
+      }).join('') || '<div class="' + P + '-empty">No other MDF/IDFs at this site.</div>') + '</div>' +
+      '<div class="' + P + '-note" aria-live="polite"></div>';
+    var foot = ov.querySelector('.' + P + '-foot');
+    foot.innerHTML = '<button type="button" class="' + P + '-btn" data-act="cancel">Cancel</button>' +
+      '<button type="button" class="' + P + '-btn ' + P + '-btn--go" data-act="merge" disabled>Merge</button>';
+    var note = body.querySelector('.' + P + '-note');
+    var goBtn = foot.querySelector('[data-act="merge"]');
+    var armed = false;
+    function picked() {
+      return Array.prototype.map.call(body.querySelectorAll('input[type="checkbox"]:checked'), function (b) { return b.getAttribute('data-id'); });
+    }
+    function paint() {
+      var n = picked().length;
+      armed = false;
+      goBtn.className = P + '-btn ' + P + '-btn--go';
+      goBtn.disabled = !n;
+      goBtn.textContent = n ? 'Merge ' + n + ' into ' + keeperLabel : 'Merge';
+      var mixed = picked().some(function (id) {
+        for (var k = 0; k < others.length; k++) if (others[k].id === id) return !!warnFor(others[k]);
+        return false;
+      });
+      note.className = P + '-note';
+      note.textContent = mixed ? 'Some ticked MDF/IDFs differ from this one. Merge them only if they are the same closet.' : '';
+    }
+    body.addEventListener('change', paint);
+    foot.querySelector('[data-act="cancel"]').addEventListener('click', closeModal);
+    goBtn.addEventListener('click', function () {
+      var ids = picked();
+      if (!ids.length) return;
+      if (!armed) {
+        armed = true;
+        goBtn.className = P + '-btn ' + P + '-btn--danger';
+        goBtn.textContent = 'Yes, merge ' + ids.length + ' (cannot be undone here)';
+        return;
+      }
+      var labels = ids.map(function (id) {
+        for (var k = 0; k < others.length; k++) if (others[k].id === id) return labelOf(others[k]);
+        return id;
+      });
+      ov._busy = true;
+      goBtn.disabled = true;
+      goBtn.textContent = 'Sending…';
+      post(hook('MAKE_MDF_MERGE_WEBHOOK'), {
+        keeperId: opts.keeperId,
+        loserIds: ids,
+        keeperLabel: keeperLabel,
+        loserLabels: labels,
+        projectId: pid,
+        triggeredBy: email(),
+        source: 'modal',
+        viewKey: opts.viewKey || ''
+      }).then(function (r) {
+        if (r.status === 0 || (r.status >= 200 && r.status < 300)) {
+          closeModal();
+          toast('Merging ' + ids.length + ' into ' + keeperLabel + '… the page refreshes as Make finishes.');
+          watchMerge(gridKey, opts.viewKey, ids, keeperLabel);
+          return;
+        }
+        ov._busy = false;
+        armed = false;
+        paint();
+        note.className = P + '-note ' + P + '-err';
+        note.textContent = r.status === -1 ? 'No answer from Make in time. Check 22.03\'s history before trying again.'
+                                           : 'Make did not take it (HTTP ' + r.status + ').';
+      });
+    });
+    return ov;
+  }
+
+  /** Re-read the site grid on a schedule until every loser is gone from it or reads merged. */
+  function watchMerge(gridKey, viewKey, loserIds, keeperLabel) {
+    var steps = CONFIG.mergePollMs.slice();
+    var started = Date.now();
+    function remaining() {
+      var byId = {};
+      closets(gridKey).forEach(function (c) { byId[c.id] = c; });
+      return loserIds.filter(function (id) { return byId[id] && byId[id].lifecycle !== 'merged'; });
+    }
+    function tick() {
+      var p = refetchGrid(gridKey);
+      var after = function () {
+        var left = remaining();
+        if (!left.length) {
+          refreshHost(viewKey);
+          toast('Merged ' + loserIds.length + ' into ' + keeperLabel + '.');
+          return;
+        }
+        if (!steps.length) {
+          refreshHost(viewKey);
+          toast(left.length + ' of ' + loserIds.length + ' not merged yet after ' + Math.round((Date.now() - started) / 1000) +
+                's. Make may still be running; check 22.03\'s history.', true);
+          return;
+        }
+        setTimeout(tick, steps.shift());
+      };
+      if (p && typeof p.then === 'function') p.then(after, after);
+      else after();
+    }
+    setTimeout(tick, steps.shift());
+  }
+
+  SCW.mdfSiteTools = {
+    CONFIG: CONFIG,
+    canAdd: canAdd,
+    canMerge: canMerge,
+    openAdd: openAdd,
+    openMerge: openMerge,
+    closets: closets,
+    nextFree: nextFree,
+    projectId: projectId,
+    _watchMerge: watchMerge
+  };
+})();

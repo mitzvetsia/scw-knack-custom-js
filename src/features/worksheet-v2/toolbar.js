@@ -442,6 +442,14 @@
       return;
     }
     if (action === 'add-mdf') {
+      // Site route (mdf-site-route.js preview): the closet is created by Make 22.02 on the
+      // project AND its site, from a modal that lists the site's closets first.
+      var _siteVc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      var _siteGrid = _siteVc && _siteVc.mdfSourceViewKey;
+      if (window.SCW.mdfSiteTools && SCW.mdfSiteTools.canAdd(_siteGrid)) {
+        SCW.mdfSiteTools.openAdd({ viewKey: viewKey, gridKey: _siteGrid });
+        return;
+      }
       // Same pattern as addSowMenuView: the configured Knack menu view's
       // link IS the add-location action (e.g. view_3436 → #add-mdfidf7).
       // Clicking the CSS-hidden anchor still navigates.

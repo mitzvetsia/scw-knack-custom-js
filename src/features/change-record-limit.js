@@ -28,6 +28,8 @@
     // "Removed / Not surveyed". v1 loads its own copy via API, but that
     // doesn't bump these on-scene models, so force them here.
     'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818',
+    // site-sourced MDF/IDF grids (mdf-site-route.js preview; view_4168 shows 25 a page)
+    'view_4166', 'view_4167', 'view_4168',
     // review-bids DOC_photos delete-plumbing grid (worksheet-v2/photos.js
     // Path 1 clicks kn-link-delete rows in it — full page = every photo's
     // row present in the DOM; the grid itself is hidden by photos.js)
@@ -86,6 +88,8 @@
     'view_3913',
     // bid-review source/compare views (now also in VIEW_IDS above)
     'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818',
+    // site-sourced MDF/IDF grids (mdf-site-route.js preview; view_4168 shows 25 a page)
+    'view_4166', 'view_4167', 'view_4168',
     // review-bids DOC_photos delete-plumbing grid (see VIEW_IDS above)
     'view_4098',
     // Deploy-scene As-Quoted source grids, ops + sub (see VIEW_IDS above)

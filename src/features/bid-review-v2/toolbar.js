@@ -170,6 +170,12 @@
   // ── + Add MDF/IDF — click through to whatever "Add MDF/IDF" menu
   // link the scene carries (the same one that made the button render). ──
   function handleAddMdf() {
+    // Site route (mdf-site-route.js preview): Make 22.02 creates it on the project + its site.
+    var siteGrid = window.SCW.bidReview && SCW.bidReview.CONFIG && SCW.bidReview.CONFIG.mdfIdfViewKey;
+    if (window.SCW.mdfSiteTools && SCW.mdfSiteTools.canAdd(siteGrid)) {
+      SCW.mdfSiteTools.openAdd({ viewKey: 'view_3921', gridKey: siteGrid });
+      return;
+    }
     var found = findAddMdfMenuLink();
     if (found) { found.link.click(); return; }
     alert('Could not find the "Add MDF/IDF" link on this page. ' +

@@ -2827,7 +2827,9 @@
         var _mdfCfg = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
         var _mdfViews = [];
         if (_mdfCfg && _mdfCfg.mdfSourceViewKey) _mdfViews.push(_mdfCfg.mdfSourceViewKey);
-        _mdfViews.push('view_3577', 'view_3822');
+        var _mdfFallback = ['view_3577', 'view_3822'];
+        if (window.SCW.mdfSiteRoute) _mdfFallback = SCW.mdfSiteRoute.views(_mdfFallback);
+        _mdfViews.push.apply(_mdfViews, _mdfFallback);
         var mdfRecords = firstViewRecords(_mdfViews);
         if (!mdfRecords || !mdfRecords.length) {
           // Not a code failure — the project has no MDF/IDF location records

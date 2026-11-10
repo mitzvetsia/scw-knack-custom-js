@@ -875,6 +875,26 @@ unique per site), products carry their allowed prefixes, a line with a parent sh
 services / assumptions get a separate many "covers" link. The doc carries the schema facts, the views and
 scenarios to change, the data findings, the field cleanup list and the open questions.
 
+**The site route — PREVIEW for micah.shearer@getscw.com (2026-11-10)** — `mdf-site-route.js`, `mdf-site-tools.js`.
+Builder carries SITE-sourced copies of the three ops closet grids (OPS_MDF-IDFs connected to the Site connected to the
+page's project): view_4166 (Build SOW, twin of view_3577), view_4167 (Reconcile Bids, of view_3822), view_4168 (Manage
+Deployment, of view_3932). "I need to be more gradual in this cut over": for a login on `previewEmails` (per browser
+`localStorage.scwMdfSiteRoute` '1' / '0' forces it) the config properties consumers read at use time become getters that
+answer the site grid — worksheet-v2 view_3962 / view_4093 `mdfSourceViewKey` + `mdfManage.viewKey`, bid-review
+`CONFIG.mdfIdfViewKey`, bid-review-v2 `CONFIG.sourceViewKeys`, `sowAddForm.CONFIG.HOSTS.view_3921.mdfView` — so pickers,
+L1 groups, location edits and the reconcile MDF list read and write site closets with no consumer change; everyone else
+is untouched. All six grids are hidden data sources (the site three hidden for everyone by static CSS); a site grid missing
+from the schema falls back to its project twin. Knack cannot hop page record → project → site, so a SOW / survey / CO
+page has no site grid (the sales SOW page stays project-only; 22.02's `list` action is their source when they need one).
+On the route, "+ Add MDF/IDF" (worksheet + reconcile toolbars) opens a modal that lists the site's closets first and posts
+`MAKE_MDF_IDF_WEBHOOK` (22.02 `create`: next free ## prefilled, a taken ## refused, Make re-checks and answers JSON), and
+the closet panels (worksheet pencil, reconcile gear) carry **Merge…**: the open closet is the keeper, tick duplicates
+(amber note on a type / ## mismatch), two-step confirm, one POST to `MAKE_MDF_MERGE_WEBHOOK` (22.03, sequential, no reply);
+the page re-reads the site grid until the losers drop out or read merged. **Builder before widening**: "FLAG_lifecycle is
+not merged" on the site grids (and the project grids). Blueprints: scratchpad `bp2202/gen.py` (schema-driven Knack
+metadata, so field_3318 and the `merged` option are listed). Tests: `tests/misc/test-mdf-site-route.js`,
+`tests/misc/test-mdf-site-tools.js`.
+
 **Closet survey notes are a stamped, append-only log (built 2026-11-02)** — `mdf-edit-core.js`
 `appendSurveyNote` / `renderSurveyLog`: a survey ADDS `[11/02/2026 · SR1145] text` on top of `field_2457` (GET
 first, then the shared PUT; the stamp names the survey record, NEVER the person or company; refuses to write

@@ -320,6 +320,33 @@ Build SOW, CO, deploy) and by the SOW-create scenarios. Two actions:
   01.03 when they are switched to `ensure-default`; delete the field after a search of the Make scenarios
   not on hand (13.06b, 11.04, the publish path) finds no reader.
 
+### Built 2026-11-10: the 22.02 / 22.03 blueprints and the site route (preview)
+- **Builder**: site-sourced closet grids view_4166 (Build SOW), view_4167 (Reconcile Bids), view_4168 (Manage
+  Deployment) — copies of view_3577 / view_3822 / view_3932 with parent_source `object_3.field_1259`, connection
+  `field_2848`. A SOW page cannot have one (Knack hops one connection from the page record: SOW → project, not on
+  to the site), nor can a survey or CO page; those use 22.02's `list` action when they need the site's closets.
+- **Bundle (`mdf-site-route.js`, `mdf-site-tools.js`)**: for `previewEmails` (micah.shearer@getscw.com) the three pages
+  read and write closets through the site grids; "+ Add MDF/IDF" opens the create modal (22.02); the closet panels
+  carry "Merge…" (22.03). Everyone else is unchanged. Widen by emptying `previewEmails`.
+- **22.02** (hook 2870027): webhook → get project → no site → 422 · else search the site's closets (limit 1000) →
+  aggregate the live ones (not merged; continue when empty) → router on `action`:
+  `list` → Transform to JSON → 200 `{ ok, siteId, closets }`; `ensure-default` → the site's live HEADEND ids
+  (not decomissioned) → 200 `{ created:false, id, ids }`, else create a HEADEND (name / notes default, lifecycle
+  `approved` default) + stamp Record ID → 200 `{ created:true, id }`; `create` → `want` = the payload ## else
+  max(live IDF ##) + 1, `clash` when that ## is a live IDF at the site → 409, else create (type, ##, name, notes,
+  project, site, lifecycle, survey request) + stamp Record ID (`field_2115`) + add it to the request's `field_2438`
+  → 200 `{ created:true, id, number, type }`.
+- **22.03** (hook 2870035; Sequential processing ON, incomplete executions stored): webhook → get keeper (live) →
+  iterate `loserIds` → get loser (not the keeper, not merged) → router, in order: re-point SOW lines `field_1946`,
+  survey items `field_2375`, install items `field_2818`, bid revision lines `field_2720` (search ≤ 1000 each →
+  update to the keeper); survey requests `field_2438` (remove loser, add keeper, distinct); re-read the keeper
+  (fresh per loser) → union photos `field_1652` + survey requests `field_2435`, fill a blank name / ## (IDF only) /
+  site, append the loser's notes and survey notes under "[merged from <display>]"; mark the loser `merged` +
+  `field_3318` = keeper. The loser keeps its own links (nothing is deleted).
+- **First-run checks in Make** (not provable from the exports): Transform to JSON's output is `json`; the aggregator
+  emits an empty array when the site has no closets; `max()` / `contains()` over the `idfNo` strings; the `+` text
+  joins and `newline` in the notes append; `field_2845` / `field_1641` written as one-item arrays.
+
 ### Next steps
 Done 2026-11-02 / 11-03: the exports came in, the cleanup kit and the duplicate review list are built
 (see "Cleanup kit" above), and survey notes are a stamped log in the bundle. Nothing has been written

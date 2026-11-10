@@ -329,6 +329,9 @@
           '<button type="button" class="' + P + '-photos">' + CAMERA_SVG +
             '<span>Add photos</span></button>' +
           '<span class="' + P + '-status"></span>' +
+          ((window.SCW.mdfSiteTools && SCW.mdfSiteTools.canMerge(mdfViewKey())) ?
+            '<button type="button" class="' + P + '-btn ' + P + '-btn--merge" ' +
+              'title="Merge duplicates of this MDF/IDF at the site into it">Merge&hellip;</button>' : '') +
           '<button type="button" class="' + P + '-btn ' + P + '-btn--close">Close</button>' +
         '</div>' +
       '</div>';
@@ -509,6 +512,13 @@
     });
     // mousedown → blur fires first, so a pending edit commits before close.
     td.querySelector('.' + P + '-btn--close').addEventListener('click', closePanels);
+    var mergeBtn = td.querySelector('.' + P + '-btn--merge');
+    if (mergeBtn) {
+      mergeBtn.addEventListener('click', function () {
+        closePanels();
+        SCW.mdfSiteTools.openMerge({ viewKey: 'view_3921', gridKey: mdfViewKey(), keeperId: rec.id, keeperLabel: label });
+      });
+    }
 
     // Add photos — same identity-aware bulk uploader the line-item photo
     // pills use, but the record shipped is THIS MDF/IDF location, labeled
