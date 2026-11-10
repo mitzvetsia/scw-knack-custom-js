@@ -889,9 +889,21 @@ page has no site grid (the sales SOW page stays project-only; 22.02's `list` act
 On the route, "+ Add MDF/IDF" (worksheet + reconcile toolbars) opens a modal that lists the site's closets first and posts
 `MAKE_MDF_IDF_WEBHOOK` (22.02 `create`: next free ## prefilled, a taken ## refused, Make re-checks and answers JSON), and
 the closet panels (worksheet pencil, reconcile gear) carry **Merge…**: the open closet is the keeper, tick duplicates
-(amber note on a type / ## mismatch), two-step confirm, one POST to `MAKE_MDF_MERGE_WEBHOOK` (22.03, sequential, no reply);
-the page re-reads the site grid until the losers drop out or read merged. **Builder before widening**: "FLAG_lifecycle is
-not merged" on the site grids (and the project grids). Blueprints: scratchpad `bp2202/gen.py` (schema-driven Knack
+(amber note on a type / ## mismatch), two-step confirm, one POST to `MAKE_MDF_MERGE_WEBHOOK` (22.03, sequential, no reply).
+**The merge waits with a real progress bar** ("we'll get too much 'is it working?'"): the window stays open, no close /
+Esc, a leave-page warning, until it is done. 22.03 writes `<runId>|<loser>|<losers>|<step>|<i>|<of>|<text>` onto the
+KEEPER's `SYS_merge progress` field (steps 1–5 re-point SOW lines / survey items / install items / bid revision lines /
+survey requests, i of the records found; 6 keeper takes photos + notes; 7 loser marked merged); the window GETs the keeper
+through the site grid every 2 s (`SCW.knackRecordUrl` + `knackAjax`; it finds the value by the run id, so no key config —
+the field must be a COLUMN of the site grid) and re-reads the grid every 3rd poll (losers merged / gone = done, the
+fallback while the field is not there). 90 s without a change: an amber note + Close, then a background check.
+**Merged closets never reach a reader**: `mdf-site-route.js` `pruneMerged` takes `merged` rows out of the Backbone model of
+every closet grid (project + site twins) that serves `field_2845`, on render and on reset / sync — a grid without that
+column needs the Builder filter. Lesson from the first live run: Knack's Make search passes ONE EMPTY bundle on no match,
+so every update after a search needs a "found one" filter (22.01 had `__IMTLENGTH__ > 0`; 22.03 v1 died with
+"Missing value of required parameter 'record_id'" on the first empty step). **Builder before widening**: "FLAG_lifecycle
+is not merged" on the site grids (and the project grids); `SYS_merge progress` + `FLAG_lifecycle` columns on view_4166 /
+view_4167 / view_4168. Blueprints: scratchpad `bp2202/gen.py` (schema-driven Knack
 metadata, so field_3318 and the `merged` option are listed). Tests: `tests/misc/test-mdf-site-route.js`,
 `tests/misc/test-mdf-site-tools.js`.
 

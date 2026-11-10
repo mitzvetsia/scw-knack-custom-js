@@ -30,7 +30,12 @@
       notes: 'field_1643', lifecycle: 'field_2845', project: 'field_1648'
     },
     pageSlugs: ['build-sow', 'review-bids', 'deploy'],
-    mergePollMs: [5000, 12000, 25000, 45000, 75000, 120000],
+    mergePollMs: [5000, 12000, 25000, 45000, 75000, 120000],   // background re-reads (after a stalled window is closed)
+    progressPollMs: 2000,     // the merge window reads the keeper's progress this often
+    gridCheckEvery: 3,        // … and re-reads the site grid every Nth poll (losers merged / gone)
+    stallMs: 90000,           // no progress for this long → say so, allow Close
+    progressField: '',        // OPS_MDF-IDF "SYS_merge progress"; '' = find it by the run id in the record
+    stepsPerLoser: 7,
     createRefreshMs: [1500, 6000],
     requestTimeoutMs: 40000,
     styleId: 'scw-mdf-site-tools-css'
@@ -232,7 +237,15 @@
       '.' + P + '-btn--merge { margin-right: auto; }',
       '.' + P + '-toast { position: fixed; right: 18px; bottom: 18px; z-index: 100011; max-width: 380px; background: #0f172a; color: #fff;',
       '  padding: 10px 14px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.25); line-height: 1.4; }',
-      '.' + P + '-toast--warn { background: #92400e; }'
+      '.' + P + '-toast--warn { background: #92400e; }',
+      '.' + P + '-bar { height: 12px; border-radius: 999px; background: #e2e8f0; overflow: hidden; margin: 10px 0 8px; position: relative; }',
+      '.' + P + '-bar__fill { height: 100%; width: 0; background: #0f4c75; border-radius: 999px; transition: width .4s ease; }',
+      '.' + P + '-bar.is-waiting .' + P + '-bar__fill { width: 35% !important; position: absolute; left: -35%;',
+      '  animation: ' + P + '-slide 1.4s ease-in-out infinite; }',
+      '.' + P + '-bar.is-done .' + P + '-bar__fill { background: #15803d; }',
+      '@keyframes ' + P + '-slide { 0% { left: -35%; } 100% { left: 100%; } }',
+      '.' + P + '-pstatus { font-weight: 600; }',
+      '.' + P + '-pstep { color: #64748b; margin-top: 2px; min-height: 1.2em; }'
     ].join('\n');
     var st = document.createElement('style');
     st.id = CONFIG.styleId;
@@ -482,7 +495,9 @@
       ov._busy = true;
       goBtn.disabled = true;
       goBtn.textContent = 'Sending…';
+      var runId = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
       post(hook('MAKE_MDF_MERGE_WEBHOOK'), {
+        runId: runId,
         keeperId: opts.keeperId,
         loserIds: ids,
         keeperLabel: keeperLabel,
@@ -493,9 +508,8 @@
         viewKey: opts.viewKey || ''
       }).then(function (r) {
         if (r.status === 0 || (r.status >= 200 && r.status < 300)) {
-          closeModal();
-          toast('Merging ' + ids.length + ' into ' + keeperLabel + '… the page refreshes as Make finishes.');
-          watchMerge(gridKey, opts.viewKey, ids, keeperLabel);
+          runProgress(ov, { runId: runId, gridKey: gridKey, viewKey: opts.viewKey, keeperId: opts.keeperId,
+                            keeperLabel: keeperLabel, loserIds: ids });
           return;
         }
         ov._busy = false;
@@ -507,6 +521,171 @@
       });
     });
     return ov;
+  }
+
+  // ── the merge progress window ────────────────────────────────────────
+  // 22.03 writes "<runId>|<loser>|<losers>|<step>|<i>|<of>|<text>" onto the KEEPER as it goes
+  // (steps 1-5 = SOW lines, survey items, install items, bid revision lines, survey requests,
+  // i of the records found; 6 = keeper takes photos / notes; 7 = loser marked merged). The
+  // window reads the keeper through the site grid (a view-based GET — the progress field must be
+  // a column of the grid) and turns that into one bar. With no progress readable (field not
+  // there yet) the bar runs by losers merged, behind a "waiting for Make" stripe.
+
+  /** "<runId>|…" → { loser, losers, step, i, of, text } or null. */
+  function parseProgress(v, runId) {
+    v = String(v == null ? '' : v).replace(/<[^>]*>/g, '').trim();
+    if (!runId || v.indexOf(runId + '|') !== 0) return null;
+    var p = v.split('|');
+    if (p.length < 7) return null;
+    var n = function (x) { var f = parseFloat(x); return isNaN(f) ? 0 : f; };
+    return { loser: n(p[1]), losers: n(p[2]), step: n(p[3]), i: n(p[4]), of: n(p[5]), text: p.slice(6).join('|') };
+  }
+  /** Overall share done, 0..1. */
+  function progressShare(pr, steps) {
+    if (!pr || !pr.losers) return 0;
+    if (!pr.loser) return 0.02;
+    var within = pr.of > 0 ? Math.min(1, pr.i / pr.of) : 1;
+    var done = (pr.loser - 1) * steps + (Math.max(1, pr.step) - 1) + within;
+    return Math.max(0.02, Math.min(1, done / (pr.losers * steps)));
+  }
+  function progressDone(pr, steps) {
+    return !!(pr && pr.losers && pr.loser >= pr.losers && pr.step >= steps);
+  }
+  /** The progress value off a record: the configured field, else any field carrying this run. */
+  function progressOf(rec, runId) {
+    if (!rec) return null;
+    var key = CONFIG.progressField;
+    if (key) return parseProgress(rec[key + '_raw'] != null ? rec[key + '_raw'] : rec[key], runId);
+    for (var k in rec) {
+      if (typeof rec[k] === 'string' && rec[k].indexOf(runId + '|') >= 0) {
+        var pr = parseProgress(rec[k], runId);
+        if (pr) return pr;
+      }
+    }
+    return null;
+  }
+  /** One view-based GET of the keeper → Promise<record | null>. */
+  function readKeeper(gridKey, keeperId) {
+    return new Promise(function (resolve) {
+      try {
+        if (typeof SCW.knackAjax !== 'function' || typeof SCW.knackRecordUrl !== 'function') { resolve(null); return; }
+        SCW.knackAjax({
+          url: SCW.knackRecordUrl(gridKey, keeperId),
+          type: 'GET',
+          success: function (resp) { resolve((resp && resp.record) || resp || null); },
+          error: function () { resolve(null); }
+        });
+      } catch (e) { resolve(null); }
+    });
+  }
+
+  function runProgress(ov, run) {
+    var steps = CONFIG.stepsPerLoser;
+    var n = run.loserIds.length;
+    ov._busy = true;
+    var body = ov.querySelector('.' + P + '-body');
+    var foot = ov.querySelector('.' + P + '-foot');
+    var head = ov.querySelector('.' + P + '-head');
+    var sub = ov.querySelector('.' + P + '-sub');
+    head.textContent = 'Merging ' + n + ' into ' + run.keeperLabel;
+    if (sub) sub.innerHTML = 'Keep this page open. Make is moving everything that points at the merged ' +
+      (n === 1 ? 'MDF/IDF' : 'MDF/IDFs') + ' to the one you keep.';
+    body.innerHTML =
+      '<div class="' + P + '-bar is-waiting" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">' +
+        '<div class="' + P + '-bar__fill"></div></div>' +
+      '<div class="' + P + '-pstatus">Sent to Make. Waiting for it to start…</div>' +
+      '<div class="' + P + '-pstep"></div>' +
+      '<div class="' + P + '-note" aria-live="polite"></div>';
+    foot.innerHTML = '<button type="button" class="' + P + '-btn" data-act="close" disabled>Working…</button>';
+    var bar = body.querySelector('.' + P + '-bar');
+    var fill = body.querySelector('.' + P + '-bar__fill');
+    var statusEl = body.querySelector('.' + P + '-pstatus');
+    var stepEl = body.querySelector('.' + P + '-pstep');
+    var note = body.querySelector('.' + P + '-note');
+    var closeBtn = foot.querySelector('[data-act="close"]');
+    var lastSig = '', lastChange = Date.now(), ticks = 0, finished = false, stalled = false, best = 0;
+
+    function leaveGuard(e) { e.preventDefault(); e.returnValue = 'A merge is still running.'; return e.returnValue; }
+    window.addEventListener('beforeunload', leaveGuard);
+    function setShare(x, determinate) {
+      best = Math.max(best, x);
+      bar.classList.toggle('is-waiting', !determinate);
+      fill.style.width = Math.round(best * 100) + '%';
+      bar.setAttribute('aria-valuenow', String(Math.round(best * 100)));
+    }
+    function finish(ok, msg) {
+      if (finished) return;
+      finished = true;
+      window.removeEventListener('beforeunload', leaveGuard);
+      ov._busy = false;
+      if (ok) {
+        setShare(1, true);
+        bar.classList.add('is-done');
+        statusEl.textContent = msg;
+        stepEl.textContent = '';
+        refreshHost(run.viewKey);
+      }
+      closeBtn.disabled = false;
+      closeBtn.className = P + '-btn ' + P + '-btn--go';
+      closeBtn.textContent = 'Close';
+    }
+    closeBtn.addEventListener('click', function () {
+      if (closeBtn.disabled) return;
+      var wasStalled = stalled && !finished;
+      finished = true;
+      window.removeEventListener('beforeunload', leaveGuard);
+      closeModal();
+      if (wasStalled) watchMerge(run.gridKey, run.viewKey, run.loserIds, run.keeperLabel);
+    });
+
+    function lost() {
+      var byId = {};
+      closets(run.gridKey).forEach(function (c) { byId[c.id] = c; });
+      return run.loserIds.filter(function (id) { return !byId[id] || byId[id].lifecycle === 'merged'; }).length;
+    }
+    function tick() {
+      if (finished || !ov.isConnected) return;
+      ticks++;
+      var checkGrid = ticks % CONFIG.gridCheckEvery === 0;
+      Promise.all([
+        readKeeper(run.gridKey, run.keeperId),
+        checkGrid ? Promise.resolve(refetchGrid(run.gridKey)).then(function () { return lost(); }, function () { return lost(); })
+                  : Promise.resolve(null)
+      ]).then(function (res) {
+        if (finished || !ov.isConnected) return;
+        var pr = progressOf(res[0], run.runId);
+        var merged = res[1];
+        var sig = (pr ? [pr.loser, pr.step, pr.i].join('.') : '') + '/' + (merged == null ? '' : merged);
+        if (sig !== lastSig) { lastSig = sig; lastChange = Date.now(); }
+        if (pr) {
+          setShare(progressShare(pr, steps), true);
+          statusEl.textContent = pr.step === 0 ? 'Make has started.'
+            : pr.text + (pr.of > 1 ? ' · ' + pr.i + ' of ' + pr.of : '');
+          stepEl.textContent = pr.losers > 1 && pr.loser ? 'MDF/IDF ' + pr.loser + ' of ' + pr.losers : '';
+        } else if (merged) {
+          setShare(merged / n, true);
+          statusEl.textContent = merged + ' of ' + n + ' merged';
+        }
+        if (progressDone(pr, steps) || (merged != null && merged >= n)) {
+          // Make's last write is on the keeper; confirm on the grid once, then call it done
+          Promise.resolve(refetchGrid(run.gridKey)).then(function () {
+            finish(true, 'Merged ' + n + ' into ' + run.keeperLabel + '.');
+          }, function () { finish(true, 'Merged ' + n + ' into ' + run.keeperLabel + '.'); });
+          return;
+        }
+        if (!stalled && Date.now() - lastChange > CONFIG.stallMs) {
+          stalled = true;
+          note.className = P + '-note';
+          note.textContent = 'Make has not reported progress for ' + Math.round(CONFIG.stallMs / 1000) +
+            ' seconds. It may still be working, or it stopped: check 22.03\'s history. You can close this; the page keeps checking.';
+          finish(false);
+          finished = false;          // keep polling while the window is open
+          ov._busy = true;
+        }
+        setTimeout(tick, CONFIG.progressPollMs);
+      });
+    }
+    setTimeout(tick, CONFIG.progressPollMs);
   }
 
   /** Re-read the site grid on a schedule until every loser is gone from it or reads merged. */
@@ -550,6 +729,8 @@
     closets: closets,
     nextFree: nextFree,
     projectId: projectId,
-    _watchMerge: watchMerge
+    _watchMerge: watchMerge,
+    _parseProgress: parseProgress,
+    _progressShare: progressShare
   };
 })();

@@ -158,6 +158,40 @@
     return done;
   }
 
+  // ── merged closets never reach a reader ─────────────────────────────
+  // A merged closet (FLAG_lifecycle = merged, Make 22.03) stays as a record. Builder should filter
+  // every closet grid on "FLAG_lifecycle is not merged"; until a grid has that filter, a grid that
+  // SERVES the lifecycle column has its merged rows taken out of the Backbone model the moment it
+  // loads (render, reset, sync), so the worksheet groups, pickers and Merge lists never see them.
+  // A grid without the column cannot be judged here: it needs the Builder filter.
+  var CLOSET_GRIDS = ['view_3577', 'view_3602', 'view_3617', 'view_3803', 'view_3822', 'view_3892', 'view_3894',
+                      'view_3932', 'view_4060', 'view_4084', 'view_4114', 'view_4166', 'view_4167', 'view_4168'];
+  function isMerged(a) {
+    if (!a) return false;
+    var v = a.field_2845_raw != null && a.field_2845_raw !== '' ? a.field_2845_raw : a.field_2845;
+    if (Array.isArray(v)) v = v.join(' ');
+    return /(^|\b)merged\b/i.test(String(v == null ? '' : v).replace(/<[^>]*>/g, ''));
+  }
+  function pruneMerged(viewKey) {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[viewKey];
+      var coll = v && v.model && v.model.data;
+      if (!coll || !coll.models) return 0;
+      if (!coll._scwMergedPrune && typeof coll.on === 'function') {
+        coll._scwMergedPrune = true;
+        coll.on('reset sync', function () { pruneMerged(viewKey); });
+      }
+      var gone = [];
+      for (var i = 0; i < coll.models.length; i++) {
+        if (isMerged(coll.models[i].attributes || coll.models[i])) gone.push(coll.models[i]);
+      }
+      if (!gone.length) return 0;
+      if (typeof coll.remove === 'function') coll.remove(gone, { silent: true });
+      else coll.models = coll.models.filter(function (m) { return gone.indexOf(m) < 0; });
+      return gone.length;
+    } catch (e) { return 0; }
+  }
+
   // The three site grids are data sources: never painted, for anyone. Static CSS so there is
   // no flash; the views still render (their models + rows stay readable).
   function injectStyles() {
@@ -187,6 +221,12 @@
   install();
   if (window.jQuery) {
     jQuery(document)
+      .off('knack-view-render.any.scwMdfMergedPrune')
+      .on('knack-view-render.any.scwMdfMergedPrune', function (e, view) {
+        var key = view && (view.key || (view.attributes && view.attributes.key));
+        if (key && CLOSET_GRIDS.indexOf(key) >= 0) pruneMerged(key);
+      });
+    jQuery(document)
       .off('knack-scene-render.any.scwMdfSiteRoute')
       .on('knack-scene-render.any.scwMdfSiteRoute', function () {
         install();
@@ -201,6 +241,7 @@
     view: view,
     views: views,
     isSiteGrid: isSiteGrid,
+    pruneMerged: pruneMerged,
     install: install
   };
 })();

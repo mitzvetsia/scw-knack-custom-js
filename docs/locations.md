@@ -343,6 +343,15 @@ Build SOW, CO, deploy) and by the SOW-create scenarios. Two actions:
   (fresh per loser) → union photos `field_1652` + survey requests `field_2435`, fill a blank name / ## (IDF only) /
   site, append the loser's notes and survey notes under "[merged from <display>]"; mark the loser `merged` +
   `field_3318` = keeper. The loser keeps its own links (nothing is deleted).
+- **Fixed after the first live run (same day)**: Knack's Make search passes ONE EMPTY bundle when nothing matches, so the
+  "point them at the keeper" update after an empty search ran with no record id ("Missing value of required parameter
+  'record_id'") and the run stopped before the keeper update and the loser mark. Every update after a search now has a
+  "found one" filter (`length(<search>.id) > 0`), and 22.02's aggregator only takes real records. Re-running a stopped
+  merge is safe: what moved is not found again, the unions are distinct, the notes append only in the step that never ran.
+- **Progress**: 22.03 writes `<runId>|<loser>|<losers>|<step>|<i>|<of>|<text>` onto the keeper's `SYS_merge progress`
+  (short text, Builder) at the start, after every record it re-points, after the keeper update (step 6) and after the
+  loser is marked (step 7); the page's merge window reads it for its bar. The blueprint generator finds the field by name
+  in the schema and builds without progress writes until it exists.
 - **First-run checks in Make** (not provable from the exports): Transform to JSON's output is `json`; the aggregator
   emits an empty array when the site has no closets; `max()` / `contains()` over the `idfNo` strings; the `+` text
   joins and `newline` in the notes append; `field_2845` / `field_1641` written as one-item arrays.

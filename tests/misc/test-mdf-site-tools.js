@@ -18,7 +18,7 @@ global.setTimeout = window.setTimeout; global.clearTimeout = window.clearTimeout
 function runTimers() { while (timers.length) timers.shift().fn(); }
 const TOAST_MS = 7000;
 // the merge re-reads (CONFIG.mergePollMs) — not the toast timer or the request timeout
-const isWatch = (t) => t.ms !== TOAST_MS && t.ms !== 40000;
+const isWatch = (t) => t.ms !== TOAST_MS && t.ms !== 40000 && t.ms !== 2000;
 const watchTimers = () => timers.filter(isWatch);
 function nextWatch() { const i = timers.findIndex(isWatch); return i < 0 ? null : timers.splice(i, 1)[0]; }
 function jq() { return jqObj; }
@@ -67,6 +67,10 @@ window.fetch = (url, o) => {
   return Promise.resolve({ status: reply.status, text: () => Promise.resolve(reply.body) });
 };
 global.fetch = window.fetch;
+let keeperProgress = '';
+const ajaxCalls = [];
+window.SCW.knackRecordUrl = (v, id) => 'url:' + v + '/' + id;
+window.SCW.knackAjax = (o) => { ajaxCalls.push(o); o.success({ record: { id: 'i1', field_1641: 'IDF', field_9999: keeperProgress } }); };
 global.Knack = window.Knack; global.SCW = window.SCW;
 
 function load(f) {
@@ -160,25 +164,95 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
   await flush(); await flush();
   const m = posts[0] && posts[0].body;
   ok(posts.length === 1 && posts[0].url === 'https://hook.us1.make.com/merge', 'the second click posts once to the 22.03 hook');
-  ok(m && m.keeperId === 'i1' && m.loserIds.join() === 'i3' && m.loserLabels[0] === 'IDF: 03: Office' && m.projectId === PID,
-    'the merge payload: keeper + loser ids + labels');
-  ok(!$('.scw-mst-overlay') && /Merging 1 into/.test($('.scw-mst-toast').textContent), 'the modal closes; the toast says Make is merging');
+  ok(m && m.keeperId === 'i1' && m.loserIds.join() === 'i3' && m.loserLabels[0] === 'IDF: 03: Office' && m.projectId === PID &&
+     /^m[a-z0-9]+$/.test(m.runId), 'the merge payload: run id, keeper + loser ids + labels');
 
-  // the watch: first tick the loser is still live, the second it reads merged
-  ok(watchTimers().length === 1, 'a re-read is scheduled');
-  nextWatch().fn(); await flush(); await flush();
-  ok(fetches === 1 && watchTimers().length === 1, 'still live after the first re-read → another is scheduled');
+  // ── the progress window: stays open, blocks, reads the keeper's progress ──
+  const RUN = m.runId;
+  ok($('.scw-mst-overlay') && /Merging 1 into IDF: 01: Warehouse/.test($('.scw-mst-head').textContent),
+    'the window stays open as a progress view');
+  const closeBtn = () => $('[data-act="close"]');
+  ok(closeBtn().disabled && /Working/.test(closeBtn().textContent), 'no way out while it runs');
+  ok($('.scw-mst-bar').classList.contains('is-waiting') && /Waiting for it to start/.test($('.scw-mst-pstatus').textContent),
+    'a moving "waiting for Make" bar until Make reports');
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }));
+  ok($('.scw-mst-overlay'), 'Esc does not close it');
+
+  const pollTimers = () => timers.filter((t) => t.ms === T.CONFIG.progressPollMs);
+  function nextPoll() { const i = timers.findIndex((t) => t.ms === T.CONFIG.progressPollMs); return i < 0 ? null : timers.splice(i, 1)[0]; }
+  ok(pollTimers().length === 1, 'a progress read is scheduled');
+
+  keeperProgress = RUN + '|1|1|1|37|200|Moving SOW line items';
+  nextPoll().fn(); await flush(); await flush(); await flush();
+  ok(ajaxCalls[0] && ajaxCalls[0].url === 'url:view_4166/i1' && ajaxCalls[0].type === 'GET', 'it reads the keeper through the site grid');
+  ok(!$('.scw-mst-bar').classList.contains('is-waiting'), 'a readable progress turns the bar determinate');
+  const w1 = parseFloat($('.scw-mst-bar__fill').style.width);
+  ok(w1 > 0 && w1 < 10, 'step 1, 37 of 200 -> a few percent (' + w1 + '%)');
+  ok(/Moving SOW line items · 37 of 200/.test($('.scw-mst-pstatus').textContent), 'the status names the step and the count');
+
+  keeperProgress = 'someOtherRun|1|1|7|1|1|Marked X merged';
+  nextPoll().fn(); await flush(); await flush(); await flush();
+  ok(parseFloat($('.scw-mst-bar__fill').style.width) === w1 && $('.scw-mst-overlay'), "another run's progress is ignored");
+
+  keeperProgress = RUN + '|1|1|5|1|1|Moving survey requests';
+  nextPoll().fn(); await flush(); await flush(); await flush();
+  const w2 = parseFloat($('.scw-mst-bar__fill').style.width);
+  ok(w2 > 70 && w2 < 72, 'step 5 of 7 done -> 71% (' + w2 + '%)');
+
+  keeperProgress = RUN + '|1|1|7|1|1|Marked IDF: 03: Office merged';
+  refreshed.length = 0;
+  nextPoll().fn(); await flush(); await flush(); await flush(); await flush();
+  ok(/Merged 1 into IDF: 01: Warehouse/.test($('.scw-mst-pstatus').textContent) &&
+     $('.scw-mst-bar').classList.contains('is-done') && $('.scw-mst-bar__fill').style.width === '100%',
+    'the last step fills the bar and says Merged');
+  ok(!closeBtn().disabled && closeBtn().textContent === 'Close', 'Close appears only when it is done');
+  ok(refreshed.indexOf('view_3962') >= 0, 'the worksheet is refreshed');
+  ok(pollTimers().length === 0, 'polling stops');
+  closeBtn().click();
+  ok(!$('.scw-mst-overlay'), 'Close closes it');
+
+  // ── no progress field yet: the bar runs by losers merged on the grid ──
+  timers.length = 0; ajaxCalls.length = 0; posts = [];
+  gridModels[2].attributes.field_2845 = 'approved';
+  keeperProgress = '';
+  T.openMerge({ viewKey: 'view_3962', gridKey: 'view_4166', keeperId: 'i1', keeperLabel: 'IDF: 01: Warehouse' });
+  let r0 = $$('.scw-mst-list .scw-mst-row')[0].querySelector('input');
+  r0.checked = true; r0.dispatchEvent(new window.Event('change', { bubbles: true }));
+  $('[data-act="merge"]').click(); $('[data-act="merge"]').click();
+  await flush(); await flush();
+  nextPoll().fn(); await flush(); await flush(); await flush();
+  nextPoll().fn(); await flush(); await flush(); await flush();
+  ok($('.scw-mst-bar').classList.contains('is-waiting'), 'no progress and nothing merged yet -> still waiting');
   gridModels[2].attributes.field_2845 = 'merged';
-  nextWatch().fn(); await flush(); await flush();
-  ok(/Merged 1 into IDF: 01: Warehouse/.test($('.scw-mst-toast').textContent) && refreshed.indexOf('view_3962') >= 0,
-    'once it reads merged: the worksheet is refreshed and the toast says so');
-  ok(watchTimers().length === 0, 'no further re-reads');
+  nextPoll().fn(); await flush(); await flush(); await flush(); await flush();
+  ok(/Merged 1 into/.test($('.scw-mst-pstatus').textContent), 'the loser reading merged on the grid completes it');
+  closeBtn().click();
+
+  // ── stall: no change for stallMs -> say so, allow Close, keep checking in the background ──
+  timers.length = 0; posts = [];
+  gridModels[2].attributes.field_2845 = 'approved';
+  T.CONFIG.stallMs = -1;
+  T.openMerge({ viewKey: 'view_3962', gridKey: 'view_4166', keeperId: 'i1', keeperLabel: 'IDF: 01: Warehouse' });
+  r0 = $$('.scw-mst-list .scw-mst-row')[0].querySelector('input');
+  r0.checked = true; r0.dispatchEvent(new window.Event('change', { bubbles: true }));
+  $('[data-act="merge"]').click(); $('[data-act="merge"]').click();
+  await flush(); await flush();
+  nextPoll().fn(); await flush(); await flush(); await flush();
+  ok(/has not reported progress/.test($('.scw-mst-note').textContent) && !closeBtn().disabled, 'a stall says so and allows Close');
+  ok(pollTimers().length === 1, 'and keeps polling while open');
+  closeBtn().click();
+  ok(!$('.scw-mst-overlay') && watchTimers().length >= 1, 'closing a stalled merge hands over to the background check');
+
+  // parse + share helpers
+  ok(T._parseProgress('<span>r1|2|3|4|5|10|Moving a|b</span>', 'r1').text === 'Moving a|b', 'progress parse keeps pipes in the text');
+  ok(T._parseProgress('r2|1|1|1|1|1|x', 'r1') === null, 'progress of another run is null');
+  ok(Math.abs(T._progressShare({ loser: 2, losers: 2, step: 1, i: 0, of: 0 }, 7) - 8 / 14) < 1e-9, 'share: closet 2 of 2, step 1 with nothing found');
 
   // a loser that drops out of the grid (the "not merged" filter) also counts as done
   timers.length = 0;
   window.SCW.mdfSiteTools._watchMerge('view_4166', 'view_3962', ['gone'], 'X');
   nextWatch().fn(); await flush(); await flush();
-  ok(/Merged 1 into X/.test($('.scw-mst-toast').textContent), 'a loser gone from the site grid counts as merged');
+  ok(/Merged 1 into X/.test($('.scw-mst-toast').textContent), 'background check: a loser gone from the site grid counts as merged');
 
   console.log('RESULT ' + (fails ? 'FAIL' : 'PASS') + ' ' + (n - fails) + '/' + n);
   process.exit(fails ? 1 : 0);

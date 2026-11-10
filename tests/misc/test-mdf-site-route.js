@@ -114,6 +114,31 @@ ok(cfg('view_4093').mdfSourceViewKey === 'view_3932', 'a deleted site grid (not 
 ok(cfg('view_3962').mdfSourceViewKey === 'view_4166', 'the other pairs keep routing');
 SCW.sceneOfView = realSceneOf;
 
+// ── merged closets are taken out of every closet grid's model ──
+function coll(models) {
+  const c = { models, _ev: {} };
+  c.on = (ev, fn) => { ev.split(' ').forEach((e) => { c._ev[e] = fn; }); };
+  c.remove = (gone) => { c.models = c.models.filter((m) => gone.indexOf(m) < 0); };
+  return c;
+}
+const live = { attributes: { id: 'a', field_2845: 'approved' } };
+const merged = { attributes: { id: 'b', field_2845: 'merged', field_2845_raw: ['merged'] } };
+const blank = { attributes: { id: 'c' } };
+window.Knack.views.view_4166 = { model: { data: coll([live, merged, blank]) } };
+handlers['knack-view-render.any.scwMdfMergedPrune']({}, { key: 'view_4166' });
+ok(window.Knack.views.view_4166.model.data.models.map((m) => m.attributes.id).join() === 'a,c',
+  'a site grid render drops merged closets (blank lifecycle stays)');
+const c2 = window.Knack.views.view_4166.model.data;
+c2.models.push({ attributes: { id: 'd', field_2845: '<span>merged</span>' } });
+c2._ev.sync();
+ok(c2.models.map((m) => m.attributes.id).join() === 'a,c', 'a refetch (sync) drops them again before anyone reads');
+window.Knack.views.view_3577 = { model: { data: coll([merged, live]) } };
+handlers['knack-view-render.any.scwMdfMergedPrune']({}, { key: 'view_3577' });
+ok(window.Knack.views.view_3577.model.data.models.length === 1, 'project closet grids are cleaned the same way');
+window.Knack.views.view_3962 = { model: { data: coll([merged]) } };
+handlers['knack-view-render.any.scwMdfMergedPrune']({}, { key: 'view_3962' });
+ok(window.Knack.views.view_3962.model.data.models.length === 1, 'other grids are never touched');
+
 // ── empty preview list = everyone (the full cut-over) ──
 route.CONFIG.previewEmails = [];
 userEmail = 'anyone@example.com';
