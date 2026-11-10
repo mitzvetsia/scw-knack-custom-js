@@ -115,7 +115,7 @@ Source each from "MDF/IDFs connected to this project's Site" (parent_source `obj
   one row + MERGE on others, or later the "Merge into…" action); nothing merges on its own. Input =
   survivor id + loser ids. Re-point every record pointing at a
   loser: `field_1946`, `field_2375`, `field_2818`, `field_2720` (single → survivor),
-  `field_2144`, `field_2438` (many → swap loser for survivor, distinct). On the survivor: union
+  `field_2438` (many → swap loser for survivor, distinct; the SOW list `field_2144` is dropped, see below). On the survivor: union
   `field_1652` photos, `field_2435`; append the loser's notes with its label, and its survey-notes entries
   under the survivor's (both logs are newest first; keep each entry's own stamp). Loser:
   lifecycle `merged` + "Merged into" = survivor. Run sequentially (Make "Sequential processing")
@@ -279,7 +279,7 @@ of suspected duplicates; its Decision column is no longer used.
   the merging is done (re-sourcing them first floods every picker with the duplicates).
 - **The scenario (22.02, Make)**: per loser, re-point every field that points at it — single: SOW line
   `field_1946`, survey item `field_2375`, install item `field_2818`, bid revision line `field_2720`; many
-  (remove loser, add survivor, distinct): SOW header `field_2144`, survey request `field_2438`; union onto the
+  (remove loser, add survivor, distinct): survey request `field_2438` (not the SOW list `field_2144`); union onto the
   survivor its own photos `field_1652` and survey requests `field_2435`; fill the survivor's blank name / ##;
   append the loser's notes and survey-note entries under a "[merged from <label>]" line; loser → lifecycle
   `merged` + "Merged into" = survivor. Skip the DTO fields (`field_2211` / `field_2180` / `field_2250`,
@@ -298,17 +298,26 @@ Build SOW, CO, deploy) and by the SOW-create scenarios. Two actions:
   notes, who. Make reads the project's site (`field_1259`), refuses a ## already used at the site (HEADENDs
   never get one; blank IDF ## = next free at the site), creates the closet with project ("created on"),
   site, lifecycle `proposed` for a sub / `approved` for ops, survey request (`field_2435`) and adds it to
-  the request's `field_2438`, adds it to every SOW on the project (`field_2144`, 22.01's job — the sales
-  worksheet's MDF/IDF dropdown on view_3586 only offers the SOW's listed closets), and replies with the new
-  id so the modal can use it at once. Create-only, so no sequential processing is needed and a Webhook
+  the request's `field_2438`, and replies with the new id so the modal can use it at once. It does NOT
+  add the closet to SOWs (see "The SOW's closet list is dropped" below). Create-only, so no sequential processing is needed and a Webhook
   Response is allowed; a rare same-second ## clash is left to the merge tool.
 - **`ensure-default`** (01.01 / 01.02 / 01.03, replacing their direct "placeholder / Default MDF" creates):
   with closets at the site, a new project must NOT make another blank HEADEND — that is where most of the
   "unnamed HEADENDs at one site" duplicates come from. Find the site's live HEADEND(s); create one only
-  when the site has none; return the ids so the caller connects its SOW.
-- **22.01** stays only as a safety net for closets created any other way (a native form reached by URL),
-  skipping any closet that already has a site; retire it once those paths are gone. The modal opens on the
+  when the site has none; return the ids.
+- **22.01** is retired once the scenario is live: its only job was the SOW list, and the site step lives in
+  the create scenario. Until then it stays, with the "closet has a project" guard. The modal opens on the
   site's existing closets ("is it one of these?") before offering "new".
+- **The SOW's closet list is dropped (Micah, same day: "I'm also not sure that connecting an MDF/IDF to a
+  SOW matters in the new construct")**. SOW header `field_2144` REL_mdf-idf has writers (01.01, 01.02,
+  01.03, 22.01) and no reader that matters: every closet grid the app shows is sourced through the PROJECT
+  (`field_1648`) — view_3577 / 3602 / 3617 / 3803 / 3822 / 3894 / 3932 / 4084, the SOW pages through SOW →
+  project — the worksheet-v2 pickers read those grids, and the bundle never reads `field_2144`. Its one
+  reader is a native inline-edit option limit on view_3586's MDF/IDF column, a grid worksheet-v2 renders
+  itself. In the site construct a SOW's closets are simply the closets its lines point at (`field_1946`).
+  So: no SOW step in the create or merge scenarios; remove the SOW-connect modules from 01.01 / 01.02 /
+  01.03 when they are switched to `ensure-default`; delete the field after a search of the Make scenarios
+  not on hand (13.06b, 11.04, the publish path) finds no reader.
 
 ### Next steps
 Done 2026-11-02 / 11-03: the exports came in, the cleanup kit and the duplicate review list are built
