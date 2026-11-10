@@ -277,7 +277,7 @@ of suspected duplicates; its Decision column is no longer used.
   oldest), sees what moves, confirms; one POST to a new `MAKE_MDF_MERGE_WEBHOOK` with survivor + loser ids.
   Mismatched type or ## shows an amber warning, never a block. The project pickers stay project-sourced until
   the merging is done (re-sourcing them first floods every picker with the duplicates).
-- **The scenario (22.02, Make)**: per loser, re-point every field that points at it — single: SOW line
+- **The scenario (`22.03 | MDF-IDF | MDF/IDF merge -> move connected records to keeper`, Make)**: per loser, re-point every field that points at it — single: SOW line
   `field_1946`, survey item `field_2375`, install item `field_2818`, bid revision line `field_2720`; many
   (remove loser, add survivor, distinct): survey request `field_2438` (not the SOW list `field_2144`); union onto the
   survivor its own photos `field_1652` and survey requests `field_2435`; fill the survivor's blank name / ##;
@@ -290,6 +290,7 @@ of suspected duplicates; its Decision column is no longer used.
   without touching each one; plus the "closet has a project" guard before its SOW search.
 
 ### One "create MDF/IDF" Make scenario (decided 2026-11-10)
+Scenario names (Micah's convention `SS.NN | DOMAIN | Trigger -> Result`; stage 22 is MDF-IDF): `22.01 | MDF-IDF | MDF/IDF created -> add to project SOWs` (retiring), `22.02 | MDF-IDF | MDF/IDF create, ensure default, list (webhook)`, `22.03 | MDF-IDF | MDF/IDF merge -> move connected records to keeper`. Positions get their own stage.
 Micah: "integrate 22.01's functionality into one combined 'create MDF' Make automation." Knack's native
 forms get the connections wrong (the project radio defaulting to the first project), so every closet is
 created by ONE webhook scenario, called by a custom closet modal (every "+ Add MDF/IDF": survey page,
