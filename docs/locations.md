@@ -233,18 +233,52 @@ Run: `python3 -I tools/mdf_site_cleanup.py <projects.csv> <sites.csv> <mdfidf.cs
   cable labels). Optional later: "Also in this closet: N access control devices (SOW …)" on a closet card.
 - Not built yet: the Make merge scenario (input = a reviewed group: survivor + losers).
 
+### Why closets land on "Pour Taproom Asheville" (found 2026-11-10, fresh exports)
+Dated from the record ids (the first 8 hex digits of a Knack id are its creation time; auto increment
+tracks it in order): the 94 Pour Taproom closets are NOT old — 93 were created from 2026-02-12 on, the
+newest on 2026-10-26. The 272 closets with NO project are older: created 2024-03 … 2026-03 (median
+2025-08); 243 of them were made by automation the same day as their old quote, and they stop on
+2026-03-24 — the old quote flow left the project blank. From February the same blanks became Pour Taproom.
+- **Root cause**: OPS_MDF-IDF `field_1648` REL_Installation Project has `conn_default: "first"` (the
+  schema), so a closet created without a project gets the FIRST project record — Pour Taproom is the
+  oldest. Five forms show the project as a radio list defaulting to the first: view_3773, view_3628,
+  view_3630, view_3781, view_2678; the DTO "add MDF/IDF" child forms view_4003 / 4004 / 4005 have no
+  project input at all. **Builder fix (pending)**: set the field's default and those inputs to none, so a
+  create that forgets the project leaves it blank and visible.
+- **The creators**: every SOW-create scenario makes a default closet. 01.01 (floorplan submission)
+  creates "placeholder MDF name - UPDATE ME" with the project it made (`249.id`) — correct. 01.02
+  (HubSpot SOW) creates "Default MDF" with the project it created (`28.id`) or found (`8.id`) — correct.
+  **01.03** (fires on every SOW created) created "Default MDF" when the project had no closet, taking the
+  project from the closet search that had just come back EMPTY (`54.field_1648_raw[].id`) → blank → Pour
+  Taproom, and connected the SOW to it (`field_2144`). **Fixed by Micah 2026-11-10**: module 67 now maps
+  `{{2.field_2119_raw[].id}}`. My first scan of these blueprints missed the creates: they sit in
+  `builtin:BasicIfElse` `branches`, not router `routes` — walk both.
+- Attribution of the 94: old quote flow 55 (Feb–Jun 2026, stopped); native "add closet" forms / other
+  automation 21 (Mar–Aug, incl. "testing survey created MDF from the add other…"); 01.03 "Default MDF" 14
+  (Apr 24 – Oct 26); forms by a person 4 (Sep–Oct). The 14 01.03 closets are each on the SOW that
+  triggered them — re-homing the closet does not detach it; a SOW export (`field_2144` + `field_2119`)
+  lists them and their real project.
+- **22.01 "MDF created → make sure it matches any SOWs"** adds every new closet to all SOWs on its project
+  (`field_2144`). Unverified risk: for a closet with no project the SOW search filter value is empty, which
+  may match up to 100 unrelated SOWs. A filter "closet has a project" before its search closes it.
+- Kit re-run on the 2026-11-10 exports (3,233 closets): 01 2,975 · 02 296 · 03 764 · 04 1,906 · 05 434 ·
+  06 114 · 07 1,231 rows (374 likely groups / 122 possible). The "Merged into" link exists now
+  (`REL_merged into` in the export).
+
 ### Next steps
 Done 2026-11-02 / 11-03: the exports came in, the cleanup kit and the duplicate review list are built
 (see "Cleanup kit" above), and survey notes are a stamped log in the bundle. Nothing has been written
 to Knack yet. What is left, in order:
-1. **Builder, before any import**: lifecycle option `merged` + a "Merged into" connection; fix the
+1. **Builder, before any import**: closet project field default → none (see "Why closets land on Pour
+   Taproom"); lifecycle option `merged` + a "Merged into" connection (the link exists as of 11-10); fix the
    SYS_set Label rules (rule 1 to this record; rules 5 / 6 limited to IDFs).
 2. **Imports** (update existing records, matched on Record ID): `01_site_backfill.csv` →
    `05_location_to_notes.csv`, in order; then the `06_by_hand.csv` rows by hand.
 3. **Duplicate review**: Micah marks KEEP / MERGE / SEPARATE in `07_duplicate_review.csv`; nothing
    merges without that column.
 4. **Make**: the merge scenario (runs only on the reviewed groups); site lookups in 04.04 / K2 /
-   04.01a; find what creates the default headends.
+   04.01a. The default-closet creators are found (01.01 / 01.02 / 01.03 — see "Why closets land on Pour
+   Taproom"); 01.03 fixed 2026-11-10; 22.01's empty-project guard still to add.
 5. **Builder**: Site on the add forms; re-source the 10 grids + view_3892 to the site; delete the
    fields in "Field cleanup".
 6. Then Part 2.
