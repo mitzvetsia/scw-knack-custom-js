@@ -595,10 +595,12 @@
       var v = window.Knack && Knack.views && Knack.views[vc.mdfSourceViewKey];
       var models = (v && v.model && v.model.data && v.model.data.models) || [];
       var labelField = vc.mdfLabelField || 'field_1642';
+      var route = window.SCW && SCW.mdfSiteRoute;
       var out = [];
       for (var i = 0; i < models.length; i++) {
         var a = models[i] && models[i].attributes;
         if (!a || !a.id) continue;
+        if (route && typeof route.isMerged === 'function' && route.isMerged(a)) continue;   // merged closet
         var label = stripHtml(String(a[labelField] || a.identifier || ''));
         if (label) out.push({ id: a.id, label: label });
       }

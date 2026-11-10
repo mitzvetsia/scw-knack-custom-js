@@ -897,9 +897,15 @@ survey requests, i of the records found; 6 keeper takes photos + notes; 7 loser 
 through the site grid every 2 s (`SCW.knackRecordUrl` + `knackAjax`; it finds the value by the run id, so no key config —
 the field must be a COLUMN of the site grid) and re-reads the grid every 3rd poll (losers merged / gone = done, the
 fallback while the field is not there). 90 s without a change: an amber note + Close, then a background check.
-**Merged closets never reach a reader**: `mdf-site-route.js` `pruneMerged` takes `merged` rows out of the Backbone model of
-every closet grid (project + site twins) that serves `field_2845`, on render and on reset / sync — a grid without that
-column needs the Builder filter. Lesson from the first live run: Knack's Make search passes ONE EMPTY bundle on no match,
+**Merged closets never reach a reader**: `mdf-site-route.js` `pruneMerged` takes merged rows (`field_2845` reads `merged`,
+OR "Merged into" `field_3318` is set) out of the Backbone model of every closet grid (project + site twins), on EVERY view
+render (`pruneAll`, not just the grid's own) and on reset / sync, then `repaint()`s the worksheet / reconcile grid that
+reads it — their "closet grid rendered" listeners bind at bundle load, before the route exists, so on the route they sit on
+the project twin and never fired for view_4166 / view_4167 (the "merged closets still on my worksheet" bug, 2026-11-10).
+`render.js` `readMdfSeedGroups` and `bulk.js` `mdfOptionsForView` also skip merged rows at read time. A grid serving
+neither column can't be judged: the console names it once (`[scw-mdf-site] view_XXXX has no FLAG_lifecycle…`) — it needs
+the Builder filter. Console check: `SCW.mdfSiteRoute.diagnose()` (rows / columns served / merged hidden per closet grid) —
+ask for its output instead of a page-HTML paste (a 2 MB worksheet paste killed a session). Lesson from the first live run: Knack's Make search passes ONE EMPTY bundle on no match,
 so every update after a search needs a "found one" filter (22.01 had `__IMTLENGTH__ > 0`; 22.03 v1 died with
 "Missing value of required parameter 'record_id'" on the first empty step). **Builder before widening**: "FLAG_lifecycle
 is not merged" on the site grids (and the project grids); `SYS_merge progress` + `FLAG_lifecycle` columns on view_4166 /

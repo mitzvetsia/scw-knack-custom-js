@@ -139,6 +139,61 @@ window.Knack.views.view_3962 = { model: { data: coll([merged]) } };
 handlers['knack-view-render.any.scwMdfMergedPrune']({}, { key: 'view_3962' });
 ok(window.Knack.views.view_3962.model.data.models.length === 1, 'other grids are never touched');
 
+// ── "Merged into" (field_3318) alone marks a closet merged ──
+ok(route.isMerged({ id: 'x', field_3318_raw: [{ id: 'k1', identifier: 'MDF' }] }), 'a Merged into link marks it merged');
+ok(!route.isMerged({ id: 'x', field_3318_raw: [], field_3318: '' , field_2845: 'approved' }), 'an empty Merged into does not');
+ok(!route.isMerged({ id: 'x', field_3318: '&nbsp;' }), 'a blank-rendered Merged into does not');
+
+// ── any view render prunes every closet grid, and repaints what reads it ──
+const notified = [];
+SCW.worksheetV2.data = { notify: (k) => notified.push('ws:' + k) };
+SCW.bidReviewV2 = SCW.bidReviewV2 || {};
+SCW.bidReviewV2.data = { notifyDebounced: () => notified.push('br2') };
+userEmail = 'micah.shearer@getscw.com';
+const mergedInto = { attributes: { id: 'e', field_2845: 'approved', field_3318_raw: [{ id: 'k', identifier: 'Main' }] } };
+window.Knack.views.view_4166 = { model: { data: coll([live, merged, mergedInto]) } };
+window.Knack.views.view_3962 = { model: { data: coll([]) } };
+handlers['knack-view-render.any.scwMdfMergedPrune']({}, { key: 'view_3962' });
+ok(window.Knack.views.view_4166.model.data.models.map((m) => m.attributes.id).join() === 'a',
+  "the WORKSHEET's render prunes the site grid too (data can land before the grid's own render)");
+ok(notified.indexOf('ws:view_3962') >= 0, 'and repaints the worksheet that reads it (its listener sits on view_3577)');
+notified.length = 0;
+handlers['knack-view-render.any.scwMdfMergedPrune']({}, { key: 'view_4166' });
+ok(notified.indexOf('ws:view_3962') >= 0, "a site grid's own render repaints its worksheet even with nothing to prune");
+notified.length = 0;
+window.Knack.views.view_4167 = { model: { data: coll([merged, live]) } };
+handlers['knack-view-render.any.scwMdfMergedPrune']({}, { key: 'view_9999' });
+ok(notified.indexOf('br2') >= 0 && window.Knack.views.view_4167.model.data.models.length === 1,
+  'the reconcile site grid is pruned and the reconcile grid repainted');
+notified.length = 0;
+const c3 = window.Knack.views.view_4166.model.data;
+c3.models.push({ attributes: { id: 'f', field_2845_raw: ['merged'] } });
+c3._ev.sync();
+ok(c3.models.length === 1 && notified.indexOf('ws:view_3962') >= 0, 'a refetch that brings a merged row back prunes + repaints');
+
+// ── the worksheet never seeds a group from a merged closet, pruned or not ──
+ok(typeof route.isMerged === 'function', 'isMerged is exported for the readers (render.js / bulk.js)');
+
+// ── a grid with no merged signal is named once in the console ──
+const warns = [];
+const realWarn = console.warn;
+console.warn = (m) => warns.push(String(m));
+window.Knack.views.view_4168 = { model: { data: coll([{ attributes: { id: 'g', field_1642: 'MDF' } }]) } };
+handlers['knack-view-render.any.scwMdfMergedPrune']({}, { key: 'view_4168' });
+handlers['knack-view-render.any.scwMdfMergedPrune']({}, { key: 'view_4168' });
+console.warn = realWarn;
+ok(warns.filter((w) => w.indexOf('view_4168') >= 0 && w.indexOf('is not merged') >= 0).length === 1,
+  'a closet grid serving neither column is named once, with the Builder fix');
+ok(!warns.some((w) => w.indexOf('view_4166') >= 0), 'a grid that serves the column is not');
+
+// ── diagnose() ──
+console.table = () => {};
+const diag = route.diagnose();
+const d66 = diag.filter((r) => r.grid === 'view_4166')[0];
+const d68 = diag.filter((r) => r.grid === 'view_4168')[0];
+ok(d66 && d66.lifecycleColumn && d66.mergedHidden >= 3 && d66.siteGrid, 'diagnose: view_4166 serves the column, merged rows hidden');
+ok(d68 && !d68.lifecycleColumn && !d68.mergedIntoColumn, 'diagnose: view_4168 serves neither');
+
 // ── empty preview list = everyone (the full cut-over) ──
 route.CONFIG.previewEmails = [];
 userEmail = 'anyone@example.com';

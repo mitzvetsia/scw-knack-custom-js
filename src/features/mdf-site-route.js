@@ -164,14 +164,43 @@
   // SERVES the lifecycle column has its merged rows taken out of the Backbone model the moment it
   // loads (render, reset, sync), so the worksheet groups, pickers and Merge lists never see them.
   // A grid without the column cannot be judged here: it needs the Builder filter.
+  // Two signals, either one is enough: FLAG_lifecycle (field_2845) reads "merged", or the
+  // "Merged into" link (field_3318, REL_merged into) points at a keeper. A grid serving NEITHER
+  // column cannot be judged here — logOnceBlind() names it in the console.
   var CLOSET_GRIDS = ['view_3577', 'view_3602', 'view_3617', 'view_3803', 'view_3822', 'view_3892', 'view_3894',
                       'view_3932', 'view_4060', 'view_4084', 'view_4114', 'view_4166', 'view_4167', 'view_4168'];
+  var LIFECYCLE = 'field_2845';
+  var MERGED_INTO = 'field_3318';
+  function filled(v) {
+    if (v == null) return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === 'object') return !!(v.id || v.identifier);
+    return String(v).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim() !== '';
+  }
   function isMerged(a) {
     if (!a) return false;
-    var v = a.field_2845_raw != null && a.field_2845_raw !== '' ? a.field_2845_raw : a.field_2845;
+    var v = a[LIFECYCLE + '_raw'] != null && a[LIFECYCLE + '_raw'] !== '' ? a[LIFECYCLE + '_raw'] : a[LIFECYCLE];
     if (Array.isArray(v)) v = v.join(' ');
-    return /(^|\b)merged\b/i.test(String(v == null ? '' : v).replace(/<[^>]*>/g, ''));
+    if (/(^|\b)merged\b/i.test(String(v == null ? '' : v).replace(/<[^>]*>/g, ''))) return true;
+    return filled(a[MERGED_INTO + '_raw']) || filled(a[MERGED_INTO]);
   }
+  /** Does this record come from a grid that serves a merged signal at all? */
+  function judgeable(a) {
+    return !!a && (LIFECYCLE in a || (LIFECYCLE + '_raw') in a || MERGED_INTO in a || (MERGED_INTO + '_raw') in a);
+  }
+
+  var _blindWarned = {};
+  function logOnceBlind(viewKey) {
+    if (_blindWarned[viewKey]) return;
+    _blindWarned[viewKey] = true;
+    try {
+      console.warn('[scw-mdf-site] ' + viewKey + ' has no FLAG_lifecycle (field_2845) or "Merged into" (field_3318) ' +
+        'column, so merged closets on it cannot be hidden by the page. Builder: add the filter ' +
+        '"FLAG_lifecycle is not merged" to ' + viewKey + ' (or add FLAG_lifecycle as a column).');
+    } catch (e) { /* console absent */ }
+  }
+
+  var _pruned = {};   // viewKey -> merged rows taken out so far (diagnose())
   function pruneMerged(viewKey) {
     try {
       var v = window.Knack && Knack.views && Knack.views[viewKey];
@@ -179,17 +208,78 @@
       if (!coll || !coll.models) return 0;
       if (!coll._scwMergedPrune && typeof coll.on === 'function') {
         coll._scwMergedPrune = true;
-        coll.on('reset sync', function () { pruneMerged(viewKey); });
+        coll.on('reset sync', function () { if (pruneMerged(viewKey)) repaint(viewKey); });
       }
       var gone = [];
+      var blind = coll.models.length > 0;
       for (var i = 0; i < coll.models.length; i++) {
-        if (isMerged(coll.models[i].attributes || coll.models[i])) gone.push(coll.models[i]);
+        var attrs = coll.models[i].attributes || coll.models[i];
+        if (judgeable(attrs)) blind = false;
+        if (isMerged(attrs)) gone.push(coll.models[i]);
       }
+      if (blind) logOnceBlind(viewKey);
       if (!gone.length) return 0;
       if (typeof coll.remove === 'function') coll.remove(gone, { silent: true });
       else coll.models = coll.models.filter(function (m) { return gone.indexOf(m) < 0; });
+      _pruned[viewKey] = (_pruned[viewKey] || 0) + gone.length;
       return gone.length;
     } catch (e) { return 0; }
+  }
+
+  /** Prune every closet grid on the page. Run on EVERY view render (not only the grid's own):
+   *  a worksheet can read a grid whose data landed before the grid's render event, and the
+   *  reset/sync hook is attached the first time the collection is seen. */
+  function pruneAll() {
+    var hit = [];
+    var views = (window.Knack && Knack.views) || {};
+    for (var i = 0; i < CLOSET_GRIDS.length; i++) {
+      if (views[CLOSET_GRIDS[i]] && pruneMerged(CLOSET_GRIDS[i])) hit.push(CLOSET_GRIDS[i]);
+    }
+    return hit;
+  }
+
+  /** Re-render whatever reads this closet grid. The worksheet and the reconcile grid bind their
+   *  "closet grid rendered" listeners when the bundle loads, BEFORE this module routes them to the
+   *  site grid (and before the login is known), so on the route they listen to the project twin
+   *  and would never repaint for view_4166 / view_4167 / view_4168. notify() is frame / burst
+   *  coalesced on both, so an extra call costs nothing. */
+  function repaint(viewKey) {
+    try {
+      var wv2 = SCW.worksheetV2;
+      var vs = (wv2 && wv2.CONFIG && wv2.CONFIG.views) || [];
+      for (var i = 0; i < vs.length; i++) {
+        if (vs[i] && vs[i].mdfSourceViewKey === viewKey && wv2.data && typeof wv2.data.notify === 'function' &&
+            window.Knack && Knack.views && Knack.views[vs[i].sourceViewKey]) {
+          wv2.data.notify(vs[i].sourceViewKey);
+        }
+      }
+      var br2 = SCW.bidReviewV2;
+      var keys = (br2 && br2.CONFIG && br2.CONFIG.sourceViewKeys) || [];
+      if (keys.indexOf(viewKey) >= 0 && br2.data && typeof br2.data.notifyDebounced === 'function') {
+        br2.data.notifyDebounced();
+      }
+    } catch (e) { /* a consumer absent on this page */ }
+  }
+
+  /** Console check — SCW.mdfSiteRoute.diagnose() — one row per closet grid on the page. */
+  function diagnose() {
+    var out = [];
+    var views = (window.Knack && Knack.views) || {};
+    for (var i = 0; i < CLOSET_GRIDS.length; i++) {
+      var k = CLOSET_GRIDS[i];
+      var coll = views[k] && views[k].model && views[k].model.data;
+      if (!coll || !coll.models) continue;
+      var a0 = null, lc = false, mi = false;
+      for (var j = 0; j < coll.models.length; j++) {
+        a0 = coll.models[j].attributes || coll.models[j];
+        if (LIFECYCLE in a0) lc = true;
+        if (MERGED_INTO in a0) mi = true;
+      }
+      out.push({ grid: k, rows: coll.models.length, lifecycleColumn: lc, mergedIntoColumn: mi,
+                 mergedHidden: _pruned[k] || 0, siteGrid: isSiteGrid(k) });
+    }
+    try { if (console.table) console.table(out); } catch (e) { /* no console */ }
+    return out;
   }
 
   // The three site grids are data sources: never painted, for anyone. Static CSS so there is
@@ -224,13 +314,17 @@
       .off('knack-view-render.any.scwMdfMergedPrune')
       .on('knack-view-render.any.scwMdfMergedPrune', function (e, view) {
         var key = view && (view.key || (view.attributes && view.attributes.key));
-        if (key && CLOSET_GRIDS.indexOf(key) >= 0) pruneMerged(key);
+        var hit = pruneAll();
+        for (var h = 0; h < hit.length; h++) repaint(hit[h]);
+        // A routed site grid's own render: its readers are listening to the project twin.
+        if (key && isSiteGrid(key) && hit.indexOf(key) < 0) repaint(key);
       });
     jQuery(document)
       .off('knack-scene-render.any.scwMdfSiteRoute')
       .on('knack-scene-render.any.scwMdfSiteRoute', function () {
         install();
         logOnce();
+        pruneAll();
         try { document.documentElement.classList.toggle('scw-mdf-site-route', active()); } catch (e) { /* old DOM */ }
       });
   }
@@ -241,7 +335,10 @@
     view: view,
     views: views,
     isSiteGrid: isSiteGrid,
+    isMerged: isMerged,
     pruneMerged: pruneMerged,
+    pruneAll: pruneAll,
+    diagnose: diagnose,
     install: install
   };
 })();

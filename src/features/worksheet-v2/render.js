@@ -215,10 +215,15 @@
       if (!v || !v.model || !v.model.data) return [];
       var models = v.model.data.models || [];
       var labelField = vcfg.mdfLabelField || 'field_1642';
+      // A merged closet (Make 22.03) never seeds a group, whether or not the grid's model
+      // was pruned yet (mdf-site-route.js; needs FLAG_lifecycle / Merged into as a column).
+      var route = window.SCW && SCW.mdfSiteRoute;
+      var merged = route && typeof route.isMerged === 'function' ? route.isMerged : null;
       var out = [];
       for (var j = 0; j < models.length; j++) {
         var attrs = models[j] && models[j].attributes;
         if (!attrs || !attrs.id) continue;
+        if (merged && merged(attrs)) continue;
         var label = String(attrs[labelField] || attrs.identifier || '')
           .replace(/<[^>]*>/g, '').trim();
         if (!label) continue;
