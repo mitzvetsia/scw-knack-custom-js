@@ -282,7 +282,7 @@ of suspected duplicates; its Decision column is no longer used.
   (remove loser, add survivor, distinct): survey request `field_2438` (not the SOW list `field_2144`); union onto the
   survivor its own photos `field_1652` and survey requests `field_2435`; fill the survivor's blank name / ##;
   append the loser's notes and survey-note entries under a "[merged from <label>]" line; loser → lifecycle
-  `merged` + "Merged into" = survivor. Skip the DTO fields (`field_2211` / `field_2180` / `field_2250`,
+  `merged` + "Merged into" (`field_3318` REL_merged into, added 2026-11-10) = survivor. Skip the DTO fields (`field_2211` / `field_2180` / `field_2250`,
   transient). Sequential processing ON (the unions are read-modify-write) — which means NO Webhook Response
   (Make refuses one in a sequential scenario): the page polls until the losers read `merged`.
 - **22.01** (MDF created) gains the site: when a new closet has no site, read its project's site
@@ -324,7 +324,7 @@ Done 2026-11-02 / 11-03: the exports came in, the cleanup kit and the duplicate 
 (see "Cleanup kit" above), and survey notes are a stamped log in the bundle. Nothing has been written
 to Knack yet. What is left, in order:
 1. **Builder, before any import**: closet project field default → none (see "Why closets land on Pour
-   Taproom"); lifecycle option `merged` + a "Merged into" connection (the link exists as of 11-10); fix the
+   Taproom"); lifecycle option `merged` + a "Merged into" connection (the link exists as of 11-10: `field_3318` REL_merged into); fix the
    SYS_set Label rules (rule 1 to this record; rules 5 / 6 limited to IDFs).
 2. **Imports** (update existing records, matched on Record ID): `01_site_backfill.csv` →
    `05_location_to_notes.csv`, in order; then the `06_by_hand.csv` rows by hand.
