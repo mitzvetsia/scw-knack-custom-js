@@ -265,6 +265,30 @@ newest on 2026-10-26. The 272 closets with NO project are older: created 2024-03
   06 114 · 07 1,231 rows (374 likely groups / 122 possible). The "Merged into" link exists now
   (`REL_merged into` in the export).
 
+### Merging happens in the app, not from the review file (decided 2026-11-10)
+Micah: "All merging will happen through the front end by adding a 'merge' button on the Site and/or Project
+level that triggers a Make scenario … move [all connected records] to the 'merged into' record." The label
+fix (SYS_set Label rules, `04_headend_type.csv`) is deferred. `07_duplicate_review.csv` stays as a WORKLIST
+of suspected duplicates; its Decision column is no longer used.
+- **The UI (bundle)**: a "Merge…" action on a closet card, ops logins only. It lists every closet at the
+  project's SITE (a new hidden grid on the page: OPS_MDF-IDF connected to the project's site, parent
+  `object_3.field_1259`, connection `field_2848`, lifecycle not merged), this project's first; the user ticks
+  the duplicates and picks the keeper (default: installed → survey requests → named → most photos →
+  oldest), sees what moves, confirms; one POST to a new `MAKE_MDF_MERGE_WEBHOOK` with survivor + loser ids.
+  Mismatched type or ## shows an amber warning, never a block. The project pickers stay project-sourced until
+  the merging is done (re-sourcing them first floods every picker with the duplicates).
+- **The scenario (22.02, Make)**: per loser, re-point every field that points at it — single: SOW line
+  `field_1946`, survey item `field_2375`, install item `field_2818`, bid revision line `field_2720`; many
+  (remove loser, add survivor, distinct): SOW header `field_2144`, survey request `field_2438`; union onto the
+  survivor its own photos `field_1652` and survey requests `field_2435`; fill the survivor's blank name / ##;
+  append the loser's notes and survey-note entries under a "[merged from <label>]" line; loser → lifecycle
+  `merged` + "Merged into" = survivor. Skip the DTO fields (`field_2211` / `field_2180` / `field_2250`,
+  transient). Sequential processing ON (the unions are read-modify-write) — which means NO Webhook Response
+  (Make refuses one in a sequential scenario): the page polls until the losers read `merged`.
+- **22.01** (MDF created) gains the site: when a new closet has no site, read its project's site
+  (`field_1259`) and write `field_2848`, so every creator — forms, 01.01 / 01.02 / 01.03 — lands on its site
+  without touching each one; plus the "closet has a project" guard before its SOW search.
+
 ### Next steps
 Done 2026-11-02 / 11-03: the exports came in, the cleanup kit and the duplicate review list are built
 (see "Cleanup kit" above), and survey notes are a stamped log in the bundle. Nothing has been written
