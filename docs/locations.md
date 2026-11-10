@@ -289,6 +289,27 @@ of suspected duplicates; its Decision column is no longer used.
   (`field_1259`) and write `field_2848`, so every creator — forms, 01.01 / 01.02 / 01.03 — lands on its site
   without touching each one; plus the "closet has a project" guard before its SOW search.
 
+### One "create MDF/IDF" Make scenario (decided 2026-11-10)
+Micah: "integrate 22.01's functionality into one combined 'create MDF' Make automation." Knack's native
+forms get the connections wrong (the project radio defaulting to the first project), so every closet is
+created by ONE webhook scenario, called by a custom closet modal (every "+ Add MDF/IDF": survey page,
+Build SOW, CO, deploy) and by the SOW-create scenarios. Two actions:
+- **`create`** (the modal): payload = project, survey request / SOW when the page has one, type, ##, name,
+  notes, who. Make reads the project's site (`field_1259`), refuses a ## already used at the site (HEADENDs
+  never get one; blank IDF ## = next free at the site), creates the closet with project ("created on"),
+  site, lifecycle `proposed` for a sub / `approved` for ops, survey request (`field_2435`) and adds it to
+  the request's `field_2438`, adds it to every SOW on the project (`field_2144`, 22.01's job — the sales
+  worksheet's MDF/IDF dropdown on view_3586 only offers the SOW's listed closets), and replies with the new
+  id so the modal can use it at once. Create-only, so no sequential processing is needed and a Webhook
+  Response is allowed; a rare same-second ## clash is left to the merge tool.
+- **`ensure-default`** (01.01 / 01.02 / 01.03, replacing their direct "placeholder / Default MDF" creates):
+  with closets at the site, a new project must NOT make another blank HEADEND — that is where most of the
+  "unnamed HEADENDs at one site" duplicates come from. Find the site's live HEADEND(s); create one only
+  when the site has none; return the ids so the caller connects its SOW.
+- **22.01** stays only as a safety net for closets created any other way (a native form reached by URL),
+  skipping any closet that already has a site; retire it once those paths are gone. The modal opens on the
+  site's existing closets ("is it one of these?") before offering "new".
+
 ### Next steps
 Done 2026-11-02 / 11-03: the exports came in, the cleanup kit and the duplicate review list are built
 (see "Cleanup kit" above), and survey notes are a stamped log in the bundle. Nothing has been written
