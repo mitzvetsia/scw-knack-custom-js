@@ -450,9 +450,12 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   label, display, lifecycle, projectId, projectName, photos, surveyRequests, seq, notes }] }.
   MAKE_MDF_IDF_WEBHOOK: "https://hook.us1.make.com/16im79b6xkk64bf4tmzu3orj6vkv9udk",
   // 22.03 | MDF-IDF | MDF/IDF merge -> move connected records to keeper — POST
-  //   { keeperId, loserIds: [ids], keeperLabel?, loserLabels?, projectId?, triggeredBy?, source? }
-  //   Sequential processing, NO reply (Make refuses a Webhook Response in a sequential scenario):
-  //   the page re-reads the site grid until the losers read merged / drop out of it.
+  //   { runId, keeperId, loserIds: [ids], keeperLabel?, loserLabels?, projectId?, triggeredBy?, source? }
+  //   v2 (2026-11-11): merges at different sites run in parallel; one per site (CORE_site
+  //   "SYS_merge lock"). Answers at once: 200 { ok, started, runId, losers, siteId } |
+  //   409 { ok:false, error:'busy', runId, since (epoch s), by, keeperId } (another merge holds the
+  //   site) | 409 { error:'keeper-merged' } | 422 { error:'no-site' }. Progress on the keeper's
+  //   "SYS_merge progress" (step 8 = done). v1 (sequential, no reply) is still understood.
   MAKE_MDF_MERGE_WEBHOOK: "https://hook.us1.make.com/nun7zdr15ewlmmxryd74h6ujy3aeb1qe",
   // ── The two NO-E-SIGNATURE accepted paths (2026-10-01) ─────────────────
   // Both are stepId routes on the Issue scenario (13.03). Where the truth

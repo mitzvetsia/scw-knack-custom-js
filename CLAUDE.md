@@ -906,6 +906,21 @@ is not merged" on the site grids (and the project grids); `SYS_merge progress` +
 view_4167 / view_4168. Blueprints: scratchpad `bp2202/gen.py` (schema-driven Knack
 metadata, so field_3318 and the `merged` option are listed). Tests: `tests/misc/test-mdf-site-route.js`,
 `tests/misc/test-mdf-site-tools.js`.
+**Merge feedback + parallel sites (2026-11-11 — "takes forever to register that it's started … never really resolves even
+though it IS running"; "people working on DIFFERENT sites need to be able to run simultaneous merges")**: the live schema
+had NO `SYS_merge progress` field, so 22.03 ran without progress writes and the window waited on "waiting for Make" until
+a loser read merged on the grid (every 3rd poll) — and view_4167 / view_4168 serve no `field_2845` and filter nothing, so
+there it never resolved. **22.03 v2** (`docs/locations.md`): Sequential processing OFF; a per-SITE lock on CORE_site
+`SYS_merge lock` (`<runId>|<epoch>|<by>|<keeperId>|running|done`, stale after 30 min) so one merge per site, any number
+across sites; a Webhook Response right after the lock (200 `{ ok, started }` / 409 `busy` with the other run's keeper,
+who, since / 409 `keeper-merged` / 422 `no-site`); progress on the 1st / every 10th / last record; a closing step 8 `Done`
+once every loser is finished. The window (`mdf-site-tools.js`): a `started` reply shows "Make has started" at once (first
+read 800 ms later); a busy refusal keeps the pick and says "Another merge is running at this site into IDF 03 (started by …
+3 minutes ago). Nothing was sent."; step 8 finishes ("Merged 1 into … in 1:42"); an elapsed clock; the grid is re-fetched
+only while no progress is readable (plus once at the end); a stall with no progress and no lifecycle column says the page
+cannot tell instead of spinning, and logs which column is missing. An older 22.03 ("Accepted", no reply) still works the
+old way. **Builder**: the two fields, then `SYS_merge progress` (+ `field_2845` on view_4167 / view_4168) as columns of the
+three site grids; the generator builds a DRY RUN until both fields exist.
 
 **Closet survey notes are a stamped, append-only log (built 2026-11-02)** — `mdf-edit-core.js`
 `appendSurveyNote` / `renderSurveyLog`: a survey ADDS `[11/02/2026 · SR1145] text` on top of `field_2457` (GET

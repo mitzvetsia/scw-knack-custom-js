@@ -118,8 +118,9 @@ Source each from "MDF/IDFs connected to this project's Site" (parent_source `obj
   `field_2438` (many → swap loser for survivor, distinct; the SOW list `field_2144` is dropped, see below). On the survivor: union
   `field_1652` photos, `field_2435`; append the loser's notes with its label, and its survey-notes entries
   under the survivor's (both logs are newest first; keep each entry's own stamp). Loser:
-  lifecycle `merged` + "Merged into" = survivor. Run sequentially (Make "Sequential processing")
-  — the unions are read-modify-write. Skip DTO rows (transient).
+  lifecycle `merged` + "Merged into" = survivor. Merges at the SAME site run one at a time (the unions are
+  read-modify-write); merges at different sites run side by side — a per-site lock, not Make's
+  "Sequential processing" (2026-11-11). Skip DTO rows (transient).
 - **Why Make, not a CSV re-upload, for merges**: exports show a closet by its display name, and
   duplicates share it (1,276 closets display as just "HEADEND: :"), so a line-item export cannot
   say which closet a line points at. Closet-only changes (site backfill, numbers, type, lifecycle
@@ -283,8 +284,9 @@ of suspected duplicates; its Decision column is no longer used.
   survivor its own photos `field_1652` and survey requests `field_2435`; fill the survivor's blank name / ##;
   append the loser's notes and survey-note entries under a "[merged from <label>]" line; loser → lifecycle
   `merged` + "Merged into" (`field_3318` REL_merged into, added 2026-11-10) = survivor. Skip the DTO fields (`field_2211` / `field_2180` / `field_2250`,
-  transient). Sequential processing ON (the unions are read-modify-write) — which means NO Webhook Response
-  (Make refuses one in a sequential scenario): the page polls until the losers read `merged`.
+  transient). One merge per SITE at a time (the unions are read-modify-write) through a lock on the site record;
+  merges at different sites run in parallel (v2, 2026-11-11 — v1 ran the whole scenario sequentially, which also
+  ruled out a Webhook Response).
 - **22.01** (MDF created) gains the site: when a new closet has no site, read its project's site
   (`field_1259`) and write `field_2848`, so every creator — forms, 01.01 / 01.02 / 01.03 — lands on its site
   without touching each one; plus the "closet has a project" guard before its SOW search.
@@ -336,7 +338,18 @@ Build SOW, CO, deploy) and by the SOW-create scenarios. Two actions:
   max(live IDF ##) + 1, `clash` when that ## is a live IDF at the site → 409, else create (type, ##, name, notes,
   project, site, lifecycle, survey request) + stamp Record ID (`field_2115`) + add it to the request's `field_2438`
   → 200 `{ created:true, id, number, type }`.
-- **22.03** (hook 2870035; Sequential processing ON, incomplete executions stored): webhook → get keeper (live) →
+- **22.03 v2 (2026-11-11 — "people working on DIFFERENT sites need to be able to run simultaneous merges")**:
+  Sequential processing OFF, incomplete executions stored. A merge holds its SITE: CORE_site (`object_74`)
+  `SYS_merge lock` (short text, Builder) = `<runId>|<epoch s>|<by>|<keeperId>|running`, `…|done` when it ends,
+  refreshed at each loser. Flow: webhook → get keeper → no site → 422 `no-site`; get the site → keeper already
+  merged → 409 `keeper-merged`; a FRESH (< 30 min) running lock of another run → 409 `busy` { runId, since, by,
+  keeperId } (the page names the other merge and sends nothing); else take the lock → **200 `{ ok, started, runId,
+  losers, siteId }` at once** → progress "Starting" → router [every loser (below) | then progress step 8 `Done` +
+  lock `done`] (Make runs a router's routes in order, so the closing route runs once after every loser). A run that
+  dies leaves the lock `running`; it stops holding the site 30 minutes after its last refresh (or clear the field).
+  Per-record progress is written on the 1st record, every 10th and the last, not after every record. Generator:
+  scratchpad `bp2202/gen.py`; it builds a DRY RUN (placeholder keys, not for import) until both Builder fields exist.
+- **22.03 v1** (hook 2870035; Sequential processing ON, incomplete executions stored): webhook → get keeper (live) →
   iterate `loserIds` → get loser (not the keeper, not merged) → router, in order: re-point SOW lines `field_1946`,
   survey items `field_2375`, install items `field_2818`, bid revision lines `field_2720` (search ≤ 1000 each →
   update to the keeper); survey requests `field_2438` (remove loser, add keeper, distinct); re-read the keeper
@@ -349,9 +362,11 @@ Build SOW, CO, deploy) and by the SOW-create scenarios. Two actions:
   "found one" filter (`length(<search>.id) > 0`), and 22.02's aggregator only takes real records. Re-running a stopped
   merge is safe: what moved is not found again, the unions are distinct, the notes append only in the step that never ran.
 - **Progress**: 22.03 writes `<runId>|<loser>|<losers>|<step>|<i>|<of>|<text>` onto the keeper's `SYS_merge progress`
-  (short text, Builder) at the start, after every record it re-points, after the keeper update (step 6) and after the
-  loser is marked (step 7); the page's merge window reads it for its bar. The blueprint generator finds the field by name
-  in the schema and builds without progress writes until it exists.
+  (short text, Builder) at the start, as it re-points records (v2: 1st, every 10th, last), after the keeper update
+  (step 6), after each loser is marked (step 7) and once at the end (step 8 `Done`, v2); the page's merge window reads
+  it for its bar, through the site grid, so the field must be a COLUMN of view_4166 / view_4167 / view_4168. **As of
+  2026-11-11 the field did not exist yet**: every merge so far ran with no progress, so the window sat on "waiting for
+  Make" until a loser read merged on the grid — and on view_4167 / view_4168, which serve no `field_2845`, never.
 - **First-run checks in Make** (not provable from the exports): Transform to JSON's output is `json`; the aggregator
   emits an empty array when the site has no closets; `max()` / `contains()` over the `idfNo` strings; the `+` text
   joins and `newline` in the notes append; `field_2845` / `field_1641` written as one-item arrays.

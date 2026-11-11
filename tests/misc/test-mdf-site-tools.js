@@ -238,10 +238,85 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
   $('[data-act="merge"]').click(); $('[data-act="merge"]').click();
   await flush(); await flush();
   nextPoll().fn(); await flush(); await flush(); await flush();
-  ok(/has not reported progress/.test($('.scw-mst-note').textContent) && !closeBtn().disabled, 'a stall says so and allows Close');
+  ok(/^No progress from Make\. If 22\.03/.test($('.scw-mst-note').textContent) && !closeBtn().disabled,
+    'a stall with no progress at all says so (the grid can still tell) and allows Close');
   ok(pollTimers().length === 1, 'and keeps polling while open');
   closeBtn().click();
   ok(!$('.scw-mst-overlay') && watchTimers().length >= 1, 'closing a stalled merge hands over to the background check');
+
+  // ── 22.03 v2: Make answers once it holds the site ──
+  const pick = () => {
+    const b = $$('.scw-mst-list .scw-mst-row')[0].querySelector('input');
+    b.checked = true; b.dispatchEvent(new window.Event('change', { bubbles: true }));
+    $('[data-act="merge"]').click(); $('[data-act="merge"]').click();
+  };
+  T.CONFIG.stallMs = 90000;
+  timers.length = 0; posts = []; ajaxCalls.length = 0;
+  gridModels[2].attributes.field_2845 = 'approved';
+  keeperProgress = '';
+  reply = { status: 200, body: '{"ok": true, "started": true, "runId": "x", "losers": 1, "siteId": "s1"}' };
+  T.openMerge({ viewKey: 'view_3962', gridKey: 'view_4166', keeperId: 'i1', keeperLabel: 'IDF: 01: Warehouse' });
+  pick();
+  await flush(); await flush();
+  const RUN2 = posts[0].body.runId;
+  ok(/Make has started/.test($('.scw-mst-pstatus').textContent) && !$('.scw-mst-bar').classList.contains('is-waiting'),
+    'a "started" reply shows Make has started at once, with a determinate bar');
+  ok($('.scw-mst-ptime') && $('.scw-mst-ptime').textContent === '0:00', 'an elapsed clock sits beside the status');
+  const first = timers.findIndex((t) => t.ms === 800);
+  ok(first >= 0, 'after a started reply the first progress read comes quickly (800 ms)');
+  fetches = 0;
+  keeperProgress = RUN2 + '|1|1|2|10|40|Moving survey line items';
+  timers.splice(first, 1)[0].fn(); await flush(); await flush(); await flush();
+  ok(/Moving survey line items · 10 of 40/.test($('.scw-mst-pstatus').textContent), 'progress reads as before');
+  nextPoll().fn(); await flush(); await flush(); await flush();
+  nextPoll().fn(); await flush(); await flush(); await flush();
+  ok(fetches === 0, 'while progress is readable the site grid is not re-fetched');
+  keeperProgress = RUN2 + '|1|1|8|1|1|Done';
+  nextPoll().fn(); await flush(); await flush(); await flush(); await flush();
+  ok(/Merged 1 into IDF: 01: Warehouse in \d+:\d\d/.test($('.scw-mst-pstatus').textContent) && $('.scw-mst-bar').classList.contains('is-done'),
+    'the closing Done marker (step 8) finishes it and names the time taken');
+  ok(fetches === 1, 'one grid re-read confirms the end');
+  closeBtn().click();
+
+  // busy: another merge holds this site -> nothing sent, the pick stays, the window says who / where / when
+  timers.length = 0; posts = [];
+  reply = { status: 409, body: JSON.stringify({ ok: false, error: 'busy', runId: 'mzz', keeperId: 'i3', by: 'jon.carter@getscw.com',
+    since: String(Math.floor(Date.now() / 1000) - 180), message: 'Another MDF/IDF merge is running at this site.' }) };
+  T.openMerge({ viewKey: 'view_3962', gridKey: 'view_4166', keeperId: 'i1', keeperLabel: 'IDF: 01: Warehouse' });
+  pick();
+  await flush(); await flush();
+  ok($('.scw-mst-list') && !$('.scw-mst-bar'), 'a busy refusal keeps the merge list (no progress window)');
+  ok(/Another merge is running at this site into IDF: 03: Office \(started by jon\.carter@getscw\.com 3 minutes ago\)\. Nothing was sent/
+    .test($('.scw-mst-note').textContent), 'the refusal names the other merge: its keeper, who, how long ago');
+  ok(!$('.scw-mst-note').classList.contains('scw-mst-err'), 'busy is a notice, not an error');
+  ok(/Merge 1 into/.test($('[data-act="merge"]').textContent) && !$('[data-act="merge"]').disabled, 'the Merge button is ready to try again');
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }));
+  ok(!$('.scw-mst-overlay'), 'and the window can be closed');
+
+  reply = { status: 409, body: '{"ok": false, "error": "keeper-merged", "message": "This MDF/IDF was itself merged into another one. Reload the page."}' };
+  T.openMerge({ viewKey: 'view_3962', gridKey: 'view_4166', keeperId: 'i1', keeperLabel: 'IDF: 01: Warehouse' });
+  pick();
+  await flush(); await flush();
+  ok(/itself merged/.test($('.scw-mst-note').textContent) && $('.scw-mst-note').classList.contains('scw-mst-err'),
+    'a keeper that was merged meanwhile is refused as an error');
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }));
+
+  // an older 22.03 ("Accepted"), no progress, a grid without FLAG_lifecycle: the stall says the page cannot tell
+  timers.length = 0; posts = [];
+  reply = { status: 200, body: 'Accepted' };
+  const saved = gridModels.map((g) => g.attributes.field_2845);
+  gridModels.forEach((g) => { delete g.attributes.field_2845; });
+  T.CONFIG.stallMs = -1;
+  T.openMerge({ viewKey: 'view_3962', gridKey: 'view_4166', keeperId: 'i1', keeperLabel: 'IDF: 01: Warehouse' });
+  pick();
+  await flush(); await flush();
+  nextPoll().fn(); await flush(); await flush(); await flush();
+  ok(/No progress from Make, and this page cannot see merged MDF\/IDFs either/.test($('.scw-mst-note').textContent),
+    'with no progress and no lifecycle column the stall says the page cannot tell, instead of spinning');
+  closeBtn().click();
+  gridModels.forEach((g, i) => { g.attributes.field_2845 = saved[i]; });
+  T.CONFIG.stallMs = 90000;
+  timers.length = 0;
 
   // parse + share helpers
   ok(T._parseProgress('<span>r1|2|3|4|5|10|Moving a|b</span>', 'r1').text === 'Moving a|b', 'progress parse keeps pipes in the text');

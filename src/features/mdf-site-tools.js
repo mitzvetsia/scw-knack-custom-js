@@ -15,9 +15,13 @@
  * "Merge…" (the closet's pencil panel on the worksheets, its gear panel on the reconcile grid):
  * the closet the panel is open on is the KEEPER; the modal lists the site's other closets, the
  * user ticks the duplicates (amber note when the type or ## differ) and confirms twice. One POST
- * to MAKE_MDF_MERGE_WEBHOOK { keeperId, loserIds }; 22.03 runs sequentially and sends no reply,
- * so the page re-reads the site grid on a schedule until every loser is gone from it (the site
- * grids filter "lifecycle is not merged") or reads merged, then refreshes the worksheet.
+ * to MAKE_MDF_MERGE_WEBHOOK { runId, keeperId, loserIds }. 22.03 (v2, 2026-11-11) runs merges at
+ * different sites side by side and holds the SITE while it works (CORE_site "SYS_merge lock"): it
+ * answers at once with { ok, started } or refuses with 409 { error: 'busy', keeperId, by, since }
+ * when another merge is running at that site (the window says who, into which closet, how long
+ * ago, and nothing is sent). The progress window then follows the keeper's "SYS_merge progress"
+ * (step 8 = done); an older 22.03 with no reply / no progress falls back to re-reading the site
+ * grid until every loser is gone from it or reads merged.
  */
 (function () {
   'use strict';
@@ -244,7 +248,9 @@
       '  animation: ' + P + '-slide 1.4s ease-in-out infinite; }',
       '.' + P + '-bar.is-done .' + P + '-bar__fill { background: #15803d; }',
       '@keyframes ' + P + '-slide { 0% { left: -35%; } 100% { left: 100%; } }',
+      '.' + P + '-pline { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }',
       '.' + P + '-pstatus { font-weight: 600; }',
+      '.' + P + '-ptime { color: #64748b; font-variant-numeric: tabular-nums; }',
       '.' + P + '-pstep { color: #64748b; margin-top: 2px; min-height: 1.2em; }'
     ].join('\n');
     var st = document.createElement('style');
@@ -507,11 +513,23 @@
         source: 'modal',
         viewKey: opts.viewKey || ''
       }).then(function (r) {
-        if (r.status === 0 || (r.status >= 200 && r.status < 300)) {
-          runProgress(ov, { runId: runId, gridKey: gridKey, viewKey: opts.viewKey, keeperId: opts.keeperId,
-                            keeperLabel: keeperLabel, loserIds: ids });
+        var j = r.json;
+        var run = { runId: runId, gridKey: gridKey, viewKey: opts.viewKey, keeperId: opts.keeperId,
+                    keeperLabel: keeperLabel, loserIds: ids };
+        // 22.03 v2 answers once it holds the site: { ok, started } or a refusal.
+        if (j && j.ok && j.started) { run.started = true; runProgress(ov, run); return; }
+        if (j && j.ok === false) {
+          ov._busy = false;
+          armed = false;
+          paint();
+          note.className = P + '-note' + (j.error === 'busy' ? '' : ' ' + P + '-err');
+          note.textContent = j.error === 'busy' ? busyText(j, all, opts.keeperId)
+            : (j.message || 'Make refused the merge (' + (j.error || r.status) + ').');
+          if (j.error === 'keeper-merged') refetchGrid(gridKey);
           return;
         }
+        // Delivered with no answer we can read (an older 22.03, "Accepted", a CORS-opaque reply).
+        if (r.status === 0 || (r.status >= 200 && r.status < 300)) { runProgress(ov, run); return; }
         ov._busy = false;
         armed = false;
         paint();
@@ -521,6 +539,23 @@
       });
     });
     return ov;
+  }
+
+  /** The refusal when another merge holds this site: which closet, who, how long ago. */
+  function busyText(j, list, keeperId) {
+    var into = '';
+    if (j.keeperId) {
+      if (j.keeperId === keeperId) into = ' into this MDF/IDF';
+      else for (var i = 0; i < list.length; i++) if (list[i].id === j.keeperId) into = ' into ' + labelOf(list[i]);
+    }
+    var who = j.by ? ' by ' + j.by : '';
+    var since = parseFloat(j.since), ago = '';
+    if (!isNaN(since) && since > 0) {
+      var min = Math.max(0, Math.round((Date.now() / 1000 - since) / 60));
+      ago = min < 1 ? ' less than a minute ago' : ' ' + min + ' minute' + (min === 1 ? '' : 's') + ' ago';
+    }
+    return 'Another merge is running at this site' + into + (who || ago ? ' (started' + who + ago + ')' : '') +
+      '. Nothing was sent. Try again when it finishes.';
   }
 
   // ── the merge progress window ────────────────────────────────────────
@@ -548,8 +583,12 @@
     var done = (pr.loser - 1) * steps + (Math.max(1, pr.step) - 1) + within;
     return Math.max(0.02, Math.min(1, done / (pr.losers * steps)));
   }
+  /** Done = 22.03 v2's closing marker (step 8, written once every loser is finished), or the
+   *  last loser's "marked merged" step (an older 22.03 that writes no closing marker). */
   function progressDone(pr, steps) {
-    return !!(pr && pr.losers && pr.loser >= pr.losers && pr.step >= steps);
+    if (!pr) return false;
+    if (pr.step > steps) return true;
+    return !!(pr.losers && pr.loser >= pr.losers && pr.step >= steps);
   }
   /** The progress value off a record: the configured field, else any field carrying this run. */
   function progressOf(rec, runId) {
@@ -579,9 +618,26 @@
     });
   }
 
+  /** Does the grid's model carry this field? (A view-based read only returns its columns.) */
+  function servesField(gridKey, key) {
+    try {
+      var ms = Knack.views[gridKey].model.data.models || [];
+      for (var i = 0; i < ms.length; i++) {
+        var a = ms[i].attributes || ms[i];
+        if (a && (a.hasOwnProperty(key) || a.hasOwnProperty(key + '_raw'))) return true;
+      }
+    } catch (e) { /* not loaded */ }
+    return false;
+  }
+  function clock(ms) {
+    var s = Math.max(0, Math.floor(ms / 1000));
+    return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+  }
+
   function runProgress(ov, run) {
     var steps = CONFIG.stepsPerLoser;
     var n = run.loserIds.length;
+    var t0 = Date.now();
     ov._busy = true;
     var body = ov.querySelector('.' + P + '-body');
     var foot = ov.querySelector('.' + P + '-foot');
@@ -593,36 +649,53 @@
     body.innerHTML =
       '<div class="' + P + '-bar is-waiting" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">' +
         '<div class="' + P + '-bar__fill"></div></div>' +
-      '<div class="' + P + '-pstatus">Sent to Make. Waiting for it to start…</div>' +
+      '<div class="' + P + '-pline"><span class="' + P + '-pstatus"></span><span class="' + P + '-ptime">0:00</span></div>' +
       '<div class="' + P + '-pstep"></div>' +
       '<div class="' + P + '-note" aria-live="polite"></div>';
     foot.innerHTML = '<button type="button" class="' + P + '-btn" data-act="close" disabled>Working…</button>';
     var bar = body.querySelector('.' + P + '-bar');
     var fill = body.querySelector('.' + P + '-bar__fill');
     var statusEl = body.querySelector('.' + P + '-pstatus');
+    var timeEl = body.querySelector('.' + P + '-ptime');
     var stepEl = body.querySelector('.' + P + '-pstep');
     var note = body.querySelector('.' + P + '-note');
     var closeBtn = foot.querySelector('[data-act="close"]');
-    var lastSig = '', lastChange = Date.now(), ticks = 0, finished = false, stalled = false, best = 0;
+    var lastSig = '', lastChange = Date.now(), ticks = 0, finished = false, stalled = false, best = 0, sawProgress = false;
+    // Without progress, completion shows only on a grid that drops merged closets or serves
+    // FLAG_lifecycle; a grid that does neither can never confirm it (say so, don't spin).
+    var gridCanTell = servesField(run.gridKey, CONFIG.fields.lifecycle);
 
-    function leaveGuard(e) { e.preventDefault(); e.returnValue = 'A merge is still running.'; return e.returnValue; }
-    window.addEventListener('beforeunload', leaveGuard);
     function setShare(x, determinate) {
       best = Math.max(best, x);
       bar.classList.toggle('is-waiting', !determinate);
       fill.style.width = Math.round(best * 100) + '%';
       bar.setAttribute('aria-valuenow', String(Math.round(best * 100)));
     }
+    if (run.started) {
+      statusEl.textContent = 'Make has started.';
+      setShare(0.02, true);
+    } else {
+      statusEl.textContent = 'Sent to Make. Waiting for it to start…';
+    }
+    var clockTimer = setInterval(function () {
+      if (!ov.isConnected) { clearInterval(clockTimer); return; }
+      timeEl.textContent = clock(Date.now() - t0);
+    }, 1000);
+
+    function leaveGuard(e) { e.preventDefault(); e.returnValue = 'A merge is still running.'; return e.returnValue; }
+    window.addEventListener('beforeunload', leaveGuard);
     function finish(ok, msg) {
       if (finished) return;
       finished = true;
       window.removeEventListener('beforeunload', leaveGuard);
       ov._busy = false;
       if (ok) {
+        clearInterval(clockTimer);
         setShare(1, true);
         bar.classList.add('is-done');
         statusEl.textContent = msg;
         stepEl.textContent = '';
+        note.textContent = '';
         refreshHost(run.viewKey);
       }
       closeBtn.disabled = false;
@@ -633,6 +706,7 @@
       if (closeBtn.disabled) return;
       var wasStalled = stalled && !finished;
       finished = true;
+      clearInterval(clockTimer);
       window.removeEventListener('beforeunload', leaveGuard);
       closeModal();
       if (wasStalled) watchMerge(run.gridKey, run.viewKey, run.loserIds, run.keeperLabel);
@@ -643,10 +717,13 @@
       closets(run.gridKey).forEach(function (c) { byId[c.id] = c; });
       return run.loserIds.filter(function (id) { return !byId[id] || byId[id].lifecycle === 'merged'; }).length;
     }
+    function doneMsg() { return 'Merged ' + n + ' into ' + run.keeperLabel + ' in ' + clock(Date.now() - t0) + '.'; }
     function tick() {
       if (finished || !ov.isConnected) return;
       ticks++;
-      var checkGrid = ticks % CONFIG.gridCheckEvery === 0;
+      // The grid is the fallback signal only: once Make's progress is readable it is not refetched
+      // until the end (one fetch confirms the merged closets are gone).
+      var checkGrid = !sawProgress && ticks % CONFIG.gridCheckEvery === 0;
       Promise.all([
         readKeeper(run.gridKey, run.keeperId),
         checkGrid ? Promise.resolve(refetchGrid(run.gridKey)).then(function () { return lost(); }, function () { return lost(); })
@@ -655,29 +732,35 @@
         if (finished || !ov.isConnected) return;
         var pr = progressOf(res[0], run.runId);
         var merged = res[1];
+        if (pr) sawProgress = true;
         var sig = (pr ? [pr.loser, pr.step, pr.i].join('.') : '') + '/' + (merged == null ? '' : merged);
         if (sig !== lastSig) { lastSig = sig; lastChange = Date.now(); }
         if (pr) {
           setShare(progressShare(pr, steps), true);
           statusEl.textContent = pr.step === 0 ? 'Make has started.'
             : pr.text + (pr.of > 1 ? ' · ' + pr.i + ' of ' + pr.of : '');
-          stepEl.textContent = pr.losers > 1 && pr.loser ? 'MDF/IDF ' + pr.loser + ' of ' + pr.losers : '';
+          stepEl.textContent = pr.losers > 1 && pr.loser && pr.step <= steps ? 'MDF/IDF ' + pr.loser + ' of ' + pr.losers : '';
         } else if (merged) {
           setShare(merged / n, true);
           statusEl.textContent = merged + ' of ' + n + ' merged';
         }
         if (progressDone(pr, steps) || (merged != null && merged >= n)) {
-          // Make's last write is on the keeper; confirm on the grid once, then call it done
-          Promise.resolve(refetchGrid(run.gridKey)).then(function () {
-            finish(true, 'Merged ' + n + ' into ' + run.keeperLabel + '.');
-          }, function () { finish(true, 'Merged ' + n + ' into ' + run.keeperLabel + '.'); });
+          Promise.resolve(refetchGrid(run.gridKey)).then(function () { finish(true, doneMsg()); },
+                                                         function () { finish(true, doneMsg()); });
           return;
         }
         if (!stalled && Date.now() - lastChange > CONFIG.stallMs) {
           stalled = true;
           note.className = P + '-note';
-          note.textContent = 'Make has not reported progress for ' + Math.round(CONFIG.stallMs / 1000) +
-            ' seconds. It may still be working, or it stopped: check 22.03\'s history. You can close this; the page keeps checking.';
+          note.textContent = (sawProgress || run.started)
+            ? 'Make has not reported progress for ' + Math.round(CONFIG.stallMs / 1000) + ' seconds. It may still be ' +
+              'working, or it stopped: check 22.03\'s history. You can close this; the page keeps checking.'
+            : 'No progress from Make' + (gridCanTell ? '' : ', and this page cannot see merged MDF/IDFs either') +
+              '. If 22.03\'s history shows the run working, let it finish and reload the page. You can close this.';
+          if (!sawProgress && !run.started) {
+            try { console.warn('[scw-mdf-merge] no progress readable for run ' + run.runId + ' — ' + run.gridKey +
+              ' must serve the keeper\'s "SYS_merge progress" column' + (gridCanTell ? '' : ' (and FLAG_lifecycle field_2845)')); } catch (e) { /* no console */ }
+          }
           finish(false);
           finished = false;          // keep polling while the window is open
           ov._busy = true;
@@ -685,7 +768,7 @@
         setTimeout(tick, CONFIG.progressPollMs);
       });
     }
-    setTimeout(tick, CONFIG.progressPollMs);
+    setTimeout(tick, run.started ? 800 : CONFIG.progressPollMs);
   }
 
   /** Re-read the site grid on a schedule until every loser is gone from it or reads merged. */
