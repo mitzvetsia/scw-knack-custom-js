@@ -446,6 +446,13 @@
       // project AND its site, from a modal that lists the site's closets first.
       var _siteVc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
       var _siteGrid = _siteVc && _siteVc.mdfSourceViewKey;
+      // The sub's survey page (mdfAddModal: 'survey'): the same modal for every login — the
+      // closet lands on the request's project + site, linked to the survey request.
+      if (window.SCW.mdfSiteTools && typeof SCW.mdfSiteTools.canAddSurvey === 'function' &&
+          SCW.mdfSiteTools.canAddSurvey(viewKey)) {
+        SCW.mdfSiteTools.openAdd({ viewKey: viewKey, gridKey: SCW.mdfSiteTools.surveyGridOf(viewKey), mode: 'survey' });
+        return;
+      }
       if (window.SCW.mdfSiteTools && SCW.mdfSiteTools.canAdd(_siteGrid)) {
         SCW.mdfSiteTools.openAdd({ viewKey: viewKey, gridKey: _siteGrid });
         return;
@@ -1355,7 +1362,9 @@
     // Test seams for the multi-accessory batch (queue width / retry / refresh).
     _accQueue:   ACC_QUEUE,
     _accRetry:   ACC_RETRY,
-    _accRefresh: ACC_REFRESH
+    _accRefresh: ACC_REFRESH,
+    // Test seam: run a toolbar action as its button would.
+    _handleAction: handleAction
   };
 })();
 /*** END WORKSHEET V2 — TOOLBAR ***********************************************/

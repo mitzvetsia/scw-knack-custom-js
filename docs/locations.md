@@ -224,6 +224,11 @@ Run: `python3 -I tools/mdf_site_cleanup.py <projects.csv> <sites.csv> <mdfidf.cs
   on past jobs (install items `field_2818`, site `field_2847` — a hidden install-items grid on the survey
   scene). Subs adding a closet see the site's closets first ("is it one of these?"); a new one is marked
   proposed / added by sub for ops review — that is where duplicates are born.
+  **Built 2026-11-12 for the project-scoped page**: the survey page's "+ Add MDF/IDF" (view_3505) is the custom modal
+  for every login (`mdf-site-tools.js` survey mode → 22.02 `create` with `surveyRequestId`, `numberScope: 'project'`,
+  lifecycle `proposed`, a stamped survey note). It lists the PROJECT's closets (view_3617) and numbers on the project,
+  because the page shows nothing else; the closet still gets the site, so the merge tool can fold it into an existing site
+  closet later. Showing the site's closets here waits for a site-sourced closet grid on the survey scene.
 - **Closet photos are general photos of the closet and everything in it**; equipment-specific photos belong
   on that equipment's line item. So ONE general closet photo schema (`field_2456`) serves every system —
   no per-type schema. Photos stay on the closet (`field_1652`) and accumulate across projects (that is the

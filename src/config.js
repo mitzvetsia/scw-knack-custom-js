@@ -448,6 +448,10 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   error:'no-site' }; ensure-default → { ok, created, id, ids: 'a,b' } (the site's live HEADENDs,
   //   one created only when there is none); list → { ok, siteId, closets: [{ id, type, number, name,
   //   label, display, lifecycle, projectId, projectName, photos, surveyRequests, seq, notes }] }.
+  //   The sub's survey page (mdf-site-tools survey mode, 2026-11-12) adds surveyRequestId,
+  //   surveyRequest (label), numberScope: 'project' (## numbered / checked on the project, not the
+  //   site), surveyNotes (a stamped "[MM/DD/YYYY · SR1145] text" entry → field_2457) and lifecycle
+  //   'proposed'; the patched 22.02 answers surveyNotesSaved: true (absent = the page appends it).
   MAKE_MDF_IDF_WEBHOOK: "https://hook.us1.make.com/16im79b6xkk64bf4tmzu3orj6vkv9udk",
   // 22.03 | MDF-IDF | MDF/IDF merge -> move connected records to keeper — POST
   //   { runId, keeperId, loserIds: [ids], keeperLabel?, loserLabels?, projectId?, triggeredBy?, source? }

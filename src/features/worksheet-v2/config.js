@@ -578,8 +578,12 @@
                      notesField: 'field_2457',  notesLabel: 'Survey Notes',
                      calloutField: 'field_1643', calloutLabel: 'SCW Notes',
                      surveyLog: 'own' },
-        // "+ Add MDF/IDF" toolbar CTA — clicks the (hidden) view_3509 menu
-        // link (#new-add-mdfidf/<requestId>), replacing the standalone menu.
+        // "+ Add MDF/IDF" toolbar CTA — opens the closet modal in survey mode
+        // (mdf-site-tools.js, Make 22.02: the request's project + site, linked to
+        // the survey request, lifecycle proposed). view_3509's link
+        // (#new-add-mdfidf/<requestId>, the native form) is the fallback when the
+        // modal cannot run (no hook, no survey id in the route).
+        mdfAddModal:       'survey',
         addMdfMenuView:    'view_3509',
         fields: {
           // identity / grouping

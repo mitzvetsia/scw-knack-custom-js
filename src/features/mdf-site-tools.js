@@ -1,4 +1,4 @@
-/*** MDF/IDF SITE TOOLS (preview) — "+ Add MDF/IDF" modal (Make 22.02) + "Merge…" (Make 22.03) ***/
+/*** MDF/IDF SITE TOOLS — "+ Add MDF/IDF" modal (Make 22.02) + "Merge…" (Make 22.03) ***/
 /**
  * Rides the site route (mdf-site-route.js): only a login the route is ON for gets these, on the
  * three pages that carry a site closet grid — Build SOW (worksheet view_3962, grid view_4166),
@@ -11,6 +11,16 @@
  * never carry one). Submit = one POST to MAKE_MDF_IDF_WEBHOOK, action 'create'; Make reads the
  * project's site, re-checks the ##, creates the closet on the project ("created on") AND the site,
  * and answers { ok, id } (409 number-taken, 422 no-site).
+ *
+ * SURVEY mode (LIVE for every login, 2026-11-12 — not behind the site route): the sub's survey
+ * worksheet (view_3505, config `mdfAddModal: 'survey'`) opens the same modal over the request's
+ * project's closets (view_3617). The POST adds surveyRequestId, numberScope 'project' (the ## is
+ * checked and numbered on the project, the page shows nothing else), lifecycle 'proposed' and the
+ * sub's note as a stamped survey-note entry (surveyNotes → field_2457). Make creates the closet on
+ * the request's project + the project's site, links it to the request both ways (field_2435, the
+ * request's field_2438). It replaces the native form view_3773, which let the sub pick the project
+ * and set no site. A 22.02 without the patch drops surveyNotes (its reply has no
+ * surveyNotesSaved): the page appends the note itself through view_3617.
  *
  * "Merge…" (the closet's pencil panel on the worksheets, its gear panel on the reconcile grid):
  * the closet the panel is open on is the KEEPER; the modal lists the site's other closets, the
@@ -41,6 +51,8 @@
     progressField: '',        // OPS_MDF-IDF "SYS_merge progress"; '' = find it by the run id in the record
     stepsPerLoser: 7,
     createRefreshMs: [1500, 6000],
+    surveyProjectField: 'field_2346',   // SURVEY_request REL_project
+    surveyPreviewEmails: [],            // non-empty = survey-mode modal only for these logins
     requestTimeoutMs: 40000,
     styleId: 'scw-mdf-site-tools-css'
   };
@@ -56,6 +68,62 @@
   /** gridKey = the closet grid the page reads; the tools run only when it is a site grid. */
   function canAdd(gridKey) { return routeOn() && siteGrid(gridKey) && !!hook('MAKE_MDF_IDF_WEBHOOK'); }
   function canMerge(gridKey) { return routeOn() && siteGrid(gridKey) && !!hook('MAKE_MDF_MERGE_WEBHOOK'); }
+
+  // ── the sub's survey page (2026-11-12) ───────────────────────────────
+  // "+ Add MDF/IDF" on a worksheet whose config says `mdfAddModal: 'survey'` (view_3505) opens
+  // the same modal in SURVEY mode for every login, site route or not: Make 22.02 creates the
+  // closet on the request's project + its site, lifecycle proposed, linked to the survey request
+  // both ways (field_2435 + the request's field_2438), with the sub's note as a stamped survey
+  // note. The Knack form it replaces (view_3773 on new-add-mdfidf) let the sub pick any project
+  // and set no site.
+  function viewCfgOf(viewKey) {
+    var wv2 = SCW.worksheetV2;
+    try { return (wv2 && wv2.cfg && typeof wv2.cfg.viewCfg === 'function' && wv2.cfg.viewCfg(viewKey)) || null; }
+    catch (e) { return null; }
+  }
+  function previewOk() {
+    var list = CONFIG.surveyPreviewEmails || [];
+    if (!list.length) return true;
+    var me = email().toLowerCase();
+    return list.some(function (e) { return String(e).toLowerCase() === me; });
+  }
+  function surveyCtx() {
+    var me = SCW.mdfEdit && typeof SCW.mdfEdit.surveyContext === 'function' ? SCW.mdfEdit.surveyContext() : null;
+    return me && me.id ? me : null;
+  }
+  /** The view config's closet grid when this worksheet adds closets in survey mode, else ''. */
+  function surveyGridOf(viewKey) {
+    var vc = viewCfgOf(viewKey);
+    return (vc && vc.mdfAddModal === 'survey' && vc.mdfSourceViewKey) || '';
+  }
+  function canAddSurvey(viewKey) {
+    return !!(surveyGridOf(viewKey) && hook('MAKE_MDF_IDF_WEBHOOK') && previewOk() && surveyCtx());
+  }
+  /** The survey request's project: the request's own record on the page (view_3504 serves
+   *  REL_project field_2346), else any closet on the grid (it lists the project's closets). */
+  function surveyProjectId(requestId, gridKey) {
+    var own = Object.prototype.hasOwnProperty;
+    var pf = CONFIG.surveyProjectField + '_raw';
+    try {
+      var views = (window.Knack && Knack.views) || {};
+      for (var vk in views) {
+        if (!own.call(views, vk)) continue;
+        var mdl = views[vk] && views[vk].model;
+        if (!mdl) continue;
+        var cands = [];
+        if (mdl.attributes) cands.push(mdl.attributes);
+        var rows = (mdl.data && mdl.data.models) || [];
+        for (var i = 0; i < rows.length; i++) cands.push(rows[i] && (rows[i].attributes || rows[i]));
+        for (var j = 0; j < cands.length; j++) {
+          var a = cands[j];
+          if (a && a.id === requestId && Array.isArray(a[pf]) && a[pf][0] && a[pf][0].id) return a[pf][0].id;
+        }
+      }
+    } catch (e) { /* not on a Knack page */ }
+    var list = closets(gridKey);
+    for (var k = 0; k < list.length; k++) if (list[k].projectId) return list[k].projectId;
+    return '';
+  }
 
   // ── helpers ──────────────────────────────────────────────────────────
   function esc(s) {
@@ -296,25 +364,36 @@
   }
 
   // ── "+ Add MDF/IDF" ──────────────────────────────────────────────────
-  /** opts: { viewKey (host), gridKey (the site grid) } */
+  /** opts: { viewKey (host), gridKey (the closet grid), mode?: 'survey' }
+   *  site mode (the site route): the grid is a SITE grid, ## is checked at the site.
+   *  survey mode (the sub's survey page): the grid is the request's project's closets, ## is
+   *  checked on the project, the closet is proposed and linked to the survey request. */
   function openAdd(opts) {
     opts = opts || {};
+    var survey = opts.mode === 'survey';
     var gridKey = opts.gridKey;
     var site = live(closets(gridKey));
-    var pid = projectId();
-    var ov = shell('Add MDF/IDF',
-      'MDF/IDFs belong to the <b>site</b>: a new one shows on every project at this site. ' +
-      'Check it is not already here first.');
+    var ctx = survey ? surveyCtx() : null;
+    var pid = survey ? (ctx ? surveyProjectId(ctx.id, gridKey) : '') : projectId();
+    var where = survey ? 'on this project' : 'at this site';
+    var ov = survey
+      ? shell('Add MDF/IDF', 'Add a closet you found on this survey. Check it is not already listed first — ' +
+          'SCW reviews every new MDF/IDF.')
+      : shell('Add MDF/IDF',
+          'MDF/IDFs belong to the <b>site</b>: a new one shows on every project at this site. ' +
+          'Check it is not already here first.');
     var body = ov.querySelector('.' + P + '-body');
     var rows = site.slice().sort(function (a, b) {
       if (a.type !== b.type) return a.type === 'HEADEND' ? -1 : 1;
       return (parseFloat(a.number) || 0) - (parseFloat(b.number) || 0) || labelOf(a).localeCompare(labelOf(b));
     }).map(function (c) {
       return '<div class="' + P + '-row"><div>' + esc(labelOf(c)) +
-        (c.projectId && c.projectId !== pid ? '<small>created on another project at this site</small>' : '') + '</div></div>';
+        (!survey && c.projectId && c.projectId !== pid ? '<small>created on another project at this site</small>' : '') +
+        (survey && c.lifecycle === 'proposed' ? '<small>added on a survey · SCW has not reviewed it yet</small>' : '') +
+        '</div></div>';
     }).join('');
     body.innerHTML =
-      '<div class="' + P + '-sec">Already at this site (' + site.length + ')</div>' +
+      '<div class="' + P + '-sec">Already ' + where + ' (' + site.length + ')</div>' +
       '<div class="' + P + '-list">' + (rows || '<div class="' + P + '-empty">None yet.</div>') + '</div>' +
       '<div class="' + P + '-sec">New</div>' +
       '<div class="' + P + '-grid">' +
@@ -323,7 +402,9 @@
           '<button type="button" class="' + P + '-chip" data-type="IDF" aria-pressed="true">IDF</button></div></div>' +
         '<label class="' + P + '-fld" data-num-fld><span>IDF ##</span><input type="text" inputmode="numeric" data-in="number" value="' + esc(nextFree(site)) + '"></label>' +
         '<label class="' + P + '-fld ' + P + '-fld--wide"><span>Name</span><input type="text" data-in="name" placeholder="e.g. Warehouse network closet"></label>' +
-        '<label class="' + P + '-fld ' + P + '-fld--wide"><span>Notes</span><textarea data-in="notes" placeholder="Where it is, what is in it"></textarea></label>' +
+        (survey
+          ? '<label class="' + P + '-fld ' + P + '-fld--wide"><span>Survey notes</span><textarea data-in="notes" placeholder="Where it is, how to get in, what is in it"></textarea></label>'
+          : '<label class="' + P + '-fld ' + P + '-fld--wide"><span>Notes</span><textarea data-in="notes" placeholder="Where it is, what is in it"></textarea></label>') +
       '</div>' +
       '<div class="' + P + '-note" aria-live="polite"></div>';
     var foot = ov.querySelector('.' + P + '-foot');
@@ -338,12 +419,19 @@
       note.className = P + '-note';
       if (type !== 'IDF') { note.textContent = ''; return true; }
       var v = String(numIn.value || '').trim();
-      if (v === '') { note.textContent = 'Blank takes the next free number at the site.'; return true; }
+      if (v === '') { note.textContent = 'Blank takes the next free number ' + where + '.'; return true; }
       if (!/^\d+$/.test(v)) { note.textContent = 'The ## is a whole number.'; return false; }
       var taken = usedNumbers(site)[String(parseFloat(v))];
-      if (taken) { note.textContent = 'IDF ' + pad(v) + ' already exists at this site (' + labelOf(taken) + ').'; return false; }
+      if (taken) { note.textContent = 'IDF ' + pad(v) + ' already exists ' + where + ' (' + labelOf(taken) + ').'; return false; }
       note.textContent = '';
       return true;
+    }
+    function fail(msg) {
+      ov._busy = false;
+      addBtn.disabled = false;
+      addBtn.textContent = 'Add MDF/IDF';
+      note.className = P + '-note ' + P + '-err';
+      note.textContent = msg;
     }
     body.querySelectorAll('.' + P + '-chip').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -358,19 +446,34 @@
     var addBtn = foot.querySelector('[data-act="add"]');
     addBtn.addEventListener('click', function () {
       if (!check()) return;
-      if (!pid) { note.className = P + '-note ' + P + '-err'; note.textContent = 'Could not tell which project this page is.'; return; }
+      if (survey && !ctx) { fail('Could not tell which survey this page is. Reload the page and try again.'); return; }
+      if (!pid) {
+        fail(survey ? 'Could not tell which project this survey is on. Reload the page and try again.'
+                    : 'Could not tell which project this page is.');
+        return;
+      }
+      var notesText = String(body.querySelector('[data-in="notes"]').value || '').trim();
       var payload = {
         action: 'create',
         projectId: pid,
         type: type,
         number: type === 'IDF' ? String(numIn.value || '').trim() : '',
         name: String(body.querySelector('[data-in="name"]').value || '').trim(),
-        notes: String(body.querySelector('[data-in="notes"]').value || '').trim(),
-        lifecycle: 'approved',
+        notes: survey ? '' : notesText,
+        lifecycle: survey ? 'proposed' : 'approved',
         triggeredBy: email(),
-        source: 'modal',
+        source: survey ? 'survey-modal' : 'modal',
         viewKey: opts.viewKey || ''
       };
+      var surveyEntry = '';
+      if (survey) {
+        surveyEntry = notesText && SCW.mdfEdit && typeof SCW.mdfEdit.composeSurveyEntry === 'function'
+          ? SCW.mdfEdit.composeSurveyEntry(notesText, ctx.label) : notesText;
+        payload.surveyRequestId = ctx.id;
+        payload.surveyRequest = ctx.label || '';
+        payload.surveyNotes = surveyEntry;
+        payload.numberScope = 'project';
+      }
       ov._busy = true;
       addBtn.disabled = true;
       addBtn.textContent = 'Adding…';
@@ -379,24 +482,31 @@
         if (j && j.ok) {
           closeModal();
           var what = j.type === 'IDF' || type === 'IDF' ? 'IDF ' + pad(j.number || payload.number) : 'HEADEND';
-          toast('Added ' + what + (payload.name ? ': ' + payload.name : '') + '. It shows on every project at this site.');
+          toast('Added ' + what + (payload.name ? ': ' + payload.name : '') + '. ' +
+            (survey ? 'It is on this survey now; SCW reviews it.' : 'It shows on every project at this site.'));
+          // An older 22.02 drops surveyNotes; the page adds the note itself then.
+          var appendNote = survey && surveyEntry && j.id && j.surveyNotesSaved !== true;
           CONFIG.createRefreshMs.forEach(function (ms, i) {
             setTimeout(function () {
               var p = refetchGrid(gridKey);
               if (i === 0) {
-                if (p && typeof p.then === 'function') p.then(function () { refreshHost(opts.viewKey); });
-                else refreshHost(opts.viewKey);
+                var after = function () {
+                  refreshHost(opts.viewKey);
+                  if (appendNote) addSurveyNote(gridKey, j.id, notesText, ctx.label);
+                };
+                if (p && typeof p.then === 'function') p.then(after, after);
+                else after();
               }
             }, ms);
           });
           return;
         }
         if (j && j.ok === false) {
-          ov._busy = false;
-          addBtn.disabled = false;
-          addBtn.textContent = 'Add MDF/IDF';
-          note.className = P + '-note ' + P + '-err';
-          note.textContent = j.message || 'Make refused it (' + (j.error || r.status) + ').';
+          if (survey && j.error === 'no-site') {
+            fail('SCW has to finish setting up this project (it has no Site yet) before an MDF/IDF can be added here. Ask your SCW contact.');
+            return;
+          }
+          fail(j.message || 'Make refused it (' + (j.error || r.status) + ').');
           return;
         }
         if (r.status === 0 || (r.status >= 200 && r.status < 300)) {
@@ -408,16 +518,22 @@
           });
           return;
         }
-        ov._busy = false;
-        addBtn.disabled = false;
-        addBtn.textContent = 'Add MDF/IDF';
-        note.className = P + '-note ' + P + '-err';
-        note.textContent = r.status === -1 ? 'No answer from Make in time. Check the list before trying again.'
-                                           : 'Make did not take it (HTTP ' + r.status + ').';
+        fail(r.status === -1 ? 'No answer from Make in time. Check the list before trying again.'
+                             : 'Make did not take it (HTTP ' + r.status + ').');
       });
     });
     setTimeout(function () { var n = body.querySelector('[data-in="name"]'); if (n) n.focus(); }, 0);
     return ov;
+  }
+  /** The survey note on a closet 22.02 created without it (an older scenario): the same stamped
+   *  append the closet cards use, through the closet grid. */
+  function addSurveyNote(gridKey, recordId, textValue, label) {
+    if (!(SCW.mdfEdit && typeof SCW.mdfEdit.appendSurveyNote === 'function')) return;
+    SCW.mdfEdit.appendSurveyNote({
+      viewKey: gridKey, recordId: recordId, text: textValue, survey: label, current: '',
+      onDone: function () { refetchGrid(gridKey); },
+      onError: function (msg) { toast('The MDF/IDF was added, but its survey note did not save — add it on the closet card. ' + (msg || ''), true); }
+    });
   }
 
   // ── "Merge…" ─────────────────────────────────────────────────────────
@@ -806,6 +922,9 @@
   SCW.mdfSiteTools = {
     CONFIG: CONFIG,
     canAdd: canAdd,
+    canAddSurvey: canAddSurvey,
+    surveyGridOf: surveyGridOf,
+    surveyProjectId: surveyProjectId,
     canMerge: canMerge,
     openAdd: openAdd,
     openMerge: openMerge,

@@ -942,6 +942,24 @@ cannot tell instead of spinning, and logs which column is missing. An older 22.0
 old way. **Builder**: the two fields, then `SYS_merge progress` (+ `field_2845` on view_4167 / view_4168) as columns of the
 three site grids; the generator builds a DRY RUN until both fields exist.
 
+**The sub's "+ Add MDF/IDF" on the survey page is the custom modal (2026-11-12)** — "we're serving the knack native
+create record module which is not enforcing the install project connection (or making connections to the site)". The
+native form view_3773 (`new-add-mdfidf`, reached through view_3509) let the sub PICK the project (`field_1648` was an
+input) and set no site. worksheet-v2 view_3505 now carries `mdfAddModal: 'survey'`, and the toolbar's add-mdf action opens
+`mdf-site-tools.js` `openAdd({ mode: 'survey' })` for EVERY login — not behind the site route (`canAddSurvey`: the config
+key + the hook + a survey id in the route; `CONFIG.surveyPreviewEmails` non-empty = only those logins). It lists the
+project's closets (view_3617, "Already on this project", "added on a survey · SCW has not reviewed it yet" on proposed
+ones), prefills and checks the ## on the PROJECT, and posts 22.02 `create` with the request's project (view_3504's
+REL_project `field_2346`, else any closet on the grid), `surveyRequestId` + label, `numberScope: 'project'`, `lifecycle:
+'proposed'`, and the sub's note as a stamped survey-note entry (`surveyNotes`, `mdfEdit.composeSurveyEntry`). 22.02 already
+linked the closet to the request both ways (`field_2435`, the request's `field_2438`) and reads the project's site. **22.02
+patch ("… (sub survey add)", `scratchpad/bp2202sub/patch.py` over the user's live export; import INTO the scenario)**:
+[13] numbers / checks on the project's closets when `numberScope = project`, [14] names the scope, [15] writes
+`field_2457` = surveyNotes and `field_2435` as an array, [19] answers `surveyNotesSaved`. Before the import the modal
+still works (the ## is checked at the site, and the page appends the note itself through view_3617 when the reply lacks
+`surveyNotesSaved`). No hook / no survey id / no project = the native link as before. A 422 no-site tells the sub SCW has to
+set the project up. Test: `tests/misc/test-mdf-survey-add.js`.
+
 **Closet survey notes are a stamped, append-only log (built 2026-11-02)** — `mdf-edit-core.js`
 `appendSurveyNote` / `renderSurveyLog`: a survey ADDS `[11/02/2026 · SR1145] text` on top of `field_2457` (GET
 first, then the shared PUT; the stamp names the survey record, NEVER the person or company; refuses to write
