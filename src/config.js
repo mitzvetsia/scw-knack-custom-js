@@ -448,7 +448,8 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   error:'no-site' }; ensure-default → { ok, created, id, ids: 'a,b' } (the site's live HEADENDs,
   //   one created only when there is none); list → { ok, siteId, closets: [{ id, type, number, name,
   //   label, display, lifecycle, projectId, projectName, photos, surveyRequests, seq, notes }] }.
-  //   The sub's survey page (mdf-site-tools survey mode, 2026-11-12) adds surveyRequestId,
+  //   The sub's survey page (mdf-site-tools survey mode, 2026-11-12) sends surveyRequestId (Make reads
+  //   the project off the request — projectId may be blank there; 422 no-project when it has none),
   //   surveyRequest (label), numberScope: 'project' (## numbered / checked on the project, not the
   //   site), surveyNotes (a stamped "[MM/DD/YYYY · SR1145] text" entry → field_2457) and lifecycle
   //   'proposed'; the patched 22.02 answers surveyNotesSaved: true (absent = the page appends it).

@@ -949,16 +949,20 @@ input) and set no site. worksheet-v2 view_3505 now carries `mdfAddModal: 'survey
 `mdf-site-tools.js` `openAdd({ mode: 'survey' })` for EVERY login — not behind the site route (`canAddSurvey`: the config
 key + the hook + a survey id in the route; `CONFIG.surveyPreviewEmails` non-empty = only those logins). It lists the
 project's closets (view_3617, "Already on this project", "added on a survey · SCW has not reviewed it yet" on proposed
-ones), prefills and checks the ## on the PROJECT, and posts 22.02 `create` with the request's project (view_3504's
-REL_project `field_2346`, else any closet on the grid), `surveyRequestId` + label, `numberScope: 'project'`, `lifecycle:
-'proposed'`, and the sub's note as a stamped survey-note entry (`surveyNotes`, `mdfEdit.composeSurveyEntry`). 22.02 already
-linked the closet to the request both ways (`field_2435`, the request's `field_2438`) and reads the project's site. **22.02
-patch ("… (sub survey add)", `scratchpad/bp2202sub/patch.py` over the user's live export; import INTO the scenario)**:
-[13] numbers / checks on the project's closets when `numberScope = project`, [14] names the scope, [15] writes
-`field_2457` = surveyNotes and `field_2435` as an array, [19] answers `surveyNotesSaved`. Before the import the modal
-still works (the ## is checked at the site, and the page appends the note itself through view_3617 when the reply lacks
-`surveyNotesSaved`). No hook / no survey id / no project = the native link as before. A 422 no-site tells the sub SCW has to
-set the project up. Test: `tests/misc/test-mdf-survey-add.js`.
+ones), prefills and checks the ## on the PROJECT, and posts 22.02 `create` with `surveyRequestId` + label,
+`numberScope: 'project'`, `lifecycle: 'proposed'`, and the sub's note as a stamped survey-note entry (`surveyNotes`,
+`mdfEdit.composeSurveyEntry`). **The survey page cannot tell its project** (first live try: "Could not tell which project
+this survey is on") — Make reads it off the survey request; `projectId` rides along only when the page knows it.
+**22.02 v2 ("… (sub survey add v2)", `scratchpad/bp2202sub/patch2.py` over the user's live export; import INTO the
+scenario)**: a top router [30] — route 1 (surveyRequestId given): [31] get the survey request → [32] projectId = its
+REL_project `field_2346` → [33] none → [34] 422 `no-project` | a CLONE of the whole project flow (ids +100) reading
+`32.projectId`, numbering and checking on the project, lifecycle default proposed; route 2 (no surveyRequestId): the
+existing flow ([2]'s filter now also requires no surveyRequestId). Both flows: [15]/[115] write `field_2457` = surveyNotes
+and `field_2435` as an array, link the request's `field_2438`, reply `surveyNotesSaved`. A 2xx with no JSON on the survey
+page (an older 22.02 stops on the missing project) reads "did not create the MDF/IDF" and keeps the window open; a reply
+without `surveyNotesSaved` makes the page append the note itself through view_3617. No hook / no survey id in the route =
+the native link as before. A 422 no-site tells the sub SCW has to set the project up. Test:
+`tests/misc/test-mdf-survey-add.js`.
 
 **Closet survey notes are a stamped, append-only log (built 2026-11-02)** — `mdf-edit-core.js`
 `appendSurveyNote` / `renderSurveyLog`: a survey ADDS `[11/02/2026 · SR1145] text` on top of `field_2457` (GET

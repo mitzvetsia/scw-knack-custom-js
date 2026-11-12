@@ -3,8 +3,9 @@
 // the site) … when submitted from this page we'll also need to pass and create the connection to the Site
 // Survey"). worksheet-v2 view_3505 carries mdfAddModal: 'survey', so the toolbar's add-mdf action opens
 // mdf-site-tools' modal in SURVEY mode for every login (no site route): it lists the project's closets
-// (view_3617), checks the ## on the project, and POSTs 22.02 create with the request's project (view_3504's
-// REL_project field_2346), surveyRequestId, numberScope 'project', lifecycle 'proposed' and the sub's note as a
+// (view_3617), checks the ## on the project, and POSTs 22.02 create with surveyRequestId (Make reads the project
+// off the request — the page often cannot tell it; projectId rides along only when the page knows it),
+// numberScope 'project', lifecycle 'proposed' and the sub's note as a
 // stamped survey-note entry. A reply without surveyNotesSaved (an unpatched 22.02) makes the page append the note.
 const fs = require('fs');
 const path = require('path');
@@ -168,11 +169,23 @@ const clickAdd = () => $m('[data-act="add"]').click();
   const savedReq = window.Knack.views.view_3504; delete window.Knack.views.view_3504;
   check('no request record: the project comes off a closet on the grid', T.surveyProjectId(SR, 'view_3617'), PRJ);
   grid = [];
-  posts = [];
+  posts = []; reply = { status: 200, body: '{"ok": true, "created": true, "id": "new4", "number": "1", "type": "IDF", "surveyNotesSaved": false}' };
   T.openAdd({ viewKey: 'view_3505', gridKey: 'view_3617', mode: 'survey' });
-  clickAdd(); await flush();
-  check('no project anywhere: nothing is sent and the modal says why',
-    [posts.length, /Could not tell which project this survey is on/.test($m('.scw-mst-note').textContent)], [0, true]);
+  clickAdd(); await flush(); await flush();
+  check('the page cannot tell the project: it still posts, Make reads the project off the survey request',
+    [posts.length, posts[0] && posts[0].body.projectId, posts[0] && posts[0].body.surveyRequestId, !!document.querySelector('.scw-mst-overlay')],
+    [1, '', SR, false]);
+  runTimers(); await flush();
+  // a 22.02 without the survey route stops on the missing project and answers Make's bare "Accepted"
+  posts = []; reply = { status: 200, body: 'Accepted' };
+  T.openAdd({ viewKey: 'view_3505', gridKey: 'view_3617', mode: 'survey' });
+  clickAdd(); await flush(); await flush();
+  check('a bare 200 with no JSON on the survey page says nothing was added and keeps the window',
+    [!!document.querySelector('.scw-mst-overlay'), /did not create the MDF\/IDF/.test($m('.scw-mst-note').textContent)], [true, true]);
+  reply = { status: 422, body: '{"ok": false, "error": "no-project", "message": "This survey request is not on a project. Ask SCW to connect it."}' };
+  clickAdd(); await flush(); await flush();
+  check('a survey request with no project: Make\'s message', $m('.scw-mst-note').textContent, 'This survey request is not on a project. Ask SCW to connect it.');
+  document.querySelector('.scw-mst-overlay [data-act="cancel"]').click();
   window.Knack.views.view_3504 = savedReq;
 
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');

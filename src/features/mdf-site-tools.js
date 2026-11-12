@@ -14,7 +14,9 @@
  *
  * SURVEY mode (LIVE for every login, 2026-11-12 — not behind the site route): the sub's survey
  * worksheet (view_3505, config `mdfAddModal: 'survey'`) opens the same modal over the request's
- * project's closets (view_3617). The POST adds surveyRequestId, numberScope 'project' (the ## is
+ * project's closets (view_3617). The page cannot always tell its project, so 22.02 reads it off the
+ * survey request (projectId rides along only when the page knows it). The POST adds surveyRequestId,
+ * numberScope 'project' (the ## is
  * checked and numbered on the project, the page shows nothing else), lifecycle 'proposed' and the
  * sub's note as a stamped survey-note entry (surveyNotes → field_2457). Make creates the closet on
  * the request's project + the project's site, links it to the request both ways (field_2435, the
@@ -99,8 +101,9 @@
   function canAddSurvey(viewKey) {
     return !!(surveyGridOf(viewKey) && hook('MAKE_MDF_IDF_WEBHOOK') && previewOk() && surveyCtx());
   }
-  /** The survey request's project: the request's own record on the page (view_3504 serves
-   *  REL_project field_2346), else any closet on the grid (it lists the project's closets). */
+  /** The survey request's project when the page happens to carry it (view_3504's REL_project
+   *  field_2346, else a closet on the grid). Informational only: 22.02 reads the project off the
+   *  survey request itself, so a survey page that cannot tell still adds closets. */
   function surveyProjectId(requestId, gridKey) {
     var own = Object.prototype.hasOwnProperty;
     var pf = CONFIG.surveyProjectField + '_raw';
@@ -447,15 +450,12 @@
     addBtn.addEventListener('click', function () {
       if (!check()) return;
       if (survey && !ctx) { fail('Could not tell which survey this page is. Reload the page and try again.'); return; }
-      if (!pid) {
-        fail(survey ? 'Could not tell which project this survey is on. Reload the page and try again.'
-                    : 'Could not tell which project this page is.');
-        return;
-      }
+      // The survey page need not know its project: 22.02 reads it off the survey request.
+      if (!survey && !pid) { fail('Could not tell which project this page is.'); return; }
       var notesText = String(body.querySelector('[data-in="notes"]').value || '').trim();
       var payload = {
         action: 'create',
-        projectId: pid,
+        projectId: pid || '',
         type: type,
         number: type === 'IDF' ? String(numIn.value || '').trim() : '',
         name: String(body.querySelector('[data-in="name"]').value || '').trim(),
@@ -507,6 +507,14 @@
             return;
           }
           fail(j.message || 'Make refused it (' + (j.error || r.status) + ').');
+          return;
+        }
+        if (survey && r.status >= 200 && r.status < 300) {
+          // 22.02 answered without its JSON: the run ended before a reply (a scenario without the
+          // survey route stops when the page sends no project). Nothing was created.
+          fail('Make took the request but did not create the MDF/IDF (22.02 sent no answer). Nothing was added.');
+          try { console.warn('[scw-mdf-add] 22.02 replied ' + r.status + ' "' + String(r.text || '').slice(0, 80) +
+            '" with no JSON — import the survey version of 22.02 (it looks the project up from the survey request).'); } catch (e) { /* no console */ }
           return;
         }
         if (r.status === 0 || (r.status >= 200 && r.status < 300)) {
