@@ -105,12 +105,16 @@
     // walk, i.e. its real model hasn't been selected yet ("missing model
     // selection"). Informational, like notes.
     surveyAdded:
+      // The standard amber warning triangle (CLAUDE.md "Warning Icons"): 2026-11-12 —
+      // "make it a simple warning icon but put it next to the product name". The card
+      // shows it INSIDE the product box (card.js surveyAddedMark), not in the warning
+      // column; the group / grand / reconcile chips keep it as their icon.
       '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
-      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
       'stroke-linejoin="round">' +
-      '<rect x="8" y="2" width="8" height="4" rx="1"/>' +
-      '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>' +
-      '<path d="M9 14h6"/><path d="M12 11v6"/></svg>',
+      '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+      '<line x1="12" y1="9" x2="12" y2="13"/>' +
+      '<line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
     // X in a circle — a photo on this item FAILED SCW QA. Gets the one
     // SOLID-red chip (styles.js): it's an error state needing rework, not
     // a warning, so it must outrank every amber/rose chip at a glance.
@@ -122,6 +126,62 @@
       '<line x1="15" y1="9" x2="9" y2="15"/>' +
       '<line x1="9" y1="9" x2="15" y2="15"/></svg>'
   };
+
+  // Hover explanations (2026-11-12 — "wth is this icon? we need explanations on hover on all
+  // these icons"): the LABELS are two-word chip captions, which say nothing on an icon-only chip.
+  // Each EXPLAIN line says what the warning means and what clears it; explain() adds what the
+  // record itself knows (the placeholder product, the note text). Every chip that shows one of
+  // these icons — the card's warning column, the MDF/IDF header and grand chips, the reconcile
+  // grid's chips — reads its title from here.
+  var TIPS = {
+    photos:       { title: 'Missing photos', what: 'a required photo has not been uploaded yet',
+                    fix: 'Open the item to see the empty photo slots.' },
+    disconnected: { title: 'Not connected', what: 'the camera / reader has no Connected Device (the NVR or switch it plugs into)',
+                    fix: 'Add it to that NVR or switch\'s Connected Devices.' },
+    bracket:      { title: 'Wrong accessory', what: 'an attached accessory does not fit the product',
+                    fix: 'The accessory is marked under Mounting Hardware; swap it for one that fits.' },
+    notes:        { title: 'SCW notes', what: 'the item has SCW notes',
+                    fix: 'Open the item to read them.' },
+    surveyAdded:  { title: 'Missing model selection', what: 'the line was added during the survey and still carries the placeholder product',
+                    fix: 'Pick the real model in Product.' },
+    qaFail:       { title: 'Failed QA', what: 'a photo failed SCW review',
+                    fix: 'Open the photo to read the reviewer\'s note and upload a new one.' }
+  };
+  var EXPLAIN = {};
+  for (var tk in TIPS) EXPLAIN[tk] = TIPS[tk].title + ': ' + TIPS[tk].what + '. ' + TIPS[tk].fix;
+  function clip(s, n) {
+    s = String(s == null ? '' : s).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
+    return s.length > n ? s.slice(0, n - 1) + '…' : s;
+  }
+  /** The hover text for one issue on one record (rec / viewKey optional). */
+  function explain(type, rec, viewKey) {
+    var base = EXPLAIN[type] || LABELS[type] || type;
+    if (!rec) return base;
+    try {
+      var f = (ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(viewKey || curView || lastViewKey)) || {};
+      if (type === 'notes' && f.scwNotes) {
+        var note = clip(rec[f.scwNotes], 240);
+        if (note) return 'SCW notes: ' + note;
+      }
+      if (type === 'surveyAdded') {
+        var pk = f.productName || 'field_1949';
+        var raw = rec[pk + '_raw'];
+        var prod = clip((Array.isArray(raw) && raw[0] && raw[0].identifier) || rec[pk], 80);
+        if (prod) {
+          return TIPS.surveyAdded.title + ': the line was added during the survey and still carries the placeholder product "' +
+            prod + '". ' + TIPS.surveyAdded.fix;
+        }
+      }
+    } catch (e) { /* the generic line */ }
+    return base;
+  }
+  /** The hover text for an aggregate chip: n records with this issue (scope e.g. "in this group"). */
+  function explainCount(type, n, scope) {
+    var t = TIPS[type];
+    var head = n + ' ' + (n === 1 ? 'item' : 'items') + ' — ';
+    return head + (t ? t.title + ': ' + t.what : (LABELS[type] || type)) +
+      '. Click to highlight ' + (n === 1 ? 'it' : 'them') + (scope ? ' ' + scope : '') + '.';
+  }
 
   // Per-view cache of the last analyze() result. analyze() is cheap
   // (one pass through records + one accessory scan) so we re-run it
@@ -590,6 +650,9 @@
     TYPES:               TYPES,
     LABELS:              LABELS,
     ICONS:               ICONS,
+    EXPLAIN:             EXPLAIN,
+    explain:             explain,
+    explainCount:        explainCount,
     analyze:             analyze,
     invalidatePhotos:    invalidatePhotos,
     getIssuesFor:        getIssuesFor,

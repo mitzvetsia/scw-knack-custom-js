@@ -980,12 +980,30 @@
     return empty('scw-ws-v2-cell--label');
   }
 
+  /** "Missing model selection" (the survey's placeholder product is still on the line):
+   *  the amber warning triangle at the right end of the product box — the box is where
+   *  the real model gets picked (2026-11-12). '' when the record has no such issue. */
+  function surveyAddedMark(rec, viewKey) {
+    var w = ns.warnings;
+    if (!w || typeof w.getIssuesFor !== 'function') return '';
+    var issues = w.getIssuesFor(rec.id) || [];
+    if (issues.indexOf('surveyAdded') === -1) return '';
+    var tip = typeof w.explain === 'function' ? w.explain('surveyAdded', rec, viewKey)
+      : 'Missing model selection — pick the real model.';
+    return '<span class="scw-ws-v2-product-warn" data-issue-type="surveyAdded" ' +
+      'title="' + escapeHtml(tip) + '" aria-label="' + escapeHtml(tip) + '">' +
+      ((w.ICONS && w.ICONS.surveyAdded) || '') + '</span>';
+  }
+
   function productCell(rec, viewKey, value) {
     var discontinued = isDiscontinued(rec, viewKey);
+    var mark = surveyAddedMark(rec, viewKey);
     var cls = 'scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--editable-conn' +
-      (discontinued ? ' scw-ws-v2-cell--discontinued' : '');
+      (discontinued ? ' scw-ws-v2-cell--discontinued' : '') +
+      (mark ? ' scw-ws-v2-cell--product-warn' : '');
     var title = discontinued
       ? value + ' — DISCONTINUED product. Click to replace.'
+      : mark ? value + ' — placeholder from the survey. Click to pick the real model.'
       : value + ' — click to change product';
     return '<button type="button" ' +
       'class="' + cls + '" ' +
@@ -996,6 +1014,7 @@
       'title="' + escapeHtml(title) + '">' +
       (discontinued ? discontinuedBadge() : '') +
       '<span class="scw-ws-v2-product-name">' + escapeHtml(value) + '</span>' +
+      mark +
     '</button>';
   }
 
@@ -1220,19 +1239,27 @@
   /** Warning column cell — separate icon chips (one per issue type), not a
    *  single stacked badge. Icon-only to fit the narrow column; the label is
    *  the tooltip. Each chip opens the record panel on click. */
-  function warnCell(rec) {
+  function warnCell(rec, viewKey) {
     var issues = (ns.warnings && typeof ns.warnings.getIssuesFor === 'function')
       ? ns.warnings.getIssuesFor(rec.id) : [];
-    if (!issues || !issues.length) {
+    // "Missing model selection" is shown next to the product name (surveyAddedMark),
+    // where the fix is — not in this column (2026-11-12).
+    issues = (issues || []).filter(function (k) { return k !== 'surveyAdded'; });
+    if (!issues.length) {
       return '<span class="scw-ws-v2-cell scw-ws-v2-cell--warn scw-ws-v2-cell--blank"></span>';
     }
     var labels = (ns.warnings && ns.warnings.LABELS) || {};
     var icons  = (ns.warnings && ns.warnings.ICONS)  || {};
+    // The hover says what the icon means and what clears it (warnings.js explain,
+    // 2026-11-12), not just the two-word caption.
+    var explain = (ns.warnings && typeof ns.warnings.explain === 'function') ? ns.warnings.explain : null;
     var chips = issues.map(function (k) {
+      var tip = explain ? explain(k, rec, viewKey) : (labels[k] || k);
       return '<button type="button" class="scw-ws-v2-warn-chit" ' +
         'data-issue-type="' + k + '" ' +
         'data-scw-ws-v2-expand="' + escapeHtml(rec.id) + '" ' +
-        'title="' + escapeHtml(labels[k] || k) + '">' +
+        'aria-label="' + escapeHtml(tip) + '" ' +
+        'title="' + escapeHtml(tip) + '">' +
         (icons[k] || '') +
       '</button>';
     }).join('');
@@ -1312,7 +1339,7 @@
       chips +
       moneyCells(rec, viewKey) +
       sowSlot(rec, viewKey) +
-      warnCell(rec) +
+      warnCell(rec, viewKey) +
       kebabCell(rec, viewKey) +
     '</div>';
   }
@@ -1350,7 +1377,7 @@
       qtySlot +
       moneyCells(rec, viewKey) +
       sowSlot(rec, viewKey) +
-      warnCell(rec) +
+      warnCell(rec, viewKey) +
       kebabCell(rec, viewKey) +
     '</div>';
   }
@@ -1411,7 +1438,7 @@
       qtySlot +
       moneyCells_license(rec, viewKey) +
       sowSlot(rec, viewKey) +
-      warnCell(rec) +
+      warnCell(rec, viewKey) +
       kebabCell(rec, viewKey) +
     '</div>';
   }
@@ -1485,7 +1512,7 @@
       qtySlot +
       moneyCells(rec, viewKey) +
       sowSlot(rec, viewKey) +
-      warnCell(rec) +
+      warnCell(rec, viewKey) +
       kebabCell(rec, viewKey) +
     '</div>';
   }
@@ -1515,7 +1542,7 @@
       empty('scw-ws-v2-cell--num') +
       moneyCellsBlank(viewKey) +
       sowSlot(rec, viewKey) +
-      warnCell(rec) +
+      warnCell(rec, viewKey) +
       kebabCell(rec, viewKey) +
     '</div>';
   }
@@ -1588,8 +1615,11 @@
     var labelHtml = escapeHtml(label);
     if (warn) {
       var warnIc = (ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.disconnected) || '';
+      var dTip = (ns.warnings && typeof ns.warnings.explain === 'function')
+        ? ns.warnings.explain('disconnected', rec, viewKey)
+        : 'No connected device — this cam/reader is disconnected';
       labelHtml = '<span class="scw-ws-v2-detail-warn-ic" ' +
-        'title="No connected device — this cam/reader is disconnected">' +
+        'title="' + escapeHtml(dTip) + '">' +
         warnIc + '</span>' + labelHtml;
     }
     // readOnly: derived/locked connection — plain readable text per the repo
@@ -1665,7 +1695,9 @@
     var labelHtml = escapeHtml(label + ' (' + labels.length + ')');
     if (warn) {
       var warnIc = (ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.disconnected) || '';
-      labelHtml = '<span class="scw-ws-v2-detail-warn-ic">' + warnIc + '</span>' + labelHtml;
+      labelHtml = '<span class="scw-ws-v2-detail-warn-ic" ' +
+        'title="Nothing is connected to this device yet. Click the list to pick the cameras / readers it serves.">' +
+        warnIc + '</span>' + labelHtml;
     }
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn' +
         (warn ? ' scw-ws-v2-detail-field--warn' : '') + '" ' +
@@ -2241,14 +2273,18 @@
     var prodField = F.product || 'field_2627';
     var name = readField(rec, F.productName || 'field_2379') ||
                readField(rec, prodField) || '(unnamed)';
+    var mark = surveyAddedMark(rec, viewKey);
     return '<button type="button" ' +
-      'class="scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--editable-conn" ' +
+      'class="scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--editable-conn' +
+        (mark ? ' scw-ws-v2-cell--product-warn' : '') + '" ' +
       'data-scw-ws-v2-conn="' + escapeHtml(prodField) + '" ' +
       'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
       'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
       'data-scw-ws-v2-conn-label="Product" ' +
-      'title="' + escapeHtml(name) + ' — click to change product">' +
+      'title="' + escapeHtml(name) + (mark ? ' — placeholder from the survey. Click to pick the real model.'
+                                          : ' — click to change product') + '">' +
       '<span class="scw-ws-v2-product-name">' + escapeHtml(name) + '</span>' +
+      mark +
     '</button>';
   }
 
@@ -2447,7 +2483,7 @@
       laborCell +
       extCell +
       bidCell +
-      warnCell(rec) +
+      warnCell(rec, viewKey) +
       kebabCell(rec, viewKey) +
     '</div>';
   }
@@ -2585,14 +2621,17 @@
   // All fields read via fieldsFor(viewKey) + logical names, with the install
   // field key as the fallback (same idiom as the survey path).
 
-  function installProductCell(rec, F) {
+  function installProductCell(rec, F, viewKey) {
     // Read-only — config sets productEditable:false. Prefer the STORED
     // product name (field_2790); fall back to the connection (field_2846).
     var name = readField(rec, F.productName || 'field_2790') ||
                readField(rec, F.product || 'field_2846') || '(unnamed)';
-    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--ro" ' +
+    var mark = surveyAddedMark(rec, viewKey);
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--ro' +
+        (mark ? ' scw-ws-v2-cell--product-warn' : '') + '" ' +
       'title="' + escapeHtml(name) + '">' +
       '<span class="scw-ws-v2-product-name">' + escapeHtml(name) + '</span>' +
+      mark +
     '</div>';
   }
 
@@ -2799,7 +2838,7 @@
     if (cat === 'services' || cat === 'assumptions')
       productSlot = installDescRO(rec, viewKey, F);
     else
-      productSlot = installProductCell(rec, F);
+      productSlot = installProductCell(rec, F, viewKey);
 
     // Read-only flag chits (Existing/Exterior/Plenum) — cam rows only, shown
     // only when true. Non-cam keeps an empty track for grid alignment, EXCEPT
@@ -2826,7 +2865,7 @@
       productSlot +
       flagsSlot +
       scwNotesCell +
-      warnCell(rec) +
+      warnCell(rec, viewKey) +
       kebabCell(rec, viewKey) +
     '</div>';
   }
@@ -3024,10 +3063,10 @@
     return '<div class="scw-ws-v2-row scw-ws-v2-row--default scw-ws-v2-row--license scw-ws-v2-row--install">' +
       chevronCell(rec) +
       empty('scw-ws-v2-cell--label') +
-      installProductCell(rec, F) +
+      installProductCell(rec, F, viewKey) +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--install-flags">' + chips + '</div>' +
       scwNotesCell +
-      warnCell(rec) +
+      warnCell(rec, viewKey) +
       kebabCell(rec, viewKey) +
     '</div>';
   }

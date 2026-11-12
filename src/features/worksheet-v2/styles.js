@@ -3469,11 +3469,22 @@
     '  color: #0e7490 !important; background: #ecfeff !important;',
     '  border-color: #a5f3fc !important;',
     '}',
+    /* surveyAdded ("missing model selection") — the plain amber warning (2026-11-12);
+       on the card it sits inside the product box, not in the warning column. */
     '.scw-ws-v2-warn-chit[data-issue-type="surveyAdded"],',
     '.scw-ws-v2-warn-chip[data-issue-type="surveyAdded"] {',
-    '  color: #a21caf !important; background: #fdf4ff !important;',
-    '  border-color: #f0abfc !important;',
+    '  color: #b45309 !important; background: #fffbeb !important;',
+    '  border-color: #fcd34d !important;',
     '}',
+    '.scw-ws-v2-cell--product.scw-ws-v2-cell--product-warn {',
+    '  display: flex !important; align-items: center !important; gap: 6px !important;',
+    '}',
+    '.scw-ws-v2-cell--product-warn .scw-ws-v2-product-name { flex: 1 1 auto !important; }',
+    '.scw-ws-v2-product-warn {',
+    '  display: inline-flex !important; align-items: center !important; flex: 0 0 auto !important;',
+    '  margin-left: auto !important; color: #b45309 !important; line-height: 1 !important;',
+    '}',
+    '.scw-ws-v2-product-warn svg { width: 16px !important; height: 16px !important; }',
     /* qaFail — the ONE solid-filled chip: a photo failed SCW QA, i.e. an
        error state needing rework (red is reserved for errors, per repo
        convention), and it must outrank the tinted warning chips at a

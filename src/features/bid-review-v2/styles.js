@@ -888,7 +888,7 @@
     '  color: #0e7490; background: #ecfeff; border-color: #a5f3fc;',
     '}',
     '.scw-bid-review-v2__warn-chip[data-issue-type="surveyAdded"] {',
-    '  color: #a21caf; background: #fdf4ff; border-color: #f0abfc;',
+    '  color: #b45309; background: #fffbeb; border-color: #fcd34d;',
     '}',
     /* Bid-column identity: small "Subcontractor Bid" eyebrow above the
        sub/bid name that pkgTitleCell renders as the big title. */

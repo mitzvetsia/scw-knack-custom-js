@@ -197,7 +197,8 @@
     for (var t = 0; t < TYPES.length; t++) {
       var k = TYPES[t];
       if (issues.indexOf(k) === -1) continue;
-      var title = (k === 'notes' && noteText) ? noteText : (LABELS[k] || k);
+      var title = (k === 'notes' && noteText) ? 'SCW notes: ' + noteText
+        : ((w.EXPLAIN && w.EXPLAIN[k]) || LABELS[k] || k);
       parts.push('<span class="scw-bid-review-v2__warn-chip" ' +
         'data-issue-type="' + k + '" title="' + esc(title) + '">' +
         (ICONS[k] || '') + '</span>');
@@ -228,8 +229,9 @@
       if (!n) continue;
       // Clickable (see wireChipClicks below): the title says so, like the
       // worksheet-v2 summary chips.
-      var title = (LABELS[k] || k) + ' — click to highlight the ' + n +
-                  ' affected row' + (n === 1 ? '' : 's');
+      var title = typeof w.explainCount === 'function'
+        ? w.explainCount(k, n, 'in this group')
+        : (LABELS[k] || k) + ' — click to highlight the ' + n + ' affected row' + (n === 1 ? '' : 's');
       parts.push('<span class="scw-bid-review-v2__warn-chip scw-bid-review-v2__warn-chip--sum" ' +
         'data-issue-type="' + k + '" role="button" tabindex="0" title="' + esc(title) + '">' +
         (ICONS[k] || '') +

@@ -413,6 +413,11 @@
   // asSpan=true renders non-interactive <span> chips (used inside the L1
   // header button, where a nested <button> would be invalid + fight the
   // accordion toggle). The grand summary keeps clickable button chips.
+  /** An aggregate chip's hover: what the warning means, how many, and the click (warnings.js). */
+  function chipTip(k, n, scope) {
+    if (ns.warnings && typeof ns.warnings.explainCount === 'function') return ns.warnings.explainCount(k, n, scope);
+    return 'Click to highlight the ' + n + ' affected row' + (n === 1 ? '' : 's') + (scope ? ' ' + scope : '');
+  }
   function fmtIssueChips(recordIds, asSpan) {
     if (!ns.warnings || typeof ns.warnings.getCountsForRecords !== 'function') return '';
     if (!recordIds.length) return '';
@@ -440,15 +445,13 @@
           'data-issue-type="' + k + '" ' +
           'data-scw-ws-v2-warn-chip="' + k + '" ' +
           'role="button" tabindex="0" ' +
-          'title="Click to highlight the ' + n + ' affected row' +
-          (n === 1 ? '' : 's') + ' in this group">' + inner + '</span>');
+          'title="' + esc(chipTip(k, n, 'in this group')) + '">' + inner + '</span>');
       } else {
         parts.push(
           '<button type="button" class="scw-ws-v2-warn-chip" ' +
             'data-issue-type="' + k + '" ' +
             'data-scw-ws-v2-warn-chip="' + k + '" ' +
-            'title="Click to highlight the ' + n + ' affected row' +
-            (n === 1 ? '' : 's') + '">' + inner + '</button>'
+            'title="' + esc(chipTip(k, n, 'in the worksheet')) + '">' + inner + '</button>'
         );
       }
     }

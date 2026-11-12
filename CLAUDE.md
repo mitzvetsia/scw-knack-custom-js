@@ -1593,6 +1593,22 @@ item, so the slots being filled are outside it.
   `tests/worksheet-v2/test-photo-modal-save-view.js` (real util + photo-edit-panel + qa-popover under jsdom).
 - Test: `tests/misc/test-photo-save-view.js`.
 
+## Worksheet warning icons explain themselves on hover (2026-11-12) — `worksheet-v2/warnings.js`
+
+"wth is this icon? we need explanations on hover on all these icons" (a purple clipboard in the card's warning
+column = "missing model selection"; the hover said only that). Every warning chip now reads its title from
+`ns.warnings.explain(type, rec, viewKey)` — what it means and what clears it (`TIPS` per type: title / what / fix;
+`EXPLAIN` = the joined sentence; notes show the note text itself, missing model selection names the placeholder
+product) — on the card's warning column (`card.js warnCell`, also its `aria-label`), the detail label's red link
+icon beside Connected Device, and the reconcile grid's per-cell chips; the MDF/IDF header, grand and reconcile
+summary chips use `explainCount(type, n, scope)` ("3 items — Missing photos: a required photo has not been
+uploaded yet. Click to highlight them in this group."). **"Missing model selection" moved into the product box
+("make it a simple warning icon but put it next to the product name")**: `card.js surveyAddedMark` puts the
+standard amber warning triangle at the right end of the product cell (`productCell` / `surveyProductCell` /
+`installProductCell`, `.scw-ws-v2-cell--product-warn`), `warnCell` no longer shows that type, and its icon
+(`ICONS.surveyAdded`) and chip colours are the plain amber warning everywhere it still appears (group / grand /
+reconcile chips). Test: `tests/worksheet-v2/test-warning-tips.js`.
+
 ## Worksheet scope strip (live 2026-10-09) — `src/features/worksheet-v2/summary.js`
 
 The worksheet-v2 grand "Summary" panel is now the **scope strip** (`buildScopeStrip`): one tile
