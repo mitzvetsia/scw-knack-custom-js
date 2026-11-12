@@ -193,6 +193,13 @@
       DISCONTINUED_SVG +
     '</span>';
   }
+  /** The same ⊘ on an accessory's chip under its parent (the accessory has no card). */
+  function discontinuedChipMark() {
+    return '<span class="scw-ws-v2-discontinued scw-ws-v2-mh-disc" ' +
+      'title="Accessory discontinued — no longer available. Replace it before submitting.">' +
+      DISCONTINUED_SVG +
+    '</span>';
+  }
 
   // Resolve the proposal-bucket field key for a view. Default field_2219
   // (SOW); the survey object (view_3505) overrides bucket→field_2366. Callers
@@ -512,7 +519,11 @@
       if (!kids || !kids.length) return '';
       var ids = [];
       for (var i = 0; i < kids.length; i++) {
-        if (kids[i] && kids[i].id) ids.push(kids[i].id);
+        if (!kids[i] || !kids[i].id) continue;
+        // '!' = the accessory's product is discontinued: its chip carries the
+        // ⊘ mark (2026-11-12), so a swap to a current product repaints the
+        // parent card even though the parent's own JSON did not change.
+        ids.push(kids[i].id + (isDiscontinued(kids[i].attributes || kids[i], viewKey) ? '!' : ''));
       }
       ids.sort();
       return ids.join(',');
@@ -1817,6 +1828,10 @@
         // per-accessory spans (see warnings.js). Surface it on the specific
         // accessory chip; the parent card's warning chip rolls these up.
         var accWrong = isBracketWrong(chip.id);
+        // Discontinued accessory (2026-11-12): the accessory has no card, so
+        // the ⊘ the product cell carries has to sit on its chip.
+        var accDisc = accRec ? isDiscontinued(accRec, viewKey) : false;
+        var discMark = accDisc ? discontinuedChipMark() : '';
         var warnMark = accWrong
           ? '<span class="scw-ws-v2-mh-warn scw-ws-v2-mh-warn--icon" ' +
               'title="Wrong accessory — does not match this product">' +
@@ -1890,12 +1905,16 @@
         var wrapCls = 'scw-ws-v2-mh-chip-wrap' +
           (accSubBid ? ' scw-ws-v2-mh-chip-wrap--subbid' : '') +
           (accWrong ? ' scw-ws-v2-mh-chip-wrap--warn' : '') +
+          (accDisc ? ' scw-ws-v2-mh-chip-wrap--discontinued' : '') +
           (pendingDel ? ' scw-ws-v2-mh-chip-wrap--deleting' : '');
         var wrapTitle = pendingDel ? ' title="Deleting…"' : '';
         // Under a Remove line: the install accessory this credit line takes
         // out (its field_2966) — co-remove.js skips it when it lists the
         // removed item's installed accessories, so none reads twice.
-        var wrapAttrs = wrapTitle + ((coRmLine && chip.target)
+        // data-scw-ws-v2-acc-chip = the accessory's record id: the discontinued
+        // bar finds a folded accessory by it (discontinued-bar.js).
+        var wrapAttrs = wrapTitle + ' data-scw-ws-v2-acc-chip="' + escapeHtml(chip.id) + '"' +
+          ((coRmLine && chip.target)
           ? ' data-scw-co-line-target="' + escapeHtml(chip.target) + '"' : '');
         // On a view that opted into the accessory edit modal (config
         // accessoryEdit — the CO worksheet) the chip opens the modal
@@ -1911,14 +1930,14 @@
                          ' data-scw-ws-v2-mh-eparent="' + escapeHtml(parentId || '') + '"' : '') +
               ' title="Edit ' + escapeHtml(chip.label) + (modalOk ? ' (discount, qty)' : '') + '">' +
               escapeHtml(chip.label) +
-            '</a>' + subBidMark + warnMark + tail +
+            '</a>' + discMark + subBidMark + warnMark + tail +
           '</span>';
         } else {
           chipsHtml += '<span class="' + wrapCls + '"' + wrapAttrs + '>' +
             '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert"' +
               ' title="' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
-            '</span>' + subBidMark + warnMark + tail +
+            '</span>' + discMark + subBidMark + warnMark + tail +
           '</span>';
         }
       }
@@ -2858,16 +2877,20 @@
       // the CO: field_2967's display value is the removed LINE's product
       // name, not a CO number (bom-tray.js coFromFlag guards the same way).
       var gone = installRemovedBy(aA, viewKey) !== null;
+      var disc = !gone && isDiscontinued(aA, viewKey);
       // data-scw-ws-v2-acc-chip = the accessory's install record id: the id
       // hook co-remove.js uses to put its per-accessory Remove control on
-      // this chip (CO drafting scene, view_4086). Inert everywhere else.
+      // this chip (CO drafting scene, view_4086), and the discontinued bar's
+      // way to a folded accessory (discontinued-bar.js).
       chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap' +
-          (gone ? ' scw-ws-v2-mh-chip-wrap--removed' : '') + '" ' +
+          (gone ? ' scw-ws-v2-mh-chip-wrap--removed' : '') +
+          (disc ? ' scw-ws-v2-mh-chip-wrap--discontinued' : '') + '" ' +
           'data-scw-ws-v2-acc-chip="' + escapeHtml(aA.id) + '">' +
         '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert" ' +
           'title="' + escapeHtml(lbl + (gone ? ' — removed from install scope by a change order' : '')) + '">' +
           escapeHtml(lbl + qtySuffix) +
         '</span>' +
+        (disc ? discontinuedChipMark() : '') +
         ((relink && !gone)
           ? '<button type="button" class="scw-ws-v2-mh-unlink" ' +
               'data-scw-ws-v2-mh-unlink="' + escapeHtml(aA.id) + '" ' +

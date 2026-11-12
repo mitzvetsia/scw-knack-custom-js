@@ -1698,6 +1698,13 @@
     '.scw-ws-v2-subbid.is-open .scw-ws-v2-subbid-body { display: block !important; }',
     '.scw-ws-v2-subbid-note { margin-top: 6px !important; font: 11px/1.45 system-ui, sans-serif !important; color: #64748b !important; max-width: 62ch !important; }',
     '.scw-ws-v2-subbid-err { margin-top: 6px !important; font: 600 11.5px/1.4 system-ui, sans-serif !important; color: #b91c1c !important; }',
+    /* Discontinued accessory (2026-11-12) — the product cell's ⊘ on the chip,
+       a dashed amber edge so the chip reads apart from a wrong-bracket one. */
+    '.scw-ws-v2-mh-chip-wrap--discontinued {',
+    '  border-color: #f59e0b !important;',
+    '  border-style: dashed !important;',
+    '}',
+    '.scw-ws-v2-mh-disc { margin-left: 2px !important; }',
     /* Wrong-bracket accessory — amber chip + inline "wrong bracket" marker. */
     '.scw-ws-v2-mh-chip-wrap--warn {',
     '  background: #fffbeb !important;',

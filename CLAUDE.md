@@ -485,6 +485,20 @@ the parent's product) and `SCW.catalog.isDisabled(productId)` reads the product'
   line on the reconcile page (`bid-review-v2/warnings.js` `mountDiscontinuedBar`, called by
   render.js). A click on a product highlights its cards / rows and scrolls to the first (the
   scope-tile gesture); a second click clears. The bar removes itself when the scope is clean.
+  **Discontinued ACCESSORIES (2026-11-12 — "clicking on the pill … is not doing anything … the discontinued
+  items are CHILD items"; "the child items that are discontinued are not showing an icon")**: an accessory
+  folded under its parent has no card, only a chip on the parent's Mounting Hardware line, so the bar's
+  click (which looked only for `.scw-ws-v2-card[data-scw-ws-v2-record]`) lit and scrolled to nothing, and
+  the chip carried no ⊘. `discontinued-bar.js` `collect` now returns `parents` beside `ids` (the view's
+  `parent` key, `field_2464` on SOW), the bar chip carries `data-scw-ws-v2-disc-parents`, and a click on a
+  line with no card lights the PARENT card + the accessory's chip (`data-scw-ws-v2-acc-chip`, now stamped
+  by `card.js detailMountingHardware` as well as the read-only renderer; `.scw-ws-v2-mh-chip-wrap--hl`),
+  opens the parent's detail and scrolls to the chip; every hit (top-level cards too) opens a closed
+  MDF/IDF group first through `summary.revealCard`. Both chip renderers put the ⊘ on a discontinued
+  accessory (`discontinuedChipMark`, dashed amber edge `--discontinued`), and `accessoriesSig` carries a
+  `!` per discontinued accessory so the parent card repaints once it is swapped. (co-remove.js reads
+  `data-scw-ws-v2-acc-chip` only on the install-items views, so the new stamp adds no Remove buttons on
+  SOW cards.) Test: the accessory block in `tests/worksheet-v2/test-discontinued-bar.js`.
 - **Retired with it**: `worksheet-v2/product-enabled-flag.js` (it wrote `field_2912` Yes after
   a product change — nothing writes a product flag now) and the v1 worksheet's
   `device-worksheet.js isDiscontinuedRow` asks the catalog first. The `field_2244` /
