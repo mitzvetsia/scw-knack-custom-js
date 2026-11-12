@@ -492,6 +492,16 @@
     return { ownOnly: nc.logScope === 'own', only: (survey && survey.label) || '' };
   }
 
+  /** May this page delete a location at all? Not where the config says so
+   *  (mdfManage.noDelete — the sub pages: subs cannot delete MDF/IDFs), and
+   *  not where the manage grid carries no Delete link in Builder (the
+   *  DELETE would 403). A schema that cannot say leaves it on. */
+  function canDeleteLocation(cfg) {
+    if (!cfg || cfg.noDelete) return false;
+    var has = (window.SCW && typeof SCW.viewHasDeleteLink === 'function') ? SCW.viewHasDeleteLink(cfg.viewKey) : null;
+    return has !== false;
+  }
+
   /** Optional per-deployment delete gate (config mdfManage.deleteGate):
    *  while the named view renders a ClickUp link, location deletes are
    *  blocked — ops is already working off these locations. Same DOM read
@@ -1315,7 +1325,8 @@
         ((window.SCW.mdfSiteTools && SCW.mdfSiteTools.canMerge(cfg.viewKey)) ?
           '<button type="button" class="' + P + '-btn ' + P + '-btn--merge" ' +
             'title="Merge duplicates of this MDF/IDF at the site into it">Merge&hellip;</button>' : '') +
-        '<button type="button" class="' + P + '-btn ' + P + '-btn--delete">Delete&hellip;</button>' +
+        (canDeleteLocation(cfg) ?
+          '<button type="button" class="' + P + '-btn ' + P + '-btn--delete">Delete&hellip;</button>' : '') +
         '<span class="' + P + '-status">Enter saves &middot; Esc cancels</span>' +
       '</div>';
 

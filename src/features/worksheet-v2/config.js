@@ -574,10 +574,11 @@
         // overwrites another survey's — and surveyLog 'own' shows this sub
         // only this survey's entries (plus unstamped text written before the
         // log existed). The stamp names the survey record, never the person.
+        // noDelete: subs cannot delete MDF/IDFs (no Delete in the closet panel).
         mdfManage: { viewKey: 'view_3617',
                      notesField: 'field_2457',  notesLabel: 'Survey Notes',
                      calloutField: 'field_1643', calloutLabel: 'SCW Notes',
-                     surveyLog: 'own' },
+                     surveyLog: 'own', noDelete: true },
         // "+ Add MDF/IDF" toolbar CTA — opens the closet modal in survey mode
         // (mdf-site-tools.js, Make 22.02: the request's project + site, linked to
         // the survey request, lifecycle proposed). view_3509's link
@@ -878,8 +879,10 @@
     // entry (this page is about no survey) — only unstamped earlier text.
     // One group never reads another group's survey notes; SCW Notes is the
     // shared channel.
+    // noDelete: subs cannot delete MDF/IDFs — view_4060 carries a Delete link
+    // in Builder, but the sub's closet panel offers no Delete.
     clone.mdfManage          = { viewKey: 'view_4060', notesField: 'field_1643',
-                                 surveyLog: 'own' };
+                                 surveyLog: 'own', noDelete: true };
     // Designator editing is an SCW-ops gesture (deploy page only) — the sub
     // never re-labels installed items.
     delete clone.designatorEdit;

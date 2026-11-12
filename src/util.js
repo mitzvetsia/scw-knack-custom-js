@@ -590,6 +590,21 @@ window.SCW = window.SCW || {};
   };
 
   /**
+   * SCW.viewHasDeleteLink(viewKey) — does the view carry a Delete link column
+   * in Builder (the link that authorizes a view-scoped DELETE of its records)?
+   * true / false off the schema, null when the schema cannot say.
+   */
+  namespace.viewHasDeleteLink = function (viewKey) {
+    var e = viewIndexEntry(viewKey);
+    var v = e && e.view;
+    if (!v || !Array.isArray(v.columns)) return null;
+    for (var i = 0; i < v.columns.length; i++) {
+      if (v.columns[i] && v.columns[i].type === 'delete') return true;
+    }
+    return false;
+  };
+
+  /**
    * SCW.viewWritableFields(viewKey) — the field keys a view-based PUT/POST
    * through this view can write, or null when the schema cannot say:
    *   form  → the fields of its inputs, minus read-only inputs;

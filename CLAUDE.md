@@ -965,7 +965,11 @@ and `field_2435` as an array, link the request's `field_2438`, reply `surveyNote
 page (an older 22.02 stops on the missing project) reads "did not create the MDF/IDF" and keeps the window open; a reply
 without `surveyNotesSaved` makes the page append the note itself through view_3617. No hook / no survey id in the route =
 the native link as before. A 422 no-site tells the sub SCW has to set the project up. Test:
-`tests/misc/test-mdf-survey-add.js`.
+`tests/misc/test-mdf-survey-add.js`. **Subs cannot delete MDF/IDFs (same day)**: the closet panel (`mdf-notes.js`, the L1
+pencil) renders "Delete…" only when `canDeleteLocation(cfg)` — not with `mdfManage.noDelete` (view_3505 → view_3617 and
+the sub deployment dashboard's view_4056 → view_4060, which DOES carry a Delete link in Builder) and not when the manage
+grid has no Delete link (`SCW.viewHasDeleteLink`, util.js, off `Knack.scenes`; null = the schema cannot say = left on).
+Test: `tests/worksheet-v2/test-mdf-panel-no-delete.js`.
 
 **Closet survey notes are a stamped, append-only log (built 2026-11-02)** — `mdf-edit-core.js`
 `appendSurveyNote` / `renderSurveyLog`: a survey ADDS `[11/02/2026 · SR1145] text` on top of `field_2457` (GET
