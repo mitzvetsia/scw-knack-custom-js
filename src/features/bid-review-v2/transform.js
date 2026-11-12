@@ -395,6 +395,24 @@
     return out;
   }
 
+  // A bid cell's money for its bid's TOTAL: the primary bid line's labor plus
+  // every stacked extra (cell.dupes) — a second bid line item on the same bid
+  // pointing at the same SOW item is still a line of that bid, priced on the
+  // bid document, so the column total and "matches the SOW" must count it
+  // (2026-11-12: bid 413 read $40,025 "matches the SOW" while its document
+  // totals $40,160 — a second $135 switch stacked on the SOW item). The cell
+  // itself still shows the primary's numbers; the extras show beneath it.
+  function cellLaborTotal(cell) {
+    if (!cell) return 0;
+    var t = Number(cell.labor) || 0;
+    if (cell.dupes) {
+      for (var i = 0; i < cell.dupes.length; i++) {
+        t += (cell.dupes[i] && Number(cell.dupes[i].labor)) || 0;
+      }
+    }
+    return t;
+  }
+
   function buildRow(meta, cellRecords, sowItemId) {
     var cellsByPackage = Object.create(null);
     for (var i = 0; i < cellRecords.length; i++) {
@@ -1660,7 +1678,8 @@
 
       // ── Column totals + SOW match delta ────────────────────────
       // SOW sub-bid total = Σ SOW-item fee; install = Σ install fee, both
-      // excluding offSow rows. Each bid column total = Σ cell labor
+      // excluding offSow rows. Each bid column total = Σ cell labor (cellLaborTotal: the
+      // primary bid line plus any stacked 2nd bid line on the same SOW item)
       // across ALL rows (matched + other). A bid "matches" within a penny.
       // Licenses are excluded from both: a sub never prices a license and
       // nothing is installed, so a license fee would only ever put the SOW
@@ -1693,7 +1712,7 @@
         for (var pr = 0; pr < allRows.length; pr++) {
           var cpkg = allRows[pr].cellsByPackage[packages[pi].id];
           if (cpkg) {
-            pkgTotal += cpkg.labor || 0;
+            pkgTotal += cellLaborTotal(cpkg);
             if (!allRows[pr].offSow) onSowCount++;
           }
         }
@@ -1938,6 +1957,7 @@
     LICENSE_BUCKET_ID: LICENSE_BUCKET_ID,
     LICENSE_L1:       LICENSE_L1,
     isLicenseRow:     isLicenseRow,
+    cellLaborTotal:   cellLaborTotal,
     buildState:       buildState,
     groupRows:        groupRows,
     getMismatches:    getMismatches,

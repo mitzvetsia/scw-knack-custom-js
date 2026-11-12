@@ -993,6 +993,22 @@
     var laborDelta = 0;
     var rows = grid.rows || [];
     var v2t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
+    // A cell's money = the primary bid line + any stacked 2nd bid line on the
+    // same SOW item (cell.dupes) — the SAME sum the column total uses
+    // (transform.js cellLaborTotal), so the panel can never contradict it.
+    function cellMoney(c) {
+      if (!c) return 0;
+      if (v2t && typeof v2t.cellLaborTotal === 'function') return v2t.cellLaborTotal(c);
+      var t = Number(c.labor) || 0;
+      for (var di = 0; c.dupes && di < c.dupes.length; di++) {
+        t += (c.dupes[di] && Number(c.dupes[di].labor)) || 0;
+      }
+      return t;
+    }
+    function dupeNote(c) {
+      var n = (c && c.dupes) ? c.dupes.length : 0;
+      return n ? (n + 1) + ' bid items on this SOW item' : '';
+    }
     // Same normalization v2 uses, so our labor-desc/conduit diffs match its
     // grid underlines exactly.
     function wseq(v) {
@@ -1015,7 +1031,7 @@
       // Orphan — bid line that points outside THIS SOW (bid-only OR other-SOW).
       if (row.offSow) {
         if (!cell) continue;                    // not on the basis package
-        var ol = Number(cell.labor) || 0;
+        var ol = cellMoney(cell);
         // Absent vs $0 reads as a MATCH (user rule 2026-07-14): a $0 bid-only
         // line (Wattbox/UPS placeholders the sub listed but didn't price)
         // moves no money and isn't a coverage gap — suppress it like any
@@ -1072,7 +1088,7 @@
         continue;
       }
 
-      var bidLabor = Number(cell.labor) || 0;
+      var bidLabor = cellMoney(cell);
       var feeDiff = !moneyEq(sowFee, bidLabor);
 
       // Non-labor spec diffs (labor desc / connected-to / connected-devices /
@@ -1104,7 +1120,7 @@
         var d = sowFee - bidLabor;
         laborDelta += d; counts.material++;
         ex.push({ tier: 'material', label: label, product: product,
-                  note: '', fields: changed.slice(),
+                  note: dupeNote(cell), fields: changed.slice(),
                   sowFee: sowFee, bidLabor: bidLabor, delta: d,
                   jumpId: jId, jumpAttr: 'item' });
       } else {
@@ -1132,7 +1148,7 @@
       var trow = rows[t];
       if (!trow) continue;
       var tcell = trow.cellsByPackage && trow.cellsByPackage[pkgId];
-      if (tcell) basisTotal += Number(tcell.labor) || 0;
+      if (tcell) basisTotal += cellMoney(tcell);
       if (trow.sowItemData && !trow.offSow) sowSubAll += Number(trow.sowItemData.fee) || 0;
     }
     var totalDelta  = sowSubAll - basisTotal;   // SOW − sub (panel sign; = −deltaVsSow)
@@ -1148,7 +1164,7 @@
           ? (Number(nrow.sowItemData.fee) || 0)
           : (Number(nrow.sowFee) || 0);
         var ncell = nrow.cellsByPackage && nrow.cellsByPackage[pkgId];
-        var nbid  = ncell ? (Number(ncell.labor) || 0) : 0;
+        var nbid  = ncell ? cellMoney(ncell) : 0;
         if (moneyEq(nfee, nbid)) continue;      // covered — not part of the gap
         nonBidItems.push({
           label:   nrow.displayLabel ||

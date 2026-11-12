@@ -881,13 +881,14 @@
     var othersTxt  = others.join(', ');
     var tagHtml = isOtherBid
       ? '<div class="scw-bid-review-v2__bid-dupe-tag scw-bid-review-v2__bid-dupe-tag--otherbid" ' +
-          'title="This bid item lives on a different bid (' + escapeHtml(othersTxt) + ') and ' +
-          'points at the same SOW item. It has no effect on this bid’s comparison — Unlink ' +
+          'title="This bid item is also on a different bid (' + escapeHtml(othersTxt) + ') and ' +
+          'points at the same SOW item. It is still a line of this bid, so it counts in this ' +
+          'bid’s total — Unlink ' +
           'clears its pointer at this SOW item so it stops stacking here (the item stays on its own bid).">' +
           LAYERS_SVG + '<span>On a different bid → ' + escapeHtml(othersTxt) + '</span></div>'
       : '<div class="scw-bid-review-v2__bid-dupe-tag" title="A second bid line item ' +
-          'on this bid is linked to the same SOW item. Usually the extra should be ' +
-          'removed or re-mapped to its own SOW item.">' +
+          'on this bid is linked to the same SOW item. It counts in this bid’s total. ' +
+          'Usually the extra should be removed or re-mapped to its own SOW item.">' +
           WARN_TRI_SVG + '<span>2nd bid item → same SOW item</span></div>';
     return '<div class="scw-bid-review-v2__bid-item scw-bid-review-v2__bid-item--dupe' +
       (isOtherBid ? ' scw-bid-review-v2__bid-item--otherbid' : '') + '">' +

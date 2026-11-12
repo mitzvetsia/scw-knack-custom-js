@@ -1845,6 +1845,22 @@ label / designators."
 - Test: `tests/bid-review-v2/test-bid-designator.js` (helpers, the derived designators both sides, every drift
   case, the Label line unflagged / flagged / "none on bid" / "SOW: none", the hover target).
 
+## Reconcile grid: a 2nd bid line on the same SOW item counts in the bid total (2026-11-12)
+
+"Is the sum for the bid on the reconcile bid page skipping the second item? It should not." Bid 413 read
+$40,025.00 "✓ matches the SOW" while its bid document totals $40,160.00: two SCW 24 Port PoE Switch bid lines
+($135 each) point at the same SOW line item, and `transform.js buildRow` keeps the second as `cell.dupes` (the
+stacked "2nd bid item → same SOW item" block) — shown, never summed. Now `ns.transform.cellLaborTotal(cell)`
+= the primary's labor + every stacked extra, and it feeds the column total (`subBidTotal`, `deltaVsSow`,
+`matchesSow`), the diff panel (`sub-bid-diff/render.js distill`: orphan / matched labor, the headline
+reconciliation and the no-sub-bid residual — a doubled line reads as a labor change with the note
+"2 bid items on this SOW item") and the basis-bid PDF fragment (`pdf-html.js groupForBid` lists the extra as
+"<label> (2nd bid item)"). A stacked record that is ALSO on another bid counts too: it is connected to this
+bid, so it is on this bid's document. The cell still shows the primary's numbers with the extras beneath it;
+the dupe tags' hovers say they count. The v1 header refresh (`bid-review/render.js refreshHeaderTotals`)
+targets the v1 grid DOM, which v2 replaces, and was left as is. Test:
+`tests/bid-review-v2/test-stacked-bid-total.js`.
+
 ## Reconcile grid: every bid line not on this SOW is a row (live 2026-10-16)
 
 With a basis bid chosen, **every** basis-bid line whose line item (`field_2404`) is not on the SOW

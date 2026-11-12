@@ -70,12 +70,27 @@
         if (!byBucket[bkey]) { byBucket[bkey] = { label: row.proposalBucket || '', items: [] }; buckets.push(byBucket[bkey]); }
         var labor = Number(cell.labor) || 0;
         total += labor;
+        var itemLabel = row.displayLabel || cell.productName || row.productName || '(line item)';
         byBucket[bkey].items.push({
-          label: row.displayLabel || cell.productName || row.productName || '(line item)',
+          label: itemLabel,
           qty:   cell.qty != null ? cell.qty : '',
           labor: labor,
           desc:  cell.laborDesc || ''
         });
+        // A 2nd (3rd, …) bid line on the same SOW item is a line of this bid
+        // too — list it and count it, as the column total does.
+        for (var di = 0; cell.dupes && di < cell.dupes.length; di++) {
+          var dp = cell.dupes[di];
+          if (!dp) continue;
+          var dl = Number(dp.labor) || 0;
+          total += dl;
+          byBucket[bkey].items.push({
+            label: itemLabel + ' (2nd bid item)',
+            qty:   dp.qty != null ? dp.qty : '',
+            labor: dl,
+            desc:  dp.laborDesc || ''
+          });
+        }
       }
       if (any) l1s.push({ label: grp.label || '', buckets: buckets, total: total });
     }
