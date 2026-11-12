@@ -498,7 +498,13 @@ the parent's product) and `SCW.catalog.isDisabled(productId)` reads the product'
   accessory (`discontinuedChipMark`, dashed amber edge `--discontinued`), and `accessoriesSig` carries a
   `!` per discontinued accessory so the parent card repaints once it is swapped. (co-remove.js reads
   `data-scw-ws-v2-acc-chip` only on the install-items views, so the new stamp adds no Remove buttons on
-  SOW cards.) Test: the accessory block in `tests/worksheet-v2/test-discontinued-bar.js`.
+  SOW cards.) Test: the accessory block in `tests/worksheet-v2/test-discontinued-bar.js`. **The bulk
+  "Remove accessories" modal says so too (same day — "can the bulk remove modal also reflect which items are
+  discontinued?")**: `bulk.js` `collectAccessoriesGrouped` counts `disc` per accessory type with the same
+  `card.isDiscontinued` verdict; discontinued types sort first, the row carries an amber ⊘ "Discontinued" tag
+  ("N discontinued" when only some lines of that name are), and a note above the list counts them. No catalog
+  = no tags, alphabetical as before. Test seams `ns.bulk._openRemoveAccessories` / `_accessoriesGrouped`;
+  test: `tests/worksheet-v2/test-bulk-remove-acc-disc.js`.
 - **Retired with it**: `worksheet-v2/product-enabled-flag.js` (it wrote `field_2912` Yes after
   a product change — nothing writes a product flag now) and the v1 worksheet's
   `device-worksheet.js isDiscontinuedRow` asks the catalog first. The `field_2244` /

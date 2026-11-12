@@ -1695,16 +1695,30 @@
       seen[r.id] = true;
       var name = accessoryName(r);
       var key  = name.toLowerCase();
-      if (!groups[key]) { groups[key] = { name: name, ids: [] }; order.push(key); }
+      if (!groups[key]) { groups[key] = { name: name, ids: [], disc: 0 }; order.push(key); }
       groups[key].ids.push(r.id);
+      // Discontinued (2026-11-12 — "can the bulk remove modal also reflect which
+      // items are discontinued?"): the worksheet's own verdict (card.js →
+      // the product catalog), so the modal and the ⊘ on the chips agree.
+      try {
+        if (ns.card && typeof ns.card.isDiscontinued === 'function' &&
+            ns.card.isDiscontinued(r, sourceViewKey)) groups[key].disc++;
+      } catch (e) { /* no verdict → not flagged */ }
     }
     var out = order.map(function (k) { return groups[k]; });
+    // Discontinued types first (they are the ones to take off), then by name.
     out.sort(function (a, b) {
-      return String(a.name).localeCompare(String(b.name), undefined,
-        { numeric: true, sensitivity: 'base' });
+      return ((b.disc ? 1 : 0) - (a.disc ? 1 : 0)) ||
+        String(a.name).localeCompare(String(b.name), undefined,
+          { numeric: true, sensitivity: 'base' });
     });
     return out;
   }
+
+  var DISC_SVG =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>';
 
   /** Bulk REMOVE accessories — lets the user pick WHICH accessory types to
    *  delete across the selected parent rows (grouped by product name, one
@@ -1739,13 +1753,25 @@
       return;
     }
 
+    var discTotal = 0;
     var rowsHtml = groups.map(function (g, idx) {
-      return '<label class="scw-ws-v2-bulk-acc-row">' +
+      discTotal += g.disc || 0;
+      // A type whose lines are only partly discontinued says how many.
+      var discTag = g.disc
+        ? '<span class="scw-ws-v2-bulk-acc-disc" title="Product discontinued — no longer available. Replace before it goes out.">' +
+            DISC_SVG + (g.disc === g.ids.length ? 'Discontinued' : g.disc + ' discontinued') + '</span>'
+        : '';
+      return '<label class="scw-ws-v2-bulk-acc-row' + (g.disc ? ' scw-ws-v2-bulk-acc-row--disc' : '') + '">' +
         '<input type="checkbox" class="scw-ws-v2-bulk-acc-cb" data-acc-idx="' + idx + '">' +
-        '<span class="scw-ws-v2-bulk-acc-name">' + escapeHtml(g.name) + '</span>' +
+        '<span class="scw-ws-v2-bulk-acc-name">' + escapeHtml(g.name) + discTag + '</span>' +
         '<span class="scw-ws-v2-bulk-acc-count">× ' + g.ids.length + '</span>' +
       '</label>';
     }).join('');
+    var discNote = discTotal
+      ? '<div class="scw-ws-v2-bulk-acc-discnote">' + DISC_SVG +
+          '<span>' + discTotal + ' of these accessor' + (discTotal === 1 ? 'y is' : 'ies are') +
+          ' discontinued — listed first.</span></div>'
+      : '';
 
     overlay.innerHTML =
       '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
@@ -1756,6 +1782,7 @@
             '. The line item' + (parentIds.length === 1 ? '' : 's') +
             ' themselves are kept. This cannot be undone.</div>' +
         '</div>' +
+        discNote +
         '<div class="scw-ws-v2-bulk-acc-list">' + rowsHtml + '</div>' +
         '<div class="scw-ws-v2-bulk-modal-status"></div>' +
         '<div class="scw-ws-v2-bulk-modal-actions">' +
@@ -2908,7 +2935,9 @@
     queuedDeleteFE:   queuedDeleteFE,
     // Accessories follow their parent's SOW / accessoryFollow fields.
     followParent:     followParent,
-    _propagateToAccessories: propagateToAccessories   // tests
+    _propagateToAccessories: propagateToAccessories,  // tests
+    _openRemoveAccessories:  openRemoveAccessoriesConfirm,  // tests
+    _accessoriesGrouped:     collectAccessoriesGrouped      // tests
   };
 })();
 /*** END WORKSHEET V2 — BULK EDIT *********************************************/
