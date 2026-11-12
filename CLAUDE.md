@@ -957,7 +957,10 @@ this survey is on") — Make reads it off the survey request; `projectId` rides 
 scenario)**: a top router [30] — route 1 (surveyRequestId given): [31] get the survey request → [32] projectId = its
 REL_project `field_2346` → [33] none → [34] 422 `no-project` | a CLONE of the whole project flow (ids +100) reading
 `32.projectId`, numbering and checking on the project, lifecycle default proposed; route 2 (no surveyRequestId): the
-existing flow ([2]'s filter now also requires no surveyRequestId). Both flows: [15]/[115] write `field_2457` = surveyNotes
+existing flow ([2]'s filter now also requires no surveyRequestId). Cloning lesson: an Array aggregator names its
+source module OUTSIDE the mapper (`parameters.feeder` + the restore label) — a clone that remaps only `N.` references
+leaves it on the original search and Make refuses the save with "Source node is not set"; patch2.py remaps it and
+asserts every feeder is upstream. Both flows: [15]/[115] write `field_2457` = surveyNotes
 and `field_2435` as an array, link the request's `field_2438`, reply `surveyNotesSaved`. A 2xx with no JSON on the survey
 page (an older 22.02 stops on the missing project) reads "did not create the MDF/IDF" and keeps the window open; a reply
 without `surveyNotesSaved` makes the page append the note itself through view_3617. No hook / no survey id in the route =
