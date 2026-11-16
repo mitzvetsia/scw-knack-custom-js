@@ -960,7 +960,7 @@ REL_project `field_2346` → [33] none → [34] 422 `no-project` | a CLONE of th
 existing flow ([2]'s filter now also requires no surveyRequestId). Cloning lesson: an Array aggregator names its
 source module OUTSIDE the mapper (`parameters.feeder` + the restore label) — a clone that remaps only `N.` references
 leaves it on the original search and Make refuses the save with "Source node is not set"; patch2.py remaps it and
-asserts every feeder is upstream. Both flows: [15]/[115] write `field_2457` = surveyNotes
+asserts every feeder is upstream. **v3 (2026-11-16, `patch3.py`)**: the closet aggregators [5] / [105] died on the first record with "formatNumber … '{array}' is not a valid number" — Make evaluates both branches of `if()`, so the HEADEND's blank ## (an array, which `ifempty` does not count as empty) reached `formatNumber`; `idfNo` now strips the raw value to its digits as text first. Both flows: [15]/[115] write `field_2457` = surveyNotes
 and `field_2435` as an array, link the request's `field_2438`, reply `surveyNotesSaved`. A 2xx with no JSON on the survey
 page (an older 22.02 stops on the missing project) reads "did not create the MDF/IDF" and keeps the window open; a reply
 without `surveyNotesSaved` makes the page append the note itself through view_3617. No hook / no survey id in the route =
