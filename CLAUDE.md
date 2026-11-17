@@ -2455,6 +2455,34 @@ redesign". The window (button on view_3869's header, rows from view_3586's paren
   hundreds. Check the duplicate-SOW scenario before relying on swaps. Test seam `SCW.createAltSow.open(btn)`;
   test: `tests/sow-page/test-alternate-sow-modal.js`.
 
+## Deleting a SOW asks first (2026-11-17) — `src/features/sow-delete-confirm.js`
+
+ClickUp 86bd3yf2p (Jon Carter: "it's too easy to delete a scope of work unintentionally … if the page jumps and someone
+clicks on delete erroneously, the SOW is done for"). **Why there was no prompt: `delete-intercept.js` patches
+`window.confirm` and answers Knack's own "Are you sure you want to delete this?" for the user on EVERY view** (line-item
+deletes are one click by design), so every native Knack delete link in the app is one click — including the SOW list's
+Delete on view_3325, the "Scopes of Work" grid on BUILD SOW (Projects → Project Dashboard → BUILD SOW): the card button
+`sow-grid-cards.js` builds (it proxies the row's `a.kn-link-delete`) and the trashcan in that grid's Table view.
+- The module stops a click on `a.kn-link-delete` inside a configured grid at capture, before Knack's delegated handler,
+  and opens a red-topped window: the SOW (number off `field_2122`, name, project total), what the page knows is attached
+  (survey requested `field_2706`, bids `field_2737`, published proposals from view_3885 by `field_2666`, released to
+  sales, line items from view_3962 by `field_2154` and how many are on no other SOW — "will be left with no SOW": Knack
+  drops a deleted record's connections, it does not delete the line items), "cannot be undone", `Keep it | Yes, delete
+  SOW n`.
+- Against the slip itself: the delete button is disabled for `armMs` (700 ms) after the window opens and a click outside
+  is ignored for the same time (the second half of a double-click hits nothing); focus starts on Keep it; Esc and a
+  click outside keep. A SOW with a survey, bids or a published proposal also needs "I understand what is attached …"
+  ticked.
+- Confirm re-finds the row's CURRENT link (the grid may have re-rendered), sets a one-shot pass (`_pass`, 1.5 s) and
+  clicks it; Knack deletes as before (delete-intercept still answers Knack's prompt, so there is one question, not two).
+  A row gone meanwhile deletes nothing and says so. The module never deletes anything itself.
+- `CONFIG.views`: view_3325, and view_3918 (the same grid on RECONCILE BIDS, a hidden data source there). Add a grid by
+  adding an entry (`proposalsView` / `itemsView` optional; a view not on the page adds no line).
+- **Not covered, same one-click behaviour**: every other native delete link — e.g. the Delete column of "Published
+  Proposals" (view_3885, BUILD SOW). The 0-unique "Delete SW-x" on the sales SOW page's other-SOWs grid (view_3869) has
+  its own window (`import-unique-items-btn.js`).
+- Test: `tests/misc/test-sow-delete-confirm.js`.
+
 ## Scene veil (load gating) — `src/features/scene-veil.js`
 
 Heavy ops scenes are hidden behind a spinner until Knack's render stream goes quiet (600ms)

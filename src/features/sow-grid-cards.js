@@ -237,7 +237,10 @@
       del.innerHTML = iconSvg('trash') + '<span>Delete</span>';
       del.addEventListener('click', function (e) {
         e.preventDefault(); e.stopPropagation();
-        delLink.click();   // fire Knack's native delete (its own confirm)
+        // The row's native delete link. sow-delete-confirm.js stops this click and asks
+        // first (delete-intercept.js answers Knack's own prompt, so without it one click
+        // deleted the SOW); Knack deletes only after "Yes, delete SOW n".
+        delLink.click();
       });
       wrap.appendChild(del);
     }

@@ -177,6 +177,7 @@ cat \
   src/features/ops-review-pill.js \
   src/features/pq-expiration-edit.js \
   src/features/sow-grid-cards.js \
+  src/features/sow-delete-confirm.js \
   src/features/mdf-idf-cards.js \
   src/features/files-gallery.js \
   src/features/photo-grid-manager.js \
