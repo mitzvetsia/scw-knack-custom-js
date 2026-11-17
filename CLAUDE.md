@@ -1028,7 +1028,8 @@ view_3509 can be deleted. Cost: the native fallbacks (a blank webhook, a preview
 created since 11-10 have none (Make's default / cloned closets 46, the native add forms 44). The page-side fix is the
 22.02 window on every adding page (above); the Make-side catch-all is **22.01 "(sets the Site)"** (`scratchpad/bp2201/
 patch.py`: closet has a project and no site → the project's `field_1259` → closet `field_2848`; the SOW search guarded
-by "has a project") — delivered 2026-11-17, unverified live (does Knack's New Event fire for records Make creates?).
+by "has a project") — delivered 2026-11-17. 22.01 runs only for records added IN KNACK (a backstop for the form path);
+Make's own creates (01.01 [269], 01.02 [162] / [167], 01.03 [67], 01.04 [12]) still set no site — see the doc.
 `tools/mdf_site_worklist.py` rebuilds the worklists from fresh exports (site backfill import, projects needing a site,
 closets on no project, the per-site merge worklist with a suggested keeper, sites ranked). Numbers and the run:
 docs/locations.md "Status from the 2026-11-17 exports".

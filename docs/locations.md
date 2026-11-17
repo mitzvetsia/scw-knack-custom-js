@@ -406,9 +406,15 @@ Build SOW, CO, deploy) and by the SOW-create scenarios. Two actions:
   Reconcile, Deploy, sales SOW, sub deployment dashboard), so the native forms stop being the way in; (b) **22.01
   "(sets the Site)" blueprint** (`scratchpad/bp2201/patch.py` over the user's export; import INTO the scenario): a new
   first route — the closet has a project and no site → [21] get the project → [22] closet `field_2848` = the project's
-  `field_1259` — and the SOW route's search [4] now runs only when the closet has a project. It catches every creator
-  IF Knack's New Event trigger fires for records Make creates (verify: a default MDF from a new SOW must get its
-  site; if not, the site step has to go into 01.01 / 01.02 / 01.03 / 01.04).
+  `field_1259` — and the SOW route's search [4] now runs only when the closet has a project. **It only runs for records added in
+  Knack** (Micah 2026-11-17: "22.01 is the scenario triggered whenever an MDF/IDF record is added in knack, which is
+  a path we have not ended but it isn't bad to put this back stop in"), so it is the backstop for the form path, not
+  for Make's own creates. Those (46 of the 90) need the site where they are made: 01.01 [269] "create Placeholder
+  MDF" (the project is [249] upstream: `249.field_1259_raw[].id`), 01.02 [167] (the found project [8]) and [162] (the
+  project [28] was created in the same run and has no site yet), 01.03 [67] (its "get Project" [87] runs AFTER the
+  If/Else that creates the closet), 01.04 [12] "create CLONE MDF-IDF" (the target project is [55] upstream). A closet
+  made before its project has a site is never filled in later either, so a small scheduled sweep (closet has a
+  project and no site → the project's site) is the one fix that covers every case. Not built.
 - **Worklists** — `tools/mdf_site_worklist.py <projects> <sites> <mdfidf> <outdir> [<older mdfidf>]` (merged closets
   left out): `1_site_backfill.csv` 89 closets whose project has a site (import, match on Record ID, map CORE_site
   only); `2_projects_without_site.csv` 25 projects / 33 closets (21 projects with no site, 4 whose site nickname is
